@@ -1,0 +1,2 @@
+-Q ../bbv bbv
+-Q ./src compiler
