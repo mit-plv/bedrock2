@@ -1,2 +1,3 @@
 -Q ../bbv bbv
 -Q ./src compiler
+-Q ./lib lib
