@@ -153,10 +153,6 @@ Qed.
 Axiom zext_bounds: forall n sz1 sz2,
   zext (natToWord sz1 n) sz2 = natToWord (sz1 + sz2) n.
 
-(* TODO doesn't hold *)
-Axiom reg0: forall rs: Regs,
-  rs = fun r : Reg => if r =? 0 then Some $ (0) else rs r.
-
 Lemma double_reg0: forall (rs0: Regs),
   (fun r : Reg => if r =? 0 then Some $ (0)
                  else if r =? 0 then Some $ (0) else rs0 r)
@@ -250,7 +246,11 @@ Proof.
     simpl in Regs1, Regs2, U2.
     unfold aboutToRun in Run2.
     repeat rewrite <- app_assoc in Run2.
-    rewrite (reg0 rs1) in Run1. simpl in Run2.
+    assert (R: rs1 = (fun r : Reg => if r =? 0 then Some $ (0) else rs1 r)). {
+      extensionality r. destruct (r =? 0) eqn: E;
+        [apply beq_nat_true in E; subst; assumption | reflexivity ].
+    }
+    rewrite R in Run1. clear R. simpl in Run2.
     lets R12: (concat_run _ _ _ _ _ Run1 Run2).
     evar (iF: list Instruction). evar (pF: nat). evar (rF: Regs).
     exists (S (fuel1 + fuel2)).
@@ -313,7 +313,11 @@ Proof.
     simpl in Regs1, Regs2, U2.
     unfold aboutToRun in Run2.
     repeat rewrite <- app_assoc in Run2.
-    rewrite (reg0 rs1) in Run1. simpl in Run2.
+    assert (R: rs1 = (fun r : Reg => if r =? 0 then Some $ (0) else rs1 r)). {
+      extensionality r. destruct (r =? 0) eqn: E;
+        [apply beq_nat_true in E; subst; assumption | reflexivity ].
+    }
+    rewrite R in Run1. clear R. simpl in Run2.
     lets R12: (concat_run _ _ _ _ _ Run1 Run2).
     evar (iF: list Instruction). evar (pF: nat). evar (rF: Regs).
     exists (S (fuel1 + fuel2)).
