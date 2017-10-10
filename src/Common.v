@@ -17,5 +17,3 @@ Instance Function_Map(K V: Type){decK: DecidableEq K}: Map (K -> option V) K V :
 |}.
 
 Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := weq.
-
-Inductive binop: Set := OPlus | OMinus | OTimes.

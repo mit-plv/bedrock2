@@ -1,6 +1,7 @@
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.ResMonad.
+Require Import compiler.Op.
 
 Section FlatImp.
 
@@ -18,13 +19,6 @@ Section FlatImp.
     | SLoop(body1: stmt)(cond: var)(body2: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt.
-
-  Definition eval_binop(op: binop)(v1 v2: word w): word w :=
-    match op with
-    | OPlus => v1 ^+ v2
-    | OMinus => v1 ^- v2
-    | OTimes => v1 ^* v2
-    end.
 
   (* If we want a bigstep evaluation relation, we either need to put
      fuel into the SLoop constructor, or give it as argument to eval *)
