@@ -1,60 +1,6 @@
-Require Import bbv.Word.
-Require Import compiler.Decidable.
-Require Import compiler.StateMonad.
-
-Inductive Res(A: Type): Type :=
-| Success(a: A): Res A
-| Fail: Res A
-| OutOfFuel: Res A.
-
-Arguments Success {A}.
-Arguments Fail {A}.
-Arguments OutOfFuel {A}.
-
-Ltac destruct_one_match :=
-  match goal with
-  | [ |- context[match ?e with _ => _ end] ] =>
-      is_var e; destruct e
-  | [ |- context[match ?e with _ => _ end] ] =>
-      let E := fresh "E" in destruct e eqn: E
-  end.
-
-Instance Res_Monad: Monad Res := {| 
-  Bind := fun {A B: Type} (r: Res A) (f: A -> Res B) => match r with
-          | Success a => f a
-          | Fail => Fail
-          | OutOfFuel => OutOfFuel
-          end;
-  Return := fun {A: Type} (a: A) => Success a
-|}.
-- intros; reflexivity.
-- intros; destruct_one_match; reflexivity.
-- intros; repeat destruct_one_match; reflexivity.
-Defined.
-
-Definition option2res{A: Type}(o: option A): Res A :=
-  match o with
-  | Some a => Success a
-  | None => Fail
-  end.
-
-Class Map(T K V: Type) := mMap {
-  empty: T;
-  get: T -> K -> option V;
-  put: T -> K -> V -> T;
-  (* TODO probably needs some properties *)
-}.
-
-Instance Function_Map(K V: Type){decK: DecidableEq K}: Map (K -> option V) K V := {|
-  empty := fun _ => None;
-  get := id;
-  put := fun (m: K -> option V) (k: K) (v: V) =>
-           fun (k': K) => if dec (k = k') then Some v else m k'
-|}.
-
-Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := weq.
-
-Inductive binop: Set := OPlus | OMinus | OTimes.
+Require Import compiler.Common.
+Require Import compiler.Tactics.
+Require Import compiler.ResMonad.
 
 Section FlatImp.
 

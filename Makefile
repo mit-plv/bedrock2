@@ -1,5 +1,7 @@
 
-# default_target: all
+default_target: all
+
+DIRS = lib src
 
 COQFLAGS= -Q ../bbv bbv  -Q ./src compiler  -Q ./lib lib
 
@@ -13,8 +15,13 @@ COQDOC=$(COQBIN)coqdoc
 %.vo: %.v
 	$(COQC) $(COQFLAGS) $*.v 
 
-# all: Word.vo
+all: $(patsubst %.v,%.vo,$(wildcard src/*.v))
+
+.depend depend:
+	$(COQDEP) >.depend `find $(DIRS) -name "*.v"`
 
 clean:
 	find . -type f \( -name '*.glob' -o -name '*.vo' -o -name '*.aux' \) -delete
+
+include .depend
 
