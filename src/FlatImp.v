@@ -118,7 +118,7 @@ Definition _n := 0.
 Definition _a := 1.
 Definition _b := 2.
 Definition _s := 3.
-Definition _one := 1.
+Definition _one := 4.
 (*
 one = 1
 n = input()
@@ -153,59 +153,7 @@ end.
 Goal finalFibVal 0 = Some $1. reflexivity. Qed.
 Goal finalFibVal 1 = Some $1. reflexivity. Qed.
 Goal finalFibVal 2 = Some $2. reflexivity. Qed.
-Goal finalFibVal 3 = Some $3.
-  unfold finalFibVal, finalFibState, fib.
-  remember 95 as Num.
-  unfold eval_stmt.
-  match goal with
-  | [ |- match ?e with _ => _ end = _ ] => remember e as M
-  end.
-
-  Ltac step := match goal with
-  | [ H: context G[y <- Success ?a; (@?f y)] |- _ ] =>
-     let old := context G[y <- Success a; (f y)] in
-     let new := context G[f a] in
-     let new' := eval cbv beta in new in
-     change new' in H
-  end.
-  step. step. step. step.
-  remember 94 as Num2. subst Num. rename Num2 into Num. step.
-  simpl option2res in *.
-  step.
-  Ltac dodec := match goal with
-  | [ H: ?M = (if ?E then ?T else ?B) |- _ ] => let E' := eval cbv in E in
-      change (M = if E' then T else B) in H
-  end;   cbv beta iota in *.
-  dodec. (* 3 = 0 *)
-  remember 90 as Num2. subst Num. rename Num2 into Num.
-  simpl option2res in *.
-  Ltac step2 := simpl option2res in *; step; simpl option2res in *.
-  step2. step2. step2. step2. step2. step2. step2. step2.
-  do 10 step2.
-  dodec. (* 3 - 1 = 0 *)
-  do 10 step2.
-  dodec. (* 3 - 1 - (0 + 1) = 0 *)
-  do 1 step2.
-  remember 85 as Num2. subst Num. rename Num2 into Num.
-  do 10 step2.
-   match goal with
-  | [ H: ?M = (if ?E then ?T else ?B) |- _ ] => let E' := eval cbv in E in
-      change (M = if E' then T else B) in H
-  end.
-  dodec. (* 3 - 1 - (0 + 1) - (1 + 0 + 1) *)
-  step2. step2.
-  simpl (@Success (word 8) _) in *.
-  step. step. step. simpl option2res in *. step. step.
-  remember 85 as Num2. subst Num. rename Num2 into Num. step.
-  remember 80 as Num2. subst Num. rename Num2 into Num. step.
- 
-  step. step.
-  Ltac step := match goal with
-  | [ H: context G[y <- Success ?a; (@?f y)] |- _ ] =>
-     let old := constr:(G (y <- Success a; (f y))) in
-     let new := constr:(G (f a)) in
-     let new' := eval cbv beta in new in
-     change new' in H
-  end.
-  step.
-
+Goal finalFibVal 3 = Some $3. reflexivity. Qed.
+Goal finalFibVal 4 = Some $5. reflexivity. Qed.
+Goal finalFibVal 5 = Some $8. reflexivity. Qed.
+Goal finalFibVal 6 = Some $13. reflexivity. Qed.
