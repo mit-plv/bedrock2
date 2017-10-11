@@ -5,9 +5,7 @@ Require Import compiler.Op.
 Section ExprImp.
 
   Context {w: nat}. (* bit width *)
-  Context {var: Set}.
   Context {state: Type}.
-  Context {varEqDec: DecidableEq var}.
   Context {stateMap: Map state var (word w)}.
 
   Inductive expr: Set :=
