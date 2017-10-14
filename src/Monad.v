@@ -1,4 +1,3 @@
-Require Import Coq.Logic.FunctionalExtensionality.
 
 Class Monad(M: Type -> Type) := mkMonad {
   Bind: forall {A B}, M A -> (A -> M B) -> M B;

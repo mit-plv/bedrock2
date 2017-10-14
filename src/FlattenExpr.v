@@ -3,7 +3,8 @@ Require Import compiler.Common.
 Require Import compiler.ResMonad.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
-
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Import compiler.Axioms.
 
 Section FlattenExpr.
 
@@ -100,36 +101,34 @@ Section FlattenExpr.
     extends (put s x v) s.
   Proof. unfold extends. intros. Abort.
 
-  Definition var_range := (var * var)%type.
+  (* models a set of vars *)
+  Definition vars := var -> Prop.
 
-  Definition range_empty: var_range := (0, 0).
+  Definition vars_empty: vars := fun _ => False.
 
-  Definition range_one(x: var): var_range := (x, S x).
+  Definition vars_one(x: var): vars := fun y => x = y.
 
-  Definition range_add(new lo hi: var): var_range :=
-    if dec (lo = hi) then (new, new) else (min new lo, max new hi).
+  Definition vars_union(vs1 vs2: vars): vars := fun x => vs1 x \/ vs2 x.
 
-  Definition range_union(r1 r2: var_range): var_range :=
-    let (lo1, hi1) := r1 in let (lo2, hi2) := r2 in
-    if dec (lo1 = hi1) then r2 else if dec (lo2 = hi2) then r1 else (min lo1 lo2, max hi1 hi2).
+  Definition vars_add(vs: vars)(new: var): vars := vars_union vs (vars_one new).
 
-  (* returns the set of modified vars (always a contiguous range, end points to first unmodified) *)
-  Fixpoint modVars(s: @FlatImp.stmt w): var_range :=
+  (* returns the set of modified vars *)
+  Fixpoint modVars(s: @FlatImp.stmt w): vars :=
     match s with
-    | FlatImp.SLit x v => range_one x
-    | FlatImp.SOp x op y z => range_one x
-    | FlatImp.SSet x y => range_one x
+    | FlatImp.SLit x v => vars_one x
+    | FlatImp.SOp x op y z => vars_one x
+    | FlatImp.SSet x y => vars_one x
     | FlatImp.SIf cond bThen bElse =>
-        range_union (modVars bThen) (modVars bElse)
+        vars_union (modVars bThen) (modVars bElse)
     | FlatImp.SLoop body1 cond body2 =>
-        range_union (modVars body1) (modVars body2)
+        vars_union (modVars body1) (modVars body2)
     | FlatImp.SSeq s1 s2 =>
-        range_union (modVars s1) (modVars s2)
-    | FlatImp.SSkip => range_empty
+        vars_union (modVars s1) (modVars s2)
+    | FlatImp.SSkip => vars_empty
     end.
 
-  Definition only_differ(s1: state)(r: var_range)(s2: state) :=
-    forall x, x < fst r \/ x >= snd r -> get s1 x = get s2 x.
+  Definition only_differ(s1: state)(vs: vars)(s2: state) :=
+    forall x, vs x \/ get s1 x = get s2 x.
 
 Ltac destruct_one_match_hyp_test type_test :=
   match goal with
@@ -164,78 +163,40 @@ Ltac inversionss :=
                        end
   end.
 
-  Definition valid_range(r: var_range) := fst r <= snd r.
-
   Lemma only_differ_union_l: forall s1 s2 r1 r2,
-    valid_range r1 ->
-    valid_range r2 ->
     only_differ s1 r1 s2 ->
-    only_differ s1 (range_union r1 r2) s2.
-  Proof.
-    cbv [only_differ range_union]. introv R1 R2 D B. destruct r1 as [lo1 hi1], r2 as [lo2 hi2].
-    pose proof (Min.min_spec lo1 lo2).
-    pose proof (Max.max_spec hi1 hi2).
-    repeat destruct_one_match_hyp; subst; simpl in *; apply D; omega.
-  Qed.
+    only_differ s1 (vars_union r1 r2) s2.
+  Proof. firstorder. Qed.
 
   Lemma only_differ_union_r: forall s1 s2 r1 r2,
-    valid_range r1 ->
-    valid_range r2 ->
     only_differ s1 r2 s2 ->
-    only_differ s1 (range_union r1 r2) s2.
-  Proof.
-    cbv [only_differ range_union]. introv R1 R2 D B. destruct r1 as [lo1 hi1], r2 as [lo2 hi2].
-    pose proof (Min.min_spec lo1 lo2).
-    pose proof (Max.max_spec hi1 hi2).
-    repeat destruct_one_match_hyp; subst; simpl in *; apply D; omega.
-  Qed.
-
-  Lemma union_preserves_valid_range: forall r1 r2,
-    valid_range r1 ->
-    valid_range r2 ->
-    valid_range (range_union r1 r2).
-  Proof.
-    intros. destruct r1 as [lo1 hi1], r2 as [lo2 hi2].
-    pose proof (Min.min_spec lo1 lo2).
-    pose proof (Max.max_spec hi1 hi2).
-    unfold valid_range, range_union in *.
-    repeat destruct_one_match; subst; simpl in *; omega.
-  Qed.
-
-  Lemma valid_range_modVars: forall s,
-    valid_range (modVars s).
-  Proof.
-    induction s;
-    unfold valid_range, modVars; simpl; try omega; fold modVars;
-    apply union_preserves_valid_range; assumption.
-  Qed.
+    only_differ s1 (vars_union r1 r2) s2.
+  Proof. firstorder. Qed.
 
   Lemma only_differ_one: forall s x v,
-    only_differ s (range_one x) (put s x v).
+    only_differ s (vars_one x) (put s x v).
   Proof.
-    unfold only_differ, range_one. intros. symmetry. apply get_put_diff. simpl in *. omega.
+    cbv [only_differ vars_one]. intros. destruct (dec (x = x0)); [ auto | ].
+    right. symmetry. apply get_put_diff. assumption.
   Qed.
 
   Lemma only_differ_refl: forall s1 r,
     only_differ s1 r s1.
-  Proof.
-    unfold only_differ. intros. reflexivity.
-  Qed.
+  Proof. firstorder. Qed.
 
   Lemma only_differ_sym: forall s1 s2 r,
     only_differ s1 r s2 ->
     only_differ s2 r s1.
-  Proof.
-    unfold only_differ. intros. symmetry. auto.
-  Qed.
+  Proof. firstorder. Qed.
 
   Lemma only_differ_trans: forall s1 s2 s3 r,
     only_differ s1 r s2 ->
     only_differ s2 r s3 ->
     only_differ s1 r s3.
   Proof.
-    unfold only_differ. introv E1 E2 B. destruct r as [lo hi]. simpl in *.
-    rewrite E1 by omega. rewrite E2 by omega. reflexivity.
+    unfold only_differ. introv E1 E2. intro x.
+    specialize (E1 x). specialize (E2 x).
+    destruct E1; [auto|]. destruct E2; [auto|]. right. congruence.
   Qed.
 
   Lemma invert_eval_SLoop: forall fuel st1 body1 cond body2 st4,
@@ -276,28 +237,31 @@ Ltac inversionss :=
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         destruct fuel; [ inversion Ev | ].
         destruct_one_match_hyp.
-        * apply only_differ_union_r; try apply valid_range_modVars. eapply IHfuel. eassumption.
-        * apply only_differ_union_l; try apply valid_range_modVars. eapply IHfuel. eassumption.
+        * apply only_differ_union_r. eapply IHfuel. eassumption.
+        * apply only_differ_union_l. eapply IHfuel. eassumption.
       + apply invert_eval_SLoop in Ev. destruct Ev as [Ev | Ev]. 
         * destruct Ev as [Ev C]. 
           simpl.
-          apply only_differ_union_l; try apply valid_range_modVars. apply IHfuel. assumption.
+          apply only_differ_union_l. apply IHfuel. assumption.
         * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
           eapply only_differ_trans.
-          { simpl. apply only_differ_union_l; try apply valid_range_modVars.
+          { simpl. apply only_differ_union_l.
             apply IHfuel. eassumption. }
           { eapply only_differ_trans.
-            { simpl. apply only_differ_union_r; try apply valid_range_modVars.
+            { simpl. apply only_differ_union_r.
               apply IHfuel. eassumption. }
             { apply IHfuel. assumption. } }
       + apply invert_eval_SSeq in Ev.
         destruct Ev as [mid [Ev1 Ev2]]. simpl.
         eapply only_differ_trans.
-        * apply only_differ_union_l; try apply valid_range_modVars. eapply IHfuel. eassumption.
-        * apply only_differ_union_r; try apply valid_range_modVars. eapply IHfuel. eassumption.
+        * apply only_differ_union_l. eapply IHfuel. eassumption.
+        * apply only_differ_union_r. eapply IHfuel. eassumption.
       + simpl. inversionss. apply only_differ_refl.
   Qed.
 
+  Definition vars_range(x1 x2: var): vars := fun x => x1 <= x < x2.
+
+(*
   Lemma range_union_one_r: forall x1 x2 x3,
     x1 <= x2 < x3 ->
     range_union (x1, x3) (range_one x2) = (x1, x3).
@@ -309,36 +273,35 @@ Ltac inversionss :=
     - pose proof (Min.min_spec x1 x2). omega.
     - pose proof (Max.max_spec x3 (S x2)). omega.
   Qed.
+*)
 
   Lemma range_union_inc_r: forall x1 x2,
     x1 <= x2 ->
-    range_union (x1, x2) (range_one x2) = (x1, S x2).
+    vars_union (vars_range x1 x2) (vars_one x2) = vars_range x1 (S x2).
   Proof.
-    intros. unfold range_union, range_one.
-    repeat match goal with
-    | [ |- context[if ?e then _ else _] ] => let E := fresh "E" in destruct e eqn: E
-    end; f_equal; try omega.
-    - pose proof (Min.min_spec x1 x2). omega.
-    - pose proof (Max.max_spec x2 (S x2)). omega.
+    intros. unfold vars_union, vars_one, vars_range.
+    extensionality x. apply prop_ext; change var with nat in *; omega.
   Qed.
 
   Lemma range_union_adj: forall x1 x2 x3,
     x1 <= x2 <= x3 ->
-    range_union (x1, x2) (x2, x3) = (x1, x3).
+    vars_union (vars_range x1 x2) (vars_range x2 x3) = (vars_range x1 x3).
   Proof.
-   unfold range_union. intros.
-    repeat match goal with
-    | [ |- context[if ?e then _ else _] ] => let E := fresh "E" in destruct e eqn: E
-    end; f_equal; try omega.
-    - pose proof (Min.min_spec x1 x2). omega.
-    - pose proof (Max.max_spec x2 x3). omega.
+    unfold vars_union, vars_range. intros.
+    extensionality x. apply prop_ext; change var with nat in *; omega.
+  Qed.
+
+  Lemma vars_one_range: forall x,
+    vars_one x = vars_range x (S x).
+  Proof.
+    intros. cbv. extensionality y. apply prop_ext. omega.
   Qed.
 
   Lemma flattenExpr_modVars_spec: forall e s firstFree resVar,
     flattenExpr firstFree e = (s, resVar) ->
-    modVars s = (firstFree, S resVar) /\ firstFree <= resVar .
+    modVars s = vars_range firstFree (S resVar) /\ firstFree <= resVar.
   Proof.
-    induction e; introv E; inversions E; try (split; [reflexivity | omega]).
+    induction e; introv E; inversions E; try solve [split; [simpl; apply vars_one_range | omega]].
     destruct (flattenExpr firstFree e1) as [p1 r1] eqn: E1.
     destruct (flattenExpr (S r1) e2) as [p2 r2] eqn: E2.
     inversions H0.
@@ -392,18 +355,18 @@ Ltac inversionss :=
     exists fuel finalL,
       FlatImp.eval_stmt fuel initialL s = Success finalL /\
       get finalL resVar = Some res /\
-      only_differ initialL (firstFree, S resVar) finalL.
+      only_differ initialL (vars_range firstFree (S resVar)) finalL.
   Proof.
     induction e; introv F Ex Ev.
     - inversionss.
       exists 1 (put initialL resVar res). repeat split.
       + apply get_put_same.
-      + apply only_differ_one.
+      + rewrite <- vars_one_range. apply only_differ_one.
     - inversionss.
       exists 1 (put initialL resVar res). repeat split.
       + simpl. unfold extends in Ex. apply Ex in H0. rewrite H0. reflexivity.
       + rewrite get_put_same. symmetry. assumption.
-      + apply only_differ_one.
+      + rewrite <- vars_one_range. apply only_differ_one.
     - inversionss. repeat (destruct_one_match_hyp; try discriminate). inversionss.
       specialize (IHe1 _ _ _ _ _ w0 E Ex E1).
       destruct IHe1 as [fuel1 [midL [Ev1 [G1 D1]]]].
