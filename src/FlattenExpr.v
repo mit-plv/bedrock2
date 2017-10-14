@@ -348,16 +348,48 @@ Ltac inversionss :=
      + simpl. inversionss. reflexivity.
   Qed.
 
+  Definition undef(s: state)(vs: vars) := forall x, vs x -> get s x = None.
+
+  Definition subset(vs1 vs2: vars) := forall x, vs1 x -> vs2 x.
+
+  Definition vars_range_subset: forall lo1 hi1 lo2 hi2,
+    lo1 >= lo2 ->
+    hi1 <= hi2 ->
+    subset (vars_range lo1 hi1) (vars_range lo2 hi2).
+  Proof.
+    unfold subset, vars_range. intros. omega.
+  Qed.
+
+  Lemma undef_shrink: forall st vs1 vs2,
+    undef st vs1 ->
+    subset vs2 vs1 ->
+    undef st vs2.
+  Proof. unfold undef, subset. firstorder. Qed.
+
+  Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
+    extends s1 s ->
+    undef s vs ->
+    only_differ s1 vs s2 ->
+    extends s2 s.
+  Proof.
+    unfold extends, undef, only_differ.
+    introv E U O G.
+    specialize (O x). destruct O as [O | O].
+    - specialize (U _ O). congruence. (* contradiction *)
+    - rewrite <- O. apply E. assumption.
+  Qed.
+
   Lemma flattenExpr_correct_aux: forall e firstFree resVar s initialH initialL res,
     flattenExpr firstFree e = (s, resVar) ->
     extends initialL initialH ->
+    undef initialH (vars_range firstFree (S resVar)) ->
     ExprImp.eval_expr initialH e = Some res ->
     exists fuel finalL,
       FlatImp.eval_stmt fuel initialL s = Success finalL /\
       get finalL resVar = Some res /\
       only_differ initialL (vars_range firstFree (S resVar)) finalL.
   Proof.
-    induction e; introv F Ex Ev.
+    induction e; introv F Ex U Ev.
     - inversionss.
       exists 1 (put initialL resVar res). repeat split.
       + apply get_put_same.
@@ -368,11 +400,20 @@ Ltac inversionss :=
       + rewrite get_put_same. symmetry. assumption.
       + rewrite <- vars_one_range. apply only_differ_one.
     - inversionss. repeat (destruct_one_match_hyp; try discriminate). inversionss.
-      specialize (IHe1 _ _ _ _ _ w0 E Ex E1).
+      specialize (IHe1 _ _ _ _ _ w0 E Ex).
+      specializes IHe1. admit. (* TODO *) exact E1.
       destruct IHe1 as [fuel1 [midL [Ev1 [G1 D1]]]].
       specialize (IHe2 _ _ _ initialH midL w1 E0).
       specializes IHe2.
-      { admit. (* TODO unmodified ranges... *) }
+      { refine (extends_if_only_differ_in_undef _ _ _ _ Ex _ D1).
+        eapply undef_shrink; try eassumption.
+        apply flattenExpr_modVars_spec in E.
+        apply flattenExpr_modVars_spec in E0.
+        apply vars_range_subset; omega. }
+      { eapply undef_shrink; [eassumption|].
+        apply flattenExpr_modVars_spec in E.
+        apply flattenExpr_modVars_spec in E0.
+        apply vars_range_subset; omega. }
       { assumption. }
       destruct IHe2 as [fuel2 [preFinalL [Ev2 [G2 D2]]]].
       remember (S (S (fuel1 + fuel2))) as f0.
