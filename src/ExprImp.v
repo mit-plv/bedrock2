@@ -1,3 +1,4 @@
+Require Import lib.LibTactics.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
@@ -51,6 +52,55 @@ Section ExprImp.
       | SSkip => Return st
       end
     end.
+
+  Lemma invert_eval_SSet: forall f st1 st2 x e,
+    eval_stmt f st1 (SSet x e) = Some st2 ->
+    exists v, eval_expr st1 e = Some v /\ st2 = put st1 x v.
+  Proof.
+    introv E. destruct f; [ discriminate |].
+    simpl in E. destruct_one_match_hyp; [ | discriminate ].
+    inversions E. eauto.
+  Qed.
+
+  Lemma invert_eval_SIf: forall f st1 st2 cond bThen bElse,
+    eval_stmt (S f) st1 (SIf cond bThen bElse) = Some st2 ->
+    exists cv,
+      eval_expr st1 cond = Some cv /\ 
+      (cv <> $0 /\ eval_stmt f st1 bThen = Some st2 \/
+       cv = $0  /\ eval_stmt f st1 bElse = Some st2).
+  Proof.
+    introv E. simpl in E. destruct_one_match_hyp; [|discriminate].
+    destruct_one_match_hyp; subst; eexists; eapply (conj eq_refl); [right|left]; auto.
+  Qed.
+
+  Lemma invert_eval_SWhile: forall st1 st3 f cond body,
+    eval_stmt (S f) st1 (SWhile cond body) = Some st3 ->
+    exists cv,
+      eval_expr st1 cond = Some cv /\
+      (cv <> $0 /\ (exists st2, eval_stmt f st1 body = Some st2 /\ 
+                               eval_stmt f st2 (SWhile cond body) = Some st3) \/
+       cv = $0  /\ st1 = st3).
+  Proof.
+    introv E. simpl in E. destruct_one_match_hyp; [|discriminate].
+    destruct_one_match_hyp.
+    - inversion E. subst st3. clear E. eexists. eapply (conj eq_refl). right. auto.
+    - destruct_one_match_hyp; [|discriminate]. eauto 10.
+  Qed.
+
+  Lemma invert_eval_SSeq: forall st1 st3 f s1 s2,
+    eval_stmt (S f) st1 (SSeq s1 s2) = Some st3 ->
+    exists st2, eval_stmt f st1 s1 = Some st2 /\ eval_stmt f st2 s2 = Some st3.
+  Proof.
+    introv E. simpl in E. destruct_one_match_hyp; [|discriminate]. eauto.
+  Qed.
+
+  Lemma invert_eval_SSkip: forall st1 st2 f,
+    eval_stmt f st1 SSkip = Some st2 ->
+    st1 = st2.
+  Proof.
+    introv E. destruct f; [discriminate|].
+    simpl in E. inversions E. reflexivity.
+  Qed.
 
 End ExprImp.
 

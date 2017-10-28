@@ -97,6 +97,9 @@ Section FlattenExpr.
 
   Definition extends(s1 s2: state) := forall x v, get s2 x = Some v -> get s1 x = Some v.
 
+  Lemma extends_refl: forall s, extends s s.
+  Proof. unfold extends. firstorder. Qed.
+
   Lemma put_extends: forall s x v,
     extends (put s x v) s.
   Proof. unfold extends. intros. Abort.
@@ -129,39 +132,6 @@ Section FlattenExpr.
 
   Definition only_differ(s1: state)(vs: vars)(s2: state) :=
     forall x, vs x \/ get s1 x = get s2 x.
-
-Ltac destruct_one_match_hyp_test type_test :=
-  match goal with
-  | H: context[match ?e with _ => _ end] |- _ =>
-      is_var e;
-      let T := type of e in type_test T;
-      destruct e
-  | H: context[if ?e then _ else _] |- _ =>
-      is_var e;
-      let T := type of e in type_test T;
-      destruct e
-  | H: context[match ?e with _ => _ end] |- _ =>
-      let T := type of e in type_test T;
-      let E := fresh "E" in destruct e eqn: E
-  | H: context[if ?e then _ else _] |- _ =>
-      let T := type of e in type_test T;
-      let E := fresh "E" in destruct e eqn: E
-  end.
-
-Ltac destruct_one_match_hyp_of_type T :=
-  destruct_one_match_hyp_test ltac:(fun t => unify t T).
-
-Ltac destruct_one_match_hyp :=
-  destruct_one_match_hyp_test ltac:(fun t => idtac).
-
-Ltac inversionss :=
-  repeat match goal with
-  | H: ?a = ?b |- _ => inversion H; subst; clear H;
-                       match goal with
-                       | H': a = b |- _ => fail 1
-                       | _ => idtac
-                       end
-  end.
 
   Lemma only_differ_union_l: forall s1 s2 r1 r2,
     only_differ s1 r1 s2 ->
@@ -314,6 +284,37 @@ Ltac inversionss :=
     apply range_union_adj. omega.
   Qed.
 
+  Lemma flattenStmt_vars_range: forall s s' firstFree newFirstFree,
+    flattenStmt firstFree s = (s', newFirstFree) ->
+    firstFree <= newFirstFree.
+  Proof.
+    induction s; introv E; inversions E;
+    try omega; repeat destruct_one_match_hyp; repeat destruct_pair_eqs;
+    try match goal with
+    | H: _ |- _ => apply flattenExpr_modVars_spec in H
+    end;
+    try rename IHs into IHs1;
+    try match goal with
+    | H: _ |- _ => apply IHs1 in H
+    end;
+    try match goal with
+    | H: _ |- _ => apply IHs2 in H
+    end;
+    try omega.
+  Qed.
+
+  Ltac pose_flatten_var_ineqs :=
+    repeat match goal with
+    | H: flattenExpr _ _ = _ |- _ =>
+         let H' := fresh H in pose proof H as H';
+         apply flattenExpr_modVars_spec in H';
+         ensure_new H'
+    | H: flattenStmt _ _ = _ |- _ =>
+         let H' := fresh H in pose proof H as H';
+         apply flattenStmt_vars_range in H';
+         ensure_new H'
+    end.
+
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 initial s final,
     fuel1 <= fuel2 ->
     FlatImp.eval_stmt fuel1 initial s = Success final ->
@@ -385,6 +386,26 @@ Ltac inversionss :=
     specialize (O x). destruct O as [O | O].
     - specialize (U _ O). congruence. (* contradiction *)
     - rewrite <- O. apply E. assumption.
+  Qed.
+
+  Lemma extends_if_only_differ_is_undef: forall s1 s2 vs,
+    undef s1 vs ->
+    only_differ s1 vs s2 ->
+    extends s2 s1.
+  Proof.
+    intros. eapply extends_if_only_differ_in_undef; [eapply extends_refl | eassumption..].
+  Qed.
+
+  Lemma extends_put_same: forall s1 s2 x v,
+    extends s2 s1 ->
+    extends (put s2 x v) (put s1 x v).
+  Proof.
+    unfold extends. introv E G.
+    destruct (dec (x = x0)).
+    - subst x0. rewrite get_put_same in G. inversion G. subst v0; clear G.
+      apply get_put_same.
+    - rewrite get_put_diff by assumption.
+      rewrite get_put_diff in G by assumption. auto.
   Qed.
 
   Lemma only_differ_get_unchanged: forall s1 s2 x v d,
@@ -487,6 +508,68 @@ Ltac inversionss :=
           }
   Qed.
 
+  Lemma flattenStmt_correct_aux:
+    forall fuelH sH sL firstFree newFirstFree initialH finalH initialL dH,
+    flattenStmt firstFree sH = (sL, newFirstFree) ->
+    extends initialL initialH ->
+    undef initialH (vars_range firstFree newFirstFree) ->
+    ExprImp.eval_stmt fuelH initialH sH = Some finalH ->
+    only_differ initialH dH finalH ->
+    exists fuelL finalL,
+      FlatImp.eval_stmt fuelL initialL sL = Success finalL /\
+      extends finalL finalH /\
+      only_differ initialL (vars_union dH (vars_range firstFree newFirstFree)) finalL.
+  Proof.
+    induction fuelH; introv F Ex U Ev DH; [solve [inversionss] |].
+    destruct sH.
+    - apply ExprImp.invert_eval_SSet in Ev.
+      destruct Ev as [v [Ev Eq]].
+      inversions F. destruct_one_match_hyp. destruct_pair_eqs. subst.
+      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ E Ex U Ev) as P.
+      destruct P as [fuelL [prefinalL [Evs [G D]]]].
+      remember (S fuelL) as SfuelL.
+      exists (S SfuelL). eexists. repeat split.
+      + simpl.
+        assert (FlatImp.eval_stmt SfuelL initialL s = Success prefinalL) as Evs'. {
+          eapply increase_fuel_still_Success; [|eassumption]. omega.
+        }
+        rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
+      + apply extends_put_same.
+        eapply extends_if_only_differ_in_undef; eassumption.
+      + (* we might need modVars for ExprImp, because DH not strong enough? TODO *) admit.
+    - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
+      apply ExprImp.invert_eval_SIf in Ev.
+      destruct Ev as [cv [Evc Ev]].
+      pose_flatten_var_ineqs.
+      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ cv E Ex) as P.
+      specializes P; [|eassumption|]. {
+        eapply undef_shrink; [eassumption|]. apply vars_range_subset; omega.
+      }
+      destruct P as [fuelLcond [initial2L [Evcond [G D]]]].
+      destruct Ev as [[Ne EvThen] | [Eq EvElse]].
+      + specializes IHfuelH.
+        1: eapply E0.
+        3: eapply EvThen.
+        1: eapply Ex.
+        2: eapply DH.
+        { eapply undef_shrink; [eassumption|]. apply vars_range_subset; omega. }
+        destruct IHfuelH as [fuelL [finalL [Evbranch [Ex2 D2]]]].
+        exists (S (fuelLcond + (S fuelL))). eexists.
+        repeat split.
+        * simpl.
+          pose proof increase_fuel_still_Success as P.
+          assert (fuelLcond <= fuelLcond + (S fuelL)) as IE by omega.
+          specializes P. { eapply IE. } { eapply Evcond. }
+          rewrite P. clear IE P.
+          pose proof increase_fuel_still_Success as P.
+          assert (S fuelL <= fuelLcond + (S fuelL)) as IE by omega.
+          eapply (P _ _ _ _ _ IE). clear IE P.
+          simpl. rewrite G. simpl. destruct_one_match; [contradiction|].
+          admit. (* TODO change initialL in Evbranch to initial2L *)
+        * admit. (* TODO extends *)
+        * admit. (* TODO only_differ *)
+      +
+
+  Qed.
+
 End FlattenExpr.
-
-
