@@ -366,6 +366,14 @@ Ltac inversionss :=
     undef st vs2.
   Proof. unfold undef, subset. firstorder. Qed.
 
+  Lemma only_differ_subset: forall s1 s2 r1 r2,
+    subset r1 r2 ->
+    only_differ s1 r1 s2 ->
+    only_differ s1 r2 s2.
+  Proof.
+    unfold subset, only_differ. intros. firstorder.
+  Qed.
+
   Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
     extends s1 s ->
     undef s vs ->
@@ -377,6 +385,26 @@ Ltac inversionss :=
     specialize (O x). destruct O as [O | O].
     - specialize (U _ O). congruence. (* contradiction *)
     - rewrite <- O. apply E. assumption.
+  Qed.
+
+  Lemma only_differ_get_unchanged: forall s1 s2 x v d,
+    get s1 x = v ->
+    only_differ s1 d s2 ->
+    ~ d x ->
+    get s2 x = v.
+  Proof.
+    introv G D N.
+    unfold only_differ in D. destruct (D x); congruence.
+  Qed.
+
+  Lemma only_differ_put: forall s (d: vars) x v,
+    d x ->
+    only_differ s d (put s x v).
+  Proof.
+    unfold only_differ. intros.
+    destruct (dec (x = x0)).
+    - subst x0. left. assumption.
+    - right. rewrite get_put_diff; auto.
   Qed.
 
   Lemma flattenExpr_correct_aux: forall e firstFree resVar s initialH initialL res,
@@ -401,7 +429,14 @@ Ltac inversionss :=
       + rewrite <- vars_one_range. apply only_differ_one.
     - inversionss. repeat (destruct_one_match_hyp; try discriminate). inversionss.
       specialize (IHe1 _ _ _ _ _ w0 E Ex).
-      specializes IHe1. admit. (* TODO *) exact E1.
+      specializes IHe1. {
+        eapply undef_shrink; [eassumption|].
+        repeat match goal with
+        | H : _  |- _ => apply flattenExpr_modVars_spec in H
+        end.
+        eapply vars_range_subset; omega.
+      }
+      assumption.
       destruct IHe1 as [fuel1 [midL [Ev1 [G1 D1]]]].
       specialize (IHe2 _ _ _ initialH midL w1 E0).
       specializes IHe2.
@@ -425,14 +460,33 @@ Ltac inversionss :=
         subst f0. simpl.
         erewrite (increase_fuel_still_Success _ _ midL); [| |eassumption]; [|omega].
         subst f. simpl.
-        assert (get preFinalL v = Some w0) as G1' by admit. (* TODO follows from G1 and D2 *)
+        assert (get preFinalL v = Some w0) as G1'. {
+          eapply only_differ_get_unchanged; try eassumption.
+          unfold vars_range. omega.
+        }
         rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
       + apply get_put_same.
       + apply only_differ_trans with (s2 := midL).
-        * admit. (* TODO follows from D1 *)
+        * eapply only_differ_subset; [|eassumption].
+          repeat match goal with
+          | H : _  |- _ => apply flattenExpr_modVars_spec in H
+          end.
+          eapply vars_range_subset; omega.
         * eapply only_differ_trans with (s2 := preFinalL).
-          { admit. (* TODO follows from D2 *) }
-          { admit. (* TODO because changed var in range *) }
+          { eapply only_differ_subset; [|eassumption].
+            repeat match goal with
+            | H : _  |- _ => apply flattenExpr_modVars_spec in H
+            end.
+            eapply vars_range_subset; omega.
+          }
+          { apply only_differ_put. unfold vars_range.
+            repeat match goal with
+            | H : _  |- _ => apply flattenExpr_modVars_spec in H
+            end.
+            omega.
+          }
   Qed.
 
 End FlattenExpr.
+
+
