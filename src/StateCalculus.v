@@ -7,33 +7,48 @@ Section StateCalculus.
 
   Context {var: Type}. (* variable name (key) *)
   Context {dec_eq_var: DecidableEq var}.
-  Context {vars: Type}.
-  Context {varsSet: set vars var}.
   Context {val: Type}. (* value *)
   Context {state: Type}.
-  Context {stateMap: compiler.Common.Map state var val}.
+  Context {stateMap: Map state var val}.
 
+  (* models a set of vars *)
+  Definition vars := var -> Prop.
+
+(*
+  Definition dom(s: state): vars := 
+
+  Definition domdiff(s1 s2: state): vars := 
+*)
   Definition extends(s1 s2: state) := forall x v, get s2 x = Some v -> get s1 x = Some v.
-
-  Lemma extends_refl: forall s, extends s s.
-  Proof. unfold extends. firstorder. Qed.
-
-  Lemma put_extends: forall s x v,
-    extends (put s x v) s.
-  Proof. unfold extends. intros. Abort.
 
   Definition only_differ(s1: state)(vs: vars)(s2: state) :=
     forall x, x \in vs \/ get s1 x = get s2 x.
 
+  Definition undef(s: state)(vs: vars) := forall x, x \in vs -> get s x = None.
+
+  Definition subset(vs1 vs2: vars) := forall x, x \in vs1 -> x \in vs2.
+
+  Hint Unfold extends only_differ undef subset : unfold_state_calculus.
+
+  Ltac state_calc := autounfold with unfold_state_calculus; firstorder.
+
+  Lemma extends_refl: forall s, extends s s.
+  Proof. state_calc. Qed.
+
+(* should be part of typeclass (spec)
+  Lemma in_union: forall x A B, x \in union A B <-> x \in A \/ x \in B.
+  Proof. intros; split; cbv. unfold union.
+*)
+
   Lemma only_differ_union_l: forall s1 s2 r1 r2,
     only_differ s1 r1 s2 ->
     only_differ s1 (union r1 r2) s2.
-  Proof. Admitted.
+  Proof. state_calc. Qed.
 
   Lemma only_differ_union_r: forall s1 s2 r1 r2,
     only_differ s1 r2 s2 ->
     only_differ s1 (union r1 r2) s2.
-  Proof. Admitted.
+  Proof. state_calc. Qed.
 
   Lemma only_differ_one: forall s x v,
     only_differ s (singleton_set x) (put s x v).
@@ -60,10 +75,6 @@ Section StateCalculus.
     specialize (E1 x). specialize (E2 x).
     destruct E1; [auto|]. destruct E2; [auto|]. right. congruence.
   Qed.
-
-  Definition undef(s: state)(vs: vars) := forall x, x \in vs -> get s x = None.
-
-  Definition subset(vs1 vs2: vars) := forall x, x \in vs1 -> x \in vs2.
 
   Lemma undef_shrink: forall st vs1 vs2,
     undef st vs1 ->

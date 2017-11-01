@@ -96,9 +96,6 @@ Section FlattenExpr.
     end.
   *)
 
-  (* models a set of vars *)
-  Definition vars := var -> Prop.
-
   Definition vars_one(x: var): vars := singleton_set x.
 
   (* returns the set of modified vars *)
