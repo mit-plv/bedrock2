@@ -96,6 +96,11 @@ Section FlattenExpr.
     end.
   *)
 
+  (* models a set of vars *)
+  Definition vars := var -> Prop.
+
+  Definition vars_one(x: var): vars := singleton_set x.
+
   (* returns the set of modified vars *)
   Fixpoint modVars(s: @FlatImp.stmt w): vars :=
     match s with
@@ -103,12 +108,12 @@ Section FlattenExpr.
     | FlatImp.SOp x op y z => vars_one x
     | FlatImp.SSet x y => vars_one x
     | FlatImp.SIf cond bThen bElse =>
-        vars_union (modVars bThen) (modVars bElse)
+        union (modVars bThen) (modVars bElse)
     | FlatImp.SLoop body1 cond body2 =>
-        vars_union (modVars body1) (modVars body2)
+        union (modVars body1) (modVars body2)
     | FlatImp.SSeq s1 s2 =>
-        vars_union (modVars s1) (modVars s2)
-    | FlatImp.SSkip => vars_empty
+        union (modVars s1) (modVars s2)
+    | FlatImp.SSkip => empty_set
     end.
 
   Lemma invert_eval_SLoop: forall fuel st1 body1 cond body2 st4,
@@ -145,7 +150,7 @@ Section FlattenExpr.
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         inversionss. apply only_differ_one.
-      + simpl in *. unfold option2res in *.
+      + Opaque union. simpl in *. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         destruct fuel; [ inversion Ev | ].
         destruct_one_match_hyp.
@@ -187,20 +192,22 @@ Section FlattenExpr.
   Qed.
 *)
 
+  Transparent union.
+
   Lemma range_union_inc_r: forall x1 x2,
     x1 <= x2 ->
-    vars_union (vars_range x1 x2) (vars_one x2) = vars_range x1 (S x2).
+    union (vars_range x1 x2) (vars_one x2) = vars_range x1 (S x2).
   Proof.
-    intros. unfold vars_union, vars_one, vars_range.
-    extensionality x. apply prop_ext; change var with nat in *; omega.
+    intros. unfold union, vars_one, vars_range.
+    extensionality x. apply prop_ext; change var with nat in *; simpl; omega.
   Qed.
 
   Lemma range_union_adj: forall x1 x2 x3,
     x1 <= x2 <= x3 ->
-    vars_union (vars_range x1 x2) (vars_range x2 x3) = (vars_range x1 x3).
+    union (vars_range x1 x2) (vars_range x2 x3) = (vars_range x1 x3).
   Proof.
-    unfold vars_union, vars_range. intros.
-    extensionality x. apply prop_ext; change var with nat in *; omega.
+    unfold union, vars_range. intros.
+    extensionality x. apply prop_ext; change var with nat in *; simpl; omega.
   Qed.
 
   Lemma vars_one_range: forall x,
@@ -213,6 +220,7 @@ Section FlattenExpr.
     flattenExpr firstFree e = (s, resVar) ->
     modVars s = vars_range firstFree (S resVar) /\ firstFree <= resVar.
   Proof.
+    Opaque union.
     induction e; introv E; inversions E; try solve [split; [simpl; apply vars_one_range | omega]].
     destruct (flattenExpr firstFree e1) as [p1 r1] eqn: E1.
     destruct (flattenExpr (S r1) e2) as [p2 r2] eqn: E2.
@@ -296,7 +304,7 @@ Section FlattenExpr.
     hi1 <= hi2 ->
     subset (vars_range lo1 hi1) (vars_range lo2 hi2).
   Proof.
-    unfold subset, vars_range. intros. omega.
+    unfold subset, vars_range, contains. simpl. unfold id. intros. omega.
   Qed.
 
   Lemma flattenExpr_correct_aux: forall e firstFree resVar s initialH initialL res,
@@ -354,7 +362,7 @@ Section FlattenExpr.
         subst f. simpl.
         assert (get preFinalL v = Some w0) as G1'. {
           eapply only_differ_get_unchanged; try eassumption.
-          unfold vars_range. omega.
+          cbv. omega.
         }
         rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
       + apply get_put_same.
@@ -375,7 +383,7 @@ Section FlattenExpr.
             repeat match goal with
             | H : _  |- _ => apply flattenExpr_modVars_spec in H
             end.
-            omega.
+            cbv. omega.
           }
   Qed.
 
@@ -389,7 +397,7 @@ Section FlattenExpr.
     exists fuelL finalL,
       FlatImp.eval_stmt fuelL initialL sL = Success finalL /\
       extends finalL finalH /\
-      only_differ initialL (vars_union dH (vars_range firstFree newFirstFree)) finalL.
+      only_differ initialL (union dH (vars_range firstFree newFirstFree)) finalL.
   Proof.
     induction fuelH; introv F Ex U Ev DH; [solve [inversionss] |].
     destruct sH.

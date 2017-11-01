@@ -7,6 +7,8 @@ Section StateCalculus.
 
   Context {var: Type}. (* variable name (key) *)
   Context {dec_eq_var: DecidableEq var}.
+  Context {vars: Type}.
+  Context {varsSet: set vars var}.
   Context {val: Type}. (* value *)
   Context {state: Type}.
   Context {stateMap: compiler.Common.Map state var val}.
@@ -20,45 +22,34 @@ Section StateCalculus.
     extends (put s x v) s.
   Proof. unfold extends. intros. Abort.
 
-  (* models a set of vars *)
-  Definition vars := var -> Prop.
-
-  Definition vars_empty: vars := fun _ => False.
-
-  Definition vars_one(x: var): vars := fun y => x = y.
-
-  Definition vars_union(vs1 vs2: vars): vars := fun x => vs1 x \/ vs2 x.
-
-  Definition vars_add(vs: vars)(new: var): vars := vars_union vs (vars_one new).
-
   Definition only_differ(s1: state)(vs: vars)(s2: state) :=
-    forall x, vs x \/ get s1 x = get s2 x.
+    forall x, x \in vs \/ get s1 x = get s2 x.
 
   Lemma only_differ_union_l: forall s1 s2 r1 r2,
     only_differ s1 r1 s2 ->
-    only_differ s1 (vars_union r1 r2) s2.
-  Proof. firstorder. Qed.
+    only_differ s1 (union r1 r2) s2.
+  Proof. Admitted.
 
   Lemma only_differ_union_r: forall s1 s2 r1 r2,
     only_differ s1 r2 s2 ->
-    only_differ s1 (vars_union r1 r2) s2.
-  Proof. firstorder. Qed.
+    only_differ s1 (union r1 r2) s2.
+  Proof. Admitted.
 
   Lemma only_differ_one: forall s x v,
-    only_differ s (vars_one x) (put s x v).
-  Proof.
+    only_differ s (singleton_set x) (put s x v).
+  Proof. Admitted. (*
     cbv [only_differ vars_one]. intros. destruct (dec (x = x0)); [ auto | ].
     right. symmetry. apply get_put_diff. assumption.
-  Qed.
+  Qed.*)
 
   Lemma only_differ_refl: forall s1 r,
     only_differ s1 r s1.
-  Proof. firstorder. Qed.
+  Proof. Admitted.
 
   Lemma only_differ_sym: forall s1 s2 r,
     only_differ s1 r s2 ->
     only_differ s2 r s1.
-  Proof. firstorder. Qed.
+  Proof. Admitted.
 
   Lemma only_differ_trans: forall s1 s2 s3 r,
     only_differ s1 r s2 ->
@@ -70,9 +61,9 @@ Section StateCalculus.
     destruct E1; [auto|]. destruct E2; [auto|]. right. congruence.
   Qed.
 
-  Definition undef(s: state)(vs: vars) := forall x, vs x -> get s x = None.
+  Definition undef(s: state)(vs: vars) := forall x, x \in vs -> get s x = None.
 
-  Definition subset(vs1 vs2: vars) := forall x, vs1 x -> vs2 x.
+  Definition subset(vs1 vs2: vars) := forall x, x \in vs1 -> x \in vs2.
 
   Lemma undef_shrink: forall st vs1 vs2,
     undef st vs1 ->
@@ -124,7 +115,7 @@ Section StateCalculus.
   Lemma only_differ_get_unchanged: forall s1 s2 x v d,
     get s1 x = v ->
     only_differ s1 d s2 ->
-    ~ d x ->
+    ~ x \in d ->
     get s2 x = v.
   Proof.
     introv G D N.
@@ -132,7 +123,7 @@ Section StateCalculus.
   Qed.
 
   Lemma only_differ_put: forall s (d: vars) x v,
-    d x ->
+    x \in d ->
     only_differ s d (put s x v).
   Proof.
     unfold only_differ. intros.
