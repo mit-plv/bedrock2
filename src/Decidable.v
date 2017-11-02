@@ -15,3 +15,13 @@ Global Instance dec_le_nat : DecidableRel le := Compare_dec.le_dec.
 Global Instance dec_lt_nat : DecidableRel lt := Compare_dec.lt_dec.
 Global Instance dec_ge_nat : DecidableRel ge := Compare_dec.ge_dec.
 Global Instance dec_gt_nat : DecidableRel gt := Compare_dec.gt_dec.
+
+Instance decidable_eq_option {A} `{DecidableEq A}: DecidableEq (option A).
+  intros. unfold Decidable. destruct x; destruct y.
+  - destruct (DecidableEq0 a a0).
+    + subst. left. reflexivity.
+    + right. unfold not in *. intro E. inversion E. auto.
+  - right. intro. discriminate.
+  - right. intro. discriminate.
+  - left. reflexivity.
+Defined.

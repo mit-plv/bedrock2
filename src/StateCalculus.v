@@ -8,29 +8,45 @@ Section StateCalculus.
   Context {var: Type}. (* variable name (key) *)
   Context {dec_eq_var: DecidableEq var}.
   Context {val: Type}. (* value *)
+  Context {dec_eq_val: DecidableEq val}.
   Context {state: Type}.
   Context {stateMap: Map state var val}.
 
   (* models a set of vars *)
   Definition vars := var -> Prop.
 
-(*
-  Definition dom(s: state): vars := 
+  (* definitions which need to know that sets are modeled as functions and access elements
+     (don't unfold) *)
 
-  Definition domdiff(s1 s2: state): vars := 
-*)
-  Definition extends(s1 s2: state) := forall x v, get s2 x = Some v -> get s1 x = Some v.
+  Definition dom(s: state): vars := fun x => get s x <> None.
+
+  (* the domain on which s1 and s2 differ *)
+  Definition domdiff(s1 s2: state): vars := fun x => get s1 x <> get s2 x.
+
+  Definition is_empty(v: vars) := forall x, ~ x \in v.
+
+  Definition complement(v: vars) := fun x => ~ x \in v.
+
+  Hint Unfold dom domdiff is_empty complement : unfold00.
+
+  (* derived definitions *)
+
+  Definition subset(vs1 vs2: vars) := is_empty (intersect vs1 (complement vs2)).
+
+  Definition extends(s1 s2: state) := is_empty (intersect (domdiff s1 s2) (dom s2)).
 
   Definition only_differ(s1: state)(vs: vars)(s2: state) :=
-    forall x, x \in vs \/ get s1 x = get s2 x.
+    subset (domdiff s1 s2) vs.
 
-  Definition undef(s: state)(vs: vars) := forall x, x \in vs -> get s x = None.
+  Definition undef(s: state)(vs: vars) := is_empty (intersect (dom s) vs).
 
-  Definition subset(vs1 vs2: vars) := forall x, x \in vs1 -> x \in vs2.
+  Hint Unfold subset extends only_differ undef : unfold_state_calculus.
 
-  Hint Unfold extends only_differ undef subset : unfold_state_calculus.
+  Ltac unf := repeat autounfold with unfold00 unfold_state_calculus.
 
-  Ltac state_calc := autounfold with unfold_state_calculus; firstorder.
+  Ltac unf1 := repeat autounfold with unfold_state_calculus.
+
+  Ltac state_calc := repeat autounfold with unfold_state_calculus; firstorder.
 
   Lemma extends_refl: forall s, extends s s.
   Proof. state_calc. Qed.
@@ -50,31 +66,87 @@ Section StateCalculus.
     only_differ s1 (union r1 r2) s2.
   Proof. state_calc. Qed.
 
+  Lemma domdiff_put_general: forall s1 s2 x v,
+    domdiff s1 (put s2 x v) =
+      union (domdiff s1 s2 ) (if dec (get s1 x = Some v) then empty_set else singleton_set x).
+  Proof.
+    cbv -[get put dec]. intros. destruct_one_match; extensionality y; apply prop_ext; split;
+      (destruct (dec (x = y)); [subst; rewrite get_put_same | rewrite get_put_diff by assumption]).
+  Abort.
+
+  Lemma domdiff_put: forall s1 x v,
+    domdiff s1 (put s1 x v) = if dec (get s1 x = Some v) then empty_set else singleton_set x.
+  Proof.
+    cbv -[get put dec]. intros. destruct_one_match; extensionality y; apply prop_ext; split;
+      destruct (dec (x = y)); subst; try rewrite get_put_same; auto;
+      rewrite get_put_diff by assumption; auto.
+    intro H. exfalso. auto.
+  Qed.
+
+  (* TODO make this nicer *)
   Lemma only_differ_one: forall s x v,
     only_differ s (singleton_set x) (put s x v).
-  Proof. Admitted. (*
+  Proof. unf1.
+    intros.
+    replace (domdiff s (put s x v))
+       with (if dec (get s x = Some v) then empty_set else singleton_set x).
+    - destruct_one_match; firstorder.
+    - symmetry. apply domdiff_put. 
+  Qed. (*
     cbv [only_differ vars_one]. intros. destruct (dec (x = x0)); [ auto | ].
     right. symmetry. apply get_put_diff. assumption.
   Qed.*)
 
   Lemma only_differ_refl: forall s1 r,
     only_differ s1 r s1.
-  Proof. Admitted.
+  Proof. state_calc. Qed.
 
   Lemma only_differ_sym: forall s1 s2 r,
     only_differ s1 r s2 ->
     only_differ s2 r s1.
-  Proof. Admitted.
+  Proof. state_calc. Qed.
+
+  Lemma elim_impl: forall P Q,
+    ~ P \/ Q -> P -> Q.
+  Proof. firstorder. Qed.
+  Lemma elim_impl2: forall P Q R,
+    ~ P \/ ~ Q \/ R -> P -> Q -> R.
+  Proof. firstorder. Qed.
+
+(*
+  Lemma not_forall: forall {T: Type} (x: T) (P: T -> Prop),
+    (~ forall x, ~ P x) <-> exists x, P x.
+  Proof. split. *)
+  Lemma non_empty_classical: forall v,
+    ~ is_empty v <-> exists x, x \in v. Admitted.
+
+  Lemma nonempty_or: forall v1 v2,
+    (~ is_empty v1) \/ (~ is_empty v2) <-> ~ is_empty (union v1 v2).
+  Proof.
+    split; [cbv|]; intros.
+    - destruct H.
+      + apply H. intros. eapply H0. eauto.
+      + apply H. intros. eapply H0. eauto.
+    - rewrite! non_empty_classical in *. destruct H as [x H]. cbv in H.
+      destruct H; eauto.
+  Qed.
+
+(*  Lemma non_empty_complement: forall v,
+    (~ is_empty v) *)
 
   Lemma only_differ_trans: forall s1 s2 s3 r,
     only_differ s1 r s2 ->
     only_differ s2 r s3 ->
     only_differ s1 r s3.
   Proof.
+    unf1. intros s1 s2 s3 r. apply elim_impl2.
+    match goal with |- ?P \/ ?Q \/ ?R => cut ((P \/ Q) \/ R); [tauto|] end.
+    rewrite nonempty_or.
+  Abort. (*
     unfold only_differ. introv E1 E2. intro x.
     specialize (E1 x). specialize (E2 x).
     destruct E1; [auto|]. destruct E2; [auto|]. right. congruence.
-  Qed.
+  Qed.*)
 
   Lemma undef_shrink: forall st vs1 vs2,
     undef st vs1 ->
