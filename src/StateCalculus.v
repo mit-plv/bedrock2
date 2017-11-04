@@ -24,14 +24,13 @@ Section StateCalculus.
   Definition domdiff(s1 s2: state): vars := fun x => get s1 x <> get s2 x.
 
   Definition is_empty(v: vars) := forall x, ~ x \in v.
+  (*Definition is_empty(v: vars) := v = empty_set.*)
 
-  Definition complement(v: vars) := fun x => ~ x \in v.
-
-  Hint Unfold dom domdiff is_empty complement : unfold00.
+  Hint Unfold dom domdiff is_empty : unfold00.
 
   (* derived definitions *)
 
-  Definition subset(vs1 vs2: vars) := is_empty (intersect vs1 (complement vs2)).
+  Definition subset(vs1 vs2: vars) := is_empty (diff vs1 vs2).
 
   Definition extends(s1 s2: state) := is_empty (intersect (domdiff s1 s2) (dom s2)).
 
@@ -47,6 +46,26 @@ Section StateCalculus.
   Ltac unf1 := repeat autounfold with unfold_state_calculus.
 
   Ltac state_calc := repeat autounfold with unfold_state_calculus; firstorder.
+
+  Axiom notnot: forall P, ~ ~ P -> P.
+
+  Lemma domdiff_spec: forall s1 s2,
+    subset (diff (union (dom s1) (dom s2)) (domdiff s1 s2)) (intersect (dom s1) (dom s2)).
+  Proof.
+    intros s1 s2.
+    unfold subset, diff, intersect, Function_Set.
+    unfold is_empty.
+    intros x. intro H.
+    unfold contains, Function_Set, id in H.
+    destruct H as [[A B] C].
+    unfold dom in *.
+    unfold domdiff in *.
+    apply notnot in B. (* <-- TODO can we do without this? *)
+    simpl in A.
+    rewrite <- B in *.
+    apply C.
+    split; destruct A; assumption.
+  Qed.
 
   Lemma extends_refl: forall s, extends s s.
   Proof. state_calc. Qed.
@@ -168,8 +187,22 @@ Section StateCalculus.
     only_differ s1 vs s2 ->
     extends s2 s.
   Proof.
-    unfold extends, undef, only_differ.
-    introv E U O G.
+    unfold extends, undef, only_differ, is_empty.
+    introv E U O.
+    pose proof (domdiff_spec s1 s) as P1.
+    pose proof (domdiff_spec s1 s2) as P12.
+    pose proof (domdiff_spec s2 s) as P2.
+    remember (domdiff s1 s) as Ds1s.
+    remember (domdiff s2 s) as Ds2s.
+    remember (domdiff s1 s2) as Ds1s2.
+    remember (dom s1) as A1.
+    remember (dom s2) as A2.
+    remember (dom s) as A.
+    clear - E U O G P1 P12 P2.
+
+    
+    
+    
     specialize (O x). destruct O as [O | O].
     - specialize (U _ O). congruence. (* contradiction *)
     - rewrite <- O. apply E. assumption.
