@@ -1,7 +1,11 @@
 Require Import lib.LibTactics.
 Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Logic.ClassicalFacts.
 Require Import compiler.Axioms.
 Require Import compiler.Common.
+Require Import compiler.set_lemmas.
+Require Import lib.fiat_crypto_tactics.Not.
+Require Import lib.fiat_crypto_tactics.UniquePose.
 
 Section StateCalculus.
 
@@ -26,7 +30,17 @@ Section StateCalculus.
   Definition is_empty(v: vars) := forall x, ~ x \in v.
   (*Definition is_empty(v: vars) := v = empty_set.*)
 
-  Hint Unfold dom domdiff is_empty : unfold00.
+  Axiom excluded_middle: forall P, P \/ ~ P.
+  Axiom proof_irrelev: forall (A : Prop) (a1 a2 : A), a1 = a2.
+
+  Lemma is_empty_spec: forall v, is_empty v <-> v = empty_set.
+  Proof.
+    split; cbv in *; intros.
+    - extensionality x. destruct (prop_degen (v x)).
+      + exfalso. apply (H x). rewrite H0. constructor.
+      + assumption.
+    - rewrite H in H0. assumption.
+  Qed.
 
   (* derived definitions *)
 
@@ -54,7 +68,7 @@ Section StateCalculus.
   Proof.
     intros s1 s2.
     unfold subset, diff, intersect, Function_Set.
-    unfold is_empty.
+    unfold is_empty, empty_set. 
     intros x. intro H.
     unfold contains, Function_Set, id in H.
     destruct H as [[A B] C].
@@ -181,13 +195,113 @@ Section StateCalculus.
     unfold subset, only_differ. intros. firstorder.
   Qed.
 
+  Axiom not_forall: forall (T: Type) (P: T -> Prop),
+    (~ forall x, P x) <-> (exists x, ~ P x).
+
+  Lemma get_elem_from_nonempty: forall (vs: vars), vs <> empty_set -> exists x, x \in vs.
+  Proof.
+    intros. rewrite <- is_empty_spec in H. unfold is_empty in H. rewrite not_forall in H.
+    destruct H as [x H]. exists x. apply notnot. assumption.
+  Qed.
+
+
+Ltac ensure_literal P :=
+  match type of P with
+  | _ = _ => idtac
+  | _ <> _ => idtac
+  | _ \in _ => idtac
+  | ~ _ \in _ => idtac
+  end.
+
+Ltac saturate_equalities :=
+  repeat match goal with
+  | E: ?t1 = ?t2 |- _ =>
+    match goal with
+    (* called "literal" *)
+    | L: _ |- _ =>
+      let tE := type of E in
+      let tL := type of L in
+      not (unify tE tL);
+      ensure_literal L;
+      let H' := fresh in
+      match tL with
+      | context C[t1] => let G := context C[t2] in
+          assert G as H' by (rewrite E; assumption)
+      | context C[t2] => let G := context C[t1] in
+          assert G as H' by (rewrite E; assumption)
+      end;
+      ensure_new H'
+    end
+  end.
+  (* TODO 3rd rule *)
+
+
+Ltac saturate_union_intersect_diff_contains :=
+  repeat match goal with
+  | H: _ |- _ => unique pose proof (in_intersect_l _ _ _ H)
+  | H: _ |- _ => unique pose proof (in_intersect_r _ _ _ H)
+  | H: ~ ?s \in ?t1 |- _ => match goal with
+    | _: context [intersect t1 ?t2] |- _ => unique pose proof (notin_intersect_l _ _ _ H)
+    end
+  | H: ~ ?s \in ?t2 |- _ => match goal with
+    | _: context [intersect ?t1 t2] |- _ => unique pose proof (notin_intersect_r _ _ _ H)
+    end
+  | H1: ~ ?s \in (intersect ?t1 ?t2), H2: ?s \in ?t1 |- _ =>
+     unique pose proof (notin_intersect_other_l _ _ _ H1 H2)
+  | H1: ~ ?s \in (intersect ?t1 ?t2), H2: ?s \in ?t1 |- _ =>
+     unique pose proof (notin_intersect_other_r _ _ _ H1 H2)
+  | H1: ?s \in ?t1, H2: ?s \in ?t2 |- _ => match goal with
+    | _: context [intersect t1 t2] |- _ => unique pose proof (in_intersect _ _ _ H1 H2)
+    end
+  | H: _ |- _ => unique pose proof (notin_union_l _ _ _ H)
+  | H: _ |- _ => unique pose proof (notin_union_r _ _ _ H)
+  | H: ?s \in ?t1 |- _ => match goal with
+    | _: context [union t1 ?t2] |- _ => unique pose proof (in_union_l _ _ _ H)
+    end
+  | H: ?s \in ?t2 |- _ => match goal with
+    | _: context [union ?t1 t2] |- _ => unique pose proof (in_union_r _ _ _ H)
+    end
+  | H1: ?s \in (union ?t1 ?t2), H2: ~ ?s \in ?t1 |- _ =>
+      unique pose proof (in_union_other_l _ _ _ H1 H2)
+  | H1: ?s \in (union ?t1 ?t2), H2: ~ ?s \in ?t2 |- _ =>
+      unique pose proof (in_union_other_r _ _ _ H1 H2)
+  | H1: ~ ?s \in ?t1, H2: ~ ?s \in ?t2 |- _ => match goal with
+    | _: context [union t1 t2] |- _ => unique pose proof (notin_union _ _ _ H1 H2)
+    end
+(*
+    Lemma invert_in_diff_l: s \in (diff t1 t2) -> s \in t1. Admitted.
+
+    Lemma invert_in_diff_r: s \in (diff t1 t2) -> ~ s \in t2. Admitted.
+
+    Lemma notin_diff_l: ~ s \in t1 -> ~ s \in (diff t1 t2). Admitted.
+
+    Lemma notin_diff_r: s \in t2 -> ~ s \in (diff t1 t2). Admitted.
+
+    Lemma notin_diff_other_l: ~ s \in (diff t1 t2) -> s \in t1 -> s \in t2. Admitted.
+
+    Lemma notin_diff_other_r: ~ s \in (diff t1 t2) -> ~ s \in t2 -> ~ s \in t1. Admitted.
+
+    Lemma notin_diff: s \in t1 -> ~ s \in t2 -> s \in (diff t1 t2). Admitted.
+*)
+
+  end.
+
+Ltac fulfill_nonempty :=
+  repeat match goal with
+  | H: ?t <> empty_set |- _ => (* TODO also treat "empty_set <> ?t" *)
+      let H' := fresh in pose proof (get_elem_from_nonempty _ H) as H'; ensure_new H'
+  end;
+  repeat match goal with
+  | H: exists x, _ |- _ => destruct H
+  end.
+
   Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
     extends s1 s ->
     undef s vs ->
     only_differ s1 vs s2 ->
     extends s2 s.
   Proof.
-    unfold extends, undef, only_differ, is_empty.
+    unfold extends, undef, only_differ.
     introv E U O.
     pose proof (domdiff_spec s1 s) as P1.
     pose proof (domdiff_spec s1 s2) as P12.
@@ -198,10 +312,15 @@ Section StateCalculus.
     remember (dom s1) as A1.
     remember (dom s2) as A2.
     remember (dom s) as A.
-    clear - E U O G P1 P12 P2.
-
+    (*clear - E U O P1 P12 P2 dec_eq_var dec_eq_val val.*)
+    unfold subset in *.
+    rewrite is_empty_spec in *.
+    (* start proof by contradiction *)
+    apply notnot. intro H.
     
-    
+    saturate_equalities.
+    fulfill_nonempty.
+    saturate_union_intersect_diff_contains. 
     
     specialize (O x). destruct O as [O | O].
     - specialize (U _ O). congruence. (* contradiction *)
