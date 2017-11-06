@@ -50,7 +50,7 @@ Section lemmas.
 
     Lemma notin_diff_other_r: ~ s \in (diff t1 t2) -> ~ s \in t2 -> ~ s \in t1. Admitted.
 
-    Lemma notin_diff: s \in t1 -> ~ s \in t2 -> s \in (diff t1 t2). Admitted.
+    Lemma in_diff: s \in t1 -> ~ s \in t2 -> s \in (diff t1 t2). Admitted.
 
   End union_intersect_diff_contains_lemmas.
 
