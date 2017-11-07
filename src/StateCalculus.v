@@ -303,6 +303,41 @@ Hint Rewrite intersect_spec union_spec diff_spec : rewrite_set_op_specs.
   (*Time tauto. (* Finished failing transaction in 1758.787 secs (1111.179u,6.567s) (failure) *)*)
   Abort.
 
+  Lemma domdiff_sym: forall s1 s2 x,
+    x \in domdiff s1 s2 <-> x \in domdiff s2 s1.
+  Proof.
+    unfold domdiff in *. intros. cbv -[get put]. split; intros; auto.
+  Qed.
+
+  Lemma notin_domdiff_trans: forall s1 s2 s3 x,
+    ~ x \in domdiff s1 s2 -> ~ x \in domdiff s2 s3 -> ~ x \in domdiff s1 s3.
+  Proof.
+    unfold domdiff in *. cbv -[get put]. intros.
+    destruct (dec (get s1 x = get s2 x)); [|solve [auto]].
+    destruct (dec (get s2 x = get s3 x)); [|solve [auto]].
+    congruence.
+  Qed.
+
+  Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
+    extends s1 s ->
+    undef s vs ->
+    only_differ s1 vs s2 ->
+    extends s2 s.
+  Proof.
+    introv E U O.
+    unfold extends, is_empty. intro x. intro P. rewrite intersect_spec in P.
+    destruct P as [P1 P2].
+    unfold extends, undef, only_differ, subset, is_empty in *.
+    specialize (E x). specialize (U x). specialize (O x).
+    autorewrite with rewrite_set_op_specs in *.
+    assert (~ x \in vs) as A by tauto.
+    assert (~ x \in domdiff s1 s) as B by tauto.
+    assert (~ x \in domdiff s1 s2) as C by tauto.
+    rewrite domdiff_sym in C.
+    pose proof (notin_domdiff_trans _ _ _ _ C B).
+    contradiction.
+  Qed.
+
   Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
     extends s1 s ->
     undef s vs ->
