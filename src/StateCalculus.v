@@ -363,7 +363,34 @@ Ltac fulfill_nonempty_linear :=
 
 Ltac fulfill :=
   match goal with
-  (* TODO why does it say precondition t1,t2 in T_phi, isn't this always true? *)
+  | H1: ?s \in (union ?t1 ?t2) |- _ => match goal with
+    | _: s \in t1 |- _ => fail 1
+    | _: ~ s \in t1 |- _ => fail 1
+    | _ => destruct (excluded_middle (s \in t1))
+    end
+  | H1: ?s \in (union ?t1 ?t2) |- _ => match goal with
+    | _: s \in t2 |- _ => fail 1
+    | _: ~ s \in t2 |- _ => fail 1
+    | _ => destruct (excluded_middle (s \in t2))
+    end
+  | H1: ?s \in ?t1, H2: context [intersect ?t1 ?t2] |- _ => match goal with
+    | _: s \in t2 |- _ => fail 1
+    | _: ~ s \in t2 |- _ => fail 1
+    | _ => destruct (excluded_middle (s \in t2))
+    end
+  | H1: ?s \in ?t2, H2: context [intersect ?t1 ?t2] |- _ => match goal with
+    | _: s \in t1 |- _ => fail 1
+    | _: ~ s \in t1 |- _ => fail 1
+    | _ => destruct (excluded_middle (s \in t1))
+    end
+  | H1: ?s \in ?t1, H2: context [diff ?t1 ?t2] |- _ => match goal with
+    | _: s \in t2 |- _ => fail 1
+    | _: ~ s \in t2 |- _ => fail 1
+    | _ => destruct (excluded_middle (s \in t2))
+    end
+  (* TODO why does it say precondition t1,t2 in T_phi, isn't this always true?
+     Probably just for consistency with the other rules where the precondition is
+     sometimes needed to make sure we don't make up an aribtrary t2 *)
   | IE: ?t1 <> ?t2 |- _ => match goal with
     | _:   ?x \in t1, _: ~ ?x \in t2 |- _ => fail 1
     | _: ~ ?x \in t1, _:   ?x \in t2 |- _ => fail 1
@@ -381,6 +408,19 @@ Ltac fulfill :=
   (* TODO more rules *)
   end.
 
+(*
+A branch is closed if one of these holds:
+a) it has ~P and P
+b) it has a membership cycle
+c) it has t1 <> t1
+d) it has x \in empty_set
+Coq's typesystem excludes b), and "contradiction" solves a) and c), and if the definition of
+sets is transparent, it also solves d), so "contradiction" is enough to check if a branch is closed
+*)
+Ltac close_branch := contradiction.
+
+Goal forall (x: var), False. intro.
+assert (x \in empty_set) by admit. simpl in H. cbv in H. contradiction.
 
   Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
     extends s1 s ->
@@ -408,9 +448,78 @@ Ltac fulfill :=
     saturate_equalities.
     fulfill_nonempty_linear.
     saturate_union_intersect_diff_contains.
+    close_branch || fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    }
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    }
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill.
+    }
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    close_branch || fulfill. (* fails, why? *)
+
+
+match goal with
+| H1: ?P, H2: ~?P |- _ => idtac H1 H2
+end.
+contradiction.
+assert (x \in empty_set).
     fulfill.
     {
     repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    fulfill.
+    {
+    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
+    fulfill.
+
+  Fail match goal with
+  | H2: context [diff ?t1 ?t2] |- _ => idtac t1; fail
+  end. 
+
+  match goal with
+  | H1: ?s \in ?t1 |- _ => idtac H1 t1; fail
+  end. 
+
+
+  match goal with
+  | H1: ?s \in ?t1, H2: context [diff ?t1 ?t2] |- _ => idtac
+  end. 
+
+  match goal with
+  | H1: ?s \in ?t1, H2: context [diff ?t1 ?t2] |- _ => idtac "try" H1 H2; match goal with
+    | F: s \in t2 |- _ => idtac "no because of" F; fail 1
+    | F: ~ s \in t2 |- _ => idtac "no because of" F; fail 1
+    | _ => destruct (excluded_middle (s \in t2))
+    end
+  end.   
     fulfill. (* TODO fulfill fails because its rules are not yet all implemented. *)
 (* fulfill-debug code: *)
      match goal with
