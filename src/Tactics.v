@@ -54,3 +54,4 @@ Ltac ensure_new H :=
                 | A: t |- _ => idtac
                 end).
 
+Tactic Notation "forget" constr(X) "as" ident(y) := set (y:=X) in *; clearbody y.

@@ -259,168 +259,19 @@ Section StateCalculus.
     - contradiction.
   Qed.
 
-Ltac ensure_literal P :=
-  match type of P with
-  | _ = _ => idtac
-  | _ <> _ => idtac
-  | _ \in _ => idtac
-  | ~ _ \in _ => idtac
-  end.
+Lemma intersect_spec: forall (x: var) (A B: vars),
+  x \in (intersect A B) <-> x \in A /\ x \in B.
+Proof. intros. cbv. tauto. Qed.
 
-Ltac saturate_equalities :=
-  repeat match goal with
-  | E: ?t1 = ?t2 |- _ =>
-    match goal with
-    (* called "literal" *)
-    | L: _ |- _ =>
-      let tE := type of E in
-      let tL := type of L in
-      not (unify tE tL);
-      ensure_literal L;
-      let H' := fresh in
-      match tL with
-      | context C[t1] => let G := context C[t2] in
-          assert G as H' by (rewrite E; assumption)
-      | context C[t2] => let G := context C[t1] in
-          assert G as H' by (rewrite E; assumption)
-      end;
-      ensure_new H'
-    end
-  end.
-  (* TODO 3rd rule *)
+Lemma union_spec: forall (x: var) (A B: vars),
+  x \in (union A B) <-> x \in A \/ x \in B.
+Proof. intros. cbv. tauto. Qed.
 
+Lemma diff_spec: forall (x: var) (A B: vars),
+  x \in (diff A B) <-> x \in A /\ ~ x \in B.
+Proof. intros. cbv. tauto. Qed.
 
-Ltac saturate_union_intersect_diff_contains :=
-  repeat match goal with
-  | H: _ |- _ => unique pose proof (in_intersect_l _ _ _ H)
-  | H: _ |- _ => unique pose proof (in_intersect_r _ _ _ H)
-  | H: ~ ?s \in ?t1 |- _ => match goal with
-    | _: context [intersect t1 ?t2] |- _ => unique pose proof (notin_intersect_l _ _ _ H)
-    end
-  | H: ~ ?s \in ?t2 |- _ => match goal with
-    | _: context [intersect ?t1 t2] |- _ => unique pose proof (notin_intersect_r _ _ _ H)
-    end
-  | H1: ~ ?s \in (intersect ?t1 ?t2), H2: ?s \in ?t1 |- _ =>
-     unique pose proof (notin_intersect_other_l _ _ _ H1 H2)
-  | H1: ~ ?s \in (intersect ?t1 ?t2), H2: ?s \in ?t1 |- _ =>
-     unique pose proof (notin_intersect_other_r _ _ _ H1 H2)
-  | H1: ?s \in ?t1, H2: ?s \in ?t2 |- _ => match goal with
-    | _: context [intersect t1 t2] |- _ => unique pose proof (in_intersect _ _ _ H1 H2)
-    end
-  | H: _ |- _ => unique pose proof (notin_union_l _ _ _ H)
-  | H: _ |- _ => unique pose proof (notin_union_r _ _ _ H)
-  | H: ?s \in ?t1 |- _ => match goal with
-    | _: context [union t1 ?t2] |- _ => unique pose proof (in_union_l _ _ _ H)
-    end
-  | H: ?s \in ?t2 |- _ => match goal with
-    | _: context [union ?t1 t2] |- _ => unique pose proof (in_union_r _ _ _ H)
-    end
-  | H1: ?s \in (union ?t1 ?t2), H2: ~ ?s \in ?t1 |- _ =>
-      unique pose proof (in_union_other_l _ _ _ H1 H2)
-  | H1: ?s \in (union ?t1 ?t2), H2: ~ ?s \in ?t2 |- _ =>
-      unique pose proof (in_union_other_r _ _ _ H1 H2)
-  | H1: ~ ?s \in ?t1, H2: ~ ?s \in ?t2 |- _ => match goal with
-    | _: context [union t1 t2] |- _ => unique pose proof (notin_union _ _ _ H1 H2)
-    end
-  | H: _ |- _ => unique pose proof (invert_in_diff_l _ _ _ H)
-  | H: _ |- _ => unique pose proof (invert_in_diff_r _ _ _ H)
-  | H: ~ ?s \in ?t1 |- _ => match goal with
-    | _: context [diff t1 ?t2] |- _ => unique pose proof (notin_diff_l _ _ _ H)
-    end
-  | H: ?s \in ?t2 |- _ => match goal with
-    | _: context [diff ?t1 t2] |- _ => unique pose proof (notin_diff_r _ _ _ H)
-    end
-  | H1: ~ ?s \in (diff ?t1 ?t2), H2: ?s \in ?t1 |- _ =>
-      unique pose proof (notin_diff_other_l _ _ _ H1 H2)
-  | H1: ~ ?s \in (diff ?t1 ?t2), H2: ~ ?s \in ?t2 |- _ =>
-      unique pose proof (notin_diff_other_r _ _ _ H1 H2)
-  | H1: ?s \in ?t1, H2: ~ ?s \in ?t2 |- _ => match goal with
-    | _: context [diff t1 t2] |- _ => unique pose proof (in_diff _ _ _ H1 H2)
-    end
-  end.
-
-(* bad: if applied again later, it will redo the same with a different new var *)
-Ltac fulfill_nonempty_linear_bad :=
-  repeat match goal with
-  | H: ?t <> empty_set |- _ => (* TODO also treat "empty_set <> ?t" *)
-      let H' := fresh in pose proof (get_elem_from_nonempty _ H) as H'; ensure_new H'
-  end;
-  repeat match goal with
-  | H: exists x, _ |- _ => destruct H
-  end.
-
-Ltac fulfill_nonempty_linear :=
-  repeat match goal with
-  | H: ?t <> empty_set |- _ => match goal with
-    | _: ?x \in t |- _ => fail 1
-    | _ => destruct (get_elem_from_nonempty _ H) as [? ?]
-    end
-  | H: empty_set <> ?t |- _ => match goal with
-    | _: ?x \in t |- _ => fail 1
-    | _ => destruct (get_elem_from_nonempty' _ H) as [? ?]
-    end
-  end.
-
-Ltac fulfill :=
-  match goal with
-  | H1: ?s \in (union ?t1 ?t2) |- _ => match goal with
-    | _: s \in t1 |- _ => fail 1
-    | _: ~ s \in t1 |- _ => fail 1
-    | _ => destruct (excluded_middle (s \in t1))
-    end
-  | H1: ?s \in (union ?t1 ?t2) |- _ => match goal with
-    | _: s \in t2 |- _ => fail 1
-    | _: ~ s \in t2 |- _ => fail 1
-    | _ => destruct (excluded_middle (s \in t2))
-    end
-  | H1: ?s \in ?t1, H2: context [intersect ?t1 ?t2] |- _ => match goal with
-    | _: s \in t2 |- _ => fail 1
-    | _: ~ s \in t2 |- _ => fail 1
-    | _ => destruct (excluded_middle (s \in t2))
-    end
-  | H1: ?s \in ?t2, H2: context [intersect ?t1 ?t2] |- _ => match goal with
-    | _: s \in t1 |- _ => fail 1
-    | _: ~ s \in t1 |- _ => fail 1
-    | _ => destruct (excluded_middle (s \in t1))
-    end
-  | H1: ?s \in ?t1, H2: context [diff ?t1 ?t2] |- _ => match goal with
-    | _: s \in t2 |- _ => fail 1
-    | _: ~ s \in t2 |- _ => fail 1
-    | _ => destruct (excluded_middle (s \in t2))
-    end
-  (* TODO why does it say precondition t1,t2 in T_phi, isn't this always true?
-     Probably just for consistency with the other rules where the precondition is
-     sometimes needed to make sure we don't make up an aribtrary t2 *)
-  | IE: ?t1 <> ?t2 |- _ => match goal with
-    | _:   ?x \in t1, _: ~ ?x \in t2 |- _ => fail 1
-    | _: ~ ?x \in t1, _:   ?x \in t2 |- _ => fail 1
-    | _ => (* if one of t1,t2 is empty set, it should rather be treated fulfill_nonempty_linear *)
-           match t1 with
-           | empty_set => fail 1
-           | _ => idtac
-           end;
-           match t2 with
-           | empty_set => fail 1
-           | _ => idtac
-           end;
-           destruct (get_neq_witness _ _ IE) as [[? [? ?]] | [? [? ?]]]
-    end
-  (* TODO more rules *)
-  end.
-
-(*
-A branch is closed if one of these holds:
-a) it has ~P and P
-b) it has a membership cycle
-c) it has t1 <> t1
-d) it has x \in empty_set
-Coq's typesystem excludes b), and "contradiction" solves a) and c), and if the definition of
-sets is transparent, it also solves d), so "contradiction" is enough to check if a branch is closed
-*)
-Ltac close_branch := contradiction.
-
-Goal forall (x: var), False. intro.
-assert (x \in empty_set) by admit. simpl in H. cbv in H. contradiction.
+Hint Rewrite intersect_spec union_spec diff_spec : rewrite_set_op_specs.
 
   Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
     extends s1 s ->
@@ -433,121 +284,58 @@ assert (x \in empty_set) by admit. simpl in H. cbv in H. contradiction.
     pose proof (domdiff_spec s1 s) as P1.
     pose proof (domdiff_spec s1 s2) as P12.
     pose proof (domdiff_spec s2 s) as P2.
-    remember (domdiff s1 s) as Ds1s.
-    remember (domdiff s2 s) as Ds2s.
-    remember (domdiff s1 s2) as Ds1s2.
-    remember (dom s1) as A1.
-    remember (dom s2) as A2.
-    remember (dom s) as A.
-    (*clear - E U O P1 P12 P2 dec_eq_var dec_eq_val val.*)
+    forget (domdiff s1 s) as Ds1s.
+    forget (domdiff s2 s) as Ds2s.
+    forget (domdiff s1 s2) as Ds1s2.
+    forget (dom s1) as A1.
+    forget (dom s2) as A2.
+    forget (dom s) as A.
     unfold subset in *.
-    rewrite is_empty_spec in *.
-    (* start proof by contradiction *)
-    apply notnot. intro H.
+    unfold is_empty in *.
 
-    saturate_equalities.
-    fulfill_nonempty_linear.
-    saturate_union_intersect_diff_contains.
-    close_branch || fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    }
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    }
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill.
-    }
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    close_branch || fulfill. (* fails, why? *)
-
-
-match goal with
-| H1: ?P, H2: ~?P |- _ => idtac H1 H2
-end.
-contradiction.
-assert (x \in empty_set).
-    fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    fulfill.
-    {
-    repeat (saturate_equalities; fulfill_nonempty_linear; saturate_union_intersect_diff_contains).
-    fulfill.
-
-  Fail match goal with
-  | H2: context [diff ?t1 ?t2] |- _ => idtac t1; fail
-  end. 
-
-  match goal with
-  | H1: ?s \in ?t1 |- _ => idtac H1 t1; fail
-  end. 
-
-
-  match goal with
-  | H1: ?s \in ?t1, H2: context [diff ?t1 ?t2] |- _ => idtac
-  end. 
-
-  match goal with
-  | H1: ?s \in ?t1, H2: context [diff ?t1 ?t2] |- _ => idtac "try" H1 H2; match goal with
-    | F: s \in t2 |- _ => idtac "no because of" F; fail 1
-    | F: ~ s \in t2 |- _ => idtac "no because of" F; fail 1
-    | _ => destruct (excluded_middle (s \in t2))
-    end
-  end.   
-    fulfill. (* TODO fulfill fails because its rules are not yet all implemented. *)
-(* fulfill-debug code: *)
-     match goal with
-  (* TODO why does it say precondition t1,t2 in T_phi, isn't this always true? *)
-  | IE: ?t1 <> ?t2 |- _ => idtac IE; let m := type of IE in idtac m; match goal with
-    | F1:   ?x \in t1, F2: ~ ?x \in t2 |- _ => idtac "ff>"; idtac F1; idtac F2; idtac "<ff"; fail 1
-    | F1: ~ ?x \in t1, F2:   ?x \in t2 |- _ => idtac "ff>"; idtac F1; idtac F2; idtac "<ff"; fail 1
-    | _ => (* if one of t1,t2 is empty set, it should rather be treated fulfill_nonempty_linear *)
-           idtac "hh2";
-           match t1 with
-           | empty_set => fail 1
-           | _ => idtac
-           end;
-           idtac "hh3";
-           match t2 with
-           | empty_set => fail 1
-           | _ => idtac
-           end;
-           idtac "hh4";
-           destruct (get_neq_witness _ _ IE) as [[? [? ?]] | [? [? ?]]]
-    end
-  (* TODO more rules *)
+    intros.
+    rewrite intersect_spec.
+    
+  repeat match goal with
+  | x: var, H: forall (y: var), _ |- _ => unique pose proof (H x)
   end.
-    fulfill.
-    saturate_equalities.
-    fulfill_nonempty_linear.
-    saturate_union_intersect_diff_contains.
+  autorewrite with rewrite_set_op_specs in *.
+  (*Time tauto. (* Finished failing transaction in 1758.787 secs (1111.179u,6.567s) (failure) *)*)
+  Abort.
 
+  Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
+    extends s1 s ->
+    undef s vs ->
+    only_differ s1 vs s2 ->
+    extends s2 s.
+  Proof.
+    unfold extends, undef, only_differ.
+    introv E U O.
+    pose proof (domdiff_spec s1 s) as P1.
+    pose proof (domdiff_spec s1 s2) as P12.
+    pose proof (domdiff_spec s2 s) as P2.
+    forget (domdiff s1 s) as Ds1s.
+    forget (domdiff s2 s) as Ds2s.
+    forget (domdiff s1 s2) as Ds1s2.
+    forget (dom s1) as A1.
+    forget (dom s2) as A2.
+    forget (dom s) as A.
+    unfold subset in *.
+    unfold is_empty in *.
+
+    intro x.
+    rewrite intersect_spec.
+    
+  repeat match goal with
+  | x: var, H: forall (y: var), _ |- _ => unique pose proof (H x)
+  end.
+  autorewrite with rewrite_set_op_specs in *.
+  rewrite demorgan2 in *.
+  destruct H4 as [H4 | H4].
+  - admit.
+  - right. exact H4.
+
+    
 
     
     
