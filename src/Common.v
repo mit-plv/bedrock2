@@ -3,6 +3,7 @@ Require Export bbv.Word.
 Require Export compiler.Monad.
 Require Export compiler.Decidable.
 Require Export compiler.Tactics.
+Require Export compiler.Set.
 
 Class Map(T K V: Type) := mkMap {
   empty: T;
@@ -23,26 +24,6 @@ Instance Function_Map(K V: Type){decK: DecidableEq K}: Map (K -> option V) K V :
 - intros. cbv. destruct_one_match; reflexivity || contradiction.
 - intros. cbv. destruct_one_match; reflexivity || contradiction.
 Defined.
-
-Class set(T E: Type) := mkSet {
-  empty_set: T;
-  singleton_set: E -> T;
-  union: T -> T -> T;
-  intersect: T -> T -> T;
-  diff: T -> T -> T;
-  contains: T -> E -> Prop;
-}.
-
-Notation "x '\in' s" := (contains s x) (at level 39, no associativity).
-
-Instance Function_Set(E: Type): set (E -> Prop) E := {|
-  empty_set := fun _ => False;
-  singleton_set y := fun x => x = y;
-  union := fun s1 s2 => fun x => s1 x \/ s2 x;
-  intersect := fun s1 s2 => fun x => s1 x /\ s2 x;
-  diff := fun s1 s2 => fun x => s1 x /\ ~ s2 x;
-  contains := id
-|}.
 
 Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := weq.
 
