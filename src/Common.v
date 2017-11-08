@@ -4,6 +4,7 @@ Require Export compiler.Monad.
 Require Export compiler.Decidable.
 Require Export compiler.Tactics.
 Require Export compiler.Set.
+Require Export lib.fiat_crypto_tactics.UniquePose.
 
 Class Map(T K V: Type) := mkMap {
   empty: T;

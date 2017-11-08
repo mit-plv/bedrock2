@@ -7,6 +7,9 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import compiler.Axioms.
 Require Import compiler.StateCalculus.
 
+(* TODO automate such that we don't to Require this, and not always specify which lemma to use *)
+Require compiler.StateCalculusTacticTest.
+
 Section FlattenExpr.
 
   Context {w: nat}. (* bit width *)
@@ -140,37 +143,33 @@ Section FlattenExpr.
     induction fuel; introv Ev.
     - discriminate.
     - destruct s.
-      + simpl in *. inversionss. apply only_differ_one.
+      + simpl in *. inversionss. state_calc.
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. apply only_differ_one.
+        inversionss. state_calc.
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. apply only_differ_one.
+        inversionss. state_calc.
       + Opaque union. simpl in *. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         destruct fuel; [ inversion Ev | ].
-        destruct_one_match_hyp.
-        * apply only_differ_union_r. eapply IHfuel. eassumption.
-        * apply only_differ_union_l. eapply IHfuel. eassumption.
+        specializes IHfuel; [ eassumption |].
+        destruct_one_match_hyp; state_calc.
       + apply invert_eval_SLoop in Ev. destruct Ev as [Ev | Ev]. 
         * destruct Ev as [Ev C]. 
-          simpl.
-          apply only_differ_union_l. apply IHfuel. assumption.
+          simpl. specializes IHfuel; [eassumption|]. state_calc.
         * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
-          eapply only_differ_trans.
-          { simpl. apply only_differ_union_l.
-            apply IHfuel. eassumption. }
-          { eapply only_differ_trans.
-            { simpl. apply only_differ_union_r.
-              apply IHfuel. eassumption. }
-            { apply IHfuel. assumption. } }
+          simpl.
+          pose proof (IHfuel _ _ _ Ev1) as IH1.
+          pose proof (IHfuel _ _ _ Ev2) as IH2.
+          pose proof (IHfuel _ _ _ Ev3) as IH3.
+          clear - IH1 IH2 IH3. state_calc.
       + apply invert_eval_SSeq in Ev.
         destruct Ev as [mid [Ev1 Ev2]]. simpl.
-        eapply only_differ_trans.
-        * apply only_differ_union_l. eapply IHfuel. eassumption.
-        * apply only_differ_union_r. eapply IHfuel. eassumption.
-      + simpl. inversionss. apply only_differ_refl.
+        pose proof (IHfuel _ _ _ Ev1) as IH1.
+        pose proof (IHfuel _ _ _ Ev2) as IH2.
+        clear - IH1 IH2. state_calc.
+      + simpl. inversionss. state_calc.
   Qed.
 
   Definition vars_range(x1 x2: var): vars := fun x => x1 <= x < x2.
@@ -316,36 +315,44 @@ Section FlattenExpr.
   Proof.
     induction e; introv F Ex U Ev.
     - inversionss.
-      exists 1 (put initialL resVar res). repeat split.
-      + apply get_put_same.
-      + rewrite <- vars_one_range. apply only_differ_one.
+      exists 1 (put initialL resVar res). rewrite <- vars_one_range in *. unfold vars_one in *.
+      repeat split; state_calc.
     - inversionss.
       exists 1 (put initialL resVar res). repeat split.
       + simpl. unfold extends in Ex. apply Ex in H0. rewrite H0. reflexivity.
       + rewrite get_put_same. symmetry. assumption.
-      + rewrite <- vars_one_range. apply only_differ_one.
+      + rewrite <- vars_one_range. state_calc.
     - inversionss. repeat (destruct_one_match_hyp; try discriminate). inversionss.
       specialize (IHe1 _ _ _ _ _ w0 E Ex).
       specializes IHe1. {
-        eapply undef_shrink; [eassumption|].
         repeat match goal with
         | H : _  |- _ => apply flattenExpr_modVars_spec in H
         end.
-        eapply vars_range_subset; omega.
+        assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
+          eapply vars_range_subset; omega.
+        }
+        clear IHe2.
+        state_calc.
       }
       assumption.
       destruct IHe1 as [fuel1 [midL [Ev1 [G1 D1]]]].
       specialize (IHe2 _ _ _ initialH midL w1 E0).
       specializes IHe2.
-      { refine (extends_if_only_differ_in_undef _ _ _ _ Ex _ D1).
-        eapply undef_shrink; try eassumption.
-        apply flattenExpr_modVars_spec in E.
+      { apply flattenExpr_modVars_spec in E.
         apply flattenExpr_modVars_spec in E0.
-        apply vars_range_subset; omega. }
-      { eapply undef_shrink; [eassumption|].
-        apply flattenExpr_modVars_spec in E.
+        assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
+          eapply vars_range_subset; omega.
+        }
+        (* TODO make this work without this hint *)
+        refine (compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef _ _ _ _ Ex _ D1).
+        state_calc. }
+      { apply flattenExpr_modVars_spec in E.
         apply flattenExpr_modVars_spec in E0.
-        apply vars_range_subset; omega. }
+        assert (subset (vars_range (S v) (S v0)) (vars_range firstFree (S (S v0)))). {
+          eapply vars_range_subset; omega.
+        }
+        state_calc.
+        (* TODO make this work without the assert hint *) }
       { assumption. }
       destruct IHe2 as [fuel2 [preFinalL [Ev2 [G2 D2]]]].
       remember (S (S (fuel1 + fuel2))) as f0.
@@ -358,28 +365,28 @@ Section FlattenExpr.
         erewrite (increase_fuel_still_Success _ _ midL); [| |eassumption]; [|omega].
         subst f. simpl.
         assert (get preFinalL v = Some w0) as G1'. {
-          eapply only_differ_get_unchanged; try eassumption.
+          (* TODO automate *)
+          eapply compiler.StateCalculusTacticTest.only_differ_get_unchanged; try eassumption.
           cbv. omega.
         }
         rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
       + apply get_put_same.
-      + rename s1 into stat1. apply only_differ_trans with (s2 := midL).
-        * eapply only_differ_subset; [|eassumption].
-          repeat match goal with
-          | H : _  |- _ => apply flattenExpr_modVars_spec in H
-          end.
-          eapply vars_range_subset; omega.
-        * eapply only_differ_trans with (s2 := preFinalL).
-          { eapply only_differ_subset; [|eassumption].
-            repeat match goal with
-            | H : _  |- _ => apply flattenExpr_modVars_spec in H
-            end.
+      + rename s1 into stat1.
+        progress repeat match goal with
+        | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
+        end.
+        (* TODO make state_calc work on this whole thing *)
+        apply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := midL).
+        * assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
             eapply vars_range_subset; omega.
           }
-          { apply only_differ_put. unfold vars_range.
-            repeat match goal with
-            | H : _  |- _ => apply flattenExpr_modVars_spec in H
-            end.
+          eapply compiler.StateCalculusTacticTest.only_differ_subset; eassumption.
+          (* TODO make state_calc efficient on this one *)
+        * eapply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := preFinalL).
+          { eapply compiler.StateCalculusTacticTest.only_differ_subset; [|eassumption].
+            eapply vars_range_subset; omega.
+          }
+          { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
             cbv. omega.
           }
   Qed.
@@ -410,8 +417,8 @@ Section FlattenExpr.
           eapply increase_fuel_still_Success; [|eassumption]. omega.
         }
         rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
-      + apply extends_put_same.
-        eapply extends_if_only_differ_in_undef; eassumption.
+      + clear IHfuelH. apply compiler.StateCalculusTacticTest.extends_put_same.
+        eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef; eassumption.
       + (* we might need modVars for ExprImp, because DH not strong enough? TODO *) admit.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       apply ExprImp.invert_eval_SIf in Ev.
@@ -419,7 +426,8 @@ Section FlattenExpr.
       pose_flatten_var_ineqs.
       pose proof (flattenExpr_correct_aux _ _ _ _ _ _ cv E Ex) as P.
       specializes P; [|eassumption|]. {
-        eapply undef_shrink; [eassumption|]. apply vars_range_subset; omega.
+        eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
+        apply vars_range_subset; omega.
       }
       destruct P as [fuelLcond [initial2L [Evcond [G D]]]].
       destruct Ev as [[Ne EvThen] | [Eq EvElse]].
@@ -428,7 +436,8 @@ Section FlattenExpr.
         3: eapply EvThen.
         1: eapply Ex.
         2: eapply DH.
-        { eapply undef_shrink; [eassumption|]. apply vars_range_subset; omega. }
+        { eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
+          apply vars_range_subset; omega. }
         destruct IHfuelH as [fuelL [finalL [Evbranch [Ex2 D2]]]].
         exists (S (fuelLcond + (S fuelL))). eexists.
         repeat split.

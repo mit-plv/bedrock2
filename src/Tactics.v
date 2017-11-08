@@ -11,7 +11,8 @@ Ltac destruct_one_match :=
 
 Ltac destruct_one_dec_eq :=
   match goal with
-  | |- context[dec (?t1 = ?t2)] => destruct (dec (t1 = t2)); [subst|]
+  (* we use an explicit type T because otherwise the inferred type might differ *)
+  | |- context[dec (@eq ?T ?t1 ?t2)] => destruct (dec (@eq T t1 t2)); [subst|]
   end.
 
 Ltac destruct_one_match_hyp_test type_test :=
