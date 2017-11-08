@@ -1,4 +1,5 @@
 Require Import lib.fiat_crypto_tactics.Not.
+Require Import compiler.Decidable.
 
 Ltac destruct_one_match :=
   match goal with
@@ -6,6 +7,11 @@ Ltac destruct_one_match :=
       is_var e; destruct e
   | [ |- context[match ?e with _ => _ end] ] =>
       let E := fresh "E" in destruct e eqn: E
+  end.
+
+Ltac destruct_one_dec_eq :=
+  match goal with
+  | |- context[dec (?t1 = ?t2)] => destruct (dec (t1 = t2)); [subst|]
   end.
 
 Ltac destruct_one_match_hyp_test type_test :=
