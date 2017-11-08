@@ -18,7 +18,7 @@ Section StateCalculus.
   (* models a set of vars *)
   Definition vars := var -> Prop.
 
-  Definition extends(s1 s2: state) := forall x, get s2 x = None \/ get s2 x = get s1 x.
+  Definition extends(s1 s2: state) := forall x w, get s2 x = Some w -> get s1 x = Some w.
 
   Definition only_differ(s1: state)(vs: vars)(s2: state) :=
     forall x, x \in vs \/ get s1 x = get s2 x.
@@ -62,7 +62,7 @@ Hint Rewrite get_put : rewrite_state_op_specs.
   Ltac state_calc :=
     unf; intros; autorewrite with rewrite_set_op_specs rewrite_state_op_specs in *;
     repeat match goal with
-    | x: var, H: forall (y: var), _ |- _ => unique pose proof (H x)
+    | x: ?T, H: forall (y: ?T), _ |- _ => unique pose proof (H x)
     end;
     repeat (intuition (auto || congruence) || destruct_one_dec_eq).
 
