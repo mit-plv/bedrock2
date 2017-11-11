@@ -375,6 +375,64 @@ Section FlattenExpr.
         progress repeat match goal with
         | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
         end.
+        repeat match goal with
+        | H: ?T |- _ => match T with
+          | extends _ _ => fail 1
+          | only_differ _ _ _ => fail 1
+          | undef _ _ => fail 1
+          | subset _ _ => fail 1
+          | @eq nat _ _ => fail 1
+          | _ <= _ => fail 1
+          | _ => clear H; idtac "cleared" H
+          end
+        end.
+        subst. (* also gets rid of unnecessary variables *)
+        repeat match goal with
+        | x: ?T |- _ => match type of T with
+          | Prop => fail 1
+          | _ => clear x; idtac "cleared" x
+          end
+        end.
+        apply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := midL).
+        * assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
+            eapply vars_range_subset; omega.
+          }
+          eapply compiler.StateCalculusTacticTest.only_differ_subset; eassumption.
+          (* TODO make state_calc efficient on this one *)
+        * eapply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := preFinalL).
+          { eapply compiler.StateCalculusTacticTest.only_differ_subset; [|eassumption].
+            eapply vars_range_subset; omega.
+          }
+          { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
+            cbv. omega.
+          }
+(*
+        
+  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put.
+  repeat match goal with
+  | x: ?T, H: forall (y: ?T), _ |- _ =>
+      first [ unify T var | unify T (word w) ]; (* TODO what's "word w" outside this context? *)
+      unique pose proof (H x)
+  end.*)
+  (* we're confusing "w: nat" (word width) with vars with fuel, so we're specializing too many
+    hyps, and later, vars will be generalized to any location, so we won't have a total order
+    any more, so make var type opaque *)
+(*
+      + rename s1 into stat1.
+        progress repeat match goal with
+        | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
+        end.
+        repeat match goal with
+        | H: ?T |- _ => match T with
+          | extends _ _ => fail 1
+          | only_differ _ _ _ => fail 1
+          | undef _ _ => fail 1
+          | subset _ _ => fail 1
+          | @eq nat _ _ => fail 1
+          | _ <= _ => fail 1
+          | _ => clear H; idtac "cleared" H
+          end
+        end.
         (* TODO make state_calc work on this whole thing *)
         apply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := midL).
         * assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
@@ -389,6 +447,27 @@ Section FlattenExpr.
           { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
             cbv. omega.
           }
+
+
+      + rename s1 into stat1.
+        progress repeat match goal with
+        | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
+        end.
+        (* TODO make state_calc work on this whole thing *)
+        apply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := midL).
+        * assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
+            eapply vars_range_subset; omega.
+          }
+          eapply compiler.StateCalculusTacticTest.only_differ_subset; eassumption.
+          (* TODO make state_calc efficient on this one *)
+        * eapply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := preFinalL).
+          { eapply compiler.StateCalculusTacticTest.only_differ_subset; [|eassumption].
+            eapply vars_range_subset; omega.
+          }
+          { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
+            cbv. omega.
+          }
+*)
   Qed.
 
   Lemma flattenStmt_correct_aux:
