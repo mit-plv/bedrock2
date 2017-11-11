@@ -393,27 +393,42 @@ Section FlattenExpr.
           | _ => clear x; idtac "cleared" x
           end
         end.
-        apply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := midL).
-        * assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
-            eapply vars_range_subset; omega.
-          }
-          eapply compiler.StateCalculusTacticTest.only_differ_subset; eassumption.
-          (* TODO make state_calc efficient on this one *)
-        * eapply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := preFinalL).
-          { eapply compiler.StateCalculusTacticTest.only_differ_subset; [|eassumption].
-            eapply vars_range_subset; omega.
-          }
-          { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
-            cbv. omega.
-          }
-(*
-        
+
   unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put.
   repeat match goal with
   | x: ?T, H: forall (y: ?T), _ |- _ =>
-      first [ unify T var | unify T (word w) ]; (* TODO what's "word w" outside this context? *)
-      unique pose proof (H x)
-  end.*)
+      match T with
+      | var => idtac
+      | word _ => idtac
+      | nat => idtac (* <-- this also takes w, which it shouldn't, but we keep getting vars as
+             nats, e.g. look at the implicit argument of only_differ *)
+      end;
+      tryif (unify w x) (* TODO how to generalize? *)
+      then fail
+      else (unique pose proof (H x))
+  end.
+
+Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
+
+
+
+  repeat match goal with
+  | H: context C[ ?x \in vars_range ?lo ?hi ] |- _ => nofail (
+      let r := eval cbv in (x \in vars_range lo hi) in
+      let T := context C[r] in
+      change T in H
+    )
+  | |- context C[ ?x \in vars_range ?lo ?hi ] => nofail (
+      let r := eval cbv in (x \in vars_range lo hi) in
+      let T := context C[r] in
+      change T
+    )
+  end.
+  Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq).
+Time Qed.
+(* These commands take 73s and 23s, respectively. That's too much!
+   With the more manual proof, it takes less than noticeable time. *)
+
   (* we're confusing "w: nat" (word width) with vars with fuel, so we're specializing too many
     hyps, and later, vars will be generalized to any location, so we won't have a total order
     any more, so make var type opaque *)
@@ -468,7 +483,6 @@ Section FlattenExpr.
             cbv. omega.
           }
 *)
-  Qed.
 
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL firstFree newFirstFree initialH finalH initialL dH,
