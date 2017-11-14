@@ -2,6 +2,7 @@ Require Import lib.LibTactics.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
+Require Import compiler.StateCalculus.
 
 Section ExprImp.
 
@@ -101,6 +102,17 @@ Section ExprImp.
     introv E. destruct f; [discriminate|].
     simpl in E. inversions E. reflexivity.
   Qed.
+
+  (* Returns a static approximation of the set of modified vars.
+     The returned set might be too big, but is guaranteed to include all modified vars. *)
+  Fixpoint modVars(s: stmt): vars := 
+    match s with
+    | SSet v _ => singleton_set v
+    | SIf _ s1 s2 => union (modVars s1) (modVars s2)
+    | SWhile _ body => modVars body
+    | SSeq s1 s2 => union (modVars s1) (modVars s2)
+    | SSkip => empty_set
+    end.
 
 End ExprImp.
 

@@ -1,7 +1,9 @@
+Require Import lib.LibTactics.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.ResMonad.
 Require Import compiler.Op.
+Require Import compiler.StateCalculus.
 
 Section FlatImp.
 
@@ -49,6 +51,79 @@ Section FlatImp.
       | SSkip => Success st
       end
     end.
+
+  Lemma invert_eval_SLoop: forall fuel st1 body1 cond body2 st4,
+    eval_stmt (S fuel) st1 (SLoop body1 cond body2) = Success st4 ->
+    eval_stmt fuel st1 body1 = Success st4 /\ get st4 cond = Some $0 \/
+    exists st2 st3 cv, eval_stmt fuel st1 body1 = Success st2 /\
+                       get st2 cond = Some cv /\ cv <> $0 /\
+                       eval_stmt fuel st2 body2 = Success st3 /\
+                       eval_stmt fuel st3 (SLoop body1 cond body2) = Success st4.
+  Proof.
+    introv Ev. simpl in Ev. unfold option2res in *.
+    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
+  Qed.
+
+  Lemma invert_eval_SSeq: forall fuel initial s1 s2 final,
+    eval_stmt (S fuel) initial (SSeq s1 s2) = Success final ->
+    exists mid, eval_stmt fuel initial s1 = Success mid /\
+                eval_stmt fuel mid s2 = Success final.
+  Proof.
+    introv Ev. simpl in Ev. destruct_one_match_hyp; try discriminate. eauto.
+  Qed.
+
+  Definition vars_one(x: var): vars := singleton_set x.
+
+  (* returns the set of modified vars *)
+  Fixpoint modVars(s: stmt): vars :=
+    match s with
+    | SLit x v => vars_one x
+    | SOp x op y z => vars_one x
+    | SSet x y => vars_one x
+    | SIf cond bThen bElse =>
+        union (modVars bThen) (modVars bElse)
+    | SLoop body1 cond body2 =>
+        union (modVars body1) (modVars body2)
+    | SSeq s1 s2 =>
+        union (modVars s1) (modVars s2)
+    | SSkip => empty_set
+    end.
+
+  Lemma modVarsSound: forall fuel s initial final,
+    eval_stmt fuel initial s = Success final ->
+    only_differ initial (modVars s) final.
+  Proof.
+    induction fuel; introv Ev.
+    - discriminate.
+    - destruct s.
+      + simpl in *. inversionss. state_calc.
+      + simpl in Ev. unfold option2res in *.
+        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
+        inversionss. state_calc.
+      + simpl in Ev. unfold option2res in *.
+        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
+        inversionss. state_calc.
+      + Opaque union. simpl in *. unfold option2res in *.
+        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
+        destruct fuel; [ inversion Ev | ].
+        specializes IHfuel; [ eassumption |].
+        destruct_one_match_hyp; state_calc.
+      + apply invert_eval_SLoop in Ev. destruct Ev as [Ev | Ev]. 
+        * destruct Ev as [Ev C]. 
+          simpl. specializes IHfuel; [eassumption|]. state_calc.
+        * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
+          simpl.
+          pose proof (IHfuel _ _ _ Ev1) as IH1.
+          pose proof (IHfuel _ _ _ Ev2) as IH2.
+          pose proof (IHfuel _ _ _ Ev3) as IH3.
+          clear - IH1 IH2 IH3. state_calc.
+      + apply invert_eval_SSeq in Ev.
+        destruct Ev as [mid [Ev1 Ev2]]. simpl.
+        pose proof (IHfuel _ _ _ Ev1) as IH1.
+        pose proof (IHfuel _ _ _ Ev2) as IH2.
+        clear - IH1 IH2. state_calc.
+      + simpl. inversionss. state_calc.
+  Qed.
 
 End FlatImp.
 

@@ -99,79 +99,6 @@ Section FlattenExpr.
     end.
   *)
 
-  Definition vars_one(x: var): vars := singleton_set x.
-
-  (* returns the set of modified vars *)
-  Fixpoint modVars(s: @FlatImp.stmt w): vars :=
-    match s with
-    | FlatImp.SLit x v => vars_one x
-    | FlatImp.SOp x op y z => vars_one x
-    | FlatImp.SSet x y => vars_one x
-    | FlatImp.SIf cond bThen bElse =>
-        union (modVars bThen) (modVars bElse)
-    | FlatImp.SLoop body1 cond body2 =>
-        union (modVars body1) (modVars body2)
-    | FlatImp.SSeq s1 s2 =>
-        union (modVars s1) (modVars s2)
-    | FlatImp.SSkip => empty_set
-    end.
-
-  Lemma invert_eval_SLoop: forall fuel st1 body1 cond body2 st4,
-    FlatImp.eval_stmt (S fuel) st1 (FlatImp.SLoop body1 cond body2) = Success st4 ->
-    FlatImp.eval_stmt fuel st1 body1 = Success st4 /\ get st4 cond = Some $0 \/
-    exists st2 st3 cv, FlatImp.eval_stmt fuel st1 body1 = Success st2 /\
-                       get st2 cond = Some cv /\ cv <> $0 /\
-                       FlatImp.eval_stmt fuel st2 body2 = Success st3 /\
-                       FlatImp.eval_stmt fuel st3 (FlatImp.SLoop body1 cond body2) = Success st4.
-  Proof.
-    introv Ev. simpl in Ev. unfold option2res in *.
-    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
-  Qed.
-
-  Lemma invert_eval_SSeq: forall fuel initial s1 s2 final,
-    FlatImp.eval_stmt (S fuel) initial (FlatImp.SSeq s1 s2) = Success final ->
-    exists mid, FlatImp.eval_stmt fuel initial s1 = Success mid /\
-                FlatImp.eval_stmt fuel mid s2 = Success final.
-  Proof.
-    introv Ev. simpl in Ev. destruct_one_match_hyp; try discriminate. eauto.
-  Qed.
-
-  Lemma modVarsSound: forall fuel s initial final,
-    FlatImp.eval_stmt fuel initial s = Success final ->
-    only_differ initial (modVars s) final.
-  Proof.
-    induction fuel; introv Ev.
-    - discriminate.
-    - destruct s.
-      + simpl in *. inversionss. state_calc.
-      + simpl in Ev. unfold option2res in *.
-        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. state_calc.
-      + simpl in Ev. unfold option2res in *.
-        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. state_calc.
-      + Opaque union. simpl in *. unfold option2res in *.
-        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        destruct fuel; [ inversion Ev | ].
-        specializes IHfuel; [ eassumption |].
-        destruct_one_match_hyp; state_calc.
-      + apply invert_eval_SLoop in Ev. destruct Ev as [Ev | Ev]. 
-        * destruct Ev as [Ev C]. 
-          simpl. specializes IHfuel; [eassumption|]. state_calc.
-        * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
-          simpl.
-          pose proof (IHfuel _ _ _ Ev1) as IH1.
-          pose proof (IHfuel _ _ _ Ev2) as IH2.
-          pose proof (IHfuel _ _ _ Ev3) as IH3.
-          clear - IH1 IH2 IH3. state_calc.
-      + apply invert_eval_SSeq in Ev.
-        destruct Ev as [mid [Ev1 Ev2]]. simpl.
-        pose proof (IHfuel _ _ _ Ev1) as IH1.
-        pose proof (IHfuel _ _ _ Ev2) as IH2.
-        clear - IH1 IH2. state_calc.
-      + simpl. inversionss. state_calc.
-  Qed.
-
   Definition vars_range(x1 x2: var): vars := fun x => x1 <= x < x2.
 
 (*
@@ -192,9 +119,9 @@ Section FlattenExpr.
 
   Lemma range_union_inc_r: forall x1 x2,
     x1 <= x2 ->
-    union (vars_range x1 x2) (vars_one x2) = vars_range x1 (S x2).
+    union (vars_range x1 x2) (FlatImp.vars_one x2) = vars_range x1 (S x2).
   Proof.
-    intros. unfold union, vars_one, vars_range.
+    intros. unfold union, FlatImp.vars_one, vars_range.
     extensionality x. apply prop_ext; change var with nat in *; simpl; omega.
   Qed.
 
@@ -207,14 +134,14 @@ Section FlattenExpr.
   Qed.
 
   Lemma vars_one_range: forall x,
-    vars_one x = vars_range x (S x).
+    FlatImp.vars_one x = vars_range x (S x).
   Proof.
     intros. cbv. extensionality y. apply prop_ext. omega.
   Qed.
 
   Lemma flattenExpr_modVars_spec: forall e s firstFree resVar,
     flattenExpr firstFree e = (s, resVar) ->
-    modVars s = vars_range firstFree (S resVar) /\ firstFree <= resVar.
+    FlatImp.modVars s = vars_range firstFree (S resVar) /\ firstFree <= resVar.
   Proof.
     Opaque union.
     induction e; introv E; inversions E; try solve [split; [simpl; apply vars_one_range | omega]].
@@ -274,7 +201,7 @@ Section FlattenExpr.
       + exact Ev.
       + simpl in *. destruct_one_match; try discriminate.
         erewrite IHfuel1; [reflexivity | omega | exact Ev].
-      + apply invert_eval_SLoop in Ev.
+      + apply FlatImp.invert_eval_SLoop in Ev.
         destruct Ev as [Ev | Ev]. 
         * destruct Ev as [Ev C]. 
           simpl. erewrite IHfuel1; [|omega|eassumption].
@@ -286,7 +213,7 @@ Section FlattenExpr.
           erewrite IHfuel1; [|omega|eassumption].
           rewrite C1. simpl.
           destruct_one_match; [ contradiction | reflexivity ].
-     + apply invert_eval_SSeq in Ev.
+     + apply FlatImp.invert_eval_SSeq in Ev.
        destruct Ev as [mid [Ev1 Ev2]].
        simpl.
        erewrite IHfuel1; [|omega|eassumption].
@@ -315,7 +242,8 @@ Section FlattenExpr.
   Proof.
     induction e; introv F Ex U Ev.
     - inversionss.
-      exists 1 (put initialL resVar res). rewrite <- vars_one_range in *. unfold vars_one in *.
+      exists 1 (put initialL resVar res). rewrite <- vars_one_range in *.
+      unfold FlatImp.vars_one in *.
       repeat split; state_calc.
     - inversionss.
       exists 1 (put initialL resVar res). repeat split.
@@ -371,6 +299,8 @@ Section FlattenExpr.
         }
         rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
       + apply get_put_same.
+
+(*
       + rename s1 into stat1.
         progress repeat match goal with
         | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
@@ -498,7 +428,6 @@ repeat match goal with
   Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq).
 
 
-
       + rename s1 into stat1.
         progress repeat match goal with
         | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
@@ -558,6 +487,7 @@ Set Ltac Profiling.
 Show Ltac Profile.
 
 Time Qed.
+*)
 (* These commands take 73s and 23s, respectively. That's too much!
    With the more manual proof, it takes less than noticeable time.
    Replacing omega by (abstract omega) increases both time measurements.
@@ -596,7 +526,7 @@ Time Qed.
           { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
             cbv. omega.
           }
-
+*)
 
       + rename s1 into stat1.
         progress repeat match goal with
@@ -616,7 +546,7 @@ Time Qed.
           { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
             cbv. omega.
           }
-*)
+  Qed.
 
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL firstFree newFirstFree initialH finalH initialL dH,
@@ -680,7 +610,7 @@ Time Qed.
           admit. (* TODO change initialL in Evbranch to initial2L *)
         * admit. (* TODO extends *)
         * admit. (* TODO only_differ *)
-      +
+      + 
 
   Abort.
 
