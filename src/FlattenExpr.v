@@ -393,6 +393,134 @@ Section FlattenExpr.
           | _ => clear x; idtac "cleared" x
           end
         end.
+  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put.
+  repeat match goal with
+  | x: ?T, H: forall (y: ?T), _ |- _ =>
+      match T with
+      | var => idtac
+      | word _ => idtac
+      | nat => idtac (* <-- this also takes w, which it shouldn't, but we keep getting vars as
+             nats, e.g. look at the implicit argument of only_differ *)
+      end;
+      tryif (unify w x) (* TODO how to generalize? *)
+      then fail
+      else (unique pose proof (H x))
+  end.
+
+Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
+
+Inductive marker{T: Type}: T -> Prop :=
+| mark: forall (n: T), marker n.
+
+repeat match goal with 
+| |- context [vars_range ?lo ?hi] => 
+     first [unique pose proof (mark lo) | unique pose proof (mark hi)]
+| _: context [vars_range ?lo ?hi] |- _ => 
+     first [unique pose proof (mark lo) | unique pose proof (mark hi)]
+end.
+
+Inductive marker'{T: Type}: T -> Prop :=
+| mark': forall (n: T), marker' n.
+
+repeat match goal with
+| _: marker ?v1, _: marker ?v2, y: ?T |- _ =>
+   match T with
+      | var => idtac
+      | nat => idtac
+   end;
+   tryif (unify w y) (* TODO how to generalize? *)
+   then fail
+   else unique pose proof (mark' (y, v1, v2))
+end.
+
+match goal with
+| M: marker' (?y, ?v1, ?v2) |- _ =>
+    clear M;
+    assert (y \in vars_range v1 v2)
+end.
+
+            repeat match goal with
+            | H: context C[ ?x \in vars_range ?lo1 ?hi1 ] |- _ => nofail (
+                let r := eval cbv in (x \in vars_range lo1 hi1) in
+                let T := context C[r] in
+                change T in H
+              )
+            end.
+            cbv.  omega. (* <-- takes forever, even though goal is clearly contradictory *)
+
+
+Time match goal with
+| _: marker ?v1, _: marker ?v2, y: ?T |- _ =>
+   match T with
+      | var => idtac
+      | nat => idtac
+   end;
+   match goal with
+   | _: y \in vars_range v1 v2 |- _ => fail 1
+   | _ => tryif (unify w y) (* TODO how to generalize? *)
+      then fail
+      else
+      (idtac y v1 v2; assert (y \in vars_range v1 v2) by (
+            repeat match goal with
+            | H: context C[ ?x \in vars_range ?lo1 ?hi1 ] |- _ => nofail (
+                let r := eval cbv in (x \in vars_range lo1 hi1) in
+                let T := context C[r] in
+                change T in H
+              )
+            end;
+            cbv; omega))
+   end
+end. (* runs out of memory, why? and there's not even an outermost repeat *)
+
+cbv.
+
+let H := fresh "R" in assert (y \in vars_range v1 v2) as R
+
+(* don't do subset, but do "x in vars_range" 
+repeat match goal with
+| _: marker ?v1, _: marker ?v2, _: marker ?v3, _: marker ?v4 |- _ => match goal with
+  | _: sub *)
+
+(* pose proof (mark 3). *)
+
+  repeat match goal with
+  | H: context C[ ?x \in vars_range ?lo ?hi ] |- _ => nofail (
+      let r := eval cbv in (x \in vars_range lo hi) in
+      let T := context C[r] in
+      change T in H
+    )
+  | |- context C[ ?x \in vars_range ?lo ?hi ] => nofail (
+      let r := eval cbv in (x \in vars_range lo hi) in
+      let T := context C[r] in
+      change T
+    )
+  end.
+  Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq).
+
+
+
+      + rename s1 into stat1.
+        progress repeat match goal with
+        | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
+        end.
+        repeat match goal with
+        | H: ?T |- _ => match T with
+          | extends _ _ => fail 1
+          | only_differ _ _ _ => fail 1
+          | undef _ _ => fail 1
+          | subset _ _ => fail 1
+          | @eq nat _ _ => fail 1
+          | _ <= _ => fail 1
+          | _ => clear H; idtac "cleared" H
+          end
+        end.
+        subst. (* also gets rid of unnecessary variables *)
+        repeat match goal with
+        | x: ?T |- _ => match type of T with
+          | Prop => fail 1
+          | _ => clear x; idtac "cleared" x
+          end
+        end.
 
   unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put.
   repeat match goal with
@@ -410,6 +538,7 @@ Section FlattenExpr.
 
 Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
 
+Set Ltac Profiling.
 
 
   repeat match goal with
@@ -425,9 +554,14 @@ Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have fa
     )
   end.
   Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq).
+
+Show Ltac Profile.
+
 Time Qed.
 (* These commands take 73s and 23s, respectively. That's too much!
-   With the more manual proof, it takes less than noticeable time. *)
+   With the more manual proof, it takes less than noticeable time.
+   Replacing omega by (abstract omega) increases both time measurements.
+    *)
 
   (* we're confusing "w: nat" (word width) with vars with fuel, so we're specializing too many
     hyps, and later, vars will be generalized to any location, so we won't have a total order
