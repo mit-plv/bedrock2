@@ -446,7 +446,7 @@ end.
                 change T in H
               )
             end.
-            cbv.  omega. (* <-- takes forever, even though goal is clearly contradictory *)
+            cbv. Timeout 30 omega. (* <-- takes forever, even though goal is clearly contradictory *)
 
 
 Time match goal with
