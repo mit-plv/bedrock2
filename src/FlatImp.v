@@ -52,6 +52,47 @@ Section FlatImp.
       end
     end.
 
+  Lemma invert_eval_SLit: forall fuel initial x v final,
+    eval_stmt fuel initial (SLit x v) = Success final ->
+    final = put initial x v.
+  Proof.
+    intros. destruct fuel; [discriminate|]. inversion H. auto.
+  Qed.
+
+  Lemma invert_eval_SOp: forall fuel x y z op initial final,
+    eval_stmt fuel initial (SOp x op y z) = Success final ->
+    exists v1 v2,
+      get initial y = Some v1 /\
+      get initial z = Some v2 /\
+      final = put initial x (eval_binop op v1 v2).
+  Proof.
+    introv Ev. destruct fuel; simpl in Ev; [discriminate|].
+    unfold option2res in *.
+    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
+  Qed.
+
+  Lemma invert_eval_SSet: forall fuel x y initial final,
+    eval_stmt fuel initial (SSet x y) = Success final ->
+    exists v,
+      get initial y = Some v /\ final = put initial x v.
+  Proof.
+    intros. destruct fuel; [discriminate|].
+    simpl in *.
+    unfold option2res in *.
+    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
+  Qed.
+
+  Lemma invert_eval_SIf: forall fuel cond bThen bElse initial final,
+    eval_stmt (S fuel) initial (SIf cond bThen bElse) = Success final ->
+    exists vcond,
+      get initial cond = Some vcond /\
+      (vcond <> $0 /\ eval_stmt fuel initial bThen = Success final \/
+       vcond =  $0 /\ eval_stmt fuel initial bElse = Success final).
+  Proof.
+    introv Ev. simpl in Ev. unfold option2res in *.
+    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
+  Qed.
+
   Lemma invert_eval_SLoop: forall fuel st1 body1 cond body2 st4,
     eval_stmt (S fuel) st1 (SLoop body1 cond body2) = Success st4 ->
     eval_stmt fuel st1 body1 = Success st4 /\ get st4 cond = Some $0 \/
@@ -71,6 +112,11 @@ Section FlatImp.
   Proof.
     introv Ev. simpl in Ev. destruct_one_match_hyp; try discriminate. eauto.
   Qed.
+
+  Lemma invert_eval_SSkip: forall fuel initial final,
+    eval_stmt fuel initial SSkip = Success final ->
+    initial = final.
+  Proof. intros. destruct fuel; [discriminate|]. inversion H. auto. Qed.
 
   Definition vars_one(x: var): vars := singleton_set x.
 
@@ -124,6 +170,277 @@ Section FlatImp.
         clear - IH1 IH2. state_calc.
       + simpl. inversionss. state_calc.
   Qed.
+
+  Fixpoint accessedVars(s: stmt): vars :=
+    match s with
+    | SLit x v => singleton_set x
+    | SOp x op y z => union (singleton_set x) (union (singleton_set y) (singleton_set z))
+    | SSet x y => union (singleton_set x) (singleton_set y)
+    | SIf cond bThen bElse =>
+        union (singleton_set cond) (union (accessedVars bThen) (accessedVars bElse))
+    | SLoop body1 cond body2 =>
+        union (singleton_set cond) (union (accessedVars body1) (accessedVars body2))
+    | SSeq s1 s2 =>
+        union (accessedVars s1) (accessedVars s2)
+    | SSkip => empty_set
+    end.
+
+  Lemma modVars_subset_accessedVars: forall s,
+    subset (modVars s) (accessedVars s).
+  Proof.
+    intro s. induction s; simpl; unfold vars_one; state_calc.
+  Admitted.
+
+  Ltac invert_eval_stmt :=
+    match goal with
+    | E: eval_stmt (S ?fuel) _ ?s = Success _ |- _ =>
+      destruct s;
+      [ apply invert_eval_SLit in E
+      | apply invert_eval_SOp in E; destruct E as [? [? [? [? ?]]]]
+      | apply invert_eval_SSet in E; destruct E as [? [? ?]]
+      | apply invert_eval_SIf in E; destruct E as [? [? [[? ?]|[? ?]]]]
+      | apply invert_eval_SLoop in E; destruct E as [[? ?] | [? [? [? [? [? [? [? ?]]]]]]]]
+      | apply invert_eval_SSeq in E; destruct E as [? [? ?]]
+      | apply invert_eval_SSkip in E ]
+    end.
+
+  Lemma eval_stmt_swap_state: forall fuel initial1 initial2 final1 s,
+    eval_stmt fuel initial1 s = Success final1 ->
+    agree_on initial1 (accessedVars s) initial2 ->
+    exists final2,
+      eval_stmt fuel initial2 s = Success final2 /\
+      agree_on final1 (accessedVars s) final2.
+  Proof.
+    intro fuel. induction fuel; [intros; discriminate|].
+    introv E A.
+    invert_eval_stmt.
+    - subst. eexists. apply (conj eq_refl). state_calc.
+    - Opaque singleton_set.
+      simpl in *. unfold option2res in *.
+      assert (get initial2 y = Some x0) as Y2. {
+        unfold agree_on in *.
+        specialize (A y).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      }
+      rewrite Y2. clear Y2.
+      assert (get initial2 z = Some x1) as Z2. {
+        unfold agree_on in *.
+        specialize (A z).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      }
+      rewrite Z2. clear Z2.
+      subst.
+      eexists. apply (conj eq_refl). state_calc.
+    - simpl in *. unfold option2res in *.
+      assert (get initial2 y = Some x0) as Y2. {
+        unfold agree_on in *.
+        specialize (A y).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      }
+      rewrite Y2.
+      subst.
+      eexists. apply (conj eq_refl). state_calc.
+    - simpl in *. unfold option2res in *.
+      assert (get initial2 cond = Some x) as Y2. {
+        unfold agree_on in *.
+        specialize (A cond).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      }
+      rewrite Y2.
+      subst.
+      destruct_one_match; [contradiction|].
+      specialize (IHfuel initial1 initial2).
+      specializes IHfuel.
+      + eassumption.
+      + unfold agree_on in *. intros.
+        specialize (A x0).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      + destruct IHfuel as [final2 [IH1 IH2]].
+        eexists. split; [eassumption|].
+        pose proof (modVarsSound _ _ _ _ H1) as M1.
+        pose proof (modVarsSound _ _ _ _ IH1) as M2.
+        pose proof (modVars_subset_accessedVars s1) as Ss.
+        (* In A, replace initial1 by final1, which reduces the agreement set by (modVars s1).
+           Then replace in A initial2 by final2, which leaves the already reduced agreement set
+           unchanged.
+           Then take the union of A and IH2.
+           Since (modVars s1) is a subset of (accessedVars s1), the goal follows. *)
+        Time state_calc. (* 14.835 secs *)
+    - simpl in *. unfold option2res in *.
+      assert (get initial2 cond = Some x) as Y2. {
+        unfold agree_on in *.
+        specialize (A cond).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      }
+      rewrite Y2.
+      subst.
+      destruct_one_match; [|contradiction].
+      specialize (IHfuel initial1 initial2).
+      specializes IHfuel.
+      + eassumption.
+      + unfold agree_on in *. intros.
+        specialize (A x).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      + destruct IHfuel as [final2 [IH1 IH2]].
+        eexists. split; [eassumption|].
+        pose proof (modVarsSound _ _ _ _ H1) as M1.
+        pose proof (modVarsSound _ _ _ _ IH1) as M2.
+        pose proof (modVars_subset_accessedVars s2) as Ss.
+        (* In A, replace initial1 by final1, which reduces the agreement set by (modVars s1).
+           Then replace in A initial2 by final2, which leaves the already reduced agreement set
+           unchanged.
+           Then take the union of A and IH2.
+           Since (modVars s1) is a subset of (accessedVars s1), the goal follows. *)
+        Time state_calc. (* 14.835 secs *)
+    - simpl in *. unfold option2res in *. rename final1 into middle1.
+      specialize (IHfuel initial1 initial2 middle1).
+      specializes IHfuel.
+      + eassumption.
+      + unfold agree_on in *. intros.
+        specialize (A x).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      + destruct IHfuel as [middle2 [IH1 IH2]].
+        rewrite IH1.
+        assert (get middle2 cond = Some $ (0)) as G2. {
+        pose proof (modVarsSound _ _ _ _ H) as M1.
+        pose proof (modVarsSound _ _ _ _ IH1) as M2.
+        pose proof (modVars_subset_accessedVars s1) as Ss.
+        assert (agree_on middle1
+      (union (singleton_set cond) (union (accessedVars s1) (accessedVars s2)))
+      middle2) by 
+        state_calc. rewrite <- H0. symmetry. unfold agree_on in H1. apply H1.
+        state_calc. (* TODO make this work with just one invocation of state_calc. *)
+        }
+        rewrite G2. destruct_one_match; [|contradiction].
+        eexists. apply (conj eq_refl).
+        pose proof (modVarsSound _ _ _ _ H) as M1.
+        pose proof (modVarsSound _ _ _ _ IH1) as M2.
+        pose proof (modVars_subset_accessedVars s1) as Ss.
+        state_calc.
+    - simpl in *. unfold option2res in *. rename x into middle1.
+      pose proof IHfuel as IHfuel2.
+      specialize (IHfuel initial1 initial2 middle1).
+      specializes IHfuel.
+      + eassumption.
+      + unfold agree_on in *. intros.
+        specialize (A x).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      + destruct IHfuel as [middle2 [IH1 IH2]].
+        rewrite IH1.
+        assert (get middle2 cond = Some x1) as G2. {
+        pose proof (modVarsSound _ _ _ _ H) as M1.
+        pose proof (modVarsSound _ _ _ _ IH1) as M2.
+        pose proof (modVars_subset_accessedVars s1) as Ss.
+        clear IHfuel2.
+        assert (agree_on middle1
+      (union (singleton_set cond) (union (accessedVars s1) (accessedVars s2)))
+      middle2) by 
+        state_calc. rewrite <- H0. symmetry. unfold agree_on in H4. apply H4.
+        state_calc. (* TODO make this work with just one invocation of state_calc. *)
+        }
+        rewrite G2. destruct_one_match; [contradiction|].
+        rename IHfuel2 into IHfuel.
+        pose proof IHfuel as IHfuel3.
+        specialize (IHfuel middle1 middle2).
+        specializes IHfuel.
+        * eassumption.
+        * pose proof (modVarsSound _ _ _ _ H) as M1.
+          pose proof (modVarsSound _ _ _ _ IH1) as M2.
+          pose proof (modVars_subset_accessedVars s1) as Ss.
+          clear IHfuel3.
+          assert (agree_on middle1
+          (union (singleton_set cond) (union (accessedVars s1) (accessedVars s2)))
+          middle2) by 
+            state_calc.
+          unfold agree_on in *.
+          intros. specialize (H4 x).
+          rewrite? union_spec in H4.
+          rewrite? singleton_set_spec in H4.
+          intuition congruence. (* TODO make this work with just one invocation of state_calc. *)
+        * rename x0 into prefinal1.
+          destruct IHfuel as [prefinal2 [IH3 IH4]].
+          rewrite IH3.
+          rename IHfuel3 into IHfuel.
+          specialize (IHfuel prefinal1 prefinal2).
+          specializes IHfuel.
+          ** eassumption.
+          ** pose proof (modVarsSound _ _ _ _ H2) as M1.
+             pose proof (modVarsSound _ _ _ _ IH3) as M2.
+             pose proof (modVars_subset_accessedVars s2) as Ss.
+             assert (agree_on prefinal1
+             (union (singleton_set cond) (union (accessedVars s1) (accessedVars s2)))
+             prefinal2) by 
+               state_calc.
+             unfold agree_on in *.
+             intros. specialize (H4 x).
+             rewrite? union_spec in H4.
+             rewrite? singleton_set_spec in H4.
+             intuition congruence. (* TODO make this work with just one invocation of state_calc. *)
+          ** exact IHfuel.
+    - simpl in *. rename x into middle1.
+      pose proof IHfuel as IHfuel2.
+      specialize (IHfuel initial1 initial2 middle1).
+      specializes IHfuel.
+      + eassumption.
+      + unfold agree_on in *. intros.
+        specialize (A x).
+        (* TODO make sure state_calc does these rewritings and succeeds *)
+        rewrite? union_spec in A.
+        rewrite? singleton_set_spec in A.
+        intuition congruence.
+      + destruct IHfuel as [middle2 [IH1 IH2]].
+        rewrite IH1.
+        rename IHfuel2 into IHfuel.
+        specialize (IHfuel middle1 middle2).
+        specializes IHfuel.
+        * eassumption.
+        * pose proof (modVarsSound _ _ _ _ H) as M1.
+          pose proof (modVarsSound _ _ _ _ IH1) as M2.
+          pose proof (modVars_subset_accessedVars s1) as Ss.
+          assert (agree_on middle1
+          (union (accessedVars s1) (accessedVars s2))
+          middle2) by 
+            state_calc.
+          unfold agree_on in *.
+          intros. specialize (H1 x).
+          rewrite? union_spec in H1.
+          rewrite? singleton_set_spec in H1.
+          intuition congruence. (* TODO make this work with just one invocation of state_calc. *)
+        * destruct IHfuel as [final2 [IH3 IH4]].
+          eexists. apply (conj IH3).
+          pose proof (modVarsSound _ _ _ _ H0) as M1.
+          pose proof (modVarsSound _ _ _ _ IH3) as M2.
+          pose proof (modVars_subset_accessedVars s2) as Ss.
+          state_calc.
+    - subst. eexists. simpl. apply (conj eq_refl). assumption.
+  Time Qed. (* 1.433 secs *)
 
 End FlatImp.
 

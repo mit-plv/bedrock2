@@ -23,6 +23,9 @@ Section StateCalculus.
   Definition only_differ(s1: state)(vs: vars)(s2: state) :=
     forall x, x \in vs \/ get s1 x = get s2 x.
 
+  Definition agree_on(s1: state)(vs: vars)(s2: state) :=
+    forall x, x \in vs -> get s1 x = get s2 x.
+
   Definition undef(s: state)(vs: vars) := forall x, x \in vs -> get s x = None.
 
   Definition subset(vs1 vs2: vars) := forall x, x \in vs1 -> x \in vs2.
@@ -55,7 +58,7 @@ Section StateCalculus.
 End StateCalculus.
 
 
-Hint Unfold extends only_differ undef : unfold_state_calculus.
+Hint Unfold extends only_differ agree_on undef : unfold_state_calculus.
 Ltac unf := repeat autounfold with unfold_state_calculus in *.
 
 Hint Rewrite @intersect_spec @union_spec @diff_spec @singleton_set_spec : rewrite_set_op_specs.

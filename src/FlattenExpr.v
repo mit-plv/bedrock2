@@ -596,6 +596,12 @@ Time Qed.
         { eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
           apply vars_range_subset; omega. }
         destruct IHfuelH as [fuelL [finalL [Evbranch [Ex2 D2]]]].
+        pose proof (FlatImp.eval_stmt_swap_state _ initialL initial2L _ _ Evbranch) as Q.
+        specializes Q. {
+          destruct E2 as [E2a E2b].
+          admit. (* TODO investigate!! *)
+        }
+        destruct Q as [final2 [Evbranch2 A]].
         exists (S (fuelLcond + (S fuelL))). eexists.
         repeat split.
         * simpl.
@@ -607,7 +613,7 @@ Time Qed.
           assert (S fuelL <= fuelLcond + (S fuelL)) as IE by omega.
           eapply (P _ _ _ _ _ IE). clear IE P.
           simpl. rewrite G. simpl. destruct_one_match; [contradiction|].
-          admit. (* TODO change initialL in Evbranch to initial2L *)
+          exact Evbranch2.
         * admit. (* TODO extends *)
         * admit. (* TODO only_differ *)
       + 
