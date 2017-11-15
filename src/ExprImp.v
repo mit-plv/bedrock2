@@ -35,7 +35,7 @@ Section ExprImp.
   Fixpoint eval_stmt(f: nat)(st: state)(s: stmt): option state :=
     match f with
     | 0 => None (* out of fuel *)
-    | S f' => match s with
+    | Datatypes.S f' => match s with
       | SSet x e =>
           v <- eval_expr st e;
           Return (put st x v)
@@ -64,7 +64,7 @@ Section ExprImp.
   Qed.
 
   Lemma invert_eval_SIf: forall f st1 st2 cond bThen bElse,
-    eval_stmt (S f) st1 (SIf cond bThen bElse) = Some st2 ->
+    eval_stmt (Datatypes.S f) st1 (SIf cond bThen bElse) = Some st2 ->
     exists cv,
       eval_expr st1 cond = Some cv /\ 
       (cv <> $0 /\ eval_stmt f st1 bThen = Some st2 \/
@@ -75,7 +75,7 @@ Section ExprImp.
   Qed.
 
   Lemma invert_eval_SWhile: forall st1 st3 f cond body,
-    eval_stmt (S f) st1 (SWhile cond body) = Some st3 ->
+    eval_stmt (Datatypes.S f) st1 (SWhile cond body) = Some st3 ->
     exists cv,
       eval_expr st1 cond = Some cv /\
       (cv <> $0 /\ (exists st2, eval_stmt f st1 body = Some st2 /\ 
@@ -89,7 +89,7 @@ Section ExprImp.
   Qed.
 
   Lemma invert_eval_SSeq: forall st1 st3 f s1 s2,
-    eval_stmt (S f) st1 (SSeq s1 s2) = Some st3 ->
+    eval_stmt (Datatypes.S f) st1 (SSeq s1 s2) = Some st3 ->
     exists st2, eval_stmt f st1 s1 = Some st2 /\ eval_stmt f st2 s2 = Some st3.
   Proof.
     introv E. simpl in E. destruct_one_match_hyp; [|discriminate]. eauto.
@@ -162,10 +162,10 @@ else
   b = y
 isRight = a*a + b*b == c*c
 *)
-Definition _a := 0.
-Definition _b := 1.
-Definition _c := 2.
-Definition _isRight := 3.
+Definition _a := 0%Z.
+Definition _b := 1%Z.
+Definition _c := 2%Z.
+Definition _isRight := 3%Z.
 
 Definition isRight(x y z: word 16) :=
   SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))

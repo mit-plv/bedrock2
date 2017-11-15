@@ -135,6 +135,7 @@ Section FlatImp.
     | SSkip => empty_set
     end.
 
+(*
 Ltac TAC_D :=
   match goal with
   (* we use an explicit type T because otherwise the inferred type might differ *)
@@ -153,6 +154,12 @@ Ltac go1 :=
   repeat (intuition (auto || congruence) || TAC_D).
 
 
+Definition get_DecidableEq(T: Type){e: DecidableEq T}: DecidableEq T := e.
+
+Ltac do_rewr :=       rewrite get_put in *. 
+
+*)
+
   Lemma modVarsSound: forall fuel s initial final,
     eval_stmt fuel initial s = Success final ->
     only_differ initial (modVars s) final.
@@ -160,20 +167,32 @@ Ltac go1 :=
     induction fuel; introv Ev.
     - discriminate.
     - destruct s.
-      + simpl in *. inversionss.
+      + simpl in *. inversionss. state_calc.
+(*
+If we forget to put a DecidableEq for var (currently var=Z) into scope, weird things happen,
+because erewrite leaves the implicit DecidableEq as an existential var
+
+      unf; intros; autorewrite with rewrite_set_op_specs in *.
+
+rewrite_get_put.
+      do_rewr.
+      
+      
+      let r := eval unfold get_DecidableEq in (get_DecidableEq var) in idtac r.
+      
+      let e := constr:(fun (x: var) => dec (x = x)) in
+      match e with
+      | (fun x => @dec _ (?d x x)) => idtac d
+      end.
+      
+      Check (dec (x = x)).
+      assert (DecidableEq var). change var with Z. eauto.
       { state_calc00. go1. (* solves the goal *) }
 
       { state_calc00; go1.  (* does not solve the goal *)
 
 
       { state_calc00; go1.  (* does not solve the goal *)
-
-
-
-      
-
-
-       
 
 
 
@@ -189,6 +208,7 @@ Ltac go1 :=
 (*copy/pasting body of state_calc has different effect than state_calc?? *)
       
        state_calc.
+*)
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         inversionss. state_calc.
@@ -239,7 +259,7 @@ Ltac go1 :=
 
   Ltac invert_eval_stmt :=
     match goal with
-    | E: eval_stmt (S ?fuel) _ ?s = Success _ |- _ =>
+    | E: eval_stmt (Datatypes.S ?fuel) _ ?s = Success _ |- _ =>
       destruct s;
       [ apply invert_eval_SLit in E
       | apply invert_eval_SOp in E; destruct E as [? [? [? [? ?]]]]
@@ -490,11 +510,11 @@ Ltac go1 :=
 
 End FlatImp.
 
-Definition _n := 0.
-Definition _a := 1.
-Definition _b := 2.
-Definition _s := 3.
-Definition _one := 4.
+Definition _n := 0%Z.
+Definition _a := 1%Z.
+Definition _b := 2%Z.
+Definition _s := 3%Z.
+Definition _one := 4%Z.
 (*
 one = 1
 n = input()
@@ -520,7 +540,7 @@ Example fib(n: word 8) :=
               (SOp _n OMinus _n _one)))))
   )))).
 
-Example finalFibState(n: nat): Res (nat -> option (word 8)) := (eval_stmt 100 empty (fib $n)).
+Example finalFibState(n: nat): Res (var -> option (word 8)) := (eval_stmt 100 empty (fib $n)).
 Example finalFibVal(n: nat): option (word 8) := match finalFibState n with
 | Success s => get s _b
 | _ => None
