@@ -101,6 +101,9 @@ Section FlattenExpr.
 
   Definition vars_range(x1 x2: var): vars := fun x => x1 <= x < x2.
 
+  Lemma in_vars_range: forall x lo hi, x \in vars_range lo hi <-> lo <= x /\ x < hi.
+  Proof. intros. cbv. omega. Qed.
+
 (*
   Lemma range_union_one_r: forall x1 x2 x3,
     x1 <= x2 < x3 ->
@@ -553,12 +556,13 @@ Time Qed.
     flattenStmt firstFree sH = (sL, newFirstFree) ->
     extends initialL initialH ->
     undef initialH (vars_range firstFree newFirstFree) ->
+    disjoint (ExprImp.modVars sH) (vars_range firstFree newFirstFree) ->
     ExprImp.eval_stmt fuelH initialH sH = Some finalH ->
     exists fuelL finalL,
       FlatImp.eval_stmt fuelL initialL sL = Success finalL /\
       extends finalL finalH.
   Proof.
-    induction fuelH; introv F Ex U Ev; [solve [inversionss] |].
+    induction fuelH; introv F Ex U Di Ev; [solve [inversionss] |].
     destruct sH.
     - apply ExprImp.invert_eval_SSet in Ev.
       destruct Ev as [v [Ev Eq]].
@@ -609,6 +613,15 @@ Time Qed.
           apply U. omega.
         * eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
           apply vars_range_subset; omega.
+        * simpl in Di.
+          destruct E2 as [_ E2].
+          clear - E2 E3 E4 Di U.
+          unfold disjoint.
+          intros. specialize (Di x).
+          Fail rewrite union_spec in *. (* why?? *)
+          rewrite union_spec in Di. (* while this one works!! *)
+          rewrite in_vars_range in *.
+          intuition omega.
         * exact EvThen.
         * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
           exists (S (fuelLcond + (S fuelL))). eexists.
@@ -646,6 +659,15 @@ Time Qed.
           apply U. omega.
         * eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
           apply vars_range_subset; omega.
+        * simpl in Di.
+          destruct E2 as [_ E2].
+          clear - E2 E3 E4 Di U.
+          unfold disjoint.
+          intros. specialize (Di x).
+          Fail rewrite union_spec in *. (* why?? *)
+          rewrite union_spec in Di. (* while this one works!! *)
+          rewrite in_vars_range in *.
+          intuition omega.
         * exact EvElse.
         * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
           exists (S (fuelLcond + (S fuelL))). eexists.
@@ -661,8 +683,34 @@ Time Qed.
           simpl. rewrite G. simpl. destruct_one_match; [|contradiction].
           exact Evbranch.
     - admit. (* TODO while *)
-    - admit. (* TODO seq *)
-    - admit. (* TODO skip *)
+    - apply ExprImp.invert_eval_SSeq in Ev.
+      destruct Ev as [middleH [Ev1 Ev2]].
+      simpl in F. do 2 destruct_one_match_hyp. inversions F.
+      pose proof IHfuelH as IHfuelH2.
+      specializes IHfuelH.
+      1: exact E. 1: exact Ex. 3: exact Ev1.
+      { eapply StateCalculusTacticTest.undef_shrink; [eassumption|].
+        cbv. pose_flatten_var_ineqs. intros. omega. }
+      { simpl in Di. admit. (* TODO *)
+      
+      }
+      destruct IHfuelH as [fuelL1 [middleL [EvL1 Ex1]]].
+      rename IHfuelH2 into IHfuelH.
+      rename s into sL1, s0 into sL2.
+      specialize (IHfuelH sH2 sL2 v newFirstFree middleH finalH middleL).
+      specializes IHfuelH.
+      1: exact E0. 1: exact Ex1. 3: exact Ev2.
+      { admit. (* TODO *) }
+      { pose proof (ExprImp.modVarsSound _ _ _ _ Ev1) as D1.
+        pose_flatten_var_ineqs.
+        clear -D1 Di U. (* tricky, need to relate modVars range to "fresh" range *)
+        admit. }
+      
+      admit. (* TODO seq *)
+
+    - apply ExprImp.invert_eval_SSkip in Ev. subst finalH.
+      simpl in F. inversions F.
+      exists 1 initialL. auto.
   Qed.
 
 End FlattenExpr.

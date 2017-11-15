@@ -28,7 +28,9 @@ Section StateCalculus.
 
   Definition undef(s: state)(vs: vars) := forall x, x \in vs -> get s x = None.
 
-  Definition subset(vs1 vs2: vars) := forall x, x \in vs1 -> x \in vs2.
+  Definition subset(vs1 vs2: vars) := forall x, x \in vs1 -> x \in vs2. (* TODO why not in unfolding db?*)
+
+  Definition disjoint(vs1 vs2: vars) := forall x, (~ x \in vs1) \/ (~ x \in vs2). (* TODO set unfold db?*)
 
   Lemma intersect_spec: forall (x: var) (A B: vars),
     x \in (intersect A B) <-> x \in A /\ x \in B.

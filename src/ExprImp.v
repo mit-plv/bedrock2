@@ -114,6 +114,34 @@ Section ExprImp.
     | SSkip => empty_set
     end.
 
+  Lemma modVarsSound: forall fuel s initial final,
+    eval_stmt fuel initial s = Some final ->
+    only_differ initial (modVars s) final.
+  Proof.
+    induction fuel; introv Ev.
+    - discriminate.
+    - destruct s.
+      + simpl in *. destruct_one_match_hyp; [|discriminate]. inversionss. state_calc.
+      + Opaque union. simpl in *. destruct_one_match_hyp; [|discriminate].
+        destruct_one_match_hyp.
+        * subst. specializes IHfuel; [ eassumption |]. state_calc.
+        * subst. specializes IHfuel; [ eassumption |]. state_calc.
+      + apply invert_eval_SWhile in Ev.
+        destruct Ev as [cv [Evcond [Ev | Ev]]].
+        * destruct Ev as [Ne [mid2 [Ev2 Ev3]]].
+          simpl.
+          pose proof (IHfuel _ _ _ Ev2) as IH2.
+          pose proof (IHfuel _ _ _ Ev3) as IH3.
+          clear - IH2 IH3. state_calc.
+        * destruct Ev as [? ?]. subst. clear. state_calc.
+      + apply invert_eval_SSeq in Ev.
+        destruct Ev as [mid [Ev1 Ev2]]. simpl.
+        pose proof (IHfuel _ _ _ Ev1) as IH1.
+        pose proof (IHfuel _ _ _ Ev2) as IH2.
+        clear - IH1 IH2. state_calc.
+      + simpl. inversionss. state_calc.
+  Qed.
+
 End ExprImp.
 
 
