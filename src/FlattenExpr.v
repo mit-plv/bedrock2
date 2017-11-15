@@ -430,7 +430,6 @@ repeat match goal with
   end.
   Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq).
 
-
       + rename s1 into stat1.
         progress repeat match goal with
         | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
@@ -468,8 +467,8 @@ repeat match goal with
       else (unique pose proof (H x))
   end.
 
-Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
-
+(*
+Reset Ltac Profile.
 Set Ltac Profiling.
 
 
@@ -485,9 +484,34 @@ Set Ltac Profiling.
       change T
     )
   end.
-  Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq).
+  Require Import Coq.micromega.Lia.
 
-Show Ltac Profile.
+  Time repeat (intuition (auto || congruence || lia) || destruct_one_dec_eq). (* 98.796 secs *)
+
+Show Ltac Profile. (* lia takes 72.3% of the time, but most of it is zify? *)
+*)
+
+(*
+Reset Ltac Profile.
+Set Ltac Profiling.
+
+
+  repeat match goal with
+  | H: context C[ ?x \in vars_range ?lo ?hi ] |- _ => nofail (
+      let r := eval cbv in (x \in vars_range lo hi) in
+      let T := context C[r] in
+      change T in H
+    )
+  | |- context C[ ?x \in vars_range ?lo ?hi ] => nofail (
+      let r := eval cbv in (x \in vars_range lo hi) in
+      let T := context C[r] in
+      change T
+    )
+  end.
+  Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq). (* 94.889 secs *)
+
+Show Ltac Profile. (* omega takes 71.1% of the time *)
+*)
 
 Time Qed.
 *)
