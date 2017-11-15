@@ -2,4 +2,4 @@
 *.glob
 *.aux
 .depend
-
+.lia.cache

@@ -31,3 +31,10 @@ Abort.
 Goal mygoal.
   unfold mygoal. intros. (*Timeout 60 omega. Timeout! *)
 Abort.
+
+Require Import Coq.micromega.Lia.
+
+Goal mygoal.
+  unfold mygoal. intros. Fail lia. (* fast! *)
+Abort.
+
