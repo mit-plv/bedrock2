@@ -230,6 +230,8 @@ Section FlattenExpr.
     unfold subset, vars_range, contains. simpl. unfold id. intros. omega.
   Qed.
 
+  Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
+
   Lemma flattenExpr_correct_aux: forall e firstFree resVar s initialH initialL res,
     flattenExpr firstFree e = (s, resVar) ->
     extends initialL initialH ->
@@ -336,8 +338,6 @@ Section FlattenExpr.
       then fail
       else (unique pose proof (H x))
   end.
-
-Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
 
 Inductive marker{T: Type}: T -> Prop :=
 | mark: forall (n: T), marker n.
@@ -549,18 +549,16 @@ Time Qed.
   Qed.
 
   Lemma flattenStmt_correct_aux:
-    forall fuelH sH sL firstFree newFirstFree initialH finalH initialL dH,
+    forall fuelH sH sL firstFree newFirstFree initialH finalH initialL,
     flattenStmt firstFree sH = (sL, newFirstFree) ->
     extends initialL initialH ->
     undef initialH (vars_range firstFree newFirstFree) ->
     ExprImp.eval_stmt fuelH initialH sH = Some finalH ->
-    only_differ initialH dH finalH ->
     exists fuelL finalL,
       FlatImp.eval_stmt fuelL initialL sL = Success finalL /\
-      extends finalL finalH /\
-      only_differ initialL (union dH (vars_range firstFree newFirstFree)) finalL.
+      extends finalL finalH.
   Proof.
-    induction fuelH; introv F Ex U Ev DH; [solve [inversionss] |].
+    induction fuelH; introv F Ex U Ev; [solve [inversionss] |].
     destruct sH.
     - apply ExprImp.invert_eval_SSet in Ev.
       destruct Ev as [v [Ev Eq]].
@@ -576,11 +574,11 @@ Time Qed.
         rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
       + clear IHfuelH. apply compiler.StateCalculusTacticTest.extends_put_same.
         eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef; eassumption.
-      + (* we might need modVars for ExprImp, because DH not strong enough? TODO *) admit.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       apply ExprImp.invert_eval_SIf in Ev.
       destruct Ev as [cv [Evc Ev]].
       pose_flatten_var_ineqs.
+      rename cond into condH, s into condL, s0 into sL1, s1 into sL2.
       pose proof (flattenExpr_correct_aux _ _ _ _ _ _ cv E Ex) as P.
       specializes P; [|eassumption|]. {
         eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
@@ -588,23 +586,34 @@ Time Qed.
       }
       destruct P as [fuelLcond [initial2L [Evcond [G D]]]].
       destruct Ev as [[Ne EvThen] | [Eq EvElse]].
-      + specializes IHfuelH.
-        1: eapply E0.
-        3: eapply EvThen.
-        1: eapply Ex.
-        2: eapply DH.
-        { eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
-          apply vars_range_subset; omega. }
-        destruct IHfuelH as [fuelL [finalL [Evbranch [Ex2 D2]]]].
-        pose proof (FlatImp.eval_stmt_swap_state _ initialL initial2L _ _ Evbranch) as Q.
-        specializes Q. {
-          destruct E2 as [E2a E2b].
-          admit. (* TODO investigate!! *)
-        }
-        destruct Q as [final2 [Evbranch2 A]].
-        exists (S (fuelLcond + (S fuelL))). eexists.
-        repeat split.
-        * simpl.
+      + specialize (IHfuelH sH1 sL1 (S v) v0 initialH finalH initial2L E0).
+        specializes IHfuelH.
+        * (* TODO this should be state_calc *)
+          clear - U D Ex E3 E4.
+          eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef.
+          3: exact D. 1: exact Ex.
+          clear Ex D.
+          unfold undef in *. intros. specialize (U x).
+          repeat match goal with
+          | H: context C[ ?x \in vars_range ?lo ?hi ] |- _ => nofail (
+              let r := eval cbv in (x \in vars_range lo hi) in
+              let T := context C[r] in
+              change T in H
+            )
+          | |- context C[ ?x \in vars_range ?lo ?hi ] => nofail (
+              let r := eval cbv in (x \in vars_range lo hi) in
+              let T := context C[r] in
+              change T
+            )
+          end.
+          apply U. omega.
+        * eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
+          apply vars_range_subset; omega.
+        * exact EvThen.
+        * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
+          exists (S (fuelLcond + (S fuelL))). eexists.
+          refine (conj _ Ex2).
+          simpl.
           pose proof increase_fuel_still_Success as P.
           assert (fuelLcond <= fuelLcond + (S fuelL)) as IE by omega.
           specializes P. { eapply IE. } { eapply Evcond. }
@@ -613,11 +622,47 @@ Time Qed.
           assert (S fuelL <= fuelLcond + (S fuelL)) as IE by omega.
           eapply (P _ _ _ _ _ IE). clear IE P.
           simpl. rewrite G. simpl. destruct_one_match; [contradiction|].
-          exact Evbranch2.
-        * admit. (* TODO extends *)
-        * admit. (* TODO only_differ *)
-      + 
-
-  Abort.
+          exact Evbranch.
+      + specialize (IHfuelH sH2 sL2 v0 newFirstFree initialH finalH initial2L E1).
+        specializes IHfuelH.
+        * (* TODO this should be state_calc *)
+          clear - U D Ex E3 E4.
+          eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef.
+          3: exact D. 1: exact Ex.
+          clear Ex D.
+          unfold undef in *. intros. specialize (U x).
+          repeat match goal with
+          | H: context C[ ?x \in vars_range ?lo ?hi ] |- _ => nofail (
+              let r := eval cbv in (x \in vars_range lo hi) in
+              let T := context C[r] in
+              change T in H
+            )
+          | |- context C[ ?x \in vars_range ?lo ?hi ] => nofail (
+              let r := eval cbv in (x \in vars_range lo hi) in
+              let T := context C[r] in
+              change T
+            )
+          end.
+          apply U. omega.
+        * eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
+          apply vars_range_subset; omega.
+        * exact EvElse.
+        * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
+          exists (S (fuelLcond + (S fuelL))). eexists.
+          refine (conj _ Ex2).
+          simpl.
+          pose proof increase_fuel_still_Success as P.
+          assert (fuelLcond <= fuelLcond + (S fuelL)) as IE by omega.
+          specializes P. { eapply IE. } { eapply Evcond. }
+          rewrite P. clear IE P.
+          pose proof increase_fuel_still_Success as P.
+          assert (S fuelL <= fuelLcond + (S fuelL)) as IE by omega.
+          eapply (P _ _ _ _ _ IE). clear IE P.
+          simpl. rewrite G. simpl. destruct_one_match; [|contradiction].
+          exact Evbranch.
+    - admit. (* TODO while *)
+    - admit. (* TODO seq *)
+    - admit. (* TODO skip *)
+  Qed.
 
 End FlattenExpr.
