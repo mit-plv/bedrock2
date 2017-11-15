@@ -135,6 +135,24 @@ Section FlatImp.
     | SSkip => empty_set
     end.
 
+Ltac TAC_D :=
+  match goal with
+  (* we use an explicit type T because otherwise the inferred type might differ *)
+  | |- context[dec (@eq ?T ?t1 ?t2)] => idtac "TAC_D"; destruct (dec (@eq T t1 t2)); [subst|]
+  end.
+
+
+Ltac state_calc00 :=
+  idtac "state_calc";
+  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put;
+  repeat match goal with
+  | x: ?T, H: forall (y: ?T), _ |- _ => unique pose proof (H x)
+  end. 
+  
+Ltac go1 :=
+  repeat (intuition (auto || congruence) || TAC_D).
+
+
   Lemma modVarsSound: forall fuel s initial final,
     eval_stmt fuel initial s = Success final ->
     only_differ initial (modVars s) final.
@@ -142,12 +160,31 @@ Section FlatImp.
     induction fuel; introv Ev.
     - discriminate.
     - destruct s.
-      + simpl in *. inversionss. state_calc.
+      + simpl in *. inversionss.
+      { state_calc00. go1. (* solves the goal *) }
+
+      { state_calc00; go1.  (* does not solve the goal *)
+
+
+      { state_calc00; go1.  (* does not solve the goal *)
+
+
+
       
-  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put.
+
+
+       
+
+
+
+
+      
+ (* unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put. 
   repeat match goal with
   | x: ?T, H: forall (y: ?T), _ |- _ => unique pose proof (H x)
-  end.
+  end.*)
+  go1.
+  
   repeat (intuition (auto || congruence) || destruct_one_dec_eq).
 (*copy/pasting body of state_calc has different effect than state_calc?? *)
       
