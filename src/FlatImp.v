@@ -26,7 +26,7 @@ Section FlatImp.
   Fixpoint eval_stmt(f: nat)(st: state)(s: stmt): Res state :=
     match f with
     | 0 => OutOfFuel
-    | S f' => match s with
+    | Coq.Init.Datatypes.S f' => match s with
       | SLit x v =>
           Success (put st x v)
       | SOp x op y z =>
@@ -83,7 +83,7 @@ Section FlatImp.
   Qed.
 
   Lemma invert_eval_SIf: forall fuel cond bThen bElse initial final,
-    eval_stmt (S fuel) initial (SIf cond bThen bElse) = Success final ->
+    eval_stmt (Coq.Init.Datatypes.S fuel) initial (SIf cond bThen bElse) = Success final ->
     exists vcond,
       get initial cond = Some vcond /\
       (vcond <> $0 /\ eval_stmt fuel initial bThen = Success final \/
@@ -94,7 +94,7 @@ Section FlatImp.
   Qed.
 
   Lemma invert_eval_SLoop: forall fuel st1 body1 cond body2 st4,
-    eval_stmt (S fuel) st1 (SLoop body1 cond body2) = Success st4 ->
+    eval_stmt (Coq.Init.Datatypes.S fuel) st1 (SLoop body1 cond body2) = Success st4 ->
     eval_stmt fuel st1 body1 = Success st4 /\ get st4 cond = Some $0 \/
     exists st2 st3 cv, eval_stmt fuel st1 body1 = Success st2 /\
                        get st2 cond = Some cv /\ cv <> $0 /\
@@ -106,7 +106,7 @@ Section FlatImp.
   Qed.
 
   Lemma invert_eval_SSeq: forall fuel initial s1 s2 final,
-    eval_stmt (S fuel) initial (SSeq s1 s2) = Success final ->
+    eval_stmt (Coq.Init.Datatypes.S fuel) initial (SSeq s1 s2) = Success final ->
     exists mid, eval_stmt fuel initial s1 = Success mid /\
                 eval_stmt fuel mid s2 = Success final.
   Proof.
@@ -143,6 +143,15 @@ Section FlatImp.
     - discriminate.
     - destruct s.
       + simpl in *. inversionss. state_calc.
+      
+  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put.
+  repeat match goal with
+  | x: ?T, H: forall (y: ?T), _ |- _ => unique pose proof (H x)
+  end.
+  repeat (intuition (auto || congruence) || destruct_one_dec_eq).
+(*copy/pasting body of state_calc has different effect than state_calc?? *)
+      
+       state_calc.
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         inversionss. state_calc.
