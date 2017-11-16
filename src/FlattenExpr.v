@@ -253,6 +253,10 @@ Section FlattenExpr.
 
   Ltac myomega := unfold S, var in *; omega.
 
+  (* Note: If you want to get in the conclusion
+     "only_differ initialL (vars_range firstFree (S resVar)) finalL"
+     this needn't be part of this lemma, because it follows from
+     flattenExpr_modVars_spec and FlatImp.modVarsSound *)
   Lemma flattenExpr_correct_aux: forall e firstFree resVar s initialH initialL res,
     flattenExpr firstFree e = (s, resVar) ->
     extends initialL initialH ->
@@ -260,8 +264,7 @@ Section FlattenExpr.
     ExprImp.eval_expr initialH e = Some res ->
     exists fuel finalL,
       FlatImp.eval_stmt fuel initialL s = Success finalL /\
-      get finalL resVar = Some res /\
-      only_differ initialL (vars_range firstFree (S resVar)) finalL.
+      get finalL resVar = Some res.
   Proof.
     induction e; introv F Ex U Ev.
     - inversionss.
@@ -272,7 +275,6 @@ Section FlattenExpr.
       exists 1%nat (put initialL resVar res). repeat split.
       + simpl. unfold extends in Ex. apply Ex in H0. rewrite H0. reflexivity.
       + rewrite get_put_same. symmetry. assumption.
-      + rewrite <- vars_one_range. state_calc.
     - inversionss. repeat (destruct_one_match_hyp; try discriminate). inversionss.
       specialize (IHe1 _ _ _ _ _ w0 E Ex).
       specializes IHe1. {
@@ -286,7 +288,7 @@ Section FlattenExpr.
         state_calc.
       }
       assumption.
-      destruct IHe1 as [fuel1 [midL [Ev1 [G1 D1]]]].
+      destruct IHe1 as [fuel1 [midL [Ev1 G1]]].
       specialize (IHe2 _ _ _ initialH midL w1 E0).
       specializes IHe2.
       { apply flattenExpr_modVars_spec in E.
@@ -295,8 +297,12 @@ Section FlattenExpr.
           eapply vars_range_subset; myomega.
         }
         (* TODO make this work without this hint *)
-        refine (compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef _ _ _ _ Ex _ D1).
-        state_calc. }
+        refine (compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef
+            _ _ _ (vars_range firstFree (S v)) Ex _ _); [ state_calc |].
+        destruct E as [Ea Eb].
+        pose proof (FlatImp.modVarsSound _ _ _ _ Ev1) as D1.
+        rewrite Ea in D1.
+        exact D1. }
       { apply flattenExpr_modVars_spec in E.
         apply flattenExpr_modVars_spec in E0.
         assert (subset (vars_range (S v) (S v0)) (vars_range firstFree (S (S v0)))). {
@@ -305,7 +311,7 @@ Section FlattenExpr.
         state_calc.
         (* TODO make this work without the assert hint *) }
       { assumption. }
-      destruct IHe2 as [fuel2 [preFinalL [Ev2 [G2 D2]]]].
+      destruct IHe2 as [fuel2 [preFinalL [Ev2 G2]]].
       remember (Datatypes.S (Datatypes.S (fuel1 + fuel2))) as f0.
       remember (Datatypes.S (fuel1 + fuel2)) as f.
       exists (Datatypes.S f0) (put preFinalL (S v0) (Op.eval_binop op w0 w1)).
@@ -317,319 +323,19 @@ Section FlattenExpr.
         subst f. simpl.
         assert (get preFinalL v = Some w0) as G1'. {
           (* TODO automate *)
+          assert (only_differ midL (vars_range (S v) (S v0)) preFinalL) as D2. {
+            pose_flatten_var_ineqs.
+            destruct E3 as [E3a E3b].
+            pose proof (FlatImp.modVarsSound _ _ _ _ Ev2) as D2.
+            rewrite E3a in D2.
+            exact D2.
+          }
           eapply compiler.StateCalculusTacticTest.only_differ_get_unchanged; try eassumption.
           rewrite in_vars_range. myomega.
         }
         rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
       + apply get_put_same.
-
-(*
-      + unfold only_differ, undef, extends in *. intros. specialize (D2 x).
-        rewrite in_vars_range in *.
-  *)    
-      
-      (*
-      + rename s1 into stat1.
-        progress repeat match goal with
-        | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
-        end.
-        repeat match goal with
-        | H: ?T |- _ => match T with
-          | extends _ _ => fail 1
-          | only_differ _ _ _ => fail 1
-          | undef _ _ => fail 1
-          | subset _ _ => fail 1
-          | @eq nat _ _ => fail 1
-          | _ <= _ => fail 1
-          | _ => clear H; idtac "cleared" H
-          end
-        end.
-        subst. (* also gets rid of unnecessary variables *)
-        repeat match goal with
-        | x: ?T |- _ => match type of T with
-          | Prop => fail 1
-          | _ => clear x; idtac "cleared" x
-          end
-        end.
-  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put.
-  repeat match goal with
-  | x: ?T, H: forall (y: ?T), _ |- _ =>
-      match T with
-      | var => idtac
-      | word _ => idtac
-      | nat => idtac (* <-- this also takes w, which it shouldn't, but we keep getting vars as
-             nats, e.g. look at the implicit argument of only_differ *)
-      end;
-      tryif (unify w x) (* TODO how to generalize? *)
-      then fail
-      else (unique pose proof (H x))
-  end.
-
-Inductive marker{T: Type}: T -> Prop :=
-| mark: forall (n: T), marker n.
-
-repeat match goal with 
-| |- context [vars_range ?lo ?hi] => 
-     first [unique pose proof (mark lo) | unique pose proof (mark hi)]
-| _: context [vars_range ?lo ?hi] |- _ => 
-     first [unique pose proof (mark lo) | unique pose proof (mark hi)]
-end.
-
-Inductive marker'{T: Type}: T -> Prop :=
-| mark': forall (n: T), marker' n.
-
-repeat match goal with
-| _: marker ?v1, _: marker ?v2, y: ?T |- _ =>
-   match T with
-      | var => idtac
-      | nat => idtac
-   end;
-   tryif (unify w y) (* TODO how to generalize? *)
-   then fail
-   else unique pose proof (mark' (y, v1, v2))
-end.
-
-match goal with
-| M: marker' (?y, ?v1, ?v2) |- _ =>
-    clear M;
-    assert (y \in vars_range v1 v2)
-end.
-
-            repeat match goal with
-            | H: context C[ ?x \in vars_range ?lo1 ?hi1 ] |- _ => nofail (
-                let r := eval cbv in (x \in vars_range lo1 hi1) in
-                let T := context C[r] in
-                change T in H
-              )
-            end.
-            cbv. Timeout 30 omega. (* <-- takes forever, even though goal is clearly contradictory *)
-
-
-Time match goal with
-| _: marker ?v1, _: marker ?v2, y: ?T |- _ =>
-   match T with
-      | var => idtac
-      | nat => idtac
-   end;
-   match goal with
-   | _: y \in vars_range v1 v2 |- _ => fail 1
-   | _ => tryif (unify w y) (* TODO how to generalize? *)
-      then fail
-      else
-      (idtac y v1 v2; assert (y \in vars_range v1 v2) by (
-            repeat match goal with
-            | H: context C[ ?x \in vars_range ?lo1 ?hi1 ] |- _ => nofail (
-                let r := eval cbv in (x \in vars_range lo1 hi1) in
-                let T := context C[r] in
-                change T in H
-              )
-            end;
-            cbv; omega))
-   end
-end. (* runs out of memory, why? and there's not even an outermost repeat *)
-
-cbv.
-
-let H := fresh "R" in assert (y \in vars_range v1 v2) as R
-
-(* don't do subset, but do "x in vars_range" 
-repeat match goal with
-| _: marker ?v1, _: marker ?v2, _: marker ?v3, _: marker ?v4 |- _ => match goal with
-  | _: sub *)
-
-(* pose proof (mark 3). *)
-
-  repeat match goal with
-  | H: context C[ ?x \in vars_range ?lo ?hi ] |- _ => nofail (
-      let r := eval cbv in (x \in vars_range lo hi) in
-      let T := context C[r] in
-      change T in H
-    )
-  | |- context C[ ?x \in vars_range ?lo ?hi ] => nofail (
-      let r := eval cbv in (x \in vars_range lo hi) in
-      let T := context C[r] in
-      change T
-    )
-  end.
-  Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq).
-*)
-      + rename s1 into stat1.
-        progress repeat match goal with
-        | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
-        end.
-        repeat match goal with
-        | H: ?T |- _ => match T with
-          | extends _ _ => fail 1
-          | only_differ _ _ _ => fail 1
-          | undef _ _ => fail 1
-          | subset _ _ => fail 1
-          | @eq nat _ _ => fail 1
-          | _ <= _ => fail 1
-          | _ => clear H; idtac "cleared" H
-          end
-        end.
-        subst. (* also gets rid of unnecessary variables *)
-        repeat match goal with
-        | x: ?T |- _ => match type of T with
-          | Prop => fail 1
-          | _ => clear x; idtac "cleared" x
-          end
-        end.
-
-  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put.
-  repeat match goal with
-  | x: ?T, H: forall (y: ?T), _ |- _ =>
-      match T with
-      | var => idtac
-      | word _ => idtac
-      | Z => idtac 
-      end;
-      (unique pose proof (H x))
-  end.
-
-  rewrite in_vars_range in *.
-
-  unfold var, S in *.
-Reset Ltac Profile.
-Set Ltac Profiling.
-
-  Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq). 
-  (* 58.919 secs, whereas omega on nat took 94.889 secs *)
-
-Show Ltac Profile. 
-
-
-(*
-  Require Import Coq.micromega.Lia.
-
-  unfold var, S in *.
-Reset Ltac Profile.
-Set Ltac Profiling.
-
-  Time repeat (intuition (auto || congruence || lia) || destruct_one_dec_eq). 
-  (* 42.325 secs, whereas lia on nat took 98.796 secs *)
-
-Show Ltac Profile. 
-(* lia takes only 28.3% of the time, while it took 72.3% of the time with nats
-    zify still takes time, but only 21% instead of 71% *)
-*)
-  
-  
-  
-  
-(*
-Ltac myIntuition :=
-  solve [ repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq) ]. 
-
-
-
-Ltac specialize2 n := 
-  lazymatch n with
-  | O => myIntuition
-  | S ?m => match goal with
-    | x: ?T, H: forall (y: ?T), _ |- _ =>
-        match T with
-        | var => idtac
-        | word _ => idtac
-        | nat => idtac (* <-- this also takes w, which it shouldn't, but we keep getting vars as
-               nats, e.g. look at the implicit argument of only_differ *)
-        end;
-  (*      tryif (unify w x) (* TODO how to generalize? *)
-        then fail
-        else*) (unique pose proof (H x));
-        
-       specialize2 m
-    end
-  end.
-  
-  Time (specialize2 4).
-
-
-
-
-Reset Ltac Profile.
-Set Ltac Profiling.
-
-
-  repeat match goal with
-  | H: context C[ ?x \in vars_range ?lo ?hi ] |- _ => nofail (
-      let r := eval cbv in (x \in vars_range lo hi) in
-      let T := context C[r] in
-      change T in H
-    )
-  | |- context C[ ?x \in vars_range ?lo ?hi ] => nofail (
-      let r := eval cbv in (x \in vars_range lo hi) in
-      let T := context C[r] in
-      change T
-    )
-  end.
-  Time repeat (intuition (auto || congruence || omega) || destruct_one_dec_eq). (* 94.889 secs *)
-
-Show Ltac Profile. (* omega takes 71.1% of the time *)
-*)
-
-Time Qed. (* 13.865 secs *)
-
-
-(* These commands take 73s and 23s, respectively. That's too much!
-   With the more manual proof, it takes less than noticeable time.
-   Replacing omega by (abstract omega) increases both time measurements.
-
-  (* we're confusing "w: nat" (word width) with vars with fuel, so we're specializing too many
-    hyps, and later, vars will be generalized to any location, so we won't have a total order
-    any more, so make var type opaque *)
-(*
-      + rename s1 into stat1.
-        progress repeat match goal with
-        | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
-        end.
-        repeat match goal with
-        | H: ?T |- _ => match T with
-          | extends _ _ => fail 1
-          | only_differ _ _ _ => fail 1
-          | undef _ _ => fail 1
-          | subset _ _ => fail 1
-          | @eq nat _ _ => fail 1
-          | _ <= _ => fail 1
-          | _ => clear H; idtac "cleared" H
-          end
-        end.
-        (* TODO make state_calc work on this whole thing *)
-        apply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := midL).
-        * assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
-            eapply vars_range_subset; omega.
-          }
-          eapply compiler.StateCalculusTacticTest.only_differ_subset; eassumption.
-          (* TODO make state_calc efficient on this one *)
-        * eapply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := preFinalL).
-          { eapply compiler.StateCalculusTacticTest.only_differ_subset; [|eassumption].
-            eapply vars_range_subset; omega.
-          }
-          { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
-            cbv. omega.
-          }
-*)
-
-      + rename s1 into stat1.
-        progress repeat match goal with
-        | H : _  |- _ => unique pose proof (proj2 (flattenExpr_modVars_spec _ _ _ _ H))
-        end.
-        (* TODO make state_calc work on this whole thing *)
-        apply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := midL).
-        * assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
-            eapply vars_range_subset; omega.
-          }
-          eapply compiler.StateCalculusTacticTest.only_differ_subset; eassumption.
-          (* TODO make state_calc efficient on this one *)
-        * eapply compiler.StateCalculusTacticTest.only_differ_trans with (s2 := preFinalL).
-          { eapply compiler.StateCalculusTacticTest.only_differ_subset; [|eassumption].
-            eapply vars_range_subset; omega.
-          }
-          { apply compiler.StateCalculusTacticTest.only_differ_put. unfold vars_range.
-            cbv. omega.
-          }
   Qed.
-*)
 
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL firstFree newFirstFree initialH finalH initialL,
@@ -648,7 +354,7 @@ Time Qed. (* 13.865 secs *)
       destruct Ev as [v [Ev Eq]].
       inversions F. destruct_one_match_hyp. destruct_pair_eqs. subst.
       pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ E Ex U Ev) as P.
-      destruct P as [fuelL [prefinalL [Evs [G D]]]].
+      destruct P as [fuelL [prefinalL [Evs G]]].
       remember (Datatypes.S fuelL) as SfuelL.
       exists (Datatypes.S SfuelL). eexists. repeat split.
       + simpl.
@@ -657,7 +363,11 @@ Time Qed. (* 13.865 secs *)
         }
         rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
       + clear IHfuelH. apply compiler.StateCalculusTacticTest.extends_put_same.
-        eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef; eassumption.
+        eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef;
+        [ eassumption | eassumption | ].
+        pose_flatten_var_ineqs.
+        apply proj1 in E0. rewrite <- E0.
+        eapply FlatImp.modVarsSound. eassumption.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       apply ExprImp.invert_eval_SIf in Ev.
       destruct Ev as [cv [Evc Ev]].
@@ -668,11 +378,14 @@ Time Qed. (* 13.865 secs *)
         eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
         apply vars_range_subset; omega.
       }
-      destruct P as [fuelLcond [initial2L [Evcond [G D]]]].
+      destruct P as [fuelLcond [initial2L [Evcond G]]].
       destruct Ev as [[Ne EvThen] | [Eq EvElse]].
       + specialize (IHfuelH sH1 sL1 (S v) v0 initialH finalH initial2L E0).
         specializes IHfuelH.
-        * (* TODO this should be state_calc *)
+        * assert (only_differ initialL (vars_range firstFree (S v)) initial2L) as D. {
+            apply proj1 in E2. rewrite <- E2. eapply FlatImp.modVarsSound. eassumption.
+          }
+          (* TODO this should be state_calc *)
           clear - U D Ex E3 E4.
           eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef.
           3: exact D. 1: exact Ex.
@@ -707,7 +420,9 @@ Time Qed. (* 13.865 secs *)
           exact Evbranch.
       + specialize (IHfuelH sH2 sL2 v0 newFirstFree initialH finalH initial2L E1).
         specializes IHfuelH.
-        * (* TODO this should be state_calc *)
+        * assert (only_differ initialL (vars_range firstFree (S v)) initial2L) as D. {
+            apply proj1 in E2. rewrite <- E2. eapply FlatImp.modVarsSound. eassumption.
+          } (* TODO this should be state_calc *)
           clear - U D Ex E3 E4.
           eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef.
           3: exact D. 1: exact Ex.
