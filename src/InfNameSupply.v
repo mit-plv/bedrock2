@@ -1,4 +1,25 @@
 Require Import compiler.Set.
+Require Export Coq.omega.Omega.
+
+Class NameGen(var vars st: Type){varsSet: set vars var} := mkNameGen {
+  genFresh: st -> (var * st);
+  allFreshVars: st -> vars;
+  genFresh_spec: forall (s s': st) (x: var),
+    genFresh s = (x, s') ->
+    x \in allFreshVars s /\
+    ~ x \in allFreshVars s' /\
+    subset (allFreshVars s') (allFreshVars s)
+  (* could also say
+     allFreshVars s' = diff (allFreshVars s) (singleton_set x)
+     but that's unnecessarily strong and requires set equality *)
+}.
+
+Instance NatNameGen: NameGen nat (nat -> Prop) nat := {|
+  genFresh := fun s => (s, S s);
+  allFreshVars := fun s => fun x => s <= x
+|}.
+  intros. inversion H; subst. unfold subset. simpl. intuition omega.
+Qed.
 
 
 Definition multipick{T: Type}(E: Type){s: set T E}(pick: T -> E): nat -> T -> T :=
@@ -59,25 +80,5 @@ Section FlattenExpr.
 
 
 End FlattenExpr.
-
-Require Import compiler.StateCalculus.
-
-Definition vars := var -> Prop.
-Definition GenFreshState := Z.
-Definition genFresh: GenFreshState -> (var * GenFreshState) :=
-  fun s => (s, (s+1)%Z).
-
-Definition stateToSet(s: GenFreshState): vars := fun x => (s <= x)%Z.
-
-Lemma genFresh_spec: forall (s s': GenFreshState) (x: var),
-  genFresh s = (s', x) ->
-  x \in stateToSet s /\
-  ~ x \in stateToSet s' /\
-  subset (stateToSet s') (stateToSet s).
-Admitted.
-  
-(* could also say
-   stateToSet s' = diff (stateToSet s) (singleton_set x)
-   but that's unnecessarily strong and requires set equality *)
 
 

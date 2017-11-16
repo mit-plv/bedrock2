@@ -28,27 +28,6 @@ Section StateCalculus.
 
   Definition undef(s: state)(vs: vars) := forall x, x \in vs -> get s x = None.
 
-  Definition subset(vs1 vs2: vars) := forall x, x \in vs1 -> x \in vs2. (* TODO why not in unfolding db?*)
-
-  Definition disjoint(vs1 vs2: vars) := forall x, (~ x \in vs1) \/ (~ x \in vs2). (* TODO set unfold db?*)
-
-  Lemma intersect_spec: forall (x: var) (A B: vars),
-    x \in (intersect A B) <-> x \in A /\ x \in B.
-  Proof. intros. cbv. tauto. Qed.
-
-  Lemma union_spec: forall (x: var) (A B: vars),
-    x \in (union A B) <-> x \in A \/ x \in B.
-  Proof. intros. cbv. tauto. Qed.
-
-  Lemma diff_spec: forall (x: var) (A B: vars),
-    x \in (diff A B) <-> x \in A /\ ~ x \in B.
-  Proof. intros. cbv. tauto. Qed.
-
-  Lemma singleton_set_spec: forall (x y: var),
-    x \in @singleton_set vars _ _ y <-> x = y.
-    (* explicitly write vars, because otherwise (var -> Prop) is inferred and rewrite doesn't work *)
-  Proof. intros. cbv. tauto. Qed.
-
   Lemma get_put: forall (s: state) (x y: var) (v: val),
     get (put s x v) y = if dec (x = y) then Some v else get s y.
   Proof.
