@@ -57,4 +57,27 @@ Section FlattenExpr.
   Definition split_spec := forall vs x vs', split vs = (x, vs') -> x \in vs /\ ~ x \in vs'.
      (* ... and moreover, split_spec still holds for vs', how to say that recursively? *)
 
+
 End FlattenExpr.
+
+Require Import compiler.StateCalculus.
+
+Definition vars := var -> Prop.
+Definition GenFreshState := Z.
+Definition genFresh: GenFreshState -> (var * GenFreshState) :=
+  fun s => (s, (s+1)%Z).
+
+Definition stateToSet(s: GenFreshState): vars := fun x => (s <= x)%Z.
+
+Lemma genFresh_spec: forall (s s': GenFreshState) (x: var),
+  genFresh s = (s', x) ->
+  x \in stateToSet s /\
+  ~ x \in stateToSet s' /\
+  subset (stateToSet s') (stateToSet s).
+Admitted.
+  
+(* could also say
+   stateToSet s' = diff (stateToSet s) (singleton_set x)
+   but that's unnecessarily strong and requires set equality *)
+
+
