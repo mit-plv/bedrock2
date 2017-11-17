@@ -16,6 +16,14 @@ Class set(T E: Type) := mkSet {
   diff_spec: forall (x: E) (A B: T), contains (diff A B) x <-> contains A x /\ ~ contains B x
 }.
 
+Hint Rewrite
+  @empty_set_spec
+  @singleton_set_spec
+  @union_spec
+  @intersect_spec
+  @diff_spec
+: rew_set_op_specs.
+
 Notation "x '\in' s" := (contains s x) (at level 39, no associativity).
 
 Section SetDefinitions.
@@ -26,6 +34,8 @@ Section SetDefinitions.
   Definition disjoint(s1 s2: T) := forall x, (~ x \in s1) \/ (~ x \in s2).
 
 End SetDefinitions.
+
+Hint Unfold subset disjoint : unf_set_defs.
 
 Instance Function_Set(E: Type): set (E -> Prop) E := {|
   contains := fun s => s;

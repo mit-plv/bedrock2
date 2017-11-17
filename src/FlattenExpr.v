@@ -65,29 +65,57 @@ Section FlattenExpr.
     | ExprImp.SSkip => (FlatImp.SSkip, ngs)
     end.
 
+(*
   Lemma set_extensionality: forall (T: Type) s1 s2,
     (forall (x: T), x \in s1 <-> x \in s2) -> s1 = s2.
   Proof.
     intros. extensionality x. apply prop_ext. apply H.
   Qed.
+*)
+(*
+Ltac set_solver E :=
+  repeat autounfold with unf_set_defs in *;
+  destruct_products;
+  intros;
+  specialize_with E;
+  autorewrite with rew_set_op_specs in *;
+  subst;
+  tauto.
+*)
 
-  Lemma flattenExpr_modVars_spec: forall e s firstFree resVar,
-    flattenExpr firstFree e = (s, resVar) ->
-    FlatImp.modVars s = vars_range firstFree (S resVar) /\ firstFree <= resVar.
+Ltac set_solver E :=
+  repeat autounfold with unf_set_defs in *;
+  destruct_products;
+  intros;
+  specialize_with E;
+  autorewrite with rew_set_op_specs in *;
+  intuition (subst; auto).
+
+  Lemma flattenExpr_freshVarUsage: forall e1 ngs ngs' s v,
+    flattenExpr ngs e1 = (s, v, ngs') ->
+    subset (allFreshVars ngs') (allFreshVars ngs).
+  Admitted.
+
+  Lemma flattenExpr_modVars_spec: forall e s ngs ngs' resVar,
+    flattenExpr ngs e = (s, resVar, ngs') ->
+    subset (FlatImp.modVars s) (diff (allFreshVars ngs) (allFreshVars ngs')).
   Proof.
-    Opaque union.
-    induction e; introv E; inversions E; try solve [split; [simpl; apply vars_one_range | omega]].
-    destruct (flattenExpr firstFree e1) as [p1 r1] eqn: E1.
-    destruct (flattenExpr (S r1) e2) as [p2 r2] eqn: E2.
-    inversions H0.
-    simpl.
-    specialize (IHe1 _ _ _ E1). destruct IHe1 as [IH1a IH1b].
-    specialize (IHe2 _ _ _ E2). destruct IHe2 as [IH2a IH2b].
-    rewrite IH1a, IH2a.
-    unfold var in *. unfold S in *.
-    split; [|omega].
-    rewrite range_union_inc_r by omega.
-    apply range_union_adj. omega.
+    induction e; intros.
+    - repeat (inversionss; try destruct_one_match_hyp).
+      apply genFresh_spec in E.
+      simpl. set_solver var.
+    - repeat (inversionss; try destruct_one_match_hyp).
+      simpl.
+      set_solver var.
+    - repeat (inversionss; try destruct_one_match_hyp).
+      specializes IHe1; [ eassumption | ].
+      specializes IHe2; [ eassumption | ].
+      repeat match goal with
+      | H: _ |- _ => apply genFresh_spec in H
+      | H: _ |- _ => apply flattenExpr_freshVarUsage in H
+      end.
+      simpl.
+      set_solver var.
   Qed.
 
   Lemma flattenStmt_vars_range: forall s s' firstFree newFirstFree,

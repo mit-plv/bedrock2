@@ -62,3 +62,27 @@ Ltac ensure_new H :=
                 end).
 
 Tactic Notation "forget" constr(X) "as" ident(y) := set (y:=X) in *; clearbody y.
+
+Ltac destruct_products :=
+  repeat match goal with
+  | H: _ /\ _ |- _ => let Hl := fresh H "l" in let Hr := fresh H "r" in destruct H as [Hl Hr]
+  | E: exists y, _ |- _ => let yf := fresh y in destruct E as [y E]
+  end.
+
+(** [pose proof defn], but only if no hypothesis of the same type exists.
+    most useful for proofs of a proposition *)
+Tactic Notation "unique" "pose" "proof" constr(defn) "as" ident(H) :=
+  let T := type of defn in
+  match goal with
+  | [ H : T |- _ ] => fail 1
+  | _ => pose proof defn as H
+  end.
+
+Ltac specialize_with E :=
+  repeat match goal with
+  | H: forall (x: E), _, y: E |- _ =>
+    match type of H with
+    | DecidableEq E => fail 1
+    | _ => let H' := fresh H y in unique pose proof (H y) as H'
+    end
+  end.

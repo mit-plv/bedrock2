@@ -122,14 +122,12 @@ Section FlatImp.
     initial = final.
   Proof. intros. destruct fuel; [discriminate|]. inversion H. auto. Qed.
 
-  Definition vars_one(x: var): vars := singleton_set x.
-
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt): vars :=
     match s with
-    | SLit x v => vars_one x
-    | SOp x op y z => vars_one x
-    | SSet x y => vars_one x
+    | SLit x v => singleton_set x
+    | SOp x op y z => singleton_set x
+    | SSet x y => singleton_set x
     | SIf cond bThen bElse =>
         union (modVars bThen) (modVars bElse)
     | SLoop body1 cond body2 =>
@@ -259,7 +257,7 @@ rewrite_get_put.
   Lemma modVars_subset_accessedVars: forall s,
     subset (modVars s) (accessedVars s).
   Proof.
-    intro s. induction s; simpl; unfold vars_one; state_calc.
+    intro s. induction s; simpl; unfold singleton_set; state_calc.
   Admitted.
 
   Ltac invert_eval_stmt :=
