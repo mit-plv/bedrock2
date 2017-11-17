@@ -7,6 +7,8 @@ Require Import compiler.StateCalculus.
 Section ExprImp.
 
   Context {w: nat}. (* bit width *)
+  Context {var: Set}.
+  Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
   Context {stateMap: Map state var (word w)}.
 

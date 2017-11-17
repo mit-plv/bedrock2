@@ -27,8 +27,3 @@ Instance Function_Map(K V: Type){decK: DecidableEq K}: Map (K -> option V) K V :
 Defined.
 
 Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := weq.
-
-(* We want assign ranges of variables for certain purposes, so we need a total order,
-   and we want S for to generate a fresh variable, so let's just use nat. *)
-Definition var := Z.
-Definition S := Z.succ.

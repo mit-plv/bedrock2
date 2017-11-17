@@ -51,33 +51,26 @@ Section FlattenExpr.
 
   Context {w: nat}. (* bit width *)
   Context {state: Type}.
+  Context {var: Set}.
   Context {vars: Type}.
   Context {varset: set vars var}.
-  Variable pick: vars -> var.
-
-  Definition split(vs: vars): (var * vars) :=
-    let x := pick vs in
-    let rest := diff vs (singleton_set x)
-    in (x, rest).
+  Context {NGstate: Type}.
+  Context {NG: NameGen var vars NGstate}.
 
   (* returns and var into which result is saved, and new (smaller) set of fresh vars *)
-  Fixpoint flattenExpr(fresh: vars)(e: @ExprImp.expr w): (@FlatImp.stmt w * var * vars) :=
+  Fixpoint flattenExpr(ngs: NGstate)(e: @ExprImp.expr w var): (@FlatImp.stmt w var * var * NGstate) :=
     match e with
     | ExprImp.ELit n =>
-        let '(x, fresh') := split fresh in
-        (FlatImp.SLit x n, x, fresh')
+        let '(x, ngs') := genFresh ngs in
+        (FlatImp.SLit x n, x, ngs')
     | ExprImp.EVar x =>
-        (FlatImp.SSkip, x, fresh)
+        (FlatImp.SSkip, x, ngs)
     | ExprImp.EOp op e1 e2 =>
-        let '(s1, r1, fresh') := flattenExpr fresh e1 in
-        let '(s2, r2, fresh'') := flattenExpr fresh' e2 in
-        let '(x, fresh''') := split fresh'' in
-        (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x op r1 r2)), x, fresh''')
+        let '(s1, r1, ngs') := flattenExpr ngs e1 in
+        let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
+        let '(x, ngs''') := genFresh ngs'' in
+        (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x op r1 r2)), x, ngs''')
     end.
-
-  Definition split_spec := forall vs x vs', split vs = (x, vs') -> x \in vs /\ ~ x \in vs'.
-     (* ... and moreover, split_spec still holds for vs', how to say that recursively? *)
-
 
 End FlattenExpr.
 

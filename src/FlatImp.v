@@ -8,6 +8,8 @@ Require Import compiler.StateCalculus.
 Section FlatImp.
 
   Context {w: nat}. (* bit width *)
+  Context {var: Set}.
+  Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
   Context {stateMap: Map state var (word w)}.
 
@@ -510,6 +512,10 @@ rewrite_get_put.
 
 End FlatImp.
 
+Module TestFlatImp.
+
+Definition var := Z. (* only inside this test module *)
+
 Definition _n := 0%Z.
 Definition _a := 1%Z.
 Definition _b := 2%Z.
@@ -553,3 +559,5 @@ Goal finalFibVal 3 = Some $3. reflexivity. Qed.
 Goal finalFibVal 4 = Some $5. reflexivity. Qed.
 Goal finalFibVal 5 = Some $8. reflexivity. Qed.
 Goal finalFibVal 6 = Some $13. reflexivity. Qed.
+
+End TestFlatImp.
