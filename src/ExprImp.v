@@ -11,6 +11,8 @@ Section ExprImp.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
   Context {stateMap: Map state var (word w)}.
+  Context {vars: Type}.
+  Context {varset: set vars var}.
 
   Inductive expr: Set :=
     | ELit(v: word w): expr

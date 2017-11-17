@@ -12,6 +12,8 @@ Section FlatImp.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
   Context {stateMap: Map state var (word w)}.
+  Context {vars: Type}.
+  Context {varset: set vars var}.
 
   Inductive stmt: Set :=
     | SLit(x: var)(v: word w): stmt
@@ -213,10 +215,10 @@ rewrite_get_put.
 *)
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. state_calc.
+        inversionss. simpl. state_calc.
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. state_calc.
+        inversionss. simpl. state_calc.
       + Opaque union. simpl in *. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         destruct fuel; [ inversion Ev | ].
@@ -230,7 +232,8 @@ rewrite_get_put.
           pose proof (IHfuel _ _ _ Ev1) as IH1.
           pose proof (IHfuel _ _ _ Ev2) as IH2.
           pose proof (IHfuel _ _ _ Ev3) as IH3.
-          clear - IH1 IH2 IH3. state_calc.
+          clear - IH1 IH2 IH3. simpl in IH3.
+          state_calc. rewrite union_spec in H, H0. state_calc.
       + apply invert_eval_SSeq in Ev.
         destruct Ev as [mid [Ev1 Ev2]]. simpl.
         pose proof (IHfuel _ _ _ Ev1) as IH1.
@@ -272,6 +275,7 @@ rewrite_get_put.
       | apply invert_eval_SSkip in E ]
     end.
 
+(* not needed at the moment
   Lemma eval_stmt_swap_state: forall fuel initial1 initial2 final1 s,
     eval_stmt fuel initial1 s = Success final1 ->
     agree_on initial1 (accessedVars s) initial2 ->
@@ -509,6 +513,7 @@ rewrite_get_put.
           state_calc.
     - subst. eexists. simpl. apply (conj eq_refl). assumption.
   Time Qed. (* 1.433 secs *)
+*)
 
 End FlatImp.
 

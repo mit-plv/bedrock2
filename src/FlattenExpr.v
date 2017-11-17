@@ -6,6 +6,7 @@ Require compiler.FlatImp.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import compiler.Axioms.
 Require Import compiler.StateCalculus.
+Require Import compiler.NameGen.
 
 (* TODO automate such that we don't to Require this, and not always specify which lemma to use *)
 Require compiler.StateCalculusTacticTest.
@@ -15,146 +16,59 @@ Open Scope Z.
 Section FlattenExpr.
 
   Context {w: nat}. (* bit width *)
+  Context {var: Set}.
+  Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
   Context {stateMap: Map state var (word w)}.
+  Context {vars: Type}.
+  Context {varset: set vars var}.
+  Context {NGstate: Type}.
+  Context {NG: NameGen var vars NGstate}.
 
-  (* returns statement and var into which result is saved, and that's the highest used var *)
-  Fixpoint flattenExpr(firstFree: var)(e: @ExprImp.expr w): (@FlatImp.stmt w * var) :=
+  (* returns and var into which result is saved, and new fresh name generator state
+     TODO use state monad? *)
+  Fixpoint flattenExpr(ngs: NGstate)(e: @ExprImp.expr w var):
+    (@FlatImp.stmt w var * var * NGstate) :=
     match e with
-    | ExprImp.ELit n => (FlatImp.SLit firstFree n, firstFree)
-    | ExprImp.EVar x => (FlatImp.SSet firstFree x, firstFree)
-       (* returning "(FlatImp.SSkip, x)" would be simpler but that doesn't respect the invariant
-          that the returned var is >= firstFree *)
+    | ExprImp.ELit n =>
+        let '(x, ngs') := genFresh ngs in
+        (FlatImp.SLit x n, x, ngs')
+    | ExprImp.EVar x =>
+        (FlatImp.SSkip, x, ngs)
     | ExprImp.EOp op e1 e2 =>
-        let (p1, r1) := flattenExpr firstFree e1 in
-        let (p2, r2) := flattenExpr (S r1) e2 in
-        (FlatImp.SSeq p1 (FlatImp.SSeq p2 (FlatImp.SOp (S r2) op r1 r2)), S r2)
+        let '(s1, r1, ngs') := flattenExpr ngs e1 in
+        let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
+        let '(x, ngs''') := genFresh ngs'' in
+        (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x op r1 r2)), x, ngs''')
     end.
 
-  (* returns statement and new first free var *)
-  Fixpoint flattenStmt(firstFree: var)(s: @ExprImp.stmt w): (@FlatImp.stmt w * var) :=
+  (* returns statement and new fresh name generator state *)
+  Fixpoint flattenStmt(ngs: NGstate)(s: @ExprImp.stmt w var):
+    (@FlatImp.stmt w var * NGstate) :=
     match s with
     | ExprImp.SSet x e =>
-        let (e', r) := flattenExpr firstFree e in
-        (FlatImp.SSeq e' (FlatImp.SSet x r), S r)
+        let '(e', r, ngs') := flattenExpr ngs e in
+        (FlatImp.SSeq e' (FlatImp.SSet x r), ngs')
     | ExprImp.SIf cond sThen sElse =>
-        let (cond', r1) := flattenExpr firstFree cond in
-        let (sThen', f2) := flattenStmt (S r1) sThen in
-        let (sElse', f3) := flattenStmt f2 sElse in
-        (FlatImp.SSeq cond' (FlatImp.SIf r1 sThen' sElse'), f3)
+        let '(cond', r, ngs') := flattenExpr ngs cond in
+        let '(sThen', ngs'') := flattenStmt ngs' sThen in
+        let '(sElse', ngs''') := flattenStmt ngs'' sElse in
+        (FlatImp.SSeq cond' (FlatImp.SIf r sThen' sElse'), ngs''')
     | ExprImp.SWhile cond body =>
-        let (cond', r1) := flattenExpr firstFree cond in
-        let (body', f2) := flattenStmt (S r1) body in
-        (FlatImp.SLoop cond' r1 body', f2)
+        let '(cond', r, ngs') := flattenExpr ngs cond in
+        let '(body', ngs'') := flattenStmt ngs' body in
+        (FlatImp.SLoop cond' r body', ngs'')
     | ExprImp.SSeq s1 s2 =>
-        let (s1', f1) := flattenStmt firstFree s1 in
-        let (s2', f2) := flattenStmt f1 s2 in
-        (FlatImp.SSeq s1' s2', f2)
-    | ExprImp.SSkip => (FlatImp.SSkip, firstFree)
+        let '(s1', ngs') := flattenStmt ngs s1 in
+        let '(s2', ngs'') := flattenStmt ngs' s2 in
+        (FlatImp.SSeq s1' s2', ngs'')
+    | ExprImp.SSkip => (FlatImp.SSkip, ngs)
     end.
-
-  (* Alternative:
-
-  (* returns statement, var into which result is saved, and new first free var *)
-  Fixpoint flattenExpr(firstFree: var)(e: @ExprImp.expr w): (@FlatImp.stmt w * var * var) :=
-    match e with
-    | ExprImp.ELit n => (FlatImp.SLit firstFree n, firstFree, S firstFree)
-    | ExprImp.EVar x => (FlatImp.SSkip, x, firstFree)
-    | ExprImp.EOp op e1 e2 =>
-        let '(p1, r1, f1) := flattenExpr firstFree e1 in
-        let '(p2, r2, f2) := flattenExpr f1 e2 in
-        (FlatImp.SSeq p1 (FlatImp.SSeq p2 (FlatImp.SOp (S f2) op r1 r2)), S f2, S (S f2))
-    end.
-  *)
-
-  (* Alternative (violates "extends finalL initialL"):
-
-  (* returns statement and new first free var *)
-  Fixpoint flattenExpr(firstFree res: var)(e: @ExprImp.expr w): (@FlatImp.stmt w * var) :=
-    match e with
-    | ExprImp.ELit n => (FlatImp.SLit res n, firstFree)
-    | ExprImp.EVar x => (FlatImp.SSet res x, firstFree)
-    | ExprImp.EOp op e1 e2 =>
-        let (p1, f1) := flattenExpr (S firstFree) firstFree e1 in
-        let (p2, f2) := flattenExpr (S f1) f1 e2 in
-        (FlatImp.SSeq p1 (FlatImp.SSeq p2 (FlatImp.SOp res op firstFree f1)), f2)
-    end.
-
-  (* returns statement and new first free var *)
-  Fixpoint flattenStmt(firstFree: var)(s: @ExprImp.stmt w): (@FlatImp.stmt w * var) :=
-    match s with
-    | ExprImp.SSet x e => flattenExpr firstFree x e
-    | ExprImp.SIf cond sThen sElse =>
-        let (cond', f1) := flattenExpr (S firstFree) firstFree cond in
-        let (sThen', f2) := flattenStmt f1 sThen in
-        let (sElse', f3) := flattenStmt f2 sElse in
-        (FlatImp.SSeq cond' (FlatImp.SIf firstFree sThen' sElse'), f3)
-    | ExprImp.SWhile cond body =>
-        let (cond', f1) := flattenExpr (S firstFree) firstFree cond in
-        let (body', f2) := flattenStmt f1 body in
-        (FlatImp.SLoop cond' firstFree body', f2)
-    | ExprImp.SSeq s1 s2 =>
-        let (s1', f1) := flattenStmt firstFree s1 in
-        let (s2', f2) := flattenStmt f1 s2 in
-        (FlatImp.SSeq s1' s2', f2)
-    | ExprImp.SSkip => (FlatImp.SSkip, firstFree)
-    end.
-  *)
-
-  Definition vars_range(x1 x2: var): vars := fun x => x1 <= x < x2.
-
-  Lemma in_vars_range: forall x lo hi, x \in vars_range lo hi <-> lo <= x /\ x < hi.
-  Proof. intros. unfold vars_range, contains, Function_Set. omega. Qed.
-
-(*
-  Lemma range_union_one_r: forall x1 x2 x3,
-    x1 <= x2 < x3 ->
-    range_union (x1, x3) (range_one x2) = (x1, x3).
-  Proof.
-    intros. unfold range_union, range_one.
-    repeat match goal with
-    | [ |- context[if ?e then _ else _] ] => let E := fresh "E" in destruct e eqn: E
-    end; f_equal; try omega.
-    - pose proof (Min.min_spec x1 x2). omega.
-    - pose proof (Max.max_spec x3 (S x2)). omega.
-  Qed.
-*)
-
-  Transparent union.
 
   Lemma set_extensionality: forall (T: Type) s1 s2,
     (forall (x: T), x \in s1 <-> x \in s2) -> s1 = s2.
   Proof.
     intros. extensionality x. apply prop_ext. apply H.
-  Qed.
-
-  Lemma vars_one_range: forall x,
-    FlatImp.vars_one x = vars_range x (S x).
-  Proof.
-    intros. apply set_extensionality. intro y.
-    rewrite in_vars_range. unfold FlatImp.vars_one.
-    rewrite singleton_set_spec.
-    unfold var in *. unfold S. omega.
-  Qed.
-
-  Lemma range_union_inc_r: forall x1 x2,
-    x1 <= x2 ->
-    union (vars_range x1 x2) (FlatImp.vars_one x2) = vars_range x1 (S x2).
-  Proof.
-    intros. rewrite vars_one_range in *.
-    apply set_extensionality. intro.
-    rewrite union_spec.
-    rewrite? in_vars_range. unfold S. omega.
-  Qed.
-
-  Lemma range_union_adj: forall x1 x2 x3,
-    x1 <= x2 <= x3 ->
-    union (vars_range x1 x2) (vars_range x2 x3) = (vars_range x1 x3).
-  Proof.
-    intros.
-    apply set_extensionality. intro.
-    rewrite union_spec.
-    rewrite? in_vars_range. unfold S. omega.
   Qed.
 
   Lemma flattenExpr_modVars_spec: forall e s firstFree resVar,

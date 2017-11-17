@@ -11,6 +11,8 @@ Section Tests.
   Context {dec_eq_val: DecidableEq val}.
   Context {state: Type}.
   Context {stateMap: Map state var val}.
+  Context {vars: Type}.
+  Context {varset: set vars var}.
 
   Lemma extends_refl: forall s, extends s s.
   Proof. state_calc. Qed.

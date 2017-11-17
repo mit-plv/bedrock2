@@ -14,9 +14,9 @@ Section StateCalculus.
   Context {dec_eq_val: DecidableEq val}.
   Context {state: Type}.
   Context {stateMap: Map state var val}.
-
-  (* models a set of vars *)
-  Definition vars := var -> Prop.
+  Context {eq_var_dec: DecidableEq var}.
+  Context {vars: Type}.
+  Context {varset: set vars var}.
 
   Definition extends(s1 s2: state) := forall x w, get s2 x = Some w -> get s1 x = Some w.
 
