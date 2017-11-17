@@ -133,7 +133,7 @@ Section FlattenExpr.
   Proof.
     intros. apply set_extensionality. intro y.
     rewrite in_vars_range. unfold FlatImp.vars_one.
-    rewrite (@singleton_set_spec var). (* TODO why doesn't it work if I don't give var ?? *)
+    rewrite singleton_set_spec.
     unfold var in *. unfold S. omega.
   Qed.
 
@@ -143,7 +143,7 @@ Section FlattenExpr.
   Proof.
     intros. rewrite vars_one_range in *.
     apply set_extensionality. intro.
-    rewrite (@union_spec var). (* TODO implicit args stuff *)
+    rewrite union_spec.
     rewrite? in_vars_range. unfold S. omega.
   Qed.
 
@@ -153,7 +153,7 @@ Section FlattenExpr.
   Proof.
     intros.
     apply set_extensionality. intro.
-    rewrite (@union_spec var). (* TODO implicit args stuff *)
+    rewrite union_spec.
     rewrite? in_vars_range. unfold S. omega.
   Qed.
 
