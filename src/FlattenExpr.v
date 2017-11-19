@@ -193,6 +193,7 @@ Section FlattenExpr.
     | H: _ |- _ => unique apply FlatImp.modVarsSound in copy of H
     | H: _ |- _ => unique apply flattenExpr_modifies_resVar in copy of H
     | H: _ |- _ => unique apply flattenExpr_modVars_spec in copy of H
+    | H: _ |- _ => unique apply flattenStmt_freshVarUsage in copy of H
     end.
 
   Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
@@ -290,33 +291,16 @@ Section FlattenExpr.
       pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ cv E Ex) as P.
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [Evcond G]]].
-      destruct Ev as [[Ne EvThen] | [Eq EvElse]].
+      destruct Ev as [[Ne EvThen] | [Eq EvElse]]; pose_flatten_var_ineqs.
       + specialize (IHfuelH sH1 sL1 n n0 initialH finalH initial2L E0).
         specializes IHfuelH.
-        * assert (only_differ initialL (vars_range firstFree (S v)) initial2L) as D. {
-            apply proj1 in E2. rewrite <- E2. eapply FlatImp.modVarsSound. eassumption.
-          }
-          (* TODO this should be state_calc *)
-          clear - U D Ex E3 E4.
-          eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef.
-          3: exact D. 1: exact Ex.
-          clear Ex D.
-          unfold undef in *. intros. specialize (U x).
-          rewrite? in_vars_range in *.
-          apply U. myomega.
-        * eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
-          apply vars_range_subset; myomega.
+        * state_calc.
+        * state_calc.
         * simpl in Di.
-          destruct E2 as [_ E2].
-          clear - E2 E3 E4 Di U.
-          unfold disjoint.
-          intros. specialize (Di x).
-          Fail rewrite union_spec in *. (* why?? *)
-          rewrite union_spec in Di. (* while this one works!! *)
-          rewrite in_vars_range in *.
-          intuition myomega.
+          set_solver var.
         * exact EvThen.
         * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
+          pose_flatten_var_ineqs.
           exists (Datatypes.S (fuelLcond + (Datatypes.S fuelL))). eexists.
           refine (conj _ Ex2).
           simpl.
@@ -329,32 +313,16 @@ Section FlattenExpr.
           eapply (P _ _ _ _ _ IE). clear IE P.
           simpl. rewrite G. simpl. destruct_one_match; [contradiction|].
           exact Evbranch.
-      + specialize (IHfuelH sH2 sL2 v0 newFirstFree initialH finalH initial2L E1).
+      + specialize (IHfuelH sH2 sL2 _ _ initialH finalH initial2L E1).
         specializes IHfuelH.
-        * assert (only_differ initialL (vars_range firstFree (S v)) initial2L) as D. {
-            apply proj1 in E2. rewrite <- E2. eapply FlatImp.modVarsSound. eassumption.
-          } (* TODO this should be state_calc *)
-          clear - U D Ex E3 E4.
-          eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef.
-          3: exact D. 1: exact Ex.
-          clear Ex D.
-          unfold undef in *. intros. specialize (U x).
-          rewrite? in_vars_range in *.
-          apply U. myomega.
-        * eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
-          apply vars_range_subset; myomega.
+        * state_calc.
+        * state_calc.
         * simpl in Di.
-          destruct E2 as [_ E2].
-          clear - E2 E3 E4 Di U.
-          unfold disjoint.
-          intros. specialize (Di x).
-          Fail rewrite union_spec in *. (* why?? *)
-          rewrite union_spec in Di. (* while this one works!! *)
-          rewrite in_vars_range in *.
-          intuition myomega.
+          set_solver var.
         * exact EvElse.
         * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-          exists (Datatypes.S (fuelLcond + (Datatypes.S fuelL)))%nat. eexists.
+          pose_flatten_var_ineqs.
+          exists (Datatypes.S (fuelLcond + (Datatypes.S fuelL))). eexists.
           refine (conj _ Ex2).
           simpl.
           pose proof increase_fuel_still_Success as P.
@@ -373,18 +341,15 @@ Section FlattenExpr.
       pose proof IHfuelH as IHfuelH2.
       specializes IHfuelH.
       1: exact E. 1: exact Ex. 3: exact Ev1.
-      { eapply StateCalculusTacticTest.undef_shrink; [eassumption|].
-        unfold subset. intro.
-        rewrite? in_vars_range. pose_flatten_var_ineqs. intros. myomega. }
-      { simpl in Di. admit. (* TODO *)
-      
-      }
+      { clear IHfuelH2. state_calc. }
+      { simpl in Di. set_solver var. }
       destruct IHfuelH as [fuelL1 [middleL [EvL1 Ex1]]].
       rename IHfuelH2 into IHfuelH.
       rename s into sL1, s0 into sL2.
-      specialize (IHfuelH sH2 sL2 v newFirstFree middleH finalH middleL).
+      pose_flatten_var_ineqs.
+      specialize (IHfuelH sH2 sL2 _ _ middleH finalH middleL E0).
       specializes IHfuelH.
-      1: exact E0. 1: exact Ex1. 3: exact Ev2.
+      1: exact Ex1. 3: exact Ev2.
       { admit. (* TODO *) }
       { pose proof (ExprImp.modVarsSound _ _ _ _ Ev1) as D1.
         pose_flatten_var_ineqs.
