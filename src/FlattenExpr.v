@@ -25,6 +25,9 @@ Section FlattenExpr.
   Context {NGstate: Type}.
   Context {NG: NameGen var vars NGstate}.
 
+  Ltac state_calc_instantiation := state_calc var (word w).
+  Ltac state_calc := state_calc_instantiation.
+
   (* returns and var into which result is saved, and new fresh name generator state
      TODO use state monad? *)
   Fixpoint flattenExpr(ngs: NGstate)(e: @ExprImp.expr w var):
@@ -75,24 +78,6 @@ Section FlattenExpr.
     intros. extensionality x. apply prop_ext. apply H.
   Qed.
 *)
-(*
-Ltac set_solver E :=
-  repeat autounfold with unf_set_defs in *;
-  destruct_products;
-  intros;
-  specialize_with E;
-  autorewrite with rew_set_op_specs in *;
-  subst;
-  tauto.
-*)
-
-Ltac set_solver E :=
-  repeat autounfold with unf_set_defs in *;
-  destruct_products;
-  intros;
-  specialize_with E;
-  autorewrite with rew_set_op_specs in *;
-  intuition (subst; auto).
 
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' s v,
     flattenExpr ngs e = (s, v, ngs') ->
@@ -114,7 +99,7 @@ Ltac set_solver E :=
     resVar \in (FlatImp.modVars s).
   Proof.
     intros.
-    destruct e; repeat (inversionss; try destruct_one_match_hyp); simpl in *; state_calc.
+    destruct e; repeat (inversionss; try destruct_one_match_hyp); simpl in *; set_solver var.
   Qed.
 
   Lemma flattenExpr_resVar: forall e s ngs ngs' resVar,
@@ -125,7 +110,7 @@ Ltac set_solver E :=
     repeat match goal with
     | H: _ |- _ => apply genFresh_spec in H
     end;
-    state_calc.
+    set_solver var.
   Qed.
 
   Lemma flattenExpr_modVars_spec: forall e s ngs ngs' resVar,
@@ -210,27 +195,6 @@ Ltac set_solver E :=
     | H: _ |- _ => unique apply flattenExpr_modVars_spec in copy of H
     end.
 
-Ltac state_calc_newV0 varT valT :=
-  repeat autounfold with unfold_state_calculus in *;
-  intros;
-  repeat autounfold with unf_set_defs in *;
-  destruct_products;
-  intros;
-  repeat (specialize_with varT || specialize_with valT);
-  autorewrite with rew_set_op_specs in *;
-  intuition (subst; auto || congruence).
-
-Ltac state_calc varT valT :=
-  repeat autounfold with unfold_state_calculus in *;
-  intros;
-  repeat autounfold with unf_set_defs in *;
-  destruct_products;
-  intros;
-  rewrite? get_put in *;
-  repeat (specialize_with varT || specialize_with valT);
-  autorewrite with rew_set_op_specs in *;
-  repeat (intuition (subst; auto || congruence) || destruct_one_dec_eq).
-
   Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
 
   (* Note: If you want to get in the conclusion
@@ -249,25 +213,25 @@ Ltac state_calc varT valT :=
     induction e; introv F Ex U Ev.
     - repeat (inversionss; try destruct_one_match_hyp).
       exists 1%nat (put initialL resVar res).
-      split; state_calc var (word w).
+      split; state_calc.
     - repeat (inversionss; try destruct_one_match_hyp).
       exists 1%nat (put initialL resVar res). repeat split.
       + simpl. unfold extends in Ex. apply Ex in H0. rewrite H0. simpl. reflexivity.
-      + state_calc var (word w).
+      + state_calc.
     - repeat (inversionss; try destruct_one_match_hyp).
       pose_flatten_var_ineqs.
       specialize (IHe1 _ _ _ _ _ _ w0 E Ex).
       specializes IHe1. {
         clear IHe2.
-        state_calc var (word w).
+        state_calc.
       }
       { assumption. }
       destruct IHe1 as [fuel1 [midL [Ev1 G1]]].
       progress pose_flatten_var_ineqs.
       specialize (IHe2 _ _ _ _ initialH midL w1 E0).
       specializes IHe2.
-      { state_calc var (word w). }
-      { state_calc var (word w). }
+      { state_calc. }
+      { state_calc. }
       { assumption. }
       destruct IHe2 as [fuel2 [preFinalL [Ev2 G2]]].
       remember (Datatypes.S (Datatypes.S (fuel1 + fuel2))) as f0.
@@ -281,7 +245,7 @@ Ltac state_calc varT valT :=
         erewrite (increase_fuel_still_Success _ _ midL); [| |eassumption]; [|omega].
         subst f. simpl.
         assert (get preFinalL v = Some w0) as G1'. {
-          state_calc var (word w).
+          state_calc.
         }
         rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
       + apply get_put_same.

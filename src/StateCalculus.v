@@ -38,31 +38,22 @@ Section StateCalculus.
 
 End StateCalculus.
 
-
-Hint Unfold extends only_differ agree_on undef : unfold_state_calculus.
-Ltac unf := repeat autounfold with unfold_state_calculus in *.
-
-Hint Rewrite @intersect_spec @union_spec @diff_spec @singleton_set_spec : rewrite_set_op_specs.
-
-(* bad attempt to get the DecidableEq, it might not be in the context, but global *)
-Ltac rewrite_get_put_bad :=
-  repeat match goal with
-  | D: DecidableEq ?Var |- context [@get _ ?Var _ _ (put _ _ _) _] =>
-     rewrite (@get_put Var D) in *
-  | D: DecidableEq ?Var, _: context [@get _ ?Var _ _ (put _ _ _) _] |- _ =>
-     rewrite (@get_put Var D) in *
-  end.
+Hint Unfold extends only_differ agree_on undef : unf_state_calculus.
 
 Ltac rewrite_get_put :=
-  erewrite? get_put in *;
+  rewrite? get_put in *;
   (* the above line is sometimes not enough, so be more explicit: *)
   repeat match goal with
-  | H: _ |- _ => erewrite? get_put in H
+  | H: _ |- _ => rewrite? get_put in H
   end.
 
-Ltac state_calc :=
-  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put;
-  repeat match goal with
-  | x: ?T, H: forall (y: ?T), _ |- _ => unique pose proof (H x)
-  end;
-  repeat (intuition (auto || congruence) || destruct_one_dec_eq).
+Ltac state_calc varT valT :=
+  repeat autounfold with unf_state_calculus in *;
+  intros;
+  repeat autounfold with unf_set_defs in *;
+  destruct_products;
+  intros;
+  rewrite_get_put;
+  repeat (specialize_with varT || specialize_with valT);
+  autorewrite with rew_set_op_specs in *;
+  repeat (intuition (subst; auto || congruence) || destruct_one_dec_eq).

@@ -1,3 +1,4 @@
+Require Import compiler.Tactics.
 
 Class set(T E: Type) := mkSet {
   contains: T -> E -> Prop;
@@ -47,3 +48,11 @@ Instance Function_Set(E: Type): set (E -> Prop) E := {|
 |}.
   all: tauto.
 Defined.
+
+Ltac set_solver E :=
+  repeat autounfold with unf_set_defs in *;
+  destruct_products;
+  intros;
+  specialize_with E;
+  autorewrite with rew_set_op_specs in *;
+  intuition (subst; auto).

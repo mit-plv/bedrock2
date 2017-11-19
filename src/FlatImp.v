@@ -169,7 +169,7 @@ Ltac do_rewr :=       rewrite get_put in *.
     induction fuel; introv Ev.
     - discriminate.
     - destruct s.
-      + simpl in *. inversionss. state_calc.
+      + simpl in *. inversionss. state_calc var (word w).
 (*
 If we forget to put a DecidableEq for var (currently var=Z) into scope, weird things happen,
 because erewrite leaves the implicit DecidableEq as an existential var
@@ -213,31 +213,31 @@ rewrite_get_put.
 *)
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. simpl. state_calc.
+        inversionss. simpl. state_calc var (word w).
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. simpl. state_calc.
+        inversionss. simpl. state_calc var (word w).
       + Opaque union. simpl in *. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         destruct fuel; [ inversion Ev | ].
         specializes IHfuel; [ eassumption |].
-        destruct_one_match_hyp; state_calc.
+        destruct_one_match_hyp; state_calc var (word w).
       + apply invert_eval_SLoop in Ev. destruct Ev as [Ev | Ev]. 
         * destruct Ev as [Ev C]. 
-          simpl. specializes IHfuel; [eassumption|]. state_calc.
+          simpl. specializes IHfuel; [eassumption|]. state_calc var (word w).
         * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
           simpl.
           pose proof (IHfuel _ _ _ Ev1) as IH1.
           pose proof (IHfuel _ _ _ Ev2) as IH2.
           pose proof (IHfuel _ _ _ Ev3) as IH3.
           clear - IH1 IH2 IH3. simpl in IH3.
-          state_calc. rewrite union_spec in H, H0. state_calc.
+          state_calc var (word w).
       + apply invert_eval_SSeq in Ev.
         destruct Ev as [mid [Ev1 Ev2]]. simpl.
         pose proof (IHfuel _ _ _ Ev1) as IH1.
         pose proof (IHfuel _ _ _ Ev2) as IH2.
-        clear - IH1 IH2. state_calc.
-      + simpl. inversionss. state_calc.
+        clear - IH1 IH2. state_calc var (word w).
+      + simpl. inversionss. state_calc var (word w).
   Qed.
 
   Fixpoint accessedVars(s: stmt): vars :=
@@ -257,8 +257,8 @@ rewrite_get_put.
   Lemma modVars_subset_accessedVars: forall s,
     subset (modVars s) (accessedVars s).
   Proof.
-    intro s. induction s; simpl; unfold singleton_set; state_calc.
-  Admitted.
+    intro s. induction s; simpl; unfold singleton_set; state_calc var (word w).
+  Qed.
 
   Ltac invert_eval_stmt :=
     match goal with

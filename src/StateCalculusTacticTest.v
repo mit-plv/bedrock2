@@ -14,6 +14,9 @@ Section Tests.
   Context {vars: Type}.
   Context {varset: set vars var}.
 
+  Ltac state_calc_instantiation := state_calc var val.
+  Ltac state_calc := state_calc_instantiation.
+
   Lemma extends_refl: forall s, extends s s.
   Proof. state_calc. Qed.
 
