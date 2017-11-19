@@ -86,3 +86,9 @@ Ltac specialize_with E :=
     | _ => let H' := fresh H y in unique pose proof (H y) as H'
     end
   end.
+
+Tactic Notation "unique" "apply" constr(p) "in" "copy" "of" ident(H) :=
+  let H' := fresh H "uac" in
+  pose proof H as H';
+  apply p in H';
+  ensure_new H'.

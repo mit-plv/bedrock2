@@ -34,7 +34,10 @@ Section FlattenExpr.
         let '(x, ngs') := genFresh ngs in
         (FlatImp.SLit x n, x, ngs')
     | ExprImp.EVar x =>
-        (FlatImp.SSkip, x, ngs)
+        (* (FlatImp.SSkip, x, ngs)  would be simpler but doesn't satisfy the invariant that
+           the returned var is in modVars of the returned statement *)
+        let '(y, ngs') := genFresh ngs in
+        (FlatImp.SSet y x, y, ngs')
     | ExprImp.EOp op e1 e2 =>
         let '(s1, r1, ngs') := flattenExpr ngs e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
@@ -91,63 +94,71 @@ Ltac set_solver E :=
   autorewrite with rew_set_op_specs in *;
   intuition (subst; auto).
 
-  Lemma flattenExpr_freshVarUsage: forall e1 ngs ngs' s v,
-    flattenExpr ngs e1 = (s, v, ngs') ->
+  Lemma flattenExpr_freshVarUsage: forall e ngs ngs' s v,
+    flattenExpr ngs e = (s, v, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).
-  Admitted.
+  Proof.
+    induction e; intros; repeat (inversionss; try destruct_one_match_hyp);
+    repeat match goal with
+    | H: _ |- _ => apply genFresh_spec in H
+    end;
+    try (
+      specializes IHe1; [ eassumption | ];
+      specializes IHe2; [ eassumption | ]
+    );
+    set_solver var.
+  Qed.
+
+  Lemma flattenExpr_modifies_resVar: forall e s ngs ngs' resVar,
+    flattenExpr ngs e = (s, resVar, ngs') ->
+    resVar \in (FlatImp.modVars s).
+  Proof.
+    intros.
+    destruct e; repeat (inversionss; try destruct_one_match_hyp); simpl in *; state_calc.
+  Qed.
+
+  Lemma flattenExpr_resVar: forall e s ngs ngs' resVar,
+    flattenExpr ngs e = (s, resVar, ngs') ->
+    ~ resVar \in (allFreshVars ngs').
+  Proof.
+    intros. destruct e; repeat (inversionss; try destruct_one_match_hyp); simpl in *;
+    repeat match goal with
+    | H: _ |- _ => apply genFresh_spec in H
+    end;
+    state_calc.
+  Qed.
 
   Lemma flattenExpr_modVars_spec: forall e s ngs ngs' resVar,
     flattenExpr ngs e = (s, resVar, ngs') ->
     subset (FlatImp.modVars s) (diff (allFreshVars ngs) (allFreshVars ngs')).
   Proof.
-    induction e; intros.
-    - repeat (inversionss; try destruct_one_match_hyp).
-      apply genFresh_spec in E.
-      simpl. set_solver var.
-    - repeat (inversionss; try destruct_one_match_hyp).
-      simpl.
-      set_solver var.
-    - repeat (inversionss; try destruct_one_match_hyp).
-      specializes IHe1; [ eassumption | ].
-      specializes IHe2; [ eassumption | ].
-      repeat match goal with
-      | H: _ |- _ => apply genFresh_spec in H
-      | H: _ |- _ => apply flattenExpr_freshVarUsage in H
-      end.
-      simpl.
-      set_solver var.
-  Qed.
-
-  Lemma flattenStmt_vars_range: forall s s' firstFree newFirstFree,
-    flattenStmt firstFree s = (s', newFirstFree) ->
-    firstFree <= newFirstFree.
-  Proof.
-    induction s; introv E; inversions E; unfold var in *; unfold S in *;
-    try omega; repeat destruct_one_match_hyp; repeat destruct_pair_eqs;
-    try match goal with
-    | H: _ |- _ => apply flattenExpr_modVars_spec in H
-    end;
-    try rename IHs into IHs1;
-    try match goal with
-    | H: _ |- _ => apply IHs1 in H
-    end;
-    try match goal with
-    | H: _ |- _ => apply IHs2 in H
-    end;
-    try omega.
-  Qed.
-
-  Ltac pose_flatten_var_ineqs :=
+    induction e; intros; repeat (inversionss; try destruct_one_match_hyp);
+    simpl;
+    try (
+      specializes IHe1; [ eassumption | ];
+      specializes IHe2; [ eassumption | ]
+    );
     repeat match goal with
-    | H: flattenExpr _ _ = _ |- _ =>
-         let H' := fresh H in pose proof H as H';
-         apply flattenExpr_modVars_spec in H';
-         ensure_new H'
-    | H: flattenStmt _ _ = _ |- _ =>
-         let H' := fresh H in pose proof H as H';
-         apply flattenStmt_vars_range in H';
-         ensure_new H'
-    end.
+    | H: _ |- _ => apply genFresh_spec in H
+    | H: _ |- _ => apply flattenExpr_freshVarUsage in H
+    end;
+    set_solver var.
+  Qed.
+
+  Lemma flattenStmt_freshVarUsage: forall s s' ngs1 ngs2,
+    flattenStmt ngs1 s = (s', ngs2) ->
+    subset (allFreshVars ngs2) (allFreshVars ngs1).
+  Proof.
+    induction s; intros; repeat (inversionss; try destruct_one_match_hyp);
+    repeat match goal with
+    | H: _ |- _ => apply genFresh_spec in H
+    | H: _ |- _ => apply flattenExpr_freshVarUsage in H
+    end;
+    repeat match goal with
+    | IH: forall _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
+    end;
+    set_solver var.
+  Qed.
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 initial s final,
     (fuel1 <= fuel2)%nat ->
@@ -183,108 +194,101 @@ Ltac set_solver E :=
      + simpl. inversionss. reflexivity.
   Qed.
 
-  Definition vars_range_subset: forall lo1 hi1 lo2 hi2,
-    lo1 >= lo2 ->
-    hi1 <= hi2 ->
-    subset (vars_range lo1 hi1) (vars_range lo2 hi2).
+  Lemma put_idemp: forall s x v,
+    get s x = Some v ->
+    s = put s x v.
   Proof.
-    unfold subset, vars_range, contains. simpl. unfold id. intros. omega.
+    intros. apply map_extensionality. intros.
+    rewrite get_put. destruct_one_match; congruence.
   Qed.
 
-  Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
+  Ltac pose_flatten_var_ineqs :=
+    repeat match goal with
+    | H: _ |- _ => unique apply flattenExpr_freshVarUsage in copy of H
+    | H: _ |- _ => unique apply FlatImp.modVarsSound in copy of H
+    | H: _ |- _ => unique apply flattenExpr_modifies_resVar in copy of H
+    | H: _ |- _ => unique apply flattenExpr_modVars_spec in copy of H
+    end.
 
-  Ltac myomega := unfold S, var in *; omega.
+  Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
 
   (* Note: If you want to get in the conclusion
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
      flattenExpr_modVars_spec and FlatImp.modVarsSound *)
-  Lemma flattenExpr_correct_aux: forall e firstFree resVar s initialH initialL res,
-    flattenExpr firstFree e = (s, resVar) ->
+  Lemma flattenExpr_correct_aux: forall e ngs1 ngs2 resVar s initialH initialL res,
+    flattenExpr ngs1 e = (s, resVar, ngs2) ->
     extends initialL initialH ->
-    undef initialH (vars_range firstFree (S resVar)) ->
+    undef initialH (allFreshVars ngs1) ->
     ExprImp.eval_expr initialH e = Some res ->
     exists fuel finalL,
       FlatImp.eval_stmt fuel initialL s = Success finalL /\
       get finalL resVar = Some res.
   Proof.
     induction e; introv F Ex U Ev.
-    - inversionss.
-      exists 1%nat (put initialL resVar res). rewrite <- vars_one_range in *.
-      unfold FlatImp.vars_one in *.
-      repeat split; state_calc.
-    - inversionss.
+    - repeat (inversionss; try destruct_one_match_hyp).
+      exists 1%nat (put initialL resVar res).
+      split; state_calc.
+    - repeat (inversionss; try destruct_one_match_hyp).
       exists 1%nat (put initialL resVar res). repeat split.
-      + simpl. unfold extends in Ex. apply Ex in H0. rewrite H0. reflexivity.
+      + simpl. unfold extends in Ex. apply Ex in H0. rewrite H0. simpl. reflexivity.
       + rewrite get_put_same. symmetry. assumption.
-    - inversionss. repeat (destruct_one_match_hyp; try discriminate). inversionss.
-      specialize (IHe1 _ _ _ _ _ w0 E Ex).
+    - repeat (inversionss; try destruct_one_match_hyp).
+      specialize (IHe1 _ _ _ _ _ _ w0 E Ex).
       specializes IHe1. {
         repeat match goal with
         | H : _  |- _ => apply flattenExpr_modVars_spec in H
         end.
-        assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
-          eapply vars_range_subset; myomega.
-        }
         clear IHe2.
         state_calc.
       }
       assumption.
       destruct IHe1 as [fuel1 [midL [Ev1 G1]]].
-      specialize (IHe2 _ _ _ initialH midL w1 E0).
+      specialize (IHe2 _ _ _ _ initialH midL w1 E0).
       specializes IHe2.
       { apply flattenExpr_modVars_spec in E.
         apply flattenExpr_modVars_spec in E0.
-        assert (subset (vars_range firstFree (S v)) (vars_range firstFree (S (S v0)))). {
-          eapply vars_range_subset; myomega.
-        }
+        pose proof (FlatImp.modVarsSound _ _ _ _ Ev1) as D1.
         (* TODO make this work without this hint *)
         refine (compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef
-            _ _ _ (vars_range firstFree (S v)) Ex _ _); [ state_calc |].
-        destruct E as [Ea Eb].
-        pose proof (FlatImp.modVarsSound _ _ _ _ Ev1) as D1.
-        rewrite Ea in D1.
-        exact D1. }
-      { apply flattenExpr_modVars_spec in E.
-        apply flattenExpr_modVars_spec in E0.
-        assert (subset (vars_range (S v) (S v0)) (vars_range firstFree (S (S v0)))). {
-          eapply vars_range_subset; myomega.
-        }
-        state_calc.
-        (* TODO make this work without the assert hint *) }
+            _ _ _ _ Ex _ _).
+        2: eapply compiler.StateCalculusTacticTest.only_differ_subset.
+        3: eassumption. 2: eassumption.
+        state_calc. }
+      { pose proof (flattenExpr_freshVarUsage _ _ _ _ _ E).
+        pose proof (flattenExpr_freshVarUsage _ _ _ _ _ E0).
+        state_calc. }
       { assumption. }
       destruct IHe2 as [fuel2 [preFinalL [Ev2 G2]]].
       remember (Datatypes.S (Datatypes.S (fuel1 + fuel2))) as f0.
       remember (Datatypes.S (fuel1 + fuel2)) as f.
-      exists (Datatypes.S f0) (put preFinalL (S v0) (Op.eval_binop op w0 w1)).
-      repeat split.
+      exists (Datatypes.S f0) (put preFinalL resVar (Op.eval_binop op w0 w1)).
+      split.
       + simpl. erewrite increase_fuel_still_Success; [| |eassumption]; [|omega].
         apply increase_fuel_still_Success with (fuel1 := f0); [omega|].
         subst f0. simpl.
         erewrite (increase_fuel_still_Success _ _ midL); [| |eassumption]; [|omega].
         subst f. simpl.
         assert (get preFinalL v = Some w0) as G1'. {
-          (* TODO automate *)
-          assert (only_differ midL (vars_range (S v) (S v0)) preFinalL) as D2. {
-            pose_flatten_var_ineqs.
-            destruct E3 as [E3a E3b].
-            pose proof (FlatImp.modVarsSound _ _ _ _ Ev2) as D2.
-            rewrite E3a in D2.
-            exact D2.
-          }
+          pose proof (flattenExpr_freshVarUsage _ _ _ _ _ E).
+          pose proof (flattenExpr_freshVarUsage _ _ _ _ _ E0).
+          pose proof (FlatImp.modVarsSound _ _ _ _ Ev2) as D2.
           eapply compiler.StateCalculusTacticTest.only_differ_get_unchanged; try eassumption.
-          rewrite in_vars_range. myomega.
+          pose proof (flattenExpr_modifies_resVar _ _ _ _ _ E).
+          pose proof (flattenExpr_modVars_spec _ _ _ _ _ E).
+          pose proof (flattenExpr_modVars_spec _ _ _ _ _ E0).
+          set_solver var.
         }
         rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
       + apply get_put_same.
   Qed.
 
   Lemma flattenStmt_correct_aux:
-    forall fuelH sH sL firstFree newFirstFree initialH finalH initialL,
-    flattenStmt firstFree sH = (sL, newFirstFree) ->
+    forall fuelH sH sL ngs ngs' initialH finalH initialL,
+    flattenStmt ngs sH = (sL, ngs') ->
     extends initialL initialH ->
-    undef initialH (vars_range firstFree newFirstFree) ->
-    disjoint (ExprImp.modVars sH) (vars_range firstFree newFirstFree) ->
+    undef initialH (allFreshVars ngs) ->
+    disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
     ExprImp.eval_stmt fuelH initialH sH = Some finalH ->
     exists fuelL finalL,
       FlatImp.eval_stmt fuelL initialL sL = Success finalL /\
@@ -294,8 +298,8 @@ Ltac set_solver E :=
     destruct sH.
     - apply ExprImp.invert_eval_SSet in Ev.
       destruct Ev as [v [Ev Eq]].
-      inversions F. destruct_one_match_hyp. destruct_pair_eqs. subst.
-      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ E Ex U Ev) as P.
+      repeat (inversionss; try destruct_one_match_hyp).
+      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ E Ex U Ev) as P.
       destruct P as [fuelL [prefinalL [Evs G]]].
       remember (Datatypes.S fuelL) as SfuelL.
       exists (Datatypes.S SfuelL). eexists. repeat split.
@@ -308,21 +312,18 @@ Ltac set_solver E :=
         eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef;
         [ eassumption | eassumption | ].
         pose_flatten_var_ineqs.
-        apply proj1 in E0. rewrite <- E0.
-        eapply FlatImp.modVarsSound. eassumption.
+        eapply StateCalculusTacticTest.only_differ_subset; [|eassumption].
+        set_solver var.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       apply ExprImp.invert_eval_SIf in Ev.
       destruct Ev as [cv [Evc Ev]].
       pose_flatten_var_ineqs.
       rename cond into condH, s into condL, s0 into sL1, s1 into sL2.
-      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ cv E Ex) as P.
-      specializes P; [|eassumption|]. {
-        eapply compiler.StateCalculusTacticTest.undef_shrink; [eassumption|].
-        apply vars_range_subset; omega.
-      }
+      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ cv E Ex) as P.
+      specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [Evcond G]]].
       destruct Ev as [[Ne EvThen] | [Eq EvElse]].
-      + specialize (IHfuelH sH1 sL1 (S v) v0 initialH finalH initial2L E0).
+      + specialize (IHfuelH sH1 sL1 n n0 initialH finalH initial2L E0).
         specializes IHfuelH.
         * assert (only_differ initialL (vars_range firstFree (S v)) initial2L) as D. {
             apply proj1 in E2. rewrite <- E2. eapply FlatImp.modVarsSound. eassumption.
