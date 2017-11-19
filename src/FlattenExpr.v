@@ -210,6 +210,27 @@ Ltac set_solver E :=
     | H: _ |- _ => unique apply flattenExpr_modVars_spec in copy of H
     end.
 
+Ltac state_calc_newV0 varT valT :=
+  repeat autounfold with unfold_state_calculus in *;
+  intros;
+  repeat autounfold with unf_set_defs in *;
+  destruct_products;
+  intros;
+  repeat (specialize_with varT || specialize_with valT);
+  autorewrite with rew_set_op_specs in *;
+  intuition (subst; auto || congruence).
+
+Ltac state_calc varT valT :=
+  repeat autounfold with unfold_state_calculus in *;
+  intros;
+  repeat autounfold with unf_set_defs in *;
+  destruct_products;
+  intros;
+  rewrite? get_put in *;
+  repeat (specialize_with varT || specialize_with valT);
+  autorewrite with rew_set_op_specs in *;
+  repeat (intuition (subst; auto || congruence) || destruct_one_dec_eq).
+
   Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
 
   (* Note: If you want to get in the conclusion
@@ -228,41 +249,31 @@ Ltac set_solver E :=
     induction e; introv F Ex U Ev.
     - repeat (inversionss; try destruct_one_match_hyp).
       exists 1%nat (put initialL resVar res).
-      split; state_calc.
+      split; state_calc var (word w).
     - repeat (inversionss; try destruct_one_match_hyp).
       exists 1%nat (put initialL resVar res). repeat split.
       + simpl. unfold extends in Ex. apply Ex in H0. rewrite H0. simpl. reflexivity.
-      + rewrite get_put_same. symmetry. assumption.
+      + state_calc var (word w).
     - repeat (inversionss; try destruct_one_match_hyp).
+      pose_flatten_var_ineqs.
       specialize (IHe1 _ _ _ _ _ _ w0 E Ex).
       specializes IHe1. {
-        repeat match goal with
-        | H : _  |- _ => apply flattenExpr_modVars_spec in H
-        end.
         clear IHe2.
-        state_calc.
+        state_calc var (word w).
       }
-      assumption.
+      { assumption. }
       destruct IHe1 as [fuel1 [midL [Ev1 G1]]].
+      progress pose_flatten_var_ineqs.
       specialize (IHe2 _ _ _ _ initialH midL w1 E0).
       specializes IHe2.
-      { apply flattenExpr_modVars_spec in E.
-        apply flattenExpr_modVars_spec in E0.
-        pose proof (FlatImp.modVarsSound _ _ _ _ Ev1) as D1.
-        (* TODO make this work without this hint *)
-        refine (compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef
-            _ _ _ _ Ex _ _).
-        2: eapply compiler.StateCalculusTacticTest.only_differ_subset.
-        3: eassumption. 2: eassumption.
-        state_calc. }
-      { pose proof (flattenExpr_freshVarUsage _ _ _ _ _ E).
-        pose proof (flattenExpr_freshVarUsage _ _ _ _ _ E0).
-        state_calc. }
+      { state_calc var (word w). }
+      { state_calc var (word w). }
       { assumption. }
       destruct IHe2 as [fuel2 [preFinalL [Ev2 G2]]].
       remember (Datatypes.S (Datatypes.S (fuel1 + fuel2))) as f0.
       remember (Datatypes.S (fuel1 + fuel2)) as f.
       exists (Datatypes.S f0) (put preFinalL resVar (Op.eval_binop op w0 w1)).
+      pose_flatten_var_ineqs.
       split.
       + simpl. erewrite increase_fuel_still_Success; [| |eassumption]; [|omega].
         apply increase_fuel_still_Success with (fuel1 := f0); [omega|].
@@ -270,14 +281,7 @@ Ltac set_solver E :=
         erewrite (increase_fuel_still_Success _ _ midL); [| |eassumption]; [|omega].
         subst f. simpl.
         assert (get preFinalL v = Some w0) as G1'. {
-          pose proof (flattenExpr_freshVarUsage _ _ _ _ _ E).
-          pose proof (flattenExpr_freshVarUsage _ _ _ _ _ E0).
-          pose proof (FlatImp.modVarsSound _ _ _ _ Ev2) as D2.
-          eapply compiler.StateCalculusTacticTest.only_differ_get_unchanged; try eassumption.
-          pose proof (flattenExpr_modifies_resVar _ _ _ _ _ E).
-          pose proof (flattenExpr_modVars_spec _ _ _ _ _ E).
-          pose proof (flattenExpr_modVars_spec _ _ _ _ _ E0).
-          set_solver var.
+          state_calc var (word w).
         }
         rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
       + apply get_put_same.
