@@ -11,8 +11,6 @@ Require Import compiler.NameGen.
 (* TODO automate such that we don't to Require this, and not always specify which lemma to use *)
 Require compiler.StateCalculusTacticTest.
 
-Open Scope Z.
-
 Section FlattenExpr.
 
   Context {w: nat}. (* bit width *)
@@ -252,6 +250,16 @@ Section FlattenExpr.
       + apply get_put_same.
   Qed.
 
+  Ltac fuel_increasing_rewrite :=
+    match goal with
+    | Ev: FlatImp.eval_stmt ?Fuel1 ?initial ?s = ?final
+      |- context [FlatImp.eval_stmt ?Fuel2 ?initial ?s]
+      => let IE := fresh in assert (Fuel1 <= Fuel2) as IE by omega;
+         apply (increase_fuel_still_Success _ _ _ _ _ IE) in Ev;
+         clear IE;
+         rewrite Ev
+    end.
+
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' initialH finalH initialL,
     flattenStmt ngs sH = (sL, ngs') ->
@@ -300,19 +308,15 @@ Section FlattenExpr.
           set_solver var.
         * exact EvThen.
         * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-          pose_flatten_var_ineqs.
-          exists (Datatypes.S (fuelLcond + (Datatypes.S fuelL))). eexists.
+          exists (S (S (fuelLcond + fuelL))). eexists.
           refine (conj _ Ex2).
+          remember (S (fuelLcond + fuelL)) as tempFuel.
           simpl.
-          pose proof increase_fuel_still_Success as P.
-          assert (fuelLcond <= fuelLcond + (Datatypes.S fuelL))%nat as IE by omega.
-          specializes P. { eapply IE. } { eapply Evcond. }
-          rewrite P. clear IE P.
-          pose proof increase_fuel_still_Success as P.
-          assert (Datatypes.S fuelL <= fuelLcond + (Datatypes.S fuelL))%nat as IE by omega.
-          eapply (P _ _ _ _ _ IE). clear IE P.
+          fuel_increasing_rewrite.
+          subst tempFuel.
           simpl. rewrite G. simpl. destruct_one_match; [contradiction|].
-          exact Evbranch.
+          fuel_increasing_rewrite.
+          reflexivity.
       + specialize (IHfuelH sH2 sL2 _ _ initialH finalH initial2L E1).
         specializes IHfuelH.
         * state_calc.
@@ -321,20 +325,57 @@ Section FlattenExpr.
           set_solver var.
         * exact EvElse.
         * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-          pose_flatten_var_ineqs.
-          exists (Datatypes.S (fuelLcond + (Datatypes.S fuelL))). eexists.
+          exists (S (S (fuelLcond + fuelL))). eexists.
           refine (conj _ Ex2).
+          remember (S (fuelLcond + fuelL)) as tempFuel.
           simpl.
-          pose proof increase_fuel_still_Success as P.
-          assert (fuelLcond <= fuelLcond + (Datatypes.S fuelL))%nat as IE by omega.
-          specializes P. { eapply IE. } { eapply Evcond. }
-          rewrite P. clear IE P.
-          pose proof increase_fuel_still_Success as P.
-          assert (Datatypes.S fuelL <= fuelLcond + (Datatypes.S fuelL))%nat as IE by omega.
-          eapply (P _ _ _ _ _ IE). clear IE P.
+          fuel_increasing_rewrite.
+          subst tempFuel.
           simpl. rewrite G. simpl. destruct_one_match; [|contradiction].
-          exact Evbranch.
-    - admit. (* TODO while *)
+          fuel_increasing_rewrite.
+          reflexivity.
+    - apply ExprImp.invert_eval_SWhile in Ev.
+      simpl in Di.
+      pose proof F as F0.
+      simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
+      rename s into sCond, s0 into sBody.
+      destruct Ev as [cv [EvcondH Ev]].
+      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ cv E Ex) as P.
+      specializes P; [eassumption|eassumption|].
+      destruct P as [fuelLcond [initial2L [EvcondL G]]].
+      destruct Ev as [Ev | Ev]; pose_flatten_var_ineqs.
+      + destruct Ev as [Ne [middleH [Ev1H Ev2H]]].
+        pose proof IHfuelH as IHfuelH2.
+        specialize (IHfuelH sH sBody n _ initialH middleH initial2L E0).
+        specializes IHfuelH.
+        { state_calc. }
+        { state_calc. }
+        { set_solver var. }
+        { exact Ev1H. }
+        destruct IHfuelH as [fuelL1 [middleL [EvL1 Ex1]]].
+        rename IHfuelH2 into IHfuelH.
+        pose_flatten_var_ineqs.
+        specializes IHfuelH.
+        5: exact Ev2H. 1: exact F0.
+        { instantiate (1 := middleL). state_calc. }
+        { pose proof (ExprImp.modVarsSound _ _ _ _ Ev1H) as D1.
+          state_calc. }
+        { set_solver var. }
+        destruct IHfuelH as [fuelL2 [finalL [EvL2 Ex2]]].
+        exists (S (fuelL1 + fuelL2 + fuelLcond)) finalL.
+        refine (conj _ Ex2).
+        simpl.
+        fuel_increasing_rewrite.
+        rewrite G. simpl. destruct_one_match; [contradiction|].
+        fuel_increasing_rewrite.
+        fuel_increasing_rewrite.
+        reflexivity.
+      + destruct Ev as [? ?]. subst.
+        exists (S fuelLcond) initial2L.
+        split; [|state_calc].
+        simpl.
+        fuel_increasing_rewrite.
+        rewrite G. simpl. destruct_one_match; [|contradiction]. reflexivity.
     - apply ExprImp.invert_eval_SSeq in Ev.
       destruct Ev as [middleH [Ev1 Ev2]].
       simpl in F. do 2 destruct_one_match_hyp. inversions F.
@@ -347,17 +388,18 @@ Section FlattenExpr.
       rename IHfuelH2 into IHfuelH.
       rename s into sL1, s0 into sL2.
       pose_flatten_var_ineqs.
+      simpl in Di.
+      pose proof (ExprImp.modVarsSound _ _ _ _ Ev1) as D1.
       specialize (IHfuelH sH2 sL2 _ _ middleH finalH middleL E0).
       specializes IHfuelH.
       1: exact Ex1. 3: exact Ev2.
-      { admit. (* TODO *) }
-      { pose proof (ExprImp.modVarsSound _ _ _ _ Ev1) as D1.
-        pose_flatten_var_ineqs.
-        clear -D1 Di U. (* tricky, need to relate modVars range to "fresh" range *)
-        admit. }
-      
-      admit. (* TODO seq *)
-
+      { state_calc. }
+      { state_calc. }
+      destruct IHfuelH as [fuelL2 [finalL [EvL2 Ex2]]].
+      exists (S (fuelL1 + fuelL2)) finalL.
+      refine (conj _ Ex2).
+      simpl.
+      fuel_increasing_rewrite. fuel_increasing_rewrite. reflexivity.
     - apply ExprImp.invert_eval_SSkip in Ev. subst finalH.
       simpl in F. inversions F.
       exists 1%nat initialL. auto.
