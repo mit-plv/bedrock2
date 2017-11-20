@@ -8,9 +8,6 @@ Require Import compiler.Axioms.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 
-(* TODO automate such that we don't to Require this, and not always specify which lemma to use *)
-Require compiler.StateCalculusTacticTest.
-
 Section FlattenExpr.
 
   Context {w: nat}. (* bit width *)
@@ -285,12 +282,9 @@ Section FlattenExpr.
           eapply increase_fuel_still_Success; [|eassumption]. omega.
         }
         rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
-      + clear IHfuelH. apply compiler.StateCalculusTacticTest.extends_put_same.
-        eapply compiler.StateCalculusTacticTest.extends_if_only_differ_in_undef;
-        [ eassumption | eassumption | ].
+      + clear IHfuelH.
         pose_flatten_var_ineqs.
-        eapply StateCalculusTacticTest.only_differ_subset; [|eassumption].
-        set_solver var.
+        state_calc.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       apply ExprImp.invert_eval_SIf in Ev.
       destruct Ev as [cv [Evc Ev]].
