@@ -1,106 +1,91 @@
 Require Import bbv.Word.
 Require Import compiler.StateMonad.
 Require Import compiler.Decidable.
-Require Export Coq.omega.Omega.
+Require Import compiler.zcast.
 
-(* allows inifinite number of registers *)
-Definition Register := nat.
+Section Riscv.
+  Context {w: nat}. (* bit width *)
+  Context {Register: Set}. (* register name *)
 
-Class RiscvState(Val: Type)(M: Type -> Type) := mkRiscvState {
-  getRegister: Register -> M Val;
-  setRegister: Register -> Val -> M unit;
-  loadByte: Val -> M (word 8);
-  loadHalf: Val -> M (word 16);
-  loadWord: Val -> M (word 32);
-  loadDouble: Val -> M (word 64);
-  storeByte: word 8 -> Val -> M unit;
-  storeHalf: word 16 -> Val -> M unit;
-  storeWord: word 32 -> Val -> M unit;
-  storeDouble: word 64 -> Val -> M unit;
-  (* control and status registers: read-only for now *)
-  loadCSR: nat -> M (word 32);
-  getPC: M (word 32);
-  setPC: word 32 -> M unit;
-  (* TODO why is "step" here? *)
-}.
+  Inductive Instruction: Set :=
+    | Addi(rd: Register)(rs1: Register)(imm12: word 12): Instruction
+    | Add(rd: Register)(rs1: Register)(rs2: Register): Instruction
+    | Sub(rd: Register)(rs1: Register)(rs2: Register): Instruction
+    | Mul(rd: Register)(rs1: Register)(rs2: Register): Instruction
+    | And(rd: Register)(rs1: Register)(rs2: Register): Instruction
+    | Beq(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
+    | Bne(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
+    | Blt(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
+    | Bge(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
+    | Jal(rd: Register)(jimm20: word 20): Instruction.
 
-Inductive Instruction: Set :=
-  | Andi(rd: Register)(rs1: Register)(imm12: word 12): Instruction
-  | Add(rd: Register)(rs1: Register)(rs2: Register): Instruction
-  | Sub(rd: Register)(rs1: Register)(rs2: Register): Instruction
-  | Mul(rd: Register)(rs1: Register)(rs2: Register): Instruction
-  | Beq(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
-  | Blt(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction.
+  Class RiscvState(M: Type -> Type) := mkRiscvState {
+    getRegister: Register -> M (word w);
+    setRegister: Register -> (word w) -> M unit;
+    loadInst: (word w) -> M Instruction; (* decode already included *)
+    loadWord: (word w) -> M (word w);
+    storeWord: (word w) -> (word w) -> M unit;
+    getPC: M (word w);
+    setPC: word w -> M unit;
+    step: M unit;
+  }.
 
-Definition t: word 4 := $3.
+  Definition execute{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}(i: Instruction): M unit :=
+    match i with
+    | Addi rd rs1 imm12 =>
+        x <- getRegister rs1;
+        setRegister rd (x ^+ (zcast w imm12))
+    | Add rd rs1 rs2 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        setRegister rd (x ^+ y)
+    | Sub rd rs1 rs2 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        setRegister rd (x ^- y)
+    | Mul rd rs1 rs2 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        setRegister rd (x ^* y)
+    | And rd rs1 rs2 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        setRegister rd (x ^& y)
+    | Beq rs1 rs2 sbimm12 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        pc <- getPC;
+        if weq x y then (setPC (pc ^+ (zcast w sbimm12))) else Return tt
+    | Bne rs1 rs2 sbimm12 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        pc <- getPC;
+        if weq x y then Return tt else (setPC (pc ^+ (zcast w sbimm12)))
+    | Blt rs1 rs2 sbimm12 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        pc <- getPC;
+        if wlt_dec x y then (setPC (pc ^+ (zcast w sbimm12))) else Return tt
+    | Bge rs1 rs2 sbimm12 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        pc <- getPC;
+        if wlt_dec x y then Return tt else (setPC (pc ^+ (zcast w sbimm12)))
+    | Jal rd jimm20 =>
+        pc <- getPC;
+        setRegister rd (pc ^+ $4);;
+        setPC (pc ^+ (zcast w jimm20))
+    end.
 
-Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
-  destruct (Nat.compare sz sz') eqn: E.
-  - apply nat_compare_eq in E. rewrite E in n. exact n.
-  - apply nat_compare_Lt_lt in E.
-Abort. (*
-nat_compare_Gt_gt
-forall n m : nat, (n ?= m) = Gt -> n > m
-nat_compare_Lt_lt
-forall n m : nat, (n ?= m) = Lt -> n < m
-nat_compare_eq
-*)
+  Definition run{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}: nat -> M unit :=
+    fix rec(nSteps: nat) := match nSteps with
+    | O => Return tt
+    | S m =>
+        pc <- getPC;
+        inst <- loadInst pc;
+        setPC (pc ^+ $4);;
+        execute inst;;
+        step
+    end.
 
-(* TODO how to define such a size cast function properly? *)
-Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
-  destruct (dec (sz <= sz')).
-  - replace sz' with (sz + (sz' - sz)) by (apply le_plus_minus_r; assumption).
-    exact (zext n _).
-  - replace sz with ((sz - sz') + sz') in n.
-    exact (split2 _ _ n).
-    apply Nat.sub_add.
-    apply Nat.lt_nge in n0.
-    apply Nat.lt_le_incl. assumption.
-Defined.
-
-Eval cbv in (zcast 1 t). (* TODO why does this not simplify properly? *)
-
-(*
-Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
-  destruct (dec (sz < sz')).
-  - replace sz' with (sz + (sz' - sz)) by omega.
-    exact (zext n _).
-  - replace sz with ((sz - sz') + sz') in n by omega.
-    exact (split2 _ _ n).
-Defined.
-too expensive to calculate
-*)
-
-(* less flexible than inlining it because if can act on any 2-constructor type
-Definition when{M: Type -> Type}{MM: Monad M}(cond: bool)(action: M unit): M unit :=
-  if cond then action else Return tt. *)
-
-Definition execute{w: nat}{M: Type -> Type}{MM: Monad M}{RVS: RiscvState (word w) M}
-  (i: Instruction): M unit
-:= match i with
-  | Andi rd rs1 imm12 =>
-      x <- getRegister rs1;
-      setRegister rd (x ^+ (zcast w imm12))
-  | Add rd rs1 rs2 =>
-      x <- getRegister rs1;
-      y <- getRegister rs2;
-      setRegister rd (x ^+ y)
-  | Sub rd rs1 rs2 =>
-      x <- getRegister rs1;
-      y <- getRegister rs2;
-      setRegister rd (x ^- y)
-  | Mul rd rs1 rs2 =>
-      x <- getRegister rs1;
-      y <- getRegister rs2;
-      setRegister rd (x ^* y)
-  | Beq rs1 rs2 sbimm12 =>
-      x <- getRegister rs1;
-      y <- getRegister rs2;
-      pc <- getPC;
-      if weq x y then (setPC (pc ^+ (zcast 32 sbimm12))) else Return tt
-  | Blt rs1 rs2 sbimm12 =>
-      x <- getRegister rs1;
-      y <- getRegister rs2;
-      pc <- getPC;
-      if wlt_dec x y then (setPC (pc ^+ (zcast 32 sbimm12))) else Return tt
-  end.
+End Riscv.
