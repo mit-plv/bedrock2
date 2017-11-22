@@ -193,6 +193,16 @@ Section FlattenExpr.
 
   Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
 
+  Ltac fuel_increasing_rewrite :=
+    match goal with
+    | Ev: FlatImp.eval_stmt ?Fuel1 ?initial ?s = ?final
+      |- context [FlatImp.eval_stmt ?Fuel2 ?initial ?s]
+      => let IE := fresh in assert (Fuel1 <= Fuel2) as IE by omega;
+         apply (increase_fuel_still_Success _ _ _ _ _ IE) in Ev;
+         clear IE;
+         rewrite Ev
+    end.
+
   (* Note: If you want to get in the conclusion
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
@@ -234,28 +244,15 @@ Section FlattenExpr.
       remember (Datatypes.S (fuel1 + fuel2)) as f.
       exists (Datatypes.S f0) (put preFinalL resVar (Op.eval_binop op w0 w1)).
       pose_flatten_var_ineqs.
-      split.
-      + simpl. erewrite increase_fuel_still_Success; [| |eassumption]; [|omega].
-        apply increase_fuel_still_Success with (fuel1 := f0); [omega|].
-        subst f0. simpl.
-        erewrite (increase_fuel_still_Success _ _ midL); [| |eassumption]; [|omega].
-        subst f. simpl.
-        assert (get preFinalL v = Some w0) as G1'. {
-          state_calc.
-        }
-        rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
-      + apply get_put_same.
+      split; [|apply get_put_same].
+      simpl. fuel_increasing_rewrite.
+      subst f0. simpl. fuel_increasing_rewrite.
+      subst f. simpl.
+      assert (get preFinalL v = Some w0) as G1'. {
+        state_calc.
+      }
+      rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
   Qed.
-
-  Ltac fuel_increasing_rewrite :=
-    match goal with
-    | Ev: FlatImp.eval_stmt ?Fuel1 ?initial ?s = ?final
-      |- context [FlatImp.eval_stmt ?Fuel2 ?initial ?s]
-      => let IE := fresh in assert (Fuel1 <= Fuel2) as IE by omega;
-         apply (increase_fuel_still_Success _ _ _ _ _ IE) in Ev;
-         clear IE;
-         rewrite Ev
-    end.
 
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' initialH finalH initialL,
