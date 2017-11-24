@@ -23,11 +23,12 @@ Section Riscv.
     getRegister: Register -> M (word w);
     setRegister: Register -> (word w) -> M unit;
     loadInst: (word w) -> M Instruction; (* decode already included *)
+    (* not yet:
     loadWord: (word w) -> M (word w);
     storeWord: (word w) -> (word w) -> M unit;
+    *)
     getPC: M (word w);
     setPC: word w -> M unit;
-    step: M unit;
   }.
 
   Definition execute{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}(i: Instruction): M unit :=
@@ -84,8 +85,7 @@ Section Riscv.
         pc <- getPC;
         inst <- loadInst pc;
         setPC (pc ^+ $4);;
-        execute inst;;
-        step
+        execute inst
     end.
 
 End Riscv.
