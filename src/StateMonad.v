@@ -19,3 +19,10 @@ Definition get{S: Type}: State S S := fun (s: S) => (s, s).
 Definition gets{S A: Type}(f: S -> A): State S A := fun (s: S) => (f s, s).
 Definition put{S: Type}(s: S): State S unit := fun _ => (tt, s).
 
+
+(* Evaluate state computation with given initial state, discard final state, return final answer *)
+Definition evalState{S A: Type}(m: State S A)(initial: S): A := fst (m initial).
+
+(* Evaluate state computation with given initial state, discard final answer, return final state *)
+Definition execState{S A: Type}(m: State S A)(initial: S): S := snd (m initial).
+

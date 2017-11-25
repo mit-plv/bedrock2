@@ -6,7 +6,9 @@ Require Import compiler.zcast.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.Op.
+Require Import compiler.ResMonad.
 Require Import compiler.Riscv.
+Require Import compiler.Machine.
 
 Section FlatToRiscv.
 
@@ -49,5 +51,21 @@ Section FlatToRiscv.
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     end.
+
+  Definition containsProgram(m: RiscvMachine)(program: list (@Instruction var))(offset: word w)
+    := forall i inst, nth_error program i = Some inst -> m.(instructionMem) (offset ^+ $i) = inst.
+
+  Definition containsState(m: RiscvMachine)(s: state)
+    := forall x v, get s x = Some v -> m.(registers) x = v.
+
+  Definition containsProgramAndState(m: RiscvMachine)(program: list (@Instruction var))(s: state)
+    := containsProgram m program m.(pc) /\ containsState m s.
+
+  Lemma compile_stmt_correct_aux: forall s insts fuelH initialH finalH initialL,
+    compile_stmt s = insts ->
+    eval_stmt fuelH initialH s = Success finalH ->
+    containsProgramAndState initialL insts initialH ->
+    exists fuelL, fuelL = 0 /\ False.
+  Abort.
 
 End FlatToRiscv.

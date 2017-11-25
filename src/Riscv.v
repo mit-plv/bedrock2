@@ -20,6 +20,7 @@ Section Riscv.
     | Jal(rd: Register)(jimm20: word 20): Instruction.
 
   Class RiscvState(M: Type -> Type) := mkRiscvState {
+    R0: Register;
     getRegister: Register -> M (word w);
     setRegister: Register -> (word w) -> M unit;
     loadInst: (word w) -> M Instruction; (* decode already included *)
@@ -30,6 +31,8 @@ Section Riscv.
     getPC: M (word w);
     setPC: word w -> M unit;
   }.
+
+  Definition InfiniteJal{M: Type -> Type}{RVS: RiscvState M} := Jal R0 (wneg $4).
 
   Definition execute{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}(i: Instruction): M unit :=
     match i with

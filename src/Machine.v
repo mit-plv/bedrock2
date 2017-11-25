@@ -1,12 +1,15 @@
+Require Import Coq.Lists.List.
 Require Import bbv.Word.
 Require Import compiler.StateMonad.
 Require Import compiler.Decidable.
 Require Import compiler.Riscv.
 
+
 Section Machine.
 
   Context {w: nat}.
   Context {Register: Set}.
+  Context {Reg0: Register}.
   Context {dec_Register: DecidableEq Register}.
 
   Record RiscvMachine := mkRiscvMachine {
@@ -17,6 +20,7 @@ Section Machine.
 
   Instance IsRiscvMachine: @RiscvState w Register (State RiscvMachine) :=
   {|
+      R0 := Reg0;
       getRegister := fun (reg: Register) =>
         machine <- get;
         Return (machine.(registers) reg);
@@ -40,6 +44,10 @@ Section Machine.
 
 End Machine.
 
+(* needed because it's not exported outside the section by default *)
+Existing Instance IsRiscvMachine.
+
+
 Module MachineTest.
 
   Definition m1: @RiscvMachine 4 nat := {|
@@ -48,6 +56,14 @@ Module MachineTest.
     pc := $33
   |}.
 
-  (* TODO usability test *)
+  Definition myInst := (@IsRiscvMachine 4 nat 0 _).
+  Existing Instance myInst.
+
+  Definition prog1: State (@RiscvMachine 4 nat) (word 4) :=
+    x <- getRegister 2;
+    setRegister 2 (x ^+ $3);;
+    getRegister 4.
+
+  Goal evalState prog1 m1 = $6. reflexivity. Qed.
 
 End MachineTest.
