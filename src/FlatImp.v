@@ -260,19 +260,6 @@ rewrite_get_put.
     intro s. induction s; simpl; unfold singleton_set; state_calc var (word w).
   Qed.
 
-  Ltac invert_eval_stmt :=
-    match goal with
-    | E: eval_stmt (Datatypes.S ?fuel) _ ?s = Success _ |- _ =>
-      destruct s;
-      [ apply invert_eval_SLit in E
-      | apply invert_eval_SOp in E; destruct E as [? [? [? [? ?]]]]
-      | apply invert_eval_SSet in E; destruct E as [? [? ?]]
-      | apply invert_eval_SIf in E; destruct E as [? [? [[? ?]|[? ?]]]]
-      | apply invert_eval_SLoop in E; destruct E as [[? ?] | [? [? [? [? [? [? [? ?]]]]]]]]
-      | apply invert_eval_SSeq in E; destruct E as [? [? ?]]
-      | apply invert_eval_SSkip in E ]
-    end.
-
 (* not needed at the moment
   Lemma eval_stmt_swap_state: forall fuel initial1 initial2 final1 s,
     eval_stmt fuel initial1 s = Success final1 ->
@@ -514,6 +501,20 @@ rewrite_get_put.
 *)
 
 End FlatImp.
+
+Ltac invert_eval_stmt :=
+  match goal with
+  | E: eval_stmt (Datatypes.S ?fuel) _ ?s = Success _ |- _ =>
+    destruct s;
+    [ apply invert_eval_SLit in E
+    | apply invert_eval_SOp in E; destruct E as [? [? [? [? ?]]]]
+    | apply invert_eval_SSet in E; destruct E as [? [? ?]]
+    | apply invert_eval_SIf in E; destruct E as [? [? [[? ?]|[? ?]]]]
+    | apply invert_eval_SLoop in E; destruct E as [[? ?] | [? [? [? [? [? [? [? ?]]]]]]]]
+    | apply invert_eval_SSeq in E; destruct E as [? [? ?]]
+    | apply invert_eval_SSkip in E ]
+  end.
+
 
 Module TestFlatImp.
 

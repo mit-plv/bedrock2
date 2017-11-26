@@ -88,7 +88,8 @@ Section Riscv.
         pc <- getPC;
         inst <- loadInst pc;
         setPC (pc ^+ $4);;
-        execute inst
+        execute inst;;
+        rec m
     end.
 
 End Riscv.

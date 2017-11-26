@@ -28,7 +28,7 @@ Section Machine.
         machine <- get;
         match machine with
         | mkRiscvMachine imem regs pc =>
-            put (mkRiscvMachine imem (fun reg2 => if dec (reg2 = reg) then v else regs reg2) pc)
+            put (mkRiscvMachine imem (fun reg2 => if dec (reg = reg2) then v else regs reg2) pc)
         end;
       loadInst := fun (addr: word w) =>
         im <- gets instructionMem;
