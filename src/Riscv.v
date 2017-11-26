@@ -81,6 +81,28 @@ Section Riscv.
         setPC (pc ^+ (zcast w jimm20))
     end.
 
+  Definition run1{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}: M unit :=
+    pc <- getPC;
+    inst <- loadInst pc;
+    setPC (pc ^+ $4);;
+    execute inst.
+
+  Definition multiApply{T: Type}(f: T -> T)(init: T): nat -> T :=
+    fix rec(n: nat) := match n with
+    | O => init
+    | S m => f (rec m)
+    end.
+
+  Definition power_func{T: Type}(f: T -> T): nat -> (T -> T) :=
+    fix rec(n: nat) := match n with
+    | O => fun x => x
+    | S m => fun x => f ((rec m) x)
+    end.
+
+  Definition run{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}: nat -> M unit :=
+    multiApply (fun m => run1 ;; m) (Return tt).
+
+  (*
   Definition run{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}: nat -> M unit :=
     fix rec(nSteps: nat) := match nSteps with
     | O => Return tt
@@ -91,5 +113,5 @@ Section Riscv.
         execute inst;;
         rec m
     end.
-
+  *)
 End Riscv.

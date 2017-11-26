@@ -135,14 +135,52 @@ Section FlatToRiscv.
     t = (a, b) -> a = fst t /\ b = snd t.
   Proof. intros. destruct t. inversionss. auto. Qed.
 
+  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
+  Inductive runsToSatisfying(initial: @RiscvMachine w var)(P: @RiscvMachine w var -> Prop): Prop :=
+    | runsToDone:
+       P initial ->
+       runsToSatisfying initial P
+    | runsToStep:
+       runsToSatisfying (execState run1 initial) P ->
+       runsToSatisfying initial P.
+
+(*
+  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
+  Inductive runsToSatisfying(P: @RiscvMachine w var -> Prop)(initial: @RiscvMachine w var): Prop :=
+    | runsToDone:
+       P initial ->
+       runsToSatisfying P initial
+    | runsToStep:
+       runsToSatisfying P (execState run1 initial) ->
+       runsToSatisfying P initial.
+
+  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
+  Inductive runsToSatisfying(P: @RiscvMachine w var -> Prop):
+    forall (initial: @RiscvMachine w var), Prop :=
+    | runsToDone: forall initial,
+       P initial ->
+       runsToSatisfying P initial
+    | runsToStep: forall initial, 
+       runsToSatisfying P (execState run1 initial) ->
+       runsToSatisfying P initial.
+
+  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
+  Inductive runsToSatisfying:
+    forall (initial: @RiscvMachine w var) (P: @RiscvMachine w var -> Type), Type :=
+    | runsToDone: forall initial P,
+       P initial ->
+       runsToSatisfying initial P
+    | runsToStep: forall initial P, 
+       runsToSatisfying (execState run1 initial) P ->
+       runsToSatisfying initial P.
+*)
+
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL,
     compile_stmt s = insts ->
     eval_stmt fuelH initialH s = Success finalH ->
     containsProgram initialL insts initialL.(pc) ->
     containsState initialL initialH ->
-    exists (fuelL: nat) (finalL: RiscvMachine),
-      execState (run fuelL) initialL = finalL /\
-      containsState finalL finalH.
+    runsToSatisfying initialL (fun finalL => containsState finalL finalH).
   Proof.
     induction fuelH; [intros; discriminate |].
     introv C EvH Cp Cs.
@@ -150,53 +188,52 @@ Section FlatToRiscv.
     - subst.
       apply containsProgram_cons_inv in Cp. apply proj1 in Cp.
       destruct initialL as [initialProg initialRegs initialPc].
-      exists 1. eexists. simpl.
-      split.
-      + cbv [execState StateMonad.put execute instructionMem registers pc].
-        simpl in Cp.
-        rewrite Cp. simpl. reflexivity.
-      + eapply containsState_put; [eassumption|].
-        (* TODO holds if we add the right assumptions *) admit.
+      apply runsToStep. apply runsToDone.
+      cbv [execState run1 StateMonad.put execute instructionMem registers pc].
+      simpl.
+      simpl in Cp.
+      rewrite Cp. simpl.
+      eapply containsState_put; [eassumption|].
+      (* TODO holds if we add the right assumptions *) admit.
     - simpl in C. subst.
       destruct initialL as [initialProg initialRegs initialPc].
       simpl in Cp.
+      pose proof Cs as Cs'.
       unfold containsState in Cs. simpl in Cs.
       rename H into Gy, H0 into Gz. apply Cs in Gy. apply Cs in Gz.
       subst x0 x1.
-      destruct op;
-      lazymatch goal with
-      | Cp: containsProgram ?s ?p ?PC |- _ =>
-        let p' := eval simpl in p in
-        change (containsProgram s p' PC) in Cp;
-        let l := eval cbv in (length p') in exists l;
-        eexists; (split;
-        [ cbv [run execState StateMonad.put execute instructionMem registers 
+      apply runsToStep.
+      cbv [run1 execState StateMonad.put execute instructionMem registers 
                pc getPC loadInst setPC getRegister setRegister myRiscvMachine IsRiscvMachine gets
-               StateMonad.get Return Bind State_Monad ];
-          repeat (
-            apply containsProgram_cons_inv in Cp;
-            let Cp' := fresh Cp in 
-            destruct Cp as [Cp' Cp];
-            simpl in Cp'
-          );
-          repeat match goal with
-          | E: ?t = ?rhs |- context [?t] => rewrite E
-          end;
-          simpl;
-          lazymatch goal with
-          | |- mkRiscvMachine _ _ _ = _ => reflexivity
-          | |- _ => idtac
-          end
-        | try (unify l 1; eapply containsState_put; [eassumption|reflexivity]) ])
-      end.
-      { assert (initialRegs R0 ^+ initialRegs R0 = $0) as ER0 by admit. (* TODO *)
+               StateMonad.get Return Bind State_Monad ].
+      destruct op;
+      repeat (
+        apply containsProgram_cons_inv in Cp;
+        let Cp' := fresh Cp in 
+        destruct Cp as [Cp' Cp];
+        simpl in Cp'
+      );
+      repeat match goal with
+      | E: ?t = ?rhs |- context [?t] => rewrite E
+      end;
+      simpl;
+      try (apply runsToDone; eapply containsState_put; [eassumption|reflexivity]).
+      + apply runsToStep.
+        cbv [run1 execState StateMonad.put execute instructionMem registers 
+               pc getPC loadInst setPC getRegister setRegister myRiscvMachine IsRiscvMachine gets
+               StateMonad.get Return Bind State_Monad ].
+        rewrite Cp1. simpl.
+        assert (initialRegs R0 ^+ initialRegs R0 = $0) as ER0 by admit. (* TODO *)
         rewrite ER0.
         match goal with
         | |- context [weq ?a ?b] => destruct (weq a b) eqn: E
         end.
-        - rewrite Cp2. simpl. reflexivity.
-        - (* problem: here we should only have made 2 steps instead of 3 *)
-
+        * apply runsToStep.
+          cbv [run1 execState StateMonad.put execute instructionMem registers 
+               pc getPC loadInst setPC getRegister setRegister myRiscvMachine IsRiscvMachine gets
+               StateMonad.get Return Bind State_Monad ]. simpl.
+          rewrite Cp2. simpl.
+          apply runsToDone.
 
   Abort.
 
