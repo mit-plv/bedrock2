@@ -336,19 +336,17 @@ Section FlattenExpr.
       destruct P as [fuelLcond [initial2L [EvcondL G]]].
       destruct Ev as [Ev | Ev]; pose_flatten_var_ineqs.
       + destruct Ev as [Ne [middleH [Ev1H Ev2H]]].
-        pose proof IHfuelH as IHfuelH2.
-        specialize (IHfuelH sH sBody n _ initialH middleH initial2L E0).
-        specializes IHfuelH.
+        specialize IHfuelH with (1 := E0) (5 := Ev1H) as IH.
+        specialize (IH initial2L).
+        specializes IH.
         { state_calc. }
         { state_calc. }
         { set_solver var. }
-        { exact Ev1H. }
-        destruct IHfuelH as [fuelL1 [middleL [EvL1 Ex1]]].
-        rename IHfuelH2 into IHfuelH.
+        destruct IH as [fuelL1 [middleL [EvL1 Ex1]]].
         pose_flatten_var_ineqs.
+        specialize IHfuelH with (initialL := middleL) (1 := F0) (5 := Ev2H).
         specializes IHfuelH.
-        5: exact Ev2H. 1: exact F0.
-        { instantiate (1 := middleL). state_calc. }
+        { state_calc. }
         { pose proof (ExprImp.modVarsSound _ _ _ _ Ev1H) as D1.
           state_calc. }
         { set_solver var. }
