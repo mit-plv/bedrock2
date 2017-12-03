@@ -15,7 +15,7 @@ COQDOC=$(COQBIN)coqdoc
 %.vo: %.v
 	$(COQC) $(COQFLAGS) $*.v 
 
-all: $(patsubst %.v,%.vo,$(wildcard src/*.v))
+all: $(patsubst %.v,%.vo,$(wildcard src/*.v src/examples/*.v))
 
 .depend depend:
 	$(COQDEP) >.depend `find $(DIRS) -name "*.v"`

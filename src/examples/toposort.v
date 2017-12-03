@@ -230,12 +230,81 @@ Print toposort5. (* this expression should hopefully be easy to reify *)
 
 Require Import compiler.Decidable.
 
+Inductive member{T: Type}: list T -> Type :=
+  | member_here: forall h t, member (h :: t)
+  | member_there: forall h t, member t -> member (h :: t).
+
+Fixpoint member_app_r{T: Type}(l1 l2: list T)(m: member l1): member (l1 ++ l2).
+  destruct l1.
+  - inversion m.
+  - destruct m.
+    + apply member_here.
+    + rewrite <- app_comm_cons. apply member_there.
+      apply member_app_r. exact m.
+Defined.
+
 (* Low-Level Gallina *)
 Section LLG.
 
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
-  
+
+  Inductive expr: list var -> nat -> Set :=
+  | EVar{n: nat}(x: var): expr [x] n
+  | ELet{n1 n2: nat}{l1 l2: list var}(x: var)(e1: expr l1 n1)(e2: expr l2 n2):
+      expr (l1 ++ (remove eq_var_dec x l2)) n2
+  | ENewArray{n: nat}{l1 l2: list var}(size: expr l1 0)(init: expr l2 n): expr (l1 ++ l2) (S n)
+  | EGet{n: nat}{l1 l2: list var}(a: expr l1 (S n))(i: expr l2 0): expr (l1 ++ l2) n
+  | EUpdate{n: nat}{l1 l2 l3: list var}(a: expr l1 (S n))(i: expr l2 0)(v: expr l3 n):
+      expr (l1 ++ l2 ++ l3) (S n)
+   (* TODO allow several updated vars *)
+  | EFor{n2 n3: nat}{l1 l2 l3: list var}(i: var)(to: expr l1 0)(updates: var)(body: expr l2 n2)
+      (rest: expr l3 n3):
+      expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3
+  .
+
+  Definition interp_type: nat -> Type :=
+    fix rec(n: nat): Type := match n with
+    | O => nat
+    | S m => list (rec m)
+    end.
+
+  Fixpoint interp_expr{n: nat}{l: list var}
+    (e: expr l n) (types: member l -> nat) (vals: forall x: member l, interp_type (types x))
+    {struct e}:
+      option (interp_type n).
+    destruct e eqn: E.
+    - set (v := vals (member_here x nil)).
+      destruct (Nat.eq_dec n (types (member_here x []))).
+      + subst n. apply Some. apply v.
+      + exact None. (* error: types list doesn't match *)
+    - set (o1 := interp_expr n1 l1 e0_1
+        (fun (m: member l1) => types (member_app_r l1 (remove eq_var_dec x l2) m))
+        (fun (m: member l1) => vals  (member_app_r l1 (remove eq_var_dec x l2) m))).
+      destruct o1 eqn: F1.
+      + rename i into f1.
+        (* etc... *)
+  Abort.
+
+  Definition interp_expr{n: nat}{l: list var}:
+    forall (e: expr l n) (types: member l -> nat) (vals: forall x: member l, interp_type (types x)),
+      option (interp_type n) :=
+  fix rec(e: expr l n) (types: member l -> nat) (vals: forall x: member l, interp_type (types x)) :=
+    match e with
+    | EVar x => None
+    | ELet x e1 e2 => None 
+    | ENewArray size init => None
+    | EGet a i => None
+    | EUpdate a i v => None
+    | EFor i to updates body rest => None
+    end.
+
+  (*
+  Inductive expr: forall (fvs: list var) (types: member fvs -> nat) (retType: nat), Set :=
+  (* how to join two possibly contradictory types envs eg in ELet ? *)
+  *)
+
+  (*
   Inductive expr: nat -> Set :=
   | EVar{n: nat}(x: var): expr n
   | ELet{n1 n2: nat}(x: var)(e1: expr n1)(e2: expr n2): expr n2
@@ -244,12 +313,6 @@ Section LLG.
   | EUpdate{n: nat}(a: expr (S n))(i: expr 0)(v: expr n): expr (S n)
   | EFor{n: nat}(i: var)(to: expr 0)(updates: var (* TODO allow several *))(body: expr n): expr n
   .
-
-  Definition interp_type: nat -> Type :=
-    fix rec(n: nat): Type := match n with
-    | O => nat
-    | S m => list (rec m)
-    end.
 
   Definition interp_expr{n: nat}: expr n -> option (interp_type n) :=
     fix rec(e: expr n) := match e with
@@ -260,7 +323,7 @@ Section LLG.
     | EUpdate a i v => None
     | EFor i to updates body => None
     end.
-  (* how to deal with binders? Actually, if e has a free variable of type T, 
+     how to deal with binders? Actually, if e has a free variable of type T, 
      the return type of interp_expr should be "option (T -> ...)" instead *)
 
 End LLG.
