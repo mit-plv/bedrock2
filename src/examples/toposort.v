@@ -228,3 +228,41 @@ Definition toposort5 := ltac:(let res := eval cbv beta delta [
 
 Print toposort5. (* this expression should hopefully be easy to reify *)
 
+Require Import compiler.Decidable.
+
+(* Low-Level Gallina *)
+Section LLG.
+
+  Context {var: Set}.
+  Context {eq_var_dec: DecidableEq var}.
+  
+  Inductive expr: nat -> Set :=
+  | EVar{n: nat}(x: var): expr n
+  | ELet{n1 n2: nat}(x: var)(e1: expr n1)(e2: expr n2): expr n2
+  | ENewArray{n: nat}(size: expr 0)(init: expr n): expr (S n)
+  | EGet{n: nat}(a: expr (S n))(i: expr 0): expr n
+  | EUpdate{n: nat}(a: expr (S n))(i: expr 0)(v: expr n): expr (S n)
+  | EFor{n: nat}(i: var)(to: expr 0)(updates: var (* TODO allow several *))(body: expr n): expr n
+  .
+
+  Definition interp_type: nat -> Type :=
+    fix rec(n: nat): Type := match n with
+    | O => nat
+    | S m => list (rec m)
+    end.
+
+  Definition interp_expr{n: nat}: expr n -> option (interp_type n) :=
+    fix rec(e: expr n) := match e with
+    | EVar x => None
+    | ELet x e1 e2 => None 
+    | ENewArray size init => None
+    | EGet a i => None
+    | EUpdate a i v => None
+    | EFor i to updates body => None
+    end.
+  (* how to deal with binders? Actually, if e has a free variable of type T, 
+     the return type of interp_expr should be "option (T -> ...)" instead *)
+
+End LLG.
+
+
