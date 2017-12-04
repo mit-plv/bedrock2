@@ -301,10 +301,10 @@ Section LLG.
   | EGet{n: nat}{l1 l2: list var}(a: expr l1 (S n))(i: expr l2 0): expr (l1 ++ l2) n
   | EUpdate{n: nat}{l1 l2 l3: list var}(a: expr l1 (S n))(i: expr l2 0)(v: expr l3 n):
       expr (l1 ++ l2 ++ l3) (S n)
-   (* TODO allow several updated vars *)
+   (* TODO allow several updated vars 
   | EFor{n2 n3: nat}{l1 l2 l3: list var}(i: var)(to: expr l1 0)(updates: var)(body: expr l2 n2)
       (rest: expr l3 n3):
-      expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3
+      expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3 *)
   .
 
   Definition interp_type: nat -> Type :=
@@ -357,50 +357,75 @@ Section LLG.
 *)
 
   Fixpoint interp_expr{n: nat}{l: list var}
-    (e: expr l n) (types: member l -> nat) (vals: forall x: member l, interp_type (types x))
+    (e: expr l n) (types: member l -> nat)
     {struct e}:
-      option (interp_type n).
+      option ((forall x: member l, interp_type (types x)) -> interp_type n).
     destruct e eqn: E.
-    - simpl. exact (Some v).
-    - set (v := vals (member_here x nil)).
-      destruct (Nat.eq_dec n (types (member_here x []))).
-      + subst n. apply Some. apply v.
+    - simpl. apply Some. intro vals. exact v.
+    - destruct (Nat.eq_dec n (types (member_here x []))).
+      + subst n. apply Some.
+        intro vals. set (v := vals (member_here x nil)).
+        apply v.
       + exact None. (* error: types list doesn't match *)
     - set (o1 := interp_expr n1 l1 e0_1
-        (fun (m: member l1) => types (member_app_r l1 (remove eq_var_dec x l2) m))
-        (fun (m: member l1) => vals  (member_app_r l1 (remove eq_var_dec x l2) m))).
-      destruct o1 as [f1|] eqn: F1.
+        (fun (m: member l1) => types (member_app_r l1 (remove eq_var_dec x l2) m))).
+      destruct o1 as [f1|].
       + set (types' := (fun m => types (member_app_l l1 (remove eq_var_dec x l2) m))).
         set (types'' := fill_in_type x n1 l2 types').
         set (o2 := interp_expr n2 l2 e0_2 types'').
-        set (vals' := (fun m => vals (member_app_l l1 (remove eq_var_dec x l2) m))).
-        replace (forall m : member (remove eq_var_dec x l2),
-                 interp_type (types (member_app_l l1 (remove eq_var_dec x l2) m)))
-           with (forall m : member (remove eq_var_dec x l2),
-                 interp_type (types' m)) in vals'
-           by (subst types'; reflexivity).
-        subst types''.
-        set (vals'' := fill_in_val x n1 f1 l2 types' vals').
-        exact (o2 vals'').
-      + exact None.
-    - set (o := interp_expr 0 l e0 types vals).
-      simpl in o.
-      destruct o as [f|] eqn: F.
-      + exact (Some (@newArray _ _ (interp_type_IsArray n) f)).
-      + exact None.
-    - set (o1 := interp_expr _ l1 e0_1
-        (fun m => types (member_app_r l1 l2 m))
-        (fun m => vals  (member_app_r l1 l2 m))).
-      simpl in o1.
-      destruct o1 as [f1|] eqn: F1.
-      + set (o2 := interp_expr _ l2 e0_2
-        (fun m => types (member_app_l l1 l2 m))
-        (fun m => vals  (member_app_l l1 l2 m))).
-        simpl in o2.
-        destruct o2 as [f2|] eqn: F2.
-        * exact (Some (@get _ _ (interp_type_IsArray n) f1 f2)).
+        destruct o2 as [f2|].
+        * apply Some. intro vals.
+          specialize (f1 (fun (m: member l1) => vals  (member_app_r l1 (remove eq_var_dec x l2) m))).
+          set (vals' := (fun m => vals (member_app_l l1 (remove eq_var_dec x l2) m))).
+          replace (forall m : member (remove eq_var_dec x l2),
+                   interp_type (types (member_app_l l1 (remove eq_var_dec x l2) m)))
+             with (forall m : member (remove eq_var_dec x l2),
+                   interp_type (types' m)) in vals'
+             by (subst types'; reflexivity).
+          subst types''.
+          set (vals'' := fill_in_val x n1 f1 l2 types' vals').
+          exact (f2 vals'').
         * exact None.
       + exact None.
+    - set (o := interp_expr 0 l e0 types).
+      simpl in o.
+      destruct o as [f|].
+      + apply Some. intro vals.
+        specialize (f vals).
+        exact (@newArray _ _ (interp_type_IsArray n) f).
+      + exact None.
+    - set (o1 := interp_expr _ l1 e0_1 (fun m => types (member_app_r l1 l2 m))).
+      simpl in o1.
+      destruct o1 as [f1|].
+      + set (o2 := interp_expr _ l2 e0_2 (fun m => types (member_app_l l1 l2 m))).
+        simpl in o2.
+        destruct o2 as [f2|].
+        * apply Some. intro vals.
+          specialize (f1 (fun m => vals (member_app_r l1 l2 m))).
+          specialize (f2 (fun m => vals (member_app_l l1 l2 m))).
+          exact (@get _ _ (interp_type_IsArray n) f1 f2).
+        * exact None.
+      + exact None.
+    - set (o1 := interp_expr _ l1 e0_1
+        (fun m => types (member_app_13 l1 l2 l3 m))).
+      simpl in o1.
+      destruct o1 as [f1|].
+      + set (o2 := interp_expr _ l2 e0_2 (fun m => types (member_app_23 l1 l2 l3 m))).
+        simpl in o2.
+        destruct o2 as [f2|].
+        * set (o3 := interp_expr _ l3 e0_3 (fun m => types (member_app_33 l1 l2 l3 m))).
+          destruct o3 as [f3|].
+          { apply Some. intro vals.
+            specialize (f1 (fun m => vals  (member_app_13 l1 l2 l3 m))).
+            specialize (f2 (fun m => vals  (member_app_23 l1 l2 l3 m))).
+            specialize (f3 (fun m => vals  (member_app_33 l1 l2 l3 m))).
+            exact (@update _ _ (interp_type_IsArray n) f1 f2 f3). }
+          { exact None. }
+        * exact None.
+      + exact None.
+  Defined.
+
+(*
     - set (o1 := interp_expr _ l1 e0_1
         (fun m => types (member_app_13 l1 l2 l3 m))
         (fun m => vals  (member_app_13 l1 l2 l3 m))).
@@ -445,6 +470,7 @@ Section LLG.
         (* TODO the above should be run in a for loop *)
   
   Defined.
+*)
 
   (*
   Definition interp_expr{n: nat}{l: list var}:
@@ -501,7 +527,13 @@ Definition empty_types: member (@nil myvar) -> nat. intro. inversion H. Defined.
 Definition empty_vals: forall m : member (@nil myvar), interp_type (empty_types m).
   intro. inversion m. Defined.
 
-Goal forall v1 v2, Some (test1 v1 v2) = interp_expr (test1a v1 v2) empty_types empty_vals.
+Definition interp_expr'{n: nat}(e: expr (@nil myvar) n): option (interp_type n) :=
+  match interp_expr e empty_types with
+  | Some f => Some (f empty_vals)
+  | None => None
+  end.
+
+Goal forall v1 v2, Some (test1 v1 v2) = interp_expr' (test1a v1 v2).
   intros. reflexivity.
 Qed.
 
@@ -518,6 +550,6 @@ Definition test2a(i v: nat): expr (@nil myvar) 0 :=
   (ELet var_x2 (EUpdate (EVar 1 var_x1) (ELit i) (ELit v))
   (EGet (EVar 1 var_x2) (ELit i))).
 
-Goal forall i v, Some (test2 i v) = interp_expr (test2a i v) empty_types empty_vals.
+Goal forall i v, Some (test2 i v) = interp_expr' (test2a i v).
   intros. reflexivity.
 Qed.
