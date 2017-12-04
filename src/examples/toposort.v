@@ -303,6 +303,35 @@ Section LLG.
       | right NEq => types (member_remove eq_var_dec x l m NEq)
       end.
 
+  Definition fill_in_val(x: var)(t: nat)(v: interp_type t)(l: list var)
+    (R: member (remove eq_var_dec x l) -> nat)
+    (vals: forall m : member (remove eq_var_dec x l), interp_type (R m)):
+    (forall m: member l, interp_type (fill_in_type x t l R m)).
+    intro m.
+    unfold fill_in_type.
+    destruct (eq_var_dec (member_get m) x).
+    + exact v.
+    + apply (vals (member_remove eq_var_dec x l m n)).
+  Defined.
+
+(*  Definition fill_in_val{tx: nat}(x: var)(v: interp_type tx)(l: list var)
+    (R: member (remove eq_var_dec x l) -> V)
+    (vals: forall (m: member (remove eq_var_dec x l)), R m):
+    (forall (m: member l), R m). :=
+    fun m => match (eq_var_dec (member_get m) x) with
+      | left _ => t
+      | right NEq => types (member_remove eq_var_dec x l m NEq)
+      end.
+*)
+(*
+  Definition fill_in_val{V: Type}(x: var)(v: V)(l: list var)(R: member (remove eq_var_dec x l) -> V)
+    (vals: forall (m: member (remove eq_var_dec x l)), R m):
+    (forall (m: member l), R m). :=
+    fun m => match (eq_var_dec (member_get m) x) with
+      | left _ => t
+      | right NEq => types (member_remove eq_var_dec x l m NEq)
+      end.
+*)
 
   Fixpoint interp_expr{n: nat}{l: list var}
     (e: expr l n) (types: member l -> nat) (vals: forall x: member l, interp_type (types x))
@@ -318,7 +347,21 @@ Section LLG.
         (fun (m: member l1) => vals  (member_app_r l1 (remove eq_var_dec x l2) m))).
       destruct o1 eqn: F1.
       + rename i into f1.
-        set (o2 := interp_expr n2 l2 e0_2).
+        set (types' := (fun m => types (member_app_l l1 (remove eq_var_dec x l2) m))).
+        set (types'' := fill_in_type x n1 l2 types').
+        set (o2 := interp_expr n2 l2 e0_2 types'').
+        set (vals' := (fun m => vals (member_app_l l1 (remove eq_var_dec x l2) m))).
+        replace (forall m : member (remove eq_var_dec x l2),
+                 interp_type (types (member_app_l l1 (remove eq_var_dec x l2) m)))
+           with (forall m : member (remove eq_var_dec x l2),
+                 interp_type (types' m)) in vals'
+           by (subst types'; reflexivity).
+        subst types''.
+        set (vals'' := fill_in_val x n1 f1 l2 types' vals').
+        exact (o2 vals'').
+      + exact None.
+    - 
+
         (* etc... *)
   Abort.
 
