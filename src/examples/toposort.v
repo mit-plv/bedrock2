@@ -3,23 +3,23 @@ Import ListNotations.
 Require Import Coq.Arith.PeanoNat.
 
 (* Note: you can't ask an array for its length *)
-Class IsArray(T E: Set) := mkIsArray {
+Class IsArray(T E: Type) := mkIsArray {
   defaultElem: E;
   get: T -> nat -> E;
   update: T -> nat -> E -> T;
   newArray: nat -> T
 }.
 
-Definition listUpdate{E: Set}(l: list E)(i: nat)(e: E): list E :=
+Definition listUpdate{E: Type}(l: list E)(i: nat)(e: E): list E :=
   firstn i l ++ [e] ++ skipn (S i) l.
 
-Definition listFill{E: Set}(e: E): nat -> list E :=
+Definition listFill{E: Type}(e: E): nat -> list E :=
   fix rec(n: nat) := match n with
   | O => nil
   | S m => e :: rec m
   end.
 
-Instance ListIsArray: forall (T: Set) (d: T), IsArray (list T) T := fun T d => {|
+Instance ListIsArray: forall (T: Type) (d: T), IsArray (list T) T := fun T d => {|
   defaultElem := d;
   get := fun l i => nth i l d;
   update := listUpdate;
@@ -250,6 +250,23 @@ Fixpoint member_app_l{T: Type}(l1 l2: list T)(m: member l2): member (l1 ++ l2).
     apply member_app_l. exact m.
 Defined.
 
+Definition member_app_13{T: Type}(l1 l2 l3: list T)(m: member l1): member (l1 ++ l2 ++ l3).
+  apply member_app_r.
+  exact m.
+Defined.
+
+Definition member_app_23{T: Type}(l1 l2 l3: list T)(m: member l2): member (l1 ++ l2 ++ l3).
+  apply member_app_l.
+  apply member_app_r.
+  exact m.
+Defined.
+
+Definition member_app_33{T: Type}(l1 l2 l3: list T)(m: member l3): member (l1 ++ l2 ++ l3).
+  apply member_app_l.
+  apply member_app_l.
+  exact m.
+Defined.
+
 Fixpoint member_get{T: Type}{l: list T}(m: member l): T :=
   match m with
   | member_here h _ => h
@@ -269,7 +286,6 @@ Fixpoint member_remove{T: Type}(dec: DecidableEq T)(r: T)(l: list T)(m: member l
     + apply member_there. apply (member_remove _ _ _ _ _ ne).
 Defined.
 
-
 (* Low-Level Gallina *)
 Section LLG.
 
@@ -280,22 +296,28 @@ Section LLG.
   | ELit(v: nat): expr [] 0
   | EVar(n: nat)(x: var): expr [x] n
   | ELet{n1 n2: nat}{l1 l2: list var}(x: var)(e1: expr l1 n1)(e2: expr l2 n2):
-      expr (l1 ++ (remove eq_var_dec x l2)) n2.
-      (*
-  | ENewArray{n: nat}{l1 l2: list var}(size: expr l1 0)(init: expr l2 n): expr (l1 ++ l2) (S n)
+      expr (l1 ++ (remove eq_var_dec x l2)) n2
+  | ENewArray(n: nat){l: list var}(size: expr l 0): expr l (S n)
   | EGet{n: nat}{l1 l2: list var}(a: expr l1 (S n))(i: expr l2 0): expr (l1 ++ l2) n
   | EUpdate{n: nat}{l1 l2 l3: list var}(a: expr l1 (S n))(i: expr l2 0)(v: expr l3 n):
       expr (l1 ++ l2 ++ l3) (S n)
+  (*
    (* TODO allow several updated vars *)
   | EFor{n2 n3: nat}{l1 l2 l3: list var}(i: var)(to: expr l1 0)(updates: var)(body: expr l2 n2)
       (rest: expr l3 n3):
       expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3
-  .*)
+  *).
 
   Definition interp_type: nat -> Type :=
     fix rec(n: nat): Type := match n with
     | O => nat
     | S m => list (rec m)
+    end.
+
+  Definition interp_type_IsArray(n: nat): IsArray (list (interp_type n)) (interp_type n) :=
+    match n with
+    | O => ListIsArray nat 0
+    | S _ => ListIsArray _ nil
     end.
 
   Definition fill_in_type(x: var)(t: nat)(l: list var)(types: member (remove eq_var_dec x l) -> nat):
@@ -348,9 +370,8 @@ Section LLG.
     - set (o1 := interp_expr n1 l1 e0_1
         (fun (m: member l1) => types (member_app_r l1 (remove eq_var_dec x l2) m))
         (fun (m: member l1) => vals  (member_app_r l1 (remove eq_var_dec x l2) m))).
-      destruct o1 eqn: F1.
-      + rename i into f1.
-        set (types' := (fun m => types (member_app_l l1 (remove eq_var_dec x l2) m))).
+      destruct o1 as [f1|] eqn: F1.
+      + set (types' := (fun m => types (member_app_l l1 (remove eq_var_dec x l2) m))).
         set (types'' := fill_in_type x n1 l2 types').
         set (o2 := interp_expr n2 l2 e0_2 types'').
         set (vals' := (fun m => vals (member_app_l l1 (remove eq_var_dec x l2) m))).
@@ -362,6 +383,42 @@ Section LLG.
         subst types''.
         set (vals'' := fill_in_val x n1 f1 l2 types' vals').
         exact (o2 vals'').
+      + exact None.
+    - set (o := interp_expr 0 l e0 types vals).
+      simpl in o.
+      destruct o as [f|] eqn: F.
+      + exact (Some (@newArray _ _ (interp_type_IsArray n) f)).
+      + exact None.
+    - set (o1 := interp_expr _ l1 e0_1
+        (fun m => types (member_app_r l1 l2 m))
+        (fun m => vals  (member_app_r l1 l2 m))).
+      simpl in o1.
+      destruct o1 as [f1|] eqn: F1.
+      + set (o2 := interp_expr _ l2 e0_2
+        (fun m => types (member_app_l l1 l2 m))
+        (fun m => vals  (member_app_l l1 l2 m))).
+        simpl in o2.
+        destruct o2 as [f2|] eqn: F2.
+        * exact (Some (@get _ _ (interp_type_IsArray n) f1 f2)).
+        * exact None.
+      + exact None.
+    - set (o1 := interp_expr _ l1 e0_1
+        (fun m => types (member_app_13 l1 l2 l3 m))
+        (fun m => vals  (member_app_13 l1 l2 l3 m))).
+      simpl in o1.
+      destruct o1 as [f1|] eqn: F1.
+      + set (o2 := interp_expr _ l2 e0_2
+        (fun m => types (member_app_23 l1 l2 l3 m))
+        (fun m => vals  (member_app_23 l1 l2 l3 m))).
+        simpl in o2.
+        destruct o2 as [f2|] eqn: F2.
+        * set (o3 := interp_expr _ l3 e0_3
+          (fun m => types (member_app_33 l1 l2 l3 m))
+          (fun m => vals  (member_app_33 l1 l2 l3 m))).
+          destruct o3 as [f3|] eqn: F3.
+          { exact (Some (@update _ _ (interp_type_IsArray n) f1 f2 f3)). }
+          { exact None. }
+        * exact None.
       + exact None.
   Defined.
 
@@ -424,3 +481,19 @@ Goal forall v1 v2, Some (test1 v1 v2) = interp_expr (test1a v1 v2) empty_types e
   intros. reflexivity.
 Qed.
 
+Definition ListWithDefault0IsArray := ListIsArray nat 0.
+Existing Instance ListWithDefault0IsArray.
+
+Definition test2(i v: nat): nat :=
+  let x1 := newArray 3 in
+  let x2 := update x1 i v in
+  get x2 i.
+
+Definition test2a(i v: nat): expr (@nil myvar) 0 :=
+  ELet var_x1 (ENewArray 0 (ELit 3))
+  (ELet var_x2 (EUpdate (EVar 1 var_x1) (ELit i) (ELit v))
+  (EGet (EVar 1 var_x2) (ELit i))).
+
+Goal forall i v, Some (test2 i v) = interp_expr (test2a i v) empty_types empty_vals.
+  intros. reflexivity.
+Qed.
