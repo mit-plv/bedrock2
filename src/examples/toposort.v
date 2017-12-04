@@ -301,12 +301,11 @@ Section LLG.
   | EGet{n: nat}{l1 l2: list var}(a: expr l1 (S n))(i: expr l2 0): expr (l1 ++ l2) n
   | EUpdate{n: nat}{l1 l2 l3: list var}(a: expr l1 (S n))(i: expr l2 0)(v: expr l3 n):
       expr (l1 ++ l2 ++ l3) (S n)
-  (*
    (* TODO allow several updated vars *)
   | EFor{n2 n3: nat}{l1 l2 l3: list var}(i: var)(to: expr l1 0)(updates: var)(body: expr l2 n2)
       (rest: expr l3 n3):
       expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3
-  *).
+  .
 
   Definition interp_type: nat -> Type :=
     fix rec(n: nat): Type := match n with
@@ -420,6 +419,31 @@ Section LLG.
           { exact None. }
         * exact None.
       + exact None.
+    - set (o1 := interp_expr _ l1 e0_1
+         (fun m => types (member_app_l [updates] _
+                         (member_app_r _ (remove eq_var_dec i l2 ++ l3) m)))
+         (fun m => vals  (member_app_l [updates] _
+                         (member_app_r _ (remove eq_var_dec i l2 ++ l3) m)))).
+      simpl in o1.
+      destruct o1 as [f1|] eqn: F1.
+      + set (types' := (fun m => types
+                (member_app_l [updates] _
+                (member_app_l l1 _
+                (member_app_r _ l3 m))))).
+        set (types'' := fill_in_type i 0 l2 types').
+        set (vals' := (fun m => vals
+                (member_app_l [updates] _
+                (member_app_l l1 _
+                (member_app_r _ l3 m))))).
+        let t := type of vals' in
+        replace t
+           with (forall m : member (remove eq_var_dec i l2),
+                 interp_type (types' m)) in vals'
+           by (subst types'; reflexivity).
+        set (vals'' := fill_in_val i 0 f1 l2 types' vals').
+        set (o2 := interp_expr n2 l2 e0_2 types'' vals'').
+        (* TODO the above should be run in a for loop *)
+  
   Defined.
 
   (*
