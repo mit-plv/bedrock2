@@ -277,9 +277,11 @@ Section LLG.
   Context {eq_var_dec: DecidableEq var}.
 
   Inductive expr: list var -> nat -> Set :=
-  | EVar{n: nat}(x: var): expr [x] n
+  | ELit(v: nat): expr [] 0
+  | EVar(n: nat)(x: var): expr [x] n
   | ELet{n1 n2: nat}{l1 l2: list var}(x: var)(e1: expr l1 n1)(e2: expr l2 n2):
-      expr (l1 ++ (remove eq_var_dec x l2)) n2
+      expr (l1 ++ (remove eq_var_dec x l2)) n2.
+      (*
   | ENewArray{n: nat}{l1 l2: list var}(size: expr l1 0)(init: expr l2 n): expr (l1 ++ l2) (S n)
   | EGet{n: nat}{l1 l2: list var}(a: expr l1 (S n))(i: expr l2 0): expr (l1 ++ l2) n
   | EUpdate{n: nat}{l1 l2 l3: list var}(a: expr l1 (S n))(i: expr l2 0)(v: expr l3 n):
@@ -288,7 +290,7 @@ Section LLG.
   | EFor{n2 n3: nat}{l1 l2 l3: list var}(i: var)(to: expr l1 0)(updates: var)(body: expr l2 n2)
       (rest: expr l3 n3):
       expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3
-  .
+  .*)
 
   Definition interp_type: nat -> Type :=
     fix rec(n: nat): Type := match n with
@@ -338,6 +340,7 @@ Section LLG.
     {struct e}:
       option (interp_type n).
     destruct e eqn: E.
+    - simpl. exact (Some v).
     - set (v := vals (member_here x nil)).
       destruct (Nat.eq_dec n (types (member_here x []))).
       + subst n. apply Some. apply v.
@@ -360,11 +363,9 @@ Section LLG.
         set (vals'' := fill_in_val x n1 f1 l2 types' vals').
         exact (o2 vals'').
       + exact None.
-    - 
+  Defined.
 
-        (* etc... *)
-  Abort.
-
+  (*
   Definition interp_expr{n: nat}{l: list var}:
     forall (e: expr l n) (types: member l -> nat) (vals: forall x: member l, interp_type (types x)),
       option (interp_type n) :=
@@ -378,7 +379,6 @@ Section LLG.
     | EFor i to updates body rest => None
     end.
 
-  (*
   Inductive expr: forall (fvs: list var) (types: member fvs -> nat) (retType: nat), Set :=
   (* how to join two possibly contradictory types envs eg in ELet ? *)
   *)
@@ -407,4 +407,20 @@ Section LLG.
 
 End LLG.
 
+Definition test1(v1 v2: nat): nat := let x1 := v1 in let x2 := v2 in x1.
+
+Definition myvar := nat.
+Definition var_x1: myvar := 1.
+Definition var_x2: myvar := 2.
+
+Definition test1a(v1 v2: nat): expr (@nil myvar) 0 :=
+  ELet var_x1 (ELit v1) (ELet var_x2 (ELit v2) (EVar 0 var_x1)).
+
+Definition empty_types: member (@nil myvar) -> nat. intro. inversion H. Defined.
+Definition empty_vals: forall m : member (@nil myvar), interp_type (empty_types m).
+  intro. inversion m. Defined.
+
+Goal forall v1 v2, Some (test1 v1 v2) = interp_expr (test1a v1 v2) empty_types empty_vals.
+  intros. reflexivity.
+Qed.
 
