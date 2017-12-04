@@ -243,6 +243,33 @@ Fixpoint member_app_r{T: Type}(l1 l2: list T)(m: member l1): member (l1 ++ l2).
       apply member_app_r. exact m.
 Defined.
 
+Fixpoint member_app_l{T: Type}(l1 l2: list T)(m: member l2): member (l1 ++ l2).
+  destruct l1.
+  - exact m.
+  - rewrite <- app_comm_cons. apply member_there.
+    apply member_app_l. exact m.
+Defined.
+
+Fixpoint member_get{T: Type}{l: list T}(m: member l): T :=
+  match m with
+  | member_here h _ => h
+  | member_there _ t m0 => member_get m0
+  end.
+
+Fixpoint member_remove{T: Type}(dec: DecidableEq T)(r: T)(l: list T)(m: member l)
+  (ne: member_get m <> r) {struct m}: member (remove dec r l).
+  destruct m.
+  - (* here *)
+    simpl in *. destruct (dec r h).
+    + subst. contradiction.
+    + apply member_here.
+  - (* there *)
+    simpl in *. destruct (dec r h).
+    + subst. apply (member_remove _ _ _ _ _ ne).
+    + apply member_there. apply (member_remove _ _ _ _ _ ne).
+Defined.
+
+
 (* Low-Level Gallina *)
 Section LLG.
 
@@ -269,6 +296,14 @@ Section LLG.
     | S m => list (rec m)
     end.
 
+  Definition fill_in_type(x: var)(t: nat)(l: list var)(types: member (remove eq_var_dec x l) -> nat):
+    (member l -> nat) :=
+    fun m => match (eq_var_dec (member_get m) x) with
+      | left _ => t
+      | right NEq => types (member_remove eq_var_dec x l m NEq)
+      end.
+
+
   Fixpoint interp_expr{n: nat}{l: list var}
     (e: expr l n) (types: member l -> nat) (vals: forall x: member l, interp_type (types x))
     {struct e}:
@@ -283,6 +318,7 @@ Section LLG.
         (fun (m: member l1) => vals  (member_app_r l1 (remove eq_var_dec x l2) m))).
       destruct o1 eqn: F1.
       + rename i into f1.
+        set (o2 := interp_expr n2 l2 e0_2).
         (* etc... *)
   Abort.
 
