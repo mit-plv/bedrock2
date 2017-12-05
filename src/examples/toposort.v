@@ -234,6 +234,87 @@ Inductive member{T: Type}: list T -> Type :=
   | member_here: forall h t, member (h :: t)
   | member_there: forall h t, member t -> member (h :: t).
 
+Fixpoint member_to_index{T: Type}{l: list T}(m: member l){struct m}: nat :=
+  match m with
+  | member_here _ _ => 0
+  | member_there _ _ m' => S (member_to_index m')
+  end.
+
+(*
+Lemma member_to_index_inj: forall {T: Type} (l: list T) (x y: member l),
+  member_to_index x = member_to_index y -> x = y.
+Proof.
+  induction l.
+  - intros. inversion x.
+  - intros. destruct x.
+    + destruct y.
+Defined.
+
+Definition eq_dec_member{T: Type}(l: list T): DecidableEq (member l).
+  intros x y. unfold Decidable.
+  destruct (Nat.eq_dec (member_to_index x) (member_to_index y)).
+*)
+
+Fixpoint eq_dec_member{T: Type}(l: list T){struct l}: DecidableEq (member l).
+  destruct l.
+  - intros. inversion x.
+  - intros.
+    unfold Decidable.
+    destruct x (* eqn: Ex*).
+    + Fail destruct y.
+Abort.
+
+Require Import List Program.Equality.
+
+Definition member_empty{T: Type}(m: member (@nil T)): forall (R: Type), R.
+inversion m. Defined.
+
+Definition member_discriminate: forall T (b: T) bs m, 
+  member_here b bs = member_there b bs m -> False.
+  intros. discriminate. Defined.
+
+Definition invert_member_there_eq: forall T (b: T) bs x y,
+  member_there b bs x = member_there b bs y -> x = y.
+  intros. inversion H. apply Eqdep.EqdepTheory.inj_pair2 in H1. assumption.
+Defined.
+
+Fixpoint member_dec T (ls: list T) {struct ls}: forall (x y: member ls), {x = y} + {x <> y}.
+  refine match ls with
+         | nil => _
+         | b :: bs => _
+         end.
+  - intros. apply (member_empty x).
+  - dependent destruction x.
+    + dependent destruction y; clear member_dec.
+      * exact (left eq_refl).
+      * right; intro. eapply member_discriminate. eassumption.
+    + dependent destruction y.
+      * right; intro. eapply member_discriminate. symmetry. eassumption.
+      * destruct (member_dec _ _ x y).
+        { left. f_equal. assumption. }
+        { right; intro. apply n. eapply invert_member_there_eq. eassumption. }
+Defined.
+
+
+Eval cbv -[member_empty member_discriminate invert_member_there_eq] in member_dec.
+
+
+Parameter v1 v2 v3: nat.
+
+Definition ll := [v1; v2; v3].
+
+Definition mm: member ll := member_there v1 _ (member_here v2 [v3]).
+
+Definition mm': member ll := member_there v1 _ (member_there v2 _ (member_here v3 [])).
+
+Axiom JMeq_eq_eq: forall T (x: T), JMeq_eq JMeq_refl = (@eq_refl T x).
+
+Goal (if (member_dec _ _ mm mm') then 1 else 0) = 0.
+  cbv.
+  do 4 rewrite JMeq_eq_eq.
+ reflexivity.
+Qed.
+
 Fixpoint member_app_r{T: Type}(l1 l2: list T)(m: member l1): member (l1 ++ l2).
   destruct l1.
   - inversion m.
@@ -301,10 +382,10 @@ Section LLG.
   | EGet{n: nat}{l1 l2: list var}(a: expr l1 (S n))(i: expr l2 0): expr (l1 ++ l2) n
   | EUpdate{n: nat}{l1 l2 l3: list var}(a: expr l1 (S n))(i: expr l2 0)(v: expr l3 n):
       expr (l1 ++ l2 ++ l3) (S n)
-   (* TODO allow several updated vars 
+   (* TODO allow several updated vars *)
   | EFor{n2 n3: nat}{l1 l2 l3: list var}(i: var)(to: expr l1 0)(updates: var)(body: expr l2 n2)
       (rest: expr l3 n3):
-      expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3 *)
+      expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3
   .
 
   Definition interp_type: nat -> Type :=
@@ -355,6 +436,18 @@ Section LLG.
       | right NEq => types (member_remove eq_var_dec x l m NEq)
       end.
 *)
+
+  Definition update_vals(l: list var)(types: member l -> Type)(i: member l)(v: types i)
+    (vals: forall m : member l, types m):
+           forall m : member l, types m.
+    intro m.
+    (* destruct (eq_var_dec (member_get i) (member_get m)). bad because member_get not injective *)
+    destruct (member_dec _ _ i m). (* <-------- TODO this does not reduce because of JMEq stuff *)
+    - rewrite <- e. exact v.
+    - exact (vals m).
+  Defined.
+
+Require Import lib.LibTactics.
 
   Fixpoint interp_expr{n: nat}{l: list var}
     (e: expr l n) (types: member l -> nat)
@@ -423,54 +516,60 @@ Section LLG.
           { exact None. }
         * exact None.
       + exact None.
-  Defined.
-
-(*
-    - set (o1 := interp_expr _ l1 e0_1
-        (fun m => types (member_app_13 l1 l2 l3 m))
-        (fun m => vals  (member_app_13 l1 l2 l3 m))).
+    - set (types1 := fun m => types (member_app_l [updates] _
+                                    (member_app_r _ (remove eq_var_dec i l2 ++ l3) m))).
+      set (o1 := interp_expr _ l1 e0_1 types1).
       simpl in o1.
-      destruct o1 as [f1|] eqn: F1.
-      + set (o2 := interp_expr _ l2 e0_2
-        (fun m => types (member_app_23 l1 l2 l3 m))
-        (fun m => vals  (member_app_23 l1 l2 l3 m))).
-        simpl in o2.
-        destruct o2 as [f2|] eqn: F2.
-        * set (o3 := interp_expr _ l3 e0_3
-          (fun m => types (member_app_33 l1 l2 l3 m))
-          (fun m => vals  (member_app_33 l1 l2 l3 m))).
-          destruct o3 as [f3|] eqn: F3.
-          { exact (Some (@update _ _ (interp_type_IsArray n) f1 f2 f3)). }
+      destruct o1 as [f1|].
+      + set (types20 := (fun m => types
+                (member_app_l [updates] _
+                (member_app_l l1 _
+                (member_app_r _ l3 m))))).
+        set (types2 := fill_in_type i 0 l2 types20). (* subst types20. *)
+        set (o2 := interp_expr n2 l2 e0_2 types2).
+        destruct o2 as [f2|].
+        * set (types3 := (fun m => types
+            (member_app_l [updates] _
+            (member_app_l l1 _
+            (member_app_l (remove eq_var_dec i l2) _ m))))).
+          set (o3 := interp_expr _ l3 e0_3 types3).
+          destruct o3 as [f3|].
+          { apply Some. intro vals.
+            set (vals1 := (fun m => vals (member_app_l [updates] _
+                                         (member_app_r _ (remove eq_var_dec i l2 ++ l3) m)))).
+            let t := type of vals1 in
+            replace t
+               with (forall m : member l1, interp_type (types1 m)) in vals1
+               by (subst types1; reflexivity).
+            specialize (f1 vals1).
+            rename i into var_i, updates into var_updates.
+            set (updates := vals (member_here _ _)).
+            (* note: refine will "intro" the "let" created by the for loop *)
+            simple refine (for i from 0 to f1 updating (updates) {{
+                       _
+            }} ;; _).
+            { set (vals' := update_vals _ (fun m => interp_type (types m)) _ updates vals).
+              set (vals20 := (fun m => vals'
+                    (member_app_l [var_updates] _
+                    (member_app_l l1 _
+                    (member_app_r _ l3 m))))).
+              let t := type of vals20 in
+              replace t
+                 with (forall m : member (remove eq_var_dec var_i l2),
+                       interp_type (types20 m)) in vals20
+              by (subst types20; reflexivity).
+              set (vals2 := fill_in_val var_i 0 f1 l2 types20 vals20).
+              let t := type of vals2 in
+              replace t with (forall m : member l2, interp_type (types2 m)) in vals2
+              by (subst types2; reflexivity).
+              specialize (f2 vals2).
+              Fail (exact f2). admit. (* TODO *) }
+            { admit. }
+          }
           { exact None. }
         * exact None.
       + exact None.
-    - set (o1 := interp_expr _ l1 e0_1
-         (fun m => types (member_app_l [updates] _
-                         (member_app_r _ (remove eq_var_dec i l2 ++ l3) m)))
-         (fun m => vals  (member_app_l [updates] _
-                         (member_app_r _ (remove eq_var_dec i l2 ++ l3) m)))).
-      simpl in o1.
-      destruct o1 as [f1|] eqn: F1.
-      + set (types' := (fun m => types
-                (member_app_l [updates] _
-                (member_app_l l1 _
-                (member_app_r _ l3 m))))).
-        set (types'' := fill_in_type i 0 l2 types').
-        set (vals' := (fun m => vals
-                (member_app_l [updates] _
-                (member_app_l l1 _
-                (member_app_r _ l3 m))))).
-        let t := type of vals' in
-        replace t
-           with (forall m : member (remove eq_var_dec i l2),
-                 interp_type (types' m)) in vals'
-           by (subst types'; reflexivity).
-        set (vals'' := fill_in_val i 0 f1 l2 types' vals').
-        set (o2 := interp_expr n2 l2 e0_2 types'' vals'').
-        (* TODO the above should be run in a for loop *)
-  
   Defined.
-*)
 
   (*
   Definition interp_expr{n: nat}{l: list var}:
@@ -551,5 +650,5 @@ Definition test2a(i v: nat): expr (@nil myvar) 0 :=
   (EGet (EVar 1 var_x2) (ELit i))).
 
 Goal forall i v, Some (test2 i v) = interp_expr' (test2a i v).
-  intros. reflexivity.
+  intros. unfold interp_expr', interp_expr. reflexivity.
 Qed.
