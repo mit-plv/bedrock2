@@ -25,8 +25,6 @@ Section FuncMut.
   | VNat(v: nat): val
   | VRef(i: nat): val.
 
-  Definition VVoid := VNat 0.
-
   Definition Array := list val. (* could be heterogeneous, but we'll (almost) rule that out *)
 
   Fixpoint NewArray(sz: nat): Array :=
@@ -35,16 +33,16 @@ Section FuncMut.
     | S m => VNat 0 :: (NewArray m)
     end.
 
-  Definition State := list Array. (* or "nat -> option Array" ? *)
+  Definition Store := list Array.
 
   Inductive expr: Set :=
-  | ERef(i: nat): expr
+  | ERef(i: nat): expr (* a reference into the store *)
   | ELit(v: nat): expr
   | EVar(x: var): expr
   | ELet(x: var)(e1: expr)(e2: expr): expr
-  | ENewArray(size: expr): expr (* returns a reference to an array *)
+  | ENewArray(size: expr): expr (* returns a reference to a newly allocated array *)
   | EGet(a: expr)(i: expr): expr
-  | EUpdate(a: expr)(i: expr)(v: expr): expr.
+  | EUpdate(a: expr)(i: expr)(v: expr): expr (* returns reference to in-place modified array *).
 
   Definition force_nat(v: val): option nat :=
     match v with
@@ -59,7 +57,7 @@ Section FuncMut.
     end.
 
   (* returns val and state in which the val has to be considered if it's a reference *)
-  Fixpoint interp_expr(ctx: var -> option val)(e: expr)(s: State){struct e}: option (val * State) :=
+  Fixpoint interp_expr(ctx: var -> option val)(e: expr)(s: Store){struct e}: option (val * Store) :=
     match e with
     | ERef i => Some (VRef i, s)
     | ELit v => Some (VNat v, s)
@@ -95,7 +93,7 @@ Section FuncMut.
         let '(vv, s3) := vres in
         let aa' := listUpdate aa ii vv in
         let s4 := listUpdate s3 aref aa' in
-        Some (VVoid, s4)
+        Some (av, s4)
     end.
 
 End FuncMut.
