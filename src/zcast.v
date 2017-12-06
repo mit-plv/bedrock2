@@ -18,7 +18,11 @@ forall n m : nat, (n ?= m) = Lt -> n < m
 nat_compare_eq
 *)
 
-(* TODO how to define such a size cast function properly? *)
+(* TODO we should also have a signed version, but there's no zToWord, only wordToZ *)
+Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz' :=
+  natToWord sz' (wordToNat n).
+
+(* old approach:
 Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
   destruct (dec (sz <= sz')).
   - replace sz' with (sz + (sz' - sz)) by (apply le_plus_minus_r; assumption).
@@ -29,8 +33,9 @@ Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
     apply Nat.lt_nge in n0.
     apply Nat.lt_le_incl. assumption.
 Defined.
+*)
 
-Eval cbv in (zcast 1 t). (* TODO why does this not simplify properly? *)
+Eval cbv in (zcast 1 t).
 
 (*
 Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
@@ -42,7 +47,3 @@ Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
 Defined.
 too expensive to calculate
 *)
-
-(* less flexible than inlining it because if can act on any 2-constructor type
-Definition when{M: Type -> Type}{MM: Monad M}(cond: bool)(action: M unit): M unit :=
-  if cond then action else Return tt. *)
