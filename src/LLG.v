@@ -2,6 +2,7 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.Arith.PeanoNat.
 Require Import compiler.Decidable.
+Require Import compiler.Op.
 
 (* Note: you can't ask an array for its length *)
 Class IsArray(T E: Type) := mkIsArray {
@@ -173,6 +174,7 @@ Section LLG.
   Inductive expr: list var -> nat -> Set :=
   | ELit(v: nat): expr [] 0
   | EVar(n: nat)(x: var): expr [x] n
+  | EOp{l1 l2: list var}(e1: expr l1 0)(op: binop)(e2: expr l2 0): expr (l1 ++ l2) 0
   | ELet{n1 n2: nat}{l1 l2: list var}(x: var)(e1: expr l1 n1)(e2: expr l2 n2):
       expr (l1 ++ (remove eq_var_dec x l2)) n2
   | ENewArray(n: nat){l: list var}(size: expr l 0): expr l (S n)
@@ -255,6 +257,18 @@ Section LLG.
         intro vals. set (v := vals (member_here x nil)).
         apply v.
       + exact None. (* error: types list doesn't match *)
+    - set (o1 := interp_expr _ l1 e0_1 (fun m => types (member_app_r l1 l2 m))).
+      simpl in o1.
+      destruct o1 as [f1|].
+      + set (o2 := interp_expr _ l2 e0_2 (fun m => types (member_app_l l1 l2 m))).
+        simpl in o2.
+        destruct o2 as [f2|].
+        * apply Some. intro vals.
+          specialize (f1 (fun m => vals (member_app_r l1 l2 m))).
+          specialize (f2 (fun m => vals (member_app_l l1 l2 m))).
+          exact (eval_binop_nat op f1 f2).
+        * exact None.
+      + exact None.
     - set (o1 := interp_expr n1 l1 e0_1
         (fun (m: member l1) => types (member_app_r l1 (remove eq_var_dec x l2) m))).
       destruct o1 as [f1|].

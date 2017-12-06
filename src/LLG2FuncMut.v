@@ -15,6 +15,7 @@ Section LLG2FuncMut.
     match e with
     | LLG.ELit n => FuncMut.ELit n
     | LLG.EVar n x => FuncMut.EVar x
+    | LLG.EOp e1 op e2 => FuncMut.EOp (compile e1) op (compile e2)
     | LLG.ELet x e1 e2 => FuncMut.ELet x (compile e1) (compile e2)
     | LLG.ENewArray dim es => FuncMut.ENewArray (compile es)
     | LLG.EGet ea ei => FuncMut.EGet (compile ea) (compile ei)
