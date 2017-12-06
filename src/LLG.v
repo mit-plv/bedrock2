@@ -3,6 +3,7 @@ Import ListNotations.
 Require Import Coq.Arith.PeanoNat.
 Require Import compiler.Decidable.
 Require Import compiler.Op.
+Require Import compiler.member.
 
 (* Note: you can't ask an array for its length *)
 Class IsArray(T E: Type) := mkIsArray {
@@ -28,142 +29,6 @@ Instance ListIsArray: forall (T: Type) (d: T), IsArray (list T) T := fun T d => 
   newArray := listFill d
 |}.
 
-Inductive member{T: Type}: list T -> Type :=
-  | member_here: forall h t, member (h :: t)
-  | member_there: forall h t, member t -> member (h :: t).
-
-Fixpoint member_to_index{T: Type}{l: list T}(m: member l){struct m}: nat :=
-  match m with
-  | member_here _ _ => 0
-  | member_there _ _ m' => S (member_to_index m')
-  end.
-
-(*
-Lemma member_to_index_inj: forall {T: Type} (l: list T) (x y: member l),
-  member_to_index x = member_to_index y -> x = y.
-Proof.
-  induction l.
-  - intros. inversion x.
-  - intros. destruct x.
-    + destruct y.
-Defined.
-
-Definition eq_dec_member{T: Type}(l: list T): DecidableEq (member l).
-  intros x y. unfold Decidable.
-  destruct (Nat.eq_dec (member_to_index x) (member_to_index y)).
-*)
-
-Fixpoint eq_dec_member{T: Type}(l: list T){struct l}: DecidableEq (member l).
-  destruct l.
-  - intros. inversion x.
-  - intros.
-    unfold Decidable.
-    destruct x (* eqn: Ex*).
-    + Fail destruct y.
-Abort.
-
-Require Import List Program.Equality.
-
-Definition member_empty{T: Type}(m: member (@nil T)): forall (R: Type), R.
-inversion m. Defined.
-
-Definition member_discriminate: forall T (b: T) bs m, 
-  member_here b bs = member_there b bs m -> False.
-  intros. discriminate. Defined.
-
-Definition invert_member_there_eq: forall T (b: T) bs x y,
-  member_there b bs x = member_there b bs y -> x = y.
-  intros. inversion H. apply Eqdep.EqdepTheory.inj_pair2 in H1. assumption.
-Defined.
-
-Fixpoint member_dec T (ls: list T) {struct ls}: forall (x y: member ls), {x = y} + {x <> y}.
-  refine match ls with
-         | nil => _
-         | b :: bs => _
-         end.
-  - intros. apply (member_empty x).
-  - dependent destruction x.
-    + dependent destruction y; clear member_dec.
-      * exact (left eq_refl).
-      * right; intro. eapply member_discriminate. eassumption.
-    + dependent destruction y.
-      * right; intro. eapply member_discriminate. symmetry. eassumption.
-      * destruct (member_dec _ _ x y).
-        { left. f_equal. assumption. }
-        { right; intro. apply n. eapply invert_member_there_eq. eassumption. }
-Defined.
-
-
-(* Eval cbv -[member_empty member_discriminate invert_member_there_eq] in member_dec. *)
-
-
-Parameter v1 v2 v3: nat.
-
-Definition ll := [v1; v2; v3].
-
-Definition mm: member ll := member_there v1 _ (member_here v2 [v3]).
-
-Definition mm': member ll := member_there v1 _ (member_there v2 _ (member_here v3 [])).
-
-Axiom JMeq_eq_eq: forall T (x: T), JMeq_eq JMeq_refl = (@eq_refl T x).
-
-Goal (if (member_dec _ _ mm mm') then 1 else 0) = 0.
-  cbv.
-  do 4 rewrite JMeq_eq_eq.
- reflexivity.
-Qed.
-
-Fixpoint member_app_r{T: Type}(l1 l2: list T)(m: member l1): member (l1 ++ l2).
-  destruct l1.
-  - inversion m.
-  - destruct m.
-    + apply member_here.
-    + rewrite <- app_comm_cons. apply member_there.
-      apply member_app_r. exact m.
-Defined.
-
-Fixpoint member_app_l{T: Type}(l1 l2: list T)(m: member l2): member (l1 ++ l2).
-  destruct l1.
-  - exact m.
-  - rewrite <- app_comm_cons. apply member_there.
-    apply member_app_l. exact m.
-Defined.
-
-Definition member_app_13{T: Type}(l1 l2 l3: list T)(m: member l1): member (l1 ++ l2 ++ l3).
-  apply member_app_r.
-  exact m.
-Defined.
-
-Definition member_app_23{T: Type}(l1 l2 l3: list T)(m: member l2): member (l1 ++ l2 ++ l3).
-  apply member_app_l.
-  apply member_app_r.
-  exact m.
-Defined.
-
-Definition member_app_33{T: Type}(l1 l2 l3: list T)(m: member l3): member (l1 ++ l2 ++ l3).
-  apply member_app_l.
-  apply member_app_l.
-  exact m.
-Defined.
-
-Fixpoint member_get{T: Type}{l: list T}(m: member l): T :=
-  match m with
-  | member_here h _ => h
-  | member_there _ t m0 => member_get m0
-  end.
-
-Fixpoint member_remove{T: Type}(dec: DecidableEq T)(r: T)(l: list T)(m: member l)
-  (ne: member_get m <> r) {struct m}: member (remove dec r l).
-  destruct m.
-  - (* here *)
-    simpl in *. destruct (dec r h).
-    + subst. contradiction.
-    + apply member_here.
-  - (* there *)
-    simpl in *. destruct (dec r h).
-    + subst. apply (member_remove _ _ _ _ _ ne).
-    + apply member_there. apply (member_remove _ _ _ _ _ ne).
-Defined.
 
 (* Low-Level Gallina *)
 Section LLG.
@@ -241,7 +106,7 @@ Section LLG.
            forall m : member l, types m.
     intro m.
     (* destruct (eq_var_dec (member_get i) (member_get m)). bad because member_get not injective *)
-    destruct (member_dec _ _ i m). (* <-------- TODO this does not reduce because of JMEq stuff *)
+    destruct (eq_member_dec _ i m).
     - rewrite <- e. exact v.
     - exact (vals m).
   Defined.
