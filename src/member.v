@@ -27,15 +27,29 @@ Proof.
   - right; exists m; reflexivity.
 Defined.
 
+(* when returning "Set", we cannot match on the \/ of the above destruct_members, therefore
+   a different destruct_member below: *)
+
+Definition destruct_member{T: Type}{xs: list T}(m: member xs)(R: Type):
+  match xs return (member xs -> Type) with
+  | nil => fun m => False
+  | x :: xs' => fun m => (m = member_here x xs' -> R) ->
+                         (forall m', m = member_there x xs' m' -> R) -> R
+  end m.
+Proof.
+  destruct m; intros C1 C2.
+  - apply (C1 eq_refl).
+  - apply (C2 _ eq_refl).
+Defined.
+
 Lemma members2nat_inj: forall {T: Type} {xs: list T} (m m': member xs),
    member2nat m = member2nat m' ->
    m = m'.
 Proof.
   intros.
   induction m;
-    destruct (destruct_members m') as [ eqn | [ m'' eqn ] ];
-    subst; simpl in *; try congruence.
-    rewrite (IHm m''); auto.
+  apply (destruct_member m'); intros; subst; simpl in *; try congruence.
+  rewrite (IHm m'0); auto.
 Qed.
 
 Definition eq_member_dec{T: Type}(xs : list T): DecidableEq (member xs).
