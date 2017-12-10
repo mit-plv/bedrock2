@@ -36,12 +36,24 @@ Section LLG.
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
 
-  Inductive expr: list var -> nat -> Set :=
-  | ELit(v: nat): expr [] 0
-  | EVar(n: nat)(x: var): expr [x] n
-  | EOp{l1 l2: list var}(e1: expr l1 0)(op: binop)(e2: expr l2 0): expr (l1 ++ l2) 0
-  | ELet{n1 n2: nat}{l1 l2: list var}(x: var)(e1: expr l1 n1)(e2: expr l2 n2):
-      expr (l1 ++ (remove eq_var_dec x l2)) n2
+  (* isomorphic to nat *)
+  Inductive type: Set :=
+  | TNat: type
+  | TArray: type -> type.
+
+  Definition extend{l}(G: member l -> type)(x: var)(t: type): member (x :: l) -> type :=
+    fun m => match m with (* (fancy return clause inferred) *)
+    | member_here _ _ => fun _ => t
+    | member_there _ _ m' => fun G => G m'
+    end G.
+
+  Inductive expr: forall l: list var, (member l -> type) -> type -> Set :=
+  | ELit{l G}(v: nat): expr l G TNat
+  | EVar{l G}(m: member l): expr l G (G m)
+  | EOp{l G}(e1: expr l G TNat)(op: binop)(e2: expr l G TNat): expr l G TNat
+  | ELet{l G t1 t2}(x: var)(e1: expr l G t1)(e2: expr (x :: l) (extend G x t1) t2): expr l G t2.
+
+(*
   | ENewArray(n: nat){l: list var}(size: expr l 0): expr l (S n)
   | EGet{n: nat}{l1 l2: list var}(a: expr l1 (S n))(i: expr l2 0): expr (l1 ++ l2) n
   | EUpdate{n: nat}{l1 l2 l3: list var}(a: expr l1 (S n))(i: expr l2 0)(v: expr l3 n):
@@ -51,19 +63,21 @@ Section LLG.
       (rest: expr l3 n3):
       expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3 *)
   .
+*)
 
-  Definition interp_type: nat -> Type :=
-    fix rec(n: nat): Type := match n with
-    | O => nat
-    | S m => list (rec m)
+  Definition interp_type: type -> Type :=
+    fix rec(t: type): Type := match t with
+    | TNat => nat
+    | TArray t' => list (rec t')
     end.
 
-  Definition interp_type_IsArray(n: nat): IsArray (list (interp_type n)) (interp_type n) :=
-    match n with
-    | O => ListIsArray nat 0
-    | S _ => ListIsArray _ nil
+  Definition interp_type_IsArray(t: type): IsArray (list (interp_type t)) (interp_type t) :=
+    match t with
+    | TNat => ListIsArray nat 0
+    | TArray _ => ListIsArray _ nil
     end.
 
+(*
   Definition fill_in_type(x: var)(t: nat)(l: list var)(types: member (remove eq_var_dec x l) -> nat):
     (member l -> nat) :=
     fun m => match (eq_var_dec (member_get m) x) with
@@ -81,6 +95,7 @@ Section LLG.
     + exact v.
     + apply (vals (member_remove eq_var_dec x l m n)).
   Defined.
+*)
 
 (*  Definition fill_in_val{tx: nat}(x: var)(v: interp_type tx)(l: list var)
     (R: member (remove eq_var_dec x l) -> V)
@@ -101,6 +116,7 @@ Section LLG.
       end.
 *)
 
+(*
   Definition update_vals(l: list var)(types: member l -> Type)(i: member l)(v: types i)
     (vals: forall m : member l, types m):
            forall m : member l, types m.
@@ -110,7 +126,86 @@ Section LLG.
     - rewrite <- e. exact v.
     - exact (vals m).
   Defined.
+*)
 
+Require Import lib.LibTactics.
+
+
+  Definition interp_expr{l G t}: 
+    forall (e: expr l G t)(vals: forall x: member l, interp_type (G x)), interp_type t.
+    refine (fix rec (e: expr l G t)(vals: forall x: member l, interp_type (G x))
+               {struct e}: interp_type t :=
+      match e with
+      | ELit v => _
+      | EVar m => _
+      | EOp e1 op e2 => _
+      | ELet x e1 e2 => _
+      end).
+      - exact v.
+      - Fail exact (vals m).
+  Abort.
+
+  Definition interp_expr{l G t}: 
+    forall (e: expr l G t)(vals: forall x: member l, interp_type (G x)), interp_type t.
+    refine (fix rec (e: expr l G t) :=
+      match e in (expr l G t) return ((forall x: member l, interp_type (G x)) -> interp_type t) with
+      | ELit v => fun vals => v
+      | EVar m => fun vals => vals m
+      | EOp e1 op e2 => fun vals => _
+      | ELet x e1 e2 => _
+      end).
+      - Fail exact (eval_binop_nat op (rec e1 vals) (rec e2 vals)).
+  Abort.
+
+  Definition extend_vals:
+    forall {l} (G: member l -> type)(vals: forall m: member l, interp_type (G m))
+    (x: var)(t: type)(v: interp_type t),
+    forall m: member (x :: l), interp_type (extend G x t m).
+    Admitted. (*
+  refine (fun l G vals x t v m => 
+    match m with
+    | member_here _ _ => fun l G vals m => _
+    | member_there _ _ _ => fun l G vals m => _
+    end l G vals).
+
+  Definition extend_vals:
+    forall l (G: member l -> type)(vals: forall m: member l, interp_type (G m))
+    (x: var)(t: type)(v: interp_type t),
+    forall m: member (x :: l) -> interp_type (extend G x t m).
+  refine (fun l G vals x t v m => 
+    match m with
+    | member_here _ _ => fun l G vals m => _
+    | member_there _ _ _ => fun l G vals m => _
+    end l G vals).
+    - unfold extend. 
+
+  Definition extend_vals{l}(G: member l -> type)(vals: forall m: member l, interp_type (G m))
+    (x: var)(t: type)(v: interp_type t):
+    forall m: member (x :: l) -> interp_type (extend G x t m) :=
+    refine (
+    intro m. destruct m.
+    
+     :=
+    fun m => match m with (* (fancy return clause inferred) *)
+    | member_here _ _ => fun _ => t
+    | member_there _ _ m' => fun G => G m'
+    end G.
+*)
+
+  Definition interp_expr:
+    forall {l G t}(e: expr l G t)(vals: forall x: member l, interp_type (G x)), interp_type t :=
+    fix rec l G t (e: expr l G t) {struct e} :=
+      match e in (expr l G t) return ((forall x: member l, interp_type (G x)) -> interp_type t) with
+      | ELit v => fun vals => v
+      | EVar m => fun vals => vals m
+      | EOp e1 op e2 => fun vals => eval_binop_nat op (rec _ _ _ e1 vals) (rec _ _ _ e2 vals)
+      | @ELet l G t1 t2 x e1 e2 => fun vals =>
+          let r1 := rec _ _ _ e1 vals in
+          let vals' := extend_vals G vals x t1 r1 in
+          rec _ _ _ e2 vals'
+      end.
+
+(*
   Fixpoint interp_expr{n: nat}{l: list var}
     (e: expr l n) (types: member l -> nat)
     {struct e}:
@@ -191,9 +286,9 @@ Section LLG.
         * exact None.
       + exact None.
   Defined.
-
+*)
 End LLG.
-
+(*
 Definition test1(v1 v2: nat): nat := let x1 := v1 in let x2 := v2 in x1.
 
 Definition myvar := nat.
@@ -233,3 +328,4 @@ Definition test2a(i v: nat): expr (@nil myvar) 0 :=
 Goal forall i v, Some (test2 i v) = interp_expr' (test2a i v).
   intros. unfold interp_expr', interp_expr. reflexivity.
 Qed.
+*)
