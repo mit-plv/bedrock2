@@ -55,11 +55,11 @@ Section LLG.
   | ENewArray{l G}(t: type)(size: expr l G TNat): expr l G (TArray t)
   | EGet{l G t}(a: expr l G (TArray t))(i: expr l G TNat): expr l G t
   | EUpdate{l G t}(a: expr l G (TArray t))(i: expr l G TNat)(v: expr l G t): expr l G (TArray t)
-   (* TODO allow several updated vars
-  | EFor{n2 n3: nat}{l1 l2 l3: list var}(i: var)(to: expr l1 0)(updates: var)(body: expr l2 n2)
-      (rest: expr l3 n3):
-      expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3 *)
-  .
+  (* TODO allow several updated vars *)
+  | EFor{l G t}(i: var)(to: expr l G TNat)(updates: member l)
+      (body: expr (i :: l) (extend G i TNat) (G updates))
+      (rest: expr l G t):
+      expr l G t.
 
   Definition interp_type: type -> Type :=
     fix rec(t: type): Type := match t with
@@ -81,6 +81,15 @@ Section LLG.
     apply (destruct_member m).
     - intro E. subst m. simpl. exact v.
     - intros m' E. subst m. simpl. exact (vals m').
+  Defined.
+
+  Definition update_vals(l: list var)(G: member l -> type)(i: member l)(v: interp_type (G i))
+    (vals: forall m: member l, interp_type (G m)):
+           forall m: member l, interp_type (G m).
+    intro m.
+    destruct (eq_member_dec _ i m).
+    - rewrite <- e. exact v.
+    - exact (vals m).
   Defined.
 
   Definition interp_expr:
@@ -106,6 +115,18 @@ Section LLG.
           let i1 := rec _ _ _ i vals in
           let v1 := rec _ _ _ v vals in
           @update _ _ (interp_type_IsArray t) a1 i1 v1
+      | @EFor l G t i to updates body rest => fun vals =>
+          let to1 := rec _ _ _ to vals in
+          let bodyFun := rec _ _ _ body in
+          let s1 := (fix f(n: nat) := match n with
+                     | 0 => vals updates
+                     | S m => let s1 := f m in
+                         let vals' := update_vals _ _ updates s1 vals in
+                         let vals'' := extend_vals G vals i TNat m in
+                         bodyFun vals''
+                     end) to1 in
+          let vals' := update_vals _ _ updates s1 vals in
+          rec _ _ _ rest vals'
       end.
 
 End LLG.
