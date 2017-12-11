@@ -50,7 +50,7 @@ Proof.
   induction m;
   apply (destruct_member m'); intros; subst; simpl in *; try congruence.
   rewrite (IHm m'0); auto.
-Qed.
+Defined.
 
 Definition eq_member_dec{T: Type}(xs : list T): DecidableEq (member xs).
   intros m m'. unfold Decidable.

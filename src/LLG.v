@@ -122,7 +122,7 @@ Section LLG.
                      | 0 => vals updates
                      | S m => let s1 := f m in
                          let vals' := update_vals _ _ updates s1 vals in
-                         let vals'' := extend_vals G vals i TNat m in
+                         let vals'' := extend_vals G vals' i TNat m in
                          bodyFun vals''
                      end) to1 in
           let vals' := update_vals _ _ updates s1 vals in
@@ -136,6 +136,7 @@ Definition test1(v1 v2: nat): nat := let x1 := v1 in let x2 := v2 in x1.
 Definition myvar := nat.
 Definition var_x1: myvar := 1.
 Definition var_x2: myvar := 2.
+Definition var_i: myvar := 3.
 
 Definition empty_types: member (@nil myvar) -> type. intro. inversion H. Defined.
 Definition empty_vals: forall m : member (@nil myvar), interp_type (empty_types m).
@@ -172,3 +173,34 @@ Definition test2a(i v: nat): expr (@nil myvar) empty_types TNat :=
 Goal forall i v, test2 i v = interp_expr' (test2a i v).
   intros. reflexivity.
 Qed.
+
+Notation "'for' m 'from' 0 'to' N 'updating' ( s1 ) {{ b }} ;; rest" :=
+  (let s1 :=
+    (fix rec(n: nat) := match n with
+     | 0 => s1
+     | S m => let s1 := rec m in b
+     end) N
+  in rest)
+  (at level 20, right associativity).
+
+Definition test3(n: nat): list nat :=
+  let x1 := newArray n in
+  for i from 0 to n updating (x1) {{
+     update x1 i (i * i)
+  }} ;;
+  x1.
+
+Goal test3 4 = [0; 1; 4; 9]. reflexivity. Qed.
+
+Definition x1_in_ix1: member [var_i; var_x1]. apply member_there. apply member_here. Defined.
+Definition i_in_ix1: member [var_i; var_x1]. apply member_here. Defined.
+
+Definition test3a(n: nat): expr (@nil myvar) empty_types (TArray TNat) :=
+  ELet var_x1 (ENewArray TNat (ELit n))
+  (EFor var_i (ELit n) x1_in_x1
+     (EUpdate (EVar x1_in_ix1) (EVar i_in_ix1) (EOp (EVar i_in_ix1) OTimes (EVar i_in_ix1)))
+   (EVar x1_in_x1)).
+
+Goal test3 5 = interp_expr' (test3a 5). cbv. reflexivity. Qed.
+
+Goal forall n, test3 n = interp_expr' (test3a n). intros. reflexivity. Qed.
