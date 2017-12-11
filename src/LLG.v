@@ -51,19 +51,15 @@ Section LLG.
   | ELit{l G}(v: nat): expr l G TNat
   | EVar{l G}(m: member l): expr l G (G m)
   | EOp{l G}(e1: expr l G TNat)(op: binop)(e2: expr l G TNat): expr l G TNat
-  | ELet{l G t1 t2}(x: var)(e1: expr l G t1)(e2: expr (x :: l) (extend G x t1) t2): expr l G t2.
-
-(*
-  | ENewArray(n: nat){l: list var}(size: expr l 0): expr l (S n)
-  | EGet{n: nat}{l1 l2: list var}(a: expr l1 (S n))(i: expr l2 0): expr (l1 ++ l2) n
-  | EUpdate{n: nat}{l1 l2 l3: list var}(a: expr l1 (S n))(i: expr l2 0)(v: expr l3 n):
-      expr (l1 ++ l2 ++ l3) (S n)
+  | ELet{l G t1 t2}(x: var)(e1: expr l G t1)(e2: expr (x :: l) (extend G x t1) t2): expr l G t2
+  | ENewArray{l G}(t: type)(size: expr l G TNat): expr l G (TArray t)
+  | EGet{l G t}(a: expr l G (TArray t))(i: expr l G TNat): expr l G t
+  | EUpdate{l G t}(a: expr l G (TArray t))(i: expr l G TNat)(v: expr l G t): expr l G (TArray t)
    (* TODO allow several updated vars
   | EFor{n2 n3: nat}{l1 l2 l3: list var}(i: var)(to: expr l1 0)(updates: var)(body: expr l2 n2)
       (rest: expr l3 n3):
       expr ([updates] ++ l1 ++ (remove eq_var_dec i l2) ++ l3) n3 *)
   .
-*)
 
   Definition interp_type: type -> Type :=
     fix rec(t: type): Type := match t with
@@ -98,6 +94,18 @@ Section LLG.
           let r1 := rec _ _ _ e1 vals in
           let vals' := extend_vals G vals x t1 r1 in
           rec _ _ _ e2 vals'
+      | @ENewArray l G t size => fun vals =>
+          let size1 := rec _ _ _ size vals in
+          @newArray _ _ (interp_type_IsArray t) size1
+      | @EGet l G t a i => fun vals =>
+          let a1 := rec _ _ _ a vals in
+          let i1 := rec _ _ _ i vals in
+          @get _ _ (interp_type_IsArray t) a1 i1
+      | @EUpdate l G t a i v => fun vals =>
+          let a1 := rec _ _ _ a vals in
+          let i1 := rec _ _ _ i vals in
+          let v1 := rec _ _ _ v vals in
+          @update _ _ (interp_type_IsArray t) a1 i1 v1
       end.
 
 End LLG.
@@ -133,13 +141,13 @@ Definition test2(i v: nat): nat :=
   let x2 := update x1 i v in
   get x2 i.
 
-(*
-Definition test2a(i v: nat): expr (@nil myvar) 0 :=
-  ELet var_x1 (ENewArray 0 (ELit 3))
-  (ELet var_x2 (EUpdate (EVar 1 var_x1) (ELit i) (ELit v))
-  (EGet (EVar 1 var_x2) (ELit i))).
+Definition x1_in_x1: member [var_x1]. apply member_here. Defined.
 
-Goal forall i v, Some (test2 i v) = interp_expr' (test2a i v).
-  intros. unfold interp_expr', interp_expr. reflexivity.
+Definition test2a(i v: nat): expr (@nil myvar) empty_types TNat :=
+  ELet var_x1 (ENewArray TNat (ELit 3))
+  (ELet var_x2 (EUpdate (EVar x1_in_x1) (ELit i) (ELit v))
+  (EGet (EVar x2_in_x2x1) (ELit i))).
+
+Goal forall i v, test2 i v = interp_expr' (test2a i v).
+  intros. reflexivity.
 Qed.
-*)
