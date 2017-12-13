@@ -18,5 +18,7 @@ Instance NatNameGen: NameGen nat (nat -> Prop) nat := {|
   genFresh := fun s => (s, S s);
   allFreshVars := fun s => fun x => s <= x
 |}.
-  intros. inversion H; subst. unfold subset. simpl. intuition omega.
-Qed.
+  abstract (intros; inversion H; subst; unfold subset; simpl; intuition omega).
+Defined.
+(* We use "abstract" to make genFresh_spec opaque, but "Defined" to make sure that
+   "genFresh" and "allFreshVars" are transparent for reduction. *)
