@@ -1,45 +1,53 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.Arith.PeanoNat.
+Require Import bbv.Word.
 Require Import compiler.Decidable.
 Require Import compiler.Op.
 Require Import compiler.member.
-Require Import compiler.For.
-
-(* Note: you can't ask an array for its length *)
-Class IsArray(T E: Type) := mkIsArray {
-  defaultElem: E;
-  get: T -> nat -> E;
-  update: T -> nat -> E -> T;
-  newArray: nat -> T
-}.
-
-Definition listUpdate{E: Type}(l: list E)(i: nat)(e: E): list E :=
-  firstn i l ++ [e] ++ skipn (S i) l.
-
-Definition listFill{E: Type}(e: E): nat -> list E :=
-  fix rec(n: nat) := match n with
-  | O => nil
-  | S m => e :: rec m
-  end.
-
-Instance ListIsArray: forall (T: Type) (d: T), IsArray (list T) T := fun T d => {|
-  defaultElem := d;
-  get := fun l i => nth i l d;
-  update := listUpdate;
-  newArray := listFill d
-|}.
-
+Require Import compiler.ForWord.
 
 (* Low-Level Gallina *)
 Section LLG.
 
+  Context {w: nat}. (* bit width *)
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
 
+  (* Note: you can't ask an array for its length *)
+  Class IsArray(T E: Type) := mkIsArray {
+    defaultElem: E;
+    get: T -> word w -> E;
+    update: T -> word w -> E -> T;
+    newArray: word w -> T
+  }.
+
+  Definition listUpdate_nat{E: Type}(l: list E)(i: nat)(e: E): list E :=
+    firstn i l ++ [e] ++ skipn (S i) l.
+
+  Definition listUpdate{E: Type}(l: list E)(i: word w)(e: E): list E :=
+    listUpdate_nat l (wordToNat i) e.
+
+  Definition listFill_nat{E: Type}(e: E): nat -> list E :=
+    fix rec(n: nat) := match n with
+    | O => nil
+    | S m => e :: rec m
+    end.
+
+  Definition listFill{E: Type}(e: E)(n: word w): list E := listFill_nat e (wordToNat n).
+
+  Definition listNth{E: Type}(i: word w): list E -> E -> E := nth (wordToNat i).
+
+  Instance ListIsArray: forall (T: Type) (d: T), IsArray (list T) T := fun T d => {|
+    defaultElem := d;
+    get := fun l i => listNth i l d;
+    update := listUpdate;
+    newArray := listFill d
+  |}.
+
   (* isomorphic to nat *)
   Inductive type: Set :=
-  | TNat: type
+  | TInt: type
   | TArray: type -> type.
 
   Definition extend{l}(G: member l -> type)(x: var)(t: type): member (x :: l) -> type :=
@@ -49,28 +57,28 @@ Section LLG.
     end G.
 
   Inductive expr: forall l: list var, (member l -> type) -> type -> Set :=
-  | ELit{l G}(v: nat): expr l G TNat
+  | ELit{l G}(v: word w): expr l G TInt
   | EVar{l G}(m: member l): expr l G (G m)
-  | EOp{l G}(e1: expr l G TNat)(op: binop)(e2: expr l G TNat): expr l G TNat
+  | EOp{l G}(e1: expr l G TInt)(op: binop)(e2: expr l G TInt): expr l G TInt
   | ELet{l G t1 t2}(x: var)(e1: expr l G t1)(e2: expr (x :: l) (extend G x t1) t2): expr l G t2
-  | ENewArray{l G}(t: type)(size: expr l G TNat): expr l G (TArray t)
-  | EGet{l G t}(a: expr l G (TArray t))(i: expr l G TNat): expr l G t
-  | EUpdate{l G t}(a: expr l G (TArray t))(i: expr l G TNat)(v: expr l G t): expr l G (TArray t)
+  | ENewArray{l G}(t: type)(size: expr l G TInt): expr l G (TArray t)
+  | EGet{l G t}(a: expr l G (TArray t))(i: expr l G TInt): expr l G t
+  | EUpdate{l G t}(a: expr l G (TArray t))(i: expr l G TInt)(v: expr l G t): expr l G (TArray t)
   (* TODO allow several updated vars *)
-  | EFor{l G t}(i: var)(to: expr l G TNat)(updates: member l)
-      (body: expr (i :: l) (extend G i TNat) (G updates))
+  | EFor{l G t}(i: var)(to: expr l G TInt)(updates: member l)
+      (body: expr (i :: l) (extend G i TInt) (G updates))
       (rest: expr l G t):
       expr l G t.
 
   Definition interp_type: type -> Type :=
     fix rec(t: type): Type := match t with
-    | TNat => nat
+    | TInt => word w
     | TArray t' => list (rec t')
     end.
 
   Definition interp_type_IsArray(t: type): IsArray (list (interp_type t)) (interp_type t) :=
     match t with
-    | TNat => ListIsArray nat 0
+    | TInt => ListIsArray _ $0
     | TArray _ => ListIsArray _ nil
     end.
 
@@ -99,7 +107,7 @@ Section LLG.
       match e in (expr l G t) return ((forall x: member l, interp_type (G x)) -> interp_type t) with
       | ELit v => fun vals => v
       | EVar m => fun vals => vals m
-      | EOp e1 op e2 => fun vals => eval_binop_nat op (rec _ _ _ e1 vals) (rec _ _ _ e2 vals)
+      | EOp e1 op e2 => fun vals => eval_binop op (rec _ _ _ e1 vals) (rec _ _ _ e2 vals)
       | @ELet l G t1 t2 x e1 e2 => fun vals =>
           let r1 := rec _ _ _ e1 vals in
           let vals' := extend_vals G vals x t1 r1 in
@@ -119,13 +127,12 @@ Section LLG.
       | @EFor l G t i to updates body rest => fun vals =>
           let to1 := rec _ _ _ to vals in
           let bodyFun := rec _ _ _ body in
-          let s1 := (fix f(n: nat) := match n with
-                     | 0 => vals updates
-                     | S m => let s1 := f m in
-                         let vals' := update_vals _ _ updates s1 vals in
-                         let vals'' := extend_vals G vals' i TNat m in
-                         bodyFun vals''
-                     end) to1 in
+          let s1 := vals updates in
+          for m from 0 to to1 updating (s1) {{
+            let vals' := update_vals _ _ updates s1 vals in
+            let vals'' := extend_vals G vals' i TInt m in
+            bodyFun vals''
+          }} ;;
           let vals' := update_vals _ _ updates s1 vals in
           rec _ _ _ rest vals'
       end.
@@ -134,7 +141,9 @@ End LLG.
 
 Module LLG_Tests.
 
-Definition test1(v1 v2: nat): nat := let x1 := v1 in let x2 := v2 in x1.
+Definition w := 8. (* bit width *)
+
+Definition test1(v1 v2: word 8): word w := let x1 := v1 in let x2 := v2 in x1.
 
 Definition myvar := nat.
 Definition var_x1: myvar := 1.
@@ -142,13 +151,13 @@ Definition var_x2: myvar := 2.
 Definition var_i: myvar := 3.
 
 Definition empty_types: member (@nil myvar) -> type. intro. inversion H. Defined.
-Definition empty_vals: forall m : member (@nil myvar), interp_type (empty_types m).
+Definition empty_vals: forall m : member (@nil myvar), @interp_type w (empty_types m).
   intro. inversion m. Defined.
 
 Definition x1_in_x2x1: member [var_x2; var_x1]. apply member_there. apply member_here. Defined.
 Definition x2_in_x2x1: member [var_x2; var_x1]. apply member_here. Defined.
 
-Definition test1a(v1 v2: nat): expr (@nil myvar) empty_types TNat :=
+Definition test1a(v1 v2: word w): expr (@nil myvar) empty_types TInt :=
   ELet var_x1 (ELit v1) (ELet var_x2 (ELit v2) (EVar x1_in_x2x1)).
 
 Definition interp_expr'{t}(e: expr (@nil myvar) empty_types t): interp_type t :=
@@ -158,18 +167,18 @@ Goal forall v1 v2, test1 v1 v2 = interp_expr' (test1a v1 v2).
   intros. reflexivity.
 Qed.
 
-Definition ListWithDefault0IsArray := ListIsArray nat 0.
+Definition ListWithDefault0IsArray := @ListIsArray w (word w) $0.
 Existing Instance ListWithDefault0IsArray.
 
-Definition test2(i v: nat): nat :=
-  let x1 := newArray 3 in
+Definition test2(i v: word w): word w :=
+  let x1 := newArray $3 in
   let x2 := update x1 i v in
   get x2 i.
 
 Definition x1_in_x1: member [var_x1]. apply member_here. Defined.
 
-Definition test2a(i v: nat): expr (@nil myvar) empty_types TNat :=
-  ELet var_x1 (ENewArray TNat (ELit 3))
+Definition test2a(i v: word w): expr (@nil myvar) empty_types TInt :=
+  ELet var_x1 (ENewArray TInt (ELit $3))
   (ELet var_x2 (EUpdate (EVar x1_in_x1) (ELit i) (ELit v))
   (EGet (EVar x2_in_x2x1) (ELit i))).
 
@@ -177,25 +186,25 @@ Goal forall i v, test2 i v = interp_expr' (test2a i v).
   intros. reflexivity.
 Qed.
 
-Definition test3(n: nat): list nat :=
+Definition test3(n: word w): list (word w) :=
   let x1 := newArray n in
   for i from 0 to n updating (x1) {{
-     update x1 i (i * i)
+     update x1 i (i ^* i)
   }} ;;
   x1.
 
-Goal test3 4 = [0; 1; 4; 9]. reflexivity. Qed.
+Goal test3 $4 = [$0; $1; $4; $9]. reflexivity. Qed.
 
 Definition x1_in_ix1: member [var_i; var_x1]. apply member_there. apply member_here. Defined.
 Definition i_in_ix1: member [var_i; var_x1]. apply member_here. Defined.
 
-Definition test3a(n: nat): expr (@nil myvar) empty_types (TArray TNat) :=
-  ELet var_x1 (ENewArray TNat (ELit n))
+Definition test3a(n: word w): expr (@nil myvar) empty_types (TArray TInt) :=
+  ELet var_x1 (ENewArray TInt (ELit n))
   (EFor var_i (ELit n) x1_in_x1
      (EUpdate (EVar x1_in_ix1) (EVar i_in_ix1) (EOp (EVar i_in_ix1) OTimes (EVar i_in_ix1)))
    (EVar x1_in_x1)).
 
-Goal test3 5 = interp_expr' (test3a 5). cbv. reflexivity. Qed.
+Goal test3 $5 = interp_expr' (test3a $5). cbv. reflexivity. Qed.
 
 Goal forall n, test3 n = interp_expr' (test3a n). intros. reflexivity. Qed.
 

@@ -1,3 +1,5 @@
+(* Since FuncMut is not what we want, we don't need this currently
+
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.Decidable.
@@ -38,4 +40,4 @@ Definition empty_ctx{var: Type}: var -> option FuncMut.val := fun _ => None.
 Definition empty_Store: FuncMut.Store := nil.
 
 Eval cbv in (compiler.FuncMut.interp_expr empty_ctx (test2b' 1 11) empty_Store).
-
+*)
