@@ -4,6 +4,7 @@ Require Import Coq.Arith.PeanoNat.
 Require Import compiler.Decidable.
 Require Import compiler.Op.
 Require Import compiler.member.
+Require Import compiler.For.
 
 (* Note: you can't ask an array for its length *)
 Class IsArray(T E: Type) := mkIsArray {
@@ -131,6 +132,8 @@ Section LLG.
 
 End LLG.
 
+Module LLG_Tests.
+
 Definition test1(v1 v2: nat): nat := let x1 := v1 in let x2 := v2 in x1.
 
 Definition myvar := nat.
@@ -174,15 +177,6 @@ Goal forall i v, test2 i v = interp_expr' (test2a i v).
   intros. reflexivity.
 Qed.
 
-Notation "'for' m 'from' 0 'to' N 'updating' ( s1 ) {{ b }} ;; rest" :=
-  (let s1 :=
-    (fix rec(n: nat) := match n with
-     | 0 => s1
-     | S m => let s1 := rec m in b
-     end) N
-  in rest)
-  (at level 20, right associativity).
-
 Definition test3(n: nat): list nat :=
   let x1 := newArray n in
   for i from 0 to n updating (x1) {{
@@ -204,3 +198,5 @@ Definition test3a(n: nat): expr (@nil myvar) empty_types (TArray TNat) :=
 Goal test3 5 = interp_expr' (test3a 5). cbv. reflexivity. Qed.
 
 Goal forall n, test3 n = interp_expr' (test3a n). intros. reflexivity. Qed.
+
+End LLG_Tests.

@@ -21,14 +21,17 @@ Section LLG2FuncMut.
     | LLG.ENewArray t es => FuncMut.ENewArray (compile es)
     | LLG.EGet ea ei => FuncMut.EGet (compile ea) (compile ei)
     | LLG.EUpdate ea ei ev => FuncMut.EUpdate (compile ea) (compile ei) (compile ev)
+    | LLG.EFor i eto upd ebody erest => FuncMut.EVar i (* <--- TODO *)
     end.
 
 End LLG2FuncMut.
 
-Definition test2b(i v: nat): FuncMut.expr := compile (compiler.LLG.test2a i v).
+Definition test2b(i v: nat): FuncMut.expr := compile (compiler.LLG.LLG_Tests.test2a i v).
 
 Definition test2b'(i v: nat): FuncMut.expr :=
-  ltac:(let r := eval cbv -[compiler.LLG.var_x1 compiler.LLG.var_x2] in (test2b i v) in exact r).
+  ltac:(let r := eval cbv -[
+    compiler.LLG.LLG_Tests.var_x1 compiler.LLG.LLG_Tests.var_x2
+  ] in (test2b i v) in exact r).
 
 Definition empty_ctx{var: Type}: var -> option FuncMut.val := fun _ => None.
 

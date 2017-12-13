@@ -6,6 +6,8 @@ Require Import compiler.Op.
 
 (* A mix between imperative and functional:
    It has expressions and lets, but mutable arrays.
+   NOTE: Not suitable to encode for-loops which modify local variables, because all local vars
+   are immutable.
 *)
 
 Definition listUpdate{E: Type}(l: list E)(i: nat)(e: E): list E :=
