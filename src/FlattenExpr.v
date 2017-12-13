@@ -140,40 +140,6 @@ Section FlattenExpr.
     set_solver var.
   Qed.
 
-  Lemma increase_fuel_still_Success: forall fuel1 fuel2 initial s final,
-    (fuel1 <= fuel2)%nat ->
-    FlatImp.eval_stmt fuel1 initial s = Success final ->
-    FlatImp.eval_stmt fuel2 initial s = Success final.
-  Proof.
-    induction fuel1; introv L Ev.
-    - inversions Ev.
-    - destruct fuel2; [omega|]. destruct s.
-      + exact Ev.
-      + exact Ev.
-      + exact Ev.
-      + simpl in *. destruct_one_match; try discriminate.
-        erewrite IHfuel1; [reflexivity | omega | exact Ev].
-      + apply FlatImp.invert_eval_SLoop in Ev.
-        destruct Ev as [Ev | Ev]. 
-        * destruct Ev as [Ev C]. 
-          simpl. erewrite IHfuel1; [|omega|eassumption].
-          rewrite C. simpl. destruct_one_match; [reflexivity | contradiction].
-        * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
-          simpl.
-          erewrite IHfuel1; [|omega|eassumption].
-          erewrite IHfuel1; [|omega|eassumption].
-          erewrite IHfuel1; [|omega|eassumption].
-          rewrite C1. simpl.
-          destruct_one_match; [ contradiction | reflexivity ].
-     + apply FlatImp.invert_eval_SSeq in Ev.
-       destruct Ev as [mid [Ev1 Ev2]].
-       simpl.
-       erewrite IHfuel1; [|omega|eassumption].
-       erewrite IHfuel1; [|omega|eassumption].
-       reflexivity.
-     + simpl. inversionss. reflexivity.
-  Qed.
-
   Lemma put_idemp: forall s x v,
     get s x = Some v ->
     s = put s x v.
@@ -198,7 +164,7 @@ Section FlattenExpr.
     | Ev: FlatImp.eval_stmt ?Fuel1 ?initial ?s = ?final
       |- context [FlatImp.eval_stmt ?Fuel2 ?initial ?s]
       => let IE := fresh in assert (Fuel1 <= Fuel2) as IE by omega;
-         apply (increase_fuel_still_Success _ _ _ _ _ IE) in Ev;
+         apply (FlatImp.increase_fuel_still_Success _ _ _ _ _ IE) in Ev;
          clear IE;
          rewrite Ev
     end.
@@ -276,7 +242,7 @@ Section FlattenExpr.
       exists (Datatypes.S SfuelL). eexists. repeat split.
       + simpl.
         assert (FlatImp.eval_stmt SfuelL initialL s = Success prefinalL) as Evs'. {
-          eapply increase_fuel_still_Success; [|eassumption]. omega.
+          eapply FlatImp.increase_fuel_still_Success; [|eassumption]. omega.
         }
         rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
       + clear IHfuelH.
