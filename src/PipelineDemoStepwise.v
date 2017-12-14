@@ -89,7 +89,7 @@ Transparent wlt_dec.
 Goal eval_FlatImp_stmt (p1_FlatImp $4) = Some $14. reflexivity. Qed.
 
 Definition compileFlat2Riscv(f: @stmt w myvar): list (@Instruction myvar) :=
-  compiler.FlatToRiscv.compile_stmt (R0 := 0) f.
+  compiler.FlatToRiscv.compile_stmt f.
 
 Definition p1_riscv(n: word w): list (@Instruction myvar) := compileFlat2Riscv (p1_FlatImp_stmt n).
 
@@ -97,15 +97,15 @@ Goal False. set (r := p1_riscv $3). cbv in *. Abort.
 
 Definition lotsOfFuel_lowlevel := 10.
 
-Definition myInst := (@IsRiscvMachine w nat 0 _).
+Definition myInst := (@IsRiscvMachine w nat _).
 Existing Instance myInst.
 
 Definition runThenGet(resVar: myvar): State RiscvMachine (word w) :=
   run lotsOfFuel_lowlevel;;
-  getRegister resVar.
+  getRegister (RegS resVar).
 
 Definition go(p: list (@Instruction myvar))(resVar: myvar): word w :=
-  evalState (runThenGet resVar) (initialRiscvMachine (Reg0 := 0) p).
+  evalState (runThenGet resVar) (initialRiscvMachine p).
 
 Goal go (p1_riscv $4) (p1_FlatImp_resVar $4) = $14.
 (* vm_compute. result is 0 instead of 14, even after 100 steps *)

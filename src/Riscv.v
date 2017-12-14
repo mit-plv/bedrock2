@@ -5,13 +5,19 @@ Require Import compiler.zcast.
 
 Section Riscv.
   Context {w: nat}. (* bit width *)
-  Context {Register: Set}. (* register name *)
+  Context {Reg: Set}. (* register name *)
+
+  Inductive Register: Set :=
+    | RegO: Register
+    | RegS: Reg -> Register.
 
   Inductive Instruction: Set :=
     | Addi(rd: Register)(rs1: Register)(imm12: word 12): Instruction
     | Add(rd: Register)(rs1: Register)(rs2: Register): Instruction
     | Sub(rd: Register)(rs1: Register)(rs2: Register): Instruction
     | Mul(rd: Register)(rs1: Register)(rs2: Register): Instruction
+    | Sltu(rd: Register)(rs1: Register)(rs2: Register): Instruction
+    | Sltiu(rd: Register)(rs1: Register)(imm12: word 12): Instruction
     | And(rd: Register)(rs1: Register)(rs2: Register): Instruction
     | Beq(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
     | Bne(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
@@ -19,8 +25,12 @@ Section Riscv.
     | Bge(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
     | Jal(rd: Register)(jimm20: word 20): Instruction.
 
+  Definition Seqz(rd: Register)(rs1: Register) := Sltiu rd rs1 $1.
+  Definition Snez(rd: Register)(rs1: Register) := Sltu rd RegO rs1.
+  Definition Nop := Addi RegO RegO $0.
+  Definition InfiniteJal := Jal RegO (wneg $4).
+
   Class RiscvState(M: Type -> Type) := mkRiscvState {
-    R0: Register;
     getRegister: Register -> M (word w);
     setRegister: Register -> (word w) -> M unit;
     loadInst: (word w) -> M Instruction; (* decode already included *)
@@ -31,8 +41,6 @@ Section Riscv.
     getPC: M (word w);
     setPC: word w -> M unit;
   }.
-
-  Definition InfiniteJal{M: Type -> Type}{RVS: RiscvState M} := Jal R0 (wneg $4).
 
   Definition execute{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}(i: Instruction): M unit :=
     match i with
@@ -51,6 +59,13 @@ Section Riscv.
         x <- getRegister rs1;
         y <- getRegister rs2;
         setRegister rd (x ^* y)
+    | Sltu rd rs1 rs2 =>
+        x <- getRegister rs1;
+        y <- getRegister rs2;
+        setRegister rd (if wlt_dec x y then $1 else $0)
+    | Sltiu rd rs1 imm12 =>
+        x <- getRegister rs1;
+        setRegister rd (if wlt_dec x (zcast w imm12) then $1 else $0)
     | And rd rs1 rs2 =>
         x <- getRegister rs1;
         y <- getRegister rs2;

@@ -1,4 +1,3 @@
-Require Import lib.LibTactics.
 Require Import compiler.StateMonad.
 Require Import compiler.Common.
 Require Import compiler.FlatImp.
@@ -14,41 +13,48 @@ Require Import compiler.Machine.
 Section FlatToRiscv.
 
   Context {w: nat}. (* bit width *)
-  Context {var: Set}. (* var in the source language is the same as Register in the target language *)
-  Context {R0: var}. (* register #0 is the read-only constant 0 *)
+  Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
   Context {stateMap: Map state var (word w)}.
-  
-  Definition compile_op(rd: var)(op: binop)(rs1 rs2: var): list (@Instruction var) :=
+
+  Definition var2Register: var -> @Register var := RegS.
+
+  Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list (@Instruction var) :=
+    let rd := var2Register res in
+    let rs1 := var2Register arg1 in
+    let rs2 := var2Register arg2 in
     match op with
     | OPlus => [Add rd rs1 rs2]
     | OMinus => [Sub rd rs1 rs2]
     | OTimes => [Mul rd rs1 rs2]
-    | OEq => [Add rd R0 R0; Bne rs1 rs2 $4; Addi rd R0 $1] (* TODO super inefficient *)
-    | OLt => [Add rd R0 R0; Bge rs1 rs2 $4; Addi rd R0 $1] (* TODO super inefficient *)
+    | OEq => [Sub rd rs1 rs2; Seqz rd rd]
+    | OLt => [Sltu rd rs1 rs2]
     | OAnd => [And rd rs1 rs2]
     end.
 
   (* using the same names (var) in source and target language *)
   Fixpoint compile_stmt(s: @stmt w var): list (@Instruction var) :=
     match s with
-    | SLit x v => [Addi x R0 (zcast 12 v)] (* only works if literal is < 2^12 *)
+    | SLit x v => [Addi (var2Register x) RegO (zcast 12 v)] (* only works if literal is < 2^12 *)
     | SOp x op y z => compile_op x op y z
-    | SSet x y => [Add x y R0]
+    | SSet x y => [Add (var2Register x) (var2Register y) RegO]
     | SIf cond bThen bElse =>
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [Beq cond R0 $(S (length bThen'))] ++ bThen' ++ [Jal R0 $(length bElse')] ++ bElse'
+        [Beq (var2Register cond) RegO $(S (length bThen'))] ++
+        bThen' ++
+        [Jal RegO $(length bElse')] ++
+        bElse'
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [Beq cond R0 $(S (length body2'))] ++
+        [Beq (var2Register cond) RegO $(S (length body2'))] ++
         body2' ++
-        [Jal R0 (wneg $(S (length body1' + length body2')))]
+        [Jal RegO (wneg $(S (length body1' + length body2')))]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     end.
@@ -66,7 +72,7 @@ Section FlatToRiscv.
   *)
 
   (* TODO define type classes in such a way that this is not needed *)
-  Definition myRiscvMachine := @IsRiscvMachine w var R0 _.
+  Definition myRiscvMachine := @IsRiscvMachine w var _.
   Existing Instance myRiscvMachine.
 
 (* inline because the inverison is already done
@@ -86,6 +92,8 @@ Section FlatToRiscv.
   *)
   
   Axiom wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
+
+  Require Import lib.LibTactics. (* contains annoying notation which makes Register a keyword *)
 
   Lemma containsProgram_cons_inv: forall s inst insts offset,
     containsProgram s (inst :: insts) offset ->
@@ -223,8 +231,7 @@ Section FlatToRiscv.
                pc getPC loadInst setPC getRegister setRegister myRiscvMachine IsRiscvMachine gets
                StateMonad.get Return Bind State_Monad ].
         rewrite Cp1. simpl.
-        assert (initialRegs R0 ^+ initialRegs R0 = $0) as ER0 by admit. (* TODO *)
-        rewrite ER0.
+        destruct (dec (x = x)); [|contradiction].
         match goal with
         | |- context [weq ?a ?b] => destruct (weq a b) eqn: E
         end.
@@ -232,9 +239,10 @@ Section FlatToRiscv.
           cbv [run1 execState StateMonad.put execute instructionMem registers 
                pc getPC loadInst setPC getRegister setRegister myRiscvMachine IsRiscvMachine gets
                StateMonad.get Return Bind State_Monad ]. simpl.
+          (*
           rewrite Cp2. simpl.
           apply runsToDone.
-
+          *)
   Abort.
 
 
