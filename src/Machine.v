@@ -42,6 +42,12 @@ Section Machine.
         end;
   |}.
 
+  Definition initialRiscvMachine(imem: list (@Instruction Register)): RiscvMachine := {|
+    instructionMem := fun (i: word w) => nth (wordToNat i) imem InfiniteJal;
+    registers := fun (r: Register) => $0;
+    pc := $0
+  |}.
+
 End Machine.
 
 (* needed because it's not exported outside the section by default *)

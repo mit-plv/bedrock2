@@ -6,9 +6,13 @@ Require Import compiler.Op.
 Require Import compiler.member.
 Require Import compiler.ForWord.
 Require Import compiler.LLG.
-Require compiler.LLG2FlatImp.
+Require        compiler.LLG2FlatImp.
 Require Import compiler.FlatImp.
 Require Import compiler.ResMonad.
+Require        compiler.FlatToRiscv.
+Require Import compiler.Riscv.
+Require Import compiler.Machine.
+Require Import compiler.StateMonad.
 
 Definition myvar := nat.
 Definition var_x1: myvar := 3.
@@ -83,4 +87,29 @@ Definition eval_FlatImp_stmt(s: @stmt w myvar * myvar): option (word w) :=
 Transparent wlt_dec.
 
 Goal eval_FlatImp_stmt (p1_FlatImp $4) = Some $14. reflexivity. Qed.
+
+Definition compileFlat2Riscv(f: @stmt w myvar): list (@Instruction myvar) :=
+  compiler.FlatToRiscv.compile_stmt (R0 := 0) f.
+
+Definition p1_riscv(n: word w): list (@Instruction myvar) := compileFlat2Riscv (p1_FlatImp_stmt n).
+
+Goal False. set (r := p1_riscv $3). cbv in *. Abort.
+
+Definition lotsOfFuel_lowlevel := 10.
+
+Definition myInst := (@IsRiscvMachine w nat 0 _).
+Existing Instance myInst.
+
+Definition runThenGet(resVar: myvar): State RiscvMachine (word w) :=
+  run lotsOfFuel_lowlevel;;
+  getRegister resVar.
+
+Definition go(p: list (@Instruction myvar))(resVar: myvar): word w :=
+  evalState (runThenGet resVar) (initialRiscvMachine (Reg0 := 0) p).
+
+Goal go (p1_riscv $4) (p1_FlatImp_resVar $4) = $14.
+(* vm_compute. result is 0 instead of 14, even after 100 steps *)
+(* cbv. stack overflow *)
+(* reflexivity. fails after about one minute *)
+Abort.
 
