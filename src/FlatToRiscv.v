@@ -135,6 +135,16 @@ Section FlatToRiscv.
       assumption.
   Qed.
 
+  Ltac destruct_containsProgram :=
+    repeat match goal with
+    | Cp: _ |- _ =>
+      (apply containsProgram_cons_inv in Cp || apply containsProgram_app_inv in Cp);
+      let Cp' := fresh Cp in 
+      destruct Cp as [Cp' Cp];
+      simpl in Cp'
+    | Cp: containsProgram _ [] _ |- _ => clear Cp
+    end.
+
   Lemma containsState_put: forall prog1 prog2 pc1 pc2 initialH initialRegs x v1 v2,
     containsState (mkRiscvMachine prog1 initialRegs pc1) initialH ->
     v1 = v2 ->
@@ -274,13 +284,12 @@ Section FlatToRiscv.
     induction fuelH; [intros; discriminate |].
     introv C EvH Cp Cs PcEq.
     invert_eval_stmt.
-    - subst. simpl in Cp.
-      apply containsProgram_cons_inv in Cp. apply proj1 in Cp.
+    - subst. destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
       apply runsToStep. apply runsToDone.
       simpl_run1.
-      simpl in Cp.
-      rewrite Cp. simpl.
+      simpl in Cp0.
+      rewrite Cp0. simpl.
       rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
       eapply containsState_put; [eassumption|].
       unfold zcast.
@@ -297,12 +306,7 @@ Section FlatToRiscv.
       apply runsToStep.
       simpl_run1.
       destruct op eqn: EOp;
-      repeat (
-        apply containsProgram_cons_inv in Cp;
-        let Cp' := fresh Cp in 
-        destruct Cp as [Cp' Cp];
-        simpl in Cp'
-      );
+      destruct_containsProgram;
       repeat match goal with
       | E: ?t = ?rhs |- context [?t] => rewrite E
       end;
@@ -326,11 +330,10 @@ Section FlatToRiscv.
       apply reduce_eq_to_sub_and_lt.
     - simpl in C. subst.
       destruct initialL as [initialProg initialRegs initialPc].
-      simpl in Cp.
-      apply containsProgram_cons_inv in Cp. apply proj1 in Cp. simpl in Cp.
+      destruct_containsProgram.
       apply runsToStep.
       simpl_run1.
-      rewrite Cp.
+      rewrite Cp0.
       apply runsToDone. simpl.
       rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
       eapply containsState_put; [ eassumption |].
@@ -338,12 +341,7 @@ Section FlatToRiscv.
       erewrite Cs by eassumption.
       apply wplus_unit.
     - simpl in C. subst.
-      repeat (
-        (apply containsProgram_cons_inv in Cp || apply containsProgram_app_inv in Cp);
-        let Cp' := fresh Cp in 
-        destruct Cp as [Cp' Cp];
-        simpl in Cp'
-      ).
+      destruct_containsProgram.
       apply runsToStep.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
       simpl_run1.
@@ -376,12 +374,7 @@ Section FlatToRiscv.
       rewrite wordToNat_natToWord_idempotent'; [omega|].
       pose proof (compile_fits_imm12 s2). unfold pow2 in *. omega.
     - simpl in C. subst.
-      repeat (
-        (apply containsProgram_cons_inv in Cp || apply containsProgram_app_inv in Cp);
-        let Cp' := fresh Cp in 
-        destruct Cp as [Cp' Cp];
-        simpl in Cp'
-      ).
+      destruct_containsProgram.
       apply runsToStep.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
       simpl_run1.
@@ -413,7 +406,37 @@ Section FlatToRiscv.
         f_equal.
         rewrite wordToNat_natToWord_idempotent'; [omega|].
         apply compile_fits_imm12.
-    - admit. (* TODO SLoop *)
+    - simpl in C. subst.
+      destruct_containsProgram.
+      destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
+      match goal with
+      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
+      end.
+      specialize (IHfuelH s1).
+      specializes IHfuelH; [reflexivity|eassumption|eassumption|eassumption|reflexivity|idtac].
+      apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
+      apply (runsToSatisfying_trans _ _ _ IHfuelH).
+      intros middleL [[Cs2 F] E].
+      destruct middleL as [middleProg middleRegs middlePc]. simpl in *. subst middleProg middlePc.
+      apply runsToStep.
+      simpl_run1.
+      rewrite Cp1. simpl.
+      pose proof Cs2 as Cs2'.
+      unfold containsState in Cs2'. simpl in Cs2'.
+      apply Cs2' in H0. rewrite H0.
+      destruct (weq $0 $0); [|contradiction]. simpl.
+      apply runsToDone.
+      refine (conj Cs2 _).
+      clear.
+      rewrite <- ? wplus_assoc.
+      f_equal.
+      repeat (rewrite app_length; simpl).
+      rewrite <- ? natToWord_mult.
+      unfold zcast.
+      rewrite <- ? natToWord_plus.
+      f_equal.
+      rewrite wordToNat_natToWord_idempotent'; [omega|].
+      apply compile_fits_imm12.
     - admit. (* TODO SLoop *)
     - simpl in C. subst. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
