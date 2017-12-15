@@ -54,7 +54,7 @@ Section FlatToRiscv.
         body1' ++
         [Beq (var2Register cond) RegO ($4 ^* $(S (length body2')))] ++
         body2' ++
-        [Jal RegO (wneg ($4 ^* $(S (length body1' + length body2'))))]
+        [Jal RegO (wneg ($4 ^* $(S (S (length body1' + length body2')))))]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     end.
@@ -277,7 +277,7 @@ Section FlatToRiscv.
 
   Ltac solve_word_eq :=
     clear;
-    match goal with
+    repeat match goal with
     | v: word _ |- _ =>
        rewrite <- (natToWord_wordToNat v);
        let v' := fresh v in forget (# v) as v';
@@ -295,6 +295,10 @@ Section FlatToRiscv.
 
   (* TODO needs side conditions *)
   Axiom scast_natToWord: forall n sz sz', scast sz (natToWord sz' n) = natToWord sz n.
+
+  (* TODO needs side conditions *)
+  Axiom scast_neg_natToWord: forall n sz sz',
+    scast sz (wneg (natToWord sz' n)) = wneg (natToWord sz n).
 
   Axiom wone_simpl: forall sz sz', wone sz = scast sz (natToWord sz' 1).
 
@@ -486,10 +490,38 @@ Section FlatToRiscv.
             assert (ofs1 = ofs2) as OfsEq
         end. {
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-          admit. (* TODO *)
+          rewrite scast_neg_natToWord.
+          clear.
+          forget (length (compile_stmt s1)) as L1.
+          forget (length (compile_stmt s2)) as L2.
+          rewrite <- ? wplus_assoc.
+          rewrite <- wplus_unit at 1.
+          rewrite wplus_comm at 1.
+          f_equal.
+          symmetry.
+          rewrite? wplus_assoc.
+          match goal with
+          | |- ?A ^+ ^~ ?B = $0 => replace B with A; [apply wminus_inv|]
+          end.
+          solve_word_eq.
         }
         rewrite <- OfsEq. assumption.
-      + admit. (* TODO *)
+      + simpl. clear.
+        repeat (rewrite app_length; simpl).
+        repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
+        forget (length (compile_stmt s1)) as L1.
+        forget (length (compile_stmt s2)) as L2.
+        rewrite scast_neg_natToWord.
+        rewrite <- ? wplus_assoc.
+        f_equal.
+        rewrite ? wplus_assoc.
+        rewrite <- wplus_unit at 1.
+        f_equal.
+        symmetry.
+        match goal with
+        | |- ?A ^+ ^~ ?B = $0 => replace B with A; [apply wminus_inv|]
+        end.
+        solve_word_eq.
     - simpl in C. subst. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
       eapply runsToSatisfying_trans.
