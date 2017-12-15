@@ -36,7 +36,7 @@ Section FlatToRiscv.
   (* using the same names (var) in source and target language *)
   Fixpoint compile_stmt(s: @stmt w var): list (@Instruction var) :=
     match s with
-    | SLit x v => [Addi (var2Register x) RegO (zcast 12 v)] (* only works if literal is < 2^12 *)
+    | SLit x v => [Addi (var2Register x) RegO (scast 12 v)] (* only works if literal is < 2^12 *)
     | SOp x op y z => compile_op x op y z
     | SSet x y => [Add (var2Register x) RegO (var2Register y)]
     | SIf cond bThen bElse =>
@@ -290,6 +290,14 @@ Section FlatToRiscv.
     end;
     (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
 
+  (* TODO needs side conditions *)
+  Axiom scast_2: forall sz sz' (v: word sz), scast sz (scast sz' v) = v.
+
+  (* TODO needs side conditions *)
+  Axiom scast_natToWord: forall n sz sz', scast sz (natToWord sz' n) = natToWord sz n.
+
+  Axiom wone_simpl: forall sz sz', wone sz = scast sz (natToWord sz' 1).
+
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL finalPc,
     compile_stmt s = insts ->
     eval_stmt fuelH initialH s = Success finalH ->
@@ -310,11 +318,8 @@ Section FlatToRiscv.
       rewrite Cp0. simpl.
       rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
       eapply containsState_put; [eassumption|].
-      unfold zcast.
+      rewrite scast_2.
       solve_word_eq.
-      + apply fits_2w.
-      + apply fits_212.
-      + apply fits_2w.
     - simpl in C. subst.
       destruct initialL as [initialProg initialRegs initialPc].
       simpl in Cp.
@@ -345,6 +350,7 @@ Section FlatToRiscv.
       apply runsToDone.
       split.
       + eapply containsState_put; [ eassumption |].
+        rewrite <- wone_simpl with (sz' := 12).
         apply reduce_eq_to_sub_and_lt.
       + solve_word_eq.
     - simpl in C. subst.
@@ -384,9 +390,9 @@ Section FlatToRiscv.
       rewrite Cp2. simpl.
       apply runsToDone.
       refine (conj Cs2 _).
-      unfold zcast.
+      repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
+      rewrite scast_natToWord.
       solve_word_eq.
-      pose proof (compile_fits_imm12 s2). unfold pow2 in *. omega.
     - simpl in C. subst.
       destruct_containsProgram.
       apply runsToStep.
@@ -403,11 +409,16 @@ Section FlatToRiscv.
             unify insts1 insts2;
             assert (ofs1 = ofs2) as OfsEq
         end. {
-          simpl. unfold zcast. solve_word_eq. apply compile_fits_imm12.
+          simpl.
+          repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
+          rewrite scast_natToWord.
+          solve_word_eq.
         }
         rewrite <- OfsEq. assumption.
-      + simpl. unfold zcast. solve_word_eq.
-        apply compile_fits_imm12.
+      + simpl.
+        repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
+        rewrite scast_natToWord.
+        solve_word_eq.
     - simpl in C. subst.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
@@ -429,8 +440,56 @@ Section FlatToRiscv.
       destruct (weq $0 $0); [|contradiction]. simpl.
       apply runsToDone.
       refine (conj Cs2 _).
-      unfold zcast. solve_word_eq. apply compile_fits_imm12.
-    - admit. (* TODO SLoop *)
+      repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
+      rewrite scast_natToWord.
+      solve_word_eq.
+    - simpl in C. subst.
+      pose proof IHfuelH as IH.
+      pose proof (conj I Cp) as CpSaved.
+      destruct_containsProgram.
+      destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
+      match goal with
+      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
+      end.
+      specialize (IHfuelH s1).
+      specializes IHfuelH; [reflexivity|eassumption|eassumption|eassumption|reflexivity|idtac].
+      apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
+      apply (runsToSatisfying_trans _ _ _ IHfuelH). clear IHfuelH.
+      intros middleL [[Cs2 F] E].
+      destruct middleL as [middleProg middleRegs middlePc]. simpl in *. subst middleProg middlePc.
+      apply runsToStep.
+      simpl_run1.
+      rewrite Cp1. simpl.
+      pose proof Cs2 as Cs2'.
+      unfold containsState in Cs2'. simpl in Cs2'.
+      apply Cs2' in H0. rewrite H0.
+      destruct (weq x1 $0); [contradiction|]. simpl.
+      pose proof IH as IHfuelH.
+      match goal with
+      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
+      end.
+      specialize (IHfuelH s2).
+      specializes IHfuelH; [reflexivity|eassumption|eassumption|eassumption|reflexivity|idtac].
+      apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
+      apply (runsToSatisfying_trans _ _ _ IHfuelH). clear IHfuelH.
+      intros endL [[Cs3 F] E].
+      destruct endL as [endProg endRegs endPc]. simpl in *. subst endProg endPc.
+      apply runsToStep.
+      simpl_run1.
+      rewrite Cp3. simpl.
+      eapply (IH (SLoop s1 cond s2)); [reflexivity|eassumption|idtac|eassumption|idtac].
+      + simpl.
+        apply proj2 in CpSaved.
+        match goal with
+        | H: containsProgram ?st1 ?insts1 ?ofs1 |- containsProgram ?st2 ?insts2 ?ofs2 =>
+            unify insts1 insts2;
+            assert (ofs1 = ofs2) as OfsEq
+        end. {
+          repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
+          admit. (* TODO *)
+        }
+        rewrite <- OfsEq. assumption.
+      + admit. (* TODO *)
     - simpl in C. subst. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
       eapply runsToSatisfying_trans.

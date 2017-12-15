@@ -4,7 +4,7 @@ Require Import Coq.Arith.Minus.
 Require Import Coq.Arith.PeanoNat.
 Require Import compiler.Decidable.
 
-Definition t: word 4 := $3.
+Definition t: word 4 := wneg $3.
 
 Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
   destruct (Nat.compare sz sz') eqn: E.
@@ -18,8 +18,29 @@ forall n m : nat, (n ?= m) = Lt -> n < m
 nat_compare_eq
 *)
 
-(* TODO we should also have a signed version, but there's no zToWord, only wordToZ *)
-Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz' :=
+(*
+Definition zToWord(sz: nat)(z: BinNums.Z): word sz :=
+  match z with
+  | BinNums.Z0 => $0
+  | BinNums.Zpos n => $ (BinPos.Pos.to_nat n)
+  | BinNums.Zneg n => wneg $ (BinPos.Pos.to_nat n)
+  end.
+*)
+
+(* TODO move to bbv *)
+Definition ZToWord(sz: nat)(n: BinNums.Z): word sz :=
+  match n with
+  | BinNums.Z0 => $0
+  | BinNums.Zpos p => posToWord sz p
+  | BinNums.Zneg p => wneg (posToWord sz p)
+  end.
+
+(* signed cast *)
+Definition scast{sz: nat}(sz': nat)(n: word sz): word sz' :=
+  ZToWord sz' (wordToZ n).
+
+(* unsigned cast *)
+Definition ucast{sz: nat}(sz': nat)(n: word sz): word sz' :=
   natToWord sz' (wordToNat n).
 
 (* old approach:
@@ -35,7 +56,8 @@ Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
 Defined.
 *)
 
-Eval cbv in (zcast 1 t).
+Eval cbv in t.
+Eval cbv in (scast 8 t).
 
 (*
 Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.

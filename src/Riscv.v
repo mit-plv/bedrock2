@@ -46,7 +46,7 @@ Section Riscv.
     match i with
     | Addi rd rs1 imm12 =>
         x <- getRegister rs1;
-        setRegister rd (x ^+ (zcast w imm12))
+        setRegister rd (x ^+ (scast w imm12))
     | Add rd rs1 rs2 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
@@ -65,7 +65,7 @@ Section Riscv.
         setRegister rd (if wlt_dec x y then $1 else $0)
     | Sltiu rd rs1 imm12 =>
         x <- getRegister rs1;
-        setRegister rd (if wlt_dec x (zcast w imm12) then $1 else $0)
+        setRegister rd (if wlt_dec x (scast w imm12) then $1 else $0)
     | And rd rs1 rs2 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
@@ -74,26 +74,26 @@ Section Riscv.
         x <- getRegister rs1;
         y <- getRegister rs2;
         pc <- getPC;
-        if weq x y then (setPC (pc ^+ (zcast w sbimm12))) else Return tt
+        if weq x y then (setPC (pc ^+ (scast w sbimm12))) else Return tt
     | Bne rs1 rs2 sbimm12 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
         pc <- getPC;
-        if weq x y then Return tt else (setPC (pc ^+ (zcast w sbimm12)))
+        if weq x y then Return tt else (setPC (pc ^+ (scast w sbimm12)))
     | Blt rs1 rs2 sbimm12 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
         pc <- getPC;
-        if wlt_dec x y then (setPC (pc ^+ (zcast w sbimm12))) else Return tt
+        if wlt_dec x y then (setPC (pc ^+ (scast w sbimm12))) else Return tt
     | Bge rs1 rs2 sbimm12 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
         pc <- getPC;
-        if wlt_dec x y then Return tt else (setPC (pc ^+ (zcast w sbimm12)))
+        if wlt_dec x y then Return tt else (setPC (pc ^+ (scast w sbimm12)))
     | Jal rd jimm20 =>
         pc <- getPC;
         setRegister rd (pc ^+ $4);;
-        setPC (pc ^+ (zcast w jimm20))
+        setPC (pc ^+ (scast w jimm20))
     end.
 
   Definition run1{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}: M unit :=
