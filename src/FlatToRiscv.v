@@ -251,6 +251,9 @@ Section FlatToRiscv.
 
   Axiom compile_fits_imm12: forall s, 4 * S (length (compile_stmt s)) < pow2 12.
 
+  Axiom fits_212: forall n: nat, n < pow2 12.
+  Axiom fits_2w: forall n: nat, n < pow2 w.
+
   Lemma regs_overwrite: forall x v1 v2 (initialRegs: var -> word w),
       (fun reg2 : var => if dec (x = reg2) then v2 else
                          if dec (x = reg2) then v1 else
@@ -271,6 +274,21 @@ Section FlatToRiscv.
          cbv [run1 execState StateMonad.put execute instructionMem registers 
              pc getPC loadInst setPC getRegister setRegister myRiscvMachine IsRiscvMachine gets
              StateMonad.get Return Bind State_Monad ].
+
+  Ltac solve_word_eq :=
+    clear;
+    match goal with
+    | v: word _ |- _ =>
+       rewrite <- (natToWord_wordToNat v);
+       let v' := fresh v in forget (# v) as v';
+       clear v
+    end;
+    repeat (rewrite app_length; simpl);
+    repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus);
+    match goal with
+    | |- $ _ = $ _ => f_equal
+    end;
+    (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
 
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL finalPc,
     compile_stmt s = insts ->
@@ -293,9 +311,10 @@ Section FlatToRiscv.
       rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
       eapply containsState_put; [eassumption|].
       unfold zcast.
-      rewrite wordToNat_natToWord_idempotent'.
-      + rewrite natToWord_wordToNat. apply wplus_unit.
-      + apply fits_imm12.
+      solve_word_eq.
+      + apply fits_2w.
+      + apply fits_212.
+      + apply fits_2w.
     - simpl in C. subst.
       destruct initialL as [initialProg initialRegs initialPc].
       simpl in Cp.
@@ -324,10 +343,10 @@ Section FlatToRiscv.
       destruct (dec (x = x)); [|contradiction].
       rewrite regs_overwrite.
       apply runsToDone.
-      rewrite <- natToWord_mult. rewrite <- wplus_assoc. rewrite <- natToWord_plus.
-      refine (conj _ eq_refl).
-      eapply containsState_put; [ eassumption |].
-      apply reduce_eq_to_sub_and_lt.
+      split.
+      + eapply containsState_put; [ eassumption |].
+        apply reduce_eq_to_sub_and_lt.
+      + solve_word_eq.
     - simpl in C. subst.
       destruct initialL as [initialProg initialRegs initialPc].
       destruct_containsProgram.
@@ -335,11 +354,12 @@ Section FlatToRiscv.
       simpl_run1.
       rewrite Cp0.
       apply runsToDone. simpl.
-      rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
-      eapply containsState_put; [ eassumption |].
-      unfold containsState in Cs. simpl in Cs.
-      erewrite Cs by eassumption.
-      apply wplus_unit.
+      split.
+      + eapply containsState_put; [ eassumption |].
+        unfold containsState in Cs. simpl in Cs.
+        erewrite Cs by eassumption.
+        solve_word_eq.
+      + solve_word_eq.
     - simpl in C. subst.
       destruct_containsProgram.
       apply runsToStep.
@@ -364,14 +384,8 @@ Section FlatToRiscv.
       rewrite Cp2. simpl.
       apply runsToDone.
       refine (conj Cs2 _).
-      rewrite <- ? wplus_assoc.
-      f_equal. rewrite app_length. simpl.
-      clear.
-      rewrite <- ? natToWord_mult.
       unfold zcast.
-      rewrite <- ? natToWord_plus.
-      f_equal.
-      rewrite wordToNat_natToWord_idempotent'; [omega|].
+      solve_word_eq.
       pose proof (compile_fits_imm12 s2). unfold pow2 in *. omega.
     - simpl in C. subst.
       destruct_containsProgram.
@@ -389,22 +403,10 @@ Section FlatToRiscv.
             unify insts1 insts2;
             assert (ofs1 = ofs2) as OfsEq
         end. {
-          simpl.
-          unfold zcast. rewrite <- ? natToWord_mult.
-          rewrite wordToNat_natToWord_idempotent' by (apply compile_fits_imm12).
-          rewrite <- ? wplus_assoc.
-          f_equal. f_equal. rewrite <- natToWord_plus. f_equal. omega.
+          simpl. unfold zcast. solve_word_eq. apply compile_fits_imm12.
         }
         rewrite <- OfsEq. assumption.
-      + simpl.
-        rewrite <- ? wplus_assoc. f_equal.
-        rewrite app_length. simpl.
-        clear.
-        rewrite <- ? natToWord_mult.
-        unfold zcast.
-        rewrite <- ? natToWord_plus.
-        f_equal.
-        rewrite wordToNat_natToWord_idempotent'; [omega|].
+      + simpl. unfold zcast. solve_word_eq.
         apply compile_fits_imm12.
     - simpl in C. subst.
       destruct_containsProgram.
@@ -427,16 +429,7 @@ Section FlatToRiscv.
       destruct (weq $0 $0); [|contradiction]. simpl.
       apply runsToDone.
       refine (conj Cs2 _).
-      clear.
-      rewrite <- ? wplus_assoc.
-      f_equal.
-      repeat (rewrite app_length; simpl).
-      rewrite <- ? natToWord_mult.
-      unfold zcast.
-      rewrite <- ? natToWord_plus.
-      f_equal.
-      rewrite wordToNat_natToWord_idempotent'; [omega|].
-      apply compile_fits_imm12.
+      unfold zcast. solve_word_eq. apply compile_fits_imm12.
     - admit. (* TODO SLoop *)
     - simpl in C. subst. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
@@ -448,15 +441,10 @@ Section FlatToRiscv.
       + simpl. intros middleL [[Cs2 F] E]. rewrite <- F in Cp2.
         eapply (IHfuelH s2); [reflexivity|eassumption|idtac|eassumption|idtac].
         * unfold containsProgram in *. rewrite E. assumption.
-        * rewrite F. rewrite <- ? wplus_assoc. f_equal.
-          rewrite ! (wmult_comm $4).
-          rewrite <- wmult_plus_distr.
-          rewrite app_length.
-          rewrite natToWord_plus.
-          reflexivity.
+        * rewrite F.
+          destruct initialL. simpl. solve_word_eq.
     - simpl in C. subst. apply runsToDone. split; [assumption|].
-      simpl. rewrite <- natToWord_mult. simpl. rewrite wplus_comm, wplus_unit. 
-      reflexivity.
+      destruct initialL. simpl. solve_word_eq.
   Qed.
 
 End FlatToRiscv.
