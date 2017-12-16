@@ -108,6 +108,14 @@ Section Riscv.
     | S m => f (rec m)
     end.
 
+  Lemma multiApply_inv{T: Type}: forall (f: T -> T) (init: T) (n: nat),
+    multiApply f init (S n) = multiApply f (f init) n.
+  Proof.
+    intros. simpl. induction n.
+    - reflexivity.
+    - simpl. f_equal. assumption.
+  Qed.
+
   Definition power_func{T: Type}(f: T -> T): nat -> (T -> T) :=
     fix rec(n: nat) := match n with
     | O => fun x => x

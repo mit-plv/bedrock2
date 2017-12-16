@@ -95,7 +95,7 @@ Definition p1_riscv(n: word w): list (@Instruction myvar) := compileFlat2Riscv (
 
 Goal False. set (r := p1_riscv $3). cbv in *. Abort.
 
-Definition lotsOfFuel_lowlevel := 10.
+Definition lotsOfFuel_lowlevel := 100.
 
 Definition myInst := (@IsRiscvMachine w nat _).
 Existing Instance myInst.
@@ -107,9 +107,100 @@ Definition runThenGet(resVar: myvar): State RiscvMachine (word w) :=
 Definition go(p: list (@Instruction myvar))(resVar: myvar): word w :=
   evalState (runThenGet resVar) (initialRiscvMachine p).
 
-Goal go (p1_riscv $4) (p1_FlatImp_resVar $4) = $14.
-(* vm_compute. result is 0 instead of 14, even after 100 steps *)
-(* cbv. stack overflow *)
-(* reflexivity. fails after about one minute *)
-Abort.
+Import compiler.FlatToRiscv.
 
+Lemma nth_error_nth: forall {T: Type} (l: list T) (e d: T) (i: nat),
+  nth_error l i = Some e ->
+  nth i l d = e.
+Proof.
+  intros T l. induction l; intros.
+  - destruct i; simpl in H; discriminate.
+  - destruct i; simpl in H; inversion H; subst.
+    + reflexivity.
+    + simpl. auto.
+Qed.
+
+Lemma initialRiscvMachine_containsProgram: forall w var p,
+  @containsProgram w var (initialRiscvMachine p) p (pc (initialRiscvMachine p)).
+Proof.
+  intros. unfold containsProgram, initialRiscvMachine. simpl.
+  intros. apply nth_error_nth.
+  match goal with
+  | H: nth_error _ ?i1 = _ |- nth_error _ ?i2 = _ => replace i2 with i1; [assumption|]
+  end.
+  unfold wdiv, wordBin.
+  rewrite wplus_unit.
+  rewrite <- natToWord_mult.
+  rewrite? wordToN_nat.
+  rewrite? wordToNat_natToWord_idempotent'.
+Admitted.
+
+Lemma every_state_contains_empty_state: forall s,
+  containsState s empty_state.
+Proof.
+  unfold containsState.
+  intros. inversion H.
+Qed.
+
+(*
+Axiom flat_src_correct: forall n, exists fuelH finalH,
+  eval_stmt fuelH empty_state (p1_FlatImp_stmt $ (n)) = Success finalH.
+*)
+
+Lemma p1_runs_correctly_1: forall n resVar fuelH finalH,
+  eval_stmt fuelH empty_state (p1_FlatImp_stmt $ (n)) = Success finalH ->
+  Common.get finalH resVar <> None ->
+  exists fuelL,
+  Some ((execState (run fuelL) (initialRiscvMachine (p1_riscv $n))).(registers) resVar)
+  = Common.get finalH resVar.
+Proof.
+  intro n. intros resVar fuelH finalH E G.
+  change (exists fuel, 
+   (fun final => Some (registers final resVar) = finalH resVar)
+   (execState (run fuel) (initialRiscvMachine (p1_riscv $n)))).
+  apply runsToSatisfying_exists_fuel.
+  eapply runsToSatisfying_imp.
+  - eapply compile_stmt_correct_aux with
+     (s := (p1_FlatImp_stmt $n)) (initialH := empty_state) (fuelH0 := fuelH) (finalH0 := finalH).
+    + reflexivity.
+    + apply E.
+    + unfold p1_riscv.
+      unfold compileFlat2Riscv in *.
+      remember (compile_stmt (p1_FlatImp_stmt $n)) as p.
+      apply initialRiscvMachine_containsProgram.
+    + apply every_state_contains_empty_state.
+    + reflexivity.
+  - intros.
+    simpl in H. apply proj1 in H.
+    unfold containsState in H.
+    specialize (H resVar).
+    destruct (Common.get finalH resVar) eqn: Q.
+    + specialize (H _ eq_refl).
+      simpl in Q. unfold id in Q. congruence.
+    + contradiction.
+Qed.
+
+Goal exists fuel, 
+  (execState (run fuel) (initialRiscvMachine (p1_riscv $4))).(registers)
+    (p1_FlatImp_resVar $4)
+  = $14.
+Proof.
+  pose proof p1_runs_correctly_1 as P.
+  specialize (P 4 (p1_FlatImp_resVar $4) 20).
+  edestruct P as [fuelL Q].
+  - reflexivity.
+  - intro. cbv in H. discriminate.
+  - match goal with
+    | Q: ?A = ?B |- _ => let B' := eval cbv in B in change (A = B') in Q
+    end.
+    exists fuelL.
+    inversion Q.
+    assumption.
+Qed.
+
+Goal (execState (run 100) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_FlatImp_resVar $4)
+= $14. reflexivity. Qed.
+
+Goal go (p1_riscv $4) (p1_FlatImp_resVar $4) = $14.
+  reflexivity.
+Qed.

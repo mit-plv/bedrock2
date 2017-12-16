@@ -180,6 +180,25 @@ Section FlatToRiscv.
        runsToSatisfying (execState run1 initial) P ->
        runsToSatisfying initial P.
 
+  Lemma execState_compose{S A: Type}: forall (m1 m2: State S A) (initial: S),
+    execState m2 (execState m1 initial) = execState (m1 ;; m2) initial.
+  Proof.
+    intros. unfold execState. unfold Bind, Return, State_Monad.
+    destruct (m1 initial). reflexivity.
+  Qed.
+
+  Lemma runsToSatisfying_exists_fuel: forall initial P,
+    runsToSatisfying initial P ->
+    exists fuel, P (execState (run fuel) initial).
+  Proof.
+    introv R. induction R.
+    - exists 0. exact H.
+    - destruct IHR as [fuel IH]. exists (S fuel).
+      unfold run in *.
+      rewrite execState_compose in IH.
+      apply IH.
+  Qed.
+
   Lemma runsToSatisfying_trans: forall P Q initial,
     runsToSatisfying initial P ->
     (forall middle, P middle -> runsToSatisfying middle Q) ->
@@ -187,6 +206,15 @@ Section FlatToRiscv.
   Proof.
     introv R1. induction R1; introv R2; [solve [auto]|].
     apply runsToStep. apply IHR1. apply R2.
+  Qed.
+
+  Lemma runsToSatisfying_imp: forall (P Q : RiscvMachine -> Prop) initial,
+    runsToSatisfying initial P ->
+    (forall final, P final -> Q final) ->
+    runsToSatisfying initial Q.
+  Proof.
+    introv R1 R2. eapply runsToSatisfying_trans; [eassumption|].
+    intros final Pf. apply runsToDone. auto.
   Qed.
 
   Lemma execute_preserves_instructionMem: forall inst initial,
