@@ -202,5 +202,6 @@ Goal (execState (run 100) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_F
 = $14. reflexivity. Qed.
 
 Goal go (p1_riscv $4) (p1_FlatImp_resVar $4) = $14.
+  (* Note: go depends on lotsOfFuel_lowlevel, not lotsOfFuel *)
   reflexivity.
 Qed.
