@@ -287,8 +287,21 @@ Section FlatToRiscv.
     end;
     (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
 
+  (* TODO needs bounds *)
+  Lemma wordToZ_ZToWord: forall sz v,
+    @wordToZ sz (ZToWord sz v) = v.
+  Proof.
+    intros.
+    destruct v.
+    - simpl. unfold wordToZ.
+  Admitted.
+
   (* TODO needs side conditions *)
-  Axiom scast_2: forall sz sz' (v: word sz), scast sz (scast sz' v) = v.
+  Lemma scast_2: forall sz sz' (v: word sz), scast sz (scast sz' v) = v.
+  Proof.
+    intros. unfold scast. rewrite wordToZ_ZToWord.
+  Admitted.
+  (* maybe it's simpler to define scast in terms of padding/chopping bits? *)
 
   (* TODO needs side conditions *)
   Axiom scast_natToWord: forall n sz sz', scast sz (natToWord sz' n) = natToWord sz n.

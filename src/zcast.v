@@ -59,13 +59,31 @@ Defined.
 Eval cbv in t.
 Eval cbv in (scast 8 t).
 
-(*
-Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
-  destruct (dec (sz < sz')).
-  - replace sz' with (sz + (sz' - sz)) by omega.
-    exact (zext n _).
-  - replace sz with ((sz - sz') + sz') in n by omega.
-    exact (split2 _ _ n).
+Lemma split_into_diff: forall (a b: nat), b < a -> a = b + (a - b).
+  intros. apply le_plus_minus. apply Nat.lt_le_incl. assumption.
 Defined.
-too expensive to calculate
-*)
+
+Definition ext_cast(ext: forall sz1 : nat, word sz1 -> forall sz2 : nat, word (sz1 + sz2))
+  {sz: nat}(sz': nat)(n: word sz): word sz'.
+  destruct (dec (sz < sz')).
+  - replace sz' with (sz + (sz' - sz)).
+    + exact (ext _ n _).
+    + symmetry. apply split_into_diff. assumption.
+  - replace sz with ((sz - sz') + sz') in n.
+    + exact (split2 _ _ n).
+    + apply Nat.sub_add. apply Nat.le_ngt. assumption.
+Defined.
+
+Definition signed_cast{sz: nat}: forall (sz': nat) (n: word sz), word sz' := ext_cast sext.
+
+Definition unsigned_cast{sz: nat}: forall (sz': nat) (n: word sz), word sz' := ext_cast zext.
+
+Eval cbv in t.
+Eval cbv in (signed_cast 8 t).
+
+Lemma destruct_eq_refl: forall (T: Type) (a b: T) (p: a = b) (R: Type) (v: R),
+  match p with
+  | eq_refl => v
+  end = v.
+Proof. intros. destruct p. reflexivity. Qed.
+

@@ -147,6 +147,8 @@ Axiom flat_src_correct: forall n, exists fuelH finalH,
   eval_stmt fuelH empty_state (p1_FlatImp_stmt $ (n)) = Success finalH.
 *)
 
+Require Import Omega.
+
 Lemma p1_runs_correctly_1: forall n resVar fuelH finalH,
   eval_stmt fuelH empty_state (p1_FlatImp_stmt $ (n)) = Success finalH ->
   Common.get finalH resVar <> None ->
@@ -163,6 +165,7 @@ Proof.
   - eapply compile_stmt_correct_aux with
      (s := (p1_FlatImp_stmt $n)) (initialH := empty_state) (fuelH0 := fuelH) (finalH0 := finalH).
     + reflexivity.
+    + simpl. omega.
     + apply E.
     + unfold p1_riscv.
       unfold compileFlat2Riscv in *.
