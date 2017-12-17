@@ -24,6 +24,17 @@ Section FlatImp.
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt.
 
+  Fixpoint stmt_size(s: stmt): nat :=
+    match s with
+    | SLit x v => 1
+    | SOp x op y z => 1
+    | SSet x y => 1
+    | SIf cond bThen bElse => 1 + (stmt_size bThen) + (stmt_size bElse)
+    | SLoop body1 cond body2 => 1 + (stmt_size body1) + (stmt_size body2)
+    | SSeq s1 s2 => 1 + (stmt_size s1) + (stmt_size s2)
+    | SSkip => 1
+    end.
+
   (* If we want a bigstep evaluation relation, we either need to put
      fuel into the SLoop constructor, or give it as argument to eval *)
 

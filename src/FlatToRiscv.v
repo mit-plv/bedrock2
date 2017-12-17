@@ -59,6 +59,13 @@ Section FlatToRiscv.
     | SSkip => nil
     end.
 
+  Lemma compile_stmt_size: forall s,
+    length (compile_stmt s) <= 2 * (stmt_size s).
+  Proof.
+    induction s; simpl; try destruct op; simpl;
+    repeat (rewrite app_length; simpl); omega.
+  Qed.
+
   Definition containsProgram(m: RiscvMachine)(program: list (@Instruction var))(offset: word w)
     := forall i inst, nth_error program i = Some inst ->
                       m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
@@ -244,44 +251,6 @@ Section FlatToRiscv.
     - apply runsToStep. rewrite run1_preserves_instructionMem in IHrunsToSatisfying. assumption.
   Qed.
 
-(*
-  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
-  Inductive runsToSatisfying(P: @RiscvMachine w var -> Prop)(initial: @RiscvMachine w var): Prop :=
-    | runsToDone:
-       P initial ->
-       runsToSatisfying P initial
-    | runsToStep:
-       runsToSatisfying P (execState run1 initial) ->
-       runsToSatisfying P initial.
-
-  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
-  Inductive runsToSatisfying(P: @RiscvMachine w var -> Prop):
-    forall (initial: @RiscvMachine w var), Prop :=
-    | runsToDone: forall initial,
-       P initial ->
-       runsToSatisfying P initial
-    | runsToStep: forall initial, 
-       runsToSatisfying P (execState run1 initial) ->
-       runsToSatisfying P initial.
-
-  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
-  Inductive runsToSatisfying:
-    forall (initial: @RiscvMachine w var) (P: @RiscvMachine w var -> Type), Type :=
-    | runsToDone: forall initial P,
-       P initial ->
-       runsToSatisfying initial P
-    | runsToStep: forall initial P, 
-       runsToSatisfying (execState run1 initial) P ->
-       runsToSatisfying initial P.
-*)
-
-  Axiom fits_imm12: forall v: word w, wordToNat v < pow2 12.
-
-  Axiom compile_fits_imm12: forall s, 4 * S (length (compile_stmt s)) < pow2 12.
-
-  Axiom fits_212: forall n: nat, n < pow2 12.
-  Axiom fits_2w: forall n: nat, n < pow2 w.
-
   Lemma regs_overwrite: forall x v1 v2 (initialRegs: var -> word w),
       (fun reg2 : var => if dec (x = reg2) then v2 else
                          if dec (x = reg2) then v1 else
@@ -332,6 +301,7 @@ Section FlatToRiscv.
 
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL finalPc,
     compile_stmt s = insts ->
+    stmt_size s < pow2 10 ->
     eval_stmt fuelH initialH s = Success finalH ->
     containsProgram initialL insts initialL.(pc) ->
     containsState initialL initialH ->
@@ -340,7 +310,7 @@ Section FlatToRiscv.
        finalL.(pc) = finalPc).
   Proof.
     induction fuelH; [intros; discriminate |].
-    introv C EvH Cp Cs PcEq.
+    introv C Csz EvH Cp Cs PcEq.
     invert_eval_stmt.
     - subst. destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
@@ -412,7 +382,7 @@ Section FlatToRiscv.
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|eassumption|eassumption|eassumption|reflexivity|idtac].
+      specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
       apply (runsToSatisfying_trans _ _ _ IHfuelH).
       intros middleL [[Cs2 F] E].
@@ -435,7 +405,7 @@ Section FlatToRiscv.
       unfold containsState in Cs'. simpl in Cs'.
       apply Cs' in H. rewrite H.
       destruct (weq $0 $0); [|contradiction]. simpl.
-      eapply (IHfuelH s2); [reflexivity|eassumption|idtac|eassumption|idtac].
+      eapply (IHfuelH s2); [reflexivity|omega|eassumption|idtac|eassumption|idtac].
       + match goal with
         | H: containsProgram ?st1 ?insts1 ?ofs1 |- containsProgram ?st2 ?insts2 ?ofs2 =>
             unify insts1 insts2;
@@ -458,7 +428,7 @@ Section FlatToRiscv.
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|eassumption|eassumption|eassumption|reflexivity|idtac].
+      specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
       apply (runsToSatisfying_trans _ _ _ IHfuelH).
       intros middleL [[Cs2 F] E].
@@ -484,7 +454,7 @@ Section FlatToRiscv.
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|eassumption|eassumption|eassumption|reflexivity|idtac].
+      specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
       apply (runsToSatisfying_trans _ _ _ IHfuelH). clear IHfuelH.
       intros middleL [[Cs2 F] E].
@@ -501,7 +471,7 @@ Section FlatToRiscv.
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s2).
-      specializes IHfuelH; [reflexivity|eassumption|eassumption|eassumption|reflexivity|idtac].
+      specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
       apply (runsToSatisfying_trans _ _ _ IHfuelH). clear IHfuelH.
       intros endL [[Cs3 F] E].
@@ -509,7 +479,7 @@ Section FlatToRiscv.
       apply runsToStep.
       simpl_run1.
       rewrite Cp3. simpl.
-      eapply (IH (SLoop s1 cond s2)); [reflexivity|eassumption|idtac|eassumption|idtac].
+      eapply (IH (SLoop s1 cond s2)); [reflexivity|eassumption|eassumption|idtac|eassumption|idtac].
       + simpl.
         apply proj2 in CpSaved.
         match goal with
@@ -552,13 +522,15 @@ Section FlatToRiscv.
         solve_word_eq.
     - simpl in C. subst. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
+      remember (pow2 10) as bound.
+      simpl in Csz.
       eapply runsToSatisfying_trans.
       + specialize (IHfuelH s1).
-        specializes IHfuelH; [reflexivity|eassumption|eassumption|eassumption|reflexivity|idtac].
+        specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|].
         apply runsTo_preserves_instructionMem in IHfuelH.
         apply IHfuelH.
       + simpl. intros middleL [[Cs2 F] E]. rewrite <- F in Cp2.
-        eapply (IHfuelH s2); [reflexivity|eassumption|idtac|eassumption|idtac].
+        eapply (IHfuelH s2); [reflexivity|omega|eassumption|idtac|eassumption|idtac].
         * unfold containsProgram in *. rewrite E. assumption.
         * rewrite F.
           destruct initialL. simpl. solve_word_eq.
