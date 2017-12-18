@@ -300,15 +300,93 @@ Section FlatToRiscv.
     end;
     (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
 
-  Lemma sext_natToWord: forall sz sz1 sz2 n (e: sz1 + sz2 = sz),
+  (* Part 1: about sext and natToWord *)
+  Lemma sext_natToWord0: forall sz1 sz2 n,
     2 * n < pow2 sz1 ->
-    nat_cast word e (sext (natToWord sz1 n) sz2) = natToWord sz n.
+    sext (natToWord sz1 n) sz2 = natToWord (sz1 + sz2) n.
+  Proof.
+    induction sz1; intros.
+    - simpl. unfold sext. simpl. unfold wzero. unfold pow2 in *.
+      assert (n=0) by omega. subst n. reflexivity.
+    - unfold sext in *.
+      assert (@wmsb (S sz1) (natToWord (S sz1) n) false = false) as E by admit.
+      rewrite E. clear E.
+      simpl. unfold natToWord. f_equal. fold natToWord.
+      specialize (IHsz1 sz2 (Nat.div2 n)).
+      rewrite <- IHsz1.
+      + assert (@wmsb sz1 (natToWord sz1 (Nat.div2 n)) false = false) as E by admit.
+        rewrite E. clear E. reflexivity.
+      + replace (pow2 (S sz1)) with (2 * (pow2 sz1)) in H.
+        * assert (2 * Nat.div2 n <= n) by admit. omega.
+        * reflexivity.
   Admitted.
 
-  Lemma sext_neg_natToWord: forall sz sz1 sz2 n (e: sz1 + sz2 = sz),
-    2 * n < pow2 sz1 ->
-    nat_cast word e (sext (wneg (natToWord sz1 n)) sz2) = wneg (natToWord sz n).
+  Require Import Coq.Program.Equality.
+
+  (* Part 2: about nat_cast *)
+  Lemma natcast_same: forall (s: nat) (n: word s),
+    nat_cast word eq_refl n = n.
+  Proof.
+    induction s; intros.
+    - reflexivity.
+    - dependent destruction n.
+      specialize (IHs n1).
+      simpl.
   Admitted.
+
+  (* put it together *)
+  Lemma sext_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
+    2 * n < pow2 sz1 ->
+    nat_cast word e (sext (natToWord sz1 n) sz2) = natToWord sz n.
+  Proof.
+    intros. rewrite sext_natToWord0 by assumption. rewrite e.
+    apply natcast_same.
+  Qed.
+
+  (*
+  Require Import Coq.Program.Equality.
+
+  Lemma natcast_same: forall (s: nat) (n: word s),
+    nat_cast word eq_refl n = n.
+  Proof.
+    induction s; intros.
+    - reflexivity.
+    - dependent destruction n.
+      specialize (IHs n1).
+      simpl.
+  Admitted.
+
+  Lemma sext_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
+    2 * n < pow2 sz1 ->
+    nat_cast word e (sext (natToWord sz1 n) sz2) = natToWord sz n.
+  Proof.
+    induction sz2; intros.
+    - unfold sext. rewrite combine_n_0. rewrite combine_n_0.
+      match goal with
+      | |- context C[if ?c then ?A else ?A] => assert ((if c then A else A) = A) as E
+        by (destruct c; reflexivity); rewrite E; clear E
+      end.
+      subst sz. unfold eq_rect.
+      replace (match plus_n_O sz1 in (_ = y) return (word y) with
+      | eq_refl => $ (n)
+      end) with (natToWord (sz1+0) n)
+      by (destruct (plus_n_O sz1); reflexivity).
+      replace (sz1 + 0) with sz1 by omega.
+      apply natcast_same.
+    - destruct sz as [|sz]; [omega|].
+      assert (sz1 + sz2 = sz) as e' by omega.
+      specialize (IHsz2 sz1 sz n e' H).
+      unfold sext. unfold Word.combine.
+      (* combine matches on its word arg, so we'd need induction on that ?? *)
+  Abort.
+
+  Lemma sext_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
+    2 * n < pow2 sz1 ->
+    nat_cast word e (sext (natToWord sz1 n) sz2) = natToWord sz n.
+  Proof.
+    intros. (* seems to ad-hoc, can we state something more general and simpler? but what? *)
+  Admitted.
+  *)
 
   Definition evalH := @eval_stmt w wlit wdiff eq_refl var state stateMap.
 
