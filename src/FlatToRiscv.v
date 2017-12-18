@@ -388,6 +388,11 @@ Section FlatToRiscv.
   Admitted.
   *)
 
+   Lemma sext_neg_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
+     2 * n < pow2 sz1 ->
+     nat_cast word e (sext (wneg (natToWord sz1 n)) sz2) = wneg (natToWord sz n).
+   Admitted.
+
   Definition evalH := @eval_stmt w wlit wdiff eq_refl var state stateMap.
 
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL finalPc,
