@@ -1,4 +1,4 @@
-Require Import lib.LibTactics.
+Require Import lib.LibTacticsMin.
 Require Import compiler.Common.
 Require Import compiler.ResMonad.
 Require compiler.ExprImp.

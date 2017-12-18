@@ -1,3 +1,4 @@
+Require Import Program.Tactics.
 Require Import lib.fiat_crypto_tactics.Not.
 Require Import compiler.Decidable.
 
@@ -12,7 +13,7 @@ Ltac destruct_one_match :=
 Ltac destruct_one_dec_eq :=
   match goal with
   (* we use an explicit type T because otherwise the inferred type might differ *)
-  | |- context[dec (@eq ?T ?t1 ?t2)] => destruct (dec (@eq T t1 t2)); [subst|]
+  | |- context[dec (@eq ?T ?t1 ?t2)] => destruct (dec (@eq T t1 t2)); [subst *|]
   end.
 
 Ltac destruct_one_match_hyp_test type_test :=
@@ -39,9 +40,12 @@ Ltac destruct_one_match_hyp_of_type T :=
 Ltac destruct_one_match_hyp :=
   destruct_one_match_hyp_test ltac:(fun t => idtac).
 
+Tactic Notation "inversions" hyp(H) :=
+  inversion H; subst *; try clear H.
+
 Ltac inversionss :=
   repeat match goal with
-  | H: ?a = ?b |- _ => inversion H; subst; clear H;
+  | H: ?a = ?b |- _ => inversion H; subst *; clear H;
                        match goal with
                        | H': a = b |- _ => fail 1
                        | _ => idtac

@@ -2,9 +2,14 @@ Require Import bbv.Word.
 Require Import compiler.StateMonad.
 Require Import compiler.Decidable.
 Require Import compiler.zcast.
+Require Import Coq.omega.Omega.
 
 Section Riscv.
-  Context {w: nat}. (* bit width *)
+  Context {wlit: nat}. (* bit width of literals *)
+  Context {wdiff: nat}. (* bit width difference between literals and words *)
+  Notation w := (wlit + wdiff).
+  Context {wlit_eq : wlit = 12}.
+  Context {w_lbound: w >= 20}.
   Context {Reg: Set}. (* register name *)
 
   Inductive Register: Set :=
@@ -12,17 +17,17 @@ Section Riscv.
     | RegS: Reg -> Register.
 
   Inductive Instruction: Set :=
-    | Addi(rd: Register)(rs1: Register)(imm12: word 12): Instruction
+    | Addi(rd: Register)(rs1: Register)(imm12: word wlit): Instruction
     | Add(rd: Register)(rs1: Register)(rs2: Register): Instruction
     | Sub(rd: Register)(rs1: Register)(rs2: Register): Instruction
     | Mul(rd: Register)(rs1: Register)(rs2: Register): Instruction
     | Sltu(rd: Register)(rs1: Register)(rs2: Register): Instruction
-    | Sltiu(rd: Register)(rs1: Register)(imm12: word 12): Instruction
+    | Sltiu(rd: Register)(rs1: Register)(imm12: word wlit): Instruction
     | And(rd: Register)(rs1: Register)(rs2: Register): Instruction
-    | Beq(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
-    | Bne(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
-    | Blt(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
-    | Bge(rs1: Register)(rs2: Register)(sbimm12: word 12): Instruction
+    | Beq(rs1: Register)(rs2: Register)(sbimm12: word wlit): Instruction
+    | Bne(rs1: Register)(rs2: Register)(sbimm12: word wlit): Instruction
+    | Blt(rs1: Register)(rs2: Register)(sbimm12: word wlit): Instruction
+    | Bge(rs1: Register)(rs2: Register)(sbimm12: word wlit): Instruction
     | Jal(rd: Register)(jimm20: word 20): Instruction.
 
   Definition Seqz(rd: Register)(rs1: Register) := Sltiu rd rs1 $1.
@@ -42,11 +47,17 @@ Section Riscv.
     setPC: word w -> M unit;
   }.
 
+  Definition signed_lit_to_word(v: word wlit): word w := nat_cast word eq_refl (sext v wdiff).
+
+  Definition signed_jimm_to_word(v: word 20): word w.
+    refine (nat_cast word _ (sext v (w - 20))). clear -w_lbound. abstract omega.
+  Defined.
+
   Definition execute{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}(i: Instruction): M unit :=
     match i with
     | Addi rd rs1 imm12 =>
         x <- getRegister rs1;
-        setRegister rd (x ^+ (scast w imm12))
+        setRegister rd (x ^+ (signed_lit_to_word imm12))
     | Add rd rs1 rs2 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
@@ -65,7 +76,7 @@ Section Riscv.
         setRegister rd (if wlt_dec x y then $1 else $0)
     | Sltiu rd rs1 imm12 =>
         x <- getRegister rs1;
-        setRegister rd (if wlt_dec x (scast w imm12) then $1 else $0)
+        setRegister rd (if wlt_dec x (signed_lit_to_word imm12) then $1 else $0)
     | And rd rs1 rs2 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
@@ -74,26 +85,26 @@ Section Riscv.
         x <- getRegister rs1;
         y <- getRegister rs2;
         pc <- getPC;
-        if weq x y then (setPC (pc ^+ (scast w sbimm12))) else Return tt
+        if weq x y then (setPC (pc ^+ (signed_lit_to_word sbimm12))) else Return tt
     | Bne rs1 rs2 sbimm12 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
         pc <- getPC;
-        if weq x y then Return tt else (setPC (pc ^+ (scast w sbimm12)))
+        if weq x y then Return tt else (setPC (pc ^+ (signed_lit_to_word sbimm12)))
     | Blt rs1 rs2 sbimm12 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
         pc <- getPC;
-        if wlt_dec x y then (setPC (pc ^+ (scast w sbimm12))) else Return tt
+        if wlt_dec x y then (setPC (pc ^+ (signed_lit_to_word sbimm12))) else Return tt
     | Bge rs1 rs2 sbimm12 =>
         x <- getRegister rs1;
         y <- getRegister rs2;
         pc <- getPC;
-        if wlt_dec x y then Return tt else (setPC (pc ^+ (scast w sbimm12)))
+        if wlt_dec x y then Return tt else (setPC (pc ^+ (signed_lit_to_word sbimm12)))
     | Jal rd jimm20 =>
         pc <- getPC;
         setRegister rd (pc ^+ $4);;
-        setPC (pc ^+ (scast w jimm20))
+        setPC (pc ^+ (signed_jimm_to_word jimm20))
     end.
 
   Definition run1{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}: M unit :=

@@ -1,13 +1,17 @@
-Require Import lib.LibTactics.
+Require Import lib.LibTacticsMin.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.ResMonad.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
+Require Import compiler.zcast.
 
 Section FlatImp.
 
   Context {w: nat}. (* bit width *)
+  Context {wlit: nat}. (* max bit width of literals *)
+  Context {wdiff: nat}. (* difference between literal width and word width *)
+  Context {w_eq: wlit + wdiff = w}.
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
@@ -16,7 +20,7 @@ Section FlatImp.
   Context {varset: set vars var}.
 
   Inductive stmt: Set :=
-    | SLit(x: var)(v: word w): stmt
+    | SLit(x: var)(v: word wlit): stmt
     | SOp(x: var)(op: binop)(y z: var): stmt
     | SSet(x y: var): stmt
     | SIf(cond: var)(bThen bElse: stmt): stmt
@@ -35,15 +39,16 @@ Section FlatImp.
     | SSkip => 1
     end.
 
+  Definition signed_lit_to_word(v: word wlit): word w := nat_cast word w_eq (sext v wdiff).
+
   (* If we want a bigstep evaluation relation, we either need to put
      fuel into the SLoop constructor, or give it as argument to eval *)
-
   Fixpoint eval_stmt(f: nat)(st: state)(s: stmt): Res state :=
     match f with
     | 0 => OutOfFuel
     | Coq.Init.Datatypes.S f' => match s with
       | SLit x v =>
-          Success (put st x v)
+          Success (put st x (signed_lit_to_word v))
       | SOp x op y z =>
           v1 <- option2res (get st y);
           v2 <- option2res (get st z);
@@ -69,7 +74,7 @@ Section FlatImp.
 
   Lemma invert_eval_SLit: forall fuel initial x v final,
     eval_stmt fuel initial (SLit x v) = Success final ->
-    final = put initial x v.
+    final = put initial x (signed_lit_to_word v).
   Proof.
     intros. destruct fuel; [discriminate|]. inversion H. auto.
   Qed.
@@ -215,6 +220,7 @@ Ltac do_rewr :=       rewrite get_put in *.
     - discriminate.
     - destruct s.
       + simpl in *. inversionss. state_calc var (word w).
+
 (*
 If we forget to put a DecidableEq for var (currently var=Z) into scope, weird things happen,
 because erewrite leaves the implicit DecidableEq as an existential var
@@ -595,7 +601,9 @@ Example fib(n: word 8) :=
               (SOp _n OMinus _n _one)))))
   )))).
 
-Example finalFibState(n: nat): Res (var -> option (word 8)) := (eval_stmt 100 empty (fib $n)).
+Definition eval_stmt_test := @eval_stmt 8 8 0 eq_refl var _ _.
+
+Example finalFibState(n: nat): Res (var -> option (word 8)) := (eval_stmt_test 100 empty (fib $n)).
 Example finalFibVal(n: nat): option (word 8) := match finalFibState n with
 | Success s => get s _b
 | _ => None

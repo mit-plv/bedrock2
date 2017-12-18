@@ -1,4 +1,5 @@
-Require Import lib.LibTactics.
+Require Import Program.Tactics.
+Require Import lib.LibTacticsMin.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.ClassicalFacts.
 Require Import compiler.Axioms.
@@ -56,4 +57,4 @@ Ltac state_calc varT valT :=
   rewrite_get_put;
   repeat (specialize_with varT || specialize_with valT);
   autorewrite with rew_set_op_specs in *;
-  repeat (intuition (subst; auto || congruence) || destruct_one_dec_eq).
+  repeat (intuition (subst *; auto || congruence) || destruct_one_dec_eq).

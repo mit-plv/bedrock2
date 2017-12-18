@@ -4,9 +4,10 @@ Require Import Coq.Arith.EqNat.
 Require Import Coq.omega.Omega.
 Require Import Coq.Logic.FunctionalExtensionality.
 
-Require Import lib.LibTactics.
+Require Import lib.LibTacticsMin.
 Require Import bbv.Word.
 Require Import compiler.StateMonad.
+Require Import compiler.Tactics.
 
 (* allows inifinite number of registers *)
 Definition Reg := nat.

@@ -1,6 +1,7 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.Arith.PeanoNat.
+Require Import lib.LibTacticsMin.
 
 (* Note: you can't ask an array for its length *)
 Class IsArray(T E: Type) := mkIsArray {
@@ -447,7 +448,7 @@ Section LLG.
     - exact (vals m).
   Defined.
 
-Require Import lib.LibTactics.
+  Definition TODO{T: Type}: T. Admitted.
 
   Fixpoint interp_expr{n: nat}{l: list var}
     (e: expr l n) (types: member l -> nat)
@@ -563,8 +564,8 @@ Require Import lib.LibTactics.
               replace t with (forall m : member l2, interp_type (types2 m)) in vals2
               by (subst types2; reflexivity).
               specialize (f2 vals2).
-              Fail (exact f2). admit. (* TODO *) }
-            { admit. }
+              Fail (exact f2). apply TODO. }
+            { apply TODO. }
           }
           { exact None. }
         * exact None.

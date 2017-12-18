@@ -35,6 +35,7 @@ Definition ZToWord(sz: nat)(n: BinNums.Z): word sz :=
   | BinNums.Zneg p => wneg (posToWord sz p)
   end.
 
+(*
 (* signed cast *)
 Definition scast{sz: nat}(sz': nat)(n: word sz): word sz' :=
   ZToWord sz' (wordToZ n).
@@ -42,6 +43,7 @@ Definition scast{sz: nat}(sz': nat)(n: word sz): word sz' :=
 (* unsigned cast *)
 Definition ucast{sz: nat}(sz': nat)(n: word sz): word sz' :=
   natToWord sz' (wordToNat n).
+*)
 
 (* old approach:
 Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
@@ -56,9 +58,12 @@ Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
 Defined.
 *)
 
+(*
 Eval cbv in t.
 Eval cbv in (scast 8 t).
+*)
 
+(*
 Lemma split_into_diff: forall (a b: nat), b < a -> a = b + (a - b).
   intros. apply le_plus_minus. apply Nat.lt_le_incl. assumption.
 Defined.
@@ -73,6 +78,32 @@ Definition ext_cast(ext: forall sz1 : nat, word sz1 -> forall sz2 : nat, word (s
     + exact (split2 _ _ n).
     + apply Nat.sub_add. apply Nat.le_ngt. assumption.
 Defined.
+*)
+
+(* Transport equality, only matching on eq_refl in contradictory cases, to make sure
+   terms using this function reduce *)
+Fixpoint nat_cast (P : nat -> Type) {n m} : n = m -> P n -> P m.
+  refine match n, m return n = m -> P n -> P m with
+         | O, O => fun _ => id
+         | S n, S m => fun pf => @nat_cast (fun n => P (S n)) n m (f_equal pred pf)
+         | _, _ => fun pf => match _ pf : False with end
+         end;
+    clear; abstract congruence.
+Defined.
+
+Require Import Omega.
+
+(* This function implements the following expression:
+  "if sz' > sz then (ext sz n (sz' - sz)) else (split2 (sz - sz') sz' n)"
+But in order to get the types right, it needs to be much more complicated. *)
+Definition ext_cast(ext: forall sz1 : nat, word sz1 -> forall sz2 : nat, word (sz1 + sz2))
+  {sz: nat}(sz': nat)(n: word sz): word sz'.
+  destruct (Compare_dec.gt_dec sz' sz) as [H|H].
+  { refine (nat_cast word _ (ext sz n (sz' - sz))).
+    clear -H; abstract omega. }
+  { refine (split2 (sz - sz') sz' (nat_cast word _ n)).
+    clear -H; abstract omega. }
+Defined.
 
 Definition signed_cast{sz: nat}: forall (sz': nat) (n: word sz), word sz' := ext_cast sext.
 
@@ -81,9 +112,8 @@ Definition unsigned_cast{sz: nat}: forall (sz': nat) (n: word sz), word sz' := e
 Eval cbv in t.
 Eval cbv in (signed_cast 8 t).
 
-Lemma destruct_eq_refl: forall (T: Type) (a b: T) (p: a = b) (R: Type) (v: R),
-  match p with
-  | eq_refl => v
-  end = v.
-Proof. intros. destruct p. reflexivity. Qed.
+Definition scast{sz: nat}(sz': nat)(n: word sz): word sz' :=
+  signed_cast sz' n.
 
+Definition ucast{sz: nat}(sz': nat)(n: word sz): word sz' :=
+  unsigned_cast sz' n.

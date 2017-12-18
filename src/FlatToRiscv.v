@@ -1,3 +1,4 @@
+Require Import lib.LibTacticsMin.
 Require Import compiler.StateMonad.
 Require Import compiler.Common.
 Require Import compiler.FlatImp.
@@ -9,10 +10,15 @@ Require Import compiler.Op.
 Require Import compiler.ResMonad.
 Require Import compiler.Riscv.
 Require Import compiler.Machine.
+Require Import Coq.Program.Tactics.
 
 Section FlatToRiscv.
 
-  Context {w: nat}. (* bit width *)
+  Context {wlit: nat}. (* bit width of literals *)
+  Context {wdiff: nat}. (* bit width difference between literals and words *)
+  Notation w := (wlit + wdiff).
+  Context {wlit_eq : wlit = 12}.
+  Context {w_lbound: w >= 20}.
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
@@ -20,7 +26,7 @@ Section FlatToRiscv.
 
   Definition var2Register: var -> @Register var := RegS.
 
-  Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list (@Instruction var) :=
+  Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list (@Instruction wlit var) :=
     let rd := var2Register res in
     let rs1 := var2Register arg1 in
     let rs2 := var2Register arg2 in
@@ -33,10 +39,16 @@ Section FlatToRiscv.
     | OAnd => [And rd rs1 rs2]
     end.
 
+  Definition signed_lit_to_word(v: word wlit): word w := nat_cast word eq_refl (sext v wdiff).
+
+  Definition signed_jimm_to_word(v: word 20): word w.
+    refine (nat_cast word _ (sext v (w - 20))). clear -w_lbound. abstract omega.
+  Defined.
+
   (* using the same names (var) in source and target language *)
-  Fixpoint compile_stmt(s: @stmt w var): list (@Instruction var) :=
+  Fixpoint compile_stmt(s: @stmt wlit var): list (@Instruction wlit var) :=
     match s with
-    | SLit x v => [Addi (var2Register x) RegO (scast 12 v)] (* only works if literal is < 2^12 *)
+    | SLit x v => [Addi (var2Register x) RegO v]
     | SOp x op y z => compile_op x op y z
     | SSet x y => [Add (var2Register x) RegO (var2Register y)]
     | SIf cond bThen bElse =>
@@ -66,7 +78,7 @@ Section FlatToRiscv.
     repeat (rewrite app_length; simpl); omega.
   Qed.
 
-  Definition containsProgram(m: RiscvMachine)(program: list (@Instruction var))(offset: word w)
+  Definition containsProgram(m: RiscvMachine)(program: list (@Instruction wlit var))(offset: word w)
     := forall i inst, nth_error program i = Some inst ->
                       m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
 
@@ -79,7 +91,7 @@ Section FlatToRiscv.
   *)
 
   (* TODO define type classes in such a way that this is not needed *)
-  Definition myRiscvMachine := @IsRiscvMachine w var _.
+  Definition myRiscvMachine := @IsRiscvMachine wlit wdiff var _.
   Existing Instance myRiscvMachine.
 
 (* inline because the inverison is already done
@@ -99,8 +111,6 @@ Section FlatToRiscv.
   *)
   
   Axiom wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
-
-  Require Import lib.LibTactics. (* contains annoying notation which makes Register a keyword *)
 
   Lemma containsProgram_cons_inv: forall s inst insts offset,
     containsProgram s (inst :: insts) offset ->
@@ -179,12 +189,15 @@ Section FlatToRiscv.
   Proof. intros. destruct t. inversionss. auto. Qed.
 
   (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
-  Inductive runsToSatisfying(initial: @RiscvMachine w var)(P: @RiscvMachine w var -> Prop): Prop :=
+  Inductive runsToSatisfying
+    (initial: @RiscvMachine wlit wdiff var)
+    (P: @RiscvMachine wlit wdiff var -> Prop)
+  : Prop :=
     | runsToDone:
        P initial ->
        runsToSatisfying initial P
     | runsToStep:
-       runsToSatisfying (execState run1 initial) P ->
+       runsToSatisfying (execState (run1 (w_lbound := w_lbound)) initial) P ->
        runsToSatisfying initial P.
 
   Lemma execState_compose{S A: Type}: forall (m1 m2: State S A) (initial: S),
@@ -196,7 +209,7 @@ Section FlatToRiscv.
 
   Lemma runsToSatisfying_exists_fuel: forall initial P,
     runsToSatisfying initial P ->
-    exists fuel, P (execState (run fuel) initial).
+    exists fuel, P (execState (run (w_lbound := w_lbound) fuel) initial).
   Proof.
     introv R. induction R.
     - exists 0. exact H.
@@ -225,14 +238,14 @@ Section FlatToRiscv.
   Qed.
 
   Lemma execute_preserves_instructionMem: forall inst initial,
-    (snd (execute inst initial)).(instructionMem) = initial.(instructionMem).
+    (snd (execute (w_lbound := w_lbound) inst initial)).(instructionMem) = initial.(instructionMem).
   Proof.
     intros. unfold execute.
     repeat (destruct_one_match; simpl; try reflexivity).
   Qed.
 
   Lemma run1_preserves_instructionMem: forall initial,
-    (execState run1 initial).(instructionMem) = initial.(instructionMem).
+    (execState (run1 (w_lbound := w_lbound)) initial).(instructionMem) = initial.(instructionMem).
   Proof.
     intros.
     destruct initial as [initialProg initialRegs initialPc]. simpl.
@@ -287,35 +300,22 @@ Section FlatToRiscv.
     end;
     (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
 
-  (* TODO needs bounds *)
-  Lemma wordToZ_ZToWord: forall sz v,
-    @wordToZ sz (ZToWord sz v) = v.
-  Proof.
-    intros.
-    destruct v.
-    - simpl. unfold wordToZ.
+  Lemma sext_natToWord: forall sz sz1 sz2 n (e: sz1 + sz2 = sz),
+    2 * n < pow2 sz1 ->
+    nat_cast word e (sext (natToWord sz1 n) sz2) = natToWord sz n.
   Admitted.
 
-  (* TODO needs side conditions *)
-  Lemma scast_2: forall sz sz' (v: word sz), scast sz (scast sz' v) = v.
-  Proof.
-    intros. unfold scast. rewrite wordToZ_ZToWord.
+  Lemma sext_neg_natToWord: forall sz sz1 sz2 n (e: sz1 + sz2 = sz),
+    2 * n < pow2 sz1 ->
+    nat_cast word e (sext (wneg (natToWord sz1 n)) sz2) = wneg (natToWord sz n).
   Admitted.
-  (* maybe it's simpler to define scast in terms of padding/chopping bits? *)
 
-  (* TODO needs side conditions *)
-  Axiom scast_natToWord: forall n sz sz', scast sz (natToWord sz' n) = natToWord sz n.
-
-  (* TODO needs side conditions *)
-  Axiom scast_neg_natToWord: forall n sz sz',
-    scast sz (wneg (natToWord sz' n)) = wneg (natToWord sz n).
-
-  Axiom wone_simpl: forall sz sz', wone sz = scast sz (natToWord sz' 1).
+  Definition evalH := @eval_stmt w wlit wdiff eq_refl var state stateMap.
 
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL finalPc,
     compile_stmt s = insts ->
-    stmt_size s < pow2 10 ->
-    eval_stmt fuelH initialH s = Success finalH ->
+    stmt_size s < pow2 8 ->
+    evalH fuelH initialH s = Success finalH ->
     containsProgram initialL insts initialL.(pc) ->
     containsState initialL initialH ->
     finalPc = initialL.(pc) ^+ $ (4) ^* $ (length insts) ->
@@ -324,8 +324,9 @@ Section FlatToRiscv.
   Proof.
     induction fuelH; [intros; discriminate |].
     introv C Csz EvH Cp Cs PcEq.
+    unfold evalH in EvH.
     invert_eval_stmt.
-    - subst. destruct_containsProgram.
+    - subst *. destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
       apply runsToStep. apply runsToDone.
       simpl_run1.
@@ -333,9 +334,9 @@ Section FlatToRiscv.
       rewrite Cp0. simpl.
       rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
       eapply containsState_put; [eassumption|].
-      rewrite scast_2.
-      solve_word_eq.
-    - simpl in C. subst.
+      unfold Riscv.signed_lit_to_word, FlatImp.signed_lit_to_word.
+      apply wplus_unit.
+    - simpl in C. subst *.
       destruct initialL as [initialProg initialRegs initialPc].
       simpl in Cp.
       pose proof Cs as Cs'.
@@ -365,10 +366,12 @@ Section FlatToRiscv.
       apply runsToDone.
       split.
       + eapply containsState_put; [ eassumption |].
-        rewrite <- wone_simpl with (sz' := 12).
-        apply reduce_eq_to_sub_and_lt.
+        unfold Riscv.signed_lit_to_word.
+        replace (nat_cast word eq_refl (sext $ (1) wdiff)) with (wone w).
+        * apply reduce_eq_to_sub_and_lt.
+        * symmetry. apply sext_natToWord. rewrite wlit_eq. unfold pow2. omega.
       + solve_word_eq.
-    - simpl in C. subst.
+    - simpl in C. subst *.
       destruct initialL as [initialProg initialRegs initialPc].
       destruct_containsProgram.
       apply runsToStep.
@@ -381,7 +384,7 @@ Section FlatToRiscv.
         erewrite Cs by eassumption.
         solve_word_eq.
       + solve_word_eq.
-    - simpl in C. subst.
+    - simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
@@ -406,9 +409,11 @@ Section FlatToRiscv.
       apply runsToDone.
       refine (conj Cs2 _).
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-      rewrite scast_natToWord.
-      solve_word_eq.
-    - simpl in C. subst.
+      unfold Riscv.signed_jimm_to_word.
+      rewrite sext_natToWord.
+      * solve_word_eq.
+      * pose proof (compile_stmt_size s2). unfold pow2. omega.
+    - simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
@@ -426,15 +431,19 @@ Section FlatToRiscv.
         end. {
           simpl.
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-          rewrite scast_natToWord.
-          solve_word_eq.
+          unfold Riscv.signed_lit_to_word.
+          rewrite sext_natToWord.
+          * solve_word_eq.
+          * rewrite wlit_eq at 2. pose proof (compile_stmt_size s1). unfold pow2. omega.
         }
         rewrite <- OfsEq. assumption.
       + simpl.
         repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-        rewrite scast_natToWord.
-        solve_word_eq.
-    - simpl in C. subst.
+        unfold Riscv.signed_lit_to_word.
+        rewrite sext_natToWord.
+        * solve_word_eq.
+        * rewrite wlit_eq at 2. pose proof (compile_stmt_size s1). unfold pow2. omega.
+    - simpl in C. subst *.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
       match goal with
@@ -456,9 +465,11 @@ Section FlatToRiscv.
       apply runsToDone.
       refine (conj Cs2 _).
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-      rewrite scast_natToWord.
-      solve_word_eq.
-    - simpl in C. subst.
+      unfold Riscv.signed_lit_to_word.
+      rewrite sext_natToWord.
+      * solve_word_eq.
+      * rewrite wlit_eq at 2. pose proof (compile_stmt_size s2). unfold pow2. omega.
+    - simpl in C. subst *.
       pose proof IHfuelH as IH.
       pose proof (conj I Cp) as CpSaved.
       destruct_containsProgram.
@@ -501,7 +512,9 @@ Section FlatToRiscv.
             assert (ofs1 = ofs2) as OfsEq
         end. {
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-          rewrite scast_neg_natToWord.
+          unfold Riscv.signed_jimm_to_word.
+          rewrite sext_neg_natToWord.
+          {
           clear.
           forget (length (compile_stmt s1)) as L1.
           forget (length (compile_stmt s2)) as L2.
@@ -515,14 +528,23 @@ Section FlatToRiscv.
           | |- ?A ^+ ^~ ?B = $0 => replace B with A; [apply wminus_inv|]
           end.
           solve_word_eq.
+          } {
+          pose proof (compile_stmt_size s1).
+          pose proof (compile_stmt_size s2). unfold pow2. omega.
+          }
         }
         rewrite <- OfsEq. assumption.
-      + simpl. clear.
-        repeat (rewrite app_length; simpl).
+      + simpl.
+        unfold Riscv.signed_jimm_to_word.
+        repeat (rewrite app_length ||
+          match goal with
+          | |- context C[length (?h :: ?t)] => let r := context C [S (length t)] in change r
+          end).
         repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-        forget (length (compile_stmt s1)) as L1.
-        forget (length (compile_stmt s2)) as L2.
-        rewrite scast_neg_natToWord.
+        remember (length (compile_stmt s1)) as L1.
+        remember (length (compile_stmt s2)) as L2.
+        rewrite sext_neg_natToWord.
+        {
         rewrite <- ? wplus_assoc.
         f_equal.
         rewrite ? wplus_assoc.
@@ -533,9 +555,16 @@ Section FlatToRiscv.
         | |- ?A ^+ ^~ ?B = $0 => replace B with A; [apply wminus_inv|]
         end.
         solve_word_eq.
-    - simpl in C. subst. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
+        } {
+          pose proof (compile_stmt_size s1).
+          pose proof (compile_stmt_size s2).
+          unfold pow2. omega.
+        }
+    - simpl in C. subst *. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
-      remember (pow2 10) as bound.
+      match goal with
+      | _: stmt_size (SSeq s1 s2) < ?B |- _ => remember B as bound
+      end.
       simpl in Csz.
       eapply runsToSatisfying_trans.
       + specialize (IHfuelH s1).
@@ -547,7 +576,7 @@ Section FlatToRiscv.
         * unfold containsProgram in *. rewrite E. assumption.
         * rewrite F.
           destruct initialL. simpl. solve_word_eq.
-    - simpl in C. subst. apply runsToDone. split; [assumption|].
+    - simpl in C. subst *. apply runsToDone. split; [assumption|].
       destruct initialL. simpl. solve_word_eq.
   Qed.
 

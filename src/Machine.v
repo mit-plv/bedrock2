@@ -7,17 +7,19 @@ Require Import compiler.Riscv.
 
 Section Machine.
 
-  Context {w: nat}.
+  Context {wlit: nat}.
+  Context {wdiff: nat}.
+  Notation w := (wlit + wdiff).
   Context {Reg: Set}.
   Context {dec_Register: DecidableEq Reg}.
 
   Record RiscvMachine := mkRiscvMachine {
-    instructionMem: word w -> @Instruction Reg;
+    instructionMem: word w -> @Instruction wlit Reg;
     registers: Reg -> word w;
     pc: word w;
   }.
 
-  Instance IsRiscvMachine: @RiscvState w Reg (State RiscvMachine) :=
+  Instance IsRiscvMachine: @RiscvState wlit wdiff Reg (State RiscvMachine) :=
   {|
       getRegister := fun (reg: (@Register Reg)) =>
         match reg with
@@ -47,7 +49,7 @@ Section Machine.
         end;
   |}.
 
-  Definition initialRiscvMachine(imem: list (@Instruction Reg)): RiscvMachine := {|
+  Definition initialRiscvMachine(imem: list (@Instruction wlit Reg)): RiscvMachine := {|
     instructionMem := fun (i: word w) => nth (wordToNat (i ^/ $4)) imem InfiniteJal;
     registers := fun (r: Reg) => $0;
     pc := $0
@@ -61,16 +63,17 @@ Existing Instance IsRiscvMachine.
 
 Module MachineTest.
 
-  Definition m1: @RiscvMachine 4 nat := {|
-    instructionMem := fun (w: word 4) => Nop;
+  Definition m1: @RiscvMachine 4 0 nat := {|
+    instructionMem := fun (w: word (4+0)) => Nop;
     registers := fun (reg: nat) => $22;
     pc := $33
   |}.
 
-  Definition myInst := (@IsRiscvMachine 4 nat _).
+  Definition myInst := (@IsRiscvMachine 4 0 nat _).
   Existing Instance myInst.
 
-  Definition prog1: State (@RiscvMachine 4 nat) (word 4) :=
+  (* TODO (_ 4 0) is cumbersome *)
+  Definition prog1: State (@RiscvMachine 4 0 nat) (word (_ 4 0)) :=
     x <- getRegister (RegS 2);
     setRegister (RegS 2) (x ^+ $3);;
     getRegister (RegS 4).
