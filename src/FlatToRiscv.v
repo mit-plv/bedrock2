@@ -300,6 +300,42 @@ Section FlatToRiscv.
     end;
     (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
 
+  Lemma two_times_div2: forall n, 2 * Nat.div2 n <= n.
+  Proof.
+    eapply strong. intros n IH.
+    destruct n.
+    - constructor.
+    - destruct n.
+      + simpl. constructor. constructor. 
+      + simpl (Nat.div2 (S (S n))).
+        specialize (IH n).
+        specializes IH; omega.
+  Qed.
+
+  Lemma wmsb_0: forall sz (m: word (S sz)) default,
+    # m < pow2 sz ->
+    @wmsb (S sz) m default = false.
+  Proof.
+    induction sz; intros.
+    - simpl in *. assert (#m = 0) as N by omega.
+      rewrite <- (roundTrip_0 1) in N.
+      apply wordToNat_inj in N. subst m.
+      simpl. reflexivity.
+    - pose proof (shatter_word_S m) as P.
+      destruct P as [b [m0 E]]. subst.
+      unfold wmsb. fold wmsb.
+      apply IHsz.
+      simpl in H. destruct b; omega.
+  Qed.
+
+  Lemma wmsb_0_natToWord: forall sz n default,
+    2 * n < pow2 (S sz) ->
+    @wmsb (S sz) (natToWord (S sz) n) default = false.
+  Proof.
+    intros. apply wmsb_0.
+    pose proof (wordToNat_natToWord_le (S sz) n). unfold pow2 in H. fold pow2 in H. omega.
+  Qed.
+
   (* Part 1: about sext and natToWord *)
   Lemma sext_natToWord0: forall sz1 sz2 n,
     2 * n < pow2 sz1 ->
@@ -309,30 +345,37 @@ Section FlatToRiscv.
     - simpl. unfold sext. simpl. unfold wzero. unfold pow2 in *.
       assert (n=0) by omega. subst n. reflexivity.
     - unfold sext in *.
-      assert (@wmsb (S sz1) (natToWord (S sz1) n) false = false) as E by admit.
+      assert (@wmsb (S sz1) (natToWord (S sz1) n) false = false) as E by
+        (apply wmsb_0_natToWord; assumption).
       rewrite E. clear E.
       simpl. unfold natToWord. f_equal. fold natToWord.
       specialize (IHsz1 sz2 (Nat.div2 n)).
       rewrite <- IHsz1.
-      + assert (@wmsb sz1 (natToWord sz1 (Nat.div2 n)) false = false) as E by admit.
+      + assert (@wmsb sz1 (natToWord sz1 (Nat.div2 n)) false = false) as E. {
+          destruct sz1.
+          - reflexivity.
+          - apply wmsb_0_natToWord. unfold pow2 in *. fold pow2 in *.
+            assert (2 * Nat.div2 n <= n) by apply two_times_div2. omega.
+        }
         rewrite E. clear E. reflexivity.
       + replace (pow2 (S sz1)) with (2 * (pow2 sz1)) in H.
-        * assert (2 * Nat.div2 n <= n) by admit. omega.
+        * assert (2 * Nat.div2 n <= n) by apply two_times_div2. omega.
         * reflexivity.
-  Admitted.
+  Qed.
 
   Require Import Coq.Program.Equality.
+
+  Lemma nat_cast_eq_rect: forall (P : nat -> Type) (n m : nat) (e: n = m) (pn: P n),
+    nat_cast P e pn = eq_rect n P pn m e.
+  Proof.
+  Admitted.
 
   (* Part 2: about nat_cast *)
   Lemma natcast_same: forall (s: nat) (n: word s),
     nat_cast word eq_refl n = n.
   Proof.
-    induction s; intros.
-    - reflexivity.
-    - dependent destruction n.
-      specialize (IHs n1).
-      simpl.
-  Admitted.
+    intros. rewrite nat_cast_eq_rect. reflexivity.
+  Qed.
 
   (* put it together *)
   Lemma sext_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
