@@ -274,11 +274,30 @@ Section FlatToRiscv.
     extensionality reg2. destruct_one_match; reflexivity.
   Qed.
 
+  (* TODO is there a principled way of writing such proofs? *)
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word w) {T: Type} (thenVal elseVal: T),
     (if wlt_dec (y ^- z) $1 then thenVal else elseVal) =
     (if weq y z             then thenVal else elseVal).
   Proof.
-  Admitted.
+    intros. destruct (weq y z).
+    - subst z. unfold wminus. rewrite wminus_inv. destruct (wlt_dec (wzero w) $1); [reflexivity|].
+      change (wzero w) with (natToWord w 0) in n. unfold wlt in n.
+      exfalso. apply n.
+      do 2 rewrite wordToN_nat. rewrite roundTrip_0.
+      destruct w as [|w1]; [omega|].
+      rewrite roundTrip_1.
+      simpl. constructor.
+    - destruct (@wlt_dec w (y ^- z) $ (1)) as [E|NE]; [|reflexivity].
+      exfalso. apply n. apply sub_0_eq.
+      unfold wlt in E.
+      do 2 rewrite wordToN_nat in E.
+      destruct w as [|w1]; [omega|].
+      rewrite roundTrip_1 in E.
+      simpl in E. apply N.lt_1_r in E. change 0%N with (N.of_nat 0) in E.
+      apply Nnat.Nat2N.inj in E. rewrite <- (roundTrip_0 (S w1)) in E.
+      apply wordToNat_inj in E.
+      exact E.
+  Qed.
 
   Ltac simpl_run1 :=
          cbv [run1 execState StateMonad.put execute instructionMem registers 
