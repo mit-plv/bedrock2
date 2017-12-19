@@ -85,32 +85,16 @@ Section FlatToRiscv.
   Definition containsState(m: RiscvMachine)(s: state)
     := forall x v, get s x = Some v -> m.(registers) x = v.
 
-  (*
-  Definition containsProgramAndState(m: RiscvMachine)(program: list (@Instruction var))(s: state)
-    := containsProgram m program m.(pc) /\ containsState m s.
-  *)
-
   (* TODO define type classes in such a way that this is not needed *)
   Definition myRiscvMachine := @IsRiscvMachine wlit wdiff var _.
   Existing Instance myRiscvMachine.
 
-(* inline because the inverison is already done
-  Lemma compile_op_correct: forall x y z fuelH op insts initialH finalH initialL,
-    compile_op x op y z = insts ->
-    eval_stmt fuelH initialH (SOp x op y z) = Success finalH ->
-    containsProgram initialL insts initialL.(pc) ->
-    containsState initialL initialH ->
-    exists (fuelL: nat) (finalL: RiscvMachine),
-      execState (run fuelL) initialL = finalL /\
-      containsState finalL finalH.
+  Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
   Proof.
-    introv C EvH Cp Cs.
-    destruct fuelH as [|fuelH]; [discriminate|].
-    simpl in EvH.
-  Abort.
-  *)
-  
-  Axiom wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
+    intros. unfold wmult. unfold wordBin. do 2 rewrite wordToN_nat.
+    rewrite <- Nnat.Nat2N.inj_mul. rewrite roundTrip_0.
+    rewrite Nat.mul_0_r. simpl. rewrite wzero'_def. reflexivity.
+  Qed.
 
   Lemma containsProgram_cons_inv: forall s inst insts offset,
     containsProgram s (inst :: insts) offset ->
@@ -178,7 +162,6 @@ Section FlatToRiscv.
     - inversions H1. reflexivity.
     - simpl in H. apply H. assumption.
   Qed.
-
 
   Lemma distr_if_over_app: forall T U P1 P2 (c: sumbool P1 P2) (f1 f2: T -> U) (x: T),
     (if c then f1 else f2) x = if c then f1 x else f2 x.
@@ -381,6 +364,23 @@ Section FlatToRiscv.
         * reflexivity.
   Qed.
 
+  Lemma sext_neg_natToWord0: forall sz1 sz2 n,
+    2 * n < pow2 sz1 ->
+    sext (wneg (natToWord sz1 n)) sz2 = wneg (natToWord (sz1 + sz2) n).
+  Proof.
+    induction sz1; intros.
+    - simpl. unfold sext. simpl. unfold wzero. unfold pow2 in *.
+      assert (n=0) by omega. subst n. unfold wneg.
+      rewrite wordToN_nat. rewrite roundTrip_0. simpl. rewrite N.sub_0_r.
+      rewrite NToWord_nat. rewrite Npow2_nat.
+      symmetry. apply natToWord_pow2.
+    - unfold sext in *.
+      assert (@wmsb (S sz1) (wneg (natToWord (S sz1) n)) false = true) as E by admit.
+      rewrite E. clear E.
+      simpl. unfold natToWord. f_equal. fold natToWord.
+      specialize (IHsz1 sz2 (Nat.div2 n)).
+  Admitted.
+
   Lemma natcast_same: forall (s: nat) (n: word s),
     nat_cast word eq_refl n = n.
   Proof.
@@ -398,7 +398,9 @@ Section FlatToRiscv.
    Lemma sext_neg_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
      2 * n < pow2 sz1 ->
      nat_cast word e (sext (wneg (natToWord sz1 n)) sz2) = wneg (natToWord sz n).
-   Admitted.
+   Proof.
+     intros. rewrite sext_neg_natToWord0 by assumption. rewrite e. apply natcast_same.
+   Qed.
 
   Definition evalH := @eval_stmt w wlit wdiff eq_refl var state stateMap.
 
