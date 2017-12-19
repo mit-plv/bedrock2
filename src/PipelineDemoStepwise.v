@@ -18,8 +18,16 @@ Definition myvar := nat.
 Definition var_x1: myvar := 3.
 Definition var_x2: myvar := 4.
 Definition var_i: myvar := 5.
-Definition w := 8. (* bit width *)
+Definition w := 12. (* bit width *)
+Definition wlit := 12. (* bit width of literals *)
+Definition wdiff := 0. (* difference between literals width and full width *)
 
+(*
+Too big for evaluation inside Coq:
+Definition w := 32. (* bit width *)
+Definition wlit := 12. (* bit width of literals *)
+Definition wdiff := 20. (* difference between literals width and full width *)
+*)
 
 Definition empty_types: member (@nil myvar) -> type. intro. inversion H. Defined.
 Definition empty_vals: forall m : member (@nil myvar), @interp_type w (empty_types m).
@@ -61,15 +69,15 @@ Definition nameGenState_initial: myvar := 10. (* should be bigger than all vars 
 Definition compileLLG2FlatImp{l G t}(e: expr l G t): @stmt w myvar * myvar :=
   fst (LLG2FlatImp.compile nameGenState_initial e).
 
-Definition p1_FlatImp(n: word w): @stmt w myvar * myvar := compileLLG2FlatImp (p1_LLG_ast n).
+Definition p1_FlatImp(n: word wlit): @stmt w myvar * myvar := compileLLG2FlatImp (p1_LLG_ast n).
 
-Definition p1_FlatImp'(n: word w): @stmt w myvar * myvar :=
+Definition p1_FlatImp'(n: word wlit): @stmt w myvar * myvar :=
   ltac:(let r := eval cbv -[natToWord] in (p1_FlatImp n) in exact r).
 
-Definition p1_FlatImp_stmt(n: word w): @stmt w myvar := 
+Definition p1_FlatImp_stmt(n: word wlit): @stmt w myvar := 
   ltac:(let r := eval cbv -[natToWord] in (fst (p1_FlatImp n)) in exact r).
 
-Definition p1_FlatImp_resVar(n: word w): myvar := 
+Definition p1_FlatImp_resVar(n: word wlit): myvar := 
   ltac:(let r := eval cbv -[natToWord] in (snd (p1_FlatImp n)) in exact r).
 
 Definition lotsOfFuel := 100.
@@ -78,8 +86,8 @@ Definition mystate := myvar -> option (word w).
 
 Definition empty_state: mystate := fun _ => None.
 
-Definition eval_FlatImp_stmt(s: @stmt w myvar * myvar): option (word w) :=
-  match eval_stmt lotsOfFuel empty_state (fst s) with
+Definition eval_FlatImp_stmt(s: @stmt wlit myvar * myvar): option (word w) :=
+  match eval_stmt (wlit:=wlit) (wdiff:=wdiff) (w_eq:=eq_refl) lotsOfFuel empty_state (fst s) with
   | Success final => final (snd s)
   | _ => None
   end.
@@ -88,23 +96,26 @@ Transparent wlt_dec.
 
 Goal eval_FlatImp_stmt (p1_FlatImp $4) = Some $14. reflexivity. Qed.
 
-Definition compileFlat2Riscv(f: @stmt w myvar): list (@Instruction myvar) :=
+Definition compileFlat2Riscv(f: @stmt w myvar): list (@Instruction wlit myvar) :=
   compiler.FlatToRiscv.compile_stmt f.
 
-Definition p1_riscv(n: word w): list (@Instruction myvar) := compileFlat2Riscv (p1_FlatImp_stmt n).
+Definition p1_riscv(n: word w): list (@Instruction wlit myvar) :=
+  compileFlat2Riscv (p1_FlatImp_stmt n).
 
 Goal False. set (r := p1_riscv $3). cbv in *. Abort.
 
 Definition lotsOfFuel_lowlevel := 100.
 
-Definition myInst := (@IsRiscvMachine w nat _).
+Definition myInst := (@IsRiscvMachine wlit wdiff nat _).
 Existing Instance myInst.
 
-Definition runThenGet(resVar: myvar): State RiscvMachine (word w) :=
-  run lotsOfFuel_lowlevel;;
+Axiom bound_doesnt_hold: wlit + wdiff >= 20.
+
+Definition runThenGet(resVar: myvar): State RiscvMachine (word (wlit+wdiff)) :=
+  run (w_lbound := bound_doesnt_hold) lotsOfFuel_lowlevel;;
   getRegister (RegS resVar).
 
-Definition go(p: list (@Instruction myvar))(resVar: myvar): word w :=
+Definition go(p: list (@Instruction wlit myvar))(resVar: myvar): word w :=
   evalState (runThenGet resVar) (initialRiscvMachine p).
 
 Import compiler.FlatToRiscv.
@@ -120,8 +131,8 @@ Proof.
     + simpl. auto.
 Qed.
 
-Lemma initialRiscvMachine_containsProgram: forall w var p,
-  @containsProgram w var (initialRiscvMachine p) p (pc (initialRiscvMachine p)).
+Lemma initialRiscvMachine_containsProgram: forall wlit wdiff var p,
+  @containsProgram wlit wdiff var (initialRiscvMachine p) p (pc (initialRiscvMachine p)).
 Proof.
   intros. unfold containsProgram, initialRiscvMachine. simpl.
   intros. apply nth_error_nth.
@@ -136,7 +147,7 @@ Proof.
 Admitted.
 
 Lemma every_state_contains_empty_state: forall s,
-  containsState s empty_state.
+  @containsState wlit wdiff _ _ _ s empty_state.
 Proof.
   unfold containsState.
   intros. inversion H.
@@ -150,26 +161,27 @@ Axiom flat_src_correct: forall n, exists fuelH finalH,
 Require Import Omega.
 
 Lemma p1_runs_correctly_1: forall n resVar fuelH finalH,
-  eval_stmt fuelH empty_state (p1_FlatImp_stmt $ (n)) = Success finalH ->
+  eval_stmt (wdiff:=wdiff) (wlit:=wlit) (w_eq:=eq_refl) fuelH empty_state (p1_FlatImp_stmt $ (n)) = Success finalH ->
   Common.get finalH resVar <> None ->
   exists fuelL,
-  Some ((execState (run fuelL) (initialRiscvMachine (p1_riscv $n))).(registers) resVar)
+  Some ((execState (run (w_lbound := bound_doesnt_hold) fuelL) (initialRiscvMachine (p1_riscv $n))).(registers) resVar)
   = Common.get finalH resVar.
 Proof.
   intro n. intros resVar fuelH finalH E G.
   change (exists fuel, 
-   (fun final => Some (registers final resVar) = finalH resVar)
-   (execState (run fuel) (initialRiscvMachine (p1_riscv $n)))).
+   (fun final => Some (registers final resVar) = (finalH resVar: option (word (wlit + wdiff))))
+   (execState (run (w_lbound := bound_doesnt_hold) fuel) (initialRiscvMachine (p1_riscv $n)))).
   apply runsToSatisfying_exists_fuel.
-  eapply runsToSatisfying_imp.
-  - eapply compile_stmt_correct_aux with
-     (s := (p1_FlatImp_stmt $n)) (initialH := empty_state) (fuelH0 := fuelH) (finalH0 := finalH).
+  eapply (@runsToSatisfying_imp wlit wdiff).
+  - eapply @compile_stmt_correct_aux with
+     (wlit:=wlit) (wdiff:=wdiff)
+     (s := (p1_FlatImp_stmt $n)) (initialH := empty_state) (fuelH := fuelH) (finalH := finalH).
+    + reflexivity.
     + reflexivity.
     + simpl. omega.
     + apply E.
     + unfold p1_riscv.
       unfold compileFlat2Riscv in *.
-      remember (compile_stmt (p1_FlatImp_stmt $n)) as p.
       apply initialRiscvMachine_containsProgram.
     + apply every_state_contains_empty_state.
     + reflexivity.
@@ -179,12 +191,12 @@ Proof.
     specialize (H resVar).
     destruct (Common.get finalH resVar) eqn: Q.
     + specialize (H _ eq_refl).
-      simpl in Q. unfold id in Q. congruence.
+      simpl in Q. unfold id in Q. simpl in *. congruence.
     + contradiction.
 Qed.
 
 Goal exists fuel, 
-  (execState (run fuel) (initialRiscvMachine (p1_riscv $4))).(registers)
+  (execState (run (w_lbound := bound_doesnt_hold) fuel) (initialRiscvMachine (p1_riscv $4))).(registers)
     (p1_FlatImp_resVar $4)
   = $14.
 Proof.
@@ -201,10 +213,17 @@ Proof.
     assumption.
 Qed.
 
-Goal (execState (run 100) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_FlatImp_resVar $4)
+(* TODO *)
+(* runs out of memory
+Eval cbv in ((execState (run (w_lbound := bound_doesnt_hold) 32) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_FlatImp_resVar $4)).
+*)
+
+(* doesn't work:
+Goal (execState (run (w_lbound := bound_doesnt_hold) 100) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_FlatImp_resVar $4)
 = $14. reflexivity. Qed.
 
 Goal go (p1_riscv $4) (p1_FlatImp_resVar $4) = $14.
   (* Note: go depends on lotsOfFuel_lowlevel, not lotsOfFuel *)
   reflexivity.
 Qed.
+*)

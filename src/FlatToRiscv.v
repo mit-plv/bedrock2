@@ -18,7 +18,8 @@ Section FlatToRiscv.
   Context {wdiff: nat}. (* bit width difference between literals and words *)
   Notation w := (wlit + wdiff).
   Context {wlit_eq : wlit = 12}.
-  Context {w_lbound: w >= 20}.
+  Context {w_lbound: w >= 20}. (* to make sure we can convert a signed jump-immediate to a word
+    without loss *)
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
