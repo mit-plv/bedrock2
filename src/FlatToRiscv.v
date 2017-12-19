@@ -365,17 +365,28 @@ Section FlatToRiscv.
 
   Require Import Coq.Program.Equality.
 
-  Lemma nat_cast_eq_rect: forall (P : nat -> Type) (n m : nat) (e: n = m) (pn: P n),
+  Lemma nat_cast_eq_rect: forall (P : nat -> Type),
+    (forall a, P (S a) -> P a) ->
+    forall (n m : nat)  (e: n = m) (pn: P n),
     nat_cast P e pn = eq_rect n P pn m e.
   Proof.
+    intros P f. induction n; intros.
+    - subst m. simpl. reflexivity.
+    - destruct m; [ discriminate |].
+      inversion e.
+      simpl.
+      specialize (IHn _ H0 (f _ pn)).
+      simpl.
   Admitted.
 
   (* Part 2: about nat_cast *)
   Lemma natcast_same: forall (s: nat) (n: word s),
     nat_cast word eq_refl n = n.
   Proof.
-    intros. rewrite nat_cast_eq_rect. reflexivity.
-  Qed.
+    intros. rewrite nat_cast_eq_rect.
+    - reflexivity.
+    - intros. pose proof (shatter_word_S H). Fail destruct H0 as [b [c E]].
+  Admitted.
 
   (* put it together *)
   Lemma sext_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
