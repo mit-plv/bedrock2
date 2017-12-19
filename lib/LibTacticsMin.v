@@ -375,6 +375,41 @@ Tactic Notation "ltac_pattern" constr(E) "at" constr(K) "in" hyp(H) :=
   end.
 
 (* ---------------------------------------------------------------------- *)
+(** ** Tagging of hypotheses *)
+
+(** [get_last_hyp tt] is a function that returns the last hypothesis
+    at the bottom of the context. It is useful to obtain the default
+    name associated with the hypothesis, e.g.
+    [intro; let H := get_last_hyp tt in let H' := fresh "P" H in ...] *)
+
+Ltac get_last_hyp tt :=
+  match goal with H: _ |- _ => constr:(H) end.
+
+
+(* ---------------------------------------------------------------------- *)
+(** ** Tagging of hypotheses *)
+
+(** [ltac_tag_subst] is a specific marker for hypotheses
+    which is used to tag hypotheses that are equalities to
+    be substituted. *)
+
+Definition ltac_tag_subst (A:Type) (x:A) := x.
+
+(** [ltac_to_generalize] is a specific marker for hypotheses
+    to be generalized. *)
+
+Definition ltac_to_generalize (A:Type) (x:A) := x.
+
+Ltac gen_to_generalize :=
+  repeat match goal with
+    H: ltac_to_generalize _ |- _ => generalize H; clear H end.
+
+Ltac mark_to_generalize H :=
+  let T := type of H in
+  change T with (ltac_to_generalize T) in H.
+
+
+(* ---------------------------------------------------------------------- *)
 (** ** Deconstructing terms *)
 
 (** [get_head E] is a tactic that returns the head constant of the
@@ -1204,6 +1239,311 @@ Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2)
  simple_intropattern(I6) simple_intropattern(I7) simple_intropattern(I8)
  simple_intropattern(I9) simple_intropattern(I10) :=
   introv I1; introv I2 I3 I4 I5 I6 I7 I8 I9 I10.
+
+
+(* ---------------------------------------------------------------------- *)
+(** ** Unfolding *)
+
+(** [unfolds] unfolds the head definition in the goal, i.e. if the
+    goal has form [P x1 ... xN] then it calls [unfold P].
+    If the goal is an equality, it tries to unfold the head constant
+    on the left-hand side, and otherwise tries on the right-hand side.
+    If the goal is a product, it calls [intros] first.
+    -- warning: this tactic is overriden in LibReflect. *)
+
+Ltac apply_to_head_of E cont :=
+  let go E :=
+    let P := get_head E in cont P in
+  match E with
+  | forall _,_ => intros; apply_to_head_of E cont
+  | ?A = ?B => first [ go A | go B ]
+  | ?A => go A
+  end.
+
+Ltac unfolds_base :=
+  match goal with |- ?G =>
+   apply_to_head_of G ltac:(fun P => unfold P) end.
+
+Tactic Notation "unfolds" :=
+  unfolds_base.
+
+(** [unfolds in H] unfolds the head definition of hypothesis [H], i.e. if
+    [H] has type [P x1 ... xN] then it calls [unfold P in H]. *)
+
+Ltac unfolds_in_base H :=
+  match type of H with ?G =>
+   apply_to_head_of G ltac:(fun P => unfold P in H) end.
+
+Tactic Notation "unfolds" "in" hyp(H) :=
+  unfolds_in_base H.
+
+(** [unfolds in H1,H2,..,HN] allows unfolding the head constant
+    in several hypotheses at once. *)
+
+Tactic Notation "unfolds" "in" hyp(H1) hyp(H2) :=
+  unfolds in H1; unfolds in H2.
+Tactic Notation "unfolds" "in" hyp(H1) hyp(H2) hyp(H3) :=
+  unfolds in H1; unfolds in H2 H3.
+Tactic Notation "unfolds" "in" hyp(H1) hyp(H2) hyp(H3) hyp(H4) :=
+  unfolds in H1; unfolds in H2 H3 H4.
+Tactic Notation "unfolds" "in" hyp(H1) hyp(H2) hyp(H3) hyp(H4) hyp(H5) :=
+  unfolds in H1; unfolds in H2 H3 H4 H5.
+
+(** [unfolds P1,..,PN] is a shortcut for [unfold P1,..,PN in *]. *)
+
+Tactic Notation "unfolds" constr(F1) :=
+  unfold F1 in *.
+Tactic Notation "unfolds" constr(F1) "," constr(F2) :=
+  unfold F1,F2 in *.
+Tactic Notation "unfolds" constr(F1) "," constr(F2)
+ "," constr(F3) :=
+  unfold F1,F2,F3 in *.
+Tactic Notation "unfolds" constr(F1) "," constr(F2)
+ "," constr(F3) "," constr(F4) :=
+  unfold F1,F2,F3,F4 in *.
+Tactic Notation "unfolds" constr(F1) "," constr(F2)
+ "," constr(F3) "," constr(F4) "," constr(F5) :=
+  unfold F1,F2,F3,F4,F5 in *.
+Tactic Notation "unfolds" constr(F1) "," constr(F2)
+ "," constr(F3) "," constr(F4) "," constr(F5) "," constr(F6) :=
+  unfold F1,F2,F3,F4,F5,F6 in *.
+Tactic Notation "unfolds" constr(F1) "," constr(F2)
+ "," constr(F3) "," constr(F4) "," constr(F5)
+ "," constr(F6) "," constr(F7) :=
+  unfold F1,F2,F3,F4,F5,F6,F7 in *.
+Tactic Notation "unfolds" constr(F1) "," constr(F2)
+ "," constr(F3) "," constr(F4) "," constr(F5)
+ "," constr(F6) "," constr(F7) "," constr(F8) :=
+  unfold F1,F2,F3,F4,F5,F6,F7,F8 in *.
+
+(** [folds P1,..,PN] is a shortcut for [fold P1 in *; ..; fold PN in *]. *)
+
+Tactic Notation "folds" constr(H) :=
+  fold H in *.
+Tactic Notation "folds" constr(H1) "," constr(H2) :=
+  folds H1; folds H2.
+Tactic Notation "folds" constr(H1) "," constr(H2) "," constr(H3) :=
+  folds H1; folds H2; folds H3.
+Tactic Notation "folds" constr(H1) "," constr(H2) "," constr(H3)
+ "," constr(H4) :=
+  folds H1; folds H2; folds H3; folds H4.
+Tactic Notation "folds" constr(H1) "," constr(H2) "," constr(H3)
+ "," constr(H4) "," constr(H5) :=
+  folds H1; folds H2; folds H3; folds H4; folds H5.
+
+
+(* ********************************************************************** *)
+(** * Inversion *)
+
+(* ---------------------------------------------------------------------- *)
+(** ** Basic inversion *)
+
+(** [invert keep H] is same to [inversion H] except that it puts all the
+    facts obtained in the goal. The keyword [keep] means that the
+    hypothesis [H] should not be removed. *)
+
+Tactic Notation "invert" "keep" hyp(H) :=
+  pose ltac_mark; inversion H; gen_until_mark.
+
+(** [invert keep H as X1 .. XN] is the same as [inversion H as ...] except
+    that only hypotheses which are not variable need to be named
+    explicitely, in a similar fashion as [introv] is used to name
+    only hypotheses. *)
+
+Tactic Notation "invert" "keep" hyp(H) "as" simple_intropattern(I1) :=
+  invert keep H; introv I1.
+Tactic Notation "invert" "keep" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) :=
+  invert keep H; introv I1 I2.
+Tactic Notation "invert" "keep" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) :=
+  invert keep H; introv I1 I2 I3.
+
+(** [invert H] is same to [inversion H] except that it puts all the
+    facts obtained in the goal and clears hypothesis [H].
+    In other words, it is equivalent to [invert keep H; clear H]. *)
+
+Tactic Notation "invert" hyp(H) :=
+  invert keep H; clear H.
+
+(** [invert H as X1 .. XN] is the same as [invert keep H as X1 .. XN]
+    but it also clears hypothesis [H]. *)
+
+Tactic Notation "invert_tactic" hyp(H) tactic(tac) :=
+  let H' := fresh "TEMP" in rename H into H'; tac H'; clear H'.
+Tactic Notation "invert" hyp(H) "as" simple_intropattern(I1) :=
+  invert_tactic H (fun H => invert keep H as I1).
+Tactic Notation "invert" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) :=
+  invert_tactic H (fun H => invert keep H as I1 I2).
+Tactic Notation "invert" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) :=
+  invert_tactic H (fun H => invert keep H as I1 I2 I3).
+
+
+(* ---------------------------------------------------------------------- *)
+(** ** Inversion with substitution *)
+
+(** Our inversion tactics is able to get rid of dependent equalities
+    generated by [inversion], using proof irrelevance. *)
+
+(* --we do not import Eqdep because it imports nasty hints automatically
+    Require Import Eqdep. *)
+
+Axiom inj_pair2 :  (* is in fact derivable from the axioms in LibAxiom.v *)
+  forall (U : Type) (P : U -> Type) (p : U) (x y : P p),
+  existT P p x = existT P p y -> x = y.
+(* Proof using. apply Eqdep.EqdepTheory.inj_pair2. Qed.*)
+
+Ltac inverts_tactic H i1 i2 i3 i4 i5 i6 :=
+  let rec go i1 i2 i3 i4 i5 i6 :=
+    match goal with
+    | |- (ltac_Mark -> _) => intros _
+    | |- (?x = ?y -> _) => let H := fresh "TEMP" in intro H;
+                           first [ subst x | subst y ];
+                           go i1 i2 i3 i4 i5 i6
+    | |- (existT ?P ?p ?x = existT ?P ?p ?y -> _) =>
+         let H := fresh "TEMP" in intro H;
+         generalize (@inj_pair2 _ P p x y H);
+         clear H; go i1 i2 i3 i4 i5 i6
+    | |- (?P -> ?Q) => i1; go i2 i3 i4 i5 i6 ltac:(intro)
+    | |- (forall _, _) => intro; go i1 i2 i3 i4 i5 i6
+    end in
+  generalize ltac_mark; invert keep H; go i1 i2 i3 i4 i5 i6;
+  unfold eq' in *.
+
+(** [inverts keep H] is same to [invert keep H] except that it
+    applies [subst] to all the equalities generated by the inversion. *)
+
+Tactic Notation "inverts" "keep" hyp(H) :=
+  inverts_tactic H ltac:(intro) ltac:(intro) ltac:(intro)
+                   ltac:(intro) ltac:(intro) ltac:(intro).
+
+(** [inverts keep H as X1 .. XN] is the same as
+    [invert keep H as X1 .. XN] except that it applies [subst] to all the
+    equalities generated by the inversion *)
+
+Tactic Notation "inverts" "keep" hyp(H) "as" simple_intropattern(I1) :=
+  inverts_tactic H ltac:(intros I1)
+   ltac:(intro) ltac:(intro) ltac:(intro) ltac:(intro) ltac:(intro).
+Tactic Notation "inverts" "keep" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) :=
+  inverts_tactic H ltac:(intros I1) ltac:(intros I2)
+   ltac:(intro) ltac:(intro) ltac:(intro) ltac:(intro).
+Tactic Notation "inverts" "keep" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) :=
+  inverts_tactic H ltac:(intros I1) ltac:(intros I2) ltac:(intros I3)
+   ltac:(intro) ltac:(intro) ltac:(intro).
+Tactic Notation "inverts" "keep" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4) :=
+  inverts_tactic H ltac:(intros I1) ltac:(intros I2) ltac:(intros I3)
+   ltac:(intros I4) ltac:(intro) ltac:(intro).
+Tactic Notation "inverts" "keep" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4)
+ simple_intropattern(I5) :=
+  inverts_tactic H ltac:(intros I1) ltac:(intros I2) ltac:(intros I3)
+   ltac:(intros I4) ltac:(intros I5) ltac:(intro).
+Tactic Notation "inverts" "keep" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4)
+ simple_intropattern(I5) simple_intropattern(I6) :=
+  inverts_tactic H ltac:(intros I1) ltac:(intros I2) ltac:(intros I3)
+   ltac:(intros I4) ltac:(intros I5) ltac:(intros I6).
+
+(** [inverts H] is same to [inverts keep H] except that it
+    clears hypothesis [H]. *)
+
+Tactic Notation "inverts" hyp(H) :=
+  inverts keep H; try clear H.
+
+(** [inverts H as X1 .. XN] is the same as [inverts keep H as X1 .. XN]
+    but it also clears the hypothesis [H]. *)
+
+Tactic Notation "inverts_tactic" hyp(H) tactic(tac) :=
+  let H' := fresh "TEMP" in rename H into H'; tac H'; clear H'.
+Tactic Notation "inverts" hyp(H) "as" simple_intropattern(I1) :=
+  invert_tactic H (fun H => inverts keep H as I1).
+Tactic Notation "inverts" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) :=
+  invert_tactic H (fun H => inverts keep H as I1 I2).
+Tactic Notation "inverts" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) :=
+  invert_tactic H (fun H => inverts keep H as I1 I2 I3).
+Tactic Notation "inverts" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4) :=
+  invert_tactic H (fun H => inverts keep H as I1 I2 I3 I4).
+Tactic Notation "inverts" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4)
+ simple_intropattern(I5) :=
+  invert_tactic H (fun H => inverts keep H as I1 I2 I3 I4 I5).
+Tactic Notation "inverts" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4)
+ simple_intropattern(I5) simple_intropattern(I6) :=
+  invert_tactic H (fun H => inverts keep H as I1 I2 I3 I4 I5 I6).
+
+(** [inverts H as] performs an inversion on hypothesis [H], substitutes
+    generated equalities, and put in the goal the other freshly-created
+    hypotheses, for the user to name explicitly.
+    [inverts keep H as] is the same except that it does not clear [H].
+    --TODO: reimplement [inverts] above using this one *)
+
+Ltac inverts_as_tactic H :=
+  let rec go tt :=
+    match goal with
+    | |- (ltac_Mark -> _) => intros _
+    | |- (?x = ?y -> _) => let H := fresh "TEMP" in intro H;
+                           first [ subst x | subst y ];
+                           go tt
+    | |- (existT ?P ?p ?x = existT ?P ?p ?y -> _) =>
+         let H := fresh "TEMP" in intro H;
+         generalize (@inj_pair2 _ P p x y H);
+         clear H; go tt
+    | |- (forall _, _) =>
+       intro; let H := get_last_hyp tt in mark_to_generalize H; go tt
+    end in
+  pose ltac_mark; inversion H;
+  generalize ltac_mark; gen_until_mark;
+  go tt; gen_to_generalize; unfolds ltac_to_generalize;
+  unfold eq' in *.
+
+Tactic Notation "inverts" "keep" hyp(H) "as" :=
+  inverts_as_tactic H.
+
+Tactic Notation "inverts" hyp(H) "as" :=
+  inverts_as_tactic H; clear H.
+
+Tactic Notation "inverts" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4)
+ simple_intropattern(I5) simple_intropattern(I6) simple_intropattern(I7) :=
+  inverts H as; introv I1 I2 I3 I4 I5 I6 I7.
+Tactic Notation "inverts" hyp(H) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4)
+ simple_intropattern(I5) simple_intropattern(I6) simple_intropattern(I7)
+ simple_intropattern(I8) :=
+  inverts H as; introv I1 I2 I3 I4 I5 I6 I7 I8.
+
+
+(** [lets_inverts E as I1 .. IN] is intuitively equivalent to
+    [inverts E], with the difference that it applies to any
+    expression and not just to the name of an hypothesis. *)
+
+Ltac lets_inverts_base E cont :=
+  let H := fresh "TEMP" in lets H: E; try cont H.
+
+Tactic Notation "lets_inverts" constr(E) :=
+  lets_inverts_base E ltac:(fun H => inverts H).
+Tactic Notation "lets_inverts" constr(E) "as" simple_intropattern(I1) :=
+  lets_inverts_base E ltac:(fun H => inverts H as I1).
+Tactic Notation "lets_inverts" constr(E) "as" simple_intropattern(I1)
+ simple_intropattern(I2) :=
+  lets_inverts_base E ltac:(fun H => inverts H as I1 I2).
+Tactic Notation "lets_inverts" constr(E) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) :=
+  lets_inverts_base E ltac:(fun H => inverts H as I1 I2 I3).
+Tactic Notation "lets_inverts" constr(E) "as" simple_intropattern(I1)
+ simple_intropattern(I2) simple_intropattern(I3) simple_intropattern(I4) :=
+  lets_inverts_base E ltac:(fun H => inverts H as I1 I2 I3 I4).
+
+
 
 
 (* ---------------------------------------------------------------------- *)

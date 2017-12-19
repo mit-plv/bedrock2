@@ -1,4 +1,5 @@
 Require Import compiler.Tactics.
+Require Import Coq.Program.Tactics.
 
 Class set(T E: Type) := mkSet {
   contains: T -> E -> Prop;
@@ -55,4 +56,4 @@ Ltac set_solver E :=
   intros;
   specialize_with E;
   autorewrite with rew_set_op_specs in *;
-  intuition (subst; auto).
+  intuition (subst *; auto).
