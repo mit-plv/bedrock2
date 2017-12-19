@@ -3,10 +3,15 @@ Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
+Require Import compiler.zcast.
+Require Import Coq.Program.Tactics.
 
 Section ExprImp.
 
   Context {w: nat}. (* bit width *)
+  Context {wlit: nat}. (* max bit width of literals *)
+  Context {wdiff: nat}. (* difference between literal width and word width *)
+  Context {w_eq: wlit + wdiff = w}.
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
@@ -15,7 +20,7 @@ Section ExprImp.
   Context {varset: set vars var}.
 
   Inductive expr: Set :=
-    | ELit(v: word w): expr
+    | ELit(v: word wlit): expr
     | EVar(x: var): expr
     | EOp(op: binop)(e1 e2: expr): expr.
 
@@ -26,9 +31,11 @@ Section ExprImp.
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt.
 
+  Definition signed_lit_to_word(v: word wlit): word w := nat_cast word w_eq (sext v wdiff).
+
   Fixpoint eval_expr(st: state)(e: expr): option (word w) :=
     match e with
-    | ELit v => Return v
+    | ELit v => Return (signed_lit_to_word v)
     | EVar x => get st x
     | EOp op e1 e2 =>
         v1 <- eval_expr st e1;
@@ -75,7 +82,7 @@ Section ExprImp.
        cv = $0  /\ eval_stmt f st1 bElse = Some st2).
   Proof.
     introv E. simpl in E. destruct_one_match_hyp; [|discriminate].
-    destruct_one_match_hyp; subst; eexists; eapply (conj eq_refl); [right|left]; auto.
+    destruct_one_match_hyp; subst *; eexists; eapply (conj eq_refl); [right|left]; auto.
   Qed.
 
   Lemma invert_eval_SWhile: forall st1 st3 f cond body,
@@ -128,8 +135,8 @@ Section ExprImp.
       + simpl in *. destruct_one_match_hyp; [|discriminate]. inversionss. state_calc var (word w).
       + simpl in *. destruct_one_match_hyp; [|discriminate].
         destruct_one_match_hyp.
-        * subst. specializes IHfuel; [ eassumption |]. state_calc var (word w).
-        * subst. specializes IHfuel; [ eassumption |]. state_calc var (word w).
+        * subst *. specializes IHfuel; [ eassumption |]. state_calc var (word w).
+        * subst *. specializes IHfuel; [ eassumption |]. state_calc var (word w).
       + apply invert_eval_SWhile in Ev.
         destruct Ev as [cv [Evcond [Ev | Ev]]].
         * destruct Ev as [Ne [mid2 [Ev2 Ev3]]].
@@ -137,7 +144,7 @@ Section ExprImp.
           pose proof (IHfuel _ _ _ Ev2) as IH2.
           pose proof (IHfuel _ _ _ Ev3) as IH3.
           clear - IH2 IH3. state_calc var (word w).
-        * destruct Ev as [? ?]. subst. clear. state_calc var (word w).
+        * destruct Ev as [? ?]. subst *. clear. state_calc var (word w).
       + apply invert_eval_SSeq in Ev.
         destruct Ev as [mid [Ev1 Ev2]]. simpl.
         pose proof (IHfuel _ _ _ Ev1) as IH1.
@@ -181,8 +188,10 @@ Definition isRight(x y z: word 16) :=
                                           (EOp OTimes (EVar _b) (EVar _b)))
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
+Definition eval_stmt' := @eval_stmt 16 16 0 eq_refl Z _ _.
+
 Definition run_isRight(x y z: word 16): option (word 16) :=
-  finalSt <- (eval_stmt 10 empty (isRight x y z));
+  finalSt <- (eval_stmt' 10 empty (isRight x y z));
   get finalSt _isRight.
 
 Goal run_isRight $3 $4 $5 = Some $1. reflexivity. Qed.

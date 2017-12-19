@@ -7,10 +7,13 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import compiler.Axioms.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
+Require Import compiler.zcast.
 
 Section FlattenExpr.
 
-  Context {w: nat}. (* bit width *)
+  Context {wlit: nat}. (* max bit width of literals *)
+  Context {wdiff: nat}. (* difference between literal width and word width *)
+  Notation w := (wlit + wdiff).
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
@@ -25,8 +28,8 @@ Section FlattenExpr.
 
   (* returns and var into which result is saved, and new fresh name generator state
      TODO use state monad? *)
-  Fixpoint flattenExpr(ngs: NGstate)(e: @ExprImp.expr w var):
-    (@FlatImp.stmt w var * var * NGstate) :=
+  Fixpoint flattenExpr(ngs: NGstate)(e: @ExprImp.expr wlit var):
+    (@FlatImp.stmt wlit var * var * NGstate) :=
     match e with
     | ExprImp.ELit n =>
         let '(x, ngs') := genFresh ngs in
@@ -44,8 +47,8 @@ Section FlattenExpr.
     end.
 
   (* returns statement and new fresh name generator state *)
-  Fixpoint flattenStmt(ngs: NGstate)(s: @ExprImp.stmt w var):
-    (@FlatImp.stmt w var * NGstate) :=
+  Fixpoint flattenStmt(ngs: NGstate)(s: @ExprImp.stmt wlit var):
+    (@FlatImp.stmt wlit var * NGstate) :=
     match s with
     | ExprImp.SSet x e =>
         let '(e', r, ngs') := flattenExpr ngs e in
@@ -66,13 +69,7 @@ Section FlattenExpr.
     | ExprImp.SSkip => (FlatImp.SSkip, ngs)
     end.
 
-(*
-  Lemma set_extensionality: forall (T: Type) s1 s2,
-    (forall (x: T), x \in s1 <-> x \in s2) -> s1 = s2.
-  Proof.
-    intros. extensionality x. apply prop_ext. apply H.
-  Qed.
-*)
+  Definition signed_lit_to_word(v: word wlit): word w := nat_cast word eq_refl (sext v wdiff).
 
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' s v,
     flattenExpr ngs e = (s, v, ngs') ->
@@ -112,6 +109,9 @@ Section FlattenExpr.
     flattenExpr ngs e = (s, resVar, ngs') ->
     subset (FlatImp.modVars s) (diff (allFreshVars ngs) (allFreshVars ngs')).
   Proof.
+    (* Note: here it can happen that inversionss substitutes w (if we have an equality
+       wlit + wdiff = w, and then flattenExpr_freshVarUsage, which depends on w, cannot be
+       applied any more. *)
     induction e; intros; repeat (inversionss; try destruct_one_match_hyp);
     simpl;
     try (
@@ -151,7 +151,8 @@ Section FlattenExpr.
   Ltac pose_flatten_var_ineqs :=
     repeat match goal with
     | H: _ |- _ => unique apply flattenExpr_freshVarUsage in copy of H
-    | H: _ |- _ => unique apply FlatImp.modVarsSound in copy of H
+    | H: _ |- _ => unique apply (FlatImp.modVarsSound
+        (wlit := wlit) (wdiff := wdiff) (w_eq := eq_refl)) in copy of H
     | H: _ |- _ => unique apply flattenExpr_modifies_resVar in copy of H
     | H: _ |- _ => unique apply flattenExpr_modVars_spec in copy of H
     | H: _ |- _ => unique apply flattenStmt_freshVarUsage in copy of H
@@ -169,22 +170,30 @@ Section FlattenExpr.
          rewrite Ev
     end.
 
+  Definition evalH := @ExprImp.eval_expr w wlit wdiff eq_refl var state stateMap.
+  Definition evalL := @FlatImp.eval_stmt w wlit wdiff eq_refl var state stateMap.
+
   (* Note: If you want to get in the conclusion
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
      flattenExpr_modVars_spec and FlatImp.modVarsSound *)
-  Lemma flattenExpr_correct_aux: forall e ngs1 ngs2 resVar s initialH initialL res,
+  Lemma flattenExpr_correct_aux: forall e ngs1 ngs2 resVar (s: @FlatImp.stmt wlit var)
+    initialH initialL res,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     extends initialL initialH ->
     undef initialH (allFreshVars ngs1) ->
-    ExprImp.eval_expr initialH e = Some res ->
+    evalH initialH e = Some res ->
     exists fuel finalL,
-      FlatImp.eval_stmt fuel initialL s = Success finalL /\
+      evalL fuel initialL s = Success finalL /\
       get finalL resVar = Some res.
   Proof.
+    pose proof True as w. (* to fix auto-naming *)
     induction e; introv F Ex U Ev.
     - repeat (inversionss; try destruct_one_match_hyp).
-      exists 1%nat (put initialL resVar res).
+      match goal with
+      | |- context [get _ resVar = Some ?res] =>
+         exists 1%nat (put initialL resVar res)
+      end.
       split; state_calc.
     - repeat (inversionss; try destruct_one_match_hyp).
       exists 1%nat (put initialL resVar res). repeat split.
@@ -199,6 +208,7 @@ Section FlattenExpr.
       }
       { assumption. }
       destruct IHe1 as [fuel1 [midL [Ev1 G1]]].
+      unfold evalL in *.
       progress pose_flatten_var_ineqs.
       specialize (IHe2 _ _ _ _ initialH midL w1 E0).
       specializes IHe2.
@@ -220,18 +230,20 @@ Section FlattenExpr.
       rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
   Qed.
 
+  Definition eval_stmt_H := @ExprImp.eval_stmt w wlit wdiff eq_refl var state stateMap.
+
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' initialH finalH initialL,
     flattenStmt ngs sH = (sL, ngs') ->
     extends initialL initialH ->
     undef initialH (allFreshVars ngs) ->
     disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
-    ExprImp.eval_stmt fuelH initialH sH = Some finalH ->
+    eval_stmt_H fuelH initialH sH = Some finalH ->
     exists fuelL finalL,
-      FlatImp.eval_stmt fuelL initialL sL = Success finalL /\
+      evalL fuelL initialL sL = Success finalL /\
       extends finalL finalH.
   Proof.
-    induction fuelH; introv F Ex U Di Ev; [solve [inversionss] |].
+    induction fuelH; unfold eval_stmt_H, evalL in *; introv F Ex U Di Ev; [solve [inversionss] |].
     destruct sH.
     - apply ExprImp.invert_eval_SSet in Ev.
       destruct Ev as [v [Ev Eq]].
@@ -241,9 +253,10 @@ Section FlattenExpr.
       remember (Datatypes.S fuelL) as SfuelL.
       exists (Datatypes.S SfuelL). eexists. repeat split.
       + simpl.
-        assert (FlatImp.eval_stmt SfuelL initialL s = Success prefinalL) as Evs'. {
+        assert (evalL SfuelL initialL s = Success prefinalL) as Evs'. {
           eapply FlatImp.increase_fuel_still_Success; [|eassumption]. omega.
         }
+        unfold evalL in *.
         rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
       + clear IHfuelH.
         pose_flatten_var_ineqs.
@@ -254,6 +267,7 @@ Section FlattenExpr.
       pose_flatten_var_ineqs.
       rename cond into condH, s into condL, s0 into sL1, s1 into sL2.
       pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ cv E Ex) as P.
+      unfold eval_stmt_H, evalL in *.
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [Evcond G]]].
       destruct Ev as [[Ne EvThen] | [Eq EvElse]]; pose_flatten_var_ineqs.
@@ -320,6 +334,7 @@ Section FlattenExpr.
         exists (S (fuelL1 + fuelL2 + fuelLcond)) finalL.
         refine (conj _ Ex2).
         simpl.
+        unfold eval_stmt_H, evalL in *.
         fuel_increasing_rewrite.
         rewrite G. simpl. destruct_one_match; [contradiction|].
         fuel_increasing_rewrite.
@@ -329,6 +344,7 @@ Section FlattenExpr.
         exists (S fuelLcond) initial2L.
         split; [|state_calc].
         simpl.
+        unfold eval_stmt_H, evalL in *.
         fuel_increasing_rewrite.
         rewrite G. simpl. destruct_one_match; [|contradiction]. reflexivity.
     - apply ExprImp.invert_eval_SSeq in Ev.

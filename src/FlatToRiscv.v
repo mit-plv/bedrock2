@@ -159,7 +159,7 @@ Section FlatToRiscv.
   Proof.
     unfold containsState. intros. simpl.
     rewrite get_put in H1. destruct_one_match.
-    - inversions H1. reflexivity.
+    - inverts H1. assumption.
     - simpl in H. apply H. assumption.
   Qed.
 
