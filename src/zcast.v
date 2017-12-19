@@ -89,7 +89,17 @@ Fixpoint nat_cast (P : nat -> Type) {n m} : n = m -> P n -> P m.
          | _, _ => fun pf => match _ pf : False with end
          end;
     clear; abstract congruence.
-Defined.
+Defined. (* thx Jason *)
+
+Lemma nat_cast_eq_rect: forall (P : nat -> Type),
+  forall (n m : nat)  (e: n = m) (pn: P n),
+  nat_cast P e pn = eq_rect n P pn m e.
+Proof.
+  destruct e.
+  revert dependent P; induction n; simpl; intros.
+  - reflexivity.
+  - rewrite IHn. reflexivity.
+Qed. (* thx Clement *)
 
 Require Import Omega.
 
