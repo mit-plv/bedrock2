@@ -463,6 +463,21 @@ Section FlatToRiscv.
     a - (b - c) = a - b + c.
   Proof. intros. omega. Qed.
 
+  Lemma wones_natToWord: forall sz,
+    wones sz = $ (pow2 sz - 1).
+  Proof.
+    induction sz.
+    - reflexivity.
+    - unfold wones. fold wones. rewrite IHsz.
+      unfold natToWord at 2. fold natToWord. f_equal.
+      + rewrite mod2sub.
+        * simpl. rewrite mod2_pow2_twice. reflexivity.
+        * apply pow2_nonzero.
+      + f_equal. unfold pow2 at 2. fold pow2.
+        rewrite <- (div2_S_double (pow2 sz - 1)). f_equal.
+        pose proof (pow2_nonzero sz). omega.
+  Qed.
+
   Lemma sext_wneg_natToWord00: forall sz1 sz2 n,
     pow2 sz1 <= 2 * n < pow2 (S sz1) ->
     sext (natToWord sz1 n) sz2 = natToWord (sz1 + sz2) (pow2 (sz1+sz2) - (pow2 sz1 - n)).
@@ -524,7 +539,7 @@ Section FlatToRiscv.
         rewrite D2.
         destruct sz1 as [|sz1'].
         * simpl in H. assert (n=1) by omega. subst n. simpl in D2. simpl.
-          admit.
+          apply wones_natToWord.
         * rewrite <- IHsz1.
           { assert (@wmsb (S sz1') (natToWord (S sz1') (Nat.div2 n)) false = true) as F. {
             apply wmsb_1_natToWord.
