@@ -478,6 +478,25 @@ Section FlatToRiscv.
         pose proof (pow2_nonzero sz). omega.
   Qed.
 
+  Lemma wneg_zero: forall sz,
+    wneg (natToWord sz 0) = natToWord sz 0.
+  Proof.
+    intros.
+    pose proof (wminus_inv (natToWord sz 0)) as P.
+    rewrite wplus_unit in P.
+    exact P.
+  Qed.
+
+  Lemma even_odd_destruct: forall n,
+    (exists a, n = 2 * a) \/ (exists a, n = 2 * a + 1).
+  Proof.
+    induction n.
+    - left. exists 0. reflexivity.
+    - destruct IHn as [[a E] | [a E]].
+      + right. exists a. omega.
+      + left. exists (S a). omega.
+  Qed.
+
   Lemma sext_wneg_natToWord00: forall sz1 sz2 n,
     pow2 sz1 <= 2 * n < pow2 (S sz1) ->
     sext (natToWord sz1 n) sz2 = natToWord (sz1 + sz2) (pow2 (sz1+sz2) - (pow2 sz1 - n)).
@@ -540,22 +559,26 @@ Section FlatToRiscv.
         destruct sz1 as [|sz1'].
         * simpl in H. assert (n=1) by omega. subst n. simpl in D2. simpl.
           apply wones_natToWord.
-        * rewrite <- IHsz1.
+        * assert (n <= S (2 * Nat.div2 n)). {
+            destruct (even_odd_destruct n) as [[m C]|[m C]]; subst n.
+            - rewrite Nat.div2_double. constructor. constructor.
+            - replace (2 * m + 1) with (S (2 * m)) by omega. rewrite Nat.div2_succ_double.
+              constructor.
+          }
+         rewrite <- IHsz1.
           { assert (@wmsb (S sz1') (natToWord (S sz1') (Nat.div2 n)) false = true) as F. {
             apply wmsb_1_natToWord.
             unfold pow2 in *. fold pow2 in *.
-            assert (n <= S (2 * Nat.div2 n)) by admit.
             assert (2 * Nat.div2 n <= n) by apply two_times_div2.
             clear -H H0 H1.
             omega. }
             { rewrite F. reflexivity. }
           }
-          { assert (n <= S (2 * Nat.div2 n)) by admit.
-            assert (2 * Nat.div2 n <= n) by apply two_times_div2.
+          { assert (2 * Nat.div2 n <= n) by apply two_times_div2.
             clear -H H0 H1.
             unfold pow2 in *. fold pow2 in *.
             omega. }
-  Admitted.
+  Qed.
 
   Lemma sext_neg_natToWord0: forall sz1 sz2 n,
     2 * n < pow2 sz1 ->
@@ -563,16 +586,31 @@ Section FlatToRiscv.
   Proof.
     intros. rewrite wneg_alt. unfold wnegN.
     destruct n as [|n].
-    - admit.
+    - rewrite roundTrip_0. rewrite Nat.sub_0_r. rewrite natToWord_pow2.
+      unfold sext.
+      assert (wmsb (natToWord sz1 0) false = false) as W. {
+        destruct sz1.
+        + simpl. reflexivity.
+        + apply wmsb_0_natToWord. assumption.
+      }
+      rewrite W.
+      rewrite combine_wzero.
+      symmetry.
+      apply wneg_zero.
     - rewrite sext_wneg_natToWord00.
       + rewrite wneg_alt. unfold wnegN.
         rewrite wordToNat_natToWord_idempotent' by omega.
-        rewrite wordToNat_natToWord_idempotent'. 2: admit.
-        replace (pow2 sz1 - (pow2 sz1 - S n)) with (S n) by omega.
-        reflexivity.
+        rewrite wordToNat_natToWord_idempotent'.
+        * replace (pow2 sz1 - (pow2 sz1 - S n)) with (S n) by omega.
+          reflexivity.
+        * rewrite pow2_add_mul.
+          apply Nat.le_trans with (m := pow2 sz1); [omega|].
+          rewrite <- Nat.mul_1_r at 1.
+          apply mult_le_compat_l.
+          apply pow2_nonzero.
       + rewrite wordToNat_natToWord_idempotent' by omega.
         simpl. omega.
-  Admitted.
+  Qed.
 
 (*
   Lemma wneg_wnot_natToWord: forall sz a,
