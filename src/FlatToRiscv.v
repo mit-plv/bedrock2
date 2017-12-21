@@ -415,6 +415,54 @@ Section FlatToRiscv.
     induction a; simpl; omega.
   Qed.
 
+  Lemma div2_compat_lt_l: forall a b, b < 2 * a -> Nat.div2 b < a.
+  Proof.
+    induction a; intros.
+    - omega.
+    - destruct b.
+      + simpl. omega.
+      + destruct b.
+        * simpl. omega.
+        * simpl. apply lt_n_S. apply IHa. omega.
+  Qed.
+
+(*
+  Lemma div2_compat_lt_r: forall a b, 2 * a < b -> a <= Nat.div2 b.
+  Proof.
+    induction a; intros.
+    - omega.
+  Admitted.
+
+  Goal forall a b, a = 2 -> b = 3 ->
+    Nat.div2 (2 * a - b) = a - Nat.div2 b. intros. subst. simpl.
+  Abort.
+
+  Lemma div2_2_minus: forall a b,
+    Nat.div2 (2 * a - b) = a - Nat.div2 b.
+  Proof.
+    intros. remember (2 * a - b) as c. revert dependent b. revert a. revert c.
+    change (forall c,
+      (fun c => forall a b, c = 2 * a - b -> Nat.div2 c = a - Nat.div2 b) c).
+    apply strong.
+    intros c IH a b E.
+    destruct c.
+    - simpl. assert (b = 2 * a \/ 2 * a < b) as C by omega.
+      destruct C.
+      + subst b. rewrite Div2.div2_double. omega.
+      + apply div2_compat_r in H. omega.
+    - destruct c.
+      + simpl. assert (S b = 2 * a \/ 2 * a < b) as C by omega.
+        destruct C.
+        * destruct a; [discriminate|]. assert (b = 2 * a + 1) by omega. subst b.
+    induction a; intros.
+  Abort.
+*)
+
+  Lemma minus_minus: forall a b c,
+    c <= b <= a ->
+    a - (b - c) = a - b + c.
+  Proof. intros. omega. Qed.
+
   Lemma sext_wneg_natToWord00: forall sz1 sz2 n,
     pow2 sz1 <= 2 * n < pow2 (S sz1) ->
     sext (natToWord sz1 n) sz2 = natToWord (sz1 + sz2) (pow2 (sz1+sz2) - (pow2 sz1 - n)).
@@ -450,7 +498,29 @@ Section FlatToRiscv.
           apply pow2_nonzero.
       + fold natToWord.
         specialize (IHsz1 sz2 (Nat.div2 n)).
-        assert (Nat.div2 b = pow2 (sz1 + sz2) - (pow2 sz1 - (Nat.div2 n))) as D2 by admit.
+        assert (Nat.div2 b = pow2 (sz1 + sz2) - (pow2 sz1 - (Nat.div2 n))) as D2. {
+          rewrite minus_minus.
+          - subst b. replace (S sz1 + sz2) with (S (sz1 + sz2)) by omega.
+            unfold pow2. fold pow2.
+            rewrite minus_minus.
+            * rewrite <- Nat.mul_sub_distr_l. 
+              rewrite <- (Nat.add_comm n).
+              rewrite div2_plus_2.
+              apply Nat.add_comm.
+            * rewrite pow2_add_mul. clear IHsz1. unfold pow2 in *. fold pow2 in *.
+              split; [omega|].
+              apply mult_le_compat_l.
+              rewrite <- Nat.mul_1_r at 1.
+              apply mult_le_compat_l.
+              apply pow2_nonzero.
+          - unfold pow2 in H. fold pow2 in H.
+            split.
+            * pose proof (div2_compat_lt_l (pow2 sz1) n) as P. omega.
+            * rewrite pow2_add_mul. clear IHsz1.
+              rewrite <- Nat.mul_1_r at 1.
+              apply mult_le_compat_l.
+              apply pow2_nonzero.
+        }
         rewrite D2.
         destruct sz1 as [|sz1'].
         * simpl in H. assert (n=1) by omega. subst n. simpl in D2. simpl.
