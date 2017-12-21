@@ -389,6 +389,32 @@ Section FlatToRiscv.
         * reflexivity.
   Qed.
 
+  Lemma mod2sub: forall a b,
+    b <= a ->
+    mod2 (a - b) = xorb (mod2 a) (mod2 b).
+  Proof.
+    intros. remember (a - b) as c. revert dependent b. revert a. revert c.
+    change (forall c,
+      (fun c => forall a b, b <= a -> c = a - b -> mod2 c = xorb (mod2 a) (mod2 b)) c).
+    apply strong.
+    intros c IH a b AB N.
+    destruct c.
+    - assert (a=b) by omega. subst. rewrite Bool.xorb_nilpotent. reflexivity.
+    - destruct c.
+      + assert (a = S b) by omega. subst a. simpl (mod2 1). rewrite mod2_S_not.
+        destruct (mod2 b); reflexivity.
+      + destruct a; [omega|].
+        destruct a; [omega|].
+        simpl.
+        apply IH; omega.
+  Qed.
+
+  Lemma pow2_nonzero: forall a,
+    1 <= pow2 a.
+  Proof.
+    induction a; simpl; omega.
+  Qed.
+
   Lemma sext_wneg_natToWord00: forall sz1 sz2 n,
     pow2 sz1 <= 2 * n < pow2 (S sz1) ->
     sext (natToWord sz1 n) sz2 = natToWord (sz1 + sz2) (pow2 (sz1+sz2) - (pow2 sz1 - n)).
@@ -406,7 +432,22 @@ Section FlatToRiscv.
       | |- _ = $ ?a => remember a as b
       end.
       simpl. unfold natToWord. f_equal.
-      + admit.
+      + subst b. rewrite mod2sub.
+        * rewrite mod2sub.
+          { replace (S sz1 + sz2) with (S (sz1 + sz2)) by omega.
+            simpl.
+            do 2 rewrite mod2_pow2_twice.
+            do 2 rewrite Bool.xorb_false_l.
+            reflexivity.
+          }
+          simpl in *. omega.
+        * rewrite pow2_add_mul in *. unfold pow2 in *. fold pow2 in *.
+          apply Nat.le_trans with (m := 2 * pow2 sz1); [omega|].
+          rewrite <- mult_assoc.
+          apply mult_le_compat_l.
+          rewrite <- Nat.mul_1_r at 1.
+          apply mult_le_compat_l.
+          apply pow2_nonzero.
       + fold natToWord.
         specialize (IHsz1 sz2 (Nat.div2 n)).
         assert (Nat.div2 b = pow2 (sz1 + sz2) - (pow2 sz1 - (Nat.div2 n))) as D2 by admit.
