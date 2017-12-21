@@ -331,12 +331,36 @@ Section FlatToRiscv.
       simpl in H. destruct b; omega.
   Qed.
 
+  Lemma wmsb_1: forall sz (m: word (S sz)) default,
+    pow2 sz <= # m < 2 * pow2 sz ->
+    @wmsb (S sz) m default = true.
+  Proof.
+    induction sz; intros.
+    - simpl in *. assert (#m = 1) as N by omega.
+      rewrite <- (roundTrip_1 1) in N.
+      apply (wordToNat_inj m ($ 1)) in N. subst m.
+      simpl. reflexivity.
+    - pose proof (shatter_word_S m) as P.
+      destruct P as [b [m0 E]]. subst.
+      unfold wmsb. fold wmsb.
+      apply IHsz.
+      simpl in H. destruct b; omega.
+  Qed.
+
   Lemma wmsb_0_natToWord: forall sz n default,
     2 * n < pow2 (S sz) ->
     @wmsb (S sz) (natToWord (S sz) n) default = false.
   Proof.
     intros. apply wmsb_0.
     pose proof (wordToNat_natToWord_le (S sz) n). unfold pow2 in H. fold pow2 in H. omega.
+  Qed.
+
+  Lemma wmsb_1_natToWord: forall sz n default,
+    pow2 sz <= n < 2 * pow2 sz ->
+    @wmsb (S sz) (natToWord (S sz) n) default = true.
+  Proof.
+    intros. apply wmsb_1.
+    rewrite wordToNat_natToWord_idempotent'; simpl; omega.
   Qed.
 
   Lemma sext_natToWord0: forall sz1 sz2 n,
@@ -365,22 +389,70 @@ Section FlatToRiscv.
         * reflexivity.
   Qed.
 
+  Lemma sext_wneg_natToWord00: forall sz1 sz2 n,
+    pow2 sz1 <= 2 * n < pow2 (S sz1) ->
+    sext (natToWord sz1 n) sz2 = natToWord (sz1 + sz2) (pow2 (sz1+sz2) - (pow2 sz1 - n)).
+  Proof.
+    induction sz1; intros.
+    - unfold pow2 in H. omega. (* contradiction *)
+    - unfold sext in *.
+      assert (@wmsb (S sz1) (natToWord (S sz1) n) false = true) as E. {
+        apply wmsb_1.
+        rewrite wordToNat_natToWord_idempotent';
+        (unfold pow2 in *; fold pow2 in *; omega).
+      }
+      rewrite E.
+      match goal with
+      | |- _ = $ ?a => remember a as b
+      end.
+      simpl. unfold natToWord. f_equal.
+      + admit.
+      + fold natToWord.
+        specialize (IHsz1 sz2 (Nat.div2 n)).
+        assert (Nat.div2 b = pow2 (sz1 + sz2) - (pow2 sz1 - (Nat.div2 n))) as D2 by admit.
+        rewrite D2.
+        destruct sz1 as [|sz1'].
+        * simpl in H. assert (n=1) by omega. subst n. simpl in D2. simpl.
+          admit.
+        * rewrite <- IHsz1.
+          { assert (@wmsb (S sz1') (natToWord (S sz1') (Nat.div2 n)) false = true) as F. {
+            apply wmsb_1_natToWord.
+            unfold pow2 in *. fold pow2 in *.
+            assert (n <= S (2 * Nat.div2 n)) by admit.
+            assert (2 * Nat.div2 n <= n) by apply two_times_div2.
+            clear -H H0 H1.
+            omega. }
+            { rewrite F. reflexivity. }
+          }
+          { assert (n <= S (2 * Nat.div2 n)) by admit.
+            assert (2 * Nat.div2 n <= n) by apply two_times_div2.
+            clear -H H0 H1.
+            unfold pow2 in *. fold pow2 in *.
+            omega. }
+  Admitted.
+
   Lemma sext_neg_natToWord0: forall sz1 sz2 n,
     2 * n < pow2 sz1 ->
     sext (wneg (natToWord sz1 n)) sz2 = wneg (natToWord (sz1 + sz2) n).
   Proof.
-    induction sz1; intros.
-    - simpl. unfold sext. simpl. unfold wzero. unfold pow2 in *.
-      assert (n=0) by omega. subst n. unfold wneg.
-      rewrite wordToN_nat. rewrite roundTrip_0. simpl. rewrite N.sub_0_r.
-      rewrite NToWord_nat. rewrite Npow2_nat.
-      symmetry. apply natToWord_pow2.
-    - unfold sext in *.
-      assert (@wmsb (S sz1) (wneg (natToWord (S sz1) n)) false = true) as E by admit.
-      rewrite E. clear E.
-      simpl. unfold natToWord. f_equal. fold natToWord.
-      specialize (IHsz1 sz2 (Nat.div2 n)).
+    intros. rewrite wneg_alt. unfold wnegN.
+    destruct n as [|n].
+    - admit.
+    - rewrite sext_wneg_natToWord00.
+      + rewrite wneg_alt. unfold wnegN.
+        rewrite wordToNat_natToWord_idempotent' by omega.
+        rewrite wordToNat_natToWord_idempotent'. 2: admit.
+        replace (pow2 sz1 - (pow2 sz1 - S n)) with (S n) by omega.
+        reflexivity.
+      + rewrite wordToNat_natToWord_idempotent' by omega.
+        simpl. omega.
   Admitted.
+
+(*
+  Lemma wneg_wnot_natToWord: forall sz a,
+    wneg (natToWord sz (S a)) = wnot (natToWord sz a).
+  Admitted.
+*)
 
   Lemma natcast_same: forall (s: nat) (n: word s),
     nat_cast word eq_refl n = n.
