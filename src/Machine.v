@@ -50,7 +50,7 @@ Section Machine.
   |}.
 
   Definition initialRiscvMachine(imem: list (@Instruction wlit Reg)): RiscvMachine := {|
-    instructionMem := fun (i: word w) => nth (wordToNat (i ^/ $4)) imem InfiniteJal;
+    instructionMem := fun (i: word w) => nth (Nat.div (wordToNat i) 4) imem InfiniteJal;
     registers := fun (r: Reg) => $0;
     pc := $0
   |}.

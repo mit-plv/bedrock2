@@ -121,32 +121,6 @@ Definition go(p: list (@Instruction wlit myvar))(resVar: myvar): word w :=
 
 Import compiler.FlatToRiscv.
 
-Lemma nth_error_nth: forall {T: Type} (l: list T) (e d: T) (i: nat),
-  nth_error l i = Some e ->
-  nth i l d = e.
-Proof.
-  intros T l. induction l; intros.
-  - destruct i; simpl in H; discriminate.
-  - destruct i; simpl in H; inversion H; subst.
-    + reflexivity.
-    + simpl. auto.
-Qed.
-
-Lemma initialRiscvMachine_containsProgram: forall wlit wdiff var p,
-  @containsProgram wlit wdiff var (initialRiscvMachine p) p (pc (initialRiscvMachine p)).
-Proof.
-  intros. unfold containsProgram, initialRiscvMachine. simpl.
-  intros. apply nth_error_nth.
-  match goal with
-  | H: nth_error _ ?i1 = _ |- nth_error _ ?i2 = _ => replace i2 with i1; [assumption|]
-  end.
-  unfold wdiv, wordBin.
-  rewrite wplus_unit.
-  rewrite <- natToWord_mult.
-  rewrite? wordToN_nat.
-  rewrite? wordToNat_natToWord_idempotent'.
-Admitted.
-
 Lemma every_state_contains_empty_state: forall s,
   @containsState wlit wdiff _ _ _ s empty_state.
 Proof.
@@ -183,7 +157,8 @@ Proof.
     + apply E.
     + unfold p1_riscv.
       unfold compileFlat2Riscv in *.
-      apply initialRiscvMachine_containsProgram.
+      apply (@initialRiscvMachine_containsProgram _ _ eq_refl bound_doesnt_hold).
+      simpl. omega.
     + apply every_state_contains_empty_state.
     + reflexivity.
   - intros.

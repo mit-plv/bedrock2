@@ -148,6 +148,37 @@ Section FlatToRiscv.
     | Cp: containsProgram _ [] _ |- _ => clear Cp
     end.
 
+  Lemma mul_div_undo: forall i c,
+    c <> 0 ->
+    c * i / c = i.
+  Proof.
+    intros.
+    pose proof (Nat.div_mul_cancel_l i 1 c) as P.
+    rewrite Nat.div_1_r in P.
+    rewrite Nat.mul_1_r in P.
+    apply P; auto.
+  Qed.
+
+  Lemma initialRiscvMachine_containsProgram: forall p,
+    4 * (length p) < pow2 w ->
+    containsProgram (initialRiscvMachine p) p (pc (initialRiscvMachine p)).
+  Proof.
+    intros. unfold containsProgram, initialRiscvMachine.
+    intros.
+    cbv [pc instructionMem]. apply nth_error_nth.
+    match goal with
+    | H: nth_error _ ?i1 = _ |- nth_error _ ?i2 = _ => replace i2 with i1; [assumption|]
+    end.
+    rewrite wplus_unit.
+    rewrite <- natToWord_mult.
+    rewrite wordToNat_natToWord_idempotent'.
+    - symmetry. apply mul_div_undo. auto.
+    - assert (i < length p). {
+        apply nth_error_Some. intro. congruence.
+      }
+      omega.
+  Qed.
+
   Lemma containsState_put: forall prog1 prog2 pc1 pc2 initialH initialRegs x v1 v2,
     containsState (mkRiscvMachine prog1 initialRegs pc1) initialH ->
     v1 = v2 ->
