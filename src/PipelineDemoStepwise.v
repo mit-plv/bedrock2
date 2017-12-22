@@ -13,6 +13,7 @@ Require        compiler.FlatToRiscv.
 Require Import compiler.Riscv.
 Require Import compiler.Machine.
 Require Import compiler.StateMonad.
+Require Import compiler.runsToSatisfying.
 
 Definition myvar := nat.
 Definition var_x1: myvar := 3.
@@ -171,8 +172,8 @@ Proof.
   change (exists fuel, 
    (fun final => Some (registers final resVar) = (finalH resVar: option (word (wlit + wdiff))))
    (execState (run (w_lbound := bound_doesnt_hold) fuel) (initialRiscvMachine (p1_riscv $n)))).
-  apply runsToSatisfying_exists_fuel.
-  eapply (@runsToSatisfying_imp wlit wdiff).
+  apply runsToSatisfying_exists_fuel_old.
+  eapply runsToSatisfying_imp.
   - eapply @compile_stmt_correct_aux with
      (wlit:=wlit) (wdiff:=wdiff)
      (s := (p1_FlatImp_stmt $n)) (initialH := empty_state) (fuelH := fuelH) (finalH := finalH).

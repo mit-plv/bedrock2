@@ -2,6 +2,7 @@ Require Import bbv.Word.
 Require Import compiler.StateMonad.
 Require Import compiler.Decidable.
 Require Import compiler.zcast.
+Require Import compiler.PowerFunc.
 Require Import Coq.omega.Omega.
 
 Section Riscv.
@@ -113,28 +114,8 @@ Section Riscv.
     setPC (pc ^+ $4);;
     execute inst.
 
-  Definition multiApply{T: Type}(f: T -> T)(init: T): nat -> T :=
-    fix rec(n: nat) := match n with
-    | O => init
-    | S m => f (rec m)
-    end.
-
-  Lemma multiApply_inv{T: Type}: forall (f: T -> T) (init: T) (n: nat),
-    multiApply f init (S n) = multiApply f (f init) n.
-  Proof.
-    intros. simpl. induction n.
-    - reflexivity.
-    - simpl. f_equal. assumption.
-  Qed.
-
-  Definition power_func{T: Type}(f: T -> T): nat -> (T -> T) :=
-    fix rec(n: nat) := match n with
-    | O => fun x => x
-    | S m => fun x => f ((rec m) x)
-    end.
-
   Definition run{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}: nat -> M unit :=
-    multiApply (fun m => run1 ;; m) (Return tt).
+    fun n => power_func (fun m => run1 ;; m) n (Return tt).
 
   (*
   Definition run{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}: nat -> M unit :=

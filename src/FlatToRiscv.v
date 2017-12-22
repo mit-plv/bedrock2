@@ -10,6 +10,7 @@ Require Import compiler.Op.
 Require Import compiler.ResMonad.
 Require Import compiler.Riscv.
 Require Import compiler.Machine.
+Require Import compiler.runsToSatisfying.
 Require Import Coq.Program.Tactics.
 
 Section FlatToRiscv.
@@ -172,7 +173,7 @@ Section FlatToRiscv.
     t = (a, b) -> a = fst t /\ b = snd t.
   Proof. intros. destruct t. inversionss. auto. Qed.
 
-  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" *)
+  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" 
   Inductive runsToSatisfying
     (initial: @RiscvMachine wlit wdiff var)
     (P: @RiscvMachine wlit wdiff var -> Prop)
@@ -182,7 +183,11 @@ Section FlatToRiscv.
        runsToSatisfying initial P
     | runsToStep:
        runsToSatisfying (execState (run1 (w_lbound := w_lbound)) initial) P ->
-       runsToSatisfying initial P.
+       runsToSatisfying initial P.*)
+
+  Definition runsToSatisfying:
+    @RiscvMachine wlit wdiff var -> (@RiscvMachine wlit wdiff var -> Prop) -> Prop :=
+    runsTo (@RiscvMachine wlit wdiff var) (execState (run1 (w_lbound := w_lbound))).
 
   Lemma execState_compose{S A: Type}: forall (m1 m2: State S A) (initial: S),
     execState m2 (execState m1 initial) = execState (m1 ;; m2) initial.
@@ -191,7 +196,7 @@ Section FlatToRiscv.
     destruct (m1 initial). reflexivity.
   Qed.
 
-  Lemma runsToSatisfying_exists_fuel: forall initial P,
+  Lemma runsToSatisfying_exists_fuel_old: forall initial P,
     runsToSatisfying initial P ->
     exists fuel, P (execState (run (w_lbound := w_lbound) fuel) initial).
   Proof.
@@ -203,6 +208,16 @@ Section FlatToRiscv.
       apply IH.
   Qed.
 
+  Lemma runsToSatisfying_exists_fuel: forall initial P,
+    runsToSatisfying initial P ->
+    exists fuel, P (execState (run (w_lbound := w_lbound) fuel) initial).
+  Proof.
+    introv R.
+    unfold run.
+    pose proof (runsToSatisfying_exists_fuel _ _ initial P R) as F.
+  Abort.
+
+(*
   Lemma runsToSatisfying_trans: forall P Q initial,
     runsToSatisfying initial P ->
     (forall middle, P middle -> runsToSatisfying middle Q) ->
@@ -220,6 +235,7 @@ Section FlatToRiscv.
     introv R1 R2. eapply runsToSatisfying_trans; [eassumption|].
     intros final Pf. apply runsToDone. auto.
   Qed.
+*)
 
   Lemma execute_preserves_instructionMem: forall inst initial,
     (snd (execute (w_lbound := w_lbound) inst initial)).(instructionMem) = initial.(instructionMem).
@@ -245,7 +261,7 @@ Section FlatToRiscv.
   Proof.
     intros. induction H.
     - apply runsToDone. auto.
-    - apply runsToStep. rewrite run1_preserves_instructionMem in IHrunsToSatisfying. assumption.
+    - apply runsToStep. rewrite run1_preserves_instructionMem in IHrunsTo. assumption.
   Qed.
 
   Lemma regs_overwrite: forall x v1 v2 (initialRegs: var -> word w),
@@ -673,6 +689,7 @@ Section FlatToRiscv.
       rename H into Gy, H0 into Gz. apply Cs in Gy. apply Cs in Gz.
       subst x0 x1.
       apply runsToStep.
+      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
       simpl_run1.
       destruct op eqn: EOp;
       destruct_containsProgram;
@@ -716,6 +733,7 @@ Section FlatToRiscv.
     - simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
+      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
       simpl_run1.
       rewrite Cp0. simpl.
@@ -724,12 +742,13 @@ Section FlatToRiscv.
       apply Cs' in H. subst x.
       destruct (weq (initialRegs cond) $ (0)); [contradiction|]. simpl.
       match goal with
-      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
+      | |- runsToRest ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
       specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
-      apply (runsToSatisfying_trans _ _ _ IHfuelH).
+      subst runsToRest.
+      apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH).
       intros middleL [[Cs2 F] E].
       destruct middleL as [middleProg middleRegs middlePc]. simpl in *. subst middleProg middlePc.
       apply runsToStep.
@@ -781,7 +800,7 @@ Section FlatToRiscv.
       specialize (IHfuelH s1).
       specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
-      apply (runsToSatisfying_trans _ _ _ IHfuelH).
+      apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH).
       intros middleL [[Cs2 F] E].
       destruct middleL as [middleProg middleRegs middlePc]. simpl in *. subst middleProg middlePc.
       apply runsToStep.
@@ -809,7 +828,7 @@ Section FlatToRiscv.
       specialize (IHfuelH s1).
       specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
-      apply (runsToSatisfying_trans _ _ _ IHfuelH). clear IHfuelH.
+      apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
       intros middleL [[Cs2 F] E].
       destruct middleL as [middleProg middleRegs middlePc]. simpl in *. subst middleProg middlePc.
       apply runsToStep.
@@ -821,12 +840,12 @@ Section FlatToRiscv.
       destruct (weq x1 $0); [contradiction|]. simpl.
       pose proof IH as IHfuelH.
       match goal with
-      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
+      | |- runsTo _ _ ?st  _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s2).
       specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
-      apply (runsToSatisfying_trans _ _ _ IHfuelH). clear IHfuelH.
+      apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
       intros endL [[Cs3 F] E].
       destruct endL as [endProg endRegs endPc]. simpl in *. subst endProg endPc.
       apply runsToStep.
