@@ -1,5 +1,6 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
+Require Import lib.LibTacticsMin.
 Require Import bbv.Word.
 Require Import compiler.Decidable.
 Require Import compiler.Op.
@@ -142,33 +143,13 @@ Lemma p1_runs_correctly_1: forall n resVar fuelH finalH,
   Some ((execState (run (w_lbound := bound_doesnt_hold) fuelL) (initialRiscvMachine (p1_riscv $n))).(registers) resVar)
   = Common.get finalH resVar.
 Proof.
-  intro n. intros resVar fuelH finalH E G.
-  change (exists fuel, 
-   (fun final => Some (registers final resVar) = (finalH resVar: option (word (wlit + wdiff))))
-   (execState (run (w_lbound := bound_doesnt_hold) fuel) (initialRiscvMachine (p1_riscv $n)))).
-  apply runsToSatisfying_exists_fuel_old.
-  eapply runsToSatisfying_imp.
-  - eapply @compile_stmt_correct_aux with
-     (wlit:=wlit) (wdiff:=wdiff)
-     (s := (p1_FlatImp_stmt $n)) (initialH := empty_state) (fuelH := fuelH) (finalH := finalH).
-    + reflexivity.
-    + reflexivity.
-    + simpl. omega.
-    + apply E.
-    + unfold p1_riscv.
-      unfold compileFlat2Riscv in *.
-      apply (@initialRiscvMachine_containsProgram _ _ eq_refl bound_doesnt_hold).
-      simpl. omega.
-    + apply every_state_contains_empty_state.
-    + reflexivity.
-  - intros.
-    simpl in H. apply proj1 in H.
-    unfold containsState in H.
-    specialize (H resVar).
-    destruct (Common.get finalH resVar) eqn: Q.
-    + specialize (H _ eq_refl).
-      simpl in Q. unfold id in Q. simpl in *. congruence.
-    + contradiction.
+  introv E G.
+  apply (@compile_stmt_correct wlit wdiff eq_refl bound_doesnt_hold _ _ _ _ _
+    fuelH _ (p1_FlatImp_stmt $ (n))).
+  - simpl. omega.
+  - reflexivity.
+  - exact E.
+  - exact G.
 Qed.
 
 Goal exists fuel, 
