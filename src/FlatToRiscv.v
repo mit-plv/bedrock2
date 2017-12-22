@@ -959,4 +959,58 @@ Section FlatToRiscv.
       destruct initialL. simpl. solve_word_eq.
   Qed.
 
+  Lemma every_state_contains_empty_state: forall s,
+    containsState s empty.
+  Proof.
+    unfold containsState.
+    intros. rewrite empty_is_empty in H. discriminate.
+  Qed.
+
+  Lemma compile_stmt_correct: forall resVar fuelH finalH s insts,
+    stmt_size s < pow2 8 ->
+    compile_stmt s = insts ->
+    evalH fuelH empty s = Success finalH ->
+    get finalH resVar <> None ->
+    exists fuelL,
+    Some ((execState (run (w_lbound := w_lbound) fuelL) (initialRiscvMachine insts)).(registers) resVar)
+    = get finalH resVar.
+  Proof.
+    introv B C E G.
+    change (exists fuel, 
+     (fun final => Some (registers final resVar) = (get finalH resVar))
+     (execState (run (w_lbound := w_lbound) fuel) (initialRiscvMachine insts))).
+    apply runsToSatisfying_exists_fuel_old.
+    eapply runsToSatisfying_imp.
+    - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty)
+        (fuelH := fuelH) (finalH := finalH).
+      + reflexivity.
+      + assumption.
+      + apply E.
+      + subst insts. apply initialRiscvMachine_containsProgram.
+        pose proof (compile_stmt_size s) as P.
+        assert (8 * pow2 8 < pow2 w). {
+          replace w with ((3 + (1 + (w - 12))) + 8) by omega.
+          rewrite pow2_add_mul.
+          apply mult_lt_compat_r; [|apply pow2_nonzero].
+          rewrite pow2_add_mul.
+          change 8 with (8 * 1) at 1.
+          apply mult_lt_compat_l; [|apply pow2_nonzero].
+          rewrite pow2_add_mul.
+          change (pow2 1) with 2.
+          pose proof (pow2_nonzero (w - 12)).
+          omega.
+        }
+        omega.
+      + apply every_state_contains_empty_state.
+      + reflexivity.
+    - intros.
+      simpl in H. apply proj1 in H.
+      unfold containsState in H.
+      specialize (H resVar).
+      destruct (Common.get finalH resVar) eqn: Q.
+      + specialize (H _ eq_refl).
+        simpl in Q. unfold id in Q. simpl in *. congruence.
+      + contradiction.
+  Qed.
+
 End FlatToRiscv.
