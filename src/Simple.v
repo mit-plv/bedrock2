@@ -185,7 +185,7 @@ Lemma concat_run: forall f12 f23 s1 s2 s3,
   run (f12 + f23) s1 = s3.
 Proof.
   induction f12; introv R1 R2.
-  - simpl in *. inversions R1. reflexivity.
+  - simpl in *. inversions R1. assumption.
   - apply destruct_run_S in R1. destruct R1 as [s1' [St R1']].
     simpl. rewrite St.
     eapply IHf12; eauto.
