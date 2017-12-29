@@ -9,8 +9,8 @@ Section Riscv.
   Context {wlit: nat}. (* bit width of literals *)
   Context {wdiff: nat}. (* bit width difference between literals and words *)
   Notation w := (wlit + wdiff).
-  Context {wlit_eq : wlit = 12}.
-  Context {w_lbound: w >= 20}.
+  Context {wjimm: nat}. (* bit width of "jump immediates" *)
+  Context {w_lbound: w >= wjimm}.
   Context {Reg: Set}. (* register name *)
 
   Inductive Register: Set :=
@@ -29,7 +29,7 @@ Section Riscv.
     | Bne(rs1: Register)(rs2: Register)(sbimm12: word wlit): Instruction
     | Blt(rs1: Register)(rs2: Register)(sbimm12: word wlit): Instruction
     | Bge(rs1: Register)(rs2: Register)(sbimm12: word wlit): Instruction
-    | Jal(rd: Register)(jimm20: word 20): Instruction.
+    | Jal(rd: Register)(jimm20: word wjimm): Instruction.
 
   Definition Seqz(rd: Register)(rs1: Register) := Sltiu rd rs1 $1.
   Definition Snez(rd: Register)(rs1: Register) := Sltu rd RegO rs1.
@@ -50,8 +50,8 @@ Section Riscv.
 
   Definition signed_lit_to_word(v: word wlit): word w := nat_cast word eq_refl (sext v wdiff).
 
-  Definition signed_jimm_to_word(v: word 20): word w.
-    refine (nat_cast word _ (sext v (w - 20))). clear -w_lbound. abstract omega.
+  Definition signed_jimm_to_word(v: word wjimm): word w.
+    refine (nat_cast word _ (sext v (w - wjimm))). clear -w_lbound. abstract omega.
   Defined.
 
   Definition execute{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}(i: Instruction): M unit :=

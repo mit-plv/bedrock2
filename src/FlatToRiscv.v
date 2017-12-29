@@ -18,9 +18,11 @@ Section FlatToRiscv.
   Context {wlit: nat}. (* bit width of literals *)
   Context {wdiff: nat}. (* bit width difference between literals and words *)
   Notation w := (wlit + wdiff).
-  Context {wlit_eq : wlit = 12}.
-  Context {w_lbound: w >= 20}. (* to make sure we can convert a signed jump-immediate to a word
+  Context {wjimm: nat}. (* bit width of "jump immediates" *)
+  Context {w_lbound: w >= wjimm}. (* to make sure we can convert a signed jump-immediate to a word
     without loss *)
+  Context {wlit_bound: 2 <= wlit <= wjimm}.
+  Context {wjimm_bound: 2 <= wjimm <= w}.
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
@@ -28,7 +30,7 @@ Section FlatToRiscv.
 
   Definition var2Register: var -> @Register var := RegS.
 
-  Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list (@Instruction wlit var) :=
+  Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list (@Instruction wlit wjimm var) :=
     let rd := var2Register res in
     let rs1 := var2Register arg1 in
     let rs2 := var2Register arg2 in
@@ -43,12 +45,12 @@ Section FlatToRiscv.
 
   Definition signed_lit_to_word(v: word wlit): word w := nat_cast word eq_refl (sext v wdiff).
 
-  Definition signed_jimm_to_word(v: word 20): word w.
-    refine (nat_cast word _ (sext v (w - 20))). clear -w_lbound. abstract omega.
+  Definition signed_jimm_to_word(v: word wjimm): word w.
+    refine (nat_cast word _ (sext v (w - wjimm))). clear -w_lbound. abstract omega.
   Defined.
 
   (* using the same names (var) in source and target language *)
-  Fixpoint compile_stmt(s: @stmt wlit var): list (@Instruction wlit var) :=
+  Fixpoint compile_stmt(s: @stmt wlit var): list (@Instruction wlit wjimm var) :=
     match s with
     | SLit x v => [Addi (var2Register x) RegO v]
     | SOp x op y z => compile_op x op y z
@@ -80,15 +82,16 @@ Section FlatToRiscv.
     repeat (rewrite app_length; simpl); omega.
   Qed.
 
-  Definition containsProgram(m: RiscvMachine)(program: list (@Instruction wlit var))(offset: word w)
+  Definition containsProgram(m: RiscvMachine)
+    (program: list (@Instruction wlit wjimm var))(offset: word w)
     := forall i inst, nth_error program i = Some inst ->
                       m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
 
-  Definition containsState(m: RiscvMachine)(s: state)
+  Definition containsState(m: @RiscvMachine wlit wdiff wjimm var)(s: state)
     := forall x v, get s x = Some v -> m.(registers) x = v.
 
   (* TODO define type classes in such a way that this is not needed *)
-  Definition myRiscvMachine := @IsRiscvMachine wlit wdiff var _.
+  Definition myRiscvMachine := @IsRiscvMachine wlit wdiff wjimm var _.
   Existing Instance myRiscvMachine.
 
   Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
@@ -217,8 +220,8 @@ Section FlatToRiscv.
        runsToSatisfying initial P.*)
 
   Definition runsToSatisfying:
-    @RiscvMachine wlit wdiff var -> (@RiscvMachine wlit wdiff var -> Prop) -> Prop :=
-    runsTo (@RiscvMachine wlit wdiff var) (execState (run1 (w_lbound := w_lbound))).
+    @RiscvMachine wlit wdiff wjimm var -> (@RiscvMachine wlit wdiff wjimm var -> Prop) -> Prop :=
+    runsTo (@RiscvMachine wlit wdiff wjimm var) (execState (run1 (w_lbound := w_lbound))).
 
   Lemma execState_compose{S A: Type}: forall (m1 m2: State S A) (initial: S),
     execState m2 (execState m1 initial) = execState (m1 ;; m2) initial.
@@ -462,6 +465,16 @@ Section FlatToRiscv.
     induction a; simpl; omega.
   Qed.
 
+  Lemma pow2le: forall a b,
+    a <= b ->
+    pow2 a <= pow2 b.
+  Proof.
+    induction a; intros.
+    - simpl. apply (pow2_nonzero b).
+    - destruct b; [omega|]. unfold pow2. fold pow2.
+      apply Nat.mul_le_mono_l. apply IHa. omega.
+  Qed.
+
   Lemma div2_compat_lt_l: forall a b, b < 2 * a -> Nat.div2 b < a.
   Proof.
     induction a; intros.
@@ -688,9 +701,33 @@ Section FlatToRiscv.
 
   Definition evalH := @eval_stmt w wlit wdiff eq_refl var state stateMap.
 
+  (* separate definition to better guide automation: don't simpl 16, but keep it as a 
+     constant to stay in linear arithmetic *)
+  Local Definition stmt_not_too_big(s: @stmt wlit var): Prop := stmt_size s * 16 < pow2 wlit.
+
+  Local Ltac solve_stmt_not_too_big :=
+    lazymatch goal with
+    | H: stmt_not_too_big _ |- stmt_not_too_big _ =>
+        unfold stmt_not_too_big in *;
+        simpl stmt_size in H;
+        omega
+    end.
+
+  Local Ltac solve_length_compile_stmt :=
+    repeat match goal with
+    | s: stmt |- _ => unique pose proof (compile_stmt_size s)
+    end;
+    lazymatch goal with
+    | H: stmt_not_too_big _ |- _ =>
+        unfold stmt_not_too_big in *;
+        simpl stmt_size in H;
+        unfold pow2; fold pow2;
+        omega
+    end.
+
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL finalPc,
     compile_stmt s = insts ->
-    stmt_size s < pow2 8 ->
+    stmt_not_too_big s ->
     evalH fuelH initialH s = Success finalH ->
     containsProgram initialL insts initialL.(pc) ->
     containsState initialL initialH ->
@@ -698,6 +735,7 @@ Section FlatToRiscv.
     runsToSatisfying initialL (fun finalL => containsState finalL finalH /\
        finalL.(pc) = finalPc).
   Proof.
+    pose proof (pow2le wlit wjimm (proj2 wlit_bound)) as WLJ.
     induction fuelH; [intros; discriminate |].
     introv C Csz EvH Cp Cs PcEq.
     unfold evalH in EvH.
@@ -746,7 +784,9 @@ Section FlatToRiscv.
         unfold Riscv.signed_lit_to_word.
         replace (nat_cast word eq_refl (sext $ (1) wdiff)) with (wone w).
         * apply reduce_eq_to_sub_and_lt.
-        * symmetry. apply sext_natToWord. rewrite wlit_eq. unfold pow2. omega.
+        * symmetry. apply sext_natToWord.
+          replace wlit with (S (S (pred (pred wlit)))) by omega. unfold pow2. fold pow2.
+          pose proof (pow2_nonzero (pred (pred wlit))). omega.
       + solve_word_eq.
     - simpl in C. subst *.
       destruct initialL as [initialProg initialRegs initialPc].
@@ -776,7 +816,8 @@ Section FlatToRiscv.
       | |- runsToRest ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
+      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
+        eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
       subst runsToRest.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH).
@@ -791,7 +832,7 @@ Section FlatToRiscv.
       unfold Riscv.signed_jimm_to_word.
       rewrite sext_natToWord.
       * solve_word_eq.
-      * pose proof (compile_stmt_size s2). unfold pow2. omega.
+      * solve_length_compile_stmt.
     - simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
@@ -802,7 +843,7 @@ Section FlatToRiscv.
       unfold containsState in Cs'. simpl in Cs'.
       apply Cs' in H. rewrite H.
       destruct (weq $0 $0); [|contradiction]. simpl.
-      eapply (IHfuelH s2); [reflexivity|omega|eassumption|idtac|eassumption|idtac].
+      eapply (IHfuelH s2); [reflexivity|solve_stmt_not_too_big|eassumption|idtac|eassumption|idtac].
       + match goal with
         | H: containsProgram ?st1 ?insts1 ?ofs1 |- containsProgram ?st2 ?insts2 ?ofs2 =>
             unify insts1 insts2;
@@ -813,7 +854,7 @@ Section FlatToRiscv.
           unfold Riscv.signed_lit_to_word.
           rewrite sext_natToWord.
           * solve_word_eq.
-          * rewrite wlit_eq at 2. pose proof (compile_stmt_size s1). unfold pow2. omega.
+          * solve_length_compile_stmt.
         }
         rewrite <- OfsEq. assumption.
       + simpl.
@@ -821,7 +862,7 @@ Section FlatToRiscv.
         unfold Riscv.signed_lit_to_word.
         rewrite sext_natToWord.
         * solve_word_eq.
-        * rewrite wlit_eq at 2. pose proof (compile_stmt_size s1). unfold pow2. omega.
+        * solve_length_compile_stmt.
     - simpl in C. subst *.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
@@ -829,7 +870,8 @@ Section FlatToRiscv.
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
+      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
+        eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH).
       intros middleL [[Cs2 F] E].
@@ -847,7 +889,7 @@ Section FlatToRiscv.
       unfold Riscv.signed_lit_to_word.
       rewrite sext_natToWord.
       * solve_word_eq.
-      * rewrite wlit_eq at 2. pose proof (compile_stmt_size s2). unfold pow2. omega.
+      * solve_length_compile_stmt.
     - simpl in C. subst *.
       pose proof IHfuelH as IH.
       pose proof (conj I Cp) as CpSaved.
@@ -857,7 +899,8 @@ Section FlatToRiscv.
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
+      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
+        eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
       intros middleL [[Cs2 F] E].
@@ -874,7 +917,8 @@ Section FlatToRiscv.
       | |- runsTo _ _ ?st  _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s2).
-      specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|idtac].
+      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
+        eassumption|eassumption|eassumption|reflexivity|idtac].
       apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
       intros endL [[Cs3 F] E].
@@ -908,8 +952,7 @@ Section FlatToRiscv.
           end.
           solve_word_eq.
           } {
-          pose proof (compile_stmt_size s1).
-          pose proof (compile_stmt_size s2). unfold pow2. omega.
+          solve_length_compile_stmt.
           }
         }
         rewrite <- OfsEq. assumption.
@@ -935,23 +978,19 @@ Section FlatToRiscv.
         end.
         solve_word_eq.
         } {
-          pose proof (compile_stmt_size s1).
-          pose proof (compile_stmt_size s2).
-          unfold pow2. omega.
+        solve_length_compile_stmt.
         }
     - simpl in C. subst *. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
-      match goal with
-      | _: stmt_size (SSeq s1 s2) < ?B |- _ => remember B as bound
-      end.
-      simpl in Csz.
       eapply runsToSatisfying_trans.
       + specialize (IHfuelH s1).
-        specializes IHfuelH; [reflexivity|omega|eassumption|eassumption|eassumption|reflexivity|].
+        specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
+          eassumption|eassumption|eassumption|reflexivity|].
         apply runsTo_preserves_instructionMem in IHfuelH.
         apply IHfuelH.
       + simpl. intros middleL [[Cs2 F] E]. rewrite <- F in Cp2.
-        eapply (IHfuelH s2); [reflexivity|omega|eassumption|idtac|eassumption|idtac].
+        eapply (IHfuelH s2); [reflexivity|solve_stmt_not_too_big|
+          eassumption|idtac|eassumption|idtac].
         * unfold containsProgram in *. rewrite E. assumption.
         * rewrite F.
           destruct initialL. simpl. solve_word_eq.
@@ -967,7 +1006,7 @@ Section FlatToRiscv.
   Qed.
 
   Lemma compile_stmt_correct: forall resVar fuelH finalH s insts,
-    stmt_size s < pow2 8 ->
+    stmt_size s * 16 < pow2 wlit ->
     compile_stmt s = insts ->
     evalH fuelH empty s = Success finalH ->
     get finalH resVar <> None ->
@@ -987,20 +1026,10 @@ Section FlatToRiscv.
       + assumption.
       + apply E.
       + subst insts. apply initialRiscvMachine_containsProgram.
-        pose proof (compile_stmt_size s) as P.
-        assert (8 * pow2 8 < pow2 w). {
-          replace w with ((3 + (1 + (w - 12))) + 8) by omega.
-          rewrite pow2_add_mul.
-          apply mult_lt_compat_r; [|apply pow2_nonzero].
-          rewrite pow2_add_mul.
-          change 8 with (8 * 1) at 1.
-          apply mult_lt_compat_l; [|apply pow2_nonzero].
-          rewrite pow2_add_mul.
-          change (pow2 1) with 2.
-          pose proof (pow2_nonzero (w - 12)).
-          omega.
-        }
-        omega.
+        pose proof (pow2le wlit wjimm (proj2 wlit_bound)).
+        pose proof (pow2le wjimm w (proj2 wjimm_bound)).
+        change (stmt_not_too_big s) in B.
+        solve_length_compile_stmt.
       + apply every_state_contains_empty_state.
       + reflexivity.
     - intros.
