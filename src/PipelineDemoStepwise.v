@@ -15,6 +15,7 @@ Require Import compiler.Riscv.
 Require Import compiler.Machine.
 Require Import compiler.StateMonad.
 Require Import compiler.runsToSatisfying.
+Require Import compiler.MyOmega.
 
 Definition myvar := nat.
 Definition var_x1: myvar := 3.
@@ -22,6 +23,7 @@ Definition var_x2: myvar := 4.
 Definition var_i: myvar := 5.
 Definition w := 12. (* bit width *)
 Definition wlit := 12. (* bit width of literals *)
+Definition wjimm := 12. (* bit width of jump-immediates *)
 Definition wdiff := 0. (* difference between literals width and full width *)
 
 (*
@@ -98,32 +100,33 @@ Transparent wlt_dec.
 
 Goal eval_FlatImp_stmt (p1_FlatImp $4) = Some $14. reflexivity. Qed.
 
-Definition compileFlat2Riscv(f: @stmt w myvar): list (@Instruction wlit myvar) :=
+Definition compileFlat2Riscv(f: @stmt w myvar): list (@Instruction wlit wjimm myvar) :=
   compiler.FlatToRiscv.compile_stmt f.
 
-Definition p1_riscv(n: word w): list (@Instruction wlit myvar) :=
+Definition p1_riscv(n: word w): list (@Instruction wlit wjimm myvar) :=
   compileFlat2Riscv (p1_FlatImp_stmt n).
 
 Goal False. set (r := p1_riscv $3). cbv in *. Abort.
 
 Definition lotsOfFuel_lowlevel := 100.
 
-Definition myInst := (@IsRiscvMachine wlit wdiff nat _).
+Definition myInst := (@IsRiscvMachine wlit wdiff wjimm myvar _).
 Existing Instance myInst.
 
-Axiom bound_doesnt_hold: wlit + wdiff >= 20.
+Lemma my_bound: wlit + wdiff >= wjimm. cbv. omega. Qed.
 
-Definition runThenGet(resVar: myvar): State RiscvMachine (word (wlit+wdiff)) :=
-  run (w_lbound := bound_doesnt_hold) lotsOfFuel_lowlevel;;
+Definition runThenGet(resVar: myvar):
+  State (@RiscvMachine wlit wdiff wjimm myvar) (word (wlit+wdiff)) :=
+  @run wlit wdiff wjimm my_bound _ _ _ _ lotsOfFuel_lowlevel;;
   getRegister (RegS resVar).
 
-Definition go(p: list (@Instruction wlit myvar))(resVar: myvar): word w :=
+Definition go(p: list (@Instruction wlit wjimm myvar))(resVar: myvar): word w :=
   evalState (runThenGet resVar) (initialRiscvMachine p).
 
 Import compiler.FlatToRiscv.
 
 Lemma every_state_contains_empty_state: forall s,
-  @containsState wlit wdiff _ _ _ s empty_state.
+  @containsState wlit wdiff wjimm _ _ _ s empty_state.
 Proof.
   unfold containsState.
   intros. inversion H.
@@ -134,18 +137,19 @@ Axiom flat_src_correct: forall n, exists fuelH finalH,
   eval_stmt fuelH empty_state (p1_FlatImp_stmt $ (n)) = Success finalH.
 *)
 
-Require Import Omega.
+
 
 Lemma p1_runs_correctly_1: forall n resVar fuelH finalH,
   eval_stmt (wdiff:=wdiff) (wlit:=wlit) (w_eq:=eq_refl) fuelH empty_state (p1_FlatImp_stmt $ (n)) = Success finalH ->
   Common.get finalH resVar <> None ->
   exists fuelL,
-  Some ((execState (run (w_lbound := bound_doesnt_hold) fuelL) (initialRiscvMachine (p1_riscv $n))).(registers) resVar)
+  Some ((execState (run (w_lbound := my_bound) fuelL) (initialRiscvMachine (p1_riscv $n))).(registers) resVar)
   = Common.get finalH resVar.
 Proof.
   introv E G.
-  apply (@compile_stmt_correct wlit wdiff eq_refl bound_doesnt_hold _ _ _ _ _
-    fuelH _ (p1_FlatImp_stmt $ (n))).
+  apply compile_stmt_correct with (fuelH0 := fuelH) (s := (p1_FlatImp_stmt $ (n))).
+  - Omega.
+  - Omega.
   - simpl. omega.
   - reflexivity.
   - exact E.
@@ -153,7 +157,7 @@ Proof.
 Qed.
 
 Goal exists fuel, 
-  (execState (run (w_lbound := bound_doesnt_hold) fuel) (initialRiscvMachine (p1_riscv $4))).(registers)
+  (execState (run (w_lbound := my_bound) fuel) (initialRiscvMachine (p1_riscv $4))).(registers)
     (p1_FlatImp_resVar $4)
   = $14.
 Proof.
@@ -170,17 +174,14 @@ Proof.
     assumption.
 Qed.
 
-(* TODO *)
-(* runs out of memory
-Eval cbv in ((execState (run (w_lbound := bound_doesnt_hold) 32) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_FlatImp_resVar $4)).
-*)
+Eval cbv in ((execState (run (w_lbound := my_bound) 60) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_FlatImp_resVar $4)).
 
-(* doesn't work:
-Goal (execState (run (w_lbound := bound_doesnt_hold) 100) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_FlatImp_resVar $4)
+Goal (execState (run (w_lbound := my_bound) 100) (initialRiscvMachine (p1_riscv $4))).(registers) (p1_FlatImp_resVar $4)
 = $14. reflexivity. Qed.
 
-Goal go (p1_riscv $4) (p1_FlatImp_resVar $4) = $14.
-  (* Note: go depends on lotsOfFuel_lowlevel, not lotsOfFuel *)
-  reflexivity.
-Qed.
-*)
+Goal go (p1_riscv $1) (p1_FlatImp_resVar $1) = $0. reflexivity. Qed.
+Goal go (p1_riscv $2) (p1_FlatImp_resVar $2) = $1. reflexivity. Qed.
+Goal go (p1_riscv $3) (p1_FlatImp_resVar $3) = $5. reflexivity. Qed.
+Goal go (p1_riscv $4) (p1_FlatImp_resVar $4) = $14. reflexivity. Qed.
+Goal go (p1_riscv $5) (p1_FlatImp_resVar $5) = $30. reflexivity. Qed.
+Goal go (p1_riscv $6) (p1_FlatImp_resVar $6) = $55. reflexivity. Qed.
