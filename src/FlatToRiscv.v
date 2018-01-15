@@ -1008,18 +1008,23 @@ Section FlatToRiscv.
   Definition evalL(fuel: nat)(insts: list Instruction): RiscvMachine :=
     execState (run (w_lbound := w_lbound) fuel) (initialRiscvMachine insts).
 
-  Lemma compile_stmt_correct: forall resVar fuelH finalH s insts res,
+  Lemma compile_stmt_correct: forall fuelH finalH s insts,
     stmt_size s * 16 < pow2 wlit ->
     compile_stmt s = insts ->
     evalH fuelH empty s = Success finalH ->
-    get finalH resVar = Some res ->
-    exists fuelL, (evalL fuelL insts).(registers) resVar = res.
+    exists fuelL,
+      forall resVar res,
+      get finalH resVar = Some res ->
+      (evalL fuelL insts).(registers) resVar = res.
   Proof.
-    introv B C E G.
-    change (exists fuel, 
-     (fun finalL => finalL.(registers) resVar = res)
-     (execState (run (w_lbound := w_lbound) fuel) (initialRiscvMachine insts))).
-    apply runsToSatisfying_exists_fuel_old.
+    introv B C E.
+    pose proof runsToSatisfying_exists_fuel_old as Q.
+    specialize (Q (initialRiscvMachine insts)
+      (fun finalL => forall resVar res,
+       get finalH resVar = Some res ->
+       finalL.(registers) resVar = res)).
+    cbv beta in Q.
+    apply Q; clear Q.
     eapply runsToSatisfying_imp.
     - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty)
         (fuelH := fuelH) (finalH := finalH).

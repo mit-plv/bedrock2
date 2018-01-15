@@ -69,6 +69,30 @@ Section FlattenExpr.
     | ExprImp.SSkip => (FlatImp.SSkip, ngs)
     end.
 
+  Lemma flattenExpr_size: forall e s resVar ngs ngs',
+    flattenExpr ngs e = (s, resVar, ngs') ->
+    FlatImp.stmt_size s <= 4 * ExprImp.expr_size e.
+  Proof.
+    induction e; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl; try omega.
+    specializes IHe1; [eassumption|].
+    specializes IHe2; [eassumption|].
+    omega.
+  Qed.
+
+  Lemma flattenStmt_size: forall s s' ngs ngs',
+    flattenStmt ngs s = (s', ngs') ->
+    FlatImp.stmt_size s' <= 4 * ExprImp.stmt_size s.
+  Proof.
+    induction s; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl;
+    repeat match goal with
+    | IH: _, A: _ |- _ => specialize IH with (1 := A)
+    end;
+    repeat match goal with
+    | H: _ |- _ => apply flattenExpr_size in H
+    end;
+    try omega.
+  Qed.
+
   Definition signed_lit_to_word(v: word wlit): word w := nat_cast word eq_refl (sext v wdiff).
 
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' s v,

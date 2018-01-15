@@ -158,13 +158,18 @@ Lemma p1_runs_correctly_1: forall n resVar fuelH finalH,
   = Common.get finalH resVar.
 Proof.
   introv E G.
-  apply compile_stmt_correct with (fuelH0 := fuelH) (s := (p1_FlatImp_stmt $ (n))).
-  - Omega.
-  - Omega.
+  pose proof @compile_stmt_correct as P.
+  specialize P with (fuelH := fuelH) (s := (p1_FlatImp_stmt $ (n))).
+  edestruct P as [fuelL P'].
+  - instantiate (1 := wjimm). Omega.
+  - instantiate (1 := wdiff). Omega.
   - simpl. omega.
   - reflexivity.
   - exact E.
-  - exact G.
+  - exists fuelL. clear P. unfold evalL in P'.
+    destruct (Common.get finalH resVar) eqn: EE; [|contradiction].
+    f_equal.
+    apply P'. exact EE.
 Qed.
 
 Goal exists fuel, 

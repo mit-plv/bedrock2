@@ -67,6 +67,22 @@ Section ExprImp.
       end
     end.
 
+  Fixpoint expr_size(e: expr): nat :=
+    match e with
+    | ELit _ => 1
+    | EVar _ => 1
+    | EOp op e1 e2 => S (expr_size e1 + expr_size e2)
+    end.
+
+  Fixpoint stmt_size(s: stmt): nat :=
+    match s with
+    | SSet x e => S (expr_size e)
+    | SIf cond bThen bElse => S (expr_size cond + stmt_size bThen + stmt_size bElse)
+    | SWhile cond body => S (expr_size cond + stmt_size body)
+    | SSeq s1 s2 => S (stmt_size s1 + stmt_size s2)
+    | SSkip => 1
+    end.
+
   Lemma invert_eval_SSet: forall f st1 st2 x e,
     eval_stmt f st1 (SSet x e) = Some st2 ->
     exists v, eval_expr st1 e = Some v /\ st2 = put st1 x v.
