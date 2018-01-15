@@ -1,3 +1,5 @@
+Require Import Coq.Lists.List.
+Import ListNotations.
 Require Import lib.LibTacticsMin.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
@@ -114,6 +116,23 @@ Section ExprImp.
     simpl in E. inversions E. reflexivity.
   Qed.
 
+  (* Returns a list to make it obvious that it's a finite set. *)
+  Fixpoint allVars_expr(e: expr): list var :=
+    match e with
+    | ELit v => []
+    | EVar x => [x]
+    | EOp op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
+    end.
+
+  Fixpoint allVars_stmt(s: stmt): list var := 
+    match s with
+    | SSet v e => v :: allVars_expr e
+    | SIf c s1 s2 => (allVars_expr c) ++ (allVars_stmt s1) ++ (allVars_stmt s2)
+    | SWhile c body => (allVars_expr c) ++ (allVars_stmt body)
+    | SSeq s1 s2 => (allVars_stmt s1) ++ (allVars_stmt s2)
+    | SSkip => []
+    end.
+
   (* Returns a static approximation of the set of modified vars.
      The returned set might be too big, but is guaranteed to include all modified vars. *)
   Fixpoint modVars(s: stmt): vars := 
@@ -124,6 +143,23 @@ Section ExprImp.
     | SSeq s1 s2 => union (modVars s1) (modVars s2)
     | SSkip => empty_set
     end.
+
+  Lemma modVars_subset_allVars: forall x s,
+    x \in ExprImp.modVars s ->
+    In x (ExprImp.allVars_stmt s).
+  Proof.
+    intros.
+    induction s; simpl in *.
+    - apply singleton_set_spec in H. auto.
+    - apply union_spec in H.
+      apply in_or_app. right. apply in_or_app.
+      destruct H as [H|H]; auto.
+    - apply in_or_app. right. auto.
+    - apply union_spec in H.
+      apply in_or_app.
+      destruct H as [H|H]; auto.
+    - eapply empty_set_spec. eassumption.
+  Qed.
 
   Lemma modVarsSound: forall fuel s initial final,
     eval_stmt fuel initial s = Some final ->

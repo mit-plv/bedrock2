@@ -376,4 +376,34 @@ Section FlattenExpr.
       exists 1%nat initialL. auto.
   Qed.
 
+  Definition ExprImp2FlatImp(s: ExprImp.stmt): FlatImp.stmt :=
+    fst (flattenStmt (freshNameGenState (ExprImp.allVars_stmt s)) s).
+
+  Lemma flattenStmt_correct: forall fuelH sH sL finalH,
+    ExprImp2FlatImp sH = sL ->
+    eval_stmt_H fuelH empty sH = Some finalH ->
+    exists fuelL finalL,
+      evalL fuelL empty sL = Success finalL /\
+      forall resVar res, get finalH resVar = Some res -> get finalL resVar = Some res.
+  Proof.
+    introv C EvH.
+    unfold ExprImp2FlatImp, fst in C. destruct_one_match_hyp. subst s.
+    pose proof flattenStmt_correct_aux as P.
+    specialize P with (1 := E).
+    specialize P with (4 := EvH).
+    specialize P with (initialL := (@empty _ _ _ stateMap)).
+    destruct P as [fuelL [finalL [EvL ExtL]]].
+    - unfold extends. auto.
+    - unfold undef. intros. apply empty_is_empty.
+    - unfold disjoint.
+      intro x.
+      pose proof (freshNameGenState_spec (ExprImp.allVars_stmt sH) x) as P.
+      destruct (in_dec eq_var_dec x (ExprImp.allVars_stmt sH)) as [Iyes | Ino].
+      + auto.
+      + left. clear -Ino.
+        intro. apply Ino. apply ExprImp.modVars_subset_allVars. assumption.
+    - exists fuelL finalL. apply (conj EvL).
+      intros. state_calc.
+  Qed.
+
 End FlattenExpr.

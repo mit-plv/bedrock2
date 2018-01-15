@@ -1005,18 +1005,19 @@ Section FlatToRiscv.
     intros. rewrite empty_is_empty in H. discriminate.
   Qed.
 
-  Lemma compile_stmt_correct: forall resVar fuelH finalH s insts,
+  Definition evalL(fuel: nat)(insts: list Instruction): RiscvMachine :=
+    execState (run (w_lbound := w_lbound) fuel) (initialRiscvMachine insts).
+
+  Lemma compile_stmt_correct: forall resVar fuelH finalH s insts res,
     stmt_size s * 16 < pow2 wlit ->
     compile_stmt s = insts ->
     evalH fuelH empty s = Success finalH ->
-    get finalH resVar <> None ->
-    exists fuelL,
-    Some ((execState (run (w_lbound := w_lbound) fuelL) (initialRiscvMachine insts)).(registers) resVar)
-    = get finalH resVar.
+    get finalH resVar = Some res ->
+    exists fuelL, (evalL fuelL insts).(registers) resVar = res.
   Proof.
     introv B C E G.
     change (exists fuel, 
-     (fun final => Some (registers final resVar) = (get finalH resVar))
+     (fun finalL => finalL.(registers) resVar = res)
      (execState (run (w_lbound := w_lbound) fuel) (initialRiscvMachine insts))).
     apply runsToSatisfying_exists_fuel_old.
     eapply runsToSatisfying_imp.
@@ -1039,7 +1040,7 @@ Section FlatToRiscv.
       destruct (Common.get finalH resVar) eqn: Q.
       + specialize (H _ eq_refl).
         simpl in Q. unfold id in Q. simpl in *. congruence.
-      + contradiction.
+      + discriminate.
   Qed.
 
 End FlatToRiscv.
