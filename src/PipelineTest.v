@@ -29,6 +29,8 @@ Lemma w_lbound: w >= wjimm. Omega. Qed.
 
 Definition var := nat.
 
+Instance dec_eq_var : DecidableEq var := Nat.eq_dec.
+
 Definition var_a: var := 0.
 Definition var_b: var := 1.
 Definition var_c: var := 2.
@@ -105,7 +107,32 @@ Definition fib_L_res(fuel: nat)(n: word wlit): word w :=
 Transparent wlt_dec.
 
 (* 1st method: Run it *)
-Goal fib_L_res 200 $6 = $13. reflexivity. Qed.
+Goal exists fuel, fib_L_res fuel $6 = $13.
+  exists 200. reflexivity.
+Qed.
 
 (* 2nd method: Prove it *)
-Goal fib_L_res 200 $6 = $13. (* TODO *) Admitted. 
+Goal exists fuel, fib_L_res fuel $6 = $13.
+  unfold fib_L_res. unfold fib_L_final.
+  pose proof @exprImp2Riscv_correct as P.
+  assert (exists finalH, @FlattenExpr.eval_stmt_H wlit wdiff var state _
+     20 empty (fib_ExprImp $ (6)) = Some finalH) as F. {
+    eexists. reflexivity.
+  }
+  destruct F as [finalH F].
+  specialize P with (5 := F) (wjimm := wjimm) (w_lbound := w_lbound).
+  specialize P with (eq_var_dec := dec_eq_var).
+  specialize P with (varset := Function_Set var) (NG := NatNameGen).
+  edestruct P as [fuelL G].
+  - Omega.
+  - Omega.
+  - cbv. omega.
+  - reflexivity.
+  - exists fuelL. apply G.
+    assert (forall T (a b: T), Some a = Some b -> a = b) as E. {
+      introv R. inversion R. reflexivity.
+    }
+    apply E in F.
+    rewrite <- F. clear F.
+    cbv. reflexivity.
+Qed.
