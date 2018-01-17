@@ -10,26 +10,21 @@ Require Import compiler.Op.
 Require Import compiler.ResMonad.
 Require Import compiler.Riscv.
 Require Import compiler.runsToSatisfying.
+Require Import compiler.RiscvBitWidths.
 Require Import Coq.Program.Tactics.
+
 
 Section FlatToRiscv.
 
-  Context {wlit: nat}. (* bit width of literals *)
-  Context {wdiff: nat}. (* bit width difference between literals and words *)
-  Notation w := (wlit + wdiff).
-  Context {wjimm: nat}. (* bit width of "jump immediates" *)
-  Variable w_lbound: w >= wjimm. (* to make sure we can convert a signed jump-immediate to a word
-    without loss *)
-  Variable wlit_bound: 2 <= wlit <= wjimm.
-  Variable wjimm_bound: 2 <= wjimm <= w.
+  Context {B: RiscvBitWidths}.
   Context {var: Set}.
   Context {eq_var_dec: DecidableEq var}.
   Context {state: Type}.
-  Context {stateMap: Map state var (word w)}.
+  Context {stateMap: Map state var (word wXLEN)}.
 
   Definition var2Register: var -> @Register var := RegS.
 
-  Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list (@Instruction wlit wjimm var) :=
+  Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list Instruction :=
     let rd := var2Register res in
     let rs1 := var2Register arg1 in
     let rs2 := var2Register arg2 in

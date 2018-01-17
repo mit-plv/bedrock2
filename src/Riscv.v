@@ -4,6 +4,7 @@ Require Import compiler.StateMonad.
 Require Import compiler.Decidable.
 Require Import compiler.zcast.
 Require Import compiler.PowerFunc.
+Require Import compiler.RiscvBitWidths.
 Require Import Coq.omega.Omega.
 
 (* Comments between ``double quotes'' are from quotes from
@@ -14,29 +15,9 @@ Require Import Coq.omega.Omega.
 
 Section Riscv.
 
-  (* ``There are 31 general-purpose registers x1-x31, which hold integer values. Register x0 is
-     hardwired to the constant 0. [...] This document uses the term XLEN to refer to the current
-     width of an x register in bits (either 32 or 64).'' *)
-  Variable wXLEN: nat.
+  Context {B: RiscvBitWidths}.
 
-  (* Bit width of an instruction, will be 32 *)
-  Variable wInstr: nat.
-
-  (* bit width of most immediates, will equal 12 *)
-  Variable wimm: nat.
-
-  (* bit width of "upper" bits to complete 12-bit immediates, will equal 20 *)
-  Variable wupper: nat.
-
-  Variable w_eq: wimm + wupper = wInstr.
-
-  Variable wimm_nonzero: wimm <> 0.
-
-  Variable wupper_nonzero: wupper <> 0.
-
-  Variable wXLEN_lbound: wXLEN >= wInstr.
-
-  Variable Reg: Set. (* register name *)
+  Context {Reg: Set}. (* register name *)
 
   Context {dec_Register: DecidableEq Reg}.
 
@@ -82,18 +63,23 @@ Section Riscv.
     setPC: word wXLEN -> M unit;
   }.
 
+  Ltac bitwidth_omega :=
+    match goal with
+    | B: RiscvBitWidths |- _ => abstract (destruct B; simpl; omega)
+    end.
+
   Definition signed_imm_to_word(v: word wimm): word wXLEN.
-    refine (nat_cast word _ (sext v (wupper + wXLEN - wInstr))). abstract omega.
+    refine (nat_cast word _ (sext v (wupper + wXLEN - wInstr))). bitwidth_omega.
   Defined.
 
   Definition lossless_double{sz: nat}(v: word sz): word (S sz) := WS false v.
 
   Definition signed_jimm_to_word(v: word wupper): word wXLEN.
-    refine (nat_cast word _ (sext (lossless_double v) (wXLEN - wupper - 1))). abstract omega.
+    refine (nat_cast word _ (sext (lossless_double v) (wXLEN - wupper - 1))). bitwidth_omega.
   Defined.
 
   Definition signed_bimm_to_word(v: word wimm): word wXLEN.
-    refine (nat_cast word _ (sext (lossless_double v) (wXLEN - wimm - 1))). abstract omega.
+    refine (nat_cast word _ (sext (lossless_double v) (wXLEN - wimm - 1))). bitwidth_omega.
   Defined.
 
   (* looks like it's the wrong way round, but that's because the argument order of combine is
@@ -103,7 +89,7 @@ Section Riscv.
   Goal lossless_shl (WO~0~1~1~0~1)%word 4 = (WO~0~1~1~0~1~0~0~0~0)%word. reflexivity. Qed.
 
   Definition upper_imm_to_word(v: word wupper): word wXLEN.
-    refine (nat_cast word _ (sext (lossless_shl v wimm) (wXLEN - wInstr))). abstract omega.
+    refine (nat_cast word _ (sext (lossless_shl v wimm) (wXLEN - wInstr))). bitwidth_omega.
   Defined.
 
   Definition execute{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}(i: Instruction): M unit :=
@@ -299,26 +285,28 @@ Section Riscv.
 End Riscv.
 
 
-Module MachineTest.
+Require compiler.RiscvBitWidths32.
 
-  Definition m1: RiscvMachine 32 12 20 nat := {|
-    instructionMem := fun _ => Nop _ _ _;
-    registers := fun _ => $22;
+Module MachineTest.
+  Import compiler.RiscvBitWidths32.
+
+  Definition m1: RiscvMachine := {|
+    instructionMem := fun _ => Nop;
+    registers := fun (r: nat) => $22;
     pc := $33
   |}.
 
-  Definition myInst: RiscvState 32 12 20 nat (State (RiscvMachine 32 12 20 nat)) :=
-    IsRiscvMachine _ _ _ _.
+  Definition myInst: RiscvState (State (@RiscvMachine RiscvBitWidths32 nat)) :=
+    IsRiscvMachine .
   Existing Instance myInst.
 
-  Definition getRegister := getRegister 32 12 20 nat.
-  Definition setRegister := setRegister 32 12 20 nat.
+  (* TODO how can we get rid of these redefinitions? *)
+  Definition getRegister := @getRegister RiscvBitWidths32 nat _ _.
+  Definition setRegister := @setRegister RiscvBitWidths32 nat _ _.
 
-  Definition prog1: State (RiscvMachine 32 12 20 nat) (word _) :=
-    x <- getRegister (RegS _ 2);
-    setRegister (RegS _ 2) (x ^+ $3);;
-    getRegister (RegS _ 2).
-
-  Goal evalState prog1 m1 = $25. reflexivity. Qed.
+  Definition prog1: State (@RiscvMachine RiscvBitWidths32 nat) (word 32) :=
+    x <- getRegister (RegS 2);
+    setRegister (RegS 2) (x ^+ $3);;
+    getRegister (RegS 2).
 
 End MachineTest.
