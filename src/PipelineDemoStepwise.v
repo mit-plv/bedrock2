@@ -12,7 +12,6 @@ Require Import compiler.FlatImp.
 Require Import compiler.ResMonad.
 Require        compiler.FlatToRiscv.
 Require Import compiler.Riscv.
-Require Import compiler.Machine.
 Require Import compiler.StateMonad.
 Require Import compiler.runsToSatisfying.
 Require Import compiler.MyOmega.

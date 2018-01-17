@@ -9,7 +9,6 @@ Import ListNotations.
 Require Import compiler.Op.
 Require Import compiler.ResMonad.
 Require Import compiler.Riscv.
-Require Import compiler.Machine.
 Require Import compiler.runsToSatisfying.
 Require Import Coq.Program.Tactics.
 

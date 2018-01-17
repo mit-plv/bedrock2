@@ -10,7 +10,6 @@ Require Import compiler.FlattenExpr.
 Require        compiler.FlatImp.
 Require        compiler.FlatToRiscv.
 Require Import compiler.Riscv.
-Require Import compiler.Machine.
 Require Import compiler.StateMonad.
 Require Import compiler.runsToSatisfying.
 Require Import compiler.MyOmega.

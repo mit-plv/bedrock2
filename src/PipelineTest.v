@@ -11,7 +11,6 @@ Require Import compiler.Pipeline.
 Require Import compiler.Riscv.
 Require Import compiler.MyOmega.
 Require Import compiler.StateMonad.
-Require Import compiler.Machine.
 
 Definition wlit: nat := 12. (* max bit width of literals *)
 Definition wdiff: nat := 20. (* difference between literal width and word width *)
