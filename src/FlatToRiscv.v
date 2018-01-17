@@ -11,18 +11,19 @@ Require Import compiler.ResMonad.
 Require Import compiler.Riscv.
 Require Import compiler.runsToSatisfying.
 Require Import compiler.RiscvBitWidths.
+Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 
 
 Section FlatToRiscv.
 
   Context {B: RiscvBitWidths}.
-  Context {var: Set}.
-  Context {eq_var_dec: DecidableEq var}.
+  Context {Name: NameWithEq}.
+  Definition var: Set := name.
   Context {state: Type}.
   Context {stateMap: Map state var (word wXLEN)}.
 
-  Definition var2Register: var -> @Register var := RegS.
+  Definition var2Register: var -> Register := RegS.
 
   Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list Instruction :=
     let rd := var2Register res in
@@ -37,14 +38,10 @@ Section FlatToRiscv.
     | OAnd => [And rd rs1 rs2]
     end.
 
-  Definition signed_lit_to_word(v: word wlit): word w := nat_cast word eq_refl (sext v wdiff).
-
-  Definition signed_jimm_to_word(v: word wjimm): word w.
-    refine (nat_cast word _ (sext v (w - wjimm))). clear -w_lbound. abstract omega.
-  Defined.
+  Definition compile_lit(v: word wXLEN): list Instruction.
 
   (* using the same names (var) in source and target language *)
-  Fixpoint compile_stmt(s: @stmt wlit var): list (@Instruction wlit wjimm var) :=
+  Fixpoint compile_stmt(s: @stmt wXLEN var): list (Instruction) :=
     match s with
     | SLit x v => [Addi (var2Register x) RegO v]
     | SOp x op y z => compile_op x op y z

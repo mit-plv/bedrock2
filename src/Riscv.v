@@ -5,6 +5,7 @@ Require Import compiler.Decidable.
 Require Import compiler.zcast.
 Require Import compiler.PowerFunc.
 Require Import compiler.RiscvBitWidths.
+Require Import compiler.NameWithEq.
 Require Import Coq.omega.Omega.
 
 (* Comments between ``double quotes'' are from quotes from
@@ -17,9 +18,9 @@ Section Riscv.
 
   Context {B: RiscvBitWidths}.
 
-  Context {Reg: Set}. (* register name *)
-
-  Context {dec_Register: DecidableEq Reg}.
+  Context {Name: NameWithEq}. (* register name *)
+  Definition Reg: Set := name.
+  Existing Instance eq_name_dec.
 
   Inductive Register: Set :=
     | RegO: Register
@@ -284,29 +285,27 @@ Section Riscv.
 
 End Riscv.
 
+Existing Instance IsRiscvMachine. (* needed because it was defined inside a Section *)
+
 
 Require compiler.RiscvBitWidths32.
 
 Module MachineTest.
   Import compiler.RiscvBitWidths32.
 
+  Instance NatName: NameWithEq := {| name := nat |}.
+
   Definition m1: RiscvMachine := {|
     instructionMem := fun _ => Nop;
-    registers := fun (r: nat) => $22;
+    registers := fun (r: Reg) => $22;
     pc := $33
   |}.
 
-  Definition myInst: RiscvState (State (@RiscvMachine RiscvBitWidths32 nat)) :=
-    IsRiscvMachine .
-  Existing Instance myInst.
-
-  (* TODO how can we get rid of these redefinitions? *)
-  Definition getRegister := @getRegister RiscvBitWidths32 nat _ _.
-  Definition setRegister := @setRegister RiscvBitWidths32 nat _ _.
-
-  Definition prog1: State (@RiscvMachine RiscvBitWidths32 nat) (word 32) :=
+  Definition prog1: State RiscvMachine (word 32) :=
     x <- getRegister (RegS 2);
     setRegister (RegS 2) (x ^+ $3);;
     getRegister (RegS 2).
+
+  Goal evalState prog1 m1 = $25. reflexivity. Qed.
 
 End MachineTest.
