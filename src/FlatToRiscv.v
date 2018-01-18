@@ -848,7 +848,6 @@ Section FlatToRiscv.
       refine (conj Cs2 _).
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
       unfold signed_jimm_to_word.
-      unfold lossless_double.
       admit. (* TODO
       rewrite sext_natToWord.
       * solve_word_eq.
