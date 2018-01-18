@@ -22,6 +22,9 @@ Class RiscvBitWidths := mkRiscvBitWidths {
   (* need to encode signed immediates: need at least 1 bit for sign, 1 bit for value *)
   wimm_lbound: wimm >= 2;
 
+  (* we express statement size bounds with wimm, but JAL uses wupper, which is more *)
+  wimm_wupper: wimm <= wupper;
+
   wupper_nonzero: wupper <> 0;
 
   wXLEN_lbound: wXLEN >= wInstr;

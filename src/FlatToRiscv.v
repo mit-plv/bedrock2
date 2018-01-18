@@ -67,18 +67,18 @@ Section FlatToRiscv.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [Beq (var2Register cond) RegO ($4 ^* $(S (length bThen')))] ++
+        [Beq (var2Register cond) RegO ($2 ^* $(S (length bThen')))] ++
         bThen' ++
-        [Jal RegO ($4 ^* $(length bElse'))] ++
+        [Jal RegO ($2 ^* $(length bElse'))] ++
         bElse'
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [Beq (var2Register cond) RegO ($4 ^* $(S (length body2')))] ++
+        [Beq (var2Register cond) RegO ($2 ^* $(S (length body2')))] ++
         body2' ++
-        [Jal RegO (wneg ($4 ^* $(S (S (length body1' + length body2')))))]
+        [Jal RegO (wneg ($2 ^* $(S (S (length body1' + length body2')))))]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     end.
@@ -703,6 +703,17 @@ Section FlatToRiscv.
      intros. rewrite sext_neg_natToWord0 by assumption. rewrite e. apply natcast_same.
    Qed.
 
+  Lemma lossless_shl_natToWord: forall sz n d,
+    lossless_shl (natToWord sz n) d = natToWord (d + sz) (pow2 d * n).
+  Admitted.
+
+  Lemma lossless_shl_neg_natToWord: forall sz n d,
+    lossless_shl (wneg (natToWord sz n)) d = wneg (natToWord (d + sz) (pow2 d * n)).
+  Proof. (* by example *)
+    intros. assert (sz = 4) by admit. assert (n = 5) by admit. assert (d = 2) by admit.
+    subst. reflexivity.
+  Admitted.
+
   Definition evalH := eval_stmt (w := wXLEN).
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
@@ -729,6 +740,20 @@ Section FlatToRiscv.
         omega
     end.
 
+  (* Needed because simpl will unfold (4 * ...) which is unreadable *)
+  Local Ltac simpl_pow2 :=
+    repeat match goal with
+    | |- context [1 + ?a] => change (1 + a) with (S a)
+    | |- context [pow2 (S ?a)] => change (pow2 (S a)) with (2 * pow2 a)
+    | |- context [pow2 0] => change (pow2 0) with 1
+    end.
+
+  Local Ltac solve_pc_update :=
+    rewrite? lossless_shl_natToWord;
+    rewrite? sext_natToWord;
+    simpl_pow2;
+    [ solve_word_eq | solve_length_compile_stmt ].
+
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL finalPc,
     compile_stmt s = insts ->
     stmt_not_too_big s ->
@@ -739,6 +764,7 @@ Section FlatToRiscv.
     runsToSatisfying initialL (fun finalL => containsState finalL finalH /\
        finalL.(pc) = finalPc).
   Proof.
+    pose proof (pow2le wimm wupper (wimm_wupper)) as WLJ.
     induction fuelH; [intros; discriminate |].
     introv C Csz EvH Cp Cs PcEq.
     unfold evalH in EvH.
@@ -806,7 +832,8 @@ Section FlatToRiscv.
             pose proof (pow2_nonzero (pred (pred wimm))). omega. }
           { pose proof wimm_lbound. omega. }
       + solve_word_eq.
-    - simpl in C. subst *.
+    - (* SSet *)
+      simpl in C. subst *.
       destruct initialL as [initialProg initialRegs initialPc].
       destruct_containsProgram.
       apply runsToStep.
@@ -819,7 +846,8 @@ Section FlatToRiscv.
         erewrite Cs by eassumption.
         solve_word_eq.
       + solve_word_eq.
-    - simpl in C. subst *.
+    - (* SIf/Then *)
+      simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
       remember (runsTo RiscvMachine (execState run1)) as runsToRest.
@@ -848,12 +876,9 @@ Section FlatToRiscv.
       refine (conj Cs2 _).
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
       unfold signed_jimm_to_word.
-      admit. (* TODO
-      rewrite sext_natToWord.
-      * solve_word_eq.
-      * solve_length_compile_stmt.
-      *)
-    - simpl in C. subst *.
+      solve_pc_update.
+    - (* SIf/Else *)
+      simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
@@ -872,22 +897,15 @@ Section FlatToRiscv.
           simpl.
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
           unfold signed_bimm_to_word.
-          admit. (* TODO
-          rewrite sext_natToWord.
-          * solve_word_eq.
-          * solve_length_compile_stmt.
-          *)
+          solve_pc_update.
         }
         rewrite <- OfsEq. assumption.
       + simpl.
         repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
         unfold signed_bimm_to_word.
-        admit. (* TODO
-        rewrite sext_natToWord.
-        * solve_word_eq.
-        * solve_length_compile_stmt.
-        *)
-    - simpl in C. subst *.
+        solve_pc_update.
+    - (* SLoop/done *)
+      simpl in C. subst *.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
       match goal with
@@ -911,12 +929,9 @@ Section FlatToRiscv.
       refine (conj Cs2 _).
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
       unfold signed_bimm_to_word.
-      admit. (* TODO
-      rewrite sext_natToWord.
-      * solve_word_eq.
-      * solve_length_compile_stmt.
-      *)
-    - simpl in C. subst *.
+      solve_pc_update.
+    - (* SLoop/again *)
+      simpl in C. subst *.
       pose proof IHfuelH as IH.
       pose proof (conj I Cp) as CpSaved.
       destruct_containsProgram.
@@ -962,7 +977,7 @@ Section FlatToRiscv.
         end. {
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
           unfold signed_jimm_to_word.
-          admit. (* TODO
+          rewrite lossless_shl_neg_natToWord.
           rewrite sext_neg_natToWord.
           {
           clear.
@@ -977,11 +992,10 @@ Section FlatToRiscv.
           match goal with
           | |- ?A ^+ ^~ ?B = $0 => replace B with A; [apply wminus_inv|]
           end.
-          solve_word_eq.
+          simpl_pow2. solve_word_eq.
           } {
-          solve_length_compile_stmt.
+          simpl_pow2. solve_length_compile_stmt.
           }
-          *)
         }
         rewrite <- OfsEq. assumption.
       + simpl.
@@ -993,7 +1007,7 @@ Section FlatToRiscv.
         repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
         remember (length (compile_stmt s1)) as L1.
         remember (length (compile_stmt s2)) as L2.
-        admit. (* TODO
+        rewrite lossless_shl_neg_natToWord.
         rewrite sext_neg_natToWord.
         {
         rewrite <- ? wplus_assoc.
@@ -1005,12 +1019,12 @@ Section FlatToRiscv.
         match goal with
         | |- ?A ^+ ^~ ?B = $0 => replace B with A; [apply wminus_inv|]
         end.
-        solve_word_eq.
+        simpl_pow2. solve_word_eq.
         } {
-        solve_length_compile_stmt.
+        simpl_pow2. solve_length_compile_stmt.
         }
-        *)
-    - simpl in C. subst *. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
+    - (* SSeq *)
+      simpl in C. subst *. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
       eapply runsToSatisfying_trans.
       + specialize (IHfuelH s1).
@@ -1024,7 +1038,8 @@ Section FlatToRiscv.
         * unfold containsProgram in *. rewrite E. assumption.
         * rewrite F.
           destruct initialL. simpl. solve_word_eq.
-    - simpl in C. subst *. apply runsToDone. split; [assumption|].
+    - (* SSkip *)
+      simpl in C. subst *. apply runsToDone. split; [assumption|].
       destruct initialL. simpl. solve_word_eq.
   Admitted.
 

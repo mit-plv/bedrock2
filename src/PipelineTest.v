@@ -96,7 +96,7 @@ Transparent wlt_dec.
 
 (* 1st method: Run it *)
 Goal exists fuel, fib6_L_res fuel = $13.
-  exists 200.
+  exists 200. cbv.
   (* TODO compiler has bugs because it's not proven correct
      If debugging, might need to change bitwidth to make cbv work *)
 Abort.
