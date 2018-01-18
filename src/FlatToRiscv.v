@@ -17,9 +17,18 @@ Require Import Coq.Program.Tactics.
 
 Section FlatToRiscv.
 
-  Context {B: RiscvBitWidths}.
+  Context {Bw: RiscvBitWidths}.
+
   Context {Name: NameWithEq}.
-  Definition var: Set := name.
+
+  (* If we made it a definition instead, destructing an if on "@dec (@eq (@var Name) x x0)"
+     (from this file), where a "@dec (@eq (@Reg Name) x x0)" (from another file, Riscv.v)
+     is in the context, will not recognize that these two are the same (they both reduce to
+     "@dec (@eq (@name Name) x x0)", which is annoying. *)
+  Notation var := (@name Name).
+
+  Existing Instance eq_name_dec.
+
   Context {state: Type}.
   Context {stateMap: Map state var (word wXLEN)}.
 
@@ -38,12 +47,20 @@ Section FlatToRiscv.
     | OAnd => [And rd rs1 rs2]
     end.
 
-  Definition compile_lit(v: word wXLEN): list Instruction.
+  Definition compile_lit(x: var)(v: word wXLEN): list Instruction.
+    simple refine (
+      let lobits := split2 (wXLEN - wimm) wimm (nat_cast word _ v) in
+      if weqb (nat_cast word _ (sext lobits (wXLEN - wimm))) v
+      then [Addi (var2Register x) RegO lobits]
+      else [] (* <-- TODO use LUI and if wXLEN is > than wInstr (64bit) and v > 2^32, 
+                 combine with shift *)
+    ); abstract (pose proof w_eq; pose proof wXLEN_lbound; omega).
+  Defined.
 
   (* using the same names (var) in source and target language *)
-  Fixpoint compile_stmt(s: @stmt wXLEN var): list (Instruction) :=
+  Fixpoint compile_stmt(s: @stmt wXLEN Name): list (Instruction) :=
     match s with
-    | SLit x v => [Addi (var2Register x) RegO v]
+    | SLit x v => compile_lit x v
     | SOp x op y z => compile_op x op y z
     | SSet x y => [Add (var2Register x) RegO (var2Register y)]
     | SIf cond bThen bElse =>
@@ -70,20 +87,16 @@ Section FlatToRiscv.
     length (compile_stmt s) <= 2 * (stmt_size s).
   Proof.
     induction s; simpl; try destruct op; simpl;
-    repeat (rewrite app_length; simpl); omega.
+    repeat (rewrite app_length; simpl); try omega.
+    unfold compile_lit. destruct_one_match; simpl; omega.
   Qed.
 
-  Definition containsProgram(m: RiscvMachine)
-    (program: list (@Instruction wlit wjimm var))(offset: word w)
-    := forall i inst, nth_error program i = Some inst ->
-                      m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
+  Definition containsProgram(m: RiscvMachine)(program: list Instruction)(offset: word wXLEN) :=
+    forall i inst, nth_error program i = Some inst ->
+                   m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
 
-  Definition containsState(m: @RiscvMachine wlit wdiff wjimm var)(s: state)
-    := forall x v, get s x = Some v -> m.(registers) x = v.
-
-  (* TODO define type classes in such a way that this is not needed *)
-  Definition myRiscvMachine := @IsRiscvMachine wlit wdiff wjimm var _.
-  Existing Instance myRiscvMachine.
+  Definition containsState(m: RiscvMachine)(s: state) :=
+    forall x v, get s x = Some v -> m.(registers) x = v.
 
   Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
   Proof.
@@ -106,8 +119,8 @@ Section FlatToRiscv.
       intros i inst0 E. specialize (Cp (S i)). simpl in Cp.
       specialize (Cp _ E).
       rewrite <- Cp. f_equal.
-      rewrite <- wplus_assoc. f_equal. rewrite (natToWord_S w i).
-      replace ($4 ^* ($1 ^+ $i)) with ((($1 ^+ $i) ^* $4): word w) by apply wmult_comm.
+      rewrite <- wplus_assoc. f_equal. rewrite (natToWord_S wXLEN i).
+      replace ($4 ^* ($1 ^+ $i)) with ((($1 ^+ $i) ^* $4): word wXLEN) by apply wmult_comm.
       rewrite wmult_plus_distr.
       rewrite wmult_unit.
       f_equal.
@@ -154,7 +167,7 @@ Section FlatToRiscv.
   Qed.
 
   Lemma initialRiscvMachine_containsProgram: forall p,
-    4 * (length p) < pow2 w ->
+    4 * (length p) < pow2 wXLEN ->
     containsProgram (initialRiscvMachine p) p (pc (initialRiscvMachine p)).
   Proof.
     intros. unfold containsProgram, initialRiscvMachine.
@@ -210,9 +223,8 @@ Section FlatToRiscv.
        runsToSatisfying (execState (run1 (w_lbound := w_lbound)) initial) P ->
        runsToSatisfying initial P.*)
 
-  Definition runsToSatisfying:
-    @RiscvMachine wlit wdiff wjimm var -> (@RiscvMachine wlit wdiff wjimm var -> Prop) -> Prop :=
-    runsTo (@RiscvMachine wlit wdiff wjimm var) (execState (run1 (w_lbound := w_lbound))).
+  Definition runsToSatisfying: RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
+    runsTo RiscvMachine (execState run1).
 
   Lemma execState_compose{S A: Type}: forall (m1 m2: State S A) (initial: S),
     execState m2 (execState m1 initial) = execState (m1 ;; m2) initial.
@@ -223,7 +235,7 @@ Section FlatToRiscv.
 
   Lemma runsToSatisfying_exists_fuel_old: forall initial P,
     runsToSatisfying initial P ->
-    exists fuel, P (execState (run (w_lbound := w_lbound) fuel) initial).
+    exists fuel, P (execState (run fuel) initial).
   Proof.
     introv R. induction R.
     - exists 0. exact H.
@@ -235,7 +247,7 @@ Section FlatToRiscv.
 
   Lemma runsToSatisfying_exists_fuel: forall initial P,
     runsToSatisfying initial P ->
-    exists fuel, P (execState (run (w_lbound := w_lbound) fuel) initial).
+    exists fuel, P (execState (run fuel) initial).
   Proof.
     introv R.
     unfold run.
@@ -263,14 +275,14 @@ Section FlatToRiscv.
 *)
 
   Lemma execute_preserves_instructionMem: forall inst initial,
-    (snd (execute (w_lbound := w_lbound) inst initial)).(instructionMem) = initial.(instructionMem).
+    (snd (execute inst initial)).(instructionMem) = initial.(instructionMem).
   Proof.
     intros. unfold execute.
     repeat (destruct_one_match; simpl; try reflexivity).
   Qed.
 
   Lemma run1_preserves_instructionMem: forall initial,
-    (execState (run1 (w_lbound := w_lbound)) initial).(instructionMem) = initial.(instructionMem).
+    (execState run1 initial).(instructionMem) = initial.(instructionMem).
   Proof.
     intros.
     destruct initial as [initialProg initialRegs initialPc]. simpl.
@@ -289,7 +301,7 @@ Section FlatToRiscv.
     - apply runsToStep. rewrite run1_preserves_instructionMem in IHrunsTo. assumption.
   Qed.
 
-  Lemma regs_overwrite: forall x v1 v2 (initialRegs: var -> word w),
+  Lemma regs_overwrite: forall x v1 v2 (initialRegs: var -> word wXLEN),
       (fun reg2 : var => if dec (x = reg2) then v2 else
                          if dec (x = reg2) then v1 else
                          initialRegs reg2)
@@ -300,23 +312,24 @@ Section FlatToRiscv.
   Qed.
 
   (* TODO is there a principled way of writing such proofs? *)
-  Lemma reduce_eq_to_sub_and_lt: forall (y z: word w) {T: Type} (thenVal elseVal: T),
+  Lemma reduce_eq_to_sub_and_lt: forall (y z: word wXLEN) {T: Type} (thenVal elseVal: T),
     (if wlt_dec (y ^- z) $1 then thenVal else elseVal) =
     (if weq y z             then thenVal else elseVal).
   Proof.
     intros. destruct (weq y z).
-    - subst z. unfold wminus. rewrite wminus_inv. destruct (wlt_dec (wzero w) $1); [reflexivity|].
-      change (wzero w) with (natToWord w 0) in n. unfold wlt in n.
+    - subst z. unfold wminus. rewrite wminus_inv.
+      destruct (wlt_dec (wzero wXLEN) $1); [reflexivity|].
+      change (wzero wXLEN) with (natToWord wXLEN 0) in n. unfold wlt in n.
       exfalso. apply n.
       do 2 rewrite wordToN_nat. rewrite roundTrip_0.
-      destruct w as [|w1]; [omega|].
+      destruct wXLEN as [|w1] eqn: E; [bitwidth_omega|].
       rewrite roundTrip_1.
       simpl. constructor.
-    - destruct (@wlt_dec w (y ^- z) $ (1)) as [E|NE]; [|reflexivity].
+    - destruct (@wlt_dec wXLEN (y ^- z) $ (1)) as [E|NE]; [|reflexivity].
       exfalso. apply n. apply sub_0_eq.
       unfold wlt in E.
       do 2 rewrite wordToN_nat in E.
-      destruct w as [|w1]; [omega|].
+      destruct wXLEN as [|w1] eqn: F; [bitwidth_omega|].
       rewrite roundTrip_1 in E.
       simpl in E. apply N.lt_1_r in E. change 0%N with (N.of_nat 0) in E.
       apply Nnat.Nat2N.inj in E. rewrite <- (roundTrip_0 (S w1)) in E.
@@ -326,7 +339,7 @@ Section FlatToRiscv.
 
   Ltac simpl_run1 :=
          cbv [run1 execState StateMonad.put execute instructionMem registers 
-             pc getPC loadInst setPC getRegister setRegister myRiscvMachine IsRiscvMachine gets
+             pc getPC loadInst setPC getRegister setRegister IsRiscvMachine gets
              StateMonad.get Return Bind State_Monad ].
 
   Ltac solve_word_eq :=
@@ -690,11 +703,11 @@ Section FlatToRiscv.
      intros. rewrite sext_neg_natToWord0 by assumption. rewrite e. apply natcast_same.
    Qed.
 
-  Definition evalH := @eval_stmt w wlit wdiff eq_refl var state stateMap.
+  Definition evalH := eval_stmt (w := wXLEN).
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
      constant to stay in linear arithmetic *)
-  Local Definition stmt_not_too_big(s: @stmt wlit var): Prop := stmt_size s * 16 < pow2 wlit.
+  Local Definition stmt_not_too_big(s: @stmt wXLEN Name): Prop := stmt_size s * 16 < pow2 wimm.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
@@ -726,22 +739,31 @@ Section FlatToRiscv.
     runsToSatisfying initialL (fun finalL => containsState finalL finalH /\
        finalL.(pc) = finalPc).
   Proof.
-    pose proof (pow2le wlit wjimm (proj2 wlit_bound)) as WLJ.
     induction fuelH; [intros; discriminate |].
     introv C Csz EvH Cp Cs PcEq.
     unfold evalH in EvH.
     invert_eval_stmt.
-    - subst *. destruct_containsProgram.
+    - (* SLit *)
+      subst *.
+      unfold compile_stmt, compile_lit in Cp. destruct_one_match_hyp.
+      {
+      destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
       apply runsToStep. apply runsToDone.
       simpl_run1.
       simpl in Cp0.
       rewrite Cp0. simpl.
+      unfold compile_stmt, compile_lit. rewrite E. simpl.
       rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
       eapply containsState_put; [eassumption|].
-      unfold Riscv.signed_lit_to_word, FlatImp.signed_lit_to_word.
-      apply wplus_unit.
-    - simpl in C. subst *.
+      rewrite wplus_unit.
+      admit. (* TODO should follow from E *)
+      }
+      {
+      admit. (* TODO exclude this with a hypothesis, later properly implement it in compile_lit *)
+      }
+    - (* SOp *)
+      simpl in C. subst *.
       destruct initialL as [initialProg initialRegs initialPc].
       simpl in Cp.
       pose proof Cs as Cs'.
@@ -764,6 +786,7 @@ Section FlatToRiscv.
           rewrite <- (wmult_comm $1); rewrite wmult_unit; refine (conj _ eq_refl);
           eapply containsState_put; [eassumption|reflexivity]]
       end.
+      (* Case op = OEq *)
       apply runsToStep.
       simpl_run1.
       progress rewrite Cp1. simpl.
@@ -772,12 +795,16 @@ Section FlatToRiscv.
       apply runsToDone.
       split.
       + eapply containsState_put; [ eassumption |].
-        unfold Riscv.signed_lit_to_word.
-        replace (nat_cast word eq_refl (sext $ (1) wdiff)) with (wone w).
+        unfold signed_imm_to_word.
+        match goal with
+        | |- context C[nat_cast word ?n ?e] => replace (nat_cast word n e) with (wone wXLEN)
+        end.
         * apply reduce_eq_to_sub_and_lt.
         * symmetry. apply sext_natToWord.
-          replace wlit with (S (S (pred (pred wlit)))) by omega. unfold pow2. fold pow2.
-          pose proof (pow2_nonzero (pred (pred wlit))). omega.
+          replace wimm with (S (S (pred (pred wimm)))).
+          { unfold pow2. fold pow2.
+            pose proof (pow2_nonzero (pred (pred wimm))). omega. }
+          { pose proof wimm_lbound. omega. }
       + solve_word_eq.
     - simpl in C. subst *.
       destruct initialL as [initialProg initialRegs initialPc].
@@ -820,10 +847,13 @@ Section FlatToRiscv.
       apply runsToDone.
       refine (conj Cs2 _).
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-      unfold Riscv.signed_jimm_to_word.
+      unfold signed_jimm_to_word.
+      unfold lossless_double.
+      admit. (* TODO
       rewrite sext_natToWord.
       * solve_word_eq.
       * solve_length_compile_stmt.
+      *)
     - simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
@@ -842,18 +872,22 @@ Section FlatToRiscv.
         end. {
           simpl.
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-          unfold Riscv.signed_lit_to_word.
+          unfold signed_bimm_to_word.
+          admit. (* TODO
           rewrite sext_natToWord.
           * solve_word_eq.
           * solve_length_compile_stmt.
+          *)
         }
         rewrite <- OfsEq. assumption.
       + simpl.
         repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-        unfold Riscv.signed_lit_to_word.
+        unfold signed_bimm_to_word.
+        admit. (* TODO
         rewrite sext_natToWord.
         * solve_word_eq.
         * solve_length_compile_stmt.
+        *)
     - simpl in C. subst *.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
@@ -877,10 +911,12 @@ Section FlatToRiscv.
       apply runsToDone.
       refine (conj Cs2 _).
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-      unfold Riscv.signed_lit_to_word.
+      unfold signed_bimm_to_word.
+      admit. (* TODO
       rewrite sext_natToWord.
       * solve_word_eq.
       * solve_length_compile_stmt.
+      *)
     - simpl in C. subst *.
       pose proof IHfuelH as IH.
       pose proof (conj I Cp) as CpSaved.
@@ -926,7 +962,8 @@ Section FlatToRiscv.
             assert (ofs1 = ofs2) as OfsEq
         end. {
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-          unfold Riscv.signed_jimm_to_word.
+          unfold signed_jimm_to_word.
+          admit. (* TODO
           rewrite sext_neg_natToWord.
           {
           clear.
@@ -945,6 +982,7 @@ Section FlatToRiscv.
           } {
           solve_length_compile_stmt.
           }
+          *)
         }
         rewrite <- OfsEq. assumption.
       + simpl.
@@ -956,6 +994,7 @@ Section FlatToRiscv.
         repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
         remember (length (compile_stmt s1)) as L1.
         remember (length (compile_stmt s2)) as L2.
+        admit. (* TODO
         rewrite sext_neg_natToWord.
         {
         rewrite <- ? wplus_assoc.
@@ -971,6 +1010,7 @@ Section FlatToRiscv.
         } {
         solve_length_compile_stmt.
         }
+        *)
     - simpl in C. subst *. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
       eapply runsToSatisfying_trans.
@@ -987,7 +1027,7 @@ Section FlatToRiscv.
           destruct initialL. simpl. solve_word_eq.
     - simpl in C. subst *. apply runsToDone. split; [assumption|].
       destruct initialL. simpl. solve_word_eq.
-  Qed.
+  Admitted.
 
   Lemma every_state_contains_empty_state: forall s,
     containsState s empty.
@@ -997,10 +1037,10 @@ Section FlatToRiscv.
   Qed.
 
   Definition evalL(fuel: nat)(insts: list Instruction): RiscvMachine :=
-    execState (run (w_lbound := w_lbound) fuel) (initialRiscvMachine insts).
+    execState (run fuel) (initialRiscvMachine insts).
 
   Lemma compile_stmt_correct: forall fuelH finalH s insts,
-    stmt_size s * 16 < pow2 wlit ->
+    stmt_size s * 16 < pow2 wimm ->
     compile_stmt s = insts ->
     evalH fuelH empty s = Success finalH ->
     exists fuelL,
@@ -1023,10 +1063,12 @@ Section FlatToRiscv.
       + assumption.
       + apply E.
       + subst insts. apply initialRiscvMachine_containsProgram.
-        pose proof (pow2le wlit wjimm (proj2 wlit_bound)).
-        pose proof (pow2le wjimm w (proj2 wjimm_bound)).
         change (stmt_not_too_big s) in B.
+        admit. (* TODO
+        pose proof (pow2le wimm wXLEN wimm_lbound).
+        pose proof (pow2le wjimm w (proj2 wjimm_bound)).
         solve_length_compile_stmt.
+        *)
       + apply every_state_contains_empty_state.
       + reflexivity.
     - intros.
@@ -1037,6 +1079,6 @@ Section FlatToRiscv.
       + specialize (H _ eq_refl).
         simpl in Q. unfold id in Q. simpl in *. congruence.
       + discriminate.
-  Qed.
+  Admitted.
 
 End FlatToRiscv.

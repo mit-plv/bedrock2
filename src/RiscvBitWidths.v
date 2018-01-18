@@ -1,3 +1,4 @@
+Require Import Coq.omega.Omega.
 
 Class RiscvBitWidths := mkRiscvBitWidths {
   (* ``There are 31 general-purpose registers x1-x31, which hold integer values. Register x0 is
@@ -18,8 +19,16 @@ Class RiscvBitWidths := mkRiscvBitWidths {
 
   wimm_nonzero: wimm <> 0;
 
+  (* need to encode signed immediates: need at least 1 bit for sign, 1 bit for value *)
+  wimm_lbound: wimm >= 2;
+
   wupper_nonzero: wupper <> 0;
 
   wXLEN_lbound: wXLEN >= wInstr;
 
 }.
+
+Ltac bitwidth_omega :=
+  match goal with
+  | B: RiscvBitWidths |- _ => abstract (destruct B; simpl in *; omega)
+  end.

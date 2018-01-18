@@ -4,16 +4,22 @@ Require Import compiler.Tactics.
 Require Import compiler.ResMonad.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
+Require Import compiler.NameWithEq.
 
 Section FlatImp.
 
   Context {w: nat}. (* bit width *)
-  Context {var: Set}.
-  Context {eq_var_dec: DecidableEq var}.
+
+  Context {Name: NameWithEq}.
+  Notation var := (@name Name).
+  Existing Instance eq_name_dec.
+
   Context {state: Type}.
   Context {stateMap: Map state var (word w)}.
   Context {vars: Type}.
   Context {varset: set vars var}.
+
+  Ltac state_calc := state_calc_generic (@name Name) (word w).
 
   Inductive stmt: Set :=
     | SLit(x: var)(v: word w): stmt
@@ -213,7 +219,7 @@ Ltac do_rewr :=       rewrite get_put in *.
     induction fuel; introv Ev.
     - discriminate.
     - destruct s.
-      + simpl in *. inversionss. state_calc var (word w).
+      + simpl in *. inversionss. state_calc.
 
 (*
 If we forget to put a DecidableEq for var (currently var=Z) into scope, weird things happen,
@@ -258,31 +264,31 @@ rewrite_get_put.
 *)
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. simpl. state_calc var (word w).
+        inversionss. simpl. state_calc.
       + simpl in Ev. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. simpl. state_calc var (word w).
+        inversionss. simpl. state_calc.
       + Opaque union. simpl in *. unfold option2res in *.
         repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
         destruct fuel; [ inversion Ev | ].
         specializes IHfuel; [ eassumption |].
-        destruct_one_match_hyp; state_calc var (word w).
+        destruct_one_match_hyp; state_calc.
       + apply invert_eval_SLoop in Ev. destruct Ev as [Ev | Ev]. 
         * destruct Ev as [Ev C]. 
-          simpl. specializes IHfuel; [eassumption|]. state_calc var (word w).
+          simpl. specializes IHfuel; [eassumption|]. state_calc.
         * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
           simpl.
           pose proof (IHfuel _ _ _ Ev1) as IH1.
           pose proof (IHfuel _ _ _ Ev2) as IH2.
           pose proof (IHfuel _ _ _ Ev3) as IH3.
           clear - IH1 IH2 IH3. simpl in IH3.
-          state_calc var (word w).
+          state_calc.
       + apply invert_eval_SSeq in Ev.
         destruct Ev as [mid [Ev1 Ev2]]. simpl.
         pose proof (IHfuel _ _ _ Ev1) as IH1.
         pose proof (IHfuel _ _ _ Ev2) as IH2.
-        clear - IH1 IH2. state_calc var (word w).
-      + simpl. inversionss. state_calc var (word w).
+        clear - IH1 IH2. state_calc.
+      + simpl. inversionss. state_calc.
   Qed.
 
   Fixpoint accessedVars(s: stmt): vars :=
@@ -302,7 +308,7 @@ rewrite_get_put.
   Lemma modVars_subset_accessedVars: forall s,
     subset (modVars s) (accessedVars s).
   Proof.
-    intro s. induction s; simpl; unfold singleton_set; state_calc var (word w).
+    intro s. induction s; simpl; unfold singleton_set; state_calc.
   Qed.
 
 (* not needed at the moment
@@ -563,7 +569,9 @@ Ltac invert_eval_stmt :=
 
 Module TestFlatImp.
 
-Definition var := Z. (* only inside this test module *)
+Instance ZName: NameWithEq := {| name := Z |}.
+
+Definition var: Set := (@name ZName). (* only inside this test module *)
 
 Definition _n := 0%Z.
 Definition _a := 1%Z.
@@ -595,7 +603,7 @@ Example fib(n: word 8) :=
               (SOp _n OMinus _n _one)))))
   )))).
 
-Definition eval_stmt_test := @eval_stmt 8 var _ _.
+Definition eval_stmt_test := @eval_stmt 8 ZName _ _.
 
 Example finalFibState(n: nat): Res (var -> option (word 8)) := (eval_stmt_test 100 empty (fib $n)).
 Example finalFibVal(n: nat): option (word 8) := match finalFibState n with

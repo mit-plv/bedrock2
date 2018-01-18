@@ -82,7 +82,19 @@ Tactic Notation "unique" "pose" "proof" constr(defn) "as" ident(H) :=
   | _ => pose proof defn as H
   end.
 
+Ltac assert_is_type E :=
+  let T := type of E in
+  first
+  [ unify T Set
+  | unify T Prop
+  | unify T Type
+  (* this error is almost certainly a bug, so we let it bubble up with level 10000, instead
+     of being swallowed by try, repeat, ||, etc *)
+  | fail 10000 "type of" E "is" T "but should be Set, Prop or Type" ].
+
 Ltac specialize_with E :=
+  (* Catch errors such as E is something like "@name: NameWithEq -> Set" instead of "name: Set" *)
+  assert_is_type E;
   repeat match goal with
   | H: forall (x: E), _, y: E |- _ =>
     match type of H with

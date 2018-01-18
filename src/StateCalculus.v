@@ -48,7 +48,7 @@ Ltac rewrite_get_put :=
   | H: _ |- _ => rewrite? get_put in H
   end.
 
-Ltac state_calc varT valT :=
+Ltac state_calc_generic varT valT :=
   repeat autounfold with unf_state_calculus in *;
   intros;
   repeat autounfold with unf_set_defs in *;

@@ -19,7 +19,7 @@ Section Riscv.
   Context {B: RiscvBitWidths}.
 
   Context {Name: NameWithEq}. (* register name *)
-  Definition Reg: Set := name.
+  Notation Reg := (@name Name).
   Existing Instance eq_name_dec.
 
   Inductive Register: Set :=
@@ -63,11 +63,6 @@ Section Riscv.
     getPC: M (word wXLEN);
     setPC: word wXLEN -> M unit;
   }.
-
-  Ltac bitwidth_omega :=
-    match goal with
-    | B: RiscvBitWidths |- _ => abstract (destruct B; simpl; omega)
-    end.
 
   Definition signed_imm_to_word(v: word wimm): word wXLEN.
     refine (nat_cast word _ (sext v (wupper + wXLEN - wInstr))). bitwidth_omega.
@@ -297,7 +292,7 @@ Module MachineTest.
 
   Definition m1: RiscvMachine := {|
     instructionMem := fun _ => Nop;
-    registers := fun (r: Reg) => $22;
+    registers := fun _ => $22;
     pc := $33
   |}.
 
