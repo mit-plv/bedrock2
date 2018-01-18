@@ -50,7 +50,7 @@ Instance Function_Set(E: Type): set (E -> Prop) E := {|
   all: tauto.
 Defined.
 
-Ltac set_solver E :=
+Ltac set_solver_generic E :=
   repeat autounfold with unf_set_defs in *;
   destruct_products;
   intros;

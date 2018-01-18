@@ -16,39 +16,39 @@ Require Import compiler.MyOmega.
 Require Import compiler.zcast.
 Require Import compiler.NameGen.
 Require Import compiler.Common.
+Require Import compiler.RiscvBitWidths.
+Require Import compiler.NameWithEq.
 
 Section Pipeline.
 
-  Context {wlit: nat}. (* max bit width of literals *)
-  Context {wdiff: nat}. (* difference between literal width and word width *)
-  Context {wjimm: nat}.
-  Notation w := (wlit + wdiff).
-  Variable w_lbound: w >= wjimm.
-  Variable wlit_bound: 2 <= wlit <= wjimm.
-  Variable wjimm_bound: 2 <= wjimm <= w.
-  Context {var: Set}.
-  Context {eq_var_dec: DecidableEq var}.
+  Context {Bw: RiscvBitWidths}.
+
+  Context {Name: NameWithEq}.
+  Notation var := (@name Name).
+  Existing Instance eq_name_dec.
+
   Context {state: Type}.
-  Context {stateMap: Map state var (word w)}.
+  Context {stateMap: Map state var (word wXLEN)}.
+
   Context {vars: Type}.
   Context {varset: set vars var}.
   Context {NGstate: Type}.
   Context {NG: NameGen var vars NGstate}.
 
-  Definition exprImp2Riscv(s: @ExprImp.stmt wlit var): list (@Instruction wlit wjimm var) :=
+  Definition exprImp2Riscv(s: ExprImp.stmt (w := wXLEN)): list Instruction :=
     let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
     let (sFlat, ngs') := flattenStmt ngs s in
     FlatToRiscv.compile_stmt sFlat.
 
-  Definition evalH := @ExprImp.eval_stmt w wlit wdiff eq_refl var state stateMap.
+  Definition evalH := ExprImp.eval_stmt (w := wXLEN).
 
   Definition evalL(fuel: nat)(insts: list Instruction): RiscvMachine :=
-    execState (run (w_lbound := w_lbound) fuel) (initialRiscvMachine insts).
+    execState (run fuel) (initialRiscvMachine insts).
 
   Lemma exprImp2Riscv_correct: forall sH instsL fuelH finalH,
-    ExprImp.stmt_size sH * 64 < pow2 wlit ->
+    ExprImp.stmt_size sH * 64 < pow2 wimm ->
     exprImp2Riscv sH = instsL ->
-    eval_stmt_H fuelH empty sH = Some finalH ->
+    evalH fuelH empty sH = Some finalH ->
     exists fuelL,
       forall resVar res,
       get finalH resVar = Some res ->
@@ -57,14 +57,13 @@ Section Pipeline.
     introv B C EvH.
     unfold exprImp2Riscv in C.
     destruct_one_match_hyp.
-    unfold eval_stmt_H in EvH.
+    unfold evalH in EvH.
     pose proof flattenStmt_correct as P.
     specialize (P fuelH sH s finalH).
     destruct P as [fuelM [finalM [EvM GM]]].
     - unfold ExprImp2FlatImp. rewrite E. reflexivity.
-    - unfold eval_stmt_H. apply EvH.
-    - pose proof  (@FlatToRiscv.compile_stmt_correct
-        wlit wdiff wjimm w_lbound wlit_bound wjimm_bound var eq_var_dec) as P.
+    - unfold evalH. apply EvH.
+    - pose proof  FlatToRiscv.compile_stmt_correct as P.
       specialize P with (2 := C).
       specialize P with (2 := EvM).
       destruct P as [fuelL P].

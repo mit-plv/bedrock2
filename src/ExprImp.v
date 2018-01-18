@@ -6,23 +6,27 @@ Require Import compiler.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
 Require Import compiler.zcast.
+Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 
 Section ExprImp.
 
   Context {w: nat}. (* bit width *)
-  Context {wlit: nat}. (* max bit width of literals *)
-  Context {wdiff: nat}. (* difference between literal width and word width *)
-  Context {w_eq: wlit + wdiff = w}.
-  Context {var: Set}.
-  Context {eq_var_dec: DecidableEq var}.
+
+  Context {Name: NameWithEq}.
+  Notation var := (@name Name).
+  Existing Instance eq_name_dec.
+
+
   Context {state: Type}.
   Context {stateMap: Map state var (word w)}.
   Context {vars: Type}.
   Context {varset: set vars var}.
 
+  Ltac state_calc := state_calc_generic (@name Name) (word w).
+
   Inductive expr: Set :=
-    | ELit(v: word wlit): expr
+    | ELit(v: word w): expr
     | EVar(x: var): expr
     | EOp(op: binop)(e1 e2: expr): expr.
 
@@ -33,11 +37,9 @@ Section ExprImp.
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt.
 
-  Definition signed_lit_to_word(v: word wlit): word w := nat_cast word w_eq (sext v wdiff).
-
   Fixpoint eval_expr(st: state)(e: expr): option (word w) :=
     match e with
-    | ELit v => Return (signed_lit_to_word v)
+    | ELit v => Return v
     | EVar x => get st x
     | EOp op e1 e2 =>
         v1 <- eval_expr st e1;
@@ -184,29 +186,36 @@ Section ExprImp.
     induction fuel; introv Ev.
     - discriminate.
     - destruct s.
-      + simpl in *. destruct_one_match_hyp; [|discriminate]. inversionss. state_calc var (word w).
+      + simpl in *. destruct_one_match_hyp; [|discriminate]. inversionss. state_calc.
       + simpl in *. destruct_one_match_hyp; [|discriminate].
         destruct_one_match_hyp.
-        * subst *. specializes IHfuel; [ eassumption |]. state_calc var (word w).
-        * subst *. specializes IHfuel; [ eassumption |]. state_calc var (word w).
+        * subst *. specializes IHfuel; [ eassumption |]. state_calc.
+        * subst *. specializes IHfuel; [ eassumption |]. state_calc.
       + apply invert_eval_SWhile in Ev.
         destruct Ev as [cv [Evcond [Ev | Ev]]].
         * destruct Ev as [Ne [mid2 [Ev2 Ev3]]].
           simpl.
           pose proof (IHfuel _ _ _ Ev2) as IH2.
           pose proof (IHfuel _ _ _ Ev3) as IH3.
-          clear - IH2 IH3. state_calc var (word w).
-        * destruct Ev as [? ?]. subst *. clear. state_calc var (word w).
+          clear - IH2 IH3. state_calc.
+        * destruct Ev as [? ?]. subst *. clear. state_calc.
       + apply invert_eval_SSeq in Ev.
         destruct Ev as [mid [Ev1 Ev2]]. simpl.
         pose proof (IHfuel _ _ _ Ev1) as IH1.
         pose proof (IHfuel _ _ _ Ev2) as IH2.
-        clear - IH1 IH2. state_calc var (word w).
-      + simpl. inversionss. state_calc var (word w).
+        clear - IH1 IH2. state_calc.
+      + simpl. inversionss. state_calc.
   Qed.
 
 End ExprImp.
 
+
+
+Module TestExprImp.
+
+Instance ZName: NameWithEq := {| name := Z |}.
+
+Definition var: Set := (@name ZName). (* only inside this test module *)
 
 (*
 given x, y, z
@@ -240,10 +249,8 @@ Definition isRight(x y z: word 16) :=
                                           (EOp OTimes (EVar _b) (EVar _b)))
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
-Definition eval_stmt' := @eval_stmt 16 16 0 eq_refl Z _ _.
-
 Definition run_isRight(x y z: word 16): option (word 16) :=
-  finalSt <- (eval_stmt' 10 empty (isRight x y z));
+  finalSt <- (eval_stmt 10 empty (isRight x y z));
   get finalSt _isRight.
 
 Goal run_isRight $3 $4 $5 = Some $1. reflexivity. Qed.
@@ -253,4 +260,4 @@ Goal run_isRight $5 $3 $5 = Some $0. reflexivity. Qed.
 Goal run_isRight $5 $3 $4 = Some $1. reflexivity. Qed.
 Goal run_isRight $12 $13 $5 = Some $1. reflexivity. Qed.
 
-
+End TestExprImp.
