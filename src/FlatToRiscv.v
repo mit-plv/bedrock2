@@ -633,9 +633,33 @@ Section FlatToRiscv.
      intros. rewrite sext_neg_natToWord0 by assumption. rewrite e. apply natcast_same.
    Qed.
 
+  Lemma natToWord_times2: forall sz x,
+    ((natToWord sz x)~0)%word = natToWord (S sz) (2 * x).
+  Proof.
+    intros. unfold natToWord. fold natToWord. f_equal.
+    - symmetry. apply mod2_double.
+    - rewrite div2_double. reflexivity.
+  Qed.
+
   Lemma lossless_shl_natToWord: forall sz n d,
     lossless_shl (natToWord sz n) d = natToWord (d + sz) (pow2 d * n).
-  Admitted.
+  Proof.
+    intros. induction d.
+    - unfold lossless_shl.
+      rewrite combine_0_n.
+      simpl.
+      f_equal.
+      omega.
+    - unfold lossless_shl in *.
+      change (pow2 (S d) * n) with (2 * pow2 d * n).
+      rewrite <- Nat.mul_assoc.
+      change ((S d) + sz) with (S (d + sz)) in *.
+      rewrite <- natToWord_times2.
+      simpl.
+      fold natToWord.
+      f_equal.
+      exact IHd.
+  Qed.
 
   Lemma lossless_shl_neg_natToWord: forall sz n d,
     lossless_shl (wneg (natToWord sz n)) d = wneg (natToWord (d + sz) (pow2 d * n)).
