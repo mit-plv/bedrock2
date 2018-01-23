@@ -211,18 +211,6 @@ Section FlatToRiscv.
     t = (a, b) -> a = fst t /\ b = snd t.
   Proof. intros. destruct t. inversionss. auto. Qed.
 
-  (* alternative way of saying "exists fuel, run fuel initial = final /\ P final" 
-  Inductive runsToSatisfying
-    (initial: @RiscvMachine wlit wdiff var)
-    (P: @RiscvMachine wlit wdiff var -> Prop)
-  : Prop :=
-    | runsToDone:
-       P initial ->
-       runsToSatisfying initial P
-    | runsToStep:
-       runsToSatisfying (execState (run1 (w_lbound := w_lbound)) initial) P ->
-       runsToSatisfying initial P.*)
-
   Definition runsToSatisfying: RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
     runsTo RiscvMachine (execState run1).
 
@@ -253,26 +241,6 @@ Section FlatToRiscv.
     unfold run.
     pose proof (runsToSatisfying_exists_fuel _ _ initial P R) as F.
   Abort.
-
-(*
-  Lemma runsToSatisfying_trans: forall P Q initial,
-    runsToSatisfying initial P ->
-    (forall middle, P middle -> runsToSatisfying middle Q) ->
-    runsToSatisfying initial Q.
-  Proof.
-    introv R1. induction R1; introv R2; [solve [auto]|].
-    apply runsToStep. apply IHR1. apply R2.
-  Qed.
-
-  Lemma runsToSatisfying_imp: forall (P Q : RiscvMachine -> Prop) initial,
-    runsToSatisfying initial P ->
-    (forall final, P final -> Q final) ->
-    runsToSatisfying initial Q.
-  Proof.
-    introv R1 R2. eapply runsToSatisfying_trans; [eassumption|].
-    intros final Pf. apply runsToDone. auto.
-  Qed.
-*)
 
   Lemma execute_preserves_instructionMem: forall inst initial,
     (snd (execute inst initial)).(instructionMem) = initial.(instructionMem).
@@ -490,38 +458,6 @@ Section FlatToRiscv.
         * simpl. apply lt_n_S. apply IHa. omega.
   Qed.
 
-(*
-  Lemma div2_compat_lt_r: forall a b, 2 * a < b -> a <= Nat.div2 b.
-  Proof.
-    induction a; intros.
-    - omega.
-  Admitted.
-
-  Goal forall a b, a = 2 -> b = 3 ->
-    Nat.div2 (2 * a - b) = a - Nat.div2 b. intros. subst. simpl.
-  Abort.
-
-  Lemma div2_2_minus: forall a b,
-    Nat.div2 (2 * a - b) = a - Nat.div2 b.
-  Proof.
-    intros. remember (2 * a - b) as c. revert dependent b. revert a. revert c.
-    change (forall c,
-      (fun c => forall a b, c = 2 * a - b -> Nat.div2 c = a - Nat.div2 b) c).
-    apply strong.
-    intros c IH a b E.
-    destruct c.
-    - simpl. assert (b = 2 * a \/ 2 * a < b) as C by omega.
-      destruct C.
-      + subst b. rewrite Div2.div2_double. omega.
-      + apply div2_compat_r in H. omega.
-    - destruct c.
-      + simpl. assert (S b = 2 * a \/ 2 * a < b) as C by omega.
-        destruct C.
-        * destruct a; [discriminate|]. assert (b = 2 * a + 1) by omega. subst b.
-    induction a; intros.
-  Abort.
-*)
-
   Lemma minus_minus: forall a b c,
     c <= b <= a ->
     a - (b - c) = a - b + c.
@@ -675,12 +611,6 @@ Section FlatToRiscv.
       + rewrite wordToNat_natToWord_idempotent' by omega.
         simpl. omega.
   Qed.
-
-(*
-  Lemma wneg_wnot_natToWord: forall sz a,
-    wneg (natToWord sz (S a)) = wnot (natToWord sz a).
-  Admitted.
-*)
 
   Lemma natcast_same: forall (s: nat) (n: word s),
     nat_cast word eq_refl n = n.
