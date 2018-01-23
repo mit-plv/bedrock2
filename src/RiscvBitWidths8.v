@@ -8,9 +8,11 @@ Require Import compiler.RiscvBitWidths.
 
 Instance RiscvBitWidths8: RiscvBitWidths := {|
   wXLEN := 8;
+  log2wXLEN := 3;
   wInstr := 8;
   wimm := 3;
   wupper := 5;
 |}.
+  all: try reflexivity.
   all: abstract omega.
 Defined.

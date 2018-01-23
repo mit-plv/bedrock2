@@ -47,15 +47,66 @@ Section FlatToRiscv.
     | OAnd => [And rd rs1 rs2]
     end.
 
+  (* TODO: to support loading 64-bit literals, either allow additional fresh register,
+   so that we can use LUI twice, or chop literal into chunks of size wimm and alternate between
+   ADDI and SLLI *)
+  Fixpoint splitn_fit{n sz: nat}(v: word (n * sz)): list (word sz) :=
+    match n as n0 return (word (n0 * sz) -> list (word sz)) with
+    | 0 =>
+        fun _ : word (0 * sz) => []
+    | S n0 =>
+        fun v0 : word (S n0 * sz) => split1 sz (n0 * sz) v0 :: splitn_fit (split2 sz (n0 * sz) v0)
+    end v.
+
+(*
+  Fixpoint splitn_fit{n sz: nat}(v: word (n * sz)): list (word sz).
+    destruct n.
+    - exact [].
+    - simpl in v.
+      apply ((split1 sz (n * sz) v) :: splitn_fit _ _ (split2 sz (n * sz) v)).
+*)
+
+  Definition splitn{sz sz'}(v: word sz): (word (Nat.modulo sz sz') * list (word sz')).
+    simple refine (
+      let v' := nat_cast _ _ v in
+      (split1 (sz mod sz') (sz - sz mod sz') v',
+       splitn_fit (n := sz/sz') (nat_cast _ _ (split2 (sz mod sz') (sz - sz mod sz') v')))).
+  Abort.
+
   Definition compile_lit(x: var)(v: word wXLEN): list Instruction.
     simple refine (
+      let rd := var2Register x in
       let lobits := split2 (wXLEN - wimm) wimm (nat_cast word _ v) in
       if dec (nat_cast word _ (sext lobits (wXLEN - wimm)) = v)
-      then [Addi (var2Register x) RegO lobits]
-      else [] (* <-- TODO use LUI and if wXLEN is > than wInstr (64bit) and v > 2^32, 
+      then [Addi rd RegO lobits]
+      else
+        let hibits := split1 wupper (wXLEN - wupper) (nat_cast word _ v) in
+        [Lui rd hibits; Addi rd rd lobits]
+    ); abstract (pose proof w_eq; pose proof wXLEN_lbound; omega).
+  Defined.
+
+(*
+  Definition compile_lit(x: var)(v: word wXLEN): list Instruction.
+    simple refine (
+      let rd := var2Register x in
+      let lobits := split2 (wXLEN - wimm) wimm (nat_cast word _ v) in
+      if dec (nat_cast word _ (sext lobits (wXLEN - wimm)) = v)
+      then [Addi rd RegO lobits]
+      else
+        let hibits := split1 wupper (wXLEN - wupper) (nat_cast word _ v) in
+        if dec (42 = 42)
+        then [Lui rd hibits; Addi rd rd lobits]
+        else 
+          let in
+          [Lui rd bits3; Addi rd rd bits2; Slli rd rd $wInstr; Lui rd (* can't do LUI again
+          without requiring helper register! *)]
+      
+      
+       [] (* <-- TODO use LUI and if wXLEN is > than wInstr (64bit) and v > 2^32, 
                  combine with shift *)
     ); abstract (pose proof w_eq; pose proof wXLEN_lbound; omega).
   Defined.
+*)
 
   (* using the same names (var) in source and target language *)
   Fixpoint compile_stmt(s: @stmt wXLEN Name): list (Instruction) :=
@@ -695,6 +746,12 @@ Section FlatToRiscv.
       exact IHd.
   Qed.
 
+  Lemma reassemble_split_into_wupper_and_wimm: forall v e1 e2,
+    upper_imm_to_word (split1 wupper (wXLEN - wupper) (nat_cast word e1 v))
+    ^+ signed_imm_to_word (split2 (wXLEN - wimm) wimm (nat_cast word e2 v)) = v.
+  Proof.
+  Admitted.
+
   Definition evalH := eval_stmt (w := wXLEN).
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
@@ -769,7 +826,25 @@ Section FlatToRiscv.
       apply nat_cast_proof_irrel.
       }
       {
-      admit. (* TODO exclude this with a hypothesis, later properly implement it in compile_lit *)
+      destruct_containsProgram.
+      destruct initialL as [initialProg initialRegs initialPc].
+      apply runsToStep.
+      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
+      simpl_run1.
+      simpl in Cp0.
+      rewrite Cp0. simpl.
+      subst runsToRest.
+      apply runsToStep.
+      simpl_run1.
+      simpl in Cp1.
+      progress rewrite Cp1. simpl.
+      apply runsToDone.
+      destruct (dec (x = x)); [|contradiction].
+      rewrite regs_overwrite.
+      split.
+      + eapply containsState_put; [ eassumption |].
+        apply reassemble_split_into_wupper_and_wimm.
+      + unfold compile_lit. rewrite E. simpl. solve_word_eq.
       }
     - (* SOp *)
       simpl in C. subst *.

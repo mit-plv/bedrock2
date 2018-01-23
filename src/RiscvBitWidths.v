@@ -1,10 +1,14 @@
 Require Import Coq.omega.Omega.
+Require Import bbv.NatLib.
 
 Class RiscvBitWidths := mkRiscvBitWidths {
   (* ``There are 31 general-purpose registers x1-x31, which hold integer values. Register x0 is
      hardwired to the constant 0. [...] This document uses the term XLEN to refer to the current
      width of an x register in bits (either 32 or 64).'' *)
   wXLEN: nat;
+
+  log2wXLEN: nat;
+  log2wXLEN_spec: pow2 log2wXLEN = wXLEN;
 
   (* Bit width of an instruction, will be 32 *)
   wInstr: nat;
@@ -29,6 +33,8 @@ Class RiscvBitWidths := mkRiscvBitWidths {
 
   wXLEN_lbound: wXLEN >= wInstr;
 
+  (* This prevents 64bit. TODO remove this and make sure literal loading still works. *)
+  wXLEN_wInstr: wXLEN = wInstr;
 }.
 
 Ltac bitwidth_omega :=
