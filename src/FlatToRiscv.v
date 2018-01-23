@@ -661,12 +661,39 @@ Section FlatToRiscv.
       exact IHd.
   Qed.
 
+  Lemma wneg_WS_0: forall (sz: nat) (n: word sz),
+    wneg (WS false n) = WS false (wneg n).
+  Proof.
+    intros.
+    unfold wneg.
+    unfold wordToN at 1. fold wordToN.
+    rewrite N.double_spec.
+    unfold Npow2. fold Npow2.
+    rewrite <- N.mul_sub_distr_l.
+    destruct (Npow2 sz - wordToN n)%N; reflexivity.
+  Qed.
+
   Lemma lossless_shl_neg_natToWord: forall sz n d,
     lossless_shl (wneg (natToWord sz n)) d = wneg (natToWord (d + sz) (pow2 d * n)).
-  Proof. (* by example *)
-    intros. assert (sz = 4) by admit. assert (n = 5) by admit. assert (d = 2) by admit.
-    subst. reflexivity.
-  Admitted.
+  Proof.
+    intros. induction d.
+    - unfold lossless_shl.
+      rewrite combine_0_n.
+      simpl.
+      f_equal. f_equal.
+      omega.
+    - unfold lossless_shl in *.
+      change (pow2 (S d) * n) with (2 * pow2 d * n).
+      rewrite <- Nat.mul_assoc.
+      change ((S d) + sz) with (S (d + sz)) in *.
+      rewrite <- natToWord_times2.
+      simpl.
+      fold natToWord.
+      f_equal.
+      rewrite wneg_WS_0.
+      f_equal.
+      exact IHd.
+  Qed.
 
   Definition evalH := eval_stmt (w := wXLEN).
 
