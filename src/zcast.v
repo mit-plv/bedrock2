@@ -101,6 +101,16 @@ Proof.
   - rewrite IHn. reflexivity.
 Qed. (* thx Clement *)
 
+Lemma nat_cast_proof_irrel: forall (P : nat -> Type),
+  forall (n m : nat)  (e1 e2: n = m) (pn: P n),
+  nat_cast P e1 pn = nat_cast P e2 pn.
+Proof.
+  destruct e1.
+  revert dependent P; induction n; simpl; intros.
+  - reflexivity.
+  - erewrite IHn. reflexivity.
+Qed.
+
 Require Import Omega.
 
 (* This function implements the following expression:

@@ -71,7 +71,7 @@ Section Riscv.
   Goal lossless_shl (WO~0~1~1~0~1)%word 4 = (WO~0~1~1~0~1~0~0~0~0)%word. reflexivity. Qed.
 
   Definition signed_imm_to_word(v: word wimm): word wXLEN.
-    refine (nat_cast word _ (sext v (wupper + wXLEN - wInstr))). bitwidth_omega.
+    refine (nat_cast word _ (sext v (wXLEN - wimm))). bitwidth_omega.
   Defined.
 
   Definition signed_jimm_to_word(v: word wupper): word wXLEN.

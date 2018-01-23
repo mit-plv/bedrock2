@@ -50,7 +50,7 @@ Section FlatToRiscv.
   Definition compile_lit(x: var)(v: word wXLEN): list Instruction.
     simple refine (
       let lobits := split2 (wXLEN - wimm) wimm (nat_cast word _ v) in
-      if weqb (nat_cast word _ (sext lobits (wXLEN - wimm))) v
+      if dec (nat_cast word _ (sext lobits (wXLEN - wimm)) = v)
       then [Addi (var2Register x) RegO lobits]
       else [] (* <-- TODO use LUI and if wXLEN is > than wInstr (64bit) and v > 2^32, 
                  combine with shift *)
@@ -764,7 +764,9 @@ Section FlatToRiscv.
       rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
       eapply containsState_put; [eassumption|].
       rewrite wplus_unit.
-      admit. (* TODO should follow from E *)
+      unfold signed_imm_to_word.
+      etransitivity. 2: exact e.
+      apply nat_cast_proof_irrel.
       }
       {
       admit. (* TODO exclude this with a hypothesis, later properly implement it in compile_lit *)
