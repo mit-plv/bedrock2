@@ -81,7 +81,11 @@ Section FlatToRiscv.
       then [Addi rd RegO lobits]
       else
         let hibits := split1 wupper (wXLEN - wupper) (nat_cast word _ v) in
-        [Lui rd hibits; Addi rd rd lobits]
+        if wmsb lobits false
+        (* Xori will sign-extend lobits with 1s, therefore wnot *)
+        then [Lui rd (wnot hibits); Xori rd rd lobits]
+        (* Xori will sign-extend lobits with 0s *)
+        else [Lui rd hibits; Xori rd rd lobits]
     ); abstract (pose proof w_eq; pose proof wXLEN_lbound; omega).
   Defined.
 
@@ -139,7 +143,9 @@ Section FlatToRiscv.
   Proof.
     induction s; simpl; try destruct op; simpl;
     repeat (rewrite app_length; simpl); try omega.
-    unfold compile_lit. destruct_one_match; simpl; omega.
+    unfold compile_lit.
+    destruct_one_match; simpl; [omega|].
+    destruct_one_match; simpl; omega.
   Qed.
 
   Definition containsProgram(m: RiscvMachine)(program: list Instruction)(offset: word wXLEN) :=
@@ -746,12 +752,6 @@ Section FlatToRiscv.
       exact IHd.
   Qed.
 
-  Lemma reassemble_split_into_wupper_and_wimm: forall v e1 e2,
-    upper_imm_to_word (split1 wupper (wXLEN - wupper) (nat_cast word e1 v))
-    ^+ signed_imm_to_word (split2 (wXLEN - wimm) wimm (nat_cast word e2 v)) = v.
-  Proof.
-  Admitted.
-
   Definition evalH := eval_stmt (w := wXLEN).
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
@@ -826,6 +826,8 @@ Section FlatToRiscv.
       apply nat_cast_proof_irrel.
       }
       {
+      destruct_one_match_hyp.
+      {
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
       apply runsToStep.
@@ -843,8 +845,30 @@ Section FlatToRiscv.
       rewrite regs_overwrite.
       split.
       + eapply containsState_put; [ eassumption |].
-        apply reassemble_split_into_wupper_and_wimm.
-      + unfold compile_lit. rewrite E. simpl. solve_word_eq.
+        admit.
+      + unfold compile_lit. rewrite E. rewrite E0. simpl. solve_word_eq.
+      }
+      {
+      destruct_containsProgram.
+      destruct initialL as [initialProg initialRegs initialPc].
+      apply runsToStep.
+      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
+      simpl_run1.
+      simpl in Cp0.
+      rewrite Cp0. simpl.
+      subst runsToRest.
+      apply runsToStep.
+      simpl_run1.
+      simpl in Cp1.
+      progress rewrite Cp1. simpl.
+      apply runsToDone.
+      destruct (dec (x = x)); [|contradiction].
+      rewrite regs_overwrite.
+      split.
+      + eapply containsState_put; [ eassumption |].
+        admit.
+      + unfold compile_lit. rewrite E. rewrite E0. simpl. solve_word_eq.
+      }
       }
     - (* SOp *)
       simpl in C. subst *.

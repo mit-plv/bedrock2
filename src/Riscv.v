@@ -30,6 +30,9 @@ Section Riscv.
     | Addi(rd: Register)(rs1: Register)(imm12: word wimm): Instruction
     | Slti(rd: Register)(rs1: Register)(imm12: word wimm): Instruction
     | Sltiu(rd: Register)(rs1: Register)(imm12: word wimm): Instruction
+    | Andi(rd: Register)(rs1: Register)(imm12: word wimm): Instruction
+    | Ori(rd: Register)(rs1: Register)(imm12: word wimm): Instruction
+    | Xori(rd: Register)(rs1: Register)(imm12: word wimm): Instruction
     | Slli(rd: Register)(rs1: Register)(shamt: word log2wXLEN): Instruction
     | Srli(rd: Register)(rs1: Register)(shamt: word log2wXLEN): Instruction
 (*  | Srai(rd: Register)(rs1: Register)(shamt: word log2wXLEN): Instruction *)
@@ -98,17 +101,6 @@ Section Riscv.
         x <- getRegister rs1;
         setRegister rd (x ^+ (signed_imm_to_word imm12))
 
-    (* ``SLLI is a logical left shift (zeros are shifted into the lower bits);
-       SRLI is a logical right shift (zeros are shifted into the upper bits); and SRAI is an
-       arithmetic right shift (the original sign bit is copied into the vacated upper bits).'' *)
-    | Slli rd rs1 shamt =>
-        x <- getRegister rs1;
-        setRegister rd (wlshift x (wordToNat shamt))
-    | Srli rd rs1 shamt =>
-        x <- getRegister rs1;
-        setRegister rd (wrshift x (wordToNat shamt))
- (* | Srai rd rs1 shamt => *)
-
     (* ``SLTI (set less than immediate) places the value 1 in register rd if register rs1 is
        less than the sign-extended immediate when both are treated as signed numbers, else 0 is
        written to rd.'' *)
@@ -121,6 +113,29 @@ Section Riscv.
     | Sltiu rd rs1 imm12 =>
         x <- getRegister rs1;
         setRegister rd (if wlt_dec x (signed_imm_to_word imm12) then $1 else $0)
+
+    (* ``ANDI, ORI, XORI are logical operations that perform bitwise AND, OR, and XOR on register
+       rs1 and the sign-extended 12-bit immediate and place the result in rd.'' *)
+    | Andi rd rs1 imm12 =>
+        x <- getRegister rs1;
+        setRegister rd (wand x (signed_imm_to_word imm12))
+    | Ori rd rs1 imm12 =>
+        x <- getRegister rs1;
+        setRegister rd (wor x (signed_imm_to_word imm12))
+    | Xori rd rs1 imm12 =>
+        x <- getRegister rs1;
+        setRegister rd (wxor x (signed_imm_to_word imm12))
+
+    (* ``SLLI is a logical left shift (zeros are shifted into the lower bits);
+       SRLI is a logical right shift (zeros are shifted into the upper bits); and SRAI is an
+       arithmetic right shift (the original sign bit is copied into the vacated upper bits).'' *)
+    | Slli rd rs1 shamt =>
+        x <- getRegister rs1;
+        setRegister rd (wlshift x (wordToNat shamt))
+    | Srli rd rs1 shamt =>
+        x <- getRegister rs1;
+        setRegister rd (wrshift x (wordToNat shamt))
+ (* | Srai rd rs1 shamt => *)
 
     (* RV32I: ``LUI (load upper immediate) is used to build 32-bit constants and uses the U-type
        format. LUI places the U-immediate value in the top 20 bits of the destination register rd,
