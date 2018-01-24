@@ -73,14 +73,18 @@ Section FlatToRiscv.
        splitn_fit (n := sz/sz') (nat_cast _ _ (split2 (sz mod sz') (sz - sz mod sz') v')))).
   Abort.
 
+  Definition split_upper(szU szL : nat): word (szL + szU) -> word szU := split2 szL szU.
+
+  Definition split_lower(szU szL : nat): word (szL + szU) -> word szL := split1 szL szU.
+
   Definition compile_lit(x: var)(v: word wXLEN): list Instruction.
     simple refine (
       let rd := var2Register x in
-      let lobits := split2 (wXLEN - wimm) wimm (nat_cast word _ v) in
+      let lobits := split_lower (wXLEN - wimm) wimm (nat_cast word _ v) in
       if dec (nat_cast word _ (sext lobits (wXLEN - wimm)) = v)
       then [Addi rd RegO lobits]
       else
-        let hibits := split1 wupper (wXLEN - wupper) (nat_cast word _ v) in
+        let hibits := split_upper wupper (wXLEN - wupper) (nat_cast word _ v) in
         if wmsb lobits false
         (* Xori will sign-extend lobits with 1s, therefore wnot *)
         then [Lui rd (wnot hibits); Xori rd rd lobits]
@@ -755,19 +759,32 @@ Section FlatToRiscv.
       simpl; rewrite combine_n_0; rewrite <- nat_cast_eq_rect; apply nat_cast_proof_irrel.
   Qed.
 
-  Lemma reassemble_literal_ext0: forall wupper1 wlower1 wupper2 wlower2 wlower3 wAll (v: word wAll)
+  Lemma reassemble_literal_ext0: forall wup1 wlo1 wup2 wlo2 wlo3 wAll (v: word wAll)
     e1 e2 e3 e4,
-    wupper1 = wupper2 ->
-    wlower1 = wlower2 ->
-    wlower2 = wlower3 ->
-    wmsb (split2 wupper2 wlower2 (nat_cast word e3 v)) false = false ->
-    wxor (nat_cast word e1 (lossless_shl (split1 wupper1 wlower1 (nat_cast word e4 v)) wlower3))
-         (nat_cast word e2 (sext (split2 wupper2 wlower2 (nat_cast word e3 v)) wupper2)) = v.
+    wup1 = wup2 ->
+    wlo1 = wlo2 ->
+    wlo2 = wlo3 ->
+    wmsb (split_lower wup2 wlo2 (nat_cast word e3 v)) false = false ->
+    wxor (nat_cast word e1 (lossless_shl (split_upper wup1 wlo1 (nat_cast word e4 v)) wlo3))
+         (nat_cast word e2 (sext (split_lower wup2 wlo2 (nat_cast word e3 v)) wup2)) = v.
   Proof.
     intros.
     unfold lossless_shl, sext, wxor.
     rewrite H2.
-  Admitted.
+    subst wlo3 wlo2 wup2.
+    rewrite nat_cast_proof_irrel with (e1 := e2) (e2 := e1). clear e2.
+    rewrite nat_cast_eq_rect with (e := e1).
+    rewrite nat_cast_eq_rect with (e := e1).
+    rewrite <- eq_rect_bitwp'.
+    rewrite <- combine_bitwp.
+    fold wxor. rewrite wxor_wzero. rewrite wxor_comm. rewrite wxor_wzero.
+    rewrite nat_cast_proof_irrel with (e1 := e4) (e2 := e3). clear e4.
+    unfold split_lower, split_upper.
+    rewrite Word.combine_split.
+    destruct e1. simpl.
+    rewrite nat_cast_proof_irrel with (e1 := e3) (e2 := eq_refl).
+    apply nat_cast_same.
+  Qed.
 
   Definition evalH := eval_stmt (w := wXLEN).
 
