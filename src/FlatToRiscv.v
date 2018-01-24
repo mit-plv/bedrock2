@@ -1242,11 +1242,14 @@ Section FlatToRiscv.
       + apply E.
       + subst insts. apply initialRiscvMachine_containsProgram.
         change (stmt_not_too_big s) in B.
-        admit. (* TODO
-        pose proof (pow2le wimm wXLEN wimm_lbound).
-        pose proof (pow2le wjimm w (proj2 wjimm_bound)).
+        assert (2 * pow2 wimm < pow2 wXLEN). {
+          clear. destruct Bw. unfold RiscvBitWidths.wimm, RiscvBitWidths.wXLEN.
+          destruct wXLEN; [omega|].
+          simpl_pow2.
+          pose proof (pow2_inc wimm wXLEN).
+          omega.
+        }
         solve_length_compile_stmt.
-        *)
       + apply every_state_contains_empty_state.
       + reflexivity.
     - intros.
@@ -1257,6 +1260,6 @@ Section FlatToRiscv.
       + specialize (H _ eq_refl).
         simpl in Q. unfold id in Q. simpl in *. congruence.
       + discriminate.
-  Admitted.
+  Qed.
 
 End FlatToRiscv.

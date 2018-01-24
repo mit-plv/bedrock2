@@ -56,7 +56,6 @@ Definition fib_H_res(fuel: nat)(n: word wXLEN): option (word wXLEN) :=
   | None => None
   end.
 
-(* Eval vm_compute in (fib_H_res 100 $5). *)
 
 Goal fib_H_res 20 $0 = Some $1. reflexivity. Qed.
 Goal fib_H_res 20 $1 = Some $1. reflexivity. Qed.
@@ -67,6 +66,7 @@ Goal fib_H_res 20 $5 = Some $8. reflexivity. Qed.
 Goal fib_H_res 20 $6 = Some $13. reflexivity. Qed.
 
 
+(* exprImp2Riscv is the main compilation function *)
 Definition fib_riscv0(n: word wXLEN): list Instruction :=
   exprImp2Riscv (fib_ExprImp n).
 
@@ -95,14 +95,12 @@ Definition fib6_L_res(fuel: nat): word wXLEN :=
 Transparent wlt_dec.
 
 (* 1st method: Run it *)
-Goal exists fuel, fib6_L_res fuel = $13.
-  exists 200. cbv.
-  (* TODO compiler has bugs because it's not proven correct
-     If debugging, might need to change bitwidth to make cbv work *)
-Abort.
+Lemma fib6_L_res_is_13_by_running_it: exists fuel, fib6_L_res fuel = $13.
+  exists 200. cbv. reflexivity.
+Qed.
 
-(* 2nd method: Prove it *)
-Goal exists fuel, fib6_L_res fuel = $13.
+(* 2nd method: Prove it without running it, but using the compiler correctness theorem *)
+Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   unfold fib6_L_res. unfold fib6_L_final.
   pose proof @exprImp2Riscv_correct as P.
   assert (exists finalH, evalH 20 empty (fib_ExprImp $ (6)) = Some finalH) as F. {
