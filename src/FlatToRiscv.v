@@ -786,6 +786,38 @@ Section FlatToRiscv.
     apply nat_cast_same.
   Qed.
 
+  Lemma reassemble_literal_ext1: forall wup1 wlo1 wup2 wlo2 wlo3 wAll (v: word wAll)
+    e1 e2 e3 e4,
+    wup1 = wup2 ->
+    wlo1 = wlo2 ->
+    wlo2 = wlo3 ->
+    wmsb (split_lower wup2 wlo2 (nat_cast word e3 v)) false = true ->
+    wxor (nat_cast word e1 (lossless_shl (wnot (split_upper wup1 wlo1 (nat_cast word e4 v))) wlo3))
+         (nat_cast word e2 (sext (split_lower wup2 wlo2 (nat_cast word e3 v)) wup2)) = v.
+  Proof.
+    intros.
+    unfold lossless_shl, sext, wxor.
+    rewrite H2.
+    subst wlo3 wlo2 wup2.
+    rewrite nat_cast_proof_irrel with (e1 := e2) (e2 := e1). clear e2.
+    rewrite nat_cast_eq_rect with (e := e1).
+    rewrite nat_cast_eq_rect with (e := e1).
+    rewrite <- eq_rect_bitwp'.
+    rewrite <- combine_bitwp.
+    fold wxor. rewrite wxor_wzero. rewrite wxor_comm.
+    rewrite <- wxor_wones.
+    rewrite wxor_assoc.
+    rewrite wxor_wones.
+    rewrite wnot_ones.
+    rewrite wxor_wzero.
+    rewrite nat_cast_proof_irrel with (e1 := e4) (e2 := e3). clear e4.
+    unfold split_lower, split_upper.
+    rewrite Word.combine_split.
+    destruct e1. simpl.
+    rewrite nat_cast_proof_irrel with (e1 := e3) (e2 := eq_refl).
+    apply nat_cast_same.
+  Qed.
+
   Definition evalH := eval_stmt (w := wXLEN).
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
@@ -879,8 +911,14 @@ Section FlatToRiscv.
       rewrite regs_overwrite.
       split.
       + eapply containsState_put; [ eassumption |].
-        clear -E0.
-        admit.
+        clear -E0 Name state stateMap.
+        unfold upper_imm_to_word, signed_imm_to_word.
+        assert (wXLEN - wInstr = 0) as Eq0 by (clear; bitwidth_omega).
+        rewrite sext0 with (e := Eq0).
+        rewrite nat_cast_fuse.
+        pose proof reassemble_literal_ext1 as P.
+        specialize P with (4 := E0).
+        apply P; (clear; bitwidth_omega).
       + unfold compile_lit. rewrite E. rewrite E0. simpl. solve_word_eq.
       }
       {
@@ -1167,7 +1205,7 @@ Section FlatToRiscv.
     - (* SSkip *)
       simpl in C. subst *. apply runsToDone. split; [assumption|].
       destruct initialL. simpl. solve_word_eq.
-  Admitted.
+  Qed.
 
   Lemma every_state_contains_empty_state: forall s,
     containsState s empty.
