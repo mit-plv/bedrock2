@@ -669,25 +669,19 @@ Section FlatToRiscv.
         simpl. omega.
   Qed.
 
-  Lemma natcast_same: forall (s: nat) (n: word s),
-    nat_cast word eq_refl n = n.
-  Proof.
-    intros. rewrite nat_cast_eq_rect. reflexivity.
-  Qed.
-
   Lemma sext_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
     2 * n < pow2 sz1 ->
     nat_cast word e (sext (natToWord sz1 n) sz2) = natToWord sz n.
   Proof.
     intros. rewrite sext_natToWord0 by assumption. rewrite e.
-    apply natcast_same.
+    apply nat_cast_same.
   Qed.
 
    Lemma sext_neg_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
      2 * n < pow2 sz1 ->
      nat_cast word e (sext (wneg (natToWord sz1 n)) sz2) = wneg (natToWord sz n).
    Proof.
-     intros. rewrite sext_neg_natToWord0 by assumption. rewrite e. apply natcast_same.
+     intros. rewrite sext_neg_natToWord0 by assumption. rewrite e. apply nat_cast_same.
    Qed.
 
   Lemma natToWord_times2: forall sz x,
@@ -750,6 +744,15 @@ Section FlatToRiscv.
       rewrite wneg_WS_0.
       f_equal.
       exact IHd.
+  Qed.
+
+  Lemma sext0: forall sz0 sz (v: word sz) (e: sz0 = 0),
+    sext v sz0 = nat_cast word (eq_ind_r (fun sz0 : nat => sz = sz + sz0) (plus_n_O sz) e) v.
+  Proof.
+    intros. subst.
+    unfold sext.
+    destruct_one_match;
+      simpl; rewrite combine_n_0; rewrite <- nat_cast_eq_rect; apply nat_cast_proof_irrel.
   Qed.
 
   Definition evalH := eval_stmt (w := wXLEN).
@@ -845,6 +848,7 @@ Section FlatToRiscv.
       rewrite regs_overwrite.
       split.
       + eapply containsState_put; [ eassumption |].
+        clear -E0.
         admit.
       + unfold compile_lit. rewrite E. rewrite E0. simpl. solve_word_eq.
       }
@@ -866,6 +870,13 @@ Section FlatToRiscv.
       rewrite regs_overwrite.
       split.
       + eapply containsState_put; [ eassumption |].
+        clear -E0.
+        unfold upper_imm_to_word, signed_imm_to_word.
+        assert (wXLEN - wInstr = 0) as Eq0 by (clear; bitwidth_omega).
+        rewrite sext0 with (e := Eq0).
+        rewrite nat_cast_fuse.
+ (* Notation "{ pn }" := (@nat_cast word _ _ _ pn). *)
+ (* Notation "{ n --> m } pn" := (@nat_cast word n m _ pn) (at level 20). *)
         admit.
       + unfold compile_lit. rewrite E. rewrite E0. simpl. solve_word_eq.
       }

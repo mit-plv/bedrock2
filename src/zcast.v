@@ -111,6 +111,22 @@ Proof.
   - erewrite IHn. reflexivity.
 Qed.
 
+Lemma nat_cast_same: forall (P: nat -> Type) (s: nat) (n: P s),
+  nat_cast P eq_refl n = n.
+Proof.
+  intros. rewrite nat_cast_eq_rect. reflexivity.
+Qed.
+
+Lemma nat_cast_fuse: forall (P: nat -> Type) (n1 n2 n3: nat) (e12: n1 = n2) (e23: n2 = n3) (x: P n1),
+  nat_cast P e23 (nat_cast P e12 x) = nat_cast P (eq_trans e12 e23) x.
+Proof.
+  destruct e12.
+  destruct e23.
+  intros.
+  rewrite nat_cast_same.
+  reflexivity.
+Qed.
+
 Require Import Omega.
 
 (* This function implements the following expression:
