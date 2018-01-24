@@ -755,6 +755,20 @@ Section FlatToRiscv.
       simpl; rewrite combine_n_0; rewrite <- nat_cast_eq_rect; apply nat_cast_proof_irrel.
   Qed.
 
+  Lemma reassemble_literal_ext0: forall wupper1 wlower1 wupper2 wlower2 wlower3 wAll (v: word wAll)
+    e1 e2 e3 e4,
+    wupper1 = wupper2 ->
+    wlower1 = wlower2 ->
+    wlower2 = wlower3 ->
+    wmsb (split2 wupper2 wlower2 (nat_cast word e3 v)) false = false ->
+    wxor (nat_cast word e1 (lossless_shl (split1 wupper1 wlower1 (nat_cast word e4 v)) wlower3))
+         (nat_cast word e2 (sext (split2 wupper2 wlower2 (nat_cast word e3 v)) wupper2)) = v.
+  Proof.
+    intros.
+    unfold lossless_shl, sext, wxor.
+    rewrite H2.
+  Admitted.
+
   Definition evalH := eval_stmt (w := wXLEN).
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
@@ -870,14 +884,16 @@ Section FlatToRiscv.
       rewrite regs_overwrite.
       split.
       + eapply containsState_put; [ eassumption |].
-        clear -E0.
+        clear -E0 Name state stateMap.
         unfold upper_imm_to_word, signed_imm_to_word.
         assert (wXLEN - wInstr = 0) as Eq0 by (clear; bitwidth_omega).
         rewrite sext0 with (e := Eq0).
         rewrite nat_cast_fuse.
+        pose proof reassemble_literal_ext0 as P.
+        specialize P with (4 := E0).
+        apply P; (clear; bitwidth_omega).
  (* Notation "{ pn }" := (@nat_cast word _ _ _ pn). *)
  (* Notation "{ n --> m } pn" := (@nat_cast word n m _ pn) (at level 20). *)
-        admit.
       + unfold compile_lit. rewrite E. rewrite E0. simpl. solve_word_eq.
       }
       }
