@@ -190,6 +190,10 @@ Section Riscv.
         pc <- getPC;
         setRegister rd (pc ^+ $4);;
         setPC (pc ^+ (signed_jimm_to_word jimm20))
+    (* Note: The following is not yet implemented:
+       ``The JAL and JALR instructions will generate a misaligned instruction fetch exception
+       if the target address is not aligned to a four-byte boundary.''
+       Also applies to the branch instructions. *)
 
     (* ``All branch instructions use the B-type instruction format. The 12-bit B-immediate encodes
        signed offsets in multiples of 2, and is added to the current pc to give the target address.
