@@ -722,7 +722,6 @@ Section FlatToRiscv.
     intros.
     unfold wneg.
     unfold wordToN at 1. fold wordToN.
-    rewrite N.double_spec.
     unfold Npow2. fold Npow2.
     rewrite <- N.mul_sub_distr_l.
     destruct (Npow2 sz - wordToN n)%N; reflexivity.
@@ -1246,7 +1245,7 @@ Section FlatToRiscv.
           clear. destruct Bw. unfold RiscvBitWidths.wimm, RiscvBitWidths.wXLEN.
           destruct wXLEN; [omega|].
           simpl_pow2.
-          pose proof (pow2_inc wimm wXLEN).
+          pose proof (@pow2_inc wimm wXLEN).
           omega.
         }
         solve_length_compile_stmt.
