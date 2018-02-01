@@ -447,9 +447,16 @@ Section FlatToRiscv.
 
   Lemma sext_neg_natToWord: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
     2 * n < pow2 sz1 ->
+    eq_rect (sz1 + sz2) word (sext (wneg (natToWord sz1 n)) sz2) sz e = wneg (natToWord sz n).
+  Proof.
+    intros. rewrite sext_neg_natToWord0 by assumption. rewrite e. reflexivity.
+  Qed.
+
+  Lemma sext_neg_natToWord_nat_cast: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
+    2 * n < pow2 sz1 ->
     nat_cast word e (sext (wneg (natToWord sz1 n)) sz2) = wneg (natToWord sz n).
   Proof.
-    intros. rewrite sext_neg_natToWord0 by assumption. rewrite e. apply nat_cast_same.
+    intros. rewrite nat_cast_eq_rect. apply sext_neg_natToWord. assumption.
   Qed.
 
   Lemma natToWord_times2: forall sz x,
@@ -905,7 +912,7 @@ Section FlatToRiscv.
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
           unfold signed_jimm_to_word.
           rewrite lossless_shl_neg_natToWord.
-          rewrite sext_neg_natToWord.
+          rewrite sext_neg_natToWord_nat_cast.
           {
           clear.
           forget (length (compile_stmt s1)) as L1.
@@ -935,7 +942,7 @@ Section FlatToRiscv.
         remember (length (compile_stmt s1)) as L1.
         remember (length (compile_stmt s2)) as L2.
         rewrite lossless_shl_neg_natToWord.
-        rewrite sext_neg_natToWord.
+        rewrite sext_neg_natToWord_nat_cast.
         {
         rewrite <- ? wplus_assoc.
         f_equal.
