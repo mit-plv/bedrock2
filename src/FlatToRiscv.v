@@ -227,35 +227,15 @@ Section FlatToRiscv.
     apply P; auto.
   Qed.
 
-  Lemma initialRiscvMachine_containsProgram: forall p,
-    4 * (length p) < pow2 wXLEN ->
-    containsProgram (initialRiscvMachine p) p (pc (initialRiscvMachine p)).
-  Proof.
-    intros. unfold containsProgram, initialRiscvMachine.
-    intros.
-    cbv [pc instructionMem]. apply nth_error_nth.
-    match goal with
-    | H: nth_error _ ?i1 = _ |- nth_error _ ?i2 = _ => replace i2 with i1; [assumption|]
-    end.
-    rewrite wplus_unit.
-    rewrite <- natToWord_mult.
-    rewrite wordToNat_natToWord_idempotent'.
-    - symmetry. apply mul_div_undo. auto.
-    - assert (i < length p). {
-        apply nth_error_Some. intro. congruence.
-      }
-      omega.
-  Qed.
-
-  Lemma containsState_put: forall prog1 prog2 pc1 pc2 initialH initialRegs x v1 v2,
-    containsState (mkRiscvMachine prog1 initialRegs pc1) initialH ->
+  Lemma containsState_put: forall prog1 prog2 pc1 pc2 eh1 eh2 initialH initialRegs x v1 v2,
+    containsState (mkRiscvMachine prog1 initialRegs pc1 eh1) initialH ->
     v1 = v2 ->
     containsState (mkRiscvMachine prog2 
       (fun reg2 : var =>
                if dec (x = reg2)
                then v1
                else initialRegs reg2)
-       pc2)
+       pc2 eh2)
      (put initialH x v2).
   Proof.
     unfold containsState. intros. simpl.
@@ -1214,21 +1194,42 @@ Section FlatToRiscv.
     intros. rewrite empty_is_empty in H. discriminate.
   Qed.
 
-  Definition evalL(fuel: nat)(insts: list Instruction): RiscvMachine :=
-    execState (run fuel) (initialRiscvMachine insts).
+  Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
+    execState (run fuel) (putProgram insts initial).
 
-  Lemma compile_stmt_correct: forall fuelH finalH s insts,
+  Lemma putProgram_containsProgram: forall p initial,
+    4 * (length p) < pow2 wXLEN ->
+    containsProgram (putProgram p initial) p (pc (putProgram p initial)).
+  Proof.
+    intros. unfold containsProgram, putProgram.
+    intros.
+    destruct initial as [imem regs pc0 eh].
+    cbv [pc instructionMem]. apply nth_error_nth.
+    match goal with
+    | H: nth_error _ ?i1 = _ |- nth_error _ ?i2 = _ => replace i2 with i1; [assumption|]
+    end.
+    rewrite wplus_unit.
+    rewrite <- natToWord_mult.
+    rewrite wordToNat_natToWord_idempotent'.
+    - symmetry. apply mul_div_undo. auto.
+    - assert (i < length p). {
+        apply nth_error_Some. intro. congruence.
+      }
+      omega.
+  Qed.
+
+  Lemma compile_stmt_correct: forall fuelH finalH s insts initialL,
     stmt_size s * 16 < pow2 wimm ->
     compile_stmt s = insts ->
     evalH fuelH empty s = Success finalH ->
     exists fuelL,
       forall resVar res,
       get finalH resVar = Some res ->
-      (evalL fuelL insts).(registers) resVar = res.
+      (evalL fuelL insts initialL).(registers) resVar = res.
   Proof.
     introv B C E.
     pose proof runsToSatisfying_exists_fuel_old as Q.
-    specialize (Q (initialRiscvMachine insts)
+    specialize (Q (putProgram insts initialL)
       (fun finalL => forall resVar res,
        get finalH resVar = Some res ->
        finalL.(registers) resVar = res)).
@@ -1240,7 +1241,7 @@ Section FlatToRiscv.
       + reflexivity.
       + assumption.
       + apply E.
-      + subst insts. apply initialRiscvMachine_containsProgram.
+      + subst insts. apply putProgram_containsProgram.
         change (stmt_not_too_big s) in B.
         assert (2 * pow2 wimm < pow2 wXLEN). {
           clear. destruct Bw. unfold RiscvBitWidths.wimm, RiscvBitWidths.wXLEN.

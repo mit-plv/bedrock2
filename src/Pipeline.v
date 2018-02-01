@@ -42,17 +42,16 @@ Section Pipeline.
 
   Definition evalH := ExprImp.eval_stmt (w := wXLEN).
 
-  Definition evalL(fuel: nat)(insts: list Instruction): RiscvMachine :=
-    execState (run fuel) (initialRiscvMachine insts).
+  Definition evalL := FlatToRiscv.evalL.
 
-  Lemma exprImp2Riscv_correct: forall sH instsL fuelH finalH,
+  Lemma exprImp2Riscv_correct: forall sH initialL instsL fuelH finalH,
     ExprImp.stmt_size sH * 64 < pow2 wimm ->
     exprImp2Riscv sH = instsL ->
     evalH fuelH empty sH = Some finalH ->
     exists fuelL,
       forall resVar res,
       get finalH resVar = Some res ->
-      (evalL fuelL instsL).(registers) resVar = res.
+      (evalL fuelL instsL initialL).(registers) resVar = res.
   Proof.
     introv B C EvH.
     unfold exprImp2Riscv in C.
@@ -66,6 +65,7 @@ Section Pipeline.
     - pose proof  FlatToRiscv.compile_stmt_correct as P.
       specialize P with (2 := C).
       specialize P with (2 := EvM).
+      specialize (P initialL).
       destruct P as [fuelL P].
       + pose proof @flattenStmt_size as D1.
         specialize D1 with (1 := E).

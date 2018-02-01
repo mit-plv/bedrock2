@@ -20,6 +20,7 @@ Require Import compiler.RiscvBitWidths32.
 Instance NatName: NameWithEq := {| name := nat |}.
 
 Definition var: Set := (@name NatName).
+Definition Reg: Set := (@name NatName).
 
 Definition var_a: var := 0.
 Definition var_b: var := 1.
@@ -86,6 +87,15 @@ Notation "'RISCV' {{ x ; y ; .. ; z }}" := (@cons Instruction x
 
 Print fib6_riscv.
 
+
+Definition initialRiscvMachine(imem: list Instruction): RiscvMachine := {|
+  instructionMem := fun (i: word wXLEN) => nth (Nat.div (wordToNat i) 4) imem InfiniteJal;
+  registers := fun (r: Reg) => $0;
+  pc := $0;
+  exceptionHandlerAddr := wneg $4;
+|}.
+
+
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
   execState (run fuel) (initialRiscvMachine fib6_riscv).
 
@@ -109,6 +119,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   destruct F as [finalH F].
   specialize P with (3 := F).
   specialize P with (varset := Function_Set var) (NG := NatNameGen).
+  specialize (P (initialRiscvMachine fib6_riscv)).
   edestruct P as [fuelL G].
   - cbv. omega.
   - reflexivity.

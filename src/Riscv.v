@@ -271,6 +271,7 @@ Section Riscv.
     instructionMem: word wXLEN -> Instruction;
     registers: Reg -> word wXLEN;
     pc: word wXLEN;
+    exceptionHandlerAddr: word wXLEN;
   }.
 
   Instance IsRiscvMachine: RiscvState (State RiscvMachine) :=
@@ -285,10 +286,10 @@ Section Riscv.
         | RegO => Return tt
         | RegS r => machine <- get;
                     match machine with
-                    | mkRiscvMachine imem regs pc =>
+                    | mkRiscvMachine imem regs pc eh =>
                         put (mkRiscvMachine imem 
                                             (fun reg2 => if dec (r = reg2) then v else regs reg2)
-                                            pc)
+                                            pc eh)
                     end
         end;
       loadInst := fun (addr: word wXLEN) =>
@@ -298,16 +299,23 @@ Section Riscv.
       setPC := fun (newPC: word wXLEN) =>
         machine <- get;
         match machine with
-        | mkRiscvMachine imem regs pc =>
-            put (mkRiscvMachine imem regs newPC)
+        | mkRiscvMachine imem regs pc eh =>
+            put (mkRiscvMachine imem regs newPC eh)
         end;
   |}.
 
-  Definition initialRiscvMachine(imem: list Instruction): RiscvMachine := {|
-    instructionMem := fun (i: word wXLEN) => nth (Nat.div (wordToNat i) 4) imem InfiniteJal;
-    registers := fun (r: Reg) => $0;
-    pc := $0
-  |}.
+  (* Puts given program at address 0, and makes pc point to beginning of program, i.e. 0.
+     TODO maybe later allow any address?
+     Note: Keeps the original exceptionHandlerAddr, and the values of the registers,
+     which might contain any undefined garbage values, so the compiler correctness proof
+     will show that the program is correct even then, i.e. no initialisation of the registers
+     is needed. *)
+  Definition putProgram(prog: list Instruction)(m: RiscvMachine): RiscvMachine :=
+    match m with
+    | mkRiscvMachine _ regs _ eh =>
+        mkRiscvMachine (fun (i: word wXLEN) => nth (Nat.div (wordToNat i) 4) prog InfiniteJal)
+                       regs $0 eh
+    end.
 
 End Riscv.
 
@@ -324,7 +332,8 @@ Module MachineTest.
   Definition m1: RiscvMachine := {|
     instructionMem := fun _ => Nop;
     registers := fun _ => $22;
-    pc := $33
+    pc := $33;
+    exceptionHandlerAddr := $11;
   |}.
 
   Definition prog1: State RiscvMachine (word 32) :=
