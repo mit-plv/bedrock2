@@ -4,29 +4,6 @@ Require Import Coq.Arith.Minus.
 Require Import Coq.Arith.PeanoNat.
 Require Import compiler.Decidable.
 
-Definition t: word 4 := wneg $3.
-
-Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
-  destruct (Nat.compare sz sz') eqn: E.
-  - apply nat_compare_eq in E. rewrite E in n. exact n.
-  - apply nat_compare_Lt_lt in E.
-Abort. (*
-nat_compare_Gt_gt
-forall n m : nat, (n ?= m) = Gt -> n > m
-nat_compare_Lt_lt
-forall n m : nat, (n ?= m) = Lt -> n < m
-nat_compare_eq
-*)
-
-(*
-Definition zToWord(sz: nat)(z: BinNums.Z): word sz :=
-  match z with
-  | BinNums.Z0 => $0
-  | BinNums.Zpos n => $ (BinPos.Pos.to_nat n)
-  | BinNums.Zneg n => wneg $ (BinPos.Pos.to_nat n)
-  end.
-*)
-
 (* TODO move to bbv *)
 Definition ZToWord(sz: nat)(n: BinNums.Z): word sz :=
   match n with
@@ -35,7 +12,11 @@ Definition ZToWord(sz: nat)(n: BinNums.Z): word sz :=
   | BinNums.Zneg p => wneg (posToWord sz p)
   end.
 
-(*
+(* A very simple definition of bit width cast. Reasons for abandoning it were:
+   - not bit-oriented
+   - it seemed slow (even though I believe now the slowness had a completely different cause)
+*)
+
 (* signed cast *)
 Definition scast{sz: nat}(sz': nat)(n: word sz): word sz' :=
   ZToWord sz' (wordToZ n).
@@ -43,9 +24,12 @@ Definition scast{sz: nat}(sz': nat)(n: word sz): word sz' :=
 (* unsigned cast *)
 Definition ucast{sz: nat}(sz': nat)(n: word sz): word sz' :=
   natToWord sz' (wordToNat n).
-*)
 
-(* old approach:
+
+(* Bit-oriented approach, reason for abandoning it:
+   - This definition matches on opaque proofs, so it doesn't reduce and we can't run examples
+     inside Coq. *)
+
 Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
   destruct (dec (sz <= sz')).
   - replace sz' with (sz + (sz' - sz)) by (apply le_plus_minus_r; assumption).
@@ -56,19 +40,12 @@ Definition zcast{sz: nat}(sz': nat)(n: word sz): word sz'.
     apply Nat.lt_nge in n0.
     apply Nat.lt_le_incl. assumption.
 Defined.
-*)
 
-(*
-Eval cbv in t.
-Eval cbv in (scast 8 t).
-*)
-
-(*
 Lemma split_into_diff: forall (a b: nat), b < a -> a = b + (a - b).
   intros. apply le_plus_minus. apply Nat.lt_le_incl. assumption.
 Defined.
 
-Definition ext_cast(ext: forall sz1 : nat, word sz1 -> forall sz2 : nat, word (sz1 + sz2))
+Definition ext_cast_nonred(ext: forall sz1 : nat, word sz1 -> forall sz2 : nat, word (sz1 + sz2))
   {sz: nat}(sz': nat)(n: word sz): word sz'.
   destruct (dec (sz < sz')).
   - replace sz' with (sz + (sz' - sz)).
@@ -78,7 +55,7 @@ Definition ext_cast(ext: forall sz1 : nat, word sz1 -> forall sz2 : nat, word (s
     + exact (split2 _ _ n).
     + apply Nat.sub_add. apply Nat.le_ngt. assumption.
 Defined.
-*)
+
 
 (* Transport equality, only matching on eq_refl in contradictory cases, to make sure
    terms using this function reduce *)
@@ -144,12 +121,3 @@ Defined.
 Definition signed_cast{sz: nat}: forall (sz': nat) (n: word sz), word sz' := ext_cast sext.
 
 Definition unsigned_cast{sz: nat}: forall (sz': nat) (n: word sz), word sz' := ext_cast zext.
-
-Eval cbv in t.
-Eval cbv in (signed_cast 8 t).
-
-Definition scast{sz: nat}(sz': nat)(n: word sz): word sz' :=
-  signed_cast sz' n.
-
-Definition ucast{sz: nat}(sz': nat)(n: word sz): word sz' :=
-  unsigned_cast sz' n.

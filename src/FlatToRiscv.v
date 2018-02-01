@@ -47,32 +47,6 @@ Section FlatToRiscv.
     | OAnd => [And rd rs1 rs2]
     end.
 
-  (* TODO: to support loading 64-bit literals, either allow additional fresh register,
-   so that we can use LUI twice, or chop literal into chunks of size wimm and alternate between
-   ADDI and SLLI *)
-  Fixpoint splitn_fit{n sz: nat}(v: word (n * sz)): list (word sz) :=
-    match n as n0 return (word (n0 * sz) -> list (word sz)) with
-    | 0 =>
-        fun _ : word (0 * sz) => []
-    | S n0 =>
-        fun v0 : word (S n0 * sz) => split1 sz (n0 * sz) v0 :: splitn_fit (split2 sz (n0 * sz) v0)
-    end v.
-
-(*
-  Fixpoint splitn_fit{n sz: nat}(v: word (n * sz)): list (word sz).
-    destruct n.
-    - exact [].
-    - simpl in v.
-      apply ((split1 sz (n * sz) v) :: splitn_fit _ _ (split2 sz (n * sz) v)).
-*)
-
-  Definition splitn{sz sz'}(v: word sz): (word (Nat.modulo sz sz') * list (word sz')).
-    simple refine (
-      let v' := nat_cast _ _ v in
-      (split1 (sz mod sz') (sz - sz mod sz') v',
-       splitn_fit (n := sz/sz') (nat_cast _ _ (split2 (sz mod sz') (sz - sz mod sz') v')))).
-  Abort.
-
   Definition split_upper(szU szL : nat): word (szL + szU) -> word szU := split2 szL szU.
 
   Definition split_lower(szU szL : nat): word (szL + szU) -> word szL := split1 szL szU.
@@ -92,29 +66,6 @@ Section FlatToRiscv.
         else [Lui rd hibits; Xori rd rd lobits]
     ); abstract (pose proof w_eq; pose proof wXLEN_lbound; omega).
   Defined.
-
-(*
-  Definition compile_lit(x: var)(v: word wXLEN): list Instruction.
-    simple refine (
-      let rd := var2Register x in
-      let lobits := split2 (wXLEN - wimm) wimm (nat_cast word _ v) in
-      if dec (nat_cast word _ (sext lobits (wXLEN - wimm)) = v)
-      then [Addi rd RegO lobits]
-      else
-        let hibits := split1 wupper (wXLEN - wupper) (nat_cast word _ v) in
-        if dec (42 = 42)
-        then [Lui rd hibits; Addi rd rd lobits]
-        else 
-          let in
-          [Lui rd bits3; Addi rd rd bits2; Slli rd rd $wInstr; Lui rd (* can't do LUI again
-          without requiring helper register! *)]
-      
-      
-       [] (* <-- TODO use LUI and if wXLEN is > than wInstr (64bit) and v > 2^32, 
-                 combine with shift *)
-    ); abstract (pose proof w_eq; pose proof wXLEN_lbound; omega).
-  Defined.
-*)
 
   (* using the same names (var) in source and target language *)
   Fixpoint compile_stmt(s: @stmt wXLEN Name): list (Instruction) :=
