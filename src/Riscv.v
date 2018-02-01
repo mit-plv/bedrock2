@@ -2,7 +2,7 @@ Require Import Coq.Lists.List.
 Require Import bbv.Word.
 Require Import compiler.StateMonad.
 Require Import compiler.Decidable.
-Require Import compiler.zcast.
+Require Import bbv.DepEqNat.
 Require Import compiler.PowerFunc.
 Require Import compiler.RiscvBitWidths.
 Require Import compiler.NameWithEq.

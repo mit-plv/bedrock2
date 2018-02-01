@@ -3,7 +3,7 @@ Require Import compiler.StateMonad.
 Require Import compiler.Common.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
-Require Import compiler.zcast.
+Require Import bbv.DepEqNat.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.Op.

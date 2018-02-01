@@ -5,7 +5,7 @@ Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
-Require Import compiler.zcast.
+Require Import bbv.DepEqNat.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 

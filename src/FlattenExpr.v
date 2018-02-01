@@ -7,7 +7,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import compiler.Axioms.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
-Require Import compiler.zcast.
+Require Import bbv.DepEqNat.
 Require Import compiler.NameWithEq.
 
 Section FlattenExpr.

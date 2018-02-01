@@ -13,7 +13,7 @@ Require Import compiler.Riscv.
 Require Import compiler.StateMonad.
 Require Import compiler.runsToSatisfying.
 Require Import compiler.MyOmega.
-Require Import compiler.zcast.
+Require Import bbv.DepEqNat.
 Require Import compiler.NameGen.
 Require Import compiler.Common.
 Require Import compiler.RiscvBitWidths.
