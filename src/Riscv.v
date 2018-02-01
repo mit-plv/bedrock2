@@ -70,26 +70,20 @@ Section Riscv.
     setPC: word wXLEN -> M unit;
   }.
 
-  (* looks like it's the wrong way round, but that's because the argument order of combine is
-     unintuitive *)
-  Definition lossless_shl{sz: nat}(v: word sz)(n: nat): word (n + sz) := combine (wzero n) v.
-
-  Goal lossless_shl (WO~0~1~1~0~1)%word 4 = (WO~0~1~1~0~1~0~0~0~0)%word. reflexivity. Qed.
-
   Definition signed_imm_to_word(v: word wimm): word wXLEN.
     refine (nat_cast word _ (sext v (wXLEN - wimm))). bitwidth_omega.
   Defined.
 
   Definition signed_jimm_to_word(v: word wupper): word wXLEN.
-    refine (nat_cast word _ (sext (lossless_shl v 1) (wXLEN - wupper - 1))). bitwidth_omega.
+    refine (nat_cast word _ (sext (extz v 1) (wXLEN - wupper - 1))). bitwidth_omega.
   Defined.
 
   Definition signed_bimm_to_word(v: word wimm): word wXLEN.
-    refine (nat_cast word _ (sext (lossless_shl v 1) (wXLEN - wimm - 1))). bitwidth_omega.
+    refine (nat_cast word _ (sext (extz v 1) (wXLEN - wimm - 1))). bitwidth_omega.
   Defined.
 
   Definition upper_imm_to_word(v: word wupper): word wXLEN.
-    refine (nat_cast word _ (sext (lossless_shl v wimm) (wXLEN - wInstr))). bitwidth_omega.
+    refine (nat_cast word _ (sext (extz v wimm) (wXLEN - wInstr))). bitwidth_omega.
   Defined.
 
   Definition execute{M: Type -> Type}{MM: Monad M}{RVS: RiscvState M}(i: Instruction): M unit :=

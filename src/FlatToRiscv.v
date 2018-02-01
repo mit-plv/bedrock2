@@ -467,16 +467,16 @@ Section FlatToRiscv.
     - rewrite div2_double. reflexivity.
   Qed.
 
-  Lemma lossless_shl_natToWord: forall sz n d,
-    lossless_shl (natToWord sz n) d = natToWord (d + sz) (pow2 d * n).
+  Lemma extz_is_mult_pow2: forall sz n d,
+    extz (natToWord sz n) d = natToWord (d + sz) (pow2 d * n).
   Proof.
     intros. induction d.
-    - unfold lossless_shl.
+    - unfold extz.
       rewrite combine_0_n.
       simpl.
       f_equal.
       omega.
-    - unfold lossless_shl in *.
+    - unfold extz in *.
       change (pow2 (S d) * n) with (2 * pow2 d * n).
       rewrite <- Nat.mul_assoc.
       change ((S d) + sz) with (S (d + sz)) in *.
@@ -498,16 +498,16 @@ Section FlatToRiscv.
     destruct (Npow2 sz - wordToN n)%N; reflexivity.
   Qed.
 
-  Lemma lossless_shl_neg_natToWord: forall sz n d,
-    lossless_shl (wneg (natToWord sz n)) d = wneg (natToWord (d + sz) (pow2 d * n)).
+  Lemma extz_is_mult_pow2_neg: forall sz n d,
+    extz (wneg (natToWord sz n)) d = wneg (natToWord (d + sz) (pow2 d * n)).
   Proof.
     intros. induction d.
-    - unfold lossless_shl.
+    - unfold extz.
       rewrite combine_0_n.
       simpl.
       f_equal. f_equal.
       omega.
-    - unfold lossless_shl in *.
+    - unfold extz in *.
       change (pow2 (S d) * n) with (2 * pow2 d * n).
       rewrite <- Nat.mul_assoc.
       change ((S d) + sz) with (S (d + sz)) in *.
@@ -535,11 +535,11 @@ Section FlatToRiscv.
     wlo1 = wlo2 ->
     wlo2 = wlo3 ->
     wmsb (split_lower wup2 wlo2 (nat_cast word e3 v)) false = false ->
-    wxor (nat_cast word e1 (lossless_shl (split_upper wup1 wlo1 (nat_cast word e4 v)) wlo3))
+    wxor (nat_cast word e1 (extz (split_upper wup1 wlo1 (nat_cast word e4 v)) wlo3))
          (nat_cast word e2 (sext (split_lower wup2 wlo2 (nat_cast word e3 v)) wup2)) = v.
   Proof.
     intros.
-    unfold lossless_shl, sext, wxor.
+    unfold extz, sext, wxor.
     rewrite H2.
     subst wlo3 wlo2 wup2.
     rewrite nat_cast_proof_irrel with (e1 := e2) (e2 := e1). clear e2.
@@ -562,11 +562,11 @@ Section FlatToRiscv.
     wlo1 = wlo2 ->
     wlo2 = wlo3 ->
     wmsb (split_lower wup2 wlo2 (nat_cast word e3 v)) false = true ->
-    wxor (nat_cast word e1 (lossless_shl (wnot (split_upper wup1 wlo1 (nat_cast word e4 v))) wlo3))
+    wxor (nat_cast word e1 (extz (wnot (split_upper wup1 wlo1 (nat_cast word e4 v))) wlo3))
          (nat_cast word e2 (sext (split_lower wup2 wlo2 (nat_cast word e3 v)) wup2)) = v.
   Proof.
     intros.
-    unfold lossless_shl, sext, wxor.
+    unfold extz, sext, wxor.
     rewrite H2.
     subst wlo3 wlo2 wup2.
     rewrite nat_cast_proof_irrel with (e1 := e2) (e2 := e1). clear e2.
@@ -623,7 +623,7 @@ Section FlatToRiscv.
     end.
 
   Local Ltac solve_pc_update :=
-    rewrite? lossless_shl_natToWord;
+    rewrite? extz_is_mult_pow2;
     rewrite? sext_natToWord_nat_cast;
     simpl_pow2;
     [ solve_word_eq | solve_length_compile_stmt ].
@@ -911,7 +911,7 @@ Section FlatToRiscv.
         end. {
           repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
           unfold signed_jimm_to_word.
-          rewrite lossless_shl_neg_natToWord.
+          rewrite extz_is_mult_pow2_neg.
           rewrite sext_neg_natToWord_nat_cast.
           {
           clear.
@@ -941,7 +941,7 @@ Section FlatToRiscv.
         repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
         remember (length (compile_stmt s1)) as L1.
         remember (length (compile_stmt s2)) as L2.
-        rewrite lossless_shl_neg_natToWord.
+        rewrite extz_is_mult_pow2_neg.
         rewrite sext_neg_natToWord_nat_cast.
         {
         rewrite <- ? wplus_assoc.
