@@ -3,7 +3,6 @@ Require Import compiler.Common.
 Require Import compiler.ResMonad.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
-Require Import Coq.Logic.FunctionalExtensionality.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.
@@ -160,14 +159,6 @@ Section FlattenExpr.
     | IH: forall _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
     end;
     set_solver.
-  Qed.
-
-  Lemma put_idemp: forall s x v,
-    get s x = Some v ->
-    s = put s x v.
-  Proof.
-    intros. apply map_extensionality. intros.
-    rewrite get_put. destruct_one_match; congruence.
   Qed.
 
   Ltac pose_flatten_var_ineqs :=

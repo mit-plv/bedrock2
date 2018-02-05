@@ -13,6 +13,7 @@ Require Import compiler.runsToSatisfying.
 Require Import compiler.RiscvBitWidths.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
+Require Import Coq.Logic.FunctionalExtensionality.
 
 
 Section FlatToRiscv.
