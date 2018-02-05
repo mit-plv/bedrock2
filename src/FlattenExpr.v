@@ -4,7 +4,6 @@ Require Import compiler.ResMonad.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
 Require Import Coq.Logic.FunctionalExtensionality.
-Require Import compiler.Axioms.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.

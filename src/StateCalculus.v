@@ -2,7 +2,6 @@ Require Import Program.Tactics.
 Require Import lib.LibTacticsMin.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.ClassicalFacts.
-Require Import compiler.Axioms.
 Require Import compiler.Common.
 Require Import lib.fiat_crypto_tactics.Not.
 Require Import lib.fiat_crypto_tactics.UniquePose.
