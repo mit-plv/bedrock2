@@ -8,6 +8,7 @@ Require Import compiler.StateCalculus.
 Require Import bbv.DepEqNat.
 Require Import riscv.NameWithEq.
 Require Import Coq.Program.Tactics.
+Require Import compiler.Memory.
 
 Section ExprImp.
 
@@ -24,6 +25,7 @@ Section ExprImp.
   Context {varset: set vars var}.
 
   Ltac state_calc := state_calc_generic (@name Name) (word w).
+  Ltac set_solver := set_solver_generic (@name Name).
 
   Inductive expr: Set :=
     | ELit(v: word w): expr
@@ -31,6 +33,8 @@ Section ExprImp.
     | EOp(op: binop)(e1 e2: expr): expr.
 
   Inductive stmt: Set :=
+    | SLoad(x: var)(addr: expr): stmt
+    | SStore(addr val: expr): stmt
     | SSet(x: var)(e: expr): stmt
     | SIf(cond: expr)(bThen bElse: stmt): stmt
     | SWhile(cond: expr)(body: stmt): stmt
@@ -47,25 +51,36 @@ Section ExprImp.
         Return (eval_binop op v1 v2)
     end.
 
-  Fixpoint eval_stmt(f: nat)(st: state)(s: stmt): option state :=
+  Fixpoint eval_stmt(f: nat)(st: state)(m: mem w)(s: stmt): option (state * mem w) :=
     match f with
     | 0 => None (* out of fuel *)
-    | Datatypes.S f' => match s with
+    | S f' => match s with
+      | SLoad x a =>
+          b <- eval_expr st a;
+          v <- read_mem b m;
+          Return (put st x v, m)
+      | SStore a v =>
+          a' <- eval_expr st a;
+          v' <- eval_expr st v;
+          m' <- write_mem a' v' m;
+          Return (st, m')
       | SSet x e =>
           v <- eval_expr st e;
-          Return (put st x v)
+          Return (put st x v, m)
       | SIf cond bThen bElse =>
           v <- eval_expr st cond;
-          eval_stmt f' st (if weq v $0 then bElse else bThen)
+          eval_stmt f' st m (if weq v $0 then bElse else bThen)
       | SWhile cond body =>
           v <- eval_expr st cond;
-          if weq v $0 then Return st else
-            st' <- eval_stmt f' st body;
-            eval_stmt f' st' (SWhile cond body)
+          if weq v $0 then Return (st, m) else
+            p <- eval_stmt f' st m body;
+            let '(st', m') := p in
+            eval_stmt f' st' m' (SWhile cond body)
       | SSeq s1 s2 =>
-          st' <- eval_stmt f' st s1;
-          eval_stmt f' st' s2
-      | SSkip => Return st
+          p <- eval_stmt f' st m s1;
+          let '(st', m') := p in
+          eval_stmt f' st' m' s2
+      | SSkip => Return (st, m)
       end
     end.
 
@@ -78,6 +93,8 @@ Section ExprImp.
 
   Fixpoint stmt_size(s: stmt): nat :=
     match s with
+    | SLoad x a => S (expr_size a)
+    | SStore a v => S (expr_size a + expr_size v)
     | SSet x e => S (expr_size e)
     | SIf cond bThen bElse => S (expr_size cond + stmt_size bThen + stmt_size bElse)
     | SWhile cond body => S (expr_size cond + stmt_size body)
@@ -85,50 +102,50 @@ Section ExprImp.
     | SSkip => 1
     end.
 
-  Lemma invert_eval_SSet: forall f st1 st2 x e,
-    eval_stmt f st1 (SSet x e) = Some st2 ->
-    exists v, eval_expr st1 e = Some v /\ st2 = put st1 x v.
+  Lemma invert_eval_SSet: forall f st1 m1 p2 x e,
+    eval_stmt f st1 m1 (SSet x e) = Some p2 ->
+    exists v, eval_expr st1 e = Some v /\ p2 = (put st1 x v, m1).
   Proof.
     introv E. destruct f; [ discriminate |].
     simpl in E. destruct_one_match_hyp; [ | discriminate ].
     inversions E. eauto.
   Qed.
 
-  Lemma invert_eval_SIf: forall f st1 st2 cond bThen bElse,
-    eval_stmt (Datatypes.S f) st1 (SIf cond bThen bElse) = Some st2 ->
+  Lemma invert_eval_SIf: forall f st1 m1 p2 cond bThen bElse,
+    eval_stmt (S f) st1 m1 (SIf cond bThen bElse) = Some p2 ->
     exists cv,
       eval_expr st1 cond = Some cv /\ 
-      (cv <> $0 /\ eval_stmt f st1 bThen = Some st2 \/
-       cv = $0  /\ eval_stmt f st1 bElse = Some st2).
+      (cv <> $0 /\ eval_stmt f st1 m1 bThen = Some p2 \/
+       cv = $0  /\ eval_stmt f st1 m1 bElse = Some p2).
   Proof.
     introv E. simpl in E. destruct_one_match_hyp; [|discriminate].
     destruct_one_match_hyp; subst *; eexists; eapply (conj eq_refl); [right|left]; auto.
   Qed.
 
-  Lemma invert_eval_SWhile: forall st1 st3 f cond body,
-    eval_stmt (Datatypes.S f) st1 (SWhile cond body) = Some st3 ->
+  Lemma invert_eval_SWhile: forall st1 m1 p3 f cond body,
+    eval_stmt (S f) st1 m1 (SWhile cond body) = Some p3 ->
     exists cv,
       eval_expr st1 cond = Some cv /\
-      (cv <> $0 /\ (exists st2, eval_stmt f st1 body = Some st2 /\ 
-                               eval_stmt f st2 (SWhile cond body) = Some st3) \/
-       cv = $0  /\ st1 = st3).
+      (cv <> $0 /\ (exists st2 m2, eval_stmt f st1 m1 body = Some (st2, m2) /\ 
+                                   eval_stmt f st2 m2 (SWhile cond body) = Some p3) \/
+       cv = $0  /\ p3 = (st1, m1)).
   Proof.
     introv E. simpl in E. destruct_one_match_hyp; [|discriminate].
     destruct_one_match_hyp.
-    - inversion E. subst st3. clear E. eexists. eapply (conj eq_refl). right. auto.
-    - destruct_one_match_hyp; [|discriminate]. eauto 10.
+    - inversion E. subst. clear E. eexists. eapply (conj eq_refl). right. auto.
+    - destruct_one_match_hyp; [|discriminate]. destruct_one_match_hyp. eauto 10.
   Qed.
 
-  Lemma invert_eval_SSeq: forall st1 st3 f s1 s2,
-    eval_stmt (Datatypes.S f) st1 (SSeq s1 s2) = Some st3 ->
-    exists st2, eval_stmt f st1 s1 = Some st2 /\ eval_stmt f st2 s2 = Some st3.
+  Lemma invert_eval_SSeq: forall st1 m1 p3 f s1 s2,
+    eval_stmt (S f) st1 m1 (SSeq s1 s2) = Some p3 ->
+    exists st2 m2, eval_stmt f st1 m1 s1 = Some (st2, m2) /\ eval_stmt f st2 m2 s2 = Some p3.
   Proof.
-    introv E. simpl in E. destruct_one_match_hyp; [|discriminate]. eauto.
+    introv E. simpl in E. destruct_one_match_hyp; [|discriminate]. destruct_one_match_hyp. eauto.
   Qed.
 
-  Lemma invert_eval_SSkip: forall st1 st2 f,
-    eval_stmt f st1 SSkip = Some st2 ->
-    st1 = st2.
+  Lemma invert_eval_SSkip: forall st1 m1 p2 f,
+    eval_stmt f st1 m1 SSkip = Some p2 ->
+    p2 = (st1, m1).
   Proof.
     introv E. destruct f; [discriminate|].
     simpl in E. inversions E. reflexivity.
@@ -144,6 +161,8 @@ Section ExprImp.
 
   Fixpoint allVars_stmt(s: stmt): list var := 
     match s with
+    | SLoad v e => v :: allVars_expr e
+    | SStore a e => (allVars_expr a) ++ (allVars_expr e)
     | SSet v e => v :: allVars_expr e
     | SIf c s1 s2 => (allVars_expr c) ++ (allVars_stmt s1) ++ (allVars_stmt s2)
     | SWhile c body => (allVars_expr c) ++ (allVars_stmt body)
@@ -155,6 +174,8 @@ Section ExprImp.
      The returned set might be too big, but is guaranteed to include all modified vars. *)
   Fixpoint modVars(s: stmt): vars := 
     match s with
+    | SLoad v _ => singleton_set v
+    | SStore _ _ => empty_set
     | SSet v _ => singleton_set v
     | SIf _ s1 s2 => union (modVars s1) (modVars s2)
     | SWhile _ body => modVars body
@@ -168,6 +189,8 @@ Section ExprImp.
   Proof.
     intros.
     induction s; simpl in *.
+    - set_solver.
+    - set_solver.
     - apply singleton_set_spec in H. auto.
     - apply union_spec in H.
       apply in_or_app. right. apply in_or_app.
@@ -179,13 +202,17 @@ Section ExprImp.
     - eapply empty_set_spec. eassumption.
   Qed.
 
-  Lemma modVarsSound: forall fuel s initial final,
-    eval_stmt fuel initial s = Some final ->
-    only_differ initial (modVars s) final.
+  Lemma modVarsSound: forall fuel s initialS initialM finalS finalM,
+    eval_stmt fuel initialS initialM s = Some (finalS, finalM) ->
+    only_differ initialS (modVars s) finalS.
   Proof.
     induction fuel; introv Ev.
     - discriminate.
     - destruct s.
+      + simpl in *.
+        repeat (destruct_one_match_hyp; [|discriminate]). inversionss. state_calc.
+      + simpl in *.
+        repeat (destruct_one_match_hyp; [|discriminate]). inversionss. state_calc.
       + simpl in *. destruct_one_match_hyp; [|discriminate]. inversionss. state_calc.
       + simpl in *. destruct_one_match_hyp; [|discriminate].
         destruct_one_match_hyp.
@@ -193,16 +220,20 @@ Section ExprImp.
         * subst *. specializes IHfuel; [ eassumption |]. state_calc.
       + apply invert_eval_SWhile in Ev.
         destruct Ev as [cv [Evcond [Ev | Ev]]].
-        * destruct Ev as [Ne [mid2 [Ev2 Ev3]]].
+        * destruct Ev as [Ne [mid2S [mid2M [Ev2 Ev3]]]].
           simpl.
-          pose proof (IHfuel _ _ _ Ev2) as IH2.
-          pose proof (IHfuel _ _ _ Ev3) as IH3.
+          pose proof IHfuel as IH2.
+          pose proof IHfuel as IH3.
+          specialize IH2 with (1 := Ev2).
+          specialize IH3 with (1 := Ev3).
           clear - IH2 IH3. state_calc.
-        * destruct Ev as [? ?]. subst *. clear. state_calc.
+        * destruct Ev as [? ?]. inversionss. subst *. clear. state_calc.
       + apply invert_eval_SSeq in Ev.
-        destruct Ev as [mid [Ev1 Ev2]]. simpl.
-        pose proof (IHfuel _ _ _ Ev1) as IH1.
-        pose proof (IHfuel _ _ _ Ev2) as IH2.
+        destruct Ev as [mid1S [mid1M [Ev1 Ev2]]]. simpl.
+        pose proof IHfuel as IH1.
+        pose proof IHfuel as IH2.
+        specialize IH1 with (1 := Ev1).
+        specialize IH2 with (1 := Ev2).
         clear - IH1 IH2. state_calc.
       + simpl. inversionss. state_calc.
   Qed.
@@ -250,7 +281,8 @@ Definition isRight(x y z: word 16) :=
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
 Definition run_isRight(x y z: word 16): option (word 16) :=
-  finalSt <- (eval_stmt 10 empty (isRight x y z));
+  final <- (eval_stmt 10 empty (no_mem 16) (isRight x y z));
+  let '(finalSt, finalM) := final in
   get finalSt _isRight.
 
 Goal run_isRight $3 $4 $5 = Some $1. reflexivity. Qed.

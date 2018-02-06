@@ -49,6 +49,7 @@ Section FlattenExpr.
   (* returns statement and new fresh name generator state *)
   Fixpoint flattenStmt(ngs: NGstate)(s: ExprImp.stmt (w := w)): (FlatImp.stmt (w := w) * NGstate) :=
     match s with
+    | ExprImp.SLoad x a =>
     | ExprImp.SSet x e =>
         let '(e', r, ngs') := flattenExpr ngs e in
         (FlatImp.SSeq e' (FlatImp.SSet x r), ngs')

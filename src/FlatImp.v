@@ -1,9 +1,9 @@
 Require Import lib.LibTacticsMin.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
-Require Import compiler.ResMonad.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
+Require Import compiler.Memory.
 Require Import riscv.NameWithEq.
 
 Section FlatImp.
@@ -22,6 +22,8 @@ Section FlatImp.
   Ltac state_calc := state_calc_generic (@name Name) (word w).
 
   Inductive stmt: Set :=
+    | SLoad(x: var)(a: var): stmt
+    | SStore(a: var)(v: var): stmt
     | SLit(x: var)(v: word w): stmt
     | SOp(x: var)(op: binop)(y z: var): stmt
     | SSet(x y: var): stmt
@@ -32,6 +34,8 @@ Section FlatImp.
 
   Fixpoint stmt_size(s: stmt): nat :=
     match s with
+    | SLoad x a => 1
+    | SStore a v => 1
     | SLit x v => 1
     | SOp x op y z => 1
     | SSet x y => 1
@@ -43,32 +47,44 @@ Section FlatImp.
 
   (* If we want a bigstep evaluation relation, we either need to put
      fuel into the SLoop constructor, or give it as argument to eval *)
-  Fixpoint eval_stmt(f: nat)(st: state)(s: stmt): Res state :=
+  Fixpoint eval_stmt(f: nat)(st: state)(m: mem w)(s: stmt): option (state * mem w) :=
     match f with
-    | 0 => OutOfFuel
-    | Coq.Init.Datatypes.S f' => match s with
+    | 0 => None (* out of fuel *)
+    | S f' => match s with
+      | SLoad x a =>
+          a' <- get st a;
+          v <- read_mem a' m;
+          Return (put st x v, m)
+      | SStore a v =>
+          a' <- get st a;
+          v' <- get st v;
+          m' <- write_mem a' v' m;
+          Return (st, m')
       | SLit x v =>
-          Success (put st x v)
+          Return (put st x v, m)
       | SOp x op y z =>
-          v1 <- option2res (get st y);
-          v2 <- option2res (get st z);
-          Success (put st x (eval_binop op v1 v2))
+          v1 <- get st y;
+          v2 <- get st z;
+          Return (put st x (eval_binop op v1 v2), m)
       | SSet x y =>
-          v <- option2res (get st y);
-          Success (put st x v)
+          v <- get st y;
+          Return (put st x v, m)
       | SIf cond bThen bElse =>
-          vcond <- option2res (get st cond);
-          eval_stmt f' st (if dec (vcond = $0) then bElse else bThen)
+          vcond <- get st cond;
+          eval_stmt f' st m (if dec (vcond = $0) then bElse else bThen)
       | SLoop body1 cond body2 =>
-          st' <- eval_stmt f' st body1;
-          vcond <- option2res (get st' cond);
-          if dec (vcond = $0) then Success st' else
-            st'' <- eval_stmt f' st' body2;
-            eval_stmt f' st'' (SLoop body1 cond body2)
+          p <- eval_stmt f' st m body1;
+          let '(st', m') := p in
+          vcond <- get st' cond;
+          if dec (vcond = $0) then Return (st', m') else
+            q <- eval_stmt f' st' m' body2;
+            let '(st'', m'') := q in
+            eval_stmt f' st'' m'' (SLoop body1 cond body2)
       | SSeq s1 s2 =>
-          st' <- eval_stmt f' st s1;
-          eval_stmt f' st' s2
-      | SSkip => Success st
+          p <- eval_stmt f' st m s1;
+          let '(st', m') := p in
+          eval_stmt f' st' m' s2
+      | SSkip => Return (st, m)
       end
     end.
 
