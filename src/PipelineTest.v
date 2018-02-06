@@ -2,19 +2,19 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
 Require Import bbv.Word.
-Require Import compiler.Decidable.
+Require Import riscv.Decidable.
 Require Import compiler.Op.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Common.
 Require Import compiler.Pipeline.
-Require Import compiler.Riscv.
+Require Import riscv.Riscv.
 Require Import compiler.MyOmega.
-Require Import compiler.StateMonad.
-Require Import compiler.NameWithEq.
-Require Import compiler.RiscvBitWidths.
+Require Import riscv.StateMonad.
+Require Import riscv.NameWithEq.
+Require Import riscv.RiscvBitWidths.
 
-Require Import compiler.RiscvBitWidths32.
+Require Import riscv.RiscvBitWidths32.
 
 
 Instance NatName: NameWithEq := {| name := nat |}.

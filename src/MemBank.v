@@ -2,7 +2,7 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.omega.Omega.
 Require Import bbv.Word.
-Require Import compiler.Decidable.
+Require Import riscv.Decidable.
 Require Import compiler.Tactics.
 Require Import compiler.ListLib.
 Require Import compiler.TotalMap.

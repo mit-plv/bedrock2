@@ -4,7 +4,7 @@ Require Import compiler.Tactics.
 Require Import compiler.ResMonad.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
-Require Import compiler.NameWithEq.
+Require Import riscv.NameWithEq.
 
 Section FlatImp.
 

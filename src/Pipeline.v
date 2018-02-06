@@ -2,22 +2,22 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
 Require Import bbv.Word.
-Require Import compiler.Decidable.
+Require Import riscv.Decidable.
 Require Import compiler.Op.
 Require Import compiler.ResMonad.
 Require        compiler.ExprImp.
 Require Import compiler.FlattenExpr.
 Require        compiler.FlatImp.
 Require        compiler.FlatToRiscv.
-Require Import compiler.Riscv.
-Require Import compiler.StateMonad.
+Require Import riscv.Riscv.
+Require Import riscv.StateMonad.
 Require Import compiler.runsToSatisfying.
 Require Import compiler.MyOmega.
 Require Import bbv.DepEqNat.
 Require Import compiler.NameGen.
 Require Import compiler.Common.
-Require Import compiler.RiscvBitWidths.
-Require Import compiler.NameWithEq.
+Require Import riscv.RiscvBitWidths.
+Require Import riscv.NameWithEq.
 
 Section Pipeline.
 

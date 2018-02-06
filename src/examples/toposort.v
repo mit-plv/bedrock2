@@ -229,7 +229,7 @@ Definition toposort5 := ltac:(let res := eval cbv beta delta [
 
 Print toposort5. (* this expression should hopefully be easy to reify *)
 
-Require Import compiler.Decidable.
+Require Import riscv.Decidable.
 
 Inductive member{T: Type}: list T -> Type :=
   | member_here: forall h t, member (h :: t)

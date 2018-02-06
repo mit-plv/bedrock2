@@ -1,3 +1,4 @@
 -Q ../bbv bbv
--Q ./src compiler
+-Q ../riscv-coq/src riscv
 -Q ./lib lib
+-Q ./src compiler

@@ -1,8 +1,8 @@
 Require Export Coq.omega.Omega.
 Require Export Coq.Lists.List.
 Require Export bbv.Word.
-Require Export compiler.Monad.
-Require Export compiler.Decidable.
+Require Export riscv.Monad.
+Require Export riscv.Decidable.
 Require Export compiler.Tactics.
 Require Export compiler.Set.
 Require Export lib.fiat_crypto_tactics.UniquePose.

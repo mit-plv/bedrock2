@@ -1,9 +1,17 @@
 
 default_target: all
 
+DEPS := $(patsubst dep/%,%,$(wildcard dep/*))
+
+DEPS_CHECK_RESULT := $(shell ./check_deps.sh)
+
+ifneq ($(DEPS_CHECK_RESULT), )
+  $(error $(DEPS_CHECK_RESULT))
+endif
+
 DIRS = lib src
 
-COQFLAGS= -Q ../bbv bbv  -Q ./src compiler  -Q ./lib lib
+COQFLAGS= -Q ../bbv bbv  -Q ../riscv-coq/src riscv  -Q ./lib lib  -Q ./src compiler
 
 DEPFLAGS:=$(COQFLAGS)
 
@@ -22,6 +30,7 @@ all: $(patsubst %.v,%.vo,$(wildcard src/*.v src/examples/*.v))
 
 clean:
 	find . -type f \( -name '*.glob' -o -name '*.vo' -o -name '*.aux' \) -delete
+	rm .depend
 
 include .depend
 

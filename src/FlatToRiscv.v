@@ -1,5 +1,5 @@
 Require Import lib.LibTacticsMin.
-Require Import compiler.StateMonad.
+Require Import riscv.StateMonad.
 Require Import compiler.Common.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
@@ -8,10 +8,10 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.Op.
 Require Import compiler.ResMonad.
-Require Import compiler.Riscv.
+Require Import riscv.Riscv.
 Require Import compiler.runsToSatisfying.
-Require Import compiler.RiscvBitWidths.
-Require Import compiler.NameWithEq.
+Require Import riscv.RiscvBitWidths.
+Require Import riscv.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Logic.FunctionalExtensionality.
 
@@ -745,7 +745,7 @@ Section FlatToRiscv.
         }
         rewrite <- OfsEq. assumption.
       + simpl.
-        unfold Riscv.signed_jimm_to_word.
+        unfold signed_jimm_to_word.
         repeat (rewrite app_length ||
           match goal with
           | |- context C[length (?h :: ?t)] => let r := context C [S (length t)] in change r

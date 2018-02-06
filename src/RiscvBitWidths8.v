@@ -4,7 +4,7 @@
    in which the unreduced offending definition (eg wlt_dec) occurs over and over again. *)
 
 Require Import Coq.omega.Omega.
-Require Import compiler.RiscvBitWidths.
+Require Import riscv.RiscvBitWidths.
 
 Instance RiscvBitWidths8: RiscvBitWidths := {|
   wXLEN := 8;

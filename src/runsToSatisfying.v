@@ -1,5 +1,5 @@
 Require Import lib.LibTacticsMin.
-Require Export compiler.PowerFunc.
+Require Export riscv.PowerFunc.
 
 
 Section RunsTo.
