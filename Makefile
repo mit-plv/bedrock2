@@ -1,6 +1,17 @@
 
 default_target: all
 
+COQC=$(COQBIN)coqc
+
+EXPECTED_COQC_VERSION := 8.7.0
+
+ACTUAL_COQC_VERSION := $(shell $(COQC) --version | sed -n 's/The Coq Proof Assistant, version \([^ ]*\) .*/\1/p')
+
+ifneq ($(EXPECTED_COQC_VERSION), $(ACTUAL_COQC_VERSION))
+  $(error Coq version mismatch: Expected version $(EXPECTED_COQC_VERSION), but got $(ACTUAL_COQC_VERSION))
+endif
+
+
 DEPS := $(patsubst dep/%,%,$(wildcard dep/*))
 
 DEPS_CHECK_RESULT := $(shell ./check_deps.sh)
@@ -15,7 +26,6 @@ COQFLAGS= -Q ../bbv bbv  -Q ../riscv-coq/src riscv  -Q ./lib lib  -Q ./src compi
 
 DEPFLAGS:=$(COQFLAGS)
 
-COQC=$(COQBIN)coqc
 COQTOP=$(COQBIN)coqtop
 COQDEP=$(COQBIN)coqdep $(DEPFLAGS)
 COQDOC=$(COQBIN)coqdoc
