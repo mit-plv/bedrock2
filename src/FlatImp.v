@@ -50,147 +50,185 @@ Section FlatImp.
   Fixpoint eval_stmt(f: nat)(st: state)(m: mem w)(s: stmt): option (state * mem w) :=
     match f with
     | 0 => None (* out of fuel *)
-    | S f' => match s with
+    | S f => match s with
       | SLoad x a =>
-          a' <- get st a;
-          v <- read_mem a' m;
+          a <- get st a;
+          v <- read_mem a m;
           Return (put st x v, m)
       | SStore a v =>
-          a' <- get st a;
-          v' <- get st v;
-          m' <- write_mem a' v' m;
-          Return (st, m')
+          a <- get st a;
+          v <- get st v;
+          m <- write_mem a v m;
+          Return (st, m)
       | SLit x v =>
           Return (put st x v, m)
       | SOp x op y z =>
-          v1 <- get st y;
-          v2 <- get st z;
-          Return (put st x (eval_binop op v1 v2), m)
+          y <- get st y;
+          z <- get st z;
+          Return (put st x (eval_binop op y z), m)
       | SSet x y =>
           v <- get st y;
           Return (put st x v, m)
       | SIf cond bThen bElse =>
           vcond <- get st cond;
-          eval_stmt f' st m (if dec (vcond = $0) then bElse else bThen)
+          eval_stmt f st m (if dec (vcond = $0) then bElse else bThen)
       | SLoop body1 cond body2 =>
-          p <- eval_stmt f' st m body1;
-          let '(st', m') := p in
-          vcond <- get st' cond;
-          if dec (vcond = $0) then Return (st', m') else
-            q <- eval_stmt f' st' m' body2;
-            let '(st'', m'') := q in
-            eval_stmt f' st'' m'' (SLoop body1 cond body2)
+          p <- eval_stmt f st m body1;
+          let '(st, m) := p in
+          vcond <- get st cond;
+          if dec (vcond = $0) then Return (st, m) else
+            q <- eval_stmt f st m body2;
+            let '(st, m) := q in
+            eval_stmt f st m (SLoop body1 cond body2)
       | SSeq s1 s2 =>
-          p <- eval_stmt f' st m s1;
-          let '(st', m') := p in
-          eval_stmt f' st' m' s2
+          p <- eval_stmt f st m s1;
+          let '(st, m) := p in
+          eval_stmt f st m s2
       | SSkip => Return (st, m)
       end
     end.
 
-  Lemma invert_eval_SLit: forall fuel initial x v final,
-    eval_stmt fuel initial (SLit x v) = Success final ->
-    final = put initial x v.
-  Proof.
-    intros. destruct fuel; [discriminate|]. inversion H. auto.
-  Qed.
+  Local Ltac inversion_lemma :=
+    intros;
+    simpl in *;
+    repeat (destruct_one_match_hyp; try discriminate);
+    inversionss;
+    eauto 15.
 
-  Lemma invert_eval_SOp: forall fuel x y z op initial final,
-    eval_stmt fuel initial (SOp x op y z) = Success final ->
+  Lemma invert_eval_SLoad: forall fuel initialSt initialM x y final,
+    eval_stmt (S fuel) initialSt initialM (SLoad x y) = Some final ->
+    exists a v, get initialSt y = Some a /\
+                read_mem a initialM = Some v /\
+                final = (put initialSt x v, initialM).
+  Proof. inversion_lemma. Qed.
+
+  Lemma invert_eval_SStore: forall fuel initialSt initialM x y final,
+    eval_stmt (S fuel) initialSt initialM (SStore x y) = Some final ->
+    exists a v finalM, get initialSt x = Some a /\
+                       get initialSt y = Some v /\
+                       write_mem a v initialM = Some finalM /\
+                       final = (initialSt, finalM).
+  Proof. inversion_lemma. Qed.
+
+  Lemma invert_eval_SLit: forall fuel initialSt initialM x v final,
+    eval_stmt (S fuel) initialSt initialM (SLit x v) = Some final ->
+    final = (put initialSt x v, initialM).
+  Proof. inversion_lemma. Qed.
+
+  Lemma invert_eval_SOp: forall fuel x y z op initialSt initialM final,
+    eval_stmt (S fuel) initialSt initialM (SOp x op y z) = Some final ->
     exists v1 v2,
-      get initial y = Some v1 /\
-      get initial z = Some v2 /\
-      final = put initial x (eval_binop op v1 v2).
-  Proof.
-    introv Ev. destruct fuel; simpl in Ev; [discriminate|].
-    unfold option2res in *.
-    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
-  Qed.
+      get initialSt y = Some v1 /\
+      get initialSt z = Some v2 /\
+      final = (put initialSt x (eval_binop op v1 v2), initialM).
+  Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SSet: forall fuel x y initial final,
-    eval_stmt fuel initial (SSet x y) = Success final ->
+  Lemma invert_eval_SSet: forall fuel x y initialSt initialM final,
+    eval_stmt (S fuel) initialSt initialM (SSet x y) = Some final ->
     exists v,
-      get initial y = Some v /\ final = put initial x v.
-  Proof.
-    intros. destruct fuel; [discriminate|].
-    simpl in *.
-    unfold option2res in *.
-    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
-  Qed.
+      get initialSt y = Some v /\ final = (put initialSt x v, initialM).
+  Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SIf: forall fuel cond bThen bElse initial final,
-    eval_stmt (Coq.Init.Datatypes.S fuel) initial (SIf cond bThen bElse) = Success final ->
+  Lemma invert_eval_SIf: forall fuel cond bThen bElse initialSt initialM final,
+    eval_stmt (S fuel) initialSt initialM (SIf cond bThen bElse) = Some final ->
     exists vcond,
-      get initial cond = Some vcond /\
-      (vcond <> $0 /\ eval_stmt fuel initial bThen = Success final \/
-       vcond =  $0 /\ eval_stmt fuel initial bElse = Success final).
-  Proof.
-    introv Ev. simpl in Ev. unfold option2res in *.
-    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
-  Qed.
+      get initialSt cond = Some vcond /\
+      (vcond <> $0 /\ eval_stmt fuel initialSt initialM bThen = Some final \/
+       vcond =  $0 /\ eval_stmt fuel initialSt initialM bElse = Some final).
+  Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SLoop: forall fuel st1 body1 cond body2 st4,
-    eval_stmt (Coq.Init.Datatypes.S fuel) st1 (SLoop body1 cond body2) = Success st4 ->
-    eval_stmt fuel st1 body1 = Success st4 /\ get st4 cond = Some $0 \/
-    exists st2 st3 cv, eval_stmt fuel st1 body1 = Success st2 /\
-                       get st2 cond = Some cv /\ cv <> $0 /\
-                       eval_stmt fuel st2 body2 = Success st3 /\
-                       eval_stmt fuel st3 (SLoop body1 cond body2) = Success st4.
-  Proof.
-    introv Ev. simpl in Ev. unfold option2res in *.
-    repeat (destruct_one_match_hyp; try discriminate); inversionss; eauto 10.
-  Qed.
+  Lemma invert_eval_SLoop: forall fuel st1 m1 body1 cond body2 p4,
+    eval_stmt (S fuel) st1 m1 (SLoop body1 cond body2) = Some p4 ->
+    eval_stmt fuel st1 m1 body1 = Some p4 /\ get (fst p4) cond = Some $0 \/
+    exists st2 m2 st3 m3 cv, eval_stmt fuel st1 m1 body1 = Some (st2, m2) /\
+                             get st2 cond = Some cv /\ cv <> $0 /\
+                             eval_stmt fuel st2 m2 body2 = Some (st3, m3) /\
+                             eval_stmt fuel st3 m3 (SLoop body1 cond body2) = Some p4.
+  Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SSeq: forall fuel initial s1 s2 final,
-    eval_stmt (Coq.Init.Datatypes.S fuel) initial (SSeq s1 s2) = Success final ->
-    exists mid, eval_stmt fuel initial s1 = Success mid /\
-                eval_stmt fuel mid s2 = Success final.
-  Proof.
-    introv Ev. simpl in Ev. destruct_one_match_hyp; try discriminate. eauto.
-  Qed.
+  Lemma invert_eval_SSeq: forall fuel initialSt initialM s1 s2 final,
+    eval_stmt (S fuel) initialSt initialM (SSeq s1 s2) = Some final ->
+    exists midSt midM, eval_stmt fuel initialSt initialM s1 = Some (midSt, midM) /\
+                       eval_stmt fuel midSt midM s2 = Some final.
+  Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SSkip: forall fuel initial final,
-    eval_stmt fuel initial SSkip = Success final ->
-    initial = final.
-  Proof. intros. destruct fuel; [discriminate|]. inversion H. auto. Qed.
+  Lemma invert_eval_SSkip: forall fuel initialSt initialM final,
+    eval_stmt (S fuel) initialSt initialM SSkip = Some final ->
+    final = (initialSt, initialM).
+  Proof. inversion_lemma. Qed.
 
-  Lemma increase_fuel_still_Success: forall fuel1 fuel2 initial s final,
+(*
+Ltac invert_eval_stmt :=
+  match goal with
+  | E: eval_stmt (Datatypes.S ?fuel) _ ?s = Success _ |- _ =>
+    destruct s;
+    [ apply invert_eval_SLit in E
+    | apply invert_eval_SOp in E; destruct E as [? [? [? [? ?]]]]
+    | apply invert_eval_SSet in E; destruct E as [? [? ?]]
+    | apply invert_eval_SIf in E; destruct E as [? [? [[? ?]|[? ?]]]]
+    | apply invert_eval_SLoop in E; destruct E as [[? ?] | [? [? [? [? [? [? [? ?]]]]]]]]
+    | apply invert_eval_SSeq in E; destruct E as [? [? ?]]
+    | apply invert_eval_SSkip in E ]
+  end.
+*)
+
+  Ltac invert_eval_stmt :=
+    lazymatch goal with
+    | E: eval_stmt (S ?fuel) _ _ ?s = Some _ |- _ =>
+      destruct s;
+      [ apply invert_eval_SLoad in E
+      | apply invert_eval_SStore in E
+      | apply invert_eval_SLit in E
+      | apply invert_eval_SOp in E
+      | apply invert_eval_SSet in E
+      | apply invert_eval_SIf in E
+      | apply invert_eval_SLoop in E
+      | apply invert_eval_SSeq in E
+      | apply invert_eval_SSkip in E ];
+      deep_destruct E;
+      [ let x := fresh "Case_SLoad" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SStore" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SLit" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SOp" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SSet" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SIf_Then" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SIf_Else" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SLoop_Done" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SLoop_NotDone" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SSeq" in pose proof tt as x; move x at top
+      | let x := fresh "Case_SSkip" in pose proof tt as x; move x at top ]
+    end.
+
+  Lemma increase_fuel_still_Success: forall fuel1 fuel2 initialSt initialM s final,
     fuel1 <= fuel2 ->
-    eval_stmt fuel1 initial s = Success final ->
-    eval_stmt fuel2 initial s = Success final.
+    eval_stmt fuel1 initialSt initialM s = Some final ->
+    eval_stmt fuel2 initialSt initialM s = Some final.
   Proof.
     induction fuel1; introv L Ev.
     - inversions Ev.
-    - destruct fuel2; [omega|]. destruct s.
-      + exact Ev.
-      + exact Ev.
-      + exact Ev.
-      + simpl in *. destruct_one_match; try discriminate.
-        erewrite IHfuel1; [reflexivity | omega | exact Ev].
-      + apply invert_eval_SLoop in Ev.
-        destruct Ev as [Ev | Ev]. 
-        * destruct Ev as [Ev C]. 
-          simpl. erewrite IHfuel1; [|omega|eassumption].
-          rewrite C. simpl. destruct_one_match; [reflexivity | contradiction].
-        * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
-          simpl.
-          erewrite IHfuel1; [|omega|eassumption].
-          erewrite IHfuel1; [|omega|eassumption].
-          erewrite IHfuel1; [|omega|eassumption].
-          rewrite C1. simpl.
-          destruct_one_match; [ contradiction | reflexivity ].
-     + apply invert_eval_SSeq in Ev.
-       destruct Ev as [mid [Ev1 Ev2]].
-       simpl.
-       erewrite IHfuel1; [|omega|eassumption].
-       erewrite IHfuel1; [|omega|eassumption].
-       reflexivity.
-     + simpl. inversionss. reflexivity.
+    - destruct fuel2; [omega|].
+      assert (fuel1 <= fuel2) as F by omega. specialize IHfuel1 with (1 := F).
+      destruct final as [finalSt finalM].
+      invert_eval_stmt; simpl in *;
+      repeat match goal with
+      | IH: _, H: _ |- _ =>
+          let IH' := fresh IH in pose proof IH as IH';
+          specialize IH' with (1 := H);
+          ensure_new IH'
+      end;
+      repeat match goal with
+      | H: _ = Some _ |- _ => rewrite H
+      end;
+      try congruence;
+      try simpl_if;
+      eauto.
   Qed.
 
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt): vars :=
     match s with
+    | SLoad x y => singleton_set x
+    | SStore x y => empty_set
     | SLit x v => singleton_set x
     | SOp x op y z => singleton_set x
     | SSet x y => singleton_set x
@@ -203,112 +241,27 @@ Section FlatImp.
     | SSkip => empty_set
     end.
 
-(*
-Ltac TAC_D :=
-  match goal with
-  (* we use an explicit type T because otherwise the inferred type might differ *)
-  | |- context[dec (@eq ?T ?t1 ?t2)] => idtac "TAC_D"; destruct (dec (@eq T t1 t2)); [subst|]
-  end.
-
-
-Ltac state_calc00 :=
-  idtac "state_calc";
-  unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put;
-  repeat match goal with
-  | x: ?T, H: forall (y: ?T), _ |- _ => unique pose proof (H x)
-  end. 
-  
-Ltac go1 :=
-  repeat (intuition (auto || congruence) || TAC_D).
-
-
-Definition get_DecidableEq(T: Type){e: DecidableEq T}: DecidableEq T := e.
-
-Ltac do_rewr :=       rewrite get_put in *. 
-
-*)
-
-  Lemma modVarsSound: forall fuel s initial final,
-    eval_stmt fuel initial s = Success final ->
-    only_differ initial (modVars s) final.
+  Lemma modVarsSound: forall fuel s initialSt initialM finalSt finalM,
+    eval_stmt fuel initialSt initialM s = Some (finalSt, finalM) ->
+    only_differ initialSt (modVars s) finalSt.
   Proof.
     induction fuel; introv Ev.
     - discriminate.
-    - destruct s.
-      + simpl in *. inversionss. state_calc.
-
-(*
-If we forget to put a DecidableEq for var (currently var=Z) into scope, weird things happen,
-because erewrite leaves the implicit DecidableEq as an existential var
-
-      unf; intros; autorewrite with rewrite_set_op_specs in *.
-
-rewrite_get_put.
-      do_rewr.
-      
-      
-      let r := eval unfold get_DecidableEq in (get_DecidableEq var) in idtac r.
-      
-      let e := constr:(fun (x: var) => dec (x = x)) in
-      match e with
-      | (fun x => @dec _ (?d x x)) => idtac d
-      end.
-      
-      Check (dec (x = x)).
-      assert (DecidableEq var). change var with Z. eauto.
-      { state_calc00. go1. (* solves the goal *) }
-
-      { state_calc00; go1.  (* does not solve the goal *)
-
-
-      { state_calc00; go1.  (* does not solve the goal *)
-
-
-
-
-      
- (* unf; intros; autorewrite with rewrite_set_op_specs in *; rewrite_get_put. 
-  repeat match goal with
-  | x: ?T, H: forall (y: ?T), _ |- _ => unique pose proof (H x)
-  end.*)
-  go1.
-  
-  repeat (intuition (auto || congruence) || destruct_one_dec_eq).
-(*copy/pasting body of state_calc has different effect than state_calc?? *)
-      
-       state_calc.
-*)
-      + simpl in Ev. unfold option2res in *.
-        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. simpl. state_calc.
-      + simpl in Ev. unfold option2res in *.
-        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        inversionss. simpl. state_calc.
-      + Opaque union. simpl in *. unfold option2res in *.
-        repeat (destruct_one_match_hyp_of_type (option (word w)); try discriminate).
-        destruct fuel; [ inversion Ev | ].
-        specializes IHfuel; [ eassumption |].
-        destruct_one_match_hyp; state_calc.
-      + apply invert_eval_SLoop in Ev. destruct Ev as [Ev | Ev]. 
-        * destruct Ev as [Ev C]. 
-          simpl. specializes IHfuel; [eassumption|]. state_calc.
-        * destruct Ev as [mid2 [mid3 [cv [Ev1 [C1 [C2 [Ev2 Ev3]]]]]]].
-          simpl.
-          pose proof (IHfuel _ _ _ Ev1) as IH1.
-          pose proof (IHfuel _ _ _ Ev2) as IH2.
-          pose proof (IHfuel _ _ _ Ev3) as IH3.
-          clear - IH1 IH2 IH3. simpl in IH3.
-          state_calc.
-      + apply invert_eval_SSeq in Ev.
-        destruct Ev as [mid [Ev1 Ev2]]. simpl.
-        pose proof (IHfuel _ _ _ Ev1) as IH1.
-        pose proof (IHfuel _ _ _ Ev2) as IH2.
-        clear - IH1 IH2. state_calc.
-      + simpl. inversionss. state_calc.
+    - invert_eval_stmt; simpl in *; inversionss;
+      repeat match goal with
+      | IH: _, H: _ |- _ =>
+          let IH' := fresh IH in pose proof IH as IH';
+          specialize IH' with (1 := H);
+          simpl in IH';
+          ensure_new IH'
+      end;
+      state_calc.
   Qed.
 
   Fixpoint accessedVars(s: stmt): vars :=
     match s with
+    | SLoad x y => union (singleton_set x) (singleton_set y)
+    | SStore x y => union (singleton_set x) (singleton_set y)
     | SLit x v => singleton_set x
     | SOp x op y z => union (singleton_set x) (union (singleton_set y) (singleton_set z))
     | SSet x y => union (singleton_set x) (singleton_set y)
@@ -569,20 +522,6 @@ rewrite_get_put.
 
 End FlatImp.
 
-Ltac invert_eval_stmt :=
-  match goal with
-  | E: eval_stmt (Datatypes.S ?fuel) _ ?s = Success _ |- _ =>
-    destruct s;
-    [ apply invert_eval_SLit in E
-    | apply invert_eval_SOp in E; destruct E as [? [? [? [? ?]]]]
-    | apply invert_eval_SSet in E; destruct E as [? [? ?]]
-    | apply invert_eval_SIf in E; destruct E as [? [? [[? ?]|[? ?]]]]
-    | apply invert_eval_SLoop in E; destruct E as [[? ?] | [? [? [? [? [? [? [? ?]]]]]]]]
-    | apply invert_eval_SSeq in E; destruct E as [? [? ?]]
-    | apply invert_eval_SSkip in E ]
-  end.
-
-
 Module TestFlatImp.
 
 Instance ZName: NameWithEq := {| name := Z |}.
@@ -619,11 +558,11 @@ Example fib(n: word 8) :=
               (SOp _n OMinus _n _one)))))
   )))).
 
-Definition eval_stmt_test := @eval_stmt 8 ZName _ _.
+Definition eval_stmt_test fuel initialSt := @eval_stmt 8 ZName _ _ fuel initialSt (no_mem 8).
 
-Example finalFibState(n: nat): Res (var -> option (word 8)) := (eval_stmt_test 100 empty (fib $n)).
+Example finalFibState(n: nat) := (eval_stmt_test 100 empty (fib $n)).
 Example finalFibVal(n: nat): option (word 8) := match finalFibState n with
-| Success s => get s _b
+| Some (s, _) => get s _b
 | _ => None
 end.
 

@@ -108,3 +108,23 @@ Tactic Notation "unique" "apply" constr(p) "in" "copy" "of" ident(H) :=
   pose proof H as H';
   apply p in H';
   ensure_new H'.
+
+Ltac deep_destruct H :=
+  lazymatch type of H with
+  | exists x, _ => let x' := fresh x in destruct H as [x' H]; deep_destruct H
+  | _ /\ _ => let H' := fresh H in destruct H as [H' H]; deep_destruct H'; deep_destruct H
+  | _ \/ _ => destruct H as [H | H]; deep_destruct H
+  | _ => idtac
+  end.
+
+(* simplify an "if then else" where only one branch is possible *)
+Ltac simpl_if :=
+  let E := fresh "E" in
+  let a := fresh "a" in
+  match goal with
+  | |- context[if ?e then _ else _]      => destruct e as [a|a] eqn: E; [contradiction|]
+  | |- context[if ?e then _ else _]      => destruct e as [a|a] eqn: E; [|contradiction]
+  | _: context[if ?e then _ else _] |- _ => destruct e as [a|a] eqn: E; [contradiction|]
+  | _: context[if ?e then _ else _] |- _ => destruct e as [a|a] eqn: E; [|contradiction]
+  end;
+  clear E a.

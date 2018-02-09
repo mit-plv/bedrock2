@@ -54,32 +54,32 @@ Section ExprImp.
   Fixpoint eval_stmt(f: nat)(st: state)(m: mem w)(s: stmt): option (state * mem w) :=
     match f with
     | 0 => None (* out of fuel *)
-    | S f' => match s with
+    | S f => match s with
       | SLoad x a =>
-          b <- eval_expr st a;
-          v <- read_mem b m;
+          a <- eval_expr st a;
+          v <- read_mem a m;
           Return (put st x v, m)
       | SStore a v =>
-          a' <- eval_expr st a;
-          v' <- eval_expr st v;
-          m' <- write_mem a' v' m;
-          Return (st, m')
+          a <- eval_expr st a;
+          v <- eval_expr st v;
+          m <- write_mem a v m;
+          Return (st, m)
       | SSet x e =>
           v <- eval_expr st e;
           Return (put st x v, m)
       | SIf cond bThen bElse =>
           v <- eval_expr st cond;
-          eval_stmt f' st m (if weq v $0 then bElse else bThen)
+          eval_stmt f st m (if weq v $0 then bElse else bThen)
       | SWhile cond body =>
           v <- eval_expr st cond;
           if weq v $0 then Return (st, m) else
-            p <- eval_stmt f' st m body;
-            let '(st', m') := p in
-            eval_stmt f' st' m' (SWhile cond body)
+            p <- eval_stmt f st m body;
+            let '(st, m) := p in
+            eval_stmt f st m (SWhile cond body)
       | SSeq s1 s2 =>
-          p <- eval_stmt f' st m s1;
-          let '(st', m') := p in
-          eval_stmt f' st' m' s2
+          p <- eval_stmt f st m s1;
+          let '(st, m) := p in
+          eval_stmt f st m s2
       | SSkip => Return (st, m)
       end
     end.
