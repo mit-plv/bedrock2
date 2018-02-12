@@ -157,21 +157,6 @@ Section FlatImp.
     final = (initialSt, initialM).
   Proof. inversion_lemma. Qed.
 
-(*
-Ltac invert_eval_stmt :=
-  match goal with
-  | E: eval_stmt (Datatypes.S ?fuel) _ ?s = Success _ |- _ =>
-    destruct s;
-    [ apply invert_eval_SLit in E
-    | apply invert_eval_SOp in E; destruct E as [? [? [? [? ?]]]]
-    | apply invert_eval_SSet in E; destruct E as [? [? ?]]
-    | apply invert_eval_SIf in E; destruct E as [? [? [[? ?]|[? ?]]]]
-    | apply invert_eval_SLoop in E; destruct E as [[? ?] | [? [? [? [? [? [? [? ?]]]]]]]]
-    | apply invert_eval_SSeq in E; destruct E as [? [? ?]]
-    | apply invert_eval_SSkip in E ]
-  end.
-*)
-
   Ltac invert_eval_stmt :=
     lazymatch goal with
     | E: eval_stmt (S ?fuel) _ _ ?s = Some _ |- _ =>

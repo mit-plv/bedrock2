@@ -102,14 +102,32 @@ Section ExprImp.
     | SSkip => 1
     end.
 
+  Local Ltac inversion_lemma :=
+    intros;
+    simpl in *;
+    repeat (destruct_one_match_hyp; try discriminate);
+    inversionss;
+    eauto 15.
+
+  Lemma invert_eval_SLoad: forall fuel initialSt initialM x e final,
+    eval_stmt (S fuel) initialSt initialM (SLoad x e) = Some final ->
+    exists a v, eval_expr initialSt e = Some a /\
+                read_mem a initialM = Some v /\
+                final = (put initialSt x v, initialM).
+  Proof. inversion_lemma. Qed.
+
+  Lemma invert_eval_SStore: forall fuel initialSt initialM a v final,
+    eval_stmt (S fuel) initialSt initialM (SStore a v) = Some final ->
+    exists av vv finalM, eval_expr initialSt a = Some av /\
+                         eval_expr initialSt v = Some vv /\
+                         write_mem av vv initialM = Some finalM /\
+                         final = (initialSt, finalM).
+  Proof. inversion_lemma. Qed.
+
   Lemma invert_eval_SSet: forall f st1 m1 p2 x e,
-    eval_stmt f st1 m1 (SSet x e) = Some p2 ->
+    eval_stmt (S f) st1 m1 (SSet x e) = Some p2 ->
     exists v, eval_expr st1 e = Some v /\ p2 = (put st1 x v, m1).
-  Proof.
-    introv E. destruct f; [ discriminate |].
-    simpl in E. destruct_one_match_hyp; [ | discriminate ].
-    inversions E. eauto.
-  Qed.
+  Proof. inversion_lemma. Qed.
 
   Lemma invert_eval_SIf: forall f st1 m1 p2 cond bThen bElse,
     eval_stmt (S f) st1 m1 (SIf cond bThen bElse) = Some p2 ->
@@ -117,10 +135,7 @@ Section ExprImp.
       eval_expr st1 cond = Some cv /\ 
       (cv <> $0 /\ eval_stmt f st1 m1 bThen = Some p2 \/
        cv = $0  /\ eval_stmt f st1 m1 bElse = Some p2).
-  Proof.
-    introv E. simpl in E. destruct_one_match_hyp; [|discriminate].
-    destruct_one_match_hyp; subst *; eexists; eapply (conj eq_refl); [right|left]; auto.
-  Qed.
+  Proof. inversion_lemma. Qed.
 
   Lemma invert_eval_SWhile: forall st1 m1 p3 f cond body,
     eval_stmt (S f) st1 m1 (SWhile cond body) = Some p3 ->
@@ -129,27 +144,17 @@ Section ExprImp.
       (cv <> $0 /\ (exists st2 m2, eval_stmt f st1 m1 body = Some (st2, m2) /\ 
                                    eval_stmt f st2 m2 (SWhile cond body) = Some p3) \/
        cv = $0  /\ p3 = (st1, m1)).
-  Proof.
-    introv E. simpl in E. destruct_one_match_hyp; [|discriminate].
-    destruct_one_match_hyp.
-    - inversion E. subst. clear E. eexists. eapply (conj eq_refl). right. auto.
-    - destruct_one_match_hyp; [|discriminate]. destruct_one_match_hyp. eauto 10.
-  Qed.
+  Proof. inversion_lemma. Qed.
 
   Lemma invert_eval_SSeq: forall st1 m1 p3 f s1 s2,
     eval_stmt (S f) st1 m1 (SSeq s1 s2) = Some p3 ->
     exists st2 m2, eval_stmt f st1 m1 s1 = Some (st2, m2) /\ eval_stmt f st2 m2 s2 = Some p3.
-  Proof.
-    introv E. simpl in E. destruct_one_match_hyp; [|discriminate]. destruct_one_match_hyp. eauto.
-  Qed.
+  Proof. inversion_lemma. Qed.
 
   Lemma invert_eval_SSkip: forall st1 m1 p2 f,
-    eval_stmt f st1 m1 SSkip = Some p2 ->
+    eval_stmt (S f) st1 m1 SSkip = Some p2 ->
     p2 = (st1, m1).
-  Proof.
-    introv E. destruct f; [discriminate|].
-    simpl in E. inversions E. reflexivity.
-  Qed.
+  Proof. inversion_lemma. Qed.
 
   (* Returns a list to make it obvious that it's a finite set. *)
   Fixpoint allVars_expr(e: expr): list var :=
