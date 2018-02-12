@@ -10,7 +10,7 @@ Require Import riscv.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import compiler.Memory.
 
-Section ExprImp.
+Section ExprImp1.
 
   Context {w: nat}. (* bit width *)
 
@@ -189,8 +189,8 @@ Section ExprImp.
     end.
 
   Lemma modVars_subset_allVars: forall x s,
-    x \in ExprImp.modVars s ->
-    In x (ExprImp.allVars_stmt s).
+    x \in modVars s ->
+    In x (allVars_stmt s).
   Proof.
     intros.
     induction s; simpl in *.
@@ -207,44 +207,66 @@ Section ExprImp.
     - eapply empty_set_spec. eassumption.
   Qed.
 
+End ExprImp1.
+
+
+Ltac invert_eval_stmt :=
+  lazymatch goal with
+  | E: eval_stmt (S ?fuel) _ _ ?s = Some _ |- _ =>
+    destruct s;
+    [ apply invert_eval_SLoad in E
+    | apply invert_eval_SStore in E
+    | apply invert_eval_SSet in E
+    | apply invert_eval_SIf in E
+    | apply invert_eval_SWhile in E
+    | apply invert_eval_SSeq in E
+    | apply invert_eval_SSkip in E ];
+    deep_destruct E;
+    [ let x := fresh "Case_SLoad" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SStore" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SSet" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SIf_Then" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SIf_Else" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SWhile_Done" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SWhile_NotDone" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SSeq" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SSkip" in pose proof tt as x; move x at top ]
+  end.
+
+
+Section ExprImp2.
+
+  Context {w: nat}. (* bit width *)
+
+  Context {Name: NameWithEq}.
+  Notation var := (@name Name).
+  Existing Instance eq_name_dec.
+
+  Context {state: Type}.
+  Context {stateMap: Map state var (word w)}.
+  Context {vars: Type}.
+  Context {varset: set vars var}.
+
+  Ltac state_calc := state_calc_generic (@name Name) (word w).
+
   Lemma modVarsSound: forall fuel s initialS initialM finalS finalM,
     eval_stmt fuel initialS initialM s = Some (finalS, finalM) ->
     only_differ initialS (modVars s) finalS.
   Proof.
     induction fuel; introv Ev.
     - discriminate.
-    - destruct s.
-      + simpl in *.
-        repeat (destruct_one_match_hyp; [|discriminate]). inversionss. state_calc.
-      + simpl in *.
-        repeat (destruct_one_match_hyp; [|discriminate]). inversionss. state_calc.
-      + simpl in *. destruct_one_match_hyp; [|discriminate]. inversionss. state_calc.
-      + simpl in *. destruct_one_match_hyp; [|discriminate].
-        destruct_one_match_hyp.
-        * subst *. specializes IHfuel; [ eassumption |]. state_calc.
-        * subst *. specializes IHfuel; [ eassumption |]. state_calc.
-      + apply invert_eval_SWhile in Ev.
-        destruct Ev as [cv [Evcond [Ev | Ev]]].
-        * destruct Ev as [Ne [mid2S [mid2M [Ev2 Ev3]]]].
-          simpl.
-          pose proof IHfuel as IH2.
-          pose proof IHfuel as IH3.
-          specialize IH2 with (1 := Ev2).
-          specialize IH3 with (1 := Ev3).
-          clear - IH2 IH3. state_calc.
-        * destruct Ev as [? ?]. inversionss. subst *. clear. state_calc.
-      + apply invert_eval_SSeq in Ev.
-        destruct Ev as [mid1S [mid1M [Ev1 Ev2]]]. simpl.
-        pose proof IHfuel as IH1.
-        pose proof IHfuel as IH2.
-        specialize IH1 with (1 := Ev1).
-        specialize IH2 with (1 := Ev2).
-        clear - IH1 IH2. state_calc.
-      + simpl. inversionss. state_calc.
+    - invert_eval_stmt; simpl in *; inversionss;
+      repeat match goal with
+      | IH: _, H: _ |- _ =>
+          let IH' := fresh IH in pose proof IH as IH';
+          specialize IH' with (1 := H);
+          simpl in IH';
+          ensure_new IH'
+      end;
+      state_calc.
   Qed.
 
-End ExprImp.
-
+End ExprImp2.
 
 
 Module TestExprImp.
