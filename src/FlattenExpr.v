@@ -1,6 +1,5 @@
 Require Import lib.LibTacticsMin.
 Require Import compiler.Common.
-Require Import compiler.ResMonad.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
 Require Import compiler.StateCalculus.
@@ -50,6 +49,12 @@ Section FlattenExpr.
   Fixpoint flattenStmt(ngs: NGstate)(s: ExprImp.stmt (w := w)): (FlatImp.stmt (w := w) * NGstate) :=
     match s with
     | ExprImp.SLoad x a =>
+        let '(s, r, ngs') := flattenExpr ngs a in
+        (FlatImp.SSeq s (FlatImp.SLoad x r), ngs')
+    | ExprImp.SStore a v =>
+        let '(sa, ra, ngs') := flattenExpr ngs a in
+        let '(sv, rv, ngs'') := flattenExpr ngs' v in
+        (FlatImp.SSeq sa (FlatImp.SSeq sv (FlatImp.SStore ra rv)), ngs'')
     | ExprImp.SSet x e =>
         let '(e', r, ngs') := flattenExpr ngs e in
         (FlatImp.SSeq e' (FlatImp.SSet x r), ngs')
@@ -174,11 +179,11 @@ Section FlattenExpr.
   Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
 
   Ltac fuel_increasing_rewrite :=
-    match goal with
-    | Ev: FlatImp.eval_stmt ?Fuel1 ?initial ?s = ?final
-      |- context [FlatImp.eval_stmt ?Fuel2 ?initial ?s]
+    lazymatch goal with
+    | Ev: FlatImp.eval_stmt ?Fuel1 ?initialSt ?initialM ?s = ?final
+      |- context [FlatImp.eval_stmt ?Fuel2 ?initialSt ?initialM ?s]
       => let IE := fresh in assert (Fuel1 <= Fuel2) as IE by omega;
-         apply (FlatImp.increase_fuel_still_Success _ _ _ _ _ IE) in Ev;
+         eapply FlatImp.increase_fuel_still_Success in Ev; [|apply IE];
          clear IE;
          rewrite Ev
     end.
@@ -187,14 +192,13 @@ Section FlattenExpr.
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
      flattenExpr_modVars_spec and FlatImp.modVarsSound *)
-  Lemma flattenExpr_correct_aux: forall e ngs1 ngs2 resVar s
-    initialH initialL res,
+  Lemma flattenExpr_correct_aux: forall e ngs1 ngs2 resVar s initialH initialL initialM res,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     extends initialL initialH ->
     undef initialH (allFreshVars ngs1) ->
     ExprImp.eval_expr initialH e = Some res ->
     exists fuel finalL,
-      FlatImp.eval_stmt fuel initialL s = Success finalL /\
+      FlatImp.eval_stmt fuel initialL initialM s = Some (finalL, initialM) /\
       get finalL resVar = Some res.
   Proof.
     induction e; introv F Ex U Ev.
@@ -210,7 +214,7 @@ Section FlattenExpr.
       + state_calc.
     - repeat (inversionss; try destruct_one_match_hyp).
       pose_flatten_var_ineqs.
-      specialize (IHe1 _ _ _ _ _ _ w0 E Ex).
+      specialize IHe1 with (res := w0) (initialM := initialM) (1 := E) (2 := Ex).
       specializes IHe1. {
         clear IHe2.
         state_calc.
@@ -218,7 +222,8 @@ Section FlattenExpr.
       { assumption. }
       destruct IHe1 as [fuel1 [midL [Ev1 G1]]].
       progress pose_flatten_var_ineqs.
-      specialize (IHe2 _ _ _ _ initialH midL w1 E0).
+      specialize IHe2 with (initialH := initialH) (initialL := midL) (initialM := initialM)
+         (res := w1) (1 := E0).
       specializes IHe2.
       { state_calc. }
       { state_calc. }
@@ -240,14 +245,14 @@ Section FlattenExpr.
   Qed.
 
   Lemma flattenStmt_correct_aux:
-    forall fuelH sH sL ngs ngs' initialH finalH initialL,
+    forall fuelH sH sL ngs ngs' initialH finalH initialL initialM finalM,
     flattenStmt ngs sH = (sL, ngs') ->
     extends initialL initialH ->
     undef initialH (allFreshVars ngs) ->
     disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
-    ExprImp.eval_stmt fuelH initialH sH = Some finalH ->
+    ExprImp.eval_stmt fuelH initialH initialM sH = Some (finalH, finalM) ->
     exists fuelL finalL,
-      FlatImp.eval_stmt fuelL initialL sL = Success finalL /\
+      FlatImp.eval_stmt fuelL initialL initialM sL = Some (finalL, finalM) /\
       extends finalL finalH.
   Proof.
     induction fuelH; introv F Ex U Di Ev; [solve [inversionss] |].
