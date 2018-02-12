@@ -245,8 +245,6 @@ Section FlattenExpr.
       rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
   Qed.
 
-  Definition TODO{T: Type}: T. Admitted.
-
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' initialH finalH initialL initialM finalM,
     flattenStmt ngs sH = (sL, ngs') ->
@@ -260,8 +258,66 @@ Section FlattenExpr.
   Proof.
     induction fuelH; introv F Ex U Di Ev; [solve [inversionss] |].
     ExprImp.invert_eval_stmt.
-    - apply TODO.
-    - apply TODO.
+    - repeat (inversionss; try destruct_one_match_hyp).
+      match goal with
+      | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
+        let P := fresh "P" in
+        pose proof flattenExpr_correct_aux as P;
+        specialize P with (initialM := initialM) (4 := Ev);
+        specializes P; [ eassumption .. | ];
+        let fuelL := fresh "fuelL" in
+        let prefinalL := fresh "prefinalL" in
+        destruct P as [fuelL [prefinalL P]];
+        deep_destruct P;
+        exists (S (S fuelL)); eexists
+      end.
+      remember (S fuelL) as SfuelL.
+      split.
+      + simpl.
+        fuel_increasing_rewrite.
+        subst SfuelL. simpl.
+        rewrite_match.
+        reflexivity.
+      + clear IHfuelH.
+        pose_flatten_var_ineqs.
+        state_calc.
+    - repeat (inversionss; try destruct_one_match_hyp).
+      match goal with
+      | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
+        let P := fresh "P" in
+        pose proof flattenExpr_correct_aux as P;
+        specialize P with (initialM := initialM) (4 := Ev);
+        specializes P; [ eassumption .. | ];
+        let fuelL := fresh "fuelL" in
+        let prefinalL := fresh "prefinalL" in
+        destruct P as [fuelL [prefinalL P]];
+        deep_destruct P
+      end.
+      match goal with
+      | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
+        let P := fresh "P" in
+        pose proof flattenExpr_correct_aux as P;
+        specialize P with (initialL := prefinalL) (initialM := initialM) (4 := Ev)
+      end.
+      specializes P1.
+      { eassumption. }
+      { pose_flatten_var_ineqs. clear IHfuelH. state_calc. }
+      { pose_flatten_var_ineqs. clear IHfuelH. state_calc. }
+      destruct P1 as [fuelL2 P1]. deep_destruct P1.
+      exists (S (S (S (fuelL + fuelL2)))). eexists.
+      remember (S (S (fuelL + fuelL2))) as Sf.
+      split.
+      + simpl. fuel_increasing_rewrite. simpl. subst Sf.
+        remember (S (fuelL + fuelL2)) as Sf. simpl. fuel_increasing_rewrite.
+        subst Sf. simpl. rewrite_match.
+        assert (get finalL n0 = Some av) as G. {
+          clear IHfuelH. pose_flatten_var_ineqs. state_calc.
+        }
+        rewrite_match.
+        reflexivity.
+      + clear IHfuelH.
+        pose_flatten_var_ineqs.
+        state_calc. (* TODO this takes more than a minute, which is annoying *)
     - repeat (inversionss; try destruct_one_match_hyp).
       pose proof flattenExpr_correct_aux as P.
       specialize P with (initialM := initialM) (1 := E) (2 := Ex) (3 := U) (4 := Ev0).

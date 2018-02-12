@@ -130,3 +130,8 @@ Ltac simpl_if :=
   | _: context[if ?e then _ else _] |- _ => destruct e as [a|a] eqn: E; [|contradiction]
   end;
   clear E a.
+
+Ltac rewrite_match :=
+  repeat match goal with
+  | E: ?A = _ |- context[match ?A with | _ => _ end] => rewrite E
+  end.
