@@ -55,9 +55,11 @@ Ltac inversionss :=
 Ltac repeat_at_least_once tac := tac; repeat tac.
 Tactic Notation "repeatplus" tactic(t) := (repeat_at_least_once t).
 
-Ltac destruct_pair_eqs := repeatplus match goal with
+Ltac destruct_pair_eqs := repeatplus
+ (idtac; (* to make sure match is only executed later *)
+  match goal with
   | H: (_, _) = (_, _) |- _ => inversion H; clear H
-  end.
+  end).
 
 Ltac ensure_new H :=
   let t := type of H in

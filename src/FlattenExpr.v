@@ -7,6 +7,7 @@ Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.
 Require Import riscv.NameWithEq.
 
+
 Section FlattenExpr.
 
   Context {w: nat}. (* bit width *)
@@ -244,6 +245,8 @@ Section FlattenExpr.
       rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
   Qed.
 
+  Definition TODO{T: Type}: T. Admitted.
+
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' initialH finalH initialL initialM finalM,
     flattenStmt ngs sH = (sL, ngs') ->
@@ -256,16 +259,17 @@ Section FlattenExpr.
       extends finalL finalH.
   Proof.
     induction fuelH; introv F Ex U Di Ev; [solve [inversionss] |].
-    destruct sH.
-    - apply ExprImp.invert_eval_SSet in Ev.
-      destruct Ev as [v [Ev Eq]].
-      repeat (inversionss; try destruct_one_match_hyp).
-      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ E Ex U Ev) as P.
+    ExprImp.invert_eval_stmt.
+    - apply TODO.
+    - apply TODO.
+    - repeat (inversionss; try destruct_one_match_hyp).
+      pose proof flattenExpr_correct_aux as P.
+      specialize P with (initialM := initialM) (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
       destruct P as [fuelL [prefinalL [Evs G]]].
       remember (Datatypes.S fuelL) as SfuelL.
       exists (Datatypes.S SfuelL). eexists. repeat split.
       + simpl.
-        assert (FlatImp.eval_stmt SfuelL initialL s = Success prefinalL) as Evs'. {
+        assert (FlatImp.eval_stmt SfuelL initialL initialM s = Some (prefinalL, initialM)) as Evs'. {
           eapply FlatImp.increase_fuel_still_Success; [|eassumption]. omega.
         }
         rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
@@ -273,92 +277,102 @@ Section FlattenExpr.
         pose_flatten_var_ineqs.
         state_calc.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
-      apply ExprImp.invert_eval_SIf in Ev.
-      destruct Ev as [cv [Evc Ev]].
       pose_flatten_var_ineqs.
       rename cond into condH, s into condL, s0 into sL1, s1 into sL2.
-      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ cv E Ex) as P.
+      pose proof flattenExpr_correct_aux as P.
+      specialize P with (initialM := initialM) (res := cv) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [Evcond G]]].
-      destruct Ev as [[Ne EvThen] | [Eq EvElse]]; pose_flatten_var_ineqs.
-      + specialize IHfuelH with (initialL := initial2L) (1 := E0) (5 := EvThen).
-        destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-        * state_calc.
-        * state_calc.
-        * simpl in Di.
-          set_solver.
-        * exists (S (S (fuelLcond + fuelL))). eexists.
-          refine (conj _ Ex2).
-          remember (S (fuelLcond + fuelL)) as tempFuel.
-          simpl.
-          fuel_increasing_rewrite.
-          subst tempFuel.
-          simpl. rewrite G. simpl. destruct_one_match; [contradiction|].
-          fuel_increasing_rewrite.
-          reflexivity.
-      + specialize (IHfuelH sH2 sL2 _ _ initialH finalH initial2L E1).
-        specializes IHfuelH.
-        * state_calc.
-        * state_calc.
-        * simpl in Di.
-          set_solver.
-        * exact EvElse.
-        * destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-          exists (S (S (fuelLcond + fuelL))). eexists.
-          refine (conj _ Ex2).
-          remember (S (fuelLcond + fuelL)) as tempFuel.
-          simpl.
-          fuel_increasing_rewrite.
-          subst tempFuel.
-          simpl. rewrite G. simpl. destruct_one_match; [|contradiction].
-          fuel_increasing_rewrite.
-          reflexivity.
-    - apply ExprImp.invert_eval_SWhile in Ev.
-      simpl in Di.
+      pose_flatten_var_ineqs.
+      specialize IHfuelH with (initialL := initial2L) (1 := E0) (5 := Ev).
+      destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
+      * state_calc.
+      * state_calc.
+      * simpl in Di.
+        set_solver.
+      * exists (S (S (fuelLcond + fuelL))). eexists.
+        refine (conj _ Ex2).
+        remember (S (fuelLcond + fuelL)) as tempFuel.
+        simpl.
+        fuel_increasing_rewrite.
+        subst tempFuel.
+        simpl. rewrite G. simpl. simpl_if.
+        fuel_increasing_rewrite.
+        reflexivity.
+    - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
+      pose_flatten_var_ineqs.
+      rename cond into condH, s into condL, s0 into sL1, s1 into sL2.
+      pose proof flattenExpr_correct_aux as P.
+      specialize P with (initialM := initialM) (res := $0) (1 := E) (2 := Ex).
+      specializes P; [eassumption|eassumption|].
+      destruct P as [fuelLcond [initial2L [Evcond G]]].
+      pose_flatten_var_ineqs.
+      specialize IHfuelH with (initialL := initial2L) (1 := E1) (5 := Ev).
+      destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
+      * state_calc.
+      * state_calc.
+      * simpl in Di.
+        set_solver.
+      * exists (S (S (fuelLcond + fuelL))). eexists.
+        refine (conj _ Ex2).
+        remember (S (fuelLcond + fuelL)) as tempFuel.
+        simpl.
+        fuel_increasing_rewrite.
+        subst tempFuel.
+        simpl. rewrite G. simpl. simpl_if.
+        fuel_increasing_rewrite.
+        reflexivity.
+    - simpl in Di.
       pose proof F as F0.
       simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
       rename s into sCond, s0 into sBody.
-      destruct Ev as [cv [EvcondH Ev]].
-      pose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ cv E Ex) as P.
+      pose proof flattenExpr_correct_aux as P.
+      specialize P with (res := cv) (initialM := initialM) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [EvcondL G]]].
-      destruct Ev as [Ev | Ev]; pose_flatten_var_ineqs.
-      + destruct Ev as [Ne [middleH [Ev1H Ev2H]]].
-        specialize IHfuelH with (1 := E0) (5 := Ev1H) as IH.
-        specialize (IH initial2L).
-        specializes IH.
-        { state_calc. }
-        { state_calc. }
-        { set_solver. }
-        destruct IH as [fuelL1 [middleL [EvL1 Ex1]]].
-        pose_flatten_var_ineqs.
-        specialize IHfuelH with (initialL := middleL) (1 := F0) (5 := Ev2H).
-        specializes IHfuelH.
-        { state_calc. }
-        { pose proof (ExprImp.modVarsSound _ _ _ _ Ev1H) as D1.
-          state_calc. }
-        { set_solver. }
-        destruct IHfuelH as [fuelL2 [finalL [EvL2 Ex2]]].
-        exists (S (fuelL1 + fuelL2 + fuelLcond)) finalL.
-        refine (conj _ Ex2).
-        simpl.
-        fuel_increasing_rewrite.
-        rewrite G. simpl. destruct_one_match; [contradiction|].
-        fuel_increasing_rewrite.
-        fuel_increasing_rewrite.
-        reflexivity.
-      + destruct Ev as [? ?]. subst.
-        exists (S fuelLcond) initial2L.
-        split; [|state_calc].
-        simpl.
-        fuel_increasing_rewrite.
-        rewrite G. simpl. destruct_one_match; [|contradiction]. reflexivity.
-    - apply ExprImp.invert_eval_SSeq in Ev.
-      destruct Ev as [middleH [Ev1 Ev2]].
-      simpl in F. do 2 destruct_one_match_hyp. inversions F.
+      pose_flatten_var_ineqs.
+      specialize IHfuelH with (1 := E0) (5 := Ev2) as IH.
+      specialize (IH initial2L).
+      specializes IH.
+      { state_calc. }
+      { state_calc. }
+      { set_solver. }
+      destruct IH as [fuelL1 [middleL [EvL1 Ex1]]].
+      pose_flatten_var_ineqs.
+      specialize IHfuelH with (initialL := middleL) (1 := F0) (5 := Ev).
+      specializes IHfuelH.
+      { state_calc. }
+      { pose proof ExprImp.modVarsSound as D1.
+        specialize D1 with (1 := Ev2).
+        state_calc. }
+      { set_solver. }
+      destruct IHfuelH as [fuelL2 [finalL [EvL2 Ex2]]].
+      exists (S (fuelL1 + fuelL2 + fuelLcond)) finalL.
+      refine (conj _ Ex2).
+      simpl.
+      fuel_increasing_rewrite.
+      rewrite G. simpl. simpl_if.
+      fuel_increasing_rewrite.
+      fuel_increasing_rewrite.
+      reflexivity.
+    - simpl in Di.
+      pose proof F as F0.
+      simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
+      rename s into sCond, s0 into sBody.
+      pose proof flattenExpr_correct_aux as P.
+      specialize P with (res := $0) (initialM := initialM) (1 := E) (2 := Ex).
+      specializes P; [eassumption|eassumption|].
+      destruct P as [fuelLcond [initial2L [EvcondL G]]].
+      exists (S fuelLcond) initial2L.
+      pose_flatten_var_ineqs.
+      split; [|state_calc].
+      simpl.
+      fuel_increasing_rewrite.
+      rewrite G. simpl. simpl_if. reflexivity.
+    - simpl in F. do 2 destruct_one_match_hyp. inversions F.
       pose proof IHfuelH as IHfuelH2.
       specializes IHfuelH.
-      1: exact E. 1: exact Ex. 3: exact Ev1.
+      1: exact E. 1: exact Ex. 3: eassumption.
       { clear IHfuelH2. state_calc. }
       { simpl in Di. set_solver. }
       destruct IHfuelH as [fuelL1 [middleL [EvL1 Ex1]]].
@@ -366,10 +380,10 @@ Section FlattenExpr.
       rename s into sL1, s0 into sL2.
       pose_flatten_var_ineqs.
       simpl in Di.
-      pose proof (ExprImp.modVarsSound _ _ _ _ Ev1) as D1.
-      specialize (IHfuelH sH2 sL2 _ _ middleH finalH middleL E0).
-      specializes IHfuelH.
-      1: exact Ex1. 3: exact Ev2.
+      pose proof ExprImp.modVarsSound as D1.
+      specialize D1 with (1 := Ev0).
+      specialize IHfuelH with (1 := E0) (2 := Ex1).
+      specializes IHfuelH. 3: eassumption.
       { state_calc. }
       { state_calc. }
       destruct IHfuelH as [fuelL2 [finalL [EvL2 Ex2]]].
@@ -377,19 +391,18 @@ Section FlattenExpr.
       refine (conj _ Ex2).
       simpl.
       fuel_increasing_rewrite. fuel_increasing_rewrite. reflexivity.
-    - apply ExprImp.invert_eval_SSkip in Ev. subst finalH.
-      simpl in F. inversions F.
+    - simpl in F. inversions F. destruct_pair_eqs.
       exists 1%nat initialL. auto.
   Qed.
 
   Definition ExprImp2FlatImp(s: ExprImp.stmt): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_stmt s)) s).
 
-  Lemma flattenStmt_correct: forall fuelH sH sL finalH,
+  Lemma flattenStmt_correct: forall fuelH sH sL initialM finalH finalM,
     ExprImp2FlatImp sH = sL ->
-    ExprImp.eval_stmt fuelH empty sH = Some finalH ->
+    ExprImp.eval_stmt fuelH empty initialM sH = Some (finalH, finalM) ->
     exists fuelL finalL,
-      FlatImp.eval_stmt fuelL empty sL = Success finalL /\
+      FlatImp.eval_stmt fuelL empty initialM sL = Some (finalL, finalM) /\
       forall resVar res, get finalH resVar = Some res -> get finalL resVar = Some res.
   Proof.
     introv C EvH.
