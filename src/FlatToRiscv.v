@@ -33,7 +33,8 @@ Section FlatToRiscv.
   Context {state: Type}.
   Context {stateMap: Map state var (word wXLEN)}.
 
-  Definition var2Register: var -> Register := RegS.
+  Variable var2Register: var -> Register. (* TODO register allocation *)
+  Definition RegO := Register0.
 
   Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list Instruction :=
     let rd := var2Register res in
@@ -52,44 +53,43 @@ Section FlatToRiscv.
 
   Definition split_lower(szU szL : nat): word (szL + szU) -> word szL := split1 szL szU.
 
-  Definition compile_lit(x: var)(v: word wXLEN): list Instruction.
-    simple refine (
+  Definition compile_lit(x: var)(v: Z): list Instruction :=
       let rd := var2Register x in
-      let lobits := split_lower (wXLEN - wimm) wimm (nat_cast word _ v) in
-      if dec (nat_cast word _ (sext lobits (wXLEN - wimm)) = v)
+      let lobits := (v mod (2 ^ (Z.of_nat wimm)))%Z in
+      if dec (lobits = v)
       then [Addi rd RegO lobits]
       else
-        let hibits := split_upper wupper (wXLEN - wupper) (nat_cast word _ v) in
-        if wmsb lobits false
-        (* Xori will sign-extend lobits with 1s, therefore wnot *)
-        then [Lui rd (wnot hibits); Xori rd rd lobits]
+        let hibits := (v - lobits)%Z in
+        if Z.testbit v (Z.of_nat wimm)
+        (* Xori will sign-extend lobits with 1s, therefore Z.lnot *)
+        then [Lui rd (Z.lnot hibits); Xori rd rd lobits]
         (* Xori will sign-extend lobits with 0s *)
-        else [Lui rd hibits; Xori rd rd lobits]
-    ); abstract (pose proof w_eq; pose proof wXLEN_lbound; omega).
-  Defined.
+        else [Lui rd hibits; Xori rd rd lobits].
 
   (* using the same names (var) in source and target language *)
   Fixpoint compile_stmt(s: @stmt wXLEN Name): list (Instruction) :=
     match s with
-    | SLit x v => compile_lit x v
+    | SLoad x y => [Lw (var2Register x) (var2Register y) 0]
+    | SStore x y => [Sw (var2Register x) (var2Register y) 0]
+    | SLit x v => compile_lit x (wordToZ v)
     | SOp x op y z => compile_op x op y z
     | SSet x y => [Add (var2Register x) RegO (var2Register y)]
     | SIf cond bThen bElse =>
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [Beq (var2Register cond) RegO ($2 ^* $(S (length bThen')))] ++
+        [Beq (var2Register cond) RegO (Z.of_nat (2 * (S (length bThen'))))] ++
         bThen' ++
-        [Jal RegO ($2 ^* $(length bElse'))] ++
+        [Jal RegO (Z.of_nat (2 * (length bElse')))] ++
         bElse'
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [Beq (var2Register cond) RegO ($2 ^* $(S (length body2')))] ++
+        [Beq (var2Register cond) RegO (Z.of_nat (2 * (S (length body2'))))] ++
         body2' ++
-        [Jal RegO (wneg ($2 ^* $(S (S (length body1' + length body2')))))]
+        [Jal RegO (- Z.of_nat (2 * (S (S (length body1' + length body2')))))]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     end.
@@ -106,7 +106,7 @@ Section FlatToRiscv.
 
   Definition containsProgram(m: RiscvMachine)(program: list Instruction)(offset: word wXLEN) :=
     forall i inst, nth_error program i = Some inst ->
-                   m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
+                   m.(machineMem) (offset ^+ $4 ^* $i) = inst.
 
   Definition containsState(m: RiscvMachine)(s: state) :=
     forall x v, get s x = Some v -> m.(registers) x = v.
