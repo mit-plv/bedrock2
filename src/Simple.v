@@ -6,7 +6,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 
 Require Import lib.LibTacticsMin.
 Require Import bbv.Word.
-Require Import riscv.StateMonad.
+Require Import riscv.util.Monads.
 Require Import compiler.Tactics.
 
 (* allows inifinite number of registers *)

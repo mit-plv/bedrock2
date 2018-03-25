@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require Import riscv.Decidable.
-Require Import riscv.Monad.
+Require Import riscv.util.Decidable.
+Require Import riscv.util.Monads.
 Require Import compiler.Op.
 
 (* A mix between imperative and functional:

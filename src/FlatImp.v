@@ -4,7 +4,7 @@ Require Import compiler.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
 Require Import compiler.Memory.
-Require Import riscv.NameWithEq.
+Require Import riscv.util.NameWithEq.
 
 Section FlatImp1.
 

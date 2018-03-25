@@ -1,5 +1,5 @@
 Require Import lib.LibTacticsMin.
-Require Import riscv.StateMonad.
+Require Import riscv.util.Monads.
 Require Import compiler.Common.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
@@ -11,7 +11,7 @@ Require Import compiler.ResMonad.
 Require Import riscv.Riscv.
 Require Import compiler.runsToSatisfying.
 Require Import riscv.RiscvBitWidths.
-Require Import riscv.NameWithEq.
+Require Import riscv.util.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Logic.FunctionalExtensionality.
 

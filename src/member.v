@@ -2,7 +2,7 @@
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require Import riscv.Decidable.
+Require Import riscv.util.Decidable.
 
 Inductive member{T: Type}: list T -> Type :=
   | member_here: forall h t, member (h :: t)

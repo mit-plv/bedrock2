@@ -4,7 +4,7 @@ Require Import Coq.Arith.Compare_dec.
 Require Import Coq.Arith.Minus.
 Require Import Coq.Arith.PeanoNat.
 Require Import Omega.
-Require Import riscv.Decidable.
+Require Import riscv.util.Decidable.
 
 (* TODO move to bbv *)
 Definition ZToWord(sz: nat)(n: BinNums.Z): word sz :=

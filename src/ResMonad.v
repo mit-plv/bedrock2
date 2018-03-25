@@ -1,4 +1,4 @@
-Require Import riscv.Monad.
+Require Import riscv.util.Monads.
 Require Import compiler.Tactics.
 
 Inductive Res(A: Type): Type :=

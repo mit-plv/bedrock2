@@ -1,4 +1,4 @@
-Require Import riscv.Decidable.
+Require Import riscv.util.Decidable.
 Require Import compiler.Tactics.
 
 Class TotalMap(T K V: Type) := mkTotalMap {
