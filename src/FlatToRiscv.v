@@ -9,18 +9,25 @@ Import ListNotations.
 Require Import compiler.Op.
 Require Import compiler.ResMonad.
 Require Import riscv.Riscv.
+Require Import riscv.Minimal.
+Require Import compiler.HarvardMachine.
 Require Import compiler.runsToSatisfying.
 Require Import riscv.RiscvBitWidths.
 Require Import riscv.util.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Logic.FunctionalExtensionality.
+Require Import riscv.InstructionCoercions.
 
+Local Open Scope ilist_scope.
 
 Section FlatToRiscv.
 
   Context {Bw: RiscvBitWidths}.
 
   Context {Name: NameWithEq}.
+
+  (* assumes generic translate and raiseException functions *)
+  Context {RVS: @RiscvState (OState HarvardMachine) (word wXLEN) _ _ IsHarvardMachine}.  
 
   (* If we made it a definition instead, destructing an if on "@dec (@eq (@var Name) x x0)"
      (from this file), where a "@dec (@eq (@Reg Name) x x0)" (from another file, Riscv.v)
@@ -41,55 +48,57 @@ Section FlatToRiscv.
     let rs1 := var2Register arg1 in
     let rs2 := var2Register arg2 in
     match op with
-    | OPlus => [Add rd rs1 rs2]
-    | OMinus => [Sub rd rs1 rs2]
-    | OTimes => [Mul rd rs1 rs2]
-    | OEq => [Sub rd rs1 rs2; Seqz rd rd]
-    | OLt => [Sltu rd rs1 rs2]
-    | OAnd => [And rd rs1 rs2]
+    | OPlus => [[Add rd rs1 rs2]]
+    | OMinus => [[Sub rd rs1 rs2]]
+    | OTimes => [[Mul rd rs1 rs2]]
+    | OEq => [[Sub rd rs1 rs2; Seqz rd rd]]
+    | OLt => [[Sltu rd rs1 rs2]]
+    | OAnd => [[And rd rs1 rs2]]
     end.
 
-  Definition split_upper(szU szL : nat): word (szL + szU) -> word szU := split2 szL szU.
-
-  Definition split_lower(szU szL : nat): word (szL + szU) -> word szL := split1 szL szU.
-
-  Definition compile_lit(x: var)(v: Z): list Instruction :=
+  Definition compile_lit_32(x: var)(v: Z): list Instruction :=
       let rd := var2Register x in
-      let lobits := (v mod (2 ^ (Z.of_nat wimm)))%Z in
+      let lobits := (v mod (2 ^ 20))%Z in
       if dec (lobits = v)
-      then [Addi rd RegO lobits]
+      then [[Addi rd RegO lobits]]
       else
         let hibits := (v - lobits)%Z in
-        if Z.testbit v (Z.of_nat wimm)
+        if Z.testbit v 20
         (* Xori will sign-extend lobits with 1s, therefore Z.lnot *)
-        then [Lui rd (Z.lnot hibits); Xori rd rd lobits]
+        then [[Lui rd (Z.lnot hibits); Xori rd rd lobits]]
         (* Xori will sign-extend lobits with 0s *)
-        else [Lui rd hibits; Xori rd rd lobits].
+        else [[Lui rd hibits; Xori rd rd lobits]].
 
+  Definition compile_lit(x: var)(v: Z): list Instruction :=
+    match bitwidth with
+    | Bitwidth32 => compile_lit_32 x v
+    | Bitwidth64 => compile_lit_32 x v (* TODO *)
+    end.
+  
   (* using the same names (var) in source and target language *)
   Fixpoint compile_stmt(s: @stmt wXLEN Name): list (Instruction) :=
     match s with
-    | SLoad x y => [Lw (var2Register x) (var2Register y) 0]
-    | SStore x y => [Sw (var2Register x) (var2Register y) 0]
+    | SLoad x y => [[Lw (var2Register x) (var2Register y) 0]]
+    | SStore x y => [[Sw (var2Register x) (var2Register y) 0]]
     | SLit x v => compile_lit x (wordToZ v)
     | SOp x op y z => compile_op x op y z
-    | SSet x y => [Add (var2Register x) RegO (var2Register y)]
+    | SSet x y => [[Add (var2Register x) RegO (var2Register y)]]
     | SIf cond bThen bElse =>
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [Beq (var2Register cond) RegO (Z.of_nat (2 * (S (length bThen'))))] ++
+        [[Beq (var2Register cond) RegO (Z.of_nat (2 * (S (length bThen'))))]] ++
         bThen' ++
-        [Jal RegO (Z.of_nat (2 * (length bElse')))] ++
+        [[Jal RegO (Z.of_nat (2 * (length bElse')))]] ++
         bElse'
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [Beq (var2Register cond) RegO (Z.of_nat (2 * (S (length body2'))))] ++
+        [[Beq (var2Register cond) RegO (Z.of_nat (2 * (S (length body2'))))]] ++
         body2' ++
-        [Jal RegO (- Z.of_nat (2 * (S (S (length body1' + length body2')))))]
+        [[Jal RegO (- Z.of_nat (2 * (S (S (length body1' + length body2')))))]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     end.
@@ -99,17 +108,16 @@ Section FlatToRiscv.
   Proof.
     induction s; simpl; try destruct op; simpl;
     repeat (rewrite app_length; simpl); try omega.
-    unfold compile_lit.
-    destruct_one_match; simpl; [omega|].
-    destruct_one_match; simpl; omega.
+    unfold compile_lit, compile_lit_32.
+    repeat destruct_one_match; cbv [length]; omega.
   Qed.
 
-  Definition containsProgram(m: RiscvMachine)(program: list Instruction)(offset: word wXLEN) :=
+  Definition containsProgram(m: HarvardMachine)(program: list Instruction)(offset: word wXLEN) :=
     forall i inst, nth_error program i = Some inst ->
-                   m.(machineMem) (offset ^+ $4 ^* $i) = inst.
+                   m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
 
-  Definition containsState(m: RiscvMachine)(s: state) :=
-    forall x v, get s x = Some v -> m.(registers) x = v.
+  Definition containsState(m: HarvardMachine)(s: state) :=
+    forall x v, get s x = Some v -> m.(machine).(core).(registers) (var2Register x) = v.
 
   Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
   Proof.
@@ -178,11 +186,11 @@ Section FlatToRiscv.
     rewrite Nat.mul_1_r in P.
     apply P; auto.
   Qed.
-
+(*
   Lemma containsState_put: forall prog1 prog2 pc1 pc2 eh1 eh2 initialH initialRegs x v1 v2,
-    containsState (mkRiscvMachine prog1 initialRegs pc1 eh1) initialH ->
+    containsState (mkHarvardMachine prog1 initialRegs pc1 eh1) initialH ->
     v1 = v2 ->
-    containsState (mkRiscvMachine prog2 
+    containsState (mkHarvardMachine prog2 
       (fun reg2 : var =>
                if dec (x = reg2)
                then v1
@@ -195,7 +203,7 @@ Section FlatToRiscv.
     - inverts H1. assumption.
     - simpl in H. apply H. assumption.
   Qed.
-
+*)
   Lemma distr_if_over_app: forall T U P1 P2 (c: sumbool P1 P2) (f1 f2: T -> U) (x: T),
     (if c then f1 else f2) x = if c then f1 x else f2 x.
   Proof. intros. destruct c; reflexivity. Qed.
@@ -204,15 +212,15 @@ Section FlatToRiscv.
     t = (a, b) -> a = fst t /\ b = snd t.
   Proof. intros. destruct t. inversionss. auto. Qed.
 
-  Definition runsToSatisfying: RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
-    runsTo RiscvMachine (execState run1).
+  Definition runsToSatisfying: HarvardMachine -> (HarvardMachine -> Prop) -> Prop :=
+    runsTo HarvardMachine (execState run1).
 
-  Lemma execState_compose{S A: Type}: forall (m1 m2: State S A) (initial: S),
+  Lemma execState_compose{S A: Type}: forall (m1 m2: OState S A) (initial: S),
     execState m2 (execState m1 initial) = execState (m1 ;; m2) initial.
   Proof.
-    intros. unfold execState. unfold Bind, Return, State_Monad.
-    destruct (m1 initial). reflexivity.
-  Qed.
+    intros. unfold execState. unfold Bind, Return, OState_Monad.
+    destruct (m1 initial). simpl. destruct o; try reflexivity.
+  Abort.
 
   Lemma runsToSatisfying_exists_fuel_old: forall initial P,
     runsToSatisfying initial P ->
@@ -222,25 +230,43 @@ Section FlatToRiscv.
     - exists 0. exact H.
     - destruct IHR as [fuel IH]. exists (S fuel).
       unfold run in *.
+      (*
       rewrite execState_compose in IH.
       apply IH.
-  Qed.
+      *)
+  Abort.
 
   Lemma runsToSatisfying_exists_fuel: forall initial P,
     runsToSatisfying initial P ->
     exists fuel, P (execState (run fuel) initial).
   Proof.
-    introv R.
-    unfold run.
+    intros *. intro R.
     pose proof (runsToSatisfying_exists_fuel _ _ initial P R) as F.
-  Abort.
+    unfold run.
+    destruct F as [fuel F]. exists fuel.
+    replace
+      (execState (power_func (fun m => run1;; m) fuel (Return tt)) initial)
+    with
+      (power_func (execState run1) fuel initial);
+    [assumption|clear].
+    revert initial.
+    induction fuel; intros; simpl; [reflexivity|].
+    unfold execState. f_equal.
+    destruct (run1 initial) eqn: E.
+    destruct o eqn: Eo.
+    (* TODO does that hold? What if optional answer is None and it aborts? *)
+  Admitted.
+
+  (* Set Printing Projections. *)
 
   Lemma execute_preserves_instructionMem: forall inst initial,
     (snd (execute inst initial)).(instructionMem) = initial.(instructionMem).
   Proof.
-    intros. unfold execute.
+    intros. destruct initial as [machine imem]. unfold execute.
+    unfold ExecuteI.execute, ExecuteM.execute, ExecuteI64.execute, ExecuteM64.execute.
+  Abort. (* TODO can't we keep the instruction memory outside the state?
     repeat (destruct_one_match; simpl; try reflexivity).
-  Qed.
+  Qed.*)
 
   Lemma run1_preserves_instructionMem: forall initial,
     (execState run1 initial).(instructionMem) = initial.(instructionMem).
@@ -300,7 +326,7 @@ Section FlatToRiscv.
 
   Ltac simpl_run1 :=
          cbv [run1 execState StateMonad.put execute instructionMem registers 
-             pc getPC loadInst setPC getRegister setRegister IsRiscvMachine gets
+             pc getPC loadInst setPC getRegister setRegister IsHarvardMachine gets
              StateMonad.get Return Bind State_Monad ].
 
   Ltac solve_word_eq :=
@@ -479,7 +505,7 @@ Section FlatToRiscv.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
       apply runsToStep.
-      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
+      remember (runsTo HarvardMachine (execState run1)) as runsToRest.
       simpl_run1.
       simpl in Cp0.
       rewrite Cp0. simpl.
@@ -507,7 +533,7 @@ Section FlatToRiscv.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
       apply runsToStep.
-      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
+      remember (runsTo HarvardMachine (execState run1)) as runsToRest.
       simpl_run1.
       simpl in Cp0.
       rewrite Cp0. simpl.
@@ -543,7 +569,7 @@ Section FlatToRiscv.
       rename H into Gy, H0 into Gz. apply Cs in Gy. apply Cs in Gz.
       subst x0 x1.
       apply runsToStep.
-      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
+      remember (runsTo HarvardMachine (execState run1)) as runsToRest.
       simpl_run1.
       destruct op eqn: EOp;
       destruct_containsProgram;
@@ -596,7 +622,7 @@ Section FlatToRiscv.
       simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
-      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
+      remember (runsTo HarvardMachine (execState run1)) as runsToRest.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
       simpl_run1.
       rewrite Cp0. simpl.
@@ -796,7 +822,7 @@ Section FlatToRiscv.
     intros. rewrite empty_is_empty in H. discriminate.
   Qed.
 
-  Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
+  Definition evalL(fuel: nat)(insts: list Instruction)(initial: HarvardMachine): HarvardMachine :=
     execState (run fuel) (putProgram insts initial).
 
   Lemma putProgram_containsProgram: forall p initial,
