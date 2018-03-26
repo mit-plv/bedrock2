@@ -509,6 +509,31 @@ Section FlatToRiscv.
   
   Definition containsMem(memL: FunctionMemory.mem wXLEN)(memH: Memory.mem wXLEN): Prop :=
     forall addr v, memH addr = Some v -> loadWordL memL addr = Some v.
+
+  (* TODO might not hold if a = 0, but we only use it with a = 4 *)
+  Lemma wzero_div: forall sz a, wzero sz ^/ a = wzero sz. Admitted.
+  
+  Lemma run1head: forall inst0 insts initialL,
+      execState (run1 (list2imem (inst0 :: insts) initialL.(core).(pc))) initialL =
+      execState (execute inst0;; step) initialL.
+  Proof.
+    intros.
+    unfold list2imem.
+    unfold run1.
+    unfold getPC, IsRiscvMachine, OState_Monad.
+    destruct_RiscvMachine initialL.
+    unfold Bind at 1.
+    unfold execState.
+    unfold Monads.get.
+    unfold Bind at 1.
+    unfold Return at 1.
+    rewrite wminus_def.
+    rewrite wminus_inv.
+    rewrite wzero_div.
+    rewrite wordToNat_wzero.
+    simpl nth.
+    reflexivity.
+  Qed.
   
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH initialMH finalH finalMH
                                          initialL initialML finalML,
@@ -541,10 +566,55 @@ Section FlatToRiscv.
       unfold compile_lit_32.
       destruct_one_match.
       {
-      destruct_RiscvMachine initialL.
       apply runsToStep. apply runsToDone.
+      rewrite run1head.
+      simpl.
+
+    - (* SLit *)
+      destruct_pair_eqs.
+      subst *.
+      unfold compile_stmt, compile_lit. destruct bitwidth.
+      { (* 32bit *)
+      unfold compile_lit_32.
+      destruct_one_match.
+      {
+(*      destruct_RiscvMachine initialL. *)
+      apply runsToStep. apply runsToDone.
+      remember (Addi (var2Register x) RegO (wordToZ v mod 2 ^ 20)) as inst0.
+      remember [[]] as insts.
+      (* start here, state:
+containsState (*>>*) (execState (run1 (list2imem (inst0 :: insts) (pc (core initialL)))) initialL) (*<< *)
+    (put initialH x v)
+*)
       unfold list2imem.
-      (* until here. TODO lemma for run1 head of imem *)
+      unfold run1.
+      unfold getPC, IsRiscvMachine, OState_Monad.
+      Close Scope monad_scope. idtac.
+      destruct_RiscvMachine initialL.
+      unfold Bind at 1.
+      unfold execState.
+      unfold Monads.get.
+      unfold Bind at 1.
+      unfold Return at 1.
+      remember ({|
+          core := {|
+                  registers := initialL_regs;
+                  pc := initialL_pc;
+                  nextPC := initialL_npc;
+                  exceptionHandlerAddr := initialL_eh |};
+          machineMem := initialL_mem |}) as initialL.
+      rewrite wminus_def.
+      rewrite wminus_inv.
+      replace (wordToNat (wzero wXLEN ^/ $4)) with O by admit.
+      simpl nth.
+      Open Scope monad_scope. idtac.
+      match goal with
+      | |- containsState ?x _ /\ _ => change x with (execState (execute inst0;; step) initialL)
+      end.
+(* result:
+containsState (*>>*) (execState (execute inst0;; step) initialL) (*<<*) (put initialH x v)
+      
+  until here. TODO lemma for run1 head of imem *)
       simpl_run1.
       simpl in Cp0.
       rewrite Cp0. simpl.
