@@ -18,6 +18,7 @@ Require Import riscv.util.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import riscv.InstructionCoercions.
+Require Import riscv.Utility.
 
 Local Open Scope ilist_scope.
 
@@ -45,6 +46,7 @@ Section FlatToRiscv.
 
   Variable var2Register: var -> Register. (* TODO register allocation *)
   Hypothesis no_var_mapped_to_Register0: forall (x: var), var2Register x <> Register0.
+  Hypothesis var2Register_inj: forall x1 x2, var2Register x1 = var2Register x2 -> x1 = x2.
 
   (* Set Printing Projections.
      Uncaught anomaly when stepping through proofs :(
@@ -125,8 +127,8 @@ Section FlatToRiscv.
                    m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
  *)
   
-  Definition containsState(m: RiscvMachine)(s: state) :=
-    forall x v, get s x = Some v -> m.(core).(registers) (var2Register x) = v.
+  Definition containsState(regs: Register -> word wXLEN)(s: state) :=
+    forall x v, get s x = Some v -> regs (var2Register x) = v.
 
 (*
   Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
@@ -196,24 +198,30 @@ Section FlatToRiscv.
     rewrite Nat.mul_1_r in P.
     apply P; auto.
   Qed.
-(*
-  Lemma containsState_put: forall prog1 prog2 pc1 pc2 eh1 eh2 initialH initialRegs x v1 v2,
-    containsState (mkRiscvMachine prog1 initialRegs pc1 eh1) initialH ->
+
+  Lemma containsState_put: forall initialH initialRegs x v1 v2,
+    containsState initialRegs initialH ->
     v1 = v2 ->
-    containsState (mkRiscvMachine prog2 
-      (fun reg2 : var =>
-               if dec (x = reg2)
+    containsState
+      (fun reg2 =>
+               if dec (var2Register x = reg2)
                then v1
                else initialRegs reg2)
-       pc2 eh2)
      (put initialH x v2).
   Proof.
-    unfold containsState. intros. simpl.
-    rewrite get_put in H1. destruct_one_match.
-    - inverts H1. assumption.
-    - simpl in H. apply H. assumption.
+    unfold containsState. intros.
+    rewrite get_put in H1.
+    destruct_one_match_hyp.
+    - clear E. subst. inverts H1.
+      destruct_one_match; [reflexivity|].
+      exfalso.
+      apply n.
+      reflexivity.
+    - destruct_one_match.
+      * clear E0. apply var2Register_inj in e. contradiction.
+      * apply H. assumption.
   Qed.
-*)
+
   Lemma distr_if_over_app: forall T U P1 P2 (c: sumbool P1 P2) (f1 f2: T -> U) (x: T),
     (if c then f1 else f2) x = if c then f1 x else f2 x.
   Proof. intros. destruct c; reflexivity. Qed.
@@ -340,6 +348,10 @@ Section FlatToRiscv.
          core machineMem registers pc nextPC exceptionHandlerAddr
          getPC setPC getRegister setRegister IsRiscvMachine gets].
 
+  Ltac simpl_RiscvMachine_get_set :=
+    cbv [core machineMem registers pc nextPC exceptionHandlerAddr
+         with_registers with_pc with_nextPC with_exceptionHandlerAddr with_machineMem] in *.
+  
   Ltac solve_word_eq :=
     clear;
     repeat match goal with
@@ -564,27 +576,43 @@ Section FlatToRiscv.
     intros. reflexivity.
   Qed.
 
-  Lemma execState_Return: forall {S A}`{OState S A} (s: S) (a: A),
+  Lemma execState_Return: forall {S A} (s: S) (a: A),
       execState (Return a) s = s.
-  Proof. reflexivity. Qed.
-  
-  Lemma compile_stmt_correct_aux: forall fuelH s insts initialH initialMH finalH finalMH
-                                         initialL initialML finalML,
+  Proof. intros. reflexivity. Qed.
+
+  Lemma add_def: forall (a b: word wXLEN),
+      Utility.add a b = wplus a b.
+  Proof.
+    intros. clear. unfold wXLEN in *. unfold add, MachineWidthInst.
+    destruct bitwidth; [unfold MachineWidth32 | unfold MachineWidth64]; reflexivity.
+  Qed.
+
+  Lemma fromImm_def: forall (a: Z),
+      Utility.fromImm a = ZToWord wXLEN a.
+  Proof.
+    intros. clear. unfold wXLEN in *. unfold fromImm, MachineWidthInst.
+    destruct bitwidth; [unfold MachineWidth32 | unfold MachineWidth64]; reflexivity.
+  Qed.
+    
+  Lemma compile_stmt_correct_aux:
+    forall fuelH s insts initialH initialMH finalH finalMH initialL,
     compile_stmt s = insts ->
     stmt_not_too_big s ->
     evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
-    containsState initialL initialH ->
-    containsMem initialML initialMH ->
+    containsState initialL.(core).(registers) initialH ->
+    containsMem initialL.(machineMem) initialMH ->
+    initialL.(core).(pc) ^+ $4 = initialL.(core).(nextPC) ->
     runsToSatisfying (list2imem insts initialL.(core).(pc))
                      initialL
-                     (fun finalL => containsState finalL finalH /\
-                                    containsMem finalML finalMH /\
+                     (fun finalL => containsState finalL.(core).(registers) finalH /\
+                                    containsMem finalL.(machineMem) finalMH /\
+                                    finalL.(core).(pc) ^+ $4 = finalL.(core).(nextPC) /\
                                     finalL.(core).(pc) =
                                       initialL.(core).(pc) ^+ $ (4) ^* $ (length insts)).
   Proof.
     induction fuelH; [intros; discriminate |].
     intros *.
-    intros C Csz EvH Cs Cm.
+    intros C Csz EvH Cs Cm Pc.
     unfold evalH in EvH.
     invert_eval_stmt.
     - (* SLoad *)
@@ -594,7 +622,7 @@ Section FlatToRiscv.
     - (* SLit *)
       destruct_pair_eqs.
       subst *.
-      unfold compile_stmt, compile_lit. destruct bitwidth.
+      unfold compile_stmt, compile_lit. destruct bitwidth eqn: EBw.
       { (* 32bit *)
       unfold compile_lit_32.
       destruct_one_match.
@@ -607,82 +635,28 @@ Section FlatToRiscv.
       rewrite Bind_setRegister.
       rewrite <- (right_identity step).
       rewrite Bind_step.
-      rewrite (@execState_Return RiscvMachine unit).
-      (* TODO record accessor cbv tactic *)
-
-      unfold step, IsRiscvMachine.
-      
-      simpl_run1.
-      simpl in Cp0.
-      rewrite Cp0. simpl.
-      unfold compile_stmt, compile_lit. rewrite E. simpl.
-      rewrite <- (wmult_comm $1). rewrite wmult_unit. refine (conj _ eq_refl).
+      rewrite (@execState_Return RiscvMachine unit _).
+      destruct_RiscvMachine initialL.
+      simpl_RiscvMachine_get_set.
+      subst.
+      simpl.
+      rewrite wmult_unit_r.
+      repeat split; try assumption; try reflexivity; let n := numgoals in guard n = 1.
       eapply containsState_put; [eassumption|].
-      rewrite wplus_unit.
-      unfold signed_imm_to_word.
-      etransitivity. 2: exact e.
-      apply nat_cast_proof_irrel.
+      rewrite add_def.
+      simpl in e. rewrite e.
+      rewrite wplus_wzero_2.
+      rewrite fromImm_def.
+      apply ZToWord_wordToZ.
       }
       {
-      destruct_one_match_hyp.
-      {
-      destruct_containsProgram.
-      destruct initialL as [initialProg initialRegs initialPc].
-      apply runsToStep.
-      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
-      simpl_run1.
-      simpl in Cp0.
-      rewrite Cp0. simpl.
-      subst runsToRest.
-      apply runsToStep.
-      simpl_run1.
-      simpl in Cp1.
-      progress rewrite Cp1. simpl.
-      apply runsToDone.
-      destruct (dec (x = x)); [|contradiction].
-      rewrite regs_overwrite.
-      split.
-      + eapply containsState_put; [ eassumption |].
-        clear -E0 Name state stateMap.
-        unfold upper_imm_to_word, signed_imm_to_word.
-        assert (wXLEN - wInstr = 0) as Eq0 by (clear; bitwidth_omega).
-        rewrite sext0 with (e := Eq0).
-        rewrite nat_cast_fuse.
-        pose proof reassemble_literal_ext1 as P.
-        specialize P with (4 := E0).
-        apply P; (clear; bitwidth_omega).
-      + unfold compile_lit. rewrite E. rewrite E0. simpl. solve_word_eq.
+        (* TODO 20-32bit literals *)
+        admit.
+      }
       }
       {
-      destruct_containsProgram.
-      destruct initialL as [initialProg initialRegs initialPc].
-      apply runsToStep.
-      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
-      simpl_run1.
-      simpl in Cp0.
-      rewrite Cp0. simpl.
-      subst runsToRest.
-      apply runsToStep.
-      simpl_run1.
-      simpl in Cp1.
-      progress rewrite Cp1. simpl.
-      apply runsToDone.
-      destruct (dec (x = x)); [|contradiction].
-      rewrite regs_overwrite.
-      split.
-      + eapply containsState_put; [ eassumption |].
-        clear -E0 Name state stateMap.
-        unfold upper_imm_to_word, signed_imm_to_word.
-        assert (wXLEN - wInstr = 0) as Eq0 by (clear; bitwidth_omega).
-        rewrite sext0 with (e := Eq0).
-        rewrite nat_cast_fuse.
-        pose proof reassemble_literal_ext0 as P.
-        specialize P with (4 := E0).
-        apply P; (clear; bitwidth_omega).
- (* Notation "{ pn }" := (@nat_cast word _ _ _ pn). *)
- (* Notation "{ n --> m } pn" := (@nat_cast word n m _ pn) (at level 20). *)
-      + unfold compile_lit. rewrite E. rewrite E0. simpl. solve_word_eq.
-      }
+        (* TODO 64-bit literals *)
+        admit.
       }
     - (* SOp *)
       simpl in C. subst *.
