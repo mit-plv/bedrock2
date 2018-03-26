@@ -44,7 +44,11 @@ Section FlatToRiscv.
   Context {stateMap: Map state var (word wXLEN)}.
 
   Variable var2Register: var -> Register. (* TODO register allocation *)
-  Definition RegO := Register0.
+  Hypothesis no_var_mapped_to_Register0: forall (x: var), var2Register x <> Register0.
+
+  (* Set Printing Projections.
+     Uncaught anomaly when stepping through proofs :(
+     https://github.com/coq/coq/issues/6257 *)
 
   Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list Instruction :=
     let rd := var2Register res in
@@ -63,7 +67,7 @@ Section FlatToRiscv.
       let rd := var2Register x in
       let lobits := (v mod (2 ^ 20))%Z in
       if dec (lobits = v)
-      then [[Addi rd RegO lobits]]
+      then [[Addi rd Register0 lobits]]
       else
         let hibits := (v - lobits)%Z in
         if Z.testbit v 20
@@ -85,23 +89,23 @@ Section FlatToRiscv.
     | SStore x y => [[Sw (var2Register x) (var2Register y) 0]]
     | SLit x v => compile_lit x (wordToZ v)
     | SOp x op y z => compile_op x op y z
-    | SSet x y => [[Add (var2Register x) RegO (var2Register y)]]
+    | SSet x y => [[Add (var2Register x) Register0 (var2Register y)]]
     | SIf cond bThen bElse =>
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [[Beq (var2Register cond) RegO (Z.of_nat (2 * (S (length bThen'))))]] ++
+        [[Beq (var2Register cond) Register0 (Z.of_nat (2 * (S (length bThen'))))]] ++
         bThen' ++
-        [[Jal RegO (Z.of_nat (2 * (length bElse')))]] ++
+        [[Jal Register0 (Z.of_nat (2 * (length bElse')))]] ++
         bElse'
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[Beq (var2Register cond) RegO (Z.of_nat (2 * (S (length body2'))))]] ++
+        [[Beq (var2Register cond) Register0 (Z.of_nat (2 * (S (length body2'))))]] ++
         body2' ++
-        [[Jal RegO (- Z.of_nat (2 * (S (S (length body1' + length body2')))))]]
+        [[Jal Register0 (- Z.of_nat (2 * (S (S (length body1' + length body2')))))]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     end.
@@ -263,8 +267,6 @@ Section FlatToRiscv.
     destruct o eqn: Eo.
     (* TODO does that hold? What if optional answer is None and it aborts? *)
   Admitted.
-
-  (* Set Printing Projections. *)
 
   (* not needed any more because we keep the instruction memory external: 
   Lemma execute_preserves_instructionMem: forall inst initial,
@@ -534,6 +536,37 @@ Section FlatToRiscv.
     simpl nth.
     reflexivity.
   Qed.
+
+  Lemma Bind_getRegister0: forall {A: Type} (f: word wXLEN -> OState RiscvMachine A),
+      Bind (getRegister Register0) f = f $0.
+  Proof.
+    intros. reflexivity.
+  Qed.
+
+  Lemma Bind_setRegister: forall {A: Type} (x: var) (v: word wXLEN)
+                                 (f: unit -> OState RiscvMachine A) (initialL: RiscvMachine),
+      execState (Bind (setRegister (var2Register x) v) f) initialL =
+      execState (f tt) (with_registers (fun reg2 : Register =>
+                                           if dec (var2Register x = reg2) then v
+                                           else initialL.(core).(registers) reg2)
+                                       initialL).
+  Proof.
+    intros. simpl.
+    destruct_one_match.
+    - exfalso. eapply no_var_mapped_to_Register0. eassumption.
+    - reflexivity.
+  Qed.
+
+  Lemma Bind_step: forall {A: Type} (f: unit -> OState RiscvMachine A) m,
+      execState (Bind step f) m =
+      execState (f tt) (with_nextPC (m.(core).(nextPC) ^+ $4) (with_pc m.(core).(nextPC) m)).
+  Proof.
+    intros. reflexivity.
+  Qed.
+
+  Lemma execState_Return: forall {S A}`{OState S A} (s: S) (a: A),
+      execState (Return a) s = s.
+  Proof. reflexivity. Qed.
   
   Lemma compile_stmt_correct_aux: forall fuelH s insts initialH initialMH finalH finalMH
                                          initialL initialML finalML,
@@ -568,53 +601,17 @@ Section FlatToRiscv.
       {
       apply runsToStep. apply runsToDone.
       rewrite run1head.
-      simpl.
+      unfold execute, ExecuteI.execute, ExecuteM.execute, ExecuteI64.execute, ExecuteM64.execute.
+      rewrite associativity.
+      rewrite Bind_getRegister0.
+      rewrite Bind_setRegister.
+      rewrite <- (right_identity step).
+      rewrite Bind_step.
+      rewrite (@execState_Return RiscvMachine unit).
+      (* TODO record accessor cbv tactic *)
 
-    - (* SLit *)
-      destruct_pair_eqs.
-      subst *.
-      unfold compile_stmt, compile_lit. destruct bitwidth.
-      { (* 32bit *)
-      unfold compile_lit_32.
-      destruct_one_match.
-      {
-(*      destruct_RiscvMachine initialL. *)
-      apply runsToStep. apply runsToDone.
-      remember (Addi (var2Register x) RegO (wordToZ v mod 2 ^ 20)) as inst0.
-      remember [[]] as insts.
-      (* start here, state:
-containsState (*>>*) (execState (run1 (list2imem (inst0 :: insts) (pc (core initialL)))) initialL) (*<< *)
-    (put initialH x v)
-*)
-      unfold list2imem.
-      unfold run1.
-      unfold getPC, IsRiscvMachine, OState_Monad.
-      Close Scope monad_scope. idtac.
-      destruct_RiscvMachine initialL.
-      unfold Bind at 1.
-      unfold execState.
-      unfold Monads.get.
-      unfold Bind at 1.
-      unfold Return at 1.
-      remember ({|
-          core := {|
-                  registers := initialL_regs;
-                  pc := initialL_pc;
-                  nextPC := initialL_npc;
-                  exceptionHandlerAddr := initialL_eh |};
-          machineMem := initialL_mem |}) as initialL.
-      rewrite wminus_def.
-      rewrite wminus_inv.
-      replace (wordToNat (wzero wXLEN ^/ $4)) with O by admit.
-      simpl nth.
-      Open Scope monad_scope. idtac.
-      match goal with
-      | |- containsState ?x _ /\ _ => change x with (execState (execute inst0;; step) initialL)
-      end.
-(* result:
-containsState (*>>*) (execState (execute inst0;; step) initialL) (*<<*) (put initialH x v)
+      unfold step, IsRiscvMachine.
       
-  until here. TODO lemma for run1 head of imem *)
       simpl_run1.
       simpl in Cp0.
       rewrite Cp0. simpl.
