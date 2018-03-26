@@ -11,6 +11,7 @@ Require Import compiler.ResMonad.
 Require Import riscv.Riscv.
 Require Import riscv.Minimal.
 Require Import compiler.HarvardMachine.
+Require Import riscv.FunctionMemory.
 Require Import compiler.runsToSatisfying.
 Require Import riscv.RiscvBitWidths.
 Require Import riscv.util.NameWithEq.
@@ -27,7 +28,9 @@ Section FlatToRiscv.
   Context {Name: NameWithEq}.
 
   (* assumes generic translate and raiseException functions *)
-  Context {RVS: @RiscvState (OState HarvardMachine) (word wXLEN) _ _ IsHarvardMachine}.  
+  Context {RVS: @RiscvState (OState RiscvMachine) (word wXLEN) _ _ IsRiscvMachine}.  
+
+  Definition RiscvMachine := @RiscvMachine Bw (mem wXLEN).
 
   (* If we made it a definition instead, destructing an if on "@dec (@eq (@var Name) x x0)"
      (from this file), where a "@dec (@eq (@Reg Name) x x0)" (from another file, Riscv.v)
@@ -112,13 +115,16 @@ Section FlatToRiscv.
     repeat destruct_one_match; cbv [length]; omega.
   Qed.
 
-  Definition containsProgram(m: HarvardMachine)(program: list Instruction)(offset: word wXLEN) :=
+(*  
+  Definition containsProgram(m: RiscvMachine)(program: list Instruction)(offset: word wXLEN) :=
     forall i inst, nth_error program i = Some inst ->
                    m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
+ *)
+  
+  Definition containsState(m: RiscvMachine)(s: state) :=
+    forall x v, get s x = Some v -> m.(core).(registers) (var2Register x) = v.
 
-  Definition containsState(m: HarvardMachine)(s: state) :=
-    forall x v, get s x = Some v -> m.(machine).(core).(registers) (var2Register x) = v.
-
+(*
   Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
   Proof.
     intros. unfold wmult. unfold wordBin. do 2 rewrite wordToN_nat.
@@ -175,7 +181,7 @@ Section FlatToRiscv.
       simpl in Cp'
     | Cp: containsProgram _ [] _ |- _ => clear Cp
     end.
-
+*)
   Lemma mul_div_undo: forall i c,
     c <> 0 ->
     c * i / c = i.
@@ -188,9 +194,9 @@ Section FlatToRiscv.
   Qed.
 (*
   Lemma containsState_put: forall prog1 prog2 pc1 pc2 eh1 eh2 initialH initialRegs x v1 v2,
-    containsState (mkHarvardMachine prog1 initialRegs pc1 eh1) initialH ->
+    containsState (mkRiscvMachine prog1 initialRegs pc1 eh1) initialH ->
     v1 = v2 ->
-    containsState (mkHarvardMachine prog2 
+    containsState (mkRiscvMachine prog2 
       (fun reg2 : var =>
                if dec (x = reg2)
                then v1
@@ -212,8 +218,9 @@ Section FlatToRiscv.
     t = (a, b) -> a = fst t /\ b = snd t.
   Proof. intros. destruct t. inversionss. auto. Qed.
 
-  Definition runsToSatisfying: HarvardMachine -> (HarvardMachine -> Prop) -> Prop :=
-    runsTo HarvardMachine (execState run1).
+  Definition runsToSatisfying(imem: InstructionMem):
+    RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
+    runsTo RiscvMachine (execState (run1 imem)).
 
   Lemma execState_compose{S A: Type}: forall (m1 m2: OState S A) (initial: S),
     execState m2 (execState m1 initial) = execState (m1 ;; m2) initial.
@@ -222,9 +229,9 @@ Section FlatToRiscv.
     destruct (m1 initial). simpl. destruct o; try reflexivity.
   Abort.
 
-  Lemma runsToSatisfying_exists_fuel_old: forall initial P,
-    runsToSatisfying initial P ->
-    exists fuel, P (execState (run fuel) initial).
+  Lemma runsToSatisfying_exists_fuel_old: forall imem initial P,
+    runsToSatisfying imem initial P ->
+    exists fuel, P (execState (run imem fuel) initial).
   Proof.
     introv R. induction R.
     - exists 0. exact H.
@@ -236,37 +243,37 @@ Section FlatToRiscv.
       *)
   Abort.
 
-  Lemma runsToSatisfying_exists_fuel: forall initial P,
-    runsToSatisfying initial P ->
-    exists fuel, P (execState (run fuel) initial).
+  Lemma runsToSatisfying_exists_fuel: forall imem initial P,
+    runsToSatisfying imem initial P ->
+    exists fuel, P (execState (run imem fuel) initial).
   Proof.
     intros *. intro R.
     pose proof (runsToSatisfying_exists_fuel _ _ initial P R) as F.
     unfold run.
     destruct F as [fuel F]. exists fuel.
     replace
-      (execState (power_func (fun m => run1;; m) fuel (Return tt)) initial)
+      (execState (power_func (fun m => run1 imem;; m) fuel (Return tt)) initial)
     with
-      (power_func (execState run1) fuel initial);
+      (power_func (execState (run1 imem)) fuel initial);
     [assumption|clear].
     revert initial.
     induction fuel; intros; simpl; [reflexivity|].
     unfold execState. f_equal.
-    destruct (run1 initial) eqn: E.
+    destruct (run1 imem initial) eqn: E.
     destruct o eqn: Eo.
     (* TODO does that hold? What if optional answer is None and it aborts? *)
   Admitted.
 
   (* Set Printing Projections. *)
 
+  (* not needed any more because we keep the instruction memory external: 
   Lemma execute_preserves_instructionMem: forall inst initial,
     (snd (execute inst initial)).(instructionMem) = initial.(instructionMem).
   Proof.
     intros. destruct initial as [machine imem]. unfold execute.
     unfold ExecuteI.execute, ExecuteM.execute, ExecuteI64.execute, ExecuteM64.execute.
-  Abort. (* TODO can't we keep the instruction memory outside the state?
-    repeat (destruct_one_match; simpl; try reflexivity).
-  Qed.*)
+
+  Qed.
 
   Lemma run1_preserves_instructionMem: forall initial,
     (execState run1 initial).(instructionMem) = initial.(instructionMem).
@@ -297,8 +304,9 @@ Section FlatToRiscv.
     intros.
     extensionality reg2. destruct_one_match; reflexivity.
   Qed.
+*)
 
-  (* TODO is there a principled way of writing such proofs? *)
+  (* TODO is there a principled way of writing such proofs?
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word wXLEN) {T: Type} (thenVal elseVal: T),
     (if wlt_dec (y ^- z) $1 then thenVal else elseVal) =
     (if weq y z             then thenVal else elseVal).
@@ -326,7 +334,7 @@ Section FlatToRiscv.
 
   Ltac simpl_run1 :=
          cbv [run1 execState StateMonad.put execute instructionMem registers 
-             pc getPC loadInst setPC getRegister setRegister IsHarvardMachine gets
+             pc getPC loadInst setPC getRegister setRegister IsRiscvMachine gets
              StateMonad.get Return Bind State_Monad ].
 
   Ltac solve_word_eq :=
@@ -424,13 +432,13 @@ Section FlatToRiscv.
     destruct e1. simpl.
     rewrite nat_cast_proof_irrel with (e1 := e3) (e2 := eq_refl).
     apply nat_cast_same.
-  Qed.
+  Qed.*)
 
   Definition evalH := eval_stmt (w := wXLEN).
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
      constant to stay in linear arithmetic *)
-  Local Definition stmt_not_too_big(s: @stmt wXLEN Name): Prop := stmt_size s * 16 < pow2 wimm.
+  Local Definition stmt_not_too_big(s: @stmt wXLEN Name): Prop := stmt_size s * 16 < pow2 20.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
@@ -460,21 +468,49 @@ Section FlatToRiscv.
     | |- context [pow2 0] => change (pow2 0) with 1
     end.
 
+  (*
   Local Ltac solve_pc_update :=
     rewrite? extz_is_mult_pow2;
     rewrite? sext_natToWord_nat_cast;
     simpl_pow2;
     [ solve_word_eq | solve_length_compile_stmt ].
+   *)
 
-  Lemma compile_stmt_correct_aux: forall fuelH s insts initialH finalH initialL finalPc,
+  Definition list2imem(l: list Instruction)(offset: word wXLEN): InstructionMem :=
+    fun addr => nth (wordToNat (wdiv (addr ^- offset) $4)) l InvalidInstruction.
+
+  (*
+  Definition loadWordH(memH: Memory.mem wXLEN)(addr: word wXLEN): option (word wXLEN).
+    clear -addr memH.
+    unfold wXLEN in *.
+    destruct bitwidth; exact (compiler.Memory.read_mem addr memH).
+  Defined.
+   *)
+
+  Definition loadWordL(memL: FunctionMemory.mem wXLEN)(addr: word wXLEN): option (word wXLEN).
+    clear -addr memL.
+    unfold wXLEN in *.
+    destruct bitwidth; apply Some.
+    - exact (Memory.loadWord memL addr).
+    - exact (Memory.loadDouble memL addr).
+  Defined.
+  
+  Definition containsMem(memL: FunctionMemory.mem wXLEN)(memH: Memory.mem wXLEN): Prop :=
+    forall addr v, memH addr = Some v -> loadWordL memL addr = Some v.
+  
+  Lemma compile_stmt_correct_aux: forall fuelH s insts initialH initialMH finalH finalMH
+                                         initialL initialML finalML,
     compile_stmt s = insts ->
     stmt_not_too_big s ->
-    evalH fuelH initialH s = Success finalH ->
-    containsProgram initialL insts initialL.(pc) ->
+    evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
     containsState initialL initialH ->
-    finalPc = initialL.(pc) ^+ $ (4) ^* $ (length insts) ->
-    runsToSatisfying initialL (fun finalL => containsState finalL finalH /\
-       finalL.(pc) = finalPc).
+    containsMem initialML initialMH ->
+    runsToSatisfying (list2imem insts initialL.(core).(pc))
+                     initialL
+                     (fun finalL => containsState finalL finalH /\
+                                    containsMem finalML finalMH /\
+                                    finalL.(core).(pc) =
+                                      initialL.(core).(pc) ^+ $ (4) ^* $ (length insts)).
   Proof.
     pose proof (pow2_le (wimm_wupper)) as WLJ.
     induction fuelH; [intros; discriminate |].
@@ -505,7 +541,7 @@ Section FlatToRiscv.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
       apply runsToStep.
-      remember (runsTo HarvardMachine (execState run1)) as runsToRest.
+      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
       simpl_run1.
       simpl in Cp0.
       rewrite Cp0. simpl.
@@ -533,7 +569,7 @@ Section FlatToRiscv.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc].
       apply runsToStep.
-      remember (runsTo HarvardMachine (execState run1)) as runsToRest.
+      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
       simpl_run1.
       simpl in Cp0.
       rewrite Cp0. simpl.
@@ -569,7 +605,7 @@ Section FlatToRiscv.
       rename H into Gy, H0 into Gz. apply Cs in Gy. apply Cs in Gz.
       subst x0 x1.
       apply runsToStep.
-      remember (runsTo HarvardMachine (execState run1)) as runsToRest.
+      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
       simpl_run1.
       destruct op eqn: EOp;
       destruct_containsProgram;
@@ -622,7 +658,7 @@ Section FlatToRiscv.
       simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
-      remember (runsTo HarvardMachine (execState run1)) as runsToRest.
+      remember (runsTo RiscvMachine (execState run1)) as runsToRest.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
       simpl_run1.
       rewrite Cp0. simpl.
@@ -822,7 +858,7 @@ Section FlatToRiscv.
     intros. rewrite empty_is_empty in H. discriminate.
   Qed.
 
-  Definition evalL(fuel: nat)(insts: list Instruction)(initial: HarvardMachine): HarvardMachine :=
+  Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
     execState (run fuel) (putProgram insts initial).
 
   Lemma putProgram_containsProgram: forall p initial,
