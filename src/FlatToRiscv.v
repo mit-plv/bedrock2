@@ -331,11 +331,12 @@ Section FlatToRiscv.
       apply wordToNat_inj in E.
       exact E.
   Qed.
-
+*)
   Ltac simpl_run1 :=
-         cbv [run1 execState StateMonad.put execute instructionMem registers 
-             pc getPC loadInst setPC getRegister setRegister IsRiscvMachine gets
-             StateMonad.get Return Bind State_Monad ].
+    cbv [run1 execState Monads.put Monads.gets Monads.get Return Bind State_Monad OState_Monad
+         execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute
+         core machineMem registers pc nextPC exceptionHandlerAddr
+         getPC setPC getRegister setRegister IsRiscvMachine gets].
 
   Ltac solve_word_eq :=
     clear;
@@ -374,7 +375,7 @@ Section FlatToRiscv.
     destruct_one_match;
       simpl; rewrite combine_n_0; rewrite <- nat_cast_eq_rect; apply nat_cast_proof_irrel.
   Qed.
-
+(*
   Lemma reassemble_literal_ext0: forall wup1 wlo1 wup2 wlo2 wlo3 wAll (v: word wAll)
     e1 e2 e3 e4,
     wup1 = wup2 ->
@@ -487,6 +488,17 @@ Section FlatToRiscv.
   Defined.
    *)
 
+  Ltac destruct_RiscvMachine m :=
+    let t := type of m in
+    unify t RiscvMachine;
+    let r := fresh m "_regs" in
+    let p := fresh m "_pc" in
+    let n := fresh m "_npc" in
+    let e := fresh m "_eh" in
+    let me := fresh m "_mem" in
+    destruct m as [ [r p n e] me ];
+    cbv [core machineMem registers pc nextPC exceptionHandlerAddr].
+
   Definition loadWordL(memL: FunctionMemory.mem wXLEN)(addr: word wXLEN): option (word wXLEN).
     clear -addr memL.
     unfold wXLEN in *.
@@ -512,18 +524,27 @@ Section FlatToRiscv.
                                     finalL.(core).(pc) =
                                       initialL.(core).(pc) ^+ $ (4) ^* $ (length insts)).
   Proof.
-    pose proof (pow2_le (wimm_wupper)) as WLJ.
     induction fuelH; [intros; discriminate |].
-    introv C Csz EvH Cp Cs PcEq.
+    intros *.
+    intros C Csz EvH Cs Cm.
     unfold evalH in EvH.
     invert_eval_stmt.
+    - (* SLoad *)
+      admit.
+    - (* SStore *)
+      admit.
     - (* SLit *)
+      destruct_pair_eqs.
       subst *.
-      unfold compile_stmt, compile_lit in Cp. destruct_one_match_hyp.
+      unfold compile_stmt, compile_lit. destruct bitwidth.
+      { (* 32bit *)
+      unfold compile_lit_32.
+      destruct_one_match.
       {
-      destruct_containsProgram.
-      destruct initialL as [initialProg initialRegs initialPc].
+      destruct_RiscvMachine initialL.
       apply runsToStep. apply runsToDone.
+      unfold list2imem.
+      (* until here. TODO lemma for run1 head of imem *)
       simpl_run1.
       simpl in Cp0.
       rewrite Cp0. simpl.
