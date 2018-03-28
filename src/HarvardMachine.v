@@ -1,7 +1,5 @@
 Require Import Coq.ZArith.BinInt.
 Require Import bbv.WordScope.
-Require Import bbv.DepEqNat.
-Require Import riscv.util.NameWithEq.
 Require Import riscv.RiscvBitWidths.
 Require Import riscv.util.Monads.
 Require Import riscv.Decode.
@@ -22,6 +20,9 @@ Section Riscv.
 
   Context {MW: MachineWidth (word wXLEN)}.
 
+  Context {RF: Type}.
+  Context {RFI: RegisterFile RF Register (word wXLEN)}.
+  
   Definition InstructionMem := word wXLEN -> Instruction.
   
   (* assumes generic translate and raiseException functions *)

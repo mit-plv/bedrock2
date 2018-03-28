@@ -1,6 +1,6 @@
 Require Import Program.Tactics.
 Require Import lib.fiat_crypto_tactics.Not.
-Require Import riscv.util.Decidable.
+Require Import compiler.Decidable.
 Require Import lib.LibTacticsMin.
 
 Ltac destruct_one_match :=

@@ -2,7 +2,7 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
 Require Import bbv.Word.
-Require Import riscv.util.Decidable.
+Require Import compiler.Decidable.
 Require Import compiler.Op.
 Require Import compiler.ResMonad.
 Require        compiler.ExprImp.
@@ -17,7 +17,7 @@ Require Import bbv.DepEqNat.
 Require Import compiler.NameGen.
 Require Import compiler.Common.
 Require Import riscv.RiscvBitWidths.
-Require Import riscv.util.NameWithEq.
+Require Import compiler.NameWithEq.
 
 Section Pipeline.
 

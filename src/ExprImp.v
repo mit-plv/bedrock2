@@ -6,7 +6,7 @@ Require Import compiler.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
 Require Import bbv.DepEqNat.
-Require Import riscv.util.NameWithEq.
+Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import compiler.Memory.
 

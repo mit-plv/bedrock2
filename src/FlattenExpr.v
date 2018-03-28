@@ -5,7 +5,7 @@ Require compiler.FlatImp.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.
-Require Import riscv.util.NameWithEq.
+Require Import compiler.NameWithEq.
 
 
 Section FlattenExpr.

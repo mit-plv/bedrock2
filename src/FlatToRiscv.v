@@ -14,11 +14,12 @@ Require Import compiler.HarvardMachine.
 Require Import riscv.FunctionMemory.
 Require Import compiler.runsToSatisfying.
 Require Import riscv.RiscvBitWidths.
-Require Import riscv.util.NameWithEq.
+Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.Utility.
+Require Import compiler.StateCalculus.
 
 Local Open Scope ilist_scope.
 
@@ -26,36 +27,67 @@ Section FlatToRiscv.
 
   Context {Bw: RiscvBitWidths}.
 
+  (*
   Context {Name: NameWithEq}.
-
-  (* assumes generic translate and raiseException functions *)
-  Context {RVS: @RiscvState (OState RiscvMachine) (word wXLEN) _ _ IsRiscvMachine}.  
-
-  Definition RiscvMachine := @RiscvMachine Bw (mem wXLEN).
 
   (* If we made it a definition instead, destructing an if on "@dec (@eq (@var Name) x x0)"
      (from this file), where a "@dec (@eq (@Reg Name) x x0)" (from another file, Riscv.v)
      is in the context, will not recognize that these two are the same (they both reduce to
      "@dec (@eq (@name Name) x x0)", which is annoying. *)
   Notation var := (@name Name).
-
   Existing Instance eq_name_dec.
+   *)
 
   Context {state: Type}.
-  Context {stateMap: Map state var (word wXLEN)}.
+  Context {stateMap: Map state Register (word wXLEN)}.
 
+  Instance State_is_RegisterFile: RegisterFile state Register (word wXLEN) := {|
+    getReg rf r := match get rf r with
+                   | Some v => v
+                   | None => $0
+                   end;
+    setReg := put;
+    initialRegs := empty;
+  |}.
+
+  (* assumes generic translate and raiseException functions *)
+  Context {RVS: @RiscvState (OState RiscvMachine) (word wXLEN) _ _ IsRiscvMachine}.  
+
+  Definition RiscvMachine := @RiscvMachine Bw (mem wXLEN) state.
+
+  Definition stmt: Set := @stmt wXLEN TestFlatImp.ZName.
+
+  Ltac state_calc := state_calc_generic (@name TestFlatImp.ZName) (word wXLEN).
+
+  (* Note: Register 0 is not considered valid because it cannot be written *)
+  Definition valid_register(r: Register): Prop := (0 < r < 32)%Z.
+
+  (* This phase assumes that register allocation has already been done on the FlatImp
+     level, and expects the following to hold: *)
+  Fixpoint valid_registers(s: stmt): Prop :=
+    match s with
+    | SLoad x a => valid_register x /\ valid_register a
+    | SStore a x => valid_register a /\ valid_register x
+    | SLit x _ => valid_register x
+    | SOp x _ y z => valid_register x /\ valid_register y /\ valid_register z
+    | SSet x y => valid_register x /\ valid_register y
+    | SIf c s1 s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
+    | SLoop s1 c s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
+    | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
+    | SSkip => True
+    end.
+
+  (*
   Variable var2Register: var -> Register. (* TODO register allocation *)
-  Hypothesis no_var_mapped_to_Register0: forall (x: var), var2Register x <> Register0.
-  Hypothesis var2Register_inj: forall x1 x2, var2Register x1 = var2Register x2 -> x1 = x2.
-
+  Hypothesis no_var_mapped_to_Register0: forall (x: var), x <> Register0.
+  Hypothesis var2Register_inj: forall x1 x2, x1 = x2 -> x1 = x2.
+   *)
+  
   (* Set Printing Projections.
      Uncaught anomaly when stepping through proofs :(
      https://github.com/coq/coq/issues/6257 *)
 
-  Definition compile_op(res: var)(op: binop)(arg1 arg2: var): list Instruction :=
-    let rd := var2Register res in
-    let rs1 := var2Register arg1 in
-    let rs2 := var2Register arg2 in
+  Definition compile_op(rd: Register)(op: binop)(rs1 rs2: Register): list Instruction :=
     match op with
     | OPlus => [[Add rd rs1 rs2]]
     | OMinus => [[Sub rd rs1 rs2]]
@@ -65,8 +97,7 @@ Section FlatToRiscv.
     | OAnd => [[And rd rs1 rs2]]
     end.
 
-  Definition compile_lit_32(x: var)(v: Z): list Instruction :=
-      let rd := var2Register x in
+  Definition compile_lit_32(rd: Register)(v: Z): list Instruction :=
       let lobits := (v mod (2 ^ 20))%Z in
       if dec (lobits = v)
       then [[Addi rd Register0 lobits]]
@@ -78,25 +109,24 @@ Section FlatToRiscv.
         (* Xori will sign-extend lobits with 0s *)
         else [[Lui rd hibits; Xori rd rd lobits]].
 
-  Definition compile_lit(x: var)(v: Z): list Instruction :=
+  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
     match bitwidth with
-    | Bitwidth32 => compile_lit_32 x v
-    | Bitwidth64 => compile_lit_32 x v (* TODO *)
+    | Bitwidth32 => compile_lit_32 rd v
+    | Bitwidth64 => compile_lit_32 rd v (* TODO *)
     end.
   
-  (* using the same names (var) in source and target language *)
-  Fixpoint compile_stmt(s: @stmt wXLEN Name): list (Instruction) :=
+  Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
-    | SLoad x y => [[Lw (var2Register x) (var2Register y) 0]]
-    | SStore x y => [[Sw (var2Register x) (var2Register y) 0]]
+    | SLoad x y => [[Lw x y 0]]
+    | SStore x y => [[Sw x y 0]]
     | SLit x v => compile_lit x (wordToZ v)
     | SOp x op y z => compile_op x op y z
-    | SSet x y => [[Add (var2Register x) Register0 (var2Register y)]]
+    | SSet x y => [[Add x Register0 y]]
     | SIf cond bThen bElse =>
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [[Beq (var2Register cond) Register0 (Z.of_nat (2 * (S (length bThen'))))]] ++
+        [[Beq cond Register0 (Z.of_nat (2 * (S (length bThen'))))]] ++
         bThen' ++
         [[Jal Register0 (Z.of_nat (2 * (length bElse')))]] ++
         bElse'
@@ -105,7 +135,7 @@ Section FlatToRiscv.
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[Beq (var2Register cond) Register0 (Z.of_nat (2 * (S (length body2'))))]] ++
+        [[Beq cond Register0 (Z.of_nat (2 * (S (length body2'))))]] ++
         body2' ++
         [[Jal Register0 (- Z.of_nat (2 * (S (S (length body1' + length body2')))))]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
@@ -125,12 +155,10 @@ Section FlatToRiscv.
   Definition containsProgram(m: RiscvMachine)(program: list Instruction)(offset: word wXLEN) :=
     forall i inst, nth_error program i = Some inst ->
                    m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
- *)
   
   Definition containsState(regs: Register -> word wXLEN)(s: state) :=
-    forall x v, get s x = Some v -> regs (var2Register x) = v.
+    forall x v, get s x = Some v -> regs x = v.
 
-(*
   Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
   Proof.
     intros. unfold wmult. unfold wordBin. do 2 rewrite wordToN_nat.
@@ -199,12 +227,13 @@ Section FlatToRiscv.
     apply P; auto.
   Qed.
 
+  (*
   Lemma containsState_put: forall initialH initialRegs x v1 v2,
     containsState initialRegs initialH ->
     v1 = v2 ->
     containsState
       (fun reg2 =>
-               if dec (var2Register x = reg2)
+               if dec (x = reg2)
                then v1
                else initialRegs reg2)
      (put initialH x v2).
@@ -221,6 +250,7 @@ Section FlatToRiscv.
       * clear E0. apply var2Register_inj in e. contradiction.
       * apply H. assumption.
   Qed.
+  *)
 
   Lemma distr_if_over_app: forall T U P1 P2 (c: sumbool P1 P2) (f1 f2: T -> U) (x: T),
     (if c then f1 else f2) x = if c then f1 x else f2 x.
@@ -462,7 +492,7 @@ Section FlatToRiscv.
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
      constant to stay in linear arithmetic *)
-  Local Definition stmt_not_too_big(s: @stmt wXLEN Name): Prop := stmt_size s * 16 < pow2 20.
+  Local Definition stmt_not_too_big(s: stmt): Prop := stmt_size s * 16 < pow2 20.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
@@ -623,29 +653,28 @@ Section FlatToRiscv.
     intros. reflexivity.
   Qed.
 
-  Lemma Bind_getRegister: forall {A: Type} (x: var)
+  Lemma Bind_getRegister: forall {A: Type} x
                                  (f: word wXLEN -> OState RiscvMachine A)
                                  (initialL: RiscvMachine),
-      execState (Bind (getRegister (var2Register x)) f) initialL =
-      execState (f (initialL.(core).(registers) (var2Register x))) initialL.
+      valid_register x ->
+      execState (Bind (getRegister x) f) initialL =
+      execState (f (getReg initialL.(core).(registers) x)) initialL.
   Proof.
     intros. simpl.
     destruct_one_match.
-    - exfalso. eapply no_var_mapped_to_Register0. eassumption.
+    - exfalso. unfold valid_register, Register0 in *. omega.
     - reflexivity.
   Qed.
 
-  Lemma Bind_setRegister: forall {A: Type} (x: var) (v: word wXLEN)
+  Lemma Bind_setRegister: forall {A: Type} x (v: word wXLEN)
                                  (f: unit -> OState RiscvMachine A) (initialL: RiscvMachine),
-      execState (Bind (setRegister (var2Register x) v) f) initialL =
-      execState (f tt) (with_registers (fun reg2 : Register =>
-                                           if dec (var2Register x = reg2) then v
-                                           else initialL.(core).(registers) reg2)
-                                       initialL).
+      valid_register x ->
+      execState (Bind (setRegister x v) f) initialL =
+      execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros. simpl.
     destruct_one_match.
-    - exfalso. eapply no_var_mapped_to_Register0. eassumption.
+    - exfalso. unfold valid_register, Register0 in *. omega.
     - reflexivity.
   Qed.
 
@@ -776,13 +805,14 @@ Section FlatToRiscv.
     forall fuelH s insts initialH initialMH finalH finalMH initialL,
     compile_stmt s = insts ->
     stmt_not_too_big s ->
+    valid_registers s ->
     evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
-    containsState initialL.(core).(registers) initialH ->
+    extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     initialL.(core).(pc) ^+ $4 = initialL.(core).(nextPC) ->
     runsToSatisfying (list2imem insts initialL.(core).(pc))
                      initialL
-                     (fun finalL => containsState finalL.(core).(registers) finalH /\
+                     (fun finalL => extends finalL.(core).(registers) finalH /\
                                     containsMem finalL.(machineMem) finalMH /\
                                     finalL.(core).(pc) ^+ $4 = finalL.(core).(nextPC) /\
                                     finalL.(core).(pc) =
@@ -790,7 +820,7 @@ Section FlatToRiscv.
   Proof.
     induction fuelH; [intros; discriminate |].
     intros *.
-    intros C Csz EvH Cs Cm Pc.
+    intros C Csz V EvH Cs Cm Pc.
     unfold evalH in EvH.
     invert_eval_stmt.
     - (* SLoad *)
@@ -798,7 +828,7 @@ Section FlatToRiscv.
     - (* SStore *)
       admit.
     - (* SLit *)
-      destruct_pair_eqs.
+      destruct_pair_eqs. simpl in V.
       subst *.
       unfold compile_stmt, compile_lit. destruct bitwidth eqn: EBw.
       { (* 32bit *)
@@ -809,8 +839,8 @@ Section FlatToRiscv.
       rewrite run1head.
       unfold execute, ExecuteI.execute, ExecuteM.execute, ExecuteI64.execute, ExecuteM64.execute.
       rewrite associativity.
-      rewrite Bind_getRegister0.
-      rewrite Bind_setRegister.
+      rewrite Bind_getRegister0 by assumption.
+      rewrite Bind_setRegister by assumption.
       rewrite <- (right_identity step).
       rewrite Bind_step.
       rewrite (@execState_Return RiscvMachine unit _).
@@ -819,12 +849,13 @@ Section FlatToRiscv.
       simpl.
       rewrite wmult_unit_r.
       repeat split; try assumption; try reflexivity; let n := numgoals in guard n = 1.
-      eapply containsState_put; [eassumption|].
       rewrite add_def.
       simpl in e. rewrite e.
       rewrite wplus_wzero_2.
       rewrite fromImm_def.
-      apply ZToWord_wordToZ.
+      rewrite ZToWord_wordToZ.
+      clear -Cs.
+      state_calc.
       }
       {
         (* TODO 20-32bit literals *)
@@ -836,7 +867,7 @@ Section FlatToRiscv.
         admit.
       }
     - (* SOp *)
-      simpl in C. destruct_pair_eqs. subst *.
+      simpl in C. destruct_pair_eqs. subst *. simpl in V. destruct V as [ ? [? ?] ].
       (* destruct_RiscvMachine initialL. *)
       (*
       pose proof Cs as Cs'.
@@ -855,10 +886,10 @@ Section FlatToRiscv.
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
       Close Scope monad_scope.
       rewrite associativity.
-      rewrite Bind_getRegister.
+      rewrite Bind_getRegister by assumption.
       rewrite associativity.
-      rewrite Bind_getRegister.
-      rewrite Bind_setRegister.
+      rewrite Bind_getRegister by assumption.
+      rewrite Bind_setRegister by assumption.
       rewrite <- (right_identity step).
       rewrite Bind_step.
       rewrite (@execState_Return RiscvMachine unit _).
@@ -868,12 +899,14 @@ Section FlatToRiscv.
       simpl_RiscvMachine_get_set.
       refine (conj _ (conj _ (conj _ _)));
         [ | | log_solved solve_word_eq | log_solved solve_word_eq ].
-      * eapply containsState_put.
-        + assumption.
-        + rewrite add_def. unfold containsState in Cs. repeat erewrite Cs by eassumption.
-          reflexivity.
-      * assumption.
-      }      
+      + rewrite add_def.
+        unfold getReg, setReg, State_is_RegisterFile.
+        (* TODO state_calc or something similar should do this automatically *)
+        replace (get initialL_regs y) with (Some v1) by admit.
+        replace (get initialL_regs z) with (Some v2) by admit.
+        state_calc.
+      + assumption.
+      }
 admit. admit.        
       {
         simpl.
@@ -886,14 +919,14 @@ admit. admit.
           cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
           repeat (
               rewrite? associativity;
-              (rewrite Bind_getRegister ||
-               rewrite Bind_getRegister0 ||
-               rewrite Bind_setRegister)
+              ((rewrite Bind_getRegister by assumption) ||
+               (rewrite Bind_getRegister0) ||
+               (rewrite Bind_setRegister by assumption))
             );
           rewrite execState_step.
 
       do_1_step.
-        
+
       Ltac runsTo_done :=
       apply runsToDone;
       refine (conj _ (conj _ (conj _ _))); simpl;
@@ -903,8 +936,7 @@ admit. admit.
            apply runsToDone *)
       destruct_RiscvMachine initialL; subst *.
       try runsTo_done.
-      
-      
+            
       simpl_RiscvMachine_get_set.
       apply runsToStep.
       
@@ -920,14 +952,14 @@ admit. admit.
           cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
           repeat (
               rewrite? associativity;
-              (rewrite Bind_getRegister ||
-               rewrite Bind_getRegister0 ||
-               rewrite Bind_setRegister)
+              ((rewrite Bind_getRegister by assumption) ||
+               (rewrite Bind_getRegister0) ||
+               (rewrite Bind_setRegister by assumption))
             );
           rewrite execState_step.
           simpl.
           runsTo_done; [|assumption].
-          destruct (dec (var2Register x = var2Register x)); [|contradiction].
+          destruct (dec (x = x)); [|contradiction].
           rewrite sub_def.
           rewrite ltu_def.
           rewrite fromImm_def.
@@ -952,13 +984,13 @@ admit. admit.
           destruct_one_match_hyp.
           {
             subst.
-            destruct (dec (var2Register x0 = var2Register x0)); [|contradiction].            
+            destruct (dec (x0 = x0)); [|contradiction].            
             inverts H.
-            destruct (weq (initialL_regs (var2Register y)) (initialL_regs (var2Register z)));
+            destruct (weq (initialL_regs y) (initialL_regs z));
               reflexivity.
           }
           {
-            destruct (dec (var2Register x = var2Register x0)).
+            destruct (dec (x = x0)).
             + exfalso. apply n. apply var2Register_inj. assumption.
             + apply Cs'. assumption.
           }
