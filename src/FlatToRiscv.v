@@ -38,22 +38,23 @@ Section FlatToRiscv.
   Existing Instance eq_name_dec.
    *)
 
-  Context {state: Type}.
-  Context {stateMap: Map state Register (word wXLEN)}.
+  Context {RF: Type}.
+  Context {RFI: RegisterFile RF Register (word wXLEN)}.
 
-  Instance State_is_RegisterFile: RegisterFile state Register (word wXLEN) := {|
-    getReg rf r := match get rf r with
-                   | Some v => v
-                   | None => $0
-                   end;
-    setReg := put;
-    initialRegs := empty;
+  Definition TODO{T: Type}: T. Admitted.
+  
+  Instance RegisterFile_is_Map: Map RF Register (word wXLEN) := {|
+    get rf x := Some (getReg rf x);
+    put := setReg;
+    empty := initialRegs;
   |}.
+  all: exact TODO.
+  Defined.
 
   (* assumes generic translate and raiseException functions *)
   Context {RVS: @RiscvState (OState RiscvMachine) (word wXLEN) _ _ IsRiscvMachine}.  
 
-  Definition RiscvMachine := @RiscvMachine Bw (mem wXLEN) state.
+  Definition RiscvMachine := @RiscvMachine Bw (mem wXLEN) RF.
 
   Definition stmt: Set := @stmt wXLEN TestFlatImp.ZName.
 
@@ -855,6 +856,7 @@ Section FlatToRiscv.
       rewrite fromImm_def.
       rewrite ZToWord_wordToZ.
       clear -Cs.
+      change setReg with (@put _ _ _ RegisterFile_is_Map).
       state_calc.
       }
       {
@@ -900,6 +902,9 @@ Section FlatToRiscv.
       refine (conj _ (conj _ (conj _ _)));
         [ | | log_solved solve_word_eq | log_solved solve_word_eq ].
       + rewrite add_def.
+        change setReg with (@put _ _ _ RegisterFile_is_Map).
+        (* TODO but how to replace getReg? (get returns option!*)
+
         unfold getReg, setReg, State_is_RegisterFile.
         (* TODO state_calc or something similar should do this automatically *)
         replace (get initialL_regs y) with (Some v1) by admit.
