@@ -647,6 +647,21 @@ Section FlatToRiscv.
     erewrite nth_error_nth; [ reflexivity | assumption].
   Qed.
   
+  Lemma run1_in_im_0: forall im initialL,
+      execState (run1 im) initialL =
+      execState (execute (im initialL.(core).(pc));; step) initialL.
+  Proof.
+    intros. reflexivity.
+  Qed.
+
+  Lemma run1_in_im: forall im initialL inst,
+      im initialL.(core).(pc) = inst ->
+      execState (run1 im) initialL =
+      execState (execute inst;; step) initialL.
+  Proof.
+    intros. subst. reflexivity.
+  Qed.
+  
   Lemma Bind_getRegister0: forall {A: Type} (f: word wXLEN -> OState RiscvMachine A),
       Bind (getRegister Register0) f = f $0.
   Proof.
@@ -801,16 +816,125 @@ Section FlatToRiscv.
     Jr
   : unf_pseudo.
 
+
+  Lemma list2imem_head: forall inst insts imemStart,
+      (list2imem (inst :: insts) imemStart) imemStart = inst.
+  Proof.
+    intros.
+    unfold list2imem.
+    rewrite wminus_def.
+    rewrite wminus_inv.
+    rewrite wzero_div.
+    rewrite wordToNat_wzero.
+    reflexivity.
+  Qed.
+
+  Lemma list2imem_skip: forall imemStart insts0 insts1 offs pc0,
+    imemStart ^+ $4 ^* $(length insts0) ^+ offs = pc0 ->
+    (list2imem (insts0 ++ insts1) imemStart) pc0  =
+    (list2imem insts1 imemStart) (imemStart ^+ offs).
+  Proof.
+    intros. subst.
+    unfold list2imem.
+    rewrite wminus_def.
+    rewrite wplus_comm.
+    rewrite? wplus_assoc.
+    rewrite (wplus_comm (^~ imemStart) imemStart).
+    rewrite wminus_inv.
+    rewrite wplus_unit.
+    rewrite wminus_def.
+    rewrite (wplus_comm imemStart).
+    rewrite <- wplus_assoc.
+    rewrite wminus_inv.
+    rewrite <- (wplus_comm (wzero wXLEN)).
+    rewrite wplus_unit.
+    replace ((($4 ^* $ (length insts0) ^+ offs) ^/ $4)) with
+        ($ (length insts0) ^+ (offs ^/ $4)) by admit.
+    
+    Abort.
+
+  Definition wnth{A}{sz}(n: word sz)(l: list A)(default: A): A. Admitted.
+
+  Definition wlength{A}{sz}(l: list A): word sz. Admitted.
+  
+  (*
+  Lemma wnth_app_2:
+    wnth (a ^+ b) (insts0 ++ insts1) InvalidInstruction =
+  *)
+  Definition list2imem'(l: list Instruction)(offset: word wXLEN): InstructionMem :=
+    fun addr => wnth (wdiv (addr ^- offset) $4) l InvalidInstruction.
+
+  Lemma list2imem_skip: forall imemStart insts0 insts1 offs pc0,
+    imemStart ^+ $4 ^* (wlength insts0) ^+ offs = pc0 ->
+    (list2imem' (insts0 ++ insts1) imemStart) pc0  =
+    (list2imem' insts1 imemStart) (imemStart ^+ offs).
+  Proof.
+    intros. unfold list2imem'. subst pc0.
+    rewrite wminus_def.
+    rewrite wplus_comm.
+    rewrite? wplus_assoc.
+    rewrite (wplus_comm (^~ imemStart) imemStart).
+    rewrite wminus_inv.
+    rewrite wplus_unit.
+    rewrite wminus_def.
+    rewrite (wplus_comm imemStart).
+    rewrite <- wplus_assoc.
+    rewrite wminus_inv.
+    rewrite <- (wplus_comm (wzero wXLEN)).
+    rewrite wplus_unit.
+    replace ((($4 ^* (wlength insts0) ^+ offs) ^/ $4)) with
+        ((wlength insts0) ^+ (offs ^/ $4)) by admit.
+    (* does not hold without additional size constraint assumption! *)
+
+    (*
+    rewrite app_nth2. (* stupid overflow of offs possible! *)
+     *)
+  Abort.
+  
+  Lemma list2imem_skip: forall imemStart insts0 insts1 offs pc0,
+    imemStart ^+ $4 ^* $(length insts0) ^+ $4 ^* $offs = pc0 ->
+    (list2imem (insts0 ++ insts1) imemStart) pc0  =
+    (list2imem insts1 imemStart) (imemStart ^+ $4 ^* $offs).
+  Proof.
+    intros. subst.
+    unfold list2imem.
+    rewrite wminus_def.
+    rewrite wplus_comm.
+    rewrite? wplus_assoc.
+    rewrite (wplus_comm (^~ imemStart) imemStart).
+    rewrite wminus_inv.
+    rewrite wplus_unit. rewrite app_nth2. (* stupid overflow of offs possible! *)
+
+(* how to simplify this?:
+    
+list2imem
+    (instsBefore ++
+     (compile_stmt s1 ++
+      Beq cond Register0
+        (Z.pos (Pos.of_succ_nat (length (compile_stmt s2) + S (length (compile_stmt s2) + 0))))
+      :: compile_stmt s2 ++
+         [[Jal Register0
+             (Z.neg
+                (Pos.succ
+                   (Pos.of_succ_nat
+                      (length (compile_stmt s1) + length (compile_stmt s2) +
+                       S (S (length (compile_stmt s1) + length (compile_stmt s2) + 0))))))]]) ++
+     instsAfter) imemStart
+    (imemStart ^+ $ (4) ^* $ (length instsBefore) ^+ $ (4) ^* $ (length (compile_stmt s1)))
+ *)
+    
   Lemma compile_stmt_correct_aux:
-    forall fuelH s insts initialH initialMH finalH finalMH initialL,
+    forall fuelH s insts instsBefore instsAfter initialH imemStart
+           initialMH finalH finalMH initialL,
     compile_stmt s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
     evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
+    imemStart ^+ $4 ^* $(length instsBefore) = initialL.(core).(pc) ->
     initialL.(core).(pc) ^+ $4 = initialL.(core).(nextPC) ->
-    runsToSatisfying (list2imem insts initialL.(core).(pc))
+    runsToSatisfying (list2imem (instsBefore ++ insts ++ instsAfter) imemStart)
                      initialL
                      (fun finalL => extends finalL.(core).(registers) finalH /\
                                     containsMem finalL.(machineMem) finalMH /\
@@ -820,7 +944,7 @@ Section FlatToRiscv.
   Proof.
     induction fuelH; [intros; discriminate |].
     intros *.
-    intros C Csz V EvH Cs Cm Pc.
+    intros C Csz V EvH Cs Cm Ims Pc.
     unfold evalH in EvH.
     invert_eval_stmt.
     - (* SLoad *)
@@ -828,6 +952,7 @@ Section FlatToRiscv.
     - (* SStore *)
       admit.
     - (* SLit *)
+      (*
       destruct_pair_eqs. simpl in V.
       subst *.
       unfold compile_stmt, compile_lit. destruct bitwidth eqn: EBw.
@@ -866,7 +991,10 @@ Section FlatToRiscv.
         (* TODO 64-bit literals *)
         admit.
       }
+       *)
+      admit.
     - (* SOp *)
+      (*
       simpl in C. destruct_pair_eqs. subst *. simpl in V. destruct V as [ ? [? ?] ].
       (* destruct_RiscvMachine initialL. *)
       (*
@@ -966,38 +1094,20 @@ admit. admit.
           rewrite one_def.
           rewrite zero_def.
           replace (ZToWord wXLEN 1) with (natToWord wXLEN 1) by admit.
-          rewrite reduce_eq_to_sub_and_lt.
       pose proof Cs as Cs'.
-      unfold containsState in Cs. simpl in Cs.
+      unfold extends in Cs. simpl in Cs.
       apply Cs in EvH0. apply Cs in EvH1.
-      subst v1 v2.
-
-         (* repeat match goal with
-                 | H: ?T |- _ => match T with
-                                | containsState _ _ => fail 1
-                                | _ => clear H
-                                end
-                 end;*)
-            unfold containsState in *;
-            intros.
-          rewrite get_put in H.
-          destruct_one_match_hyp.
-          {
-            subst.
-            destruct (dec (x0 = x0)); [|contradiction].            
-            inverts H.
-            destruct (weq (initialL_regs y) (initialL_regs z));
-              reflexivity.
-          }
-          {
-            destruct (dec (x = x0)).
-            + exfalso. apply n. apply var2Register_inj. assumption.
-            + apply Cs'. assumption.
-          }
+      rewrite EvH0, EvH1.
+      rewrite get_put_same.
+      rewrite reduce_eq_to_sub_and_lt.
+      repeat destruct_one_match (* 4 subgoals just because stupid *);       
+      state_calc.
       }
       admit. admit.      
-
+       *)
+      admit.
     - (* SSet *)
+      (*
       simpl in C. subst *.
       destruct initialL as [initialProg initialRegs initialPc].
       destruct_containsProgram.
@@ -1011,7 +1121,10 @@ admit. admit.
         erewrite Cs by eassumption.
         solve_word_eq.
       + solve_word_eq.
+       *)
+      admit.
     - (* SIf/Then *)
+      (*
       simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
@@ -1042,7 +1155,10 @@ admit. admit.
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
       unfold signed_jimm_to_word.
       solve_pc_update.
+       *)
+      admit.
     - (* SIf/Else *)
+      (*
       simpl in C. subst *.
       destruct_containsProgram.
       apply runsToStep.
@@ -1069,7 +1185,10 @@ admit. admit.
         repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
         unfold signed_bimm_to_word.
         solve_pc_update.
+       *)
+      admit.
     - (* SLoop/done *)
+      (*
       simpl in C. subst *.
       destruct_containsProgram.
       destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
@@ -1095,23 +1214,36 @@ admit. admit.
       repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
       unfold signed_bimm_to_word.
       solve_pc_update.
+       *)
+      admit.
     - (* SLoop/again *)
       simpl in C. subst *.
+      simpl in V. destruct V as [ ? [? ?] ].
       pose proof IHfuelH as IH.
-      pose proof (conj I Cp) as CpSaved.
-      destruct_containsProgram.
-      destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
+      destruct_RiscvMachine initialL.
       match goal with
-      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
+      | |- runsToSatisfying _ ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
-        eassumption|eassumption|eassumption|reflexivity|idtac].
-      apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
+      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|eassumption..|].
+      unfold runsToSatisfying in *.
+      match goal with
+      | IH: runsTo _ (execState (run1 (list2imem ?im1 ?ims))) _ _ |-
+            runsTo _ (execState (run1 (list2imem ?im2 ?ims))) _ _ =>
+        replace im1 with im2 in IH
+          by (repeat rewrite <- app_assoc; reflexivity)
+      end.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
-      intros middleL [[Cs2 F] E].
-      destruct middleL as [middleProg middleRegs middlePc]. simpl in *. subst middleProg middlePc.
+      intros middleL [ E [? [? ?] ] ].
+      destruct_RiscvMachine middleL.
+      simpl in *. subst *.
       apply runsToStep.
+      erewrite run1_in_im.
+      admit.
+
+      { simpl.
+        (* HERE *)
+        }
       simpl_run1.
       rewrite Cp1. simpl.
       pose proof Cs2 as Cs2'.
