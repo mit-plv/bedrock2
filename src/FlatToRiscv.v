@@ -10,7 +10,6 @@ Require Import compiler.Op.
 Require Import compiler.ResMonad.
 Require Import riscv.Riscv.
 Require Import riscv.Minimal.
-Require Import compiler.HarvardMachine.
 Require Import riscv.FunctionMemory.
 Require Import compiler.runsToSatisfying.
 Require Import riscv.RiscvBitWidths.
@@ -151,14 +150,23 @@ Section FlatToRiscv.
     repeat destruct_one_match; cbv [length]; omega.
   Qed.
 
-(*  
-  Definition containsProgram(m: RiscvMachine)(program: list Instruction)(offset: word wXLEN) :=
-    forall i inst, nth_error program i = Some inst ->
-                   m.(instructionMem) (offset ^+ $4 ^* $i) = inst.
+  Add Ring word_wXLEN_ring : (wring wXLEN).
   
+  Goal forall (a b c: word wXLEN), ((a ^+ b) ^- b) ^* c ^* $1 = a ^* c ^* $1.
+  Proof. intros. ring. Qed.
+
+  (* load and decode Inst *)
+  Definition ldInst(m: mem wXLEN)(a: word wXLEN): Instruction :=
+    decode RV_wXLEN_IM (wordToZ (Memory.loadWord m a)).
+
+  Definition containsProgram(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
+    forall i inst, nth_error program i = Some inst ->
+      ldInst m (offset ^+ $4 ^* $i) = inst.
+
+(*  
   Definition containsState(regs: Register -> word wXLEN)(s: state) :=
     forall x v, get s x = Some v -> regs x = v.
-
+*)
   Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
   Proof.
     intros. unfold wmult. unfold wordBin. do 2 rewrite wordToN_nat.
@@ -166,12 +174,12 @@ Section FlatToRiscv.
     rewrite Nat.mul_0_r. simpl. rewrite wzero'_def. reflexivity.
   Qed.
 
-  Lemma containsProgram_cons_inv: forall s inst insts offset,
-    containsProgram s (inst :: insts) offset ->
-    s.(instructionMem) offset = inst /\
-    containsProgram s insts (offset ^+ $4).
+  Lemma containsProgram_cons_inv: forall m inst insts offset,
+    containsProgram m (inst :: insts) offset ->
+    ldInst m offset = inst /\
+    containsProgram m insts (offset ^+ $4).
   Proof.
-    introv Cp. unfold containsProgram in Cp. split.
+    intros *. intro Cp. unfold containsProgram in Cp. split.
     + specialize (Cp 0). specializes Cp; [reflexivity|].
       rewrite wmult_neut_r in Cp.
       rewrite wplus_comm in Cp. rewrite wplus_unit in Cp.
@@ -180,12 +188,14 @@ Section FlatToRiscv.
       intros i inst0 E. specialize (Cp (S i)). simpl in Cp.
       specialize (Cp _ E).
       rewrite <- Cp. f_equal.
-      rewrite <- wplus_assoc. f_equal. rewrite (natToWord_S wXLEN i).
-      replace ($4 ^* ($1 ^+ $i)) with ((($1 ^+ $i) ^* $4): word wXLEN) by apply wmult_comm.
-      rewrite wmult_plus_distr.
-      rewrite wmult_unit.
-      f_equal.
-      apply wmult_comm.
+      rewrite (natToWord_S wXLEN i).
+      change $1 with (wone wXLEN).
+      ring.
+      (*
+      match goal with
+      | |- @eq (word _) ?a ?b => ring_simplify a b
+      end.
+      *)
   Qed.
 
   Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
@@ -193,7 +203,7 @@ Section FlatToRiscv.
     containsProgram s insts1 offset /\
     containsProgram s insts2 (offset ^+ $4 ^* $(length insts1)).
   Proof.
-    introv Cp. unfold containsProgram in *. split.
+    intros *. intro Cp. unfold containsProgram in *. split.
     + intros. apply Cp. rewrite nth_error_app1; [assumption|].
       apply nth_error_Some. intro E. rewrite E in H. discriminate.
     + intros. rewrite <- wplus_assoc.
@@ -215,7 +225,7 @@ Section FlatToRiscv.
       simpl in Cp'
     | Cp: containsProgram _ [] _ |- _ => clear Cp
     end.
-*)
+
   Lemma mul_div_undo: forall i c,
     c <> 0 ->
     c * i / c = i.
@@ -260,9 +270,9 @@ Section FlatToRiscv.
     t = (a, b) -> a = fst t /\ b = snd t.
   Proof. intros. destruct t. inversionss. auto. Qed.
 
-  Definition runsToSatisfying(imem: InstructionMem):
+  Definition runsToSatisfying:
     RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
-    runsTo RiscvMachine (execState (run1 imem)).
+    runsTo RiscvMachine (execState run1).
 
   Lemma execState_compose{S A: Type}: forall (m1 m2: OState S A) (initial: S),
     execState m2 (execState m1 initial) = execState (m1 ;; m2) initial.
@@ -271,9 +281,9 @@ Section FlatToRiscv.
     destruct (m1 initial). simpl. destruct o; try reflexivity.
   Abort.
 
-  Lemma runsToSatisfying_exists_fuel_old: forall imem initial P,
-    runsToSatisfying imem initial P ->
-    exists fuel, P (execState (run imem fuel) initial).
+  Lemma runsToSatisfying_exists_fuel_old: forall initial P,
+    runsToSatisfying initial P ->
+    exists fuel, P (execState (run fuel) initial).
   Proof.
     introv R. induction R.
     - exists 0. exact H.
@@ -285,24 +295,22 @@ Section FlatToRiscv.
       *)
   Abort.
 
-  Lemma runsToSatisfying_exists_fuel: forall imem initial P,
-    runsToSatisfying imem initial P ->
-    exists fuel, P (execState (run imem fuel) initial).
+  Lemma runsToSatisfying_exists_fuel: forall initial P,
+    runsToSatisfying initial P ->
+    exists fuel, P (execState (run fuel) initial).
   Proof.
     intros *. intro R.
     pose proof (runsToSatisfying_exists_fuel _ _ initial P R) as F.
     unfold run.
     destruct F as [fuel F]. exists fuel.
     replace
-      (execState (power_func (fun m => run1 imem;; m) fuel (Return tt)) initial)
+      (execState (power_func (fun m => run1;; m) fuel (Return tt)) initial)
     with
-      (power_func (execState (run1 imem)) fuel initial);
+      (power_func (execState run1) fuel initial);
     [assumption|clear].
     revert initial.
     induction fuel; intros; simpl; [reflexivity|].
     unfold execState. f_equal.
-    destruct (run1 imem initial) eqn: E.
-    destruct o eqn: Eo.
     (* TODO does that hold? What if optional answer is None and it aborts? *)
   Admitted.
 
@@ -530,9 +538,6 @@ Section FlatToRiscv.
     [ solve_word_eq | solve_length_compile_stmt ].
    *)
 
-  Definition list2imem(l: list Instruction)(offset: word wXLEN): InstructionMem :=
-    fun addr => nth (wordToNat (wdiv (addr ^- offset) $4)) l InvalidInstruction.
-
   (*
   Definition loadWordH(memH: Memory.mem wXLEN)(addr: word wXLEN): option (word wXLEN).
     clear -addr memH.
@@ -568,7 +573,8 @@ Section FlatToRiscv.
 
   (* TODO might not hold if a = 0, but we only use it with a = 4 *)  
   Lemma mul_div_undo_word: forall {sz} (a b: word sz), a ^* b ^/ a = b. Admitted.
-  
+
+  (*
   Lemma run1head: forall inst0 insts initialL,
       execState (run1 (list2imem (inst0 :: insts) initialL.(core).(pc))) initialL =
       execState (execute inst0;; step) initialL.
@@ -661,6 +667,7 @@ Section FlatToRiscv.
   Proof.
     intros. subst. reflexivity.
   Qed.
+  *)
   
   Lemma Bind_getRegister0: forall {A: Type} (f: word wXLEN -> OState RiscvMachine A),
       Bind (getRegister Register0) f = f $0.
@@ -817,6 +824,7 @@ Section FlatToRiscv.
   : unf_pseudo.
 
 
+  (*
   Lemma list2imem_head: forall inst insts imemStart,
       (list2imem (inst :: insts) imemStart) imemStart = inst.
   Proof.
@@ -828,14 +836,9 @@ Section FlatToRiscv.
     rewrite wordToNat_wzero.
     reflexivity.
   Qed.
+  *)
 
-  Add Ring XXX : (wring wXLEN).
-  Lemma test: forall (a b c: word wXLEN), ((a ^+ b) ^- b) ^* c ^* $1 = a ^* c ^* $1.
-  Proof.
-    intros.
-    ring.
-  Qed.
-  
+  (*
   Lemma list2imem_skip: forall imemStart insts0 insts1 offs pc0,
     imemStart ^+ $4 ^* $(length insts0) ^+ offs = pc0 ->
     (list2imem (insts0 ++ insts1) imemStart) pc0  =
@@ -937,7 +940,8 @@ list2imem
      instsAfter) imemStart
     (imemStart ^+ $ (4) ^* $ (length instsBefore) ^+ $ (4) ^* $ (length (compile_stmt s1)))
  *)
-    
+  *)
+
   Lemma compile_stmt_correct_aux:
     forall fuelH s insts instsBefore instsAfter initialH imemStart
            initialMH finalH finalMH initialL,
