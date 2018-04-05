@@ -829,13 +829,27 @@ Section FlatToRiscv.
     reflexivity.
   Qed.
 
+  Add Ring XXX : (wring wXLEN).
+  Lemma test: forall (a b c: word wXLEN), ((a ^+ b) ^- b) ^* c ^* $1 = a ^* c ^* $1.
+  Proof.
+    intros.
+    ring.
+  Qed.
+  
   Lemma list2imem_skip: forall imemStart insts0 insts1 offs pc0,
     imemStart ^+ $4 ^* $(length insts0) ^+ offs = pc0 ->
     (list2imem (insts0 ++ insts1) imemStart) pc0  =
     (list2imem insts1 imemStart) (imemStart ^+ offs).
   Proof.
-    intros. subst.
-    unfold list2imem.
+    intros. subst. unfold list2imem.
+    (*
+    induction insts0.
+    - simpl. admit.
+    - simpl. rewrite <- IHinsts0.
+      unfold list2imem. simpl.*)
+    ring_simplify (imemStart ^+ $ (4) ^* $ (length insts0) ^+ offs ^- imemStart).
+    ring_simplify (imemStart ^+ offs ^- imemStart).
+    (*
     rewrite wminus_def.
     rewrite wplus_comm.
     rewrite? wplus_assoc.
@@ -850,6 +864,7 @@ Section FlatToRiscv.
     rewrite wplus_unit.
     replace ((($4 ^* $ (length insts0) ^+ offs) ^/ $4)) with
         ($ (length insts0) ^+ (offs ^/ $4)) by admit.
+    *)
     
     Abort.
 
