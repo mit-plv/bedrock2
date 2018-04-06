@@ -22,6 +22,8 @@ Require Import compiler.StateCalculus.
 
 Local Open Scope ilist_scope.
 
+Set Implicit Arguments.
+
 Section FlatToRiscv.
 
   Context {Bw: RiscvBitWidths}.
@@ -574,37 +576,17 @@ Section FlatToRiscv.
   (* TODO might not hold if a = 0, but we only use it with a = 4 *)  
   Lemma mul_div_undo_word: forall {sz} (a b: word sz), a ^* b ^/ a = b. Admitted.
 
-  (*
-  Lemma run1head: forall inst0 insts initialL,
-      execState (run1 (list2imem (inst0 :: insts) initialL.(core).(pc))) initialL =
-      execState (execute inst0;; step) initialL.
-  Proof.
-    intros.
-    unfold list2imem.
-    unfold run1.
-    unfold getPC, IsRiscvMachine, OState_Monad.
-    destruct_RiscvMachine initialL.
-    unfold Bind at 1.
-    unfold execState.
-    unfold Monads.get.
-    unfold Bind at 1.
-    unfold Return at 1.
-    rewrite wminus_def.
-    rewrite wminus_inv.
-    rewrite wzero_div.
-    rewrite wordToNat_wzero.
-    simpl nth.
-    reflexivity.
-  Qed.
+  Lemma let_pair_rhs_eq: forall {A B R} (c1 c2: A * B) (f: A -> B -> R),
+      c1 = c2 ->
+      (let (a, b) := c1 in f a b) = (let (a, b) := c2 in f a b).
+  Proof. intros. subst. reflexivity. Qed.
 
-  Lemma run1_in_list: forall n inst insts initialL offset,
-      nth_error insts n = Some inst ->
-      initialL.(core).(pc) = offset ^+ $4 ^* $n ->
-      execState (run1 (list2imem insts offset)) initialL =
-      execState (execute inst;; step) initialL.
+  Lemma run1_simpl: forall {inst initialL pc0},
+      containsProgram initialL.(machineMem) [[inst]] pc0 ->
+      pc0 = initialL.(core).(pc) ->
+      execState run1 initialL = execState (execute inst;; step) initialL.
   Proof.
-    intros.
-    unfold list2imem.
+    intros. subst.
     unfold run1.
     unfold getPC, IsRiscvMachine, OState_Monad.
     destruct_RiscvMachine initialL.
@@ -613,61 +595,18 @@ Section FlatToRiscv.
     unfold Monads.get.
     unfold Bind at 1.
     unfold Return at 1.
-    subst.
     simpl.
-    rewrite wminus_def.
-    rewrite wplus_comm.
-    rewrite wplus_assoc.
-    rewrite (wplus_comm (^~ offset) offset).
-    rewrite wminus_inv.
-    rewrite wplus_unit.
-    rewrite mul_div_undo_word.
-    erewrite nth_error_nth; [ reflexivity | ].
-  Abort.
-
-  Lemma run1_in_list: forall n inst insts initialL offset,
-      nth_error insts (wordToNat n) = Some inst ->
-      initialL.(core).(pc) = offset ^+ $4 ^* n ->
-      execState (run1 (list2imem insts offset)) initialL =
-      execState (execute inst;; step) initialL.
-  Proof.
-    intros.
-    unfold list2imem.
-    unfold run1.
-    unfold getPC, IsRiscvMachine, OState_Monad.
-    destruct_RiscvMachine initialL.
-    unfold Bind at 1.
-    unfold execState.
-    unfold Monads.get.
-    unfold Bind at 1.
-    unfold Return at 1.
-    subst.
-    simpl.
-    rewrite wminus_def.
-    rewrite wplus_comm.
-    rewrite wplus_assoc.
-    rewrite (wplus_comm (^~ offset) offset).
-    rewrite wminus_inv.
-    rewrite wplus_unit.
-    rewrite mul_div_undo_word.
-    erewrite nth_error_nth; [ reflexivity | assumption].
-  Qed.
-  
-  Lemma run1_in_im_0: forall im initialL,
-      execState (run1 im) initialL =
-      execState (execute (im initialL.(core).(pc));; step) initialL.
-  Proof.
-    intros. reflexivity.
-  Qed.
-
-  Lemma run1_in_im: forall im initialL inst,
-      im initialL.(core).(pc) = inst ->
-      execState (run1 im) initialL =
-      execState (execute inst;; step) initialL.
-  Proof.
-    intros. subst. reflexivity.
-  Qed.
-  *)
+    f_equal.
+    apply let_pair_rhs_eq.
+    f_equal.
+    unfold containsProgram in H.
+    specialize (H 0 _ eq_refl). subst inst.
+    unfold ldInst.
+    unfold Memory.loadWord, mem_is_Memory.
+    do 3 f_equal.
+    change $0 with (wzero wXLEN).
+    ring.
+  Qed. 
   
   Lemma Bind_getRegister0: forall {A: Type} (f: word wXLEN -> OState RiscvMachine A),
       Bind (getRegister Register0) f = f $0.
@@ -717,6 +656,16 @@ Section FlatToRiscv.
       execState (Return a) s = s.
   Proof. intros. reflexivity. Qed.
 
+  Ltac do_get_set_Register :=
+    repeat (
+        rewrite? associativity;
+        rewrite? left_identity;
+        rewrite? right_identity;
+        rewrite? Bind_getRegister by assumption;
+        rewrite? Bind_getRegister0;
+        rewrite? Bind_setRegister by assumption
+      ).
+  
   Ltac prove_alu_def :=
     intros; clear; unfold wXLEN in *; unfold MachineWidthInst;
     destruct bitwidth; [unfold MachineWidth32 | unfold MachineWidth64]; reflexivity.
@@ -940,33 +889,53 @@ list2imem
      instsAfter) imemStart
     (imemStart ^+ $ (4) ^* $ (length instsBefore) ^+ $ (4) ^* $ (length (compile_stmt s1)))
  *)
-  *)
+ *)
+  Axiom translate_axiom_TODO: forall a,
+    translate Load four a = Return a.
 
   Lemma compile_stmt_correct_aux:
-    forall fuelH s insts instsBefore instsAfter initialH imemStart
-           initialMH finalH finalMH initialL,
+    forall fuelH s insts initialH  initialMH finalH finalMH initialL,
     compile_stmt s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
     evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
-    imemStart ^+ $4 ^* $(length instsBefore) = initialL.(core).(pc) ->
+    containsProgram initialL.(machineMem) insts initialL.(core).(pc) ->
     initialL.(core).(pc) ^+ $4 = initialL.(core).(nextPC) ->
-    runsToSatisfying (list2imem (instsBefore ++ insts ++ instsAfter) imemStart)
-                     initialL
-                     (fun finalL => extends finalL.(core).(registers) finalH /\
-                                    containsMem finalL.(machineMem) finalMH /\
-                                    finalL.(core).(pc) ^+ $4 = finalL.(core).(nextPC) /\
-                                    finalL.(core).(pc) =
-                                      initialL.(core).(pc) ^+ $ (4) ^* $ (length insts)).
+    runsToSatisfying initialL (fun finalL =>
+                                 extends finalL.(core).(registers) finalH /\
+                                 containsMem finalL.(machineMem) finalMH /\
+                                 containsProgram finalL.(machineMem) insts initialL.(core).(pc) /\
+                                 finalL.(core).(pc) ^+ $4 = finalL.(core).(nextPC) /\
+                                 finalL.(core).(pc) =
+                                 initialL.(core).(pc) ^+ $ (4) ^* $ (length insts)).
   Proof.
     induction fuelH; [intros; discriminate |].
     intros *.
-    intros C Csz V EvH Cs Cm Ims Pc.
+    intros C Csz V EvH Cs Cm Cp Pc.
     unfold evalH in EvH.
-    invert_eval_stmt.
+    invert_eval_stmt;
+      simpl in C;
+      try destruct_pair_eqs;
+      subst *;
+      simpl in V;
+      deep_destruct V.
     - (* SLoad *)
+      clear IHfuelH.
+      unfold runsToSatisfying.
+      apply runsToStep.
+      match goal with
+      | Cp: containsProgram _ [[?inst]] ?initialL.(core).(pc) |- runsTo _ _ ?E _ =>
+        replace E with (execState (execute inst;; step) initialL) by
+            (symmetry; apply (run1_simpl Cp eq_refl))
+      end.
+      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
+      do_get_set_Register.
+      rewrite translate_axiom_TODO.
+      do_get_set_Register.
+      unfold loadWord, IsRiscvMachine, liftLoad, Memory.loadWord, mem_is_Memory.
+      do_get_set_Register.      
       admit.
     - (* SStore *)
       admit.
@@ -1236,33 +1205,22 @@ admit. admit.
        *)
       admit.
     - (* SLoop/again *)
-      simpl in C. subst *.
-      simpl in V. destruct V as [ ? [? ?] ].
       pose proof IHfuelH as IH.
       destruct_RiscvMachine initialL.
+      destruct_containsProgram.
       match goal with
-      | |- runsToSatisfying _ ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
+      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
       specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|eassumption..|].
       unfold runsToSatisfying in *.
-      match goal with
-      | IH: runsTo _ (execState (run1 (list2imem ?im1 ?ims))) _ _ |-
-            runsTo _ (execState (run1 (list2imem ?im2 ?ims))) _ _ =>
-        replace im1 with im2 in IH
-          by (repeat rewrite <- app_assoc; reflexivity)
-      end.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
       intros middleL [ E [? [? ?] ] ].
       destruct_RiscvMachine middleL.
       simpl in *. subst *.
       apply runsToStep.
-      erewrite run1_in_im.
-      admit.
+      (* HERE *)
 
-      { simpl.
-        (* HERE *)
-        }
       simpl_run1.
       rewrite Cp1. simpl.
       pose proof Cs2 as Cs2'.
