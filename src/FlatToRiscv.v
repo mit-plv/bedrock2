@@ -247,13 +247,17 @@ Section FlatToRiscv.
   
   Ltac destruct_containsProgram :=
     repeat match goal with
-    | Cp: _ |- _ =>
-      (apply containsProgram_cons_inv in Cp || apply containsProgram_app_inv in Cp);
-      let Cp' := fresh Cp in 
-      destruct Cp as [Cp' Cp];
-      simpl in Cp'
-    | Cp: containsProgram _ [] _ |- _ => clear Cp
-    end.
+           | Cp: containsProgram _ ?l _ |- _ =>
+             let Cp' := fresh Cp in
+             match l with
+             | [[]] => clear Cp
+             | [[?inst]] => fail 1
+             | ?h :: ?t => apply containsProgram_cons_inv in Cp;
+                          destruct Cp as [Cp' Cp]
+             | ?insts0 ++ ?insts1 => apply containsProgram_app_inv in Cp;
+                                    destruct Cp as [Cp' Cp]
+             end
+           end.
 
   Lemma mul_div_undo: forall i c,
     c <> 0 ->
@@ -920,8 +924,52 @@ list2imem
   Axiom translate_axiom_TODO: forall a,
     translate Load four a = Return a.
 
+  Definition words_inaccessible(m: Memory.mem wXLEN)(start: word wXLEN)(len: nat): Prop :=
+    forall i, 0 <= i < len -> Memory.read_mem (start ^+ $4 ^* $i) m = None.
+
+  Definition mem_inaccessible(m: Memory.mem wXLEN)(start: word wXLEN)(len: nat): Prop :=
+    forall i, 0 <= i < len -> Memory.read_mem (start ^+ $i) m = None.
+
+
+  Arguments mult: simpl never.
+
+  (* requires destructed RiscvMachine and containsProgram *)
+  Ltac fetch_inst :=
+      match goal with
+      | Cp: containsProgram _ [[?inst]] ?pc0 |- runsTo _ _ ?E _ =>
+        match E with
+        | execState run1 ?initialL =>
+          let Eqpc := fresh in
+          assert (pc0 = initialL.(core).(pc)) as Eqpc by reflexivity;
+            replace E with (execState (execute inst;; step) initialL) by
+              (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
+            clear Eqpc
+        end
+      end.
+  
   Lemma compile_stmt_correct_aux:
-    forall fuelH s insts initialH  initialMH finalH finalMH initialL,
+    forall fuelH s insts initialH  initialMH finalH finalMH initialL
+      instsBefore instsAfter imemStart,
+    compile_stmt s = insts ->
+    stmt_not_too_big s ->
+    valid_registers s ->
+    evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
+    extends initialL.(core).(registers) initialH ->
+    containsMem initialL.(machineMem) initialMH ->
+    containsProgram initialL.(machineMem) (instsBefore ++ insts ++ instsAfter) imemStart ->
+    initialL.(core).(pc) = imemStart ^+ $4 ^* $(length instsBefore) ->
+    initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
+    mem_inaccessible initialMH imemStart (4 * (length (instsBefore ++ insts ++ instsAfter))) ->
+    runsToSatisfying initialL (fun finalL =>
+       extends finalL.(core).(registers) finalH /\
+       containsMem finalL.(machineMem) finalMH /\
+       containsProgram finalL.(machineMem) (instsBefore ++ insts ++ instsAfter) imemStart /\
+       finalL.(core).(pc) = initialL.(core).(pc) ^+ $ (4) ^* $ (length insts) /\
+       finalL.(core).(nextPC) = finalL.(core).(pc) ^+ $4).
+
+(*  
+  Lemma compile_stmt_correct_aux:
+    forall fuelH s insts initialH  initialMH finalH finalMH initialL allInsts imemStart,
     compile_stmt s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
@@ -930,6 +978,9 @@ list2imem
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) insts initialL.(core).(pc) ->
     initialL.(core).(pc) ^+ $4 = initialL.(core).(nextPC) ->
+    mem_inaccessible initialMH imemStart (4 * (length allInsts)) ->
+    containsProgram initialL.(machineMem) allInsts imemStart ->
+    (* TODO also need to say that insts inside allInsts *)
     runsToSatisfying initialL (fun finalL =>
                                  extends finalL.(core).(registers) finalH /\
                                  containsMem finalL.(machineMem) finalMH /\
@@ -937,26 +988,23 @@ list2imem
                                  finalL.(core).(pc) ^+ $4 = finalL.(core).(nextPC) /\
                                  finalL.(core).(pc) =
                                  initialL.(core).(pc) ^+ $ (4) ^* $ (length insts)).
+*)
   Proof.
     induction fuelH; [intros; discriminate |].
-    intros *.
-    intros C Csz V EvH Cs Cm Cp Pc.
-    unfold evalH in EvH.
+    intros.
+    unfold evalH in *.
     invert_eval_stmt;
-      simpl in C;
+      simpl in *;
       try destruct_pair_eqs;
       subst *;
-      simpl in V;
-      deep_destruct V.
+      destruct_conjs.
     - (* SLoad *)
       clear IHfuelH.
       unfold runsToSatisfying.
       apply runsToStep.
-      match goal with
-      | Cp: containsProgram _ [[?inst]] ?initialL.(core).(pc) |- runsTo _ _ ?E _ =>
-        replace E with (execState (execute inst;; step) initialL) by
-            (symmetry; apply (run1_simpl Cp eq_refl))
-      end.
+      destruct_containsProgram.
+      destruct_RiscvMachine initialL. subst.
+      fetch_inst.
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
       do_get_set_Register.
       rewrite translate_axiom_TODO.
@@ -1254,7 +1302,7 @@ admit. admit.
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|eassumption..|].
+      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|try eassumption..|].
       unfold runsToSatisfying in *.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
       intros middleL [ E [? [? [? ?] ] ] ].
