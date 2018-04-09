@@ -176,7 +176,32 @@ Section FlatToRiscv.
     rewrite Nat.mul_0_r. simpl. rewrite wzero'_def. reflexivity.
   Qed.
 
+  Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
+  Proof.
+    intros. destruct i; simpl in *; discriminate.
+  Qed.
+
+  (* Note: containsProgram for one single [[inst]] could be simplified, but for automation,
+     it's better not to simplify. *)
   Lemma containsProgram_cons_inv: forall m inst insts offset,
+    containsProgram m (inst :: insts) offset ->
+    containsProgram m [[inst]] offset /\
+    containsProgram m insts (offset ^+ $4).
+  Proof.
+    intros *. intro Cp. unfold containsProgram. split.
+    + specialize (Cp 0). specialize Cp with (1 := eq_refl).
+      intros. destruct i; inverts H.
+      - assumption.
+      - exfalso. eauto using nth_error_nil_Some.
+    + intros i inst0 E. specialize (Cp (S i)). simpl in Cp.
+      specialize (Cp _ E).
+      rewrite <- Cp. f_equal.
+      rewrite (natToWord_S wXLEN i).
+      change $1 with (wone wXLEN).
+      ring.
+  Qed.
+  
+  Lemma containsProgram_cons_inv_old: forall m inst insts offset,
     containsProgram m (inst :: insts) offset ->
     ldInst m offset = inst /\
     containsProgram m insts (offset ^+ $4).
@@ -218,6 +243,8 @@ Section FlatToRiscv.
       assumption.
   Qed.
 
+  Arguments containsProgram: simpl never.
+  
   Ltac destruct_containsProgram :=
     repeat match goal with
     | Cp: _ |- _ =>
@@ -1206,8 +1233,23 @@ admit. admit.
       admit.
     - (* SLoop/again *)
       pose proof IHfuelH as IH.
-      destruct_RiscvMachine initialL.
-      destruct_containsProgram.
+      destruct_RiscvMachine initialL. 
+
+      repeat match goal with
+             | Cp: containsProgram _ ?l _ |- _ =>
+               let Cp' := fresh Cp in
+               match l with
+               | [[]] => clear Cp
+               | [[?inst]] => fail 1
+               | ?h :: ?t => apply containsProgram_cons_inv in Cp;
+                              destruct Cp as [Cp' Cp]
+               | ?insts0 ++ ?insts1 => apply containsProgram_app_inv in Cp;
+                                        destruct Cp as [Cp' Cp]
+               end
+             end.
+      
+
+(*      destruct_containsProgram. *)
       match goal with
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
@@ -1215,11 +1257,37 @@ admit. admit.
       specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|eassumption..|].
       unfold runsToSatisfying in *.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
-      intros middleL [ E [? [? ?] ] ].
+      intros middleL [ E [? [? [? ?] ] ] ].
       destruct_RiscvMachine middleL.
-      simpl in *. subst *.
       apply runsToStep.
+      simpl in *|-. subst *.
+      match goal with
+      | Cp: containsProgram _ [[?inst]] ?pc0 |- runsTo _ _ ?E _ =>
+        match E with
+        | execState run1 ?initialL =>
+          unify pc0 initialL.(core).(pc);
+            replace E with (execState (execute inst;; step) initialL) (* by
+                (symmetry; apply (run1_simpl Cp eq_refl)) *)
+        end
+      end.
+      admit.
+      symmetry.
+      eapply run1_simpl.
+      simpl.
       (* HERE *)
+
+      
+      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
+      do_get_set_Register.
+      rewrite translate_axiom_TODO.
+      do_get_set_Register.
+      unfold loadWord, IsRiscvMachine, liftLoad, Memory.loadWord, mem_is_Memory.
+      do_get_set_Register.      
+
+      rewrite run1_simpl.
+      
+      
+
 
       simpl_run1.
       rewrite Cp1. simpl.
