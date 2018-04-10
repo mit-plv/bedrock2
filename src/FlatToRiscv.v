@@ -242,7 +242,44 @@ Section FlatToRiscv.
       replace (length insts1 + i - length insts1) with i by omega.
       assumption.
   Qed.
+  
+  Lemma containsProgram_app: forall m insts1 insts2 offset,
+      containsProgram m insts1 offset ->
+      containsProgram m insts2 (offset ^+ $4 ^* $(length insts1)) ->
+      containsProgram m (insts1 ++ insts2) offset.
+  Proof.
+    unfold containsProgram. intros.
+    Search nth_error app. 
+    assert (i < length insts1 \/ length insts1 <= i) as E by omega.
+    destruct E as [E | E].
+    - rewrite nth_error_app1 in H1 by assumption. eauto.
+    - rewrite nth_error_app2 in H1 by assumption.
+      specialize H0 with (1 := H1). subst inst.
+      f_equal. rewrite <- wplus_assoc.
+      f_equal.
+      match goal with
+      | |- _ = ?x => match x with
+                   | $4 ^* ?a ^+ $4 ^* ?b => replace x with ($4 ^* (a ^+ b)) by ring
+                   end
+      end.
+      rewrite <- natToWord_plus.
+      f_equal. f_equal. omega.
+  Qed.
 
+  Lemma containsProgram_cons: forall m inst insts offset,
+    containsProgram m [[inst]] offset ->
+    containsProgram m insts (offset ^+ $4) ->
+    containsProgram m (inst :: insts) offset.
+  Proof.
+    unfold containsProgram. intros. destruct i.
+    - simpl in H1. inverts H1. eauto.
+    - simpl in H1.
+      replace (offset ^+ $ (4) ^* $ (S i)) with (offset ^+ $4 ^+ $4 ^* $i); [eauto|].
+      rewrite (natToWord_S _ i).
+      change (natToWord wXLEN 1) with (wone wXLEN).
+      ring.
+  Qed.
+  
   Arguments containsProgram: simpl never.
   
   Ltac destruct_containsProgram :=
@@ -670,6 +707,13 @@ Section FlatToRiscv.
     - reflexivity.
   Qed.
 
+  Lemma Bind_getPC: forall {A: Type} (f: word wXLEN -> OState RiscvMachine A) (initialL: RiscvMachine),
+      execState (Bind getPC f) initialL =
+      execState (f initialL.(core).(pc)) initialL.
+  Proof.
+    intros. reflexivity.
+  Qed.
+  
   Lemma Bind_step: forall {A: Type} (f: unit -> OState RiscvMachine A) m,
       execState (Bind step f) m =
       execState (f tt) (with_nextPC (m.(core).(nextPC) ^+ $4) (with_pc m.(core).(nextPC) m)).
@@ -946,50 +990,32 @@ list2imem
             clear Eqpc
         end
       end.
+
+  Inductive AllInsts: list Instruction -> Prop :=
+    mkAllInsts: forall l, AllInsts l.
   
   Lemma compile_stmt_correct_aux:
-    forall fuelH s insts initialH  initialMH finalH finalMH initialL
+    forall allInsts fuelH s insts initialH  initialMH finalH finalMH initialL
       instsBefore instsAfter imemStart,
     compile_stmt s = insts ->
+    allInsts = instsBefore ++ insts ++ instsAfter ->  
     stmt_not_too_big s ->
     valid_registers s ->
     evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
-    containsProgram initialL.(machineMem) (instsBefore ++ insts ++ instsAfter) imemStart ->
+    containsProgram initialL.(machineMem) allInsts imemStart ->
     initialL.(core).(pc) = imemStart ^+ $4 ^* $(length instsBefore) ->
     initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
-    mem_inaccessible initialMH imemStart (4 * (length (instsBefore ++ insts ++ instsAfter))) ->
+    mem_inaccessible initialMH imemStart (4 * (length allInsts)) ->
     runsToSatisfying initialL (fun finalL =>
        extends finalL.(core).(registers) finalH /\
        containsMem finalL.(machineMem) finalMH /\
-       containsProgram finalL.(machineMem) (instsBefore ++ insts ++ instsAfter) imemStart /\
+       containsProgram finalL.(machineMem) allInsts imemStart /\
        finalL.(core).(pc) = initialL.(core).(pc) ^+ $ (4) ^* $ (length insts) /\
        finalL.(core).(nextPC) = finalL.(core).(pc) ^+ $4).
-
-(*  
-  Lemma compile_stmt_correct_aux:
-    forall fuelH s insts initialH  initialMH finalH finalMH initialL allInsts imemStart,
-    compile_stmt s = insts ->
-    stmt_not_too_big s ->
-    valid_registers s ->
-    evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
-    extends initialL.(core).(registers) initialH ->
-    containsMem initialL.(machineMem) initialMH ->
-    containsProgram initialL.(machineMem) insts initialL.(core).(pc) ->
-    initialL.(core).(pc) ^+ $4 = initialL.(core).(nextPC) ->
-    mem_inaccessible initialMH imemStart (4 * (length allInsts)) ->
-    containsProgram initialL.(machineMem) allInsts imemStart ->
-    (* TODO also need to say that insts inside allInsts *)
-    runsToSatisfying initialL (fun finalL =>
-                                 extends finalL.(core).(registers) finalH /\
-                                 containsMem finalL.(machineMem) finalMH /\
-                                 containsProgram finalL.(machineMem) insts initialL.(core).(pc) /\
-                                 finalL.(core).(pc) ^+ $4 = finalL.(core).(nextPC) /\
-                                 finalL.(core).(pc) =
-                                 initialL.(core).(pc) ^+ $ (4) ^* $ (length insts)).
-*)
   Proof.
+    intro allInsts. pose proof (mkAllInsts allInsts).
     induction fuelH; [intros; discriminate |].
     intros.
     unfold evalH in *.
@@ -1281,58 +1307,47 @@ admit. admit.
       admit.
     - (* SLoop/again *)
       pose proof IHfuelH as IH.
-      destruct_RiscvMachine initialL. 
-
-      repeat match goal with
-             | Cp: containsProgram _ ?l _ |- _ =>
-               let Cp' := fresh Cp in
-               match l with
-               | [[]] => clear Cp
-               | [[?inst]] => fail 1
-               | ?h :: ?t => apply containsProgram_cons_inv in Cp;
-                              destruct Cp as [Cp' Cp]
-               | ?insts0 ++ ?insts1 => apply containsProgram_app_inv in Cp;
-                                        destruct Cp as [Cp' Cp]
-               end
-             end.
-      
-
-(*      destruct_containsProgram. *)
+      destruct_RiscvMachine initialL.
+      destruct_containsProgram.
+      repeat (rewrite app_length in *; simpl in *).
       match goal with
       | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
-      specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|try eassumption..|].
+      specialize IHfuelH with (s := s1) (1 := eq_refl).
+      specializes IHfuelH; [|solve_stmt_not_too_big|try eassumption..|].
+      {
+        repeat rewrite <- app_assoc. reflexivity.
+      }
+      {
+        subst.
+        repeat (rewrite <- app_assoc || rewrite <- app_comm_cons).
+        repeat ((apply containsProgram_cons || apply containsProgram_app); [assumption|]).
+        clear IH . clear H10.
+        simpl.
+        match goal with
+        | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
+          replace p' with p; [exact Cp|]
+        end.
+        clear.
+
+        simpl.
+        admit. (* word ring plus nats *)
+      }
       unfold runsToSatisfying in *.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
       intros middleL [ E [? [? [? ?] ] ] ].
       destruct_RiscvMachine middleL.
+      destruct_containsProgram. (* note: obtains containsProgram from IH *)
       apply runsToStep.
       simpl in *|-. subst *.
-      match goal with
-      | Cp: containsProgram _ [[?inst]] ?pc0 |- runsTo _ _ ?E _ =>
-        match E with
-        | execState run1 ?initialL =>
-          unify pc0 initialL.(core).(pc);
-            replace E with (execState (execute inst;; step) initialL) (* by
-                (symmetry; apply (run1_simpl Cp eq_refl)) *)
-        end
-      end.
-      admit.
-      symmetry.
-      eapply run1_simpl.
-      simpl.
-      (* HERE *)
-
-      
+      fetch_inst.
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
       do_get_set_Register.
-      rewrite translate_axiom_TODO.
-      do_get_set_Register.
-      unfold loadWord, IsRiscvMachine, liftLoad, Memory.loadWord, mem_is_Memory.
-      do_get_set_Register.      
+      cbn [core registers].
+      rewrite Bind_getPC.
+      cbn [pc core].
 
-      rewrite run1_simpl.
+      (* HERE *) 
       
       
 
