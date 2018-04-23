@@ -1094,6 +1094,7 @@ list2imem
 
 
   Arguments mult: simpl never.
+  Arguments run1: simpl never.
 
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
@@ -1138,6 +1139,26 @@ list2imem
     | |- valid_registers _ => solve [simpl; auto]
     end.
 
+  Ltac solve_imem :=
+    match goal with
+    | |- _ = _ ++ _ ++ _ => repeat rewrite <- app_assoc; reflexivity
+    end.
+
+  Ltac spec_IH originalIH IH stmt1 :=
+    pose proof originalIH as IH;
+    match goal with
+    | |- runsTo _ _ ?st _ => specialize IH with (initialL := st); simpl in IH
+    end;
+    specialize IH with (s := stmt1);
+    specializes IH;
+    first
+      [ reflexivity
+      | solve_stmt_not_too_big
+      | solve_containsProgram
+      | eassumption
+      | idtac ];
+    try solve_imem.
+  
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
       instsBefore instsAfter,
@@ -1453,85 +1474,21 @@ admit. admit.
       destruct_RiscvMachine initialL.
       destruct_containsProgram.
       repeat (rewrite app_length in *; simpl in *).
-      unfold runsToSatisfying.
+      unfold runsToSatisfying in *.
       (* 1st application of IH: part 1 of loop body *)
-
-      pose proof IHfuelH as IH;
-      match goal with
-      | |- runsTo _ _ ?st _ => specialize IH with (initialL := st); simpl in IH
-      end;
-      specialize IH with (s := s1).
-      Ltac solve_imem :=
-        match goal with
-        | |- _ = _ ++ _ ++ _ => repeat rewrite <- app_assoc; reflexivity
-        end.
-      
-      specializes IH; first
-        [ reflexivity
-        | solve_stmt_not_too_big
-        | solve_containsProgram
-        | eassumption
-        | idtac ];
-        try solve_imem.
-      (*
-      { clear.
-        repeat rewrite <- app_assoc. reflexivity.
-      }
-      
-      {
-        solve_containsProgram.
-        subst.
-        repeat (rewrite <- app_assoc || rewrite <- app_comm_cons).
-        repeat match goal with
-               | H: ?P |- _ => match P with
-                             | containsProgram _ _ _ => fail 1
-                             | _ => clear H
-                             end
-               end.
-Time        
-        
-        repeat match goal with
-               | |- containsProgram _ [[]] _ => apply containsProgram_nil
-               | |- containsProgram _ (_ ++ _) _ => apply containsProgram_app
-               | |- containsProgram _ (_ :: ?t) _ =>
-                 tryif (unify t [[]])
-                 then fail
-                 else (apply containsProgram_cons)
-               | |- _ => assumption
-               end.
-        match goal with
-        | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
-          replace p' with p; [exact Cp|]
-        end.
-        simpl.
-        solve_word_eq.
-      }
-      {
-        subst.
-        repeat (rewrite <- app_assoc || rewrite <- app_comm_cons).
-        repeat ((apply containsProgram_cons || apply containsProgram_app); [assumption|]).
-        clear IH . clear H10.
-        simpl.
-        match goal with
-        | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
-          replace p' with p; [exact Cp|]
-        end.
-        solve_word_eq.
-      }
-      *)
-
+      spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
       intros middleL [ E [? [? [? ?] ] ] ].
       destruct_RiscvMachine middleL.
       destruct_containsProgram. (* note: obtains containsProgram from IH *)
+      
       apply runsToStep.
-      simpl in *|-. subst *.
+      simpl in *. subst *.
       fetch_inst.
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
       do_get_set_Register.
-      cbn [core registers].
+      simpl_RiscvMachine_get_set.
       rewrite Bind_getPC.
-      cbn [pc core].
       rewrite_reg_value.
       rewrite_alu_op_defs.
       rewrite weqb_ne by congruence.
