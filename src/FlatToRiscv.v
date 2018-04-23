@@ -459,10 +459,6 @@ Section FlatToRiscv.
          core machineMem registers pc nextPC exceptionHandlerAddr
          getPC setPC getRegister setRegister IsRiscvMachine gets].
 
-  Ltac simpl_RiscvMachine_get_set :=
-    cbn [core machineMem registers pc nextPC exceptionHandlerAddr
-         with_registers with_pc with_nextPC with_exceptionHandlerAddr with_machineMem] in *.
-  
   Ltac solve_word_eq :=
     clear;
     repeat match goal with
@@ -616,6 +612,57 @@ Section FlatToRiscv.
   Defined.
    *)
 
+  Lemma simpl_with_registers: forall (rs1 rs2: state) p npc eh (m: mem wXLEN),
+    with_registers rs2 (mkRiscvMachine (mkRiscvMachineCore rs1 p npc eh) m) =
+                       (mkRiscvMachine (mkRiscvMachineCore rs2 p npc eh) m).
+  Proof. intros. reflexivity. Qed.
+
+  Lemma simpl_with_pc: forall (rs: state) pc1 pc2 npc eh (m: mem wXLEN),
+    with_pc pc2 (mkRiscvMachine (mkRiscvMachineCore rs pc1 npc eh) m) =
+                (mkRiscvMachine (mkRiscvMachineCore rs pc2 npc eh) m).
+  Proof. intros. reflexivity. Qed.
+
+  Lemma simpl_with_nextPC: forall (rs: state) p npc1 npc2 eh (m: mem wXLEN),
+    with_nextPC npc2 (mkRiscvMachine (mkRiscvMachineCore rs p npc1 eh) m) =
+                     (mkRiscvMachine (mkRiscvMachineCore rs p npc2 eh) m).
+  Proof. intros. reflexivity. Qed.
+
+  Lemma simpl_with_machineMem: forall (c: @RiscvMachineCore _ state) (m1 m2: mem wXLEN),
+    with_machineMem m2 (mkRiscvMachine c m1) =
+                       (mkRiscvMachine c m2).
+  Proof. intros. reflexivity. Qed.  
+
+  Lemma simpl_registers: forall (rs: state) p npc eh,
+    registers (mkRiscvMachineCore rs p npc eh) = rs.
+  Proof. intros. reflexivity. Qed.
+
+  Lemma simpl_pc: forall (rs: state) p npc eh,
+    pc (mkRiscvMachineCore rs p npc eh) = p.
+  Proof. intros. reflexivity. Qed.
+
+  Lemma simpl_nextPC: forall (rs: state) p npc eh,
+    nextPC (mkRiscvMachineCore rs p npc eh) = npc.
+  Proof. intros. reflexivity. Qed.
+  
+  Lemma simpl_core: forall (c: @RiscvMachineCore _ state) (m: mem wXLEN),
+    core (mkRiscvMachine c m) = c.
+  Proof. intros. reflexivity. Qed.  
+
+  Lemma simpl_machineMem: forall (c: @RiscvMachineCore _ state) (m: mem wXLEN),
+    machineMem (mkRiscvMachine c m) = m.
+  Proof. intros. reflexivity. Qed.  
+
+  Ltac simpl_RiscvMachine_get_set :=
+    repeat (rewrite simpl_with_registers in *
+            || rewrite simpl_with_pc in *
+            || rewrite simpl_with_nextPC in *
+            || rewrite simpl_with_machineMem in *
+            || rewrite simpl_registers in *
+            || rewrite simpl_pc in *
+            || rewrite simpl_nextPC in *
+            || rewrite simpl_core in *
+            || rewrite simpl_machineMem in * ).
+            
   Ltac destruct_RiscvMachine m :=
     let t := type of m in
     unify t RiscvMachine;
@@ -744,84 +791,104 @@ Section FlatToRiscv.
   Ltac prove_alu_def :=
     intros; clear; unfold wXLEN in *; unfold MachineWidthInst;
     destruct bitwidth; [unfold MachineWidth32 | unfold MachineWidth64]; reflexivity.
-  
+
   Lemma fromImm_def: forall (a: Z),
-      Utility.fromImm a = ZToWord wXLEN a.
+      fromImm a = ZToWord wXLEN a.
   Proof. unfold fromImm. prove_alu_def. Qed.
 
   Lemma zero_def:
-      Utility.zero = $0.
+      zero = $0.
   Proof. unfold zero. prove_alu_def. Qed.
   
   Lemma one_def:
-      Utility.one = $1.
+      one = $1.
   Proof. unfold one. prove_alu_def. Qed.
   
   Lemma add_def: forall (a b: word wXLEN),
-      Utility.add a b = wplus a b.
+      add a b = wplus a b.
   Proof. unfold add. prove_alu_def. Qed.
   
   Lemma sub_def: forall (a b: word wXLEN),
-      Utility.sub a b = wminus a b.
+      sub a b = wminus a b.
   Proof. unfold sub. prove_alu_def. Qed.
   
   Lemma mul_def: forall (a b: word wXLEN),
-      Utility.mul a b = wmult a b.
+      mul a b = wmult a b.
   Proof. unfold mul. prove_alu_def. Qed.
   
   Lemma div_def: forall (a b: word wXLEN),
-      Utility.div a b = ZToWord wXLEN (wordToZ a / wordToZ b).
+      div a b = ZToWord wXLEN (wordToZ a / wordToZ b).
   Proof. unfold div. prove_alu_def. Qed.
   
   Lemma rem_def: forall (a b: word wXLEN),
-      Utility.rem a b = ZToWord wXLEN (wordToZ a mod wordToZ b).
+      rem a b = ZToWord wXLEN (wordToZ a mod wordToZ b).
   Proof. unfold rem. prove_alu_def. Qed.
   
   Lemma signed_less_than_def: forall (a b: word wXLEN),
-      Utility.signed_less_than a b = if wslt_dec a b then true else false.
+      signed_less_than a b = if wslt_dec a b then true else false.
   Proof. unfold signed_less_than. prove_alu_def. Qed.
   
   Lemma signed_eqb_def: forall (a b: word wXLEN),
-      Utility.signed_eqb a b = weqb a b.
+      signed_eqb a b = weqb a b.
   Proof. unfold signed_eqb. prove_alu_def. Qed.
   
-  Lemma aor_def: forall (a b: word wXLEN),
-      Utility.xor a b = wxor a b.
+  Lemma xor_def: forall (a b: word wXLEN),
+      xor a b = wxor a b.
   Proof. unfold xor. prove_alu_def. Qed.
   
   Lemma or_def: forall (a b: word wXLEN),
-      Utility.or a b = wor a b.
+      or a b = wor a b.
   Proof. unfold or. prove_alu_def. Qed.
   
   Lemma and_def: forall (a b: word wXLEN),
-      Utility.and a b = wand a b.
+      and a b = wand a b.
   Proof. unfold and. prove_alu_def. Qed.
   
   Lemma sll_def: forall (a: word wXLEN) (b: Z),
-      Utility.sll a b = wlshift a (Z.to_nat b).
+      sll a b = wlshift a (Z.to_nat b).
   Proof. unfold sll. prove_alu_def. Qed.
   
   Lemma srl_def: forall (a: word wXLEN) (b: Z),
-      Utility.srl a b = wrshift a (Z.to_nat b).
+      srl a b = wrshift a (Z.to_nat b).
   Proof. unfold srl. prove_alu_def. Qed.
   
   Lemma sra_def: forall (a: word wXLEN) (b: Z),
-      Utility.sra a b = wrshift a (Z.to_nat b).
+      sra a b = wrshift a (Z.to_nat b).
   Proof. unfold sra. prove_alu_def. Qed.
   
   Lemma ltu_def: forall (a b: word wXLEN),
-      Utility.ltu a b = if wlt_dec a b then true else false.
+      ltu a b = if wlt_dec a b then true else false.
   Proof. unfold ltu. prove_alu_def. Qed.
   
   Lemma divu_def: forall (a b: word wXLEN),
-      Utility.divu a b = wdiv a b.
+      divu a b = wdiv a b.
   Proof. unfold divu. prove_alu_def. Qed.
   
   Lemma remu_def: forall (a b: word wXLEN),
-      Utility.remu a b = wmod a b.
+      remu a b = wmod a b.
   Proof. unfold remu. prove_alu_def. Qed.
   
-  
+  Ltac rewrite_alu_op_defs :=
+    repeat (rewrite fromImm_def in *
+            || rewrite zero_def in *
+            || rewrite one_def in *
+            || rewrite add_def in *
+            || rewrite sub_def in *
+            || rewrite mul_def in *
+            || rewrite div_def in *
+            || rewrite rem_def in *
+            || rewrite signed_less_than_def in *
+            || rewrite signed_eqb_def in *
+            || rewrite xor_def in *
+            || rewrite or_def in *
+            || rewrite and_def in *
+            || rewrite sll_def in *
+            || rewrite srl_def in *
+            || rewrite sra_def in *
+            || rewrite ltu_def in *
+            || rewrite divu_def in *
+            || rewrite remu_def in *).
+
   Hint Unfold
     Nop
     Mov
@@ -991,12 +1058,38 @@ list2imem
         end
       end.
 
+  Ltac rewrite_reg_value :=
+    unfold getReg, State_is_RegisterFile;
+    let G1 := fresh "G1" in 
+    match goal with
+    | G2: get ?st2 ?x = ?v, E: extends ?st1 ?st2 |- context [?gg] =>
+      match gg with
+      | get st1 x => assert (G1: gg = v) by (clear -G2 E; state_calc)
+      end
+    end;
+    rewrite G1.
+
+  Lemma weqb_eq: forall sz (a b: word sz), a = b -> weqb a b = true.
+  Proof. intros. rewrite weqb_true_iff. assumption. Qed.
+  
+  Lemma weqb_ne: forall sz (a b: word sz), a <> b -> weqb a b = false.
+  Proof.
+    intros. destruct (weqb a b) eqn: E.
+    - rewrite weqb_true_iff in E. contradiction.
+    - reflexivity.
+  Qed.
+  
   Inductive AllInsts: list Instruction -> Prop :=
     mkAllInsts: forall l, AllInsts l.
-  
+
+  Ltac solve_valid_registers :=
+    match goal with
+    | |- valid_registers _ => solve [simpl; auto]
+    end.
+
   Lemma compile_stmt_correct_aux:
-    forall allInsts fuelH s insts initialH  initialMH finalH finalMH initialL
-      instsBefore instsAfter imemStart,
+    forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
+      instsBefore instsAfter,
     compile_stmt s = insts ->
     allInsts = instsBefore ++ insts ++ instsAfter ->  
     stmt_not_too_big s ->
@@ -1015,7 +1108,7 @@ list2imem
        finalL.(core).(pc) = initialL.(core).(pc) ^+ $ (4) ^* $ (length insts) /\
        finalL.(core).(nextPC) = finalL.(core).(pc) ^+ $4).
   Proof.
-    intro allInsts. pose proof (mkAllInsts allInsts).
+    intros allInsts imemStart. pose proof (mkAllInsts allInsts).
     induction fuelH; [intros; discriminate |].
     intros.
     unfold evalH in *.
@@ -1346,6 +1439,29 @@ admit. admit.
       cbn [core registers].
       rewrite Bind_getPC.
       cbn [pc core].
+      rewrite_reg_value.
+      rewrite_alu_op_defs.
+      rewrite weqb_ne by congruence.
+      rewrite left_identity.
+      rewrite execState_step.
+      simpl_RiscvMachine_get_set.
+      match goal with
+      | N: stmt_not_too_big (SLoop _ _ _) |- _ => specialize IH with (3 := N)
+      end.
+      match goal with
+      | |- runsTo _ _ ?stL _ => specialize IH with (initialL := stL)
+      end.
+      specializes IH; try (reflexivity || eassumption || solve_valid_registers);
+      simpl_RiscvMachine_get_set.
+      { admit. (* state reg preserved? *) }
+      { admit. }
+      { apply containsProgram_app.
+        assumption.
+        apply containsProgram_app.
+        admit.
+        admit.
+      }
+      { (* WHOOPS, pc equality does not hold *)
 
       (* HERE *) 
       
