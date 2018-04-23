@@ -200,6 +200,13 @@ Section FlatToRiscv.
       change $1 with (wone wXLEN).
       ring.
   Qed.
+
+  (* less general than natToWord_S, but more useful for automation because it does
+     not rewrite [$1] into [$1 ^+ $0] infinitely.
+     But not so useful because it does not apply to (S x) where x is a variable. *)
+  Lemma natToWord_S_S: forall sz n,
+      natToWord sz (S (S n)) = (wone sz) ^+ (natToWord sz (S n)).
+  Proof. intros. apply natToWord_S. Qed.
   
   Lemma containsProgram_cons_inv_old: forall m inst insts offset,
     containsProgram m (inst :: insts) offset ->
@@ -459,7 +466,7 @@ Section FlatToRiscv.
          core machineMem registers pc nextPC exceptionHandlerAddr
          getPC setPC getRegister setRegister IsRiscvMachine gets].
 
-  Ltac solve_word_eq :=
+  Ltac solve_word_eq_old :=
     clear;
     repeat match goal with
     | v: word _ |- _ =>
@@ -473,6 +480,17 @@ Section FlatToRiscv.
     | |- $ _ = $ _ => f_equal
     end;
     (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
+
+  Ltac ringify :=
+    repeat match goal with
+           | |- context [natToWord ?sz (S ?x)] =>
+             tryif (unify x O)
+             then fail
+             else (progress rewrite (natToWord_S sz x))
+           | |- _ => change $1 with (wone wXLEN) || rewrite! natToWord_plus
+           end.
+  
+  Ltac solve_word_eq := clear; ringify; ring.
   
   Tactic Notation "log_solved" tactic(t) :=
     match goal with
@@ -1403,8 +1421,10 @@ admit. admit.
       destruct_RiscvMachine initialL.
       destruct_containsProgram.
       repeat (rewrite app_length in *; simpl in *).
+      unfold runsToSatisfying.
+      (* 1st application of IH: part 1 of loop body *)
       match goal with
-      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
+      | |- runsTo _ _ ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
       end.
       specialize IHfuelH with (s := s1) (1 := eq_refl).
       specializes IHfuelH; [|solve_stmt_not_too_big|try eassumption..|].
@@ -1421,10 +1441,7 @@ admit. admit.
         | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
           replace p' with p; [exact Cp|]
         end.
-        clear.
-
-        simpl.
-        admit. (* word ring plus nats *)
+        solve_word_eq.
       }
       unfold runsToSatisfying in *.
       apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
@@ -1445,6 +1462,9 @@ admit. admit.
       rewrite left_identity.
       rewrite execState_step.
       simpl_RiscvMachine_get_set.
+      (* 2nd application of IH: part 2 of loop body *)
+
+      
       match goal with
       | N: stmt_not_too_big (SLoop _ _ _) |- _ => specialize IH with (3 := N)
       end.
@@ -1465,7 +1485,11 @@ admit. admit.
 
       (* HERE *) 
       
-      
+
+
+
+      (* 3rd applicatin of IH: run the whole loop again *)
+        
 
 
       simpl_run1.
