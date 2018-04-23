@@ -153,7 +153,20 @@ Section FlatToRiscv.
   Qed.
 
   Add Ring word_wXLEN_ring : (wring wXLEN).
+
+  Ltac ringify :=
+    repeat match goal with
+           | |- context [natToWord ?sz (S ?x)] =>
+             tryif (unify x O)
+             then fail
+             else (progress rewrite (natToWord_S sz x))
+           | |- _ => change $1 with (wone wXLEN)
+                   || change $0 with (wzero wXLEN)
+                   || rewrite! natToWord_plus
+           end.
   
+  Ltac solve_word_eq := clear; simpl; ringify; ring.
+    
   Goal forall (a b c: word wXLEN), ((a ^+ b) ^- b) ^* c ^* $1 = a ^* c ^* $1.
   Proof. intros. ring. Qed.
 
@@ -286,6 +299,12 @@ Section FlatToRiscv.
       change (natToWord wXLEN 1) with (wone wXLEN).
       ring.
   Qed.
+
+  Lemma containsProgram_nil: forall m offset,
+      containsProgram m [[]] offset.
+  Proof.
+    unfold containsProgram. intros. exfalso. eauto using nth_error_nil_Some.
+  Qed.
   
   Arguments containsProgram: simpl never.
   
@@ -303,6 +322,31 @@ Section FlatToRiscv.
              end
            end.
 
+  Ltac solve_containsProgram :=
+    match goal with
+    | |- containsProgram _ _ _ => subst
+    end;    
+    repeat (rewrite <- app_assoc || rewrite <- app_comm_cons);
+    repeat match goal with
+           | H: ?P |- _ => match P with
+                         | containsProgram _ _ _ => fail 1
+                         | _ => clear H
+                         end
+           end;
+    repeat match goal with
+           | |- containsProgram _ [[]] _ => apply containsProgram_nil
+           | |- containsProgram _ (_ ++ _) _ => apply containsProgram_app
+           | |- containsProgram _ (_ :: ?t) _ =>
+             tryif (unify t [[]])
+             then fail
+             else (apply containsProgram_cons)
+           | |- _ => assumption
+           end;
+    match goal with
+    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
+      replace p' with p; [exact Cp|try solve_word_eq]
+    end.
+  
   Lemma mul_div_undo: forall i c,
     c <> 0 ->
     c * i / c = i.
@@ -481,17 +525,6 @@ Section FlatToRiscv.
     end;
     (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
 
-  Ltac ringify :=
-    repeat match goal with
-           | |- context [natToWord ?sz (S ?x)] =>
-             tryif (unify x O)
-             then fail
-             else (progress rewrite (natToWord_S sz x))
-           | |- _ => change $1 with (wone wXLEN) || rewrite! natToWord_plus
-           end.
-  
-  Ltac solve_word_eq := clear; ringify; ring.
-  
   Tactic Notation "log_solved" tactic(t) :=
     match goal with
     | |- ?G => let H := fresh in assert G as H by t; idtac "solved" G; exact H
@@ -1417,19 +1450,61 @@ admit. admit.
        *)
       admit.
     - (* SLoop/again *)
-      pose proof IHfuelH as IH.
       destruct_RiscvMachine initialL.
       destruct_containsProgram.
       repeat (rewrite app_length in *; simpl in *).
       unfold runsToSatisfying.
       (* 1st application of IH: part 1 of loop body *)
+
+      pose proof IHfuelH as IH;
       match goal with
-      | |- runsTo _ _ ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
-      end.
-      specialize IHfuelH with (s := s1) (1 := eq_refl).
-      specializes IHfuelH; [|solve_stmt_not_too_big|try eassumption..|].
-      {
+      | |- runsTo _ _ ?st _ => specialize IH with (initialL := st); simpl in IH
+      end;
+      specialize IH with (s := s1).
+      Ltac solve_imem :=
+        match goal with
+        | |- _ = _ ++ _ ++ _ => repeat rewrite <- app_assoc; reflexivity
+        end.
+      
+      specializes IH; first
+        [ reflexivity
+        | solve_stmt_not_too_big
+        | solve_containsProgram
+        | eassumption
+        | idtac ];
+        try solve_imem.
+      (*
+      { clear.
         repeat rewrite <- app_assoc. reflexivity.
+      }
+      
+      {
+        solve_containsProgram.
+        subst.
+        repeat (rewrite <- app_assoc || rewrite <- app_comm_cons).
+        repeat match goal with
+               | H: ?P |- _ => match P with
+                             | containsProgram _ _ _ => fail 1
+                             | _ => clear H
+                             end
+               end.
+Time        
+        
+        repeat match goal with
+               | |- containsProgram _ [[]] _ => apply containsProgram_nil
+               | |- containsProgram _ (_ ++ _) _ => apply containsProgram_app
+               | |- containsProgram _ (_ :: ?t) _ =>
+                 tryif (unify t [[]])
+                 then fail
+                 else (apply containsProgram_cons)
+               | |- _ => assumption
+               end.
+        match goal with
+        | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
+          replace p' with p; [exact Cp|]
+        end.
+        simpl.
+        solve_word_eq.
       }
       {
         subst.
@@ -1443,8 +1518,9 @@ admit. admit.
         end.
         solve_word_eq.
       }
-      unfold runsToSatisfying in *.
-      apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
+      *)
+
+      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
       intros middleL [ E [? [? [? ?] ] ] ].
       destruct_RiscvMachine middleL.
       destruct_containsProgram. (* note: obtains containsProgram from IH *)
@@ -1462,9 +1538,9 @@ admit. admit.
       rewrite left_identity.
       rewrite execState_step.
       simpl_RiscvMachine_get_set.
-      (* 2nd application of IH: part 2 of loop body *)
-
       
+      (* 2nd application of IH: part 2 of loop body (TODO should not be the whole loop) *)
+      pose proof IHfuelH as IH.
       match goal with
       | N: stmt_not_too_big (SLoop _ _ _) |- _ => specialize IH with (3 := N)
       end.
