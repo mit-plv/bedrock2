@@ -1732,22 +1732,23 @@ admit. admit.
       rewrite Hrrrl.
       solve_word_eq.
     - (* SSeq *)
-      admit. (*
-      simpl in C. subst *. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
-      rename x into middleH.
-      eapply runsToSatisfying_trans.
-      + specialize (IHfuelH s1).
-        specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
-          eassumption|eassumption|eassumption|reflexivity|].
-        apply runsTo_preserves_instructionMem in IHfuelH.
-        apply IHfuelH.
-      + simpl. intros middleL [[Cs2 F] E]. rewrite <- F in Cp2.
-        eapply (IHfuelH s2); [reflexivity|solve_stmt_not_too_big|
-          eassumption|idtac|eassumption|idtac].
-        * unfold containsProgram in *. rewrite E. assumption.
-        * rewrite F.
-          destruct initialL. simpl. solve_word_eq.
-      *)
+      destruct_RiscvMachine initialL.
+      destruct_containsProgram.
+      unfold runsToSatisfying in *.
+      spec_IH IHfuelH IH s1.
+      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      intro middleL. intros. destruct_products.
+      destruct_RiscvMachine middleL.
+      destruct_containsProgram.
+      spec_IH IHfuelH IH s2.
+      eapply runsToSatisfying_imp; [ exact IH | ].
+      simpl.
+      intros.
+      destruct_products.
+      repeat split; try assumption.
+      subst.
+      rewrite H14rrrl0.
+      solve_word_eq.
     - (* SSkip *)
       simpl in *. subst *. apply runsToDone. repeat split; try assumption.
       solve_word_eq.
