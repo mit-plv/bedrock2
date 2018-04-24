@@ -1193,7 +1193,59 @@ list2imem
            end;
     subst targetInsts;
     reflexivity.
+
+  Lemma write_mem_preserves_mem_accessibility:
+    forall {initialMem finalMem: Memory.mem wXLEN} {a0 w: word wXLEN},
+      Memory.write_mem a0 w initialMem = Some finalMem ->
+      forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
+  Proof.
+    intros. unfold Memory.write_mem in *.
+    destruct_one_match_hyp; [|discriminate].
+    inversions H.
+    unfold Memory.read_mem.
+    split; intros.
+    - destruct_one_match; congruence.
+    - destruct_one_match_hyp; congruence.
+  Qed.
+
+  Lemma mem_accessibility_trans:
+    forall {initialMem middleMem finalMem: Memory.mem wXLEN} {a: word wXLEN},
+      (Memory.read_mem a initialMem = None <-> Memory.read_mem a middleMem = None) ->
+      (Memory.read_mem a middleMem  = None <-> Memory.read_mem a finalMem  = None) ->
+      (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
+  Proof. intros. tauto. Qed.
   
+  Lemma eval_stmt_preserves_mem_accessibility:
+    forall {fuel: nat} {initialMem finalMem: Memory.mem wXLEN} {s: stmt} {initialRegs finalRegs: state},
+      eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
+  Proof.
+    induction fuel; intros; try (simpl in *; discriminate).
+    destruct s; simpl in *;
+      repeat (destruct_one_match_hyp; [|discriminate]);
+      inversions H;
+      try reflexivity.
+    - eauto using write_mem_preserves_mem_accessibility.
+    - destruct_one_match_hyp; eauto.
+    - destruct p.
+      repeat (destruct_one_match_hyp; try discriminate).
+      + inversions H1. eauto.
+      + eapply mem_accessibility_trans; [ eauto | ].
+        eapply mem_accessibility_trans; [ eauto | ].
+        eauto.
+    - destruct p.
+      eapply mem_accessibility_trans; eauto.
+  Qed.
+
+  Lemma eval_stmt_preserves_mem_inaccessible:
+    forall {fuel: nat} {initialMem finalMem: Memory.mem wXLEN} {s: stmt} {initialRegs finalRegs: state},
+      eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      forall start len, mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
+  Proof.
+    unfold mem_inaccessible. intros.
+    eapply (eval_stmt_preserves_mem_accessibility H). eauto.
+  Qed.    
+
   Ltac spec_IH originalIH IH stmt1 :=
     pose proof originalIH as IH;
     match goal with
@@ -1206,9 +1258,11 @@ list2imem
       | solve_imem
       | solve_stmt_not_too_big
       | solve_containsProgram
+      | solve_word_eq
       | eassumption
+      | eapply eval_stmt_preserves_mem_inaccessible; eassumption
       | idtac ].
-  
+
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
       instsBefore instsAfter,
@@ -1549,13 +1603,6 @@ admit. admit.
       
       (* 2nd application of IH: part 2 of loop body *)      
       spec_IH IHfuelH IH s2.
-      {
-        clear.
-        solve_word_eq.
-      }
-      {
-        admit.
-      }
       apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
       intros middleL' [ E' [? [? [? ?] ] ] ].
       destruct_RiscvMachine middleL'.
