@@ -134,11 +134,11 @@ Section FlatToRiscv.
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
-        (* only works if branch lengths are < 2^12 *)
+        (* only works if branch lengths are < 2^20 *)
         body1' ++
         [[Beq cond Register0 (Z.of_nat (2 * (S (length body2'))))]] ++
         body2' ++
-        [[Jal Register0 (- Z.of_nat (2 * (S (S (length body1' + length body2')))))]]
+        [[Jal Register0 ((- Z.of_nat (length body1' + 1 + length body2')) * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     end.
@@ -875,10 +875,12 @@ Section FlatToRiscv.
   Lemma div_def: forall (a b: word wXLEN),
       div a b = ZToWord wXLEN (wordToZ a / wordToZ b).
   Proof. unfold div. prove_alu_def. Qed.
-  
+
+  (* not used currently because we prefer rewriting on "rem" directly
   Lemma rem_def: forall (a b: word wXLEN),
       rem a b = ZToWord wXLEN (wordToZ a mod wordToZ b).
   Proof. unfold rem. prove_alu_def. Qed.
+  *)
   
   Lemma signed_less_than_def: forall (a b: word wXLEN),
       signed_less_than a b = if wslt_dec a b then true else false.
@@ -932,7 +934,7 @@ Section FlatToRiscv.
             || rewrite sub_def in *
             || rewrite mul_def in *
             || rewrite div_def in *
-            || rewrite rem_def in *
+        (*  || rewrite rem_def in * *)
             || rewrite signed_less_than_def in *
             || rewrite signed_eqb_def in *
             || rewrite xor_def in *
@@ -1273,14 +1275,14 @@ list2imem
     evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
-    containsProgram initialL.(machineMem) allInsts imemStart ->
-    initialL.(core).(pc) = imemStart ^+ $4 ^* $(length instsBefore) ->
+    containsProgram initialL.(machineMem) allInsts ($4 ^* imemStart) ->
+    initialL.(core).(pc) = ($4 ^* imemStart) ^+ $4 ^* $(length instsBefore) ->
     initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
-    mem_inaccessible initialMH imemStart (4 * (length allInsts)) ->
+    mem_inaccessible initialMH ($4 ^* imemStart) (4 * (length allInsts)) ->
     runsToSatisfying initialL (fun finalL =>
        extends finalL.(core).(registers) finalH /\
        containsMem finalL.(machineMem) finalMH /\
-       containsProgram finalL.(machineMem) allInsts imemStart /\
+       containsProgram finalL.(machineMem) allInsts ($4 ^* imemStart) /\
        finalL.(core).(pc) = initialL.(core).(pc) ^+ $ (4) ^* $ (length insts) /\
        finalL.(core).(nextPC) = finalL.(core).(pc) ^+ $4).
   Proof.
@@ -1620,7 +1622,43 @@ admit. admit.
           rewrite_alu_op_defs ||
           (rewrite weqb_ne by congruence) ||
           rewrite left_identity).
-      (* TODO modulo 4 stuff *)
+
+      match goal with
+      | |- context [weqb ?r ?expectZero] =>
+        match r with
+        | rem ?a four => replace r with expectZero
+        end
+      end.
+      Focus 2.
+        clear.
+        assert (rem_four_distrib_plus: forall a b, rem (a ^+ b) four = (rem a four) ^+ (rem b four)).
+        { admit. }
+        assert (rem_four_undo: forall a, rem ($4 ^* a) four = $0).
+        { admit. }
+        assert (rem_four_four: rem $4 four = $0).
+        { admit. }
+        assert (ZToWord_mult: forall sz a b, ZToWord sz (a * b) = ZToWord sz a ^* ZToWord sz b).
+        { admit. }
+        assert (Z4four: forall sz, ZToWord sz 4 = $4).
+        { admit. }
+        rewrite <- (Z.mul_comm 4).
+        rewrite? ZToWord_mult.
+        rewrite? Z4four.                                          
+        rewrite? rem_four_distrib_plus.
+        rewrite? rem_four_undo.
+        rewrite? rem_four_four.
+        rewrite? wplus_unit.
+        reflexivity.
+
+      rewrite weqb_eq by reflexivity.
+      Arguments Bind: simpl never.
+      Arguments getRegister: simpl never.
+      Arguments setRegister: simpl never.
+      Arguments setPC: simpl never.
+      Arguments step: simpl never.
+      simpl.
+
+      do_get_set_Register.
 
       (* HERE *)
       
