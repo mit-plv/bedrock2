@@ -24,6 +24,33 @@ Local Open Scope ilist_scope.
 
 Set Implicit Arguments.
 
+Lemma ZToWord_Z_of_nat: forall sz x, ZToWord sz (Z.of_nat x) = natToWord sz x.
+Proof.
+  intros.
+  rewrite <- nat_N_Z.
+  rewrite ZToWord_Z_of_N.
+  rewrite NToWord_nat.
+  rewrite Nnat.Nat2N.id.
+  reflexivity.
+Qed.
+
+Lemma ZToWord_mult: forall sz a b, ZToWord sz (a * b) = ZToWord sz a ^* ZToWord sz b.
+Proof. Admitted.
+
+Lemma ZToWord_plus: forall sz a b, ZToWord sz (a + b) = ZToWord sz a ^+ ZToWord sz b.
+Proof. Admitted.
+
+Lemma ZToWord_minus: forall sz a b, ZToWord sz (a - b) = ZToWord sz a ^- ZToWord sz b.
+Proof. Admitted.
+
+Lemma Z4four: forall sz, ZToWord sz 4 = $4.
+Proof. Admitted.
+
+Lemma ZToWord_0: forall sz, ZToWord sz 0 = wzero sz.
+Proof.
+  intros. unfold ZToWord. apply wzero'_def.
+Qed.
+
 
 Section FlatToRiscv.
 
@@ -39,13 +66,6 @@ Section FlatToRiscv.
 
   Lemma rem_four_four: rem $4 four = $0.
   Proof. Admitted.
-
-  Lemma ZToWord_mult: forall sz a b, ZToWord sz (a * b) = ZToWord sz a ^* ZToWord sz b.
-  Proof. Admitted.
-
-  Lemma Z4four: forall sz, ZToWord sz 4 = $4.
-  Proof. Admitted.
-
   
   (*
   Context {Name: NameWithEq}.
@@ -182,14 +202,29 @@ Section FlatToRiscv.
            | |- _ => change $1 with (wone wXLEN)
                    || change $0 with (wzero wXLEN)
                    || rewrite! natToWord_plus
+                   || rewrite! Nat2Z.inj_add
+                   || rewrite <-! Z.sub_0_l
+                   || rewrite! Z.mul_sub_distr_r
+                   || rewrite! Z.mul_add_distr_r
+                   || rewrite! ZToWord_minus
+                   || rewrite! ZToWord_plus
+                   || rewrite! ZToWord_mult
+                   || rewrite! ZToWord_Z_of_nat
+                   || rewrite! Z4four
+                   || rewrite! ZToWord_0
            end.
   
   Ltac solve_word_eq :=
+    match goal with
+    | |- @eq (word _) _ _ => idtac
+    | _ => fail 1 "wrong shape of goal"
+    end;
+    subst;
     clear;
     simpl;
     repeat (rewrite app_length; simpl);
     ringify;
-    ring.    
+    try ring.    
 
   Goal forall (a b c: word wXLEN), ((a ^+ b) ^- b) ^* c ^* $1 = a ^* c ^* $1.
   Proof. intros. ring. Qed.
@@ -1302,6 +1337,18 @@ list2imem
     rewrite? wplus_unit;
     reflexivity.
 
+  Ltac solve_mem_inaccessible :=
+    eapply eval_stmt_preserves_mem_inaccessible; [|eassumption];
+    try eassumption;
+    let Eq := fresh "Eq" in
+    match goal with
+    | E1: eval_stmt ?f ?r1 ?m1 ?s1 = Some (?r2, ?m2),
+      E2: eval_stmt ?f ?r2 ?m2 ?s2 = Some (?r3, ?m3)
+      |-   eval_stmt _ _ ?m1 _ = Some (_, ?m3)
+      => assert (eval_stmt (S f) r1 m1 (SSeq s1 s2) = Some (r3, m3)) as Eq
+          by (simpl; rewrite E1; exact E2); exact Eq
+    end.
+
   Ltac spec_IH originalIH IH stmt1 :=
     pose proof originalIH as IH;
     match goal with
@@ -1313,12 +1360,42 @@ list2imem
       [ reflexivity
       | solve_imem
       | solve_stmt_not_too_big
+      | solve_valid_registers
       | solve_containsProgram
       | solve_word_eq
       | eassumption
-      | eapply eval_stmt_preserves_mem_inaccessible; eassumption
+      | solve_mem_inaccessible
       | idtac ].
 
+  Ltac simpl_rem4_test :=
+    match goal with
+    | |- context [weqb ?r ?expectZero] =>
+      match expectZero with
+      | $0 => idtac
+      end;
+      match r with
+      | rem ?a four => replace r with expectZero by prove_rem_four_zero
+      end
+    end;
+    rewrite weqb_eq by reflexivity;
+    simpl.
+
+  Ltac run1step :=
+    apply runsToStep;
+    simpl in *; subst *;
+    fetch_inst;
+    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+    repeat (
+        do_get_set_Register || 
+        simpl_RiscvMachine_get_set ||
+        rewrite_reg_value ||
+        rewrite_alu_op_defs ||
+        (rewrite weqb_ne by congruence) ||
+        rewrite left_identity ||
+        simpl_rem4_test);
+    rewrite execState_step;
+    simpl_RiscvMachine_get_set.
+  
   Arguments Bind: simpl never.
   Arguments getRegister: simpl never.
   Arguments setRegister: simpl never.
@@ -1647,159 +1724,28 @@ admit. admit.
       intros middleL [ E [? [? [? ?] ] ] ].
       destruct_RiscvMachine middleL.
       destruct_containsProgram. (* note: obtains containsProgram from IH *)
-      
-      apply runsToStep;
-      simpl in *; subst *;
-      fetch_inst;
-      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-      repeat (
-          do_get_set_Register || 
-          simpl_RiscvMachine_get_set ||
-          rewrite Bind_getPC ||
-          rewrite_reg_value ||
-          rewrite_alu_op_defs ||
-          (rewrite weqb_ne by congruence) ||
-          rewrite left_identity);
-      rewrite execState_step;
-      simpl_RiscvMachine_get_set.
-      
+      run1step.
+
       (* 2nd application of IH: part 2 of loop body *)      
       spec_IH IHfuelH IH s2.
       apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
       intros middleL' [ E' [? [? [? ?] ] ] ].
       destruct_RiscvMachine middleL'.
       destruct_containsProgram. (* note: obtains containsProgram from IH *)
-
-      apply runsToStep;
-      simpl in *; subst *;
-      fetch_inst;
-      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-      repeat (
-          do_get_set_Register || 
-          simpl_RiscvMachine_get_set ||
-          rewrite Bind_getPC ||
-          rewrite_reg_value ||
-          rewrite_alu_op_defs ||
-          (rewrite weqb_ne by congruence) ||
-          rewrite left_identity).
-
-      Ltac simpl_rem4_test :=
-      match goal with
-      | |- context [weqb ?r ?expectZero] =>
-        match expectZero with
-        | $0 => idtac
-        end;
-        match r with
-        | rem ?a four => replace r with expectZero by prove_rem_four_zero
-        end
-      end;
-      rewrite weqb_eq by reflexivity;
-      simpl.
-
-      simpl_rem4_test.
-      do_get_set_Register.
-      rewrite execState_step.
-      simpl_RiscvMachine_get_set.
-
+      run1step.
       
-      (* 3rd applicatin of IH: run the whole loop again *)
-      pose proof IHfuelH as IH.
-      match goal with
-      | N: stmt_not_too_big (SLoop _ _ _) |- _ => specialize IH with (3 := N)
-      end.
-      match goal with
-      | |- runsTo _ _ ?stL _ => specialize IH with (initialL := stL)
-      end.
-      specializes IH; try (reflexivity || eassumption || solve_valid_registers);
-      simpl_RiscvMachine_get_set.
-      { admit. (* state reg preserved? *) }
-      { admit. }
-      { apply containsProgram_app.
-        assumption.
-        apply containsProgram_app.
-        admit.
-        admit.
-      }
-
-
-
-      simpl_run1.
-      rewrite Cp1. simpl.
-      pose proof Cs2 as Cs2'.
-      unfold containsState in Cs2'. simpl in Cs2'.
-      apply Cs2' in H0. rewrite H0.
-      destruct (weq x1 $0); [contradiction|]. simpl.
-      pose proof IH as IHfuelH.
-      match goal with
-      | |- runsTo _ _ ?st  _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
-      end.
-      specialize (IHfuelH s2).
-      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
-        eassumption|eassumption|eassumption|reflexivity|idtac].
-      apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
-      apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH). clear IHfuelH.
-      intros endL [[Cs3 F] E].
-      destruct endL as [endProg endRegs endPc]. simpl in *. subst endProg endPc.
-      apply runsToStep.
-      simpl_run1.
-      rewrite Cp3. simpl.
-      eapply (IH (SLoop s1 cond s2)); [reflexivity|eassumption|eassumption|idtac|eassumption|idtac].
-      + simpl.
-        apply proj2 in CpSaved.
-        match goal with
-        | H: containsProgram ?st1 ?insts1 ?ofs1 |- containsProgram ?st2 ?insts2 ?ofs2 =>
-            unify insts1 insts2;
-            assert (ofs1 = ofs2) as OfsEq
-        end. {
-          repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-          unfold signed_jimm_to_word.
-          rewrite extz_is_mult_pow2_neg.
-          rewrite sext_neg_natToWord_nat_cast.
-          {
-          clear.
-          forget (length (compile_stmt s1)) as L1.
-          forget (length (compile_stmt s2)) as L2.
-          rewrite <- ? wplus_assoc.
-          rewrite <- wplus_unit at 1.
-          rewrite wplus_comm at 1.
-          f_equal.
-          symmetry.
-          rewrite? wplus_assoc.
-          match goal with
-          | |- ?A ^+ ^~ ?B = $0 => replace B with A; [apply wminus_inv|]
-          end.
-          simpl_pow2. solve_word_eq.
-          } {
-          simpl_pow2. solve_length_compile_stmt.
-          }
-        }
-        rewrite <- OfsEq. assumption.
-      + simpl.
-        unfold signed_jimm_to_word.
-        repeat (rewrite app_length ||
-          match goal with
-          | |- context C[length (?h :: ?t)] => let r := context C [S (length t)] in change r
-          end).
-        repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-        remember (length (compile_stmt s1)) as L1.
-        remember (length (compile_stmt s2)) as L2.
-        rewrite extz_is_mult_pow2_neg.
-        rewrite sext_neg_natToWord_nat_cast.
-        {
-        rewrite <- ? wplus_assoc.
-        f_equal.
-        rewrite ? wplus_assoc.
-        rewrite <- wplus_unit at 1.
-        f_equal.
-        symmetry.
-        match goal with
-        | |- ?A ^+ ^~ ?B = $0 => replace B with A; [apply wminus_inv|]
-        end.
-        simpl_pow2. solve_word_eq.
-        } {
-        simpl_pow2. solve_length_compile_stmt.
-        }
+      (* 3rd application of IH: run the whole loop again *)
+      spec_IH IHfuelH IH (SLoop s1 cond s2).
+      eapply runsToSatisfying_imp; [ exact IH | ].
+      clear.
+      simpl.
+      intros.
+      destruct_products.
+      repeat split; try assumption.
+      rewrite Hrrrl.
+      solve_word_eq.
     - (* SSeq *)
+      admit. (*
       simpl in C. subst *. apply containsProgram_app_inv in Cp. destruct Cp as [Cp1 Cp2].
       rename x into middleH.
       eapply runsToSatisfying_trans.
@@ -1814,9 +1760,10 @@ admit. admit.
         * unfold containsProgram in *. rewrite E. assumption.
         * rewrite F.
           destruct initialL. simpl. solve_word_eq.
+      *)
     - (* SSkip *)
-      simpl in C. subst *. apply runsToDone. split; [assumption|].
-      destruct initialL. simpl. solve_word_eq.
+      simpl in *. subst *. apply runsToDone. repeat split; try assumption.
+      solve_word_eq.
   Qed.
 
   Lemma every_state_contains_empty_state: forall s,
