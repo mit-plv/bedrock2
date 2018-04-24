@@ -173,9 +173,9 @@ Section FlatToRiscv.
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
-        (* only works if branch lengths are < 2^20 *)
+        (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[Beq cond Register0 (Z.of_nat (2 * (S (length body2'))))]] ++
+        [[Beq cond Register0 ((Z.of_nat (length body2' + 2)) * 4)]] ++
         body2' ++
         [[Jal Register0 ((- Z.of_nat (length body1' + 1 + length body2')) * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
@@ -1391,6 +1391,7 @@ list2imem
         rewrite_reg_value ||
         rewrite_alu_op_defs ||
         (rewrite weqb_ne by congruence) ||
+        (rewrite weqb_eq by congruence) ||
         rewrite left_identity ||
         simpl_rem4_test);
     rewrite execState_step;
@@ -1685,34 +1686,20 @@ admit. admit.
        *)
       admit.
     - (* SLoop/done *)
-      (*
-      simpl in C. subst *.
+      destruct_RiscvMachine initialL.
       destruct_containsProgram.
-      destruct initialL as [initialProg initialRegs initialPc]; simpl in *.
-      match goal with
-      | |- runsToSatisfying ?st _ => specialize IHfuelH with (initialL := st); simpl in IHfuelH
-      end.
-      specialize (IHfuelH s1).
-      specializes IHfuelH; [reflexivity|solve_stmt_not_too_big|
-        eassumption|eassumption|eassumption|reflexivity|idtac].
-      apply runsTo_preserves_instructionMem in IHfuelH. simpl in IHfuelH.
-      apply (runsToSatisfying_trans _ _ _ _ _ IHfuelH).
-      intros middleL [[Cs2 F] E].
-      destruct middleL as [middleProg middleRegs middlePc]. simpl in *. subst middleProg middlePc.
-      apply runsToStep.
-      simpl_run1.
-      rewrite Cp1. simpl.
-      pose proof Cs2 as Cs2'.
-      unfold containsState in Cs2'. simpl in Cs2'.
-      apply Cs2' in H0. rewrite H0.
-      destruct (weq $0 $0); [|contradiction]. simpl.
+      unfold runsToSatisfying in *.
+      (* We still have to run part 1 of the loop body which is before the break *)
+      spec_IH IHfuelH IH s1.
+      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      intro middleL. intros. destruct_products.
+      destruct_RiscvMachine middleL.
+      destruct_containsProgram.
+      run1step.
       apply runsToDone.
-      refine (conj Cs2 _).
-      repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus).
-      unfold signed_bimm_to_word.
-      solve_pc_update.
-       *)
-      admit.
+      simpl_RiscvMachine_get_set.
+      repeat split; (assumption || solve_containsProgram || solve_word_eq).
+
     - (* SLoop/again *)
       destruct_RiscvMachine initialL.
       destruct_containsProgram.
