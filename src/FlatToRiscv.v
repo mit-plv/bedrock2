@@ -1397,6 +1397,25 @@ list2imem
     rewrite execState_step;
     simpl_RiscvMachine_get_set.
 
+  Ltac run1done :=
+    apply runsToDone;
+    simpl_RiscvMachine_get_set;
+    repeat split; (assumption || solve_containsProgram || solve_word_eq).
+
+  Ltac IH_done IH :=
+    eapply runsToSatisfying_imp; [ exact IH | ];
+    subst;
+    clear;
+    simpl;
+    intros;
+    destruct_products;
+    repeat split;
+    try assumption;
+    try match goal with
+        | H: ?m.(core).(pc) = _ |- ?m.(core).(pc) = _ => rewrite H
+        end;
+    solve_word_eq.
+
   Ltac destruct_everything :=
     destruct_products;
     try destruct_pair_eqs;
@@ -1694,62 +1713,39 @@ admit. admit.
       (* We still have to run part 1 of the loop body which is before the break *)
       spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
-      intro middleL. intros. destruct_products.
-      destruct_RiscvMachine middleL.
-      destruct_containsProgram.
+      intros.
+      destruct_everything.
       run1step.
-      apply runsToDone.
-      simpl_RiscvMachine_get_set.
-      repeat split; (assumption || solve_containsProgram || solve_word_eq).
+      run1done.
 
     - (* SLoop/again *)
       (* 1st application of IH: part 1 of loop body *)
       spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
-      intros middleL [ E [? [? [? ?] ] ] ].
-      destruct_RiscvMachine middleL.
-      destruct_containsProgram. (* note: obtains containsProgram from IH *)
+      intros.
+      destruct_everything.
       run1step.
 
       (* 2nd application of IH: part 2 of loop body *)      
       spec_IH IHfuelH IH s2.
       apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
-      intros middleL' [ E' [? [? [? ?] ] ] ].
-      destruct_RiscvMachine middleL'.
-      destruct_containsProgram. (* note: obtains containsProgram from IH *)
+      intros.
+      destruct_everything.
       run1step.
       
       (* 3rd application of IH: run the whole loop again *)
       spec_IH IHfuelH IH (SLoop s1 cond s2).
-      eapply runsToSatisfying_imp; [ exact IH | ].
-      clear.
-      simpl.
-      intros.
-      destruct_products.
-      repeat split; try assumption.
-      rewrite Hrrrl.
-      solve_word_eq.
+      IH_done IH.
+      
     - (* SSeq *)
       spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
-      intro middleL. intros. destruct_products.
-      destruct_RiscvMachine middleL.
-      destruct_containsProgram.
-      spec_IH IHfuelH IH s2.
-      eapply runsToSatisfying_imp; [ exact IH | ].
-      simpl.
       intros.
-      destruct_products.
-      repeat split; try assumption.
-      subst.
-      match goal with
-      | H: ?m.(core).(pc) = _ |- ?m.(core).(pc) = _ => rewrite H
-      end.
-      solve_word_eq.
+      destruct_everything.
+      spec_IH IHfuelH IH s2.
+      IH_done IH.
     - (* SSkip *)
-      simpl in *. subst *. apply runsToDone. repeat split; try assumption.
-      + solve_containsProgram.
-      + solve_word_eq.
+      run1done.
   Qed.
 
   Lemma every_state_contains_empty_state: forall s,
