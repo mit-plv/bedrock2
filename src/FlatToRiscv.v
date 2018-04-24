@@ -24,10 +24,29 @@ Local Open Scope ilist_scope.
 
 Set Implicit Arguments.
 
+
 Section FlatToRiscv.
 
   Context {Bw: RiscvBitWidths}.
 
+  (* put here so that rem picks up the MachineWidth for wXLEN *)
+
+  Lemma rem_four_distrib_plus: forall a b, rem (a ^+ b) four = (rem a four) ^+ (rem b four).
+  Proof. Admitted.
+
+  Lemma rem_four_undo: forall a, rem ($4 ^* a) four = $0.
+  Proof. Admitted.
+
+  Lemma rem_four_four: rem $4 four = $0.
+  Proof. Admitted.
+
+  Lemma ZToWord_mult: forall sz a b, ZToWord sz (a * b) = ZToWord sz a ^* ZToWord sz b.
+  Proof. Admitted.
+
+  Lemma Z4four: forall sz, ZToWord sz 4 = $4.
+  Proof. Admitted.
+
+  
   (*
   Context {Name: NameWithEq}.
 
@@ -1248,6 +1267,22 @@ list2imem
     eapply (eval_stmt_preserves_mem_accessibility H). eauto.
   Qed.    
 
+  Ltac prove_rem_four_zero :=
+    clear;
+    match goal with
+    | |- rem _ four = $0 => idtac
+    | |- $0 = rem _ four => idtac
+    | _ => fail 1 "wrong shape of goal"
+    end;
+    rewrite <-? (Z.mul_comm 4);
+    rewrite? ZToWord_mult;
+    rewrite? Z4four;                                    
+    rewrite? rem_four_distrib_plus;
+    rewrite? rem_four_undo;
+    rewrite? rem_four_four;
+    rewrite? wplus_unit;
+    reflexivity.
+
   Ltac spec_IH originalIH IH stmt1 :=
     pose proof originalIH as IH;
     match goal with
@@ -1264,6 +1299,12 @@ list2imem
       | eassumption
       | eapply eval_stmt_preserves_mem_inaccessible; eassumption
       | idtac ].
+
+  Arguments Bind: simpl never.
+  Arguments getRegister: simpl never.
+  Arguments setRegister: simpl never.
+  Arguments setPC: simpl never.
+  Arguments step: simpl never.
 
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
@@ -1626,36 +1667,10 @@ admit. admit.
       match goal with
       | |- context [weqb ?r ?expectZero] =>
         match r with
-        | rem ?a four => replace r with expectZero
+        | rem ?a four => replace r with expectZero by prove_rem_four_zero
         end
       end.
-      Focus 2.
-        clear.
-        assert (rem_four_distrib_plus: forall a b, rem (a ^+ b) four = (rem a four) ^+ (rem b four)).
-        { admit. }
-        assert (rem_four_undo: forall a, rem ($4 ^* a) four = $0).
-        { admit. }
-        assert (rem_four_four: rem $4 four = $0).
-        { admit. }
-        assert (ZToWord_mult: forall sz a b, ZToWord sz (a * b) = ZToWord sz a ^* ZToWord sz b).
-        { admit. }
-        assert (Z4four: forall sz, ZToWord sz 4 = $4).
-        { admit. }
-        rewrite <- (Z.mul_comm 4).
-        rewrite? ZToWord_mult.
-        rewrite? Z4four.                                          
-        rewrite? rem_four_distrib_plus.
-        rewrite? rem_four_undo.
-        rewrite? rem_four_four.
-        rewrite? wplus_unit.
-        reflexivity.
-
       rewrite weqb_eq by reflexivity.
-      Arguments Bind: simpl never.
-      Arguments getRegister: simpl never.
-      Arguments setRegister: simpl never.
-      Arguments setPC: simpl never.
-      Arguments step: simpl never.
       simpl.
 
       do_get_set_Register.
