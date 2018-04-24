@@ -829,11 +829,27 @@ Section FlatToRiscv.
     - reflexivity.
   Qed.
 
+  Lemma Bind_setRegister0: forall {A: Type} (v: word wXLEN)
+                                 (f: unit -> OState RiscvMachine A) (initialL: RiscvMachine),
+      execState (Bind (setRegister Register0 v) f) initialL =
+      execState (f tt) initialL.
+  Proof.
+    intros. simpl. reflexivity.
+  Qed.
+
   Lemma Bind_getPC: forall {A: Type} (f: word wXLEN -> OState RiscvMachine A) (initialL: RiscvMachine),
       execState (Bind getPC f) initialL =
       execState (f initialL.(core).(pc)) initialL.
   Proof.
     intros. reflexivity.
+  Qed.
+
+  Lemma Bind_setPC: forall {A: Type} (v: word wXLEN)
+                                 (f: unit -> OState RiscvMachine A) (initialL: RiscvMachine),
+      execState (Bind (setPC v) f) initialL =
+      execState (f tt) (with_nextPC v initialL).
+  Proof.
+    intros. simpl. reflexivity.
   Qed.
   
   Lemma Bind_step: forall {A: Type} (f: unit -> OState RiscvMachine A) m,
@@ -860,7 +876,10 @@ Section FlatToRiscv.
         rewrite? right_identity;
         rewrite? Bind_getRegister by assumption;
         rewrite? Bind_getRegister0;
-        rewrite? Bind_setRegister by assumption
+        rewrite? Bind_setRegister by assumption;
+        rewrite? Bind_setRegister0;
+        rewrite? Bind_getPC;
+        rewrite? Bind_setPC
       ).
   
   Ltac prove_alu_def :=
@@ -1664,20 +1683,22 @@ admit. admit.
           (rewrite weqb_ne by congruence) ||
           rewrite left_identity).
 
+      Ltac simpl_rem4_test :=
       match goal with
       | |- context [weqb ?r ?expectZero] =>
+        match expectZero with
+        | $0 => idtac
+        end;
         match r with
         | rem ?a four => replace r with expectZero by prove_rem_four_zero
         end
-      end.
-      rewrite weqb_eq by reflexivity.
+      end;
+      rewrite weqb_eq by reflexivity;
       simpl.
 
+      simpl_rem4_test.
       do_get_set_Register.
-
-      (* HERE *)
-      
-      rewrite execState_step;
+      rewrite execState_step.
       simpl_RiscvMachine_get_set.
 
       
