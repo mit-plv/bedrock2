@@ -165,8 +165,13 @@ Section FlatToRiscv.
                    || rewrite! natToWord_plus
            end.
   
-  Ltac solve_word_eq := clear; simpl; ringify; ring.
-    
+  Ltac solve_word_eq :=
+    clear;
+    simpl;
+    repeat (rewrite app_length; simpl);
+    ringify;
+    ring.    
+
   Goal forall (a b c: word wXLEN), ((a ^+ b) ^- b) ^* c ^* $1 = a ^* c ^* $1.
   Proof. intros. ring. Qed.
 
@@ -1139,11 +1144,56 @@ list2imem
     | |- valid_registers _ => solve [simpl; auto]
     end.
 
-  Ltac solve_imem :=
-    match goal with
-    | |- _ = _ ++ _ ++ _ => repeat rewrite <- app_assoc; reflexivity
-    end.
+  Ltac solve_imem_old :=
+    repeat match goal with
+           (* by doing an explicit match, we make sure (?a ++ ?b) is not unified with
+                an evar in an infinite loop *)
+           | |- context [(?a ++ ?b) ++ ?c] => rewrite <- (app_assoc a b c)
+           end;
+    reflexivity.
 
+  Lemma add_to_instsBefore: forall (before insts1 insts2 after: list Instruction),
+      before ++ (insts1 ++ insts2) ++ after = (before ++ insts1) ++ insts2 ++ after.
+  Proof. intros. rewrite <-? app_assoc. reflexivity. Qed.
+
+  Lemma add_to_instsAfter: forall (before insts1 insts2 after: list Instruction),
+      before ++ (insts1 ++ insts2) ++ after = before ++ insts1 ++ (insts2 ++ after).
+  Proof. intros. rewrite <-? app_assoc. reflexivity. Qed.
+
+  (* Solves an equality of the form
+        before ++ insts ++ after = evarForBefore ++ subseqOfInsts ++ evarForAfter
+     instantiating evarForBefore and evarForAfter appropriately.
+     Works by first shoveling instructions from "insts" into "before" until "subseqOfInsts"
+     is found, and then shoveling the remaining instructions from "insts" into "after". *)
+  Ltac solve_imem :=
+    repeat match goal with
+           | H: _ |- _ => clear H
+           end;
+    let targetInsts := fresh "targetInsts" in
+    lazymatch goal with
+    | |- ?lhs = _ ++ ?insts ++ _ =>
+      match lhs with
+      | context [insts] => remember insts as targetInsts
+      end
+    end;
+    repeat match goal with
+           | |- context [?h :: ?t] =>
+             tryif (unify t [[]])
+             then fail
+             else (change (h :: t) with ([h] ++ t))
+           end;
+    repeat match goal with
+           | |- ?before ++ (targetInsts ++ ?insts2) ++ ?after = _ => fail 1 (* success/quit loop *)
+           | |- ?before ++ (?insts1 ++ ?insts2) ++ ?after = _ =>
+             rewrite (add_to_instsBefore before insts1 insts2 after)
+           end;
+    repeat match goal with
+           | |- ?before ++ (?insts1 ++ ?insts2) ++ ?after = _ =>
+             rewrite (add_to_instsAfter before insts1 insts2 after)
+           end;
+    subst targetInsts;
+    reflexivity.
+  
   Ltac spec_IH originalIH IH stmt1 :=
     pose proof originalIH as IH;
     match goal with
@@ -1153,11 +1203,11 @@ list2imem
     specializes IH;
     first
       [ reflexivity
+      | solve_imem
       | solve_stmt_not_too_big
       | solve_containsProgram
       | eassumption
-      | idtac ];
-    try solve_imem.
+      | idtac ].
   
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
@@ -1482,21 +1532,56 @@ admit. admit.
       destruct_RiscvMachine middleL.
       destruct_containsProgram. (* note: obtains containsProgram from IH *)
       
-      apply runsToStep.
-      simpl in *. subst *.
-      fetch_inst.
-      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
-      do_get_set_Register.
-      simpl_RiscvMachine_get_set.
-      rewrite Bind_getPC.
-      rewrite_reg_value.
-      rewrite_alu_op_defs.
-      rewrite weqb_ne by congruence.
-      rewrite left_identity.
-      rewrite execState_step.
+      apply runsToStep;
+      simpl in *; subst *;
+      fetch_inst;
+      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+      repeat (
+          do_get_set_Register || 
+          simpl_RiscvMachine_get_set ||
+          rewrite Bind_getPC ||
+          rewrite_reg_value ||
+          rewrite_alu_op_defs ||
+          (rewrite weqb_ne by congruence) ||
+          rewrite left_identity);
+      rewrite execState_step;
       simpl_RiscvMachine_get_set.
       
-      (* 2nd application of IH: part 2 of loop body (TODO should not be the whole loop) *)
+      (* 2nd application of IH: part 2 of loop body *)      
+      spec_IH IHfuelH IH s2.
+      {
+        clear.
+        solve_word_eq.
+      }
+      {
+        admit.
+      }
+      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      intros middleL' [ E' [? [? [? ?] ] ] ].
+      destruct_RiscvMachine middleL'.
+      destruct_containsProgram. (* note: obtains containsProgram from IH *)
+
+      apply runsToStep;
+      simpl in *; subst *;
+      fetch_inst;
+      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+      repeat (
+          do_get_set_Register || 
+          simpl_RiscvMachine_get_set ||
+          rewrite Bind_getPC ||
+          rewrite_reg_value ||
+          rewrite_alu_op_defs ||
+          (rewrite weqb_ne by congruence) ||
+          rewrite left_identity).
+      (* TODO modulo 4 stuff *)
+
+      (* HERE *)
+      
+      rewrite execState_step;
+      simpl_RiscvMachine_get_set.
+
+      
+      (* 3rd applicatin of IH: run the whole loop again *)
       pose proof IHfuelH as IH.
       match goal with
       | N: stmt_not_too_big (SLoop _ _ _) |- _ => specialize IH with (3 := N)
@@ -1514,15 +1599,7 @@ admit. admit.
         admit.
         admit.
       }
-      { (* WHOOPS, pc equality does not hold *)
 
-      (* HERE *) 
-      
-
-
-
-      (* 3rd applicatin of IH: run the whole loop again *)
-        
 
 
       simpl_run1.
