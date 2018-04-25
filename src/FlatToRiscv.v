@@ -24,6 +24,8 @@ Local Open Scope ilist_scope.
 
 Set Implicit Arguments.
 
+
+
 Lemma ZToWord_Z_of_nat: forall sz x, ZToWord sz (Z.of_nat x) = natToWord sz x.
 Proof.
   intros.
@@ -95,8 +97,6 @@ Section FlatToRiscv.
 
   Definition RiscvMachine := @RiscvMachine Bw (mem wXLEN) state.
 
-  Definition stmt: Set := @stmt Bw TestFlatImp.ZName.
-
   Ltac state_calc := state_calc_generic (@name TestFlatImp.ZName) (word wXLEN).
 
   (* Note: Register 0 is not considered valid because it cannot be written *)
@@ -154,11 +154,23 @@ Section FlatToRiscv.
     | Bitwidth32 => compile_lit_32 rd v
     | Bitwidth64 => compile_lit_32 rd v (* TODO *)
     end.
+
+  Definition LwXLEN: Register -> Register -> Z -> Instruction :=
+    match bitwidth with
+    | Bitwidth32 => Lw
+    | Bitwidth64 => Ld
+    end.
   
+  Definition SwXLEN: Register -> Register -> Z -> Instruction :=
+    match bitwidth with
+    | Bitwidth32 => Sw
+    | Bitwidth64 => Sd
+    end.
+
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
-    | SLoad x y => [[Lw x y 0]]
-    | SStore x y => [[Sw x y 0]]
+    | SLoad x y => [[LwXLEN x y 0]]
+    | SStore x y => [[SwXLEN x y 0]]
     | SLit x v => compile_lit x (wordToZ v)
     | SOp x op y z => compile_op x op y z
     | SSet x y => [[Add x Register0 y]]
@@ -212,6 +224,7 @@ Section FlatToRiscv.
                    || rewrite! ZToWord_Z_of_nat
                    || rewrite! Z4four
                    || rewrite! ZToWord_0
+                   || rewrite! wzero'_def
            end.
   
   Ltac solve_word_eq :=
@@ -870,6 +883,35 @@ Section FlatToRiscv.
     intros. simpl. reflexivity.
   Qed.
 
+  Definition load_wXLEN: word wXLEN -> OState RiscvMachine (word wXLEN).
+    set (lw := loadWord).
+    set (ld := loadDouble).
+    unfold RiscvMachine in *.
+    unfold State_is_RegisterFile in *.
+    destruct Bw.
+    destruct bitwidth.
+    - exact lw.
+    - exact ld.
+  Defined.
+  
+  Lemma Bind_load: forall {A: Type} (a v: word wXLEN) (initialMH: Memory.mem)
+                         (f: word wXLEN -> OState RiscvMachine A) (initialL: RiscvMachine),
+      initialMH a = Some v ->
+      containsMem initialL.(machineMem) initialMH ->
+      execState (Bind (load_wXLEN a) f) initialL = execState (f v) initialL.
+  Proof.
+    intros.
+    unfold containsMem in *.
+    specialize H0 with (1 := H).
+    unfold RiscvMachine in *.
+    unfold State_is_RegisterFile in *.
+    unfold containsMem, loadWordL, load_wXLEN in *.
+    destruct Bw. destruct bitwidth; simpl in *; inversions H0;
+    (destruct (initialMH a); [|discriminate]);
+    inversions H;
+    reflexivity.
+  Qed.
+
   Lemma Bind_getPC: forall {A: Type} (f: word wXLEN -> OState RiscvMachine A) (initialL: RiscvMachine),
       execState (Bind getPC f) initialL =
       execState (f initialL.(core).(pc)) initialL.
@@ -1161,8 +1203,13 @@ list2imem
     (imemStart ^+ $ (4) ^* $ (length instsBefore) ^+ $ (4) ^* $ (length (compile_stmt s1)))
  *)
  *)
-  Axiom translate_axiom_TODO: forall a,
-    translate Load four a = Return a.
+  Hypothesis translate_id_if_aligned_4: forall a mode,
+      (wordToZ a mod 4 = 0)%Z ->
+      translate mode four a = Return a.
+
+  Hypothesis translate_id_if_aligned_8: forall a mode,
+      (wordToZ a mod 8 = 0)%Z ->
+      translate mode eight a = Return a.
 
   Definition words_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
     forall i, 0 <= i < len -> Memory.read_mem (start ^+ $4 ^* $i) m = None.
@@ -1291,8 +1338,8 @@ list2imem
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
   Proof. intros. tauto. Qed.
   
-  Lemma eval_stmt_preserves_mem_accessibility:
-    forall {fuel: nat} {initialMem finalMem: Memory.mem} {s: stmt} {initialRegs finalRegs: state},
+  Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
+      {s: @stmt Bw TestFlatImp.ZName} {initialRegs finalRegs: state},
       eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
@@ -1313,8 +1360,8 @@ list2imem
       eapply mem_accessibility_trans; eauto.
   Qed.
 
-  Lemma eval_stmt_preserves_mem_inaccessible:
-    forall {fuel: nat} {initialMem finalMem: Memory.mem} {s: stmt} {initialRegs finalRegs: state},
+  Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
+      {s: @stmt Bw TestFlatImp.ZName} {initialRegs finalRegs: state},
       eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len, mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
   Proof.
@@ -1428,8 +1475,11 @@ list2imem
     destruct_containsProgram.
   
   Arguments Bind: simpl never.
+  Arguments Return: simpl never.
   Arguments getRegister: simpl never.
   Arguments setRegister: simpl never.
+  Arguments loadWord: simpl never.
+  Arguments storeWord: simpl never.
   Arguments setPC: simpl never.
   Arguments step: simpl never.
 
@@ -1463,11 +1513,112 @@ list2imem
       destruct_everything.
     - (* SLoad *)
       clear IHfuelH.
+      unfold LwXLEN, Memory.read_mem, Memory.wXLEN_in_bytes in *.
+      match goal with
+      | H: (if ?x then ?mH ?addr else None) = Some _ |- _ =>
+        destruct x; [|discriminate H]
+      end.
+      pose proof @Bind_load as P.
+      specialize P with (1 := H12).
+      simpl.
+      lazymatch goal with
+      | |- runsTo _ _ ?initialMach _ =>
+        specialize P with (initialL := initialMach); simpl in P
+      end.
+      specialize P with (1 := H6).
+      unfold containsMem, loadWordL, load_wXLEN in *.
+      unfold RiscvMachine in *.
+      unfold State_is_RegisterFile in *.
+      unfold stmt_not_too_big in *.
+      unfold containsProgram, ldInst, mem_inaccessible in *.
+      simpl in *. 
+      destruct Bw. 
+      destruct bitwidth eqn: EBw; simpl in *.
+      +   apply runsToStep;
+    simpl in *; subst *.
+        
+
+
+    - (* SLoad *)
+      clear IHfuelH.
+      unfold LwXLEN, Memory.read_mem, Memory.wXLEN_in_bytes in *.
+      match goal with
+      | H: (if ?x then ?mH ?addr else None) = Some _ |- _ =>
+        destruct x; [|discriminate H](*;
+        assert (load_wXLEN a0 = load_wXLEN a0) as El by reflexivity *)
+        (* set (l := load_wXLEN a0) *)
+      end.
+(*      unfold load_wXLEN in El at 1. *)
+    unfold containsMem, loadWordL in *.
+    unfold RiscvMachine in *.
+    unfold State_is_RegisterFile in *.
+    unfold stmt_not_too_big in *.
+    unfold stmt, containsProgram, ldInst, mem_inaccessible in *.
+    simpl in *. 
+
+      destruct Bw. 
+      destruct bitwidth eqn: EBw.
+      + 
+        
+      
+
+          apply runsToStep;
+    simpl in *; subst *;
+    fetch_inst;
+    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+    repeat (
+        do_get_set_Register || 
+        simpl_RiscvMachine_get_set ||
+        rewrite_reg_value ||
+        rewrite_alu_op_defs ||
+        (rewrite weqb_ne by congruence) ||
+        (rewrite weqb_eq by congruence) ||
+        rewrite left_identity ||
+        simpl_rem4_test ||
+
+          match goal with
+          | |- context [translate _ _ ?addr] =>
+            match addr with
+            | ?addr0 ^+ ZToWord wXLEN 0 => replace addr with addr0 by solve_word_eq
+            end;
+            ((rewrite translate_id_if_aligned_4 by assumption) ||
+             (rewrite translate_id_if_aligned_8 by assumption))
+          end).
+
+          pose proof @Bind_load as P.
+          specialize P with (1 := H12).
+          lazymatch goal with
+          | |- runsTo _ _ (execState _ ?initialMach) _ =>
+            specialize P with (initialL := initialMach); simpl in P
+          end.
+          specialize P with (1 := H6).
+          unfold load_wXLEN in P.
+          simpl in P.
+          destruct Bw.
+          
+          Search initialL.
+          
+                        
+
+          Search initialMH.
+HERE
+      
+      rewrite wplus_unit.
+
+
+          
+    rewrite execState_step;
+    simpl_RiscvMachine_get_set.
+
+
+      
       apply runsToStep.
       fetch_inst.
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
       do_get_set_Register.
       simpl_RiscvMachine_get_set.
+      unfold Memory.read_mem in *.
+      destruct_one_match_hyp; [|discriminate].
       (* TODO source program should see memory as array of (word wXLEN) and
          should not have to multiply addresses by 4 or 8, do this in the compiler,
          then it will also become apparent that the modulo check possibly done by
