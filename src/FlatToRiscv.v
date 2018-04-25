@@ -1438,7 +1438,7 @@ list2imem
     rewrite weqb_eq by reflexivity;
     simpl.
 
-  Ltac run1step :=
+  Ltac run1step' :=
     apply runsToStep;
     simpl in *; subst *;
     fetch_inst;
@@ -1451,7 +1451,10 @@ list2imem
         (rewrite weqb_ne by congruence) ||
         (rewrite weqb_eq by congruence) ||
         rewrite left_identity ||
-        simpl_rem4_test);
+        simpl_rem4_test).
+
+  Ltac run1step :=
+    run1step';
     rewrite execState_step;
     simpl_RiscvMachine_get_set.
 
