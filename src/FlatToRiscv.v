@@ -883,13 +883,22 @@ Section FlatToRiscv.
     intros. simpl. reflexivity.
   Qed.
 
+  (* Not sure if typechecking this ever finishes:
+  Definition load_wXLEN: word wXLEN -> OState RiscvMachine (word wXLEN) :=
+    match Bw with
+    | Bitwidth32 => loadWord
+    | Bitwidth64 => loadDouble
+    end. *)
+
   Definition load_wXLEN: word wXLEN -> OState RiscvMachine (word wXLEN).
     set (lw := loadWord).
     set (ld := loadDouble).
     unfold RiscvMachine in *.
     unfold State_is_RegisterFile in *.
+    unfold RiscvBitWidths in *.
+    unfold wXLEN in *.
+    unfold bitwidth in *.
     destruct Bw.
-    destruct bitwidth.
     - exact lw.
     - exact ld.
   Defined.
@@ -906,7 +915,8 @@ Section FlatToRiscv.
     unfold RiscvMachine in *.
     unfold State_is_RegisterFile in *.
     unfold containsMem, loadWordL, load_wXLEN in *.
-    destruct Bw. destruct bitwidth; simpl in *; inversions H0;
+    unfold bitwidth in *.
+    destruct Bw; simpl in *; inversions H0;
     (destruct (initialMH a); [|discriminate]);
     inversions H;
     reflexivity.
@@ -1531,11 +1541,11 @@ list2imem
       unfold State_is_RegisterFile in *.
       unfold stmt_not_too_big in *.
       unfold containsProgram, ldInst, mem_inaccessible in *.
-      simpl in *. 
-      destruct Bw. 
-      destruct bitwidth eqn: EBw; simpl in *.
-      +   apply runsToStep;
-    simpl in *; subst *.
+      simpl in *.
+      unfold bitwidth in *.
+      destruct Bw; simpl in *.
+      + apply runsToStep;
+        simpl in *; subst *.
         
 
 
