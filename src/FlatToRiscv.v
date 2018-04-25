@@ -95,7 +95,7 @@ Section FlatToRiscv.
 
   Definition RiscvMachine := @RiscvMachine Bw (mem wXLEN) state.
 
-  Definition stmt: Set := @stmt wXLEN TestFlatImp.ZName.
+  Definition stmt: Set := @stmt Bw TestFlatImp.ZName.
 
   Ltac state_calc := state_calc_generic (@name TestFlatImp.ZName) (word wXLEN).
 
@@ -672,8 +672,6 @@ Section FlatToRiscv.
     apply nat_cast_same.
   Qed.*)
 
-  Definition evalH := eval_stmt (w := wXLEN).
-
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
      constant to stay in linear arithmetic *)
   Local Definition stmt_not_too_big(s: stmt): Prop := stmt_size s * 16 < pow2 20.
@@ -792,7 +790,7 @@ Section FlatToRiscv.
     - exact (Memory.loadDouble memL addr).
   Defined.
   
-  Definition containsMem(memL: FunctionMemory.mem wXLEN)(memH: Memory.mem wXLEN): Prop :=
+  Definition containsMem(memL: FunctionMemory.mem wXLEN)(memH: Memory.mem): Prop :=
     forall addr v, memH addr = Some v -> loadWordL memL addr = Some v.
 
   (* TODO might not hold if a = 0, but we only use it with a = 4 *)
@@ -1166,10 +1164,10 @@ list2imem
   Axiom translate_axiom_TODO: forall a,
     translate Load four a = Return a.
 
-  Definition words_inaccessible(m: Memory.mem wXLEN)(start: word wXLEN)(len: nat): Prop :=
+  Definition words_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
     forall i, 0 <= i < len -> Memory.read_mem (start ^+ $4 ^* $i) m = None.
 
-  Definition mem_inaccessible(m: Memory.mem wXLEN)(start: word wXLEN)(len: nat): Prop :=
+  Definition mem_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
     forall i, 0 <= i < len -> Memory.read_mem (start ^+ $i) m = None.
 
 
@@ -1270,28 +1268,31 @@ list2imem
     reflexivity.
 
   Lemma write_mem_preserves_mem_accessibility:
-    forall {initialMem finalMem: Memory.mem wXLEN} {a0 w: word wXLEN},
+    forall {initialMem finalMem: Memory.mem} {a0 w: word wXLEN},
       Memory.write_mem a0 w initialMem = Some finalMem ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
     intros. unfold Memory.write_mem in *.
     destruct_one_match_hyp; [|discriminate].
     inversions H.
-    unfold Memory.read_mem.
+    unfold Memory.read_mem in *.
     split; intros.
-    - destruct_one_match; congruence.
-    - destruct_one_match_hyp; congruence.
+    - repeat destruct_one_match. subst.
+      + rewrite E0 in E. rewrite E in H. discriminate.
+      + assumption.
+      + reflexivity.
+    - repeat destruct_one_match_hyp; subst; reflexivity || discriminate || assumption.
   Qed.
 
   Lemma mem_accessibility_trans:
-    forall {initialMem middleMem finalMem: Memory.mem wXLEN} {a: word wXLEN},
+    forall {initialMem middleMem finalMem: Memory.mem} {a: word wXLEN},
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a middleMem = None) ->
       (Memory.read_mem a middleMem  = None <-> Memory.read_mem a finalMem  = None) ->
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
   Proof. intros. tauto. Qed.
   
   Lemma eval_stmt_preserves_mem_accessibility:
-    forall {fuel: nat} {initialMem finalMem: Memory.mem wXLEN} {s: stmt} {initialRegs finalRegs: state},
+    forall {fuel: nat} {initialMem finalMem: Memory.mem} {s: stmt} {initialRegs finalRegs: state},
       eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
@@ -1313,7 +1314,7 @@ list2imem
   Qed.
 
   Lemma eval_stmt_preserves_mem_inaccessible:
-    forall {fuel: nat} {initialMem finalMem: Memory.mem wXLEN} {s: stmt} {initialRegs finalRegs: state},
+    forall {fuel: nat} {initialMem finalMem: Memory.mem} {s: stmt} {initialRegs finalRegs: state},
       eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len, mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
   Proof.
@@ -1439,7 +1440,7 @@ list2imem
     allInsts = instsBefore ++ insts ++ instsAfter ->  
     stmt_not_too_big s ->
     valid_registers s ->
-    evalH fuelH initialH initialMH s = Some (finalH, finalMH) ->
+    eval_stmt fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) allInsts ($4 ^* imemStart) ->
@@ -1456,7 +1457,7 @@ list2imem
     intros allInsts imemStart. pose proof (mkAllInsts allInsts).
     induction fuelH; [intros; discriminate |].
     intros.
-    unfold evalH, runsToSatisfying in *.
+    unfold runsToSatisfying in *.
     invert_eval_stmt;
       simpl in *;
       destruct_everything.
@@ -1466,6 +1467,11 @@ list2imem
       fetch_inst.
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
       do_get_set_Register.
+      simpl_RiscvMachine_get_set.
+      (* TODO source program should see memory as array of (word wXLEN) and
+         should not have to multiply addresses by 4 or 8, do this in the compiler,
+         then it will also become apparent that the modulo check possibly done by
+         translate will succeed. *)
       rewrite translate_axiom_TODO.
       do_get_set_Register.
       unfold loadWord, IsRiscvMachine, liftLoad, Memory.loadWord, mem_is_Memory.

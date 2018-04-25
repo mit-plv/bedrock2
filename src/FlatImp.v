@@ -1,4 +1,5 @@
 Require Import lib.LibTacticsMin.
+Require Import riscv.RiscvBitWidths.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
@@ -8,23 +9,23 @@ Require Import compiler.NameWithEq.
 
 Section FlatImp1.
 
-  Context {w: nat}. (* bit width *)
+  Context {Bw: RiscvBitWidths}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
   Existing Instance eq_name_dec.
 
   Context {state: Type}.
-  Context {stateMap: Map state var (word w)}.
+  Context {stateMap: Map state var (word wXLEN)}.
   Context {vars: Type}.
   Context {varset: set vars var}.
 
-  Ltac state_calc := state_calc_generic (@name Name) (word w).
+  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
 
   Inductive stmt: Set :=
     | SLoad(x: var)(a: var): stmt
     | SStore(a: var)(v: var): stmt
-    | SLit(x: var)(v: word w): stmt
+    | SLit(x: var)(v: word wXLEN): stmt
     | SOp(x: var)(op: binop)(y z: var): stmt
     | SSet(x y: var): stmt
     | SIf(cond: var)(bThen bElse: stmt): stmt
@@ -47,7 +48,7 @@ Section FlatImp1.
 
   (* If we want a bigstep evaluation relation, we either need to put
      fuel into the SLoop constructor, or give it as argument to eval *)
-  Fixpoint eval_stmt(f: nat)(st: state)(m: mem w)(s: stmt): option (state * mem w) :=
+  Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
     match f with
     | 0 => None (* out of fuel *)
     | S f => match s with
@@ -229,18 +230,18 @@ Ltac invert_eval_stmt :=
 
 Section FlatImp2.
 
-  Context {w: nat}. (* bit width *)
+  Context {Bw: RiscvBitWidths}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
   Existing Instance eq_name_dec.
 
   Context {state: Type}.
-  Context {stateMap: Map state var (word w)}.
+  Context {stateMap: Map state var (word wXLEN)}.
   Context {vars: Type}.
   Context {varset: set vars var}.
 
-  Ltac state_calc := state_calc_generic (@name Name) (word w).
+  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 initialSt initialM s final,
     fuel1 <= fuel2 ->
@@ -287,9 +288,12 @@ Section FlatImp2.
 
 End FlatImp2.
 
+Require riscv.RiscvBitWidths32.
 
 Module TestFlatImp.
 
+Import riscv.RiscvBitWidths32.
+  
 Instance ZName: NameWithEq := {| name := Z |}.
 
 Definition var: Set := (@name ZName). (* only inside this test module *)
@@ -310,8 +314,10 @@ loop:
   a = b
   b = s
   n = n - one
-*)
-Example fib(n: word 8) :=
+ *)
+
+
+Example fib(n: word 32) :=
   SSeq (SLit _one $1) (
   SSeq (SLit _n n) (
   SSeq (SLit _a $0) (
@@ -324,10 +330,10 @@ Example fib(n: word 8) :=
               (SOp _n OMinus _n _one)))))
   )))).
 
-Definition eval_stmt_test fuel initialSt := @eval_stmt 8 ZName _ _ fuel initialSt (no_mem 8).
+Definition eval_stmt_test fuel initialSt := @eval_stmt _ ZName _ _ fuel initialSt no_mem.
 
 Example finalFibState(n: nat) := (eval_stmt_test 100 empty (fib $n)).
-Example finalFibVal(n: nat): option (word 8) := match finalFibState n with
+Example finalFibVal(n: nat): option (word 32) := match finalFibState n with
 | Some (s, _) => get s _b
 | _ => None
 end.
