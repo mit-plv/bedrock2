@@ -19,7 +19,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
-Require Import compiler.AxiomaticRiscv.
+Require Import riscv.AxiomaticRiscv.
 
 Local Open Scope ilist_scope.
 
@@ -53,6 +53,28 @@ Lemma ZToWord_0: forall sz, ZToWord sz 0 = wzero sz.
 Proof.
   intros. unfold ZToWord. apply wzero'_def.
 Qed.
+
+
+(* State_is_RegisterFile gets its own section so that destructing Bw later does
+   not lead to ill-typed terms *)
+Section RegisterFile.
+
+  Context {Bw: RiscvBitWidths}.
+  Context {state: Type}.
+  Context {stateMap: Map state Register (word wXLEN)}.
+
+  Instance State_is_RegisterFile: RegisterFile state Register (word wXLEN) := {|
+    getReg rf r := match get rf r with
+                   | Some v => v
+                   | None => $0
+                   end;
+    setReg := put;
+    initialRegs := empty;
+  |}.
+
+End RegisterFile.
+
+Existing Instance State_is_RegisterFile.
 
 
 Section FlatToRiscv.
