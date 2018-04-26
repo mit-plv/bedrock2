@@ -883,10 +883,17 @@ Section FlatToRiscv.
     unfold State_is_RegisterFile in *.
     unfold containsMem, loadWordL, load_wXLEN in *.
     unfold bitwidth in *.
-    destruct Bw; simpl in *; inversions H0;
+    destruct Bw; simpl in *|-; inversions H0;
     (destruct (initialMH a); [|discriminate]);
-    inversions H;
-    reflexivity.
+    inversions H.
+    - pose proof @Bind_loadWord as P. (* TODO make this rewrite work without specialize *)
+      specialize (P Bitwidth32 state).
+      erewrite P. 2: eauto.
+      reflexivity.
+    - pose proof @Bind_loadDouble as P.
+      specialize (P Bitwidth64 state).
+      erewrite P. 2: eauto.
+      reflexivity.
   Qed.
 
   Ltac do_get_set_Register :=
@@ -1435,6 +1442,16 @@ list2imem
     subst *;
     destruct_containsProgram.
 
+  (* TODO it seems we need this inside proofs where we destructed Bw, how can we make
+     typeclass search work there? *)
+  Tactic Notation "myrewrite" uconstr(c) "by" tactic(t) :=
+    (unshelve erewrite c by t;
+      [ ( apply State_is_RegisterFile || typeclasses eauto ) .. | ]).
+
+  Tactic Notation "myrewrite" uconstr(c) :=
+    (unshelve erewrite c;
+      [ ( apply State_is_RegisterFile || typeclasses eauto ) .. | ]).
+
   Lemma execute_load: forall {A: Type} (x a: Register) (addr v: word wXLEN) (initialMH: Memory.mem)
                         (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
       valid_register x ->
@@ -1447,43 +1464,54 @@ list2imem
       execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros.
-    pose proof @Bind_getRegister as Bind_getRegister.
-    pose proof @Bind_setRegister as Bind_setRegister.
-    pose proof @Bind_load as Bind_load.
+    pose proof @Bind_load as Bind_load.    
     unfold containsMem, Memory.read_mem, Memory.wXLEN_in_bytes, load_wXLEN in *.
     unfold LwXLEN, bitwidth, loadWordL in *.
     destruct Bw eqn: EBw;
       (destruct_one_match_hyp; [|discriminate]);
       simpl in H2;
-      specialize Bind_load with (1 := H1) (2 := H2);
+      specialize Bind_load with (1 := H1) (2 := H2);      
       specialize H2 with (1 := H1);
       simpl in H2; inversions H2;
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
       rewrite associativity;
-      rewrite Bind_getRegister by assumption;
-      rewrite associativity;
-      unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
-      rewrite ZToWord_0;
-      rewrite_reg_value;
-      rewrite wplus_comm;
-      rewrite wplus_unit;
-      ((rewrite translate_id_if_aligned_4 by assumption) ||
-       (rewrite translate_id_if_aligned_8 by assumption));
-      rewrite left_identity;
-      rewrite associativity;
-      rewrite Bind_load;
-      rewrite Bind_setRegister by assumption;
-      reflexivity.
-  Qed.
+      myrewrite Bind_getRegister by assumption.
+    { rewrite associativity;
+        unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
+        rewrite ZToWord_0;
+        rewrite_reg_value;
+        rewrite wplus_comm;
+        rewrite wplus_unit;
+        ((rewrite translate_id_if_aligned_4 by assumption) ||
+         (rewrite translate_id_if_aligned_8 by assumption));
+        rewrite left_identity;
+        rewrite associativity.
+      rewrite Bind_load.
+      unshelve erewrite @Bind_setRegister.
+      apply State_is_RegisterFile.
+      2: typeclasses eauto.
+      2: eassumption.
+      reflexivity. }
+    { rewrite associativity;
+        unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
+        rewrite ZToWord_0;
+        rewrite_reg_value;
+        rewrite wplus_comm;
+        rewrite wplus_unit;
+        ((rewrite translate_id_if_aligned_4 by assumption) ||
+         (rewrite translate_id_if_aligned_8 by assumption));
+        rewrite left_identity;
+        rewrite associativity.
+      rewrite Bind_load.
+      unshelve erewrite @Bind_setRegister.
+      apply State_is_RegisterFile.
+      2: typeclasses eauto.
+      2: eassumption.
+      reflexivity. }
+  Qed. 
 
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
-  Arguments getRegister: simpl never.
-  Arguments setRegister: simpl never.
-  Arguments loadWord: simpl never.
-  Arguments storeWord: simpl never.
-  Arguments setPC: simpl never.
-  Arguments step: simpl never.
 
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
