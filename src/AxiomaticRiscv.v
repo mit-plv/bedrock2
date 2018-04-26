@@ -1,26 +1,10 @@
-Require Import lib.LibTacticsMin.
 Require Import riscv.util.Monads.
 Require Import compiler.Common.
-Require Import compiler.FlatImp.
-Require Import compiler.StateCalculus.
-Require Import bbv.DepEqNat.
-Require Import Coq.Lists.List.
-Import ListNotations.
-Require Import compiler.Op.
-Require Import compiler.ResMonad.
-Require Import riscv.Riscv.
+Require Import riscv.Decode.
+Require Import riscv.Program.
 Require Import riscv.Minimal.
 Require Import riscv.FunctionMemory.
-Require Import compiler.runsToSatisfying.
 Require Import riscv.RiscvBitWidths.
-Require Import compiler.NameWithEq.
-Require Import Coq.Program.Tactics.
-Require Import Coq.Logic.FunctionalExtensionality.
-Require Import riscv.InstructionCoercions.
-Require Import riscv.Utility.
-Require Import compiler.StateCalculus.
-
-Local Open Scope ilist_scope.
 
 Set Implicit Arguments.
 
