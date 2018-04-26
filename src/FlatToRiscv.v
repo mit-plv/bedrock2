@@ -412,13 +412,11 @@ Section FlatToRiscv.
              tryif (unify t [[]])
              then fail
              else (apply containsProgram_cons)
-           | |- _ => assumption
-           end;
-    match goal with
-    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
-      replace p' with p; [exact Cp|try solve_word_eq]
-    end.
-  
+           | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p => exact Cp
+           | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
+             replace p' with p; [exact Cp|try solve_word_eq]
+           end.
+
   Lemma mul_div_undo: forall i c,
     c <> 0 ->
     c * i / c = i.
@@ -1461,7 +1459,14 @@ list2imem
   Ltac run1done :=
     apply runsToDone;
     simpl_RiscvMachine_get_set;
-    repeat split; (assumption || solve_containsProgram || solve_word_eq).
+    repeat split;
+    first
+      [ assumption
+      | match goal with
+        | |- extends _ _ => state_calc
+        end
+      | solve_containsProgram
+      | solve_word_eq ].
 
   Ltac IH_done IH :=
     eapply runsToSatisfying_imp; [ exact IH | ];
@@ -1486,7 +1491,48 @@ list2imem
            end;
     subst *;
     destruct_containsProgram.
-  
+
+  Lemma execute_load: forall {A: Type} (x a: Register) (addr v: word wXLEN) (initialMH: Memory.mem)
+                        (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+      valid_register x ->
+      valid_register a ->
+      Memory.read_mem addr initialMH = Some v ->
+      containsMem initialL.(machineMem) initialMH ->
+      get initialRegsH a = Some addr ->
+      extends initialL.(core).(registers) initialRegsH ->
+      execState (Bind (execute (LwXLEN x a 0)) f) initialL =
+      execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
+  Proof.
+    intros.
+    pose proof @Bind_getRegister as Bind_getRegister.
+    pose proof @Bind_setRegister as Bind_setRegister.
+    pose proof @Bind_load as Bind_load.
+    unfold containsMem, Memory.read_mem, Memory.wXLEN_in_bytes, load_wXLEN in *.
+    unfold LwXLEN, bitwidth, State_is_RegisterFile, RiscvMachine, loadWordL in *.
+    destruct Bw eqn: EBw;
+      (destruct_one_match_hyp; [|discriminate]);
+      simpl in H2;
+      specialize Bind_load with (1 := H1) (2 := H2);
+      specialize H2 with (1 := H1);
+      simpl in H2; inversions H2;
+      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+      rewrite associativity;
+      rewrite Bind_getRegister by assumption;
+      rewrite associativity;
+      unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
+      rewrite ZToWord_0;
+      rewrite_reg_value;
+      rewrite wplus_comm;
+      rewrite wplus_unit;
+      ((rewrite translate_id_if_aligned_4 by assumption) ||
+       (rewrite translate_id_if_aligned_8 by assumption));
+      rewrite left_identity;
+      rewrite associativity;
+      rewrite Bind_load;
+      rewrite Bind_setRegister by assumption;
+      reflexivity.
+  Qed.
+
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
   Arguments getRegister: simpl never.
@@ -1526,121 +1572,16 @@ list2imem
       destruct_everything.
     - (* SLoad *)
       clear IHfuelH.
-      unfold LwXLEN, Memory.read_mem, Memory.wXLEN_in_bytes in *.
-      match goal with
-      | H: (if ?x then ?mH ?addr else None) = Some _ |- _ =>
-        destruct x; [|discriminate H]
-      end.
-      pose proof @Bind_load as P.
-      specialize P with (1 := H12).
-      simpl.
-      lazymatch goal with
-      | |- runsTo _ _ ?initialMach _ =>
-        specialize P with (initialL := initialMach); simpl in P
-      end.
-      specialize P with (1 := H6).
-      unfold containsMem, loadWordL, load_wXLEN in *.
-      unfold RiscvMachine in *.
-      unfold State_is_RegisterFile in *.
-      unfold stmt_not_too_big in *.
-      unfold containsProgram, ldInst, mem_inaccessible in *.
-      simpl in *.
-      unfold bitwidth in *.
-      destruct Bw; simpl in *.
-      + apply runsToStep;
-        simpl in *; subst *.
-        
-
-
-    - (* SLoad *)
-      clear IHfuelH.
-      unfold LwXLEN, Memory.read_mem, Memory.wXLEN_in_bytes in *.
-      match goal with
-      | H: (if ?x then ?mH ?addr else None) = Some _ |- _ =>
-        destruct x; [|discriminate H](*;
-        assert (load_wXLEN a0 = load_wXLEN a0) as El by reflexivity *)
-        (* set (l := load_wXLEN a0) *)
-      end.
-(*      unfold load_wXLEN in El at 1. *)
-    unfold containsMem, loadWordL in *.
-    unfold RiscvMachine in *.
-    unfold State_is_RegisterFile in *.
-    unfold stmt_not_too_big in *.
-    unfold stmt, containsProgram, ldInst, mem_inaccessible in *.
-    simpl in *. 
-
-      destruct Bw. 
-      destruct bitwidth eqn: EBw.
-      + 
-        
-      
-
-          apply runsToStep;
-    simpl in *; subst *;
-    fetch_inst;
-    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-    repeat (
-        do_get_set_Register || 
-        simpl_RiscvMachine_get_set ||
-        rewrite_reg_value ||
-        rewrite_alu_op_defs ||
-        (rewrite weqb_ne by congruence) ||
-        (rewrite weqb_eq by congruence) ||
-        rewrite left_identity ||
-        simpl_rem4_test ||
-
-          match goal with
-          | |- context [translate _ _ ?addr] =>
-            match addr with
-            | ?addr0 ^+ ZToWord wXLEN 0 => replace addr with addr0 by solve_word_eq
-            end;
-            ((rewrite translate_id_if_aligned_4 by assumption) ||
-             (rewrite translate_id_if_aligned_8 by assumption))
-          end).
-
-          pose proof @Bind_load as P.
-          specialize P with (1 := H12).
-          lazymatch goal with
-          | |- runsTo _ _ (execState _ ?initialMach) _ =>
-            specialize P with (initialL := initialMach); simpl in P
-          end.
-          specialize P with (1 := H6).
-          unfold load_wXLEN in P.
-          simpl in P.
-          destruct Bw.
-          
-          Search initialL.
-          
-                        
-
-          Search initialMH.
-HERE
-      
-      rewrite wplus_unit.
-
-
-          
-    rewrite execState_step;
-    simpl_RiscvMachine_get_set.
-
-
-      
-      apply runsToStep.
+      apply runsToStep; simpl in *; subst *.
       fetch_inst.
-      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute].
-      do_get_set_Register.
+      erewrite execute_load; [|eassumption..].
       simpl_RiscvMachine_get_set.
-      unfold Memory.read_mem in *.
-      destruct_one_match_hyp; [|discriminate].
-      (* TODO source program should see memory as array of (word wXLEN) and
-         should not have to multiply addresses by 4 or 8, do this in the compiler,
-         then it will also become apparent that the modulo check possibly done by
-         translate will succeed. *)
-      rewrite translate_axiom_TODO.
-      do_get_set_Register.
-      unfold loadWord, IsRiscvMachine, liftLoad, Memory.loadWord, mem_is_Memory.
-      do_get_set_Register.      
-      admit.
+      rewrite <- right_identity with (m := step).
+      rewrite Bind_step.
+      simpl.
+      rewrite execState_Return.
+      simpl_RiscvMachine_get_set.
+      run1done.
     - (* SStore *)
       admit.
     - (* SLit *)
