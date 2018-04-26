@@ -8,8 +8,12 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.Op.
 Require Import compiler.ResMonad.
-Require Import riscv.Riscv.
-Require Import riscv.Minimal.
+Require Import riscv.Program.
+Require Import riscv.Decode.
+Require Import riscv.PseudoInstructions.
+Require Import riscv.RiscvMachine.
+Require Import riscv.Execute.
+Require Import riscv.Run.
 Require Import riscv.FunctionMemory.
 Require Import compiler.runsToSatisfying.
 Require Import riscv.RiscvBitWidths.
@@ -106,11 +110,14 @@ Section FlatToRiscv.
   Context {state: Type}.
   Context {stateMap: Map state Register (word wXLEN)}.
 
-  (* assumes generic translate and raiseException functions *)
-  Context {RVS: @RiscvState (OState RiscvMachine) (word wXLEN) _ _ IsRiscvMachine}.  
-
   Local Notation RiscvMachine := (@RiscvMachine Bw (mem wXLEN) state).
+  Context {RVM: RiscvProgram (OState RiscvMachine) (word wXLEN)}.
 
+  (* assumes generic translate and raiseException functions *)
+  Context {RVS: @RiscvState (OState RiscvMachine) (word wXLEN) _ _ RVM}.  
+
+  Context {RVAX: @AxiomaticRiscv Bw state State_is_RegisterFile (mem wXLEN) _ RVM}.
+  
   Ltac state_calc := state_calc_generic (@name TestFlatImp.ZName) (word wXLEN).
 
   (* This phase assumes that register allocation has already been done on the FlatImp
@@ -589,7 +596,7 @@ Section FlatToRiscv.
     cbv [run1 execState Monads.put Monads.gets Monads.get Return Bind State_Monad OState_Monad
          execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute
          core machineMem registers pc nextPC exceptionHandlerAddr
-         getPC setPC getRegister setRegister IsRiscvMachine gets].
+         getPC setPC getRegister setRegister gets].
 
   Ltac solve_word_eq_old :=
     clear;
@@ -833,24 +840,16 @@ Section FlatToRiscv.
   Proof.
     intros. subst.
     unfold run1.
-    unfold getPC, IsRiscvMachine, OState_Monad.
     destruct_RiscvMachine initialL.
-    unfold Bind at 1.
-    unfold execState.
-    unfold Monads.get.
-    unfold Bind at 1.
-    unfold Return at 1.
-    simpl.
-    f_equal.
-    apply let_pair_rhs_eq.
-    f_equal.
+    rewrite Bind_getPC.
+    simpl_RiscvMachine_get_set.
+    rewrite Bind_loadWord.
     unfold containsProgram in H.
     specialize (H 0 _ eq_refl). subst inst.
     unfold ldInst.
     unfold Memory.loadWord, mem_is_Memory.
-    do 3 f_equal.
-    change $0 with (wzero wXLEN).
-    ring.
+    replace (initialL_pc ^+ $4 ^* $0) with initialL_pc by solve_word_eq.
+    reflexivity.
   Qed. 
 
   (* Not sure if typechecking this ever finishes:
