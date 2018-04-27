@@ -1486,17 +1486,12 @@ list2imem
           rewrite translate_id_if_aligned_8 by assumption ];
         rewrite left_identity;
         rewrite associativity;
-        rewrite Bind_load.
-        unshelve erewrite @Bind_setRegister;
+        rewrite Bind_load;
+        (unshelve erewrite @Bind_setRegister;
         [ apply State_is_RegisterFile
         | reflexivity
         | typeclasses eauto
-        | assumption ].
-        unshelve erewrite @Bind_setRegister;
-        [ apply State_is_RegisterFile
-        | reflexivity
-        | typeclasses eauto
-        | assumption ].
+        | assumption ]).
   Qed. 
 
   Arguments Bind: simpl never.
