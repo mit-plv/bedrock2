@@ -58,6 +58,26 @@ Proof.
   intros. unfold ZToWord. apply wzero'_def.
 Qed.
 
+Lemma read_word_write_word_eq: forall w m a v,
+    @read_word w (write_word m a v) a = v.
+Admitted.
+
+(* TODO doesn't hold (unless all 64bit machines have 2^64 bytes of memory!) *)
+Lemma read_word_write_word_ne: forall w m a1 a2 v1,
+    a1 <> a2 ->
+    @read_word w (write_word m a1 v1) a2 = @read_word w m a2.
+Admitted.
+
+Lemma read_double_write_double_eq: forall w m a v,
+    @read_double w (write_double m a v) a = v.
+Admitted.
+
+(* TODO doesn't hold (unless all 64bit machines have 2^64 bytes of memory!) *)
+Lemma read_double_write_double_ne: forall w m a1 a2 v1,
+    a1 <> a2 ->
+    @read_double w (write_double m a1 v1) a2 = @read_double w m a2.
+Admitted.
+
 
 (* State_is_RegisterFile gets its own section so that destructing Bw later does
    not lead to ill-typed terms *)
@@ -264,6 +284,12 @@ Section FlatToRiscv.
   Definition ldInst(m: mem wXLEN)(a: word wXLEN): Instruction :=
     decode RV_wXLEN_IM (wordToZ (Memory.loadWord m a)).
 
+  Definition words_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
+    forall i, 0 <= i < len -> Memory.read_mem (start ^+ $4 ^* $i) m = None.
+
+  Definition mem_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
+    forall i, 0 <= i < len -> Memory.read_mem (start ^+ $i) m = None.
+
   Definition containsProgram(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
     forall i inst, nth_error program i = Some inst ->
       ldInst m (offset ^+ $4 ^* $i) = inst.
@@ -417,12 +443,16 @@ Section FlatToRiscv.
     | |- containsProgram _ _ _ => subst
     end;    
     repeat (rewrite <- app_assoc || rewrite <- app_comm_cons);
+    (*
     repeat match goal with
            | H: ?P |- _ => match P with
                          | containsProgram _ _ _ => fail 1
+                         | mem_inaccessible _ _ _ => fail 1
+                         | containsMem _ _ => fail 1
                          | _ => clear H
                          end
            end;
+    *)
     repeat match goal with
            | |- containsProgram _ [[]] _ => apply containsProgram_nil
            | |- containsProgram _ (_ ++ _) _ => apply containsProgram_app
@@ -827,9 +857,37 @@ Section FlatToRiscv.
     - exact (Memory.storeWord memL addr v).
     - exact (Memory.storeDouble memL addr v).
   Defined.
-  
+
+  Definition write_word_wXLEN(m: mem wXLEN)(a v: word wXLEN): mem wXLEN.
+    unfold wXLEN, bitwidth in *.
+    clear - m a v.
+    destruct Bw.
+    - exact (write_word m a v).
+    - exact (write_double m a v).
+  Defined.
+
   Definition containsMem(memL: FunctionMemory.mem wXLEN)(memH: Memory.mem): Prop :=
     forall addr v, memH addr = Some v -> loadWordL memL addr = Some v.
+
+  Lemma containsMem_write: forall initialL initialH finalH a v,
+    containsMem initialL initialH ->
+    Memory.write_mem a v initialH = Some finalH ->
+    containsMem (write_word_wXLEN initialL a v) finalH.
+  Proof.
+    unfold Memory.write_mem, Memory.read_mem, containsMem, write_word_wXLEN,
+      loadWordL, wXLEN, bitwidth in *.
+    intros; destruct Bw; simpl in *;
+    (destruct_one_match_hyp; [|discriminate]);
+    (destruct_one_match_hyp; [|discriminate]);
+    inversions H0;
+    destruct_one_match_hyp.
+    - inversion H1; subst; clear H1 E1. f_equal; apply read_word_write_word_eq.
+    - f_equal. specialize H with (1 := H1). inversions H.
+      apply read_word_write_word_ne; assumption.
+    - inversion H1; subst; clear H1 E1. f_equal; apply read_double_write_double_eq.
+    - f_equal. specialize H with (1 := H1). inversions H.
+      apply read_double_write_double_ne; assumption.
+  Qed.
 
   (* TODO might not hold if a = 0, but we only use it with a = 4 *)
   Lemma wzero_div: forall sz a, wzero sz ^/ a = wzero sz. Admitted.
@@ -1172,13 +1230,6 @@ list2imem
       (wordToZ a mod 8 = 0)%Z ->
       translate mode eight a = Return a.
 
-  Definition words_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
-    forall i, 0 <= i < len -> Memory.read_mem (start ^+ $4 ^* $i) m = None.
-
-  Definition mem_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
-    forall i, 0 <= i < len -> Memory.read_mem (start ^+ $i) m = None.
-
-
   Arguments mult: simpl never.
   Arguments run1: simpl never.
 
@@ -1422,11 +1473,13 @@ list2imem
     repeat split;
     first
       [ assumption
+      | eapply containsMem_write; eassumption
       | match goal with
         | |- extends _ _ => state_calc
         end
       | solve_containsProgram
-      | solve_word_eq ].
+      | solve_word_eq
+      | idtac ].
 
   Ltac IH_done IH :=
     eapply runsToSatisfying_imp; [ exact IH | ];
@@ -1503,14 +1556,6 @@ list2imem
         | typeclasses eauto
         | assumption ]).
   Qed. 
-
-  Definition write_word_wXLEN(m: mem wXLEN)(a v: word wXLEN): mem wXLEN.
-    unfold wXLEN, bitwidth in *.
-    clear - m a v.
-    destruct Bw.
-    - exact (write_word m a v).
-    - exact (write_double m a v).
-  Defined.
 
   Lemma execute_store: forall {A: Type} (ra rv: Register) (a v: word wXLEN)
                          (initialMH finalMH: Memory.mem)
@@ -1592,14 +1637,24 @@ list2imem
       fetch_inst.
       erewrite execute_load; [|eassumption..].
       simpl_RiscvMachine_get_set.
-      rewrite <- right_identity with (m := step).
-      rewrite Bind_step.
       simpl.
-      rewrite execState_Return.
+      rewrite execState_step.
       simpl_RiscvMachine_get_set.
       run1done.
     - (* SStore *)
-      admit.
+      clear IHfuelH.
+      apply runsToStep; simpl in *; subst *.
+      fetch_inst.
+      erewrite execute_store; [|eassumption..].
+      simpl_RiscvMachine_get_set.
+      rewrite execState_step.
+      simpl_RiscvMachine_get_set.
+      run1done.
+      (* H13 says we can write at a0 in initialMH, and from H10, we know that
+         a0 is not between imemStart and imemEnd, so containsProgram is preserved *)  
+      + admit.
+      + admit.
+      + admit.
     - (* SLit *)
       admit.
     - (* SOp *)
