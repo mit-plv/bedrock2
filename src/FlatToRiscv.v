@@ -1529,30 +1529,30 @@ list2imem
     unfold containsMem, Memory.write_mem, Memory.read_mem,
       Memory.wXLEN_in_bytes, load_wXLEN in *.
     unfold SwXLEN, bitwidth, loadWordL, write_word_wXLEN in *.
-    destruct Bw eqn: EBw. {
-      simpl in H2.
-      (destruct_one_match_hyp; [|discriminate]).
+    destruct Bw eqn: EBw;
+      simpl in H2;
+      (destruct_one_match_hyp; [|discriminate]);
       inversions H1;
-      (destruct_one_match_hyp; [|discriminate]).        
+      (destruct_one_match_hyp; [|discriminate]);        
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-      rewrite associativity.
-      (myrewrite Bind_getRegister by assumption);
-      rewrite associativity.
-        unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
-        rewrite ZToWord_0.
-        rewrite wplus_comm;
-          rewrite wplus_unit.
-        unfold wXLEN, bitwidth in *.
-        rewrite_reg_value.
-        ( (rewrite translate_id_if_aligned_4 by assumption) ||
-          (rewrite translate_id_if_aligned_8 by assumption) ).
-        rewrite left_identity.
-        rewrite associativity.
-        erewrite @Bind_getRegister; [|typeclasses eauto|assumption].
-        erewrite @Bind_storeWord; [|typeclasses eauto].
-        rewrite_reg_value.
-        reflexivity.        }
-    admit.
+      rewrite associativity;
+      myrewrite Bind_getRegister by assumption;
+      rewrite associativity;
+      unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
+      rewrite ZToWord_0;
+      rewrite wplus_comm;
+      rewrite wplus_unit;
+      unfold wXLEN, bitwidth in *;
+      rewrite_reg_value;
+      [ rewrite translate_id_if_aligned_4 by assumption |
+        rewrite translate_id_if_aligned_8 by assumption ];
+      rewrite left_identity;
+      rewrite associativity;
+      (erewrite @Bind_getRegister; [|typeclasses eauto|assumption]);
+      [ (erewrite @Bind_storeWord; [|typeclasses eauto]) |
+        (erewrite @Bind_storeDouble; [|typeclasses eauto]) ];
+      rewrite_reg_value;
+      reflexivity.
   Qed.   
   
   Arguments Bind: simpl never.
