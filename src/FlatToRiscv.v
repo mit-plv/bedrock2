@@ -1444,7 +1444,7 @@ list2imem
 
   (* TODO it seems we need this inside proofs where we destructed Bw, how can we make
      typeclass search work there? *)
-  Tactic Notation "myrewrite" uconstr(c) "by" tactic(t) :=
+  Tactic Notation "myrewrite" uconstr(c) "by" tactic3(t) :=
     (unshelve erewrite c by t;
       [ ( apply State_is_RegisterFile || typeclasses eauto ) .. | ]).
 
@@ -1475,39 +1475,28 @@ list2imem
       simpl in H2; inversions H2;
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
       rewrite associativity;
-      myrewrite Bind_getRegister by assumption.
-    { rewrite associativity;
+      (myrewrite Bind_getRegister by assumption);
+      rewrite associativity;
         unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
         rewrite ZToWord_0;
         rewrite_reg_value;
         rewrite wplus_comm;
         rewrite wplus_unit;
-        ((rewrite translate_id_if_aligned_4 by assumption) ||
-         (rewrite translate_id_if_aligned_8 by assumption));
+        [ rewrite translate_id_if_aligned_4 by assumption |
+          rewrite translate_id_if_aligned_8 by assumption ];
         rewrite left_identity;
-        rewrite associativity.
-      rewrite Bind_load.
-      unshelve erewrite @Bind_setRegister.
-      apply State_is_RegisterFile.
-      2: typeclasses eauto.
-      2: eassumption.
-      reflexivity. }
-    { rewrite associativity;
-        unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
-        rewrite ZToWord_0;
-        rewrite_reg_value;
-        rewrite wplus_comm;
-        rewrite wplus_unit;
-        ((rewrite translate_id_if_aligned_4 by assumption) ||
-         (rewrite translate_id_if_aligned_8 by assumption));
-        rewrite left_identity;
-        rewrite associativity.
-      rewrite Bind_load.
-      unshelve erewrite @Bind_setRegister.
-      apply State_is_RegisterFile.
-      2: typeclasses eauto.
-      2: eassumption.
-      reflexivity. }
+        rewrite associativity;
+        rewrite Bind_load.
+        unshelve erewrite @Bind_setRegister;
+        [ apply State_is_RegisterFile
+        | reflexivity
+        | typeclasses eauto
+        | assumption ].
+        unshelve erewrite @Bind_setRegister;
+        [ apply State_is_RegisterFile
+        | reflexivity
+        | typeclasses eauto
+        | assumption ].
   Qed. 
 
   Arguments Bind: simpl never.
