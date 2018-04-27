@@ -818,6 +818,15 @@ Section FlatToRiscv.
     - exact (Memory.loadWord memL addr).
     - exact (Memory.loadDouble memL addr).
   Defined.
+
+  Definition storeWordL(memL: FunctionMemory.mem wXLEN)(addr v: word wXLEN):
+      option (FunctionMemory.mem wXLEN).
+    clear -addr v memL.
+    unfold wXLEN in *.
+    destruct bitwidth; apply Some.
+    - exact (Memory.storeWord memL addr v).
+    - exact (Memory.storeDouble memL addr v).
+  Defined.
   
   Definition containsMem(memL: FunctionMemory.mem wXLEN)(memH: Memory.mem): Prop :=
     forall addr v, memH addr = Some v -> loadWordL memL addr = Some v.
@@ -1197,12 +1206,13 @@ list2imem
     | G2: get ?st2 ?x = ?v, E: extends ?st1 ?st2 |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
       let gg := constr:(@getReg RF R V TC st1 x) in
       let gg' := eval unfold getReg, State_is_RegisterFile in gg in
-      change gg with gg';
+      progress change gg with gg';
       match gg' with
       | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by (clear -G2 E; state_calc)
       end
     end;
-    rewrite G1.
+    rewrite G1;
+    clear G1.
 
   Lemma weqb_eq: forall sz (a b: word sz), a = b -> weqb a b = true.
   Proof. intros. rewrite weqb_true_iff. assumption. Qed.
@@ -1494,6 +1504,57 @@ list2imem
         | assumption ]).
   Qed. 
 
+  Definition write_word_wXLEN(m: mem wXLEN)(a v: word wXLEN): mem wXLEN.
+    unfold wXLEN, bitwidth in *.
+    clear - m a v.
+    destruct Bw.
+    - exact (write_word m a v).
+    - exact (write_double m a v).
+  Defined.
+
+  Lemma execute_store: forall {A: Type} (ra rv: Register) (a v: word wXLEN)
+                         (initialMH finalMH: Memory.mem)
+                         (f: unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+      valid_register ra ->
+      valid_register rv ->
+      Memory.write_mem a v initialMH = Some finalMH ->
+      containsMem initialL.(machineMem) initialMH ->
+      get initialRegsH ra = Some a ->
+      get initialRegsH rv = Some v ->
+      extends initialL.(core).(registers) initialRegsH ->
+      execState (Bind (execute (SwXLEN ra rv 0)) f) initialL =
+      execState (f tt) (with_machineMem (write_word_wXLEN initialL.(machineMem) a v) initialL).
+  Proof.
+    intros.
+    unfold containsMem, Memory.write_mem, Memory.read_mem,
+      Memory.wXLEN_in_bytes, load_wXLEN in *.
+    unfold SwXLEN, bitwidth, loadWordL, write_word_wXLEN in *.
+    destruct Bw eqn: EBw. {
+      simpl in H2.
+      (destruct_one_match_hyp; [|discriminate]).
+      inversions H1;
+      (destruct_one_match_hyp; [|discriminate]).        
+      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+      rewrite associativity.
+      (myrewrite Bind_getRegister by assumption);
+      rewrite associativity.
+        unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
+        rewrite ZToWord_0.
+        rewrite wplus_comm;
+          rewrite wplus_unit.
+        unfold wXLEN, bitwidth in *.
+        rewrite_reg_value.
+        ( (rewrite translate_id_if_aligned_4 by assumption) ||
+          (rewrite translate_id_if_aligned_8 by assumption) ).
+        rewrite left_identity.
+        rewrite associativity.
+        erewrite @Bind_getRegister; [|typeclasses eauto|assumption].
+        erewrite @Bind_storeWord; [|typeclasses eauto].
+        rewrite_reg_value.
+        reflexivity.        }
+    admit.
+  Qed.   
+  
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
 
