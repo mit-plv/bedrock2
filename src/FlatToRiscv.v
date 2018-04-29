@@ -175,6 +175,30 @@ Section FlatToRiscv.
     | OAnd => [[And rd rs1 rs2]]
     end.
 
+  Definition add_lit_20(rd rs: Register)(v: word 20): list Instruction :=
+    [[Addi rd rs (wordToZ v)]].
+  
+  Definition add_lit_32(rd rs: Register)(v: word 32): list Instruction :=
+    let lobits := split1 20 12 v in
+    let hibits := split2 20 12 v in [[]].
+
+  Definition compile_lit_64(rd: Register)(v: word 64): list Instruction :=
+    let lobits := split1 32 32 v in
+    let hibits := split2 32 32 v in
+
+    [[J 12; InvalidInstruction (wordToZ lobits); InvalidInstruction (wordToZ hibits)
+        (* would need AUIPC to get relative address and load from there, seems stupid,
+           better use constant pool *) ]].
+  
+  Definition add_lit_20'(rd rs: Register)(v: Z): list Instruction :=
+    [[Addi rd rs v]].
+
+  Definition add_lit_32'(rd rs: Register)(v: Z): list Instruction :=
+    (if dec (- 2^19 <= v < 2^19)%Z then [[]] else (
+         let '(hibits, lobits) := (1%Z, 1%Z) in
+         let maybe1 := 1%Z in
+         ([[ Lui rd hibits ]] ++ (add_lit_20' rd rs (lobits + maybe1))))).
+  
   Definition compile_lit_32(rd: Register)(v: Z): list Instruction :=
       let lobits := (v mod (2 ^ 20))%Z in
       if dec (lobits = v)
@@ -186,7 +210,7 @@ Section FlatToRiscv.
         then [[Lui rd (Z.lnot hibits); Xori rd rd lobits]]
         (* Xori will sign-extend lobits with 0s *)
         else [[Lui rd hibits; Xori rd rd lobits]].
-
+  
   Definition compile_lit(rd: Register)(v: Z): list Instruction :=
     match bitwidth with
     | Bitwidth32 => compile_lit_32 rd v
@@ -1656,6 +1680,31 @@ list2imem
       + admit.
       + admit.
     - (* SLit *)
+      clear IHfuelH.
+      unfold compile_lit in *.
+
+      simpl in *.
+
+          apply runsToStep;
+    simpl in *; subst *.
+    fetch_inst;
+    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+    repeat (
+        do_get_set_Register || 
+        simpl_RiscvMachine_get_set ||
+        rewrite_reg_value ||
+        rewrite_alu_op_defs ||
+        (rewrite weqb_ne by congruence) ||
+        (rewrite weqb_eq by congruence) ||
+        rewrite left_identity ||
+        simpl_rem4_test).
+
+  Ltac run1step :=
+    run1step';
+    rewrite execState_step;
+    simpl_RiscvMachine_get_set.
+
+      run1step.
       admit.
     - (* SOp *)
       admit.
