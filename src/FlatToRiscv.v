@@ -275,9 +275,9 @@ Section FlatToRiscv.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [[Beq cond Register0 (Z.of_nat (2 * (S (length bThen'))))]] ++
+        [[Beq cond Register0 ((Z.of_nat (length bThen' + 2)) * 4)]] ++
         bThen' ++
-        [[Jal Register0 (Z.of_nat (2 * (length bElse')))]] ++
+        [[Jal Register0 ((Z.of_nat (length bElse' + 1)) * 4)]] ++
         bElse'
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
@@ -1301,7 +1301,7 @@ list2imem
         match E with
         | execState run1 ?initialL =>
           let Eqpc := fresh in
-          assert (pc0 = initialL.(core).(pc)) as Eqpc by reflexivity;
+          assert (pc0 = initialL.(core).(pc)) as Eqpc by solve_word_eq;
             replace E with (execState (execute inst;; step) initialL) by
               (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
             clear Eqpc
@@ -1663,6 +1663,8 @@ list2imem
   
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
+  Arguments app: simpl never. (* don't simpl ([[ oneInst ]] ++ rest) into oneInst :: rest
+    because otherwise solve_imem doesn't recognize "middle" any more *)
 
   (*
   Lemma compile_halves_correct:
@@ -1781,11 +1783,35 @@ list2imem
     - (* SOp *)
       admit.
     - (* SSet *)
-      admit.
+      clear IHfuelH.
+      run1step.
+      match goal with
+      | |- context [@setReg ?RF ?R ?V ?TC ?st1 ?x ?v] =>
+        let gg := constr:(@setReg RF R V TC st1 x v) in
+        let gg' := eval unfold setReg, State_is_RegisterFile in gg in
+            progress change gg with gg'
+      end.
+      run1done.
+      rewrite wplus_unit.
+      assumption.
     - (* SIf/Then *)
-      admit.
+      (* branch if cond = 0 (will not branch) *)
+      run1step.
+      (* use IH for then-branch *)
+      spec_IH IHfuelH IH s1.
+      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      (* jump over else-branch *)
+      intros.
+      destruct_everything.
+      run1step.
+      run1done.
     - (* SIf/Else *)
-      admit.
+      (* branch if cond = 0 (will  branch) *)
+      run1step.
+      (* use IH for else-branch *)
+      spec_IH IHfuelH IH s2.
+      IH_done IH.
+
     - (* SLoop/done *)
       (* We still have to run part 1 of the loop body which is before the break *)
       spec_IH IHfuelH IH s1.
