@@ -1516,6 +1516,13 @@ list2imem
     rewrite weqb_eq by reflexivity;
     simpl.
 
+  Lemma elim_then_true_else_false: forall P Q (c: {P} + {Q}) A (v1 v2: A),
+      (if if c then true else false then v1 else v2)
+      = (if c then v1 else v2).
+  Proof.
+    intros. destruct c; reflexivity.
+  Qed.
+
   Ltac run1step' :=
     apply runsToStep;
     simpl in *; subst *;
@@ -1530,6 +1537,7 @@ list2imem
         rewrite_alu_op_defs ||
         (rewrite weqb_ne by congruence) ||
         (rewrite weqb_eq by congruence) ||
+        rewrite elim_then_true_else_false ||
         rewrite left_identity ||
         simpl_rem4_test).
 
@@ -1802,23 +1810,9 @@ list2imem
       rewrite get_put_same.
       replace (ZToWord wXLEN 1) with (natToWord wXLEN 1).
       + rewrite reduce_eq_to_sub_and_lt.
-
-        assert (elim_then_true_else_false: forall P Q (c: {P} + {Q}) A (v1 v2: A),
-                   (if if c then true else false then v1 else v2)
-                   = (if c then v1 else v2)). {
-          clear. intros. destruct c; reflexivity.
-        }
-        rewrite elim_then_true_else_false.
         assumption.
       + change 1%Z with (Z.of_nat 1). rewrite ZToWord_Z_of_nat. reflexivity.
     - run1step. run1done.
-        assert (elim_then_true_else_false: forall P Q (c: {P} + {Q}) A (v1 v2: A),
-                   (if if c then true else false then v1 else v2)
-                   = (if c then v1 else v2)). {
-          clear. intros. destruct c; reflexivity.
-        }
-        rewrite elim_then_true_else_false.
-        assumption.
     - run1step. run1done.
 
     - (* SSet *)
