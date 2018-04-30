@@ -205,7 +205,7 @@ Section FlatToRiscv.
   Qed.
   *)
   
-  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit_old(rd: Register)(v: Z): list Instruction :=
     compile_halves (wXLEN / 16) rd v.
 
   (*
@@ -215,15 +215,23 @@ Section FlatToRiscv.
   Definition add_lit_32(rd rs: Register)(v: word 32): list Instruction :=
     let lobits := split1 20 12 v in
     let hibits := split2 20 12 v in [[]].
+  *)
+
+  Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
+    [[J 8;
+      InvalidInstruction (wordToZ v);
+      Auipc rd 0;
+      Lw rd rd (-4)]].
 
   Definition compile_lit_64(rd: Register)(v: word 64): list Instruction :=
     let lobits := split1 32 32 v in
     let hibits := split2 32 32 v in
+    [[J 12;
+      InvalidInstruction (wordToZ lobits); InvalidInstruction (wordToZ hibits);
+      Auipc rd 0;
+      Ld rd rd (-8)]].
 
-    [[J 12; InvalidInstruction (wordToZ lobits); InvalidInstruction (wordToZ hibits)
-        (* would need AUIPC to get relative address and load from there, seems stupid,
-           better use constant pool *) ]].
-  
+  (*
   Definition add_lit_20'(rd rs: Register)(v: Z): list Instruction :=
     [[Addi rd rs v]].
 
@@ -244,13 +252,13 @@ Section FlatToRiscv.
         then [[Lui rd (Z.lnot hibits); Xori rd rd lobits]]
         (* Xori will sign-extend lobits with 0s *)
         else [[Lui rd hibits; Xori rd rd lobits]].
-  
-  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
-    match bitwidth with
-    | Bitwidth32 => compile_lit_32 rd v
-    | Bitwidth64 => compile_lit_32 rd v (* TODO *)
-    end.
-  *)
+   *)
+
+  Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction.
+    clear -Bw rd v. unfold wXLEN, bitwidth in *. destruct Bw.
+    - exact (compile_lit_32 rd v).
+    - exact (compile_lit_64 rd v).
+  Defined.
 
   Definition LwXLEN: Register -> Register -> Z -> Instruction :=
     match bitwidth with
@@ -268,7 +276,7 @@ Section FlatToRiscv.
     match s with
     | SLoad x y => [[LwXLEN x y 0]]
     | SStore x y => [[SwXLEN x y 0]]
-    | SLit x v => compile_lit x (wordToZ v)
+    | SLit x v => compile_lit x v
     | SOp x op y z => compile_op x op y z
     | SSet x y => [[Add x Register0 y]]
     | SIf cond bThen bElse =>
