@@ -175,6 +175,40 @@ Section FlatToRiscv.
     | OAnd => [[And rd rs1 rs2]]
     end.
 
+  (* store the n lowest halves (1 half = 16bits) of v into rd *)
+  Fixpoint compile_halves(n: nat)(rd: Register)(v: Z): list Instruction :=
+    if dec (- 2^19 <= v < 2^19)%Z then
+      [[Addi rd Register0 v]]
+    else
+      match n with
+      | O => [[]] (* will not happen because we choose n big enough *)
+      | S n' =>
+        let upper := (v / 2^16)%Z in
+        let lower := (v - upper * 2^16)%Z in
+        (compile_halves n' rd upper) ++ [[Slli rd rd 16; Addi rd rd lower]]
+      end.
+
+  (*
+  Fixpoint interp_compiled_halves(l: list Instruction)(acc: Z): Z :=
+    match l with
+    | (Addi _ _ v) :: l' => interp_compiled_halves l' (acc + v)
+    | (Slli _ _ _) :: l' => interp_compiled_halves l' (acc * 16)
+    | _ => acc
+    end.
+
+  Lemma compile_halves_correct: forall n rd v acc,
+      v <=2^(16 * n)
+      interp_compiled_halves (compile_halves n rd v) acc = (acc + v)%Z.
+  Proof.
+    induction n; intros.
+    - simpl.
+  Qed.
+  *)
+  
+  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
+    compile_halves (wXLEN / 16) rd v.
+
+  (*
   Definition add_lit_20(rd rs: Register)(v: word 20): list Instruction :=
     [[Addi rd rs (wordToZ v)]].
   
@@ -216,6 +250,7 @@ Section FlatToRiscv.
     | Bitwidth32 => compile_lit_32 rd v
     | Bitwidth64 => compile_lit_32 rd v (* TODO *)
     end.
+  *)
 
   Definition LwXLEN: Register -> Register -> Z -> Instruction :=
     match bitwidth with
@@ -261,9 +296,11 @@ Section FlatToRiscv.
   Proof.
     induction s; simpl; try destruct op; simpl;
     repeat (rewrite app_length; simpl); try omega.
-    unfold compile_lit, compile_lit_32.
+    unfold compile_lit, wXLEN, bitwidth.
+    destruct Bw. (* TODO adapt stmt_size 
     repeat destruct_one_match; cbv [length]; omega.
-  Qed.
+  Qed.*)
+  Admitted.
 
   Add Ring word_wXLEN_ring : (wring wXLEN).
 
@@ -1627,6 +1664,33 @@ list2imem
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
 
+  (*
+  Lemma compile_halves_correct:
+    forall allInsts imemStart (nH: nat) (vFinal vRemaining: Z) rd insts initialL
+      instsBefore instsAfter,
+    compile_halves nH rd vRemaining = insts ->
+    allInsts = instsBefore ++ insts ++ instsAfter ->  
+    valid_register rd ->
+    containsProgram initialL.(machineMem) allInsts ($4 ^* imemStart) ->
+    initialL.(core).(pc) = ($4 ^* imemStart) ^+ $4 ^* $(length instsBefore) ->
+    initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
+    ((wordToZ (getReg initialL.(core).(registers) rd) * (2^(16*(Z.of_nat nH))) + vRemaining
+      = vFinal)%Z \/ (vRemaining = vFinal)) ->
+    runsToSatisfying initialL (fun finalL =>
+      finalL.(core).(registers) = setReg initialL.(core).(registers) rd (ZToWord wXLEN vFinal) /\
+      (*
+      (getReg final.(core).(registers) rd) * (ZToWord (2^(16*nH)))   /\
+      (forall r, r <> rd -> getReg finalL.(core).(registers) r = getReg initialL.(core).(registers) r) /\
+      *)
+      finalL.(machineMem) = initialL.(machineMem) /\
+      finalL.(core).(pc) = initialL.(core).(pc) ^+ $ (4) ^* $ (length insts) /\
+      finalL.(core).(nextPC) = finalL.(core).(pc) ^+ $4).
+  Proof.
+    intros allInsts imemStart.
+    induction nH; intros.
+    - 
+  *)    
+
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
       instsBefore instsAfter,
@@ -1682,10 +1746,17 @@ list2imem
     - (* SLit *)
       clear IHfuelH.
       unfold compile_lit in *.
-
-      simpl in *.
-
-          apply runsToStep;
+      clear H.      
+      generalize dependent v. generalize dependent initialL_regs.
+      remember (wXLEN / 16) as nH.
+      generalize dependent nH.
+      induction nH; intros.
+      + exfalso. clear -HeqnH. unfold wXLEN, bitwidth in *.
+        destruct Bw; simpl in *; omega.
+      + 
+      (*
+      apply runsToStep.
+      fetch_inst.
     simpl in *; subst *.
     fetch_inst;
     cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
@@ -1704,7 +1775,8 @@ list2imem
     rewrite execState_step;
     simpl_RiscvMachine_get_set.
 
-      run1step.
+  run1step.
+  *)
       admit.
     - (* SOp *)
       admit.
