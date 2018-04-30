@@ -1625,14 +1625,15 @@ list2imem
       [ ( apply State_is_RegisterFile || typeclasses eauto ) .. | ]).
 
   Lemma execute_load: forall {A: Type} (x a: Register) (addr v: word wXLEN) (initialMH: Memory.mem)
-                        (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+           (offset: Z) (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
       valid_register x ->
       valid_register a ->
-      Memory.read_mem addr initialMH = Some v ->
+      Memory.read_mem (addr ^+ (ZToWord wXLEN offset)) initialMH = Some v ->
       containsMem initialL.(machineMem) initialMH ->
       get initialRegsH a = Some addr ->
       extends initialL.(core).(registers) initialRegsH ->
-      execState (Bind (execute (LwXLEN x a 0)) f) initialL =
+      (offset mod (Z.of_nat wXLEN_in_bytes) = 0)%Z ->
+      execState (Bind (execute (LwXLEN x a offset)) f) initialL =
       execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros.
@@ -1650,10 +1651,7 @@ list2imem
       (myrewrite Bind_getRegister by assumption);
       rewrite associativity;
         unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
-        rewrite ZToWord_0;
         rewrite_reg_value;
-        rewrite wplus_comm;
-        rewrite wplus_unit;
         [ rewrite translate_id_if_aligned_4 by assumption |
           rewrite translate_id_if_aligned_8 by assumption ];
         rewrite left_identity;
@@ -1666,6 +1664,27 @@ list2imem
         | assumption ]).
   Qed. 
 
+  Lemma execute_load_0_offset:
+      forall {A: Type} (x a: Register) (addr v: word wXLEN) (initialMH: Memory.mem)
+         (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+      valid_register x ->
+      valid_register a ->
+      Memory.read_mem addr initialMH = Some v ->
+      containsMem initialL.(machineMem) initialMH ->
+      get initialRegsH a = Some addr ->
+      extends initialL.(core).(registers) initialRegsH ->
+      execState (Bind (execute (LwXLEN x a 0)) f) initialL =
+      execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
+  Proof.
+    intros.
+    eapply execute_load; try eassumption.
+    - rewrite ZToWord_0.
+      rewrite wplus_comm.
+      rewrite wplus_unit.
+      assumption.
+    - apply Zdiv.Zmod_0_l.
+  Qed.
+      
   Lemma execute_store: forall {A: Type} (ra rv: Register) (a v: word wXLEN)
                          (initialMH finalMH: Memory.mem)
                          (f: unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
@@ -1770,13 +1789,13 @@ list2imem
       try match goal with
           | o: binop |- _ => destruct o (* do this before destruct_containsProgram *)
           end;
-      simpl in *;
+      simpl in *; unfold compile_lit in *;
       destruct_everything.
     - (* SLoad *)
       clear IHfuelH.
       apply runsToStep; simpl in *; subst *.
       fetch_inst.
-      erewrite execute_load; [|eassumption..].
+      erewrite execute_load_0_offset; [|eassumption..].
       simpl_RiscvMachine_get_set.
       simpl.
       rewrite execState_step.
@@ -1798,15 +1817,8 @@ list2imem
       + admit.
     - (* SLit *)
       clear IHfuelH.
-      unfold compile_lit in *.
-      clear H.      
-      generalize dependent v. generalize dependent initialL_regs.
-      remember (wXLEN / 16) as nH.
-      generalize dependent nH.
-      induction nH; intros.
-      + exfalso. clear -HeqnH. unfold wXLEN, bitwidth in *.
-        destruct Bw; simpl in *; omega.
-      + 
+      run1step.
+      run1step'.
       (*
       apply runsToStep.
       fetch_inst.
