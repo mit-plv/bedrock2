@@ -165,6 +165,18 @@ Section FlatToRiscv.
      Uncaught anomaly when stepping through proofs :(
      https://github.com/coq/coq/issues/6257 *)
 
+  Definition LwXLEN: Register -> Register -> Z -> Instruction :=
+    match bitwidth with
+    | Bitwidth32 => Lw
+    | Bitwidth64 => Ld
+    end.
+  
+  Definition SwXLEN: Register -> Register -> Z -> Instruction :=
+    match bitwidth with
+    | Bitwidth32 => Sw
+    | Bitwidth64 => Sd
+    end.
+
   Definition compile_op(rd: Register)(op: binop)(rs1 rs2: Register): list Instruction :=
     match op with
     | OPlus => [[Add rd rs1 rs2]]
@@ -217,6 +229,23 @@ Section FlatToRiscv.
     let hibits := split2 20 12 v in [[]].
   *)
 
+  Definition embed_lit_32(v: word 32): list Instruction :=
+    [[J 8; InvalidInstruction (wordToZ v)]].
+
+  Definition embed_lit_64(v: word 64): list Instruction :=
+    let lobits := split1 32 32 v in
+    let hibits := split2 32 32 v in
+    [[J 12; InvalidInstruction (wordToZ lobits); InvalidInstruction (wordToZ hibits)]].
+
+  Definition embed_lit(v: word wXLEN): list Instruction.
+    clear -Bw v. unfold wXLEN, bitwidth in *. destruct Bw.
+    - exact (embed_lit_32 v).
+    - exact (embed_lit_64 v).
+  Defined.
+
+  Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction :=
+    [[Auipc rd 0; LwXLEN rd rd 8]] ++ (embed_lit v).
+
   Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
     [[J 8;
       InvalidInstruction (wordToZ v);
@@ -254,23 +283,11 @@ Section FlatToRiscv.
         else [[Lui rd hibits; Xori rd rd lobits]].
    *)
 
-  Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction.
+  Definition compile_lit_old'(rd: Register)(v: word wXLEN): list Instruction.
     clear -Bw rd v. unfold wXLEN, bitwidth in *. destruct Bw.
     - exact (compile_lit_32 rd v).
     - exact (compile_lit_64 rd v).
   Defined.
-
-  Definition LwXLEN: Register -> Register -> Z -> Instruction :=
-    match bitwidth with
-    | Bitwidth32 => Lw
-    | Bitwidth64 => Ld
-    end.
-  
-  Definition SwXLEN: Register -> Register -> Z -> Instruction :=
-    match bitwidth with
-    | Bitwidth32 => Sw
-    | Bitwidth64 => Sd
-    end.
 
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
@@ -299,15 +316,20 @@ Section FlatToRiscv.
     | SSkip => nil
     end.
 
+  Lemma embed_lit_size: forall v,
+    length (embed_lit v) <= 3.
+  Proof.
+    intros. clear.
+    unfold wXLEN, bitwidth, embed_lit, embed_lit_32, embed_lit_64 in *.
+    destruct Bw; simpl; omega.
+  Qed.
+  
   Lemma compile_stmt_size: forall s,
     length (compile_stmt s) <= 2 * (stmt_size s).
   Proof.
     induction s; simpl; try destruct op; simpl;
     repeat (rewrite app_length; simpl); try omega.
-    unfold compile_lit, wXLEN, bitwidth.
-    destruct Bw. (* TODO adapt stmt_size 
-    repeat destruct_one_match; cbv [length]; omega.
-  Qed.*)
+    pose proof (embed_lit_size v). (* TODO adapt stmt_size *)
   Admitted.
 
   Add Ring word_wXLEN_ring : (wring wXLEN).
