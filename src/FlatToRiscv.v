@@ -1326,6 +1326,14 @@ list2imem
     rewrite G1;
     clear G1.
 
+  Ltac rewrite_setReg :=
+    match goal with
+    | |- context [@setReg ?RF ?R ?V ?TC ?st1 ?x ?v] =>
+      let gg := constr:(@setReg RF R V TC st1 x v) in
+      let gg' := eval unfold setReg, State_is_RegisterFile in gg in
+          progress change gg with gg'
+    end.
+
   Lemma weqb_eq: forall sz (a b: word sz), a = b -> weqb a b = true.
   Proof. intros. rewrite weqb_true_iff. assumption. Qed.
   
@@ -1512,11 +1520,13 @@ list2imem
     apply runsToStep;
     simpl in *; subst *;
     fetch_inst;
+    autounfold with unf_pseudo in *;
     cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
     repeat (
         do_get_set_Register || 
         simpl_RiscvMachine_get_set ||
         rewrite_reg_value ||
+        rewrite_setReg ||
         rewrite_alu_op_defs ||
         (rewrite weqb_ne by congruence) ||
         (rewrite weqb_eq by congruence) ||
@@ -1719,6 +1729,9 @@ list2imem
     intros.
     unfold runsToSatisfying in *.
     invert_eval_stmt;
+      try match goal with
+          | o: binop |- _ => destruct o (* do this before destruct_containsProgram *)
+          end;
       simpl in *;
       destruct_everything.
     - (* SLoad *)
@@ -1780,17 +1793,37 @@ list2imem
   run1step.
   *)
       admit.
-    - (* SOp *)
-      admit.
+      (* SOp *)
+    - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1step. run1done.
+      unfold getReg, State_is_RegisterFile.
+      rewrite get_put_same.
+      replace (ZToWord wXLEN 1) with (natToWord wXLEN 1).
+      + rewrite reduce_eq_to_sub_and_lt.
+
+        assert (elim_then_true_else_false: forall P Q (c: {P} + {Q}) A (v1 v2: A),
+                   (if if c then true else false then v1 else v2)
+                   = (if c then v1 else v2)). {
+          clear. intros. destruct c; reflexivity.
+        }
+        rewrite elim_then_true_else_false.
+        assumption.
+      + change 1%Z with (Z.of_nat 1). rewrite ZToWord_Z_of_nat. reflexivity.
+    - run1step. run1done.
+        assert (elim_then_true_else_false: forall P Q (c: {P} + {Q}) A (v1 v2: A),
+                   (if if c then true else false then v1 else v2)
+                   = (if c then v1 else v2)). {
+          clear. intros. destruct c; reflexivity.
+        }
+        rewrite elim_then_true_else_false.
+        assumption.
+    - run1step. run1done.
+
     - (* SSet *)
       clear IHfuelH.
       run1step.
-      match goal with
-      | |- context [@setReg ?RF ?R ?V ?TC ?st1 ?x ?v] =>
-        let gg := constr:(@setReg RF R V TC st1 x v) in
-        let gg' := eval unfold setReg, State_is_RegisterFile in gg in
-            progress change gg with gg'
-      end.
       run1done.
       rewrite wplus_unit.
       assumption.
