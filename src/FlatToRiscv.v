@@ -227,24 +227,20 @@ Section FlatToRiscv.
   Definition add_lit_32(rd rs: Register)(v: word 32): list Instruction :=
     let lobits := split1 20 12 v in
     let hibits := split2 20 12 v in [[]].
+
+  Definition embed_words(l: list (word 32)): list Instruction :=
+    [[J (Z.of_nat (length l))]] ++ (map (fun w => InvalidInstruction (wordToZ w)) l).
   *)
 
-  Definition embed_lit_32(v: word 32): list Instruction :=
-    [[J 8; InvalidInstruction (wordToZ v)]].
-
-  Definition embed_lit_64(v: word 64): list Instruction :=
-    let lobits := split1 32 32 v in
-    let hibits := split2 32 32 v in
-    [[J 12; InvalidInstruction (wordToZ lobits); InvalidInstruction (wordToZ hibits)]].
-
-  Definition embed_lit(v: word wXLEN): list Instruction.
+  Definition wXLEN_to_word_list(v: word wXLEN): list (word 32).
     clear -Bw v. unfold wXLEN, bitwidth in *. destruct Bw.
-    - exact (embed_lit_32 v).
-    - exact (embed_lit_64 v).
+    - exact [v].
+    - exact [split1 32 32 v; split2 32 32 v].
   Defined.
 
   Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction :=
-    [[Auipc rd 0; LwXLEN rd rd 8]] ++ (embed_lit v).
+    let l := map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v) in
+    [[Auipc rd 0; LwXLEN rd rd 8; J (Z.of_nat (length l))]] ++ l.
 
   Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
     [[J 8;
@@ -316,6 +312,7 @@ Section FlatToRiscv.
     | SSkip => nil
     end.
 
+  (*
   Lemma embed_lit_size: forall v,
     length (embed_lit v) <= 3.
   Proof.
@@ -323,13 +320,14 @@ Section FlatToRiscv.
     unfold wXLEN, bitwidth, embed_lit, embed_lit_32, embed_lit_64 in *.
     destruct Bw; simpl; omega.
   Qed.
+  *)
   
   Lemma compile_stmt_size: forall s,
     length (compile_stmt s) <= 2 * (stmt_size s).
   Proof.
     induction s; simpl; try destruct op; simpl;
     repeat (rewrite app_length; simpl); try omega.
-    pose proof (embed_lit_size v). (* TODO adapt stmt_size *)
+    (* pose proof (embed_lit_size v). TODO adapt stmt_size *)
   Admitted.
 
   Add Ring word_wXLEN_ring : (wring wXLEN).
@@ -1819,6 +1817,12 @@ list2imem
       clear IHfuelH.
       run1step.
       run1step'.
+      match goal with
+      | |- runsTo _ _ (execState _ ?initialL) _ => idtac initialL
+      end.
+      
+      erewrite execute_load; try eassumption.
+
       (*
       apply runsToStep.
       fetch_inst.
