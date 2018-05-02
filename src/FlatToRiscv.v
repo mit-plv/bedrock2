@@ -1015,6 +1015,8 @@ Section FlatToRiscv.
     | Bitwidth64 => loadDouble
     end. *)
 
+  (* not needed -- proving that loadWord or loadDouble equals load_wXLEN is too cumbersome
+     to make it worth
   Definition load_wXLEN: word wXLEN -> OState RiscvMachine (word wXLEN).
     set (lw := loadWord).
     set (ld := loadDouble).
@@ -1026,31 +1028,7 @@ Section FlatToRiscv.
     - exact lw.
     - exact ld.
   Defined.
-  
-  Lemma Bind_load: forall {A: Type} (a v: word wXLEN) (initialMH: Memory.mem)
-                         (f: word wXLEN -> OState RiscvMachine A) (initialL: RiscvMachine),
-      initialMH a = Some v ->
-      containsMem initialL.(machineMem) initialMH ->
-      execState (Bind (load_wXLEN a) f) initialL = execState (f v) initialL.
-  Proof.
-    intros.
-    unfold containsMem in *.
-    specialize H0 with (1 := H).
-    unfold State_is_RegisterFile in *.
-    unfold containsMem, loadWordL, load_wXLEN in *.
-    unfold bitwidth in *.
-    destruct Bw; simpl in *|-; inversions H0;
-    (destruct (initialMH a); [|discriminate]);
-    inversions H.
-    - pose proof @Bind_loadWord as P. (* TODO make this rewrite work without specialize *)
-      specialize (P Bitwidth32 state).
-      erewrite P. 2: eauto.
-      reflexivity.
-    - pose proof @Bind_loadDouble as P.
-      specialize (P Bitwidth64 state).
-      erewrite P. 2: eauto.
-      reflexivity.
-  Qed.
+  *)
 
   Ltac do_get_set_Register :=
     repeat (
@@ -1635,13 +1613,11 @@ list2imem
       execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros.
-    pose proof @Bind_load as Bind_load.    
-    unfold containsMem, Memory.read_mem, Memory.wXLEN_in_bytes, load_wXLEN in *.
+    unfold containsMem, Memory.read_mem, Memory.wXLEN_in_bytes in *.
     unfold LwXLEN, bitwidth, loadWordL in *.
     destruct Bw eqn: EBw;
       (destruct_one_match_hyp; [|discriminate]);
       simpl in H2;
-      specialize Bind_load with (1 := H1) (2 := H2);      
       specialize H2 with (1 := H1);
       simpl in H2; inversions H2;
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
@@ -1654,7 +1630,8 @@ list2imem
           rewrite translate_id_if_aligned_8 by assumption ];
         rewrite left_identity;
         rewrite associativity;
-        rewrite Bind_load;
+        [ (erewrite @Bind_loadWord;   [ | typeclasses eauto ]) |
+          (erewrite @Bind_loadDouble; [ | typeclasses eauto ]) ];
         (unshelve erewrite @Bind_setRegister;
         [ apply State_is_RegisterFile
         | reflexivity
@@ -1698,7 +1675,7 @@ list2imem
   Proof.
     intros.
     unfold containsMem, Memory.write_mem, Memory.read_mem,
-      Memory.wXLEN_in_bytes, load_wXLEN in *.
+      Memory.wXLEN_in_bytes in *.
     unfold SwXLEN, bitwidth, loadWordL, write_word_wXLEN in *.
     destruct Bw eqn: EBw;
       simpl in H2;
@@ -1820,9 +1797,9 @@ list2imem
       match goal with
       | |- runsTo _ _ (execState _ ?initialL) _ => idtac initialL
       end.
-      
+      (*
       erewrite execute_load; try eassumption.
-
+      *)
       (*
       apply runsToStep.
       fetch_inst.
