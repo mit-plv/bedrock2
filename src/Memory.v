@@ -9,15 +9,9 @@ Section Memory.
   Context {Bw: RiscvBitWidths}.
 
   Definition mem := word wXLEN -> option (word wXLEN).
-
-  Definition wXLEN_in_bytes: Z :=
-    match bitwidth with
-    | Bitwidth32 => 4
-    | Bitwidth64 => 8
-    end.
   
   Definition read_mem(x: word wXLEN)(m: mem): option (word wXLEN) :=
-    if dec ((wordToZ x) mod (wXLEN_in_bytes) = 0) then m x else None.
+    if dec ((wordToZ x) mod (Z.of_nat wXLEN_in_bytes) = 0) then m x else None.
 
   Definition write_mem(x: word wXLEN)(v: word wXLEN)(m: mem): option (mem) :=
     match read_mem x m with

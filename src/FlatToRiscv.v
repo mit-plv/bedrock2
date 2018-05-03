@@ -24,6 +24,7 @@ Require Import riscv.InstructionCoercions.
 Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
+Require Import riscv.encode.Encode.
 
 Local Open Scope ilist_scope.
 
@@ -238,8 +239,11 @@ Section FlatToRiscv.
     - exact [split1 32 32 v; split2 32 32 v].
   Defined.
 
+  Definition embed_word(v: word wXLEN): list Instruction :=
+    map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v).
+
   Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction :=
-    let l := map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v) in
+    let l := embed_word v in
     [[Auipc rd 0; LwXLEN rd rd 8; J (Z.of_nat (length l))]] ++ l.
 
   Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
@@ -382,6 +386,13 @@ Section FlatToRiscv.
   Definition containsProgram(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
     forall i inst, nth_error program i = Some inst ->
       ldInst m (offset ^+ $4 ^* $i) = inst.
+
+  Definition containsProgram'(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
+    forall i inst, nth_error program i = Some inst ->
+      encode inst = wordToZ (Memory.loadWord m (offset ^+ $4 ^* $i)).
+
+  (* TODO doesn't hold but something similar enough should hold hopefully *)
+  Axiom containsProgram_alt: containsProgram = containsProgram'.
 
 (*  
   Definition containsState(regs: Register -> word wXLEN)(s: state) :=
@@ -1613,7 +1624,7 @@ list2imem
       execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros.
-    unfold containsMem, Memory.read_mem, Memory.wXLEN_in_bytes in *.
+    unfold containsMem, Memory.read_mem in *.
     unfold LwXLEN, bitwidth, loadWordL in *.
     destruct Bw eqn: EBw;
       (destruct_one_match_hyp; [|discriminate]);
@@ -1637,7 +1648,74 @@ list2imem
         | reflexivity
         | typeclasses eauto
         | assumption ]).
-  Qed. 
+  Qed.
+
+  Lemma execute_load_from_imem: forall {A: Type} (x a: Register) (addr1 addr2 v: word wXLEN)
+           (offset: Z) (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine),
+      valid_register x ->
+      valid_register a ->
+      containsProgram initialL.(machineMem) (embed_word v) addr2 ->
+      getReg initialL.(core).(registers) a = addr1 ->
+      addr1 ^+ ZToWord wXLEN offset = addr2 ->
+      (wordToZ (addr1 ^+ ZToWord wXLEN offset) mod (Z.of_nat wXLEN_in_bytes))%Z = 0%Z ->
+      execState (Bind (execute (LwXLEN x a offset)) f) initialL =
+      execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
+  Proof.
+    intros.
+    rewrite containsProgram_alt in *.
+    unfold containsProgram', ldInst, Memory.read_mem, wXLEN_in_bytes in *.
+    unfold LwXLEN, embed_word, wXLEN_to_word_list, bitwidth in *.
+    destruct Bw eqn: EBw;
+      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+      rewrite associativity;
+      (myrewrite Bind_getRegister by assumption);
+      rewrite associativity;
+      unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
+      rewrite H2;
+      [ rewrite translate_id_if_aligned_4 by assumption |
+        rewrite translate_id_if_aligned_8 by assumption ];
+        rewrite left_identity;
+        rewrite associativity;
+        [ (erewrite @Bind_loadWord;   [ | typeclasses eauto ]) |
+          (erewrite @Bind_loadDouble; [ | typeclasses eauto ]) ];
+        (unshelve erewrite @Bind_setRegister;
+        [ apply State_is_RegisterFile
+        | repeat f_equal
+        | typeclasses eauto
+        | assumption ]).
+    - simpl in H1. specialize (H1 0 _ eq_refl).
+      simpl in H1.
+      unfold int32ToReg, encode, encode_Invalid, id in *.
+      apply wordToZ_inj in H1.
+      subst.
+      simpl.
+      rewrite wmult_neut_r.
+      rewrite <- (wplus_comm $0).
+      rewrite wplus_unit.
+      reflexivity.
+    - pose proof (H1 0 _ eq_refl) as W1.
+      pose proof (H1 1 _ eq_refl) as W2.
+      clear H1.
+      unfold int32ToReg, encode, apply_InstructionMapper, id in *.
+      unfold map_Invalid, Encoder, Memory.loadWord,
+        Memory.loadDouble, mem_is_Memory, encode_Invalid, id in *.
+      apply wordToZ_inj in W1.
+      apply wordToZ_inj in W2.
+      unfold wXLEN, bitwidth in *.
+      subst.
+      simpl.
+      rewrite wmult_neut_r in W1.
+      rewrite <- (wplus_comm $0) in W1.
+      rewrite wplus_unit in W1.
+      rewrite wmult_unit_r in W2.
+      unfold read_double.
+      unfold getReg, State_is_RegisterFile in *.
+      unfold wXLEN, bitwidth in *.
+      rewrite <- W1.
+      rewrite <- W2.
+      clear.
+      apply (Word.combine_split 32 32 v).
+  Qed.
 
   Lemma execute_load_0_offset:
       forall {A: Type} (x a: Register) (addr v: word wXLEN) (initialMH: Memory.mem)
@@ -1675,7 +1753,7 @@ list2imem
   Proof.
     intros.
     unfold containsMem, Memory.write_mem, Memory.read_mem,
-      Memory.wXLEN_in_bytes in *.
+      wXLEN_in_bytes in *.
     unfold SwXLEN, bitwidth, loadWordL, write_word_wXLEN in *.
     destruct Bw eqn: EBw;
       simpl in H2;
@@ -1794,35 +1872,13 @@ list2imem
       clear IHfuelH.
       run1step.
       run1step'.
-      match goal with
-      | |- runsTo _ _ (execState _ ?initialL) _ => idtac initialL
-      end.
-      (*
-      erewrite execute_load; try eassumption.
-      *)
-      (*
-      apply runsToStep.
-      fetch_inst.
-    simpl in *; subst *.
-    fetch_inst;
-    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-    repeat (
-        do_get_set_Register || 
-        simpl_RiscvMachine_get_set ||
-        rewrite_reg_value ||
-        rewrite_alu_op_defs ||
-        (rewrite weqb_ne by congruence) ||
-        (rewrite weqb_eq by congruence) ||
-        rewrite left_identity ||
-        simpl_rem4_test).
-
-  Ltac run1step :=
-    run1step';
-    rewrite execState_step;
-    simpl_RiscvMachine_get_set.
-
-  run1step.
-  *)
+      erewrite execute_load_from_imem; (eassumption || reflexivity || idtac).
+      Focus 3.
+      Search ((_ + _)%Z mod _)%Z.
+      (* Note: in 64bit case, the constant we're loading might be only 4byte-aligned,
+         but not 8byte-aligned! *)
+      admit.
+      admit.
       admit.
       (* SOp *)
     - run1step. run1done.
