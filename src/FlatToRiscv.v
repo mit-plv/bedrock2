@@ -762,6 +762,25 @@ Section FlatToRiscv.
         exact E.
   Qed.
 
+  Lemma reduce_eq_to_sub_and_lt': forall (y z: word wXLEN),
+    wltb (y ^- z) $1 = weqb y z.
+  Proof.
+    intros.
+    pose proof (reduce_eq_to_sub_and_lt y z true false) as P.
+    destruct (weq y z); simpl in *; destruct_one_match_hyp; subst; try discriminate.
+    - rewrite ((proj2 (weqb_true_iff z z)) eq_refl).
+      unfold wltb. unfold wlt in w.
+      apply N.ltb_lt.
+      assumption.
+    - unfold wltb.
+      destruct (weqb y z) eqn: F.
+      + apply ((proj1 (weqb_true_iff y z))) in F. contradiction.
+      + apply N.ltb_ge.
+        unfold wlt in n0.
+        apply N.le_ngt.
+        assumption.
+  Qed.
+
   Ltac simpl_run1 :=
     cbv [run1 execState Monads.put Monads.gets Monads.get Return Bind State_Monad OState_Monad
          execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute

@@ -155,39 +155,28 @@ Definition fib6_L_res(fuel: nat): word wXLEN :=
 Definition fib6_L_trace(fuel: nat): Log :=
   (fib6_L_final fuel).(log).
 
-Transparent wlt_dec.
-
 (* only uncomment this if you're sure there are no admits in the computational parts,
+   and that no computations match on opaque proofs,
    otherwise this will eat all your memory *)
 
-Eval cbv in (map (@wordToZ 32) (fib6_L_trace 30)).
+Eval cbv in (fib6_L_trace 1000).
+Eval cbv in (length (fib6_L_trace 1000)).
 
-Eval cbv in (Memory.memSize zeroedRiscvMachine.(machineMem)).
-Eval cbv in ((length fib6_riscv) * 4)%nat.
+Eval cbv in (fib6_L_res 200).
 
-Eval cbv in (map (@wordToZ 32) (fib6_L_trace 32)).
-
-(* too big for 3GB of RAM
-Eval vm_compute in (map (@wordToZ 32) (fib6_L_trace 35)).
-*)
-
+(* If cbv and vm_compute block or better performance is needed, we can extract to Haskell: *)
 Definition finalfibres: nat := wordToNat (fib6_L_res 200).
-
 Require Extraction.
-
 Extraction Language Haskell.
-
 Extraction "Fib6.hs" finalfibres.
 
-(* Eval simpl in (skipn 15 fib6_riscv). *)
 
 (* 1st method: Run it *)
 Lemma fib6_L_res_is_13_by_running_it: exists fuel, fib6_L_res fuel = $13.
-  exists 15%nat.
+  exists 200%nat.
   cbv.
-  (* but 16 runs out of memory *)
-  Fail reflexivity.
-Abort.
+  reflexivity.
+Qed.
 
 (* 2nd method: Prove it without running it, but using the compiler correctness theorem *)
 Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
