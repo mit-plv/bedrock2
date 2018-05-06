@@ -1,6 +1,7 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
+Require Import riscv.RiscvBitWidths.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
@@ -12,7 +13,7 @@ Require Import compiler.Memory.
 
 Section ExprImp1.
 
-  Context {w: nat}. (* bit width *)
+  Context {Bw: RiscvBitWidths}. (* bit width *)
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -20,15 +21,15 @@ Section ExprImp1.
 
 
   Context {state: Type}.
-  Context {stateMap: Map state var (word w)}.
+  Context {stateMap: Map state var (word wXLEN)}.
   Context {vars: Type}.
   Context {varset: set vars var}.
 
-  Ltac state_calc := state_calc_generic (@name Name) (word w).
+  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
   Ltac set_solver := set_solver_generic (@name Name).
 
   Inductive expr: Set :=
-    | ELit(v: word w): expr
+    | ELit(v: word wXLEN): expr
     | EVar(x: var): expr
     | EOp(op: binop)(e1 e2: expr): expr.
 
@@ -41,7 +42,7 @@ Section ExprImp1.
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt.
 
-  Fixpoint eval_expr(st: state)(e: expr): option (word w) :=
+  Fixpoint eval_expr(st: state)(e: expr): option (word wXLEN) :=
     match e with
     | ELit v => Return v
     | EVar x => get st x
@@ -236,18 +237,18 @@ Ltac invert_eval_stmt :=
 
 Section ExprImp2.
 
-  Context {w: nat}. (* bit width *)
+  Context {Bw: RiscvBitWidths}. (* bit width *)
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
   Existing Instance eq_name_dec.
 
   Context {state: Type}.
-  Context {stateMap: Map state var (word w)}.
+  Context {stateMap: Map state var (word wXLEN)}.
   Context {vars: Type}.
   Context {varset: set vars var}.
 
-  Ltac state_calc := state_calc_generic (@name Name) (word w).
+  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
 
   Lemma modVarsSound: forall fuel s initialS initialM finalS finalM,
     eval_stmt fuel initialS initialM s = Some (finalS, finalM) ->
@@ -297,7 +298,9 @@ Definition _b := 1%Z.
 Definition _c := 2%Z.
 Definition _isRight := 3%Z.
 
-Definition isRight(x y z: word 16) :=
+Require Import riscv.RiscvBitWidths32.
+
+Definition isRight(x y z: word 32) :=
   SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))
             (SSeq (SSet _c (ELit x)) (SSeq (SSet _a (ELit y)) (SSet _b (ELit z))))
             ((SIf (EOp OAnd (EOp OLt (ELit x) (ELit y)) (EOp OLt (ELit z) (ELit y)))
@@ -307,8 +310,8 @@ Definition isRight(x y z: word 16) :=
                                           (EOp OTimes (EVar _b) (EVar _b)))
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
-Definition run_isRight(x y z: word 16): option (word 16) :=
-  final <- (eval_stmt 10 empty (@no_mem 16) (isRight x y z));
+Definition run_isRight(x y z: word 32): option (word 32) :=
+  final <- (eval_stmt 10 empty no_mem (isRight x y z));
   let '(finalSt, finalM) := final in
   get finalSt _isRight.
 

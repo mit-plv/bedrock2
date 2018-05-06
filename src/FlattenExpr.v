@@ -6,30 +6,30 @@ Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.
 Require Import compiler.NameWithEq.
-
+Require Import riscv.RiscvBitWidths.
 
 Section FlattenExpr.
 
-  Context {w: nat}. (* bit width *)
+  Context {Bw: RiscvBitWidths}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
   Existing Instance eq_name_dec.
 
   Context {state: Type}.
-  Context {stateMap: Map state var (word w)}.
+  Context {stateMap: Map state var (word wXLEN)}.
   Context {vars: Type}.
   Context {varset: set vars var}.
   Context {NGstate: Type}.
   Context {NG: NameGen var vars NGstate}.
 
-  Ltac state_calc := state_calc_generic (@name Name) (word w).
+  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
   Ltac set_solver := set_solver_generic (@name Name).
 
   (* returns and var into which result is saved, and new fresh name generator state
      TODO use state monad? *)
-  Fixpoint flattenExpr(ngs: NGstate)(e: ExprImp.expr (w := w)):
-    (FlatImp.stmt (w := w) * var * NGstate) :=
+  Fixpoint flattenExpr(ngs: NGstate)(e: ExprImp.expr):
+    (FlatImp.stmt * var * NGstate) :=
     match e with
     | ExprImp.ELit n =>
         let '(x, ngs') := genFresh ngs in
@@ -47,7 +47,7 @@ Section FlattenExpr.
     end.
 
   (* returns statement and new fresh name generator state *)
-  Fixpoint flattenStmt(ngs: NGstate)(s: ExprImp.stmt (w := w)): (FlatImp.stmt (w := w) * NGstate) :=
+  Fixpoint flattenStmt(ngs: NGstate)(s: ExprImp.stmt): (FlatImp.stmt * NGstate) :=
     match s with
     | ExprImp.SLoad x a =>
         let '(s, r, ngs') := flattenExpr ngs a in
@@ -215,31 +215,31 @@ Section FlattenExpr.
       + state_calc.
     - repeat (inversionss; try destruct_one_match_hyp).
       pose_flatten_var_ineqs.
-      specialize IHe1 with (res := w0) (initialM := initialM) (1 := E) (2 := Ex).
+      specialize IHe1 with (initialM := initialM) (1 := E) (2 := Ex).
       specializes IHe1. {
         clear IHe2.
         state_calc.
       }
-      { assumption. }
+      { eassumption. }
       destruct IHe1 as [fuel1 [midL [Ev1 G1]]].
       progress pose_flatten_var_ineqs.
       specialize IHe2 with (initialH := initialH) (initialL := midL) (initialM := initialM)
-         (res := w1) (1 := E0).
+         (1 := E0).
       specializes IHe2.
       { state_calc. }
       { state_calc. }
-      { assumption. }
+      { eassumption. }
       destruct IHe2 as [fuel2 [preFinalL [Ev2 G2]]].
       remember (Datatypes.S (Datatypes.S (fuel1 + fuel2))) as f0.
       remember (Datatypes.S (fuel1 + fuel2)) as f.
-      exists (Datatypes.S f0) (put preFinalL resVar (Op.eval_binop op w0 w1)).
+      exists (Datatypes.S f0) (put preFinalL resVar (Op.eval_binop op w w0)).
       pose_flatten_var_ineqs.
       split; [|apply get_put_same].
       simpl. fuel_increasing_rewrite.
       subst f0. simpl. fuel_increasing_rewrite.
       subst f. simpl.
       rename n0 into v.
-      assert (get preFinalL v = Some w0) as G1'. {
+      assert (get preFinalL v = Some w) as G1'. {
         state_calc.
       }
       rewrite G1'. simpl. rewrite G2. simpl. reflexivity.

@@ -1643,7 +1643,7 @@ list2imem
       execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros.
-    unfold containsMem, Memory.read_mem, Memory.alignment, wXLEN, bitwidth in *.
+    unfold containsMem, Memory.read_mem, wXLEN_in_bytes, wXLEN, bitwidth in *.
     unfold LwXLEN, bitwidth, loadWordL in *.
     destruct Bw eqn: EBw;
       (destruct_one_match_hyp; [|discriminate]);
@@ -1957,8 +1957,9 @@ list2imem
       IH_done IH.
     - (* SSkip *)
       run1done.
-  Qed.
+  Admitted.
 
+  (*
   Lemma every_state_contains_empty_state: forall s,
     containsState s empty.
   Proof.
@@ -2034,5 +2035,6 @@ list2imem
         simpl in Q. unfold id in Q. simpl in *. congruence.
       + discriminate.
   Qed.
+  *)
 
 End FlatToRiscv.

@@ -23,8 +23,7 @@ Section Pipeline.
 
   Context {Bw: RiscvBitWidths}.
 
-  Context {Name: NameWithEq}.
-  Notation var := (@name Name).
+  Definition var := Z.
   Existing Instance eq_name_dec.
 
   Context {state: Type}.
@@ -35,12 +34,12 @@ Section Pipeline.
   Context {NGstate: Type}.
   Context {NG: NameGen var vars NGstate}.
 
-  Definition exprImp2Riscv(s: ExprImp.stmt (w := wXLEN)): list Instruction :=
+  Definition exprImp2Riscv(s: ExprImp.stmt): list Instruction :=
     let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
     let (sFlat, ngs') := flattenStmt ngs s in
     FlatToRiscv.compile_stmt sFlat.
 
-  Definition evalH := ExprImp.eval_stmt (w := wXLEN).
+  Definition evalH := ExprImp.eval_stmt.
 
   Definition evalL := FlatToRiscv.evalL.
 
