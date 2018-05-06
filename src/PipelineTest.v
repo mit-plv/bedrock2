@@ -155,6 +155,14 @@ Definition fib6_L_res(fuel: nat): word wXLEN :=
 
 Transparent wlt_dec.
 
+Definition finalfibres: nat := wordToNat (fib6_L_res 200).
+
+Require Extraction.
+
+Extraction Language Haskell.
+
+Extraction "Fib6.hs" finalfibres.
+
 (* Eval simpl in (skipn 15 fib6_riscv). *)
 
 (* 1st method: Run it *)

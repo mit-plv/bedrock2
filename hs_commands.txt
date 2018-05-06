@@ -1,0 +1,4 @@
+:set -XStandaloneDeriving
+:load Fib6
+deriving instance Prelude.Show Nat
+finalfibres
