@@ -16,7 +16,6 @@ Require Import riscv.RiscvBitWidths.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
-Require Import riscv.Minimal.
 Require Import riscv.Utility.
 Require Import riscv.encode.Encode.
 
@@ -141,19 +140,36 @@ Definition zeroedRiscvMachineL: RiscvMachineL := {|
     log := nil;
 |}.
 
-Definition initialRiscvMachine(imem: list (word 32)): RiscvMachine :=
-  putProgram imem zeroedRiscvMachine.
+Definition initialRiscvMachine(imem: list (word 32)): RiscvMachineL :=
+  putProgram imem zeroedRiscvMachineL.
 
-Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
- @run RiscvBitWidths32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
+Definition run: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
+ @run RiscvBitWidths32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
 
-Definition fib6_L_final(fuel: nat): RiscvMachine :=
+Definition fib6_L_final(fuel: nat): RiscvMachineL :=
   snd (run fuel (initialRiscvMachine fib6_bits)).
 
 Definition fib6_L_res(fuel: nat): word wXLEN :=
-  (fib6_L_final fuel).(core).(registers) var_b.
+  (fib6_L_final fuel).(machine).(core).(registers) var_b.
+
+Definition fib6_L_trace(fuel: nat): Log :=
+  (fib6_L_final fuel).(log).
 
 Transparent wlt_dec.
+
+(* only uncomment this if you're sure there are no admits in the computational parts,
+   otherwise this will eat all your memory *)
+
+Eval cbv in (map (@wordToZ 32) (fib6_L_trace 30)).
+
+Eval cbv in (Memory.memSize zeroedRiscvMachine.(machineMem)).
+Eval cbv in ((length fib6_riscv) * 4)%nat.
+
+Eval cbv in (map (@wordToZ 32) (fib6_L_trace 32)).
+
+(* too big for 3GB of RAM
+Eval vm_compute in (map (@wordToZ 32) (fib6_L_trace 35)).
+*)
 
 Definition finalfibres: nat := wordToNat (fib6_L_res 200).
 
