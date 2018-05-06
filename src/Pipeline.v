@@ -18,22 +18,36 @@ Require Import compiler.NameGen.
 Require Import compiler.Common.
 Require Import riscv.RiscvBitWidths.
 Require Import compiler.NameWithEq.
+Require Import riscv.encode.Encode.
+Require Import riscv.AxiomaticRiscv.
+
 
 Section Pipeline.
 
   Context {Bw: RiscvBitWidths}.
 
-  Definition var := Z.
-  Existing Instance eq_name_dec.
-
   Context {state: Type}.
-  Context {stateMap: Map state var (word wXLEN)}.
+  Context {stateMap: Map state Register (word wXLEN)}.
+
+  Context {mem: nat -> Set}.
+  Context {IsMem: Memory.Memory (mem wXLEN) wXLEN}.
+  
+  Local Notation RiscvMachine := (@RiscvMachine Bw (mem wXLEN) state).
+  Context {RVM: RiscvProgram (OState RiscvMachine) (word wXLEN)}.
+
+  (* assumes generic translate and raiseException functions *)
+  Context {RVS: @RiscvState (OState RiscvMachine) (word wXLEN) _ _ RVM}.  
+
+  Context {RVAX: @AxiomaticRiscv Bw state FlatToRiscv.State_is_RegisterFile (mem wXLEN) _ RVM}.
+
+  Definition var := Register.
 
   Context {vars: Type}.
   Context {varset: set vars var}.
   Context {NGstate: Type}.
   Context {NG: NameGen var vars NGstate}.
 
+  
   Definition exprImp2Riscv(s: ExprImp.stmt): list Instruction :=
     let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
     let (sFlat, ngs') := flattenStmt ngs s in
@@ -41,21 +55,24 @@ Section Pipeline.
 
   Definition evalH := ExprImp.eval_stmt.
 
-  Definition evalL := FlatToRiscv.evalL.
+  Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
+    execState (run fuel) (putProgram (map (fun i => ZToWord 32 (encode i)) insts) initial).
 
-  Lemma exprImp2Riscv_correct: forall sH initialL instsL fuelH finalH,
-    ExprImp.stmt_size sH * 64 < pow2 wimm ->
+  Lemma exprImp2Riscv_correct: forall sH initialL instsL fuelH finalH initialMemH finalMemH,
+    ExprImp.stmt_size sH * 64 < pow2 wXLEN ->
     exprImp2Riscv sH = instsL ->
-    evalH fuelH empty sH = Some finalH ->
+    evalH fuelH empty initialMemH sH = Some (finalH, finalMemH) ->
     exists fuelL,
       forall resVar res,
       get finalH resVar = Some res ->
-      (evalL fuelL instsL initialL).(registers) resVar = res.
+      getReg (evalL fuelL instsL initialL).(core).(registers) resVar = res.
   Proof.
     introv B C EvH.
     unfold exprImp2Riscv in C.
     destruct_one_match_hyp.
     unfold evalH in EvH.
+  Admitted.
+  (* TODO first finish FlatToRiscv.compile_stmt_correct
     pose proof flattenStmt_correct as P.
     specialize (P fuelH sH s finalH).
     destruct P as [fuelM [finalM [EvM GM]]].
@@ -76,5 +93,6 @@ Section Pipeline.
         apply GM.
         apply G.
   Qed.
+  *)
 
 End Pipeline.

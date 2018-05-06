@@ -13,19 +13,33 @@ Require Import compiler.MyOmega.
 Require Import riscv.util.Monads.
 Require Import compiler.NameWithEq.
 Require Import riscv.RiscvBitWidths.
+Require Import riscv.InstructionCoercions.
+Require Import riscv.ListMemory.
+Require Import riscv.MinimalLogging.
+Require Import riscv.Minimal.
+Require Import riscv.Utility.
+Require Import riscv.encode.Encode.
 
 Require Import riscv.RiscvBitWidths32.
 
+Open Scope Z_scope.
 
-Instance NatName: NameWithEq := {| name := nat |}.
+Definition var: Set := (@name FlatImp.TestFlatImp.ZName).
+Definition Reg: Set := (@name FlatImp.TestFlatImp.ZName).
 
-Definition var: Set := (@name NatName).
-Definition Reg: Set := (@name NatName).
+Existing Instance DefaultRiscvState.
 
-Definition var_a: var := 0.
-Definition var_b: var := 1.
-Definition var_c: var := 2.
-Definition var_i: var := 3.
+Instance FunctionRegisterFile: RegisterFile (Register -> word wXLEN) Register (word wXLEN) := {|
+  getReg(rf: Register -> word wXLEN) := rf;
+  setReg(rf: Register -> word wXLEN)(r: Register)(v: word wXLEN) :=
+    fun r' => if (Z.eqb r' r) then v else rf r';
+  initialRegs := fun r => $0;
+|}.
+
+Definition var_a: var := 1.
+Definition var_b: var := 2.
+Definition var_c: var := 3.
+Definition var_i: var := 4.
 
 (*
 a = 0
@@ -52,8 +66,8 @@ Definition fib_ExprImp(n: word wXLEN): stmt :=
 Definition state := (var -> option (word wXLEN)).
 
 Definition fib_H_res(fuel: nat)(n: word wXLEN): option (word wXLEN) :=
-  match (eval_stmt fuel empty (fib_ExprImp n)) with
-  | Some st => st var_b
+  match (eval_stmt fuel empty Memory.no_mem (fib_ExprImp n)) with
+  | Some (st, m) => st var_b
   | None => None
   end.
 
@@ -71,48 +85,68 @@ Goal fib_H_res 20 $6 = Some $13. reflexivity. Qed.
 Definition fib_riscv0(n: word wXLEN): list Instruction :=
   exprImp2Riscv (fib_ExprImp n).
 
-Definition fib6_riscv: list Instruction :=
-  ltac:(
-    let t := constr:(fib_riscv0 $6) in
-    let t := eval unfold fib_riscv0, exprImp2Riscv in t in
-    let t := eval simpl in t in
-    let t := eval unfold FlatToRiscv.var2Register, FlatToRiscv.compile_lit in t in
-    let t := eval simpl in t in
-    exact t
-  ).
-
 Notation "'RISCV' {{ x ; y ; .. ; z }}" := (@cons Instruction x
   (@cons Instruction y .. (@cons Instruction z nil) ..))
   (format "'RISCV' {{ '[v' '//' x ; '//' y ; '//' .. ; '//' z ']' '//' }}").
 
+Definition fib6_riscv: list Instruction := ltac:(
+  let fl := constr:(let (sFlat, _) :=
+         FlattenExpr.flattenStmt (freshNameGenState (allVars_stmt (fib_ExprImp $ (6))))
+           (fib_ExprImp $ (6)) in
+             sFlat) in
+  let fl := eval simpl in fl in
+  let r := constr:(FlatToRiscv.compile_stmt fl) in
+  let r := eval simpl in r in
+  exact r).
+
 Print fib6_riscv.
 
-
-Definition initialRiscvMachine(imem: list Instruction): RiscvMachine := {|
-  instructionMem := fun (i: word wXLEN) => nth (Nat.div (wordToNat i) 4) imem InfiniteJal;
-  registers := fun (r: Reg) => $0;
+(* This example uses the memory only as instruction memory
+   TODO make an example which uses memory to store data *)
+Definition zeroedRiscvMachineCore: RiscvMachineCore := {|
+  registers := initialRegs;
   pc := $0;
-  exceptionHandlerAddr := wneg $4;
+  nextPC := $4;
+  exceptionHandlerAddr := 3;
 |}.
 
+Definition zeroedRiscvMachine: RiscvMachine := {|
+    core := zeroedRiscvMachineCore;
+    machineMem := zero_mem ((length fib6_riscv) * 4);
+|}.
+
+Definition zeroedRiscvMachineL: RiscvMachineL := {|
+    machine := zeroedRiscvMachine;
+    log := nil;
+|}.
+
+Definition initialRiscvMachine(insts: list Instruction): RiscvMachine :=
+  putProgram (map (fun i => ZToWord 32 (encode i)) insts) zeroedRiscvMachine.
+
+Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
+ @run RiscvBitWidths32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
-  execState (run fuel) (initialRiscvMachine fib6_riscv).
+  snd (run fuel (initialRiscvMachine fib6_riscv)).
 
 Definition fib6_L_res(fuel: nat): word wXLEN :=
-  (fib6_L_final fuel).(registers) var_b.
+  (fib6_L_final fuel).(core).(registers) var_b.
 
 Transparent wlt_dec.
 
 (* 1st method: Run it *)
 Lemma fib6_L_res_is_13_by_running_it: exists fuel, fib6_L_res fuel = $13.
-  exists 200. cbv. reflexivity.
-Qed.
+  exists 15%nat.
+  cbv.
+  (* but 16 runs out of memory *)
+  Fail reflexivity.
+Abort.
 
 (* 2nd method: Prove it without running it, but using the compiler correctness theorem *)
 Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   unfold fib6_L_res. unfold fib6_L_final.
   pose proof @exprImp2Riscv_correct as P.
+  (* TODO first finish updating compiler correctness theorem
   assert (exists finalH, evalH 20 empty (fib_ExprImp $ (6)) = Some finalH) as F. {
     eexists. reflexivity.
   }
@@ -130,4 +164,5 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
     apply E in F.
     rewrite <- F. clear F.
     cbv. reflexivity.
-Qed.
+  *)
+Admitted.
