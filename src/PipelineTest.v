@@ -89,7 +89,7 @@ Notation "'RISCV' {{ x ; y ; .. ; z }}" := (@cons Instruction x
   (@cons Instruction y .. (@cons Instruction z nil) ..))
   (format "'RISCV' {{ '[v' '//' x ; '//' y ; '//' .. ; '//' z ']' '//' }}").
 
-Definition fib6_riscv: list Instruction := ltac:(
+Definition fib6_riscv': list Instruction := ltac:(
   let fl := constr:(let (sFlat, _) :=
          FlattenExpr.flattenStmt (freshNameGenState (allVars_stmt (fib_ExprImp $ (6))))
            (fib_ExprImp $ (6)) in
@@ -99,7 +99,28 @@ Definition fib6_riscv: list Instruction := ltac:(
   let r := eval simpl in r in
   exact r).
 
+Print fib6_riscv'.
+
+Ltac simpl_wordToZ r :=
+      match r with
+      | context C[wordToZ ?x] =>
+        let s := eval cbv in (wordToZ x) in
+            let r' := context C[s] in
+            simpl_wordToZ r'
+      | _ => r
+      end.
+
+Definition fib6_riscv: list Instruction := ltac:(
+  let r := eval unfold fib6_riscv' in fib6_riscv' in
+  let t := simpl_wordToZ r in
+  exact t).
+
 Print fib6_riscv.
+
+Definition fib6_bits: list (word 32) :=
+  ltac:(let res := eval cbv in (map (fun i => ZToWord 32 (encode i)) fib6_riscv) in exact res).
+
+Print fib6_bits.
 
 (* This example uses the memory only as instruction memory
    TODO make an example which uses memory to store data *)
@@ -120,19 +141,21 @@ Definition zeroedRiscvMachineL: RiscvMachineL := {|
     log := nil;
 |}.
 
-Definition initialRiscvMachine(insts: list Instruction): RiscvMachine :=
-  putProgram (map (fun i => ZToWord 32 (encode i)) insts) zeroedRiscvMachine.
+Definition initialRiscvMachine(imem: list (word 32)): RiscvMachine :=
+  putProgram imem zeroedRiscvMachine.
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
  @run RiscvBitWidths32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
-  snd (run fuel (initialRiscvMachine fib6_riscv)).
+  snd (run fuel (initialRiscvMachine fib6_bits)).
 
 Definition fib6_L_res(fuel: nat): word wXLEN :=
   (fib6_L_final fuel).(core).(registers) var_b.
 
 Transparent wlt_dec.
+
+(* Eval simpl in (skipn 15 fib6_riscv). *)
 
 (* 1st method: Run it *)
 Lemma fib6_L_res_is_13_by_running_it: exists fuel, fib6_L_res fuel = $13.
