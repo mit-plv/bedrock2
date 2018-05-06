@@ -14,7 +14,7 @@ Require Import riscv.PseudoInstructions.
 Require Import riscv.RiscvMachine.
 Require Import riscv.Execute.
 Require Import riscv.Run.
-Require Import riscv.FunctionMemory.
+Require riscv.Memory.
 Require Import compiler.runsToSatisfying.
 Require Import riscv.RiscvBitWidths.
 Require Import compiler.NameWithEq.
@@ -59,6 +59,7 @@ Proof.
   intros. unfold ZToWord. apply wzero'_def.
 Qed.
 
+(*
 Lemma read_word_write_word_eq: forall w m a v,
     @read_word w (write_word m a v) a = v.
 Admitted.
@@ -78,7 +79,7 @@ Lemma read_double_write_double_ne: forall w m a1 a2 v1,
     a1 <> a2 ->
     @read_double w (write_double m a1 v1) a2 = @read_double w m a2.
 Admitted.
-
+*)
 
 (* State_is_RegisterFile gets its own section so that destructing Bw later does
    not lead to ill-typed terms *)
@@ -131,6 +132,9 @@ Section FlatToRiscv.
   Context {state: Type}.
   Context {stateMap: Map state Register (word wXLEN)}.
 
+  Context {mem: nat -> Set}.
+  Context {IsMem: Memory.Memory (mem wXLEN) wXLEN}.
+  
   Local Notation RiscvMachine := (@RiscvMachine Bw (mem wXLEN) state).
   Context {RVM: RiscvProgram (OState RiscvMachine) (word wXLEN)}.
 
@@ -941,32 +945,32 @@ Section FlatToRiscv.
     destruct m as [ [r p n e] me ];
     simpl_RiscvMachine_get_set.
 
-  Definition loadWordL(memL: FunctionMemory.mem wXLEN)(addr: word wXLEN): option (word wXLEN).
-    clear -addr memL.
+  Definition loadWordL(memL: mem wXLEN)(addr: word wXLEN): option (word wXLEN).
+    clear -addr memL IsMem.
     unfold wXLEN in *.
     destruct bitwidth; apply Some.
     - exact (Memory.loadWord memL addr).
     - exact (Memory.loadDouble memL addr).
   Defined.
 
-  Definition storeWordL(memL: FunctionMemory.mem wXLEN)(addr v: word wXLEN):
-      option (FunctionMemory.mem wXLEN).
-    clear -addr v memL.
+  Definition storeWordL(memL: mem wXLEN)(addr v: word wXLEN): option (mem wXLEN).
+    clear -addr v memL IsMem.
     unfold wXLEN in *.
     destruct bitwidth; apply Some.
     - exact (Memory.storeWord memL addr v).
     - exact (Memory.storeDouble memL addr v).
   Defined.
 
+  (* same as storeWordL but without option *)
   Definition write_word_wXLEN(m: mem wXLEN)(a v: word wXLEN): mem wXLEN.
     unfold wXLEN, bitwidth in *.
-    clear - m a v.
+    clear - m a v IsMem.
     destruct Bw.
-    - exact (write_word m a v).
-    - exact (write_double m a v).
+    - exact (Memory.storeWord m a v).
+    - exact (Memory.storeDouble m a v).
   Defined.
 
-  Definition containsMem(memL: FunctionMemory.mem wXLEN)(memH: Memory.mem): Prop :=
+  Definition containsMem(memL: mem wXLEN)(memH: compiler.Memory.mem): Prop :=
     forall addr v, memH addr = Some v -> loadWordL memL addr = Some v.
 
   Lemma containsMem_write: forall initialL initialH finalH a v,
@@ -981,13 +985,29 @@ Section FlatToRiscv.
     (destruct_one_match_hyp; [|discriminate]);
     inversions H0;
     destruct_one_match_hyp.
-    - inversion H1; subst; clear H1 E1. f_equal; apply read_word_write_word_eq.
+    - inversion H1; subst; clear H1 E1. f_equal.
+      apply Memory.loadStoreWord_eq; try reflexivity.
+      (* Zdiv.mod_Zmod *)
+      (* TODO valid_addr *)
+      unfold Memory.valid_addr.
+      admit.
     - f_equal. specialize H with (1 := H1). inversions H.
-      apply read_word_write_word_ne; assumption.
-    - inversion H1; subst; clear H1 E1. f_equal; apply read_double_write_double_eq.
+      apply Memory.loadStoreWord_ne; try congruence; unfold Memory.valid_addr.
+      (* TODO valid_addr *)
+      + admit.
+      + admit.
+    - inversion H1; subst; clear H1 E1. f_equal.
+      apply Memory.loadStoreDouble_eq; try reflexivity.
+      (* Zdiv.mod_Zmod *)
+      (* TODO valid_addr *)
+      unfold Memory.valid_addr.
+      admit.
     - f_equal. specialize H with (1 := H1). inversions H.
-      apply read_double_write_double_ne; assumption.
-  Qed.
+      apply Memory.loadStoreDouble_ne; try congruence; unfold Memory.valid_addr.
+      (* TODO valid_addr *)
+      + admit.
+      + admit.
+  Admitted.
 
   (* TODO might not hold if a = 0, but we only use it with a = 4 *)
   Lemma wzero_div: forall sz a, wzero sz ^/ a = wzero sz. Admitted.
@@ -1014,7 +1034,7 @@ Section FlatToRiscv.
     unfold containsProgram in H.
     specialize (H 0 _ eq_refl). subst inst.
     unfold ldInst.
-    unfold Memory.loadWord, mem_is_Memory.
+    simpl_RiscvMachine_get_set.
     replace (initialL_pc ^+ $4 ^* $0) with initialL_pc by solve_word_eq.
     reflexivity.
   Qed. 
@@ -1301,11 +1321,11 @@ list2imem
  *)
  *)
   Hypothesis translate_id_if_aligned_4: forall a mode,
-      (wordToZ a mod 4 = 0)%Z ->
+      (wordToNat a) mod 4 = 0 ->
       translate mode four a = Return a.
 
   Hypothesis translate_id_if_aligned_8: forall a mode,
-      (wordToZ a mod 8 = 0)%Z ->
+      (wordToNat a) mod 8 = 0 ->
       translate mode eight a = Return a.
 
   Arguments mult: simpl never.
@@ -1612,19 +1632,18 @@ list2imem
       [ ( apply State_is_RegisterFile || typeclasses eauto ) .. | ]).
 
   Lemma execute_load: forall {A: Type} (x a: Register) (addr v: word wXLEN) (initialMH: Memory.mem)
-           (offset: Z) (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+           (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
       valid_register x ->
       valid_register a ->
-      Memory.read_mem (addr ^+ (ZToWord wXLEN offset)) initialMH = Some v ->
+      Memory.read_mem addr initialMH = Some v ->
       containsMem initialL.(machineMem) initialMH ->
       get initialRegsH a = Some addr ->
       extends initialL.(core).(registers) initialRegsH ->
-      (offset mod (Z.of_nat wXLEN_in_bytes) = 0)%Z ->
-      execState (Bind (execute (LwXLEN x a offset)) f) initialL =
+      execState (Bind (execute (LwXLEN x a 0)) f) initialL =
       execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros.
-    unfold containsMem, Memory.read_mem in *.
+    unfold containsMem, Memory.read_mem, Memory.alignment, wXLEN, bitwidth in *.
     unfold LwXLEN, bitwidth, loadWordL in *.
     destruct Bw eqn: EBw;
       (destruct_one_match_hyp; [|discriminate]);
@@ -1632,13 +1651,20 @@ list2imem
       specialize H2 with (1 := H1);
       simpl in H2; inversions H2;
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+      rewrite associativity;    
+      (unshelve erewrite @Bind_getRegister;
+      [ apply State_is_RegisterFile
+      | idtac
+      | typeclasses eauto
+      | assumption ]);
       rewrite associativity;
-      (myrewrite Bind_getRegister by assumption);
-      rewrite associativity;
-        unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
-        rewrite_reg_value;
-        [ rewrite translate_id_if_aligned_4 by assumption |
-          rewrite translate_id_if_aligned_8 by assumption ];
+      unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
+      rewrite_reg_value;
+      rewrite ZToWord_0;
+      rewrite wplus_comm;
+      rewrite wplus_unit;
+      [ rewrite translate_id_if_aligned_4 by assumption |
+        rewrite translate_id_if_aligned_8 by assumption ];
         rewrite left_identity;
         rewrite associativity;
         [ (erewrite @Bind_loadWord;   [ | typeclasses eauto ]) |
@@ -1650,6 +1676,7 @@ list2imem
         | assumption ]).
   Qed.
 
+  (*
   Lemma execute_load_from_imem: forall {A: Type} (x a: Register) (addr1 addr2 v: word wXLEN)
            (offset: Z) (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine),
       valid_register x ->
@@ -1697,8 +1724,7 @@ list2imem
       pose proof (H1 1 _ eq_refl) as W2.
       clear H1.
       unfold int32ToReg, encode, apply_InstructionMapper, id in *.
-      unfold map_Invalid, Encoder, Memory.loadWord,
-        Memory.loadDouble, mem_is_Memory, encode_Invalid, id in *.
+      unfold map_Invalid, Encoder, encode_Invalid, id in *.
       apply wordToZ_inj in W1.
       apply wordToZ_inj in W2.
       unfold wXLEN, bitwidth in *.
@@ -1708,35 +1734,16 @@ list2imem
       rewrite <- (wplus_comm $0) in W1.
       rewrite wplus_unit in W1.
       rewrite wmult_unit_r in W2.
-      unfold read_double.
+      (* TODO we also need a lemma about how loadDouble is related to loadWord! *)
+      (* unfold read_double. *)
       unfold getReg, State_is_RegisterFile in *.
       unfold wXLEN, bitwidth in *.
       rewrite <- W1.
       rewrite <- W2.
       clear.
       apply (Word.combine_split 32 32 v).
-  Qed.
-
-  Lemma execute_load_0_offset:
-      forall {A: Type} (x a: Register) (addr v: word wXLEN) (initialMH: Memory.mem)
-         (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
-      valid_register x ->
-      valid_register a ->
-      Memory.read_mem addr initialMH = Some v ->
-      containsMem initialL.(machineMem) initialMH ->
-      get initialRegsH a = Some addr ->
-      extends initialL.(core).(registers) initialRegsH ->
-      execState (Bind (execute (LwXLEN x a 0)) f) initialL =
-      execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
-  Proof.
-    intros.
-    eapply execute_load; try eassumption.
-    - rewrite ZToWord_0.
-      rewrite wplus_comm.
-      rewrite wplus_unit.
-      assumption.
-    - apply Zdiv.Zmod_0_l.
-  Qed.
+  Abort.
+  *)
       
   Lemma execute_store: forall {A: Type} (ra rv: Register) (a v: word wXLEN)
                          (initialMH finalMH: Memory.mem)
@@ -1848,7 +1855,7 @@ list2imem
       clear IHfuelH.
       apply runsToStep; simpl in *; subst *.
       fetch_inst.
-      erewrite execute_load_0_offset; [|eassumption..].
+      erewrite execute_load; [|eassumption..].
       simpl_RiscvMachine_get_set.
       simpl.
       rewrite execState_step.
@@ -1872,13 +1879,8 @@ list2imem
       clear IHfuelH.
       run1step.
       run1step'.
-      erewrite execute_load_from_imem; (eassumption || reflexivity || idtac).
-      Focus 3.
-      Search ((_ + _)%Z mod _)%Z.
       (* Note: in 64bit case, the constant we're loading might be only 4byte-aligned,
          but not 8byte-aligned! *)
-      admit.
-      admit.
       admit.
       (* SOp *)
     - run1step. run1done.

@@ -51,7 +51,7 @@ Section ExprImp1.
         Return (eval_binop op v1 v2)
     end.
 
-  Fixpoint eval_stmt(f: nat)(st: state)(m: mem w)(s: stmt): option (state * mem w) :=
+  Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
     match f with
     | 0 => None (* out of fuel *)
     | S f => match s with
@@ -308,7 +308,7 @@ Definition isRight(x y z: word 16) :=
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
 Definition run_isRight(x y z: word 16): option (word 16) :=
-  final <- (eval_stmt 10 empty (no_mem 16) (isRight x y z));
+  final <- (eval_stmt 10 empty (@no_mem 16) (isRight x y z));
   let '(finalSt, finalM) := final in
   get finalSt _isRight.
 
