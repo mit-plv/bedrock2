@@ -30,6 +30,18 @@ Local Open Scope ilist_scope.
 
 Set Implicit Arguments.
 
+Section put_put.
+
+  Context {var: Type}.
+  Context {val: Type}.
+  Context {state: Type}.
+  Context {stateMap: Map state var val}.
+
+  Lemma put_put_same: forall s x v1 v2,
+      put (put s x v1) x v2 = put s x v2.
+  Admitted.
+
+End put_put.
 
 
 Lemma ZToWord_Z_of_nat: forall sz x, ZToWord sz (Z.of_nat x) = natToWord sz x.
@@ -191,7 +203,45 @@ Section FlatToRiscv.
     | OLt => [[Sltu rd rs1 rs2]]
     | OAnd => [[And rd rs1 rs2]]
     end.
+  
+  Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
+    let h0 := split1 16 16 v in
+    let h1 := split2 16 16 v in
+    [[Addi rd Register0 (wordToZ h1); Slli rd rd 16; Addi rd rd (wordToZ h0)]].
 
+  Definition compile_lit_64(rd: Register)(v: word 64): list Instruction :=
+    let w0 := split1 32 32 v in
+    let w1 := split2 32 32 v in
+    let h0 := split1 16 16 w0 in
+    let h1 := split2 16 16 w0 in
+    let h2 := split1 16 16 w1 in
+    let h3 := split2 16 16 w1 in
+    [[Addi rd Register0 (wordToZ h3);
+      Slli rd rd 16; Addi rd rd (wordToZ h2);
+      Slli rd rd 16; Addi rd rd (wordToZ h1);
+      Slli rd rd 16; Addi rd rd (wordToZ h0)]].
+
+  (* The problem with the primed version is that we have to destruct the bitwidth to expose
+     the indivdual commands (on which the proof machinery of compile_stmt_correct_aux works),
+     but the proof machinery stops working when the bitwidth is destructed because typeclass
+     search stops working as it should, and destructing the bitwidth only works after unfolding
+     all definitions involving (word wXLEN). *)
+  Definition compile_lit'(rd: Register)(v: word wXLEN): list Instruction.
+    clear -Bw rd v. unfold wXLEN, bitwidth in *. destruct Bw.
+    - exact (compile_lit_32 rd v).
+    - exact (compile_lit_64 rd v).
+  Defined.
+
+  (* Very stupid workaround: *)
+  Definition make_64_bit(v: word wXLEN): word 64.
+    clear -Bw v. unfold wXLEN, bitwidth in *. destruct Bw.
+    - exact (zext v 32).
+    - exact v.
+  Defined.
+
+  Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction :=
+    compile_lit_64 rd (make_64_bit v).
+  
   (* store the n lowest halves (1 half = 16bits) of v into rd *)
   Fixpoint compile_halves(n: nat)(rd: Register)(v: Z): list Instruction :=
     if dec (- 2^19 <= v < 2^19)%Z then
@@ -246,23 +296,9 @@ Section FlatToRiscv.
   Definition embed_word(v: word wXLEN): list Instruction :=
     map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v).
 
-  Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction :=
+  Definition compile_lit_old1(rd: Register)(v: word wXLEN): list Instruction :=
     let l := embed_word v in
     [[Auipc rd 0; LwXLEN rd rd 8; J (Z.of_nat (length l))]] ++ l.
-
-  Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
-    [[J 8;
-      InvalidInstruction (wordToZ v);
-      Auipc rd 0;
-      Lw rd rd (-4)]].
-
-  Definition compile_lit_64(rd: Register)(v: word 64): list Instruction :=
-    let lobits := split1 32 32 v in
-    let hibits := split2 32 32 v in
-    [[J 12;
-      InvalidInstruction (wordToZ lobits); InvalidInstruction (wordToZ hibits);
-      Auipc rd 0;
-      Ld rd rd (-8)]].
 
   (*
   Definition add_lit_20'(rd rs: Register)(v: Z): list Instruction :=
@@ -1363,6 +1399,14 @@ list2imem
     rewrite G1;
     clear G1.
 
+  Ltac rewrite_getReg :=
+    match goal with
+    | |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
+      let gg := constr:(@getReg RF R V TC st1 x) in
+      let gg' := eval unfold getReg, State_is_RegisterFile in gg in
+          progress change gg with gg'
+    end.
+
   Ltac rewrite_setReg :=
     match goal with
     | |- context [@setReg ?RF ?R ?V ?TC ?st1 ?x ?v] =>
@@ -1570,13 +1614,16 @@ list2imem
         do_get_set_Register || 
         simpl_RiscvMachine_get_set ||
         rewrite_reg_value ||
+        rewrite_getReg ||
         rewrite_setReg ||
         rewrite_alu_op_defs ||
         (rewrite weqb_ne by congruence) ||
         (rewrite weqb_eq by congruence) ||
         rewrite elim_then_true_else_false ||
         rewrite left_identity ||
-        simpl_rem4_test).
+        simpl_rem4_test ||
+        rewrite put_put_same ||
+        rewrite get_put_same).
 
   Ltac run1step :=
     run1step';
@@ -1793,6 +1840,11 @@ list2imem
   Arguments app: simpl never. (* don't simpl ([[ oneInst ]] ++ rest) into oneInst :: rest
     because otherwise solve_imem doesn't recognize "middle" any more *)
 
+  (* otherwise simpl takes forever: *)
+  Arguments split1: simpl never.
+  Arguments split2: simpl never.
+  Arguments ZToWord: simpl never.
+
   (*
   Lemma compile_halves_correct:
     forall allInsts imemStart (nH: nat) (vFinal vRemaining: Z) rd insts initialL
@@ -1820,6 +1872,25 @@ list2imem
     - 
   *)    
 
+  Lemma compose_lit: forall (v: word wXLEN),
+      (wlshift
+         (wlshift
+            (wlshift
+               ($ (0)
+                  ^+ ZToWord wXLEN
+                  (wordToZ (split2 16 16 (split2 32 32 (make_64_bit v)))))
+               (Pos.to_nat 16)
+               ^+ ZToWord wXLEN
+               (wordToZ (split1 16 16 (split2 32 32 (make_64_bit v)))))
+            (Pos.to_nat 16)
+            ^+ ZToWord wXLEN
+            (wordToZ (split2 16 16 (split1 32 32 (make_64_bit v)))))
+         (Pos.to_nat 16)
+         ^+ ZToWord wXLEN
+         (wordToZ (split1 16 16 (split1 32 32 (make_64_bit v))))) = v.
+  Proof.
+  Admitted.
+  
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
       instsBefore instsAfter,
@@ -1849,7 +1920,7 @@ list2imem
       try match goal with
           | o: binop |- _ => destruct o (* do this before destruct_containsProgram *)
           end;
-      simpl in *; unfold compile_lit in *;
+      simpl in *; unfold compile_lit, compile_lit_64 in *;
       destruct_everything.
     - (* SLoad *)
       clear IHfuelH.
@@ -1877,18 +1948,20 @@ list2imem
       + admit.
     - (* SLit *)
       clear IHfuelH.
-      run1step.
-      run1step'.
-      (* Note: in 64bit case, the constant we're loading might be only 4byte-aligned,
-         but not 8byte-aligned! *)
-      admit.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      rewrite compose_lit.
+      run1done.
       (* SOp *)
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1step. run1done.
-      unfold getReg, State_is_RegisterFile.
-      rewrite get_put_same.
       replace (ZToWord wXLEN 1) with (natToWord wXLEN 1).
       + rewrite reduce_eq_to_sub_and_lt.
         assumption.
