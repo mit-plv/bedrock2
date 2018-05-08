@@ -168,6 +168,7 @@ Eval cbv in (fib6_L_res 200).
 Definition finalfibres: nat := wordToNat (fib6_L_res 200).
 Require Extraction.
 Extraction Language Haskell.
+Set Warnings "-extraction-reserved-identifier".
 Extraction "Fib6.hs" finalfibres.
 
 

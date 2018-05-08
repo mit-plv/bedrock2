@@ -204,6 +204,33 @@ Section FlatToRiscv.
     | OAnd => [[And rd rs1 rs2]]
     end.
   
+  Fixpoint compile_lit_rec(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
+    let byte := bitSlice v ((Z.of_nat byteIndex + 1) * 8) (Z.of_nat byteIndex * 8) in
+    [[ Addi rd rs byte ]] ++
+    match byteIndex with
+    | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v)
+    | O => [[]]
+    end.
+
+  Fixpoint compile_lit_rec'(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
+    let d := (2 ^ ((Z.of_nat byteIndex) * 8))%Z in
+    let hi := (v / d)%Z in
+    let v' := (v - hi * d)%Z in
+    [[ Addi rd rs hi ]] ++
+    match byteIndex with
+    | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v')
+    | O => [[]]
+    end.
+
+  (*
+  Variable rd: Register.
+  Variable v: Z.
+  Eval cbv [compile_lit_rec app] in (compile_lit_rec 3 rd Register0 v).
+  *)
+  
+  Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction :=
+    compile_lit_rec 7 rd Register0 (wordToZ v).
+  
   Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
     let h0 := split1 16 16 v in
     let h1 := split2 16 16 v in
@@ -239,7 +266,7 @@ Section FlatToRiscv.
     - exact v.
   Defined.
 
-  Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction :=
+  Definition compile_lit''(rd: Register)(v: word wXLEN): list Instruction :=
     compile_lit_64 rd (make_64_bit v).
   
   (* store the n lowest halves (1 half = 16bits) of v into rd *)
@@ -581,8 +608,12 @@ Section FlatToRiscv.
   Ltac solve_containsProgram :=
     match goal with
     | |- containsProgram _ _ _ => subst
-    end;    
-    repeat (rewrite <- app_assoc || rewrite <- app_comm_cons);
+    end;
+    repeat match goal with
+           (* to make sure (b :: x) is not nil *)
+           | |- context [(?a :: ?b :: ?x) ++ ?y] => rewrite <- (app_comm_cons (b :: x) y a)
+           | |- _ => rewrite <- app_assoc
+           end;
     (*
     repeat match goal with
            | H: ?P |- _ => match P with
@@ -1939,7 +1970,7 @@ list2imem
       try match goal with
           | o: binop |- _ => destruct o (* do this before destruct_containsProgram *)
           end;
-      simpl in *; unfold compile_lit, compile_lit_64 in *;
+      simpl in *; unfold compile_lit, compile_lit_rec in *;
       destruct_everything.
     - (* SLoad *)
       clear IHfuelH.
@@ -1974,8 +2005,74 @@ list2imem
       Time run1step.
       Time run1step.
       Time run1step.
-      rewrite compose_lit.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
+      Time run1step.
       run1done.
+      match goal with
+      | E: Some _ = Some _ |- _ => rewrite <- E
+      end.
+      f_equal.
+      clear.
+      assert (wlshift_distr_plus: forall sz n (a b: word sz),
+                 wlshift (a ^+ b) n = wlshift a n ^+ wlshift b n). {
+        intros.
+        unfold wlshift.
+        admit.
+      }
+      assert (wlshift_iter: forall sz n1 n2 (a: word sz),
+                 wlshift (wlshift a n1) n2 = wlshift a (n1 + n2)). {
+        intros. unfold wlshift.
+        pose proof (split1_iter sz n1 n2) as P.
+        specialize (P (eq_sym (Nat.add_assoc _ _ _))).
+        admit.
+      }
+      assert (wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
+         wlshift (ZToWord wXLEN (bitSlice v (sz1 + sz2) sz1)) (Z.to_nat sz1)
+         ^+ ZToWord wXLEN (bitSlice v sz1 0)
+         = ZToWord wXLEN (bitSlice v (sz1 + sz2) 0)). { admit. }
+      assert (wlshift_zero: forall sz n, wlshift $0 n = natToWord sz 0). {
+        intros.
+        unfold wlshift.
+        set (e := @eq_refl _ (sz + n)).
+        rewrite Nat.add_comm in e at 2.
+        Fail rewrite (nat_cast_proof_irrel word (sz + n) (n + sz) _ e).
+        admit.
+      }
+      assert (bitSlice_wordToZ_all: forall sz1 sz2 (v: word sz1),
+                 sz1 <= Z.to_nat sz2 ->
+                 bitSlice (wordToZ v) sz2 0 = wordToZ v). {
+        admit.
+      }
+      change (Pos.to_nat 8) with 8.
+      rewrite? wlshift_distr_plus.
+      rewrite? wlshift_iter.
+      simpl.
+      change 56%nat with (Z.to_nat 56).
+      change 48%nat with (Z.to_nat 48).
+      change 40%nat with (Z.to_nat 40).
+      change 32%nat with (Z.to_nat 32).
+      change 24%nat with (Z.to_nat 24).
+      change 16%nat with (Z.to_nat 16).
+      change 8%nat with (Z.to_nat 8).
+      rewrite <-? wplus_assoc.
+  change 16%Z with (8 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (8 + 8)%Z with 16%Z.
+  change 24%Z with (16 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (16 + 8)%Z with 24%Z.
+  change 32%Z with (24 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (24 + 8)%Z with 32%Z.
+  change 40%Z with (32 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (32 + 8)%Z with 40%Z.
+  change 48%Z with (40 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (40 + 8)%Z with 48%Z.
+  change 56%Z with (48 + 8)%Z at 4. rewrite wlshift_bitSlice_plus. change (48 + 8)%Z with 56%Z.
+  change 64%Z with (56 + 8)%Z at 1. rewrite wlshift_bitSlice_plus. change (56 + 8)%Z with 64%Z.
+  rewrite wlshift_zero.
+  rewrite wplus_unit.
+  rewrite bitSlice_wordToZ_all; [ apply ZToWord_wordToZ | ].
+  clear.
+  unfold wXLEN, bitwidth. destruct Bw; cbv; omega.
       (* SOp *)
     - run1step. run1done.
     - run1step. run1done.
