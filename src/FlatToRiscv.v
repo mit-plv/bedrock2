@@ -129,7 +129,29 @@ Section FlatToRiscv.
 
   Lemma rem_four_four: rem $4 four = $0.
   Proof. Admitted.
+
+  Lemma wlshift_distr_plus: forall sz n (a b: word sz),
+      wlshift (a ^+ b) n = wlshift a n ^+ wlshift b n.
+  Admitted.
   
+  Lemma wlshift_iter: forall sz n1 n2 (a: word sz),
+      wlshift (wlshift a n1) n2 = wlshift a (n1 + n2).
+  Admitted.
+  
+  Lemma wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
+      wlshift (ZToWord wXLEN (bitSlice v sz1 (sz1 + sz2))) (Z.to_nat sz1)
+      ^+ ZToWord wXLEN (bitSlice v 0 sz1)
+      = ZToWord wXLEN (bitSlice v 0 (sz1 + sz2)).
+  Admitted.
+  
+  Lemma wlshift_zero: forall sz n, wlshift $0 n = natToWord sz 0.
+  Admitted.
+  
+  Lemma bitSlice_wordToZ_all: forall sz1 sz2 (v: word sz1),
+      sz1 <= Z.to_nat sz2 ->
+      bitSlice (wordToZ v) 0 sz2 = wordToZ v.
+  Admitted.
+
   (*
   Context {Name: NameWithEq}.
 
@@ -205,7 +227,7 @@ Section FlatToRiscv.
     end.
   
   Fixpoint compile_lit_rec(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
-    let byte := bitSlice v ((Z.of_nat byteIndex + 1) * 8) (Z.of_nat byteIndex * 8) in
+    let byte := bitSlice v ((Z.of_nat byteIndex) * 8) ((Z.of_nat byteIndex + 1) * 8) in
     [[ Addi rd rs byte ]] ++
     match byteIndex with
     | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v)
@@ -224,8 +246,7 @@ Section FlatToRiscv.
 
   (*
   Variable rd: Register.
-  Variable v: Z.
-  Eval cbv [compile_lit_rec app] in (compile_lit_rec 3 rd Register0 v).
+  Eval cbv -[Register0] in (compile_lit_rec 7 rd Register0 10000).
   *)
   
   Definition compile_lit(rd: Register)(v: word wXLEN): list Instruction :=
@@ -2019,36 +2040,6 @@ list2imem
       end.
       f_equal.
       clear.
-      assert (wlshift_distr_plus: forall sz n (a b: word sz),
-                 wlshift (a ^+ b) n = wlshift a n ^+ wlshift b n). {
-        intros.
-        unfold wlshift.
-        admit.
-      }
-      assert (wlshift_iter: forall sz n1 n2 (a: word sz),
-                 wlshift (wlshift a n1) n2 = wlshift a (n1 + n2)). {
-        intros. unfold wlshift.
-        pose proof (split1_iter sz n1 n2) as P.
-        specialize (P (eq_sym (Nat.add_assoc _ _ _))).
-        admit.
-      }
-      assert (wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
-         wlshift (ZToWord wXLEN (bitSlice v (sz1 + sz2) sz1)) (Z.to_nat sz1)
-         ^+ ZToWord wXLEN (bitSlice v sz1 0)
-         = ZToWord wXLEN (bitSlice v (sz1 + sz2) 0)). { admit. }
-      assert (wlshift_zero: forall sz n, wlshift $0 n = natToWord sz 0). {
-        intros.
-        unfold wlshift.
-        set (e := @eq_refl _ (sz + n)).
-        rewrite Nat.add_comm in e at 2.
-        Fail rewrite (nat_cast_proof_irrel word (sz + n) (n + sz) _ e).
-        admit.
-      }
-      assert (bitSlice_wordToZ_all: forall sz1 sz2 (v: word sz1),
-                 sz1 <= Z.to_nat sz2 ->
-                 bitSlice (wordToZ v) sz2 0 = wordToZ v). {
-        admit.
-      }
       change (Pos.to_nat 8) with 8.
       rewrite? wlshift_distr_plus.
       rewrite? wlshift_iter.
@@ -2061,18 +2052,18 @@ list2imem
       change 16%nat with (Z.to_nat 16).
       change 8%nat with (Z.to_nat 8).
       rewrite <-? wplus_assoc.
-  change 16%Z with (8 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (8 + 8)%Z with 16%Z.
-  change 24%Z with (16 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (16 + 8)%Z with 24%Z.
-  change 32%Z with (24 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (24 + 8)%Z with 32%Z.
-  change 40%Z with (32 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (32 + 8)%Z with 40%Z.
-  change 48%Z with (40 + 8)%Z at 3. rewrite wlshift_bitSlice_plus. change (40 + 8)%Z with 48%Z.
-  change 56%Z with (48 + 8)%Z at 4. rewrite wlshift_bitSlice_plus. change (48 + 8)%Z with 56%Z.
-  change 64%Z with (56 + 8)%Z at 1. rewrite wlshift_bitSlice_plus. change (56 + 8)%Z with 64%Z.
-  rewrite wlshift_zero.
-  rewrite wplus_unit.
-  rewrite bitSlice_wordToZ_all; [ apply ZToWord_wordToZ | ].
-  clear.
-  unfold wXLEN, bitwidth. destruct Bw; cbv; omega.
+      change 16%Z with ( 8+8)%Z at 3. rewrite wlshift_bitSlice_plus. change ( 8+8)%Z with 16%Z.
+      change 24%Z with (16+8)%Z at 3. rewrite wlshift_bitSlice_plus. change (16+8)%Z with 24%Z.
+      change 32%Z with (24+8)%Z at 3. rewrite wlshift_bitSlice_plus. change (24+8)%Z with 32%Z.
+      change 40%Z with (32+8)%Z at 3. rewrite wlshift_bitSlice_plus. change (32+8)%Z with 40%Z.
+      change 48%Z with (40+8)%Z at 3. rewrite wlshift_bitSlice_plus. change (40+8)%Z with 48%Z.
+      change 56%Z with (48+8)%Z at 4. rewrite wlshift_bitSlice_plus. change (48+8)%Z with 56%Z.
+      change 64%Z with (56+8)%Z at 1. rewrite wlshift_bitSlice_plus. change (56+8)%Z with 64%Z.
+      rewrite wlshift_zero.
+      rewrite wplus_unit.
+      rewrite bitSlice_wordToZ_all; [ apply ZToWord_wordToZ | ].
+      clear.
+      unfold wXLEN, bitwidth. destruct Bw; cbv; omega.
       (* SOp *)
     - run1step. run1done.
     - run1step. run1done.

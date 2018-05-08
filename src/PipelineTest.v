@@ -100,19 +100,7 @@ Definition fib6_riscv': list Instruction := ltac:(
 
 Print fib6_riscv'.
 
-Ltac simpl_wordToZ r :=
-      match r with
-      | context C[wordToZ ?x] =>
-        let s := eval cbv in (wordToZ x) in
-            let r' := context C[s] in
-            simpl_wordToZ r'
-      | _ => r
-      end.
-
-Definition fib6_riscv: list Instruction := ltac:(
-  let r := eval unfold fib6_riscv' in fib6_riscv' in
-  let t := simpl_wordToZ r in
-  exact t).
+Definition fib6_riscv := Eval cbv in fib6_riscv'.
 
 Print fib6_riscv.
 
@@ -162,10 +150,10 @@ Definition fib6_L_trace(fuel: nat): Log :=
 Eval cbv in (fib6_L_trace 1000).
 Eval cbv in (length (fib6_L_trace 1000)).
 
-Eval cbv in (fib6_L_res 200).
+Eval cbv in (fib6_L_res 400).
 
 (* If cbv and vm_compute block or better performance is needed, we can extract to Haskell: *)
-Definition finalfibres: nat := wordToNat (fib6_L_res 200).
+Definition finalfibres: nat := wordToNat (fib6_L_res 400).
 Require Extraction.
 Extraction Language Haskell.
 Set Warnings "-extraction-reserved-identifier".
@@ -174,7 +162,7 @@ Extraction "Fib6.hs" finalfibres.
 
 (* 1st method: Run it *)
 Lemma fib6_L_res_is_13_by_running_it: exists fuel, fib6_L_res fuel = $13.
-  exists 200%nat.
+  exists 400%nat.
   cbv.
   reflexivity.
 Qed.
