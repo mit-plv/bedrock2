@@ -1069,7 +1069,7 @@ Section FlatToRiscv.
   Defined.
 
   (* same as storeWordL but without option *)
-  Definition write_word_wXLEN(m: mem wXLEN)(a v: word wXLEN): mem wXLEN.
+  Definition storeWordwXLEN(m: mem wXLEN)(a v: word wXLEN): mem wXLEN.
     unfold wXLEN, bitwidth in *.
     clear - m a v IsMem.
     destruct Bw.
@@ -1083,9 +1083,9 @@ Section FlatToRiscv.
   Lemma containsMem_write: forall initialL initialH finalH a v,
     containsMem initialL initialH ->
     Memory.write_mem a v initialH = Some finalH ->
-    containsMem (write_word_wXLEN initialL a v) finalH.
+    containsMem (storeWordwXLEN initialL a v) finalH.
   Proof.
-    unfold Memory.write_mem, Memory.read_mem, containsMem, write_word_wXLEN,
+    unfold Memory.write_mem, Memory.read_mem, containsMem, storeWordwXLEN,
       loadWordL, wXLEN, bitwidth in *.
     intros; destruct Bw; simpl in *;
     (destruct_one_match_hyp; [|discriminate]);
@@ -1874,12 +1874,12 @@ list2imem
       get initialRegsH rv = Some v ->
       extends initialL.(core).(registers) initialRegsH ->
       execState (Bind (execute (SwXLEN ra rv 0)) f) initialL =
-      execState (f tt) (with_machineMem (write_word_wXLEN initialL.(machineMem) a v) initialL).
+      execState (f tt) (with_machineMem (storeWordwXLEN initialL.(machineMem) a v) initialL).
   Proof.
     intros.
     unfold containsMem, Memory.write_mem, Memory.read_mem,
       wXLEN_in_bytes in *.
-    unfold SwXLEN, bitwidth, loadWordL, write_word_wXLEN in *.
+    unfold SwXLEN, bitwidth, loadWordL, storeWordwXLEN in *.
     destruct Bw eqn: EBw;
       simpl in H2;
       (destruct_one_match_hyp; [|discriminate]);
@@ -1916,49 +1916,20 @@ list2imem
   Arguments split2: simpl never.
   Arguments ZToWord: simpl never.
 
-  (*
-  Lemma compile_halves_correct:
-    forall allInsts imemStart (nH: nat) (vFinal vRemaining: Z) rd insts initialL
-      instsBefore instsAfter,
-    compile_halves nH rd vRemaining = insts ->
-    allInsts = instsBefore ++ insts ++ instsAfter ->  
-    valid_register rd ->
-    containsProgram initialL.(machineMem) allInsts ($4 ^* imemStart) ->
-    initialL.(core).(pc) = ($4 ^* imemStart) ^+ $4 ^* $(length instsBefore) ->
-    initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
-    ((wordToZ (getReg initialL.(core).(registers) rd) * (2^(16*(Z.of_nat nH))) + vRemaining
-      = vFinal)%Z \/ (vRemaining = vFinal)) ->
-    runsToSatisfying initialL (fun finalL =>
-      finalL.(core).(registers) = setReg initialL.(core).(registers) rd (ZToWord wXLEN vFinal) /\
-      (*
-      (getReg final.(core).(registers) rd) * (ZToWord (2^(16*nH)))   /\
-      (forall r, r <> rd -> getReg finalL.(core).(registers) r = getReg initialL.(core).(registers) r) /\
-      *)
-      finalL.(machineMem) = initialL.(machineMem) /\
-      finalL.(core).(pc) = initialL.(core).(pc) ^+ $ (4) ^* $ (length insts) /\
-      finalL.(core).(nextPC) = finalL.(core).(pc) ^+ $4).
+  Lemma store_preserves_containsProgram: forall initialL_mem insts imemAddr a v,
+      containsProgram initialL_mem insts imemAddr ->
+      ~ (wordToZ imemAddr <= wordToZ a < wordToZ (imemAddr ^+ $4 ^* $(length insts)))%Z ->
+      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
+      containsProgram (storeWordwXLEN initialL_mem a v) insts imemAddr.
   Proof.
-    intros allInsts imemStart.
-    induction nH; intros.
-    - 
-  *)    
+  Admitted.
 
-  Lemma compose_lit: forall (v: word wXLEN),
-      (wlshift
-         (wlshift
-            (wlshift
-               ($ (0)
-                  ^+ ZToWord wXLEN
-                  (wordToZ (split2 16 16 (split2 32 32 (make_64_bit v)))))
-               (Pos.to_nat 16)
-               ^+ ZToWord wXLEN
-               (wordToZ (split1 16 16 (split2 32 32 (make_64_bit v)))))
-            (Pos.to_nat 16)
-            ^+ ZToWord wXLEN
-            (wordToZ (split2 16 16 (split1 32 32 (make_64_bit v)))))
-         (Pos.to_nat 16)
-         ^+ ZToWord wXLEN
-         (wordToZ (split1 16 16 (split1 32 32 (make_64_bit v))))) = v.
+  (* if len is too big, we get an overflow, and what we prove is too weak to be
+     usable by others (they can't distribute wordToZ over ^+) *)
+  Lemma mem_inaccessible_write:  forall a v initialMH finalMH start len,
+      Memory.write_mem a v initialMH = Some finalMH ->
+      mem_inaccessible initialMH start len ->
+      ~ (wordToZ start <= wordToZ a < wordToZ (start ^+ $4 ^* $len))%Z.
   Proof.
   Admitted.
   
@@ -2012,9 +1983,16 @@ list2imem
       rewrite execState_step.
       simpl_RiscvMachine_get_set.
       run1done.
+      lazymatch goal with
+      | A: Memory.write_mem _ _ _ = Some _, B: mem_inaccessible _ _ _ |- _ =>
+        pose proof (mem_inaccessible_write _ _ A B) as P
+      end.
       (* H13 says we can write at a0 in initialMH, and from H10, we know that
          a0 is not between imemStart and imemEnd, so containsProgram is preserved *)  
-      + admit.
+      + apply store_preserves_containsProgram.
+        * assumption.
+        * admit.
+        * admit.
       + admit.
       + admit.
     - (* SLit *)
