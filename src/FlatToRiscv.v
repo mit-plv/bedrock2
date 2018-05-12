@@ -468,8 +468,8 @@ Section FlatToRiscv.
   Definition words_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
     forall i, 0 <= i < len -> Memory.read_mem (start ^+ $4 ^* $i) m = None.
 
-  Definition mem_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
-    forall i, 0 <= i < len -> Memory.read_mem (start ^+ $i) m = None.
+  Definition mem_inaccessible(m: Memory.mem)(start eend: word wXLEN): Prop :=
+    forall a, (start <= a)%word -> (a < eend)%word -> Memory.read_mem a m = None.
 
   Definition containsProgram(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
     forall i inst, nth_error program i = Some inst ->
@@ -1052,6 +1052,7 @@ Section FlatToRiscv.
     destruct m as [ [r p n e] me ];
     simpl_RiscvMachine_get_set.
 
+  (*
   Definition loadWordL(memL: mem wXLEN)(addr: word wXLEN): option (word wXLEN).
     clear -addr memL IsMem.
     unfold wXLEN in *.
@@ -1067,7 +1068,17 @@ Section FlatToRiscv.
     - exact (Memory.storeWord memL addr v).
     - exact (Memory.storeDouble memL addr v).
   Defined.
+  *)
 
+  (* same as loadWordL but without option *)
+  Definition loadWordwXLEN(memL: mem wXLEN)(addr: word wXLEN): word wXLEN.
+    clear -addr memL IsMem.
+    unfold wXLEN in *.
+    destruct bitwidth.
+    - exact (Memory.loadWord memL addr).
+    - exact (Memory.loadDouble memL addr).
+  Defined.
+  
   (* same as storeWordL but without option *)
   Definition storeWordwXLEN(m: mem wXLEN)(a v: word wXLEN): mem wXLEN.
     unfold wXLEN, bitwidth in *.
@@ -1078,43 +1089,56 @@ Section FlatToRiscv.
   Defined.
 
   Definition containsMem(memL: mem wXLEN)(memH: compiler.Memory.mem): Prop :=
-    forall addr v, memH addr = Some v -> loadWordL memL addr = Some v.
+    forall addr v, compiler.Memory.read_mem addr memH = Some v ->
+              loadWordwXLEN memL addr = v /\ #addr + wXLEN_in_bytes <= Memory.memSize memL.
+
+  Arguments Nat.modulo : simpl never.
 
   Lemma containsMem_write: forall initialL initialH finalH a v,
     containsMem initialL initialH ->
     Memory.write_mem a v initialH = Some finalH ->
     containsMem (storeWordwXLEN initialL a v) finalH.
   Proof.
-    unfold Memory.write_mem, Memory.read_mem, containsMem, storeWordwXLEN,
-      loadWordL, wXLEN, bitwidth in *.
+    unfold containsMem, Memory.write_mem, Memory.read_mem, storeWordwXLEN,
+      loadWordwXLEN, wXLEN, bitwidth in *.
     intros; destruct Bw; simpl in *;
     (destruct_one_match_hyp; [|discriminate]);
     (destruct_one_match_hyp; [|discriminate]);
     inversions H0;
     destruct_one_match_hyp.
-    - inversion H1; subst; clear H1 E1. f_equal.
-      apply Memory.loadStoreWord_eq; try reflexivity.
-      (* Zdiv.mod_Zmod *)
-      (* TODO valid_addr *)
-      unfold Memory.valid_addr.
-      admit.
-    - f_equal. specialize H with (1 := H1). inversions H.
-      apply Memory.loadStoreWord_ne; try congruence; unfold Memory.valid_addr.
-      (* TODO valid_addr *)
-      + admit.
-      + admit.
-    - inversion H1; subst; clear H1 E1. f_equal.
-      apply Memory.loadStoreDouble_eq; try reflexivity.
-      (* Zdiv.mod_Zmod *)
-      (* TODO valid_addr *)
-      unfold Memory.valid_addr.
-      admit.
-    - f_equal. specialize H with (1 := H1). inversions H.
-      apply Memory.loadStoreDouble_ne; try congruence; unfold Memory.valid_addr.
-      (* TODO valid_addr *)
-      + admit.
-      + admit.
-  Admitted.
+    - inversion H1; subst; clear H1 E1.
+      specialize H with (1 := E0). destruct H as [A B].
+      split.
+      * apply Memory.loadStoreWord_eq; try reflexivity.
+        unfold Memory.valid_addr.
+        auto.
+      * rewrite Memory.storeWord_preserves_memSize. assumption.
+    - pose proof H as G.
+      specialize H with (1 := E0). destruct H as [A B].
+      specialize (G addr v0).
+      rewrite E in G. rewrite H1 in G. specialize (G eq_refl). destruct G as [C D].
+      subst.
+      destruct_one_match_hyp; try discriminate.
+      split.
+      * apply @Memory.loadStoreWord_ne; try congruence; unfold Memory.valid_addr; auto.
+      * rewrite Memory.storeWord_preserves_memSize. assumption.
+    - inversion H1; subst; clear H1 E1.
+      specialize H with (1 := E0). destruct H as [A B].
+      split.
+      * apply Memory.loadStoreDouble_eq; try reflexivity.
+        unfold Memory.valid_addr.
+        auto.
+      * rewrite Memory.storeDouble_preserves_memSize. assumption.
+    - pose proof H as G.
+      specialize H with (1 := E0). destruct H as [A B].
+      specialize (G addr v0).
+      rewrite E in G. rewrite H1 in G. specialize (G eq_refl). destruct G as [C D].
+      subst.
+      destruct_one_match_hyp; try discriminate.
+      split.
+      * apply @Memory.loadStoreDouble_ne; try congruence; unfold Memory.valid_addr; auto.
+      * rewrite Memory.storeDouble_preserves_memSize. assumption.
+  Qed.
 
   (* TODO might not hold if a = 0, but we only use it with a = 4 *)
   Lemma wzero_div: forall sz a, wzero sz ^/ a = wzero sz. Admitted.
@@ -1603,7 +1627,8 @@ list2imem
   Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: @stmt Bw TestFlatImp.ZName} {initialRegs finalRegs: state},
       eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
-      forall start len, mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
+      forall start eend,
+        mem_inaccessible initialMem start eend -> mem_inaccessible finalMem start eend.
   Proof.
     unfold mem_inaccessible. intros.
     eapply (eval_stmt_preserves_mem_accessibility H). eauto.
@@ -1704,14 +1729,17 @@ list2imem
   Ltac run1done :=
     apply runsToDone;
     simpl_RiscvMachine_get_set;
-    repeat split;
+    (* note: less aggressive than "repeat split" because it does not unfold *)
+    repeat match goal with
+           | |- _ /\ _ => split
+           end;
     first
       [ assumption
       | eapply containsMem_write; eassumption
       | match goal with
         | |- extends _ _ => state_calc
         end
-      | solve_containsProgram
+      | solve [solve_containsProgram]
       | solve_word_eq
       | idtac ].
 
@@ -1722,7 +1750,9 @@ list2imem
     simpl;
     intros;
     destruct_products;
-    repeat split;
+    repeat match goal with
+           | |- _ /\ _ => split
+           end;
     try assumption;
     try match goal with
         | H: ?m.(core).(pc) = _ |- ?m.(core).(pc) = _ => rewrite H
@@ -1762,11 +1792,11 @@ list2imem
   Proof.
     intros.
     unfold containsMem, Memory.read_mem, wXLEN_in_bytes, wXLEN, bitwidth in *.
-    unfold LwXLEN, bitwidth, loadWordL in *.
+    unfold LwXLEN, bitwidth, loadWordwXLEN in *.
     destruct Bw eqn: EBw;
-      (destruct_one_match_hyp; [|discriminate]);
       simpl in H2;
       specialize H2 with (1 := H1);
+      (destruct_one_match_hyp; [|discriminate]);
       simpl in H2; inversions H2;
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
       rewrite associativity;    
@@ -1879,7 +1909,7 @@ list2imem
     intros.
     unfold containsMem, Memory.write_mem, Memory.read_mem,
       wXLEN_in_bytes in *.
-    unfold SwXLEN, bitwidth, loadWordL, storeWordwXLEN in *.
+    unfold SwXLEN, bitwidth, loadWordwXLEN, storeWordwXLEN in *.
     destruct Bw eqn: EBw;
       simpl in H2;
       (destruct_one_match_hyp; [|discriminate]);
@@ -1918,20 +1948,41 @@ list2imem
 
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemAddr a v,
       containsProgram initialL_mem insts imemAddr ->
-      ~ (wordToZ imemAddr <= wordToZ a < wordToZ (imemAddr ^+ $4 ^* $(length insts)))%Z ->
+      ~ ((imemAddr <= a)%word /\ (a < imemAddr ^+ $4 ^* $(length insts))%word) ->
       Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemAddr.
   Proof.
   Admitted.
 
-  (* if len is too big, we get an overflow, and what we prove is too weak to be
-     usable by others (they can't distribute wordToZ over ^+) *)
-  Lemma mem_inaccessible_write:  forall a v initialMH finalMH start len,
+  Lemma mem_inaccessible_write:  forall a v initialMH finalMH start eend,
       Memory.write_mem a v initialMH = Some finalMH ->
-      mem_inaccessible initialMH start len ->
-      ~ (wordToZ start <= wordToZ a < wordToZ (start ^+ $4 ^* $len))%Z.
+      mem_inaccessible initialMH start eend ->
+      ~ ((start <= a)%word /\ (a < eend)%word).
   Proof.
   Admitted.
+
+  Lemma read_mem_valid_addr: forall a0 initialMH initialML w,
+      Memory.read_mem a0 initialMH = Some w ->
+      containsMem initialML initialMH ->
+      Memory.valid_addr a0 wXLEN_in_bytes (Memory.memSize initialML).
+  Proof.
+    intros. unfold Memory.valid_addr, containsMem in *.
+    specialize H0 with (1 := H). destruct H0 as [A B].
+    unfold Memory.read_mem in *.
+    destruct_one_match_hyp; try discriminate.
+    auto.
+  Qed.
+
+  Lemma write_mem_valid_addr: forall a0 v0 initialMH finalMH initialML,
+      Memory.write_mem a0 v0 initialMH = Some finalMH ->
+      containsMem initialML initialMH ->
+      Memory.valid_addr a0 wXLEN_in_bytes (Memory.memSize initialML).
+  Proof.
+    intros. unfold Memory.write_mem in *.
+    destruct_one_match_hyp; try discriminate.
+    inversion H. clear H. subst finalMH.
+    eapply read_mem_valid_addr; eassumption.
+  Qed.
   
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
@@ -1946,7 +1997,7 @@ list2imem
     containsProgram initialL.(machineMem) allInsts ($4 ^* imemStart) ->
     initialL.(core).(pc) = ($4 ^* imemStart) ^+ $4 ^* $(length instsBefore) ->
     initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
-    mem_inaccessible initialMH ($4 ^* imemStart) (4 * (length allInsts)) ->
+    mem_inaccessible initialMH ($4 ^* imemStart) ($4 ^* imemStart ^+ $4 ^* $(length allInsts)) ->
     runsToSatisfying initialL (fun finalL =>
        extends finalL.(core).(registers) finalH /\
        containsMem finalL.(machineMem) finalMH /\
@@ -1983,18 +2034,10 @@ list2imem
       rewrite execState_step.
       simpl_RiscvMachine_get_set.
       run1done.
-      lazymatch goal with
-      | A: Memory.write_mem _ _ _ = Some _, B: mem_inaccessible _ _ _ |- _ =>
-        pose proof (mem_inaccessible_write _ _ A B) as P
-      end.
-      (* H13 says we can write at a0 in initialMH, and from H10, we know that
-         a0 is not between imemStart and imemEnd, so containsProgram is preserved *)  
-      + apply store_preserves_containsProgram.
-        * assumption.
-        * admit.
-        * admit.
-      + admit.
-      + admit.
+      apply store_preserves_containsProgram.
+      + solve_containsProgram.
+      + eapply mem_inaccessible_write; eassumption.
+      + eapply write_mem_valid_addr; eassumption.
     - (* SLit *)
       clear IHfuelH.
       Time run1step.
