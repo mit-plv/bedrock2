@@ -1952,14 +1952,29 @@ list2imem
       Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemAddr.
   Proof.
+    intros.
   Admitted.
 
+  Lemma mem_inaccessible_read:  forall a v initialMH start eend,
+      Memory.read_mem a initialMH = Some v ->
+      mem_inaccessible initialMH start eend ->
+      ~ ((start <= a)%word /\ (a < eend)%word).
+  Proof.
+    intros. unfold mem_inaccessible in *.
+    intros [P Q].
+    specialize (H0 _ P Q).
+    congruence.
+  Qed.
+  
   Lemma mem_inaccessible_write:  forall a v initialMH finalMH start eend,
       Memory.write_mem a v initialMH = Some finalMH ->
       mem_inaccessible initialMH start eend ->
       ~ ((start <= a)%word /\ (a < eend)%word).
   Proof.
-  Admitted.
+    intros. unfold Memory.write_mem in *.
+    destruct_one_match_hyp; [|discriminate].
+    eapply mem_inaccessible_read; eassumption.
+  Qed.
 
   Lemma read_mem_valid_addr: forall a0 initialMH initialML w,
       Memory.read_mem a0 initialMH = Some w ->
