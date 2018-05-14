@@ -479,7 +479,7 @@ Section FlatToRiscv.
   Definition containsProgram2(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
     #offset + 4 * length program <= Memory.memSize m /\
     forall i inst, nth_error program i = Some inst ->
-      encode inst = wordToZ (Memory.loadWord m (offset ^+ $4 ^* $i)).
+      encode inst = wordToZ (Memory.loadWord m (offset ^+ $(4 * i))).
 
   (* TODO doesn't hold but use containsProgram2 everywhere *)
   Axiom containsProgram_alt: containsProgram = containsProgram2.
@@ -1959,6 +1959,166 @@ list2imem
   Arguments split2: simpl never.
   Arguments ZToWord: simpl never.
 
+  (* TODO put into Word.v *)
+  Lemma wordToN_plus: forall sz (a b: word sz),
+      (wordToN a + wordToN b < Npow2 sz)%N ->
+      wordToN (a ^+ b) = (wordToN a + wordToN b)%N.
+  Proof using .
+    intros. unfold wplus, wordBin.
+    rewrite wordToN_NToWord_2 by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma wordToNat_plus: forall sz (a b: word sz),
+      #a + #b < pow2 sz ->
+      #(a ^+ b) = #a + #b.
+  Proof using .
+    intros.
+    rewrite <-? wordToN_to_nat in *.
+    rewrite <-? Nnat.N2Nat.inj_add in *.
+    rewrite <- Npow2_nat in *.
+    apply Nlt_in in H.
+    rewrite wordToN_plus by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma wordToN_mult: forall sz (a b: word sz),
+      (wordToN a * wordToN b < Npow2 sz)%N ->
+      wordToN (a ^* b) = (wordToN a * wordToN b)%N.
+  Proof using .
+    intros. unfold wmult, wordBin.
+    rewrite wordToN_NToWord_2 by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma wordToNat_mult: forall sz (a b: word sz),
+      #a * #b < pow2 sz ->
+      #(a ^* b) = #a * #b.
+  Proof using .
+    intros.
+    rewrite <-? wordToN_to_nat in *.
+    rewrite <-? Nnat.N2Nat.inj_mul in *.
+    rewrite <- Npow2_nat in *.
+    apply Nlt_in in H.
+    rewrite wordToN_mult by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
+      containsProgram initialL_mem insts imemStart ->
+      ~ #imemStart <= #a < #imemStart + 4 * (length insts) ->
+      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
+      (* better than using $4 ^* imemStart because that prevents overflow *)
+      #imemStart mod 4 = 0 -> 
+      containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
+  Proof.
+    rewrite containsProgram_alt.
+    unfold containsProgram2.
+    intros. rename H2 into A. destruct H.
+    clear -H H0 H1 H2 A.
+    unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
+      destruct Bw; simpl in *;
+        split;
+        rewrite? Memory.storeWord_preserves_memSize;
+        rewrite? Memory.storeDouble_preserves_memSize;
+        try assumption;
+        intros;
+        specialize H2 with (1 := H3).
+    - pose proof (Memory.memSize_bound initialL_mem) as B.
+      assert (nth_error insts i <> None) as F by congruence.
+      apply nth_error_Some in F.
+      pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
+      rewrite Memory.loadStoreWord_ne; try assumption.
+      + unfold Memory.valid_addr. split.
+        * rewrite wordToNat_plus; omega.
+        * rewrite wordToNat_plus by omega.
+          rewrite D by omega.
+          rewrite Nat.add_mod by omega.
+          rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
+          rewrite A.
+          reflexivity.
+      + intro C. subst a. apply H0.
+        rewrite wordToNat_plus; omega.
+    - pose proof (Memory.memSize_bound initialL_mem) as B.
+      assert (nth_error insts i <> None) as F by congruence.
+      apply nth_error_Some in F.
+      (* TODO here we need lemmas about interaction between loadWord and storeDouble
+         (or express storeDouble in terms of two storeWords) *)
+  Admitted.
+
+  (*
+  Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
+      containsProgram initialL_mem insts ($4 ^* imemStart) ->
+      ~ #($4 ^* imemStart) <= #a < #($4 ^* imemStart) + 4 * (length insts) ->
+      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
+      (forall i, i < length insts ->
+            Memory.valid_addr ($4 ^* imemStart ^+ $4 ^* $i) 4 (Memory.memSize initialL_mem)) ->
+      containsProgram (storeWordwXLEN initialL_mem a v) insts ($4 ^* imemStart).
+  Proof.
+    unfold containsProgram.
+    intros.
+    clear -H H0 H1 H2 H3.
+    unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
+      destruct Bw; simpl in *;
+        rewrite? Memory.storeWord_preserves_memSize;
+        rewrite? Memory.storeDouble_preserves_memSize;
+        try assumption;
+        specialize H with (1 := H3).
+    - pose proof (Memory.memSize_bound initialL_mem) as B.
+      assert (nth_error insts i <> None) as F by congruence.
+      apply nth_error_Some in F.
+      pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
+      pose proof H2 as H2'.
+      specialize H2 with (1 := F).
+      rewrite Memory.loadStoreWord_ne; try assumption.
+      intro C. subst a. apply H0.
+      destruct insts as [|inst0 insts]; simpl in F; [omega|].
+      specialize (H2' (length insts)).
+      unfold Memory.valid_addr in H2'. destruct H2' as [F1 F2]; [ simpl; omega | ].
+      unfold Memory.valid_addr in H2. destruct H2 as [F3 F4].
+      rewrite wordToNat_plus.
+      * split; try omega. (* F3 (from additional hyp) is useless because overflow
+        could have happened there too *)
+  Abort.
+  
+  Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
+      containsProgram initialL_mem insts $(4 * imemStart) ->
+      ~ 4 * imemStart <= #a < 4 * imemStart + 4 * (length insts) ->
+      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
+      containsProgram (storeWordwXLEN initialL_mem a v) insts $(4 * imemStart).
+  Proof.
+    rewrite containsProgram_alt.
+    unfold containsProgram2.
+    intros. destruct H.
+    clear -H H0 H1 H2.
+    unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
+      destruct Bw;
+        split;
+        rewrite? Memory.storeWord_preserves_memSize;
+        rewrite? Memory.storeDouble_preserves_memSize;
+        try assumption;
+        intros;
+        specialize H2 with (1 := H3).
+    - pose proof (Memory.memSize_bound initialL_mem) as B.
+      assert (nth_error insts i <> None) as F by congruence.
+      apply nth_error_Some in F.
+      pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
+      rewrite Memory.loadStoreWord_ne; try assumption.
+      + unfold Memory.valid_addr. split.
+        * rewrite wordToNat_plus; omega.
+        * rewrite wordToNat_plus by omega.
+          rewrite D by omega.
+          rewrite wordToNat_natToWord_idempotent'.
+          { rewrite Nat.add_mod by omega.
+            rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
+            rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
+            reflexivity. }
+          { unfold pow2. 
+           (* "$4 ^* imemStart" could overflow, H still not strong enough,
+              because after (4 * imemStart), it is still converted to word and then back to
+              nat *) 
+  Abort.
+    
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
       containsProgram initialL_mem insts ($4 ^* imemStart) ->
       ~ #($4 ^* imemStart) <= #a < #($4 ^* imemStart) + 4 * (length insts) ->
@@ -1977,12 +2137,28 @@ list2imem
         try assumption;
         intros;
         specialize H2 with (1 := H3).
-    - rewrite Memory.loadStoreWord_ne; try assumption.
-      + unfold Memory.valid_addr.
-        admit. (* ok *)
-      + intro C. subst a. apply H0. (* TODO containsProgram2 still can have a memory size 
-       which causes overflows *)
+    - pose proof (Memory.memSize_bound initialL_mem) as B.
+      assert (nth_error insts i <> None) as F by congruence.
+      apply nth_error_Some in F.
+      pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
+      rewrite Memory.loadStoreWord_ne; try assumption.
+      + unfold Memory.valid_addr. split.
+        * rewrite wordToNat_plus; omega.
+        * rewrite wordToNat_plus by omega.
+          rewrite D by omega.
+          rewrite wordToNat_mult.
+          { rewrite wordToNat_natToWord_idempotent'.
+            - rewrite Nat.add_mod by omega.
+              rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
+              rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
+              reflexivity.
+            - unfold pow2. omega. }
+          { (* "$4 ^* imemStart" could overflow! *) admit. }
+      + intro C. subst a. apply H0.
+        rewrite wordToNat_plus; omega.
+    -
   Admitted.
+  *)
 
   (*
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemAddr a v,
@@ -2046,17 +2222,18 @@ list2imem
     allInsts = instsBefore ++ insts ++ instsAfter ->  
     stmt_not_too_big s ->
     valid_registers s ->
+    #imemStart mod 4 = 0 ->
     eval_stmt fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
-    containsProgram initialL.(machineMem) allInsts ($4 ^* imemStart) ->
-    initialL.(core).(pc) = ($4 ^* imemStart) ^+ $4 ^* $(length instsBefore) ->
+    containsProgram initialL.(machineMem) allInsts imemStart ->
+    initialL.(core).(pc) = imemStart ^+ $4 ^* $(length instsBefore) ->
     initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
-    mem_inaccessible initialMH ($4 ^* imemStart) (4 * length allInsts) ->
+    mem_inaccessible initialMH imemStart (4 * length allInsts) ->
     runsToSatisfying initialL (fun finalL =>
        extends finalL.(core).(registers) finalH /\
        containsMem finalL.(machineMem) finalMH /\
-       containsProgram finalL.(machineMem) allInsts ($4 ^* imemStart) /\
+       containsProgram finalL.(machineMem) allInsts imemStart /\
        finalL.(core).(pc) = initialL.(core).(pc) ^+ $ (4) ^* $ (length insts) /\
        finalL.(core).(nextPC) = finalL.(core).(pc) ^+ $4).
   Proof.
@@ -2064,7 +2241,8 @@ list2imem
     induction fuelH; [intros; discriminate |].
     intros.
     unfold runsToSatisfying in *.
-    invert_eval_stmt;
+    
+invert_eval_stmt;
       try match goal with
           | o: binop |- _ => destruct o (* do this before destruct_containsProgram *)
           end;
@@ -2093,6 +2271,7 @@ list2imem
       + solve_containsProgram.
       + eapply mem_inaccessible_write; eassumption.
       + eapply write_mem_valid_addr; eassumption.
+      + assumption.
     - (* SLit *)
       clear IHfuelH.
       Time run1step.
@@ -2167,6 +2346,89 @@ list2imem
       (* jump over else-branch *)
       intros.
       destruct_everything.
+
+    apply runsToStep;
+    simpl in *; subst *;
+    fetch_inst;
+    autounfold with unf_pseudo in *;
+    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+    repeat (
+        do_get_set_Register || 
+        simpl_RiscvMachine_get_set ||
+        rewrite_reg_value ||
+        rewrite_getReg ||
+        rewrite_setReg ||
+        rewrite_alu_op_defs ||
+        (rewrite weqb_ne by congruence) ||
+        (rewrite weqb_eq by congruence) ||
+        rewrite elim_then_true_else_false ||
+        rewrite left_identity ||
+        simpl_rem4_test ||
+        rewrite put_put_same ||
+        rewrite get_put_same).
+
+    match goal with
+    | |- context [weqb ?r ?expectZero] =>
+      match expectZero with
+      | $0 => idtac
+      end;
+      match r with
+      | rem ?a four => replace r with expectZero (*by prove_rem_four_zero*)
+      end
+    end.
+    {
+    rewrite weqb_eq by reflexivity;
+    simpl. admit.
+    }
+    {
+
+
+
+      repeat match goal with
+             | H: ?T |- _ => match T with
+                           | _ mod _ = _ => fail 1
+                           | _ => idtac
+                           end;
+                             clear H
+             end;
+      repeat match goal with
+             | H: ?T |- _ => match T with
+                          | context[_ mod _] => fail 1
+                          end;
+                          clear H
+             end;
+    match goal with
+    | |- rem _ four = $0 => idtac
+    | |- $0 = rem _ four => idtac
+    | _ => fail 1 "wrong shape of goal"
+    end;
+    rewrite <-? (Z.mul_comm 4);
+    rewrite? ZToWord_mult;
+    rewrite? Z4four;                                    
+    rewrite? rem_four_distrib_plus;
+    rewrite? rem_four_undo;
+    rewrite? rem_four_four;
+    rewrite? wplus_unit.
+
+      Lemma rem40_mod40: forall a,
+          #a mod 4 = 0 ->
+          rem a four = $0.
+      Proof.
+        intros.
+        apply (f_equal Z.of_nat) in H.
+        rewrite Zdiv.mod_Zmod in H by omega. simpl in H.
+        Search (Z.of_nat # _).
+        About wordToZ_wordToNat_pos.
+        Print MachineWidth32.
+        (* TODO why are we using rem instead of remu here? *)
+        
+    
+  Ltac run1step :=
+    run1step';
+    rewrite execState_step;
+    simpl_RiscvMachine_get_set.
+
+
       run1step.
       run1done.
     - (* SIf/Else *)
