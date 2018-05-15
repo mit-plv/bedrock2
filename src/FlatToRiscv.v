@@ -1461,6 +1461,139 @@ list2imem
     (imemStart ^+ $ (4) ^* $ (length instsBefore) ^+ $ (4) ^* $ (length (compile_stmt s1)))
  *)
  *)
+
+  Arguments mult: simpl never.
+  Arguments run1: simpl never.
+
+  (* TODO put into Word.v *)
+  Lemma wordToN_plus: forall sz (a b: word sz),
+      (wordToN a + wordToN b < Npow2 sz)%N ->
+      wordToN (a ^+ b) = (wordToN a + wordToN b)%N.
+  Proof using .
+    intros. unfold wplus, wordBin.
+    rewrite wordToN_NToWord_2 by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma wordToNat_plus: forall sz (a b: word sz),
+      #a + #b < pow2 sz ->
+      #(a ^+ b) = #a + #b.
+  Proof using .
+    intros.
+    rewrite <-? wordToN_to_nat in *.
+    rewrite <-? Nnat.N2Nat.inj_add in *.
+    rewrite <- Npow2_nat in *.
+    apply Nlt_in in H.
+    rewrite wordToN_plus by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma wordToN_mult: forall sz (a b: word sz),
+      (wordToN a * wordToN b < Npow2 sz)%N ->
+      wordToN (a ^* b) = (wordToN a * wordToN b)%N.
+  Proof using .
+    intros. unfold wmult, wordBin.
+    rewrite wordToN_NToWord_2 by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma wordToNat_mult: forall sz (a b: word sz),
+      #a * #b < pow2 sz ->
+      #(a ^* b) = #a * #b.
+  Proof using .
+    intros.
+    rewrite <-? wordToN_to_nat in *.
+    rewrite <-? Nnat.N2Nat.inj_mul in *.
+    rewrite <- Npow2_nat in *.
+    apply Nlt_in in H.
+    rewrite wordToN_mult by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma Npow2_pos: forall a,
+      (0 < Npow2 a)%N.
+  Proof.
+    intros.
+    destruct (Npow2 a) eqn: E.
+    - exfalso. apply (Npow2_not_zero a). assumption.
+    - constructor.
+  Qed.
+
+  (* Usually this kind of lemmas would need a guarantee that "(wordToN a mod wordToN b)%N"
+     does not overflow, but fortunately this can never overflow.
+     And also, we don't need to prevent b from being 0. *)
+  Lemma wordToN_mod: forall sz (a b: word sz),
+      wordToN (a ^% b) = (wordToN a mod wordToN b)%N.
+  Proof using .
+    intros. unfold wmod, wordBin.
+    rewrite wordToN_NToWord_2; [ reflexivity | ].
+    destruct (wordToN b) eqn: E.
+    - unfold N.modulo, N.div_eucl. destruct (wordToN a) eqn: F; simpl.
+      + apply Npow2_pos.
+      + rewrite <- F. apply wordToN_bound.
+    - eapply N.lt_trans.
+      + apply N.mod_upper_bound. congruence.
+      + rewrite <- E. apply wordToN_bound.
+  Qed.
+
+  Lemma N_to_Z_to_nat: forall (a: N), Z.to_nat (Z.of_N a) = N.to_nat a.
+  Proof.
+    intros. rewrite <- (N2Z.id a) at 2.
+    rewrite Z_N_nat. reflexivity.
+  Qed.
+
+  (* TODO this should be in the Coq library: N2Nat.inj_mod *)
+  Lemma N2Nat_inj_mod: forall (a b: N),
+      (b <> 0)%N ->
+      N.to_nat (a mod b)%N = (N.to_nat a) mod (N.to_nat b).
+  Proof using .
+    intros.
+    rewrite <-? N_to_Z_to_nat.
+    rewrite N2Z.inj_mod by assumption.
+    apply Nat2Z.inj.
+    rewrite Zdiv.mod_Zmod.
+    - rewrite? Z2Nat.id; try apply N2Z.is_nonneg.
+      + reflexivity.
+      + pose proof (Z.mod_pos_bound (Z.of_N a) (Z.of_N b)) as Q.
+        destruct Q as [Q _].
+        * destruct b; try contradiction. simpl. constructor.
+        * exact Q.
+    - destruct b; try contradiction. simpl.
+      pose proof (Pos2Nat.is_pos p) as Q. omega.
+  Qed.
+  
+  Lemma wordToNat_mod: forall sz (a b: word sz),
+      b <> $0 ->
+      #(a ^% b) = #a mod #b.
+  Proof using .
+    intros.
+    rewrite <-? wordToN_to_nat in *.
+    rewrite <-? N2Nat_inj_mod in *.
+    - rewrite wordToN_mod by assumption.
+      reflexivity.
+    - intro. apply H. replace 0%N with (wordToN (natToWord sz 0)) in H0.
+      + apply wordToN_inj. exact H0.
+      + erewrite <- wordToN_wzero. reflexivity.
+  Qed.
+
+  Lemma remu40_mod40: forall a,
+      #a mod 4 = 0 ->
+      remu a four = $0.
+  Proof.
+    intros.
+    rewrite remu_def.
+    unfold four, two. rewrite one_def. rewrite? add_def.
+    rewrite <-? natToWord_plus. simpl.
+    replace 4 with (# (natToWord wXLEN 4)) in H.
+    - rewrite <- wordToNat_mod in H.
+      + apply wordToNat_inj.
+        rewrite H. symmetry. apply roundTrip_0.
+      + intro. apply natToWord_inj in H0; [discriminate|clear..];
+                 unfold wXLEN, bitwidth; destruct Bw; simpl; omega.
+    - apply wordToNat_natToWord_idempotent'.
+      clear; unfold wXLEN, bitwidth; destruct Bw; simpl; omega.
+  Qed.
+
   Hypothesis translate_id_if_aligned_4: forall a mode,
       (wordToNat a) mod 4 = 0 ->
       translate mode four a = Return a.
@@ -1468,9 +1601,6 @@ list2imem
   Hypothesis translate_id_if_aligned_8: forall a mode,
       (wordToNat a) mod 8 = 0 ->
       translate mode eight a = Return a.
-
-  Arguments mult: simpl never.
-  Arguments run1: simpl never.
 
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
@@ -1647,8 +1777,9 @@ list2imem
       destruct P as [P _]. specialize (P E). exfalso. congruence.    
   Qed.
 
+  Axiom TODO_remu: remu = rem.
+
   Ltac prove_rem_four_zero :=
-    clear;
     match goal with
     | |- rem _ four = $0 => idtac
     | |- $0 = rem _ four => idtac
@@ -1660,6 +1791,9 @@ list2imem
     rewrite? rem_four_distrib_plus;
     rewrite? rem_four_undo;
     rewrite? rem_four_four;
+    repeat match goal with
+           | H: _ |- _ => apply remu40_mod40 in H; rewrite TODO_remu in H; rewrite H
+           end;
     rewrite? wplus_unit;
     reflexivity.
 
@@ -1959,51 +2093,6 @@ list2imem
   Arguments split2: simpl never.
   Arguments ZToWord: simpl never.
 
-  (* TODO put into Word.v *)
-  Lemma wordToN_plus: forall sz (a b: word sz),
-      (wordToN a + wordToN b < Npow2 sz)%N ->
-      wordToN (a ^+ b) = (wordToN a + wordToN b)%N.
-  Proof using .
-    intros. unfold wplus, wordBin.
-    rewrite wordToN_NToWord_2 by assumption.
-    reflexivity.
-  Qed.
-
-  Lemma wordToNat_plus: forall sz (a b: word sz),
-      #a + #b < pow2 sz ->
-      #(a ^+ b) = #a + #b.
-  Proof using .
-    intros.
-    rewrite <-? wordToN_to_nat in *.
-    rewrite <-? Nnat.N2Nat.inj_add in *.
-    rewrite <- Npow2_nat in *.
-    apply Nlt_in in H.
-    rewrite wordToN_plus by assumption.
-    reflexivity.
-  Qed.
-
-  Lemma wordToN_mult: forall sz (a b: word sz),
-      (wordToN a * wordToN b < Npow2 sz)%N ->
-      wordToN (a ^* b) = (wordToN a * wordToN b)%N.
-  Proof using .
-    intros. unfold wmult, wordBin.
-    rewrite wordToN_NToWord_2 by assumption.
-    reflexivity.
-  Qed.
-
-  Lemma wordToNat_mult: forall sz (a b: word sz),
-      #a * #b < pow2 sz ->
-      #(a ^* b) = #a * #b.
-  Proof using .
-    intros.
-    rewrite <-? wordToN_to_nat in *.
-    rewrite <-? Nnat.N2Nat.inj_mul in *.
-    rewrite <- Npow2_nat in *.
-    apply Nlt_in in H.
-    rewrite wordToN_mult by assumption.
-    reflexivity.
-  Qed.
-
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
       containsProgram initialL_mem insts imemStart ->
       ~ #imemStart <= #a < #imemStart + 4 * (length insts) ->
@@ -2241,8 +2330,7 @@ list2imem
     induction fuelH; [intros; discriminate |].
     intros.
     unfold runsToSatisfying in *.
-    
-invert_eval_stmt;
+    invert_eval_stmt;
       try match goal with
           | o: binop |- _ => destruct o (* do this before destruct_containsProgram *)
           end;
@@ -2346,89 +2434,6 @@ invert_eval_stmt;
       (* jump over else-branch *)
       intros.
       destruct_everything.
-
-    apply runsToStep;
-    simpl in *; subst *;
-    fetch_inst;
-    autounfold with unf_pseudo in *;
-    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-    repeat (
-        do_get_set_Register || 
-        simpl_RiscvMachine_get_set ||
-        rewrite_reg_value ||
-        rewrite_getReg ||
-        rewrite_setReg ||
-        rewrite_alu_op_defs ||
-        (rewrite weqb_ne by congruence) ||
-        (rewrite weqb_eq by congruence) ||
-        rewrite elim_then_true_else_false ||
-        rewrite left_identity ||
-        simpl_rem4_test ||
-        rewrite put_put_same ||
-        rewrite get_put_same).
-
-    match goal with
-    | |- context [weqb ?r ?expectZero] =>
-      match expectZero with
-      | $0 => idtac
-      end;
-      match r with
-      | rem ?a four => replace r with expectZero (*by prove_rem_four_zero*)
-      end
-    end.
-    {
-    rewrite weqb_eq by reflexivity;
-    simpl. admit.
-    }
-    {
-
-
-
-      repeat match goal with
-             | H: ?T |- _ => match T with
-                           | _ mod _ = _ => fail 1
-                           | _ => idtac
-                           end;
-                             clear H
-             end;
-      repeat match goal with
-             | H: ?T |- _ => match T with
-                          | context[_ mod _] => fail 1
-                          end;
-                          clear H
-             end;
-    match goal with
-    | |- rem _ four = $0 => idtac
-    | |- $0 = rem _ four => idtac
-    | _ => fail 1 "wrong shape of goal"
-    end;
-    rewrite <-? (Z.mul_comm 4);
-    rewrite? ZToWord_mult;
-    rewrite? Z4four;                                    
-    rewrite? rem_four_distrib_plus;
-    rewrite? rem_four_undo;
-    rewrite? rem_four_four;
-    rewrite? wplus_unit.
-
-      Lemma rem40_mod40: forall a,
-          #a mod 4 = 0 ->
-          rem a four = $0.
-      Proof.
-        intros.
-        apply (f_equal Z.of_nat) in H.
-        rewrite Zdiv.mod_Zmod in H by omega. simpl in H.
-        Search (Z.of_nat # _).
-        About wordToZ_wordToNat_pos.
-        Print MachineWidth32.
-        (* TODO why are we using rem instead of remu here? *)
-        
-    
-  Ltac run1step :=
-    run1step';
-    rewrite execState_step;
-    simpl_RiscvMachine_get_set.
-
-
       run1step.
       run1done.
     - (* SIf/Else *)
