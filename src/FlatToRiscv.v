@@ -121,13 +121,13 @@ Section FlatToRiscv.
 
   (* put here so that rem picks up the MachineWidth for wXLEN *)
 
-  Lemma rem_four_distrib_plus: forall a b, rem (a ^+ b) four = (rem a four) ^+ (rem b four).
+  Lemma remu_four_distrib_plus: forall a b, remu (a ^+ b) four = (remu a four) ^+ (remu b four).
   Proof. Admitted.
 
-  Lemma rem_four_undo: forall a, rem ($4 ^* a) four = $0.
+  Lemma remu_four_undo: forall a, remu ($4 ^* a) four = $0.
   Proof. Admitted.
 
-  Lemma rem_four_four: rem $4 four = $0.
+  Lemma remu_four_four: remu $4 four = $0.
   Proof. Admitted.
 
   Lemma wlshift_distr_plus: forall sz n (a b: word sz),
@@ -1247,12 +1247,10 @@ Section FlatToRiscv.
       div a b = ZToWord wXLEN (wordToZ a / wordToZ b).
   Proof. unfold div. prove_alu_def. Qed.
 
-  (* not used currently because we prefer rewriting on "rem" directly
   Lemma rem_def: forall (a b: word wXLEN),
       rem a b = ZToWord wXLEN (wordToZ a mod wordToZ b).
   Proof. unfold rem. prove_alu_def. Qed.
-  *)
-  
+
   Lemma signed_less_than_def: forall (a b: word wXLEN),
       signed_less_than a b = if wslt_dec a b then true else false.
   Proof. unfold signed_less_than. prove_alu_def. Qed.
@@ -1292,11 +1290,11 @@ Section FlatToRiscv.
   Lemma divu_def: forall (a b: word wXLEN),
       divu a b = wdiv a b.
   Proof. unfold divu. prove_alu_def. Qed.
-  
+
   Lemma remu_def: forall (a b: word wXLEN),
       remu a b = wmod a b.
   Proof. unfold remu. prove_alu_def. Qed.
-  
+
   Ltac rewrite_alu_op_defs :=
     repeat (rewrite fromImm_def in *
             || rewrite zero_def in *
@@ -1305,7 +1303,7 @@ Section FlatToRiscv.
             || rewrite sub_def in *
             || rewrite mul_def in *
             || rewrite div_def in *
-        (*  || rewrite rem_def in * *)
+            || rewrite rem_def in *
             || rewrite signed_less_than_def in *
             || rewrite signed_eqb_def in *
             || rewrite xor_def in *
@@ -1316,7 +1314,8 @@ Section FlatToRiscv.
             || rewrite sra_def in *
             || rewrite ltu_def in *
             || rewrite divu_def in *
-            || rewrite remu_def in *).
+            (* missing: remu_def because it's only used for alignment checks and we prefer
+               keeping it as remu *) ).
 
   Hint Unfold
     Nop
@@ -1777,22 +1776,20 @@ list2imem
       destruct P as [P _]. specialize (P E). exfalso. congruence.    
   Qed.
 
-  Axiom TODO_remu: remu = rem.
-
-  Ltac prove_rem_four_zero :=
+  Ltac prove_remu_four_zero :=
     match goal with
-    | |- rem _ four = $0 => idtac
-    | |- $0 = rem _ four => idtac
+    | |- remu _ four = $0 => idtac
+    | |- $0 = remu _ four => idtac
     | _ => fail 1 "wrong shape of goal"
     end;
     rewrite <-? (Z.mul_comm 4);
     rewrite? ZToWord_mult;
     rewrite? Z4four;                                    
-    rewrite? rem_four_distrib_plus;
-    rewrite? rem_four_undo;
-    rewrite? rem_four_four;
+    rewrite? remu_four_distrib_plus;
+    rewrite? remu_four_undo;
+    rewrite? remu_four_four;
     repeat match goal with
-           | H: _ |- _ => apply remu40_mod40 in H; rewrite TODO_remu in H; rewrite H
+           | H: _ |- _ => apply remu40_mod40 in H; rewrite H
            end;
     rewrite? wplus_unit;
     reflexivity.
@@ -1827,14 +1824,14 @@ list2imem
       | solve_mem_inaccessible
       | idtac ].
 
-  Ltac simpl_rem4_test :=
+  Ltac simpl_remu4_test :=
     match goal with
     | |- context [weqb ?r ?expectZero] =>
       match expectZero with
       | $0 => idtac
       end;
       match r with
-      | rem ?a four => replace r with expectZero by prove_rem_four_zero
+      | remu ?a four => replace r with expectZero by prove_remu_four_zero
       end
     end;
     rewrite weqb_eq by reflexivity;
@@ -1864,7 +1861,7 @@ list2imem
         (rewrite weqb_eq by congruence) ||
         rewrite elim_then_true_else_false ||
         rewrite left_identity ||
-        simpl_rem4_test ||
+        simpl_remu4_test ||
         rewrite put_put_same ||
         rewrite get_put_same).
 
