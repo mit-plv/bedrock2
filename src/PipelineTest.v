@@ -120,7 +120,7 @@ Definition zeroedRiscvMachineCore: RiscvMachineCore := {|
 
 Definition zeroedRiscvMachine: RiscvMachine := {|
     core := zeroedRiscvMachineCore;
-    machineMem := zero_mem ((length fib6_riscv) * 4);
+    machineMem := @zero_mem 32 ((length fib6_riscv) * 4);
 |}.
 
 Definition zeroedRiscvMachineL: RiscvMachineL := {|

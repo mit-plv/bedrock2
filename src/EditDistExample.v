@@ -129,7 +129,7 @@ Definition mem_size: nat := (List.length initialMemoryWords) * 4.
 
 Eval cbv in mem_size.
 
-Definition initialMemoryBytes: mem :=
+Definition initialMemoryBytes: mem 32 :=
   (Memory.store_word_list initialMemoryWords (wzero 32) (zero_mem mem_size)).
 
 Definition initialRiscvMachineCore: RiscvMachineCore := {|
