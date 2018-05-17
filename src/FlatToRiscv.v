@@ -54,11 +54,119 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma ZToWord_mult: forall sz a b, ZToWord sz (a * b) = ZToWord sz a ^* ZToWord sz b.
-Proof. Admitted.
+Lemma natToWord_mod_pow2: forall sz a, natToWord sz (a mod (pow2 sz)) = natToWord sz a.
+Proof.
+  Admitted.
+
+Lemma pow2_ne_zero: forall n, pow2 n <> 0.
+Proof.
+  intros.
+  pose proof (zero_lt_pow2 n).
+  omega.
+Qed.
+
+Lemma posToWord_sz0: forall p, posToWord 0 p = $0.
+Proof.
+  intros. unfold posToWord. destruct p; reflexivity.
+Qed.
+
+Lemma ZToWord_sz0: forall z, ZToWord 0 z = $0.
+Proof.
+  intros. unfold ZToWord. destruct z; try rewrite posToWord_sz0; reflexivity.
+Qed.
+
+Require Import Lia. (* for nia (integer arithmetic with multiplications that omega cannot
+solve *)
+
+Lemma ZToWord_Npow2_sub_k : forall (sz : nat) (z : Z) (k: nat),
+    ZToWord sz (z - Z.of_nat k * Z.of_N (Npow2 sz)) = ZToWord sz z.
+Proof.
+  intros. induction k.
+  - simpl. f_equal. omega.
+  - rewrite <- IHk.
+    replace (z - Z.of_nat (S k) * Z.of_N (Npow2 sz))%Z
+       with ((z - Z.of_nat k * Z.of_N (Npow2 sz)) - Z.of_N (Npow2 sz))%Z by nia.
+    apply ZToWord_Npow2_sub.
+Qed.
+
+Lemma ZToWord_Npow2_add_k : forall (sz : nat) (z : Z) (k: nat),
+    ZToWord sz (z + Z.of_nat k * Z.of_N (Npow2 sz)) = ZToWord sz z.
+Proof.
+  intros.
+  replace z with (z + Z.of_nat k * Z.of_N (Npow2 sz) - Z.of_nat k * Z.of_N (Npow2 sz))%Z at 2
+    by omega.
+  symmetry.
+  apply ZToWord_Npow2_sub_k.
+Qed.
+
+Lemma ZToWord_Npow2_sub_z : forall (sz : nat) (z : Z) (k: Z),
+    ZToWord sz (z - k * Z.of_N (Npow2 sz)) = ZToWord sz z.
+Proof.
+  intros. destruct k.
+  - simpl. f_equal. omega.
+  - rewrite <- positive_nat_Z. apply ZToWord_Npow2_sub_k.
+  - rewrite <- Pos2Z.opp_pos.
+    replace (z - - Z.pos p * Z.of_N (Npow2 sz))%Z
+       with (z +   Z.pos p * Z.of_N (Npow2 sz))%Z by nia.
+    rewrite <- positive_nat_Z. apply ZToWord_Npow2_add_k.
+Qed.
+
+Lemma wordToZ_ZToWord': forall sz w,
+    exists k, wordToZ (ZToWord sz w) = (w - k * Z.of_N (Npow2 sz))%Z.
+Proof.
+  intros.
+  destruct sz.
+  - simpl. exists w%Z. rewrite ZToWord_sz0. rewrite wordToZ_wzero. omega.
+  - exists ((w + Z.of_nat (pow2 sz)) / Z.of_N (Npow2 (S sz)))%Z.
+    erewrite <- ZToWord_Npow2_sub_z.
+    rewrite wordToZ_ZToWord.
+    + reflexivity.
+    + replace w with ((- Z.of_nat (pow2 sz)) + (w + Z.of_nat (pow2 sz)))%Z at 1 3 by omega.
+      rewrite <- Z.add_sub_assoc.
+      replace (Z.of_N (Npow2 (S sz))) with (2 * Z.of_nat (pow2 sz))%Z.
+      * remember (Z.of_nat (pow2 sz)) as M.
+        assert (M > 0)%Z. {
+          subst. destruct (pow2 sz) eqn: E.
+          - exfalso. eapply pow2_ne_zero. exact E.
+          - simpl. constructor.
+        }
+        rewrite <- Zdiv.Zmod_eq_full by omega.
+        pose proof (Zdiv.Z_mod_lt (w + M) (2 * M)). omega.
+      * rewrite <- Npow2_nat. rewrite N_nat_Z.
+        rewrite Npow2_S. rewrite N2Z.inj_add. omega.
+Qed.
+
+Print Assumptions wordToZ_ZToWord'. (* contains R axioms !! *)
+Print Assumptions wordToZ_wzero. (* R *)
+Print Assumptions wordToZ. (* closed *)
+Print Assumptions wordToN_wzero. (* R *)
+Print Assumptions wordToN_nat. (* closed *)
+Print Assumptions wordToNat_wzero. (* R *)
+Print Assumptions roundTrip_0. (* R *)
+
 
 Lemma ZToWord_plus: forall sz a b, ZToWord sz (a + b) = ZToWord sz a ^+ ZToWord sz b.
-Proof. Admitted.
+Proof.
+  destruct sz as [|sz]; intros n m; intuition.
+  rewrite wplus_wplusZ.
+  unfold wplusZ, wordBinZ.
+  destruct (wordToZ_ZToWord' (S sz) n) as [k1 D1].
+  destruct (wordToZ_ZToWord' (S sz) m) as [k2 D2].
+  rewrite D1.
+  rewrite D2.
+  (* TODO also get bounds on k1, k2 from wordToZ_ZToWord',
+     then use something like drop_sub but for ZToWord *)
+Admitted.
+
+Lemma ZToWord_mult: forall sz a b, ZToWord sz (a * b) = ZToWord sz a ^* ZToWord sz b.
+Proof.
+  intros.
+  rewrite wmult_alt. unfold wmultN, wordBinN.
+  Search wmult.
+  unfold ZToWord. unfold posToWord.
+  Search ZToWord.
+  Search (ZToWord _ (_ * _)).
+Admitted.
 
 Lemma ZToWord_minus: forall sz a b, ZToWord sz (a - b) = ZToWord sz a ^- ZToWord sz b.
 Proof. Admitted.
