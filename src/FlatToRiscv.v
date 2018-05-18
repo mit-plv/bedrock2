@@ -54,10 +54,6 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma natToWord_mod_pow2: forall sz a, natToWord sz (a mod (pow2 sz)) = natToWord sz a.
-Proof.
-  Admitted.
-
 Lemma pow2_ne_zero: forall n, pow2 n <> 0.
 Proof.
   intros.
@@ -136,15 +132,6 @@ Proof.
         rewrite Npow2_S. rewrite N2Z.inj_add. omega.
 Qed.
 
-Print Assumptions wordToZ_ZToWord'. (* contains R axioms !! *)
-Print Assumptions wordToZ_wzero. (* R *)
-Print Assumptions wordToZ. (* closed *)
-Print Assumptions wordToN_wzero. (* R *)
-Print Assumptions wordToN_nat. (* closed *)
-Print Assumptions wordToNat_wzero. (* R *)
-Print Assumptions roundTrip_0. (* R *)
-
-
 Lemma ZToWord_plus: forall sz a b, ZToWord sz (a + b) = ZToWord sz a ^+ ZToWord sz b.
 Proof.
   destruct sz as [|sz]; intros n m; intuition.
@@ -154,29 +141,93 @@ Proof.
   destruct (wordToZ_ZToWord' (S sz) m) as [k2 D2].
   rewrite D1.
   rewrite D2.
-  (* TODO also get bounds on k1, k2 from wordToZ_ZToWord',
-     then use something like drop_sub but for ZToWord *)
-Admitted.
+  replace (n - k1 * Z.of_N (Npow2 (S sz)) + (m - k2 * Z.of_N (Npow2 (S sz))))%Z
+     with (n + m - (k1 + k2) * Z.of_N (Npow2 (S sz)))%Z by nia.
+  symmetry.
+  apply ZToWord_Npow2_sub_z.
+Qed.
+
+Lemma else_0_to_ex_N: forall (b: bool) (a: N),
+    exists k, (if b then a else 0%N) = (k * a)%N.
+Proof.
+  intros. destruct b.
+  - exists 1%N. nia.
+  - exists 0%N. reflexivity.
+Qed.
+
+Local Lemma wmultZ_helper: forall a b k1 k2 p,
+    ((a - k1 * p) * (b - k2 * p) = a * b - (k1 * b + k2 * a - k1 * k2 * p) * p)%Z.
+Proof. intros. nia. Qed.
+
+Lemma wmult_wmultZ: forall (sz : nat) (w1 w2 : word sz), w1 ^* w2 = wmultZ w1 w2.
+Proof.
+  unfold wmultZ, wmult, wordBinZ, wordBin. intros.
+  do 2 rewrite wordToZ_wordToN.
+  destruct (else_0_to_ex_N (wmsb w1 false) (Npow2 sz)) as [k1 E1]. rewrite E1. clear E1.
+  destruct (else_0_to_ex_N (wmsb w2 false) (Npow2 sz)) as [k2 E2]. rewrite E2. clear E2.
+  do 2 rewrite N2Z.inj_mul.
+  rewrite wmultZ_helper.
+  rewrite <- N2Z.inj_mul.
+  rewrite ZToWord_Npow2_sub_z.
+  rewrite ZToWord_Z_of_N.
+  reflexivity.
+Qed.
 
 Lemma ZToWord_mult: forall sz a b, ZToWord sz (a * b) = ZToWord sz a ^* ZToWord sz b.
 Proof.
-  intros.
-  rewrite wmult_alt. unfold wmultN, wordBinN.
-  Search wmult.
-  unfold ZToWord. unfold posToWord.
-  Search ZToWord.
-  Search (ZToWord _ (_ * _)).
-Admitted.
+  intros. rewrite wmult_wmultZ. unfold wmultZ, wordBinZ.
+  destruct (wordToZ_ZToWord' sz a) as [k1 D1]. rewrite D1. clear D1.
+  destruct (wordToZ_ZToWord' sz b) as [k2 D2]. rewrite D2. clear D2.
+  rewrite wmultZ_helper.
+  symmetry.
+  apply ZToWord_Npow2_sub_z.
+Qed.
+
+Lemma wminus_wminusZ: forall (sz : nat) (w1 w2 : word sz), w1 ^- w2 = wminusZ w1 w2.
+Proof.
+  unfold wminusZ, wminus, wordBinZ. intros. rewrite <- Z.add_opp_r.
+  rewrite wplus_wplusZ. unfold wplusZ, wordBinZ.
+  destruct sz.
+  - do 2 rewrite ZToWord_sz0. reflexivity.
+  - destruct (weq w2 (wpow2 sz)).
+    + subst. rewrite wpow2_wneg.
+      replace (wordToZ w1 + - wordToZ (wpow2 sz))%Z
+         with (wordToZ w1 + wordToZ (wpow2 sz) - 2 * wordToZ (wpow2 sz))%Z by omega.
+      replace (2 * wordToZ (wpow2 sz))%Z with (- 1 * Z.of_N (Npow2 (S sz)))%Z.
+      * symmetry. apply ZToWord_Npow2_sub_z.
+      * rewrite wordToZ_wordToN.
+        rewrite wpow2_wmsb.
+        rewrite wpow2_Npow2.
+        rewrite Npow2_S.
+        rewrite N2Z.inj_add.
+        omega.
+    + rewrite wneg_wordToZ by assumption. reflexivity.
+Qed.
+
+Local Lemma wminusZ_helper: forall a b k1 k2 p,
+    ((a - k1 * p) - (b - k2 * p) = a - b - (k1 - k2) * p)%Z.
+Proof. intros. nia. Qed.
 
 Lemma ZToWord_minus: forall sz a b, ZToWord sz (a - b) = ZToWord sz a ^- ZToWord sz b.
-Proof. Admitted.
-
-Lemma Z4four: forall sz, ZToWord sz 4 = $4.
-Proof. Admitted.
+Proof.
+  intros. rewrite wminus_wminusZ. unfold wminusZ, wordBinZ.
+  destruct (wordToZ_ZToWord' sz a) as [k1 D1]. rewrite D1. clear D1.
+  destruct (wordToZ_ZToWord' sz b) as [k2 D2]. rewrite D2. clear D2.
+  rewrite wminusZ_helper.
+  symmetry.
+  apply ZToWord_Npow2_sub_z.
+Qed.
 
 Lemma ZToWord_0: forall sz, ZToWord sz 0 = wzero sz.
 Proof.
   intros. unfold ZToWord. apply wzero'_def.
+Qed.
+
+(* needed below for ring automation *)  
+Lemma Z4four: forall sz, ZToWord sz 4 = $4.
+Proof.
+  intros. change 4%Z with (Z.of_nat 4).
+  apply ZToWord_Z_of_nat.
 Qed.
 
 (*
@@ -691,7 +742,6 @@ Section FlatToRiscv.
       containsProgram m (insts1 ++ insts2) offset.
   Proof.
     unfold containsProgram. intros.
-    Search nth_error app. 
     assert (i < length insts1 \/ length insts1 <= i) as E by omega.
     destruct E as [E | E].
     - rewrite nth_error_app1 in H1 by assumption. eauto.
