@@ -1925,24 +1925,50 @@ list2imem
   Arguments split2: simpl never.
   Arguments ZToWord: simpl never.
 
-  Definition not_in_range{w: nat}(addr: word w)(alignment start eend: nat): Prop :=
-    wordToNat addr + alignment <= start \/ eend <= wordToNat addr.
+  (* Note: alignment refers to addr, not to the range *)
+  Definition in_range{w: nat}(addr: word w)(alignment start size: nat): Prop :=
+    start <= wordToNat addr /\ wordToNat addr + alignment <= start + size /\ wordToNat addr mod alignment = 0.
+  
+  Definition not_in_range{w: nat}(addr: word w)(alignment start size: nat): Prop :=
+    wordToNat addr + alignment <= start \/ start + size <= wordToNat addr.
 
+  Lemma loadWord_storeDouble_ne': forall m (a1 a2: word wXLEN) (v : word 64),
+      in_range a1 8 0 (Memory.memSize m) ->
+      in_range a2 4 0 (Memory.memSize m) ->
+      not_in_range a2 4 #a1 8 -> (* a2 (4 bytes big) is not in the 8-byte range starting at a1 *)
+      Memory.loadWord (Memory.storeDouble m a1 v) a2 = Memory.loadWord m a2.
+  Proof.
+    intros.
+    pose proof (Memory.memSize_bound m).
+    apply Memory.loadWord_storeDouble_ne;
+      unfold in_range, not_in_range, Memory.valid_addr in *;
+      simpl in *;
+      intuition (subst; try omega);
+      rewrite (wordToNat_wplus' a1 $4) in H6; rewrite wordToNat_natToWord_idempotent' in *; try omega. 
+  Qed.
+
+  Lemma in_range0_valid_addr: forall (sz: nat) (a: word sz) al l,
+      in_range a al 0 l ->
+      Memory.valid_addr a al l.
+  Proof.
+    unfold in_range, Memory.valid_addr. intuition idtac.
+  Qed.
+  
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
       containsProgram initialL_mem insts imemStart ->
-      not_in_range a wXLEN_in_bytes #imemStart (#imemStart + 4 * (length insts)) ->
-(*      ~ #imemStart <= #a < #imemStart + 4 * (length insts) -> *)
-      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
+      not_in_range a wXLEN_in_bytes #imemStart (4 * (length insts)) ->
+      in_range a wXLEN_in_bytes 0 (Memory.memSize initialL_mem) ->
       (* better than using $4 ^* imemStart because that prevents overflow *)
       #imemStart mod 4 = 0 -> 
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
   Proof.
-    rewrite containsProgram_alt.
+    rewrite containsProgram_alt. (* <-- TODO do we still need that? *)
     unfold containsProgram2.
     intros. rename H2 into A. destruct H.
     clear -H H0 H1 H2 A.
     assert (forall (a: word wXLEN), a = a ^+ $ (4) ^- $ (4)) as helper4 by (intros; solve_word_eq).
-    assert (forall (a: word wXLEN), a = a ^- $ (4) ^+ $ (4)) as helper4' by (intros; solve_word_eq).
+    rename H1 into IR.
+    pose proof (in_range0_valid_addr IR) as H1.
     unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
       destruct Bw; simpl in *;
         split;
