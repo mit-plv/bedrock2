@@ -531,10 +531,10 @@ Section FlatToRiscv.
       natToWord sz (S (S n)) = (wone sz) ^+ (natToWord sz (S n)).
   Proof. intros. apply natToWord_S. Qed.
 
-  Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
+  Lemma containsProgram_app_inv0: forall s insts1 insts2 offset,
     containsProgram s (insts1 ++ insts2) offset ->
     containsProgram s insts1 offset /\
-    containsProgram s insts2 (offset ^+ $(4 * length insts1)). (* <-- $ outside or inside * ? *)
+    containsProgram s insts2 (offset ^+ $(4 * length insts1)).
   Proof.
     intros *. intro Cp. unfold containsProgram in *.
     rewrite app_length in Cp.
@@ -572,7 +572,18 @@ Section FlatToRiscv.
       replace (length insts1 + i - length insts1) with i by omega.
       assumption.
   Qed.
-  
+
+  Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
+    containsProgram s (insts1 ++ insts2) offset ->
+    containsProgram s insts1 offset /\
+    containsProgram s insts2 (offset ^+ $4 ^* $(length insts1)).
+  Proof.
+    intros.
+    destruct (containsProgram_app_inv0 _ _ H) as [H1 H2].
+    rewrite natToWord_mult in H2.
+    auto.
+  Qed.
+
   Lemma containsProgram_app: forall m insts1 insts2 offset,
       containsProgram m insts1 offset ->
       containsProgram m insts2 (offset ^+ $4 ^* $(length insts1)) ->
@@ -602,6 +613,8 @@ Section FlatToRiscv.
     containsProgram m [[inst]] offset ->
     containsProgram m insts (offset ^+ $4) ->
     containsProgram m (inst :: insts) offset.
+  Admitted.
+  (*
   Proof.
     unfold containsProgram. intros. destruct i.
     - simpl in H1. inverts H1. eauto.
@@ -611,12 +624,15 @@ Section FlatToRiscv.
       change (natToWord wXLEN 1) with (wone wXLEN).
       ring.
   Qed.
+   *)
 
   Lemma containsProgram_nil: forall m offset,
       containsProgram m [[]] offset.
   Proof.
-    unfold containsProgram. intros. exfalso. eauto using nth_error_nil_Some.
-  Qed.
+    unfold containsProgram. intros. split.
+    - simpl. (* TODO does not hold! *) admit.
+    - exfalso. eauto using nth_error_nil_Some.
+  Admitted.
   
   Arguments containsProgram: simpl never.
   
@@ -1170,11 +1186,13 @@ Section FlatToRiscv.
     rewrite Bind_getPC.
     simpl_RiscvMachine_get_set.
     rewrite Bind_loadWord.
-    unfold containsProgram in H.
+    unfold containsProgram in H. apply proj2 in H.
     specialize (H 0 _ eq_refl). subst inst.
     unfold ldInst.
     simpl_RiscvMachine_get_set.
     replace (initialL_pc ^+ $4 ^* $0) with initialL_pc by solve_word_eq.
+    rewrite wplus_comm.
+    rewrite wplus_unit.
     reflexivity.
   Qed. 
 
@@ -1982,8 +2000,7 @@ list2imem
       #imemStart mod 4 = 0 -> 
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
   Proof.
-    rewrite containsProgram_alt. (* <-- TODO *)
-    unfold containsProgram2.
+    unfold containsProgram.
     intros. rename H2 into A. destruct H.
     clear -H H0 H1 H2 A.
     assert (forall (a: word wXLEN), a = a ^+ $ (4) ^- $ (4)) as helper4 by (intros; solve_word_eq).
