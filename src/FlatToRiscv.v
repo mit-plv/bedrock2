@@ -24,7 +24,6 @@ Require Import riscv.InstructionCoercions.
 Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
-Require Import riscv.encode.Encode.
 
 Local Open Scope ilist_scope.
 
@@ -459,7 +458,7 @@ Section FlatToRiscv.
   Definition containsProgram2(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
     #offset + 4 * length program <= Memory.memSize m /\
     forall i inst, nth_error program i = Some inst ->
-      encode inst = wordToZ (Memory.loadWord m (offset ^+ $(4 * i))).
+      ldInst m (offset ^+ $(4 * i)) = inst.
 
   (* TODO doesn't hold but use containsProgram2 everywhere *)
   Axiom containsProgram_alt: containsProgram = containsProgram2.
@@ -1963,7 +1962,7 @@ list2imem
       #imemStart mod 4 = 0 -> 
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
   Proof.
-    rewrite containsProgram_alt. (* <-- TODO 1) get rid of encode in it, 2) use containsProgram2 everywhere *)
+    rewrite containsProgram_alt. (* <-- TODO *)
     unfold containsProgram2.
     intros. rename H2 into A. destruct H.
     clear -H H0 H1 H2 A.
