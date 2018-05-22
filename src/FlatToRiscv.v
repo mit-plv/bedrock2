@@ -448,16 +448,9 @@ Section FlatToRiscv.
     forall a w, Memory.read_mem a m = Some w -> not_in_range a wXLEN_in_bytes start len.
 
   Definition containsProgram(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
-    forall i inst, nth_error program i = Some inst ->
-      ldInst m (offset ^+ $4 ^* $i) = inst.
-
-  Definition containsProgram2(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
     #offset + 4 * length program <= Memory.memSize m /\
     forall i inst, nth_error program i = Some inst ->
       ldInst m (offset ^+ $(4 * i)) = inst.
-
-  (* TODO doesn't hold but use containsProgram2 everywhere *)
-  Axiom containsProgram_alt: containsProgram = containsProgram2.
   
   (*
   Definition containsProgram'(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
@@ -483,6 +476,18 @@ Section FlatToRiscv.
     intros. destruct i; simpl in *; discriminate.
   Qed.
 
+  Lemma pow2_S: forall x, pow2 (S x) = 2 * pow2 x.
+  Proof. intros. reflexivity. Qed.
+ 
+  Lemma pow2_wXLEN_4: 4 < pow2 wXLEN.
+  Proof.
+    clear. unfold wXLEN, bitwidth. destruct Bw;
+      do 2 rewrite pow2_S;
+      change 4 with (2 * (2 * 1)) at 1;
+      (repeat apply mult_lt_compat_l; [ | repeat constructor ..]);
+      apply one_lt_pow2.
+  Qed.  
+
   (* Note: containsProgram for one single [[inst]] could be simplified, but for automation,
      it's better not to simplify. *)
   Lemma containsProgram_cons_inv: forall m inst insts offset,
@@ -490,17 +495,33 @@ Section FlatToRiscv.
     containsProgram m [[inst]] offset /\
     containsProgram m insts (offset ^+ $4).
   Proof.
-    intros *. intro Cp. unfold containsProgram. split.
-    + specialize (Cp 0). specialize Cp with (1 := eq_refl).
-      intros. destruct i; inverts H.
+    intros *. intro Cp. unfold containsProgram in *. cbn [length] in *.
+    intuition (try omega).
+    + specialize (H0 0). specialize H0 with (1 := eq_refl).
+      intros. destruct i; inverts H1.
       - assumption.
       - exfalso. eauto using nth_error_nil_Some.
-    + intros i inst0 E. specialize (Cp (S i)). simpl in Cp.
-      specialize (Cp _ E).
+    + (* TODO generalize these ever repeating magic spells into an Ltac *)
+      pose proof (Memory.memSize_bound m).
+      pose proof pow2_wXLEN_4 as W.
+      pose proof (@wordToNat_natToWord_idempotent' wXLEN 4 W) as D.
+      assert (#offset + 4 = pow2 wXLEN \/ #offset + 4 < pow2 wXLEN) as C by omega.
+      destruct C as [C | C].
+      * (* overflow which does not hurt *)
+        pose proof (f_equal (natToWord wXLEN) C) as E.
+        rewrite natToWord_pow2 in E.
+        rewrite natToWord_plus in E.
+        rewrite natToWord_wordToNat in E.
+        rewrite E.
+        rewrite roundTrip_0.
+        omega.
+      * (* normal case *)
+        rewrite wordToNat_wplus'; [ omega | ].
+        rewrite D. assumption.
+    + rename H0 into Cp. specialize (Cp (S i)). simpl in Cp.
+      specialize (Cp _ H1).
       rewrite <- Cp. f_equal.
-      rewrite (natToWord_S wXLEN i).
-      change $1 with (wone wXLEN).
-      ring.
+      solve_word_eq.
   Qed.
 
   (* less general than natToWord_S, but more useful for automation because it does
@@ -509,44 +530,44 @@ Section FlatToRiscv.
   Lemma natToWord_S_S: forall sz n,
       natToWord sz (S (S n)) = (wone sz) ^+ (natToWord sz (S n)).
   Proof. intros. apply natToWord_S. Qed.
-  
-  Lemma containsProgram_cons_inv_old: forall m inst insts offset,
-    containsProgram m (inst :: insts) offset ->
-    ldInst m offset = inst /\
-    containsProgram m insts (offset ^+ $4).
-  Proof.
-    intros *. intro Cp. unfold containsProgram in Cp. split.
-    + specialize (Cp 0). specializes Cp; [reflexivity|].
-      rewrite wmult_neut_r in Cp.
-      rewrite wplus_comm in Cp. rewrite wplus_unit in Cp.
-      assumption.
-    + unfold containsProgram.
-      intros i inst0 E. specialize (Cp (S i)). simpl in Cp.
-      specialize (Cp _ E).
-      rewrite <- Cp. f_equal.
-      rewrite (natToWord_S wXLEN i).
-      change $1 with (wone wXLEN).
-      ring.
-      (*
-      match goal with
-      | |- @eq (word _) ?a ?b => ring_simplify a b
-      end.
-      *)
-  Qed.
 
   Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
     containsProgram s (insts1 ++ insts2) offset ->
     containsProgram s insts1 offset /\
-    containsProgram s insts2 (offset ^+ $4 ^* $(length insts1)).
+    containsProgram s insts2 (offset ^+ $(4 * length insts1)). (* <-- $ outside or inside * ? *)
   Proof.
-    intros *. intro Cp. unfold containsProgram in *. split.
-    + intros. apply Cp. rewrite nth_error_app1; [assumption|].
-      apply nth_error_Some. intro E. rewrite E in H. discriminate.
-    + intros. rewrite <- wplus_assoc.
+    intros *. intro Cp. unfold containsProgram in *.
+    rewrite app_length in Cp.
+    intuition idtac.
+    + omega.
+    + intros. apply H0. rewrite nth_error_app1; [assumption|].
+      apply nth_error_Some. intro E. rewrite E in H1. discriminate.
+    + pose proof (Memory.memSize_bound s).
+      assert (4 * length insts1 = pow2 wXLEN \/ 4 * length insts1 < pow2 wXLEN) as C by omega.
+      destruct C as [C | C].
+      * rewrite C.
+        rewrite natToWord_pow2.
+        rewrite wplus_comm.
+        rewrite wplus_unit.
+        omega.
+      * assert (#offset + 4 * length insts1 = pow2 wXLEN \/
+                #offset + 4 * length insts1 < pow2 wXLEN) as D by omega.
+        destruct D as [D | D].
+        - pose proof (f_equal (natToWord wXLEN) D) as E.
+          rewrite natToWord_pow2 in E.
+          rewrite natToWord_plus in E.
+          rewrite natToWord_wordToNat in E.
+          rewrite E.
+          rewrite roundTrip_0.
+          omega.
+        - rewrite? wordToNat_wplus'; rewrite wordToNat_natToWord_idempotent'; omega.
+    + rewrite <- wplus_assoc.
+      do 2 rewrite natToWord_mult.
       do 2 rewrite (wmult_comm $4).
       rewrite <- wmult_plus_distr. rewrite <- wmult_comm.
       rewrite <- natToWord_plus.
-      apply Cp.
+      rewrite <- natToWord_mult.
+      apply H0.
       rewrite nth_error_app2 by omega.
       replace (length insts1 + i - length insts1) with i by omega.
       assumption.
@@ -557,7 +578,10 @@ Section FlatToRiscv.
       containsProgram m insts2 (offset ^+ $4 ^* $(length insts1)) ->
       containsProgram m (insts1 ++ insts2) offset.
   Proof.
-    unfold containsProgram. intros.
+    unfold containsProgram. intros. rewrite app_length.
+    rewrite wordToNat_wplus' in H0.
+    intuition idtac.
+  Admitted. (*
     assert (i < length insts1 \/ length insts1 <= i) as E by omega.
     destruct E as [E | E].
     - rewrite nth_error_app1 in H1 by assumption. eauto.
@@ -572,7 +596,7 @@ Section FlatToRiscv.
       end.
       rewrite <- natToWord_plus.
       f_equal. f_equal. omega.
-  Qed.
+  Qed.*)
 
   Lemma containsProgram_cons: forall m inst insts offset,
     containsProgram m [[inst]] offset ->
