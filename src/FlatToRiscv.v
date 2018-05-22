@@ -1925,9 +1925,13 @@ list2imem
   Arguments split2: simpl never.
   Arguments ZToWord: simpl never.
 
+  Definition not_in_range{w: nat}(addr: word w)(alignment start eend: nat): Prop :=
+    wordToNat addr + alignment <= start \/ eend <= wordToNat addr.
+
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
       containsProgram initialL_mem insts imemStart ->
-      ~ #imemStart <= #a < #imemStart + 4 * (length insts) ->
+      not_in_range a wXLEN_in_bytes #imemStart (#imemStart + 4 * (length insts)) ->
+(*      ~ #imemStart <= #a < #imemStart + 4 * (length insts) -> *)
       Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
       (* better than using $4 ^* imemStart because that prevents overflow *)
       #imemStart mod 4 = 0 -> 
@@ -1937,6 +1941,8 @@ list2imem
     unfold containsProgram2.
     intros. rename H2 into A. destruct H.
     clear -H H0 H1 H2 A.
+    assert (forall (a: word wXLEN), a = a ^+ $ (4) ^- $ (4)) as helper4 by (intros; solve_word_eq).
+    assert (forall (a: word wXLEN), a = a ^- $ (4) ^+ $ (4)) as helper4' by (intros; solve_word_eq).
     unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
       destruct Bw; simpl in *;
         split;
@@ -1958,8 +1964,9 @@ list2imem
           rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
           rewrite A.
           reflexivity.
-      + intro C. subst a. apply H0.
-        rewrite wordToNat_wplus'; omega.
+      + intro C. subst a. rename H0 into R.
+        unfold not_in_range in *.
+        rewrite wordToNat_wplus' in R; omega.
     - pose proof (Memory.memSize_bound initialL_mem) as B.
       assert (nth_error insts i <> None) as F by congruence.
       apply nth_error_Some in F.
@@ -1973,9 +1980,27 @@ list2imem
           rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
           rewrite A.
           reflexivity.
-      + intro C. subst a. apply H0.
-        rewrite wordToNat_wplus'; omega.
-      + (* TODO does not hold if imemStart is 12 and a storeDouble at 8 happened! *)
+      + intro C. subst a. rename H0 into R.
+        unfold not_in_range in *.
+        rewrite wordToNat_wplus' in R; omega.
+      + intro C. rename H0 into R.
+        unfold not_in_range in *.
+        destruct R as [R | R].
+        * replace (#a + 8) with (#(a ^+ $4) + 4) in R.
+          { rewrite <- C in R. rewrite wordToNat_wplus' in R; omega. }
+          { rewrite wordToNat_wplus'.
+            - rewrite wordToNat_natToWord_idempotent'; omega.
+            - clear D. (* otherwise omega takes too long *)
+              rewrite wordToNat_natToWord_idempotent'; omega.
+          }
+        * unfold Memory.valid_addr in *.
+          assert (a = imemStart ^+ $(4*i) ^- $4) as E. {
+            rewrite C. apply helper4.
+          }
+          clear C.
+          subst a.
+          clear -R H1 F.
+          admit. (* TODO! *)
   Admitted.
 
   (*
