@@ -444,12 +444,8 @@ Section FlatToRiscv.
   Definition ldInst(m: mem wXLEN)(a: word wXLEN): Instruction :=
     decode RV_wXLEN_IM (wordToZ (Memory.loadWord m a)).
 
-  Definition words_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
-    forall i, 0 <= i < len -> Memory.read_mem (start ^+ $4 ^* $i) m = None.
-
-  Definition mem_inaccessible(m: Memory.mem)(start: word wXLEN)(len: nat): Prop :=
-    forall a w, Memory.read_mem a m = Some w ->
-           ~ wordToNat start <= wordToNat a < wordToNat start + len.
+  Definition mem_inaccessible(m: Memory.mem)(start len: nat): Prop :=
+    forall a w, Memory.read_mem a m = Some w -> not_in_range a wXLEN_in_bytes start len.
 
   Definition containsProgram(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
     forall i inst, nth_error program i = Some inst ->
@@ -2015,34 +2011,34 @@ list2imem
   Lemma mem_inaccessible_write:  forall a v initialMH finalMH start len,
       Memory.write_mem a v initialMH = Some finalMH ->
       mem_inaccessible initialMH start len ->
-      ~ #start <= #a < #start + len.
+      not_in_range a wXLEN_in_bytes start len.
   Proof.
     intros. unfold Memory.write_mem, mem_inaccessible in *.
     destruct_one_match_hyp; [|discriminate].
     eapply H0. eassumption.
   Qed.
 
-  Lemma read_mem_valid_addr: forall a0 initialMH initialML w,
+  Lemma read_mem_in_range: forall a0 initialMH initialML w,
       Memory.read_mem a0 initialMH = Some w ->
       containsMem initialML initialMH ->
-      Memory.valid_addr a0 wXLEN_in_bytes (Memory.memSize initialML).
+      in_range a0 wXLEN_in_bytes 0 (Memory.memSize initialML).
   Proof.
-    intros. unfold Memory.valid_addr, containsMem in *.
+    intros. unfold in_range, containsMem in *.
     specialize H0 with (1 := H). destruct H0 as [A B].
     unfold Memory.read_mem in *.
     destruct_one_match_hyp; try discriminate.
-    auto.
+    omega.
   Qed.
 
-  Lemma write_mem_valid_addr: forall a0 v0 initialMH finalMH initialML,
+  Lemma write_mem_in_range: forall a0 v0 initialMH finalMH initialML,
       Memory.write_mem a0 v0 initialMH = Some finalMH ->
       containsMem initialML initialMH ->
-      Memory.valid_addr a0 wXLEN_in_bytes (Memory.memSize initialML).
+      in_range a0 wXLEN_in_bytes 0 (Memory.memSize initialML).
   Proof.
     intros. unfold Memory.write_mem in *.
     destruct_one_match_hyp; try discriminate.
     inversion H. clear H. subst finalMH.
-    eapply read_mem_valid_addr; eassumption.
+    eapply read_mem_in_range; eassumption.
   Qed.
   
   Lemma compile_stmt_correct_aux:
@@ -2059,7 +2055,7 @@ list2imem
     containsProgram initialL.(machineMem) allInsts imemStart ->
     initialL.(core).(pc) = imemStart ^+ $4 ^* $(length instsBefore) ->
     initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
-    mem_inaccessible initialMH imemStart (4 * length allInsts) ->
+    mem_inaccessible initialMH #imemStart (4 * length allInsts) ->
     runsToSatisfying initialL (fun finalL =>
        extends finalL.(core).(registers) finalH /\
        containsMem finalL.(machineMem) finalMH /\
@@ -2099,7 +2095,7 @@ list2imem
       apply store_preserves_containsProgram.
       + solve_containsProgram.
       + eapply mem_inaccessible_write; eassumption.
-      + eapply write_mem_valid_addr; eassumption.
+      + eapply write_mem_in_range; eassumption.
       + assumption.
     - (* SLit *)
       clear IHfuelH.
@@ -2221,7 +2217,9 @@ list2imem
       IH_done IH.
     - (* SSkip *)
       run1done.
-  Admitted.
+  Qed.
+
+  Print Assumptions compile_stmt_correct_aux.
 
   (*
   Lemma every_state_contains_empty_state: forall s,
