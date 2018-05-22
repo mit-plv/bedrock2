@@ -1963,56 +1963,19 @@ list2imem
     - pose proof (Memory.memSize_bound initialL_mem) as B.
       assert (nth_error insts i <> None) as F by congruence.
       apply nth_error_Some in F.
-      (* TODO this is cumbersome, factor out into loadWord_storeDouble_ne *)
-      pose proof Memory.loadStoreDouble_ne as P.
-      specialize P with (1 := H1).
-      destruct (Even.even_odd_dec (#imemStart / 4 + i)).
-      + specialize (P (imemStart ^+ $ (4 * i)) v).
-        assert (Memory.valid_addr (imemStart ^+ $(4*i)) 8 (Memory.memSize initialL_mem)) as V. {
-          admit. (* should follow from even-ness *)
-        }
-        specialize (P V).
-        rewrite Memory.loadDouble_spec in P
-          by (rewrite Memory.storeDouble_preserves_memSize; assumption).
-        assert (imemStart ^+ $ (4 * i) <> a) as Ne. {
-          admit.
-        }
-        specialize (P Ne).
-        rewrite Memory.loadDouble_spec in P by assumption.
-        pose proof combine_inj as Q.
-        remember  (@Memory.loadWord (mem 64) 64 IsMem
-       (@Memory.storeDouble (mem 64) 64 IsMem initialL_mem a v)
-       (imemStart ^+ $ (4 * i))) as t1.
-        remember (@Memory.loadWord (mem 64) 64 IsMem
-       (@Memory.storeDouble (mem 64) 64 IsMem initialL_mem a v)
-       (imemStart ^+ $ (4 * i) ^+ $ (4))) as t2.
-        remember (@Memory.loadWord (mem 64) 64 IsMem initialL_mem (imemStart ^+ $ (4 * i)))
-          as t3.
-        remember (@Memory.loadWord (mem 64) 64 IsMem initialL_mem (imemStart ^+ $ (4 * i) ^+ $ (4))) as t4.
-        specialize (Q _ _ t1 t2 t3 t4 P). (*TODO why does specialize Q with (1 := P) not work? *)
-        destruct Q as [Q1 Q2]. subst.
-        rewrite Q1.
-        assumption.
-      + specialize (P (imemStart ^+ $ (4 * i) ^- $4) v).
-        assert (Memory.valid_addr (imemStart ^+ $(4*i) ^- $4) 8
-                                  (Memory.memSize initialL_mem)) as V. {
-          admit. (* should follow from odd-ness *)
-        }
-        specialize (P V).
-        rewrite Memory.loadDouble_spec in P
-          by (rewrite Memory.storeDouble_preserves_memSize; assumption).
-        assert (imemStart ^+ $ (4 * i) ^- $4 <> a) as Ne. {
-          admit.
-        }
-        specialize (P Ne).
-        rewrite Memory.loadDouble_spec in P by assumption.
-        pose proof combine_inj as Q.
-        specialize (Q 32 32 _ _ _ _ P).
-        destruct Q as [Q1 Q2]. subst.
-        replace (imemStart ^+ $ (4 * i) ^- $ (4) ^+ $ (4)) with
-                (imemStart ^+ $ (4 * i)) in Q2 by admit.
-        rewrite Q2.
-        assumption.
+      pose proof (@wordToNat_natToWord_idempotent' 64 (4 * i)) as D.
+      rewrite Memory.loadWord_storeDouble_ne; try assumption.
+      + unfold Memory.valid_addr. split.
+        * rewrite wordToNat_wplus'; omega.
+        * rewrite wordToNat_wplus' by omega.
+          rewrite D by omega.
+          rewrite Nat.add_mod by omega.
+          rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
+          rewrite A.
+          reflexivity.
+      + intro C. subst a. apply H0.
+        rewrite wordToNat_wplus'; omega.
+      + (* TODO does not hold if imemStart is 12 and a storeDouble at 8 happened! *)
   Admitted.
 
   (*
