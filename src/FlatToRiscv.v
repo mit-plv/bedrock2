@@ -72,6 +72,29 @@ End RegisterFile.
 Existing Instance State_is_RegisterFile.
 
 
+(* Note: alignment refers to addr, not to the range *)
+Definition in_range{w: nat}(addr: word w)(alignment start size: nat): Prop :=
+  start <= wordToNat addr /\ wordToNat addr + alignment <= start + size /\ wordToNat addr mod alignment = 0.
+
+Definition not_in_range{w: nat}(addr: word w)(alignment start size: nat): Prop :=
+  wordToNat addr + alignment <= start \/ start + size <= wordToNat addr.
+
+Lemma loadWord_storeDouble_ne': forall {sz: nat} (Mem : Set) (MM : Memory.Memory Mem sz) (m : Mem)
+                                       (a1 a2 : word sz) (v : word 64),
+    in_range a1 8 0 (Memory.memSize m) ->
+    in_range a2 4 0 (Memory.memSize m) ->
+    not_in_range a2 4 #a1 8 -> (* a2 (4 bytes big) is not in the 8-byte range starting at a1 *)
+    Memory.loadWord (Memory.storeDouble m a1 v) a2 = Memory.loadWord m a2.
+Proof using .
+  intros.
+  pose proof (Memory.memSize_bound m).
+  apply Memory.loadWord_storeDouble_ne;
+    unfold in_range, not_in_range, Memory.valid_addr in *;
+    simpl in *;
+    intuition (subst; try omega);
+    rewrite (wordToNat_wplus' a1 $4) in H6; rewrite wordToNat_natToWord_idempotent' in *; try omega. 
+Qed.
+
 Section FlatToRiscv.
 
   Context {Bw: RiscvBitWidths}.
@@ -1925,28 +1948,6 @@ list2imem
   Arguments split2: simpl never.
   Arguments ZToWord: simpl never.
 
-  (* Note: alignment refers to addr, not to the range *)
-  Definition in_range{w: nat}(addr: word w)(alignment start size: nat): Prop :=
-    start <= wordToNat addr /\ wordToNat addr + alignment <= start + size /\ wordToNat addr mod alignment = 0.
-  
-  Definition not_in_range{w: nat}(addr: word w)(alignment start size: nat): Prop :=
-    wordToNat addr + alignment <= start \/ start + size <= wordToNat addr.
-
-  Lemma loadWord_storeDouble_ne': forall m (a1 a2: word wXLEN) (v : word 64),
-      in_range a1 8 0 (Memory.memSize m) ->
-      in_range a2 4 0 (Memory.memSize m) ->
-      not_in_range a2 4 #a1 8 -> (* a2 (4 bytes big) is not in the 8-byte range starting at a1 *)
-      Memory.loadWord (Memory.storeDouble m a1 v) a2 = Memory.loadWord m a2.
-  Proof.
-    intros.
-    pose proof (Memory.memSize_bound m).
-    apply Memory.loadWord_storeDouble_ne;
-      unfold in_range, not_in_range, Memory.valid_addr in *;
-      simpl in *;
-      intuition (subst; try omega);
-      rewrite (wordToNat_wplus' a1 $4) in H6; rewrite wordToNat_natToWord_idempotent' in *; try omega. 
-  Qed.
-
   Lemma in_range0_valid_addr: forall (sz: nat) (a: word sz) al l,
       in_range a al 0 l ->
       Memory.valid_addr a al l.
@@ -1962,7 +1963,7 @@ list2imem
       #imemStart mod 4 = 0 -> 
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
   Proof.
-    rewrite containsProgram_alt. (* <-- TODO do we still need that? *)
+    rewrite containsProgram_alt. (* <-- TODO 1) get rid of encode in it, 2) use containsProgram2 everywhere *)
     unfold containsProgram2.
     intros. rename H2 into A. destruct H.
     clear -H H0 H1 H2 A.
@@ -1997,173 +1998,20 @@ list2imem
       assert (nth_error insts i <> None) as F by congruence.
       apply nth_error_Some in F.
       pose proof (@wordToNat_natToWord_idempotent' 64 (4 * i)) as D.
-      rewrite Memory.loadWord_storeDouble_ne; try assumption.
-      + unfold Memory.valid_addr. split.
-        * rewrite wordToNat_wplus'; omega.
-        * rewrite wordToNat_wplus' by omega.
-          rewrite D by omega.
-          rewrite Nat.add_mod by omega.
-          rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
-          rewrite A.
-          reflexivity.
-      + intro C. subst a. rename H0 into R.
-        unfold not_in_range in *.
-        rewrite wordToNat_wplus' in R; omega.
-      + intro C. rename H0 into R.
-        unfold not_in_range in *.
-        destruct R as [R | R].
-        * replace (#a + 8) with (#(a ^+ $4) + 4) in R.
-          { rewrite <- C in R. rewrite wordToNat_wplus' in R; omega. }
-          { rewrite wordToNat_wplus'.
-            - rewrite wordToNat_natToWord_idempotent'; omega.
-            - clear D. (* otherwise omega takes too long *)
-              rewrite wordToNat_natToWord_idempotent'; omega.
-          }
-        * unfold Memory.valid_addr in *.
-          assert (a = imemStart ^+ $(4*i) ^- $4) as E. {
-            rewrite C. apply helper4.
-          }
-          clear C.
-          subst a.
-          clear -R H1 F.
-          admit. (* TODO! *)
-  Admitted.
-
-  (*
-  Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
-      containsProgram initialL_mem insts ($4 ^* imemStart) ->
-      ~ #($4 ^* imemStart) <= #a < #($4 ^* imemStart) + 4 * (length insts) ->
-      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
-      (forall i, i < length insts ->
-            Memory.valid_addr ($4 ^* imemStart ^+ $4 ^* $i) 4 (Memory.memSize initialL_mem)) ->
-      containsProgram (storeWordwXLEN initialL_mem a v) insts ($4 ^* imemStart).
-  Proof.
-    unfold containsProgram.
-    intros.
-    clear -H H0 H1 H2 H3.
-    unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
-      destruct Bw; simpl in *;
-        rewrite? Memory.storeWord_preserves_memSize;
-        rewrite? Memory.storeDouble_preserves_memSize;
-        try assumption;
-        specialize H with (1 := H3).
-    - pose proof (Memory.memSize_bound initialL_mem) as B.
-      assert (nth_error insts i <> None) as F by congruence.
-      apply nth_error_Some in F.
-      pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
-      pose proof H2 as H2'.
-      specialize H2 with (1 := F).
-      rewrite Memory.loadStoreWord_ne; try assumption.
-      intro C. subst a. apply H0.
-      destruct insts as [|inst0 insts]; simpl in F; [omega|].
-      specialize (H2' (length insts)).
-      unfold Memory.valid_addr in H2'. destruct H2' as [F1 F2]; [ simpl; omega | ].
-      unfold Memory.valid_addr in H2. destruct H2 as [F3 F4].
-      rewrite wordToNat_plus.
-      * split; try omega. (* F3 (from additional hyp) is useless because overflow
-        could have happened there too *)
-  Abort.
-  
-  Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
-      containsProgram initialL_mem insts $(4 * imemStart) ->
-      ~ 4 * imemStart <= #a < 4 * imemStart + 4 * (length insts) ->
-      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
-      containsProgram (storeWordwXLEN initialL_mem a v) insts $(4 * imemStart).
-  Proof.
-    rewrite containsProgram_alt.
-    unfold containsProgram2.
-    intros. destruct H.
-    clear -H H0 H1 H2.
-    unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
-      destruct Bw;
-        split;
-        rewrite? Memory.storeWord_preserves_memSize;
-        rewrite? Memory.storeDouble_preserves_memSize;
-        try assumption;
-        intros;
-        specialize H2 with (1 := H3).
-    - pose proof (Memory.memSize_bound initialL_mem) as B.
-      assert (nth_error insts i <> None) as F by congruence.
-      apply nth_error_Some in F.
-      pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
-      rewrite Memory.loadStoreWord_ne; try assumption.
-      + unfold Memory.valid_addr. split.
-        * rewrite wordToNat_plus; omega.
-        * rewrite wordToNat_plus by omega.
-          rewrite D by omega.
-          rewrite wordToNat_natToWord_idempotent'.
-          { rewrite Nat.add_mod by omega.
-            rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
-            rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
-            reflexivity. }
-          { unfold pow2. 
-           (* "$4 ^* imemStart" could overflow, H still not strong enough,
-              because after (4 * imemStart), it is still converted to word and then back to
-              nat *) 
-  Abort.
-    
-  Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
-      containsProgram initialL_mem insts ($4 ^* imemStart) ->
-      ~ #($4 ^* imemStart) <= #a < #($4 ^* imemStart) + 4 * (length insts) ->
-      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
-      containsProgram (storeWordwXLEN initialL_mem a v) insts ($4 ^* imemStart).
-  Proof.
-    rewrite containsProgram_alt.
-    unfold containsProgram2.
-    intros. destruct H.
-    clear -H H0 H1 H2.
-    unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
-      destruct Bw; simpl in *;
-        split;
-        rewrite? Memory.storeWord_preserves_memSize;
-        rewrite? Memory.storeDouble_preserves_memSize;
-        try assumption;
-        intros;
-        specialize H2 with (1 := H3).
-    - pose proof (Memory.memSize_bound initialL_mem) as B.
-      assert (nth_error insts i <> None) as F by congruence.
-      apply nth_error_Some in F.
-      pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
-      rewrite Memory.loadStoreWord_ne; try assumption.
-      + unfold Memory.valid_addr. split.
-        * rewrite wordToNat_plus; omega.
-        * rewrite wordToNat_plus by omega.
-          rewrite D by omega.
-          rewrite wordToNat_mult.
-          { rewrite wordToNat_natToWord_idempotent'.
-            - rewrite Nat.add_mod by omega.
-              rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
-              rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
-              reflexivity.
-            - unfold pow2. omega. }
-          { (* "$4 ^* imemStart" could overflow! *) admit. }
-      + intro C. subst a. apply H0.
-        rewrite wordToNat_plus; omega.
-    -
-  Admitted.
-  *)
-
-  (*
-  Lemma store_preserves_containsProgram: forall initialL_mem insts imemAddr a v,
-      containsProgram initialL_mem insts imemAddr ->
-      ~ ((imemAddr <= a)%word /\ (a < imemAddr ^+ $4 ^* $(length insts))%word) ->
-      Memory.valid_addr a wXLEN_in_bytes (Memory.memSize initialL_mem) ->
-      containsProgram (storeWordwXLEN initialL_mem a v) insts imemAddr.
-  Proof.
-    intros.
-  Admitted.
-
-  Lemma mem_inaccessible_read:  forall a v initialMH start eend,
-      Memory.read_mem a initialMH = Some v ->
-      mem_inaccessible initialMH start eend ->
-      ~ ((start <= a)%word /\ (a < eend)%word).
-  Proof.
-    intros. unfold mem_inaccessible in *.
-    intros [P Q].
-    specialize (H0 _ P Q).
-    congruence.
+      rewrite loadWord_storeDouble_ne'; try assumption.
+      + unfold in_range in *.
+        rewrite wordToNat_wplus' by omega.
+        rewrite D by omega.
+        rewrite Nat.add_mod by omega.
+        rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
+        rewrite A.
+        intuition (omega || reflexivity).
+      + clear H1 H2.
+        unfold not_in_range, in_range in *.
+        rewrite wordToNat_wplus' by omega.
+        rewrite D by omega.
+        omega.
   Qed.
-  *)
   
   Lemma mem_inaccessible_write:  forall a v initialMH finalMH start len,
       Memory.write_mem a v initialMH = Some finalMH ->
