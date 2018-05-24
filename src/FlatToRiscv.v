@@ -2262,82 +2262,48 @@ list2imem
 
   Print Assumptions compile_stmt_correct_aux.
 
-  (*
-  Lemma every_state_contains_empty_state: forall s,
-    containsState s empty.
-  Proof.
-    unfold containsState.
-    intros. rewrite empty_is_empty in H. discriminate.
-  Qed.
-
-  Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
-    execState (run fuel) (putProgram insts initial).
-
-  Lemma putProgram_containsProgram: forall p initial,
-    4 * (length p) < pow2 wXLEN ->
-    containsProgram (putProgram p initial) p (pc (putProgram p initial)).
-  Proof.
-    intros. unfold containsProgram, putProgram.
-    intros.
-    destruct initial as [imem regs pc0 eh].
-    cbv [pc instructionMem]. apply nth_error_nth.
-    match goal with
-    | H: nth_error _ ?i1 = _ |- nth_error _ ?i2 = _ => replace i2 with i1; [assumption|]
-    end.
-    rewrite wplus_unit.
-    rewrite <- natToWord_mult.
-    rewrite wordToNat_natToWord_idempotent'.
-    - symmetry. apply mul_div_undo. auto.
-    - assert (i < length p). {
-        apply nth_error_Some. intro. congruence.
-      }
-      omega.
-  Qed.
-
-  Lemma compile_stmt_correct: forall fuelH finalH s insts initialL,
-    stmt_size s * 16 < pow2 wimm ->
+  Lemma compile_stmt_correct:
+    forall imemStart fuelH s insts initialMH finalH finalMH initialL,
     compile_stmt s = insts ->
-    evalH fuelH empty s = Success finalH ->
+    stmt_not_too_big s ->
+    valid_registers s ->
+    #imemStart mod 4 = 0 ->
+    eval_stmt fuelH empty initialMH s = Some (finalH, finalMH) ->
+    containsMem initialL.(machineMem) initialMH ->
+    containsProgram initialL.(machineMem) insts imemStart ->
+    initialL.(core).(pc) = imemStart ->
+    initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
+    mem_inaccessible initialMH #imemStart (4 * length insts) ->
     exists fuelL,
-      forall resVar res,
-      get finalH resVar = Some res ->
-      (evalL fuelL insts initialL).(registers) resVar = res.
+      let finalL := execState (run fuelL) initialL in
+      extends finalL.(core).(registers) finalH /\
+      containsMem finalL.(machineMem) finalMH.
   Proof.
-    introv B C E.
-    pose proof runsToSatisfying_exists_fuel_old as Q.
-    specialize (Q (putProgram insts initialL)
-      (fun finalL => forall resVar res,
-       get finalH resVar = Some res ->
-       finalL.(registers) resVar = res)).
-    cbv beta in Q.
+    intros.
+    pose proof runsToSatisfying_exists_fuel as Q.
+    specialize (Q initialL
+                  (fun finalL => extends (registers (core finalL)) finalH /\
+                                 containsMem (machineMem finalL) finalMH)).
+    cbv beta zeta in *.
     apply Q; clear Q.
     eapply runsToSatisfying_imp.
     - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty)
-        (fuelH := fuelH) (finalH := finalH).
+        (fuelH := fuelH) (finalH := finalH) (instsBefore := nil) (instsAfter := nil).
+      + reflexivity.
       + reflexivity.
       + assumption.
-      + apply E.
-      + subst insts. apply putProgram_containsProgram.
-        change (stmt_not_too_big s) in B.
-        assert (2 * pow2 wimm < pow2 wXLEN). {
-          clear. destruct Bw. unfold RiscvBitWidths.wimm, RiscvBitWidths.wXLEN.
-          destruct wXLEN; [omega|].
-          simpl_pow2.
-          pose proof (@pow2_inc wimm wXLEN).
-          omega.
-        }
-        solve_length_compile_stmt.
-      + apply every_state_contains_empty_state.
-      + reflexivity.
+      + assumption.
+      + eassumption.
+      + eassumption.
+      + clear. unfold extends. intros. rewrite empty_is_empty in H. discriminate.
+      + assumption.
+      + rewrite app_nil_r. rewrite app_nil_l. subst. assumption.
+      + simpl. subst imemStart. solve_word_eq.
+      + assumption.
+      + rewrite app_nil_r. rewrite app_nil_l. subst. assumption.
     - intros.
-      simpl in H. apply proj1 in H.
-      unfold containsState in H.
-      specialize (H resVar).
-      destruct (Common.get finalH resVar) eqn: Q.
-      + specialize (H _ eq_refl).
-        simpl in Q. unfold id in Q. simpl in *. congruence.
-      + discriminate.
+      rename H9 into A.
+      cbv beta in A. tauto.
   Qed.
-  *)
 
 End FlatToRiscv.
