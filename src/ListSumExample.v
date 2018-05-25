@@ -77,7 +77,7 @@ Definition infJalMem: list (word 8) :=
   Memory.store_word_list
     (List.repeat (ZToWord 32 (encode InfiniteJal)) (memory_size / 4))
     (natToWord 32 0)
-    (List.repeat (natToWord 8 0) memory_size).
+    (ListMemory.zero_mem memory_size).
 Eval cbv in infJalMem.
 
 Definition initialRiscvMachineCore: @RiscvMachineCore _ state := {|
@@ -131,9 +131,11 @@ Definition listsum_res_H(fuel: nat)(l: list nat): option (word 32) :=
 
 Eval vm_compute in (listsum_res_H 40 [3; 7; 6]).
 
-
+(* Note: the high-level program also runs on a memory of size memory_size and also uses just
+   32-bit words, so you might have overflows in the high-level program, and the compiler does
+   not help you prevent these, but it provably does not introduce any new overflow or memory
+   size problems. *)
 Lemma listsum_compiled_correctly: forall l fuelH res,
-(*    Z.to_nat ExampleSrc.input_base + 4 + 4 * length l <= pow2 32 ->*)
     listsum_res_H fuelH l = Some res ->
     exists fuelL, listsum_res fuelL l = res.
 Proof.
@@ -142,7 +144,8 @@ Proof.
   destruct p as [finalRegsH finalMemH].
   unfold listsum_res, listsum_final.
   pose proof exprImp2Riscv_correct as Q.
-  specialize Q with (sH := ExampleSrc.listsum) (initialL := (initialRiscvMachine_without_instructions l)).
+  specialize Q with (sH := ExampleSrc.listsum)
+                    (initialL := (initialRiscvMachine_without_instructions l)).
   unfold Pipeline.evalH in Q.
   edestruct Q as [fuelL P]; try eassumption.
   - change 14 with (5 + 9). rewrite Nat.pow_add_r.
@@ -158,9 +161,7 @@ Proof.
     pose proof store_word_list_preserves_memSize as R.
     unfold wXLEN, bitwidth, RiscvBitWidths.bitwidth, RiscvBitWidths32 in R|-*; rewrite R.
     unfold infJalMem. rewrite R.
-    unfold Memory.memSize, mem_is_Memory, mem_size.
-    unfold ListMemoryNatAddr.mem_size.
-    admit. (* almost there!
+    unfold zero_mem, Memory.memSize, mem_is_Memory.
     rewrite const_mem_mem_size.
     + apply Nat.le_trans with (m := input_base).
       * cbv. omega.
@@ -171,7 +172,6 @@ Proof.
       replace memory_size with (memory_size * 1) by omega.
       forget (pow2 22) as x.
       apply Nat.mul_le_mono; cbv; omega.
-     *)
   - match goal with
     | |- _ _ _ ?x => let x' := eval cbv in x in change x with x'
     end.
@@ -186,7 +186,7 @@ Proof.
   - exists fuelL.
     unfold initialRiscvMachine, putProgram.
     apply P. apply H.
-Admitted.    
+Qed.
 
 
 Definition sum_gallina(l: list nat): nat := List.fold_right plus 0 l.
