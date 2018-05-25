@@ -56,11 +56,8 @@ End ExampleSrc.
 
 Print ExampleSrc.listsum.
 
-Definition InfiniteJal: Instruction := Jal Register0 0.
-Eval cbv in (encode InfiniteJal).
-
 (* Here we compile: exprImp2Riscv is the main compilation function *)
-Definition listsum_riscv: list Instruction := exprImp2Riscv ExampleSrc.listsum ++ [ InfiniteJal ].
+Definition listsum_riscv: list Instruction := exprImp2Riscv ExampleSrc.listsum.
 
 Eval cbv in listsum_riscv.
 
@@ -72,6 +69,16 @@ Eval cbv in listsum_bits.
 
 Definition mk_input(l: list nat): list (word 32) :=
   (natToWord 32 (List.length l)) :: (List.map (natToWord 32) l).
+
+Definition InfiniteJal: Instruction := Jal Register0 0.
+Eval cbv in (encode InfiniteJal).
+
+Definition infJalMem: list (word 8) :=
+  Memory.store_word_list
+    (List.repeat (ZToWord 32 (encode InfiniteJal)) (memory_size / 4))
+    (natToWord 32 0)
+    (List.repeat (natToWord 8 0) memory_size).
+Eval cbv in infJalMem.
 
 Definition initialRiscvMachineCore: @RiscvMachineCore _ state := {|
   registers := initialRegs;
@@ -85,7 +92,7 @@ Definition initialRiscvMachine_without_instructions(l: list nat): RiscvMachine :
     machineMem := Memory.store_word_list
                     (mk_input l)
                     (natToWord 32 input_base)
-                    (ListMemory.zero_mem memory_size)
+                    infJalMem
 |}.
 
 Definition initialRiscvMachine(l: list nat): RiscvMachine
@@ -150,9 +157,10 @@ Proof.
     cbv [machineMem with_pc with_nextPC with_machineMem].
     pose proof store_word_list_preserves_memSize as R.
     unfold wXLEN, bitwidth, RiscvBitWidths.bitwidth, RiscvBitWidths32 in R|-*; rewrite R.
-    clear R.
-    unfold zero_mem.
-    unfold Memory.memSize, mem_is_Memory.
+    unfold infJalMem. rewrite R.
+    unfold Memory.memSize, mem_is_Memory, mem_size.
+    unfold ListMemoryNatAddr.mem_size.
+    admit. (* almost there!
     rewrite const_mem_mem_size.
     + apply Nat.le_trans with (m := input_base).
       * cbv. omega.
@@ -163,6 +171,7 @@ Proof.
       replace memory_size with (memory_size * 1) by omega.
       forget (pow2 22) as x.
       apply Nat.mul_le_mono; cbv; omega.
+     *)
   - match goal with
     | |- _ _ _ ?x => let x' := eval cbv in x in change x with x'
     end.
@@ -176,8 +185,7 @@ Proof.
     omega.
   - exists fuelL.
     unfold initialRiscvMachine, putProgram.
-    (* TODO: listsum_bits ends with unwanted InfiniteJal 
-    apply P. apply H. *)
+    apply P. apply H.
 Admitted.    
 
 
