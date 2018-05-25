@@ -20,6 +20,10 @@ Require Import riscv.RiscvBitWidths32.
 
 Local Notation RiscvMachine := (@RiscvMachine RiscvBitWidths32 (mem wXLEN) state).
 
+Definition memory_size: nat := 1024.
+Definition instructionMemStart: nat := 0.
+Definition input_base: nat := 512.
+
 
 Module ExampleSrc.
 
@@ -30,9 +34,6 @@ Module ExampleSrc.
   Definition sumreg: var := 3.
   Definition a: var := 4.
 
-
-  Definition input_base: Z := 512.
-
   (* Inputs:
      n: length of list, at address input_base
      A: list of 32-bit ints of length n, at address input_base + 4
@@ -41,10 +42,10 @@ Module ExampleSrc.
 
   Example listsum: stmt :=
     sumreg <-- 0;
-    n <-* input_base;
+    n <-* Z.of_nat input_base;
     i <-- 0;
     while i < n do
-      a <-* (input_base + 4)%Z + 4 * i;
+      a <-* (Z.of_nat input_base + 4)%Z + 4 * i;
       sumreg <-- sumreg + a;
       i <-- i + 1
     done.
@@ -55,8 +56,11 @@ End ExampleSrc.
 
 Print ExampleSrc.listsum.
 
+Definition InfiniteJal: Instruction := Jal Register0 0.
+Eval cbv in (encode InfiniteJal).
+
 (* Here we compile: exprImp2Riscv is the main compilation function *)
-Definition listsum_riscv: list Instruction := exprImp2Riscv ExampleSrc.listsum.
+Definition listsum_riscv: list Instruction := exprImp2Riscv ExampleSrc.listsum ++ [ InfiniteJal ].
 
 Eval cbv in listsum_riscv.
 
@@ -69,16 +73,6 @@ Eval cbv in listsum_bits.
 Definition mk_input(l: list nat): list (word 32) :=
   (natToWord 32 (List.length l)) :: (List.map (natToWord 32) l).
 
-Definition InfiniteJal: Instruction := Jal Register0 0.
-
-Eval cbv in (encode InfiniteJal).
-
-Definition initialMem_without_instructions(l: list nat): list (word 32) :=
-  List.repeat (ZToWord 32 (encode InfiniteJal)) (Z.to_nat ExampleSrc.input_base / 4) ++ mk_input l.
-
-
-Definition instructionMemStart: nat := 0.
-
 Definition initialRiscvMachineCore: @RiscvMachineCore _ state := {|
   registers := initialRegs;
   pc := $instructionMemStart;
@@ -89,9 +83,9 @@ Definition initialRiscvMachineCore: @RiscvMachineCore _ state := {|
 Definition initialRiscvMachine_without_instructions(l: list nat): RiscvMachine := {|
     core := initialRiscvMachineCore;
     machineMem := Memory.store_word_list
-                    (initialMem_without_instructions l)
-                    (natToWord 32 0)
-                    (ListMemory.zero_mem (Z.to_nat ExampleSrc.input_base + 4 * length (mk_input l))%nat)
+                    (mk_input l)
+                    (natToWord 32 input_base)
+                    (ListMemory.zero_mem memory_size)
 |}.
 
 Definition initialRiscvMachine(l: list nat): RiscvMachine
@@ -114,10 +108,10 @@ Eval vm_compute in (listsum_res 400 [4; 5; 3]).
 
 
 Definition initialMemH(l: list nat): Memory.mem :=
-  fun (a: word 32) => if dec (wordToZ a < ExampleSrc.input_base)%Z then
+  fun (a: word 32) => if dec (wordToNat a < input_base) then
                         None (* make inaccessible to protect instruction memory *)
                       else
-                        nth_error (mk_input l) ((wordToNat a - Z.to_nat ExampleSrc.input_base)  / 4).
+                        nth_error (mk_input l) ((wordToNat a - input_base)  / 4).
 
 Definition evalH(fuel: nat)(l: list nat): option (state * Memory.mem) :=
   eval_stmt fuel empty (initialMemH l) ExampleSrc.listsum.
@@ -160,20 +154,30 @@ Proof.
     unfold zero_mem.
     unfold Memory.memSize, mem_is_Memory.
     rewrite const_mem_mem_size.
-    + apply Nat.le_trans with (m := Z.to_nat ExampleSrc.input_base).
+    + apply Nat.le_trans with (m := input_base).
       * cbv. omega.
-      * omega.
-    + (* TODO make sure mem size is a multiple of 8 *) admit.
-    + admit. (* todo bounds *)
-  - cbv [length].
+      * unfold input_base, memory_size. omega.
+    + reflexivity.
+    + change 32 with (10 + 22). rewrite Nat.pow_add_r.
+      pose proof (one_le_pow2 22).
+      replace memory_size with (memory_size * 1) by omega.
+      forget (pow2 22) as x.
+      apply Nat.mul_le_mono; cbv; omega.
+  - match goal with
+    | |- _ _ _ ?x => let x' := eval cbv in x in change x with x'
+    end.
     unfold initialMemH, FlatToRiscv.mem_inaccessible.
     intros. unfold Memory.read_mem in *.
     do 2 (destruct_one_match_hyp; try discriminate).
     unfold FlatToRiscv.not_in_range.
     right.
-    (* TODO prevent underflow of substraction *)
-    admit.
-  - exists fuelL. apply P. apply H.
+    unfold input_base in n.
+    unfold wXLEN, RiscvBitWidths32, RiscvBitWidths.bitwidth in *.
+    omega.
+  - exists fuelL.
+    unfold initialRiscvMachine, putProgram.
+    (* TODO: listsum_bits ends with unwanted InfiniteJal 
+    apply P. apply H. *)
 Admitted.    
 
 
