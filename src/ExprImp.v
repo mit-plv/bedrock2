@@ -18,6 +18,8 @@ Section ExprImp1.
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
   Existing Instance eq_name_dec.
+  Context {FName : NameWithEq}.
+  Notation func := (@name FName).
 
 
   Context {state: Type}.
@@ -40,7 +42,10 @@ Section ExprImp1.
     | SIf(cond: expr)(bThen bElse: stmt): stmt
     | SWhile(cond: expr)(body: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
-    | SSkip: stmt.
+    | SSkip: stmt
+    | SCall(binds: list var)(f: func)(args: list expr).
+
+  Context {env} {funcMap: Map env func (list var * list var * stmt)}.
 
   Fixpoint eval_expr(st: state)(e: expr): option (word wXLEN) :=
     match e with
@@ -52,110 +57,153 @@ Section ExprImp1.
         Return (eval_binop op v1 v2)
     end.
 
-  Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
-    match f with
-    | 0 => None (* out of fuel *)
-    | S f => match s with
-      | SLoad x a =>
-          a <- eval_expr st a;
-          v <- read_mem a m;
-          Return (put st x v, m)
-      | SStore a v =>
-          a <- eval_expr st a;
-          v <- eval_expr st v;
-          m <- write_mem a v m;
-          Return (st, m)
-      | SSet x e =>
-          v <- eval_expr st e;
-          Return (put st x v, m)
-      | SIf cond bThen bElse =>
-          v <- eval_expr st cond;
-          eval_stmt f st m (if weq v $0 then bElse else bThen)
-      | SWhile cond body =>
-          v <- eval_expr st cond;
-          if weq v $0 then Return (st, m) else
-            p <- eval_stmt f st m body;
+  Fixpoint option_all {A} (l : list (option A)) {struct l} : option (list A) :=
+    match l with
+    | nil => Some nil
+    | (Some x)::l =>
+      match option_all l with
+      | Some l' => Some (x::l')
+      | _ => None end
+    | _ => None
+    end.
+
+  Fixpoint putmany (binders : list var) (values : list (word wXLEN)) (init : state) {struct binders} : option state :=
+    match binders, values with
+    | nil, nil => Return init
+    | b::binders, v::values => t <- putmany binders values init; Return (put t b v)
+    | _, _ => None
+    end.
+
+  Section WithEnv.
+    Context (e:env).
+    Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
+      match f with
+      | 0 => None (* out of fuel *)
+      | S f => match s with
+        | SLoad x a =>
+            a <- eval_expr st a;
+            v <- read_mem a m;
+            Return (put st x v, m)
+        | SStore a v =>
+            a <- eval_expr st a;
+            v <- eval_expr st v;
+            m <- write_mem a v m;
+            Return (st, m)
+        | SSet x e =>
+            v <- eval_expr st e;
+            Return (put st x v, m)
+        | SIf cond bThen bElse =>
+            v <- eval_expr st cond;
+            eval_stmt f st m (if weq v $0 then bElse else bThen)
+        | SWhile cond body =>
+            v <- eval_expr st cond;
+            if weq v $0 then Return (st, m) else
+              p <- eval_stmt f st m body;
+              let '(st, m) := p in
+              eval_stmt f st m (SWhile cond body)
+        | SSeq s1 s2 =>
+            p <- eval_stmt f st m s1;
             let '(st, m) := p in
-            eval_stmt f st m (SWhile cond body)
-      | SSeq s1 s2 =>
-          p <- eval_stmt f st m s1;
-          let '(st, m) := p in
-          eval_stmt f st m s2
-      | SSkip => Return (st, m)
-      end
-    end.
+            eval_stmt f st m s2
+        | SSkip => Return (st, m)
+        | SCall binds fname args =>
+          fimpl <- get e fname;
+          let '(params, rets, fbody) := fimpl in
+          argvs <- option_all (map (eval_expr st) args);
+          st0 <- putmany params argvs empty;
+          st1m' <- eval_stmt f st0 m fbody;
+          let '(st1, m') := st1m' in
+          retvs <- option_all (map (get st1) rets);
+          st' <- putmany binds retvs st;
+          Return (st', m')
+        end
+      end.
 
-  Fixpoint expr_size(e: expr): nat :=
-    match e with
-    | ELit _ => 1
-    | EVar _ => 1
-    | EOp op e1 e2 => S (expr_size e1 + expr_size e2)
-    end.
+    Fixpoint expr_size(e: expr): nat :=
+      match e with
+      | ELit _ => 1
+      | EVar _ => 1
+      | EOp op e1 e2 => S (expr_size e1 + expr_size e2)
+      end.
 
-  Fixpoint stmt_size(s: stmt): nat :=
-    match s with
-    | SLoad x a => S (expr_size a)
-    | SStore a v => S (expr_size a + expr_size v)
-    | SSet x e => S (expr_size e)
-    | SIf cond bThen bElse => S (expr_size cond + stmt_size bThen + stmt_size bElse)
-    | SWhile cond body => S (expr_size cond + stmt_size body)
-    | SSeq s1 s2 => S (stmt_size s1 + stmt_size s2)
-    | SSkip => 1
-    end.
+    Fixpoint stmt_size(s: stmt): nat :=
+      match s with
+      | SLoad x a => S (expr_size a)
+      | SStore a v => S (expr_size a + expr_size v)
+      | SSet x e => S (expr_size e)
+      | SIf cond bThen bElse => S (expr_size cond + stmt_size bThen + stmt_size bElse)
+      | SWhile cond body => S (expr_size cond + stmt_size body)
+      | SSeq s1 s2 => S (stmt_size s1 + stmt_size s2)
+      | SSkip => 1
+      | SCall binds f args => 99*(length binds + List.fold_right Nat.add 66 (List.map expr_size args)) (* FIXME *)
+      end.
 
-  Local Ltac inversion_lemma :=
-    intros;
-    simpl in *;
-    repeat (destruct_one_match_hyp; try discriminate);
-    inversionss;
-    eauto 15.
+    Local Ltac inversion_lemma :=
+      intros;
+      simpl in *;
+      repeat (destruct_one_match_hyp; try discriminate);
+      inversionss;
+      eauto 16.
 
-  Lemma invert_eval_SLoad: forall fuel initialSt initialM x e final,
-    eval_stmt (S fuel) initialSt initialM (SLoad x e) = Some final ->
-    exists a v, eval_expr initialSt e = Some a /\
-                read_mem a initialM = Some v /\
-                final = (put initialSt x v, initialM).
-  Proof. inversion_lemma. Qed.
+    Lemma invert_eval_SLoad: forall fuel initialSt initialM x e final,
+      eval_stmt (S fuel) initialSt initialM (SLoad x e) = Some final ->
+      exists a v, eval_expr initialSt e = Some a /\
+                  read_mem a initialM = Some v /\
+                  final = (put initialSt x v, initialM).
+    Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SStore: forall fuel initialSt initialM a v final,
-    eval_stmt (S fuel) initialSt initialM (SStore a v) = Some final ->
-    exists av vv finalM, eval_expr initialSt a = Some av /\
-                         eval_expr initialSt v = Some vv /\
-                         write_mem av vv initialM = Some finalM /\
-                         final = (initialSt, finalM).
-  Proof. inversion_lemma. Qed.
+    Lemma invert_eval_SStore: forall fuel initialSt initialM a v final,
+      eval_stmt (S fuel) initialSt initialM (SStore a v) = Some final ->
+      exists av vv finalM, eval_expr initialSt a = Some av /\
+                           eval_expr initialSt v = Some vv /\
+                           write_mem av vv initialM = Some finalM /\
+                           final = (initialSt, finalM).
+    Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SSet: forall f st1 m1 p2 x e,
-    eval_stmt (S f) st1 m1 (SSet x e) = Some p2 ->
-    exists v, eval_expr st1 e = Some v /\ p2 = (put st1 x v, m1).
-  Proof. inversion_lemma. Qed.
+    Lemma invert_eval_SSet: forall f st1 m1 p2 x e,
+      eval_stmt (S f) st1 m1 (SSet x e) = Some p2 ->
+      exists v, eval_expr st1 e = Some v /\ p2 = (put st1 x v, m1).
+    Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SIf: forall f st1 m1 p2 cond bThen bElse,
-    eval_stmt (S f) st1 m1 (SIf cond bThen bElse) = Some p2 ->
-    exists cv,
-      eval_expr st1 cond = Some cv /\ 
-      (cv <> $0 /\ eval_stmt f st1 m1 bThen = Some p2 \/
-       cv = $0  /\ eval_stmt f st1 m1 bElse = Some p2).
-  Proof. inversion_lemma. Qed.
+    Lemma invert_eval_SIf: forall f st1 m1 p2 cond bThen bElse,
+      eval_stmt (S f) st1 m1 (SIf cond bThen bElse) = Some p2 ->
+      exists cv,
+        eval_expr st1 cond = Some cv /\ 
+        (cv <> $0 /\ eval_stmt f st1 m1 bThen = Some p2 \/
+         cv = $0  /\ eval_stmt f st1 m1 bElse = Some p2).
+    Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SWhile: forall st1 m1 p3 f cond body,
-    eval_stmt (S f) st1 m1 (SWhile cond body) = Some p3 ->
-    exists cv,
-      eval_expr st1 cond = Some cv /\
-      (cv <> $0 /\ (exists st2 m2, eval_stmt f st1 m1 body = Some (st2, m2) /\ 
-                                   eval_stmt f st2 m2 (SWhile cond body) = Some p3) \/
-       cv = $0  /\ p3 = (st1, m1)).
-  Proof. inversion_lemma. Qed.
+    Lemma invert_eval_SWhile: forall st1 m1 p3 f cond body,
+      eval_stmt (S f) st1 m1 (SWhile cond body) = Some p3 ->
+      exists cv,
+        eval_expr st1 cond = Some cv /\
+        (cv <> $0 /\ (exists st2 m2, eval_stmt f st1 m1 body = Some (st2, m2) /\ 
+                                     eval_stmt f st2 m2 (SWhile cond body) = Some p3) \/
+         cv = $0  /\ p3 = (st1, m1)).
+    Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SSeq: forall st1 m1 p3 f s1 s2,
-    eval_stmt (S f) st1 m1 (SSeq s1 s2) = Some p3 ->
-    exists st2 m2, eval_stmt f st1 m1 s1 = Some (st2, m2) /\ eval_stmt f st2 m2 s2 = Some p3.
-  Proof. inversion_lemma. Qed.
+    Lemma invert_eval_SSeq: forall st1 m1 p3 f s1 s2,
+      eval_stmt (S f) st1 m1 (SSeq s1 s2) = Some p3 ->
+      exists st2 m2, eval_stmt f st1 m1 s1 = Some (st2, m2) /\ eval_stmt f st2 m2 s2 = Some p3.
+    Proof. inversion_lemma. Qed.
 
-  Lemma invert_eval_SSkip: forall st1 m1 p2 f,
-    eval_stmt (S f) st1 m1 SSkip = Some p2 ->
-    p2 = (st1, m1).
-  Proof. inversion_lemma. Qed.
+    Lemma invert_eval_SSkip: forall st1 m1 p2 f,
+      eval_stmt (S f) st1 m1 SSkip = Some p2 ->
+      p2 = (st1, m1).
+    Proof. inversion_lemma. Qed.
+
+    Lemma invert_eval_SCall : forall st m1 p2 f binds fname args,
+      eval_stmt (S f) st m1 (SCall binds fname args) = Some p2 ->
+      exists params rets fbody argvs st0 st1 m' retvs st',
+        get e fname = Some (params, rets, fbody) /\
+        option_all (map (eval_expr st) args) = Some argvs /\
+        putmany params argvs empty = Some st0 /\
+        eval_stmt f st0 m1 fbody = Some (st1, m') /\
+        option_all (map (get st1) rets) = Some retvs /\
+        putmany binds retvs st = Some st' /\
+        p2 = (st', m').
+    Proof. inversion_lemma. Qed.
+  End WithEnv.
 
   (* Returns a list to make it obvious that it's a finite set. *)
   Fixpoint allVars_expr(e: expr): list var :=
@@ -174,6 +222,7 @@ Section ExprImp1.
     | SWhile c body => (allVars_expr c) ++ (allVars_stmt body)
     | SSeq s1 s2 => (allVars_stmt s1) ++ (allVars_stmt s2)
     | SSkip => []
+    | SCall binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
     end.
 
   (* Returns a static approximation of the set of modified vars.
@@ -187,6 +236,7 @@ Section ExprImp1.
     | SWhile _ body => modVars body
     | SSeq s1 s2 => union (modVars s1) (modVars s2)
     | SSkip => empty_set
+    | SCall binds _ _ => List.fold_right union empty_set (List.map singleton_set binds)
     end.
 
   Lemma modVars_subset_allVars: forall x s,
@@ -206,6 +256,11 @@ Section ExprImp1.
       apply in_or_app.
       destruct H as [H|H]; auto.
     - eapply empty_set_spec. eassumption.
+    - generalize dependent binds; induction binds; intros H; cbn in *.
+      + apply empty_set_spec in H; destruct H.
+      + apply union_spec in H; destruct H.
+        * left. apply singleton_set_spec in H. auto.
+        * right. auto.
   Qed.
 
 End ExprImp1.
@@ -213,7 +268,7 @@ End ExprImp1.
 
 Ltac invert_eval_stmt :=
   lazymatch goal with
-  | E: eval_stmt (S ?fuel) _ _ ?s = Some _ |- _ =>
+  | E: eval_stmt _ (S ?fuel) _ _ ?s = Some _ |- _ =>
     destruct s;
     [ apply invert_eval_SLoad in E
     | apply invert_eval_SStore in E
@@ -221,7 +276,9 @@ Ltac invert_eval_stmt :=
     | apply invert_eval_SIf in E
     | apply invert_eval_SWhile in E
     | apply invert_eval_SSeq in E
-    | apply invert_eval_SSkip in E ];
+    | apply invert_eval_SSkip in E
+    | apply invert_eval_SCall in E
+    ];
     deep_destruct E;
     [ let x := fresh "Case_SLoad" in pose proof tt as x; move x at top
     | let x := fresh "Case_SStore" in pose proof tt as x; move x at top
@@ -231,7 +288,9 @@ Ltac invert_eval_stmt :=
     | let x := fresh "Case_SWhile_Done" in pose proof tt as x; move x at top
     | let x := fresh "Case_SWhile_NotDone" in pose proof tt as x; move x at top
     | let x := fresh "Case_SSeq" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SSkip" in pose proof tt as x; move x at top ]
+    | let x := fresh "Case_SSkip" in pose proof tt as x; move x at top 
+    | let x := fresh "Case_SCall" in pose proof tt as x; move x at top
+    ]
   end.
 
 
@@ -242,6 +301,8 @@ Section ExprImp2.
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
   Existing Instance eq_name_dec.
+  Context {FName: NameWithEq}.
+  Notation func := (@name FName).
 
   Context {state: Type}.
   Context {stateMap: Map state var (word wXLEN)}.
@@ -250,8 +311,23 @@ Section ExprImp2.
 
   Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
 
-  Lemma modVarsSound: forall fuel s initialS initialM finalS finalM,
-    eval_stmt fuel initialS initialM s = Some (finalS, finalM) ->
+  Lemma putmany_sameLength : forall bs vs st st' (H:putmany bs vs st = Some st'),
+      length bs = length vs.
+  Proof.
+    induction bs, vs; cbn; try discriminate; trivial; [].
+    intros; destruct (putmany bs vs st) eqn:?; [eauto using f_equal|discriminate].
+  Qed.
+  
+  Lemma only_differ_putmany : forall (bs : list var) (vs : list (word wXLEN)) st st' 
+        (H : putmany bs vs st = Some st'),
+    only_differ st (fold_right union empty_set (map singleton_set bs)) st'.
+    induction bs, vs; cbn; try discriminate; state_calc; [].
+    destruct (putmany bs vs st) eqn:Heqo; inversion H; specialize (IHbs _ _ _ Heqo).
+    state_calc.
+  Qed.
+
+  Lemma modVarsSound: forall env fuel s initialS initialM finalS finalM,
+    eval_stmt env fuel initialS initialM s = Some (finalS, finalM) ->
     only_differ initialS (modVars s) finalS.
   Proof.
     induction fuel; introv Ev.
@@ -265,6 +341,7 @@ Section ExprImp2.
           ensure_new IH'
       end;
       state_calc.
+      refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 
 End ExprImp2.
@@ -311,7 +388,7 @@ Definition isRight(x y z: word 32) :=
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
 Definition run_isRight(x y z: word 32): option (word 32) :=
-  final <- (eval_stmt 10 empty no_mem (isRight x y z));
+  final <- (eval_stmt empty 10 empty no_mem (isRight x y z));
   let '(finalSt, finalM) := final in
   get finalSt _isRight.
 
