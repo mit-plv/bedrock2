@@ -3,7 +3,7 @@ default_target: all
 
 COQC=$(COQBIN)coqc
 
-EXPECTED_COQC_VERSION := 8.7.2
+EXPECTED_COQC_VERSION ?= 8.7.2
 
 ACTUAL_COQC_VERSION := $(shell $(COQC) --version | sed -n 's/The Coq Proof Assistant, version \([^ ]*\) .*/\1/p')
 

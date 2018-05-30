@@ -158,7 +158,7 @@ Section Pipeline.
         subst f.
         rewrite wordToZ_ZToWord.
         * replace RV_wXLEN_IM with RV64IMA by admit. (* TODO *)
-          apply decode_encode; [|reflexivity].
+          apply decode_encode.
           (* TODO argue that inst was emitted by compiler and therefore respects imm bounds *)
           admit.
         * (* TODO argue that inst was emitted by compiler and therefore is 32 bits *)
