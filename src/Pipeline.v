@@ -181,7 +181,7 @@ Section Pipeline.
     ExprImp.stmt_size sH < 2 ^ 14 ->
     exprImp2Riscv sH = instsL ->
     4 * length instsL <= Memory.memSize initialL.(machineMem) ->
-    evalH fuelH empty initialMemH sH = Some (finalH, finalMemH) ->
+    evalH empty fuelH empty initialMemH sH = Some (finalH, finalMemH) ->
     FlatToRiscv.mem_inaccessible initialMemH 0 (4 * length instsL) ->
     exists fuelL,
       forall resVar res,
@@ -209,7 +209,7 @@ Section Pipeline.
       + eassumption.
       + unfold FlatToRiscv.stmt_not_too_big.
         pose proof @flattenStmt_size as D1.
-        specialize D1 with (1 := E).
+        specialize (D1 _ _ _ _ _ _ _ _ _ _ _ _ E).
         clear -B D1.
         change 20 with (16 + 4).
         rewrite Nat.pow_add_r.

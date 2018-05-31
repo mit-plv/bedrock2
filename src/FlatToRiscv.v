@@ -171,6 +171,7 @@ Section FlatToRiscv.
     | SLoop s1 c s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
     | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
     | SSkip => True
+    | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
     end.
 
   (*
@@ -381,6 +382,7 @@ Section FlatToRiscv.
         [[Jal Register0 ((- Z.of_nat (length body1' + 1 + length body2')) * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
+    | SCall _ _ _ => nil (* unsupported *)
     end.
 
   (*
@@ -1637,8 +1639,8 @@ list2imem
   Proof. intros. tauto. Qed.
   
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt Bw TestFlatImp.ZName} {initialRegs finalRegs: state},
-      eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
+      eval_stmt empty fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
     induction fuel; intros; try (simpl in *; discriminate).
@@ -1659,8 +1661,8 @@ list2imem
   Qed.
 
   Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt Bw TestFlatImp.ZName} {initialRegs finalRegs: state},
-      eval_stmt fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
+      eval_stmt empty fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len,
         mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
   Proof.
@@ -1694,10 +1696,10 @@ list2imem
     try eassumption;
     let Eq := fresh "Eq" in
     match goal with
-    | E1: eval_stmt ?f ?r1 ?m1 ?s1 = Some (?r2, ?m2),
-      E2: eval_stmt ?f ?r2 ?m2 ?s2 = Some (?r3, ?m3)
-      |-   eval_stmt _ _ ?m1 _ = Some (_, ?m3)
-      => assert (eval_stmt (S f) r1 m1 (SSeq s1 s2) = Some (r3, m3)) as Eq
+    | E1: eval_stmt ?env ?f ?r1 ?m1 ?s1 = Some (?r2, ?m2),
+      E2: eval_stmt ?env ?f ?r2 ?m2 ?s2 = Some (?r3, ?m3)
+      |-   eval_stmt ?env _ _ ?m1 _ = Some (_, ?m3)
+      => assert (eval_stmt env (S f) r1 m1 (SSeq s1 s2) = Some (r3, m3)) as Eq
           by (simpl; rewrite E1; exact E2); exact Eq
     end.
 
@@ -2090,7 +2092,7 @@ list2imem
     stmt_not_too_big s ->
     valid_registers s ->
     #imemStart mod 4 = 0 ->
-    eval_stmt fuelH initialH initialMH s = Some (finalH, finalMH) ->
+    eval_stmt empty fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) allInsts imemStart ->
@@ -2258,9 +2260,9 @@ list2imem
       IH_done IH.
     - (* SSkip *)
       run1done.
+    - match goal with H: _ |- _ => solve [inversion H] end.
   Qed.
 
-  Print Assumptions compile_stmt_correct_aux.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
@@ -2268,7 +2270,7 @@ list2imem
     stmt_not_too_big s ->
     valid_registers s ->
     #imemStart mod 4 = 0 ->
-    eval_stmt fuelH empty initialMH s = Some (finalH, finalMH) ->
+    eval_stmt empty fuelH empty initialMH s = Some (finalH, finalMH) ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) insts imemStart ->
     initialL.(core).(pc) = imemStart ->
@@ -2306,4 +2308,5 @@ list2imem
       cbv beta in A. tauto.
   Qed.
 
+  Print Assumptions compile_stmt_correct.
 End FlatToRiscv.

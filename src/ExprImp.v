@@ -45,37 +45,18 @@ Section ExprImp1.
     | SSkip: stmt
     | SCall(binds: list var)(f: func)(args: list expr).
 
-  Context {env} {funcMap: Map env func (list var * list var * stmt)}.
-
   Fixpoint eval_expr(st: state)(e: expr): option (word wXLEN) :=
     match e with
     | ELit v => Return v
     | EVar x => get st x
     | EOp op e1 e2 =>
-        v1 <- eval_expr st e1;
+      v1 <- eval_expr st e1;
         v2 <- eval_expr st e2;
         Return (eval_binop op v1 v2)
     end.
 
-  Fixpoint option_all {A} (l : list (option A)) {struct l} : option (list A) :=
-    match l with
-    | nil => Some nil
-    | (Some x)::l =>
-      match option_all l with
-      | Some l' => Some (x::l')
-      | _ => None end
-    | _ => None
-    end.
-
-  Fixpoint putmany (binders : list var) (values : list (word wXLEN)) (init : state) {struct binders} : option state :=
-    match binders, values with
-    | nil, nil => Return init
-    | b::binders, v::values => t <- putmany binders values init; Return (put t b v)
-    | _, _ => None
-    end.
-
   Section WithEnv.
-    Context (e:env).
+    Context {env} {funcMap: Map env func (list var * list var * stmt)} (e:env).
     Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
       match f with
       | 0 => None (* out of fuel *)
@@ -135,7 +116,7 @@ Section ExprImp1.
       | SWhile cond body => S (expr_size cond + stmt_size body)
       | SSeq s1 s2 => S (stmt_size s1 + stmt_size s2)
       | SSkip => 1
-      | SCall binds f args => 99*(length binds + List.fold_right Nat.add 66 (List.map expr_size args)) (* FIXME *)
+      | SCall binds f args => S (length binds + List.fold_right Nat.add O (List.map expr_size args)) (* TODO: what should this be? *)
       end.
 
     Local Ltac inversion_lemma :=
@@ -236,7 +217,7 @@ Section ExprImp1.
     | SWhile _ body => modVars body
     | SSeq s1 s2 => union (modVars s1) (modVars s2)
     | SSkip => empty_set
-    | SCall binds _ _ => List.fold_right union empty_set (List.map singleton_set binds)
+    | SCall binds _ _ => of_list binds
     end.
 
   Lemma modVars_subset_allVars: forall x s,
@@ -311,21 +292,6 @@ Section ExprImp2.
 
   Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
 
-  Lemma putmany_sameLength : forall bs vs st st' (H:putmany bs vs st = Some st'),
-      length bs = length vs.
-  Proof.
-    induction bs, vs; cbn; try discriminate; trivial; [].
-    intros; destruct (putmany bs vs st) eqn:?; [eauto using f_equal|discriminate].
-  Qed.
-  
-  Lemma only_differ_putmany : forall (bs : list var) (vs : list (word wXLEN)) st st' 
-        (H : putmany bs vs st = Some st'),
-    only_differ st (fold_right union empty_set (map singleton_set bs)) st'.
-    induction bs, vs; cbn; try discriminate; state_calc; [].
-    destruct (putmany bs vs st) eqn:Heqo; inversion H; specialize (IHbs _ _ _ Heqo).
-    state_calc.
-  Qed.
-
   Lemma modVarsSound: forall env fuel s initialS initialM finalS finalM,
     eval_stmt env fuel initialS initialM s = Some (finalS, finalM) ->
     only_differ initialS (modVars s) finalS.
@@ -347,6 +313,7 @@ Section ExprImp2.
 End ExprImp2.
 
 
+Require riscv.RiscvBitWidths32.
 Module TestExprImp.
 
 Instance ZName: NameWithEq := {| name := Z |}.
@@ -375,7 +342,7 @@ Definition _b := 1%Z.
 Definition _c := 2%Z.
 Definition _isRight := 3%Z.
 
-Require Import riscv.RiscvBitWidths32.
+Import riscv.RiscvBitWidths32.
 
 Definition isRight(x y z: word 32) :=
   SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))
