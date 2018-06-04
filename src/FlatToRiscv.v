@@ -544,8 +544,8 @@ Section FlatToRiscv.
              unique pose proof (@Memory.memSize_bound M _ IsMem m)
            end;
     pose proof pow2_wXLEN_4;
-    rewrite? wordToNat_wplus;
-    rewrite? wordToNat_natToWord_eqn.
+    rewrite? wordToNat_wplus in *;
+    rewrite? wordToNat_natToWord_eqn in *.
   
   Ltac nat_rel_with_words :=
     nat_rel_with_words_pre;
@@ -607,30 +607,59 @@ Section FlatToRiscv.
     auto.
   Qed.
 
+  (* TODO put into Word.v *)
+  Lemma wordToNat_wmult : forall (sz : nat) (w1 w2 : word sz),
+      #(w1 ^* w2) = (#w1 * #w2) mod pow2 sz.
+  Proof using .
+    clear. intros.
+    rewrite <- (natToWord_wordToNat w1) at 1.
+    rewrite <- (natToWord_wordToNat w2) at 1.
+    rewrite <- natToWord_mult.
+    rewrite wordToNat_natToWord_eqn.
+    reflexivity.
+  Qed.
+  
   Lemma containsProgram_app: forall m insts1 insts2 offset,
       containsProgram m insts1 offset ->
       containsProgram m insts2 (offset ^+ $4 ^* $(length insts1)) ->
       containsProgram m (insts1 ++ insts2) offset.
   Proof.
     unfold containsProgram. intros. rewrite app_length.
-    rewrite wordToNat_wplus' in H0.
     intuition idtac.
-  Admitted. (*
-    assert (i < length insts1 \/ length insts1 <= i) as E by omega.
-    destruct E as [E | E].
-    - rewrite nth_error_app1 in H1 by assumption. eauto.
-    - rewrite nth_error_app2 in H1 by assumption.
-      specialize H0 with (1 := H1). subst inst.
-      f_equal. rewrite <- wplus_assoc.
-      f_equal.
-      match goal with
-      | |- _ = ?x => match x with
-                   | $4 ^* ?a ^+ $4 ^* ?b => replace x with ($4 ^* (a ^+ b)) by ring
-                   end
-      end.
-      rewrite <- natToWord_plus.
-      f_equal. f_equal. omega.
-  Qed.*)
+    - clear H2 H3.
+      repeat match goal with
+             | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
+               unique pose proof (@Memory.memSize_bound M _ IsMem m)
+             end.
+      pose proof pow2_wXLEN_4.
+      rewrite? wordToNat_wplus in *.
+      rewrite? wordToNat_natToWord_eqn in *.
+      rewrite? wordToNat_wmult in *.
+      rewrite? wordToNat_natToWord_eqn in *.
+      rewrite <- Nat.mul_mod in * by omega.
+      rewrite Nat.add_mod_idemp_r in * by omega.
+      nat_div_mod_to_quot_rem.
+      assert (q = 0 \/ q > 0) as C by omega.
+      destruct C as [C | C].
+      + nia.
+      + forget (pow2 wXLEN) as p.
+        rewrite Nat.mul_add_distr_l.
+        rewrite Nat.add_assoc.
+        rewrite E.
+        (* Problem:
+           If (offset ^+ $4 ^* $(length insts1)) overflows and equals 0, the lemma
+           does not hold! *)
+        admit.
+    - assert (i < length insts1 \/ length insts1 <= i) as E by omega.
+      destruct E as [E | E].
+      + rewrite nth_error_app1 in H0 by assumption. eauto.
+      + rewrite nth_error_app2 in H0 by assumption.
+        erewrite <- H3; [|exact H0].
+        f_equal.
+        replace i with (i - length insts1 + length insts1) at 1 by omega.
+        forget (i - length insts1) as i'.
+        solve_word_eq.
+  Admitted.
 
   Lemma containsProgram_cons: forall m inst insts offset,
     containsProgram m [[inst]] offset ->
