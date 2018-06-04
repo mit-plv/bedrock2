@@ -668,7 +668,10 @@ Section FlatToRiscv.
     containsProgram m (inst :: insts) offset.
   Proof.
     intros. change (inst :: insts) with ([[inst]] ++ insts).
-    apply containsProgram_app; assumption.
+    apply containsProgram_app; [assumption|].
+    replace ($4 ^* $(length [[inst]])) with (natToWord wXLEN 4); [assumption|].
+    simpl (length _).
+    solve_word_eq.
   Qed.
 
   Lemma containsProgram_nil: forall m offset,
