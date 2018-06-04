@@ -135,3 +135,9 @@ Ltac rewrite_match :=
   repeat match goal with
   | E: ?A = _ |- context[match ?A with | _ => _ end] => rewrite E
   end.
+
+Tactic Notation "so" tactic(f) :=
+  match goal with
+  | _: ?A |- _  => f A
+  |       |- ?A => f A
+  end.

@@ -24,6 +24,7 @@ Require Import riscv.InstructionCoercions.
 Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
+Require Import Coq.micromega.Lia.
 
 
 Lemma rewrite_div_mod: forall (a b: nat),
@@ -36,6 +37,28 @@ Proof.
   pose proof (Nat.mod_upper_bound a b).
   auto.
 Qed.
+
+Ltac nat_div_mod_to_quot_rem_step :=
+  so fun hyporgoal => match hyporgoal with
+  | context [?a mod ?b] =>
+      let Ne := fresh "Ne" in
+      let P := fresh "P" in
+      assert (b <> 0) as Ne by omega;
+      pose proof (rewrite_div_mod a b Ne) as P;
+      clear Ne;
+      let q := fresh "q" in
+      let r := fresh "r" in
+      let Er := fresh "Er" in
+      let Eq := fresh "Eq" in
+      let E := fresh "E" in
+      let B := fresh "B" in
+      destruct P as [ q [ r [ Er [ Eq [ E B ] ] ] ] ];
+      rewrite? Er in *;
+      rewrite? Eq in *;
+      clear Er Eq
+  end.
+
+Ltac nat_div_mod_to_quot_rem := repeat nat_div_mod_to_quot_rem_step.
 
 
 Local Open Scope ilist_scope.
@@ -501,6 +524,34 @@ Section FlatToRiscv.
       apply one_lt_pow2.
   Qed.  
 
+  Ltac ensure_is_nat_rel R :=
+    match R with
+    | ?P /\ ?Q => ensure_is_nat_rel P; ensure_is_nat_rel Q
+    | ?P \/ ?Q => ensure_is_nat_rel P; ensure_is_nat_rel Q
+    | @eq nat _ _  => idtac (* can't use %nat here because = is polymorphic *)
+    | (_ <  _)%nat => idtac
+    | (_ <= _)%nat => idtac
+    | (_ >  _)%nat => idtac
+    | (_ >= _)%nat => idtac
+    end.
+
+  Ltac nat_rel_with_words_pre :=
+    match goal with
+    | |- ?P => ensure_is_nat_rel P
+    end;
+    repeat match goal with
+           | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
+             unique pose proof (@Memory.memSize_bound M _ IsMem m)
+           end;
+    pose proof pow2_wXLEN_4;
+    rewrite? wordToNat_wplus;
+    rewrite? wordToNat_natToWord_eqn.
+  
+  Ltac nat_rel_with_words :=
+    nat_rel_with_words_pre;
+    nat_div_mod_to_quot_rem;
+    nia.
+
   (* Note: containsProgram for one single [[inst]] could be simplified, but for automation,
      it's better not to simplify. *)
   Lemma containsProgram_cons_inv: forall m inst insts offset,
@@ -514,36 +565,7 @@ Section FlatToRiscv.
       intros. destruct i; inverts H1.
       - assumption.
       - exfalso. eauto using nth_error_nil_Some.
-    + pose proof (Memory.memSize_bound m).
-      pose proof pow2_wXLEN_4 as W.
-      rewrite wordToNat_wplus.
-      rewrite wordToNat_natToWord_eqn.
-      forget (#offset) as ofs.
-      forget (length insts) as l.
-      forget (Memory.memSize m) as M.
-      forget (pow2 wXLEN) as p.
-      clear -H W.
-      Require Import riscv.proofs.DecodeEncode.
-      repeat (so fun hyporgoal => match hyporgoal with
-      | context [?a mod ?b] =>
-          let Ne := fresh "Ne" in
-          let P := fresh "P" in
-          assert (b <> 0) as Ne by omega;
-          pose proof (rewrite_div_mod a b Ne) as P;
-          clear Ne;
-          let q := fresh "q" in
-          let r := fresh "r" in
-          let Er := fresh "Er" in
-          let Eq := fresh "Eq" in
-          let E := fresh "E" in
-          let B := fresh "B" in
-          destruct P as [ q [ r [ Er [ Eq [ E B ] ] ] ] ];
-          rewrite? Er in *;
-          rewrite? Eq in *;
-          clear Er Eq
-      end).
-      Require Import Coq.micromega.Lia.
-      nia.
+    + nat_rel_with_words.
     + rename H0 into Cp. specialize (Cp (S i)). simpl in Cp.
       specialize (Cp _ H1).
       rewrite <- Cp. f_equal.
@@ -564,39 +586,34 @@ Section FlatToRiscv.
   Proof.
     intros *. intro Cp. unfold containsProgram in *.
     rewrite app_length in Cp.
-    intuition idtac.
-    + omega.
-    + intros. apply H0. rewrite nth_error_app1; [assumption|].
+    intuition (try nat_rel_with_words).
+    + apply H0. rewrite nth_error_app1; [assumption|].
       apply nth_error_Some. intro E. rewrite E in H1. discriminate.
-    + pose proof (Memory.memSize_bound s).
-      assert (4 * length insts1 = pow2 wXLEN \/ 4 * length insts1 < pow2 wXLEN) as C by omega.
-      destruct C as [C | C].
-      * rewrite C.
-        rewrite natToWord_pow2.
-        rewrite wplus_comm.
-        rewrite wplus_unit.
-        omega.
-      * assert (#offset + 4 * length insts1 = pow2 wXLEN \/
-                #offset + 4 * length insts1 < pow2 wXLEN) as D by omega.
-        destruct D as [D | D].
-        - pose proof (f_equal (natToWord wXLEN) D) as E.
-          rewrite natToWord_pow2 in E.
-          rewrite natToWord_plus in E.
-          rewrite natToWord_wordToNat in E.
-          rewrite E.
-          rewrite roundTrip_0.
-          omega.
-        - rewrite? wordToNat_wplus'; rewrite wordToNat_natToWord_idempotent'; omega.
-    + rewrite <- wplus_assoc.
-      do 2 rewrite natToWord_mult.
-      do 2 rewrite (wmult_comm $4).
-      rewrite <- wmult_plus_distr. rewrite <- wmult_comm.
-      rewrite <- natToWord_plus.
-      rewrite <- natToWord_mult.
-      apply H0.
-      rewrite nth_error_app2 by omega.
-      replace (length insts1 + i - length insts1) with i by omega.
-      assumption.
+    + rewrite <- (H0 (length insts1 + i)).
+      - f_equal.
+        assert (i < length insts2). {
+          apply nth_error_Some. rewrite H1. congruence.
+        }
+        apply wordToNat_inj.
+    repeat match goal with
+           | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
+             unique pose proof (@Memory.memSize_bound M _ IsMem m)
+           end;
+    pose proof pow2_wXLEN_4.
+    rewrite? wordToNat_wplus.
+    rewrite? wordToNat_natToWord_eqn.
+    
+
+    forget (pow2 wXLEN) as p.
+    forget (#offset) as ofs.
+    forget (length insts1) as l.
+    rewrite? Nat.add_mod_idemp_r by omega.
+    rewrite? Nat.add_mod_idemp_l by omega.
+    f_equal.
+    nia.
+      - rewrite nth_error_app2 by omega.
+        replace (length insts1 + i - length insts1) with i by omega.
+        assumption.
   Qed.
 
   Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
