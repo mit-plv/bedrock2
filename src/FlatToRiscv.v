@@ -590,27 +590,7 @@ Section FlatToRiscv.
     + apply H0. rewrite nth_error_app1; [assumption|].
       apply nth_error_Some. intro E. rewrite E in H1. discriminate.
     + rewrite <- (H0 (length insts1 + i)).
-      - f_equal.
-        assert (i < length insts2). {
-          apply nth_error_Some. rewrite H1. congruence.
-        }
-        apply wordToNat_inj.
-    repeat match goal with
-           | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
-             unique pose proof (@Memory.memSize_bound M _ IsMem m)
-           end;
-    pose proof pow2_wXLEN_4.
-    rewrite? wordToNat_wplus.
-    rewrite? wordToNat_natToWord_eqn.
-    
-
-    forget (pow2 wXLEN) as p.
-    forget (#offset) as ofs.
-    forget (length insts1) as l.
-    rewrite? Nat.add_mod_idemp_r by omega.
-    rewrite? Nat.add_mod_idemp_l by omega.
-    f_equal.
-    nia.
+      - f_equal. solve_word_eq.
       - rewrite nth_error_app2 by omega.
         replace (length insts1 + i - length insts1) with i by omega.
         assumption.
