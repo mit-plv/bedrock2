@@ -448,6 +448,7 @@ Section FlatToRiscv.
            | |- _ => change $1 with (wone wXLEN)
                    || change $0 with (wzero wXLEN)
                    || rewrite! natToWord_plus
+                   || rewrite! natToWord_mult
                    || rewrite! Nat2Z.inj_add
                    || rewrite <-! Z.sub_0_l
                    || rewrite! Z.mul_sub_distr_r
@@ -665,18 +666,10 @@ Section FlatToRiscv.
     containsProgram m [[inst]] offset ->
     containsProgram m insts (offset ^+ $4) ->
     containsProgram m (inst :: insts) offset.
-  Admitted.
-  (*
   Proof.
-    unfold containsProgram. intros. destruct i.
-    - simpl in H1. inverts H1. eauto.
-    - simpl in H1.
-      replace (offset ^+ $ (4) ^* $ (S i)) with (offset ^+ $4 ^+ $4 ^* $i); [eauto|].
-      rewrite (natToWord_S _ i).
-      change (natToWord wXLEN 1) with (wone wXLEN).
-      ring.
+    intros. change (inst :: insts) with ([[inst]] ++ insts).
+    apply containsProgram_app; assumption.
   Qed.
-   *)
 
   Lemma containsProgram_nil: forall m offset,
       containsProgram m [[]] offset.
