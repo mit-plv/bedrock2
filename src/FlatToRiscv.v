@@ -484,10 +484,10 @@ Section FlatToRiscv.
   Definition mem_inaccessible(m: Memory.mem)(start len: nat): Prop :=
     forall a w, Memory.read_mem a m = Some w -> not_in_range a wXLEN_in_bytes start len.
 
-  Definition containsProgram(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
-    #offset + 4 * length program <= Memory.memSize m /\
+  Definition containsProgram(m: mem wXLEN)(program: list Instruction)(offset: nat) :=
+    offset + 4 * length program <= Memory.memSize m /\
     forall i inst, nth_error program i = Some inst ->
-      ldInst m (offset ^+ $(4 * i)) = inst.
+      ldInst m $(offset + 4 * i) = inst.
   
   (*
   Definition containsProgram'(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
@@ -558,7 +558,7 @@ Section FlatToRiscv.
   Lemma containsProgram_cons_inv: forall m inst insts offset,
     containsProgram m (inst :: insts) offset ->
     containsProgram m [[inst]] offset /\
-    containsProgram m insts (offset ^+ $4).
+    containsProgram m insts (offset + 4).
   Proof.
     intros *. intro Cp. unfold containsProgram in *. cbn [length] in *.
     intuition (try omega).
@@ -566,7 +566,6 @@ Section FlatToRiscv.
       intros. destruct i; inverts H1.
       - assumption.
       - exfalso. eauto using nth_error_nil_Some.
-    + nat_rel_with_words.
     + rename H0 into Cp. specialize (Cp (S i)). simpl in Cp.
       specialize (Cp _ H1).
       rewrite <- Cp. f_equal.
@@ -580,10 +579,10 @@ Section FlatToRiscv.
       natToWord sz (S (S n)) = (wone sz) ^+ (natToWord sz (S n)).
   Proof. intros. apply natToWord_S. Qed.
 
-  Lemma containsProgram_app_inv0: forall s insts1 insts2 offset,
+  Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
     containsProgram s (insts1 ++ insts2) offset ->
     containsProgram s insts1 offset /\
-    containsProgram s insts2 (offset ^+ $(4 * length insts1)).
+    containsProgram s insts2 (offset + 4 * length insts1).
   Proof.
     intros *. intro Cp. unfold containsProgram in *.
     rewrite app_length in Cp.
@@ -595,17 +594,6 @@ Section FlatToRiscv.
       - rewrite nth_error_app2 by omega.
         replace (length insts1 + i - length insts1) with i by omega.
         assumption.
-  Qed.
-
-  Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
-    containsProgram s (insts1 ++ insts2) offset ->
-    containsProgram s insts1 offset /\
-    containsProgram s insts2 (offset ^+ $4 ^* $(length insts1)).
-  Proof.
-    intros.
-    destruct (containsProgram_app_inv0 _ _ H) as [H1 H2].
-    rewrite natToWord_mult in H2.
-    auto.
   Qed.
 
   (* TODO put into Word.v *)
@@ -622,35 +610,12 @@ Section FlatToRiscv.
   
   Lemma containsProgram_app: forall m insts1 insts2 offset,
       containsProgram m insts1 offset ->
-      containsProgram m insts2 (offset ^+ $4 ^* $(length insts1)) ->
+      containsProgram m insts2 (offset + 4 * length insts1) ->
       containsProgram m (insts1 ++ insts2) offset.
   Proof.
     unfold containsProgram. intros. rewrite app_length.
     intuition idtac.
-    - clear H2 H3.
-      repeat match goal with
-             | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
-               unique pose proof (@Memory.memSize_bound M _ IsMem m)
-             end.
-      pose proof pow2_wXLEN_4.
-      rewrite? wordToNat_wplus in *.
-      rewrite? wordToNat_natToWord_eqn in *.
-      rewrite? wordToNat_wmult in *.
-      rewrite? wordToNat_natToWord_eqn in *.
-      rewrite <- Nat.mul_mod in * by omega.
-      rewrite Nat.add_mod_idemp_r in * by omega.
-      nat_div_mod_to_quot_rem.
-      assert (q = 0 \/ q > 0) as C by omega.
-      destruct C as [C | C].
-      + nia.
-      + forget (pow2 wXLEN) as p.
-        rewrite Nat.mul_add_distr_l.
-        rewrite Nat.add_assoc.
-        rewrite E.
-        (* Problem:
-           If (offset ^+ $4 ^* $(length insts1)) overflows and equals 0, the lemma
-           does not hold! *)
-        admit.
+    - clear H2 H3. omega.
     - assert (i < length insts1 \/ length insts1 <= i) as E by omega.
       destruct E as [E | E].
       + rewrite nth_error_app1 in H0 by assumption. eauto.
@@ -660,11 +625,11 @@ Section FlatToRiscv.
         replace i with (i - length insts1 + length insts1) at 1 by omega.
         forget (i - length insts1) as i'.
         solve_word_eq.
-  Admitted.
+  Qed.
 
   Lemma containsProgram_cons: forall m inst insts offset,
     containsProgram m [[inst]] offset ->
-    containsProgram m insts (offset ^+ $4) ->
+    containsProgram m insts (offset + 4) ->
     containsProgram m (inst :: insts) offset.
   Proof.
     intros. change (inst :: insts) with ([[inst]] ++ insts).
@@ -1222,7 +1187,7 @@ Section FlatToRiscv.
 
   Lemma run1_simpl: forall {inst initialL pc0},
       containsProgram initialL.(machineMem) [[inst]] pc0 ->
-      pc0 = initialL.(core).(pc) ->
+      pc0 = #(initialL.(core).(pc)) ->
       execState run1 initialL = execState (execute inst;; step) initialL.
   Proof.
     intros. subst.
@@ -1235,9 +1200,8 @@ Section FlatToRiscv.
     specialize (H 0 _ eq_refl). subst inst.
     unfold ldInst.
     simpl_RiscvMachine_get_set.
-    replace (initialL_pc ^+ $4 ^* $0) with initialL_pc by solve_word_eq.
-    rewrite wplus_comm.
-    rewrite wplus_unit.
+    replace (#initialL_pc + 4 * 0) with #initialL_pc by omega.
+    rewrite natToWord_wordToNat.
     reflexivity.
   Qed. 
 
@@ -2039,10 +2003,9 @@ list2imem
   
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
       containsProgram initialL_mem insts imemStart ->
-      not_in_range a wXLEN_in_bytes #imemStart (4 * (length insts)) ->
+      not_in_range a wXLEN_in_bytes imemStart (4 * (length insts)) ->
       in_range a wXLEN_in_bytes 0 (Memory.memSize initialL_mem) ->
-      (* better than using $4 ^* imemStart because that prevents overflow *)
-      #imemStart mod 4 = 0 -> 
+      imemStart mod 4 = 0 -> 
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
   Proof.
     unfold containsProgram.
@@ -2065,32 +2028,29 @@ list2imem
       pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
       rewrite Memory.loadStoreWord_ne; try assumption.
       + unfold Memory.valid_addr. split.
-        * rewrite wordToNat_wplus'; omega.
-        * rewrite wordToNat_wplus' by omega.
-          rewrite D by omega.
+        * rewrite wordToNat_natToWord_idempotent'; omega.
+        * rewrite wordToNat_natToWord_idempotent' by omega.
           rewrite Nat.add_mod by omega.
           rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
           rewrite A.
           reflexivity.
       + intro C. subst a. rename H0 into R.
         unfold not_in_range in *.
-        rewrite wordToNat_wplus' in R; omega.
+        rewrite wordToNat_natToWord_idempotent' in R; omega.
     - pose proof (Memory.memSize_bound initialL_mem) as B.
       assert (nth_error insts i <> None) as F by congruence.
       apply nth_error_Some in F.
       pose proof (@wordToNat_natToWord_idempotent' 64 (4 * i)) as D.
       rewrite loadWord_storeDouble_ne'; try assumption.
       + unfold in_range in *.
-        rewrite wordToNat_wplus' by omega.
-        rewrite D by omega.
+        rewrite wordToNat_natToWord_idempotent' by omega.
         rewrite Nat.add_mod by omega.
         rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
         rewrite A.
         intuition (omega || reflexivity).
       + clear H1 H2.
         unfold not_in_range, in_range in *.
-        rewrite wordToNat_wplus' by omega.
-        rewrite D by omega.
+        rewrite wordToNat_natToWord_idempotent' by omega.
         omega.
   Qed.
   
@@ -2134,14 +2094,14 @@ list2imem
     allInsts = instsBefore ++ insts ++ instsAfter ->  
     stmt_not_too_big s ->
     valid_registers s ->
-    #imemStart mod 4 = 0 ->
+    imemStart mod 4 = 0 ->
     eval_stmt fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) allInsts imemStart ->
-    initialL.(core).(pc) = imemStart ^+ $4 ^* $(length instsBefore) ->
+    initialL.(core).(pc) = $imemStart ^+ $4 ^* $(length instsBefore) ->
     initialL.(core).(nextPC) = initialL.(core).(pc) ^+ $4 ->
-    mem_inaccessible initialMH #imemStart (4 * length allInsts) ->
+    mem_inaccessible initialMH imemStart (4 * length allInsts) ->
     runsToSatisfying initialL (fun finalL =>
        extends finalL.(core).(registers) finalH /\
        containsMem finalL.(machineMem) finalMH /\
@@ -2162,6 +2122,56 @@ list2imem
     - (* SLoad *)
       clear IHfuelH.
       apply runsToStep; simpl in *; subst *.
+      match goal with
+      | Cp: containsProgram _ [[?inst]] ?pc0 |- runsTo _ _ ?E _ =>
+        match E with
+        | execState run1 ?initialL =>
+          let Eqpc := fresh in
+          assert (pc0 = #(initialL.(core).(pc))) as Eqpc (*by solve_word_eq;
+            replace E with (execState (execute inst;; step) initialL) by
+              (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
+            clear Eqpc*)
+        end
+      end.
+      admit.
+      (symmetry; eapply run1_simpl). eassumption.
+
+      
+      match goal with
+      | Cp: containsProgram _ [[?inst]] ?pc0 |- runsTo _ _ ?E _ =>
+        match E with
+        | execState run1 ?initialL =>
+          let Eqpc := fresh in
+          assert ($pc0 = initialL.(core).(pc)) as Eqpc by solve_word_eq;
+            replace E with (execState (execute inst;; step) initialL) (*by
+              (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
+            clear Eqpc*)
+        end
+      end.
+      admit.
+      (symmetry; eapply run1_simpl). eassumption.
+      rewrite <- H3.
+      exact Cp. | exact Eqpc ]);
+
+
+      replace (execState run1
+       {|
+       core := {|
+               registers := initialL_regs;
+               pc := $ (imemStart) ^+ $ (4) ^* $ (length instsBefore);
+               nextPC := $ (imemStart) ^+ $ (4) ^* $ (length instsBefore) ^+ $ (4);
+               exceptionHandlerAddr := initialL_eh |};
+       machineMem := initialL_mem |}) with (execState (execute inst;; step) initialL) by
+              (symmetry; eapply run1_simpl; [ exact Cp | exact H3 ]).
+            clear Eqpc*)
+
+      {
+        solve_word_eq.
+        rewrite natToWord_mult.
+        solve_word_eq.
+      }
+        Search ($ (_ * _)).
+
       fetch_inst.
       erewrite execute_load; [|eassumption..].
       simpl_RiscvMachine_get_set.
