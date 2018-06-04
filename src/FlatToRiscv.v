@@ -25,6 +25,19 @@ Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
 
+
+Lemma rewrite_div_mod: forall (a b: nat),
+    b <> 0 ->
+    exists q r, a mod b = r /\ a / b = q /\ a = b * q + r /\ r < b.
+Proof.
+  intros.
+  exists (a / b) (a mod b).
+  rewrite <- (Nat.div_mod a b) by assumption.
+  pose proof (Nat.mod_upper_bound a b).
+  auto.
+Qed.
+
+
 Local Open Scope ilist_scope.
 
 Set Implicit Arguments.
@@ -510,46 +523,27 @@ Section FlatToRiscv.
       forget (Memory.memSize m) as M.
       forget (pow2 wXLEN) as p.
       clear -H W.
-      assert (forall (ofs l M p : Z),
-                 (0 <= ofs)%Z ->
-                 (0 <= l)%Z ->
-                 (0 <= M)%Z ->
-                 (0 <= p)%Z ->
-                 (ofs + 4 * Z.succ l <= M)%Z ->
-                 (4 < p)%Z ->
-                 ((ofs + 4 mod p) mod p + 4 * l <= M)%Z) as P. {
-        clear.
-        intros.
-        Require Import riscv.proofs.DecodeEncode.
-        ThanksFiatCrypto.div_mod_to_quot_rem. (* only for Z, too bad *)
-        Require Import Coq.micromega.Lia.
-        (* without these two asserts, nia takes forever *)
-        assert (q >= 0)%Z by nia.
-        assert (q0 >= 0)%Z by nia.
-        nia.
-      }
-      specialize (P (Z.of_nat ofs) (Z.of_nat l) (Z.of_nat M) (Z.of_nat p)).
-      Undo 20.
-
-      (* Search wordToNat (_ mod _). <-- *)
-      
-    + (* TODO generalize these ever repeating magic spells into an Ltac *)
-      pose proof (Memory.memSize_bound m).
-      pose proof pow2_wXLEN_4 as W.
-      pose proof (@wordToNat_natToWord_idempotent' wXLEN 4 W) as D.
-      assert (#offset + 4 = pow2 wXLEN \/ #offset + 4 < pow2 wXLEN) as C by omega.
-      destruct C as [C | C].
-      * (* overflow which does not hurt *)
-        pose proof (f_equal (natToWord wXLEN) C) as E.
-        rewrite natToWord_pow2 in E.
-        rewrite natToWord_plus in E.
-        rewrite natToWord_wordToNat in E.
-        rewrite E.
-        rewrite roundTrip_0.
-        omega.
-      * (* normal case *)
-        rewrite wordToNat_wplus'; [ omega | ].
-        rewrite D. assumption.
+      Require Import riscv.proofs.DecodeEncode.
+      repeat (so fun hyporgoal => match hyporgoal with
+      | context [?a mod ?b] =>
+          let Ne := fresh "Ne" in
+          let P := fresh "P" in
+          assert (b <> 0) as Ne by omega;
+          pose proof (rewrite_div_mod a b Ne) as P;
+          clear Ne;
+          let q := fresh "q" in
+          let r := fresh "r" in
+          let Er := fresh "Er" in
+          let Eq := fresh "Eq" in
+          let E := fresh "E" in
+          let B := fresh "B" in
+          destruct P as [ q [ r [ Er [ Eq [ E B ] ] ] ] ];
+          rewrite? Er in *;
+          rewrite? Eq in *;
+          clear Er Eq
+      end).
+      Require Import Coq.micromega.Lia.
+      nia.
     + rename H0 into Cp. specialize (Cp (S i)). simpl in Cp.
       specialize (Cp _ H1).
       rewrite <- Cp. f_equal.
