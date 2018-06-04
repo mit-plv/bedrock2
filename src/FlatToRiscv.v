@@ -501,6 +501,38 @@ Section FlatToRiscv.
       intros. destruct i; inverts H1.
       - assumption.
       - exfalso. eauto using nth_error_nil_Some.
+    + pose proof (Memory.memSize_bound m).
+      pose proof pow2_wXLEN_4 as W.
+      rewrite wordToNat_wplus.
+      rewrite wordToNat_natToWord_eqn.
+      forget (#offset) as ofs.
+      forget (length insts) as l.
+      forget (Memory.memSize m) as M.
+      forget (pow2 wXLEN) as p.
+      clear -H W.
+      assert (forall (ofs l M p : Z),
+                 (0 <= ofs)%Z ->
+                 (0 <= l)%Z ->
+                 (0 <= M)%Z ->
+                 (0 <= p)%Z ->
+                 (ofs + 4 * Z.succ l <= M)%Z ->
+                 (4 < p)%Z ->
+                 ((ofs + 4 mod p) mod p + 4 * l <= M)%Z) as P. {
+        clear.
+        intros.
+        Require Import riscv.proofs.DecodeEncode.
+        ThanksFiatCrypto.div_mod_to_quot_rem. (* only for Z, too bad *)
+        Require Import Coq.micromega.Lia.
+        (* without these two asserts, nia takes forever *)
+        assert (q >= 0)%Z by nia.
+        assert (q0 >= 0)%Z by nia.
+        nia.
+      }
+      specialize (P (Z.of_nat ofs) (Z.of_nat l) (Z.of_nat M) (Z.of_nat p)).
+      Undo 20.
+
+      (* Search wordToNat (_ mod _). <-- *)
+      
     + (* TODO generalize these ever repeating magic spells into an Ltac *)
       pose proof (Memory.memSize_bound m).
       pose proof pow2_wXLEN_4 as W.
