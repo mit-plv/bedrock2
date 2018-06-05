@@ -15,7 +15,7 @@ Require Import riscv.RiscvMachine.
 Require Import riscv.Execute.
 Require Import riscv.Run.
 Require riscv.Memory.
-Require Import compiler.runsToSatisfying.
+Require Import riscv.util.PowerFunc.
 Require Import riscv.RiscvBitWidths.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
@@ -794,49 +794,92 @@ Section FlatToRiscv.
     t = (a, b) -> a = fst t /\ b = snd t.
   Proof. intros. destruct t. inversionss. auto. Qed.
 
-  Definition runsToSatisfying:
-    RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
-    runsTo RiscvMachine (execState run1).
+  Definition runsTo_onerun(initial: RiscvMachine)(P: RiscvMachine -> Prop): Prop :=
+    exists fuel,
+      match run fuel initial with
+      | (Some _, final) => P final
+      | (None  , final) => False
+      end.
 
-  Lemma execState_compose{S A: Type}: forall (m1 m2: OState S A) (initial: S),
-    execState m2 (execState m1 initial) = execState (m1 ;; m2) initial.
-  Proof.
-    intros. unfold execState. unfold Bind, Return, OState_Monad.
-    destruct (m1 initial). simpl. destruct o; try reflexivity.
-  Abort.
+  Inductive runsTo: RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
+    | runsToDone: forall (initial: RiscvMachine) (P: RiscvMachine -> Prop),
+        P initial ->
+        runsTo initial P
+    | runsToStep: forall (initial middle: RiscvMachine) (P: RiscvMachine -> Prop),
+        run1 initial = (Some tt, middle) ->
+        runsTo middle P ->
+        runsTo initial P.
 
-  Lemma runsToSatisfying_exists_fuel_old: forall initial P,
-    runsToSatisfying initial P ->
-    exists fuel, P (execState (run fuel) initial).
+  Lemma runsTo_to_onerun: forall initial (P: RiscvMachine -> Prop),
+      runsTo initial P ->
+      runsTo_onerun initial P.
   Proof.
-    introv R. induction R.
-    - exists 0. exact H.
-    - destruct IHR as [fuel IH]. exists (S fuel).
-      unfold run in *.
-      (*
-      rewrite execState_compose in IH.
-      apply IH.
-      *)
-  Abort.
+    unfold runsTo_onerun. induction 1.
+    - exists 0. simpl. assumption.
+    - destruct IHrunsTo as [fuel IH].
+      exists (S fuel). unfold run, power_func.
+      match goal with
+      | |- context [?t] =>
+           match t with
+           | Bind _  _ =>
+             match t with
+             | ?B _ _ => let B' := eval cbv in B in change B with B'
+             end
+           end
+      end.
+      cbv beta.
+      rewrite H.
+      exact IH.
+  Qed.
 
-  Lemma runsToSatisfying_exists_fuel: forall initial P,
-    runsToSatisfying initial P ->
-    exists fuel, P (execState (run fuel) initial).
+  Lemma runsTo_from_onerun: forall initial (P: RiscvMachine -> Prop),
+      runsTo_onerun initial P ->
+      runsTo initial P.
   Proof.
-    intros *. intro R.
-    pose proof (runsToSatisfying_exists_fuel _ _ initial P R) as F.
-    unfold run.
-    destruct F as [fuel F]. exists fuel.
-    replace
-      (execState (power_func (fun m => run1;; m) fuel (Return tt)) initial)
-    with
-      (power_func (execState run1) fuel initial);
-    [assumption|clear].
-    revert initial.
-    induction fuel; intros; simpl; [reflexivity|].
-    unfold execState. f_equal.
-    (* TODO does that hold? What if optional answer is None and it aborts? *)
-  Admitted.
+    unfold runsTo_onerun. intros. destruct H as [fuel H].
+    revert H. revert P. revert initial.
+    induction fuel; intros.
+    - apply runsToDone. exact H.
+    - unfold run, power_func, Bind, OState_Monad in H.
+      match type of H with
+      | context [?t] =>
+        match t with
+        | run1 initial =>  destruct t as [ [u1 | ] s1 ] eqn: E1; [|contradiction]
+        end
+      end.
+      destruct u1.
+      eapply runsToStep; [exact E1|].
+      apply IHfuel.
+      exact H.
+  Qed.
+
+  Lemma runsTo_alt_equiv: forall initial (P: RiscvMachine -> Prop),
+      runsTo_onerun initial P <-> runsTo initial P.
+  Proof.
+    intros. split.
+    - apply runsTo_from_onerun.
+    - apply runsTo_to_onerun.
+  Qed.
+
+  Lemma runsToSatisfying_trans: forall P Q initial,
+    runsTo initial P ->
+    (forall middle, P middle -> runsTo middle Q) ->
+    runsTo initial Q.
+  Proof.
+    introv R1. induction R1; introv R2; [solve [auto]|].
+    eapply runsToStep; [eassumption|]. apply IHR1. apply R2.
+  Qed.
+
+  Lemma runsToSatisfying_imp: forall (P Q : RiscvMachine -> Prop) initial,
+    runsTo initial P ->
+    (forall final, P final -> Q final) ->
+    runsTo initial Q.
+  Proof.
+    introv R1 R2. eapply runsToSatisfying_trans; [eassumption|].
+    intros final Pf. apply runsToDone. auto.
+  Qed.
+
+  Definition runsToSatisfying: RiscvMachine -> (RiscvMachine -> Prop) -> Prop := runsTo.
 
   (* TODO is there a principled way of writing such proofs? *)
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word wXLEN) {T: Type} (thenVal elseVal: T),
@@ -1097,7 +1140,7 @@ Section FlatToRiscv.
   Lemma run1_simpl: forall {inst initialL pc0},
       containsProgram initialL.(machineMem) [[inst]] pc0 ->
       pc0 = initialL.(core).(pc) ->
-      execState run1 initialL = execState (execute inst;; step) initialL.
+      run1 initialL = (execute inst;; step) initialL.
   Proof.
     intros. subst.
     unfold run1.
@@ -1517,9 +1560,7 @@ Section FlatToRiscv.
     intros. destruct c; reflexivity.
   Qed.
 
-  Ltac run1step' :=
-    apply runsToStep;
-    simpl in *; subst *;
+  Ltac run1step'' :=
     fetch_inst;
     autounfold with unf_pseudo in *;
     cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
@@ -1538,10 +1579,15 @@ Section FlatToRiscv.
         rewrite put_put_same ||
         rewrite get_put_same).
 
+  Ltac run1step' :=
+    (eapply runsToStep; simpl in *; subst *); [ run1step'' | ].
+
   Ltac run1step :=
     run1step';
-    rewrite execState_step;
-    simpl_RiscvMachine_get_set.
+    [ rewrite execState_step;
+      simpl_RiscvMachine_get_set;
+      reflexivity
+    | ].
 
   Ltac run1done :=
     apply runsToDone;
@@ -1604,8 +1650,8 @@ Section FlatToRiscv.
       containsMem initialL.(machineMem) initialMH ->
       get initialRegsH a = Some addr ->
       extends initialL.(core).(registers) initialRegsH ->
-      execState (Bind (execute (LwXLEN x a 0)) f) initialL =
-      execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
+      (Bind (execute (LwXLEN x a 0)) f) initialL =
+      (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros.
     unfold containsMem, Memory.read_mem, wXLEN_in_bytes, wXLEN, bitwidth in *.
@@ -1651,8 +1697,8 @@ Section FlatToRiscv.
       get initialRegsH ra = Some a ->
       get initialRegsH rv = Some v ->
       extends initialL.(core).(registers) initialRegsH ->
-      execState (Bind (execute (SwXLEN ra rv 0)) f) initialL =
-      execState (f tt) (with_machineMem (storeWordwXLEN initialL.(machineMem) a v) initialL).
+      (Bind (execute (SwXLEN ra rv 0)) f) initialL =
+      (f tt) (with_machineMem (storeWordwXLEN initialL.(machineMem) a v) initialL).
   Proof.
     intros.
     unfold containsMem, Memory.write_mem, Memory.read_mem,
@@ -1826,29 +1872,52 @@ Section FlatToRiscv.
 
     - (* SLoad *)
       clear IHfuelH.
-      apply runsToStep; simpl in *; subst *.
+      eapply runsToStep; simpl in *; subst *.
+      { 
+Ltac fetch_inst ::=
+      match goal with
+      | Cp: containsProgram _ [[?inst]] ?pc0 |- ?E = (Some tt, _) =>
+        match E with
+        | run1 ?initialL =>
+          let Eqpc := fresh in
+          assert (pc0 = initialL.(core).(pc)) as Eqpc by solve_word_eq;
+            replace E with ((execute inst;; step) initialL) by
+              (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
+            clear Eqpc
+        end
+      end.
+
       fetch_inst.
       erewrite execute_load; [|eassumption..].
       simpl_RiscvMachine_get_set.
       simpl.
       rewrite execState_step.
       simpl_RiscvMachine_get_set.
+      reflexivity.
+      }
+      {
       run1done.
+      }
 
     - (* SStore *)
       clear IHfuelH.
-      apply runsToStep; simpl in *; subst *.
+      eapply runsToStep; simpl in *; subst *.
+      {
       fetch_inst.
       erewrite execute_store; [|eassumption..].
       simpl_RiscvMachine_get_set.
       rewrite execState_step.
       simpl_RiscvMachine_get_set.
+      reflexivity.
+      }
+      {
       run1done.
       apply store_preserves_containsProgram.
       + solve_containsProgram.
       + eapply mem_inaccessible_write; eassumption.
       + eapply write_mem_in_range; eassumption.
       + assumption.
+      }
 
     - (* SLit *)
       clear IHfuelH.
@@ -1920,9 +1989,28 @@ Section FlatToRiscv.
     - (* SIf/Then *)
       (* branch if cond = 0 (will not branch) *)
       run1step.
+
+  Ltac spec_IH originalIH IH stmt1 ::=
+    pose proof originalIH as IH;
+    match goal with
+    | |- runsTo ?st _ => specialize IH with (initialL := st); simpl in IH
+    end;
+    specialize IH with (s := stmt1);
+    specializes IH;
+    first
+      [ reflexivity
+      | solve_imem
+      | solve_stmt_not_too_big
+      | solve_valid_registers
+      | solve_containsProgram
+      | solve_word_eq
+      | eassumption
+      | solve_mem_inaccessible
+      | idtac ].
+
       (* use IH for then-branch *)
       spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      apply (runsToSatisfying_trans IH). clear IH.
       (* jump over else-branch *)
       intros.
       destruct_everything.
@@ -1939,7 +2027,7 @@ Section FlatToRiscv.
     - (* SLoop/done *)
       (* We still have to run part 1 of the loop body which is before the break *)
       spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      apply (runsToSatisfying_trans IH). clear IH.
       intros.
       destruct_everything.
       run1step.
@@ -1948,13 +2036,13 @@ Section FlatToRiscv.
     - (* SLoop/again *)
       (* 1st application of IH: part 1 of loop body *)
       spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      apply (runsToSatisfying_trans IH). clear IH.
       intros.
       destruct_everything.
       run1step.
       (* 2nd application of IH: part 2 of loop body *)      
       spec_IH IHfuelH IH s2.
-      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      apply (runsToSatisfying_trans IH). clear IH.
       intros.
       destruct_everything.
       run1step.
@@ -1964,7 +2052,7 @@ Section FlatToRiscv.
       
     - (* SSeq *)
       spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
+      apply (runsToSatisfying_trans IH). clear IH.
       intros.
       destruct_everything.
       spec_IH IHfuelH IH s2.
@@ -1994,12 +2082,14 @@ Section FlatToRiscv.
       containsMem finalL.(machineMem) finalMH.
   Proof.
     intros.
-    pose proof runsToSatisfying_exists_fuel as Q.
+    pose proof runsTo_to_onerun as Q.
     specialize (Q initialL
                   (fun finalL => extends (registers (core finalL)) finalH /\
                                  containsMem (machineMem finalL) finalMH)).
     cbv beta zeta in *.
-    apply Q; clear Q.
+    unfold runsTo_onerun in Q.
+    destruct Q as [fuel Q].
+    {
     eapply runsToSatisfying_imp.
     - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty)
         (fuelH := fuelH) (finalH := finalH) (instsBefore := nil) (instsAfter := nil).
@@ -2018,7 +2108,18 @@ Section FlatToRiscv.
     - intros.
       rename H9 into A.
       cbv beta in A. tauto.
+    }
+    {
+      match type of Q with
+      | context [?r] =>
+          match r with
+          | run fuel initialL => destruct r as [ [ u | ] final ] eqn: E; [|contradiction]
+          end
+      end.
+      exists fuel. unfold execState.
+      rewrite E.
+      exact Q.
+    }      
   Qed.
 
 End FlatToRiscv.
-
