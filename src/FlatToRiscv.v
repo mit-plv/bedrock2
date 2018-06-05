@@ -728,14 +728,6 @@ Section FlatToRiscv.
     solve_word_eq.
   Qed.
 
-  Lemma containsProgram_nil: forall m offset,
-      containsProgram m [[]] offset.
-  Proof.
-    unfold containsProgram. intros. split.
-    - simpl. (* TODO does not hold! *) admit.
-    - exfalso. eauto using nth_error_nil_Some.
-  Admitted.
-  
   Arguments containsProgram: simpl never.
   
   Ltac destruct_containsProgram :=
@@ -758,36 +750,18 @@ Section FlatToRiscv.
     | |- containsProgram _ _ _ => subst
     end;
     repeat match goal with
-           (* to make sure (b :: x) is not nil *)
-           | |- context [(?a :: ?b :: ?x) ++ ?y] => rewrite <- (app_comm_cons (b :: x) y a)
-           | |- _ => rewrite <- app_assoc
-           end;
-    (*
+    | |- context [?a :: ?b :: ?t] => change (a :: b :: t) with ((a :: nil) ++ (b :: t)) in *
+    end;
+    rewrite? app_nil_r in *;
+    rewrite? app_nil_l in *;
     repeat match goal with
-           | H: ?P |- _ => match P with
-                         | containsProgram _ _ _ => fail 1
-                         | mem_inaccessible _ _ _ => fail 1
-                         | containsMem _ _ => fail 1
-                         | _ => clear H
-                         end
-           end;
-    *)
-    repeat match goal with
-           | |- containsProgram _ [[]] _ => apply containsProgram_nil
-           | |- containsProgram _ (_ ++ _) _ => apply containsProgram_app
-           | |- containsProgram _ (_ :: ?t) _ =>
-             tryif (unify t [[]])
-             then fail
-             else (apply containsProgram_cons)
-           | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p => exact Cp
-           | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
-             replace p' with p; [exact Cp|try solve_word_eq]
-           | Cp: containsProgram_app_will_work ?i ?i' ?p |-
-                 containsProgram_app_will_work ?i ?i' ?p => exact Cp
-           | Cp: containsProgram_app_will_work ?i ?i' ?p |-
-                 containsProgram_app_will_work ?i ?i' ?p' =>
-             replace p' with p; [exact Cp|try solve_word_eq]
-           end.
+    | W: containsProgram_app_will_work ?i1 ?i2 ?p |- containsProgram ?m (?i1 ++ ?i2) ?p =>
+      apply (containsProgram_app W)
+    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p => exact Cp
+    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
+          replace p' with p; [exact Cp|try solve_word_eq]       
+    end;
+    try assumption.
 
   Lemma mul_div_undo: forall i c,
     c <> 0 ->
@@ -2222,6 +2196,7 @@ list2imem
           end;
       simpl in *; unfold compile_lit, compile_lit_rec in *;
       destruct_everything.
+
     - (* SLoad *)
       clear IHfuelH.
       apply runsToStep; simpl in *; subst *.
@@ -2232,6 +2207,7 @@ list2imem
       rewrite execState_step.
       simpl_RiscvMachine_get_set.
       run1done.
+
     - (* SStore *)
       clear IHfuelH.
       apply runsToStep; simpl in *; subst *.
@@ -2246,6 +2222,7 @@ list2imem
       + eapply mem_inaccessible_write; eassumption.
       + eapply write_mem_in_range; eassumption.
       + assumption.
+
     - (* SLit *)
       clear IHfuelH.
       Time run1step.
@@ -2264,14 +2241,6 @@ list2imem
       Time run1step.
       Time run1step.
       run1done.
-      2: (
-        rewrite app_nil_r in *;
-        repeat match goal with
-        | W: containsProgram_app_will_work ?i1 ?i2 ?p |- containsProgram ?m (?i1 ++ ?i2) ?p =>
-          apply (containsProgram_app W)
-        end;
-        try assumption
-      ).
       match goal with
       | E: Some _ = Some _ |- _ => rewrite <- E
       end.
@@ -2301,29 +2270,12 @@ list2imem
       rewrite bitSlice_wordToZ_all; [ apply ZToWord_wordToZ | ].
       clear.
       unfold wXLEN, bitwidth. destruct Bw; cbv; omega.
+
       (* SOp *)
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1done.
-    - run1step. run1step.
-      Ltac solve_containsProgram ::=
-        match goal with
-        | |- containsProgram _ _ _ => subst
-        end;
-        repeat match goal with
-        | |- context [?a :: ?b :: ?t] => change (a :: b :: t) with ((a :: nil) ++ (b :: t)) in *
-        end;
-        rewrite? app_nil_r in *;
-        rewrite? app_nil_l in *;
-        repeat match goal with
-        | W: containsProgram_app_will_work ?i1 ?i2 ?p |- containsProgram ?m (?i1 ++ ?i2) ?p =>
-          apply (containsProgram_app W)
-        | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p => exact Cp
-        | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
-              replace p' with p; [exact Cp|try solve_word_eq]       
-        end;
-        try assumption.
-      run1done.
+    - run1step. run1step. run1done.
       replace (ZToWord wXLEN 1) with (natToWord wXLEN 1).
       + rewrite reduce_eq_to_sub_and_lt.
         assumption.
@@ -2337,6 +2289,7 @@ list2imem
       run1done.
       rewrite wplus_unit.
       assumption.
+
     - (* SIf/Then *)
       (* branch if cond = 0 (will not branch) *)
       run1step.
@@ -2348,6 +2301,7 @@ list2imem
       destruct_everything.
       run1step.
       run1done.
+
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
       run1step.
@@ -2371,14 +2325,12 @@ list2imem
       intros.
       destruct_everything.
       run1step.
-
       (* 2nd application of IH: part 2 of loop body *)      
       spec_IH IHfuelH IH s2.
       apply (runsToSatisfying_trans _ _ _ _ _ IH). clear IH.
       intros.
       destruct_everything.
       run1step.
-      
       (* 3rd application of IH: run the whole loop again *)
       spec_IH IHfuelH IH (SLoop s1 cond s2).
       IH_done IH.
@@ -2390,6 +2342,7 @@ list2imem
       destruct_everything.
       spec_IH IHfuelH IH s2.
       IH_done IH.
+
     - (* SSkip *)
       run1done.
   Qed.
