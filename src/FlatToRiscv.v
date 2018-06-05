@@ -2264,10 +2264,14 @@ list2imem
       Time run1step.
       Time run1step.
       run1done.
-      Focus 2. {
-        rewrite app_nil_r in *.
-        solve_containsProgram.
-        { 
+      2: (
+        rewrite app_nil_r in *;
+        repeat match goal with
+        | W: containsProgram_app_will_work ?i1 ?i2 ?p |- containsProgram ?m (?i1 ++ ?i2) ?p =>
+          apply (containsProgram_app W)
+        end;
+        try assumption
+      ).
       match goal with
       | E: Some _ = Some _ |- _ => rewrite <- E
       end.
@@ -2301,7 +2305,25 @@ list2imem
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1done.
-    - run1step. run1step. run1done.
+    - run1step. run1step.
+      Ltac solve_containsProgram ::=
+        match goal with
+        | |- containsProgram _ _ _ => subst
+        end;
+        repeat match goal with
+        | |- context [?a :: ?b :: ?t] => change (a :: b :: t) with ((a :: nil) ++ (b :: t)) in *
+        end;
+        rewrite? app_nil_r in *;
+        rewrite? app_nil_l in *;
+        repeat match goal with
+        | W: containsProgram_app_will_work ?i1 ?i2 ?p |- containsProgram ?m (?i1 ++ ?i2) ?p =>
+          apply (containsProgram_app W)
+        | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p => exact Cp
+        | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
+              replace p' with p; [exact Cp|try solve_word_eq]       
+        end;
+        try assumption.
+      run1done.
       replace (ZToWord wXLEN 1) with (natToWord wXLEN 1).
       + rewrite reduce_eq_to_sub_and_lt.
         assumption.
