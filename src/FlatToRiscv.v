@@ -488,19 +488,7 @@ Section FlatToRiscv.
     #offset + 4 * length program <= Memory.memSize m /\
     forall i inst, nth_error program i = Some inst ->
       ldInst m (offset ^+ $(4 * i)) = inst.
-  
-  (*
-  Definition containsProgram'(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
-    forall i inst, nth_error program i = Some inst ->
-      encode inst = wordToZ (Memory.loadWord m (offset ^+ $4 ^* $i)).
 
-  (* TODO doesn't hold but something similar enough should hold hopefully *)
-  Axiom containsProgram_alt: containsProgram = containsProgram'.
-  *)
-(*  
-  Definition containsState(regs: Register -> word wXLEN)(s: state) :=
-    forall x v, get s x = Some v -> regs x = v.
-*)
   Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
   Proof.
     intros. unfold wmult. unfold wordBin. do 2 rewrite wordToN_nat.
@@ -851,46 +839,6 @@ Section FlatToRiscv.
     (* TODO does that hold? What if optional answer is None and it aborts? *)
   Admitted.
 
-  (* not needed any more because we keep the instruction memory external: 
-  Lemma execute_preserves_instructionMem: forall inst initial,
-    (snd (execute inst initial)).(instructionMem) = initial.(instructionMem).
-  Proof.
-    intros. destruct initial as [machine imem]. unfold execute.
-    unfold ExecuteI.execute, ExecuteM.execute, ExecuteI64.execute, ExecuteM64.execute.
-
-  Qed.
-
-  Lemma run1_preserves_instructionMem: forall initial,
-    (execState run1 initial).(instructionMem) = initial.(instructionMem).
-  Proof.
-    intros.
-    destruct initial as [initialProg initialRegs initialPc]. simpl.
-    unfold execState, StateMonad.put. simpl.
-    rewrite execute_preserves_instructionMem.
-    reflexivity.
-  Qed.
-
-  Lemma runsTo_preserves_instructionMem: forall P initial,
-    runsToSatisfying initial P ->
-    runsToSatisfying initial
-       (fun final => P final /\ final.(instructionMem) = initial.(instructionMem)).
-  Proof.
-    intros. induction H.
-    - apply runsToDone. auto.
-    - apply runsToStep. rewrite run1_preserves_instructionMem in IHrunsTo. assumption.
-  Qed.
-
-  Lemma regs_overwrite: forall x v1 v2 (initialRegs: var -> word wXLEN),
-      (fun reg2 : var => if dec (x = reg2) then v2 else
-                         if dec (x = reg2) then v1 else
-                         initialRegs reg2)
-    = (fun reg2 : var => if dec (x = reg2) then v2 else initialRegs reg2).
-  Proof.
-    intros.
-    extensionality reg2. destruct_one_match; reflexivity.
-  Qed.
-*)
-
   (* TODO is there a principled way of writing such proofs? *)
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word wXLEN) {T: Type} (thenVal elseVal: T),
     (if wlt_dec (y ^- z) $1 then thenVal else elseVal) =
@@ -945,21 +893,6 @@ Section FlatToRiscv.
          core machineMem registers pc nextPC exceptionHandlerAddr
          getPC setPC getRegister setRegister gets].
 
-  Ltac solve_word_eq_old :=
-    clear;
-    repeat match goal with
-    | v: word _ |- _ =>
-       rewrite <- (natToWord_wordToNat v);
-       let v' := fresh v in forget (# v) as v';
-       clear v
-    end;
-    repeat (rewrite app_length; simpl);
-    repeat (rewrite <- natToWord_mult || rewrite <- natToWord_plus);
-    match goal with
-    | |- $ _ = $ _ => f_equal
-    end;
-    (repeat rewrite wordToNat_natToWord_idempotent'; [omega|..]).
-
   Tactic Notation "log_solved" tactic(t) :=
     match goal with
     | |- ?G => let H := fresh in assert G as H by t; idtac "solved" G; exact H
@@ -988,65 +921,6 @@ Section FlatToRiscv.
     destruct_one_match;
       simpl; rewrite combine_n_0; rewrite <- nat_cast_eq_rect; apply nat_cast_proof_irrel.
   Qed.
-(*
-  Lemma reassemble_literal_ext0: forall wup1 wlo1 wup2 wlo2 wlo3 wAll (v: word wAll)
-    e1 e2 e3 e4,
-    wup1 = wup2 ->
-    wlo1 = wlo2 ->
-    wlo2 = wlo3 ->
-    wmsb (split_lower wup2 wlo2 (nat_cast word e3 v)) false = false ->
-    wxor (nat_cast word e1 (extz (split_upper wup1 wlo1 (nat_cast word e4 v)) wlo3))
-         (nat_cast word e2 (sext (split_lower wup2 wlo2 (nat_cast word e3 v)) wup2)) = v.
-  Proof.
-    intros.
-    unfold extz, sext, wxor.
-    rewrite H2.
-    subst wlo3 wlo2 wup2.
-    rewrite nat_cast_proof_irrel with (e1 := e2) (e2 := e1). clear e2.
-    rewrite nat_cast_eq_rect with (e := e1).
-    rewrite nat_cast_eq_rect with (e := e1).
-    rewrite <- eq_rect_bitwp'.
-    rewrite <- combine_bitwp.
-    fold wxor. rewrite wxor_wzero. rewrite wxor_comm. rewrite wxor_wzero.
-    rewrite nat_cast_proof_irrel with (e1 := e4) (e2 := e3). clear e4.
-    unfold split_lower, split_upper.
-    rewrite Word.combine_split.
-    destruct e1. simpl.
-    rewrite nat_cast_proof_irrel with (e1 := e3) (e2 := eq_refl).
-    apply nat_cast_same.
-  Qed.
-
-  Lemma reassemble_literal_ext1: forall wup1 wlo1 wup2 wlo2 wlo3 wAll (v: word wAll)
-    e1 e2 e3 e4,
-    wup1 = wup2 ->
-    wlo1 = wlo2 ->
-    wlo2 = wlo3 ->
-    wmsb (split_lower wup2 wlo2 (nat_cast word e3 v)) false = true ->
-    wxor (nat_cast word e1 (extz (wnot (split_upper wup1 wlo1 (nat_cast word e4 v))) wlo3))
-         (nat_cast word e2 (sext (split_lower wup2 wlo2 (nat_cast word e3 v)) wup2)) = v.
-  Proof.
-    intros.
-    unfold extz, sext, wxor.
-    rewrite H2.
-    subst wlo3 wlo2 wup2.
-    rewrite nat_cast_proof_irrel with (e1 := e2) (e2 := e1). clear e2.
-    rewrite nat_cast_eq_rect with (e := e1).
-    rewrite nat_cast_eq_rect with (e := e1).
-    rewrite <- eq_rect_bitwp'.
-    rewrite <- combine_bitwp.
-    fold wxor. rewrite wxor_wzero. rewrite wxor_comm.
-    rewrite <- wxor_wones.
-    rewrite wxor_assoc.
-    rewrite wxor_wones.
-    rewrite wnot_ones.
-    rewrite wxor_wzero.
-    rewrite nat_cast_proof_irrel with (e1 := e4) (e2 := e3). clear e4.
-    unfold split_lower, split_upper.
-    rewrite Word.combine_split.
-    destruct e1. simpl.
-    rewrite nat_cast_proof_irrel with (e1 := e3) (e2 := eq_refl).
-    apply nat_cast_same.
-  Qed.*)
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
      constant to stay in linear arithmetic *)
@@ -1079,22 +953,6 @@ Section FlatToRiscv.
     | |- context [pow2 (S ?a)] => change (pow2 (S a)) with (2 * pow2 a)
     | |- context [pow2 0] => change (pow2 0) with 1
     end.
-
-  (*
-  Local Ltac solve_pc_update :=
-    rewrite? extz_is_mult_pow2;
-    rewrite? sext_natToWord_nat_cast;
-    simpl_pow2;
-    [ solve_word_eq | solve_length_compile_stmt ].
-   *)
-
-  (*
-  Definition loadWordH(memH: Memory.mem wXLEN)(addr: word wXLEN): option (word wXLEN).
-    clear -addr memH.
-    unfold wXLEN in *.
-    destruct bitwidth; exact (compiler.Memory.read_mem addr memH).
-  Defined.
-   *)
 
   Lemma simpl_with_registers: forall (rs1 rs2: state) p npc eh (m: mem wXLEN),
     with_registers rs2 (mkRiscvMachine (mkRiscvMachineCore rs1 p npc eh) m) =
@@ -1158,25 +1016,6 @@ Section FlatToRiscv.
     destruct m as [ [r p n e] me ];
     simpl_RiscvMachine_get_set.
 
-  (*
-  Definition loadWordL(memL: mem wXLEN)(addr: word wXLEN): option (word wXLEN).
-    clear -addr memL IsMem.
-    unfold wXLEN in *.
-    destruct bitwidth; apply Some.
-    - exact (Memory.loadWord memL addr).
-    - exact (Memory.loadDouble memL addr).
-  Defined.
-
-  Definition storeWordL(memL: mem wXLEN)(addr v: word wXLEN): option (mem wXLEN).
-    clear -addr v memL IsMem.
-    unfold wXLEN in *.
-    destruct bitwidth; apply Some.
-    - exact (Memory.storeWord memL addr v).
-    - exact (Memory.storeDouble memL addr v).
-  Defined.
-  *)
-
-  (* same as loadWordL but without option *)
   Definition loadWordwXLEN(memL: mem wXLEN)(addr: word wXLEN): word wXLEN.
     clear -addr memL IsMem.
     unfold wXLEN in *.
@@ -1185,7 +1024,6 @@ Section FlatToRiscv.
     - exact (Memory.loadDouble memL addr).
   Defined.
   
-  (* same as storeWordL but without option *)
   Definition storeWordwXLEN(m: mem wXLEN)(a v: word wXLEN): mem wXLEN.
     unfold wXLEN, bitwidth in *.
     clear - m a v IsMem.
@@ -1277,28 +1115,6 @@ Section FlatToRiscv.
     rewrite wplus_unit.
     reflexivity.
   Qed. 
-
-  (* Not sure if typechecking this ever finishes:
-  Definition load_wXLEN: word wXLEN -> OState RiscvMachine (word wXLEN) :=
-    match Bw with
-    | Bitwidth32 => loadWord
-    | Bitwidth64 => loadDouble
-    end. *)
-
-  (* not needed -- proving that loadWord or loadDouble equals load_wXLEN is too cumbersome
-     to make it worth
-  Definition load_wXLEN: word wXLEN -> OState RiscvMachine (word wXLEN).
-    set (lw := loadWord).
-    set (ld := loadDouble).
-    unfold State_is_RegisterFile in *.
-    unfold RiscvBitWidths in *.
-    unfold wXLEN in *.
-    unfold bitwidth in *.
-    destruct Bw.
-    - exact lw.
-    - exact ld.
-  Defined.
-  *)
 
   Ltac do_get_set_Register :=
     repeat (
@@ -1439,125 +1255,6 @@ Section FlatToRiscv.
     J
     Jr
   : unf_pseudo.
-
-
-  (*
-  Lemma list2imem_head: forall inst insts imemStart,
-      (list2imem (inst :: insts) imemStart) imemStart = inst.
-  Proof.
-    intros.
-    unfold list2imem.
-    rewrite wminus_def.
-    rewrite wminus_inv.
-    rewrite wzero_div.
-    rewrite wordToNat_wzero.
-    reflexivity.
-  Qed.
-  *)
-
-  (*
-  Lemma list2imem_skip: forall imemStart insts0 insts1 offs pc0,
-    imemStart ^+ $4 ^* $(length insts0) ^+ offs = pc0 ->
-    (list2imem (insts0 ++ insts1) imemStart) pc0  =
-    (list2imem insts1 imemStart) (imemStart ^+ offs).
-  Proof.
-    intros. subst. unfold list2imem.
-    (*
-    induction insts0.
-    - simpl. admit.
-    - simpl. rewrite <- IHinsts0.
-      unfold list2imem. simpl.*)
-    ring_simplify (imemStart ^+ $ (4) ^* $ (length insts0) ^+ offs ^- imemStart).
-    ring_simplify (imemStart ^+ offs ^- imemStart).
-    (*
-    rewrite wminus_def.
-    rewrite wplus_comm.
-    rewrite? wplus_assoc.
-    rewrite (wplus_comm (^~ imemStart) imemStart).
-    rewrite wminus_inv.
-    rewrite wplus_unit.
-    rewrite wminus_def.
-    rewrite (wplus_comm imemStart).
-    rewrite <- wplus_assoc.
-    rewrite wminus_inv.
-    rewrite <- (wplus_comm (wzero wXLEN)).
-    rewrite wplus_unit.
-    replace ((($4 ^* $ (length insts0) ^+ offs) ^/ $4)) with
-        ($ (length insts0) ^+ (offs ^/ $4)) by admit.
-    *)
-    
-    Abort.
-
-  Definition wnth{A}{sz}(n: word sz)(l: list A)(default: A): A. Admitted.
-
-  Definition wlength{A}{sz}(l: list A): word sz. Admitted.
-  
-  (*
-  Lemma wnth_app_2:
-    wnth (a ^+ b) (insts0 ++ insts1) InvalidInstruction =
-  *)
-  Definition list2imem'(l: list Instruction)(offset: word wXLEN): InstructionMem :=
-    fun addr => wnth (wdiv (addr ^- offset) $4) l InvalidInstruction.
-
-  Lemma list2imem_skip: forall imemStart insts0 insts1 offs pc0,
-    imemStart ^+ $4 ^* (wlength insts0) ^+ offs = pc0 ->
-    (list2imem' (insts0 ++ insts1) imemStart) pc0  =
-    (list2imem' insts1 imemStart) (imemStart ^+ offs).
-  Proof.
-    intros. unfold list2imem'. subst pc0.
-    rewrite wminus_def.
-    rewrite wplus_comm.
-    rewrite? wplus_assoc.
-    rewrite (wplus_comm (^~ imemStart) imemStart).
-    rewrite wminus_inv.
-    rewrite wplus_unit.
-    rewrite wminus_def.
-    rewrite (wplus_comm imemStart).
-    rewrite <- wplus_assoc.
-    rewrite wminus_inv.
-    rewrite <- (wplus_comm (wzero wXLEN)).
-    rewrite wplus_unit.
-    replace ((($4 ^* (wlength insts0) ^+ offs) ^/ $4)) with
-        ((wlength insts0) ^+ (offs ^/ $4)) by admit.
-    (* does not hold without additional size constraint assumption! *)
-
-    (*
-    rewrite app_nth2. (* stupid overflow of offs possible! *)
-     *)
-  Abort.
-  
-  Lemma list2imem_skip: forall imemStart insts0 insts1 offs pc0,
-    imemStart ^+ $4 ^* $(length insts0) ^+ $4 ^* $offs = pc0 ->
-    (list2imem (insts0 ++ insts1) imemStart) pc0  =
-    (list2imem insts1 imemStart) (imemStart ^+ $4 ^* $offs).
-  Proof.
-    intros. subst.
-    unfold list2imem.
-    rewrite wminus_def.
-    rewrite wplus_comm.
-    rewrite? wplus_assoc.
-    rewrite (wplus_comm (^~ imemStart) imemStart).
-    rewrite wminus_inv.
-    rewrite wplus_unit. rewrite app_nth2. (* stupid overflow of offs possible! *)
-
-(* how to simplify this?:
-    
-list2imem
-    (instsBefore ++
-     (compile_stmt s1 ++
-      Beq cond Register0
-        (Z.pos (Pos.of_succ_nat (length (compile_stmt s2) + S (length (compile_stmt s2) + 0))))
-      :: compile_stmt s2 ++
-         [[Jal Register0
-             (Z.neg
-                (Pos.succ
-                   (Pos.of_succ_nat
-                      (length (compile_stmt s1) + length (compile_stmt s2) +
-                       S (S (length (compile_stmt s1) + length (compile_stmt s2) + 0))))))]]) ++
-     instsAfter) imemStart
-    (imemStart ^+ $ (4) ^* $ (length instsBefore) ^+ $ (4) ^* $ (length (compile_stmt s1)))
- *)
- *)
 
   Arguments mult: simpl never.
   Arguments run1: simpl never.
@@ -1945,75 +1642,6 @@ list2imem
         | assumption ]).
   Qed.
 
-  (*
-  Lemma execute_load_from_imem: forall {A: Type} (x a: Register) (addr1 addr2 v: word wXLEN)
-           (offset: Z) (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine),
-      valid_register x ->
-      valid_register a ->
-      containsProgram initialL.(machineMem) (embed_word v) addr2 ->
-      getReg initialL.(core).(registers) a = addr1 ->
-      addr1 ^+ ZToWord wXLEN offset = addr2 ->
-      (wordToZ (addr1 ^+ ZToWord wXLEN offset) mod (Z.of_nat wXLEN_in_bytes))%Z = 0%Z ->
-      execState (Bind (execute (LwXLEN x a offset)) f) initialL =
-      execState (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
-  Proof.
-    intros.
-    rewrite containsProgram_alt in *.
-    unfold containsProgram', ldInst, Memory.read_mem, wXLEN_in_bytes in *.
-    unfold LwXLEN, embed_word, wXLEN_to_word_list, bitwidth in *.
-    destruct Bw eqn: EBw;
-      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-      rewrite associativity;
-      (myrewrite Bind_getRegister by assumption);
-      rewrite associativity;
-      unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
-      rewrite H2;
-      [ rewrite translate_id_if_aligned_4 by assumption |
-        rewrite translate_id_if_aligned_8 by assumption ];
-        rewrite left_identity;
-        rewrite associativity;
-        [ (erewrite @Bind_loadWord;   [ | typeclasses eauto ]) |
-          (erewrite @Bind_loadDouble; [ | typeclasses eauto ]) ];
-        (unshelve erewrite @Bind_setRegister;
-        [ apply State_is_RegisterFile
-        | repeat f_equal
-        | typeclasses eauto
-        | assumption ]).
-    - simpl in H1. specialize (H1 0 _ eq_refl).
-      simpl in H1.
-      unfold int32ToReg, encode, encode_Invalid, id in *.
-      apply wordToZ_inj in H1.
-      subst.
-      simpl.
-      rewrite wmult_neut_r.
-      rewrite <- (wplus_comm $0).
-      rewrite wplus_unit.
-      reflexivity.
-    - pose proof (H1 0 _ eq_refl) as W1.
-      pose proof (H1 1 _ eq_refl) as W2.
-      clear H1.
-      unfold int32ToReg, encode, apply_InstructionMapper, id in *.
-      unfold map_Invalid, Encoder, encode_Invalid, id in *.
-      apply wordToZ_inj in W1.
-      apply wordToZ_inj in W2.
-      unfold wXLEN, bitwidth in *.
-      subst.
-      simpl.
-      rewrite wmult_neut_r in W1.
-      rewrite <- (wplus_comm $0) in W1.
-      rewrite wplus_unit in W1.
-      rewrite wmult_unit_r in W2.
-      (* TODO we also need a lemma about how loadDouble is related to loadWord! *)
-      (* unfold read_double. *)
-      unfold getReg, State_is_RegisterFile in *.
-      unfold wXLEN, bitwidth in *.
-      rewrite <- W1.
-      rewrite <- W2.
-      clear.
-      apply (Word.combine_split 32 32 v).
-  Abort.
-  *)
-      
   Lemma execute_store: forall {A: Type} (ra rv: Register) (a v: word wXLEN)
                          (initialMH finalMH: Memory.mem)
                          (f: unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
