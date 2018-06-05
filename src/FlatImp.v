@@ -37,8 +37,8 @@ Section FlatImp1.
     match s with
     | SLoad x a => 1
     | SStore a v => 1
-    | SLit x v => 1
-    | SOp x op y z => 1
+    | SLit x v => 8
+    | SOp x op y z => 2
     | SSet x y => 1
     | SIf cond bThen bElse => 1 + (stmt_size bThen) + (stmt_size bElse)
     | SLoop body1 cond body2 => 1 + (stmt_size body1) + (stmt_size body2)

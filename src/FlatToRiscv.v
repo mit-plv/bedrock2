@@ -434,8 +434,7 @@ Section FlatToRiscv.
   Proof.
     induction s; simpl; try destruct op; simpl;
     repeat (rewrite app_length; simpl); try omega.
-    (* pose proof (embed_lit_size v). TODO adapt stmt_size *)
-  Admitted.
+  Qed.
 
   Add Ring word_wXLEN_ring : (wring wXLEN).
 

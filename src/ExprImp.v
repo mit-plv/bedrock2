@@ -87,9 +87,9 @@ Section ExprImp1.
 
   Fixpoint expr_size(e: expr): nat :=
     match e with
-    | ELit _ => 1
+    | ELit _ => 8
     | EVar _ => 1
-    | EOp op e1 e2 => S (expr_size e1 + expr_size e2)
+    | EOp op e1 e2 => S (S (expr_size e1 + expr_size e2))
     end.
 
   Fixpoint stmt_size(s: stmt): nat :=

@@ -77,7 +77,7 @@ Section FlattenExpr.
 
   Lemma flattenExpr_size: forall e s resVar ngs ngs',
     flattenExpr ngs e = (s, resVar, ngs') ->
-    FlatImp.stmt_size s <= 4 * ExprImp.expr_size e.
+    FlatImp.stmt_size s <= 2 * ExprImp.expr_size e.
   Proof.
     induction e; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl; try omega.
     specializes IHe1; [eassumption|].
@@ -87,7 +87,7 @@ Section FlattenExpr.
 
   Lemma flattenStmt_size: forall s s' ngs ngs',
     flattenStmt ngs s = (s', ngs') ->
-    FlatImp.stmt_size s' <= 4 * ExprImp.stmt_size s.
+    FlatImp.stmt_size s' <= 3 * ExprImp.stmt_size s.
   Proof.
     induction s; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl;
     repeat match goal with
