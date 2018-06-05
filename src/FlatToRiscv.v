@@ -1330,12 +1330,12 @@ Section FlatToRiscv.
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
       match goal with
-      | Cp: containsProgram _ [[?inst]] ?pc0 |- runsTo _ _ ?E _ =>
+      | Cp: containsProgram _ [[?inst]] ?pc0 |- ?E = (Some tt, _) =>
         match E with
-        | execState run1 ?initialL =>
+        | run1 ?initialL =>
           let Eqpc := fresh in
           assert (pc0 = initialL.(core).(pc)) as Eqpc by solve_word_eq;
-            replace E with (execState (execute inst;; step) initialL) by
+            replace E with ((execute inst;; step) initialL) by
               (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
             clear Eqpc
         end
@@ -1525,7 +1525,7 @@ Section FlatToRiscv.
   Ltac spec_IH originalIH IH stmt1 :=
     pose proof originalIH as IH;
     match goal with
-    | |- runsTo _ _ ?st _ => specialize IH with (initialL := st); simpl in IH
+    | |- runsTo ?st _ => specialize IH with (initialL := st); simpl in IH
     end;
     specialize IH with (s := stmt1);
     specializes IH;
@@ -1873,51 +1873,30 @@ Section FlatToRiscv.
     - (* SLoad *)
       clear IHfuelH.
       eapply runsToStep; simpl in *; subst *.
-      { 
-Ltac fetch_inst ::=
-      match goal with
-      | Cp: containsProgram _ [[?inst]] ?pc0 |- ?E = (Some tt, _) =>
-        match E with
-        | run1 ?initialL =>
-          let Eqpc := fresh in
-          assert (pc0 = initialL.(core).(pc)) as Eqpc by solve_word_eq;
-            replace E with ((execute inst;; step) initialL) by
-              (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
-            clear Eqpc
-        end
-      end.
-
-      fetch_inst.
-      erewrite execute_load; [|eassumption..].
-      simpl_RiscvMachine_get_set.
-      simpl.
-      rewrite execState_step.
-      simpl_RiscvMachine_get_set.
-      reflexivity.
-      }
-      {
-      run1done.
-      }
+      + fetch_inst.
+        erewrite execute_load; [|eassumption..].
+        simpl_RiscvMachine_get_set.
+        simpl.
+        rewrite execState_step.
+        simpl_RiscvMachine_get_set.
+        reflexivity.
+      + run1done.
 
     - (* SStore *)
       clear IHfuelH.
       eapply runsToStep; simpl in *; subst *.
-      {
-      fetch_inst.
-      erewrite execute_store; [|eassumption..].
-      simpl_RiscvMachine_get_set.
-      rewrite execState_step.
-      simpl_RiscvMachine_get_set.
-      reflexivity.
-      }
-      {
-      run1done.
-      apply store_preserves_containsProgram.
-      + solve_containsProgram.
-      + eapply mem_inaccessible_write; eassumption.
-      + eapply write_mem_in_range; eassumption.
-      + assumption.
-      }
+      + fetch_inst.
+        erewrite execute_store; [|eassumption..].
+        simpl_RiscvMachine_get_set.
+        rewrite execState_step.
+        simpl_RiscvMachine_get_set.
+        reflexivity.
+      + run1done.
+        apply store_preserves_containsProgram.
+        * solve_containsProgram.
+        * eapply mem_inaccessible_write; eassumption.
+        * eapply write_mem_in_range; eassumption.
+        * assumption.
 
     - (* SLit *)
       clear IHfuelH.
@@ -1989,25 +1968,6 @@ Ltac fetch_inst ::=
     - (* SIf/Then *)
       (* branch if cond = 0 (will not branch) *)
       run1step.
-
-  Ltac spec_IH originalIH IH stmt1 ::=
-    pose proof originalIH as IH;
-    match goal with
-    | |- runsTo ?st _ => specialize IH with (initialL := st); simpl in IH
-    end;
-    specialize IH with (s := stmt1);
-    specializes IH;
-    first
-      [ reflexivity
-      | solve_imem
-      | solve_stmt_not_too_big
-      | solve_valid_registers
-      | solve_containsProgram
-      | solve_word_eq
-      | eassumption
-      | solve_mem_inaccessible
-      | idtac ].
-
       (* use IH for then-branch *)
       spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans IH). clear IH.
