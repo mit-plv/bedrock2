@@ -50,7 +50,7 @@ Section ExprImp1.
     | ELit v => Return v
     | EVar x => get st x
     | EOp op e1 e2 =>
-      v1 <- eval_expr st e1;
+        v1 <- eval_expr st e1;
         v2 <- eval_expr st e2;
         Return (eval_binop op v1 v2)
     end.
@@ -116,7 +116,8 @@ Section ExprImp1.
       | SWhile cond body => S (expr_size cond + stmt_size body)
       | SSeq s1 s2 => S (stmt_size s1 + stmt_size s2)
       | SSkip => 1
-      | SCall binds f args => S (length binds + List.fold_right Nat.add O (List.map expr_size args)) (* TODO: what should this be? *)
+      | SCall binds f args =>
+          S (length binds + length args + List.fold_right Nat.add O (List.map expr_size args))
       end.
 
     Local Ltac inversion_lemma :=

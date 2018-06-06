@@ -14,6 +14,8 @@ Section FlattenExpr.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
+  Notation func := (@name Name) (only parsing). (* TODO use separate names *)
+
   Existing Instance eq_name_dec.
 
   Context {state: Type}.
@@ -46,6 +48,17 @@ Section FlattenExpr.
         (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x op r1 r2)), x, ngs''')
     end.
 
+  Definition flattenCall(ngs: NGstate)(binds: list var)(f: func)(args: list ExprImp.expr):
+    FlatImp.stmt * NGstate :=
+    let '(compute_args, argvars, ngs) :=
+          List.fold_right
+            (fun e '(c, vs, ngs) =>
+               let (ce_ve, ngs) := flattenExpr ngs e in
+               let c := FlatImp.SSeq (fst ce_ve) c in
+               (c, snd ce_ve::vs, ngs)
+            ) (FlatImp.SSkip, nil, ngs) args in
+      (FlatImp.SSeq compute_args (FlatImp.SCall binds f argvars), ngs).
+
   (* returns statement and new fresh name generator state *)
   Fixpoint flattenStmt(ngs: NGstate)(s: ExprImp.stmt): (FlatImp.stmt * NGstate) :=
     match s with
@@ -73,15 +86,7 @@ Section FlattenExpr.
         let '(s2', ngs'') := flattenStmt ngs' s2 in
         (FlatImp.SSeq s1' s2', ngs'')
     | ExprImp.SSkip => (FlatImp.SSkip, ngs)
-    | ExprImp.SCall binds func args =>
-      let '(compute_args, argvars, ngs) :=
-          List.fold_right
-            (fun e '(c, vs, ngs) =>
-               let (ce_ve, ngs) := flattenExpr ngs e in
-               let c := FlatImp.SSeq (fst ce_ve) c in
-               (c, snd ce_ve::vs, ngs)
-            ) (FlatImp.SSkip, nil, ngs) args in
-      (FlatImp.SSeq compute_args (FlatImp.SCall binds func argvars), ngs)
+    | ExprImp.SCall binds f args => flattenCall ngs binds f args
     end.
 
   Lemma flattenExpr_size: forall e s resVar ngs ngs',
@@ -92,6 +97,44 @@ Section FlattenExpr.
     specializes IHe1; [eassumption|].
     specializes IHe2; [eassumption|].
     omega.
+  Qed.
+
+  Lemma fold_right_cons: forall (A B: Type) (f: B -> A -> A) (a0: A) (b: B) (bs: list B),
+      fold_right f a0 (b :: bs) = f b (fold_right f a0 bs).
+  Proof.
+    intros. reflexivity.
+  Qed.
+
+  Lemma flattenCall_size: forall f args binds ngs ngs' s,
+      flattenCall ngs binds f args = (s, ngs') ->
+      FlatImp.stmt_size s <= 3 * ExprImp.stmt_size (ExprImp.SCall binds f args).
+  Proof.
+    intro f.
+    induction args; intros.
+    - unfold flattenCall in *. simpl in H. inversions H. simpl. omega.
+    - unfold flattenCall in *. simpl in H.
+      repeat destruct_one_match_hyp.
+      inversions H.
+      inversions E.
+      specialize (IHargs binds ngs).
+      rewrite E0 in IHargs.
+      specialize IHargs with (1 := eq_refl).
+      unfold FlatImp.stmt_size. fold FlatImp.stmt_size.
+      unfold ExprImp.stmt_size.
+      unfold FlatImp.stmt_size in IHargs; fold FlatImp.stmt_size in IHargs.
+      unfold ExprImp.stmt_size in IHargs.
+      rewrite map_cons. rewrite fold_right_cons.
+      destruct p.
+      apply flattenExpr_size in E1.
+      simpl (length _).
+      simpl (fst _).
+      forget (FlatImp.stmt_size s) as sz0.
+      forget (FlatImp.stmt_size s1) as sz1.
+      forget (length binds) as lb.
+      forget (length l0) as ll0.
+      forget (ExprImp.expr_size a) as sza.
+      forget (fold_right Nat.add 0 (map ExprImp.expr_size args)) as fr.
+      omega.
   Qed.
 
   Lemma flattenStmt_size: forall s s' ngs ngs',
@@ -106,7 +149,8 @@ Section FlattenExpr.
     | H: _ |- _ => apply flattenExpr_size in H
     end;
     try omega.
-  Admitted.
+    eapply flattenCall_size. eassumption.
+  Qed.
 
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' s v,
     flattenExpr ngs e = (s, v, ngs') ->
@@ -162,6 +206,25 @@ Section FlattenExpr.
     set_solver.
   Qed.
 
+  Lemma flattenCall_freshVarUsage: forall f args binds ngs1 ngs2 s,
+      flattenCall ngs1 binds f args = (s, ngs2) ->
+      subset (allFreshVars ngs2) (allFreshVars ngs1).
+  Proof.
+    induction args; cbn; intros.
+    { inversionss; subst; set_solver. }
+    { unfold flattenCall in *. simpl in H.
+      repeat destruct_one_match_hyp.
+      inversions H.
+      inversions E.
+      specialize (IHargs binds ngs1).
+      rewrite E0 in IHargs.
+      specialize IHargs with (1 := eq_refl).
+      destruct p.
+      apply flattenExpr_freshVarUsage in E1.
+      clear -IHargs E1.
+      set_solver. }
+  Qed.
+    
   Lemma flattenStmt_freshVarUsage: forall s s' ngs1 ngs2,
     flattenStmt ngs1 s = (s', ngs2) ->
     subset (allFreshVars ngs2) (allFreshVars ngs1).
@@ -174,16 +237,8 @@ Section FlattenExpr.
     repeat match goal with
     | IH: forall _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
     end;
-    set_solver.
-    { (* SCall *)
-      generalize dependent l; generalize dependent s;
-        generalize dependent ngs1; generalize dependent ngs2;
-          generalize dependent args; clear.
-      induction args; cbn; intros.
-      { inversionss; subst; set_solver. }
-      { do 3 destruct_one_match_hyp; inversionss;
-          refine (IHargs _ _ _ _ _ E0); clear IHargs E0.
-        destruct p; eapply flattenExpr_freshVarUsage; eauto. } }
+    try solve [set_solver].
+    eapply flattenCall_freshVarUsage. eassumption.
   Qed.
 
   Ltac pose_flatten_var_ineqs :=

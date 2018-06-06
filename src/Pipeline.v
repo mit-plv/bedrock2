@@ -209,7 +209,7 @@ Section Pipeline.
       + eassumption.
       + unfold FlatToRiscv.stmt_not_too_big.
         pose proof @flattenStmt_size as D1.
-        specialize (D1 _ _ _ _ _ _ _ _ _ _ _ _ E).
+        specialize (D1 _ _ _ _ _ _ _ _ _ _ E).
         clear -B D1.
         change 20 with (16 + 4).
         rewrite Nat.pow_add_r.
