@@ -65,19 +65,6 @@ Local Open Scope ilist_scope.
 
 Set Implicit Arguments.
 
-Section put_put.
-
-  Context {var: Type}.
-  Context {val: Type}.
-  Context {state: Type}.
-  Context {stateMap: Map state var val}.
-
-  Lemma put_put_same: forall s x v1 v2,
-      put (put s x v1) x v2 = put s x v2.
-  Admitted.
-
-End put_put.
-
 (* needed below for ring automation *)  
 Lemma Z4four: forall sz, ZToWord sz 4 = $4.
 Proof.
@@ -1578,7 +1565,6 @@ Section FlatToRiscv.
         rewrite elim_then_true_else_false ||
         rewrite left_identity ||
         simpl_remu4_test ||
-        (*rewrite put_put_same ||*)
         rewrite get_put_same).
 
   Ltac run1step' :=
