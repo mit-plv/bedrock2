@@ -1578,7 +1578,7 @@ Section FlatToRiscv.
         rewrite elim_then_true_else_false ||
         rewrite left_identity ||
         simpl_remu4_test ||
-        rewrite put_put_same ||
+        (*rewrite put_put_same ||*)
         rewrite get_put_same).
 
   Ltac run1step' :=
