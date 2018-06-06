@@ -295,20 +295,6 @@ Section FlatToRiscv.
     apply bitSlice_split; assumption.
   Qed.
 
-  Lemma bitSlice_all_id: forall n (v: Z),
-      (0 <= v < 2 ^ n)%Z ->
-      bitSlice v 0 n = v.
-  Proof.
-    intros.
-  Admitted.
-    
-  Lemma bitSlice_wordToZ_all: forall sz1 sz2 (v: word sz1),
-      sz1 <= Z.to_nat sz2 ->
-      bitSlice (wordToZ v) 0 sz2 = wordToZ v.
-  Proof.
-    intros. apply bitSlice_all_id.
-  Abort.
-
   (*
   Context {Name: NameWithEq}.
 
@@ -1257,12 +1243,6 @@ Section FlatToRiscv.
       * apply @Memory.loadStoreDouble_ne; try congruence; unfold Memory.valid_addr; auto.
       * rewrite Memory.storeDouble_preserves_memSize. assumption.
   Qed.
-
-  (* TODO might not hold if a = 0, but we only use it with a = 4 *)
-  Lemma wzero_div: forall sz a, wzero sz ^/ a = wzero sz. Admitted.
-
-  (* TODO might not hold if a = 0, but we only use it with a = 4 *)  
-  Lemma mul_div_undo_word: forall {sz} (a b: word sz), a ^* b ^/ a = b. Admitted.
 
   Lemma let_pair_rhs_eq: forall {A B R} (c1 c2: A * B) (f: A -> B -> R),
       c1 = c2 ->
