@@ -25,64 +25,15 @@ Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
 Require Import Coq.micromega.Lia.
-
-
-Lemma rewrite_div_mod: forall (a b: nat),
-    b <> 0 ->
-    exists q r, a mod b = r /\ a / b = q /\ a = b * q + r /\ r < b.
-Proof.
-  intros.
-  exists (a / b) (a mod b).
-  rewrite <- (Nat.div_mod a b) by assumption.
-  pose proof (Nat.mod_upper_bound a b).
-  auto.
-Qed.
-
-Ltac nat_div_mod_to_quot_rem_step :=
-  so fun hyporgoal => match hyporgoal with
-  | context [?a mod ?b] =>
-      let Ne := fresh "Ne" in
-      let P := fresh "P" in
-      assert (b <> 0) as Ne by omega;
-      pose proof (rewrite_div_mod a b Ne) as P;
-      clear Ne;
-      let q := fresh "q" in
-      let r := fresh "r" in
-      let Er := fresh "Er" in
-      let Eq := fresh "Eq" in
-      let E := fresh "E" in
-      let B := fresh "B" in
-      destruct P as [ q [ r [ Er [ Eq [ E B ] ] ] ] ];
-      rewrite? Er in *;
-      rewrite? Eq in *;
-      clear Er Eq
-  end.
-
-Ltac nat_div_mod_to_quot_rem := repeat nat_div_mod_to_quot_rem_step.
-
+Require Import riscv.util.nat_div_mod_to_quot_rem.
+Require Import compiler.util.word_ring.
+Require Import compiler.util.Misc.
+Require Import riscv.Utility.
 
 Local Open Scope ilist_scope.
 
 Set Implicit Arguments.
 
-(* needed below for ring automation *)  
-Lemma Z4four: forall sz, ZToWord sz 4 = $4.
-Proof.
-  intros. change 4%Z with (Z.of_nat 4).
-  apply ZToWord_Z_of_nat.
-Qed.
-
-(* TODO put into Word.v *)
-Lemma wordToNat_wmult : forall (sz : nat) (w1 w2 : word sz),
-    #(w1 ^* w2) = (#w1 * #w2) mod pow2 sz.
-Proof using .
-  clear. intros.
-  rewrite <- (natToWord_wordToNat w1) at 1.
-  rewrite <- (natToWord_wordToNat w2) at 1.
-  rewrite <- natToWord_mult.
-  rewrite wordToNat_natToWord_eqn.
-  reflexivity.
-Qed.
 
 (* State_is_RegisterFile gets its own section so that destructing Bw later does
    not lead to ill-typed terms *)
@@ -133,6 +84,10 @@ Section FlatToRiscv.
 
   Context {Bw: RiscvBitWidths}.
 
+  Add Ring word_wXLEN_ring : (wring wXLEN).
+
+  Ltac solve_word_eq := word_ring.solve_word_eq (@wXLEN Bw).
+  
   (* put here so that rem picks up the MachineWidth for wXLEN *)
 
   Lemma remu_four_distrib_plus: forall a b, remu (a ^+ b) four = (remu a four) ^+ (remu b four).
@@ -143,135 +98,6 @@ Section FlatToRiscv.
 
   Lemma remu_four_four: remu $4 four = $0.
   Proof. Admitted.
-
-  Lemma wlshift_alt: forall sz n (a: word sz),
-      Utility.wlshift a n = Word.wlshift a n.
-  Proof.
-    intros. unfold Utility.wlshift, Word.wlshift.
-    unfold eq_rec_r.
-    unfold eq_rec.
-    erewrite nat_cast_proof_irrel.
-    rewrite nat_cast_eq_rect.
-    reflexivity.
-  Qed.
-
-  (* TODO put into Word.v *)
-  Lemma wlshift_mul_pow2: forall sz n (a: word sz),
-      Word.wlshift a n = a ^* $ (pow2 n).
-  Proof.
-    intros.
-    apply wordToNat_inj.
-    unfold Word.wlshift.
-    rewrite? wordToNat_split1.
-    unfold eq_rec_r, eq_rec.
-    rewrite? wordToNat_eq_rect.
-    rewrite? wordToNat_combine.
-    rewrite? wordToNat_wzero.
-    rewrite wordToNat_wmult.
-    rewrite wordToNat_natToWord_eqn.
-    rewrite Nat.add_0_l.
-    rewrite Nat.mul_mod_idemp_r by (apply pow2_ne_zero).
-    rewrite Nat.mul_comm.
-    reflexivity.
-  Qed.
-
-  Lemma natToWord_Z_to_nat: forall sz n,
-      (0 <= n)%Z ->
-      natToWord sz (Z.to_nat n) = ZToWord sz n.
-  Proof.
-    intros. rewrite <- ZToWord_Z_of_nat.
-    rewrite Z2Nat.id by assumption.
-    reflexivity.
-  Qed.
-
-  (* TODO these should be in the Coq library *)
-  Lemma Nat2Z_inj_pow: forall n m : nat,
-      Z.of_nat (n ^ m) = (Z.of_nat n ^ Z.of_nat m)%Z.
-  Proof.
-    intros. induction m.
-    - reflexivity.
-    - rewrite Nat2Z.inj_succ.
-      rewrite Z.pow_succ_r by (apply Nat2Z.is_nonneg).
-      rewrite <- IHm.
-      rewrite <- Nat2Z.inj_mul.
-      reflexivity.
-  Qed.
-
-  Lemma Z2Nat_inj_pow: forall n m : Z,
-      (0 <= n)%Z ->
-      (0 <= m)%Z ->
-      Z.to_nat (n ^ m) = Z.to_nat n ^ Z.to_nat m.
-  Proof.
-    intros.
-    pose proof (Nat2Z_inj_pow (Z.to_nat n) (Z.to_nat m)) as P.
-    rewrite? Z2Nat.id in P by assumption.
-    rewrite <- P.
-    apply Nat2Z.id.
-  Qed.
-  
-  Lemma wlshift_mul_Zpow2: forall sz n (a: word sz),
-      (0 <= n)%Z ->
-      Word.wlshift a (Z.to_nat n) = a ^* ZToWord sz (2 ^ n).
-  Proof.
-    intros. rewrite wlshift_mul_pow2. f_equal.
-    change 2 with (Z.to_nat 2).
-    rewrite <- Z2Nat_inj_pow by omega.
-    apply natToWord_Z_to_nat.
-    apply Z.pow_nonneg.
-    omega.
-  Qed.
-  
-  Lemma wlshift_distr_plus: forall sz n (a b: word sz),
-      Word.wlshift (a ^+ b) n = Word.wlshift a n ^+ Word.wlshift b n.
-  Proof.
-    intros.
-    rewrite? wlshift_mul_pow2.
-    apply wmult_plus_distr.
-  Qed.
-
-  Lemma wlshift'_distr_plus: forall sz n (a b: word sz),
-      wlshift (a ^+ b) n = wlshift a n ^+ wlshift b n.
-  Proof.
-    intros. rewrite? wlshift_alt. apply wlshift_distr_plus.
-  Qed.
-
-  Lemma wlshift_iter: forall sz n1 n2 (a: word sz),
-      Word.wlshift (Word.wlshift a n1) n2 = Word.wlshift a (n1 + n2).
-  Proof.
-    intros. rewrite? wlshift_mul_pow2.
-    rewrite <- wmult_assoc.
-    rewrite <- natToWord_mult.
-    do 2 f_equal.
-    symmetry.
-    apply Nat.pow_add_r.
-  Qed.
-    
-  Lemma wlshift'_iter: forall sz n1 n2 (a: word sz),
-      wlshift (wlshift a n1) n2 = wlshift a (n1 + n2).
-  Proof.
-    intros. rewrite? wlshift_alt. apply wlshift_iter.
-  Qed.
-
-  Lemma wlshift_zero: forall sz n, Word.wlshift $0 n = natToWord sz 0.
-  Proof.
-    intros.
-    apply wordToNat_inj.
-    unfold Word.wlshift.
-    rewrite? wordToNat_split1.
-    unfold eq_rec_r, eq_rec.
-    rewrite? wordToNat_eq_rect.
-    rewrite? wordToNat_combine.
-    rewrite? wordToNat_wzero.
-    rewrite Nat.mul_0_r.
-    change (0 + 0) with 0.
-    rewrite Nat.mod_0_l by (apply pow2_ne_zero).
-    reflexivity.
-  Qed.
-
-  Lemma wlshift'_zero: forall sz n, wlshift $0 n = natToWord sz 0.
-  Proof.
-    intros. rewrite? wlshift_alt. apply wlshift_zero.
-  Qed.
 
   Lemma bitSlice_split: forall sz1 sz2 v,
       (0 <= sz1)%Z ->
@@ -566,46 +392,6 @@ Section FlatToRiscv.
     repeat (rewrite app_length; simpl); try omega.
   Qed.
 
-  Add Ring word_wXLEN_ring : (wring wXLEN).
-
-  Ltac ringify :=
-    repeat match goal with
-           | |- context [natToWord ?sz (S ?x)] =>
-             tryif (unify x O)
-             then fail
-             else (progress rewrite (natToWord_S sz x))
-           | |- _ => change $1 with (wone wXLEN)
-                   || change $0 with (wzero wXLEN)
-                   || rewrite! natToWord_plus
-                   || rewrite! natToWord_mult
-                   || rewrite! Nat2Z.inj_add
-                   || rewrite <-! Z.sub_0_l
-                   || rewrite! Z.mul_sub_distr_r
-                   || rewrite! Z.mul_add_distr_r
-                   || rewrite! ZToWord_minus
-                   || rewrite! ZToWord_plus
-                   || rewrite! ZToWord_mult
-                   || rewrite! ZToWord_Z_of_nat
-                   || rewrite! Z4four
-                   || rewrite! ZToWord_0
-                   || rewrite! wzero'_def
-           end.
-  
-  Ltac solve_word_eq :=
-    match goal with
-    | |- @eq (word _) _ _ => idtac
-    | _ => fail 1 "wrong shape of goal"
-    end;
-    subst;
-    clear;
-    simpl;
-    repeat (rewrite app_length; simpl);
-    ringify;
-    try ring.    
-
-  Goal forall (a b c: word wXLEN), ((a ^+ b) ^- b) ^* c ^* $1 = a ^* c ^* $1.
-  Proof. intros. ring. Qed.
-
   (* load and decode Inst *)
   Definition ldInst(m: mem wXLEN)(a: word wXLEN): Instruction :=
     decode RV_wXLEN_IM (wordToZ (Memory.loadWord m a)).
@@ -618,20 +404,10 @@ Section FlatToRiscv.
     forall i inst, nth_error program i = Some inst ->
       ldInst m (offset ^+ $(4 * i)) = inst.
 
-  Lemma wmult_neut_r: forall (sz : nat) (x : word sz), x ^* $0 = $0.
-  Proof.
-    intros. unfold wmult. unfold wordBin. do 2 rewrite wordToN_nat.
-    rewrite <- Nnat.Nat2N.inj_mul. rewrite roundTrip_0.
-    rewrite Nat.mul_0_r. simpl. rewrite wzero'_def. reflexivity.
-  Qed.
-
   Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
   Proof.
     intros. destruct i; simpl in *; discriminate.
   Qed.
-
-  Lemma pow2_S: forall x, pow2 (S x) = 2 * pow2 x.
-  Proof. intros. reflexivity. Qed.
  
   Lemma pow2_wXLEN_4: 4 < pow2 wXLEN.
   Proof.
@@ -756,7 +532,9 @@ Section FlatToRiscv.
     intros.
     replace (natToWord wXLEN 4) with ((natToWord wXLEN 4) ^* $(length ([[inst]]))).
     - apply containsProgram_app_inv. assumption.
-    - simpl. solve_word_eq.
+    - simpl.
+
+      word_ring.solve_word_eq wXLEN.
   Qed.
 
   Lemma containsProgram_app: forall m insts1 insts2 offset,
@@ -868,17 +646,6 @@ Section FlatToRiscv.
     end;
     try assumption.
 
-  Lemma mul_div_undo: forall i c,
-    c <> 0 ->
-    c * i / c = i.
-  Proof.
-    intros.
-    pose proof (Nat.div_mul_cancel_l i 1 c) as P.
-    rewrite Nat.div_1_r in P.
-    rewrite Nat.mul_1_r in P.
-    apply P; auto.
-  Qed.
-
   (*
   Lemma containsState_put: forall initialH initialRegs x v1 v2,
     containsState initialRegs initialH ->
@@ -903,14 +670,6 @@ Section FlatToRiscv.
       * apply H. assumption.
   Qed.
   *)
-
-  Lemma distr_if_over_app: forall T U P1 P2 (c: sumbool P1 P2) (f1 f2: T -> U) (x: T),
-    (if c then f1 else f2) x = if c then f1 x else f2 x.
-  Proof. intros. destruct c; reflexivity. Qed.
-
-  Lemma pair_eq_acc: forall T1 T2 (a: T1) (b: T2) t,
-    t = (a, b) -> a = fst t /\ b = snd t.
-  Proof. intros. destruct t. inversionss. auto. Qed.
 
   Definition runsTo_onerun(initial: RiscvMachine)(P: RiscvMachine -> Prop): Prop :=
     exists fuel,
@@ -1058,29 +817,6 @@ Section FlatToRiscv.
     | |- ?G => let H := fresh in assert G as H by t; idtac "solved" G; exact H
     | |- ?G => idtac "did not solve" G
     end.
-  
-  Lemma sext_natToWord_nat_cast: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
-    2 * n < pow2 sz1 ->
-    nat_cast word e (sext (natToWord sz1 n) sz2) = natToWord sz n.
-  Proof.
-    intros. rewrite nat_cast_eq_rect. apply sext_natToWord. assumption.
-  Qed.
-
-  Lemma sext_neg_natToWord_nat_cast: forall sz2 sz1 sz n (e: sz1 + sz2 = sz),
-    2 * n < pow2 sz1 ->
-    nat_cast word e (sext (wneg (natToWord sz1 n)) sz2) = wneg (natToWord sz n).
-  Proof.
-    intros. rewrite nat_cast_eq_rect. apply sext_wneg_natToWord. assumption.
-  Qed.
-
-  Lemma sext0: forall sz0 sz (v: word sz) (e: sz0 = 0),
-    sext v sz0 = nat_cast word (eq_ind_r (fun sz0 : nat => sz = sz + sz0) (plus_n_O sz) e) v.
-  Proof.
-    intros. subst.
-    unfold sext.
-    destruct_one_match;
-      simpl; rewrite combine_n_0; rewrite <- nat_cast_eq_rect; apply nat_cast_proof_irrel.
-  Qed.
 
   (* separate definition to better guide automation: don't simpl 16, but keep it as a 
      constant to stay in linear arithmetic *)
@@ -1244,11 +980,6 @@ Section FlatToRiscv.
       * rewrite Memory.storeDouble_preserves_memSize. assumption.
   Qed.
 
-  Lemma let_pair_rhs_eq: forall {A B R} (c1 c2: A * B) (f: A -> B -> R),
-      c1 = c2 ->
-      (let (a, b) := c1 in f a b) = (let (a, b) := c2 in f a b).
-  Proof. intros. subst. reflexivity. Qed.
-
   Lemma run1_simpl: forall {inst initialL pc0},
       containsProgram initialL.(machineMem) [[inst]] pc0 ->
       pc0 = initialL.(core).(pc) ->
@@ -1283,86 +1014,7 @@ Section FlatToRiscv.
         rewrite? Bind_setPC
       ).
 
-  Ltac prove_alu_def :=
-    intros; clear; unfold wXLEN in *; unfold MachineWidthInst;
-    destruct bitwidth; [unfold MachineWidth32 | unfold MachineWidth64]; reflexivity.
-
-  Lemma fromImm_def: forall (a: Z),
-      fromImm a = ZToWord wXLEN a.
-  Proof. unfold fromImm. prove_alu_def. Qed.
-
-  Lemma zero_def:
-      zero = $0.
-  Proof. unfold zero. prove_alu_def. Qed.
-  
-  Lemma one_def:
-      one = $1.
-  Proof. unfold one. prove_alu_def. Qed.
-  
-  Lemma add_def: forall (a b: word wXLEN),
-      add a b = wplus a b.
-  Proof. unfold add. prove_alu_def. Qed.
-  
-  Lemma sub_def: forall (a b: word wXLEN),
-      sub a b = wminus a b.
-  Proof. unfold sub. prove_alu_def. Qed.
-  
-  Lemma mul_def: forall (a b: word wXLEN),
-      mul a b = wmult a b.
-  Proof. unfold mul. prove_alu_def. Qed.
-  
-  Lemma div_def: forall (a b: word wXLEN),
-      div a b = ZToWord wXLEN (wordToZ a / wordToZ b).
-  Proof. unfold div. prove_alu_def. Qed.
-
-  Lemma rem_def: forall (a b: word wXLEN),
-      rem a b = ZToWord wXLEN (wordToZ a mod wordToZ b).
-  Proof. unfold rem. prove_alu_def. Qed.
-
-  Lemma signed_less_than_def: forall (a b: word wXLEN),
-      signed_less_than a b = if wslt_dec a b then true else false.
-  Proof. unfold signed_less_than. prove_alu_def. Qed.
-  
-  Lemma signed_eqb_def: forall (a b: word wXLEN),
-      signed_eqb a b = weqb a b.
-  Proof. unfold signed_eqb. prove_alu_def. Qed.
-  
-  Lemma xor_def: forall (a b: word wXLEN),
-      xor a b = wxor a b.
-  Proof. unfold xor. prove_alu_def. Qed.
-  
-  Lemma or_def: forall (a b: word wXLEN),
-      or a b = wor a b.
-  Proof. unfold or. prove_alu_def. Qed.
-  
-  Lemma and_def: forall (a b: word wXLEN),
-      and a b = wand a b.
-  Proof. unfold and. prove_alu_def. Qed.
-  
-  Lemma sll_def: forall (a: word wXLEN) (b: Z),
-      sll a b = wlshift a (Z.to_nat b).
-  Proof. unfold sll. prove_alu_def. Qed.
-  
-  Lemma srl_def: forall (a: word wXLEN) (b: Z),
-      srl a b = wrshift a (Z.to_nat b).
-  Proof. unfold srl. prove_alu_def. Qed.
-  
-  Lemma sra_def: forall (a: word wXLEN) (b: Z),
-      sra a b = wrshift a (Z.to_nat b).
-  Proof. unfold sra. prove_alu_def. Qed.
-  
-  Lemma ltu_def: forall (a b: word wXLEN),
-      ltu a b = if wlt_dec a b then true else false.
-  Proof. unfold ltu. prove_alu_def. Qed.
-  
-  Lemma divu_def: forall (a b: word wXLEN),
-      divu a b = wdiv a b.
-  Proof. unfold divu. prove_alu_def. Qed.
-
-  Lemma remu_def: forall (a b: word wXLEN),
-      remu a b = wmod a b.
-  Proof. unfold remu. prove_alu_def. Qed.
-
+  (* TODO use "autorewrite with alu_defs" instead *)
   Ltac rewrite_alu_op_defs :=
     repeat (rewrite fromImm_def in *
             || rewrite zero_def in *
@@ -1384,31 +1036,6 @@ Section FlatToRiscv.
             || rewrite divu_def in *
             (* missing: remu_def because it's only used for alignment checks and we prefer
                keeping it as remu *) ).
-
-  Hint Unfold
-    Nop
-    Mov
-    Not
-    Neg
-    Negw
-    Sextw
-    Seqz
-    Snez
-    Sltz
-    Sgtz
-    Beqz
-    Bnez
-    Blez
-    Bgez
-    Bltz
-    Bgtz
-    Bgt
-    Ble
-    Bgtu
-    Bleu
-    J
-    Jr
-  : unf_pseudo.
 
   Arguments mult: simpl never.
   Arguments run1: simpl never.
@@ -1664,13 +1291,6 @@ Section FlatToRiscv.
     end;
     rewrite weqb_eq by reflexivity;
     simpl.
-
-  Lemma elim_then_true_else_false: forall P Q (c: {P} + {Q}) A (v1 v2: A),
-      (if if c then true else false then v1 else v2)
-      = (if c then v1 else v2).
-  Proof.
-    intros. destruct c; reflexivity.
-  Qed.
 
   Ltac run1step'' :=
     fetch_inst;
@@ -1947,6 +1567,19 @@ Section FlatToRiscv.
     inversion H. clear H. subst finalMH.
     eapply read_mem_in_range; eassumption.
   Qed.
+
+  Lemma wordToZ_size'': forall (w : word wXLEN),
+      (- Z.of_nat (pow2 (wXLEN - 1)) <= wordToZ w < Z.of_nat (pow2 (wXLEN - 1)))%Z.
+  Proof.
+    clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply  wordToZ_size'.
+  Qed.
+
+  Lemma wordToZ_ZToWord': forall (z : Z),
+      (- Z.of_nat (pow2 (wXLEN - 1)) <= z < Z.of_nat (pow2 (wXLEN - 1)))%Z ->
+      wordToZ (ZToWord wXLEN z) = z.
+  Proof.
+    clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply wordToZ_ZToWord; assumption.
+  Qed.    
   
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
@@ -2054,65 +1687,8 @@ Section FlatToRiscv.
       rewrite wlshift'_zero.
       rewrite wplus_unit.
       apply wordToZ_inj.
-
-Lemma wordToZ_size'': forall (w : word wXLEN),
-    (- Z.of_nat (pow2 (wXLEN - 1)) <= wordToZ w < Z.of_nat (pow2 (wXLEN - 1)))%Z.
-Proof.
-  clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply  wordToZ_size'.
-Qed.
-
-Lemma wordToZ_ZToWord': forall (z : Z),
-    (- Z.of_nat (pow2 (wXLEN - 1)) <= z < Z.of_nat (pow2 (wXLEN - 1)))%Z ->
-    wordToZ (ZToWord wXLEN z) = z.
-Proof.
-  clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply wordToZ_ZToWord; assumption.
-Qed.
-          
-
       pose proof (wordToZ_size'' v) as P.
       forget (wordToZ v) as a.
-
-Lemma bitSlice_all_nonneg: forall n v : Z,
-    (0 <= n)%Z ->
-    (0 <= v < 2 ^ n)%Z ->
-    bitSlice v 0 n = v.
-Proof.
-  clear. intros.
-  Require Import riscv.proofs.DecodeEncode.
-  rewrite bitSlice_alt by omega.
-  unfold bitSlice'.
-  change (2 ^ 0)%Z with 1%Z.
-  rewrite Z.div_1_r.
-  rewrite Z.sub_0_r.
-  apply Z.mod_small.
-  assumption.
-Qed.
-      
-Lemma bitSlice_all_neg: forall n v : Z,
-    (0 <= n)%Z ->
-    (- 2 ^ n <= v < 0)%Z ->
-    bitSlice v 0 n = (2 ^ n + v)%Z.
-Proof.
-  clear. intros.
-  Require Import riscv.proofs.DecodeEncode.
-  rewrite bitSlice_alt by omega.
-  unfold bitSlice'.
-  change (2 ^ 0)%Z with 1%Z.
-  rewrite Z.div_1_r.
-  rewrite Z.sub_0_r.
-  assert (0 < 2 ^ n)%Z. {
-    apply Z.pow_pos_nonneg; omega.
-  }
-  ThanksFiatCrypto.div_mod_to_quot_rem.
-  subst v.
-  rewrite Z.add_assoc.
-  assert (q = -1)%Z by nia.
-  subst q.
-  nia.
-Qed.
-
-
-
       assert (a < 0 \/ a >= 0)%Z as C by omega.
       destruct C as [C | C].
       + rewrite bitSlice_all_neg.
