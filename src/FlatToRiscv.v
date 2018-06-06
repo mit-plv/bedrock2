@@ -72,6 +72,18 @@ Proof.
   apply ZToWord_Z_of_nat.
 Qed.
 
+(* TODO put into Word.v *)
+Lemma wordToNat_wmult : forall (sz : nat) (w1 w2 : word sz),
+    #(w1 ^* w2) = (#w1 * #w2) mod pow2 sz.
+Proof using .
+  clear. intros.
+  rewrite <- (natToWord_wordToNat w1) at 1.
+  rewrite <- (natToWord_wordToNat w2) at 1.
+  rewrite <- natToWord_mult.
+  rewrite wordToNat_natToWord_eqn.
+  reflexivity.
+Qed.
+
 (* State_is_RegisterFile gets its own section so that destructing Bw later does
    not lead to ill-typed terms *)
 Section RegisterFile.
@@ -132,27 +144,170 @@ Section FlatToRiscv.
   Lemma remu_four_four: remu $4 four = $0.
   Proof. Admitted.
 
-  Lemma wlshift_distr_plus: forall sz n (a b: word sz),
-      wlshift (a ^+ b) n = wlshift a n ^+ wlshift b n.
-  Admitted.
+  Lemma wlshift_alt: forall sz n (a: word sz),
+      Utility.wlshift a n = Word.wlshift a n.
+  Proof.
+    intros. unfold Utility.wlshift, Word.wlshift.
+    unfold eq_rec_r.
+    unfold eq_rec.
+    erewrite nat_cast_proof_irrel.
+    rewrite nat_cast_eq_rect.
+    reflexivity.
+  Qed.
+
+  (* TODO put into Word.v *)
+  Lemma wlshift_mul_pow2: forall sz n (a: word sz),
+      Word.wlshift a n = a ^* $ (pow2 n).
+  Proof.
+    intros.
+    apply wordToNat_inj.
+    unfold Word.wlshift.
+    rewrite? wordToNat_split1.
+    unfold eq_rec_r, eq_rec.
+    rewrite? wordToNat_eq_rect.
+    rewrite? wordToNat_combine.
+    rewrite? wordToNat_wzero.
+    rewrite wordToNat_wmult.
+    rewrite wordToNat_natToWord_eqn.
+    rewrite Nat.add_0_l.
+    rewrite Nat.mul_mod_idemp_r by (apply pow2_ne_zero).
+    rewrite Nat.mul_comm.
+    reflexivity.
+  Qed.
+
+  Lemma natToWord_Z_to_nat: forall sz n,
+      (0 <= n)%Z ->
+      natToWord sz (Z.to_nat n) = ZToWord sz n.
+  Proof.
+    intros. rewrite <- ZToWord_Z_of_nat.
+    rewrite Z2Nat.id by assumption.
+    reflexivity.
+  Qed.
+
+  (* TODO these should be in the Coq library *)
+  Lemma Nat2Z_inj_pow: forall n m : nat,
+      Z.of_nat (n ^ m) = (Z.of_nat n ^ Z.of_nat m)%Z.
+  Proof.
+    intros. induction m.
+    - reflexivity.
+    - rewrite Nat2Z.inj_succ.
+      rewrite Z.pow_succ_r by (apply Nat2Z.is_nonneg).
+      rewrite <- IHm.
+      rewrite <- Nat2Z.inj_mul.
+      reflexivity.
+  Qed.
+
+  Lemma Z2Nat_inj_pow: forall n m : Z,
+      (0 <= n)%Z ->
+      (0 <= m)%Z ->
+      Z.to_nat (n ^ m) = Z.to_nat n ^ Z.to_nat m.
+  Proof.
+    intros.
+    pose proof (Nat2Z_inj_pow (Z.to_nat n) (Z.to_nat m)) as P.
+    rewrite? Z2Nat.id in P by assumption.
+    rewrite <- P.
+    apply Nat2Z.id.
+  Qed.
   
+  Lemma wlshift_mul_Zpow2: forall sz n (a: word sz),
+      (0 <= n)%Z ->
+      Word.wlshift a (Z.to_nat n) = a ^* ZToWord sz (2 ^ n).
+  Proof.
+    intros. rewrite wlshift_mul_pow2. f_equal.
+    change 2 with (Z.to_nat 2).
+    rewrite <- Z2Nat_inj_pow by omega.
+    apply natToWord_Z_to_nat.
+    apply Z.pow_nonneg.
+    omega.
+  Qed.
+  
+  Lemma wlshift_distr_plus: forall sz n (a b: word sz),
+      Word.wlshift (a ^+ b) n = Word.wlshift a n ^+ Word.wlshift b n.
+  Proof.
+    intros.
+    rewrite? wlshift_mul_pow2.
+    apply wmult_plus_distr.
+  Qed.
+
+  Lemma wlshift'_distr_plus: forall sz n (a b: word sz),
+      wlshift (a ^+ b) n = wlshift a n ^+ wlshift b n.
+  Proof.
+    intros. rewrite? wlshift_alt. apply wlshift_distr_plus.
+  Qed.
+
   Lemma wlshift_iter: forall sz n1 n2 (a: word sz),
+      Word.wlshift (Word.wlshift a n1) n2 = Word.wlshift a (n1 + n2).
+  Proof.
+    intros. rewrite? wlshift_mul_pow2.
+    rewrite <- wmult_assoc.
+    rewrite <- natToWord_mult.
+    do 2 f_equal.
+    symmetry.
+    apply Nat.pow_add_r.
+  Qed.
+    
+  Lemma wlshift'_iter: forall sz n1 n2 (a: word sz),
       wlshift (wlshift a n1) n2 = wlshift a (n1 + n2).
+  Proof.
+    intros. rewrite? wlshift_alt. apply wlshift_iter.
+  Qed.
+
+  Lemma wlshift_zero: forall sz n, Word.wlshift $0 n = natToWord sz 0.
+  Proof.
+    intros.
+    apply wordToNat_inj.
+    unfold Word.wlshift.
+    rewrite? wordToNat_split1.
+    unfold eq_rec_r, eq_rec.
+    rewrite? wordToNat_eq_rect.
+    rewrite? wordToNat_combine.
+    rewrite? wordToNat_wzero.
+    rewrite Nat.mul_0_r.
+    change (0 + 0) with 0.
+    rewrite Nat.mod_0_l by (apply pow2_ne_zero).
+    reflexivity.
+  Qed.
+
+  Lemma wlshift'_zero: forall sz n, wlshift $0 n = natToWord sz 0.
+  Proof.
+    intros. rewrite? wlshift_alt. apply wlshift_zero.
+  Qed.
+
+  Lemma bitSlice_split: forall sz1 sz2 v,
+      (0 <= sz1)%Z ->
+      (0 <= sz2)%Z ->
+      (bitSlice v sz1 (sz1 + sz2) * 2 ^ sz1 + bitSlice v 0 sz1)%Z = bitSlice v 0 (sz1 + sz2).
+  Proof.
   Admitted.
   
   Lemma wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
+      (0 <= sz1)%Z ->
+      (0 <= sz2)%Z ->
       wlshift (ZToWord wXLEN (bitSlice v sz1 (sz1 + sz2))) (Z.to_nat sz1)
       ^+ ZToWord wXLEN (bitSlice v 0 sz1)
       = ZToWord wXLEN (bitSlice v 0 (sz1 + sz2)).
+  Proof.
+    intros. rewrite wlshift_alt.
+    rewrite wlshift_mul_Zpow2 by assumption.
+    rewrite <- ZToWord_mult.
+    rewrite <- ZToWord_plus.
+    f_equal.
+    apply bitSlice_split; assumption.
+  Qed.
+
+  Lemma bitSlice_all_id: forall n (v: Z),
+      (0 <= v < 2 ^ n)%Z ->
+      bitSlice v 0 n = v.
+  Proof.
+    intros.
   Admitted.
-  
-  Lemma wlshift_zero: forall sz n, wlshift $0 n = natToWord sz 0.
-  Admitted.
-  
+    
   Lemma bitSlice_wordToZ_all: forall sz1 sz2 (v: word sz1),
       sz1 <= Z.to_nat sz2 ->
       bitSlice (wordToZ v) 0 sz2 = wordToZ v.
-  Admitted.
+  Proof.
+    intros. apply bitSlice_all_id.
+  Abort.
 
   (*
   Context {Name: NameWithEq}.
@@ -555,18 +710,6 @@ Section FlatToRiscv.
   Lemma natToWord_S_S: forall sz n,
       natToWord sz (S (S n)) = (wone sz) ^+ (natToWord sz (S n)).
   Proof. intros. apply natToWord_S. Qed.
-
-  (* TODO put into Word.v *)
-  Lemma wordToNat_wmult : forall (sz : nat) (w1 w2 : word sz),
-      #(w1 ^* w2) = (#w1 * #w2) mod pow2 sz.
-  Proof using .
-    clear. intros.
-    rewrite <- (natToWord_wordToNat w1) at 1.
-    rewrite <- (natToWord_wordToNat w2) at 1.
-    rewrite <- natToWord_mult.
-    rewrite wordToNat_natToWord_eqn.
-    reflexivity.
-  Qed.
 
   Definition containsProgram_app_will_work(insts1 insts2: list Instruction)(offset: word wXLEN) :=
     (#(offset ^+ $4 ^* $(length insts1)) = 0 -> insts1 = nil \/ insts2 = nil).
@@ -1910,8 +2053,8 @@ Section FlatToRiscv.
       f_equal.
       clear.
       change (Pos.to_nat 8) with 8.
-      rewrite? wlshift_distr_plus.
-      rewrite? wlshift_iter.
+      rewrite? wlshift'_distr_plus.
+      rewrite? wlshift'_iter.
       simpl.
       change 56%nat with (Z.to_nat 56).
       change 48%nat with (Z.to_nat 48).
@@ -1921,18 +2064,144 @@ Section FlatToRiscv.
       change 16%nat with (Z.to_nat 16).
       change 8%nat with (Z.to_nat 8).
       rewrite <-? wplus_assoc.
-      change 16%Z with ( 8+8)%Z at 3. rewrite wlshift_bitSlice_plus. change ( 8+8)%Z with 16%Z.
-      change 24%Z with (16+8)%Z at 3. rewrite wlshift_bitSlice_plus. change (16+8)%Z with 24%Z.
-      change 32%Z with (24+8)%Z at 3. rewrite wlshift_bitSlice_plus. change (24+8)%Z with 32%Z.
-      change 40%Z with (32+8)%Z at 3. rewrite wlshift_bitSlice_plus. change (32+8)%Z with 40%Z.
-      change 48%Z with (40+8)%Z at 3. rewrite wlshift_bitSlice_plus. change (40+8)%Z with 48%Z.
-      change 56%Z with (48+8)%Z at 4. rewrite wlshift_bitSlice_plus. change (48+8)%Z with 56%Z.
-      change 64%Z with (56+8)%Z at 1. rewrite wlshift_bitSlice_plus. change (56+8)%Z with 64%Z.
-      rewrite wlshift_zero.
+      change 16%Z with ( 8+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change ( 8+8)%Z with 16%Z.
+      change 24%Z with (16+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (16+8)%Z with 24%Z.
+      change 32%Z with (24+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (24+8)%Z with 32%Z.
+      change 40%Z with (32+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (32+8)%Z with 40%Z.
+      change 48%Z with (40+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (40+8)%Z with 48%Z.
+      change 56%Z with (48+8)%Z at 4. rewrite wlshift_bitSlice_plus by omega. change (48+8)%Z with 56%Z.
+      change 64%Z with (56+8)%Z at 1. rewrite wlshift_bitSlice_plus by omega. change (56+8)%Z with 64%Z.
+      rewrite wlshift'_zero.
       rewrite wplus_unit.
-      rewrite bitSlice_wordToZ_all; [ apply ZToWord_wordToZ | ].
-      clear.
-      unfold wXLEN, bitwidth. destruct Bw; cbv; omega.
+      apply wordToZ_inj.
+
+Lemma wordToZ_size'': forall (w : word wXLEN),
+    (- Z.of_nat (pow2 (wXLEN - 1)) <= wordToZ w < Z.of_nat (pow2 (wXLEN - 1)))%Z.
+Proof.
+  clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply  wordToZ_size'.
+Qed.
+
+Lemma wordToZ_ZToWord': forall (z : Z),
+    (- Z.of_nat (pow2 (wXLEN - 1)) <= z < Z.of_nat (pow2 (wXLEN - 1)))%Z ->
+    wordToZ (ZToWord wXLEN z) = z.
+Proof.
+  clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply wordToZ_ZToWord; assumption.
+Qed.
+          
+
+      pose proof (wordToZ_size'' v) as P.
+      forget (wordToZ v) as a.
+
+Lemma bitSlice_all_nonneg: forall n v : Z,
+    (0 <= n)%Z ->
+    (0 <= v < 2 ^ n)%Z ->
+    bitSlice v 0 n = v.
+Proof.
+  clear. intros.
+  Require Import riscv.proofs.DecodeEncode.
+  rewrite bitSlice_alt by omega.
+  unfold bitSlice'.
+  change (2 ^ 0)%Z with 1%Z.
+  rewrite Z.div_1_r.
+  rewrite Z.sub_0_r.
+  apply Z.mod_small.
+  assumption.
+Qed.
+      
+Lemma bitSlice_all_neg: forall n v : Z,
+    (0 <= n)%Z ->
+    (- 2 ^ n <= v < 0)%Z ->
+    bitSlice v 0 n = (2 ^ n + v)%Z.
+Proof.
+  clear. intros.
+  Require Import riscv.proofs.DecodeEncode.
+  rewrite bitSlice_alt by omega.
+  unfold bitSlice'.
+  change (2 ^ 0)%Z with 1%Z.
+  rewrite Z.div_1_r.
+  rewrite Z.sub_0_r.
+  assert (0 < 2 ^ n)%Z. {
+    apply Z.pow_pos_nonneg; omega.
+  }
+  ThanksFiatCrypto.div_mod_to_quot_rem.
+  subst v.
+  rewrite Z.add_assoc.
+  assert (q = -1)%Z by nia.
+  subst q.
+  nia.
+Qed.
+
+
+
+      assert (a < 0 \/ a >= 0)%Z as C by omega.
+      destruct C as [C | C].
+      + rewrite bitSlice_all_neg.
+        * assert (exists k, (2 ^ 64 = k * 2 ^ (Z.of_nat wXLEN))%Z /\ (0 < k)%Z) as A. {
+            clear. unfold wXLEN, bitwidth.
+            destruct Bw.
+            - exists (2 ^ 32)%Z. change 64%Z with (32 + 32)%Z. split.
+              + apply Z.pow_add_r; omega.
+              + apply Z.pow_pos_nonneg; omega.
+            - exists 1%Z. rewrite Z.mul_1_l. split; reflexivity.
+          }
+          destruct A as [ k [ A A'] ]. rewrite A.
+          rewrite Z.add_comm.
+          pose proof (ZToWord_Npow2_add_k wXLEN a (Z.to_nat k)) as R.
+          rewrite Z2Nat.id in R by omega.
+          replace (Z.of_N (Npow2 (@wXLEN Bw))) with (2 ^ Z.of_nat wXLEN)%Z in R.
+          { rewrite R.
+            apply wordToZ_ZToWord'.
+            assumption.
+          }
+          { rewrite pow2_N.
+            rewrite nat_N_Z.
+            change 2%Z with (Z.of_nat 2).
+            symmetry.
+            apply Nat2Z_inj_pow.
+          }
+        * omega.
+        * rewrite Nat2Z_inj_pow in P. change (Z.of_nat 2) with 2%Z in *.
+          unfold wXLEN, bitwidth in *.
+          destruct Bw.
+          { change (Z.of_nat (32 - 1)) with 31%Z in *.
+            change 64%Z with (31 + 33)%Z.
+            rewrite Z.pow_add_r by omega.
+            assert (0 < 2 ^ 33)%Z. {
+              apply Z.pow_pos_nonneg; omega.
+            }
+            nia.
+          }
+          { change (Z.of_nat (64 - 1)) with 63%Z in *.
+            change 64%Z with (63 + 1)%Z.
+            rewrite Z.pow_add_r by omega.
+            assert (0 < 2 ^ 1)%Z. {
+              apply Z.pow_pos_nonneg; omega.
+            }
+            nia.
+          }
+      + rewrite bitSlice_all_nonneg. 
+        * apply wordToZ_ZToWord'.
+          assumption.
+        * omega.
+        * rewrite Nat2Z_inj_pow in P. change (Z.of_nat 2) with 2%Z in *.
+          unfold wXLEN, bitwidth in *.
+          destruct Bw.
+          { change (Z.of_nat (32 - 1)) with 31%Z in *.
+            change 64%Z with (31 + 33)%Z.
+            rewrite Z.pow_add_r by omega.
+            assert (0 < 2 ^ 33)%Z. {
+              apply Z.pow_pos_nonneg; omega.
+            }
+            nia.
+          }
+          { change (Z.of_nat (64 - 1)) with 63%Z in *.
+            change 64%Z with (63 + 1)%Z.
+            rewrite Z.pow_add_r by omega.
+            assert (0 < 2 ^ 1)%Z. {
+              apply Z.pow_pos_nonneg; omega.
+            }
+            nia.
+          }
 
       (* SOp *)
     - run1step. run1done.
