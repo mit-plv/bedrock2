@@ -121,7 +121,7 @@ Definition initialMemH(l: list nat): Memory.mem :=
                         nth_error (mk_input l) ((wordToNat a - input_base)  / 4).
 
 Definition evalH(fuel: nat)(l: list nat): option (state * Memory.mem) :=
-  eval_stmt fuel empty (initialMemH l) ExampleSrc.listsum.
+ eval_stmt empty fuel empty (initialMemH l) ExampleSrc.listsum.
 
 Definition listsum_res_H(fuel: nat)(l: list nat): option (word 32) :=
   match evalH fuel l with

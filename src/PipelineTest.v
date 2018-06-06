@@ -65,7 +65,7 @@ Definition fib_ExprImp(n: word wXLEN): stmt :=
 Definition state := (var -> option (word wXLEN)).
 
 Definition fib_H_res(fuel: nat)(n: word wXLEN): option (word wXLEN) :=
-  match (eval_stmt fuel empty Memory.no_mem (fib_ExprImp n)) with
+  match (eval_stmt empty fuel empty Memory.no_mem (fib_ExprImp n)) with
   | Some (st, m) => st var_b
   | None => None
   end.

@@ -41,3 +41,30 @@ Proof.
     + reflexivity.
     + simpl. auto.
 Qed.
+
+Fixpoint option_all {A} (l : list (option A)) {struct l} : option (list A) :=
+  match l with
+  | nil => Some nil
+  | (Some x)::l =>
+    match option_all l with
+    | Some l' => Some (x::l')
+    | _ => None end
+  | _ => None
+  end.
+
+Section WithMap.
+  Context {T} {K V} {TMap:Map T K V}.
+  Fixpoint putmany (keys : list K) (values : list V) (init : T) {struct keys} : option T :=
+    match keys, values with
+    | nil, nil => Return init
+    | b::binders, v::values => t <- putmany binders values init; Return (put t b v)
+    | _, _ => None
+    end.
+
+  Lemma putmany_sameLength : forall bs vs st st' (H:putmany bs vs st = Some st'),
+      length bs = length vs.
+  Proof.
+    induction bs, vs; cbn; try discriminate; trivial; [].
+    intros; destruct (putmany bs vs st) eqn:?; [eauto using f_equal|discriminate].
+  Qed.
+End WithMap.

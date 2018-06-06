@@ -34,7 +34,19 @@ Section StateCalculus.
     - subst. rewrite get_put_same. reflexivity.
     - rewrite get_put_diff by assumption. reflexivity.
   Qed.
-
+  
+  Lemma only_differ_putmany : forall (bs : list var) (vs : list val) st st' 
+                                     (H : putmany bs vs st = Some st'),
+      only_differ st (fold_right union empty_set (map singleton_set bs)) st'.
+    induction bs, vs; cbn; try discriminate.
+    { inversion 1; subst. cbv; eauto. }
+    { intros ? ? H; destruct (putmany bs vs st) eqn:Heqo; [|discriminate].
+      inversion H; subst.
+      specialize (IHbs _ _ _ Heqo).
+      intros x; destruct (IHbs x);
+        autorewrite with rew_set_op_specs in *; rewrite ?get_put;
+          destruct (dec (a=x)); eauto. }
+  Qed.
 End StateCalculus.
 
 Hint Unfold extends only_differ agree_on undef : unf_state_calculus.

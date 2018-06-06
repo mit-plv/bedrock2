@@ -34,7 +34,7 @@ Section SetDefinitions.
 
   Definition subset(s1 s2: T) := forall x, x \in s1 -> x \in s2.
   Definition disjoint(s1 s2: T) := forall x, (~ x \in s1) \/ (~ x \in s2).
-
+  Definition of_list l := List.fold_right union empty_set (List.map singleton_set l).
 End SetDefinitions.
 
 Hint Unfold subset disjoint : unf_set_defs.
