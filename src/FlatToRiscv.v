@@ -532,9 +532,7 @@ Section FlatToRiscv.
     intros.
     replace (natToWord wXLEN 4) with ((natToWord wXLEN 4) ^* $(length ([[inst]]))).
     - apply containsProgram_app_inv. assumption.
-    - simpl.
-
-      word_ring.solve_word_eq wXLEN.
+    - simpl. solve_word_eq.
   Qed.
 
   Lemma containsProgram_app: forall m insts1 insts2 offset,
