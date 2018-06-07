@@ -91,14 +91,97 @@ Section FlatToRiscv.
   
   (* put here so that rem picks up the MachineWidth for wXLEN *)
 
-  Lemma remu_four_distrib_plus: forall a b, remu (a ^+ b) four = (remu a four) ^+ (remu b four).
-  Proof. Admitted.
+  Lemma pow2_wXLEN_4: 4 < pow2 wXLEN.
+  Proof.
+    clear. unfold wXLEN, bitwidth. destruct Bw;
+      do 2 rewrite pow2_S;
+      change 4 with (2 * (2 * 1)) at 1;
+      (repeat apply mult_lt_compat_l; [ | repeat constructor ..]);
+      apply one_lt_pow2.
+  Qed.  
+
+  Lemma four_def: four = $4.
+  Proof.
+    unfold four, two. rewrite! add_def. rewrite! one_def. solve_word_eq.
+  Qed.
+
+  Lemma NToWord_plus: forall (sz : nat) (a b : N),
+      NToWord sz (a + b) = NToWord sz a ^+ NToWord sz b.
+  Proof.
+    destruct sz as [|sz]; intros n m; intuition idtac.
+    (*
+    rewrite wplus_wplusN.
+    unfold wplusZ, wordBinZ.
+    destruct (wordToZ_ZToWord' (S sz) n) as [k1 D1].
+    destruct (wordToZ_ZToWord' (S sz) m) as [k2 D2].
+    rewrite D1.
+    rewrite D2.
+    replace (n - k1 * Z.of_N (Npow2 (S sz)) + (m - k2 * Z.of_N (Npow2 (S sz))))%Z
+      with (n + m - (k1 + k2) * Z.of_N (Npow2 (S sz)))%Z by nia.
+    symmetry.
+    apply ZToWord_Npow2_sub_z.
+     *)
+  Admitted.
+
+  Lemma drop_sub_N: forall sz (n k : N),
+      (k * Npow2 sz <= n)%N ->
+      NToWord sz (n - k * Npow2 sz) = NToWord sz n.
+  Proof.
+  Admitted.
+
+  Lemma wmod_plus_distr: forall sz (a b m: word sz),
+      m <> $0 ->
+      (a ^+ b) ^% m = ((a ^% m) ^+ (b ^% m)) ^% m.
+  Proof.
+    intros. unfold wplus, wmod, wordBin.
+    destruct (wordToN_NToWord sz (wordToN a mod wordToN m)) as [ k1 [ P1 B1 ] ].
+    rewrite P1. clear P1.
+    destruct (wordToN_NToWord sz (wordToN b mod wordToN m)) as [ k2 [ P2 B2 ] ].
+    rewrite P2. clear P2.
+    rewrite N.add_sub_assoc by assumption.
+    rewrite <- N.add_sub_swap by assumption.
+    rewrite <- N.sub_add_distr.
+    rewrite <- N.mul_add_distr_r.
+    rewrite drop_sub_N by (rewrite N.mul_add_distr_r; apply N.add_le_mono; assumption).
+  Admitted.
+
+  Lemma remu_four_distrib_plus: forall a b,
+      remu (a ^+ b) four = remu ((remu a four) ^+ (remu b four)) four.
+  Proof.
+    intros. rewrite! remu_def. rewrite! four_def.
+    apply wmod_plus_distr.
+    pose proof pow2_wXLEN_4.
+    apply natToWord_nzero; omega.
+  Qed.
+
+  Lemma wmod_mul: forall sz (a b: word sz), b <> $0 -> (a ^* b) ^% b = $0.
+  Proof.
+  Admitted.
 
   Lemma remu_four_undo: forall a, remu ($4 ^* a) four = $0.
-  Proof. Admitted.
+  Proof.
+    intros. rewrite remu_def. rewrite four_def. rewrite wmult_comm.
+    apply wmod_mul.
+    pose proof pow2_wXLEN_4.
+    apply natToWord_nzero; omega.
+  Qed.
+
+  Lemma wmod_same: forall sz (a: word sz),
+      a <> $0 ->
+      a ^% a = $0.
+  Proof.
+    intros. unfold wmod, wordBin. rewrite N.mod_same.
+    - rewrite NToWord_nat. reflexivity.
+    - intro. apply H. rewrite <- (roundTripN_0 sz) in H0. apply wordToN_inj in H0.
+      subst a. rewrite NToWord_nat. reflexivity.
+  Qed.
 
   Lemma remu_four_four: remu $4 four = $0.
-  Proof. Admitted.
+  Proof.
+    rewrite remu_def. rewrite four_def. apply wmod_same.
+    pose proof pow2_wXLEN_4.
+    apply natToWord_nzero; omega.
+  Qed.
 
   Lemma bitSlice_split: forall sz1 sz2 v,
       (0 <= sz1)%Z ->
@@ -420,15 +503,6 @@ Section FlatToRiscv.
     intros. destruct i; simpl in *; discriminate.
   Qed.
  
-  Lemma pow2_wXLEN_4: 4 < pow2 wXLEN.
-  Proof.
-    clear. unfold wXLEN, bitwidth. destruct Bw;
-      do 2 rewrite pow2_S;
-      change 4 with (2 * (2 * 1)) at 1;
-      (repeat apply mult_lt_compat_l; [ | repeat constructor ..]);
-      apply one_lt_pow2.
-  Qed.  
-
   Ltac ensure_is_nat_rel R :=
     match R with
     | ?P /\ ?Q => ensure_is_nat_rel P; ensure_is_nat_rel Q
