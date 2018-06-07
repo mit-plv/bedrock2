@@ -29,6 +29,7 @@ Require Import riscv.util.nat_div_mod_to_quot_rem.
 Require Import compiler.util.word_ring.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.
+Require Import riscv.util.ZBitOps.
 
 Local Open Scope ilist_scope.
 
@@ -104,7 +105,17 @@ Section FlatToRiscv.
       (0 <= sz2)%Z ->
       (bitSlice v sz1 (sz1 + sz2) * 2 ^ sz1 + bitSlice v 0 sz1)%Z = bitSlice v 0 (sz1 + sz2).
   Proof.
-  Admitted.
+    intros. rewrite? bitSlice_alt by omega. unfold bitSlice'.
+    change (2 ^ 0)%Z with 1%Z.
+    rewrite Z.div_1_r.
+    rewrite! Z.sub_0_r.
+    replace (sz1 + sz2 - sz1)%Z with sz2 by omega.
+    rewrite Z.pow_add_r by assumption.
+    assert (0 < 2 ^ sz1)%Z by (apply Z.pow_pos_nonneg; omega).
+    assert (0 < 2 ^ sz2)%Z by (apply Z.pow_pos_nonneg; omega).
+    rewrite Z.rem_mul_r by omega.
+    nia.
+  Qed.
   
   Lemma wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
       (0 <= sz1)%Z ->
