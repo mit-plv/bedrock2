@@ -36,9 +36,8 @@ Section Pipeline.
   Local Notation RiscvMachine := (@RiscvMachine Bw (mem wXLEN) state).
   Context {RVM: RiscvProgram (OState RiscvMachine) (word wXLEN)}.
 
-  (* assumes generic translate and raiseException functions *)
-  Context {RVS: @RiscvState (OState RiscvMachine) (word wXLEN) _ _ RVM}.  
-
+  Existing Instance riscv.Program.DefaultRiscvState.
+  
   Existing Instance FlatToRiscv.State_is_RegisterFile.
   
   Context {RVAX: @AxiomaticRiscv Bw state FlatToRiscv.State_is_RegisterFile (mem wXLEN) _ RVM}.
@@ -255,8 +254,21 @@ Section Pipeline.
           | execState _ ?x => specialize P with (initialL := x)
           end.
       edestruct P as [fuelL [P1 P2]]; clear P.
-      + admit. (* TODO translate_id *)
-      + admit. (* TODO translate_id *)
+      + unfold translate, DefaultRiscvState, default_translate.
+        intros.
+        replace Utility.rem with Utility.remu by admit. (* TODO *)
+        autorewrite with alu_defs.
+        rewrite FlatToRiscv.four_def.
+        destruct_one_match; [exfalso|reflexivity].
+        admit. (* TODO mod 4 stuff *)
+      + unfold translate, DefaultRiscvState, default_translate.
+        intros.
+        replace Utility.rem with Utility.remu by admit. (* TODO *)
+        unfold Utility.eight.
+        autorewrite with alu_defs.
+        rewrite FlatToRiscv.four_def.
+        destruct_one_match; [exfalso|reflexivity].
+        admit. (* TODO mod 8 stuff *)
       + eassumption.
       + unfold FlatToRiscv.stmt_not_too_big.
         pose proof @flattenStmt_size as D1.
