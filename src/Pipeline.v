@@ -21,6 +21,7 @@ Require Import compiler.NameWithEq.
 Require Import riscv.encode.Encode.
 Require Import riscv.AxiomaticRiscv.
 Require Import riscv.proofs.DecodeEncode.
+Require Import compiler.EmitsValid.
 
 Section Pipeline.
 
@@ -187,12 +188,15 @@ Section Pipeline.
         admit.
   Admitted.
 
-  Lemma putProgram_containsProgram: forall p (initial: RiscvMachine),
-    4 * (length p) <= Memory.memSize initial.(machineMem) ->
-    FlatToRiscv.containsProgram
-      (putProgram (map (fun i : Instruction => ZToWord 32 (encode i)) p) $0 initial).(machineMem) p $0.
+  Lemma putProgram_containsProgram: forall s p (initial: RiscvMachine),
+      FlatToRiscv.valid_registers s ->
+      FlatToRiscv.compile_stmt s = p ->
+      EmitsValid.stmt_not_too_big s ->
+      4 * (length p) <= Memory.memSize initial.(machineMem) ->
+      FlatToRiscv.containsProgram
+        (putProgram (map (fun i => ZToWord 32 (encode i)) p) $0 initial).(machineMem) p $0.
   Proof.  
-    intros. unfold FlatToRiscv.containsProgram, putProgram.
+    intros. subst. unfold FlatToRiscv.containsProgram, putProgram.
     intros.
     destruct initial as [[regs pc0 eh] m].
     rewrite roundTrip_0. simpl in *. split.
@@ -207,19 +211,17 @@ Section Pipeline.
         subst f.
         rewrite wordToZ_ZToWord.
         * apply decode_encode.
-          unfold verify.
-          (* TODO argue that inst was emitted by compiler and therefore respects imm bounds *)
-          admit.
+          eapply compile_stmt_emits_valid; eassumption.
         * (* TODO argue that inst was emitted by compiler and therefore is 32 bits *)
           admit.
-      + assert (i < length p). {
+      + assert (i < length (FlatToRiscv.compile_stmt s)). {
           apply nth_error_Some. intro. congruence.
         }
         rewrite map_length.
         omega.
       + unfold Memory.valid_addr.
         rewrite roundTrip_0. simpl.
-        destruct p; simpl in *.
+        destruct (FlatToRiscv.compile_stmt s); simpl in *.
         * exfalso. eapply FlatToRiscv.nth_error_nil_Some. eassumption.
         * omega.
   Admitted.
@@ -252,7 +254,7 @@ Section Pipeline.
           match r with
           | execState _ ?x => specialize P with (initialL := x)
           end.
-      edestruct P as [fuelL [P1 P2]].
+      edestruct P as [fuelL [P1 P2]]; clear P.
       + admit. (* TODO translate_id *)
       + admit. (* TODO translate_id *)
       + eassumption.
@@ -271,13 +273,17 @@ Section Pipeline.
       + rewrite roundTrip_0. reflexivity.
       + eassumption.
       + admit. (* TODO containsMem! *)
-      + apply putProgram_containsProgram.
-        assumption.
+      + apply putProgram_containsProgram with (s := s).
+        * (* TODO valid_registers *)
+          admit.
+        * assumption.
+        * (* TODO stmt_not_too_big *)
+          admit.
+        * assumption.
       + reflexivity.
       + simpl. rewrite wplus_unit. reflexivity.
       + rewrite roundTrip_0. assumption.
       + exists fuelL. intros.
-        clear P.
         unfold getReg, FlatToRiscv.State_is_RegisterFile.
         unfold StateCalculus.extends in P1.
         unfold evalL.
