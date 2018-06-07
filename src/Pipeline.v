@@ -89,30 +89,6 @@ Section Pipeline.
     intros. eapply store_word_list_preserves_memSize_aux. reflexivity.
   Qed.
 
-  Lemma putProgram_containsProgram: forall p addr (initial: RiscvMachine),
-    #addr + 4 * (length p) <= Memory.memSize initial.(machineMem) ->
-    FlatToRiscv.containsProgram
-      (putProgram (map (fun i => ZToWord 32 (encode i)) p) addr initial).(machineMem) p addr.
-  Proof.
-    induction p; intros.
-    - unfold FlatToRiscv.containsProgram. split.
-      + simpl in *. assumption.
-      + intros. exfalso. eapply FlatToRiscv.nth_error_nil_Some. eassumption.
-    - unfold putProgram. rewrite map_cons.
-      unfold Memory.store_word_list. fold Memory.store_word_list.
-      unfold putProgram in IHp.
-      apply FlatToRiscv.containsProgram_cons.
-      + admit.
-      + admit.
-      + specialize (IHp (addr ^+ $4)
-          (with_machineMem (Memory.storeWord (machineMem initial) addr (ZToWord 32 (encode a)))
-                           initial)).
-        simpl in *.
-        apply IHp.
-        rewrite Memory.storeWord_preserves_memSize.
-        admit.
-  Abort.
-
   Lemma loadWord_before_store_word_list: forall sz (m: mem wXLEN) l (a1 a2: word wXLEN),
       length l = sz ->
       #a1 + 4 <= #a2 ->
@@ -160,6 +136,55 @@ Section Pipeline.
       + reflexivity.
       + omega.
       + rewrite Memory.storeWord_preserves_memSize. admit.
+  Admitted.
+
+  Lemma putProgram_containsProgram_not_really_simpler: forall p addr (initial: RiscvMachine),
+    #addr + 4 * (length p) <= Memory.memSize initial.(machineMem) ->
+    FlatToRiscv.containsProgram
+      (putProgram (map (fun i => ZToWord 32 (encode i)) p) addr initial).(machineMem) p addr.
+  Proof.
+    induction p; intros.
+    - unfold FlatToRiscv.containsProgram. split.
+      + simpl in *. assumption.
+      + intros. exfalso. eapply FlatToRiscv.nth_error_nil_Some. eassumption.
+    - unfold putProgram. rewrite map_cons.
+      unfold Memory.store_word_list. fold Memory.store_word_list.
+      unfold putProgram in IHp.
+      apply FlatToRiscv.containsProgram_cons.
+      + admit.
+      + unfold FlatToRiscv.containsProgram. split.
+        * simpl.
+          rewrite store_word_list_preserves_memSize.
+          rewrite Memory.storeWord_preserves_memSize.
+          simpl in H.
+          omega.
+        * intros. unfold FlatToRiscv.ldInst. simpl in *.
+          destruct i;
+            [| simpl in H0; exfalso; eapply FlatToRiscv.nth_error_nil_Some; eassumption].
+          simpl in H0. inversions H0. change (4 * 0) with 0.
+          rewrite <- (wplus_comm $0). rewrite wplus_unit.
+          erewrite loadWord_before_store_word_list.
+          { rewrite Memory.loadStoreWord_eq; [| |reflexivity].
+            - rewrite wordToZ_ZToWord. apply decode_encode.
+              + unfold verify.
+                (* TODO inst was emitted by compiler and therefore respects imm bounds *)
+                admit.
+              + (* TODO argue that inst was emitted by compiler and therefore is 32 bits *)
+                admit.
+            - admit.
+          }
+          { reflexivity. }
+          { admit. }
+          { rewrite Memory.storeWord_preserves_memSize. admit. }
+          { admit. }
+          { admit. }
+      + specialize (IHp (addr ^+ $4)
+          (with_machineMem (Memory.storeWord (machineMem initial) addr (ZToWord 32 (encode a)))
+                           initial)).
+        simpl in *.
+        apply IHp.
+        rewrite Memory.storeWord_preserves_memSize.
+        admit.
   Admitted.
 
   Lemma putProgram_containsProgram: forall p (initial: RiscvMachine),
