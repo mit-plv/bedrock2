@@ -129,7 +129,7 @@ Definition zeroedRiscvMachineL: RiscvMachineL := {|
 |}.
 
 Definition initialRiscvMachine(imem: list (word 32)): RiscvMachineL :=
-  putProgram imem zeroedRiscvMachineL.
+  putProgram imem $0 zeroedRiscvMachineL.
 
 Definition run: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
  @run RiscvBitWidths32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
@@ -152,13 +152,13 @@ Eval cbv in (length (fib6_L_trace 1000)).
 
 Eval cbv in (fib6_L_res 400).
 
-(* If cbv and vm_compute block or better performance is needed, we can extract to Haskell: *)
+(* If cbv and vm_compute block or better performance is needed, we can extract to Haskell:
 Definition finalfibres: nat := wordToNat (fib6_L_res 400).
 Require Extraction.
 Extraction Language Haskell.
 Set Warnings "-extraction-reserved-identifier".
 Extraction "Fib6.hs" finalfibres.
-
+*)
 
 (* 1st method: Run it *)
 Lemma fib6_L_res_is_13_by_running_it: exists fuel, fib6_L_res fuel = $13.

@@ -145,7 +145,7 @@ Section FlatToRiscv.
     rewrite drop_sub_N by (rewrite N.mul_add_distr_r; apply N.add_le_mono; assumption).
   Admitted.
 
-  Lemma remu_four_distrib_plus: forall a b,
+  Lemma remu_four_distrib_plus_true: forall a b,
       remu (a ^+ b) four = remu ((remu a four) ^+ (remu b four)) four.
   Proof.
     intros. rewrite! remu_def. rewrite! four_def.
@@ -153,6 +153,12 @@ Section FlatToRiscv.
     pose proof pow2_wXLEN_4.
     apply natToWord_nzero; omega.
   Qed.
+
+  (* TODO this one does not hold *)
+  Lemma remu_four_distrib_plus: forall a b, remu (a ^+ b) four = (remu a four) ^+ (remu b four).
+  Proof.
+    intros. rewrite remu_four_distrib_plus_true.
+  Admitted.
 
   Lemma wmod_mul: forall sz (a b: word sz), b <> $0 -> (a ^* b) ^% b = $0.
   Proof.

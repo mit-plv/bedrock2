@@ -96,7 +96,7 @@ Definition initialRiscvMachine_without_instructions(l: list nat): RiscvMachine :
 |}.
 
 Definition initialRiscvMachine(l: list nat): RiscvMachine
-  := putProgram listsum_bits (initialRiscvMachine_without_instructions l).
+  := putProgram listsum_bits $0 (initialRiscvMachine_without_instructions l).
 
 Close Scope Z_scope.
 

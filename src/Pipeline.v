@@ -58,7 +58,7 @@ Section Pipeline.
   Definition evalH := ExprImp.eval_stmt.
 
   Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
-    execState (run fuel) (putProgram (map (fun i => ZToWord 32 (encode i)) insts) initial).
+    execState (run fuel) (putProgram (map (fun i => ZToWord 32 (encode i)) insts) $0 initial).
 
   Lemma wXLEN_32: 32 <= wXLEN.
   Proof.
@@ -88,6 +88,30 @@ Section Pipeline.
   Proof.
     intros. eapply store_word_list_preserves_memSize_aux. reflexivity.
   Qed.
+
+  Lemma putProgram_containsProgram: forall p addr (initial: RiscvMachine),
+    #addr + 4 * (length p) <= Memory.memSize initial.(machineMem) ->
+    FlatToRiscv.containsProgram
+      (putProgram (map (fun i => ZToWord 32 (encode i)) p) addr initial).(machineMem) p addr.
+  Proof.
+    induction p; intros.
+    - unfold FlatToRiscv.containsProgram. split.
+      + simpl in *. assumption.
+      + intros. exfalso. eapply FlatToRiscv.nth_error_nil_Some. eassumption.
+    - unfold putProgram. rewrite map_cons.
+      unfold Memory.store_word_list. fold Memory.store_word_list.
+      unfold putProgram in IHp.
+      apply FlatToRiscv.containsProgram_cons.
+      + admit.
+      + admit.
+      + specialize (IHp (addr ^+ $4)
+          (with_machineMem (Memory.storeWord (machineMem initial) addr (ZToWord 32 (encode a)))
+                           initial)).
+        simpl in *.
+        apply IHp.
+        rewrite Memory.storeWord_preserves_memSize.
+        admit.
+  Abort.
 
   Lemma loadWord_before_store_word_list: forall sz (m: mem wXLEN) l (a1 a2: word wXLEN),
       length l = sz ->
@@ -141,7 +165,7 @@ Section Pipeline.
   Lemma putProgram_containsProgram: forall p (initial: RiscvMachine),
     4 * (length p) <= Memory.memSize initial.(machineMem) ->
     FlatToRiscv.containsProgram
-      (putProgram (map (fun i : Instruction => ZToWord 32 (encode i)) p) initial).(machineMem) p $0.
+      (putProgram (map (fun i : Instruction => ZToWord 32 (encode i)) p) $0 initial).(machineMem) p $0.
   Proof.  
     intros. unfold FlatToRiscv.containsProgram, putProgram.
     intros.
