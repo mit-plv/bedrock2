@@ -156,7 +156,7 @@ Definition editdist_L_final(fuel: nat): RiscvMachineL :=
   snd (run fuel initialRiscvMachineL).
 
 Definition editdist_L_res(fuel: nat): word wXLEN :=
-  (editdist_L_final fuel).(machine).(core).(registers) ExampleSrc.mincost.
+  force_option ((editdist_L_final fuel).(machine).(core).(registers) ExampleSrc.mincost).
 
 Definition editdist_L_trace(fuel: nat): Log :=
   (editdist_L_final fuel).(log).
@@ -165,6 +165,3 @@ Definition editdist_L_trace(fuel: nat): Log :=
    there are also two (InvalidInstruction 5), which are the length of the first and second
    string being loaded. *)
 Eval vm_compute in (editdist_L_trace 200).
-
-(* TODO the literals encoding in FlatToRiscv assumes that Addi takes 20bit constants,
-   but it only takes 12bit constants, so big literals don't work! *)

@@ -28,12 +28,7 @@ Definition Reg: Set := (@name FlatImp.TestFlatImp.ZName).
 
 Existing Instance DefaultRiscvState.
 
-Instance FunctionRegisterFile: RegisterFile (Register -> word wXLEN) Register (word wXLEN) := {|
-  getReg(rf: Register -> word wXLEN) := rf;
-  setReg(rf: Register -> word wXLEN)(r: Register)(v: word wXLEN) :=
-    fun r' => if (Z.eqb r' r) then v else rf r';
-  initialRegs := fun r => $0;
-|}.
+Existing Instance FlatToRiscv.State_is_RegisterFile.
 
 Definition var_a: var := 1.
 Definition var_b: var := 2.
@@ -105,9 +100,9 @@ Definition fib6_riscv := Eval cbv in fib6_riscv'.
 Print fib6_riscv.
 
 Definition fib6_bits: list (word 32) :=
-  ltac:(let res := eval cbv in (map (fun i => ZToWord 32 (encode i)) fib6_riscv) in exact res).
+  map (fun i => ZToWord 32 (encode i)) fib6_riscv.
 
-Print fib6_bits.
+Eval cbv in fib6_bits.
 
 (* This example uses the memory only as instruction memory
    TODO make an example which uses memory to store data *)
@@ -120,28 +115,46 @@ Definition zeroedRiscvMachineCore: RiscvMachineCore := {|
 
 Definition zeroedRiscvMachine: RiscvMachine := {|
     core := zeroedRiscvMachineCore;
-    machineMem := @zero_mem 32 ((length fib6_riscv) * 4);
+    machineMem := @zero_mem 32 ((length fib6_riscv + 1) * 4);
 |}.
+
+Definition initialRiscvMachine(imem: list (word 32)): RiscvMachine :=
+  Minimal.putProgram imem $0 zeroedRiscvMachine.
 
 Definition zeroedRiscvMachineL: RiscvMachineL := {|
     machine := zeroedRiscvMachine;
     log := nil;
 |}.
 
-Definition initialRiscvMachine(imem: list (word 32)): RiscvMachineL :=
+Definition initialRiscvMachineL(imem: list (word 32)): RiscvMachineL :=
   putProgram imem $0 zeroedRiscvMachineL.
 
-Definition run: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
- @run RiscvBitWidths32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
+ @Run.run RiscvBitWidths32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
-Definition fib6_L_final(fuel: nat): RiscvMachineL :=
+Definition runL: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
+ @Run.run RiscvBitWidths32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+
+Definition fib6_L_final(fuel: nat): RiscvMachine :=
   snd (run fuel (initialRiscvMachine fib6_bits)).
 
+Definition fib6_L_finalL(fuel: nat): RiscvMachineL :=
+  snd (runL fuel (initialRiscvMachineL fib6_bits)).
+
+Definition force_option(o: option (word wXLEN)): word wXLEN :=
+  match o with
+  | Some w => w
+  | None => $0
+  end.
+
 Definition fib6_L_res(fuel: nat): word wXLEN :=
-  (fib6_L_final fuel).(machine).(core).(registers) var_b.
+  force_option ((fib6_L_final fuel).(core).(registers) var_b).
+
+Definition fib6_L_resL(fuel: nat): word wXLEN :=
+  force_option ((fib6_L_finalL fuel).(machine).(core).(registers) var_b).
 
 Definition fib6_L_trace(fuel: nat): Log :=
-  (fib6_L_final fuel).(log).
+  (fib6_L_finalL fuel).(log).
 
 (* only uncomment this if you're sure there are no admits in the computational parts,
    and that no computations match on opaque proofs,
@@ -167,27 +180,65 @@ Lemma fib6_L_res_is_13_by_running_it: exists fuel, fib6_L_res fuel = $13.
   reflexivity.
 Qed.
 
-(* 2nd method: Prove it without running it, but using the compiler correctness theorem *)
+Lemma fib_H_res_value: fib_H_res 20 $6 = Some $13.
+Proof. cbv. reflexivity. Qed.
+
+(* 2nd method: Prove it without running it on low level, but using the
+   compiler correctness theorem *)
 Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   unfold fib6_L_res. unfold fib6_L_final.
   pose proof @exprImp2Riscv_correct as P.
-  (* TODO first finish updating compiler correctness theorem
-  assert (exists finalH, evalH 20 empty (fib_ExprImp $ (6)) = Some finalH) as F. {
+  assert (exists finalH,
+             evalH empty 20 empty Memory.no_mem (fib_ExprImp $ (6)) = Some finalH) as F. {
     eexists. reflexivity.
   }
-  destruct F as [finalH F].
-  specialize P with (3 := F).
-  specialize P with (varset := Function_Set var) (NG := NatNameGen).
-  specialize (P (initialRiscvMachine fib6_riscv)).
+  destruct F as [ [finalH finalMH ] F ].
+  specialize P with (5 := F).
+  specialize P with (varset := Function_Set Z) (NG := ZNameGen).
+  specialize P with (initialL := zeroedRiscvMachine).
+  specialize P with (IsMem := mem_is_Memory wXLEN).
   edestruct P as [fuelL G].
-  - cbv. omega.
+  - exact Minimal.MinimalRiscvSatisfiesAxioms.
+  - change 14%nat with (8 + 6)%nat.
+    rewrite Nat.pow_add_r.
+    assert (0 < 2 ^ 6)%nat by (apply zero_lt_pow2). forget (2 ^ 6)%nat as p.
+    cbv - [Nat.mul]. omega.
   - reflexivity.
-  - exists fuelL. apply G.
+  - match goal with
+    | |- (?a <= ?b)%nat => let a' := eval cbv in a in change a with a'(*;
+                         let b' := eval cbv in b in change a with b'*)
+    end.
+    unfold zeroedRiscvMachine.
+    cbv [machineMem zero_mem].
+    unfold Memory.memSize, mem_is_Memory.
+    rewrite const_mem_mem_size.
+    + cbv. do 4 apply le_S. apply le_n.
+    + cbv. reflexivity.
+    + match goal with
+      | |- (?a <= ?b)%nat => let a' := eval cbv in a in change a with a'
+      end.
+      change wXLEN with (9 + 23)%nat.
+      rewrite Nat.pow_add_r.
+      assert (0 < 2 ^ 23)%nat by (apply zero_lt_pow2). forget (2 ^ 23)%nat as p.
+      cbv - [Nat.mul]. omega.
+  - unfold FlatToRiscv.mem_inaccessible. intros.
+    unfold Memory.no_mem, Memory.read_mem in H.
+    destruct_one_match_hyp; discriminate.
+  - exists fuelL.
+    unfold force_option, run, fib6_bits, initialRiscvMachine.
+    unfold getReg, FlatToRiscv.State_is_RegisterFile, Common.get, Function_Map, id in G.
+    unfold evalL, execState in G.
+    apply G. clear G.
     assert (forall T (a b: T), Some a = Some b -> a = b) as E. {
       introv R. inversion R. reflexivity.
     }
-    apply E in F.
-    rewrite <- F. clear F.
-    cbv. reflexivity.
-  *)
-Admitted.
+    pose proof fib_H_res_value as R.
+    unfold fib_H_res in R.
+    unfold evalH in F.
+    match type of R with
+    | match ?x with _ => _ end = _  => replace x with (Some (finalH, finalMH)) in R
+    end.
+    assumption.
+Qed.    
+
+Print Assumptions fib6_L_res_is_13_by_proving_it.
