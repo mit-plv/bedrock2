@@ -142,7 +142,7 @@ Section FlatToRiscv.
     exact C.
   Qed.
 
-  (* This counterexample will hopefully be found by users who use commands
+  (* These counterexamples will hopefully be found by users who use commands
      such as "Search ((_ ^+ _) ^% _)" *)
   Lemma wmod_plus_distr_does_not_hold: ~ forall sz (a b m: word sz),
       m <> $0 ->
@@ -154,6 +154,16 @@ Section FlatToRiscv.
     specialize (C H). discriminate.
   Qed.
 
+  Lemma wmul_mod_distr_does_not_hold: ~ forall sz (a b n: word sz),
+      n <> $0 ->
+      (a ^* b) ^% n = ((a ^% n) ^* (b ^% n)) ^% n.
+  Proof.
+    intro C.
+    specialize (C 4 $9 $11 $7). cbv in C.
+    match type of C with (?A -> _) => assert A by (intro; discriminate) end.
+    specialize (C H). discriminate.
+  Qed.
+  
   Lemma remu_four_distrib_plus_true: forall a b,
       remu (a ^+ b) four = remu ((remu a four) ^+ (remu b four)) four.
   Proof.
@@ -166,33 +176,152 @@ Section FlatToRiscv.
     intros. rewrite remu_four_distrib_plus_true.
   Admitted.
 
+  (*
   Lemma wmod_mul: forall sz (a b: word sz), b <> $0 -> (a ^* b) ^% b = $0.
   Proof.
   Admitted.
+  *)
 
+  Lemma Nmod_0_r: forall a : N, (a mod 0)%N = a.
+  Proof.
+    intros. destruct a; reflexivity.
+  Qed.
+
+  Lemma wordToN_0: forall sz,
+      wordToN (natToWord sz 0) = 0%N.
+  Proof.
+    intros. change (natToWord sz 0) with (wzero sz).
+    apply wordToN_wzero.
+  Qed.
+
+  Lemma NToWord_0: forall sz,
+      NToWord sz 0 = $ (0).
+  Proof.
+    intros. change 0%nat with (N.to_nat 0).
+    apply NToWord_nat.
+  Qed.
+  
+  Lemma wmod_0_r: forall sz (a: word sz), a ^% $0 = a.
+  Proof.
+    intros. unfold wmod, wordBin.
+    rewrite wordToN_0.
+    rewrite Nmod_0_r.
+    apply NToWord_wordToN.
+  Qed.
+
+  Lemma wmod_divides: forall sz (a b: word sz),
+      a ^% b = $0 ->
+      exists k, a = b ^* k.
+  Proof.
+    intros. destruct (weq b $0).
+    - subst b. rewrite wmod_0_r in *. subst a. exists (natToWord sz 0).
+      symmetry. apply wmult_neut_r.
+    - unfold wmod, wmult, wordBin in *.
+      pose proof (N.mod_divides (wordToN a) (wordToN b)) as P.
+      apply wordToN_neq_0 in n.
+      specialize (P n).
+      destruct P as [ [k P] _].
+      + apply (f_equal (@wordToN sz)) in H.
+        rewrite wordToN_NToWord_2 in H.
+        * rewrite H. apply wordToN_0.
+        * pose proof (wordToN_bound a). remember (wordToN a) as c. clear Heqc a.
+          pose proof (wordToN_bound b). remember (wordToN b) as d. clear Heqd b.
+          pose proof (N.mod_upper_bound c d n).
+          nomega.
+      + exists (NToWord sz (k - k / (Npow2 sz) * Npow2 sz)).
+        rewrite wordToN_NToWord_2.
+        { rewrite N.mul_sub_distr_l.
+          rewrite N.mul_assoc.
+          rewrite drop_sub_N.
+          - rewrite <- P. symmetry. apply NToWord_wordToN.
+          - rewrite <- N.mul_assoc.
+            rewrite <- (N.mul_comm (Npow2 sz)).
+            apply N.mul_le_mono_l.
+            apply (N.mul_div_le k (Npow2 sz)).
+            apply Npow2_not_zero.
+        }
+        { rewrite <- N.mul_comm. rewrite <- N.mod_eq by (apply Npow2_not_zero).
+          apply N.mod_upper_bound. apply Npow2_not_zero. }
+  Qed.
+
+  Lemma wmod_divides_other_direction_does_not_hold: ~ forall sz (a b: word sz),
+      b <> $0 ->
+      (exists k, a = b ^* k) ->
+      a ^% b = $0.
+  Proof.
+    intro C. specialize (C 4 $14 $5).
+    match type of C with (?A -> _) => assert A by (intro; discriminate) end.
+    specialize (C H).
+    match type of C with (?A -> _) => assert A as B end.
+    - exists (natToWord 4 6). reflexivity.
+    - specialize (C B). cbv in C. discriminate.
+  Qed.
+  
+  Lemma wmod_mul_does_not_hold: ~ forall sz (a b: word sz),
+      b <> $0 ->
+      (a ^* b) ^% b = $0.
+  Proof.
+    intro C.
+    specialize (C 4 $6 $5).
+    match type of C with (?A -> _) => assert A by (intro; discriminate) end.
+    specialize (C H).
+    cbv in C.
+    discriminate.
+  Qed.
+
+  Lemma wmult_plus_distr_l: forall (sz : nat) (x y z : word sz),
+      z ^* (x ^+ y) = z ^* x ^+ z ^* y.
+  Proof.
+    intros. rewrite! (wmult_comm z).
+    apply wmult_plus_distr.
+  Qed.
+
+  Lemma wmod_same: forall sz (a: word sz), a ^% a = $0.
+  Proof.
+    intros. destruct (weq a $0).
+    - subst a. rewrite wmod_0_r in *. reflexivity.
+    - unfold wmod, wordBin. apply wordToN_neq_0 in n. rewrite N.mod_same by assumption.
+      apply NToWord_0.
+  Qed.
+
+  Lemma wmod_plus_zero: forall sz (a b m: word sz),
+      (a ^% m) = $0 ->
+      (b ^% m) = $0 ->
+      (a ^+ b) ^% m = $0.
+  Proof.
+    intros.
+    assert (sz = 4) by admit. assert (a = $7) by admit. assert (b = $14) by admit.
+    assert (m = $7) by admit. subst. cbv in *.
+  Abort. (* doesn't hold *)
+
+  Lemma wmod_plus_zero: forall sz (a b m: word sz),
+      (a ^% m) = $0 ->
+      (b ^% m) = $0 ->
+      (a ^+ b) ^% m = $0.
+  Proof.
+    intros.
+    assert (sz = 4) by admit. assert (m = $4) by admit. 
+  Abort. (* probably holds for m = $4 *)
+
+  Lemma wmod_plus_distr: forall sz (a b m: word sz),
+      (exists k, (wordToN m * k)%N = Npow2 sz) ->
+      (a ^+ b) ^% m = ((a ^% m) ^+ (b ^% m)) ^% m.
+  Proof.
+  Admitted.
+  
   Lemma remu_four_undo: forall a, remu ($4 ^* a) four = $0.
   Proof.
     intros. rewrite remu_def. rewrite four_def. rewrite wmult_comm.
+  Admitted. (*
     apply wmod_mul.
     pose proof pow2_wXLEN_4.
     apply natToWord_nzero; omega.
   Qed.
-
-  Lemma wmod_same: forall sz (a: word sz),
-      a <> $0 ->
-      a ^% a = $0.
-  Proof.
-    intros. unfold wmod, wordBin. rewrite N.mod_same.
-    - rewrite NToWord_nat. reflexivity.
-    - intro. apply H. rewrite <- (roundTripN_0 sz) in H0. apply wordToN_inj in H0.
-      subst a. rewrite NToWord_nat. reflexivity.
-  Qed.
+  *)
 
   Lemma remu_four_four: remu $4 four = $0.
   Proof.
     rewrite remu_def. rewrite four_def. apply wmod_same.
-    pose proof pow2_wXLEN_4.
-    apply natToWord_nzero; omega.
   Qed.
 
   Lemma bitSlice_split: forall sz1 sz2 v,
