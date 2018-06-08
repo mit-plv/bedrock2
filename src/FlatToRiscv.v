@@ -129,30 +129,36 @@ Section FlatToRiscv.
   Proof.
   Admitted.
 
-  Lemma wmod_plus_distr: forall sz (a b m: word sz),
+  Lemma wordToN_neq_0: forall sz (b : word sz),
+      b <> $0 ->
+      wordToN b <> 0%N.
+  Proof.
+    intros.
+    intro C.
+    apply H.
+    apply wordToN_inj.
+    erewrite <- wordToN_wzero in C.
+    unfold wzero in C.
+    exact C.
+  Qed.
+
+  (* This counterexample will hopefully be found by users who use commands
+     such as "Search ((_ ^+ _) ^% _)" *)
+  Lemma wmod_plus_distr_does_not_hold: ~ forall sz (a b m: word sz),
       m <> $0 ->
       (a ^+ b) ^% m = ((a ^% m) ^+ (b ^% m)) ^% m.
   Proof.
-    intros. unfold wplus, wmod, wordBin.
-    destruct (wordToN_NToWord sz (wordToN a mod wordToN m)) as [ k1 [ P1 B1 ] ].
-    rewrite P1. clear P1.
-    destruct (wordToN_NToWord sz (wordToN b mod wordToN m)) as [ k2 [ P2 B2 ] ].
-    rewrite P2. clear P2.
-    rewrite N.add_sub_assoc by assumption.
-    rewrite <- N.add_sub_swap by assumption.
-    rewrite <- N.sub_add_distr.
-    rewrite <- N.mul_add_distr_r.
-    rewrite drop_sub_N by (rewrite N.mul_add_distr_r; apply N.add_le_mono; assumption).
-  Admitted.
+    intro C.
+    specialize (C 4 $9 $11 $7). cbv in C.
+    match type of C with (?A -> _) => assert A by (intro; discriminate) end.
+    specialize (C H). discriminate.
+  Qed.
 
   Lemma remu_four_distrib_plus_true: forall a b,
       remu (a ^+ b) four = remu ((remu a four) ^+ (remu b four)) four.
   Proof.
     intros. rewrite! remu_def. rewrite! four_def.
-    apply wmod_plus_distr.
-    pose proof pow2_wXLEN_4.
-    apply natToWord_nzero; omega.
-  Qed.
+  Admitted. (* TODO does the special case with 4 hold? *)
 
   (* TODO this one does not hold *)
   Lemma remu_four_distrib_plus: forall a b, remu (a ^+ b) four = (remu a four) ^+ (remu b four).
