@@ -606,10 +606,10 @@ Section FlatToRiscv.
 
   (* load and decode Inst *)
   Definition ldInst(m: mem wXLEN)(a: word wXLEN): Instruction :=
-    decode RV_wXLEN_IM (wordToZ (Memory.loadWord m a)).
+    decode RV_wXLEN_IM (uwordToZ (Memory.loadWord m a)).
 
   Definition decode_prog(prog: list (word 32)): list Instruction :=
-    map (fun w => decode RV_wXLEN_IM (wordToZ w)) prog.
+    map (fun w => decode RV_wXLEN_IM (uwordToZ w)) prog.
 
   Definition mem_inaccessible(m: Memory.mem)(start len: nat): Prop :=
     forall a w, Memory.read_mem a m = Some w -> not_in_range a wXLEN_in_bytes start len.

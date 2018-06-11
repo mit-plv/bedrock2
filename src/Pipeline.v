@@ -21,6 +21,7 @@ Require Import compiler.NameWithEq.
 Require Import riscv.encode.Encode.
 Require Import riscv.AxiomaticRiscv.
 Require Import riscv.proofs.DecodeEncode.
+Require Import riscv.proofs.EncodeBound.
 Require Import compiler.EmitsValid.
 
 Section Pipeline.
@@ -217,23 +218,22 @@ Section Pipeline.
     - rewrite load_store_word_list_eq; rewrite? map_length; auto.
       rewrite map_map.
       apply list_elementwise_same'. intuition idtac.
+      (* TODO de-duplicate *)
       + pose proof Memory.map_nth_error' as P.
         specialize P with (1 := H0).
         destruct P as [ inst [A B] ]. subst e.
         rewrite A. f_equal.
-        rewrite wordToZ_ZToWord.
+        rewrite uwordToZ_ZToWord.
         * symmetry. apply decode_encode.
           eapply compile_stmt_emits_valid; eassumption.
-        * (* TODO argue that inst was emitted by compiler and therefore is 32 bits *)
-          admit.
+        * apply encode_range.
       + erewrite map_nth_error by eassumption.
         f_equal.
-        rewrite wordToZ_ZToWord.
+        rewrite uwordToZ_ZToWord.
         * apply decode_encode.
           eapply compile_stmt_emits_valid; eassumption.
-        * (* TODO argue that inst was emitted by compiler and therefore is 32 bits *)
-          admit.
-  Admitted.
+        * apply encode_range.
+  Qed.
 
   (* We could also say something about the memory, but then the statement becomes more complex.
      And note that the register we look at could contain any value loaded from the memory. *)
