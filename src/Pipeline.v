@@ -70,6 +70,16 @@ Section Pipeline.
     clear. unfold wXLEN, bitwidth. destruct Bw; omega.
   Qed.
 
+  Lemma mod_add_r: forall a b,
+      b <> 0 ->
+      (a + b) mod b = a mod b.
+  Proof.
+    intros. rewrite <- Nat.add_mod_idemp_r by omega.
+    rewrite Nat.mod_same by omega.
+    rewrite Nat.add_0_r.
+    reflexivity.
+  Qed.
+
   Arguments mult: simpl never.
 
   (* TODO put into Memory.v *)
@@ -100,129 +110,129 @@ Section Pipeline.
     induction sz; intros; subst; destruct l; simpl in *; try congruence.
     inversions H.
     pose proof (Memory.memSize_bound m).
-    rewrite IHsz.
-    - apply Memory.loadStoreWord_ne; try assumption.
+    destruct l.
+    - simpl. apply Memory.loadStoreWord_ne; try assumption.
       intro C. subst. omega.
+    - simpl in H1. rewrite IHsz.
+      + apply Memory.loadStoreWord_ne; try assumption.
+        intro C. subst. omega.
+      + reflexivity.
+      + pose proof FlatToRiscv.pow2_wXLEN_4.
+        unfold Memory.valid_addr in *. intuition idtac.
+        rewrite wordToNat_wplus'; rewrite wordToNat_natToWord_idempotent'; try omega.
+      + simpl. rewrite Memory.storeWord_preserves_memSize. 
+        rewrite wordToNat_wplus';
+          rewrite wordToNat_natToWord_idempotent' by (apply FlatToRiscv.pow2_wXLEN_4);
+          intuition (try omega).
+      + rewrite Memory.storeWord_preserves_memSize. assumption.
+      + rewrite Memory.storeWord_preserves_memSize.
+        unfold Memory.valid_addr in *.
+        rewrite wordToNat_wplus';
+          rewrite wordToNat_natToWord_idempotent' by (apply FlatToRiscv.pow2_wXLEN_4);
+          rewrite? mod_add_r by omega;  
+          intuition (try omega).
+  Qed.
+
+  Local Arguments Nat.modulo: simpl never.
+
+  Lemma load_store_word_list_eq: forall l (m: mem wXLEN) ll a1 a2,
+      a2 = a1 ->
+      ll = length l ->
+      #a1 mod 4 = 0 ->
+      #a1 + 4 * (length l) <= Memory.memSize m ->
+      Memory.load_word_list (Memory.store_word_list l a1 m) a2 ll = l.
+  Proof.
+    induction l; intros; subst; simpl in *.
     - reflexivity.
-    - pose proof FlatToRiscv.pow2_wXLEN_4.
-      unfold Memory.valid_addr in *. intuition idtac.
-      rewrite wordToNat_wplus'; rewrite wordToNat_natToWord_idempotent'; try omega.
-      (* TODO similar to containsProgram stuff *)
-      admit.
-    - admit.
-    - rewrite Memory.storeWord_preserves_memSize. assumption.
-    - rewrite Memory.storeWord_preserves_memSize. (* TODO *) admit.
-  Admitted.
-
-  Lemma loadWord_store_word_list: forall i (m: mem wXLEN) l a,
-      0 <= i < length l ->
-      Memory.valid_addr a 4 (Memory.memSize m) ->
-      Memory.loadWord (Memory.store_word_list l a m) (a ^+ $(4 * i))  = nth i l $0.
-  Proof.
-    induction i; intros; destruct l; simpl in *.
-    - exfalso. omega.
-    - erewrite loadWord_before_store_word_list.
-      + apply Memory.loadStoreWord_eq.
-        * assumption.
-        * (* TODO make FlatToRiscv.solve_word_eq available *) admit.
-      + reflexivity.
-      + admit.
-      + (* TODO needs more hyps *) admit.
-      + rewrite Memory.storeWord_preserves_memSize. admit.
-      + admit.
-    - exfalso. omega.
-    - replace (a ^+ $ (4 * S i)) with ((a ^+ $4) ^+ $(4 * i)) by admit.
-      rewrite IHi.
-      + reflexivity.
-      + omega.
-      + rewrite Memory.storeWord_preserves_memSize. admit.
-  Admitted.
-
-  Lemma putProgram_containsProgram_not_really_simpler: forall p addr (initial: RiscvMachine),
-    #addr + 4 * (length p) <= Memory.memSize initial.(machineMem) ->
-    FlatToRiscv.containsProgram
-      (putProgram (map (fun i => ZToWord 32 (encode i)) p) addr initial).(machineMem) p addr.
-  Proof.
-    induction p; intros.
-    - unfold FlatToRiscv.containsProgram. split.
-      + simpl in *. assumption.
-      + intros. exfalso. eapply FlatToRiscv.nth_error_nil_Some. eassumption.
-    - unfold putProgram. rewrite map_cons.
-      unfold Memory.store_word_list. fold Memory.store_word_list.
-      unfold putProgram in IHp.
-      apply FlatToRiscv.containsProgram_cons.
-      + admit.
-      + unfold FlatToRiscv.containsProgram. split.
-        * simpl.
-          rewrite store_word_list_preserves_memSize.
-          rewrite Memory.storeWord_preserves_memSize.
-          simpl in H.
-          omega.
-        * intros. unfold FlatToRiscv.ldInst. simpl in *.
-          destruct i;
-            [| simpl in H0; exfalso; eapply FlatToRiscv.nth_error_nil_Some; eassumption].
-          simpl in H0. inversions H0. change (4 * 0) with 0.
-          rewrite <- (wplus_comm $0). rewrite wplus_unit.
-          erewrite loadWord_before_store_word_list.
-          { rewrite Memory.loadStoreWord_eq; [| |reflexivity].
-            - rewrite wordToZ_ZToWord. apply decode_encode.
-              + unfold verify.
-                (* TODO inst was emitted by compiler and therefore respects imm bounds *)
-                admit.
-              + (* TODO argue that inst was emitted by compiler and therefore is 32 bits *)
-                admit.
-            - admit.
+    - pose proof (Memory.memSize_bound m).
+      pose proof FlatToRiscv.pow2_wXLEN_4.
+      destruct l.
+      + simpl. f_equal. apply Memory.loadStoreWord_eq; try reflexivity.
+        unfold Memory.valid_addr. omega.
+      + f_equal.
+        * erewrite loadWord_before_store_word_list; try reflexivity.
+          { apply Memory.loadStoreWord_eq; try reflexivity.
+            unfold Memory.valid_addr. omega. }
+          { simpl in H2. rewrite wordToNat_wplus';
+            rewrite wordToNat_natToWord_idempotent' by assumption;
+            omega. }
+          { simpl in *.
+            rewrite Memory.storeWord_preserves_memSize.
+            rewrite wordToNat_wplus';
+            rewrite wordToNat_natToWord_idempotent' by assumption;
+            omega. }
+          { rewrite Memory.storeWord_preserves_memSize.
+            unfold Memory.valid_addr. omega. }
+          { rewrite Memory.storeWord_preserves_memSize.
+            simpl in H2.
+            unfold Memory.valid_addr.
+            rewrite wordToNat_wplus';
+              rewrite wordToNat_natToWord_idempotent' by assumption;
+              rewrite? mod_add_r by omega;  
+              intuition (try omega).
           }
-          { reflexivity. }
-          { admit. }
-          { rewrite Memory.storeWord_preserves_memSize. admit. }
-          { admit. }
-          { admit. }
-      + specialize (IHp (addr ^+ $4)
-          (with_machineMem (Memory.storeWord (machineMem initial) addr (ZToWord 32 (encode a)))
-                           initial)).
-        simpl in *.
-        apply IHp.
-        rewrite Memory.storeWord_preserves_memSize.
-        admit.
-  Admitted.
+        * rewrite IHl; try reflexivity.
+          { simpl in H2.
+            rewrite wordToNat_wplus';
+              rewrite wordToNat_natToWord_idempotent' by assumption;
+              rewrite? mod_add_r by omega;  
+              intuition (try omega). }
+          { simpl in H2.
+            rewrite Memory.storeWord_preserves_memSize.
+            simpl.
+            rewrite wordToNat_wplus';
+              rewrite wordToNat_natToWord_idempotent' by assumption;
+              rewrite? mod_add_r by omega;  
+              intuition (try omega). }
+  Qed.
 
-  Lemma putProgram_containsProgram: forall s p (initial: RiscvMachine),
+  Lemma list_elementwise_same': forall (A : Type) (l1 l2 : list A),
+      (forall i e, nth_error l1 i = Some e <-> nth_error l2 i = Some e) ->
+      l1 = l2.
+  Proof.
+    intros.
+    apply Memory.list_elementwise_same.
+    intro i.
+    destruct (nth_error l1 i) as [e1|] eqn: E1.
+    - edestruct H as [A1 A2]. specialize (A1 E1). congruence.
+    - destruct (nth_error l2 i) as [e2|] eqn: E2; [|reflexivity].
+      edestruct H as [A1 A2]. specialize (A2 E2). congruence.
+  Qed.
+
+  Lemma putProgram_containsProgram: forall s a p (initial: RiscvMachine),
       FlatToRiscv.valid_registers s ->
       FlatToRiscv.compile_stmt s = p ->
       EmitsValid.stmt_not_too_big s ->
-      4 * (length p) <= Memory.memSize initial.(machineMem) ->
+      #a mod 4 = 0 ->
+      #a + 4 * (length p) <= Memory.memSize initial.(machineMem) ->
       FlatToRiscv.containsProgram
-        (putProgram (map (fun i => ZToWord 32 (encode i)) p) $0 initial).(machineMem) p $0.
+        (putProgram (map (fun i => ZToWord 32 (encode i)) p) a initial).(machineMem) p a.
   Proof.  
-    intros. subst. unfold FlatToRiscv.containsProgram, putProgram.
-    intros.
+    intros. subst.
+    rewrite FlatToRiscv.containsProgram_alt.
+    unfold FlatToRiscv.containsProgram', FlatToRiscv.decode_prog, putProgram.
     destruct initial as [[regs pc0 eh] m].
-    rewrite roundTrip_0. simpl in *. split.
+    simpl in *. split.
     - rewrite store_word_list_preserves_memSize. assumption.
-    - intros.
-      unfold FlatToRiscv.ldInst.
-      rewrite loadWord_store_word_list.
-      + remember (fun i0 : Instruction => ZToWord 32 (encode i0)) as f.
-        replace (natToWord 32 0) with (f (InvalidInstruction 0)) by (subst; reflexivity).
-        rewrite map_nth.
-        erewrite nth_error_nth by eassumption.
-        subst f.
+    - rewrite load_store_word_list_eq; rewrite? map_length; auto.
+      rewrite map_map.
+      apply list_elementwise_same'. intuition idtac.
+      + pose proof Memory.map_nth_error' as P.
+        specialize P with (1 := H0).
+        destruct P as [ inst [A B] ]. subst e.
+        rewrite A. f_equal.
+        rewrite wordToZ_ZToWord.
+        * symmetry. apply decode_encode.
+          eapply compile_stmt_emits_valid; eassumption.
+        * (* TODO argue that inst was emitted by compiler and therefore is 32 bits *)
+          admit.
+      + erewrite map_nth_error by eassumption.
+        f_equal.
         rewrite wordToZ_ZToWord.
         * apply decode_encode.
           eapply compile_stmt_emits_valid; eassumption.
         * (* TODO argue that inst was emitted by compiler and therefore is 32 bits *)
           admit.
-      + assert (i < length (FlatToRiscv.compile_stmt s)). {
-          apply nth_error_Some. intro. congruence.
-        }
-        rewrite map_length.
-        omega.
-      + unfold Memory.valid_addr.
-        rewrite roundTrip_0. simpl.
-        destruct (FlatToRiscv.compile_stmt s); simpl in *.
-        * exfalso. eapply FlatToRiscv.nth_error_nil_Some. eassumption.
-        * omega.
   Admitted.
 
   (* We could also say something about the memory, but then the statement becomes more complex.
@@ -291,7 +301,8 @@ Section Pipeline.
         * assumption.
         * (* TODO stmt_not_too_big *)
           admit.
-        * assumption.
+        * rewrite roundTrip_0. reflexivity.
+        * rewrite roundTrip_0. rewrite Nat.add_0_l. assumption.
       + reflexivity.
       + simpl. rewrite wplus_unit. reflexivity.
       + rewrite roundTrip_0. assumption.
