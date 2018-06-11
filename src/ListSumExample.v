@@ -178,7 +178,7 @@ Proof.
     unfold initialMemH, FlatToRiscv.mem_inaccessible.
     intros. unfold Memory.read_mem in *.
     do 2 (destruct_one_match_hyp; try discriminate).
-    unfold FlatToRiscv.not_in_range.
+    unfold Memory.not_in_range.
     right.
     unfold input_base in n.
     unfold wXLEN, RiscvBitWidths32, RiscvBitWidths.bitwidth in *.

@@ -14,7 +14,7 @@ Require Import riscv.PseudoInstructions.
 Require Import riscv.RiscvMachine.
 Require Import riscv.Execute.
 Require Import riscv.Run.
-Require riscv.Memory.
+Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
 Require Import riscv.RiscvBitWidths.
 Require Import compiler.NameWithEq.
@@ -57,29 +57,6 @@ End RegisterFile.
 
 Existing Instance State_is_RegisterFile.
 
-
-(* Note: alignment refers to addr, not to the range *)
-Definition in_range{w: nat}(addr: word w)(alignment start size: nat): Prop :=
-  start <= wordToNat addr /\ wordToNat addr + alignment <= start + size /\ wordToNat addr mod alignment = 0.
-
-Definition not_in_range{w: nat}(addr: word w)(alignment start size: nat): Prop :=
-  wordToNat addr + alignment <= start \/ start + size <= wordToNat addr.
-
-Lemma loadWord_storeDouble_ne': forall {sz: nat} (Mem : Set) (MM : Memory.Memory Mem sz) (m : Mem)
-                                       (a1 a2 : word sz) (v : word 64),
-    in_range a1 8 0 (Memory.memSize m) ->
-    in_range a2 4 0 (Memory.memSize m) ->
-    not_in_range a2 4 #a1 8 -> (* a2 (4 bytes big) is not in the 8-byte range starting at a1 *)
-    Memory.loadWord (Memory.storeDouble m a1 v) a2 = Memory.loadWord m a2.
-Proof using .
-  intros.
-  pose proof (Memory.memSize_bound m).
-  apply Memory.loadWord_storeDouble_ne;
-    unfold in_range, not_in_range, Memory.valid_addr in *;
-    simpl in *;
-    intuition (subst; try omega);
-    rewrite (wordToNat_wplus' a1 $4) in H6; rewrite wordToNat_natToWord_idempotent' in *; try omega. 
-Qed.
 
 Section FlatToRiscv.
 
@@ -631,6 +608,9 @@ Section FlatToRiscv.
   Definition ldInst(m: mem wXLEN)(a: word wXLEN): Instruction :=
     decode RV_wXLEN_IM (wordToZ (Memory.loadWord m a)).
 
+  Definition decode_prog(prog: list (word 32)): list Instruction :=
+    map (fun w => decode RV_wXLEN_IM (wordToZ w)) prog.
+
   Definition mem_inaccessible(m: Memory.mem)(start len: nat): Prop :=
     forall a w, Memory.read_mem a m = Some w -> not_in_range a wXLEN_in_bytes start len.
 
@@ -638,6 +618,44 @@ Section FlatToRiscv.
     #offset + 4 * length program <= Memory.memSize m /\
     forall i inst, nth_error program i = Some inst ->
       ldInst m (offset ^+ $(4 * i)) = inst.
+
+  Definition containsProgram'(m: mem wXLEN)(program: list Instruction)(offset: word wXLEN) :=
+    #offset + 4 * length program <= Memory.memSize m /\
+    decode_prog (Memory.load_word_list m offset (length program)) = program.
+
+  Lemma containsProgram_alt: forall m program offset,
+      containsProgram m program offset <-> containsProgram' m program offset.
+  Proof.
+    intros. unfold containsProgram, containsProgram', decode_prog. intuition idtac.
+    - apply list_elementwise_same. intro i. specialize (H1 i).
+      assert (i < length program \/ length program <= i) as C by omega.
+      destruct C as [C | C].
+      + destruct (nth_error_Some program i) as [_ P].
+        specialize (P C).
+        destruct (nth_error program i) as [inst|] eqn: E; try contradiction.
+        specialize (H1 _ eq_refl). unfold ldInst in H1.
+        erewrite map_nth_error.
+        * f_equal. eassumption.
+        * apply nth_error_load_word_list. assumption.
+      + destruct (nth_error_None program i) as  [_ P].
+        specialize (P C). rewrite P.
+        edestruct nth_error_None as  [_ Q].
+        apply Q.
+        rewrite map_length.
+        rewrite length_load_word_list.
+        assumption.
+    - unfold ldInst. rewrite <- H1 in H.
+      pose proof (map_nth_error') as P.
+      specialize P with (1 := H).
+      destruct P as [inst' [P Q] ].
+      subst inst.
+      do 2 f_equal.
+      rewrite nth_error_load_word_list in P.
+      + congruence.
+      + edestruct (nth_error_Some (Memory.load_word_list m offset (length program))) as  [Q _].
+        rewrite length_load_word_list in Q.
+        apply Q. congruence.
+  Qed.
 
   Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
   Proof.
