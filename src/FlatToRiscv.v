@@ -82,30 +82,6 @@ Section FlatToRiscv.
     unfold four, two. rewrite! add_def. rewrite! one_def. solve_word_eq.
   Qed.
 
-  Lemma NToWord_plus: forall (sz : nat) (a b : N),
-      NToWord sz (a + b) = NToWord sz a ^+ NToWord sz b.
-  Proof.
-    destruct sz as [|sz]; intros n m; intuition idtac.
-    (*
-    rewrite wplus_wplusN.
-    unfold wplusZ, wordBinZ.
-    destruct (wordToZ_ZToWord' (S sz) n) as [k1 D1].
-    destruct (wordToZ_ZToWord' (S sz) m) as [k2 D2].
-    rewrite D1.
-    rewrite D2.
-    replace (n - k1 * Z.of_N (Npow2 (S sz)) + (m - k2 * Z.of_N (Npow2 (S sz))))%Z
-      with (n + m - (k1 + k2) * Z.of_N (Npow2 (S sz)))%Z by nia.
-    symmetry.
-    apply ZToWord_Npow2_sub_z.
-     *)
-  Admitted.
-
-  Lemma drop_sub_N: forall sz (n k : N),
-      (k * Npow2 sz <= n)%N ->
-      NToWord sz (n - k * Npow2 sz) = NToWord sz n.
-  Proof.
-  Admitted.
-
   Lemma wordToN_neq_0: forall sz (b : word sz),
       b <> $0 ->
       wordToN b <> 0%N.
@@ -140,24 +116,6 @@ Section FlatToRiscv.
     match type of C with (?A -> _) => assert A by (intro; discriminate) end.
     specialize (C H). discriminate.
   Qed.
-  
-  Lemma remu_four_distrib_plus_true: forall a b,
-      remu (a ^+ b) four = remu ((remu a four) ^+ (remu b four)) four.
-  Proof.
-    intros. rewrite! remu_def. rewrite! four_def.
-  Admitted. (* TODO does the special case with 4 hold? *)
-
-  (* TODO this one does not hold *)
-  Lemma remu_four_distrib_plus: forall a b, remu (a ^+ b) four = (remu a four) ^+ (remu b four).
-  Proof.
-    intros. rewrite remu_four_distrib_plus_true.
-  Admitted.
-
-  (*
-  Lemma wmod_mul: forall sz (a b: word sz), b <> $0 -> (a ^* b) ^% b = $0.
-  Proof.
-  Admitted.
-  *)
 
   Lemma Nmod_0_r: forall a : N, (a mod 0)%N = a.
   Proof.
@@ -184,6 +142,49 @@ Section FlatToRiscv.
     rewrite wordToN_0.
     rewrite Nmod_0_r.
     apply NToWord_wordToN.
+  Qed.
+
+  Lemma wordToN_NToWord_eqn: forall sz (n : N),
+      wordToN (NToWord sz n) = (n mod Npow2 sz)%N.
+  Proof.
+    intros.
+    pose proof (Npow2_not_zero sz).
+    apply Nnat.N2Nat.inj.
+    rewrite wordToN_to_nat.
+    rewrite N2Nat_inj_mod by assumption.
+    rewrite Npow2_nat.
+    rewrite <- wordToNat_natToWord_eqn.
+    rewrite <- NToWord_nat.
+    reflexivity.
+  Qed.
+
+  Lemma Nminus_mod_idemp_r: forall a b n : N,
+      (n <> 0)%N ->
+      (b <= a)%N ->
+      ((a - b mod n) mod n)%N = ((a - b) mod n)%N.
+  Proof.
+    intros.
+    apply N2Z.inj.
+    rewrite? N2Z.inj_mod by assumption.
+    pose proof (N.mod_le b n H).
+    rewrite N2Z.inj_sub by (eapply N.le_trans; eassumption).
+    rewrite N2Z.inj_sub by assumption.
+    rewrite? N2Z.inj_mod by assumption.
+    apply Zdiv.Zminus_mod_idemp_r.
+  Qed.
+
+  Lemma drop_sub_N: forall sz (n k : N),
+      (k * Npow2 sz <= n)%N ->
+      NToWord sz (n - k * Npow2 sz) = NToWord sz n.
+  Proof.
+    intros.
+    apply wordToN_inj.
+    pose proof (Npow2_not_zero sz).
+    do 2 rewrite wordToN_NToWord_eqn.
+    rewrite <- Nminus_mod_idemp_r by assumption.
+    rewrite N.mod_mul by assumption.
+    rewrite N.sub_0_r.
+    reflexivity.
   Qed.
 
   Lemma wmod_divides: forall sz (a b: word sz),
@@ -261,44 +262,128 @@ Section FlatToRiscv.
       apply NToWord_0.
   Qed.
 
-  Lemma wmod_plus_zero: forall sz (a b m: word sz),
-      (a ^% m) = $0 ->
-      (b ^% m) = $0 ->
-      (a ^+ b) ^% m = $0.
+  Lemma wmod_0_l: forall sz (m: word sz),
+      $0 ^% m = $0.
   Proof.
-    intros.
-    assert (sz = 4) by admit. assert (a = $7) by admit. assert (b = $14) by admit.
-    assert (m = $7) by admit. subst. cbv in *.
-  Abort. (* doesn't hold *)
-
-  Lemma wmod_plus_zero: forall sz (a b m: word sz),
-      (a ^% m) = $0 ->
-      (b ^% m) = $0 ->
-      (a ^+ b) ^% m = $0.
-  Proof.
-    intros.
-    assert (sz = 4) by admit. assert (m = $4) by admit. 
-  Abort. (* probably holds for m = $4 *)
+    intros. unfold wmod, wordBin.
+    rewrite wordToN_0.
+    destruct (N.eq_dec (wordToN m) 0%N).
+    - rewrite e. change (0 mod 0)%N with 0%N. apply NToWord_0.
+    - rewrite N.mod_0_l by assumption. apply NToWord_0.
+  Qed.
 
   Lemma wmod_plus_distr: forall sz (a b m: word sz),
       (exists k, (wordToN m * k)%N = Npow2 sz) ->
       (a ^+ b) ^% m = ((a ^% m) ^+ (b ^% m)) ^% m.
   Proof.
-  Admitted.
+    intros. destruct H as [k E].
+    assert (wordToN m <> 0%N) as H. {
+      intro C. rewrite C in E. simpl in E. symmetry in E.
+      apply Npow2_not_zero in E.
+      assumption.
+    }
+    unfold wplus, wmod, wordBin.
+    pose proof (wordToN_bound a). remember (wordToN a) as c. clear Heqc a.
+    pose proof (wordToN_bound b). remember (wordToN b) as d. clear Heqd b.
+    pose proof (wordToN_bound m). remember (wordToN m) as n. clear Heqn m.
+    pose proof (N.mod_upper_bound c n H).
+    pose proof (N.mod_upper_bound d n H).
+    rewrite (@wordToN_NToWord_2 sz (c mod n)) by nomega.
+    rewrite (@wordToN_NToWord_2 sz (d mod n)) by nomega.
+    repeat match goal with
+    | |- context [wordToN (NToWord ?sz ?n)] =>
+      let k := fresh "k" in
+      let E := fresh "E" in
+      let B := fresh "B" in
+      destruct (wordToN_NToWord sz n) as [ k [E B] ];
+      rewrite E in *; clear E
+    end.
+    rewrite <- E in *.
+    rewrite <- Nminus_mod_idemp_r by assumption.
+    rewrite <- (@Nminus_mod_idemp_r (c mod n + d mod n)) by assumption.
+    rewrite (N.mul_comm n k).
+    do 2 rewrite N.mul_assoc.
+    do 2 rewrite N.mod_mul by assumption.
+    do 2 rewrite N.sub_0_r.
+    f_equal.
+    apply N.add_mod.
+    assumption.
+  Qed.
+  
+  Lemma wmod_mul: forall sz (a b: word sz),
+      (exists k, (wordToN b * k)%N = Npow2 sz) ->
+      (a ^* b) ^% b = $0.
+  Proof.
+    intros. destruct H as [k E].
+    assert (wordToN b <> 0%N) as H. {
+      intro C. rewrite C in E. simpl in E. symmetry in E.
+      apply Npow2_not_zero in E.
+      assumption.
+    }
+    unfold wmult, wmod, wordBin.
+    pose proof (wordToN_bound a). remember (wordToN a) as c. clear Heqc a.
+    pose proof (wordToN_bound b). remember (wordToN b) as d. clear Heqd b.
+    pose proof (N.mod_upper_bound c d H).
+    repeat match goal with
+    | |- context [wordToN (NToWord ?sz ?n)] =>
+      let k := fresh "k" in
+      let E := fresh "E" in
+      let B := fresh "B" in
+      destruct (wordToN_NToWord sz n) as [ k [E B] ];
+      rewrite E in *; clear E
+    end.
+    rewrite <- E in *.
+    rewrite <- Nminus_mod_idemp_r by assumption.
+    rewrite (N.mul_comm d k).
+    rewrite N.mul_assoc.
+    rewrite N.mod_mul by assumption.
+    rewrite N.sub_0_r.
+    rewrite N.mul_mod by assumption.
+    rewrite N.mod_same by assumption.
+    rewrite N.mul_0_r.
+    rewrite N.mod_0_l by assumption.
+    apply NToWord_0.
+  Qed.
+
+  Lemma four_divides_Npow2_wXLEN:
+      exists k : N, (wordToN (natToWord wXLEN 4) * k)%N = Npow2 wXLEN.
+  Proof.
+    unfold wXLEN, bitwidth in *.
+    destruct Bw.
+    - exists (Npow2 30). reflexivity.
+    - exists (Npow2 62). reflexivity.
+  Qed.
   
   Lemma remu_four_undo: forall a, remu ($4 ^* a) four = $0.
   Proof.
     intros. rewrite remu_def. rewrite four_def. rewrite wmult_comm.
-  Admitted. (*
     apply wmod_mul.
-    pose proof pow2_wXLEN_4.
-    apply natToWord_nzero; omega.
+    apply four_divides_Npow2_wXLEN.
   Qed.
-  *)
 
   Lemma remu_four_four: remu $4 four = $0.
   Proof.
     rewrite remu_def. rewrite four_def. apply wmod_same.
+  Qed.
+
+  Lemma remu_four_distrib_plus: forall a b,
+      remu (a ^+ b) four = remu ((remu a four) ^+ (remu b four)) four.
+  Proof.
+    intros. rewrite! remu_def. rewrite! four_def.
+    apply wmod_plus_distr.
+    apply four_divides_Npow2_wXLEN.
+  Qed.
+
+  Lemma remu_four_zero_distrib_plus: forall a b,
+      remu a four = $0 ->
+      remu b four = $0 ->
+      remu (a ^+ b) four = $0.
+  Proof.
+    intros. rewrite remu_four_distrib_plus.
+    rewrite H. rewrite H0.
+    rewrite wplus_unit.
+    rewrite remu_def.
+    apply wmod_0_l.
   Qed.
 
   Lemma bitSlice_split: forall sz1 sz2 v,
@@ -1481,8 +1566,8 @@ Section FlatToRiscv.
     end;
     rewrite <-? (Z.mul_comm 4);
     rewrite? ZToWord_mult;
-    rewrite? Z4four;                                    
-    rewrite? remu_four_distrib_plus;
+    rewrite? Z4four;
+    repeat (apply remu_four_zero_distrib_plus);
     rewrite? remu_four_undo;
     rewrite? remu_four_four;
     repeat match goal with
@@ -2029,6 +2114,25 @@ Section FlatToRiscv.
       (* jump over else-branch *)
       intros.
       destruct_everything.
+
+  Ltac prove_remu_four_zero ::=
+    match goal with
+    | |- remu _ four = $0 => idtac
+    | |- $0 = remu _ four => symmetry
+    | _ => fail 1 "wrong shape of goal"
+    end;
+    rewrite <-? (Z.mul_comm 4);
+    rewrite? ZToWord_mult;
+    rewrite? Z4four;
+    repeat (apply remu_four_zero_distrib_plus);
+    rewrite? remu_four_undo;
+    rewrite? remu_four_four;
+    repeat match goal with
+           | H: _ |- _ => apply remu40_mod40 in H; rewrite H
+           end;
+    rewrite? wplus_unit;
+    reflexivity.
+
       run1step.
       run1done.
 
