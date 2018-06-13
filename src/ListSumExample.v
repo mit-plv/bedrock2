@@ -152,6 +152,7 @@ Proof.
     pose proof (zero_lt_pow2 6).
     forget (pow2 6) as x.
     apply lt_mul_mono; cbv; omega.
+  - cbv. auto 20.
   - reflexivity.
   - match goal with
     | |- context [length ?x] => let r := eval cbv in (length x) in change (length x) with r

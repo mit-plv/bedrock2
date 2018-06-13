@@ -50,11 +50,12 @@ Section Pipeline.
   Context {NGstate: Type}.
   Context {NG: NameGen var vars NGstate}.
 
+  Definition flatten(s: ExprImp.stmt): FlatImp.stmt :=
+    let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
+    let (sFlat, ngs') := flattenStmt ngs s in sFlat.
   
   Definition exprImp2Riscv(s: ExprImp.stmt): list Instruction :=
-    let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
-    let (sFlat, ngs') := flattenStmt ngs s in
-    FlatToRiscv.compile_stmt sFlat.
+    FlatToRiscv.compile_stmt (flatten s).
 
   Definition evalH := ExprImp.eval_stmt.
 
@@ -125,11 +126,15 @@ Section Pipeline.
       (repeat apply mult_lt_compat_l; [ | repeat constructor ..]);
       apply one_lt_pow2.
   Qed.
+
+  Definition enough_registers(s: ExprImp.stmt): Prop :=
+    FlatToRiscv.valid_registers (flatten s).
   
   (* We could also say something about the memory, but then the statement becomes more complex.
      And note that the register we look at could contain any value loaded from the memory. *)
   Lemma exprImp2Riscv_correct: forall sH initialL instsL fuelH finalH initialMemH finalMemH,
     ExprImp.stmt_size sH < 2 ^ 14 ->
+    enough_registers sH ->
     exprImp2Riscv sH = instsL ->
     4 * length instsL <= Memory.memSize initialL.(machineMem) ->
     evalH empty fuelH empty initialMemH sH = Some (finalH, finalMemH) ->
@@ -139,8 +144,9 @@ Section Pipeline.
       get finalH resVar = Some res ->
       getReg (evalL fuelL instsL initialL).(core).(registers) resVar = res.
   Proof.
-    introv B C MB EvH Ina.
-    unfold exprImp2Riscv in C.
+    introv B ER C MB EvH Ina.
+    unfold exprImp2Riscv, flatten in C.
+    unfold enough_registers, flatten in ER.
     destruct_one_match_hyp.
     unfold evalH in EvH.
     pose proof flattenStmt_correct as P.
@@ -190,13 +196,12 @@ Section Pipeline.
         rewrite Nat.pow_add_r.
         change (2 ^ 2) with 4.
         omega.
-      + admit. (* TODO valid_registers *)
+      + assumption.
       + rewrite roundTrip_0. reflexivity.
       + eassumption.
       + admit. (* TODO containsMem! *)
       + apply putProgram_containsProgram with (s := s).
-        * (* TODO valid_registers *)
-          admit.
+        * assumption.
         * assumption.
         * (* TODO stmt_not_too_big *)
           admit.

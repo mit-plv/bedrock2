@@ -183,6 +183,11 @@ Qed.
 Lemma fib_H_res_value: fib_H_res 20 $6 = Some $13.
 Proof. cbv. reflexivity. Qed.
 
+Lemma enough_registers_for_fib6: enough_registers (fib_ExprImp $6).
+Proof.
+  cbv. auto 20.
+Qed.
+
 (* 2nd method: Prove it without running it on low level, but using the
    compiler correctness theorem *)
 Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
@@ -193,8 +198,8 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
     eexists. reflexivity.
   }
   destruct F as [ [finalH finalMH ] F ].
+  specialize P with (3 := enough_registers_for_fib6).
   specialize P with (5 := F).
-  specialize P with (varset := Function_Set Z) (NG := ZNameGen).
   specialize P with (initialL := zeroedRiscvMachine).
   specialize P with (IsMem := mem_is_Memory wXLEN).
   edestruct P as [fuelL G].
