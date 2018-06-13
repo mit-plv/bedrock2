@@ -204,10 +204,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   specialize P with (IsMem := mem_is_Memory wXLEN).
   edestruct P as [fuelL G].
   - exact Minimal.MinimalRiscvSatisfiesAxioms.
-  - change 14%nat with (8 + 6)%nat.
-    rewrite Nat.pow_add_r.
-    assert (0 < 2 ^ 6)%nat by (apply zero_lt_pow2). forget (2 ^ 6)%nat as p.
-    cbv - [Nat.mul]. omega.
+  - cbv. reflexivity.
   - reflexivity.
   - match goal with
     | |- (?a <= ?b)%nat => let a' := eval cbv in a in change a with a'(*;

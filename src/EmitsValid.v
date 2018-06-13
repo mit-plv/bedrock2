@@ -284,9 +284,6 @@ Section EmitsValid.
       intuition (try omega).
   Qed.
 
-  (* TODO remove Local in FlatToRiscv, and also, is 2^9 really the best we can get? *)
-  Local Definition stmt_not_too_big(s: stmt): Prop := Z.of_nat (stmt_size s) < 2 ^ 9.
-
   Arguments Z.of_nat: simpl never.
   Arguments Z.mul: simpl never.
   Arguments Z.pow: simpl never.

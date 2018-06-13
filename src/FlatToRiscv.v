@@ -853,28 +853,16 @@ Section FlatToRiscv.
     | |- ?G => idtac "did not solve" G
     end.
 
-  (* separate definition to better guide automation: don't simpl 16, but keep it as a 
-     constant to stay in linear arithmetic *)
-  Local Definition stmt_not_too_big(s: stmt): Prop := stmt_size s * 16 < pow2 20.
+  (* TODO is 2^9 really the best we can get? *)
+  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size s) < 2 ^ 9)%Z.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
     | H: stmt_not_too_big _ |- stmt_not_too_big _ =>
         unfold stmt_not_too_big in *;
+        change (2 ^ 9)%Z with 512%Z in *;
         simpl stmt_size in H;
-        omega
-    end.
-
-  Local Ltac solve_length_compile_stmt :=
-    repeat match goal with
-    | s: stmt |- _ => unique pose proof (compile_stmt_size s)
-    end;
-    lazymatch goal with
-    | H: stmt_not_too_big _ |- _ =>
-        unfold stmt_not_too_big in *;
-        simpl stmt_size in H;
-        unfold pow2; fold pow2;
-        omega
+        lia
     end.
 
   (* Needed because simpl will unfold (4 * ...) which is unreadable *)

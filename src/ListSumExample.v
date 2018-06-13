@@ -148,10 +148,7 @@ Proof.
                     (initialL := (initialRiscvMachine_without_instructions l)).
   unfold Pipeline.evalH in Q.
   edestruct Q as [fuelL P]; try eassumption.
-  - change 14 with (8 + 6). rewrite Nat.pow_add_r.
-    pose proof (zero_lt_pow2 6).
-    forget (pow2 6) as x.
-    apply lt_mul_mono; cbv; omega.
+  - cbv. reflexivity.
   - cbv. auto 20.
   - reflexivity.
   - match goal with

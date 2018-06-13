@@ -13,6 +13,7 @@ Require Import riscv.Riscv.
 Require Import riscv.util.Monads.
 Require Import compiler.runsToSatisfying.
 Require Import compiler.MyOmega.
+Require Import Coq.micromega.Lia.
 Require Import bbv.DepEqNat.
 Require Import compiler.NameGen.
 Require Import compiler.Common.
@@ -77,7 +78,7 @@ Section Pipeline.
   Lemma putProgram_containsProgram: forall s a p (initial: RiscvMachine),
       FlatToRiscv.valid_registers s ->
       FlatToRiscv.compile_stmt s = p ->
-      EmitsValid.stmt_not_too_big s ->
+      FlatToRiscv.stmt_not_too_big s ->
       #a mod 4 = 0 ->
       #a + 4 * (length p) <= Memory.memSize initial.(machineMem) ->
       FlatToRiscv.containsProgram
@@ -133,7 +134,7 @@ Section Pipeline.
   (* We could also say something about the memory, but then the statement becomes more complex.
      And note that the register we look at could contain any value loaded from the memory. *)
   Lemma exprImp2Riscv_correct: forall sH initialL instsL fuelH finalH initialMemH finalMemH,
-    ExprImp.stmt_size sH < 2 ^ 14 ->
+    (Z.of_nat (ExprImp.stmt_size sH) < 2 ^ 7)%Z ->
     enough_registers sH ->
     exprImp2Riscv sH = instsL ->
     4 * length instsL <= Memory.memSize initialL.(machineMem) ->
@@ -149,6 +150,17 @@ Section Pipeline.
     unfold enough_registers, flatten in ER.
     destruct_one_match_hyp.
     unfold evalH in EvH.
+    assert (FlatToRiscv.stmt_not_too_big s) as N. {
+      unfold FlatToRiscv.stmt_not_too_big.
+      pose proof @flattenStmt_size as D1.
+      specialize D1 with (1 := E).
+      clear -B D1.
+      apply Nat2Z.inj_le in D1.
+      repeat (so fun hyporgoal => match hyporgoal with
+      | context [ (2 ^ ?a)%Z ] => let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
+      end).
+      lia.
+    }
     pose proof flattenStmt_correct as P.
     specialize (P fuelH sH s initialMemH finalH finalMemH).
     destruct P as [fuelM [finalM [EvM GM]]].
@@ -185,28 +197,13 @@ Section Pipeline.
         * apply wordToNat_zero in H. contradiction.
         * apply natToWord_nzero; omega.
       + eassumption.
-      + unfold FlatToRiscv.stmt_not_too_big.
-        pose proof @flattenStmt_size as D1.
-        specialize (D1 _ _ _ _ _ _ _ _ _ _ E).
-        clear -B D1.
-        change 20 with (16 + 4).
-        rewrite Nat.pow_add_r.
-        apply Nat.mul_lt_mono_pos_r; [ simpl; omega | ].
-        change 16 with (2 + 14).
-        rewrite Nat.pow_add_r.
-        change (2 ^ 2) with 4.
-        omega.
+      + assumption.
       + assumption.
       + rewrite roundTrip_0. reflexivity.
       + eassumption.
       + admit. (* TODO containsMem! *)
-      + apply putProgram_containsProgram with (s := s).
-        * assumption.
-        * assumption.
-        * (* TODO stmt_not_too_big *)
-          admit.
-        * rewrite roundTrip_0. reflexivity.
-        * rewrite roundTrip_0. rewrite Nat.add_0_l. assumption.
+      + apply putProgram_containsProgram with (s := s);
+          rewrite? roundTrip_0; rewrite? Nat.add_0_l; (assumption || reflexivity).
       + reflexivity.
       + simpl. rewrite wplus_unit. reflexivity.
       + rewrite roundTrip_0. assumption.
