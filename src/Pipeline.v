@@ -71,134 +71,7 @@ Section Pipeline.
     clear. unfold wXLEN, bitwidth. destruct Bw; omega.
   Qed.
 
-  Lemma mod_add_r: forall a b,
-      b <> 0 ->
-      (a + b) mod b = a mod b.
-  Proof.
-    intros. rewrite <- Nat.add_mod_idemp_r by omega.
-    rewrite Nat.mod_same by omega.
-    rewrite Nat.add_0_r.
-    reflexivity.
-  Qed.
-
-  Arguments mult: simpl never.
-
-  (* TODO put into Memory.v *)
-  Lemma store_word_list_preserves_memSize_aux: forall sz (m: mem wXLEN) a l,
-      length l = sz ->
-      Memory.memSize (Memory.store_word_list l a m) = Memory.memSize m.
-  Proof.
-    induction sz; intros; subst; destruct l; simpl in *; try congruence.
-    inversions H.
-    rewrite IHsz by reflexivity.
-    apply Memory.storeWord_preserves_memSize.
-  Qed.
-
-  Lemma store_word_list_preserves_memSize: forall (m: mem wXLEN) l a,
-      Memory.memSize (Memory.store_word_list l a m) = Memory.memSize m.
-  Proof.
-    intros. eapply store_word_list_preserves_memSize_aux. reflexivity.
-  Qed.
-
-  Lemma loadWord_before_store_word_list: forall sz (m: mem wXLEN) l (a1 a2: word wXLEN),
-      length l = sz ->
-      #a1 + 4 <= #a2 ->
-      #a2 + 4 * sz <= (Memory.memSize m) ->
-      Memory.valid_addr a1 4 (Memory.memSize m) ->
-      Memory.valid_addr a2 4 (Memory.memSize m) ->
-      Memory.loadWord (Memory.store_word_list l a2 m) a1  = Memory.loadWord m a1.
-  Proof.
-    induction sz; intros; subst; destruct l; simpl in *; try congruence.
-    inversions H.
-    pose proof (Memory.memSize_bound m).
-    destruct l.
-    - simpl. apply Memory.loadStoreWord_ne; try assumption.
-      intro C. subst. omega.
-    - simpl in H1. rewrite IHsz.
-      + apply Memory.loadStoreWord_ne; try assumption.
-        intro C. subst. omega.
-      + reflexivity.
-      + pose proof FlatToRiscv.pow2_wXLEN_4.
-        unfold Memory.valid_addr in *. intuition idtac.
-        rewrite wordToNat_wplus'; rewrite wordToNat_natToWord_idempotent'; try omega.
-      + simpl. rewrite Memory.storeWord_preserves_memSize. 
-        rewrite wordToNat_wplus';
-          rewrite wordToNat_natToWord_idempotent' by (apply FlatToRiscv.pow2_wXLEN_4);
-          intuition (try omega).
-      + rewrite Memory.storeWord_preserves_memSize. assumption.
-      + rewrite Memory.storeWord_preserves_memSize.
-        unfold Memory.valid_addr in *.
-        rewrite wordToNat_wplus';
-          rewrite wordToNat_natToWord_idempotent' by (apply FlatToRiscv.pow2_wXLEN_4);
-          rewrite? mod_add_r by omega;  
-          intuition (try omega).
-  Qed.
-
-  Local Arguments Nat.modulo: simpl never.
-
-  Lemma load_store_word_list_eq: forall l (m: mem wXLEN) ll a1 a2,
-      a2 = a1 ->
-      ll = length l ->
-      #a1 mod 4 = 0 ->
-      #a1 + 4 * (length l) <= Memory.memSize m ->
-      Memory.load_word_list (Memory.store_word_list l a1 m) a2 ll = l.
-  Proof.
-    induction l; intros; subst; simpl in *.
-    - reflexivity.
-    - pose proof (Memory.memSize_bound m).
-      pose proof FlatToRiscv.pow2_wXLEN_4.
-      destruct l.
-      + simpl. f_equal. apply Memory.loadStoreWord_eq; try reflexivity.
-        unfold Memory.valid_addr. omega.
-      + f_equal.
-        * erewrite loadWord_before_store_word_list; try reflexivity.
-          { apply Memory.loadStoreWord_eq; try reflexivity.
-            unfold Memory.valid_addr. omega. }
-          { simpl in H2. rewrite wordToNat_wplus';
-            rewrite wordToNat_natToWord_idempotent' by assumption;
-            omega. }
-          { simpl in *.
-            rewrite Memory.storeWord_preserves_memSize.
-            rewrite wordToNat_wplus';
-            rewrite wordToNat_natToWord_idempotent' by assumption;
-            omega. }
-          { rewrite Memory.storeWord_preserves_memSize.
-            unfold Memory.valid_addr. omega. }
-          { rewrite Memory.storeWord_preserves_memSize.
-            simpl in H2.
-            unfold Memory.valid_addr.
-            rewrite wordToNat_wplus';
-              rewrite wordToNat_natToWord_idempotent' by assumption;
-              rewrite? mod_add_r by omega;  
-              intuition (try omega).
-          }
-        * rewrite IHl; try reflexivity.
-          { simpl in H2.
-            rewrite wordToNat_wplus';
-              rewrite wordToNat_natToWord_idempotent' by assumption;
-              rewrite? mod_add_r by omega;  
-              intuition (try omega). }
-          { simpl in H2.
-            rewrite Memory.storeWord_preserves_memSize.
-            simpl.
-            rewrite wordToNat_wplus';
-              rewrite wordToNat_natToWord_idempotent' by assumption;
-              rewrite? mod_add_r by omega;  
-              intuition (try omega). }
-  Qed.
-
-  Lemma list_elementwise_same': forall (A : Type) (l1 l2 : list A),
-      (forall i e, nth_error l1 i = Some e <-> nth_error l2 i = Some e) ->
-      l1 = l2.
-  Proof.
-    intros.
-    apply Memory.list_elementwise_same.
-    intro i.
-    destruct (nth_error l1 i) as [e1|] eqn: E1.
-    - edestruct H as [A1 A2]. specialize (A1 E1). congruence.
-    - destruct (nth_error l2 i) as [e2|] eqn: E2; [|reflexivity].
-      edestruct H as [A1 A2]. specialize (A2 E2). congruence.
-  Qed.
+  Local Arguments mult: simpl never.
 
   Lemma putProgram_containsProgram: forall s a p (initial: RiscvMachine),
       FlatToRiscv.valid_registers s ->
@@ -210,14 +83,15 @@ Section Pipeline.
         (putProgram (map (fun i => ZToWord 32 (encode i)) p) a initial).(machineMem) p a.
   Proof.  
     intros. subst.
+    pose proof RiscvBitWidths.pow2_wXLEN_4 as X.
     rewrite FlatToRiscv.containsProgram_alt.
     unfold FlatToRiscv.containsProgram', FlatToRiscv.decode_prog, putProgram.
     destruct initial as [[regs pc0 eh] m].
     simpl in *. split.
-    - rewrite store_word_list_preserves_memSize. assumption.
-    - rewrite load_store_word_list_eq; rewrite? map_length; auto.
+    - rewrite Memory.store_word_list_preserves_memSize. assumption.
+    - rewrite Memory.load_store_word_list_eq; rewrite? map_length; auto.
       rewrite map_map.
-      apply list_elementwise_same'. intuition idtac.
+      apply Memory.list_elementwise_same'. intuition idtac.
       (* TODO de-duplicate *)
       + pose proof Memory.map_nth_error' as P.
         specialize P with (1 := H0).
@@ -266,17 +140,12 @@ Section Pipeline.
       edestruct P as [fuelL [P1 P2]]; clear P.
       + unfold translate, DefaultRiscvState, default_translate.
         intros.
-        replace Utility.rem with Utility.remu by admit. (* TODO *)
         autorewrite with alu_defs.
-        rewrite FlatToRiscv.four_def.
         destruct_one_match; [exfalso|reflexivity].
         admit. (* TODO mod 4 stuff *)
       + unfold translate, DefaultRiscvState, default_translate.
         intros.
-        replace Utility.rem with Utility.remu by admit. (* TODO *)
-        unfold Utility.eight.
         autorewrite with alu_defs.
-        rewrite FlatToRiscv.four_def.
         destruct_one_match; [exfalso|reflexivity].
         admit. (* TODO mod 8 stuff *)
       + eassumption.

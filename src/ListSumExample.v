@@ -158,7 +158,7 @@ Proof.
     end.
     unfold initialRiscvMachine_without_instructions, putProgram.
     cbv [machineMem with_pc with_nextPC with_machineMem].
-    pose proof store_word_list_preserves_memSize as R.
+    pose proof @Memory.store_word_list_preserves_memSize as R.
     unfold wXLEN, bitwidth, RiscvBitWidths.bitwidth, RiscvBitWidths32 in R|-*; rewrite R.
     unfold infJalMem. rewrite R.
     unfold zero_mem, Memory.memSize, mem_is_Memory.
