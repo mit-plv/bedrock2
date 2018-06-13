@@ -226,6 +226,9 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   - unfold FlatToRiscv.mem_inaccessible. intros.
     unfold Memory.no_mem, Memory.read_mem in H.
     destruct_one_match_hyp; discriminate.
+  - unfold FlatToRiscv.containsMem, Memory.no_mem. intros.
+    unfold Memory.read_mem in *.
+    destruct_one_match_hyp; discriminate.
   - exists fuelL.
     unfold force_option, run, fib6_bits, initialRiscvMachine.
     unfold getReg, FlatToRiscv.State_is_RegisterFile, Common.get, Function_Map, id in G.

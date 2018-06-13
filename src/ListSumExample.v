@@ -113,12 +113,37 @@ Definition listsum_res(fuel: nat)(l: list nat): word wXLEN :=
 
 Eval vm_compute in (listsum_res 400 [4; 5; 3]).
 
+(*
+Definition initialize_with_wXLEN_list_H{Bw : RiscvBitWidths}(l: list (word wXLEN))
+           (offset: word wXLEN) : Memory.mem :=
+  fun (a: word wXLEN) =>
+    if dec (#offset <= #a < #offset + (length l * wXLEN_in_bytes)
+            /\ #a mod wXLEN_in_bytes = 0) then
+      nth_error l (#(a ^- offset)  / wXLEN_in_bytes)
+    else
+      None.
+*)
+
+Definition initialize_with_wXLEN_list_H{Bw : RiscvBitWidths}(l: list (word wXLEN))
+           (offset: word wXLEN) : Memory.mem :=
+  fun (a: word wXLEN) =>
+    if dec (#offset <= #a) then
+      nth_error l (#(a ^- offset) / wXLEN_in_bytes)
+    else
+      None.
+
+Lemma invert_initialize_Some: forall l offset w a,
+    Memory.read_mem a (initialize_with_wXLEN_list_H l offset) = Some w ->
+    nth_error l (#(a ^- offset) / wXLEN_in_bytes) = Some w /\
+    #offset <= #a /\
+    #a mod 4 = 0.
+Proof.
+  intros. unfold Memory.read_mem, initialize_with_wXLEN_list_H in *.
+  repeat (destruct_one_match_hyp; try discriminate). auto.
+Qed.
 
 Definition initialMemH(l: list nat): Memory.mem :=
-  fun (a: word 32) => if dec (wordToNat a < input_base) then
-                        None (* make inaccessible to protect instruction memory *)
-                      else
-                        nth_error (mk_input l) ((wordToNat a - input_base)  / 4).
+  initialize_with_wXLEN_list_H (mk_input l) $input_base.
 
 Definition evalH(fuel: nat)(l: list nat): option (state * Memory.mem) :=
  eval_stmt empty fuel empty (initialMemH l) ExampleSrc.listsum.
@@ -130,6 +155,12 @@ Definition listsum_res_H(fuel: nat)(l: list nat): option (word 32) :=
   end.
 
 Eval vm_compute in (listsum_res_H 40 [3; 7; 6]).
+
+Lemma store_word_list_contains_initialize: forall words offset m,
+    FlatToRiscv.containsMem (Memory.store_word_list words offset m)
+                            (initialize_with_wXLEN_list_H words offset).
+Proof.
+Admitted.
 
 (* Note: the high-level program also runs on a memory of size memory_size and also uses just
    32-bit words, so you might have overflows in the high-level program, and the compiler does
@@ -174,13 +205,20 @@ Proof.
     | |- _ _ _ ?x => let x' := eval cbv in x in change x with x'
     end.
     unfold initialMemH, FlatToRiscv.mem_inaccessible.
-    intros. unfold Memory.read_mem in *.
-    do 2 (destruct_one_match_hyp; try discriminate).
+    intros.
+    apply invert_initialize_Some in H0. intuition idtac.
     unfold Memory.not_in_range.
     right.
-    unfold input_base in n.
+    unfold input_base in *.
     unfold wXLEN, RiscvBitWidths32, RiscvBitWidths.bitwidth in *.
+    assert (# (natToWord 32 512) = 512) as F by (abstract reflexivity).
+    rewrite F in H0.
     omega.
+  - unfold initialRiscvMachine_without_instructions, machineMem, initialMemH.
+    unfold wXLEN, RiscvBitWidths32, RiscvBitWidths.bitwidth in *.
+    forget (natToWord 32 input_base) as offset.
+    forget (mk_input l) as words.
+    apply store_word_list_contains_initialize.
   - exists fuelL.
     unfold initialRiscvMachine, putProgram.
     apply P. apply H.

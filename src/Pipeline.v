@@ -128,6 +128,15 @@ Section Pipeline.
       apply one_lt_pow2.
   Qed.
 
+  (* TODO needs some bounds, probably *)
+  Lemma store_word_list_preserves_containsMem: forall a words mL mH ll,
+      length words = ll ->
+      FlatToRiscv.mem_inaccessible mH a (4 * ll) ->
+      FlatToRiscv.containsMem mL mH ->
+      FlatToRiscv.containsMem (Memory.store_word_list words $a mL) mH.
+  Proof.
+  Admitted.
+
   Definition enough_registers(s: ExprImp.stmt): Prop :=
     FlatToRiscv.valid_registers (flatten s).
   
@@ -140,12 +149,13 @@ Section Pipeline.
     4 * length instsL <= Memory.memSize initialL.(machineMem) ->
     evalH empty fuelH empty initialMemH sH = Some (finalH, finalMemH) ->
     FlatToRiscv.mem_inaccessible initialMemH 0 (4 * length instsL) ->
+    FlatToRiscv.containsMem initialL.(machineMem) initialMemH ->
     exists fuelL,
       forall resVar res,
       get finalH resVar = Some res ->
       getReg (evalL fuelL instsL initialL).(core).(registers) resVar = res.
   Proof.
-    introv B ER C MB EvH Ina.
+    introv B ER C MB EvH Ina Cm.
     unfold exprImp2Riscv, flatten in C.
     unfold enough_registers, flatten in ER.
     destruct_one_match_hyp.
@@ -201,7 +211,10 @@ Section Pipeline.
       + assumption.
       + rewrite roundTrip_0. reflexivity.
       + eassumption.
-      + admit. (* TODO containsMem! *)
+      + unfold putProgram. simpl.
+        eapply store_word_list_preserves_containsMem; try reflexivity; try eassumption.
+        rewrite map_length.
+        assumption.
       + apply putProgram_containsProgram with (s := s);
           rewrite? roundTrip_0; rewrite? Nat.add_0_l; (assumption || reflexivity).
       + reflexivity.
@@ -213,6 +226,6 @@ Section Pipeline.
         unfold evalL.
         erewrite P1; try reflexivity.
         apply GM. exact H.
-  Admitted.
+  Qed.
 
 End Pipeline.
