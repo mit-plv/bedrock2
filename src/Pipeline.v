@@ -109,6 +109,23 @@ Section Pipeline.
         * apply encode_range.
   Qed.
 
+  Lemma weqb_false_iff: forall (sz : nat) (x y : word sz), weqb x y = false <-> x <> y.
+  Proof.
+    intros.
+    pose proof (weqb_true_iff x y).
+    destruct (weqb x y) eqn: E; intuition congruence.
+  Qed.
+
+  (* TODO rename pow2_wXLEN_4 like this *)
+  Lemma eight_lt_pow2_wXLEN: 8 < pow2 wXLEN.
+  Proof.
+    unfold wXLEN, bitwidth. destruct Bw;
+      do 3 rewrite pow2_S;
+      change 8 with (2 * (2 * (2 * 1))) at 1;
+      (repeat apply mult_lt_compat_l; [ | repeat constructor ..]);
+      apply one_lt_pow2.
+  Qed.
+  
   (* We could also say something about the memory, but then the statement becomes more complex.
      And note that the register we look at could contain any value loaded from the memory. *)
   Lemma exprImp2Riscv_correct: forall sH initialL instsL fuelH finalH initialMemH finalMemH,
@@ -141,13 +158,26 @@ Section Pipeline.
       + unfold translate, DefaultRiscvState, default_translate.
         intros.
         autorewrite with alu_defs.
+        (* TODO all of this should be something like autorewrite in * *)
         destruct_one_match; [exfalso|reflexivity].
-        admit. (* TODO mod 4 stuff *)
+        apply Bool.negb_true_iff in E0.
+        apply weqb_false_iff in E0.
+        pose proof pow2_wXLEN_4 as Q.
+        rewrite <- (wordToNat_natToWord_idempotent' wXLEN Q) in H.
+        rewrite <- wordToNat_mod in H.
+        * apply wordToNat_zero in H. contradiction.
+        * apply natToWord_nzero; omega.
       + unfold translate, DefaultRiscvState, default_translate.
         intros.
         autorewrite with alu_defs.
         destruct_one_match; [exfalso|reflexivity].
-        admit. (* TODO mod 8 stuff *)
+        apply Bool.negb_true_iff in E0.
+        apply weqb_false_iff in E0.
+        pose proof eight_lt_pow2_wXLEN as Q.
+        rewrite <- (wordToNat_natToWord_idempotent' wXLEN Q) in H.
+        rewrite <- wordToNat_mod in H.
+        * apply wordToNat_zero in H. contradiction.
+        * apply natToWord_nzero; omega.
       + eassumption.
       + unfold FlatToRiscv.stmt_not_too_big.
         pose proof @flattenStmt_size as D1.
