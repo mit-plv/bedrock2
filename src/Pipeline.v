@@ -128,6 +128,30 @@ Section Pipeline.
       apply one_lt_pow2.
   Qed.
 
+  Lemma loadWord_outside_store_word_list:
+    forall (sz : nat) (Mem : Set) (MM : Memory.Memory Mem sz),
+    forall ll (m: Mem) l a1 a2,
+      length l = ll ->
+      Memory.not_in_range a1 4 #a1 ll ->      
+      #a2 + 4 * ll <= Memory.memSize m ->
+      Memory.valid_addr a1 4 (Memory.memSize m) ->
+      Memory.valid_addr a2 4 (Memory.memSize m) ->
+      Memory.loadWord (Memory.store_word_list l a2 m) a1 = Memory.loadWord m a1.
+  Proof using .
+  Admitted.
+
+  Lemma loadDouble_outside_store_word_list:
+    forall (sz : nat) (Mem : Set) (MM : Memory.Memory Mem sz),
+    forall ll (m: Mem) l a1 a2,
+      length l = ll ->
+      Memory.not_in_range a1 4 #a1 ll ->      
+      #a2 + 4 * ll <= Memory.memSize m ->
+      Memory.valid_addr a1 8 (Memory.memSize m) ->
+      Memory.valid_addr a2 4 (Memory.memSize m) ->
+      Memory.loadDouble (Memory.store_word_list l a2 m) a1 = Memory.loadDouble m a1.
+  Proof using .
+  Admitted.
+  
   (* TODO needs some bounds, probably *)
   Lemma store_word_list_preserves_containsMem: forall a words mL mH ll,
       length words = ll ->
@@ -135,6 +159,15 @@ Section Pipeline.
       FlatToRiscv.containsMem mL mH ->
       FlatToRiscv.containsMem (Memory.store_word_list words $a mL) mH.
   Proof.
+    unfold FlatToRiscv.containsMem. intros.
+    specialize (H1 addr v H2).
+    rewrite Memory.store_word_list_preserves_memSize.
+    intuition idtac.
+    unfold FlatToRiscv.loadWordwXLEN, wXLEN, bitwidth in *; destruct Bw.
+    - erewrite loadWord_outside_store_word_list; try reflexivity; try assumption.
+      all: admit.
+    - erewrite loadDouble_outside_store_word_list; try reflexivity; try assumption.
+      all: admit.
   Admitted.
 
   Definition enough_registers(s: ExprImp.stmt): Prop :=
