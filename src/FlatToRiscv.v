@@ -1559,7 +1559,15 @@ Section FlatToRiscv.
         rewrite D by omega.
         omega.
   Qed.
-  
+
+  Lemma mem_inaccessible_read:  forall a initialMH w start len,
+      Memory.read_mem a initialMH = Some w ->
+      mem_inaccessible initialMH start len ->
+      not_in_range a wXLEN_in_bytes start len.
+  Proof.
+    intros. unfold mem_inaccessible in *. eapply H0. eassumption.
+  Qed.
+
   Lemma mem_inaccessible_write:  forall a v initialMH finalMH start len,
       Memory.write_mem a v initialMH = Some finalMH ->
       mem_inaccessible initialMH start len ->

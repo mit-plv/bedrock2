@@ -127,48 +127,28 @@ Section Pipeline.
       (repeat apply mult_lt_compat_l; [ | repeat constructor ..]);
       apply one_lt_pow2.
   Qed.
-
-  Lemma loadWord_outside_store_word_list:
-    forall (sz : nat) (Mem : Set) (MM : Memory.Memory Mem sz),
-    forall ll (m: Mem) l a1 a2,
-      length l = ll ->
-      Memory.not_in_range a1 4 #a1 ll ->      
-      #a2 + 4 * ll <= Memory.memSize m ->
-      Memory.valid_addr a1 4 (Memory.memSize m) ->
-      Memory.valid_addr a2 4 (Memory.memSize m) ->
-      Memory.loadWord (Memory.store_word_list l a2 m) a1 = Memory.loadWord m a1.
-  Proof using .
-  Admitted.
-
-  Lemma loadDouble_outside_store_word_list:
-    forall (sz : nat) (Mem : Set) (MM : Memory.Memory Mem sz),
-    forall ll (m: Mem) l a1 a2,
-      length l = ll ->
-      Memory.not_in_range a1 4 #a1 ll ->      
-      #a2 + 4 * ll <= Memory.memSize m ->
-      Memory.valid_addr a1 8 (Memory.memSize m) ->
-      Memory.valid_addr a2 4 (Memory.memSize m) ->
-      Memory.loadDouble (Memory.store_word_list l a2 m) a1 = Memory.loadDouble m a1.
-  Proof using .
-  Admitted.
   
-  (* TODO needs some bounds, probably *)
-  Lemma store_word_list_preserves_containsMem: forall a words mL mH ll,
-      length words = ll ->
-      FlatToRiscv.mem_inaccessible mH a (4 * ll) ->
+  Lemma store_word_list_preserves_containsMem: forall offset words mL mH,
+      #offset + 4 * length words <= Memory.memSize mL ->
+      Memory.valid_addr offset 4 (Memory.memSize mL) ->
+      FlatToRiscv.mem_inaccessible mH #offset (4 * length words) ->
       FlatToRiscv.containsMem mL mH ->
-      FlatToRiscv.containsMem (Memory.store_word_list words $a mL) mH.
+      FlatToRiscv.containsMem (Memory.store_word_list words offset mL) mH.
   Proof.
     unfold FlatToRiscv.containsMem. intros.
-    specialize (H1 addr v H2).
+    specialize (H2 addr v H3).
     rewrite Memory.store_word_list_preserves_memSize.
     intuition idtac.
-    unfold FlatToRiscv.loadWordwXLEN, wXLEN, bitwidth in *; destruct Bw.
-    - erewrite loadWord_outside_store_word_list; try reflexivity; try assumption.
-      all: admit.
-    - erewrite loadDouble_outside_store_word_list; try reflexivity; try assumption.
-      all: admit.
-  Admitted.
+    pose proof pow2_wXLEN_4.
+    unfold FlatToRiscv.mem_inaccessible in *.
+    pose proof H3.
+    unfold Memory.read_mem in H3.
+    destruct_one_match_hyp; try discriminate. clear E.
+    unfold FlatToRiscv.loadWordwXLEN, wXLEN_in_bytes, wXLEN, bitwidth in *; destruct Bw;
+      [ rewrite Memory.loadWord_outside_store_word_list
+      |  erewrite Memory.loadDouble_outside_store_word_list ];
+      eauto; Memory.mem_simpl.
+  Qed.
 
   Definition enough_registers(s: ExprImp.stmt): Prop :=
     FlatToRiscv.valid_registers (flatten s).
@@ -245,9 +225,17 @@ Section Pipeline.
       + rewrite roundTrip_0. reflexivity.
       + eassumption.
       + unfold putProgram. simpl.
-        eapply store_word_list_preserves_containsMem; try reflexivity; try eassumption.
-        rewrite map_length.
-        assumption.
+        Memory.destruct_list_length.
+        * rewrite H. simpl. assumption.
+        * pose proof MB.
+          rewrite H in MB.
+          apply store_word_list_preserves_containsMem;
+            unfold Memory.valid_addr;
+            rewrite? map_length;
+            rewrite? roundTrip_0;
+            auto;
+            simpl;
+            omega.
       + apply putProgram_containsProgram with (s := s);
           rewrite? roundTrip_0; rewrite? Nat.add_0_l; (assumption || reflexivity).
       + reflexivity.
