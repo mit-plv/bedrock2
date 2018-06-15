@@ -130,10 +130,10 @@ Definition initialRiscvMachineL(imem: list (word 32)): RiscvMachineL :=
   putProgram imem $0 zeroedRiscvMachineL.
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
- @Run.run BitWidths32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
+ @Run.run BitWidth32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
 Definition runL: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
- @Run.run BitWidths32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+ @Run.run BitWidth32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
 
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
   snd (run fuel (initialRiscvMachine fib6_bits)).

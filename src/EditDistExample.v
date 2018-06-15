@@ -150,7 +150,7 @@ Definition initialRiscvMachineL: RiscvMachineL := {|
 |}.
 
 Definition run: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
- @Run.run BitWidths32 Utility.MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+ @Run.run BitWidth32 Utility.MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
 
 Definition editdist_L_final(fuel: nat): RiscvMachineL :=
   snd (run fuel initialRiscvMachineL).

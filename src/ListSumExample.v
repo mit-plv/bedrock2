@@ -18,7 +18,7 @@ Require Import compiler.NameGen.
 
 Require Import riscv.util.BitWidth32.
 
-Local Notation RiscvMachine := (@RiscvMachine BitWidths32 (mem wXLEN) state).
+Local Notation RiscvMachine := (@RiscvMachine BitWidth32 (mem wXLEN) state).
 
 Definition memory_size: nat := 1024.
 Definition instructionMemStart: nat := 0.
@@ -103,7 +103,7 @@ Close Scope Z_scope.
 Eval cbv in (map (@wordToNat 8) (initialRiscvMachine [1; 2; 3]).(machineMem)).
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
- @Run.run BitWidths32 Utility.MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
+ @Run.run BitWidth32 Utility.MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
 Definition listsum_final(fuel: nat)(l: list nat): RiscvMachine :=
   snd (run fuel (initialRiscvMachine l)).
@@ -199,7 +199,7 @@ Lemma store_word_list_contains_initialize: forall words offset m,
 Proof.
   unfold FlatToRiscv.containsMem.
   unfold FlatToRiscv.loadWordwXLEN, wXLEN, wXLEN_in_bytes,
-     BitWidths.bitwidth, BitWidths32.
+     BitWidths.bitwidth, BitWidth32.
   intros.
   unfold Memory.read_mem, initialize_with_wXLEN_list_H in H1.
   repeat (destruct_one_match_hyp; try discriminate).
@@ -208,11 +208,11 @@ Proof.
   rewrite Memory.store_word_list_preserves_memSize.
   Memory.destruct_list_length.
   - apply FlatToRiscv.nth_error_nil_Some in H1. contradiction.
-  - unfold wXLEN_in_bytes, BitWidths.bitwidth, BitWidths32 in *.
+  - unfold wXLEN_in_bytes, BitWidths.bitwidth, BitWidth32 in *.
     (* TODO why doesn't omega work here? *)
     intuition (try (eapply le_trans; eassumption)).
     apply nth_error_nth with (d := $0) in H1. rewrite <- H1.
-    pose proof pow2_wXLEN_4 as P. unfold wXLEN, BitWidths.bitwidth, BitWidths32 in P.
+    pose proof pow2_wXLEN_4 as P. unfold wXLEN, BitWidths.bitwidth, BitWidth32 in P.
     apply Memory.loadWord_inside_store_word_list;
       unfold Memory.in_range;
       unfold Memory.valid_addr;
@@ -223,7 +223,7 @@ Lemma memory_size_infJalMem:  Memory.memSize (w := wXLEN) infJalMem = memory_siz
 Proof.
   pose proof @Memory.store_word_list_preserves_memSize as R.
   unfold infJalMem.
-  unfold wXLEN, bitwidth, BitWidths.bitwidth, BitWidths32 in R|-*; rewrite R.
+  unfold wXLEN, bitwidth, BitWidths.bitwidth, BitWidth32 in R|-*; rewrite R.
   unfold zero_mem, Memory.memSize, mem_is_Memory.
   apply const_mem_mem_size.
   - reflexivity.
@@ -241,7 +241,7 @@ Proof.
   unfold initialRiscvMachine_without_instructions, putProgram.
   cbv [machineMem with_pc with_nextPC with_machineMem].
   pose proof @Memory.store_word_list_preserves_memSize as R.
-  unfold wXLEN, bitwidth, BitWidths.bitwidth, BitWidths32 in R|-*; rewrite R.
+  unfold wXLEN, bitwidth, BitWidths.bitwidth, BitWidth32 in R|-*; rewrite R.
   apply memory_size_infJalMem.
 Qed.
 
@@ -288,12 +288,12 @@ Proof.
     unfold Memory.not_in_range.
     right.
     unfold input_base in *.
-    unfold wXLEN, BitWidths32, BitWidths.bitwidth in *.
+    unfold wXLEN, BitWidth32, BitWidths.bitwidth in *.
     assert (# (natToWord 32 512) = 512) as F by (abstract reflexivity).
     rewrite F in H1.
     omega.
   - unfold initialRiscvMachine_without_instructions, machineMem, initialMemH.
-    unfold wXLEN, BitWidths32, BitWidths.bitwidth in *.
+    unfold wXLEN, BitWidth32, BitWidths.bitwidth in *.
     apply store_word_list_contains_initialize; [ reflexivity | ].
     unfold mem, ListMemoryNatAddr.mem.
     rewrite memory_size_infJalMem.
