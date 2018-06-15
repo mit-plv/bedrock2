@@ -35,6 +35,8 @@ COQDOC=$(COQBIN)coqdoc
 
 all: $(patsubst %.v,%.vo,$(wildcard src/*.v src/examples/*.v))
 
+ExprImp: src/ExprImp.vo src/ExprImpNotations.vo
+
 .depend depend:
 	$(COQDEP) >.depend `find $(DIRS) -name "*.v"`
 

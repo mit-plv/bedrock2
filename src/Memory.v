@@ -1,10 +1,10 @@
 Require Import bbv.Word.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import compiler.Common.
 
 Section Memory.
 
-  Context {Bw: RiscvBitWidths}.
+  Context {Bw: BitWidths}.
 
   Definition mem := word wXLEN -> option (word wXLEN).
 

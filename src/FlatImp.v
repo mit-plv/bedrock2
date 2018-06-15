@@ -1,5 +1,5 @@
 Require Import lib.LibTacticsMin.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
@@ -9,7 +9,7 @@ Require Import compiler.NameWithEq.
 
 Section FlatImp1.
 
-  Context {Bw: RiscvBitWidths}.
+  Context {Bw: BitWidths}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -263,7 +263,7 @@ Ltac invert_eval_stmt :=
 
 Section FlatImp2.
 
-  Context {Bw: RiscvBitWidths}.
+  Context {Bw: BitWidths}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -324,11 +324,11 @@ Section FlatImp2.
   Qed.
 End FlatImp2.
 
-Require riscv.RiscvBitWidths32.
+Require riscv.util.BitWidth32.
 
 Module TestFlatImp.
 
-Import riscv.RiscvBitWidths32.
+Import riscv.util.BitWidth32.
   
 Instance ZName: NameWithEq := {| name := Z |}.
 

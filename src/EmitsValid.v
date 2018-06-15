@@ -4,7 +4,7 @@ Require Import Coq.omega.Omega.
 Require Import riscv.Decode.
 Require Import riscv.encode.Encode.
 Require Import riscv.util.ZBitOps.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import riscv.Run.
 Require Import riscv.AxiomaticRiscv.
 Require Import compiler.Tactics.
@@ -232,7 +232,7 @@ Qed.
 
 Section EmitsValid.
 
-  Context {Bw: RiscvBitWidths}.
+  Context {Bw: BitWidths}.
 
   Lemma compile_lit_emits_valid: forall r w i inst,
       nth_error (compile_lit r w) i = Some inst ->

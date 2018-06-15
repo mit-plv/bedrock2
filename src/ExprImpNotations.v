@@ -1,10 +1,10 @@
 Require Import compiler.ExprImp.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import compiler.Common.
 Require Import compiler.NameWithEq.
 Require Import compiler.Op.
 
-Require Import riscv.RiscvBitWidths32.
+Require Import riscv.util.BitWidth32.
 
 Open Scope Z_scope.
 

@@ -1,5 +1,5 @@
 Require Import compiler.ExprImp.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import compiler.Common.
 Require compiler.ExprImpNotations.
 Require Import Coq.Lists.List.
@@ -18,7 +18,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 Require Import compiler.NameGen.
 
-Require Import riscv.RiscvBitWidths32.
+Require Import riscv.util.BitWidth32.
 
 
 Module ExampleSrc.
@@ -150,7 +150,7 @@ Definition initialRiscvMachineL: RiscvMachineL := {|
 |}.
 
 Definition run: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
- @Run.run RiscvBitWidths32 Utility.MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+ @Run.run BitWidths32 Utility.MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
 
 Definition editdist_L_final(fuel: nat): RiscvMachineL :=
   snd (run fuel initialRiscvMachineL).

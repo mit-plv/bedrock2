@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
@@ -13,7 +13,7 @@ Require Import compiler.Memory.
 
 Section ExprImp1.
 
-  Context {Bw: RiscvBitWidths}. (* bit width *)
+  Context {Bw: BitWidths}. (* bit width *)
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -278,7 +278,7 @@ Ltac invert_eval_stmt :=
 
 Section ExprImp2.
 
-  Context {Bw: RiscvBitWidths}. (* bit width *)
+  Context {Bw: BitWidths}. (* bit width *)
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -314,7 +314,7 @@ Section ExprImp2.
 End ExprImp2.
 
 
-Require riscv.RiscvBitWidths32.
+Require riscv.util.BitWidth32.
 Module TestExprImp.
 
 Instance ZName: NameWithEq := {| name := Z |}.
@@ -343,7 +343,7 @@ Definition _b := 1%Z.
 Definition _c := 2%Z.
 Definition _isRight := 3%Z.
 
-Import riscv.RiscvBitWidths32.
+Import riscv.util.BitWidth32.
 
 Definition isRight(x y z: word 32) :=
   SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))

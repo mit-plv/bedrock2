@@ -17,7 +17,7 @@ Require Import Coq.micromega.Lia.
 Require Import bbv.DepEqNat.
 Require Import compiler.NameGen.
 Require Import compiler.Common.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import compiler.NameWithEq.
 Require Import riscv.encode.Encode.
 Require Import riscv.AxiomaticRiscv.
@@ -27,7 +27,7 @@ Require Import compiler.EmitsValid.
 
 Section Pipeline.
 
-  Context {Bw: RiscvBitWidths}.
+  Context {Bw: BitWidths}.
 
   Context {state: Type}.
   Context {stateMap: Map state Register (word wXLEN)}.
@@ -85,7 +85,7 @@ Section Pipeline.
         (putProgram (map (fun i => ZToWord 32 (encode i)) p) a initial).(machineMem) p a.
   Proof.  
     intros. subst.
-    pose proof RiscvBitWidths.pow2_wXLEN_4 as X.
+    pose proof BitWidths.pow2_wXLEN_4 as X.
     rewrite FlatToRiscv.containsProgram_alt.
     unfold FlatToRiscv.containsProgram', FlatToRiscv.decode_prog, putProgram.
     destruct initial as [[regs pc0 eh] m].

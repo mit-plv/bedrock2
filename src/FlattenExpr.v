@@ -6,11 +6,11 @@ Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.
 Require Import compiler.NameWithEq.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 
 Section FlattenExpr.
 
-  Context {Bw: RiscvBitWidths}.
+  Context {Bw: BitWidths}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).

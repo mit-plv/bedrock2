@@ -12,14 +12,14 @@ Require Import riscv.Riscv.
 Require Import compiler.MyOmega.
 Require Import riscv.util.Monads.
 Require Import compiler.NameWithEq.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
 Require Import riscv.Utility.
 Require Import riscv.encode.Encode.
 
-Require Import riscv.RiscvBitWidths32.
+Require Import riscv.util.BitWidth32.
 
 Open Scope Z_scope.
 
@@ -130,10 +130,10 @@ Definition initialRiscvMachineL(imem: list (word 32)): RiscvMachineL :=
   putProgram imem $0 zeroedRiscvMachineL.
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
- @Run.run RiscvBitWidths32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
+ @Run.run BitWidths32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
 Definition runL: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
- @Run.run RiscvBitWidths32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+ @Run.run BitWidths32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
 
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
   snd (run fuel (initialRiscvMachine fib6_bits)).

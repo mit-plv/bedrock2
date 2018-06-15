@@ -14,7 +14,15 @@ Dependencies: The following projects should be sibling directories of the `bedro
 *    The [Bedrock Bitvector Library (bbv)](https://github.mit.edu/plv/bbv/)
 *    The [RISCV Specification in Coq (riscv-coq)](https://github.com/samuelgruetter/riscv-coq)
 
-First run `make` in the `bbv` directory, then run `make proofs` in the `riscv-coq` directory, then run `make` in the `bedrock2` directory.
+To build the whole project (including the compiler):
+*    run `make` in the `bbv` directory
+*    run `make proofs` in the `riscv-coq` directory
+*    run `make` in the `bedrock2` directory
+
+To build only the source language (ExprImp):
+*    run `make` in the `bbv` directory
+*    run `make util` in the `riscv-coq` directory
+*    run `make ExprImp` in the `bedrock2` directory
 
 
 ### Current Features

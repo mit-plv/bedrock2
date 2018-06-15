@@ -16,7 +16,7 @@ Require Import riscv.Execute.
 Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
-Require Import riscv.RiscvBitWidths.
+Require Import riscv.util.BitWidths.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Logic.FunctionalExtensionality.
@@ -40,7 +40,7 @@ Set Implicit Arguments.
    not lead to ill-typed terms *)
 Section RegisterFile.
 
-  Context {Bw: RiscvBitWidths}.
+  Context {Bw: BitWidths}.
   Context {state: Type}.
   Context {stateMap: Map state Register (word wXLEN)}.
 
@@ -60,7 +60,7 @@ Existing Instance State_is_RegisterFile.
 
 Section FlatToRiscv.
 
-  Context {Bw: RiscvBitWidths}.
+  Context {Bw: BitWidths}.
 
   Add Ring word_wXLEN_ring : (wring wXLEN).
 
@@ -179,14 +179,14 @@ Section FlatToRiscv.
 
   Definition LwXLEN: Register -> Register -> Z -> Instruction :=
     match bitwidth with
-    | Bitwidth32 => Lw
-    | Bitwidth64 => Ld
+    | BW32 => Lw
+    | BW64 => Ld
     end.
   
   Definition SwXLEN: Register -> Register -> Z -> Instruction :=
     match bitwidth with
-    | Bitwidth32 => Sw
-    | Bitwidth64 => Sd
+    | BW32 => Sw
+    | BW64 => Sd
     end.
 
   Definition compile_op(rd: Register)(op: binop)(rs1 rs2: Register): list Instruction :=
