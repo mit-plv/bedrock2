@@ -22,7 +22,7 @@ Section ExprImp1.
   Notation func := (@name FName).
 
 
-  Context {state: Type}.
+  Context {state: Set}.
   Context {stateMap: Map state var (word wXLEN)}.
   Context {vars: Type}.
   Context {varset: set vars var}.
@@ -43,7 +43,8 @@ Section ExprImp1.
     | SWhile(cond: expr)(body: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
-    | SCall(binds: list var)(f: func)(args: list expr).
+    | SCall(binds: list var)(f: func)(args: list expr)
+    | SExtern.
 
   Fixpoint eval_expr(st: state)(e: expr): option (word wXLEN) :=
     match e with
@@ -55,50 +56,99 @@ Section ExprImp1.
         Return (eval_binop op v1 v2)
     end.
 
+  Inductive cont: Set :=
+    | CLoad(x: var)(addr: expr): cont
+    | CStore(addr val: expr): cont
+    | CSet(x: var)(e: expr): cont
+    | CIf(cond: expr)(bThen bElse: cont): cont
+    | CWhile(cond: expr)(body: cont): cont
+    | CSeq(s1 s2: cont): cont
+    | CSkip: cont
+    | CCall(binds: list var)(f: func)(args: list expr)
+    | CExtern
+    | CStack(st: state)(c: cont)(binds rets: list var).
+
+  Fixpoint cont_of_stmt (s:stmt) :=
+    match s with
+    | SLoad x a => CLoad x a
+    | SStore a v => CStore a v
+    | SSet x e => CSet x e
+    | SIf c t e => CIf c (cont_of_stmt t) (cont_of_stmt e)
+    | SWhile c b => CWhile c (cont_of_stmt b)
+    | SSeq s1 s2 => CSeq (cont_of_stmt s1) (cont_of_stmt s2)
+    | SSkip => CSkip
+    | SExtern => CExtern
+    | SCall b f a => CCall b f a
+    end.
+
   Section WithEnv.
     Context {env} {funcMap: Map env func (list var * list var * stmt)} (e:env).
-    Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
+    Fixpoint eval_cont(f: nat)(st: state)(m: mem)(s: cont): option (state*mem*option cont) :=
       match f with
       | 0 => None (* out of fuel *)
       | S f => match s with
-        | SLoad x a =>
+        | CLoad x a =>
             a <- eval_expr st a;
             v <- read_mem a m;
-            Return (put st x v, m)
-        | SStore a v =>
+            Return (put st x v, m, None)
+        | CStore a v =>
             a <- eval_expr st a;
             v <- eval_expr st v;
             m <- write_mem a v m;
-            Return (st, m)
-        | SSet x e =>
+            Return (st, m, None)
+        | CSet x e =>
             v <- eval_expr st e;
-            Return (put st x v, m)
-        | SIf cond bThen bElse =>
+            Return (put st x v, m, None)
+        | CIf cond bThen bElse =>
             v <- eval_expr st cond;
-            eval_stmt f st m (if weq v $0 then bElse else bThen)
-        | SWhile cond body =>
+            eval_cont f st m (if weq v $0 then bElse else bThen)
+        | CWhile cond body =>
             v <- eval_expr st cond;
-            if weq v $0 then Return (st, m) else
-              p <- eval_stmt f st m body;
-              let '(st, m) := p in
-              eval_stmt f st m (SWhile cond body)
-        | SSeq s1 s2 =>
-            p <- eval_stmt f st m s1;
-            let '(st, m) := p in
-            eval_stmt f st m s2
-        | SSkip => Return (st, m)
-        | SCall binds fname args =>
+            if weq v $0 then Return (st, m, None) else
+              p <- eval_cont f st m body;
+              let '(st, m, c) := p in
+              match c with
+              | Some c => Return (st, m, Some (CSeq c s))
+              | None => eval_cont f st m (CWhile cond body)
+              end
+        | CSeq s1 s2 =>
+            p <- eval_cont f st m s1;
+            let '(st, m, c) := p in
+            match c with
+            | Some c => Return (st, m, Some (CSeq c s2))
+            | None => eval_cont f st m s2
+            end
+        | CSkip => Return (st, m, None)
+        | CCall binds fname args =>
           fimpl <- get e fname;
           let '(params, rets, fbody) := fimpl in
+          let fbody := cont_of_stmt fbody in
           argvs <- option_all (map (eval_expr st) args);
           st0 <- putmany params argvs empty;
-          st1m' <- eval_stmt f st0 m fbody;
-          let '(st1, m') := st1m' in
-          retvs <- option_all (map (get st1) rets);
-          st' <- putmany binds retvs st;
-          Return (st', m')
+          st1m' <- eval_cont f st0 m fbody;
+          let '(st1, m', c) := st1m' in
+          match c with
+          | Some c => Return (st, m', Some (CStack st1 c binds rets))
+          | None => 
+            retvs <- option_all (map (get st1) rets);
+            st' <- putmany binds retvs st;
+            Return (st', m', None)
+          end
+        | CExtern => Return (st, m, Some CSkip)
+        | CStack stf cf binds rets =>
+          stf'm' <- eval_cont f stf m cf;
+          let '(stf', m', c) := stf'm' in
+          match c with
+          | Some c => Return (st, m', Some (CStack stf' c binds rets))
+          | None => 
+            retvs <- option_all (map (get stf') rets);
+            st' <- putmany binds retvs st;
+            Return (st', m', None)
+          end
         end
       end.
+    Definition eval_stmt(f: nat)(st: state)(m: mem)(s: stmt)
+      := eval_cont f st m (cont_of_stmt s).
 
     Fixpoint expr_size(e: expr): nat :=
       match e with
@@ -118,6 +168,7 @@ Section ExprImp1.
       | SSkip => 1
       | SCall binds f args =>
           S (length binds + length args + List.fold_right Nat.add O (List.map expr_size args))
+      | SExtern => 1 (* TODO *)
       end.
 
     Local Ltac inversion_lemma :=
