@@ -1,8 +1,203 @@
+Set Universe Polymorphism.
+Unset Universe Minimization ToSet.
+
+Require compiler.Common.
+
+Local Notation "'bind_Some' x <- a ; f" :=
+  (match a with
+   | Some x => f
+   | None => None
+   end)
+    (right associativity, at level 60, x pattern).
+
+Record LanguageParameters :=
+  {
+    mword : Type;
+    mword_nonzero : mword -> bool;
+
+    varname : Type;
+    funname : Type;
+    actname : Type;
+    bopname : Type;
+    mem : Type;
+
+    varmap : Type;
+    varmap_operations : Common.Map varmap varname mword;
+
+    eval_binop : bopname -> mword -> mword -> mword;
+    load : mword -> mem -> option mword;
+    store : mword -> mword -> mem -> option mem;
+  }.
+
+Section Language.
+  Context (p : LanguageParameters).
+  (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+  Local Notation mword := p.(mword).
+  Local Notation mword_nonzero := p.(mword_nonzero).
+  Local Notation varname := p.(varname).
+  Local Notation funname := p.(funname).
+  Local Notation actname := p.(actname).
+  Local Notation bopname := p.(bopname).
+  Local Notation varmap := p.(varmap).
+  Local Notation mem := p.(mem).
+  Local Definition varmap_operations_ : Common.Map _ _ _ := p.(varmap_operations). Local Existing Instance varmap_operations_.
+  Local Notation eval_binop := p.(eval_binop).
+  Local Notation load := p.(load).
+  Local Notation store := p.(store).
+
+  Inductive expr :=
+  | ELit(v: mword)
+  | EVar(x: varname)
+  | EOp(op: bopname) (e1 e2: expr).
+
+  Inductive stmt :=
+  | SLoad(x: varname) (addr: expr)
+  | SStore(addr val: expr)
+  | SSet(x: varname)(e: expr)
+  | SIf(cond: expr)(bThen bElse: stmt)
+  | SWhile(cond: expr)(body: stmt)
+  | SSeq(s1 s2: stmt)
+  | SSkip
+  | SCall(binds: list varname)(f: funname)(args: list expr)
+  | SIO(binds: list varname)(io : actname)(args: list expr).
+
+  Fixpoint eval_expr(st: varmap)(e: expr): option (mword) :=
+    match e with
+    | ELit v => Some v
+    | EVar x => Common.get st x
+    | EOp op e1 e2 =>
+        bind_Some v1 <- eval_expr st e1;
+        bind_Some v2 <- eval_expr st e2;
+        Some (eval_binop op v1 v2)
+    end.
+
+  Section cont.
+    Context {T : Type}.
+    Inductive cont : Type :=
+    | CSuspended(_:T)
+    | CSeq(s1:cont) (s2: stmt)
+    | CStack(st: varmap)(c: cont)(binds rets: list varname).
+  End cont. Arguments cont : clear implicits.
+  Lemma cont_uninhabited (T:Set) (_:T -> False) (X : cont T) : False. Proof. induction X; auto 2. Qed.
+  Fixpoint lift_cont {A B : Set} (P : A -> B -> Prop) (a : cont A) (b : cont B) {struct a} :=
+    match a, b with
+    | CSuspended a, CSuspended b =>
+      P a b
+    | CSeq a sa, CSeq b sb =>
+      lift_cont P a b /\ sa = sb
+    | CStack sta a ba ra, CStack stb b bb rb =>
+      (forall v, Common.get sta v = Common.get stb v) /\ lift_cont P a b /\ ba = bb /\ ra = rb
+    | _, _ => False
+    end.
+
+  Definition ioact : Type := (list varname * actname * list mword).
+  Definition ioret : Type := (list varname * list mword).
+  
+  Section WithFunctions.
+    Context (lookupFunction : funname -> option (list varname * list varname * stmt)).
+    Fixpoint eval_stmt(f: nat)(st: varmap)(m: mem)(s: stmt): option (varmap*mem*option(cont ioact)) :=
+      match f with
+      | 0 => None (* out of fuel *)
+      | S f => match s with
+        | SLoad x a =>
+            bind_Some a <- eval_expr st a;
+            bind_Some v <- load a m;
+            Some (Common.put st x v, m, None)
+        | SStore a v =>
+            bind_Some a <- eval_expr st a;
+            bind_Some v <- eval_expr st v;
+            bind_Some m <- store a v m;
+            Some (st, m, None)
+        | SSet x e =>
+            bind_Some v <- eval_expr st e;
+            Some (Common.put st x v, m, None)
+        | SIf cond bThen bElse =>
+            bind_Some v <- eval_expr st cond;
+            eval_stmt f st m (if mword_nonzero v then bThen else bElse)
+        | SWhile cond body =>
+            bind_Some v <- eval_expr st cond;
+            if mword_nonzero v
+            then
+              bind_Some (st, m, c) <- eval_stmt f st m body;
+              match c with
+              | Some c => Some (st, m, Some (CSeq c (SWhile cond body)))
+              | None => eval_stmt f st m (SWhile cond body)
+              end
+            else Some (st, m, None)
+        | SSeq s1 s2 =>
+            bind_Some (st, m, c) <- eval_stmt f st m s1;
+            match c with
+            | Some c => Some (st, m, Some (CSeq c s2))
+            | None => eval_stmt f st m s2
+            end
+        | SSkip => Some (st, m, None)
+        | SCall binds fname args =>
+          bind_Some (params, rets, fbody) <- lookupFunction fname;
+          bind_Some argvs <- Common.option_all (List.map (eval_expr st) args);
+          bind_Some st0 <- Common.putmany params argvs Common.empty;
+          bind_Some (st1, m', oc) <- eval_stmt f st0 m fbody;
+          match oc with
+          | Some c => Some (st, m', Some (CStack st1 c binds rets))
+          | None => 
+            bind_Some retvs <- Common.option_all (List.map (Common.get st1) rets);
+            bind_Some st' <- Common.putmany binds retvs st;
+            Some (st', m', None)
+          end
+        | SIO binds ionum args =>
+          bind_Some argvs <- Common.option_all (List.map (eval_expr st) args);
+          Some (st, m, Some (CSuspended (binds, ionum, argvs)))
+        end
+      end.
+
+    Fixpoint eval_cont(f: nat)(st: varmap)(m: mem)(s: cont ioret): option (varmap*mem*option(cont ioact)) :=
+      match f with
+      | 0 => None (* out of fuel *)
+      | S f => match s with
+        | CSuspended (binds, retvs) =>
+            bind_Some st' <- Common.putmany binds retvs st;
+            Some (st', m, None)
+        | CSeq c s2 =>
+            bind_Some (st, m, oc) <- eval_cont f st m c;
+            match oc with
+            | Some c => Some (st, m, Some (CSeq c s2))
+            | None => eval_stmt f st m s2
+            end
+        | CStack stf cf binds rets =>
+          bind_Some (stf', m', oc) <- eval_cont f stf m cf;
+          match oc with
+          | Some c => Some (st, m', Some (CStack stf' c binds rets))
+          | None => 
+            bind_Some retvs <- Common.option_all (List.map (Common.get stf') rets);
+            bind_Some st' <- Common.putmany binds retvs st;
+            Some (st', m', None)
+          end
+        end
+      end.
+  End WithFunctions.
+End Language.
+
+
+
+
+
+
+
+
+
+
+(* TODO: refactor below here *)
+
+
+
+
+
+
+
+      
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
-Require Import compiler.Common.
 Require Import compiler.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
@@ -12,17 +207,13 @@ Require Import Coq.Program.Tactics.
 Require Import compiler.Memory.
 
 Section ExprImp1.
-
   Context {Bw: BitWidths}. (* bit width *)
-
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
   Existing Instance eq_name_dec.
   Context {FName : NameWithEq}.
   Notation func := (@name FName).
   Context (ioaction : Set).
-
-
   Context {state: Set}.
   Context {stateMap: Map state var (word wXLEN)}.
   Context {vars: Type}.
