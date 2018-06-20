@@ -20,6 +20,7 @@ Section ExprImp1.
   Existing Instance eq_name_dec.
   Context {FName : NameWithEq}.
   Notation func := (@name FName).
+  Context (ioaction : Set).
 
 
   Context {state: Set}.
@@ -44,7 +45,7 @@ Section ExprImp1.
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
     | SCall(binds: list var)(f: func)(args: list expr)
-    | SExtern(binds: list var)(io : nat)(args: list expr).
+    | SIO(binds: list var)(io : ioaction)(args: list expr).
 
   Fixpoint eval_expr(st: state)(e: expr): option (word wXLEN) :=
     match e with
@@ -64,9 +65,11 @@ Section ExprImp1.
     | CStack(st: state)(c: cont)(binds rets: list var).
   End cont. Arguments cont : clear implicits.
 
+  Definition ioact : Set := (list var * ioaction * list (word (wXLEN))).
+  Definition ioret : Set := (list var * list (word wXLEN)).
   Section WithEnv.
     Context {env} {funcMap: Map env func (list var * list var * stmt)} (e:env).
-    Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state*mem*option (cont unit)) :=
+    Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state*mem*option(cont ioact)) :=
       match f with
       | 0 => None (* out of fuel *)
       | S f => match s with
@@ -116,26 +119,30 @@ Section ExprImp1.
             st' <- putmany binds retvs st;
             Return (st', m', None)
           end
-        | SExtern _ _ _ => Return (st, m, Some (CSuspended tt))
+        | SIO binds ionum args =>
+          argvs <- option_all (map (eval_expr st) args);
+          Return (st, m, Some (CSuspended (binds, ionum, argvs)))
         end
       end.
 
-    Fixpoint eval_cont(f: nat)(st: state)(m: mem)(s: cont stmt): option (state*mem*option (cont unit)) :=
+    Fixpoint eval_cont(f: nat)(st: state)(m: mem)(s: cont ioret): option (state*mem*option(cont ioact)) :=
       match f with
       | 0 => None (* out of fuel *)
       | S f => match s with
-        | CSuspended s => eval_stmt f st m s
-        | CSeq c1 s2 =>
-            p <- eval_cont f st m c1;
-            let '(st, m, c) := p in
-            match c with
+        | CSuspended (binds, retvs) =>
+            st' <- putmany binds retvs st;
+            Return (st', m, None)
+        | CSeq c s2 =>
+            p <- eval_cont f st m c;
+            let '(st, m, oc) := p in
+            match oc with
             | Some c => Return (st, m, Some (CSeq c s2))
-            | None => eval_cont f st m (CSuspended s2)
+            | None => eval_stmt f st m s2
             end
         | CStack stf cf binds rets =>
           stf'm' <- eval_cont f stf m cf;
-          let '(stf', m', c) := stf'm' in
-          match c with
+          let '(stf', m', oc) := stf'm' in
+          match oc with
           | Some c => Return (st, m', Some (CStack stf' c binds rets))
           | None => 
             retvs <- option_all (map (get stf') rets);
@@ -144,8 +151,6 @@ Section ExprImp1.
           end
         end
       end.
-    Definition eval_stmt(f: nat)(st: state)(m: mem)(s: stmt)
-      := eval_cont f st m (CSuspended s).
 
     Fixpoint expr_size(e: expr): nat :=
       match e with
@@ -163,9 +168,8 @@ Section ExprImp1.
       | SWhile cond body => S (expr_size cond + stmt_size body)
       | SSeq s1 s2 => S (stmt_size s1 + stmt_size s2)
       | SSkip => 1
-      | SCall binds f args =>
+      | SCall binds _ args | SIO binds _ args =>
           S (length binds + length args + List.fold_right Nat.add O (List.map expr_size args))
-      | SExtern => 1 (* TODO *)
       end.
 
     Local Ltac inversion_lemma :=
