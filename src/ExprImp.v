@@ -64,6 +64,17 @@ Section ExprImp1.
     | CSeq(s1:cont) (s2: stmt)
     | CStack(st: state)(c: cont)(binds rets: list var).
   End cont. Arguments cont : clear implicits.
+  Lemma cont_uninhabited (T:Set) (_:T -> False) (X : cont T) : False. Proof. induction X; eauto. Qed.
+  Fixpoint lift_cont {A B : Set} (P : A -> B -> Prop) (a : cont A) (b : cont B) {struct a} :=
+    match a, b with
+    | CSuspended a, CSuspended b =>
+      P a b
+    | CSeq a sa, CSeq b sb =>
+      lift_cont P a b /\ sa = sb
+    | CStack sta a ba ra, CStack stb b bb rb =>
+      (forall vss, agree_on sta vss stb) /\ lift_cont P a b /\ ba = bb /\ ra = rb
+    | _, _ => False
+    end.
 
   Definition ioact : Set := (list var * ioaction * list (word (wXLEN))).
   Definition ioret : Set := (list var * list (word wXLEN)).
