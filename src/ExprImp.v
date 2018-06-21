@@ -47,7 +47,7 @@ Section Imp.
   Local Notation bopname := p.(bopname).
   Local Notation varmap := p.(varmap).
   Local Notation mem := p.(mem).
-  Local Definition varmap_operations_ : Common.Map _ _ _ := p.(varmap_operations). Local Existing Instance varmap_operations_.
+  Local Definition varmap_operations_ : Common.Map _ _ _ := p.(varmap_operations). Global Existing Instance varmap_operations_.
   Local Notation interp_binop := p.(interp_binop).
   Local Notation load := p.(load).
   Local Notation store := p.(store).
@@ -241,7 +241,7 @@ Eval cbv [RISCVImp ImpParameters_of_RISCVImpParameters
 End RISCVImp. (* TODO: file *)
 
 
-(* TODO: file*)
+
 Require Import compiler.Common.
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -255,8 +255,8 @@ Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import compiler.Memory.
 
-Module ImpProperties.
-Section ImpProperties.
+Module ImpInversion. (* TODO: file*)
+Section ImpInversion.
   Import Imp.
   Context (p:ImpParameters).
   Let Imp : Imp.ImpType p := Imp.Imp p.
@@ -269,7 +269,6 @@ Section ImpProperties.
   Local Notation bopname := p.(bopname).
   Local Notation varmap := p.(varmap).
   Local Notation mem := p.(mem).
-  Local Definition varmap_operations_ : Common.Map _ _ _ := p.(varmap_operations). Local Existing Instance varmap_operations_.
   Local Notation interp_binop := p.(interp_binop).
   Local Notation load := p.(load).
   Local Notation store := p.(store).
@@ -365,9 +364,9 @@ Section ImpProperties.
     exists cv,
       interp_expr st1 cond = Some cv /\
       (mword_nonzero cv = true /\
-       (exists st2 m2 oc, interp_stmt env f st1 m1 body = Some (st2, m2, oc) /\
+       (exists st2 m2 oc, interp_stmt env f st1 m1 body = Some (st2, m2, oc) /\ (
               ( oc = None /\ interp_stmt env f st2 m2 (SWhile cond body) = Some p3)
-           \/ ( exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq c (SWhile cond body)))))
+           \/ ( exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq c (SWhile cond body))))))
        \/ mword_nonzero cv = false /\ p3 = (st1, m1, None)).
   Proof. inversion_lemma. Qed.
 
@@ -386,6 +385,59 @@ Section ImpProperties.
        ( exists c, oc = Some c /\
          p2 = (st, m', Some (CStack st1 c binds rets)) ) ).
   Proof. inversion_lemma. Qed.
+
+  Lemma invert_interp_SIO : forall env st m1 p2 f binds ioname args,
+    interp_stmt env (S f) st m1 (SIO binds ioname args) = Some p2 ->
+    exists argvs, option_all (map (Imp.interp_expr st) args) = Some argvs /\
+                  p2 = (st, m1, Some (CSuspended (binds, ioname, argvs))).
+  Proof. inversion_lemma. Qed.
+End ImpInversion.
+
+Local Tactic Notation "marker" ident(s) := let x := fresh s in pose proof tt as x; move x at top.
+Ltac invert_interp_stmt :=
+  lazymatch goal with
+  | E: Imp._interp_stmt _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
+    destruct s;
+    [ apply invert_interp_SLoad in E; deep_destruct E; marker SLoad
+    | apply invert_interp_SStore in E; deep_destruct E; marker SStore
+    | apply invert_interp_SSet in E; deep_destruct E; marker SSet
+    | apply invert_interp_SIf in E; deep_destruct E; [marker SIf_true | marker SIf_false]
+    | apply invert_interp_SWhile in E; deep_destruct E; [marker SWhile_true | marker SWhile_blocked | marker SWhile_false ]
+    | apply invert_interp_SSeq in E; deep_destruct E; [marker SSeq | marker SSeq_blocked ]
+    | apply invert_interp_SSkip in E; deep_destruct E; marker SSkip
+    | apply invert_interp_SCall in E; deep_destruct E; [marker SCall | marker SCall_blocked]
+    | apply invert_interp_SIO in E; deep_destruct E; [marker SIO ]
+    ] end.
+End ImpInversion. (* TODO: file *)
+
+Module ImpVars. (* TODO: file *)
+Import ImpInversion.
+Section ImpVars.
+  Import Imp.
+  Context {p:ImpParameters}.
+  Let Imp : Imp.ImpType p := Imp.Imp p.
+  (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+  Local Notation mword := p.(mword).
+  Local Notation mword_nonzero := p.(mword_nonzero).
+  Local Notation varname := p.(varname).
+  Local Notation funname := p.(funname).
+  Local Notation actname := p.(actname).
+  Local Notation bopname := p.(bopname).
+  Local Notation varmap := p.(varmap).
+  Local Notation mem := p.(mem).
+  Local Notation interp_binop := p.(interp_binop).
+  Local Notation load := p.(load).
+  Local Notation store := p.(store).
+  (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+  Local Notation expr := Imp.(_expr).
+  Local Notation stmt := Imp.(_stmt).
+  Local Notation cont := Imp.(_cont).
+  Local Notation interp_expr := Imp.(_interp_expr).
+  Local Notation interp_stmt := Imp.(_interp_stmt).
+  Local Notation interp_cont := Imp.(_interp_cont).
+
+  (* TODO: record ImpParametersOK *)
+  Context {mword_eq_dec : DecidableRel (@eq (Imp.varname p))}.
 
   (* Returns a list to make it obvious that it's a finite set. *)
   Fixpoint allVars_expr(e: expr): list varname :=
@@ -425,7 +477,6 @@ Section ImpProperties.
     end.
 
   Ltac set_solver := set_solver_generic constr:(varname).
-  Ltac state_calc := state_calc_generic constr:(varname) (word wXLEN).
   
   Lemma modVars_subset_allVars: forall x s,
     x \in modVars s ->
@@ -450,75 +501,29 @@ Section ImpProperties.
         [ left; apply singleton_set_spec in H; auto
         | right; auto ] ].
   Qed.
-End ImpProperties.
 
-Ltac invert_interp_stmt :=
-  lazymatch goal with
-  | E: Imp.interp_stmt _ (S ?fuel) _ _ ?s = Some _ |- _ =>
-    destruct s;
-    [ apply invert_interp_SLoad in E
-    | apply invert_interp_SStore in E
-    | apply invert_interp_SSet in E
-    | apply invert_interp_SIf in E
-    | apply invert_interp_SWhile in E
-    | apply invert_interp_SSeq in E
-    | apply invert_interp_SSkip in E
-    | apply invert_interp_SCall in E
-    ];
-    deep_destruct E;
-    [ let x := fresh "Case_SLoad" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SStore" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SSet" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SIf_Then" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SIf_Else" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SWhile_Done" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SWhile_NotDone" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SSeq" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SSkip" in pose proof tt as x; move x at top 
-    | let x := fresh "Case_SCall" in pose proof tt as x; move x at top
-    ]
-  end.
+  Ltac state_calc := state_calc_generic constr:(varname) constr:(mword).
 
-End ImpProperties. (* TODO: file *)
-
-
-
-Section ExprImp2.
-
-  Context {Bw: BitWidths}. (* bit width *)
-
-  Context {Name: NameWithEq}.
-  Notation var := (@name Name).
-  Existing Instance eq_name_dec.
-  Context {FName: NameWithEq}.
-  Notation func := (@name FName).
-
-  Context {state: Type}.
-  Context {stateMap: Map state var (word wXLEN)}.
-  Context {vars: Type}.
-  Context {varset: set vars var}.
-
-  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
-
-  Lemma modVarsSound: forall env fuel s initialS initialM finalS finalM,
-    interp_stmt env fuel initialS initialM s = Some (finalS, finalM) ->
+  Lemma modVarsSound: forall env fuel s initialS initialM finalS finalM oc,
+    interp_stmt env fuel initialS initialM s = Some (finalS, finalM, oc) ->
     only_differ initialS (modVars s) finalS.
   Proof.
     induction fuel; introv Ev.
     - discriminate.
-    - invert_interp_stmt; simpl in *; inversionss;
+    - invert_interp_stmt; cbn [modVars] in *; inversionss;
       repeat match goal with
       | IH: _, H: _ |- _ =>
           let IH' := fresh IH in pose proof IH as IH';
           specialize IH' with (1 := H);
-          simpl in IH';
+          cbn [modVars] in IH';
           ensure_new IH'
-      end;
-      state_calc.
+      end; state_calc.
+      (* SCall *)
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 
-End ExprImp2.
+End ImpVars.
+End ImpVars. (* TODO: file *)
 
 
 Require riscv.util.BitWidth32.
