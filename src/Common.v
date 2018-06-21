@@ -1,7 +1,6 @@
 Require Export Coq.omega.Omega.
 Require Export Coq.Lists.List.
 Require Export bbv.Word.
-Require Export riscv.util.Monads.
 Require Export compiler.Decidable.
 Require Export compiler.Tactics.
 Require Export compiler.Set.
@@ -56,8 +55,8 @@ Section WithMap.
   Context {T} {K V} {TMap:Map T K V}.
   Fixpoint putmany (keys : list K) (values : list V) (init : T) {struct keys} : option T :=
     match keys, values with
-    | nil, nil => Return init
-    | b::binders, v::values => t <- putmany binders values init; Return (put t b v)
+    | nil, nil => Some init
+    | b::binders, v::values => match putmany binders values init with None => None | Some t => Some (put t b v) end
     | _, _ => None
     end.
 
