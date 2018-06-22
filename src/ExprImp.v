@@ -1,14 +1,14 @@
 Ltac typeof x := match type of x with ?T => T end.
 Notation "'typeof!' x" := (ltac:(let T := typeof x in exact T)) (at level 10).
-
-Require compiler.Common.
-
 Local Notation "'bind_Some' x <- a ; f" :=
   (match a with
    | Some x => f
    | None => None
    end)
     (right associativity, at level 60, x pattern).
+
+
+Require compiler.Common.
 
 Module Imp. (* TODO: file *)
 
@@ -171,6 +171,7 @@ Module Imp_.
   Global Arguments cont : clear implicits.
 End Imp_.
 
+(* type of the following record value... COQBUG(https://github.com/coq/coq/issues/7810) *)
 Record ImpInterface {p:ImpParameters} :=
   {
     expr : typeof! (@Imp_.expr p);
@@ -277,8 +278,6 @@ Definition ImpParameters_of_RISCVImpParameters (p:RISCVImpParameters): Imp.ImpPa
     Imp.varmap := p.(varmap);
     Imp.varmap_operations := p.(varmap_operations);
   |}.
-Definition RISCVImp (p:RISCVImpParameters) : Imp.ImpInterface (ImpParameters_of_RISCVImpParameters p)
-  := Imp.Imp (ImpParameters_of_RISCVImpParameters p).
 End RISCVImp. (* TODO: file *)
 
 
@@ -561,12 +560,15 @@ End ImpVars. (* TODO: file *)
 Require riscv.util.BitWidth32.
 Module TestExprImp.
 Import Imp compiler.Op.
-Local Definition Imp := RISCVImp.RISCVImp {|
+Local Definition ImpParameters :=
+  RISCVImp.ImpParameters_of_RISCVImpParameters
+  {|
     RISCVImp.bw := riscv.util.BitWidth32.BitWidth32;
     RISCVImp.varname := Z;
     RISCVImp.funname := Empty_set;
     RISCVImp.actname := Empty_set;
   |}.
+Local Definition Imp := Imp ImpParameters.
 
 (*
 given x, y, z
@@ -592,8 +594,28 @@ Definition _isRight := 3%Z.
 
 (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
 Local Notation expr := Imp.(expr).
+Local Notation ELit := Imp.(ELit).
+Local Notation EVar := Imp.(EVar).
+Local Notation EOp := Imp.(EOp).
+Local Notation expr_rect := Imp.(expr_rect).
 Local Notation stmt := Imp.(stmt).
+Local Notation SLoad := Imp.(SLoad).
+Local Notation SStore := Imp.(SStore).
+Local Notation SSet := Imp.(SSet).
+Local Notation SIf := Imp.(SIf).
+Local Notation SWhile := Imp.(SWhile).
+Local Notation SSeq := Imp.(SSeq).
+Local Notation SSkip := Imp.(SSkip).
+Local Notation SCall := Imp.(SCall).
+Local Notation SIO := Imp.(SIO).
+Local Notation stmt_rect := Imp.(stmt_rect).
 Local Notation cont := Imp.(cont).
+Local Notation CSuspended := Imp.(CSuspended).
+Local Notation CSeq := Imp.(CSeq).
+Local Notation CStack := Imp.(CStack).
+Local Notation cont_rect := Imp.(cont_rect).
+Local Notation ioact := Imp.(ioact).
+Local Notation ioret := Imp.(ioret).
 Local Notation interp_expr := Imp.(interp_expr).
 Local Notation interp_stmt := Imp.(interp_stmt).
 Local Notation interp_cont := Imp.(interp_cont).
@@ -606,7 +628,7 @@ Eval cbn in
   (fun op : (RISCVImp.ImpParameters_of_RISCVImpParameters _).(bopname) =>
    (fun e1 e2 : expr => EOp op e1 e2) = (fun e1 e2 : expr => EOp op e1 e2)) OLt.
 
-Eval cbn in (fun e1 e2 : Imp.expr => EOp OLt e1 e2) = (fun e1 e2 : Imp.expr => EOp OLt e1 e2).
+Eval cbn in (fun e1 e2 : expr => EOp OLt e1 e2) = (fun e1 e2 : expr => EOp OLt e1 e2).
 
 
 Definition isRight(x y z: word 32) : stmt :=
@@ -620,9 +642,9 @@ Definition isRight(x y z: word 32) : stmt :=
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
 Definition run_isRight(x y z: word 32): option (word 32) :=
-  final <- (interp_stmt empty 10 empty no_mem (isRight x y z));
-  let '(finalSt, finalM) := final in
-  get finalSt _isRight.
+  bind_Some (finalSt, finalM, oc) <- interp_stmt (fun _ => None) 10 empty no_mem (isRight x y z);
+  match oc with Some _ => None | None =>
+  get finalSt _isRight end.
 
 Goal run_isRight $3 $4 $5 = Some $1. reflexivity. Qed.
 Goal run_isRight $3 $7 $5 = Some $0. reflexivity. Qed.
@@ -632,3 +654,51 @@ Goal run_isRight $5 $3 $4 = Some $1. reflexivity. Qed.
 Goal run_isRight $12 $13 $5 = Some $1. reflexivity. Qed.
 
 End TestExprImp.
+
+(* RecordImport.py
+record =\
+"""
+    expr : typeof! (@Imp_.expr p);
+    ELit : typeof! (@Imp_.ELit p);
+    EVar : typeof! (@Imp_.EVar p);
+    EOp : typeof! (@Imp_.EOp p);
+    expr_rect : typeof! (@Imp_.expr_rect p);
+
+    stmt : typeof! (@Imp_.stmt p);
+    SLoad : typeof! (@Imp_.SLoad p);
+    SStore : typeof! (@Imp_.SStore p);
+    SSet : typeof! (@Imp_.SSet p);
+    SIf : typeof! (@Imp_.SIf p);
+    SWhile : typeof! (@Imp_.SWhile p);
+    SSeq : typeof! (@Imp_.SSeq p);
+    SSkip : typeof! (@Imp_.SSkip p);
+    SCall : typeof! (@Imp_.SCall p);
+    SIO : typeof! (@Imp_.SIO p);
+    stmt_rect : typeof! (@Imp_.stmt_rect p);
+
+    cont : typeof! (@Imp_.cont p);
+    CSuspended : typeof! (@Imp_.CSuspended p);
+    CSeq : typeof! (@Imp_.CSeq p);
+    CStack : typeof! (@Imp_.CStack p);
+    cont_rect : typeof! (@Imp_.cont_rect p);
+
+    ioact : typeof! (@Imp_.ioact p);
+    ioret : typeof! (@Imp_.ioret p);
+
+    interp_expr : typeof! (@Imp_.interp_expr p);
+    interp_stmt : typeof! (@Imp_.interp_stmt p);
+    interp_cont : typeof! (@Imp_.interp_cont p);
+"""
+
+for field in record.split(';'):
+    field = field.strip()
+    if not field:
+        continue
+    if ':' not in field:
+        continue
+    if ':=' in field:
+        continue
+    name = field.split(':')[0].strip()
+    print ("Local Notation %s := RECORD.(%s)."
+            %(name, name))
+*)
