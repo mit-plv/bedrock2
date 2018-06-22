@@ -12,234 +12,146 @@ Require compiler.Common.
 
 Module Imp. (* TODO: file *)
 
-Record ImpParameters :=
-  {
-    mword : Type;
-    mword_nonzero : mword -> bool;
+Module Type ImpParameters.
+  Parameter mword : Type.
+  Parameter mword_nonzero : mword -> bool.
 
-    varname : Type;
-    funname : Type;
-    actname : Type;
-    bopname : Type;
-    mem : Type;
+  Parameter varname : Type.
+  Parameter funname : Type.
+  Parameter actname : Type.
+  Parameter bopname : Type.
+  Parameter mem : Type.
 
-    varmap : Type;
-    varmap_operations : Common.Map varmap varname mword;
+  Parameter varmap : Type.
+  Parameter varmap_operations : Common.Map varmap varname mword.
 
-    interp_binop : bopname -> mword -> mword -> mword;
-    load : mword -> mem -> option mword;
-    store : mword -> mword -> mem -> option mem;
-  }.
+  Parameter interp_binop : bopname -> mword -> mword -> mword.
+  Parameter load : mword -> mem -> option mword.
+  Parameter store : mword -> mword -> mem -> option mem.
+End ImpParameters.
 
-Module Imp_.
-  Section Imp_.
-    Context {p : ImpParameters}.
-    (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
-    Local Notation mword := p.(mword).
-    Local Notation mword_nonzero := p.(mword_nonzero).
-    Local Notation varname := p.(varname).
-    Local Notation funname := p.(funname).
-    Local Notation actname := p.(actname).
-    Local Notation bopname := p.(bopname).
-    Local Notation varmap := p.(varmap).
-    Local Notation mem := p.(mem).
-    Local Definition varmap_operations_ : Common.Map _ _ _ := p.(varmap_operations). Global Existing Instance varmap_operations_.
-    Local Notation interp_binop := p.(interp_binop).
-    Local Notation load := p.(load).
-    Local Notation store := p.(store).
-    Local Inductive expr  : Type :=
-    | ELit(v: mword)
-    | EVar(x: varname)
-    | EOp(op: bopname) (e1 e2: expr).
+Module Imp (P : ImpParameters).
+  Import P.
+  Existing Instance varmap_operations.
+  Inductive expr  : Type :=
+  | ELit(v: mword)
+  | EVar(x: varname)
+  | EOp(op: bopname) (e1 e2: expr).
 
-    Local Inductive stmt :=
-    | SLoad(x: varname) (addr: expr)
-    | SStore(addr val: expr)
-    | SSet(x: varname)(e: expr)
-    | SIf(cond: expr)(bThen bElse: stmt)
-    | SWhile(cond: expr)(body: stmt)
-    | SSeq(s1 s2: stmt)
-    | SSkip
-    | SCall(binds: list varname)(f: funname)(args: list expr)
-    | SIO(binds: list varname)(io : actname)(args: list expr).
+  Inductive stmt :=
+  | SLoad(x: varname) (addr: expr)
+  | SStore(addr val: expr)
+  | SSet(x: varname)(e: expr)
+  | SIf(cond: expr)(bThen bElse: stmt)
+  | SWhile(cond: expr)(body: stmt)
+  | SSeq(s1 s2: stmt)
+  | SSkip
+  | SCall(binds: list varname)(f: funname)(args: list expr)
+  | SIO(binds: list varname)(io : actname)(args: list expr).
 
-    Section cont.
-      Context {T : Type}.
-      Local Inductive cont : Type :=
-      | CSuspended(_:T)
-      | CSeq(s1:cont) (s2: stmt)
-      | CStack(st: varmap)(c: cont)(binds rets: list varname).
-    End cont. Global Arguments cont : clear implicits.
+  Section cont.
+    Context {T : Type}.
+    Inductive cont : Type :=
+    | CSuspended(_:T)
+    | CSeq(s1:cont) (s2: stmt)
+    | CStack(st: varmap)(c: cont)(binds rets: list varname).
+  End cont. Global Arguments cont : clear implicits.
 
-    Local Definition ioact : Type := (list varname * actname * list mword).
-    Local Definition ioret : Type := (list varname * list mword).
+  Definition ioact : Type := (list varname * actname * list mword).
+  Definition ioret : Type := (list varname * list mword).
 
-    Local Fixpoint interp_expr st e : option mword :=
-      match e with
-      | ELit v => Some v
-      | EVar x => Common.get st x
-      | EOp op e1 e2 =>
-        bind_Some v1 <- interp_expr st e1;
-          bind_Some v2 <- interp_expr st e2;
-          Some (interp_binop op v1 v2)
+  Fixpoint interp_expr st e : option mword :=
+    match e with
+    | ELit v => Some v
+    | EVar x => Common.get st x
+    | EOp op e1 e2 =>
+      bind_Some v1 <- interp_expr st e1;
+        bind_Some v2 <- interp_expr st e2;
+        Some (interp_binop op v1 v2)
+    end.
+
+  Section WithFunctions.
+    Context (lookupFunction : funname -> option (list varname * list varname * stmt)).
+    Fixpoint interp_stmt(f: nat)(st: varmap)(m: mem)(s: stmt): option (varmap*mem*option(cont ioact)) :=
+      match f with
+      | 0 => None (* out of fuel *)
+      | S f => match s with
+               | SLoad x a =>
+                 bind_Some a <- interp_expr st a;
+                   bind_Some v <- load a m;
+                   Some (Common.put st x v, m, None)
+               | SStore a v =>
+                 bind_Some a <- interp_expr st a;
+                   bind_Some v <- interp_expr st v;
+                   bind_Some m <- store a v m;
+                   Some (st, m, None)
+               | SSet x e =>
+                 bind_Some v <- interp_expr st e;
+                   Some (Common.put st x v, m, None)
+               | SIf cond bThen bElse =>
+                 bind_Some v <- interp_expr st cond;
+                   interp_stmt f st m (if mword_nonzero v then bThen else bElse)
+               | SWhile cond body =>
+                 bind_Some v <- interp_expr st cond;
+                   if mword_nonzero v
+                   then
+                     bind_Some (st, m, c) <- interp_stmt f st m body;
+                       match c with
+                       | Some c => Some (st, m, Some (CSeq c (SWhile cond body)))
+                       | None => interp_stmt f st m (SWhile cond body)
+                       end
+                   else Some (st, m, None)
+               | SSeq s1 s2 =>
+                 bind_Some (st, m, c) <- interp_stmt f st m s1;
+                   match c with
+                   | Some c => Some (st, m, Some (CSeq c s2))
+                   | None => interp_stmt f st m s2
+                   end
+               | SSkip => Some (st, m, None)
+               | SCall binds fname args =>
+                 bind_Some (params, rets, fbody) <- lookupFunction fname;
+                   bind_Some argvs <- Common.option_all (List.map (interp_expr st) args);
+                   bind_Some st0 <- Common.putmany params argvs Common.empty;
+                   bind_Some (st1, m', oc) <- interp_stmt f st0 m fbody;
+                   match oc with
+                   | Some c => Some (st, m', Some (CStack st1 c binds rets))
+                   | None => 
+                     bind_Some retvs <- Common.option_all (List.map (Common.get st1) rets);
+                       bind_Some st' <- Common.putmany binds retvs st;
+                       Some (st', m', None)
+                   end
+               | SIO binds ionum args =>
+                 bind_Some argvs <- Common.option_all (List.map (interp_expr st) args);
+                   Some (st, m, Some (CSuspended (binds, ionum, argvs)))
+               end
       end.
 
-    Section WithFunctions.
-      Context (lookupFunction : funname -> option (list varname * list varname * stmt)).
-      Local Fixpoint interp_stmt(f: nat)(st: varmap)(m: mem)(s: stmt): option (varmap*mem*option(cont ioact)) :=
-        match f with
-        | 0 => None (* out of fuel *)
-        | S f => match s with
-          | SLoad x a =>
-              bind_Some a <- interp_expr st a;
-              bind_Some v <- load a m;
-              Some (Common.put st x v, m, None)
-          | SStore a v =>
-              bind_Some a <- interp_expr st a;
-              bind_Some v <- interp_expr st v;
-              bind_Some m <- store a v m;
-              Some (st, m, None)
-          | SSet x e =>
-              bind_Some v <- interp_expr st e;
-              Some (Common.put st x v, m, None)
-          | SIf cond bThen bElse =>
-              bind_Some v <- interp_expr st cond;
-              interp_stmt f st m (if mword_nonzero v then bThen else bElse)
-          | SWhile cond body =>
-              bind_Some v <- interp_expr st cond;
-              if mword_nonzero v
-              then
-                bind_Some (st, m, c) <- interp_stmt f st m body;
-                match c with
-                | Some c => Some (st, m, Some (CSeq c (SWhile cond body)))
-                | None => interp_stmt f st m (SWhile cond body)
-                end
-              else Some (st, m, None)
-          | SSeq s1 s2 =>
-              bind_Some (st, m, c) <- interp_stmt f st m s1;
-              match c with
-              | Some c => Some (st, m, Some (CSeq c s2))
-              | None => interp_stmt f st m s2
-              end
-          | SSkip => Some (st, m, None)
-          | SCall binds fname args =>
-            bind_Some (params, rets, fbody) <- lookupFunction fname;
-            bind_Some argvs <- Common.option_all (List.map (interp_expr st) args);
-            bind_Some st0 <- Common.putmany params argvs Common.empty;
-            bind_Some (st1, m', oc) <- interp_stmt f st0 m fbody;
-            match oc with
-            | Some c => Some (st, m', Some (CStack st1 c binds rets))
-            | None => 
-              bind_Some retvs <- Common.option_all (List.map (Common.get st1) rets);
-              bind_Some st' <- Common.putmany binds retvs st;
-              Some (st', m', None)
-            end
-          | SIO binds ionum args =>
-            bind_Some argvs <- Common.option_all (List.map (interp_expr st) args);
-            Some (st, m, Some (CSuspended (binds, ionum, argvs)))
-          end
-        end.
-
-      Local Fixpoint interp_cont(f: nat)(st: varmap)(m: mem)(s: cont ioret): option (varmap*mem*option(cont ioact)) :=
-        match f with
-        | 0 => None (* out of fuel *)
-        | S f => match s with
-          | CSuspended (binds, retvs) =>
-              bind_Some st' <- Common.putmany binds retvs st;
-              Some (st', m, None)
-          | CSeq c s2 =>
-              bind_Some (st, m, oc) <- interp_cont f st m c;
-              match oc with
-              | Some c => Some (st, m, Some (CSeq c s2))
-              | None => interp_stmt f st m s2
-              end
-          | CStack stf cf binds rets =>
-            bind_Some (stf', m', oc) <- interp_cont f stf m cf;
-            match oc with
-            | Some c => Some (st, m', Some (CStack stf' c binds rets))
-            | None => 
-              bind_Some retvs <- Common.option_all (List.map (Common.get stf') rets);
-              bind_Some st' <- Common.putmany binds retvs st;
-              Some (st', m', None)
-            end
-          end
-        end.
-    End WithFunctions.
-  End Imp_.
-  Global Arguments expr : clear implicits.
-  Global Arguments stmt : clear implicits.
-  Global Arguments cont : clear implicits.
-End Imp_.
-
-(* type of the following record value... COQBUG(https://github.com/coq/coq/issues/7810) *)
-Record ImpInterface {p:ImpParameters} :=
-  {
-    expr : typeof! (@Imp_.expr p);
-    ELit : typeof! (@Imp_.ELit p);
-    EVar : typeof! (@Imp_.EVar p);
-    EOp : typeof! (@Imp_.EOp p);
-    expr_rect : typeof! (@Imp_.expr_rect p);
-
-    stmt : typeof! (@Imp_.stmt p);
-    SLoad : typeof! (@Imp_.SLoad p);
-    SStore : typeof! (@Imp_.SStore p);
-    SSet : typeof! (@Imp_.SSet p);
-    SIf : typeof! (@Imp_.SIf p);
-    SWhile : typeof! (@Imp_.SWhile p);
-    SSeq : typeof! (@Imp_.SSeq p);
-    SSkip : typeof! (@Imp_.SSkip p);
-    SCall : typeof! (@Imp_.SCall p);
-    SIO : typeof! (@Imp_.SIO p);
-    stmt_rect : typeof! (@Imp_.stmt_rect p);
-
-    cont : typeof! (@Imp_.cont p);
-    CSuspended : typeof! (@Imp_.CSuspended p);
-    CSeq : typeof! (@Imp_.CSeq p);
-    CStack : typeof! (@Imp_.CStack p);
-    cont_rect : typeof! (@Imp_.cont_rect p);
-
-    ioact : typeof! (@Imp_.ioact p);
-    ioret : typeof! (@Imp_.ioret p);
-
-    interp_expr : typeof! (@Imp_.interp_expr p);
-    interp_stmt : typeof! (@Imp_.interp_stmt p);
-    interp_cont : typeof! (@Imp_.interp_cont p);
-  }.
-Global Arguments ImpInterface : clear implicits.
-
-Definition Imp (p : ImpParameters) : ImpInterface p :=
-  {|
-    expr := @Imp_.expr p;
-    ELit := @Imp_.ELit p;
-    EVar := @Imp_.EVar p;
-    EOp := @Imp_.EOp p;
-    expr_rect := @Imp_.expr_rect p;
-    
-    stmt := @Imp_.stmt p;
-    SLoad := @Imp_.SLoad p;
-    SStore := @Imp_.SStore p;
-    SSet := @Imp_.SSet p;
-    SIf := @Imp_.SIf p;
-    SWhile := @Imp_.SWhile p;
-    SSeq := @Imp_.SSeq p;
-    SSkip := @Imp_.SSkip p;
-    SCall := @Imp_.SCall p;
-    SIO := @Imp_.SIO p;
-    stmt_rect := @Imp_.stmt_rect p;
-
-    cont := Imp_.cont p;
-    CSuspended := @Imp_.CSuspended p;
-    CSeq := @Imp_.CSeq p;
-    CStack := @Imp_.CStack p;
-    cont_rect := @Imp_.cont_rect p;
-    
-    ioact := @Imp_.ioact p;
-    ioret := @Imp_.ioret p;
-
-    interp_expr := @Imp_.interp_expr p;
-    interp_stmt := @Imp_.interp_stmt p;
-    interp_cont := @Imp_.interp_cont p;
-  |}.
+    Fixpoint interp_cont(f: nat)(st: varmap)(m: mem)(s: cont ioret): option (varmap*mem*option(cont ioact)) :=
+      match f with
+      | 0 => None (* out of fuel *)
+      | S f => match s with
+               | CSuspended (binds, retvs) =>
+                 bind_Some st' <- Common.putmany binds retvs st;
+                   Some (st', m, None)
+               | CSeq c s2 =>
+                 bind_Some (st, m, oc) <- interp_cont f st m c;
+                   match oc with
+                   | Some c => Some (st, m, Some (CSeq c s2))
+                   | None => interp_stmt f st m s2
+                   end
+               | CStack stf cf binds rets =>
+                 bind_Some (stf', m', oc) <- interp_cont f stf m cf;
+                   match oc with
+                   | Some c => Some (st, m', Some (CStack stf' c binds rets))
+                   | None => 
+                     bind_Some retvs <- Common.option_all (List.map (Common.get stf') rets);
+                       bind_Some st' <- Common.putmany binds retvs st;
+                       Some (st', m', None)
+                   end
+               end
+      end.
+  End WithFunctions.
+End Imp.
 
 End Imp. (* TODO: file *)
 
@@ -251,33 +163,33 @@ Require compiler.Op.
 
 Module RISCVImp. (* TODO: file *)
 
-Record RISCVImpParameters :=
-  {
-    bw : riscv.util.BitWidths.BitWidths;
-    varname : Type;
-    funname : Type;
-    actname : Type;
-    varmap : Type;
-    varmap_operations : Common.Map varmap varname (bbv.Word.word (riscv.util.BitWidths.wXLEN));
-  }.
+Module Type RISCVImpParameters.
+  Parameter bw : riscv.util.BitWidths.BitWidths.
+  Parameter varname : Type.
+  Parameter funname : Type.
+  Parameter actname : Type.
+  Parameter varmap : Type.
+  Parameter varmap_operations : Common.Map varmap varname (bbv.Word.word (@riscv.util.BitWidths.wXLEN bw)).
+End RISCVImpParameters.
 
-Definition ImpParameters_of_RISCVImpParameters (p:RISCVImpParameters): Imp.ImpParameters :=
-  {|
-    Imp.mword := bbv.Word.word (@riscv.util.BitWidths.wXLEN p.(bw));
-    Imp.mword_nonzero := fun v => if bbv.Word.weq v (bbv.Word.wzero _) then false else true;
-    Imp.varname := p.(varname);
-    Imp.funname := p.(funname);
-    Imp.actname := p.(actname);
-    Imp.bopname := compiler.Op.binop;
-    Imp.mem := compiler.Memory.mem;
+Module ImpParameters_of_RISCVImpParameters (P : RISCVImpParameters) <: Imp.ImpParameters.
+  Import P.
+  Definition mword := bbv.Word.word (@riscv.util.BitWidths.wXLEN bw).
+  Definition mword_nonzero := fun v => if bbv.Word.weq v (bbv.Word.wzero _ : mword) then false else true.
+  Definition varname := varname.
+  Definition funname := funname.
+  Definition actname := actname.
+  Definition bopname := compiler.Op.binop.
+  Definition mem := @compiler.Memory.mem bw.
 
-    Imp.interp_binop := compiler.Op.eval_binop;
-    Imp.load := Memory.read_mem;
-    Imp.store := Memory.write_mem;
+  Definition interp_binop := @compiler.Op.eval_binop (@riscv.util.BitWidths.wXLEN bw).
+  Definition load := @Memory.read_mem bw.
+  Definition store := @Memory.write_mem bw.
 
-    Imp.varmap := p.(varmap);
-    Imp.varmap_operations := p.(varmap_operations);
-  |}.
+  Definition varmap := varmap.
+  Definition varmap_operations := varmap_operations.
+End ImpParameters_of_RISCVImpParameters.
+
 End RISCVImp. (* TODO: file *)
 
 
@@ -295,50 +207,30 @@ Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import compiler.Memory.
 
-Module ImpInversion. (* TODO: file*)
-Section ImpInversion.
+Module ImpInversion (P : Imp.ImpParameters).
+  Import P.
+  Module Imp := Imp.Imp P.
   Import Imp.
-  Context (p:ImpParameters).
-  Let Imp : Imp.ImpInterface p := Imp.Imp p.
-  (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
-  Local Notation mword := p.(mword).
-  Local Notation mword_nonzero := p.(mword_nonzero).
-  Local Notation varname := p.(varname).
-  Local Notation funname := p.(funname).
-  Local Notation actname := p.(actname).
-  Local Notation bopname := p.(bopname).
-  Local Notation varmap := p.(varmap).
-  Local Notation mem := p.(mem).
-  Local Notation interp_binop := p.(interp_binop).
-  Local Notation load := p.(load).
-  Local Notation store := p.(store).
-  (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
-  Local Notation expr := Imp.(expr).
-  Local Notation stmt := Imp.(stmt).
-  Local Notation cont := Imp.(cont).
-  Local Notation interp_expr := Imp.(interp_expr).
-  Local Notation interp_stmt := Imp.(interp_stmt).
-  Local Notation interp_cont := Imp.(interp_cont).
   
   Lemma cont_uninhabited (T:Set) (_:T -> False) (X : cont T) : False. Proof. induction X; auto 2. Qed.
 
   Fixpoint expr_size(e: expr): nat :=
     match e with
-    | Imp_.ELit _ => 8
-    | Imp_.EVar _ => 1
-    | Imp_.EOp op e1 e2 => S (S (expr_size e1 + expr_size e2))
+    | ELit _ => 8
+    | EVar _ => 1
+    | EOp op e1 e2 => S (S (expr_size e1 + expr_size e2))
     end.
 
   Fixpoint stmt_size(s: stmt): nat :=
     match s with
-    | Imp_.SLoad x a => S (expr_size a)
-    | Imp_.SStore a v => S (expr_size a + expr_size v)
-    | Imp_.SSet x e => S (expr_size e)
-    | Imp_.SIf cond bThen bElse => S (expr_size cond + stmt_size bThen + stmt_size bElse)
-    | Imp_.SWhile cond body => S (expr_size cond + stmt_size body)
-    | Imp_.SSeq s1 s2 => S (stmt_size s1 + stmt_size s2)
-    | Imp_.SSkip => 1
-    | Imp_.SCall binds _ args | Imp_.SIO binds _ args =>
+    | SLoad x a => S (expr_size a)
+    | SStore a v => S (expr_size a + expr_size v)
+    | SSet x e => S (expr_size e)
+    | SIf cond bThen bElse => S (expr_size cond + stmt_size bThen + stmt_size bElse)
+    | SWhile cond body => S (expr_size cond + stmt_size body)
+    | SSeq s1 s2 => S (stmt_size s1 + stmt_size s2)
+    | SSkip => 1
+    | SCall binds _ args | SIO binds _ args =>
                            S (length binds + length args + List.fold_right Nat.add O (List.map expr_size args))
     end.
 
@@ -350,14 +242,14 @@ Section ImpInversion.
     eauto 99.
 
   Lemma invert_interp_SLoad: forall env fuel initialSt initialM x e final,
-      interp_stmt env (S fuel) initialSt initialM (Imp.(SLoad) x e) = Some final ->
+      interp_stmt env (S fuel) initialSt initialM (SLoad x e) = Some final ->
       exists a v, interp_expr initialSt e = Some a /\
                   load a initialM = Some v /\
                   final = (put initialSt x v, initialM, None).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SStore: forall env fuel initialSt initialM a v final,
-    interp_stmt env (S fuel) initialSt initialM (Imp.(SStore) a v) = Some final ->
+    interp_stmt env (S fuel) initialSt initialM (SStore a v) = Some final ->
     exists av vv finalM, interp_expr initialSt a = Some av /\
                          interp_expr initialSt v = Some vv /\
                          store av vv initialM = Some finalM /\
@@ -365,12 +257,12 @@ Section ImpInversion.
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SSet: forall env f st1 m1 p2 x e,
-    interp_stmt env (S f) st1 m1 (Imp.(SSet) x e) = Some p2 ->
+    interp_stmt env (S f) st1 m1 (SSet x e) = Some p2 ->
     exists v, interp_expr st1 e = Some v /\ p2 = (put st1 x v, m1, None).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SIf: forall env f st1 m1 p2 cond bThen bElse,
-    interp_stmt env (S f) st1 m1 (Imp.(SIf) cond bThen bElse) = Some p2 ->
+    interp_stmt env (S f) st1 m1 (SIf cond bThen bElse) = Some p2 ->
     exists cv,
       interp_expr st1 cond = Some cv /\ 
       (mword_nonzero cv = true /\ interp_stmt env f st1 m1 bThen = Some p2 \/
@@ -378,30 +270,30 @@ Section ImpInversion.
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SSkip: forall env st1 m1 p2 f,
-    interp_stmt env (S f) st1 m1 Imp.(SSkip) = Some p2 ->
+    interp_stmt env (S f) st1 m1 SSkip = Some p2 ->
     p2 = (st1, m1, None).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SSeq: forall env st1 m1 p3 f s1 s2,
-    interp_stmt env (S f) st1 m1 (Imp.(SSeq) s1 s2) = Some p3 ->
+    interp_stmt env (S f) st1 m1 (SSeq s1 s2) = Some p3 ->
     exists st2 m2 oc, interp_stmt env f st1 m1 s1 = Some (st2, m2, oc) /\ (
         (oc = None /\ interp_stmt env f st2 m2 s2 = Some p3)
-     \/ (exists c, oc = Some c /\ p3 = (st2, m2, Some (Imp.(CSeq) _ c s2)))).
+     \/ (exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq c s2)))).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SWhile: forall env st1 m1 p3 f cond body,
-    interp_stmt env (S f) st1 m1 (Imp.(SWhile) cond body) = Some p3 ->
+    interp_stmt env (S f) st1 m1 (SWhile cond body) = Some p3 ->
     exists cv,
       interp_expr st1 cond = Some cv /\
       (mword_nonzero cv = true /\
        (exists st2 m2 oc, interp_stmt env f st1 m1 body = Some (st2, m2, oc) /\ (
-              ( oc = None /\ interp_stmt env f st2 m2 (Imp.(SWhile) cond body) = Some p3)
-           \/ ( exists c, oc = Some c /\ p3 = (st2, m2, Some (Imp.(CSeq) _ c (Imp.(SWhile) cond body))))))
+              ( oc = None /\ interp_stmt env f st2 m2 (SWhile cond body) = Some p3)
+           \/ ( exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq c (SWhile cond body))))))
        \/ mword_nonzero cv = false /\ p3 = (st1, m1, None)).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SCall : forall env st m1 p2 f binds fname args,
-    interp_stmt env (S f) st m1 (Imp.(SCall) binds fname args) = Some p2 ->
+    interp_stmt env (S f) st m1 (SCall binds fname args) = Some p2 ->
     exists params rets fbody argvs st0 st1 m' oc,
       env fname = Some (params, rets, fbody) /\
       option_all (map (interp_expr st) args) = Some argvs /\
@@ -413,36 +305,43 @@ Section ImpInversion.
          p2 = (st', m', None)
        ) \/
        ( exists c, oc = Some c /\
-         p2 = (st, m', Some (Imp.(CStack) _ st1 c binds rets)) ) ).
+         p2 = (st, m', Some (CStack st1 c binds rets)) ) ).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SIO : forall env st m1 p2 f binds ioname args,
-    interp_stmt env (S f) st m1 (Imp.(SIO) binds ioname args) = Some p2 ->
+    interp_stmt env (S f) st m1 (SIO binds ioname args) = Some p2 ->
     exists argvs, option_all (map (interp_expr st) args) = Some argvs /\
-                  p2 = (st, m1, Some (Imp.(CSuspended) _ (binds, ioname, argvs))).
+                  p2 = (st, m1, Some (CSuspended (binds, ioname, argvs))).
   Proof. inversion_lemma. Qed.
+
+  Local Tactic Notation "marker" ident(s) := let x := fresh s in pose proof tt as x; move x at top.
+  Ltac invert_interp_stmt :=
+    lazymatch goal with
+    | E: interp_stmt _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
+      destruct s;
+      [ apply invert_interp_SLoad in E; deep_destruct E; marker SLoad
+      | apply invert_interp_SStore in E; deep_destruct E; marker SStore
+      | apply invert_interp_SSet in E; deep_destruct E; marker SSet
+      | apply invert_interp_SIf in E; deep_destruct E; [marker SIf_true | marker SIf_false]
+      | apply invert_interp_SWhile in E; deep_destruct E; [marker SWhile_true | marker SWhile_blocked | marker SWhile_false ]
+      | apply invert_interp_SSeq in E; deep_destruct E; [marker SSeq | marker SSeq_blocked ]
+      | apply invert_interp_SSkip in E; deep_destruct E; marker SSkip
+      | apply invert_interp_SCall in E; deep_destruct E; [marker SCall | marker SCall_blocked]
+      | apply invert_interp_SIO in E; deep_destruct E; [marker SIO ]
+      ] end.
 End ImpInversion.
 
-Local Tactic Notation "marker" ident(s) := let x := fresh s in pose proof tt as x; move x at top.
-Ltac invert_interp_stmt :=
-  lazymatch goal with
-  | E: Imp.interp_stmt _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
-    destruct s;
-    [ apply invert_interp_SLoad in E; deep_destruct E; marker SLoad
-    | apply invert_interp_SStore in E; deep_destruct E; marker SStore
-    | apply invert_interp_SSet in E; deep_destruct E; marker SSet
-    | apply invert_interp_SIf in E; deep_destruct E; [marker SIf_true | marker SIf_false]
-    | apply invert_interp_SWhile in E; deep_destruct E; [marker SWhile_true | marker SWhile_blocked | marker SWhile_false ]
-    | apply invert_interp_SSeq in E; deep_destruct E; [marker SSeq | marker SSeq_blocked ]
-    | apply invert_interp_SSkip in E; deep_destruct E; marker SSkip
-    | apply invert_interp_SCall in E; deep_destruct E; [marker SCall | marker SCall_blocked]
-    | apply invert_interp_SIO in E; deep_destruct E; [marker SIO ]
-    ] end.
-End ImpInversion. (* TODO: file *)
-
-Module ImpVars. (* TODO: file *)
-Import ImpInversion.
-Section ImpVars.
+Module ImpVars (P : Imp.ImpParameters). (* TODO: file *)
+  Import P.
+  Module Imp := Imp.Imp P.
+  Import Imp.
+  Module ImpInversion := ImpInversion P.
+  Import ImpInversion.
+  Goal Top.ImpVars.ImpInversion.Imp.expr = Top.ImpVars.Imp.expr.
+    Fail reflexivity.
+  Abort.
+    (* 
+  Module Imp := Imp.Imp P.
   Import Imp.
   Context {p:ImpParameters}.
   (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
@@ -552,23 +451,28 @@ Section ImpVars.
       (* SCall *)
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
-
-End ImpVars.
+*)
+    
 End ImpVars. (* TODO: file *)
 
 
 Require riscv.util.BitWidth32.
 Module TestExprImp.
-Import Imp compiler.Op.
-Local Definition ImpParameters :=
-  RISCVImp.ImpParameters_of_RISCVImpParameters
-  {|
-    RISCVImp.bw := riscv.util.BitWidth32.BitWidth32;
-    RISCVImp.varname := Z;
-    RISCVImp.funname := Empty_set;
-    RISCVImp.actname := Empty_set;
-  |}.
-Local Definition Imp := Imp ImpParameters.
+  Module TestParameters <: RISCVImp.RISCVImpParameters.
+    Definition bw := riscv.util.BitWidth32.BitWidth32.
+    Definition varname := Z.
+    Definition funname := Empty_set.
+    Definition actname := Empty_set.
+    Definition varmap := varname -> option (bbv.Word.word (@riscv.util.BitWidths.wXLEN bw)). 
+    Definition varmap_operations : Common.Map varmap varname (bbv.Word.word (@riscv.util.BitWidths.wXLEN bw)).
+      eapply Function_Map.
+      eapply Z.eq_dec.
+    Defined.
+  End TestParameters.
+
+  Module TestParameters' := RISCVImp.ImpParameters_of_RISCVImpParameters TestParameters.
+  Module Imp := Imp.Imp TestParameters'.
+  Import Imp.
 
 (*
 given x, y, z
@@ -591,45 +495,6 @@ Definition _a := 0%Z.
 Definition _b := 1%Z.
 Definition _c := 2%Z.
 Definition _isRight := 3%Z.
-
-(* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
-Local Notation expr := Imp.(expr).
-Local Notation ELit := Imp.(ELit).
-Local Notation EVar := Imp.(EVar).
-Local Notation EOp := Imp.(EOp).
-Local Notation expr_rect := Imp.(expr_rect).
-Local Notation stmt := Imp.(stmt).
-Local Notation SLoad := Imp.(SLoad).
-Local Notation SStore := Imp.(SStore).
-Local Notation SSet := Imp.(SSet).
-Local Notation SIf := Imp.(SIf).
-Local Notation SWhile := Imp.(SWhile).
-Local Notation SSeq := Imp.(SSeq).
-Local Notation SSkip := Imp.(SSkip).
-Local Notation SCall := Imp.(SCall).
-Local Notation SIO := Imp.(SIO).
-Local Notation stmt_rect := Imp.(stmt_rect).
-Local Notation cont := Imp.(cont).
-Local Notation CSuspended := Imp.(CSuspended).
-Local Notation CSeq := Imp.(CSeq).
-Local Notation CStack := Imp.(CStack).
-Local Notation cont_rect := Imp.(cont_rect).
-Local Notation ioact := Imp.(ioact).
-Local Notation ioret := Imp.(ioret).
-Local Notation interp_expr := Imp.(interp_expr).
-Local Notation interp_stmt := Imp.(interp_stmt).
-Local Notation interp_cont := Imp.(interp_cont).
-
-Eval cbn in
-  (fun op : (RISCVImp.ImpParameters_of_RISCVImpParameters _).(bopname) =>
-   (fun e1 e2 : expr => EOp op e1 e2) = (fun e1 e2 : expr => EOp op e1 e2)) OLt.
-
-Eval cbn in
-  (fun op : (RISCVImp.ImpParameters_of_RISCVImpParameters _).(bopname) =>
-   (fun e1 e2 : expr => EOp op e1 e2) = (fun e1 e2 : expr => EOp op e1 e2)) OLt.
-
-Eval cbn in (fun e1 e2 : expr => EOp OLt e1 e2) = (fun e1 e2 : expr => EOp OLt e1 e2).
-
 
 Definition isRight(x y z: word 32) : stmt :=
   SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))
@@ -654,51 +519,3 @@ Goal run_isRight $5 $3 $4 = Some $1. reflexivity. Qed.
 Goal run_isRight $12 $13 $5 = Some $1. reflexivity. Qed.
 
 End TestExprImp.
-
-(* RecordImport.py
-record =\
-"""
-    expr : typeof! (@Imp_.expr p);
-    ELit : typeof! (@Imp_.ELit p);
-    EVar : typeof! (@Imp_.EVar p);
-    EOp : typeof! (@Imp_.EOp p);
-    expr_rect : typeof! (@Imp_.expr_rect p);
-
-    stmt : typeof! (@Imp_.stmt p);
-    SLoad : typeof! (@Imp_.SLoad p);
-    SStore : typeof! (@Imp_.SStore p);
-    SSet : typeof! (@Imp_.SSet p);
-    SIf : typeof! (@Imp_.SIf p);
-    SWhile : typeof! (@Imp_.SWhile p);
-    SSeq : typeof! (@Imp_.SSeq p);
-    SSkip : typeof! (@Imp_.SSkip p);
-    SCall : typeof! (@Imp_.SCall p);
-    SIO : typeof! (@Imp_.SIO p);
-    stmt_rect : typeof! (@Imp_.stmt_rect p);
-
-    cont : typeof! (@Imp_.cont p);
-    CSuspended : typeof! (@Imp_.CSuspended p);
-    CSeq : typeof! (@Imp_.CSeq p);
-    CStack : typeof! (@Imp_.CStack p);
-    cont_rect : typeof! (@Imp_.cont_rect p);
-
-    ioact : typeof! (@Imp_.ioact p);
-    ioret : typeof! (@Imp_.ioret p);
-
-    interp_expr : typeof! (@Imp_.interp_expr p);
-    interp_stmt : typeof! (@Imp_.interp_stmt p);
-    interp_cont : typeof! (@Imp_.interp_cont p);
-"""
-
-for field in record.split(';'):
-    field = field.strip()
-    if not field:
-        continue
-    if ':' not in field:
-        continue
-    if ':=' in field:
-        continue
-    name = field.split(':')[0].strip()
-    print ("Local Notation %s := RECORD.(%s)."
-            %(name, name))
-*)
