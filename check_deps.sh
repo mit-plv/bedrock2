@@ -1,5 +1,7 @@
 #!/bin/sh
 
+echo "bedrock2: Skipping dependency check"
+exit 0
 
 DEPS=`cd dep && ls`
 
