@@ -314,8 +314,28 @@ Section ImpInversion.
   Local Notation store := p.(store).
   (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
   Local Notation expr := Imp.(expr).
+  Local Notation ELit := Imp.(ELit).
+  Local Notation EVar := Imp.(EVar).
+  Local Notation EOp := Imp.(EOp).
+  Local Notation expr_rect := Imp.(expr_rect).
   Local Notation stmt := Imp.(stmt).
+  Local Notation SLoad := Imp.(SLoad).
+  Local Notation SStore := Imp.(SStore).
+  Local Notation SSet := Imp.(SSet).
+  Local Notation SIf := Imp.(SIf).
+  Local Notation SWhile := Imp.(SWhile).
+  Local Notation SSeq := Imp.(SSeq).
+  Local Notation SSkip := Imp.(SSkip).
+  Local Notation SCall := Imp.(SCall).
+  Local Notation SIO := Imp.(SIO).
+  Local Notation stmt_rect := Imp.(stmt_rect).
   Local Notation cont := Imp.(cont).
+  Local Notation CSuspended := Imp.(CSuspended).
+  Local Notation CSeq := Imp.(CSeq).
+  Local Notation CStack := Imp.(CStack).
+  Local Notation cont_rect := Imp.(cont_rect).
+  Local Notation ioact := Imp.(ioact).
+  Local Notation ioret := Imp.(ioret).
   Local Notation interp_expr := Imp.(interp_expr).
   Local Notation interp_stmt := Imp.(interp_stmt).
   Local Notation interp_cont := Imp.(interp_cont).
@@ -350,14 +370,14 @@ Section ImpInversion.
     eauto 99.
 
   Lemma invert_interp_SLoad: forall env fuel initialSt initialM x e final,
-      interp_stmt env (S fuel) initialSt initialM (Imp.(SLoad) x e) = Some final ->
+      interp_stmt env (S fuel) initialSt initialM (SLoad x e) = Some final ->
       exists a v, interp_expr initialSt e = Some a /\
                   load a initialM = Some v /\
                   final = (put initialSt x v, initialM, None).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SStore: forall env fuel initialSt initialM a v final,
-    interp_stmt env (S fuel) initialSt initialM (Imp.(SStore) a v) = Some final ->
+    interp_stmt env (S fuel) initialSt initialM (SStore a v) = Some final ->
     exists av vv finalM, interp_expr initialSt a = Some av /\
                          interp_expr initialSt v = Some vv /\
                          store av vv initialM = Some finalM /\
@@ -365,12 +385,12 @@ Section ImpInversion.
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SSet: forall env f st1 m1 p2 x e,
-    interp_stmt env (S f) st1 m1 (Imp.(SSet) x e) = Some p2 ->
+    interp_stmt env (S f) st1 m1 (SSet x e) = Some p2 ->
     exists v, interp_expr st1 e = Some v /\ p2 = (put st1 x v, m1, None).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SIf: forall env f st1 m1 p2 cond bThen bElse,
-    interp_stmt env (S f) st1 m1 (Imp.(SIf) cond bThen bElse) = Some p2 ->
+    interp_stmt env (S f) st1 m1 (SIf cond bThen bElse) = Some p2 ->
     exists cv,
       interp_expr st1 cond = Some cv /\ 
       (mword_nonzero cv = true /\ interp_stmt env f st1 m1 bThen = Some p2 \/
@@ -378,30 +398,30 @@ Section ImpInversion.
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SSkip: forall env st1 m1 p2 f,
-    interp_stmt env (S f) st1 m1 Imp.(SSkip) = Some p2 ->
+    interp_stmt env (S f) st1 m1 SSkip = Some p2 ->
     p2 = (st1, m1, None).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SSeq: forall env st1 m1 p3 f s1 s2,
-    interp_stmt env (S f) st1 m1 (Imp.(SSeq) s1 s2) = Some p3 ->
+    interp_stmt env (S f) st1 m1 (SSeq s1 s2) = Some p3 ->
     exists st2 m2 oc, interp_stmt env f st1 m1 s1 = Some (st2, m2, oc) /\ (
         (oc = None /\ interp_stmt env f st2 m2 s2 = Some p3)
-     \/ (exists c, oc = Some c /\ p3 = (st2, m2, Some (Imp.(CSeq) _ c s2)))).
+     \/ (exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq _ c s2)))).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SWhile: forall env st1 m1 p3 f cond body,
-    interp_stmt env (S f) st1 m1 (Imp.(SWhile) cond body) = Some p3 ->
+    interp_stmt env (S f) st1 m1 (SWhile cond body) = Some p3 ->
     exists cv,
       interp_expr st1 cond = Some cv /\
       (mword_nonzero cv = true /\
        (exists st2 m2 oc, interp_stmt env f st1 m1 body = Some (st2, m2, oc) /\ (
-              ( oc = None /\ interp_stmt env f st2 m2 (Imp.(SWhile) cond body) = Some p3)
-           \/ ( exists c, oc = Some c /\ p3 = (st2, m2, Some (Imp.(CSeq) _ c (Imp.(SWhile) cond body))))))
+              ( oc = None /\ interp_stmt env f st2 m2 (SWhile cond body) = Some p3)
+           \/ ( exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq _ c (SWhile cond body))))))
        \/ mword_nonzero cv = false /\ p3 = (st1, m1, None)).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SCall : forall env st m1 p2 f binds fname args,
-    interp_stmt env (S f) st m1 (Imp.(SCall) binds fname args) = Some p2 ->
+    interp_stmt env (S f) st m1 (SCall binds fname args) = Some p2 ->
     exists params rets fbody argvs st0 st1 m' oc,
       env fname = Some (params, rets, fbody) /\
       option_all (map (interp_expr st) args) = Some argvs /\
@@ -413,13 +433,13 @@ Section ImpInversion.
          p2 = (st', m', None)
        ) \/
        ( exists c, oc = Some c /\
-         p2 = (st, m', Some (Imp.(CStack) _ st1 c binds rets)) ) ).
+         p2 = (st, m', Some (CStack _ st1 c binds rets)) ) ).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SIO : forall env st m1 p2 f binds ioname args,
-    interp_stmt env (S f) st m1 (Imp.(SIO) binds ioname args) = Some p2 ->
+    interp_stmt env (S f) st m1 (SIO binds ioname args) = Some p2 ->
     exists argvs, option_all (map (interp_expr st) args) = Some argvs /\
-                  p2 = (st, m1, Some (Imp.(CSuspended) _ (binds, ioname, argvs))).
+                  p2 = (st, m1, Some (CSuspended _ (binds, ioname, argvs))).
   Proof. inversion_lemma. Qed.
 End ImpInversion.
 
@@ -460,8 +480,28 @@ Section ImpVars.
   Let Imp : Imp.ImpInterface p := Imp.Imp p.
   (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
   Local Notation expr := Imp.(expr).
+  Local Notation ELit := Imp.(ELit).
+  Local Notation EVar := Imp.(EVar).
+  Local Notation EOp := Imp.(EOp).
+  Local Notation expr_rect := Imp.(expr_rect).
   Local Notation stmt := Imp.(stmt).
+  Local Notation SLoad := Imp.(SLoad).
+  Local Notation SStore := Imp.(SStore).
+  Local Notation SSet := Imp.(SSet).
+  Local Notation SIf := Imp.(SIf).
+  Local Notation SWhile := Imp.(SWhile).
+  Local Notation SSeq := Imp.(SSeq).
+  Local Notation SSkip := Imp.(SSkip).
+  Local Notation SCall := Imp.(SCall).
+  Local Notation SIO := Imp.(SIO).
+  Local Notation stmt_rect := Imp.(stmt_rect).
   Local Notation cont := Imp.(cont).
+  Local Notation CSuspended := Imp.(CSuspended).
+  Local Notation CSeq := Imp.(CSeq).
+  Local Notation CStack := Imp.(CStack).
+  Local Notation cont_rect := Imp.(cont_rect).
+  Local Notation ioact := Imp.(ioact).
+  Local Notation ioret := Imp.(ioret).
   Local Notation interp_expr := Imp.(interp_expr).
   Local Notation interp_stmt := Imp.(interp_stmt).
   Local Notation interp_cont := Imp.(interp_cont).
@@ -619,17 +659,6 @@ Local Notation ioret := Imp.(ioret).
 Local Notation interp_expr := Imp.(interp_expr).
 Local Notation interp_stmt := Imp.(interp_stmt).
 Local Notation interp_cont := Imp.(interp_cont).
-
-Eval cbn in
-  (fun op : (RISCVImp.ImpParameters_of_RISCVImpParameters _).(bopname) =>
-   (fun e1 e2 : expr => EOp op e1 e2) = (fun e1 e2 : expr => EOp op e1 e2)) OLt.
-
-Eval cbn in
-  (fun op : (RISCVImp.ImpParameters_of_RISCVImpParameters _).(bopname) =>
-   (fun e1 e2 : expr => EOp op e1 e2) = (fun e1 e2 : expr => EOp op e1 e2)) OLt.
-
-Eval cbn in (fun e1 e2 : expr => EOp OLt e1 e2) = (fun e1 e2 : expr => EOp OLt e1 e2).
-
 
 Definition isRight(x y z: word 32) : stmt :=
   SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))
