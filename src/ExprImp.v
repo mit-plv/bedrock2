@@ -206,6 +206,9 @@ Record ImpInterface {p:ImpParameters} :=
     interp_cont : typeof! (@Imp_.interp_cont p);
   }.
 Global Arguments ImpInterface : clear implicits.
+Global Arguments CSuspended {_} _ [_].
+Global Arguments CSeq {_} _ [_].
+Global Arguments CSeq {_} _ [_].
 
 Definition Imp (p : ImpParameters) : ImpInterface p :=
   {|
@@ -406,7 +409,7 @@ Section ImpInversion.
     interp_stmt env (S f) st1 m1 (SSeq s1 s2) = Some p3 ->
     exists st2 m2 oc, interp_stmt env f st1 m1 s1 = Some (st2, m2, oc) /\ (
         (oc = None /\ interp_stmt env f st2 m2 s2 = Some p3)
-     \/ (exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq _ c s2)))).
+     \/ (exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq c s2)))).
   Proof. inversion_lemma. Qed.
 
   Lemma invert_interp_SWhile: forall env st1 m1 p3 f cond body,
@@ -416,7 +419,7 @@ Section ImpInversion.
       (mword_nonzero cv = true /\
        (exists st2 m2 oc, interp_stmt env f st1 m1 body = Some (st2, m2, oc) /\ (
               ( oc = None /\ interp_stmt env f st2 m2 (SWhile cond body) = Some p3)
-           \/ ( exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq _ c (SWhile cond body))))))
+           \/ ( exists c, oc = Some c /\ p3 = (st2, m2, Some (CSeq c (SWhile cond body))))))
        \/ mword_nonzero cv = false /\ p3 = (st1, m1, None)).
   Proof. inversion_lemma. Qed.
 
@@ -439,7 +442,7 @@ Section ImpInversion.
   Lemma invert_interp_SIO : forall env st m1 p2 f binds ioname args,
     interp_stmt env (S f) st m1 (SIO binds ioname args) = Some p2 ->
     exists argvs, option_all (map (interp_expr st) args) = Some argvs /\
-                  p2 = (st, m1, Some (CSuspended _ (binds, ioname, argvs))).
+                  p2 = (st, m1, Some (CSuspended (binds, ioname, argvs))).
   Proof. inversion_lemma. Qed.
 End ImpInversion.
 
