@@ -213,21 +213,21 @@ Definition toposort3(N: nat)(A: list (list nat))(outDegs: list nat): list nat.
   end.
 Defined.
 
-Print toposort3. (* not quite what we want *)
+(* Print toposort3. not quite what we want *)
 
 Definition toposort4 := ltac:(let res := eval cbv beta delta [
     toposort2 toposort increment decrement
   ] in
   (fun N A outDegs => toposort2 N A outDegs) in exact res).
 
-Print toposort4.
+(* Print toposort4. *)
 
 Definition toposort5 := ltac:(let res := eval cbv beta delta [
     toposort2 toposort increment decrement
   ] in
   (toposort2 N A outDegs) in exact res).
 
-Print toposort5. (* this expression should hopefully be easy to reify *)
+(* Print toposort5. this expression should hopefully be easy to reify *)
 
 Require Import compiler.Decidable.
 
@@ -296,9 +296,9 @@ Fixpoint member_dec T (ls: list T) {struct ls}: forall (x y: member ls), {x = y}
         { right; intro. apply n. eapply invert_member_there_eq. eassumption. }
 Defined.
 
-
+(*
 Eval cbv -[member_empty member_discriminate invert_member_there_eq] in member_dec.
-
+*)
 
 Parameter v1 v2 v3: nat.
 
