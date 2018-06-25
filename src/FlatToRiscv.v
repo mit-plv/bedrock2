@@ -1386,16 +1386,6 @@ Section FlatToRiscv.
     subst *;
     destruct_containsProgram.
 
-  (* TODO it seems we need this inside proofs where we destructed Bw, how can we make
-     typeclass search work there? *)
-  Tactic Notation "myrewrite" uconstr(c) "by" tactic3(t) :=
-    (unshelve erewrite c by t;
-      [ ( apply State_is_RegisterFile || typeclasses eauto ) .. | ]).
-
-  Tactic Notation "myrewrite" uconstr(c) :=
-    (unshelve erewrite c;
-      [ ( apply State_is_RegisterFile || typeclasses eauto ) .. | ]).
-
   Lemma execute_load: forall {A: Type} (x a: Register) (addr v: word wXLEN) (initialMH: Memory.mem)
            (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
       valid_register x ->
@@ -1408,6 +1398,11 @@ Section FlatToRiscv.
       (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
   Proof.
     intros.
+    pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
+    pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
+    pose proof (@State_is_RegisterFile _ _ _) as State_is_RegisterFile.
+    pose proof (@Bind_loadWord _ _ _ _ _ _ _) as Bind_loadWord.
+    pose proof (@Bind_loadDouble _ _ _ _ _ _ _) as Bind_loadDouble.
     unfold containsMem, Memory.read_mem, wXLEN_in_bytes, wXLEN, bitwidth in *.
     unfold LwXLEN, bitwidth, loadWordwXLEN in *.
     destruct Bw eqn: EBw;
@@ -1416,12 +1411,8 @@ Section FlatToRiscv.
       (destruct_one_match_hyp; [|discriminate]);
       simpl in H2; inversions H2;
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-      rewrite associativity;    
-      (unshelve erewrite @Bind_getRegister;
-      [ apply State_is_RegisterFile
-      | idtac
-      | typeclasses eauto
-      | assumption ]);
+      rewrite associativity;
+      rewrite Bind_getRegister by assumption;
       rewrite associativity;
       unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
       rewrite_reg_value;
@@ -1430,15 +1421,11 @@ Section FlatToRiscv.
       rewrite wplus_unit;
       [ rewrite translate_id_if_aligned_4 by assumption |
         rewrite translate_id_if_aligned_8 by assumption ];
-        rewrite left_identity;
-        rewrite associativity;
-        [ (erewrite @Bind_loadWord;   [ | typeclasses eauto ]) |
-          (erewrite @Bind_loadDouble; [ | typeclasses eauto ]) ];
-        (unshelve erewrite @Bind_setRegister;
-        [ apply State_is_RegisterFile
-        | reflexivity
-        | typeclasses eauto
-        | assumption ]).
+      rewrite left_identity;
+      rewrite associativity;
+      [ rewrite Bind_loadWord | rewrite Bind_loadDouble ];
+      rewrite Bind_setRegister;
+      first [reflexivity | assumption].
   Qed.
 
   Lemma execute_store: forall {A: Type} (ra rv: Register) (a v: word wXLEN)
@@ -1455,6 +1442,12 @@ Section FlatToRiscv.
       (f tt) (with_machineMem (storeWordwXLEN initialL.(machineMem) a v) initialL).
   Proof.
     intros.
+    pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
+    pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
+    pose proof (@State_is_RegisterFile _ _ _) as State_is_RegisterFile.
+    pose proof (@Bind_storeWord _ _ _ _ _ _ _) as Bind_storeWord.
+    pose proof (@Bind_storeDouble _ _ _ _ _ _ _) as Bind_storeDouble.
+    intros.
     unfold containsMem, Memory.write_mem, Memory.read_mem,
       wXLEN_in_bytes in *.
     unfold SwXLEN, bitwidth, loadWordwXLEN, storeWordwXLEN in *.
@@ -1465,7 +1458,7 @@ Section FlatToRiscv.
       (destruct_one_match_hyp; [|discriminate]);        
       cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
       rewrite associativity;
-      myrewrite Bind_getRegister by assumption;
+      rewrite Bind_getRegister by assumption;
       rewrite associativity;
       unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
       rewrite ZToWord_0;
@@ -1477,12 +1470,12 @@ Section FlatToRiscv.
         rewrite translate_id_if_aligned_8 by assumption ];
       rewrite left_identity;
       rewrite associativity;
-      (erewrite @Bind_getRegister; [|typeclasses eauto|assumption]);
-      [ (erewrite @Bind_storeWord; [|typeclasses eauto]) |
-        (erewrite @Bind_storeDouble; [|typeclasses eauto]) ];
+      rewrite Bind_getRegister by assumption;
+      [ rewrite Bind_storeWord   |
+        rewrite Bind_storeDouble ];
       rewrite_reg_value;
       reflexivity.
-  Qed.   
+  Qed.
   
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
