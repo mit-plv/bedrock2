@@ -687,6 +687,93 @@ Goal run_isRight $12 $13 $5 = Some $1. reflexivity. Qed.
 
 End TestExprImp.
 
+
+Module TraceSemantics.
+  Import Imp.
+  Context {p : Imp.ImpParameters}.
+  Let Imp : Imp.ImpInterface p := Imp.Imp p.
+  (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+  Local Notation mword := p.(mword).
+  Local Notation mword_nonzero := p.(mword_nonzero).
+  Local Notation varname := p.(varname).
+  Local Notation funname := p.(funname).
+  Local Notation actname := p.(actname).
+  Local Notation bopname := p.(bopname).
+  Local Notation varmap := p.(varmap).
+  Local Notation mem := p.(mem).
+  Local Notation interp_binop := p.(interp_binop).
+  Local Notation load := p.(load).
+  Local Notation store := p.(store).
+  (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+  Local Notation expr := Imp.(expr).
+  Local Notation ELit := Imp.(ELit).
+  Local Notation EVar := Imp.(EVar).
+  Local Notation EOp := Imp.(EOp).
+  Local Notation expr_rect := Imp.(expr_rect).
+  Local Notation stmt := Imp.(stmt).
+  Local Notation SLoad := Imp.(SLoad).
+  Local Notation SStore := Imp.(SStore).
+  Local Notation SSet := Imp.(SSet).
+  Local Notation SIf := Imp.(SIf).
+  Local Notation SWhile := Imp.(SWhile).
+  Local Notation SSeq := Imp.(SSeq).
+  Local Notation SSkip := Imp.(SSkip).
+  Local Notation SCall := Imp.(SCall).
+  Local Notation SIO := Imp.(SIO).
+  Local Notation stmt_rect := Imp.(stmt_rect).
+  Local Notation cont := Imp.(cont).
+  Local Notation CSuspended := Imp.(CSuspended).
+  Local Notation CSeq := Imp.(CSeq).
+  Local Notation CStack := Imp.(CStack).
+  Local Notation cont_rect := Imp.(cont_rect).
+  Local Notation ioact := Imp.(ioact).
+  Local Notation ioret := Imp.(ioret).
+  Local Notation interp_expr := Imp.(interp_expr).
+  Local Notation interp_stmt := Imp.(interp_stmt).
+  Local Notation interp_cont := Imp.(interp_cont).
+  
+  Context (extstep : forall
+              (s0 : varmap)
+              (m0 : mem)
+              (act : actname)
+              (argvs : list mword)
+              (retvs : list mword)
+              (s1 : varmap)
+              (m1 : mem)
+            , Prop).
+
+  Fixpoint blocker_of {A : Type} (a : cont A)  {struct a} :=
+    match a with
+    | Imp_.CSuspended a => a
+    | Imp_.CSeq a _ => blocker_of a
+    | Imp_.CStack _ a _ _ => blocker_of a
+    end.
+
+  Fixpoint replace_blocker {A B: Type} (b : B) (a : cont A)  {struct a} : cont B :=
+    match a with
+    | Imp_.CSuspended _ => Imp_.CSuspended b
+    | Imp_.CSeq a _ => replace_blocker b a
+    | Imp_.CStack _ a _ _ => replace_blocker b a
+    end.
+
+  Context (functions : funname -> option (list varname * list varname * Imp_.stmt p)).
+  Fixpoint nsteps n s0 m0 c0 s1 m1 oc1 :=
+    match n with
+    | O => s0 = s1 /\ m0 = m1 /\ Some c0 = oc1 (* FIXME: correct equivalence relation *)
+    | S n =>
+      exists f S M OC,
+      interp_cont functions f s0 m0 c0 = Some (S, M, OC) /\
+      match OC with
+      | None => s1 = S /\ m1 = M /\ oc1 = None
+      | Some C =>
+        let '(binds, act, argvs) := blocker_of C in
+        exists S' M' retvs,
+          extstep S M act argvs retvs S' M' /\
+          nsteps n S' M' (replace_blocker (binds, retvs) C) s1 m1 oc1
+      end
+    end.
+
+
 (* RecordImport.py
 record =\
 """
