@@ -707,55 +707,54 @@ End TRC.
 
 Module InteractionSemantics.
   Import Imp.
-  Context {p : Imp.ImpParameters}.
-  Let Imp : Imp.ImpInterface p := Imp.Imp p.
-  (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
-  Local Notation mword := p.(mword).
-  Local Notation mword_nonzero := p.(mword_nonzero).
-  Local Notation varname := p.(varname).
-  Local Notation funname := p.(funname).
-  Local Notation actname := p.(actname).
-  Local Notation bopname := p.(bopname).
-  Local Notation varmap := p.(varmap).
-  Local Notation mem := p.(mem).
-  Local Notation interp_binop := p.(interp_binop).
-  Local Notation load := p.(load).
-  Local Notation store := p.(store).
-  (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
-  Local Notation expr := Imp.(expr).
-  Local Notation ELit := Imp.(ELit).
-  Local Notation EVar := Imp.(EVar).
-  Local Notation EOp := Imp.(EOp).
-  Local Notation expr_rect := Imp.(expr_rect).
-  Local Notation stmt := Imp.(stmt).
-  Local Notation SLoad := Imp.(SLoad).
-  Local Notation SStore := Imp.(SStore).
-  Local Notation SSet := Imp.(SSet).
-  Local Notation SIf := Imp.(SIf).
-  Local Notation SWhile := Imp.(SWhile).
-  Local Notation SSeq := Imp.(SSeq).
-  Local Notation SSkip := Imp.(SSkip).
-  Local Notation SCall := Imp.(SCall).
-  Local Notation SIO := Imp.(SIO).
-  Local Notation stmt_rect := Imp.(stmt_rect).
-  Local Notation cont := Imp.(cont).
-  Local Notation CSuspended := Imp.(CSuspended).
-  Local Notation CSeq := Imp.(CSeq).
-  Local Notation CStack := Imp.(CStack).
-  Local Notation cont_rect := Imp.(cont_rect).
-  Local Notation ioact := Imp.(ioact).
-  Local Notation ioret := Imp.(ioret).
-  Local Notation interp_expr := Imp.(interp_expr).
-  Local Notation interp_stmt := Imp.(interp_stmt).
-  Local Notation interp_cont := Imp.(interp_cont).
-
-  Definition cont_of_stmt (s : stmt) : cont ioret := CSeq (CSuspended (nil, nil)) s.
-  Lemma interp_cont_of_stmt' e f l m s : interp_cont e (S f) l m (cont_of_stmt s) = interp_stmt e f l m s.
-  Proof. destruct f; reflexivity. Qed.
 
   (** Template for quantifying over semantics of possible environments. *)
 
   Module ContStep.
+    Section ContStep.
+      Context {p : Imp.ImpParameters}.
+      Let Imp : Imp.ImpInterface p := Imp.Imp p.
+      (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+      Local Notation mword := p.(mword).
+      Local Notation mword_nonzero := p.(mword_nonzero).
+      Local Notation varname := p.(varname).
+      Local Notation funname := p.(funname).
+      Local Notation actname := p.(actname).
+      Local Notation bopname := p.(bopname).
+      Local Notation varmap := p.(varmap).
+      Local Notation mem := p.(mem).
+      Local Notation interp_binop := p.(interp_binop).
+      Local Notation load := p.(load).
+      Local Notation store := p.(store).
+      (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+      Local Notation expr := Imp.(expr).
+      Local Notation ELit := Imp.(ELit).
+      Local Notation EVar := Imp.(EVar).
+      Local Notation EOp := Imp.(EOp).
+      Local Notation expr_rect := Imp.(expr_rect).
+      Local Notation stmt := Imp.(stmt).
+      Local Notation SLoad := Imp.(SLoad).
+      Local Notation SStore := Imp.(SStore).
+      Local Notation SSet := Imp.(SSet).
+      Local Notation SIf := Imp.(SIf).
+      Local Notation SWhile := Imp.(SWhile).
+      Local Notation SSeq := Imp.(SSeq).
+      Local Notation SSkip := Imp.(SSkip).
+      Local Notation SCall := Imp.(SCall).
+      Local Notation SIO := Imp.(SIO).
+      Local Notation stmt_rect := Imp.(stmt_rect).
+      Local Notation cont := Imp.(cont).
+      Local Notation CSuspended := Imp.(CSuspended).
+      Local Notation CSeq := Imp.(CSeq).
+      Local Notation CStack := Imp.(CStack).
+      Local Notation cont_rect := Imp.(cont_rect).
+      Local Notation ioact := Imp.(ioact).
+      Local Notation ioret := Imp.(ioret).
+      Local Notation interp_expr := Imp.(interp_expr).
+      Local Notation interp_stmt := Imp.(interp_stmt).
+      Local Notation interp_cont := Imp.(interp_cont).
+
+      (*
     Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
       match a, b with
       | Imp_.CSuspended a, Imp_.CSuspended b =>
@@ -766,23 +765,81 @@ Module InteractionSemantics.
         sta = stb /\ lift_cont a b P /\ ba = bb /\ ra = rb
       | _, _ => False
       end.
+       *)
+    Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
+      match a with
+      | Imp_.CSuspended a => exists b', b = Imp_.CSuspended b' /\ P a b'
+      | Imp_.CSeq a sa => exists b', b = Imp_.CSeq b' sa /\ lift_cont a b' P
+      | Imp_.CStack sta a ba ra => exists b', b = Imp_.CStack sta b' ba ra
+      end.
+    (*
     Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
       match a, b with None, None => True | Some a, Some b => lift_cont a b P | _, _ => False end.
+     *)
+    Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
+      match a with None => b = None | Some a => exists b', lift_cont a b' P end.
     Section ContStep.
       Context
         (e : funname -> option (list varname * list varname * stmt))
         (sys : Type) (external : (actname * list mword * mem * sys) -> (list mword * mem * sys) -> Prop).
       Let state : Type := varmap * mem * option (cont ioret) * sys.
       Definition step : state -> state -> Prop :=
-        fun '(l0, m0, oc0, s0) '(l1, m1, oc1, s1) =>
-          exists c0 f m' oc', oc0 = Some c0 /\ interp_cont e f l0 m0 c0 = Some (l1, m', oc') /\
-            lift_option_cont oc' oc1 (fun b' b1 => external (fst b', m', s0) (fst b1, m1, s1)).
+        fun '(l0, m0, oc0, s0) S' =>
+          
+          exists c0 f m' oc' l1 m1 oc1 s1, oc0 = Some c0 /\ interp_cont e f l0 m0 c0 = Some (l1, m', oc') /\
+            lift_option_cont oc' oc1 (fun b' b1 => exists av rv rb, b' = (av, rb) /\ b1 = (rv, rb) /\ external (av, m', s0) (rv, m1, s1)) /\ S' = (l1, m1, oc1, s1).
       Definition steps := TRC.trc step.
     End ContStep.
   End ContStep.
 
   Module ContTrace.
     Section ContTrace.
+      Context {p : Imp.ImpParameters}.
+      Let Imp : Imp.ImpInterface p := Imp.Imp p.
+      (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+      Local Notation mword := p.(mword).
+      Local Notation mword_nonzero := p.(mword_nonzero).
+      Local Notation varname := p.(varname).
+      Local Notation funname := p.(funname).
+      Local Notation actname := p.(actname).
+      Local Notation bopname := p.(bopname).
+      Local Notation varmap := p.(varmap).
+      Local Notation mem := p.(mem).
+      Local Notation interp_binop := p.(interp_binop).
+      Local Notation load := p.(load).
+      Local Notation store := p.(store).
+      (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+      Local Notation expr := Imp.(expr).
+      Local Notation ELit := Imp.(ELit).
+      Local Notation EVar := Imp.(EVar).
+      Local Notation EOp := Imp.(EOp).
+      Local Notation expr_rect := Imp.(expr_rect).
+      Local Notation stmt := Imp.(stmt).
+      Local Notation SLoad := Imp.(SLoad).
+      Local Notation SStore := Imp.(SStore).
+      Local Notation SSet := Imp.(SSet).
+      Local Notation SIf := Imp.(SIf).
+      Local Notation SWhile := Imp.(SWhile).
+      Local Notation SSeq := Imp.(SSeq).
+      Local Notation SSkip := Imp.(SSkip).
+      Local Notation SCall := Imp.(SCall).
+      Local Notation SIO := Imp.(SIO).
+      Local Notation stmt_rect := Imp.(stmt_rect).
+      Local Notation cont := Imp.(cont).
+      Local Notation CSuspended := Imp.(CSuspended).
+      Local Notation CSeq := Imp.(CSeq).
+      Local Notation CStack := Imp.(CStack).
+      Local Notation cont_rect := Imp.(cont_rect).
+      Local Notation ioact := Imp.(ioact).
+      Local Notation ioret := Imp.(ioret).
+      Local Notation interp_expr := Imp.(interp_expr).
+      Local Notation interp_stmt := Imp.(interp_stmt).
+      Local Notation interp_cont := Imp.(interp_cont).
+
+      Definition cont_of_stmt (s : stmt) : cont ioret := CSeq (CSuspended (nil, nil)) s.
+      Lemma interp_cont_of_stmt' e f l m s : interp_cont e (S f) l m (cont_of_stmt s) = interp_stmt e f l m s.
+      Proof. destruct f; reflexivity. Qed.
+
       Definition event : Type := actname * list mword * list mword.
       Context
         (e : funname -> option (list varname * list varname * stmt))
@@ -796,6 +853,149 @@ Module InteractionSemantics.
         := exists l' m', steps (l, m, Some (cont_of_stmt s), nil) (l', m', None, t).
     End ContTrace.
   End ContTrace.
+
+  Module ContTraceTest.
+    Section ContTraceTest.
+      Import Imp compiler.Op.
+
+      Local Set Decidable Equality Schemes.
+      Inductive varname := a | b | c.
+      Local Instance DecidableEq_varname : DecidableEq varname := varname_eq_dec.
+
+      Variant actname := mmap | munmap.
+      Local Definition p :=
+        RISCVImp.ImpParameters_of_RISCVImpParameters
+          {|
+            RISCVImp.bw := riscv.util.BitWidth32.BitWidth32;
+            RISCVImp.varname := varname;
+            RISCVImp.funname := Empty_set;
+            RISCVImp.actname := actname;
+          |}.
+      Local Definition Imp := Imp p.
+      Let Imp : Imp.ImpInterface p := Imp.Imp p.
+      (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+      Local Notation mword := p.(mword).
+      Local Notation mword_nonzero := p.(mword_nonzero).
+      (* Local Notation varname := p.(varname). (*TODO: shadow*) *)
+      Local Notation funname := p.(funname).
+      (* Local Notation actname := p.(actname). (*TODO: shadow*) *)
+      Local Notation bopname := p.(bopname).
+      Local Notation varmap := p.(varmap).
+      Local Notation mem := p.(mem).
+      Local Notation interp_binop := p.(interp_binop).
+      Local Notation load := p.(load).
+      Local Notation store := p.(store).
+      (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+      Local Notation expr := Imp.(expr).
+      Local Notation ELit := Imp.(ELit).
+      Local Notation EVar := Imp.(EVar).
+      Local Notation EOp := Imp.(EOp).
+      Local Notation expr_rect := Imp.(expr_rect).
+      Local Notation stmt := Imp.(stmt).
+      Local Notation SLoad := Imp.(SLoad).
+      Local Notation SStore := Imp.(SStore).
+      Local Notation SSet := Imp.(SSet).
+      Local Notation SIf := Imp.(SIf).
+      Local Notation SWhile := Imp.(SWhile).
+      Local Notation SSeq := Imp.(SSeq).
+      Local Notation SSkip := Imp.(SSkip).
+      Local Notation SCall := Imp.(SCall).
+      Local Notation SIO := Imp.(SIO).
+      Local Notation stmt_rect := Imp.(stmt_rect).
+      Local Notation cont := Imp.(cont).
+      Local Notation CSuspended := Imp.(CSuspended).
+      Local Notation CSeq := Imp.(CSeq).
+      Local Notation CStack := Imp.(CStack).
+      Local Notation cont_rect := Imp.(cont_rect).
+      Local Notation ioact := Imp.(ioact).
+      Local Notation ioret := Imp.(ioret).
+      Local Notation interp_expr := Imp.(interp_expr).
+      Local Notation interp_stmt := Imp.(interp_stmt).
+      Local Notation interp_cont := Imp.(interp_cont).
+
+      Definition inbounds : mword -> mword -> mword -> Prop. Admitted.
+      
+      Definition external : (actname * list mword * mem) -> (list mword * mem) -> Prop :=
+        fun '(action, argvs, m0) '(retvs, m1) =>
+          match action with
+          | mmap =>
+            exists adr len, argvs = [adr; len]
+           /\ (forall a, inbounds adr len a -> load a m0 = None)
+           /\ retvs = [wzero wXLEN] /\
+              (forall a,
+                  (inbounds adr len a /\ exists v, load a m1 = Some v) \/
+                  (~ inbounds adr len a /\ load a m1 = load a m0))
+          | munmap =>
+            exists adr len, argvs = [adr; len]
+           /\ (forall a, inbounds adr len a -> exists v, load a m0 = Some v)
+           /\ retvs = [wzero wXLEN] /\
+              (forall a,
+                  (inbounds adr len a /\ load a m1 = None) \/
+                  (~ inbounds adr len a /\ load a m1 = load a m0))
+          end.
+
+      Definition SFail := SWhile (ELit ($1)) SSkip.
+      Definition prog :=
+        SSeq (SIO [a] mmap [ELit ($0); ELit ($4096)]) (
+        SIf (EVar a) (
+           SSeq (SStore (ELit ($1234)) (ELit ($42))) (
+           SSeq (SLoad b (ELit ($1234))) (
+           SIf (EOp OEq (EVar b) (ELit ($42))) (
+               (SIO [c] munmap [ELit ($0); ELit ($4096)])
+             ) (
+               SFail  )))
+         ) (
+           SFail)).
+
+      Check ContTrace.terminates_with_trace (p:=p).
+      Lemma prog_ok : exists t, ContTrace.terminates_with_trace
+                                  (p:=p) (fun _ => None) external (fun _ => None) (fun _ => None) prog t.
+      Proof.
+        eexists. eexists. eexists.
+        cbv [ContTrace.cont_of_stmt].
+
+        eapply TRC.cons.
+        { cbv [step].
+          cbn [Imp.interp_cont Imp.Imp Imp.Imp_.interp_cont prog].
+          eexists.
+          exists 9.
+          eexists.
+          eexists.
+          eexists.
+          eexists.
+          eexists.
+          eexists.
+          split; [reflexivity|].
+          split; [reflexivity|].
+          eexists.
+          {
+            cbn [lift_option_cont lift_cont].
+            eexists.
+            eexists.
+            split; [reflexivity|].
+            eexists.
+            split; [reflexivity|].
+            eexists.
+            eexists.
+            eexists.
+            split; [reflexivity|].
+            split; [reflexivity|].
+            split.
+            {
+              eexists.
+              eexists.
+              split; [reflexivity|].
+              split.
+              { intros. cbn. cbv [read_mem].
+                lazymatch goal with |- (if ?x then _ else _) = _ => destruct x; reflexivity end. }
+              split; [reflexivity|].
+              (* TODO: make m1 easy to instantiate *)
+              split.
+              eexists.
+          
+
+        
+
 
   Module BigStep.
     Section BigStep.
