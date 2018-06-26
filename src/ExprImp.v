@@ -692,7 +692,7 @@ Module TRC.
   Local Set Universe Polymorphism.
   Section TRC.
     Context {T : Type} {R : T -> T -> Type}.
-    Inductive trc : T -> T -> Type :=
+    Inductive trc : T -> T -> Prop :=
     | nil x : trc x x
     | cons x y z (head:R x y) (tail:trc y z) : trc x z.
     Definition singleton x y (r:R x y) : trc x y := cons x y y r (nil _).
@@ -766,20 +766,36 @@ Module InteractionSemantics.
         sta = stb /\ lift_cont a b P /\ ba = bb /\ ra = rb
       | _, _ => False
       end.
-    Definition lift_oc {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
+    Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
       match a, b with None, None => True | Some a, Some b => lift_cont a b P | _, _ => False end.
     Section ContStep.
       Context
         (e : funname -> option (list varname * list varname * stmt))
         (sys : Type) (external : (actname * list mword * mem * sys) -> (list mword * mem * sys) -> Prop).
-      Definition state : Type := varmap * mem * option (cont ioret) * sys.
+      Let state : Type := varmap * mem * option (cont ioret) * sys.
       Definition step : state -> state -> Prop :=
         fun '(l0, m0, oc0, s0) '(l1, m1, oc1, s1) =>
           exists c0 f m' oc', oc0 = Some c0 /\ interp_cont e f l0 m0 c0 = Some (l1, m', oc') /\
-                              lift_oc oc' oc1 (fun b' b1 => external (fst b', m', s0) (fst b1, m1, s1)).
+            lift_option_cont oc' oc1 (fun b' b1 => external (fst b', m', s0) (fst b1, m1, s1)).
       Definition steps := TRC.trc step.
     End ContStep.
   End ContStep.
+
+  Module ContTrace.
+    Section ContTrace.
+      Definition event : Type := actname * list mword * list mword.
+      Context
+        (e : funname -> option (list varname * list varname * stmt))
+        (external : (actname * list mword * mem) -> (list mword * mem) -> Prop).
+      Definition steps := ContStep.steps e (list event) (fun '(action, argvs, m0, l0) '(retvs, m1, l1) =>
+          external (action, argvs, m0) (retvs, m1) /\ cons (action, argvs, retvs) l0 = l1).
+      Check steps.
+      Definition has_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
+        := exists l' m' oc', steps (l, m, Some (cont_of_stmt s), nil) (l', m', oc', t).
+      Definition terminates_with_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
+        := exists l' m', steps (l, m, Some (cont_of_stmt s), nil) (l', m', None, t).
+    End ContTrace.
+  End ContTrace.
 
   Module BigStep.
     Section BigStep.
