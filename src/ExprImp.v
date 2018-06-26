@@ -71,8 +71,8 @@ Module Imp_.
       | CStack(st: varmap)(c: cont)(binds rets: list varname).
     End cont. Global Arguments cont : clear implicits.
 
-    Local Definition ioact : Type := (list varname * actname * list mword).
-    Local Definition ioret : Type := (list varname * list mword).
+    Local Definition ioact : Type := (actname * list mword * list varname).
+    Local Definition ioret : Type := (list mword * list varname).
 
     Local Fixpoint interp_expr st e : option mword :=
       match e with
@@ -136,7 +136,7 @@ Module Imp_.
             end
           | SIO binds ionum args =>
             bind_Some argvs <- Common.option_all (List.map (interp_expr st) args);
-            Some (st, m, Some (CSuspended (binds, ionum, argvs)))
+            Some (st, m, Some (CSuspended (ionum, argvs, binds)))
           end
         end.
 
@@ -144,7 +144,7 @@ Module Imp_.
         match f with
         | 0 => None (* out of fuel *)
         | S f => match s with
-          | CSuspended (binds, retvs) =>
+          | CSuspended (retvs, binds) =>
               bind_Some st' <- Common.putmany binds retvs st;
               Some (st', m, None)
           | CSeq c s2 =>
@@ -442,7 +442,7 @@ Section ImpInversion.
   Lemma invert_interp_SIO : forall env st m1 p2 f binds ioname args,
     interp_stmt env (S f) st m1 (SIO binds ioname args) = Some p2 ->
     exists argvs, option_all (map (interp_expr st) args) = Some argvs /\
-                  p2 = (st, m1, Some (CSuspended (binds, ioname, argvs))).
+                  p2 = (st, m1, Some (CSuspended (ioname, argvs, binds))).
   Proof. inversion_lemma. Qed.
 End ImpInversion.
 
@@ -755,26 +755,48 @@ Module InteractionSemantics.
 
   (** Template for quantifying over semantics of possible environments. *)
 
-  Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
-    match a, b with
-    | Imp_.CSuspended a, Imp_.CSuspended b =>
-      P a b
-    | Imp_.CSeq a sa, Imp_.CSeq b sb =>
-      lift_cont a b P /\ sa = sb
-    | Imp_.CStack sta a ba ra, Imp_.CStack stb b bb rb =>
-      sta = stb /\ lift_cont a b P /\ ba = bb /\ ra = rb
-    | _, _ => False
-    end.
+  Module ContStep.
+    Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
+      match a, b with
+      | Imp_.CSuspended a, Imp_.CSuspended b =>
+        P a b
+      | Imp_.CSeq a sa, Imp_.CSeq b sb =>
+        lift_cont a b P /\ sa = sb
+      | Imp_.CStack sta a ba ra, Imp_.CStack stb b bb rb =>
+        sta = stb /\ lift_cont a b P /\ ba = bb /\ ra = rb
+      | _, _ => False
+      end.
+    Definition lift_oc {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
+      match a, b with None, None => True | Some a, Some b => lift_cont a b P | _, _ => False end.
+    Section ContStep.
+      Context
+        (e : funname -> option (list varname * list varname * stmt))
+        (sys : Type) (external : (actname * list mword * mem * sys) -> (list mword * mem * sys) -> Prop).
+      Definition state : Type := varmap * mem * option (cont ioret) * sys.
+      Definition step : state -> state -> Prop :=
+        fun '(l0, m0, oc0, s0) '(l1, m1, oc1, s1) =>
+          exists c0 f m' oc', oc0 = Some c0 /\ interp_cont e f l0 m0 c0 = Some (l1, m', oc') /\
+                              lift_oc oc' oc1 (fun b' b1 => external (fst b', m', s0) (fst b1, m1, s1)).
+      Definition steps := TRC.trc step.
+    End ContStep.
+  End ContStep.
 
-  Definition step
-             (e : funname -> option (list varname * list varname * stmt))
-             (sys : Type) (external : (sys * mem * ioact) -> (sys * mem * ioret) -> Prop)
-    : (sys * varmap * mem * cont ioret) -> (sys * varmap * mem * cont ioret) -> Prop
-    := fun '(s0, l0, m0, c0) '(s1, l1, m1, c1) =>
-         exists f m' c', interp_cont e f l0 m0 c0 = Some (l1, m', Some c') /\
-                         lift_cont c' c1 (fun b' b1 => external (s0, m', b') (s1, m1, b1)).
-
-  Definition steps e sys resolve := TRC.trc (step e sys resolve).
+  Module BigStep.
+    Section BigStep.
+      Context
+        (e : funname -> option (list varname * list varname * stmt))
+        (sys : Type) (external : (actname * list mword * mem * sys) -> (list mword * mem * sys) -> Prop).
+    Definition state : Type := varmap * mem * sys.
+    Inductive exec : state -> stmt -> state -> Prop :=
+    | skip s : exec s SSkip s
+    | io binds action args argvs retvs l0 m0 s0 l1 m1 s1
+         (_:Common.option_all (List.map (interp_expr l0) args) = Some argvs)
+         (_:Common.putmany binds retvs l0 = Some l1)
+         (_:external (action, argvs, m0, s0) (retvs, m1, s1))
+      : exec (l0, m0, s0) (SIO binds action args) (l1, m1, s1)
+    | FIXME_MORE_CASES s : exec s SSkip s.
+    End BigStep.
+  End BigStep.
 End InteractionSemantics.
 
 
