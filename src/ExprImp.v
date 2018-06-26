@@ -768,15 +768,15 @@ Module InteractionSemantics.
 
   Definition step
              (e : funname -> option (list varname * list varname * stmt))
-             (sys : Type) (resolve : (sys * mem * ioact) -> (sys * mem * ioret) -> Prop)
+             (sys : Type) (external : (sys * mem * ioact) -> (sys * mem * ioret) -> Prop)
     : (sys * varmap * mem * cont ioret) -> (sys * varmap * mem * cont ioret) -> Prop
     := fun '(s0, l0, m0, c0) '(s1, l1, m1, c1) =>
          exists f m' c', interp_cont e f l0 m0 c0 = Some (l1, m', Some c') /\
-                         lift_cont c' c1 (fun b' b1 => resolve (s0, m', b') (s1, m1, b1)).
+                         lift_cont c' c1 (fun b' b1 => external (s0, m', b') (s1, m1, b1)).
 
   Definition steps e sys resolve := TRC.trc (step e sys resolve).
-
 End InteractionSemantics.
+
 
 (* RecordImport.py
 record =\
