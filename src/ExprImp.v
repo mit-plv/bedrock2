@@ -688,7 +688,24 @@ Goal run_isRight $12 $13 $5 = Some $1. reflexivity. Qed.
 End TestExprImp.
 
 
-Module TraceSemantics.
+Module TRC.
+  Local Set Universe Polymorphism.
+  Section TRC.
+    Context {T : Type} {R : T -> T -> Type}.
+    Inductive trc : T -> T -> Type :=
+    | nil x : trc x x
+    | cons x y z (head:R x y) (tail:trc y z) : trc x z.
+    Definition singleton x y (r:R x y) : trc x y := cons x y y r (nil _).
+    Definition app x y z (xy:trc x y) (yz:trc y z) : trc x z.
+    Proof.
+      revert dependent z; revert dependent xy; induction 1;
+        eauto using nil, cons, singleton.
+    Qed.
+  End TRC.
+  Arguments trc {T} R.
+End TRC.
+
+Module InteractionSemantics.
   Import Imp.
   Context {p : Imp.ImpParameters}.
   Let Imp : Imp.ImpInterface p := Imp.Imp p.
@@ -731,48 +748,35 @@ Module TraceSemantics.
   Local Notation interp_expr := Imp.(interp_expr).
   Local Notation interp_stmt := Imp.(interp_stmt).
   Local Notation interp_cont := Imp.(interp_cont).
-  
-  Context (extstep : forall
-              (s0 : varmap)
-              (m0 : mem)
-              (act : actname)
-              (argvs : list mword)
-              (retvs : list mword)
-              (s1 : varmap)
-              (m1 : mem)
-            , Prop).
 
-  Fixpoint blocker_of {A : Type} (a : cont A)  {struct a} :=
-    match a with
-    | Imp_.CSuspended a => a
-    | Imp_.CSeq a _ => blocker_of a
-    | Imp_.CStack _ a _ _ => blocker_of a
+  Definition cont_of_stmt (s : stmt) : cont ioret := CSeq (CSuspended (nil, nil)) s.
+  Lemma interp_cont_of_stmt' e f l m s : interp_cont e (S f) l m (cont_of_stmt s) = interp_stmt e f l m s.
+  Proof. destruct f; reflexivity. Qed.
+
+  (** Template for quantifying over semantics of possible environments. *)
+
+  Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
+    match a, b with
+    | Imp_.CSuspended a, Imp_.CSuspended b =>
+      P a b
+    | Imp_.CSeq a sa, Imp_.CSeq b sb =>
+      lift_cont a b P /\ sa = sb
+    | Imp_.CStack sta a ba ra, Imp_.CStack stb b bb rb =>
+      sta = stb /\ lift_cont a b P /\ ba = bb /\ ra = rb
+    | _, _ => False
     end.
 
-  Fixpoint replace_blocker {A B: Type} (b : B) (a : cont A)  {struct a} : cont B :=
-    match a with
-    | Imp_.CSuspended _ => Imp_.CSuspended b
-    | Imp_.CSeq a _ => replace_blocker b a
-    | Imp_.CStack _ a _ _ => replace_blocker b a
-    end.
+  Definition step
+             (e : funname -> option (list varname * list varname * stmt))
+             (sys : Type) (resolve : (sys * mem * ioact) -> (sys * mem * ioret) -> Prop)
+    : (sys * varmap * mem * cont ioret) -> (sys * varmap * mem * cont ioret) -> Prop
+    := fun '(s0, l0, m0, c0) '(s1, l1, m1, c1) =>
+         exists f m' c', interp_cont e f l0 m0 c0 = Some (l1, m', Some c') /\
+                         lift_cont c' c1 (fun b' b1 => resolve (s0, m', b') (s1, m1, b1)).
 
-  Context (functions : funname -> option (list varname * list varname * Imp_.stmt p)).
-  Fixpoint nsteps n s0 m0 c0 s1 m1 oc1 :=
-    match n with
-    | O => s0 = s1 /\ m0 = m1 /\ Some c0 = oc1 (* FIXME: correct equivalence relation *)
-    | S n =>
-      exists f S M OC,
-      interp_cont functions f s0 m0 c0 = Some (S, M, OC) /\
-      match OC with
-      | None => s1 = S /\ m1 = M /\ oc1 = None
-      | Some C =>
-        let '(binds, act, argvs) := blocker_of C in
-        exists S' M' retvs,
-          extstep S M act argvs retvs S' M' /\
-          nsteps n S' M' (replace_blocker (binds, retvs) C) s1 m1 oc1
-      end
-    end.
+  Definition steps e sys resolve := TRC.trc (step e sys resolve).
 
+End InteractionSemantics.
 
 (* RecordImport.py
 record =\
