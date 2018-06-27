@@ -13,7 +13,7 @@ Require Import riscv.ListMemory.
 Require Import riscv.Minimal.
 Require riscv.Utility.
 Require Import riscv.encode.Encode.
-Require Import compiler.PipelineTest.
+Require Import compiler.examples.Fibonacci.
 Require Import compiler.NameGen.
 
 Require Import riscv.util.BitWidth32.

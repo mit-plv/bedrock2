@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.Decidable.
-Require Import compiler.Tactics.
+Require Import compiler.util.Tactics.
 Require Import Coq.omega.Omega.
 
 Definition listUpdate{E: Type}(l: list E)(i: nat)(e: E): list E :=

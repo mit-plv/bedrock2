@@ -1,4 +1,4 @@
-Require Import compiler.Tactics.
+Require Import compiler.util.Tactics.
 Require Import Coq.Program.Tactics.
 
 Class set(T E: Type) := mkSet {

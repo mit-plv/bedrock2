@@ -4,7 +4,6 @@ Require Import lib.LibTacticsMin.
 Require Import bbv.Word.
 Require Import compiler.Decidable.
 Require Import compiler.Op.
-Require Import compiler.ResMonad.
 Require        compiler.ExprImp.
 Require Import compiler.FlattenExpr.
 Require        compiler.FlatImp.
@@ -12,7 +11,7 @@ Require        compiler.FlatToRiscv.
 Require Import riscv.Riscv.
 Require Import riscv.util.Monads.
 Require Import compiler.runsToSatisfying.
-Require Import compiler.MyOmega.
+Require Import compiler.util.MyOmega.
 Require Import Coq.micromega.Lia.
 Require Import bbv.DepEqNat.
 Require Import compiler.NameGen.

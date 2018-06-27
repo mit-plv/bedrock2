@@ -13,7 +13,7 @@ Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
 Require riscv.Utility.
 Require Import riscv.encode.Encode.
-Require Import compiler.PipelineTest.
+Require Import compiler.examples.Fibonacci.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 Require Import compiler.NameGen.

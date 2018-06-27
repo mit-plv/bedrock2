@@ -7,7 +7,6 @@ Require Import bbv.DepEqNat.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.Op.
-Require Import compiler.ResMonad.
 Require Import riscv.Program.
 Require Import riscv.Decode.
 Require Import riscv.PseudoInstructions.

@@ -9,7 +9,7 @@ Require Import compiler.NameGen.
 Require Import compiler.Common.
 Require Import compiler.Pipeline.
 Require Import riscv.Riscv.
-Require Import compiler.MyOmega.
+Require Import compiler.util.MyOmega.
 Require Import riscv.util.Monads.
 Require Import compiler.NameWithEq.
 Require Import riscv.util.BitWidths.

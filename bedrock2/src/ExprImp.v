@@ -3,7 +3,7 @@ Import ListNotations.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
 Require Import compiler.Common.
-Require Import compiler.Tactics.
+Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
 Require Import bbv.DepEqNat.
