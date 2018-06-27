@@ -1,3 +1,7 @@
+Set Primitive Projections.
+Unset Printing Primitive Projection Parameters.
+Set Printing Projections.
+
 Ltac typeof x := match type of x with ?T => T end.
 Notation "'typeof!' x" := (ltac:(let T := typeof x in exact T)) (at level 10).
 Local Notation "'bind_Some' x <- a ; f" :=
@@ -755,40 +759,57 @@ Module InteractionSemantics.
       Local Notation interp_cont := Imp.(interp_cont).
 
       (*
-    Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
-      match a, b with
-      | Imp_.CSuspended a, Imp_.CSuspended b =>
-        P a b
-      | Imp_.CSeq a sa, Imp_.CSeq b sb =>
-        lift_cont a b P /\ sa = sb
-      | Imp_.CStack sta a ba ra, Imp_.CStack stb b bb rb =>
-        sta = stb /\ lift_cont a b P /\ ba = bb /\ ra = rb
-      | _, _ => False
-      end.
+      Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
+        match a, b with
+        | Imp_.CSuspended a, Imp_.CSuspended b =>
+          P a b
+        | Imp_.CSeq a sa, Imp_.CSeq b sb =>
+          lift_cont a b P /\ sa = sb
+        | Imp_.CStack sta a ba ra, Imp_.CStack stb b bb rb =>
+          sta = stb /\ lift_cont a b P /\ ba = bb /\ ra = rb
+        | _, _ => False
+        end.
+         *)
+      Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
+        match a with
+        | Imp_.CSuspended a => exists b', b = Imp_.CSuspended b' /\ P a b'
+        | Imp_.CSeq a sa => exists b', b = Imp_.CSeq b' sa /\ lift_cont a b' P
+        | Imp_.CStack sta a ba ra => exists b', b = Imp_.CStack sta b' ba ra /\ lift_cont a b' P
+        end.
+      (*
+      Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
+        match a, b with None, None => True | Some a, Some b => lift_cont a b P | _, _ => False end.
        *)
-    Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
-      match a with
-      | Imp_.CSuspended a => exists b', b = Imp_.CSuspended b' /\ P a b'
-      | Imp_.CSeq a sa => exists b', b = Imp_.CSeq b' sa /\ lift_cont a b' P
-      | Imp_.CStack sta a ba ra => exists b', b = Imp_.CStack sta b' ba ra
-      end.
-    (*
-    Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
-      match a, b with None, None => True | Some a, Some b => lift_cont a b P | _, _ => False end.
-     *)
-    Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
-      match a with None => b = None | Some a => exists b', lift_cont a b' P end.
-    Section ContStep.
+      Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
+        match a with None => b = None | Some a => exists b', b = Some b' /\ lift_cont a b' P end.
+
       Context
         (e : funname -> option (list varname * list varname * stmt))
         (sys : Type) (external : (actname * list mword * mem * sys) -> (list mword * mem * sys) -> Prop).
       Let state : Type := varmap * mem * option (cont ioret) * sys.
       Definition step : state -> state -> Prop :=
         fun '(l0, m0, oc0, s0) S' =>
-          
-          exists c0 f m' oc' l1 m1 oc1 s1, oc0 = Some c0 /\ interp_cont e f l0 m0 c0 = Some (l1, m', oc') /\
-            lift_option_cont oc' oc1 (fun b' b1 => exists av rv rb, b' = (av, rb) /\ b1 = (rv, rb) /\ external (av, m', s0) (rv, m1, s1)) /\ S' = (l1, m1, oc1, s1).
+          exists l1 m1 oc1 s1, S' = (l1, m1, oc1, s1) /\
+          exists c0, oc0 = Some c0 /\
+          exists  f m' oc', interp_cont e f l0 m0 c0 = Some (l1, m', oc') /\
+          lift_option_cont oc' oc1 (fun b' b1 =>
+                                      exists av rb, b' = (av, rb) /\
+                                      exists rv, b1 = (rv, rb) /\ external (av, m', s0) (rv, m1, s1)).
       Definition steps := TRC.trc step.
+
+      Lemma step_CSeq l0 m0 c0 s0 l1 m1 c1 s1 s :
+        step (l0, m0, Some (CSeq c0 s), s0) (l1, m1, Some (CSeq c1 s), s1)
+        <-> step (l0, m0, Some c0, s0) (l1, m1, Some c1, s1).
+      Proof.
+        split.
+        admit.
+        { cbn; intros.
+          repeat match goal with
+                 | H: exists _, _ |- _ => destruct H
+                 | H: _ /\ _ |- _ => destruct H
+                 end.
+          repeat eexists.
+
     End ContStep.
   End ContStep.
 
@@ -845,7 +866,7 @@ Module InteractionSemantics.
         (e : funname -> option (list varname * list varname * stmt))
         (external : (actname * list mword * mem) -> (list mword * mem) -> Prop).
       Definition steps := ContStep.steps e (list event) (fun '(action, argvs, m0, l0) '(retvs, m1, l1) =>
-          external (action, argvs, m0) (retvs, m1) /\ cons (action, argvs, retvs) l0 = l1).
+           cons (action, argvs, retvs) l0 = l1 /\ external (action, argvs, m0) (retvs, m1)).
       Check steps.
       Definition has_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
         := exists l' m' oc', steps (l, m, Some (cont_of_stmt s), nil) (l', m', oc', t).
@@ -855,30 +876,130 @@ Module InteractionSemantics.
   End ContTrace.
 
   Module ContTraceTest.
-    Section ContTraceTest.
-      Import Imp compiler.Op.
+    Import Imp compiler.Op.
 
-      Local Set Decidable Equality Schemes.
-      Inductive varname := a | b | c.
-      Local Instance DecidableEq_varname : DecidableEq varname := varname_eq_dec.
+    Local Set Decidable Equality Schemes.
+    Inductive varname := a | b | c.
+    Local Instance DecidableEq_varname : DecidableEq varname := varname_eq_dec.
 
-      Variant actname := mmap | munmap.
-      Local Definition p :=
-        RISCVImp.ImpParameters_of_RISCVImpParameters
-          {|
-            RISCVImp.bw := riscv.util.BitWidth32.BitWidth32;
-            RISCVImp.varname := varname;
-            RISCVImp.funname := Empty_set;
-            RISCVImp.actname := actname;
-          |}.
-      Local Definition Imp := Imp p.
+    Variant actname := mmap | munmap.
+    Local Definition p :=
+      RISCVImp.ImpParameters_of_RISCVImpParameters
+        {|
+          RISCVImp.bw := riscv.util.BitWidth32.BitWidth32;
+          RISCVImp.varname := varname;
+          RISCVImp.funname := Empty_set;
+          RISCVImp.actname := actname;
+        |}.
+    Let Imp : Imp.ImpInterface p := Imp.Imp p.
+    (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+    Local Notation mword := p.(mword).
+    Local Notation mword_nonzero := p.(mword_nonzero).
+    (* Local Notation varname := p.(varname). (*TODO: shadow*) *)
+    Local Notation funname := p.(funname).
+    (* Local Notation actname := p.(actname). (*TODO: shadow*) *)
+    Local Notation bopname := p.(bopname).
+    Local Notation varmap := p.(varmap).
+    Local Notation mem := p.(mem).
+    Local Notation interp_binop := p.(interp_binop).
+    Local Notation load := p.(load).
+    Local Notation store := p.(store).
+    (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
+    Local Notation expr := Imp.(expr).
+    Local Notation ELit := Imp.(ELit).
+    Local Notation EVar := Imp.(EVar).
+    Local Notation EOp := Imp.(EOp).
+    Local Notation expr_rect := Imp.(expr_rect).
+    Local Notation stmt := Imp.(stmt).
+    Local Notation SLoad := Imp.(SLoad).
+    Local Notation SStore := Imp.(SStore).
+    Local Notation SSet := Imp.(SSet).
+    Local Notation SIf := Imp.(SIf).
+    Local Notation SWhile := Imp.(SWhile).
+    Local Notation SSeq := Imp.(SSeq).
+    Local Notation SSkip := Imp.(SSkip).
+    Local Notation SCall := Imp.(SCall).
+    Local Notation SIO := Imp.(SIO).
+    Local Notation stmt_rect := Imp.(stmt_rect).
+    Local Notation cont := Imp.(cont).
+    Local Notation CSuspended := Imp.(CSuspended).
+    Local Notation CSeq := Imp.(CSeq).
+    Local Notation CStack := Imp.(CStack).
+    Local Notation cont_rect := Imp.(cont_rect).
+    Local Notation ioact := Imp.(ioact).
+    Local Notation ioret := Imp.(ioret).
+    Local Notation interp_expr := Imp.(interp_expr).
+    Local Notation interp_stmt := Imp.(interp_stmt).
+    Local Notation interp_cont := Imp.(interp_cont).
+
+    Definition inbounds : mword -> mword -> mword -> Prop. Admitted.
+    
+    Definition external : (actname * list mword * mem) -> (list mword * mem) -> Prop :=
+      fun '(action, argvs, m0) '(retvs, m1) =>
+        match action with
+        | mmap =>
+          exists adr len, argvs = [adr; len]
+                          /\ retvs = [wzero wXLEN]
+                          /\ (forall a, inbounds adr len a -> load a m0 = None)
+                          /\ (forall a,
+                                 (inbounds adr len a /\ exists v, load a m1 = Some v) \/
+                                 (~ inbounds adr len a /\ load a m1 = load a m0))
+        | munmap =>
+          exists adr len, argvs = [adr; len]
+                          /\ retvs = [wzero wXLEN]
+                          /\ (forall a, inbounds adr len a -> exists v, load a m0 = Some v)
+                          /\ (forall a,
+                                 (inbounds adr len a /\ load a m1 = None) \/
+                                 (~ inbounds adr len a /\ load a m1 = load a m0))
+        end.
+
+    Definition SFail := SWhile (ELit ($1)) SSkip.
+    Definition prog :=
+      SSeq (SIO [a] mmap [ELit ($0); ELit ($4096)]) (
+             SIf (EVar a) (
+                   SSeq (SStore (ELit ($1234)) (ELit ($42))) (
+                          SSeq (SLoad b (ELit ($1234))) (
+                                 SIf (EOp OEq (EVar b) (ELit ($42))) (
+                                       (SIO [c] munmap [ELit ($0); ELit ($4096)])
+                                     ) (
+                                       SFail  )))
+                 ) (
+                   SFail)).
+
+    Lemma prog_ok : exists t, ContTrace.terminates_with_trace
+                                (p:=p) (fun _ => None) external (fun _ => None) (fun _ => None) prog t.
+    Proof.
+      eexists. eexists. eexists.
+      cbv [ContTrace.cont_of_stmt].
+
+      eapply TRC.cons.
+      { repeat first [ split; [reflexivity|] | exists 99 | eexists ].
+        { intros. cbn. cbv [read_mem]. lazymatch goal with |- (if ?x then _ else _) = _ => destruct x; reflexivity end. }
+        { let m1 := match goal with |- context [load _ ?m1] => m1 end in
+          pattern m1;
+            match goal with
+              |- ?P ?e =>
+              let T := match type of e with ?T => T end in
+              let ee := open_constr:(@proj1_sig T P (exist P e ?[pf])) in
+              unify e ee; unshelve eapply proj2_sig
+            end. admit. } }
+      eapply TRC.cons.
+      match goal with |- context[proj1_sig ?e] => let H := fresh in pose proof (proj2_sig e) as H; cbv beta in H end.
+      { repeat first [ split; [reflexivity|] | exists 99 | eexists ].
+        cbn -[Imp.Imp_.interp_stmt].
+    Abort.
+  End ContTraceTest.
+
+  Module BigStep.
+    Section BigStep.
+      Context {p : Imp.ImpParameters}.
       Let Imp : Imp.ImpInterface p := Imp.Imp p.
       (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
       Local Notation mword := p.(mword).
       Local Notation mword_nonzero := p.(mword_nonzero).
-      (* Local Notation varname := p.(varname). (*TODO: shadow*) *)
+      Local Notation varname := p.(varname).
       Local Notation funname := p.(funname).
-      (* Local Notation actname := p.(actname). (*TODO: shadow*) *)
+      Local Notation actname := p.(actname).
       Local Notation bopname := p.(bopname).
       Local Notation varmap := p.(varmap).
       Local Notation mem := p.(mem).
@@ -912,105 +1033,42 @@ Module InteractionSemantics.
       Local Notation interp_expr := Imp.(interp_expr).
       Local Notation interp_stmt := Imp.(interp_stmt).
       Local Notation interp_cont := Imp.(interp_cont).
-
-      Definition inbounds : mword -> mword -> mword -> Prop. Admitted.
-      
-      Definition external : (actname * list mword * mem) -> (list mword * mem) -> Prop :=
-        fun '(action, argvs, m0) '(retvs, m1) =>
-          match action with
-          | mmap =>
-            exists adr len, argvs = [adr; len]
-           /\ (forall a, inbounds adr len a -> load a m0 = None)
-           /\ retvs = [wzero wXLEN] /\
-              (forall a,
-                  (inbounds adr len a /\ exists v, load a m1 = Some v) \/
-                  (~ inbounds adr len a /\ load a m1 = load a m0))
-          | munmap =>
-            exists adr len, argvs = [adr; len]
-           /\ (forall a, inbounds adr len a -> exists v, load a m0 = Some v)
-           /\ retvs = [wzero wXLEN] /\
-              (forall a,
-                  (inbounds adr len a /\ load a m1 = None) \/
-                  (~ inbounds adr len a /\ load a m1 = load a m0))
-          end.
-
-      Definition SFail := SWhile (ELit ($1)) SSkip.
-      Definition prog :=
-        SSeq (SIO [a] mmap [ELit ($0); ELit ($4096)]) (
-        SIf (EVar a) (
-           SSeq (SStore (ELit ($1234)) (ELit ($42))) (
-           SSeq (SLoad b (ELit ($1234))) (
-           SIf (EOp OEq (EVar b) (ELit ($42))) (
-               (SIO [c] munmap [ELit ($0); ELit ($4096)])
-             ) (
-               SFail  )))
-         ) (
-           SFail)).
-
-      Check ContTrace.terminates_with_trace (p:=p).
-      Lemma prog_ok : exists t, ContTrace.terminates_with_trace
-                                  (p:=p) (fun _ => None) external (fun _ => None) (fun _ => None) prog t.
-      Proof.
-        eexists. eexists. eexists.
-        cbv [ContTrace.cont_of_stmt].
-
-        eapply TRC.cons.
-        { cbv [step].
-          cbn [Imp.interp_cont Imp.Imp Imp.Imp_.interp_cont prog].
-          eexists.
-          exists 9.
-          eexists.
-          eexists.
-          eexists.
-          eexists.
-          eexists.
-          eexists.
-          split; [reflexivity|].
-          split; [reflexivity|].
-          eexists.
-          {
-            cbn [lift_option_cont lift_cont].
-            eexists.
-            eexists.
-            split; [reflexivity|].
-            eexists.
-            split; [reflexivity|].
-            eexists.
-            eexists.
-            eexists.
-            split; [reflexivity|].
-            split; [reflexivity|].
-            split.
-            {
-              eexists.
-              eexists.
-              split; [reflexivity|].
-              split.
-              { intros. cbn. cbv [read_mem].
-                lazymatch goal with |- (if ?x then _ else _) = _ => destruct x; reflexivity end. }
-              split; [reflexivity|].
-              (* TODO: make m1 easy to instantiate *)
-              split.
-              eexists.
-          
-
-        
-
-
-  Module BigStep.
-    Section BigStep.
       Context
         (e : funname -> option (list varname * list varname * stmt))
         (sys : Type) (external : (actname * list mword * mem * sys) -> (list mword * mem * sys) -> Prop).
-    Definition state : Type := varmap * mem * sys.
-    Inductive exec : state -> stmt -> state -> Prop :=
-    | skip s : exec s SSkip s
-    | io binds action args argvs retvs l0 m0 s0 l1 m1 s1
-         (_:Common.option_all (List.map (interp_expr l0) args) = Some argvs)
-         (_:Common.putmany binds retvs l0 = Some l1)
-         (_:external (action, argvs, m0, s0) (retvs, m1, s1))
-      : exec (l0, m0, s0) (SIO binds action args) (l1, m1, s1)
-    | FIXME_MORE_CASES s : exec s SSkip s.
+      Definition state : Type := varmap * mem * sys.
+      Inductive exec : state -> stmt -> state -> Prop :=
+      | skip s : exec s SSkip s
+      | io binds action args argvs retvs l0 m0 s0 l1 m1 s1
+           (_:Common.option_all (List.map (interp_expr l0) args) = Some argvs)
+           (_:Common.putmany binds retvs l0 = Some l1)
+           (_:external (action, argvs, m0, s0) (retvs, m1, s1))
+        : exec (l0, m0, s0) (SIO binds action args) (l1, m1, s1)
+      | FIXME_MORE_CASES s : exec s SSkip s.
+
+(* ContStep.steps =  *)
+(* fun p : ImpParameters => *)
+(* let Imp := Imp.Imp p in *)
+(* fun (e : p.(funname) -> option (list p.(varname) * list p.(varname) * Imp.(stmt)))  *)
+(*   (sys : Type) *)
+(*   (external : p.(actname) * list p.(mword) * p.(mem) * sys -> list p.(mword) * p.(mem) * sys -> Prop) => *)
+(* let state := (p.(varmap) * p.(mem) * option (Imp.(cont) Imp.(ioret)) * sys)%type in *)
+(* TRC.trc (ContStep.step e sys external) *)
+(*      : forall p : ImpParameters, *)
+(*        (p.(funname) -> option (list p.(varname) * list p.(varname) * (Imp.Imp p).(stmt))) -> *)
+(*        forall sys : Type, *)
+(*        (p.(actname) * list p.(mword) * p.(mem) * sys -> list p.(mword) * p.(mem) * sys -> Prop) -> *)
+(*        p.(varmap) * p.(mem) * option ((Imp.Imp p).(cont) (Imp.Imp p).(ioret)) * sys -> *)
+(*        p.(varmap) * p.(mem) * option ((Imp.Imp p).(cont) (Imp.Imp p).(ioret)) * sys -> Prop *)
+
+(* Argument p is implicit and maximally inserted *)
+(* Argument scopes are [_ function_scope type_scope function_scope _ _] *)
+
+      Let contsteps := @ContStep.steps p e sys external.
+     (* : varmap * mem * option ((Imp.Imp p).(Imp.cont) (Imp.Imp p).(Imp.ioret)) * sys -> *)
+     (*   varmap * mem * option ((Imp.Imp p).(Imp.cont) (Imp.Imp p).(Imp.ioret)) * sys -> Prop *)
+
+      Lemma iff_bigstep_contstep l0 m0 oc0 s0
     End BigStep.
   End BigStep.
 End InteractionSemantics.
