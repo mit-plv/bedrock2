@@ -1,0 +1,17 @@
+language: generic
+sudo: required
+dist: trusty
+
+matrix:
+  fast_finish: true
+  include:
+    - env: COQ_VERSION="master" COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-master-daily"
+    - env: COQ_VERSION="v8.8"   COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-8.8-daily"
+    - env: COQ_VERSION="v8.7"   COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-8.7-daily"
+
+before_install:
+  - if [ ! -z "$PPA" ]; then sudo add-apt-repository "$PPA" -y; fi
+  - sudo apt-get update -q
+  - sudo apt-get install $COQ_PACKAGE -y
+
+script: make -j2

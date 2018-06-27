@@ -1,31 +1,26 @@
 
-default_target: all
+default_target: bedrock2
 
-COQC=$(COQBIN)coqc
+.PHONY: update_all clone_all bbv riscv-coq bedrock2
 
-DIRS = lib src
+clone_all:
+	git submodule update --init --recursive
 
-COQFLAGS= -Q ../bbv bbv  -Q ../riscv-coq/src riscv  -Q ./lib lib  -Q ./src compiler
+update_all:
+	git submodule update --recursive --remote
 
-DEPFLAGS:=$(COQFLAGS)
+REL_PATH_OF_THIS_MAKEFILE:=$(lastword $(MAKEFILE_LIST))
+ABS_ROOT_DIR:=$(abspath $(dir $(REL_PATH_OF_THIS_MAKEFILE)))
 
-COQTOP=$(COQBIN)coqtop
-COQDEP=$(COQBIN)coqdep $(DEPFLAGS)
-COQDOC=$(COQBIN)coqdoc
+DEPS_DIR ?= $(ABS_ROOT_DIR)/deps
+export DEPS_DIR
 
-%.vo: %.v
-	$(COQC) $(COQFLAGS) $*.v 
+bbv:
+	$(MAKE) -C $(DEPS_DIR)/bbv
 
-all: $(patsubst %.v,%.vo,$(wildcard src/*.v src/examples/*.v))
+riscv-coq: bbv
+	$(MAKE) -C $(DEPS_DIR)/riscv-coq proofs
 
-ExprImp: src/ExprImp.vo src/ExprImpNotations.vo
-
-.depend depend:
-	$(COQDEP) >.depend `find $(DIRS) -name "*.v"`
-
-clean:
-	find . -type f \( -name '*.glob' -o -name '*.vo' -o -name '*.aux' \) -delete
-	rm .depend
-
-include .depend
+bedrock2: riscv-coq
+	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2
 
