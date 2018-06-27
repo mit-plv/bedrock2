@@ -926,7 +926,7 @@ Section FlatToRiscv.
   : rew_RiscvMachine_get_set.
   
   Ltac simpl_RiscvMachine_get_set := autorewrite with rew_RiscvMachine_get_set in *.
-            
+
   Ltac destruct_RiscvMachine m :=
     let t := type of m in
     unify t RiscvMachine;
@@ -1115,6 +1115,7 @@ Section FlatToRiscv.
   Ltac rewrite_reg_value :=
     match goal with
     | |- context [getReg _ _] => idtac
+    | |- context [get    _ _] => idtac
     | _ => fail 1 "wrong shape of goal"
     end;
     let G1 := fresh "G1" in
@@ -1123,6 +1124,10 @@ Section FlatToRiscv.
       let gg := constr:(@getReg RF R V TC st1 x) in
       let gg' := eval unfold getReg, State_is_RegisterFile in gg in
       progress change gg with gg';
+      match gg' with
+      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by (clear -G2 E; state_calc)
+      end
+    | G2: get ?st2 ?x = ?v, E: extends ?st1 ?st2 |- context [?gg'] =>
       match gg' with
       | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by (clear -G2 E; state_calc)
       end
@@ -1153,14 +1158,6 @@ Section FlatToRiscv.
     match goal with
     | |- valid_registers _ => solve [simpl; auto]
     end.
-
-  Ltac solve_imem_old :=
-    repeat match goal with
-           (* by doing an explicit match, we make sure (?a ++ ?b) is not unified with
-                an evar in an infinite loop *)
-           | |- context [(?a ++ ?b) ++ ?c] => rewrite <- (app_assoc a b c)
-           end;
-    reflexivity.
 
   Lemma add_to_instsBefore: forall (before insts1 insts2 after: list Instruction),
       before ++ (insts1 ++ insts2) ++ after = (before ++ insts1) ++ insts2 ++ after.
@@ -1324,23 +1321,29 @@ Section FlatToRiscv.
     rewrite weqb_eq by reflexivity;
     simpl.
 
+  Hint Rewrite weqb_ne weqb_eq using congruence : rew_weqb.
+
+  Hint Rewrite
+      elim_then_true_else_false
+      (@left_identity _ (OState_Monad RiscvMachine))
+      get_put_same
+  : rew_run1step.
+  
   Ltac run1step'' :=
     fetch_inst;
     autounfold with unf_pseudo in *;
     cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
     repeat (
-        do_get_set_Register || 
-        simpl_RiscvMachine_get_set ||
-        rewrite_reg_value ||
+        autorewrite with
+            rew_get_set_Register
+            rew_RiscvMachine_get_set
+            alu_defs_without_remu_def
+            rew_weqb
+            rew_run1step ||
         rewrite_getReg ||
         rewrite_setReg ||
-        rewrite_alu_op_defs ||
-        (rewrite weqb_ne by congruence) ||
-        (rewrite weqb_eq by congruence) ||
-        rewrite elim_then_true_else_false ||
-        rewrite left_identity ||
         simpl_remu4_test ||
-        rewrite get_put_same).
+        rewrite_reg_value).
 
   Ltac run1step' :=
     (eapply runsToStep; simpl in *; subst *); [ run1step'' | ].
