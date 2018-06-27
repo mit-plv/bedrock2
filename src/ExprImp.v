@@ -758,28 +758,13 @@ Module InteractionSemantics.
       Local Notation interp_stmt := Imp.(interp_stmt).
       Local Notation interp_cont := Imp.(interp_cont).
 
-      (*
-      Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
-        match a, b with
-        | Imp_.CSuspended a, Imp_.CSuspended b =>
-          P a b
-        | Imp_.CSeq a sa, Imp_.CSeq b sb =>
-          lift_cont a b P /\ sa = sb
-        | Imp_.CStack sta a ba ra, Imp_.CStack stb b bb rb =>
-          sta = stb /\ lift_cont a b P /\ ba = bb /\ ra = rb
-        | _, _ => False
-        end.
-         *)
       Fixpoint lift_cont {A B : Type} (a : cont A) (b : cont B) (P : A -> B -> Prop) {struct a} :=
         match a with
         | Imp_.CSuspended a => exists b', b = Imp_.CSuspended b' /\ P a b'
         | Imp_.CSeq a sa => exists b', b = Imp_.CSeq b' sa /\ lift_cont a b' P
         | Imp_.CStack sta a ba ra => exists b', b = Imp_.CStack sta b' ba ra /\ lift_cont a b' P
         end.
-      (*
-      Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
-        match a, b with None, None => True | Some a, Some b => lift_cont a b P | _, _ => False end.
-       *)
+      
       Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
         match a with None => b = None | Some a => exists b', b = Some b' /\ lift_cont a b' P end.
 
