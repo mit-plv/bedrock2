@@ -6,6 +6,7 @@ Require Import riscv.encode.Encode.
 Require Import riscv.util.ZBitOps.
 Require Import riscv.util.BitWidths.
 Require Import riscv.Run.
+Require Import riscv.Program.
 Require Import riscv.AxiomaticRiscv.
 Require Import compiler.Tactics.
 Require Import riscv.util.Tactics.
