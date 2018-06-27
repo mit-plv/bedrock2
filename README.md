@@ -6,23 +6,13 @@ This project has similar goals as [bedrock](https://github.com/mit-plv/bedrock),
 No code is shared between bedrock and bedrock2 (except a [bit vector library](https://github.mit.edu/plv/bbv/)), and compilation is implemented as a Gallina function rather than as an Ltac function.
 
 
-### Build
+### Build [![Build Status](https://travis-ci.com/mit-plv/bedrock2.svg?branch=master)](https://travis-ci.com/mit-plv/bedrock2)
 
-You'll need [Coq](https://coq.inria.fr/), see variable `EXPECTED_COQC_VERSION` in the Makefile for which version to use.
+You'll need [Coq](https://coq.inria.fr/), version 8.7, 8.8, or master.
 
-Dependencies: The following projects should be sibling directories of the `bedrock2` directory:
-*    The [Bedrock Bitvector Library (bbv)](https://github.mit.edu/plv/bbv/)
-*    The [RISCV Specification in Coq (riscv-coq)](https://github.com/samuelgruetter/riscv-coq)
+In case you didn't clone with `--recursive`, use `make clone_all` to clone the git submodules.
 
-To build the whole project (including the compiler):
-*    run `make` in the `bbv` directory
-*    run `make proofs` in the `riscv-coq` directory
-*    run `make` in the `bedrock2` directory
-
-To build only the source language (ExprImp):
-*    run `make` in the `bbv` directory
-*    run `make util` in the `riscv-coq` directory
-*    run `make ExprImp` in the `bedrock2` directory
+Then simply run `make` or `make -j` or `make -jN` where `N` is the number of cores to use. This will invoke the Makefiles of each subproject in the correct order, and also pass the `-j` switch to the recursive make.
 
 
 ### Current Features
