@@ -913,16 +913,19 @@ Section FlatToRiscv.
     machineMem (mkRiscvMachine c m) = m.
   Proof. intros. reflexivity. Qed.  
 
-  Ltac simpl_RiscvMachine_get_set :=
-    repeat (rewrite simpl_with_registers in *
-            || rewrite simpl_with_pc in *
-            || rewrite simpl_with_nextPC in *
-            || rewrite simpl_with_machineMem in *
-            || rewrite simpl_registers in *
-            || rewrite simpl_pc in *
-            || rewrite simpl_nextPC in *
-            || rewrite simpl_core in *
-            || rewrite simpl_machineMem in * ).
+  Hint Rewrite
+      simpl_with_registers
+      simpl_with_pc
+      simpl_with_nextPC
+      simpl_with_machineMem
+      simpl_registers
+      simpl_pc
+      simpl_nextPC
+      simpl_core
+      simpl_machineMem
+  : rew_RiscvMachine_get_set.
+  
+  Ltac simpl_RiscvMachine_get_set := autorewrite with rew_RiscvMachine_get_set in *.
             
   Ltac destruct_RiscvMachine m :=
     let t := type of m in
