@@ -1024,18 +1024,19 @@ Section FlatToRiscv.
     reflexivity.
   Qed. 
 
-  Ltac do_get_set_Register :=
-    repeat (
-        rewrite? associativity;
-        rewrite? left_identity;
-        rewrite? right_identity;
-        rewrite? Bind_getRegister by assumption;
-        rewrite? Bind_getRegister0;
-        rewrite? Bind_setRegister by assumption;
-        rewrite? Bind_setRegister0;
-        rewrite? Bind_getPC;
-        rewrite? Bind_setPC
-      ).
+  Hint Rewrite
+      (@associativity  _ (OState_Monad RiscvMachine))
+      (@left_identity  _ (OState_Monad RiscvMachine))
+      (@right_identity _ (OState_Monad RiscvMachine))
+      (@Bind_getRegister _ _ _ _ _ _ _)
+      (@Bind_getRegister0 _ _ _ _ _ _ _)
+      (@Bind_setRegister _ _ _ _ _ _ _)
+      (@Bind_setRegister0 _ _ _ _ _ _ _)
+      (@Bind_getPC _ _ _ _ _ _ _)
+      (@Bind_setPC _ _ _ _ _ _ _)
+  using assumption : rew_get_set_Register.
+
+  Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
 
   (* TODO use "autorewrite with alu_defs" instead *)
   Ltac rewrite_alu_op_defs :=
