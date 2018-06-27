@@ -22,7 +22,7 @@ COQFLAGS=$(DEPFLAGS)
 %.vo: %.v
 	$(COQC) $(COQFLAGS) $*.v 
 
-all: $(patsubst %.v,%.vo,$(wildcard src/*.v src/examples/*.v))
+all: $(patsubst %.v,%.vo,$(wildcard src/*.v src/examples/*.v)) _CoqProject
 
 ExprImp: src/ExprImp.vo src/ExprImpNotations.vo
 
