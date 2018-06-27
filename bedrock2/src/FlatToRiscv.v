@@ -19,7 +19,6 @@ Require Import riscv.util.PowerFunc.
 Require Import riscv.util.BitWidths.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
-Require Import Coq.Logic.FunctionalExtensionality.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
