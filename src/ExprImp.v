@@ -774,12 +774,14 @@ Module InteractionSemantics.
       Let state : Type := varmap * mem * option (cont ioret) * sys.
       Definition step : state -> state -> Prop :=
         fun '(l0, m0, oc0, s0) S' =>
-          exists l1 m1 oc1 s1, S' = (l1, m1, oc1, s1) /\
           exists c0, oc0 = Some c0 /\
-          exists  f m' oc', interp_cont e f l0 m0 c0 = Some (l1, m', oc') /\
-          lift_option_cont oc' oc1 (fun b' b1 =>
-                                      exists av rb, b' = (av, rb) /\
-                                      exists rv, b1 = (rv, rb) /\ external (av, m', s0) (rv, m1, s1)).
+          exists l1 m1 oc1 s1, S' = (l1, m1, oc1, s1) /\
+          exists m' oc',
+          ( (exists f, interp_cont e f l0 m0 c0 = Some (l1, m', oc'))
+            ->
+            lift_option_cont oc' oc1 (fun b' b1 =>
+                                        exists av rb, b' = (av, rb) /\
+                                        exists rv, b1 = (rv, rb) /\ external (av, m', s0) (rv, m1, s1))).
       Definition steps := TRC.trc step.
 
       (*
@@ -798,6 +800,18 @@ Module InteractionSemantics.
        *)
     End ContStep.
   End ContStep.
+
+  (* TODO: file module? *)
+  Record ContStepInterface {p} :Type :=
+    {
+      step : typeof! (@ContStep.step p);
+      steps : typeof! (@ContStep.steps p)
+    }.
+  Definition ContStep p : ContStepInterface (p:=p) :=
+    {|
+      step := @ContStep.step p;
+      steps := @ContStep.steps p;
+    |}.
 
   Module ContTrace.
     Section ContTrace.
@@ -842,6 +856,7 @@ Module InteractionSemantics.
       Local Notation interp_expr := Imp.(interp_expr).
       Local Notation interp_stmt := Imp.(interp_stmt).
       Local Notation interp_cont := Imp.(interp_cont).
+      Let ContStep := ContStep p.
 
       Definition cont_of_stmt (s : stmt) : cont ioret := CSeq (CSuspended (nil, nil)) s.
       Lemma interp_cont_of_stmt' e f l m s : interp_cont e (S f) l m (cont_of_stmt s) = interp_stmt e f l m s.
@@ -849,12 +864,22 @@ Module InteractionSemantics.
 
       Definition event : Type := actname * (mem * list mword) * (mem * list mword).
       Context (e : funname -> option (list varname * list varname * stmt)).
-      Definition steps := ContStep.steps e (list event) (fun '(action, argvs, m0, l0) '(retvs, m1, l1) =>
+      Definition step := ContStep.(step) e (list event) (fun '(action, argvs, m0, l0) '(retvs, m1, l1) =>
            cons (action, (m0, argvs), (m1, retvs)) l0 = l1).
-      Definition has_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
+      Definition steps := ContStep.(steps) e (list event) (fun '(action, argvs, m0, l0) '(retvs, m1, l1) =>
+           cons (action, (m0, argvs), (m1, retvs)) l0 = l1).
+      Definition may_have_trace_prefix (l : varmap) (m : mem) (s:stmt) (t:list event)
         := exists l' m' oc', steps (l, m, Some (cont_of_stmt s), nil) (l', m', oc', t).
-      Definition terminates_with_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
+      Definition may_terminate_with_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
         := exists l' m', steps (l, m, Some (cont_of_stmt s), nil) (l', m', None, t).
+      (* these are probably bad:
+      Definition terminates_with_trace_satisfying (l : varmap) (m : mem) (s:stmt) (P : list event -> Prop)
+        := forall l' m' oc' t',
+          steps (l, m, Some (cont_of_stmt s), nil) (l', m', oc', t') ->
+          (exists S', step (l', m', oc', t') S') \/ oc' = None /\ P t'.
+      Definition terminates_with_trace_satisfying' (l : varmap) (m : mem) (s:stmt) (P : list event -> Prop)
+        := forall l' m' t',  steps (l, m, Some (cont_of_stmt s), nil) (l', m', None, t') -> P t'.
+       *)
     End ContTrace.
   End ContTrace.
 
@@ -950,11 +975,20 @@ Module InteractionSemantics.
                  ) (
                    SFail)).
 
-    Lemma prog_ok : exists t, ContTrace.terminates_with_trace
-                                (p:=p) (fun _ => None) (fun _ => None) (fun _ => None) prog t.
+    Lemma prog_ok : forall l m c t,
+      List.Forall syscall_spec t ->
+      ContTrace.steps (p:=p) (fun _ => None) (fun _ => None) (fun _ => None) prog (l, m, c, t) ->
+      c.
     Proof.
-      eexists. eexists. eexists.
-      cbv [ContTrace.cont_of_stmt].
+      intros. eexists. intros.
+      do 5 match goal with
+      | _ => progress (cbv [ContTrace.steps ContStep.steps ContTrace.has_trace] in * )
+      | _ => progress subst
+      | H: exists _, _ |- _ => destruct H
+      | H: TRC.trc _ _ _ |- _ => inversion H
+      end.
+      subst.
+      admit.
 
       eapply TRC.cons.
       { repeat first [ split; [reflexivity|] | exists 99 | eexists ]. }
