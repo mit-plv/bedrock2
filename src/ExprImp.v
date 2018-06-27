@@ -797,6 +797,7 @@ Module InteractionSemantics.
                                       exists rv, b1 = (rv, rb) /\ external (av, m', s0) (rv, m1, s1)).
       Definition steps := TRC.trc step.
 
+      (*
       Lemma step_CSeq l0 m0 c0 s0 l1 m1 c1 s1 s :
         step (l0, m0, Some (CSeq c0 s), s0) (l1, m1, Some (CSeq c1 s), s1)
         <-> step (l0, m0, Some c0, s0) (l1, m1, Some c1, s1).
@@ -809,7 +810,7 @@ Module InteractionSemantics.
                  | H: _ /\ _ |- _ => destruct H
                  end.
           repeat eexists.
-
+       *)
     End ContStep.
   End ContStep.
 
@@ -861,13 +862,10 @@ Module InteractionSemantics.
       Lemma interp_cont_of_stmt' e f l m s : interp_cont e (S f) l m (cont_of_stmt s) = interp_stmt e f l m s.
       Proof. destruct f; reflexivity. Qed.
 
-      Definition event : Type := actname * list mword * list mword.
-      Context
-        (e : funname -> option (list varname * list varname * stmt))
-        (external : (actname * list mword * mem) -> (list mword * mem) -> Prop).
+      Definition event : Type := actname * (mem * list mword) * (mem * list mword).
+      Context (e : funname -> option (list varname * list varname * stmt)).
       Definition steps := ContStep.steps e (list event) (fun '(action, argvs, m0, l0) '(retvs, m1, l1) =>
-           cons (action, argvs, retvs) l0 = l1 /\ external (action, argvs, m0) (retvs, m1)).
-      Check steps.
+           cons (action, (m0, argvs), (m1, retvs)) l0 = l1).
       Definition has_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
         := exists l' m' oc', steps (l, m, Some (cont_of_stmt s), nil) (l', m', oc', t).
       Definition terminates_with_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
@@ -934,8 +932,8 @@ Module InteractionSemantics.
 
     Definition inbounds : mword -> mword -> mword -> Prop. Admitted.
     
-    Definition external : (actname * list mword * mem) -> (list mword * mem) -> Prop :=
-      fun '(action, argvs, m0) '(retvs, m1) =>
+    Definition allowed : ContTrace.event (p:=p) -> Prop :=
+      fun '(action, (m0, argvs), (m1, retvs)) =>
         match action with
         | mmap =>
           exists adr len, argvs = [adr; len]
@@ -967,26 +965,13 @@ Module InteractionSemantics.
                    SFail)).
 
     Lemma prog_ok : exists t, ContTrace.terminates_with_trace
-                                (p:=p) (fun _ => None) external (fun _ => None) (fun _ => None) prog t.
+                                (p:=p) (fun _ => None) (fun _ => None) (fun _ => None) prog t.
     Proof.
       eexists. eexists. eexists.
       cbv [ContTrace.cont_of_stmt].
 
       eapply TRC.cons.
-      { repeat first [ split; [reflexivity|] | exists 99 | eexists ].
-        { intros. cbn. cbv [read_mem]. lazymatch goal with |- (if ?x then _ else _) = _ => destruct x; reflexivity end. }
-        { let m1 := match goal with |- context [load _ ?m1] => m1 end in
-          pattern m1;
-            match goal with
-              |- ?P ?e =>
-              let T := match type of e with ?T => T end in
-              let ee := open_constr:(@proj1_sig T P (exist P e ?[pf])) in
-              unify e ee; unshelve eapply proj2_sig
-            end. admit. } }
-      eapply TRC.cons.
-      match goal with |- context[proj1_sig ?e] => let H := fresh in pose proof (proj2_sig e) as H; cbv beta in H end.
-      { repeat first [ split; [reflexivity|] | exists 99 | eexists ].
-        cbn -[Imp.Imp_.interp_stmt].
+      { repeat first [ split; [reflexivity|] | exists 99 | eexists ]. }
     Abort.
   End ContTraceTest.
 
