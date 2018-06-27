@@ -1038,28 +1038,33 @@ Section FlatToRiscv.
 
   Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
 
-  (* TODO use "autorewrite with alu_defs" instead *)
-  Ltac rewrite_alu_op_defs :=
-    repeat (rewrite fromImm_def in *
-            || rewrite zero_def in *
-            || rewrite one_def in *
-            || rewrite add_def in *
-            || rewrite sub_def in *
-            || rewrite mul_def in *
-            || rewrite div_def in *
-            || rewrite rem_def in *
-            || rewrite signed_less_than_def in *
-            || rewrite signed_eqb_def in *
-            || rewrite xor_def in *
-            || rewrite or_def in *
-            || rewrite and_def in *
-            || rewrite sll_def in *
-            || rewrite srl_def in *
-            || rewrite sra_def in *
-            || rewrite ltu_def in *
-            || rewrite divu_def in *
-            (* missing: remu_def because it's only used for alignment checks and we prefer
-               keeping it as remu *) ).
+  Hint Rewrite
+      @fromImm_def
+      @zero_def
+      @one_def
+      @add_def
+      @sub_def
+      @mul_def
+      @div_def
+      @rem_def
+      @signed_less_than_def
+      @signed_eqb_def
+      @xor_def
+      @or_def
+      @and_def
+      @sll_def
+      @srl_def
+      @sra_def
+      @ltu_def
+      @divu_def
+      (* missing: remu_def because it's only used for alignment checks and we prefer
+         keeping it as remu -- TODO use full alu_defs from riscv-coq/src/Utility.v *)
+      @two_def
+      (* missing: four_def because simpl_remu4_test looks for "four", not "$4", TODO *)
+      @eight_def
+    : alu_defs_without_remu_def.
+  
+  Ltac rewrite_alu_op_defs := autorewrite with alu_defs_without_remu_def in *.
 
   Arguments mult: simpl never.
   Arguments run1: simpl never.
