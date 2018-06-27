@@ -917,7 +917,8 @@ Module InteractionSemantics.
 
     Definition inbounds : mword -> mword -> mword -> Prop. Admitted.
     
-    Definition allowed : ContTrace.event (p:=p) -> Prop :=
+    (* TODO: how to use this? *)
+    Definition syscall_spec : ContTrace.event (p:=p) -> Prop :=
       fun '(action, (m0, argvs), (m1, retvs)) =>
         match action with
         | mmap =>
@@ -957,6 +958,7 @@ Module InteractionSemantics.
 
       eapply TRC.cons.
       { repeat first [ split; [reflexivity|] | exists 99 | eexists ]. }
+
     Abort.
   End ContTraceTest.
 
