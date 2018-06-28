@@ -815,8 +815,8 @@ Module InteractionSemantics.
                | H: None = Some _ |- _ => inversion H; clear H
                | H: Some _ = Some _ |- _ => inversion H; clear H
                | H: (_, _) = (_, _) |- _ => inversion H; clear H
-               | H: (_, _) = ?x |- _ => destruct x; inversion H; clear H
-               | H: ?x = (_, _) |- _ => destruct x; inversion H; clear H
+               | H: (_, _) = ?x |- _ => is_var x; destruct x; inversion H; clear H
+               | H: ?x = (_, _) |- _ => is_var x; destruct x; inversion H; clear H
                | _ => progress subst
                end.
       Ltac unify_fuel_irrelevant :=
