@@ -765,39 +765,89 @@ Module InteractionSemantics.
         | Imp_.CStack sta a ba ra => exists b', b = Imp_.CStack sta b' ba ra /\ lift_cont a b' P
         end.
       
-      Definition lift_option_cont {A B : Type} (a : option (cont A)) (b : option (cont B)) (P : A -> B -> Prop) :=
-        match a with None => b = None | Some a => exists b', b = Some b' /\ lift_cont a b' P end.
-
       Context
         (e : funname -> option (list varname * list varname * stmt))
         (sys : Type) (external : (actname * list mword * mem * sys) -> (list mword * mem * sys) -> Prop).
-      Let state : Type := varmap * mem * option (cont ioret) * sys.
+      Let state : Type := varmap * mem * sys * option (cont ioret).
       Definition step : state -> state -> Prop :=
-        fun '(l0, m0, oc0, s0) S' =>
+        fun '(l0, m0, s0, oc0) S' =>
           exists c0, oc0 = Some c0 /\
-          exists l1 m1 oc1 s1, S' = (l1, m1, oc1, s1) /\
-          exists m' oc',
-          ( (exists f, interp_cont e f l0 m0 c0 = Some (l1, m', oc'))
+          exists l1 m1 oc1 s1, S' = (l1, m1, s1, oc1) /\
+          ( (exists f rhs, interp_cont e f l0 m0 c0 = Some rhs)
             ->
-            lift_option_cont oc' oc1 (fun b' b1 =>
-                                        exists av rb, b' = (av, rb) /\
-                                        exists rv, b1 = (rv, rb) /\ external (av, m', s0) (rv, m1, s1))).
+            exists f m' oc', interp_cont e f l0 m0 c0 = Some (l1, m', oc') /\
+            match oc' with
+            | None => oc1 = None /\ m1 = m' /\ s1 = s0
+            | Some c' =>
+              exists c1, oc1 = Some c1 /\
+              lift_cont c' c1 (fun b' b1 =>
+                exists av rb, b' = (av, rb) /\
+                exists rv, b1 = (rv, rb) /\ external (av, m', s0) (rv, m1, s1))
+            end).
       Definition steps := TRC.trc step.
 
-      (*
-      Lemma step_CSeq l0 m0 c0 s0 l1 m1 c1 s1 s :
-        step (l0, m0, Some (CSeq c0 s), s0) (l1, m1, Some (CSeq c1 s), s1)
-        <-> step (l0, m0, Some c0, s0) (l1, m1, Some c1, s1).
+      (* TODO: section records... *)
+
+      (** Program Logic *)
+      Definition cont_of_stmt (s : stmt) : cont ioret := CSeq (CSuspended (nil, nil)) s.
+      Lemma interp_cont_of_stmt' f l m s : interp_cont e (S f) l m (cont_of_stmt s) = interp_stmt e f l m s.
+      Proof. destruct f; reflexivity. Qed.
+
+      Definition guarantees (P : varmap * mem * sys -> Prop) c (I : varmap * mem * sys -> Prop) : Prop
+          := forall s (_ : P s) s' c' (_ : steps (s, Some (cont_of_stmt c)) (s', c')), I s'.
+      Definition spec P c I Q := forall c', guarantees Q c' I -> guarantees P (SSeq c c') I.
+
+      Delimit Scope spec_scope with spec.
+      Notation "{{ P }} c & I {{ Q }}" := (spec P c I Q) (at level 90, c at next level) : spec_scope.
+      Check (fun P c I Q => {{ P }} c & I {{ Q }})%spec.
+
+      Lemma interp_cont_fuel_irrelevant
+            {f1 f2 r1 r2 (* e *) l m c}
+            (H1:interp_cont e f1 l m c = Some r1)
+            (H2:interp_cont e f2 l m c = Some r2)
+        : r1 = r2. Admitted.
+
+      Ltac inversion_things :=
+        repeat match goal with
+               | H: exists _, _ |- _ => destruct H
+               | H: _ /\ _ |- _ => destruct H
+               | H: Some _ = None |- _ => inversion H; clear H
+               | H: None = Some _ |- _ => inversion H; clear H
+               | H: Some _ = Some _ |- _ => inversion H; clear H
+               | H: (_, _) = (_, _) |- _ => inversion H; clear H
+               | H: (_, _) = ?x |- _ => destruct x; inversion H; clear H
+               | H: ?x = (_, _) |- _ => destruct x; inversion H; clear H
+               | _ => progress subst
+               end.
+
+      Lemma step_None {s x} (H:step (s, None) x) : False.
+      Proof. destruct s as [[??]?]. cbv [step] in *. inversion_things. Qed.
+
+      Lemma steps_None s x (H:steps (s, None) x) : x = (s, None).
       Proof.
-        split.
-        admit.
-        { cbn; intros.
-          repeat match goal with
-                 | H: exists _, _ |- _ => destruct H
-                 | H: _ /\ _ |- _ => destruct H
-                 end.
-          repeat eexists.
-       *)
+        remember (s, None) as x0 eqn:Hx0; revert Hx0; generalize dependent x0.
+        induction 1; intros; [reflexivity|subst]. destruct (step_None head).
+      Qed.
+
+      Lemma guarantees_SSkip Q : guarantees Q SSkip Q.
+      Proof with inversion_things.
+        inversion 2; subst; [assumption|].
+        cbv [step] in head.
+
+        (* first step goes to a stuck state *)
+        destruct s as [[l m] s]...
+        assert (interp : interp_cont e 2 l m (cont_of_stmt SSkip) = Some (l, m, None)) by reflexivity.
+        specialize (H3 (ex_intro _ _ (ex_intro _ _ interp)))...
+        match goal with H:_, G:_ |- _ => pose proof interp_cont_fuel_irrelevant H G; clear H end...
+
+        (* stuck state does not step *)
+        apply steps_None in tail...
+        assumption.
+      Qed.
+
+      Lemma spec_skip P : spec P SSkip P P.
+        intros c' H.
+      Abort.
     End ContStep.
   End ContStep.
 
@@ -858,22 +908,20 @@ Module InteractionSemantics.
       Local Notation interp_cont := Imp.(interp_cont).
       Let ContStep := ContStep p.
 
-      Definition cont_of_stmt (s : stmt) : cont ioret := CSeq (CSuspended (nil, nil)) s.
-      Lemma interp_cont_of_stmt' e f l m s : interp_cont e (S f) l m (cont_of_stmt s) = interp_stmt e f l m s.
-      Proof. destruct f; reflexivity. Qed.
-
       Definition event : Type := actname * (mem * list mword) * (mem * list mword).
       Context (e : funname -> option (list varname * list varname * stmt)).
-      Let state : Type := varmap * mem * option ((Imp.Imp p).(Imp.cont) (Imp.Imp p).(Imp.ioret)) * list event.
-      Definition init (l : varmap) (m : mem) (s:stmt) : state := (l, m, Some (cont_of_stmt s), nil).
+      Let state : Type := varmap * mem * list event * option (cont ioret).
+      Definition init (l : varmap) (m : mem) (s:stmt) : state := (l, m, nil, Some (cont_of_stmt s)).
       Definition update_log : actname * list mword * mem * list event -> list mword * mem * list event -> Prop
         := fun '(action, argvs, m0, l0) '(retvs, m1, l1) => cons (action, (m0, argvs), (m1, retvs)) l0 = l1.
       Definition step := ContStep.(step) e (list event) update_log.
       Definition steps := ContStep.(steps) e (list event) update_log.
       Goal False. unify steps (TRC.trc step). Abort.
+      (*
       Let may_have_trace_prefix (s : state) (t : list event) := exists _s, steps s (_s, t).
       Let may_terminate_with_trace (s : state) (t : list event) := exists _s, steps s (_s, None, t).
       Let always_terminates_weak (s : state) := exists N, forall t, may_have_trace_prefix s t -> length t < N.
+       *)
     End ContTrace.
   End ContTrace.
 
@@ -959,28 +1007,27 @@ Module InteractionSemantics.
     Definition SFail := SWhile (ELit ($1)) SSkip.
     Definition prog :=
       SSeq (SIO [a] mmap [ELit ($0); ELit ($4096)]) (
-             SIf (EVar a) (
-                   SSeq (SStore (ELit ($1234)) (ELit ($42))) (
-                          SSeq (SLoad b (ELit ($1234))) (
-                                 SIf (EOp OEq (EVar b) (ELit ($42))) (
-                                       (SIO [c] munmap [ELit ($0); ELit ($4096)])
-                                     ) (
-                                       SFail  )))
-                 ) (
-                   SFail)).
-    Check ContTrace.steps (p:=p) _ _ _.
-    Lemma prog_ok e l0 l m c t :
-      List.Forall syscall_spec t ->
-      ContTrace.steps (p:=p) e (l0, (fun _ => None), prog (l, m, c, t) ->
-      c.
+      SIf (EVar a) (
+        SSeq (SStore (ELit ($1234)) (ELit ($42))) (
+        SSeq (SLoad b (ELit ($1234))) (
+        SIf (EOp OEq (EVar b) (ELit ($42))) (
+          (SIO [c] munmap [ELit ($0); ELit ($4096)])
+        ) (
+          SFail  )))
+      ) (
+        SFail)).
+    Lemma prog_ok e l0 l m c t
+      (interacted : List.Forall syscall_spec t)
+      (stepped: ContTrace.steps (p:=p) e (ContTrace.init l0 (Memory.no_mem : mem) prog) (l, m, c, t))
+      : False.
     Proof.
-      intros. eexists. intros.
-      do 5 match goal with
-      | _ => progress (cbv [ContTrace.steps ContStep.steps ContTrace.has_trace] in * )
+      do 3 match goal with
+      | _ => progress (cbv [ContTrace.steps steps ContStep ContStep.steps ContTrace.init] in * )
       | _ => progress subst
       | H: exists _, _ |- _ => destruct H
       | H: TRC.trc _ _ _ |- _ => inversion H
       end.
+      { 
       subst.
       admit.
 
