@@ -2,6 +2,10 @@ language: generic
 sudo: required
 dist: trusty
 
+branches:
+  only:
+  - master
+
 matrix:
   fast_finish: true
   include:
