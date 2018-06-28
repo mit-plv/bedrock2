@@ -819,6 +819,9 @@ Module InteractionSemantics.
                | H: ?x = (_, _) |- _ => destruct x; inversion H; clear H
                | _ => progress subst
                end.
+      Ltac unify_fuel_irrelevant :=
+        repeat match goal with H:_, G:_ |- _ => pose proof interp_cont_fuel_irrelevant H G; clear H end.
+      Ltac simp := repeat (unify_fuel_irrelevant ; inversion_things).
 
       Lemma step_None {s x} (H:step (s, None) x) : False.
       Proof. destruct s as [[??]?]. cbv [step] in *. inversion_things. Qed.
@@ -830,7 +833,7 @@ Module InteractionSemantics.
       Qed.
 
       Lemma guarantees_SSkip Q : guarantees Q SSkip Q.
-      Proof with inversion_things.
+      Proof with simp.
         inversion 2; subst; [assumption|].
         cbv [step] in head.
 
@@ -838,14 +841,49 @@ Module InteractionSemantics.
         destruct s as [[l m] s]...
         assert (interp : interp_cont e 2 l m (cont_of_stmt SSkip) = Some (l, m, None)) by reflexivity.
         specialize (H3 (ex_intro _ _ (ex_intro _ _ interp)))...
-        match goal with H:_, G:_ |- _ => pose proof interp_cont_fuel_irrelevant H G; clear H end...
 
         (* stuck state does not step *)
         apply steps_None in tail...
         assumption.
       Qed.
 
-      Lemma spec_skip P : spec P SSkip P P.
+      Lemma guarantees_SIO (P Q:_->Prop) binds a args
+            (H :
+               forall l m s (HPlms: P (l, m, s)),
+               Q (l, m, s) /\
+               exists argvs,
+               option_all (map (interp_expr l) args) = Some argvs /\
+               forall retvs m' s', external (a, argvs, m, s) (retvs, m', s') ->
+                                   Q (l, m', s') /\
+                                   exists l', Some l' = putmany binds retvs l /\
+                                   Q (l', m', s'))
+        : guarantees P (SIO binds a args) Q.
+      Proof with simp.
+        inversion 2; destruct s as [[l m] s]; simp; [solve [eapply H; eauto] |].
+
+        specialize (H _ _ _ ltac:(eauto))...
+        rename x into argvs.
+        cbv [step] in head...
+        assert (interp_cont e 2 l m (cont_of_stmt (SIO binds a args))
+                = Some (l, m, Some (CSuspended (a, argvs, binds))))
+          as Hstep1 by (cbn in *; rewrite H2; reflexivity).
+        specialize (H6 (ex_intro _ _ (ex_intro _ _ Hstep1)))...
+        cbn [lift_cont] in *...
+        specialize (H3 _ _ _ ltac:(eauto))...
+
+        inversion tail; simp; [assumption|].
+        cbv [step] in head...
+        eassert (interp_cont e 2 l x1 (Imp_.CSuspended (x6, x5)) = Some (_, x1, None))
+          as Hstep2 by (cbn; unshelve erewrite (_:putmany _ _ _ = Some _); [ |symmetry; eauto|reflexivity]).
+        specialize (H9 (ex_intro _ _ (ex_intro _ _ Hstep2)))...
+        apply steps_None in tail0...
+        assumption.
+      Qed.
+        
+      (* loop rule: fuel decreases OR external state changes *)
+         
+
+      Lemma spec_SSkip P : spec P SSkip P P.
         intros c' H.
       Abort.
     End ContStep.
