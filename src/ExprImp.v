@@ -864,22 +864,16 @@ Module InteractionSemantics.
 
       Definition event : Type := actname * (mem * list mword) * (mem * list mword).
       Context (e : funname -> option (list varname * list varname * stmt)).
-      Definition step := ContStep.(step) e (list event) (fun '(action, argvs, m0, l0) '(retvs, m1, l1) =>
-           cons (action, (m0, argvs), (m1, retvs)) l0 = l1).
-      Definition steps := ContStep.(steps) e (list event) (fun '(action, argvs, m0, l0) '(retvs, m1, l1) =>
-           cons (action, (m0, argvs), (m1, retvs)) l0 = l1).
-      Definition may_have_trace_prefix (l : varmap) (m : mem) (s:stmt) (t:list event)
-        := exists l' m' oc', steps (l, m, Some (cont_of_stmt s), nil) (l', m', oc', t).
-      Definition may_terminate_with_trace (l : varmap) (m : mem) (s:stmt) (t:list event)
-        := exists l' m', steps (l, m, Some (cont_of_stmt s), nil) (l', m', None, t).
-      (* these are probably bad:
-      Definition terminates_with_trace_satisfying (l : varmap) (m : mem) (s:stmt) (P : list event -> Prop)
-        := forall l' m' oc' t',
-          steps (l, m, Some (cont_of_stmt s), nil) (l', m', oc', t') ->
-          (exists S', step (l', m', oc', t') S') \/ oc' = None /\ P t'.
-      Definition terminates_with_trace_satisfying' (l : varmap) (m : mem) (s:stmt) (P : list event -> Prop)
-        := forall l' m' t',  steps (l, m, Some (cont_of_stmt s), nil) (l', m', None, t') -> P t'.
-       *)
+      Let state : Type := varmap * mem * option ((Imp.Imp p).(Imp.cont) (Imp.Imp p).(Imp.ioret)) * list event.
+      Definition init (l : varmap) (m : mem) (s:stmt) : state := (l, m, Some (cont_of_stmt s), nil).
+      Definition update_log : actname * list mword * mem * list event -> list mword * mem * list event -> Prop
+        := fun '(action, argvs, m0, l0) '(retvs, m1, l1) => cons (action, (m0, argvs), (m1, retvs)) l0 = l1.
+      Definition step := ContStep.(step) e (list event) update_log.
+      Definition steps := ContStep.(steps) e (list event) update_log.
+      Goal False. unify steps (TRC.trc step). Abort.
+      Let may_have_trace_prefix (s : state) (t : list event) := exists _s, steps s (_s, t).
+      Let may_terminate_with_trace (s : state) (t : list event) := exists _s, steps s (_s, None, t).
+      Let always_terminates_weak (s : state) := exists N, forall t, may_have_trace_prefix s t -> length t < N.
     End ContTrace.
   End ContTrace.
 
@@ -974,10 +968,10 @@ Module InteractionSemantics.
                                        SFail  )))
                  ) (
                    SFail)).
-
-    Lemma prog_ok : forall l m c t,
+    Check ContTrace.steps (p:=p) _ _ _.
+    Lemma prog_ok e l0 l m c t :
       List.Forall syscall_spec t ->
-      ContTrace.steps (p:=p) (fun _ => None) (fun _ => None) (fun _ => None) prog (l, m, c, t) ->
+      ContTrace.steps (p:=p) e (l0, (fun _ => None), prog (l, m, c, t) ->
       c.
     Proof.
       intros. eexists. intros.
