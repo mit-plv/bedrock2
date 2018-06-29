@@ -62,9 +62,17 @@ Section RegAlloc.
     end.
 
   Definition TODO{T: Type}: T. Admitted.
-  
-  Definition restrict(s: alloc)(newDomain: vars): alloc := TODO.
 
+  Definition restrict(s: alloc)(newDomain: vars): alloc.
+    apply restrict; try assumption.
+    unfold vars in *.
+    (* TODO map_domain_set and map_range_set should not be chosen by the implementation of
+       the map, but by the client, but then they should be parameters instead of members,
+       but we wanted to avoid too many parameters to typeclasses for speed -- what to do? *)
+    assert (map_domain_set = varset) as E by apply TODO.
+    rewrite E. assumption.
+  Defined.
+    
   Definition pick_or_else(rs: registers)(default: register): (register * registers) := TODO.
 
   Definition domain: alloc -> vars := TODO.
