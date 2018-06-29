@@ -136,6 +136,11 @@ Section FlatToRiscv.
   Context {stateMap: MapFunctions Register (word wXLEN)}.
   Notation state := (map Register (word wXLEN)).
 
+  Context {funcMap: MapFunctions (@name TestFlatImp.ZName)
+              (list (@name TestFlatImp.ZName) *
+               list (@name TestFlatImp.ZName) *
+               @stmt Bw TestFlatImp.ZName TestFlatImp.ZName)}. (* TODO meh *)
+
   Context {mem: nat -> Set}.
   Context {IsMem: Memory.Memory (mem wXLEN) wXLEN}.
   
@@ -1222,7 +1227,7 @@ Section FlatToRiscv.
       (Memory.read_mem a middleMem  = None <-> Memory.read_mem a finalMem  = None) ->
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
   Proof. intros. tauto. Qed.
-  
+
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
       eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
@@ -1243,11 +1248,12 @@ Section FlatToRiscv.
         eauto.
     - destruct p.
       eapply mem_accessibility_trans; eauto.
+    - rewrite empty_is_empty in E. discriminate E.
   Qed.
 
   Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
-      eval_stmt empty fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len,
         mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
   Proof.
@@ -1324,7 +1330,7 @@ Section FlatToRiscv.
   Hint Rewrite
       elim_then_true_else_false
       (@left_identity _ (OState_Monad RiscvMachine))
-      get_put_same
+      @get_put_same
   : rew_run1step.
   
   Ltac run1step'' :=
@@ -1410,7 +1416,7 @@ Section FlatToRiscv.
     intros.
     pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
     pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
-    pose proof (@State_is_RegisterFile _ _ _) as State_is_RegisterFile.
+    pose proof (@State_is_RegisterFile _ _) as State_is_RegisterFile.
     pose proof (@Bind_loadWord _ _ _ _ _ _ _) as Bind_loadWord.
     pose proof (@Bind_loadDouble _ _ _ _ _ _ _) as Bind_loadDouble.
     unfold containsMem, Memory.read_mem, wXLEN_in_bytes, wXLEN, bitwidth in *.
@@ -1454,7 +1460,7 @@ Section FlatToRiscv.
     intros.
     pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
     pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
-    pose proof (@State_is_RegisterFile _ _ _) as State_is_RegisterFile.
+    pose proof (@State_is_RegisterFile _ _) as State_is_RegisterFile.
     pose proof (@Bind_storeWord _ _ _ _ _ _ _) as Bind_storeWord.
     pose proof (@Bind_storeDouble _ _ _ _ _ _ _) as Bind_storeDouble.
     intros.
@@ -1625,7 +1631,7 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     #imemStart mod 4 = 0 ->
-    eval_stmt empty fuelH initialH initialMH s = Some (finalH, finalMH) ->
+    eval_stmt empty_map fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) allInsts imemStart ->
@@ -1869,9 +1875,10 @@ Section FlatToRiscv.
 
     - (* SSkip *)
       run1done.
-    - match goal with H: _ |- _ => solve [inversion H] end.
-  Qed.
 
+    - (* SCall *)
+      match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
+  Qed.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
@@ -1879,7 +1886,7 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     #imemStart mod 4 = 0 ->
-    eval_stmt empty fuelH empty initialMH s = Some (finalH, finalMH) ->
+    eval_stmt empty_map fuelH empty_map initialMH s = Some (finalH, finalMH) ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) insts imemStart ->
     initialL.(core).(pc) = imemStart ->
@@ -1900,7 +1907,7 @@ Section FlatToRiscv.
     destruct Q as [fuel Q].
     {
     eapply runsToSatisfying_imp.
-    - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty)
+    - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty_map)
         (fuelH := fuelH) (finalH := finalH) (instsBefore := nil) (instsAfter := nil).
       + reflexivity.
       + reflexivity.
@@ -1926,6 +1933,8 @@ Section FlatToRiscv.
           end
       end.
       exists fuel. unfold execState.
+      change (@name TestFlatImp.ZName) with Z in *.
+      change Register with Z in *.
       rewrite E.
       exact Q.
     }      

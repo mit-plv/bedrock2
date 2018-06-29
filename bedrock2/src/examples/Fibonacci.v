@@ -6,11 +6,11 @@ Require Import compiler.Decidable.
 Require Import compiler.Op.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
-Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
 Require Import riscv.Riscv.
 Require Import compiler.util.MyOmega.
 Require Import riscv.util.Monads.
+Require Import compiler.util.Common.
 Require Import compiler.NameWithEq.
 Require Import riscv.util.BitWidths.
 Require Import riscv.InstructionCoercions.
@@ -60,8 +60,8 @@ Definition fib_ExprImp(n: word wXLEN): stmt :=
 Definition state := (var -> option (word wXLEN)).
 
 Definition fib_H_res(fuel: nat)(n: word wXLEN): option (word wXLEN) :=
-  match (eval_stmt empty fuel empty Memory.no_mem (fib_ExprImp n)) with
-  | Some (st, m) => st var_b
+  match (eval_stmt empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with
+  | Some (st, m) => get st var_b
   | None => None
   end.
 
@@ -100,7 +100,7 @@ Definition fib6_riscv := Eval cbv in fib6_riscv'.
 Print fib6_riscv.
 
 Definition fib6_bits: list (word 32) :=
-  map (fun i => ZToWord 32 (encode i)) fib6_riscv.
+  List.map (fun i => ZToWord 32 (encode i)) fib6_riscv.
 
 Eval cbv in fib6_bits.
 
@@ -148,10 +148,10 @@ Definition force_option(o: option (word wXLEN)): word wXLEN :=
   end.
 
 Definition fib6_L_res(fuel: nat): word wXLEN :=
-  force_option ((fib6_L_final fuel).(core).(registers) var_b).
+  force_option (get (fib6_L_final fuel).(core).(registers) var_b).
 
 Definition fib6_L_resL(fuel: nat): word wXLEN :=
-  force_option ((fib6_L_finalL fuel).(machine).(core).(registers) var_b).
+  force_option (get (fib6_L_finalL fuel).(machine).(core).(registers) var_b).
 
 Definition fib6_L_trace(fuel: nat): Log :=
   (fib6_L_finalL fuel).(log).
@@ -194,16 +194,14 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   unfold fib6_L_res. unfold fib6_L_final.
   pose proof @exprImp2Riscv_correct as P.
   assert (exists finalH,
-             evalH empty 20 empty Memory.no_mem (fib_ExprImp $ (6)) = Some finalH) as F. {
+             evalH empty_map 20 empty_map Memory.no_mem (fib_ExprImp $ (6)) = Some finalH) as F. {
     eexists. reflexivity.
   }
   destruct F as [ [finalH finalMH ] F ].
-  specialize P with (3 := enough_registers_for_fib6).
-  specialize P with (5 := F).
+  specialize P with (2 := enough_registers_for_fib6).
+  specialize P with (4 := F).
   specialize P with (initialL := zeroedRiscvMachine).
-  specialize P with (IsMem := mem_is_Memory wXLEN).
   edestruct P as [fuelL G].
-  - exact Minimal.MinimalRiscvSatisfiesAxioms.
   - cbv. reflexivity.
   - reflexivity.
   - match goal with
@@ -231,7 +229,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
     destruct_one_match_hyp; discriminate.
   - exists fuelL.
     unfold force_option, run, fib6_bits, initialRiscvMachine.
-    unfold getReg, FlatToRiscv.State_is_RegisterFile, Common.get, Function_Map, id in G.
+    unfold getReg, FlatToRiscv.State_is_RegisterFile, Map.get, List_Map in G.
     unfold evalL, execState in G.
     apply G. clear G.
     assert (forall T (a b: T), Some a = Some b -> a = b) as E. {
