@@ -1,5 +1,5 @@
 Require Import compiler.StateCalculus.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import lib.fiat_crypto_tactics.Not.
 Require Import lib.fiat_crypto_tactics.UniquePose.
 

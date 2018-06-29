@@ -1,5 +1,5 @@
 Require Import lib.LibTacticsMin.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
 Require Import compiler.StateCalculus.

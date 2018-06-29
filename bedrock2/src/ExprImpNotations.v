@@ -1,6 +1,6 @@
 Require Import compiler.ExprImp.
 Require Import riscv.util.BitWidths.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import compiler.NameWithEq.
 Require Import compiler.Op.
 

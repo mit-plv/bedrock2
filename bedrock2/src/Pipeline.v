@@ -15,7 +15,7 @@ Require Import compiler.util.MyOmega.
 Require Import Coq.micromega.Lia.
 Require Import bbv.DepEqNat.
 Require Import compiler.NameGen.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import riscv.util.BitWidths.
 Require Import compiler.NameWithEq.
 Require Import riscv.encode.Encode.

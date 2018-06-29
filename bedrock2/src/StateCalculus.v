@@ -1,7 +1,7 @@
 Require Import Program.Tactics.
 Require Import lib.LibTacticsMin.
 Require Import Coq.Logic.ClassicalFacts.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import lib.fiat_crypto_tactics.Not.
 Require Import lib.fiat_crypto_tactics.UniquePose.
 
@@ -11,11 +11,11 @@ Section StateCalculus.
   Context {dec_eq_var: DecidableEq var}.
   Context {val: Type}. (* value *)
   Context {dec_eq_val: DecidableEq val}.
-  Context {state: Type}.
-  Context {stateMap: Map state var val}.
+  Context {stateMap: MapFunctions var val}.
+  Notation state := (map var val).
   Context {eq_var_dec: DecidableEq var}.
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
 
   Definition extends(s1 s2: state) := forall x w, get s2 x = Some w -> get s1 x = Some w.
 
@@ -37,7 +37,7 @@ Section StateCalculus.
   
   Lemma only_differ_putmany : forall (bs : list var) (vs : list val) st st' 
                                      (H : putmany bs vs st = Some st'),
-      only_differ st (fold_right union empty_set (map singleton_set bs)) st'.
+      only_differ st (fold_right union empty_set (List.map singleton_set bs)) st'.
     induction bs, vs; cbn; try discriminate.
     { inversion 1; subst. cbv; eauto. }
     { intros ? ? H; destruct (putmany bs vs st) eqn:Heqo; [|discriminate].

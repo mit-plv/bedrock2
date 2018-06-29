@@ -1,6 +1,5 @@
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.Monads.
-Require Import compiler.Common.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
 Require Import bbv.DepEqNat.
@@ -19,7 +18,6 @@ Require Import riscv.util.BitWidths.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import riscv.InstructionCoercions.
-Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
 Require Import Coq.micromega.Lia.
@@ -28,6 +26,8 @@ Require Import compiler.util.word_ring.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
+Require Import compiler.util.Common.
+Require Import riscv.Utility.
 
 Local Open Scope ilist_scope.
 
@@ -39,8 +39,8 @@ Set Implicit Arguments.
 Section RegisterFile.
 
   Context {Bw: BitWidths}.
-  Context {state: Type}.
-  Context {stateMap: Map state Register (word wXLEN)}.
+  Context {stateMap: MapFunctions Register (word wXLEN)}.
+  Notation state := (map Register (word wXLEN)).
 
   Instance State_is_RegisterFile: RegisterFile state Register (word wXLEN) := {|
     getReg rf r := match get rf r with
@@ -48,7 +48,7 @@ Section RegisterFile.
                    | None => $0
                    end;
     setReg := put;
-    initialRegs := empty;
+    initialRegs := empty_map;
   |}.
 
 End RegisterFile.
@@ -133,8 +133,8 @@ Section FlatToRiscv.
   Existing Instance eq_name_dec.
    *)
 
-  Context {state: Type}.
-  Context {stateMap: Map state Register (word wXLEN)}.
+  Context {stateMap: MapFunctions Register (word wXLEN)}.
+  Notation state := (map Register (word wXLEN)).
 
   Context {mem: nat -> Set}.
   Context {IsMem: Memory.Memory (mem wXLEN) wXLEN}.
@@ -313,7 +313,7 @@ Section FlatToRiscv.
   Defined.
 
   Definition embed_word(v: word wXLEN): list Instruction :=
-    map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v).
+    List.map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v).
 
   Definition compile_lit_old1(rd: Register)(v: word wXLEN): list Instruction :=
     let l := embed_word v in
@@ -398,7 +398,7 @@ Section FlatToRiscv.
     decode RV_wXLEN_IM (uwordToZ (Memory.loadWord m a)).
 
   Definition decode_prog(prog: list (word 32)): list Instruction :=
-    map (fun w => decode RV_wXLEN_IM (uwordToZ w)) prog.
+    List.map (fun w => decode RV_wXLEN_IM (uwordToZ w)) prog.
 
   Definition mem_inaccessible(m: Memory.mem)(start len: nat): Prop :=
     forall a w, Memory.read_mem a m = Some w -> not_in_range a wXLEN_in_bytes start len.
@@ -1225,7 +1225,7 @@ Section FlatToRiscv.
   
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
-      eval_stmt empty fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
     induction fuel; intros; try (simpl in *; discriminate).

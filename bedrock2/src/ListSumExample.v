@@ -1,11 +1,11 @@
 Require Import compiler.ExprImp.
 Require Import riscv.util.BitWidths.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require compiler.ExprImpNotations.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import bbv.Word.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
 Require Import riscv.Riscv.
 Require Import riscv.InstructionCoercions.

@@ -1,10 +1,10 @@
-Require Import compiler.Common.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import compiler.NameWithEq.
 Require Import riscv.util.BitWidths.
 Require Import Coq.Lists.List.
+Require Import compiler.util.Common.
 
 Section RegAlloc.
 
@@ -20,14 +20,14 @@ Section RegAlloc.
 
   Existing Instance eq_name_dec.
 
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
 
-  Context {registers: Type}.
-  Context {registerset: set registers register}.
+  Context {registerset: SetFunctions register}.
+  Notation registers := (set register).
 
-  Context {alloc: Type}.
-  Context {allocMap: Map alloc var register}.
+  Context {allocMap: MapFunctions var register}.
+  Notation alloc := (map var register).
 
   Local Notation stmt := (@stmt Bw VarName FuncName).
 
@@ -143,13 +143,13 @@ Section RegAlloc.
       | SLoop s1 cond s2 => SLoop (rec s1) (m cond) (rec s2)
       | SSeq s1 s2 => SSeq (rec s1) (rec s2)
       | SSkip => SSkip
-      | SCall argnames fname resnames => SCall (map m argnames) fname (map m resnames)
+      | SCall argnames fname resnames => SCall (List.map m argnames) fname (List.map m resnames)
       end.
 
   Variable available_registers: registers. (* r1..r31 on RISCV *)
 
   Definition register_allocation(s: stmt): @FlatImp.stmt Bw RegisterName FuncName :=
-    let '(_, _, m) := regalloc empty_set available_registers empty s empty_set in
+    let '(_, _, m) := regalloc empty_set available_registers empty_map s empty_set in
     apply_alloc (make_total m) s.
 
 End RegAlloc.

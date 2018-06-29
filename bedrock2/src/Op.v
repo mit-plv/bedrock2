@@ -1,5 +1,5 @@
 Require Import bbv.Word.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 
 Inductive binop: Set := OPlus | OMinus | OTimes | OEq | OLt | OAnd.
 

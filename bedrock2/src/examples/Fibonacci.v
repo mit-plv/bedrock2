@@ -6,7 +6,7 @@ Require Import compiler.Decidable.
 Require Import compiler.Op.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
 Require Import riscv.Riscv.
 Require Import compiler.util.MyOmega.

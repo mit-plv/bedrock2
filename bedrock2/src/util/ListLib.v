@@ -4,6 +4,21 @@ Require Import compiler.Decidable.
 Require Import compiler.util.Tactics.
 Require Import Coq.omega.Omega.
 
+Section ListSet.
+  Context {E: Type}.
+  Context {eeq: DecidableEq E}.
+
+  Definition list_union(A B: list E): list E :=
+    fold_left (fun res a => if in_dec eeq a res then res else a :: res) A B.
+
+  Definition list_intersect(A B: list E): list E :=
+    fold_left (fun res a => if in_dec eeq a B then a :: res else res) A nil.
+
+  Definition list_diff(A B: list E): list E :=
+    fold_left (fun res b => remove eeq b res) B A.
+
+End ListSet.
+
 Definition listUpdate{E: Type}(l: list E)(i: nat)(e: E): list E :=
   firstn i l ++ [e] ++ skipn (S i) l.
 
