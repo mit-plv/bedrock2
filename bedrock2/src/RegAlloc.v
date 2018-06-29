@@ -65,17 +65,18 @@ Section RegAlloc.
   
   Definition restrict(s: alloc)(newDomain: vars): alloc := TODO.
 
-  (* TODO implement, and treat the case where no more registers are available *)
-  Definition pick(rs: registers): (register * registers) := TODO.
+  Definition pick_or_else(rs: registers)(default: register): (register * registers) := TODO.
 
   Definition domain: alloc -> vars := TODO.
   Definition range: alloc -> registers := TODO.
+
+  Variable dummy_register: register.
 
   Definition start_interval(current: vars * registers * alloc)(x: var)
     : vars * registers * alloc :=
     let '(o, a, m) := current in
     let o := union o (singleton_set x) in
-    let '(r, a) := pick a in
+    let '(r, a) := pick_or_else a dummy_register in
     let m := put m x r in
     (o, a, m).
 
@@ -124,8 +125,6 @@ Section RegAlloc.
     simpl live.
   Abort.
 
-  Variable dummy_register: register.
-
   Definition make_total(m: alloc): var -> register :=
     fun x => match get m x with
           | Some r => r
@@ -152,116 +151,5 @@ Section RegAlloc.
   Definition register_allocation(s: stmt): @FlatImp.stmt Bw RegisterName FuncName :=
     let '(_, _, m) := regalloc empty_set available_registers empty s empty_set in
     apply_alloc (make_total m) s.
-
-  (******* below: failed versions: **********)
-
-  (* This is too verbose: *)
-  Fixpoint regalloc'''
-           (occupants: vars)       (* variables which currently occupy a register *)
-           (available: registers)  (* registers not used currently *)
-           (assignment: alloc)     (* mapping from variables to registers *)
-           (s: stmt)               (* current sub-statement 
-                                      Note: After s, more statements will be executed! *)
-           (afterlive: vars)       (* variables which have a life after statement s *)
-    : (vars * registers * alloc)   (* new occupants, new available registers, new assignment *)
-    :=
-    (* let's see if we can add any available registers: *)
-    let deadvars := diff occupants (union (live s) afterlive) in
-    let registers_of_deadvars := range (restrict assignment deadvars) in
-    (* What if a live variable x and a dead variable y are mapped to the same register r?
-       Then if y is in deadvars, x is not in "occupants", because any two vars mapped to the
-       same register cannot be in "occupants" at the same time.
-       So adding r to the available registers is safe because it is not needed by x nor by y
-       any more. *)
-    let available := union available registers_of_deadvars in
-    let occupants := live s in
-    let nop := (occupants, available, assignment) in
-    match s with
-    | SLoad x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
-        match get assignment x with
-        | Some rx => nop (* nothing to do because no new interval starts *)
-        | None => (* new interval starts *)
-            let occupants := union occupants (singleton_set x) in
-            let '(r, available) := pick available in
-            let assignment := put assignment x r in
-            (occupants, available, assignment)
-        end
-    | SStore x y => nop
-    | SIf cond s1 s2   => TODO (*
-        let '(occupants1, available1, assignment1) :=
-          regalloc''' occupants available  assignment  s1 in
-        let '(occupants2, available2, assignment2) := 
-          regalloc''' occupants available1 assignment1 s1 in
-        (union occupants1 occupants2, available2, assignment2) *)
-    | SLoop s1 cond s2 => TODO
-    | SSeq s1 s2 =>
-        let '(occupants, available, assignment) :=
-          regalloc''' occupants available assignment s1 (union (live s2) afterlive) in
-        regalloc''' occupants available assignment s2 afterlive
-    | SSkip => nop
-    | SCall argnames fname resnames => TODO
-    end.
-  
-  Fixpoint regalloc''(active: vars)(available: registers)(assignment: alloc)(s: stmt):
-    (vars * registers * alloc) :=
-    (* let's see if we can add any available registers: *)
-    let deadvars := diff active (live s) in (* <-- this should be a bigger set (really all) *)
-    let registers_of_deadvars := range (restrict assignment deadvars) in
-    (* What if a live variable x and a dead variable y are mapped to the same register r?
-       Then if y is in deadvars, x is not in "active", because any two vars mapped to the
-       same register cannot be in "active" at the same time.
-       So adding r to the available registers is safe because it is not needed by x nor by y
-       any more. *)
-    let available := union available registers_of_deadvars in
-    let active := live s in
-    let nop := (active, available, assignment) in
-    match s with
-    | SLoad x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
-        match get assignment x with
-        | Some rx => nop (* nothing to do because no new interval starts *)
-        | None => (* new interval starts *)
-            let active := union active (singleton_set x) in
-            let '(r, available) := pick available in
-            let assignment := put assignment x r in
-            (active, available, assignment)
-        end
-    | SStore x y => nop
-    | SIf cond s1 s2   =>
-        let '(active1, available1, assignment1) := regalloc'' active available  assignment  s1 in
-        let '(active2, available2, assignment2) := regalloc'' active available1 assignment1 s1 in
-        (union active1 active2, available2, assignment2)
-    | SLoop s1 cond s2 => TODO
-    | SSeq s1 s2       =>
-        let '(active, available, assignment) := regalloc'' active available assignment s1 in
-        regalloc'' active available assignment s2
-    | SSkip => nop
-    | SCall argnames fname resnames => TODO
-    end.
-
-  Fixpoint regalloc'(available: registers)(assignment: alloc)(s: stmt): (registers * alloc) :=
-    (* let's see if we can add any available registers: *)
-    let deadvars := diff (domain assignment) (live s) in
-    let registers_of_deadvars := range (restrict assignment deadvars) in
-    (* What if a live variable x and a dead variable y are mapped to the same register r?
-       Then y is in deadvars, so r will be added to the available registers, even though
-       it is still needed to hold the value of x -> bad *)
-    let available := union available registers_of_deadvars in
-    match s with
-    | SLoad x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
-        match get assignment x with
-        | Some rx => (* nothing to do because no new interval starts *)
-            (available, assignment)
-        | None => (* new interval starts *)
-            let '(r, available) := pick available in
-            let assignment := put assignment x r in
-            (available, assignment)
-        end
-    | SStore x y   => TODO
-    | SIf cond s1 s2   => TODO
-    | SLoop s1 cond s2 => TODO
-    | SSeq s1 s2       => TODO
-    | SSkip => (available, assignment)
-    | SCall argnames fname resnames => TODO
-    end.
 
 End RegAlloc.
