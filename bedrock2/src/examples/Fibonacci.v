@@ -18,13 +18,15 @@ Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
 Require Import riscv.Utility.
 Require Import riscv.encode.Encode.
-
+Require Import compiler.ZName.
 Require Import riscv.util.BitWidth32.
+Require Import compiler.util.List_Map.
+Require Import compiler.ZNameGen.
 
 Open Scope Z_scope.
 
-Definition var: Set := (@name FlatImp.TestFlatImp.ZName).
-Definition Reg: Set := (@name FlatImp.TestFlatImp.ZName).
+Definition var: Set := (@name ZName).
+Definition Reg: Set := (@name ZName).
 
 Existing Instance DefaultRiscvState.
 
@@ -58,6 +60,8 @@ Definition fib_ExprImp(n: word wXLEN): stmt :=
     SSkip))))))).
 
 Definition state := (var -> option (word wXLEN)).
+
+Existing Instance Pipeline.annoying_instance.
 
 Definition fib_H_res(fuel: nat)(n: word wXLEN): option (word wXLEN) :=
   match (eval_stmt empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with

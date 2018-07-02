@@ -23,6 +23,7 @@ Require Import riscv.AxiomaticRiscv.
 Require Import riscv.proofs.DecodeEncode.
 Require Import riscv.proofs.EncodeBound.
 Require Import compiler.EmitsValid.
+Require Import compiler.ZName.
 
 Section Pipeline.
 
@@ -54,24 +55,24 @@ Section Pipeline.
     let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
     let (sFlat, ngs') := flattenStmt ngs s in sFlat.
 
-  Definition annoying_instance: MapFunctions (@name FlatImp.TestFlatImp.ZName)
-   (list (@name FlatImp.TestFlatImp.ZName) *
-    list (@name FlatImp.TestFlatImp.ZName) *
-    @ExprImp.stmt Bw FlatImp.TestFlatImp.ZName FlatImp.TestFlatImp.ZName).
+  Definition annoying_instance: MapFunctions (@name ZName)
+   (list (@name ZName) *
+    list (@name ZName) *
+    @ExprImp.stmt Bw ZName ZName).
   Admitted.
   Existing Instance annoying_instance.
 
-  Definition annoying_instance': MapFunctions (@name FlatImp.TestFlatImp.ZName)
-   (list (@name FlatImp.TestFlatImp.ZName) *
-    list (@name FlatImp.TestFlatImp.ZName) *
-    @FlatImp.stmt Bw FlatImp.TestFlatImp.ZName FlatImp.TestFlatImp.ZName).
+  Definition annoying_instance': MapFunctions (@name ZName)
+   (list (@name ZName) *
+    list (@name ZName) *
+    @FlatImp.stmt Bw ZName ZName).
   Admitted.
   Existing Instance annoying_instance'.
 
   Definition exprImp2Riscv(s: ExprImp.stmt): list Instruction :=
     FlatToRiscv.compile_stmt (flatten s).
 
-  Definition evalH := @ExprImp.eval_stmt Bw FlatImp.TestFlatImp.ZName FlatImp.TestFlatImp.ZName _ _.
+  Definition evalH := @ExprImp.eval_stmt Bw ZName ZName _ _.
 
   Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
     execState (run fuel) (putProgram (List.map (fun i => ZToWord 32 (encode i)) insts) $0 initial).

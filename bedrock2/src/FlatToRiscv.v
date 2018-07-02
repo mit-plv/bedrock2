@@ -28,6 +28,7 @@ Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
+Require Import compiler.ZName.
 
 Local Open Scope ilist_scope.
 
@@ -136,10 +137,10 @@ Section FlatToRiscv.
   Context {stateMap: MapFunctions Register (word wXLEN)}.
   Notation state := (map Register (word wXLEN)).
 
-  Context {funcMap: MapFunctions (@name TestFlatImp.ZName)
-              (list (@name TestFlatImp.ZName) *
-               list (@name TestFlatImp.ZName) *
-               @stmt Bw TestFlatImp.ZName TestFlatImp.ZName)}. (* TODO meh *)
+  Context {funcMap: MapFunctions Z
+              (list Z *
+               list Z *
+               @stmt Bw _ _)}. (* TODO meh *)
 
   Context {mem: nat -> Set}.
   Context {IsMem: Memory.Memory (mem wXLEN) wXLEN}.
@@ -152,7 +153,7 @@ Section FlatToRiscv.
 
   Context {RVAX: @AxiomaticRiscv Bw state State_is_RegisterFile (mem wXLEN) _ RVM}.
   
-  Ltac state_calc := state_calc_generic (@name TestFlatImp.ZName) (word wXLEN).
+  Ltac state_calc := state_calc_generic (@name ZName) (word wXLEN).
 
   (* This phase assumes that register allocation has already been done on the FlatImp
      level, and expects the following to hold: *)
@@ -1128,11 +1129,11 @@ Section FlatToRiscv.
       let gg' := eval unfold getReg, State_is_RegisterFile in gg in
       progress change gg with gg';
       match gg' with
-      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by (clear -G2 E; state_calc)
+      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
       end
     | G2: get ?st2 ?x = ?v, E: extends ?st1 ?st2 |- context [?gg'] =>
       match gg' with
-      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by (clear -G2 E; state_calc)
+      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
       end
     end;
     rewrite G1;
@@ -1229,7 +1230,7 @@ Section FlatToRiscv.
   Proof. intros. tauto. Qed.
 
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
+      {s: @stmt Bw ZName ZName} {initialRegs finalRegs: state},
       eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
@@ -1252,7 +1253,7 @@ Section FlatToRiscv.
   Qed.
 
   Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
+      {s: @stmt Bw ZName ZName} {initialRegs finalRegs: state},
       eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len,
         mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
@@ -1933,7 +1934,7 @@ Section FlatToRiscv.
           end
       end.
       exists fuel. unfold execState.
-      change (@name TestFlatImp.ZName) with Z in *.
+      change (@name ZName) with Z in *.
       change Register with Z in *.
       rewrite E.
       exact Q.

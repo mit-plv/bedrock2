@@ -20,14 +20,16 @@ Section RegAlloc.
 
   Existing Instance eq_name_dec.
 
-  Context {varset: SetFunctions var}.
-  Notation vars := (set var).
-
-  Context {registerset: SetFunctions register}.
-  Notation registers := (set register).
-
   Context {allocMap: MapFunctions var register}.
   Notation alloc := (map var register).
+  Notation vars := (@set var (@map_domain_set _ _ allocMap)).
+  Notation registers := (@set register (@map_range_set _ _ allocMap)).
+  (* Alternative way to write the same:
+  Existing Instance map_domain_set.
+  Existing Instance map_range_set.
+  Notation vars := (set var).
+  Notation registers := (set register).
+  *)
 
   Local Notation stmt := (@stmt Bw VarName FuncName).
 
@@ -60,23 +62,6 @@ Section RegAlloc.
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list argnames
     end.
-
-  Definition TODO{T: Type}: T. Admitted.
-
-  Definition restrict(s: alloc)(newDomain: vars): alloc.
-    apply restrict; try assumption.
-    unfold vars in *.
-    (* TODO map_domain_set and map_range_set should not be chosen by the implementation of
-       the map, but by the client, but then they should be parameters instead of members,
-       but we wanted to avoid too many parameters to typeclasses for speed -- what to do? *)
-    assert (map_domain_set = varset) as E by apply TODO.
-    rewrite E. assumption.
-  Defined.
-    
-  Definition pick_or_else(rs: registers)(default: register): (register * registers) := TODO.
-
-  Definition domain: alloc -> vars := TODO.
-  Definition range: alloc -> registers := TODO.
 
   Variable dummy_register: register.
 
