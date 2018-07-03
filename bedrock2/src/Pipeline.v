@@ -15,7 +15,7 @@ Require Import compiler.util.MyOmega.
 Require Import Coq.micromega.Lia.
 Require Import bbv.DepEqNat.
 Require Import compiler.NameGen.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import riscv.util.BitWidths.
 Require Import compiler.NameWithEq.
 Require Import riscv.encode.Encode.
@@ -23,13 +23,16 @@ Require Import riscv.AxiomaticRiscv.
 Require Import riscv.proofs.DecodeEncode.
 Require Import riscv.proofs.EncodeBound.
 Require Import compiler.EmitsValid.
+Require Import compiler.ZName.
+Require Import compiler.RegAlloc.
+Require compiler.util.List_Map.
 
 Section Pipeline.
 
   Context {Bw: BitWidths}.
 
-  Context {state: Type}.
-  Context {stateMap: Map state Register (word wXLEN)}.
+  Context {stateMap: MapFunctions Register (word wXLEN)}.
+  Notation state := (map Register (word wXLEN)).
 
   Context {mem: nat -> Set}.
   Context {IsMem: Memory.Memory (mem wXLEN) wXLEN}.
@@ -45,22 +48,48 @@ Section Pipeline.
 
   Definition var := Register.
 
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
   Context {NGstate: Type}.
-  Context {NG: NameGen var vars NGstate}.
+  Context {NG: NameGen var NGstate}.
 
   Definition flatten(s: ExprImp.stmt): FlatImp.stmt :=
     let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
     let (sFlat, ngs') := flattenStmt ngs s in sFlat.
-  
+
+  Definition annoying_instance: MapFunctions (@name ZName)
+   (list (@name ZName) *
+    list (@name ZName) *
+    @ExprImp.stmt Bw ZName ZName).
+  Admitted.
+  Existing Instance annoying_instance.
+
+  Definition annoying_instance': MapFunctions (@name ZName)
+   (list (@name ZName) *
+    list (@name ZName) *
+    @FlatImp.stmt Bw ZName ZName).
+  Admitted.
+  Existing Instance annoying_instance'.
+
   Definition exprImp2Riscv(s: ExprImp.stmt): list Instruction :=
     FlatToRiscv.compile_stmt (flatten s).
 
-  Definition evalH := ExprImp.eval_stmt.
+  Notation registerset := (@set Register
+               (@map_range_set var Register (List_Map.List_Map _ _))).
+
+  Definition riscvRegisters: registerset := of_list (List.map Z.of_nat (List.seq 1 31)).
+
+  Definition exprImp2Riscv_with_regalloc(s: ExprImp.stmt): list Instruction :=
+    FlatToRiscv.compile_stmt
+      (register_allocation (VarName := ZName) (RegisterName := ZName) (FuncName := ZName)
+                           Register0
+                           riscvRegisters
+                           (flatten s)).
+
+  Definition evalH := @ExprImp.eval_stmt Bw ZName ZName _ _.
 
   Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
-    execState (run fuel) (putProgram (map (fun i => ZToWord 32 (encode i)) insts) $0 initial).
+    execState (run fuel) (putProgram (List.map (fun i => ZToWord 32 (encode i)) insts) $0 initial).
 
   Lemma wXLEN_32: 32 <= wXLEN.
   Proof.
@@ -81,7 +110,7 @@ Section Pipeline.
       #a mod 4 = 0 ->
       #a + 4 * (length p) <= Memory.memSize initial.(machineMem) ->
       FlatToRiscv.containsProgram
-        (putProgram (map (fun i => ZToWord 32 (encode i)) p) a initial).(machineMem) p a.
+        (putProgram (List.map (fun i => ZToWord 32 (encode i)) p) a initial).(machineMem) p a.
   Proof.  
     intros. subst.
     pose proof BitWidths.pow2_wXLEN_4 as X.
@@ -159,7 +188,7 @@ Section Pipeline.
     enough_registers sH ->
     exprImp2Riscv sH = instsL ->
     4 * length instsL <= Memory.memSize initialL.(machineMem) ->
-    evalH empty fuelH empty initialMemH sH = Some (finalH, finalMemH) ->
+    evalH empty_map fuelH empty_map initialMemH sH = Some (finalH, finalMemH) ->
     FlatToRiscv.mem_inaccessible initialMemH 0 (4 * length instsL) ->
     FlatToRiscv.containsMem initialL.(machineMem) initialMemH ->
     exists fuelL,
@@ -183,8 +212,9 @@ Section Pipeline.
       end).
       lia.
     }
-    pose proof flattenStmt_correct as P.
-    specialize (P fuelH sH s initialMemH finalH finalMemH).
+    pose proof @flattenStmt_correct as P.
+    Set Printing Implicit.
+    specialize (P _ _ _ _ _ _ _ _ _ fuelH sH s initialMemH finalH finalMemH).
     destruct P as [fuelM [finalM [EvM GM]]].
     - unfold ExprImp2FlatImp. rewrite E. reflexivity.
     - unfold evalH. apply EvH.

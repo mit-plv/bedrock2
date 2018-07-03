@@ -1,11 +1,11 @@
 Require Import compiler.ExprImp.
 Require Import riscv.util.BitWidths.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require compiler.ExprImpNotations.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import bbv.Word.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
 Require Import riscv.Riscv.
 Require Import riscv.InstructionCoercions.
@@ -156,7 +156,7 @@ Definition editdist_L_final(fuel: nat): RiscvMachineL :=
   snd (run fuel initialRiscvMachineL).
 
 Definition editdist_L_res(fuel: nat): word wXLEN :=
-  force_option ((editdist_L_final fuel).(machine).(core).(registers) ExampleSrc.mincost).
+  force_option (Map.get (editdist_L_final fuel).(machine).(core).(registers) ExampleSrc.mincost).
 
 Definition editdist_L_trace(fuel: nat): Log :=
   (editdist_L_final fuel).(log).

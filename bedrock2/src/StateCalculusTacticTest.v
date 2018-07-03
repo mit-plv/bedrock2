@@ -1,5 +1,5 @@
 Require Import compiler.StateCalculus.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import lib.fiat_crypto_tactics.Not.
 Require Import lib.fiat_crypto_tactics.UniquePose.
 
@@ -9,10 +9,11 @@ Section Tests.
   Context {dec_eq_var: DecidableEq var}.
   Context {val: Type}. (* value *)
   Context {dec_eq_val: DecidableEq val}.
-  Context {state: Type}.
-  Context {stateMap: Map state var val}.
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+
+  Context {stateMap: MapFunctions var val}.
+  Notation state := (map var val).
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
 
   Ltac state_calc := state_calc_generic var val.
 

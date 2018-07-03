@@ -2,7 +2,7 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
@@ -21,11 +21,10 @@ Section ExprImp1.
   Context {FName : NameWithEq}.
   Notation func := (@name FName).
 
-
-  Context {state: Type}.
-  Context {stateMap: Map state var (word wXLEN)}.
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+  Context {stateMap: MapFunctions var (word wXLEN)}.
+  Notation state := (map var (word wXLEN)).
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
 
   Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
   Ltac set_solver := set_solver_generic (@name Name).
@@ -56,7 +55,10 @@ Section ExprImp1.
     end.
 
   Section WithEnv.
-    Context {env} {funcMap: Map env func (list var * list var * stmt)} (e:env).
+    Context {funcMap: MapFunctions func (list var * list var * stmt)}.
+    Notation env := (map func (list var * list var * stmt)).
+    Context (e: env).
+
     Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
       match f with
       | 0 => None (* out of fuel *)
@@ -90,11 +92,11 @@ Section ExprImp1.
         | SCall binds fname args =>
           fimpl <- get e fname;
           let '(params, rets, fbody) := fimpl in
-          argvs <- option_all (map (eval_expr st) args);
-          st0 <- putmany params argvs empty;
+          argvs <- option_all (List.map (eval_expr st) args);
+          st0 <- putmany params argvs empty_map;
           st1m' <- eval_stmt f st0 m fbody;
           let '(st1, m') := st1m' in
-          retvs <- option_all (map (get st1) rets);
+          retvs <- option_all (List.map (get st1) rets);
           st' <- putmany binds retvs st;
           Return (st', m')
         end
@@ -178,10 +180,10 @@ Section ExprImp1.
       eval_stmt (S f) st m1 (SCall binds fname args) = Some p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
         get e fname = Some (params, rets, fbody) /\
-        option_all (map (eval_expr st) args) = Some argvs /\
-        putmany params argvs empty = Some st0 /\
+        option_all (List.map (eval_expr st) args) = Some argvs /\
+        putmany params argvs empty_map = Some st0 /\
         eval_stmt f st0 m1 fbody = Some (st1, m') /\
-        option_all (map (get st1) rets) = Some retvs /\
+        option_all (List.map (get st1) rets) = Some retvs /\
         putmany binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. Qed.
@@ -286,15 +288,18 @@ Section ExprImp2.
   Context {FName: NameWithEq}.
   Notation func := (@name FName).
 
-  Context {state: Type}.
-  Context {stateMap: Map state var (word wXLEN)}.
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+  Context {stateMap: MapFunctions var (word wXLEN)}.
+  Notation state := (map var (word wXLEN)).
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
+
+  Context {funcMap: MapFunctions func (list var * list var * @stmt Bw Name FName)}.
+  Notation env := (map func (list var * list var * stmt)).
 
   Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
 
-  Lemma modVarsSound: forall env fuel s initialS initialM finalS finalM,
-    eval_stmt env fuel initialS initialM s = Some (finalS, finalM) ->
+  Lemma modVarsSound: forall (e: env) fuel s initialS initialM finalS finalM,
+    eval_stmt e fuel initialS initialM s = Some (finalS, finalM) ->
     only_differ initialS (modVars s) finalS.
   Proof.
     induction fuel; introv Ev.
@@ -312,59 +317,3 @@ Section ExprImp2.
   Qed.
 
 End ExprImp2.
-
-
-Require riscv.util.BitWidth32.
-Module TestExprImp.
-
-Instance ZName: NameWithEq := {| name := Z |}.
-
-Definition var: Set := (@name ZName). (* only inside this test module *)
-
-(*
-given x, y, z
-
-if y < x and z < x then
-  c = x
-  a = y
-  b = z
-else if x < y and z < y then
-  c = y
-  a = x
-  b = z
-else
-  c = z
-  a = x
-  b = y
-isRight = a*a + b*b == c*c
-*)
-Definition _a := 0%Z.
-Definition _b := 1%Z.
-Definition _c := 2%Z.
-Definition _isRight := 3%Z.
-
-Import riscv.util.BitWidth32.
-
-Definition isRight(x y z: word 32) :=
-  SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))
-            (SSeq (SSet _c (ELit x)) (SSeq (SSet _a (ELit y)) (SSet _b (ELit z))))
-            ((SIf (EOp OAnd (EOp OLt (ELit x) (ELit y)) (EOp OLt (ELit z) (ELit y)))
-                  (SSeq (SSet _c (ELit y)) (SSeq (SSet _a (ELit x)) (SSet _b (ELit z))))
-                  (SSeq (SSet _c (ELit z)) (SSeq (SSet _a (ELit x)) (SSet _b (ELit y)))))))
-       (SSet _isRight (EOp OEq (EOp OPlus (EOp OTimes (EVar _a) (EVar _a))
-                                          (EOp OTimes (EVar _b) (EVar _b)))
-                               (EOp OTimes (EVar _c) (EVar _c)))).
-
-Definition run_isRight(x y z: word 32): option (word 32) :=
-  final <- (eval_stmt empty 10 empty no_mem (isRight x y z));
-  let '(finalSt, finalM) := final in
-  get finalSt _isRight.
-
-Goal run_isRight $3 $4 $5 = Some $1. reflexivity. Qed.
-Goal run_isRight $3 $7 $5 = Some $0. reflexivity. Qed.
-Goal run_isRight $4 $3 $5 = Some $1. reflexivity. Qed.
-Goal run_isRight $5 $3 $5 = Some $0. reflexivity. Qed.
-Goal run_isRight $5 $3 $4 = Some $1. reflexivity. Qed.
-Goal run_isRight $12 $13 $5 = Some $1. reflexivity. Qed.
-
-End TestExprImp.

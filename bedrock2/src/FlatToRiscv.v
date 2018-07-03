@@ -1,6 +1,5 @@
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.Monads.
-Require Import compiler.Common.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
 Require Import bbv.DepEqNat.
@@ -19,7 +18,6 @@ Require Import riscv.util.BitWidths.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import riscv.InstructionCoercions.
-Require Import riscv.Utility.
 Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
 Require Import Coq.micromega.Lia.
@@ -28,6 +26,9 @@ Require Import compiler.util.word_ring.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
+Require Import compiler.util.Common.
+Require Import riscv.Utility.
+Require Import compiler.ZName.
 
 Local Open Scope ilist_scope.
 
@@ -39,8 +40,8 @@ Set Implicit Arguments.
 Section RegisterFile.
 
   Context {Bw: BitWidths}.
-  Context {state: Type}.
-  Context {stateMap: Map state Register (word wXLEN)}.
+  Context {stateMap: MapFunctions Register (word wXLEN)}.
+  Notation state := (map Register (word wXLEN)).
 
   Instance State_is_RegisterFile: RegisterFile state Register (word wXLEN) := {|
     getReg rf r := match get rf r with
@@ -48,7 +49,7 @@ Section RegisterFile.
                    | None => $0
                    end;
     setReg := put;
-    initialRegs := empty;
+    initialRegs := empty_map;
   |}.
 
 End RegisterFile.
@@ -133,8 +134,13 @@ Section FlatToRiscv.
   Existing Instance eq_name_dec.
    *)
 
-  Context {state: Type}.
-  Context {stateMap: Map state Register (word wXLEN)}.
+  Context {stateMap: MapFunctions Register (word wXLEN)}.
+  Notation state := (map Register (word wXLEN)).
+
+  Context {funcMap: MapFunctions Z
+              (list Z *
+               list Z *
+               @stmt Bw _ _)}. (* TODO meh *)
 
   Context {mem: nat -> Set}.
   Context {IsMem: Memory.Memory (mem wXLEN) wXLEN}.
@@ -147,7 +153,7 @@ Section FlatToRiscv.
 
   Context {RVAX: @AxiomaticRiscv Bw state State_is_RegisterFile (mem wXLEN) _ RVM}.
   
-  Ltac state_calc := state_calc_generic (@name TestFlatImp.ZName) (word wXLEN).
+  Ltac state_calc := state_calc_generic (@name ZName) (word wXLEN).
 
   (* This phase assumes that register allocation has already been done on the FlatImp
      level, and expects the following to hold: *)
@@ -313,7 +319,7 @@ Section FlatToRiscv.
   Defined.
 
   Definition embed_word(v: word wXLEN): list Instruction :=
-    map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v).
+    List.map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v).
 
   Definition compile_lit_old1(rd: Register)(v: word wXLEN): list Instruction :=
     let l := embed_word v in
@@ -398,7 +404,7 @@ Section FlatToRiscv.
     decode RV_wXLEN_IM (uwordToZ (Memory.loadWord m a)).
 
   Definition decode_prog(prog: list (word 32)): list Instruction :=
-    map (fun w => decode RV_wXLEN_IM (uwordToZ w)) prog.
+    List.map (fun w => decode RV_wXLEN_IM (uwordToZ w)) prog.
 
   Definition mem_inaccessible(m: Memory.mem)(start len: nat): Prop :=
     forall a w, Memory.read_mem a m = Some w -> not_in_range a wXLEN_in_bytes start len.
@@ -1123,11 +1129,11 @@ Section FlatToRiscv.
       let gg' := eval unfold getReg, State_is_RegisterFile in gg in
       progress change gg with gg';
       match gg' with
-      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by (clear -G2 E; state_calc)
+      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
       end
     | G2: get ?st2 ?x = ?v, E: extends ?st1 ?st2 |- context [?gg'] =>
       match gg' with
-      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by (clear -G2 E; state_calc)
+      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
       end
     end;
     rewrite G1;
@@ -1222,10 +1228,10 @@ Section FlatToRiscv.
       (Memory.read_mem a middleMem  = None <-> Memory.read_mem a finalMem  = None) ->
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
   Proof. intros. tauto. Qed.
-  
+
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
-      eval_stmt empty fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      {s: @stmt Bw ZName ZName} {initialRegs finalRegs: state},
+      eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
     induction fuel; intros; try (simpl in *; discriminate).
@@ -1243,11 +1249,12 @@ Section FlatToRiscv.
         eauto.
     - destruct p.
       eapply mem_accessibility_trans; eauto.
+    - rewrite empty_is_empty in E. discriminate E.
   Qed.
 
   Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt Bw TestFlatImp.ZName TestFlatImp.ZName} {initialRegs finalRegs: state},
-      eval_stmt empty fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      {s: @stmt Bw ZName ZName} {initialRegs finalRegs: state},
+      eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len,
         mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
   Proof.
@@ -1324,7 +1331,7 @@ Section FlatToRiscv.
   Hint Rewrite
       elim_then_true_else_false
       (@left_identity _ (OState_Monad RiscvMachine))
-      get_put_same
+      @get_put_same
   : rew_run1step.
   
   Ltac run1step'' :=
@@ -1410,7 +1417,7 @@ Section FlatToRiscv.
     intros.
     pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
     pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
-    pose proof (@State_is_RegisterFile _ _ _) as State_is_RegisterFile.
+    pose proof (@State_is_RegisterFile _ _) as State_is_RegisterFile.
     pose proof (@Bind_loadWord _ _ _ _ _ _ _) as Bind_loadWord.
     pose proof (@Bind_loadDouble _ _ _ _ _ _ _) as Bind_loadDouble.
     unfold containsMem, Memory.read_mem, wXLEN_in_bytes, wXLEN, bitwidth in *.
@@ -1454,7 +1461,7 @@ Section FlatToRiscv.
     intros.
     pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
     pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
-    pose proof (@State_is_RegisterFile _ _ _) as State_is_RegisterFile.
+    pose proof (@State_is_RegisterFile _ _) as State_is_RegisterFile.
     pose proof (@Bind_storeWord _ _ _ _ _ _ _) as Bind_storeWord.
     pose proof (@Bind_storeDouble _ _ _ _ _ _ _) as Bind_storeDouble.
     intros.
@@ -1625,7 +1632,7 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     #imemStart mod 4 = 0 ->
-    eval_stmt empty fuelH initialH initialMH s = Some (finalH, finalMH) ->
+    eval_stmt empty_map fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) allInsts imemStart ->
@@ -1869,9 +1876,10 @@ Section FlatToRiscv.
 
     - (* SSkip *)
       run1done.
-    - match goal with H: _ |- _ => solve [inversion H] end.
-  Qed.
 
+    - (* SCall *)
+      match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
+  Qed.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
@@ -1879,7 +1887,7 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     #imemStart mod 4 = 0 ->
-    eval_stmt empty fuelH empty initialMH s = Some (finalH, finalMH) ->
+    eval_stmt empty_map fuelH empty_map initialMH s = Some (finalH, finalMH) ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) insts imemStart ->
     initialL.(core).(pc) = imemStart ->
@@ -1900,7 +1908,7 @@ Section FlatToRiscv.
     destruct Q as [fuel Q].
     {
     eapply runsToSatisfying_imp.
-    - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty)
+    - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty_map)
         (fuelH := fuelH) (finalH := finalH) (instsBefore := nil) (instsAfter := nil).
       + reflexivity.
       + reflexivity.
@@ -1926,6 +1934,8 @@ Section FlatToRiscv.
           end
       end.
       exists fuel. unfold execState.
+      change (@name ZName) with Z in *.
+      change Register with Z in *.
       rewrite E.
       exact Q.
     }      

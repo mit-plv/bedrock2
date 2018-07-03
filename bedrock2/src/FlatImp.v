@@ -1,6 +1,6 @@
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
@@ -17,10 +17,10 @@ Section FlatImp1.
   Notation func := (@name FName).
   Existing Instance eq_name_dec.
 
-  Context {state: Type}.
-  Context {stateMap: Map state var (word wXLEN)}.
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+  Context {stateMap: MapFunctions var (word wXLEN)}.
+  Notation state := (map var (word wXLEN)).
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
 
   Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
 
@@ -37,7 +37,9 @@ Section FlatImp1.
     | SCall(binds: list var)(f: func)(args: list var).
 
   Section WithEnv.
-    Context {env} {funcMap: Map env func (list var * list var * stmt)} (e:env).
+    Context {funcMap: MapFunctions func (list var * list var * stmt)}.
+    Notation env := (map func (list var * list var * stmt)).
+    Context (e: env).
 
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
@@ -82,11 +84,11 @@ Section FlatImp1.
         | SCall binds fname args =>
           fimpl <- get e fname;
           let '(params, rets, fbody) := fimpl in
-          argvs <- option_all (map (get st) args);
-          st0 <- putmany params argvs empty;
+          argvs <- option_all (List.map (get st) args);
+          st0 <- putmany params argvs empty_map;
           st1m' <- eval_stmt f st0 m fbody;
           let '(st1, m') := st1m' in
-          retvs <- option_all (map (get st1) rets);
+          retvs <- option_all (List.map (get st1) rets);
           st' <- putmany binds retvs st;
           Return (st', m')
         end
@@ -165,10 +167,10 @@ Section FlatImp1.
       eval_stmt (S f) st m1 (SCall binds fname args) = Some p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
         get e fname = Some (params, rets, fbody) /\
-        option_all (map (get st) args) = Some argvs /\
-        putmany params argvs empty = Some st0 /\
+        option_all (List.map (get st) args) = Some argvs /\
+        putmany params argvs empty_map = Some st0 /\
         eval_stmt f st0 m1 fbody = Some (st1, m') /\
-        option_all (map (get st1) rets) = Some retvs /\
+        option_all (List.map (get st1) rets) = Some retvs /\
         putmany binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. Qed.
@@ -271,16 +273,17 @@ Section FlatImp2.
   Context {FName : NameWithEq}.
   Notation func := (@name FName).
 
-  Context {state: Type}.
-  Context {stateMap: Map state var (word wXLEN)}.
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+  Context {stateMap: MapFunctions var (word wXLEN)}.
+  Notation state := (map var (word wXLEN)).
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
 
-  Context {env} {funcMap: Map env func (list var * list var * stmt)}.
+  Context {funcMap: MapFunctions func (list var * list var * @stmt Bw Name FName)}.
+  Notation env := (map func (list var * list var * stmt)).
 
   Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
 
-  Lemma increase_fuel_still_Success: forall fuel1 fuel2 e initialSt initialM s final,
+  Lemma increase_fuel_still_Success: forall fuel1 fuel2 (e: env) initialSt initialM s final,
     fuel1 <= fuel2 ->
     eval_stmt e fuel1 initialSt initialM s = Some final ->
     eval_stmt e fuel2 initialSt initialM s = Some final.
@@ -323,63 +326,3 @@ Section FlatImp2.
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 End FlatImp2.
-
-Require riscv.util.BitWidth32.
-
-Module TestFlatImp.
-
-Import riscv.util.BitWidth32.
-  
-Instance ZName: NameWithEq := {| name := Z |}.
-
-Definition var: Set := (@name ZName). (* only inside this test module *)
-
-Definition _n := 0%Z.
-Definition _a := 1%Z.
-Definition _b := 2%Z.
-Definition _s := 3%Z.
-Definition _one := 4%Z.
-(*
-one = 1
-n = input()
-a = 0
-b = 1
-loop:
-  stay in loop only if n nonzero
-  s = a+b
-  a = b
-  b = s
-  n = n - one
- *)
-
-
-Example fib(n: word 32) :=
-  SSeq (SLit _one $1) (
-  SSeq (SLit _n n) (
-  SSeq (SLit _a $0) (
-  SSeq (SLit _b $1) (
-  SLoop SSkip
-        _n
-        (SSeq (SOp _s OPlus _a _b) (
-         SSeq (SSet _a _b) (
-         SSeq (SSet _b _s) (
-              (SOp _n OMinus _n _one)))))
-  )))).
-
-Definition eval_stmt_test fuel initialSt := @eval_stmt _ ZName ZName _ _ _ _ empty fuel initialSt no_mem.
-
-Example finalFibState(n: nat) := (eval_stmt_test 100 empty (fib $n)).
-Example finalFibVal(n: nat): option (word 32) := match finalFibState n with
-| Some (s, _) => get s _b
-| _ => None
-end.
-
-Goal finalFibVal 0 = Some $1. reflexivity. Qed.
-Goal finalFibVal 1 = Some $1. reflexivity. Qed.
-Goal finalFibVal 2 = Some $2. reflexivity. Qed.
-Goal finalFibVal 3 = Some $3. reflexivity. Qed.
-Goal finalFibVal 4 = Some $5. reflexivity. Qed.
-Goal finalFibVal 5 = Some $8. reflexivity. Qed.
-Goal finalFibVal 6 = Some $13. reflexivity. Qed.
-
-End TestFlatImp.

@@ -1,14 +1,13 @@
 Require Import compiler.ExprImp.
 Require Import riscv.util.BitWidths.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require Import compiler.NameWithEq.
 Require Import compiler.Op.
-
 Require Import riscv.util.BitWidth32.
+Require Import compiler.ZName.
 
 Open Scope Z_scope.
 
-Instance ZName: NameWithEq := {| name := Z |}.
 
 Definition var: Set := (@name ZName).
 

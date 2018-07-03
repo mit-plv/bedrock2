@@ -1,5 +1,5 @@
 Require Import lib.LibTacticsMin.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
 Require Import compiler.StateCalculus.
@@ -13,25 +13,30 @@ Section FlattenExpr.
   Context {Bw: BitWidths}.
 
   Context {Name: NameWithEq}.
+  Context {FName: NameWithEq}.
   Notation var := (@name Name).
-  Notation func := (@name Name) (only parsing). (* TODO use separate names *)
+  Notation func := (@name FName).
 
   Existing Instance eq_name_dec.
 
-  Context {state: Type}.
-  Context {stateMap: Map state var (word wXLEN)}.
-  Context {vars: Type}.
-  Context {varset: set vars var}.
+  Context {stateMap: MapFunctions var (word wXLEN)}.
+  Notation state := (map var (word wXLEN)).
+  Context {varset: SetFunctions var}.
+  Notation vars := (set var).
+
   Context {NGstate: Type}.
-  Context {NG: NameGen var vars NGstate}.
+  Context {NG: NameGen var NGstate}.
+
+  Context {funcMap: MapFunctions func (list var * list var * @FlatImp.stmt Bw Name FName)}.
+  Notation env := (map func (list var * list var * @FlatImp.stmt Bw Name FName)).
 
   Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
   Ltac set_solver := set_solver_generic (@name Name).
 
-  (* returns and var into which result is saved, and new fresh name generator state
+  (* returns stmt and var into which result is saved, and new fresh name generator state
      TODO use state monad? *)
-  Fixpoint flattenExpr(ngs: NGstate)(e: ExprImp.expr):
-    (FlatImp.stmt * var * NGstate) :=
+  Fixpoint flattenExpr(ngs: NGstate)(e: @ExprImp.expr Bw Name):
+    (@FlatImp.stmt Bw Name FName  * var * NGstate) :=
     match e with
     | ExprImp.ELit n =>
         let '(x, ngs') := genFresh ngs in
@@ -48,8 +53,8 @@ Section FlattenExpr.
         (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x op r1 r2)), x, ngs''')
     end.
 
-  Definition flattenCall(ngs: NGstate)(binds: list var)(f: func)(args: list ExprImp.expr):
-    FlatImp.stmt * NGstate :=
+  Definition flattenCall(ngs: NGstate)(binds: list var)(f: func)(args: list (@ExprImp.expr Bw Name)):
+    @FlatImp.stmt Bw Name FName * NGstate :=
     let '(compute_args, argvars, ngs) :=
           List.fold_right
             (fun e '(c, vs, ngs) =>
@@ -60,7 +65,7 @@ Section FlattenExpr.
       (FlatImp.SSeq compute_args (FlatImp.SCall binds f argvars), ngs).
 
   (* returns statement and new fresh name generator state *)
-  Fixpoint flattenStmt(ngs: NGstate)(s: ExprImp.stmt): (FlatImp.stmt * NGstate) :=
+  Fixpoint flattenStmt(ngs: NGstate)(s: @ExprImp.stmt Bw Name FName): (@FlatImp.stmt Bw Name FName * NGstate) :=
     match s with
     | ExprImp.SLoad x a =>
         let '(s, r, ngs') := flattenExpr ngs a in
@@ -119,9 +124,9 @@ Section FlattenExpr.
       specialize (IHargs binds ngs).
       rewrite E0 in IHargs.
       specialize IHargs with (1 := eq_refl).
-      unfold FlatImp.stmt_size. fold FlatImp.stmt_size.
+      unfold FlatImp.stmt_size. fold (@FlatImp.stmt_size Bw Name FName).
       unfold ExprImp.stmt_size.
-      unfold FlatImp.stmt_size in IHargs; fold FlatImp.stmt_size in IHargs.
+      unfold FlatImp.stmt_size in IHargs; fold (@FlatImp.stmt_size Bw Name FName) in IHargs.
       unfold ExprImp.stmt_size in IHargs.
       rewrite map_cons. rewrite fold_right_cons.
       destruct p.
@@ -133,7 +138,7 @@ Section FlattenExpr.
       forget (length binds) as lb.
       forget (length l0) as ll0.
       forget (ExprImp.expr_size a) as sza.
-      forget (fold_right Nat.add 0 (map ExprImp.expr_size args)) as fr.
+      forget (fold_right Nat.add 0 (List.map ExprImp.expr_size args)) as fr.
       omega.
   Qed.
 
@@ -266,7 +271,7 @@ Section FlattenExpr.
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
      flattenExpr_modVars_spec and FlatImp.modVarsSound *)
-  Lemma flattenExpr_correct_aux env : forall e ngs1 ngs2 resVar s initialH initialL initialM res,
+  Lemma flattenExpr_correct_aux env : forall e ngs1 ngs2 resVar (s: @FlatImp.stmt Bw Name FName) initialH initialL initialM res,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     extends initialL initialH ->
     undef initialH (allFreshVars ngs1) ->
@@ -318,15 +323,18 @@ Section FlattenExpr.
       rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
   Qed.
 
+  Context {funcMap': MapFunctions func (list var * list var * @ExprImp.stmt Bw Name FName)}.
+  Notation env' := (map func (list var * list var * @ExprImp.stmt Bw Name FName)).
+
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' initialH finalH initialL initialM finalM,
     flattenStmt ngs sH = (sL, ngs') ->
     extends initialL initialH ->
     undef initialH (allFreshVars ngs) ->
     disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
-    ExprImp.eval_stmt empty fuelH initialH initialM sH = Some (finalH, finalM) ->
+    ExprImp.eval_stmt empty_map fuelH initialH initialM sH = Some (finalH, finalM) ->
     exists fuelL finalL,
-      FlatImp.eval_stmt empty fuelL initialL initialM sL = Some (finalL, finalM) /\
+      FlatImp.eval_stmt empty_map fuelL initialL initialM sL = Some (finalL, finalM) /\
       extends finalL finalH.
   Proof.
     induction fuelH; introv F Ex U Di Ev; [solve [inversionss] |].
@@ -335,7 +343,7 @@ Section FlattenExpr.
       match goal with
       | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
         let P := fresh "P" in
-        pose proof (flattenExpr_correct_aux empty) as P;
+        pose proof (flattenExpr_correct_aux empty_map) as P;
         specialize P with (initialM := initialM) (4 := Ev);
         specializes P; [ eassumption .. | ];
         let fuelL := fresh "fuelL" in
@@ -358,7 +366,7 @@ Section FlattenExpr.
       match goal with
       | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
         let P := fresh "P" in
-        pose proof (flattenExpr_correct_aux empty) as P;
+        pose proof (flattenExpr_correct_aux empty_map) as P;
         specialize P with (initialM := initialM) (4 := Ev);
         specializes P; [ eassumption .. | ];
         let fuelL := fresh "fuelL" in
@@ -369,7 +377,7 @@ Section FlattenExpr.
       match goal with
       | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
         let P := fresh "P" in
-        pose proof (flattenExpr_correct_aux empty) as P;
+        pose proof (flattenExpr_correct_aux empty_map) as P;
         specialize P with (initialL := prefinalL) (initialM := initialM) (4 := Ev)
       end.
       specializes P1.
@@ -393,12 +401,12 @@ Section FlattenExpr.
         state_calc. (* TODO this takes more than a minute, which is annoying *)
     - repeat (inversionss; try destruct_one_match_hyp).
       pose proof flattenExpr_correct_aux as P.
-      specialize (P empty) with (initialM := initialM) (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
+      specialize (P empty_map) with (initialM := initialM) (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
       destruct P as [fuelL [prefinalL [Evs G]]].
       remember (Datatypes.S fuelL) as SfuelL.
       exists (Datatypes.S SfuelL). eexists. repeat split.
       + simpl.
-        assert (FlatImp.eval_stmt empty SfuelL initialL initialM s = Some (prefinalL, initialM)) as Evs'. {
+        assert (FlatImp.eval_stmt empty_map SfuelL initialL initialM s = Some (prefinalL, initialM)) as Evs'. {
           eapply FlatImp.increase_fuel_still_Success; [|eassumption]. omega.
         }
         simpl in *.
@@ -409,7 +417,7 @@ Section FlattenExpr.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       pose_flatten_var_ineqs.
       rename cond into condH, s into condL, s0 into sL1, s1 into sL2.
-      pose proof (flattenExpr_correct_aux empty) as P.
+      pose proof (flattenExpr_correct_aux empty_map) as P.
       specialize P with (initialM := initialM) (res := cv) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [Evcond G]]].
@@ -433,7 +441,7 @@ Section FlattenExpr.
       pose_flatten_var_ineqs.
       rename cond into condH, s into condL, s0 into sL1, s1 into sL2.
       pose proof flattenExpr_correct_aux as P.
-      specialize (P empty) with (initialM := initialM) (res := $0) (1 := E) (2 := Ex).
+      specialize (P empty_map) with (initialM := initialM) (res := $0) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [Evcond G]]].
       pose_flatten_var_ineqs.
@@ -457,7 +465,7 @@ Section FlattenExpr.
       simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
       rename s into sCond, s0 into sBody.
       pose proof flattenExpr_correct_aux as P.
-      specialize (P empty) with (res := cv) (initialM := initialM) (1 := E) (2 := Ex).
+      specialize (P empty_map) with (res := cv) (initialM := initialM) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [EvcondL G]]].
       pose_flatten_var_ineqs.
@@ -489,7 +497,7 @@ Section FlattenExpr.
       pose proof F as F0.
       simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
       rename s into sCond, s0 into sBody.
-      pose proof (flattenExpr_correct_aux empty) as P.
+      pose proof (flattenExpr_correct_aux empty_map) as P.
       specialize P with (res := $0) (initialM := initialM) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [EvcondL G]]].
@@ -523,17 +531,17 @@ Section FlattenExpr.
       fuel_increasing_rewrite. fuel_increasing_rewrite. reflexivity.
     - simpl in F. inversions F. destruct_pair_eqs.
       exists 1%nat initialL. auto.
-    - inversion Ev0.
+    - rewrite empty_is_empty in Ev0. inversion Ev0.
   Qed.
 
-  Definition ExprImp2FlatImp(s: ExprImp.stmt): FlatImp.stmt :=
+  Definition ExprImp2FlatImp(s: @ExprImp.stmt Bw Name FName): @FlatImp.stmt Bw Name FName :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_stmt s)) s).
 
   Lemma flattenStmt_correct: forall fuelH sH sL initialM finalH finalM,
     ExprImp2FlatImp sH = sL ->
-    ExprImp.eval_stmt empty fuelH empty initialM sH = Some (finalH, finalM) ->
+    ExprImp.eval_stmt empty_map fuelH empty_map initialM sH = Some (finalH, finalM) ->
     exists fuelL finalL,
-      FlatImp.eval_stmt empty fuelL empty initialM sL = Some (finalL, finalM) /\
+      FlatImp.eval_stmt empty_map fuelL empty_map initialM sL = Some (finalL, finalM) /\
       forall resVar res, get finalH resVar = Some res -> get finalL resVar = Some res.
   Proof.
     introv C EvH.
@@ -541,7 +549,7 @@ Section FlattenExpr.
     pose proof flattenStmt_correct_aux as P.
     specialize P with (1 := E).
     specialize P with (4 := EvH).
-    specialize P with (initialL := (@empty _ _ _ stateMap)).
+    specialize P with (initialL := (@empty_map _ _ stateMap)).
     destruct P as [fuelL [finalL [EvL ExtL]]].
     - unfold extends. auto.
     - unfold undef. intros. apply empty_is_empty.

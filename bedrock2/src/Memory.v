@@ -1,6 +1,6 @@
 Require Import bbv.Word.
 Require Import riscv.util.BitWidths.
-Require Import compiler.Common.
+Require Import compiler.util.Common.
 
 Section Memory.
 
