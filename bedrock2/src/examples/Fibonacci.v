@@ -13,7 +13,7 @@ Require Import riscv.util.Monads.
 Require Import compiler.util.Common.
 Require Import compiler.NameWithEq.
 Require Import riscv.util.BitWidths.
-Require Import riscv.InstructionCoercions.
+Require        riscv.InstructionNotations.
 Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
 Require Import riscv.Utility.
@@ -78,28 +78,19 @@ Goal fib_H_res 20 $4 = Some $5. reflexivity. Qed.
 Goal fib_H_res 20 $5 = Some $8. reflexivity. Qed.
 Goal fib_H_res 20 $6 = Some $13. reflexivity. Qed.
 
+Definition do_regalloc: bool := false.
 
-(* exprImp2Riscv is the main compilation function *)
+Definition compileFunc: stmt -> list Instruction :=
+  if do_regalloc then exprImp2Riscv_with_regalloc else exprImp2Riscv.
+
 Definition fib_riscv0(n: word wXLEN): list Instruction :=
-  exprImp2Riscv (fib_ExprImp n).
+  compileFunc (fib_ExprImp n).
 
-Notation "'RISCV' {{ x ; y ; .. ; z }}" := (@cons Instruction x
-  (@cons Instruction y .. (@cons Instruction z nil) ..))
-  (format "'RISCV' {{ '[v' '//' x ; '//' y ; '//' .. ; '//' z ']' '//' }}").
+Definition fib6_riscv := Eval cbv in fib_riscv0 $6.
 
-Definition fib6_riscv': list Instruction := ltac:(
-  let fl := constr:(let (sFlat, _) :=
-         FlattenExpr.flattenStmt (freshNameGenState (allVars_stmt (fib_ExprImp $ (6))))
-           (fib_ExprImp $ (6)) in
-             sFlat) in
-  let fl := eval simpl in fl in
-  let r := constr:(FlatToRiscv.compile_stmt fl) in
-  let r := eval simpl in r in
-  exact r).
+Print fib6_riscv.
 
-Print fib6_riscv'.
-
-Definition fib6_riscv := Eval cbv in fib6_riscv'.
+Import riscv.InstructionNotations.
 
 Print fib6_riscv.
 

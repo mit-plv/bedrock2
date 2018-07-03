@@ -24,6 +24,8 @@ Require Import riscv.proofs.DecodeEncode.
 Require Import riscv.proofs.EncodeBound.
 Require Import compiler.EmitsValid.
 Require Import compiler.ZName.
+Require Import compiler.RegAlloc.
+Require compiler.util.List_Map.
 
 Section Pipeline.
 
@@ -71,6 +73,18 @@ Section Pipeline.
 
   Definition exprImp2Riscv(s: ExprImp.stmt): list Instruction :=
     FlatToRiscv.compile_stmt (flatten s).
+
+  Notation registerset := (@set Register
+               (@map_range_set var Register (List_Map.List_Map _ _))).
+
+  Definition riscvRegisters: registerset := of_list (List.map Z.of_nat (List.seq 1 31)).
+
+  Definition exprImp2Riscv_with_regalloc(s: ExprImp.stmt): list Instruction :=
+    FlatToRiscv.compile_stmt
+      (register_allocation (VarName := ZName) (RegisterName := ZName) (FuncName := ZName)
+                           Register0
+                           riscvRegisters
+                           (flatten s)).
 
   Definition evalH := @ExprImp.eval_stmt Bw ZName ZName _ _.
 
