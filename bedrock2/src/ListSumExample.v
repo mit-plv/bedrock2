@@ -15,7 +15,7 @@ Require riscv.Utility.
 Require Import riscv.encode.Encode.
 Require Import compiler.examples.Fibonacci.
 Require Import compiler.NameGen.
-
+Require Import riscv.MachineWidth32.
 Require Import riscv.util.BitWidth32.
 
 Local Notation RiscvMachine := (@RiscvMachine BitWidth32 (mem wXLEN) state).
@@ -115,7 +115,7 @@ Close Scope Z_scope.
 (*TODO Eval cbv in (map (@wordToNat 8) (initialRiscvMachine [1; 2; 3]).(machineMem)).*)
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
- @Run.run BitWidth32 Utility.MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
+ @Run.run BitWidth32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
 Definition listsum_final(fuel: nat)(l: list nat): RiscvMachine :=
   snd (run fuel (initialRiscvMachine l)).

@@ -29,6 +29,9 @@ Require Import riscv.util.ZBitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
 Require Import compiler.ZName.
+Require Import riscv.MachineWidth_wXLEN.
+Require Import riscv.MachineWidth32.
+Require Import riscv.MachineWidth64.
 
 Local Open Scope ilist_scope.
 

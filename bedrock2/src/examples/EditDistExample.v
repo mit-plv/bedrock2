@@ -17,7 +17,7 @@ Require Import compiler.examples.Fibonacci.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 Require Import compiler.NameGen.
-
+Require Import riscv.MachineWidth32.
 Require Import riscv.util.BitWidth32.
 
 
@@ -150,7 +150,7 @@ Definition initialRiscvMachineL: RiscvMachineL := {|
 |}.
 
 Definition run: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
- @Run.run BitWidth32 Utility.MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+ @Run.run BitWidth32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
 
 Definition editdist_L_final(fuel: nat): RiscvMachineL :=
   snd (run fuel initialRiscvMachineL).

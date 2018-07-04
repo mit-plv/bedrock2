@@ -20,6 +20,7 @@ Require Import riscv.Utility.
 Require Import riscv.encode.Encode.
 Require Import compiler.ZName.
 Require Import riscv.util.BitWidth32.
+Require Import riscv.MachineWidth32.
 Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.
 
