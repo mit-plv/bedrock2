@@ -246,6 +246,13 @@ Module ht.
     Inductive htc : (world -> mem -> varmap -> Prop) -> cont -> (world -> mem -> varmap -> Prop) -> Prop :=
     | cskip P : htc P CSkip P
     | cseq P c1 R (_:htc P c1 R) c2 Q (_:ht R c2 Q) : htc P (CSeq c1 c2) Q
+    | cstack P c' l' binds rets Q (_:htc (fun w m l => l = l' /\ exists l_, P w m l_) c' (fun w m l => Q w m l /\ exists retvs, Common.option_all (List.map (Map.get l) rets) = Some retvs /\ forall l_, exists l'', Common.putmany binds retvs l_ = Some l'')) 
+      : htc P
+            (CStack l' c' binds rets)
+            (fun w m l =>
+               exists w_ m_ l_, P w_ m_ l_ /\ 
+               exists l', Q w m l' /\
+               exists retvs, Common.option_all (List.map (Map.get l') rets) = Some retvs /\ Common.putmany binds retvs l_ = Some l)
     | cweaken c (P Q P' Q':_->_->_->Prop) (_:htc P c Q) (_:forall w m l, P' w m l -> P w m l) (_:forall w m l, Q w m l -> Q' w m l) : htc P' c Q'
       .
 
@@ -287,7 +294,6 @@ Module ht.
       exists r, exec_stmt e m l c r /\ invariant Q (w, r).
     Proof with t.
       dependent induction h; cbn in *.
-
       { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         eexists.
         split. { exists (S O). cbn. match goal with H:_ |- _ => rewrite H; reflexivity end. }
@@ -328,12 +334,11 @@ Module ht.
         { exists (S (S O)). cbn. reflexivity. }
         cbn; eauto. }
       { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
-        destruct x as [?[?|?]].
-        { cbn in H1 |- *...
-          exists ((m0, inl (a, l0, BSeq b c2))).
+        destruct x as [?[?|?]]...
+        { exists ((m0, inl (a, l0, BSeq b c2))).
           split.
           { admit. }
-          t.
+          cbn in H1 |- *...
           match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
           eexists _, _.
           split.
@@ -345,6 +350,27 @@ Module ht.
           split.
           { admit. }
           eauto. } }
+      { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
+        destruct x as [?[?|?]]...
+        { exists (m0, inl (a, l0, BStack l b binds rets)).
+        split.
+        { admit. }
+        cbn in H0 |- *...
+        match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
+        eexists _, _.
+        split.
+        { cbv [BStack]. match goal with H:_ |- _ => rewrite H; reflexivity end. }
+        intuition idtac.
+        eapply cweaken with (P := fun (w_ : world) (m_ : mem) (l_ : varmap) => w_ = w' /\ m_ = m' /\ l_ = l); eauto.
+        eapply cstack.
+        { eapply cweaken.
+          { eapply H4. }
+          { intros. destruct H5 as [? [?[?[]]]]; subst. auto. }
+          { intros. cbn in H5. eauto. } }
+        { cbn; intros.  destruct H5 as [?[?[?[[?[??]][?[?[]]]]]]]; subst; eauto 15. } }
+        { destruct H0 as [?[]].
+
+           } }
       { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end.
         cbv [computation_result] in *... destruct s...
         { eexists.
