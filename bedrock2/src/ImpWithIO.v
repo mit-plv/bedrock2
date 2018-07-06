@@ -320,10 +320,10 @@ Module ht.
       : ht P (SSet x e) (fun w m l => exists l', P w m l' /\ exists v, interp_expr l' e = Some v /\ l = Map.put l' x v)
     | skip P : ht P SSkip P
     | io (P:_->_->_->Prop) binds action args
-         (_:forall w m l, P w m l ->
+         (_:forall w m l, P w m l -> G w m /\
                           exists argvs, Common.option_all (List.map (interp_expr l) args) = Some argvs /\
                           forall m' retvs w', external_step w (m, action, argvs) (m', retvs) w' ->
-                                              G w' m' /\ exists l', Common.putmany binds retvs l = Some l')
+                                              exists l', Common.putmany binds retvs l = Some l')
       : ht P (SIO binds action args) (fun w' m' l' =>  exists w m l argvs retvs,
                P w m l /\ Common.option_all (List.map (interp_expr l) args) = Some argvs /\
                external_step w (m, action, argvs) (m', retvs) w')
@@ -353,8 +353,9 @@ Module ht.
       let (w, result) := s in
       match result with
       | (m, (inl (action, args, blocked)))
-        => forall m' retvs w', external_step w (m, action, args) (m', retvs) w'
-                               -> exists l' c', blocked retvs = Some (l', c') /\ G w' m' /\ htc (fun w_ m_ l_ => w_ = w' /\ m_ = m' /\ l_ = l') c' Q
+        => G w m /\ forall m' retvs w', external_step w (m, action, args) (m', retvs) w'
+                                        -> exists l' c', blocked retvs = Some (l', c') /\
+                                                         htc (fun w_ m_ l_ => w_ = w' /\ m_ = m' /\ l_ = l') c' Q
       | (m, (inr l)) => Q w m l
       end.
     
@@ -375,12 +376,12 @@ Module ht.
         { exists (S O). cbn. match goal with H:_ |- _ => rewrite H; reflexivity end. }
         cbn.
         intros.
+        progress (intuition idtac); []...
         match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         eexists _, _.
         cbv [BWait].
         unshelve (idtac; let e := open_constr:(_) in split; [apply e|pose proof e]).
         { match goal with H:_ |- _ => rewrite H; reflexivity end. }
-        progress (intuition idtac); [].
         eapply cweaken with (P := fun w_ m_ l_ => w_ = w' /\ m_ = m' /\ l_ = x0).
         { econstructor. }
         { eauto. }
@@ -400,11 +401,11 @@ Module ht.
         { exists ((m0, inl (a, l0, BSeq b c2))).
           progress (intuition (eauto using exec_cont_SSeq_1)); [].
           cbn in H1 |- *...
+          progress (intuition idtac); []...
           match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
           eexists _, _.
           split.
           { cbv [BSeq]. match goal with H:_ |- _ => rewrite H; exact eq_refl end. }
-          progress (intuition idtac); [].
           eauto using cseq. }
         { pose proof preservation _ _ _ H _ _ _ H1...
           eauto using exec_cont_SSeq_2. } }
@@ -414,11 +415,11 @@ Module ht.
         split.
         { inversion_clear H as [f H']. exists (S f). cbn. rewrite H'. exact eq_refl. }
         cbn in H0 |- *...
+        progress (intuition idtac); []...
         match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         eexists _, _.
         split.
         { cbv [BStack]. match goal with H:_ |- _ => rewrite H; reflexivity end. }
-        progress (intuition idtac); [].
         eapply cweaken with (P := fun (w_ : world) (m_ : mem) (l_ : varmap) => w_ = w' /\ m_ = m' /\ l_ = l); eauto.
         eapply cstack.
         { eapply cweaken.
@@ -436,7 +437,8 @@ Module ht.
         cbv [computation_result] in *... destruct s...
         { eexists.
           progress (intuition eauto); [].
-          cbv [invariant]...
+          cbv [invariant] in *...
+        progress (intuition idtac); []...
           match goal with
           | H:_ |- _ => pose proof (H _ _ _ ltac:(eauto))
           end...
@@ -449,13 +451,16 @@ Module ht.
 
     Lemma invariant_step Q s (HI:invariant Q s) s' (Hstep:step e external_step s s') : invariant Q s'.
     Proof with t.
-      cbv [step] in *; destruct s as [? [? [|]]]...
+      cbv [step invariant] in *; destruct s as [? [? [|]]]...
       match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
       assert (Some (x7, x8) = Some (x11, x12)) by congruence...
-      pose proof (cpreservation _ _ _ H4 _ _ _ ltac:(repeat constructor))...
-      specialize (H2 (ex_intro _ _ H5))...
+      pose proof (cpreservation _ _ _ ltac:(eauto) _ _ _ ltac:(repeat constructor))...
+      specialize (H2 (ex_intro _ _ H6))...
       match goal with H:_, G:_ |- _ => pose proof exec_cont_unique H G; clear G end; subst...
       eauto. 
     Qed.
+
+    Lemma invariant_guarantees (Q:_->_->_->Prop) (HQ:forall w m l, Q w m l -> G w m) s (HI:invariant Q s) : G (fst s) (fst (snd s)).
+    Proof. cbv [invariant] in *; destruct s as [? [? [|]]]; t; cbn; eauto. Qed.
   End HoareLogic.
 End ht.
