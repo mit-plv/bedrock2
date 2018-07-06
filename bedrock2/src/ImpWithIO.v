@@ -225,7 +225,6 @@ Goal forall x y : nat, False. intros.
 
 
 
-
 Require Import Coq.Program.Equality.
 Module ht.
   Section HoareLogic.
@@ -248,15 +247,46 @@ Module ht.
       end.
     Ltac t := repeat t_step.
 
+    Lemma bind_Some_Some_iff {A B} (oa:option A) (f:A->option B) b :
+      (bind_Some x <- oa; f x) = Some b <->
+      (exists a, oa = Some a /\ f a = Some b).
+    Proof. split; destruct oa eqn:?; subst; t; eauto. Qed.
+
     Lemma interp_stmt_monotonic {f1 m l c r} (Hinterp:interp_stmt e f1 m l c = Some r) f2 (H:f1 <= f2)
       : interp_stmt e f2 m l c = Some r.
     Proof.
-      revert Hinterp; revert r; revert c; revert l; revert m; induction H; [solve[trivial]|]; intros.
-      destruct c; cbn.
-    Admitted.
+      revert Hinterp; revert r; revert c; revert l; revert m; revert H; revert f2.
+      induction f1; intros; [solve[inversion Hinterp]|].
+      destruct f2; [lia|]. specialize (IHf1 f2 ltac:(lia)).
+      destruct c; cbn in Hinterp |- * ;
+      repeat match goal with
+             | _ => progress t
+             | _ => solve [eauto | congruence]
+             | |- exists _, _ /\ _ => eexists; split; [solve[eauto]|cbn]
+             | H: _ |- _ => setoid_rewrite bind_Some_Some_iff in H
+             | _ => setoid_rewrite bind_Some_Some_iff
+             | H: context[match ?x with _ => _ end] |- context[match ?x with _ => _ end] => destruct x eqn:?
+             end.
+    Qed.
+
     Lemma interp_cont_monotonic {f1 m l c r} (Hinterp:interp_cont e f1 m l c = Some r) f2 (H:f1 <= f2)
       : interp_cont e f2 m l c = Some r.
-    Admitted.
+    Proof.
+      revert Hinterp; revert r; revert c; revert l; revert m; revert H; revert f2.
+      induction f1; intros; [solve[inversion Hinterp]|].
+      destruct f2; [lia|]. specialize (IHf1 f2 ltac:(lia)).
+      destruct c; cbn in Hinterp |- *;
+      repeat match goal with
+             | _ => progress t
+             | _ => solve [eauto | congruence]
+             | |- exists _, _ /\ _ => eexists; split; [solve[eauto]|cbn]
+             | H: _ |- _ => setoid_rewrite bind_Some_Some_iff in H
+             | _ => setoid_rewrite bind_Some_Some_iff
+             | H: context[match ?x with _ => _ end] |- context[match ?x with _ => _ end] => destruct x eqn:?
+             end.
+      eapply interp_stmt_monotonic; eauto; lia.
+      eapply interp_stmt_monotonic; eauto; lia.
+    Qed.
 
     Lemma exec_stmt_unique {m l c r1 r2} (H1:exec_stmt e m l c r1) (H2:exec_stmt e m l c r2) : r1 = r2.
     Proof.
@@ -284,11 +314,6 @@ Module ht.
       rewrite (interp_stmt_monotonic H2') by lia.
       exact eq_refl.
     Qed.
-
-    Lemma exists_bind_Some {A B} (oa:option A) (f:A->option B) :
-      (exists b, (bind_Some x <- oa; f x) = Some b) <->
-      (exists a, oa = Some a /\ exists b, f a = Some b).
-    Proof. split; destruct oa eqn:?; subst; t; eauto. Qed.
 
     Inductive ht : (world -> mem -> varmap -> Prop) -> stmt -> (world -> mem -> varmap -> Prop) -> Prop :=
     | set (P:_->_->_->Prop) x e (_:forall w m l, P w m l -> exists v, interp_expr l e = Some v)
@@ -432,3 +457,5 @@ Module ht.
       match goal with H:_, G:_ |- _ => pose proof exec_cont_unique H G; clear G end; subst...
       eauto. 
     Qed.
+  End HoareLogic.
+End ht.
