@@ -47,11 +47,10 @@ Section Imp.
   | SCall(binds: list varname)(f: funname)(args: list expr)
   | SIO(binds: list varname)(io : actname)(args: list expr).
 
-  Definition cont : Type := list (varmap * list varname * list varname * stmt) * stmt.
-  Definition CSkip : cont := (nil, SSkip).
-  Definition CSeq (c1:cont) (c2: stmt) : cont := let (stack, c1) := c1 in (stack, SSeq c1 c2).
-  Definition CStack (locals: varmap) (cf: cont) (binds rets: list varname) : cont :=
-    let '(stack, c1) := cf in (cons (locals, binds, rets, c1) stack, SSkip).
+  Inductive cont :=
+  | CSkip
+  | CSeq (c1:cont) (c2: stmt)
+  | CStack (locals: varmap) (cf: cont) (binds rets: list varname).
 
   Definition blocked := list mword -> option (varmap * cont).
   Definition BWait (locals : varmap) (binders : list varname) : blocked :=
@@ -134,15 +133,21 @@ Section Imp.
       | 0 => None (* out of fuel *)
       | S f =>
         match c with
-        | (nil, c) => interp_stmt f m l c
-        | (cons (lf, binds, rets, cf) stack, c) =>
-          bind_Some (m', ob) <- interp_cont f m lf (stack, cf);
+        | CSkip =>  interp_stmt f m l SSkip
+        | CSeq c1 c2 =>
+          bind_Some (m, ob) <- interp_cont f m l c1;
+          match ob with
+          | inl (action, args, b) => Some (m, inl (action, args, BSeq b c2))
+          | inr l => interp_stmt f m l c2
+          end
+        | CStack lf cf binds rets =>
+          bind_Some (m', ob) <- interp_cont f m lf cf;
           match ob with
           | inl (action, args, b) => Some (m', inl (action, args, BStack l b binds rets))
-          | inr st1 => 
-            bind_Some retvs <- Common.option_all (List.map (Map.get st1) rets);
+          | inr l1 => 
+            bind_Some retvs <- Common.option_all (List.map (Map.get l1) rets);
             bind_Some l' <- Common.putmany binds retvs l;
-            interp_stmt f m' l' c
+            Some (m', inr l')
           end
         end
       end.
@@ -241,7 +246,7 @@ Module ht.
                P w m l /\ Common.option_all (List.map (interp_expr l) args) = Some argvs /\
                external_step w (m, action, argvs) (m', retvs) w')
     .
-    (* Notation "[ P ] c [ Q ]" := (ht P c Q) (at level 90, c at next level). *)
+    Notation "[ P ] c [ Q ]" := (ht P c Q) (at level 90, c at next level).
 
     Inductive htc : (world -> mem -> varmap -> Prop) -> cont -> (world -> mem -> varmap -> Prop) -> Prop :=
     | cskip P : htc P CSkip P
@@ -254,7 +259,7 @@ Module ht.
                exists l', Q w m l' /\
                exists retvs, Common.option_all (List.map (Map.get l') rets) = Some retvs /\ Common.putmany binds retvs l_ = Some l)
     | cweaken c (P Q P' Q':_->_->_->Prop) (_:htc P c Q) (_:forall w m l, P' w m l -> P w m l) (_:forall w m l, Q w m l -> Q' w m l) : htc P' c Q'
-      .
+    .
 
     Lemma exec_cont_unique {m l c r1 r2} (_:exec_cont e m l c r1) (_:exec_cont e m l c r2) : r1 = r2.
     Admitted.
@@ -264,8 +269,8 @@ Module ht.
       | _ => progress intros
       | x:?T |- _ =>
         assert_succeeds (let h := head_of T in is_ind h);
-        destruct x; []; (* TODO: use dependent elimination and allow indexed inductives *)
-        assert_fails (is_indexed_inductive T)
+        let __ := induction_principle_no_indices T in
+        destruct x; [] (* TODO: use dependent elimination and allow indexed inductives *)
       | H: ?x = ?y |- _ =>
         let f := head_of x in
         let g := head_of y in
@@ -274,12 +279,12 @@ Module ht.
         clear H
       end.
     Ltac t := repeat t_step.
-    
+
     Lemma ht_SSkip P Q (h : ht P SSkip Q) : forall w m l, P w m l -> Q w m l.
     Proof. dependent induction h; eauto. Qed.
 
     Lemma htc_SSkip P Q (h : htc P CSkip Q) : forall w m l, P w m l -> Q w m l.
-    Proof. dependent induction h; cbv [cont CSeq CSkip CStack] in *; t; eauto. Qed.
+    Proof. dependent induction h; t; eauto. Qed.
 
     Definition invariant Q (s:world * computation_result) :=
       let (w, result) := s in
@@ -312,17 +317,11 @@ Module ht.
         cbv [BWait].
         unshelve (idtac; let e := open_constr:(_) in split; [apply e|pose proof e]).
         { match goal with H:_ |- _ => rewrite H; reflexivity end. }
-        intuition idtac.
+        progress (intuition idtac).
         eapply cweaken with (P := fun w_ m_ l_ => w_ = w' /\ m_ = m' /\ l_ = x0).
         { econstructor. }
         { eauto. }
-        cbn; intros.
-        repeat match goal with
-        | H:exists _, _ |- _ => destruct H
-        | H:_ /\ _ |- _ => destruct H
-        end.
-        subst.
-        eauto 9. }
+        cbn; t; subst; eauto 9. }
     Qed.
 
     Lemma cpreservation P c Q (h : htc P c Q) w m l (HP: P w m l) :
@@ -343,7 +342,7 @@ Module ht.
           eexists _, _.
           split.
           { cbv [BSeq]. match goal with H:_ |- _ => rewrite H; reflexivity end. }
-          intuition idtac.
+          progress (intuition idtac).
           eauto using cseq. }
         { pose proof preservation _ _ _ H _ _ _ H1...
           exists x.
@@ -360,17 +359,20 @@ Module ht.
         eexists _, _.
         split.
         { cbv [BStack]. match goal with H:_ |- _ => rewrite H; reflexivity end. }
-        intuition idtac.
+        progress (intuition idtac).
         eapply cweaken with (P := fun (w_ : world) (m_ : mem) (l_ : varmap) => w_ = w' /\ m_ = m' /\ l_ = l); eauto.
         eapply cstack.
         { eapply cweaken.
           { eapply H4. }
-          { intros. destruct H5 as [? [?[?[]]]]; subst. auto. }
+          { t; subst. auto. }
           { intros. cbn in H5. eauto. } }
-        { cbn; intros.  destruct H5 as [?[?[?[[?[??]][?[?[]]]]]]]; subst; eauto 15. } }
-        { destruct H0 as [?[]].
-
-           } }
+        { cbn; t; subst; eauto 15. } }
+        { cbv [invariant] in *...
+          destruct (H2 l) as [x' ?].
+          exists (m0, inr x').
+          split.
+          { admit. }
+          eauto 20. } }
       { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end.
         cbv [computation_result] in *... destruct s...
         { eexists.
