@@ -342,6 +342,23 @@ Module ht.
       : ht P (SIf e ct cf) (fun w m l => Qt w m l \/ Qf w m l)
     | seq P c1 R (_:ht P c1 R) c2 Q (_:ht R c2 Q) : ht P (SSeq c1 c2) Q
     | skip P : ht P SSkip P
+    | call (P:_->_->_->Prop) binds fname args
+           params rets fbody (_:e fname = Some (params, rets, fbody))
+           (* TODO: constrain lengths of binds and args, instead of possibility of putmany in function postcondition *)
+           (_ : forall w m l, P w m l ->
+                              (exists argvs : list mword,
+                                  Common.option_all (List.map (interp_expr l) args) = Some argvs /\
+                                  forall l, exists l', Common.putmany params argvs l = Some l'))
+           Q (_:ht (fun w m l => exists l_, P w m l_ /\
+                                 exists argvs, Common.option_all (List.map (interp_expr l_) args) = Some argvs /\
+                                 Common.putmany params argvs Map.empty_map = Some l )
+                   fbody (fun w m l => Q w m l /\ exists retvs, Common.option_all (List.map (Map.get l) rets) = Some retvs /\ forall l_, exists l', Common.putmany binds retvs l_ = Some l'))
+      : ht P
+            (SCall binds fname args)
+            (fun w m l =>
+               exists w_ m_ l_, P w_ m_ l_ /\ 
+               exists l', Q w m l' /\
+               exists retvs, Common.option_all (List.map (Map.get l') rets) = Some retvs /\ Common.putmany binds retvs l_ = Some l)
     | io (P:_->_->_->Prop) binds action args
          (_:forall w m l, P w m l -> G w m /\
                           exists argvs, Common.option_all (List.map (interp_expr l) args) = Some argvs /\
@@ -438,6 +455,37 @@ Module ht.
         split. { exists (S O). cbn. repeat setoid_rewrite bind_Some_Some_iff. eauto 9. }
         cbn. eauto 9. }
       { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
+        destruct (H2 Map.empty_map).
+        try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
+        destruct x1 as [?[[[]?]|]].
+        { exists (m0, inl (a, l0, BStack l b binds rets)).
+          inversion_clear H4 as [f H4'].
+          split. exists (S f).
+          repeat (repeat setoid_rewrite bind_Some_Some_iff; try (eexists; split; [solve[eauto]|]; cbn; trivial)).
+          cbn [invariant] in *.
+          progress (intuition idtac); []...
+          try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
+          eexists.
+          eexists.
+          split.
+          { cbv [BStack].
+            repeat (repeat setoid_rewrite bind_Some_Some_iff; eexists; split; [solve[eauto]|]; cbn; trivial). }
+          { eapply cweaken with (P := fun (w_ : world) (m_ : mem) (l_ : varmap) => w_ = w' /\ m_ = m' /\ l_ = l); eauto.
+            eapply cstack.
+            { eapply cweaken.
+              { eapply H8. }
+              { t; subst. auto. }
+              { intros. cbn in *; eauto 9. } }
+            { cbn; t; subst; eauto 15. } } }
+      { cbv [invariant] in *...
+        destruct (H2 l) as [x' ?].
+        destruct (H7 l).
+        exists (m0, inr x2).
+        split.
+        { inversion_clear H4 as [f H4']. exists (S f). cbn.
+          repeat (repeat setoid_rewrite bind_Some_Some_iff; try (eexists; split; [solve[eauto]|]; cbn; trivial)). }
+        { eauto 20. } } }
+      { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         eexists.
         split. { exists (S O). cbn. repeat setoid_rewrite bind_Some_Some_iff. eauto 9. }
         cbn.
@@ -516,5 +564,8 @@ Module ht.
 
     Lemma invariant_guarantees (Q:_->_->_->Prop) (HQ:forall w m l, Q w m l -> G w m) s (HI:invariant Q s) : G (fst s) (fst (snd s)).
     Proof. cbv [invariant] in *; destruct s as [? [? [|]]]; t; cbn; eauto. Qed.
+    
+    Lemma invariant_done (Q:_->_->_->Prop) (HQ:forall w m l, Q w m l -> G w m) w m l (HI:invariant Q (w, (m, inr l))) : Q w m l.
+    Proof. assumption. Qed.
   End HoareLogic.
 End ht.
