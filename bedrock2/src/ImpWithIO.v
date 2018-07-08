@@ -328,7 +328,6 @@ Module ht.
       exact eq_refl.
     Qed.
 
-    Print interp_stmt.
     Inductive ht : (world -> mem -> varmap -> Prop) -> stmt -> (world -> mem -> varmap -> Prop) -> Prop :=
     | load (P:_->_->_->Prop) x e (_:forall w m l, P w m l -> exists a, interp_expr l e = Some a /\ exists v, load a m = Some v)
       : ht P (SLoad x e) (fun w m l => exists l', P w m l' /\ exists a, interp_expr l' e = Some a /\ exists v, load a m = Some v /\ l = Map.put l' x v)
@@ -336,9 +335,14 @@ Module ht.
       : ht P (SStore ea ev) (fun w m l => exists l' m', P w m' l' /\ exists a, interp_expr l' ea = Some a /\ exists v, interp_expr l' ev = Some v /\ store a v m' = Some m)
     | set (P:_->_->_->Prop) x e (_:forall w m l, P w m l -> exists v, interp_expr l e = Some v)
       : ht P (SSet x e) (fun w m l => exists l', P w m l' /\ exists v, interp_expr l' e = Some v /\ l = Map.put l' x v)
+    | while V R (_:@Coq.Init.Wf.well_founded V R) (P:_->_->_->Prop)
+            I (_:forall w m l, P w m l -> exists v, I v w m l)
+            e (_:forall v w m l, I v w m l -> exists b, interp_expr l e = Some b)
+            c (_:forall v w_, ht (fun w m l => w = w_ /\ I v w m l /\ exists b, interp_expr l e = Some b /\ mword_nonzero b = true) c (fun w m l => exists v', I v' w m l /\ (w = w_ -> R v' v)))
+      : ht P (SWhile e c) (fun w m l => exists v, I v w m l /\ exists b, interp_expr l e = Some b /\ mword_nonzero b = false)
     | If (P:world->mem->varmap->Prop) e cf ct Qt Qf  (_:forall w m l, P w m l -> exists v, interp_expr l e = Some v)
-         (_:ht (fun w m l => P w m l /\ exists v, interp_expr l e = Some v /\ mword_nonzero v = true) ct Qt)
-         (_:ht (fun w m l => P w m l /\ exists v, interp_expr l e = Some v /\ mword_nonzero v = false) cf Qf)
+         (_:ht (fun w m l => P w m l /\ exists b, interp_expr l e = Some b /\ mword_nonzero b = true) ct Qt)
+         (_:ht (fun w m l => P w m l /\ exists b, interp_expr l e = Some b /\ mword_nonzero b = false) cf Qf)
       : ht P (SIf e ct cf) (fun w m l => Qt w m l \/ Qf w m l)
     | seq P c1 R (_:ht P c1 R) c2 Q (_:ht R c2 Q) : ht P (SSeq c1 c2) Q
     | skip P : ht P SSkip P
@@ -423,6 +427,46 @@ Module ht.
         eexists.
         split. { exists (S O). cbn. repeat setoid_rewrite bind_Some_Some_iff. eauto 9. }
         cbn. eauto 9. }
+      { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
+        clear HP; revert H4; revert l; revert m; revert w; revert x.
+        refine (@Coq.Init.Wf.well_founded_ind V R ltac:(eassumption) _ _); intros.
+        try match goal with H:_ |- _ => pose proof (H _ _ _ _ ltac:(eauto)) end...
+        destruct (mword_nonzero x0) eqn:?.
+        { edestruct H3; [solve[eauto]|]...
+          destruct x1 as [?[?|?]]...
+          { exists ((m0, inl (a, l0, BSeq b (SWhile e0 c)))).
+            inversion_clear H7 as [f exec1].
+            split.
+            { exists (S f). cbn.
+              repeat (repeat setoid_rewrite bind_Some_Some_iff; eexists; split; [solve[eauto]|]; cbn; trivial).
+              rewrite Heqb, exec1. reflexivity. }
+            cbn [invariant] in H8 |- *...
+            progress (intuition idtac); []...
+            match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
+            eexists _, _.
+            split.
+            { cbv [BSeq]. match goal with H:_ |- _ => rewrite H; exact eq_refl end. }
+            eapply cseq; eauto; [].
+            eapply while; eauto; t; eauto. }
+          { cbv [invariant] in H8...
+            try match goal with H:_ |- _ => pose proof (H _ ltac:(eauto) _ _ _ ltac:(eauto)) end...
+            inversion_clear H7 as [f1 exec1].
+            inversion_clear H10 as [f2 exec2].
+            exists x2.
+            split; [|solve[eauto]].
+            { exists (S (Nat.max f1 f2)); cbn.
+              repeat (repeat setoid_rewrite bind_Some_Some_iff; eexists; split; [solve[eauto]|]; cbn; trivial).
+              rewrite Heqb.
+              rewrite (interp_stmt_monotonic exec1) by lia.
+              rewrite (interp_stmt_monotonic exec2) by lia.
+              reflexivity. } } }
+        { exists (m, inr l).
+          split.
+          { exists (S O). cbn.
+            repeat (repeat setoid_rewrite bind_Some_Some_iff; eexists; split; [solve[eauto]|]; cbn; trivial).
+            rewrite Heqb. reflexivity. }
+          { cbn.
+            repeat (repeat setoid_rewrite bind_Some_Some_iff; eexists; split; [solve[eauto]|]; cbn; trivial). } } }
       { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         destruct (mword_nonzero x) eqn:?Hx.
         { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
