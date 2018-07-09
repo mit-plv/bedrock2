@@ -400,6 +400,37 @@ Module ht.
     Definition weaken_post P Q c H Q' pf := weaken P Q c H P Q' (fun _ _ _ p => p) pf.
     Definition weaken_pre P Q c P' pf H := weaken P Q c H P' Q pf (fun _ _ _ p => p).
     Definition assert P' P Q c pf H := weaken (fun w m l => P w m l /\ P' w m l) Q c H P Q (fun w m l p => conj p (pf w m l p)) (fun _ _ _ p => p).
+
+    Section Instances.
+      Import Coq.Classes.Morphisms.
+      Global Instance Proper_ht_impl :
+        Proper
+          ((pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (Basics.flip Basics.impl))))
+             ==> eq ==>
+           (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==> Basics.impl)
+          ht.
+      Proof. cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; t; eauto using weaken. Qed.
+
+      Global Instance Proper_ht_iff :
+        Proper
+          ((pointwise_relation _ (pointwise_relation _ (pointwise_relation _ iff)))
+             ==> eq ==>
+           (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ iff))) ==> iff)
+          ht.
+      Proof.
+        cbv [Proper respectful pointwise_relation Basics.flip Basics.impl iff]; intros.
+        split; intros; subst.
+        { eapply weaken; intros.
+          { eauto. }
+          { eapply (proj2(H w m l) H0). }
+          { eapply (proj1(H1 w m l) H0). } }
+        { eapply weaken; intros.
+          { eauto. }
+          { eapply (proj1(H w m l) H0). }
+          { eapply (proj2(H1 w m l) H0). } }
+      Qed.
+    End Instances.
+
     Definition while V R (Hwf:@Coq.Init.Wf.well_founded V R) (P:_->_->_->Prop)
             I (_:forall w m l, P w m l -> exists v, I v w m l)
             b (_:forall v w m l, I v w m l -> exists vb, interp_expr l b = Some vb)
@@ -651,9 +682,11 @@ Module ht.
       Goal forall a,
           [fun _ _ _ => True]
             SSeq (SSet a (ELit _1))
-            (SIf (EVar a)
-                 (SSkip)
-            (SWhile (ELit _1) SSkip))
+            (SIf (EVar a) (
+              SSkip
+            ) (
+              SWhile (ELit _1) SSkip)
+            )
           [fun w m l => Map.get l a = Some _1].
       Proof.
         intros.
