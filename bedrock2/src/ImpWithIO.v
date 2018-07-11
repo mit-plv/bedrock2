@@ -58,12 +58,12 @@ Section Imp.
   | CSeq (c1:cont) (c2: stmt)
   | CStack (locals: varmap) (cf: cont) (binds rets: list varname).
 
-  Definition blocked := list mword -> option (varmap * cont).
-  Definition BWait (locals : varmap) (binders : list varname) : blocked :=
+  Definition blocked_cont := list mword -> option (varmap * cont).
+  Definition BWait (locals : varmap) (binders : list varname) : blocked_cont :=
     fun values => bind_Some l' <- Common.putmany binders values locals; Some (l', CSkip).
-  Definition BSeq (c1 : blocked) (c2 : stmt) :=
+  Definition BSeq (c1 : blocked_cont) (c2 : stmt) :=
     fun values => bind_Some (l, c1) <- c1 values; Some (l, CSeq c1 c2).
-  Definition BStack (caller_locals : varmap) (callee : blocked) (binds rets: list varname) : blocked :=
+  Definition BStack (caller_locals : varmap) (callee : blocked_cont) (binds rets: list varname) : blocked_cont :=
     fun values => bind_Some (callee_locals, c) <- callee values; Some (caller_locals, CStack callee_locals c binds rets).
 
   Class ImpFunctions :=
@@ -81,7 +81,10 @@ Section Imp.
         Some (interp_binop op v1 v2)
     end.
 
-  Definition computation_result : Type := mem * (actname * list mword * blocked + varmap).
+  Inductive computation_result :=
+  | done (_:mem) (_:varmap)
+  | blocked (_:mem) (_:actname) (_:list mword) (_:blocked_cont).
+
   Section WithFunctions.
     Context {F:ImpFunctions}.
     Fixpoint interp_stmt(f: nat)(m: mem)(l: varmap)(s: stmt): option computation_result :=
@@ -91,15 +94,15 @@ Section Imp.
         | SLoad x a =>
           bind_Some a <- interp_expr l a;
           bind_Some v <- load a m;
-          Some (m, inr (Map.put l x v))
+          Some (done m (Map.put l x v))
         | SStore a v =>
           bind_Some a <- interp_expr l a;
           bind_Some v <- interp_expr l v;
           bind_Some m <- store a v m;
-          Some (m, inr l)
+          Some (done m l)
         | SSet x e =>
           bind_Some v <- interp_expr l e;
-          Some (m, inr (Map.put l x v))
+          Some (done m (Map.put l x v))
         | SIf cond bThen bElse =>
           bind_Some v <- interp_expr l cond;
           interp_stmt f m l (if mword_nonzero v then bThen else bElse)
@@ -107,34 +110,34 @@ Section Imp.
           bind_Some v <- interp_expr l cond;
           if mword_nonzero v
           then
-            bind_Some (m, ob) <- interp_stmt f m l body;
-            match ob with
-            | inl (action, args, b) => Some (m, inl (action, args, BSeq b (SWhile cond body)))
-            | inr l => interp_stmt f m l (SWhile cond body)
+            bind_Some r <- interp_stmt f m l body;
+            match r with
+            | blocked m action args b => Some (blocked m action args (BSeq b (SWhile cond body)))
+            | done m l => interp_stmt f m l (SWhile cond body)
             end
-          else Some (m, inr l)
+          else Some (done m l)
         | SSeq s1 s2 =>
-          bind_Some (m, ob) <- interp_stmt f m l s1;
-          match ob with
-          | inl (action, args, b) => Some (m, inl (action, args, BSeq b s2))
-          | inr l => interp_stmt f m l s2
+          bind_Some r <- interp_stmt f m l s1;
+          match r with
+          | blocked m action args b => Some (blocked m action args (BSeq b s2))
+          | done m l => interp_stmt f m l s2
           end
-        | SSkip => Some (m, inr l)
+        | SSkip => Some (done m l)
         | SCall binds fname args =>
           bind_Some (params, rets, fbody) <- lookupFunction fname;
             bind_Some argvs <- Common.option_all (List.map (interp_expr l) args);
             bind_Some l0 <- Common.putmany params argvs Map.empty_map;
-            bind_Some (m', ob) <- interp_stmt f m l0 fbody;
-            match ob with
-            | inl (action, args, b) => Some (m', inl (action, args, BStack l b binds rets))
-            | inr l1 => 
+            bind_Some r <- interp_stmt f m l0 fbody;
+            match r with
+            | blocked m' action args b => Some (blocked m' action args (BStack l b binds rets))
+            | done m l1 => 
               bind_Some retvs <- Common.option_all (List.map (Map.get l1) rets);
               bind_Some l' <- Common.putmany binds retvs l;
-              Some (m', inr l')
+              Some (done m l')
             end
-        | SIO binds ionum args =>
+        | SIO binds action args =>
           bind_Some argvs <- Common.option_all (List.map (interp_expr l) args);
-          Some (m, inl (ionum, argvs, BWait l binds))
+          Some (blocked m action argvs (BWait l binds))
         end
       end.
     Definition exec_stmt m l c r := exists f, interp_stmt f m l c = Some r.
@@ -146,19 +149,19 @@ Section Imp.
         match c with
         | CSkip =>  interp_stmt f m l SSkip
         | CSeq c1 c2 =>
-          bind_Some (m, ob) <- interp_cont f m l c1;
-          match ob with
-          | inl (action, args, b) => Some (m, inl (action, args, BSeq b c2))
-          | inr l => interp_stmt f m l c2
+          bind_Some r <- interp_cont f m l c1;
+          match r with
+          | blocked m action args b => Some (blocked m action args (BSeq b c2))
+          | done m l => interp_stmt f m l c2
           end
         | CStack lf cf binds rets =>
-          bind_Some (m', ob) <- interp_cont f m lf cf;
-          match ob with
-          | inl (action, args, b) => Some (m', inl (action, args, BStack l b binds rets))
-          | inr l1 => 
+          bind_Some r <- interp_cont f m lf cf;
+          match r with
+          | blocked m action args b => Some (blocked m action args (BStack l b binds rets))
+          | done m l1 => 
             bind_Some retvs <- Common.option_all (List.map (Map.get l1) rets);
             bind_Some l' <- Common.putmany binds retvs l;
-            Some (m', inr l')
+            Some (done m l')
           end
         end
       end.
@@ -173,12 +176,11 @@ Section Imp.
       Context {W:ImpWorld p}.
       (* Definition done (s : world * computation_result) : Prop :=  exists w m l, s = (w, (m, inr l)). *)
       Definition step (s s' : world*computation_result) : Prop :=
-        exists w m action argvs b, s = (w, (m, inl (action, argvs, b))) /\
+        exists w m action argvs b, s = (w, blocked m action argvs b) /\
         exists w' retvs m_, external_step w (m, action, argvs) (m_, retvs) w' /\
-        exists m' R', arbitraryIfUndefined
-                        (fun m'R' => exists l' c', b retvs = Some (l', c') /\ exec_cont m_ l' c' m'R')
-                        (m', R')
-                      /\ s' = (w', (m', R')).
+        exists r, arbitraryIfUndefined
+                        (fun r => exists l' c', b retvs = Some (l', c') /\ exec_cont m_ l' c' r) r
+                      /\ s' = (w', r).
     End WithWorld.
 
     Section LabeledTransitionSystem.
@@ -327,9 +329,9 @@ Module inversion.
             Some (m', inr l') = Some r
         ) )
     ) \/ (
-        exists binds ionum args, s = SIO binds ionum args /\
+        exists binds action args, s = SIO binds action args /\
         exists argvs, Common.option_all (List.map (interp_expr l) args) = Some argvs /\
-        Some (m, inl (ionum, argvs, BWait l binds)) = Some r
+        Some (m, inl (action, argvs, BWait l binds)) = Some r
     ) ) ).
   Proof.
     destruct f; cbn [interp_stmt].
@@ -433,13 +435,13 @@ Module ht.
     Qed.
 
     Generalizable All Variables.
-    Lemma exec_SSeq_1 `(H:exec_stmt m l c1 (m0, inl (a, l0, b))) c2
-      : exec_stmt m l (SSeq c1 c2) (m0, inl (a, l0, BSeq b c2)).
+    Lemma exec_SSeq_1 `(H:exec_stmt m l c1 (blocked m0 a l0 b)) c2
+      : exec_stmt m l (SSeq c1 c2) (blocked m0 a l0 (BSeq b c2)).
     Proof. inversion_clear H as [f H']. exists (S f). cbn. rewrite H'. exact eq_refl. Qed.
-    Lemma exec_CSeq_1 `(H:exec_cont m l c1 (m0, inl (a, l0, b))) c2
-      : exec_cont m l (CSeq c1 c2) (m0, inl (a, l0, BSeq b c2)).
+    Lemma exec_CSeq_1 `(H:exec_cont m l c1 (blocked m0 a l0 b)) c2
+      : exec_cont m l (CSeq c1 c2) (blocked m0 a l0 (BSeq b c2)).
     Proof. inversion_clear H as [f H']. exists (S f). cbn. rewrite H'. exact eq_refl. Qed.
-    Lemma exec_SSeq_2 `(H1:exec_stmt m l c1 (m0, inr v)) `(H2 : exec_stmt m0 v c2 x)
+    Lemma exec_SSeq_2 `(H1:exec_stmt m l c1 (done m0 v)) `(H2 : exec_stmt m0 v c2 x)
       :  exec_stmt m l (SSeq c1 c2) x.
     Proof.
       inversion_clear H1 as [f1 H1']. inversion_clear H2 as [f2 H2'].
@@ -448,7 +450,7 @@ Module ht.
       rewrite (interp_stmt_monotonic H2') by lia.
       exact eq_refl.
     Qed.
-    Lemma exec_CSeq_2 `(H1:exec_cont m l c1 (m0, inr v)) `(H2 : exec_stmt m0 v c2 x)
+    Lemma exec_CSeq_2 `(H1:exec_cont m l c1 (done m0 v)) `(H2 : exec_stmt m0 v c2 x)
       :  exec_cont m l (CSeq c1 c2) x.
     Proof.
       inversion_clear H1 as [f1 H1']. inversion_clear H2 as [f2 H2'].
@@ -580,16 +582,16 @@ Module ht.
     Definition invariant Q (s:world * computation_result) :=
       let (w, result) := s in
       match result with
-      | (m, (inl (action, args, blocked)))
+      | blocked m action args bc
         => G w m /\ forall m' retvs w', external_step w (m, action, args) (m', retvs) w'
-                                        -> exists l' c', blocked retvs = Some (l', c') /\
+                                        -> exists l' c', bc retvs = Some (l', c') /\
                                                          htc (fun w_ m_ l_ => w_ = w' /\ m_ = m' /\ l_ = l') c' Q
-      | (m, (inr l)) => Q w m l
+      | done m l => Q w m l
       end.
 
     Lemma invariant_weaken (Q Q':_->_->_->Prop) (HQ: forall w m l, Q w m l -> Q' w m l) s (Hs:invariant Q s) : invariant Q' s.
     Proof with dsi.
-      destruct s as [?[?[|]]]; cbv [invariant] in *; eauto...
+      destruct s as [?[|]]; dsi; cbv [invariant] in *; eauto...
       progress intuition idtac; []...
       match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
       eauto using cweaken.
@@ -617,8 +619,20 @@ Module ht.
         try match goal with H:_ |- _ => pose proof (H _ _ _ _ ltac:(eauto)) end...
         destruct (mword_nonzero x0) eqn:?.
         { edestruct H2; [solve[eauto]|]...
-          destruct x1 as [?[?|?]]...
-          { eexists ((m0, inl (a, l0, BSeq b (SWhile _ c)))).
+          destruct x1; dsi.
+          { cbv [invariant] in H7...
+            try match goal with H:_ |- _ => pose proof (H _ ltac:(eauto) _ _ _ ltac:(eauto)) end...
+            inversion_clear H6 as [f1 exec1].
+            inversion_clear H9 as [f2 exec2].
+            exists x2.
+            split; [|solve[eauto]].
+            { exists (S (Nat.max f1 f2)); cbn.
+              repeat (repeat setoid_rewrite bind_Some_Some_iff; eexists; split; [solve[eauto]|]; cbn; trivial).
+              rewrite Heqb.
+              rewrite (interp_stmt_monotonic exec1) by lia.
+              rewrite (interp_stmt_monotonic exec2) by lia.
+              reflexivity. } }
+          { eexists ((blocked m0 a l0 (BSeq b (SWhile _ c)))).
             inversion_clear H6 as [f exec1].
             split.
             { exists (S f). cbn.
@@ -631,20 +645,8 @@ Module ht.
             split.
             { cbv [BSeq]. match goal with H:_ |- _ => rewrite H; exact eq_refl end. }
             eapply cseq; eauto; [].
-            eapply while'; eauto; dsi; eauto. }
-          { cbv [invariant] in H7...
-            try match goal with H:_ |- _ => pose proof (H _ ltac:(eauto) _ _ _ ltac:(eauto)) end...
-            inversion_clear H6 as [f1 exec1].
-            inversion_clear H9 as [f2 exec2].
-            exists x2.
-            split; [|solve[eauto]].
-            { exists (S (Nat.max f1 f2)); cbn.
-              repeat (repeat setoid_rewrite bind_Some_Some_iff; eexists; split; [solve[eauto]|]; cbn; trivial).
-              rewrite Heqb.
-              rewrite (interp_stmt_monotonic exec1) by lia.
-              rewrite (interp_stmt_monotonic exec2) by lia.
-              reflexivity. } } }
-        { exists (m, inr l).
+            eapply while'; eauto; dsi; eauto. } }
+        { exists (done m l).
           split.
           { exists (S O). cbn.
             repeat (repeat setoid_rewrite bind_Some_Some_iff; eexists; split; [solve[eauto]|]; cbn; trivial).
@@ -666,8 +668,10 @@ Module ht.
             eexists. split. eauto. rewrite Hx. eauto. }
           eapply invariant_weaken; typeclasses eauto with core. } }
       { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
-        destruct x as [?[?|?]]...
-        { exists ((m0, inl (a, l0, BSeq b c2))).
+        destruct x; dsi.
+        { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
+          eauto using exec_SSeq_2. }
+        { exists (blocked m0 a l0 (BSeq b c2)).
           progress (intuition (eauto using exec_SSeq_1)); [].
           cbn in H0 |- *...
           progress (intuition idtac); []...
@@ -675,9 +679,7 @@ Module ht.
           eexists _, _.
           split.
           { cbv [BSeq]. match goal with H:_ |- _ => rewrite H; exact eq_refl end. }
-          eauto using cseq. }
-        { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
-          eauto using exec_SSeq_2. } }
+          eauto using cseq. } }
       { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         eexists.
         split. { exists (S O). cbn. repeat setoid_rewrite bind_Some_Some_iff. eauto 9. }
@@ -685,8 +687,16 @@ Module ht.
       { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         destruct (H2 Map.empty_map).
         try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
-        destruct x1 as [?[[[]?]|]].
-        { exists (m0, inl (a, l0, BStack l b binds rets)).
+        destruct x1.
+      { cbv [invariant] in *...
+        destruct (H2 l) as [x' ?].
+        destruct (H7 l).
+        exists (done m0 x2).
+        split.
+        { inversion_clear H4 as [f H4']. exists (S f). cbn.
+          repeat (repeat setoid_rewrite bind_Some_Some_iff; try (eexists; split; [solve[eauto]|]; cbn; trivial)). }
+        { eauto 20. } }
+        { exists (blocked m0 a l0 (BStack l b binds rets)).
           inversion_clear H4 as [f H4'].
           split. exists (S f).
           repeat (repeat setoid_rewrite bind_Some_Some_iff; try (eexists; split; [solve[eauto]|]; cbn; trivial)).
@@ -704,15 +714,7 @@ Module ht.
               { eapply H8. }
               { dsi; subst. auto. }
               { intros. cbn in *; eauto 9. } }
-            { cbn; dsi; subst; eauto 15. } } }
-      { cbv [invariant] in *...
-        destruct (H2 l) as [x' ?].
-        destruct (H7 l).
-        exists (m0, inr x2).
-        split.
-        { inversion_clear H4 as [f H4']. exists (S f). cbn.
-          repeat (repeat setoid_rewrite bind_Some_Some_iff; try (eexists; split; [solve[eauto]|]; cbn; trivial)). }
-        { eauto 20. } } }
+            { cbn; dsi; subst; eauto 15. } } } }
       { try match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         eexists.
         split. { exists (S O). cbn. repeat setoid_rewrite bind_Some_Some_iff. eauto 9. }
@@ -741,8 +743,10 @@ Module ht.
         { exists (S (S O)). cbn. reflexivity. }
         cbn; eauto. }
       { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
-        destruct x as [?[?|?]]...
-        { exists ((m0, inl (a, l0, BSeq b c2))).
+        destruct x.
+        { pose proof preservation _ _ _ H _ _ _ H1...
+          eauto using exec_CSeq_2. }
+        { exists (blocked m0 a l0 (BSeq b c2)).
           progress (intuition (eauto using exec_CSeq_1)); [].
           cbn in H1 |- *...
           progress (intuition idtac); []...
@@ -750,12 +754,16 @@ Module ht.
           eexists _, _.
           split.
           { cbv [BSeq]. match goal with H:_ |- _ => rewrite H; exact eq_refl end. }
-          eauto using cseq. }
-        { pose proof preservation _ _ _ H _ _ _ H1...
-          eauto using exec_CSeq_2. } }
+          eauto using cseq. } }
       { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
-        destruct x as [?[?|?]]...
-        { exists (m0, inl (a, l0, BStack l b binds rets)).
+        destruct x.
+        { cbv [invariant] in *...
+          destruct (H2 l) as [x' ?].
+          exists (done m0 x').
+          split.
+          { inversion_clear H as [f H']. exists (S f). cbn. rewrite H', H1, H3. exact eq_refl. }
+          eauto 20. }
+        { exists (blocked m0 a l0 (BStack l b binds rets)).
         split.
         { inversion_clear H as [f H']. exists (S f). cbn. rewrite H'. exact eq_refl. }
         cbn in H0 |- *...
@@ -770,32 +778,27 @@ Module ht.
           { eapply H4. }
           { dsi; subst. auto. }
           { intros. cbn in H5. eauto. } }
-        { cbn; dsi; subst; eauto 15. } }
-        { cbv [invariant] in *...
-          destruct (H2 l) as [x' ?].
-          exists (m0, inr x').
-          split.
-          { inversion_clear H as [f H']. exists (S f). cbn. rewrite H', H1, H3. exact eq_refl. }
-          eauto 20. } }
+        { cbn; dsi; subst; eauto 15. } } }
       { match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
         pose proof invariant_weaken; typeclasses eauto with core. }
     Qed.
 
     Lemma invariant_step Q s (HI:invariant Q s) s' (Hstep:step s s') : invariant Q s'.
     Proof with dsi.
-      cbv [step invariant] in * |- ; destruct s as [? [? [|]]]...
+      cbv [step invariant] in * |- ; destruct s...
       match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
       pose proof (cpreservation _ _ _ ltac:(eauto) _ _ _ ltac:(repeat constructor))...
       specialize (H1 ltac:(eauto)); cbn in H1...
-      assert ((x12, x13) = (x9, x10)) by congruence...
+      assert ((x11, x12) = (x8, x9)) by congruence...
       match goal with H:_, G:_ |- _ => pose proof exec_cont_unique H G; clear G end...
       subst. eauto. 
      Qed.
 
-    Lemma invariant_guarantees (Q:_->_->_->Prop) (HQ:forall w m l, Q w m l -> G w m) s (HI:invariant Q s) : G (fst s) (fst (snd s)).
-    Proof. cbv [invariant] in *; destruct s as [? [? [|]]]; dsi; cbn; eauto. Qed.
+    Lemma invariant_guarantees (Q:_->_->_->Prop) (HQ:forall w m l, Q w m l -> G w m) s (HI:invariant Q s) :
+      match s with (w, blocked m _ _ _) | (w, done m _) => G w m end.
+    Proof. cbv [invariant] in *; destruct s as [?[|]]; dsi; cbn; eauto. Qed.
     
-    Lemma invariant_done (Q:_->_->_->Prop) (HQ:forall w m l, Q w m l -> G w m) w m l (HI:invariant Q (w, (m, inr l))) : Q w m l.
+    Lemma invariant_done (Q:_->_->_->Prop) (HQ:forall w m l, Q w m l -> G w m) w m l (HI:invariant Q (w, (done m l))) : Q w m l.
     Proof. assumption. Qed.
   End HoareLogic.
 
@@ -812,10 +815,10 @@ Module ht.
 
 
       Definition soundness P c Q (Hht:ht P c Q) m l (HP:P m l)
-        : exists m' l', exec_stmt m l c (m', inr l') /\ Q m' l'.
+        : exists m' l', exec_stmt m l c (done m' l') /\ Q m' l'.
       Proof.
-        destruct (ht.preservation _ _ _ _ (Hht {| world := unit; external_step := (fun _ _ _ _ => True) |} (fun _ _ => False) tt) tt m l (conj eq_refl HP)) as [[? [[[? ?] ?] | ?]] [exec inv]];
-          cbn [invariant external_step] in inv; dsi; [ contradiction | eauto ].
+        destruct (ht.preservation _ _ _ _ (Hht {| world := unit; external_step := (fun _ _ _ _ => True) |} (fun _ _ => False) tt) tt m l (conj eq_refl HP)) as [[] [? inv]]; dsi;
+          cbn [invariant external_step] in inv; dsi; [ eauto | contradiction ].
       Qed.
     End pure.
   End pure.
