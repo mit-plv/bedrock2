@@ -253,6 +253,111 @@ Ltac dsi_step :=
 Ltac dsi := repeat dsi_step.
 
 
+(*
+Module inversion.
+  Section inversion.
+    Goal True. let cls := constr:(ImpParameters) in match constr:(Set) with _ => (let none := constr:(_:cls) in idtac); fail 99 "DUPLICATE INSTANCE" | _ => idtac end. Abort.
+    Context {p : ImpParameters} {E : ImpFunctions p} {W : ImpWorld p} (G : world -> mem -> Prop).
+    
+    Lemma invert_interp_stmt f m l s r :
+      (interp_stmt f m l s = Some r) <->
+      (exists f', f = S f' /\ (
+      (
+        exists x a, s = SLoad x a /\
+        exists a0 , interp_expr l a = Some a0 /\
+        exists v , load a0 m = Some v /\
+        Some (m, inr (Map.put l x v)) = Some r
+      ) \/ (
+        exists a v, s = SStore a v /\
+        exists a0 , interp_expr l a = Some a0 /\
+        exists v0 , interp_expr l v = Some v0 /\
+        exists m0 , store a0 v0 m = Some m0 /\
+        Some (m0, inr l) = Some r
+      ) \/ (
+        exists x e, s = SSet x e /\
+        exists v , interp_expr l e = Some v /\
+        Some (m, inr (Map.put l x v)) = Some r
+      ) \/ (
+        exists cond bThen bElse, s = SIf cond bThen bElse /\
+        exists v , interp_expr l cond = Some v /\
+        interp_stmt f' m l (if mword_nonzero v then bThen else bElse) = Some r
+      ) \/ (
+        exists cond body, s = SWhile cond body /\
+        exists v , interp_expr l cond = Some v /\ (
+        (
+           mword_nonzero v = true /\
+           exists m0 r0, interp_stmt f' m l body = Some (m0, r0) /\ (
+           (
+             exists action args b, r0 = inl (action, args, b) /\
+             Some (m0, inl (action, args, BSeq b (SWhile cond body))) = Some r)
+           ) \/ (
+             exists l0, r0 = inr l0 /\
+             interp_stmt f' m0 l0 (SWhile cond body) = Some r
+           )
+        ) \/ (
+          mword_nonzero v = false /\
+          Some (m, inr l) = Some r
+        ) )
+      ) \/ (
+        exists s1 s2, s = SSeq s1 s2 /\
+        exists m0 r0, interp_stmt f' m l s1 = Some (m0, r0) /\ (
+        (
+          exists action args b, r0 = inl (action, args, b) /\
+          Some (m0, inl (action, args, BSeq b s2)) = Some r
+        ) \/ (
+          exists l0, r0 = inr l0 /\
+          interp_stmt f' m0 l0 s2 = Some r
+        ) )
+    ) \/ (
+        s = SSkip
+        /\ Some (m, inr l) = Some r
+    ) \/ (
+        exists binds fname args, s = SCall binds fname args /\
+        exists params rets fbody, lookupFunction fname = Some (params, rets, fbody) /\
+        exists argvs, Common.option_all (List.map (interp_expr l) args) = Some argvs /\
+        exists l0, Common.putmany params argvs Map.empty_map = Some l0 /\
+        exists m' r0, interp_stmt f' m l0 fbody = Some (m', r0) /\ (
+        (
+          exists action args0 b, r0 = inl (action, args0, b) /\
+          Some (m', inl (action, args0, BStack l b binds rets)) = Some r
+        ) \/ (
+          exists l1, inr l1 = r0 /\
+            exists retvs, Common.option_all (List.map (Map.get l1) rets) = Some retvs /\
+            exists l', Common.putmany binds retvs l = Some l' /\
+            Some (m', inr l') = Some r
+        ) )
+    ) \/ (
+        exists binds ionum args, s = SIO binds ionum args /\
+        exists argvs, Common.option_all (List.map (interp_expr l) args) = Some argvs /\
+        Some (m, inl (ionum, argvs, BWait l binds)) = Some r
+    ) ) ).
+  Proof.
+    destruct f; cbn [interp_stmt].
+    { split; intros; dsi. }
+    destruct s; cbn [interp_stmt]; repeat setoid_rewrite invert_bind_Some.
+    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
+    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
+    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
+    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
+    { split; dsi.
+      { destruct (mword_nonzero x) eqn:?; dsi.
+        destruct (interp_stmt f m l s) as [[?[[[? ?]?]|?]]|] eqn:?;
+          solve [intuition (dsi; eauto 50)].
+        solve [intuition (dsi; eauto 50)]. }
+      {
+        intuition dsi.
+        eexists. eexists. eauto.
+        destruct H1 as [[Hb HC]|[Hb HC]]; rewrite Hb; dsi; [|solve[eauto]].
+        destruct H as [[HC ?] ?|[? [HC ?]]]; dsi; rewrite ?HC; eauto.
+        rewrite HC.
+        rewrite H. eauto.
+
+        try solve [intuition (dsi; eauto 50)]. }
+    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
+    *)
+        
+
+
 Require Import Coq.Program.Equality.
 Module ht.
   Section HoareLogic.
@@ -264,6 +369,20 @@ Module ht.
       (bind_Some x <- oa; f x) = Some b <->
       (exists a, oa = Some a /\ f a = Some b).
     Proof. split; destruct oa eqn:?; dsi; eauto. Qed.
+
+    Lemma invert_interp_expr l e r :
+      (interp_expr l e = Some r) <->
+      ( (exists v, e = ELit v /\ Some v = Some r) \/
+        (exists x, e = EVar x /\ Map.get l x = Some r) \/
+        (exists op e1 e2, e = EOp op e1 e2 /\
+                          exists r1, interp_expr l e1 = Some r1 /\
+                                     exists r2, interp_expr l e2 = Some r2 /\
+                                                Some (interp_binop op r1 r2) = Some r) ).
+    Proof.
+      destruct e;
+        cbn [interp_expr]; repeat setoid_rewrite bind_Some_Some_iff;
+          intuition (dsi; eauto 20).
+    Qed.
 
     Lemma interp_stmt_monotonic {f1 m l c r} (Hinterp:interp_stmt f1 m l c = Some r) f2 (H:f1 <= f2)
       : interp_stmt f2 m l c = Some r.
@@ -763,7 +882,7 @@ Module ht.
     Context (_1 : mword) (one_nonzero : mword_nonzero _1 = true).
     Context (wgt : bopname).
 
-    Context (recv send : actname).
+    Context (recv send : actname) (recv_neq_send : recv <> send).
     Context (recv_returns_1 : forall w m o m' w',
                 lts_external_step w (m, recv, nil) (m', o) w' -> exists v, o = cons v nil).
 
@@ -829,9 +948,23 @@ Module ht.
                           econstructor. } }
           econstructor. { dsi.
                           destruct H; dsi.
-                          { cbv [external_step IMPLTS lts_external_step] in H5; rewrite H5 in *; clear H5.
+                          { cbv [external_step IMPLTS lts_external_step] in H5; rewrite H5 in *.
                             split.
-                            admit.
+                            { cbv [G] in *; intros; destruct init.
+                              { rewrite List.app_nil_l in H; cbn in H; dsi; contradiction. }
+                              { rewrite <-List.app_comm_cons in H; cbn in H; dsi.
+                                specialize (H7 init m0 args m' rets tail ltac:(eauto)); dsi.
+                                eexists. split. eauto.
+                                dsi.
+                                destruct _init; dsi.
+                                { rewrite List.app_nil_l in H5; cbn in H5; dsi.
+                                  admit.
+                                }
+                                { rewrite <-List.app_comm_cons in H5; dsi.
+                                  eapply H1.
+                                  f_equal.
+                                  rewrite <-List.app_comm_cons; cbn.
+                                  reflexivity. } } }
                             repeat setoid_rewrite bind_Some_Some_iff. dsi. subst l.
                             cbn in H0.
                             eexists.
