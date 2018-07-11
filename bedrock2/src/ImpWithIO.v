@@ -690,6 +690,14 @@ Module ht.
                                  c
                                  (fun w1 m l => w1 = w /\ Q m l)
                           ).
+
+
+      Definition soundness P c Q (Hht:ht P c Q) m l (HP:P m l)
+        : exists m' l', exec_stmt m l c (m', inr l') /\ Q m' l'.
+      Proof.
+        destruct (ht.preservation _ _ _ _ (Hht {| world := unit; external_step := (fun _ _ _ _ => True) |} (fun _ _ => False) tt) tt m l (conj eq_refl HP)) as [[? [[[? ?] ?] | ?]] [exec inv]];
+          cbn [invariant external_step] in inv; dsi; [ contradiction | eauto ].
+      Qed.
     End pure.
   End pure.
 
@@ -856,5 +864,5 @@ Module ht.
         Unshelve.
         cbn; dsi; congruence.
     Admitted.
-  End _test.
+  End _test_max.
 End ht.
