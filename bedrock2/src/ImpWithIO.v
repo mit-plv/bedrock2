@@ -175,7 +175,13 @@ Section Imp.
     Section WithWorld.
       Context {W:ImpWorld p}.
       (* Definition done (s : world * computation_result) : Prop :=  exists w m l, s = (w, (m, inr l)). *)
-      Definition step (s s' : world*computation_result) : Prop :=
+      Inductive step : world*computation_result -> world*computation_result -> Prop :=
+      | mk_step
+          w m action argvs b
+          w' retvs m_ (_:external_step w (m, action, argvs) (m_, retvs) w')
+          r (_:arbitraryIfUndefined (fun r => exists l' c', b retvs = Some (l', c') /\ exec_cont m_ l' c' r) r)
+        : step (w, blocked m action argvs b) (w', r).
+      Definition step_alt (s s' : world*computation_result) : Prop :=
         exists w m action argvs b, s = (w, blocked m action argvs b) /\
         exists w' retvs m_, external_step w (m, action, argvs) (m_, retvs) w' /\
         exists r, arbitraryIfUndefined
@@ -372,6 +378,10 @@ Module ht.
       (exists a, oa = Some a /\ f a = Some b).
     Proof. split; destruct oa eqn:?; dsi; eauto. Qed.
 
+    Lemma step_alt_iff s s' : step s s' <-> step_alt s s'.
+    Proof. split; inversion 1; dsi; econstructor; eauto 25. Qed.
+
+    (* TODO: unused *)
     Lemma invert_interp_expr l e r :
       (interp_expr l e = Some r) <->
       ( (exists v, e = ELit v /\ Some v = Some r) \/
@@ -785,11 +795,12 @@ Module ht.
 
     Lemma invariant_step Q s (HI:invariant Q s) s' (Hstep:step s s') : invariant Q s'.
     Proof with dsi.
-      cbv [step invariant] in * |- ; destruct s...
+      inversion Hstep; cbv [invariant] in * |- ; destruct s...
       match goal with H:_ |- _ => pose proof (H _ _ _ ltac:(eauto)) end...
       pose proof (cpreservation _ _ _ ltac:(eauto) _ _ _ ltac:(repeat constructor))...
-      specialize (H1 ltac:(eauto)); cbn in H1...
-      assert ((x11, x12) = (x8, x9)) by congruence...
+      specialize (H0 ltac:(eauto)); cbn in H1...
+      cbv beta in *; dsi.
+      assert ((x, x0) = (x2, x3)) by congruence...
       match goal with H:_, G:_ |- _ => pose proof exec_cont_unique H G; clear G end...
       subst. eauto. 
      Qed.
