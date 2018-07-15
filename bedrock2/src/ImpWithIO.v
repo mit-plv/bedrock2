@@ -373,6 +373,19 @@ Module ht.
     Context {p : ImpParameters} {E : ImpFunctions p} {W : ImpWorld p} (G : world -> mem -> Prop).
     (* TODO: allow G to guarantee stuff about arguments of external calls *)
 
+    (* TODO: move *)
+    Lemma invert_putmany_cons_l (x:varname) xs' (ys:list mword) m r
+          (H:Common.putmany (x::xs') ys m = Some r)
+      : exists y ys', Common.putmany (x::xs') (y::ys') m = Some r.
+    Proof. destruct ys; cbn in H; dsi.
+           cbn.
+           (* TODO: report failure: setoid_rewrite H. *)
+           eexists.
+           eexists.
+           rewrite H.
+           reflexivity.
+    Qed.
+
     Lemma bind_Some_Some_iff {A B} (oa:option A) (f:A->option B) b :
       (bind_Some x <- oa; f x) = Some b <->
       (exists a, oa = Some a /\ f a = Some b).
