@@ -1,3 +1,20 @@
+Module TRC.
+  Local Set Universe Polymorphism.
+  Section TRC.
+    Context {T : Type} {R : T -> T -> Type}.
+    Inductive trc : T -> T -> Prop :=
+    | nil x : trc x x
+    | cons x y z (head:R x y) (tail:trc y z) : trc x z.
+    Definition singleton x y (r:R x y) : trc x y := cons x y y r (nil _).
+    Definition app x y z (xy:trc x y) (yz:trc y z) : trc x z.
+    Proof.
+      revert dependent z; revert dependent xy; induction 1;
+        eauto using nil, cons, singleton.
+    Qed.
+  End TRC.
+  Arguments trc {T} R.
+End TRC.
+
 Require compiler.util.Common.
 
 Local Notation "'bind_Some' x <- a ; f" :=
@@ -147,7 +164,7 @@ Section Imp.
       | 0 => None (* out of fuel *)
       | S f =>
         match c with
-        | CSkip =>  interp_stmt f m l SSkip
+        | CSkip => Some (done m l)
         | CSeq c1 c2 =>
           bind_Some r <- interp_cont f m l c1;
           match r with
@@ -187,6 +204,18 @@ Section Imp.
         exists r, arbitraryIfUndefined
                         (fun r => exists l' c', b retvs = Some (l', c') /\ exec_cont m_ l' c' r) r
                       /\ s' = (w', r).
+
+      Definition steps : world*computation_result -> world*computation_result -> Prop := TRC.trc step.
+      Definition blocked_guarantees G w b (post:_->_->_->Prop) : Prop :=
+        forall w' b', steps (w, b) (w', b') ->
+          match b' with
+          | done m l => post w m l
+          | blocked mem action args _ => G w mem action args
+          end.
+      Definition guarantees G w m l c post : Prop :=
+        exists b, exec_stmt m l c b /\ blocked_guarantees G w b post.
+      Definition cont_guarantees G w m l c post : Prop :=
+        exists b, exec_cont m l c b /\ blocked_guarantees G w b post.
     End WithWorld.
 
     Section LabeledTransitionSystem.
@@ -264,7 +293,7 @@ Ltac dsi := repeat dsi_step.
 Module wp.
   Section wp.
     Goal True. let cls := constr:(ImpParameters) in match constr:(Set) with _ => (let none := constr:(_:cls) in idtac); fail 99 "DUPLICATE INSTANCE" | _ => idtac end. Abort.
-    Context {p : ImpParameters} {E : ImpFunctions p} {W : ImpWorld p} (G : world -> mem -> Prop).
+    Context {p : ImpParameters} {E : ImpFunctions p} {W : ImpWorld p} (G : world -> mem -> actname -> list mword -> Prop).
 
     Section FuelLemmas. (* TODO: move *)
       
@@ -306,7 +335,6 @@ Module wp.
              | _ => setoid_rewrite bind_Some_Some_iff
              | H: context[match ?x with _ => _ end] |- context[match ?x with _ => _ end] => destruct x eqn:?
              end.
-      eapply interp_stmt_monotonic; eauto; lia.
       eapply interp_stmt_monotonic; eauto; lia.
     Qed.
 
@@ -399,57 +427,85 @@ Module wp.
 
     (* TODO: wp_putmany *)
     
-    Definition invariant post r :=
-      match r with
-      | done m l => post m l
-      | blocked m action args bc
-        => False (* TODO *)
-      end.
-
     (* the return type could be [mem -> varmap -> Prop], the arguments [m] and [l] are bound directly instead *)
-    Fixpoint wp (m: mem) (l: varmap) (c: stmt) (post : mem -> varmap -> Prop) {struct c} : Prop :=
+    Fixpoint wp (w: world) (m: mem) (l: varmap) (c: stmt) (post : world -> mem -> varmap -> Prop) {struct c} : Prop :=
       match c with
       | SLoad x ea =>
         bind_ex a <- wp_expr l ea;
           bind_ex_Some v <- load a m;
           bind_eq l <- Map.put l x v;
-          post m l
+          post w m l
       | SStore ea ev =>
           bind_ex a <- wp_expr l ea;
           bind_ex v <- wp_expr l ev;
           bind_ex_Some m <- store a v m;
-          post m l
+          post w m l
       | SSet x ev =>
           bind_ex v <- wp_expr l ev;
           bind_eq l <- Map.put l x v;
-          post m l
+          post w m l
       | SIf br ct cf =>
-          bind_ex v <- wp_expr l br; (* path-blasting... *)
-            (mword_nonzero v = true  -> wp m l ct post) /\
-            (mword_nonzero v = false -> wp m l cf post)
+          bind_ex v <- wp_expr l br; (* path-blasting... :( *)
+            (mword_nonzero v = true  -> wp w m l ct post) /\
+            (mword_nonzero v = false -> wp w m l cf post)
       | SWhile e c =>
-        exists (V:Type) (R:V->V->Prop) (I:V->mem->varmap->Prop), 
+        exists (V:Type) (R:V->V->Prop) (I:V->world->mem->varmap->Prop), 
                Coq.Init.Wf.well_founded R /\
-               (exists v, I v m l) /\
-               (forall v m l, I v m l ->
+               (exists v, I v w m l) /\
+               (forall v w m l, I v w m l ->
                   exists b, wp_expr l e b /\
-                  (mword_nonzero b = true -> wp m l c (fun m l => exists v', I v' m l /\ R v' v)) /\
-                  (mword_nonzero b = false -> post m l))
-      | SSeq c1 c2 => wp m l c1 (fun m l => wp m l c2 post)
+                  (mword_nonzero b = true -> wp w m l c (fun w' m l => exists v', I v' w' m l /\ (w=w' -> R v' v))) /\
+                  (mword_nonzero b = false -> post w m l))
+      | SSeq c1 c2 => wp w m l c1 (fun w m l => wp w m l c2 post)
       | SCall binds fname arges =>
         bind_ex args <- wp_list_map (wp_expr l) arges;
         bind_ex_Some finfo <- lookupFunction fname;
-        forall params rets cf, finfo = (params, rets, cf) ->
+        forall params retns cf, finfo = (params, retns, cf) ->
         bind_ex_Some lf <- Common.putmany params args Map.empty_map;
+        (* the callee may be proven using wp or some other technique *)
         bind_ex r <- exec_stmt m lf cf;
         ( exists m lf, r = done m lf /\
-          bind_ex retvs <- wp_list_map (fun k v => Map.get lf k = Some v) rets;
-          bind_ex_Some l2 <- Common.putmany binds retvs l;
-          post m l2 )
+          bind_ex rets <- wp_list_map (fun k v => Map.get lf k = Some v) retns;
+          bind_ex_Some l2 <- Common.putmany binds rets l;
+          post w m l2 )
+      (* TODO: allow the callee to do i/o
+        guarantees G w m lf cf (fun w m lf =>
+          bind_ex rets <- wp_list_map (fun k v => Map.get lf k = Some v) retns;
+           bind_ex_Some l <- Common.putmany binds rets l;
+           post w m l)
+         *)
       | SIO binds action arges =>
         bind_ex args <- wp_list_map (wp_expr l) arges;
-          False (* TODO *)
-      | SSkip => post m l
+          G w m action args /\
+          forall w' m' rets, external_step w (m, action, args) (m', rets) w' ->
+            bind_ex_Some l' <- Common.putmany binds rets l;
+            post w' m' l'
+      | SSkip => post w m l
+      end.
+
+    Fixpoint wpc (w: world) (m: mem) (l: varmap) (c: cont) (post : world -> mem -> varmap -> Prop) {struct c} : Prop :=
+      match c with
+      | CSkip => post w m l
+      | CSeq c1 c2 => wpc w m l c1 (fun w m l => wp w m l c2 post)
+      | CStack lf cf binds retns =>
+        False
+      (* TODO: allow the callee to do i/o
+        cont_guarantees G w m lf cf (fun w m lf =>
+          bind_ex rets <- wp_list_map (fun k v => Map.get lf k = Some v) retns;
+          bind_ex_Some l <- Common.putmany binds rets l;
+          post w m l)
+       *)
+      end.
+
+    Definition invariant (post: world -> mem -> varmap -> Prop) '(w, r) :=
+      match r with
+      | done m l => post w m l
+      | blocked m action args b
+        => G w m action args /\
+           forall w' m' rets, external_step w (m, action, args) (m', rets) w' ->
+             bind_ex_Some l'c' <- b rets;
+             forall l' c', l'c' = (l', c') ->
+             wpc w' m' l' c' post
       end.
 
     Ltac t :=
@@ -458,10 +514,15 @@ Module wp.
       | _ => progress cbn beta iota
       | _ => unshelve erewrite wp_expr_sound by eassumption; []
       | _ => unshelve erewrite (wp_list_map_sound (wp_expr_sound _)) by eassumption; []
+      | _ => unshelve erewrite (wp_list_map_sound (f:=(fun (k : varname) => Map.get _ k)) _) by eauto; [solve[eauto]|]
+      | H: _ = Some _ |- _ => rewrite H
       | _ => unshelve erewrite (ltac:(eassumption): _ = Some _); []
       | _ => unshelve erewrite (ltac:(eassumption): _ = true); []
       | _ => unshelve erewrite (ltac:(eassumption): _ = false); []
+      | _ => progress (erewrite (interp_stmt_monotonic) by (eassumption || lia))
+      | _ => progress (erewrite (interp_cont_monotonic) by (eassumption || lia))
       | H: exec_stmt _ _ _ _ |- _ => destruct H
+      | H: exec_cont _ _ _ _ |- _ => destruct H
       | H: forall a b c pf, _ |- _ => specialize (H _ _ _ ltac:(eauto using conj, eq_refl with nocore))
       | H: forall a b pf, _ |- _ => specialize (H _ _ ltac:(eauto using conj, eq_refl with nocore))
       | Ht: ?x = true -> _, Hf: ?x = false -> _ |- _ => let Hx := fresh "H" "x" in
@@ -471,25 +532,52 @@ Module wp.
 
     Ltac s :=
       repeat match goal with
-      | |- exists _, _ /\ _ => eexists; split
+      | |- _ /\ _ => split; [solve[repeat (t;s)]|]
+      | |- exists _, _ /\ _ => eexists; split; [solve[repeat (t;s)]|]
       | |- exec_stmt _ _ _ _ => eexists (S _); cbn [interp_stmt exec_stmt]
+      | |- exec_cont _ _ _ _ => eexists (S _); cbn [interp_cont exec_cont]
       | _ => solve[typeclasses eauto with core]
-      | _ => cbv [invariant]
+      | _ => progress (cbv [invariant BWait BSeq BStack] in *)
+      | _ => progress (cbn [wpc] in *)
       end.
-
-    Lemma wp_sound_until_blocked m l c post : wp m l c post ->  exists r, exec_stmt m l c r /\ invariant post r.
+      
+    Lemma wp_weaken w m l c (post post':_->_->_->Prop) (Hwp: wp w m l c post)
+          (Himpl:forall w m l, post w m l -> post' w m l) : wp w m l c post'.
     Proof.
-      revert post; revert l; revert m; induction c; cbn [wp]; try solve [repeat (t || s)].
+      revert dependent post'; revert dependent post; revert l; revert m; revert w.
+      induction c; cbn [wp]; dsi; eauto 8.
+      { eexists _, _, _.
+        split. eassumption.
+        split. { eexists. eassumption. }
+        intros.
+        specialize (H1 _ _ _ _ ltac:(eauto)); dsi.
+        eauto 20. (* FIXME: should be solved by repeat (t; s). *) }
+      { eapply IHc1. eassumption. intros.
+        eapply IHc2.  match goal with H:_ |- _ => eapply H end. eauto. }
+      { repeat (t; s). eexists. split. eexists. typeclasses eauto with core. repeat (t; s). }
+      { repeat (t; s). }
+    Qed.
+
+    Lemma wpc_weaken w m l c (post post':_->_->_->Prop) (Hwpc: wpc w m l c post) (Himpl:forall w m l, post w m l -> post' w m l)
+      : wpc w m l c post'.
+    Proof.
+      revert dependent post'; revert dependent post; revert l; revert m; revert w.
+      induction c; cbn [wpc]; dsi; eauto using wp_weaken.
+      { eapply IHc. eassumption. dsi.
+        eapply wp_weaken. match goal with H:_ |- _ => eapply H end. eauto. }
+    Qed.
+
+    Lemma preservation w m l c post : wp w m l c post ->  exists r, exec_stmt m l c r /\ invariant post (w, r).
+    Proof.
+      revert post; revert l; revert m; induction c; cbn [wp]; try solve [repeat (t; s)].
 
       { (* While *)
         intros ? ? ? [V [R [I [wfR [[v HI] Hbody]]]]]. dsi.
         revert dependent l; revert dependent m; revert v.
         refine (Coq.Init.Wf.well_founded_ind wfR _ _); intros v IHwf m l HI.
-        specialize (Hbody _ _ _ ltac:(eauto)).
-        destruct Hbody as [b [Hcond [Htrue Hfalse]]].
+        destruct (Hbody _ _ _ _ ltac:(eauto)) as [b [Hcond [Htrue Hfalse]]].
         destruct (mword_nonzero b) eqn:Hbb; [specialize (Htrue eq_refl)|specialize(Hfalse eq_refl)]. (* loop continues? *)
-        { dsi.
-          specialize (IHc m l _ ltac:(eauto)).
+        { specialize (IHc m l _ ltac:(eauto)).
           destruct IHc as [r [[f Hexec] Hr]].
           destruct r as [m' l'|]. (* did this iteration get done or blocked? *)
           { cbn [invariant] in Hr. destruct Hr as [v' [HI' Hv']].
@@ -498,50 +586,121 @@ Module wp.
             eexists. split. {
               eexists (S (Nat.max f f')).
               cbn [interp_stmt].
-              unshelve erewrite wp_expr_sound by eassumption; [].
-              unshelve erewrite (ltac:(eassumption): _ = true); [].
-              erewrite (interp_stmt_monotonic) by (eassumption || lia).
-              cbn iota beta.
-              erewrite (interp_stmt_monotonic) by (eassumption || lia).
-              eauto. }
+              repeat (t; s). }
             { eauto. } }
-          { inversion Hr. } }
-        { eexists. split. {
-            eexists (S O).
-            cbn [interp_stmt].
-            unshelve erewrite wp_expr_sound by eassumption; [].
-            unshelve erewrite (ltac:(eassumption): _ = false); [].
-            eauto. }
-          { cbv [invariant].  eauto. } } }
+          { repeat (t; s).
+            eapply wpc_weaken; [eassumption|].
+            cbn [wp]. dsi. exists V, R, I. repeat (t; s). } }
+        { repeat (t;s). } }
 
-              
-      { repeat (t; s).
-        { (* SSeq c1 done *)
-          instantiate (1 := Nat.max x0 x1).
-          erewrite (interp_stmt_monotonic) by (eassumption || lia).
-          cbn beta iota.
-          erewrite (interp_stmt_monotonic) by (eassumption || lia).
-          eauto. }
-        { (* SSeq c1 blocked *)
-          inversion H3. }
-        { (* SSeq c2 blocked *)
-          inversion H1. } }
+      { (* SSeq *)
+        repeat (t; s).
+        { eexists. split. exists (S (Nat.max x0 x1)). cbn [interp_stmt]. all: repeat (t; s). }
+        { eexists. split. exists (S (Nat.max x0 x1)). cbn [interp_stmt]. all: repeat (t; s). } }
 
-      { repeat (t; s).
-        { (* SCall done *)
-          unshelve erewrite (ltac:(eassumption): lookupFunction _ = Some _).
-          (* FAILS: unshelve erewrite (ltac:(eassumption): Common.putmany _ _ _ = Some _). *)
-          rewrite H1.
-          unshelve erewrite (ltac:(eassumption): interp_stmt _ _ _ _ = Some _).
-          unshelve erewrite (wp_list_map_sound _ _ _ H4); [solve[eauto]|].
-          unshelve erewrite (ltac:(eassumption): Common.putmany _ _ _ = Some _).
-          eauto. }
-        { (* SCall blocked *)
-          cbv iota beta.
-          eauto. } }
+      { (* SCall *)
+        repeat (t; s).
+        eexists. split. reflexivity.
+        dsi. cbn. eauto. }
 
       Unshelve. all: exact Datatypes.O. (* putting 42 here makes qed not finish :( *)
     Qed.
+
+    Lemma cpreservation w m l c post : wpc w m l c post ->  exists r, exec_cont m l c r /\ invariant post (w, r).
+    Proof.
+      revert post; revert l; revert m; induction c; cbn [wpc]; try solve [repeat (t; s)].
+      { (* CSeq *)
+        repeat (t; s); pose proof (preservation _ _ _ _ _ H1); repeat (t; s).
+        { eexists. split. exists (S (Nat.max x0 x1)). cbn [interp_cont]. all: repeat (t; s). }
+        { eexists. split. exists (S (Nat.max x0 x1)). cbn [interp_cont]. all: repeat (t; s). } }
+
+      Unshelve. all: exact Datatypes.O.
+    Qed.
+  End wp.
+
+  Module pure.
+    Section pure.
+      Context {p : ImpParameters} {E : ImpFunctions p}.
+      Definition ht := fun (P:mem -> varmap -> Prop) c (Q:mem -> varmap -> Prop)
+                       => (forall W G w m l, P m l -> wp (W:=W) G w m l c (fun w1 m l => w1 = w /\ Q m l)).
+
+      Definition soundness P c Q (Hht:ht P c Q) m l (HP:P m l)
+        : exists m' l', exec_stmt m l c (done m' l') /\ Q m' l'.
+      Proof.
+        cbv [ht] in *.
+        specialize (Hht {| world := unit; external_step := (fun _ _ _ _ => True) |} (fun _ _ _ _ => False) tt m l HP).
+        eapply wp.preservation in Hht.
+        destruct Hht as [r Hht].
+        cbv [invariant] in *.
+        destruct r; dsi; [].
+        eauto.
+      Qed.
+    End pure.
+  End pure.
+
+  Module Notations.
+    (*
+    Notation "{{ P }} c [ G ] {{ Q }}" := (ht G P c Q)
+      (at level 90, c at next level,
+      format "{{ P }} '//'   c '//' [ G ] '//' {{ Q }}").
+    *)
+    Notation "[ P ] c [ Q ]" := (pure.ht P c Q)
+      (at level 90, c at next level,
+      format "[ P ] '//'   c '//' [ Q ]").
+  End Notations.
+
+  Module _test.
+  Section _test_pure.
+    Import Notations.
+    Context {p : ImpParameters} {E : ImpFunctions p}.
+    Goal forall P, [P] (SSeq (SSeq SSkip SSkip) (SSeq SSkip (SSeq SSkip SSkip))) [P].
+    Proof.
+      intros.
+      cbv [pure.ht wp].
+      typeclasses eauto with core.
+    Qed.
+
+    (* TODO: missing cases *)
+    Ltac wp1 :=
+      match goal with
+      | |- wp _ _ _ _ (SSet _ _ ) ?P =>
+        let p := fresh in
+        set (p := P);
+        cbn [wp];
+        subst p
+      | |- wp _ _ _ _ (SIf _ ?c1 ?c2) ?P =>
+        let p := fresh in let s1 := fresh in let s2 := fresh in
+        set (p := P);      set (s1 := c2);   set (s2 := c2);
+        cbn [wp];
+        subst p;          subst s1;          subst s2
+      | |- wp _ _ _ _ (SSeq ?c1 ?c2) ?P =>
+        let p := fresh in let s1 := fresh in let s2 := fresh in
+        set (p := P);      set (s1 := c2);   set (s2 := c2);
+        cbn [wp];
+        subst p;          subst s1;          subst s2
+      end; cbv [wp_expr wp_option_all wp_list_map].
+
+    Context (_1 : mword) (one_nonzero : mword_nonzero _1 = true).
+    Goal forall a,
+        [fun _ _ => True]
+          SSeq (SSet a (ELit _1))
+          (SIf (EVar a) (
+            SSkip
+          ) (
+            SWhile (ELit _1) SSkip)
+          )
+        [fun m l => Map.get l a = Some _1].
+    Proof.
+      cbv [pure.ht]; intros.
+      repeat wp1.
+      eexists. split. eauto. intros.
+      repeat wp1.
+      eexists. split. eexists. split. intros. subst. eauto using Map.get_put_same. eauto.
+      split.
+      { intros. split. eauto. subst. rewrite Map.get_put_same. eauto. }
+      { intros. exfalso. congruence. }
+    Qed.
+  End _test_pure.
 
 Require Import Coq.Program.Equality.
 Module ht.
@@ -951,7 +1110,7 @@ Module ht.
         : exists m' l', exec_stmt m l c (done m' l') /\ Q m' l'.
       Proof.
         destruct (ht.preservation _ _ _ _ (Hht {| world := unit; external_step := (fun _ _ _ _ => True) |} (fun _ _ => False) tt) tt m l (conj eq_refl HP)) as [[] [? inv]]; dsi;
-          cbn [invariant external_step] in inv; dsi; [ eauto | contradiction ].
+          cbn [invariant external_step] in inv; dsi; eauto.
       Qed.
     End pure.
   End pure.
@@ -994,14 +1153,14 @@ Module ht.
         { eapply while' with (I := fun _ _ _ _ => False).
           { eapply PeanoNat.Nat.lt_wf_0. }
           { cbn; dsi. rewrite Map.get_put_same in H0; dsi. congruence. }
-          { cbn; dsi. eauto 20 using Map.get_put_same. }
+          { cbn; dsi. }
           intros.
           eapply weaken with (P := fun _ _ _ => False).
           econstructor.
           { intros; dsi; contradiction. }
           { intros; dsi; contradiction. } } }
       { dsi; cbn in *.
-        destruct H; dsi; [|contradiction].
+        destruct H; dsi; [].
         eauto 20 using Map.get_put_same. }
     Qed.
   End _test_pure.
