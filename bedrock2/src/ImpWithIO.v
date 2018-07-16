@@ -246,6 +246,7 @@ Goal forall x y : nat, False. intros.
 Ltac dsi_step :=
   match goal with
   | _ => progress intros
+  | x:?T |- _ => assert_succeeds (let h := head_of T in is_ind h); solve [destruct x]
   | x:?T |- _ =>
     assert_succeeds (let h := head_of T in is_ind h);
     let __ := induction_principle_no_indices T in
@@ -260,154 +261,18 @@ Ltac dsi_step :=
   end.
 Ltac dsi := repeat dsi_step.
 
-
-(*
-Module inversion.
-  Section inversion.
+Module wp.
+  Section wp.
     Goal True. let cls := constr:(ImpParameters) in match constr:(Set) with _ => (let none := constr:(_:cls) in idtac); fail 99 "DUPLICATE INSTANCE" | _ => idtac end. Abort.
     Context {p : ImpParameters} {E : ImpFunctions p} {W : ImpWorld p} (G : world -> mem -> Prop).
-    
-    Lemma invert_interp_stmt f m l s r :
-      (interp_stmt f m l s = Some r) <->
-      (exists f', f = S f' /\ (
-      (
-        exists x a, s = SLoad x a /\
-        exists a0 , interp_expr l a = Some a0 /\
-        exists v , load a0 m = Some v /\
-        Some (m, inr (Map.put l x v)) = Some r
-      ) \/ (
-        exists a v, s = SStore a v /\
-        exists a0 , interp_expr l a = Some a0 /\
-        exists v0 , interp_expr l v = Some v0 /\
-        exists m0 , store a0 v0 m = Some m0 /\
-        Some (m0, inr l) = Some r
-      ) \/ (
-        exists x e, s = SSet x e /\
-        exists v , interp_expr l e = Some v /\
-        Some (m, inr (Map.put l x v)) = Some r
-      ) \/ (
-        exists cond bThen bElse, s = SIf cond bThen bElse /\
-        exists v , interp_expr l cond = Some v /\
-        interp_stmt f' m l (if mword_nonzero v then bThen else bElse) = Some r
-      ) \/ (
-        exists cond body, s = SWhile cond body /\
-        exists v , interp_expr l cond = Some v /\ (
-        (
-           mword_nonzero v = true /\
-           exists m0 r0, interp_stmt f' m l body = Some (m0, r0) /\ (
-           (
-             exists action args b, r0 = inl (action, args, b) /\
-             Some (m0, inl (action, args, BSeq b (SWhile cond body))) = Some r)
-           ) \/ (
-             exists l0, r0 = inr l0 /\
-             interp_stmt f' m0 l0 (SWhile cond body) = Some r
-           )
-        ) \/ (
-          mword_nonzero v = false /\
-          Some (m, inr l) = Some r
-        ) )
-      ) \/ (
-        exists s1 s2, s = SSeq s1 s2 /\
-        exists m0 r0, interp_stmt f' m l s1 = Some (m0, r0) /\ (
-        (
-          exists action args b, r0 = inl (action, args, b) /\
-          Some (m0, inl (action, args, BSeq b s2)) = Some r
-        ) \/ (
-          exists l0, r0 = inr l0 /\
-          interp_stmt f' m0 l0 s2 = Some r
-        ) )
-    ) \/ (
-        s = SSkip
-        /\ Some (m, inr l) = Some r
-    ) \/ (
-        exists binds fname args, s = SCall binds fname args /\
-        exists params rets fbody, lookupFunction fname = Some (params, rets, fbody) /\
-        exists argvs, Common.option_all (List.map (interp_expr l) args) = Some argvs /\
-        exists l0, Common.putmany params argvs Map.empty_map = Some l0 /\
-        exists m' r0, interp_stmt f' m l0 fbody = Some (m', r0) /\ (
-        (
-          exists action args0 b, r0 = inl (action, args0, b) /\
-          Some (m', inl (action, args0, BStack l b binds rets)) = Some r
-        ) \/ (
-          exists l1, inr l1 = r0 /\
-            exists retvs, Common.option_all (List.map (Map.get l1) rets) = Some retvs /\
-            exists l', Common.putmany binds retvs l = Some l' /\
-            Some (m', inr l') = Some r
-        ) )
-    ) \/ (
-        exists binds action args, s = SIO binds action args /\
-        exists argvs, Common.option_all (List.map (interp_expr l) args) = Some argvs /\
-        Some (m, inl (action, argvs, BWait l binds)) = Some r
-    ) ) ).
-  Proof.
-    destruct f; cbn [interp_stmt].
-    { split; intros; dsi. }
-    destruct s; cbn [interp_stmt]; repeat setoid_rewrite invert_bind_Some.
-    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
-    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
-    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
-    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
-    { split; dsi.
-      { destruct (mword_nonzero x) eqn:?; dsi.
-        destruct (interp_stmt f m l s) as [[?[[[? ?]?]|?]]|] eqn:?;
-          solve [intuition (dsi; eauto 50)].
-        solve [intuition (dsi; eauto 50)]. }
-      {
-        intuition dsi.
-        eexists. eexists. eauto.
-        destruct H1 as [[Hb HC]|[Hb HC]]; rewrite Hb; dsi; [|solve[eauto]].
-        destruct H as [[HC ?] ?|[? [HC ?]]]; dsi; rewrite ?HC; eauto.
-        rewrite HC.
-        rewrite H. eauto.
 
-        try solve [intuition (dsi; eauto 50)]. }
-    { split; dsi; try solve [intuition (dsi; eauto 50)]. }
-    *)
-        
-
-
-Require Import Coq.Program.Equality.
-Module ht.
-  Section HoareLogic.
-    Goal True. let cls := constr:(ImpParameters) in match constr:(Set) with _ => (let none := constr:(_:cls) in idtac); fail 99 "DUPLICATE INSTANCE" | _ => idtac end. Abort.
-    Context {p : ImpParameters} {E : ImpFunctions p} {W : ImpWorld p} (G : world -> mem -> Prop).
-    (* TODO: allow G to guarantee stuff about arguments of external calls *)
-
-    (* TODO: move *)
-    Lemma invert_putmany_cons_l (x:varname) xs' (ys:list mword) m r
-          (H:Common.putmany (x::xs') ys m = Some r)
-      : exists y ys', Common.putmany (x::xs') (y::ys') m = Some r.
-    Proof. destruct ys; cbn in H; dsi.
-           cbn.
-           (* TODO: report failure: setoid_rewrite H. *)
-           eexists.
-           eexists.
-           rewrite H.
-           reflexivity.
-    Qed.
-
+    Section FuelLemmas. (* TODO: move *)
+      
+    (* TODO move *)
     Lemma bind_Some_Some_iff {A B} (oa:option A) (f:A->option B) b :
       (bind_Some x <- oa; f x) = Some b <->
       (exists a, oa = Some a /\ f a = Some b).
     Proof. split; destruct oa eqn:?; dsi; eauto. Qed.
-
-    Lemma step_alt_iff s s' : step s s' <-> step_alt s s'.
-    Proof. split; inversion 1; dsi; econstructor; eauto 25. Qed.
-
-    (* TODO: unused *)
-    Lemma invert_interp_expr l e r :
-      (interp_expr l e = Some r) <->
-      ( (exists v, e = ELit v /\ Some v = Some r) \/
-        (exists x, e = EVar x /\ Map.get l x = Some r) \/
-        (exists op e1 e2, e = EOp op e1 e2 /\
-                          exists r1, interp_expr l e1 = Some r1 /\
-                                     exists r2, interp_expr l e2 = Some r2 /\
-                                                Some (interp_binop op r1 r2) = Some r) ).
-    Proof.
-      destruct e;
-        cbn [interp_expr]; repeat setoid_rewrite bind_Some_Some_iff;
-          intuition (dsi; eauto 20).
-    Qed.
 
     Lemma interp_stmt_monotonic {f1 m l c r} (Hinterp:interp_stmt f1 m l c = Some r) f2 (H:f1 <= f2)
       : interp_stmt f2 m l c = Some r.
@@ -456,6 +321,250 @@ Module ht.
       { pose proof interp_cont_monotonic H1' f2 ltac:(lia); congruence. }
       { pose proof interp_cont_monotonic H2' f1 ltac:(lia); congruence. }
     Qed.
+    End FuelLemmas.
+    
+    (* it is important the the assertion [a] is parsed before shadowing [x] *)
+    Local Notation "'bind_ex' x <- a ; f" :=
+      (subst! a for a' in exists x, a' x /\ f)
+        (only parsing, right associativity, at level 60, f at level 200).
+
+    Local Notation "'bind_ex_Some' x <- a ; f" :=
+      (subst! a for a' in exists x, a' = Some x /\ f)
+        (only parsing, right associativity, at level 60, f at level 200).
+
+    Local Notation "'bind_eq' x <- a ; f" :=
+      (subst! a for a' in forall x, x = a' -> f)
+        (only parsing, right associativity, at level 60, f at level 200).
+
+    (* the postcondition could be [mword -> Prop], the argument [v] encodes [_ = v] *)
+    (* the return type could be [varmap -> Prop], the argument [l] is bound directly instead *)
+    Fixpoint wp_expr (l:varmap) (e:expr) (v : mword) : Prop :=
+      match e with
+      | ELit v' => v' = v
+      | EVar x => bind_ex_Some v' <- Map.get l x; v' = v
+      | EOp op e1 e2 =>
+        bind_ex_Some v1 <- interp_expr l e1;
+          bind_ex_Some v2 <- interp_expr l e2;
+          interp_binop op v1 v2 = v
+      end.
+
+    Lemma wp_expr_sound l e v : wp_expr l e v -> interp_expr l e = Some v.
+    Proof.
+      revert v; induction e; cbn [interp_expr]; intros ? H; inversion H; dsi; eauto; [].
+      match goal with H0:_, H1:_, H2:_ |- _ =>  rewrite H0, H1, H2; reflexivity end.
+    Qed.
+
+    Lemma wp_expr_complete l e v : interp_expr l e = Some v -> wp_expr l e v.
+    Proof.
+      revert v; induction e; cbn [wp_expr interp_expr]; intros ? H; inversion H; dsi; eauto; [].
+      match goal with H: context[bind_Some _ <- ?x ; _] |- _ => destruct x eqn:?; dsi; [] end.
+      match goal with H: context[bind_Some _ <- ?x ; _] |- _ => destruct x eqn:?; dsi; [] end.
+      eauto.
+    Qed.
+
+    (* the postcondition could be [list T -> Prop], the argument [xs] encodes [_ = xs] *)
+    (* the return type could be [list T -> Prop], the arguments [xs] is bound directly instead. *)
+    (* this definition relies on [oxs] having computational list structure *)
+    Fixpoint wp_option_all {T} (oxs : list (option T)) (xs:list T) {struct oxs} : Prop :=
+      match oxs with
+      | nil => xs = nil
+      | cons ox oxs' =>
+        bind_ex_Some x <- ox;
+          exists xs', xs = cons x xs' /\
+                      wp_option_all oxs' xs'
+      end.
+
+    Lemma wp_option_all_sound {T} oxs xs : @wp_option_all T oxs xs -> Common.option_all oxs = Some xs.
+    Proof.
+      revert xs; induction oxs; cbn [wp_option_all Common.option_all]; dsi; subst; eauto; [].
+      erewrite IHoxs; eauto.
+    Qed.
+
+    Fixpoint wp_list_map {A B} (wp1: A -> B -> Prop) (xs : list A) (ys : list B) {struct xs} : Prop :=
+      match xs with
+      | nil => ys = nil
+      | cons x xs' =>
+        bind_ex y <- wp1 x;
+          exists ys', ys = cons y ys' /\
+                      wp_list_map wp1 xs' ys'
+      end.
+
+    Lemma wp_list_map_sound {A B} {f} {wp1:A->B->Prop} (Hwp1 : forall x y, wp1 x y -> f x = Some y) xs ys : wp_list_map wp1 xs ys -> Common.option_all (List.map f xs) = Some ys.
+    Proof.
+      revert ys; induction xs; cbn [wp_list_map Common.option_all List.map]; dsi; subst; eauto; [].
+      rewrite (Hwp1 _ _ ltac:(eauto): _ = Some _).
+      rewrite (IHxs _ (ltac:(eauto))).
+      eauto.
+    Qed.
+
+    (* TODO: wp_putmany *)
+    
+    Definition invariant post r :=
+      match r with
+      | done m l => post m l
+      | blocked m action args bc
+        => False (* TODO *)
+      end.
+
+    (* the return type could be [mem -> varmap -> Prop], the arguments [m] and [l] are bound directly instead *)
+    Fixpoint wp (m: mem) (l: varmap) (c: stmt) (post : mem -> varmap -> Prop) {struct c} : Prop :=
+      match c with
+      | SLoad x ea =>
+        bind_ex a <- wp_expr l ea;
+          bind_ex_Some v <- load a m;
+          bind_eq l <- Map.put l x v;
+          post m l
+      | SStore ea ev =>
+          bind_ex a <- wp_expr l ea;
+          bind_ex v <- wp_expr l ev;
+          bind_ex_Some m <- store a v m;
+          post m l
+      | SSet x ev =>
+          bind_ex v <- wp_expr l ev;
+          bind_eq l <- Map.put l x v;
+          post m l
+      | SIf br ct cf =>
+          bind_ex v <- wp_expr l br; (* path-blasting... *)
+            (mword_nonzero v = true  -> wp m l ct post) /\
+            (mword_nonzero v = false -> wp m l cf post)
+      | SWhile e c =>
+        exists (V:Type) (R:V->V->Prop) (I:V->mem->varmap->Prop), 
+               Coq.Init.Wf.well_founded R /\
+               (exists v, I v m l) /\
+               (forall v m l, I v m l ->
+                  exists b, wp_expr l e b /\
+                  (mword_nonzero b = true -> wp m l c (fun m l => exists v', I v' m l /\ R v' v)) /\
+                  (mword_nonzero b = false -> post m l))
+      | SSeq c1 c2 => wp m l c1 (fun m l => wp m l c2 post)
+      | SCall binds fname arges =>
+        bind_ex args <- wp_list_map (wp_expr l) arges;
+        bind_ex_Some finfo <- lookupFunction fname;
+        forall params rets cf, finfo = (params, rets, cf) ->
+        bind_ex_Some lf <- Common.putmany params args Map.empty_map;
+        bind_ex r <- exec_stmt m lf cf;
+        ( exists m lf, r = done m lf /\
+          bind_ex retvs <- wp_list_map (fun k v => Map.get lf k = Some v) rets;
+          bind_ex_Some l2 <- Common.putmany binds retvs l;
+          post m l2 )
+      | SIO binds action arges =>
+        bind_ex args <- wp_list_map (wp_expr l) arges;
+          False (* TODO *)
+      | SSkip => post m l
+      end.
+
+    Ltac t :=
+      repeat match goal with
+      | _ => progress dsi
+      | _ => progress cbn beta iota
+      | _ => unshelve erewrite wp_expr_sound by eassumption; []
+      | _ => unshelve erewrite (wp_list_map_sound (wp_expr_sound _)) by eassumption; []
+      | _ => unshelve erewrite (ltac:(eassumption): _ = Some _); []
+      | _ => unshelve erewrite (ltac:(eassumption): _ = true); []
+      | _ => unshelve erewrite (ltac:(eassumption): _ = false); []
+      | H: exec_stmt _ _ _ _ |- _ => destruct H
+      | H: forall a b c pf, _ |- _ => specialize (H _ _ _ ltac:(eauto using conj, eq_refl with nocore))
+      | H: forall a b pf, _ |- _ => specialize (H _ _ ltac:(eauto using conj, eq_refl with nocore))
+      | Ht: ?x = true -> _, Hf: ?x = false -> _ |- _ => let Hx := fresh "H" "x" in
+        destruct x eqn:Hx; [ specialize (Ht eq_refl) | specialize (Hf eq_refl) ]
+      | r:computation_result |- _ => destruct r
+      end.
+
+    Ltac s :=
+      repeat match goal with
+      | |- exists _, _ /\ _ => eexists; split
+      | |- exec_stmt _ _ _ _ => eexists (S _); cbn [interp_stmt exec_stmt]
+      | _ => solve[typeclasses eauto with core]
+      | _ => cbv [invariant]
+      end.
+
+    Lemma wp_sound_until_blocked m l c post : wp m l c post ->  exists r, exec_stmt m l c r /\ invariant post r.
+    Proof.
+      revert post; revert l; revert m; induction c; cbn [wp]; try solve [repeat (t || s)].
+
+      { (* While *)
+        intros ? ? ? [V [R [I [wfR [[v HI] Hbody]]]]]. dsi.
+        revert dependent l; revert dependent m; revert v.
+        refine (Coq.Init.Wf.well_founded_ind wfR _ _); intros v IHwf m l HI.
+        specialize (Hbody _ _ _ ltac:(eauto)).
+        destruct Hbody as [b [Hcond [Htrue Hfalse]]].
+        destruct (mword_nonzero b) eqn:Hbb; [specialize (Htrue eq_refl)|specialize(Hfalse eq_refl)]. (* loop continues? *)
+        { dsi.
+          specialize (IHc m l _ ltac:(eauto)).
+          destruct IHc as [r [[f Hexec] Hr]].
+          destruct r as [m' l'|]. (* did this iteration get done or blocked? *)
+          { cbn [invariant] in Hr. destruct Hr as [v' [HI' Hv']].
+            specialize (IHwf _ ltac:(eauto) _ _ ltac:(eauto)).
+            destruct IHwf as [rr [[f' ?] ?]].
+            eexists. split. {
+              eexists (S (Nat.max f f')).
+              cbn [interp_stmt].
+              unshelve erewrite wp_expr_sound by eassumption; [].
+              unshelve erewrite (ltac:(eassumption): _ = true); [].
+              erewrite (interp_stmt_monotonic) by (eassumption || lia).
+              cbn iota beta.
+              erewrite (interp_stmt_monotonic) by (eassumption || lia).
+              eauto. }
+            { eauto. } }
+          { inversion Hr. } }
+        { eexists. split. {
+            eexists (S O).
+            cbn [interp_stmt].
+            unshelve erewrite wp_expr_sound by eassumption; [].
+            unshelve erewrite (ltac:(eassumption): _ = false); [].
+            eauto. }
+          { cbv [invariant].  eauto. } } }
+
+              
+      { repeat (t; s).
+        { (* SSeq c1 done *)
+          instantiate (1 := Nat.max x0 x1).
+          erewrite (interp_stmt_monotonic) by (eassumption || lia).
+          cbn beta iota.
+          erewrite (interp_stmt_monotonic) by (eassumption || lia).
+          eauto. }
+        { (* SSeq c1 blocked *)
+          inversion H3. }
+        { (* SSeq c2 blocked *)
+          inversion H1. } }
+
+      { repeat (t; s).
+        { (* SCall done *)
+          unshelve erewrite (ltac:(eassumption): lookupFunction _ = Some _).
+          (* FAILS: unshelve erewrite (ltac:(eassumption): Common.putmany _ _ _ = Some _). *)
+          rewrite H1.
+          unshelve erewrite (ltac:(eassumption): interp_stmt _ _ _ _ = Some _).
+          unshelve erewrite (wp_list_map_sound _ _ _ H4); [solve[eauto]|].
+          unshelve erewrite (ltac:(eassumption): Common.putmany _ _ _ = Some _).
+          eauto. }
+        { (* SCall blocked *)
+          cbv iota beta.
+          eauto. } }
+
+      Unshelve. all: exact Datatypes.O. (* putting 42 here makes qed not finish :( *)
+    Qed.
+
+Require Import Coq.Program.Equality.
+Module ht.
+  Section HoareLogic.
+    Goal True. let cls := constr:(ImpParameters) in match constr:(Set) with _ => (let none := constr:(_:cls) in idtac); fail 99 "DUPLICATE INSTANCE" | _ => idtac end. Abort.
+    Context {p : ImpParameters} {E : ImpFunctions p} {W : ImpWorld p} (G : world -> mem -> Prop).
+    (* TODO: allow G to guarantee stuff about arguments of external calls *)
+
+    (* TODO: move *)
+    Lemma invert_putmany_cons_l (x:varname) xs' (ys:list mword) m r
+          (H:Common.putmany (x::xs') ys m = Some r)
+      : exists y ys', Common.putmany (x::xs') (y::ys') m = Some r.
+    Proof. destruct ys; cbn in H; dsi.
+           cbn.
+           (* TODO: report failure: setoid_rewrite H. *)
+           eexists.
+           eexists.
+           rewrite H.
+           reflexivity.
+    Qed.
+
+    Lemma step_alt_iff s s' : step s s' <-> step_alt s s'.
+    Proof. split; inversion 1; dsi; econstructor; eauto 25. Qed.
 
     Generalizable All Variables.
     Lemma exec_SSeq_1 `(H:exec_stmt m l c1 (blocked m0 a l0 b)) c2
