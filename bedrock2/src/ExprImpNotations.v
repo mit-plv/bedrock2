@@ -5,16 +5,19 @@ Require Import compiler.NameWithEq.
 Require Import compiler.Op.
 Require Import riscv.util.BitWidth32.
 Require Import compiler.ZName.
+Require riscv.Utility.
+
 
 Open Scope Z_scope.
 
 
 Definition var: Set := (@name ZName).
 
-Definition Const(c: Z): expr := ELit (ZToWord _ c).
+Definition Const{mword: Set}{MW: Utility.MachineWidth mword}(c: Z): expr :=
+  ELit (Utility.ZToReg c).
 Coercion Const: Z >-> expr.
 
-Definition Var(i: var): expr := EVar i.
+Definition Var{mword: Set}(i: var): expr (mword := mword) := EVar i.
 Coercion Var: var >-> expr.
 
 

@@ -5,10 +5,13 @@ Require Import compiler.NameWithEq.
 Require Import riscv.util.BitWidths.
 Require Import Coq.Lists.List.
 Require Import compiler.util.Common.
+Require Import riscv.Utility.
+
 
 Section RegAlloc.
 
-  Context {Bw: BitWidths}.
+  Context {mword: Set}.
+  Context {MW: MachineWidth mword}.
 
   Context {VarName: NameWithEq}.
   Context {RegisterName: NameWithEq}.
@@ -31,7 +34,7 @@ Section RegAlloc.
   Notation registers := (set register).
   *)
 
-  Local Notation stmt := (@stmt Bw VarName FuncName).
+  Local Notation stmt := (@stmt mword VarName FuncName).
 
   (* set of variables which is certainly written while executing s *)
   Fixpoint certainly_written(s: stmt): vars :=
@@ -124,7 +127,7 @@ Section RegAlloc.
           | None => dummy_register
           end.
 
-  Definition apply_alloc(m: var -> register): stmt -> @FlatImp.stmt Bw RegisterName FuncName :=
+  Definition apply_alloc(m: var -> register): stmt -> @FlatImp.stmt mword RegisterName FuncName :=
     fix rec(s: stmt) :=
       match s with
       | SLoad x y => SLoad (m x) (m y)
@@ -141,7 +144,7 @@ Section RegAlloc.
 
   Variable available_registers: registers. (* r1..r31 on RISCV *)
 
-  Definition register_allocation(s: stmt): @FlatImp.stmt Bw RegisterName FuncName :=
+  Definition register_allocation(s: stmt): @FlatImp.stmt mword RegisterName FuncName :=
     let '(_, _, m) := regalloc empty_set available_registers empty_map s empty_set in
     apply_alloc (make_total m) s.
 

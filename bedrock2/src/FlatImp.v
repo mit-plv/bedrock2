@@ -1,5 +1,6 @@
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
+Require Import riscv.Utility.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
@@ -9,7 +10,8 @@ Require Import compiler.NameWithEq.
 
 Section FlatImp1.
 
-  Context {Bw: BitWidths}.
+  Context {mword: Set}.
+  Context {MW: MachineWidth mword}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -17,17 +19,17 @@ Section FlatImp1.
   Notation func := (@name FName).
   Existing Instance eq_name_dec.
 
-  Context {stateMap: MapFunctions var (word wXLEN)}.
-  Notation state := (map var (word wXLEN)).
+  Context {stateMap: MapFunctions var mword}.
+  Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
+  Ltac state_calc := state_calc_generic (@name Name) mword.
 
   Inductive stmt: Set :=
     | SLoad(x: var)(a: var): stmt
     | SStore(a: var)(v: var): stmt
-    | SLit(x: var)(v: word wXLEN): stmt
+    | SLit(x: var)(v: mword): stmt
     | SOp(x: var)(op: binop)(y z: var): stmt
     | SSet(x y: var): stmt
     | SIf(cond: var)(bThen bElse: stmt): stmt
@@ -67,12 +69,12 @@ Section FlatImp1.
             Return (put st x v, m)
         | SIf cond bThen bElse =>
             vcond <- get st cond;
-            eval_stmt f st m (if dec (vcond = $0) then bElse else bThen)
+            eval_stmt f st m (if reg_eqb vcond zero then bElse else bThen)
         | SLoop body1 cond body2 =>
             p <- eval_stmt f st m body1;
             let '(st, m) := p in
             vcond <- get st cond;
-            if dec (vcond = $0) then Return (st, m) else
+            if reg_eqb vcond zero then Return (st, m) else
               q <- eval_stmt f st m body2;
               let '(st, m) := q in
               eval_stmt f st m (SLoop body1 cond body2)
@@ -98,6 +100,10 @@ Section FlatImp1.
       intros;
       simpl in *;
       repeat (destruct_one_match_hyp; try discriminate);
+      repeat match goal with
+             | E: _ |- _ => rewrite reg_eqb_true in E
+             | E: _ |- _ => rewrite reg_eqb_false in E
+             end;
       inversionss;
       eauto 16.
 
@@ -139,15 +145,15 @@ Section FlatImp1.
       eval_stmt (S fuel) initialSt initialM (SIf cond bThen bElse) = Some final ->
       exists vcond,
         get initialSt cond = Some vcond /\
-        (vcond <> $0 /\ eval_stmt fuel initialSt initialM bThen = Some final \/
-         vcond =  $0 /\ eval_stmt fuel initialSt initialM bElse = Some final).
+        (vcond <> zero /\ eval_stmt fuel initialSt initialM bThen = Some final \/
+         vcond =  zero /\ eval_stmt fuel initialSt initialM bElse = Some final).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SLoop: forall fuel st1 m1 body1 cond body2 p4,
       eval_stmt (S fuel) st1 m1 (SLoop body1 cond body2) = Some p4 ->
-      eval_stmt fuel st1 m1 body1 = Some p4 /\ get (fst p4) cond = Some $0 \/
+      eval_stmt fuel st1 m1 body1 = Some p4 /\ get (fst p4) cond = Some zero \/
       exists st2 m2 st3 m3 cv, eval_stmt fuel st1 m1 body1 = Some (st2, m2) /\
-                               get st2 cond = Some cv /\ cv <> $0 /\
+                               get st2 cond = Some cv /\ cv <> zero /\
                                eval_stmt fuel st2 m2 body2 = Some (st3, m3) /\
                                eval_stmt fuel st3 m3 (SLoop body1 cond body2) = Some p4.
     Proof. inversion_lemma. Qed.
@@ -265,7 +271,8 @@ Ltac invert_eval_stmt :=
 
 Section FlatImp2.
 
-  Context {Bw: BitWidths}.
+  Context {mword: Set}.
+  Context {MW: MachineWidth mword}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -273,15 +280,15 @@ Section FlatImp2.
   Context {FName : NameWithEq}.
   Notation func := (@name FName).
 
-  Context {stateMap: MapFunctions var (word wXLEN)}.
-  Notation state := (map var (word wXLEN)).
+  Context {stateMap: MapFunctions var mword}.
+  Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Context {funcMap: MapFunctions func (list var * list var * @stmt Bw Name FName)}.
+  Context {funcMap: MapFunctions func (list var * list var * @stmt mword Name FName)}.
   Notation env := (map func (list var * list var * stmt)).
 
-  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
+  Ltac state_calc := state_calc_generic (@name Name) mword.
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 (e: env) initialSt initialM s final,
     fuel1 <= fuel2 ->
@@ -305,6 +312,11 @@ Section FlatImp2.
       end;
       try congruence;
       try simpl_if;
+      rewrite? (proj2 (reg_eqb_true _ _) eq_refl);
+      repeat match goal with
+             | H: _ |- _ => rewrite <- reg_eqb_false in H; rewrite H
+             | H: _ |- _ => rewrite <- reg_eqb_true in H; rewrite H
+             end;
       eauto.
   Qed.
 

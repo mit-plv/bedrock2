@@ -1,9 +1,20 @@
 Require Import bbv.Word.
 Require Import compiler.util.Common.
+Require Import riscv.Utility.
 
 Inductive binop: Set := OPlus | OMinus | OTimes | OEq | OLt | OAnd.
 
-Definition eval_binop{w: nat}(op: binop)(v1 v2: word w): word w :=
+Definition eval_binop{t: Set}{MW: MachineWidth t}(op: binop)(v1 v2: t): t :=
+  match op with
+  | OPlus => add v1 v2
+  | OMinus => sub v1 v2
+  | OTimes => mul v1 v2
+  | OEq => if reg_eqb v1 v2 then one else zero
+  | OLt => if ltu v1 v2 then one else zero
+  | OAnd => and v1 v2
+  end.
+
+Definition eval_binop_word{w: nat}(op: binop)(v1 v2: word w): word w :=
   match op with
   | OPlus => v1 ^+ v2
   | OMinus => v1 ^- v2
@@ -12,7 +23,6 @@ Definition eval_binop{w: nat}(op: binop)(v1 v2: word w): word w :=
   | OLt => if wlt_dec v1 v2 then $1 else $0
   | OAnd => v1 ^& v2
   end.
-
 
 Definition eval_binop_nat(op: binop)(v1 v2: nat): nat :=
   match op with

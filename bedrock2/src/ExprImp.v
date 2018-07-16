@@ -10,10 +10,13 @@ Require Import bbv.DepEqNat.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import compiler.Memory.
+Require Import riscv.Utility.
+
 
 Section ExprImp1.
 
-  Context {Bw: BitWidths}. (* bit width *)
+  Context {mword: Set}.
+  Context {MW: MachineWidth mword}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -21,16 +24,16 @@ Section ExprImp1.
   Context {FName : NameWithEq}.
   Notation func := (@name FName).
 
-  Context {stateMap: MapFunctions var (word wXLEN)}.
-  Notation state := (map var (word wXLEN)).
+  Context {stateMap: MapFunctions var (mword)}.
+  Notation state := (map var (mword)).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
+  Ltac state_calc := state_calc_generic (@name Name) (mword).
   Ltac set_solver := set_solver_generic (@name Name).
 
   Inductive expr: Set :=
-    | ELit(v: word wXLEN): expr
+    | ELit(v: mword): expr
     | EVar(x: var): expr
     | EOp(op: binop)(e1 e2: expr): expr.
 
@@ -44,7 +47,7 @@ Section ExprImp1.
     | SSkip: stmt
     | SCall(binds: list var)(f: func)(args: list expr).
 
-  Fixpoint eval_expr(st: state)(e: expr): option (word wXLEN) :=
+  Fixpoint eval_expr(st: state)(e: expr): option mword :=
     match e with
     | ELit v => Return v
     | EVar x => get st x
@@ -77,10 +80,10 @@ Section ExprImp1.
             Return (put st x v, m)
         | SIf cond bThen bElse =>
             v <- eval_expr st cond;
-            eval_stmt f st m (if weq v $0 then bElse else bThen)
+            eval_stmt f st m (if reg_eqb v zero then bElse else bThen)
         | SWhile cond body =>
             v <- eval_expr st cond;
-            if weq v $0 then Return (st, m) else
+            if reg_eqb v zero then Return (st, m) else
               p <- eval_stmt f st m body;
               let '(st, m) := p in
               eval_stmt f st m (SWhile cond body)
@@ -126,6 +129,10 @@ Section ExprImp1.
       intros;
       simpl in *;
       repeat (destruct_one_match_hyp; try discriminate);
+      repeat match goal with
+             | E: _ |- _ => rewrite reg_eqb_true in E
+             | E: _ |- _ => rewrite reg_eqb_false in E
+             end;
       inversionss;
       eauto 16.
 
@@ -153,17 +160,17 @@ Section ExprImp1.
       eval_stmt (S f) st1 m1 (SIf cond bThen bElse) = Some p2 ->
       exists cv,
         eval_expr st1 cond = Some cv /\ 
-        (cv <> $0 /\ eval_stmt f st1 m1 bThen = Some p2 \/
-         cv = $0  /\ eval_stmt f st1 m1 bElse = Some p2).
+        (cv <> zero /\ eval_stmt f st1 m1 bThen = Some p2 \/
+         cv = zero  /\ eval_stmt f st1 m1 bElse = Some p2).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SWhile: forall st1 m1 p3 f cond body,
       eval_stmt (S f) st1 m1 (SWhile cond body) = Some p3 ->
       exists cv,
         eval_expr st1 cond = Some cv /\
-        (cv <> $0 /\ (exists st2 m2, eval_stmt f st1 m1 body = Some (st2, m2) /\ 
+        (cv <> zero /\ (exists st2 m2, eval_stmt f st1 m1 body = Some (st2, m2) /\ 
                                      eval_stmt f st2 m2 (SWhile cond body) = Some p3) \/
-         cv = $0  /\ p3 = (st1, m1)).
+         cv = zero  /\ p3 = (st1, m1)).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SSeq: forall st1 m1 p3 f s1 s2,
@@ -280,7 +287,8 @@ Ltac invert_eval_stmt :=
 
 Section ExprImp2.
 
-  Context {Bw: BitWidths}. (* bit width *)
+  Context {mword: Set}.
+  Context {MW: MachineWidth mword}.
 
   Context {Name: NameWithEq}.
   Notation var := (@name Name).
@@ -288,15 +296,15 @@ Section ExprImp2.
   Context {FName: NameWithEq}.
   Notation func := (@name FName).
 
-  Context {stateMap: MapFunctions var (word wXLEN)}.
-  Notation state := (map var (word wXLEN)).
+  Context {stateMap: MapFunctions var mword}.
+  Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Context {funcMap: MapFunctions func (list var * list var * @stmt Bw Name FName)}.
+  Context {funcMap: MapFunctions func (list var * list var * @stmt mword Name FName)}.
   Notation env := (map func (list var * list var * stmt)).
 
-  Ltac state_calc := state_calc_generic (@name Name) (word wXLEN).
+  Ltac state_calc := state_calc_generic (@name Name) mword.
 
   Lemma modVarsSound: forall (e: env) fuel s initialS initialM finalS finalM,
     eval_stmt e fuel initialS initialM s = Some (finalS, finalM) ->

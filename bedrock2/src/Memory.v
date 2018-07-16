@@ -1,24 +1,28 @@
 Require Import bbv.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
+Require Import riscv.Utility.
+
+Local Open Scope Z_scope.
 
 Section Memory.
 
-  Context {Bw: BitWidths}.
+  Context {mword: Set}.
+  Context {MW: MachineWidth mword}.
 
-  Definition mem := word wXLEN -> option (word wXLEN).
+  Definition mem := mword -> option mword.
 
-  Definition read_mem(x: word wXLEN)(m: mem): option (word wXLEN) :=
-    if dec ((wordToNat x) mod wXLEN_in_bytes = 0) then m x else None.
+  Definition read_mem(x: mword)(m: mem): option mword :=
+    if ((regToZ_unsigned x) mod XLEN) =? 0 then m x else None.
 
-  Definition write_mem(x: word wXLEN)(v: word wXLEN)(m: mem): option (mem) :=
+  Definition write_mem(x: mword)(v: mword)(m: mem): option (mem) :=
     match read_mem x m with
-    | Some old_value => Some (fun y => if dec (x = y) then Some v else m y)
+    | Some old_value => Some (fun y => if reg_eqb x y then Some v else m y)
     | None => None
     end.
 
   Definition no_mem: mem := fun x => None.
 
-  Definition zeros_mem(upTo: word wXLEN): mem := fun x => if wlt_dec x upTo then Some $0 else None.
+  Definition zeros_mem(upTo: mword): mem := fun x => if ltu x upTo then Some zero else None.
 
 End Memory.

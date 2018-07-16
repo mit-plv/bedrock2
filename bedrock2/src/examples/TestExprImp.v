@@ -6,11 +6,12 @@ Require Import compiler.Op.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
-Require Import riscv.util.BitWidth32.
+Require Import riscv.MachineWidth32.
 Require Import compiler.util.List_Map.
 Require Import compiler.Memory.
 Require Import compiler.ExprImp.
 Require Import compiler.ZName.
+
 
 Definition var: Set := (@name ZName). (* only inside this test module *)
 
@@ -47,7 +48,7 @@ Definition isRight(x y z: word 32) :=
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
 Definition annoying_eq: DecidableEq
-  (list (@name ZName) * list (@name ZName) * @stmt BitWidth32 ZName ZName). Admitted.
+  (list (@name ZName) * list (@name ZName) * @stmt (word 32) ZName ZName). Admitted.
 Existing Instance annoying_eq.
 
 Definition run_isRight(x y z: word 32): option (word 32) :=

@@ -9,6 +9,7 @@ Require Import compiler.util.List_Map.
 Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
 Require Import compiler.ZName.
+Require Import riscv.MachineWidth32.
 
 
 Definition var: Set := (@name ZName). (* only inside this test module *)
@@ -46,10 +47,10 @@ Example fib(n: word 32) :=
   )))).
 
 Definition annoying_eq: DecidableEq
-  (list (@name ZName) * list (@name ZName) * @stmt BitWidth32 ZName ZName). Admitted.
+  (list (@name ZName) * list (@name ZName) * @stmt (word 32) ZName ZName). Admitted.
 Existing Instance annoying_eq.
 
-Definition eval_stmt_test fuel initialSt := @eval_stmt BitWidth32 ZName ZName _ (List_Map _ _) empty_map fuel initialSt no_mem.
+Definition eval_stmt_test fuel initialSt := @eval_stmt (word 32) _ ZName ZName _ (List_Map _ _) empty_map fuel initialSt no_mem.
 
 Example finalFibState(n: nat) := (eval_stmt_test 100 empty_map (fib $n)).
 Example finalFibVal(n: nat): option (word 32) := match finalFibState n with
