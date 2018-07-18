@@ -99,7 +99,7 @@ Section Imp.
     Local Notation putmany := Common.putmany.
     Local Notation option_all := Common.option_all.
 
-    Fixpoint interp_stmt(o:oracle)(f: nat)(t:trace)(m: mem)(l: varmap)(s: stmt): outcome :=
+    Fixpoint interp_stmt(s: stmt)(o:oracle)(t:trace)(m: mem)(l: varmap)(f: nat): outcome :=
       bind_S f <- f                                                   | running t;
       match s with
       | SLoad x a =>
@@ -116,23 +116,23 @@ Section Imp.
         done o t m (Map.put l x v)
       | SIf cond bThen bElse =>
         bind_Some v <- interp_expr l cond                             | bad t;
-        interp_stmt o f t m l (if mword_nonzero v then bThen else bElse)
+        interp_stmt (if mword_nonzero v then bThen else bElse) o t m l f
       | SWhile cond body =>
         bind_Some v <- interp_expr l cond                             | bad t;
         if mword_nonzero v
         then
-          bind_done (o, t, m, l) <- interp_stmt o f t m l body;
-          interp_stmt o f t m l (SWhile cond body)
+          bind_done (o, t, m, l) <- interp_stmt body o t m l f;
+          interp_stmt (SWhile cond body) o t m l f
         else done o t m l
       | SSeq s1 s2 =>
-        bind_done (o, t, m, l) <- interp_stmt o f t m l s1;
-        interp_stmt o f t m l s2
+        bind_done (o, t, m, l) <- interp_stmt s1 o t m l f;
+        interp_stmt s2 o t m l f
       | SSkip => done o t m l
       | SCall binds fname arges =>
         bind_Some (params, retns, fbody) <- lookupFunction fname      | bad t;
         bind_Some args <- option_all (List.map (interp_expr l) arges) | bad t;
         bind_Some lf <- putmany params args Map.empty_map             | bad t;
-        bind_done (o, t, m, lf)  <- interp_stmt o f t m lf fbody;
+        bind_done (o, t, m, lf)  <- interp_stmt fbody o t m lf f;
         bind_Some rets <- option_all (List.map (Map.get lf) retns)    | bad t;
         bind_Some l <- putmany binds rets l                           | bad t;
         done o t m l
@@ -146,24 +146,24 @@ Section Imp.
       end.
 
     Section RelyGuarantee.
-      Context (oracle: oracle) (t: trace) (m: mem) (l: varmap) (s : stmt)
+      Context (s : stmt) (oracle: oracle) (t: trace) (m: mem) (l: varmap)
               (R : trace -> Prop) (G : trace -> Prop) (Q : trace -> mem -> varmap -> Prop).
-      Local Notation rely := (forall f, R (trace_of (interp_stmt oracle f t m l s))).
+      Local Notation rely := (forall f, R (trace_of (interp_stmt s oracle t m l f))).
       Definition productive_guarantee := rely -> forall f,
-        match interp_stmt oracle f t m l s with
+        match interp_stmt s oracle t m l f with
         | bad _ => False
-        | running t1 => G t1 /\ exists df, interp_stmt oracle (df+f) t m l s <> interp_stmt oracle f t m l s
+        | running t1 => G t1 /\ exists df, interp_stmt s oracle t m l (df+f) <> interp_stmt s oracle t m l f
         | done _ t m l => G t /\ Q t m l
         end.
 
       Definition partial_guarantee := rely -> forall f,
-        match interp_stmt oracle f t m l s with
+        match interp_stmt s oracle t m l f with
         | bad _ => False
         | running t => G t
         | done _ t m l => G t /\ Q t m l
         end.
       Definition terminates :=
-        rely -> exists f' o' t' m' l', interp_stmt oracle f' t m l s = done o' t' m' l'.
+        rely -> exists f o' t' m' l', interp_stmt s oracle t m l f = done o' t' m' l'.
       Definition terminating_guarantee := partial_guarantee /\ terminates.
       Lemma terminating_productive : terminating_guarantee -> productive_guarantee.
         cbv [terminates partial_guarantee productive_guarantee].
@@ -171,7 +171,7 @@ Section Imp.
         specialize (HP Hrely). specialize (Hterm Hrely).
         destruct Hterm as [fdone [o' [t' [m' [l' H]]]]].
         specialize (HP frunning).
-        destruct (interp_stmt oracle frunning t m l s) eqn:Heq; intuition idtac.
+        destruct (interp_stmt s oracle t m l frunning) eqn:Heq; intuition idtac.
         assert (Hdf : exists df, fdone = df + frunning) by admit; destruct Hdf as [df ?]; subst fdone.
         exists df. rewrite H. congruence.
       Admitted.
@@ -179,12 +179,12 @@ Section Imp.
       Proof.
         cbv [partial_guarantee productive_guarantee].
         intros Hpartial Hrely f. specialize (Hpartial Hrely f).
-        destruct (interp_stmt oracle f t m l s); intuition idtac.
+        destruct (interp_stmt s oracle t m l f); intuition idtac.
       Qed.
     End RelyGuarantee.
-    Definition perpetual_guarantee o t m l s R G := partial_guarantee o t m l s R G (fun _ _ _ => False).
-    Lemma not_terminates_perpetual o t m l s R G (H:perpetual_guarantee o t m l s R G)
-          (Hrely : forall f, R (trace_of (interp_stmt o f t m l s))) : ~ terminates o t m l s R.
+    Definition perpetual_guarantee s o t m l R G := partial_guarantee s o t m l R G (fun _ _ _ => False).
+    Lemma not_terminates_perpetual s o t m l R G (H:perpetual_guarantee s o t m l R G)
+          (Hrely : forall f, R (trace_of (interp_stmt s o t m l f))) : ~ terminates s o t m l R.
     Proof.
       cbv [perpetual_guarantee terminates partial_guarantee productive_guarantee] in *; intuition idtac.
       destruct H as [fdone [o' [t' [m' [l' H]]]]].
