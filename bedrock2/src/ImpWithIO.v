@@ -146,14 +146,14 @@ Section Imp.
       end.
 
     Definition steps c o '(t, m, l) r := exists f, interp_stmt c o t m l f = r.
-    Definition spec c s0 (R G : trace -> Prop) (E : trace -> Prop) (Q : trace -> mem -> varmap -> Prop) :=
+    Definition spec c s0 (R G : trace -> Prop) (E : trace -> trace -> Prop) (Q : trace -> mem -> varmap -> Prop) :=
       forall o (HoRely: forall s', steps c o s0 s' -> R (tr s')) s1 (Hs1: steps c o s0 s1),
       G (tr s1) /\ exists s2, steps c o s0 s2 /\ or (exists o t m l, s2 = done o (t, m, l) /\ Q  t m l)
-                                                    (exists dt, tr s2 = tr s1 ++ dt /\ E (tr s2))%list.
-    Definition partial c s0 R G (E:=fun _ => True) Q := spec c s0 R G E Q.
-    Definition terminates c s0 R G (E:=fun _ => False) Q := spec c s0 R G E Q.
+                                                    (exists dt, tr s2 = tr s1 ++ dt /\ E (tr s1) (tr s2))%list.
+    Definition partial c s0 R G (E:=fun _ _ => True) Q := spec c s0 R G E Q.
+    Definition terminates c s0 R G (E:=fun _ _ => False) Q := spec c s0 R G E Q.
     Definition perpetual c s0 R G E (Q:=fun _ _ _ => False) := spec c s0 R G E Q.
-    Definition pure c s0 Q (R:=fun _=>True) (G:=fun t=>t=fst(fst s0)) (E:=fun _=>False) := spec c s0 R G E Q.
+    Definition pure c s0 Q (R:=fun _=>True) (G:=fun t=>t=fst(fst s0)) (E:=fun _ _=>False) := spec c s0 R G E Q.
 
     Lemma spec_not_bad c s0 R G E Q (H:spec c s0 R G E Q) :
       not (exists o t, steps c o s0 (bad t) /\ forall s' : outcome, steps c o s0 s' -> R (tr s')).
@@ -164,6 +164,10 @@ Section Imp.
       destruct H as [HG [s2 [Hs2 [[o' [t' [m' [l' [Hdone HQ]]]]]|[dt [Htr HE]]]]]];
         cbn in *; subst.
       all: destruct s0 as [[t0 m0] l0]; cbn in *.
+      admit.
+      destruct s2 as [ | |? [[? ?] ?]]; cbn in *; subst.
+      admit.
+      admit.
     Abort.
   End WithFunctions.
 End Imp.
