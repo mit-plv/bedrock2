@@ -182,7 +182,7 @@ Section Imp.
         destruct (interp_stmt s oracle t m l f); intuition idtac.
       Qed.
     End RelyGuarantee.
-    Definition perpetual_guarantee s o t m l R G := partial_guarantee s o t m l R G (fun _ _ _ => False).
+    Definition perpetual_guarantee s o t m l R G := productive_guarantee s o t m l R G (fun _ _ _ => False).
     Lemma not_terminates_perpetual s o t m l R G (H:perpetual_guarantee s o t m l R G)
           (Hrely : forall f, R (trace_of (interp_stmt s o t m l f))) : ~ terminates s o t m l R.
     Proof.
