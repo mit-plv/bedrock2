@@ -43,12 +43,6 @@ Class ImpParameters :=
 Global Existing Instance varmap_functions.
 Definition varmap {p:ImpParameters} : Type := Map.map varname mword.
 
-Class ImpWorld (p:ImpParameters) :=
-  {
-    world : Type;
-    external_step : world -> mem*actname*list mword -> mem*list mword -> world -> Prop;
-  }.
-
 Section Imp.
   Goal True. let cls := constr:(ImpParameters) in match constr:(Set) with _ => (let none := constr:(_:cls) in idtac); fail 99 "DUPLICATE INSTANCE" | _ => idtac end. Abort.
   Context {p : ImpParameters}.
@@ -147,9 +141,9 @@ Section Imp.
 
     Definition steps c o '(t, m, l) r := exists f, interp_stmt c o t m l f = r.
     Definition spec c s0 (R G : trace -> Prop) (E : trace -> trace -> Prop) (Q : trace -> mem -> varmap -> Prop) :=
-      forall o (HoRely: forall s', steps c o s0 s' -> R (tr s')) s1 (Hs1: steps c o s0 s1),
+      forall o (o_good: forall s', steps c o s0 s' -> R (tr s')) s1 (Hs1: steps c o s0 s1),
       G (tr s1) /\ exists s2, steps c o s0 s2 /\ or (exists o t m l, s2 = done o (t, m, l) /\ Q  t m l)
-                                                    (exists dt, tr s2 = tr s1 ++ dt /\ E (tr s1) (tr s2))%list.
+                                                    (s1 <> bad (tr s1) /\ E (tr s2) (tr s1))%list.
     Definition partial c s0 R G (E:=fun _ _ => True) Q := spec c s0 R G E Q.
     Definition terminates c s0 R G (E:=fun _ _ => False) Q := spec c s0 R G E Q.
     Definition perpetual c s0 R G E (Q:=fun _ _ _ => False) := spec c s0 R G E Q.
@@ -161,13 +155,9 @@ Section Imp.
       intros [o [t [Hsteps HR]]].
       cbv [spec] in *.
       specialize (H o HR _ Hsteps).
-      destruct H as [HG [s2 [Hs2 [[o' [t' [m' [l' [Hdone HQ]]]]]|[dt [Htr HE]]]]]];
-        cbn in *; subst.
-      all: destruct s0 as [[t0 m0] l0]; cbn in *.
-      admit.
-      destruct s2 as [ | |? [[? ?] ?]]; cbn in *; subst.
-      admit.
-      admit.
+      destruct H as [HG [s2 [Hs2 [[o' [t' [m' [l' [Hdone HQ]]]]]|[Hnbad HE]]]]]; [|contradiction].
+      destruct s0 as [[t0 m0] l0]; cbn in *; subst.
+      (* same run can't execute to both [bad] and [done] in different numbers of steps *)
     Abort.
   End WithFunctions.
 End Imp.
@@ -237,23 +227,23 @@ Ltac dsi := repeat dsi_step.
 Module wp.
   Section wp.
     Goal True. let cls := constr:(ImpParameters) in match constr:(Set) with _ => (let none := constr:(_:cls) in idtac); fail 99 "DUPLICATE INSTANCE" | _ => idtac end. Abort.
-    Context {p : ImpParameters} {E : ImpFunctions p} {W : ImpWorld p} (G : world -> mem -> actname -> list mword -> Prop).
+    Context {p : ImpParameters} {funcs : ImpFunctions p}.
 
     Section FuelLemmas. (* TODO: move *)
-      
+
     (* TODO move *)
     Lemma bind_Some_Some_iff {A B} (oa:option A) (f:A->option B) b :
       (bind_Some x <- oa; f x) = Some b <->
       (exists a, oa = Some a /\ f a = Some b).
     Proof. split; destruct oa eqn:?; dsi; eauto. Qed.
 
-    Lemma interp_stmt_monotonic {f1 m l c r} (Hinterp:interp_stmt f1 m l c = Some r) f2 (H:f1 <= f2)
-      : interp_stmt f2 m l c = Some r.
+    Lemma interp_stmt_monotonic_done {s t o m l f1 o' s'} (Hinterp:interp_stmt s o t m l f1 = done o' s') f2 (H:f1 <= f2)
+      : interp_stmt s o t m l f2 = done o' s'.
     Proof.
-      revert Hinterp; revert r; revert c; revert l; revert m; revert H; revert f2.
+      revert Hinterp; revert s'; revert o'; revert l; revert m; revert o; revert t; revert s; revert H; revert f2.
       induction f1; intros; [solve[inversion Hinterp]|].
       destruct f2; [lia|]. specialize (IHf1 f2 ltac:(lia)).
-      destruct c; cbn in Hinterp |- * ;
+      destruct s; cbn in Hinterp |- * ;
       repeat match goal with
              | _ => progress dsi
              | _ => solve [eauto | congruence]
@@ -262,15 +252,17 @@ Module wp.
              | _ => setoid_rewrite bind_Some_Some_iff
              | H: context[match ?x with _ => _ end] |- context[match ?x with _ => _ end] => destruct x eqn:?
              end.
-    Qed.
+      { match goal with H: context[match ?x with _ => _ end] |- _ => destruct x eqn:? end; dsi.
+        erewrite IHf1 by eauto. cbn. erewrite IHf1 by eauto. eauto. }
+    Admitted.
 
-    Lemma interp_cont_monotonic {f1 m l c r} (Hinterp:interp_cont f1 m l c = Some r) f2 (H:f1 <= f2)
-      : interp_cont f2 m l c = Some r.
+    Lemma interp_stmt_monotonic_bad {s t o m l f1 t'} (Hinterp:interp_stmt s o t m l f1 = bad t') f2 (H:f1 <= f2)
+      : interp_stmt s o t m l f2 = bad t'.
     Proof.
-      revert Hinterp; revert r; revert c; revert l; revert m; revert H; revert f2.
+      revert Hinterp; revert t'; revert l; revert m; revert o; revert t; revert s; revert H; revert f2.
       induction f1; intros; [solve[inversion Hinterp]|].
       destruct f2; [lia|]. specialize (IHf1 f2 ltac:(lia)).
-      destruct c; cbn in Hinterp |- *;
+      destruct s; cbn in Hinterp |- * ;
       repeat match goal with
              | _ => progress dsi
              | _ => solve [eauto | congruence]
@@ -279,20 +271,12 @@ Module wp.
              | _ => setoid_rewrite bind_Some_Some_iff
              | H: context[match ?x with _ => _ end] |- context[match ?x with _ => _ end] => destruct x eqn:?
              end.
-      eapply interp_stmt_monotonic; eauto; lia.
-    Qed.
-
-    Lemma exec_stmt_unique {m l c r1 r2} (H1:exec_stmt m l c r1) (H2:exec_stmt m l c r2) : r1 = r2.
-    Proof.
-      inversion H1 as [f1 H1']; inversion H2 as [f2 H2']; destruct (Compare_dec.le_le_S_dec f1 f2).
-      { pose proof interp_stmt_monotonic H1' f2 ltac:(lia); congruence. }
-      { pose proof interp_stmt_monotonic H2' f1 ltac:(lia); congruence. }
-    Qed.
-    Lemma exec_cont_unique {m l c r1 r2} (H1:exec_cont m l c r1) (H2:exec_cont m l c r2) : r1 = r2.
-      inversion H1 as [f1 H1']; inversion H2 as [f2 H2']; destruct (Compare_dec.le_le_S_dec f1 f2).
-      { pose proof interp_cont_monotonic H1' f2 ltac:(lia); congruence. }
-      { pose proof interp_cont_monotonic H2' f1 ltac:(lia); congruence. }
-    Qed.
+      { match goal with H: context[match ?x with _ => _ end] |- _ => destruct x eqn:? end; dsi.
+        { erewrite IHf1 by eauto; eauto. }
+        erewrite interp_stmt_monotonic_done by (eauto || lia).
+        cbn.
+        eauto. }
+    Admitted.
     End FuelLemmas.
     
     (* it is important the the assertion [a] is parsed before shadowing [x] *)
@@ -329,8 +313,7 @@ Module wp.
     Lemma wp_expr_complete l e v : interp_expr l e = Some v -> wp_expr l e v.
     Proof.
       revert v; induction e; cbn [wp_expr interp_expr]; intros ? H; inversion H; dsi; eauto; [].
-      match goal with H: context[bind_Some _ <- ?x ; _] |- _ => destruct x eqn:?; dsi; [] end.
-      match goal with H: context[bind_Some _ <- ?x ; _] |- _ => destruct x eqn:?; dsi; [] end.
+      repeat match goal with H: context[match ?x with _ => _ end] |- _ => destruct x eqn:?; dsi end.
       eauto.
     Qed.
 
@@ -371,85 +354,53 @@ Module wp.
 
     (* TODO: wp_putmany *)
     
+    Context (R G : trace -> Prop) (E : trace -> trace -> Prop).
     (* the return type could be [mem -> varmap -> Prop], the arguments [m] and [l] are bound directly instead *)
-    Fixpoint wp (w: world) (m: mem) (l: varmap) (c: stmt) (post : world -> mem -> varmap -> Prop) {struct c} : Prop :=
+    Fixpoint wp (c: stmt) (t:trace) (m: mem) (l: varmap) (post : trace -> mem -> varmap -> Prop) {struct c} : Prop :=
       match c with
       | SLoad x ea =>
         bind_ex a <- wp_expr l ea;
           bind_ex_Some v <- load a m;
           bind_eq l <- Map.put l x v;
-          post w m l
+          post t m l
       | SStore ea ev =>
           bind_ex a <- wp_expr l ea;
           bind_ex v <- wp_expr l ev;
           bind_ex_Some m <- store a v m;
-          post w m l
+          post t m l
       | SSet x ev =>
           bind_ex v <- wp_expr l ev;
           bind_eq l <- Map.put l x v;
-          post w m l
+          post t m l
       | SIf br ct cf =>
           bind_ex v <- wp_expr l br; (* path-blasting... :( *)
-            (mword_nonzero v = true  -> wp w m l ct post) /\
-            (mword_nonzero v = false -> wp w m l cf post)
+            (mword_nonzero v = true  -> wp ct t m l post) /\
+            (mword_nonzero v = false -> wp cf t m l post)
       | SWhile e c =>
-        exists (V:Type) (R:V->V->Prop) (I:V->world->mem->varmap->Prop), 
+        exists (V:Type) (R:V->V->Prop) (I:V->trace->mem->varmap->Prop), 
                Coq.Init.Wf.well_founded R /\
-               (exists v, I v w m l) /\
-               (forall v w m l, I v w m l ->
+               (exists v, I v t m l) /\
+               (forall v t m l, I v t m l ->
                   exists b, wp_expr l e b /\
-                  (mword_nonzero b = true -> wp w m l c (fun w' m l => exists v', I v' w' m l /\ (w=w' -> R v' v))) /\
-                  (mword_nonzero b = false -> post w m l))
-      | SSeq c1 c2 => wp w m l c1 (fun w m l => wp w m l c2 post)
+                  (mword_nonzero b = true -> wp c t m l (fun t' m l => exists v', I v' t' m l /\ (E t' t \/ R v' v))) /\
+                  (mword_nonzero b = false -> post t m l))
+      | SSeq c1 c2 => wp c1 t m l (fun t m l => wp c2 t m l post)
       | SCall binds fname arges =>
         bind_ex args <- wp_list_map (wp_expr l) arges;
         bind_ex_Some finfo <- lookupFunction fname;
         forall params retns cf, finfo = (params, retns, cf) ->
         bind_ex_Some lf <- Common.putmany params args Map.empty_map;
-        (* the callee may be proven using wp or some other technique *)
-        bind_ex r <- exec_stmt m lf cf;
-        ( exists m lf, r = done m lf /\
-          bind_ex rets <- wp_list_map (fun k v => Map.get lf k = Some v) retns;
-          bind_ex_Some l2 <- Common.putmany binds rets l;
-          post w m l2 )
-      (* TODO: allow the callee to do i/o
-        guarantees G w m lf cf (fun w m lf =>
-          bind_ex rets <- wp_list_map (fun k v => Map.get lf k = Some v) retns;
-           bind_ex_Some l <- Common.putmany binds rets l;
-           post w m l)
-         *)
-      | SIO binds action arges =>
-        bind_ex args <- wp_list_map (wp_expr l) arges;
-          G w m action args /\
-          forall w' m' rets, external_step w (m, action, args) (m', rets) w' ->
-            bind_ex_Some l' <- Common.putmany binds rets l;
-            post w' m' l'
-      | SSkip => post w m l
-      end.
-
-    Fixpoint wpc (w: world) (m: mem) (l: varmap) (c: cont) (post : world -> mem -> varmap -> Prop) {struct c} : Prop :=
-      match c with
-      | CSkip => post w m l
-      | CSeq c1 c2 => wpc w m l c1 (fun w m l => wp w m l c2 post)
-      | CStack lf cf binds retns =>
-        False
-      (* TODO: allow the callee to do i/o
-        cont_guarantees G w m lf cf (fun w m lf =>
+        spec cf (t, m, lf) R G E (fun t m lf =>
           bind_ex rets <- wp_list_map (fun k v => Map.get lf k = Some v) retns;
           bind_ex_Some l <- Common.putmany binds rets l;
-          post w m l)
-       *)
-      end.
-
-    Definition invariant (post: world -> mem -> varmap -> Prop) '(w, r) :=
-      match r with
-      | done m l => post w m l
-      | blocked m action args b
-        => G w m action args /\
-           forall w' m' rets, external_step w (m, action, args) (m', rets) w' ->
-             bind_ex_Some l'c' <- b rets;
-             forall l' c', l'c' = (l', c') ->
-             wpc w' m' l' c' post
+          post t m l)
+      | SIO binds action arges =>
+        bind_ex args <- wp_list_map (wp_expr l) arges;
+        let output := (m, action, args) in
+        forall m rets (t := cons (output, (m, rets)) t),
+          G t /\
+          R t -> (bind_ex_Some l <- Common.putmany binds rets l; post t m l)
+      | SSkip => post t m l
       end.
 
     Ltac t :=
@@ -463,32 +414,26 @@ Module wp.
       | _ => unshelve erewrite (ltac:(eassumption): _ = Some _); []
       | _ => unshelve erewrite (ltac:(eassumption): _ = true); []
       | _ => unshelve erewrite (ltac:(eassumption): _ = false); []
-      | _ => progress (erewrite (interp_stmt_monotonic) by (eassumption || lia))
-      | _ => progress (erewrite (interp_cont_monotonic) by (eassumption || lia))
-      | H: exec_stmt _ _ _ _ |- _ => destruct H
-      | H: exec_cont _ _ _ _ |- _ => destruct H
+      | _ => progress (erewrite (interp_stmt_monotonic_bad) by (eassumption || lia))
+      | _ => progress (erewrite (interp_stmt_monotonic_done) by (eassumption || lia))
       | H: forall a b c pf, _ |- _ => specialize (H _ _ _ ltac:(eauto using conj, eq_refl with nocore))
       | H: forall a b pf, _ |- _ => specialize (H _ _ ltac:(eauto using conj, eq_refl with nocore))
       | Ht: ?x = true -> _, Hf: ?x = false -> _ |- _ => let Hx := fresh "H" "x" in
         destruct x eqn:Hx; [ specialize (Ht eq_refl) | specialize (Hf eq_refl) ]
-      | r:computation_result |- _ => destruct r
       end.
 
     Ltac s :=
       repeat match goal with
       | |- _ /\ _ => split; [solve[repeat (t;s)]|]
       | |- exists _, _ /\ _ => eexists; split; [solve[repeat (t;s)]|]
-      | |- exec_stmt _ _ _ _ => eexists (S _); cbn [interp_stmt exec_stmt]
-      | |- exec_cont _ _ _ _ => eexists (S _); cbn [interp_cont exec_cont]
+      | |- exists f, interp_stmt _ _ _ _ _ f = _ => eexists (S _); cbn [interp_stmt]
       | _ => solve[typeclasses eauto with core]
-      | _ => progress (cbv [invariant BWait BSeq BStack] in *)
-      | _ => progress (cbn [wpc] in *)
       end.
       
-    Lemma wp_weaken w m l c (post post':_->_->_->Prop) (Hwp: wp w m l c post)
-          (Himpl:forall w m l, post w m l -> post' w m l) : wp w m l c post'.
+    Lemma wp_weaken c t m l (post post':_->_->_->Prop) (Hwp: wp c t m l post)
+          (Himpl:forall t m l, post t m l -> post' t m l) : wp c t m l post'.
     Proof.
-      revert dependent post'; revert dependent post; revert l; revert m; revert w.
+      revert dependent post'; revert dependent post; revert l; revert m; revert t.
       induction c; cbn [wp]; dsi; eauto 8.
       { eexists _, _, _.
         split. eassumption.
@@ -498,22 +443,42 @@ Module wp.
         eauto 20. (* FIXME: should be solved by repeat (t; s). *) }
       { eapply IHc1. eassumption. intros.
         eapply IHc2.  match goal with H:_ |- _ => eapply H end. eauto. }
-      { repeat (t; s). eexists. split. eexists. typeclasses eauto with core. repeat (t; s). }
+      { admit. (* spec_weaken *) }
       { repeat (t; s). }
-    Qed.
+    Admitted.
 
-    Lemma wpc_weaken w m l c (post post':_->_->_->Prop) (Hwpc: wpc w m l c post) (Himpl:forall w m l, post w m l -> post' w m l)
-      : wpc w m l c post'.
+    Lemma soundness c t m l post : G t -> wp c t m l post -> spec c (t, m, l) R G E post.
     Proof.
-      revert dependent post'; revert dependent post; revert l; revert m; revert w.
-      induction c; cbn [wpc]; dsi; eauto using wp_weaken.
-      { eapply IHc. eassumption. dsi.
-        eapply wp_weaken. match goal with H:_ |- _ => eapply H end. eauto. }
-    Qed.
+      revert post; revert l; revert m; revert t; induction c; cbn [wp]; try solve [repeat (t; s)].
 
-    Lemma preservation w m l c post : wp w m l c post ->  exists r, exec_stmt m l c r /\ invariant post (w, r).
-    Proof.
-      revert post; revert l; revert m; induction c; cbn [wp]; try solve [repeat (t; s)].
+      { dsi. cbv [spec]. dsi. cbv [steps] in Hs1. dsi.
+        destruct x2; cbn [interp_stmt tr] in *.
+        { destruct s1; repeat (t;s; cbn [interp_stmt tr] in * ).
+          eexists. split. eexists (S _). cbn.
+          repeat (t;s; cbn [interp_stmt tr] in * ).
+          Fail typeclasses eauto with core.
+          eauto 20. (* TODO: repeat(t;s) should solve this *) }
+        { destruct s1; repeat (t;s; cbn [interp_stmt tr] in * ||
+          (unshelve erewrite (wp_expr_sound _) in H3 by eassumption; []) ||
+          (unshelve erewrite (ltac:(eassumption): _ = Some _) in H3; []) || dsi).
+          eexists. split. eexists (S _). cbn. repeat (t; s). left. eauto 20. } }
+
+      admit.
+      admit.
+      admit.
+      admit.
+      admit.
+      admit.
+
+      { repeat (t; s).
+        rename s into cf.
+        cbv [spec] in *; dsi.
+        unshelve (idtac; let x := open_constr:(H3 o _) in specialize x).
+        { cbv [steps] in *.
+          intros s'. dsi. eapply o_good. eexists (S _). cbn.
+          fail.
+        
+      
 
       { (* While *)
         intros ? ? ? [V [R [I [wfR [[v HI] Hbody]]]]]. dsi.
