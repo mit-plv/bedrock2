@@ -154,6 +154,17 @@ Section Imp.
     Definition terminates c s0 R G (E:=fun _ => False) Q := spec c s0 R G E Q.
     Definition perpetual c s0 R G E (Q:=fun _ _ _ => False) := spec c s0 R G E Q.
     Definition pure c s0 Q (R:=fun _=>True) (G:=fun t=>t=fst(fst s0)) (E:=fun _=>False) := spec c s0 R G E Q.
+
+    Lemma spec_not_bad c s0 R G E Q (H:spec c s0 R G E Q) :
+      not (exists o t, steps c o s0 (bad t) /\ forall s' : outcome, steps c o s0 s' -> R (tr s')).
+    Proof.
+      intros [o [t [Hsteps HR]]].
+      cbv [spec] in *.
+      specialize (H o HR _ Hsteps).
+      destruct H as [HG [s2 [Hs2 [[o' [t' [m' [l' [Hdone HQ]]]]]|[dt [Htr HE]]]]]];
+        cbn in *; subst.
+      all: destruct s0 as [[t0 m0] l0]; cbn in *.
+    Abort.
   End WithFunctions.
 End Imp.
 Arguments ImpFunctions : clear implicits.
