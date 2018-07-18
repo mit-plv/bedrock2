@@ -87,11 +87,11 @@ Section Imp.
     Variant outcome :=
     | bad (_:trace)
     | running (_:trace)
-    | done (_:oracle) (_:trace) (_:mem) (_:varmap).
-    Definition trace_of (r:outcome) := match r with running t | done _ t _ _ | bad t => t end.
+    | done (_:oracle) (_:trace * mem * varmap).
+    Definition tr (r:outcome) := match r with running t | done _ (t, _, _) | bad t => t end.
     Local Notation "'bind_done' x <- a ; f" :=
       (match a with
-       | done m l i t => subst! (m, l, i, t) for x in f
+       | done o (t, m, l) => subst! (o, (t, m, l)) for x in f
        | _ => a
        end)
         (right associativity, at level 60, x pattern).
@@ -105,15 +105,15 @@ Section Imp.
       | SLoad x a =>
         bind_Some a <- interp_expr l a                                | bad t;
         bind_Some v <- load a m                                       | bad t;
-        done o t m (Map.put l x v)
+        done o (t, m, Map.put l x v)
       | SStore a v =>
         bind_Some a <- interp_expr l a                                | bad t;
         bind_Some v <- interp_expr l v                                | bad t;
         bind_Some m <- store a v m                                    | bad t;
-        done o t m l
+        done o (t, m, l)
       | SSet x e =>
         bind_Some v <- interp_expr l e                                | bad t;
-        done o t m (Map.put l x v)
+        done o (t, m, Map.put l x v)
       | SIf cond bThen bElse =>
         bind_Some v <- interp_expr l cond                             | bad t;
         interp_stmt (if mword_nonzero v then bThen else bElse) o t m l f
@@ -121,75 +121,39 @@ Section Imp.
         bind_Some v <- interp_expr l cond                             | bad t;
         if mword_nonzero v
         then
-          bind_done (o, t, m, l) <- interp_stmt body o t m l f;
+          bind_done (o, (t, m, l)) <- interp_stmt body o t m l f;
           interp_stmt (SWhile cond body) o t m l f
-        else done o t m l
+        else done o (t, m, l)
       | SSeq s1 s2 =>
-        bind_done (o, t, m, l) <- interp_stmt s1 o t m l f;
+        bind_done (o, (t, m, l)) <- interp_stmt s1 o t m l f;
         interp_stmt s2 o t m l f
-      | SSkip => done o t m l
+      | SSkip => done o (t, m, l)
       | SCall binds fname arges =>
         bind_Some (params, retns, fbody) <- lookupFunction fname      | bad t;
         bind_Some args <- option_all (List.map (interp_expr l) arges) | bad t;
         bind_Some lf <- putmany params args Map.empty_map             | bad t;
-        bind_done (o, t, m, lf)  <- interp_stmt fbody o t m lf f;
+        bind_done (o, (t, m, lf))  <- interp_stmt fbody o t m lf f;
         bind_Some rets <- option_all (List.map (Map.get lf) retns)    | bad t;
         bind_Some l <- putmany binds rets l                           | bad t;
-        done o t m l
+        done o (t, m, l)
       | SIO binds action arges =>
         bind_Some args <- option_all (List.map (interp_expr l) arges) | bad t;
         let output := (m, action, args) in
         let '(m, rets, o) := match o with cons(m,r)o=>(m,r,o) | _=>(m,nil,nil) end in
         let t := cons (output, (m, rets)) t in
         bind_Some l <- putmany binds rets l                           | bad t;
-        done o t m l
+        done o (t, m, l)
       end.
 
-    Section RelyGuarantee.
-      Context (s : stmt) (oracle: oracle) (t: trace) (m: mem) (l: varmap)
-              (R : trace -> Prop) (G : trace -> Prop) (Q : trace -> mem -> varmap -> Prop).
-      Local Notation rely := (forall f, R (trace_of (interp_stmt s oracle t m l f))).
-      Definition productive_guarantee := rely -> forall f,
-        match interp_stmt s oracle t m l f with
-        | bad _ => False
-        | running t1 => G t1 /\ exists df, interp_stmt s oracle t m l (df+f) <> interp_stmt s oracle t m l f
-        | done _ t m l => G t /\ Q t m l
-        end.
-
-      Definition partial_guarantee := rely -> forall f,
-        match interp_stmt s oracle t m l f with
-        | bad _ => False
-        | running t => G t
-        | done _ t m l => G t /\ Q t m l
-        end.
-      Definition terminates :=
-        rely -> exists f o' t' m' l', interp_stmt s oracle t m l f = done o' t' m' l'.
-      Definition terminating_guarantee := partial_guarantee /\ terminates.
-      Lemma terminating_productive : terminating_guarantee -> productive_guarantee.
-        cbv [terminates partial_guarantee productive_guarantee].
-        intros [HP Hterm] Hrely frunning.
-        specialize (HP Hrely). specialize (Hterm Hrely).
-        destruct Hterm as [fdone [o' [t' [m' [l' H]]]]].
-        specialize (HP frunning).
-        destruct (interp_stmt s oracle t m l frunning) eqn:Heq; intuition idtac.
-        assert (Hdf : exists df, fdone = df + frunning) by admit; destruct Hdf as [df ?]; subst fdone.
-        exists df. rewrite H. congruence.
-      Admitted.
-      Lemma productive_partial : productive_guarantee -> partial_guarantee .
-      Proof.
-        cbv [partial_guarantee productive_guarantee].
-        intros Hpartial Hrely f. specialize (Hpartial Hrely f).
-        destruct (interp_stmt s oracle t m l f); intuition idtac.
-      Qed.
-    End RelyGuarantee.
-    Definition perpetual_guarantee s o t m l R G := productive_guarantee s o t m l R G (fun _ _ _ => False).
-    Lemma not_terminates_perpetual s o t m l R G (H:perpetual_guarantee s o t m l R G)
-          (Hrely : forall f, R (trace_of (interp_stmt s o t m l f))) : ~ terminates s o t m l R.
-    Proof.
-      cbv [perpetual_guarantee terminates partial_guarantee productive_guarantee] in *; intuition idtac.
-      destruct H as [fdone [o' [t' [m' [l' H]]]]].
-      specialize (H1 fdone). rewrite H in H1. intuition idtac.
-    Qed.
+    Definition steps c o '(t, m, l) r := exists f, interp_stmt c o t m l f = r.
+    Definition spec c s0 (R G : trace -> Prop) (E : trace -> Prop) (Q : trace -> mem -> varmap -> Prop) :=
+      forall o (HoRely: forall s', steps c o s0 s' -> R (tr s')) s1 (Hs1: steps c o s0 s1),
+      G (tr s1) /\ exists s2, steps c o s0 s2 /\ or (exists o t m l, s2 = done o (t, m, l) /\ Q  t m l)
+                                                    (exists dt, tr s2 = tr s1 ++ dt /\ E (tr s2))%list.
+    Definition partial c s0 R G (E:=fun _ => True) Q := spec c s0 R G E Q.
+    Definition terminates c s0 R G (E:=fun _ => False) Q := spec c s0 R G E Q.
+    Definition perpetual c s0 R G E (Q:=fun _ _ _ => False) := spec c s0 R G E Q.
+    Definition pure c s0 Q (R:=fun _=>True) (G:=fun t=>t=fst(fst s0)) (E:=fun _=>False) := spec c s0 R G E Q.
   End WithFunctions.
 End Imp.
 Arguments ImpFunctions : clear implicits.
