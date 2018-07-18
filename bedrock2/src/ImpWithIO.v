@@ -1,26 +1,25 @@
-Module TRC.
-  Local Set Universe Polymorphism.
-  Section TRC.
-    Context {T : Type} {R : T -> T -> Type}.
-    Inductive trc : T -> T -> Prop :=
-    | nil x : trc x x
-    | cons x y z (head:R x y) (tail:trc y z) : trc x z.
-    Definition singleton x y (r:R x y) : trc x y := cons x y y r (nil _).
-    Definition app x y z (xy:trc x y) (yz:trc y z) : trc x z.
-    Proof.
-      revert dependent z; revert dependent xy; induction 1;
-        eauto using nil, cons, singleton.
-    Qed.
-  End TRC.
-  Arguments trc {T} R.
-End TRC.
-
 Require compiler.util.Common.
+
+Notation "'subst!' y 'for' x 'in' f" := (match y with x => f end) (at level 10).
+
+Local Notation "'bind_Some' x <- a | y ; f" :=
+  (match a with
+   | Some x => f
+   | _ => y
+   end)
+    (right associativity, at level 60, x pattern).
 
 Local Notation "'bind_Some' x <- a ; f" :=
   (match a with
    | Some x => f
-   | None => None
+   | _ => None
+   end)
+    (right associativity, at level 60, x pattern).
+
+Local Notation "'bind_S' x <- a | y ; f" :=
+  (match a with
+   | S x => f
+   | _ => y
    end)
     (right associativity, at level 60, x pattern).
 
@@ -70,24 +69,6 @@ Section Imp.
   | SCall(binds: list varname)(f: funname)(args: list expr)
   | SIO(binds: list varname)(io : actname)(args: list expr).
 
-  Inductive cont :=
-  | CSkip
-  | CSeq (c1:cont) (c2: stmt)
-  | CStack (locals: varmap) (cf: cont) (binds rets: list varname).
-
-  Definition blocked_cont := list mword -> option (varmap * cont).
-  Definition BWait (locals : varmap) (binders : list varname) : blocked_cont :=
-    fun values => bind_Some l' <- Common.putmany binders values locals; Some (l', CSkip).
-  Definition BSeq (c1 : blocked_cont) (c2 : stmt) :=
-    fun values => bind_Some (l, c1) <- c1 values; Some (l, CSeq c1 c2).
-  Definition BStack (caller_locals : varmap) (callee : blocked_cont) (binds rets: list varname) : blocked_cont :=
-    fun values => bind_Some (callee_locals, c) <- callee values; Some (caller_locals, CStack callee_locals c binds rets).
-
-  Class ImpFunctions :=
-    {
-      lookupFunction : funname -> option (list varname * list varname * stmt)
-    }.
-
   Fixpoint interp_expr (l:varmap) (e:expr) : option mword :=
     match e with
     | ELit v => Some v
@@ -98,132 +79,117 @@ Section Imp.
         Some (interp_binop op v1 v2)
     end.
 
-  Inductive computation_result :=
-  | done (_:mem) (_:varmap)
-  | blocked (_:mem) (_:actname) (_:list mword) (_:blocked_cont).
-
+  Class ImpFunctions := { lookupFunction : funname -> option (list varname * list varname * stmt) }.
   Section WithFunctions.
     Context {F:ImpFunctions}.
-    Fixpoint interp_stmt(f: nat)(m: mem)(l: varmap)(s: stmt): option computation_result :=
-      match f with
-      | 0 => None (* out of fuel *)
-      | S f => match s with
-        | SLoad x a =>
-          bind_Some a <- interp_expr l a;
-          bind_Some v <- load a m;
-          Some (done m (Map.put l x v))
-        | SStore a v =>
-          bind_Some a <- interp_expr l a;
-          bind_Some v <- interp_expr l v;
-          bind_Some m <- store a v m;
-          Some (done m l)
-        | SSet x e =>
-          bind_Some v <- interp_expr l e;
-          Some (done m (Map.put l x v))
-        | SIf cond bThen bElse =>
-          bind_Some v <- interp_expr l cond;
-          interp_stmt f m l (if mword_nonzero v then bThen else bElse)
-        | SWhile cond body =>
-          bind_Some v <- interp_expr l cond;
-          if mword_nonzero v
-          then
-            bind_Some r <- interp_stmt f m l body;
-            match r with
-            | blocked m action args b => Some (blocked m action args (BSeq b (SWhile cond body)))
-            | done m l => interp_stmt f m l (SWhile cond body)
-            end
-          else Some (done m l)
-        | SSeq s1 s2 =>
-          bind_Some r <- interp_stmt f m l s1;
-          match r with
-          | blocked m action args b => Some (blocked m action args (BSeq b s2))
-          | done m l => interp_stmt f m l s2
-          end
-        | SSkip => Some (done m l)
-        | SCall binds fname args =>
-          bind_Some (params, rets, fbody) <- lookupFunction fname;
-            bind_Some argvs <- Common.option_all (List.map (interp_expr l) args);
-            bind_Some l0 <- Common.putmany params argvs Map.empty_map;
-            bind_Some r <- interp_stmt f m l0 fbody;
-            match r with
-            | blocked m' action args b => Some (blocked m' action args (BStack l b binds rets))
-            | done m l1 => 
-              bind_Some retvs <- Common.option_all (List.map (Map.get l1) rets);
-              bind_Some l' <- Common.putmany binds retvs l;
-              Some (done m l')
-            end
-        | SIO binds action args =>
-          bind_Some argvs <- Common.option_all (List.map (interp_expr l) args);
-          Some (blocked m action argvs (BWait l binds))
-        end
+    Definition trace := list ((mem * actname * list mword) * (mem * list mword)).
+    Definition oracle := list (mem * list mword).
+    Variant outcome :=
+    | bad (_:trace)
+    | running (_:trace)
+    | done (_:oracle) (_:trace) (_:mem) (_:varmap).
+    Definition trace_of (r:outcome) := match r with running t | done _ t _ _ | bad t => t end.
+    Local Notation "'bind_done' x <- a ; f" :=
+      (match a with
+       | done m l i t => subst! (m, l, i, t) for x in f
+       | _ => a
+       end)
+        (right associativity, at level 60, x pattern).
+
+    Local Notation putmany := Common.putmany.
+    Local Notation option_all := Common.option_all.
+
+    Fixpoint interp_stmt(o:oracle)(f: nat)(t:trace)(m: mem)(l: varmap)(s: stmt): outcome :=
+      bind_S f <- f                                                   | running t;
+      match s with
+      | SLoad x a =>
+        bind_Some a <- interp_expr l a                                | bad t;
+        bind_Some v <- load a m                                       | bad t;
+        done o t m (Map.put l x v)
+      | SStore a v =>
+        bind_Some a <- interp_expr l a                                | bad t;
+        bind_Some v <- interp_expr l v                                | bad t;
+        bind_Some m <- store a v m                                    | bad t;
+        done o t m l
+      | SSet x e =>
+        bind_Some v <- interp_expr l e                                | bad t;
+        done o t m (Map.put l x v)
+      | SIf cond bThen bElse =>
+        bind_Some v <- interp_expr l cond                             | bad t;
+        interp_stmt o f t m l (if mword_nonzero v then bThen else bElse)
+      | SWhile cond body =>
+        bind_Some v <- interp_expr l cond                             | bad t;
+        if mword_nonzero v
+        then
+          bind_done (o, t, m, l) <- interp_stmt o f t m l body;
+          interp_stmt o f t m l (SWhile cond body)
+        else done o t m l
+      | SSeq s1 s2 =>
+        bind_done (o, t, m, l) <- interp_stmt o f t m l s1;
+        interp_stmt o f t m l s2
+      | SSkip => done o t m l
+      | SCall binds fname arges =>
+        bind_Some (params, retns, fbody) <- lookupFunction fname      | bad t;
+        bind_Some args <- option_all (List.map (interp_expr l) arges) | bad t;
+        bind_Some lf <- putmany params args Map.empty_map             | bad t;
+        bind_done (o, t, m, lf)  <- interp_stmt o f t m lf fbody;
+        bind_Some rets <- option_all (List.map (Map.get lf) retns)    | bad t;
+        bind_Some l <- putmany binds rets l                           | bad t;
+        done o t m l
+      | SIO binds action arges =>
+        bind_Some args <- option_all (List.map (interp_expr l) arges) | bad t;
+        let output := (m, action, args) in
+        let '(m, rets, o) := match o with cons(m,r)o=>(m,r,o) | _=>(m,nil,nil) end in
+        let t := cons (output, (m, rets)) t in
+        bind_Some l <- putmany binds rets l                           | bad t;
+        done o t m l
       end.
-    Definition exec_stmt m l c r := exists f, interp_stmt f m l c = Some r.
-    
-    Fixpoint interp_cont(f: nat)(m: mem)(l: varmap)(c: cont): option computation_result :=
-      match f with
-      | 0 => None (* out of fuel *)
-      | S f =>
-        match c with
-        | CSkip => Some (done m l)
-        | CSeq c1 c2 =>
-          bind_Some r <- interp_cont f m l c1;
-          match r with
-          | blocked m action args b => Some (blocked m action args (BSeq b c2))
-          | done m l => interp_stmt f m l c2
-          end
-        | CStack lf cf binds rets =>
-          bind_Some r <- interp_cont f m lf cf;
-          match r with
-          | blocked m action args b => Some (blocked m action args (BStack l b binds rets))
-          | done m l1 => 
-            bind_Some retvs <- Common.option_all (List.map (Map.get l1) rets);
-            bind_Some l' <- Common.putmany binds retvs l;
-            Some (done m l')
-          end
-        end
-      end.
-    Definition exec_cont m l c r := exists f, interp_cont f m l c = Some r.
 
-    (* If a predicate [P_x : forall b, Prop] identifies the return value of a partial function [f x],
-       [arbitraryIfUndefined P_x] identifies the return value of [f x] when [f x] is defined and allows
-       arbitrary return values otherwise. *)
-    Definition arbitraryIfUndefined {T} (P : T -> Prop) (b:T) := (exists b', P b') -> P b.
+    Section RelyGuarantee.
+      Context (oracle: oracle) (t: trace) (m: mem) (l: varmap) (s : stmt)
+              (R : trace -> Prop) (G : trace -> Prop) (Q : trace -> mem -> varmap -> Prop).
+      Local Notation rely := (forall f, R (trace_of (interp_stmt oracle f t m l s))).
+      Definition productive_guarantee := rely -> forall f,
+        match interp_stmt oracle f t m l s with
+        | bad _ => False
+        | running t1 => G t1 /\ exists df, interp_stmt oracle (df+f) t m l s <> interp_stmt oracle f t m l s
+        | done _ t m l => G t /\ Q t m l
+        end.
 
-    Section WithWorld.
-      Context {W:ImpWorld p}.
-      (* Definition done (s : world * computation_result) : Prop :=  exists w m l, s = (w, (m, inr l)). *)
-      Inductive step : world*computation_result -> world*computation_result -> Prop :=
-      | mk_step
-          w m action argvs b
-          w' retvs m_ (_:external_step w (m, action, argvs) (m_, retvs) w')
-          r (_:arbitraryIfUndefined (fun r => exists l' c', b retvs = Some (l', c') /\ exec_cont m_ l' c' r) r)
-        : step (w, blocked m action argvs b) (w', r).
-      Definition step_alt (s s' : world*computation_result) : Prop :=
-        exists w m action argvs b, s = (w, blocked m action argvs b) /\
-        exists w' retvs m_, external_step w (m, action, argvs) (m_, retvs) w' /\
-        exists r, arbitraryIfUndefined
-                        (fun r => exists l' c', b retvs = Some (l', c') /\ exec_cont m_ l' c' r) r
-                      /\ s' = (w', r).
-
-      Definition steps : world*computation_result -> world*computation_result -> Prop := TRC.trc step.
-      Definition blocked_guarantees G w b (post:_->_->_->Prop) : Prop :=
-        forall w' b', steps (w, b) (w', b') ->
-          match b' with
-          | done m l => post w m l
-          | blocked mem action args _ => G w mem action args
-          end.
-      Definition guarantees G w m l c post : Prop :=
-        exists b, exec_stmt m l c b /\ blocked_guarantees G w b post.
-      Definition cont_guarantees G w m l c post : Prop :=
-        exists b, exec_cont m l c b /\ blocked_guarantees G w b post.
-    End WithWorld.
-
-    Section LabeledTransitionSystem.
-      Definition label : Type := (mem*actname*list mword) * (mem*list mword).
-      Definition lts_external_step w i o w' : Prop := w' = @cons label (i, o) w.
-      Definition IMPLTS : ImpWorld p :=
-        {| world := list label ; external_step := lts_external_step |}.
-    End LabeledTransitionSystem.
+      Definition partial_guarantee := rely -> forall f,
+        match interp_stmt oracle f t m l s with
+        | bad _ => False
+        | running t => G t
+        | done _ t m l => G t /\ Q t m l
+        end.
+      Definition terminates :=
+        rely -> exists f' o' t' m' l', interp_stmt oracle f' t m l s = done o' t' m' l'.
+      Definition terminating_guarantee := partial_guarantee /\ terminates.
+      Lemma terminating_productive : terminating_guarantee -> productive_guarantee.
+        cbv [terminates partial_guarantee productive_guarantee].
+        intros [HP Hterm] Hrely frunning.
+        specialize (HP Hrely). specialize (Hterm Hrely).
+        destruct Hterm as [fdone [o' [t' [m' [l' H]]]]].
+        specialize (HP frunning).
+        destruct (interp_stmt oracle frunning t m l s) eqn:Heq; intuition idtac.
+        assert (Hdf : exists df, fdone = df + frunning) by admit; destruct Hdf as [df ?]; subst fdone.
+        exists df. rewrite H. congruence.
+      Admitted.
+      Lemma productive_partial : productive_guarantee -> partial_guarantee .
+      Proof.
+        cbv [partial_guarantee productive_guarantee].
+        intros Hpartial Hrely f. specialize (Hpartial Hrely f).
+        destruct (interp_stmt oracle f t m l s); intuition idtac.
+      Qed.
+    End RelyGuarantee.
+    Definition perpetual_guarantee o t m l s R G := partial_guarantee o t m l s R G (fun _ _ _ => False).
+    Lemma not_terminates_perpetual o t m l s R G (H:perpetual_guarantee o t m l s R G)
+          (Hrely : forall f, R (trace_of (interp_stmt o f t m l s))) : ~ terminates o t m l s R.
+    Proof.
+      cbv [perpetual_guarantee terminates partial_guarantee productive_guarantee] in *; intuition idtac.
+      destruct H as [fdone [o' [t' [m' [l' H]]]]].
+      specialize (H1 fdone). rewrite H in H1. intuition idtac.
+    Qed.
   End WithFunctions.
 End Imp.
 Arguments ImpFunctions : clear implicits.
@@ -236,7 +202,6 @@ Ltac head_of t :=
   | ?t _ => head_of t
   | _ => t
   end.
-Notation "'subst!' y 'for' x 'in' f" := (match y with x => f end) (at level 10).
 Ltac beta1 x :=
   lazymatch x with
   | (fun a => ?f) ?b => constr:(subst! b for a in f)
