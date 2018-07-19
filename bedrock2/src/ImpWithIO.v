@@ -2,24 +2,17 @@ Require compiler.util.Common.
 
 Notation "'subst!' y 'for' x 'in' f" := (match y with x => f end) (at level 10).
 
-Local Notation "'bind_Some' x <- a | y ; f" :=
+Local Notation "'bind!' x <- a | y ; f" :=
   (match a with
-   | Some x => f
+   | x => f
    | _ => y
    end)
     (right associativity, at level 60, x pattern).
 
-Local Notation "'bind_Some' x <- a ; f" :=
+Local Notation "'bind!' x <- a ; f" :=
   (match a with
-   | Some x => f
-   | _ => None
-   end)
-    (right associativity, at level 60, x pattern).
-
-Local Notation "'bind_S' x <- a | y ; f" :=
-  (match a with
-   | S x => f
-   | _ => y
+   | x => f
+   | _ => a
    end)
     (right associativity, at level 60, x pattern).
 
@@ -68,8 +61,8 @@ Section Imp.
     | ELit v => Some v
     | EVar x => Map.get l x
     | EOp op e1 e2 =>
-      bind_Some v1 <- interp_expr l e1;
-        bind_Some v2 <- interp_expr l e2;
+      bind! Some v1 <- interp_expr l e1;
+        bind! Some v2 <- interp_expr l e2;
         Some (interp_binop op v1 v2)
     end.
 
@@ -78,87 +71,73 @@ Section Imp.
     Context {F:ImpFunctions}.
     Definition trace := list ((mem * actname * list mword) * (mem * list mword)).
     Definition oracle := list (mem * list mword).
-    Variant outcome :=
-    | bad (_:trace)
-    | running (_:trace)
-    | done (_:oracle) (_:trace * mem * varmap).
-    Definition tr (r:outcome) := match r with running t | done _ (t, _, _) | bad t => t end.
-    Local Notation "'bind_done' x <- a ; f" :=
-      (match a with
-       | done o (t, m, l) => subst! (o, (t, m, l)) for x in f
-       | _ => a
-       end)
-        (right associativity, at level 60, x pattern).
+    Definition outcome := option (option (oracle*mem*varmap)).
+    Local Notation running t := (t, None) (only parsing).
+    Local Notation bad t := (t, Some None) (only parsing).
+    Local Notation done t o m l := (t, Some (Some (o, m, l))) (only parsing).
 
     Local Notation putmany := Common.putmany.
     Local Notation option_all := Common.option_all.
 
-    Fixpoint interp_stmt(s: stmt)(o:oracle)(t:trace)(m: mem)(l: varmap)(f: nat): outcome :=
-      bind_S f <- f                                                   | running t;
+    Fixpoint interp_stmt(s: stmt)(o:oracle)(t:trace)(m: mem)(l: varmap)(f: nat): trace*outcome :=
+      bind! S f <- f                                                   | running t;
       match s with
       | SLoad x a =>
-        bind_Some a <- interp_expr l a                                | bad t;
-        bind_Some v <- load a m                                       | bad t;
-        done o (t, m, Map.put l x v)
+        bind! Some a <- interp_expr l a                                | bad t;
+        bind! Some v <- load a m                                       | bad t;
+        done t o m (Map.put l x v)
       | SStore a v =>
-        bind_Some a <- interp_expr l a                                | bad t;
-        bind_Some v <- interp_expr l v                                | bad t;
-        bind_Some m <- store a v m                                    | bad t;
-        done o (t, m, l)
+        bind! Some a <- interp_expr l a                                | bad t;
+        bind! Some v <- interp_expr l v                                | bad t;
+        bind! Some m <- store a v m                                    | bad t;
+        done t o m l
       | SSet x e =>
-        bind_Some v <- interp_expr l e                                | bad t;
-        done o (t, m, Map.put l x v)
+        bind! Some v <- interp_expr l e                                | bad t;
+        done t o m (Map.put l x v)
       | SIf cond bThen bElse =>
-        bind_Some v <- interp_expr l cond                             | bad t;
+        bind! Some v <- interp_expr l cond                             | bad t;
         interp_stmt (if mword_nonzero v then bThen else bElse) o t m l f
       | SWhile cond body =>
-        bind_Some v <- interp_expr l cond                             | bad t;
+        bind! Some v <- interp_expr l cond                             | bad t;
         if mword_nonzero v
         then
-          bind_done (o, (t, m, l)) <- interp_stmt body o t m l f;
+          bind! done t o m l <- interp_stmt body o t m l f;
           interp_stmt (SWhile cond body) o t m l f
-        else done o (t, m, l)
+        else done t o m l
       | SSeq s1 s2 =>
-        bind_done (o, (t, m, l)) <- interp_stmt s1 o t m l f;
+        bind! done t o m l <- interp_stmt s1 o t m l f;
         interp_stmt s2 o t m l f
-      | SSkip => done o (t, m, l)
+      | SSkip => done t o m l
       | SCall binds fname arges =>
-        bind_Some (params, retns, fbody) <- lookupFunction fname      | bad t;
-        bind_Some args <- option_all (List.map (interp_expr l) arges) | bad t;
-        bind_Some lf <- putmany params args Map.empty_map             | bad t;
-        bind_done (o, (t, m, lf))  <- interp_stmt fbody o t m lf f;
-        bind_Some rets <- option_all (List.map (Map.get lf) retns)    | bad t;
-        bind_Some l <- putmany binds rets l                           | bad t;
-        done o (t, m, l)
+        bind! Some (params, retns, fbody) <- lookupFunction fname      | bad t;
+        bind! Some args <- option_all (List.map (interp_expr l) arges) | bad t;
+        bind! Some lf <- putmany params args Map.empty_map             | bad t;
+        bind! done t o m lf  <- interp_stmt fbody o t m lf f;
+        bind! Some rets <- option_all (List.map (Map.get lf) retns)    | bad t;
+        bind! Some l <- putmany binds rets l                           | bad t;
+        done t o m l
       | SIO binds action arges =>
-        bind_Some args <- option_all (List.map (interp_expr l) arges) | bad t;
+        bind! Some args <- option_all (List.map (interp_expr l) arges) | bad t;
         let output := (m, action, args) in
         let '(m, rets, o) := match o with cons(m,r)o=>(m,r,o) | _=>(m,nil,nil) end in
         let t := cons (output, (m, rets)) t in
-        bind_Some l <- putmany binds rets l                           | bad t;
-        done o (t, m, l)
+        bind! Some l <- putmany binds rets l                           | bad t;
+        done t o m l
       end.
 
     Definition steps c o '(t, m, l) r := exists f, interp_stmt c o t m l f = r.
     Definition spec c s0 (R G : trace -> Prop) (E : trace -> trace -> Prop) (Q : trace -> mem -> varmap -> Prop) :=
-      forall o (o_good: forall s', steps c o s0 s' -> R (tr s')) s1 (Hs1: steps c o s0 s1),
-      G (tr s1) /\ exists s2, steps c o s0 s2 /\ or (exists o t m l, s2 = done o (t, m, l) /\ Q  t m l)
-                                                    (s1 <> bad (tr s1) /\ E (tr s2) (tr s1))%list.
+      forall o (o_good: forall t' s', steps c o s0 (t', s') -> R t'),
+      forall t1 s1 (Hs1: steps c o s0 (t1, s1)), G t1 /\
+        or (exists o m l, s1 = Some (Some (o, m, l)) /\ Q t1 m l)
+           (s1 = None /\ exists t2 s2, steps c o s0 (t2, s2) /\
+             or (exists o m l, s2 = Some (Some (o, m, l)) /\ Q t1 m l)
+                (s2 = None /\ E t2 t1)).
+        
     Definition partial c s0 R G (E:=fun _ _ => True) Q := spec c s0 R G E Q.
-    Definition terminates c s0 R G (E:=fun _ _ => False) Q := spec c s0 R G E Q.
+    Definition terminating c s0 R G (E:=fun _ _ => False) Q := spec c s0 R G E Q.
     Definition perpetual c s0 R G E (Q:=fun _ _ _ => False) := spec c s0 R G E Q.
     Definition pure c s0 Q (R:=fun _=>True) (G:=fun t=>t=fst(fst s0)) (E:=fun _ _=>False) := spec c s0 R G E Q.
-
-    Lemma spec_not_bad c s0 R G E Q (H:spec c s0 R G E Q) :
-      not (exists o t, steps c o s0 (bad t) /\ forall s' : outcome, steps c o s0 s' -> R (tr s')).
-    Proof.
-      intros [o [t [Hsteps HR]]].
-      cbv [spec] in *.
-      specialize (H o HR _ Hsteps).
-      destruct H as [HG [s2 [Hs2 [[o' [t' [m' [l' [Hdone HQ]]]]]|[Hnbad HE]]]]]; [|contradiction].
-      destruct s0 as [[t0 m0] l0]; cbn in *; subst.
-      (* same run can't execute to both [bad] and [done] in different numbers of steps *)
-    Abort.
   End WithFunctions.
 End Imp.
 Arguments ImpFunctions : clear implicits.
@@ -233,50 +212,27 @@ Module wp.
 
     (* TODO move *)
     Lemma bind_Some_Some_iff {A B} (oa:option A) (f:A->option B) b :
-      (bind_Some x <- oa; f x) = Some b <->
+      (bind! Some x <- oa | None; f x) = Some b <->
       (exists a, oa = Some a /\ f a = Some b).
     Proof. split; destruct oa eqn:?; dsi; eauto. Qed.
 
-    Lemma interp_stmt_monotonic_done {s t o m l f1 o' s'} (Hinterp:interp_stmt s o t m l f1 = done o' s') f2 (H:f1 <= f2)
-      : interp_stmt s o t m l f2 = done o' s'.
+    Lemma interp_stmt_monotonic {s t o m l f1 t' r} (Hinterp:interp_stmt s o t m l f1 = (t', Some r)) f2 (H:f1 <= f2)
+      : interp_stmt s o t m l f2 = (t', Some r).
     Proof.
-      revert Hinterp; revert s'; revert o'; revert l; revert m; revert o; revert t; revert s; revert H; revert f2.
+      revert Hinterp; revert r; revert t'; revert l; revert m; revert o; revert t; revert s; revert H; revert f2.
       induction f1; intros; [solve[inversion Hinterp]|].
       destruct f2; [lia|]. specialize (IHf1 f2 ltac:(lia)).
-      destruct s; cbn in Hinterp |- * ;
+      destruct s; cbv [outcome] in *; cbn in Hinterp |- * ;
       repeat match goal with
              | _ => progress dsi
              | _ => solve [eauto | congruence]
              | |- exists _, _ /\ _ => eexists; split; [solve[eauto]|cbn]
              | H: _ |- _ => setoid_rewrite bind_Some_Some_iff in H
              | _ => setoid_rewrite bind_Some_Some_iff
-             | H: context[match ?x with _ => _ end] |- context[match ?x with _ => _ end] => destruct x eqn:?
+             | _ => unshelve erewrite IHf1 by eassumption; []
+             | H: context[match ?x with _ => _ end] |- _ => destruct x eqn:?
              end.
-      { match goal with H: context[match ?x with _ => _ end] |- _ => destruct x eqn:? end; dsi.
-        erewrite IHf1 by eauto. cbn. erewrite IHf1 by eauto. eauto. }
-    Admitted.
-
-    Lemma interp_stmt_monotonic_bad {s t o m l f1 t'} (Hinterp:interp_stmt s o t m l f1 = bad t') f2 (H:f1 <= f2)
-      : interp_stmt s o t m l f2 = bad t'.
-    Proof.
-      revert Hinterp; revert t'; revert l; revert m; revert o; revert t; revert s; revert H; revert f2.
-      induction f1; intros; [solve[inversion Hinterp]|].
-      destruct f2; [lia|]. specialize (IHf1 f2 ltac:(lia)).
-      destruct s; cbn in Hinterp |- * ;
-      repeat match goal with
-             | _ => progress dsi
-             | _ => solve [eauto | congruence]
-             | |- exists _, _ /\ _ => eexists; split; [solve[eauto]|cbn]
-             | H: _ |- _ => setoid_rewrite bind_Some_Some_iff in H
-             | _ => setoid_rewrite bind_Some_Some_iff
-             | H: context[match ?x with _ => _ end] |- context[match ?x with _ => _ end] => destruct x eqn:?
-             end.
-      { match goal with H: context[match ?x with _ => _ end] |- _ => destruct x eqn:? end; dsi.
-        { erewrite IHf1 by eauto; eauto. }
-        erewrite interp_stmt_monotonic_done by (eauto || lia).
-        cbn.
-        eauto. }
-    Admitted.
+    Qed.
     End FuelLemmas.
     
     (* it is important the the assertion [a] is parsed before shadowing [x] *)
@@ -414,8 +370,7 @@ Module wp.
       | _ => unshelve erewrite (ltac:(eassumption): _ = Some _); []
       | _ => unshelve erewrite (ltac:(eassumption): _ = true); []
       | _ => unshelve erewrite (ltac:(eassumption): _ = false); []
-      | _ => progress (erewrite (interp_stmt_monotonic_bad) by (eassumption || lia))
-      | _ => progress (erewrite (interp_stmt_monotonic_done) by (eassumption || lia))
+      | _ => progress (erewrite (interp_stmt_monotonic) by (eassumption || lia))
       | H: forall a b c pf, _ |- _ => specialize (H _ _ _ ltac:(eauto using conj, eq_refl with nocore))
       | H: forall a b pf, _ |- _ => specialize (H _ _ ltac:(eauto using conj, eq_refl with nocore))
       | Ht: ?x = true -> _, Hf: ?x = false -> _ |- _ => let Hx := fresh "H" "x" in
@@ -452,16 +407,21 @@ Module wp.
       revert post; revert l; revert m; revert t; induction c; cbn [wp]; try solve [repeat (t; s)].
 
       { dsi. cbv [spec]. dsi. cbv [steps] in Hs1. dsi.
-        destruct x2; cbn [interp_stmt tr] in *.
-        { destruct s1; repeat (t;s; cbn [interp_stmt tr] in * ).
-          eexists. split. eexists (S _). cbn.
-          repeat (t;s; cbn [interp_stmt tr] in * ).
+        destruct x2; cbn [interp_stmt] in *; dsi.
+        { repeat (t;s).
+          right.
+          split. reflexivity.
+          eexists. eexists. split. eexists (S _). cbn.
+          repeat (t;s; cbn [interp_stmt] in * ).
           Fail typeclasses eauto with core.
-          eauto 20. (* TODO: repeat(t;s) should solve this *) }
-        { destruct s1; repeat (t;s; cbn [interp_stmt tr] in * ||
-          (unshelve erewrite (wp_expr_sound _) in H3 by eassumption; []) ||
-          (unshelve erewrite (ltac:(eassumption): _ = Some _) in H3; []) || dsi).
-          eexists. split. eexists (S _). cbn. repeat (t; s). left. eauto 20. } }
+          eauto 20. (* TODO: repeat(t;s) should solve this *)
+          Fail typeclasses eauto with core.
+          eauto 20. (* TODO: repeat(t;s) should solve this *)
+        }
+        { repeat (
+              (unshelve erewrite (wp_expr_sound _) in H3 by eassumption; []) ||
+              (unshelve erewrite (ltac:(eassumption): _ = Some _) in H3; []) || dsi).
+          eauto 20. } }
 
       admit.
       admit.
@@ -474,11 +434,43 @@ Module wp.
         rename s into cf.
         cbv [spec] in *; dsi.
         unshelve (idtac; let x := open_constr:(H3 o _) in specialize x).
-        { cbv [steps] in *.
-          intros s'. dsi. eapply o_good. eexists (S _). cbn.
-          fail.
-        
-      
+        admit.
+        { cbv [steps] in *; dsi.
+          destruct x1; cbn in H4; dsi.
+          { specialize (H3 _ _ (ex_intro _ 0 eq_refl)); repeat (t; s).
+            destruct H4; dsi; subst.
+            right.
+            split. eauto.
+            destruct H6; dsi; subst.
+            { eexists. eexists. eexists. eexists (S _). cbn.
+              repeat (t; s). rewrite H5.
+              repeat (t; s). eauto.
+              eauto 20. }
+            { eexists. eexists. eexists. eexists (S _). cbn.
+              repeat (t; s). rewrite H5.
+              repeat (t; s). eauto.
+              eauto 20. } }
+          { rewrite H1 in H4.
+            unshelve erewrite (wp_list_map_sound (wp_expr_sound _)) in H4 by eassumption; [].
+            rewrite H2 in H4.
+            destruct (interp_stmt cf o t m x0 x1) as [t' r'] eqn:Ht'r'.
+            specialize (H3 t' r' (ex_intro _ _ Ht'r')); dsi.
+            destruct H5; repeat (subst; t; s).
+            { 
+              unshelve erewrite (wp_list_map_sound (f:=(fun (k : varname) => Map.get _ k)) _) in H4 by eauto; [solve[eauto]|].
+              rewrite H7 in H4.
+              repeat (subst; t; s).
+              eauto 20. }
+            { right. split. eauto.
+              destruct H7; repeat (subst; t; s).
+              { eexists. eexists. eexists. eexists (S _). cbn.
+                repeat (t; s).
+                rewrite H6.
+                repeat (t; s). eauto. eauto 20. }
+              { eexists. eexists. eexists. eexists (S _). cbn.
+                repeat (t; s).
+                rewrite H6.
+                repeat (t; s). eauto. eauto 20. } } } } }
 
       { (* While *)
         intros ? ? ? [V [R [I [wfR [[v HI] Hbody]]]]]. dsi.
