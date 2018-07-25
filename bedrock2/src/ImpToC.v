@@ -1,4 +1,5 @@
 Require Coq.Strings.String.
+Definition string_eqb a b := andb (String.prefix a b) (String.prefix b a).
 
 Class Mem (mword : Type) :=
   {
@@ -30,17 +31,29 @@ Class ImpParameters :=
 Global Existing Instance Mem_ImpParameters.
 *)
 
+Module access_size.
+  Inductive access_size := one | two | four | eight. (* bytes *)
+  Definition to_nat (s : access_size) :=
+    match s with
+    | one => 1
+    | two => 2
+    | four => 4
+    | eight => 8
+    end.
+End access_size. Notation access_size := access_size.access_size.
+
 Section ImpSyntax.
   Goal True. let cls := constr:(ImpSyntaxParameters) in match constr:(Set) with _ => (let none := constr:(_:cls) in idtac); fail 99 "DUPLICATE INSTANCE" | _ => idtac end. Abort.
   Context {p : ImpSyntaxParameters}.
   Inductive expr  : Type :=
   | ELit(v: mword)
   | EVar(x: varname)
+  | ELoad(s:access_size)(addr:expr)
   | EOp(op: bopname) (e1 e2: expr).
 
+
   Inductive stmt :=
-  | SLoad (x: varname)(addr: expr)
-  | SStore(addr val: expr)
+  | SStore(s:access_size)(addr val: expr)
   | SSet(x: varname)(e: expr)
   | SIf(cond: expr)(bThen bElse: stmt)
   | SWhile(cond: expr)(body: stmt)
@@ -59,13 +72,13 @@ Section SyntaxUtils.
     match e with
     | ELit v => []
     | EVar x => [x]
+    | ELoad _ ea => allVars_expr ea
     | EOp op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
     end.
 
   Fixpoint allVars_stmt(s: stmt): list varname := 
     match s with
-    | SLoad v e => v :: allVars_expr e
-    | SStore a e => (allVars_expr a) ++ (allVars_expr e)
+    | SStore s a e => (allVars_expr a) ++ (allVars_expr e)
     | SSet v e => v :: allVars_expr e
     | SIf c s1 s2 => (allVars_expr c) ++ (allVars_stmt s1) ++ (allVars_stmt s2)
     | SWhile c body => (allVars_expr c) ++ (allVars_stmt body)
@@ -92,10 +105,19 @@ Section ImpToC.
 
   Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true false false false false) "".
 
+  Definition c_size (s : access_size) : string :=
+    match s with
+    | access_size.one => "uint8_t"
+    | access_size.two => "uint16_t"
+    | access_size.four => "uint32_t"
+    | access_size.eight => "uint64_t"
+    end.
+
   Fixpoint c_expr (e : expr) : string :=
     match e with
     | ELit v => c_lit v 
     | EVar x => c_var x
+    | ELoad s ea => "(" ++ c_size s ++ "*)(" ++ c_expr ea ++ ")"
     | EOp op e1 e2 => "(" ++ c_expr e1 ++ ")" ++ c_bop op ++ "(" ++ c_expr e2 ++ ")"
     end.
 
@@ -120,10 +142,8 @@ Section ImpToC.
 
   Fixpoint c_stmt (indent : string) (c : stmt) : string :=
     match c with
-    | SLoad x ea =>
-      indent ++ c_var x ++ " = *(uintptr_t*)(" ++ c_expr ea ++ ");" ++ LF
-    | SStore ea ev
-      => indent ++ "*(uintptr_t*)(" ++ c_expr ea ++ ") = " ++ c_expr ev ++ ";" ++ LF
+    | SStore s ea ev
+      => indent ++ "*("++c_size s++"*)(" ++ c_expr ea ++ ") = " ++ c_expr ev ++ ";" ++ LF
     | SSet x ev =>
       indent ++ c_var x ++ " = " ++ c_expr ev ++ ";" ++ LF
     | SIf eb t f =>
@@ -192,10 +212,124 @@ Section ImpToC.
       "}" ++ LF.
 End ImpToC.
 
+Import String.
+
+Inductive struct :=
+| Struct (_ : list (string * (access_size + struct))).
+
+Fixpoint sizeof_struct (s : struct) {struct s} : nat :=
+  match s with
+  | (Struct ls) =>
+    (fix sizeof_fields (l : list _) {struct l} : nat :=
+       match l with
+       | nil => O
+       | cons (_, f) l' =>
+         (match f with inl s => access_size.to_nat s | inr s' => sizeof_struct s' end)
+         + sizeof_fields l'
+       end
+    ) ls
+  end.
+
+Definition sizeof (s:access_size + struct) :=
+  match s with
+  | inl s => access_size.to_nat s
+  | inr s => sizeof_struct s
+  end.
+
+Definition slookup (field : string) (s : struct) : option (nat * (access_size + struct)) :=
+  match s with
+  | (Struct ls) =>
+    (fix llookup (l : list _) {struct l} : option (nat * (access_size + struct)) :=
+       match l with
+       | nil => None
+       | cons (f, ftype) l' =>
+         if string_eqb f field
+         then Some (O, ftype)
+         else match llookup l' with
+              | None => None
+              | Some (o, t) => Some (sizeof ftype + o, t)
+              end
+       end
+    ) ls
+  end.
+
+Fixpoint rlookup fieldnames (s : access_size + struct) : option (nat * access_size) :=
+  match fieldnames, s with
+  | nil, inl a => Some (0, a)
+  | cons f fieldnames', inr s =>
+    match slookup f s with
+    | None => None
+    | Some (o, s') =>
+      match rlookup fieldnames' s' with
+      | None => None
+      | Some (o', s') => Some (o + o', s')
+      end
+    end
+  | _, _ => None
+  end.
+
+Section __test.
+  Import String.
+  Open Scope string_scope.
+  Import List.
+  Import ListNotations.
+  Import access_size.
+  
+  Goal True.
+    assert (sizeof_struct (Struct []) = 0) as _ by reflexivity.
+    assert (sizeof_struct (Struct [("a", inl eight); ("b", inl eight); ("c", inl two)]) = 18) as _ by reflexivity.
+    assert (slookup "a" (Struct []) = None) as _ by reflexivity.
+    assert (slookup "a" (Struct [("a", inl one)]) = Some (0, inl one)) as _ by reflexivity.
+    assert (slookup "a" (Struct [("x", inl four); ("a", inl two)]) = Some (4, inl two)) as _ by reflexivity.
+    assert (slookup "a" (Struct [("x", inr (Struct [("xx", inl one); ("yy", inl eight)])); ("a", inr (Struct [("data",inl one)]))]) = Some (9, inr (Struct [("data",inl one)]))) as _ by reflexivity.
+  Abort.
+
+  Section with_mword.
+  Context (mword : access_size).
+  Definition utcb_segment := Struct (
+   [ ("sel", inl two); ("ar", inl two); ("limit", inl four); ("base", inl mword) ]
+   ++ match mword with eight => [] | _ => [("reserved", inl mword)] end).
+
+  Definition exception_state := Struct (
+    [ ("mtd", inl mword) ; ("intr_len", inl mword) ; ("ip", inl mword) ; ("rflags", inl mword)
+    ; ("intr_state", inl four) ; ("actv_state", inl four)
+    ; ("inj", inl eight)                          (* NOTE: union: uint32 intr_info, intr_error *)
+    ; ("ax", inl mword) ; ("cx", inl mword) ; ("dx", inl mword) ; ("bx", inl mword)
+    ; ("sp", inl mword) ; ("bp", inl mword) ; ("si", inl mword) ; ("di", inl mword)
+    ] ++
+    match mword with
+    | eight => 
+      [ ("r8", inl mword) ; ("r9", inl mword) ; ("r10", inl mword) ; ("r11", inl mword)
+      ; ("r12", inl mword) ; ("r13", inl mword) ; ("r14", inl mword) ; ("r15", inl mword) ]
+    | _=> []
+    end ++
+    [ ("qual0", inl eight); ("qual1", inl eight)                       (* NOTE: uint64 qual[2] *)
+    ; ("ctrl0", inl four); ("qual1", inl four)                         (* NOTE: uint32 ctrl[2] *)
+    ; ("reserved", inl eight) (* NOTE: uint32 ctrl[2] *)
+    ; ("cr0", inl mword) ; ("cr2", inl mword) ; ("cr3", inl mword) ; ("cr4", inl mword)
+    ] ++
+    match mword with
+    | eight =>  [ ("cr8", inl mword) ; ("efer", inl mword) ]
+    | _ => []
+    end ++
+    [ ("dr7", inl mword) ; ("sysenter_cs", inl mword) ; ("sysenter_sp", inl mword) ; ("sysenter_ip", inl mword)
+    ; ("es", inr utcb_segment); ("cs", inr utcb_segment); ("ss", inr utcb_segment); ("ds", inr utcb_segment); ("gs", inr utcb_segment); ("ldtr", inr utcb_segment); ("tr", inr utcb_segment); ("gdtr", inr utcb_segment); ("idtr", inr utcb_segment)
+    ; ("tsc_val", inl eight); ("tsc_off", inl eight)
+    ] ).
+  End with_mword.
+
+  Compute slookup "dr7" (exception_state eight).
+  Compute rlookup ("es"::"sel"::nil) (inr (exception_state eight)).
+  (* e as utcb field ["es; "sel"] *)
+  (* e as utcb index 5 field ["es; "sel"] *)
+  (* e index 5 as utcb field ["es; "sel"] *)
+End __test.
+
 Module ImpNotations.
   Delimit Scope bedrock_var with bedrock_var.
 
   Delimit Scope bedrock_expr with bedrock_expr.
+  Bind Scope bedrock_expr with expr.
   Notation "(uintptr_t) v 'ULL'" := (ELit v)
    (at level 1, no associativity, format "(uintptr_t) v 'ULL'") : bedrock_expr.
 
@@ -204,8 +338,11 @@ Module ImpNotations.
     : bedrock_stmt.
   Notation "x = e" := (SSet x%bedrock_var e%bedrock_expr)
     : bedrock_stmt.
-  Notation "x =*(uintptr_t*) e" := (SLoad x%bedrock_var e%bedrock_expr)
-    (at level 76, no associativity) : bedrock_stmt.
+  Notation "*( s *) e" := (ELoad s e%bedrock_expr)
+                            (* WIP HERE
+    (at level 76, no associativity, format "*(") : bedrock_expr.
+  Check ( *( access_size.eight *) _ )%bedrock_expr.
+                                     *)
 
   Notation "c1 ; c2" := (SSeq c1%bedrock_stmt c2%bedrock_stmt)
     (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_stmt.
@@ -230,15 +367,19 @@ Module ImpNotations.
 End ImpNotations.
 
 
-Require compiler.Op.
-Require compiler.Memory.
-Require bbv.Word.
+Module Op.
+  Inductive binop : Set := OPlus : binop | OMinus : binop | OTimes : binop | OEq : binop | OLt : binop | OAnd : binop.
+End Op.
+Module Word.
+  Definition word : nat -> Type. Admitted.
+  Definition wordToN {n} (_:word n) : BinNums.N. Admitted.
+  Definition NToWord (n:nat) (_:BinNums.N) : word n. Admitted.
+End Word.
 Require DecimalN.
 Require DecimalString.
 
 Module _example.
   Import String.
-  Definition string_eqb a b := andb (prefix a b) (prefix b a).
   Definition CImp (bw : nat) : ImpCSyntaxParameters :=
     {| ImpSyntaxParameters_ImpCSyntaxParameters :=
          {|
@@ -256,6 +397,17 @@ Module _example.
                   | Op.OEq => "=="
                   | Op.OLt => "<"
                   | Op.OAnd => "&"
+                                 (*
+                  | ? => "<<"
+                  | ? => ">>"
+
+                  | ? => fun a b => (b == 0 ? a / b : 0)
+                   
+                  | ? => fun a b => (intptr_t)a * (intptr_t)b
+                  | cmov br ? t : f  => ?
+
+                  (* 2-output mul *)
+                                  *)
                   end%string;
        c_var := id;
        c_fun := id;
@@ -265,11 +417,11 @@ Module _example.
   Let bw := 64.
   Local Instance CImp64 : ImpCSyntaxParameters := CImp bw.
 
-  Import ImpNotations.
 
   Local Coercion mword_of_N (z:BinNums.N) : mword := Word.NToWord bw z.
   Local Coercion ELit : mword >-> expr.
   Local Coercion EVar : varname >-> expr.
+  Import ImpNotations.
 
   Local Notation "e1 + e2" := (EOp Op.OPlus e1%bedrock_expr e2%bedrock_expr) : bedrock_expr.
   Local Notation "e1 - e2" := (EOp Op.OMinus e1%bedrock_expr e2%bedrock_expr) : bedrock_expr.
@@ -298,13 +450,15 @@ Module _example.
 
   Compute c_decl "uintptr_t" ("a"::"b"::nil)%list "sumdiff" ("x"::"y"::nil)%list.
 
+  Local Notation uint64_t := access_size.eight.
+
   Compute
     String (Coq.Strings.Ascii.Ascii false true false true false false false false) ""++
     c_func string_eqb (fun x _ => "_"++ x) (left::right::target::nil)%list "bsearch" (ret::nil)%list (bedrock_func (
 
     while (left < right) {{
-      mid = ((left+right) >> 4) << 3;
-      ret =*(uintptr_t*) mid;
+      mid = left + (((right-left) >> 4) << 3);
+      ret = *( uint64_t *) mid;
       if (ret < target) {{
         left = mid + 8
       }} else {{
