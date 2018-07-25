@@ -253,9 +253,10 @@ Definition slookup (field : string) (s : struct) : option (nat * (access_size + 
     ) ls
   end.
 
-Fixpoint rlookup fieldnames (s : access_size + struct) : option (nat * access_size) :=
+Fixpoint rlookup fieldnames (s : access_size + struct) : option (nat * (access_size + struct)) :=
   match fieldnames, s with
-  | nil, inl a => Some (0, a)
+  | nil, inl a => Some (0, inl a)
+  | nil, inr a => Some (0, inr a)
   | cons f fieldnames', inr s =>
     match slookup f s with
     | None => None
@@ -319,6 +320,7 @@ Section __test.
   End with_mword.
 
   Compute slookup "dr7" (exception_state eight).
+  Compute rlookup ("es"::nil) (inr (exception_state eight)).
   Compute rlookup ("es"::"sel"::nil) (inr (exception_state eight)).
   (* e as utcb field ["es; "sel"] *)
   (* e as utcb index 5 field ["es; "sel"] *)
@@ -338,11 +340,14 @@ Module ImpNotations.
     : bedrock_stmt.
   Notation "x = e" := (SSet x%bedrock_var e%bedrock_expr)
     : bedrock_stmt.
-  Notation "*( s *) e" := (ELoad s e%bedrock_expr)
-                            (* WIP HERE
-    (at level 76, no associativity, format "*(") : bedrock_expr.
-  Check ( *( access_size.eight *) _ )%bedrock_expr.
-                                     *)
+  Notation "*(uint8*) e" := (ELoad access_size.one e%bedrock_expr)
+    (at level 10, no associativity) : bedrock_expr.
+  Notation "*(uint16*) e" := (ELoad access_size.two e%bedrock_expr)
+    (at level 10, no associativity) : bedrock_expr.
+  Notation "*(uint32*) e" := (ELoad access_size.four e%bedrock_expr)
+    (at level 10, no associativity) : bedrock_expr.
+  Notation "*(uint64_t*) e" := (ELoad access_size.eight e%bedrock_expr)
+    (at level 10, no associativity) : bedrock_expr.
 
   Notation "c1 ; c2" := (SSeq c1%bedrock_stmt c2%bedrock_stmt)
     (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_stmt.
@@ -370,11 +375,14 @@ End ImpNotations.
 Module Op.
   Inductive binop : Set := OPlus : binop | OMinus : binop | OTimes : binop | OEq : binop | OLt : binop | OAnd : binop.
 End Op.
+Require bbv.Word.
+(*
 Module Word.
   Definition word : nat -> Type. Admitted.
   Definition wordToN {n} (_:word n) : BinNums.N. Admitted.
   Definition NToWord (n:nat) (_:BinNums.N) : word n. Admitted.
 End Word.
+*)
 Require DecimalN.
 Require DecimalString.
 
@@ -455,10 +463,9 @@ Module _example.
   Compute
     String (Coq.Strings.Ascii.Ascii false true false true false false false false) ""++
     c_func string_eqb (fun x _ => "_"++ x) (left::right::target::nil)%list "bsearch" (ret::nil)%list (bedrock_func (
-
     while (left < right) {{
       mid = left + (((right-left) >> 4) << 3);
-      ret = *( uint64_t *) mid;
+      ret = *(uint64_t*) mid;
       if (ret < target) {{
         left = mid + 8
       }} else {{
