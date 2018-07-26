@@ -349,11 +349,6 @@ Module ImpNotations.
   Notation "(uintptr_t) v 'ULL'" := (ELit v)
    (at level 1, no associativity, format "(uintptr_t) v 'ULL'") : bedrock_expr.
 
-  Delimit Scope bedrock_stmt with bedrock_stmt.
-  Notation "'/*skip*/'" := SSkip
-    : bedrock_stmt.
-  Notation "x = e" := (SSet x%bedrock_var e%bedrock_expr)
-    : bedrock_stmt.
   Notation "*(uint8_t*) e" := (ELoad access_size.one e%bedrock_expr)
     (at level 10, no associativity) : bedrock_expr.
   Notation "*(uint16_t*) e" := (ELoad access_size.two e%bedrock_expr)
@@ -362,6 +357,21 @@ Module ImpNotations.
     (at level 10, no associativity) : bedrock_expr.
   Notation "*(uint64_t*) e" := (ELoad access_size.eight e%bedrock_expr)
     (at level 10, no associativity) : bedrock_expr.
+
+  Delimit Scope bedrock_stmt with bedrock_stmt.
+  Notation "'/*skip*/'" := SSkip
+    : bedrock_stmt.
+  Notation "x = e" := (SSet x%bedrock_var e%bedrock_expr)
+    : bedrock_stmt.
+
+  Notation "*(uint8_t*) ea = ev" := (SStore access_size.one ea%bedrock_var ev%bedrock_expr)
+    (at level 76, ea at level 60) : bedrock_stmt.
+  Notation "*(uint16_t*) ea = ev" := (SStore access_size.two ea%bedrock_var ev%bedrock_expr)
+    (at level 76, ea at level 60) : bedrock_stmt.
+  Notation "*(uint32_t*) ea = ev" := (SStore access_size.four ea%bedrock_var ev%bedrock_expr)
+    (at level 76, ea at level 60) : bedrock_stmt.
+  Notation "*(uint64_t*) ea = ev" := (SStore access_size.eight ea%bedrock_var ev%bedrock_expr)
+    (at level 76, ea at level 60) : bedrock_stmt.
 
   Notation "c1 ; c2" := (SSeq c1%bedrock_stmt c2%bedrock_stmt)
     (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_stmt.
@@ -390,6 +400,11 @@ Module ImpNotations.
     (at level 76, t at level 60, e at level 60, a at level 60, c at level 60) : bedrock_expr.
   Notation "'field' a '!' .. '!' c 'of' t 'at' e  = rhs" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (SStore sz (EOp bop_add e (ELit (mword_of_nat ofs))) rhs))
     (at level 76, t at level 60, e at level 60, a at level 60, c at level 60) : bedrock_stmt.
+
+  (*
+  Notation "s 'at' e '=' rhs" := (SStore s e%bedrock_expr rhs%bedrock_expr)
+    (at level 76, e at level 60) : bedrock_stmt.
+   *)
 
   Definition bedrock_func {p} (x:@stmt p) := x.
   Arguments bedrock_func {_} _%bedrock_func.
@@ -487,6 +502,9 @@ Module _example.
   Compute c_decl "uintptr_t" ("a"::"b"::nil)%list "sumdiff" ("x"::"y"::nil)%list.
 
   Definition item : type := inr (Struct (("a", inl access_size.one)::("b", inl access_size.two)::nil))%list.
+
+  Check ( *(uint8_t*) _ = _ ; _ )%bedrock_stmt.
+  Check ( *(uint64_t*) _ = _ ; _ )%bedrock_stmt.
 
   Check
     (&field "b" of item at (left as item *> "b" as item *> "a")) %bedrock_expr.
