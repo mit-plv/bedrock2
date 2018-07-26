@@ -386,7 +386,7 @@ Module ImpNotations.
   Notation "e 'as' t *> a '!' .. '!' c = rhs" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (SStore sz (EOp bop_add e (ELit (mword_of_nat ofs))) rhs))
     (at level 76, a at level 60, c at level 60) : bedrock_stmt.
 
-  Notation "'field' a '!' .. '!' c 'of' t 'at' e" := (let '(ofs, _) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in ((EOp bop_add e (ELit (mword_of_nat ofs)))))
+  Notation "'&field' a '!' .. '!' c 'of' t 'at' e" := (let '(ofs, _) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in ((EOp bop_add e (ELit (mword_of_nat ofs)))))
     (at level 76, t at level 60, e at level 60, a at level 60, c at level 60) : bedrock_expr.
   Notation "'field' a '!' .. '!' c 'of' t 'at' e  = rhs" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (SStore sz (EOp bop_add e (ELit (mword_of_nat ofs))) rhs))
     (at level 76, t at level 60, e at level 60, a at level 60, c at level 60) : bedrock_stmt.
@@ -489,7 +489,7 @@ Module _example.
   Definition item : type := inr (Struct (("a", inl access_size.one)::("b", inl access_size.two)::nil))%list.
 
   Check
-    (field "b" of item at (left as item *> "b" as item *> "a")) %bedrock_expr.
+    (&field "b" of item at (left as item *> "b" as item *> "a")) %bedrock_expr.
   Check
     (field "b" of item at (left as item *> "b" as item *> "a") = *(uint8_t*) mid; SSkip) %bedrock_stmt.
 
