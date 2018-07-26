@@ -16,6 +16,9 @@ Class ImpSyntaxParameters :=
     bopname : Type;
 
     mword : Type;
+    mword_of_nat : nat -> mword;
+
+    bop_add : bopname;
   }.
 
 (*
@@ -216,6 +219,7 @@ Import String.
 
 Inductive struct :=
 | Struct (_ : list (string * (access_size + struct))).
+Definition type : Type := access_size + struct.
 
 Fixpoint sizeof_struct (s : struct) {struct s} : nat :=
   match s with
@@ -230,16 +234,16 @@ Fixpoint sizeof_struct (s : struct) {struct s} : nat :=
     ) ls
   end.
 
-Definition sizeof (s:access_size + struct) :=
+Definition sizeof (s:type) :=
   match s with
   | inl s => access_size.to_nat s
   | inr s => sizeof_struct s
   end.
 
-Definition slookup (field : string) (s : struct) : option (nat * (access_size + struct)) :=
+Definition slookup (field : string) (s : struct) : option (nat * type) :=
   match s with
   | (Struct ls) =>
-    (fix llookup (l : list _) {struct l} : option (nat * (access_size + struct)) :=
+    (fix llookup (l : list _) {struct l} : option (nat * type) :=
        match l with
        | nil => None
        | cons (f, ftype) l' =>
@@ -253,10 +257,9 @@ Definition slookup (field : string) (s : struct) : option (nat * (access_size + 
     ) ls
   end.
 
-Fixpoint rlookup fieldnames (s : access_size + struct) : option (nat * (access_size + struct)) :=
+Fixpoint rlookup fieldnames (s : type) : option (nat * type) :=
   match fieldnames, s with
-  | nil, inl a => Some (0, inl a)
-  | nil, inr a => Some (0, inr a)
+  | nil, r => Some (0, r)
   | cons f fieldnames', inr s =>
     match slookup f s with
     | None => None
@@ -267,6 +270,20 @@ Fixpoint rlookup fieldnames (s : access_size + struct) : option (nat * (access_s
       end
     end
   | _, _ => None
+  end.
+
+Inductive NO_SUCH_FIELD {T} (ctx:T) : Set := mk_NO_SUCH_FIELD.
+Inductive TYPE_IS_NOT_SCALAR {T} (ctx:T) : Set := mk_TYPE_IS_NOT_SCALAR.
+Definition scalar {T} (ctx : T) (r :  option (nat * type)) :
+  match r with
+  | None => NO_SUCH_FIELD ctx
+  | Some (_, inr a) => TYPE_IS_NOT_SCALAR (a, ctx)
+  | Some (n, inl s) => nat * access_size
+  end :=
+  match r with
+  | None => mk_NO_SUCH_FIELD ctx
+  | Some (_, inr a) => mk_TYPE_IS_NOT_SCALAR (a, ctx)
+  | Some (n, inl s) => (n, s)
   end.
 
 Section __test.
@@ -287,11 +304,11 @@ Section __test.
 
   Section with_mword.
   Context (mword : access_size).
-  Definition utcb_segment := Struct (
+  Definition utcb_segment : type := inr ( Struct (
    [ ("sel", inl two); ("ar", inl two); ("limit", inl four); ("base", inl mword) ]
-   ++ match mword with eight => [] | _ => [("reserved", inl mword)] end).
+   ++ match mword with eight => [] | _ => [("reserved", inl mword)] end)).
 
-  Definition exception_state := Struct (
+  Definition exception_state : type := inr ( Struct (
     [ ("mtd", inl mword) ; ("intr_len", inl mword) ; ("ip", inl mword) ; ("rflags", inl mword)
     ; ("intr_state", inl four) ; ("actv_state", inl four)
     ; ("inj", inl eight)                          (* NOTE: union: uint32 intr_info, intr_error *)
@@ -314,17 +331,14 @@ Section __test.
     | _ => []
     end ++
     [ ("dr7", inl mword) ; ("sysenter_cs", inl mword) ; ("sysenter_sp", inl mword) ; ("sysenter_ip", inl mword)
-    ; ("es", inr utcb_segment); ("cs", inr utcb_segment); ("ss", inr utcb_segment); ("ds", inr utcb_segment); ("gs", inr utcb_segment); ("ldtr", inr utcb_segment); ("tr", inr utcb_segment); ("gdtr", inr utcb_segment); ("idtr", inr utcb_segment)
+    ; ("es", utcb_segment); ("cs", utcb_segment); ("ss", utcb_segment); ("ds", utcb_segment); ("gs", utcb_segment); ("ldtr", utcb_segment); ("tr", utcb_segment); ("gdtr", utcb_segment); ("idtr", utcb_segment)
     ; ("tsc_val", inl eight); ("tsc_off", inl eight)
-    ] ).
+    ] ) ).
   End with_mword.
 
-  Compute slookup "dr7" (exception_state eight).
-  Compute rlookup ("es"::nil) (inr (exception_state eight)).
-  Compute rlookup ("es"::"sel"::nil) (inr (exception_state eight)).
+  Compute rlookup ("es"::nil) (exception_state eight).
+  Compute rlookup ("es"::"ar"::nil) (exception_state eight).
   (* e as utcb field ["es; "sel"] *)
-  (* e as utcb index 5 field ["es; "sel"] *)
-  (* e index 5 as utcb field ["es; "sel"] *)
 End __test.
 
 Module ImpNotations.
@@ -340,11 +354,11 @@ Module ImpNotations.
     : bedrock_stmt.
   Notation "x = e" := (SSet x%bedrock_var e%bedrock_expr)
     : bedrock_stmt.
-  Notation "*(uint8*) e" := (ELoad access_size.one e%bedrock_expr)
+  Notation "*(uint8_t*) e" := (ELoad access_size.one e%bedrock_expr)
     (at level 10, no associativity) : bedrock_expr.
-  Notation "*(uint16*) e" := (ELoad access_size.two e%bedrock_expr)
+  Notation "*(uint16_t*) e" := (ELoad access_size.two e%bedrock_expr)
     (at level 10, no associativity) : bedrock_expr.
-  Notation "*(uint32*) e" := (ELoad access_size.four e%bedrock_expr)
+  Notation "*(uint32_t*) e" := (ELoad access_size.four e%bedrock_expr)
     (at level 10, no associativity) : bedrock_expr.
   Notation "*(uint64_t*) e" := (ELoad access_size.eight e%bedrock_expr)
     (at level 10, no associativity) : bedrock_expr.
@@ -365,6 +379,17 @@ Module ImpNotations.
     (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_func.
   Notation "'while' ( e ) { { c } }" := (SWhile e%bedrock_expr c%bedrock_stmt)
    (at level 76, no associativity, c at level 76, format "'[v' 'while'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func.
+
+  (* record field access *)
+  Notation "e 'as' t *> a '!' .. '!' c" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (ELoad sz (EOp bop_add e (ELit (mword_of_nat ofs)))))
+    (at level 76, a at level 60, c at level 60) : bedrock_expr.
+  Notation "e 'as' t *> a '!' .. '!' c = rhs" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (SStore sz (EOp bop_add e (ELit (mword_of_nat ofs))) rhs))
+    (at level 76, a at level 60, c at level 60) : bedrock_stmt.
+
+  Notation "'field' a '!' .. '!' c 'of' t 'at' e" := (let '(ofs, _) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in ((EOp bop_add e (ELit (mword_of_nat ofs)))))
+    (at level 76, t at level 60, e at level 60, a at level 60, c at level 60) : bedrock_expr.
+  Notation "'field' a '!' .. '!' c 'of' t 'at' e  = rhs" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (SStore sz (EOp bop_add e (ELit (mword_of_nat ofs))) rhs))
+    (at level 76, t at level 60, e at level 60, a at level 60, c at level 60) : bedrock_stmt.
 
   Definition bedrock_func {p} (x:@stmt p) := x.
   Arguments bedrock_func {_} _%bedrock_func.
@@ -395,6 +420,9 @@ Module _example.
            funname := String.string;
            actname := String.string;
            mword := Word.word bw;
+
+           mword_of_nat := Word.natToWord _;
+           bop_add := Op.OPlus
          |};
        c_lit := fun w => DecimalString.NilZero.string_of_uint (BinNat.N.to_uint (Word.wordToN w)) ++ "ULL";
        c_bop := fun op =>
@@ -458,11 +486,19 @@ Module _example.
 
   Compute c_decl "uintptr_t" ("a"::"b"::nil)%list "sumdiff" ("x"::"y"::nil)%list.
 
-  Local Notation uint64_t := access_size.eight.
+  Definition item : type := inr (Struct (("a", inl access_size.one)::("b", inl access_size.two)::nil))%list.
 
+  Check
+    (field "b" of item at (left as item *> "b" as item *> "a")) %bedrock_expr.
+  Check
+    (field "b" of item at (left as item *> "b" as item *> "a") = *(uint8_t*) mid; SSkip) %bedrock_stmt.
+
+  (* Eval cbn -[Word.natToWord Word.NToWord] in *)
   Compute
     String (Coq.Strings.Ascii.Ascii false true false true false false false false) ""++
-    c_func string_eqb (fun x _ => "_"++ x) (left::right::target::nil)%list "bsearch" (ret::nil)%list (bedrock_func (
+    c_func string_eqb (fun x _ => "_"++ x) (left::right::target::nil)%list "bsearch" (ret::nil)%list
+    (bedrock_func (
+
     while (left < right) {{
       mid = left + (((right-left) >> 4) << 3);
       ret = *(uint64_t*) mid;
