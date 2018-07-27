@@ -15,6 +15,8 @@ Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
 Require Import compiler.FlatToRiscvBitWidthSpecifics.
+Require Import compiler.FlatToRiscvInvariants.
+Require Import compiler.FlatToRiscvBitWidthSpecificProofs.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import riscv.InstructionCoercions.
@@ -155,7 +157,8 @@ Section FlatToRiscv.
   Context {mem: Set}.
   Context {IsMem: Memory.Memory mem mword}.
   Context {BWS: FlatToRiscvBitWidthSpecifics mword mem}.
-  
+  Context {BWSP: FlatToRiscvBitWidthSpecificProofs mword mem}.
+                
   Local Notation RiscvMachine := (@RiscvMachine mword mem state).
   Context {RVM: RiscvProgram (OState RiscvMachine) mword}.
 
@@ -971,60 +974,7 @@ Section FlatToRiscv.
     destruct m as [ [r p n e] me ];
     simpl_RiscvMachine_get_set.
 
-  Definition containsMem(memL: mem)(memH: compiler.Memory.mem): Prop := forall addr v,
-      compiler.Memory.read_mem addr memH = Some v ->
-      loadWordwXLEN memL addr = v /\ regToZ_unsigned addr + XLEN_in_bytes <= Memory.memSize memL.
-
   Arguments Z.modulo : simpl never.
-
-  Lemma containsMem_write: forall initialL initialH finalH a v,
-    containsMem initialL initialH ->
-    Memory.write_mem a v initialH = Some finalH ->
-    containsMem (storeWordwXLEN initialL a v) finalH.
-  Proof.
-    (*
-    unfold containsMem, Memory.write_mem, Memory.read_mem, storeWordwXLEN,
-      loadWordwXLEN, wXLEN, bitwidth in *.
-    intros; destruct B; simpl in *;
-    (destruct_one_match_hyp; [|discriminate]);
-    (destruct_one_match_hyp; [|discriminate]);
-    inversions H0;
-    destruct_one_match_hyp.
-    - inversion H1; subst; clear H1 E1.
-      specialize H with (1 := E0). destruct H as [A B0].
-      split.
-      * apply Memory.loadStoreWord_eq; try reflexivity.
-        unfold Memory.valid_addr.
-        auto.
-      * rewrite Memory.storeWord_preserves_memSize. assumption.
-    - pose proof H as G.
-      specialize H with (1 := E0). destruct H as [A B].
-      specialize (G addr v0).
-      rewrite E in G. rewrite H1 in G. specialize (G eq_refl). destruct G as [C D].
-      subst.
-      destruct_one_match_hyp; try discriminate.
-      split.
-      * apply @Memory.loadStoreWord_ne; try congruence; unfold Memory.valid_addr; auto.
-      * rewrite Memory.storeWord_preserves_memSize. assumption.
-    - inversion H1; subst; clear H1 E1.
-      specialize H with (1 := E0). destruct H as [A B].
-      split.
-      * apply Memory.loadStoreDouble_eq; try reflexivity.
-        unfold Memory.valid_addr.
-        auto.
-      * rewrite Memory.storeDouble_preserves_memSize. assumption.
-    - pose proof H as G.
-      specialize H with (1 := E0). destruct H as [A B].
-      specialize (G addr v0).
-      rewrite E in G. rewrite H1 in G. specialize (G eq_refl). destruct G as [C D].
-      subst.
-      destruct_one_match_hyp; try discriminate.
-      split.
-      * apply @Memory.loadStoreDouble_ne; try congruence; unfold Memory.valid_addr; auto.
-      * rewrite Memory.storeDouble_preserves_memSize. assumption.
-  Qed.
-     *)
-  Admitted.
   
   Lemma run1_simpl: forall {inst initialL pc0},
       containsProgram initialL.(machineMem) [[inst]] pc0 ->

@@ -13,7 +13,7 @@ Section Memory.
   Definition mem := mword -> option mword.
 
   Definition read_mem(x: mword)(m: mem): option mword :=
-    if ((regToZ_unsigned x) mod XLEN) =? 0 then m x else None.
+    if ((regToZ_unsigned x) mod XLEN_in_bytes) =? 0 then m x else None.
 
   Definition write_mem(x: mword)(v: mword)(m: mem): option (mem) :=
     match read_mem x m with
