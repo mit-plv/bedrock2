@@ -26,25 +26,36 @@ Require Import compiler.EmitsValid.
 Require Import compiler.ZName.
 Require Import compiler.RegAlloc.
 Require compiler.util.List_Map.
+Require Import riscv.Utility.
+Require Import riscv.Memory.
+Require Import riscv.InstructionCoercions.
+
+Open Scope Z_scope.
 
 Section Pipeline.
 
-  Context {Bw: BitWidths}.
+  Context {mword: Set}.
+  Context {MW: MachineWidth mword}.
+  Context {stateMap: MapFunctions Register mword}.
+  Notation state := (map Register mword).
 
-  Context {stateMap: MapFunctions Register (word wXLEN)}.
-  Notation state := (map Register (word wXLEN)).
-
-  Context {mem: nat -> Set}.
-  Context {IsMem: Memory.Memory (mem wXLEN) wXLEN}.
+  Context {mem: Set}.
+  Context {IsMem: Memory.Memory mem mword}.
   
-  Local Notation RiscvMachine := (@RiscvMachine Bw (mem wXLEN) state).
-  Context {RVM: RiscvProgram (OState RiscvMachine) (word wXLEN)}.
+  Local Notation RiscvMachine := (@RiscvMachine mword mem state).
+  Context {RVM: RiscvProgram (OState RiscvMachine) mword}.
 
   Existing Instance riscv.Program.DefaultRiscvState.
   
   Existing Instance FlatToRiscv.State_is_RegisterFile.
   
-  Context {RVAX: @AxiomaticRiscv Bw state FlatToRiscv.State_is_RegisterFile (mem wXLEN) _ RVM}.
+  Context {RVAX: @AxiomaticRiscv mword MW state FlatToRiscv.State_is_RegisterFile mem _ RVM}.
+
+  Variable LwXLEN: Register -> Register -> Z -> Instruction.
+  Hypothesis LwXLEN_cases: LwXLEN = Lw \/ LwXLEN = Ld.
+  
+  Variable SwXLEN: Register -> Register -> Z -> Instruction.
+  Hypothesis SwXLEN_cases: SwXLEN = Sw \/ SwXLEN = Sd.
 
   Definition var := Register.
 
@@ -53,26 +64,26 @@ Section Pipeline.
   Context {NGstate: Type}.
   Context {NG: NameGen var NGstate}.
 
-  Definition flatten(s: ExprImp.stmt): FlatImp.stmt :=
+  Definition flatten(s: ExprImp.stmt): FlatImp.stmt (mword := mword) :=
     let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
     let (sFlat, ngs') := flattenStmt ngs s in sFlat.
 
   Definition annoying_instance: MapFunctions (@name ZName)
    (list (@name ZName) *
     list (@name ZName) *
-    @ExprImp.stmt Bw ZName ZName).
+    @ExprImp.stmt mword ZName ZName).
   Admitted.
   Existing Instance annoying_instance.
 
   Definition annoying_instance': MapFunctions (@name ZName)
    (list (@name ZName) *
     list (@name ZName) *
-    @FlatImp.stmt Bw ZName ZName).
+    @FlatImp.stmt mword ZName ZName).
   Admitted.
   Existing Instance annoying_instance'.
 
   Definition exprImp2Riscv(s: ExprImp.stmt): list Instruction :=
-    FlatToRiscv.compile_stmt (flatten s).
+    FlatToRiscv.compile_stmt LwXLEN SwXLEN (flatten s).
 
   Notation registerset := (@set Register
                (@map_range_set var Register (List_Map.List_Map _ _))).
@@ -80,56 +91,69 @@ Section Pipeline.
   Definition riscvRegisters: registerset := of_list (List.map Z.of_nat (List.seq 1 31)).
 
   Definition exprImp2Riscv_with_regalloc(s: ExprImp.stmt): list Instruction :=
-    FlatToRiscv.compile_stmt
+    FlatToRiscv.compile_stmt LwXLEN SwXLEN
       (register_allocation (VarName := ZName) (RegisterName := ZName) (FuncName := ZName)
                            Register0
                            riscvRegisters
                            (flatten s)).
 
-  Definition evalH := @ExprImp.eval_stmt Bw ZName ZName _ _.
+  Definition evalH := @ExprImp.eval_stmt mword MW ZName ZName _ _.
 
-  Definition evalL(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
-    execState (run fuel) (putProgram (List.map (fun i => ZToWord 32 (encode i)) insts) $0 initial).
+  Definition evalL{B: BitWidths}(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
+    execState (run fuel) (putProgram (List.map (fun i => ZToWord 32 (encode i)) insts) zero initial).
 
-  Lemma wXLEN_32: 32 <= wXLEN.
+  Lemma wXLEN_32{Bw: BitWidths}: (32 <= wXLEN)%nat.
   Proof.
     clear. unfold wXLEN, bitwidth. destruct Bw; omega.
   Qed.
 
-  Lemma wXLEN_cases: wXLEN = 32 \/ wXLEN = 64.
+  Lemma wXLEN_cases{Bw: BitWidths}: (wXLEN = 32 \/ wXLEN = 64)%nat.
   Proof.
     clear. unfold wXLEN, bitwidth. destruct Bw; omega.
   Qed.
 
   Local Arguments mult: simpl never.
 
-  Lemma putProgram_containsProgram: forall s a p (initial: RiscvMachine),
+  (*
+  Definition putProgram(p: list Instruction)(a: mword)(initial: RiscvMachine): RiscvMachine :=
+    putProgram (List.map (fun i => ZToWord 32 (encode i)) p) a initial.
+  *)
+  Lemma putProgram_containsProgram: forall {Bw: BitWidths} s a p (initial: RiscvMachine),
+      mword = word wXLEN -> (*?*)
       FlatToRiscv.valid_registers s ->
-      FlatToRiscv.compile_stmt s = p ->
+      FlatToRiscv.compile_stmt LwXLEN SwXLEN s = p ->
       FlatToRiscv.stmt_not_too_big s ->
-      #a mod 4 = 0 ->
-      #a + 4 * (length p) <= Memory.memSize initial.(machineMem) ->
+      regToZ_unsigned a mod 4 = 0 ->
+      regToZ_unsigned a + 4 * (Zlength p) <= Memory.memSize initial.(machineMem) ->
       FlatToRiscv.containsProgram
         (putProgram (List.map (fun i => ZToWord 32 (encode i)) p) a initial).(machineMem) p a.
   Proof.  
-    intros. subst.
+    intros. subst p. unfold putProgram.
     pose proof BitWidths.pow2_wXLEN_4 as X.
     rewrite FlatToRiscv.containsProgram_alt.
-    unfold FlatToRiscv.containsProgram', FlatToRiscv.decode_prog, putProgram.
-    destruct initial as [[regs pc0 eh] m].
+    2: assumption.
+    2: exact annoying_instance'.
+    2: exact riscv.Program.DefaultRiscvState.
+    2: exact RVAX.
+    2: exact LwXLEN_cases.
+    2: exact SwXLEN_cases.
+    unfold FlatToRiscv.containsProgram', FlatToRiscv.decode_prog, Minimal.putProgram.
+    destruct initial as [ [regs pc0 eh] m ].
     simpl in *. split.
     - rewrite Memory.store_word_list_preserves_memSize. assumption.
-    - rewrite Memory.load_store_word_list_eq; rewrite? map_length; auto.
+    - rewrite Memory.load_store_word_list_eq; rewrite? map_Zlength; auto.
       rewrite map_map.
-      apply Memory.list_elementwise_same'. intuition idtac.
+      apply Memory.list_elementwise_same_Z'. intuition idtac.
       (* TODO de-duplicate *)
-      + pose proof Memory.map_nth_error' as P.
-        specialize P with (1 := H0).
+      + pose proof Memory.map_Znth_error' as P.
+        specialize P with (1 := H6).
         destruct P as [ inst [A B] ]. subst e.
         rewrite A. f_equal.
         rewrite uwordToZ_ZToWord.
         * symmetry. apply decode_encode.
-          eapply compile_stmt_emits_valid; eassumption.
+          eapply compile_stmt_emits_valid; try eassumption.
+          Fail exact A.
+          Admitted. (*
         * apply encode_range.
       + erewrite map_nth_error by eassumption.
         f_equal.
@@ -138,28 +162,18 @@ Section Pipeline.
           eapply compile_stmt_emits_valid; eassumption.
         * apply encode_range.
   Qed.
-
+*)
   Lemma weqb_false_iff: forall (sz : nat) (x y : word sz), weqb x y = false <-> x <> y.
   Proof.
     intros.
     pose proof (weqb_true_iff x y).
     destruct (weqb x y) eqn: E; intuition congruence.
   Qed.
-
-  (* TODO rename pow2_wXLEN_4 like this *)
-  Lemma eight_lt_pow2_wXLEN: 8 < pow2 wXLEN.
-  Proof.
-    unfold wXLEN, bitwidth. destruct Bw;
-      do 3 rewrite pow2_S;
-      change 8 with (2 * (2 * (2 * 1))) at 1;
-      (repeat apply mult_lt_compat_l; [ | repeat constructor ..]);
-      apply one_lt_pow2.
-  Qed.
   
   Lemma store_word_list_preserves_containsMem: forall offset words mL mH,
-      #offset + 4 * length words <= Memory.memSize mL ->
+      regToZ_unsigned offset + 4 * Zlength words <= Memory.memSize mL ->
       Memory.valid_addr offset 4 (Memory.memSize mL) ->
-      FlatToRiscv.mem_inaccessible mH #offset (4 * length words) ->
+      FlatToRiscv.mem_inaccessible mH (regToZ_unsigned offset) (4 * Zlength words) ->
       FlatToRiscv.containsMem mL mH ->
       FlatToRiscv.containsMem (Memory.store_word_list words offset mL) mH.
   Proof.
