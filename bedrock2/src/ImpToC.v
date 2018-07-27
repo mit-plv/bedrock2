@@ -43,6 +43,7 @@ Class BasicALU (p:ImpSyntax.Parameters) :=
     bop_or : bopname;
     bop_xor : bopname;
 
+    (* no information about return value of long shifts, but they are allowed *)
     bop_sru : bopname;
     bop_slu : bopname;
     bop_srs : bopname;
@@ -201,7 +202,7 @@ Module Import ImpStruct.
     | Some (n, inl s) => (n, s)
     end.
   
-  Section __test.
+  Module __test.
     Import String.
     Open Scope string_scope.
     Import List.
@@ -251,10 +252,6 @@ Module Import ImpStruct.
       ; ("tsc_val", inl eight); ("tsc_off", inl eight)
       ] ) ).
     End with_mword.
-  
-    Compute rlookup ("es"::nil) (exception_state eight).
-    Compute rlookup ("es"::"ar"::nil) (exception_state eight).
-    (* e as utcb field ["es"; "sel"] *)
   End __test.
 End ImpStruct.
 
@@ -308,6 +305,10 @@ Module ImpNotations.
       (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_func.
     Notation "'while' ( e ) { { c } }" := (SWhile e%bedrock_expr c%bedrock_stmt)
    (at level 76, no associativity, c at level 76, format "'[v' 'while'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func.
+    Notation "'if' ( e ) { { c1 } } 'else' { { c2 } }" := (SIf e%bedrock_expr c1%bedrock_func c2%bedrock_func)
+     (at level 76, no associativity, c1 at level 76, c2 at level 76, format "'[v' 'if'  ( e )  { {  '/  ' c1 '/' } }  'else'  { {  '/  ' c2 '/' } } ']'") : bedrock_func.
+    Notation "'if' ( e ) { { c } }" := (SIf e%bedrock_expr c%bedrock_func SSkip)
+     (at level 76, no associativity, c at level 76, format "'[v' 'if'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func.
 
     Definition bedrock_func {p} (x:@stmt p) := x.
     Arguments bedrock_func {_} _%bedrock_func.
