@@ -14,7 +14,7 @@ Require Import riscv.Execute.
 Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
-Require Import riscv.util.BitWidths.
+Require Import compiler.FlatToRiscvBitWidthSpecifics.
 Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import riscv.InstructionCoercions.
@@ -64,11 +64,8 @@ Existing Instance State_is_RegisterFile.
 
 Section FlatToRiscv.
 
-  Context {B: BitWidths}.
   Context {mword: Set}.
   Context {MW: MachineWidth mword}.
-
-  Hypothesis mword_word_wXLEN: mword = word wXLEN. (* <- to be used only when really necessary *)
 
   Add Ring mword_ring : (@regRing mword MW).
 
@@ -157,6 +154,7 @@ Section FlatToRiscv.
 
   Context {mem: Set}.
   Context {IsMem: Memory.Memory mem mword}.
+  Context {BWS: FlatToRiscvBitWidthSpecifics mword mem}.
   
   Local Notation RiscvMachine := (@RiscvMachine mword mem state).
   Context {RVM: RiscvProgram (OState RiscvMachine) mword}.
@@ -403,10 +401,10 @@ Section FlatToRiscv.
 
   (* load and decode Inst *)
   Definition ldInst(m: mem)(a: mword): Instruction :=
-    decode RV_wXLEN_IM (uwordToZ (Memory.loadWord m a)).
+    decode (@RV_wXLEN_IM BitWidth) (uwordToZ (Memory.loadWord m a)).
 
   Definition decode_prog(prog: list (word 32)): list Instruction :=
-    List.map (fun w => decode RV_wXLEN_IM (uwordToZ w)) prog.
+    List.map (fun w => decode (@RV_wXLEN_IM BitWidth) (uwordToZ w)) prog.
 
   Definition mem_inaccessible(m: Memory.mem)(start len: Z): Prop :=
     forall a w, Memory.read_mem a m = Some w -> not_in_range a XLEN_in_bytes start len.
@@ -474,6 +472,8 @@ Section FlatToRiscv.
     | (_ >= _)%nat => idtac
     end.
 
+  Definition pow2_wXLEN_4 := pow2_sz_4.
+  
   Ltac nat_rel_with_words_pre :=
     match goal with
     | |- ?P => ensure_is_nat_rel P
@@ -738,7 +738,7 @@ Section FlatToRiscv.
 
   Definition runsTo_onerun(initial: RiscvMachine)(P: RiscvMachine -> Prop): Prop :=
     exists fuel,
-      match run fuel initial with
+      match run (B := BitWidth) fuel initial with
       | (Some _, final) => P final
       | (None  , final) => False
       end.
@@ -748,7 +748,7 @@ Section FlatToRiscv.
         P initial ->
         runsTo initial P
     | runsToStep: forall (initial middle: RiscvMachine) (P: RiscvMachine -> Prop),
-        run1 initial = (Some tt, middle) ->
+        run1 (B := BitWidth) initial = (Some tt, middle) ->
         runsTo middle P ->
         runsTo initial P.
 
@@ -973,33 +973,9 @@ Section FlatToRiscv.
     destruct m as [ [r p n e] me ];
     simpl_RiscvMachine_get_set.
 
-  Definition loadWordwXLEN(memL: mem)(addr: mword): mword.
-    clear -addr memL IsMem B mword_word_wXLEN.
-    rewrite mword_word_wXLEN.
-    unfold wXLEN in *.
-    destruct bitwidth.
-    - exact (Memory.loadWord memL addr).
-    - exact (Memory.loadDouble memL addr).
-  Defined.
-
-  Definition TODO{T: Type}: T. Proof using. Admitted.
-  
-  Definition storeWordwXLEN(m: mem)(a v: mword): mem.
-    unfold wXLEN, bitwidth in *.
-    clear - m a v IsMem mword_word_wXLEN.
-    rewrite mword_word_wXLEN in *.
-    destruct B.
-    - refine (Memory.storeWord m a v).
-      Fail rewrite mword_word_wXLEN in IsMem.
-      apply TODO.
-    - refine (Memory.storeDouble m a v). apply TODO.
-      Grab Existential Variables.
-      apply TODO. apply TODO.
-  Defined.
-
-  Definition containsMem(memL: mem)(memH: compiler.Memory.mem): Prop :=
-    forall addr v, compiler.Memory.read_mem addr memH = Some v ->
-              loadWordwXLEN memL addr = v /\ regToZ_unsigned addr + XLEN_in_bytes <= Memory.memSize memL.
+  Definition containsMem(memL: mem)(memH: compiler.Memory.mem): Prop := forall addr v,
+      compiler.Memory.read_mem addr memH = Some v ->
+      loadWordwXLEN memL addr = v /\ regToZ_unsigned addr + XLEN_in_bytes <= Memory.memSize memL.
 
   Arguments Z.modulo : simpl never.
 
@@ -1055,7 +1031,7 @@ Section FlatToRiscv.
   Lemma run1_simpl: forall {inst initialL pc0},
       containsProgram initialL.(machineMem) [[inst]] pc0 ->
       pc0 = initialL.(core).(pc) ->
-      run1 initialL = (execute inst;; step) initialL.
+      run1 (B := BitWidth) initialL = (execute inst;; step) initialL.
   Proof.
     intros. subst *.
     unfold run1.
@@ -1953,7 +1929,7 @@ Section FlatToRiscv.
     initialL.(core).(nextPC) = add initialL.(core).(pc) four ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength insts) ->
     exists fuelL,
-      let finalL := execState (run fuelL) initialL in
+      let finalL := execState (run (B := BitWidth) fuelL) initialL in
       extends finalL.(core).(registers) finalH /\
       containsMem finalL.(machineMem) finalMH.
   Proof.
