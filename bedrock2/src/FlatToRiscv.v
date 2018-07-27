@@ -417,44 +417,42 @@ Section FlatToRiscv.
   Definition containsProgram'(m: mem)(program: list Instruction)(offset: mword) :=
     regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\
     decode_prog (Memory.load_word_list m offset (Zlength program)) = program.
-
+  
   Lemma containsProgram_alt: forall m program offset,
       containsProgram m program offset <-> containsProgram' m program offset.
   Proof.
-    (*
-    intros. unfold containsProgram, containsProgram', decode_prog. intuition idtac.
-    - apply list_elementwise_same_Z. intro i. specialize (H3 i).
-      assert (i < Zlength program \/ Zlength program <= i) as C by omega.
+    intros. unfold containsProgram, containsProgram', decode_prog.
+    clear LwXLEN SwXLEN LwXLEN_cases SwXLEN_cases.
+    intuition idtac.
+    - apply list_elementwise_same_Z. intros i B. specialize (H1 i).
+      assert (0 <= i < Zlength program \/ Zlength program <= i) as C by omega.
       destruct C as [C | C].
-      + destruct (nth_error_Some program i) as [_ P].
+      + destruct (Znth_error_Some _ program i) as [_ P].
         specialize (P C).
-        destruct (nth_error program i) as [inst|] eqn: E; try contradiction.
+        destruct (Znth_error program i) as [inst|] eqn: E; try contradiction.
         specialize (H1 _ eq_refl). unfold ldInst in H1.
-        erewrite map_nth_error.
+        erewrite map_Znth_error.
         * f_equal. eassumption.
-        * apply nth_error_load_word_list; try assumption.
-          apply pow2_wXLEN_4.
-      + destruct (nth_error_None program i) as  [_ P].
-        specialize (P C). rewrite P.
-        edestruct nth_error_None as  [_ Q].
-        apply Q.
-        rewrite map_length.
-        rewrite length_load_word_list.
+        * apply Znth_error_load_word_list; try assumption.
+      + pose proof (Znth_error_ge_None _ _ C) as P.
+        rewrite P.
+        apply Znth_error_ge_None.
+        rewrite map_Zlength.
+        rewrite Zlength_load_word_list by (apply Zlength_nonneg).
         assumption.
     - unfold ldInst. rewrite <- H1 in H.
-      pose proof (map_nth_error') as P.
+      pose proof (map_Znth_error') as P.
       specialize P with (1 := H).
       destruct P as [inst' [P Q] ].
       subst inst.
       do 2 f_equal.
-      rewrite nth_error_load_word_list in P.
+      rewrite Znth_error_load_word_list in P.
       + congruence.
-      + apply pow2_wXLEN_4.
-      + edestruct (nth_error_Some (Memory.load_word_list m offset (length program))) as  [Q _].
-        rewrite length_load_word_list in Q.
+      + edestruct (Znth_error_Some _ (Memory.load_word_list m offset (Zlength program)))
+          as [Q _].
+        rewrite Zlength_load_word_list in Q by (apply Zlength_nonneg).
         apply Q. congruence.
-  Qed.*)
-  Admitted.
+  Qed.
 
   Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
   Proof.
