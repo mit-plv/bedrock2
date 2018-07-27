@@ -383,7 +383,7 @@ Module ImpToC. Section ImpToC.
     match e with
     | ELit v => c_lit v 
     | EVar x => c_var x
-    | ELoad s ea => "(" ++ c_size s ++ "*)(" ++ c_expr ea ++ ")"
+    | ELoad s ea => "*(" ++ c_size s ++ "*)(" ++ c_expr ea ++ ")"
     | EOp op e1 e2 => c_bop ("(" ++ c_expr e1 ++ ")") op ("(" ++ c_expr e2 ++ ")")
     end.
 
