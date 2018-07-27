@@ -32,7 +32,7 @@ Ltac ringify wXLEN :=
                  || rewrite! wzero'_def
          end.
 
-Ltac solve_word_eq wXLEN :=
+Ltac solve_word_eq_old wXLEN :=
   match goal with
   | |- @eq (word _) _ _ => idtac
   | _ => fail 1 "wrong shape of goal"
@@ -43,7 +43,6 @@ Ltac solve_word_eq wXLEN :=
   repeat (rewrite app_length; simpl);
   ringify wXLEN;
   try ring.    
-
 
 Section Test.
   Variable (sz: nat).

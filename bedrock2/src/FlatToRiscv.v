@@ -24,13 +24,14 @@ Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
 Require Import Coq.micromega.Lia.
 Require Import riscv.util.nat_div_mod_to_quot_rem.
-Require Import compiler.util.word_ring.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
 Require Import compiler.ZName.
+
+(* TODO remove these three *)
 Require Import riscv.MachineWidth_wXLEN.
 Require Import riscv.MachineWidth32.
 Require Import riscv.MachineWidth64.
@@ -69,11 +70,45 @@ Section FlatToRiscv.
   Context {mword: Set}.
   Context {MW: MachineWidth mword}.
 
-  Add Ring mword_ring : (@regRing mword MW).
+  Ltac is_positive_cst p :=
+    match eval hnf in p with
+    | xH => constr:(true)
+    | xO ?q => is_positive_cst q
+    | xI ?q => is_positive_cst q
+    | _ => constr:(false)
+    end.
+    
+  Ltac is_Z_cst n :=
+    match eval hnf in n with
+    | Z0 => constr:(true)
+    | Zpos ?p => is_positive_cst p
+    | Zneg ?p => is_positive_cst p
+    | _ => constr:(false)
+    end.
 
-  (*
-  Ltac solve_word_eq := word_ring.solve_word_eq (@wXLEN Bw).
-  *)
+  Ltac mword_cst w :=
+    match eval cbv [zero one four eight] in w with
+    | ZToReg ?x => let b := is_Z_cst x in
+                  match b with
+                  | true => x
+                  | _ => constr:(NotConstant)
+                  end
+    | _ => constr:(NotConstant)
+  end.
+
+  Add Ring mword_ring : (@regRing mword MW)
+    (morphism (@ZToReg_morphism mword MW), constants [mword_cst]).
+
+  Ltac solve_word_eq :=
+    match goal with
+    | |- @eq mword _ _ => idtac
+    | _ => fail 1 "wrong shape of goal"
+    end;
+    subst;
+    clear;
+    simpl;
+    repeat (rewrite app_length; simpl);
+    try ring.    
 
   (* put here so that rem picks up the MachineWidth for wXLEN *)
 
@@ -196,10 +231,8 @@ Section FlatToRiscv.
      https://github.com/coq/coq/issues/6257 *)
 
   Variable LwXLEN: Register -> Register -> Z -> Instruction.
-  Hypothesis LwXLEN_cases: LwXLEN = Lw \/ LwXLEN = Ld.
   
   Variable SwXLEN: Register -> Register -> Z -> Instruction.
-  Hypothesis SwXLEN_cases: SwXLEN = Sw \/ SwXLEN = Sd.
 
   Definition compile_op(rd: Register)(op: binop)(rs1 rs2: Register): list Instruction :=
     match op with
@@ -425,7 +458,7 @@ Section FlatToRiscv.
       containsProgram m program offset <-> containsProgram' m program offset.
   Proof.
     intros. unfold containsProgram, containsProgram', decode_prog.
-    clear LwXLEN SwXLEN LwXLEN_cases SwXLEN_cases.
+    clear LwXLEN SwXLEN.
     intuition idtac.
     - apply list_elementwise_same_Z. intros i B. specialize (H1 i).
       assert (0 <= i < Zlength program \/ Zlength program <= i) as C by omega.
@@ -575,7 +608,7 @@ Section FlatToRiscv.
     rewrite ZToReg_regToZ_unsigned in H2.
     auto.
   Qed.
-
+  
   Lemma containsProgram_cons_inv: forall m inst insts offset,
     containsProgram m (inst :: insts) offset ->
     containsProgram m [[inst]] offset /\
@@ -667,12 +700,8 @@ Section FlatToRiscv.
     apply containsProgram_app; [assumption..|].
     rewrite Zlength_cons, Zlength_nil.
     repeat match goal with
-           | |- context[?x] => progress (ring_simplify x)
-           end.
-    rewrite <- regToZ_unsigned_one.
-    rewrite ZToReg_regToZ_unsigned.
-    repeat match goal with
-           | |- context[?x] => progress (ring_simplify x)
+           | H: containsProgram _ _ ?x |- _ => progress (ring_simplify x in H)
+           | |-  containsProgram _ _ ?x     => progress (ring_simplify x)
            end.
     assumption.
   Qed.
@@ -994,10 +1023,6 @@ Section FlatToRiscv.
     repeat match goal with
            | |- context[?x] => progress (ring_simplify x)
            end.
-    rewrite ZToReg_morphism.(morph0).
-    repeat match goal with
-           | |- context[?x] => progress (ring_simplify x)
-           end.
     reflexivity.
   Qed. 
 
@@ -1246,8 +1271,8 @@ Section FlatToRiscv.
     end;
     rewrite <-? (Z.mul_comm 4);
     rewrite? ZToWord_mult;
-    rewrite? Z4four;
-(*  repeat (apply remu_four_zero_distrib_plus); 
+(*  rewrite? Z4four;
+    repeat (apply remu_four_zero_distrib_plus); 
     rewrite? remu_four_undo;
     rewrite? remu_four_four;
     repeat match goal with
@@ -1642,7 +1667,7 @@ Section FlatToRiscv.
     - (* SLoad *)
       clear IHfuelH.
       eapply runsToStep; simpl in *; subst *.
-      + Admitted. (*fetch_inst.
+      + fetch_inst.
         erewrite execute_load; [|eassumption..].
         simpl_RiscvMachine_get_set.
         simpl.
@@ -1702,6 +1727,8 @@ Section FlatToRiscv.
       change 16%nat with (Z.to_nat 16).
       change 8%nat with (Z.to_nat 8).
       rewrite <-? wplus_assoc.
+      admit.
+      (*
       change 16%Z with ( 8+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change ( 8+8)%Z with 16%Z.
       change 24%Z with (16+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (16+8)%Z with 24%Z.
       change 32%Z with (24+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (24+8)%Z with 32%Z.
@@ -1783,16 +1810,17 @@ Section FlatToRiscv.
             }
             nia.
           }
+      *)
 
       (* SOp *)
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1step. run1done.
-      replace (ZToWord wXLEN 1) with (natToWord wXLEN 1).
+      replace (fromImm 1) with one.
       + rewrite reduce_eq_to_sub_and_lt.
         assumption.
-      + change 1%Z with (Z.of_nat 1). rewrite ZToWord_Z_of_nat. reflexivity.
+      + clear. unfold one. admit. (* TODO define these to be the same *)
     - run1step. run1done.
     - run1step. run1done.
 
@@ -1800,9 +1828,13 @@ Section FlatToRiscv.
       clear IHfuelH.
       run1step.
       run1done.
-      rewrite wplus_unit.
-      assumption.
+      match goal with
+      | H: Some _ = Some _ |- Some _ = Some _ => rewrite <- H
+      end.
+      f_equal.
+      ring.
 
+      (*
     - (* SIf/Then *)
       (* branch if cond = 0 (will not branch) *)
       run1step.
@@ -1863,6 +1895,7 @@ Section FlatToRiscv.
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
   Qed.
   *)
+  Admitted.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
@@ -1904,7 +1937,6 @@ Section FlatToRiscv.
       + rewrite app_nil_r. rewrite app_nil_l. subst *. assumption.
       + simpl. subst imemStart.
         rewrite Zlength_nil.
-        rewrite ZToReg_morphism.(morph0).
         unfold name, ZName in *.
         ring.
       + assumption.
