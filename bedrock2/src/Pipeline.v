@@ -52,10 +52,11 @@ Section Pipeline.
   Context {RVAX: @AxiomaticRiscv mword MW state FlatToRiscv.State_is_RegisterFile mem _ RVM}.
 
   Variable LwXLEN: Register -> Register -> Z -> Instruction.
-  Hypothesis LwXLEN_cases: LwXLEN = Lw \/ LwXLEN = Ld.
   
   Variable SwXLEN: Register -> Register -> Z -> Instruction.
-  Hypothesis SwXLEN_cases: SwXLEN = Sw \/ SwXLEN = Sd.
+
+  Context {BWS: FlatToRiscvBitWidthSpecifics.FlatToRiscvBitWidthSpecifics mword mem}.
+  Context {BWSP: FlatToRiscvBitWidthSpecificProofs.FlatToRiscvBitWidthSpecificProofs mword mem}.
 
   Definition var := Register.
 
@@ -119,7 +120,6 @@ Section Pipeline.
     putProgram (List.map (fun i => ZToWord 32 (encode i)) p) a initial.
   *)
   Lemma putProgram_containsProgram: forall {Bw: BitWidths} s a p (initial: RiscvMachine),
-      mword = word wXLEN -> (*?*)
       FlatToRiscv.valid_registers s ->
       FlatToRiscv.compile_stmt LwXLEN SwXLEN s = p ->
       FlatToRiscv.stmt_not_too_big s ->
@@ -131,12 +131,6 @@ Section Pipeline.
     intros. subst p. unfold putProgram.
     pose proof BitWidths.pow2_wXLEN_4 as X.
     rewrite FlatToRiscv.containsProgram_alt.
-    2: assumption.
-    2: exact annoying_instance'.
-    2: exact riscv.Program.DefaultRiscvState.
-    2: exact RVAX.
-    2: exact LwXLEN_cases.
-    2: exact SwXLEN_cases.
     unfold FlatToRiscv.containsProgram', FlatToRiscv.decode_prog, Minimal.putProgram.
     destruct initial as [ [regs pc0 eh] m ].
     simpl in *. split.
@@ -146,7 +140,7 @@ Section Pipeline.
       apply Memory.list_elementwise_same_Z'. intuition idtac.
       (* TODO de-duplicate *)
       + pose proof Memory.map_Znth_error' as P.
-        specialize P with (1 := H6).
+        specialize P with (1 := H0).
         destruct P as [ inst [A B] ]. subst e.
         rewrite A. f_equal.
         rewrite uwordToZ_ZToWord.
@@ -174,37 +168,40 @@ Section Pipeline.
       regToZ_unsigned offset + 4 * Zlength words <= Memory.memSize mL ->
       Memory.valid_addr offset 4 (Memory.memSize mL) ->
       FlatToRiscv.mem_inaccessible mH (regToZ_unsigned offset) (4 * Zlength words) ->
-      FlatToRiscv.containsMem mL mH ->
-      FlatToRiscv.containsMem (Memory.store_word_list words offset mL) mH.
+      FlatToRiscvInvariants.containsMem mL mH ->
+      FlatToRiscvInvariants.containsMem (Memory.store_word_list words offset mL) mH.
   Proof.
-    unfold FlatToRiscv.containsMem. intros.
+    unfold FlatToRiscvInvariants.containsMem. intros.
     specialize (H2 addr v H3).
     rewrite Memory.store_word_list_preserves_memSize.
     intuition idtac.
-    pose proof pow2_wXLEN_4.
     unfold FlatToRiscv.mem_inaccessible in *.
     pose proof H3.
     unfold Memory.read_mem in H3.
     destruct_one_match_hyp; try discriminate. clear E.
-    unfold FlatToRiscv.loadWordwXLEN, wXLEN_in_bytes, wXLEN, bitwidth in *; destruct Bw;
+    unfold FlatToRiscvBitWidthSpecifics.loadWordwXLEN, wXLEN_in_bytes, wXLEN, bitwidth in *.
+    (*
+    destruct Bw;
       [ rewrite Memory.loadWord_outside_store_word_list
       |  erewrite Memory.loadDouble_outside_store_word_list ];
       eauto; Memory.mem_simpl.
   Qed.
+     *)
+  Admitted.
 
   Definition enough_registers(s: ExprImp.stmt): Prop :=
     FlatToRiscv.valid_registers (flatten s).
   
   (* We could also say something about the memory, but then the statement becomes more complex.
      And note that the register we look at could contain any value loaded from the memory. *)
-  Lemma exprImp2Riscv_correct: forall sH initialL instsL fuelH finalH initialMemH finalMemH,
+  Lemma exprImp2Riscv_correct: forall {Bw: BitWidths} sH initialL instsL fuelH finalH initialMemH finalMemH,
     (Z.of_nat (ExprImp.stmt_size sH) < 2 ^ 7)%Z ->
     enough_registers sH ->
     exprImp2Riscv sH = instsL ->
-    4 * length instsL <= Memory.memSize initialL.(machineMem) ->
+    4 * Zlength instsL <= Memory.memSize initialL.(machineMem) ->
     evalH empty_map fuelH empty_map initialMemH sH = Some (finalH, finalMemH) ->
-    FlatToRiscv.mem_inaccessible initialMemH 0 (4 * length instsL) ->
-    FlatToRiscv.containsMem initialL.(machineMem) initialMemH ->
+    FlatToRiscv.mem_inaccessible initialMemH 0 (4 * Zlength instsL) ->
+    FlatToRiscvInvariants.containsMem initialL.(machineMem) initialMemH ->
     exists fuelL,
       forall resVar res,
       get finalH resVar = Some res ->
@@ -227,26 +224,27 @@ Section Pipeline.
       lia.
     }
     pose proof @flattenStmt_correct as P.
-    Set Printing Implicit.
-    specialize (P _ _ _ _ _ _ _ _ _ fuelH sH s initialMemH finalH finalMemH).
-    destruct P as [fuelM [finalM [EvM GM]]].
+    specialize (P _ _ _ _ _ _ _ _ _ _ fuelH sH s initialMemH finalH finalMemH).
+    destruct P as [fuelM [finalM [EvM GM] ] ].
     - unfold ExprImp2FlatImp. rewrite E. reflexivity.
     - unfold evalH. apply EvH.
     - pose proof  FlatToRiscv.compile_stmt_correct as P.
-      specialize P with (imemStart := $0).
+      specialize P with (imemStart := (@zero _ MW)).
       let r := eval unfold evalL in (evalL 0 instsL initialL) in
           match r with
           | execState _ ?x => specialize P with (initialL := x)
           end.
-      edestruct P as [fuelL [P1 P2]]; clear P.
+      edestruct P as [fuelL [P1 P2] ]; clear P.
       + unfold translate, DefaultRiscvState, default_translate.
         intros.
         autorewrite with alu_defs.
         (* TODO all of this should be something like autorewrite in * *)
         destruct_one_match; [exfalso|reflexivity].
         apply Bool.negb_true_iff in E0.
-        apply weqb_false_iff in E0.
+        change signed_eqb with reg_eqb in E0.
+        rewrite reg_eqb_false in E0.
         pose proof pow2_wXLEN_4 as Q.
+        (*
         rewrite <- (wordToNat_natToWord_idempotent' wXLEN Q) in H.
         rewrite <- wordToNat_mod in H.
         * apply wordToNat_zero in H. contradiction.
@@ -291,5 +289,7 @@ Section Pipeline.
         erewrite P1; try reflexivity.
         apply GM. exact H.
   Qed.
+         *)
+  Admitted.
 
 End Pipeline.

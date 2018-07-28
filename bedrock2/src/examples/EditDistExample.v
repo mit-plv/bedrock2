@@ -54,6 +54,44 @@ Notation "'&A[' i ]" := ((input_base + 8)%Z + 4 * i)%src.
 Notation "'&B[' j ]" := ((input_base + 8)%Z + 4 * n + 4 * j)%src.
 Notation "'&M[' i , j ]" := ((input_base + 8)%Z + 4 * (n + m + ((n + 1) * j) + i))%src.
 
+(* TODO make coercions work
+
+Definition mkConst: Z -> expr := @Const (word 32) _.
+Definition mkVar: var -> expr := @Var (word 32).
+Coercion mkConst: Z >-> expr.
+Coercion mkVar: var >-> expr.
+
+Example edit_dist: stmt :=
+  n <-* mkConst input_base;
+  m <-* mkConst (input_base + 4)%Z;
+  i <-- mkConst 0;
+  while mkVar i < mkVar n + mkConst 1 do
+    &M[mkVar i, mkConst 0] *<- i;
+    i <-- i + 1
+  done;
+  j <-- 0;
+  while j < m + 1 do
+    &M[0, j] *<- j;
+    i <-- 1;
+    while i < n + 1 do
+      cost1 <-* &M[i-1, j];
+      cost1 <-- cost1 + 1;
+      cost2 <-* &M[i, j-1];
+      cost2 <-- cost2 + 1;
+      cost12 <-* &M[i-1, j-1];
+      a <-* &A[i-1];
+      b <-* &B[j-1];
+      If a == b then SSkip else cost12 <-- cost12 + 1 fi;
+      mincost <-- cost1;
+      If cost2 < mincost then mincost <-- cost2 fi;
+      If cost12 < mincost then mincost <-- cost12 fi;
+      &M[i, j] *<- mincost;
+      i <-- i + 1
+    done;
+    j <-- j + 1
+  done.
+
+
 Example edit_dist: stmt :=
   n <-* input_base;
   m <-* (input_base + 4);
@@ -83,7 +121,7 @@ Example edit_dist: stmt :=
     done;
     j <-- j + 1
   done.
-
+*)
 End ExampleSrc.
 
 Fixpoint str_to_words(s: string): list (word 32) :=
@@ -98,6 +136,7 @@ Definition b_str: list (word 32) := str_to_words "CRISP".
 Definition input: list (word 32) :=
   (natToWord 32 (List.length a_str)) :: (natToWord 32 (List.length b_str)) :: a_str ++ b_str.
 
+(*
 
 (* exprImp2Riscv is the main compilation function *)
 Definition editdist_riscv0: list Instruction :=
@@ -165,3 +204,5 @@ Definition editdist_L_trace(fuel: nat): Log :=
    there are also two (InvalidInstruction 5), which are the length of the first and second
    string being loaded. *)
 Eval vm_compute in (editdist_L_trace 200).
+
+ *)

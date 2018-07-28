@@ -21,9 +21,11 @@ Require Import riscv.encode.Encode.
 Require Import compiler.ZName.
 Require Import riscv.util.BitWidth32.
 Require Import riscv.MachineWidth32.
+Require Import compiler.FlatToRiscv32Proofs.
+Require Import compiler.FlatToRiscv32Specifics.
 Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.
-
+Require Import riscv.InstructionCoercions.
 Open Scope Z_scope.
 
 Definition var: Set := (@name ZName).
@@ -62,7 +64,7 @@ Definition fib_ExprImp(n: word wXLEN): stmt :=
 
 Definition state := (var -> option (word wXLEN)).
 
-Existing Instance Pipeline.annoying_instance.
+Instance fooo: MapFunctions name (list name * list name * stmt (mword := word 32)). Admitted.
 
 Definition fib_H_res(fuel: nat)(n: word wXLEN): option (word wXLEN) :=
   match (eval_stmt empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with
@@ -82,7 +84,7 @@ Goal fib_H_res 20 $6 = Some $13. reflexivity. Qed.
 Definition do_regalloc: bool := false.
 
 Definition compileFunc: stmt -> list Instruction :=
-  if do_regalloc then exprImp2Riscv_with_regalloc else exprImp2Riscv.
+  if do_regalloc then (exprImp2Riscv_with_regalloc Lw Sw) else (exprImp2Riscv Lw Sw).
 
 Definition fib_riscv0(n: word wXLEN): list Instruction :=
   compileFunc (fib_ExprImp n).
@@ -105,13 +107,13 @@ Eval cbv in fib6_bits.
 Definition zeroedRiscvMachineCore: RiscvMachineCore := {|
   registers := initialRegs;
   pc := $0;
-  nextPC := $4;
+  nextPC := (natToWord 32 4);
   exceptionHandlerAddr := 3;
 |}.
 
 Definition zeroedRiscvMachine: RiscvMachine := {|
     core := zeroedRiscvMachineCore;
-    machineMem := @zero_mem 32 ((length fib6_riscv + 1) * 4);
+    machineMem := @zero_mem 32 ((Memory.Zlength fib6_riscv + 1) * 4);
 |}.
 
 Definition initialRiscvMachine(imem: list (word 32)): RiscvMachine :=
@@ -126,10 +128,10 @@ Definition initialRiscvMachineL(imem: list (word 32)): RiscvMachineL :=
   putProgram imem $0 zeroedRiscvMachineL.
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
- @Run.run BitWidth32 MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
+ @Run.run BitWidth32 _ MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
 Definition runL: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
- @Run.run BitWidth32 MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+ @Run.run BitWidth32 _ MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
 
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
   snd (run fuel (initialRiscvMachine fib6_bits)).
@@ -190,7 +192,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   unfold fib6_L_res. unfold fib6_L_final.
   pose proof @exprImp2Riscv_correct as P.
   assert (exists finalH,
-             evalH empty_map 20 empty_map Memory.no_mem (fib_ExprImp $ (6)) = Some finalH) as F. {
+             evalH Lw Sw empty_map 20 empty_map Memory.no_mem (fib_ExprImp $ (6)) = Some finalH) as F. {
     eexists. reflexivity.
   }
   destruct F as [ [finalH finalMH ] F ].
@@ -201,26 +203,24 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
   - cbv. reflexivity.
   - reflexivity.
   - match goal with
-    | |- (?a <= ?b)%nat => let a' := eval cbv in a in change a with a'(*;
+    | |- ?a <= ?b => let a' := eval cbv in a in change a with a'(*;
                          let b' := eval cbv in b in change a with b'*)
     end.
     unfold zeroedRiscvMachine.
     cbv [machineMem zero_mem].
     unfold Memory.memSize, mem_is_Memory.
     rewrite const_mem_mem_size.
-    + cbv. do 4 apply le_S. apply le_n.
+    + cbv. congruence.
     + cbv. reflexivity.
     + match goal with
-      | |- (?a <= ?b)%nat => let a' := eval cbv in a in change a with a'
+      | |- 0 <= ?a <= ?b => let a' := eval cbv in a in change a with a'
       end.
-      change wXLEN with (9 + 23)%nat.
-      rewrite Nat.pow_add_r.
-      assert (0 < 2 ^ 23)%nat by (apply zero_lt_pow2). forget (2 ^ 23)%nat as p.
-      cbv - [Nat.mul]. omega.
+      cbv.
+      split; congruence.
   - unfold FlatToRiscv.mem_inaccessible. intros.
     unfold Memory.no_mem, Memory.read_mem in H.
     destruct_one_match_hyp; discriminate.
-  - unfold FlatToRiscv.containsMem, Memory.no_mem. intros.
+  - unfold FlatToRiscvInvariants.containsMem, Memory.no_mem. intros.
     unfold Memory.read_mem in *.
     destruct_one_match_hyp; discriminate.
   - exists fuelL.
