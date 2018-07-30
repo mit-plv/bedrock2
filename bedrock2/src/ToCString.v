@@ -48,6 +48,14 @@ Section ToCString.
   Definition List_minus {A} (eqb : A -> A -> bool) (X Y : list A) :=
     List.filter (fun x => negb (List.existsb (eqb x) Y)) X.
 
+  Definition c_call (args : list string) (f : string) (es : list string) :=
+    match args with
+    | nil =>
+      f ++ "(" ++ concat ", " es ++ ");" ++ LF
+    | ((x::_)%list as binds)  => 
+      List.last binds x ++ " = " ++ f ++ "(" ++ concat ", " (es ++ List.map (fun x => "&"++x) (List.removelast binds)) ++ ");" ++ LF
+    end.
+
   Fixpoint c_cmd (indent : string) (c : cmd) : string :=
     match c with
     | cmd.store s ea ev
@@ -69,12 +77,10 @@ Section ToCString.
       c_cmd indent c2
     | cmd.skip =>
       indent ++ "/*skip*/" ++ LF
-    | cmd.call nil f es =>
-      indent ++ c_fun f ++ "(" ++ concat ", " (List.map c_expr es) ++ ");" ++ LF
-    | cmd.call ((x::_) as binds) f es =>
-      indent ++ c_var (List.last binds x) ++ " = " ++ c_fun f ++ "(" ++ concat ", " (List.map c_expr es ++ List.map (fun x => "&"++c_var x) (List.removelast binds)) ++ ");" ++ LF
+    | cmd.call args f es =>
+      indent ++ c_call (List.map c_var args) (c_fun f) (List.map c_expr es)
     | cmd.interact binds action es =>
-      c_act binds action (List.map c_expr es)
+      indent ++ c_act binds action (List.map c_expr es)
     end%string.
 
   Definition c_decl (rett : string) (args : list varname) (name : funname) (retptrs : list varname) : string :=

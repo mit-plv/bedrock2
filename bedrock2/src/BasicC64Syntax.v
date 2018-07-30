@@ -7,17 +7,16 @@ Module Import bopname.
   Inductive bopname := add | sub | and | or | xor | sru | slu | srs | lts | ltu | eq.
 End bopname.
 
-Definition parameters : bedrock2.Syntax.parameters := StringNames.Syntax.make {|
+Definition parameters : bedrock2.StringNames.Syntax.parameters := {|
   StringNames.Syntax.bopname := bopname;
-  StringNames.Syntax.actname := Empty_set
+  StringNames.Syntax.actname := string
 |}.
 
-Definition BasicALU : BasicALU.operations (p:=parameters) :=
-  Build_operations parameters add sub and or xor sru slu srs lts ltu eq.
-
+Definition BasicALU : BasicALU.operations :=
+  Build_operations (StringNames.Syntax.make parameters) add sub and or xor sru slu srs lts ltu eq.
 
 Definition to_c_parameters : ToCString.parameters := {|
-  syntax := parameters;
+  syntax := (StringNames.Syntax.make parameters);
   c_lit w := DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL";
   c_bop := fun e1 op e2 =>
              match op with
@@ -35,7 +34,7 @@ Definition to_c_parameters : ToCString.parameters := {|
              end%string;
      c_var := id;
      c_fun := id;
-     c_act := fun _ _ _ => "#error";
+     c_act := ToCString.c_call;
 
      varname_eqb := String.eqb;
      rename_away_from x xs :=
