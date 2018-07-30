@@ -1,7 +1,8 @@
 Require Import bedrock2.Macros bedrock2.Syntax bedrock2.BasicALU.
 
 Require Import Coq.ZArith.BinInt.
-Require Import Coq.Strings.String bedrock2.String.
+Require Import Coq.Strings.String.
+Require bedrock2.String.
   
   Inductive struct :=
 | Struct (_ : list (string * (Z + struct))).
@@ -33,7 +34,7 @@ Definition slookup (field : string) (s : struct) : option (Z * type) :=
        match l with
        | nil => None
        | cons (f, ftype) l' =>
-         if string_eqb f field
+         if String.eqb f field
          then Some (0, ftype)
          else match llookup l' with
               | None => None

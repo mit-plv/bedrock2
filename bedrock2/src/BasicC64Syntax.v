@@ -28,7 +28,7 @@ Definition to_c_parameters : ToCString.parameters := {|
              | xor => e1++"^"++e2
              | sru => e1++">>"++e2
              | slu => e1++"<<"++e2
-             | srs => "(intptr_t)"++e1++">>"++"(intptr_t)"++e2
+             | srs => "(intptr_t)"++e1++">>"++e2
              | lts => "(intptr_t)"++e1++"<"++"(intptr_t)"++e2
              | ltu => e1++"<"++e2
              | eq => e1++"=="++e2
@@ -37,8 +37,12 @@ Definition to_c_parameters : ToCString.parameters := {|
      c_fun := id;
      c_act := fun _ _ _ => "#error";
 
-     varname_eqb := string_eqb;
-     rename_away_from x xs := "_" ++ x; (* FIXME *)
+     varname_eqb := String.eqb;
+     rename_away_from x xs :=
+       let x' := "_" ++ x in
+       if List.existsb (String.eqb x') xs
+       then "#error rename_away_from '" ++ x ++"' = '" ++ x' ++"'"
+       else x'
   |}%string.
 
 Definition c_func := @c_func to_c_parameters.
