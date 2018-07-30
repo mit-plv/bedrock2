@@ -11,7 +11,7 @@ DIRS = src
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q src bedrock2 -Q $(DEPS_DIR)/bbv/theories bbv \n
+DEPFLAGS_NL=-Q src bedrock2 -Q \n $(DEPS_DIR)/bbv/theories bbv \n
 DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 
 _CoqProject:
