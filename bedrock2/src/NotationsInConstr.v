@@ -63,18 +63,18 @@ Require Import bedrock2.BasicALU bedrock2.Structs.
 
 (* record field access *)
 Notation "e 'as' t *> a '!' .. '!' c" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (expr.load sz (expr.op bop_add e (expr.literal ofs))))
-  (at level 76, a at level 60, c at level 60) : bedrock_expr.
+  (at level 60, a at level 25, c at level 25) : bedrock_expr.
 Notation "e 'as' t *> a '!' .. '!' c = rhs" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (cmd.store sz (expr.op bop_add e (expr.literal ofs)) rhs))
   (at level 76, a at level 60, c at level 60) : bedrock_cmd.
 
 Notation "'&field' a '!' .. '!' c 'of' t 'at' e" := (let '(ofs, _) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in ((expr.op bop_add e (expr.literal ofs))))
-  (at level 76, t at level 60, e at level 60, a at level 60, c at level 60) : bedrock_expr.
+  (at level 60, t at level 25, e at level 60, a at level 25, c at level 25) : bedrock_expr.
 Notation "'field' a '!' .. '!' c 'of' t 'at' e  = rhs" := (let '(ofs, sz) := scalar (t%list%string, (cons a%string .. (cons c%string nil) .. )) (rlookup (cons a%string .. (cons c%string nil) .. ) t%list%string) in (cmd.store sz (expr.op bop_add e (expr.literal ofs)) rhs))
   (at level 76, t at level 60, e at level 60, a at level 60, c at level 60) : bedrock_cmd.
 
 (*
 Notation "s 'at' e '=' rhs" := (SStore s e%bedrock_expr rhs%bedrock_expr)
-(at level 76, e at level 60) : bedrock_cmd.
+(at level TODO, e at level 60) : bedrock_cmd.
  *)
 
 Notation "e1 + e2" := (expr.op bop_add e1%bedrock_expr e2%bedrock_expr)
