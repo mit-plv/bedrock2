@@ -77,21 +77,32 @@ Notation "s 'at' e '=' rhs" := (SStore s e%bedrock_expr rhs%bedrock_expr)
 (at level TODO, e at level 60) : bedrock_cmd.
  *)
 
+
+Notation "e1 >> e2" := (expr.op bop_sru e1%bedrock_expr e2%bedrock_expr)
+  (at level 32, left associativity) : bedrock_expr.
+Notation "e1 !>> e2" := (expr.op bop_srs e1%bedrock_expr e2%bedrock_expr)
+  (at level 32, left associativity) : bedrock_expr.
+Notation "e1 << e2" := (expr.op bop_slu e1%bedrock_expr e2%bedrock_expr)
+  (at level 32, left associativity) : bedrock_expr.
+
+Notation "e1 .& e2" := (expr.op bop_and e1%bedrock_expr e2%bedrock_expr)
+  (at level 40, left associativity) : bedrock_expr.
+(* same level:   *    *)
+
+(* FIXME: intermediate level for  %  /  *)
+
 Notation "e1 + e2" := (expr.op bop_add e1%bedrock_expr e2%bedrock_expr)
-  : bedrock_expr.
+  (at level 50, left associativity) : bedrock_expr.
 Notation "e1 - e2" := (expr.op bop_sub e1%bedrock_expr e2%bedrock_expr)
-  : bedrock_expr.
+  (at level 50, left associativity) : bedrock_expr.
+Notation "e1 .| e2" := (expr.op bop_or e1%bedrock_expr e2%bedrock_expr)
+  (at level 50, left associativity) : bedrock_expr.
+Notation "e1 .^ e2" := (expr.op bop_xor e1%bedrock_expr e2%bedrock_expr)
+  (at level 50, left associativity) : bedrock_expr.
+
 Notation "e1 == e2" := (expr.op bop_eq e1%bedrock_expr e2%bedrock_expr)
   (at level 100, no associativity) : bedrock_expr.
 Notation "e1 < e2" := (expr.op bop_ltu e1%bedrock_expr e2%bedrock_expr)
   : bedrock_expr.
 Notation "e1 <. e2" := (expr.op bop_lts e1%bedrock_expr e2%bedrock_expr)
   (at level 100, no associativity) : bedrock_expr.
-Notation "e1 & e2" := (expr.op bop_and e1%bedrock_expr e2%bedrock_expr)
-  (at level 40, no associativity) : bedrock_expr.
-Notation "e1 >> e2" := (expr.op bop_sru e1%bedrock_expr e2%bedrock_expr)
-  (at level 60, no associativity) : bedrock_expr.
-Notation "e1 >>. e2" := (expr.op bop_srs e1%bedrock_expr e2%bedrock_expr)
-  (at level 60, no associativity) : bedrock_expr.
-Notation "e1 << e2" := (expr.op bop_slu e1%bedrock_expr e2%bedrock_expr)
-  (at level 60, no associativity) : bedrock_expr.
