@@ -1,70 +1,8 @@
-Require Import bedrock2.Macros bedrock2.Syntax bedrock2.Map.
+Require Import bedrock2.Macros bedrock2.Notations bedrock2.Map.
+Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import Coq.ZArith.BinIntDef.
 
-(* TODO: move? *)
-Local Notation "' x <- a | y ; f" :=
-  (match a with
-   | x => f
-   | _ => y
-   end)
-  (right associativity, at level 70, x pattern).
-
-(* TODO: move? *)
-Module Semantics.
-  Class parameters := {
-    syntax :> Syntax.parameters;
-
-    word : Type;
-    word_zero : word;
-    word_succ : word -> word;
-    word_test : word -> bool;
-    word_of_Z : BinNums.Z -> option word;
-    interp_binop : bopname -> word -> word -> word;
-
-    byte : Type;
-    (* nat included for conceptual completeness, only middle-endian would use it *)
-    combine : nat -> byte -> word -> word;
-    split : nat -> word -> byte * word;
-
-    mem :> map word byte;
-    locals :> map varname word;
-
-    funname_eqb : funname -> funname -> bool
-  }.
-  Section Semantics.
-  Context {pp : unique! parameters}.
-
-  Fixpoint load (sz : nat) (m:mem) (a:word) : option word :=
-    match sz with
-    | O => Some word_zero
-    | S sz =>
-      'Some b <- map.get m a             | None;
-      'Some w <- load sz m (word_succ a) | None;
-       Some (combine sz b w)
-    end.
-  Fixpoint store (sz : nat) (m:mem) (a v:word) : option mem :=
-    match sz with
-    | O => Some m
-    | S sz =>
-      let '(b, w) := split sz v in
-      'Some _ <- map.get m a | None;
-      store sz (map.put m a b) (word_succ a) w
-    end.
-  Definition trace := list ((mem * actname * list word) * (mem * list word)).
-End Semantics. End Semantics.
-
-Module wp. Section wp.
-  Local Notation "'bind_ex' x <- a ; f" :=
-    (subst! a for a' in exists x, a' x /\ f)
-    (only parsing, right associativity, at level 60, f at level 200).
-  Local Notation "'bind_ex_Some' x <- a ; f" :=
-    (subst! a for a' in exists x, a' = Some x /\ f)
-    (only parsing, right associativity, at level 60, f at level 200).
-  Local Notation "'bind_eq' x <- a ; f" :=
-    (subst! a for a' in forall x, x = a' -> f)
-    (only parsing, right associativity, at level 60, f at level 200).
-
-  Import Semantics.
+Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
   Context (rely guarantee : trace -> Prop) (progress : trace -> trace -> Prop).
 
@@ -157,4 +95,4 @@ Module wp. Section wp.
     end.
 
   Definition program funcs c t m l post : Prop := cmd (call funcs) c t m l post.
-End wp. End wp.
+End WeakestPrecondition.
