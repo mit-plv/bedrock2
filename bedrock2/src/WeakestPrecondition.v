@@ -77,7 +77,7 @@ Section WeakestPrecondition.
         let output := (m, action, args) in
         forall m rets (t := cons (output, (m, rets)) t),
           guarantee t /\
-          rely t -> (bind_ex_Some l <- map.putmany binds rets l; post t m l)   
+          (rely t -> (bind_ex_Some l <- map.putmany binds rets l; post t m l))
       end.
   End WithFunctions.
 
