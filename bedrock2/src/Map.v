@@ -1,16 +1,16 @@
 Module map.
-  Class map {K V : Type} := {
+  Class map {key value : Type} := {
     rep : Type;
      
     empty : rep;
-    get : rep -> K -> option V;
-    put : rep -> K -> V -> rep;
+    get : rep -> key -> option value;
+    put : rep -> key -> value -> rep;
   }.
   Arguments map : clear implicits.
 
   Section ListOperations.
-    Context {K V} {map : map K V}.
-    Fixpoint putmany (keys : list K) (values : list V) (m : rep) {struct keys} : option rep :=
+    Context {key value} {map : map key value}.
+    Fixpoint putmany (keys : list key) (values : list value) (m : rep) {struct keys} : option rep :=
       match keys, values with
       | nil, nil => Some m
       | cons b binders, cons v values =>
