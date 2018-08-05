@@ -2,7 +2,6 @@ Require Import lib.LibTacticsMin.
 Require Import riscv.util.Monads.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
-Require Import bbv.DepEqNat.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.Op.
@@ -546,13 +545,6 @@ Section FlatToRiscv.
   Qed.
   *)
 
-  (* less general than natToWord_S, but more useful for automation because it does
-     not rewrite [$1] into [$1 ^+ $0] infinitely.
-     But not so useful because it does not apply to (S x) where x is a variable. *)
-  Lemma natToWord_S_S: forall sz n,
-      natToWord sz (S (S n)) = (wone sz) ^+ (natToWord sz (S n)).
-  Proof. intros. apply natToWord_S. Qed.
-
   Definition containsProgram_app_will_work(insts1 insts2: list Instruction)(offset: mword) :=
     (regToZ_unsigned (mul (add offset four) (ZToReg (Zlength insts1))) = 0 ->
      insts1 = nil \/ insts2 = nil).
@@ -883,28 +875,6 @@ Section FlatToRiscv.
   Qed.
 *)
   Admitted.
-
-  Lemma reduce_eq_to_sub_and_lt': forall sz (y z: word sz),
-    wltb (y ^- z) $1 = weqb y z.
-  Proof.
-    (*
-    intros.
-    pose proof (reduce_eq_to_sub_and_lt y z true false) as P.
-    destruct (weq y z); simpl in *; destruct_one_match_hyp; subst; try discriminate.
-    - rewrite ((proj2 (weqb_true_iff z z)) eq_refl).
-      unfold wltb. unfold wlt in w.
-      apply N.ltb_lt.
-      assumption.
-    - unfold wltb.
-      destruct (weqb y z) eqn: F.
-      + apply ((proj1 (weqb_true_iff y z))) in F. contradiction.
-      + apply N.ltb_ge.
-        unfold wlt in n0.
-        apply N.le_ngt.
-        assumption.
-  Qed.
-     *)
-  Admitted.
   
   Ltac simpl_run1 :=
     cbv [run1 execState Monads.put Monads.gets Monads.get Return Bind State_Monad OState_Monad
@@ -1070,27 +1040,6 @@ Section FlatToRiscv.
 
   Arguments mult: simpl never.
   Arguments run1: simpl never.
-
-  Lemma remu40_mod40: forall a,
-      regToZ_unsigned a mod 4 = 0 ->
-      remu a four = $0.
-  Proof.
-    (*
-    intros.
-    rewrite remu_def.
-    unfold four, two. rewrite one_def. rewrite? add_def.
-    rewrite <-? natToWord_plus. simpl.
-    replace 4 with (regToZ_unsigned  (natToWord wXLEN 4)) in H.
-    - rewrite <- wordToNat_mod in H.
-      + apply wordToNat_inj.
-        rewrite H. symmetry. apply roundTrip_0.
-      + intro. apply natToWord_inj in H0; [discriminate|clear..];
-                 unfold wXLEN, bitwidth; destruct Bw; simpl; omega.
-    - apply wordToNat_natToWord_idempotent'.
-      clear; unfold wXLEN, bitwidth; destruct Bw; simpl; omega.
-  Qed.
-     *)
-  Admitted.
 
   Hypothesis translate_id_if_aligned_4: forall a mode,
       (regToZ_unsigned a) mod 4 = 0 ->
@@ -1265,8 +1214,9 @@ Section FlatToRiscv.
 
   Ltac prove_remu_four_zero :=
     match goal with
-    | |- remu _ four = $0 => idtac
-    | |- $0 = remu _ four => symmetry
+      (* TODO update *)
+    | |- remu _ four = 0 => idtac
+    | |- 0 = remu _ four => symmetry
     | _ => fail 1 "wrong shape of goal"
     end;
     rewrite <-? (Z.mul_comm 4);
@@ -1315,7 +1265,7 @@ Section FlatToRiscv.
     match goal with
     | |- context [weqb ?r ?expectZero] =>
       match expectZero with
-      | $0 => idtac
+      | 0 => idtac (* TODO update *)
       end;
       match r with
       | remu ?a four => replace r with expectZero by prove_remu_four_zero

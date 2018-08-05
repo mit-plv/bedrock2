@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
-Require Import bbv.Word.
+Require Import bbv.WordScope.
 Require Import compiler.Decidable.
 Require Import compiler.Op.
 Require Import compiler.ExprImp.

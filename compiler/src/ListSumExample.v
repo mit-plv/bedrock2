@@ -4,7 +4,7 @@ Require Import compiler.util.Common.
 Require compiler.ExprImpNotations.
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require Import bbv.Word.
+Require Import bbv.WordScope.
 Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
 Require Import riscv.Riscv.
@@ -176,7 +176,7 @@ Definition initialize_with_wXLEN_list_H{Bw : BitWidths}(l: list (word wXLEN))
 Lemma invert_initialize_Some: forall l offset w a,
     Memory.read_mem a (initialize_with_wXLEN_list_H l offset) = Some w ->
     nth_error l (#(a ^- offset) / wXLEN_in_bytes) = Some w /\
-    #offset <= #a /\
+    (#offset <= #a)%nat /\
     #a mod 4 = 0.
 Proof.
   intros. unfold Memory.read_mem, initialize_with_wXLEN_list_H in *.

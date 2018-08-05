@@ -1,3 +1,4 @@
+Require Import bbv.WordScope.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.

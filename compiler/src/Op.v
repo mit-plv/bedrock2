@@ -1,6 +1,10 @@
 Require Import bbv.Word.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
+Import Word.ArithmeticNotations.
+Import Word.ConversionNotations.
+Import Word.BitwiseNotations.
+Local Open Scope word_scope.
 
 Inductive binop: Set := OPlus | OMinus | OTimes | OEq | OLt | OAnd.
 
