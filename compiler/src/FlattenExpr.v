@@ -330,12 +330,13 @@ Section FlattenExpr.
   Context {funcMap': MapFunctions func (list var * list var * @ExprImp.stmt mword Name FName)}.
   Notation env' := (map func (list var * list var * @ExprImp.stmt mword Name FName)).
 
-  Ltac simpl_regb_eq :=
-      rewrite? (proj2 (reg_eqb_true _ _) eq_refl);
-      repeat match goal with
-             | H: _ |- _ => rewrite <- reg_eqb_false in H; rewrite H
-             | H: _ |- _ => rewrite <- reg_eqb_true in H; rewrite H
-             end.
+  Ltac simpl_reg_eqb :=
+    rewrite? reg_eqb_eq by congruence;
+    rewrite? reg_eqb_ne by congruence;
+    repeat match goal with
+           | E: reg_eqb _ _ = true  |- _ => apply reg_eqb_true  in E
+           | E: reg_eqb _ _ = false |- _ => apply reg_eqb_false in E
+           end.
 
   Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' initialH finalH initialL initialM finalM,
@@ -446,7 +447,7 @@ Section FlattenExpr.
         fuel_increasing_rewrite.
         subst tempFuel.
         simpl. rewrite G. simpl.
-        simpl_regb_eq.
+        simpl_reg_eqb.
         fuel_increasing_rewrite.
         reflexivity.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
@@ -471,7 +472,7 @@ Section FlattenExpr.
         fuel_increasing_rewrite.
         subst tempFuel.
         simpl. rewrite G. simpl.
-        simpl_regb_eq.
+        simpl_reg_eqb.
         fuel_increasing_rewrite.
         reflexivity.
     - simpl in Di.
@@ -503,7 +504,7 @@ Section FlattenExpr.
       refine (conj _ Ex2).
       simpl in *.
       fuel_increasing_rewrite.
-      rewrite G. simpl. simpl_regb_eq.
+      rewrite G. simpl. simpl_reg_eqb.
       fuel_increasing_rewrite.
       fuel_increasing_rewrite.
       reflexivity.
@@ -520,7 +521,7 @@ Section FlattenExpr.
       split; [|state_calc].
       simpl in*.
       fuel_increasing_rewrite.
-      rewrite G. simpl. simpl_regb_eq. reflexivity.
+      rewrite G. simpl. simpl_reg_eqb. reflexivity.
     - simpl in F. do 2 destruct_one_match_hyp. inversions F.
       pose proof IHfuelH as IHfuelH2.
       specializes IHfuelH.

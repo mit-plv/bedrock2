@@ -241,8 +241,7 @@ Section Pipeline.
         (* TODO all of this should be something like autorewrite in * *)
         destruct_one_match; [exfalso|reflexivity].
         apply Bool.negb_true_iff in E0.
-        change signed_eqb with reg_eqb in E0.
-        rewrite reg_eqb_false in E0.
+        apply reg_eqb_false in E0.
         pose proof pow2_wXLEN_4 as Q.
         (*
         rewrite <- (wordToNat_natToWord_idempotent' wXLEN Q) in H.

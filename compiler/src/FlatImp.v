@@ -101,8 +101,8 @@ Section FlatImp1.
       simpl in *;
       repeat (destruct_one_match_hyp; try discriminate);
       repeat match goal with
-             | E: _ |- _ => rewrite reg_eqb_true in E
-             | E: _ |- _ => rewrite reg_eqb_false in E
+             | E: reg_eqb _ _ = true  |- _ => apply reg_eqb_true  in E
+             | E: reg_eqb _ _ = false |- _ => apply reg_eqb_false in E
              end;
       inversionss;
       eauto 16.
@@ -314,9 +314,10 @@ Section FlatImp2.
       try simpl_if;
       rewrite? (proj2 (reg_eqb_true _ _) eq_refl);
       repeat match goal with
-             | H: _ |- _ => rewrite <- reg_eqb_false in H; rewrite H
-             | H: _ |- _ => rewrite <- reg_eqb_true in H; rewrite H
+             | H:     (@eq mword _ _)  |- _ => apply reg_eqb_eq in H; rewrite H
+             | H: not (@eq mword _ _)  |- _ => apply reg_eqb_ne in H; rewrite H
              end;
+      rewrite? reg_eqb_eq by reflexivity;
       eauto.
   Qed.
 

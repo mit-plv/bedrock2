@@ -130,8 +130,8 @@ Section ExprImp1.
       simpl in *;
       repeat (destruct_one_match_hyp; try discriminate);
       repeat match goal with
-             | E: _ |- _ => rewrite reg_eqb_true in E
-             | E: _ |- _ => rewrite reg_eqb_false in E
+             | E: reg_eqb _ _ = true  |- _ => apply reg_eqb_true  in E
+             | E: reg_eqb _ _ = false |- _ => apply reg_eqb_false in E
              end;
       inversionss;
       eauto 16.

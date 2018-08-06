@@ -98,6 +98,8 @@ Section FlatToRiscv.
   Add Ring mword_ring : (@regRing mword MW)
     (morphism (@ZToReg_morphism mword MW), constants [mword_cst]).
 
+  Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
+
   Ltac solve_word_eq :=
     match goal with
     | |- @eq mword _ _ => idtac
@@ -106,7 +108,7 @@ Section FlatToRiscv.
     subst;
     clear;
     simpl;
-    repeat (rewrite app_length; simpl);
+    repeat (autorewrite with rew_Zlength; simpl);
     try ring.    
 
   (* put here so that rem picks up the MachineWidth for wXLEN *)
@@ -1020,7 +1022,7 @@ Section FlatToRiscv.
       @div_def
       @rem_def
       @signed_less_than_def
-      @signed_eqb_def
+      @reg_eqb_def
       @xor_def
       @or_def
       @and_def
@@ -1163,7 +1165,7 @@ Section FlatToRiscv.
     unfold Memory.read_mem in *.
     split; intros.
     - repeat destruct_one_match. subst.
-      + rewrite reg_eqb_true in E1. subst. rewrite E0 in E. rewrite E in H. discriminate.
+      + apply reg_eqb_true in E1. subst. rewrite E0 in E. rewrite E in H. discriminate.
       + assumption.
       + reflexivity.
     - repeat destruct_one_match_hyp; subst; reflexivity || discriminate || assumption.
@@ -1274,7 +1276,7 @@ Section FlatToRiscv.
     rewrite weqb_eq by reflexivity;
     simpl.
 
-  Hint Rewrite weqb_ne weqb_eq using congruence : rew_weqb.
+  Hint Rewrite reg_eqb_ne reg_eqb_eq using congruence : rew_reg_eqb.
 
   Hint Rewrite
       elim_then_true_else_false
@@ -1291,7 +1293,7 @@ Section FlatToRiscv.
             rew_get_set_Register
             rew_RiscvMachine_get_set
             alu_defs_without_remu_def
-            rew_weqb
+            rew_reg_eqb
             rew_run1step ||
         rewrite_getReg ||
         rewrite_setReg ||
@@ -1784,16 +1786,19 @@ Section FlatToRiscv.
       f_equal.
       ring.
 
-      (*
     - (* SIf/Then *)
       (* branch if cond = 0 (will not branch) *)
       run1step.
       (* use IH for then-branch *)
       spec_IH IHfuelH IH s1.
+      {
+        admit. (* TODO make ring work with Z coefficients *)
+      }
       apply (runsToSatisfying_trans IH). clear IH.
       (* jump over else-branch *)
       intros.
       destruct_everything.
+      (*
       run1step.
       run1done.
 
