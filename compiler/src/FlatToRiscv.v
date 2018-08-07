@@ -95,8 +95,17 @@ Section FlatToRiscv.
     | _ => constr:(NotConstant)
   end.
 
+  Hint Rewrite
+    ZToReg_morphism.(morph_add)
+    ZToReg_morphism.(morph_sub)
+    ZToReg_morphism.(morph_mul)
+    ZToReg_morphism.(morph_opp)
+  : rew_ZToReg_morphism.
+  
   Add Ring mword_ring : (@regRing mword MW)
-    (morphism (@ZToReg_morphism mword MW), constants [mword_cst]).
+      (preprocess [autorewrite with rew_ZToReg_morphism],
+       morphism (@ZToReg_morphism mword MW),
+       constants [mword_cst]).
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
@@ -122,39 +131,73 @@ Section FlatToRiscv.
     - exists (Npow2 30). reflexivity.
     - exists (Npow2 62). reflexivity.
   Qed.
+   *)
   
-  Lemma remu_four_undo: forall a, remu ($4 ^* a) ZToReg 4 = $0.
+  Lemma remu_four_undo: forall a, remu (mul (ZToReg 4) a) (ZToReg 4) = ZToReg 0.
+  Admitted.
+  (*
   Proof.
     intros. rewrite remu_def. rewrite four_def. rewrite wmult_comm.
     apply wmod_mul.
     apply four_divides_Npow2_wXLEN.
   Qed.
+  *)
 
-  Lemma remu_four_four: remu $4 ZToReg 4 = $0.
+  Lemma remu_four_four: remu (ZToReg 4) (ZToReg 4) = ZToReg 0.
+  Admitted.
+  (*
   Proof.
     rewrite remu_def. rewrite four_def. apply wmod_same.
   Qed.
+  *)
 
   Lemma remu_four_distrib_plus: forall a b,
-      remu (a ^+ b) ZToReg 4 = remu ((remu a ZToReg 4) ^+ (remu b ZToReg 4)) ZToReg 4.
+      remu (add a b) (ZToReg 4) = remu (add (remu a (ZToReg 4)) (remu b (ZToReg 4))) (ZToReg 4).
+  Admitted.
+  (*
   Proof.
     intros. rewrite! remu_def. rewrite! four_def.
     apply wmod_plus_distr.
     apply four_divides_Npow2_wXLEN.
   Qed.
+  *)
 
   Lemma remu_four_zero_distrib_plus: forall a b,
-      remu a ZToReg 4 = $0 ->
-      remu b ZToReg 4 = $0 ->
-      remu (a ^+ b) ZToReg 4 = $0.
+      remu a (ZToReg 4) = ZToReg 0 ->
+      remu b (ZToReg 4) = ZToReg 0 ->
+      remu (add a b) (ZToReg 4) = ZToReg 0.
   Proof.
     intros. rewrite remu_four_distrib_plus.
     rewrite H. rewrite H0.
-    rewrite wplus_unit.
-    rewrite remu_def.
+    replace (add (ZToReg 0) (ZToReg 0)) with (ZToReg 0) by ring.
+  Admitted.
+  (*
     apply wmod_0_l.
   Qed.
-  
+  *)
+
+  Lemma remu40_mod40: forall a,
+      (regToZ_unsigned a) mod 4 = 0 ->
+      remu a (ZToReg 4) = ZToReg 0.
+  Admitted.
+  (*
+  Proof.
+    intros.
+    rewrite remu_def.
+    unfold four, two. rewrite one_def. rewrite? add_def.
+    rewrite <-? natToWord_plus. simpl.
+    replace 4 with (# (natToWord wXLEN 4)) in H.
+    - rewrite <- wordToNat_mod in H.
+      + apply wordToNat_inj.
+        rewrite H. symmetry. apply roundTrip_0.
+      + intro. apply natToWord_inj in H0; [discriminate|clear..];
+                 unfold wXLEN, bitwidth; destruct Bw; simpl; omega.
+    - apply wordToNat_natToWord_idempotent'.
+      clear; unfold wXLEN, bitwidth; destruct Bw; simpl; omega.
+  Qed.
+  *)
+
+  (*
   Lemma wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
       (0 <= sz1)%Z ->
       (0 <= sz2)%Z ->
@@ -402,18 +445,18 @@ Section FlatToRiscv.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [[Beq cond Register0 ((Z.of_nat (length bThen' + 2)) * 4)]] ++
+        [[Beq cond Register0 ((Zlength bThen' + 2) * 4)]] ++
         bThen' ++
-        [[Jal Register0 ((Z.of_nat (length bElse' + 1)) * 4)]] ++
+        [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
         bElse'
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[Beq cond Register0 ((Z.of_nat (length body2' + 2)) * 4)]] ++
+        [[Beq cond Register0 ((Zlength body2' + 2) * 4)]] ++
         body2' ++
-        [[Jal Register0 ((- Z.of_nat (length body1' + 1 + length body2')) * 4)]]
+        [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     | SCall _ _ _ => nil (* unsupported *)
@@ -840,7 +883,7 @@ Section FlatToRiscv.
     runsTo initial P ->
     (forall final, P final -> Q final) ->
     runsTo initial Q.
-  Proof.
+  Proof using .
     introv R1 R2. eapply runsToSatisfying_trans; [eassumption|].
     intros final Pf. apply runsToDone. auto.
   Qed.
@@ -1035,7 +1078,8 @@ Section FlatToRiscv.
   
   Ltac rewrite_alu_op_defs := autorewrite with alu_defs_without_remu_def in *.
 
-  Arguments mult: simpl never.
+  Arguments Z.mul: simpl never.
+  Arguments Z.add: simpl never.
   Arguments run1: simpl never.
 
   Hypothesis translate_id_if_aligned_4: forall a mode,
@@ -1211,22 +1255,19 @@ Section FlatToRiscv.
 
   Ltac prove_remu_four_zero :=
     match goal with
-      (* TODO update *)
-    | |- remu _ ZToReg 4 = 0 => idtac
-    | |- 0 = remu _ ZToReg 4 => symmetry
+    | |- remu _ (ZToReg 4) = ZToReg 0 => idtac
+    | |- ZToReg 0 = remu _ (ZToReg 4) => symmetry
     | _ => fail 1 "wrong shape of goal"
     end;
     rewrite <-? (Z.mul_comm 4);
-    rewrite? ZToWord_mult;
-(*  rewrite? Z4ZToReg 4;
+    autorewrite with rew_ZToReg_morphism;
     repeat (apply remu_four_zero_distrib_plus); 
     rewrite? remu_four_undo;
     rewrite? remu_four_four;
     repeat match goal with
            | H: _ |- _ => apply remu40_mod40 in H; rewrite H
-           end; *)
-    rewrite? wplus_unit;
-    reflexivity.
+           end;
+    ring.
 
   Ltac solve_mem_inaccessible :=
     eapply eval_stmt_preserves_mem_inaccessible; [|eassumption];
@@ -1260,15 +1301,15 @@ Section FlatToRiscv.
 
   Ltac simpl_remu4_test :=
     match goal with
-    | |- context [weqb ?r ?expectZero] =>
+    | |- context [reg_eqb ?r ?expectZero] =>
       match expectZero with
-      | 0 => idtac (* TODO update *)
+      | ZToReg 0 => idtac
       end;
       match r with
-      | remu ?a ZToReg 4 => replace r with expectZero by prove_remu_four_zero
+      | remu ?a (ZToReg 4) => replace r with expectZero by prove_remu_four_zero
       end
     end;
-    rewrite weqb_eq by reflexivity;
+    rewrite reg_eqb_eq by reflexivity;
     simpl.
 
   Hint Rewrite reg_eqb_ne reg_eqb_eq using congruence : rew_reg_eqb.
@@ -1577,6 +1618,23 @@ Section FlatToRiscv.
     clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply wordToZ_ZToWord; assumption.
   Qed.
   *)
+
+  Definition load_lit_semantics(v: mword): mword :=
+    add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add
+      (ZToReg 0)
+      (ZToReg (bitSlice (regToZ_unsigned v) (7 * 8) (8 * 8)))) 8)
+      (ZToReg (bitSlice (regToZ_unsigned v) (6 * 8) (7 * 8)))) 8)
+      (ZToReg (bitSlice (regToZ_unsigned v) (5 * 8) (6 * 8)))) 8)
+      (ZToReg (bitSlice (regToZ_unsigned v) (4 * 8) (5 * 8)))) 8)
+      (ZToReg (bitSlice (regToZ_unsigned v) (3 * 8) (4 * 8)))) 8)
+      (ZToReg (bitSlice (regToZ_unsigned v) (2 * 8) (3 * 8)))) 8)
+      (ZToReg (bitSlice (regToZ_unsigned v) (1 * 8) (2 * 8)))) 8)
+      (ZToReg (bitSlice (regToZ_unsigned v) (0 * 8) (1 * 8))).
+
+  Lemma compile_lit_correct: forall v: mword,
+      load_lit_semantics v = v.
+  Proof using .
+  Admitted.
   
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
@@ -1639,7 +1697,7 @@ Section FlatToRiscv.
         * eapply write_mem_in_range; eassumption.
         * assumption.
 
-    - (* SLit *) admit. (*
+    - (* SLit *)
       clear IHfuelH.
       Time run1step.
       Time run1step.
@@ -1661,104 +1719,8 @@ Section FlatToRiscv.
       | E: Some _ = Some _ |- _ => rewrite <- E
       end.
       f_equal.
-      clear.
-      change (Pos.to_nat 8) with 8.
-      rewrite? wlshift'_distr_plus.
-      rewrite? wlshift'_iter.
-      simpl.
-      change 56%nat with (Z.to_nat 56).
-      change 48%nat with (Z.to_nat 48).
-      change 40%nat with (Z.to_nat 40).
-      change 32%nat with (Z.to_nat 32).
-      change 24%nat with (Z.to_nat 24).
-      change 16%nat with (Z.to_nat 16).
-      change 8%nat with (Z.to_nat 8).
-      rewrite <-? wplus_assoc.
-      admit.
-      (*
-      change 16%Z with ( 8+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change ( 8+8)%Z with 16%Z.
-      change 24%Z with (16+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (16+8)%Z with 24%Z.
-      change 32%Z with (24+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (24+8)%Z with 32%Z.
-      change 40%Z with (32+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (32+8)%Z with 40%Z.
-      change 48%Z with (40+8)%Z at 3. rewrite wlshift_bitSlice_plus by omega. change (40+8)%Z with 48%Z.
-      change 56%Z with (48+8)%Z at 4. rewrite wlshift_bitSlice_plus by omega. change (48+8)%Z with 56%Z.
-      change 64%Z with (56+8)%Z at 1. rewrite wlshift_bitSlice_plus by omega. change (56+8)%Z with 64%Z.
-      rewrite wlshift'_zero.
-      rewrite wplus_unit.
-      apply wordToZ_inj.
-      pose proof (wordToZ_size'' v) as P.
-      forget (wordToZ v) as a.
-      assert (a < 0 \/ a >= 0)%Z as C by omega.
-      destruct C as [C | C].
-      + rewrite bitSlice_all_neg.
-        * assert (exists k, (2 ^ 64 = k * 2 ^ (Z.of_nat wXLEN))%Z /\ (0 < k)%Z) as A. {
-            clear. unfold wXLEN, bitwidth.
-            destruct Bw.
-            - exists (2 ^ 32)%Z. change 64%Z with (32 + 32)%Z. split.
-              + apply Z.pow_add_r; omega.
-              + apply Z.pow_pos_nonneg; omega.
-            - exists 1%Z. rewrite Z.mul_1_l. split; reflexivity.
-          }
-          destruct A as [ k [ A A'] ]. rewrite A.
-          rewrite Z.add_comm.
-          pose proof (ZToWord_Npow2_add_k wXLEN a (Z.to_nat k)) as R.
-          rewrite Z2Nat.id in R by omega.
-          replace (Z.of_N (Npow2 (@wXLEN Bw))) with (2 ^ Z.of_nat wXLEN)%Z in R.
-          { rewrite R.
-            apply wordToZ_ZToWord'.
-            assumption.
-          }
-          { rewrite pow2_N.
-            rewrite nat_N_Z.
-            change 2%Z with (Z.of_nat 2).
-            symmetry.
-            apply Nat2Z_inj_pow.
-          }
-        * omega.
-        * rewrite Nat2Z_inj_pow in P. change (Z.of_nat 2) with 2%Z in *.
-          unfold wXLEN, bitwidth in *.
-          destruct Bw.
-          { change (Z.of_nat (32 - 1)) with 31%Z in *.
-            change 64%Z with (31 + 33)%Z.
-            rewrite Z.pow_add_r by omega.
-            assert (0 < 2 ^ 33)%Z. {
-              apply Z.pow_pos_nonneg; omega.
-            }
-            nia.
-          }
-          { change (Z.of_nat (64 - 1)) with 63%Z in *.
-            change 64%Z with (63 + 1)%Z.
-            rewrite Z.pow_add_r by omega.
-            assert (0 < 2 ^ 1)%Z. {
-              apply Z.pow_pos_nonneg; omega.
-            }
-            nia.
-          }
-      + rewrite bitSlice_all_nonneg. 
-        * apply wordToZ_ZToWord'.
-          assumption.
-        * omega.
-        * rewrite Nat2Z_inj_pow in P. change (Z.of_nat 2) with 2%Z in *.
-          unfold wXLEN, bitwidth in *.
-          destruct Bw.
-          { change (Z.of_nat (32 - 1)) with 31%Z in *.
-            change 64%Z with (31 + 33)%Z.
-            rewrite Z.pow_add_r by omega.
-            assert (0 < 2 ^ 33)%Z. {
-              apply Z.pow_pos_nonneg; omega.
-            }
-            nia.
-          }
-          { change (Z.of_nat (64 - 1)) with 63%Z in *.
-            change 64%Z with (63 + 1)%Z.
-            rewrite Z.pow_add_r by omega.
-            assert (0 < 2 ^ 1)%Z. {
-              apply Z.pow_pos_nonneg; omega.
-            }
-            nia.
-          }
-      *)
-*)
+      apply compile_lit_correct.
+
       (* SOp *)
     - run1step. run1done.
     - run1step. run1done.
@@ -1784,15 +1746,10 @@ Section FlatToRiscv.
       run1step.
       (* use IH for then-branch *)
       spec_IH IHfuelH IH s1.
-      {
-        remember (Zlength instsBefore) as L.
-        admit. (* TODO make ring work with Z coefficients *)
-      }
       apply (runsToSatisfying_trans IH). clear IH.
       (* jump over else-branch *)
       intros.
       destruct_everything.
-      (*
       run1step.
       run1done.
 
@@ -1843,8 +1800,6 @@ Section FlatToRiscv.
     - (* SCall *)
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
   Qed.
-  *)
-  Admitted.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
