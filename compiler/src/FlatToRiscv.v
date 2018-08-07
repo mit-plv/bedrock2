@@ -53,7 +53,7 @@ Section RegisterFile.
   Instance State_is_RegisterFile: RegisterFile state Register mword := {|
     getReg rf r := match get rf r with
                    | Some v => v
-                   | None => zero
+                   | None => ZToReg 0
                    end;
     setReg := put;
     initialRegs := empty_map;
@@ -86,7 +86,7 @@ Section FlatToRiscv.
     end.
 
   Ltac mword_cst w :=
-    match eval cbv [zero one four eight] in w with
+    match w with
     | ZToReg ?x => let b := is_Z_cst x in
                   match b with
                   | true => x
@@ -123,20 +123,20 @@ Section FlatToRiscv.
     - exists (Npow2 62). reflexivity.
   Qed.
   
-  Lemma remu_four_undo: forall a, remu ($4 ^* a) four = $0.
+  Lemma remu_four_undo: forall a, remu ($4 ^* a) ZToReg 4 = $0.
   Proof.
     intros. rewrite remu_def. rewrite four_def. rewrite wmult_comm.
     apply wmod_mul.
     apply four_divides_Npow2_wXLEN.
   Qed.
 
-  Lemma remu_four_four: remu $4 four = $0.
+  Lemma remu_four_four: remu $4 ZToReg 4 = $0.
   Proof.
     rewrite remu_def. rewrite four_def. apply wmod_same.
   Qed.
 
   Lemma remu_four_distrib_plus: forall a b,
-      remu (a ^+ b) four = remu ((remu a four) ^+ (remu b four)) four.
+      remu (a ^+ b) ZToReg 4 = remu ((remu a ZToReg 4) ^+ (remu b ZToReg 4)) ZToReg 4.
   Proof.
     intros. rewrite! remu_def. rewrite! four_def.
     apply wmod_plus_distr.
@@ -144,9 +144,9 @@ Section FlatToRiscv.
   Qed.
 
   Lemma remu_four_zero_distrib_plus: forall a b,
-      remu a four = $0 ->
-      remu b four = $0 ->
-      remu (a ^+ b) four = $0.
+      remu a ZToReg 4 = $0 ->
+      remu b ZToReg 4 = $0 ->
+      remu (a ^+ b) ZToReg 4 = $0.
   Proof.
     intros. rewrite remu_four_distrib_plus.
     rewrite H. rewrite H0.
@@ -531,7 +531,7 @@ Section FlatToRiscv.
   Lemma containsProgram_cons_inv_old: forall m inst insts offset,
     containsProgram m (inst :: insts) offset ->
     containsProgram m [[inst]] offset /\
-    containsProgram m insts (add offset four).
+    containsProgram m insts (add offset ZToReg 4).
   Proof.
     intros *. intro Cp. unfold containsProgram in *. cbn [length] in *.
     intuition (try omega).
@@ -548,7 +548,7 @@ Section FlatToRiscv.
   *)
 
   Definition containsProgram_app_will_work(insts1 insts2: list Instruction)(offset: mword) :=
-    (regToZ_unsigned (mul (add offset four) (ZToReg (Zlength insts1))) = 0 ->
+    (regToZ_unsigned (mul (add offset (ZToReg 4)) (ZToReg (Zlength insts1))) = 0 ->
      insts1 = nil \/ insts2 = nil).
 
   Lemma containsProgram_app_inv0: forall s insts1 insts2 offset,
@@ -592,7 +592,7 @@ Section FlatToRiscv.
   Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
     containsProgram s (insts1 ++ insts2) offset ->
     containsProgram s insts1 offset /\
-    containsProgram s insts2 (add offset (mul four (ZToReg (Zlength insts1)))) /\
+    containsProgram s insts2 (add offset (mul (ZToReg 4) (ZToReg (Zlength insts1)))) /\
     containsProgram_app_will_work insts1 insts2 offset.
   Proof.
     intros.
@@ -606,14 +606,14 @@ Section FlatToRiscv.
   Lemma containsProgram_cons_inv: forall m inst insts offset,
     containsProgram m (inst :: insts) offset ->
     containsProgram m [[inst]] offset /\
-    containsProgram m insts (add offset four) /\
+    containsProgram m insts (add offset (ZToReg 4)) /\
     containsProgram_app_will_work [[inst]] insts offset.
   Proof.
     intros.
     pose proof containsProgram_app_inv as P.
     specialize P with (insts1 := [[inst]]) (insts2 := insts).
     (* TODO how to automate this nicely? "match" and equate? *)
-    replace (add offset four) with (add offset (mul four (ZToReg (Zlength [[inst]])))); auto.
+    replace (add offset (ZToReg 4)) with (add offset (mul (ZToReg 4) (ZToReg (Zlength [[inst]])))); auto.
     rewrite Zlength_cons. rewrite Zlength_nil.
     simpl.
     rewrite <- regToZ_unsigned_one.
@@ -624,7 +624,7 @@ Section FlatToRiscv.
   Lemma containsProgram_app: forall m insts1 insts2 offset,
       containsProgram_app_will_work insts1 insts2 offset ->      
       containsProgram m insts1 offset ->
-      containsProgram m insts2 (add offset (mul four (ZToReg (Zlength insts1)))) ->
+      containsProgram m insts2 (add offset (mul (ZToReg 4) (ZToReg (Zlength insts1)))) ->
       containsProgram m (insts1 ++ insts2) offset.
   Proof.
     (*
@@ -687,7 +687,7 @@ Section FlatToRiscv.
   Lemma containsProgram_cons: forall m inst insts offset,
     containsProgram_app_will_work [[inst]] insts offset ->
     containsProgram m [[inst]] offset ->
-    containsProgram m insts (add offset four) ->
+    containsProgram m insts (add offset (ZToReg 4)) ->
     containsProgram m (inst :: insts) offset.
   Proof.
     intros. change (inst :: insts) with ([[inst]] ++ insts).
@@ -849,7 +849,7 @@ Section FlatToRiscv.
 
   (* TODO is there a principled way of writing such proofs? *)
   Lemma reduce_eq_to_sub_and_lt: forall (y z: mword) {T: Type} (thenVal elseVal: T),
-    (if ltu (sub y  z) one then thenVal else elseVal) =
+    (if ltu (sub y  z) (fromImm 1) then thenVal else elseVal) =
     (if reg_eqb y z        then thenVal else elseVal).
   Proof. (*
     intros. destruct (weq y z).
@@ -1014,8 +1014,6 @@ Section FlatToRiscv.
 
   Hint Rewrite
       @fromImm_def
-      @zero_def
-      @one_def
       @add_def
       @sub_def
       @mul_def
@@ -1033,9 +1031,6 @@ Section FlatToRiscv.
       @divu_def
       (* missing: remu_def because it's only used for alignment checks and we prefer
          keeping it as remu -- TODO use full alu_defs from riscv-coq/src/Utility.v *)
-      @two_def
-      (* missing: four_def because simpl_remu4_test looks for "four", not "$4", TODO *)
-      @eight_def
     : alu_defs_without_remu_def.
   
   Ltac rewrite_alu_op_defs := autorewrite with alu_defs_without_remu_def in *.
@@ -1045,11 +1040,11 @@ Section FlatToRiscv.
 
   Hypothesis translate_id_if_aligned_4: forall a mode,
       (regToZ_unsigned a) mod 4 = 0 ->
-      translate mode four a = Return a.
+      translate mode (ZToReg 4) a = Return a.
 
   Hypothesis translate_id_if_aligned_8: forall a mode,
       (regToZ_unsigned a) mod 8 = 0 ->
-      translate mode eight a = Return a.
+      translate mode (ZToReg 8) a = Return a.
 
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
@@ -1217,13 +1212,13 @@ Section FlatToRiscv.
   Ltac prove_remu_four_zero :=
     match goal with
       (* TODO update *)
-    | |- remu _ four = 0 => idtac
-    | |- 0 = remu _ four => symmetry
+    | |- remu _ ZToReg 4 = 0 => idtac
+    | |- 0 = remu _ ZToReg 4 => symmetry
     | _ => fail 1 "wrong shape of goal"
     end;
     rewrite <-? (Z.mul_comm 4);
     rewrite? ZToWord_mult;
-(*  rewrite? Z4four;
+(*  rewrite? Z4ZToReg 4;
     repeat (apply remu_four_zero_distrib_plus); 
     rewrite? remu_four_undo;
     rewrite? remu_four_four;
@@ -1270,7 +1265,7 @@ Section FlatToRiscv.
       | 0 => idtac (* TODO update *)
       end;
       match r with
-      | remu ?a four => replace r with expectZero by prove_remu_four_zero
+      | remu ?a ZToReg 4 => replace r with expectZero by prove_remu_four_zero
       end
     end;
     rewrite weqb_eq by reflexivity;
@@ -1595,15 +1590,15 @@ Section FlatToRiscv.
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) allInsts imemStart ->
-    initialL.(core).(pc) = add imemStart (mul four (ZToReg (Zlength instsBefore))) ->
-    initialL.(core).(nextPC) = add initialL.(core).(pc) four ->
+    initialL.(core).(pc) = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
+    initialL.(core).(nextPC) = add initialL.(core).(pc) (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
     runsToSatisfying initialL (fun finalL =>
        extends finalL.(core).(registers) finalH /\
        containsMem finalL.(machineMem) finalMH /\
        containsProgram finalL.(machineMem) allInsts imemStart /\
-       finalL.(core).(pc) = add initialL.(core).(pc) (mul four (ZToReg (Zlength insts))) /\
-       finalL.(core).(nextPC) = add finalL.(core).(pc) four).
+       finalL.(core).(pc) = add initialL.(core).(pc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+       finalL.(core).(nextPC) = add finalL.(core).(pc) (ZToReg 4)).
   Proof.
     intros allInsts imemStart. pose proof (mkAllInsts allInsts).
     induction fuelH; [intros; discriminate |].
@@ -1644,7 +1639,7 @@ Section FlatToRiscv.
         * eapply write_mem_in_range; eassumption.
         * assumption.
 
-    - (* SLit *)
+    - (* SLit *) admit. (*
       clear IHfuelH.
       Time run1step.
       Time run1step.
@@ -1763,16 +1758,14 @@ Section FlatToRiscv.
             nia.
           }
       *)
-
+*)
       (* SOp *)
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1step. run1done.
-      replace (fromImm 1) with one.
-      + rewrite reduce_eq_to_sub_and_lt.
-        assumption.
-      + clear. unfold one. admit. (* TODO define these to be the same *)
+      rewrite reduce_eq_to_sub_and_lt.
+      assumption.
     - run1step. run1done.
     - run1step. run1done.
 
@@ -1792,6 +1785,7 @@ Section FlatToRiscv.
       (* use IH for then-branch *)
       spec_IH IHfuelH IH s1.
       {
+        remember (Zlength instsBefore) as L.
         admit. (* TODO make ring work with Z coefficients *)
       }
       apply (runsToSatisfying_trans IH). clear IH.
@@ -1862,7 +1856,7 @@ Section FlatToRiscv.
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) insts imemStart ->
     initialL.(core).(pc) = imemStart ->
-    initialL.(core).(nextPC) = add initialL.(core).(pc) four ->
+    initialL.(core).(nextPC) = add initialL.(core).(pc) (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength insts) ->
     exists fuelL,
       let finalL := execState (run (B := BitWidth) fuelL) initialL in

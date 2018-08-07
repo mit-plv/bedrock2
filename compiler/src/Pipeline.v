@@ -101,7 +101,7 @@ Section Pipeline.
   Definition evalH := @ExprImp.eval_stmt mword MW ZName ZName _ _.
 
   Definition evalL{B: BitWidths}(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
-    execState (run fuel) (putProgram (List.map (fun i => ZToWord 32 (encode i)) insts) zero initial).
+    execState (run fuel) (putProgram (List.map (fun i => ZToWord 32 (encode i)) insts) (ZToReg 0) initial).
 
   Lemma wXLEN_32{Bw: BitWidths}: (32 <= wXLEN)%nat.
   Proof.
@@ -229,7 +229,7 @@ Section Pipeline.
     - unfold ExprImp2FlatImp. rewrite E. reflexivity.
     - unfold evalH. apply EvH.
     - pose proof  FlatToRiscv.compile_stmt_correct as P.
-      specialize P with (imemStart := (@zero _ MW)).
+      specialize P with (imemStart := (@ZToReg _ MW 0)).
       let r := eval unfold evalL in (evalL 0 instsL initialL) in
           match r with
           | execState _ ?x => specialize P with (initialL := x)
@@ -254,7 +254,7 @@ Section Pipeline.
         destruct_one_match; [exfalso|reflexivity].
         apply Bool.negb_true_iff in E0.
         apply weqb_false_iff in E0.
-        pose proof eight_lt_pow2_wXLEN as Q.
+        pose proof ZToReg 8_lt_pow2_wXLEN as Q.
         rewrite <- (wordToNat_natToWord_idempotent' wXLEN Q) in H.
         rewrite <- wordToNat_mod in H.
         * apply wordToNat_zero in H. contradiction.

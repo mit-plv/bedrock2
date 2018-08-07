@@ -23,6 +23,6 @@ Section Memory.
 
   Definition no_mem: mem := fun x => None.
 
-  Definition zeros_mem(upTo: mword): mem := fun x => if ltu x upTo then Some zero else None.
+  Definition zeros_mem(upTo: mword): mem := fun x => if ltu x upTo then Some (ZToReg 0) else None.
 
 End Memory.

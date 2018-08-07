@@ -201,7 +201,7 @@ Definition editdist_L_trace(fuel: nat): Log :=
   (editdist_L_final fuel).(log).
 
 (* Here we print the first few load/storeWord operations. Most of them are instructions, but
-   there are also two (InvalidInstruction 5), which are the length of the first and second
+   there are also ZToReg 2 (InvalidInstruction 5), which are the length of the first and second
    string being loaded. *)
 Eval vm_compute in (editdist_L_trace 200).
 

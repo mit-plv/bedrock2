@@ -80,10 +80,10 @@ Section ExprImp1.
             Return (put st x v, m)
         | SIf cond bThen bElse =>
             v <- eval_expr st cond;
-            eval_stmt f st m (if reg_eqb v zero then bElse else bThen)
+            eval_stmt f st m (if reg_eqb v (ZToReg 0) then bElse else bThen)
         | SWhile cond body =>
             v <- eval_expr st cond;
-            if reg_eqb v zero then Return (st, m) else
+            if reg_eqb v (ZToReg 0) then Return (st, m) else
               p <- eval_stmt f st m body;
               let '(st, m) := p in
               eval_stmt f st m (SWhile cond body)
@@ -160,17 +160,17 @@ Section ExprImp1.
       eval_stmt (S f) st1 m1 (SIf cond bThen bElse) = Some p2 ->
       exists cv,
         eval_expr st1 cond = Some cv /\ 
-        (cv <> zero /\ eval_stmt f st1 m1 bThen = Some p2 \/
-         cv = zero  /\ eval_stmt f st1 m1 bElse = Some p2).
+        (cv <> ZToReg 0 /\ eval_stmt f st1 m1 bThen = Some p2 \/
+         cv = ZToReg 0  /\ eval_stmt f st1 m1 bElse = Some p2).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SWhile: forall st1 m1 p3 f cond body,
       eval_stmt (S f) st1 m1 (SWhile cond body) = Some p3 ->
       exists cv,
         eval_expr st1 cond = Some cv /\
-        (cv <> zero /\ (exists st2 m2, eval_stmt f st1 m1 body = Some (st2, m2) /\ 
+        (cv <> ZToReg 0 /\ (exists st2 m2, eval_stmt f st1 m1 body = Some (st2, m2) /\ 
                                      eval_stmt f st2 m2 (SWhile cond body) = Some p3) \/
-         cv = zero  /\ p3 = (st1, m1)).
+         cv = ZToReg 0 /\ p3 = (st1, m1)).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SSeq: forall st1 m1 p3 f s1 s2,

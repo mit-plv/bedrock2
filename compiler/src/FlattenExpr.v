@@ -455,7 +455,7 @@ Section FlattenExpr.
       rename cond into condH, s into condL, s0 into sL1, s1 into sL2.
       pose proof flattenExpr_correct_aux as P.
       specialize (P empty_map) with
-          (initialM := initialM) (res := (@zero mword MW)) (1 := E) (2 := Ex).
+          (initialM := initialM) (res := (@ZToReg mword MW 0)) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [Evcond G]]].
       pose_flatten_var_ineqs.
@@ -513,7 +513,7 @@ Section FlattenExpr.
       simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
       rename s into sCond, s0 into sBody.
       pose proof (flattenExpr_correct_aux empty_map) as P.
-      specialize P with (res := (@zero mword MW)) (initialM := initialM) (1 := E) (2 := Ex).
+      specialize P with (res := (@ZToReg mword MW 0)) (initialM := initialM) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [EvcondL G]]].
       exists (S fuelLcond) initial2L.

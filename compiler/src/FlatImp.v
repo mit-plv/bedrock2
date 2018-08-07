@@ -69,12 +69,12 @@ Section FlatImp1.
             Return (put st x v, m)
         | SIf cond bThen bElse =>
             vcond <- get st cond;
-            eval_stmt f st m (if reg_eqb vcond zero then bElse else bThen)
+            eval_stmt f st m (if reg_eqb vcond (ZToReg 0) then bElse else bThen)
         | SLoop body1 cond body2 =>
             p <- eval_stmt f st m body1;
             let '(st, m) := p in
             vcond <- get st cond;
-            if reg_eqb vcond zero then Return (st, m) else
+            if reg_eqb vcond (ZToReg 0) then Return (st, m) else
               q <- eval_stmt f st m body2;
               let '(st, m) := q in
               eval_stmt f st m (SLoop body1 cond body2)
@@ -145,15 +145,15 @@ Section FlatImp1.
       eval_stmt (S fuel) initialSt initialM (SIf cond bThen bElse) = Some final ->
       exists vcond,
         get initialSt cond = Some vcond /\
-        (vcond <> zero /\ eval_stmt fuel initialSt initialM bThen = Some final \/
-         vcond =  zero /\ eval_stmt fuel initialSt initialM bElse = Some final).
+        (vcond <> ZToReg 0 /\ eval_stmt fuel initialSt initialM bThen = Some final \/
+         vcond =  ZToReg 0 /\ eval_stmt fuel initialSt initialM bElse = Some final).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SLoop: forall fuel st1 m1 body1 cond body2 p4,
       eval_stmt (S fuel) st1 m1 (SLoop body1 cond body2) = Some p4 ->
-      eval_stmt fuel st1 m1 body1 = Some p4 /\ get (fst p4) cond = Some zero \/
+      eval_stmt fuel st1 m1 body1 = Some p4 /\ get (fst p4) cond = Some (ZToReg 0) \/
       exists st2 m2 st3 m3 cv, eval_stmt fuel st1 m1 body1 = Some (st2, m2) /\
-                               get st2 cond = Some cv /\ cv <> zero /\
+                               get st2 cond = Some cv /\ cv <> ZToReg 0 /\
                                eval_stmt fuel st2 m2 body2 = Some (st3, m3) /\
                                eval_stmt fuel st3 m3 (SLoop body1 cond body2) = Some p4.
     Proof. inversion_lemma. Qed.

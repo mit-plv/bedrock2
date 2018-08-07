@@ -13,8 +13,8 @@ Definition eval_binop{t: Set}{MW: MachineWidth t}(op: binop)(v1 v2: t): t :=
   | OPlus => add v1 v2
   | OMinus => sub v1 v2
   | OTimes => mul v1 v2
-  | OEq => if reg_eqb v1 v2 then one else zero
-  | OLt => if ltu v1 v2 then one else zero
+  | OEq => if reg_eqb v1 v2 then ZToReg 1 else (ZToReg 0)
+  | OLt => if ltu v1 v2 then ZToReg 1 else (ZToReg 0)
   | OAnd => and v1 v2
   end.
 
