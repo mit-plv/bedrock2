@@ -9,6 +9,7 @@ Class parameters := {
 
 Section UnorderedList.
   Context {p : unique! parameters}.
+  Local Definition put m (k:key) (v:value) := (cons (k, v) (List.filter (fun p => negb (key_eqb k (fst p))) m)).
   Instance map : map key value := {|
     map.rep := list (key * value);
     map.empty := nil;
@@ -16,11 +17,11 @@ Section UnorderedList.
                    | Some (_, v) => Some v
                    | None => None
                    end;
-    map.put m k v := (cons (k, v) (List.filter (fun p => negb (key_eqb k (fst p))) m))
+    map.put := put;
+    map.union := List.fold_right (fun '(k, v) m => put m k v)
   |}.
 End UnorderedList.
 Arguments map : clear implicits.
-
 (* test of putmany *)
 Goal False.
   assert (Map.map.putmany (0::0::nil)%list (4::7::nil)%list (@map.empty nat nat (map (Build_parameters nat nat Nat.eqb))) = Some ((0, 7) :: nil)%list) by reflexivity.
