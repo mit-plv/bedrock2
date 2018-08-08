@@ -20,3 +20,8 @@ Section UnorderedList.
   |}.
 End UnorderedList.
 Arguments map : clear implicits.
+
+(* test of putmany *)
+Goal False.
+  assert (Map.map.putmany (0::0::nil)%list (4::7::nil)%list (@map.empty nat nat (map (Build_parameters nat nat Nat.eqb))) = Some ((0, 7) :: nil)%list) by reflexivity.
+Abort.

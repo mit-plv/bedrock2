@@ -14,10 +14,7 @@ Module map.
       match keys, values with
       | nil, nil => Some m
       | cons b binders, cons v values =>
-        match putmany binders values m with
-        | Some m => Some (put m b v)
-        | None => None
-        end
+        putmany binders values (put m b v)
       | _, _ => None
       end.
   End ListOperations.
