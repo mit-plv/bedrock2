@@ -208,7 +208,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
     end.
     unfold zeroedRiscvMachine.
     cbv [machineMem zero_mem].
-    unfold Memory.memSize, mem_is_Memory.
+    unfold Memory.memSize, mem32_is_Memory, mem_is_Memory.
     rewrite const_mem_mem_size.
     + cbv. congruence.
     + cbv. reflexivity.
