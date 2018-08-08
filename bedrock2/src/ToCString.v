@@ -104,7 +104,9 @@ Section ToCString.
     let decl_retvar_retrenames : string * option varname * list (varname * varname) :=
     match rets with
     | nil => (c_decl "void" args name nil, None, nil)
-    | cons r0 rets' =>
+    | cons r0 _ =>
+      let r0 := List.last rets r0 in
+      let rets' := List.removelast rets in
       let retrenames := fst (rename_outs rets' (cmd.vars body)) in
       (c_decl "uintptr_t" args name (List.map snd retrenames), Some r0, retrenames)
     end in
@@ -118,7 +120,7 @@ Section ToCString.
       let indent := "  " in
       (match localvars with nil => "" | _ => indent ++ "uintptr_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
       c_cmd indent body ++
-      concat "" (List.map (fun '(o, optr) => indent ++ "*" ++ c_var optr ++ " = " ++ c_var o ++ LF) retrenames) ++
+      concat "" (List.map (fun '(o, optr) => indent ++ "*" ++ c_var optr ++ " = " ++ c_var o ++ ";" ++ LF) retrenames) ++
       indent ++ "return" ++ (match retvar with None => "" | Some rv => " "++c_var rv end) ++ ";" ++ LF ++
       "}" ++ LF.
 End ToCString.
