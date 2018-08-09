@@ -132,70 +132,77 @@ Section FlatToRiscv.
     - exists (Npow2 62). reflexivity.
   Qed.
    *)
+
+  (* check lower two bits approach: how to connect to remu? or replace remu in spec? *)
+
   
-  Lemma remu_four_undo: forall a, remu (mul (ZToReg 4) a) (ZToReg 4) = ZToReg 0.
-  Admitted.
-  (*
+  Axiom euclid_unsigned: forall a b, a = add (mul (divu a b) b) (remu a b).
+  Axiom remu_range: forall (a b: mword), 0 <= regToZ_unsigned (remu a b) < regToZ_unsigned b.
+
+  Axiom unique: forall a b q r,
+      a = add (mul b q) r ->
+      0 <= regToZ_unsigned r < regToZ_unsigned b ->
+      q = divu a b /\ r = remu a b.
+  
+  Definition divisibleBy4(a: mword): Prop := exists q, mul (ZToReg 4) q = a.
+
+  Lemma remu40_divisibleBy4: forall (a: mword),
+      remu a (ZToReg 4) = ZToReg 0 ->
+      divisibleBy4 a.
   Proof.
-    intros. rewrite remu_def. rewrite four_def. rewrite wmult_comm.
-    apply wmod_mul.
-    apply four_divides_Npow2_wXLEN.
+    intros.
+    unfold divisibleBy4.
+    exists (divu a (ZToReg 4)).
+    pose proof (euclid_unsigned a (ZToReg 4)) as P.
+    rewrite P at 2.
+    rewrite H.
+    ring.
   Qed.
-  *)
+
+  Lemma divisibleBy4_remu40: forall (a: mword),
+      divisibleBy4 a ->
+      remu a (ZToReg 4) = ZToReg 0.
+  Proof.
+    intros.
+    unfold divisibleBy4 in *.
+    destruct H as [q H].
+    destruct (@unique a (ZToReg 4) q (ZToReg 0)).
+    - subst a. ring.
+    - pose proof pow2_sz_4.
+      rewrite regToZ_ZToReg_unsigned by omega.
+      rewrite regToZ_ZToReg_unsigned by omega.
+      omega.
+    - congruence.
+  Qed.
+    
+  Lemma remu_four_undo: forall a, remu (mul (ZToReg 4) a) (ZToReg 4) = ZToReg 0.
+  Proof.
+    intros.
+    apply divisibleBy4_remu40. unfold divisibleBy4.
+    exists a. reflexivity.
+  Qed.
 
   Lemma remu_four_four: remu (ZToReg 4) (ZToReg 4) = ZToReg 0.
-  Admitted.
-  (*
   Proof.
-    rewrite remu_def. rewrite four_def. apply wmod_same.
+    intros.
+    apply divisibleBy4_remu40. unfold divisibleBy4.
+    exists (ZToReg 1). ring.
   Qed.
-  *)
-
-  Lemma remu_four_distrib_plus: forall a b,
-      remu (add a b) (ZToReg 4) = remu (add (remu a (ZToReg 4)) (remu b (ZToReg 4))) (ZToReg 4).
-  Admitted.
-  (*
-  Proof.
-    intros. rewrite! remu_def. rewrite! four_def.
-    apply wmod_plus_distr.
-    apply four_divides_Npow2_wXLEN.
-  Qed.
-  *)
 
   Lemma remu_four_zero_distrib_plus: forall a b,
       remu a (ZToReg 4) = ZToReg 0 ->
       remu b (ZToReg 4) = ZToReg 0 ->
       remu (add a b) (ZToReg 4) = ZToReg 0.
   Proof.
-    intros. rewrite remu_four_distrib_plus.
-    rewrite H. rewrite H0.
-    replace (add (ZToReg 0) (ZToReg 0)) with (ZToReg 0) by ring.
-  Admitted.
-  (*
-    apply wmod_0_l.
-  Qed.
-  *)
-
-  Lemma remu40_mod40: forall a,
-      (regToZ_unsigned a) mod 4 = 0 ->
-      remu a (ZToReg 4) = ZToReg 0.
-  Admitted.
-  (*
-  Proof.
     intros.
-    rewrite remu_def.
-    unfold four, two. rewrite one_def. rewrite? add_def.
-    rewrite <-? natToWord_plus. simpl.
-    replace 4 with (# (natToWord wXLEN 4)) in H.
-    - rewrite <- wordToNat_mod in H.
-      + apply wordToNat_inj.
-        rewrite H. symmetry. apply roundTrip_0.
-      + intro. apply natToWord_inj in H0; [discriminate|clear..];
-                 unfold wXLEN, bitwidth; destruct Bw; simpl; omega.
-    - apply wordToNat_natToWord_idempotent'.
-      clear; unfold wXLEN, bitwidth; destruct Bw; simpl; omega.
+    apply divisibleBy4_remu40.
+    apply remu40_divisibleBy4 in H.  destruct H  as [q1 H1].
+    apply remu40_divisibleBy4 in H0. destruct H0 as [q2 H2].
+    unfold divisibleBy4 in *.
+    subst.
+    exists (add q1 q2).
+    ring.
   Qed.
-  *)
 
   (*
   Lemma wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
@@ -1265,7 +1272,7 @@ Section FlatToRiscv.
     rewrite? remu_four_undo;
     rewrite? remu_four_four;
     repeat match goal with
-           | H: _ |- _ => apply remu40_mod40 in H; rewrite H
+           | H: divisibleBy4 _ |- _ => apply divisibleBy4_remu40 in H; rewrite H
            end;
     ring.
 
@@ -1507,7 +1514,7 @@ Section FlatToRiscv.
       not_in_range a XLEN_in_bytes (regToZ_unsigned imemStart) (4 * (Zlength insts)) ->
       in_range a XLEN_in_bytes 0 (Memory.memSize initialL_mem) ->
       (* better than using $4 ^* imemStart because that prevents overflow *)
-      regToZ_unsigned imemStart mod 4 = 0 -> 
+      divisibleBy4 imemStart -> 
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
   Proof.
     (*
@@ -1643,7 +1650,7 @@ Section FlatToRiscv.
     allInsts = instsBefore ++ insts ++ instsAfter ->  
     stmt_not_too_big s ->
     valid_registers s ->
-    regToZ_unsigned imemStart mod 4 = 0 ->
+    divisibleBy4 imemStart ->
     eval_stmt empty_map fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
@@ -1806,7 +1813,7 @@ Section FlatToRiscv.
     compile_stmt s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
-    regToZ_unsigned imemStart mod 4 = 0 ->
+    divisibleBy4 imemStart ->
     eval_stmt empty_map fuelH empty_map initialMH s = Some (finalH, finalMH) ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) insts imemStart ->
