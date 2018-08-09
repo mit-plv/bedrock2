@@ -19,7 +19,7 @@ Require Import riscv.MachineWidth32.
 Require Import riscv.util.BitWidth32.
 
 
-Local Notation RiscvMachine := (@RiscvMachine (word 32) (mem wXLEN) state).
+Local Notation RiscvMachine := (@RiscvMachine (word 32) mem state).
 
 Definition memory_size: Z := 1024.
 Definition instructionMemStart: Z := 0.

@@ -113,7 +113,7 @@ Definition zeroedRiscvMachineCore: RiscvMachineCore := {|
 
 Definition zeroedRiscvMachine: RiscvMachine := {|
     core := zeroedRiscvMachineCore;
-    machineMem := @zero_mem 32 ((Memory.Zlength fib6_riscv + 1) * 4);
+    machineMem := @zero_mem ((Memory.Zlength fib6_riscv + 1) * 4);
 |}.
 
 Definition initialRiscvMachine(imem: list (word 32)): RiscvMachine :=
@@ -208,7 +208,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, fib6_L_res fuel = $13.
     end.
     unfold zeroedRiscvMachine.
     cbv [machineMem zero_mem].
-    unfold Memory.memSize, mem32_is_Memory, mem_is_Memory.
+    unfold Memory.memSize, mem_is_Memory.
     rewrite const_mem_mem_size.
     + cbv. congruence.
     + cbv. reflexivity.
