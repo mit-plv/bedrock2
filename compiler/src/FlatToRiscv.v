@@ -69,25 +69,9 @@ Section FlatToRiscv.
   Context {mword: Set}.
   Context {MW: MachineWidth mword}.
 
-  Ltac is_positive_cst p :=
-    match eval hnf in p with
-    | xH => constr:(true)
-    | xO ?q => is_positive_cst q
-    | xI ?q => is_positive_cst q
-    | _ => constr:(false)
-    end.
-    
-  Ltac is_Z_cst n :=
-    match eval hnf in n with
-    | Z0 => constr:(true)
-    | Zpos ?p => is_positive_cst p
-    | Zneg ?p => is_positive_cst p
-    | _ => constr:(false)
-    end.
-
   Ltac mword_cst w :=
     match w with
-    | ZToReg ?x => let b := is_Z_cst x in
+    | ZToReg ?x => let b := isZcst x in
                   match b with
                   | true => x
                   | _ => constr:(NotConstant)
