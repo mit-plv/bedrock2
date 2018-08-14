@@ -24,28 +24,13 @@ Module map.
   Section Properties.
     (* FIXME: move proofs to a different file *)
     Context {key value} {map : map key value}.
-
-    Definition eq (a b : rep) : Prop :=
-      forall k v, get a k = Some v <-> get b k = Some v.
-    Global Instance Equivalence_eq : Equivalence eq.
-    Proof.
-      split; cbv [Reflexive Symmetric Transitive eq]; intros; firstorder idtac.
-      eapply H in H1. eapply H0 in H1. eauto.
-      eapply H0 in H1. eapply H in H1. eauto.
-    Qed.
+    Context (map_ext : forall m1 m2, (forall k, get m1 k = get m2 k) -> m1 = m2).
+    Context (union_None : forall m1 m2 k, get m2 k = None -> get (union m1 m2) k = get m1 k).
+    Context (union_Some : forall m1 m2 k v, get m2 k = Some v -> get (union m1 m2) k = Some v).
     
     Definition disjoint (a b : rep) : Prop :=
       forall k v1 v2, get a k = Some v1 -> get b k = Some v2 -> False.
-    Global Instance Proper_disjoint : Proper (eq ==> eq ==> iff) disjoint.
-    Proof.
-      cbv [Proper respectful eq disjoint]. intuition idtac.
-      { eapply H1. eapply H, H2. eapply H0, H3. }
-      { eapply H1. eapply H, H2. eapply H0, H3. }
-    Qed.
 
-    Context (Proper_union : Proper (eq ==> eq ==> eq) union).
-    Context (union_None : forall m1 m2 k, get m2 k = None -> get (union m1 m2) k = get m1 k).
-    Context (union_Some : forall m1 m2 k v, get m2 k = Some v -> get (union m1 m2) k = Some v).
     Lemma union_spec m1 m2 k :
       (exists v, get m2 k = Some v /\ get (union m1 m2) k = Some v) \/
       (get m2 k = None /\ get (union m1 m2) k = get m1 k).
@@ -55,41 +40,36 @@ Module map.
       { split. reflexivity. rewrite union_None; eauto. }
     Qed.
 
-    Lemma union_comm x y : disjoint x y -> eq (union x y) (union y x).
+    Lemma union_comm x y : disjoint x y -> union x y = union y x.
     Proof.
-      cbv [disjoint eq]; intros.
+      cbv [disjoint]; intros; eapply map_ext; intros.
       destruct (get x k) eqn:Hl, (get y k) eqn:Hr;
         repeat ((erewrite union_None by eauto) || (erewrite union_Some by eauto));
         firstorder congruence.
     Qed.
 
-    Ltac _union_t r :=
-      try match goal with
-      | |- ?x <-> ?x => reflexivity
-      | H: None = Some _ |- _ => discriminate H
-      | H: Some _ = None |- _ => discriminate H
-      | H: Some ?x = Some ?y |- _ => (is_var x || is_var y); inversion H; clear H; (subst y || subst x)
-      | H: context [get (union ?a ?b) ?k] |- _ => erewrite (union_Some a b k) in H by (r; firstorder eauto)
-      | H: context [get (union ?a ?b) ?k] |- _ => erewrite (union_None a b k) in H by (r; firstorder eauto)
-      | |- context [get (union ?a ?b) ?k] => erewrite (union_Some a b k) by (r; firstorder eauto)
-      | |- context [get (union ?a ?b) ?k] => erewrite (union_None a b k) by (r; firstorder eauto)
-      end.
     Lemma union_assoc x y z
       : disjoint x y -> disjoint y z -> disjoint x z ->
-        eq (union x (union y z)) (union (union x y) z).
+        union x (union y z) = union (union x y) z.
     Proof.
-      cbv [disjoint eq]; intros.
-      destruct (get x k) as [?vx|] eqn:?Hx, (get y k) as [?vy|] eqn:?Hy, (get z k) as [?vz|] eqn:?Hz, (get (union y z) k) eqn:?Hyz, (get (union x y) k) eqn:?Hxy.
-      all: repeat _union_t ltac:(_union_t idtac).
+      cbv [disjoint]; intros; eapply map_ext; intros.
+      destruct (union_spec x (union y z) k);
+      destruct (union_spec (union x y) z k);
+      destruct (union_spec y z k);
+      destruct (union_spec x y k);
+      destruct (get x k) as [?vx|] eqn:?Hx;
+      destruct (get y k) as [?vy|] eqn:?Hy;
+      destruct (get z k) as [?vz|] eqn:?Hz;
+      firstorder congruence.
     Qed.
     
     Definition split m m1 m2 : Prop :=
-      eq m (union m1 m2) /\ disjoint m1 m2.
+      m = (union m1 m2) /\ disjoint m1 m2.
     Definition carve m1 m P2 : Prop :=
       exists m2, split m m1 m2 /\ P2 m2.
     Fixpoint splits m ms : Prop :=
       match ms with
-      | nil => eq m empty
+      | nil => m = empty
       | cons m0 ms' => carve m0 m (fun m => splits m ms')
       end.
                               
@@ -114,7 +94,7 @@ Module map.
     Proof. cbv [split]. pose proof disjoint_comm m1 m2. intuition idtac. all:rewrite union_comm; eauto. Qed.
 
     Lemma split_disjoint_union : forall x y, disjoint x y -> split (union x y) x y.
-    Proof. cbv [split]; intuition eauto. reflexivity. Qed.
+    Proof. cbv [split]; intuition eauto. Qed.
     Lemma carve_comm x y m l :
       carve y m (fun m_y : rep => carve x m_y (fun m_xy : rep => splits m_xy l)) <->
       carve x m (fun m_x : rep => carve y m_x (fun m_xy : rep => splits m_xy l)).
