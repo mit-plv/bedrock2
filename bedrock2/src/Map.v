@@ -77,16 +77,12 @@ Module map.
     Proof. cbv [disjoint]. firstorder idtac. Qed.
     Lemma disjoint_union_r x y z : disjoint x (union y z) <-> (disjoint x y /\ disjoint x z).
     Proof.
-      cbv [disjoint].
-      pose proof (union_spec y z) as HH.
-      repeat split; intros; specialize (HH k);
-        repeat (dintuition idtac; repeat match goal with H: exists _, _ |- _ => destruct H end).
-      eapply (H k); eauto.
-      eapply (H k); eauto; erewrite union_None; eauto.
-      eapply (H k); eauto.
-      eapply (H k); eauto.
-      eapply (H3 k); eauto; erewrite union_None; eauto.
-      eapply (H2 k); eauto. erewrite union_None in *; eauto.
+      cbv [disjoint]; repeat (split || intros);
+        destruct (union_spec y z k);
+        destruct (get x k) as [?vx|] eqn:?Hx;
+        destruct (get y k) as [?vy|] eqn:?Hy;
+        destruct (get z k) as [?vz|] eqn:?Hz;
+        firstorder congruence.
     Qed.
     Lemma disjoint_union_l x y z : disjoint (union x y) z <-> (disjoint x z /\ disjoint y z).
     Proof. rewrite disjoint_comm. rewrite disjoint_union_r. rewrite 2(disjoint_comm z). reflexivity. Qed.
@@ -95,41 +91,29 @@ Module map.
 
     Lemma split_disjoint_union : forall x y, disjoint x y -> split (union x y) x y.
     Proof. cbv [split]; intuition eauto. Qed.
+
+    Ltac t :=
+      repeat match goal with
+      | _ => progress subst
+      | _ => progress cbv [split] in *
+      | H:disjoint _ (union _ _) |- _ => 
+        eapply disjoint_union_r in H; destruct H
+      | _ => progress intuition idtac
+      | |- union _ (union ?x _) = union ?x (union _ _) =>
+        rewrite (union_assoc x) by eauto using (fun m1 m2 => proj2 (disjoint_comm m1 m2));
+        rewrite union_comm by eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3)));
+        reflexivity
+      | _ => solve [eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3))), (fun m1 m2 => proj2 (disjoint_comm m1 m2))]
+      | _ => solve [eapply union_comm; eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3))), (fun m1 m2 => proj2 (disjoint_comm m1 m2))]
+      end.
+
     Lemma carve_comm x y m l :
       carve y m (fun m_y : rep => carve x m_y (fun m_xy : rep => splits m_xy l)) <->
       carve x m (fun m_x : rep => carve y m_x (fun m_xy : rep => splits m_xy l)).
     Proof.
-      cbv [carve].
-      split; [ intros (m_y & (? & (m_yx & ? & ?)) ) | intros (m_x & (? & (m_xy & ? & ?)) ) ].
-      { exists (union m_yx y). split.
-        cbv [split] in *; intuition idtac. rewrite H2. rewrite H.
-        { rewrite H in *; clear H. clear H1 H2.
-          eapply disjoint_union_r in H3; destruct H3.
-          rewrite (union_assoc x).
-          3,4: eapply disjoint_comm; eauto.
-          2: eauto.
-          rewrite union_comm. 2:eapply disjoint_union_r; eauto.
-          reflexivity. }
-        { clear H2. rewrite H in *; clear H. eapply disjoint_union_r in H3; destruct H3.
-          eapply disjoint_union_r. split. eauto. eapply disjoint_comm. eauto. }
-        exists m_yx. split. eapply split_comm, split_disjoint_union.
-        { cbv [split] in *; intuition idtac. clear H2. rewrite H in *.
-          rewrite disjoint_union_r in H3; destruct H3. eapply disjoint_comm. eauto. }
-        assumption. }
-      { exists (union m_xy x). split.
-        cbv [split] in *; intuition idtac. rewrite H2.
-        { rewrite H in *; clear H. clear H1 H2.
-          eapply disjoint_union_r in H3; destruct H3.
-          rewrite (union_assoc y).
-          2,3,4: eauto || eapply disjoint_comm; eauto.
-          rewrite union_comm. 2: eapply disjoint_union_r; eauto.
-          reflexivity. }
-        { clear H2. rewrite H in *; clear H. eapply disjoint_union_r in H3; destruct H3.
-          eapply disjoint_union_r. split. eauto. eapply disjoint_comm. eauto. }
-        exists m_xy. split. eapply split_comm, split_disjoint_union.
-        { cbv [split] in *; intuition idtac. clear H2. rewrite H in *.
-          rewrite disjoint_union_r in H3; destruct H3. eapply disjoint_comm. eauto. }
-        assumption. }
+      cbv [carve]. split; intros (? & (? & (M & ? & ?)) ).
+      { exists (union M y); t. exists M; t. }
+      { exists (union M x). t. exists M. t. }
     Qed.
 
     Require Import Permutation.
