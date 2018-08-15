@@ -66,7 +66,7 @@ Module map.
     Definition split m m1 m2 : Prop :=
       m = (union m1 m2) /\ disjoint m1 m2.
     Definition carve m1 m P2 : Prop :=
-      exists m2, split m m1 m2 /\ P2 m2.
+      exists m2, split m m2 m1 /\ P2 m2.
     Fixpoint splits m ms : Prop :=
       match ms with
       | nil => m = empty
@@ -96,12 +96,12 @@ Module map.
       repeat match goal with
       | _ => progress subst
       | _ => progress cbv [split] in *
-      | H:disjoint _ (union _ _) |- _ => 
-        eapply disjoint_union_r in H; destruct H
+      | H:disjoint (union _ _) _ |- _ => 
+        eapply disjoint_union_l in H; destruct H
       | _ => progress intuition idtac
-      | |- union _ (union ?x _) = union ?x (union _ _) =>
-        rewrite (union_assoc x) by eauto using (fun m1 m2 => proj2 (disjoint_comm m1 m2));
-        rewrite union_comm by eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3)));
+      | |- union (union ?a ?b) ?c = union (union ?a ?c) ?b  =>
+        rewrite <-2union_assoc by eauto using (fun m1 m2 => proj2 (disjoint_comm m1 m2));
+        rewrite (union_comm b c) by eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3)));
         reflexivity
       | _ => solve [eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3))), (fun m1 m2 => proj2 (disjoint_comm m1 m2))]
       | _ => solve [eapply union_comm; eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3))), (fun m1 m2 => proj2 (disjoint_comm m1 m2))]
@@ -111,21 +111,17 @@ Module map.
       carve y m (fun m_y : rep => carve x m_y (fun m_xy : rep => splits m_xy l)) <->
       carve x m (fun m_x : rep => carve y m_x (fun m_xy : rep => splits m_xy l)).
     Proof.
-      cbv [carve]. split; intros (? & (? & (M & ? & ?)) ).
-      { exists (union M y); t. exists M; t. }
-      { exists (union M x). t. exists M. t. }
+      cbv [carve]; split; intros (? & (? & (? & ? & ?)) );
+        match goal with M : rep, z : rep |- _ => solve [exists (union M z); t] end.
     Qed.
 
     Require Import Permutation.
     Require Import Coq.Classes.Morphisms.
-    Lemma splits_Permutation m : Proper (@Permutation _ ==> iff) (splits m).
+    Global Instance splits_Permutation m : Proper (@Permutation _ ==> iff) (splits m).
     Proof.
       cbv [Proper respectful]; intros x y H; revert m; induction H; intros;
         try solve [ eapply carve_comm | firstorder idtac ].
     Qed.
-
-    Definition subsumes_using_split a b : Prop := exists c : rep, split a b c.
-    Definition subsumes a b := forall k v, get b k = Some v -> get a k = Some v.
   End Properties.
   
 End map. Notation map := map.map.
