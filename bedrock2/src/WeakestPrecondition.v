@@ -81,17 +81,21 @@ Section WeakestPrecondition.
       end.
   End WithFunctions.
 
+  Definition func call '(innames, outnames, c) (t : trace) (m : mem) (args : list word) (post : trace -> mem -> list word -> Prop) :=
+      bind_ex_Some l <- map.putmany innames args map.empty;
+      cmd call c t m l (fun t m l =>
+        bind_ex rets <- list_map (get l) outnames;
+        post t m rets).
+          
   Fixpoint call (functions : list (funname * (list varname * list varname * cmd.cmd)))
                 (fname : funname) (t : trace) (m : mem) (args : list word)
                 (post : trace -> mem -> list word -> Prop) {struct functions} : Prop :=
     match functions with
     | nil => False
-    | cons (f, (innames, outnames, c)) functions =>
-      'true <- funname_eqb f fname | call functions fname t m args post;
-      bind_ex_Some l <- map.putmany innames args map.empty;
-      cmd (call functions) c t m l (fun t m l =>
-        bind_ex rets <- list_map (get l) outnames;
-        post t m rets)
+    | cons (f, decl) functions =>
+      if funname_eqb f fname
+      then func (call functions) decl t m args post
+      else call functions fname t m args post
     end.
 
   Definition program funcs c t m l post : Prop := cmd (call funcs) c t m l post.
