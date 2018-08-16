@@ -51,6 +51,7 @@ Section WeakestPrecondition.
         bind_ex a <- expr m l ea;
         bind_ex v <- expr m l ev;
         bind_ex_Some m <- store (Z.to_nat sz) m a v;
+        bind_eq m <- m;
         post t m l
       | cmd.cond br ct cf =>
         bind_ex v <- expr m l br; (* path-blasting... :( *)
