@@ -60,7 +60,6 @@ Proof.
   revert H0. generalize m.
   instantiate (1 := ltac:(clear H0 m)).
   lazymatch goal with |- forall (x:?T) (H:?A x), ?B x => change (@Lift1Prop.impl1 T A B) end.
-  Print Ltac cancel_atom_goal1.
   cancel. reflexivity.
 
   eexists.
