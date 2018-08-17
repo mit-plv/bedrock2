@@ -25,21 +25,27 @@ Class parameters := {
 Section semantics.
   Context {pp : unique! parameters}.
   
-  Fixpoint load (sz : nat) (m:mem) (a:word) : option word :=
+  Fixpoint load_rec (sz : nat) (m:mem) (a:word) : option word :=
     match sz with
     | O => Some word_zero
     | S sz =>
-      'Some b <- map.get m a             | None;
-      'Some w <- load sz m (word_succ a) | None;
+      'Some b <- map.get m a                 | None;
+      'Some w <- load_rec sz m (word_succ a) | None;
        Some (combine sz b w)
     end.
-  Fixpoint store (sz : nat) (m:mem) (a v:word) : option mem :=
+  Definition load n := load_rec (Z.to_nat n).
+  Fixpoint unchecked_store_rec (sz : nat) (m:mem) (a v:word) : mem :=
     match sz with
-    | O => Some m
+    | O => m
     | S sz =>
       let '(b, w) := split sz v in
-      'Some _ <- map.get m a | None;
-      store sz (map.put m a b) (word_succ a) w
+      unchecked_store_rec sz (map.put m a b) (word_succ a) w
+    end.
+  Definition unchecked_store n := unchecked_store_rec (Z.to_nat n).
+  Definition store sz m a v : option mem :=
+    match load sz m a with
+    | None => None
+    | Some _ => Some (unchecked_store sz m a v)
     end.
   Definition trace := list ((mem * actname * list word) * (mem * list word)).
 End semantics.

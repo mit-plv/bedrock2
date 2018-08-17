@@ -21,7 +21,7 @@ Section WeakestPrecondition.
         interp_binop op v1 v2 = v
       | expr.load s e =>
         bind_ex a <- expr e;
-        load (Z.to_nat s) m a = Some v
+        load s m a = Some v
     end.
   End WithMemAndLocals.
 
@@ -50,8 +50,7 @@ Section WeakestPrecondition.
       | cmd.store sz ea ev =>
         bind_ex a <- expr m l ea;
         bind_ex v <- expr m l ev;
-        bind_ex_Some m <- store (Z.to_nat sz) m a v;
-        bind_eq m <- m;
+        bind_ex_Some m <- store sz m a v;
         post t m l
       | cmd.cond br ct cf =>
         bind_ex v <- expr m l br; (* path-blasting... :( *)
