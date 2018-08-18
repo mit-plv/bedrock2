@@ -7,6 +7,8 @@ COQDEP=$(COQBIN)coqdep
 COQDOC=$(COQBIN)coqdoc
 
 DIRS = src
+VS:=$(shell find . -type f -name '*.v')
+VOS:=$(patsubst %.v,%.vo,$(VS))
 
 DEPS_DIR ?= ../deps
 
@@ -22,10 +24,10 @@ COQFLAGS=$(DEPFLAGS)
 %.vo: %.v
 	$(COQC) $(COQFLAGS) $*.v 
 
-all: $(patsubst %.v,%.vo,$(wildcard src/*.v)) _CoqProject
+all: $(VOS) _CoqProject
 
 .depend depend:
-	$(COQDEP) $(DEPFLAGS) >.depend `find $(DIRS) -name "*.v"`
+	$(COQDEP) $(DEPFLAGS) >.depend $(VS)
 
 clean:
 	find . -type f \( -name '*.glob' -o -name '*.vo' -o -name '*.aux' \) -delete
