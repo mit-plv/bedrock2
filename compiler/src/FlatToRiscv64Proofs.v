@@ -24,7 +24,7 @@ Proof.
     do 2 (destruct_one_match_hyp; [|discriminate]).
     inversions H0.
     destruct_one_match_hyp.
-    + apply weqb_sound in E1. subst.
+    + apply weqb_spec in E1. subst.
       inversions H1.
       specialize H with (1 := E0).
       destruct_one_match_hyp; [|discriminate].

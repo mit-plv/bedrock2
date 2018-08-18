@@ -1,4 +1,4 @@
-Require Import bbv.WordScope.
+Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
@@ -35,10 +35,10 @@ loop:
 
 
 Example fib(n: word 32) :=
-  SSeq (SLit _one $1) (
+  SSeq (SLit _one (ZToWord 32 1)) (
   SSeq (SLit _n n) (
-  SSeq (SLit _a $0) (
-  SSeq (SLit _b $1) (
+  SSeq (SLit _a (ZToWord 32 0)) (
+  SSeq (SLit _b (ZToWord 32 1)) (
   SLoop SSkip
         _n
         (SSeq (SOp _s OPlus _a _b) (
@@ -53,16 +53,16 @@ Existing Instance annoying_eq.
 
 Definition eval_stmt_test fuel initialSt := @eval_stmt (word 32) _ ZName ZName _ (List_Map _ _) empty_map fuel initialSt no_mem.
 
-Example finalFibState(n: nat) := (eval_stmt_test 100 empty_map (fib $n)).
-Example finalFibVal(n: nat): option (word 32) := match finalFibState n with
+Example finalFibState(n: Z) := (eval_stmt_test 100 empty_map (fib (ZToWord 32 n))).
+Example finalFibVal(n: Z): option (word 32) := match finalFibState n with
 | Some (s, _) => get s _b
 | _ => None
 end.
 
-Goal finalFibVal 0 = Some $1. reflexivity. Qed.
-Goal finalFibVal 1 = Some $1. reflexivity. Qed.
-Goal finalFibVal 2 = Some $2. reflexivity. Qed.
-Goal finalFibVal 3 = Some $3. reflexivity. Qed.
-Goal finalFibVal 4 = Some $5. reflexivity. Qed.
-Goal finalFibVal 5 = Some $8. reflexivity. Qed.
-Goal finalFibVal 6 = Some $13. reflexivity. Qed.
+Goal finalFibVal 0 = Some (ZToWord 32  1). reflexivity. Qed.
+Goal finalFibVal 1 = Some (ZToWord 32  1). reflexivity. Qed.
+Goal finalFibVal 2 = Some (ZToWord 32  2). reflexivity. Qed.
+Goal finalFibVal 3 = Some (ZToWord 32  3). reflexivity. Qed.
+Goal finalFibVal 4 = Some (ZToWord 32  5). reflexivity. Qed.
+Goal finalFibVal 5 = Some (ZToWord 32  8). reflexivity. Qed.
+Goal finalFibVal 6 = Some (ZToWord 32 13). reflexivity. Qed.

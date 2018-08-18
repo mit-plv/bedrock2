@@ -1,6 +1,6 @@
 Require Export Coq.omega.Omega.
 Require Export Coq.Lists.List.
-Require Export bbv.Word.
+Require Export riscv.util.Word.
 Require Export riscv.util.Monads.
 Require Export compiler.Decidable.
 Require Export compiler.util.Tactics.
@@ -8,7 +8,7 @@ Require Export compiler.util.Set.
 Require Export compiler.util.Map.
 Require Export lib.fiat_crypto_tactics.UniquePose.
 
-Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := weq.
+Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := @weq_dec.
 
 Lemma nth_error_nth: forall {T: Type} (l: list T) (e d: T) (i: nat),
   nth_error l i = Some e ->

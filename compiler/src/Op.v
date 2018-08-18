@@ -1,10 +1,6 @@
-Require Import bbv.Word.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
-Import Word.ArithmeticNotations.
-Import Word.ConversionNotations.
-Import Word.BitwiseNotations.
-Local Open Scope word_scope.
+
 
 Inductive binop: Set := OPlus | OMinus | OTimes | OEq | OLt | OAnd.
 
@@ -18,14 +14,14 @@ Definition eval_binop{t: Set}{MW: MachineWidth t}(op: binop)(v1 v2: t): t :=
   | OAnd => and v1 v2
   end.
 
-Definition eval_binop_word{w: nat}(op: binop)(v1 v2: word w): word w :=
+Definition eval_binop_word{w: Z}(op: binop)(v1 v2: word w): word w :=
   match op with
-  | OPlus => v1 ^+ v2
-  | OMinus => v1 ^- v2
-  | OTimes => v1 ^* v2
-  | OEq => if weq v1 v2 then $1 else $0
-  | OLt => if wlt_dec v1 v2 then $1 else $0
-  | OAnd => v1 ^& v2
+  | OPlus => wadd v1 v2
+  | OMinus => wsub v1 v2
+  | OTimes => wmul v1 v2
+  | OEq => if weqb  v1 v2 then ZToWord w 1 else ZToWord w 0
+  | OLt => if wultb v1 v2 then ZToWord w 1 else ZToWord w 0
+  | OAnd => wand v1 v2
   end.
 
 Definition eval_binop_nat(op: binop)(v1 v2: nat): nat :=

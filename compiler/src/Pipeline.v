@@ -1,34 +1,37 @@
-Require Import Coq.Lists.List.
-Import ListNotations.
-Require Import lib.LibTacticsMin.
-Require Import bbv.Word.
-Require Import compiler.Decidable.
-Require Import compiler.Op.
+Require Export Coq.Lists.List.
+Export ListNotations.
+Require Export lib.LibTacticsMin.
+Require Export riscv.util.Word.
+Require Export compiler.Decidable.
+Require Export compiler.Op.
 Require        compiler.ExprImp.
-Require Import compiler.FlattenExpr.
+Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
 Require        compiler.FlatToRiscv.
-Require Import riscv.Riscv.
-Require Import riscv.util.Monads.
+Require Export riscv.Decode.
+Require Export riscv.Program.
+Require Export riscv.Run.
+Require Export riscv.Minimal.
+Require Export riscv.util.Monads.
 Require Import compiler.runsToSatisfying.
 Require Import compiler.util.MyOmega.
 Require Import Coq.micromega.Lia.
-Require Import bbv.DepEqNat.
-Require Import compiler.NameGen.
-Require Import compiler.util.Common.
-Require Import riscv.util.BitWidths.
-Require Import compiler.NameWithEq.
-Require Import riscv.encode.Encode.
-Require Import riscv.AxiomaticRiscv.
-Require Import riscv.proofs.DecodeEncode.
-Require Import riscv.proofs.EncodeBound.
-Require Import compiler.EmitsValid.
-Require Import compiler.ZName.
-Require Import compiler.RegAlloc.
+Require Export bbv.DepEqNat.
+Require Export compiler.NameGen.
+Require Export compiler.util.Common.
+Require Export riscv.util.BitWidths.
+Require Export compiler.NameWithEq.
+Require Export riscv.Encode.
+Require Export riscv.AxiomaticRiscv.
+Require Export riscv.proofs.DecodeEncode.
+Require Export riscv.proofs.EncodeBound.
+Require Export compiler.EmitsValid.
+Require Export compiler.ZName.
+Require Export compiler.RegAlloc.
 Require compiler.util.List_Map.
 Require Import riscv.Utility.
-Require Import riscv.Memory.
-Require Import riscv.InstructionCoercions.
+Require Export riscv.Memory.
+Require Export riscv.InstructionCoercions.
 
 Open Scope Z_scope.
 
@@ -144,6 +147,7 @@ Section Pipeline.
         destruct P as [ inst [A B] ]. subst e.
         rewrite A. f_equal.
         rewrite uwordToZ_ZToWord.
+        rewrite Z.mod_small.
         * symmetry. apply decode_encode.
           eapply compile_stmt_emits_valid; try eassumption.
           Fail exact A.
@@ -157,12 +161,6 @@ Section Pipeline.
         * apply encode_range.
   Qed.
 *)
-  Lemma weqb_false_iff: forall (sz : nat) (x y : word sz), weqb x y = false <-> x <> y.
-  Proof.
-    intros.
-    pose proof (weqb_true_iff x y).
-    destruct (weqb x y) eqn: E; intuition congruence.
-  Qed.
   
   Lemma store_word_list_preserves_containsMem: forall offset words mL mH,
       regToZ_unsigned offset + 4 * Zlength words <= Memory.memSize mL ->
@@ -237,13 +235,13 @@ Section Pipeline.
       edestruct P as [fuelL [P1 P2] ]; clear P.
       + unfold translate, DefaultRiscvState, default_translate.
         intros.
+        (*
         autorewrite with alu_defs.
         (* TODO all of this should be something like autorewrite in * *)
         destruct_one_match; [exfalso|reflexivity].
         apply Bool.negb_true_iff in E0.
         apply reg_eqb_false in E0.
         pose proof pow2_wXLEN_4 as Q.
-        (*
         rewrite <- (wordToNat_natToWord_idempotent' wXLEN Q) in H.
         rewrite <- wordToNat_mod in H.
         * apply wordToNat_zero in H. contradiction.

@@ -4,15 +4,14 @@ Require Import compiler.util.Common.
 Require compiler.ExprImpNotations.
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require Import bbv.Word.
+Require Import riscv.util.Word.
 Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
-Require Import riscv.Riscv.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
 Require riscv.Utility.
-Require Import riscv.encode.Encode.
+Require Import riscv.Encode.
 Require Import compiler.examples.Fibonacci.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
@@ -126,7 +125,7 @@ End ExampleSrc.
 
 Fixpoint str_to_words(s: string): list (word 32) :=
   match s with
-  | String c rest => (NToWord 32 (N_of_ascii c)) :: (str_to_words rest)
+  | String c rest => (ZToWord 32 (Z.of_N (N_of_ascii c))) :: (str_to_words rest)
   | EmptyString => nil
   end.
 
@@ -134,7 +133,7 @@ Definition a_str: list (word 32) := str_to_words "RISCV".
 Definition b_str: list (word 32) := str_to_words "CRISP".
 
 Definition input: list (word 32) :=
-  (natToWord 32 (List.length a_str)) :: (natToWord 32 (List.length b_str)) :: a_str ++ b_str.
+  (ZToWord 32 (Zlength a_str)) :: (ZToWord 32 (Zlength b_str)) :: a_str ++ b_str.
 
 (*
 

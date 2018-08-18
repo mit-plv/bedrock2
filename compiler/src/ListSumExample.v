@@ -4,15 +4,14 @@ Require Import compiler.util.Common.
 Require compiler.ExprImpNotations.
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require Import bbv.WordScope.
+Require Import riscv.util.Word.
 Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
-Require Import riscv.Riscv.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.ListMemory.
 Require Import riscv.Minimal.
 Require riscv.Utility.
-Require Import riscv.encode.Encode.
+Require Import riscv.Encode.
 Require Import compiler.examples.Fibonacci.
 Require Import compiler.NameGen.
 Require Import riscv.MachineWidth32.
@@ -52,15 +51,15 @@ Module ExampleSrc.
       i <-- i + 1
     done.
    *)
-  
+
   Example listsum: stmt :=
-    sumreg <-- ELit $0;
-    n <-* ELit (ZToWord _ input_base);
-    i <-- ELit $0;
+    sumreg <-- ELit 0;
+    n <-* ELit input_base;
+    i <-- ELit 0;
     while EVar i < EVar n do
-      a <-* ELit (ZToWord _ (input_base + 4)%Z) + ELit $4 * EVar i;
+      a <-* ELit (input_base + 4) + ELit 4 * EVar i;
       sumreg <-- EVar sumreg + EVar a;
-      i <-- EVar i + ELit (natToWord 32 1)
+      i <-- EVar i + ELit 1
     done.
   
   Print listsum.
@@ -78,10 +77,12 @@ Eval simpl in (List.length listsum_riscv).
 
 Definition listsum_bits: list (word 32) := (map (fun i => ZToWord 32 (encode i)) listsum_riscv).
 
+(* TODO
 Eval cbv in listsum_bits.
+*)
 
-Definition mk_input(l: list nat): list (word 32) :=
-  (natToWord 32 (List.length l)) :: (List.map (natToWord 32) l).
+Definition mk_input(l: list Z): list (word 32) :=
+  (ZToWord 32 (Zlength l)) :: (List.map (ZToWord 32) l).
 
 Definition InfiniteJal: Instruction := Jal Register0 0.
 Eval cbv in (encode InfiniteJal).
@@ -89,14 +90,17 @@ Eval cbv in (encode InfiniteJal).
 Definition infJalMem: list (word 8) :=
   Memory.store_word_list
     (List.repeat (ZToWord 32 (encode InfiniteJal)) (Z.to_nat memory_size / 4))
-    (natToWord 32 0)
+    (ZToWord 32 0)
     (ListMemory.zero_mem memory_size).
+
+(* TODO
 Eval cbv in infJalMem.
+*)
 
 Instance State_RegisterFile: RegisterFile state Register (word 32) := {|
     getReg rf r := match rf r with
                    | Some v => v
-                   | None => $0
+                   | None => ZToWord 32 0
                    end(*;
     setReg := put;
     initialRegs := empty_map;*)
@@ -108,11 +112,11 @@ Existing Instance State_RegisterFile.
 Definition initialRiscvMachineCore: @RiscvMachineCore _ state := {|
   registers := initialRegs;
   pc := ZToWord _ instructionMemStart;
-  nextPC := ZToWord _ instructionMemStart ^+ (natToWord 32 4);
+  nextPC := wadd (ZToWord _ instructionMemStart) (ZToWord 32 4);
   exceptionHandlerAddr := 4321;
 |}.
 
-Definition initialRiscvMachine_without_instructions(l: list nat): RiscvMachine := {|
+Definition initialRiscvMachine_without_instructions(l: list Z): RiscvMachine := {|
     core := initialRiscvMachineCore;
     machineMem := Memory.store_word_list
                     (mk_input l)
@@ -120,20 +124,19 @@ Definition initialRiscvMachine_without_instructions(l: list nat): RiscvMachine :
                     infJalMem
 |}.
 
-Definition initialRiscvMachine(l: list nat): RiscvMachine
-  := putProgram listsum_bits $0 (initialRiscvMachine_without_instructions l).
+Definition initialRiscvMachine(l: list Z): RiscvMachine
+  := putProgram listsum_bits (ZToWord 32 0) (initialRiscvMachine_without_instructions l).
 
-Close Scope Z_scope.
 
 (*TODO Eval cbv in (map (@wordToNat 8) (initialRiscvMachine [1; 2; 3]).(machineMem)).*)
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
  @Run.run BitWidth32 _ MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
 
-Definition listsum_final(fuel: nat)(l: list nat): RiscvMachine :=
+Definition listsum_final(fuel: nat)(l: list Z): RiscvMachine :=
   snd (run fuel (initialRiscvMachine l)).
 
-Definition listsum_res(fuel: nat)(l: list nat): word wXLEN :=
+Definition listsum_res(fuel: nat)(l: list Z): word 32 :=
   getReg (listsum_final fuel l).(core).(registers) ExampleSrc.sumreg.
 
 (*TODO Eval vm_compute in (listsum_res 400 [4; 5; 3]).*)
@@ -155,11 +158,11 @@ Proof.
   intros. unfold Memory.in_range. apply dec_and.
 Defined.
 
-Definition initialize_with_wXLEN_list_H{Bw : BitWidths}(l: list (word wXLEN))
-           (offset: word wXLEN) : Memory.mem :=
-  fun (a: word wXLEN) =>
-    if dec (Memory.in_range a (Z.of_nat wXLEN_in_bytes) (wordToZ offset) (Z.of_nat wXLEN_in_bytes * Memory.Zlength l)) then
-      nth_error l (#(a ^- offset) / wXLEN_in_bytes)
+Definition initialize_with_word_list_H{Bw : BitWidths}(l: list (word 32))
+           (offset: word 32) : Memory.mem :=
+  fun (a: word 32) =>
+    if dec (Memory.in_range a (Z.of_nat wXLEN_in_bytes) (uwordToZ offset) (Z.of_nat wXLEN_in_bytes * Memory.Zlength l)) then
+      Znth_error l (uwordToZ (wsub a offset) / 4)
     else
       None.
 
@@ -174,15 +177,15 @@ Definition initialize_with_wXLEN_list_H{Bw : BitWidths}(l: list (word wXLEN))
  *)
 
 Lemma invert_initialize_Some: forall l offset w a,
-    Memory.read_mem a (initialize_with_wXLEN_list_H l offset) = Some w ->
-    nth_error l (#(a ^- offset) / wXLEN_in_bytes) = Some w /\
-    (#offset <= #a)%nat /\
-    #a mod 4 = 0.
+    Memory.read_mem a (initialize_with_word_list_H l offset) = Some w ->
+    Znth_error l (uwordToZ (wsub a offset) / 4) = Some w /\
+    uwordToZ offset <= uwordToZ a /\
+    (uwordToZ a) mod 4 = 0.
 Proof.
-  intros. unfold Memory.read_mem, initialize_with_wXLEN_list_H in *.
+  intros. unfold Memory.read_mem, initialize_with_word_list_H in *.
   repeat (destruct_one_match_hyp; try discriminate).
   unfold Memory.in_range in *. clear E0. intuition idtac.
-Admitted.
+Qed.
 
 (*
 Lemma invert_initialize_Some': forall l offset w a,
@@ -202,14 +205,14 @@ Proof.
 Qed.
  *)
 
-Definition initialMemH(l: list nat): Memory.mem :=
-  initialize_with_wXLEN_list_H (mk_input l) (ZToWord _ input_base).
+Definition initialMemH(l: list Z): Memory.mem :=
+  initialize_with_word_list_H (mk_input l) (ZToWord _ input_base).
 
 (* TODO state vs Map stuff broken!
-Definition evalH(fuel: nat)(l: list nat): option (state * Memory.mem) :=
+Definition evalH(fuel: nat)(l: list Z): option (state * Memory.mem) :=
  eval_stmt empty_map fuel empty_map (initialMemH l) ExampleSrc.listsum.
 
-Definition listsum_res_H(fuel: nat)(l: list nat): option (word 32) :=
+Definition listsum_res_H(fuel: nat)(l: list Z): option (word 32) :=
   match evalH _ _ _ fuel l with
   | Some (regs, m) => get regs ExampleSrc.sumreg
   | _ => None
@@ -220,10 +223,10 @@ Definition listsum_res_H(fuel: nat)(l: list nat): option (word 32) :=
 Local Open Scope Z_scope.
 
 Lemma store_word_list_contains_initialize: forall words offset m,
-    wordToZ offset mod 4 = 0 ->
-    wordToZ offset + 4 * Memory.Zlength words <= Memory.memSize m ->
+    uwordToZ offset mod 4 = 0 ->
+    uwordToZ offset + 4 * Memory.Zlength words <= Memory.memSize m ->
     FlatToRiscvInvariants.containsMem (Memory.store_word_list words offset m)
-                                      (initialize_with_wXLEN_list_H words offset).
+                                      (initialize_with_word_list_H words offset).
 Proof. Admitted. (*
   unfold FlatToRiscvInvariants.containsMem.
   unfold FlatToRiscv.loadWordwXLEN, wXLEN, wXLEN_in_bytes,
@@ -338,7 +341,7 @@ Qed.
 
 Print Assumptions listsum_compiled_correctly.
 
-Definition sum_gallina(l: list nat): nat := List.fold_right plus 0 l.
+Definition sum_gallina(l: list Z): nat := List.fold_right plus 0 l.
 
 Lemma hl_listsum_correct: forall l,
     exists fuel, listsum_res_H fuel l = Some (natToWord 32 (sum_gallina l)).

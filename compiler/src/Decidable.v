@@ -5,7 +5,7 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Arith.Compare_dec.
 Require Import Coq.ZArith.BinInt.
 Require Import Coq.NArith.NArith.
-Require Import bbv.Word.
+Require Import riscv.util.Word.
 Require Import bbv.NLib.
 
 Class Decidable (P : Prop) := dec : {P} + {~P}.
@@ -51,4 +51,4 @@ Global Instance dec_not {A} `{Decidable A} : Decidable (~ A).
   unfold Decidable in *. destruct H; tauto.
 Defined.
 
-Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := weq.
+Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := @weq_dec.

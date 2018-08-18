@@ -1,4 +1,5 @@
 Require Import lib.LibTacticsMin.
+Require Import bbv.ZLib.
 Require Import riscv.util.Monads.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
@@ -22,7 +23,7 @@ Require Import riscv.InstructionCoercions.
 Require Import compiler.StateCalculus.
 Require Import riscv.AxiomaticRiscv.
 Require Import Coq.micromega.Lia.
-Require Import riscv.util.nat_div_mod_to_quot_rem.
+Require Import riscv.util.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
@@ -31,7 +32,7 @@ Require Import riscv.Utility.
 Require Import compiler.ZName.
 
 (* TODO remove these three *)
-Require Import riscv.MachineWidth_wXLEN.
+Require Import riscv.MachineWidth_XLEN.
 Require Import riscv.MachineWidth32.
 Require Import riscv.MachineWidth64.
 
@@ -162,8 +163,19 @@ Section FlatToRiscv.
   Lemma remu_four_undo: forall a, remu (mul (ZToReg 4) a) (ZToReg 4) = ZToReg 0.
   Proof.
     intros.
-    apply divisibleBy4_remu40. unfold divisibleBy4.
-    exists a. reflexivity.
+    rewrite remu_def.
+    f_equal.
+    pose proof pow2_sz_4.
+    rewrite mul_def_unsigned.
+    rewrite regToZ_ZToReg_unsigned_mod.
+    rewrite (regToZ_ZToReg_unsigned 4) by omega.
+    pose proof XLEN_lbound.
+    apply Z.rem_mod_eq_0; [omega|].
+    replace XLEN with (2 + (XLEN - 2)) by omega.
+    rewrite Z.pow_add_r by omega.
+    change (2 ^ 2) with 4.
+    pose proof (pow2_pos (XLEN - 2)).
+    div_mod_to_quot_rem. nia.
   Qed.
 
   Lemma remu_four_four: remu (ZToReg 4) (ZToReg 4) = ZToReg 0.
@@ -306,21 +318,21 @@ Section FlatToRiscv.
     compile_lit_rec 7 rd Register0 (regToZ_unsigned v).
   
   Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
-    let h0 := split1 16 16 v in
-    let h1 := split2 16 16 v in
-    [[Addi rd Register0 (wordToZ h1); Slli rd rd 16; Addi rd rd (wordToZ h0)]].
+    let h0 := wsplit_lo 16 16 v in
+    let h1 := wsplit_hi 16 16 v in
+    [[Addi rd Register0 (uwordToZ h1); Slli rd rd 16; Addi rd rd (uwordToZ h0)]].
 
   Definition compile_lit_64(rd: Register)(v: word 64): list Instruction :=
-    let w0 := split1 32 32 v in
-    let w1 := split2 32 32 v in
-    let h0 := split1 16 16 w0 in
-    let h1 := split2 16 16 w0 in
-    let h2 := split1 16 16 w1 in
-    let h3 := split2 16 16 w1 in
-    [[Addi rd Register0 (wordToZ h3);
-      Slli rd rd 16; Addi rd rd (wordToZ h2);
-      Slli rd rd 16; Addi rd rd (wordToZ h1);
-      Slli rd rd 16; Addi rd rd (wordToZ h0)]].
+    let w0 := wsplit_lo 32 32 v in
+    let w1 := wsplit_hi 32 32 v in
+    let h0 := wsplit_lo 16 16 w0 in
+    let h1 := wsplit_hi 16 16 w0 in
+    let h2 := wsplit_lo 16 16 w1 in
+    let h3 := wsplit_hi 16 16 w1 in
+    [[Addi rd Register0 (uwordToZ h3);
+      Slli rd rd 16; Addi rd rd (uwordToZ h2);
+      Slli rd rd 16; Addi rd rd (uwordToZ h1);
+      Slli rd rd 16; Addi rd rd (uwordToZ h0)]].
 
   (* The problem with the primed version is that we have to destruct the bitwidth to expose
      the indivdual commands (on which the proof machinery of compile_stmt_correct_aux works),
@@ -546,19 +558,19 @@ Section FlatToRiscv.
   Ltac nat_rel_with_words_pre :=
     match goal with
     | |- ?P => ensure_is_nat_rel P
-    end;
+    end(*;
     repeat match goal with
            | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
              unique pose proof (@Memory.memSize_bound M _ IsMem m)
            end;
     pose proof pow2_wXLEN_4;
     rewrite? wordToNat_wplus in *;
-    rewrite? wordToNat_natToWord_eqn in *.
+    rewrite? wordToNat_natToWord_eqn in * *).
   
   Ltac nat_rel_with_words :=
-    nat_rel_with_words_pre;
+    nat_rel_with_words_pre(*;
     nat_div_mod_to_quot_rem;
-    nia.
+    nia *).
 
   (* Note: containsProgram for one single [[inst]] could be simplified, but for automation,
      it's better not to simplify.
@@ -937,12 +949,13 @@ Section FlatToRiscv.
     end.
 
   (* Needed because simpl will unfold (4 * ...) which is unreadable *)
-  Local Ltac simpl_pow2 :=
+  Local Ltac simpl_pow2 := idtac. (*
     repeat match goal with
     | |- context [1 + ?a] => change (1 + a) with (S a)
     | |- context [pow2 (S ?a)] => change (pow2 (S a)) with (2 * pow2 a)
     | |- context [pow2 0] => change (pow2 0) with 1
     end.
+*)
 
   Lemma simpl_with_registers: forall (rs1 rs2: state) p npc eh (m: mem),
     with_registers (mword := mword) rs2 (mkRiscvMachine (mkRiscvMachineCore rs1 p npc eh) m) =
@@ -1047,13 +1060,12 @@ Section FlatToRiscv.
   Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
 
   Hint Rewrite
-      @fromImm_def
-      @add_def
-      @sub_def
-      @mul_def
+      @add_def_unsigned
+      @sub_def_unsigned
+      @mul_def_unsigned
       @div_def
       @rem_def
-      @signed_less_than_def
+      (*@signed_less_than_def
       @reg_eqb_def
       @xor_def
       @or_def
@@ -1062,7 +1074,7 @@ Section FlatToRiscv.
       @srl_def
       @sra_def
       @ltu_def
-      @divu_def
+      @divu_def *)
       (* missing: remu_def because it's only used for alignment checks and we prefer
          keeping it as remu -- TODO use full alu_defs from riscv-coq/src/Utility.v *)
     : alu_defs_without_remu_def.
@@ -1480,12 +1492,12 @@ Section FlatToRiscv.
   Arguments app: simpl never. (* don't simpl ([[ oneInst ]] ++ rest) into oneInst :: rest
     because otherwise solve_imem doesn't recognize "middle" any more *)
 
-  (* otherwise simpl takes forever: *)
+  (* otherwise simpl takes forever: 
   Arguments split1: simpl never.
   Arguments split2: simpl never.
   Arguments ZToWord: simpl never.
   Arguments Nat.pow: simpl never.
-
+*)
   Lemma in_range0_valid_addr: forall (a: mword) al l,
       in_range a al 0 l ->
       Memory.valid_addr a al l.
@@ -1688,6 +1700,7 @@ Section FlatToRiscv.
         * eapply write_mem_in_range; eassumption.
         * assumption.
 
+  Admitted. (*
     - (* SLit *)
       clear IHfuelH.
       Time run1step.
@@ -1791,6 +1804,7 @@ Section FlatToRiscv.
     - (* SCall *)
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
   Qed.
+  *)
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,

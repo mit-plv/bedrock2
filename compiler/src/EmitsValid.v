@@ -2,7 +2,7 @@ Require Import Coq.Lists.List.
 Require Import Coq.micromega.Lia.
 Require Import Coq.omega.Omega.
 Require Import riscv.Decode.
-Require Import riscv.encode.Encode.
+Require Import riscv.Encode.
 Require Import riscv.util.ZBitOps.
 Require Import riscv.util.BitWidths.
 Require Import riscv.Run.

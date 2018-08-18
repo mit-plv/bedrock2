@@ -1,4 +1,4 @@
-Require Import bbv.Word.
+Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
