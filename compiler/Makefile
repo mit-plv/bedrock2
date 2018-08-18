@@ -12,7 +12,7 @@ DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 _CoqProject:
 	printf -- '$(DEPFLAGS_NL)' > _CoqProject
 
-ALL_VS := $(shell find src -type f -name '*.v')
+ALL_VS := $(shell find lib src -type f -name '*.v')
 
 all: Makefile.coq.all $(ALL_VS)
 	$(MAKE) -f Makefile.coq.all
