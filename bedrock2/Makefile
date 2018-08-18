@@ -8,11 +8,11 @@ VS:=$(shell find . -type f -name '*.v')
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q src bedrock2 \n-Q $(DEPS_DIR)/bbv/theories bbv
+DEPFLAGS_NL=-Q src bedrock2\n-Q $(DEPS_DIR)/bbv/theories bbv\n
 DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 
 _CoqProject:
-	echo -e '$(DEPFLAGS_NL)' > _CoqProject
+	printf -- '$(DEPFLAGS_NL)' > _CoqProject
 
 all: Makefile.coq.all $(VS)
 	$(MAKE) -f Makefile.coq.all
