@@ -1,12 +1,7 @@
 
 default_target: all
 
-COQC=$(COQBIN)coqc
-COQTOP=$(COQBIN)coqtop
-COQDEP=$(COQBIN)coqdep
-COQDOC=$(COQBIN)coqdoc
-
-DIRS = lib src
+.PHONY: clean force all
 
 DEPS_DIR ?= ../deps
 
@@ -17,21 +12,20 @@ DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 _CoqProject:
 	echo -e '$(DEPFLAGS_NL)' > _CoqProject
 
-COQFLAGS=$(DEPFLAGS)
+ALL_VS := $(shell find src -type f -name '*.v')
+ALL_VOS := $(patsubst %.v,%.vo,$(ALL_VOS))
 
-%.vo: %.v
-	$(COQC) $(COQFLAGS) $*.v 
+all: Makefile.coq.all $(ALL_VS)
+	$(MAKE) -f Makefile.coq.all
 
-all: $(patsubst %.v,%.vo,$(wildcard src/*.v src/examples/*.v)) _CoqProject
+COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2
 
-ExprImp: src/ExprImp.vo src/ExprImpNotations.vo
+Makefile.coq.all: force _CoqProject
+	$(COQ_MAKEFILE) $(ALL_VS) -o Makefile.coq.all
 
-.depend depend:
-	$(COQDEP) $(DEPFLAGS) >.depend `find $(DIRS) -name "*.v"`
+force:
 
-clean:
-	find . -type f \( -name '*.glob' -o -name '*.vo' -o -name '*.aux' \) -delete
-	rm .depend
-
-include .depend
-
+clean:: Makefile.coq.all
+	$(MAKE) -f Makefile.coq.all clean
+	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
+	rm -f Makefile.coq.all Makefile.coq.all.conf _CoqProject

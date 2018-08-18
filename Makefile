@@ -19,7 +19,7 @@ bbv:
 	$(MAKE) -C $(DEPS_DIR)/bbv
 
 riscv-coq: bbv
-	$(MAKE) -C $(DEPS_DIR)/riscv-coq proofs
+	$(MAKE) -C $(DEPS_DIR)/riscv-coq all
 
 compiler: riscv-coq
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
