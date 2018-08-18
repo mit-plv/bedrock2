@@ -13,7 +13,6 @@ _CoqProject:
 	echo -e '$(DEPFLAGS_NL)' > _CoqProject
 
 ALL_VS := $(shell find src -type f -name '*.v')
-ALL_VOS := $(patsubst %.v,%.vo,$(ALL_VOS))
 
 all: Makefile.coq.all $(ALL_VS)
 	$(MAKE) -f Makefile.coq.all
