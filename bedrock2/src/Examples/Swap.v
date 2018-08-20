@@ -54,7 +54,8 @@ Ltac intros_mem m Hm :=
 Ltac t :=
   let m := lazymatch goal with m : @map.rep word byte mem |- _ => m end in
   let Hm := lazymatch goal with Hm : _ m |- _ => Hm end in
-  lazymatch goal with |- load ?sz ?m ?a = Some _
+  lazymatch goal with
+  |- load ?sz ?m ?a = Some _
     => lazymatch type of Hm with context [ptsto sz a ?v]
                              (* FIXME this VV Hm is dynamically scoped, not the Hm above *)
     => refine (load_sep sz a v ltac:(clear Hm m) m ltac:(sep m Hm)) end
