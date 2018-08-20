@@ -1,5 +1,3 @@
-Ltac typeof x := match type of x with ?T => T end.
-Notation "'typeof!' x" := (ltac:(let T := typeof x in exact T)) (at level 10).
 Local Notation "'bind_Some' x <- a ; f" :=
   (match a with
    | Some x => f
@@ -10,9 +8,13 @@ Local Notation "'bind_Some' x <- a ; f" :=
 
 Require compiler.Common.
 
+Module Empty.
+End Empty.
+
+
 Module Imp. (* TODO: file *)
 
-Module Type ImpParameters.
+Module Type IMP_PARAMETERS.
   Parameter mword : Type.
   Parameter mword_nonzero : mword -> bool.
 
@@ -28,9 +30,9 @@ Module Type ImpParameters.
   Parameter interp_binop : bopname -> mword -> mword -> mword.
   Parameter load : mword -> mem -> option mword.
   Parameter store : mword -> mword -> mem -> option mem.
-End ImpParameters.
+End IMP_PARAMETERS.
 
-Module Imp (P : ImpParameters).
+Module Type IMP (P: IMP_PARAMETERS).
   Import P.
   Existing Instance varmap_operations.
   Inductive expr  : Type :=
@@ -151,10 +153,11 @@ Module Imp (P : ImpParameters).
                end
       end.
   End WithFunctions.
-End Imp.
+End IMP.
+
+Module Imp (P: IMP_PARAMETERS) := Empty <+ IMP P.
 
 End Imp. (* TODO: file *)
-
 
 
 Require riscv.util.BitWidths.
@@ -163,16 +166,16 @@ Require compiler.Op.
 
 Module RISCVImp. (* TODO: file *)
 
-Module Type RISCVImpParameters.
+Module Type RISCV_PARAMETERS.
   Parameter bw : riscv.util.BitWidths.BitWidths.
   Parameter varname : Type.
   Parameter funname : Type.
   Parameter actname : Type.
   Parameter varmap : Type.
   Parameter varmap_operations : Common.Map varmap varname (bbv.Word.word (@riscv.util.BitWidths.wXLEN bw)).
-End RISCVImpParameters.
+End RISCV_PARAMETERS.
 
-Module ImpParameters_of_RISCVImpParameters (P : RISCVImpParameters) <: Imp.ImpParameters.
+Module Make_IMP_PARAMETERS_of_RISCV_PARAMETERS (P : RISCV_PARAMETERS) <: Imp.IMP_PARAMETERS.
   Import P.
   Definition mword := bbv.Word.word (@riscv.util.BitWidths.wXLEN bw).
   Definition mword_nonzero := fun v => if bbv.Word.weq v (bbv.Word.wzero _ : mword) then false else true.
@@ -188,7 +191,7 @@ Module ImpParameters_of_RISCVImpParameters (P : RISCVImpParameters) <: Imp.ImpPa
 
   Definition varmap := varmap.
   Definition varmap_operations := varmap_operations.
-End ImpParameters_of_RISCVImpParameters.
+End Make_IMP_PARAMETERS_of_RISCV_PARAMETERS.
 
 End RISCVImp. (* TODO: file *)
 
@@ -207,9 +210,8 @@ Require Import compiler.NameWithEq.
 Require Import Coq.Program.Tactics.
 Require Import compiler.Memory.
 
-Module ImpInversion (P : Imp.ImpParameters).
+Module ImpInversion (P: Imp.IMP_PARAMETERS) (Imp : Imp.IMP P).
   Import P.
-  Module Imp := Imp.Imp P.
   Import Imp.
   
   Lemma cont_uninhabited (T:Set) (_:T -> False) (X : cont T) : False. Proof. induction X; auto 2. Qed.
@@ -317,7 +319,7 @@ Module ImpInversion (P : Imp.ImpParameters).
   Local Tactic Notation "marker" ident(s) := let x := fresh s in pose proof tt as x; move x at top.
   Ltac invert_interp_stmt :=
     lazymatch goal with
-    | E: interp_stmt _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
+    | E: interp_stmt _ (S ?fuel) _ _ ?s = Some _ |- _ =>
       destruct s;
       [ apply invert_interp_SLoad in E; deep_destruct E; marker SLoad
       | apply invert_interp_SStore in E; deep_destruct E; marker SStore
@@ -331,61 +333,32 @@ Module ImpInversion (P : Imp.ImpParameters).
       ] end.
 End ImpInversion.
 
-Module ImpVars (P : Imp.ImpParameters). (* TODO: file *)
+Module ImpVars (P: Imp.IMP_PARAMETERS) (Imp : Imp.IMP P).
   Import P.
-  Module Imp := Imp.Imp P.
   Import Imp.
-  Module ImpInversion := ImpInversion P.
+  Module ImpInversion := ImpInversion P Imp.
   Import ImpInversion.
-  Goal Top.ImpVars.ImpInversion.Imp.expr = Top.ImpVars.Imp.expr.
-    Fail reflexivity.
-  Abort.
-    (* 
-  Module Imp := Imp.Imp P.
-  Import Imp.
-  Context {p:ImpParameters}.
-  (* RecordImport p (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
-  Local Notation mword := p.(mword).
-  Local Notation mword_nonzero := p.(mword_nonzero).
-  Local Notation varname := p.(varname).
-  Local Notation funname := p.(funname).
-  Local Notation actname := p.(actname).
-  Local Notation bopname := p.(bopname).
-  Local Notation varmap := p.(varmap).
-  Local Notation mem := p.(mem).
-  Local Notation interp_binop := p.(interp_binop).
-  Local Notation load := p.(load).
-  Local Notation store := p.(store).
-  Let Imp : Imp.ImpInterface p := Imp.Imp p.
-  (* RecordImport Imp (* COQBUG(https://github.com/coq/coq/issues/7808) *) *)
-  Local Notation expr := Imp.(expr).
-  Local Notation stmt := Imp.(stmt).
-  Local Notation cont := Imp.(cont).
-  Local Notation interp_expr := Imp.(interp_expr).
-  Local Notation interp_stmt := Imp.(interp_stmt).
-  Local Notation interp_cont := Imp.(interp_cont).
 
-  (* TODO: record ImpParametersOK *)
-  Context {mword_eq_dec : DecidableEq (Imp.varname p)}.
+  Context {mword_eq_dec : DecidableEq varname}.
 
   (* Returns a list to make it obvious that it's a finite set. *)
   Fixpoint allVars_expr(e: expr): list varname :=
     match e with
-    | Imp_.ELit v => []
-    | Imp_.EVar x => [x]
-    | Imp_.EOp op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
+    | ELit v => []
+    | EVar x => [x]
+    | EOp op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
     end.
 
   Fixpoint allVars_stmt(s: stmt): list varname := 
     match s with
-    | Imp_.SLoad v e => v :: allVars_expr e
-    | Imp_.SStore a e => (allVars_expr a) ++ (allVars_expr e)
-    | Imp_.SSet v e => v :: allVars_expr e
-    | Imp_.SIf c s1 s2 => (allVars_expr c) ++ (allVars_stmt s1) ++ (allVars_stmt s2)
-    | Imp_.SWhile c body => (allVars_expr c) ++ (allVars_stmt body)
-    | Imp_.SSeq s1 s2 => (allVars_stmt s1) ++ (allVars_stmt s2)
-    | Imp_.SSkip => []
-    | Imp_.SCall binds _ args | Imp_.SIO binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
+    | SLoad v e => v :: allVars_expr e
+    | SStore a e => (allVars_expr a) ++ (allVars_expr e)
+    | SSet v e => v :: allVars_expr e
+    | SIf c s1 s2 => (allVars_expr c) ++ (allVars_stmt s1) ++ (allVars_stmt s2)
+    | SWhile c body => (allVars_expr c) ++ (allVars_stmt body)
+    | SSeq s1 s2 => (allVars_stmt s1) ++ (allVars_stmt s2)
+    | SSkip => []
+    | SCall binds _ args | SIO binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
     end.
 
   Context {set_varname: Type}.
@@ -395,14 +368,14 @@ Module ImpVars (P : Imp.ImpParameters). (* TODO: file *)
      The returned set might be too big, but is guaranteed to include all modified vars. *)
   Fixpoint modVars(s: stmt): set_varname := 
     match s with
-    | Imp_.SLoad v _ => singleton_set v
-    | Imp_.SStore _ _ => empty_set
-    | Imp_.SSet v _ => singleton_set v
-    | Imp_.SIf _ s1 s2 => union (modVars s1) (modVars s2)
-    | Imp_.SWhile _ body => modVars body
-    | Imp_.SSeq s1 s2 => union (modVars s1) (modVars s2)
-    | Imp_.SSkip => empty_set
-    | Imp_.SCall binds _ _ | Imp_.SIO binds _ _ => of_list binds
+    | SLoad v _ => singleton_set v
+    | SStore _ _ => empty_set
+    | SSet v _ => singleton_set v
+    | SIf _ s1 s2 => union (modVars s1) (modVars s2)
+    | SWhile _ body => modVars body
+    | SSeq s1 s2 => union (modVars s1) (modVars s2)
+    | SSkip => empty_set
+    | SCall binds _ _ | SIO binds _ _ => of_list binds
     end.
 
   Ltac set_solver := set_solver_generic constr:(varname).
@@ -451,14 +424,13 @@ Module ImpVars (P : Imp.ImpParameters). (* TODO: file *)
       (* SCall *)
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
-*)
     
 End ImpVars. (* TODO: file *)
 
 
 Require riscv.util.BitWidth32.
 Module TestExprImp.
-  Module TestParameters <: RISCVImp.RISCVImpParameters.
+  Module TestParameters <: RISCVImp.RISCV_PARAMETERS.
     Definition bw := riscv.util.BitWidth32.BitWidth32.
     Definition varname := Z.
     Definition funname := Empty_set.
@@ -470,7 +442,7 @@ Module TestExprImp.
     Defined.
   End TestParameters.
 
-  Module TestParameters' := RISCVImp.ImpParameters_of_RISCVImpParameters TestParameters.
+  Module TestParameters' := RISCVImp.Make_IMP_PARAMETERS_of_RISCV_PARAMETERS TestParameters.
   Module Imp := Imp.Imp TestParameters'.
   Import Imp.
 
