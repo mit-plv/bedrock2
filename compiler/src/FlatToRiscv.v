@@ -1059,28 +1059,6 @@ Section FlatToRiscv.
 
   Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
 
-  Hint Rewrite
-      @add_def_unsigned
-      @sub_def_unsigned
-      @mul_def_unsigned
-      @div_def
-      @rem_def
-      (*@signed_less_than_def
-      @reg_eqb_def
-      @xor_def
-      @or_def
-      @and_def
-      @sll_def
-      @srl_def
-      @sra_def
-      @ltu_def
-      @divu_def *)
-      (* missing: remu_def because it's only used for alignment checks and we prefer
-         keeping it as remu -- TODO use full alu_defs from riscv-coq/src/Utility.v *)
-    : alu_defs_without_remu_def.
-  
-  Ltac rewrite_alu_op_defs := autorewrite with alu_defs_without_remu_def in *.
-
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
   Arguments run1: simpl never.
@@ -1331,7 +1309,6 @@ Section FlatToRiscv.
         autorewrite with
             rew_get_set_Register
             rew_RiscvMachine_get_set
-            alu_defs_without_remu_def
             rew_reg_eqb
             rew_run1step ||
         rewrite_getReg ||
@@ -1700,7 +1677,6 @@ Section FlatToRiscv.
         * eapply write_mem_in_range; eassumption.
         * assumption.
 
-  Admitted. (*
     - (* SLit *)
       clear IHfuelH.
       Time run1step.
@@ -1804,7 +1780,6 @@ Section FlatToRiscv.
     - (* SCall *)
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
   Qed.
-  *)
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
