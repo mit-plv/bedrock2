@@ -98,5 +98,5 @@ Section WeakestPrecondition.
       else call functions fname t m args post
     end.
 
-  Definition program funcs c t m l post : Prop := cmd (call funcs) c t m l post.
+  Definition program funcs main t m l post : Prop := cmd (call funcs) main t m l post.
 End WeakestPrecondition.

@@ -14,6 +14,11 @@ Section bsearch.
     *(uint8_t*) "b" = *(uint8_t*) "a";
     *(uint8_t*) "a" = "t"
   )).
+
+  Definition swap_swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func(
+    cmd.call nil "swap" (var "a"::var "b"::nil);
+    cmd.call nil "swap" (var "a"::var "b"::nil)
+  )).
 End bsearch.
 
 Require bedrock2.BasicC64Syntax.
@@ -28,6 +33,7 @@ Require Import bedrock2.Semantics bedrock2.BasicC64Semantics bedrock2.Map.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
+(*
 Lemma get_sep {key value} {map : map key value} (a:key) (v:value) R m (H : sep (ptsto a v) R m) : map.get m a = Some v.
 Admitted.
 Lemma put_sep {key value} {map : map key value} (k:key) (v1:value) (v2:value) R m :
@@ -35,38 +41,52 @@ Lemma put_sep {key value} {map : map key value} (k:key) (v1:value) (v2:value) R 
 Admitted.
 Lemma split_combine n a b : split n (Semantics.combine n a b) = (a, b).
 Admitted.
+*)
 
-Definition ptsto sz a v m := m = unchecked_store sz map.empty a v.
+Definition ptsto sz a v m := load sz m a = Some v.
 Lemma load_sep sz a v R m (H : sep (ptsto sz a v) R m) : load sz m a = Some v.
+  cbv [load ptsto] in *.
+  revert H; revert R; revert v; revert a; revert m.
+  generalize (BinIntDef.Z.to_nat sz) as n; clear sz.
+  induction n.
+  { intros; destruct H as (?&?&?&?&?); auto. }
+  { intros.
+    cbn [load_rec] in *.
+    destruct H as (?&?&?&?&?).
+    destruct (map.get x a) eqn:?; [|discriminate].
+    { assert (map.get m a = Some b) by admit.
+      rewrite H2.
+      destruct (load_rec n x (word_succ a)) eqn:?; [|discriminate].
+      { unshelve erewrite (_:load_rec n m (word_succ a) = Some w); [admit|].
+        assumption. } } }
 Admitted.
+    
 Lemma store_sep sz a v1 v2 R m (H : sep (ptsto sz a v1) R m)
       (Q : _ -> Prop) (HQ : forall m', sep (ptsto sz a v2) R m' -> Q m') :
   exists m', store sz m a v2 = Some m' /\ Q m'.
 Admitted.
 
-Ltac sep m Hm :=
-  revert Hm; revert m;
-  lazymatch goal with |- forall (x:?T), ?A x -> ?B x => change (@Lift1Prop.impl1 T A B) end;
-  cancel; reflexivity.
 Ltac intros_mem m Hm :=
   let m' := fresh in let Hm' := fresh in
   intros m' Hm'; clear m Hm; rename m' into m; rename Hm' into Hm.
 Ltac t :=
   let m := lazymatch goal with m : @map.rep word byte mem |- _ => m end in
   let Hm := lazymatch goal with Hm : _ m |- _ => Hm end in
+  let Tm := type of m in
+  let Pm := lazymatch type of Hm with ?P m => P end in
   lazymatch goal with
   |- load ?sz ?m ?a = Some _
     => lazymatch type of Hm with context [ptsto sz a ?v]
-                             (* FIXME this VV Hm is dynamically scoped, not the Hm above *)
-    => refine (load_sep sz a v ltac:(clear Hm m) m ltac:(sep m Hm)) end
+    => refine (load_sep sz a v ?[frame] m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
+       cancel; reflexivity end
   | |- exists _, store ?sz ?m ?a ?v2 = Some _ /\ _
     => lazymatch type of Hm with context [ptsto sz a ?v1]
-    => refine (store_sep sz a v1 v2 ltac:(clear m Hm) m ltac:(sep m Hm) _ ?[cont]); intros_mem m Hm end
+    => refine (store_sep sz a v1 v2 ?[frame] m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm) _ ?[cont]); [ cancel; reflexivity | intros_mem m Hm ] end
   | _ => first [ eassumption | eexists | subst; eexists ]
 end.
 
-Goal
-  map.ok Semantics.mem ->
+Context (__A : map.ok Semantics.mem).
+Lemma swap_ok : 
   forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
@@ -74,7 +94,90 @@ Goal
     (@swap BasicC64Syntax.parameters) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr b) (sep (ptsto 1 b_addr a) R)) m' /\ rets = nil).
 Proof.
-  intros. rename H0 into Hm.
+  intros. rename H into Hm.
   repeat t.
+Qed.
+
+Context (wp_func_weaken: forall rely guarantee progress call f t m l (post1 post2:_->_->_->Prop),
+    (forall t m l, post1 t m l -> post2 t m l) ->
+    WeakestPrecondition.func rely guarantee progress call f t m l post1 ->
+    WeakestPrecondition.func rely guarantee progress call f t m l post2).
+  
+Lemma swap_swap_ok : 
+  forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
+    (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
+  WeakestPrecondition.func
+    (fun _ => True) (fun _ => False) (fun _ _ => True) (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) [("swap", (@swap BasicC64Syntax.parameters))])
+    (@swap_swap BasicC64Syntax.parameters) t m (a_addr::b_addr::nil)
+    (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m' /\ rets = nil).
+Proof.
+  intros. rename H into Hm.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eapply wp_func_weaken; cycle 1.
+  eapply swap_ok.
+  refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
+  intros ? m' ? (?&Hm'&?).
+  clear Hm.
+  clear m.
+  rename m' into m.
+  rename Hm' into Hm.
+  subst t0.
+  subst l.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eapply wp_func_weaken; cycle 1.
+  eapply swap_ok.
+  refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
+  intros ? m' ? (?&Hm'&?).
+  clear Hm.
+  clear m.
+  rename m' into m.
+  rename Hm' into Hm.
+  eexists.
+  subst t0.
+  subst l.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eexists.
+  eassumption.
+  eexists.
 Qed.
   
