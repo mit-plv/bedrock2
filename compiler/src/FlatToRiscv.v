@@ -234,7 +234,7 @@ Section FlatToRiscv.
   Context {funcMap: MapFunctions Z
               (list Z *
                list Z *
-               @stmt mword _ _)}. (* TODO meh *)
+               @stmt _ _)}. (* TODO meh *)
 
   Context {mem: Set}.
   Context {IsMem: Memory.Memory mem mword}.
@@ -253,7 +253,7 @@ Section FlatToRiscv.
 
   (* This phase assumes that register allocation has already been done on the FlatImp
      level, and expects the following to hold: *)
-  Fixpoint valid_registers(s: stmt (mword := mword)): Prop :=
+  Fixpoint valid_registers(s: stmt): Prop :=
     match s with
     | SLoad x a => valid_register x /\ valid_register a
     | SStore a x => valid_register a /\ valid_register x
@@ -314,8 +314,8 @@ Section FlatToRiscv.
   Eval cbv -[Register0] in (compile_lit_rec 7 rd Register0 10000).
   *)
   
-  Definition compile_lit(rd: Register)(v: mword): list Instruction :=
-    compile_lit_rec 7 rd Register0 (regToZ_unsigned v).
+  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
+    compile_lit_rec 7 rd Register0 v.
   
   Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
     let h0 := wsplit_lo 16 16 v in
@@ -937,7 +937,7 @@ Section FlatToRiscv.
     end.
 
   (* TODO is 2^9 really the best we can get? *)
-  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size (mword := mword) s) < 2 ^ 9)%Z.
+  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size s) < 2 ^ 9)%Z.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
@@ -1199,7 +1199,7 @@ Section FlatToRiscv.
   Proof. intros. tauto. Qed.
 
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt mword ZName ZName} {initialRegs finalRegs: state},
+      {s: @stmt ZName ZName} {initialRegs finalRegs: state},
       eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
@@ -1222,7 +1222,7 @@ Section FlatToRiscv.
   Qed.
 
   Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt mword ZName ZName} {initialRegs finalRegs: state},
+      {s: @stmt ZName ZName} {initialRegs finalRegs: state},
       eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len,
         mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
@@ -1599,20 +1599,20 @@ Section FlatToRiscv.
   Qed.
   *)
 
-  Definition load_lit_semantics(v: mword): mword :=
+  Definition load_lit_semantics(v: Z): mword :=
     add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add
       (ZToReg 0)
-      (ZToReg (bitSlice (regToZ_unsigned v) (7 * 8) (8 * 8)))) 8)
-      (ZToReg (bitSlice (regToZ_unsigned v) (6 * 8) (7 * 8)))) 8)
-      (ZToReg (bitSlice (regToZ_unsigned v) (5 * 8) (6 * 8)))) 8)
-      (ZToReg (bitSlice (regToZ_unsigned v) (4 * 8) (5 * 8)))) 8)
-      (ZToReg (bitSlice (regToZ_unsigned v) (3 * 8) (4 * 8)))) 8)
-      (ZToReg (bitSlice (regToZ_unsigned v) (2 * 8) (3 * 8)))) 8)
-      (ZToReg (bitSlice (regToZ_unsigned v) (1 * 8) (2 * 8)))) 8)
-      (ZToReg (bitSlice (regToZ_unsigned v) (0 * 8) (1 * 8))).
+      (ZToReg (bitSlice v (7 * 8) (8 * 8)))) 8)
+      (ZToReg (bitSlice v (6 * 8) (7 * 8)))) 8)
+      (ZToReg (bitSlice v (5 * 8) (6 * 8)))) 8)
+      (ZToReg (bitSlice v (4 * 8) (5 * 8)))) 8)
+      (ZToReg (bitSlice v (3 * 8) (4 * 8)))) 8)
+      (ZToReg (bitSlice v (2 * 8) (3 * 8)))) 8)
+      (ZToReg (bitSlice v (1 * 8) (2 * 8)))) 8)
+      (ZToReg (bitSlice v (0 * 8) (1 * 8))).
 
-  Lemma compile_lit_correct: forall v: mword,
-      load_lit_semantics v = v.
+  Lemma compile_lit_correct: forall v: Z,
+      load_lit_semantics v = ZToReg v.
   Proof using .
   Admitted.
   

@@ -30,16 +30,16 @@ Section FlattenExpr.
   Context {NGstate: Type}.
   Context {NG: NameGen var NGstate}.
 
-  Context {funcMap: MapFunctions func (list var * list var * @FlatImp.stmt mword Name FName)}.
-  Notation env := (map func (list var * list var * @FlatImp.stmt mword Name FName)).
+  Context {funcMap: MapFunctions func (list var * list var * @FlatImp.stmt Name FName)}.
+  Notation env := (map func (list var * list var * @FlatImp.stmt Name FName)).
 
   Ltac state_calc := state_calc_generic (@name Name) mword.
   Ltac set_solver := set_solver_generic (@name Name).
 
   (* returns stmt and var into which result is saved, and new fresh name generator state
      TODO use state monad? *)
-  Fixpoint flattenExpr(ngs: NGstate)(e: @ExprImp.expr mword Name):
-    (@FlatImp.stmt mword Name FName  * var * NGstate) :=
+  Fixpoint flattenExpr(ngs: NGstate)(e: @ExprImp.expr Name):
+    (@FlatImp.stmt Name FName  * var * NGstate) :=
     match e with
     | ExprImp.ELit n =>
         let '(x, ngs') := genFresh ngs in
@@ -57,8 +57,8 @@ Section FlattenExpr.
     end.
 
   Definition flattenCall(ngs: NGstate)(binds: list var)(f: func)
-             (args: list (@ExprImp.expr mword Name)):
-    @FlatImp.stmt mword Name FName * NGstate :=
+             (args: list (@ExprImp.expr Name)):
+    @FlatImp.stmt Name FName * NGstate :=
     let '(compute_args, argvars, ngs) :=
           List.fold_right
             (fun e '(c, vs, ngs) =>
@@ -69,7 +69,7 @@ Section FlattenExpr.
       (FlatImp.SSeq compute_args (FlatImp.SCall binds f argvars), ngs).
 
   (* returns statement and new fresh name generator state *)
-  Fixpoint flattenStmt(ngs: NGstate)(s: @ExprImp.stmt mword Name FName): (@FlatImp.stmt mword Name FName * NGstate) :=
+  Fixpoint flattenStmt(ngs: NGstate)(s: @ExprImp.stmt Name FName): (@FlatImp.stmt Name FName * NGstate) :=
     match s with
     | ExprImp.SLoad x a =>
         let '(s, r, ngs') := flattenExpr ngs a in
@@ -128,9 +128,9 @@ Section FlattenExpr.
       specialize (IHargs binds ngs).
       rewrite E0 in IHargs.
       specialize IHargs with (1 := eq_refl).
-      unfold FlatImp.stmt_size. fold (@FlatImp.stmt_size mword Name FName).
+      unfold FlatImp.stmt_size. fold (@FlatImp.stmt_size Name FName).
       unfold ExprImp.stmt_size.
-      unfold FlatImp.stmt_size in IHargs; fold (@FlatImp.stmt_size mword Name FName) in IHargs.
+      unfold FlatImp.stmt_size in IHargs; fold (@FlatImp.stmt_size Name FName) in IHargs.
       unfold ExprImp.stmt_size in IHargs.
       rewrite map_cons. rewrite fold_right_cons.
       destruct p.
@@ -275,7 +275,7 @@ Section FlattenExpr.
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
      flattenExpr_modVars_spec and FlatImp.modVarsSound *)
-  Lemma flattenExpr_correct_aux env : forall e ngs1 ngs2 resVar (s: @FlatImp.stmt mword Name FName) initialH initialL initialM res,
+  Lemma flattenExpr_correct_aux env : forall e ngs1 ngs2 resVar (s: @FlatImp.stmt Name FName) initialH initialL initialM res,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     extends initialL initialH ->
     undef initialH (allFreshVars ngs1) ->
@@ -327,8 +327,8 @@ Section FlattenExpr.
       rewrite G1'. simpl. rewrite G2. simpl. reflexivity.
   Qed.
 
-  Context {funcMap': MapFunctions func (list var * list var * @ExprImp.stmt mword Name FName)}.
-  Notation env' := (map func (list var * list var * @ExprImp.stmt mword Name FName)).
+  Context {funcMap': MapFunctions func (list var * list var * @ExprImp.stmt Name FName)}.
+  Notation env' := (map func (list var * list var * @ExprImp.stmt Name FName)).
 
   Ltac simpl_reg_eqb :=
     rewrite? reg_eqb_eq by congruence;
@@ -549,7 +549,7 @@ Section FlattenExpr.
     - rewrite empty_is_empty in Ev0. inversion Ev0.
   Qed.
 
-  Definition ExprImp2FlatImp(s: @ExprImp.stmt mword Name FName): @FlatImp.stmt mword Name FName :=
+  Definition ExprImp2FlatImp(s: @ExprImp.stmt Name FName): @FlatImp.stmt Name FName :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_stmt s)) s).
 
   Lemma flattenStmt_correct: forall fuelH sH sL initialM finalH finalM,

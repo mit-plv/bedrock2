@@ -55,8 +55,6 @@ while i < n:
   i = i + 1
 *)
 
-Definition ELit(x: Z): expr := ELit (ZToWord XLEN x).
-
 Definition fib_ExprImp(n: Z): stmt :=
   SSeq (SSet var_a (ELit 0)) (
   SSeq (SSet var_b (ELit 1)) (
@@ -70,7 +68,7 @@ Definition fib_ExprImp(n: Z): stmt :=
 
 Definition state := (var -> option (word XLEN)).
 
-Instance fooo: MapFunctions name (list name * list name * stmt (mword := word 32)). Admitted.
+Instance fooo: MapFunctions name (list name * list name * stmt). Admitted.
 
 Definition fib_H_res(fuel: nat)(n: Z): option (word 32) :=
   match (eval_stmt empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with

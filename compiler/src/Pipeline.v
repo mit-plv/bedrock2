@@ -68,21 +68,21 @@ Section Pipeline.
   Context {NGstate: Type}.
   Context {NG: NameGen var NGstate}.
 
-  Definition flatten(s: ExprImp.stmt): FlatImp.stmt (mword := mword) :=
+  Definition flatten(s: ExprImp.stmt): FlatImp.stmt :=
     let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
     let (sFlat, ngs') := flattenStmt ngs s in sFlat.
 
   Definition annoying_instance: MapFunctions (@name ZName)
    (list (@name ZName) *
     list (@name ZName) *
-    @ExprImp.stmt mword ZName ZName).
+    @ExprImp.stmt ZName ZName).
   Admitted.
   Existing Instance annoying_instance.
 
   Definition annoying_instance': MapFunctions (@name ZName)
    (list (@name ZName) *
     list (@name ZName) *
-    @FlatImp.stmt mword ZName ZName).
+    @FlatImp.stmt ZName ZName).
   Admitted.
   Existing Instance annoying_instance'.
 

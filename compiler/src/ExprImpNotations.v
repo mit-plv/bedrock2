@@ -13,13 +13,11 @@ Open Scope Z_scope.
 
 Definition var: Set := (@name ZName).
 
-Definition Const{mword: Set}{MW: Utility.MachineWidth mword}(c: Z): expr :=
-  ELit (Utility.ZToReg c).
-Coercion Const: Z >-> expr.
+Definition Lit(v: Z): expr := @ELit ZName v.
+Coercion Lit: Z >-> expr.
 
-Definition Var{mword: Set}(i: var): expr (mword := mword) := EVar i.
+Definition Var(i: var): expr := @EVar ZName i.
 Coercion Var: var >-> expr.
-
 
 Notation "a + b" := (EOp OPlus a b) (at level 50, left associativity): ExprImpScope.
 Notation "a - b" := (EOp OMinus a b) (at level 50, left associativity): ExprImpScope.

@@ -34,11 +34,11 @@ loop:
  *)
 
 
-Example fib(n: word 32) :=
-  SSeq (SLit _one (ZToWord 32 1)) (
+Example fib(n: Z) :=
+  SSeq (SLit _one 1) (
   SSeq (SLit _n n) (
-  SSeq (SLit _a (ZToWord 32 0)) (
-  SSeq (SLit _b (ZToWord 32 1)) (
+  SSeq (SLit _a 0) (
+  SSeq (SLit _b 1) (
   SLoop SSkip
         _n
         (SSeq (SOp _s OPlus _a _b) (
@@ -48,12 +48,12 @@ Example fib(n: word 32) :=
   )))).
 
 Definition annoying_eq: DecidableEq
-  (list (@name ZName) * list (@name ZName) * @stmt (word 32) ZName ZName). Admitted.
+  (list (@name ZName) * list (@name ZName) * @stmt ZName ZName). Admitted.
 Existing Instance annoying_eq.
 
 Definition eval_stmt_test fuel initialSt := @eval_stmt (word 32) _ ZName ZName _ (List_Map _ _) empty_map fuel initialSt no_mem.
 
-Example finalFibState(n: Z) := (eval_stmt_test 100 empty_map (fib (ZToWord 32 n))).
+Example finalFibState(n: Z) := (eval_stmt_test 100 empty_map (fib n)).
 Example finalFibVal(n: Z): option (word 32) := match finalFibState n with
 | Some (s, _) => get s _b
 | _ => None

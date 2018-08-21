@@ -33,7 +33,7 @@ Section ExprImp1.
   Ltac set_solver := set_solver_generic (@name Name).
 
   Inductive expr: Set :=
-    | ELit(v: mword): expr
+    | ELit(v: Z): expr
     | EVar(x: var): expr
     | EOp(op: binop)(e1 e2: expr): expr.
 
@@ -49,7 +49,7 @@ Section ExprImp1.
 
   Fixpoint eval_expr(st: state)(e: expr): option mword :=
     match e with
-    | ELit v => Return v
+    | ELit v => Return (ZToReg v)
     | EVar x => get st x
     | EOp op e1 e2 =>
         v1 <- eval_expr st e1;
@@ -301,7 +301,7 @@ Section ExprImp2.
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Context {funcMap: MapFunctions func (list var * list var * @stmt mword Name FName)}.
+  Context {funcMap: MapFunctions func (list var * list var * @stmt Name FName)}.
   Notation env := (map func (list var * list var * stmt)).
 
   Ltac state_calc := state_calc_generic (@name Name) mword.

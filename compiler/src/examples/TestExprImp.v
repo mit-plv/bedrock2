@@ -38,7 +38,7 @@ Definition _b := 1%Z.
 Definition _c := 2%Z.
 Definition _isRight := 3%Z.
 
-Definition isRight(x y z: word 32) :=
+Definition isRight(x y z: Z) :=
   SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))
             (SSeq (SSet _c (ELit x)) (SSeq (SSet _a (ELit y)) (SSet _b (ELit z))))
             ((SIf (EOp OAnd (EOp OLt (ELit x) (ELit y)) (EOp OLt (ELit z) (ELit y)))
@@ -49,13 +49,10 @@ Definition isRight(x y z: word 32) :=
                                (EOp OTimes (EVar _c) (EVar _c)))).
 
 Definition annoying_eq: DecidableEq
-  (list (@name ZName) * list (@name ZName) * @stmt (word 32) ZName ZName). Admitted.
+  (list (@name ZName) * list (@name ZName) * @stmt ZName ZName). Admitted.
 Existing Instance annoying_eq.
 
-Definition run_isRight(xz yz zz: Z): option (word 32) :=
-  let x := ZToWord 32 xz in
-  let y := ZToWord 32 yz in
-  let z := ZToWord 32 zz in
+Definition run_isRight(x y z: Z): option (word 32) :=
   final <- (eval_stmt empty_map 10 empty_map no_mem (isRight x y z));
   let '(finalSt, finalM) := final in
   get finalSt _isRight.

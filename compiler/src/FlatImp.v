@@ -29,7 +29,7 @@ Section FlatImp1.
   Inductive stmt: Set :=
     | SLoad(x: var)(a: var): stmt
     | SStore(a: var)(v: var): stmt
-    | SLit(x: var)(v: mword): stmt
+    | SLit(x: var)(v: Z): stmt
     | SOp(x: var)(op: binop)(y z: var): stmt
     | SSet(x y: var): stmt
     | SIf(cond: var)(bThen bElse: stmt): stmt
@@ -59,7 +59,7 @@ Section FlatImp1.
             m <- write_mem a v m;
             Return (st, m)
         | SLit x v =>
-            Return (put st x v, m)
+            Return (put st x (ZToReg v), m)
         | SOp x op y z =>
             y <- get st y;
             z <- get st z;
@@ -124,7 +124,7 @@ Section FlatImp1.
 
     Lemma invert_eval_SLit: forall fuel initialSt initialM x v final,
       eval_stmt (S fuel) initialSt initialM (SLit x v) = Some final ->
-      final = (put initialSt x v, initialM).
+      final = (put initialSt x (ZToReg v), initialM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SOp: forall fuel x y z op initialSt initialM final,
@@ -285,7 +285,7 @@ Section FlatImp2.
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Context {funcMap: MapFunctions func (list var * list var * @stmt mword Name FName)}.
+  Context {funcMap: MapFunctions func (list var * list var * @stmt Name FName)}.
   Notation env := (map func (list var * list var * stmt)).
 
   Ltac state_calc := state_calc_generic (@name Name) mword.
