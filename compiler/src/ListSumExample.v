@@ -1,3 +1,6 @@
+Require Import bbv.Word.
+Import ArithmeticNotations.
+Local Open Scope word_scope.
 Require Import compiler.ExprImp.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
@@ -77,9 +80,7 @@ Eval simpl in (List.length listsum_riscv).
 
 Definition listsum_bits: list (word 32) := (map (fun i => ZToWord 32 (encode i)) listsum_riscv).
 
-(* TODO
 Eval cbv in listsum_bits.
-*)
 
 Definition mk_input(l: list Z): list (word 32) :=
   (ZToWord 32 (Zlength l)) :: (List.map (ZToWord 32) l).
@@ -93,9 +94,7 @@ Definition infJalMem: list (word 8) :=
     (ZToWord 32 0)
     (ListMemory.zero_mem memory_size).
 
-(* TODO
 Eval cbv in infJalMem.
-*)
 
 Instance State_RegisterFile: RegisterFile state Register (word 32) := {|
     getReg rf r := match rf r with
@@ -127,8 +126,7 @@ Definition initialRiscvMachine_without_instructions(l: list Z): RiscvMachine := 
 Definition initialRiscvMachine(l: list Z): RiscvMachine
   := putProgram listsum_bits (ZToWord 32 0) (initialRiscvMachine_without_instructions l).
 
-
-(*TODO Eval cbv in (map (@wordToNat 8) (initialRiscvMachine [1; 2; 3]).(machineMem)).*)
+Eval cbv in (map (@uwordToZ 8) (initialRiscvMachine [1; 2; 3]).(machineMem)).
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
  @Run.run BitWidth32 _ MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .

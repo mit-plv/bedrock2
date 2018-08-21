@@ -1,3 +1,6 @@
+Require Import bbv.Word.
+Import ArithmeticNotations.
+Local Open Scope word_scope.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
@@ -100,28 +103,10 @@ Import riscv.InstructionNotations.
 
 Print fib6_riscv.
 
-Goal forall a, ZToWord 2 1 = a.
-  intros.
-  unfold ZToWord.
-  cbv.
-  (* TODO cbv trying to reduce the first argument of exist is bad... *)
-Abort.
-
-(* TODO make this work
-Eval cbv in (ZToWord 32 2523456327).
-
-as fast as this one:
-Require bbv.Word.
-Eval cbv in (bbv.Word.ZToWord 32 2523456327).
-
-*)
-
 Definition fib6_bits: list (word 32) :=
   List.map (fun i => ZToWord 32 (encode i)) fib6_riscv.
 
-(* TODO after above TODO, this should work again
 Eval cbv in fib6_bits.
-*)
 
 Definition fib6_bits_as_Z: list Z :=
   List.map (fun i => (encode i)) fib6_riscv.
@@ -187,8 +172,7 @@ Definition fib6_L_trace(fuel: nat): Log :=
 Eval cbv in (fib6_L_trace 1000).
 Eval cbv in (length (fib6_L_trace 1000)).
 
-(* TODO remove surrounding uwordToZ *)
-Eval cbv in (uwordToZ (fib6_L_res 400)).
+Eval cbv in (fib6_L_res 400).
 
 (* If cbv and vm_compute block or better performance is needed, we can extract to Haskell:
 Definition finalfibres: nat := wordToNat (fib6_L_res 400).
@@ -206,9 +190,7 @@ Lemma fib6_L_res_is_13_by_running_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
 Qed.
 
 Lemma fib_H_res_value: fib_H_res 20 6 = Some (ZToWord 32 13).
-Admitted. (* TODO
 Proof. cbv. reflexivity. Qed.
-           *)
 
 Lemma enough_registers_for_fib6: enough_registers (fib_ExprImp 6).
 Proof.
