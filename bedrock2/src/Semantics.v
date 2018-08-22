@@ -4,7 +4,7 @@ Require Import Coq.ZArith.BinIntDef.
 Class parameters := {
   syntax :> Syntax.parameters;
 
-  word : Type;
+  word : Set;
   word_zero : word;
   word_succ : word -> word;
   word_test : word -> bool;

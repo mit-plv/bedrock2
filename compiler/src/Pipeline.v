@@ -26,19 +26,19 @@ Require Export riscv.AxiomaticRiscv.
 Require Export riscv.proofs.DecodeEncode.
 Require Export riscv.proofs.EncodeBound.
 Require Export compiler.EmitsValid.
-Require Export compiler.ZName.
 Require Export compiler.RegAlloc.
 Require compiler.util.List_Map.
 Require Import riscv.Utility.
 Require Export riscv.Memory.
 Require Export riscv.InstructionCoercions.
+Require Import compiler.Basic32Semantics. (* TODO don't fix bitwidth here *)
+Require Import riscv.MachineWidth32.
 
 Open Scope Z_scope.
 
 Section Pipeline.
 
-  Context {mword: Set}.
-  Context {MW: MachineWidth mword}.
+  Notation mword := (word 32).
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
@@ -52,7 +52,7 @@ Section Pipeline.
   
   Existing Instance FlatToRiscv.State_is_RegisterFile.
   
-  Context {RVAX: @AxiomaticRiscv mword MW state FlatToRiscv.State_is_RegisterFile mem _ RVM}.
+  Context {RVAX: @AxiomaticRiscv mword _ state FlatToRiscv.State_is_RegisterFile mem _ RVM}.
 
   Variable LwXLEN: Register -> Register -> Z -> Instruction.
   
@@ -68,25 +68,23 @@ Section Pipeline.
   Context {NGstate: Type}.
   Context {NG: NameGen var NGstate}.
 
-  Definition flatten(s: ExprImp.stmt): FlatImp.stmt :=
-    let ngs := freshNameGenState (ExprImp.allVars_stmt s) in
-    let (sFlat, ngs') := flattenStmt ngs s in sFlat.
+  Definition flatten(s: Syntax.cmd): @FlatImp.stmt FlattenExpr.Name FlattenExpr.FName :=
+    let ngs: NGstate := freshNameGenState (ExprImp.allVars_cmd s) in
+    let (sFlat, ngs') := flattenStmt id ngs s in sFlat.
 
-  Definition annoying_instance: MapFunctions (@name ZName)
-   (list (@name ZName) *
-    list (@name ZName) *
-    @ExprImp.stmt ZName ZName).
+  Instance annoying_instance: MapFunctions (@name FlattenExpr.Name)
+   (list (@name FlattenExpr.Name) *
+    list (@name FlattenExpr.FName) *
+    Syntax.cmd).
   Admitted.
-  Existing Instance annoying_instance.
 
-  Definition annoying_instance': MapFunctions (@name ZName)
-   (list (@name ZName) *
-    list (@name ZName) *
-    @FlatImp.stmt ZName ZName).
+  Instance annoying_instance': MapFunctions (@name FlattenExpr.FName)
+   (list (@name FlattenExpr.Name) *
+    list (@name FlattenExpr.FName) *
+    @FlatImp.stmt FlattenExpr.Name FlattenExpr.FName).
   Admitted.
-  Existing Instance annoying_instance'.
 
-  Definition exprImp2Riscv(s: ExprImp.stmt): list Instruction :=
+  Definition exprImp2Riscv(s: Syntax.cmd): list Instruction :=
     FlatToRiscv.compile_stmt LwXLEN SwXLEN (flatten s).
 
   Notation registerset := (@set Register
@@ -94,14 +92,14 @@ Section Pipeline.
 
   Definition riscvRegisters: registerset := of_list (List.map Z.of_nat (List.seq 1 31)).
 
-  Definition exprImp2Riscv_with_regalloc(s: ExprImp.stmt): list Instruction :=
+  Definition exprImp2Riscv_with_regalloc(s: Syntax.cmd): list Instruction :=
     FlatToRiscv.compile_stmt LwXLEN SwXLEN
-      (register_allocation (VarName := ZName) (RegisterName := ZName) (FuncName := ZName)
+      (register_allocation (VarName := FlattenExpr.Name) (RegisterName := FlattenExpr.Name) (FuncName := FlattenExpr.FName)
                            Register0
                            riscvRegisters
                            (flatten s)).
 
-  Definition evalH := @ExprImp.eval_stmt mword MW ZName ZName _ _.
+  Definition evalH := @ExprImp.eval_cmd _ _ _ _.
 
   Definition evalL{B: BitWidths}(fuel: nat)(insts: list Instruction)(initial: RiscvMachine): RiscvMachine :=
     execState (run fuel) (putProgram (List.map (fun i => ZToWord 32 (encode i)) insts) (ZToReg 0) initial).
@@ -187,13 +185,13 @@ Section Pipeline.
      *)
   Admitted.
 
-  Definition enough_registers(s: ExprImp.stmt): Prop :=
+  Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscv.valid_registers (flatten s).
   
   (* We could also say something about the memory, but then the statement becomes more complex.
      And note that the register we look at could contain any value loaded from the memory. *)
   Lemma exprImp2Riscv_correct: forall {Bw: BitWidths} sH initialL instsL fuelH finalH initialMemH finalMemH,
-    (Z.of_nat (ExprImp.stmt_size sH) < 2 ^ 7)%Z ->
+    (Z.of_nat (ExprImp.cmd_size sH) < 2 ^ 7)%Z ->
     enough_registers sH ->
     exprImp2Riscv sH = instsL ->
     4 * Zlength instsL <= Memory.memSize initialL.(machineMem) ->
@@ -219,6 +217,8 @@ Section Pipeline.
       repeat (so fun hyporgoal => match hyporgoal with
       | context [ (2 ^ ?a)%Z ] => let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
       end).
+      Set Printing Implicit.
+      (* TODO ZName.ZName vs Name mismatch
       lia.
     }
     pose proof @flattenStmt_correct as P.
@@ -235,8 +235,7 @@ Section Pipeline.
       edestruct P as [fuelL [P1 P2] ]; clear P.
       + unfold translate, DefaultRiscvState, default_translate.
         intros.
-        (*
-        autorewrite with alu_defs.
+          autorewrite with alu_defs.
         (* TODO all of this should be something like autorewrite in * *)
         destruct_one_match; [exfalso|reflexivity].
         apply Bool.negb_true_iff in E0.

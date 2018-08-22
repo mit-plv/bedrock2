@@ -182,19 +182,21 @@ Section FlatImp1.
     Proof. inversion_lemma. Qed.
   End WithEnv.
 
-  Fixpoint stmt_size(s: stmt): nat :=
+  Definition stmt_size_body(rec: stmt -> nat)(s: stmt): nat :=
     match s with
     | SLoad x a => 1
     | SStore a v => 1
     | SLit x v => 8
     | SOp x op y z => 2
     | SSet x y => 1
-    | SIf cond bThen bElse => 1 + (stmt_size bThen) + (stmt_size bElse)
-    | SLoop body1 cond body2 => 1 + (stmt_size body1) + (stmt_size body2)
-    | SSeq s1 s2 => 1 + (stmt_size s1) + (stmt_size s2)
+    | SIf cond bThen bElse => 1 + (rec bThen) + (rec bElse)
+    | SLoop body1 cond body2 => 1 + (rec body1) + (rec body2)
+    | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
     | SSkip => 1
     | SCall binds f args => S (length binds + length args)
     end.
+  
+  Fixpoint stmt_size(s: stmt): nat := stmt_size_body stmt_size s.
 
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt): vars :=

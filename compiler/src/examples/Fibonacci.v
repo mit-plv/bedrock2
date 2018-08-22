@@ -1,6 +1,3 @@
-Require Import bbv.Word.
-Import ArithmeticNotations.
-Local Open Scope word_scope.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import lib.LibTacticsMin.
@@ -29,6 +26,9 @@ Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
 Open Scope Z_scope.
+Require Import bbv.Word.
+Import ArithmeticNotations.
+Local Open Scope word_scope.
 
 Definition var: Set := (@name ZName).
 Definition Reg: Set := (@name ZName).
@@ -55,23 +55,23 @@ while i < n:
   i = i + 1
 *)
 
-Definition fib_ExprImp(n: Z): stmt :=
-  SSeq (SSet var_a (ELit 0)) (
-  SSeq (SSet var_b (ELit 1)) (
-  SSeq (SSet var_i (ELit 0)) (
-  SWhile (EOp OLt (EVar var_i) (ELit n)) (
-    SSeq (SSet var_c (EOp OPlus (EVar var_a) (EVar var_b))) (
-    SSeq (SSet var_a (EVar var_b)) (
-    SSeq (SSet var_b (EVar var_c)) (
-    SSeq (SSet var_i (EOp OPlus (EVar var_i) (ELit 1)))
-    SSkip))))))).
+Definition fib_ExprImp(n: Z): cmd :=
+  cmd.seq (cmd.set var_a (expr.literal 0)) (
+  cmd.seq (cmd.set var_b (expr.literal 1)) (
+  cmd.seq (cmd.set var_i (expr.literal 0)) (
+  cmd.while (expr.op OLt (expr.var var_i) (expr.literal n)) (
+    cmd.seq (cmd.set var_c (expr.op OPlus (expr.var var_a) (expr.var var_b))) (
+    cmd.seq (cmd.set var_a (expr.var var_b)) (
+    cmd.seq (cmd.set var_b (expr.var var_c)) (
+    cmd.seq (cmd.set var_i (expr.op OPlus (expr.var var_i) (expr.literal 1)))
+    cmd.skip))))))).
 
-Definition state := (var -> option (word XLEN)).
+Definition state := (var -> option (word 32)).
 
-Instance fooo: MapFunctions name (list name * list name * stmt). Admitted.
+Instance fooo: MapFunctions name (list name * list name * cmd). Admitted.
 
 Definition fib_H_res(fuel: nat)(n: Z): option (word 32) :=
-  match (eval_stmt empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with
+  match (eval_cmd empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with
   | Some (st, m) => Map.get st var_b
   | None => None
   end.
@@ -87,7 +87,7 @@ Goal fib_H_res 20 6 = Some (ZToWord 32 13). reflexivity. Qed.
 
 Definition do_regalloc: bool := false.
 
-Definition compileFunc: stmt -> list Instruction :=
+Definition compileFunc: cmd -> list Instruction :=
   if do_regalloc then (exprImp2Riscv_with_regalloc Lw Sw) else (exprImp2Riscv Lw Sw).
 
 Definition fib_riscv0(n: Z): list Instruction :=
@@ -148,16 +148,16 @@ Definition fib6_L_final(fuel: nat): RiscvMachine :=
 Definition fib6_L_finalL(fuel: nat): RiscvMachineL :=
   snd (runL fuel (initialRiscvMachineL fib6_bits)).
 
-Definition force_option(o: option (word XLEN)): word XLEN :=
+Definition force_option(o: option (word 32)): word 32 :=
   match o with
   | Some w => w
-  | None => ZToWord XLEN 0
+  | None => ZToWord 32 0
   end.
 
-Definition fib6_L_res(fuel: nat): word XLEN :=
+Definition fib6_L_res(fuel: nat): word 32 :=
   force_option (Map.get (fib6_L_final fuel).(core).(registers) var_b).
 
-Definition fib6_L_resL(fuel: nat): word XLEN :=
+Definition fib6_L_resL(fuel: nat): word 32 :=
   force_option (Map.get (fib6_L_finalL fuel).(machine).(core).(registers) var_b).
 
 Definition fib6_L_trace(fuel: nat): Log :=

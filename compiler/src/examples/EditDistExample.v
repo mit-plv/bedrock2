@@ -1,7 +1,6 @@
 Require Import compiler.ExprImp.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
-Require compiler.ExprImpNotations.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import riscv.util.Word.
@@ -22,7 +21,7 @@ Require Import riscv.util.BitWidth32.
 
 Module ExampleSrc.
 
-Import ExprImpNotations. (* only inside this module *)
+(* Import ExprImpNotations. (* only inside this module *) *)
   
 Definition n: var := 1.
 Definition m: var := 2.
@@ -49,9 +48,11 @@ Definition input_base := 0.
    Output: last entry of M, also loaded into register 'mincost'
 *)
 
+(*
 Notation "'&A[' i ]" := ((input_base + 8)%Z + 4 * i)%src.
 Notation "'&B[' j ]" := ((input_base + 8)%Z + 4 * n + 4 * j)%src.
 Notation "'&M[' i , j ]" := ((input_base + 8)%Z + 4 * (n + m + ((n + 1) * j) + i))%src.
+*)
 
 (* TODO make coercions work
 

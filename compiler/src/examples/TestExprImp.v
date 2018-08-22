@@ -11,10 +11,8 @@ Require Import riscv.MachineWidth32.
 Require Import compiler.util.List_Map.
 Require Import compiler.Memory.
 Require Import compiler.ExprImp.
-Require Import compiler.ZName.
-
-
-Definition var: Set := (@name ZName). (* only inside this test module *)
+Require Import compiler.NamesInstance.
+Require Import compiler.Basic32Semantics.
 
 (*
 given x, y, z
@@ -39,23 +37,25 @@ Definition _c := 2%Z.
 Definition _isRight := 3%Z.
 
 Definition isRight(x y z: Z) :=
-  SSeq (SIf (EOp OAnd (EOp OLt (ELit y) (ELit x)) (EOp OLt (ELit z) (ELit x)))
-            (SSeq (SSet _c (ELit x)) (SSeq (SSet _a (ELit y)) (SSet _b (ELit z))))
-            ((SIf (EOp OAnd (EOp OLt (ELit x) (ELit y)) (EOp OLt (ELit z) (ELit y)))
-                  (SSeq (SSet _c (ELit y)) (SSeq (SSet _a (ELit x)) (SSet _b (ELit z))))
-                  (SSeq (SSet _c (ELit z)) (SSeq (SSet _a (ELit x)) (SSet _b (ELit y)))))))
-       (SSet _isRight (EOp OEq (EOp OPlus (EOp OTimes (EVar _a) (EVar _a))
-                                          (EOp OTimes (EVar _b) (EVar _b)))
-                               (EOp OTimes (EVar _c) (EVar _c)))).
+  cmd.seq (cmd.cond (expr.op OAnd (expr.op OLt (expr.literal y) (expr.literal x)) (expr.op OLt (expr.literal z) (expr.literal x)))
+            (cmd.seq (cmd.set _c (expr.literal x)) (cmd.seq (cmd.set _a (expr.literal y)) (cmd.set _b (expr.literal z))))
+            ((cmd.cond (expr.op OAnd (expr.op OLt (expr.literal x) (expr.literal y)) (expr.op OLt (expr.literal z) (expr.literal y)))
+                  (cmd.seq (cmd.set _c (expr.literal y)) (cmd.seq (cmd.set _a (expr.literal x)) (cmd.set _b (expr.literal z))))
+                  (cmd.seq (cmd.set _c (expr.literal z)) (cmd.seq (cmd.set _a (expr.literal x)) (cmd.set _b (expr.literal y)))))))
+       (cmd.set _isRight (expr.op OEq (expr.op OPlus (expr.op OTimes (expr.var _a) (expr.var _a))
+                                          (expr.op OTimes (expr.var _b) (expr.var _b)))
+                               (expr.op OTimes (expr.var _c) (expr.var _c)))).
 
 Definition annoying_eq: DecidableEq
-  (list (@name ZName) * list (@name ZName) * @stmt ZName ZName). Admitted.
+  (list varname * list varname * cmd). Admitted.
 Existing Instance annoying_eq.
 
-Definition run_isRight(x y z: Z): option (word 32) :=
-  final <- (eval_stmt empty_map 10 empty_map no_mem (isRight x y z));
-  let '(finalSt, finalM) := final in
-  get finalSt _isRight.
+Definition run_isRight(x y z: Z): option (bbv.Word.word 32) :=
+  let final := eval_cmd empty_map 10 empty_map no_mem (isRight x y z) in
+  match final with
+  | Some (finalSt, finalM) => get finalSt _isRight
+  | None => None
+  end.
 
 Goal run_isRight  3  4  5 = Some (ZToWord 32 1). reflexivity. Qed.
 Goal run_isRight  3  7  5 = Some (ZToWord 32 0). reflexivity. Qed.

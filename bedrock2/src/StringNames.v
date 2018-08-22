@@ -4,8 +4,8 @@ Require Import Coq.Strings.String.
 
 Module Syntax.
   Class parameters := {
-    actname : Type;
-    bopname : Type;
+    actname : Set;
+    bopname : Set;
   }.
 
   Global Instance make (p : parameters) : bedrock2.Syntax.parameters := {|

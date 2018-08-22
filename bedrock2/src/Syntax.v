@@ -3,10 +3,10 @@ Require Import bedrock2.Macros.
 Require Import Coq.Numbers.BinNums.
   
 Class parameters := {
-  varname : Type;
-  funname : Type;
-  actname : Type;
-  bopname : Type;
+  varname : Set;
+  funname : Set;
+  actname : Set;
+  bopname : Set;
 }.
 
 
