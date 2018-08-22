@@ -31,7 +31,7 @@ Import List.ListNotations.
 Require Import bbv.Word.
 Require Import bedrock2.Semantics bedrock2.BasicC64Semantics bedrock2.Map.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
-Require bedrock2.WeakestPrecondition.
+Require bedrock2.WeakestPrecondition bedrock2.WeakestPreconditionProperties.
 
 (*
 Lemma get_sep {key value} {map : map key value} (a:key) (v:value) R m (H : sep (ptsto a v) R m) : map.get m a = Some v.
@@ -103,11 +103,6 @@ Proof.
   repeat t.
 Qed.
 
-Context (wp_func_weaken: forall rely guarantee progress call f t m l (post1 post2:_->_->_->Prop),
-    (forall t m l, post1 t m l -> post2 t m l) ->
-    WeakestPrecondition.func rely guarantee progress call f t m l post1 ->
-    WeakestPrecondition.func rely guarantee progress call f t m l post2).
-  
 Lemma swap_swap_ok : 
   forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
@@ -126,16 +121,18 @@ Proof.
   eexists.
   eexists.
   eexists.
-  eapply wp_func_weaken; cycle 1.
-  eapply swap_ok.
+  intros. eapply WeakestPreconditionProperties.Proper_func.
+  6: eapply swap_ok.
+  1,2,3,4,5 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].
+  1,2: cycle 1.
   refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
   intros ? m' ? (?&Hm'&?).
   clear Hm.
   clear m.
   rename m' into m.
   rename Hm' into Hm.
-  subst t0.
-  subst l.
+  subst a0.
+  subst a1.
   eexists.
   eexists.
   eexists.
@@ -145,8 +142,10 @@ Proof.
   eexists.
   eexists.
   eexists.
-  eapply wp_func_weaken; cycle 1.
-  eapply swap_ok.
+  intros. eapply WeakestPreconditionProperties.Proper_func.
+  6: eapply swap_ok.
+  1,2,3,4,5 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].
+  1,2: cycle 1.
   refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
   intros ? m' ? (?&Hm'&?).
   clear Hm.
@@ -154,8 +153,8 @@ Proof.
   rename m' into m.
   rename Hm' into Hm.
   eexists.
-  subst t0.
-  subst l.
+  subst a0.
+  subst a1.
   eexists.
   eexists.
   eexists.
