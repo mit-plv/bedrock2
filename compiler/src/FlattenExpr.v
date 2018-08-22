@@ -156,15 +156,9 @@ Section FlattenExpr.
       rewrite E0 in IHargs.
       specialize IHargs with (1 := eq_refl).
 
-      (* TODO this should just be "unfold FlatImp.stmt_size" *)
-      match goal with
-      | |- ?A <= _ => change A with (1 + (1 + (FlatImp.stmt_size (fst p0) + (FlatImp.stmt_size s1))) + (S (length binds + S (length l0))))
-      end.
-
-      (* TODO this should just be "unfold FlatImp.stmt_size in IHargs" *)
-      match type of IHargs with
-      | ?A <= _ => change A with (1 + (FlatImp.stmt_size s1) + (S (length binds + length l0))) in IHargs
-      end.
+      repeat (rewrite ?FlatImp.stmt_size_unfold; cbn [FlatImp.stmt_size_body]; rewrite <-?FlatImp.stmt_size_unfold).
+      repeat (rewrite ?FlatImp.stmt_size_unfold in IHargs; cbn [FlatImp.stmt_size_body] in IHargs; rewrite <-?FlatImp.stmt_size_unfold in IHargs).
+      cbn [length].
       
       unfold ExprImp.cmd_size.
       unfold ExprImp.cmd_size in IHargs.

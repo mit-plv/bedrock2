@@ -197,6 +197,8 @@ Section FlatImp1.
     end.
   
   Fixpoint stmt_size(s: stmt): nat := stmt_size_body stmt_size s.
+  (* TODO: in coq 8.9 it will be possible to state this lemma automatically: https://github.com/coq/coq/blob/91e8dfcd7192065f21273d02374dce299241616f/CHANGES#L16 *)
+  Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s. destruct s; reflexivity. Qed.
 
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt): vars :=
