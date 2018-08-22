@@ -3,7 +3,7 @@ Require Import bedrock2.Syntax bedrock2.Structs bedrock2.NotationsInConstr.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Section StructAccess.
-  Context {p : Syntax.parameters} {bp : BasicALU.operations}.
+  Context {p : Syntax_parameters} {bp : BasicALU.operations}.
 
   Definition item : type := inr (Struct (
     ("a", inl 1)::

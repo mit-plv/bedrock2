@@ -2,7 +2,7 @@ Require Import bedrock2.Macros.
 
 Require Import Coq.Numbers.BinNums.
   
-Class parameters := {
+Class Syntax_parameters := {
   varname : Set;
   funname : Set;
   actname : Set;
@@ -11,7 +11,7 @@ Class parameters := {
 
 
 Module expr. Section expr.
-  Context {p : unique! parameters}.
+  Context {p : unique! Syntax_parameters}.
   Inductive expr  : Type :=
   | literal (v: Z)
   | var (x: varname)
@@ -20,7 +20,7 @@ Module expr. Section expr.
 End expr. End expr. Notation expr := expr.expr.
 
 Module cmd. Section cmd.
-  Context {p : unique! parameters}.
+  Context {p : unique! Syntax_parameters}.
   Inductive cmd :=
   | skip
   | set (lhs : varname) (rhs : expr)

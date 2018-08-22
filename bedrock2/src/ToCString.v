@@ -3,8 +3,8 @@ Require Import bedrock2.Macros bedrock2.Syntax bedrock2.Variables.
 Require Import Coq.Numbers.BinNums.
 Require Import Coq.Strings.String.
 
-Class parameters := {
-  syntax :> Syntax.parameters;
+Class ToCString_parameters := {
+  syntax :> Syntax_parameters;
   varname_eqb : varname -> varname -> bool;
   rename_away_from : varname -> list varname -> varname;
   c_lit : Z -> String.string;
@@ -15,7 +15,7 @@ Class parameters := {
 }.
 
 Section ToCString.
-  Context {p : unique! parameters}.
+  Context {p : unique! ToCString_parameters}.
   Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true false false false false) "".
   Local Open Scope string_scope.
 

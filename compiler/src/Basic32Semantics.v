@@ -6,7 +6,7 @@ Require Import compiler.Op.
 Require Import riscv.MachineWidth32.
 Require bbv.Word.
 
-Instance Basic32Semantics: bedrock2.Semantics.parameters := {|
+Instance Basic32Semantics: Semantics_parameters := {|
   syntax := compiler.NamesInstance.Names;
   word := Word.word 32;
   interp_binop bop := eval_binop bop;

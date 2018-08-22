@@ -3,7 +3,7 @@ Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import Coq.ZArith.BinIntDef.
 
 Section WeakestPrecondition.
-  Context {p : unique! Semantics.parameters}.
+  Context {p : unique! Semantics_parameters}.
   Context (rely guarantee : trace -> Prop) (progress : trace -> trace -> Prop).
 
   Definition literal v post : Prop :=

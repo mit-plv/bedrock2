@@ -17,7 +17,7 @@ Require Import compiler.Memory.
 
 Section ExprImp1.
 
-  Context {p : unique! Semantics.parameters}.
+  Context {p : unique! Semantics_parameters}.
 
   Notation mword := (@Semantics.word p).
   Context {MW: MachineWidth mword}.  
@@ -279,7 +279,7 @@ Ltac invert_eval_cmd :=
 
 Section ExprImp2.
 
-  Context {p : unique! Semantics.parameters}.
+  Context {p : unique! Semantics_parameters}.
 
   Notation mword := (@Semantics.word p).
   Context {MW: MachineWidth mword}.  
