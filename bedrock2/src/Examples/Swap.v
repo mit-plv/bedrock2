@@ -30,8 +30,8 @@ Example swap_c_string := Eval compute in
 Import List.ListNotations.
 Require Import bbv.Word.
 Require Import bedrock2.Semantics bedrock2.BasicC64Semantics bedrock2.Map.
-Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require bedrock2.WeakestPrecondition.
 
 (*
 Lemma get_sep {key value} {map : map key value} (a:key) (v:value) R m (H : sep (ptsto a v) R m) : map.get m a = Some v.
@@ -62,8 +62,8 @@ Lemma load_sep sz a v R m (H : sep (ptsto sz a v) R m) : load sz m a = Some v.
 Admitted.
     
 Lemma store_sep sz a v1 v2 R m (H : sep (ptsto sz a v1) R m)
-      (Q : _ -> Prop) (HQ : forall m', sep (ptsto sz a v2) R m' -> Q m') :
-  exists m', store sz m a v2 = Some m' /\ Q m'.
+      (post : _ -> Prop) (cont : forall m', sep (ptsto sz a v2) R m' -> post m') :
+  exists m', store sz m a v2 = Some m' /\ post m'.
 Admitted.
 
 Ltac intros_mem m Hm :=
@@ -79,10 +79,15 @@ Ltac t :=
     => lazymatch type of Hm with context [ptsto sz a ?v]
     => refine (load_sep sz a v ?[frame] m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
        cancel; reflexivity end
-  | |- exists _, store ?sz ?m ?a ?v2 = Some _ /\ _
+  | |- WeakestPrecondition.store ?sz ?m ?a ?v2 _
     => lazymatch type of Hm with context [ptsto sz a ?v1]
     => refine (store_sep sz a v1 v2 ?[frame] m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm) _ ?[cont]); [ cancel; reflexivity | intros_mem m Hm ] end
-  | _ => first [ eassumption | eexists | subst; eexists ]
+  | |- ?G =>
+    match goal with
+    | H: G |- _ => exact H
+    | _ => eexists
+    | _ => subst; eexists
+    end
 end.
 
 Context (__A : map.ok Semantics.mem).
@@ -121,15 +126,6 @@ Proof.
   eexists.
   eexists.
   eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
   eapply wp_func_weaken; cycle 1.
   eapply swap_ok.
   refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
@@ -140,15 +136,6 @@ Proof.
   rename Hm' into Hm.
   subst t0.
   subst l.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
-  eexists.
   eexists.
   eexists.
   eexists.
@@ -169,9 +156,6 @@ Proof.
   eexists.
   subst t0.
   subst l.
-  eexists.
-  eexists.
-  eexists.
   eexists.
   eexists.
   eexists.
