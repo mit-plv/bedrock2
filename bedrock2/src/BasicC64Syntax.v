@@ -1,5 +1,5 @@
 Require Import bedrock2.Macros bedrock2.Syntax bedrock2.ToCString.
-Require Import bedrock2.StringNames bedrock2.BasicALU bedrock2.String.
+Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU bedrock2.String.
 
 Require Import Coq.Strings.String Coq.Numbers.DecimalZ Coq.Numbers.DecimalString.
 
@@ -7,16 +7,16 @@ Module Import bopname.
   Inductive bopname := add | sub | and | or | xor | sru | slu | srs | lts | ltu | eq.
 End bopname.
 
-Definition parameters : bedrock2.StringNames.Syntax.parameters := {|
-  StringNames.Syntax.bopname := bopname;
-  StringNames.Syntax.actname := string
+Definition params : bedrock2.StringNamesSyntax.parameters := {|
+  StringNamesSyntax.bopname := bopname;
+  StringNamesSyntax.actname := string
 |}.
 
 Definition BasicALU : BasicALU.operations :=
-  Build_operations (StringNames.Syntax.make parameters) add sub and or xor sru slu srs lts ltu eq.
+  Build_operations (StringNamesSyntax.make params) add sub and or xor sru slu srs lts ltu eq.
 
 Definition to_c_parameters : ToCString.parameters := {|
-  syntax := (StringNames.Syntax.make parameters);
+  syntax := (StringNamesSyntax.make params);
   c_lit w := DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL";
   c_bop := fun e1 op e2 =>
              match op with
