@@ -3,7 +3,7 @@
 This is work in progress towards a low-level systems programming language with current work focusing on a verified compiler targeting RISC-V.
 
 This project has similar goals as [bedrock](https://github.com/mit-plv/bedrock), but uses a different design:
-No code is shared between bedrock and bedrock2 (except a [bit vector library](https://github.mit.edu/plv/bbv/)), and compilation is implemented as a Gallina function rather than as an Ltac function.
+No code is shared between bedrock and bedrock2 (except a [bit vector library](https://github.com/mit-plv/bbv/)), and compilation is implemented as a Gallina function rather than as an Ltac function.
 
 
 ### Build [![Build Status](https://travis-ci.com/mit-plv/bedrock2.svg?branch=master)](https://travis-ci.com/mit-plv/bedrock2)
