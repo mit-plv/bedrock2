@@ -1,10 +1,11 @@
 Require Import bedrock2.Macros.
+Require Import bedrock2.Semantics.
 Require bedrock2.WeakestPrecondition.
 
 Require Import Coq.Classes.Morphisms.
 
 Section WeakestPrecondition.
-  Context {p : unique! Semantics.parameters}.
+  Context {p : unique! Semantics_parameters}.
 
   Ltac ind_on X :=
     intros;

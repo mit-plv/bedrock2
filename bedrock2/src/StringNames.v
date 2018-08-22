@@ -2,17 +2,16 @@ Require Import bedrock2.Syntax.
 
 Require Import Coq.Strings.String.
 
-Module Syntax.
-  Class parameters := {
-    actname : Set;
-    bopname : Set;
-  }.
+Class StringNames_parameters := {
+  actname : Set;
+  bopname : Set;
+}.
 
-  Global Instance make (p : parameters) : bedrock2.Syntax.parameters := {|
-    bedrock2.Syntax.varname := string;
-    bedrock2.Syntax.funname := string;
+Instance StringNames_to_Syntax_parameters (p : StringNames_parameters)
+: Syntax_parameters := {|
+  Syntax.varname := string;
+  Syntax.funname := string;
 
-    bedrock2.Syntax.actname := actname;
-    bedrock2.Syntax.bopname := bopname;
-  |}.
-End Syntax.
+  Syntax.actname := actname;
+  Syntax.bopname := bopname;
+|}.

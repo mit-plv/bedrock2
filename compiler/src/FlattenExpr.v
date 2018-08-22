@@ -8,67 +8,67 @@ Require Import bbv.DepEqNat.
 Require Import compiler.Decidable.
 Require Import riscv.util.BitWidths.
 Require Import riscv.Utility.
-Require bedrock2.Syntax.
-Require bedrock2.Semantics.
+Require Import bedrock2.Syntax.
+Require Import bedrock2.Semantics.
 Require Import bedrock2.Macros.
 
 
 Section FlattenExpr.
 
-  Context {p : unique! Semantics.parameters}.
+  Context {p : unique! Semantics_parameters}.
 
-  Notation mword := (@Semantics.word p).
+  Notation mword := (@word p).
   Context {MW: MachineWidth mword}.
 
   (* TODO this should be wrapped somewhere *)
-  Context {varname_eq_dec: DecidableEq (@Syntax.varname (@Semantics.syntax p))}.
-  Context {funname_eq_dec: DecidableEq (@Syntax.funname (@Semantics.syntax p))}.
+  Context {varname_eq_dec: DecidableEq (@varname (@syntax p))}.
+  Context {funname_eq_dec: DecidableEq (@funname (@syntax p))}.
 
-  Notation var := (@Syntax.varname (@Semantics.syntax p)).
-  Notation func := (@Syntax.funname (@Semantics.syntax p)).
+  Notation var := (@varname (@syntax p)).
+  Notation func := (@funname (@syntax p)).
 
   Context {stateMap: MapFunctions var mword}.
   Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
-  Context {funcMap: MapFunctions func (list var * list var * Syntax.cmd)}.
-  Notation env := (map func (list var * list var * Syntax.cmd)).
+  Context {funcMap: MapFunctions func (list var * list var * cmd)}.
+  Notation env := (map func (list var * list var * cmd)).
   Context {funcMap': MapFunctions func (list var * list var * FlatImp.stmt var func)}.
   Notation env' := (map func (list var * list var * FlatImp.stmt var func)).
 
   Context {NGstate: Type}.
   Context {NG: NameGen var NGstate}.
 
-  Hypothesis actname_empty: Syntax.actname = Empty_set.
+  Hypothesis actname_empty: actname = Empty_set.
 
   (* TODO partially specify this in Semantics parameters *)
-  Hypothesis convert_bopname: @Syntax.bopname (@Semantics.syntax p) -> Op.binop.
+  Hypothesis convert_bopname: @bopname (@syntax p) -> Op.binop.
   Hypothesis eval_binop_compat: forall op w w0,
-      Op.eval_binop (convert_bopname op) w w0 = Semantics.interp_binop op w w0.
+      Op.eval_binop (convert_bopname op) w w0 = interp_binop op w w0.
 
   Ltac state_calc :=
-    state_calc_generic (@Syntax.varname (@Semantics.syntax p)) (@Semantics.word p).
+    state_calc_generic (@varname (@syntax p)) (@word p).
   Ltac set_solver :=
-    set_solver_generic (@Syntax.varname (@Semantics.syntax p)).
+    set_solver_generic (@varname (@syntax p)).
 
   (* returns stmt and var into which result is saved, and new fresh name generator state
      TODO use state monad? *)
-  Fixpoint flattenExpr(ngs: NGstate)(e: Syntax.expr):
+  Fixpoint flattenExpr(ngs: NGstate)(e: expr):
     (FlatImp.stmt var func * var * NGstate) :=
     match e with
-    | Syntax.expr.literal n =>
+    | expr.literal n =>
         let '(x, ngs') := genFresh ngs in
         (FlatImp.SLit x n, x, ngs')
-    | Syntax.expr.var x =>
+    | expr.var x =>
         (* (FlatImp.SSkip, x, ngs)  would be simpler but doesn't satisfy the invariant that
            the returned var is in modVars of the returned statement *)
         let '(y, ngs') := genFresh ngs in
         (FlatImp.SSet y x, y, ngs')
-    | Syntax.expr.load _ e =>
+    | expr.load _ e =>
         let '(s1, r1, ngs') := flattenExpr ngs e in
         let '(x, ngs'') := genFresh ngs' in
         (FlatImp.SSeq s1 (FlatImp.SLoad x r1), x, ngs'')
-    | Syntax.expr.op op e1 e2 =>
+    | expr.op op e1 e2 =>
         let '(s1, r1, ngs') := flattenExpr ngs e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
         let '(x, ngs''') := genFresh ngs'' in
@@ -76,7 +76,7 @@ Section FlattenExpr.
     end.
 
   Definition flattenCall(ngs: NGstate)(binds: list var)(f: func)
-             (args: list Syntax.expr):
+             (args: list expr):
     FlatImp.stmt var func * NGstate :=
     let '(compute_args, argvars, ngs) :=
           List.fold_right
@@ -88,31 +88,31 @@ Section FlattenExpr.
       (FlatImp.SSeq compute_args (FlatImp.SCall (binds: list var) f argvars), ngs).
 
   (* returns statement and new fresh name generator state *)
-  Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt var func * NGstate) :=
+  Fixpoint flattenStmt(ngs: NGstate)(s: cmd): (FlatImp.stmt var func * NGstate) :=
     match s with
-    | Syntax.cmd.store _ a v =>
+    | cmd.store _ a v =>
         let '(sa, ra, ngs') := flattenExpr ngs a in
         let '(sv, rv, ngs'') := flattenExpr ngs' v in
         (FlatImp.SSeq sa (FlatImp.SSeq sv (FlatImp.SStore ra rv)), ngs'')
-    | Syntax.cmd.set x e =>
+    | cmd.set x e =>
         let '(e', r, ngs') := flattenExpr ngs e in
         (FlatImp.SSeq e' (FlatImp.SSet x r), ngs')
-    | Syntax.cmd.cond cond sThen sElse =>
+    | cmd.cond cond sThen sElse =>
         let '(cond', r, ngs') := flattenExpr ngs cond in
         let '(sThen', ngs'') := flattenStmt ngs' sThen in
         let '(sElse', ngs''') := flattenStmt ngs'' sElse in
         (FlatImp.SSeq cond' (FlatImp.SIf r sThen' sElse'), ngs''')
-    | Syntax.cmd.while cond body =>
+    | cmd.while cond body =>
         let '(cond', r, ngs') := flattenExpr ngs cond in
         let '(body', ngs'') := flattenStmt ngs' body in
         (FlatImp.SLoop cond' r body', ngs'')
-    | Syntax.cmd.seq s1 s2 =>
+    | cmd.seq s1 s2 =>
         let '(s1', ngs') := flattenStmt ngs s1 in
         let '(s2', ngs'') := flattenStmt ngs' s2 in
         (FlatImp.SSeq s1' s2', ngs'')
-    | Syntax.cmd.skip => (FlatImp.SSkip, ngs)
-    | Syntax.cmd.call binds f args => flattenCall ngs binds f args
-    | Syntax.cmd.interact _ _ _ => (FlatImp.SSkip, ngs) (* unsupported *)
+    | cmd.skip => (FlatImp.SSkip, ngs)
+    | cmd.call binds f args => flattenCall ngs binds f args
+    | cmd.interact _ _ _ => (FlatImp.SSkip, ngs) (* unsupported *)
     end.
 
   Lemma flattenExpr_size: forall e s resVar ngs ngs',
@@ -135,7 +135,7 @@ Section FlattenExpr.
 
   Lemma flattenCall_size: forall f args binds ngs ngs' s,
       flattenCall ngs binds f args = (s, ngs') ->
-      FlatImp.stmt_size _ _ s <= 3 * ExprImp.cmd_size (Syntax.cmd.call binds f args).
+      FlatImp.stmt_size _ _ s <= 3 * ExprImp.cmd_size (cmd.call binds f args).
   Proof.
     intro f.
     induction args; intros.
@@ -333,7 +333,7 @@ Section FlattenExpr.
       remember (Datatypes.S (Datatypes.S (fuel1 + fuel2))) as f0.
       remember (Datatypes.S (fuel1 + fuel2)) as f.
       (*                                or     (Op.eval_binop (convert_bopname op) w w0) ? *)
-      exists (Datatypes.S f0) (put preFinalL resVar (Semantics.interp_binop op w w0)).
+      exists (Datatypes.S f0) (put preFinalL resVar (interp_binop op w w0)).
       pose_flatten_var_ineqs.
       split; [|apply get_put_same].
       simpl. fuel_increasing_rewrite.
@@ -549,7 +549,7 @@ Section FlattenExpr.
     - clear -action actname_empty. rewrite actname_empty in action. destruct action.
   Qed.
 
-  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt var func :=
+  Definition ExprImp2FlatImp(s: cmd): FlatImp.stmt var func :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).
 
   Lemma flattenStmt_correct: forall fuelH sH sL initialM finalH finalM,

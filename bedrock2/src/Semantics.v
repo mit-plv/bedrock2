@@ -1,8 +1,8 @@
 Require Import bedrock2.Macros bedrock2.Notations bedrock2.Syntax bedrock2.Map.
 Require Import Coq.ZArith.BinIntDef.
 
-Class parameters := {
-  syntax :> Syntax.parameters;
+Class Semantics_parameters := {
+  syntax :> Syntax_parameters;
 
   word : Set;
   word_zero : word;
@@ -23,7 +23,7 @@ Class parameters := {
 }.
 
 Section semantics.
-  Context {pp : unique! parameters}.
+  Context {pp : unique! Semantics_parameters}.
   
   Fixpoint load_rec (sz : nat) (m:mem) (a:word) : option word :=
     match sz with

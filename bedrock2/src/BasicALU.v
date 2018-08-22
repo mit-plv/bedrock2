@@ -1,6 +1,6 @@
 Require Import bedrock2.Macros bedrock2.Syntax.
 
-Class operations {p: unique! Syntax.parameters} :=
+Class operations {p: unique! Syntax_parameters} :=
   {
     bop_add : bopname;
     bop_sub : bopname;

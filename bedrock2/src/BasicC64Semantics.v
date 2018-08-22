@@ -1,10 +1,10 @@
-Require Import bedrock2.BasicC64Syntax bedrock2.Semantics.
+Require Import bedrock2.BasicC64Syntax bedrock2.Semantics bedrock2.StringNames.
 Require bedrock2.String bedrock2.Map.UnorderedList.
 Require bbv.Word.
 
 Local Definition shiftWidth s := Word.wordToNat (Word.wand s (Word.NToWord 64 63)).
-Instance parameters : parameters := {|
-  syntax := StringNames.Syntax.make BasicC64Syntax.parameters;
+Instance parameters : Semantics_parameters := {|
+  syntax := StringNames_to_Syntax_parameters BasicC64Syntax.parameters;
   word := Word.word 64;
   word_zero := Word.wzero 64;
   word_succ := Word.wplus (Word.wone 64);

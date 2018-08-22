@@ -3,7 +3,7 @@ Require Import bedrock2.Macros bedrock2.Syntax.
 Require Import Coq.Lists.List.
 
 Module expr. Section expr. Import Syntax.expr.
-  Context {p : unique! Syntax.parameters}.
+  Context {p : unique! Syntax_parameters}.
   Fixpoint vars (e : expr) : list varname :=
     match e with
     | literal v => nil
@@ -14,7 +14,7 @@ Module expr. Section expr. Import Syntax.expr.
 End expr. End expr.
 
 Module cmd. Section cmd. Import Syntax.cmd.
-  Context {p : unique! Syntax.parameters}.
+  Context {p : unique! Syntax_parameters}.
   Fixpoint vars (c: cmd) : list varname := 
     match c with
     | skip => nil
