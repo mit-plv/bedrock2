@@ -20,7 +20,7 @@ Require Export bbv.DepEqNat.
 Require Export compiler.NameGen.
 Require Export compiler.util.Common.
 Require Export riscv.util.BitWidths.
-Require Export compiler.NameWithEq.
+Require Export compiler.Decidable.
 Require Export riscv.Encode.
 Require Export riscv.AxiomaticRiscv.
 Require Export riscv.proofs.DecodeEncode.
@@ -62,26 +62,27 @@ Section Pipeline.
   Context {BWSP: FlatToRiscvBitWidthSpecificProofs.FlatToRiscvBitWidthSpecificProofs mword mem}.
 
   Definition var := Register.
+  Definition func := Z.
 
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
   Context {NGstate: Type}.
   Context {NG: NameGen var NGstate}.
 
-  Definition flatten(s: Syntax.cmd): @FlatImp.stmt FlattenExpr.Name FlattenExpr.FName :=
+  Definition flatten(s: Syntax.cmd): FlatImp.stmt var func :=
     let ngs: NGstate := freshNameGenState (ExprImp.allVars_cmd s) in
     let (sFlat, ngs') := flattenStmt id ngs s in sFlat.
 
-  Instance annoying_instance: MapFunctions (@name FlattenExpr.Name)
-   (list (@name FlattenExpr.Name) *
-    list (@name FlattenExpr.FName) *
+  Instance annoying_instance: MapFunctions var
+   (list var *
+    list func *
     Syntax.cmd).
   Admitted.
 
-  Instance annoying_instance': MapFunctions (@name FlattenExpr.FName)
-   (list (@name FlattenExpr.Name) *
-    list (@name FlattenExpr.FName) *
-    @FlatImp.stmt FlattenExpr.Name FlattenExpr.FName).
+  Instance annoying_instance': MapFunctions func
+   (list var *
+    list func *
+    @FlatImp.stmt var func).
   Admitted.
 
   Definition exprImp2Riscv(s: Syntax.cmd): list Instruction :=
@@ -94,7 +95,7 @@ Section Pipeline.
 
   Definition exprImp2Riscv_with_regalloc(s: Syntax.cmd): list Instruction :=
     FlatToRiscv.compile_stmt LwXLEN SwXLEN
-      (register_allocation (VarName := FlattenExpr.Name) (RegisterName := FlattenExpr.Name) (FuncName := FlattenExpr.FName)
+      (register_allocation var var func
                            Register0
                            riscvRegisters
                            (flatten s)).

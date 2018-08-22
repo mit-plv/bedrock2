@@ -10,14 +10,13 @@ Require Import compiler.Pipeline.
 Require Import compiler.util.MyOmega.
 Require Import riscv.util.Monads.
 Require Import compiler.util.Common.
-Require Import compiler.NameWithEq.
+Require Import compiler.Decidable.
 Require Import riscv.util.BitWidths.
 Require        riscv.InstructionNotations.
 Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
 Require Import riscv.Utility.
 Require Import riscv.Encode.
-Require Import compiler.ZName.
 Require Import riscv.util.BitWidth32.
 Require Import riscv.MachineWidth32.
 Require Import compiler.FlatToRiscv32Proofs.
@@ -30,8 +29,8 @@ Require Import bbv.Word.
 Import ArithmeticNotations.
 Local Open Scope word_scope.
 
-Definition var: Set := (@name ZName).
-Definition Reg: Set := (@name ZName).
+Definition var: Set := Z.
+Definition Reg: Set := Z.
 
 Existing Instance MachineWidth32.MachineWidth32.
 
@@ -67,6 +66,8 @@ Definition fib_ExprImp(n: Z): cmd :=
     cmd.skip))))))).
 
 Definition state := (var -> option (word 32)).
+
+Definition name := Z.
 
 Instance fooo: MapFunctions name (list name * list name * cmd). Admitted.
 

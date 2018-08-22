@@ -6,25 +6,24 @@ Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
 Require Import compiler.Memory.
-Require Import compiler.NameWithEq.
+Require Import compiler.Decidable.
 
 Section FlatImp1.
 
   Context {mword: Set}.
   Context {MW: MachineWidth mword}.
 
-  Context {Name: NameWithEq}.
-  Notation var := (@name Name).
-  Context {FName : NameWithEq}.
-  Notation func := (@name FName).
-  Existing Instance eq_name_dec.
+  Variable var: Set.
+  Context {var_eq_dec: DecidableEq var}.
+  Variable func: Set.
+  Context {func_eq_dec: DecidableEq func}.
 
   Context {stateMap: MapFunctions var mword}.
   Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Ltac state_calc := state_calc_generic (@name Name) mword.
+  Ltac state_calc := state_calc_generic var mword.
 
   Inductive stmt: Set :=
     | SLoad(x: var)(a: var): stmt
@@ -245,7 +244,7 @@ End FlatImp1.
 
 Ltac invert_eval_stmt :=
   lazymatch goal with
-  | E: eval_stmt _ (S ?fuel) _ _ ?s = Some _ |- _ =>
+  | E: eval_stmt _ _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
     destruct s;
     [ apply invert_eval_SLoad in E
     | apply invert_eval_SStore in E
@@ -272,32 +271,41 @@ Ltac invert_eval_stmt :=
     | let x := fresh "Case_SCall" in pose proof tt as x; move x at top ]
   end.
 
+Arguments SLoad   {_} {_}.
+Arguments SStore  {_} {_}.
+Arguments SLit    {_} {_}.
+Arguments SOp     {_} {_}.
+Arguments SSet    {_} {_}.
+Arguments SIf     {_} {_}.
+Arguments SLoop   {_} {_}.
+Arguments SSeq    {_} {_}.
+Arguments SSkip   {_} {_}.
+Arguments SCall   {_} {_}.
 
 Section FlatImp2.
 
   Context {mword: Set}.
   Context {MW: MachineWidth mword}.
 
-  Context {Name: NameWithEq}.
-  Notation var := (@name Name).
-  Existing Instance eq_name_dec.
-  Context {FName : NameWithEq}.
-  Notation func := (@name FName).
+  Variable var: Set.
+  Context {var_eq_dec: DecidableEq var}.
+  Variable func: Set.
+  Context {func_eq_dec: DecidableEq func}.
 
   Context {stateMap: MapFunctions var mword}.
   Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Context {funcMap: MapFunctions func (list var * list var * @stmt Name FName)}.
-  Notation env := (map func (list var * list var * stmt)).
+  Context {funcMap: MapFunctions func (list var * list var * stmt var func)}.
+  Notation env := (map func (list var * list var * stmt var func)).
 
-  Ltac state_calc := state_calc_generic (@name Name) mword.
+  Ltac state_calc := state_calc_generic var mword.
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 (e: env) initialSt initialM s final,
     fuel1 <= fuel2 ->
-    eval_stmt e fuel1 initialSt initialM s = Some final ->
-    eval_stmt e fuel2 initialSt initialM s = Some final.
+    eval_stmt var func e fuel1 initialSt initialM s = Some final ->
+    eval_stmt var func e fuel2 initialSt initialM s = Some final.
   Proof.
     induction fuel1; introv L Ev.
     - inversions Ev.
@@ -326,8 +334,8 @@ Section FlatImp2.
   Qed.
 
   Lemma modVarsSound: forall fuel e s initialSt initialM finalSt finalM,
-    eval_stmt e fuel initialSt initialM s = Some (finalSt, finalM) ->
-    only_differ initialSt (modVars s) finalSt.
+    eval_stmt var func e fuel initialSt initialM s = Some (finalSt, finalM) ->
+    only_differ initialSt (modVars var func s) finalSt.
   Proof.
     induction fuel; introv Ev.
     - discriminate.

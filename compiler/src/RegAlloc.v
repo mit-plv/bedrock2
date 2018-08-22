@@ -1,7 +1,7 @@
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
-Require Import compiler.NameWithEq.
+Require Import compiler.Decidable.
 Require Import riscv.util.BitWidths.
 Require Import Coq.Lists.List.
 Require Import compiler.util.Common.
@@ -13,15 +13,12 @@ Section RegAlloc.
   Context {mword: Set}.
   Context {MW: MachineWidth mword}.
 
-  Context {VarName: NameWithEq}.
-  Context {RegisterName: NameWithEq}.
-  Context {FuncName: NameWithEq}.
-  
-  Notation var := (@name VarName).
-  Notation register := (@name RegisterName).
-  Notation func := (@name FuncName).
-
-  Existing Instance eq_name_dec.
+  Variable var: Set.
+  Context {var_eq_dec: DecidableEq var}.
+  Variable register: Set.
+  Context {register_eq_dec: DecidableEq register}.
+  Variable func: Set.
+  Context {func_eq_dec: DecidableEq func}.
 
   Context {allocMap: MapFunctions var register}.
   Notation alloc := (map var register).
@@ -34,7 +31,8 @@ Section RegAlloc.
   Notation registers := (set register).
   *)
 
-  Local Notation stmt := (@stmt VarName FuncName).
+  Local Notation stmt  := (FlatImp.stmt var func).      (* input type *)
+  Local Notation stmt' := (FlatImp.stmt register func). (* output type *)
 
   (* set of variables which is certainly written while executing s *)
   Fixpoint certainly_written(s: stmt): vars :=
@@ -127,7 +125,7 @@ Section RegAlloc.
           | None => dummy_register
           end.
 
-  Definition apply_alloc(m: var -> register): stmt -> @FlatImp.stmt RegisterName FuncName :=
+  Definition apply_alloc(m: var -> register): stmt -> stmt' :=
     fix rec(s: stmt) :=
       match s with
       | SLoad x y => SLoad (m x) (m y)
@@ -144,7 +142,7 @@ Section RegAlloc.
 
   Variable available_registers: registers. (* r1..r31 on RISCV *)
 
-  Definition register_allocation(s: stmt): @FlatImp.stmt RegisterName FuncName :=
+  Definition register_allocation(s: stmt): stmt' :=
     let '(_, _, m) := regalloc empty_set available_registers empty_map s empty_set in
     apply_alloc (make_total m) s.
 

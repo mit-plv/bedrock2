@@ -17,7 +17,7 @@ Require Import riscv.util.PowerFunc.
 Require Export compiler.FlatToRiscvBitWidthSpecifics.
 Require Export compiler.FlatToRiscvInvariants.
 Require Export compiler.FlatToRiscvBitWidthSpecificProofs.
-Require Import compiler.NameWithEq.
+Require Import compiler.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import riscv.InstructionCoercions.
 Require Import compiler.StateCalculus.
@@ -29,7 +29,6 @@ Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
-Require Import compiler.ZName.
 
 (* TODO remove these three *)
 Require Import riscv.MachineWidth_XLEN.
@@ -223,18 +222,17 @@ Section FlatToRiscv.
   (* If we made it a definition instead, destructing an if on "@dec (@eq (@var Name) x x0)"
      (from this file), where a "@dec (@eq (@Reg Name) x x0)" (from another file, Riscv.v)
      is in the context, will not recognize that these two are the same (they both reduce to
-     "@dec (@eq (@name Name) x x0)", which is annoying. *)
-  Notation var := (@name Name).
+     "@dec (@eq var x x0)", which is annoying. *)
+  Notation var := var.
   Existing Instance eq_name_dec.
    *)
 
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
-  Context {funcMap: MapFunctions Z
-              (list Z *
-               list Z *
-               @stmt _ _)}. (* TODO meh *)
+  Notation stmt := (stmt Z Z).
+  
+  Context {funcMap: MapFunctions Z (list Z * list Z * stmt)}. (* TODO meh *)
 
   Context {mem: Set}.
   Context {IsMem: Memory.Memory mem mword}.
@@ -249,7 +247,7 @@ Section FlatToRiscv.
 
   Context {RVAX: @AxiomaticRiscv mword _ state State_is_RegisterFile mem _ RVM}.
   
-  Ltac state_calc := state_calc_generic (@name ZName) mword.
+  Ltac state_calc := state_calc_generic Z mword.
 
   (* This phase assumes that register allocation has already been done on the FlatImp
      level, and expects the following to hold: *)
@@ -476,7 +474,7 @@ Section FlatToRiscv.
   *)
   
   Lemma compile_stmt_size: forall s,
-    (length (compile_stmt s) <= 2 * (stmt_size s))%nat.
+    (length (compile_stmt s) <= 2 * (stmt_size _ _ s))%nat.
   Proof.
     induction s; simpl; try destruct op; simpl;
     repeat (rewrite app_length; simpl); try omega.
@@ -937,7 +935,7 @@ Section FlatToRiscv.
     end.
 
   (* TODO is 2^9 really the best we can get? *)
-  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size s) < 2 ^ 9)%Z.
+  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size _ _ s) < 2 ^ 9)%Z.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
@@ -1199,8 +1197,8 @@ Section FlatToRiscv.
   Proof. intros. tauto. Qed.
 
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt ZName ZName} {initialRegs finalRegs: state},
-      eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      {s: stmt} {initialRegs finalRegs: state},
+      eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
     induction fuel; intros; try (simpl in *; discriminate).
@@ -1222,8 +1220,8 @@ Section FlatToRiscv.
   Qed.
 
   Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: @stmt ZName ZName} {initialRegs finalRegs: state},
-      eval_stmt empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      {s: stmt} {initialRegs finalRegs: state},
+      eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len,
         mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
   Proof.
@@ -1255,10 +1253,10 @@ Section FlatToRiscv.
     try eassumption;
     let Eq := fresh "Eq" in
     match goal with
-    | E1: eval_stmt ?env ?f ?r1 ?m1 ?s1 = Some (?r2, ?m2),
-      E2: eval_stmt ?env ?f ?r2 ?m2 ?s2 = Some (?r3, ?m3)
-      |-   eval_stmt ?env _ _ ?m1 _ = Some (_, ?m3)
-      => assert (eval_stmt env (S f) r1 m1 (SSeq s1 s2) = Some (r3, m3)) as Eq
+    | E1: eval_stmt _ _ ?env ?f ?r1 ?m1 ?s1 = Some (?r2, ?m2),
+      E2: eval_stmt _ _ ?env ?f ?r2 ?m2 ?s2 = Some (?r3, ?m3)
+      |-   eval_stmt _ _ ?env _ _ ?m1 _ = Some (_, ?m3)
+      => assert (eval_stmt _ _ env (S f) r1 m1 (SSeq s1 s2) = Some (r3, m3)) as Eq
           by (simpl; rewrite E1; exact E2); exact Eq
     end.
 
@@ -1624,7 +1622,7 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    eval_stmt empty_map fuelH initialH initialMH s = Some (finalH, finalMH) ->
+    eval_stmt _ _ empty_map fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) allInsts imemStart ->
@@ -1787,7 +1785,7 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    eval_stmt empty_map fuelH empty_map initialMH s = Some (finalH, finalMH) ->
+    eval_stmt _ _ empty_map fuelH empty_map initialMH s = Some (finalH, finalMH) ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) insts imemStart ->
     initialL.(core).(pc) = imemStart ->
@@ -1821,7 +1819,6 @@ Section FlatToRiscv.
       + rewrite app_nil_r. rewrite app_nil_l. subst *. assumption.
       + simpl. subst imemStart.
         rewrite Zlength_nil.
-        unfold name, ZName in *.
         ring.
       + assumption.
       + rewrite app_nil_r. rewrite app_nil_l. subst *. assumption.
@@ -1837,7 +1834,6 @@ Section FlatToRiscv.
           end
       end.
       exists fuel. unfold execState.
-      change (@name ZName) with Z in *.
       change Register with Z in *.
       rewrite E.
       exact Q.

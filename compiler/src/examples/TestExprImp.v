@@ -5,7 +5,7 @@ Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.StateCalculus.
-Require Import compiler.NameWithEq.
+Require Import compiler.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import riscv.MachineWidth32.
 Require Import compiler.util.List_Map.

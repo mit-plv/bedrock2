@@ -105,10 +105,11 @@ Ltac specialize_with E :=
     end
   end.
 
-Tactic Notation "unique" "apply" constr(p) "in" "copy" "of" ident(H) :=
-  let H' := fresh H "uac" in
+Tactic Notation "unique" "eapply" constr(p) "in" "copy" "of" ident(H) :=
+  let H' := fresh H "_uac" in
   pose proof H as H';
-  apply p in H';
+  unshelve eapply p in H';
+  try assumption;
   ensure_new H'.
 
 Ltac deep_destruct H :=
@@ -122,14 +123,13 @@ Ltac deep_destruct H :=
 (* simplify an "if then else" where only one branch is possible *)
 Ltac simpl_if :=
   let E := fresh "E" in
-  let a := fresh "a" in
   match goal with
-  | |- context[if ?e then _ else _]      => destruct e as [a|a] eqn: E; [contradiction|]
-  | |- context[if ?e then _ else _]      => destruct e as [a|a] eqn: E; [|contradiction]
-  | _: context[if ?e then _ else _] |- _ => destruct e as [a|a] eqn: E; [contradiction|]
-  | _: context[if ?e then _ else _] |- _ => destruct e as [a|a] eqn: E; [|contradiction]
+  | |- context[if ?e then _ else _]      => destruct e eqn: E; [contradiction|]
+  | |- context[if ?e then _ else _]      => destruct e eqn: E; [|contradiction]
+  | _: context[if ?e then _ else _] |- _ => destruct e eqn: E; [contradiction|]
+  | _: context[if ?e then _ else _] |- _ => destruct e eqn: E; [|contradiction]
   end;
-  clear E a.
+  clear E.
 
 Ltac rewrite_match :=
   repeat match goal with

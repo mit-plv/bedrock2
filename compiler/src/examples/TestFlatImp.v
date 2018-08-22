@@ -4,16 +4,17 @@ Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.Memory.
-Require Import compiler.NameWithEq.
+Require Import compiler.Decidable.
 Require Import riscv.util.BitWidth32.
 Require Import compiler.util.List_Map.
 Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
-Require Import compiler.ZName.
 Require Import riscv.MachineWidth32.
 
 
-Definition var: Set := (@name ZName). (* only inside this test module *)
+Definition var: Set := Z. (* only inside this test module *)
+Definition func: Set := Z.
+Notation stmt := (stmt var func).
 
 Definition _n := 0%Z.
 Definition _a := 1%Z.
@@ -34,7 +35,7 @@ loop:
  *)
 
 
-Example fib(n: Z) :=
+Example fib(n: Z): stmt  :=
   SSeq (SLit _one 1) (
   SSeq (SLit _n n) (
   SSeq (SLit _a 0) (
@@ -48,10 +49,10 @@ Example fib(n: Z) :=
   )))).
 
 Definition annoying_eq: DecidableEq
-  (list (@name ZName) * list (@name ZName) * @stmt ZName ZName). Admitted.
+  (list var * list func * stmt). Admitted.
 Existing Instance annoying_eq.
 
-Definition eval_stmt_test fuel initialSt := @eval_stmt (word 32) _ ZName ZName _ (List_Map _ _) empty_map fuel initialSt no_mem.
+Definition eval_stmt_test fuel initialSt := @eval_stmt (word 32) _ _ _ _ (List_Map _ _) empty_map fuel initialSt no_mem.
 
 Example finalFibState(n: Z) := (eval_stmt_test 100 empty_map (fib n)).
 Example finalFibVal(n: Z): option (word 32) := match finalFibState n with
