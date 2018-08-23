@@ -1,10 +1,5 @@
 Require Import riscv.Utility.
-
-Module bopname.
-  Inductive bopname := add | sub | mul | and | or | xor | sru | slu | srs | lts | ltu | eq.
-End bopname.
-
-Notation bopname := bopname.bopname.
+Require Export bedrock2.Basic_bopnames.
 
 Definition eval_binop{t: Set}{MW: MachineWidth t}(op: bopname)(v1 v2: t): t :=
   match op with

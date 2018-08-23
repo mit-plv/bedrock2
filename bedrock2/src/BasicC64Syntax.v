@@ -3,12 +3,11 @@ Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU bedrock2.String.
 
 Require Import Coq.Strings.String Coq.Numbers.DecimalZ Coq.Numbers.DecimalString.
 
-Module Import bopname.
-  Inductive bopname := add | sub | mul | and | or | xor | sru | slu | srs | lts | ltu | eq.
-End bopname.
+Require Export bedrock2.Basic_bopnames.
+Import bedrock2.Basic_bopnames.bopname.
 
 Definition params : bedrock2.StringNamesSyntax.parameters := {|
-  StringNamesSyntax.bopname := bopname;
+  StringNamesSyntax.bopname := bedrock2.Basic_bopnames.bopname;
   StringNamesSyntax.actname := string
 |}.
 
