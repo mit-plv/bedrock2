@@ -43,21 +43,21 @@ Notation "'if' ( e ) { { c } }" := (cmd.cond e%bedrock_expr c%bedrock_cmd cmd.sk
 Notation "'while' ( e ) { { c } }" := (cmd.while e%bedrock_expr c%bedrock_cmd)
  (at level 76, no associativity, c at level 76, format "'[v' 'while'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_cmd.
 
-Delimit Scope bedrock_func with bedrock_func.
-Notation "'require' ( e ) 'else' { { ce } } c" := (cmd.cond e%bedrock_expr c%bedrock_func%bedrock_cmd ce%bedrock_cmd)
- (at level 76, right associativity, ce at level 76, c at level 76, format "'[v' 'require'  ( e )  'else'  { { '/  '  ce '/' } } '//' c ']'") : bedrock_func.
-Notation "c1 ; c2" := (cmd.seq c1%bedrock_cmd c2%bedrock_func%bedrock_cmd)
-  (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_func.
+Delimit Scope bedrock_func_body with bedrock_func_body.
+Notation "'require' ( e ) 'else' { { ce } } c" := (cmd.cond e%bedrock_expr c%bedrock_func_body%bedrock_cmd ce%bedrock_cmd)
+ (at level 76, right associativity, ce at level 76, c at level 76, format "'[v' 'require'  ( e )  'else'  { { '/  '  ce '/' } } '//' c ']'") : bedrock_func_body.
+Notation "c1 ; c2" := (cmd.seq c1%bedrock_cmd c2%bedrock_func_body%bedrock_cmd)
+  (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_func_body.
 Notation "'while' ( e ) { { c } }" := (cmd.while e%bedrock_expr c%bedrock_cmd)
-  (at level 76, no associativity, c at level 76, format "'[v' 'while'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func.
-Notation "'if' ( e ) { { c1 } } 'else' { { c2 } }" := (cmd.cond e%bedrock_expr c1%bedrock_func c2%bedrock_func)
- (at level 76, no associativity, c1 at level 76, c2 at level 76, format "'[v' 'if'  ( e )  { {  '/  ' c1 '/' } }  'else'  { {  '/  ' c2 '/' } } ']'") : bedrock_func.
-Notation "'if' ( e ) { { c } }" := (cmd.cond e%bedrock_expr c%bedrock_func cmd.skip)
- (at level 76, no associativity, c at level 76, format "'[v' 'if'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func.
+  (at level 76, no associativity, c at level 76, format "'[v' 'while'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func_body.
+Notation "'if' ( e ) { { c1 } } 'else' { { c2 } }" := (cmd.cond e%bedrock_expr c1%bedrock_func_body c2%bedrock_func_body)
+ (at level 76, no associativity, c1 at level 76, c2 at level 76, format "'[v' 'if'  ( e )  { {  '/  ' c1 '/' } }  'else'  { {  '/  ' c2 '/' } } ']'") : bedrock_func_body.
+Notation "'if' ( e ) { { c } }" := (cmd.cond e%bedrock_expr c%bedrock_func_body cmd.skip)
+ (at level 76, no associativity, c at level 76, format "'[v' 'if'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func_body.
 
-Definition bedrock_func {p} (x:@cmd p) := x.
-Arguments bedrock_func {_} _%bedrock_func.
-Undelimit Scope bedrock_func.
+Notation "bedrock_func_body: x" := ((x: @cmd _)%bedrock_func_body) (at level 10).
+
+Undelimit Scope bedrock_func_body.
 
 Require Import bedrock2.BasicALU bedrock2.Structs.
 

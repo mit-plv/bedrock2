@@ -16,7 +16,7 @@ Section bsearch.
   Let mid : varname := "mid".
   Let tmp : varname := "tmp".
 
-  Definition bsearch := ((left::right::target::nil), (left::nil), bedrock_func(
+  Definition bsearch := ((left::right::target::nil), (left::nil), bedrock_func_body:(
     while (left < right) {{
       mid = left + (((right-left) >> 4) << 3);
       tmp = *(uint64_t*) mid;

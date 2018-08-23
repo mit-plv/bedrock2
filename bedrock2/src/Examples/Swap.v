@@ -9,13 +9,13 @@ Section bsearch.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
 
-  Definition swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func(
+  Definition swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func_body:(
     "t" = *(uint8_t*) "b";
     *(uint8_t*) "b" = *(uint8_t*) "a";
     *(uint8_t*) "a" = "t"
   )).
 
-  Definition swap_swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func(
+  Definition swap_swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func_body:(
     cmd.call nil "swap" (var "a"::var "b"::nil);
     cmd.call nil "swap" (var "a"::var "b"::nil)
   )).
