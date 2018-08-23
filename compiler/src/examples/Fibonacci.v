@@ -88,8 +88,10 @@ Goal fib_H_res 20 6 = Some (ZToWord 32 13). reflexivity. Qed.
 
 Definition do_regalloc: bool := false.
 
+Definition resVar := var_b.
+
 Definition compileFunc: cmd -> list Instruction :=
-  if do_regalloc then (exprImp2Riscv_with_regalloc Lw Sw) else (exprImp2Riscv Lw Sw).
+  if do_regalloc then (exprImp2Riscv_with_regalloc Lw Sw resVar) else (exprImp2Riscv Lw Sw).
 
 Definition fib_riscv0(n: Z): list Instruction :=
   compileFunc (fib_ExprImp n).

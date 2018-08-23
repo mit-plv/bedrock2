@@ -93,12 +93,16 @@ Section Pipeline.
 
   Definition riscvRegisters: registerset := of_list (List.map Z.of_nat (List.seq 1 31)).
 
-  Definition exprImp2Riscv_with_regalloc(s: Syntax.cmd): list Instruction :=
+  (* convention: there's one single result which is put into register $x1 *)
+  Definition interesting_alloc(resVar: var): map var var := put empty_map resVar resVar.
+  
+  Definition exprImp2Riscv_with_regalloc(resVar: var)(s: Syntax.cmd): list Instruction :=
     FlatToRiscv.compile_stmt LwXLEN SwXLEN
       (register_allocation var var func
                            Register0
                            riscvRegisters
-                           (flatten s)).
+                           (flatten s)
+                           (interesting_alloc resVar)).
 
   Definition evalH := @ExprImp.eval_cmd _ _ _ _.
 
