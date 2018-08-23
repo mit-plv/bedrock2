@@ -1,3 +1,4 @@
+Require Import Coq.NArith.BinNatDef.
 Require Import bedrock2.BasicC64Syntax bedrock2.Semantics.
 Require bedrock2.String bedrock2.Map.UnorderedList.
 Require bbv.Word.
@@ -22,7 +23,7 @@ Instance parameters : parameters := {|
     | bopname.slu => fun w s => Word.wlshift' w (shiftWidth s)
     | bopname.srs => fun w s => Word.wrshifta' w (shiftWidth s)
     | bopname.ltu => fun a b => if Word.wltb a b then Word.wone 64 else Word.wzero 64
-    | bopname.lts => fun a b => if Word.wsltb a b then Word.wone 64 else Word.wzero 64 
+    | bopname.lts => fun a b => if Word.wsltb a b then Word.wone 64 else Word.wzero 64
     | bopname.eq => fun a b => if Word.weq a b then Word.wone 64 else Word.wzero 64
     end;
   (* TODO: bedrock2.Byte, bedrock2.Word8 *)
