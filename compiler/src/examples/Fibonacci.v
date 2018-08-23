@@ -58,11 +58,11 @@ Definition fib_ExprImp(n: Z): cmd :=
   cmd.seq (cmd.set var_a (expr.literal 0)) (
   cmd.seq (cmd.set var_b (expr.literal 1)) (
   cmd.seq (cmd.set var_i (expr.literal 0)) (
-  cmd.while (expr.op OLt (expr.var var_i) (expr.literal n)) (
-    cmd.seq (cmd.set var_c (expr.op OPlus (expr.var var_a) (expr.var var_b))) (
+  cmd.while (expr.op bopname.ltu (expr.var var_i) (expr.literal n)) (
+    cmd.seq (cmd.set var_c (expr.op bopname.add (expr.var var_a) (expr.var var_b))) (
     cmd.seq (cmd.set var_a (expr.var var_b)) (
     cmd.seq (cmd.set var_b (expr.var var_c)) (
-    cmd.seq (cmd.set var_i (expr.op OPlus (expr.var var_i) (expr.literal 1)))
+    cmd.seq (cmd.set var_i (expr.op bopname.add (expr.var var_i) (expr.literal 1)))
     cmd.skip))))))).
 
 Definition state := (var -> option (word 32)).

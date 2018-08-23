@@ -4,6 +4,7 @@ Class operations {p: unique! Syntax.parameters} :=
   {
     bop_add : bopname;
     bop_sub : bopname;
+    bop_mul : bopname;
 
     bop_and : bopname;
     bop_or : bopname;

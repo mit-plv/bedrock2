@@ -42,7 +42,7 @@ Section FlattenExpr.
   Hypothesis actname_empty: Syntax.actname = Empty_set.
 
   (* TODO partially specify this in Semantics parameters *)
-  Hypothesis convert_bopname: @Syntax.bopname (@Semantics.syntax p) -> Op.binop.
+  Hypothesis convert_bopname: @Syntax.bopname (@Semantics.syntax p) -> Op.bopname.
   Hypothesis eval_binop_compat: forall op w w0,
       Op.eval_binop (convert_bopname op) w w0 = Semantics.interp_binop op w w0.
 

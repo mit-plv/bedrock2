@@ -4,7 +4,7 @@ Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU bedrock2.String.
 Require Import Coq.Strings.String Coq.Numbers.DecimalZ Coq.Numbers.DecimalString.
 
 Module Import bopname.
-  Inductive bopname := add | sub | and | or | xor | sru | slu | srs | lts | ltu | eq.
+  Inductive bopname := add | sub | mul | and | or | xor | sru | slu | srs | lts | ltu | eq.
 End bopname.
 
 Definition params : bedrock2.StringNamesSyntax.parameters := {|
@@ -13,7 +13,7 @@ Definition params : bedrock2.StringNamesSyntax.parameters := {|
 |}.
 
 Definition BasicALU : BasicALU.operations :=
-  Build_operations (StringNamesSyntax.make params) add sub and or xor sru slu srs lts ltu eq.
+  Build_operations (StringNamesSyntax.make params) add sub mul and or xor sru slu srs lts ltu eq.
 
 Definition to_c_parameters : ToCString.parameters := {|
   syntax := (StringNamesSyntax.make params);
@@ -22,6 +22,7 @@ Definition to_c_parameters : ToCString.parameters := {|
              match op with
              | add => e1++"+"++e2
              | sub => e1++"-"++e2
+             | mul => e1++"*"++e2
              | and => e1++"&"++e2
              | or => e1++"|"++e2
              | xor => e1++"^"++e2

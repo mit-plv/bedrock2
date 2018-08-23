@@ -37,14 +37,14 @@ Definition _c := 2%Z.
 Definition _isRight := 3%Z.
 
 Definition isRight(x y z: Z) :=
-  cmd.seq (cmd.cond (expr.op OAnd (expr.op OLt (expr.literal y) (expr.literal x)) (expr.op OLt (expr.literal z) (expr.literal x)))
+  cmd.seq (cmd.cond (expr.op bopname.and (expr.op bopname.ltu (expr.literal y) (expr.literal x)) (expr.op bopname.ltu (expr.literal z) (expr.literal x)))
             (cmd.seq (cmd.set _c (expr.literal x)) (cmd.seq (cmd.set _a (expr.literal y)) (cmd.set _b (expr.literal z))))
-            ((cmd.cond (expr.op OAnd (expr.op OLt (expr.literal x) (expr.literal y)) (expr.op OLt (expr.literal z) (expr.literal y)))
+            ((cmd.cond (expr.op bopname.and (expr.op bopname.ltu (expr.literal x) (expr.literal y)) (expr.op bopname.ltu (expr.literal z) (expr.literal y)))
                   (cmd.seq (cmd.set _c (expr.literal y)) (cmd.seq (cmd.set _a (expr.literal x)) (cmd.set _b (expr.literal z))))
                   (cmd.seq (cmd.set _c (expr.literal z)) (cmd.seq (cmd.set _a (expr.literal x)) (cmd.set _b (expr.literal y)))))))
-       (cmd.set _isRight (expr.op OEq (expr.op OPlus (expr.op OTimes (expr.var _a) (expr.var _a))
-                                          (expr.op OTimes (expr.var _b) (expr.var _b)))
-                               (expr.op OTimes (expr.var _c) (expr.var _c)))).
+       (cmd.set _isRight (expr.op bopname.eq (expr.op bopname.add (expr.op bopname.mul (expr.var _a) (expr.var _a))
+                                          (expr.op bopname.mul (expr.var _b) (expr.var _b)))
+                               (expr.op bopname.mul (expr.var _c) (expr.var _c)))).
 
 Definition annoying_eq: DecidableEq
   (list varname * list varname * cmd). Admitted.

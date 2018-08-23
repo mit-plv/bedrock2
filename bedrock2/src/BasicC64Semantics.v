@@ -14,6 +14,7 @@ Instance parameters : parameters := {|
     match bop with
     | bopname.add => @Word.wplus _
     | bopname.sub => @Word.wminus _
+    | bopname.mul => @Word.wmult _
     | bopname.and => @Word.wand _
     | bopname.or => @Word.wor _
     | bopname.xor => @Word.wxor _

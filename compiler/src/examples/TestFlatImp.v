@@ -42,10 +42,10 @@ Example fib(n: Z): stmt  :=
   SSeq (SLit _b 1) (
   SLoop SSkip
         _n
-        (SSeq (SOp _s OPlus _a _b) (
+        (SSeq (SOp _s bopname.add _a _b) (
          SSeq (SSet _a _b) (
          SSeq (SSet _b _s) (
-              (SOp _n OMinus _n _one)))))
+              (SOp _n bopname.sub _n _one)))))
   )))).
 
 Definition annoying_eq: DecidableEq

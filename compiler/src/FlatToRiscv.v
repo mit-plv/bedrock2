@@ -279,14 +279,20 @@ Section FlatToRiscv.
   
   Variable SwXLEN: Register -> Register -> Z -> Instruction.
 
-  Definition compile_op(rd: Register)(op: binop)(rs1 rs2: Register): list Instruction :=
+  Definition compile_op(rd: Register)(op: bopname)(rs1 rs2: Register): list Instruction :=
     match op with
-    | OPlus => [[Add rd rs1 rs2]]
-    | OMinus => [[Sub rd rs1 rs2]]
-    | OTimes => [[Mul rd rs1 rs2]]
-    | OEq => [[Sub rd rs1 rs2; Seqz rd rd]]
-    | OLt => [[Sltu rd rs1 rs2]]
-    | OAnd => [[And rd rs1 rs2]]
+    | bopname.add => [[Add rd rs1 rs2]]
+    | bopname.sub => [[Sub rd rs1 rs2]]
+    | bopname.mul => [[Mul rd rs1 rs2]]
+    | bopname.and => [[And rd rs1 rs2]]
+    | bopname.or  => [[Or  rd rs1 rs2]]
+    | bopname.xor => [[Xor rd rs1 rs2]]
+    | bopname.sru => [[Srl rd rs1 rs2]]
+    | bopname.slu => [[Sll rd rs1 rs2]]
+    | bopname.srs => [[Sra rd rs1 rs2]]
+    | bopname.lts => [[Slt rd rs1 rs2]]
+    | bopname.ltu => [[Sltu rd rs1 rs2]]
+    | bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
     end.
   
   Fixpoint compile_lit_rec(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
@@ -1642,7 +1648,7 @@ Section FlatToRiscv.
     unfold runsToSatisfying in *.
     invert_eval_stmt;
       try match goal with
-          | o: binop |- _ => destruct o (* do this before destruct_containsProgram *)
+          | o: bopname |- _ => destruct o (* do this before destruct_containsProgram *)
           end;
       simpl in *; unfold compile_lit, compile_lit_rec in *;
       destruct_everything.
@@ -1703,11 +1709,17 @@ Section FlatToRiscv.
     - run1step. run1done.
     - run1step. run1done.
     - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1done.
+    - run1step. run1done.
     - run1step. run1step. run1done.
       rewrite reduce_eq_to_sub_and_lt.
       assumption.
-    - run1step. run1done.
-    - run1step. run1done.
 
     - (* SSet *)
       clear IHfuelH.

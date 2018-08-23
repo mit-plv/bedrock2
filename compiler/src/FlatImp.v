@@ -29,7 +29,7 @@ Section FlatImp1.
     | SLoad(x: var)(a: var): stmt
     | SStore(a: var)(v: var): stmt
     | SLit(x: var)(v: Z): stmt
-    | SOp(x: var)(op: binop)(y z: var): stmt
+    | SOp(x: var)(op: bopname)(y z: var): stmt
     | SSet(x y: var): stmt
     | SIf(cond: var)(bThen bElse: stmt): stmt
     | SLoop(body1: stmt)(cond: var)(body2: stmt): stmt
