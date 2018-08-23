@@ -1,6 +1,7 @@
 Require Import bedrock2.Macros bedrock2.Syntax bedrock2.Variables.
 
 Require Import Coq.Numbers.BinNums.
+Require Import Coq.ZArith.BinIntDef.
 Require Import Coq.Strings.String.
 
 Class parameters := {
@@ -30,7 +31,7 @@ Section ToCString.
 
   Fixpoint c_expr (e : expr) : string :=
     match e with
-    | expr.literal v => c_lit v 
+    | expr.literal v => c_lit v
     | expr.var x => c_var x
     | expr.load s ea => "*(" ++ c_size s ++ "*)(" ++ c_expr ea ++ ")"
     | expr.op op e1 e2 => c_bop ("(" ++ c_expr e1 ++ ")") op ("(" ++ c_expr e2 ++ ")")
@@ -52,7 +53,7 @@ Section ToCString.
     match args with
     | nil =>
       f ++ "(" ++ concat ", " es ++ ");" ++ LF
-    | ((x::_)%list as binds)  => 
+    | ((x::_)%list as binds)  =>
       List.last binds x ++ " = " ++ f ++ "(" ++ concat ", " (es ++ List.map (fun x => "&"++x) (List.removelast binds)) ++ ");" ++ LF
     end.
 
