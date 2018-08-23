@@ -129,7 +129,7 @@ Section RegAlloc.
 
   Lemma regalloc_ok: forall (o: vars) (a: registers) (m: alloc) (s: stmt) (l: vars),
       let '(_, _, m') := regalloc o a m s l in
-      injective_over_all_livesets (get m') s.
+      injective_over_all_livesets (get m') s /\ injective_over (get m') l.
   Proof.
   Admitted.
 
@@ -180,51 +180,52 @@ Section RegAlloc.
   Definition eval': nat -> RegisterFile' -> Mem -> stmt' -> option (RegisterFile' * Mem) :=
     FlatImp.eval_stmt register func empty_map.
   
-  Lemma apply_alloc_ok: forall (mapping: var -> register) (fuel: nat) (s: stmt)
+  Lemma apply_alloc_ok: forall (mapping: var -> register) (fuel: nat) (s: stmt) (l: vars)
                           (rf1 rf2: RegisterFile) (rf1': RegisterFile') (m1 m2: Mem),
       injective_over_all_livesets mapping s ->
+      injective_over mapping l ->
       (forall x, x \in (live s) -> get rf1 x = get rf1' (mapping x)) ->
       eval fuel rf1 m1 s = Some (rf2, m2) ->
       exists (rf2': RegisterFile'),        
         eval' fuel rf1' m1 (apply_alloc mapping s) = Some (rf2', m2) /\
-        (forall x, x \in (live s) -> get rf2 x = get rf2' (mapping x)).
-      (* TODO this should not be "live" above, but "live after s" *)
+        (forall x, x \in l -> get rf2 x = get rf2' (mapping x)).
   Proof.
   Admitted.
 
   Variable available_registers: registers. (* r1..r31 on RISCV *)
 
-  Definition register_mapping(s: stmt): var -> register :=
-    let '(_, _, m) := regalloc empty_set available_registers empty_map s empty_set in
+  (* c: mapping of registers we care about at end (which contain results we want to read) *)
+  Definition register_mapping(s: stmt)(c: alloc): var -> register :=
+    let '(_, _, m) := regalloc empty_set (diff available_registers (range c)) c s (domain c) in
     (make_total m).
 
-  Definition register_allocation(s: stmt): stmt' :=
-    apply_alloc (register_mapping s) s.
+  Definition register_allocation(s: stmt)(c: alloc): stmt' :=
+    apply_alloc (register_mapping s c) s.
 
-  Lemma register_allocation_ok: forall (fuel: nat) (s: stmt)
+  Lemma register_allocation_ok: forall (fuel: nat) (s: stmt) (c: alloc)
                                   (rf1 rf2: RegisterFile) (rf1': RegisterFile') (m1 m2: Mem),
-      (forall x, get rf1 x = get rf1' (register_mapping s x)) ->
+      (forall x, get rf1 x = get rf1' (register_mapping s c x)) ->
       eval fuel rf1 m1 s = Some (rf2, m2) ->
       exists (rf2': RegisterFile'),
-        eval' fuel rf1' m1 (register_allocation s) = Some (rf2', m2) /\
-        (forall x, get rf2 x = get rf2' (register_mapping s x)).
+        eval' fuel rf1' m1 (register_allocation s c) = Some (rf2', m2) /\
+        (forall x, x \in domain c -> get rf2 x = get rf2' (register_mapping s c x)).
   Proof.
     intros.
-    pose proof (apply_alloc_ok (register_mapping s) fuel s rf1 rf2 rf1' m1 m2) as P.
-    specialize P with (3 := H0).
+    pose proof (regalloc_ok empty_set (diff available_registers (range c)) c s (domain c)) as Q.
+    destruct (regalloc empty_set (diff available_registers (range c)) c s (domain c))
+      as [[? ?] m'] eqn: E.
+    destruct Q as [I1 I2].
+    pose proof (apply_alloc_ok (register_mapping s c) fuel s (domain c) rf1 rf2 rf1' m1 m2) as P.
+    specialize P with (4 := H0).
     destruct P as [rf2' [Ev Eq]].
     - unfold register_mapping.
-      pose proof (regalloc_ok empty_set available_registers empty_map s empty_set) as P.
-      destruct (regalloc empty_set available_registers empty_map s empty_set)
-        as [[? ?] m'] eqn: E.
+      rewrite E.
+      admit. (* lift make_total over injective_over_all_livesets *)
+    - unfold register_mapping.
+      rewrite E.
       admit. (* lift make_total over injective_over_all_livesets *)
     - intros. apply H.
-    - exists rf2'. split; [assumption|].
-      (* doesn't hold as such. TODO change the signature of register_allocation
-         to include a set of variables whose result & mapping we care about
-         (they'll go into l and the initial mapping, respectively),
-         and then state that the register files will only be equal on those we care about *)
-      admit.
+    - eauto.
   Admitted.
 
 End RegAlloc.
