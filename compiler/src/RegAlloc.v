@@ -2,10 +2,14 @@ Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import compiler.Decidable.
+Require Import compiler.Memory.
 Require Import riscv.util.BitWidths.
 Require Import Coq.Lists.List.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
+
+Definition injective_over{A B: Type}{sf: SetFunctions A}(f: A -> B)(s: set A): Prop :=
+  forall a1 a2, a1 \in s -> a2 \in s -> f a1 = f a2 -> a1 = a2.
 
 
 Section RegAlloc.
@@ -64,6 +68,19 @@ Section RegAlloc.
     | SCall argnames fname resnames => of_list argnames
     end.
 
+  Definition holds_forall_livesets(P: vars -> Prop): stmt -> Prop :=
+    fix rec(s: stmt) :=
+      P (live s) /\
+      match s with
+      (* recursive cases: *)
+      | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => rec s1 /\ rec s2
+      (* non-recursive cases: *)
+      | _ => True
+      end.
+
+  Definition injective_over_all_livesets{B: Type}(f: var -> B): stmt -> Prop :=
+    holds_forall_livesets (fun liveset => injective_over f liveset).
+
   Variable dummy_register: register.
 
   Definition start_interval(current: vars * registers * alloc)(x: var)
@@ -110,6 +127,12 @@ Section RegAlloc.
     | SCall argnames fname resnames => fold_left start_interval resnames (o, a, m) 
     end.
 
+  Lemma regalloc_ok: forall (o: vars) (a: registers) (m: alloc) (s: stmt) (l: vars),
+      let '(_, _, m') := regalloc o a m s l in
+      injective_over_all_livesets (get m') s.
+  Proof.
+  Admitted.
+
   Inductive inspect{T: Type}: T -> Prop := .
 
   Goal forall o a m l cond s1 s2 s3, inspect (regalloc o a m (SSeq (SIf cond s1 s2) s3) l).
@@ -140,10 +163,68 @@ Section RegAlloc.
       | SCall argnames fname resnames => SCall (List.map m argnames) fname (List.map m resnames)
       end.
 
+  Context {RF: MapFunctions var mword}.
+  Notation RegisterFile := (map var mword).
+
+  Context {RF': MapFunctions register mword}.
+  Notation RegisterFile' := (map register mword).
+
+  Notation Mem := (@mem mword).
+
+  Context {funcMap: MapFunctions func (list var * list var * stmt)}.
+  Context {funcMap': MapFunctions func (list register * list register * stmt')}.
+  
+  Definition eval: nat -> RegisterFile -> Mem -> stmt -> option (RegisterFile * Mem) :=
+    FlatImp.eval_stmt var func empty_map.
+
+  Definition eval': nat -> RegisterFile' -> Mem -> stmt' -> option (RegisterFile' * Mem) :=
+    FlatImp.eval_stmt register func empty_map.
+  
+  Lemma apply_alloc_ok: forall (mapping: var -> register) (fuel: nat) (s: stmt)
+                          (rf1 rf2: RegisterFile) (rf1': RegisterFile') (m1 m2: Mem),
+      injective_over_all_livesets mapping s ->
+      (forall x, x \in (live s) -> get rf1 x = get rf1' (mapping x)) ->
+      eval fuel rf1 m1 s = Some (rf2, m2) ->
+      exists (rf2': RegisterFile'),        
+        eval' fuel rf1' m1 (apply_alloc mapping s) = Some (rf2', m2) /\
+        (forall x, x \in (live s) -> get rf2 x = get rf2' (mapping x)).
+      (* TODO this should not be "live" above, but "live after s" *)
+  Proof.
+  Admitted.
+
   Variable available_registers: registers. (* r1..r31 on RISCV *)
 
-  Definition register_allocation(s: stmt): stmt' :=
+  Definition register_mapping(s: stmt): var -> register :=
     let '(_, _, m) := regalloc empty_set available_registers empty_map s empty_set in
-    apply_alloc (make_total m) s.
+    (make_total m).
+
+  Definition register_allocation(s: stmt): stmt' :=
+    apply_alloc (register_mapping s) s.
+
+  Lemma register_allocation_ok: forall (fuel: nat) (s: stmt)
+                                  (rf1 rf2: RegisterFile) (rf1': RegisterFile') (m1 m2: Mem),
+      (forall x, get rf1 x = get rf1' (register_mapping s x)) ->
+      eval fuel rf1 m1 s = Some (rf2, m2) ->
+      exists (rf2': RegisterFile'),
+        eval' fuel rf1' m1 (register_allocation s) = Some (rf2', m2) /\
+        (forall x, get rf2 x = get rf2' (register_mapping s x)).
+  Proof.
+    intros.
+    pose proof (apply_alloc_ok (register_mapping s) fuel s rf1 rf2 rf1' m1 m2) as P.
+    specialize P with (3 := H0).
+    destruct P as [rf2' [Ev Eq]].
+    - unfold register_mapping.
+      pose proof (regalloc_ok empty_set available_registers empty_map s empty_set) as P.
+      destruct (regalloc empty_set available_registers empty_map s empty_set)
+        as [[? ?] m'] eqn: E.
+      admit. (* lift make_total over injective_over_all_livesets *)
+    - intros. apply H.
+    - exists rf2'. split; [assumption|].
+      (* doesn't hold as such. TODO change the signature of register_allocation
+         to include a set of variables whose result & mapping we care about
+         (they'll go into l and the initial mapping, respectively),
+         and then state that the register files will only be equal on those we care about *)
+      admit.
+  Admitted.
 
 End RegAlloc.
