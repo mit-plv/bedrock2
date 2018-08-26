@@ -6,12 +6,15 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Section StructAccess.
   Context {p : Syntax.parameters} {bp : BasicALU.operations}.
 
-  Definition item : type := inr (Struct (
-    ("a", inl 1)::
-    ("b", inl 2)::
-    nil)).
+  Definition item : type :=
+    Struct (
+    ("a", Bytes 1)::
+    ("b", Bytes 2)::
+    nil).
 
   Context (dst src : expr).
+
+  Let f := @Field expr.expr.
 
   Example example_expr : expr :=
     &field "b" of item at (dst as item *> "b" as item *> "a").

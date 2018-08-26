@@ -3,7 +3,7 @@ default_target: all
 
 .PHONY: clean force all
 
-VS:=$(shell find . -type f -name '*.v')
+VS:=$(shell find src -type f -name '*.v')
 
 DEPS_DIR ?= ../deps
 

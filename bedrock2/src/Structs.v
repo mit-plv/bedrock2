@@ -1,74 +1,133 @@
+Require Coq.Lists.List.
 Require Import bedrock2.Macros bedrock2.Syntax bedrock2.BasicALU.
 
 Require Import Coq.ZArith.BinInt.
 Require Import Coq.Strings.String.
 Require bedrock2.String.
-  
-  Inductive struct :=
-| Struct (_ : list (string * (Z + struct))).
-Definition type : Type := Z + struct.
 
-Fixpoint sizeof_struct (s : struct) {struct s} : Z :=
+Inductive type :=
+| Struct (_ : list (string * type))
+| Array  (_ : nat) (_ : type)
+| Bytes  (_ : Z).
+
+Fixpoint sizeof (s : type) {struct s} : Z :=
   match s with
-  | (Struct ls) =>
-    (fix sizeof_fields (l : list _) {struct l} : Z :=
-       match l with
-       | nil => 0%Z
-       | cons (_, f) l' =>
-         Z.add (match f with inl s => s | inr s' => sizeof_struct s' end)
-               (sizeof_fields l')
-       end
-    ) ls
+  | Struct ls =>
+    let sizes := List.map (fun '(_,t) => sizeof t) ls in
+    List.fold_left Z.add sizes 0%Z
+  | Array n t => Z.of_nat n * sizeof t
+  | Bytes z => z
   end.
 
-Definition sizeof (s:type) : Z :=
+Definition is_scalar (s : type) : option Z :=
   match s with
-  | inl s => s
-  | inr s => sizeof_struct s
+  | Bytes n => Some n
+  | _ => None
   end.
 
-Definition slookup (field : string) (s : struct) : option (Z * type) :=
-  match s with
-  | (Struct ls) =>
-    (fix llookup (l : list _) {struct l} : option (Z * type) :=
-       match l with
-       | nil => None
-       | cons (f, ftype) l' =>
-         if String.eqb f field
-         then Some (0, ftype)
-         else match llookup l' with
-              | None => None
-              | Some (o, t) => Some (Z.add (sizeof ftype) o, t)
-              end
-       end
-    ) ls
-  end%Z.
+Inductive path_fragment {e : Type} :=
+| Sub   (_ : e)
+| Field (_ : string).
+Arguments path_fragment _ : clear implicits.
 
-Fixpoint rlookup fieldnames (s : type) : option (Z * type) :=
-  match fieldnames, s with
-  | nil, r => Some (0, r)
-  | cons f fieldnames', inr s =>
-    match slookup f s with
-    | None => None
-    | Some (o, s') =>
-      match rlookup fieldnames' s' with
-      | None => None
-      | Some (o', s') => Some (Z.add o o', s')
+Definition path e := list (path_fragment e).
+
+Section path_lookup.
+  Context {T : Type} (ksuccess : Z -> type -> T) (kerr : T).
+
+  Fixpoint field_lookup (offset : Z) (f : string) (l : list (string * type))
+           {struct l}
+  : T :=
+    match l with
+    | nil => kerr
+    | cons (n, t) ls =>
+      if String.eqb f n
+      then ksuccess offset t
+      else field_lookup (sizeof t + offset) f ls
+    end.
+
+  Definition path_fragment_lookup (field : path_fragment Z) (s : type) : T :=
+    match s , field with
+    | Struct s , Field f =>
+      field_lookup 0 f s
+    | Array n t , Sub i =>
+      if Z.ltb i (Z.of_nat n)
+      then ksuccess (Z.mul i (sizeof t)) t
+      else kerr
+    | _ , _ => kerr
+    end.
+End path_lookup.
+
+Inductive PathError {T} : Type :=
+  mk_PathError (t : type) (f : path_fragment T).
+Arguments PathError _ : clear implicits.
+Inductive NotAScalar : Type :=
+  mk_NotAScalar (t : type).
+
+Fixpoint path_lookup (o : Z) (p : path Z) (s : type)
+: PathError _ + (type * Z) :=
+  match p with
+  | nil => inr (s, o)
+  | cons f fs =>
+    path_fragment_lookup
+      (fun o' t => path_lookup (o' + o) fs t)
+      (inl (mk_PathError s f)) f s
+  end.
+
+Section syntax.
+  Context {p : unique! parameters}.
+  Variable bop_add : bopname.
+  Variable bop_mul : bopname.
+
+  Fixpoint gen_access (e : expr.expr) (t : type) (fs : path expr.expr)
+  : PathError _ + (type * expr.expr) :=
+    match fs with
+    | nil => inr (t, e)
+    | cons f fs =>
+      match f , t with
+      | Sub i , Array _ t =>
+        let offset_e := expr.op bop_mul i (expr.literal (sizeof t)) in
+        let e := expr.op bop_add e offset_e in
+        gen_access e t fs
+      | Field n , Struct fields =>
+        let success offset t' :=
+            gen_access (expr.op bop_add e (expr.literal offset)) t' fs
+        in
+        path_fragment_lookup success (inl (mk_PathError t f))
+                             (Field n) (Struct fields)
+      | _ , _ => inl (mk_PathError t f)
       end
-    end
-  | _, _ => None
-  end%Z.
+    end.
+End syntax.
 
-Inductive NO_SUCH_FIELD {T} (ctx:T) : Set := mk_NO_SUCH_FIELD.
-Inductive TYPE_IS_NOT_SCALAR {T} (ctx:T) : Set := mk_TYPE_IS_NOT_SCALAR.
-Definition scalar {T} (ctx : T) (r :  option (Z * type)) :
-  match r with
-  | None => NO_SUCH_FIELD ctx
-  | Some (_, inr a) => TYPE_IS_NOT_SCALAR (a, ctx)
-  | Some (n, inl s) => Z * Z
-  end :=
-  match r with
-  | None => mk_NO_SUCH_FIELD ctx
-  | Some (_, inr a) => mk_TYPE_IS_NOT_SCALAR (a, ctx)
-  | Some (n, inl s) => (n, s)
-  end.
+Module demo.
+  Import Coq.Lists.List.
+
+  Local Open Scope list_scope.
+  Local Open Scope string_scope.
+
+  (* some examples *)
+  Example word : type := Bytes 4.
+  Example char_array n : type := Array n (Bytes 1).
+  Example first_last : type :=
+    Struct (("first", char_array 15) :: ("last", char_array 15) :: nil).
+  Example employees : type :=
+    Array 3 first_last.
+
+  Compute sizeof word.
+  Compute sizeof (char_array 20).
+  Compute sizeof first_last.
+  Compute sizeof employees.
+
+  Compute path_lookup 0 (Sub 1 :: nil)%Z employees.
+  Compute path_lookup 0 (Sub 1 :: Field "last" :: nil)%Z employees.
+  Compute path_lookup 0 (Sub 1 :: Field "last" :: Sub 2 :: nil)%Z employees.
+
+  Compute fun p add mul base =>
+            @gen_access p add mul base employees (Sub (expr.literal 1) :: nil).
+  Compute fun p add mul base =>
+            @gen_access p add mul base employees (Sub (expr.literal 1) :: Field "last" :: nil).
+  Compute fun p add mul base =>
+            @gen_access p add mul base employees (Sub (expr.literal 1) :: Field "last" :: Sub (expr.literal 2) :: nil).
+
+End demo.
