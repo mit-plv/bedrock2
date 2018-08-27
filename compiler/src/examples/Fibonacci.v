@@ -252,7 +252,7 @@ Admitted.
     | match ?x with _ => _ end = _  => replace x with (Some (finalH, finalMH)) in R
     end.
     assumption.
-Qed.    
+Qed.
 *)
 
 Print Assumptions fib6_L_res_is_13_by_proving_it.

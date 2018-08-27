@@ -8,8 +8,20 @@ Require Import Coq.Lists.List.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
 
-Definition injective_over{A B: Type}{sf: SetFunctions A}(f: A -> B)(s: set A): Prop :=
-  forall a1 a2, a1 \in s -> a2 \in s -> f a1 = f a2 -> a1 = a2.
+Section Injective.
+
+  Context {A B: Type} {sf: SetFunctions A}.
+
+  Definition injective_over(f: A -> B)(s: set A): Prop :=
+    forall a1 a2, a1 \in s -> a2 \in s -> f a1 = f a2 -> a1 = a2.
+
+  Lemma injective_over_union: forall (f: A -> B) (s1 s2: set A),
+      injective_over f (union s1 s2) -> injective_over f s1 /\ injective_over f s2.
+  Proof.
+    unfold injective_over; intuition (set_solver_generic A).
+  Qed.
+
+End Injective.
 
 
 Section RegAlloc.
@@ -124,13 +136,67 @@ Section RegAlloc.
         let '(o, a, m) := regalloc o a m s1 (union (live s2) l) in
         regalloc o a m s2 l
     | SSkip => (o, a, m)
-    | SCall argnames fname resnames => fold_left start_interval resnames (o, a, m) 
+    | SCall argnames fname resnames => fold_left start_interval resnames (o, a, m)
     end.
 
-  Lemma regalloc_ok: forall (o: vars) (a: registers) (m: alloc) (s: stmt) (l: vars),
-      let '(_, _, m') := regalloc o a m s l in
+  Ltac head e :=
+    match e with
+    | ?a _ => head a
+    | _ => e
+    end.
+
+  Goal forall (s: stmt), False.
+    intro s.
+    destruct s eqn: E;
+    match type of E with
+    | _ = ?r => let h := head r in idtac "| set ( case :=" h ")"
+    end.
+  Abort.
+
+  Lemma regalloc_ok: forall  (s: stmt) (l: vars) (o o': vars) (a a': registers) (m m': alloc),
+      injective_over (get m) o ->
+      injective_over (get m) l ->
+      subset (live s) o ->
+      regalloc o a m s l = (o', a', m') ->
       injective_over_all_livesets (get m') s /\ injective_over (get m') l.
   Proof.
+    induction s;
+      intros;
+      [ set ( case := @SLoad )
+      | set ( case := @SStore )
+      | set ( case := @SLit )
+      | set ( case := @SOp )
+      | set ( case := @SSet )
+      | set ( case := @SIf )
+      | set ( case := @SLoop )
+      | set ( case := @SSeq )
+      | set ( case := @SSkip )
+      | set ( case := @SCall ) ];
+      move case at top;
+      repeat destruct_one_match;
+      simpl in *;
+      repeat destruct_one_match_hyp;
+      try destruct_pair_eqs;
+      subst.
+
+   (*   unfold injective_over in * *)
+   (*   try solve [ intuition (state_calc_generic var register) ]. *)
+
+    Focus 11.
+    {
+      repeat match goal with
+      | IH: _, E: regalloc _ _ _ _ _  = (_, _, _) |- _ => specialize IH with (4 := E)
+      end.
+
+      clear E H2.
+      destruct IHs1.
+      - clear IHs2.
+        unfold injective_over (* in * *).
+        intros.
+        set_solver_generic var.
+        + unfold injective_over in *.
+          specialize H with (3 := H4).
+          specialize H0 with (3 := H4).
   Admitted.
 
   Inductive inspect{T: Type}: T -> Prop := .
@@ -173,20 +239,20 @@ Section RegAlloc.
 
   Context {funcMap: MapFunctions func (list var * list var * stmt)}.
   Context {funcMap': MapFunctions func (list register * list register * stmt')}.
-  
+
   Definition eval: nat -> RegisterFile -> Mem -> stmt -> option (RegisterFile * Mem) :=
     FlatImp.eval_stmt var func empty_map.
 
   Definition eval': nat -> RegisterFile' -> Mem -> stmt' -> option (RegisterFile' * Mem) :=
     FlatImp.eval_stmt register func empty_map.
-  
+
   Lemma apply_alloc_ok: forall (mapping: var -> register) (fuel: nat) (s: stmt) (l: vars)
                           (rf1 rf2: RegisterFile) (rf1': RegisterFile') (m1 m2: Mem),
       injective_over_all_livesets mapping s ->
       injective_over mapping l ->
       (forall x, x \in (live s) -> get rf1 x = get rf1' (mapping x)) ->
       eval fuel rf1 m1 s = Some (rf2, m2) ->
-      exists (rf2': RegisterFile'),        
+      exists (rf2': RegisterFile'),
         eval' fuel rf1' m1 (apply_alloc mapping s) = Some (rf2', m2) /\
         (forall x, x \in l -> get rf2 x = get rf2' (mapping x)).
   Proof.
@@ -211,21 +277,27 @@ Section RegAlloc.
         (forall x, x \in domain c -> get rf2 x = get rf2' (register_mapping s c x)).
   Proof.
     intros.
-    pose proof (regalloc_ok empty_set (diff available_registers (range c)) c s (domain c)) as Q.
+    pose proof (regalloc_ok s (domain c)) as Q.
     destruct (regalloc empty_set (diff available_registers (range c)) c s (domain c))
       as [[? ?] m'] eqn: E.
+    specialize Q with (o := empty_set) (a := (diff available_registers (range c))) (m := c).
+    specialize Q with (4 := E).
     destruct Q as [I1 I2].
-    pose proof (apply_alloc_ok (register_mapping s c) fuel s (domain c) rf1 rf2 rf1' m1 m2) as P.
-    specialize P with (4 := H0).
-    destruct P as [rf2' [Ev Eq]].
-    - unfold register_mapping.
-      rewrite E.
-      admit. (* lift make_total over injective_over_all_livesets *)
-    - unfold register_mapping.
-      rewrite E.
-      admit. (* lift make_total over injective_over_all_livesets *)
-    - intros. apply H.
-    - eauto.
+    - admit.
+    - admit.
+    - admit.
+    - pose proof (apply_alloc_ok (register_mapping s c) fuel s (domain c) rf1 rf2 rf1' m1 m2)
+        as P.
+      specialize P with (4 := H0).
+      destruct P as [rf2' [Ev Eq]].
+      + unfold register_mapping.
+        rewrite E.
+        admit. (* lift make_total over injective_over_all_livesets *)
+      + unfold register_mapping.
+        rewrite E.
+        admit. (* lift make_total over injective_over_all_livesets *)
+      + intros. apply H.
+      + eauto.
   Admitted.
 
 End RegAlloc.
