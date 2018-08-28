@@ -25,9 +25,7 @@ Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
 Open Scope Z_scope.
-Require Import bbv.Word.
-Import ArithmeticNotations.
-Local Open Scope word_scope.
+
 
 Definition var: Set := Z.
 Definition Reg: Set := Z.
@@ -65,13 +63,13 @@ Definition fib_ExprImp(n: Z): cmd :=
     cmd.seq (cmd.set var_i (expr.op bopname.add (expr.var var_i) (expr.literal 1)))
     cmd.skip))))))).
 
-Definition state := (var -> option (word 32)).
+Definition state := (var -> option word).
 
 Definition name := Z.
 
 Instance fooo: MapFunctions name (list name * list name * cmd). Admitted.
 
-Definition fib_H_res(fuel: nat)(n: Z): option (word 32) :=
+Definition fib_H_res(fuel: nat)(n: Z): option word :=
   match (eval_cmd empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with
   | Some (st, m) => Map.get st var_b
   | None => None
@@ -104,7 +102,7 @@ Import riscv.InstructionNotations.
 
 Print fib6_riscv.
 
-Definition fib6_bits: list (word 32) :=
+Definition fib6_bits: list word :=
   List.map (fun i => ZToWord 32 (encode i)) fib6_riscv.
 
 Eval cbv in fib6_bits.
@@ -128,7 +126,7 @@ Definition zeroedRiscvMachine: RiscvMachine := {|
     machineMem := @zero_mem ((Memory.Zlength fib6_riscv + 1) * 4);
 |}.
 
-Definition initialRiscvMachine(imem: list (word 32)): RiscvMachine :=
+Definition initialRiscvMachine(imem: list word): RiscvMachine :=
   Minimal.putProgram imem (ZToWord 32 0) zeroedRiscvMachine.
 
 Definition zeroedRiscvMachineL: RiscvMachineL := {|
@@ -136,7 +134,7 @@ Definition zeroedRiscvMachineL: RiscvMachineL := {|
     log := nil;
 |}.
 
-Definition initialRiscvMachineL(imem: list (word 32)): RiscvMachineL :=
+Definition initialRiscvMachineL(imem: list word): RiscvMachineL :=
   putProgram imem (ZToWord 32 0) zeroedRiscvMachineL.
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
@@ -151,16 +149,16 @@ Definition fib6_L_final(fuel: nat): RiscvMachine :=
 Definition fib6_L_finalL(fuel: nat): RiscvMachineL :=
   snd (runL fuel (initialRiscvMachineL fib6_bits)).
 
-Definition force_option(o: option (word 32)): word 32 :=
+Definition force_option(o: option word): word :=
   match o with
   | Some w => w
   | None => ZToWord 32 0
   end.
 
-Definition fib6_L_res(fuel: nat): word 32 :=
+Definition fib6_L_res(fuel: nat): word :=
   force_option (Map.get (fib6_L_final fuel).(core).(registers) var_b).
 
-Definition fib6_L_resL(fuel: nat): word 32 :=
+Definition fib6_L_resL(fuel: nat): word :=
   force_option (Map.get (fib6_L_finalL fuel).(machine).(core).(registers) var_b).
 
 Definition fib6_L_trace(fuel: nat): Log :=
