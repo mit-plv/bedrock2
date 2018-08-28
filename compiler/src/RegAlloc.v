@@ -21,8 +21,188 @@ Section Injective.
     unfold injective_over; intuition (set_solver_generic A).
   Qed.
 
+  Lemma injective_over_union': forall (f: A -> B) (s1 s2: set A),
+      injective_over f (union s1 s2) -> injective_over f s1 /\ injective_over f s2.
+  Proof.
+    unfold injective_over.
+    setoid_rewrite union_spec.
+
+
+Require Import Coq.Logic.Classical_Prop.
+
+Definition marker(P: Prop): Prop := P.
+Definition marker2(P: Prop): Prop := P.
+
+Lemma EE: forall AA (P: AA -> Prop), (exists a: AA, ~ P a) <-> ~ forall (a: AA), P a.
+Proof.
+  intros. split.
+  - intros. destruct H as [a H]. intro. apply H. auto.
+  - intro. destruct (classic (exists a : AA, ~ P a)) as [C | C]; [assumption|].
+    exfalso. apply H. intro. destruct (classic (P a)) as [D | D]; [assumption |].
+    exfalso. apply C. exists a. assumption.
+Qed.
+
+Lemma K: forall (P Q: Prop), (~ marker (P -> Q)) <-> marker (~ (P -> Q)).
+Proof.
+  cbv [marker]. intros. reflexivity.
+Qed.
+
+Axiom R: set A = (A -> Prop).
+
+Ltac countZ t :=
+  lazymatch t with
+  | forall (x: Z), @?t' x =>
+    let a := eval cbv beta in (t' 0) in
+        let r := countZ a in constr:(S r)
+  | _ => constr:(O)
+  end.
+
+Ltac repeatN N f :=
+  match N with
+  | S ?n => f; repeatN n f
+  | O => idtac
+  end.
+
+Definition Func(A B: Type) := A -> B.
+
+intros f s1 s2.
+change (Func A B) in f.
+
+match goal with
+| |- ?G => change (marker G)
+end.
+revert s2. revert s1. revert f.
+  match goal with
+  | |- ?P => assert (~P); [|admit]
+  end.
+
+do 3 (setoid_rewrite <- EE).
+setoid_rewrite K.
+
+  match goal with
+  | |- ?P => change (marker2 P)
+  end.
+
+Notation "'forall' '((' a 'Int' '))' body" := (forall (a: _), body)
+   (at level 10, body at level 0, format "forall  (( a  Int )) '//' body", only printing).
+
+Notation "'and' A B" := (Logic.and A B) (at level 10, A at level 0, B at level 0).
+Notation "'or' A B" := (Logic.or A B) (at level 10, A at level 0, B at level 0).
+Notation "'implies' A B" := (A -> B) (at level 10, A at level 0, B at level 0).
+Notation "= A B" := (@eq _ A B) (at level 10, A at level 0, B at level 0).
+Notation "E x" := (contains E x) (at level 10, E at level 0, x at level 0, only printing).
+Notation "'not' A" := (not A) (at level 10, A at level 0).
+
+Notation "'(assert' P ')'" := (marker P)
+                                (at level 10, P at level 0,
+                                 format "(assert  P )").
+
+Notation "'(declare-fun' f '(Int)' 'Int)' body" :=
+  (ex (fun (f: Func _ _) => body))
+    (at level 10, body at level 10,
+     format "(declare-fun  f  '(Int)'  'Int)' '//' body").
+
+Notation "'(declare-fun' a '(Int)' 'Bool)' body" :=
+  (ex (fun (a: set _) => body))
+    (at level 10, body at level 10,
+     format "(declare-fun  a  '(Int)'  'Bool)' '//' body").
+
+Notation "x '(check-sat)'" := (marker2 x) (at level 200, format "x '//' '(check-sat)'").
+
+idtac.
+
+(* yields the goal
+
+  (declare-fun a (Int) Int)
+  (declare-fun a0 (Int) Bool)
+  (declare-fun a1 (Int) Bool)
+  (assert (not (implies (forall ((a2 Int))
+                         (forall ((a3 Int))
+                          (implies (or (a0 a2) (a1 a2))
+                           (implies (or (a0 a3) (a1 a3)) (implies (= (a a2) (a a3)) (= a2 a3))))))
+                (and (forall ((a2 Int))
+                      (forall ((a3 Int))
+                       (implies (a0 a2) (implies (a0 a3) (implies (= (a a2) (a a3)) (= a2 a3))))))
+                 (forall ((a2 Int))
+                  (forall ((a3 Int))
+                   (implies (a1 a2) (implies (a1 a3) (implies (= (a a2) (a a3)) (= a2 a3))))))))))
+  (check-sat)
+
+on which Z3 returns "unsat", i.e. no counterexample, as expected. *)
+
+
+(* On the other hand, if we flip the direction of the implication in the lemma, and
+   append (get-model), we get this:
+
+  (declare-fun a (Int) Int)
+  (declare-fun a0 (Int) Bool)
+  (declare-fun a1 (Int) Bool)
+  (assert (not (implies (and (forall ((a2 Int))
+                              (forall ((a3 Int))
+                               (implies (a0 a2)
+                                (implies (a0 a3) (implies (= (a a2) (a a3)) (= a2 a3))))))
+                         (forall ((a2 Int))
+                          (forall ((a3 Int))
+                           (implies (a1 a2)
+                            (implies (a1 a3) (implies (= (a a2) (a a3)) (= a2 a3)))))))
+                (forall ((a2 Int))
+                 (forall ((a3 Int))
+                  (implies (or (a0 a2) (a1 a2))
+                   (implies (or (a0 a3) (a1 a3)) (implies (= (a a2) (a a3)) (= a2 a3)))))))))
+  (check-sat)
+  (get-model)
+
+on which Z3 returns "sat" and a model (counter-example)
+
+*)
+
+
+  Abort.
+
 End Injective.
 
+Notation "｛｝" := (@empty_set _ _) : set_scope.
+
+Notation "｛ x ｝" := (singleton_set x) : set_scope.
+
+Notation "E ∪ F" := (union E F)
+  (at level 37, F at level 0) : set_scope.
+
+Notation "E ∩ F" := (intersect E F)
+  (at level 36, F at level 0) : set_scope.
+
+Notation "E — F" := (diff E F)
+  (at level 35, F at level 0) : set_scope.
+
+Notation "x ∈ E" := (contains x E) (at level 39) : set_scope.
+
+Notation "x ∉ E" := (~ contains x E) (at level 39) : set_scope.
+
+Notation "E ⊆ F" := (subset E F)
+  (at level 38) : set_scope.
+
+
+(*
+Notation "\{}" := (@empty_set _ _) : set_scope.
+
+Notation "\{ x }" := (singleton_set x) : set_scope.
+
+Notation "E \u F" := (union E F)
+  (at level 37, F at level 0) : set_scope.
+
+Notation "E \n F" := (intersect E F)
+  (at level 36, F at level 0) : set_scope.
+
+Notation "E \- F" := (diff E F)
+  (at level 35, F at level 0) : set_scope.
+
+Notation "x \in E" := (contains x E) (at level 39) : set_scope.
+
+Notation "x \notin E" := (~ contains x E) (at level 39) : set_scope.
+
+Notation "E \c F" := (subset E F)
+  (at level 38) : set_scope.
+*)
 
 Section RegAlloc.
 
@@ -191,6 +371,10 @@ Section RegAlloc.
       clear E H2.
       destruct IHs1.
       - clear IHs2.
+        Open Scope set_scope.
+
+        (* here is better *)
+
         unfold injective_over (* in * *).
         intros.
         set_solver_generic var.
