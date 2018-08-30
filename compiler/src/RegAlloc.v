@@ -139,7 +139,8 @@ Section RegAlloc.
     | SOp x op y z => union (singleton_set y) (singleton_set z)
     | SSet x y     => singleton_set y
     | SIf cond s1 s2   => union (singleton_set cond) (union (live s1) (live s2))
-    | SLoop s1 cond s2 => union (live s1) (diff (live s2) (certainly_written s1))
+    | SLoop s1 cond s2 => union (live s1) (diff (union (singleton_set cond) (live s2))
+                                                (certainly_written s1))
     | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list argnames
@@ -257,56 +258,6 @@ Section RegAlloc.
       destruct IHs1.
       - clear IHs2.
 
-        do 2 intro.
-
-(* counterexample:
-  l = {1}
-  o = {0}
-  f0 = {
-    0, 1, 3 -> 2,
-    2       -> 3,
-    4       -> 6,
-    _       -> 7
-  }
-  cws1 = {}
-  ls1 = {}
-  ls2 = {0}
-  a1 = 0
-  a2 = 1
-*)
-        (* encode counterexample in Coq: *)
-        assert (v_0: var) by admit.
-        assert (v_1: var) by admit.
-        replace l with (singleton_set v_1) in * by admit.
-        replace o with (singleton_set v_0) in * by admit.
-        assert (certainly_written s1 = empty_set) as Ecsw1 by admit. rewrite Ecsw1 in *.
-        assert (live s1 = empty_set) as Els1 by admit. rewrite Els1 in *.
-        assert (live s2 = singleton_set v_0) as Els2 by admit. rewrite Els2 in *.
-        replace a1 with v_0 in * by admit.
-        replace a2 with v_1 in * by admit.
-        assert (r_2: register) by admit.
-        assert (get m v_0 = Some r_2) as Eg0 by admit. rewrite Eg0 in *.
-        assert (get m v_1 = Some r_2) as Eg1 by admit. rewrite Eg1 in *.
-
-        intros Q0 Q1 G.
-        autorewrite with rew_EmptySetOps in *.
-
-        (* Observation: If we have s1 followed by s2, then
-           Ecsw1 : certainly_written s1 = empty_set
-           Els1 : live s1 = empty_set
-           Els2 : live s2 = singleton_set v_0
-           are contradictory, because if s1 does not write any vars, then
-           the live set of s2 cannot become bigger than the one of s1.
-
-           But wait, we're in the loop case, so why does "cond" not show up?
-        *)
-
-        Open Scope set_scope.
-
-        idtac.
-
-
-        clear case.
         unfold injective_over in *.
         forget (certainly_written s1) as cws1.
         forget (live s1) as ls1.
@@ -430,8 +381,9 @@ Notation "'forall' '((' a 'Int' '))' body" := (forall (a: _), body)
 Notation "'and' A B" := (Logic.and A B) (at level 10, A at level 0, B at level 0).
 Notation "'or' A B" := (Logic.or A B) (at level 10, A at level 0, B at level 0).
 Notation "'implies' A B" := (A -> B) (at level 10, A at level 0, B at level 0).
-Notation "= A B" := (@eq _ A B) (at level 10, A at level 0, B at level 0).
+Notation "= A B" := (@eq _ A B) (at level 10, A at level 0, B at level 0, only printing).
 Notation "E x" := (contains E x) (at level 10, E at level 0, x at level 0, only printing).
+Notation "= x y" := (contains (singleton_set x) y) (at level 10, x at level 0, y at level 0, only printing).
 Notation "'not' A" := (not A) (at level 10, A at level 0).
 Notation "'(assert' P ')'" := (marker P)
                                 (at level 10, P at level 0,
@@ -456,123 +408,20 @@ idtac.
 
 (* yields the following SMT query:
 
-  (declare-fun l (Int) Bool)
-  (declare-fun o (Int) Bool)
-  (declare-fun f0 (Int) Int)
-  (declare-fun cws1 (Int) Bool)
-  (declare-fun ls1 (Int) Bool)
-  (declare-fun ls2 (Int) Bool)
-  (declare-const a1 Int)
-  (declare-const a2 Int)
-  (assert (not (implies (forall ((a3 Int))
-                         (forall ((a4 Int))
-                          (implies (o a3)
-                           (implies (o a4) (implies (= (f0 a3) (f0 a4)) (= a3 a4))))))
-                (implies (forall ((a3 Int))
-                          (forall ((a4 Int))
-                           (implies (l a3)
-                            (implies (l a4) (implies (= (f0 a3) (f0 a4)) (= a3 a4))))))
-                 (implies (forall ((x Int))
-                           (implies (or (ls1 x) (and (ls2 x) (not (cws1 x)))) (o x)))
-                  (implies (or (or (ls1 a1) (and (ls2 a1) (not (cws1 a1))))
-                            (and (l a1) (not (cws1 a1))))
-                   (implies (or (or (ls1 a2) (and (ls2 a2) (not (cws1 a2))))
-                             (and (l a2) (not (cws1 a2))))
-                    (implies (= (f0 a1) (f0 a2)) (= a1 a2)))))))))
-  (check-sat)
-  (get-model)
+   ...
 
 for which Z3 answers:
 
 sat
-(model
-  (define-fun a2 () Int
-    1)
-  (define-fun a1 () Int
-    0)
-  (define-fun ls1 ((x!0 Int)) Bool
-    false)
-  (define-fun l!58 ((x!0 Int)) Bool
-    (ite (= x!0 1) true
-      false))
-  (define-fun k!56 ((x!0 Int)) Int
-    (ite (= x!0 1) 1
-    (ite (= x!0 2) 2
-    (ite (= x!0 4) 4
-    (ite (= x!0 0) 0
-    (ite (= x!0 3) 3
-      5))))))
-  (define-fun l ((x!0 Int)) Bool
-    (l!58 (k!56 x!0)))
-  (define-fun f0!57 ((x!0 Int)) Int
-    (ite (= x!0 2) 3
-    (ite (= x!0 4) 6
-    (ite (= x!0 5) 7
-      2))))
-  (define-fun f0 ((x!0 Int)) Int
-    (f0!57 (k!56 x!0)))
-  (define-fun o!60 ((x!0 Int)) Bool
-    (ite (= x!0 0) true
-      false))
-  (define-fun o ((x!0 Int)) Bool
-    (o!60 (k!56 x!0)))
-  (define-fun ls2!59 ((x!0 Int)) Bool
-    (ite (= x!0 0) true
-      false))
-  (define-fun ls2 ((x!0 Int)) Bool
-    (ls2!59 (k!56 x!0)))
-  (define-fun cws1 ((x!0 Int)) Bool
-    false)
-)
+...
 
 which, more readably, corresponds to the following counterexample:
 
-  a2 = 1
-  a1 = 0
-  l58 = {1}
-  k56 = {0 -> 0,
-         1 -> 1,
-         2 -> 2,
-         3 -> 3,
-         4 -> 4,
-         _ -> 5}
-  l(x) = l58(k56(x)), i.e.
-  l = {1}
-  f057 = {2 -> 3,
-          4 -> 6,
-          5 -> 7,
-          _ -> 2}
-  f0(x) = f057(k56(x)), i.e.
-  f0 = {0 -> 2,
-        1 -> 2,
-        2 -> 3,
-        3 -> 2,
-        4 -> 6,
-        _ -> 7}
-  ls259 = {0}
-  o60 = {0}
-  o(x) = o(k56(x)), i.e.
-  o = {0}
-  cws1 = {}
-  ls1 = {}
-  ls2(x) = ls259(k56(x)), i.e.
-  ls2 = {0}
+...
 
 sorted and auxiliary vars removed:
 
-  l = {1}
-  o = {0}
-  f0 = {
-    0, 1, 3 -> 2,
-    2       -> 3,
-    4       -> 6,
-    _       -> 7
-  }
-  cws1 = {}
-  ls1 = {}
-  ls2 = {0}
-  a1 = 0
-  a2 = 1
+...
 *)
 
         Open Scope set_scope.
