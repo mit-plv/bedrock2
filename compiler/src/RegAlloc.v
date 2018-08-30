@@ -47,41 +47,50 @@ Proof.
   cbv [marker]. intros. reflexivity.
 Qed.
 
-Axiom R: set A = (A -> Prop).
-
-Ltac countZ t :=
-  lazymatch t with
-  | forall (x: Z), @?t' x =>
-    let a := eval cbv beta in (t' 0) in
-        let r := countZ a in constr:(S r)
-  | _ => constr:(O)
-  end.
-
-Ltac repeatN N f :=
-  match N with
-  | S ?n => f; repeatN n f
-  | O => idtac
-  end.
-
 Definition Func(A B: Type) := A -> B.
 
-intros f s1 s2.
-change (Func A B) in f.
+Ltac intro_vars :=
+  repeat match goal with
+         | |- forall (x: ?T), _ =>
+           match type of T with
+           | Prop => fail 1
+           | _ => idtac
+           end;
+           intro
+         end.
 
-match goal with
-| |- ?G => change (marker G)
-end.
-revert s2. revert s1. revert f.
+Ltac revert_vars :=
+  repeat match goal with
+         | x: ?T |- _ =>
+           match T with
+           | Type => fail 1
+           | SetFunctions _ => fail 1
+           | _ => idtac
+           end;
+           revert x
+         end.
+
+Ltac smtify :=
+  intro_vars;
+  repeat match goal with
+         | x: ?T1 -> ?T2 |- _ => change (Func T1 T2) in x
+         end;
+  match goal with
+  | |- ?G => change (marker G)
+  end;
+  revert_vars;
   match goal with
   | |- ?P => assert (~P); [|admit]
-  end.
-
-do 3 (setoid_rewrite <- EE).
-setoid_rewrite K.
-
+  end;
+  repeat match goal with
+    | |- context[~ (forall (x: _), _)] => setoid_rewrite <- EE
+  end;
+  setoid_rewrite K;
   match goal with
   | |- ?P => change (marker2 P)
   end.
+
+smtify.
 
 Notation "'forall' '((' a 'Int' '))' body" := (forall (a: _), body)
    (at level 10, body at level 0, format "forall  (( a  Int )) '//' body", only printing).
