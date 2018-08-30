@@ -21,153 +21,6 @@ Section Injective.
     unfold injective_over; intuition (set_solver_generic A).
   Qed.
 
-  Lemma injective_over_union': forall (f: A -> B) (s1 s2: set A),
-      injective_over f (union s1 s2) -> injective_over f s1 /\ injective_over f s2.
-  Proof.
-    unfold injective_over.
-    setoid_rewrite union_spec.
-
-
-Require Import Coq.Logic.Classical_Prop.
-
-Definition marker(P: Prop): Prop := P.
-Definition marker2(P: Prop): Prop := P.
-
-Lemma EE: forall AA (P: AA -> Prop), (exists a: AA, ~ P a) <-> ~ forall (a: AA), P a.
-Proof.
-  intros. split.
-  - intros. destruct H as [a H]. intro. apply H. auto.
-  - intro. destruct (classic (exists a : AA, ~ P a)) as [C | C]; [assumption|].
-    exfalso. apply H. intro. destruct (classic (P a)) as [D | D]; [assumption |].
-    exfalso. apply C. exists a. assumption.
-Qed.
-
-Lemma K: forall (P Q: Prop), (~ marker (P -> Q)) <-> marker (~ (P -> Q)).
-Proof.
-  cbv [marker]. intros. reflexivity.
-Qed.
-
-Definition Func(A B: Type) := A -> B.
-
-Ltac intro_vars :=
-  repeat match goal with
-         | |- forall (x: ?T), _ =>
-           match type of T with
-           | Prop => fail 1
-           | _ => idtac
-           end;
-           intro
-         end.
-
-Ltac revert_vars :=
-  repeat match goal with
-         | x: ?T |- _ =>
-           match T with
-           | Type => fail 1
-           | SetFunctions _ => fail 1
-           | _ => idtac
-           end;
-           revert x
-         end.
-
-Ltac smtify :=
-  intro_vars;
-  repeat match goal with
-         | x: ?T1 -> ?T2 |- _ => change (Func T1 T2) in x
-         end;
-  match goal with
-  | |- ?G => change (marker G)
-  end;
-  revert_vars;
-  match goal with
-  | |- ?P => assert (~P); [|admit]
-  end;
-  repeat match goal with
-    | |- context[~ (forall (x: _), _)] => setoid_rewrite <- EE
-  end;
-  setoid_rewrite K;
-  match goal with
-  | |- ?P => change (marker2 P)
-  end.
-
-smtify.
-
-Notation "'forall' '((' a 'Int' '))' body" := (forall (a: _), body)
-   (at level 10, body at level 0, format "forall  (( a  Int )) '//' body", only printing).
-
-Notation "'and' A B" := (Logic.and A B) (at level 10, A at level 0, B at level 0).
-Notation "'or' A B" := (Logic.or A B) (at level 10, A at level 0, B at level 0).
-Notation "'implies' A B" := (A -> B) (at level 10, A at level 0, B at level 0).
-Notation "= A B" := (@eq _ A B) (at level 10, A at level 0, B at level 0).
-Notation "E x" := (contains E x) (at level 10, E at level 0, x at level 0, only printing).
-Notation "'not' A" := (not A) (at level 10, A at level 0).
-
-Notation "'(assert' P ')'" := (marker P)
-                                (at level 10, P at level 0,
-                                 format "(assert  P )").
-
-Notation "'(declare-fun' f '(Int)' 'Int)' body" :=
-  (ex (fun (f: Func _ _) => body))
-    (at level 10, body at level 10,
-     format "(declare-fun  f  '(Int)'  'Int)' '//' body").
-
-Notation "'(declare-fun' a '(Int)' 'Bool)' body" :=
-  (ex (fun (a: set _) => body))
-    (at level 10, body at level 10,
-     format "(declare-fun  a  '(Int)'  'Bool)' '//' body").
-
-Notation "x '(check-sat)'" := (marker2 x) (at level 200, format "x '//' '(check-sat)'").
-
-idtac.
-
-(* yields the goal
-
-  (declare-fun a (Int) Int)
-  (declare-fun a0 (Int) Bool)
-  (declare-fun a1 (Int) Bool)
-  (assert (not (implies (forall ((a2 Int))
-                         (forall ((a3 Int))
-                          (implies (or (a0 a2) (a1 a2))
-                           (implies (or (a0 a3) (a1 a3)) (implies (= (a a2) (a a3)) (= a2 a3))))))
-                (and (forall ((a2 Int))
-                      (forall ((a3 Int))
-                       (implies (a0 a2) (implies (a0 a3) (implies (= (a a2) (a a3)) (= a2 a3))))))
-                 (forall ((a2 Int))
-                  (forall ((a3 Int))
-                   (implies (a1 a2) (implies (a1 a3) (implies (= (a a2) (a a3)) (= a2 a3))))))))))
-  (check-sat)
-
-on which Z3 returns "unsat", i.e. no counterexample, as expected. *)
-
-
-(* On the other hand, if we flip the direction of the implication in the lemma, and
-   append (get-model), we get this:
-
-  (declare-fun a (Int) Int)
-  (declare-fun a0 (Int) Bool)
-  (declare-fun a1 (Int) Bool)
-  (assert (not (implies (and (forall ((a2 Int))
-                              (forall ((a3 Int))
-                               (implies (a0 a2)
-                                (implies (a0 a3) (implies (= (a a2) (a a3)) (= a2 a3))))))
-                         (forall ((a2 Int))
-                          (forall ((a3 Int))
-                           (implies (a1 a2)
-                            (implies (a1 a3) (implies (= (a a2) (a a3)) (= a2 a3)))))))
-                (forall ((a2 Int))
-                 (forall ((a3 Int))
-                  (implies (or (a0 a2) (a1 a2))
-                   (implies (or (a0 a3) (a1 a3)) (implies (= (a a2) (a a3)) (= a2 a3)))))))))
-  (check-sat)
-  (get-model)
-
-on which Z3 returns "sat" and a model (counter-example)
-
-*)
-
-
-  Abort.
-
 End Injective.
 
 Notation "｛｝" := (@empty_set _ _) : set_scope.
@@ -380,6 +233,265 @@ Section RegAlloc.
       clear E H2.
       destruct IHs1.
       - clear IHs2.
+        clear case.
+        unfold injective_over in *.
+        forget (certainly_written s1) as cws1.
+        forget (live s1) as ls1.
+        forget (live s2) as ls2.
+
+
+Definition TreatAsInt(x: Type): Type := x.
+
+
+Require Import Coq.Logic.Classical_Prop.
+
+Definition marker(P: Prop): Prop := P.
+Definition marker2(P: Prop): Prop := P.
+
+Lemma EE: forall AA (P: AA -> Prop), (exists a: AA, ~ P a) <-> ~ forall (a: AA), P a.
+Proof.
+  intros. split.
+  - intros. destruct H as [a H]. intro. apply H. auto.
+  - intro. destruct (classic (exists a : AA, ~ P a)) as [C | C]; [assumption|].
+    exfalso. apply H. intro. destruct (classic (P a)) as [D | D]; [assumption |].
+    exfalso. apply C. exists a. assumption.
+Qed.
+
+Lemma K: forall (P Q: Prop), (~ marker (P -> Q)) <-> marker (~ (P -> Q)).
+Proof.
+  cbv [marker]. intros. reflexivity.
+Qed.
+
+Definition Func(A B: Type) := A -> B.
+
+(* intro as much as we can *)
+repeat intro.
+
+(* map to fun *)
+repeat match goal with
+       | m: map _ _ |- _ =>
+         let f := fresh "f" in
+         let H := fresh "HE" in
+         remember (get m) as f eqn: H;
+           clear m H
+       end.
+
+(* clear everything except used vars and Props *)
+repeat match goal with
+       | H: ?T |- _ =>
+         match type of T with
+         | Prop => fail 1
+         | _ => clear H
+         end
+       end.
+
+(* revert all Props *)
+repeat match goal with
+       | H: ?T |- _ =>
+         match type of T with
+         | Prop => revert H
+         end
+       end.
+
+(* express set operations in terms of "_ \in _" *)
+unfold subset.
+repeat (setoid_rewrite union_spec ||
+        setoid_rewrite intersect_spec ||
+        setoid_rewrite diff_spec).
+
+(* mark var to be treated as Int *)
+change var with (TreatAsInt var).
+repeat match goal with
+       | x: var |- _ => change (TreatAsInt var) in x
+       end.
+
+(* protect functions from being treated as implications *)
+repeat match goal with
+       | x: ?T1 -> ?T2 |- _ => change (Func T1 T2) in x
+       end.
+
+(* mark where hyps begin *)
+match goal with
+| |- ?G => change (marker G)
+end.
+
+(* revert vars *)
+repeat match goal with
+       | x: ?T |- _ =>
+         match T with
+         | Type => fail 1
+         | SetFunctions _ => fail 1
+         | DecidableEq _ => fail 1
+         | MapFunctions _ _ => fail 1
+         | MachineWidth _ => fail 1
+         | _ => idtac
+         end;
+           revert x
+       end.
+
+(* negate goal *)
+match goal with
+| |- ?P => assert (~P); [|admit]
+end.
+
+(* "not forall" to "exists such that not" *)
+repeat match goal with
+       | |- context[~ (forall (x: _), _)] => setoid_rewrite <- EE
+       end.
+
+(* push "not" into marker *)
+setoid_rewrite K.
+
+(* marker for check_sat *)
+match goal with
+| |- ?P => change (marker2 P)
+end.
+
+(* SMT notations *)
+Notation "'forall' '((' a 'Int' '))' body" := (forall (a: _), body)
+   (at level 10, body at level 0, format "forall  (( a  Int )) '//' body", only printing).
+Notation "'and' A B" := (Logic.and A B) (at level 10, A at level 0, B at level 0).
+Notation "'or' A B" := (Logic.or A B) (at level 10, A at level 0, B at level 0).
+Notation "'implies' A B" := (A -> B) (at level 10, A at level 0, B at level 0).
+Notation "= A B" := (@eq _ A B) (at level 10, A at level 0, B at level 0).
+Notation "E x" := (contains E x) (at level 10, E at level 0, x at level 0, only printing).
+Notation "'not' A" := (not A) (at level 10, A at level 0).
+Notation "'(assert' P ')'" := (marker P)
+                                (at level 10, P at level 0,
+                                 format "(assert  P )").
+Notation "'(declare-fun' f '(Int)' 'Int)' body" :=
+  (ex (fun (f: Func _ _) => body))
+    (at level 10, body at level 10,
+     format "(declare-fun  f  '(Int)'  'Int)' '//' body").
+Notation "'(declare-fun' a '(Int)' 'Bool)' body" :=
+  (ex (fun (a: set _) => body))
+    (at level 10, body at level 10,
+     format "(declare-fun  a  '(Int)'  'Bool)' '//' body").
+Notation "'(declare-const' a 'Int)' body" :=
+  (ex (fun (a: TreatAsInt _) => body))
+    (at level 10, body at level 10,
+     format "(declare-const  a  'Int)' '//' body").
+Notation "x '(check-sat)' '(get-model)'" :=
+  (marker2 x) (at level 200, format "x '//' '(check-sat)' '//' '(get-model)'").
+
+(* refresh *)
+idtac.
+
+(* yields the following SMT query:
+
+  (declare-fun a (Int) Bool)
+  (declare-fun a0 (Int) Bool)
+  (declare-fun a1 (Int) Int)
+  (declare-fun a2 (Int) Bool)
+  (declare-fun a3 (Int) Bool)
+  (declare-fun a4 (Int) Bool)
+  (declare-const a5 Int)
+  (declare-const a6 Int)
+  (assert (not (implies (forall ((a7 Int))
+                         (forall ((a8 Int))
+                          (implies (a0 a7)
+                           (implies (a0 a8) (implies (= (a1 a7) (a1 a8)) (= a7 a8))))))
+                (implies (forall ((a7 Int))
+                          (forall ((a8 Int))
+                           (implies (a a7)
+                            (implies (a a8) (implies (= (a1 a7) (a1 a8)) (= a7 a8))))))
+                 (implies (forall ((x Int))
+                           (implies (or (a3 x) (and (a4 x) (not (a2 x)))) (a0 x)))
+                  (implies (or (or (a3 a5) (and (a4 a5) (not (a2 a5))))
+                            (and (a a5) (not (a2 a5))))
+                   (implies (or (or (a3 a6) (and (a4 a6) (not (a2 a6))))
+                             (and (a a6) (not (a2 a6))))
+                    (implies (= (a1 a5) (a1 a6)) (= a5 a6)))))))))
+  (check-sat)
+  (get-model)
+
+for which Z3 answers:
+
+sat
+(model
+  (define-fun a6 () Int
+    1)
+  (define-fun a5 () Int
+    0)
+  (define-fun a!57 ((x!0 Int)) Bool
+    (ite (= x!0 1) true
+      false))
+  (define-fun k!56 ((x!0 Int)) Int
+    (ite (= x!0 1) 1
+    (ite (= x!0 4) 4
+    (ite (= x!0 3) 3
+    (ite (= x!0 0) 0
+    (ite (= x!0 2) 2
+      5))))))
+  (define-fun a ((x!0 Int)) Bool
+    (a!57 (k!56 x!0)))
+  (define-fun a1!58 ((x!0 Int)) Int
+    (ite (= x!0 2) 3
+    (ite (= x!0 4) 6
+    (ite (= x!0 5) 7
+      2))))
+  (define-fun a1 ((x!0 Int)) Int
+    (a1!58 (k!56 x!0)))
+  (define-fun a0!59 ((x!0 Int)) Bool
+    (ite (= x!0 0) true
+      false))
+  (define-fun a4!60 ((x!0 Int)) Bool
+    (ite (= x!0 0) true
+      false))
+  (define-fun a4 ((x!0 Int)) Bool
+    (a4!60 (k!56 x!0)))
+  (define-fun a3 ((x!0 Int)) Bool
+    false)
+  (define-fun a2 ((x!0 Int)) Bool
+    false)
+  (define-fun a0 ((x!0 Int)) Bool
+    (a0!59 (k!56 x!0)))
+)
+
+which, more readably, corresponds to the following counterexample:
+
+  a6 = 1
+  a5 = 0
+  a57 = {1}
+  k56 = {0 -> 0,
+         1 -> 1,
+         2 -> 2,
+         3 -> 3,
+         4 -> 4,
+         _ -> 5}
+  a(x) = a57(k56(x)), i.e.
+  a = {1}
+  a158 = {2 -> 3,
+          4 -> 6,
+          5 -> 7,
+          _ -> 2}
+  a1(x) = a158(k56(x)), i.e.
+  a1 = {0 -> 2,
+        1 -> 2,
+        2 -> 3,
+        3 -> 2,
+        4 -> 6,
+        _ -> 7}
+  a059 = {0}
+  a460 = {0}
+  a4(x) = a460(k56(x)), i.e.
+  a4 = {0}
+  a3 = {}
+  a2 = {}
+  a0(x) = a059(k56(x)), i.e.
+  a0 = {0}
+
+sorted and auxiliary vars removed:
+
+  a0 = {0}
+  a1 = {1}
+  a2 = {}
+  a3 = {}
+  a4 = {0}
+  a5 = 0
+  a6 = 1
+*)
+
         Open Scope set_scope.
 
         (* here is better *)
