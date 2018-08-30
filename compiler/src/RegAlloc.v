@@ -23,6 +23,29 @@ Section Injective.
 
 End Injective.
 
+(* require extensionality, and usually only needed for debugging *)
+Section EmptySetOps.
+
+  Context {A: Type} {sf: SetFunctions A}.
+
+  Axiom union_empty_l: forall (s: set A), union empty_set s = s.
+  Axiom union_empty_r: forall (s: set A), union s empty_set = s.
+  Axiom intersect_empty_l: forall (s: set A), intersect empty_set s = empty_set.
+  Axiom intersect_empty_r: forall (s: set A), intersect s empty_set = empty_set.
+  Axiom diff_empty_l: forall (s: set A), diff empty_set s = empty_set.
+  Axiom diff_empty_r: forall (s: set A), diff s empty_set = s.
+
+End EmptySetOps.
+
+Hint Rewrite
+    @union_empty_l
+    @union_empty_r
+    @intersect_empty_l
+    @intersect_empty_r
+    @diff_empty_l
+    @diff_empty_r
+: rew_EmptySetOps.
+
 Notation "｛｝" := (@empty_set _ _) : set_scope.
 
 Notation "｛ x ｝" := (singleton_set x) : set_scope.
@@ -82,9 +105,9 @@ Section RegAlloc.
   Notation alloc := (map var register).
   Notation vars := (@set var (@map_domain_set _ _ allocMap)).
   Notation registers := (@set register (@map_range_set _ _ allocMap)).
-  (* Alternative way to write the same:
   Existing Instance map_domain_set.
   Existing Instance map_range_set.
+  (* don't do this, it might pick up the wrong typeclasses
   Notation vars := (set var).
   Notation registers := (set register).
   *)
@@ -233,6 +256,56 @@ Section RegAlloc.
       clear E H2.
       destruct IHs1.
       - clear IHs2.
+
+        do 2 intro.
+
+(* counterexample:
+  l = {1}
+  o = {0}
+  f0 = {
+    0, 1, 3 -> 2,
+    2       -> 3,
+    4       -> 6,
+    _       -> 7
+  }
+  cws1 = {}
+  ls1 = {}
+  ls2 = {0}
+  a1 = 0
+  a2 = 1
+*)
+        (* encode counterexample in Coq: *)
+        assert (v_0: var) by admit.
+        assert (v_1: var) by admit.
+        replace l with (singleton_set v_1) in * by admit.
+        replace o with (singleton_set v_0) in * by admit.
+        assert (certainly_written s1 = empty_set) as Ecsw1 by admit. rewrite Ecsw1 in *.
+        assert (live s1 = empty_set) as Els1 by admit. rewrite Els1 in *.
+        assert (live s2 = singleton_set v_0) as Els2 by admit. rewrite Els2 in *.
+        replace a1 with v_0 in * by admit.
+        replace a2 with v_1 in * by admit.
+        assert (r_2: register) by admit.
+        assert (get m v_0 = Some r_2) as Eg0 by admit. rewrite Eg0 in *.
+        assert (get m v_1 = Some r_2) as Eg1 by admit. rewrite Eg1 in *.
+
+        intros Q0 Q1 G.
+        autorewrite with rew_EmptySetOps in *.
+
+        (* Observation: If we have s1 followed by s2, then
+           Ecsw1 : certainly_written s1 = empty_set
+           Els1 : live s1 = empty_set
+           Els2 : live s2 = singleton_set v_0
+           are contradictory, because if s1 does not write any vars, then
+           the live set of s2 cannot become bigger than the one of s1.
+
+           But wait, we're in the loop case, so why does "cond" not show up?
+        *)
+
+        Open Scope set_scope.
+
+        idtac.
+
+
         clear case.
         unfold injective_over in *.
         forget (certainly_written s1) as cws1.
@@ -336,8 +409,12 @@ end.
 
 (* "not forall" to "exists such that not" *)
 repeat match goal with
-       | |- context[~ (forall (x: _), _)] => setoid_rewrite <- EE
-       end.
+ | |- context[~ (forall (x: ?T), _)] =>
+   (assert (forall (P: T -> Prop), (exists x: T, ~ P x) <-> ~ (forall x: T, P x)) as EEE
+    by apply EE);
+   setoid_rewrite <- EEE;
+   clear EEE
+end.
 
 (* push "not" into marker *)
 setoid_rewrite K.
@@ -379,29 +456,29 @@ idtac.
 
 (* yields the following SMT query:
 
-  (declare-fun a (Int) Bool)
-  (declare-fun a0 (Int) Bool)
-  (declare-fun a1 (Int) Int)
-  (declare-fun a2 (Int) Bool)
-  (declare-fun a3 (Int) Bool)
-  (declare-fun a4 (Int) Bool)
-  (declare-const a5 Int)
-  (declare-const a6 Int)
-  (assert (not (implies (forall ((a7 Int))
-                         (forall ((a8 Int))
-                          (implies (a0 a7)
-                           (implies (a0 a8) (implies (= (a1 a7) (a1 a8)) (= a7 a8))))))
-                (implies (forall ((a7 Int))
-                          (forall ((a8 Int))
-                           (implies (a a7)
-                            (implies (a a8) (implies (= (a1 a7) (a1 a8)) (= a7 a8))))))
+  (declare-fun l (Int) Bool)
+  (declare-fun o (Int) Bool)
+  (declare-fun f0 (Int) Int)
+  (declare-fun cws1 (Int) Bool)
+  (declare-fun ls1 (Int) Bool)
+  (declare-fun ls2 (Int) Bool)
+  (declare-const a1 Int)
+  (declare-const a2 Int)
+  (assert (not (implies (forall ((a3 Int))
+                         (forall ((a4 Int))
+                          (implies (o a3)
+                           (implies (o a4) (implies (= (f0 a3) (f0 a4)) (= a3 a4))))))
+                (implies (forall ((a3 Int))
+                          (forall ((a4 Int))
+                           (implies (l a3)
+                            (implies (l a4) (implies (= (f0 a3) (f0 a4)) (= a3 a4))))))
                  (implies (forall ((x Int))
-                           (implies (or (a3 x) (and (a4 x) (not (a2 x)))) (a0 x)))
-                  (implies (or (or (a3 a5) (and (a4 a5) (not (a2 a5))))
-                            (and (a a5) (not (a2 a5))))
-                   (implies (or (or (a3 a6) (and (a4 a6) (not (a2 a6))))
-                             (and (a a6) (not (a2 a6))))
-                    (implies (= (a1 a5) (a1 a6)) (= a5 a6)))))))))
+                           (implies (or (ls1 x) (and (ls2 x) (not (cws1 x)))) (o x)))
+                  (implies (or (or (ls1 a1) (and (ls2 a1) (not (cws1 a1))))
+                            (and (l a1) (not (cws1 a1))))
+                   (implies (or (or (ls1 a2) (and (ls2 a2) (not (cws1 a2))))
+                             (and (l a2) (not (cws1 a2))))
+                    (implies (= (f0 a1) (f0 a2)) (= a1 a2)))))))))
   (check-sat)
   (get-model)
 
@@ -409,87 +486,93 @@ for which Z3 answers:
 
 sat
 (model
-  (define-fun a6 () Int
+  (define-fun a2 () Int
     1)
-  (define-fun a5 () Int
+  (define-fun a1 () Int
     0)
-  (define-fun a!57 ((x!0 Int)) Bool
+  (define-fun ls1 ((x!0 Int)) Bool
+    false)
+  (define-fun l!58 ((x!0 Int)) Bool
     (ite (= x!0 1) true
       false))
   (define-fun k!56 ((x!0 Int)) Int
     (ite (= x!0 1) 1
-    (ite (= x!0 4) 4
-    (ite (= x!0 3) 3
-    (ite (= x!0 0) 0
     (ite (= x!0 2) 2
+    (ite (= x!0 4) 4
+    (ite (= x!0 0) 0
+    (ite (= x!0 3) 3
       5))))))
-  (define-fun a ((x!0 Int)) Bool
-    (a!57 (k!56 x!0)))
-  (define-fun a1!58 ((x!0 Int)) Int
+  (define-fun l ((x!0 Int)) Bool
+    (l!58 (k!56 x!0)))
+  (define-fun f0!57 ((x!0 Int)) Int
     (ite (= x!0 2) 3
     (ite (= x!0 4) 6
     (ite (= x!0 5) 7
       2))))
-  (define-fun a1 ((x!0 Int)) Int
-    (a1!58 (k!56 x!0)))
-  (define-fun a0!59 ((x!0 Int)) Bool
+  (define-fun f0 ((x!0 Int)) Int
+    (f0!57 (k!56 x!0)))
+  (define-fun o!60 ((x!0 Int)) Bool
     (ite (= x!0 0) true
       false))
-  (define-fun a4!60 ((x!0 Int)) Bool
+  (define-fun o ((x!0 Int)) Bool
+    (o!60 (k!56 x!0)))
+  (define-fun ls2!59 ((x!0 Int)) Bool
     (ite (= x!0 0) true
       false))
-  (define-fun a4 ((x!0 Int)) Bool
-    (a4!60 (k!56 x!0)))
-  (define-fun a3 ((x!0 Int)) Bool
+  (define-fun ls2 ((x!0 Int)) Bool
+    (ls2!59 (k!56 x!0)))
+  (define-fun cws1 ((x!0 Int)) Bool
     false)
-  (define-fun a2 ((x!0 Int)) Bool
-    false)
-  (define-fun a0 ((x!0 Int)) Bool
-    (a0!59 (k!56 x!0)))
 )
 
 which, more readably, corresponds to the following counterexample:
 
-  a6 = 1
-  a5 = 0
-  a57 = {1}
+  a2 = 1
+  a1 = 0
+  l58 = {1}
   k56 = {0 -> 0,
          1 -> 1,
          2 -> 2,
          3 -> 3,
          4 -> 4,
          _ -> 5}
-  a(x) = a57(k56(x)), i.e.
-  a = {1}
-  a158 = {2 -> 3,
+  l(x) = l58(k56(x)), i.e.
+  l = {1}
+  f057 = {2 -> 3,
           4 -> 6,
           5 -> 7,
           _ -> 2}
-  a1(x) = a158(k56(x)), i.e.
-  a1 = {0 -> 2,
+  f0(x) = f057(k56(x)), i.e.
+  f0 = {0 -> 2,
         1 -> 2,
         2 -> 3,
         3 -> 2,
         4 -> 6,
         _ -> 7}
-  a059 = {0}
-  a460 = {0}
-  a4(x) = a460(k56(x)), i.e.
-  a4 = {0}
-  a3 = {}
-  a2 = {}
-  a0(x) = a059(k56(x)), i.e.
-  a0 = {0}
+  ls259 = {0}
+  o60 = {0}
+  o(x) = o(k56(x)), i.e.
+  o = {0}
+  cws1 = {}
+  ls1 = {}
+  ls2(x) = ls259(k56(x)), i.e.
+  ls2 = {0}
 
 sorted and auxiliary vars removed:
 
-  a0 = {0}
-  a1 = {1}
-  a2 = {}
-  a3 = {}
-  a4 = {0}
-  a5 = 0
-  a6 = 1
+  l = {1}
+  o = {0}
+  f0 = {
+    0, 1, 3 -> 2,
+    2       -> 3,
+    4       -> 6,
+    _       -> 7
+  }
+  cws1 = {}
+  ls1 = {}
+  ls2 = {0}
+  a1 = 0
+  a2 = 1
 *)
 
         Open Scope set_scope.
@@ -500,8 +583,10 @@ sorted and auxiliary vars removed:
         intros.
         set_solver_generic var.
         + unfold injective_over in *.
+          (*
           specialize H with (3 := H4).
           specialize H0 with (3 := H4).
+          *)
   Admitted.
 
   Inductive inspect{T: Type}: T -> Prop := .
