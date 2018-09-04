@@ -263,10 +263,6 @@ Section RegAlloc.
         forget (live s1) as ls1.
         forget (live s2) as ls2.
 
-
-Definition TreatAsInt(x: Type): Type := x.
-
-
 Require Import Coq.Logic.Classical_Prop.
 
 Definition marker(P: Prop): Prop := P.
@@ -323,12 +319,6 @@ repeat (setoid_rewrite union_spec ||
         setoid_rewrite intersect_spec ||
         setoid_rewrite diff_spec).
 
-(* mark var to be treated as Int *)
-change var with (TreatAsInt var).
-repeat match goal with
-       | x: var |- _ => change (TreatAsInt var) in x
-       end.
-
 (* protect functions from being treated as implications *)
 repeat match goal with
        | x: ?T1 -> ?T2 |- _ => change (Func T1 T2) in x
@@ -376,8 +366,8 @@ match goal with
 end.
 
 (* SMT notations *)
-Notation "'forall' '((' a 'Int' '))' body" := (forall (a: _), body)
-   (at level 10, body at level 0, format "forall  (( a  Int )) '//' body", only printing).
+Notation "'forall' '((' a T '))' body" := (forall (a: T), body)
+   (at level 10, body at level 0, format "forall  (( a  T )) '//' body", only printing).
 Notation "'and' A B" := (Logic.and A B) (at level 10, A at level 0, B at level 0).
 Notation "'or' A B" := (Logic.or A B) (at level 10, A at level 0, B at level 0).
 Notation "'implies' A B" := (A -> B) (at level 10, A at level 0, B at level 0).
@@ -388,20 +378,21 @@ Notation "'not' A" := (not A) (at level 10, A at level 0).
 Notation "'(assert' P ')'" := (marker P)
                                 (at level 10, P at level 0,
                                  format "(assert  P )").
-Notation "'(declare-fun' f '(Int)' 'Int)' body" :=
-  (ex (fun (f: Func _ _) => body))
+Notation "'(declare-const' a T ')' body" :=
+  (ex (fun (a: T) => body))
     (at level 10, body at level 10,
-     format "(declare-fun  f  '(Int)'  'Int)' '//' body").
-Notation "'(declare-fun' a '(Int)' 'Bool)' body" :=
-  (ex (fun (a: set _) => body))
+     format "(declare-const  a  T ')' '//' body").
+Notation "'(declare-fun' f '(' A ')' B ')' body" :=
+  (ex (fun (f: Func A B) => body))
     (at level 10, body at level 10,
-     format "(declare-fun  a  '(Int)'  'Bool)' '//' body").
-Notation "'(declare-const' a 'Int)' body" :=
-  (ex (fun (a: TreatAsInt _) => body))
+     format "(declare-fun  f  '(' A ')'  B ')' '//' body").
+Notation "'(declare-fun' a '(' T ')' 'Bool)' body" :=
+  (ex (fun (a: set T) => body))
     (at level 10, body at level 10,
-     format "(declare-const  a  'Int)' '//' body").
-Notation "x '(check-sat)' '(get-model)'" :=
-  (marker2 x) (at level 200, format "x '//' '(check-sat)' '//' '(get-model)'").
+     format "(declare-fun  a  '(' T ')'  'Bool)' '//' body").
+Notation "'(declare-sort' 'var)' '(declare-sort' 'reg)' x '(check-sat)' '(get-model)'" :=
+  (marker2 x) (at level 200, format "'(declare-sort'  'var)' '//' '(declare-sort'  'reg)' '//' x '//' '(check-sat)' '//' '(get-model)'").
+Notation reg := (option register).
 
 (* refresh *)
 idtac.
@@ -413,14 +404,88 @@ idtac.
 for which Z3 answers:
 
 sat
-...
+(model
+  ;; universe for var:
+  ;;   var!val!1 var!val!0 var!val!2
+  ;; -----------
+  ;; definitions for universe elements:
+  (declare-fun var!val!1 () var)
+  (declare-fun var!val!0 () var)
+  (declare-fun var!val!2 () var)
+  ;; cardinality constraint:
+  (forall ((x var)) (or (= x var!val!1) (= x var!val!0) (= x var!val!2)))
+  ;; -----------
+  ;; universe for reg:
+  ;;   reg!val!0
+  ;; -----------
+  ;; definitions for universe elements:
+  (declare-fun reg!val!0 () reg)
+  ;; cardinality constraint:
+  (forall ((x reg)) (= x reg!val!0))
+  ;; -----------
+  (define-fun cond () var
+    var!val!1)
+  (define-fun a2 () var
+    var!val!2)
+  (define-fun a1 () var
+    var!val!0)
+  (define-fun l!17 ((x!1 var)) Bool
+    (ite (= x!1 var!val!2) true
+      false))
+  (define-fun k!16 ((x!1 var)) var
+    (ite (= x!1 var!val!2) var!val!2
+    (ite (= x!1 var!val!0) var!val!0
+      var!val!1)))
+  (define-fun l ((x!1 var)) Bool
+    (l!17 (k!16 x!1)))
+  (define-fun f0 ((x!1 var)) reg
+    reg!val!0)
+  (define-fun ls2!19 ((x!1 var)) Bool
+    (ite (= x!1 var!val!2) false
+      true))
+  (define-fun o!20 ((x!1 var)) Bool
+    (ite (= x!1 var!val!0) true
+      false))
+  (define-fun o ((x!1 var)) Bool
+    (o!20 (k!16 x!1)))
+  (define-fun ls2 ((x!1 var)) Bool
+    (ls2!19 (k!16 x!1)))
+  (define-fun cws1!18 ((x!1 var)) Bool
+    (ite (= x!1 var!val!1) true
+      false))
+  (define-fun cws1 ((x!1 var)) Bool
+    (cws1!18 (k!16 x!1)))
+  (define-fun ls1 ((x!1 var)) Bool
+    false)
+
 
 which, more readably, corresponds to the following counterexample:
 
-...
+universe for var = {varval0, varval1, varval2}
+universe for reg = {regval0}
+cond = varval1
+a1 = varval0
+a2 = varval2
+ls1 = {}
+o20 = {varval0}
+l17 = {varval2}
+k16 = {varval0 -> varval0,
+       varval2 -> varval2,
+       _       -> varval1}
+l(x) = l17(k16(x)), i.e.
+l = {varval2}
+f0 = {_ -> regval0}
+ls219 = Z \ {varval2}
+o(x) = o20(k16(x)), i.e.
+o = {varval0}
+ls2(x) = ls219(k16(x)), i.e.
+ls2 = Z \ {varval2}
+cws118 = {varval1}
+cws1(x) = csw118(k16(x)), i.e.
+cws1 = Z \ {varval0, varval2}
+
 
 sorted and auxiliary vars removed:
-
 ...
 *)
 
