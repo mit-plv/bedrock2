@@ -1,3 +1,5 @@
+(* macros for implementing simple types.
+ *)
 Require Coq.Lists.List.
 Require Import bedrock2.Macros bedrock2.Syntax bedrock2.BasicALU.
 
@@ -5,6 +7,14 @@ Require Import Coq.ZArith.BinInt.
 Require Import Coq.Strings.String.
 Require bedrock2.String.
 
+(* a simple language of statically known types
+ * note(gmm): named types are not included, they can be represented using
+ * Gallina names, e.g.
+ *
+ *  Definition foo_t : type := Struct ...
+ *
+ *  Definition bar_t : type := Array 3 foo_t.
+ *)
 Inductive type :=
 | Struct (_ : list (string * type))
 | Array  (_ : nat) (_ : type)
@@ -64,6 +74,7 @@ Arguments PathError _ : clear implicits.
 Inductive NotAScalar : Type :=
   mk_NotAScalar (t : type).
 
+(* this is (essentially) the specification for `gen_access` *)
 Fixpoint path_lookup (o : Z) (p : path Z) (s : type)
 : PathError _ + (type * Z) :=
   match p with
@@ -84,12 +95,12 @@ Section syntax.
     match fs with
     | nil => inr (t, e)
     | cons f fs =>
-      match f , t with
-      | Sub i , Array _ t =>
+      match t , f with
+      | Array _ t , Sub i =>
         let offset_e := expr.op bop_mul i (expr.literal (sizeof t)) in
         let e := expr.op bop_add e offset_e in
         gen_access e t fs
-      | Field n , Struct fields =>
+      | Struct fields , Field n =>
         let success offset t' :=
             gen_access (expr.op bop_add e (expr.literal offset)) t' fs
         in
