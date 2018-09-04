@@ -48,7 +48,7 @@ Hint Rewrite
 
 Notation "｛｝" := (@empty_set _ _) : set_scope.
 
-Notation "｛ x ｝" := (singleton_set x) : set_scope.
+Notation "｛ x ｝" := (singleton_set x) (format "｛ x ｝") : set_scope.
 
 Notation "E ∪ F" := (union E F)
   (at level 37, F at level 0) : set_scope.
@@ -59,9 +59,9 @@ Notation "E ∩ F" := (intersect E F)
 Notation "E — F" := (diff E F)
   (at level 35, F at level 0) : set_scope.
 
-Notation "x ∈ E" := (contains x E) (at level 39) : set_scope.
+Notation "x ∈ E" := (contains E x) (at level 39) : set_scope.
 
-Notation "x ∉ E" := (~ contains x E) (at level 39) : set_scope.
+Notation "x ∉ E" := (~ contains E x) (at level 39) : set_scope.
 
 Notation "E ⊆ F" := (subset E F)
   (at level 38) : set_scope.
@@ -258,7 +258,49 @@ Section RegAlloc.
       destruct IHs1.
       - clear IHs2.
 
+        repeat intro.
+
+        (* counterexample: *)
+        assert (varval0: var) by admit.
+        assert (varval1: var) by admit.
+        assert (varval2: var) by admit.
+        assert (regval0: option register) by admit.
+        let E := fresh "E" in assert (cond = varval1) as E by admit; rewrite E in *.
+        let E := fresh "E" in assert (a1 = varval0)   as E by admit; rewrite E in *.
+        let E := fresh "E" in assert (a2 = varval2)   as E by admit; rewrite E in *.
+        let E := fresh "E" in assert (live s1 = empty_set) as E by admit; rewrite E in *.
+        let E := fresh "E" in assert (l = singleton_set varval2) as E by admit; rewrite E in *.
+        let E := fresh "E" in assert (get m = fun _ => regval0) as E by admit; rewrite E in *.
+        let E := fresh "E" in assert (o = singleton_set varval0) as E by admit; rewrite E in *.
+        let E := fresh "E" in assert (live s2 = union (singleton_set varval0)
+                                                      (singleton_set varval1)) as E by admit;
+                                rewrite E in *.
+        let E := fresh "E" in assert (certainly_written s1 = singleton_set varval1) as E
+          by admit; rewrite E in *.
+
         unfold injective_over in *.
+        repeat autorewrite with rew_EmptySetOps in *.
+
+        Open Scope set_scope.
+
+        (* The following form a contradiction:
+             E2: live s1 = ｛｝
+             E7: certainly_written s1 = ｛varval1｝
+             E6: live s2 = ｛varval0｝ ∪ ｛varval1｝
+           because varval0 cannot be live before s2 if s1 doesn't certainly write it.
+           More generally:
+           If s1 is followed by s2, (live s2) ⊆ (live s1) ∪ (certainly_written s1)
+
+           Actually, not quite:
+           (live s1) means "the variables which are live before s1 is executed and which
+           are read in s1", or equivalently, "the variables which are live before s1 if
+           we only consider s1".
+           If we want "the variables which are live before s1", we need
+           (live (SLoop s1 cond s2)).
+        *)
+
+        idtac.
+
         forget (certainly_written s1) as cws1.
         forget (live s1) as ls1.
         forget (live s2) as ls2.
@@ -475,15 +517,17 @@ k16 = {varval0 -> varval0,
 l(x) = l17(k16(x)), i.e.
 l = {varval2}
 f0 = {_ -> regval0}
-ls219 = Z \ {varval2}
+ls219 = universe for var \ {varval2}, i.e.
+ls219 = {varval0, varval1}
 o(x) = o20(k16(x)), i.e.
 o = {varval0}
 ls2(x) = ls219(k16(x)), i.e.
-ls2 = Z \ {varval2}
+ls2 = universe for var \ {varval2}, i.e.
+ls2 = {varval0, varval1}
 cws118 = {varval1}
 cws1(x) = csw118(k16(x)), i.e.
-cws1 = Z \ {varval0, varval2}
-
+cws1 = universe for var \ {varval0, varval2}, i.e.
+cws1 = {varval1}
 
 sorted and auxiliary vars removed:
 ...
