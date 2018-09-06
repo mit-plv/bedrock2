@@ -260,6 +260,10 @@ Section RegAlloc.
 
         repeat intro.
 
+        (* this should hold: *)
+        assert (subset l (union o (certainly_written (SLoop s1 cond s2)))) as C by admit.
+        simpl in C.
+
         (* counterexample: *)
         assert (varval0: var) by admit.
         assert (varval1: var) by admit.
