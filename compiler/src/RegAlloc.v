@@ -223,6 +223,7 @@ Section RegAlloc.
       injective_over (get m) o ->
       injective_over (get m) l ->
       subset (live s) o ->
+      subset l (union o (certainly_written s)) ->
       regalloc o a m s l = (o', a', m') ->
       injective_over_all_livesets (get m') s /\ injective_over (get m') l.
   Proof.
@@ -251,60 +252,16 @@ Section RegAlloc.
     Focus 11.
     {
       repeat match goal with
-      | IH: _, E: regalloc _ _ _ _ _  = (_, _, _) |- _ => specialize IH with (4 := E)
+      | IH: _, E: regalloc _ _ _ _ _  = (_, _, _) |- _ => specialize IH with (5 := E)
       end.
 
-      clear E H2.
+      repeat match goal with
+      | E: regalloc _ _ _ _ _  = (_, _, _) |- _ => clear E
+      end.
+
       destruct IHs1.
       - clear IHs2.
-
-        repeat intro.
-
-        (* this should hold: *)
-        assert (subset l (union o (certainly_written (SLoop s1 cond s2)))) as C by admit.
-        simpl in C.
-
-        (* counterexample: *)
-        assert (varval0: var) by admit.
-        assert (varval1: var) by admit.
-        assert (varval2: var) by admit.
-        assert (regval0: option register) by admit.
-        let E := fresh "E" in assert (cond = varval1) as E by admit; rewrite E in *.
-        let E := fresh "E" in assert (a1 = varval0)   as E by admit; rewrite E in *.
-        let E := fresh "E" in assert (a2 = varval2)   as E by admit; rewrite E in *.
-        let E := fresh "E" in assert (live s1 = empty_set) as E by admit; rewrite E in *.
-        let E := fresh "E" in assert (l = singleton_set varval2) as E by admit; rewrite E in *.
-        let E := fresh "E" in assert (get m = fun _ => regval0) as E by admit; rewrite E in *.
-        let E := fresh "E" in assert (o = singleton_set varval0) as E by admit; rewrite E in *.
-        let E := fresh "E" in assert (live s2 = union (singleton_set varval0)
-                                                      (singleton_set varval1)) as E by admit;
-                                rewrite E in *.
-        let E := fresh "E" in assert (certainly_written s1 = singleton_set varval1) as E
-          by admit; rewrite E in *.
-
         unfold injective_over in *.
-        repeat autorewrite with rew_EmptySetOps in *.
-
-        Open Scope set_scope.
-
-        (* The following form a contradiction:
-             E2: live s1 = ｛｝
-             E7: certainly_written s1 = ｛varval1｝
-             E6: live s2 = ｛varval0｝ ∪ ｛varval1｝
-           because varval0 cannot be live before s2 if s1 doesn't certainly write it.
-           More generally:
-           If s1 is followed by s2, (live s2) ⊆ (live s1) ∪ (certainly_written s1)
-
-           Actually, not quite:
-           (live s1) means "the variables which are live before s1 is executed and which
-           are read in s1", or equivalently, "the variables which are live before s1 if
-           we only consider s1".
-           If we want "the variables which are live before s1", we need
-           (live (SLoop s1 cond s2)).
-        *)
-
-        idtac.
-
         forget (certainly_written s1) as cws1.
         forget (live s1) as ls1.
         forget (live s2) as ls2.
@@ -443,99 +400,7 @@ Notation reg := (option register).
 (* refresh *)
 idtac.
 
-(* yields the following SMT query:
-
-   ...
-
-for which Z3 answers:
-
-sat
-(model
-  ;; universe for var:
-  ;;   var!val!1 var!val!0 var!val!2
-  ;; -----------
-  ;; definitions for universe elements:
-  (declare-fun var!val!1 () var)
-  (declare-fun var!val!0 () var)
-  (declare-fun var!val!2 () var)
-  ;; cardinality constraint:
-  (forall ((x var)) (or (= x var!val!1) (= x var!val!0) (= x var!val!2)))
-  ;; -----------
-  ;; universe for reg:
-  ;;   reg!val!0
-  ;; -----------
-  ;; definitions for universe elements:
-  (declare-fun reg!val!0 () reg)
-  ;; cardinality constraint:
-  (forall ((x reg)) (= x reg!val!0))
-  ;; -----------
-  (define-fun cond () var
-    var!val!1)
-  (define-fun a2 () var
-    var!val!2)
-  (define-fun a1 () var
-    var!val!0)
-  (define-fun l!17 ((x!1 var)) Bool
-    (ite (= x!1 var!val!2) true
-      false))
-  (define-fun k!16 ((x!1 var)) var
-    (ite (= x!1 var!val!2) var!val!2
-    (ite (= x!1 var!val!0) var!val!0
-      var!val!1)))
-  (define-fun l ((x!1 var)) Bool
-    (l!17 (k!16 x!1)))
-  (define-fun f0 ((x!1 var)) reg
-    reg!val!0)
-  (define-fun ls2!19 ((x!1 var)) Bool
-    (ite (= x!1 var!val!2) false
-      true))
-  (define-fun o!20 ((x!1 var)) Bool
-    (ite (= x!1 var!val!0) true
-      false))
-  (define-fun o ((x!1 var)) Bool
-    (o!20 (k!16 x!1)))
-  (define-fun ls2 ((x!1 var)) Bool
-    (ls2!19 (k!16 x!1)))
-  (define-fun cws1!18 ((x!1 var)) Bool
-    (ite (= x!1 var!val!1) true
-      false))
-  (define-fun cws1 ((x!1 var)) Bool
-    (cws1!18 (k!16 x!1)))
-  (define-fun ls1 ((x!1 var)) Bool
-    false)
-
-
-which, more readably, corresponds to the following counterexample:
-
-universe for var = {varval0, varval1, varval2}
-universe for reg = {regval0}
-cond = varval1
-a1 = varval0
-a2 = varval2
-ls1 = {}
-o20 = {varval0}
-l17 = {varval2}
-k16 = {varval0 -> varval0,
-       varval2 -> varval2,
-       _       -> varval1}
-l(x) = l17(k16(x)), i.e.
-l = {varval2}
-f0 = {_ -> regval0}
-ls219 = universe for var \ {varval2}, i.e.
-ls219 = {varval0, varval1}
-o(x) = o20(k16(x)), i.e.
-o = {varval0}
-ls2(x) = ls219(k16(x)), i.e.
-ls2 = universe for var \ {varval2}, i.e.
-ls2 = {varval0, varval1}
-cws118 = {varval1}
-cws1(x) = csw118(k16(x)), i.e.
-cws1 = universe for var \ {varval0, varval2}, i.e.
-cws1 = {varval1}
-
-sorted and auxiliary vars removed:
-...
-*)
+(* yields and SMT query for which Z3 answers unsat, so we can start proving! *)
 
         Open Scope set_scope.
 
@@ -633,7 +498,7 @@ sorted and auxiliary vars removed:
     destruct (regalloc empty_set (diff available_registers (range c)) c s (domain c))
       as [[? ?] m'] eqn: E.
     specialize Q with (o := empty_set) (a := (diff available_registers (range c))) (m := c).
-    specialize Q with (4 := E).
+    specialize Q with (5 := E).
     destruct Q as [I1 I2].
     - admit.
     - admit.
