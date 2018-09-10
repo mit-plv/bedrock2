@@ -9,7 +9,7 @@ Class parameters := {
 
 Instance make (p : parameters) : Syntax.parameters := {|
   Syntax.varname := string;
-  Syntax.funname := string;
+  Syntax.globname := string;
 
   Syntax.actname := actname;
   Syntax.bopname := bopname;

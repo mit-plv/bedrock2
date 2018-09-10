@@ -5,6 +5,7 @@ Require Import Coq.ZArith.BinIntDef.
 Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
   Context (rely guarantee : trace -> Prop) (progress : trace -> trace -> Prop).
+  Variable resolver : globname -> option word.
 
   Definition literal v post : Prop :=
     bind_ex_Some v <- word_of_Z v; post v.
@@ -23,6 +24,8 @@ Section WeakestPrecondition.
         literal v post
       | expr.var x =>
         get l x post
+      | expr.global g =>
+        bind_ex_Some v <- resolver g ; post v
       | expr.op op e1 e2 =>
         expr e1 (fun v1 =>
         expr e2 (fun v2 =>
@@ -46,7 +49,7 @@ Section WeakestPrecondition.
   End WithF.
 
   Section WithFunctions.
-    Context (call : funname -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
+    Context (call : globname -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
     Fixpoint cmd (c : cmd) (t : trace) (m : mem) (l : locals)
              (post : trace -> mem -> locals -> Prop) {struct c} : Prop :=
       match c with
@@ -67,7 +70,7 @@ Section WeakestPrecondition.
       | cmd.seq c1 c2 =>
         cmd c1 t m l (fun t m l => cmd c2 t m l post)
       | cmd.while e c =>
-        exists measure (lt:measure->measure->Prop) (inv:measure->trace->mem->locals->Prop), 
+        exists measure (lt:measure->measure->Prop) (inv:measure->trace->mem->locals->Prop),
         Coq.Init.Wf.well_founded lt /\
         (exists v, inv v t m l) /\
         (forall v t m l, inv v t m l ->
@@ -75,11 +78,15 @@ Section WeakestPrecondition.
           (word_test b = true -> cmd c t m l (fun t' m l =>
             exists v', inv v' t' m l /\ (progress t' t \/ lt v' v))) /\
           (word_test b = false -> post t m l)))
-      | cmd.call binds fname arges =>
-        list_map (expr m l) arges (fun args =>
-        call fname t m args (fun t m rets =>
-          bind_ex_Some l <- map.putmany binds rets l;
-          post t m l))
+      | cmd.call binds f arges =>
+        match f with
+        | expr.global fname =>
+          list_map (expr m l) arges (fun args =>
+          call fname t m args (fun t m rets =>
+            bind_ex_Some l <- map.putmany binds rets l;
+            post t m l))
+        | _ => False (* function pointers are not supported *)
+        end
       | cmd.interact binds action arges =>
         list_map (expr m l) arges (fun args =>
         let output := (m, action, args) in
@@ -94,14 +101,14 @@ Section WeakestPrecondition.
       cmd call c t m l (fun t m l =>
         list_map (get l) outnames (fun rets =>
         post t m rets)).
-          
-  Fixpoint call (functions : list (funname * (list varname * list varname * cmd.cmd)))
-                (fname : funname) (t : trace) (m : mem) (args : list word)
+
+  Fixpoint call (functions : list (globname * (list varname * list varname * cmd.cmd)))
+                (fname : globname) (t : trace) (m : mem) (args : list word)
                 (post : trace -> mem -> list word -> Prop) {struct functions} : Prop :=
     match functions with
     | nil => False
     | cons (f, decl) functions =>
-      if funname_eqb f fname
+      if globname_eqb f fname
       then func (call functions) decl t m args post
       else call functions fname t m args post
     end.

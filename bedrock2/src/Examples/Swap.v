@@ -16,8 +16,8 @@ Section bsearch.
   )).
 
   Definition swap_swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func_body:(
-    cmd.call nil "swap" (var "a"::var "b"::nil);
-    cmd.call nil "swap" (var "a"::var "b"::nil)
+    cmd.call nil (expr.global "swap") (var "a"::var "b"::nil);
+    cmd.call nil (expr.global "swap") (var "a"::var "b"::nil)
   )).
 End bsearch.
 
@@ -92,10 +92,10 @@ end.
 
 Context (__A : map.ok Semantics.mem).
 Lemma swap_ok : 
-  forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
+  forall l a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
-    (fun _ => True) (fun _ => False) (fun _ _ => True) (fun _ _ _ _ _ => False)
+    (fun _ => True) (fun _ => False) (fun _ _ => True) l (fun _ _ _ _ _ => False)
     (@swap BasicC64Syntax.params) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr b) (sep (ptsto 1 b_addr a) R)) m' /\ rets = nil).
 Proof.
@@ -104,13 +104,14 @@ Proof.
 Qed.
 
 Lemma swap_swap_ok : 
-  forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
+  forall l a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
-    (fun _ => True) (fun _ => False) (fun _ _ => True) (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) [("swap", (@swap BasicC64Syntax.params))])
+    (fun _ => True) (fun _ => False) (fun _ _ => True) l (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) l [("swap", (@swap BasicC64Syntax.params))])
     (@swap_swap BasicC64Syntax.params) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m' /\ rets = nil).
 Proof.
+  Print WeakestPrecondition.func.
   intros. rename H into Hm.
   eexists.
   eexists.
@@ -121,6 +122,7 @@ Proof.
   eexists.
   eexists.
   eexists.
+  unfold WeakestPrecondition.list_map.
   intros. eapply WeakestPreconditionProperties.Proper_func.
   6: eapply swap_ok.
   1,2,3,4,5 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].

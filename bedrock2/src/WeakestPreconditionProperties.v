@@ -24,7 +24,9 @@ Section WeakestPrecondition.
   Global Instance Proper_store : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) WeakestPrecondition.store.
   Proof. cbv [WeakestPrecondition.load]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
 
-  Global Instance Proper_expr : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)))) WeakestPrecondition.expr.
+(*
+  Global Instance Proper_expr
+  : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)))) WeakestPrecondition.expr.
   Proof.
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on Syntax.expr.expr;
       cbn in *; intuition (try typeclasses eauto with core).
@@ -32,6 +34,7 @@ Section WeakestPrecondition.
     eapply Proper_get; eauto.
     { eapply IHa1; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load. }
   Qed.
+*)
 
   Global Instance Proper_list_map {A B} :
     Proper ((pointwise_relation _ (pointwise_relation _ Basics.impl ==> Basics.impl)) ==> pointwise_relation _ (pointwise_relation _ Basics.impl ==> Basics.impl)) (WeakestPrecondition.list_map (A:=A) (B:=B)).
@@ -39,7 +42,8 @@ Section WeakestPrecondition.
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on (list A);
       cbn in *; intuition (try typeclasses eauto with core).
   Qed.
- 
+
+(* 
   Global Instance Proper_cmd :
     Proper (
      (pointwise_relation _ (Basics.flip Basics.impl)) ==> (
@@ -167,4 +171,5 @@ Section WeakestPrecondition.
     try solve [typeclasses eauto with core].
     eauto.
   Qed.
+*)
 End WeakestPrecondition.

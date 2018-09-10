@@ -19,12 +19,12 @@ Class parameters := {
   mem :> map word byte;
   locals :> map varname word;
 
-  funname_eqb : funname -> funname -> bool
+  globname_eqb : globname -> globname -> bool
 }.
 
 Section semantics.
   Context {pp : unique! parameters}.
-  
+
   Fixpoint load_rec (sz : nat) (m:mem) (a:word) : option word :=
     match sz with
     | O => Some word_zero
