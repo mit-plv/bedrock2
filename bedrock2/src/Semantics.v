@@ -9,6 +9,7 @@ Class parameters := {
   word_succ : word -> word;
   word_test : word -> bool;
   word_of_Z : BinNums.Z -> option word;
+  word_eqb : word -> word -> bool;
   interp_binop : bopname -> word -> word -> word;
 
   byte : Type;
@@ -17,9 +18,7 @@ Class parameters := {
   split : nat -> word -> byte * word;
 
   mem :> map word byte;
-  locals :> map varname word;
-
-  globname_eqb : globname -> globname -> bool
+  locals :> map varname word
 }.
 
 Section semantics.

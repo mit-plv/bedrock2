@@ -49,7 +49,7 @@ Section WeakestPrecondition.
   End WithF.
 
   Section WithFunctions.
-    Context (call : globname -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
+    Context (call : word -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
     Fixpoint cmd (c : cmd) (t : trace) (m : mem) (l : locals)
              (post : trace -> mem -> locals -> Prop) {struct c} : Prop :=
       match c with
@@ -79,14 +79,11 @@ Section WeakestPrecondition.
             exists v', inv v' t' m l /\ (progress t' t \/ lt v' v))) /\
           (word_test b = false -> post t m l)))
       | cmd.call binds f arges =>
-        match f with
-        | expr.global fname =>
-          list_map (expr m l) arges (fun args =>
-          call fname t m args (fun t m rets =>
-            bind_ex_Some l <- map.putmany binds rets l;
-            post t m l))
-        | _ => False (* function pointers are not supported *)
-        end
+        list_map (expr m l) arges (fun args =>
+        expr m l f (fun fname =>
+        call fname t m args (fun t m rets =>
+          bind_ex_Some l <- map.putmany binds rets l;
+          post t m l)))
       | cmd.interact binds action arges =>
         list_map (expr m l) arges (fun args =>
         let output := (m, action, args) in
@@ -96,22 +93,66 @@ Section WeakestPrecondition.
       end.
   End WithFunctions.
 
-  Definition func call '(innames, outnames, c) (t : trace) (m : mem) (args : list word) (post : trace -> mem -> list word -> Prop) :=
+  Section list_lookup.
+    Context {A B : Type} (eqA : A -> A -> bool) (key : A).
+    Fixpoint list_lookup (ls : list (A * B)) : option B :=
+      match ls with
+      | nil => None
+      | cons (key', val) ls =>
+        if eqA key key' then Some val
+        else list_lookup ls
+      end.
+  End list_lookup.
+
+  Definition func call '(innames, outnames, c)
+             (t : trace) (m : mem) (args : list word)
+             (post : trace -> mem -> list word -> Prop) :=
       bind_ex_Some l <- map.putmany innames args map.empty;
       cmd call c t m l (fun t m l =>
         list_map (get l) outnames (fun rets =>
         post t m rets)).
 
-  Fixpoint call (functions : list (globname * (list varname * list varname * cmd.cmd)))
-                (fname : globname) (t : trace) (m : mem) (args : list word)
-                (post : trace -> mem -> list word -> Prop) {struct functions} : Prop :=
+  Section rec.
+    Variable (functions : list (word * (list varname * list varname * cmd.cmd))).
+
+    (* This definition allows for recursive functions using step-indexing.
+     *
+     * note(gmm): using this definition, you would likely write something like:
+     * `forall n, func (call_rec (3 + n)) ...` which would allow you to make
+     * calls to functions that have a call depth of at most 3.
+     * This is equivalent to the previous definition is you use the length
+     * of the rest of the list.
+     * in general, the `n` could be dependent (relationally or functionally)
+     * on both the arguments to the function and the heap.
+     *)
+    Fixpoint call_rec (n : nat)
+             (fname : word) (t : trace) (m : mem) (args : list word)
+             (post : trace -> mem -> list word -> Prop) {struct n} : Prop :=
+      match n with
+      | 0 => False
+      | S n =>
+        match list_lookup word_eqb fname functions with
+        | None => False
+        | Some decl => func (call_rec n) decl t m args post
+        end
+      end.
+
+    (* note(gmm): `call_rec` is monotone in `n` *)
+
+  End rec.
+
+  Fixpoint call
+           (functions : list (word * (list varname * list varname * cmd.cmd)))
+           (fname : word) (t : trace) (m : mem) (args : list word)
+           (post : trace -> mem -> list word -> Prop) {struct functions} : Prop :=
     match functions with
     | nil => False
     | cons (f, decl) functions =>
-      if globname_eqb f fname
+      if word_eqb f fname
       then func (call functions) decl t m args post
       else call functions fname t m args post
     end.
 
-  Definition program funcs main t m l post : Prop := cmd (call funcs) main t m l post.
+  Definition program funcs main t m l post : Prop :=
+    cmd (call funcs) main t m l post.
 End WeakestPrecondition.
