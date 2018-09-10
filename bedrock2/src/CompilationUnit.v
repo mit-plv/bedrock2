@@ -78,8 +78,7 @@ Section module_semantics.
        | cons _ ls => functions ls
        end) mod.(module.definitions).
 
-  Definition module_definitions
-             (g : globname)
+  Definition module_definitions (g : globname)
   : func_meaning.
   refine (fun rely guarantee progress t mem args post =>
             exists body, List.In (g, body) mod.(module.definitions) /\
@@ -98,5 +97,11 @@ Section module_semantics.
             | _ => False
             end).
   Defined.
+
+  Definition module (g : globname)
+  : func_meaning :=
+    fun rely guarantee progress t mem args post =>
+      List.In g mod.(module.exports) /\
+      module_definitions g rely guarantee progress t mem args post.
 
 End module_semantics.
