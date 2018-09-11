@@ -7,6 +7,8 @@ Section WeakestPrecondition.
   Context (rely guarantee : trace -> Prop) (progress : trace -> trace -> Prop).
   Variable resolver : globname -> option word.
 
+  Definition global g post : Prop :=
+    bind_ex_Some v <- resolver g; post v.
   Definition literal v post : Prop :=
     bind_ex_Some v <- word_of_Z v; post v.
   Definition get (l : locals) (x : varname) (post : word -> Prop) : Prop :=
@@ -25,7 +27,7 @@ Section WeakestPrecondition.
       | expr.var x =>
         get l x post
       | expr.global g =>
-        bind_ex_Some v <- resolver g ; post v
+        global g post
       | expr.op op e1 e2 =>
         expr e1 (fun v1 =>
         expr e2 (fun v2 =>
@@ -78,9 +80,9 @@ Section WeakestPrecondition.
           (word_test b = true -> cmd c t m l (fun t' m l =>
             exists v', inv v' t' m l /\ (progress t' t \/ lt v' v))) /\
           (word_test b = false -> post t m l)))
-      | cmd.call binds f arges =>
+      | cmd.call binds fname arges =>
         list_map (expr m l) arges (fun args =>
-        expr m l f (fun fname =>
+        global fname (fun fname =>
         call fname t m args (fun t m rets =>
           bind_ex_Some l <- map.putmany binds rets l;
           post t m l)))

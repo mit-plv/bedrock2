@@ -80,7 +80,7 @@ Section ToCString.
     | cmd.skip =>
       indent ++ "/*skip*/" ++ LF
     | cmd.call args f es =>
-      indent ++ c_call (List.map c_var args) (c_expr f) (List.map c_expr es)
+      indent ++ c_call (List.map c_var args) (c_glob f) (List.map c_expr es)
     | cmd.interact binds action es =>
       indent ++ c_act binds action (List.map c_expr es)
     end%string.

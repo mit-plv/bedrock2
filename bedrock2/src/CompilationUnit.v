@@ -1,8 +1,5 @@
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.BinIntDef.
-Require Import ExtLib.Data.HList.
-Require Import ExtLib.Data.Fin.
-Require Import ExtLib.Data.Map.FMapAList.
 Require Import bedrock2.Macros bedrock2.Notations bedrock2.Map.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.Semantics.

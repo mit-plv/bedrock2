@@ -1,7 +1,7 @@
 Require Import bedrock2.Macros.
 
 Require Import Coq.Numbers.BinNums.
-  
+
 Class parameters := {
   varname : Set;
   globname : Set;
@@ -29,6 +29,6 @@ Module cmd. Section cmd.
   | cond (condition : expr) (nonzero_branch zero_branch : cmd)
   | seq (s1 s2: cmd)
   | while (test : expr) (body : cmd)
-  | call (binds : list varname) (function : expr) (args: list expr)
+  | call (binds : list varname) (function : globname) (args: list expr)
   | interact (binds : list varname) (action : actname) (args: list expr).
 End cmd. End cmd. Notation cmd := cmd.cmd.

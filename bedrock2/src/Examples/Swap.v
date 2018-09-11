@@ -16,8 +16,8 @@ Section bsearch.
   )).
 
   Definition swap_swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func_body:(
-    cmd.call nil (expr.global "swap") (var "a"::var "b"::nil);
-    cmd.call nil (expr.global "swap") (var "a"::var "b"::nil)
+    cmd.call nil "swap" (var "a"::var "b"::nil);
+    cmd.call nil "swap" (var "a"::var "b"::nil)
   )).
 End bsearch.
 
