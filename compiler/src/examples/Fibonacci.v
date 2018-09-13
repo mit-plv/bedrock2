@@ -202,7 +202,8 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
   unfold fib6_L_res. unfold fib6_L_final.
   pose proof @exprImp2Riscv_correct as P.
   assert (exists finalH,
-             evalH Lw Sw empty_map 20 empty_map Memory.no_mem (fib_ExprImp 6) = Some finalH) as F. {
+    evalH Lw Sw empty_map 20 empty_map Memory.no_mem (fib_ExprImp 6)
+    = Some finalH) as F. {
     eexists. reflexivity.
   }
   destruct F as [ [finalH finalMH ] F ].
@@ -234,23 +235,39 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
     unfold Memory.read_mem in *.
     destruct_one_match_hyp; discriminate.
   - exists fuelL.
-    unfold force_option, run, fib6_bits, initialRiscvMachine.
-    unfold getReg, FlatToRiscv.State_is_RegisterFile, Map.get, List_Map in G.
-    unfold evalL, execState in G.
-Admitted.
-(*
-    apply G. clear G.
-    assert (forall T (a b: T), Some a = Some b -> a = b) as E. {
-      introv R. inversion R. reflexivity.
-    }
-    pose proof fib_H_res_value as R.
-    unfold fib_H_res in R.
-    unfold evalH in F.
-    match type of R with
-    | match ?x with _ => _ end = _  => replace x with (Some (finalH, finalMH)) in R
+    specialize G with (resVar := var_b) (res := (ZToWord 32 13)).
+    match type of G with
+      | ?A -> _ => assert A as x; [|specialize (G x); clear x]
     end.
-    assumption.
+    + pose proof fib_H_res_value as R.
+      unfold fib_H_res in R.
+      unfold evalH in F.
+      match type of R with
+      | match ?x with _ => _ end = _  => replace x with (Some (finalH, finalMH)) in R
+      end.
+      assumption.
+    + apply (f_equal uwordToZ) in G.
+      rewrite uwordToZ_ZToWord in G.
+      change (13 mod 2 ^ 32) with 13 in G.
+      rewrite <- G; clear G.
+      apply f_equal.
+      unfold force_option.
+      unfold getReg, FlatToRiscv.State_is_RegisterFile.
+      change ZToReg with (ZToWord 32).
+      apply (f_equal force_option).
+      change (@word Basic32Semantics.Basic32Semantics) with (RecordWord.word 32) in *.
+      match goal with
+        | |- ?M ?A var_b = ?M ?B var_b => replace A with B; [reflexivity|]
+      end.
+      apply f_equal.
+      apply f_equal.
+      unfold evalL, execState.
+      apply f_equal.
+      unfold run.
+      apply f_equal.
+      unfold initialRiscvMachine.
+      apply f_equal.
+      reflexivity.
 Qed.
-*)
 
 Print Assumptions fib6_L_res_is_13_by_proving_it.
