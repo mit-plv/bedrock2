@@ -23,6 +23,71 @@ Section Injective.
 
 End Injective.
 
+(* require extensionality, and usually only needed for debugging *)
+Section EmptySetOps.
+
+  Context {A: Type} {sf: SetFunctions A}.
+
+  Axiom union_empty_l: forall (s: set A), union empty_set s = s.
+  Axiom union_empty_r: forall (s: set A), union s empty_set = s.
+  Axiom intersect_empty_l: forall (s: set A), intersect empty_set s = empty_set.
+  Axiom intersect_empty_r: forall (s: set A), intersect s empty_set = empty_set.
+  Axiom diff_empty_l: forall (s: set A), diff empty_set s = empty_set.
+  Axiom diff_empty_r: forall (s: set A), diff s empty_set = s.
+
+End EmptySetOps.
+
+Hint Rewrite
+    @union_empty_l
+    @union_empty_r
+    @intersect_empty_l
+    @intersect_empty_r
+    @diff_empty_l
+    @diff_empty_r
+: rew_EmptySetOps.
+
+Notation "｛｝" := (@empty_set _ _) : set_scope.
+
+Notation "｛ x ｝" := (singleton_set x) (format "｛ x ｝") : set_scope.
+
+Notation "E ∪ F" := (union E F)
+  (at level 37, F at level 0) : set_scope.
+
+Notation "E ∩ F" := (intersect E F)
+  (at level 36, F at level 0) : set_scope.
+
+Notation "E — F" := (diff E F)
+  (at level 35, F at level 0) : set_scope.
+
+Notation "x ∈ E" := (contains E x) (at level 39) : set_scope.
+
+Notation "x ∉ E" := (~ contains E x) (at level 39) : set_scope.
+
+Notation "E ⊆ F" := (subset E F)
+  (at level 38) : set_scope.
+
+
+(*
+Notation "\{}" := (@empty_set _ _) : set_scope.
+
+Notation "\{ x }" := (singleton_set x) : set_scope.
+
+Notation "E \u F" := (union E F)
+  (at level 37, F at level 0) : set_scope.
+
+Notation "E \n F" := (intersect E F)
+  (at level 36, F at level 0) : set_scope.
+
+Notation "E \- F" := (diff E F)
+  (at level 35, F at level 0) : set_scope.
+
+Notation "x \in E" := (contains x E) (at level 39) : set_scope.
+
+Notation "x \notin E" := (~ contains x E) (at level 39) : set_scope.
+
+Notation "E \c F" := (subset E F)
+  (at level 38) : set_scope.
+*)
 
 Section RegAlloc.
 
@@ -40,15 +105,17 @@ Section RegAlloc.
   Notation alloc := (map var register).
   Notation vars := (@set var (@map_domain_set _ _ allocMap)).
   Notation registers := (@set register (@map_range_set _ _ allocMap)).
-  (* Alternative way to write the same:
   Existing Instance map_domain_set.
   Existing Instance map_range_set.
+  (* don't do this, it might pick up the wrong typeclasses
   Notation vars := (set var).
   Notation registers := (set register).
   *)
 
   Local Notation stmt  := (FlatImp.stmt var func).      (* input type *)
   Local Notation stmt' := (FlatImp.stmt register func). (* output type *)
+
+  Ltac set_solver := set_solver_generic var.
 
   (* set of variables which is certainly written while executing s *)
   Fixpoint certainly_written(s: stmt): vars :=
@@ -74,7 +141,8 @@ Section RegAlloc.
     | SOp x op y z => union (singleton_set y) (singleton_set z)
     | SSet x y     => singleton_set y
     | SIf cond s1 s2   => union (singleton_set cond) (union (live s1) (live s2))
-    | SLoop s1 cond s2 => union (live s1) (diff (live s2) (certainly_written s1))
+    | SLoop s1 cond s2 => union (live s1) (diff (union (singleton_set cond) (live s2))
+                                                (certainly_written s1))
     | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list argnames
@@ -157,6 +225,7 @@ Section RegAlloc.
       injective_over (get m) o ->
       injective_over (get m) l ->
       subset (live s) o ->
+      subset l (union o (certainly_written s)) ->
       regalloc o a m s l = (o', a', m') ->
       injective_over_all_livesets (get m') s /\ injective_over (get m') l.
   Proof.
@@ -185,18 +254,136 @@ Section RegAlloc.
     Focus 11.
     {
       repeat match goal with
-      | IH: _, E: regalloc _ _ _ _ _  = (_, _, _) |- _ => specialize IH with (4 := E)
+      | IH: _, E: regalloc _ _ _ _ _  = (_, _, _) |- _ => specialize IH with (5 := E)
       end.
 
-      clear E H2.
+      repeat match goal with
+      | E: regalloc _ _ _ _ _  = (_, _, _) |- _ => clear E
+      end.
+
+      unfold injective_over in *.
+
       destruct IHs1.
+      - clear IHs2. set_solver.
       - clear IHs2.
-        unfold injective_over (* in * *).
-        intros.
-        set_solver_generic var.
-        + unfold injective_over in *.
-          specialize H with (3 := H4).
-          specialize H0 with (3 := H4).
+        (* not solved by set_solver *)
+
+        forget (certainly_written s1) as cws1.
+        forget (live s1) as ls1.
+        forget (live s2) as ls2.
+
+
+(* intro as much as we can *)
+repeat intro.
+
+(* map to fun *)
+repeat match goal with
+       | m: map _ _ |- _ =>
+         let f := fresh "f" in
+         let H := fresh "HE" in
+         remember (get m) as f eqn: H;
+           clear m H
+       end.
+
+(* clear everything except used vars and Props *)
+repeat match goal with
+       | H: ?T |- _ =>
+         match type of T with
+         | Prop => fail 1
+         | _ => clear H
+         end
+       end.
+
+Notation reg := (option register).
+
+Inductive ____BEGIN_counterexample____: Prop :=
+  mk_BEGIN_counterexample: ____BEGIN_counterexample____.
+Inductive ____END_counterexample____: Prop :=
+  mk_END_counterexample: ____END_counterexample____.
+Inductive ____cardinality_constraint: Prop :=
+  mk_cardinality_constraint: ____cardinality_constraint.
+
+Tactic Notation "(model" tactic(t) :=
+  pose proof mk_BEGIN_counterexample; t.
+Tactic Notation ")" :=
+  pose proof mk_END_counterexample.
+Tactic Notation ";;" "universe" "for" constr(T) ":" tactic(t) := t.
+Tactic Notation ";;" ident(v1) tactic(t) := t.
+Tactic Notation ";;" ident(v1) ident(v2) tactic(t) := t.
+Tactic Notation ";;" ident(v1) ident(v2) ident(v3) tactic(t) := t.
+Tactic Notation ";;" ident(v1) ident(v2) ident(v3) ident(v4) tactic(t) := t.
+Tactic Notation ";;" "-----------" tactic(t) := t.
+Tactic Notation ";;" "definitions" "for" "universe" "elements:" tactic(t) := t.
+Tactic Notation "(declare-fun" ident(x) "()" constr(T) ")" tactic(t) :=
+  (assert (x: T) by admit); t.
+Tactic Notation "(define-fun" ident(x) "()" constr(T) constr(v) ")" tactic (t) :=
+  let E := fresh "E" in (assert (x = v) as E by admit);
+  rewrite E in *;
+  t.
+Tactic Notation "(define-fun" ident(f) "(" "(" ident(x) constr(T) ")" ")" constr(U)
+       constr(body) ")" tactic(t) :=
+  let E := fresh "E" in (assert (f = fun (x: T) => body) as E by admit);
+  rewrite E in *;
+  t.
+Tactic Notation ";;" "cardinality" "constraint:" constr(P) tactic(t) :=
+  pose proof mk_cardinality_constraint; assert P by admit; t.
+
+(* Gallina notations to parse cardinality constraints: *)
+Notation "'forall' '(' '(' a T ')' ')' body" := (forall (a: T), body)
+   (at level 200, a at level 0, T at level 0, body at level 0, only parsing).
+Notation "'or' A B" := (Logic.or A B)
+   (at level 10, A at level 0, B at level 0, only parsing).
+Notation "= A B" := (@eq _ A B)
+   (at level 10, A at level 0, B at level 0, only parsing).
+
+
+(model
+  ;; universe for var:
+  ;;   var_val_1 var_val_0
+  ;; -----------
+  ;; definitions for universe elements:
+  (declare-fun var_val_1 () var) idtac.
+  (declare-fun var_val_0 () var)
+  ;; cardinality constraint:
+  (forall ((x var)) (or (= x var_val_1) (= x var_val_0)))
+  ;; -----------
+  ;; universe for reg:
+  ;;   reg_val_0
+  ;; -----------
+  ;; definitions for universe elements:
+  (declare-fun reg_val_0 () reg)
+  ;; cardinality constraint:
+  (forall ((x reg)) (= x reg_val_0))
+  ;; -----------
+  (define-fun cond () var
+    var_val_1)
+  (define-fun a2 () var
+    var_val_1)
+  (define-fun a1 () var
+    var_val_0)
+).
+
+(* TODO: this part
+
+  (define-fun l ((x_1 var)) Bool
+    false)
+  (define-fun f0 ((x_1 var)) reg
+    reg_val_0)
+  (define-fun ls2 ((x_1 var)) Bool
+    true)
+  (define-fun cws1 ((x_1 var)) Bool
+    true)
+  (define-fun o ((x_1 var)) Bool
+    false)
+  (define-fun ls1 ((x_1 var)) Bool
+    false)
+
+Problem: how to map functions back to sets? currently the proof goal has (f0: var -> reg) *)
+
+        Open Scope set_scope.
+
+        (* here is better *)
+
   Admitted.
 
   Inductive inspect{T: Type}: T -> Prop := .
@@ -281,7 +468,7 @@ Section RegAlloc.
     destruct (regalloc empty_set (diff available_registers (range c)) c s (domain c))
       as [[? ?] m'] eqn: E.
     specialize Q with (o := empty_set) (a := (diff available_registers (range c))) (m := c).
-    specialize Q with (4 := E).
+    specialize Q with (5 := E).
     destruct Q as [I1 I2].
     - admit.
     - admit.
