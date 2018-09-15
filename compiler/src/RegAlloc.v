@@ -325,6 +325,11 @@ Tactic Notation "(define-fun" ident(f) "(" "(" ident(x) constr(T) ")" ")" constr
   let E := fresh "E" in (assert (f = fun (x: T) => body) as E by admit);
   rewrite E in *;
   t.
+Tactic Notation "(define-fun" ident(f) "(" "(" ident(x) constr(T) ")" ")" "Bool"
+       constr(body) ")" tactic(t) :=
+  let E := fresh "E" in (assert (f = empty_set) as E by admit);
+  rewrite E in *;
+  t.
 Tactic Notation ";;" "cardinality" "constraint:" constr(P) tactic(t) :=
   pose proof mk_cardinality_constraint; assert P by admit; t.
 
@@ -361,14 +366,99 @@ Notation "= A B" := (@eq _ A B)
     var_val_1)
   (define-fun a1 () var
     var_val_0)
-).
-
-(* TODO: this part
-
   (define-fun l ((x_1 var)) Bool
     false)
   (define-fun f0 ((x_1 var)) reg
     reg_val_0)
+).
+
+Ltac disj_to_set d :=
+  lazymatch d with
+    | (_ = ?v1 \/ ?rest) =>
+      let s := disj_to_set rest in
+      constr:(union (singleton_set v1) s)
+    | (_ = ?v1) => constr:(singleton_set v1)
+    | _ => fail "did not expect" d
+  end.
+
+Ltac universe_of T :=
+  match goal with
+  | H: forall (x: T), _ |- _ =>
+    let dummyT := match type of H with
+                  | forall (x: T), x = ?v1 => constr:(v1)
+                  | forall (x: T), x = ?v1 \/ _ => constr:(v1)
+                  end in
+    let P' := type of (H dummyT) in
+    disj_to_set P'
+  end.
+
+match type of ls2 with
+| set ?T =>
+  let r := universe_of T in idtac r
+end.
+
+(*
+let P' := constr:(reg_val_0 = reg_val_0) in
+    tryif constr:(@singleton_set reg _) then
+      (let r := lazymatch P' with
+                | (_ = ?v1 \/ ?rest) =>
+                  let s := disj_to_set rest in
+                  constr:(union (singleton_set v1) s)
+                | (_ = ?v1) => constr:(singleton_set v1)
+                | _ => fail "did not expect" P'
+                end in
+      idtac r)
+    else fail 1000 "no set instance found".
+
+match type of f0 with
+| _ ->  ?T =>
+  match goal with
+  | H: forall (x: T), _ |- _ =>
+    let dummyT := match type of H with
+                  | forall (x: T), x = ?v1 => constr:(v1)
+                  | forall (x: T), x = ?v1 \/ _ => constr:(v1)
+                  end in
+    let P' := type of (H dummyT) in
+    let r :=   lazymatch P' with
+               | (_ = ?v1 \/ ?rest) =>
+                 let s := disj_to_set rest in
+                 constr:(union (singleton_set v1) s)
+               | (_ = ?v1) => constr:(singleton_set v1)
+               | _ => fail "did not expect" P'
+               end in
+    idtac r
+  end
+end.
+
+let T := type of reg_val_0 in let r := universe_of T in idtac r.
+
+match type of ls2 with
+| set ?T =>
+  match goal with
+  | H: forall (x: T), _ |- _ =>
+    let dummyT := match type of H with
+                  | forall (x: T), x = ?v1 => constr:(v1)
+                  | forall (x: T), x = ?v1 \/ _ => constr:(v1)
+                  end in
+    let P' := type of (H dummyT) in
+    let r := disj_to_set P' in
+    idtac r
+  end
+end.
+
+match type of H8 with
+  | forall (x: ?T), ?P =>
+    idtac P;
+    let dummyT := match P with
+                  | x = ?v1 => constr:(v1)
+                  | x = ?v1 \/ _ => constr:(v1)
+                  end in
+    let P' := type of (H dummyT) in idtac P'
+end.
+*)
+
+(* TODO: this part
+
   (define-fun ls2 ((x_1 var)) Bool
     true)
   (define-fun cws1 ((x_1 var)) Bool
@@ -378,7 +468,9 @@ Notation "= A B" := (@eq _ A B)
   (define-fun ls1 ((x_1 var)) Bool
     false)
 
-Problem: how to map functions back to sets? currently the proof goal has (f0: var -> reg) *)
+Problem: how to map functions back to sets?
+
+while keeping functions (f0: var -> reg) *)
 
         Open Scope set_scope.
 
