@@ -227,7 +227,10 @@ Section RegAlloc.
       subset (live s) o ->
       subset l (union o (certainly_written s)) ->
       regalloc o a m s l = (o', a', m') ->
-      injective_over_all_livesets (get m') s /\ injective_over (get m') l.
+      intersect a (range (restrict m o)) = empty_set ->
+      injective_over_all_livesets (get m') s /\
+      injective_over (get m') l /\
+      intersect a' (range (restrict m o')) = empty_set.
   Proof.
     induction s;
       intros;
