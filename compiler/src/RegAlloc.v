@@ -112,8 +112,8 @@ Section RegAlloc.
   Notation registers := (set register).
   *)
 
-  Local Notation stmt  := (FlatImp.stmt var func).      (* input type *)
-  Local Notation stmt' := (FlatImp.stmt register func). (* output type *)
+  Local Notation stmt  := (FlatImp.stmt var func Empty_set).      (* input type *)
+  Local Notation stmt' := (FlatImp.stmt register func Empty_set). (* output type *)
 
   Ltac set_solver := set_solver_generic var.
 
@@ -130,6 +130,7 @@ Section RegAlloc.
     | SSeq s1 s2 => union (certainly_written s1) (certainly_written s2)
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list resnames
+    | SAnnot e _ => Empty_set_rect _ e
     end.
 
   (* set of variables which is live before executing s *)
@@ -146,6 +147,7 @@ Section RegAlloc.
     | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list argnames
+    | SAnnot e _ => Empty_set_rect _ e
     end.
 
   Definition holds_forall_livesets(P: vars -> Prop): stmt -> Prop :=
@@ -205,6 +207,7 @@ Section RegAlloc.
         regalloc o a m s2 l
     | SSkip => (o, a, m)
     | SCall argnames fname resnames => fold_left start_interval resnames (o, a, m)
+    | SAnnot e _ => Empty_set_rect _ e
     end.
 
   Ltac head e :=
@@ -243,7 +246,8 @@ Section RegAlloc.
       | set ( case := @SLoop )
       | set ( case := @SSeq )
       | set ( case := @SSkip )
-      | set ( case := @SCall ) ];
+      | set ( case := @SCall )
+      | set ( case := @SAnnot ) ];
       move case at top;
       repeat destruct_one_match;
       simpl in *;
@@ -375,51 +379,6 @@ Notation "'or' A B" := (Logic.or A B)
 Notation "= A B" := (@eq _ A B)
    (at level 10, A at level 0, B at level 0, only parsing).
 
-
-(model
-  ;; universe for var:
-  ;;   var_val_1 var_val_0
-  ;; -----------
-  ;; definitions for universe elements:
-  (declare-fun var_val_1 () var) idtac.
-  (declare-fun var_val_0 () var)
-  ;; cardinality constraint:
-  (forall ((x var)) (or (= x var_val_1) (= x var_val_0)))
-  ;; -----------
-  ;; universe for reg:
-  ;;   reg_val_0
-  ;; -----------
-  ;; definitions for universe elements:
-  (declare-fun reg_val_0 () reg)
-  ;; cardinality constraint:
-  (forall ((x reg)) (= x reg_val_0))
-  ;; -----------
-  (define-fun cond () var
-    var_val_1)
-  (define-fun a2 () var
-    var_val_1)
-  (define-fun a1 () var
-    var_val_0)
-  (define-fun l ((x_1 var)) Bool
-    false)
-  (define-fun f0 ((x_1 var)) reg
-    reg_val_0)
-  (define-fun ls2 ((x_1 var)) Bool
-    true)
-  (define-fun cws1 ((x_1 var)) Bool
-    true)
-  (define-fun o ((x_1 var)) Bool
-    false)
-  (define-fun ls1 ((x_1 var)) Bool
-    false)
-).
-
-Open Scope set_scope.
-
-idtac.
-
-repeat autorewrite with rew_EmptySetOps in *.
-
 (* explanation of counterexample:
    in order to use IHs1, we need to show that f0 is injective over the
    after-live-set of s1, i.e. over the liveset of s2,
@@ -467,6 +426,7 @@ and since we never change a var->register assignment after we made a decision, w
       | SSeq s1 s2 => SSeq (rec s1) (rec s2)
       | SSkip => SSkip
       | SCall argnames fname resnames => SCall (List.map m argnames) fname (List.map m resnames)
+      | SAnnot e _ => Empty_set_rect _ e
       end.
 
   Context {RF: MapFunctions var mword}.
@@ -481,10 +441,10 @@ and since we never change a var->register assignment after we made a decision, w
   Context {funcMap': MapFunctions func (list register * list register * stmt')}.
 
   Definition eval: nat -> RegisterFile -> Mem -> stmt -> option (RegisterFile * Mem) :=
-    FlatImp.eval_stmt var func empty_map.
+    FlatImp.eval_stmt var func Empty_set empty_map.
 
   Definition eval': nat -> RegisterFile' -> Mem -> stmt' -> option (RegisterFile' * Mem) :=
-    FlatImp.eval_stmt register func empty_map.
+    FlatImp.eval_stmt register func Empty_set empty_map.
 
   Lemma apply_alloc_ok: forall (mapping: var -> register) (fuel: nat) (s: stmt) (l: vars)
                           (rf1 rf2: RegisterFile) (rf1': RegisterFile') (m1 m2: Mem),

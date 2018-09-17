@@ -85,7 +85,7 @@ Section FlatToRiscv.
     ZToReg_morphism.(morph_mul)
     ZToReg_morphism.(morph_opp)
   : rew_ZToReg_morphism.
-  
+
   Add Ring mword_ring : (@regRing mword MW)
       (preprocess [autorewrite with rew_ZToReg_morphism],
        morphism (@ZToReg_morphism mword MW),
@@ -230,8 +230,13 @@ Section FlatToRiscv.
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
-  Notation stmt := (stmt Z Z).
-  
+  Notation stmt := (stmt Z Z Empty_set).
+
+  Ltac destruct_Empty_set :=
+    match goal with
+    | a: Empty_set |- _ => destruct a
+    end.
+
   Context {funcMap: MapFunctions Z (list Z * list Z * stmt)}. (* TODO meh *)
 
   Context {mem: Set}.
@@ -263,6 +268,7 @@ Section FlatToRiscv.
     | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
     | SSkip => True
     | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
+    | SAnnot e _ => Empty_set_rect _ e
     end.
 
   (*
@@ -467,6 +473,7 @@ Section FlatToRiscv.
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     | SCall _ _ _ => nil (* unsupported *)
+    | SAnnot e _ => Empty_set_rect _ e
     end.
 
   (*
@@ -480,9 +487,9 @@ Section FlatToRiscv.
   *)
   
   Lemma compile_stmt_size: forall s,
-    (length (compile_stmt s) <= 2 * (stmt_size _ _ s))%nat.
+    (length (compile_stmt s) <= 2 * (stmt_size _ _ _ s))%nat.
   Proof.
-    induction s; simpl; try destruct op; simpl;
+    induction s; simpl; try destruct op; simpl; try destruct_Empty_set;
     repeat (rewrite app_length; simpl); try omega.
   Qed.
 
@@ -941,7 +948,7 @@ Section FlatToRiscv.
     end.
 
   (* TODO is 2^9 really the best we can get? *)
-  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size _ _ s) < 2 ^ 9)%Z.
+  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size _ _ _ s) < 2 ^ 9)%Z.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
@@ -1204,7 +1211,7 @@ Section FlatToRiscv.
 
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: stmt} {initialRegs finalRegs: state},
-      eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      eval_stmt _ _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
     induction fuel; intros; try (simpl in *; discriminate).
@@ -1223,11 +1230,12 @@ Section FlatToRiscv.
     - destruct p.
       eapply mem_accessibility_trans; eauto.
     - rewrite empty_is_empty in E. discriminate E.
+    - destruct_Empty_set.
   Qed.
 
   Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: stmt} {initialRegs finalRegs: state},
-      eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
+      eval_stmt _ _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
       forall start len,
         mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
   Proof.
@@ -1259,10 +1267,10 @@ Section FlatToRiscv.
     try eassumption;
     let Eq := fresh "Eq" in
     match goal with
-    | E1: eval_stmt _ _ ?env ?f ?r1 ?m1 ?s1 = Some (?r2, ?m2),
-      E2: eval_stmt _ _ ?env ?f ?r2 ?m2 ?s2 = Some (?r3, ?m3)
-      |-   eval_stmt _ _ ?env _ _ ?m1 _ = Some (_, ?m3)
-      => assert (eval_stmt _ _ env (S f) r1 m1 (SSeq s1 s2) = Some (r3, m3)) as Eq
+    | E1: eval_stmt _ _ _ ?env ?f ?r1 ?m1 ?s1 = Some (?r2, ?m2),
+      E2: eval_stmt _ _ _ ?env ?f ?r2 ?m2 ?s2 = Some (?r3, ?m3)
+      |-   eval_stmt _ _ _ ?env _ _ ?m1 _ = Some (_, ?m3)
+      => assert (eval_stmt _ _ _ env (S f) r1 m1 (SSeq s1 s2) = Some (r3, m3)) as Eq
           by (simpl; rewrite E1; exact E2); exact Eq
     end.
 
@@ -1628,7 +1636,7 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    eval_stmt _ _ empty_map fuelH initialH initialMH s = Some (finalH, finalMH) ->
+    eval_stmt _ _ _ empty_map fuelH initialH initialMH s = Some (finalH, finalMH) ->
     extends initialL.(core).(registers) initialH ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) allInsts imemStart ->
@@ -1789,6 +1797,9 @@ Section FlatToRiscv.
 
     - (* SCall *)
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
+
+    - (* SAnnot *)
+      destruct_Empty_set.
   Qed.
 
   Lemma compile_stmt_correct:
@@ -1797,7 +1808,7 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    eval_stmt _ _ empty_map fuelH empty_map initialMH s = Some (finalH, finalMH) ->
+    eval_stmt _ _ _ empty_map fuelH empty_map initialMH s = Some (finalH, finalMH) ->
     containsMem initialL.(machineMem) initialMH ->
     containsProgram initialL.(machineMem) insts imemStart ->
     initialL.(core).(pc) = imemStart ->

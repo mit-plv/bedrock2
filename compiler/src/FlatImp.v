@@ -23,6 +23,8 @@ Section FlatImp1.
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
+  Variable (Annot: Set).
+
   Ltac state_calc := state_calc_generic var mword.
 
   Inductive stmt: Set :=
@@ -35,7 +37,8 @@ Section FlatImp1.
     | SLoop(body1: stmt)(cond: var)(body2: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
-    | SCall(binds: list var)(f: func)(args: list var).
+    | SCall(binds: list var)(f: func)(args: list var)
+    | SAnnot(a: Annot)(s: stmt).
 
   Section WithEnv.
     Context {funcMap: MapFunctions func (list var * list var * stmt)}.
@@ -92,6 +95,7 @@ Section FlatImp1.
           retvs <- option_all (List.map (get st1) rets);
           st' <- putmany binds retvs st;
           Return (st', m')
+        | SAnnot a s => eval_stmt f st m s
         end
       end.
 
@@ -179,6 +183,11 @@ Section FlatImp1.
         putmany binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. Qed.
+
+    Lemma invert_eval_SAnnot: forall fuel initialSt initialM final a s,
+      eval_stmt (S fuel) initialSt initialM (SAnnot a s) = Some final ->
+      eval_stmt fuel initialSt initialM s = Some final.
+    Proof. inversion_lemma. Qed.
   End WithEnv.
 
   Definition stmt_size_body(rec: stmt -> nat)(s: stmt): nat :=
@@ -193,8 +202,9 @@ Section FlatImp1.
     | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
     | SSkip => 1
     | SCall binds f args => S (length binds + length args)
+    | SAnnot a s => rec s
     end.
-  
+
   Fixpoint stmt_size(s: stmt): nat := stmt_size_body stmt_size s.
   (* TODO: in coq 8.9 it will be possible to state this lemma automatically: https://github.com/coq/coq/blob/91e8dfcd7192065f21273d02374dce299241616f/CHANGES#L16 *)
   Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s. destruct s; reflexivity. Qed.
@@ -215,6 +225,7 @@ Section FlatImp1.
         union (modVars s1) (modVars s2)
     | SSkip => empty_set
     | SCall binds func args => of_list binds
+    | SAnnot a s => modVars s
     end.
 
   Fixpoint accessedVars(s: stmt): vars :=
@@ -232,6 +243,7 @@ Section FlatImp1.
         union (accessedVars s1) (accessedVars s2)
     | SSkip => empty_set
     | SCall binds func args => union (of_list binds) (of_list args)
+    | SAnnot a s => accessedVars s
     end.
 
   Lemma modVars_subset_accessedVars: forall s,
@@ -244,7 +256,7 @@ End FlatImp1.
 
 Ltac invert_eval_stmt :=
   lazymatch goal with
-  | E: eval_stmt _ _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
+  | E: eval_stmt _ _ _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
     destruct s;
     [ apply invert_eval_SLoad in E
     | apply invert_eval_SStore in E
@@ -255,7 +267,8 @@ Ltac invert_eval_stmt :=
     | apply invert_eval_SLoop in E
     | apply invert_eval_SSeq in E
     | apply invert_eval_SSkip in E
-    | apply invert_eval_SCall in E ];
+    | apply invert_eval_SCall in E
+    | apply invert_eval_SAnnot in E ];
     deep_destruct E;
     [ let x := fresh "Case_SLoad" in pose proof tt as x; move x at top
     | let x := fresh "Case_SStore" in pose proof tt as x; move x at top
@@ -268,19 +281,21 @@ Ltac invert_eval_stmt :=
     | let x := fresh "Case_SLoop_NotDone" in pose proof tt as x; move x at top
     | let x := fresh "Case_SSeq" in pose proof tt as x; move x at top
     | let x := fresh "Case_SSkip" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SCall" in pose proof tt as x; move x at top ]
+    | let x := fresh "Case_SCall" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SAnnot" in pose proof tt as x; move x at top ]
   end.
 
-Arguments SLoad   {_} {_}.
-Arguments SStore  {_} {_}.
-Arguments SLit    {_} {_}.
-Arguments SOp     {_} {_}.
-Arguments SSet    {_} {_}.
-Arguments SIf     {_} {_}.
-Arguments SLoop   {_} {_}.
-Arguments SSeq    {_} {_}.
-Arguments SSkip   {_} {_}.
-Arguments SCall   {_} {_}.
+Arguments SLoad   {_} {_} {_}.
+Arguments SStore  {_} {_} {_}.
+Arguments SLit    {_} {_} {_}.
+Arguments SOp     {_} {_} {_}.
+Arguments SSet    {_} {_} {_}.
+Arguments SIf     {_} {_} {_}.
+Arguments SLoop   {_} {_} {_}.
+Arguments SSeq    {_} {_} {_}.
+Arguments SSkip   {_} {_} {_}.
+Arguments SCall   {_} {_} {_}.
+Arguments SAnnot  {_} {_} {_}.
 
 Section FlatImp2.
 
@@ -297,15 +312,16 @@ Section FlatImp2.
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Context {funcMap: MapFunctions func (list var * list var * stmt var func)}.
-  Notation env := (map func (list var * list var * stmt var func)).
+  Variable Annot: Set.
+  Context {funcMap: MapFunctions func (list var * list var * stmt var func Annot)}.
+  Notation env := (map func (list var * list var * stmt var func Annot)).
 
   Ltac state_calc := state_calc_generic var mword.
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 (e: env) initialSt initialM s final,
     fuel1 <= fuel2 ->
-    eval_stmt var func e fuel1 initialSt initialM s = Some final ->
-    eval_stmt var func e fuel2 initialSt initialM s = Some final.
+    eval_stmt var func Annot e fuel1 initialSt initialM s = Some final ->
+    eval_stmt var func Annot e fuel2 initialSt initialM s = Some final.
   Proof.
     induction fuel1; introv L Ev.
     - inversions Ev.
@@ -334,8 +350,8 @@ Section FlatImp2.
   Qed.
 
   Lemma modVarsSound: forall fuel e s initialSt initialM finalSt finalM,
-    eval_stmt var func e fuel initialSt initialM s = Some (finalSt, finalM) ->
-    only_differ initialSt (modVars var func s) finalSt.
+    eval_stmt var func Annot e fuel initialSt initialM s = Some (finalSt, finalM) ->
+    only_differ initialSt (modVars var func Annot s) finalSt.
   Proof.
     induction fuel; introv Ev.
     - discriminate.
