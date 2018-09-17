@@ -8,6 +8,13 @@ Require Import Coq.Lists.List.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
 
+Section TODO.
+  Context {K V: Type}.
+  Context {Mf: MapFunctions K V}.
+  Axiom get_in_domain: forall k m, k \in (domain m) -> exists v, get m k = Some v.
+  Axiom domain_put: forall k v m, domain (put m k v) = union (domain m) (singleton_set k).
+End TODO.
+
 Section Injective.
 
   Context {A B: Type} {sf: SetFunctions A}.
@@ -89,6 +96,74 @@ Notation "E \c F" := (subset E F)
   (at level 38) : set_scope.
 *)
 
+Section Util.
+
+  Context {var func: Set}.
+
+  (* set of variables which is certainly written while executing s *)
+  Definition map_annotations{A B: Set}(f: A -> B): stmt var func A -> stmt var func B :=
+    fix rec(s: stmt var func A): stmt var func B :=
+      match s with
+      | SLoad x y    => SLoad x y
+      | SStore x y   => SStore x y
+      | SLit x v     => SLit x v
+      | SOp x op y z => SOp x op y z
+      | SSet x y     => SSet x y
+      | SIf cond s1 s2 => SIf cond (rec s1) (rec s2)
+      | SLoop s1 cond s2 => SLoop (rec s1) cond (rec s2)
+      | SSeq s1 s2 => SSeq (rec s1) (rec s2)
+      | SSkip => SSkip
+      | SCall argnames fname resnames => SCall argnames fname resnames
+      | SAnnot a s => SAnnot (f a) (rec s)
+    end.
+
+  Definition make_annotatable(A: Set): stmt var func Empty_set -> stmt var func A :=
+    map_annotations (Empty_set_rec (fun _ => A)).
+
+End Util.
+
+Section Live.
+
+  Context {var func A: Set}.
+  Context {varset: SetFunctions var}.
+  Local Notation stmt := (stmt var func A).
+  Local Notation vars := (set var).
+
+  (* set of variables which is certainly written while executing s *)
+  Fixpoint certainly_written(s: stmt): vars :=
+    match s with
+    | SLoad x y    => singleton_set x
+    | SStore x y   => singleton_set x
+    | SLit x v     => singleton_set x
+    | SOp x op y z => singleton_set x
+    | SSet x y     => singleton_set x
+    | SIf cond s1 s2 => intersect (certainly_written s1) (certainly_written s2)
+    | SLoop s1 cond s2 => certainly_written s1
+    | SSeq s1 s2 => union (certainly_written s1) (certainly_written s2)
+    | SSkip => empty_set
+    | SCall argnames fname resnames => of_list resnames
+    | SAnnot a s => certainly_written s
+    end.
+
+  (* set of variables which is live before executing s *)
+  Fixpoint live(s: stmt): vars :=
+    match s with
+    | SLoad x y    => singleton_set y
+    | SStore x y   => union (singleton_set x) (singleton_set y)
+    | SLit x v     => empty_set
+    | SOp x op y z => union (singleton_set y) (singleton_set z)
+    | SSet x y     => singleton_set y
+    | SIf cond s1 s2   => union (singleton_set cond) (union (live s1) (live s2))
+    | SLoop s1 cond s2 => union (live s1) (diff (union (singleton_set cond) (live s2))
+                                                (certainly_written s1))
+    | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
+    | SSkip => empty_set
+    | SCall argnames fname resnames => of_list argnames
+    | SAnnot a s => live s
+    end.
+
+End Live.
+
 Section RegAlloc.
 
   Context {mword: Set}.
@@ -115,40 +190,10 @@ Section RegAlloc.
   Local Notation stmt  := (FlatImp.stmt var func Empty_set).      (* input type *)
   Local Notation stmt' := (FlatImp.stmt register func Empty_set). (* output type *)
 
+  (* statement annotated with (var -> register) mappings *)
+  Local Notation astmt := (FlatImp.stmt var func (var * register)).
+
   Ltac set_solver := set_solver_generic var.
-
-  (* set of variables which is certainly written while executing s *)
-  Fixpoint certainly_written(s: stmt): vars :=
-    match s with
-    | SLoad x y    => singleton_set x
-    | SStore x y   => singleton_set x
-    | SLit x v     => singleton_set x
-    | SOp x op y z => singleton_set x
-    | SSet x y     => singleton_set x
-    | SIf cond s1 s2 => intersect (certainly_written s1) (certainly_written s2)
-    | SLoop s1 cond s2 => certainly_written s1
-    | SSeq s1 s2 => union (certainly_written s1) (certainly_written s2)
-    | SSkip => empty_set
-    | SCall argnames fname resnames => of_list resnames
-    | SAnnot e _ => Empty_set_rect _ e
-    end.
-
-  (* set of variables which is live before executing s *)
-  Fixpoint live(s: stmt): vars :=
-    match s with
-    | SLoad x y    => singleton_set y
-    | SStore x y   => union (singleton_set x) (singleton_set y)
-    | SLit x v     => empty_set
-    | SOp x op y z => union (singleton_set y) (singleton_set z)
-    | SSet x y     => singleton_set y
-    | SIf cond s1 s2   => union (singleton_set cond) (union (live s1) (live s2))
-    | SLoop s1 cond s2 => union (live s1) (diff (union (singleton_set cond) (live s2))
-                                                (certainly_written s1))
-    | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
-    | SSkip => empty_set
-    | SCall argnames fname resnames => of_list argnames
-    | SAnnot e _ => Empty_set_rect _ e
-    end.
 
   Definition holds_forall_livesets(P: vars -> Prop): stmt -> Prop :=
     fix rec(s: stmt) :=
@@ -156,6 +201,7 @@ Section RegAlloc.
       match s with
       (* recursive cases: *)
       | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => rec s1 /\ rec s2
+      | SAnnot _ s => rec s
       (* non-recursive cases: *)
       | _ => True
       end.
@@ -165,13 +211,26 @@ Section RegAlloc.
 
   Variable dummy_register: register.
 
-  Definition start_interval(current: vars * registers * alloc)(x: var)
-    : vars * registers * alloc :=
-    let '(o, a, m) := current in
+  Definition start_interval(o: vars)(a: registers)(m: alloc)(s: stmt)(x: var)
+    : vars * registers * alloc * astmt :=
     let o := union o (singleton_set x) in
     let '(r, a) := pick_or_else a dummy_register in
     let m := put m x r in
-    (o, a, m).
+    (o, a, m, make_annotatable _ s).
+
+  Definition regalloc
+           (o: vars)             (* occupants: variables which currently occupy a register *)
+           (a: registers)        (* available registers (those not used currently) *)
+           (m: alloc)            (* mapping from variables to registers *)
+           (s: stmt)             (* current sub-statement *)
+           (l: vars)             (* variables which have a life after statement s *)
+    : (vars *          (* new occupants *)
+       registers *     (* new available registers *)
+       alloc).         (* new mappings to be added further outside *)
+  Admitted.
+
+  (* - predefined mappings
+     - variables life after s
 
   Fixpoint regalloc
            (o: vars)             (* occupants: variables which currently occupy a register *)
@@ -179,7 +238,10 @@ Section RegAlloc.
            (m: alloc)            (* mapping from variables to registers *)
            (s: stmt)             (* current sub-statement *)
            (l: vars)             (* variables which have a life after statement s *)
-    : (vars * registers * alloc) (* new occupants, new available registers, new mapping *)
+    : (vars *          (* new occupants *)
+       registers *     (* new available registers *)
+       alloc *         (* new mappings to be added further outside *)
+       astmt)          (* annotated result statement *)
     :=
     let o_original := o in
     (* these are the variables which actually deserve to occupy a register: *)
@@ -209,6 +271,87 @@ Section RegAlloc.
     | SCall argnames fname resnames => fold_left start_interval resnames (o, a, m)
     | SAnnot e _ => Empty_set_rect _ e
     end.
+*)
+
+  (* checks that there are annotations for all vars *)
+  Definition annotations_for_all_vars_except: vars -> astmt -> Prop :=
+    fix rec(vs: vars)(s: astmt): Prop :=
+      match s with
+      | SLoad x y    => x \in vs /\ y \in vs
+      | SStore x y   => x \in vs /\ y \in vs
+      | SLit x v     => x \in vs
+      | SOp x op y z => x \in vs /\ y \in vs /\ z \in vs
+      | SSet x y     => x \in vs /\ y \in vs
+      | SIf cond s1 s2   => cond \in vs /\ rec vs s1 /\ rec vs s2
+      | SLoop s1 cond s2 => cond \in vs /\ rec vs s1 /\ rec vs s2
+      | SSeq s1 s2 => rec vs s1 /\ rec vs s2
+      | SSkip => True
+      | SCall argnames fname resnames =>
+          subset (of_list argnames) vs /\ subset (of_list resnames) vs
+      | SAnnot (v, r) s => rec (union vs (singleton_set v)) s
+    end.
+
+  Definition annotations_injective_over_all_livesets: alloc -> astmt -> Prop :=
+    fix rec(m: alloc)(s: astmt): Prop :=
+      injective_over (get m) (live s) /\
+      match s with
+      (* recursive cases: *)
+      | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => rec m s1 /\ rec m s2
+      | SAnnot (v, r) s => rec (put m v r) s
+      (* non-recursive cases: *)
+      | _ => True
+      end.
+
+  Definition apply_annotations: alloc -> astmt -> option stmt' :=
+    fix rec(m: alloc)(s: astmt): option stmt' :=
+      match s with
+      | SLoad x y    => x' <- get m x; y' <- get m y; Some (SLoad x' y')
+      | SStore x y   => x' <- get m x; y' <- get m y; Some (SStore x' y')
+      | SLit x v     => x' <- get m x; Some (SLit x' v)
+      | SOp x op y z => x' <- get m x; y' <- get m y; z' <- get m z; Some (SOp x' op y' z')
+      | SSet x y     => x' <- get m x; y' <- get m y; Some (SSet x' y')
+      | SIf cond s1 s2   => s1' <- rec m s1; s2' <- rec m s2; cond' <- get m cond;
+                            Some (SIf cond' s1' s2')
+      | SLoop s1 cond s2 => s1' <- rec m s1; s2' <- rec m s2; cond' <- get m cond;
+                            Some (SLoop s1' cond' s2')
+      | SSeq s1 s2       => s1' <- rec m s1; s2' <- rec m s2; Some (SSeq s1' s2')
+      | SSkip => Some SSkip
+      | SCall argnames fname resnames => None (* TODO *)
+      | SAnnot (v, r) s => rec (put m v r) s
+    end.
+
+  Hypothesis no_functions: func = Empty_set.
+
+  Lemma apply_annotations_total: forall s m,
+      annotations_for_all_vars_except (domain m) s ->
+      exists s', apply_annotations m s = Some s'.
+  Proof.
+    induction s; intros; simpl in *; destruct_products;
+    try match goal with
+    | x: func |- _ => rewrite no_functions in x; apply (Empty_set_ind _ x)
+    end;
+    repeat match goal with
+    | IH: _, H: _ |- _ => specialize (IH _ H)
+    end;
+    repeat match goal with
+           | H: _ |- _ => apply get_in_domain in H
+           end;
+    destruct_products;
+    repeat match goal with
+    | E: _ = Some _ |- _ => rewrite E
+    end;
+    eauto.
+    (* proof auto challenge: How to get this kind of matching to be generically automatic *)
+    specialize (IHs (put m v r)).
+    rewrite domain_put in IHs.
+    apply (IHs H).
+  Qed.
+
+    (* or separate?
+  Definition annotations_for_all_vars(s: astmt): Prop
+
+  Definition annotations_injective_over_all_livesets
+  *)
 
   Ltac head e :=
     match e with
@@ -224,9 +367,10 @@ Section RegAlloc.
     end.
   Abort.
 
+(*
   Lemma regalloc_ok: forall  (s: stmt) (l: vars) (o o': vars) (a a': registers) (m m': alloc),
       injective_over (get m) o ->
-      injective_over (get m) l ->
+      injective_over (get m) l -> (* <-- this one requires me to decide beforehands which registers to assign to the variables in l, not sure if desired *)
       subset (live s) o ->
       subset l (union o (certainly_written s)) ->
       regalloc o a m s l = (o', a', m') ->
@@ -397,15 +541,7 @@ and since we never change a var->register assignment after we made a decision, w
 
 
   Admitted.
-
-  Inductive inspect{T: Type}: T -> Prop := .
-
-  Goal forall o a m l cond s1 s2 s3, inspect (regalloc o a m (SSeq (SIf cond s1 s2) s3) l).
-    intros.
-    let b := eval cbv delta [regalloc] in regalloc in change regalloc with b.
-    cbv beta iota. fold regalloc.
-    simpl live.
-  Abort.
+*)
 
   Definition make_total(m: alloc): var -> register :=
     fun x => match get m x with
@@ -468,6 +604,7 @@ and since we never change a var->register assignment after we made a decision, w
   Definition register_allocation(s: stmt)(c: alloc): stmt' :=
     apply_alloc (register_mapping s c) s.
 
+  (*
   Lemma register_allocation_ok: forall (fuel: nat) (s: stmt) (c: alloc)
                                   (rf1 rf2: RegisterFile) (rf1': RegisterFile') (m1 m2: Mem),
       (forall x, get rf1 x = get rf1' (register_mapping s c x)) ->
@@ -499,5 +636,5 @@ and since we never change a var->register assignment after we made a decision, w
       + intros. apply H.
       + eauto.
   Admitted.
-
+  *)
 End RegAlloc.

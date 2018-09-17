@@ -71,8 +71,9 @@ Tactic Notation "forget" constr(X) "as" ident(y) := set (y:=X) in *; clearbody y
 
 Ltac destruct_products :=
   repeat match goal with
+  | p: _ * _  |- _ => destruct p
   | H: _ /\ _ |- _ => let Hl := fresh H "l" in let Hr := fresh H "r" in destruct H as [Hl Hr]
-  | E: exists y, _ |- _ => let yf := fresh y in destruct E as [y E]
+  | E: exists y, _ |- _ => let yf := fresh y in destruct E as [yf E]
   end.
 
 (** [pose proof defn], but only if no hypothesis of the same type exists.
