@@ -418,8 +418,20 @@ idtac.
 repeat autorewrite with rew_EmptySetOps in *.
 
 (* explanation of counterexample:
-   in order to use IHs2, we need to show that f0 is injective over the liveset of s2,
-   which is {var_val_0, var_val_1}, but f0 maps everything to reg_val_0 *)
+   in order to use IHs1, we need to show that f0 is injective over the
+   after-live-set of s1, i.e. over the liveset of s2,
+   which is {var_val_0, var_val_1}, but f0 maps everything to reg_val_0
+
+zoom-out:
+
+Suppose we have program (s0; (s1; s2)).
+Before s1, liveset is empty, and after s2, liveset is empty as well.
+s1 computes variables v0 and v1, which are used by s2, so liveset of s2 is {v0, v1}.
+However, the register allocation of s0 decided to put v0 and v1 into the same register,
+and since we never change a var->register assignment after we made a decision, we're stuck.
+
+
+ *)
 
 
   Admitted.
