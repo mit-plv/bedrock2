@@ -92,10 +92,10 @@ end.
 
 Context (__A : map.ok Semantics.mem).
 Lemma swap_ok : 
-  forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
+  forall l a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
-    (fun _ => True) (fun _ => False) (fun _ _ => True) (fun _ _ _ _ _ => False)
+    (fun _ => True) (fun _ => False) (fun _ _ => True) l (fun _ _ _ _ _ => False)
     (@swap BasicC64Syntax.params) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr b) (sep (ptsto 1 b_addr a) R)) m' /\ rets = nil).
 Proof.
@@ -103,15 +103,33 @@ Proof.
   repeat t.
 Qed.
 
+Lemma skipn_here : forall {T} (l : list T), List.skipn 0 l = l.
+Proof. reflexivity. Qed.
+Lemma skipn_next : forall {T} n l (ls ls' : list T), List.skipn n ls = ls' -> List.skipn (S n) (l :: ls) = ls'.
+Proof. intros. subst. reflexivity. Qed.
+
+Ltac find_in_list :=
+  repeat first [ apply skipn_here
+               | apply skipn_next ].
+
+Lemma wp_call_resolve : forall r g p l funcs addr t m args post i body rest,
+    List.skipn i funcs = (addr, body) :: rest ->
+    WeakestPrecondition.func r g p l (WeakestPrecondition.call r g p l rest) body t m args post ->
+    WeakestPrecondition.call r g p l funcs addr t m args post.
+Proof.
+Admitted.
+
+
 Lemma swap_swap_ok : 
-  forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
+  forall l swap_addr a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
+    l "swap" = Some swap_addr ->
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
-    (fun _ => True) (fun _ => False) (fun _ _ => True) (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) [("swap", (@swap BasicC64Syntax.params))])
+    (fun _ => True) (fun _ => False) (fun _ _ => True) l (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) l [(swap_addr, (@swap BasicC64Syntax.params))])
     (@swap_swap BasicC64Syntax.params) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m' /\ rets = nil).
 Proof.
-  intros. rename H into Hm.
+  intros. rename H0 into Hm.
   eexists.
   eexists.
   eexists.
@@ -121,11 +139,17 @@ Proof.
   eexists.
   eexists.
   eexists.
-  intros. eapply WeakestPreconditionProperties.Proper_func.
-  6: eapply swap_ok.
-  1,2,3,4,5 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].
-  1,2: cycle 1.
-  refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
+  eexists.
+  eexists. eassumption.
+  intros.
+  eapply wp_call_resolve.
+  find_in_list.
+  eapply WeakestPreconditionProperties.Proper_func.
+  7: eapply swap_ok.
+  all: try reflexivity.
+  cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].
+  tauto.
+  2: refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm); reflexivity. (* TODO: ecancel *)
   intros ? m' ? (?&Hm'&?).
   clear Hm.
   clear m.
@@ -142,11 +166,16 @@ Proof.
   eexists.
   eexists.
   eexists.
-  intros. eapply WeakestPreconditionProperties.Proper_func.
-  6: eapply swap_ok.
-  1,2,3,4,5 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].
-  1,2: cycle 1.
-  refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
+  eexists.
+  eexists; [ eassumption | ].
+  eapply wp_call_resolve.
+  find_in_list.
+  eapply WeakestPreconditionProperties.Proper_func.
+  7: eapply swap_ok.
+  all: try reflexivity.
+  cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core]; tauto.
+  2: refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm); reflexivity. (* TODO: ecancel *)
+  cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].
   intros ? m' ? (?&Hm'&?).
   clear Hm.
   clear m.
@@ -163,4 +192,3 @@ Proof.
   eassumption.
   eexists.
 Qed.
-  

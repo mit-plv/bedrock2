@@ -33,7 +33,7 @@ Definition to_c_parameters : ToCString.parameters := {|
              | eq => e1++"=="++e2
              end%string;
      c_var := id;
-     c_fun := id;
+     c_glob := id;
      c_act := ToCString.c_call;
 
      varname_eqb := String.eqb;

@@ -11,7 +11,7 @@ Class parameters := {
   c_lit : Z -> String.string;
   c_bop : string -> bopname -> string -> string;
   c_var : varname -> String.string;
-  c_fun : funname -> String.string;
+  c_glob : globname -> String.string;
   c_act : list varname -> actname -> list String.string -> string;
 }.
 
@@ -33,6 +33,7 @@ Section ToCString.
     match e with
     | expr.literal v => c_lit v
     | expr.var x => c_var x
+    | expr.global x => c_glob x
     | expr.load s ea => "*(" ++ c_size s ++ "*)(" ++ c_expr ea ++ ")"
     | expr.op op e1 e2 => c_bop ("(" ++ c_expr e1 ++ ")") op ("(" ++ c_expr e2 ++ ")")
     end.
@@ -79,13 +80,13 @@ Section ToCString.
     | cmd.skip =>
       indent ++ "/*skip*/" ++ LF
     | cmd.call args f es =>
-      indent ++ c_call (List.map c_var args) (c_fun f) (List.map c_expr es)
+      indent ++ c_call (List.map c_var args) (c_glob f) (List.map c_expr es)
     | cmd.interact binds action es =>
       indent ++ c_act binds action (List.map c_expr es)
     end%string.
 
-  Definition c_decl (rett : string) (args : list varname) (name : funname) (retptrs : list varname) : string :=
-    (rett ++ " " ++ c_fun name ++ "(" ++ concat ", " (
+  Definition c_decl (rett : string) (args : list varname) (name : globname) (retptrs : list varname) : string :=
+    (rett ++ " " ++ c_glob name ++ "(" ++ concat ", " (
                     List.map (fun a => "uintptr_t "++c_var a) args ++
                     List.map (fun r => "uintptr_t* "++c_var r) retptrs) ++
                   ")")%string.

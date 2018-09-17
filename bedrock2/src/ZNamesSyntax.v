@@ -4,7 +4,7 @@ Require Import bedrock2.Basic_bopnames.
 
 Instance ZNames : Syntax.parameters := {|
   Syntax.varname := Z;
-  Syntax.funname := Z;
+  Syntax.globname := Z;
 
   Syntax.actname := Empty_set;
   Syntax.bopname := bopname;

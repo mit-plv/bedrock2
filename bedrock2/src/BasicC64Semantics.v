@@ -33,5 +33,5 @@ Instance parameters : parameters := {|
   (* TODO: faster maps *)
   mem := UnorderedList.map {| UnorderedList.key_eqb a b := if Word.weq a b then true else false |};
   locals := UnorderedList.map {| UnorderedList.key_eqb := String.eqb |};
-  funname_eqb := String.eqb;
+  word_eqb := @Word.weqb 64
 |}.

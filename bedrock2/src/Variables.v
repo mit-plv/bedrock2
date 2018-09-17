@@ -6,8 +6,9 @@ Module expr. Section expr. Import Syntax.expr.
   Context {p : unique! Syntax.parameters}.
   Fixpoint vars (e : expr) : list varname :=
     match e with
-    | literal v => nil
+    | literal _ => nil
     | var x => cons x nil
+    | global _ => nil
     | load _ ea => vars ea
     | op _ e1 e2 => List.app (vars e1) (vars e2)
     end.
