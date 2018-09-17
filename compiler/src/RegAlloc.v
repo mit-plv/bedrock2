@@ -382,6 +382,10 @@ Ltac disj_to_set d :=
   end.
 
 Ltac universe_of T :=
+  let _ := match tt with
+           | _ => constr:(@singleton_set T _)
+           | _ => fail 1000 "no set instance found for" T
+           end in
   match goal with
   | H: forall (x: T), _ |- _ =>
     let dummyT := match type of H with
@@ -397,65 +401,7 @@ match type of ls2 with
   let r := universe_of T in idtac r
 end.
 
-(*
-let P' := constr:(reg_val_0 = reg_val_0) in
-    tryif constr:(@singleton_set reg _) then
-      (let r := lazymatch P' with
-                | (_ = ?v1 \/ ?rest) =>
-                  let s := disj_to_set rest in
-                  constr:(union (singleton_set v1) s)
-                | (_ = ?v1) => constr:(singleton_set v1)
-                | _ => fail "did not expect" P'
-                end in
-      idtac r)
-    else fail 1000 "no set instance found".
-
-match type of f0 with
-| _ ->  ?T =>
-  match goal with
-  | H: forall (x: T), _ |- _ =>
-    let dummyT := match type of H with
-                  | forall (x: T), x = ?v1 => constr:(v1)
-                  | forall (x: T), x = ?v1 \/ _ => constr:(v1)
-                  end in
-    let P' := type of (H dummyT) in
-    let r :=   lazymatch P' with
-               | (_ = ?v1 \/ ?rest) =>
-                 let s := disj_to_set rest in
-                 constr:(union (singleton_set v1) s)
-               | (_ = ?v1) => constr:(singleton_set v1)
-               | _ => fail "did not expect" P'
-               end in
-    idtac r
-  end
-end.
-
-let T := type of reg_val_0 in let r := universe_of T in idtac r.
-
-match type of ls2 with
-| set ?T =>
-  match goal with
-  | H: forall (x: T), _ |- _ =>
-    let dummyT := match type of H with
-                  | forall (x: T), x = ?v1 => constr:(v1)
-                  | forall (x: T), x = ?v1 \/ _ => constr:(v1)
-                  end in
-    let P' := type of (H dummyT) in
-    let r := disj_to_set P' in
-    idtac r
-  end
-end.
-
-match type of H8 with
-  | forall (x: ?T), ?P =>
-    idtac P;
-    let dummyT := match P with
-                  | x = ?v1 => constr:(v1)
-                  | x = ?v1 \/ _ => constr:(v1)
-                  end in
-    let P' := type of (H dummyT) in idtac P'
-end.
-*)
+Fail let T := type of reg_val_0 in let r := universe_of T in idtac r.
 
 (* TODO: this part
 
