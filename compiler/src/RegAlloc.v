@@ -296,6 +296,30 @@ repeat match goal with
 
 Notation reg := (option register).
 
+Ltac disj_to_set d :=
+  lazymatch d with
+    | (_ = ?v1 \/ ?rest) =>
+      let s := disj_to_set rest in
+      constr:(union (singleton_set v1) s)
+    | (_ = ?v1) => constr:(singleton_set v1)
+    | _ => fail "did not expect" d
+  end.
+
+Ltac universe_of T :=
+  let _ := match tt with
+           | _ => constr:(@singleton_set T _)
+           | _ => fail 1000 "no set instance found for" T
+           end in
+  match goal with
+  | H: forall (x: T), _ |- _ =>
+    let dummyT := match type of H with
+                  | forall (x: T), x = ?v1 => constr:(v1)
+                  | forall (x: T), x = ?v1 \/ _ => constr:(v1)
+                  end in
+    let P' := type of (H dummyT) in
+    disj_to_set P'
+  end.
+
 Inductive ____BEGIN_counterexample____: Prop :=
   mk_BEGIN_counterexample: ____BEGIN_counterexample____.
 Inductive ____END_counterexample____: Prop :=
@@ -326,10 +350,17 @@ Tactic Notation "(define-fun" ident(f) "(" "(" ident(x) constr(T) ")" ")" constr
   rewrite E in *;
   t.
 Tactic Notation "(define-fun" ident(f) "(" "(" ident(x) constr(T) ")" ")" "Bool"
-       constr(body) ")" tactic(t) :=
+       "false" ")" tactic(t) :=
   let E := fresh "E" in (assert (f = empty_set) as E by admit);
   rewrite E in *;
   t.
+Tactic Notation "(define-fun" ident(f) "(" "(" ident(x) constr(T) ")" ")" "Bool"
+       "true" ")" tactic(t) :=
+  let s := universe_of T in
+  let E := fresh "E" in (assert (f = s) as E by admit);
+  rewrite E in *;
+  t.
+
 Tactic Notation ";;" "cardinality" "constraint:" constr(P) tactic(t) :=
   pose proof mk_cardinality_constraint; assert P by admit; t.
 
@@ -370,41 +401,6 @@ Notation "= A B" := (@eq _ A B)
     false)
   (define-fun f0 ((x_1 var)) reg
     reg_val_0)
-).
-
-Ltac disj_to_set d :=
-  lazymatch d with
-    | (_ = ?v1 \/ ?rest) =>
-      let s := disj_to_set rest in
-      constr:(union (singleton_set v1) s)
-    | (_ = ?v1) => constr:(singleton_set v1)
-    | _ => fail "did not expect" d
-  end.
-
-Ltac universe_of T :=
-  let _ := match tt with
-           | _ => constr:(@singleton_set T _)
-           | _ => fail 1000 "no set instance found for" T
-           end in
-  match goal with
-  | H: forall (x: T), _ |- _ =>
-    let dummyT := match type of H with
-                  | forall (x: T), x = ?v1 => constr:(v1)
-                  | forall (x: T), x = ?v1 \/ _ => constr:(v1)
-                  end in
-    let P' := type of (H dummyT) in
-    disj_to_set P'
-  end.
-
-match type of ls2 with
-| set ?T =>
-  let r := universe_of T in idtac r
-end.
-
-Fail let T := type of reg_val_0 in let r := universe_of T in idtac r.
-
-(* TODO: this part
-
   (define-fun ls2 ((x_1 var)) Bool
     true)
   (define-fun cws1 ((x_1 var)) Bool
@@ -413,14 +409,18 @@ Fail let T := type of reg_val_0 in let r := universe_of T in idtac r.
     false)
   (define-fun ls1 ((x_1 var)) Bool
     false)
+).
 
-Problem: how to map functions back to sets?
+Open Scope set_scope.
 
-while keeping functions (f0: var -> reg) *)
+idtac.
 
-        Open Scope set_scope.
+repeat autorewrite with rew_EmptySetOps in *.
 
-        (* here is better *)
+(* explanation of counterexample:
+   in order to use IHs2, we need to show that f0 is injective over the liveset of s2,
+   which is {var_val_0, var_val_1}, but f0 maps everything to reg_val_0 *)
+
 
   Admitted.
 
