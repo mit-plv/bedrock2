@@ -186,6 +186,7 @@ Section RegAlloc.
   | AddMappings(m: alloc)
   | RemMappings(s: vars).
 
+(*
   Definition annotate(a: registers) :=
     fix rec(m: alloc)(s: stmt)(l: vars): alloc * registers * astmt :=
       let original_occupants := domain m in
@@ -231,7 +232,7 @@ Section RegAlloc.
     let '(r, a) := pick_or_else a dummy_register in
     let m := put m x r in
     (o, a, m, make_annotatable _ s).
-
+*)
   Definition regalloc
            (o: vars)             (* occupants: variables which currently occupy a register *)
            (a: registers)        (* available registers (those not used currently) *)
@@ -286,7 +287,7 @@ Section RegAlloc.
     end.
 *)
 
-  (* checks that there are annotations for all vars *)
+  (* checks that there are annotations for all vars
   Definition annotations_for_all_vars_except: vars -> astmt -> Prop :=
     fix rec(vs: vars)(s: astmt): Prop :=
       match s with
@@ -359,7 +360,7 @@ Section RegAlloc.
     rewrite domain_put in IHs.
     apply (IHs H).
   Qed.
-
+*)
     (* or separate?
   Definition annotations_for_all_vars(s: astmt): Prop
 
