@@ -211,6 +211,49 @@ Section RegAlloc.
 
   Variable dummy_register: register.
 
+  Inductive Annot :=
+  | AddMappings(m: alloc)
+  | RemMappings(s: vars).
+
+  Definition annotate(a: registers) :=
+    fix rec(m: alloc)(s: stmt)(l: vars): alloc * registers * astmt :=
+      let original_occupants := domain m in
+      let tolerated_occupants := union (live s) (diff l (certainly_written s)) in
+      let m := restrict m tolerated_occupants in
+      let rem := diff original_occupants tolerated_occupants in
+
+
+
+
+
+
+      let (m', a') := (m, a) (*
+          match s with
+          | SLoad x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
+            match get m x with
+            | Some rx => (o, a, m) (* nothing to do because no new interval starts *)
+            | None    => start_interval (o, a, m) x
+            end
+          | SStore x y => (o, a, m)
+          | SIf cond s1 s2   =>
+            let '(o1, a1, m1) := regalloc o a  m  s1 l in
+            let '(o2, a2, m2) := regalloc o a1 m1 s2 l in
+            (union o1 o2, a2, m2)
+          | SLoop s1 cond s2 =>
+            let '(o, a, m) := regalloc o a m s1 (union (union (singleton_set cond) (live s2)) l) in
+            regalloc o a m s2 l
+          | SSeq s1 s2 =>
+            let '(o, a, m) := regalloc o a m s1 (union (live s2) l) in
+            regalloc o a m s2 l
+          | SSkip => (o, a, m)
+          | SCall argnames fname resnames => fold_left start_interval resnames (o, a, m)
+          | SAnnot e _ => Empty_set_rect _ e
+          end*) in
+
+
+
+
+
   Definition start_interval(o: vars)(a: registers)(m: alloc)(s: stmt)(x: var)
     : vars * registers * alloc * astmt :=
     let o := union o (singleton_set x) in
