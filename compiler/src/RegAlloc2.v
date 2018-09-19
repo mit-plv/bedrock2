@@ -16,6 +16,7 @@ Section TODO.
   *)
   Axiom reverse_get: map K V -> V -> option K.
   Axiom intersect_map: map K V -> map K V -> map K V.
+  Axiom put_put_same: forall k v1 v2 m, put (put m k v1) k v2 = put m k v2.
 End TODO.
 
 Local Notation "'bind_opt' x <- a ; f" :=
@@ -50,7 +51,7 @@ Section RegAlloc.
     | ASOp(x: srcvar)(x': impvar)(op: bopname)(y z: srcvar)
     | ASSet(x: srcvar)(x': impvar)(y: srcvar)
     | ASIf(cond: srcvar)(bThen bElse: astmt)
-    | ASLoop(inv: map impvar srcvar)(body1: astmt)(cond: srcvar)(body2: astmt)
+    | ASLoop(body1: astmt)(cond: srcvar)(body2: astmt)
     | ASSeq(s1 s2: astmt)
     | ASSkip
     | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
@@ -66,7 +67,7 @@ Section RegAlloc.
       | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ => put m x' x
       | ASStore a v => m
       | ASIf cond s1 s2 => intersect_map (rec m s1) (rec m s2)
-      | ASLoop inv s1 cond s2 =>
+      | ASLoop s1 cond s2 =>
           (* mi = map if loop was repeated i times *)
           let m0 := rec m s1 in
           let m1 := rec (rec m0 s2) s1 in
@@ -82,36 +83,74 @@ Section RegAlloc.
       | ASCall binds f args => empty_map (* TODO *)
       end.
 
+  Lemma mappings_idemp: forall s m1 m2,
+      m2 = mappings m1 s ->
+      mappings m2 s = m2.
+  Proof.
+    induction s; intros; simpl in *;
+      try reflexivity;
+      try (subst; apply put_put_same).
+    {
+      erewrite IHs1 with (m2 := m2); [erewrite IHs2 with (m2 := m2)|].
+      subst.
+      - admit. (* ok *)
+      - symmetry. eapply IHs2. (* stuck in a loop *)
+  Abort.
 
   Definition checker :=
-    fix rec(m: map impvar srcvar)(s: astmt): option (map impvar srcvar * stmt') :=
+    fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
       match s with
       | ASLoad x x' a =>
           bind_opt a' <- reverse_get m a;
-          Some (put m x' x, SLoad x' a')
+          Some (SLoad x' a')
       | ASStore a v =>
           bind_opt a' <- reverse_get m a;
           bind_opt v' <- reverse_get m v;
-          Some (m, SStore a' v')
+          Some (SStore a' v')
       | ASLit x x' v =>
-          Some (put m x' x, SLit x' v)
+          Some (SLit x' v)
       | ASOp x x' op y z =>
           bind_opt y' <- reverse_get m y;
           bind_opt z' <- reverse_get m z;
-          Some (put m x' x, SOp x' op y' z')
+          Some (SOp x' op y' z')
       | ASSet x x' y =>
           bind_opt y' <- reverse_get m y;
-          Some (put m x' x, SSet x' y')
+          Some (SSet x' y')
       | ASIf cond s1 s2 =>
           bind_opt cond' <- reverse_get m cond;
-          bind_opt (m1, s1') <- rec m s1;
-          bind_opt (m2, s2') <- rec m s2;
-          Some (intersect_map m1 m2, SIf cond' s1' s2')
-      | ASLoop inv s1 cond s2 => None (* TODO need to verify that m implies inv *)
+          bind_opt s1' <- rec m s1;
+          bind_opt s2' <- rec m s2;
+          Some (SIf cond' s1' s2')
+      | ASLoop s1 cond s2 =>
+          bind_opt cond' <- reverse_get m cond;
+          let m1 := intersect_map m (mappings m s) in
+          let m2 := intersect_map (mappings m s1) (mappings m1 s) in
+          bind_opt s1' <- rec m1 s1;
+          bind_opt s2' <- rec m2 s2;
+          Some (SLoop s1' cond' s2')
       | ASSeq s1 s2 =>
-          bind_opt (m1, s1') <- rec m s1; rec m1 s2
-      | ASSkip => Some (m, SSkip)
+          bind_opt s1' <- rec m s1;
+          bind_opt s2' <- rec (mappings m s1) s2;
+          Some (SSeq s1' s2')
+      | ASSkip => Some SSkip
       | ASCall binds f args => None (* TODO *)
       end.
 
+  Definition erase :=
+    fix rec(s: astmt): stmt :=
+      match s with
+      | ASLoad x x' a => SLoad x a
+      | ASStore a v => SStore a v
+      | ASLit x x' v => SLit x v
+      | ASOp x x' op y z => SOp x op y z
+      | ASSet x x' y => SSet x y
+      | ASIf cond s1 s2 => SIf cond (rec s1) (rec s2)
+      | ASLoop s1 cond s2 => SLoop (rec s1) cond (rec s2)
+      | ASSeq s1 s2 => SSeq (rec s1) (rec s2)
+      | ASSkip => SSkip
+      | ASCall binds f args => SCall (List.map fst binds) f args
+      end.
+
+  (* claim: for all astmt a, if checker succeeds and returns s', then
+     (erase a) behaves the same as s' *)
 End RegAlloc.
