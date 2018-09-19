@@ -96,37 +96,11 @@ Notation "E \c F" := (subset E F)
   (at level 38) : set_scope.
 *)
 
-Section Util.
-
-  Context {var func: Set}.
-
-  (* set of variables which is certainly written while executing s *)
-  Definition map_annotations{A B: Set}(f: A -> B): stmt var func A -> stmt var func B :=
-    fix rec(s: stmt var func A): stmt var func B :=
-      match s with
-      | SLoad x y    => SLoad x y
-      | SStore x y   => SStore x y
-      | SLit x v     => SLit x v
-      | SOp x op y z => SOp x op y z
-      | SSet x y     => SSet x y
-      | SIf cond s1 s2 => SIf cond (rec s1) (rec s2)
-      | SLoop s1 cond s2 => SLoop (rec s1) cond (rec s2)
-      | SSeq s1 s2 => SSeq (rec s1) (rec s2)
-      | SSkip => SSkip
-      | SCall argnames fname resnames => SCall argnames fname resnames
-      | SAnnot a s => SAnnot (f a) (rec s)
-    end.
-
-  Definition make_annotatable(A: Set): stmt var func Empty_set -> stmt var func A :=
-    map_annotations (Empty_set_rec (fun _ => A)).
-
-End Util.
-
 Section Live.
 
   Context {var func A: Set}.
   Context {varset: SetFunctions var}.
-  Local Notation stmt := (stmt var func A).
+  Local Notation stmt := (stmt var func).
   Local Notation vars := (set var).
 
   (* set of variables which is certainly written while executing s *)
@@ -142,7 +116,6 @@ Section Live.
     | SSeq s1 s2 => union (certainly_written s1) (certainly_written s2)
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list resnames
-    | SAnnot a s => certainly_written s
     end.
 
   (* set of variables which is live before executing s *)
@@ -159,7 +132,6 @@ Section Live.
     | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list argnames
-    | SAnnot a s => live s
     end.
 
 End Live.
@@ -187,8 +159,8 @@ Section RegAlloc.
   Notation registers := (set register).
   *)
 
-  Local Notation stmt  := (FlatImp.stmt var func Empty_set).      (* input type *)
-  Local Notation stmt' := (FlatImp.stmt register func Empty_set). (* output type *)
+  Local Notation stmt  := (FlatImp.stmt var func).      (* input type *)
+  Local Notation stmt' := (FlatImp.stmt register func). (* output type *)
 
   (* statement annotated with (var -> register) mappings *)
   Local Notation astmt := (FlatImp.stmt var func (var * register)).
@@ -201,7 +173,6 @@ Section RegAlloc.
       match s with
       (* recursive cases: *)
       | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => rec s1 /\ rec s2
-      | SAnnot _ s => rec s
       (* non-recursive cases: *)
       | _ => True
       end.
@@ -312,7 +283,6 @@ Section RegAlloc.
         regalloc o a m s2 l
     | SSkip => (o, a, m)
     | SCall argnames fname resnames => fold_left start_interval resnames (o, a, m)
-    | SAnnot e _ => Empty_set_rect _ e
     end.
 *)
 
@@ -433,8 +403,7 @@ Section RegAlloc.
       | set ( case := @SLoop )
       | set ( case := @SSeq )
       | set ( case := @SSkip )
-      | set ( case := @SCall )
-      | set ( case := @SAnnot ) ];
+      | set ( case := @SCall ) ];
       move case at top;
       repeat destruct_one_match;
       simpl in *;
@@ -566,6 +535,51 @@ Notation "'or' A B" := (Logic.or A B)
 Notation "= A B" := (@eq _ A B)
    (at level 10, A at level 0, B at level 0, only parsing).
 
+
+(model
+  ;; universe for var:
+  ;;   var_val_1 var_val_0
+  ;; -----------
+  ;; definitions for universe elements:
+  (declare-fun var_val_1 () var) idtac.
+  (declare-fun var_val_0 () var)
+  ;; cardinality constraint:
+  (forall ((x var)) (or (= x var_val_1) (= x var_val_0)))
+  ;; -----------
+  ;; universe for reg:
+  ;;   reg_val_0
+  ;; -----------
+  ;; definitions for universe elements:
+  (declare-fun reg_val_0 () reg)
+  ;; cardinality constraint:
+  (forall ((x reg)) (= x reg_val_0))
+  ;; -----------
+  (define-fun cond () var
+    var_val_1)
+  (define-fun a2 () var
+    var_val_1)
+  (define-fun a1 () var
+    var_val_0)
+  (define-fun l ((x_1 var)) Bool
+    false)
+  (define-fun f0 ((x_1 var)) reg
+    reg_val_0)
+  (define-fun ls2 ((x_1 var)) Bool
+    true)
+  (define-fun cws1 ((x_1 var)) Bool
+    true)
+  (define-fun o ((x_1 var)) Bool
+    false)
+  (define-fun ls1 ((x_1 var)) Bool
+    false)
+).
+
+Open Scope set_scope.
+
+idtac.
+
+repeat autorewrite with rew_EmptySetOps in *.
+
 (* explanation of counterexample:
    in order to use IHs1, we need to show that f0 is injective over the
    after-live-set of s1, i.e. over the liveset of s2,
@@ -605,7 +619,6 @@ and since we never change a var->register assignment after we made a decision, w
       | SSeq s1 s2 => SSeq (rec s1) (rec s2)
       | SSkip => SSkip
       | SCall argnames fname resnames => SCall (List.map m argnames) fname (List.map m resnames)
-      | SAnnot e _ => Empty_set_rect _ e
       end.
 
   Context {RF: MapFunctions var mword}.
@@ -620,10 +633,10 @@ and since we never change a var->register assignment after we made a decision, w
   Context {funcMap': MapFunctions func (list register * list register * stmt')}.
 
   Definition eval: nat -> RegisterFile -> Mem -> stmt -> option (RegisterFile * Mem) :=
-    FlatImp.eval_stmt var func Empty_set empty_map.
+    FlatImp.eval_stmt var func empty_map.
 
   Definition eval': nat -> RegisterFile' -> Mem -> stmt' -> option (RegisterFile' * Mem) :=
-    FlatImp.eval_stmt register func Empty_set empty_map.
+    FlatImp.eval_stmt register func empty_map.
 
   Lemma apply_alloc_ok: forall (mapping: var -> register) (fuel: nat) (s: stmt) (l: vars)
                           (rf1 rf2: RegisterFile) (rf1': RegisterFile') (m1 m2: Mem),
