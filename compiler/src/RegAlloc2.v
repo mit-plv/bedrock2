@@ -32,6 +32,8 @@ Section TODO.
   (* probably derived *)
   Axiom not_in_range_of_remove_by_value: forall m v, ~ v \in range (remove_by_value m v).
   Axiom extends_remove_by_value: forall m v, extends m (remove_by_value m v).
+  Axiom extends_intersect_map_l: forall r1 r2, extends r1 (intersect_map r1 r2).
+  Axiom extends_intersect_map_r: forall r1 r2, extends r2 (intersect_map r1 r2).
 
 End TODO.
 
@@ -234,11 +236,20 @@ Section RegAlloc.
     unfold states_compat. eauto.
   Qed.
 
+  Hint Resolve
+       states_compat_put
+       not_in_range_of_remove_by_value
+       states_compat_extends
+       extends_remove_by_value
+       extends_intersect_map_l
+       extends_intersect_map_r
+    : checker_hints.
+
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
+      eval n st1 m1 s = Some (st2, m2) ->
       erase annotated = s ->
       checker r annotated = Some s' ->
       states_compat st1 r st1' ->
-      eval n st1 m1 s = Some (st2, m2) ->
       exists st2',
         eval' n st1' m1 s' = Some (st2', m2) /\
         states_compat st2 (mappings r annotated) st2'.
@@ -269,14 +280,16 @@ Section RegAlloc.
       repeat match goal with
              | H: states_compat _ _ _ |- _ => erewrite H by eassumption
              | H: _ = _ |- _ => rewrite H
-             end.
-    {
-      eexists; split; [reflexivity|].
-      apply states_compat_put.
-      - apply not_in_range_of_remove_by_value.
-      - eapply states_compat_extends; [|eassumption].
-        apply extends_remove_by_value.
-    }
+             end;
+      repeat (rewrite reg_eqb_ne by congruence);
+      repeat (rewrite reg_eqb_eq by congruence);
+      eauto with checker_hints.
+    - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
+      eauto with checker_hints.
+    - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
+      eauto with checker_hints.
+    -
+
 
   Abort.
 
