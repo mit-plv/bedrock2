@@ -1,5 +1,6 @@
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
+Require Import compiler.StateCalculusTacticTest.
 Require Import compiler.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
@@ -27,6 +28,8 @@ Section TODO.
   Axiom reverse_reverse_get: forall k v m, reverse_get m v = Some k -> get m k = Some v.
   Axiom get_in_range: forall k v m, get m k = Some v -> v \in range m.
   Axiom remove_by_value_spec: forall k v m, get (remove_by_value m v) k <> Some v.
+  Axiom get_intersect_map: forall k v m1 m2,
+      get (intersect_map m1 m2) k = Some v <-> get m1 k = Some v /\ get m2 k = Some v.
 
   (* TODO some of this should go into state calculus *)
   (* probably derived *)
@@ -34,7 +37,22 @@ Section TODO.
   Axiom extends_remove_by_value: forall m v, extends m (remove_by_value m v).
   Axiom extends_intersect_map_l: forall r1 r2, extends r1 (intersect_map r1 r2).
   Axiom extends_intersect_map_r: forall r1 r2, extends r2 (intersect_map r1 r2).
+  Axiom extends_intersect_map_lr: forall m11 m12 m21 m22,
+      extends m11 m21 ->
+      extends m12 m22 ->
+      extends (intersect_map m11 m12) (intersect_map m21 m22).
 
+  Axiom remove_by_value_put: forall k v m,
+      remove_by_value (put m k v) v = remove_by_value m v.
+  Axiom remove_by_value_idemp: forall v m,
+      remove_by_value (remove_by_value m v) v = remove_by_value m v.
+  Axiom extends_remove_by_value_same: forall x m1 m2,
+      extends m1 m2 ->
+      extends (remove_by_value m1 x) (remove_by_value m2 x).
+  Axiom equality_by_extends: forall m1 m2,
+      extends m1 m2 ->
+      extends m2 m1 ->
+      m1 = m2. (* requires functional extensionality, or unique internal representation *)
 End TODO.
 
 Local Notation "'bind_opt' x <- a ; f" :=
@@ -120,6 +138,65 @@ Section RegAlloc.
       - symmetry. eapply IHs2. (* stuck in a loop *)
 *)
   Abort.
+
+  Hint Resolve
+       extends_put_same
+       extends_remove_by_value_same
+       extends_intersect_map_lr
+       extends_refl
+    : map_hints.
+
+  Hint Rewrite
+       remove_by_value_put
+       remove_by_value_idemp
+    : map_rew.
+
+  Hint Extern 1 => autorewrite with map_rew : map_hints.
+
+  Lemma mappings_monotone: forall s m1 m2,
+      extends m1 m2 ->
+      extends (mappings m1 s) (mappings m2 s).
+  Proof.
+    induction s; intros; simpl in *; eauto 7 with map_hints.
+  Qed.
+
+  Lemma mappings_mappings_extends_mappings: forall s m,
+      extends (mappings (mappings m s) s) (mappings m s).
+  Proof.
+    induction s; intros; simpl in *; eauto with map_hints.
+
+    - state_calc_generic impvar srcvar.
+      rewrite get_intersect_map in *.
+      destruct H.
+  Abort.
+
+  Lemma mappings_extends_mappings_mappings: forall s m,
+      extends (mappings m s) (mappings (mappings m s) s).
+  Proof.
+  Abort.
+
+  Lemma mappings_idemp: forall s m,
+      mappings (mappings m s) s = mappings m s.
+  Proof.
+    induction s; intros; simpl in *;
+      rewrite? remove_by_value_put;
+      rewrite? remove_by_value_idemp;
+      try reflexivity.
+    (*
+    - apply equality_by_extends.
+      +
+
+    - f_equal.
+      + f_equal.
+
+      + transitivity (mappings (mappings m s1) s1); [|apply IHs1].
+        apply equality_by_extends.
+        * apply mappings_monotone.
+
+     *)
+
+  Abort.
+
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
@@ -288,7 +365,19 @@ Section RegAlloc.
       eauto with checker_hints.
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eauto with checker_hints.
-    -
+    - edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
+      rewrite H0.
+      pose proof H1 as P.
+      unfold states_compat in P.
+      specialize P with (2 := H).
+      rewrite P.
+      + rewrite reg_eqb_eq by reflexivity.
+        eexists; split; [ reflexivity | ].
+        eapply states_compat_extends; [|eassumption].
+
+        Search states_compat.
+        eauto 10 with checker_hints.
+      eauto with checker_hints.
 
 
   Abort.
