@@ -97,7 +97,7 @@ Section RegAlloc.
 
   (* impvar -> srcvar mappings which are guaranteed to hold after running s
      (under-approximation) *)
-  Definition mappings :=
+  Definition updateWith :=
     fix rec(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
       match s with
       | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
@@ -123,9 +123,9 @@ Section RegAlloc.
       | ASCall binds f args => empty_map (* TODO *)
       end.
 
-  Lemma mappings_idemp: forall s m1 m2,
-      m2 = mappings m1 s ->
-      mappings m2 s = m2.
+  Lemma updateWith_idemp: forall s m1 m2,
+      m2 = updateWith m1 s ->
+      updateWith m2 s = m2.
   Proof.
     induction s; intros; simpl in *;
       try reflexivity;
@@ -153,15 +153,15 @@ Section RegAlloc.
 
   Hint Extern 1 => autorewrite with map_rew : map_hints.
 
-  Lemma mappings_monotone: forall s m1 m2,
+  Lemma updateWith_monotone: forall s m1 m2,
       extends m1 m2 ->
-      extends (mappings m1 s) (mappings m2 s).
+      extends (updateWith m1 s) (updateWith m2 s).
   Proof.
     induction s; intros; simpl in *; eauto 7 with map_hints.
   Qed.
 
-  Lemma mappings_mappings_extends_mappings: forall s m,
-      extends (mappings (mappings m s) s) (mappings m s).
+  Lemma updateWith_updateWith_extends_updateWith: forall s m,
+      extends (updateWith (updateWith m s) s) (updateWith m s).
   Proof.
     induction s; intros; simpl in *; eauto with map_hints.
 
@@ -170,13 +170,13 @@ Section RegAlloc.
       destruct H.
   Abort.
 
-  Lemma mappings_extends_mappings_mappings: forall s m,
-      extends (mappings m s) (mappings (mappings m s) s).
+  Lemma updateWith_extends_updateWith_updateWith: forall s m,
+      extends (updateWith m s) (updateWith (updateWith m s) s).
   Proof.
   Abort.
 
-  Lemma mappings_idemp: forall s m,
-      mappings (mappings m s) s = mappings m s.
+  Lemma updateWith_idemp: forall s m,
+      updateWith (updateWith m s) s = updateWith m s.
   Proof.
     induction s; intros; simpl in *;
       rewrite? remove_by_value_put;
@@ -189,9 +189,9 @@ Section RegAlloc.
     - f_equal.
       + f_equal.
 
-      + transitivity (mappings (mappings m s1) s1); [|apply IHs1].
+      + transitivity (updateWith (updateWith m s1) s1); [|apply IHs1].
         apply equality_by_extends.
-        * apply mappings_monotone.
+        * apply updateWith_monotone.
 
      *)
 
@@ -224,14 +224,14 @@ Section RegAlloc.
           Some (SIf cond' s1' s2')
       | ASLoop s1 cond s2 =>
           bind_opt cond' <- reverse_get m cond;
-          let m1 := intersect_map m (mappings m s) in
-          let m2 := intersect_map (mappings m s1) (mappings m1 s) in
+          let m1 := intersect_map m (updateWith m s) in
+          let m2 := intersect_map (updateWith m s1) (updateWith m1 s) in
           bind_opt s1' <- rec m1 s1;
           bind_opt s2' <- rec m2 s2;
           Some (SLoop s1' cond' s2')
       | ASSeq s1 s2 =>
           bind_opt s1' <- rec m s1;
-          bind_opt s2' <- rec (mappings m s1) s2;
+          bind_opt s2' <- rec (updateWith m s1) s2;
           Some (SSeq s1' s2')
       | ASSkip => Some SSkip
       | ASCall binds f args => None (* TODO *)
@@ -329,7 +329,7 @@ Section RegAlloc.
       states_compat st1 r st1' ->
       exists st2',
         eval' n st1' m1 s' = Some (st2', m2) /\
-        states_compat st2 (mappings r annotated) st2'.
+        states_compat st2 (updateWith r annotated) st2'.
   Proof.
     induction n; intros; [
       match goal with
