@@ -41,6 +41,8 @@ Section TODO.
       extends m11 m21 ->
       extends m12 m22 ->
       extends (intersect_map m11 m12) (intersect_map m21 m22).
+  Axiom intersect_empty_map_l: forall m, intersect_map empty_map m = m.
+  Axiom intersect_empty_map_r: forall m, intersect_map m empty_map = m.
 
   Axiom remove_by_value_put: forall k v m,
       remove_by_value (put m k v) v = remove_by_value m v.
@@ -53,6 +55,17 @@ Section TODO.
       extends m1 m2 ->
       extends m2 m1 ->
       m1 = m2. (* requires functional extensionality, or unique internal representation *)
+
+  Axiom intersect_map_put_put_same: forall m1 m2 k v,
+      intersect_map (put m1 k v) (put m2 k v) = put (intersect_map m1 m2) k v.
+  Axiom intersect_map_remove_by_value: forall m1 m2 x,
+      intersect_map (remove_by_value m1 x) (remove_by_value m2 x)
+      = remove_by_value (intersect_map m1 m2) x.
+
+  Axiom intersect_map_assoc: forall m1 m2 m3,
+      intersect_map (intersect_map m1 m2) m3 = intersect_map m1 (intersect_map m2 m3).
+  Axiom intersect_map_comm: forall m1 m2,
+      intersect_map m1 m2 = intersect_map m2 m1.
 End TODO.
 
 Local Notation "'bind_opt' x <- a ; f" :=
@@ -149,6 +162,10 @@ Section RegAlloc.
   Hint Rewrite
        remove_by_value_put
        remove_by_value_idemp
+       intersect_map_put_put_same
+       intersect_map_remove_by_value
+       intersect_empty_map_l
+       intersect_empty_map_r
     : map_rew.
 
   Hint Extern 1 => autorewrite with map_rew : map_hints.
@@ -160,10 +177,40 @@ Section RegAlloc.
     induction s; intros; simpl in *; eauto 7 with map_hints.
   Qed.
 
+  Lemma updateWith_intersect_map: forall s m1 m2,
+      updateWith (intersect_map m1 m2) s = intersect_map (updateWith m1 s) (updateWith m2 s).
+  Proof.
+    induction s; intros; simpl in *; eauto with map_hints.
+    - rewrite IHs1. rewrite IHs2.
+      forget (updateWith m1 s1) as m11.
+      forget (updateWith m1 s2) as m12.
+      forget (updateWith m2 s1) as m21.
+      forget (updateWith m2 s2) as m22.
+      rewrite? intersect_map_assoc.
+      f_equal.
+      rewrite <-? intersect_map_assoc.
+      f_equal.
+      apply intersect_map_comm.
+    - rewrite IHs1. rewrite IHs2. rewrite IHs1.
+      forget (updateWith (updateWith (updateWith m2 s1) s2) s1) as m2121.
+      forget (updateWith (updateWith (updateWith m1 s1) s2) s1) as m1121.
+      forget (updateWith m1 s1) as m11.
+      forget (updateWith m2 s1) as m21.
+      rewrite? intersect_map_assoc.
+      f_equal.
+      rewrite <-? intersect_map_assoc.
+      f_equal.
+      apply intersect_map_comm.
+    - rewrite IHs1. rewrite IHs2. reflexivity.
+  Qed.
+
   Lemma updateWith_updateWith_extends_updateWith: forall s m,
       extends (updateWith (updateWith m s) s) (updateWith m s).
   Proof.
     induction s; intros; simpl in *; eauto with map_hints.
+
+    (* rewrite? updateWith_intersect_map.*)
+
 
     - state_calc_generic impvar srcvar.
       rewrite get_intersect_map in *.
@@ -178,10 +225,9 @@ Section RegAlloc.
   Lemma updateWith_idemp: forall s m,
       updateWith (updateWith m s) s = updateWith m s.
   Proof.
-    induction s; intros; simpl in *;
-      rewrite? remove_by_value_put;
-      rewrite? remove_by_value_idemp;
-      try reflexivity.
+    induction s; intros; simpl in *; eauto with map_hints.
+    - rewrite? updateWith_intersect_map.
+      rewrite IHs1. rewrite IHs2.
     (*
     - apply equality_by_extends.
       +
@@ -196,7 +242,6 @@ Section RegAlloc.
      *)
 
   Abort.
-
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
@@ -375,9 +420,8 @@ Section RegAlloc.
         eexists; split; [ reflexivity | ].
         eapply states_compat_extends; [|eassumption].
 
-        Search states_compat.
         eauto 10 with checker_hints.
-      eauto with checker_hints.
+        eauto with checker_hints.
 
 
   Abort.
