@@ -20,20 +20,20 @@ Section ExprImp1.
   Context {p : unique! Semantics.parameters}.
 
   Notation mword := (@Semantics.word p).
-  Context {MW: MachineWidth mword}.  
-  
-  Notation var := (@varname (@syntax p)).
-  Notation func := (@funname (@syntax p)).
+  Context {MW: MachineWidth mword}.
+
+  Notation var := (@Syntax.varname (@syntax p)).
+  Notation func := (@Syntax.funname (@syntax p)).
 
   Context {stateMap: MapFunctions var (mword)}.
   Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Hypothesis actname_empty: actname = Empty_set.
-  
-  Ltac state_calc := state_calc_generic (@varname (@syntax p)) (@Semantics.word p).
-  Ltac set_solver := set_solver_generic (@varname (@syntax p)).
+  Hypothesis actname_empty: Syntax.actname = Empty_set.
+
+  Ltac state_calc := state_calc_generic (@Syntax.varname (@syntax p)) (@Semantics.word p).
+  Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
 
   Fixpoint eval_expr(st: state)(e: expr): option mword :=
     match e with
@@ -145,7 +145,7 @@ Section ExprImp1.
     Lemma invert_eval_cond: forall f st1 m1 p2 cond bThen bElse,
       eval_cmd (S f) st1 m1 (cmd.cond cond bThen bElse) = Some p2 ->
       exists cv,
-        eval_expr st1 cond = Some cv /\ 
+        eval_expr st1 cond = Some cv /\
         (cv <> ZToReg 0 /\ eval_cmd f st1 m1 bThen = Some p2 \/
          cv = ZToReg 0  /\ eval_cmd f st1 m1 bElse = Some p2).
     Proof. inversion_lemma. Qed.
@@ -154,7 +154,7 @@ Section ExprImp1.
       eval_cmd (S f) st1 m1 (cmd.while cond body) = Some p3 ->
       exists cv,
         eval_expr st1 cond = Some cv /\
-        (cv <> ZToReg 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Some (st2, m2) /\ 
+        (cv <> ZToReg 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Some (st2, m2) /\
                                      eval_cmd f st2 m2 (cmd.while cond body) = Some p3) \/
          cv = ZToReg 0 /\ p3 = (st1, m1)).
     Proof. inversion_lemma. Qed.
@@ -197,7 +197,7 @@ Section ExprImp1.
     | expr.op op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
     end.
 
-  Fixpoint allVars_cmd(s: cmd): list var := 
+  Fixpoint allVars_cmd(s: cmd): list var :=
     match s with
     | cmd.store _ a e => (allVars_expr a) ++ (allVars_expr e)
     | cmd.set v e => v :: allVars_expr e
@@ -211,7 +211,7 @@ Section ExprImp1.
 
   (* Returns a static approximation of the set of modified vars.
      The returned set might be too big, but is guaranteed to include all modified vars. *)
-  Fixpoint modVars(s: cmd): vars := 
+  Fixpoint modVars(s: cmd): vars :=
     match s with
     | cmd.store _ _ _ => empty_set
     | cmd.set v _ => singleton_set v
@@ -244,7 +244,7 @@ Section ExprImp1.
       + apply union_spec in H; destruct H.
         * left. apply singleton_set_spec in H. auto.
         * right. auto.
-    - replace actname with Empty_set in *. destruct action.
+    - replace Syntax.actname with Empty_set in *. destruct action.
   Qed.
 
 End ExprImp1.
@@ -263,7 +263,7 @@ Ltac invert_eval_cmd :=
     | apply invert_eval_call in E
     | apply invert_eval_interact in E ];
     deep_destruct E;
-    [ let x := fresh "Case_skip" in pose proof tt as x; move x at top 
+    [ let x := fresh "Case_skip" in pose proof tt as x; move x at top
     | let x := fresh "Case_set" in pose proof tt as x; move x at top
     | let x := fresh "Case_store" in pose proof tt as x; move x at top
     | let x := fresh "Case_cond_Then" in pose proof tt as x; move x at top
@@ -282,10 +282,10 @@ Section ExprImp2.
   Context {p : unique! Semantics.parameters}.
 
   Notation mword := (@Semantics.word p).
-  Context {MW: MachineWidth mword}.  
-  
-  Notation var := (@varname (@syntax p)).
-  Notation func := (@funname (@syntax p)).
+  Context {MW: MachineWidth mword}.
+
+  Notation var := (@Syntax.varname (@syntax p)).
+  Notation func := (@Syntax.funname (@syntax p)).
 
   Context {stateMap: MapFunctions var (mword)}.
   Notation state := (map var mword).
@@ -294,11 +294,11 @@ Section ExprImp2.
 
   (* TODO this one should be wrapped somewhere *)
   Context {varname_eq_dec: DecidableEq var}.
-  
-  Hypothesis actname_empty: actname = Empty_set.
-  
-  Ltac state_calc := state_calc_generic (@varname (@syntax p)) (@Semantics.word p).
-  Ltac set_solver := set_solver_generic (@varname (@syntax p)).
+
+  Hypothesis actname_empty: Syntax.actname = Empty_set.
+
+  Ltac state_calc := state_calc_generic (@Syntax.varname (@syntax p)) (@Semantics.word p).
+  Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
 
   Context {funcMap: MapFunctions func (list var * list var * @cmd (@syntax p))}.
   Notation env := (map func (list var * list var * cmd)).

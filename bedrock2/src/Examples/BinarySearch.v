@@ -55,9 +55,7 @@ Print bsearch_c_string.
 
 Require bedrock2.ZNamesSyntax.
 
-Local Instance bsearch_string_ZNames:
-  @bsearch_names ZNamesSyntax.ZNames :=
-{
+Local Instance bsearch_string_ZNames: @bsearch_names ZNamesSyntax.ZNames := {
   left := 1;
   right := 2;
   target := 3;
@@ -67,27 +65,16 @@ Local Instance bsearch_string_ZNames:
 
 Require Import bedrock2.Basic_bopnames.
 
-Class my_parameters := {
-  varname: Set;
-  funcname: Set;
-  actname: Set;
-}.
-
-Local Instance make (p: my_parameters) : Syntax.parameters := {|
-  Syntax.varname := @varname p;
-  Syntax.funname := @funcname p;
-  Syntax.actname := @actname p;
-  Syntax.bopname := Basic_bopnames.bopname;
+Definition BasicALU_params: Basic_bopnames.parameters := {|
+  varname := Z;
+  funcname := Z;
+  actname := Empty_set;
 |}.
 
-Import bopname.
-
-Local Instance MyBasicALU{p: my_parameters}: BasicALU.operations :=
-  BasicALU.Build_operations _ add sub mul and or xor sru slu srs lts ltu eq.
-
-Example bsearch_z_ast{p: unique! my_parameters} :=
-  Eval cbv [bsearch left right target mid tmp ZNamesSyntax.ZNames bsearch_string_ZNames
-            var literal] in
-    @bsearch ZNamesSyntax.ZNames MyBasicALU bsearch_string_ZNames.
+Example bsearch_z_ast :=
+  Eval cbv in
+    @bsearch ZNamesSyntax.ZNames
+             (@Basic_bopnames.BasicALU BasicALU_params)
+             bsearch_string_ZNames.
 
 Print bsearch_z_ast.
