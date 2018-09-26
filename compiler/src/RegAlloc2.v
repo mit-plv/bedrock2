@@ -66,6 +66,19 @@ Section TODO.
       intersect_map (intersect_map m1 m2) m3 = intersect_map m1 (intersect_map m2 m3).
   Axiom intersect_map_comm: forall m1 m2,
       intersect_map m1 m2 = intersect_map m2 m1.
+
+  Lemma intersect_map_1234_1423: forall m1 m2 m3 m4,
+      intersect_map (intersect_map m1 m2) (intersect_map m3 m4) =
+      intersect_map (intersect_map m1 m4) (intersect_map m2 m3).
+  Proof.
+    intros.
+    rewrite? intersect_map_assoc.
+    f_equal.
+    rewrite <- intersect_map_assoc.
+    rewrite intersect_map_comm.
+    reflexivity.
+  Qed.
+
 End TODO.
 
 Local Notation "'bind_opt' x <- a ; f" :=
@@ -222,13 +235,31 @@ Section RegAlloc.
   Proof.
   Abort.
 
+  Lemma updateWith_121: forall s1 s2 m,
+      updateWith (updateWith (updateWith m s1) s2) s1 = updateWith (updateWith m s2) s1.
+  Proof.
+    induction s1; intros; simpl in *; eauto with map_hints.
+    Focus 6. {
+
+  Admitted.
+
+  Lemma updateWith_idemp_wishful: forall s m,
+      updateWith (updateWith m s) s = updateWith m s.
+  Proof.
+    intros. apply (updateWith_121 s ASSkip m).
+  Qed.
+
+
   Lemma updateWith_idemp: forall s m,
       updateWith (updateWith m s) s = updateWith m s.
   Proof.
     induction s; intros; simpl in *; eauto with map_hints.
     - rewrite? updateWith_intersect_map.
       rewrite IHs1. rewrite IHs2.
-    (*
+      rewrite intersect_map_1234_1423.
+      remember (intersect_map (updateWith m s1) (updateWith m s2)) as M.
+
+  (*
     - apply equality_by_extends.
       +
 
