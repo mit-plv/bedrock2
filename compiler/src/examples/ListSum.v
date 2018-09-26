@@ -4,7 +4,6 @@ Local Open Scope word_scope.
 Require Import compiler.ExprImp.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
-Require compiler.ExprImpNotations.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import riscv.util.Word.
@@ -19,7 +18,7 @@ Require Import compiler.examples.Fibonacci.
 Require Import compiler.NameGen.
 Require Import riscv.MachineWidth32.
 Require Import riscv.util.BitWidth32.
-
+Require bedrock2.Examples.ListSum.
 
 Local Notation RiscvMachine := (@RiscvMachine (word 32) mem state).
 
@@ -27,11 +26,13 @@ Definition memory_size: Z := 1024.
 Definition instructionMemStart: Z := 0.
 Definition input_base: Z := 512.
 
+Definition listsum := bedrock2.Examples.ListSum.listsum input_base.
 
 Module ExampleSrc.
 
-  Import ExprImpNotations. (* only inside this module *)
-  
+  Import bedrock2.NotationsInConstr. (* only inside this module *)
+
+  Print listsum.
   Definition n: var := 1.
   Definition i: var := 2.
   Definition sumreg: var := 3.

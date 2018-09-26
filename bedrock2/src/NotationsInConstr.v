@@ -140,7 +140,8 @@ Notation "e1 << e2" := (expr.op bop_slu e1%bedrock_expr e2%bedrock_expr)
 
 Notation "e1 .& e2" := (expr.op bop_and e1%bedrock_expr e2%bedrock_expr)
   (at level 40, left associativity) : bedrock_expr.
-(* same level:   *    *)
+Notation "e1 * e2" := (expr.op bop_mul e1%bedrock_expr e2%bedrock_expr)
+  (at level 40, left associativity) : bedrock_expr.
 
 (* FIXME: intermediate level for  %  /  *)
 
