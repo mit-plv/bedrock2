@@ -1,5 +1,6 @@
 Require Import Coq.Strings.String Coq.ZArith.BinIntDef.
 Require Import bedrock2.Syntax bedrock2.Structs bedrock2.NotationsInConstr.
+Require Import bedrock2.StructNotations.
 
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
