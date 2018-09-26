@@ -39,7 +39,7 @@ End bsearch.
 Require bedrock2.BasicC64Syntax.
 
 Local Instance bsearch_string_names:
-  @bsearch_names (StringNamesSyntax.make BasicC64Syntax.params) :=
+  @bsearch_names (StringNamesSyntax.make BasicC64Syntax.StringNames_params) :=
 {
   left := "left";
   right := "right";

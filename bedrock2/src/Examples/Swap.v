@@ -60,7 +60,7 @@ Lemma load_sep sz a v R m (H : sep (ptsto sz a v) R m) : load sz m a = Some v.
       { unshelve erewrite (_:load_rec n m (word_succ a) = Some w); [admit|].
         assumption. } } }
 Admitted.
-    
+
 Lemma store_sep sz a v1 v2 R m (H : sep (ptsto sz a v1) R m)
       (post : _ -> Prop) (cont : forall m', sep (ptsto sz a v2) R m' -> post m') :
   exists m', store sz m a v2 = Some m' /\ post m'.
@@ -91,24 +91,24 @@ Ltac t :=
 end.
 
 Context (__A : map.ok Semantics.mem).
-Lemma swap_ok : 
+Lemma swap_ok :
   forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
     (fun _ => True) (fun _ => False) (fun _ _ => True) (fun _ _ _ _ _ => False)
-    (@swap BasicC64Syntax.params) t m (a_addr::b_addr::nil)
+    (@swap BasicC64Syntax.StringNames_params) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr b) (sep (ptsto 1 b_addr a) R)) m' /\ rets = nil).
 Proof.
   intros. rename H into Hm.
   repeat t.
 Qed.
 
-Lemma swap_swap_ok : 
+Lemma swap_swap_ok :
   forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
-    (fun _ => True) (fun _ => False) (fun _ _ => True) (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) [("swap", (@swap BasicC64Syntax.params))])
-    (@swap_swap BasicC64Syntax.params) t m (a_addr::b_addr::nil)
+    (fun _ => True) (fun _ => False) (fun _ _ => True) (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) [("swap", (@swap BasicC64Syntax.StringNames_params))])
+    (@swap_swap BasicC64Syntax.StringNames_params) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m' /\ rets = nil).
 Proof.
   intros. rename H into Hm.
@@ -163,4 +163,3 @@ Proof.
   eassumption.
   eexists.
 Qed.
-  

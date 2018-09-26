@@ -5,7 +5,7 @@ Require bbv.Word.
 
 Local Definition shiftWidth s := Word.wordToNat (Word.wand s (Word.NToWord 64 63)).
 Instance parameters : parameters := {|
-  syntax := StringNamesSyntax.make BasicC64Syntax.params;
+  syntax := StringNamesSyntax.make BasicC64Syntax.StringNames_params;
   word := Word.word 64;
   word_zero := Word.wzero 64;
   word_succ := Word.wplus (Word.wone 64);

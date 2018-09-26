@@ -6,16 +6,22 @@ Require Import Coq.Strings.String Coq.Numbers.DecimalZ Coq.Numbers.DecimalString
 Require Export bedrock2.Basic_bopnames.
 Import bedrock2.Basic_bopnames.bopname.
 
-Definition params : bedrock2.StringNamesSyntax.parameters := {|
+Definition StringNames_params: bedrock2.StringNamesSyntax.parameters := {|
   StringNamesSyntax.bopname := bedrock2.Basic_bopnames.bopname;
   StringNamesSyntax.actname := string
 |}.
 
-Definition BasicALU : BasicALU.operations :=
-  Build_operations (StringNamesSyntax.make params) add sub mul and or xor sru slu srs lts ltu eq.
+Definition Basic_bopnames_params: bedrock2.Basic_bopnames.parameters := {|
+  Basic_bopnames.varname := string;
+  Basic_bopnames.funcname := string;
+  Basic_bopnames.actname := string;
+|}.
+
+Definition BasicALU: @BasicALU.operations (StringNamesSyntax.make StringNames_params) :=
+  @Basic_bopnames.BasicALU Basic_bopnames_params.
 
 Definition to_c_parameters : ToCString.parameters := {|
-  syntax := (StringNamesSyntax.make params);
+  syntax := (StringNamesSyntax.make StringNames_params);
   c_lit w := DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL";
   c_bop := fun e1 op e2 =>
              match op with
