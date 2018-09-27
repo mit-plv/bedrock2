@@ -1,5 +1,7 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
+Require bedrock2.Examples.Demos.
+Require Import bedrock2.Basic_bopnames.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.Word.
 Require Import compiler.Decidable.
@@ -24,6 +26,7 @@ Require Import compiler.FlatToRiscv32Specifics.
 Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
+
 Open Scope Z_scope.
 
 
@@ -36,32 +39,13 @@ Existing Instance DefaultRiscvState.
 
 Existing Instance FlatToRiscv.State_is_RegisterFile.
 
-Definition var_a: var := 1.
-Definition var_b: var := 2.
-Definition var_c: var := 3.
-Definition var_i: var := 4.
 
-(*
-a = 0
-b = 1
-i = 0
-while i < n:
-  c = a + b
-  a = b
-  b = c
-  i = i + 1
-*)
+Definition fib_ExprImp(n: Z): cmd := Eval cbv in
+  snd (snd (Demos.fibonacci (bops := (@Basic_bopnames.BasicALU Demos.BasicALU_params)) n)).
 
-Definition fib_ExprImp(n: Z): cmd :=
-  cmd.seq (cmd.set var_a (expr.literal 0)) (
-  cmd.seq (cmd.set var_b (expr.literal 1)) (
-  cmd.seq (cmd.set var_i (expr.literal 0)) (
-  cmd.while (expr.op bopname.ltu (expr.var var_i) (expr.literal n)) (
-    cmd.seq (cmd.set var_c (expr.op bopname.add (expr.var var_a) (expr.var var_b))) (
-    cmd.seq (cmd.set var_a (expr.var var_b)) (
-    cmd.seq (cmd.set var_b (expr.var var_c)) (
-    cmd.seq (cmd.set var_i (expr.op bopname.add (expr.var var_i) (expr.literal 1)))
-    cmd.skip))))))).
+(* This is what the bare AST looks like. For a more readable version with notations, see
+   bedrock2/Demos.v *)
+Print fib_ExprImp.
 
 Definition state := (var -> option word).
 
@@ -71,7 +55,7 @@ Instance fooo: MapFunctions name (list name * list name * cmd). Admitted.
 
 Definition fib_H_res(fuel: nat)(n: Z): option word :=
   match (eval_cmd empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with
-  | Some (st, m) => Map.get st var_b
+  | Some (st, m) => Map.get st Demos.Fibonacci.b
   | None => None
   end.
 
@@ -86,7 +70,7 @@ Goal fib_H_res 20 6 = Some (ZToWord 32 13). reflexivity. Qed.
 
 Definition do_regalloc: bool := false.
 
-Definition resVar := var_b.
+Definition resVar := Demos.Fibonacci.b.
 
 Definition compileFunc: cmd -> list Instruction :=
   if do_regalloc then (exprImp2Riscv_with_regalloc Lw Sw resVar) else (exprImp2Riscv Lw Sw).
@@ -98,9 +82,10 @@ Definition fib6_riscv := Eval cbv in fib_riscv0 6.
 
 Print fib6_riscv.
 
-Import riscv.InstructionNotations.
-
-Print fib6_riscv.
+Module PrintAssembly.
+  Import riscv.InstructionNotations.
+  Print fib6_riscv.
+End PrintAssembly.
 
 Definition fib6_bits: list word :=
   List.map (fun i => ZToWord 32 (encode i)) fib6_riscv.
@@ -156,10 +141,10 @@ Definition force_option(o: option word): word :=
   end.
 
 Definition fib6_L_res(fuel: nat): word :=
-  force_option (Map.get (fib6_L_final fuel).(core).(registers) var_b).
+  force_option (Map.get (fib6_L_final fuel).(core).(registers) resVar).
 
 Definition fib6_L_resL(fuel: nat): word :=
-  force_option (Map.get (fib6_L_finalL fuel).(machine).(core).(registers) var_b).
+  force_option (Map.get (fib6_L_finalL fuel).(machine).(core).(registers) resVar).
 
 Definition fib6_L_trace(fuel: nat): Log :=
   (fib6_L_finalL fuel).(log).
@@ -235,7 +220,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
     unfold Memory.read_mem in *.
     destruct_one_match_hyp; discriminate.
   - exists fuelL.
-    specialize G with (resVar := var_b) (res := (ZToWord 32 13)).
+    specialize G with (resVar := resVar) (res := (ZToWord 32 13)).
     match type of G with
       | ?A -> _ => assert A as x; [|specialize (G x); clear x]
     end.
@@ -257,7 +242,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
       apply (f_equal force_option).
       change (@word Basic32Semantics.Basic32Semantics) with (RecordWord.word 32) in *.
       match goal with
-        | |- ?M ?A var_b = ?M ?B var_b => replace A with B; [reflexivity|]
+        | |- ?M ?A resVar = ?M ?B resVar => replace A with B; [reflexivity|]
       end.
       apply f_equal.
       apply f_equal.
