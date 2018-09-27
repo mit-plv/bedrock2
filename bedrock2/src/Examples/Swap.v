@@ -9,22 +9,22 @@ Section bsearch.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
 
-  Definition swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func_body:(
+  Definition swap : string * (list varname * list varname * cmd) := ("swap", (("a"::"b"::nil), nil, bedrock_func_body:(
     "t" = *(uint8_t*) "b";;
     *(uint8_t*) "b" = *(uint8_t*) "a";;
     *(uint8_t*) "a" = "t"
-  )).
+  ))).
 
-  Definition swap_swap : list varname * list varname * cmd := (("a"::"b"::nil), nil, bedrock_func_body:(
+  Definition swap_swap : string * (list varname * list varname * cmd) := ("swap_swap", (("a"::"b"::nil), nil, bedrock_func_body:(
     cmd.call nil "swap" (var "a"::var "b"::nil);;
     cmd.call nil "swap" (var "a"::var "b"::nil)
-  )).
+  ))).
 End bsearch.
 
 Require bedrock2.BasicC64Syntax.
 
 Example swap_c_string := Eval compute in
-  BasicC64Syntax.c_func "swap" swap.
+  BasicC64Syntax.c_func swap.
 (* Print swap_c_string. *)
 
 Import List.ListNotations.
@@ -96,7 +96,7 @@ Lemma swap_ok :
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
     (fun _ => True) (fun _ => False) (fun _ _ => True) (fun _ _ _ _ _ => False)
-    (@swap BasicC64Syntax.StringNames_params) t m (a_addr::b_addr::nil)
+    (snd (@swap BasicC64Syntax.StringNames_params)) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr b) (sep (ptsto 1 b_addr a) R)) m' /\ rets = nil).
 Proof.
   intros. rename H into Hm.
@@ -107,8 +107,8 @@ Lemma swap_swap_ok :
   forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
     (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
   WeakestPrecondition.func
-    (fun _ => True) (fun _ => False) (fun _ _ => True) (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) [("swap", (@swap BasicC64Syntax.StringNames_params))])
-    (@swap_swap BasicC64Syntax.StringNames_params) t m (a_addr::b_addr::nil)
+    (fun _ => True) (fun _ => False) (fun _ _ => True) (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) [(@swap BasicC64Syntax.StringNames_params)])
+    (snd (@swap_swap BasicC64Syntax.StringNames_params)) t m (a_addr::b_addr::nil)
     (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m' /\ rets = nil).
 Proof.
   intros. rename H into Hm.

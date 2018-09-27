@@ -14,25 +14,25 @@ Section MultipleReturnValues.
   Let x : varname := "x".
   Let y : varname := "y".
 
-  Example addsub := ((a::b::nil), (x::y::nil), bedrock_func_body:(
+  Example addsub := ("addsub", ((a::b::nil), (x::y::nil), bedrock_func_body:(
     x = a + b;;
     y = a - b
-  )).
+  ))).
 
   Let ret : varname := "ret".
 
-  Example addsub_test := (@nil varname, ("ret"::nil)%list, bedrock_func_body:(
+  Example addsub_test := ("addsub_test", (@nil varname, ("ret"::nil)%list, bedrock_func_body:(
     cmd.call (ret::ret::nil)%list "addsub" (expr.literal 14::expr.literal 7::nil)%list;;
     ret = (ret - 7)
-  )).
+  ))).
 End MultipleReturnValues.
 
 Require bedrock2.BasicC64Syntax.
 
 Example addsub_c_string := Eval compute in
-  BasicC64Syntax.c_func "addsub" (addsub (ALU:=BasicC64Syntax.BasicALU)).
+  BasicC64Syntax.c_func (addsub (ALU:=BasicC64Syntax.BasicALU)).
 Example addsub_test_c_string := Eval compute in
-  BasicC64Syntax.c_func "addsub_test" (addsub_test (ALU:=BasicC64Syntax.BasicALU)).
+  BasicC64Syntax.c_func (addsub_test (ALU:=BasicC64Syntax.BasicALU)).
 
 (*
 Print addsub_c_string.

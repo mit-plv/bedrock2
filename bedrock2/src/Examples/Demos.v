@@ -1,3 +1,4 @@
+Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.Macros bedrock2.Syntax.
 Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU.
 Require bedrock2.NotationsInConstr.
@@ -53,18 +54,46 @@ Module ListSum.
   }.
   Module StringNames.
     Instance Inst: @Names StringNamesSyntaxParams := {
-      left := "left";
-      right := "right";
-      target := "target";
-      mid := "mid";
-      tmp := "tmp";
+      n := "n";
+      i := "i";
+      sumreg := "sumreg";
+      a := "a";
     }.
   End StringNames.
-
-
-
-
+  Module ZNames.
+    Instance Inst: @Names ZNamesSyntaxParams := {
+      n := 1;
+      i := 2;
+      sumreg := 3;
+      a := 4;
+    }.
+  End ZNames.
 End ListSum.
+
+Module Fibonacci.
+  Class Names{p : unique! Syntax.parameters} := {
+    a: varname;
+    b: varname;
+    c: varname;
+    i: varname;
+  }.
+  Module StringNames.
+    Instance Inst: @Names StringNamesSyntaxParams := {
+      a := "a";
+      b := "b";
+      c := "c";
+      i := "i";
+    }.
+  End StringNames.
+  Module ZNames.
+    Instance Inst: @Names ZNamesSyntaxParams := {
+      a := 1;
+      b := 2;
+      c := 3;
+      i := 4;
+    }.
+  End ZNames.
+End Fibonacci.
 
 
 Section Demos.
@@ -74,17 +103,19 @@ Section Demos.
   Local Coercion var{p : unique! Syntax.parameters}(x : @varname p): @expr.expr p :=
     @expr.var p x.
 
-  Context {p : unique! Syntax.parameters} {b : BasicALU.operations}.
+  Context {p : unique! Syntax.parameters} {bops : BasicALU.operations}.
 
   (* note: this coercion must use the section's p, because its argument z does not
      allow Coq to infer p *)
   Local Coercion literal (z : Z) : expr := expr.literal z.
 
+  Definition Prog: Set := string * (list varname * list varname * cmd).
+
   Import bedrock2.NotationsInConstr.
 
   Context {bsearchNames: unique! BinarySearch.Names}.
   Import BinarySearch.
-  Definition bsearch := ((left::right::target::nil), (left::nil), bedrock_func_body:(
+  Definition bsearch: Prog := ("bsearch", ([left; right; target], [left], bedrock_func_body:(
     while (left < right) {{
       mid = left + (((right-left) >> 4) << 3);;
       tmp = *(uint64_t*) mid;;
@@ -94,70 +125,59 @@ Section Demos.
         right = mid
       }}
     }}
-  )).
+  ))).
 
-  Context {names: unique! BinarySearch.Names}.
-  Import BinarySearch.
-
-(*(*(*
-  Class
-  Let n: varname := 1.
-  Let i: varname := 2.
-  Let sumreg: varname := 3.
-  Let a: varname := 4.
-   (* input_base is an address fixed at compilation time *)
-  Definition listsum(input_base: Z) := bedrock_func_body:(
-    sumreg = 0;
-    n = *(uint32_t*) input_base;
-    i = 0;
-    while (Var i < Var n) {{
-      a = *(uint32_t*) ((input_base + 4)%Z + (4 * Var i));
-      sumreg = Var sumreg + Var a;
-      i = Var i + 1
+  Context {listsumNames: unique! ListSum.Names}.
+  Import ListSum.
+  (* input_base is an address fixed at compile time *)
+  Definition listsum(input_base: Z): Prog := ("listsum", ([], [], bedrock_func_body:(
+    sumreg = 0;;
+    n = *(uint32_t*) input_base;;
+    i = 0;;
+    while (i < n) {{
+      a = *(uint32_t*) ((input_base + 4)%Z + (4 * i));;
+      sumreg = sumreg + a;;
+      i = i + 1
     }}
-*)
+  ))).
 
+  Context {fibonacciNames: unique! Fibonacci.Names}.
+  Import Fibonacci.
+  (* input_base is an address fixed at compile time *)
+  Definition fibonacci(n: Z): Prog := ("fibonacci", ([], [], bedrock_func_body:(
+    a = 0;;
+    b = 1;;
+    i = 0;;
+    while (i < n) {{
+      c = a + b;;
+      a = b;;
+      b = c;;
+      i = i + 1
+    }}
+  ))).
+
+  Definition allProgs: list Prog :=
+    Eval unfold bsearch, listsum, fibonacci in
+      [bsearch; listsum 1024; fibonacci 6].
+
+  Print allProgs.
 End Demos.
 
+(* let's print them again in AST form: *)
+Print allProgs.
 
+Definition allProgsAsCStrings: list string :=
+  Eval cbv in (map BasicC64Syntax.c_func (allProgs (bops := BasicC64Syntax.BasicALU))).
 
-Local Instance bsearch_string_names:
-  @BinarySearch.Names (StringNamesSyntax.make BasicC64Syntax.StringNames_params) :=
-{
-  left := "left";
-  right := "right";
-  target := "target";
-  mid := "mid";
-  tmp := "tmp";
-}.
-
-Example bsearch_c_string := Eval compute in
-  BasicC64Syntax.c_func "bsearch" (bsearch (b:=BasicC64Syntax.BasicALU)).
-
-Print bsearch_c_string.
-
-Require bedrock2.ZNamesSyntax.
-
-Local Instance bsearch_string_ZNames: @BinarySearch.Names ZNamesSyntax.ZNames := {
-  left := 1;
-  right := 2;
-  target := 3;
-  mid := 4;
-  tmp := 5;
-}.
-
-Require Import bedrock2.Basic_bopnames.
+Print allProgsAsCStrings.
 
 Definition BasicALU_params: Basic_bopnames.parameters := {|
-  varname := Z;
-  funcname := Z;
-  actname := Empty_set;
+  Basic_bopnames.varname := Z;
+  Basic_bopnames.funcname := Z;
+  Basic_bopnames.actname := Empty_set;
 |}.
 
-Example bsearch_z_ast :=
-  Eval cbv in
-    @bsearch ZNamesSyntax.ZNames
-             (@Basic_bopnames.BasicALU BasicALU_params)
-             bsearch_string_ZNames.
+Definition allProgsWithZNames :=
+  Eval cbv in (allProgs (bops := (@Basic_bopnames.BasicALU BasicALU_params))).
 
-Print bsearch_z_ast.
+Print allProgsWithZNames.

@@ -101,7 +101,7 @@ Section ToCString.
     end.
 
   Local Open Scope string_scope.
-  Definition c_func name '(args, rets, body) :=
+  Definition c_func '(name, (args, rets, body)) :=
     let decl_retvar_retrenames : string * option varname * list (varname * varname) :=
     match rets with
     | nil => (c_decl "void" args name nil, None, nil)
@@ -117,7 +117,7 @@ Section ToCString.
     let localvars : list varname := List_uniq varname_eqb (List.app
         (match retvar with None => nil | Some v => cons v nil end)
         (List_minus varname_eqb (cmd.vars body) args)) in
-    decl ++ " {" ++ LF ++
+    LF ++ decl ++ " {" ++ LF ++
       let indent := "  " in
       (match localvars with nil => "" | _ => indent ++ "uintptr_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
       c_cmd indent body ++
