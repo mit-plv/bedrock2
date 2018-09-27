@@ -20,7 +20,9 @@ Section StructAccess.
   Example example_expr : expr :=
     &field "b" of item at (dst as item *> "b" as item *> "a").
 
+  (*(* TODO reactivate once Coq master works on this:
   Example example_cmd : cmd :=
     field "b" of item at (dst as item *> "b" as item *> "a") = *(uint8_t*) src;;
    /*skip*/.
+  *)
 End StructAccess.
