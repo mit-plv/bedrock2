@@ -13,6 +13,9 @@ Require Import compiler.util.Tactics.
 Section TODO.
   Context {K V: Type}.
   Context {Mf: MapFunctions K V}.
+  Existing Instance map_domain_set.
+  Existing Instance map_range_set.
+
   (*
   Axiom get_in_domain: forall k m, k \in (domain m) -> exists v, get m k = Some v.
   Axiom domain_put: forall k v m, domain (put m k v) = union (domain m) (singleton_set k).
@@ -22,6 +25,8 @@ Section TODO.
   Axiom reverse_get: map K V -> V -> option K.
   Axiom intersect_map: map K V -> map K V -> map K V.
   Axiom remove_by_value: map K V -> V -> map K V.
+  Axiom remove_values: map K V -> set V -> map K V.
+  Axiom update_map: map K V -> map K V -> map K V. (* rhs overrides lhs *)
 
   (* specs *)
   Axiom put_put_same: forall k v1 v2 m, put (put m k v1) k v2 = put m k v2.
@@ -66,6 +71,13 @@ Section TODO.
       intersect_map (intersect_map m1 m2) m3 = intersect_map m1 (intersect_map m2 m3).
   Axiom intersect_map_comm: forall m1 m2,
       intersect_map m1 m2 = intersect_map m2 m1.
+
+  Axiom remove_values_update_map_remove_values: forall m R U,
+      remove_values (update_map (remove_values m R) U) R =
+      remove_values (update_map m U) R.
+  Axiom update_map_remove_values_update_map: forall m R U,
+      update_map (remove_values (update_map m U) R) U =
+      update_map (remove_values m R) U.
 
   Lemma intersect_map_1234_1423: forall m1 m2 m3 m4,
       intersect_map (intersect_map m1 m2) (intersect_map m3 m4) =
@@ -121,9 +133,37 @@ Section RegAlloc.
   Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
   Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
 
+  Definition guaranteed_updates :=
+    fix rec(s: astmt): map impvar srcvar :=
+      match s with
+      | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
+          put empty_map x' x
+      | ASStore a v => empty_map
+      | ASIf cond s1 s2 => intersect_map (rec s1) (rec s2)
+      | ASLoop s1 cond s2 => rec s1
+      | ASSeq s1 s2 => update_map (rec s1) (rec s2)
+      | ASSkip => empty_map
+      | ASCall binds f args => fold_left (fun m '(x, x') => put m x' x) binds empty_map
+      end.
+
+  Definition possibly_written :=
+    fix rec(s: astmt): set srcvar :=
+      match s with
+      | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
+          singleton_set x
+      | ASStore a v => empty_set
+      | ASIf _ s1 s2 | ASLoop s1 _ s2 | ASSeq s1 s2 => union (rec s1) (rec s2)
+      | ASSkip => empty_set
+      | ASCall binds f args =>
+        fold_left (fun s '(x, x') => union s (singleton_set x)) binds empty_set
+      end.
+
+  Definition updateWith(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
+    update_map (remove_values m (possibly_written s)) (guaranteed_updates s).
+
   (* impvar -> srcvar mappings which are guaranteed to hold after running s
      (under-approximation) *)
-  Definition updateWith :=
+  Definition updateWithOld :=
     fix rec(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
       match s with
       | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
@@ -149,22 +189,6 @@ Section RegAlloc.
       | ASCall binds f args => empty_map (* TODO *)
       end.
 
-  Lemma updateWith_idemp: forall s m1 m2,
-      m2 = updateWith m1 s ->
-      updateWith m2 s = m2.
-  Proof.
-    induction s; intros; simpl in *;
-      try reflexivity;
-      try (subst; apply put_put_same).
-(*
-    {
-      erewrite IHs1 with (m2 := m2); [erewrite IHs2 with (m2 := m2)|].
-      subst.
-      - admit. (* ok *)
-      - symmetry. eapply IHs2. (* stuck in a loop *)
-*)
-  Abort.
-
   Hint Resolve
        extends_put_same
        extends_remove_by_value_same
@@ -183,6 +207,7 @@ Section RegAlloc.
 
   Hint Extern 1 => autorewrite with map_rew : map_hints.
 
+  (*
   Lemma updateWith_monotone: forall s m1 m2,
       extends m1 m2 ->
       extends (updateWith m1 s) (updateWith m2 s).
@@ -248,31 +273,19 @@ Section RegAlloc.
   Proof.
     intros. apply (updateWith_121 s ASSkip m).
   Qed.
-
+  *)
 
   Lemma updateWith_idemp: forall s m,
       updateWith (updateWith m s) s = updateWith m s.
   Proof.
-    induction s; intros; simpl in *; eauto with map_hints.
-    - rewrite? updateWith_intersect_map.
-      rewrite IHs1. rewrite IHs2.
-      rewrite intersect_map_1234_1423.
-      remember (intersect_map (updateWith m s1) (updateWith m s2)) as M.
-
-  (*
-    - apply equality_by_extends.
-      +
-
-    - f_equal.
-      + f_equal.
-
-      + transitivity (updateWith (updateWith m s1) s1); [|apply IHs1].
-        apply equality_by_extends.
-        * apply updateWith_monotone.
-
-     *)
-
-  Abort.
+    intros.
+    unfold updateWith.
+    remember (possibly_written s) as R.
+    remember (guaranteed_updates s) as U.
+    rewrite remove_values_update_map_remove_values.
+    rewrite update_map_remove_values_update_map.
+    reflexivity.
+  Qed.
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
@@ -437,6 +450,10 @@ Section RegAlloc.
       repeat (rewrite reg_eqb_ne by congruence);
       repeat (rewrite reg_eqb_eq by congruence);
       eauto with checker_hints.
+    -
+
+(*
+    - ...
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eauto with checker_hints.
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
@@ -453,7 +470,7 @@ Section RegAlloc.
 
         eauto 10 with checker_hints.
         eauto with checker_hints.
-
+*)
 
   Abort.
 
