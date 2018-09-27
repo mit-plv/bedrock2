@@ -1,3 +1,4 @@
+Require Import Coq.ZArith.BinIntDef.
 Require Import bedrock2.Macros bedrock2.Syntax bedrock2.BasicALU.
 
 
