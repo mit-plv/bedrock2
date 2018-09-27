@@ -33,8 +33,8 @@ Notation "*(uint32_t*) ea = ev" := (cmd.store 4 ea%bedrock_var ev%bedrock_expr)
 Notation "*(uint64_t*) ea = ev" := (cmd.store 8 ea%bedrock_var ev%bedrock_expr)
   (at level 76, ea at level 60) : bedrock_cmd.
 
-Notation "c1 ; c2" := (cmd.seq c1%bedrock_cmd c2%bedrock_cmd)
-  (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_cmd.
+Notation "c1 ;; c2" := (cmd.seq c1%bedrock_cmd c2%bedrock_cmd)
+  (at level 76, right associativity, c2 at level 76, format "'[v' c1 ;; '/' c2 ']'") : bedrock_cmd.
 Notation "'if' ( e ) { { c1 } } 'else' { { c2 } }" := (cmd.cond e%bedrock_expr c1%bedrock_cmd c2%bedrock_cmd)
  (at level 76, no associativity, c1 at level 76, c2 at level 76, format "'[v' 'if'  ( e )  { {  '/  ' c1 '/' } }  'else'  { {  '/  ' c2 '/' } } ']'") : bedrock_cmd.
 Notation "'if' ( e ) { { c } }" := (cmd.cond e%bedrock_expr c%bedrock_cmd cmd.skip)
@@ -45,8 +45,8 @@ Notation "'while' ( e ) { { c } }" := (cmd.while e%bedrock_expr c%bedrock_cmd)
 Delimit Scope bedrock_func_body with bedrock_func_body.
 Notation "'require' ( e ) 'else' { { ce } } c" := (cmd.cond e%bedrock_expr c%bedrock_func_body%bedrock_cmd ce%bedrock_cmd)
  (at level 76, right associativity, ce at level 76, c at level 76, format "'[v' 'require'  ( e )  'else'  { { '/  '  ce '/' } } '//' c ']'") : bedrock_func_body.
-Notation "c1 ; c2" := (cmd.seq c1%bedrock_cmd c2%bedrock_func_body%bedrock_cmd)
-  (at level 76, right associativity, c2 at level 76, format "'[v' c1 ; '/' c2 ']'") : bedrock_func_body.
+Notation "c1 ;; c2" := (cmd.seq c1%bedrock_cmd c2%bedrock_func_body%bedrock_cmd)
+  (at level 76, right associativity, c2 at level 76, format "'[v' c1 ;; '/' c2 ']'") : bedrock_func_body.
 Notation "'while' ( e ) { { c } }" := (cmd.while e%bedrock_expr c%bedrock_cmd)
   (at level 76, no associativity, c at level 76, format "'[v' 'while'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func_body.
 Notation "'if' ( e ) { { c1 } } 'else' { { c2 } }" := (cmd.cond e%bedrock_expr c1%bedrock_func_body c2%bedrock_func_body)

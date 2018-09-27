@@ -15,14 +15,14 @@ Section MultipleReturnValues.
   Let y : varname := "y".
 
   Example addsub := ((a::b::nil), (x::y::nil), bedrock_func_body:(
-    x = a + b;
+    x = a + b;;
     y = a - b
   )).
 
   Let ret : varname := "ret".
 
   Example addsub_test := (@nil varname, ("ret"::nil)%list, bedrock_func_body:(
-    cmd.call (ret::ret::nil)%list "addsub" (expr.literal 14::expr.literal 7::nil)%list;
+    cmd.call (ret::ret::nil)%list "addsub" (expr.literal 14::expr.literal 7::nil)%list;;
     ret = (ret - 7)
   )).
 End MultipleReturnValues.

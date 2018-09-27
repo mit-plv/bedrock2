@@ -33,8 +33,8 @@ Section Demos.
 
   Definition bsearch := ((left::right::target::nil), (left::nil), bedrock_func_body:(
     while (left < right) {{
-      mid = left + (((right-left) >> 4) << 3);
-      tmp = *(uint64_t*) mid;
+      mid = left + (((right-left) >> 4) << 3);;
+      tmp = *(uint64_t*) mid;;
       if (tmp < target) {{
         left = mid + 8
       }} else {{

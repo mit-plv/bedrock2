@@ -21,6 +21,6 @@ Section StructAccess.
     &field "b" of item at (dst as item *> "b" as item *> "a").
 
   Example example_cmd : cmd :=
-    field "b" of item at (dst as item *> "b" as item *> "a") = *(uint8_t*) src;
+    field "b" of item at (dst as item *> "b" as item *> "a") = *(uint8_t*) src;;
    /*skip*/.
 End StructAccess.
