@@ -474,6 +474,14 @@ Section RegAlloc.
       remember (possibly_written annotated2) as p2.
       remember (guaranteed_updates annotated2) as g2.
 
+(* SMT *)
+
+clear.
+
+unfold extends.
+unfold get.
+
+
 (*
       eauto with checker_hints.
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
