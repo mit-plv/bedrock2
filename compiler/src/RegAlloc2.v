@@ -79,6 +79,15 @@ Section TODO.
       update_map (remove_values (update_map m U) R) U =
       update_map (remove_values m R) U.
 
+  Axiom update_map_with_singleton: forall m k v,
+      update_map m (put empty_map k v) = put m k v.
+  Axiom remove_values_singleton_set: forall m v,
+      remove_values m (singleton_set v) = remove_by_value m v.
+  Axiom update_map_with_empty: forall m,
+      update_map m empty_map = m.
+  Axiom remove_values_empty_set: forall m,
+      remove_values m empty_set = m.
+
   Lemma intersect_map_1234_1423: forall m1 m2 m3 m4,
       intersect_map (intersect_map m1 m2) (intersect_map m3 m4) =
       intersect_map (intersect_map m1 m4) (intersect_map m2 m3).
@@ -449,12 +458,23 @@ Section RegAlloc.
              end;
       repeat (rewrite reg_eqb_ne by congruence);
       repeat (rewrite reg_eqb_eq by congruence);
+      unfold updateWith in *;
+      simpl;
+      rewrite? update_map_with_singleton;
+      rewrite? remove_values_singleton_set;
+      rewrite? update_map_with_empty;
+      rewrite? remove_values_empty_set;
       eauto with checker_hints.
-    -
+    - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
+      eexists; split; [eassumption|].
+      clear IHn.
+      eapply states_compat_extends; [|eassumption].
+      remember (possibly_written annotated1) as p1.
+      remember (guaranteed_updates annotated1) as g1.
+      remember (possibly_written annotated2) as p2.
+      remember (guaranteed_updates annotated2) as g2.
 
 (*
-    - ...
-    - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eauto with checker_hints.
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eauto with checker_hints.
