@@ -1,3 +1,4 @@
+Require Import Coq.Program.Tactics.
 Require Import compiler.FlatImp.
 Require Import compiler.StateCalculus.
 Require Import compiler.StateCalculusTacticTest.
@@ -21,20 +22,19 @@ Section TODO.
   Axiom domain_put: forall k v m, domain (put m k v) = union (domain m) (singleton_set k).
   *)
 
-  (* operations *)
-  Axiom reverse_get: map K V -> V -> option K.
-  Axiom intersect_map: map K V -> map K V -> map K V.
-  Axiom remove_by_value: map K V -> V -> map K V.
-  Axiom remove_values: map K V -> set V -> map K V.
-  Axiom update_map: map K V -> map K V -> map K V. (* rhs overrides lhs *)
-
   (* specs *)
+  Axiom put_spec: forall m k1 k2 v,
+      (k1 = k2 /\ get (put m k1 v) k2 = Some v) \/ (k1 <> k2 /\ get (put m k1 v) k2 = get m k2).
+
   Axiom put_put_same: forall k v1 v2 m, put (put m k v1) k v2 = put m k v2.
   Axiom reverse_reverse_get: forall k v m, reverse_get m v = Some k -> get m k = Some v.
   Axiom get_in_range: forall k v m, get m k = Some v -> v \in range m.
   Axiom remove_by_value_spec: forall k v m, get (remove_by_value m v) k <> Some v.
   Axiom get_intersect_map: forall k v m1 m2,
       get (intersect_map m1 m2) k = Some v <-> get m1 k = Some v /\ get m2 k = Some v.
+
+  Axiom union_comm: forall s1 s2,
+      union s1 s2 = union s2 s1.
 
   (* TODO some of this should go into state calculus *)
   (* probably derived *)
@@ -88,6 +88,92 @@ Section TODO.
   Axiom remove_values_empty_set: forall m,
       remove_values m empty_set = m.
 
+  Axiom domain_update_map: forall m1 m2,
+      domain (update_map m1 m2) = union (domain m1) (domain m2).
+  Axiom range_update_map: forall m1 m2,
+      subset (range (update_map m1 m2)) (union (range m1) (range m2)).
+
+  Axiom range_update_map_r: forall m1 m2,
+      subset (range m2) (range (update_map m1 m2)).
+
+  Axiom range_intersect_map: forall m1 m2,
+      subset (range (intersect_map m1 m2)) (intersect (range m1) (range m2)).
+
+  (* easy but mostly useless *)
+  Lemma update_map_extends: forall m1 m2 m3,
+      extends m1 m3 ->
+      extends m2 m3 ->
+      extends (update_map m1 m2) m3.
+  Proof.
+    unfold extends. intros.
+    destruct (get m2 x) eqn: E.
+    - apply get_update_map_r.
+      apply H0.
+      assumption.
+    - rewrite get_update_map_l; eauto.
+  Qed.
+
+  Lemma update_map_extends_disjoint: forall m1 m2 m3 m4,
+      extends m1 m3 ->
+      extends m2 m4 ->
+      disjoint (domain m1) (domain m2) ->
+      extends (update_map m1 m2) (update_map m3 m4).
+  Proof.
+    unfold extends. intros.
+    destruct (get m4 x) eqn: E.
+    - apply get_update_map_r.
+      erewrite get_update_map_r in H2 by eassumption.
+      apply H0.
+      congruence.
+    - erewrite get_update_map_l in H2 by eassumption.
+      destruct (get m2 x) eqn: F.
+      + unfold disjoint in H1.
+        specialize (H1 x).
+        do 2 rewrite domain_spec in H1.
+        exfalso.
+        intuition eauto.
+      + rewrite get_update_map_l; eauto.
+  Qed.
+
+  Lemma extends_remove_values_union_l: forall m vs1 vs2,
+      extends (remove_values m vs1) (remove_values m (union vs1 vs2)).
+  Proof.
+    unfold extends. intros.
+    destruct (get m x) eqn: F.
+    - destruct (containsb (union vs1 vs2) v) eqn: E.
+      + rewrite containsb_spec in E.
+        pose proof remove_values_removed as P.
+        specialize P with (1 := F) (2 := E).
+        rewrite P in H.
+        discriminate.
+      + assert (~ v \in (union vs1 vs2)) as N. {
+          intro C. rewrite <- containsb_spec in C. rewrite C in E.
+          discriminate.
+        }
+        clear E.
+        pose proof remove_values_not_removed as P.
+        specialize P with (1 := F) (2 := N).
+        rewrite P in H.
+        inversion H; subst; clear H.
+        apply remove_values_not_removed; [eassumption|].
+        intro C.
+        apply N.
+        apply union_spec.
+        left. apply C.
+    - pose proof remove_values_never_there as P.
+      specialize P with (1 := F).
+      rewrite P in H.
+      discriminate.
+  Qed.
+
+  Lemma extends_remove_values_union_r: forall m vs1 vs2,
+      extends (remove_values m vs2) (remove_values m (union vs1 vs2)).
+  Proof.
+    intros.
+    rewrite union_comm.
+    apply extends_remove_values_union_l.
+  Qed.
+
   Lemma intersect_map_1234_1423: forall m1 m2 m3 m4,
       intersect_map (intersect_map m1 m2) (intersect_map m3 m4) =
       intersect_map (intersect_map m1 m4) (intersect_map m2 m3).
@@ -118,6 +204,8 @@ Section RegAlloc.
   Context {impvar_eq_dec: DecidableEq impvar}.
   Variable func: Set.
   Context {func_eq_dec: DecidableEq func}.
+
+  Hypothesis func_empty: func = Empty_set.
 
   Context {Map: MapFunctions impvar srcvar}.
   Notation srcvars := (@set srcvar (@map_range_set _ _ Map)).
@@ -169,6 +257,36 @@ Section RegAlloc.
 
   Definition updateWith(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
     update_map (remove_values m (possibly_written s)) (guaranteed_updates s).
+
+  Hint Rewrite
+       @singleton_set_spec
+       @range_spec
+       @get_put
+       @empty_is_empty
+    : rew_set_map_specs.
+
+  Lemma guaranteed_updates_are_possibly_written: forall s,
+      subset (range (guaranteed_updates s)) (possibly_written s).
+  Proof.
+    induction s; simpl; try (
+      repeat intro;
+      repeat match goal with
+             | |- _ => progress autorewrite with rew_set_map_specs in *
+             | H: _ /\ _ |- _ => destruct H
+             | E: exists y, _ |- _ => let yf := fresh y in destruct E as [yf E]
+             | H: context[if ?e then _ else _] |- _ => destruct e
+             (* needed because of https://github.com/coq/coq/issues/8635 *)
+             | H: _ |- _ => rewrite get_put in H
+             end;
+      congruence).
+    - pose proof (range_intersect_map (guaranteed_updates s1) (guaranteed_updates s2)).
+      set_solver_generic srcvar.
+    - pose proof (range_intersect_map (guaranteed_updates s1) (guaranteed_updates s2)).
+      set_solver_generic srcvar.
+    - pose proof (range_update_map (guaranteed_updates s1) (guaranteed_updates s2)).
+      set_solver_generic srcvar.
+    - rewrite func_empty in f. destruct f.
+  Qed.
 
   (* impvar -> srcvar mappings which are guaranteed to hold after running s
      (under-approximation) *)
@@ -441,14 +559,14 @@ Section RegAlloc.
       | H: erase ?s = _ |- _ =>
         destruct s;
         inversion H;
-        subst;
+        subst *;
         clear H
       end;
-      subst;
+      subst *;
       simpl in *;
       repeat (destruct_one_match_hyp; [|discriminate]);
       repeat match goal with
-             | H: Some _ = Some _ |- _ => inversion H; subst; clear H
+             | H: Some _ = Some _ |- _ => inversion H; subst *; clear H
              | H: reverse_get _ _ = Some _ |- _ => apply reverse_reverse_get in H
              | H: states_compat _ _ _ |- _ => erewrite H by eassumption
              end;
@@ -469,18 +587,13 @@ Section RegAlloc.
       eexists; split; [eassumption|].
       clear IHn.
       eapply states_compat_extends; [|eassumption].
-      remember (possibly_written annotated1) as p1.
-      remember (guaranteed_updates annotated1) as g1.
-      remember (possibly_written annotated2) as p2.
-      remember (guaranteed_updates annotated2) as g2.
-
-(* SMT *)
-
-clear.
-
-unfold extends.
-unfold get.
-
+      apply update_map_extends_disjoint.
+      + apply extends_remove_values_union_l.
+      +  remember (possibly_written annotated1) as p1.
+         remember (guaranteed_updates annotated1) as g1.
+         remember (possibly_written annotated2) as p2.
+         remember (guaranteed_updates annotated2) as g2.
+         clear.
 
 (*
       eauto with checker_hints.
