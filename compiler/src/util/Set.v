@@ -50,6 +50,20 @@ Section SetDefinitions.
   Definition subset(s1 s2: set E) := forall x, x \in s1 -> x \in s2.
   Definition disjoint(s1 s2: set E) := forall x, (~ x \in s1) \/ (~ x \in s2).
   Definition of_list l := List.fold_right union empty_set (List.map singleton_set l).
+
+  Lemma contains_dec: forall x vs,  Decidable (x \in vs).
+  Proof.
+    unfold Decidable.
+    intros.
+    destruct (containsb vs x) eqn: F.
+    - left.
+      rewrite containsb_spec in F.
+      assumption.
+    - right.
+      intro C. rewrite <- containsb_spec in C. rewrite C in F.
+      discriminate.
+  Qed.
+
 End SetDefinitions.
 
 Hint Unfold add subset disjoint : unf_set_defs.

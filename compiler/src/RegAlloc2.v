@@ -140,18 +140,12 @@ Section TODO.
   Proof.
     unfold extends. intros.
     destruct (get m x) eqn: F.
-    - destruct (containsb (union vs1 vs2) v) eqn: E.
-      + rewrite containsb_spec in E.
-        pose proof remove_values_removed as P.
+    - destruct (contains_dec v (union vs1 vs2)) as [E|N].
+      + pose proof remove_values_removed as P.
         specialize P with (1 := F) (2 := E).
         rewrite P in H.
         discriminate.
-      + assert (~ v \in (union vs1 vs2)) as N. {
-          intro C. rewrite <- containsb_spec in C. rewrite C in E.
-          discriminate.
-        }
-        clear E.
-        pose proof remove_values_not_removed as P.
+      + pose proof remove_values_not_removed as P.
         specialize P with (1 := F) (2 := N).
         rewrite P in H.
         inversion H; subst; clear H.
@@ -173,6 +167,34 @@ Section TODO.
     rewrite union_comm.
     apply extends_remove_values_union_l.
   Qed.
+
+  Existing Instance contains_dec.
+
+  Lemma remove_values_spec: forall m vs k,
+      get (remove_values m vs) k =
+      match get m k with
+      | Some v => if dec (v \in vs) then None else Some v
+      | None => None
+      end.
+  Admitted.
+
+  Lemma disjoint_domain_remove_values_range: forall m1 m2,
+      disjoint (domain (remove_values m1 (range m2))) (domain m2).
+  Proof.
+    unfold disjoint.
+    intros.
+    destruct (contains_dec x (domain m2)) as [HIn | HNotIn]; [left|right;assumption].
+    intro C.
+    rewrite domain_spec in HIn, C.
+    destruct_products.
+    rewrite remove_values_spec in C.
+    repeat (destruct_one_match_hyp; try discriminate).
+    inversion C; subst; clear C.
+    clear E0.
+    rewrite range_spec in n.
+    apply n.
+    exists x.
+  Abort.
 
   Lemma intersect_map_1234_1423: forall m1 m2 m3 m4,
       intersect_map (intersect_map m1 m2) (intersect_map m3 m4) =
@@ -589,11 +611,18 @@ Section RegAlloc.
       eapply states_compat_extends; [|eassumption].
       apply update_map_extends_disjoint.
       + apply extends_remove_values_union_l.
-      +  remember (possibly_written annotated1) as p1.
-         remember (guaranteed_updates annotated1) as g1.
-         remember (possibly_written annotated2) as p2.
-         remember (guaranteed_updates annotated2) as g2.
-         clear.
+      + apply extends_intersect_map_l.
+      +
+
+        pose proof (guaranteed_updates_are_possibly_written annotated1) as P.
+        remember (possibly_written annotated1) as p1.
+        remember (guaranteed_updates annotated1) as g1.
+        remember (possibly_written annotated2) as p2.
+        remember (guaranteed_updates annotated2) as g2.
+
+        enough (disjoint (domain (remove_values r (range g1))) (domain g1)) as A. {
+          admit. (* A, P *)
+        }
 
 (*
       eauto with checker_hints.
