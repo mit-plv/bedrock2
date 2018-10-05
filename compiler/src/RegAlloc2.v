@@ -609,6 +609,34 @@ Section RegAlloc.
       eexists; split; [eassumption|].
       clear IHn.
       eapply states_compat_extends; [|eassumption].
+      clear -impvar_eq_dec func_empty.
+
+      pose proof (guaranteed_updates_are_possibly_written annotated1) as P1.
+      pose proof (guaranteed_updates_are_possibly_written annotated2) as P2.
+
+      forget (possibly_written annotated1) as p1.
+      forget (guaranteed_updates annotated1) as g1.
+      forget (possibly_written annotated2) as p2.
+      forget (guaranteed_updates annotated2) as g2.
+
+      clear func_empty.
+
+      repeat match goal with
+             | H: ?P |- _ =>
+               progress tryif (let T := type of P in unify T Prop)
+                        then revert H else clear H
+             end.
+(*
+Isabelle:
+Auto Quickcheck found a counterexample:
+  g1 = [a2 -> a1]
+  p1 = {a1}
+  g2 = Map.empty
+  p2 = {}
+  r = [a2 -> a2]
+*)
+(*
+
       apply update_map_extends_disjoint.
       + apply extends_remove_values_union_l.
       + apply extends_intersect_map_l.
@@ -620,11 +648,13 @@ Section RegAlloc.
         remember (possibly_written annotated2) as p2.
         remember (guaranteed_updates annotated2) as g2.
 
-        enough (disjoint (domain (remove_values r (range g1))) (domain g1)) as A. {
+        enough (disjoint (domain (remove_values r (range g1))) (domain g1)) as A.
+
+
+        {
           admit. (* A, P *)
         }
 
-(*
       eauto with checker_hints.
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eauto with checker_hints.
