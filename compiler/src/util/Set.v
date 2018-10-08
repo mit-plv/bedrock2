@@ -39,7 +39,7 @@ Hint Rewrite
   @diff_spec
 : rew_set_op_specs.
 
-Notation "x '\in' s" := (contains s x) (at level 39, no associativity).
+Notation "x '\in' s" := (contains s x) (at level 70, no associativity).
 
 Section SetDefinitions.
   Context {E: Type}.

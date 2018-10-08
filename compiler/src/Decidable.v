@@ -39,6 +39,16 @@ Global Instance decidable_eq_option {A} `{DecidableEq A}: DecidableEq (option A)
   - left. reflexivity.
 Defined.
 
+Global Instance dec_eq_pair{T1 T2: Type}(eq1: DecidableEq T1)(eq2: DecidableEq T2):
+  DecidableEq (T1 * T2).
+refine (fun '(x1, x2) '(y1, y2) => match eq1 x1 y1, eq2 x2 y2 with
+                                   | left E1, left E2 => left _
+                                   | right N1, _ => right _
+                                   | _, right N2 => right _
+                                   end).
+all: congruence.
+Defined.
+
 Global Instance dec_and {A B} `{Decidable A, Decidable B} : Decidable (A /\ B).
   unfold Decidable in *; destruct H; destruct H0; tauto.
 Defined.

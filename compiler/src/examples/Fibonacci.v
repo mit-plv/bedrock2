@@ -228,9 +228,26 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
       unfold fib_H_res in R.
       unfold evalH in F.
       match type of R with
+      | match ?x with _ => _ end = _  => destruct x eqn: E; [|discriminate]
+      end.
+      destruct p.
+      etransitivity; [|exact R].
+      assert (Some (m, m0) = Some (finalH, finalMH)) as A. {
+        etransitivity; [symmetry|]. eassumption.
+        clear -F.
+        etransitivity; [|exact F].
+        clear.
+        (* reflexivity. TODO takes forever *)
+        admit.
+      }
+      inversion A. subst.
+      reflexivity.
+      (*
+      match type of R with
       | match ?x with _ => _ end = _  => replace x with (Some (finalH, finalMH)) in R
       end.
       assumption.
+      *)
     + apply (f_equal uwordToZ) in G.
       rewrite uwordToZ_ZToWord in G.
       change (13 mod 2 ^ 32) with 13 in G.
@@ -253,6 +270,6 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
       unfold initialRiscvMachine.
       apply f_equal.
       reflexivity.
-Qed.
+Admitted.
 
 Print Assumptions fib6_L_res_is_13_by_proving_it.

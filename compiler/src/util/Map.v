@@ -13,6 +13,10 @@ Class MapFunctions(K V: Type) := mkMap {
   empty_map: map;
   empty_is_empty: forall (k: K), get empty_map k = None;
 
+  remove: map -> K -> map;
+  get_remove_same: forall m k, get (remove m k) k = None;
+  get_remove_diff: forall m k1 k2, k1 <> k2 -> get (remove m k1) k2 = get m k2;
+
   put: map -> K -> V -> map;
   get_put_same: forall (m: map) (k: K) (v: V), get (put m k v) k = Some v;
   get_put_diff: forall (m: map) (k1 k2: K) (v: V), k1 <> k2 -> get (put m k1 v) k2 = get m k2;

@@ -312,7 +312,7 @@ Section RegAlloc.
 
   (* impvar -> srcvar mappings which are guaranteed to hold after running s
      (under-approximation) *)
-  Definition updateWithOld :=
+  Definition updateWith' :=
     fix rec(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
       match s with
       | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
@@ -560,6 +560,44 @@ Section RegAlloc.
        extends_intersect_map_r
     : checker_hints.
 
+  Lemma updateWith_alt1: forall s m,
+      extends (updateWith' m s) (updateWith m s).
+  Proof.
+    induction s; intros; unfold updateWith in *; simpl in *;
+      rewrite? update_map_with_singleton;
+      rewrite? remove_values_singleton_set;
+      rewrite? update_map_with_empty;
+      rewrite? remove_values_empty_set;
+      eauto with map_hints checker_hints.
+    - specialize (IHs1 m).
+      specialize (IHs2 m).
+
+      forget (possibly_written s1) as p1.
+      forget (guaranteed_updates s1) as g1.
+      forget (possibly_written s2) as p2.
+      forget (guaranteed_updates s2) as g2.
+      forget (updateWith' m s1) as u1.
+      forget (updateWith' m s2) as u2.
+
+      repeat match goal with
+             | H: ?P |- _ =>
+               progress tryif (let T := type of P in unify T Prop)
+                        then revert H else clear H
+             end.
+
+(*
+Auto Quickcheck found a counterexample:
+  u1 = [a2 ↦ a1]
+  m = [a2 ↦ a1]
+  p1 = {}
+  g1 = Map.empty
+  u2 = [a2 ↦ a2]
+  p2 = {}
+  g2 = [a2 ↦ a2]
+ *)
+
+  Abort.
+
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
       eval n st1 m1 s = Some (st2, m2) ->
       erase annotated = s ->
@@ -609,10 +647,12 @@ Section RegAlloc.
       eexists; split; [eassumption|].
       clear IHn.
       eapply states_compat_extends; [|eassumption].
-      clear -impvar_eq_dec func_empty.
-
       pose proof (guaranteed_updates_are_possibly_written annotated1) as P1.
       pose proof (guaranteed_updates_are_possibly_written annotated2) as P2.
+      pose proof (guaranteed_updates_are_possibly_written (ASIf cond annotated1 annotated2))
+        as P3.
+      simpl in P3.
+      clear -impvar_eq_dec func_empty P1 P2 P3.
 
       forget (possibly_written annotated1) as p1.
       forget (guaranteed_updates annotated1) as g1.
@@ -626,7 +666,17 @@ Section RegAlloc.
                progress tryif (let T := type of P in unify T Prop)
                         then revert H else clear H
              end.
+
 (*
+Auto Quickcheck found a counterexample:
+  g1 = [a2 -> a1]
+  p1 = {a1}
+  g2 = Map.empty
+  p2 = {}
+  r = [a2 -> a2]
+*)
+
+  (*
 Isabelle:
 Auto Quickcheck found a counterexample:
   g1 = [a2 -> a1]
