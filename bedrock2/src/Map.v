@@ -42,6 +42,16 @@ Module map.
       | nil => m = empty
       | cons m0 ms' => carve m0 m (fun m => splits m ms')
       end.
+    Fixpoint splitsS m ms mf : Prop :=
+      match ms with
+      | nil => m = mf
+      | cons m0 ms' => carve m0 m (fun m => splitsS m ms' mf)
+      end.
+    Definition splits' m ms :=
+      match ms with
+      | nil => m = empty
+      | cons m0 ms' => splitsS m ms' m0
+      end.
   End Decomp.
 End map. Notation map := map.map.
 Global Coercion map.rep : map >-> Sortclass.
