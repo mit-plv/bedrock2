@@ -15,6 +15,7 @@ Require Import riscv.MachineWidth32.
 Definition var: Set := Z. (* only inside this test module *)
 Definition func: Set := Empty_set.
 Notation stmt := (stmt var func).
+Notation bcond := (bcond var).
 
 Definition _n := 0%Z.
 Definition _a := 1%Z.
@@ -41,7 +42,8 @@ Example fib(n: Z): stmt  :=
   SSeq (SLit _a 0) (
   SSeq (SLit _b 1) (
   SLoop SSkip
-        _n
+        (CondBnez var _n)
+        (*_n*)
         (SSeq (SOp _s bopname.add _a _b) (
          SSeq (SSet _a _b) (
          SSeq (SSet _b _s) (

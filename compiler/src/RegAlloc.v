@@ -101,6 +101,7 @@ Section Live.
   Context {varset: SetFunctions var}.
   Local Notation stmt := (stmt var func).
   Local Notation vars := (set var).
+  Local Notation bcond := (bcond var).
 
   (* set of variables which is certainly written while executing s *)
   Fixpoint certainly_written(s: stmt): vars :=
@@ -117,6 +118,21 @@ Section Live.
     | SCall argnames fname resnames => of_list resnames
     end.
 
+  Definition liveVarsBcond(cond: bcond) : vars :=
+    match cond with
+    | CondBeq _ x y
+    | CondBne _ x y
+    | CondBlt _ x y
+    | CondBge _ x y
+    | CondBltu _ x y
+    | CondBgeu _ x y =>
+        union (singleton_set x) (singleton_set y)
+    | CondBnez _ x =>
+        singleton_set x
+    | CondTrue _ | CondFalse _ =>
+        empty_set
+    end.
+
   (* set of variables which is live before executing s *)
   Fixpoint live(s: stmt): vars :=
     match s with
@@ -125,8 +141,8 @@ Section Live.
     | SLit x v     => empty_set
     | SOp x op y z => union (singleton_set y) (singleton_set z)
     | SSet x y     => singleton_set y
-    | SIf cond s1 s2   => union (singleton_set cond) (union (live s1) (live s2))
-    | SLoop s1 cond s2 => union (live s1) (diff (union (singleton_set cond) (live s2))
+    | SIf cond s1 s2   => union (liveVarsBcond cond) (union (live s1) (live s2))
+    | SLoop s1 cond s2 => union (live s1) (diff (union (liveVarsBcond cond) (live s2))
                                                 (certainly_written s1))
     | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
     | SSkip => empty_set
@@ -604,6 +620,19 @@ and since we never change a var->register assignment after we made a decision, w
           | None => dummy_register
           end.
 
+  Definition apply_alloc_bcond (m: var -> register) (cond: bcond var): (bcond register) :=
+    match cond with
+    | CondBeq _ x y => CondBeq register (m x) (m y)
+    | CondBne _ x y => CondBne register (m x) (m y)
+    | CondBlt _ x y => CondBlt register (m x) (m y)
+    | CondBge _ x y => CondBge register (m x) (m y)
+    | CondBltu _ x y => CondBltu register (m x) (m y)
+    | CondBgeu _ x y => CondBgeu register (m x) (m y)
+    | CondBnez _ x => CondBnez register (m x)
+    | CondTrue _ => CondTrue register 
+    | CondFalse _ => CondFalse register 
+    end.
+
   Definition apply_alloc(m: var -> register): stmt -> stmt' :=
     fix rec(s: stmt) :=
       match s with
@@ -612,8 +641,8 @@ and since we never change a var->register assignment after we made a decision, w
       | SLit x v => SLit (m x) v
       | SOp x op y z => SOp (m x) op (m y) (m z)
       | SSet x y => SSet (m x) (m y)
-      | SIf cond s1 s2   => SIf (m cond) (rec s1) (rec s2)
-      | SLoop s1 cond s2 => SLoop (rec s1) (m cond) (rec s2)
+      | SIf cond s1 s2   => SIf (apply_alloc_bcond m cond) (rec s1) (rec s2)
+      | SLoop s1 cond s2 => SLoop (rec s1) (apply_alloc_bcond m cond) (rec s2)
       | SSeq s1 s2 => SSeq (rec s1) (rec s2)
       | SSkip => SSkip
       | SCall argnames fname resnames => SCall (List.map m argnames) fname (List.map m resnames)

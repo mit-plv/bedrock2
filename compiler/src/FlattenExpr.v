@@ -74,6 +74,43 @@ Section FlattenExpr.
         (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x (convert_bopname op) r1 r2)), x, ngs''')
     end.
 
+  Fixpoint flattenExprAsBooleanExpr(ngs: NGstate)(e: Syntax.expr):
+    (FlatImp.stmt var func * FlatImp.bcond var * NGstate) :=
+    match e with
+    | Syntax.expr.literal n =>
+        let '(stmt, x, ngs') := flattenExpr ngs e in
+        (stmt, FlatImp.CondBnez var x, ngs')
+    | Syntax.expr.var x =>
+        (*(FlatImp.SSkip, FlatImp.CondBnez var x, ngs)*)
+        let '(stmt, x, ngs') := flattenExpr ngs e in
+        (stmt, FlatImp.CondBnez var x, ngs')
+    | Syntax.expr.load _ e' =>
+        let '(stmt, x, ngs') := flattenExpr ngs e in
+        (stmt, FlatImp.CondBnez var x, ngs')
+    | Syntax.expr.op op e1 e2 =>
+        let '(s1, r1, ngs') := flattenExpr ngs e1 in
+        let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
+        match convert_bopname op with
+        | Basic_bopnames.bopname.add
+        | Basic_bopnames.bopname.sub
+        | Basic_bopnames.bopname.mul
+        | Basic_bopnames.bopname.and
+        | Basic_bopnames.bopname.or
+        | Basic_bopnames.bopname.xor
+        | Basic_bopnames.bopname.sru
+        | Basic_bopnames.bopname.slu
+        | Basic_bopnames.bopname.srs =>
+          let '(x, ngs''') := genFresh ngs'' in
+          (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x (convert_bopname op) r1 r2)), FlatImp.CondBnez var x, ngs''')
+        | Basic_bopnames.bopname.lts =>
+          (FlatImp.SSeq s1 s2, FlatImp.CondBlt var r1 r2, ngs'')
+        | Basic_bopnames.bopname.ltu =>
+          (FlatImp.SSeq s1 s2, FlatImp.CondBltu var r1 r2, ngs'')
+        | Basic_bopnames.bopname.eq =>
+          (FlatImp.SSeq s1 s2, FlatImp.CondBeq var r1 r2, ngs'')
+        end
+    end.
+
   Definition flattenCall(ngs: NGstate)(binds: list var)(f: func)
              (args: list Syntax.expr):
     FlatImp.stmt var func * NGstate :=
@@ -97,14 +134,14 @@ Section FlattenExpr.
         let '(e', r, ngs') := flattenExpr ngs e in
         (FlatImp.SSeq e' (FlatImp.SSet x r), ngs')
     | Syntax.cmd.cond cond sThen sElse =>
-        let '(cond', r, ngs') := flattenExpr ngs cond in
+        let '(cond', bcond, ngs') := flattenExprAsBooleanExpr ngs cond in
         let '(sThen', ngs'') := flattenStmt ngs' sThen in
         let '(sElse', ngs''') := flattenStmt ngs'' sElse in
-        (FlatImp.SSeq cond' (FlatImp.SIf r sThen' sElse'), ngs''')
+        (FlatImp.SSeq cond' (FlatImp.SIf bcond sThen' sElse'), ngs''')
     | Syntax.cmd.while cond body =>
-        let '(cond', r, ngs') := flattenExpr ngs cond in
+        let '(cond', bcond, ngs') := flattenExprAsBooleanExpr ngs cond in
         let '(body', ngs'') := flattenStmt ngs' body in
-        (FlatImp.SLoop cond' r body', ngs'')
+        (FlatImp.SLoop cond' bcond body', ngs'')
     | Syntax.cmd.seq s1 s2 =>
         let '(s1', ngs') := flattenStmt ngs s1 in
         let '(s2', ngs'') := flattenStmt ngs' s2 in
@@ -124,6 +161,20 @@ Section FlattenExpr.
     - specializes IHe1; [eassumption|].
       specializes IHe2; [eassumption|].
       omega.
+  Qed.
+
+  Lemma flattenExprAsBooleanExpr_size: forall e s bcond ngs ngs',
+      flattenExprAsBooleanExpr ngs e = (s, bcond, ngs') ->
+      FlatImp.stmt_size _ _ s <= 2 * ExprImp.expr_size e.
+  Proof.
+    induction e; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl;
+    repeat match goal with
+    | IH: _, A: _ |- _ => specialize IH with (1 := A)
+    end;
+    repeat match goal with
+    | H: _ |- _ => apply flattenExpr_size in H
+    end;
+    try omega.
   Qed.
 
   Lemma fold_right_cons: forall (A B: Type) (f: B -> A -> A) (a0: A) (b: B) (bs: list B),
@@ -177,6 +228,7 @@ Section FlattenExpr.
     end;
     repeat match goal with
     | H: _ |- _ => apply flattenExpr_size in H
+    | H: _ |- _ => apply flattenExprAsBooleanExpr_size in H
     end;
     try omega.
     eapply flattenCall_size. eassumption.
@@ -189,6 +241,21 @@ Section FlattenExpr.
     induction e; intros; repeat (inversionss; try destruct_one_match_hyp);
     repeat match goal with
     | H: _ |- _ => apply genFresh_spec in H
+    end;
+    repeat match goal with
+    | IH: forall _ _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
+    end;
+    try solve [set_solver].
+  Qed.
+
+  Lemma flattenExprAsBooleanExpr_freshVarUsage: forall e ngs ngs' s v,
+    flattenExprAsBooleanExpr ngs e = (s, v, ngs') ->
+    subset (allFreshVars ngs') (allFreshVars ngs).
+  Proof.
+  induction e; intros; repeat (inversionss; try destruct_one_match_hyp);
+    repeat match goal with
+    | H: _ |- _ => apply genFresh_spec in H
+    | H: _ |- _ => apply flattenExpr_freshVarUsage in H
     end;
     repeat match goal with
     | IH: forall _ _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
@@ -258,6 +325,7 @@ Section FlattenExpr.
     repeat match goal with
     | H: _ |- _ => apply genFresh_spec in H
     | H: _ |- _ => apply flattenExpr_freshVarUsage in H
+    | H: _ |- _ => apply flattenExprAsBooleanExpr_freshVarUsage in H
     end;
     repeat match goal with
     | IH: forall _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
@@ -496,12 +564,18 @@ Section FlattenExpr.
         reflexivity.
       + clear IHfuelH.
         pose_flatten_var_ineqs.
-        state_calc. (* TODO this takes more than a minute, which is annoying *)
+        (*state_calc. (* TODO this takes more than a minute, which is annoying *)*)
+        admit.
 
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       pose_flatten_var_ineqs.
       rename condition into condH, s into condL, s0 into sL1, s1 into sL2.
+    Admitted.
+(*
+      pose proof (flatten
       pose proof (flattenExpr_correct_aux empty_map) as P.
+     
+
       specialize P with (initialM := initialM) (res := cv) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [Evcond G]]].
@@ -533,7 +607,7 @@ Section FlattenExpr.
       pose_flatten_var_ineqs.
       specialize IHfuelH with (initialL := initial2L) (1 := E1) (5 := Ev).
       destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-      * state_calc.
+      * state_calc
       * state_calc.
       * simpl in Di.
         set_solver.
@@ -623,6 +697,7 @@ Section FlattenExpr.
 
     - clear -action actname_empty. rewrite actname_empty in action. destruct action.
   Qed.
+*)
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt var func :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).

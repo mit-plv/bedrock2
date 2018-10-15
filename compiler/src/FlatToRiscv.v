@@ -288,6 +288,20 @@ Section FlatToRiscv.
 
   (* This phase assumes that register allocation has already been done on the FlatImp
      level, and expects the following to hold: *)
+  
+  Fixpoint valid_registers_bcond (cond: bcond Register) : Prop :=
+    match cond with
+    | CondBeq _ x y
+    | CondBne _ x y
+    | CondBlt _ x y
+    | CondBge _ x y
+    | CondBltu _ x y
+    | CondBgeu _ x y => valid_register x /\ valid_register y
+    | CondBnez _ x => valid_register x
+    | CondTrue _ => True
+    | CondFalse _ => False
+    end.
+
   Fixpoint valid_registers(s: stmt): Prop :=
     match s with
     | SLoad x a => valid_register x /\ valid_register a
@@ -295,8 +309,8 @@ Section FlatToRiscv.
     | SLit x _ => valid_register x
     | SOp x _ y z => valid_register x /\ valid_register y /\ valid_register z
     | SSet x y => valid_register x /\ valid_register y
-    | SIf c s1 s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
-    | SLoop s1 c s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
+    | SIf c s1 s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
+    | SLoop s1 c s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
     | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
     | SSkip => True
     | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
@@ -478,6 +492,31 @@ Section FlatToRiscv.
   Defined.
   *)
 
+  (* TODO: ugly. inverts branch condition *)
+  Fixpoint compile_bcond_by_inverting (cond: bcond Register) amt : list (Instruction):=
+    match cond with
+    | CondBeq _ x y =>
+        [[Bne x y amt ]]
+    | CondBne _ x y =>
+        [[Beq x y amt]]
+    | CondBlt _ x y =>
+        [[Bge x y amt ]]
+    | CondBge _ x y =>
+        [[Blt x y amt ]]
+    | CondBltu _ x y =>
+        [[Bgeu x y amt ]]
+    | CondBgeu _ x y =>
+        [[Bltu x y amt]]
+    | CondBnez _ x =>
+        [[Beq x Register0 amt]] 
+    | CondTrue _ =>
+        (* TODO: really just a noop...; eg Addi Register0 Register0 0; needed for loop *)
+        [[Bne Register0 Register0 amt]]
+    | CondFalse _ =>
+        (* TODO: optimize *)
+        [[Jal Register0 amt]]
+    end.
+
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
     | SLoad x y => [[LwXLEN x y 0]]
@@ -489,7 +528,10 @@ Section FlatToRiscv.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
+        (*
         [[Beq cond Register0 ((Zlength bThen' + 2) * 4)]] ++
+        *)
+        (compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)) ++ 
         bThen' ++
         [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
         bElse'
@@ -498,7 +540,8 @@ Section FlatToRiscv.
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[Beq cond Register0 ((Zlength body2' + 2) * 4)]] ++
+        (*[[Beq cond Register0 ((Zlength body2' + 2) * 4)]] ++*)
+        (compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)) ++ 
         body2' ++
         [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
@@ -516,11 +559,18 @@ Section FlatToRiscv.
   Qed.
   *)
 
+  Lemma compile_bcond_size : forall s n,
+    (length (compile_bcond_by_inverting s n)) = 1%nat.
+  Proof.
+    intros. destruct s; auto.
+  Qed.
+  
   Lemma compile_stmt_size: forall s,
     (length (compile_stmt s) <= 2 * (stmt_size _ _ s))%nat.
   Proof.
     induction s; simpl; try destruct op; simpl;
-    repeat (rewrite app_length; simpl); try omega.
+    repeat (rewrite app_length; simpl); try (rewrite compile_bcond_size); 
+    try omega.
   Qed.
 
   (* load and decode Inst *)
@@ -1760,6 +1810,8 @@ Section FlatToRiscv.
         * assumption.
 
     - (* SLit *)
+      admit.
+      (*
       clear IHfuelH.
       Time run1step.
       Time run1step.
@@ -1779,6 +1831,7 @@ Section FlatToRiscv.
       run1done.
       f_equal.
       apply compile_lit_correct.
+      *)
 
       (* SOp *)
     - run1step. run1done.
@@ -1804,7 +1857,30 @@ Section FlatToRiscv.
       ring.
 
     - (* SIf/Then *)
-      (* branch if cond = 0 (will not branch) *)
+      (* branch if cond = false (will not branch *)
+      eapply runsToStep; simpl in *; subst *.
+      destruct cond; simpl in *.
+      match goal with
+      | Cp: containsProgram _ ?inst ?pc0 |- ?E = (Some tt, _) =>
+        match E with 
+        | run1 ?initialL =>
+          let Eqpc := fresh in
+          assert (pc0 = initialL.(core).(pc)) as Eqpc by solve_word_eq;
+          idtac inst;
+          add_hypothesis QQ True
+          
+            (*
+            replace E with ((execute inst;; step) initialL) by
+              (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
+            clear Eqpc
+             *)
+        end
+      end.
+      (*subst; clear; simpl.*)
+
+
+      
+
       run1step.
       (* use IH for then-branch *)
       spec_IH IHfuelH IH s1.

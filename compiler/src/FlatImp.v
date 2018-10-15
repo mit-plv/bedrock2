@@ -1,3 +1,4 @@
+Require Import Coq.Bool.Bool.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
 Require Import riscv.Utility.
@@ -22,14 +23,28 @@ Section FlatImp1.
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
+  (*Ltac state_calc := state_calc_generic var mword.*)
+
+  Inductive bcond: Set :=
+    | CondBeq(x y: var) : bcond
+    | CondBne(x y: var) : bcond
+    | CondBlt(x y: var) : bcond
+    | CondBge(x y: var) : bcond
+    | CondBltu(x y: var): bcond
+    | CondBgeu(x y: var): bcond
+    | CondBnez(x: var)  : bcond
+    | CondTrue          : bcond
+    | CondFalse         : bcond
+    .
+
   Inductive stmt: Set :=
     | SLoad(x: var)(a: var): stmt
     | SStore(a: var)(v: var): stmt
     | SLit(x: var)(v: Z): stmt
     | SOp(x: var)(op: bopname)(y z: var): stmt
     | SSet(x y: var): stmt
-    | SIf(cond: var)(bThen bElse: stmt): stmt
-    | SLoop(body1: stmt)(cond: var)(body2: stmt): stmt
+    | SIf(cond: bcond)(bThen bElse: stmt): stmt
+    | SLoop(body1: stmt)(cond: bcond)(body2: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
     | SCall(binds: list var)(f: func)(args: list var).
@@ -39,6 +54,41 @@ Section FlatImp1.
     Notation env := (map func (list var * list var * stmt)).
     Context (e: env).
 
+    Definition eval_bcond(st:state)(cond: bcond): option bool :=
+      match cond with
+      | CondBeq x y =>
+          mx <- get st x;
+          my <- get st y;
+          Return (reg_eqb mx my)
+      | CondBne x y =>
+          mx <- get st x;
+          my <- get st y;
+          Return (negb (reg_eqb mx my))
+      | CondBlt x y =>
+          mx <- get st x;
+          my <- get st y;
+          Return (signed_less_than mx my)
+      | CondBge x y =>
+          mx <- get st x;
+          my <- get st y;
+          Return (signed_less_than my mx || reg_eqb my mx)
+      | CondBltu x y =>
+          mx <- get st x;
+          my <- get st y;
+          Return (ltu mx my)
+      | CondBgeu x y =>
+          mx <- get st x;
+          my <- get st y;
+          Return (ltu my mx || reg_eqb my mx)
+      | CondBnez x =>
+          mx <- get st x;
+          Return (negb (reg_eqb mx (ZToReg 0)))
+      | CondTrue =>
+          Return true
+      | CondFalse =>
+          Return false
+      end.
+      
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
     Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
@@ -64,16 +114,25 @@ Section FlatImp1.
             v <- get st y;
             Return (put st x v, m)
         | SIf cond bThen bElse =>
-            vcond <- get st cond;
-            eval_stmt f st m (if reg_eqb vcond (ZToReg 0) then bElse else bThen)
+            (* TODO: annoying Coq can't infer type stuff *)
+            Bind (eval_bcond st cond) (fun vcond: bool => 
+                  eval_stmt f st m (if vcond then bThen else bElse))
+(*
+            vcond <- eval_bcond st cond; 
+            (*vcond <- get st cond;
+            eval_stmt f st m (if reg_eqb vcond (ZToReg 0) then bElse else bThen)*)
+            eval_stmt f st m (if vcond then bElse else bThen)*)
         | SLoop body1 cond body2 =>
             p <- eval_stmt f st m body1;
             let '(st, m) := p in
-            vcond <- get st cond;
-            if reg_eqb vcond (ZToReg 0) then Return (st, m) else
+            (*vcond <- get st cond;
+            if reg_eqb vcond (ZToReg 0) then Return (st, m) else*)
+            Bind (eval_bcond st cond) (fun vcond: bool=>
+            (*vcond <- eval_bcond st cond;*)
+            if negb vcond then Return (st, m) else
               q <- eval_stmt f st m body2;
               let '(st, m) := q in
-              eval_stmt f st m (SLoop body1 cond body2)
+              eval_stmt f st m (SLoop body1 cond body2))
         | SSeq s1 s2 =>
             p <- eval_stmt f st m s1;
             let '(st, m) := p in
@@ -97,8 +156,10 @@ Section FlatImp1.
       simpl in *;
       repeat (destruct_one_match_hyp; try discriminate);
       repeat match goal with
-             | E: reg_eqb _ _ = true  |- _ => apply reg_eqb_true  in E
-             | E: reg_eqb _ _ = false |- _ => apply reg_eqb_false in E
+             (*| E: reg_eqb _ _ = true  |- _ => apply reg_eqb_true  in E
+             | E: reg_eqb _ _ = false |- _ => apply reg_eqb_false in E*)
+             | E: negb _ = true       |- _ => apply negb_true_iff in E
+             | E: negb _ = false      |- _ => apply negb_false_iff in E
              end;
       inversionss;
       eauto 16.
@@ -140,18 +201,21 @@ Section FlatImp1.
     Lemma invert_eval_SIf: forall fuel cond bThen bElse initialSt initialM final,
       eval_stmt (S fuel) initialSt initialM (SIf cond bThen bElse) = Some final ->
       exists vcond,
-        get initialSt cond = Some vcond /\
-        (vcond <> ZToReg 0 /\ eval_stmt fuel initialSt initialM bThen = Some final \/
-         vcond =  ZToReg 0 /\ eval_stmt fuel initialSt initialM bElse = Some final).
+        (*get initialSt cond = Some vcond /\*)
+        eval_bcond initialSt cond = Some vcond /\
+        (vcond = true /\ eval_stmt fuel initialSt initialM bThen = Some final \/
+         vcond = false /\ eval_stmt fuel initialSt initialM bElse = Some final).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SLoop: forall fuel st1 m1 body1 cond body2 p4,
       eval_stmt (S fuel) st1 m1 (SLoop body1 cond body2) = Some p4 ->
-      eval_stmt fuel st1 m1 body1 = Some p4 /\ get (fst p4) cond = Some (ZToReg 0) \/
-      exists st2 m2 st3 m3 cv, eval_stmt fuel st1 m1 body1 = Some (st2, m2) /\
-                               get st2 cond = Some cv /\ cv <> ZToReg 0 /\
-                               eval_stmt fuel st2 m2 body2 = Some (st3, m3) /\
-                               eval_stmt fuel st3 m3 (SLoop body1 cond body2) = Some p4.
+      (*eval_stmt fuel st1 m1 body1 = Some p4 /\ get (fst p4) cond = Some (ZToReg 0) \/*)
+      eval_stmt fuel st1 m1 body1 = Some p4 /\ eval_bcond (fst p4) cond = Some false \/
+      exists st2 m2 st3 m3, eval_stmt fuel st1 m1 body1 = Some (st2, m2) /\
+                            (*get st2 cond = Some cv /\ cv <> ZToReg 0 /\*)
+                            eval_bcond st2 cond = Some true /\
+                            eval_stmt fuel st2 m2 body2 = Some (st3, m3) /\
+                            eval_stmt fuel st3 m3 (SLoop body1 cond body2) = Some p4.
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SSeq: forall fuel initialSt initialM s1 s2 final,
@@ -214,6 +278,21 @@ Section FlatImp1.
     | SCall binds func args => of_list binds
     end.
 
+  Definition accessedVarsBcond(cond: bcond) : vars :=
+    match cond with
+    | CondBeq x y
+    | CondBne x y
+    | CondBlt x y
+    | CondBge x y
+    | CondBltu x y
+    | CondBgeu x y =>
+        union (singleton_set x) (singleton_set y)
+    | CondBnez x =>
+        singleton_set x
+    | CondTrue | CondFalse =>
+        empty_set
+    end.
+
   Fixpoint accessedVars(s: stmt): vars :=
     match s with
     | SLoad x y => union (singleton_set x) (singleton_set y)
@@ -222,9 +301,9 @@ Section FlatImp1.
     | SOp x op y z => union (singleton_set x) (union (singleton_set y) (singleton_set z))
     | SSet x y => union (singleton_set x) (singleton_set y)
     | SIf cond bThen bElse =>
-        union (singleton_set cond) (union (accessedVars bThen) (accessedVars bElse))
+        union (accessedVarsBcond cond) (union (accessedVars bThen) (accessedVars bElse))
     | SLoop body1 cond body2 =>
-        union (singleton_set cond) (union (accessedVars body1) (accessedVars body2))
+        union (accessedVarsBcond cond) (union (accessedVars body1) (accessedVars body2))
     | SSeq s1 s2 =>
         union (accessedVars s1) (accessedVars s2)
     | SSkip => empty_set
@@ -319,12 +398,12 @@ Section FlatImp2.
       end;
       try congruence;
       try simpl_if;
-      rewrite? (proj2 (reg_eqb_true _ _) eq_refl);
+      (*rewrite? (proj2 (reg_eqb_true _ _) eq_refl);*)
       repeat match goal with
-             | H:     (@eq mword _ _)  |- _ => apply reg_eqb_eq in H; rewrite H
-             | H: not (@eq mword _ _)  |- _ => apply reg_eqb_ne in H; rewrite H
-             end;
-      rewrite? reg_eqb_eq by reflexivity;
+      | H : _ = true  |- _ => rewrite H
+      | H : _ = false |- _ => rewrite H
+      end;
+      (*rewrite? reg_eqb_eq by reflexivity;*)
       eauto.
   Qed.
 

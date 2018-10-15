@@ -304,6 +304,8 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
     unfold zeroedRiscvMachine.
     cbv [machineMem zero_mem].
     unfold Memory.memSize, mem_is_Memory.
+    discriminate.
+    (*
     rewrite const_mem_mem_size.
     + cbv. congruence.
     + cbv. reflexivity.
@@ -312,6 +314,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
       end.
       cbv.
       split; congruence.
+  *)
   - unfold FlatToRiscv.mem_inaccessible. intros.
     unfold Memory.no_mem, Memory.read_mem in H.
     destruct_one_match_hyp; discriminate.
