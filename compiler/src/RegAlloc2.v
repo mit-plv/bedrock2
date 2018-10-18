@@ -36,6 +36,9 @@ Section TODO.
   Axiom union_comm: forall s1 s2,
       union s1 s2 = union s2 s1.
 
+  Axiom put_remove_same: forall m k v,
+    put (Map.remove m k) k v = put m k v.
+
   (* TODO some of this should go into state calculus *)
   (* probably derived *)
   Axiom not_in_range_of_remove_by_value: forall m v, ~ v \in range (remove_by_value m v).
@@ -72,6 +75,13 @@ Section TODO.
   Axiom intersect_map_comm: forall m1 m2,
       intersect_map m1 m2 = intersect_map m2 m1.
 
+  Axiom remove_keys_update_map_remove_keys: forall m R U,
+      remove_keys (update_map (remove_keys m R) U) R =
+      remove_keys (update_map m U) R.
+  Axiom update_map_remove_keys_update_map: forall m R U,
+      update_map (remove_keys (update_map m U) R) U =
+      update_map (remove_keys m R) U.
+
   Axiom remove_values_update_map_remove_values: forall m R U,
       remove_values (update_map (remove_values m R) U) R =
       remove_values (update_map m U) R.
@@ -81,20 +91,30 @@ Section TODO.
 
   Axiom update_map_with_singleton: forall m k v,
       update_map m (put empty_map k v) = put m k v.
-  Axiom remove_values_singleton_set: forall m v,
-      remove_values m (singleton_set v) = remove_by_value m v.
   Axiom update_map_with_empty: forall m,
       update_map m empty_map = m.
+
+  Axiom remove_keys_empty_set: forall m,
+      remove_keys m empty_set = m.
+  Axiom remove_keys_singleton_set: forall m k,
+      remove_keys m (singleton_set k) = Map.remove m k.
+
   Axiom remove_values_empty_set: forall m,
       remove_values m empty_set = m.
+  Axiom remove_values_singleton_set: forall m v,
+      remove_values m (singleton_set v) = remove_by_value m v.
 
   Axiom domain_update_map: forall m1 m2,
-      domain (update_map m1 m2) = union (domain m1) (domain m2).
+      subset (domain (update_map m1 m2)) (union (domain m1) (domain m2)) /\
+      subset (union (domain m1) (domain m2)) (domain (update_map m1 m2)).
   Axiom range_update_map: forall m1 m2,
       subset (range (update_map m1 m2)) (union (range m1) (range m2)).
 
   Axiom range_update_map_r: forall m1 m2,
       subset (range m2) (range (update_map m1 m2)).
+
+  Axiom domain_intersect_map: forall m1 m2,
+      subset (domain (intersect_map m1 m2)) (intersect (domain m1) (domain m2)).
 
   Axiom range_intersect_map: forall m1 m2,
       subset (range (intersect_map m1 m2)) (intersect (range m1) (range m2)).
@@ -265,7 +285,7 @@ Section RegAlloc.
       | ASCall binds f args => fold_left (fun m '(x, x') => put m x' x) binds empty_map
       end.
 
-  Definition possibly_written :=
+  Definition possibly_written_srcvars :=
     fix rec(s: astmt): set srcvar :=
       match s with
       | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
@@ -277,18 +297,33 @@ Section RegAlloc.
         fold_left (fun s '(x, x') => union s (singleton_set x)) binds empty_set
       end.
 
+  Definition possibly_written_impvars :=
+    fix rec(s: astmt): set impvar :=
+      match s with
+      | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
+          singleton_set x'
+      | ASStore a v => empty_set
+      | ASIf _ s1 s2 | ASLoop s1 _ s2 | ASSeq s1 s2 => union (rec s1) (rec s2)
+      | ASSkip => empty_set
+      | ASCall binds f args =>
+        fold_left (fun s '(x, x') => union s (singleton_set x')) binds empty_set
+      end.
+
   Definition updateWith(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
-    update_map (remove_values m (possibly_written s)) (guaranteed_updates s).
+    let m := remove_values m (possibly_written_srcvars s) in
+    let m := remove_keys m (possibly_written_impvars s) in
+    update_map m (guaranteed_updates s).
 
   Hint Rewrite
        @singleton_set_spec
+       @domain_spec
        @range_spec
        @get_put
        @empty_is_empty
     : rew_set_map_specs.
 
-  Lemma guaranteed_updates_are_possibly_written: forall s,
-      subset (range (guaranteed_updates s)) (possibly_written s).
+  Lemma guaranteed_updates_are_possibly_written_srcvars: forall s,
+      subset (range (guaranteed_updates s)) (possibly_written_srcvars s).
   Proof.
     induction s; simpl; try (
       repeat intro;
@@ -307,6 +342,29 @@ Section RegAlloc.
       set_solver_generic srcvar.
     - pose proof (range_update_map (guaranteed_updates s1) (guaranteed_updates s2)).
       set_solver_generic srcvar.
+    - rewrite func_empty in f. destruct f.
+  Qed.
+
+  Lemma guaranteed_updates_are_possibly_written_impvars: forall s,
+      subset (domain (guaranteed_updates s)) (possibly_written_impvars s).
+  Proof.
+    induction s; simpl; try (
+      repeat intro;
+      repeat match goal with
+             | |- _ => progress autorewrite with rew_set_map_specs in *
+             | H: _ /\ _ |- _ => destruct H
+             | E: exists y, _ |- _ => let yf := fresh y in destruct E as [yf E]
+             | H: context[if ?e then _ else _] |- _ => destruct e
+             (* needed because of https://github.com/coq/coq/issues/8635 *)
+             | H: _ |- _ => rewrite get_put in H
+             end;
+      congruence).
+    - pose proof (domain_intersect_map (guaranteed_updates s1) (guaranteed_updates s2)).
+      set_solver_generic impvar.
+    - pose proof (domain_intersect_map (guaranteed_updates s1) (guaranteed_updates s2)).
+      set_solver_generic impvar.
+    - pose proof (domain_update_map (guaranteed_updates s1) (guaranteed_updates s2)).
+      set_solver_generic impvar.
     - rewrite func_empty in f. destruct f.
   Qed.
 
@@ -429,12 +487,16 @@ Section RegAlloc.
   Proof.
     intros.
     unfold updateWith.
-    remember (possibly_written s) as R.
+    remember (possibly_written_srcvars s) as R1.
+    remember (possibly_written_impvars s) as R2.
     remember (guaranteed_updates s) as U.
+    (* TODO express remove_values in terms of "remove preimage"
     rewrite remove_values_update_map_remove_values.
-    rewrite update_map_remove_values_update_map.
+    rewrite remove_keys_update_map_remove_keys.
+    rewrite update_map_remove_keys_update_map.
     reflexivity.
-  Qed.
+  Qed. *)
+  Admitted.
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
@@ -565,39 +627,35 @@ Section RegAlloc.
   Proof.
     induction s; intros; unfold updateWith in *; simpl in *;
       rewrite? update_map_with_singleton;
+      rewrite? remove_keys_singleton_set;
       rewrite? remove_values_singleton_set;
       rewrite? update_map_with_empty;
+      rewrite? remove_keys_empty_set;
       rewrite? remove_values_empty_set;
+      rewrite? put_remove_same;
       eauto with map_hints checker_hints.
     - specialize (IHs1 m).
       specialize (IHs2 m).
-
-      pose proof (guaranteed_updates_are_possibly_written s1).
-      pose proof (guaranteed_updates_are_possibly_written s2).
-
-      forget (possibly_written s1) as p1.
+      pose proof (guaranteed_updates_are_possibly_written_srcvars s1).
+      pose proof (guaranteed_updates_are_possibly_written_srcvars s2).
+      pose proof (guaranteed_updates_are_possibly_written_impvars s1).
+      pose proof (guaranteed_updates_are_possibly_written_impvars s2).
+      clear func_empty.
+      forget (possibly_written_srcvars s1) as ps1.
+      forget (possibly_written_impvars s1) as pi1.
+      forget (possibly_written_srcvars s2) as ps2.
+      forget (possibly_written_impvars s2) as pi2.
       forget (guaranteed_updates s1) as g1.
-      forget (possibly_written s2) as p2.
       forget (guaranteed_updates s2) as g2.
       forget (updateWith' m s1) as u1.
       forget (updateWith' m s2) as u2.
-
       repeat match goal with
              | H: ?P |- _ =>
                progress tryif (let T := type of P in unify T Prop)
                         then revert H else clear H
              end.
 
-(*
-Auto Quickcheck found a counterexample:
-  u1 = [a2 ↦ a1]
-  m = [a2 ↦ a1]
-  p1 = {}
-  g1 = Map.empty
-  u2 = [a2 ↦ a2]
-  p2 = {a2}
-  g2 = [a2 ↦ a2]
- *)
+(* Auto Quickcheck and nitpick found no counterexample  *)
 
   Abort.
 
@@ -646,6 +704,7 @@ Auto Quickcheck found a counterexample:
       rewrite? update_map_with_empty;
       rewrite? remove_values_empty_set;
       eauto with checker_hints.
+(*
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eexists; split; [eassumption|].
       clear IHn.
@@ -669,26 +728,6 @@ Auto Quickcheck found a counterexample:
                progress tryif (let T := type of P in unify T Prop)
                         then revert H else clear H
              end.
-
-(*
-Auto Quickcheck found a counterexample:
-  g1 = [a2 -> a1]
-  p1 = {a1}
-  g2 = Map.empty
-  p2 = {}
-  r = [a2 -> a2]
-*)
-
-  (*
-Isabelle:
-Auto Quickcheck found a counterexample:
-  g1 = [a2 -> a1]
-  p1 = {a1}
-  g2 = Map.empty
-  p2 = {}
-  r = [a2 -> a2]
-*)
-(*
 
       apply update_map_extends_disjoint.
       + apply extends_remove_values_union_l.

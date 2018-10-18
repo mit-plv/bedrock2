@@ -39,6 +39,19 @@ Class MapFunctions(K V: Type) := mkMap {
   intersect_map_spec: forall k v m1 m2,
       get (intersect_map m1 m2) k = Some v <-> get m1 k = Some v /\ get m2 k = Some v;
 
+  remove_keys: map -> set K -> map;
+  remove_keys_never_there: forall m k ks,
+      get m k = None ->
+      get (remove_keys m ks) k = None;
+  remove_keys_removed: forall m k v ks,
+      get m k = Some v ->
+      k \in ks ->
+      get (remove_keys m ks) k = None;
+  remove_keys_not_removed: forall m k v ks,
+      get m k = Some v ->
+      ~ k \in ks ->
+      get (remove_keys m ks) k = Some v;
+
   remove_by_value: map -> V -> map;
   remove_by_value_same: forall k v m,
       get m k = Some v -> get (remove_by_value m v) k = None;
