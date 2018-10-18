@@ -83,13 +83,44 @@ Class MapFunctions(K V: Type) := mkMap {
 
 Arguments map _ _ {_}.
 
-Existing Instance map_domain_set.
-Existing Instance map_range_set.
+
+Hint Resolve
+  empty_is_empty
+  get_remove_same
+  get_remove_diff
+  get_put_same
+  get_put_diff
+  get_restrict_in
+  get_restrict_notin
+  domain_spec
+  range_spec
+  reverse_get_Some
+  reverse_get_None
+  intersect_map_spec
+  remove_keys_never_there
+  remove_keys_removed
+  remove_keys_not_removed
+  remove_by_value_same
+  remove_by_value_diff
+  remove_values_never_there
+  remove_values_removed
+  remove_values_not_removed
+  get_update_map_l
+  get_update_map_r
+: map_spec_hints_separate.
+
 
 Section MapDefinitions.
 
   Context {K V: Type}.
   Context {KVmap: MapFunctions K V}.
+
+  (* Note: not reusing set_elem_eq_dec, map_domain_set and map_range_set here,
+     because we want the client of these lemmas to be able to choose the instance *)
+  Context {keq: DecidableEq K}.
+  Context {veq: DecidableEq V}.
+  Context {Kset: SetFunctions K}.
+  Context {Vset: SetFunctions V}.
 
   Definition extends(s1 s2: map K V) := forall x w, get s2 x = Some w -> get s1 x = Some w.
 
@@ -101,29 +132,33 @@ Section MapDefinitions.
 
   Definition undef_on(s: map K V)(vs: set K) := forall x, x \in vs -> get s x = None.
 
-  Lemma get_put: forall (s: map K V) (x y: K) (v: V),
-    get (put s x v) y = if dec (x = y) then Some v else get s y.
-  Proof.
-    intros. destruct (dec (x = y)).
-    - subst. rewrite get_put_same. reflexivity.
-    - rewrite get_put_diff by assumption. reflexivity.
-  Qed.
+  Ltac prover :=
+    intros;
+    repeat match goal with
+    | |- context[match ?d with _ => _ end] =>
+      match type of d with
+      | {_} + {_} => destruct d
+      | _ => let E := fresh "E" in destruct d eqn: E
+      end
+    end;
+    subst;
+    eauto with map_spec_hints_separate.
+
+  Lemma get_empty: forall (k: K),
+      get empty_map k = None.
+  Proof. prover. Qed.
 
   Lemma get_remove: forall (m: map K V) (x y: K),
     get (remove m x) y = if dec (x = y) then None else get m y.
-  Proof.
-    intros. destruct (dec (x = y)).
-    - subst. rewrite get_remove_same. reflexivity.
-    - rewrite get_remove_diff by assumption. reflexivity.
-  Qed.
+  Proof. prover. Qed.
+
+  Lemma get_put: forall (s: map K V) (x y: K) (v: V),
+    get (put s x v) y = if dec (x = y) then Some v else get s y.
+  Proof. prover. Qed.
 
   Lemma get_restrict: forall m k ks,
       get (restrict m ks) k = if dec (k \in ks) then get m k else None.
-  Proof.
-    intros. destruct (dec (k \in ks)).
-    - subst. rewrite get_restrict_in; auto.
-    - rewrite get_restrict_notin by assumption. reflexivity.
-  Qed.
+  Proof. prover. Qed.
 
   Lemma get_intersect_map: forall k m1 m2,
       get (intersect_map m1 m2) k =
@@ -132,6 +167,7 @@ Section MapDefinitions.
       | _, _ => None
       end.
   Proof.
+    (* Challenge: what's the minimal change to "prover" needed to make it work here too? *)
     intros.
     destruct (get (intersect_map m1 m2) k) eqn: E.
     - apply intersect_map_spec in E. destruct E as [E1 E2].
@@ -149,23 +185,12 @@ Section MapDefinitions.
       | Some v => if dec (k \in ks) then None else Some v
       | None => None
       end.
-  Proof.
-    intros.
-    destruct (get m k) eqn: E.
-    - destruct (dec (k \in ks)).
-      + eauto using remove_keys_removed.
-      + eauto using remove_keys_not_removed.
-    - eauto using remove_keys_never_there.
-  Qed.
+  Proof. prover. Qed.
 
   Lemma get_remove_by_value: forall m k v,
       get (remove_by_value m v) k =
       if dec (get m k = Some v) then None else get m k.
-  Proof.
-    intros. destruct (dec (get m k = Some v)).
-    - eauto using remove_by_value_same.
-    - eauto using remove_by_value_diff.
-  Qed.
+  Proof. prover. Qed.
 
   Lemma get_remove_values: forall m k vs,
       get (remove_values m vs) k =
@@ -173,44 +198,33 @@ Section MapDefinitions.
       | Some v => if dec (v \in vs) then None else Some v
       | None => None
       end.
-  Proof.
-    (*
-  remove_values: map -> set V -> map;
-  remove_values_never_there: forall m k vs,
-      get m k = None ->
-      get (remove_values m vs) k = None;
-  remove_values_removed: forall m k v vs,
-      get m k = Some v ->
-      v \in vs ->
-      get (remove_values m vs) k = None;
-  remove_values_not_removed: forall m k v vs,
-      get m k = Some v ->
-      ~ v \in vs ->
-      get (remove_values m vs) k = Some v;
+  Proof. prover. Qed.
 
-  update_map: map -> map -> map;
-  get_update_map_l: forall m1 m2 k,
-      get m2 k = None ->
-      get (update_map m1 m2) k = get m1 k;
-  get_update_map_r: forall m1 m2 k v,
-      get m2 k = Some v ->
-      get (update_map m1 m2) k = Some v;
-*)
-  Abort.
-
+  Lemma get_update_map: forall m1 m2 k,
+      get (update_map m1 m2) k =
+      match get m2 k with
+      | Some v => Some v
+      | None => get m1 k
+      end.
+  Proof. prover. Qed.
 
 End MapDefinitions.
 
 Hint Unfold extends only_differ agree_on undef_on : unf_map_defs.
 
 Hint Rewrite
+     @get_empty
      @get_remove
      @get_put
-
-
+     @get_restrict
+     @get_intersect_map
+     @get_remove_keys
+     @get_remove_by_value
+     @get_remove_values
+     @get_update_map
      @domain_spec
      @range_spec
-
-  (* TODO operations without a rewrite lemma here:
+     (* TODO operations without a rewrite lemma here:
      - reverse_get
-  *).
+     *)
+  : rew_map_specs.

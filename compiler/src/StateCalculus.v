@@ -9,6 +9,8 @@ Section StateCalculus.
 
   Context {var val: Type}.
   Context {stateMap: MapFunctions var val}.
+  Context {var_set: SetFunctions var}.
+  Context {var_eq_dec: DecidableEq var}.
 
   Lemma only_differ_putmany : forall (bs : list var) (vs : list val) st st'
                                      (H : putmany bs vs st = Some st'),

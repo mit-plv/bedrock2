@@ -32,7 +32,6 @@ Class SetFunctions(E: Type) := mkSet {
 Arguments set E {_}.
 
 Existing Instance contains_dec.
-Existing Instance set_elem_eq_dec.
 
 Hint Rewrite
   @empty_set_spec

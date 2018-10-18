@@ -15,6 +15,9 @@ Section TODO.
   Context {K V: Type}.
   Context {Mf: MapFunctions K V}.
 
+  Local Instance Kset: SetFunctions K := map_domain_set.
+  Local Instance Vset: SetFunctions V := map_range_set.
+
   (*
   Axiom get_in_domain: forall k m, k \in (domain m) -> exists v, get m k = Some v.
   Axiom domain_put: forall k v m, domain (put m k v) = union (domain m) (singleton_set k).
@@ -244,8 +247,12 @@ Section RegAlloc.
   Hypothesis func_empty: func = Empty_set.
 
   Context {Map: MapFunctions impvar srcvar}.
-  Notation srcvars := (@set srcvar (@map_range_set _ _ Map)).
-  Notation impvars := (@set impvar (@map_domain_set _ _ Map)).
+  Local Instance srcvarSet: SetFunctions srcvar := map_range_set.
+  Local Instance impvarSet: SetFunctions impvar := map_domain_set.
+  Notation srcvars := (@set srcvar srcvarSet).
+  Notation impvars := (@set impvar impvarSet).
+  Local Instance srcvar_eq_dec: DecidableEq srcvar := set_elem_eq_dec.
+  Local Instance impvar_eq_dec: DecidableEq impvar := set_elem_eq_dec.
 
   (* annotated statement: each assignment is annotated with impvar which it assigns,
      loop has map invariant *)
@@ -306,21 +313,13 @@ Section RegAlloc.
     let m := remove_keys m (possibly_written_impvars s) in
     update_map m (guaranteed_updates s).
 
-  Hint Rewrite
-       @singleton_set_spec
-       @domain_spec
-       @range_spec
-       @get_put
-       @empty_is_empty
-    : rew_set_map_specs.
-
   Lemma guaranteed_updates_are_possibly_written_srcvars: forall s,
       subset (range (guaranteed_updates s)) (possibly_written_srcvars s).
   Proof.
     induction s; simpl; try (
       repeat intro;
       repeat match goal with
-             | |- _ => progress autorewrite with rew_set_map_specs in *
+             | |- _ => progress autorewrite with rew_map_specs rew_set_op_specs in *
              | H: _ /\ _ |- _ => destruct H
              | E: exists y, _ |- _ => let yf := fresh y in destruct E as [yf E]
              | H: context[if ?e then _ else _] |- _ => destruct e
@@ -343,7 +342,7 @@ Section RegAlloc.
     induction s; simpl; try (
       repeat intro;
       repeat match goal with
-             | |- _ => progress autorewrite with rew_set_map_specs in *
+             | |- _ => progress autorewrite with rew_map_specs rew_set_op_specs in *
              | H: _ /\ _ |- _ => destruct H
              | E: exists y, _ |- _ => let yf := fresh y in destruct E as [yf E]
              | H: context[if ?e then _ else _] |- _ => destruct e
@@ -582,12 +581,10 @@ Section RegAlloc.
   Proof.
     unfold states_compat.
     intros.
-    Set Printing Implicit.
     rewrite get_put.
     do 2 match goal with
     | H: get (put _ _ _) _ = _ |- _ => rewrite get_put in H
     end.
-    (* PROBLEM: The two occurrences of "dec (x' = x'0)" use differend DecidableEq instances *)
     destruct_one_match; clear E.
     - subst.
       replace x0 with x in H2 by congruence.
@@ -620,13 +617,13 @@ Section RegAlloc.
       extends (updateWith' m s) (updateWith m s).
   Proof.
     induction s; intros; unfold updateWith in *; simpl in *;
-      rewrite? update_map_with_singleton;
-      rewrite? remove_keys_singleton_set;
-      rewrite? remove_values_singleton_set;
-      rewrite? update_map_with_empty;
-      rewrite? remove_keys_empty_set;
-      rewrite? remove_values_empty_set;
-      rewrite? put_remove_same;
+      rewrite? @update_map_with_singleton;
+      rewrite? @remove_keys_singleton_set;
+      rewrite? @remove_values_singleton_set;
+      rewrite? @update_map_with_empty;
+      rewrite? @remove_keys_empty_set;
+      rewrite? @remove_values_empty_set;
+      rewrite? @put_remove_same;
       eauto with map_hints checker_hints.
     - specialize (IHs1 m).
       specialize (IHs2 m).
