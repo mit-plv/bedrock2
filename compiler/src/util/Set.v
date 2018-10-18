@@ -7,7 +7,7 @@ Class SetFunctions(E: Type) := mkSet {
   set: Type;
 
   contains: set -> E -> Prop;
-  containsb: set -> E -> bool;
+  contains_dec: forall (x: E) (A: set), Decidable (contains A x);
 
   empty_set: set;
   singleton_set: E -> set;
@@ -18,8 +18,8 @@ Class SetFunctions(E: Type) := mkSet {
   pick_or_else: set -> E -> (E * set);
 
   set_elem_eq_dec: DecidableEq E;
+
   empty_set_spec: forall (x: E), contains empty_set x <-> False;
-  containsb_spec: forall (x: E) (A: set), containsb A x = true <-> contains A x;
   singleton_set_spec: forall (x y: E), contains (singleton_set y) x <-> x = y;
   union_spec: forall (x: E) (A B: set), contains (union A B) x <-> contains A x \/ contains B x;
   intersect_spec: forall (x: E) (A B: set), contains (intersect A B) x <-> contains A x /\ contains B x;
@@ -30,6 +30,9 @@ Class SetFunctions(E: Type) := mkSet {
 }.
 
 Arguments set E {_}.
+
+Existing Instance contains_dec.
+Existing Instance set_elem_eq_dec.
 
 Hint Rewrite
   @empty_set_spec
@@ -50,19 +53,6 @@ Section SetDefinitions.
   Definition subset(s1 s2: set E) := forall x, x \in s1 -> x \in s2.
   Definition disjoint(s1 s2: set E) := forall x, (~ x \in s1) \/ (~ x \in s2).
   Definition of_list l := List.fold_right union empty_set (List.map singleton_set l).
-
-  Lemma contains_dec: forall x vs,  Decidable (x \in vs).
-  Proof.
-    unfold Decidable.
-    intros.
-    destruct (containsb vs x) eqn: F.
-    - left.
-      rewrite containsb_spec in F.
-      assumption.
-    - right.
-      intro C. rewrite <- containsb_spec in C. rewrite C in F.
-      discriminate.
-  Qed.
 
 End SetDefinitions.
 

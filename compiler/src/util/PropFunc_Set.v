@@ -12,7 +12,6 @@ Instance PropFunc_Set(E: Type){eeq: DecidableEq E}: SetFunctions E := {|
   set := E -> Prop;
 
   contains A e := A e;
-  containsb A e := TODO; (* will never work, but we use this instance only for debugging *)
 
   empty_set := fun e => False;
   singleton_set e := fun e' => e = e';

@@ -151,7 +151,7 @@ Section FlattenExpr.
       repeat (rewrite ?FlatImp.stmt_size_unfold; cbn [FlatImp.stmt_size_body]; rewrite <-?FlatImp.stmt_size_unfold).
       repeat (rewrite ?FlatImp.stmt_size_unfold in IHargs; cbn [FlatImp.stmt_size_body] in IHargs; rewrite <-?FlatImp.stmt_size_unfold in IHargs).
       cbn [length].
-      
+
       unfold ExprImp.cmd_size.
       unfold ExprImp.cmd_size in IHargs.
       rewrite map_cons. rewrite fold_right_cons.
@@ -250,7 +250,7 @@ Section FlattenExpr.
       clear -IHargs E1.
       set_solver. }
   Qed.
-    
+
   Lemma flattenStmt_freshVarUsage: forall s s' ngs1 ngs2,
     flattenStmt ngs1 s = (s', ngs2) ->
     subset (allFreshVars ngs2) (allFreshVars ngs1).
@@ -288,17 +288,24 @@ Section FlattenExpr.
          rewrite Ev
     end.
 
+  Set Printing Implicit.
   (* Note: If you want to get in the conclusion
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
      flattenExpr_modVars_spec and FlatImp.modVarsSound *)
+  (* PROBLEM:
+    We have a
+      NG : @NameGen var NGstate varset
+    but need a
+      ?NameGen : "@NameGen var NGstate (@map_domain_set var mword stateMap)"
+  *)
   Lemma flattenExpr_correct_aux env : forall e ngs1 ngs2 resVar (s: FlatImp.stmt var func) (initialH initialL: state) initialM res,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     extends initialL initialH ->
-    undef initialH (allFreshVars ngs1) ->
+    undef_on initialH (allFreshVars ngs1) ->
     ExprImp.eval_expr initialH e = Some res ->
     exists (fuel: nat) (finalL: state),
-      FlatImp.eval_stmt _ _ env fuel initialL initialM s = Some (finalL, initialM) /\
+      FlatImp.eval_stmt (funcMap := funcMap') _ _ env fuel initialL initialM s = Some (finalL, initialM) /\
       get (MapFunctions := stateMap) finalL resVar = Some res.
   Proof.
     induction e; introv F Ex U Ev.
@@ -358,7 +365,7 @@ Section FlattenExpr.
     forall fuelH sH sL ngs ngs' (initialH finalH initialL: state) initialM finalM,
     flattenStmt ngs sH = (sL, ngs') ->
     extends initialL initialH ->
-    undef initialH (allFreshVars ngs) ->
+    undef_on initialH (allFreshVars ngs) ->
     disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
     ExprImp.eval_cmd empty_map fuelH initialH initialM sH = Some (finalH, finalM) ->
     exists fuelL finalL,
@@ -567,7 +574,7 @@ Section FlattenExpr.
     specialize P with (initialL := (@empty_map _ _ stateMap)).
     destruct P as [fuelL [finalL [EvL ExtL]]].
     - unfold extends. auto.
-    - unfold undef. intros. apply empty_is_empty.
+    - unfold undef_on. intros. apply empty_is_empty.
     - unfold disjoint.
       intro x.
       pose proof (freshNameGenState_spec (ExprImp.allVars_cmd sH) x) as P.

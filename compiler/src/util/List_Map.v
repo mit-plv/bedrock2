@@ -26,16 +26,16 @@ Instance List_Map(K V: Type){keq: DecidableEq K}{veq: DecidableEq V}: MapFunctio
              end;
   remove := list_map_remove;
   put M k v := (k, v) :: (list_map_remove M k);
-  restrict M A := filter (fun '(ki, vi) => containsb A ki) M;
+  restrict M A := filter (fun '(ki, vi) => if dec (contains A ki) then true else false) M;
   domain M := of_list (List.map fst M);
   range M := of_list (List.map snd M);
   reverse_get M v := match find (fun '(ki, vi) => if veq vi v then true else false) M with
              | Some (k, _) => Some k
              | None => None
              end;
-  intersect_map M1 M2 := list_intersect M1 M2;
+  intersect_map M1 M2 := @list_intersect (K * V) (dec_eq_pair keq veq) M1 M2;
   remove_by_value M v := filter (fun '(ki, vi) => if veq vi v then false else true) M;
-  remove_values M vs := filter (fun '(ki, vi) => negb (containsb vs vi)) M;
+  remove_values M vs := filter (fun '(ki, vi) => if dec (contains vs vi) then false else true) M;
   update_map M1 M2 :=
     (filter (fun '(k1, v1) =>
                if (find (fun '(k2, v2) => if keq k1 k2 then false else true) M2)

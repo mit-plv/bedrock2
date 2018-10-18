@@ -49,10 +49,10 @@ Section Tests.
     only_differ s1 r s3.
   Proof. state_calc. Qed.
 
-  Lemma undef_shrink: forall st vs1 vs2,
-    undef st vs1 ->
+  Lemma undef_on_shrink: forall st vs1 vs2,
+    undef_on st vs1 ->
     subset vs2 vs1 ->
-    undef st vs2.
+    undef_on st vs2.
   Proof. state_calc. Qed.
 
   Lemma only_differ_subset: forall s1 s2 r1 r2,
@@ -63,13 +63,13 @@ Section Tests.
 
   Lemma extends_if_only_differ_in_undef: forall s1 s2 s vs,
     extends s1 s ->
-    undef s vs ->
+    undef_on s vs ->
     only_differ s1 vs s2 ->
     extends s2 s.
   Proof. state_calc. Qed.
 
   Lemma extends_if_only_differ_is_undef: forall s1 s2 vs,
-    undef s1 vs ->
+    undef_on s1 vs ->
     only_differ s1 vs s2 ->
     extends s2 s1.
   Proof. state_calc. Qed.

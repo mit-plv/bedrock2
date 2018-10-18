@@ -16,7 +16,7 @@ Instance OptionFunc_Map(K V: Type){keq: DecidableEq K}{veq: DecidableEq V}: MapF
   empty_map := fun k => None;
   get A k := A k;
   put A k v := fun k' => if keq k k' then Some v else A k';
-  restrict M A := fun k => if containsb A k then M k else None;
+  restrict M A := TODO;
   domain M := fun k => exists v, M k = Some v;
   range M := fun v => exists k, M k = Some v;
 

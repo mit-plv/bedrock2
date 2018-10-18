@@ -14,8 +14,6 @@ Require Import compiler.util.Tactics.
 Section TODO.
   Context {K V: Type}.
   Context {Mf: MapFunctions K V}.
-  Existing Instance map_domain_set.
-  Existing Instance map_range_set.
 
   (*
   Axiom get_in_domain: forall k m, k \in (domain m) -> exists v, get m k = Some v.
@@ -188,8 +186,6 @@ Section TODO.
     apply extends_remove_values_union_l.
   Qed.
 
-  Existing Instance contains_dec.
-
   Lemma remove_values_spec: forall m vs k,
       get (remove_values m vs) k =
       match get m k with
@@ -241,9 +237,7 @@ Local Notation "'bind_opt' x <- a ; f" :=
 Section RegAlloc.
 
   Variable srcvar: Set.
-  Context {srcvar_eq_dec: DecidableEq srcvar}.
   Variable impvar: Set.
-  Context {impvar_eq_dec: DecidableEq impvar}.
   Variable func: Set.
   Context {func_eq_dec: DecidableEq func}.
 
@@ -252,8 +246,6 @@ Section RegAlloc.
   Context {Map: MapFunctions impvar srcvar}.
   Notation srcvars := (@set srcvar (@map_range_set _ _ Map)).
   Notation impvars := (@set impvar (@map_domain_set _ _ Map)).
-  Existing Instance map_domain_set.
-  Existing Instance map_range_set.
 
   (* annotated statement: each assignment is annotated with impvar which it assigns,
      loop has map invariant *)
@@ -590,10 +582,12 @@ Section RegAlloc.
   Proof.
     unfold states_compat.
     intros.
+    Set Printing Implicit.
     rewrite get_put.
     do 2 match goal with
     | H: get (put _ _ _) _ = _ |- _ => rewrite get_put in H
     end.
+    (* PROBLEM: The two occurrences of "dec (x' = x'0)" use differend DecidableEq instances *)
     destruct_one_match; clear E.
     - subst.
       replace x0 with x in H2 by congruence.
@@ -654,6 +648,22 @@ Section RegAlloc.
                progress tryif (let T := type of P in unify T Prop)
                         then revert H else clear H
              end.
+
+      intros.
+
+      let varT := constr:(impvar) in
+      let valT := constr:(srcvar) in
+      repeat autounfold with unf_state_calculus in *;
+        intros;
+        repeat autounfold with unf_set_defs in *;
+        destruct_products;
+        intros;
+        rewrite_get_put;
+        repeat (specialize_with varT || specialize_with valT);
+        autorewrite with rew_set_op_specs in *;
+        repeat (intuition (subst *; auto || congruence) || destruct_one_dec_eq).
+
+
 
 (* Auto Quickcheck and nitpick found no counterexample  *)
 
