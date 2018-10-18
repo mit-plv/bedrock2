@@ -572,6 +572,9 @@ Section RegAlloc.
     - specialize (IHs1 m).
       specialize (IHs2 m).
 
+      pose proof (guaranteed_updates_are_possibly_written s1).
+      pose proof (guaranteed_updates_are_possibly_written s2).
+
       forget (possibly_written s1) as p1.
       forget (guaranteed_updates s1) as g1.
       forget (possibly_written s2) as p2.
@@ -592,7 +595,7 @@ Auto Quickcheck found a counterexample:
   p1 = {}
   g1 = Map.empty
   u2 = [a2 ↦ a2]
-  p2 = {}
+  p2 = {a2}
   g2 = [a2 ↦ a2]
  *)
 
