@@ -1,7 +1,6 @@
 Require Import Coq.Program.Tactics.
 Require Import compiler.FlatImp.
-Require Import compiler.StateCalculus.
-Require Import compiler.StateCalculusTacticTest.
+Require Import compiler.util.MapSolverTest.
 Require Import compiler.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
