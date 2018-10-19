@@ -41,7 +41,7 @@ Section TODO.
       union s1 s2 = union s2 s1.
 
   Axiom put_remove_same: forall m k v,
-    put (Map.remove m k) k v = put m k v.
+    put (remove_key m k) k v = put m k v.
 
   (* TODO some of this should go into state calculus *)
   (* probably derived *)
@@ -101,7 +101,7 @@ Section TODO.
   Axiom remove_keys_empty_set: forall m,
       remove_keys m empty_set = m.
   Axiom remove_keys_singleton_set: forall m k,
-      remove_keys m (singleton_set k) = Map.remove m k.
+      remove_keys m (singleton_set k) = remove_key m k.
 
   Axiom remove_values_empty_set: forall m,
       remove_values m empty_set = m.
@@ -650,7 +650,15 @@ Section RegAlloc.
              end.
 
       Time map_solver impvar srcvar.
-    - admit.
+    - specialize (IHs1 m).
+      specialize (IHs2 m).
+      pose proof (guaranteed_updates_are_possibly_written_srcvars s1).
+      pose proof (guaranteed_updates_are_possibly_written_srcvars s2).
+      pose proof (guaranteed_updates_are_possibly_written_impvars s1).
+      pose proof (guaranteed_updates_are_possibly_written_impvars s2).
+      (* Time map_solver impvar srcvar. takes 260s and cannot solve the goal, need
+         to specialize IHs1 and IHs2 with other ms from the goal too *)
+      admit.
     - admit.
     - admit.
   Abort.

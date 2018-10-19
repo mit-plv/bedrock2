@@ -24,7 +24,7 @@ Instance List_Map(K V: Type){keq: DecidableEq K}{veq: DecidableEq V}: MapFunctio
              | Some (_, v) => Some v
              | None => None
              end;
-  remove := list_map_remove;
+  remove_key := list_map_remove;
   put M k v := (k, v) :: (list_map_remove M k);
   restrict M A := filter (fun '(ki, vi) => if dec (contains A ki) then true else false) M;
   domain M := of_list (List.map fst M);

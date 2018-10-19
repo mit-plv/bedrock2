@@ -161,10 +161,10 @@ Ltac destructE d :=
   | _ => let E := fresh "E" in destruct d eqn: E
   end.
 
-Ltac destruct_one_match_hyporgoal_test test :=
+Ltac destruct_one_match_hyporgoal_test check :=
   match goal with
-  | |- context[match ?d with _ => _ end]      => test d; destructE d
-  | H: context[match ?d with _ => _ end] |- _ => test d; destructE d
+  | |- context[match ?d with _ => _ end]      => check d; destructE d
+  | H: context[match ?d with _ => _ end] |- _ => check d; destructE d
   end.
 
 Lemma invert_Some_eq_Some: forall (A: Type) (x1 x2: A),

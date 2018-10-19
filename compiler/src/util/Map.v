@@ -14,9 +14,9 @@ Class MapFunctions(K V: Type) := mkMap {
   empty_map: map;
   empty_is_empty: forall (k: K), get empty_map k = None;
 
-  remove: map -> K -> map;
-  get_remove_same: forall m k, get (remove m k) k = None;
-  get_remove_diff: forall m k1 k2, k1 <> k2 -> get (remove m k1) k2 = get m k2;
+  remove_key: map -> K -> map;
+  get_remove_same: forall m k, get (remove_key m k) k = None;
+  get_remove_diff: forall m k1 k2, k1 <> k2 -> get (remove_key m k1) k2 = get m k2;
 
   put: map -> K -> V -> map;
   get_put_same: forall (m: map) (k: K) (v: V), get (put m k v) k = Some v;
@@ -154,8 +154,8 @@ Section MapDefinitions.
       get empty_map k = None.
   Proof. prover. Qed.
 
-  Lemma get_remove: forall (m: map K V) (x y: K),
-    get (remove m x) y = if dec (x = y) then None else get m y.
+  Lemma get_remove_key: forall (m: map K V) (x y: K),
+    get (remove_key m x) y = if dec (x = y) then None else get m y.
   Proof. prover. Qed.
 
   Lemma get_put: forall (s: map K V) (x y: K) (v: V),
@@ -223,7 +223,7 @@ Hint Unfold extends only_differ agree_on undef_on : unf_map_defs.
 
 Hint Rewrite
      @get_empty
-     @get_remove
+     @get_remove_key
      @get_put
      @get_restrict
      @get_intersect_map
