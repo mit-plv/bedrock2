@@ -2,7 +2,6 @@ Require Import lib.LibTacticsMin.
 Require Import compiler.util.Common.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
-Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.
 Require Import compiler.Decidable.
@@ -47,7 +46,7 @@ Section FlattenExpr.
       Op.eval_binop (convert_bopname op) w w0 = Semantics.interp_binop op w w0.
 
   Ltac state_calc :=
-    state_calc_generic (@Syntax.varname (@Semantics.syntax p)) (@Semantics.word p).
+    map_solver (@Syntax.varname (@Semantics.syntax p)) (@Semantics.word p).
   Ltac set_solver :=
     set_solver_generic (@Syntax.varname (@Semantics.syntax p)).
 
@@ -288,17 +287,10 @@ Section FlattenExpr.
          rewrite Ev
     end.
 
-  Set Printing Implicit.
   (* Note: If you want to get in the conclusion
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
      flattenExpr_modVars_spec and FlatImp.modVarsSound *)
-  (* PROBLEM:
-    We have a
-      NG : @NameGen var NGstate varset
-    but need a
-      ?NameGen : "@NameGen var NGstate (@map_domain_set var mword stateMap)"
-  *)
   Lemma flattenExpr_correct_aux env : forall e ngs1 ngs2 resVar (s: FlatImp.stmt var func) (initialH initialL: state) initialM res,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     extends initialL initialH ->
