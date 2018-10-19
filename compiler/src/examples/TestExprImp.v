@@ -4,7 +4,6 @@ Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
-Require Import compiler.StateCalculus.
 Require Import compiler.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import riscv.MachineWidth32.

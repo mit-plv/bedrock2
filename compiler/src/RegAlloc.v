@@ -1,5 +1,4 @@
 Require Import compiler.FlatImp.
-Require Import compiler.StateCalculus.
 Require Import compiler.NameGen.
 Require Import compiler.Decidable.
 Require Import compiler.Memory.

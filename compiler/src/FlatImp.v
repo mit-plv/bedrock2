@@ -4,7 +4,6 @@ Require Import riscv.Utility.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
-Require Import compiler.StateCalculus.
 Require Import compiler.Memory.
 Require Import compiler.Decidable.
 
@@ -22,8 +21,6 @@ Section FlatImp1.
   Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
-
-  Ltac state_calc := state_calc_generic var mword.
 
   Inductive stmt: Set :=
     | SLoad(x: var)(a: var): stmt
@@ -194,7 +191,7 @@ Section FlatImp1.
     | SSkip => 1
     | SCall binds f args => S (length binds + length args)
     end.
-  
+
   Fixpoint stmt_size(s: stmt): nat := stmt_size_body stmt_size s.
   (* TODO: in coq 8.9 it will be possible to state this lemma automatically: https://github.com/coq/coq/blob/91e8dfcd7192065f21273d02374dce299241616f/CHANGES#L16 *)
   Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s. destruct s; reflexivity. Qed.
@@ -237,7 +234,7 @@ Section FlatImp1.
   Lemma modVars_subset_accessedVars: forall s,
     subset (modVars s) (accessedVars s).
   Proof.
-    intro s. induction s; simpl; unfold singleton_set; state_calc.
+    intro s. induction s; simpl; unfold singleton_set; map_solver var mword.
   Qed.
 End FlatImp1.
 
@@ -300,8 +297,6 @@ Section FlatImp2.
   Context {funcMap: MapFunctions func (list var * list var * stmt var func)}.
   Notation env := (map func (list var * list var * stmt var func)).
 
-  Ltac state_calc := state_calc_generic var mword.
-
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 (e: env) initialSt initialM s final,
     fuel1 <= fuel2 ->
     eval_stmt var func e fuel1 initialSt initialM s = Some final ->
@@ -347,7 +342,7 @@ Section FlatImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      state_calc.
+      map_solver var mword.
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 End FlatImp2.

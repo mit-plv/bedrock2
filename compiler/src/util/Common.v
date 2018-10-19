@@ -33,6 +33,7 @@ Fixpoint option_all {A} (l : list (option A)) {struct l} : option (list A) :=
 
 Section WithMap.
   Context {K V} {TMap: MapFunctions K V}.
+
   Fixpoint putmany (keys : list K) (values : list V) (init : map K V) {struct keys} : option (map K V) :=
     match keys, values with
     | nil, nil => Return init
@@ -46,4 +47,22 @@ Section WithMap.
     induction bs, vs; cbn; try discriminate; trivial; [].
     intros; destruct (putmany bs vs st) eqn:?; [eauto using f_equal|discriminate].
   Qed.
+
+  Context {Kset: SetFunctions K}.
+  Context {K_eq_dec: DecidableEq K}.
+
+  Lemma only_differ_putmany : forall (bs : list K) (vs : list V) st st'
+                                     (H : putmany bs vs st = Some st'),
+      only_differ st (fold_right union empty_set (List.map singleton_set bs)) st'.
+  Proof.
+    induction bs, vs; cbn; try discriminate.
+    { inversion 1; subst. cbv; eauto. }
+    { intros ? ? H; destruct (putmany bs vs st) eqn:Heqo; [|discriminate].
+      inversion H; subst.
+      specialize (IHbs _ _ _ Heqo).
+      intros x; destruct (IHbs x);
+        autorewrite with rew_set_op_specs in *; rewrite ?get_put;
+          destruct (dec (a=x)); eauto. }
+  Qed.
+
 End WithMap.

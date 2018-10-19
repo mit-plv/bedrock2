@@ -10,7 +10,6 @@ Require Import bedrock2.Macros.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
-Require Import compiler.StateCalculus.
 Require Import compiler.Decidable.
 Require Import compiler.Memory.
 
@@ -32,7 +31,7 @@ Section ExprImp1.
 
   Hypothesis actname_empty: Syntax.actname = Empty_set.
 
-  Ltac state_calc := state_calc_generic (@Syntax.varname (@syntax p)) (@Semantics.word p).
+  Ltac state_calc := map_solver (@Syntax.varname (@syntax p)) (@Semantics.word p).
   Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
 
   Fixpoint eval_expr(st: state)(e: expr): option mword :=
@@ -297,7 +296,7 @@ Section ExprImp2.
 
   Hypothesis actname_empty: Syntax.actname = Empty_set.
 
-  Ltac state_calc := state_calc_generic (@Syntax.varname (@syntax p)) (@Semantics.word p).
+  Ltac state_calc := map_solver (@Syntax.varname (@syntax p)) (@Semantics.word p).
   Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
 
   Context {funcMap: MapFunctions func (list var * list var * @cmd (@syntax p))}.

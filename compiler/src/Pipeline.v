@@ -44,18 +44,18 @@ Section Pipeline.
 
   Context {mem: Set}.
   Context {IsMem: Memory.Memory mem mword}.
-  
+
   Local Notation RiscvMachine := (@RiscvMachine mword mem state).
   Context {RVM: RiscvProgram (OState RiscvMachine) mword}.
 
   Existing Instance riscv.Program.DefaultRiscvState.
-  
+
   Existing Instance FlatToRiscv.State_is_RegisterFile.
-  
+
   Context {RVAX: @AxiomaticRiscv mword _ state FlatToRiscv.State_is_RegisterFile mem _ RVM}.
 
   Variable LwXLEN: Register -> Register -> Z -> Instruction.
-  
+
   Variable SwXLEN: Register -> Register -> Z -> Instruction.
 
   Context {BWS: FlatToRiscvBitWidthSpecifics.FlatToRiscvBitWidthSpecifics mword mem}.
@@ -95,7 +95,7 @@ Section Pipeline.
 
   (* convention: there's one single result which is put into register $x1 *)
   Definition interesting_alloc(resVar: var): map var var := put empty_map resVar resVar.
-  
+
   Definition exprImp2Riscv_with_regalloc(resVar: var)(s: Syntax.cmd): list Instruction :=
     FlatToRiscv.compile_stmt LwXLEN SwXLEN
       (register_allocation var var func
@@ -133,7 +133,7 @@ Section Pipeline.
       regToZ_unsigned a + 4 * (Zlength p) <= Memory.memSize initial.(machineMem) ->
       FlatToRiscv.containsProgram
         (putProgram (List.map (fun i => ZToWord 32 (encode i)) p) a initial).(machineMem) p a.
-  Proof.  
+  Proof.
     intros. subst p. unfold putProgram.
     pose proof BitWidths.pow2_wXLEN_4 as X.
     rewrite FlatToRiscv.containsProgram_alt.
@@ -164,7 +164,7 @@ Section Pipeline.
         * apply encode_range.
   Qed.
 *)
-  
+
   Lemma store_word_list_preserves_containsMem: forall offset words mL mH,
       regToZ_unsigned offset + 4 * Zlength words <= Memory.memSize mL ->
       Memory.valid_addr offset 4 (Memory.memSize mL) ->
@@ -192,7 +192,7 @@ Section Pipeline.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscv.valid_registers (flatten s).
-  
+
   (* We could also say something about the memory, but then the statement becomes more complex.
      And note that the register we look at could contain any value loaded from the memory. *)
   Lemma exprImp2Riscv_correct: forall {Bw: BitWidths} sH initialL instsL fuelH finalH initialMemH finalMemH,
@@ -285,7 +285,7 @@ Section Pipeline.
       + rewrite roundTrip_0. assumption.
       + exists fuelL. intros.
         unfold getReg, FlatToRiscv.State_is_RegisterFile.
-        unfold StateCalculus.extends in P1.
+        unfold extends in P1.
         unfold evalL.
         erewrite P1; try reflexivity.
         apply GM. exact H.
