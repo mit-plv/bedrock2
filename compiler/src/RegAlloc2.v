@@ -683,6 +683,21 @@ Section RegAlloc.
              end.
 
 
+Ltac destructE d :=
+  match type of d with
+  | {?x1 = ?x2} + {?x1 <> ?x2} => destruct d; [subst x2|]
+  | {_} + {_} => destruct d
+  | _ => is_var d; destruct d
+  | _ => let E := fresh "E" in destruct d eqn: E
+  end.
+
+Ltac destruct_one_match_hyporgoal_test test :=
+  match goal with
+  | |- context[match ?d with _ => _ end]      => test d; destructE d
+  | H: context[match ?d with _ => _ end] |- _ => test d; destructE d
+  end.
+
+
       Notation varT := impvar (only parsing).
       Notation valT := srcvar (only parsing).
 
@@ -696,19 +711,22 @@ Ltac canonicalize_all :=
          | H: _ |- _ => progress canonicalize H
          end.
 
-Ltac destruct' d :=
-  match type of d with
-  | {?x1 = ?x2} + {?x1 <> ?x2} => destruct d; [subst x2|]
-  | {_} + {_} => destruct d
-  | _ => is_var d; destruct d
-  | _ => let E := fresh "E" in destruct d eqn: E
-  end.
+Ltac map_solver_should_destruct K V d :=
+  let T := type of d in
+  first [ unify T (option K)
+        | unify T (option V)
+        | match T with
+          | {?x \in ?A} + {~ ?x \in ?A} => idtac
+          | {?x1 = ?x2} + {?x1 <> ?x2} =>
+            let T' := type of x1 in
+            first [ unify T' K
+                  | unify T' V
+                  | unify T' (option K)
+                  | unify T' (option V) ]
+          end ].
 
-Ltac destruct_one_match_hyporgoal :=
-  match goal with
-  | |- context[match ?d with _ => _ end]      => destruct' d
-  | H: context[match ?d with _ => _ end] |- _ => destruct' d
-  end.
+Ltac destruct_one_map_match K V :=
+  destruct_one_match_hyporgoal_test ltac:(map_solver_should_destruct K V).
 
 Ltac invert_Some_eq_Some :=
   repeat match goal with
@@ -733,7 +751,7 @@ Ltac invert_Some_eq_Some :=
     end.
 
     Time repeat ((intuition solve [subst *; auto || congruence || (exfalso; eauto)]) ||
-            (destruct_one_match_hyporgoal; invert_Some_eq_Some; canonicalize_all)).
+                 (destruct_one_map_match varT valT; invert_Some_eq_Some; canonicalize_all)).
     - admit.
     - admit.
     - admit.
