@@ -616,39 +616,6 @@ Section RegAlloc.
        extends_intersect_map_r
     : checker_hints.
 
-  (*
-  Lemma exists_in_first_hyp: forall (A: Type) (P: A -> Prop) (Q: Prop),
-      ((exists a: A, P a) -> Q) ->
-      forall a, P a -> Q.
-  Proof.
-    intros. eauto.
-  Qed.
-   *)
-
-  (*
-  Ltac exists_to_forall :=
-    repeat match goal with
-           | H: (exists k: ?A, @?P k) -> ?Q |- _ =>
-             let H' := fresh H "_e2f_" in
-             assert (forall k: A, P k -> Q) as H' by eauto;
-             (* do not clear H, otherwise it will be derived again --> infinite loop
-             clear H;  *)
-             cbv beta in H';
-             ensure_new H'
-           end.
-  *)
-
-(*  Ltac exists_to_forall H :=*)
-  Tactic Notation "exists_to_forall" ident(H) :=
-    match type of H with
-    | (exists k: ?A, @?P k) -> ?Q =>
-      let Horig := fresh in
-      rename H into Horig;
-      assert (forall k: A, P k -> Q) as H by eauto;
-      clear Horig;
-      cbv beta in H
-    end.
-
   Lemma updateWith_alt1: forall s m,
       extends (updateWith' m s) (updateWith m s).
   Proof.
@@ -682,76 +649,7 @@ Section RegAlloc.
                         then revert H else clear H
              end.
 
-
-Ltac destructE d :=
-  match type of d with
-  | {?x1 = ?x2} + {?x1 <> ?x2} => destruct d; [subst x2|]
-  | {_} + {_} => destruct d
-  | _ => is_var d; destruct d
-  | _ => let E := fresh "E" in destruct d eqn: E
-  end.
-
-Ltac destruct_one_match_hyporgoal_test test :=
-  match goal with
-  | |- context[match ?d with _ => _ end]      => test d; destructE d
-  | H: context[match ?d with _ => _ end] |- _ => test d; destructE d
-  end.
-
-
-      Notation varT := impvar (only parsing).
-      Notation valT := srcvar (only parsing).
-
-Ltac canonicalize H :=
-  repeat autorewrite with rew_set_op_specs rew_map_specs in H;
-  try exists_to_forall H;
-  try specialize (H eq_refl).
-
-Ltac canonicalize_all :=
-  repeat match goal with
-         | H: _ |- _ => progress canonicalize H
-         end.
-
-Ltac map_solver_should_destruct K V d :=
-  let T := type of d in
-  first [ unify T (option K)
-        | unify T (option V)
-        | match T with
-          | {?x \in ?A} + {~ ?x \in ?A} => idtac
-          | {?x1 = ?x2} + {?x1 <> ?x2} =>
-            let T' := type of x1 in
-            first [ unify T' K
-                  | unify T' V
-                  | unify T' (option K)
-                  | unify T' (option V) ]
-          end ].
-
-Ltac destruct_one_map_match K V :=
-  destruct_one_match_hyporgoal_test ltac:(map_solver_should_destruct K V).
-
-Ltac invert_Some_eq_Some :=
-  repeat match goal with
-         | H: Some _ = Some _ |- _ => inversion H; subst *; clear H
-         end.
-
-      repeat autounfold with unf_map_defs unf_set_defs in *;
-        destruct_products;
-        intros;
-        repeat autorewrite with rew_set_op_specs rew_map_specs;
-        canonicalize_all.
-
-      repeat match goal with
-        | H: forall (x: ?E), _, y: ?E |- _ =>
-          match type of H with
-           | DecidableEq E => fail 1
-           | _ => let H' := fresh H y in
-                  pose proof (H y) as H';
-                  canonicalize H';
-                  ensure_new H'
-          end
-    end.
-
-    Time repeat ((intuition solve [subst *; auto || congruence || (exfalso; eauto)]) ||
-                 (destruct_one_map_match varT valT; invert_Some_eq_Some; canonicalize_all)).
+      Time map_solver impvar srcvar.
     - admit.
     - admit.
     - admit.

@@ -1,4 +1,5 @@
 Require Import compiler.util.Set.
+Require Import compiler.util.Tactics.
 Require Import compiler.Decidable.
 
 Class MapFunctions(K V: Type) := mkMap {
@@ -236,3 +237,53 @@ Hint Rewrite
      - reverse_get
      *)
   : rew_map_specs.
+
+
+Ltac canonicalize_map_hyp H :=
+  repeat autorewrite with rew_set_op_specs rew_map_specs in H;
+  try exists_to_forall H;
+  try specialize (H eq_refl).
+
+Ltac canonicalize_all_map_hyps :=
+  repeat match goal with
+         | H: _ |- _ => progress canonicalize_map_hyp H
+         end.
+
+Ltac map_solver_should_destruct K V d :=
+  let T := type of d in
+  first [ unify T (option K)
+        | unify T (option V)
+        | match T with
+          | {?x \in ?A} + {~ ?x \in ?A} => idtac
+          | {?x1 = ?x2} + {?x1 <> ?x2} =>
+            let T' := type of x1 in
+            first [ unify T' K
+                  | unify T' V
+                  | unify T' (option K)
+                  | unify T' (option V) ]
+          end ].
+
+Ltac destruct_one_map_match K V :=
+  destruct_one_match_hyporgoal_test ltac:(map_solver_should_destruct K V).
+
+Ltac map_solver K V :=
+  assert_is_type K;
+  assert_is_type V;
+  repeat autounfold with unf_map_defs unf_set_defs in *;
+  destruct_products;
+  intros;
+  repeat autorewrite with rew_set_op_specs rew_map_specs;
+  canonicalize_all_map_hyps;
+  repeat match goal with
+  | H: forall (x: ?E), _, y: ?E |- _ =>
+    (* TODO restrict E *)
+    match type of H with
+    | DecidableEq E => fail 1
+    | _ => let H' := fresh H y in
+           pose proof (H y) as H';
+           canonicalize_map_hyp H';
+           ensure_new H'
+    end
+  end;
+  repeat ((intuition solve [subst *; auto || congruence || (exfalso; eauto)]) ||
+          (destruct_one_map_match K V; invert_Some_eq_Some; canonicalize_all_map_hyps)).

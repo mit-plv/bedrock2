@@ -1,4 +1,4 @@
-Require Import Program.Tactics.
+Require Export Coq.Program.Tactics.
 Require Import lib.fiat_crypto_tactics.Not.
 Require Import compiler.Decidable.
 Require Import lib.LibTacticsMin.
@@ -142,3 +142,39 @@ Tactic Notation "so" tactic(f) :=
   | _: ?A |- _  => f A
   |       |- ?A => f A
   end.
+
+Ltac exists_to_forall H :=
+  match type of H with
+  | (exists k: ?A, @?P k) -> ?Q =>
+    let Horig := fresh in
+    rename H into Horig;
+    assert (forall k: A, P k -> Q) as H by eauto;
+    clear Horig;
+    cbv beta in H
+  end.
+
+Ltac destructE d :=
+  match type of d with
+  | {?x1 = ?x2} + {?x1 <> ?x2} => destruct d; [subst x2|]
+  | {_} + {_} => destruct d
+  | _ => is_var d; destruct d
+  | _ => let E := fresh "E" in destruct d eqn: E
+  end.
+
+Ltac destruct_one_match_hyporgoal_test test :=
+  match goal with
+  | |- context[match ?d with _ => _ end]      => test d; destructE d
+  | H: context[match ?d with _ => _ end] |- _ => test d; destructE d
+  end.
+
+Lemma invert_Some_eq_Some: forall (A: Type) (x1 x2: A),
+    Some x1 = Some x2 ->
+    x1 = x2.
+Proof.
+  congruence.
+Qed.
+
+Ltac invert_Some_eq_Some :=
+  repeat match goal with
+         | H: Some ?x1 = Some ?x2 |- _ => apply invert_Some_eq_Some in H; subst x2
+         end.
