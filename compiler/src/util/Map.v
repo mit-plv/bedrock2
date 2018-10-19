@@ -118,9 +118,14 @@ Section MapDefinitions.
   (* Note: not reusing set_elem_eq_dec, map_domain_set and map_range_set here,
      because we want the client of these lemmas to be able to choose the instance *)
   Context {keq: DecidableEq K}.
-  Context {veq: DecidableEq V}.
+  (* Context {veq: DecidableEq V}. *)
   Context {Kset: SetFunctions K}.
   Context {Vset: SetFunctions V}.
+
+  (* however, "rewrite get_intersect_map" (and probably others) won't pick up a veq typeclass
+     in scope, and the rewrite will fail, so we prefer to hardcode an instance derived from
+     KVMap: *)
+  Local Instance veq: DecidableEq V := @set_elem_eq_dec V map_range_set.
 
   Definition extends(s1 s2: map K V) := forall x w, get s2 x = Some w -> get s1 x = Some w.
 
@@ -167,6 +172,9 @@ Section MapDefinitions.
       | _, _ => None
       end.
   Proof.
+    clear keq. (* The proof term does not contain keq it even if we keep it, but after closing
+      the section, it's added as a section var. And with "Proof using .", it seems it's used
+      when attempting to Qed. Why?? *)
     (* Challenge: what's the minimal change to "prover" needed to make it work here too? *)
     intros.
     destruct (get (intersect_map m1 m2) k) eqn: E.

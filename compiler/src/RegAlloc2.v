@@ -23,16 +23,19 @@ Section TODO.
   Axiom domain_put: forall k v m, domain (put m k v) = union (domain m) (singleton_set k).
   *)
 
-  (* specs *)
+  (* specs
   Axiom put_spec: forall m k1 k2 v,
       (k1 = k2 /\ get (put m k1 v) k2 = Some v) \/ (k1 <> k2 /\ get (put m k1 v) k2 = get m k2).
 
   Axiom put_put_same: forall k v1 v2 m, put (put m k v1) k v2 = put m k v2.
   Axiom reverse_reverse_get: forall k v m, reverse_get m v = Some k -> get m k = Some v.
+  *)
   Axiom get_in_range: forall k v m, get m k = Some v -> v \in range m.
+  (*
   Axiom remove_by_value_spec: forall k v m, get (remove_by_value m v) k <> Some v.
   Axiom get_intersect_map: forall k v m1 m2,
       get (intersect_map m1 m2) k = Some v <-> get m1 k = Some v /\ get m2 k = Some v.
+  *)
 
   Axiom union_comm: forall s1 s2,
       union s1 s2 = union s2 s1.
@@ -234,7 +237,7 @@ Local Notation "'bind_opt' x <- a ; f" :=
    | Some x => f
    | None => None
    end)
-  (right associativity, at level 70, x pattern).
+  (right associativity, at level 70, x pattern, only parsing).
 
 
 Section RegAlloc.
@@ -613,6 +616,39 @@ Section RegAlloc.
        extends_intersect_map_r
     : checker_hints.
 
+  (*
+  Lemma exists_in_first_hyp: forall (A: Type) (P: A -> Prop) (Q: Prop),
+      ((exists a: A, P a) -> Q) ->
+      forall a, P a -> Q.
+  Proof.
+    intros. eauto.
+  Qed.
+   *)
+
+  (*
+  Ltac exists_to_forall :=
+    repeat match goal with
+           | H: (exists k: ?A, @?P k) -> ?Q |- _ =>
+             let H' := fresh H "_e2f_" in
+             assert (forall k: A, P k -> Q) as H' by eauto;
+             (* do not clear H, otherwise it will be derived again --> infinite loop
+             clear H;  *)
+             cbv beta in H';
+             ensure_new H'
+           end.
+  *)
+
+(*  Ltac exists_to_forall H :=*)
+  Tactic Notation "exists_to_forall" ident(H) :=
+    match type of H with
+    | (exists k: ?A, @?P k) -> ?Q =>
+      let Horig := fresh in
+      rename H into Horig;
+      assert (forall k: A, P k -> Q) as H by eauto;
+      clear Horig;
+      cbv beta in H
+    end.
+
   Lemma updateWith_alt1: forall s m,
       extends (updateWith' m s) (updateWith m s).
   Proof.
@@ -646,24 +682,61 @@ Section RegAlloc.
                         then revert H else clear H
              end.
 
-      intros.
 
-      let varT := constr:(impvar) in
-      let valT := constr:(srcvar) in
-      repeat autounfold with unf_state_calculus in *;
-        intros;
-        repeat autounfold with unf_set_defs in *;
+      Notation varT := impvar (only parsing).
+      Notation valT := srcvar (only parsing).
+
+Ltac canonicalize H :=
+  repeat autorewrite with rew_set_op_specs rew_map_specs in H;
+  try exists_to_forall H;
+  try specialize (H eq_refl).
+
+Ltac canonicalize_all :=
+  repeat match goal with
+         | H: _ |- _ => progress canonicalize H
+         end.
+
+Ltac destruct' d :=
+  match type of d with
+  | {?x1 = ?x2} + {?x1 <> ?x2} => destruct d; [subst x2|]
+  | {_} + {_} => destruct d
+  | _ => is_var d; destruct d
+  | _ => let E := fresh "E" in destruct d eqn: E
+  end.
+
+Ltac destruct_one_match_hyporgoal :=
+  match goal with
+  | |- context[match ?d with _ => _ end]      => destruct' d
+  | H: context[match ?d with _ => _ end] |- _ => destruct' d
+  end.
+
+Ltac invert_Some_eq_Some :=
+  repeat match goal with
+         | H: Some _ = Some _ |- _ => inversion H; subst *; clear H
+         end.
+
+      repeat autounfold with unf_map_defs unf_set_defs in *;
         destruct_products;
         intros;
-        rewrite_get_put;
-        repeat (specialize_with varT || specialize_with valT);
-        autorewrite with rew_set_op_specs in *;
-        repeat (intuition (subst *; auto || congruence) || destruct_one_dec_eq).
+        repeat autorewrite with rew_set_op_specs rew_map_specs;
+        canonicalize_all.
 
+      repeat match goal with
+        | H: forall (x: ?E), _, y: ?E |- _ =>
+          match type of H with
+           | DecidableEq E => fail 1
+           | _ => let H' := fresh H y in
+                  pose proof (H y) as H';
+                  canonicalize H';
+                  ensure_new H'
+          end
+    end.
 
-
-(* Auto Quickcheck and nitpick found no counterexample  *)
-
+    Time repeat ((intuition solve [subst *; auto || congruence || (exfalso; eauto)]) ||
+            (destruct_one_match_hyporgoal; invert_Some_eq_Some; canonicalize_all)).
+    - admit.
+    - admit.
+    - admit.
   Abort.
 
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
