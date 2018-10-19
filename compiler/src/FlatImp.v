@@ -15,8 +15,8 @@ Section FlatImp1.
 
   Variable var: Set.
   Context {var_eq_dec: DecidableEq var}.
-  Variable func: Set.
-  Context {func_eq_dec: DecidableEq func}.
+  Variable glob: Set.
+  Context {glob_eq_dec: DecidableEq glob}.
 
   Context {stateMap: MapFunctions var mword}.
   Notation state := (map var mword).
@@ -29,18 +29,20 @@ Section FlatImp1.
     | SLoad(x: var)(a: var): stmt
     | SStore(a: var)(v: var): stmt
     | SLit(x: var)(v: Z): stmt
+    | SGlob (x : var) (v : glob) : stmt
     | SOp(x: var)(op: bopname)(y z: var): stmt
     | SSet(x y: var): stmt
     | SIf(cond: var)(bThen bElse: stmt): stmt
     | SLoop(body1: stmt)(cond: var)(body2: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
-    | SCall(binds: list var)(f: func)(args: list var).
+    | SCall(binds: list var)(f: glob)(args: list var).
 
   Section WithEnv.
-    Context {funcMap: MapFunctions func (list var * list var * stmt)}.
-    Notation env := (map func (list var * list var * stmt)).
+    Context {funcMap: MapFunctions glob (list var * list var * stmt)}.
+    Notation env := (map glob (list var * list var * stmt)).
     Context (e: env).
+    Variable resolve : glob -> option mword.
 
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
@@ -59,6 +61,12 @@ Section FlatImp1.
             Return (st, m)
         | SLit x v =>
             Return (put st x (ZToReg v), m)
+        | SGlob x v =>
+          match resolve v with
+          | None => None
+          | Some v =>
+            Return (put st x v, m)
+          end
         | SOp x op y z =>
             y <- get st y;
             z <- get st z;
@@ -186,6 +194,7 @@ Section FlatImp1.
     | SLoad x a => 1
     | SStore a v => 1
     | SLit x v => 8
+    | SGlob x v => 8
     | SOp x op y z => 2
     | SSet x y => 1
     | SIf cond bThen bElse => 1 + (rec bThen) + (rec bElse)
@@ -205,6 +214,7 @@ Section FlatImp1.
     | SLoad x y => singleton_set x
     | SStore x y => empty_set
     | SLit x v => singleton_set x
+    | SGlob x v => singleton_set x
     | SOp x op y z => singleton_set x
     | SSet x y => singleton_set x
     | SIf cond bThen bElse =>
@@ -222,6 +232,7 @@ Section FlatImp1.
     | SLoad x y => union (singleton_set x) (singleton_set y)
     | SStore x y => union (singleton_set x) (singleton_set y)
     | SLit x v => singleton_set x
+    | SGlob x v => singleton_set x
     | SOp x op y z => union (singleton_set x) (union (singleton_set y) (singleton_set z))
     | SSet x y => union (singleton_set x) (singleton_set y)
     | SIf cond bThen bElse =>
@@ -244,7 +255,7 @@ End FlatImp1.
 
 Ltac invert_eval_stmt :=
   lazymatch goal with
-  | E: eval_stmt _ _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
+  | E: eval_stmt _ _ _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
     destruct s;
     [ apply invert_eval_SLoad in E
     | apply invert_eval_SStore in E
@@ -289,53 +300,44 @@ Section FlatImp2.
 
   Variable var: Set.
   Context {var_eq_dec: DecidableEq var}.
-  Variable func: Set.
-  Context {func_eq_dec: DecidableEq func}.
+  Variable glob: Set.
+  Context {glob_eq_dec: DecidableEq glob}.
 
   Context {stateMap: MapFunctions var mword}.
   Notation state := (map var mword).
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Context {funcMap: MapFunctions func (list var * list var * stmt var func)}.
-  Notation env := (map func (list var * list var * stmt var func)).
+  Context {funcMap: MapFunctions glob (list var * list var * stmt var glob)}.
+  Notation env := (map glob (list var * list var * stmt var glob)).
 
   Ltac state_calc := state_calc_generic var mword.
 
-  Lemma increase_fuel_still_Success: forall fuel1 fuel2 (e: env) initialSt initialM s final,
+  Lemma increase_fuel_still_Success: forall resolver fuel1 fuel2 (e: env) initialSt initialM s final,
     fuel1 <= fuel2 ->
-    eval_stmt var func e fuel1 initialSt initialM s = Some final ->
-    eval_stmt var func e fuel2 initialSt initialM s = Some final.
+    eval_stmt var glob e resolver fuel1 initialSt initialM s = Some final ->
+    eval_stmt var glob e resolver fuel2 initialSt initialM s = Some final.
   Proof.
     induction fuel1; introv L Ev.
     - inversions Ev.
     - destruct fuel2; [omega|].
       assert (fuel1 <= fuel2) as F by omega. specialize IHfuel1 with (1 := F).
       destruct final as [finalSt finalM].
-      invert_eval_stmt; cbn in *;
-      repeat match goal with
-      | IH: _, H: _ |- _ =>
-          let IH' := fresh IH in pose proof IH as IH';
-          specialize IH' with (1 := H);
-          ensure_new IH'
-      end;
-      repeat match goal with
-      | H: _ = Some _ |- _ => rewrite H
-      end;
-      try congruence;
-      try simpl_if;
-      rewrite? (proj2 (reg_eqb_true _ _) eq_refl);
-      repeat match goal with
-             | H:     (@eq mword _ _)  |- _ => apply reg_eqb_eq in H; rewrite H
-             | H: not (@eq mword _ _)  |- _ => apply reg_eqb_ne in H; rewrite H
-             end;
-      rewrite? reg_eqb_eq by reflexivity;
-      eauto.
+      revert Ev. clear - IHfuel1.
+      simpl.
+      destruct s; intro;
+        repeat lazymatch goal with
+               | _ : match eval_stmt ?v ?g ?e ?r ?z ?x1 ?i ?b with _ => _ end = _ |- _ =>
+                 generalize (IHfuel1 e x1 i b) ;
+                   destruct (eval_stmt v g e r z x1 i b) ; [ let H := fresh in intro H ; specialize (H _ eq_refl) ; rewrite H ; clear H | congruence ]
+               | _ : match ?X with _ => _ end = _ |- _ =>
+                 destruct X; eauto
+               end; auto.
   Qed.
 
-  Lemma modVarsSound: forall fuel e s initialSt initialM finalSt finalM,
-    eval_stmt var func e fuel initialSt initialM s = Some (finalSt, finalM) ->
-    only_differ initialSt (modVars var func s) finalSt.
+  Lemma modVarsSound: forall resolver fuel e s initialSt initialM finalSt finalM,
+    eval_stmt var glob e resolver fuel initialSt initialM s = Some (finalSt, finalM) ->
+    only_differ initialSt (modVars var glob s) finalSt.
   Proof.
     induction fuel; introv Ev.
     - discriminate.

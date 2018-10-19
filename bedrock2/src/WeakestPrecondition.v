@@ -155,6 +155,96 @@ Section WeakestPrecondition.
       else call functions fname t m args post
     end.
 
+  (* function specifications *)
+  Definition fspec : Type :=
+    trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> nat -> Prop.
+  (* the final natural number is the depth of the function stack that this
+   * function is allowed to make
+   *)
+
+  Definition to_spec (call : _ -> _ -> _ -> _ -> _ -> _ -> Prop) (gs : globname * fspec) : Prop :=
+    let '(g,s) := gs in
+    (exists addr, resolver g = Some addr /\
+             forall n, forall t m a post,
+                 s t m a post n -> call n addr t m a post).
+
+  Require Coq.Lists.List.
+
+  Definition specs call (ls : list (globname * fspec)) : Prop :=
+    List.Forall (to_spec call) ls.
+
+  Definition module
+    (functions : list (globname * fspec * (list varname * list varname * cmd.cmd)))
+  : Prop :=
+      forall call,
+        specs call (List.map (fun '(a,b,_) => (a,b)) functions) ->
+        @List.Forall (_ * fspec * _)
+                     (fun '(g,P,body) =>
+                        forall t m a q n, P t m a q n ->
+                                     func (match n with
+                                           | 0 => fun _ _ _ _ _ => False
+                                           | S n => call n
+                                           end) body t m a q) functions.
+
+(* demo(gmm):
+  Axiom word_to_nat : word -> nat.
+
+  Goal forall even odd n res sub,
+      let s : fspec :=
+           fun t m args q r =>
+             (* todo: how do recursive calls work? *)
+             match args return Prop with
+             | cons n nil => r >= word_to_nat n /\ q t m (cons word_zero nil)
+             | _ => False
+             end
+       in
+       let e := (even, s,
+                         (cons n nil, cons res nil,
+                           cmd.cond (expr.var n)
+                                    (cmd.set res (expr.literal 0))
+                                    (cmd.call (cons res nil) odd
+                                              (cons (expr.op sub (expr.var n) (expr.literal 1)) nil)))) in
+       let o := (odd, s, (cons n nil, cons res nil,
+                          cmd.cond (expr.var n)
+                                   (cmd.set res (expr.literal 0))
+                                   (cmd.call (cons res nil) even
+                                             (cons (expr.op sub (expr.var n) (expr.literal 1)) nil)))) in
+       module (cons e (cons o nil)).
+  Proof.
+    unfold module. simpl.
+    split; [ | split; [ | tauto ] ].
+    { (* proof of even assuming odd *)
+      intros.
+      destruct a; try contradiction.
+      destruct a; try contradiction.
+      inversion H; clear H; subst.
+      inversion H4; clear H4; subst. clear H3 H5.
+      red in H2. destruct H2 as [ ? [ ? ? ] ].
+      destruct H0.
+      repeat eexists.
+      eapply map.get_put_same.
+      instantiate (1:= word_zero).
+      admit.
+      subst.
+      erewrite map.get_put_same. reflexivity.
+      assumption.
+      erewrite map.get_put_same. reflexivity.
+      admit.
+      eassumption.
+      Require Import Coq.micromega.Lia.
+      destruct n0; [ admit | ].
+      eapply H1.
+      eexists. admit.
+      eexists. split.
+      reflexivity.
+      unfold get. eexists. erewrite map.get_put_same.
+      split; [ reflexivity | ]. eassumption. }
+    {
+*)
+
   Definition program funcs main t m l post : Prop :=
+    (* note(gmm): this should really just be something like:
+     *   exists s, module funcs s /\ ...the spec for main satisfies the wp
+     *)
     cmd (call funcs) main t m l post.
 End WeakestPrecondition.

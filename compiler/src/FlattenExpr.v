@@ -22,10 +22,10 @@ Section FlattenExpr.
 
   (* TODO this should be wrapped somewhere *)
   Context {varname_eq_dec: DecidableEq (@Syntax.varname (@Semantics.syntax p))}.
-  Context {funname_eq_dec: DecidableEq (@Syntax.funname (@Semantics.syntax p))}.
+  Context {globname_eq_dec: DecidableEq (@Syntax.globname (@Semantics.syntax p))}.
 
   Notation var := (@Syntax.varname (@Semantics.syntax p)).
-  Notation func := (@Syntax.funname (@Semantics.syntax p)).
+  Notation func := (@Syntax.globname (@Semantics.syntax p)).
 
   Context {stateMap: MapFunctions var mword}.
   Notation state := (map var mword).
@@ -57,6 +57,9 @@ Section FlattenExpr.
     (FlatImp.stmt var func * var * NGstate) :=
     match e with
     | Syntax.expr.literal n =>
+        let '(x, ngs') := genFresh ngs in
+        (FlatImp.SLit x n, x, ngs')
+    | Syntax.expr.global n =>
         let '(x, ngs') := genFresh ngs in
         (FlatImp.SLit x n, x, ngs')
     | Syntax.expr.var x =>
