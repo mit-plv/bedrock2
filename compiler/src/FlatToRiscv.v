@@ -197,6 +197,37 @@ Section FlatToRiscv.
     ring.
   Qed.
 
+  (* TODO is there a principled way of writing such proofs? *)
+  Lemma reduce_eq_to_sub_and_lt: forall (y z: mword) {T: Type} (thenVal elseVal: T),
+    (if ltu (sub y  z) (fromImm 1) then thenVal else elseVal) =
+    (if reg_eqb y z        then thenVal else elseVal).
+  Proof. (*
+    intros. destruct (weq y z).
+    - subst z. unfold wminus. rewrite wminus_inv.
+      destruct (wlt_dec (wzero wXLEN) $1); [reflexivity|].
+      change (wzero wXLEN) with (natToWord wXLEN 0) in n. unfold wlt in n.
+      exfalso. apply n.
+      do 2 rewrite wordToN_nat. rewrite roundTrip_0.
+      clear.
+      destruct wXLEN as [|w1] eqn: E.
+      + unfold wXLEN in *. destruct bitwidth; discriminate.
+      + rewrite roundTrip_1. simpl. constructor.
+    - destruct (@wlt_dec wXLEN (y ^- z) $ (1)) as [E|NE]; [|reflexivity].
+      exfalso. apply n. apply sub_0_eq.
+      unfold wlt in E.
+      do 2 rewrite wordToN_nat in E.
+      clear -E.
+      destruct wXLEN as [|w1] eqn: F.
+      + unfold wXLEN in *. destruct bitwidth; discriminate.
+      + rewrite roundTrip_1 in E.
+        simpl in E. apply N.lt_1_r in E. change 0%N with (N.of_nat 0) in E.
+        apply Nnat.Nat2N.inj in E. rewrite <- (roundTrip_0 (S w1)) in E.
+        apply wordToNat_inj in E.
+        exact E.
+  Qed.
+*)
+  Admitted.
+
   (*
   Lemma wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
       (0 <= sz1)%Z ->
@@ -245,7 +276,15 @@ Section FlatToRiscv.
 
   Context {RVAX: @AxiomaticRiscv mword _ state State_is_RegisterFile mem _ RVM}.
 
-  Ltac state_calc := map_solver Z mword.
+  Ltac state_calc0 := map_solver Z mword.
+
+  Hypothesis translate_id_if_aligned_4: forall a mode,
+      (regToZ_unsigned a) mod 4 = 0 ->
+      translate mode (ZToReg 4) a = Return a.
+
+  Hypothesis translate_id_if_aligned_8: forall a mode,
+      (regToZ_unsigned a) mod 8 = 0 ->
+      translate mode (ZToReg 8) a = Return a.
 
   (* This phase assumes that register allocation has already been done on the FlatImp
      level, and expects the following to hold: *)
@@ -895,37 +934,6 @@ Section FlatToRiscv.
 
   Definition runsToSatisfying: RiscvMachine -> (RiscvMachine -> Prop) -> Prop := runsTo.
 
-  (* TODO is there a principled way of writing such proofs? *)
-  Lemma reduce_eq_to_sub_and_lt: forall (y z: mword) {T: Type} (thenVal elseVal: T),
-    (if ltu (sub y  z) (fromImm 1) then thenVal else elseVal) =
-    (if reg_eqb y z        then thenVal else elseVal).
-  Proof. (*
-    intros. destruct (weq y z).
-    - subst z. unfold wminus. rewrite wminus_inv.
-      destruct (wlt_dec (wzero wXLEN) $1); [reflexivity|].
-      change (wzero wXLEN) with (natToWord wXLEN 0) in n. unfold wlt in n.
-      exfalso. apply n.
-      do 2 rewrite wordToN_nat. rewrite roundTrip_0.
-      clear.
-      destruct wXLEN as [|w1] eqn: E.
-      + unfold wXLEN in *. destruct bitwidth; discriminate.
-      + rewrite roundTrip_1. simpl. constructor.
-    - destruct (@wlt_dec wXLEN (y ^- z) $ (1)) as [E|NE]; [|reflexivity].
-      exfalso. apply n. apply sub_0_eq.
-      unfold wlt in E.
-      do 2 rewrite wordToN_nat in E.
-      clear -E.
-      destruct wXLEN as [|w1] eqn: F.
-      + unfold wXLEN in *. destruct bitwidth; discriminate.
-      + rewrite roundTrip_1 in E.
-        simpl in E. apply N.lt_1_r in E. change 0%N with (N.of_nat 0) in E.
-        apply Nnat.Nat2N.inj in E. rewrite <- (roundTrip_0 (S w1)) in E.
-        apply wordToNat_inj in E.
-        exact E.
-  Qed.
-*)
-  Admitted.
-
   Ltac simpl_run1 :=
     cbv [run1 execState Monads.put Monads.gets Monads.get Return Bind State_Monad OState_Monad
          execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute
@@ -1047,6 +1055,89 @@ Section FlatToRiscv.
     reflexivity.
   Qed.
 
+  Inductive AllInsts: list Instruction -> Prop :=
+    mkAllInsts: forall l, AllInsts l.
+
+  Ltac head_of_app e :=
+    match e with
+    | ?f ?a => head_of_app f
+    | _ => e
+    end.
+
+  Notation K := Z.
+  Notation V := mword.
+
+  (* only strictly needed if we want to export the goal into a map_solver-only environment,
+     but might result in a speed up if used anyways *)
+  Ltac prepare_for_map_solver :=
+    clear translate_id_if_aligned_4 translate_id_if_aligned_8 BWSP RVAX;
+    repeat match goal with
+             | IH: forall (s : stmt), _ |- _ => clear IH
+             | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
+               let n := fresh "mv" s in
+               forget (FlatImp.modVars var func s) as n
+             | H: Memory.read_mem _ _ = _ |- _ => clear H
+             | H: ?P |- _ =>
+               let h := head_of_app P in
+               match h with
+               | @stmt_not_too_big => clear H
+               | @valid_register => clear H
+               | @valid_registers => clear H
+               | @divisibleBy4 => clear H
+               | @containsMem => clear H
+               | @containsProgram => clear H
+               | @mem_inaccessible => clear H
+               | @containsProgram_app_will_work => clear H
+               | @AllInsts => clear H
+               end
+             | H: @eq ?T _ _ |- _ =>
+               match T with
+            (* | option Semantics.word => don't clear because we have maps of Semantics.word *)
+               | option (map Z mword * Memory.mem) => clear H
+               | option Memory.mem => clear H
+               | list _ => clear H
+               | nat => clear H
+               end
+           end;
+    repeat match goal with
+           | H: ?P |- _ =>
+             progress
+               tryif (let T := type of P in unify T Prop)
+               then revert H
+               else (match P with
+                     | _ => clear H
+                     end)
+           end;
+    repeat match goal with
+           | x: ?T |- _ =>
+             lazymatch T with
+             | MachineWidth _  => fail
+             | MapFunctions _ _  => fail
+             | SetFunctions _ => fail
+             | DecidableEq _ => fail
+             | _ => revert x
+             end
+           end.
+
+  Ltac state_calc_with_logging :=
+    prepare_for_map_solver;
+    idtac "map_solver goal:";
+    match goal with
+    | |- ?G => idtac G
+    end;
+    time state_calc0.
+
+  Ltac state_calc_with_timing :=
+    prepare_for_map_solver;
+    time state_calc0.
+
+  Ltac state_calc_without_logging :=
+    prepare_for_map_solver;
+    state_calc0.
+
+  Ltac state_calc := state_calc_without_logging.
+
+
   Hint Rewrite
       (@associativity  _ (OState_Monad RiscvMachine))
       (@left_identity  _ (OState_Monad RiscvMachine))
@@ -1064,14 +1155,6 @@ Section FlatToRiscv.
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
   Arguments run1: simpl never.
-
-  Hypothesis translate_id_if_aligned_4: forall a mode,
-      (regToZ_unsigned a) mod 4 = 0 ->
-      translate mode (ZToReg 4) a = Return a.
-
-  Hypothesis translate_id_if_aligned_8: forall a mode,
-      (regToZ_unsigned a) mod 8 = 0 ->
-      translate mode (ZToReg 8) a = Return a.
 
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
@@ -1125,9 +1208,6 @@ Section FlatToRiscv.
       let gg' := eval unfold setReg, State_is_RegisterFile in gg in
           progress change gg with gg'
     end.
-
-  Inductive AllInsts: list Instruction -> Prop :=
-    mkAllInsts: forall l, AllInsts l.
 
   Ltac solve_valid_registers :=
     match goal with

@@ -353,6 +353,10 @@ Section FlattenExpr.
     end;
     time state_calc0.
 
+  Ltac state_calc_with_timing :=
+    prepare_for_map_solver;
+    time state_calc0.
+
   Ltac state_calc_without_logging :=
     prepare_for_map_solver;
     state_calc0.
