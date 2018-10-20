@@ -27,9 +27,9 @@ Section FlattenExpr.
   Notation func := (@Syntax.funname (@Semantics.syntax p)).
 
   Context {stateMap: MapFunctions var mword}.
-  Notation state := (map var mword).
+  Notation state := (map var mword) (only parsing).
   Context {varset: SetFunctions var}.
-  Notation vars := (set var).
+  Notation vars := (set var) (only parsing).
   Context {funcMap: MapFunctions func (list var * list var * Syntax.cmd)}.
   Notation env := (map func (list var * list var * Syntax.cmd)).
   Context {funcMap': MapFunctions func (list var * list var * FlatImp.stmt var func)}.
@@ -45,7 +45,7 @@ Section FlattenExpr.
   Hypothesis eval_binop_compat: forall op w w0,
       Op.eval_binop (convert_bopname op) w w0 = Semantics.interp_binop op w w0.
 
-  Ltac state_calc :=
+  Ltac state_calc0 :=
     map_solver (@Syntax.varname (@Semantics.syntax p)) (@Semantics.word p).
   Ltac set_solver :=
     set_solver_generic (@Syntax.varname (@Semantics.syntax p)).
@@ -287,6 +287,78 @@ Section FlattenExpr.
          rewrite Ev
     end.
 
+  Notation K := var.
+  Notation V := mword.
+
+  (* only needed if we want to export the goal into a map_solver-only environment *)
+  Ltac prepare_for_map_solver :=
+    repeat match goal with
+             | H: context [allFreshVars ?ngs] |- _ =>
+               let n := fresh "fv" ngs in
+               forget (allFreshVars ngs) as n
+             | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
+               let n := fresh "mv" s in
+               forget (FlatImp.modVars var func s) as n
+             | H: context [ExprImp.modVars ?s] |- _ =>
+               let n := fresh "emv" in
+               forget (ExprImp.modVars s) as n
+             | H: ExprImp.eval_expr _ _ = _ |- _ => clear H
+             | H: @eq ?T _ _ |- _ =>
+               match T with
+            (* | option Semantics.word => don't clear because we have maps of Semantics.word *)
+               | option (map var mword * Memory.mem) => clear H
+               | option Memory.mem => clear H
+               | nat => clear H
+               end
+           end;
+    repeat match goal with
+           | H: context[?x] |- _ =>
+             let t := type of x in
+             unify t NGstate;
+             clear H
+           end;
+    repeat match goal with
+           | x: NGstate |- _ => clear x
+           end;
+    clear actname_empty convert_bopname eval_binop_compat NG NGstate;
+    (repeat (so fun hyporgoal => match hyporgoal with
+    | context [ZToReg ?x] => let x' := fresh x in forget (ZToReg x) as x'
+    end));
+    repeat match goal with
+           | H: ?P |- _ =>
+             progress
+               tryif (let T := type of P in unify T Prop)
+               then revert H
+               else (match P with
+                     | DecidableEq var => idtac
+                     | _ => clear H
+                     end)
+           end;
+    repeat match goal with
+           | x: ?T |- _ =>
+             lazymatch T with
+             | MachineWidth _  => fail
+             | MapFunctions _ _  => fail
+             | SetFunctions _ => fail
+             | DecidableEq _ => fail
+             | _ => revert x
+             end
+           end.
+
+  Ltac state_calc_with_logging :=
+    prepare_for_map_solver;
+    idtac "map_solver goal:";
+    match goal with
+    | |- ?G => idtac G
+    end;
+    time state_calc0.
+
+  Ltac state_calc_without_logging :=
+    prepare_for_map_solver;
+    state_calc0.
+
+  Ltac state_calc := state_calc_without_logging.
+
   (* Note: If you want to get in the conclusion
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
@@ -306,7 +378,7 @@ Section FlattenExpr.
       | |- context [get _ resVar = Some ?res] =>
          exists 1%nat (put initialL resVar res)
       end.
-      split; state_calc.
+      split; [reflexivity|state_calc].
     - repeat (inversionss; try destruct_one_match_hyp).
       exists 1%nat (put initialL resVar res). repeat split.
       + simpl. unfold extends in Ex. apply Ex in H0. rewrite H0. simpl. reflexivity.
@@ -383,7 +455,6 @@ Section FlattenExpr.
       + clear IHfuelH.
         pose_flatten_var_ineqs.
         state_calc.
-
     - repeat (inversionss; try destruct_one_match_hyp).
       match goal with
       | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
@@ -404,7 +475,8 @@ Section FlattenExpr.
       end.
       specializes P1.
       { eassumption. }
-      { pose_flatten_var_ineqs. clear IHfuelH. state_calc. }
+      { pose_flatten_var_ineqs. clear IHfuelH.
+        state_calc. }
       { pose_flatten_var_ineqs. clear IHfuelH. state_calc. }
       destruct P1 as [fuelL2 P1]. deep_destruct P1.
       exists (S (S (S (fuelL + fuelL2)))). eexists.
@@ -506,7 +578,7 @@ Section FlattenExpr.
       pose_flatten_var_ineqs.
       specialize IHfuelH with (1 := E0) (5 := Ev2) as IH.
       specialize (IH initial2L).
-      specializes IH.
+      specializes IH; [clear IHfuelH .. |].
       { state_calc. }
       { state_calc. }
       { set_solver. }
@@ -538,7 +610,7 @@ Section FlattenExpr.
       destruct P as [fuelLcond [initial2L [EvcondL G]]].
       exists (S fuelLcond) initial2L.
       pose_flatten_var_ineqs.
-      split; [|state_calc].
+      split; [|clear IHfuelH; state_calc].
       simpl in*.
       fuel_increasing_rewrite.
       rewrite G. simpl. simpl_reg_eqb. reflexivity.
