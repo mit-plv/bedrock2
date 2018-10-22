@@ -316,7 +316,7 @@ Section ExprImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      state_calc.
+      state_calc;
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 

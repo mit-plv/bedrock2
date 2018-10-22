@@ -161,10 +161,10 @@ Ltac destructE d :=
   | _ => let E := fresh "E" in destruct d eqn: E
   end.
 
-Ltac destruct_one_match_hyporgoal_test check :=
+Ltac destruct_one_match_hyporgoal_test check cleanup :=
   match goal with
   | |- context[match ?d with _ => _ end]      => check d; destructE d
-  | H: context[match ?d with _ => _ end] |- _ => check d; destructE d
+  | H: context[match ?d with _ => _ end] |- _ => check d; destructE d; cleanup H
   end.
 
 Lemma invert_Some_eq_Some: forall (A: Type) (x1 x2: A),
@@ -174,7 +174,17 @@ Proof.
   congruence.
 Qed.
 
+Lemma forall_Some_eq_Some : forall A (y z: A),
+    (forall x, Some y = Some x -> Some z = Some x) ->
+    z = y.
+Proof.
+  intros.
+  specialize (H _ eq_refl); inversion H; auto.
+Qed.
+
 Ltac invert_Some_eq_Some :=
   repeat match goal with
          | H: Some ?x1 = Some ?x2 |- _ => apply invert_Some_eq_Some in H; subst x2
+         | H: forall _, Some ?y = Some _ -> Some _ = Some _ |- _ =>
+              apply forall_Some_eq_Some in H; subst y
          end.

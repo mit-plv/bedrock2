@@ -234,7 +234,7 @@ Section FlatImp1.
   Lemma modVars_subset_accessedVars: forall s,
     subset (modVars s) (accessedVars s).
   Proof.
-    intro s. induction s; simpl; unfold singleton_set; map_solver var mword.
+    intro s. induction s; simpl; map_solver var mword.
   Qed.
 End FlatImp1.
 
@@ -342,7 +342,7 @@ Section FlatImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      map_solver var mword.
+      map_solver var mword;
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 End FlatImp2.
