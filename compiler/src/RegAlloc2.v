@@ -633,6 +633,7 @@ Section RegAlloc.
       pose proof (guaranteed_updates_are_possibly_written_srcvars s2).
       pose proof (guaranteed_updates_are_possibly_written_impvars s1).
       pose proof (guaranteed_updates_are_possibly_written_impvars s2).
+      (*
       clear func_empty.
       forget (possibly_written_srcvars s1) as ps1.
       forget (possibly_written_impvars s1) as pi1.
@@ -642,13 +643,22 @@ Section RegAlloc.
       forget (guaranteed_updates s2) as g2.
       forget (updateWith' m s1) as u1.
       forget (updateWith' m s2) as u2.
+      *)
+
+      (* Adding this makes it go from 13s to 33s (seems the wrong way round!)
+         Reason:
+         If we keep cond, it will be used to specialize some hypotheses, which seems
+         useless, but in this specific example, it results in a hypothesis with a more
+         desirable destruction candidate being the last hypothesis
+
       repeat match goal with
-             | H: ?P |- _ =>
-               progress tryif (let T := type of P in unify T Prop)
-                        then revert H else clear H
+             | H: ?P |- _ => progress tryif (let T := type of P in unify T Prop)
+                               then idtac else clear H
              end.
+       *)
 
       Time map_solver impvar srcvar.
+
     - specialize (IHs1 m).
       specialize (IHs2 m).
       pose proof (guaranteed_updates_are_possibly_written_srcvars s1).
