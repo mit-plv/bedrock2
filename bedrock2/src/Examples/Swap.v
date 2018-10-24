@@ -1,37 +1,27 @@
 Require Import bedrock2.Macros bedrock2.Syntax.
-Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU bedrock2.NotationsInConstr.
+Require Import bedrock2.BasicC64Syntax bedrock2.BasicALU bedrock2.NotationsInConstr.
 
-Import BinInt String.
+Import BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+Local Existing Instance bedrock2.BasicC64Syntax.Basic_bopnames_params.
+Local Coercion literal (z : Z) : expr := expr.literal z.
+Local Coercion var (x : string) : expr := expr.var x.
 
-Section bsearch.
-  Context {p : unique! StringNamesSyntax.parameters} {b : BasicALU.operations}.
-  Local Coercion literal (z : Z) : expr := expr.literal z.
-  Local Coercion var (x : String.string) : expr := expr.var x.
+Definition swap := ("swap", (["a";"b"], ([]:list varname), bedrock_func_body:(
+  "t" = *(uint8_t*) "b";;
+  *(uint8_t*) "b" = *(uint8_t*) "a";;
+  *(uint8_t*) "a" = "t"
+))).
 
-  Definition swap : string * (list varname * list varname * cmd) := ("swap", (("a"::"b"::nil), nil, bedrock_func_body:(
-    "t" = *(uint8_t*) "b";;
-    *(uint8_t*) "b" = *(uint8_t*) "a";;
-    *(uint8_t*) "a" = "t"
-  ))).
+Definition swap_swap := ("swap_swap", (("a"::"b"::nil), ([]:list varname), bedrock_func_body:(
+  cmd.call [] "swap" [var "a"; var "b"];;
+  cmd.call [] "swap" [var "a"; var "b"]
+))).
 
-  Definition swap_swap : string * (list varname * list varname * cmd) := ("swap_swap", (("a"::"b"::nil), nil, bedrock_func_body:(
-    cmd.call nil "swap" (var "a"::var "b"::nil);;
-    cmd.call nil "swap" (var "a"::var "b"::nil)
-  ))).
-End bsearch.
-
-Require bedrock2.BasicC64Syntax.
-
-Example swap_c_string := Eval compute in
-  BasicC64Syntax.c_func swap.
-(* Print swap_c_string. *)
-
-Import List.ListNotations.
-Require Import bbv.Word.
 Require Import bedrock2.Semantics bedrock2.BasicC64Semantics bedrock2.Map.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require bedrock2.WeakestPrecondition bedrock2.WeakestPreconditionProperties.
+Context (FIXME_MAP_OK : map.ok Semantics.mem).
 
 (*
 Lemma get_sep {key value} {map : map key value} (a:key) (v:value) R m (H : sep (ptsto a v) R m) : map.get m a = Some v.
@@ -90,28 +80,35 @@ Ltac t :=
     end
 end.
 
-Context (__A : map.ok Semantics.mem).
-Lemma swap_ok :
-  forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
-    (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
-  WeakestPrecondition.func
-    (fun _ => True) (fun _ => False) (fun _ _ => True) (fun _ _ _ _ _ => False)
-    (snd (@swap BasicC64Syntax.StringNames_params)) t m (a_addr::b_addr::nil)
-    (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr b) (sep (ptsto 1 b_addr a) R)) m' /\ rets = nil).
+Local Infix "*" := sep.
+Local Infix "*" := sep : type_scope.
+
+Definition spec_of_swap := fun functions =>
+  forall a_addr a b_addr b m R t,
+    (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m ->
+    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
+      (fst swap) t m [a_addr; b_addr]
+      (fun t' m' rets => t=t'/\ (ptsto 1 a_addr b * (ptsto 1 b_addr a * R)) m' /\ rets = nil).
+
+Lemma swap_ok : forall functions, spec_of_swap (swap::functions).
 Proof.
+  cbv[spec_of_swap].
   intros. rename H into Hm.
   repeat t.
 Qed.
 
+Definition spec_of_swap_swap := fun functions =>
+  forall a_addr a b_addr b m R t,
+    (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m ->
+    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
+      (fst swap_swap) t m [a_addr; b_addr]
+      (fun t' m' rets => t=t' /\ (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m' /\ rets = nil).
+  
 Lemma swap_swap_ok :
-  forall a_addr a b_addr b (m:map.rep (value:=@Semantics.byte _)) R t,
-    (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m ->
-  WeakestPrecondition.func
-    (fun _ => True) (fun _ => False) (fun _ _ => True) (WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) [(@swap BasicC64Syntax.StringNames_params)])
-    (snd (@swap_swap BasicC64Syntax.StringNames_params)) t m (a_addr::b_addr::nil)
-    (fun t' m' rets => t=t' /\ (sep (ptsto 1 a_addr a) (sep (ptsto 1 b_addr b) R)) m' /\ rets = nil).
+  forall functions, spec_of_swap functions -> spec_of_swap_swap (swap_swap::functions).
 Proof.
-  intros. rename H into Hm.
+  cbv [spec_of_swap spec_of_swap_swap].
+  intros ? Hcall; intros. rename H into Hm.
   eexists.
   eexists.
   eexists.
@@ -121,9 +118,10 @@ Proof.
   eexists.
   eexists.
   eexists.
-  intros. eapply WeakestPreconditionProperties.Proper_func.
-  6: eapply swap_ok.
-  1,2,3,4,5 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].
+  cbn [WeakestPrecondition.list_map WeakestPrecondition.expr].
+  eapply WeakestPreconditionProperties.Proper_call.
+  5: eapply Hcall.
+  1,2,3 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; solve [typeclasses eauto with core].
   1,2: cycle 1.
   refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
   intros ? m' ? (?&Hm'&?).
@@ -142,9 +140,10 @@ Proof.
   eexists.
   eexists.
   eexists.
-  intros. eapply WeakestPreconditionProperties.Proper_func.
-  6: eapply swap_ok.
-  1,2,3,4,5 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; try solve [typeclasses eauto with core].
+  cbn [WeakestPrecondition.list_map WeakestPrecondition.expr].
+  eapply WeakestPreconditionProperties.Proper_call.
+  5: eapply Hcall.
+  1,2,3 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; solve [typeclasses eauto with core].
   1,2: cycle 1.
   refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
   intros ? m' ? (?&Hm'&?).
@@ -163,3 +162,6 @@ Proof.
   eassumption.
   eexists.
 Qed.
+
+Lemma link_swap_swap_swap_swap : spec_of_swap_swap (swap_swap::swap::nil).
+Proof. apply swap_swap_ok, swap_ok. Qed.
