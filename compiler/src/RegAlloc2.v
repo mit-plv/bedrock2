@@ -310,7 +310,7 @@ Section RegAlloc.
         fold_left (fun s '(x, x') => union s (singleton_set x')) binds empty_set
       end.
 
-  Definition updateWith(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
+  Definition updateWith_modular(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
     let m := remove_values m (possibly_written_srcvars s) in
     let m := remove_keys m (possibly_written_impvars s) in
     update_map m (guaranteed_updates s).
@@ -363,7 +363,7 @@ Section RegAlloc.
 
   (* impvar -> srcvar mappings which are guaranteed to hold after running s
      (under-approximation) *)
-  Definition updateWith' :=
+  Definition updateWith_recursive :=
     fix rec(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
       match s with
       | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
@@ -476,10 +476,10 @@ Section RegAlloc.
   *)
 
   Lemma updateWith_idemp: forall s m,
-      updateWith (updateWith m s) s = updateWith m s.
+      updateWith_modular (updateWith_modular m s) s = updateWith_modular m s.
   Proof.
     intros.
-    unfold updateWith.
+    unfold updateWith_modular.
     remember (possibly_written_srcvars s) as R1.
     remember (possibly_written_impvars s) as R2.
     remember (guaranteed_updates s) as U.
@@ -490,6 +490,8 @@ Section RegAlloc.
     reflexivity.
   Qed. *)
   Admitted.
+
+  Definition updateWith := updateWith_recursive.
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
@@ -615,6 +617,7 @@ Section RegAlloc.
        extends_intersect_map_r
     : checker_hints.
 
+  (*
   Lemma updateWith_alt1: forall s m,
       extends (updateWith' m s) (updateWith m s).
   Proof.
@@ -659,18 +662,80 @@ Section RegAlloc.
 
       Time map_solver impvar srcvar.
 
-    - specialize (IHs1 m).
-      specialize (IHs2 m).
+    - repeat match goal with
+      | IH: forall (m: map impvar srcvar), extends (updateWith' m ?s) _
+        |- context[updateWith' ?m' ?s]
+        => let IH' := fresh IH "_" in unique pose proof (IH m') as IH'
+      end.
       pose proof (guaranteed_updates_are_possibly_written_srcvars s1).
       pose proof (guaranteed_updates_are_possibly_written_srcvars s2).
       pose proof (guaranteed_updates_are_possibly_written_impvars s1).
       pose proof (guaranteed_updates_are_possibly_written_impvars s2).
-      (* Time map_solver impvar srcvar. takes 260s and cannot solve the goal, need
-         to specialize IHs1 and IHs2 with other ms from the goal too *)
+      clear func_empty.
+      repeat match goal with
+             | H: ?P |- _ => progress tryif (let T := type of P in unify T Prop)
+                               then idtac else clear H
+             end.
+
+      Time map_solver impvar srcvar.
+
+    - repeat match goal with
+      | IH: forall (m: map impvar srcvar), extends (updateWith' m ?s) _
+        |- context[updateWith' ?m' ?s]
+        => let IH' := fresh IH "_" in unique pose proof (IH m') as IH'
+      end.
+      pose proof (guaranteed_updates_are_possibly_written_srcvars s1).
+      pose proof (guaranteed_updates_are_possibly_written_srcvars s2).
+      pose proof (guaranteed_updates_are_possibly_written_impvars s1).
+      pose proof (guaranteed_updates_are_possibly_written_impvars s2).
+
+
+      clear func_empty.
+      clear IHs1 IHs2.
+      repeat match goal with
+             | H: ?P |- _ => progress tryif (let T := type of P in unify T Prop)
+                               then revert H else clear H
+             end.
+      set (f1 := fun m0 => updateWith' m0 s1). change (updateWith' m s1) with (f1 m).
+      set (f2 := fun m0 => updateWith' m0 s2). change (updateWith' (f1 m) s2) with (f2 (f1 m)).
+      forget (possibly_written_srcvars s1) as ps1.
+      forget (possibly_written_impvars s1) as pi1.
+      forget (possibly_written_srcvars s2) as ps2.
+      forget (possibly_written_impvars s2) as pi2.
+      forget (guaranteed_updates s1) as g1.
+      forget (guaranteed_updates s2) as g2.
+
+
+
+      Definition is_empty{E: Type}{SF: SetFunctions E}(s: set E): Prop := subset s empty_set.
+      assert (is_empty pi1 <-> is_empty ps1) as IE1 by admit.
+      assert (is_empty pi2 <-> is_empty ps2) as IE2 by admit.
+      unfold is_empty in *.
+      destruct IE1. destruct IE2. revert H H0 H1 H2.
+
+      clearbody f1 f2. clear s1 s2. clear func.
+      (* Still doesn't hold:
+Nitpick found a counterexample for card 'a = 1 and card 'b = 1:
+
+  Free variables:
+    f1 = (λx. _)(Map.empty := [a⇩1 ↦ b⇩1], [a⇩1 ↦ b⇩1] := Map.empty)
+    f2 = (λx. _)(Map.empty := [a⇩1 ↦ b⇩1], [a⇩1 ↦ b⇩1] := Map.empty)
+    g1 = [a⇩1 ↦ b⇩1]
+    g2 = Map.empty
+    m = Map.empty
+    pi1 = {a⇩1}
+    pi2 = {a⇩1}
+    ps1 = {b⇩1}
+    ps2 = {b⇩1}
+
+But this counterexample has inconsistent g2, pi2 and ps2, but how to state that they
+have to be consistent?
+Need a "witness": multimap of possible_updates or list (disjunction) of possible update-maps
+       *)
       admit.
     - admit.
-    - admit.
   Abort.
+*)
 
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
       eval n st1 m1 s = Some (st2, m2) ->
@@ -712,11 +777,42 @@ Section RegAlloc.
       repeat (rewrite reg_eqb_eq by congruence);
       unfold updateWith in *;
       simpl;
-      rewrite? update_map_with_singleton;
-      rewrite? remove_values_singleton_set;
-      rewrite? update_map_with_empty;
-      rewrite? remove_values_empty_set;
+      rewrite? @update_map_with_singleton;
+      rewrite? @remove_values_singleton_set;
+      rewrite? @update_map_with_empty;
+      rewrite? @remove_keys_singleton_set;
+      rewrite? @remove_values_empty_set;
+      rewrite? @remove_keys_empty_set;
+      rewrite? @put_remove_same;
       eauto with checker_hints.
+
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+    - (* if then *)
+      edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
+      eexists; split; cycle 1.
+      + clear IHn.
+        eapply states_compat_extends; [|eassumption].
+        admit.
+      + (*
+      pose proof (guaranteed_updates_are_possibly_written annotated1) as P1.
+      pose proof (guaranteed_updates_are_possibly_written annotated2) as P2.
+      pose proof (guaranteed_updates_are_possibly_written (ASIf cond annotated1 annotated2))
+        as P3.
+      simpl in P3.
+      clear -impvar_eq_dec func_empty P1 P2 P3.
+      *)
+
+      admit.
+    - admit.
+    - admit.
+    - (* loop not done *)
+      admit.
+    - (* SSeq *)
+      admit.
+
 (*
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eexists; split; [eassumption|].
