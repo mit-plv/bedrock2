@@ -130,6 +130,9 @@ Section MapDefinitions.
 
   Definition extends(s1 s2: map K V) := forall x w, get s2 x = Some w -> get s1 x = Some w.
 
+  Definition bw_extends(s1 s2: map K V) := forall k v,
+      reverse_get s2 v = Some k -> reverse_get s1 v = Some k.
+
   Definition only_differ(s1: map K V)(vs: set K)(s2: map K V) :=
     forall x, x \in vs \/ get s1 x = get s2 x.
 
@@ -219,7 +222,7 @@ Section MapDefinitions.
 
 End MapDefinitions.
 
-Hint Unfold extends only_differ agree_on undef_on : unf_map_defs.
+Hint Unfold extends bw_extends only_differ agree_on undef_on : unf_map_defs.
 
 Ltac rew_set_op_map_specs H :=
   let t lemma := rewrite lemma in H in
@@ -260,9 +263,10 @@ Hint Rewrite
      @get_update_map
      @domain_spec
      @range_spec
-     (* TODO operations without a rewrite lemma here:
-     - reverse_get
-     *)
+     (* Note: reverse_get doesn't have a one-lemma spec, so map_solver will not
+        automatically figure out that it should destruct this option *)
+     (*@reverse_get_Some <-- will not replace reverse_get *)
+     (*@reverse_get_None <-- not usable for rewrite *)
   : rew_map_specs.
 
 
@@ -275,13 +279,11 @@ Ltac canonicalize_map_hyp H :=
   try exists_to_forall H;
   try specialize (H eq_refl).
 
-Ltac canonicalize_all_map_hyps K V :=
+Ltac canonicalize_all K V :=
   repeat match goal with
          | H: _ |- _ => progress canonicalize_map_hyp H
          end;
-  (* TODO we should call this whenever we rewrite with rew_map_specs,
-     calling it here is just convenient *)
-  rewrite_get_put K V.
+  repeat (autorewrite with rew_set_op_specs rew_map_specs || rewrite_get_put K V).
 
 Ltac map_solver_should_destruct K V d :=
   let T := type of d in
@@ -331,8 +333,7 @@ Ltac map_solver K V :=
   repeat autounfold with unf_map_defs unf_set_defs in *;
   destruct_products;
   intros;
-  repeat autorewrite with rew_set_op_specs rew_map_specs;
-  canonicalize_all_map_hyps K V;
+  canonicalize_all K V;
   repeat match goal with
   | H: forall (x: ?E), _, y: ?E |- _ =>
     first [ unify E K | unify E V ];
@@ -347,7 +348,7 @@ Ltac map_solver K V :=
   let solver := congruence || auto || (exfalso; eauto) in
   let fallback := (destruct_one_map_match K V;
                    invert_Some_eq_Some;
-                   canonicalize_all_map_hyps K V) in
+                   canonicalize_all K V) in
   repeat (propositional;
           propositional_ors;
           try solve [ solver ];

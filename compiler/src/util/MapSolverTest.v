@@ -19,6 +19,32 @@ Section Tests.
   Lemma extends_refl: forall s, extends s s.
   Proof. t. Qed.
 
+  Lemma extends_trans: forall s1 s2 s3,
+      extends s1 s2 ->
+      extends s2 s3 ->
+      extends s1 s3.
+  Proof. t. Qed.
+
+  Lemma extends_intersect_map_l: forall r1 r2,
+      extends r1 (intersect_map r1 r2).
+  Proof. t. Qed.
+
+  Lemma extends_intersect_map_r:
+    forall r1 r2, extends r2 (intersect_map r1 r2).
+  Proof. t. Qed.
+
+  Lemma extends_intersect_map_lr: forall m11 m12 m21 m22,
+      extends m11 m21 ->
+      extends m12 m22 ->
+      extends (intersect_map m11 m12) (intersect_map m21 m22).
+  Proof. t. Qed.
+
+  Lemma intersect_map_extends: forall m1 m2 m,
+      extends m1 m ->
+      extends m2 m ->
+      extends (intersect_map m1 m2) m.
+  Proof. t. Qed.
+
   Lemma only_differ_union_l: forall s1 s2 r1 r2,
     only_differ s1 r1 s2 ->
     only_differ s1 (union r1 r2) s2.
@@ -77,6 +103,39 @@ Section Tests.
     extends s2 s1 ->
     extends (put s2 x v) (put s1 x v).
   Proof. t. Qed.
+
+  Lemma reverse_get_put_diff: forall m v1 v2 k,
+      v1 <> v2 ->
+      reverse_get (put m k v1) v2 = reverse_get m v2.
+  Proof.
+    (* might not hold for an efficient implementation which restructures the map on "put" *)
+  Abort.
+
+  Lemma reverse_get_put: forall m v1 v2 k1,
+      let q := reverse_get (put m k1 v1) v2 in
+      ((exists k2, reverse_get m v2 = Some k2) /\
+       ((exists k2, q = Some k2) \/ (q = Some k1 /\ v1 = v2))) \/
+      (reverse_get m v1 = None /\ (q = if (dec (v1 = v2)) then Some k1 else None)).
+  Proof.
+    (* might hold, but who wants to use that? *)
+  Abort.
+
+  Lemma bw_extends_put_same: forall m1 m2 k v,
+      bw_extends m1 m2 ->
+      bw_extends (put (remove_by_value m1 v) k v) (put (remove_by_value m2 v) k v).
+  Proof.
+    unfold bw_extends.
+    intros.
+    apply reverse_get_Some in H0.
+    destruct (dec (k = k0)).
+    - subst k0.
+      rewrite get_put_same in H0. inversion H0. subst v0.
+      admit.
+    - rewrite get_put_diff in H0 by assumption.
+      rewrite get_remove_by_value in H0.
+      destruct (dec (get m2 k0 = Some v)); [discriminate|].
+      assert (v <> v0) by congruence.
+  Abort.
 
   Lemma only_differ_get_unchanged: forall s1 s2 x v d,
     get s1 x = v ->

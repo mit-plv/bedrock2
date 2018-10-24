@@ -18,29 +18,16 @@ Section TODO.
   Axiom domain_put: forall k v m, domain (put m k v) = union (domain m) (singleton_set k).
   *)
 
-  (* operations *)
-  Axiom reverse_get: map K V -> V -> option K.
-  Axiom intersect_map: map K V -> map K V -> map K V.
-  Axiom remove_by_value: map K V -> V -> map K V.
-
   (* specs *)
   Axiom put_put_same: forall k v1 v2 m, put (put m k v1) k v2 = put m k v2.
   Axiom reverse_reverse_get: forall k v m, reverse_get m v = Some k -> get m k = Some v.
   Axiom get_in_range: forall k v m, get m k = Some v -> v \in range m.
   Axiom remove_by_value_spec: forall k v m, get (remove_by_value m v) k <> Some v.
-  Axiom get_intersect_map: forall k v m1 m2,
-      get (intersect_map m1 m2) k = Some v <-> get m1 k = Some v /\ get m2 k = Some v.
 
   (* TODO some of this should go into state calculus *)
   (* probably derived *)
   Axiom not_in_range_of_remove_by_value: forall m v, ~ v \in range (remove_by_value m v).
   Axiom extends_remove_by_value: forall m v, extends m (remove_by_value m v).
-  Axiom extends_intersect_map_l: forall r1 r2, extends r1 (intersect_map r1 r2).
-  Axiom extends_intersect_map_r: forall r1 r2, extends r2 (intersect_map r1 r2).
-  Axiom extends_intersect_map_lr: forall m11 m12 m21 m22,
-      extends m11 m21 ->
-      extends m12 m22 ->
-      extends (intersect_map m11 m12) (intersect_map m21 m22).
 
   Axiom remove_by_value_put: forall k v m,
       remove_by_value (put m k v) v = remove_by_value m v.
@@ -138,6 +125,61 @@ Section RegAlloc.
     induction s; intros; simpl in *; unfold loop_inv in *; eauto 7 with map_hints.
   Qed.
 
+  Lemma mappings_intersect_map: forall s m1 m2,
+      mappings (intersect_map m1 m2) s = intersect_map (mappings m1 s) (mappings m2 s).
+  Proof.
+    induction s; intros; simpl in *; unfold loop_inv; eauto with map_hints.
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+    - rewrite IHs1.
+      (* used to hold at some point
+      rewrite IHs2.
+      forget (mappings m1 s1) as m11.
+      forget (mappings m1 s2) as m12.
+      forget (mappings m2 s1) as m21.
+      forget (mappings m2 s2) as m22.
+      rewrite? intersect_map_assoc.
+      f_equal.
+      rewrite <-? intersect_map_assoc.
+      f_equal.
+      apply intersect_map_comm.
+    - rewrite IHs1. rewrite IHs2. rewrite IHs1.
+      forget (mappings (mappings (mappings m2 s1) s2) s1) as m2121.
+      forget (mappings (mappings (mappings m1 s1) s2) s1) as m1121.
+      forget (mappings m1 s1) as m11.
+      forget (mappings m2 s1) as m21.
+      rewrite? intersect_map_assoc.
+      f_equal.
+      rewrite <-? intersect_map_assoc.
+      f_equal.
+      apply intersect_map_comm.
+    - rewrite IHs1. rewrite IHs2. reflexivity.
+  Qed.
+       *)
+  Admitted.
+
+  Lemma mappings_mappings_extends_mappings: forall s m,
+      extends (mappings (mappings m s) s) (mappings m s).
+  Proof.
+    induction s; intros; simpl in *; try solve [ map_solver impvar srcvar ].
+    - apply intersect_map_extends.
+      +
+  Admitted.
+
+  Lemma mappings_bw_monotone: forall s m1 m2,
+      bw_extends m1 m2 ->
+      bw_extends (mappings m1 s) (mappings m2 s).
+  Proof using.
+    induction s; intros; simpl in *; unfold loop_inv in *; eauto 7 with map_hints.
+    admit. admit. admit. admit.
+    admit.
+    eapply IHs1.
+    (* TODO not sure! *)
+  Admitted.
+
   Lemma mappings_idemp: forall s m1 m2,
       m2 = mappings m1 s ->
       mappings m2 s = m2.
@@ -152,7 +194,7 @@ Section RegAlloc.
       - admit. (* ok *)
       - symmetry. eapply IHs2. (* stuck in a loop *)
 *)
-  Abort.
+  Admitted.
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
@@ -284,17 +326,86 @@ Section RegAlloc.
     intros. unfold loop_inv. eauto with checker_hints.
   Qed.
 
+  (* depends on unproven mappings_intersect_map mappings_mappings_extends_mappings *)
   Lemma loop_inv_step: forall r s1 s2,
       let Inv := loop_inv mappings r s1 s2 in
       extends (mappings (mappings Inv s1) s2) Inv.
   Proof.
     intros. subst Inv. unfold loop_inv.
+    change (mappings (mappings r s1) s2) with (mappings r (ASSeq s1 s2)).
+    change (mappings (mappings (intersect_map r (mappings r (ASSeq s1 s2))) s1) s2)
+      with (mappings (intersect_map r (mappings r (ASSeq s1 s2))) (ASSeq s1 s2)).
+    forget (ASSeq s1 s2) as s. clear s1 s2.
+    rewrite mappings_intersect_map.
+    eapply extends_trans; [|apply extends_intersect_map_r].
+    apply intersect_map_extends.
+    - apply extends_refl.
+    - apply mappings_mappings_extends_mappings.
+  Qed.
+
+  Lemma loop_inv_step_bw: forall r s1 s2,
+      let Inv := loop_inv mappings r s1 s2 in
+      bw_extends (mappings (mappings Inv s1) s2) Inv.
+  Proof using.
+    intros. subst Inv. unfold loop_inv.
   Admitted.
+
+  Lemma extends_loop_inv: forall r s1 s2,
+      let Inv := loop_inv mappings r s1 s2 in
+      extends Inv (loop_inv mappings Inv s1 s2).
+  Proof.
+    intros.
+    subst Inv. unfold loop_inv.
+    apply extends_intersect_map_lr.
+    - apply extends_intersect_map_l.
+    - apply mappings_monotone. apply mappings_monotone.
+      apply extends_intersect_map_l.
+  Qed.
+
+  Lemma bw_extends_loop_inv: forall r s1 s2,
+      let Inv := loop_inv mappings r s1 s2 in
+      bw_extends Inv (loop_inv mappings Inv s1 s2).
+  Proof using.
+  Admitted.
+
+  (* this direction would be needed to get full idempotence of loop_inv *)
+  Lemma loop_inv_extends: forall r s1 s2,
+      let Inv := loop_inv mappings r s1 s2 in
+      extends (loop_inv mappings Inv s1 s2) Inv.
+  Proof.
+    intros. subst Inv.
+    unfold loop_inv.
+    change (mappings (mappings r s1) s2) with (mappings r (ASSeq s1 s2)).
+    change (mappings (mappings (intersect_map r (mappings r (ASSeq s1 s2))) s1) s2)
+      with (mappings (intersect_map r (mappings r (ASSeq s1 s2))) (ASSeq s1 s2)).
+    forget (ASSeq s1 s2) as s. clear s1 s2.
+    remember (intersect_map r (mappings r s)) as r1.
+  (*
+  Proof.
+    intros. unfold extends, loop_inv. intros.
+    apply intersect_map_spec.
+    split; [assumption|].
+
+    pose proof mappings_monotone as P. unfold extends in P.
+    eapply P.
+
+    subst Inv. unfold loop_inv.
+    set (a := (intersect_map r (mappings (mappings r s1) s2))).
+
+    pose proof extends_loop_inv as Q. simpl in Q.*)
+  Abort.
 
   Lemma loop_inv_idemp: forall r s1 s2,
       let Inv := loop_inv mappings r s1 s2 in
       loop_inv mappings Inv s1 s2 = Inv.
   Proof using .
+  Abort.
+
+  Lemma checker_monotone: forall r1 r2 s s',
+      extends r2 r1 ->
+      checker r1 s = Some s' ->
+      checker r2 s = Some s'.
+  Proof using. (* maybe needs to be proven together with checker_correct *)
   Admitted.
 
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
@@ -322,9 +433,11 @@ Section RegAlloc.
         clear H
       end;
       subst;
+      (*
       match goal with
       | H: checker _ ?x = _ |- _ => pose proof H as C; remember x as AS in C
       end;
+      *)
       simpl in *;
       repeat (destruct_one_match_hyp; [|discriminate]);
       repeat match goal with
@@ -368,34 +481,39 @@ Section RegAlloc.
       destruct_products.
       eapply IHn in E1; [| |reflexivity|]; [|eassumption|eassumption].
       destruct_products.
+      (* get rid of r and replace it by Inv everywhere *)
+      remember (loop_inv mappings r annotated1 annotated2) as Inv.
+      match goal with
+      | H: states_compat ?s r ?s' |- _ => assert (states_compat s Inv s') as HH; [|clear H]
+      end.
+      {
+        subst Inv. unfold loop_inv.
+        eapply states_compat_extends; [|eassumption].
+        eauto with checker_hints.
+      }
       specialize IHn with (annotated := (ASLoop annotated1 cond annotated2)).
       move IHn at bottom.
-      specialize IHn with (r := (loop_inv mappings r annotated1 annotated2)). (* <- a choice *)
+      specialize IHn with (r := Inv).
       specialize IHn with (2 := eq_refl).
       specialize IHn with (1 := H).
       specialize IHn with (s' := SLoop s i s0).
       edestruct IHn as [? [? ?]].
-      + clear -C.
-        simpl in *.
-        repeat (destruct_one_match_hyp; [|discriminate]).
-        repeat match goal with
-               | H: Some _ = Some _ |- _ => inversion H; subst; clear H
-               | H: reverse_get _ _ = Some _ |- _ =>
-                 let H' := fresh H "_rrg" in
-                 unique pose proof (reverse_reverse_get _ _ _ H) as H'
-               end.
-        set (Inv := (loop_inv mappings r annotated1 annotated2)) in *.
-        set (m1 := (mappings Inv annotated1)) in *.
-        set (Inv' := (loop_inv mappings Inv annotated1 annotated2)).
-        assert (Inv' = Inv) as EI. {
-          clear. subst Inv'. apply loop_inv_idemp.
-        }
-        rewrite EI.
-        subst m1.
-        rewrite_match.
-        reflexivity.
+      + simpl.
+        replace (reverse_get
+                   (mappings (loop_inv mappings Inv annotated1 annotated2) annotated1) cond)
+          with (Some i).
+        * eapply checker_monotone in C1.
+          admit.
+          (* would need opposite direction of extends_loop_inv !*) admit.
+        * symmetry.
+          clear -E HeqInv.
+          pose proof mappings_bw_monotone as P.
+          unfold bw_extends in P.
+          eapply P; [|exact E]. clear E P.
+          intros.
+          (* Again, would need opposite direction of extends_loop_inv !*) admit.
       + eapply states_compat_extends; [|eassumption].
-        set (Inv := (loop_inv mappings r annotated1 annotated2)) in *.
+        subst Inv.
         apply loop_inv_step.
       + eexists.
         rewrite_match.
@@ -405,8 +523,9 @@ Section RegAlloc.
         rewrite reg_eqb_ne by congruence.
         split; [eassumption|].
         simpl in H1.
-        rewrite loop_inv_idemp in H1.
-        exact H1.
+        eapply states_compat_extends; [|eassumption].
+        eapply mappings_monotone.
+        (* Again, would need opposite direction of extends_loop_inv !*) admit.
 
     - clear Case_SSeq.
       eapply IHn in E.
@@ -417,6 +536,6 @@ Section RegAlloc.
       rewrite El. all: typeclasses eauto with core.
     - clear Case_SCall.
       discriminate.
-  Qed.
+  Admitted.
 
 End RegAlloc.
