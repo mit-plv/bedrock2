@@ -53,7 +53,7 @@ Section WeakestPrecondition.
       | cmd.skip => post t m l
       | cmd.set x ev =>
         expr m l ev (fun v =>
-        bind_eq l <- map.put l x v;
+        let l := map.put l x v in
         post t m l)
       | cmd.store sz ea ev =>
         expr m l ea (fun a =>
