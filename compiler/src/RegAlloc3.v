@@ -1,6 +1,4 @@
 Require Import compiler.FlatImp.
-Require Import compiler.StateCalculus.
-Require Import compiler.StateCalculusTacticTest.
 Require Import compiler.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
@@ -95,6 +93,10 @@ Section RegAlloc.
   Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
   Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
 
+  Definition loop_inv(mappings: map impvar srcvar -> astmt -> map impvar srcvar)
+                     (m: map impvar srcvar)(s1 s2: astmt): map impvar srcvar :=
+    intersect_map m (mappings (mappings m s1) s2).
+
   (* impvar -> srcvar mappings which are guaranteed to hold after running s
      (under-approximation) *)
   Definition mappings :=
@@ -107,17 +109,7 @@ Section RegAlloc.
           put (remove_by_value m x) x' x
       | ASStore a v => m
       | ASIf cond s1 s2 => intersect_map (rec m s1) (rec m s2)
-      | ASLoop s1 cond s2 =>
-          (* mi = map if loop was repeated i times *)
-          let m0 := rec m s1 in
-          let m1 := rec (rec m0 s2) s1 in
-          (*
-          let m2 := rec (rec m1 s2) s1 in
-          let m3 := rec (rec m2 s2) s1 in
-          ...
-          all further fixpoint iterations will do the same, so m1=m2=m3=...,
-          so no need to perform them *)
-          intersect_map m0 m1
+      | ASLoop s1 cond s2 => rec (loop_inv rec m s1 s2) s1
       | ASSeq s1 s2 => rec (rec m s1) s2
       | ASSkip => m
       | ASCall binds f args => empty_map (* TODO *)
@@ -138,65 +130,6 @@ Section RegAlloc.
       - symmetry. eapply IHs2. (* stuck in a loop *)
 *)
   Abort.
-
-  Hint Resolve
-       extends_put_same
-       extends_remove_by_value_same
-       extends_intersect_map_lr
-       extends_refl
-    : map_hints.
-
-  Hint Rewrite
-       remove_by_value_put
-       remove_by_value_idemp
-    : map_rew.
-
-  Hint Extern 1 => autorewrite with map_rew : map_hints.
-
-  Lemma mappings_monotone: forall s m1 m2,
-      extends m1 m2 ->
-      extends (mappings m1 s) (mappings m2 s).
-  Proof.
-    induction s; intros; simpl in *; eauto 7 with map_hints.
-  Qed.
-
-  Lemma mappings_mappings_extends_mappings: forall s m,
-      extends (mappings (mappings m s) s) (mappings m s).
-  Proof.
-    induction s; intros; simpl in *; eauto with map_hints.
-
-    - state_calc_generic impvar srcvar.
-      rewrite get_intersect_map in *.
-      destruct H.
-  Abort.
-
-  Lemma mappings_extends_mappings_mappings: forall s m,
-      extends (mappings m s) (mappings (mappings m s) s).
-  Proof.
-  Abort.
-
-  Lemma mappings_idemp: forall s m,
-      mappings (mappings m s) s = mappings m s.
-  Proof.
-    induction s; intros; simpl in *;
-      rewrite? remove_by_value_put;
-      rewrite? remove_by_value_idemp;
-      try reflexivity.
-    (*
-    - apply equality_by_extends.
-      +
-
-    - f_equal.
-      + f_equal.
-
-      + transitivity (mappings (mappings m s1) s1); [|apply IHs1].
-        apply equality_by_extends.
-        * apply mappings_monotone.
-
-     *)
-
-  Abort.
-
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
@@ -224,8 +157,8 @@ Section RegAlloc.
           Some (SIf cond' s1' s2')
       | ASLoop s1 cond s2 =>
           bind_opt cond' <- reverse_get m cond;
-          let m1 := intersect_map m (mappings m s) in
-          let m2 := intersect_map (mappings m s1) (mappings m1 s) in
+          let m1 := loop_inv mappings m s1 s2 in
+          let m2 := mappings m1 s1 in
           bind_opt s1' <- rec m1 s1;
           bind_opt s2' <- rec m2 s2;
           Some (SLoop s1' cond' s2')
@@ -361,25 +294,83 @@ Section RegAlloc.
       repeat (rewrite reg_eqb_ne by congruence);
       repeat (rewrite reg_eqb_eq by congruence);
       eauto with checker_hints.
-    - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
+    - clear Case_SIf_Then.
+      edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eauto with checker_hints.
-    - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
+    - clear Case_SIf_Else.
+      edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eauto with checker_hints.
-    - edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
-      rewrite H0.
-      pose proof H1 as P.
+(*
+    - eapply IHn in E0.
+      destruct_products.
+      eexists.
+      rewrite E0l.
+      pose proof E0r as P.
       unfold states_compat in P.
       specialize P with (2 := H).
       rewrite P.
-      + rewrite reg_eqb_eq by reflexivity.
-        eexists; split; [ reflexivity | ].
-        eapply states_compat_extends; [|eassumption].
+      rewrite reg_eqb_eq by reflexivity.
+      split; [ reflexivity | ].
+      set (Inv := (intersect_map r
+                (intersect_map (mappings r annotated1)
+                               (mappings (mappings (mappings r annotated1) annotated2) annotated1)))) in *.
 
-        Search states_compat.
-        eauto 10 with checker_hints.
-      eauto with checker_hints.
+      match goal with
+      | |- states_compat _ ?th _ => replace th with Inv
+      end.
+      admit.
+      subst Inv.
+
+      set (yy := (intersect_map (mappings r annotated1)
+       (mappings (mappings (mappings r annotated1) annotated2) annotated1))).
+
+states_compat st2
+          (mappings
+             (intersect_map r
+                (intersect_map (mappings r annotated1)
+                   (mappings (mappings (mappings r annotated1) annotated2) annotated1)))
+             annotated1) st2'
+
+      cut (states_compat st2 ((mappings r annotated1)) st2').
+      {
+      generalize (    (
+                     (mappings (mappings (mappings r annotated1) annotated2) annotated1))).
+      generalize (mappings r annotated1).
+      clear.
+      admit. }
+      {
+
+      heeeree!
 
 
+      eapply states_compat_extends; [|eassumption].
+      set (xx :=     (intersect_map (mappings r annotated1)
+       (mappings (mappings (mappings r annotated1) annotated2) annotated1))).
+*)
+    - clear Case_SLoop_Done.
+      edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
+      + eapply states_compat_extends; [|eassumption].
+        unfold loop_inv.
+        eauto with checker_hints.
+      + rewrite H0.
+        pose proof H1 as P.
+        unfold states_compat in P.
+        specialize P with (2 := H).
+        rewrite P.
+        * rewrite reg_eqb_eq by reflexivity. eauto.
+        * (* TODO how to get from E to this? *)
+          admit.
+    - clear Case_SLoop_NotDone.
+      admit.
+    - clear Case_SSeq.
+      eapply IHn in E.
+      destruct_products.
+      eapply IHn in E0.
+      destruct_products.
+      eexists.
+      rewrite El. all: typeclasses eauto with core.
+    - clear Case_SCall.
+      discriminate.
   Abort.
 
 End RegAlloc.
