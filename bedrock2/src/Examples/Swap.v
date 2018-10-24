@@ -23,6 +23,17 @@ Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require bedrock2.WeakestPrecondition bedrock2.WeakestPreconditionProperties.
 Context (FIXME_MAP_OK : map.ok Semantics.mem).
 
+Section WithT.
+  Context {T : Type}.
+  Fixpoint bindcmd (c : cmd) (k : cmd -> T) {struct c} : T :=
+    match c with
+    | cmd.cond e c1 c2 => bindcmd c1 (fun c1 => bindcmd c2 (fun c2 => let c := cmd.cond e c1 c2 in k c))
+    | cmd.seq c1 c2 => bindcmd c1 (fun c1 => bindcmd c2 (fun c2 => let c := cmd.seq c1 c2 in k c))
+    | cmd.while e c => bindcmd c (fun c => let c := c in k c)
+    | c => let c := c in k c
+    end.
+End WithT.
+
 (*
 Lemma get_sep {key value} {map : map key value} (a:key) (v:value) R m (H : sep (ptsto a v) R m) : map.get m a = Some v.
 Admitted.
@@ -56,6 +67,11 @@ Lemma store_sep sz a v1 v2 R m (H : sep (ptsto sz a v1) R m)
   exists m', store sz m a v2 = Some m' /\ post m'.
 Admitted.
 
+Tactic Notation "eabstract" tactic3(tac) :=
+let G := match goal with |- ?G => G end in
+let pf := constr:(ltac:(tac) : G) in
+abstract exact_no_check pf.
+
 Ltac intros_mem m Hm :=
   let m' := fresh in let Hm' := fresh in
   intros m' Hm'; clear m Hm; rename m' into m; rename Hm' into Hm.
@@ -65,14 +81,16 @@ Ltac t :=
   let Tm := type of m in
   let Pm := lazymatch type of Hm with ?P m => P end in
   lazymatch goal with
-  |- load ?sz ?m ?a = Some _
+  | |- let _ := _ in _ => intros
+  | |- load ?sz ?m ?a = Some _
     => lazymatch type of Hm with context [ptsto sz a ?v]
     => refine (load_sep sz a v ?[frame] m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
-       cancel; reflexivity end
+       eabstract (cancel; reflexivity) end
   | |- WeakestPrecondition.store ?sz ?m ?a ?v2 _
     => lazymatch type of Hm with context [ptsto sz a ?v1]
-    => refine (store_sep sz a v1 v2 ?[frame] m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm) _ ?[cont]); [ cancel; reflexivity | intros_mem m Hm ] end
+    => refine (store_sep sz a v1 v2 ?[frame] m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm) _ ?[cont]); [ eabstract (cancel; reflexivity) | intros_mem m Hm ] end
   | |- ?G =>
+    hnf;
     match goal with
     | H: G |- _ => exact H
     | _ => eexists
@@ -92,10 +110,20 @@ Definition spec_of_swap := fun functions =>
 
 Lemma swap_ok : forall functions, spec_of_swap (swap::functions).
 Proof.
-  cbv[spec_of_swap].
-  intros. rename H into Hm.
+  let body := open_constr:(_) in
+  let f := open_constr:((_, (_, _, body))) in
+  unify f swap; change swap with f;
+    pattern body; change (bindcmd body (fun c : cmd => forall functions, spec_of_swap (("swap", (["a"; "b"], [], c)) :: functions))).
+  cbv beta iota delta [bindcmd spec_of_swap].
+  intros.
+  set (fun (t' : trace) (m' : mem) (rets : list word) => t = t' /\ (ptsto 1 a_addr b * (ptsto 1 b_addr a * R)%type) m' /\ rets = []) as POSTret.
+  rename H into Hm.
+  hnf.
+  set (fun (t0 : trace) (m0 : mem) (l0 : locals) => WeakestPrecondition.list_map (WeakestPrecondition.get l0) [] (fun rets : list word => POSTret t0 m0 rets)) as POST.
+  set (WeakestPrecondition.call (fun _ : trace => True) (fun _ : trace => False) (fun _ _ : trace => True) _) as CALL.
+  lazymatch goal with |- ex ?P => refine (let l := _ in ex_intro P l (conj eq_refl _)) end.
   repeat t.
-Qed.
+Defined.
 
 Definition spec_of_swap_swap := fun functions =>
   forall a_addr a b_addr b m R t,
