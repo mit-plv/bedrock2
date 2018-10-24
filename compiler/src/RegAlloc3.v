@@ -7,6 +7,8 @@ Require Import compiler.util.Map.
 Require Import compiler.util.Set.
 Require Import compiler.Memory.
 Require Import compiler.util.Tactics.
+Require Import compiler.util.MapSolverTest.
+
 
 Section TODO.
   Context {K V: Type}.
@@ -114,6 +116,27 @@ Section RegAlloc.
       | ASSkip => m
       | ASCall binds f args => empty_map (* TODO *)
       end.
+
+  Hint Resolve
+       extends_put_same
+       extends_remove_by_value_same
+       extends_intersect_map_lr
+       extends_refl
+    : map_hints.
+
+  Hint Rewrite
+       remove_by_value_put
+       remove_by_value_idemp
+    : map_rew.
+
+  Hint Extern 1 => autorewrite with map_rew : map_hints.
+
+  Lemma mappings_monotone: forall s m1 m2,
+      extends m1 m2 ->
+      extends (mappings m1 s) (mappings m2 s).
+  Proof.
+    induction s; intros; simpl in *; unfold loop_inv in *; eauto 7 with map_hints.
+  Qed.
 
   Lemma mappings_idemp: forall s m1 m2,
       m2 = mappings m1 s ->
@@ -255,6 +278,25 @@ Section RegAlloc.
        extends_intersect_map_r
     : checker_hints.
 
+  Lemma loop_inv_init: forall r s1 s2,
+      extends r (loop_inv mappings r s1 s2).
+  Proof.
+    intros. unfold loop_inv. eauto with checker_hints.
+  Qed.
+
+  Lemma loop_inv_step: forall r s1 s2,
+      let Inv := loop_inv mappings r s1 s2 in
+      extends (mappings (mappings Inv s1) s2) Inv.
+  Proof.
+    intros. subst Inv. unfold loop_inv.
+  Admitted.
+
+  Lemma loop_inv_idemp: forall r s1 s2,
+      let Inv := loop_inv mappings r s1 s2 in
+      loop_inv mappings Inv s1 s2 = Inv.
+  Proof using .
+  Admitted.
+
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
       eval n st1 m1 s = Some (st2, m2) ->
       erase annotated = s ->
@@ -305,58 +347,10 @@ Section RegAlloc.
     - clear Case_SIf_Else.
       edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eauto with checker_hints.
-(*
-    - eapply IHn in E0.
-      destruct_products.
-      eexists.
-      rewrite E0l.
-      pose proof E0r as P.
-      unfold states_compat in P.
-      specialize P with (2 := H).
-      rewrite P.
-      rewrite reg_eqb_eq by reflexivity.
-      split; [ reflexivity | ].
-      set (Inv := (intersect_map r
-                (intersect_map (mappings r annotated1)
-                               (mappings (mappings (mappings r annotated1) annotated2) annotated1)))) in *.
-
-      match goal with
-      | |- states_compat _ ?th _ => replace th with Inv
-      end.
-      admit.
-      subst Inv.
-
-      set (yy := (intersect_map (mappings r annotated1)
-       (mappings (mappings (mappings r annotated1) annotated2) annotated1))).
-
-states_compat st2
-          (mappings
-             (intersect_map r
-                (intersect_map (mappings r annotated1)
-                   (mappings (mappings (mappings r annotated1) annotated2) annotated1)))
-             annotated1) st2'
-
-      cut (states_compat st2 ((mappings r annotated1)) st2').
-      {
-      generalize (    (
-                     (mappings (mappings (mappings r annotated1) annotated2) annotated1))).
-      generalize (mappings r annotated1).
-      clear.
-      admit. }
-      {
-
-      heeeree!
-
-
-      eapply states_compat_extends; [|eassumption].
-      set (xx :=     (intersect_map (mappings r annotated1)
-       (mappings (mappings (mappings r annotated1) annotated2) annotated1))).
-*)
     - clear Case_SLoop_Done.
       edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
       + eapply states_compat_extends; [|eassumption].
-        unfold loop_inv.
-        eauto with checker_hints.
+        apply loop_inv_init.
       + rewrite H0.
         pose proof H1 as P.
         unfold states_compat in P.
@@ -369,30 +363,50 @@ states_compat st2
       pose proof E0 as C1. pose proof E1 as C2.
       eapply IHn in E0; [| |reflexivity|]; [|eassumption|]; cycle 1. {
         eapply states_compat_extends; [|eassumption].
-        unfold loop_inv.
-        eauto with checker_hints.
+        apply loop_inv_init.
       }
       destruct_products.
       eapply IHn in E1; [| |reflexivity|]; [|eassumption|eassumption].
       destruct_products.
       specialize IHn with (annotated := (ASLoop annotated1 cond annotated2)).
-      eapply IHn in H; [|reflexivity| |]; [| |eassumption].
-      + destruct_products.
-        eexists.
+      move IHn at bottom.
+      specialize IHn with (r := (loop_inv mappings r annotated1 annotated2)). (* <- a choice *)
+      specialize IHn with (2 := eq_refl).
+      specialize IHn with (1 := H).
+      specialize IHn with (s' := SLoop s i s0).
+      edestruct IHn as [? [? ?]].
+      + clear -C.
+        simpl in *.
+        repeat (destruct_one_match_hyp; [|discriminate]).
+        repeat match goal with
+               | H: Some _ = Some _ |- _ => inversion H; subst; clear H
+               | H: reverse_get _ _ = Some _ |- _ =>
+                 let H' := fresh H "_rrg" in
+                 unique pose proof (reverse_reverse_get _ _ _ H) as H'
+               end.
+        set (Inv := (loop_inv mappings r annotated1 annotated2)) in *.
+        set (m1 := (mappings Inv annotated1)) in *.
+        set (Inv' := (loop_inv mappings Inv annotated1 annotated2)).
+        assert (Inv' = Inv) as EI. {
+          clear. subst Inv'. apply loop_inv_idemp.
+        }
+        rewrite EI.
+        subst m1.
+        rewrite_match.
+        reflexivity.
+      + eapply states_compat_extends; [|eassumption].
+        set (Inv := (loop_inv mappings r annotated1 annotated2)) in *.
+        apply loop_inv_step.
+      + eexists.
         rewrite_match.
         pose proof E0r as P.
         unfold states_compat in P.
         erewrite P by eassumption. clear P.
         rewrite reg_eqb_ne by congruence.
-        split; [exact Hl|].
-        eapply states_compat_extends; [|eassumption].
-        simpl.
-        set (Inv1 := (loop_inv mappings r annotated1 annotated2)) in *.
-        set (M2 := (mappings (mappings Inv1 annotated1) annotated2)) in *.
-        move M2 before Inv1.
-        admit.
-      + clear -C.
-        admit. (* TODO prove that loop invariant is indeed an invariant *)
+        split; [eassumption|].
+        simpl in H1.
+        rewrite loop_inv_idemp in H1.
+        exact H1.
 
     - clear Case_SSeq.
       eapply IHn in E.
@@ -403,6 +417,6 @@ states_compat st2
       rewrite El. all: typeclasses eauto with core.
     - clear Case_SCall.
       discriminate.
-  Abort.
+  Qed.
 
 End RegAlloc.
