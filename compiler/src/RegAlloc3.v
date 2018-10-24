@@ -156,9 +156,9 @@ Section RegAlloc.
           bind_opt s2' <- rec m s2;
           Some (SIf cond' s1' s2')
       | ASLoop s1 cond s2 =>
-          bind_opt cond' <- reverse_get m cond;
           let m1 := loop_inv mappings m s1 s2 in
           let m2 := mappings m1 s1 in
+          bind_opt cond' <- reverse_get m2 cond;
           bind_opt s1' <- rec m1 s1;
           bind_opt s2' <- rec m2 s2;
           Some (SLoop s1' cond' s2')
@@ -280,11 +280,16 @@ Section RegAlloc.
         clear H
       end;
       subst;
+      match goal with
+      | H: checker _ ?x = _ |- _ => pose proof H as C; remember x as AS in C
+      end;
       simpl in *;
       repeat (destruct_one_match_hyp; [|discriminate]);
       repeat match goal with
              | H: Some _ = Some _ |- _ => inversion H; subst; clear H
-             | H: reverse_get _ _ = Some _ |- _ => apply reverse_reverse_get in H
+             | H: reverse_get _ _ = Some _ |- _ =>
+                  let H' := fresh H "_rrg" in
+                  unique pose proof (reverse_reverse_get _ _ _ H) as H'
              | H: states_compat _ _ _ |- _ => erewrite H by eassumption
              end;
       repeat match goal with
@@ -358,10 +363,37 @@ states_compat st2
         specialize P with (2 := H).
         rewrite P.
         * rewrite reg_eqb_eq by reflexivity. eauto.
-        * (* TODO how to get from E to this? *)
-          admit.
+        * eassumption.
+
     - clear Case_SLoop_NotDone.
-      admit.
+      pose proof E0 as C1. pose proof E1 as C2.
+      eapply IHn in E0; [| |reflexivity|]; [|eassumption|]; cycle 1. {
+        eapply states_compat_extends; [|eassumption].
+        unfold loop_inv.
+        eauto with checker_hints.
+      }
+      destruct_products.
+      eapply IHn in E1; [| |reflexivity|]; [|eassumption|eassumption].
+      destruct_products.
+      specialize IHn with (annotated := (ASLoop annotated1 cond annotated2)).
+      eapply IHn in H; [|reflexivity| |]; [| |eassumption].
+      + destruct_products.
+        eexists.
+        rewrite_match.
+        pose proof E0r as P.
+        unfold states_compat in P.
+        erewrite P by eassumption. clear P.
+        rewrite reg_eqb_ne by congruence.
+        split; [exact Hl|].
+        eapply states_compat_extends; [|eassumption].
+        simpl.
+        set (Inv1 := (loop_inv mappings r annotated1 annotated2)) in *.
+        set (M2 := (mappings (mappings Inv1 annotated1) annotated2)) in *.
+        move M2 before Inv1.
+        admit.
+      + clear -C.
+        admit. (* TODO prove that loop invariant is indeed an invariant *)
+
     - clear Case_SSeq.
       eapply IHn in E.
       destruct_products.
