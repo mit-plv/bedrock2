@@ -26,6 +26,9 @@ Require Import compiler.FlatToRiscv32Specifics.
 Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
+Require Import bedrock2.Byte.
+Require Import bedrock2.Word8.
+Require bedrock2.Hexdump.
 
 Open Scope Z_scope.
 
@@ -127,6 +130,21 @@ Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
 
 Definition runL: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
  @Run.run BitWidth32 _ MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
+
+Eval cbv in ((initialRiscvMachine fib6_bits).(machineMem)).
+
+Definition fib6_as_word8: list (RecordWord.word 8) :=
+  store_word_list fib6_bits (ZToReg 0) (@zero_mem ((Memory.Zlength fib6_riscv + 1) * 4)).
+
+Definition fib6_as_bytes: list byte :=
+  List.map (fun w => Z_to_byte (uwordToZ w)) fib6_as_word8.
+
+Module PrintBytes.
+  Import bedrock2.Hexdump.
+  Local Open Scope hexdump_scope.
+  Set Printing Width 100.
+  Eval cbv in fib6_as_bytes.
+End PrintBytes.
 
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
   snd (run fuel (initialRiscvMachine fib6_bits)).
