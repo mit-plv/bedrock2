@@ -343,6 +343,18 @@ Section RegAlloc.
     - apply mappings_mappings_extends_mappings.
   Qed.
 
+  Lemma test: forall r s1 s2,
+      let Inv := loop_inv mappings r s1 s2 in
+      False.
+  Proof.
+    intros.
+    pose proof (loop_inv_step r s1 s2) as P. simpl in P.
+    change (mappings (mappings (loop_inv mappings r s1 s2) s1) s2) with
+           (mappings (mappings Inv s1) s2) in P.
+    unfold loop_inv in P.
+    (* "extends _ (intersect_map _ _)" is useless *)
+  Abort.
+
   Lemma loop_inv_step_bw: forall r s1 s2,
       let Inv := loop_inv mappings r s1 s2 in
       bw_extends (mappings (mappings Inv s1) s2) Inv.
@@ -502,9 +514,9 @@ Section RegAlloc.
         replace (reverse_get
                    (mappings (loop_inv mappings Inv annotated1 annotated2) annotated1) cond)
           with (Some i).
-        * eapply checker_monotone in C1.
-          admit.
-          (* would need opposite direction of extends_loop_inv !*) admit.
+        * eapply checker_monotone in C1; cycle 1.
+          { subst Inv. eapply loop_inv_step. }
+          { (* but now C1 does not help !*) admit. }
         * symmetry.
           clear -E HeqInv.
           pose proof mappings_bw_monotone as P.
