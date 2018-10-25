@@ -418,13 +418,29 @@ Section RegAlloc.
       checker r1 s = Some s' ->
       checker r2 s = Some s'.
   Proof using. (* maybe needs to be proven together with checker_correct *)
-  Admitted.
+  Abort. (* not needed *)
+
+  Definition precond(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
+    match s with
+    | ASLoop s1 cond s2 => loop_inv mappings m s1 s2
+    | _ => m
+    end.
+
+  Lemma precond_weakens: forall m s,
+      extends m (precond m s).
+  Proof.
+    intros. destruct s; try apply extends_refl.
+    unfold precond, loop_inv.
+    apply extends_intersect_map_l.
+  Qed.
+
+  Hint Resolve precond_weakens : checker_hints.
 
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
       eval n st1 m1 s = Some (st2, m2) ->
       erase annotated = s ->
       checker r annotated = Some s' ->
-      states_compat st1 r st1' ->
+      states_compat st1 (precond r annotated) st1' ->
       exists st2',
         eval' n st1' m1 s' = Some (st2', m2) /\
         states_compat st2 (mappings r annotated) st2'.
@@ -445,11 +461,9 @@ Section RegAlloc.
         clear H
       end;
       subst;
-      (*
       match goal with
       | H: checker _ ?x = _ |- _ => pose proof H as C; remember x as AS in C
       end;
-      *)
       simpl in *;
       repeat (destruct_one_match_hyp; [|discriminate]);
       repeat match goal with
@@ -467,64 +481,41 @@ Section RegAlloc.
       repeat (rewrite reg_eqb_eq by congruence);
       eauto with checker_hints.
     - clear Case_SIf_Then.
-      edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
-      eauto with checker_hints.
+      edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
     - clear Case_SIf_Else.
-      edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
-      eauto with checker_hints.
+      edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
     - clear Case_SLoop_Done.
       edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
-      + eapply states_compat_extends; [|eassumption].
-        apply loop_inv_init.
-      + rewrite H0.
-        pose proof H1 as P.
-        unfold states_compat in P.
-        specialize P with (2 := H).
-        rewrite P.
-        * rewrite reg_eqb_eq by reflexivity. eauto.
-        * eassumption.
+      rewrite H0.
+      pose proof H1 as P.
+      unfold states_compat in P.
+      specialize P with (2 := H).
+      rewrite P.
+      + rewrite reg_eqb_eq by reflexivity. eauto.
+      + eassumption.
 
     - clear Case_SLoop_NotDone.
       pose proof E0 as C1. pose proof E1 as C2.
       eapply IHn in E0; [| |reflexivity|]; [|eassumption|]; cycle 1. {
         eapply states_compat_extends; [|eassumption].
-        apply loop_inv_init.
+        apply precond_weakens.
       }
       destruct_products.
-      eapply IHn in E1; [| |reflexivity|]; [|eassumption|eassumption].
+      eapply IHn in E1; [| |reflexivity|]; [|eauto with checker_hints..].
       destruct_products.
       (* get rid of r and replace it by Inv everywhere *)
       remember (loop_inv mappings r annotated1 annotated2) as Inv.
-      match goal with
-      | H: states_compat ?s r ?s' |- _ => assert (states_compat s Inv s') as HH; [|clear H]
-      end.
-      {
-        subst Inv. unfold loop_inv.
-        eapply states_compat_extends; [|eassumption].
-        eauto with checker_hints.
-      }
+      (* Search r. only HeqInv and C *)
       specialize IHn with (annotated := (ASLoop annotated1 cond annotated2)).
       move IHn at bottom.
-      specialize IHn with (r := Inv).
+      specialize IHn with (r := r).
       specialize IHn with (2 := eq_refl).
       specialize IHn with (1 := H).
       specialize IHn with (s' := SLoop s i s0).
       edestruct IHn as [? [? ?]].
-      + simpl.
-        replace (reverse_get
-                   (mappings (loop_inv mappings Inv annotated1 annotated2) annotated1) cond)
-          with (Some i).
-        * eapply checker_monotone in C1; cycle 1.
-          { subst Inv. eapply loop_inv_step. }
-          { (* but now C1 does not help !*) admit. }
-        * symmetry.
-          clear -E HeqInv.
-          pose proof mappings_bw_monotone as P.
-          unfold bw_extends in P.
-          eapply P; [|exact E]. clear E P.
-          intros.
-          (* Again, would need opposite direction of extends_loop_inv !*) admit.
-      + eapply states_compat_extends; [|eassumption].
+      + exact C.
+      + unfold precond.
+        eapply states_compat_extends; [|eassumption].
         subst Inv.
         apply loop_inv_step.
       + eexists.
@@ -535,9 +526,8 @@ Section RegAlloc.
         rewrite reg_eqb_ne by congruence.
         split; [eassumption|].
         simpl in H1.
-        eapply states_compat_extends; [|eassumption].
-        eapply mappings_monotone.
-        (* Again, would need opposite direction of extends_loop_inv !*) admit.
+        subst Inv.
+        assumption.
 
     - clear Case_SSeq.
       eapply IHn in E.
@@ -545,9 +535,9 @@ Section RegAlloc.
       eapply IHn in E0.
       destruct_products.
       eexists.
-      rewrite El. all: typeclasses eauto with core.
+      rewrite El. all: typeclasses eauto with core checker_hints.
     - clear Case_SCall.
       discriminate.
-  Admitted.
+  Qed.
 
 End RegAlloc.
