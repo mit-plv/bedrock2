@@ -27,7 +27,6 @@ Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
 Require Import bedrock2.Byte.
-Require Import bedrock2.Word8.
 Require bedrock2.Hexdump.
 
 Open Scope Z_scope.
@@ -145,13 +144,13 @@ Definition fib6_as_word8: list (RecordWord.word 8) :=
   store_word_list fib6_bits (ZToReg 0) (@zero_mem ((Memory.Zlength fib6_riscv + 1) * 4)).
 
 Definition fib6_as_bytes: list byte :=
-  List.map (fun w => Z_to_byte (uwordToZ w)) fib6_as_word8.
+  List.map (fun w => Byte.of_Z (uwordToZ w)) fib6_as_word8.
 
 Module PrintBytes.
   Import bedrock2.Hexdump.
   Local Open Scope hexdump_scope.
   Set Printing Width 100.
-  Eval cbv in fib6_as_bytes.
+  Goal True. let x := eval cbv in fib6_as_bytes in idtac x. Abort.
 End PrintBytes.
 
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
