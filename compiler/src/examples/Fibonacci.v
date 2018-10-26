@@ -73,15 +73,23 @@ Goal fib_H_res 20 6 = Some (ZToWord 32 13). reflexivity. Qed.
 
 Definition do_regalloc: bool := false.
 
-Definition resVar := Demos.Fibonacci.b.
-
 Definition compileFunc: cmd -> list Instruction :=
-  if do_regalloc then (exprImp2Riscv_with_regalloc Lw Sw resVar) else (exprImp2Riscv Lw Sw).
+  if do_regalloc then
+    (fun s => snd (exprImp2Riscv_with_regalloc Lw Sw Demos.Fibonacci.b s))
+  else
+    (exprImp2Riscv Lw Sw).
+
+(* register, actually *)
+Definition resVar :=
+  if do_regalloc then
+    fst (exprImp2Riscv_with_regalloc Lw Sw Demos.Fibonacci.b (fib_ExprImp 6))
+  else
+    Demos.Fibonacci.b.
 
 Definition fib_riscv0(n: Z): list Instruction :=
   compileFunc (fib_ExprImp n).
 
-Definition fib6_riscv := Eval cbv in fib_riscv0 6.
+Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
 
 Print fib6_riscv.
 

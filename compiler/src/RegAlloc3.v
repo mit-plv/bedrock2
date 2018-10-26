@@ -355,6 +355,13 @@ Section RegAlloc.
       | ASCall binds f args => SCall (List.map fst binds) f args
       end.
 
+  (* TODO needs better interface: both at beginning and at end, specify mapping we care about *)
+  Definition register_allocation(s: stmt)(resultVars: srcvars)
+    : map impvar srcvar * option stmt' :=
+    let initialMap := empty_map in
+    let '(annotated, resultMap) := regalloc initialMap s resultVars in
+    (resultMap, checker initialMap annotated).
+
   (* claim: for all astmt a, if checker succeeds and returns s', then
      (erase a) behaves the same as s' *)
 

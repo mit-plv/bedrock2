@@ -26,7 +26,7 @@ Require Export riscv.AxiomaticRiscv.
 Require Export riscv.proofs.DecodeEncode.
 Require Export riscv.proofs.EncodeBound.
 Require Export compiler.EmitsValid.
-Require Export compiler.RegAlloc.
+Require Export compiler.RegAlloc3.
 Require compiler.util.List_Map.
 Require Import riscv.Utility.
 Require Export riscv.Memory.
@@ -96,13 +96,24 @@ Section Pipeline.
   (* convention: there's one single result which is put into register $x1 *)
   Definition interesting_alloc(resVar: var): map var var := put empty_map resVar resVar.
 
-  Definition exprImp2Riscv_with_regalloc(resVar: var)(s: Syntax.cmd): list Instruction :=
-    FlatToRiscv.compile_stmt LwXLEN SwXLEN
+  Definition exprImp2Riscv_with_regalloc(resVar: var)(s: Syntax.cmd): var * list Instruction :=
+    let '(resMap, oStmt) :=
       (register_allocation var var func
                            Register0
                            riscvRegisters
                            (flatten s)
-                           (interesting_alloc resVar)).
+                           (singleton_set resVar)) in
+    let insts :=
+      match oStmt with
+      | Some s => FlatToRiscv.compile_stmt LwXLEN SwXLEN s
+      | None => nil
+      end in
+    let resReg :=
+      match reverse_get resMap resVar with
+      | Some r => r
+      | None => Register0
+      end in
+    (resReg, insts).
 
   Definition evalH := @ExprImp.eval_cmd _ _ _ _.
 
