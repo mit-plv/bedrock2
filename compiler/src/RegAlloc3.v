@@ -50,6 +50,46 @@ Local Notation "'bind_opt' x <- a ; f" :=
   (right associativity, at level 70, x pattern).
 
 
+Section Live.
+
+  Context {var func A: Set}.
+  Context {varset: SetFunctions var}.
+  Local Notation stmt := (stmt var func).
+  Local Notation vars := (set var).
+
+  (* set of variables which is certainly written while executing s *)
+  Fixpoint certainly_written(s: stmt): vars :=
+    match s with
+    | SLoad x y    => singleton_set x
+    | SStore x y   => singleton_set x
+    | SLit x v     => singleton_set x
+    | SOp x op y z => singleton_set x
+    | SSet x y     => singleton_set x
+    | SIf cond s1 s2 => intersect (certainly_written s1) (certainly_written s2)
+    | SLoop s1 cond s2 => certainly_written s1
+    | SSeq s1 s2 => union (certainly_written s1) (certainly_written s2)
+    | SSkip => empty_set
+    | SCall argnames fname resnames => of_list resnames
+    end.
+
+  (* set of variables which is live before executing s *)
+  Fixpoint live(s: stmt): vars :=
+    match s with
+    | SLoad x y    => singleton_set y
+    | SStore x y   => union (singleton_set x) (singleton_set y)
+    | SLit x v     => empty_set
+    | SOp x op y z => union (singleton_set y) (singleton_set z)
+    | SSet x y     => singleton_set y
+    | SIf cond s1 s2   => union (singleton_set cond) (union (live s1) (live s2))
+    | SLoop s1 cond s2 => union (live s1) (diff (union (singleton_set cond) (live s2))
+                                                (certainly_written s1))
+    | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
+    | SSkip => empty_set
+    | SCall argnames fname resnames => of_list argnames
+    end.
+
+End Live.
+
 Section RegAlloc.
 
   Variable srcvar: Set.
@@ -81,6 +121,71 @@ Section RegAlloc.
 
   Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
   Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
+
+  Variable dummy_impvar: impvar.
+
+  Definition start_interval(current: srcvars * impvars * map impvar srcvar)(x: srcvar)
+    : srcvars * impvars * map impvar srcvar :=
+    let '(o, a, m) := current in
+    let o := union o (singleton_set x) in
+    let '(r, a) := pick_or_else a dummy_impvar in
+    let m := put m r x in
+    (o, a, m).
+
+  Variable available_impvars: impvars.
+
+  Definition annotate_assignment(s: stmt)(y: impvar): astmt :=
+    match s with
+    | SLoad x a => ASLoad x y a
+    | SLit x v => ASLit x y v
+    | SOp x op a b => ASOp x y op a b
+    | SSet x a => ASSet x y a
+    | _ => ASSkip (* not an assignment *)
+    end.
+
+  Fixpoint regalloc
+           (m: map impvar srcvar)(* current mapping *)
+           (s: stmt)             (* current sub-statement *)
+           (l: srcvars)          (* variables which have a life after statement s *)
+    : (astmt *             (* annotated statement *)
+       map impvar srcvar)  (* new mapping *)
+    :=
+    (* variables which currently occupy a register (maybe unjustified) *)
+    let o_original := range m in
+    (* these are the variables which actually deserve to occupy a register: *)
+    let o := union (live s) (diff l (certainly_written s)) in
+    (* intervals which ended... *)
+    let became_dead := diff o_original o in
+    (* ... allow us to prune m: *)
+    let m := remove_values m became_dead in
+    (* *currently* available registers *)
+    let a := diff available_impvars (domain m) in
+    match s with
+    | SLoad x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
+        match reverse_get m x with
+        | Some y => (* nothing to do because no new interval starts *)
+                    (annotate_assignment s y, m)
+        | None   => (* new interval starts *)
+                    let y := fst (pick_or_else a dummy_impvar) in
+                    (annotate_assignment s y, put m y x)
+        end
+    | SStore x y => (ASStore x y, m)
+    | SIf cond s1 s2   =>
+        let '(s1', m1) := regalloc m s1 l in
+        let '(s2', m2) := regalloc m s2 l in
+        (ASIf cond s1' s2', intersect_map m1 m2)
+    | SLoop s1 cond s2 =>
+        let '(s1', m) := regalloc m s1 (union (union (singleton_set cond) (live s2)) l) in
+        let '(s2', m) := regalloc m s2 (union l (live s)) in
+        (ASLoop s1' cond s2', m)
+    | SSeq s1 s2 =>
+        let '(s1', m) := regalloc m s1 (union (live s2) l) in
+        let '(s2', m) := regalloc m s2 l in
+        (ASSeq s1' s2', m)
+    | SSkip => (ASSkip, m)
+  (*| SCall argnames fname resnames => fold_left start_interval resnames (o, a, m) *)
+    | SCall _ _ _ => (ASSkip, empty_map) (* TODO *)
+    end.
 
   Definition loop_inv(mappings: map impvar srcvar -> astmt -> map impvar srcvar)
                      (m: map impvar srcvar)(s1 s2: astmt): map impvar srcvar :=
