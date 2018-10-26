@@ -150,7 +150,53 @@ Module PrintBytes.
   Import bedrock2.Hexdump.
   Local Open Scope hexdump_scope.
   Set Printing Width 100.
+  (* Save this to compiler/src/examples/Fibonacci.hex *)
   Goal True. let x := eval cbv in fib6_as_bytes in idtac x. Abort.
+  (* Then:
+  xxd -r -p < compiler/src/examples/Fibonacci.hex > compiler/src/examples/Fibonacci.bin
+  riscv64-linux-gnu-ld --section-start=.data=0x20400000 --strip-all --format=binary --oformat=elf32-littleriscv compiler/src/examples/Fibonacci.bin -o compiler/src/examples/Fibonacci.elf
+  riscv64-linux-gnu-objdump -D compiler/src/examples/Fibonacci.elf
+  qemu-system-riscv32 -nographic -gdb tcp::1234 -machine sifive_e -S -kernel compiler/src/examples/Fibonacci.elf &
+  riscv32-linux-gnu-gdb compiler/src/examples/Fibonacci.elf -ex 'set height unlimited' -ex 'set confirm off' -ex 'target remote localhost:1234' -ex 'disp/i $pc' -ex "break *0x$(riscv64-linux-gnu-objdump -D compiler/src/examples/Fibonacci.elf | grep unimp | tail -1 | cut -d: -f1)" -ex c -ex 'info registers' -ex 'quit'
+  #shorter: riscv32-linux-gnu-gdb compiler/src/examples/Fibonacci.elf -ex 'target remote localhost:1234' -ex 'disp/i $pc'
+
+  output:
+  Breakpoint 1, 0x20400174 in ?? ()
+  1: x/i $pc
+  => 0x20400174:	unimp
+  ra             0x8	0x8
+  sp             0xd	0xd
+  gp             0xd	0xd
+  tp             0x6	0x6
+  t0             0x0	0
+  t1             0x1	1
+  t2             0x0	0
+  s0             0x6	0x6
+  s1             0x6	6
+  a0             0x0	0
+  a1             0x5	5
+  a2             0x8	8
+  a3             0xd	13
+  a4             0x8	8
+  a5             0xd	13
+  a6             0x5	5
+  a7             0x1	1
+  s2             0x6	6
+  s3             0x0	0
+  s4             0x0	0
+  s5             0x0	0
+  s6             0x0	0
+  s7             0x0	0
+  s8             0x0	0
+  s9             0x0	0
+  s10            0x0	0
+  s11            0x0	0
+  t3             0x0	0
+  t4             0x0	0
+  t5             0x0	0
+  t6             0x0	0
+  pc             0x20400174	0x20400174
+  *)
 End PrintBytes.
 
 Definition fib6_L_final(fuel: nat): RiscvMachine :=
