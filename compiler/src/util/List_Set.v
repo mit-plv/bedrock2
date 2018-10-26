@@ -12,6 +12,7 @@ Instance List_Set(E: Type){eeq: DecidableEq E}: SetFunctions E := {|
   set := list E;
 
   contains A e := List.In e A;
+  contains_dec := List.in_dec eeq;
 
   empty_set := nil;
   singleton_set e := (cons e nil);

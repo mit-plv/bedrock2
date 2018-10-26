@@ -88,7 +88,8 @@ Definition resVar :=
 Definition fib_riscv0(n: Z): list Instruction :=
   compileFunc (fib_ExprImp n).
 
-Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
+Time Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
+(* empty list (failure) if do_regalloc is set to true *)
 
 Print fib6_riscv.
 
