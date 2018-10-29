@@ -667,6 +667,42 @@ Section RegAlloc.
     - clear Case_SCall.
       discriminate.
   Qed.
+Require Import lib.fiat_crypto_tactics.Not.
+Ltac ensure_no_body H := not (clearbody H).
+
+Ltac map_solver K V :=
+  assert_is_type K;
+  assert_is_type V;
+  repeat autounfold with unf_map_defs unf_set_defs in *;
+  destruct_products;
+  intros;
+  canonicalize_all K V;
+  let RGN := fresh "RGN" in pose proof (@reverse_get_None K V _) as RGN;
+  let RGS := fresh "RGS" in pose proof (@reverse_get_Some K V _) as RGS;
+  repeat match goal with
+  | H: forall (x: _), _, y: ?E |- _ =>
+    ensure_no_body H;
+    first [ unify E K | unify E V | let T := type of E in unify T Prop ];
+    let H' := fresh H y in
+    pose proof H as H';
+    match type of H with
+    | DecidableEq E => fail 1
+    | _ => specialize (H' y) || specialize H' with (1 := y)
+    end;
+    canonicalize_map_hyp H';
+    ensure_new H'
+  end;
+  let solver := congruence || auto || (exfalso; eauto) ||
+                match goal with
+                | H: ~ _ |- False => solve [apply H; intuition (auto || congruence || eauto)]
+                end in
+  let fallback := (destruct_one_map_match K V;
+                   invert_Some_eq_Some;
+                   canonicalize_all K V) in
+  repeat (propositional;
+          propositional_ors;
+          try solve [ solver ];
+          try fallback).
 
   Lemma regalloc_succeeds: forall s annotated m m' l,
       subset (live s) (range m) ->
@@ -692,43 +728,26 @@ Section RegAlloc.
       + (* reverse_get of checker Some *)
         eexists. reflexivity.
       + (* reverse_get of checker None *)
-        exfalso.
-        pose proof @reverse_get_None as P. specialize P with (1 := F).
-        pose proof @reverse_get_Some as Q. specialize Q with (1 := E).
-        clear E F.
-        map_solver impvar srcvar.
+        exfalso. map_solver impvar srcvar.
     - (* ASLoad: reverse_get of regalloc None --> a fresh var will be picked *)
       destruct (reverse_get m a) eqn: F.
       + (* reverse_get of checker Some *)
         eexists. reflexivity.
       + (* reverse_get of checker None *)
-        exfalso.
-        pose proof @reverse_get_None as P. specialize P with (1 := F).
-        pose proof @reverse_get_None as Q. specialize Q with (1 := E).
-        map_solver impvar srcvar.
-    - clear case.
-      destruct (reverse_get m a) eqn: F; destruct (reverse_get m v) eqn: G;
-        [eexists; reflexivity|exfalso..].
-      + pose proof @reverse_get_None as P. specialize P with (1 := G).
-        pose proof @reverse_get_Some as Q. specialize Q with (1 := F).
-        clear G F.
-        map_solver impvar srcvar.
+        exfalso. map_solver impvar srcvar.
+    - destruct (reverse_get m a) eqn: F; destruct (reverse_get m v) eqn: G;
+        [eexists; reflexivity|exfalso; try solve map_solver impvar srcvar..].
+      + map_solver impvar srcvar.
         destruct Hv; [auto|].
-        specialize (P x).
+        specialize (RGNG x).
         contradiction.
-      + pose proof @reverse_get_None as P. specialize P with (1 := F).
-        pose proof @reverse_get_Some as Q. specialize Q with (1 := G).
-        clear G F.
-        map_solver impvar srcvar.
+      + map_solver impvar srcvar.
         destruct Ha; [auto|].
-        specialize (P x).
+        specialize (RGNF x).
         contradiction.
-      + pose proof @reverse_get_None as P. specialize P with (1 := F).
-        pose proof @reverse_get_None as Q. specialize Q with (1 := G).
-        clear G F.
-        map_solver impvar srcvar.
+      + map_solver impvar srcvar.
         destruct Ha; [auto|].
-        specialize (P x).
+        specialize (RGNF x).
         contradiction.
     - eauto.
     - eauto.
