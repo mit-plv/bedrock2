@@ -720,80 +720,9 @@ Section RegAlloc.
     - specialize IHs1 with (2 := E).
       specialize IHs2 with (2 := E0).
       destruct IHs1 as [s1' IHs1].
-      {
-        clear IHs2 E E0.
-
-
-Ltac canonicalize_all K V ::=
-  repeat match goal with
-         | H: _ |- _ => progress canonicalize_map_hyp H
-         end;
-  invert_Some_eq_Some;
-  repeat (autorewrite with rew_set_op_specs rew_map_specs || rewrite_get_put K V).
-
-Ltac pick_one_existential :=
-  multimatch goal with
-  | x: ?T |- exists (_: ?T), _ => exists x
-  end.
-
-Ltac map_solver K V :=
-  assert_is_type K;
-  assert_is_type V;
-  repeat autounfold with unf_map_defs unf_set_defs in *;
-  destruct_products;
-  intros;
-  canonicalize_all K V;
-  let RGN := fresh "RGN" in pose proof (@reverse_get_None K V _) as RGN;
-  let RGS := fresh "RGS" in pose proof (@reverse_get_Some K V _) as RGS;
-  repeat match goal with
-  | H: forall (x: ?E), _, y: ?E |- _ =>
-    first [ unify E K | unify E V ];
-    ensure_no_body H;
-    match type of H with
-    | DecidableEq E => fail 1
-    | _ => let H' := fresh H y in
-           pose proof (H y) as H';
-           canonicalize_map_hyp H';
-           ensure_new H'
-    end
-  | H: forall (x: _), _, y: ?E |- _ =>
-    let T := type of E in unify T Prop;
-    ensure_no_body H;
-    let H' := fresh H y in
-    pose proof H as H';
-    specialize H' with (1 := y); (* might instantiate a few universally quantified vars *)
-    canonicalize_map_hyp H';
-    ensure_new H'
-  | H: ?P -> _ |- _ =>
-    let T := type of P in unify T Prop;
-    let F := fresh in
-    assert P as F by eauto;
-    let H' := fresh H "_eauto" in
-    pose proof (H F) as H';
-    clear F;
-    canonicalize_map_hyp H';
-    ensure_new H'
-  end;
-  let solver := congruence || auto || (exfalso; eauto) ||
-                match goal with
-                | H: ~ _ |- False => solve [apply H; intuition (auto || congruence || eauto)]
-                end in
-  let fallback := (destruct_one_map_match K V || pick_one_existential);
-                  canonicalize_all K V in
-  repeat (propositional;
-          propositional_ors;
-          try solve [ solver ];
-          try fallback).
-
-
-        map_solver impvar srcvar.
-
-      }
+      { clear IHs2 E E0. map_solver impvar srcvar. }
       destruct IHs2 as [s2' IHs2].
-      {
-        clear IHs1 E E0.
-        map_solver impvar srcvar.
-      }
+      { clear IHs1 E E0. map_solver impvar srcvar. }
       destruct (reverse_get m cond) eqn: F; [| exfalso; map_solver impvar srcvar].
       eapply checker_monotone in IHs1; [ rewrite IHs1 | map_solver impvar srcvar ].
       eapply checker_monotone in IHs2; [ rewrite IHs2 | map_solver impvar srcvar ].

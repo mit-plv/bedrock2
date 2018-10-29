@@ -284,6 +284,7 @@ Ltac canonicalize_all K V :=
   repeat match goal with
          | H: _ |- _ => progress canonicalize_map_hyp H
          end;
+  invert_Some_eq_Some;
   repeat (autorewrite with rew_set_op_specs rew_map_specs || rewrite_get_put K V).
 
 Ltac map_solver_should_destruct K V d :=
@@ -330,6 +331,11 @@ Ltac propositional_ors :=
 
 Ltac ensure_no_body H := not (clearbody H).
 
+Ltac pick_one_existential :=
+  multimatch goal with
+  | x: ?T |- exists (_: ?T), _ => exists x
+  end.
+
 Ltac map_solver K V :=
   assert_is_type K;
   assert_is_type V;
@@ -372,9 +378,8 @@ Ltac map_solver K V :=
                 match goal with
                 | H: ~ _ |- False => solve [apply H; intuition (auto || congruence || eauto)]
                 end in
-  let fallback := (destruct_one_map_match K V;
-                   invert_Some_eq_Some;
-                   canonicalize_all K V) in
+  let fallback := (destruct_one_map_match K V || pick_one_existential);
+                  canonicalize_all K V in
   repeat (propositional;
           propositional_ors;
           try solve [ solver ];
