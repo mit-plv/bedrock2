@@ -119,6 +119,22 @@ Section RegAlloc.
     | ASSkip
     | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
 
+(*
+  Ltac head e :=
+    match e with
+    | ?a _ => head a
+    | _ => e
+    end.
+
+  Goal forall (s: astmt), False.
+    intro s.
+    destruct s eqn: E;
+    match type of E with
+    | _ = ?r => let h := head r in idtac "| set ( case :=" h ")"
+    end.
+  Abort.
+*)
+
   Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
   Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
 
@@ -653,34 +669,71 @@ Section RegAlloc.
   Qed.
 
   Lemma regalloc_succeeds: forall s annotated m m' l,
+      subset (live s) (range m) ->
       regalloc m s l = (annotated, m') ->
       exists s', checker m annotated = Some s'.
   Proof.
     induction s; intros; simpl in *;
+      [ set ( case := ASLoad )
+      | set ( case := ASStore )
+      | set ( case := ASLit )
+      | set ( case := ASOp )
+      | set ( case := ASSet )
+      | set ( case := ASIf )
+      | set ( case := ASLoop )
+      | set ( case := ASSeq )
+      | set ( case := ASSkip )
+      | set ( case := ASCall ) ];
+      move case at top;
       repeat ((destruct_pair_eqs; subst) || (destruct_one_match_hyp; [|try discriminate]));
       simpl.
-    - destruct (reverse_get m a) eqn: F.
-      + eexists. reflexivity.
-      + exfalso.
+    - (* ASLoad: reverse_get of regalloc Some *)
+      destruct (reverse_get m a) eqn: F.
+      + (* reverse_get of checker Some *)
+        eexists. reflexivity.
+      + (* reverse_get of checker None *)
+        exfalso.
         pose proof @reverse_get_None as P. specialize P with (1 := F).
         pose proof @reverse_get_Some as Q. specialize Q with (1 := E).
         clear E F.
         map_solver impvar srcvar.
-    - destruct (reverse_get m a) eqn: F.
-      + eexists. reflexivity.
-      + exfalso.
+    - (* ASLoad: reverse_get of regalloc None --> a fresh var will be picked *)
+      destruct (reverse_get m a) eqn: F.
+      + (* reverse_get of checker Some *)
+        eexists. reflexivity.
+      + (* reverse_get of checker None *)
+        exfalso.
         pose proof @reverse_get_None as P. specialize P with (1 := F).
         pose proof @reverse_get_None as Q. specialize Q with (1 := E).
-        revert P Q.
-(*
-what if pick_or_else fails?
+        map_solver impvar srcvar.
+    - clear case.
+      destruct (reverse_get m a) eqn: F; destruct (reverse_get m v) eqn: G;
+        [eexists; reflexivity|exfalso..].
+      + pose proof @reverse_get_None as P. specialize P with (1 := G).
+        pose proof @reverse_get_Some as Q. specialize Q with (1 := F).
+        clear G F.
+        map_solver impvar srcvar.
+        destruct Hv; [auto|].
+        specialize (P x).
+        contradiction.
+      + pose proof @reverse_get_None as P. specialize P with (1 := F).
+        pose proof @reverse_get_Some as Q. specialize Q with (1 := G).
+        clear G F.
+        map_solver impvar srcvar.
+        destruct Ha; [auto|].
+        specialize (P x).
+        contradiction.
+      + pose proof @reverse_get_None as P. specialize P with (1 := F).
+        pose proof @reverse_get_None as Q. specialize Q with (1 := G).
+        clear G F.
+        map_solver impvar srcvar.
+        destruct Ha; [auto|].
+        specialize (P x).
+        contradiction.
+    - eauto.
+    - eauto.
+    -
 
-Auto Quickcheck found a counterexample:
-  m = Map.empty
-  a = a1
-  l = {}
-  x = a1
-*)
   Abort.
 
 

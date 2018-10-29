@@ -364,7 +364,6 @@ Section RegAlloc.
   Definition annotations_for_all_vars(s: astmt): Prop
 
   Definition annotations_injective_over_all_livesets
-  *)
 
   Ltac head e :=
     match e with
@@ -380,7 +379,6 @@ Section RegAlloc.
     end.
   Abort.
 
-(*
   Lemma regalloc_ok: forall  (s: stmt) (l: vars) (o o': vars) (a a': registers) (m m': alloc),
       injective_over (get m) o ->
       injective_over (get m) l -> (* <-- this one requires me to decide beforehands which registers to assign to the variables in l, not sure if desired *)
