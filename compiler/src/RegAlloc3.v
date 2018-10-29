@@ -547,13 +547,6 @@ Section RegAlloc.
   Proof using .
   Abort.
 
-  Lemma checker_monotone: forall r1 r2 s s',
-      extends r2 r1 ->
-      checker r1 s = Some s' ->
-      checker r2 s = Some s'.
-  Proof using. (* maybe needs to be proven together with checker_correct *)
-  Abort. (* not needed *)
-
   Definition precond(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
     match s with
     | ASLoop s1 cond s2 => loop_inv mappings m s1 s2
@@ -674,6 +667,13 @@ Section RegAlloc.
       discriminate.
   Qed.
 
+  Lemma checker_monotone: forall r1 r2 s s',
+      extends r2 r1 ->
+      checker r1 s = Some s' ->
+      checker r2 s = Some s'.
+  Proof using.
+  Admitted.
+
   Lemma regalloc_succeeds: forall s annotated m m' l,
       subset (live s) (range m) ->
       regalloc m s l = (annotated, m') ->
@@ -691,7 +691,7 @@ Section RegAlloc.
       | set ( case := ASSkip )
       | set ( case := ASCall ) ];
       move case at top;
-      repeat ((destruct_pair_eqs; subst) || (destruct_one_match_hyp; [|try discriminate]));
+      repeat ((destruct_pair_eqs; subst) || (destruct_one_match_hyp; try discriminate));
       simpl.
     - (* ASLoad: reverse_get of regalloc Some *)
       destruct (reverse_get m a) eqn: F.
@@ -717,7 +717,72 @@ Section RegAlloc.
         [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
     - destruct (reverse_get m y) eqn: F;
         [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
+    - specialize IHs1 with (2 := E).
+      specialize IHs2 with (2 := E0).
+      destruct IHs1 as [s1' IHs1].
+      {
+        clear IHs2 E E0.
+        map_solver impvar srcvar.
+        destruct (dec (x = cond));
+          destruct (dec (x \in live s1));
+          destruct (dec (x \in live s2)); subst;
+            map_solver impvar srcvar.
+        {
+          clear RGN RGS RGN0 RGS0.
+          exists k.
+          map_solver impvar srcvar.
+        }
+        {
+          clear RGN RGS RGN0 RGS0.
+          exists k.
+          map_solver impvar srcvar.
+        }
+        {
+          clear RGN RGS RGN0 RGS0.
+          exists k.
+          map_solver impvar srcvar.
+        }
+        {
+          clear RGN RGS RGN0 RGS0.
+          exists k.
+          map_solver impvar srcvar.
+        }
+      }
+      destruct IHs2 as [s2' IHs2].
+      {
+        clear IHs1 E E0.
+        map_solver impvar srcvar.
+        destruct (dec (x = cond));
+          destruct (dec (x \in live s1));
+          destruct (dec (x \in live s2)); subst;
+            map_solver impvar srcvar.
+        {
+          clear RGN RGS RGN0 RGS0.
+          exists k.
+          map_solver impvar srcvar.
+        }
+        {
+          clear RGN RGS RGN0 RGS0.
+          exists k.
+          map_solver impvar srcvar.
+        }
+        {
+          clear RGN RGS RGN0 RGS0.
+          exists k.
+          map_solver impvar srcvar.
+        }
+        {
+          clear RGN RGS RGN0 RGS0.
+          exists k.
+          map_solver impvar srcvar.
+        }
+      }
+      destruct (reverse_get m cond) eqn: F; [| exfalso; map_solver impvar srcvar].
+      eapply checker_monotone in IHs1; [ rewrite IHs1 | map_solver impvar srcvar ].
+      eapply checker_monotone in IHs2; [ rewrite IHs2 | map_solver impvar srcvar ].
+      eexists. reflexivity.
     -
+
   Abort.
 
 
