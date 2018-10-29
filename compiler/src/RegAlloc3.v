@@ -667,8 +667,22 @@ Section RegAlloc.
     - clear Case_SCall.
       discriminate.
   Qed.
+
+
 Require Import lib.fiat_crypto_tactics.Not.
+
 Ltac ensure_no_body H := not (clearbody H).
+
+(*
+Ltac specialize_with_evars H :=
+  repeat match type of H with
+         | forall (x: ?T), _ =>
+           lazymatch type of T with
+           | Prop => fail
+           | _ => let x' := fresh x in evar (x': T); specialize (H x'); subst x'
+           end
+         end.
+*)
 
 Ltac map_solver K V :=
   assert_is_type K;
@@ -680,15 +694,20 @@ Ltac map_solver K V :=
   let RGN := fresh "RGN" in pose proof (@reverse_get_None K V _) as RGN;
   let RGS := fresh "RGS" in pose proof (@reverse_get_Some K V _) as RGS;
   repeat match goal with
-  | H: forall (x: _), _, y: ?E |- _ =>
-    ensure_no_body H;
-    first [ unify E K | unify E V | let T := type of E in unify T Prop ];
-    let H' := fresh H y in
-    pose proof H as H';
+  | H: forall (x: ?E), _, y: ?E |- _ =>
+    first [ unify E K | unify E V ];
     match type of H with
     | DecidableEq E => fail 1
-    | _ => specialize (H' y) || specialize H' with (1 := y)
-    end;
+    | _ => let H' := fresh H y in
+           pose proof (H y) as H';
+           canonicalize_map_hyp H';
+           ensure_new H'
+    end
+  | H: forall (x: _), _, y: ?E |- _ =>
+    let T := type of E in unify T Prop;
+    let H' := fresh H y in
+    pose proof H as H';
+    specialize H' with (1 := y); (* might instantiate a few universally quantified vars *)
     canonicalize_map_hyp H';
     ensure_new H'
   end;
