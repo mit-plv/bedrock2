@@ -652,4 +652,36 @@ Section RegAlloc.
       discriminate.
   Qed.
 
+  Lemma regalloc_succeeds: forall s annotated m m' l,
+      regalloc m s l = (annotated, m') ->
+      exists s', checker m annotated = Some s'.
+  Proof.
+    induction s; intros; simpl in *;
+      repeat ((destruct_pair_eqs; subst) || (destruct_one_match_hyp; [|try discriminate]));
+      simpl.
+    - destruct (reverse_get m a) eqn: F.
+      + eexists. reflexivity.
+      + exfalso.
+        pose proof @reverse_get_None as P. specialize P with (1 := F).
+        pose proof @reverse_get_Some as Q. specialize Q with (1 := E).
+        clear E F.
+        map_solver impvar srcvar.
+    - destruct (reverse_get m a) eqn: F.
+      + eexists. reflexivity.
+      + exfalso.
+        pose proof @reverse_get_None as P. specialize P with (1 := F).
+        pose proof @reverse_get_None as Q. specialize Q with (1 := E).
+        revert P Q.
+(*
+what if pick_or_else fails?
+
+Auto Quickcheck found a counterexample:
+  m = Map.empty
+  a = a1
+  l = {}
+  x = a1
+*)
+  Abort.
+
+
 End RegAlloc.

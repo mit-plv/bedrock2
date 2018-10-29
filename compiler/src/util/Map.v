@@ -345,7 +345,10 @@ Ltac map_solver K V :=
            ensure_new H'
     end
   end;
-  let solver := congruence || auto || (exfalso; eauto) in
+  let solver := congruence || auto || (exfalso; eauto) ||
+                match goal with
+                | H: ~ _ |- False => solve [apply H; intuition (auto || congruence || eauto)]
+                end in
   let fallback := (destruct_one_map_match K V;
                    invert_Some_eq_Some;
                    canonicalize_all K V) in
