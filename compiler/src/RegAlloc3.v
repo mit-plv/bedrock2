@@ -285,7 +285,13 @@ Section RegAlloc.
   Lemma mappings_mappings_extends_mappings: forall s m,
       extends (mappings (mappings m s) s) (mappings m s).
   Proof.
-    induction s; intros; simpl in *; try solve [ map_solver impvar srcvar ].
+    induction s; intros; simpl in *;
+      try solve [
+            (* these can be specialized infinitely many times with themselves *)
+            try clear IHs;
+            try clear IHs1;
+            try clear IHs2;
+            map_solver impvar srcvar ].
     - apply intersect_map_extends.
       +
   Admitted.
@@ -667,70 +673,6 @@ Section RegAlloc.
     - clear Case_SCall.
       discriminate.
   Qed.
-
-
-Require Import lib.fiat_crypto_tactics.Not.
-
-Ltac ensure_no_body H := not (clearbody H).
-
-(*
-Ltac specialize_with_evars H :=
-  repeat match type of H with
-         | forall (x: ?T), _ =>
-           lazymatch type of T with
-           | Prop => fail
-           | _ => let x' := fresh x in evar (x': T); specialize (H x'); subst x'
-           end
-         end.
-*)
-
-Ltac map_solver K V :=
-  assert_is_type K;
-  assert_is_type V;
-  repeat autounfold with unf_map_defs unf_set_defs in *;
-  destruct_products;
-  intros;
-  canonicalize_all K V;
-  let RGN := fresh "RGN" in pose proof (@reverse_get_None K V _) as RGN;
-  let RGS := fresh "RGS" in pose proof (@reverse_get_Some K V _) as RGS;
-  repeat match goal with
-  | H: forall (x: ?E), _, y: ?E |- _ =>
-    first [ unify E K | unify E V ];
-    match type of H with
-    | DecidableEq E => fail 1
-    | _ => let H' := fresh H y in
-           pose proof (H y) as H';
-           canonicalize_map_hyp H';
-           ensure_new H'
-    end
-  | H: forall (x: _), _, y: ?E |- _ =>
-    let T := type of E in unify T Prop;
-    let H' := fresh H y in
-    pose proof H as H';
-    specialize H' with (1 := y); (* might instantiate a few universally quantified vars *)
-    canonicalize_map_hyp H';
-    ensure_new H'
-  | H: ?P -> _ |- _ =>
-    let T := type of P in unify T Prop;
-    let F := fresh in
-    assert P as F by eauto;
-    let H' := fresh H "_eauto" in
-    pose proof (H F) as H';
-    clear F;
-    canonicalize_map_hyp H';
-    ensure_new H'
-  end;
-  let solver := congruence || auto || (exfalso; eauto) ||
-                match goal with
-                | H: ~ _ |- False => solve [apply H; intuition (auto || congruence || eauto)]
-                end in
-  let fallback := (destruct_one_map_match K V;
-                   invert_Some_eq_Some;
-                   canonicalize_all K V) in
-  repeat (propositional;
-          propositional_ors;
-          try solve [ solver ];
-          try fallback).
 
   Lemma regalloc_succeeds: forall s annotated m m' l,
       subset (live s) (range m) ->
