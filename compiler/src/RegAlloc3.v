@@ -710,6 +710,15 @@ Ltac map_solver K V :=
     specialize H' with (1 := y); (* might instantiate a few universally quantified vars *)
     canonicalize_map_hyp H';
     ensure_new H'
+  | H: ?P -> _ |- _ =>
+    let T := type of P in unify T Prop;
+    let F := fresh in
+    assert P as F by eauto;
+    let H' := fresh H "_eauto" in
+    pose proof (H F) as H';
+    clear F;
+    canonicalize_map_hyp H';
+    ensure_new H'
   end;
   let solver := congruence || auto || (exfalso; eauto) ||
                 match goal with
@@ -755,23 +764,18 @@ Ltac map_solver K V :=
       + (* reverse_get of checker None *)
         exfalso. map_solver impvar srcvar.
     - destruct (reverse_get m a) eqn: F; destruct (reverse_get m v) eqn: G;
-        [eexists; reflexivity|exfalso; try solve map_solver impvar srcvar..].
-      + map_solver impvar srcvar.
-        destruct Hv; [auto|].
-        specialize (RGNG x).
-        contradiction.
-      + map_solver impvar srcvar.
-        destruct Ha; [auto|].
-        specialize (RGNF x).
-        contradiction.
-      + map_solver impvar srcvar.
-        destruct Ha; [auto|].
-        specialize (RGNF x).
-        contradiction.
+        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
     - eauto.
     - eauto.
+    - destruct (reverse_get m y) eqn: F; destruct (reverse_get m z) eqn: G;
+        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
+    - destruct (reverse_get m y) eqn: F; destruct (reverse_get m z) eqn: G;
+        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
+    - destruct (reverse_get m y) eqn: F;
+        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
+    - destruct (reverse_get m y) eqn: F;
+        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
     -
-
   Abort.
 
 
