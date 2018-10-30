@@ -306,14 +306,21 @@ Ltac destruct_one_map_match K V :=
 
 Ltac propositional :=
   repeat match goal with
-         | |- forall _, _ => intros
-         | [ H: _ /\ _ |- _ ] => destruct H
-         | [ H: _ <-> _ |- _ ] => destruct H
+         | |- forall _, _ => progress intros until 0
+         | |- _ -> _ => let H := fresh "Hyp" in intro H
+         | [ H: _ /\ _ |- _ ] =>
+           let H1 := fresh H "_l" in
+           let H2 := fresh H "_r" in
+           destruct H as [H1 H2]
+         | [ H: _ <-> _ |- _ ] =>
+           let H1 := fresh H "_fwd" in
+           let H2 := fresh H "_bwd" in
+           destruct H as [H1 H2]
          | [ H: False |- _ ] => solve [ destruct H ]
          | [ H: True |- _ ] => clear H
          | [ H: exists (varname : _), _ |- _ ] =>
            let newvar := fresh varname in
-           destruct H as [newvar ?]
+           destruct H as [newvar H]
          | [ H: ?P |- ?P ] => exact H
          | |- _ /\ _ => split
          | [ H: ?P -> _, H': ?P |- _ ] =>
@@ -325,7 +332,7 @@ Ltac propositional :=
 
 Ltac propositional_ors :=
   repeat match goal with
-         | [ H: _ \/ _ |- _ ] => destruct H
+         | [ H: _ \/ _ |- _ ] => destruct H as [H | H]
          | [ |- _ \/ _ ] => (left + right); congruence
          end.
 
@@ -341,7 +348,10 @@ Ltac map_solver K V :=
   assert_is_type V;
   repeat autounfold with unf_map_defs unf_set_defs in *;
   destruct_products;
-  intros;
+  repeat match goal with
+         | |- forall _, _ => progress intros until 0
+         | |- _ -> _ => let H := fresh "Hyp" in intro H
+         end;
   canonicalize_all K V;
   let RGN := fresh "RGN" in pose proof (@reverse_get_None K V _) as RGN;
   let RGS := fresh "RGS" in pose proof (@reverse_get_Some K V _) as RGS;
