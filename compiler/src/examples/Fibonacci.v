@@ -98,17 +98,17 @@ Module PrintRegAllocAnnotatedFlatImp.
   Import bopname.
 
   Notation "a ; b" := (ASSeq _ _ _ a b) (only printing, right associativity,
-      at level 50, format "a ; '//' b").
+      at level 50, format "a ; '//' b") : regalloc_scope.
   Notation "'$x' a '($r' b ')' = c" := (ASLit _ _ _ a b c) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  c").
+      at level 40, format "'$x' a '($r' b ')'  =  c") : regalloc_scope.
   Notation "'$x' a '($r' b ')' = '$x' c" := (ASSet _ _ _ a b c) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  '$x' c").
+      at level 40, format "'$x' a '($r' b ')'  =  '$x' c") : regalloc_scope.
   Notation "'$x' a '($r' b ')' = op '$x' c '$x' d" := (ASOp _ _ _ a b op c d) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  op  '$x' c  '$x' d").
+      at level 40, format "'$x' a '($r' b ')'  =  op  '$x' c  '$x' d") : regalloc_scope.
   Notation "'loop' a 'breakUnless' '$x' cond b" := (ASLoop _ _ _ a cond b)
       (only printing, at level 50, a at level 40,
-       format "'loop' '[v ' '//' a '//' 'breakUnless'  '$x' cond '//' b ']'").
-  Notation "'skip'" := (ASSkip _ _ _) (only printing).
+       format "'loop' '[v ' '//' a '//' 'breakUnless'  '$x' cond '//' b ']'") : regalloc_scope.
+  Notation "'skip'" := (ASSkip _ _ _) (only printing) : regalloc_scope.
   (* TODO
        ASLoad(x: srcvar)(x': impvar)(a: srcvar)
        ASStore(a: srcvar)(v: srcvar)
@@ -127,6 +127,8 @@ Module PrintRegAllocAnnotatedFlatImp.
   Definition regAllocWithCheck flat resVar :=
     checker var var func empty_map (regAlloc flat resVar).
 
+  Open Scope regalloc_scope.
+
   Goal False.
 let r := eval cbv in (regAlloc          (TestFlatImp.fib 6) TestFlatImp._b) in idtac r.
 let r := eval cbv in (regAllocWithCheck (TestFlatImp.fib 6) TestFlatImp._b) in idtac r.
@@ -135,6 +137,75 @@ let r := eval cbv in (regAlloc          (flatten (fib_ExprImp 6)) Demos.Fibonacc
 let r := eval cbv in (regAllocWithCheck (flatten (fib_ExprImp 6)) Demos.Fibonacci.b) in idtac r.
   Abort.
 
+  Set Printing Depth 10000.
+
+  Goal exists s, regAllocWithCheck (flatten (fib_ExprImp 6)) Demos.Fibonacci.b = Some s.
+    unfold regAllocWithCheck.
+    match goal with
+    | |- context [ regAlloc ?a ?b ] => let r := eval cbv in (regAlloc a b) in change (regAlloc a b) with r
+    end.
+    let b := eval unfold checker in checker in change checker with b.
+    cbv beta iota.
+    match goal with
+    | |- context [ loop_inv var var func ?ma ?m ?s1 ?s2 ] =>
+      let i := constr:(loop_inv var var func ma m s1 s2) in
+      let r := eval cbv in i in
+          match r with
+          | [] => set (li := i)
+          end
+    end.
+    exfalso.
+    assert (li <> []).
+    {
+      subst li.
+      Close Scope regalloc_scope.
+      simpl ((mappings var var func empty_map
+             (ASSeq Z Z Z (ASLit Z Z Z 5 1 0) (ASSet Z Z Z 1 2 5)))).
+      simpl ((mappings var var func _
+          (ASSeq Z Z Z (ASLit Z Z Z 6 1 1) (ASSet Z Z Z 2 3 6)))).
+      simpl ((mappings var var func _
+       (ASSeq Z Z Z (ASLit Z Z Z 7 1 0) (ASSet Z Z Z 4 4 7)))).
+      Open Scope regalloc_scope.
+      unfold loop_inv.
+      Close Scope regalloc_scope.
+      simpl ((mappings var var func _
+          (ASSeq Z Z Z (ASSet Z Z Z 8 1 4)
+                 (ASSeq Z Z Z (ASLit Z Z Z 9 5 6) (ASOp Z Z Z 10 6 ltu 8 9))))).
+      Open Scope regalloc_scope.
+      simpl (mappings var var func _ _).
+      (*
+        case SLoop of regalloc is wrong, it should not only pass (union l (live s))
+        to the recursive call, but also mandate that they will be stored in the same
+        registers as before!
+
+              let s2' := regalloc (mappings m s1') s2 (union l (live s)) in
+
+(($x5($r1) = 0;
+  $x1($r2) = $x5);
+ ($x6($r1) = 1;
+  $x2($r3) = $x6);
+ ($x7($r1) = 0;
+  $x4($r4) = $x7);
+ loop
+      ($x8($r1) = $x4;
+       $x9($r5) = 6;
+       $x10($r6) = ltu $x8 $x9)
+      breakUnless $x10
+      ((($x11($r1) = $x1;
+         $x12($r2) = $x2;
+         $x13($r5) = add $x11 $x12);
+        $x3($r1) = $x13);
+       ($x14($r2) = $x2;
+        $x1($r3) = $x14);
+       ($x15($r2) = $x3;
+        $x2($r1) = $x15);
+       ($x16($r2) = $x4;
+        $x17($r4) = 1;
+        $x18($r5) = add $x16 $x17);
+       $x4($r2) = $x18))
+
+checker seems correct, regalloc is wrong *)
+  Abort.
 End PrintRegAllocAnnotatedFlatImp.
 
 Time Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
