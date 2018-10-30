@@ -96,24 +96,18 @@ Section Pipeline.
   (* convention: there's one single result which is put into register $x1 *)
   Definition interesting_alloc(resVar: var): map var var := put empty_map resVar resVar.
 
-  Definition exprImp2Riscv_with_regalloc(resVar: var)(s: Syntax.cmd): var * list Instruction :=
-    let '(resMap, oStmt) :=
+  Definition exprImp2Riscv_with_regalloc(resVar: var)(s: Syntax.cmd): list Instruction :=
+    let oStmt :=
       (register_allocation var var func
                            Register0
                            riscvRegisters
                            (flatten s)
-                           (singleton_set resVar)) in
-    let insts :=
+                           empty_map
+                           (interesting_alloc resVar)) in
       match oStmt with
       | Some s => FlatToRiscv.compile_stmt LwXLEN SwXLEN s
       | None => nil
-      end in
-    let resReg :=
-      match reverse_get resMap resVar with
-      | Some r => r
-      | None => Register0
-      end in
-    (resReg, insts).
+      end.
 
   Definition evalH := @ExprImp.eval_cmd _ _ _ _.
 

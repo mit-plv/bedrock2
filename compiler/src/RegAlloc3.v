@@ -186,13 +186,17 @@ Section RegAlloc.
   Fixpoint regalloc
            (m: map impvar srcvar)(* current mapping *)
            (s: stmt)             (* current sub-statement *)
-           (l: srcvars)          (* variables which have a life after statement s *)
+           (l: srcvars)          (* variables which have a life after statement s,
+                                    but we don't care in what register they end up *)
+           (r: map impvar srcvar)(* requirements on what variables registers should contain
+                                    at the end (i.e variables which have a life after s,
+                                    and moreover have to be in a specific register *)
     : astmt             (* annotated statement *)
     :=
     (* variables which currently occupy a register (maybe unjustified) *)
     let o_original := range m in
     (* these are the variables which actually deserve to occupy a register: *)
-    let o := union (live s) (diff l (certainly_written s)) in
+    let o := union (live s) (diff (union l (range r)) (certainly_written s)) in
     (* intervals which ended... *)
     let became_dead := diff o_original o in
     (* ... allow us to prune m: *)
@@ -201,25 +205,31 @@ Section RegAlloc.
     let a := diff available_impvars (domain m) in
     match s with
     | SLoad x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
-        match reverse_get m x with
-        | Some y => (* nothing to do because no new interval starts *)
+        match reverse_get r x with
+        | Some y => (* no matter whether a new interval for x starts here or not,
+                       we're told where to put it by r *)
                     annotate_assignment s y
-        | None   => (* new interval starts *)
-                    let y := fst (pick_or_else a dummy_impvar) in
-                    annotate_assignment s y
+        | None => match reverse_get m x with
+                  | Some y => (* nothing to do because no new interval starts *)
+                              annotate_assignment s y
+                  | None   => (* new interval starts *)
+                              let y := fst (pick_or_else a dummy_impvar) in
+                              annotate_assignment s y
+                  end
         end
     | SStore x y => ASStore x y
     | SIf cond s1 s2   =>
-        let s1' := regalloc m s1 l in
-        let s2' := regalloc m s2 l in
+        let s1' := regalloc m s1 l r in
+        let s2' := regalloc m s2 l r in
         ASIf cond s1' s2'
     | SLoop s1 cond s2 =>
-        let s1' := regalloc m s1 (union (union (singleton_set cond) (live s2)) l) in
-        let s2' := regalloc (mappings m s1') s2 (union l (live s)) in
+        let s1' := regalloc m s1 (union (union (singleton_set cond) (live s2)) l) r in
+        let s2' := regalloc (mappings m s1') s2 empty_set m in
         ASLoop s1' cond s2'
     | SSeq s1 s2 =>
-        let s1' := regalloc m s1 (union (live s2) (diff l (certainly_written s2))) in
-        let s2' := regalloc (mappings m s1') s2 l in
+        let s1' := regalloc m s1 (union (live s2) (diff l (certainly_written s2)))
+                                 (remove_values r (certainly_written s2)) in
+        let s2' := regalloc (mappings m s1') s2 l r in
         ASSeq s1' s2'
     | SSkip => ASSkip
   (*| SCall argnames fname resnames => fold_left start_interval resnames (o, a, m) *)
@@ -378,13 +388,9 @@ Section RegAlloc.
       | ASCall binds f args => SCall (List.map fst binds) f args
       end.
 
-  (* TODO needs better interface: both at beginning and at end, specify mapping we care about *)
-  Definition register_allocation(s: stmt)(resultVars: srcvars)
-    : map impvar srcvar * option stmt' :=
-    let initialMap := empty_map in
-    let annotated := regalloc initialMap s resultVars in
-    let resultMap := mappings initialMap annotated in
-    (resultMap, checker initialMap annotated).
+  Definition register_allocation(s: stmt)(mBegin mEnd: map impvar srcvar): option stmt' :=
+    let annotated := regalloc mBegin s empty_set mEnd in
+    checker mBegin annotated.
 
   (* claim: for all astmt a, if checker succeeds and returns s', then
      (erase a) behaves the same as s' *)
@@ -669,9 +675,10 @@ Section RegAlloc.
       discriminate.
   Qed.
 
-  Lemma regalloc_respects_afterlife: forall s m l,
+  Lemma regalloc_respects_afterlife: forall s m l r,
+      (* TODO say something about r *)
       subset l (union (range m) (certainly_written s)) ->
-      subset l (range (mappings m (regalloc m s l))).
+      subset l (range (mappings m (regalloc m s l r))).
   Proof.
     induction s; intros;
       [ set ( case := SLoad )
@@ -687,6 +694,7 @@ Section RegAlloc.
       move case at top;
       simpl in *;
       repeat (destruct_one_match); simpl in *.
+    (*
     {
       rename H into AA.
       pose proof @reverse_get_Some as PP.
@@ -712,6 +720,7 @@ Section RegAlloc.
       end.
       admit.
       admit.
+     *)
   Admitted.
 
   Lemma checker_monotone: forall r1 r2 s s',
@@ -721,9 +730,10 @@ Section RegAlloc.
   Proof using.
   Admitted.
 
-  Lemma regalloc_succeeds: forall s annotated m l,
+  Lemma regalloc_succeeds: forall s annotated m l r,
+      (* TODO restrictions on l and r *)
       subset (live s) (range m) ->
-      regalloc m s l = annotated ->
+      regalloc m s l r = annotated ->
       exists s', checker m annotated = Some s'.
   Proof.
     induction s; intros; simpl in *;
@@ -755,6 +765,7 @@ Section RegAlloc.
         eexists. reflexivity.
       + (* reverse_get of checker None *)
         exfalso. map_solver impvar srcvar.
+    (*
     - destruct (reverse_get m a) eqn: F; destruct (reverse_get m v) eqn: G;
         [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
     - eauto.
@@ -839,6 +850,7 @@ Section RegAlloc.
       map_solver impvar srcvar.
     - eauto.
     - eauto.
+    *)
   Abort.
 
 
