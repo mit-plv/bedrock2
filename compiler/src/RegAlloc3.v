@@ -1,3 +1,4 @@
+Require Import lib.fiat_crypto_tactics.Test.
 Require Import compiler.FlatImp.
 Require Import compiler.Decidable.
 Require Import Coq.Lists.List.
@@ -8,6 +9,7 @@ Require Import compiler.util.Set.
 Require Import compiler.Memory.
 Require Import compiler.util.Tactics.
 Require Import compiler.util.MapSolverTest.
+Require Import compiler.util.SetSolverTests.
 
 
 Section TODO.
@@ -119,6 +121,9 @@ Section RegAlloc.
     | ASSkip
     | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
 
+  Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
+  Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
+
 (*
   Ltac head e :=
     match e with
@@ -126,7 +131,7 @@ Section RegAlloc.
     | _ => e
     end.
 
-  Goal forall (s: astmt), False.
+  Goal forall (s: stmt), False.
     intro s.
     destruct s eqn: E;
     match type of E with
@@ -134,9 +139,6 @@ Section RegAlloc.
     end.
   Abort.
 *)
-
-  Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
-  Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
 
   Definition loop_inv(mappings: map impvar srcvar -> astmt -> map impvar srcvar)
                      (m: map impvar srcvar)(s1 s2: astmt): map impvar srcvar :=
@@ -216,7 +218,7 @@ Section RegAlloc.
         let s2' := regalloc (mappings m s1') s2 (union l (live s)) in
         ASLoop s1' cond s2'
     | SSeq s1 s2 =>
-        let s1' := regalloc m s1 (union (live s2) l) in
+        let s1' := regalloc m s1 (union (live s2) (diff l (certainly_written s2))) in
         let s2' := regalloc (mappings m s1') s2 l in
         ASSeq s1' s2'
     | SSkip => ASSkip
@@ -667,6 +669,51 @@ Section RegAlloc.
       discriminate.
   Qed.
 
+  Lemma regalloc_respects_afterlife: forall s m l,
+      subset l (union (range m) (certainly_written s)) ->
+      subset l (range (mappings m (regalloc m s l))).
+  Proof.
+    induction s; intros;
+      [ set ( case := SLoad )
+      | set ( case := SStore )
+      | set ( case := SLit )
+      | set ( case := SOp )
+      | set ( case := SSet )
+      | set ( case := SIf )
+      | set ( case := SLoop )
+      | set ( case := SSeq )
+      | set ( case := SSkip )
+      | set ( case := SCall ) ];
+      move case at top;
+      simpl in *;
+      repeat (destruct_one_match); simpl in *.
+    {
+      rename H into AA.
+      pose proof @reverse_get_Some as PP.
+      specialize PP with (1 := E). clear E.
+      revert AA PP.
+
+      Notation "A ⟹ B" := (A -> B)  (at level 99, right associativity,
+                                     format "A  ⟹  '/' B" ).
+      (* Nitpick found no counterexample *)
+      admit.
+    }
+    Focus 11. {
+      remember (union (certainly_written s1) (certainly_written s2)) as c1.
+      remember (union (live s1) (diff (live s2) (certainly_written s1))) as m1.
+      remember (remove_values m (diff (range m) (union m1 (diff l c1)))) as m2.
+      remember (regalloc m2 s1 (union (live s2) l)) as R1.
+      remember (regalloc (mappings m2 R1) s2 l) as R2.
+      specialize (IHs1 m2 (union (live s2) l)). rewrite <- HeqR1 in IHs1.
+      specialize (IHs2 (mappings m2 R1) l). rewrite <-HeqR2 in IHs2.
+
+      match type of IHs2 with
+      | _ -> subset _ ?X => apply subset_trans with (s4 := X)
+      end.
+      admit.
+      admit.
+  Admitted.
+
   Lemma checker_monotone: forall r1 r2 s s',
       extends r2 r1 ->
       checker r1 s = Some s' ->
@@ -753,14 +800,38 @@ Section RegAlloc.
                 (union (union (live s1) (diff (live s2) (certainly_written s1)))
                        (diff l (union (certainly_written s1) (certainly_written s2))))))
                  as m1.
-
-        assert (
-    regalloc_respects_afterlife: forall s m l,
-        subset l (range (mappings m (regalloc m s l)))). {
-          admit.
-        }
-        specialize (regalloc_respects_afterlife s1 m1 (union (live s2) l)).
+        specialize (regalloc_respects_afterlife s1 m1 (union (live s2)
+                                                             (diff l (certainly_written s2)))).
+        intro R.
+        match type of R with
+        | ?A -> _ => assert A; [| solve [map_solver impvar srcvar] ]
+        end.
+        clear R.
+        subst.
         map_solver impvar srcvar.
+        {
+          destruct (dec (x \in certainly_written s1)); [solve[ auto ] |].
+          left.
+          map_solver impvar srcvar.
+        }
+        {
+          destruct (dec (x \in certainly_written s1)); [solve[ auto ] |].
+          left.
+          destruct Hx as [k Hx].
+          - destruct (dec (x \in live s1)); auto.
+            destruct (dec (x \in live s2)); auto.
+            right.
+            exfalso.
+            map_solver impvar srcvar.
+            admit.
+          - exists k.
+            map_solver impvar srcvar. (* TODO this one should succeed *)
+            exfalso.
+            apply c_r.
+            destruct (dec (s \in live s1)); auto.
+            destruct (dec (s \in live s2)); auto.
+            intuition auto.
+        }
       }
       eapply checker_monotone in IHs2; [ rewrite IHs2; eexists; reflexivity |  ].
       clear IHs2.
