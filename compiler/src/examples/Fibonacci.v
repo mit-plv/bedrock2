@@ -71,7 +71,7 @@ Goal fib_H_res 20 4 = Some (ZToWord 32  5). reflexivity. Qed.
 Goal fib_H_res 20 5 = Some (ZToWord 32  8). reflexivity. Qed.
 Goal fib_H_res 20 6 = Some (ZToWord 32 13). reflexivity. Qed.
 
-Definition do_regalloc: bool := false.
+Definition do_regalloc: bool := true.
 
 Definition compileFunc: cmd -> list Instruction :=
   if do_regalloc then
@@ -133,49 +133,9 @@ let r := eval cbv in (regAlloc          (flatten (fib_ExprImp 6)) Demos.Fibonacc
 let r := eval cbv in (regAllocWithCheck (flatten (fib_ExprImp 6)) Demos.Fibonacci.b) in idtac r.
   Abort.
 
-  Set Printing Depth 10000.
-
-  Goal exists s, regAllocWithCheck (flatten (fib_ExprImp 6)) Demos.Fibonacci.b = Some s.
-    unfold regAllocWithCheck.
-    match goal with
-    | |- context [ regAlloc ?a ?b ] => let r := eval cbv in (regAlloc a b) in change (regAlloc a b) with r
-    end.
-    let b := eval unfold checker in checker in change checker with b.
-    cbv beta iota.
-    (*
-    match goal with
-    | |- context [ loop_inv var var func ?ma ?m ?s1 ?s2 ] =>
-      let i := constr:(loop_inv var var func ma m s1 s2) in
-      let r := eval cbv in i in
-          match r with
-          | [] => set (li := i)
-          end
-    end.
-    exfalso.
-    assert (li <> []).
-    {
-      subst li.
-      Close Scope regalloc_scope.
-      simpl ((mappings var var func empty_map
-             (ASSeq Z Z Z (ASLit Z Z Z 5 1 0) (ASSet Z Z Z 1 2 5)))).
-      simpl ((mappings var var func _
-          (ASSeq Z Z Z (ASLit Z Z Z 6 1 1) (ASSet Z Z Z 2 3 6)))).
-      simpl ((mappings var var func _
-       (ASSeq Z Z Z (ASLit Z Z Z 7 1 0) (ASSet Z Z Z 4 4 7)))).
-      Open Scope regalloc_scope.
-      unfold loop_inv.
-      Close Scope regalloc_scope.
-      simpl ((mappings var var func _
-          (ASSeq Z Z Z (ASSet Z Z Z 8 1 4)
-                 (ASSeq Z Z Z (ASLit Z Z Z 9 5 6) (ASOp Z Z Z 10 6 ltu 8 9))))).
-      Open Scope regalloc_scope.
-      simpl (mappings var var func _ _).
-      *)
-  Abort.
 End PrintRegAllocAnnotatedFlatImp.
 
 Time Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
-(* empty list (failure) if do_regalloc is set to true *)
 
 Print fib6_riscv.
 
@@ -426,8 +386,7 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
       unfold run.
       apply f_equal.
       unfold initialRiscvMachine.
-      apply f_equal.
-      reflexivity.
+      (* apply f_equal. stack overflow *)
 Admitted.
 
 Print Assumptions fib6_L_res_is_13_by_proving_it.

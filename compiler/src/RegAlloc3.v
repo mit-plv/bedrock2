@@ -202,7 +202,7 @@ Section RegAlloc.
     (* ... allow us to prune m: *)
     let m := remove_values m became_dead in
     (* *currently* available registers *)
-    let a := diff available_impvars (domain m) in
+    let a := diff available_impvars (union (domain m) (domain r)) in
     match s with
     | SLoad x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
         match reverse_get r x with
@@ -227,8 +227,12 @@ Section RegAlloc.
         let s2' := regalloc (mappings m s1') s2 empty_set m in
         ASLoop s1' cond s2'
     | SSeq s1 s2 =>
-        let s1' := regalloc m s1 (union (live s2) (diff l (certainly_written s2)))
-                                 (remove_values r (certainly_written s2)) in
+        let s1' := regalloc m s1 (union (live s2) (diff l (certainly_written s2))) r
+                                 (* it would be nice to to this, but then the removed
+                                    variables would be considered "available forever",
+                                    instead of "available until the final value is
+                                    assigned to it"
+                                 (remove_values r (certainly_written s2)) *) in
         let s2' := regalloc (mappings m s1') s2 l r in
         ASSeq s1' s2'
     | SSkip => ASSkip
