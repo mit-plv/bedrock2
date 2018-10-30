@@ -27,6 +27,7 @@ Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
 Require Import bedrock2.Byte.
+Require compiler.examples.TestFlatImp.
 Require bedrock2.Hexdump.
 
 Open Scope Z_scope.
@@ -107,7 +108,7 @@ Module PrintRegAllocAnnotatedFlatImp.
   Notation "'loop' a 'breakUnless' '$x' cond b" := (ASLoop _ _ _ a cond b)
       (only printing, at level 50, a at level 40,
        format "'loop' '[v ' '//' a '//' 'breakUnless'  '$x' cond '//' b ']'").
-
+  Notation "'skip'" := (ASSkip _ _ _) (only printing).
   (* TODO
        ASLoad(x: srcvar)(x': impvar)(a: srcvar)
        ASStore(a: srcvar)(v: srcvar)
@@ -115,15 +116,25 @@ Module PrintRegAllocAnnotatedFlatImp.
        ASSkip
        ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar). *)
 
+  Definition regAlloc flat resVar :=
+    regalloc var var func
+             Register0
+             riscvRegisters
+             empty_map
+             flat
+             (@singleton_set var _ resVar).
+
+  Definition regAllocWithCheck flat resVar :=
+    checker var var func empty_map (regAlloc flat resVar).
+
   Goal False.
-    let r := eval cbv in
-      (regalloc var var func
-                Register0
-                riscvRegisters
-                empty_map
-                (flatten (fib_ExprImp 6))
-                (@singleton_set var _ Demos.Fibonacci.b)) in idtac r.
+let r := eval cbv in (regAlloc          (TestFlatImp.fib 6) TestFlatImp._b) in idtac r.
+let r := eval cbv in (regAllocWithCheck (TestFlatImp.fib 6) TestFlatImp._b) in idtac r.
+
+let r := eval cbv in (regAlloc          (flatten (fib_ExprImp 6)) Demos.Fibonacci.b) in idtac r.
+let r := eval cbv in (regAllocWithCheck (flatten (fib_ExprImp 6)) Demos.Fibonacci.b) in idtac r.
   Abort.
+
 End PrintRegAllocAnnotatedFlatImp.
 
 Time Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
