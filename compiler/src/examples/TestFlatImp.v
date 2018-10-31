@@ -13,7 +13,7 @@ Require Import riscv.MachineWidth32.
 
 
 Definition var: Set := Z. (* only inside this test module *)
-Definition func: Set := Z.
+Definition func: Set := Empty_set.
 Notation stmt := (stmt var func).
 
 Definition _n := 0%Z.
@@ -49,7 +49,7 @@ Example fib(n: Z): stmt  :=
   )))).
 
 Definition annoying_eq: DecidableEq
-  (list var * list func * stmt). Admitted.
+  (list var * list var * stmt). Admitted.
 Existing Instance annoying_eq.
 
 Definition eval_stmt_test fuel initialSt := @eval_stmt (word 32) _ _ _ _ (List_Map _ _) empty_map fuel initialSt no_mem.

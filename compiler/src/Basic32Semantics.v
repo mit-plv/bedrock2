@@ -8,7 +8,12 @@ Require Import riscv.MachineWidth32.
 Definition TODO{T: Type}: T. Admitted.
 
 Instance Basic32Semantics: bedrock2.Semantics.parameters := {|
-  syntax := ZNames;
+  syntax := {|
+    Syntax.varname := Z;
+    Syntax.funname := Empty_set;
+    Syntax.actname := Empty_set;
+    Syntax.bopname := bopname;
+  |};
   interp_binop bop := eval_binop bop;
 |}.
   (* all other fields are unused: *)

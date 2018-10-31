@@ -259,9 +259,9 @@ Section FlatToRiscv.
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
-  Notation stmt := (stmt Z Z).
+  Notation stmt := (stmt Z Empty_set).
 
-  Context {funcMap: MapFunctions Z (list Z * list Z * stmt)}. (* TODO meh *)
+  Context {funcMap: MapFunctions Empty_set (list Z * list Z * stmt)}. (* TODO meh *)
 
   Context {mem: Set}.
   Context {IsMem: Memory.Memory mem mword}.

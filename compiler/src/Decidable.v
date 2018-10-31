@@ -26,6 +26,10 @@ Global Instance dec_ge_Z : DecidableRel BinInt.Z.ge := ZArith_dec.Z_ge_dec.
 
 Global Instance dec_eq_N : DecidableEq N := N.eq_dec.
 
+Global Instance dec_Empty_set: DecidableEq Empty_set.
+  intro x. destruct x.
+Defined.
+
 Global Instance decidable_eq_option {A} `{DecidableEq A}: DecidableEq (option A).
   intros. unfold Decidable. destruct x; destruct y.
   - destruct (DecidableEq0 a a0).

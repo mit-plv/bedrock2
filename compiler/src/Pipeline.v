@@ -62,7 +62,7 @@ Section Pipeline.
   Context {BWSP: FlatToRiscvBitWidthSpecificProofs.FlatToRiscvBitWidthSpecificProofs mword mem}.
 
   Definition var := Register.
-  Definition func := Z.
+  Definition func := Empty_set.
 
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
@@ -73,15 +73,15 @@ Section Pipeline.
     let ngs: NGstate := freshNameGenState (ExprImp.allVars_cmd s) in
     let (sFlat, ngs') := flattenStmt id ngs s in sFlat.
 
-  Instance annoying_instance: MapFunctions var
+  Instance annoying_instance: MapFunctions func
    (list var *
-    list func *
+    list var *
     Syntax.cmd).
   Admitted.
 
   Instance annoying_instance': MapFunctions func
    (list var *
-    list func *
+    list var *
     @FlatImp.stmt var func).
   Admitted.
 

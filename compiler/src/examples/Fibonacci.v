@@ -29,6 +29,7 @@ Require Import riscv.InstructionCoercions.
 Require Import bedrock2.Byte.
 Require compiler.examples.TestFlatImp.
 Require bedrock2.Hexdump.
+Require Import compiler.RegAllocAnnotatedNotations.
 
 Open Scope Z_scope.
 
@@ -44,17 +45,17 @@ Existing Instance FlatToRiscv.State_is_RegisterFile.
 
 
 Definition fib_ExprImp(n: Z): cmd := Eval cbv in
-  snd (snd (Demos.fibonacci (bops := (@Basic_bopnames.BasicALU Demos.BasicALU_params)) n)).
+  snd (snd (Demos.fibonacci (bops := (@Basic_bopnames.BasicALU {|
+  Basic_bopnames.varname := Z;
+  Basic_bopnames.funcname := Empty_set;
+  Basic_bopnames.actname := Empty_set;
+|})) n)).
 
 (* This is what the bare AST looks like. For a more readable version with notations, see
    bedrock2/Demos.v *)
 Print fib_ExprImp.
 
-Definition state := (var -> option word).
-
-Definition name := Z.
-
-Instance fooo: MapFunctions name (list name * list name * cmd). Admitted.
+Instance fooo: MapFunctions Empty_set (list var * list var * cmd). Admitted.
 
 Definition fib_H_res(fuel: nat)(n: Z): option word :=
   match (eval_cmd empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with
@@ -90,26 +91,8 @@ Module PrintFlatImp.
 End PrintFlatImp.
 
 Module PrintRegAllocAnnotatedFlatImp.
-  Import bopname.
-
-  Notation "a ; b" := (ASSeq _ _ _ a b) (only printing, right associativity,
-      at level 50, format "a ; '//' b") : regalloc_scope.
-  Notation "'$x' a '($r' b ')' = c" := (ASLit _ _ _ a b c) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  c") : regalloc_scope.
-  Notation "'$x' a '($r' b ')' = '$x' c" := (ASSet _ _ _ a b c) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  '$x' c") : regalloc_scope.
-  Notation "'$x' a '($r' b ')' = op '$x' c '$x' d" := (ASOp _ _ _ a b op c d) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  op  '$x' c  '$x' d") : regalloc_scope.
-  Notation "'loop' a 'breakUnless' '$x' cond b" := (ASLoop _ _ _ a cond b)
-      (only printing, at level 50, a at level 40,
-       format "'loop' '[v ' '//' a '//' 'breakUnless'  '$x' cond '//' b ']'") : regalloc_scope.
-  Notation "'skip'" := (ASSkip _ _ _) (only printing) : regalloc_scope.
-  (* TODO
-       ASLoad(x: srcvar)(x': impvar)(a: srcvar)
-       ASStore(a: srcvar)(v: srcvar)
-       ASIf(cond: srcvar)(bThen bElse: astmt)
-       ASSkip
-       ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar). *)
+  Import compiler.RegAllocAnnotatedNotations.
+  Open Scope regalloc_scope.
 
   Definition regAlloc flat resVar :=
     regalloc var var func
@@ -122,8 +105,6 @@ Module PrintRegAllocAnnotatedFlatImp.
 
   Definition regAllocWithCheck flat resVar :=
     checker var var func empty_map (regAlloc flat resVar).
-
-  Open Scope regalloc_scope.
 
   Goal False.
 let r := eval cbv in (regAlloc          (TestFlatImp.fib 6) TestFlatImp._b) in idtac r.

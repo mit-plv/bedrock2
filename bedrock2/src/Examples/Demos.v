@@ -3,15 +3,20 @@ Require Import bedrock2.Macros bedrock2.Syntax.
 Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU.
 Require bedrock2.NotationsInConstr.
 Require bedrock2.BasicC64Syntax.
-Require bedrock2.ZNamesSyntax.
 
 Import BinInt String.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Definition StringNamesSyntaxParams: Syntax.parameters :=
   StringNamesSyntax.make BasicC64Syntax.StringNames_params.
-Definition ZNamesSyntaxParams: Syntax.parameters :=
-  ZNamesSyntax.ZNames.
+
+Definition ZNamesSyntaxParams: Syntax.parameters := {|
+  Syntax.varname := Z;
+  Syntax.funname := Empty_set;
+  Syntax.actname := Empty_set;
+  Syntax.bopname := bedrock2.Basic_bopnames.bopname;
+|}.
+
 
 (* Boilerplate to get variable names.
    The names are in separate modules to allow the same variable name to be used in several
@@ -130,7 +135,7 @@ Section Demos.
   Context {listsumNames: unique! ListSum.Names}.
   Import ListSum.
   (* input_base is an address fixed at compile time *)
-  Definition listsum(input_base: Z): Prog := ("listsum", ([], [], bedrock_func_body:(
+  Definition listsum(input_base: Z): Prog := ("listsum", ([], [sumreg], bedrock_func_body:(
     sumreg = 0;;
     n = *(uint32_t*) input_base;;
     i = 0;;
@@ -144,7 +149,7 @@ Section Demos.
   Context {fibonacciNames: unique! Fibonacci.Names}.
   Import Fibonacci.
   (* input_base is an address fixed at compile time *)
-  Definition fibonacci(n: Z): Prog := ("fibonacci", ([], [], bedrock_func_body:(
+  Definition fibonacci(n: Z): Prog := ("fibonacci", ([], [b], bedrock_func_body:(
     a = 0;;
     b = 1;;
     i = 0;;
@@ -156,11 +161,20 @@ Section Demos.
     }}
   ))).
 
+  Definition dummy: Prog := ("dummy", ([], [], cmd.skip)).
+
   Definition allProgs: list Prog :=
     Eval unfold bsearch, listsum, fibonacci in
       [bsearch; listsum 1024; fibonacci 6].
 
   Print allProgs.
+
+  Definition prog(name: string): Prog :=
+    match find (fun '(n, _) => if string_dec n name then true else false) allProgs with
+    | Some p => p
+    | None => dummy
+    end.
+
 End Demos.
 
 (* let's print them again in AST form: *)
@@ -171,13 +185,11 @@ Definition allProgsAsCStrings: list string :=
 
 Print allProgsAsCStrings.
 
-Definition BasicALU_params: Basic_bopnames.parameters := {|
-  Basic_bopnames.varname := Z;
-  Basic_bopnames.funcname := Z;
-  Basic_bopnames.actname := Empty_set;
-|}.
-
 Definition allProgsWithZNames :=
-  Eval cbv in (allProgs (bops := (@Basic_bopnames.BasicALU BasicALU_params))).
+  Eval cbv in (allProgs (bops := (@Basic_bopnames.BasicALU {|
+    Basic_bopnames.varname := Z;
+    Basic_bopnames.funcname := Empty_set;
+    Basic_bopnames.actname := Empty_set;
+  |}))).
 
 Print allProgsWithZNames.
