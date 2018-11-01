@@ -489,6 +489,7 @@ Section FlattenExpr.
       apply eval_binop_compat.
   Qed.
 
+
   Ltac simpl_reg_eqb :=
     rewrite? reg_eqb_eq by congruence;
     rewrite? reg_eqb_ne by congruence;
@@ -566,22 +567,93 @@ Section FlattenExpr.
         pose_flatten_var_ineqs.
         (*state_calc. (* TODO this takes more than a minute, which is annoying *)*)
         admit.
+  Lemma flattenBooleanExpr_correct_aux env : 
+    forall e ngs1 ngs2 resCond (s: FlatImp.stmt var func) (initialH initialL: state) initialM res,
+    flattenExprAsBooleanExpr ngs1 e = (s, resCond, ngs2) ->
+    extends initialL initialH ->
+    undef initialH (allFreshVars ngs1) ->
+    ExprImp.eval_expr initialH e = Some res ->
+    exists (fuel: nat) (finalL: state),
+      FlatImp.eval_stmt _ _ env fuel initialL initialM s = Some (finalL, initialM) /\
+      FlatImp.eval_bcond var finalL resCond = Some (negb (reg_eqb res (ZToReg 0))).
+  Proof.
+    intros.
+    destruct e; unfold flattenExprAsBooleanExpr in H; 
+    repeat destruct_one_match_hyp;
+    pose proof (flattenExpr_correct_aux env) as P; 
+    try (
+        specialize P with (initialM := initialM) (1 := E) (2 := H0) (3 := H1) (4 := H2); 
+        destruct P as [fuelS0 [initial2L [Evcond G]]];
+        exists fuelS0 initial2L; inversion H; subst;
+        split; [assumption | unfold FlatImp.eval_bcond; rewrite G; eauto]).
+  Admitted.
 
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       pose_flatten_var_ineqs.
       rename condition into condH, s into condL, s0 into sL1, s1 into sL2.
+
+
+      pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
+      specialize P with (initialM := initialM) 
+                        (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
+      destruct P as [fuelLcond [initial2L [Evcond G]]].
+
+      pose_flatten_var_ineqs.
+      remember (negb (reg_eqb cv (ZToReg 0))) as b_bool.
+      destruct b_bool.
+      + destruct b.
+        pose proof (flattenExpr_correct_aux empty_map) as Q.
+
+
+        unfold FlatImp.eval_bcond in G.
+        assert (exists mx my, get initial2L x = Some mx /\
+                              get initial2L y = Some my /\
+                              (reg_eqb mx my) = true);
+          unfold Bind in G; unfold option_Monad in G.
+Require Import riscv.AxiomaticRiscv.
+        { destruct (get initial2L x). destruct (get initial2L y).
+          exists w w0; split; split; eauto. inversion G; eauto.
+          inversion G. inversion G. }
+        destruct H as [mx [my [Hmx_get [Hmy_get Hreg_eq]]]].
+
+        specialize IHfuelH with (initialL := initial2L) (1:= E0) (5:= Ev).
+        destruct IHfuelH as [fuelL [finalL [evbranch ex2]]].
+        * state_calc.
+
+      specialize IHfuelH with (initialL := initial2L) (1:= E0) (5:= Ev).
+
+      specialize p with (initialm := initialm) (res := cv) (1 := e) (2 := ex).
+      specializes p; [eassumption|eassumption|].
+      destruct p as [fuellcond [initial2l [evcond g]]].
+      pose_flatten_var_ineqs.
+      specialize ihfuelh with (initiall := initial2l) (1 := e0) (5 := ev).
+      destruct ihfuelh as [fuell [finall [evbranch ex2]]].
+
+
+
+      specialize IHfuelH with (initialL := initial2L) (1:= E0) (5:= Ev).
+      destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
+      * state_calc.
+(*state_calc.
+        destruct Evcond_uacx.
+        pose_flatten_var_ineqs.*)
+
+
+        (*rewrite (Exx w H) in Evcond_uac.*)
+        
+      * state_calc.
+        
     Admitted.
 (*
-      pose proof (flatten
       pose proof (flattenExpr_correct_aux empty_map) as P.
      
 
-      specialize P with (initialM := initialM) (res := cv) (1 := E) (2 := Ex).
-      specializes P; [eassumption|eassumption|].
-      destruct P as [fuelLcond [initial2L [Evcond G]]].
+      specialize p with (initialm := initialm) (res := cv) (1 := e) (2 := ex).
+      specializes p; [eassumption|eassumption|].
+      destruct p as [fuellcond [initial2l [evcond g]]].
       pose_flatten_var_ineqs.
-      specialize IHfuelH with (initialL := initial2L) (1 := E0) (5 := Ev).
-      destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
+      specialize ihfuelh with (initiall := initial2l) (1 := e0) (5 := ev).
+      destruct ihfuelh as [fuell [finall [evbranch ex2]]].
       * state_calc.
       * state_calc.
       * simpl in Di.
