@@ -93,8 +93,13 @@ Ltac t :=
     hnf;
     match goal with
     | H: G |- _ => exact H
-    | _ => eexists
-    | _ => subst; eexists
+    | _ => exact eq_refl
+    | |- ex (fun x : ?T => ?Px /\ ?P) =>
+      let y := fresh x in
+      simple refine (let y : T := _ in
+                     @ex_intro T (fun x => Px /\ P) y
+                     (@conj (subst! y for x in Px) (subst! y for x in P) _ _));
+      [ shelve | .. ]
     end
 end.
 
@@ -108,6 +113,15 @@ Definition spec_of_swap := fun functions =>
       (fst swap) t m [a_addr; b_addr]
       (fun t' m' rets => t=t'/\ (ptsto 1 a_addr b * (ptsto 1 b_addr a * R)) m' /\ rets = nil).
 
+Local Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
+  (let x := v in ex_intro (fun y => Px /\ _) x (conj pfPx pfP))
+  (right associativity, at level 200,
+    format "'need!'  y  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
+Local Notation "'need!' x 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
+  (let x := v in ex_intro (fun x => Px /\ _) x (conj pfPx pfP))
+  (only printing, right associativity, at level 200,
+    format "'need!'  x  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
+
 Lemma swap_ok : forall functions, spec_of_swap (swap::functions).
 Proof.
   let body := open_constr:(_) in
@@ -115,14 +129,73 @@ Proof.
   unify f swap; change swap with f;
     pattern body; change (bindcmd body (fun c : cmd => forall functions, spec_of_swap (("swap", (["a"; "b"], [], c)) :: functions))).
   cbv beta iota delta [bindcmd spec_of_swap].
-  intros.
+  intros until 0. intros Hm.
   set (fun (t' : trace) (m' : mem) (rets : list word) => t = t' /\ (ptsto 1 a_addr b * (ptsto 1 b_addr a * R)%type) m' /\ rets = []) as POSTret.
-  rename H into Hm.
   hnf.
   set (fun (t0 : trace) (m0 : mem) (l0 : locals) => WeakestPrecondition.list_map (WeakestPrecondition.get l0) [] (fun rets : list word => POSTret t0 m0 rets)) as POST.
   set (WeakestPrecondition.call (fun _ : trace => True) (fun _ : trace => False) (fun _ _ : trace => True) _) as CALL.
-  lazymatch goal with |- ex ?P => refine (let l := _ in ex_intro P l (conj eq_refl _)) end.
+  lazymatch goal with |- ex ?P => refine (let l := _ in ex_intro P l (conj _ _)) end.
+  exact eq_refl.
+  hnf.
   repeat t.
+  let Tm := type of m in
+  let Pm := lazymatch type of Hm with ?P m => P end in
+  lazymatch goal with
+  | |- load ?sz ?m ?a = Some ?v
+    => is_var v;
+       let v := eval unfold v in v in
+       is_evar v;
+       simple refine (load_sep sz a v _ m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
+         [ shelve | .. ]
+  end.
+  let __ := constr:(eq_refl : v0 = b) in idtac. eabstract (subst l; subst v; subst v0; cancel; reflexivity).
+
+  let Tm := type of m in
+  let Pm := lazymatch type of Hm with ?P m => P end in
+  lazymatch goal with
+  | |- load ?sz ?m ?a = Some ?v
+    => is_var v;
+       let v := eval unfold v in v in
+       is_evar v;
+       simple refine (load_sep sz a v _ m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
+         [ shelve | .. ]
+  end.
+  let __ := constr:(eq_refl : v3 = a) in idtac. eabstract (subst l; subst l0; subst v; subst v0; subst v1; subst v2; subst v3; cancel; reflexivity).
+
+  Show Proof.
+  (* TODO: change expression evaluation to take a final value [v] instead of postcondition on that value, then evaluating an expression makes only one line in a proof. this works because expressions are pure. *)
+
+  let Tm := type of m in
+  let Pm := lazymatch type of Hm with ?P m => P end in
+  lazymatch goal with
+  | |- WeakestPrecondition.store ?sz ?m ?a ?v2 ?post
+    => simple refine (store_sep sz a _ v2 _ m ((_:@Lift1Prop.impl1 Tm Pm _) m Hm) post _);
+         [ shelve | shelve | .. ]
+  end.
+  eabstract (instantiate (2 := b); subst v1; cancel; reflexivity).
+  clear Hm m; intros m Hm.
+  cbv beta. (* FIXME *)
+
+  t.
+  t.
+  t.
+  t.
+
+  let Tm := type of m in
+  let Pm := lazymatch type of Hm with ?P m => P end in
+  lazymatch goal with
+  | |- WeakestPrecondition.store ?sz ?m ?a ?v2 ?post
+    => simple refine (store_sep sz a _ v2 _ m ((_:@Lift1Prop.impl1 Tm Pm _) m Hm) post _);
+         [ shelve | shelve | .. ]
+  end.
+  eabstract (instantiate (2 := a); subst v4; cancel; reflexivity).
+  clear Hm m; intros m Hm.
+
+  (* FIXME *)
+  hnf.
+  split. exact eq_refl.
+  split. 2:exact eq_refl.
+  assumption.
 Defined.
 
 Definition spec_of_swap_swap := fun functions =>
