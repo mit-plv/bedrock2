@@ -55,11 +55,11 @@ Section WeakestPrecondition.
   Proof.
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
       cbn in *; intuition (try typeclasses eauto with core).
-    { eapply Proper_expr; eauto; cbv [pointwise_relation Basics.impl]. eauto. }
-    { eapply Proper_expr; eauto; cbv [pointwise_relation Basics.impl]; intros.
-      eapply Proper_expr; eauto; cbv [pointwise_relation Basics.impl]; intros.
+    { destruct H4 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto. eauto. }
+    { destruct H4 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto.
+      destruct H5 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto.
       eapply Proper_store; eauto; cbv [pointwise_relation Basics.impl]; eauto. }
-    { eapply Proper_expr; eauto; cbv [pointwise_relation Basics.impl]; intuition eauto 6. }
+    { destruct H4 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto. intuition eauto 6. }
     { eapply IHa1; try solve [typeclasses eauto with core]. eapply H.
       intros. eapply IHa2; try solve [typeclasses eauto with core]. eapply H.
       eauto. }
@@ -73,15 +73,18 @@ Section WeakestPrecondition.
       eassumption || eexists.
       intros X Y Z T W.
       specialize (HH X Y Z T W).
-      eapply Proper_expr; eauto; cbv [pointwise_relation Basics.impl]; intuition eauto 2.
-      eapply IHa; eauto; cbn; intros.
-      destruct H7 as (v'&H7); exists v'.
-      intuition eauto. }
-    { eapply Proper_list_map; eauto; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
+      destruct HH as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]. all:intuition eauto 2.
+      - eapply IHa; eauto; cbn; intros.
+        destruct H10 as (?&?&[|]); eexists; eauto.
+      - intuition eauto. }
+    { destruct H4 as (?&?&?). eexists. split.
+      eapply Proper_list_map; eauto; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
       { eapply Proper_expr; eauto. }
       { eapply H2; eauto; firstorder eauto. } }
-    { eapply Proper_list_map; eauto; cbv [respectful pointwise_relation Basics.impl].
+    { destruct H4 as (?&?&?). eexists. split.
+      eapply Proper_list_map; eauto; cbv [respectful pointwise_relation Basics.impl].
       { eapply Proper_expr; eauto. }
+      { eauto. }
       intros.
       edestruct H5.
       split; [solve [eauto]|]; intros.
