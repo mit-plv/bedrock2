@@ -28,7 +28,7 @@ Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
-Require Import compiler.runsToNonDet2.
+Require Import compiler.runsToNonDet.
 
 (* TODO remove these three *)
 Require Import riscv.MachineWidth_XLEN.
@@ -271,12 +271,7 @@ Section FlatToRiscv.
   Context {BWSP: FlatToRiscvBitWidthSpecificProofs mword mem}.
 
   Local Notation RiscvMachine := (@RiscvMachine mword mem state).
-
-  (*
-  Definition OStateND(S A: Type) := S -> (option A) * S -> Prop.
-
-  Instance OStateND_Monad(S: Type): Monad (OStateND S). Admitted.
-  *)
+  Local Notation RiscvMachineL := (@RiscvMachineL mword mem state).
 
   (*
   Context {RVM: RiscvProgram (OStateND RiscvMachine) mword}.
@@ -861,23 +856,10 @@ Section FlatToRiscv.
   Qed.
   *)
 
-  Definition nothrow{S A}(m: OStateND S A): S -> (S -> A -> Prop) -> Prop.
-    unfold OStateND in *.
-    refine (fun s set => exists set', m s set' /\ _).
-    refine ((forall s' oa, set' s' oa -> exists a, oa = Some a) /\ _).
-    refine (forall s' a, set s' a <-> set' s' (Some a)).
-  Defined.
-
-  Definition ignoreAns{S A}(m: S -> (S -> A -> Prop) -> Prop): S -> (S -> Prop) -> Prop.
-   unfold OStateND in *.
-    refine (fun s set => exists set', m s set' /\ _).
-    refine (forall s, set s <-> exists a, set' s a).
-  Defined.
-
   Definition run1: OStateND RiscvMachineL unit := run1 (B := BitWidth).
 
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
-    runsTo _ (ignoreAns (nothrow run1)).
+    runsTo RiscvMachineL (computation_satisfies run1).
 
   (* ingredients:
   RiscvMachineL
@@ -888,10 +870,11 @@ Section FlatToRiscv.
   *)
 
   Ltac simpl_run1 :=
-    cbv [run1 execState Monads.put Monads.gets Monads.get Return Bind State_Monad OStateND_Monad
+    cbv [run1 (*execState*) OStateNDOperations.put OStateNDOperations.get
+         Return Bind State_Monad OStateND_Monad
          execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute
          core machineMem registers pc nextPC exceptionHandlerAddr
-         getPC setPC getRegister setRegister gets].
+         getPC setPC getRegister setRegister].
 
   Tactic Notation "log_solved" tactic(t) :=
     match goal with
@@ -960,6 +943,14 @@ Section FlatToRiscv.
     machineMem (mkRiscvMachine c m) = m.
   Proof. intros. reflexivity. Qed.
 
+  Lemma simpl_machine: forall (rvm: RiscvMachine) (l: Log),
+      machine (mkRiscvMachineL rvm l) = rvm.
+  Proof. intros. reflexivity. Qed.
+
+  Lemma simpl_log: forall (rvm: RiscvMachine) (l: Log),
+      log (mkRiscvMachineL rvm l) = l.
+  Proof. intros. reflexivity. Qed.
+
   Hint Rewrite
       simpl_with_registers
       simpl_with_pc
@@ -970,11 +961,13 @@ Section FlatToRiscv.
       simpl_nextPC
       simpl_core
       simpl_machineMem
+      simpl_log
+      simpl_machine
   : rew_RiscvMachine_get_set.
 
   Ltac simpl_RiscvMachine_get_set := autorewrite with rew_RiscvMachine_get_set in *.
 
-  Ltac destruct_RiscvMachine m :=
+  Ltac destruct_RiscvMachine_0 m :=
     let t := type of m in
     unify t RiscvMachine;
     let r := fresh m "_regs" in
@@ -985,16 +978,29 @@ Section FlatToRiscv.
     destruct m as [ [r p n e] me ];
     simpl_RiscvMachine_get_set.
 
+  Ltac destruct_RiscvMachine m :=
+    let t := type of m in
+    unify t RiscvMachineL;
+    let r := fresh m "_regs" in
+    let p := fresh m "_pc" in
+    let n := fresh m "_npc" in
+    let e := fresh m "_eh" in
+    let me := fresh m "_mem" in
+    let l := fresh m "_log" in
+    destruct m as [ [ [r p n e] me ] l ] ;
+    simpl_RiscvMachine_get_set.
+
   Arguments Z.modulo : simpl never.
-(*
+
   Lemma run1_simpl: forall {inst initialL pc0},
-      containsProgram initialL.(machineMem) [[inst]] pc0 ->
-      pc0 = initialL.(core).(pc) ->
-      run1 (B := BitWidth) initialL = (execute inst;; step) initialL.
+      containsProgram initialL.(machine).(machineMem) [[inst]] pc0 ->
+      pc0 = initialL.(machine).(core).(pc) ->
+      run1 initialL = (execute inst;; step) initialL.
   Proof.
     intros. subst *.
-    unfold run1.
+    unfold run1. unfold Run.run1.
     destruct_RiscvMachine initialL.
+    (* TODO update AxiomaticRiscv
     rewrite Bind_getPC.
     simpl_RiscvMachine_get_set.
     rewrite Bind_loadWord.
@@ -1007,7 +1013,9 @@ Section FlatToRiscv.
            end.
     reflexivity.
   Qed.
-*)
+  *)
+  Admitted.
+
   Inductive AllInsts: list Instruction -> Prop :=
     mkAllInsts: forall l, AllInsts l.
 (*
@@ -1655,12 +1663,12 @@ Section FlatToRiscv.
 
   Definition trace := list LogEvent.
   Definition locals := map Z mword.
-  Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop. (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
+  (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
+  Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
 
-  Definition word_test(w: mword): bool. Admitted.
-  Definition www: mword -> word 32. Admitted.
+  Definition word_test(w: mword): bool :=
+    negb (reg_eqb w (ZToReg 0)).
 
-  Definition uWordToZ: word 32 -> Z. Admitted.
   Inductive exec
     : stmt
     -> trace -> @Memory.mem mword -> locals
@@ -1687,43 +1695,12 @@ Section FlatToRiscv.
                    (word_test v = true /\ exec (SSeq s2 (SLoop s1 cond s2)) t m l post)))
     : exec (SLoop s1 cond s2) t m l post
   | interact bindvar t m l post addrv action
-             (addr: mword) (_ : get l addrv = Some addr)
-             (_ : forall (inp: mword) (t := cons (EvInput (uWordToZ (www addr)) (www inp)) t),
-                 (let l := put l bindvar inp in post t m l))
+      (addr: mword) (_ : get l addrv = Some addr)
+      (_ : forall (inp: mword),
+          let t := cons (EvInput (regToZ_unsigned (regToInt32 addr)) (regToInt32 inp)) t in
+          let l := put l bindvar inp in post t m l)
     : exec (SCall [bindvar] action [addrv]) t m l post.
 
-(*
-  Definition tml2lmt(s: trace -> @Memory.mem mword -> locals -> Prop):
-    locals -> @Memory.mem mword -> trace -> Prop :=
-    fun l m t => s t m l.
-
-  Definition lmt2tml(s: locals -> @Memory.mem mword -> trace -> Prop):
-     trace -> @Memory.mem mword -> locals -> Prop :=
-    fun t m l => s l m t.
-
-  Definition eval_stmt
-     : trace -> @Memory.mem mword -> locals -> FlatImp.stmt Z Empty_set ->
-       (trace ->  @Memory.mem mword -> locals -> Prop) -> Prop.
-    refine (fun t m l c => (exec c t m l) ).
-
-  Definition eval_stmt
-     : locals -> @Memory.mem mword -> trace -> FlatImp.stmt Z Empty_set ->
-       (locals ->  @Memory.mem mword -> trace -> Prop) -> Prop.
-    refine (fun l m t c => _ (exec c t m l) ).
-
-    intros ? ? ? ? ? ? ? ? lmt.
-    set (xx := (lmt2tml lmt)).
-  Admitted.
-
-  Definition eval_stmt
-     : forall (var func : Set) (stateMap : MapFunctions var mword)
-         (funcMap : MapFunctions func (list var * list var * FlatImp.stmt var func)),
-       map func (list var * list var * FlatImp.stmt var func) ->
-       map var mword ->
-       @Memory.mem mword -> FlatImp.stmt var func ->
-       (map var mword ->  @Memory.mem mword -> list LogEvent -> Prop) -> Prop.
-  Admitted.
-*)
   Definition eval_stmt := exec.
 
   Lemma compile_stmt_correct_aux:
@@ -1739,14 +1716,16 @@ Section FlatToRiscv.
     extends initialL.(machine).(core).(registers) initialH ->
     containsMem initialL.(machine).(machineMem) initialMH ->
     containsProgram initialL.(machine).(machineMem) allInsts imemStart ->
-    initialL.(machine).(core).(pc) = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
+    initialL.(machine).(core).(pc) =
+      add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
     initialL.(machine).(core).(nextPC) = add initialL.(machine).(core).(pc) (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
     runsTo initialL (fun finalL => exists finalH finalMH,
        extends finalL.(machine).(core).(registers) finalH /\
        containsMem finalL.(machine).(machineMem) finalMH /\
        containsProgram finalL.(machine).(machineMem) allInsts imemStart /\
-       finalL.(machine).(core).(pc) = add initialL.(machine).(core).(pc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+       finalL.(machine).(core).(pc) =
+         add initialL.(machine).(core).(pc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
        finalL.(machine).(core).(nextPC) = add finalL.(machine).(core).(pc) (ZToReg 4) /\
        postH finalL.(log) finalMH finalH).
   Proof.
