@@ -261,7 +261,9 @@ Section FlatToRiscv.
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
-  Notation stmt := (stmt Z Empty_set).
+  Inductive Action := MMInput | MMOutput.
+
+  Notation stmt := (stmt Z Action).
 
   Context {funcMap: MapFunctions Empty_set (list Z * list Z * stmt)}. (* TODO meh *)
 
@@ -1706,37 +1708,72 @@ Section FlatToRiscv.
   Definition word_test(w: mword): bool :=
     negb (reg_eqb w (ZToReg 0)).
 
-  Inductive exec
-    : stmt
-    -> trace -> @Memory.mem mword -> locals
-    -> (trace -> @Memory.mem mword -> locals -> Prop)
+  Inductive exec:
+    stmt ->
+    trace -> @Memory.mem mword -> locals ->
+    (trace -> @Memory.mem mword -> locals -> Prop)
     -> Prop :=
-  | skip t m l post (_:post t m l)
-    : exec SSkip t m l post
-  | set x y t m l post
-        v (_ : get l y = Some v)
-        (_ : post t m (put l x v))
-    : exec (SSet x y) t m l post
-  | seq c1 c2 t m l post
-        mid (_ : exec c1 t m l mid)
-        (_ : forall t m l, mid t m l -> exec c2 t m l post)
-    : exec (SSeq c1 c2) t m l post
-  | while s1 cond s2 t m l post
-          mid (_ : exec s1 t m l mid)
-          (_ : forall t m l,
-              mid t m l ->
-              exists v,
-                get l cond = Some v /\
-                (Logic.or
-                   (word_test v = false /\ post t m l)
-                   (word_test v = true /\ exec (SSeq s2 (SLoop s1 cond s2)) t m l post)))
-    : exec (SLoop s1 cond s2) t m l post
-  | interact bindvar t m l post addrv action
-      (addr: mword) (_ : get l addrv = Some addr)
-      (_ : forall (inp: mword),
-          let t := cons (EvInput (regToZ_unsigned (regToInt32 addr)) (regToInt32 inp)) t in
-          let l := put l bindvar inp in post t m l)
-    : exec (SCall [bindvar] action [addrv]) t m l post.
+  | ExLoad: forall t m l x a v addr post,
+      get l a = Some addr ->
+      isMMIOAddr addr = false ->
+      Memory.read_mem addr m = Some v ->
+      post t m (put l x v) ->
+      exec (SLoad x a) t m l post
+  | ExStore: forall t m m' l a addr v val post,
+      get l a = Some addr ->
+      isMMIOAddr addr = false ->
+      get l v = Some val ->
+      Memory.write_mem addr val m = Some m' ->
+      post t m' l ->
+      exec (SStore a v) t m l post
+  | ExLit: forall t m l x v post,
+      post t m (put l x (ZToReg v)) ->
+      exec (SLit x v) t m l post
+  | ExOp: forall t m l x op y y' z z' post,
+      get l y = Some y' ->
+      get l z = Some z' ->
+      post t m (put l x (eval_binop op y' z')) ->
+      exec (SOp x op y z) t m l post
+  | ExSet: forall t m l x y y' post,
+      get l y = Some y' ->
+      post t m (put l x y') ->
+      exec (SSet x y) t m l post
+  | ExIf: forall t m l cond vcond bThen bElse post,
+      get l cond = Some vcond ->
+      exec (if reg_eqb vcond (ZToReg 0) then bElse else bThen) t m l post ->
+      exec (SIf cond bThen bElse) t m l post
+  | ExLoop: forall t m l cond body1 body2 mid post,
+      exec body1 t m l mid ->
+      (forall t' m' l',
+          mid t' m' l' ->
+          exists v,
+            get l' cond = Some v /\
+            ((reg_eqb v (ZToReg 0) = true /\
+              post t' m' l') \/
+             (reg_eqb v (ZToReg 0) = false /\
+              exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post))) ->
+      exec (SLoop body1 cond body2) t m l post
+  | ExSeq: forall t m l s1 s2 mid post,
+      exec s1 t m l mid ->
+      (forall t' m' l', mid t' m' l' -> exec s2 t' m' l' post) ->
+      exec (SSeq s1 s2) t m l post
+  | ExSkip: forall t m l post,
+      post t m l ->
+      exec SSkip t m l post
+  | ExCallInput: forall t m l resvar a addr post,
+      get l a = Some addr ->
+      isMMIOAddr addr = true ->
+      (forall (inp: word 32),
+          post (cons (EvInput (regToZ_unsigned addr) inp) t)
+               m
+               (put l resvar (uInt32ToReg inp))) ->
+      exec (SCall [resvar] MMInput [a]) t m l post
+  | ExCallOutput: forall t m l a addr x v post,
+      get l a = Some addr ->
+      isMMIOAddr addr = true ->
+      get l x = Some v ->
+      post (cons (EvOutput (regToZ_unsigned addr) (regToInt32 v)) t) m l ->
+      exec (SCall [] MMOutput [a; x]) t m l post.
 
   Definition eval_stmt := exec.
 
@@ -1775,14 +1812,9 @@ Section FlatToRiscv.
       simpl in *; unfold compile_lit, compile_lit_rec in *;
       destruct_everything.
 
-    - (* skip *)
-      apply runsToDone.
-      admit.
-
-    - (* set *)
+    - (* SLoad *)
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
-        (* todo this is code for load, but we're in the set case *)
         erewrite execute_load; [|eassumption..].
         simpl_RiscvMachine_get_set.
         simpl.
