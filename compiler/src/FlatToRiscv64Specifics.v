@@ -5,13 +5,12 @@ Require Import compiler.FlatToRiscvBitWidthSpecifics.
 Require Import riscv.Memory.
 
 
-Instance FlatToRiscv64Specifics(mem: Set)
-         {MW: MachineWidth (word 64)}{IsMem: Memory mem (word 64)}
-  : FlatToRiscvBitWidthSpecifics (word 64) mem := {|
+Instance FlatToRiscv64Specifics{MW: MachineWidth (word 64)}{MF: MemoryFunctions (word 64)}
+  : FlatToRiscvBitWidthSpecifics (word 64)  := {|
 
   BitWidth := BW64;
 
   loadWordwXLEN := loadDouble;
-  
+
   storeWordwXLEN := storeDouble;
 |}.

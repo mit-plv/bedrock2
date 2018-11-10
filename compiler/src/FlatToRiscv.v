@@ -1,4 +1,3 @@
-Require Import riscv.MinimalND.
 Require Import lib.LibTacticsMin.
 Require Import bbv.ZLib.
 Require Import riscv.util.Monads.
@@ -50,7 +49,8 @@ Section RegisterFile.
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
-  Instance State_is_RegisterFile: RegisterFile state Register mword := {|
+  Instance State_is_RegisterFile: RegisterFileFunctions Register mword := {|
+    RegisterFile := state;
     getReg rf r := match get rf r with
                    | Some v => v
                    | None => ZToReg 0
@@ -261,22 +261,25 @@ Section FlatToRiscv.
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
-  Inductive Action := MMInput | MMOutput.
+  Context {Action: Set}.
+  Variable (MMInput MMOutput: Action).
+  Context {Event: Set}.
 
   Notation stmt := (stmt Z Action).
 
   Context {funcMap: MapFunctions Empty_set (list Z * list Z * stmt)}. (* TODO meh *)
 
-  Context {mem: Set}.
-  Context {IsMem: Memory.Memory mem mword}.
-  Context {BWS: FlatToRiscvBitWidthSpecifics mword mem}.
-  Context {BWSP: FlatToRiscvBitWidthSpecificProofs mword mem}.
+  Context {MF: Memory.MemoryFunctions mword}.
+  Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
+  Context {BWSP: FlatToRiscvBitWidthSpecificProofs mword}.
 
-  Local Notation RiscvMachine := (@RiscvMachine mword mem state).
-  Local Notation RiscvMachineL := (@RiscvMachineL mword mem state).
+  Local Notation RiscvMachineL := (RiscvMachine Register mword Event).
 
-  (* assumes generic translate function  *)
-  Context {RVS: @RiscvState (OStateND RiscvMachineL) mword _ _ MinimalND.IsRiscvMachineL}.
+  Context {M: Type -> Type}.
+  Context {MM: Monad M}.
+  Context {RVM: RiscvProgram M mword}.
+  Context {RVS: @RiscvState M mword _ _ RVM}.
+  Context {RVAX: AxiomaticRiscv mword Event M}.
 
   Ltac state_calc0 := map_solver Z mword.
 
@@ -526,7 +529,7 @@ Section FlatToRiscv.
   Qed.
 
   (* load and decode Inst *)
-  Definition ldInst(m: mem)(a: mword): Instruction :=
+  Definition ldInst(m: Mem mword)(a: mword): Instruction :=
     decode (@RV_wXLEN_IM BitWidth) (uwordToZ (Memory.loadWord m a)).
 
   Definition decode_prog(prog: list (word 32)): list Instruction :=
@@ -535,12 +538,12 @@ Section FlatToRiscv.
   Definition mem_inaccessible(m: Memory.mem)(start len: Z): Prop :=
     forall a w, Memory.read_mem a m = Some w -> not_in_range a XLEN_in_bytes start len.
 
-  Definition containsProgram(m: mem)(program: list Instruction)(offset: mword) :=
+  Definition containsProgram(m: Mem mword)(program: list Instruction)(offset: mword) :=
     regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\
     forall i inst, Znth_error program i = Some inst ->
       ldInst m (add offset (ZToReg (4 * i))) = inst.
 
-  Definition containsProgram'(m: mem)(program: list Instruction)(offset: mword) :=
+  Definition containsProgram'(m: Mem mword)(program: list Instruction)(offset: mword) :=
     regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\
     decode_prog (Memory.load_word_list m offset (Zlength program)) = program.
 
@@ -856,24 +859,16 @@ Section FlatToRiscv.
   Qed.
   *)
 
-  Definition run1: OStateND RiscvMachineL unit := run1 (B := BitWidth).
+  Definition run1: M unit := run1 (B := BitWidth).
 
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
-    runsTo RiscvMachineL (computation_satisfies run1).
-
-  (* ingredients:
-  RiscvMachineL
-  IsRiscvMachineL
-  run1
-  OStateND
-  runsTo
-  *)
+    runsTo RiscvMachineL (mcomp_sat run1).
 
   Ltac simpl_run1 :=
     cbv [run1 (*execState*) OStateNDOperations.put OStateNDOperations.get
          Return Bind State_Monad OStateND_Monad
          execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute
-         core machineMem registers pc nextPC exceptionHandlerAddr
+         getRegs getPc getNextPc getMem getLog
          getPC setPC getRegister setRegister].
 
   Tactic Notation "log_solved" tactic(t) :=
@@ -903,79 +898,7 @@ Section FlatToRiscv.
     end.
 *)
 
-  Lemma simpl_with_registers: forall (rs1 rs2: state) p npc eh (m: mem),
-    with_registers (mword := mword) rs2 (mkRiscvMachine (mkRiscvMachineCore rs1 p npc eh) m) =
-                                        (mkRiscvMachine (mkRiscvMachineCore rs2 p npc eh) m).
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_with_pc: forall (rs: state) pc1 pc2 npc eh (m: mem),
-    with_pc (mword := mword) pc2 (mkRiscvMachine (mkRiscvMachineCore rs pc1 npc eh) m) =
-                                 (mkRiscvMachine (mkRiscvMachineCore rs pc2 npc eh) m).
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_with_nextPC: forall (rs: state) p npc1 npc2 eh (m: mem),
-    with_nextPC (mword := mword) npc2 (mkRiscvMachine (mkRiscvMachineCore rs p npc1 eh) m) =
-                                      (mkRiscvMachine (mkRiscvMachineCore rs p npc2 eh) m).
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_with_machineMem: forall (c: @RiscvMachineCore _ state) (m1 m2: mem),
-    with_machineMem (mword := mword) m2 (mkRiscvMachine c m1) =
-                                        (mkRiscvMachine c m2).
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_registers: forall (rs: state) p npc eh,
-    registers (mword := mword) (mkRiscvMachineCore rs p npc eh) = rs.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_pc: forall (rs: state) p npc eh,
-    pc (mword := mword) (mkRiscvMachineCore rs p npc eh) = p.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_nextPC: forall (rs: state) p npc eh,
-    nextPC (mword := mword) (mkRiscvMachineCore rs p npc eh) = npc.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_core: forall (c: @RiscvMachineCore _ state) (m: mem),
-    core (mword := mword) (mkRiscvMachine c m) = c.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_machineMem: forall (c: @RiscvMachineCore mword state) (m: mem),
-    machineMem (mkRiscvMachine c m) = m.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_machine: forall (rvm: RiscvMachine) (l: Log),
-      machine (mkRiscvMachineL rvm l) = rvm.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_log: forall (rvm: RiscvMachine) (l: Log),
-      log (mkRiscvMachineL rvm l) = l.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_with_machine: forall (rvm rvm': RiscvMachine) (l: Log),
-      with_machine rvm' (mkRiscvMachineL rvm l) = mkRiscvMachineL rvm' l.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_with_log: forall (rvm: RiscvMachine) (l l': Log),
-      with_log l' (mkRiscvMachineL rvm l) = mkRiscvMachineL rvm l'.
-  Proof. intros. reflexivity. Qed.
-
-  Hint Rewrite
-      simpl_with_registers
-      simpl_with_pc
-      simpl_with_nextPC
-      simpl_with_machineMem
-      simpl_registers
-      simpl_pc
-      simpl_nextPC
-      simpl_core
-      simpl_machineMem
-      simpl_log
-      simpl_machine
-      simpl_with_machine
-      simpl_with_log
-  : rew_RiscvMachine_get_set.
-
-  Ltac simpl_RiscvMachine_get_set := autorewrite with rew_RiscvMachine_get_set in *.
+  Ltac simpl_RiscvMachine_get_set := simpl. (* TODO is this enough? *)
 
   Ltac destruct_RiscvMachine_0 m :=
     let t := type of m in
@@ -994,16 +917,15 @@ Section FlatToRiscv.
     let r := fresh m "_regs" in
     let p := fresh m "_pc" in
     let n := fresh m "_npc" in
-    let e := fresh m "_eh" in
     let me := fresh m "_mem" in
     let l := fresh m "_log" in
-    destruct m as [ [ [r p n e] me ] l ] ;
+    destruct m as [r p n m l];
     simpl_RiscvMachine_get_set.
 
   Arguments Z.modulo : simpl never.
 
   Lemma pc_is_never_in_MMIO: forall (initialL: RiscvMachineL),
-      isMMIOAddr (pc (core (machine initialL))) = false.
+      isMMIOAddr initialL.(getPc) = false.
   Admitted.
 
   Hint Unfold
@@ -1024,6 +946,7 @@ Section FlatToRiscv.
        Program.raiseException
     : unf_Program_methods.
 
+(*
   Ltac prove_go_lemma :=
     intros;
     unfold valid_register, computation_satisfies in *;
@@ -1044,118 +967,95 @@ Section FlatToRiscv.
            | |- context [if ?x then _ else _] => let E := fresh "E" in destruct x eqn: E
            | _: context [if ?x then _ else _] |- _ => let E := fresh "E" in destruct x eqn: E
            end.
+*)
 
-  Lemma go_getRegister: forall initialL x post (f : mword -> OStateND RiscvMachineL unit),
+  Lemma go_getRegister: forall initialL x post (f : mword -> M unit),
       valid_register x ->
-      computation_satisfies (f (getReg initialL.(machine).(core).(registers) x)) initialL post ->
-      computation_satisfies (Bind (getRegister x) f) initialL post.
-  Proof. prove_go_lemma. Qed.
+      mcomp_sat (f (getReg initialL.(getRegs) x)) initialL post ->
+      mcomp_sat (Bind (getRegister x) f) initialL post.
+  Proof. apply go_getRegister. Qed.
 
-  Lemma go_getRegister0: forall initialL post (f : mword -> OStateND RiscvMachineL unit),
-      computation_satisfies (f (ZToReg 0)) initialL post ->
-      computation_satisfies (Bind (getRegister Register0) f) initialL post.
-  Proof. prove_go_lemma. Qed.
+  Lemma go_getRegister0: forall initialL post (f : mword -> M unit),
+      mcomp_sat (f (ZToReg 0)) initialL post ->
+      mcomp_sat (Bind (getRegister Register0) f) initialL post.
+  Proof. Admitted.
 
-  Lemma go_setRegister: forall initialL x v post (f: unit -> OStateND RiscvMachineL unit),
-      valid_register x ->
-      computation_satisfies (f tt)
-                            (with_machine
-                               (with_registers
-                                  (setReg initialL.(machine).(core).(registers) x v)
-                                  initialL.(machine))
-                               initialL)
-                            post ->
-      computation_satisfies (Bind (setRegister x v) f) initialL post.
-  Proof. prove_go_lemma. Qed.
+  Lemma go_setRegister0: forall initialL v post (f: unit -> M unit),
+      mcomp_sat (f tt) initialL post ->
+      mcomp_sat (Bind (setRegister Register0 v) f) initialL post.
+  Proof. Admitted.
 
-  Lemma go_setRegister0: forall initialL v post (f: unit -> OStateND RiscvMachineL unit),
-      computation_satisfies (f tt) initialL post ->
-      computation_satisfies (Bind (setRegister Register0 v) f) initialL post.
-  Proof. prove_go_lemma. Qed.
-
-  Lemma go_loadWord: forall initialL addr (f: word 32 -> OStateND RiscvMachineL unit)
+  Lemma go_loadWord: forall initialL addr (f: word 32 -> M unit)
                             (post: RiscvMachineL -> Prop),
       isMMIOAddr addr = false ->
-      computation_satisfies (f (Memory.loadWord initialL.(machine).(machineMem) addr))
+      mcomp_sat (f (Memory.loadWord initialL.(getMem) addr))
                             initialL post ->
-      computation_satisfies (Bind (Program.loadWord addr) f)
+      mcomp_sat (Bind (Program.loadWord addr) f)
                             initialL post.
-  Proof. prove_go_lemma. Qed.
+  Proof. Admitted.
 
-  Lemma go_storeWord: forall initialL addr v post (f: unit -> OStateND RiscvMachineL unit),
+  Lemma go_storeWord: forall initialL addr v post (f: unit -> M unit),
       isMMIOAddr addr = false ->
-      computation_satisfies (f tt)
-                            (with_machine
-                               (with_machineMem
-                                  (Memory.storeWord initialL.(machine).(machineMem) addr v)
-                                  initialL.(machine))
-                               initialL)
-                            post ->
-      computation_satisfies (Bind (Program.storeWord addr v) f) initialL post.
-  Proof. prove_go_lemma. Qed.
+      mcomp_sat (f tt)
+                (setMem initialL (Memory.storeWord initialL.(getMem) addr v))
+                post ->
+      mcomp_sat (Bind (Program.storeWord addr v) f) initialL post.
+  Proof. Admitted.
 
   Lemma go_getPC: forall initialL f (post: RiscvMachineL -> Prop),
-      computation_satisfies (f initialL.(machine).(core).(pc)) initialL post ->
-      computation_satisfies (Bind getPC f) initialL post.
-  Proof. prove_go_lemma. Qed.
+      mcomp_sat (f initialL.(getPc)) initialL post ->
+      mcomp_sat (Bind getPC f) initialL post.
+  Proof. Admitted.
 
-  Lemma go_setPC: forall initialL v post (f: unit -> OStateND RiscvMachineL unit),
-      computation_satisfies (f tt)
-                            (with_machine (with_nextPC v initialL.(machine)) initialL)
-                            post ->
-      computation_satisfies (Bind (setPC v) f) initialL post.
-  Proof. prove_go_lemma. Qed.
+  Lemma go_setPC: forall initialL v post (f: unit -> M unit),
+      mcomp_sat (f tt) (setNextPc initialL v) post ->
+      mcomp_sat (Bind (setPC v) f) initialL post.
+  Proof. Admitted.
 
   Lemma go_step: forall initialL (post: RiscvMachineL -> Prop),
-      computation_satisfies
+      mcomp_sat
         (Return tt)
-        (with_machine
-           (with_nextPC
-              (add initialL.(machine).(core).(nextPC) (ZToReg 4))
-              (with_pc initialL.(machine).(core).(nextPC) initialL.(machine)))
-           initialL)
+        (setNextPc (setPc initialL
+                          initialL.(getNextPc))
+                   (add initialL.(getNextPc) (ZToReg 4)))
         post ->
-      computation_satisfies step initialL post.
-  Proof. prove_go_lemma. Qed.
+      mcomp_sat step initialL post.
+  Proof. Admitted.
 
   Lemma go_done: forall (initialL: RiscvMachineL),
-      computation_satisfies (Return tt) initialL (eq initialL).
-  Proof.
-    intros. unfold computation_satisfies.
-    unfold Return, OStateND_Monad.
-    eauto.
-  Qed.
+      mcomp_sat (Return tt) initialL (eq initialL).
+  Proof. Admitted.
 
   Lemma go_left_identity{A: Type}: forall initialL post a
-         (f : A -> OStateND RiscvMachineL unit),
-      computation_satisfies (f a) initialL post ->
-      computation_satisfies (Bind (Return a) f) initialL post.
+         (f : A -> M unit),
+      mcomp_sat (f a) initialL post ->
+      mcomp_sat (Bind (Return a) f) initialL post.
   Proof.
     intros. rewrite left_identity. assumption.
   Qed.
 
   Lemma go_right_identity: forall initialL post
-         (m: OStateND RiscvMachineL unit),
-      computation_satisfies m initialL post ->
-      computation_satisfies (Bind m Return) initialL post.
+         (m: M unit),
+      mcomp_sat m initialL post ->
+      mcomp_sat (Bind m Return) initialL post.
   Proof.
     intros. rewrite right_identity. assumption.
   Qed.
 
   Lemma go_associativity{A B: Type}: forall initialL post
-         (m: OStateND RiscvMachineL A)
-         (f : A -> OStateND RiscvMachineL B) (g : B -> OStateND RiscvMachineL unit),
-      computation_satisfies (Bind m (fun x : A => Bind (f x) g)) initialL post ->
-      computation_satisfies (Bind (Bind m f) g) initialL post.
+         (m: M A)
+         (f : A -> M B) (g : B -> M unit),
+      mcomp_sat (Bind m (fun x : A => Bind (f x) g)) initialL post ->
+      mcomp_sat (Bind (Bind m f) g) initialL post.
   Proof.
     intros. rewrite associativity. assumption.
   Qed.
 
   Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
-      pc0 = initialL.(machine).(core).(pc) ->
-      containsProgram initialL.(machine).(machineMem) [[inst]] pc0 ->
-      computation_satisfies (execute inst;; step) initialL post ->
-      computation_satisfies run1 initialL post.
+      pc0 = initialL.(getPc) ->
+      containsProgram initialL.(getMem) [[inst]] pc0 ->
+      mcomp_sat (execute inst;; step) initialL post ->
+      mcomp_sat run1 initialL post.
   Proof.
     intros. subst *.
     unfold run1. unfold Run.run1.
@@ -1494,7 +1394,7 @@ Section FlatToRiscv.
 
   Hint Rewrite
       elim_then_true_else_false
-      (@left_identity _ (OStateND_Monad RiscvMachine))
+      (@left_identity M MM)
       @get_put_same
   : rew_run1step.
 
@@ -1594,21 +1494,15 @@ Section FlatToRiscv.
     destruct_containsProgram.
 
   Lemma execute_load: forall (x a: Register) (addr v: mword) (initialMH: Memory.mem)
-           (f: unit -> OStateND RiscvMachineL unit) (initialL: RiscvMachineL) post initialRegsH,
+           (f: unit -> M unit) (initialL: RiscvMachineL) post (initialRegsH: state),
       valid_register x ->
       valid_register a ->
       Memory.read_mem addr initialMH = Some v ->
-      containsMem initialL.(machine).(machineMem) initialMH ->
+      containsMem initialL.(getMem) initialMH ->
       get initialRegsH a = Some addr ->
-      extends initialL.(machine).(core).(registers) initialRegsH ->
-      computation_satisfies (f tt)
-                            (with_machine
-                               (with_registers
-                                  (setReg initialL.(machine).(core).(registers) x v)
-                                  initialL.(machine))
-                               initialL)
-                            post ->
-      computation_satisfies (Bind (execute (LwXLEN x a 0)) f) initialL post.
+      @extends Register mword _ initialL.(getRegs) initialRegsH ->
+      mcomp_sat (f tt) (setRegs initialL (setReg initialL.(getRegs) x v)) post ->
+      mcomp_sat (Bind (execute (LwXLEN x a 0)) f) initialL post.
   Proof.
     intros.
     unfold containsMem, Memory.read_mem in *.
@@ -1646,22 +1540,16 @@ Section FlatToRiscv.
   Admitted.
 
   Lemma execute_store: forall (ra rv: Register) (a v: mword) (initialMH finalMH: Memory.mem)
-            (f: unit -> OStateND RiscvMachineL unit) (initialL: RiscvMachineL) initialRegsH post,
+            (f: unit -> M unit) (initialL: RiscvMachineL) initialRegsH post,
       valid_register ra ->
       valid_register rv ->
       Memory.write_mem a v initialMH = Some finalMH ->
-      containsMem initialL.(machine).(machineMem) initialMH ->
+      containsMem initialL.(getMem) initialMH ->
       get initialRegsH ra = Some a ->
       get initialRegsH rv = Some v ->
-      extends initialL.(machine).(core).(registers) initialRegsH ->
-      computation_satisfies (f tt)
-                            (with_machine
-                               (with_machineMem
-                                  (storeWordwXLEN initialL.(machine).(machineMem) a v)
-                                  initialL.(machine))
-                               initialL)
-                            post ->
-      computation_satisfies (Bind (execute (SwXLEN ra rv 0)) f) initialL post.
+      @extends Register mword _ initialL.(getRegs) initialRegsH ->
+      mcomp_sat (f tt) (setMem initialL (storeWordwXLEN initialL.(getMem) a v)) post ->
+      mcomp_sat (Bind (execute (SwXLEN ra rv 0)) f) initialL post.
   Proof.
     (*
     intros.
@@ -1853,7 +1741,7 @@ Section FlatToRiscv.
   Proof using .
   Admitted.
 
-  Definition trace := list LogEvent.
+  Definition trace := list Event.
   Definition locals := map Z mword.
   (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
   Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
@@ -1913,19 +1801,19 @@ Section FlatToRiscv.
   | ExSkip: forall t m l post,
       post t m l ->
       exec SSkip t m l post
-  | ExCallInput: forall t m l resvar a addr post,
+  | ExCallInput: forall t m l resvar a addr post
+      (pf: isMMIOAddr addr = true),
       get l a = Some addr ->
-      isMMIOAddr addr = true ->
       (forall (inp: word 32),
-          post (cons (EvInput (regToZ_unsigned addr) inp) t)
+          post (cons (mkInputEvent (exist _ addr pf) inp) t)
                m
                (put l resvar (uInt32ToReg inp))) ->
       exec (SCall [resvar] MMInput [a]) t m l post
-  | ExCallOutput: forall t m l a addr x v post,
+  | ExCallOutput: forall t m l a addr x v post
+      (pf: isMMIOAddr addr = true),
       get l a = Some addr ->
-      isMMIOAddr addr = true ->
       get l x = Some v ->
-      post (cons (EvOutput (regToZ_unsigned addr) (regToInt32 v)) t) m l ->
+      post (cons (mkOutputEvent (exist _ addr pf) (regToInt32 v)) t) m l ->
       exec (SCall [] MMOutput [a; x]) t m l post.
 
   Definition eval_stmt := exec.
@@ -1939,22 +1827,22 @@ Section FlatToRiscv.
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    extends initialL.(machine).(core).(registers) initialH ->
-    containsMem initialL.(machine).(machineMem) initialMH ->
-    containsProgram initialL.(machine).(machineMem) allInsts imemStart ->
-    initialL.(machine).(core).(pc) =
+    @extends Register mword _ initialL.(getRegs) initialH ->
+    containsMem initialL.(getMem) initialMH ->
+    containsProgram initialL.(getMem) allInsts imemStart ->
+    initialL.(getPc) =
       add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
-    initialL.(log) = t ->
-    initialL.(machine).(core).(nextPC) = add initialL.(machine).(core).(pc) (ZToReg 4) ->
+    initialL.(getLog) = t ->
+    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
     runsTo initialL (fun finalL => exists finalH finalMH,
-       postH finalL.(log) finalMH finalH /\
-       extends finalL.(machine).(core).(registers) finalH /\
-       containsMem finalL.(machine).(machineMem) finalMH /\
-       containsProgram finalL.(machine).(machineMem) allInsts imemStart /\
-       finalL.(machine).(core).(pc) =
-         add initialL.(machine).(core).(pc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-       finalL.(machine).(core).(nextPC) = add finalL.(machine).(core).(pc) (ZToReg 4)).
+       postH finalL.(getLog) finalMH finalH /\
+       extends finalL.(getRegs) finalH /\
+       containsMem finalL.(getMem) finalMH /\
+       containsProgram finalL.(getMem) allInsts imemStart /\
+       finalL.(getPc) =
+         add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+       finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
   Proof.
     intros allInsts imemStart. pose proof (mkAllInsts allInsts).
     induction 1;

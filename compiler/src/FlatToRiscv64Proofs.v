@@ -13,8 +13,8 @@ Local Open Scope Z_scope.
 
 
 
-Instance FlatToRiscv64Proofs(mem: Set){IsMem: Memory.Memory mem (word 64)}
-  : FlatToRiscvBitWidthSpecificProofs (word 64) mem.
+Instance FlatToRiscv64Proofs{MF: Memory.MemoryFunctions (word 64)}
+  : FlatToRiscvBitWidthSpecificProofs (word 64).
 Proof.
   constructor.
   - intros.
