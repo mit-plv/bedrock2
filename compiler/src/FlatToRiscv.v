@@ -826,8 +826,15 @@ Section FlatToRiscv.
     | W: containsProgram_app_will_work ?i1 ?i2 ?p |- containsProgram ?m (?i1 ++ ?i2) ?p =>
       apply (containsProgram_app W)
     | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p => exact Cp
+    (* requires exactly the same instruction list, but allows a p/p' to be too hard
+       to prove equal *)
     | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
-          replace p' with p; [exact Cp|try solve_word_eq]
+      replace p' with p; [exact Cp|try solve_word_eq]
+    (* allows different instruction lists (the one in the goal could contain evars),
+       but requires that p=p' to make sure we don't instantiate wrongly *)
+    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m _ ?p' =>
+      replace p' with p by solve_word_eq;
+      exact Cp
     end;
     try assumption.
 
@@ -992,29 +999,63 @@ Section FlatToRiscv.
 
   Arguments Z.modulo : simpl never.
 
-  Lemma run1_simpl: forall {inst initialL pc0},
-      containsProgram initialL.(machine).(machineMem) [[inst]] pc0 ->
+  Lemma pc_is_never_in_MMIO: forall (initialL: RiscvMachineL),
+      isMMIOAddr (pc (core (machine initialL))) = false.
+  Admitted.
+
+  Lemma go_getPC: forall initialL f (post: RiscvMachineL -> Prop),
+      computation_satisfies (f initialL.(machine).(core).(pc)) initialL post ->
+      computation_satisfies (Bind getPC f) initialL post.
+  Proof.
+    intros.
+    unfold computation_satisfies in *.
+    replace ((x <- getPC; f x) initialL)
+      with  ((x <- Return (pc (core (machine initialL))); f x) initialL).
+    - rewrite left_identity. assumption.
+    - unfold getPC, IsRiscvMachineL.
+      rewrite associativity.
+      rewrite OStateNDOperations.Bind_get.
+      reflexivity.
+  Qed.
+
+  Lemma go_loadWord: forall initialL addr (f: word 32 -> OStateND RiscvMachineL unit)
+                            (post: RiscvMachineL -> Prop),
+      isMMIOAddr addr = false ->
+      computation_satisfies (f (Memory.loadWord initialL.(machine).(machineMem) addr))
+                            initialL post ->
+      computation_satisfies (Bind (Program.loadWord addr) f)
+                            initialL post.
+  Proof.
+    intros.
+    unfold computation_satisfies in *.
+    unfold Program.loadWord, IsRiscvMachineL.
+    replace (simple_isMMIOAddr addr) with false by assumption.
+    unfold liftLoad.
+    rewrite associativity.
+    rewrite OStateNDOperations.Bind_get.
+    rewrite left_identity.
+    assumption.
+  Qed.
+
+  (* replaces Lemma run1_simpl *)
+  Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(machine).(core).(pc) ->
-      run1 initialL = (execute inst;; step) initialL.
+      containsProgram initialL.(machine).(machineMem) [[inst]] pc0 ->
+      computation_satisfies (execute inst;; step) initialL post ->
+      computation_satisfies run1 initialL post.
   Proof.
     intros. subst *.
     unfold run1. unfold Run.run1.
-    destruct_RiscvMachine initialL.
-    (* TODO update AxiomaticRiscv
-    rewrite Bind_getPC.
-    simpl_RiscvMachine_get_set.
-    rewrite Bind_loadWord.
-    unfold containsProgram in H. apply proj2 in H.
-    specialize (H 0 _ eq_refl). subst inst.
-    unfold ldInst.
-    simpl_RiscvMachine_get_set.
-    repeat match goal with
-           | |- context[?x] => progress (ring_simplify x)
-           end.
-    reflexivity.
+    apply go_getPC.
+    apply go_loadWord; [apply pc_is_never_in_MMIO|].
+    unfold containsProgram in H0. apply proj2 in H0.
+    specialize (H0 0 _ eq_refl). subst inst.
+    unfold ldInst in *.
+    match type of H1 with
+    | context[?x] => progress (ring_simplify x in H1)
+    end.
+    exact H1.
   Qed.
-  *)
-  Admitted.
 
   Inductive AllInsts: list Instruction -> Prop :=
     mkAllInsts: forall l, AllInsts l.
@@ -1112,6 +1153,7 @@ Section FlatToRiscv.
   using assumption : rew_get_set_Register.
 
   Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
+*)
 
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
@@ -1119,18 +1161,9 @@ Section FlatToRiscv.
 
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
-      match goal with
-      | Cp: containsProgram _ [[?inst]] ?pc0 |- ?E = (Some tt, _) =>
-        match E with
-        | run1 ?initialL =>
-          let Eqpc := fresh in
-          assert (pc0 = initialL.(core).(pc)) as Eqpc by solve_word_eq;
-            replace E with ((execute inst;; step) initialL) by
-              (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
-            clear Eqpc
-        end
-      end.
+    eapply go_fetch_inst; [reflexivity|simpl; solve_containsProgram|].
 
+  (*
   Ltac rewrite_reg_value :=
     match goal with
     | |- context [getReg _ _] => idtac
@@ -1401,6 +1434,7 @@ Section FlatToRiscv.
         | H: ?m.(core).(pc) = _ |- ?m.(core).(pc) = _ => rewrite H
         end;
     solve_word_eq.
+*)
 
   Ltac destruct_everything :=
     destruct_products;
@@ -1412,6 +1446,7 @@ Section FlatToRiscv.
     subst *;
     destruct_containsProgram.
 
+(*
   Lemma execute_load: forall {A: Type} (x a: Register) (addr v: mword) (initialMH: Memory.mem)
            (f:unit -> OStateND RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
       valid_register x ->
@@ -1506,12 +1541,14 @@ Section FlatToRiscv.
       reflexivity.
   Qed.*)
   Admitted.
+*)
 
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
   Arguments app: simpl never. (* don't simpl ([[ oneInst ]] ++ rest) into oneInst :: rest
     because otherwise solve_imem doesn't recognize "middle" any more *)
 
+(*
   (* otherwise simpl takes forever:
   Arguments split1: simpl never.
   Arguments split2: simpl never.
@@ -1730,16 +1767,22 @@ Section FlatToRiscv.
        postH finalL.(log) finalMH finalH).
   Proof.
     intros allInsts imemStart. pose proof (mkAllInsts allInsts).
-    induction 1; intros.
+    induction 1;
+      intros;
+      try match goal with
+          | o: bopname |- _ => destruct o (* do this before destruct_containsProgram *)
+          end;
+      simpl in *; unfold compile_lit, compile_lit_rec in *;
+      destruct_everything.
 
-    - (* SSkip *)
+    - (* skip *)
       apply runsToDone.
       admit.
 
-    - (* SLoad *)
-      clear IHfuelH.
+    - (* set *)
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
+        (* todo this is code for load, but we're in the set case *)
         erewrite execute_load; [|eassumption..].
         simpl_RiscvMachine_get_set.
         simpl.
