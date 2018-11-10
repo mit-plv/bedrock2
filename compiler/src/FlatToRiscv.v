@@ -275,17 +275,8 @@ Section FlatToRiscv.
   Local Notation RiscvMachine := (@RiscvMachine mword mem state).
   Local Notation RiscvMachineL := (@RiscvMachineL mword mem state).
 
-  (*
-  Context {RVM: RiscvProgram (OStateND RiscvMachine) mword}.
-   *)
-  Let RVM := MinimalND.IsRiscvMachineL. (* this is the concrete instance we want to use instead *)
-
-  (* assumes generic translate and raiseException functions *)
-  Context {RVS: @RiscvState (OStateND RiscvMachineL) mword _ _ RVM}.
-
-  (*
-  Context {RVAX: @AxiomaticRiscv mword _ state State_is_RegisterFile mem _ RVM}.
-*)
+  (* assumes generic translate function  *)
+  Context {RVS: @RiscvState (OStateND RiscvMachineL) mword _ _ MinimalND.IsRiscvMachineL}.
 
   Ltac state_calc0 := map_solver Z mword.
 
@@ -960,6 +951,14 @@ Section FlatToRiscv.
       log (mkRiscvMachineL rvm l) = l.
   Proof. intros. reflexivity. Qed.
 
+  Lemma simpl_with_machine: forall (rvm rvm': RiscvMachine) (l: Log),
+      with_machine rvm' (mkRiscvMachineL rvm l) = mkRiscvMachineL rvm' l.
+  Proof. intros. reflexivity. Qed.
+
+  Lemma simpl_with_log: forall (rvm: RiscvMachine) (l l': Log),
+      with_log l' (mkRiscvMachineL rvm l) = mkRiscvMachineL rvm l'.
+  Proof. intros. reflexivity. Qed.
+
   Hint Rewrite
       simpl_with_registers
       simpl_with_pc
@@ -972,6 +971,8 @@ Section FlatToRiscv.
       simpl_machineMem
       simpl_log
       simpl_machine
+      simpl_with_machine
+      simpl_with_log
   : rew_RiscvMachine_get_set.
 
   Ltac simpl_RiscvMachine_get_set := autorewrite with rew_RiscvMachine_get_set in *.
@@ -1005,20 +1006,72 @@ Section FlatToRiscv.
       isMMIOAddr (pc (core (machine initialL))) = false.
   Admitted.
 
-  Lemma go_getPC: forall initialL f (post: RiscvMachineL -> Prop),
-      computation_satisfies (f initialL.(machine).(core).(pc)) initialL post ->
-      computation_satisfies (Bind getPC f) initialL post.
-  Proof.
-    intros.
-    unfold computation_satisfies in *.
-    replace ((x <- getPC; f x) initialL)
-      with  ((x <- Return (pc (core (machine initialL))); f x) initialL).
-    - rewrite left_identity. assumption.
-    - unfold getPC, IsRiscvMachineL.
-      rewrite associativity.
-      rewrite OStateNDOperations.Bind_get.
-      reflexivity.
-  Qed.
+  Hint Unfold
+       Program.getRegister
+       Program.setRegister
+       Program.loadByte
+       Program.loadHalf
+       Program.loadWord
+       Program.loadDouble
+       Program.storeByte
+       Program.storeHalf
+       Program.storeWord
+       Program.storeDouble
+       Program.getPC
+       Program.setPC
+       Program.step
+       Program.isMMIOAddr
+       Program.raiseException
+    : unf_Program_methods.
+
+  Ltac prove_go_lemma :=
+    intros;
+    unfold valid_register, computation_satisfies in *;
+    autounfold with unf_Program_methods in *;
+    unfold IsRiscvMachineL in *;
+    unfold valid_register, Register0,
+           liftLoad, liftStore, logEvent in *;
+    repeat match goal with
+           | |- _ => reflexivity
+           | |- _ => progress (subst)
+           | |- _ => solve [exfalso; lia]
+           | |- _ => discriminate
+           | |- _ => assumption
+           | |- _ => rewrite associativity
+           | |- _ => rewrite OStateNDOperations.Bind_get
+           | |- _ => rewrite OStateNDOperations.Bind_put
+           | |- _ => rewrite left_identity
+           | |- context [if ?x then _ else _] => let E := fresh "E" in destruct x eqn: E
+           | _: context [if ?x then _ else _] |- _ => let E := fresh "E" in destruct x eqn: E
+           end.
+
+  Lemma go_getRegister: forall initialL x post (f : mword -> OStateND RiscvMachineL unit),
+      valid_register x ->
+      computation_satisfies (f (getReg initialL.(machine).(core).(registers) x)) initialL post ->
+      computation_satisfies (Bind (getRegister x) f) initialL post.
+  Proof. prove_go_lemma. Qed.
+
+  Lemma go_getRegister0: forall initialL post (f : mword -> OStateND RiscvMachineL unit),
+      computation_satisfies (f (ZToReg 0)) initialL post ->
+      computation_satisfies (Bind (getRegister Register0) f) initialL post.
+  Proof. prove_go_lemma. Qed.
+
+  Lemma go_setRegister: forall initialL x v post (f: unit -> OStateND RiscvMachineL unit),
+      valid_register x ->
+      computation_satisfies (f tt)
+                            (with_machine
+                               (with_registers
+                                  (setReg initialL.(machine).(core).(registers) x v)
+                                  initialL.(machine))
+                               initialL)
+                            post ->
+      computation_satisfies (Bind (setRegister x v) f) initialL post.
+  Proof. prove_go_lemma. Qed.
+
+  Lemma go_setRegister0: forall initialL v post (f: unit -> OStateND RiscvMachineL unit),
+      computation_satisfies (f tt) initialL post ->
+      computation_satisfies (Bind (setRegister Register0 v) f) initialL post.
+  Proof. prove_go_lemma. Qed.
 
   Lemma go_loadWord: forall initialL addr (f: word 32 -> OStateND RiscvMachineL unit)
                             (post: RiscvMachineL -> Prop),
@@ -1027,19 +1080,77 @@ Section FlatToRiscv.
                             initialL post ->
       computation_satisfies (Bind (Program.loadWord addr) f)
                             initialL post.
+  Proof. prove_go_lemma. Qed.
+
+  Lemma go_storeWord: forall initialL addr v post (f: unit -> OStateND RiscvMachineL unit),
+      isMMIOAddr addr = false ->
+      computation_satisfies (f tt)
+                            (with_machine
+                               (with_machineMem
+                                  (Memory.storeWord initialL.(machine).(machineMem) addr v)
+                                  initialL.(machine))
+                               initialL)
+                            post ->
+      computation_satisfies (Bind (Program.storeWord addr v) f) initialL post.
+  Proof. prove_go_lemma. Qed.
+
+  Lemma go_getPC: forall initialL f (post: RiscvMachineL -> Prop),
+      computation_satisfies (f initialL.(machine).(core).(pc)) initialL post ->
+      computation_satisfies (Bind getPC f) initialL post.
+  Proof. prove_go_lemma. Qed.
+
+  Lemma go_setPC: forall initialL v post (f: unit -> OStateND RiscvMachineL unit),
+      computation_satisfies (f tt)
+                            (with_machine (with_nextPC v initialL.(machine)) initialL)
+                            post ->
+      computation_satisfies (Bind (setPC v) f) initialL post.
+  Proof. prove_go_lemma. Qed.
+
+  Lemma go_step: forall initialL (post: RiscvMachineL -> Prop),
+      computation_satisfies
+        (Return tt)
+        (with_machine
+           (with_nextPC
+              (add initialL.(machine).(core).(nextPC) (ZToReg 4))
+              (with_pc initialL.(machine).(core).(nextPC) initialL.(machine)))
+           initialL)
+        post ->
+      computation_satisfies step initialL post.
+  Proof. prove_go_lemma. Qed.
+
+  Lemma go_done: forall (initialL: RiscvMachineL),
+      computation_satisfies (Return tt) initialL (eq initialL).
   Proof.
-    intros.
-    unfold computation_satisfies in *.
-    unfold Program.loadWord, IsRiscvMachineL.
-    replace (simple_isMMIOAddr addr) with false by assumption.
-    unfold liftLoad.
-    rewrite associativity.
-    rewrite OStateNDOperations.Bind_get.
-    rewrite left_identity.
-    assumption.
+    intros. unfold computation_satisfies.
+    unfold Return, OStateND_Monad.
+    eauto.
   Qed.
 
-  (* replaces Lemma run1_simpl *)
+  Lemma go_left_identity{A: Type}: forall initialL post a
+         (f : A -> OStateND RiscvMachineL unit),
+      computation_satisfies (f a) initialL post ->
+      computation_satisfies (Bind (Return a) f) initialL post.
+  Proof.
+    intros. rewrite left_identity. assumption.
+  Qed.
+
+  Lemma go_right_identity: forall initialL post
+         (m: OStateND RiscvMachineL unit),
+      computation_satisfies m initialL post ->
+      computation_satisfies (Bind m Return) initialL post.
+  Proof.
+    intros. rewrite right_identity. assumption.
+  Qed.
+
+  Lemma go_associativity{A B: Type}: forall initialL post
+         (m: OStateND RiscvMachineL A)
+         (f : A -> OStateND RiscvMachineL B) (g : B -> OStateND RiscvMachineL unit),
+      computation_satisfies (Bind m (fun x : A => Bind (f x) g)) initialL post ->
+      computation_satisfies (Bind (Bind m f) g) initialL post.
+  Proof.
+    intros. rewrite associativity. assumption.
+  Qed.
+
   Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(machine).(core).(pc) ->
       containsProgram initialL.(machine).(machineMem) [[inst]] pc0 ->
@@ -1059,22 +1170,27 @@ Section FlatToRiscv.
     exact H1.
   Qed.
 
+  Ltac sidecondition :=
+    solve_containsProgram || assumption || reflexivity.
+
   Inductive AllInsts: list Instruction -> Prop :=
     mkAllInsts: forall l, AllInsts l.
-(*
+
   Ltac head_of_app e :=
     match e with
     | ?f ?a => head_of_app f
     | _ => e
     end.
 
+  (*
   Notation K := Z.
   Notation V := mword.
+  *)
 
   (* only strictly needed if we want to export the goal into a map_solver-only environment,
      but might result in a speed up if used anyways *)
   Ltac prepare_for_map_solver :=
-    clear translate_id_if_aligned_4 translate_id_if_aligned_8 BWSP RVAX;
+    clear translate_id_if_aligned_4 translate_id_if_aligned_8 BWSP;
     repeat match goal with
              | IH: forall (s : stmt), _ |- _ => clear IH
              | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
@@ -1141,7 +1257,7 @@ Section FlatToRiscv.
 
   Ltac state_calc := state_calc_without_logging.
 
-
+(*
   Hint Rewrite
       (@associativity  _ (OStateND_Monad RiscvMachine))
       (@left_identity  _ (OStateND_Monad RiscvMachine))
@@ -1165,7 +1281,6 @@ Section FlatToRiscv.
   Ltac fetch_inst :=
     eapply go_fetch_inst; [reflexivity|simpl; solve_containsProgram|].
 
-  (*
   Ltac rewrite_reg_value :=
     match goal with
     | |- context [getReg _ _] => idtac
@@ -1276,6 +1391,7 @@ Section FlatToRiscv.
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
   Proof. intros. tauto. Qed.
 
+  (*
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: stmt} {initialRegs finalRegs: state},
       eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
@@ -1311,6 +1427,7 @@ Section FlatToRiscv.
     - pose proof (eval_stmt_preserves_mem_accessibility H a) as P.
       destruct P as [P _]. specialize (P E). exfalso. congruence.
   Qed.
+  *)
 
   Ltac prove_remu_four_zero :=
     match goal with
@@ -1328,6 +1445,7 @@ Section FlatToRiscv.
            end;
     ring.
 
+(*
   Ltac solve_mem_inaccessible :=
     eapply eval_stmt_preserves_mem_inaccessible; [|eassumption];
     try eassumption;
@@ -1357,6 +1475,7 @@ Section FlatToRiscv.
       | eassumption
       | solve_mem_inaccessible
       | idtac ].
+  *)
 
   Ltac simpl_remu4_test :=
     match goal with
@@ -1379,10 +1498,36 @@ Section FlatToRiscv.
       @get_put_same
   : rew_run1step.
 
+  Ltac simulate :=
+    repeat first
+           [ progress (simpl_RiscvMachine_get_set)
+           | rewrite elim_then_true_else_false
+           | progress rewrite_setReg
+           | progress rewrite_getReg
+           | rewrite @get_put_same
+           | progress (autorewrite with rew_reg_eqb)
+           | progress simpl_remu4_test
+           | progress rewrite_reg_value
+           | eapply go_getRegister    ; [sidecondition..|]
+           | eapply go_getRegister0   ; [sidecondition..|]
+           | eapply go_setRegister    ; [sidecondition..|]
+           | eapply go_setRegister0   ; [sidecondition..|]
+           | eapply go_loadWord       ; [sidecondition..|]
+           | eapply go_storeWord      ; [sidecondition..|]
+           | eapply go_getPC          ; [sidecondition..|]
+           | eapply go_setPC          ; [sidecondition..|]
+           | eapply go_step           ; [sidecondition..|]
+           | eapply go_done    (* has no sidecontidions *)
+           | eapply go_left_identity  ; [sidecondition..|]
+           | eapply go_right_identity ; [sidecondition..|]
+           | eapply go_associativity  ; [sidecondition..|]
+           | eapply go_fetch_inst     ; [sidecondition..|] ].
+
   Ltac run1step'' :=
     fetch_inst;
     autounfold with unf_pseudo in *;
     cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+    simulate. (*
     repeat (
         autorewrite with
             rew_get_set_Register
@@ -1393,20 +1538,19 @@ Section FlatToRiscv.
         rewrite_setReg ||
         simpl_remu4_test ||
         rewrite_reg_value).
+        *)
 
   Ltac run1step' :=
     (eapply runsToStep; simpl in *; subst * ); [ run1step'' | ].
 
   Ltac run1step :=
-    run1step';
-    [ rewrite execState_step;
-      simpl_RiscvMachine_get_set;
-      reflexivity
-    | ].
+    run1step'; do 2 intro; subst.
 
   Ltac run1done :=
+    intros; subst;
     apply runsToDone;
     simpl_RiscvMachine_get_set;
+    do 2 eexists; split; [eassumption|];
     (* note: less aggressive than "repeat split" because it does not unfold *)
     repeat match goal with
            | |- _ /\ _ => split
@@ -1415,12 +1559,13 @@ Section FlatToRiscv.
       [ assumption
       | eapply containsMem_write; eassumption
       | match goal with
-        | |- extends _ _ => state_calc
+        | |- extends _ _ => solve [state_calc]
         end
       | solve [solve_containsProgram]
       | solve_word_eq
       | idtac ].
 
+(*
   Ltac IH_done IH :=
     eapply runsToSatisfying_imp; [ exact IH | ];
     subst;
@@ -1448,19 +1593,26 @@ Section FlatToRiscv.
     subst *;
     destruct_containsProgram.
 
-(*
-  Lemma execute_load: forall {A: Type} (x a: Register) (addr v: mword) (initialMH: Memory.mem)
-           (f:unit -> OStateND RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+  Lemma execute_load: forall (x a: Register) (addr v: mword) (initialMH: Memory.mem)
+           (f: unit -> OStateND RiscvMachineL unit) (initialL: RiscvMachineL) post initialRegsH,
       valid_register x ->
       valid_register a ->
       Memory.read_mem addr initialMH = Some v ->
-      containsMem initialL.(machineMem) initialMH ->
+      containsMem initialL.(machine).(machineMem) initialMH ->
       get initialRegsH a = Some addr ->
-      extends initialL.(core).(registers) initialRegsH ->
-      (Bind (execute (LwXLEN x a 0)) f) initialL =
-      (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
-  Proof. (*
+      extends initialL.(machine).(core).(registers) initialRegsH ->
+      computation_satisfies (f tt)
+                            (with_machine
+                               (with_registers
+                                  (setReg initialL.(machine).(core).(registers) x v)
+                                  initialL.(machine))
+                               initialL)
+                            post ->
+      computation_satisfies (Bind (execute (LwXLEN x a 0)) f) initialL post.
+  Proof.
     intros.
+    unfold containsMem, Memory.read_mem in *.
+    (*
     pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
     pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
     pose proof (@State_is_RegisterFile _ _) as State_is_RegisterFile.
@@ -1493,18 +1645,23 @@ Section FlatToRiscv.
           *)
   Admitted.
 
-  Lemma execute_store: forall {A: Type} (ra rv: Register) (a v: mword)
-                         (initialMH finalMH: Memory.mem)
-                         (f: unit -> OStateND RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+  Lemma execute_store: forall (ra rv: Register) (a v: mword) (initialMH finalMH: Memory.mem)
+            (f: unit -> OStateND RiscvMachineL unit) (initialL: RiscvMachineL) initialRegsH post,
       valid_register ra ->
       valid_register rv ->
       Memory.write_mem a v initialMH = Some finalMH ->
-      containsMem initialL.(machineMem) initialMH ->
+      containsMem initialL.(machine).(machineMem) initialMH ->
       get initialRegsH ra = Some a ->
       get initialRegsH rv = Some v ->
-      extends initialL.(core).(registers) initialRegsH ->
-      (Bind (execute (SwXLEN ra rv 0)) f) initialL =
-      (f tt) (with_machineMem (storeWordwXLEN initialL.(machineMem) a v) initialL).
+      extends initialL.(machine).(core).(registers) initialRegsH ->
+      computation_satisfies (f tt)
+                            (with_machine
+                               (with_machineMem
+                                  (storeWordwXLEN initialL.(machine).(machineMem) a v)
+                                  initialL.(machine))
+                               initialL)
+                            post ->
+      computation_satisfies (Bind (execute (SwXLEN ra rv 0)) f) initialL post.
   Proof.
     (*
     intros.
@@ -1543,14 +1700,12 @@ Section FlatToRiscv.
       reflexivity.
   Qed.*)
   Admitted.
-*)
 
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
   Arguments app: simpl never. (* don't simpl ([[ oneInst ]] ++ rest) into oneInst :: rest
     because otherwise solve_imem doesn't recognize "middle" any more *)
 
-(*
   (* otherwise simpl takes forever:
   Arguments split1: simpl never.
   Arguments split2: simpl never.
@@ -1697,8 +1852,6 @@ Section FlatToRiscv.
       load_lit_semantics v = ZToReg v.
   Proof using .
   Admitted.
-*)
-
 
   Definition trace := list LogEvent.
   Definition locals := map Z mword.
@@ -1778,10 +1931,9 @@ Section FlatToRiscv.
   Definition eval_stmt := exec.
 
   Lemma compile_stmt_correct_aux:
-    forall allInsts imemStart s insts initialH  initialMH postH
-           (initialL: RiscvMachineL)
-      instsBefore instsAfter,
-    eval_stmt s [] initialMH initialH postH ->
+    forall allInsts imemStart s insts initialH  initialMH postH t
+           (initialL: RiscvMachineL) instsBefore instsAfter,
+    eval_stmt s t initialMH initialH postH ->
     compile_stmt s = insts ->
     allInsts = instsBefore ++ insts ++ instsAfter ->
     stmt_not_too_big s ->
@@ -1792,16 +1944,17 @@ Section FlatToRiscv.
     containsProgram initialL.(machine).(machineMem) allInsts imemStart ->
     initialL.(machine).(core).(pc) =
       add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
+    initialL.(log) = t ->
     initialL.(machine).(core).(nextPC) = add initialL.(machine).(core).(pc) (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
     runsTo initialL (fun finalL => exists finalH finalMH,
+       postH finalL.(log) finalMH finalH /\
        extends finalL.(machine).(core).(registers) finalH /\
        containsMem finalL.(machine).(machineMem) finalMH /\
        containsProgram finalL.(machine).(machineMem) allInsts imemStart /\
        finalL.(machine).(core).(pc) =
          add initialL.(machine).(core).(pc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-       finalL.(machine).(core).(nextPC) = add finalL.(machine).(core).(pc) (ZToReg 4) /\
-       postH finalL.(log) finalMH finalH).
+       finalL.(machine).(core).(nextPC) = add finalL.(machine).(core).(pc) (ZToReg 4)).
   Proof.
     intros allInsts imemStart. pose proof (mkAllInsts allInsts).
     induction 1;
@@ -1815,23 +1968,23 @@ Section FlatToRiscv.
     - (* SLoad *)
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
-        erewrite execute_load; [|eassumption..].
+        eapply execute_load; [eassumption..|].
+        simpl_RiscvMachine_get_set.
+        eapply go_step.
         simpl_RiscvMachine_get_set.
         simpl.
-        rewrite execState_step.
-        simpl_RiscvMachine_get_set.
-        reflexivity.
+        eapply go_done.
       + run1done.
 
     - (* SStore *)
-      clear IHfuelH.
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
-        erewrite execute_store; [|eassumption..].
+        eapply execute_store; [eassumption..|].
         simpl_RiscvMachine_get_set.
-        rewrite execState_step.
+        eapply go_step.
         simpl_RiscvMachine_get_set.
-        reflexivity.
+        simpl.
+        eapply go_done.
       + run1done.
         apply store_preserves_containsProgram.
         * solve_containsProgram.
@@ -1840,7 +1993,6 @@ Section FlatToRiscv.
         * assumption.
 
     - (* SLit *)
-      clear IHfuelH.
       Time run1step.
       Time run1step.
       Time run1step.
@@ -1857,6 +2009,7 @@ Section FlatToRiscv.
       Time run1step.
       Time run1step.
       run1done.
+      state_calc.
       f_equal.
       apply compile_lit_correct.
 
@@ -1874,14 +2027,16 @@ Section FlatToRiscv.
     - run1step. run1done.
     - run1step. run1step. run1done.
       rewrite reduce_eq_to_sub_and_lt.
-      auto.
+      state_calc.
 
     - (* SSet *)
-      clear IHfuelH.
       run1step.
       run1done.
+      state_calc.
       f_equal.
       ring.
+
+   (* TODO split then/else beforehands *)
 
     - (* SIf/Then *)
       (* branch if cond = 0 (will not branch) *)
