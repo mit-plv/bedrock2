@@ -265,14 +265,14 @@ Section FlatToRiscv.
    *)
 
   Context {stateMap: MapFunctions Register mword}.
-  Notation state := (map Register mword).
+  Notation locals := (map Register mword).
 
   Context {Action: Set}. (* just a label *)
   Context {Event: Set}.  (* element of the event trace *)
 
   Notation var := Z (only parsing).
-
   Notation stmt := (stmt var Action).
+  Definition trace := list Event.
 
   (*
   Context {funcMap: MapFunctions Empty_set (list var * list var * stmt)}. (* TODO meh *)
@@ -314,6 +314,7 @@ Section FlatToRiscv.
     | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
     | SSkip => True
     | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
+    | SInteract binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
     end.
 
   (*
@@ -492,9 +493,9 @@ Section FlatToRiscv.
   Defined.
   *)
 
-  (* only external calls which result in a single instrucion are supported at the moment,
-     later we should support "list Instruction" *)
-  Variable compile_ext_call: list var -> Action -> list var -> Instruction.
+  Variable compile_ext_call: list var -> Action -> list var -> list Instruction.
+  Hypothesis compile_ext_call_length: forall binds f args,
+      (length (compile_ext_call binds f args) <= 7)%nat. (* TODO parametrize *)
 
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
@@ -521,7 +522,8 @@ Section FlatToRiscv.
         [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
-    | SCall resvars action argvars => [[ compile_ext_call resvars action argvars ]]
+    | SCall resvars action argvars => nil (* unsupported *)
+    | SInteract resvars action argvars => compile_ext_call resvars action argvars
     end.
 
   (*
@@ -539,6 +541,8 @@ Section FlatToRiscv.
   Proof.
     induction s; simpl; try destruct op; simpl;
     repeat (rewrite app_length; simpl); try omega.
+    specialize (compile_ext_call_length binds f args).
+    omega.
   Qed.
 
   (* load and decode Inst *)
@@ -1509,7 +1513,7 @@ Section FlatToRiscv.
 *)
 
   Lemma execute_load: forall (x a: Register) (addr v: mword) (initialMH: Memory.mem)
-           (f: unit -> M unit) (initialL: RiscvMachineL) post (initialRegsH: state),
+           (f: unit -> M unit) (initialL: RiscvMachineL) post (initialRegsH: locals),
       valid_register x ->
       valid_register a ->
       Memory.read_mem addr initialMH = Some v ->
@@ -1800,8 +1804,39 @@ Section FlatToRiscv.
     | _, _ => rf
     end.
 
-  (* args to ext call, event generated, return values from ext call *)
-  Variable ext_spec: list mword -> Event -> list mword -> Prop.
+  Variable ext_spec:
+    Action ->
+    trace -> @Memory.mem mword -> locals ->
+    (trace -> @Memory.mem mword -> locals -> Prop) ->
+    Prop.
+
+  (* beware, this style encourages swallowing of failing-nondet branches *)
+  Variable ext_spec_old: list mword -> Event -> list mword -> Prop.
+
+  (* TODO try if "continuation passing style" (runsTo implies runsTo) would work too
+     for this and for compiler correctness *)
+
+  (* this becomes as complicated as compile_stmt_correct_aux...
+
+  Hypothesis compile_ext_call_correct: forall initialL action outcome post
+      (argvars resvars: list var) (resvals: list mword),
+      let insts := compile_ext_call resvars action argvars in
+      let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
+      containsProgram initialL.(getMem) insts initialL.(getPc) ->
+
+      ext_spec action initialL.(getLog) initialMemH initialLocalsH outcome ->
+      (forall newLog newMemH newLocalsH,
+          outcome newLog newMemH newLocalsH ->
+      runsTo  post ->
+      runsTo initialL (fun finalL =>
+        finalL = {|
+          getRegs   := setManyRegs initialL.(getRegs) resvars resvals;
+          getPc     := add initialL.(getPc) d;
+          getNextPc := add initialL.(getNextPc) d;
+          getMem    := initialL.(getMem);
+          getLog    := newEvents ++ initialL.(getLog);
+      |}
+
 
   Hypothesis compile_ext_call_correct: forall initialL f action event post
     (argvars resvars: list var) (resvals: list mword),
@@ -1812,29 +1847,36 @@ Section FlatToRiscv.
               post ->
     mcomp_sat (Bind (execute (compile_ext_call resvars action argvars)) f) initialL post.
 
-  Definition trace := list Event.
-  Definition locals := map Z mword.
+      runsTo (setRegs (setPc (setNextPc initialL (add initialL.(getNextPc) d))
+                             (add initialL.(getPc) d))
+                      (setReg initialL.(getRegs) x (ZToReg v))) post ->
+      runsTo initialL post.
+
+  Hypothesis compile_ext_call_correct: forall initialL f action event post
+    (argvars resvars: list var) (resvals: list mword),
+    ext_spec_old (List.map (getReg (initialL.(getRegs))) argvars) event resvals ->
+    mcomp_sat (f tt)
+              (setRegs (logCons initialL event)
+                       (setManyRegs initialL.(getRegs) resvars resvals))
+              post ->
+    mcomp_sat (Bind (execute (compile_ext_call resvars action argvars)) f) initialL post.
+*)
+
   (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
   Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
 
   Definition word_test(w: mword): bool :=
     negb (reg_eqb w (ZToReg 0)).
 
-  (* these two should not be needed any more if we can do generic ext calls *)
-  Axiom MMInput: Action.
-  Axiom MMOutput: Action.
-
   Inductive exec:
     stmt ->
     trace -> @Memory.mem mword -> locals ->
     (trace -> @Memory.mem mword -> locals -> Prop)
     -> Prop :=
-  | ExExtCall: forall t m l l' action argvars argvals event resvars resvals post,
-      option_all (List.map (get l) argvars) = Some argvals ->
-      ext_spec argvals event resvals ->
-      putmany resvars resvals l = Some l' ->
-      post (cons event t) m l' ->
-      exec (SCall resvars action argvars) t m l post
+  | ExInteract: forall t m l action argvars resvars outcome post,
+      ext_spec action t m l outcome ->
+      (forall t' m' l', outcome t' m' l' -> post t' m' l') ->
+      exec (SInteract resvars action argvars) t m l post
   | ExLoad: forall t m l x a v addr post,
       get l a = Some addr ->
       isMMIOAddr addr = false ->
@@ -1881,22 +1923,7 @@ Section FlatToRiscv.
       exec (SSeq s1 s2) t m l post
   | ExSkip: forall t m l post,
       post t m l ->
-      exec SSkip t m l post
-  (* these two should be subsumed by ExExtCall above *)
-  | ExCallInput: forall t m l resvar a addr post
-      (pf: isMMIOAddr addr = true),
-      get l a = Some addr ->
-      (forall (inp: word 32),
-          post (cons (mkInputEvent (exist _ addr pf) inp) t)
-               m
-               (put l resvar (uInt32ToReg inp))) ->
-      exec (SCall [resvar] MMInput [a]) t m l post
-  | ExCallOutput: forall t m l a addr x v post
-      (pf: isMMIOAddr addr = true),
-      get l a = Some addr ->
-      get l x = Some v ->
-      post (cons (mkOutputEvent (exist _ addr pf) (regToInt32 v)) t) m l ->
-      exec (SCall [] MMOutput [a; x]) t m l post.
+      exec SSkip t m l post.
 
   Definition eval_stmt := exec.
 
@@ -1929,8 +1956,10 @@ Section FlatToRiscv.
     intros allInsts imemStart. pose proof (mkAllInsts allInsts).
     induction 1; intros.
 
-    - (* SCall *)
+    - (* SInteract *)
       simpl in *; destruct_everything.
+      admit.
+      (*
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
         eapply compile_ext_call_correct; simpl.
@@ -1941,6 +1970,7 @@ Section FlatToRiscv.
           admit.
         * eapply go_step. simpl. eapply go_done.
       + run1done. clear -H2 H9. admit.
+      *)
 
     - (* SLoad *)
       simpl in *; destruct_everything.
