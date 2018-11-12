@@ -1914,7 +1914,6 @@ Section FlatToRiscv.
       + run1done.
 
     - (* SStore *)
-      simpl in *; destruct_everything.
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
         eapply execute_store; [eassumption..|].
@@ -1931,10 +1930,6 @@ Section FlatToRiscv.
         * assumption.
 
     - (* SLit *)
-      subst.
-      simpl in *; destruct_everything.
-      unfold compile_lit, compile_lit_rec in *.
-      destruct_everything.
       Time run1step.
       Time run1step.
       Time run1step.
