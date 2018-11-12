@@ -1925,18 +1925,20 @@ Section FlatToRiscv.
   Definition eval_stmt := exec.
 
   Lemma compile_stmt_correct_aux:
-    forall s imemStart instsBefore instsAfter initialRegsH initialRegsL initialMH initialML
-           postH finalPostL t,
-    let initialPc := add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) in
-    let insts := compile_stmt s in
-    let allInsts := instsBefore ++ insts ++ instsAfter in
+    forall s t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
+    forall imemStart instsBefore instsAfter
+           initialRegsL initialPc initialNextPc initialML finalPostL insts allInsts,
+    compile_stmt s = insts ->
+    allInsts = instsBefore ++ insts ++ instsAfter ->
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
     @extends Register mword _ initialRegsL initialRegsH ->
     containsMem initialML initialMH ->
     containsProgram initialML allInsts imemStart ->
+    initialPc = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
+    initialNextPc = add initialPc (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
     (forall new_t newRegsH newMH newRegsL newPc newNextPc newML,
         postH new_t newMH newRegsH ->
@@ -1946,7 +1948,7 @@ Section FlatToRiscv.
         newPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) ->
         newNextPc = add newPc (ZToReg 4) ->
         runsTo (mkRiscvMachine newRegsL newPc newNextPc newML new_t) finalPostL) ->
-    runsTo (mkRiscvMachine initialRegsL initialPc (add initialPc (ZToReg 4)) initialML t)
+    runsTo (mkRiscvMachine initialRegsL initialPc initialNextPc initialML t)
            finalPostL.
   Proof.
     induction 1; intros;
@@ -2029,16 +2031,23 @@ Section FlatToRiscv.
     - (* SIf/Then *)
       simpl in *; destruct_everything.
       run1step.
-      Fail eapply IHexec.
-
-      (* use IH for then-branch *)
-      spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans IH). clear IH.
-      (* jump over else-branch *)
-      intros.
-      destruct_everything.
-      run1step.
-      run1done.
+      eapply IHexec.
+      + reflexivity.
+      + reflexivity.
+      + solve_stmt_not_too_big.
+      + eassumption.
+      + eassumption.
+      + state_calc.
+      + eassumption.
+      + clear H12 H13. clear IHexec.
+        solve_containsProgram. (* makes bad choices *)
+        admit.
+      + solve_word_eq.
+        admit.
+      + reflexivity.
+      + admit.
+      + (* wrong instantiations *)
+        admit.
 
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
