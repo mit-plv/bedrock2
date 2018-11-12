@@ -261,13 +261,16 @@ Section FlatToRiscv.
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
-  Context {Action: Set}.
-  Variable (MMInput MMOutput: Action).
-  Context {Event: Set}.
+  Context {Action: Set}. (* just a label *)
+  Context {Event: Set}.  (* element of the event trace *)
 
-  Notation stmt := (stmt Z Action).
+  Notation var := Z (only parsing).
 
-  Context {funcMap: MapFunctions Empty_set (list Z * list Z * stmt)}. (* TODO meh *)
+  Notation stmt := (stmt var Action).
+
+  (*
+  Context {funcMap: MapFunctions Empty_set (list var * list var * stmt)}. (* TODO meh *)
+   *)
 
   Context {MF: Memory.MemoryFunctions mword}.
   Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
@@ -483,6 +486,10 @@ Section FlatToRiscv.
   Defined.
   *)
 
+  (* only external calls which result in a single instrucion are supported at the moment,
+     later we should support "list Instruction" *)
+  Variable compile_ext_call: list var -> Action -> list var -> Instruction.
+
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
     | SLoad x y => [[LwXLEN x y 0]]
@@ -508,7 +515,7 @@ Section FlatToRiscv.
         [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
-    | SCall _ _ _ => nil (* unsupported *)
+    | SCall resvars action argvars => [[ compile_ext_call resvars action argvars ]]
     end.
 
   (*
@@ -1741,6 +1748,25 @@ Section FlatToRiscv.
   Proof using .
   Admitted.
 
+  Fixpoint setManyRegs(rf: RegisterFile Register mword)
+             (rnames: list Register)(vals: list mword): RegisterFile Register mword :=
+    match rnames, vals with
+    | x :: rnames, v :: vals => setReg (setManyRegs rf rnames vals) x v
+    | _, _ => rf
+    end.
+
+  (* args to ext call, event generated, return values from ext call *)
+  Variable ext_spec: list mword -> Event -> list mword -> Prop.
+
+  Hypothesis compile_ext_call_correct: forall initialL f action event post
+    (argvars resvars: list var) (resvals: list mword),
+    ext_spec (List.map (getReg (initialL.(getRegs))) argvars) event resvals ->
+    mcomp_sat (f tt)
+              (setRegs (logAppend initialL event)
+                       (setManyRegs initialL.(getRegs) resvars resvals))
+              post ->
+    mcomp_sat (Bind (execute (compile_ext_call resvars action argvars)) f) initialL post.
+
   Definition trace := list Event.
   Definition locals := map Z mword.
   (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
@@ -1749,11 +1775,21 @@ Section FlatToRiscv.
   Definition word_test(w: mword): bool :=
     negb (reg_eqb w (ZToReg 0)).
 
+  (* these two should not be needed any more if we can do generic ext calls *)
+  Axiom MMInput: Action.
+  Axiom MMOutput: Action.
+
   Inductive exec:
     stmt ->
     trace -> @Memory.mem mword -> locals ->
     (trace -> @Memory.mem mword -> locals -> Prop)
     -> Prop :=
+  | ExExtCall: forall t m l l' action argvars argvals event resvars resvals post,
+      option_all (List.map (get l) argvars) = Some argvals ->
+      ext_spec argvals event resvals ->
+      putmany resvars resvals l = Some l' ->
+      post (cons event t) m l' ->
+      exec (SCall resvars action argvars) t m l post
   | ExLoad: forall t m l x a v addr post,
       get l a = Some addr ->
       isMMIOAddr addr = false ->
@@ -1801,6 +1837,7 @@ Section FlatToRiscv.
   | ExSkip: forall t m l post,
       post t m l ->
       exec SSkip t m l post
+  (* these two should be subsumed by ExExtCall above *)
   | ExCallInput: forall t m l resvar a addr post
       (pf: isMMIOAddr addr = true),
       get l a = Some addr ->
@@ -1853,6 +1890,18 @@ Section FlatToRiscv.
       simpl in *; unfold compile_lit, compile_lit_rec in *;
       destruct_everything.
 
+    - (* SCall *)
+      eapply runsToStep; simpl in *; subst *.
+      + fetch_inst.
+        eapply compile_ext_call_correct; simpl.
+        * match goal with
+          | |- ext_spec ?A _ _ => replace A with argvals; [eassumption|]
+          end.
+          (* follows from H0 *)
+          admit.
+        * eapply go_step. simpl. eapply go_done.
+      + run1done. clear -H2 H9. admit.
+
     - (* SLoad *)
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
@@ -1865,6 +1914,7 @@ Section FlatToRiscv.
       + run1done.
 
     - (* SStore *)
+      simpl in *; destruct_everything.
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
         eapply execute_store; [eassumption..|].
@@ -1881,6 +1931,10 @@ Section FlatToRiscv.
         * assumption.
 
     - (* SLit *)
+      subst.
+      simpl in *; destruct_everything.
+      unfold compile_lit, compile_lit_rec in *.
+      destruct_everything.
       Time run1step.
       Time run1step.
       Time run1step.
