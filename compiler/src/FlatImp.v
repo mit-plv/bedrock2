@@ -32,7 +32,8 @@ Section FlatImp1.
     | SLoop(body1: stmt)(cond: var)(body2: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
-    | SCall(binds: list var)(f: func)(args: list var).
+    | SCall(binds: list var)(f: func)(args: list var)
+    | SInteract(binds: list var)(f: func)(args: list var).
 
   Section WithEnv.
     Context {funcMap: MapFunctions func (list var * list var * stmt)}.
@@ -89,6 +90,7 @@ Section FlatImp1.
           retvs <- option_all (List.map (get st1) rets);
           st' <- putmany binds retvs st;
           Return (st', m')
+        | SInteract binds fname args => Return (st, m) (* TODO might be non-deterministic *)
         end
       end.
 
@@ -176,6 +178,12 @@ Section FlatImp1.
         putmany binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. Qed.
+
+    Lemma invert_eval_SInteract : forall st m1 p2 f binds fname args,
+      eval_stmt (S f) st m1 (SInteract binds fname args) = Some p2 ->
+      False.
+    Proof using .
+    Admitted.
   End WithEnv.
 
   Definition stmt_size_body(rec: stmt -> nat)(s: stmt): nat :=
@@ -190,6 +198,9 @@ Section FlatImp1.
     | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
     | SSkip => 1
     | SCall binds f args => S (length binds + length args)
+    | SInteract binds f args => S (length binds + length args)
+                             + 7 (* randomly chosen max allowed number of assembly instructions
+                                 generated for an external call *)
     end.
 
   Fixpoint stmt_size(s: stmt): nat := stmt_size_body stmt_size s.
@@ -212,6 +223,7 @@ Section FlatImp1.
         union (modVars s1) (modVars s2)
     | SSkip => empty_set
     | SCall binds func args => of_list binds
+    | SInteract binds func args => of_list binds
     end.
 
   Fixpoint accessedVars(s: stmt): vars :=
@@ -229,6 +241,7 @@ Section FlatImp1.
         union (accessedVars s1) (accessedVars s2)
     | SSkip => empty_set
     | SCall binds func args => union (of_list binds) (of_list args)
+    | SInteract binds func args => union (of_list binds) (of_list args)
     end.
 
   Lemma modVars_subset_accessedVars: forall s,
@@ -252,7 +265,8 @@ Ltac invert_eval_stmt :=
     | apply invert_eval_SLoop in E
     | apply invert_eval_SSeq in E
     | apply invert_eval_SSkip in E
-    | apply invert_eval_SCall in E ];
+    | apply invert_eval_SCall in E
+    | apply invert_eval_SInteract in E ];
     deep_destruct E;
     [ let x := fresh "Case_SLoad" in pose proof tt as x; move x at top
     | let x := fresh "Case_SStore" in pose proof tt as x; move x at top
@@ -265,7 +279,8 @@ Ltac invert_eval_stmt :=
     | let x := fresh "Case_SLoop_NotDone" in pose proof tt as x; move x at top
     | let x := fresh "Case_SSeq" in pose proof tt as x; move x at top
     | let x := fresh "Case_SSkip" in pose proof tt as x; move x at top
-    | let x := fresh "Case_SCall" in pose proof tt as x; move x at top ]
+    | let x := fresh "Case_SCall" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SInteract" in pose proof tt as x; move x at top ]
   end.
 
 Arguments SLoad   {_} {_}.
@@ -278,6 +293,7 @@ Arguments SLoop   {_} {_}.
 Arguments SSeq    {_} {_}.
 Arguments SSkip   {_} {_}.
 Arguments SCall   {_} {_}.
+Arguments SInteract {_} {_}.
 
 Section FlatImp2.
 
@@ -326,6 +342,7 @@ Section FlatImp2.
              end;
       rewrite? reg_eqb_eq by reflexivity;
       eauto.
+      contradiction.
   Qed.
 
   Lemma modVarsSound: forall fuel e s initialSt initialM finalSt finalM,

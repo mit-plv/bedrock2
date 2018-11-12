@@ -72,6 +72,7 @@ Section Live.
     | SSeq s1 s2 => union (certainly_written s1) (certainly_written s2)
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list resnames
+    | SInteract argnames fname resnames => of_list resnames
     end.
 
   (* set of variables which is live before executing s *)
@@ -88,6 +89,7 @@ Section Live.
     | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list argnames
+    | SInteract argnames fname resnames => of_list argnames
     end.
 
 End Live.
@@ -119,7 +121,8 @@ Section RegAlloc.
     | ASLoop(body1: astmt)(cond: srcvar)(body2: astmt)
     | ASSeq(s1 s2: astmt)
     | ASSkip
-    | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
+    | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar)
+    | ASInteract(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
 
   Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
   Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
@@ -160,6 +163,7 @@ Section RegAlloc.
       | ASSeq s1 s2 => rec (rec m s1) s2
       | ASSkip => m
       | ASCall binds f args => empty_map (* TODO *)
+      | ASInteract binds f args => empty_map (* TODO *)
       end.
 
   Variable dummy_impvar: impvar.
@@ -238,6 +242,7 @@ Section RegAlloc.
     | SSkip => ASSkip
   (*| SCall argnames fname resnames => fold_left start_interval resnames (o, a, m) *)
     | SCall _ _ _ => ASSkip (* TODO *)
+    | SInteract _ _ _ => ASSkip (* TODO *)
     end.
 
   Hint Resolve
@@ -375,6 +380,7 @@ Section RegAlloc.
           Some (SSeq s1' s2')
       | ASSkip => Some SSkip
       | ASCall binds f args => None (* TODO *)
+      | ASInteract binds f args => None (* TODO *)
       end.
 
   Definition erase :=
@@ -390,6 +396,7 @@ Section RegAlloc.
       | ASSeq s1 s2 => SSeq (rec s1) (rec s2)
       | ASSkip => SSkip
       | ASCall binds f args => SCall (List.map fst binds) f args
+      | ASInteract binds f args => SCall (List.map fst binds) f args
       end.
 
   Definition register_allocation(s: stmt)(mBegin mEnd: map impvar srcvar): option stmt' :=
@@ -677,6 +684,8 @@ Section RegAlloc.
       rewrite El. all: typeclasses eauto with core checker_hints.
     - clear Case_SCall.
       discriminate.
+    - clear Case_SCall.
+      discriminate.
   Qed.
 
   Lemma regalloc_respects_afterlife: forall s m l r,
@@ -694,7 +703,8 @@ Section RegAlloc.
       | set ( case := SLoop )
       | set ( case := SSeq )
       | set ( case := SSkip )
-      | set ( case := SCall ) ];
+      | set ( case := SCall )
+      | set ( case := SInteract ) ];
       move case at top;
       simpl in *;
       repeat (destruct_one_match); simpl in *.
@@ -750,7 +760,8 @@ Section RegAlloc.
       | set ( case := ASLoop )
       | set ( case := ASSeq )
       | set ( case := ASSkip )
-      | set ( case := ASCall ) ];
+      | set ( case := ASCall )
+      | set ( case := ASInteract ) ];
       move case at top;
       repeat (subst ||
               destruct_pair_eqs ||

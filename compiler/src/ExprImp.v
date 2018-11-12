@@ -114,7 +114,10 @@ Section ExprImp1.
       | cmd.skip => 1
       | cmd.call binds f args =>
           S (length binds + length args + List.fold_right Nat.add O (List.map expr_size args))
-      | cmd.interact _ _ _ => 1
+      | cmd.interact _ _ exprs => fold_left (fun res e => res + expr_size e) exprs 0
+                                  + 7 (* randomly chosen max allowed number of instructions
+                                         one interaction can be compiled to, TODO parametrize
+                                         over this *)
       end.
 
     Local Ltac inversion_lemma :=
