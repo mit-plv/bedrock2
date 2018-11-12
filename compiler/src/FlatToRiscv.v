@@ -1909,8 +1909,8 @@ Section FlatToRiscv.
           mid t' m' l' ->
           exists v,
             get l' cond = Some v /\
-            ((v =  ZToReg 0 /\ post t' m' l') \/
-             (v <> ZToReg 0 /\ exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post))) ->
+            ((v = ZToReg 0 -> post t' m' l') /\
+             (v <> ZToReg 0 -> exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post))) ->
       exec (SLoop body1 cond body2) t m l post
   | ExSeq: forall t m l s1 s2 mid post,
       exec s1 t m l mid ->
