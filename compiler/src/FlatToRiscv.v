@@ -1090,9 +1090,6 @@ Section FlatToRiscv.
   Ltac sidecondition :=
     solve_containsProgram || assumption || reflexivity.
 
-  Inductive AllInsts: list Instruction -> Prop :=
-    mkAllInsts: forall l, AllInsts l.
-
   Ltac head_of_app e :=
     match e with
     | ?f ?a => head_of_app f
@@ -1125,7 +1122,6 @@ Section FlatToRiscv.
                | @containsProgram => clear H
                | @mem_inaccessible => clear H
                | @containsProgram_app_will_work => clear H
-               | @AllInsts => clear H
                end
              | H: @eq ?T _ _ |- _ =>
                match T with
@@ -1928,33 +1924,33 @@ Section FlatToRiscv.
   Definition eval_stmt := exec.
 
   Lemma compile_stmt_correct_aux:
-    forall allInsts imemStart s insts initialH  initialMH postH t
-           (initialL: RiscvMachineL) instsBefore instsAfter,
-    eval_stmt s t initialMH initialH postH ->
-    compile_stmt s = insts ->
-    allInsts = instsBefore ++ insts ++ instsAfter ->
+    forall s imemStart instsBefore instsAfter initialRegsH initialRegsL initialMH initialML
+           postH t,
+    let initialPc := add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) in
+    let insts := compile_stmt s in
+    let allInsts := instsBefore ++ insts ++ instsAfter in
+    eval_stmt s t initialMH initialRegsH postH ->
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    @extends Register mword _ initialL.(getRegs) initialH ->
-    containsMem initialL.(getMem) initialMH ->
-    containsProgram initialL.(getMem) allInsts imemStart ->
-    initialL.(getPc) =
-      add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
-    initialL.(getLog) = t ->
-    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    @extends Register mword _ initialRegsL initialRegsH ->
+    containsMem initialML initialMH ->
+    containsProgram initialML allInsts imemStart ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
-    runsTo initialL (fun finalL => exists finalH finalMH,
-       postH finalL.(getLog) finalMH finalH /\
-       extends finalL.(getRegs) finalH /\
-       containsMem finalL.(getMem) finalMH /\
-       containsProgram finalL.(getMem) allInsts imemStart /\
-       finalL.(getPc) =
-         add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-       finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
+    runsTo (mkRiscvMachine initialRegsL initialPc (add initialPc (ZToReg 4)) initialML t)
+     (fun '(mkRiscvMachine finalRegsL   finalPc   finalNextPc                finalML   t') =>
+        exists finalRegsH finalMH,
+          postH t' finalMH finalRegsH /\
+          extends finalRegsL finalRegsH /\
+          containsMem finalML finalMH /\
+          containsProgram finalML allInsts imemStart /\
+          finalPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalNextPc = add finalPc (ZToReg 4)).
   Proof.
-    intros allInsts imemStart. pose proof (mkAllInsts allInsts).
-    induction 1; intros.
+    induction 1; intros;
+      repeat match goal with
+             | x := _ |- _ => subst x
+             end.
 
     - (* SInteract *)
       simpl in *; destruct_everything.
@@ -2004,7 +2000,6 @@ Section FlatToRiscv.
     - (* SLit *)
       subst. destruct_containsProgram.
       eapply compile_lit_correct_full; [sidecondition..|].
-      destruct_RiscvMachine initialL.
       simpl in *.
       run1done.
 
