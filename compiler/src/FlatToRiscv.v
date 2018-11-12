@@ -39,6 +39,11 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+Section TODO.
+  Context {K V: Type}.
+  Context {Mf: MapFunctions K V}.
+  Axiom put_put_same: forall k v1 v2 m, put (put m k v1) k v2 = put m k v2.
+End TODO.
 
 (* State_is_RegisterFile gets its own section so that destructing Bw later does
    not lead to ill-typed terms *)
@@ -99,6 +104,7 @@ Section FlatToRiscv.
     | _ => fail 1 "wrong shape of goal"
     end;
     subst;
+    try reflexivity;
     clear;
     simpl;
     repeat (autorewrite with rew_Zlength; simpl);
@@ -1403,6 +1409,7 @@ Section FlatToRiscv.
       elim_then_true_else_false
       (@left_identity M MM)
       @get_put_same
+      @put_put_same
   : rew_run1step.
 
   Ltac simulate :=
@@ -1412,6 +1419,7 @@ Section FlatToRiscv.
            | progress rewrite_setReg
            | progress rewrite_getReg
            | rewrite @get_put_same
+           | rewrite @put_put_same
            | progress (autorewrite with rew_reg_eqb)
            | progress simpl_remu4_test
            | progress rewrite_reg_value
@@ -1429,6 +1437,16 @@ Section FlatToRiscv.
            | eapply go_right_identity ; [sidecondition..|]
            | eapply go_associativity  ; [sidecondition..|]
            | eapply go_fetch_inst     ; [sidecondition..|] ].
+
+  Ltac destruct_everything :=
+    destruct_products;
+    try destruct_pair_eqs;
+    destruct_conjs;
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end;
+    subst *;
+    destruct_containsProgram.
 
   Ltac run1step'' :=
     fetch_inst;
@@ -1489,16 +1507,6 @@ Section FlatToRiscv.
         end;
     solve_word_eq.
 *)
-
-  Ltac destruct_everything :=
-    destruct_products;
-    try destruct_pair_eqs;
-    destruct_conjs;
-    repeat match goal with
-           | m: _ |- _ => destruct_RiscvMachine m
-           end;
-    subst *;
-    destruct_containsProgram.
 
   Lemma execute_load: forall (x a: Register) (addr v: mword) (initialMH: Memory.mem)
            (f: unit -> M unit) (initialL: RiscvMachineL) post (initialRegsH: state),
@@ -1748,6 +1756,43 @@ Section FlatToRiscv.
   Proof using .
   Admitted.
 
+  Lemma compile_lit_correct_full: forall initialL post x v,
+      initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+      let insts := compile_stmt (SLit x v) in
+      let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
+      containsProgram initialL.(getMem) insts initialL.(getPc) ->
+      valid_register x ->
+      runsTo (setRegs (setPc (setNextPc initialL (add initialL.(getNextPc) d))
+                             (add initialL.(getPc) d))
+                      (setReg initialL.(getRegs) x (ZToReg v))) post ->
+      runsTo initialL post.
+  Proof.
+    intros. subst insts d.
+    unfold compile_stmt, compile_lit, compile_lit_rec in *.
+    destruct_everything; simpl in *.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    match goal with
+    | R: runsTo ?m post |- runsToNonDet.runsTo _ _ ?m' post =>
+      replace m' with m; [exact R|]
+    end.
+    f_equal; try solve_word_eq.
+    f_equal. symmetry. apply compile_lit_correct.
+  Qed.
+
   Fixpoint setManyRegs(rf: RegisterFile Register mword)
              (rnames: list Register)(vals: list mword): RegisterFile Register mword :=
     match rnames, vals with
@@ -1882,15 +1927,10 @@ Section FlatToRiscv.
        finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
   Proof.
     intros allInsts imemStart. pose proof (mkAllInsts allInsts).
-    induction 1;
-      intros;
-      try match goal with
-          | o: bopname |- _ => destruct o (* do this before destruct_containsProgram *)
-          end;
-      simpl in *; unfold compile_lit, compile_lit_rec in *;
-      destruct_everything.
+    induction 1; intros.
 
     - (* SCall *)
+      simpl in *; destruct_everything.
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
         eapply compile_ext_call_correct; simpl.
@@ -1903,6 +1943,7 @@ Section FlatToRiscv.
       + run1done. clear -H2 H9. admit.
 
     - (* SLoad *)
+      simpl in *; destruct_everything.
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
         eapply execute_load; [eassumption..|].
@@ -1914,6 +1955,7 @@ Section FlatToRiscv.
       + run1done.
 
     - (* SStore *)
+      simpl in *; destruct_everything.
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
         eapply execute_store; [eassumption..|].
@@ -1930,43 +1972,25 @@ Section FlatToRiscv.
         * assumption.
 
     - (* SLit *)
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
+      subst. destruct_containsProgram.
+      eapply compile_lit_correct_full; [sidecondition..|].
+      destruct_RiscvMachine initialL.
+      simpl in *.
       run1done.
-      state_calc.
-      f_equal.
-      apply compile_lit_correct.
 
       (* SOp *)
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1step. run1done.
+    - match goal with
+      | o: bopname |- _ => destruct o (* do this before destruct_containsProgram *)
+      end;
+      simpl in *; destruct_everything;
+      try solve [run1step; run1done].
+      (* all except eq are implemented with one instruction *)
+      run1step. run1step. run1done.
       rewrite reduce_eq_to_sub_and_lt.
       state_calc.
 
     - (* SSet *)
+      simpl in *; destruct_everything.
       run1step.
       run1done.
       state_calc.
