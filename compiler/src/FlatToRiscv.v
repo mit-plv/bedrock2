@@ -1894,9 +1894,14 @@ Section FlatToRiscv.
       get l y = Some y' ->
       post t m (put l x y') ->
       exec (SSet x y) t m l post
-  | ExIf: forall t m l cond vcond bThen bElse post,
+  | ExIfThen: forall t m l cond vcond bThen bElse post,
       get l cond = Some vcond ->
-      exec (if reg_eqb vcond (ZToReg 0) then bElse else bThen) t m l post ->
+      vcond <> ZToReg 0 ->
+      exec bThen t m l post ->
+      exec (SIf cond bThen bElse) t m l post
+  | ExIfElse: forall t m l cond bThen bElse post,
+      get l cond = Some (ZToReg 0) ->
+      exec bElse t m l post ->
       exec (SIf cond bThen bElse) t m l post
   | ExLoop: forall t m l cond body1 body2 mid post,
       exec body1 t m l mid ->
@@ -1904,10 +1909,8 @@ Section FlatToRiscv.
           mid t' m' l' ->
           exists v,
             get l' cond = Some v /\
-            ((reg_eqb v (ZToReg 0) = true /\
-              post t' m' l') \/
-             (reg_eqb v (ZToReg 0) = false /\
-              exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post))) ->
+            ((v =  ZToReg 0 /\ post t' m' l') \/
+             (v <> ZToReg 0 /\ exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post))) ->
       exec (SLoop body1 cond body2) t m l post
   | ExSeq: forall t m l s1 s2 mid post,
       exec s1 t m l mid ->
@@ -1916,6 +1919,8 @@ Section FlatToRiscv.
   | ExSkip: forall t m l post,
       post t m l ->
       exec SSkip t m l post.
+
+  About exec_ind. (* case ExLoop has no IH for body2! *)
 
   Definition eval_stmt := exec.
 
@@ -1947,6 +1952,8 @@ Section FlatToRiscv.
     induction 1; intros;
       repeat match goal with
              | x := _ |- _ => subst x
+             | H: _ /\ _ |- _ => destruct H
+             | H: _ \/ _ |- _ => destruct H
              end.
 
     - (* SInteract *)
@@ -2019,11 +2026,11 @@ Section FlatToRiscv.
       f_equal.
       ring.
 
-   (* TODO split then/else beforehands *)
-
     - (* SIf/Then *)
-      (* branch if cond = 0 (will not branch) *)
+      simpl in *; destruct_everything.
       run1step.
+      Fail eapply IHexec.
+
       (* use IH for then-branch *)
       spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans IH). clear IH.
