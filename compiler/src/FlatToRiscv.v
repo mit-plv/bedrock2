@@ -1473,15 +1473,11 @@ Section FlatToRiscv.
 
   Ltac run1done :=
     intros; subst;
-    apply runsToDone;
-    simpl_RiscvMachine_get_set;
-    do 2 eexists; split; [eassumption|];
-    (* note: less aggressive than "repeat split" because it does not unfold *)
-    repeat match goal with
-           | |- _ /\ _ => split
-           end;
+    match goal with
+    | H: _ |- _ => eapply H (* there's only one "... -> runsTo _ finalPostL" *)
+    end;
     first
-      [ assumption
+      [ eassumption
       | eapply containsMem_write; eassumption
       | match goal with
         | |- extends _ _ => solve [state_calc]
@@ -1925,7 +1921,7 @@ Section FlatToRiscv.
 
   Lemma compile_stmt_correct_aux:
     forall s imemStart instsBefore instsAfter initialRegsH initialRegsL initialMH initialML
-           postH t,
+           postH finalPostL t,
     let initialPc := add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) in
     let insts := compile_stmt s in
     let allInsts := instsBefore ++ insts ++ instsAfter in
@@ -1937,15 +1933,16 @@ Section FlatToRiscv.
     containsMem initialML initialMH ->
     containsProgram initialML allInsts imemStart ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
+    (forall new_t newRegsH newMH newRegsL newPc newNextPc newML,
+        postH new_t newMH newRegsH ->
+        extends newRegsL newRegsH ->
+        containsMem newML newMH ->
+        containsProgram newML allInsts imemStart ->
+        newPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) ->
+        newNextPc = add newPc (ZToReg 4) ->
+        runsTo (mkRiscvMachine newRegsL newPc newNextPc newML new_t) finalPostL) ->
     runsTo (mkRiscvMachine initialRegsL initialPc (add initialPc (ZToReg 4)) initialML t)
-     (fun '(mkRiscvMachine finalRegsL   finalPc   finalNextPc                finalML   t') =>
-        exists finalRegsH finalMH,
-          postH t' finalMH finalRegsH /\
-          extends finalRegsL finalRegsH /\
-          containsMem finalML finalMH /\
-          containsProgram finalML allInsts imemStart /\
-          finalPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalNextPc = add finalPc (ZToReg 4)).
+           finalPostL.
   Proof.
     induction 1; intros;
       repeat match goal with
