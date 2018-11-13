@@ -3,6 +3,7 @@ Require Import compiler.FlatImp.
 Require Import compiler.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
+Require Import bedrock2.Macros.
 Require Import compiler.Op.
 Require Import compiler.util.Map.
 Require Import compiler.util.Set.
@@ -54,10 +55,9 @@ Local Notation "'bind_opt' x <- a ; f" :=
 
 Section Live.
 
-  Context {var func A: Set}.
-  Context {varset: SetFunctions var}.
-  Local Notation stmt := (stmt var func).
-  Local Notation vars := (set var).
+  Context {p: unique! Basic_bopnames.parameters}.
+  Context {varset: SetFunctions varname}.
+  Local Notation vars := (set varname).
 
   (* set of variables which is certainly written while executing s *)
   Fixpoint certainly_written(s: stmt): vars :=
@@ -102,6 +102,8 @@ Section RegAlloc.
   Context {impvar_eq_dec: DecidableEq impvar}.
   Variable func: Set.
   Context {func_eq_dec: DecidableEq func}.
+  Variable act: Set.
+  Context {act_eq_dec: DecidableEq act}.
 
   Context {Map: MapFunctions impvar srcvar}.
   Notation srcvars := (@set srcvar (@map_range_set _ _ Map)).
@@ -124,8 +126,20 @@ Section RegAlloc.
     | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar)
     | ASInteract(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
 
-  Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
-  Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
+  Instance srcparams: Basic_bopnames.parameters := {|
+    varname := srcvar;
+    funcname := func;
+    actname := act;
+  |}.
+
+  Instance impparams: Basic_bopnames.parameters := {|
+    varname := impvar;
+    funcname := func;
+    actname := act;
+  |}.
+
+  Local Notation stmt  := (@FlatImp.stmt srcparams). (* input type *)
+  Local Notation stmt' := (@FlatImp.stmt impparams). (* output type *)
 
 (*
   Ltac head e :=
@@ -383,6 +397,10 @@ Section RegAlloc.
       | ASInteract binds f args => None (* TODO *)
       end.
 
+  Existing Instance srcparams.
+  (* ugly hack to change typeclass precedence, TODO how can we make Coq pick up the right
+     instance automatically? *)
+
   Definition erase :=
     fix rec(s: astmt): stmt :=
       match s with
@@ -414,7 +432,7 @@ Section RegAlloc.
   Context {impFuncMap: MapFunctions func (list impvar * list impvar * stmt')}.
 
   Definition eval: nat -> map srcvar mword -> mem -> stmt -> option (map srcvar mword * mem)
-    := eval_stmt _ _ empty_map.
+    := @eval_stmt srcparams.
 
   Definition eval': nat -> map impvar mword -> mem -> stmt' -> option (map impvar mword * mem)
     := eval_stmt _ _ empty_map.

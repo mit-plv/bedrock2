@@ -8,6 +8,8 @@ Require Export bedrock2.Syntax.
 Require Export bedrock2.Semantics.
 Require Import bedrock2.Macros.
 Require Import compiler.util.Common.
+Require Import riscv.util.Monads.
+Require Import riscv.util.MonadNotations.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.Decidable.

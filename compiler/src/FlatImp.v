@@ -1,96 +1,126 @@
+Require Import Coq.ZArith.ZArith.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
 Require Import riscv.Utility.
+Require Import bedrock2.Macros.
+Require Import bedrock2.Syntax.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.Memory.
 Require Import compiler.Decidable.
 
-Section FlatImp1.
 
-  Context {mword: Set}.
-  Context {MW: MachineWidth mword}.
-
-  Variable var: Set.
-  Context {var_eq_dec: DecidableEq var}.
-  Variable func: Set.
-  Context {func_eq_dec: DecidableEq func}.
-
-  Context {stateMap: MapFunctions var mword}.
-  Notation state := (map var mword).
-  Context {varset: SetFunctions var}.
-  Notation vars := (set var).
+Section Syntax.
+  Context {pp : unique! Basic_bopnames.parameters}.
 
   Inductive stmt: Set :=
-    | SLoad(x: var)(a: var): stmt
-    | SStore(a: var)(v: var): stmt
-    | SLit(x: var)(v: Z): stmt
-    | SOp(x: var)(op: bopname)(y z: var): stmt
-    | SSet(x y: var): stmt
-    | SIf(cond: var)(bThen bElse: stmt): stmt
-    | SLoop(body1: stmt)(cond: var)(body2: stmt): stmt
+    | SLoad(x: varname)(a: varname): stmt
+    | SStore(a: varname)(v: varname): stmt
+    | SLit(x: varname)(v: Z): stmt
+    | SOp(x: varname)(op: bopname)(y z: varname): stmt
+    | SSet(x y: varname): stmt
+    | SIf(cond: varname)(bThen bElse: stmt): stmt
+    | SLoop(body1: stmt)(cond: varname)(body2: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
-    | SCall(binds: list var)(f: func)(args: list var)
-    | SInteract(binds: list var)(f: func)(args: list var).
+    | SCall(binds: list varname)(f: funcname)(args: list varname)
+    | SInteract(binds: list varname)(a: actname)(args: list varname).
+End Syntax.
+
+
+Module Import FlatImp.
+  Class parameters := {
+    bopname_params :> Basic_bopnames.parameters;
+
+    mword : Set;
+    MachineWidth_Inst: MachineWidth mword;
+
+    varname_eq_dec : DecidableEq varname;
+    funcname_eq_dec: DecidableEq funcname;
+    actname_eq_dec : DecidableEq actname;
+
+    varSet_Inst: SetFunctions varname;
+    varMap_Inst: MapFunctions varname mword;
+    funcMap_Inst: MapFunctions funcname (list varname * list varname * stmt);
+
+    max_ext_call_code_size: Z;
+  }.
+End FlatImp.
+
+Existing Instance varname_eq_dec.
+Existing Instance funcname_eq_dec.
+Existing Instance actname_eq_dec.
+Existing Instance varSet_Inst.
+Existing Instance MachineWidth_Inst.
+Existing Instance varMap_Inst.
+Existing Instance funcMap_Inst.
+
+
+Local Notation "' x <- a ; f" :=
+  (match (a: option _) with
+   | x => f
+   | _ => None
+   end)
+  (right associativity, at level 70, x pattern).
+
+
+Local Open Scope Z_scope.
+
+Section FlatImp1.
+  Context {pp : unique! parameters}.
 
   Section WithEnv.
-    Context {funcMap: MapFunctions func (list var * list var * stmt)}.
-    Notation env := (map func (list var * list var * stmt)).
-    Context (e: env).
+    Variable (e: map funcname (list varname * list varname * stmt)).
 
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
-    Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
+    Fixpoint eval_stmt(f: nat)(st: map varname mword)(m: mem)(s: stmt):
+      option (map varname mword * mem) :=
       match f with
-      | 0 => None (* out of fuel *)
+      | O => None (* out of fuel *)
       | S f => match s with
         | SLoad x a =>
-            a <- get st a;
-            v <- read_mem a m;
-            Return (put st x v, m)
+            'Some a <- get st a;
+            'Some v <- read_mem a m;
+            Some (put st x v, m)
         | SStore a v =>
-            a <- get st a;
-            v <- get st v;
-            m <- write_mem a v m;
-            Return (st, m)
+            'Some a <- get st a;
+            'Some v <- get st v;
+            'Some m <- write_mem a v m;
+            Some (st, m)
         | SLit x v =>
-            Return (put st x (ZToReg v), m)
+            Some (put st x (ZToReg v), m)
         | SOp x op y z =>
-            y <- get st y;
-            z <- get st z;
-            Return (put st x (eval_binop op y z), m)
+            'Some y <- get st y;
+            'Some z <- get st z;
+            Some (put st x (eval_binop op y z), m)
         | SSet x y =>
-            v <- get st y;
-            Return (put st x v, m)
+            'Some v <- get st y;
+            Some (put st x v, m)
         | SIf cond bThen bElse =>
-            vcond <- get st cond;
+            'Some vcond <- get st cond;
             eval_stmt f st m (if reg_eqb vcond (ZToReg 0) then bElse else bThen)
         | SLoop body1 cond body2 =>
-            p <- eval_stmt f st m body1;
-            let '(st, m) := p in
-            vcond <- get st cond;
-            if reg_eqb vcond (ZToReg 0) then Return (st, m) else
-              q <- eval_stmt f st m body2;
-              let '(st, m) := q in
+            'Some (st, m) <- eval_stmt f st m body1;
+            'Some vcond <- get st cond;
+            if reg_eqb vcond (ZToReg 0) then Some (st, m) else
+              'Some (st, m) <- eval_stmt f st m body2;
               eval_stmt f st m (SLoop body1 cond body2)
         | SSeq s1 s2 =>
-            p <- eval_stmt f st m s1;
-            let '(st, m) := p in
+            'Some (st, m) <- eval_stmt f st m s1;
             eval_stmt f st m s2
-        | SSkip => Return (st, m)
+        | SSkip => Some (st, m)
         | SCall binds fname args =>
-          fimpl <- get e fname;
-          let '(params, rets, fbody) := fimpl in
-          argvs <- option_all (List.map (get st) args);
-          st0 <- putmany params argvs empty_map;
-          st1m' <- eval_stmt f st0 m fbody;
-          let '(st1, m') := st1m' in
-          retvs <- option_all (List.map (get st1) rets);
-          st' <- putmany binds retvs st;
-          Return (st', m')
-        | SInteract binds fname args => Return (st, m) (* TODO might be non-deterministic *)
+          'Some (params, rets, fbody) <- get e fname;
+          'Some argvs <- option_all (List.map (get st) args);
+          'Some st0 <- putmany params argvs empty_map;
+          'Some (st1, m') <- eval_stmt f st0 m fbody;
+          'Some retvs <- option_all (List.map (get st1) rets);
+          'Some st' <- putmany binds retvs st;
+          Some (st', m')
+        | SInteract binds fname args =>
+          None (* the deterministic semantics do not support external calls *)
         end
       end.
 
@@ -182,11 +212,10 @@ Section FlatImp1.
     Lemma invert_eval_SInteract : forall st m1 p2 f binds fname args,
       eval_stmt (S f) st m1 (SInteract binds fname args) = Some p2 ->
       False.
-    Proof using .
-    Admitted.
+    Proof. inversion_lemma. Qed.
   End WithEnv.
 
-  Definition stmt_size_body(rec: stmt -> nat)(s: stmt): nat :=
+  Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
     match s with
     | SLoad x a => 1
     | SStore a v => 1
@@ -197,18 +226,16 @@ Section FlatImp1.
     | SLoop body1 cond body2 => 1 + (rec body1) + (rec body2)
     | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
     | SSkip => 1
-    | SCall binds f args => S (length binds + length args)
-    | SInteract binds f args => S (length binds + length args)
-                             + 7 (* randomly chosen max allowed number of assembly instructions
-                                 generated for an external call *)
+    | SCall binds f args => 1 + (Zlength binds + Zlength args)
+    | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size
     end.
 
-  Fixpoint stmt_size(s: stmt): nat := stmt_size_body stmt_size s.
+  Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
   (* TODO: in coq 8.9 it will be possible to state this lemma automatically: https://github.com/coq/coq/blob/91e8dfcd7192065f21273d02374dce299241616f/CHANGES#L16 *)
   Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s. destruct s; reflexivity. Qed.
 
   (* returns the set of modified vars *)
-  Fixpoint modVars(s: stmt): vars :=
+  Fixpoint modVars(s: stmt): set varname :=
     match s with
     | SLoad x y => singleton_set x
     | SStore x y => empty_set
@@ -222,11 +249,11 @@ Section FlatImp1.
     | SSeq s1 s2 =>
         union (modVars s1) (modVars s2)
     | SSkip => empty_set
-    | SCall binds func args => of_list binds
-    | SInteract binds func args => of_list binds
+    | SCall binds funcname args => of_list binds
+    | SInteract binds funcname args => of_list binds
     end.
 
-  Fixpoint accessedVars(s: stmt): vars :=
+  Fixpoint accessedVars(s: stmt): set varname :=
     match s with
     | SLoad x y => union (singleton_set x) (singleton_set y)
     | SStore x y => union (singleton_set x) (singleton_set y)
@@ -240,21 +267,21 @@ Section FlatImp1.
     | SSeq s1 s2 =>
         union (accessedVars s1) (accessedVars s2)
     | SSkip => empty_set
-    | SCall binds func args => union (of_list binds) (of_list args)
-    | SInteract binds func args => union (of_list binds) (of_list args)
+    | SCall binds funcname args => union (of_list binds) (of_list args)
+    | SInteract binds funcname args => union (of_list binds) (of_list args)
     end.
 
   Lemma modVars_subset_accessedVars: forall s,
     subset (modVars s) (accessedVars s).
   Proof.
-    intro s. induction s; simpl; map_solver var mword.
+    intro s. induction s; simpl; map_solver varname mword.
   Qed.
 End FlatImp1.
 
 
 Ltac invert_eval_stmt :=
   lazymatch goal with
-  | E: eval_stmt _ _ _ (S ?fuel) _ _ ?s = Some _ |- _ =>
+  | E: eval_stmt _ (S ?fuel) _ _ ?s = Some _ |- _ =>
     destruct s;
     [ apply invert_eval_SLoad in E
     | apply invert_eval_SStore in E
@@ -283,45 +310,19 @@ Ltac invert_eval_stmt :=
     | let x := fresh "Case_SInteract" in pose proof tt as x; move x at top ]
   end.
 
-Arguments SLoad   {_} {_}.
-Arguments SStore  {_} {_}.
-Arguments SLit    {_} {_}.
-Arguments SOp     {_} {_}.
-Arguments SSet    {_} {_}.
-Arguments SIf     {_} {_}.
-Arguments SLoop   {_} {_}.
-Arguments SSeq    {_} {_}.
-Arguments SSkip   {_} {_}.
-Arguments SCall   {_} {_}.
-Arguments SInteract {_} {_}.
 
 Section FlatImp2.
+  Context {pp : unique! parameters}.
 
-  Context {mword: Set}.
-  Context {MW: MachineWidth mword}.
-
-  Variable var: Set.
-  Context {var_eq_dec: DecidableEq var}.
-  Variable func: Set.
-  Context {func_eq_dec: DecidableEq func}.
-
-  Context {stateMap: MapFunctions var mword}.
-  Notation state := (map var mword).
-  Context {varset: SetFunctions var}.
-  Notation vars := (set var).
-
-  Context {funcMap: MapFunctions func (list var * list var * stmt var func)}.
-  Notation env := (map func (list var * list var * stmt var func)).
-
-  Lemma increase_fuel_still_Success: forall fuel1 fuel2 (e: env) initialSt initialM s final,
-    fuel1 <= fuel2 ->
-    eval_stmt var func e fuel1 initialSt initialM s = Some final ->
-    eval_stmt var func e fuel2 initialSt initialM s = Some final.
+  Lemma increase_fuel_still_Success: forall fuel1 fuel2 e initialSt initialM s final,
+    (fuel1 <= fuel2)%nat ->
+    eval_stmt e fuel1 initialSt initialM s = Some final ->
+    eval_stmt e fuel2 initialSt initialM s = Some final.
   Proof.
     induction fuel1; introv L Ev.
     - inversions Ev.
     - destruct fuel2; [omega|].
-      assert (fuel1 <= fuel2) as F by omega. specialize IHfuel1 with (1 := F).
+      assert (fuel1 <= fuel2)%nat as F by omega. specialize IHfuel1 with (1 := F).
       destruct final as [finalSt finalM].
       invert_eval_stmt; cbn in *;
       repeat match goal with
@@ -346,8 +347,8 @@ Section FlatImp2.
   Qed.
 
   Lemma modVarsSound: forall fuel e s initialSt initialM finalSt finalM,
-    eval_stmt var func e fuel initialSt initialM s = Some (finalSt, finalM) ->
-    only_differ initialSt (modVars var func s) finalSt.
+    eval_stmt e fuel initialSt initialM s = Some (finalSt, finalM) ->
+    only_differ initialSt (modVars s) finalSt.
   Proof.
     induction fuel; introv Ev.
     - discriminate.
@@ -359,7 +360,7 @@ Section FlatImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      map_solver var mword;
+      map_solver varname mword;
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 End FlatImp2.

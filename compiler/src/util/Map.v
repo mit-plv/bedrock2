@@ -272,8 +272,9 @@ Hint Rewrite
 
 
 Ltac rewrite_get_put K V :=
-  let keq := constr:(_: DecidableEq K) in
-  rewrite? (@get_put K V _ keq) in *.
+  first [ let keq := constr:(_: DecidableEq K) in (* <-- fails if no typeclass found *)
+          rewrite? (@get_put K V _ keq) in *      (* <-- never fails because of "?" *)
+        | fail 10000 "Could not find DecidableEq for" K ].
 
 Ltac canonicalize_map_hyp H :=
   rew_set_op_map_specs H;
