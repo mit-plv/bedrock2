@@ -2093,6 +2093,39 @@ Section FlatToRiscv.
   Qed.
   *) Admitted.
 
+  Lemma compile_stmt_correct_aux':
+    forall allInsts s t initialMH initialRegsH postH,
+    eval_stmt s t initialMH initialRegsH postH ->
+    forall imemStart instsBefore instsAfter
+           initialRegsL initialPc initialNextPc initialML insts,
+    compile_stmt s = insts ->
+    allInsts = instsBefore ++ insts ++ instsAfter ->
+    stmt_not_too_big s ->
+    valid_registers s ->
+    divisibleBy4 imemStart ->
+    @extends Register mword _ initialRegsL initialRegsH ->
+    containsMem initialML initialMH ->
+    containsProgram initialML allInsts imemStart ->
+    initialPc = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
+    initialNextPc = add initialPc (ZToReg 4) ->
+    mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
+    runsTo (mkRiscvMachine initialRegsL initialPc (add initialPc (ZToReg 4)) initialML t)
+     (fun '(mkRiscvMachine finalRegsL   finalPc   finalNextPc                finalML   t') =>
+        exists finalRegsH finalMH,
+          postH t' finalMH finalRegsH /\
+          extends finalRegsL finalRegsH /\
+          containsMem finalML finalMH /\
+          containsProgram finalML allInsts imemStart /\
+          finalPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalNextPc = add finalPc (ZToReg 4)).
+  Proof.
+    intros.
+    eapply compile_stmt_correct_aux; (eassumption || reflexivity || idtac).
+    intros. subst.
+    apply runsToDone.
+    eauto 10.
+  Qed.
+
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
     compile_stmt s = insts ->
