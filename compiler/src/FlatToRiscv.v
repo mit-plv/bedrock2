@@ -1002,6 +1002,15 @@ Section FlatToRiscv.
       mcomp_sat (Bind (setRegister Register0 v) f) initialL post.
   Proof. Admitted.
 
+  (* this style has less clutter related to Bind and the continuation of the program,
+     but will require the postcondition to take an answer as additional argument in
+     order to make it work for getRegister as well *)
+  Lemma go_setRegister_alt: forall initialL x v (post: RiscvMachineL -> Prop),
+      valid_register x ->
+      post (setRegs initialL (setReg initialL.(getRegs) x v)) ->
+      mcomp_sat (setRegister x v) initialL post.
+  Abort.
+
   Lemma go_loadWord: forall initialL addr (f: word 32 -> M unit)
                             (post: RiscvMachineL -> Prop),
       isMMIOAddr addr = false ->
