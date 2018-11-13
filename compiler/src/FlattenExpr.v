@@ -10,6 +10,7 @@ Require Import riscv.Utility.
 Require bedrock2.Syntax.
 Require bedrock2.Semantics.
 Require Import bedrock2.Macros.
+Require Import Coq.Bool.Bool.
 
 
 Section FlattenExpr.
@@ -263,6 +264,11 @@ Section FlattenExpr.
     try solve [set_solver].
   Qed.
 
+  Lemma flattenExprAsBooleanExpr_modifies_cond_vars: forall e s ngs ngs' cond,
+    flattenExprAsBooleanExpr ngs e = (s, cond, ngs') ->
+    subset (FlatImp.accessedVarsBcond var cond) (FlatImp.modVars _ _ s).
+  Admitted.
+
   Lemma flattenExpr_modifies_resVar: forall e s ngs ngs' resVar,
     flattenExpr ngs e = (s, resVar, ngs') ->
     resVar \in (FlatImp.modVars _ _ s).
@@ -270,6 +276,11 @@ Section FlattenExpr.
     intros.
     destruct e; repeat (inversionss; try destruct_one_match_hyp); simpl in *; set_solver.
   Qed.
+
+  Lemma flattenExprAsBooleaNExpr_modifies_cond_vars: forall e s ngs ngs' cond,
+    flattenExprAsBooleanExpr ngs e = (s, cond, ngs') ->
+    subset (FlatImp.accessedVarsBcond var cond) (FlatImp.modVars _ _ s).
+  Admitted.
 
   Lemma flattenExpr_resVar: forall e s ngs ngs' resVar,
     flattenExpr ngs e = (s, resVar, ngs') ->
@@ -281,6 +292,11 @@ Section FlattenExpr.
     end;
     set_solver.
   Qed.
+
+  Lemma flattenExprAsBooleanExpr_resVar: forall e s ngs ngs' cond,
+    flattenExprAsBooleanExpr ngs e = (s, cond, ngs') ->
+    ~ (subset (FlatImp.accessedVarsBcond var cond) (allFreshVars ngs')).
+  Admitted.
 
   Lemma flattenExpr_modVars_spec: forall e s ngs ngs' resVar,
     flattenExpr ngs e = (s, resVar, ngs') ->
@@ -297,6 +313,12 @@ Section FlattenExpr.
     end;
     try solve [set_solver].
   Qed.
+
+  Lemma flattenExprAsBooleanExpr_modVars_spec: forall e s ngs ngs' cond,
+    flattenExprAsBooleanExpr ngs e = (s, cond, ngs') ->
+    subset (FlatImp.modVars _ _ s) (diff (allFreshVars ngs) (allFreshVars ngs')).
+  Admitted.
+
 
   Lemma flattenCall_freshVarUsage: forall f args binds ngs1 ngs2 s,
       flattenCall ngs1 binds f args = (s, ngs2) ->
@@ -337,9 +359,12 @@ Section FlattenExpr.
   Ltac pose_flatten_var_ineqs :=
     repeat match goal with
     | H: _ |- _ => unique eapply flattenExpr_freshVarUsage in copy of H
+    | H: _ |- _ => unique eapply flattenExprAsBooleanExpr_freshVarUsage in copy of H
     | H: _ |- _ => unique eapply FlatImp.modVarsSound in copy of H
     | H: _ |- _ => unique eapply flattenExpr_modifies_resVar in copy of H
+    | H: _ |- _ => unique eapply flattenExprAsBooleanExpr_modifies_cond_vars in copy of H
     | H: _ |- _ => unique eapply flattenExpr_modVars_spec in copy of H
+    | H: _ |- _ => unique eapply flattenExprAsBooleanExpr_modVars_spec in copy of H
     | H: _ |- _ => unique eapply flattenStmt_freshVarUsage in copy of H
     end.
 
@@ -498,7 +523,29 @@ Section FlattenExpr.
            | E: reg_eqb _ _ = false |- _ => apply reg_eqb_false in E
            end.
 
-  Lemma flattenStmt_correct_aux:
+
+   Lemma flattenBooleanExpr_correct_aux env : 
+    forall e ngs1 ngs2 resCond (s: FlatImp.stmt var func) (initialH initialL: state) initialM res,
+    flattenExprAsBooleanExpr ngs1 e = (s, resCond, ngs2) ->
+    extends initialL initialH ->
+    undef_on initialH (allFreshVars ngs1) ->
+    ExprImp.eval_expr initialH e = Some res ->
+    exists (fuel: nat) (finalL: state),
+      FlatImp.eval_stmt _ _ env fuel initialL initialM s = Some (finalL, initialM) /\
+      FlatImp.eval_bcond var finalL resCond = Some (negb (reg_eqb res (ZToReg 0))).
+  Proof.
+    intros.
+    destruct e; unfold flattenExprAsBooleanExpr in H; 
+    repeat destruct_one_match_hyp;
+    pose proof (flattenExpr_correct_aux env) as P; 
+    try (
+        specialize P with (initialM := initialM) (1 := E) (2 := H0) (3 := H1) (4 := H2); 
+        destruct P as [fuelS0 [initial2L [Evcond G]]];
+        exists fuelS0 initial2L; inversion H; subst;
+        split; [assumption | unfold FlatImp.eval_bcond; rewrite G; eauto]).
+  Admitted.
+
+ Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' (initialH finalH initialL: state) initialM finalM,
     flattenStmt ngs sH = (sL, ngs') ->
     extends initialL initialH ->
@@ -559,7 +606,8 @@ Section FlattenExpr.
         remember (S (fuelL + fuelL2)) as Sf. simpl. fuel_increasing_rewrite.
         subst Sf. simpl. rewrite_match.
         assert (get finalL v = Some av) as G. {
-          clear IHfuelH. pose_flatten_var_ineqs. state_calc.
+          clear IHfuelH. 
+pose_flatten_var_ineqs. state_calc.
         }
         rewrite_match.
         reflexivity.
@@ -567,97 +615,23 @@ Section FlattenExpr.
         pose_flatten_var_ineqs.
         (*state_calc. (* TODO this takes more than a minute, which is annoying *)*)
         admit.
-  Lemma flattenBooleanExpr_correct_aux env : 
-    forall e ngs1 ngs2 resCond (s: FlatImp.stmt var func) (initialH initialL: state) initialM res,
-    flattenExprAsBooleanExpr ngs1 e = (s, resCond, ngs2) ->
-    extends initialL initialH ->
-    undef initialH (allFreshVars ngs1) ->
-    ExprImp.eval_expr initialH e = Some res ->
-    exists (fuel: nat) (finalL: state),
-      FlatImp.eval_stmt _ _ env fuel initialL initialM s = Some (finalL, initialM) /\
-      FlatImp.eval_bcond var finalL resCond = Some (negb (reg_eqb res (ZToReg 0))).
-  Proof.
-    intros.
-    destruct e; unfold flattenExprAsBooleanExpr in H; 
-    repeat destruct_one_match_hyp;
-    pose proof (flattenExpr_correct_aux env) as P; 
-    try (
-        specialize P with (initialM := initialM) (1 := E) (2 := H0) (3 := H1) (4 := H2); 
-        destruct P as [fuelS0 [initial2L [Evcond G]]];
-        exists fuelS0 initial2L; inversion H; subst;
-        split; [assumption | unfold FlatImp.eval_bcond; rewrite G; eauto]).
-  Admitted.
 
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       pose_flatten_var_ineqs.
       rename condition into condH, s into condL, s0 into sL1, s1 into sL2.
-
 
       pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
       specialize P with (initialM := initialM) 
                         (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
       destruct P as [fuelLcond [initial2L [Evcond G]]].
 
-      pose_flatten_var_ineqs.
-      remember (negb (reg_eqb cv (ZToReg 0))) as b_bool.
-      destruct b_bool.
-      + destruct b.
-        pose proof (flattenExpr_correct_aux empty_map) as Q.
-
-
-        unfold FlatImp.eval_bcond in G.
-        assert (exists mx my, get initial2L x = Some mx /\
-                              get initial2L y = Some my /\
-                              (reg_eqb mx my) = true);
-          unfold Bind in G; unfold option_Monad in G.
-Require Import riscv.AxiomaticRiscv.
-        { destruct (get initial2L x). destruct (get initial2L y).
-          exists w w0; split; split; eauto. inversion G; eauto.
-          inversion G. inversion G. }
-        destruct H as [mx [my [Hmx_get [Hmy_get Hreg_eq]]]].
-
-        specialize IHfuelH with (initialL := initial2L) (1:= E0) (5:= Ev).
-        destruct IHfuelH as [fuelL [finalL [evbranch ex2]]].
-        * state_calc.
-
       specialize IHfuelH with (initialL := initial2L) (1:= E0) (5:= Ev).
-
-      specialize p with (initialm := initialm) (res := cv) (1 := e) (2 := ex).
-      specializes p; [eassumption|eassumption|].
-      destruct p as [fuellcond [initial2l [evcond g]]].
+      destruct IHfuelH as [fuelL [finalL [evbranch Ex2]]].
+      unfold FlatImp.accessedVarsBcond in *. 
       pose_flatten_var_ineqs.
-      specialize ihfuelh with (initiall := initial2l) (1 := e0) (5 := ev).
-      destruct ihfuelh as [fuell [finall [evbranch ex2]]].
-
-
-
-      specialize IHfuelH with (initialL := initial2L) (1:= E0) (5:= Ev).
-      destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-      * state_calc.
-(*state_calc.
-        destruct Evcond_uacx.
-        pose_flatten_var_ineqs.*)
-
-
-        (*rewrite (Exx w H) in Evcond_uac.*)
-        
-      * state_calc.
-        
-    Admitted.
-(*
-      pose proof (flattenExpr_correct_aux empty_map) as P.
-     
-
-      specialize p with (initialm := initialm) (res := cv) (1 := e) (2 := ex).
-      specializes p; [eassumption|eassumption|].
-      destruct p as [fuellcond [initial2l [evcond g]]].
-      pose_flatten_var_ineqs.
-      specialize ihfuelh with (initiall := initial2l) (1 := e0) (5 := ev).
-      destruct ihfuelh as [fuell [finall [evbranch ex2]]].
       * state_calc.
       * state_calc.
-      * simpl in Di.
-        set_solver.
+      * simpl in Di. state_calc.
       * exists (S (S (fuelLcond + fuelL))). eexists.
         refine (conj _ Ex2).
         remember (S (fuelLcond + fuelL)) as tempFuel.
@@ -666,23 +640,26 @@ Require Import riscv.AxiomaticRiscv.
         subst tempFuel.
         simpl. rewrite G. simpl.
         simpl_reg_eqb.
+        assert (negb false = true) by auto. rewrite H.
         fuel_increasing_rewrite.
         reflexivity.
     - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
       pose_flatten_var_ineqs.
       rename condition into condH, s into condL, s0 into sL1, s1 into sL2.
-      pose proof flattenExpr_correct_aux as P.
-      specialize (P empty_map) with
-          (initialM := initialM) (res := (@ZToReg mword MW 0)) (1 := E) (2 := Ex).
-      specializes P; [eassumption|eassumption|].
+
+      pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
+      specialize P with (initialM := initialM) 
+                        (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
       destruct P as [fuelLcond [initial2L [Evcond G]]].
       pose_flatten_var_ineqs.
+
       specialize IHfuelH with (initialL := initial2L) (1 := E1) (5 := Ev).
-      destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-      * state_calc
+      destruct IHfuelH as [fuelL [finalL [evbranch Ex2]]].
+      unfold FlatImp.accessedVarsBcond in *. 
+      pose_flatten_var_ineqs.
       * state_calc.
-      * simpl in Di.
-        set_solver.
+      * state_calc.
+      * simpl in Di. set_solver.
       * exists (S (S (fuelLcond + fuelL))). eexists.
         refine (conj _ Ex2).
         remember (S (fuelLcond + fuelL)) as tempFuel.
@@ -691,6 +668,7 @@ Require Import riscv.AxiomaticRiscv.
         subst tempFuel.
         simpl. rewrite G. simpl.
         simpl_reg_eqb.
+        assert (negb true = false) by auto. rewrite H.
         fuel_increasing_rewrite.
         reflexivity.
 
@@ -721,11 +699,13 @@ Require Import riscv.AxiomaticRiscv.
       pose proof F as F0.
       simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
       rename s into sCond, s0 into sBody.
-      pose proof flattenExpr_correct_aux as P.
-      specialize (P empty_map) with (res := cv) (initialM := initialM) (1 := E) (2 := Ex).
+      
+      pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
+      specialize P with (initialM := initialM) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [EvcondL G]]].
       pose_flatten_var_ineqs.
+      
       specialize IHfuelH with (1 := E0) (5 := Ev2) as IH.
       specialize (IH initial2L).
       specializes IH; [clear IHfuelH .. |].
@@ -754,22 +734,23 @@ Require Import riscv.AxiomaticRiscv.
       pose proof F as F0.
       simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
       rename s into sCond, s0 into sBody.
-      pose proof (flattenExpr_correct_aux empty_map) as P.
-      specialize P with (res := (@ZToReg mword MW 0)) (initialM := initialM) (1 := E) (2 := Ex).
+
+      pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
+      specialize P with (initialM := initialM) (1 := E) (2 := Ex).
       specializes P; [eassumption|eassumption|].
       destruct P as [fuelLcond [initial2L [EvcondL G]]].
       exists (S fuelLcond) initial2L.
       pose_flatten_var_ineqs.
       split; [|clear IHfuelH; state_calc].
-      simpl in*.
+      simpl in *.
       fuel_increasing_rewrite.
       rewrite G. simpl. simpl_reg_eqb. reflexivity.
 
     - rewrite empty_is_empty in Ev0. inversion Ev0.
 
     - clear -action actname_empty. rewrite actname_empty in action. destruct action.
-  Qed.
-*)
+  Admitted.
+  (*Qed.*)
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt var func :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).
