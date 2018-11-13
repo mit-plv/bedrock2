@@ -1806,36 +1806,37 @@ Section FlatToRiscv.
     end.
 
   Variable ext_spec:
-    (* given an action label and a list of function call arguments, *)
-    Action -> list mword ->
-    (* returns a set of (generated events, function call results) *)
-    (list Event -> list mword -> Prop) ->
+    (* given an action label, a trace of what happened so fat,
+       and a list of function call arguments, *)
+    Action -> trace -> list mword ->
+    (* returns a set of (extended trace, function call results) *)
+    (trace -> list mword -> Prop) ->
     Prop. (* or returns no set if the call fails.
-     Will give it access to the memory (and possibly the full trace and registers)
-     once we have adequate separation logic reasoning in the compiler correctness proof *)
+     Will give it access to the memory (and possibly the full registers)
+     once we have adequate separation logic reasoning in the compiler correctness proof.
+     Passing in the trace of what happened so far allows ext_spec to impose restrictions
+     such as "you can only call foo after calling init". *)
 
   Hypothesis compile_ext_call_correct: forall initialL action outcome post newPc insts
       (argvars resvars: list var),
       insts = compile_ext_call resvars action argvars ->
-      newPc = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) ->
+      newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
-      ext_spec action (List.map (getReg (initialL.(getRegs))) argvars) outcome ->
-      (forall newEvents resvals,
-          outcome newEvents resvals ->
+      ext_spec action initialL.(getLog) (List.map (getReg (initialL.(getRegs))) argvars)
+               outcome ->
+      (forall newLog resvals,
+          outcome newLog resvals ->
           runsTo {|
             getRegs   := setManyRegs initialL.(getRegs) resvars resvals;
             getPc     := newPc;
             getNextPc := add newPc (ZToReg 4);
             getMem    := initialL.(getMem);
-            getLog    := newEvents ++ initialL.(getLog);
+            getLog    := newLog;
           |} post) ->
       runsTo initialL post.
 
   (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
   Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
-
-  Definition word_test(w: mword): bool :=
-    negb (reg_eqb w (ZToReg 0)).
 
   Inductive exec:
     stmt ->
@@ -1844,10 +1845,10 @@ Section FlatToRiscv.
     -> Prop :=
   | ExInteract: forall t m l action argvars argvals resvars outcome post,
       option_all (List.map (get l) argvars) = Some argvals ->
-      ext_spec action argvals outcome ->
-      (forall newEvents resvals,
-          outcome newEvents resvals ->
-          exists l', putmany resvars resvals l = Some l' /\ post (newEvents ++ t) m l') ->
+      ext_spec action t argvals outcome ->
+      (forall new_t resvals,
+          outcome new_t resvals ->
+          exists l', putmany resvars resvals l = Some l' /\ post (new_t) m l') ->
       exec (SInteract resvars action argvars) t m l post
   | ExLoad: forall t m l x a v addr post,
       get l a = Some addr ->
@@ -1945,7 +1946,7 @@ Section FlatToRiscv.
       simpl in *; destruct_everything.
       eapply compile_ext_call_correct; try sidecondition; simpl.
       + match goal with
-        | |- ext_spec _ ?A _ => replace A with argvals; [eassumption|]
+        | |- ext_spec _ _ ?A _ => replace A with argvals; [eassumption|]
         end.
         clear -H H7.
         admit. (* should hold *)
