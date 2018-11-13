@@ -1925,10 +1925,10 @@ Section FlatToRiscv.
   Definition eval_stmt := exec.
 
   Lemma compile_stmt_correct_aux:
-    forall s t initialMH initialRegsH postH,
+    forall allInsts s t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
     forall imemStart instsBefore instsAfter
-           initialRegsL initialPc initialNextPc initialML finalPostL insts allInsts,
+           initialRegsL initialPc initialNextPc initialML finalPostL insts,
     compile_stmt s = insts ->
     allInsts = instsBefore ++ insts ++ instsAfter ->
     stmt_not_too_big s ->
@@ -2033,21 +2033,34 @@ Section FlatToRiscv.
       run1step.
       eapply IHexec.
       + reflexivity.
-      + reflexivity.
+      + replace (
+            instsBefore ++
+  ([[Beq cond Register0 ((Zlength (compile_stmt bThen) + 2) * 4)]] ++
+   compile_stmt bThen ++
+   [[Jal Register0 ((Zlength (compile_stmt bElse) + 1) * 4)]] ++ compile_stmt bElse) ++
+  instsAfter)
+        with (
+     (instsBefore ++
+  [[Beq cond Register0 ((Zlength (compile_stmt bThen) + 2) * 4)]]) ++
+   compile_stmt bThen ++
+   ([[Jal Register0 ((Zlength (compile_stmt bElse) + 1) * 4)]] ++ compile_stmt bElse) ++
+  instsAfter); [reflexivity|].
+        rewrite? app_assoc.
+        reflexivity.
       + solve_stmt_not_too_big.
       + eassumption.
       + eassumption.
       + state_calc.
       + eassumption.
-      + clear H12 H13. clear IHexec.
-        solve_containsProgram. (* makes bad choices *)
-        admit.
+      + solve_containsProgram.
       + solve_word_eq.
-        admit.
       + reflexivity.
-      + admit.
-      + (* wrong instantiations *)
-        admit.
+      + (* TODO mem_inaccessible *) admit.
+      + intros; subst. clear IHexec.
+        (* jump over else-branch *)
+        simpl in *; destruct_everything.
+        run1step.
+        run1done.
 
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
