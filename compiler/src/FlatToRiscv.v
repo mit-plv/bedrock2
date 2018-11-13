@@ -1882,13 +1882,20 @@ Section FlatToRiscv.
       exec bElse t m l post ->
       exec (SIf cond bThen bElse) t m l post
   | ExLoop: forall t m l cond body1 body2 mid post,
+      (* this case is carefully crafted in such a way that recursive uses of exec
+         only appear under forall and ->, but not under exists, /\, \/, to make sure the
+         auto-generated induction principle contains an IH for both recursive uses *)
       exec body1 t m l mid ->
+      (forall t' m' l', mid t' m' l' -> get l' cond <> None) ->
       (forall t' m' l',
           mid t' m' l' ->
-          exists v,
-            get l' cond = Some v /\
-            ((v = ZToReg 0 -> post t' m' l') /\
-             (v <> ZToReg 0 -> exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post))) ->
+          get l' cond = Some (ZToReg 0) -> post t' m' l') ->
+      (forall t' m' l',
+          mid t' m' l' ->
+          forall v,
+            get l' cond = Some v ->
+            v <> ZToReg 0 ->
+            exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post) ->
       exec (SLoop body1 cond body2) t m l post
   | ExSeq: forall t m l s1 s2 mid post,
       exec s1 t m l mid ->
@@ -1897,8 +1904,6 @@ Section FlatToRiscv.
   | ExSkip: forall t m l post,
       post t m l ->
       exec SSkip t m l post.
-
-  About exec_ind. (* case ExLoop has no IH for body2! *)
 
   Definition eval_stmt := exec.
 
