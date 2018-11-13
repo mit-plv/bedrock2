@@ -1797,62 +1797,30 @@ Section FlatToRiscv.
     end.
 
   Variable ext_spec:
-    Action ->
-    trace -> @Memory.mem mword -> locals ->
-    (trace -> @Memory.mem mword -> locals -> Prop) ->
-    Prop.
+    (* given an action label and a list of function call arguments, *)
+    Action -> list mword ->
+    (* returns a set of (generated events, function call results) *)
+    (list Event -> list mword -> Prop) ->
+    Prop. (* or returns no set if the call fails.
+     Will give it access to the memory (and possibly the full trace and registers)
+     once we have adequate separation logic reasoning in the compiler correctness proof *)
 
-  (* beware, this style encourages swallowing of failing-nondet branches *)
-  Variable ext_spec_old: list mword -> Event -> list mword -> Prop.
-
-  (* TODO try if "continuation passing style" (runsTo implies runsTo) would work too
-     for this and for compiler correctness *)
-
-  (* this becomes as complicated as compile_stmt_correct_aux...
-
-  Hypothesis compile_ext_call_correct: forall initialL action outcome post
-      (argvars resvars: list var) (resvals: list mword),
-      let insts := compile_ext_call resvars action argvars in
-      let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
+  Hypothesis compile_ext_call_correct: forall initialL action outcome post newPc insts
+      (argvars resvars: list var),
+      insts = compile_ext_call resvars action argvars ->
+      newPc = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
-
-      ext_spec action initialL.(getLog) initialMemH initialLocalsH outcome ->
-      (forall newLog newMemH newLocalsH,
-          outcome newLog newMemH newLocalsH ->
-      runsTo  post ->
-      runsTo initialL (fun finalL =>
-        finalL = {|
-          getRegs   := setManyRegs initialL.(getRegs) resvars resvals;
-          getPc     := add initialL.(getPc) d;
-          getNextPc := add initialL.(getNextPc) d;
-          getMem    := initialL.(getMem);
-          getLog    := newEvents ++ initialL.(getLog);
-      |}
-
-
-  Hypothesis compile_ext_call_correct: forall initialL f action event post
-    (argvars resvars: list var) (resvals: list mword),
-    ext_spec (List.map (getReg (initialL.(getRegs))) argvars) event resvals ->
-    mcomp_sat (f tt)
-              (setRegs (logAppend initialL event)
-                       (setManyRegs initialL.(getRegs) resvars resvals))
-              post ->
-    mcomp_sat (Bind (execute (compile_ext_call resvars action argvars)) f) initialL post.
-
-      runsTo (setRegs (setPc (setNextPc initialL (add initialL.(getNextPc) d))
-                             (add initialL.(getPc) d))
-                      (setReg initialL.(getRegs) x (ZToReg v))) post ->
+      ext_spec action (List.map (getReg (initialL.(getRegs))) argvars) outcome ->
+      (forall newEvents resvals,
+          outcome newEvents resvals ->
+          runsTo {|
+            getRegs   := setManyRegs initialL.(getRegs) resvars resvals;
+            getPc     := newPc;
+            getNextPc := add newPc (ZToReg 4);
+            getMem    := initialL.(getMem);
+            getLog    := newEvents ++ initialL.(getLog);
+          |} post) ->
       runsTo initialL post.
-
-  Hypothesis compile_ext_call_correct: forall initialL f action event post
-    (argvars resvars: list var) (resvals: list mword),
-    ext_spec_old (List.map (getReg (initialL.(getRegs))) argvars) event resvals ->
-    mcomp_sat (f tt)
-              (setRegs (logCons initialL event)
-                       (setManyRegs initialL.(getRegs) resvars resvals))
-              post ->
-    mcomp_sat (Bind (execute (compile_ext_call resvars action argvars)) f) initialL post.
-*)
 
   (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
   Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
@@ -1865,19 +1833,20 @@ Section FlatToRiscv.
     trace -> @Memory.mem mword -> locals ->
     (trace -> @Memory.mem mword -> locals -> Prop)
     -> Prop :=
-  | ExInteract: forall t m l action argvars resvars outcome post,
-      ext_spec action t m l outcome ->
-      (forall t' m' l', outcome t' m' l' -> post t' m' l') ->
+  | ExInteract: forall t m l action argvars argvals resvars outcome post,
+      option_all (List.map (get l) argvars) = Some argvals ->
+      ext_spec action argvals outcome ->
+      (forall newEvents resvals,
+          outcome newEvents resvals ->
+          exists l', putmany resvars resvals l = Some l' /\ post (newEvents ++ t) m l') ->
       exec (SInteract resvars action argvars) t m l post
   | ExLoad: forall t m l x a v addr post,
       get l a = Some addr ->
-      isMMIOAddr addr = false ->
       Memory.read_mem addr m = Some v ->
       post t m (put l x v) ->
       exec (SLoad x a) t m l post
   | ExStore: forall t m m' l a addr v val post,
       get l a = Some addr ->
-      isMMIOAddr addr = false ->
       get l v = Some val ->
       Memory.write_mem addr val m = Some m' ->
       post t m' l ->
@@ -1960,19 +1929,31 @@ Section FlatToRiscv.
 
     - (* SInteract *)
       simpl in *; destruct_everything.
-      admit.
-      (*
-      eapply runsToStep; simpl in *; subst *.
-      + fetch_inst.
-        eapply compile_ext_call_correct; simpl.
-        * match goal with
-          | |- ext_spec ?A _ _ => replace A with argvals; [eassumption|]
-          end.
-          (* follows from H0 *)
-          admit.
-        * eapply go_step. simpl. eapply go_done.
-      + run1done. clear -H2 H9. admit.
-      *)
+      eapply compile_ext_call_correct; try sidecondition; simpl.
+      + match goal with
+        | |- ext_spec _ ?A _ => replace A with argvals; [eassumption|]
+        end.
+        clear -H H7.
+        admit. (* should hold *)
+      + intros newEvents resvals OC.
+        match goal with
+        | H: _ |- _ => specialize H with (1 := OC); move H at bottom
+        end.
+        destruct_everything.
+        match goal with
+        | H: _ |- _ => eapply H (* there's only one "... -> runsTo _ finalPostL" *)
+        end;
+          first
+            [ eassumption
+            | eapply containsMem_write; eassumption
+            | match goal with
+              | |- extends _ _ => solve [state_calc]
+              end
+            | solve [solve_containsProgram]
+            | solve_word_eq
+            | idtac ].
+        clear -H7 H1l.
+        admit. (* should hold *)
 
     - (* SLoad *)
       simpl in *; destruct_everything.
@@ -2062,6 +2043,7 @@ Section FlatToRiscv.
         run1step.
         run1done.
 
+        (*
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
       run1step.
@@ -2109,6 +2091,7 @@ Section FlatToRiscv.
     - (* SCall *)
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
   Qed.
+  *) Admitted.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
