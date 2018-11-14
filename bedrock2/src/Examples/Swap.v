@@ -21,6 +21,7 @@ Definition swap_swap := ("swap_swap", (("a"::"b"::nil), ([]:list varname), bedro
 Require Import bedrock2.Semantics bedrock2.BasicC64Semantics bedrock2.Map.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require bedrock2.WeakestPrecondition bedrock2.WeakestPreconditionProperties.
+(* Require bedrock2.WeakestPreconditionProperties. *)
 Context (FIXME_MAP_OK : map.ok Semantics.mem).
 
 Section WithT.
@@ -67,11 +68,20 @@ Lemma store_sep sz a v1 v2 R m (H : sep (ptsto sz a v1) R m)
   exists m', store sz m a v2 = Some m' /\ post m'.
 Admitted.
 
-Tactic Notation "eabstract" tactic3(tac) :=
-let G := match goal with |- ?G => G end in
-let pf := constr:(ltac:(tac) : G) in
-abstract exact_no_check pf.
+Local Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
+  (let x := v in ex_intro (fun y => Px /\ _) x (conj pfPx pfP))
+  (right associativity, at level 200, pfPx at next level,
+    format "'need!'  y  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
+Local Notation "'need!' x 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
+  (let x := v in ex_intro (fun x => Px /\ _) x (conj pfPx pfP))
+  (only printing, right associativity, at level 200, pfPx at next level,
+    format "'need!'  x  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
+Local Notation "'have!' m1 's.t.' x : T 'using' 'store_sep' '...' 'in' pfP" :=
+  (store_sep _ _ _ _ _ _ _ _ (fun m1 (x:T) => pfP))
+  (only printing, right associativity, at level 200,
+    format "'have!'  m1  's.t.'  x :  T  'using'  'store_sep'  '...'  'in'  pfP").
 
+(*
 Ltac intros_mem m Hm :=
   let m' := fresh in let Hm' := fresh in
   intros m' Hm'; clear m Hm; rename m' into m; rename Hm' into Hm.
@@ -82,6 +92,7 @@ Ltac t :=
   let Pm := lazymatch type of Hm with ?P m => P end in
   lazymatch goal with
   | |- let _ := _ in _ => intros
+  | |- _ => progress copyprop
   | |- load ?sz ?m ?a = Some _
     => lazymatch type of Hm with context [ptsto sz a ?v]
     => refine (load_sep sz a v ?[frame] m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
@@ -102,9 +113,56 @@ Ltac t :=
       [ shelve | .. ]
     end
 end.
+*)
+
+Tactic Notation "eabstract" tactic3(tac) :=
+  let G := match goal with |- ?G => G end in
+  let pf := lazymatch constr:(ltac:(tac) : G) with ?pf => pf end in
+  abstract exact_no_check pf.
+
+Ltac clear_all :=
+  clear;
+  repeat match reverse goal with
+  | H :  _ |- _ => clear H
+  | x := _ |- _ => clear x
+  end.
+
+Ltac copyprop :=
+  repeat match reverse goal with
+  | x := ?y |- ?G => is_var y; change x with y in *; clear x
+  end.
+
+Ltac refine_ex :=
+  hnf;
+  let P := lazymatch goal with |- ex ?P => P end in
+  refine (let l := _ in ex_intro P l _).
+
+Ltac refine_ex_and :=
+  hnf;
+  let P := lazymatch goal with |- ex ?P => P end in
+  refine (let l := _ in ex_intro P l (conj _ _)).
 
 Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
+
+Ltac _syntactic_unify x y :=
+  match constr:(Set) with
+  | _ => is_evar x; unify x y
+  | _ => is_evar y; unify x y
+  | _ => lazymatch x with
+         | ?f ?a => lazymatch y with ?g ?b => _syntactic_unify f g; _syntactic_unify a b end
+         | (fun (a:?Ta) => ?f a)
+           => lazymatch y with (fun (b:?Tb) => ?g b) =>
+                               let __ := constr:(fun (a:Ta) (b:Tb) => ltac:(_syntactic_unify f g; exact Set)) in idtac end
+         | let a : ?Ta := ?v in ?f a
+           => lazymatch y with let b : ?Tb := ?w in ?g b =>
+                               _syntactic_unify v w;
+                               let __ := constr:(fun (a:Ta) (b:Tb) => ltac:(_syntactic_unify f g; exact Set)) in idtac end
+         (* TODO: fail fast in more cases *)
+         | _ => unify x y; constr_eq x y
+         end
+  end.
+Tactic Notation "syntactic_unify" open_constr(x) open_constr(y) :=  _syntactic_unify x y.
 
 Definition spec_of_swap := fun functions =>
   forall a_addr a b_addr b m R t,
@@ -112,15 +170,6 @@ Definition spec_of_swap := fun functions =>
     WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
       (fst swap) t m [a_addr; b_addr]
       (fun t' m' rets => t=t'/\ (ptsto 1 a_addr b * (ptsto 1 b_addr a * R)) m' /\ rets = nil).
-
-Local Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-  (let x := v in ex_intro (fun y => Px /\ _) x (conj pfPx pfP))
-  (right associativity, at level 200,
-    format "'need!'  y  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
-Local Notation "'need!' x 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-  (let x := v in ex_intro (fun x => Px /\ _) x (conj pfPx pfP))
-  (only printing, right associativity, at level 200,
-    format "'need!'  x  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
 
 Lemma swap_ok : forall functions, spec_of_swap (swap::functions).
 Proof.
@@ -134,37 +183,46 @@ Proof.
   hnf.
   set (fun (t0 : trace) (m0 : mem) (l0 : locals) => WeakestPrecondition.list_map (WeakestPrecondition.get l0) [] (fun rets : list word => POSTret t0 m0 rets)) as POST.
   set (WeakestPrecondition.call (fun _ : trace => True) (fun _ : trace => False) (fun _ _ : trace => True) _) as CALL.
-  lazymatch goal with |- ex ?P => refine (let l := _ in ex_intro P l (conj _ _)) end.
-  exact eq_refl.
-  hnf.
-  repeat t.
-  let Tm := type of m in
-  let Pm := lazymatch type of Hm with ?P m => P end in
-  lazymatch goal with
-  | |- load ?sz ?m ?a = Some ?v
-    => is_var v;
-       let v := eval unfold v in v in
-       is_evar v;
-       simple refine (load_sep sz a v _ m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
-         [ shelve | .. ]
-  end.
-  let __ := constr:(eq_refl : v0 = b) in idtac. eabstract (subst l; subst v; subst v0; cancel; reflexivity).
 
-  let Tm := type of m in
-  let Pm := lazymatch type of Hm with ?P m => P end in
-  lazymatch goal with
-  | |- load ?sz ?m ?a = Some ?v
-    => is_var v;
-       let v := eval unfold v in v in
-       is_evar v;
-       simple refine (load_sep sz a v _ m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
-         [ shelve | .. ]
-  end.
-  let __ := constr:(eq_refl : v3 = a) in idtac. eabstract (subst l; subst l0; subst v; subst v0; subst v1; subst v2; subst v3; cancel; reflexivity).
+  refine_ex_and.
+  { eabstract repeat (refine_ex_and || exact eq_refl). }
+  refine_ex_and.
+  { refine_ex_and.
+    { repeat (refine_ex_and || exact eq_refl). }
+    refine_ex_and.
+    { copyprop.
+      let Tm := type of m in
+      let Pm := lazymatch type of Hm with ?P m => P end in
+      lazymatch goal with
+      | |- load ?sz ?m ?a = Some ?v
+        => simple refine (load_sep sz a v _ m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
+             [ shelve | .. ]
+      end.
+      let __ := constr:(eq_refl : l = b) in idtac.
+      copyprop.
+      clear_all; eabstract (cancel; exact (RelationClasses.reflexivity _)). }
+    copyprop.
+    exact eq_refl. }
 
-  Show Proof.
-  (* TODO: change expression evaluation to take a final value [v] instead of postcondition on that value, then evaluating an expression makes only one line in a proof. this works because expressions are pure. *)
+  copyprop.
+  refine_ex_and.
+  { eabstract repeat (refine_ex_and || exact eq_refl). }
+  refine_ex_and.
+  { refine_ex_and.
+    repeat (refine_ex_and || exact eq_refl).
+    copyprop.
+    refine_ex_and.
+    { let Tm := type of m in
+      let Pm := lazymatch type of Hm with ?P m => P end in
+      lazymatch goal with
+      | |- load ?sz ?m ?a = Some ?v
+        => simple refine (load_sep sz a v _ m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
+             [ shelve | .. ]
+      end.
+      let __ := constr:(eq_refl : l = a) in idtac. clear_all; eabstract (cancel; reflexivity). }
+    exact eq_refl. }
 
+  copyprop.
   let Tm := type of m in
   let Pm := lazymatch type of Hm with ?P m => P end in
   lazymatch goal with
@@ -172,14 +230,15 @@ Proof.
     => simple refine (store_sep sz a _ v2 _ m ((_:@Lift1Prop.impl1 Tm Pm _) m Hm) post _);
          [ shelve | shelve | .. ]
   end.
-  eabstract (instantiate (2 := b); subst v1; cancel; reflexivity).
+  { eabstract (instantiate (2 := b); cancel; reflexivity). }
   clear Hm m; intros m Hm.
   cbv beta. (* FIXME *)
 
-  t.
-  t.
-  t.
-  t.
+  refine_ex_and.
+  { eabstract repeat (refine_ex_and || exact eq_refl). }
+  refine_ex_and.
+  { eabstract repeat (refine_ex_and || exact eq_refl). }
+  copyprop.
 
   let Tm := type of m in
   let Pm := lazymatch type of Hm with ?P m => P end in
@@ -188,8 +247,9 @@ Proof.
     => simple refine (store_sep sz a _ v2 _ m ((_:@Lift1Prop.impl1 Tm Pm _) m Hm) post _);
          [ shelve | shelve | .. ]
   end.
-  eabstract (instantiate (2 := a); subst v4; cancel; reflexivity).
+  eabstract (instantiate (2 := a); cancel; reflexivity).
   clear Hm m; intros m Hm.
+  cbv beta. (* FIXME *)
 
   (* FIXME *)
   hnf.
@@ -219,6 +279,9 @@ Proof.
   eexists.
   eexists.
   eexists.
+  eexists.
+  eexists.
+  eexists.
   cbn [WeakestPrecondition.list_map WeakestPrecondition.expr].
   eapply WeakestPreconditionProperties.Proper_call.
   5: eapply Hcall.
@@ -232,6 +295,9 @@ Proof.
   rename Hm' into Hm.
   subst a0.
   subst a1.
+  eexists.
+  eexists.
+  eexists.
   eexists.
   eexists.
   eexists.
