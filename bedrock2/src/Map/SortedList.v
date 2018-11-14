@@ -38,7 +38,7 @@ Section UnorderedList.
     end.
   Record rep := { value : list (key * value) ; ok : sorted value = true }.
   Lemma sorted_put m k v : sorted m = true -> sorted (put m k v) = true. Admitted.
-  Instance map : map key parameters.value :=
+  Definition map : map key parameters.value :=
     let wrapped_put m k v := Build_rep (put (value m) k v) (minimize_eq_proof Bool.bool_dec (sorted_put _ _ _ (ok m))) in
     {|
     map.rep := rep;
@@ -50,5 +50,7 @@ Section UnorderedList.
     map.put := wrapped_put;
     map.union m1 m2 := List.fold_right (fun '(k, v) m => wrapped_put m k v) m1 (value m2)
   |}.
+
+  Global Instance map_ok : map.ok map. Admitted.
 End UnorderedList.
 Arguments map : clear implicits.
