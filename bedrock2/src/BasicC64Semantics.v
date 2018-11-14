@@ -1,6 +1,6 @@
 Require Import Coq.NArith.BinNatDef.
 Require Import bedrock2.BasicC64Syntax bedrock2.Semantics.
-Require bedrock2.String bedrock2.Map.UnorderedList.
+Require bedrock2.String bedrock2.Map.SortedList bedrock2.Map.SortedListString.
 Require bbv.Word.
 
 Local Definition shiftWidth s := Word.wordToNat (Word.wand s (Word.NToWord 64 63)).
@@ -30,8 +30,7 @@ Instance parameters : parameters := {|
   byte := Word.word 8;
   combine _ b w := Word.wor (Word.wlshift' w 8) (Word.zext b (64-8));
   split _ w := (Word.split1 8 (64-8) w, Word.zext (Word.split2 8 (64-8) w) 8);
-  (* TODO: faster maps *)
-  mem := UnorderedList.map {| UnorderedList.key_eqb a b := if Word.weq a b then true else false |};
-  locals := UnorderedList.map {| UnorderedList.key_eqb := String.eqb |};
+  mem := SortedList.map (SortedList.parameters.Build_parameters _ _ (fun a b => if Word.weq a b then true else false) (fun a b => if Word.wltb a b then true else false));
+  locals := SortedListString.map (Word.word 64);
   funname_eqb := String.eqb;
 |}.
