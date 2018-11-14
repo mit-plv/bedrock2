@@ -264,11 +264,6 @@ Section FlattenExpr.
     try solve [set_solver].
   Qed.
 
-  Lemma flattenExprAsBooleanExpr_modifies_cond_vars: forall e s ngs ngs' cond,
-    flattenExprAsBooleanExpr ngs e = (s, cond, ngs') ->
-    subset (FlatImp.accessedVarsBcond var cond) (FlatImp.modVars _ _ s).
-  Admitted.
-
   Lemma flattenExpr_modifies_resVar: forall e s ngs ngs' resVar,
     flattenExpr ngs e = (s, resVar, ngs') ->
     resVar \in (FlatImp.modVars _ _ s).
@@ -277,10 +272,18 @@ Section FlattenExpr.
     destruct e; repeat (inversionss; try destruct_one_match_hyp); simpl in *; set_solver.
   Qed.
 
-  Lemma flattenExprAsBooleaNExpr_modifies_cond_vars: forall e s ngs ngs' cond,
+  Lemma flattenExprAsBooleanExpr_modifies_cond_vars: forall e s ngs ngs' cond,
     flattenExprAsBooleanExpr ngs e = (s, cond, ngs') ->
     subset (FlatImp.accessedVarsBcond var cond) (FlatImp.modVars _ _ s).
-  Admitted.
+  Proof.
+    intros.
+    destruct e; repeat (inversionss; try destruct_one_match_hyp); 
+      simpl in *; set_solver;
+      repeat match goal with
+      | H : flattenExpr _ _ = _ |- _ =>
+      apply flattenExpr_modifies_resVar in H
+      end; auto.
+  Qed.
 
   Lemma flattenExpr_resVar: forall e s ngs ngs' resVar,
     flattenExpr ngs e = (s, resVar, ngs') ->
@@ -292,11 +295,12 @@ Section FlattenExpr.
     end;
     set_solver.
   Qed.
-
+  (*
   Lemma flattenExprAsBooleanExpr_resVar: forall e s ngs ngs' cond,
     flattenExprAsBooleanExpr ngs e = (s, cond, ngs') ->
     ~ (subset (FlatImp.accessedVarsBcond var cond) (allFreshVars ngs')).
   Admitted.
+  *)
 
   Lemma flattenExpr_modVars_spec: forall e s ngs ngs' resVar,
     flattenExpr ngs e = (s, resVar, ngs') ->
@@ -317,8 +321,22 @@ Section FlattenExpr.
   Lemma flattenExprAsBooleanExpr_modVars_spec: forall e s ngs ngs' cond,
     flattenExprAsBooleanExpr ngs e = (s, cond, ngs') ->
     subset (FlatImp.modVars _ _ s) (diff (allFreshVars ngs) (allFreshVars ngs')).
-  Admitted.
-
+  Proof.
+    induction e; intros; repeat (inversionss; try destruct_one_match_hyp);
+    simpl;
+    repeat match goal with
+    | IH: forall _ _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
+    end;
+    repeat match goal with
+    | H: genFresh _ = _ |- _ => apply genFresh_spec in H
+    | H: flattenExpr _ _ = _ |- _ =>
+      let H' := fresh in
+      pose proof H as H';
+      apply flattenExpr_freshVarUsage in H;
+      apply flattenExpr_modVars_spec in H'
+    end;
+    try solve [set_solver].
+  Qed.
 
   Lemma flattenCall_freshVarUsage: forall f args binds ngs1 ngs2 s,
       flattenCall ngs1 binds f args = (s, ngs2) ->
@@ -537,7 +555,7 @@ Section FlattenExpr.
     intros.
     destruct e; unfold flattenExprAsBooleanExpr in H; 
     repeat destruct_one_match_hyp;
-    pose proof (flattenExpr_correct_aux env) as P; 
+    pose proof (flattenExpr_correct_aux env) as P.
     try (
         specialize P with (initialM := initialM) (1 := E) (2 := H0) (3 := H1) (4 := H2); 
         destruct P as [fuelS0 [initial2L [Evcond G]]];
@@ -597,7 +615,8 @@ Section FlattenExpr.
       { eassumption. }
       { pose_flatten_var_ineqs. clear IHfuelH.
         state_calc. }
-      { pose_flatten_var_ineqs. clear IHfuelH. state_calc. }
+      { pose_flatten_var_ineqs. clear IHfuelH. 
+state_calc. }
       destruct P1 as [fuelL2 P1]. deep_destruct P1.
       exists (S (S (S (fuelL + fuelL2)))). eexists.
       remember (S (S (fuelL + fuelL2))) as Sf.

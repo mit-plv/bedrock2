@@ -264,8 +264,8 @@ Section RegAlloc.
     | ASLit(x: srcvar)(x': impvar)(v: Z)
     | ASOp(x: srcvar)(x': impvar)(op: bopname)(y z: srcvar)
     | ASSet(x: srcvar)(x': impvar)(y: srcvar)
-    | ASIf(cond: srcvar)(bThen bElse: astmt)
-    | ASLoop(body1: astmt)(cond: srcvar)(body2: astmt)
+    | ASIf(cond: bcond srcvar)(bThen bElse: astmt)
+    | ASLoop(body1: astmt)(cond: bcond srcvar)(body2: astmt)
     | ASSeq(s1 s2: astmt)
     | ASSkip
     | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
@@ -493,6 +493,42 @@ Section RegAlloc.
 
   Definition updateWith := updateWith_recursive.
 
+  Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar) 
+    : option (bcond impvar) :=
+    match cond with
+    | CondBeq _ x y =>
+        bind_opt x' <- reverse_get m x;
+        bind_opt y' <- reverse_get m y;
+        Some (CondBeq impvar x' y')
+    | CondBne _ x y =>
+        bind_opt x' <- reverse_get m x;
+        bind_opt y' <- reverse_get m y;
+        Some (CondBne impvar x' y')
+    | CondBlt _ x y =>
+        bind_opt x' <- reverse_get m x;
+        bind_opt y' <- reverse_get m y;
+        Some (CondBlt impvar x' y')
+    | CondBge _ x y =>
+        bind_opt x' <- reverse_get m x;
+        bind_opt y' <- reverse_get m y;
+        Some (CondBge impvar x' y')
+    | CondBltu _ x y =>
+        bind_opt x' <- reverse_get m x;
+        bind_opt y' <- reverse_get m y;
+        Some (CondBltu impvar x' y')
+    | CondBgeu _ x y =>
+        bind_opt x' <- reverse_get m x;
+        bind_opt y' <- reverse_get m y;
+        Some (CondBgeu impvar x' y')
+    | CondBnez _ x =>
+        bind_opt x' <- reverse_get m x;
+        Some (CondBnez impvar x')
+    | CondTrue _ =>
+        Some (CondTrue impvar)
+    | CondFalse _ =>
+        Some (CondFalse impvar)
+    end.
+
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
       match s with
@@ -513,12 +549,12 @@ Section RegAlloc.
           bind_opt y' <- reverse_get m y;
           Some (SSet x' y')
       | ASIf cond s1 s2 =>
-          bind_opt cond' <- reverse_get m cond;
+          bind_opt cond' <- reverse_get_cond m cond;
           bind_opt s1' <- rec m s1;
           bind_opt s2' <- rec m s2;
           Some (SIf cond' s1' s2')
       | ASLoop s1 cond s2 =>
-          bind_opt cond' <- reverse_get m cond;
+          bind_opt cond' <- reverse_get_cond m cond;
           let m1 := intersect_map m (updateWith m s) in
           let m2 := intersect_map (updateWith m s1) (updateWith m1 s) in
           bind_opt s1' <- rec m1 s1;
