@@ -4,6 +4,7 @@ Require Import riscv.util.BitWidths.
 Require Import riscv.Utility.
 Require Import bedrock2.Macros.
 Require Import bedrock2.Syntax.
+Require compiler.NoActionSyntaxParams.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
@@ -45,6 +46,19 @@ Module Import FlatImp.
     funcMap_Inst: MapFunctions funcname (list varname * list varname * stmt);
 
     max_ext_call_code_size: Z;
+    Event: Type;
+
+    ext_spec:
+      (* given an action label, a trace of what happened so fat,
+         and a list of function call arguments, *)
+      actname -> list Event -> list mword ->
+      (* returns a set of (extended trace, function call results) *)
+      (list Event -> list mword -> Prop) ->
+      Prop; (* or returns no set if the call fails.
+      Will give it access to the memory (and possibly the full registers)
+      once we have adequate separation logic reasoning in the compiler correctness proof.
+      Passing in the trace of what happened so far allows ext_spec to impose restrictions
+      such as "you can only call foo after calling init". *)
   }.
 End FlatImp.
 
@@ -213,6 +227,94 @@ Section FlatImp1.
       eval_stmt (S f) st m1 (SInteract binds fname args) = Some p2 ->
       False.
     Proof. inversion_lemma. Qed.
+
+    Local Notation locals := (map varname mword).
+    Local Notation trace := (list Event).
+
+    (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
+    Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
+
+    (* alternative semantics which allow non-determinism *)
+    Inductive exec:
+      stmt ->
+      trace -> @Memory.mem mword -> locals ->
+      (trace -> @Memory.mem mword -> locals -> Prop)
+    -> Prop :=
+    | ExInteract: forall t m l action argvars argvals resvars outcome post,
+        option_all (List.map (get l) argvars) = Some argvals ->
+        ext_spec action t argvals outcome ->
+        (forall new_t resvals,
+            outcome new_t resvals ->
+            exists l', putmany resvars resvals l = Some l' /\ post (new_t) m l') ->
+        exec (SInteract resvars action argvars) t m l post
+    | ExCall: forall t m l binds fname args params rets fbody argvs st0 post outcome,
+        get e fname = Some (params, rets, fbody) ->
+        option_all (List.map (get l) args) = Some argvs ->
+        putmany params argvs empty_map = Some st0 ->
+        exec fbody t m st0 outcome ->
+        (forall t' m' st1,
+            outcome t' m' st1 ->
+            exists retvs l',
+              option_all (List.map (get st1) rets) = Some retvs /\
+              putmany binds retvs l = Some l' /\
+              post t' m' l') ->
+        exec (SCall binds fname args) t m l post
+    | ExLoad: forall t m l x a v addr post,
+        get l a = Some addr ->
+        Memory.read_mem addr m = Some v ->
+        post t m (put l x v) ->
+        exec (SLoad x a) t m l post
+    | ExStore: forall t m m' l a addr v val post,
+        get l a = Some addr ->
+        get l v = Some val ->
+        Memory.write_mem addr val m = Some m' ->
+        post t m' l ->
+        exec (SStore a v) t m l post
+    | ExLit: forall t m l x v post,
+        post t m (put l x (ZToReg v)) ->
+        exec (SLit x v) t m l post
+    | ExOp: forall t m l x op y y' z z' post,
+        get l y = Some y' ->
+        get l z = Some z' ->
+        post t m (put l x (eval_binop op y' z')) ->
+        exec (SOp x op y z) t m l post
+    | ExSet: forall t m l x y y' post,
+        get l y = Some y' ->
+        post t m (put l x y') ->
+        exec (SSet x y) t m l post
+    | ExIfThen: forall t m l cond vcond bThen bElse post,
+        get l cond = Some vcond ->
+        vcond <> ZToReg 0 ->
+        exec bThen t m l post ->
+        exec (SIf cond bThen bElse) t m l post
+    | ExIfElse: forall t m l cond bThen bElse post,
+        get l cond = Some (ZToReg 0) ->
+        exec bElse t m l post ->
+        exec (SIf cond bThen bElse) t m l post
+    | ExLoop: forall t m l cond body1 body2 mid post,
+        (* this case is carefully crafted in such a way that recursive uses of exec
+         only appear under forall and ->, but not under exists, /\, \/, to make sure the
+         auto-generated induction principle contains an IH for both recursive uses *)
+        exec body1 t m l mid ->
+        (forall t' m' l', mid t' m' l' -> get l' cond <> None) ->
+        (forall t' m' l',
+            mid t' m' l' ->
+            get l' cond = Some (ZToReg 0) -> post t' m' l') ->
+        (forall t' m' l',
+            mid t' m' l' ->
+            forall v,
+              get l' cond = Some v ->
+              v <> ZToReg 0 ->
+              exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post) ->
+        exec (SLoop body1 cond body2) t m l post
+    | ExSeq: forall t m l s1 s2 mid post,
+        exec s1 t m l mid ->
+        (forall t' m' l', mid t' m' l' -> exec s2 t' m' l' post) ->
+        exec (SSeq s1 s2) t m l post
+    | ExSkip: forall t m l post,
+        post t m l ->
+        exec SSkip t m l post.
+
   End WithEnv.
 
   Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
@@ -364,3 +466,90 @@ Section FlatImp2.
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 End FlatImp2.
+
+
+Module Import FlatImpSemanticsEquiv.
+  Class parameters := {
+    noActionParams :> NoActionSyntaxParams.parameters;
+
+    mword : Set;
+    MachineWidth_Inst: MachineWidth mword;
+
+    varname_eq_dec : DecidableEq varname;
+    funcname_eq_dec: DecidableEq funcname;
+
+    varSet_Inst: SetFunctions varname;
+    varMap_Inst: MapFunctions varname mword;
+    funcMap_Inst: MapFunctions funcname (list varname * list varname * stmt);
+  }.
+
+  Existing Instance noActionParams.
+  Existing Instance MachineWidth_Inst.
+  Existing Instance varname_eq_dec.
+  Existing Instance funcname_eq_dec.
+  Existing Instance varSet_Inst.
+  Existing Instance varMap_Inst.
+  Existing Instance funcMap_Inst.
+
+  Instance to_FlatImp_params(p: parameters): FlatImp.parameters := {|
+    FlatImp.max_ext_call_code_size := 0;
+    FlatImp.Event := Empty_set;
+    FlatImp.ext_spec action oldTrace newTrace outcome := False;
+  |}.
+
+End FlatImpSemanticsEquiv.
+
+Section FlatImp3.
+
+  Context {pp : unique! FlatImpSemanticsEquiv.parameters}.
+
+  Hint Constructors exec.
+
+  Lemma fixpoint_to_inductive_semantics: forall env fuel l m s l' m',
+      eval_stmt env fuel l m s = Some (l', m') ->
+      exec env s nil m l (fun t'' m'' l'' => t'' = nil /\ m'' = m' /\ l'' = l').
+  Proof.
+    induction fuel; intros; [ simpl in *; discriminate | invert_eval_stmt ];
+      pose proof @ExLoop as useOnce;
+      repeat match goal with
+             | |- _ => progress destruct_pair_eqs
+             | H: _ /\ _ |- _ => destruct H
+             | |- _ => progress (simpl in *; subst)
+             | |- _ => progress eauto 10
+             | |- _ => congruence
+             | |- _ => contradiction
+          (* | |- _ => eapply @ExInteract  not possible because actname=Empty_set *)
+             | |- _ => eapply @ExCall
+             | |- _ => eapply @ExLoad
+             | |- _ => eapply @ExStore
+             | |- _ => eapply @ExLit
+             | |- _ => eapply @ExOp
+             | |- _ => eapply @ExSet
+             | |- _ => solve [eapply @ExIfThen; eauto]
+             | |- _ => solve [eapply @ExIfElse; eauto]
+          (* | |- _ => eapply @ExLoop    could loop infinitely     *)
+             | |- _ => eapply useOnce; clear useOnce
+             | |- _ => eapply @ExSeq
+             | |- _ => eapply @ExSkip
+             | |- _ => progress intros
+             end.
+  Qed.
+
+  Lemma inductive_to_fixpoint_semantics: forall env t l m s post,
+      exec env s t m l post ->
+      t = nil ->
+      exists m' l',
+        (forall t'' m'' l'', post t'' m'' l'' -> t'' = nil /\ m'' = m' /\ l'' = l') /\
+        exists fuel, eval_stmt env fuel l m s = Some (l', m').
+  Proof.
+    induction 1; intros; subst;
+      try destruct action;
+      simpl in *;
+      try specialize (IHexec eq_refl).
+
+    {
+      destruct IHexec as (m' & l' & ? & fuel & ?).
+      do 2 eexists; split; eauto.
+  Abort.
+
+End FlatImp3.
