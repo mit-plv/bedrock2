@@ -467,6 +467,17 @@ Section FlatImp2.
   Qed.
 End FlatImp2.
 
+Ltac fuel_increasing_rewrite :=
+  match goal with
+  | Ev: eval_stmt ?env ?Fuel1 ?l ?m ?s = ?final
+    |- context [eval_stmt ?env ?Fuel2 ?l ?m ?s]
+    => let IE := fresh in assert (Fuel1 <= Fuel2)%nat as IE by omega;
+       let P := fresh in pose proof increase_fuel_still_Success;
+       specialize P with (1 := IE) (2 := Ev);
+       rewrite P;
+       clear P IE
+  end.
+
 
 Module Import FlatImpSemanticsEquiv.
   Class parameters := {
@@ -505,51 +516,250 @@ Section FlatImp3.
 
   Hint Constructors exec.
 
+  Ltac prove_exec :=
+    let useOnce := fresh "useOnce_name" in
+    pose proof @ExLoop as useOnce;
+    repeat match goal with
+           | |- _ => progress destruct_pair_eqs
+           | H: _ /\ _ |- _ => destruct H
+           | |- _ => progress (simpl in *; subst)
+           | |- _ => progress eauto 10
+           | |- _ => congruence
+           | |- _ => contradiction
+           | |- _ => progress rewrite_match
+           | |- _ => rewrite reg_eqb_ne by congruence
+           | |- _ => rewrite reg_eqb_eq by congruence
+           | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+             replace v2 with v1 in * by congruence;
+             clear H2
+           (* | |- _ => eapply @ExInteract  not possible because actname=Empty_set *)
+           | |- _ => eapply @ExCall
+           | |- _ => eapply @ExLoad
+           | |- _ => eapply @ExStore
+           | |- _ => eapply @ExLit
+           | |- _ => eapply @ExOp
+           | |- _ => eapply @ExSet
+           | |- _ => solve [eapply @ExIfThen; eauto]
+           | |- _ => solve [eapply @ExIfElse; eauto]
+           (* | |- _ => eapply @ExLoop    could loop infinitely     *)
+           | |- _ => eapply useOnce; clear useOnce
+           | |- _ => eapply @ExSeq
+           | |- _ => eapply @ExSkip
+           | |- _ => progress intros
+           end;
+    try clear useOnce.
+
   Lemma fixpoint_to_inductive_semantics: forall env fuel l m s l' m',
       eval_stmt env fuel l m s = Some (l', m') ->
       exec env s nil m l (fun t'' m'' l'' => t'' = nil /\ m'' = m' /\ l'' = l').
   Proof.
-    induction fuel; intros; [ simpl in *; discriminate | invert_eval_stmt ];
-      pose proof @ExLoop as useOnce;
+    induction fuel; intros; [ simpl in *; discriminate | invert_eval_stmt ]; prove_exec.
+  Qed.
+
+  Lemma intersect_exec: forall env t l m s post1,
+      exec env s t m l post1 ->
+      forall post2,
+      exec env s t m l post2 ->
+      exec env s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
+  Proof.
+    induction 1; intros;
+      match goal with
+      | H: exec _ _ _ _ _ _ |- _ => inversion H; subst; clear H
+      end;
+      try solve [prove_exec].
+    - (* SCall *)
+      match goal with
+      | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
+        replace x2 with x1 in * by congruence;
+        replace y2 with y1 in * by congruence;
+        replace z2 with z1 in * by congruence;
+        clear x2 y2 z2 H2
+      end.
       repeat match goal with
-             | |- _ => progress destruct_pair_eqs
-             | H: _ /\ _ |- _ => destruct H
-             | |- _ => progress (simpl in *; subst)
-             | |- _ => progress eauto 10
-             | |- _ => congruence
-             | |- _ => contradiction
-          (* | |- _ => eapply @ExInteract  not possible because actname=Empty_set *)
-             | |- _ => eapply @ExCall
-             | |- _ => eapply @ExLoad
-             | |- _ => eapply @ExStore
-             | |- _ => eapply @ExLit
-             | |- _ => eapply @ExOp
-             | |- _ => eapply @ExSet
-             | |- _ => solve [eapply @ExIfThen; eauto]
-             | |- _ => solve [eapply @ExIfElse; eauto]
-          (* | |- _ => eapply @ExLoop    could loop infinitely     *)
-             | |- _ => eapply useOnce; clear useOnce
-             | |- _ => eapply @ExSeq
-             | |- _ => eapply @ExSkip
-             | |- _ => progress intros
+             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+               replace v2 with v1 in * by congruence;
+               clear v2 H2
              end.
+      rename IHexec into IH.
+      specialize IH with (1 := H15).
+      eapply @ExCall; [..|exact IH|]; eauto.
+      rename H3 into Ex1.
+      rename H16 into Ex2.
+      move Ex1 before Ex2.
+      intros. simpl in *. destruct_conjs.
+      specialize Ex1 with (1 := H3).
+      specialize Ex2 with (1 := H4).
+      destruct_conjs.
+      repeat match goal with
+             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+               replace v2 with v1 in * by congruence;
+               clear v2 H2
+             end.
+      eauto 10.
+    - (* SLoop *)
+      pose proof IHexec as IH1.
+      specialize IH1 with (1 := H8).
+      eapply @ExLoop; [exact IH1 | intros; simpl in *; destruct_conjs; eauto ..].
+    - (* SSeq *)
+      pose proof IHexec as IH1.
+      specialize IH1 with (1 := H5).
+      eapply @ExSeq; [exact IH1|].
+      intros; simpl in *.
+      destruct H2.
+      eauto.
+  Qed.
+
+  Lemma weaken_exec: forall env t l m s post1,
+      exec env s t m l post1 ->
+      forall post2 : list Event -> mem -> map varname FlatImp.mword -> Prop,
+      (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
+      exec env s t m l post2.
+  Proof.
+    induction 1; intros; try solve [prove_exec].
+    eapply @ExCall.
+    4: eapply IHexec.
+    all: eauto.
+    intros.
+    specialize H3 with (1 := H5).
+    destruct_conjs. eauto 10.
+  Qed.
+
+  Lemma inductive_to_fixpoint_semantics_aux: forall env t l m s post,
+      exec env s t m l post ->
+      t = nil ->
+      exists fuel, exec env s t m l (fun t' m' l' => eval_stmt env fuel l m s = Some (l', m')).
+  Proof.
+    induction 1; intros; subst;
+      try destruct action;
+      try (specialize (IHexec eq_refl); destruct IHexec as [fuel IHexec]);
+      try solve [exists 1%nat; prove_exec];
+      try solve [exists (S fuel); prove_exec].
+
+    admit. admit.
+    {
+      exists (S fuel).
+      pose proof intersect_exec as P.
+      specialize P with (1 := H) (2 := IHexec).
+      eapply @ExSeq; [exact P|].
+      intros.
+      destruct H2 as [? ?].
+      simpl.
+      rewrite_match.
+(*
+      edestruct H1 as [fuel' Q]; eauto.
+      eauto.
+
+      clear H IHexec.
+      prove_exec.
+      eapply @ExIfThen; eauto.
+      simpl in *.
+      rewrite_match.
+      rewrite reg_eqb_ne by congruence.
+      exact IH.
+    }
+*)
+  Abort.
+
+  Lemma inductive_to_fixpoint_semantics_aux: forall env t l m s post,
+      exec env s t m l post ->
+      t = nil ->
+      exec env s t m l (fun t' m' l' =>
+        t' = nil /\
+        post t' m' l' /\ (* <-- this one is just to get the induction work, maybe a
+                            better induction principle could do that for us? *)
+        exists fuel, eval_stmt env fuel l m s = Some (l', m')).
+  Proof.
+    induction 1; intros; subst;
+      try destruct action;
+      try specialize (IHexec eq_refl);
+      try solve [prove_exec; exists 1%nat; simpl; rewrite_match; reflexivity].
+
+    Focus 10.
+    eapply @ExSeq; [exact IHexec | ].
+    intros; simpl in *; destruct_products. subst.
+    specialize H1 with (1 := H2rl) (2 := eq_refl).
+    eapply weaken_exec; [exact H1|].
+    intros; simpl in *; destruct_products. subst.
+    repeat split; eauto.
+    exists (S (fuel + fuel0)).
+    simpl in *.
+    do 2 fuel_increasing_rewrite. reflexivity.
+
+  Admitted.
+
+
+
+(*
+  Lemma inductive_to_fixpoint_semantics_aux: forall env t l m s post,
+      exec env s t m l post ->
+      t = nil ->
+      exec env s t m l (fun t' m' l' => exists fuel, eval_stmt env fuel l m s = Some (l', m')).
+  Proof.
+    induction 1; intros; subst;
+      try destruct action;
+      try specialize (IHexec eq_refl);
+      try solve [prove_exec; exists 1%nat; simpl; rewrite_match; reflexivity].
+
+    - admit.
+    - eapply @ExIfThen; eauto.
+      eapply weaken_exec; [exact IHexec|].
+      intros. simpl in *.
+      destruct H2 as [fuel ?].
+      exists (S fuel).
+      prove_exec.
+    - eapply @ExIfElse; eauto.
+      eapply weaken_exec; [exact IHexec|].
+      intros. simpl in *.
+      destruct H1 as [fuel ?].
+      exists (S fuel).
+      prove_exec.
+    - eapply @ExLoop; [exact IHexec | intros; simpl in *..].
+      + admit.
+      + admit.
+      + admit.
+    - eapply @ExSeq; [exact IHexec | ].
+      intros; simpl in *.
+
+
+
+  Qed.
+ *)
+
+  (* note: only holds if there are no external calls with an empty result set
+     (not the same as "no result set"/failure),
+     which we ensure here by banning external calls altogether *)
+  Lemma exists_state_satisfying_post: forall env t l m s post,
+      exec env s t m l post ->
+      exists t' m' l', post t' m' l'.
+  Proof.
+    induction 1;
+      try destruct action;
+      destruct_products;
+      eauto.
+    - edestruct H3; eauto. destruct_products. eauto.
+    - repeat match goal with
+             | H: _ |- _ => specialize H with (1 := IHexec)
+             end.
+      destruct (get l' cond) as [vcond|] eqn: E; [|contradiction].
+      simpl in *.
+      destruct (reg_eqb vcond (ZToReg 0)) eqn: F;
+        [ apply reg_eqb_true in F; subst | apply reg_eqb_false in F ];
+        eauto.
   Qed.
 
   Lemma inductive_to_fixpoint_semantics: forall env t l m s post,
       exec env s t m l post ->
       t = nil ->
-      exists m' l',
-        (forall t'' m'' l'', post t'' m'' l'' -> t'' = nil /\ m'' = m' /\ l'' = l') /\
-        exists fuel, eval_stmt env fuel l m s = Some (l', m').
+      exists fuel m' l', eval_stmt env fuel l m s = Some (l', m').
   Proof.
-    induction 1; intros; subst;
-      try destruct action;
-      simpl in *;
-      try specialize (IHexec eq_refl).
-
-    {
-      destruct IHexec as (m' & l' & ? & fuel & ?).
-      do 2 eexists; split; eauto.
-  Abort.
+    intros.
+    pose proof inductive_to_fixpoint_semantics_aux as P.
+    specialize P with (1 := H) (2 := H0).
+    subst.
+    apply exists_state_satisfying_post in P.
+    destruct_products.
+    subst.
+    eauto.
+  Qed.
 
 End FlatImp3.
