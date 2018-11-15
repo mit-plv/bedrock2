@@ -1,6 +1,7 @@
 Require Import lib.LibTacticsMin.
 Require Import bbv.ZLib.
 Require Import riscv.util.Monads. Require Import riscv.util.MonadNotations.
+Require Import bedrock2.Macros.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -80,86 +81,53 @@ End RegisterFile.
 Existing Instance State_is_RegisterFile.
 
 
-Section FlatToRiscv.
+Module Import FlatToRiscv.
+  Class parameters := {
+    mword: Set;
+    MachineWidth_Inst: MachineWidth mword;
+    varMap_Inst: MapFunctions Register mword;
+    actname: Set;
+    actname_eq_dec: DecidableEq actname;
+    Event: Set;  (* element of the event trace *)
 
-  Context {mword: Set}.
-  Context {MW: MachineWidth mword}.
+    Memory_Inst: Memory.MemoryFunctions mword;
+    BWS: FlatToRiscvBitWidthSpecifics mword;
+    BWSP: FlatToRiscvBitWidthSpecificProofs mword;
 
+    M: Type -> Type;
+    MM: Monad M;
+    RVM: RiscvProgram M mword;
+    RVS: @RiscvState M mword _ _ RVM;
+    RVAX: AxiomaticRiscv mword Event M;
 
-  Context {stateMap: MapFunctions Register mword}.
-  Notation locals := (map Register mword).
+    ext_spec:
+      (* given an action label, a trace of what happened so fat,
+         and a list of function call arguments, *)
+      actname -> list Event -> list mword ->
+      (* returns a set of (extended trace, function call results) *)
+      (list Event -> list mword -> Prop) ->
+      Prop; (* or returns no set if the call fails. *)
 
-  Context {Action: Set}. (* just a label *)
-  Context {actname_eq_dec: DecidableEq Action}.
-  Context {Event: Set}.  (* element of the event trace *)
-
-  Notation var := Z (only parsing).
-
-  Instance bopname_params: Basic_bopnames.parameters := {|
-    varname := Register;
-    funcname := Empty_set;
-    actname := Action;
-  |}.
-
-  Definition trace := list Event.
-
-  Context {funcMap: MapFunctions Empty_set (list var * list var * stmt)}. (* TODO meh *)
-
-  Context {MF: Memory.MemoryFunctions mword}.
-  Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
-  Context {BWSP: FlatToRiscvBitWidthSpecificProofs mword}.
-
-  Local Notation RiscvMachineL := (RiscvMachine Register mword Event).
-
-  Context {M: Type -> Type}.
-  Context {MM: Monad M}.
-  Context {RVM: RiscvProgram M mword}.
-  Context {RVS: @RiscvState M mword _ _ RVM}.
-  Context {RVAX: AxiomaticRiscv mword Event M}.
-
-  Variable ext_spec:
-    (* given an action label, a trace of what happened so fat,
-       and a list of function call arguments, *)
-    Action -> trace -> list mword ->
-    (* returns a set of (extended trace, function call results) *)
-    (trace -> list mword -> Prop) ->
-    Prop. (* or returns no set if the call fails.
-     Will give it access to the memory (and possibly the full registers)
-     once we have adequate separation logic reasoning in the compiler correctness proof.
-     Passing in the trace of what happened so far allows ext_spec to impose restrictions
-     such as "you can only call foo after calling init". *)
-
-  Instance FlatImp_params: FlatImp.parameters := {|
-    FlatImp.bopname_params := bopname_params;
-    FlatImp.mword := mword;
-    FlatImp.max_ext_call_code_size := 7; (* TODO parametrize *)
-    FlatImp.Event := Event;
-    FlatImp.varSet_Inst := map_domain_set;
-    FlatImp.ext_spec := ext_spec;
-  |}.
-  cbv. discriminate. Defined.
-
-  Ltac state_calc0 := map_solver Z mword.
-
-  Hypothesis translate_id_if_aligned_4: forall a mode,
+    translate_id_if_aligned_4: forall a mode,
       (regToZ_unsigned a) mod 4 = 0 ->
-      translate mode (ZToReg 4) a = Return a.
+      translate mode (ZToReg 4) a = Return a;
 
-  Hypothesis translate_id_if_aligned_8: forall a mode,
+    translate_id_if_aligned_8: forall a mode,
       (regToZ_unsigned a) mod 8 = 0 ->
-      translate mode (ZToReg 8) a = Return a.
+      translate mode (ZToReg 8) a = Return a;
 
-  Variable LwXLEN: Register -> Register -> Z -> Instruction.
+    (* TODO move to bitwidth specifics *)
+    LwXLEN: Register -> Register -> Z -> Instruction;
+    SwXLEN: Register -> Register -> Z -> Instruction;
 
-  Variable SwXLEN: Register -> Register -> Z -> Instruction.
+    compile_ext_call: list Register -> actname -> list Register -> list Instruction;
+    max_ext_call_code_size: Z;
+    max_ext_call_code_size_nonneg: 0 <= max_ext_call_code_size;
+    compile_ext_call_length: forall binds f args,
+      Zlength (compile_ext_call binds f args) <= max_ext_call_code_size;
 
-  Variable compile_ext_call: list var -> Action -> list var -> list Instruction.
-  Hypothesis compile_ext_call_length: forall binds f args,
-      Zlength (compile_ext_call binds f args) <= 7. (* TODO parametrize *)
-
-
-  Hypothesis compile_ext_call_correct: forall initialL action outcome post newPc insts
-      (argvars resvars: list var),
+    compile_ext_call_correct: forall initialL action outcome post newPc insts
+      (argvars resvars: list Register),
       insts = compile_ext_call resvars action argvars ->
       newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
@@ -167,14 +135,77 @@ Section FlatToRiscv.
                outcome ->
       (forall newLog resvals,
           outcome newLog resvals ->
-          runsTo RiscvMachineL (mcomp_sat (run1 (B := BitWidth))) {|
+          runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) {|
             getRegs   := setManyRegs initialL.(getRegs) resvars resvals;
             getPc     := newPc;
             getNextPc := add newPc (ZToReg 4);
             getMem    := initialL.(getMem);
             getLog    := newLog;
           |} post) ->
-      runsTo RiscvMachineL (mcomp_sat (run1 (B := BitWidth))) initialL post.
+      runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) initialL post;
+  }.
+
+  Existing Instance MachineWidth_Inst.
+  Existing Instance varMap_Inst.
+  Existing Instance actname_eq_dec.
+  Existing Instance Memory_Inst.
+  Existing Instance BWS.
+  Existing Instance BWSP.
+  Existing Instance MM.
+  Existing Instance RVM.
+  Existing Instance RVS.
+  Existing Instance RVAX.
+
+End FlatToRiscv.
+
+Instance SetWithoutElements: SetFunctions Empty_set := {|
+  set := unit;
+  empty_set := tt;
+  singleton_set _ := tt;
+  contains _ := Empty_set_rect _;
+  contains_dec := Empty_set_rect _;
+  union _ _ := tt;
+  intersect _ _ := tt;
+  diff _ _ := tt;
+  pick_or_else _ := Empty_set_rect _;
+|}.
+all: intros; apply Empty_set_rec; assumption.
+Defined.
+
+Instance MapWithoutKeys(V: Type): MapFunctions Empty_set V := {|
+   map := unit;
+|}.
+(* TODO MapFunctions shouldn't require "SetFunctions V" *)
+Admitted.
+
+
+Section FlatToRiscv1.
+  Context {p: unique! FlatToRiscv.parameters}.
+
+  Notation locals := (map Register mword).
+  Notation var := Z (only parsing).
+
+  Instance bopname_params: Basic_bopnames.parameters := {|
+    Basic_bopnames.varname := Register;
+    Basic_bopnames.funcname := Empty_set;
+    Basic_bopnames.actname := actname;
+  |}.
+
+  Definition trace := list Event.
+
+  Local Notation RiscvMachineL := (RiscvMachine Register mword Event).
+
+  Instance FlatImp_params: FlatImp.parameters := {|
+    FlatImp.bopname_params := bopname_params;
+    FlatImp.mword := mword;
+    FlatImp.max_ext_call_code_size := max_ext_call_code_size;
+    FlatImp.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
+    FlatImp.Event := Event;
+    FlatImp.varSet_Inst := map_domain_set;
+    FlatImp.ext_spec := ext_spec;
+  |}.
+
+  Ltac state_calc0 := map_solver Z (@mword p).
 
   Ltac mword_cst w :=
     match w with
@@ -193,9 +224,9 @@ Section FlatToRiscv.
     ZToReg_morphism.(morph_opp)
   : rew_ZToReg_morphism.
 
-  Add Ring mword_ring : (@regRing mword MW)
+  Add Ring mword_ring : (@regRing mword MachineWidth_Inst)
       (preprocess [autorewrite with rew_ZToReg_morphism],
-       morphism (@ZToReg_morphism mword MW),
+       morphism (@ZToReg_morphism mword MachineWidth_Inst),
        constants [mword_cst]).
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
@@ -380,11 +411,12 @@ Section FlatToRiscv.
   Lemma compile_stmt_size: forall s,
     Zlength (compile_stmt s) <= 2 * (stmt_size s).
   Proof.
-    induction s; simpl; try destruct op; simpl;
+    induction s; simpl; try destruct op; try solve [destruct f]; simpl;
     repeat (autorewrite with rew_Zlength || simpl in * || unfold compile_lit); try omega;
       pose proof (Zlength_nonneg binds);
       pose proof (Zlength_nonneg args);
-      try specialize (compile_ext_call_length binds a args);
+      specialize (compile_ext_call_length binds a args);
+      pose proof max_ext_call_code_size_nonneg;
       omega.
   Qed.
 
@@ -734,7 +766,6 @@ Section FlatToRiscv.
   (* only strictly needed if we want to export the goal into a map_solver-only environment,
      but might result in a speed up if used anyways *)
   Ltac prepare_for_map_solver :=
-    clear translate_id_if_aligned_4 translate_id_if_aligned_8 BWSP;
     repeat match goal with
              | IH: forall (s : stmt), _ |- _ => clear IH
              | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
@@ -1104,7 +1135,7 @@ Section FlatToRiscv.
     end;
     first
       [ eassumption
-      | eapply containsMem_write; eassumption
+      | eapply (@containsMem_write mword _ _ _ BWSP); eassumption
       | match goal with
         | |- extends _ _ => solve [state_calc]
         end
@@ -1721,6 +1752,8 @@ Section FlatToRiscv.
     eauto 10.
   Qed.
 
+  (* TODO move to deterministic-specific file
+
   Definition runsTo_onerun(initial: RiscvMachineL)(P: RiscvMachineL -> Prop): Prop :=
     exists fuel: nat, mcomp_sat (run (B := BitWidth) fuel) initial P.
 
@@ -1744,7 +1777,9 @@ Section FlatToRiscv.
       unfold run. unfold power_func.*)
       (* TODO fuel might be different amounts for different executions... *)
   Abort.
+  *)
 
+  (*
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
     compile_stmt s = insts ->
@@ -1805,6 +1840,6 @@ Section FlatToRiscv.
       exact Q.
     }
   Qed.
+  *)
 
-  Print Assumptions compile_stmt_correct.
-End FlatToRiscv.
+End FlatToRiscv1.
