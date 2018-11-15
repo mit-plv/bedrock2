@@ -1,4 +1,4 @@
-Require Import bedrock2.Map.
+Require Import bedrock2.Map Coq.Strings.String.
 Require bedrock2.Map.SortedListString.
 Local Existing Instance bedrock2.Map.SortedListString.map.
 Local Open Scope string_scope. Local Open Scope list_scope.
