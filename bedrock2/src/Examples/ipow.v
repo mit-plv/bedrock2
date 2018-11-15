@@ -64,6 +64,10 @@ Ltac break_ex :=
   repeat match goal with
          | H: exists _, _ |- _ => destruct H
          end.
+Ltac break_and :=
+  repeat match goal with
+         | H: _ /\ _ |- _ => destruct H
+         end.
 
 Ltac subst_and_bind_all :=
   repeat match goal with
@@ -88,17 +92,17 @@ Proof.
 
   eapply TailRecursion.tailrecursion with
       (lt:=Z.lt)
-      (P:=fun _ _ l _ => exists x e ret, l = (map.put (map.put (map.put map.empty "x" x) "e" e) "ret" ret))
-      (Q:=fun _ _ l _ => exists x e ret, l = (map.put (map.put (map.put map.empty "x" x) "e" e) "ret" ret))
+      (P:=fun _ t' l => emp (exists x e ret, t' = t /\ l = (map.put (map.put (map.put map.empty "x" x) "e" e) "ret" ret)))
+      (Q:=fun _ t' l => emp (exists x e ret, t' = t /\ l = (map.put (map.put (map.put map.empty "x" x) "e" e) "ret" ret)))
       (R0 := fun m' => m'=m).
   admit.
   admit.
   admit.
   intros.
 
-  (* TODO: lemma for destructing [sep emp _] hyps *) destruct H as (?&?&?&?&?).
-
+  eapply sep_emp_l in H. destruct H.
   break_ex.
+  break_and.
   subst_and_bind_all.
 
   refine_ex_and.
@@ -114,34 +118,34 @@ Proof.
       refine_ex_and.
       { repeat (refine_ex_and || exact eq_refl). }
       eexists. eexists. split.
-      { assert (exists x6 e0 ret : word,
-       map.put (map.put (map.put l1 "ret" l5) "e" l6) "x" l =
-       map.put (map.put (map.put map.empty "x" x6) "e" e0) "ret" ret); [|admit].
-       { do 3 eexists. exact eq_refl. } }
+      { eapply sep_emp_l. split.
+        { do 3 eexists. split; exact eq_refl. }
+        { eapply sep_emp_r. split. assumption. exact I. } }
       { split.
         { admit. }
-        { admit. } } }
+        { intros.
+          eapply impl1_l_sep_emp; intros.
+          admit. } } }
     { refine_ex_and.
       { repeat (refine_ex_and || exact eq_refl). }
       refine_ex_and.
       { repeat (refine_ex_and || exact eq_refl). }
       eexists. eexists. split.
-      { assert (exists x6 e0 ret : word,
-       map.put (map.put l1 "e" l5) "x" l =
-       map.put (map.put (map.put map.empty "x" x6) "e" e0) "ret" ret); [|admit].
-       { do 3 eexists. exact eq_refl. } }
+      { eapply sep_emp_l. split.
+        { do 3 eexists. split; exact eq_refl. }
+        { eapply sep_emp_r. split. assumption. exact I. } }
       { split.
         { admit. }
-        { admit. } } } }
-  { admit. (* TODO: make sure emp actually enforces that mem is empty *) }
+        { intros.
+          eapply impl1_l_sep_emp; intros.
+          admit. } } } }
+  { eapply sep_emp_l. split. solve[repeat eexists]. assumption. }
   intros.
-  (* TODO: lemma for destructing [sep emp _] hyps *) destruct H as (?&?&?&?&?).
+  eapply sep_emp_l in H. destruct H.
   break_ex.
+  break_and.
   subst_and_bind_all.
   refine_ex_and.
   { repeat (refine_ex_and || exact eq_refl). }
   repeat eexists.
-  admit. (* TODO: thread through t=t0 *)
-  admit. (* TODO: thread through m=m0 *)
-  Fail idtac.
 Abort.

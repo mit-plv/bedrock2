@@ -37,7 +37,7 @@ Section SepProperties.
   (* sep and emp *)
   Lemma sep_emp_emp p q : iff1 (sep (emp p) (emp q)) (emp (p /\ q)).
   Proof. cbv [iff1 sep emp split]; t; intuition eauto 20 using union_empty_l, disjoint_empty_l. Qed.
-  Lemma sep_emp_r a b : iff1 (a * emp b) (emp b * a). eapply sep_comm. Qed.
+  Lemma sep_comm_emp_r a b : iff1 (a * emp b) (emp b * a). eapply sep_comm. Qed.
   Lemma sep_emp_2 a b c : iff1 (a * (emp b * c)) (emp b * (a * c)).
   Proof. rewrite <-sep_assoc. rewrite (sep_comm a). rewrite sep_assoc. reflexivity. Qed.
   Lemma sep_emp_12 a b c : iff1 (emp a * (emp b * c)) (emp (a /\ b) * c).
@@ -48,6 +48,20 @@ Section SepProperties.
   Proof. cbv [impl1 emp sep split]; t; rewrite ?union_empty_l; eauto 10 using union_empty_l, disjoint_empty_l. Qed.
   Lemma impl1_r_sep_emp a b c : (b /\ impl1 a c) -> impl1 a (emp b * c).
   Proof. cbv [impl1 emp sep split]; t; eauto 10 using union_empty_l, disjoint_empty_l. Qed.
+
+  Lemma sep_emp_l a b m : sep (emp a) b m <-> a /\ b m.
+  Proof.
+    split.
+    { intros (?&?&(?&?)&(?&?)&?); subst; rewrite union_empty_l; auto. }
+    { intros (?&?). exists empty, m.
+      cbv [emp]; edestruct split_empty_l; intuition eauto. }
+  Qed.
+  Lemma sep_emp_r a b m : sep a (emp b) m <-> a m /\ b.
+  Proof.
+    setoid_rewrite (and_comm _ b).
+    setoid_rewrite sep_comm || (etransitivity; [eapply sep_comm|]). (* WHY? *)
+    eapply sep_emp_l.
+  Qed.
 End SepProperties.
 
 Ltac set_evars := repeat match goal with |- context[?e] => is_evar e; set e end.
@@ -55,7 +69,7 @@ Ltac subst_evars := repeat match goal with x := ?e |- _ => is_evar e; subst x en
 Ltac normalize :=
   set_evars;
   (* COQBUG? Why is the repeat necessary? Why does it not work inside rewrite_strat? *)
-  repeat (rewrite_strat (bottomup (terms @sep_emp_emp @sep_emp_r @sep_emp_12 @sep_emp_2 @sep_ex1_l @sep_ex1_r @sep_assoc)));
+  repeat (rewrite_strat (bottomup (terms @sep_emp_emp @sep_comm_emp_r @sep_emp_12 @sep_emp_2 @sep_ex1_l @sep_ex1_r @sep_assoc)));
   subst_evars.
 Ltac cancel_atom_goal1 P :=
   (* COQBUG: if I use fresh here, rewrite_strat fails *)
