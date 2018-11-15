@@ -60,7 +60,10 @@ Existing Instance annoying_eq.
 
 Instance myFlatImpParams: FlatImp.parameters := {|
   FlatImp.max_ext_call_code_size := 0;
+  FlatImp.Event := Empty_set;
+  FlatImp.ext_spec action t args outcome := False;
 |}.
+reflexivity. Defined.
 
 Definition eval_stmt_test fuel initialSt := eval_stmt empty_map fuel initialSt no_mem.
 

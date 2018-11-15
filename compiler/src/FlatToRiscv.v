@@ -1,9 +1,10 @@
 Require Import lib.LibTacticsMin.
 Require Import bbv.ZLib.
-Require Import riscv.util.Monads.
+Require Import riscv.util.Monads. Require Import riscv.util.MonadNotations.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
+Require Import Coq.ZArith.ZArith.
 Require Import compiler.Op.
 Require Import riscv.Program.
 Require Import riscv.Decode.
@@ -268,15 +269,20 @@ Section FlatToRiscv.
   Notation locals := (map Register mword).
 
   Context {Action: Set}. (* just a label *)
+  Context {actname_eq_dec: DecidableEq Action}.
   Context {Event: Set}.  (* element of the event trace *)
 
   Notation var := Z (only parsing).
-  Notation stmt := (stmt var Action).
+
+  Instance bopname_params: Basic_bopnames.parameters := {|
+    varname := Register;
+    funcname := Empty_set;
+    actname := Action;
+  |}.
+
   Definition trace := list Event.
 
-  (*
   Context {funcMap: MapFunctions Empty_set (list var * list var * stmt)}. (* TODO meh *)
-   *)
 
   Context {MF: Memory.MemoryFunctions mword}.
   Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
@@ -289,6 +295,28 @@ Section FlatToRiscv.
   Context {RVM: RiscvProgram M mword}.
   Context {RVS: @RiscvState M mword _ _ RVM}.
   Context {RVAX: AxiomaticRiscv mword Event M}.
+
+  Variable ext_spec:
+    (* given an action label, a trace of what happened so fat,
+       and a list of function call arguments, *)
+    Action -> trace -> list mword ->
+    (* returns a set of (extended trace, function call results) *)
+    (trace -> list mword -> Prop) ->
+    Prop. (* or returns no set if the call fails.
+     Will give it access to the memory (and possibly the full registers)
+     once we have adequate separation logic reasoning in the compiler correctness proof.
+     Passing in the trace of what happened so far allows ext_spec to impose restrictions
+     such as "you can only call foo after calling init". *)
+
+  Instance FlatImp_params: FlatImp.parameters := {|
+    FlatImp.bopname_params := bopname_params;
+    FlatImp.mword := mword;
+    FlatImp.max_ext_call_code_size := 7; (* TODO parametrize *)
+    FlatImp.Event := Event;
+    FlatImp.varSet_Inst := map_domain_set;
+    FlatImp.ext_spec := ext_spec;
+  |}.
+  cbv. discriminate. Defined.
 
   Ltac state_calc0 := map_solver Z mword.
 
@@ -495,7 +523,7 @@ Section FlatToRiscv.
 
   Variable compile_ext_call: list var -> Action -> list var -> list Instruction.
   Hypothesis compile_ext_call_length: forall binds f args,
-      (length (compile_ext_call binds f args) <= 7)%nat. (* TODO parametrize *)
+      Zlength (compile_ext_call binds f args) <= 7. (* TODO parametrize *)
 
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
@@ -536,13 +564,19 @@ Section FlatToRiscv.
   Qed.
   *)
 
+  Arguments Z.mul: simpl never.
+  Arguments Z.add: simpl never.
+  Arguments run1: simpl never.
+
   Lemma compile_stmt_size: forall s,
-    (length (compile_stmt s) <= 2 * (stmt_size _ _ s))%nat.
+    Zlength (compile_stmt s) <= 2 * (stmt_size s).
   Proof.
     induction s; simpl; try destruct op; simpl;
-    repeat (rewrite app_length; simpl); try omega.
-    specialize (compile_ext_call_length binds f args).
-    omega.
+    repeat (autorewrite with rew_Zlength || simpl in * || unfold compile_lit); try omega;
+      pose proof (Zlength_nonneg binds);
+      pose proof (Zlength_nonneg args);
+      try specialize (compile_ext_call_length binds a args);
+      omega.
   Qed.
 
   (* load and decode Inst *)
@@ -724,8 +758,9 @@ Section FlatToRiscv.
     (* TODO how to automate this nicely? "match" and equate? *)
     replace (add offset (ZToReg 4)) with (add offset (mul (ZToReg 4) (ZToReg (Zlength [[inst]])))); auto.
     rewrite Zlength_cons. rewrite Zlength_nil.
-    simpl.
+    change (0 + 1) with 1.
     rewrite <- regToZ_unsigned_one.
+    simpl in *.
     rewrite ZToReg_regToZ_unsigned.
     ring.
   Qed.
@@ -895,14 +930,18 @@ Section FlatToRiscv.
     end.
 
   (* TODO is 2^9 really the best we can get? *)
-  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size _ _ s) < 2 ^ 9)%Z.
+  Definition stmt_not_too_big(s: stmt): Prop := stmt_size s < 2 ^ 9.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
     | H: stmt_not_too_big _ |- stmt_not_too_big _ =>
+        clear -H;
         unfold stmt_not_too_big in *;
         change (2 ^ 9)%Z with 512%Z in *;
         simpl stmt_size in H;
+        repeat match goal with
+               | s: stmt |- _ => unique pose proof (stmt_size_pos s)
+               end;
         lia
     end.
 
@@ -1194,10 +1233,6 @@ Section FlatToRiscv.
 
   Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
 *)
-
-  Arguments Z.mul: simpl never.
-  Arguments Z.add: simpl never.
-  Arguments run1: simpl never.
 
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
@@ -1805,18 +1840,6 @@ Section FlatToRiscv.
     | _, _ => rf
     end.
 
-  Variable ext_spec:
-    (* given an action label, a trace of what happened so fat,
-       and a list of function call arguments, *)
-    Action -> trace -> list mword ->
-    (* returns a set of (extended trace, function call results) *)
-    (trace -> list mword -> Prop) ->
-    Prop. (* or returns no set if the call fails.
-     Will give it access to the memory (and possibly the full registers)
-     once we have adequate separation logic reasoning in the compiler correctness proof.
-     Passing in the trace of what happened so far allows ext_spec to impose restrictions
-     such as "you can only call foo after calling init". *)
-
   Hypothesis compile_ext_call_correct: forall initialL action outcome post newPc insts
       (argvars resvars: list var),
       insts = compile_ext_call resvars action argvars ->
@@ -2140,6 +2163,30 @@ Section FlatToRiscv.
     apply runsToDone.
     eauto 10.
   Qed.
+
+  Definition runsTo_onerun(initial: RiscvMachineL)(P: RiscvMachineL -> Prop): Prop :=
+    exists fuel: nat, mcomp_sat (run (B := BitWidth) fuel) initial P.
+
+  Hypothesis mcomp_sat_Return: forall (P: RiscvMachineL -> Prop) initial,
+      P initial -> mcomp_sat (Return tt) initial P.
+
+  (*
+  Hypothesis mcomp_sat_Bind: forall (P Q: RiscvMachineL -> Prop) m f initial,
+      P initial ->
+      mcomp_sat (Bind m f) initial Q.
+*)
+
+  Lemma runsTo_to_onerun: forall initial (P: RiscvMachineL -> Prop),
+      runsTo initial P ->
+      runsTo_onerun initial P.
+  Proof.
+    unfold runsTo_onerun. induction 1.
+    - exists 0%nat. simpl. unfold run, power_func.
+      apply mcomp_sat_Return. exact H.
+    - (*evar (fuel: nat). exists (S fuel). simpl.
+      unfold run. unfold power_func.*)
+      (* TODO fuel might be different amounts for different executions... *)
+  Abort.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,

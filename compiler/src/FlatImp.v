@@ -1,6 +1,7 @@
 Require Import Coq.ZArith.ZArith.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
+Require Import riscv.util.ListLib.
 Require Import riscv.Utility.
 Require Import bedrock2.Macros.
 Require Import bedrock2.Syntax.
@@ -46,6 +47,8 @@ Module Import FlatImp.
     funcMap_Inst: MapFunctions funcname (list varname * list varname * stmt);
 
     max_ext_call_code_size: Z;
+    max_ext_call_code_size_nonneg: 0 <= max_ext_call_code_size;
+
     Event: Type;
 
     ext_spec:
@@ -336,6 +339,17 @@ Section FlatImp1.
   (* TODO: in coq 8.9 it will be possible to state this lemma automatically: https://github.com/coq/coq/blob/91e8dfcd7192065f21273d02374dce299241616f/CHANGES#L16 *)
   Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s. destruct s; reflexivity. Qed.
 
+  Arguments Z.add _ _ : simpl never.
+
+  Lemma stmt_size_pos: forall s, stmt_size s > 0.
+  Proof.
+    induction s; simpl; try omega;
+    pose proof (Zlength_nonneg binds);
+    pose proof (Zlength_nonneg args);
+    pose proof max_ext_call_code_size_nonneg;
+    try omega.
+  Qed.
+
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt): set varname :=
     match s with
@@ -507,6 +521,7 @@ Module Import FlatImpSemanticsEquiv.
     FlatImp.Event := Empty_set;
     FlatImp.ext_spec action oldTrace newTrace outcome := False;
   |}.
+  reflexivity. Defined.
 
 End FlatImpSemanticsEquiv.
 
