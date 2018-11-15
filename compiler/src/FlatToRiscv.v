@@ -119,8 +119,6 @@ Module Import FlatToRiscv.
       (regToZ_unsigned a) mod 8 = 0 ->
       translate mode (ZToReg 8) a = Return a;
 
-    max_ext_call_code_size: Z;
-    max_ext_call_code_size_nonneg: 0 <= max_ext_call_code_size;
     compile_ext_call_length: forall binds f args,
         Zlength (compile_ext_call binds f args) <= max_ext_call_code_size;
 
@@ -196,8 +194,6 @@ Section FlatToRiscv1.
   Instance FlatImp_params: FlatImp.parameters := {|
     FlatImp.bopname_params := bopname_params;
     FlatImp.mword := mword;
-    FlatImp.max_ext_call_code_size := max_ext_call_code_size;
-    FlatImp.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
     FlatImp.Event := Event;
     FlatImp.varSet_Inst := map_domain_set;
     FlatImp.ext_spec := ext_spec;
@@ -300,23 +296,6 @@ Section FlatToRiscv1.
   Existing Instance eq_name_dec.
    *)
 
-  (* This phase assumes that register allocation has already been done on the FlatImp
-     level, and expects the following to hold: *)
-  Fixpoint valid_registers(s: stmt): Prop :=
-    match s with
-    | SLoad x a => valid_register x /\ valid_register a
-    | SStore a x => valid_register a /\ valid_register x
-    | SLit x _ => valid_register x
-    | SOp x _ y z => valid_register x /\ valid_register y /\ valid_register z
-    | SSet x y => valid_register x /\ valid_register y
-    | SIf c s1 s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
-    | SLoop s1 c s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
-    | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
-    | SSkip => True
-    | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
-    | SInteract binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
-    end.
-
   (* Set Printing Projections.
      Uncaught anomaly when stepping through proofs :(
      https://github.com/coq/coq/issues/6257 *)
@@ -334,6 +313,7 @@ Section FlatToRiscv1.
       pose proof (Zlength_nonneg args);
       specialize (compile_ext_call_length binds a args);
       pose proof max_ext_call_code_size_nonneg;
+      simpl in *.
       omega.
   Qed.
 
@@ -459,9 +439,6 @@ Section FlatToRiscv1.
     | |- ?G => let H := fresh in assert G as H by t; idtac "solved" G; exact H
     | |- ?G => idtac "did not solve" G
     end.
-
-  (* TODO is 2^9 really the best we can get? *)
-  Definition stmt_not_too_big(s: stmt): Prop := stmt_size s < 2 ^ 9.
 
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with

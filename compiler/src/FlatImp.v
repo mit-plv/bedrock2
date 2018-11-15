@@ -46,9 +46,6 @@ Module Import FlatImp.
     varMap_Inst: MapFunctions varname mword;
     funcMap_Inst: MapFunctions funcname (list varname * list varname * stmt);
 
-    max_ext_call_code_size: Z;
-    max_ext_call_code_size_nonneg: 0 <= max_ext_call_code_size;
-
     Event: Type;
 
     ext_spec:
@@ -320,36 +317,6 @@ Section FlatImp1.
 
   End WithEnv.
 
-  Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
-    match s with
-    | SLoad x a => 1
-    | SStore a v => 1
-    | SLit x v => 8
-    | SOp x op y z => 2
-    | SSet x y => 1
-    | SIf cond bThen bElse => 1 + (rec bThen) + (rec bElse)
-    | SLoop body1 cond body2 => 1 + (rec body1) + (rec body2)
-    | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
-    | SSkip => 1
-    | SCall binds f args => 1 + (Zlength binds + Zlength args)
-    | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size
-    end.
-
-  Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
-  (* TODO: in coq 8.9 it will be possible to state this lemma automatically: https://github.com/coq/coq/blob/91e8dfcd7192065f21273d02374dce299241616f/CHANGES#L16 *)
-  Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s. destruct s; reflexivity. Qed.
-
-  Arguments Z.add _ _ : simpl never.
-
-  Lemma stmt_size_pos: forall s, stmt_size s > 0.
-  Proof.
-    induction s; simpl; try omega;
-    pose proof (Zlength_nonneg binds);
-    pose proof (Zlength_nonneg args);
-    pose proof max_ext_call_code_size_nonneg;
-    try omega.
-  Qed.
-
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt): set varname :=
     match s with
@@ -517,11 +484,9 @@ Module Import FlatImpSemanticsEquiv.
   Existing Instance funcMap_Inst.
 
   Instance to_FlatImp_params(p: parameters): FlatImp.parameters := {|
-    FlatImp.max_ext_call_code_size := 0;
     FlatImp.Event := Empty_set;
     FlatImp.ext_spec action oldTrace newTrace outcome := False;
   |}.
-  reflexivity. Defined.
 
 End FlatImpSemanticsEquiv.
 

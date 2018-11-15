@@ -46,11 +46,9 @@ Inductive ext_spec: act -> list Empty_set -> list (word 32) ->
 
 Instance myFlatImpParams: FlatImp.parameters := {|
   FlatImp.bopname_params := myparams;
-  FlatImp.max_ext_call_code_size := 100;
   FlatImp.Event := Empty_set; (* no trace to keep track of external calls *)
   FlatImp.ext_spec := ext_spec;
 |}.
-abstract omega. Defined.
 
 Definition map_with_index{A B: Type}(f: A -> Z -> B)(l: list A): list B :=
   fst (List.fold_right (fun elem '(acc, i) => (f elem i :: acc, i-1)) (nil, Zlength l - 1) l).
