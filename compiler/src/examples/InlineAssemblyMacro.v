@@ -85,3 +85,20 @@ def test(addr, inp1, inp2):
     (r, garbage) = select(s, a, b, c)
     return r
  *)
+
+Definition _addr: varname := 1.
+Definition _inp1: varname := 2.
+Definition _inp2: varname := 3.
+Definition _a: varname := 4.
+Definition _b: varname := 5.
+Definition _c: varname := 6.
+Definition _r: varname := 7.
+Definition _garbage: varname := 8.
+Definition _s: varname := 9.
+
+Definition test: stmt :=
+  (SSeq (SLoad _s _addr)
+  (SSeq (SOp _a bopname.mul _inp1 _inp2)
+  (SSeq (SOp _b bopname.add _inp1 _inp2)
+  (SSeq (SOp _c bopname.sub _inp1 _inp2)
+        (SInteract [_r; _garbage] Select [_s; _a; _b; _c]))))).
