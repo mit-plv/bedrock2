@@ -627,42 +627,6 @@ Section FlatImp3.
   Lemma inductive_to_fixpoint_semantics_aux: forall env t l m s post,
       exec env s t m l post ->
       t = nil ->
-      exists fuel, exec env s t m l (fun t' m' l' => eval_stmt env fuel l m s = Some (l', m')).
-  Proof.
-    induction 1; intros; subst;
-      try destruct action;
-      try (specialize (IHexec eq_refl); destruct IHexec as [fuel IHexec]);
-      try solve [exists 1%nat; prove_exec];
-      try solve [exists (S fuel); prove_exec].
-
-    admit. admit.
-    {
-      exists (S fuel).
-      pose proof intersect_exec as P.
-      specialize P with (1 := H) (2 := IHexec).
-      eapply @ExSeq; [exact P|].
-      intros.
-      destruct H2 as [? ?].
-      simpl.
-      rewrite_match.
-(*
-      edestruct H1 as [fuel' Q]; eauto.
-      eauto.
-
-      clear H IHexec.
-      prove_exec.
-      eapply @ExIfThen; eauto.
-      simpl in *.
-      rewrite_match.
-      rewrite reg_eqb_ne by congruence.
-      exact IH.
-    }
-*)
-  Abort.
-
-  Lemma inductive_to_fixpoint_semantics_aux: forall env t l m s post,
-      exec env s t m l post ->
-      t = nil ->
       exec env s t m l (fun t' m' l' =>
         t' = nil /\
         post t' m' l' /\ (* <-- this one is just to get the induction work, maybe a
@@ -672,58 +636,54 @@ Section FlatImp3.
     induction 1; intros; subst;
       try destruct action;
       try specialize (IHexec eq_refl);
-      try solve [prove_exec; exists 1%nat; simpl; rewrite_match; reflexivity].
-
-    Focus 10.
-    eapply @ExSeq; [exact IHexec | ].
-    intros; simpl in *; destruct_products. subst.
-    specialize H1 with (1 := H2rl) (2 := eq_refl).
-    eapply weaken_exec; [exact H1|].
-    intros; simpl in *; destruct_products. subst.
-    repeat split; eauto.
-    exists (S (fuel + fuel0)).
-    simpl in *.
-    do 2 fuel_increasing_rewrite. reflexivity.
-
-  Admitted.
-
-
-
-(*
-  Lemma inductive_to_fixpoint_semantics_aux: forall env t l m s post,
-      exec env s t m l post ->
-      t = nil ->
-      exec env s t m l (fun t' m' l' => exists fuel, eval_stmt env fuel l m s = Some (l', m')).
-  Proof.
-    induction 1; intros; subst;
-      try destruct action;
-      try specialize (IHexec eq_refl);
-      try solve [prove_exec; exists 1%nat; simpl; rewrite_match; reflexivity].
-
-    - admit.
-    - eapply @ExIfThen; eauto.
-      eapply weaken_exec; [exact IHexec|].
-      intros. simpl in *.
-      destruct H2 as [fuel ?].
-      exists (S fuel).
-      prove_exec.
-    - eapply @ExIfElse; eauto.
-      eapply weaken_exec; [exact IHexec|].
-      intros. simpl in *.
-      destruct H1 as [fuel ?].
-      exists (S fuel).
-      prove_exec.
-    - eapply @ExLoop; [exact IHexec | intros; simpl in *..].
-      + admit.
-      + admit.
-      + admit.
+      try solve [prove_exec;
+                 repeat split; eauto;
+                 prove_exec;
+                 exists 1%nat; simpl; rewrite_match; reflexivity].
+    - eapply @ExCall.
+      4: eapply IHexec.
+      all: eauto.
+      intros; simpl in *; destruct_products; subst.
+      specialize H3 with (1 := H4rl).
+      destruct_products.
+      do 2 eexists; repeat split; eauto.
+      exists (S fuel); simpl.
+      rewrite_match.
+      reflexivity.
+    - eapply @ExIfThen; eauto. eapply weaken_exec; [exact IHexec|].
+      intros; simpl in *; destruct_products; subst.
+      repeat split; eauto.
+      exists (S fuel). simpl. prove_exec.
+    - eapply @ExIfElse; eauto. eapply weaken_exec; [exact IHexec|].
+      intros; simpl in *; destruct_products; subst.
+      repeat split; eauto.
+      exists (S fuel). simpl. prove_exec.
+    - eapply @ExLoop; eauto; intros; simpl in *; destruct_products; subst;
+        repeat split; eauto.
+      + intros. exists (S fuel); prove_exec.
+      + eapply weaken_exec; [eapply H3|]; eauto.
+        intros; simpl in *; destruct_products; subst;
+          repeat split; eauto.
+        destruct fuel0; simpl in *; [discriminate|].
+        destruct_one_match_hyp; [|discriminate].
+        exists (S (fuel + fuel0)). simpl.
+        fuel_increasing_rewrite.
+        rewrite_match.
+        rewrite reg_eqb_ne by congruence.
+        fuel_increasing_rewrite.
+        destruct p.
+        fuel_increasing_rewrite.
+        reflexivity.
     - eapply @ExSeq; [exact IHexec | ].
-      intros; simpl in *.
-
-
-
+      intros; simpl in *; destruct_products. subst.
+      specialize H1 with (1 := H2rl) (2 := eq_refl).
+      eapply weaken_exec; [exact H1|].
+      intros; simpl in *; destruct_products. subst.
+      repeat split; eauto.
+      exists (S (fuel + fuel0)).
+      simpl in *.
+      do 2 fuel_increasing_rewrite. reflexivity.
   Qed.
- *)
 
   (* note: only holds if there are no external calls with an empty result set
      (not the same as "no result set"/failure),
