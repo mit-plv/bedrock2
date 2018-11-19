@@ -32,7 +32,7 @@ End bool.
 Definition eqb (a b : byte) : bool :=
   let '(a7, (a6, (a5, (a4, (a3, (a2, (a1, a0))))))) := to_bits a in
   let '(b7, (b6, (b5, (b4, (b3, (b2, (b1, b0))))))) := to_bits b in
-  eqb a0 b1 && eqb a1 b1 && eqb a2 b2 && eqb a3 b3 &&
+  eqb a0 b0 && eqb a1 b1 && eqb a2 b2 && eqb a3 b3 &&
   eqb a4 b4 && eqb a5 b5 && eqb a6 b6 && eqb a7 b7.
 
 Require Import Coq.Numbers.BinNums Coq.ZArith.BinIntDef.
