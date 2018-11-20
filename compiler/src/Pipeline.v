@@ -221,9 +221,9 @@ Section Pipeline.
     assert (FlatToRiscv.stmt_not_too_big s) as N. {
       unfold FlatToRiscv.stmt_not_too_big.
       pose proof @flattenStmt_size as D1.
-      specialize D1 with (1 := E).
       clear -B D1.
-      apply Nat2Z.inj_le in D1.
+      (* specialize (D1 E).*)
+      (* apply Nat2Z.inj_le in D1. *)
       repeat (so fun hyporgoal => match hyporgoal with
       | context [ (2 ^ ?a)%Z ] => let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
       end).

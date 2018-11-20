@@ -158,13 +158,7 @@ Section FlattenExpr.
       apply flattenExpr_size in E1.
       simpl (length _).
       simpl (fst _).
-      forget (FlatImp.stmt_size _ _ s) as sz0.
-      forget (FlatImp.stmt_size _ _ s1) as sz1.
-      forget (length binds) as lb.
-      forget (length l0) as ll0.
-      forget (ExprImp.expr_size a) as sza.
-      forget (fold_right Nat.add 0 (List.map ExprImp.expr_size args)) as fr.
-      omega.
+      Lia.lia.
   Qed.
 
   Lemma flattenStmt_size: forall s s' ngs ngs',
