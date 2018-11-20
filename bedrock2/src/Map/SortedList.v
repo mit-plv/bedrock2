@@ -1,6 +1,7 @@
 Local Set Primitive Projections.
 Require Import bedrock2.Macros bedrock2.Map.
 Require Coq.Lists.List.
+Require Coq.Logic.Eqdep_dec.
 
 (* TODO: move me? *)
 Definition minimize_eq_proof{A: Type}(eq_dec: forall (x y: A), {x = y} + {x <> y}){x y: A}    (pf: x = y): x = y :=
@@ -10,6 +11,7 @@ Definition minimize_eq_proof{A: Type}(eq_dec: forall (x y: A), {x = y} + {x <> y
   end.
 
 Module Import parameters.
+  Local Set Primitive Projections.
   Class parameters := {
     key : Type;
     value : Type;
@@ -52,5 +54,11 @@ Section UnorderedList.
   |}.
 
   Global Instance map_ok : map.ok map. Admitted.
+  Lemma eq_value {x y : rep} : value x = value y -> x = y.
+  Proof.
+    cbv [value]; destruct x as [x px], y as [y py].
+    intro; subst y.
+    apply f_equal, Eqdep_dec.UIP_dec; decide equality.
+  Qed.
 End UnorderedList.
 Arguments map : clear implicits.

@@ -176,10 +176,7 @@ Proof.
         { repeat refine_ex. split.
           { exact eq_refl. }
           { split.
-            { (* local variables *)
-              subst l1.
-              reduce_locals_map.
-              exact eq_refl. }
+            { subst l1. eapply SortedList.eq_value; reduce_locals_map; exact eq_refl. }
             split.
             { exact eq_refl. }
             { exact eq_refl. } } }
@@ -197,7 +194,7 @@ Proof.
                    BasicC64Semantics.shiftWidth
                    bop_sru];
             rewrite (eq_refl 
-                     : Word.wordToNat (Word.wand (Word.ZToWord 64 1) (Word.NToWord 64 63)) = 1%nat); shelve_unifiable;
+                     : Word.wordToNat (Word.wand (Word.ZToWord 64 1) (Word.NToWord 64 (Npos 63))) = 1%nat); shelve_unifiable;
             eapply shiftr_decreases; eauto). }
         { intros; cbv [P_ Q_] in * |-; break_ex; break_and; subst_and_bind_all.
           refine_ex. refine_ex. refine_ex. split.
@@ -217,7 +214,7 @@ Proof.
         { repeat refine_ex. split.
           { exact eq_refl. }
           { split.
-            { exact eq_refl. }
+            { subst l1. eapply SortedList.eq_value; reduce_locals_map; exact eq_refl. }
             split.
             { exact eq_refl. }
             { exact eq_refl. } } }
@@ -235,7 +232,7 @@ Proof.
                    BasicC64Semantics.shiftWidth
                    bop_sru];
             rewrite (eq_refl 
-                     : Word.wordToNat (Word.wand (Word.ZToWord 64 1) (Word.NToWord 64 63)) = 1%nat); shelve_unifiable;
+                     : Word.wordToNat (Word.wand (Word.ZToWord 64 1) (Word.NToWord 64 (Npos 63))) = 1%nat); shelve_unifiable;
             eapply shiftr_decreases; eauto). }
         { intros; cbv [P_ Q_] in * |-; break_ex; break_and; subst_and_bind_all.
           repeat refine_ex. split.
@@ -262,8 +259,4 @@ Proof.
 
   Unshelve.
   eapply WeakestPreconditionProperties.Proper_call; cbv; intuition idtac.
-Time Defined. (* 1 minute *)
-
-Time Print ipow_ok. (* 3 minutes *)
-
-(* 262.75user 0.89system 4:31.68elapsed 97%CPU (0avgtext+0avgdata 2465616maxresident)k *)
+Defined.

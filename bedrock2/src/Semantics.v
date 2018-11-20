@@ -1,6 +1,7 @@
 Require Import bedrock2.Macros bedrock2.Notations bedrock2.Syntax bedrock2.Map.
 Require Import Coq.ZArith.BinIntDef.
 
+Local Set Primitive Projections.
 Class parameters := {
   syntax :> Syntax.parameters;
 

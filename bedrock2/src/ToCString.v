@@ -4,6 +4,7 @@ Require Import Coq.Numbers.BinNums.
 Require Import Coq.ZArith.BinIntDef.
 Require Import Coq.Strings.String.
 
+Local Set Primitive Projections.
 Class parameters := {
   syntax :> Syntax.parameters;
   varname_eqb : varname -> varname -> bool;

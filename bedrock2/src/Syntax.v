@@ -2,6 +2,7 @@ Require Import bedrock2.Macros.
 
 Require Import Coq.Numbers.BinNums.
   
+Local Set Primitive Projections.
 Class parameters := {
   varname : Set;
   funname : Set;
