@@ -28,6 +28,14 @@ Tactic Notation "tryabstract" tactic3(tac) :=
       then exact pf
       else eabstract exact_no_check pf);
   shelve_unifiable.
+Definition invert_Some {A} (x : option A) : match x with
+                                            | Some _ => A
+                                            | None => unit
+                                            end
+  := match x with
+     | Some x' => x'
+     | None => tt
+     end.
 
 
 Require Import bedrock2.Macros bedrock2.Syntax.
@@ -74,7 +82,7 @@ Definition spec_of_ipow := fun functions =>
 Ltac reduce_locals_map :=
 cbv [
     locals parameters
-    map.put map.get map.empty
+    map.put map.get map.empty map.putmany invert_Some
     SortedListString.map
     SortedList.parameters.key SortedList.parameters.value
     SortedList.parameters.key_eqb SortedList.parameters.key_ltb
@@ -89,7 +97,8 @@ cbv [
     andb orb
   ].
 
-Ltac bind_body_of_function f :=
+Ltac bind_body_of_function f_ :=
+  let f := eval cbv in f_ in
   let fname := open_constr:(_) in
   let fargs := open_constr:(_) in
   let frets := open_constr:(_) in
@@ -97,7 +106,7 @@ Ltac bind_body_of_function f :=
   let funif := open_constr:((fname, (fargs, frets, fbody))) in
   unify f funif;
   let G := lazymatch goal with |- ?G => G end in
-  let P := lazymatch eval pattern f in G with ?P _ => P end in
+  let P := lazymatch eval pattern f_ in G with ?P _ => P end in
   change (bindcmd fbody (fun c : cmd => P (fname, (fargs, frets, c))));
   cbv beta iota delta [bindcmd]; intros.
 
@@ -215,14 +224,12 @@ Ltac straightline :=
   | |- _ \/ False => left
   end.
 
-Lemma shiftr_decreases
-      (x1 : Word.word 64)
-      (n : Word.wzero 64 <> x1)
-  : (Word.wordToNat (Word.wrshift' x1 1) < Word.wordToNat x1)%nat.
-  SearchAbout Word.wrshift'.
-  cbv [Word.wrshift'].
-Admitted.
-Lemma word_test_true w : word_test w = true -> w <> Word.wzero 64. Admitted.
+Notation "locals! l variables! vs values! x .. y , p" :=
+  (fun l => ex (fun x => .. (ex (fun y =>
+    l = invert_Some (map.putmany vs (cons x .. (cons y nil) .. ) map.empty)
+    /\ p)) ..))
+  (at level 200, x binder, right associativity)
+  : type_scope.
 
 Set Printing Depth 999999.
 Local Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
@@ -244,26 +251,36 @@ Local Notation "'need!' x 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
    format "'need!'  x  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP")
   : type_scope.
 
+Lemma shiftr_decreases
+      (x1 : Word.word 64)
+      (n : Word.wzero 64 <> x1)
+  : (Word.wordToNat (Word.wrshift' x1 1) < Word.wordToNat x1)%nat.
+  SearchAbout Word.wrshift'.
+  cbv [Word.wrshift'].
+Admitted.
+Lemma word_test_true w : word_test w = true -> w <> Word.wzero 64. Admitted.
+
 Lemma ipow_ok : forall functions, spec_of_ipow (ipow::functions).
 Proof.
-  let ipow' := eval cbv in ipow in
-  change ipow with ipow';
-  bind_body_of_function ipow'.
-  cbv [spec_of_ipow]. intros x0 e0 t0 m0.
-  hnf. repeat straightline. exact eq_refl.
+  bind_body_of_function ipow; cbv [spec_of_ipow].
+  intros x0 e0 t0 m0; hnf.
+  repeat straightline. { exact eq_refl. }
 
-  let T := match type of l0 with ?T => T end in
-  set (P_ := fun v t m (l:T) =>
-            exists x e ret,
-              t = t0 /\ l = (map.put (map.put (map.put map.empty "x" x) "e" e) "ret" ret) /\ m = m0 /\ v = Word.wordToNat e);
-  set (Q_ := fun (v:nat) t m (l:T) =>
-            exists x e ret,
-              t = t0 /\ l = (map.put (map.put (map.put map.empty "x" x) "e" e) "ret" ret) /\ m = m0);
+  refine (let P_ := fun v t m => locals! l
+    variables! ["x";"e";"ret"]
+    values!      x   e   ret,
+    v = Word.wordToNat e /\ t = t0 /\ m = m0 in _).
+  refine (let Q_ := fun v t m => locals! l
+    variables! ["x";"e";"ret"]
+    values!      x   e   ret,
+    t = t0 /\ m = m0 in _).
   eapply TailRecursion.tailrec with (lt:=lt) (P:=P_) (Q:=Q_).
-  exact Wf_nat.lt_wf.
+
+  { exact Wf_nat.lt_wf. }
   { subst P_. repeat straightline. }
   { intros; cbv [P_ Q_] in * |-.
     repeat straightline; subst P_; subst Q_; repeat straightline.
+    (* measure decreases *)
     { cbn [interp_binop parameters] in *.
       eapply word_test_true in H.
       eapply shiftr_decreases. congruence. }
