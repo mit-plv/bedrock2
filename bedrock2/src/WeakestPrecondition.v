@@ -47,24 +47,24 @@ Section WeakestPrecondition.
 
   Section WithFunctions.
     Context (call : funname -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
+    Definition dexpr m l e v := expr m l e (eq v).
+    Definition dexprs m l es vs := list_map (expr m l) es (eq vs).
     Fixpoint cmd (c : cmd) (t : trace) (m : mem) (l : locals)
              (post : trace -> mem -> locals -> Prop) {struct c} : Prop :=
       (* give value of each pure expression when stating its subproof *)
-      let exprs m l es vs := list_map (expr m l) es (eq vs) in
-      let expr m l e v := expr m l e (eq v) in
       match c with
       | cmd.skip => post t m l
       | cmd.set x ev =>
-        bind_ex v <- expr m l ev;
+        bind_ex v <- dexpr m l ev;
         let l := map.put l x v in
         post t m l
       | cmd.store sz ea ev =>
-        bind_ex a <- expr m l ea;
-        bind_ex v <- expr m l ev;
+        bind_ex a <- dexpr m l ea;
+        bind_ex v <- dexpr m l ev;
         store sz m a v (fun m =>
         post t m l)
       | cmd.cond br ct cf =>
-        bind_ex v <- expr m l br;
+        bind_ex v <- dexpr m l br;
         (word_test v = true  -> cmd ct t m l post) /\
         (word_test v = false -> cmd cf t m l post)
       | cmd.seq c1 c2 =>
@@ -74,17 +74,17 @@ Section WeakestPrecondition.
         Coq.Init.Wf.well_founded lt /\
         (exists v, inv v t m l) /\
         (forall v t m l, inv v t m l ->
-          bind_ex b <- expr m l e;
+          bind_ex b <- dexpr m l e;
           (word_test b = true -> cmd c t m l (fun t' m l =>
             exists v', inv v' t' m l /\ (progress t' t \/ lt v' v))) /\
           (word_test b = false -> post t m l))
       | cmd.call binds fname arges =>
-        bind_ex args <- exprs m l arges;
+        bind_ex args <- dexprs m l arges;
         call fname t m args (fun t m rets =>
           bind_ex_Some l <- map.putmany binds rets l;
           post t m l)
       | cmd.interact binds action arges =>
-        bind_ex args <- exprs m l arges;
+        bind_ex args <- dexprs m l arges;
         let output := (m, action, args) in
         forall m rets (t := cons (output, (m, rets)) t),
           guarantee t /\
