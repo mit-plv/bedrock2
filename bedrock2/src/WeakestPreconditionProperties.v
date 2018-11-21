@@ -78,11 +78,11 @@ Section WeakestPrecondition.
         destruct H10 as (?&?&[|]); eexists; eauto.
       - intuition eauto. }
     { destruct H4 as (?&?&?). eexists. split.
-      eapply Proper_list_map; eauto; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
+      eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
       { eapply Proper_expr; eauto. }
       { eapply H2; eauto; firstorder eauto. } }
     { destruct H4 as (?&?&?). eexists. split.
-      eapply Proper_list_map; eauto; cbv [respectful pointwise_relation Basics.impl].
+      eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl].
       { eapply Proper_expr; eauto. }
       { eauto. }
       intros.
