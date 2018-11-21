@@ -28,7 +28,7 @@ Section RunsTo.
 
   Hint Resolve runsTo_trans.
 
-  Lemma runsToSatisfying_imp: forall (P Q : State -> Prop) initial,
+  Lemma runsTo_weaken: forall (P Q : State -> Prop) initial,
     runsTo initial P ->
     (forall final, P final -> Q final) ->
     runsTo initial Q.

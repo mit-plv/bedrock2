@@ -67,4 +67,21 @@ Section WithMap.
           destruct (dec (a=x)); eauto. }
   Qed.
 
+  Lemma putmany_extends: forall (ks: list K) (vs: list V) m1 m1' m2,
+      putmany ks vs m1 = Some m1' ->
+      extends m2 m1 ->
+      exists m2', putmany ks vs m2 = Some m2' /\ extends m2' m1'.
+  Proof.
+    induction ks; intros.
+    - destruct vs; simpl in H; [|discriminate].
+      inversion H. subst m1'. exists m2. simpl. auto.
+    - simpl in *. repeat (destruct_one_match_hyp; try discriminate).
+      inversion H. subst m1'. clear H.
+      specialize IHks with (1 := E) (2 := H0).
+      destruct IHks as (m2' & IH1 & IH2).
+      rewrite IH1.
+      eexists; split; [reflexivity|].
+      map_solver K V.
+  Qed.
+
 End WithMap.

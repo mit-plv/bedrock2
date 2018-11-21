@@ -69,12 +69,27 @@ Section RegisterFile.
     initialRegs := empty_map;
   |}.
 
+  (*
+  Inductive setManyRegs:
+    RegisterFile Register mword ->
+    list Register ->
+    list mword ->
+    RegisterFile Register mword -> Prop :=
+  | setManyRegsDone: forall rf,
+      setManyRegs rf nil nil rf
+  | setManyRegsStep: forall rf1 rf2 r rs v vs,
+      setManyRegs (setReg rf1 r v) rs vs rf2 ->
+      setManyRegs rf1 (r :: rs) (v :: vs) rf2.
+  *)
+
+  (*
   Fixpoint setManyRegs(rf: RegisterFile Register mword)
              (rnames: list Register)(vals: list mword): RegisterFile Register mword :=
     match rnames, vals with
     | x :: rnames, v :: vals => setReg (setManyRegs rf rnames vals) x v
     | _, _ => rf
     end.
+  *)
 
 End RegisterFile.
 
@@ -126,18 +141,22 @@ Module Import FlatToRiscv.
       (argvars resvars: list Register),
       insts = compile_ext_call resvars action argvars ->
       newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
+      Forall valid_register argvars ->
+      Forall valid_register resvars ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
       ext_spec action initialL.(getLog) (List.map (getReg (initialL.(getRegs))) argvars)
                outcome ->
       (forall newLog resvals,
           outcome newLog resvals ->
-          runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) {|
-            getRegs   := setManyRegs initialL.(getRegs) resvars resvals;
-            getPc     := newPc;
-            getNextPc := add newPc (ZToReg 4);
-            getMem    := initialL.(getMem);
-            getLog    := newLog;
-          |} post) ->
+          exists newRegs,
+            putmany resvars resvals initialL.(getRegs) = Some newRegs /\
+            runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) {|
+              getRegs   := newRegs;
+              getPc     := newPc;
+              getNextPc := add newPc (ZToReg 4);
+              getMem    := initialL.(getMem);
+              getLog    := newLog;
+            |} post) ->
       runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) initialL post;
   }.
 
@@ -1449,7 +1468,7 @@ Section FlatToRiscv1.
 
     - (* SInteract *)
       simpl in *; destruct_everything.
-      eapply compile_ext_call_correct; try sidecondition; simpl.
+      eapply compile_ext_call_correct; try sidecondition; try assumption; simpl.
       + match goal with
         | |- ext_spec _ _ ?A _ => replace A with argvals; [eassumption|]
         end.
@@ -1460,6 +1479,11 @@ Section FlatToRiscv1.
         | H: _ |- _ => specialize H with (1 := OC); move H at bottom
         end.
         destruct_everything.
+        pose proof @putmany_extends as P.
+        specialize P with (2 := H1l) (3 := H7).
+        specialize (P _).
+        destruct P as (newRegs & E & Ext).
+        eexists; split; [eassumption|].
         match goal with
         | H: _ |- _ => eapply H (* there's only one "... -> runsTo _ finalPostL" *)
         end;
@@ -1472,8 +1496,6 @@ Section FlatToRiscv1.
             | solve [solve_containsProgram]
             | solve_word_eq
             | idtac ].
-        clear -H7 H1l.
-        admit. (* should hold *)
 
     - (* SLoad *)
       simpl in *; destruct_everything.
