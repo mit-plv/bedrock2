@@ -23,9 +23,20 @@ Section FlatImp1.
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  (*Ltac state_calc := state_calc_generic var mword.*)
+  Inductive bbinop: Set :=
+    | BEq
+    | BNe
+    | BLt
+    | BGe
+    | BLtu
+    | BGeu.
 
   Inductive bcond: Set :=
+    | CondBinary (op: bbinop) (x y: var)
+    | CondNez (x: var)
+  .
+
+  (*Inductive bcond: Set :=
     | CondBeq(x y: var) : bcond
     | CondBne(x y: var) : bcond
     | CondBlt(x y: var) : bcond
@@ -36,6 +47,7 @@ Section FlatImp1.
     | CondTrue          : bcond
     | CondFalse         : bcond
     .
+  *)
 
   Inductive stmt: Set :=
     | SLoad(x: var)(a: var): stmt
@@ -56,7 +68,23 @@ Section FlatImp1.
 
     Definition eval_bcond(st:state)(cond: bcond): option bool :=
       match cond with
-      | CondBeq x y =>
+      | CondBinary op x y =>
+          mx <- get st x;
+          my <- get st y;
+          match op with
+          | BEq  => Return (reg_eqb mx my)
+          | BNe  => Return (negb (reg_eqb mx my))
+          | BLt  => Return (signed_less_than mx my)
+          | BGe  => Return (signed_less_than my mx || reg_eqb my mx)
+          | BLtu => Return (ltu mx my)
+          | BGeu => Return (ltu my mx || reg_eqb my mx)
+          end
+      | CondNez x =>
+          mx <- get st x;
+          Return (negb (reg_eqb mx (ZToReg 0)))
+      end.
+
+      (*| CondBeq x y =>
           mx <- get st x;
           my <- get st y;
           Return (reg_eqb mx my)
@@ -88,6 +116,7 @@ Section FlatImp1.
       | CondFalse =>
           Return false
       end.
+*)
       
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
@@ -114,7 +143,7 @@ Section FlatImp1.
             v <- get st y;
             Return (put st x v, m)
         | SIf cond bThen bElse =>
-            (* TODO: annoying Coq can't infer type stuff *)
+            (* Coq can not infer the type of vcond using the bind notation. *)
             Bind (eval_bcond st cond) (fun vcond: bool => 
                   eval_stmt f st m (if vcond then bThen else bElse))
 (*
@@ -201,18 +230,15 @@ Section FlatImp1.
     Lemma invert_eval_SIf: forall fuel cond bThen bElse initialSt initialM final,
       eval_stmt (S fuel) initialSt initialM (SIf cond bThen bElse) = Some final ->
       exists vcond,
-        (*get initialSt cond = Some vcond /\*)
         eval_bcond initialSt cond = Some vcond /\
-        (vcond = true /\ eval_stmt fuel initialSt initialM bThen = Some final \/
+        (vcond = true  /\ eval_stmt fuel initialSt initialM bThen = Some final \/
          vcond = false /\ eval_stmt fuel initialSt initialM bElse = Some final).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SLoop: forall fuel st1 m1 body1 cond body2 p4,
       eval_stmt (S fuel) st1 m1 (SLoop body1 cond body2) = Some p4 ->
-      (*eval_stmt fuel st1 m1 body1 = Some p4 /\ get (fst p4) cond = Some (ZToReg 0) \/*)
-      eval_stmt fuel st1 m1 body1 = Some p4 /\ eval_bcond (fst p4) cond = Some false \/
+      (eval_stmt fuel st1 m1 body1 = Some p4 /\ eval_bcond (fst p4) cond = Some false) \/
       exists st2 m2 st3 m3, eval_stmt fuel st1 m1 body1 = Some (st2, m2) /\
-                            (*get st2 cond = Some cv /\ cv <> ZToReg 0 /\*)
                             eval_bcond st2 cond = Some true /\
                             eval_stmt fuel st2 m2 body2 = Some (st3, m3) /\
                             eval_stmt fuel st3 m3 (SLoop body1 cond body2) = Some p4.
@@ -280,7 +306,12 @@ Section FlatImp1.
 
   Definition accessedVarsBcond(cond: bcond) : vars :=
     match cond with
-    | CondBeq x y
+    | CondBinary _ x y =>
+        union (singleton_set x) (singleton_set y)
+    | CondNez x =>
+        singleton_set x
+    end.
+(*    | CondBeq x y
     | CondBne x y
     | CondBlt x y
     | CondBge x y
@@ -292,6 +323,7 @@ Section FlatImp1.
     | CondTrue | CondFalse =>
         empty_set
     end.
+*)
 
   Fixpoint accessedVars(s: stmt): vars :=
     match s with
@@ -357,6 +389,8 @@ Arguments SLoop   {_} {_}.
 Arguments SSeq    {_} {_}.
 Arguments SSkip   {_} {_}.
 Arguments SCall   {_} {_}.
+Arguments CondBinary  {_}.
+Arguments CondNez     {_}.
 
 Section FlatImp2.
 

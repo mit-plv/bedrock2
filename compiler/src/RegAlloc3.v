@@ -76,6 +76,12 @@ Section Live.
 
   Definition live_bcond(cond: bcond var) : vars :=
     match cond with
+    | CondBinary _ x y =>
+        union (singleton_set x) (singleton_set y)
+    | CondNez x =>
+        singleton_set x
+    end.
+(* 
     | CondBeq _ x y
     | CondBne _ x y
     | CondBlt _ x y
@@ -88,6 +94,7 @@ Section Live.
     | CondTrue _ | CondFalse _ =>
         empty_set
     end.
+*)
 
   (* set of variables which is live before executing s *)
   Fixpoint live(s: stmt): vars :=
@@ -356,6 +363,18 @@ Section RegAlloc.
   Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar) 
     : option (bcond impvar) :=
     match cond with
+    | CondBinary op x y =>
+        bind_opt x' <- reverse_get m x;
+        bind_opt y' <- reverse_get m y;
+        Some (CondBinary op x' y')
+    | CondNez x =>
+        bind_opt x' <- reverse_get m x;
+        Some (CondNez x')
+    end.
+  (*
+  Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar) 
+    : option (bcond impvar) :=
+    match cond with
     | CondBeq _ x y =>
         bind_opt x' <- reverse_get m x;
         bind_opt y' <- reverse_get m y;
@@ -388,7 +407,7 @@ Section RegAlloc.
     | CondFalse _ =>
         Some (CondFalse impvar)
     end.
-
+  *)
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=

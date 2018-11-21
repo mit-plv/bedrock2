@@ -120,6 +120,12 @@ Section Live.
 
   Definition liveVarsBcond(cond: bcond) : vars :=
     match cond with
+    | CondBinary _ x y =>
+        union (singleton_set x) (singleton_set y)
+    | CondNez x =>
+        singleton_set x
+    end.
+(*
     | CondBeq _ x y
     | CondBne _ x y
     | CondBlt _ x y
@@ -132,6 +138,7 @@ Section Live.
     | CondTrue _ | CondFalse _ =>
         empty_set
     end.
+*)
 
   (* set of variables which is live before executing s *)
   Fixpoint live(s: stmt): vars :=
@@ -622,6 +629,12 @@ and since we never change a var->register assignment after we made a decision, w
 
   Definition apply_alloc_bcond (m: var -> register) (cond: bcond var): (bcond register) :=
     match cond with
+    | CondBinary op x y =>
+        CondBinary op (m x) (m y)
+    | CondNez x => 
+        CondNez (m x)
+    end.
+  (*
     | CondBeq _ x y => CondBeq register (m x) (m y)
     | CondBne _ x y => CondBne register (m x) (m y)
     | CondBlt _ x y => CondBlt register (m x) (m y)
@@ -632,6 +645,7 @@ and since we never change a var->register assignment after we made a decision, w
     | CondTrue _ => CondTrue register 
     | CondFalse _ => CondFalse register 
     end.
+  *)
 
   Definition apply_alloc(m: var -> register): stmt -> stmt' :=
     fix rec(s: stmt) :=

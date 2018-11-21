@@ -496,6 +496,16 @@ Section RegAlloc.
   Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar) 
     : option (bcond impvar) :=
     match cond with
+    | CondBinary op x y =>
+        bind_opt x' <- reverse_get m x;
+        bind_opt y' <- reverse_get m y;
+        Some (CondBinary op x' y')
+    | CondNez x =>
+        bind_opt x' <- reverse_get m x;
+        Some (CondNez x')
+    end.
+    
+(*
     | CondBeq _ x y =>
         bind_opt x' <- reverse_get m x;
         bind_opt y' <- reverse_get m y;
@@ -528,6 +538,7 @@ Section RegAlloc.
     | CondFalse _ =>
         Some (CondFalse impvar)
     end.
+*)
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=

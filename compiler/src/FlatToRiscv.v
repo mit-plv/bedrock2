@@ -300,7 +300,7 @@ Section FlatToRiscv.
     | CondBgeu _ x y => valid_register x /\ valid_register y
     | CondBnez _ x => valid_register x
     | CondTrue _ => True
-    | CondFalse _ => False
+    | CondFalse _ => True
     end.
 
   Fixpoint valid_registers(s: stmt): Prop :=
