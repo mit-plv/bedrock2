@@ -116,20 +116,7 @@ Ltac unfold1_wp_cmd e :=
   lazymatch e with
     @cmd ?params ?R ?G ?PR ?CA ?c ?t ?m ?l ?post =>
     let c := eval hnf in c in
-    let F := constr:(@cmd params R G PR CA) in
-    let f := eval cbv beta delta [cmd] in F in
-    lazymatch f with
-    | fix rf rc rt rm rl rpost {struct rc} := ?body =>
-      let e := constr:(subst! F for rf in
-                       subst! c for rc in
-                       subst! t for rt in
-                       subst! m for rm in
-                       subst! l for rl in
-                       subst! post for rpost in
-                       body) in
-      let e := eval cbv beta iota in e in
-      e
-    end
+    constr:(@cmd_body params R G PR CA (@cmd params R G PR CA) c t m l post)
   end.
 Ltac unfold1_wp_cmd_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -140,17 +127,7 @@ Ltac unfold1_wp_expr e :=
   lazymatch e with
     @expr ?params ?m ?l ?arg ?post =>
     let arg := eval hnf in arg in
-    let F := constr:(@expr params m l) in
-    let f := eval cbv beta delta [expr] in F in
-    lazymatch f with
-    | fix rf rarg rpost {struct rarg} := ?body =>
-      let e := constr:(subst! F for rf in
-                       subst! arg for rarg  in
-                       subst! post for rpost  in
-                       body) in
-      let e := eval cbv beta iota in e in
-      e
-    end
+    constr:(@expr_body params m l (@expr params m l) arg post)
   end.
 Ltac unfold1_wp_expr_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -161,17 +138,7 @@ Ltac unfold1_list_map e :=
   lazymatch e with
     @list_map ?A ?B ?P ?arg ?post =>
     let arg := eval hnf in arg in
-    let F := constr:(@list_map A B P) in
-    let f := eval cbv beta delta [list_map] in F in
-    lazymatch f with
-    | fix rf rarg rpost {struct rarg} := ?body =>
-      let e := constr:(subst! F for rf in
-                       subst! arg for rarg  in
-                       subst! post for rpost  in
-                       body) in
-      let e := eval cbv beta iota in e in
-      e
-    end
+    constr:(@list_map_body A B P (@list_map A B P) arg post)
   end.
 Ltac unfold1_list_map_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -183,7 +150,7 @@ Ltac straightline :=
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
   | x := ?y |- ?G => is_var y; subst x
-  | _ => progress cbv beta in *
+  | _ => progress cbv iota beta in *
   | H: exists _, _ |- _ => destruct H
   | H: _ /\ _ |- _ => destruct H
   | H: ?x = ?v |- _ =>
@@ -197,10 +164,10 @@ Ltac straightline :=
   | |- @cmd _ _ _ _ _ ?c _ _ _ ?post =>
     let c := eval hnf in c in
     assert_fails (idtac; lazymatch c with cmd.while _ _ => idtac end);
-    unfold1_wp_cmd_goal
-  | |- @list_map _ _ (@get _ _) _ _ => unfold1_list_map_goal
-  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal
-  | |- @expr _ _ _ _ _ => unfold1_wp_expr_goal
+    unfold1_wp_cmd_goal; cbv beta match delta [cmd_body]
+  | |- @list_map _ _ (@get _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @expr _ _ _ _ _ => unfold1_wp_expr_goal; cbv beta match delta [expr_body]
   | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr] (* TODO: eabstract (repeat straightline) *)
   | |- @literal _ _ _ => cbv beta delta [literal]
   | |- @get _ _ _ _ => cbv beta delta [get]
@@ -290,7 +257,7 @@ Proof.
   }
 
   subst Q_; repeat straightline.
-  unfold1_list_map_goal; repeat straightline.
+  unfold1_list_map_goal; cbv beta iota delta [list_map_body]; repeat straightline.
   exact eq_refl.
 
   Unshelve.
