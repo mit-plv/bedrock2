@@ -137,7 +137,7 @@ Module Import FlatToRiscv.
     compile_ext_call_length: forall binds f args,
         Zlength (compile_ext_call binds f args) <= max_ext_call_code_size;
 
-    compile_ext_call_correct: forall initialL action outcome post newPc insts
+    compile_ext_call_correct: forall initialL action outcome newPc insts
       (argvars resvars: list Register),
       insts = compile_ext_call resvars action argvars ->
       newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
@@ -146,18 +146,14 @@ Module Import FlatToRiscv.
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
       ext_spec action initialL.(getLog) (List.map (getReg (initialL.(getRegs))) argvars)
                outcome ->
-      (forall newLog resvals,
-          outcome newLog resvals ->
-          exists newRegs,
-            putmany resvars resvals initialL.(getRegs) = Some newRegs /\
-            runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) {|
-              getRegs   := newRegs;
-              getPc     := newPc;
-              getNextPc := add newPc (ZToReg 4);
-              getMem    := initialL.(getMem);
-              getLog    := newLog;
-            |} post) ->
-      runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) initialL post;
+      runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) initialL
+             (fun finalL =>
+                exists resvals,
+                  outcome finalL.(getLog) resvals /\
+                  putmany resvars resvals (getRegs initialL) = Some finalL.(getRegs) /\
+                  finalL.(getPc) = newPc /\
+                  finalL.(getNextPc) = add newPc (ZToReg 4) /\
+                  finalL.(getMem) = getMem initialL);
   }.
 
   Existing Instance MachineWidth_Inst.
@@ -507,10 +503,6 @@ Section FlatToRiscv1.
 
   Arguments Z.modulo : simpl never.
 
-  Lemma pc_is_never_in_MMIO: forall (initialL: RiscvMachineL),
-      isMMIOAddr initialL.(getPc) = false.
-  Admitted.
-
   Hint Unfold
        Program.getRegister
        Program.setRegister
@@ -525,7 +517,6 @@ Section FlatToRiscv1.
        Program.getPC
        Program.setPC
        Program.step
-       Program.isMMIOAddr
        Program.raiseException
     : unf_Program_methods.
 
@@ -579,7 +570,7 @@ Section FlatToRiscv1.
 
   Lemma go_loadWord: forall initialL addr (f: word 32 -> M unit)
                             (post: RiscvMachineL -> Prop),
-      isMMIOAddr addr = false ->
+      (* isMMIOAddr addr = false -> !! *)
       mcomp_sat (f (Memory.loadWord initialL.(getMem) addr))
                             initialL post ->
       mcomp_sat (Bind (Program.loadWord addr) f)
@@ -587,7 +578,7 @@ Section FlatToRiscv1.
   Proof. Admitted.
 
   Lemma go_storeWord: forall initialL addr v post (f: unit -> M unit),
-      isMMIOAddr addr = false ->
+      (* isMMIOAddr addr = false -> !! *)
       mcomp_sat (f tt)
                 (setMem initialL (Memory.storeWord initialL.(getMem) addr v))
                 post ->
@@ -652,7 +643,7 @@ Section FlatToRiscv1.
     intros. subst *.
     unfold run1. unfold Run.run1.
     apply go_getPC.
-    apply go_loadWord; [apply pc_is_never_in_MMIO|].
+    apply go_loadWord.
     unfold containsProgram in H0. apply proj2 in H0.
     specialize (H0 0 _ eq_refl). subst inst.
     unfold ldInst in *.
@@ -1436,7 +1427,7 @@ Section FlatToRiscv1.
     forall allInsts s t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
     forall imemStart instsBefore instsAfter
-           initialRegsL initialPc initialNextPc initialML finalPostL insts,
+           initialRegsL initialPc initialNextPc initialML insts,
     compile_stmt s = insts ->
     allInsts = instsBefore ++ insts ++ instsAfter ->
     stmt_not_too_big s ->
@@ -1448,16 +1439,15 @@ Section FlatToRiscv1.
     initialPc = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
     initialNextPc = add initialPc (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
-    (forall new_t newRegsH newMH newRegsL newPc newNextPc newML,
-        postH new_t newMH newRegsH ->
-        extends newRegsL newRegsH ->
-        containsMem newML newMH ->
-        containsProgram newML allInsts imemStart ->
-        newPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) ->
-        newNextPc = add newPc (ZToReg 4) ->
-        runsTo (mkRiscvMachine newRegsL newPc newNextPc newML new_t) finalPostL) ->
-    runsTo (mkRiscvMachine initialRegsL initialPc initialNextPc initialML t)
-           finalPostL.
+    runsTo (mkRiscvMachine initialRegsL initialPc (add initialPc (ZToReg 4)) initialML t)
+     (fun '(mkRiscvMachine finalRegsL   finalPc   finalNextPc                finalML   t') =>
+        exists finalRegsH finalMH,
+          postH t' finalMH finalRegsH /\
+          extends finalRegsL finalRegsH /\
+          containsMem finalML finalMH /\
+          containsProgram finalML allInsts imemStart /\
+          finalPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalNextPc = add finalPc (ZToReg 4)).
   Proof.
     induction 1; intros;
       repeat match goal with
@@ -1468,35 +1458,25 @@ Section FlatToRiscv1.
 
     - (* SInteract *)
       simpl in *; destruct_everything.
-      eapply compile_ext_call_correct; try sidecondition; try assumption; simpl.
-      + match goal with
+      eapply runsTo_weaken.
+      + eapply compile_ext_call_correct; try sidecondition; try assumption; simpl.
+        match goal with
         | |- ext_spec _ _ ?A _ => replace A with argvals; [eassumption|]
         end.
         clear -H H7.
         admit. (* should hold *)
-      + intros newEvents resvals OC.
+      + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
+        destruct_products. subst.
         match goal with
-        | H: _ |- _ => specialize H with (1 := OC); move H at bottom
+        | H: _, OC: outcome _ _ |- _ => specialize H with (1 := OC); move H at bottom
         end.
         destruct_everything.
-        pose proof @putmany_extends as P.
-        specialize P with (2 := H1l) (3 := H7).
-        specialize (P _).
-        destruct P as (newRegs & E & Ext).
-        eexists; split; [eassumption|].
-        match goal with
-        | H: _ |- _ => eapply H (* there's only one "... -> runsTo _ finalPostL" *)
-        end;
-          first
-            [ eassumption
-            | eapply containsMem_write; eassumption
-            | match goal with
-              | |- extends _ _ => solve [state_calc]
-              end
-            | solve [solve_containsProgram]
-            | solve_word_eq
-            | idtac ].
-
+        do 2 eexists; split; [eassumption|].
+        repeat match goal with
+               | |- _ /\ _ => split
+               end; try sidecondition; try solve_word_eq.
+        eapply putmany_extends; eassumption.
+(*
     - (* SLoad *)
       simpl in *; destruct_everything.
       eapply runsToStep; simpl in *; subst *.
@@ -1585,7 +1565,6 @@ Section FlatToRiscv1.
         run1step.
         run1done.
 
-        (*
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
       run1step.
@@ -1663,9 +1642,11 @@ Section FlatToRiscv1.
   Proof.
     intros.
     eapply compile_stmt_correct_aux; (eassumption || reflexivity || idtac).
+(*
     intros. subst.
     apply runsToDone.
     eauto 10.
+*)
   Qed.
 
   (* TODO move to deterministic-specific file

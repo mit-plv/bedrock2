@@ -130,6 +130,47 @@ Definition compile_ext_call(results: list var)(a: MMIOAction)(args: list var):
     end
   end.
 
+Instance compilation_params: FlatToRiscvDef.parameters := {|
+  FlatToRiscvDef.actname := MMIOAction;
+  FlatToRiscvDef.LwXLEN := Lw;
+  FlatToRiscvDef.SwXLEN := Sw;
+  FlatToRiscvDef.compile_ext_call := compile_ext_call;
+  FlatToRiscvDef.max_ext_call_code_size := 1;
+|}. abstract omega. Defined.
+
+(*
+Lemma compile_ext_call_correct: forall initialL action outcome newPc insts
+    (argvars resvars: list Register),
+  insts = FlatToRiscvDef.compile_ext_call resvars action argvars ->
+  newPc = add (getPc initialL) (ZToReg (4 * Zlength insts)) ->
+  Forall valid_register argvars ->
+  Forall valid_register resvars ->
+  containsProgram.containsProgram (getMem initialL) insts (getPc initialL) ->
+  ext_spec action (getLog initialL) (List.map (getReg (getRegs initialL)) argvars) outcome ->
+  runsTo (RiscvMachine Register (word 32) (MMIOEvent (word 32))) (mcomp_sat Run.run1) initialL
+         (fun finalL =>
+            forall newLog resvals, outcome newLog resvals ->
+              putmany resvars resvals (getRegs initialL) = Some finalL.(getRegs) /\
+              finalL.(getPc) = newPc /\
+              finalL.(getNextPc) = add newPc (ZToReg 4) /\
+              finalL.(getMem) = getMem initialL /\
+              finalL.(getLog) = newLog).
+
+            postH
+  (forall (newLog : list (MMIOEvent (word 32))) (resvals : list (word 32)),
+   outcome newLog resvals ->
+   exists newRegs : map Register (word 32),
+     putmany resvars resvals (getRegs initialL) = Some newRegs /\
+     runsTo (RiscvMachine Register (word 32) (MMIOEvent (word 32)))
+       (mcomp_sat Run.run1)
+       {|
+       getRegs := newRegs;
+       getPc := newPc;
+       getNextPc := add newPc (ZToReg 4);
+       getMem := getMem initialL;
+       getLog := newLog |} post) ->
+*)
+
 Definition magicMMIOAddrLit: Z := 65524.
 
 (*
@@ -152,14 +193,6 @@ Definition squarer: stmt :=
                _i
                (SSeq (SOp _s bopname.mul _i _i)
                      (SStore _addr _s)))).
-
-Instance compilation_params: FlatToRiscvDef.parameters := {|
-  FlatToRiscvDef.actname := MMIOAction;
-  FlatToRiscvDef.LwXLEN := Lw;
-  FlatToRiscvDef.SwXLEN := Sw;
-  FlatToRiscvDef.compile_ext_call := compile_ext_call;
-  FlatToRiscvDef.max_ext_call_code_size := 1;
-|}. abstract omega. Defined.
 
 Definition compiled: list Instruction := Eval cbv in compile_stmt squarer.
 
