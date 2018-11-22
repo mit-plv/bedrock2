@@ -109,7 +109,7 @@ Section FlattenExpr.
         let '(s1', ngs') := flattenStmt ngs s1 in
         let '(s2', ngs'') := flattenStmt ngs' s2 in
         (FlatImp.SSeq s1' s2', ngs'')
-    | Syntax.cmd.skip => (FlatImp.SSkip, ngs)
+    | Syntax.cmd.skip | Syntax.cmd.unset _ => (FlatImp.SSkip, ngs)
     | Syntax.cmd.call binds f args => flattenCall ngs binds f args
     | Syntax.cmd.interact _ _ _ => (FlatImp.SSkip, ngs) (* unsupported *)
     end.
@@ -453,6 +453,11 @@ Section FlattenExpr.
       + clear IHfuelH.
         pose_flatten_var_ineqs.
         state_calc.
+    - simpl in F. inversions F. destruct_pair_eqs.
+      exists 1%nat initialL. split. solve [auto]. subst.
+      { cbv [extends]. intros k v. rewrite get_remove_key.
+        destruct_one_match; try discriminate; []. auto. }
+      SearchAbout remove_key.
     - repeat (inversionss; try destruct_one_match_hyp).
       match goal with
       | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>

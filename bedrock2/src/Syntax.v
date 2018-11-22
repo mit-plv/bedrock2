@@ -25,6 +25,7 @@ Module cmd. Section cmd.
   Inductive cmd :=
   | skip
   | set (lhs : varname) (rhs : expr)
+  | unset (lhs : varname)
   | store (size_in_bytes : Z) (address : expr) (value : expr)
   | cond (condition : expr) (nonzero_branch zero_branch : cmd)
   | seq (s1 s2: cmd)

@@ -9,7 +9,8 @@ Class parameters := {
 
 Section UnorderedList.
   Context {p : unique! parameters}.
-  Local Definition put m (k:key) (v:value) := (cons (k, v) (List.filter (fun p => negb (key_eqb k (fst p))) m)).
+  Local Definition remove (m:list(key*value)) k := List.filter (fun p => negb (key_eqb k (fst p))) m.
+  Local Definition put m (k:key) (v:value) := cons (k, v) (remove m k).
   Instance map : map key value := {|
     map.rep := list (key * value);
     map.empty := nil;
@@ -18,6 +19,7 @@ Section UnorderedList.
                    | None => None
                    end;
     map.put := put;
+    map.remove := remove;
     map.union := List.fold_right (fun '(k, v) m => put m k v)
   |}.
 End UnorderedList.

@@ -50,9 +50,11 @@ Local Coercion var (x : string) : expr := expr.var x.
 Definition ipow := ("ipow", (["x";"e"], (["ret"]:list varname), bedrock_func_body:(
   "ret" = 1;;
   while ("e") {{
-    if ("e" .& 1) {{ "ret" = "ret" * "x" }};;
+    "t" = "e" .& 1;;
+    if ("t") {{ "ret" = "ret" * "x" }};;
     "e" = "e" >> 1;;
-    "x" = "x" * "x"
+    "x" = "x" * "x";;
+    cmd.unset "t"
   }}
 ))).
 
