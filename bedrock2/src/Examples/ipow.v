@@ -191,7 +191,7 @@ Ltac straightline :=
   | |- _ \/ False => left
   end.
 
-Notation "locals! l variables! vs values! x .. y , p" :=
+Notation "'letlocals' x .. y := vs 'in' p" :=
   (fun l => ex (fun x => .. (ex (fun y =>
     l = invert_Some (map.putmany vs (cons x .. (cons y nil) .. ) map.empty)
     /\ p)) ..))
@@ -233,14 +233,10 @@ Proof.
   intros x0 e0 t0 m0; hnf.
   repeat straightline. { exact eq_refl. }
 
-  refine (let P_ := fun v t m => locals! l
-    variables! ["x";"e";"ret"]
-    values!      x   e   ret,
-    v = Word.wordToNat e /\ t = t0 /\ m = m0 in _).
-  refine (let Q_ := fun v t m => locals! l
-    variables! ["x";"e";"ret"]
-    values!      x   e   ret,
-    t = t0 /\ m = m0 in _).
+  refine (let P_ := fun v t m =>
+    letlocals x e ret := ["x"; "e"; "ret"] in v = Word.wordToNat e /\ t = t0 /\ m = m0 in _).
+  refine (let Q_ := fun v t m =>
+    letlocals x e ret := ["x";"e";"ret"] in t = t0 /\ m = m0 in _).
   eapply TailRecursion.tailrec with (lt:=lt) (P:=P_) (Q:=Q_).
 
   { exact Wf_nat.lt_wf. }
@@ -256,7 +252,7 @@ Proof.
       eapply shiftr_decreases. congruence. }
   }
 
-  subst Q_; repeat straightline.
+  subst Q_. repeat straightline.
   unfold1_list_map_goal; cbv beta iota delta [list_map_body]; repeat straightline.
   exact eq_refl.
 
