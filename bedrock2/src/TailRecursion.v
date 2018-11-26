@@ -1,5 +1,6 @@
+Require Import bedrock2.PrimitivePair bedrock2.HList.
 Require Import Coq.Classes.Morphisms.
-From bedrock2 Require Import Macros Syntax Semantics.
+From bedrock2 Require Import Macros Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 From bedrock2 Require Import Map Map.Separation Map.SeparationLogic.
 
@@ -8,94 +9,122 @@ Section TailRecrsion.
     {p : unique! Semantics.parameters}
     {rely guarantee : trace -> Prop}
     {progress : trace -> trace -> Prop}
-    {call : funname -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop}
-    {Proper_call : Proper (pointwise_relation _ (pointwise_relation _
-      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _
-      (pointwise_relation _ (pointwise_relation _ Basics.impl)) ==>
-      Basics.impl)))))%signature call}.
+    {functions : list (funname * (list varname * list varname * Syntax.cmd))}.
+  Let call := WeakestPrecondition.call rely guarantee progress functions.
 
+  Local Notation "A /\ B" := (Markers.split (A /\ B)).
+  Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
+
+  Definition reconstruct (variables:list varname) (values:tuple word (length variables)) : locals :=
+    match map.putmany variables (tuple.to_list values) map.empty with
+    | None => map.empty (* never happens by input types *)
+    | Some x => x
+    end.
+  Fixpoint gather (variables : list varname) (l : locals) : option (locals *  tuple word (length variables)) :=
+    match variables with
+    | nil => Some (l, tt)
+    | cons x xs' =>
+      match map.get l x with
+      | None => None
+      | Some v =>
+        match gather xs' (map.remove l x) with
+        | None => None
+        | Some (l, vs') => Some (l, (pair.mk v vs'))
+        end
+      end
+    end.
+  Definition enforce (variables : list varname) (values:tuple word (length variables)) (l:locals) : Prop :=
+    match gather variables l with
+    | None => False
+    | Some (remaining, r) => values = r /\ remaining = map.empty
+    end.
+  Lemma reconstruct_enforce : forall variables ll lm, enforce variables ll lm -> lm = reconstruct variables ll.
+  Admitted.
+
+  Import pair.
   Lemma tailrec
-    e c t (m : mem) l (post : _->_->_-> Prop)
-    {measure : Type} (P Q:_->_->_->_->Prop) lt (Hwf : well_founded lt) (v0 : measure)
-    (Hpre : P v0 t m l)
-    (Hbody : forall v t m l, P v t m l ->
+    {e c t localsmap} {m : mem}
+    (ghosttypes : list Type)
+    (variables : list varname)
+    {l0 : tuple word (length variables)}
+    {Pl : enforce variables l0 localsmap}
+    {post : _->_->_-> Prop}
+    {measure : Type} (spec:_->HList.arrows ghosttypes (_->_->ufunc word (length variables) (Prop*(_->_->ufunc word (length variables) Prop)))) lt
+    (Hwf : well_founded lt)
+    (v0 : measure) (g0 : hlist ghosttypes)
+    (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(1))
+    (Hbody : forall v, hlist.foralls (fun g => forall t m, tuple.foralls (fun l =>
+      let localsmap := reconstruct variables l in
+      match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
+      S_.(1) ->
+      Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
+      (word_test br = true -> cmd rely guarantee progress call c t m localsmap
+        (fun t' m' localsmap' =>
+          Markers.unique (exists l', enforce variables l' localsmap' /\ 
+          Markers.unique (Markers.left (hlist.existss (fun g' => exists v', 
+          match tuple.apply (hlist.apply (spec v') g' t' m') l' with S' =>
+          S'.(1) /\ Markers.right (
+            (progress t' t \/ lt v' v) /\
+            forall T M L, tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L) end)))))) /\
+      (word_test br = false -> tuple.apply (S_.(2) t m) l))))end)))
+    (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m l, tuple.apply (Q0 t m) l -> post t m (reconstruct variables l)end)
+    : cmd rely guarantee progress call (cmd.while e c) t m localsmap post.
+  Proof.
+    eexists measure, lt, (fun vi ti mi localsmapi =>
+      exists gi li, localsmapi = reconstruct variables li /\
+      match tuple.apply (hlist.apply (spec vi) gi ti mi) li with S_ =>
+      S_.(1) /\ forall T M L, tuple.apply (S_.(2) T M) L ->
+        tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) T M) L end).
+    cbv [Markers.split Markers.left Markers.right] in *.
+    split. assumption.
+    split. { exists v0, g0, l0. split. eapply reconstruct_enforce. eassumption. split; eauto. }
+    intros vi ti mi lmapi (gi&?&?&?&Qi); subst.
+    destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi) _ ltac:(eassumption)) as (br&?&X).
+    exists br; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
+      [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
+    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
+      { eapply Proper_call; firstorder idtac. }
+      intros tj mj lmapj (lj&Elj&HE).
+      eapply reconstruct_enforce in Elj. subst lmapj.
+      eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&?).
+      eauto 9. }
+    { eauto. }
+  Qed.
+
+  Lemma tailrec_localsmap
+    {e c t} {m : mem} {l} {post : _->_->_-> Prop}
+    {measure : Type} (spec:_->_->_->_->(Prop*(_->_->_-> Prop))) lt
+    (Hwf : well_founded lt)
+    (v0 : measure) (P0 := (spec v0 t m l).(1)) (Hpre : P0)
+    (Q0 := (spec v0 t m l).(2))
+    (Hbody : forall v t m l,
+      let S := spec v t m l in let (P, Q) := S in
+      P ->
       exists br, expr m l e (eq br) /\
       (word_test br = true -> cmd rely guarantee progress call c t m l
-        (fun t' m' l' => exists v', P v' t' m' l' /\
+        (fun t' m' l' => exists v',
+          let S' := spec v' t' m' l' in let '(P', Q') := S' in
+          P' /\
           (progress t' t \/ lt v' v) /\
-          forall T M L, Q v' T M L -> Q v T M L)) /\
-      (word_test br = false -> Q v t m l))
-    (Hpost : forall t m l, Q v0 t m l -> post t m l)
+          forall T M L, Q' T M L -> Q T M L)) /\
+      (word_test br = false -> Q t m l))
+    (Hpost : forall t m l, Q0 t m l -> post t m l)
     : cmd rely guarantee progress call (cmd.while e c) t m l post.
   Proof.
-    eexists measure, lt, (fun v t m l => P v t m l /\
-                          forall T M L, Q v T M L -> Q v0 T M L).
+    eexists measure, lt, (fun v t m l =>
+      let S := spec v t m l in let '(P, Q) := S in
+      P /\ forall T M L, Q T M L -> Q0 T M L).
     split. assumption.
+    cbv [Markers.split] in *.
     split; [solve[eauto]|].
     intros vi ti mi li (?&Qi).
     destruct (Hbody _ _ _ _ ltac:(eassumption)) as (br&?&X); exists br; split; [assumption|].
     destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..|eassumption| |eapply Hpc].
+    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
+      { eapply Proper_call; firstorder idtac. }
       intros tj mj lj (vj&dP&?&dQ); eauto 9. }
-    { eapply Hpost, Qi, Hpc. }
-  Qed.
-
-  Lemma tailrec2
-    e c t (m : mem) l (post : _->_->_-> Prop)
-    {measure : Type} {X} (P Q:_->X->_->_->_->Prop) lt (Hwf : well_founded lt)
-    (v0 : measure) (x0 : X)
-    (Hpre : P v0 x0 t m l)
-    (Hbody : forall v x t m l, P v x t m l ->
-      exists br, expr m l e (eq br) /\
-      (word_test br = true -> cmd rely guarantee progress call c t m l
-        (fun t' m' l' => exists v' x', P v' x' t' m' l' /\
-          (progress t' t \/ lt v' v) /\
-          forall T M L, Q v' x' T M L -> Q v x T M L)) /\
-      (word_test br = false -> Q v x t m l))
-    (Hpost : forall t m l, Q v0 x0 t m l -> post t m l)
-    : cmd rely guarantee progress call (cmd.while e c) t m l post.
-  Proof.
-    eexists measure, lt, (fun v t m l => exists x, P v x t m l /\
-                          forall T M L, Q v x T M L -> Q v0 x0 T M L).
-    split. assumption.
-    split; [solve[eauto]|].
-    intros vi ti mi li (?&?&Qi).
-    destruct (Hbody _ _ _ _ _ ltac:(eassumption)) as (br&?&XX); exists br; split; [assumption|].
-    destruct XX as (Htrue&Hfalse). split; intros Hbr;
-      [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..|eassumption| |eapply Hpc].
-      intros tj mj lj (vj&xj&dP&?&dQ); eauto 9. }
-    { eapply Hpost, Qi, Hpc. }
-  Qed.
-  Notation tailrec1 := tailrec.
-
-  Lemma tailrec3
-    e c t (m : mem) l (post : _->_->_-> Prop)
-    {measure : Type} {X Y} (P Q:_->X->Y->_->_->_->Prop) lt (Hwf : well_founded lt)
-    (v0 : measure) (x0 : X) (y0 : Y)
-    (Hpre : P v0 x0 y0 t m l)
-    (Hbody : forall v x y t m l, P v x y t m l ->
-      exists br, expr m l e (eq br) /\
-      (word_test br = true -> cmd rely guarantee progress call c t m l
-        (fun t' m' l' => exists v' x' y', P v' x' y' t' m' l' /\
-          (progress t' t \/ lt v' v) /\
-          forall T M L, Q v' x' y' T M L -> Q v x y T M L)) /\
-      (word_test br = false -> Q v x y t m l))
-    (Hpost : forall t m l, Q v0 x0 y0 t m l -> post t m l)
-    : cmd rely guarantee progress call (cmd.while e c) t m l post.
-  Proof.
-    eexists measure, lt, (fun v t m l => exists x y, P v x y t m l /\
-                          forall T M L, Q v x y T M L -> Q v0 x0 y0 T M L).
-    split. assumption.
-    split; [solve[eauto]|].
-    intros vi ti mi li (?&?&?&Qi).
-    destruct (Hbody _ _ _ _ _ _ ltac:(eassumption)) as (br&?&XX); exists br; split; [assumption|].
-    destruct XX as (Htrue&Hfalse). split; intros Hbr;
-      [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..|eassumption| |eapply Hpc].
-      intros tj mj lj (vj&xj&yj&dP&?&dQ); eauto 9. }
-    { eapply Hpost, Qi, Hpc. }
+    { eauto. }
   Qed.
 
   Context {mem_ok : map.ok mem}.
@@ -125,7 +154,8 @@ Section TailRecrsion.
     destruct (Hbody _ _ _ _ _ ltac:(eassumption)) as (br&?&X); exists br; split; [assumption|].
     destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..|eassumption| |eapply Hpc].
+    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
+      { eapply Proper_call; firstorder idtac. }
       intros tj mj lj (vj&dR&dP&?&dQ).
       exists vj; split; [|assumption].
       exists (Ri * dR); split; [assumption|].
