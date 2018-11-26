@@ -1759,7 +1759,7 @@ Section FlatToRiscv.
         inversion H; clear H
     end.
 
-  Ltac tac1 :=
+  Ltac simplify_bcond :=
     (match goal with
     | |- context[@Bind _ _ _ _ _ _ ] =>
         first [rewrite Bind_getRegister0 |
@@ -1912,7 +1912,7 @@ Section FlatToRiscv.
       (* branch if cond = false (will not branch *)
       eapply runsToStep; simpl in *; subst *.
       fetch_inst. eapply sequence_lemma.
-      destruct cond; repeat tac1.
+      destruct cond; repeat simplify_bcond.
       apply execState_step.
       (*run1step.*)
       (* use IH for then-branch *)
@@ -1929,7 +1929,7 @@ Section FlatToRiscv.
       eapply runsToStep; simpl in *; subst *.
       fetch_inst.
       eapply sequence_lemma.
-      destruct cond; repeat tac1. 
+      destruct cond; repeat simplify_bcond. 
       apply execState_step.
       (*run1step.*)
       (* use IH for else-branch *)
@@ -1944,7 +1944,7 @@ Section FlatToRiscv.
       eapply runsToStep; simpl in *; subst *.
       fetch_inst.
       eapply sequence_lemma.
-      destruct cond; repeat tac1.
+      destruct cond; repeat simplify_bcond.
       apply execState_step.
       run1done.
 
@@ -1958,7 +1958,7 @@ Section FlatToRiscv.
       (* 2nd application of IH: part 2 of loop body *)*)
       eapply runsToStep; simpl in *; subst *.
       fetch_inst. eapply sequence_lemma.
-      destruct cond; repeat tac1.
+      destruct cond; repeat simplify_bcond.
       apply execState_step.
 
       (*run1step.*)
