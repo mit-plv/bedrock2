@@ -50,6 +50,7 @@ Section ExprImp1.
     Notation env := (map func (list var * list var * cmd)).
     Context (e: env).
 
+    Print MapFunctions.
     Fixpoint eval_cmd(f: nat)(st: state)(m: mem)(s: cmd): option (state * mem) :=
       match f with
       | 0 => None (* out of fuel *)
@@ -68,6 +69,8 @@ Section ExprImp1.
         | cmd.set x e =>
             v <- eval_expr st e;
             Return (put st x v, m)
+        | cmd.unset x =>
+            Return (remove_key st x, m)
         | cmd.cond cond bThen bElse =>
             v <- eval_expr st cond;
             eval_cmd f st m (if reg_eqb v (ZToReg 0) then bElse else bThen)
@@ -111,7 +114,7 @@ Section ExprImp1.
       | cmd.cond cond bThen bElse => S (expr_size cond + cmd_size bThen + cmd_size bElse)
       | cmd.while cond body => S (expr_size cond + cmd_size body)
       | cmd.seq s1 s2 => S (cmd_size s1 + cmd_size s2)
-      | cmd.skip => 1
+      | cmd.skip | cmd.unset _ => 1
       | cmd.call binds f args =>
           S (length binds + length args + List.fold_right Nat.add O (List.map expr_size args))
       | cmd.interact _ _ _ => 1
@@ -139,6 +142,11 @@ Section ExprImp1.
     Lemma invert_eval_set: forall f st1 m1 p2 x e,
       eval_cmd (S f) st1 m1 (cmd.set x e) = Some p2 ->
       exists v, eval_expr st1 e = Some v /\ p2 = (put st1 x v, m1).
+    Proof. inversion_lemma. Qed.
+
+    Lemma invert_eval_unset: forall f st1 m1 p2 x,
+      eval_cmd (S f) st1 m1 (cmd.unset x) = Some p2 ->
+      p2 = (remove_key st1 x, m1).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_cond: forall f st1 m1 p2 cond bThen bElse,
@@ -200,6 +208,7 @@ Section ExprImp1.
     match s with
     | cmd.store _ a e => (allVars_expr a) ++ (allVars_expr e)
     | cmd.set v e => v :: allVars_expr e
+    | cmd.unset v => v :: nil
     | cmd.cond c s1 s2 => (allVars_expr c) ++ (allVars_cmd s1) ++ (allVars_cmd s2)
     | cmd.while c body => (allVars_expr c) ++ (allVars_cmd body)
     | cmd.seq s1 s2 => (allVars_cmd s1) ++ (allVars_cmd s2)
@@ -213,7 +222,7 @@ Section ExprImp1.
   Fixpoint modVars(s: cmd): vars :=
     match s with
     | cmd.store _ _ _ => empty_set
-    | cmd.set v _ => singleton_set v
+    | cmd.set v _ | cmd.unset v => singleton_set v
     | cmd.cond _ s1 s2 => union (modVars s1) (modVars s2)
     | cmd.while _ body => modVars body
     | cmd.seq s1 s2 => union (modVars s1) (modVars s2)
@@ -228,6 +237,7 @@ Section ExprImp1.
   Proof.
     intros.
     induction s; simpl in *.
+    - set_solver.
     - set_solver.
     - set_solver.
     - exfalso. eapply empty_set_spec. eassumption.
@@ -255,6 +265,7 @@ Ltac invert_eval_cmd :=
     destruct s;
     [ apply invert_eval_skip in E
     | apply invert_eval_set in E
+    | apply invert_eval_unset in E
     | apply invert_eval_store in E
     | apply invert_eval_cond in E
     | apply invert_eval_seq in E
@@ -264,6 +275,7 @@ Ltac invert_eval_cmd :=
     deep_destruct E;
     [ let x := fresh "Case_skip" in pose proof tt as x; move x at top
     | let x := fresh "Case_set" in pose proof tt as x; move x at top
+    | let x := fresh "Case_unset" in pose proof tt as x; move x at top
     | let x := fresh "Case_store" in pose proof tt as x; move x at top
     | let x := fresh "Case_cond_Then" in pose proof tt as x; move x at top
     | let x := fresh "Case_cond_Else" in pose proof tt as x; move x at top
@@ -317,6 +329,7 @@ Section ExprImp2.
           ensure_new IH'
       end;
       state_calc;
+      (rewrite ?get_remove_key; state_calc);
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 

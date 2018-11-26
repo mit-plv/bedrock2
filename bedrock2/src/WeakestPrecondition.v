@@ -60,6 +60,9 @@ Section WeakestPrecondition.
         bind_ex v <- dexpr m l ev;
         let l := map.put l x v in
         post t m l
+      | cmd.unset x =>
+        let l := map.remove l x in
+        post t m l
       | cmd.store sz ea ev =>
         bind_ex a <- dexpr m l ea;
         bind_ex v <- dexpr m l ev;

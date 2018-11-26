@@ -64,6 +64,8 @@ Section ToCString.
       => indent ++ "*("++c_size s++"*)(" ++ c_expr ea ++ ") = " ++ c_expr ev ++ ";" ++ LF
     | cmd.set x ev =>
       indent ++ c_var x ++ " = " ++ c_expr ev ++ ";" ++ LF
+    | cmd.unset x =>
+      indent ++ "// unset " ++ c_var x ++ LF
     | cmd.cond eb t f =>
       indent ++ "if (" ++ c_expr eb ++ ") {" ++ LF ++
         c_cmd ("  "++indent) t ++

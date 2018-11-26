@@ -19,6 +19,7 @@ Module cmd. Section cmd. Import Syntax.cmd.
     match c with
     | skip => nil
     | set x e => x::expr.vars e
+    | unset x => x::nil
     | store _ ea ev => expr.vars ea ++ expr.vars ev
     | cond eb ct cf => expr.vars eb ++ (vars ct ++ vars cf)
     | seq c1 c2 => vars c1 ++ vars c2

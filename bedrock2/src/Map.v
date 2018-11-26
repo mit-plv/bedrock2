@@ -5,6 +5,7 @@ Module map.
     empty : rep;
     get : rep -> key -> option value;
     put : rep -> key -> value -> rep;
+    remove : rep -> key -> rep;
     union : rep -> rep -> rep; (* rightmost takes priority *)
   }.
   Arguments map : clear implicits.
@@ -14,6 +15,8 @@ Module map.
     get_empty : forall k, get empty k = None;
     get_put_same : forall m k v, get (put m k v) k = Some v;
     get_put_diff : forall m k v k', k <> k' -> get (put m k' v) k = get m k;
+    get_remove_same : forall m k, get (remove m k) k = None;
+    get_remove_diff : forall m k k', k <> k' -> get (remove m k') k = get m k;
     get_union_left : forall m1 m2 k, get m2 k = None -> get (union m1 m2) k = get m1 k;
     get_union_right : forall m1 m2 k v, get m2 k = Some v -> get (union m1 m2) k = Some v;
   }.
