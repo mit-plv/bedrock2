@@ -125,20 +125,6 @@ Section Live.
     | CondNez x =>
         singleton_set x
     end.
-(*
-    | CondBeq _ x y
-    | CondBne _ x y
-    | CondBlt _ x y
-    | CondBge _ x y
-    | CondBltu _ x y
-    | CondBgeu _ x y =>
-        union (singleton_set x) (singleton_set y)
-    | CondBnez _ x =>
-        singleton_set x
-    | CondTrue _ | CondFalse _ =>
-        empty_set
-    end.
-*)
 
   (* set of variables which is live before executing s *)
   Fixpoint live(s: stmt): vars :=
@@ -631,21 +617,9 @@ and since we never change a var->register assignment after we made a decision, w
     match cond with
     | CondBinary op x y =>
         CondBinary op (m x) (m y)
-    | CondNez x => 
+    | CondNez x =>
         CondNez (m x)
     end.
-  (*
-    | CondBeq _ x y => CondBeq register (m x) (m y)
-    | CondBne _ x y => CondBne register (m x) (m y)
-    | CondBlt _ x y => CondBlt register (m x) (m y)
-    | CondBge _ x y => CondBge register (m x) (m y)
-    | CondBltu _ x y => CondBltu register (m x) (m y)
-    | CondBgeu _ x y => CondBgeu register (m x) (m y)
-    | CondBnez _ x => CondBnez register (m x)
-    | CondTrue _ => CondTrue register 
-    | CondFalse _ => CondFalse register 
-    end.
-  *)
 
   Definition apply_alloc(m: var -> register): stmt -> stmt' :=
     fix rec(s: stmt) :=

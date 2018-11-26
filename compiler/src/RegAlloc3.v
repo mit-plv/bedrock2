@@ -81,20 +81,6 @@ Section Live.
     | CondNez x =>
         singleton_set x
     end.
-(* 
-    | CondBeq _ x y
-    | CondBne _ x y
-    | CondBlt _ x y
-    | CondBge _ x y
-    | CondBltu _ x y
-    | CondBgeu _ x y =>
-        union (singleton_set x) (singleton_set y)
-    | CondBnez _ x =>
-        singleton_set x
-    | CondTrue _ | CondFalse _ =>
-        empty_set
-    end.
-*)
 
   (* set of variables which is live before executing s *)
   Fixpoint live(s: stmt): vars :=
@@ -360,7 +346,7 @@ Section RegAlloc.
 *)
   Admitted.
 
-  Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar) 
+  Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar)
     : option (bcond impvar) :=
     match cond with
     | CondBinary op x y =>
@@ -371,43 +357,6 @@ Section RegAlloc.
         bind_opt x' <- reverse_get m x;
         Some (CondNez x')
     end.
-  (*
-  Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar) 
-    : option (bcond impvar) :=
-    match cond with
-    | CondBeq _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBeq impvar x' y')
-    | CondBne _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBne impvar x' y')
-    | CondBlt _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBlt impvar x' y')
-    | CondBge _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBge impvar x' y')
-    | CondBltu _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBltu impvar x' y')
-    | CondBgeu _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBgeu impvar x' y')
-    | CondBnez _ x =>
-        bind_opt x' <- reverse_get m x;
-        Some (CondBnez impvar x')
-    | CondTrue _ =>
-        Some (CondTrue impvar)
-    | CondFalse _ =>
-        Some (CondFalse impvar)
-    end.
-  *)
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
@@ -697,7 +646,7 @@ Section RegAlloc.
       edestruct IHn as [st2' [? ?]]; eauto with checker_hints. *)
       admit.
     - (*clear Case_SLoop_Done.
-      edestruct IHn as [st2' [? ?]]; eauto with checker_hints. 
+      edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
       rewrite H0.
       pose proof H1 as P.
       unfold states_compat in P.

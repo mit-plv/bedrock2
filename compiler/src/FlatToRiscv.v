@@ -289,7 +289,7 @@ Section FlatToRiscv.
 
   (* This phase assumes that register allocation has already been done on the FlatImp
      level, and expects the following to hold: *)
-  
+
   Fixpoint valid_registers_bcond (cond: bcond Register) : Prop :=
     match cond with
     | CondBinary _ x y => valid_register x /\ valid_register y
@@ -487,7 +487,7 @@ Section FlatToRiscv.
   *)
 
   (* Inverts the branch condition. *)
-  Definition compile_bcond_by_inverting 
+  Definition compile_bcond_by_inverting
              (cond: bcond Register) (amt: Z) : Instruction:=
     match cond with
     | CondBinary op x y =>
@@ -502,7 +502,7 @@ Section FlatToRiscv.
     | CondNez x =>
         Beq x Register0 amt
     end.
-  
+ 
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
     | SLoad x y => [[LwXLEN x y 0]]
@@ -514,7 +514,7 @@ Section FlatToRiscv.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-         [[ compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4) ]] ++ 
+        [[compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)]] ++
         bThen' ++
         [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
         bElse'
@@ -523,7 +523,7 @@ Section FlatToRiscv.
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[ compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4) ]] ++ 
+        [[compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)]] ++
         body2' ++
         [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
@@ -540,13 +540,11 @@ Section FlatToRiscv.
     destruct Bw; simpl; omega.
   Qed.
   *)
-  
   Lemma compile_stmt_size: forall s,
     (length (compile_stmt s) <= 2 * (stmt_size _ _ s))%nat.
   Proof.
     induction s; simpl; try destruct op; simpl;
-    repeat (rewrite app_length; simpl);
-    try omega.
+    repeat (rewrite app_length; simpl); try omega.
   Qed.
 
   (* load and decode Inst *)
@@ -960,39 +958,6 @@ Section FlatToRiscv.
 
   Definition runsToSatisfying: RiscvMachine -> (RiscvMachine -> Prop) -> Prop := runsTo.
 
-  (* TODO is there a principled way of writing such proofs? *)
-(*
-  Lemma reduce_eq_to_sub_and_lt: forall (y z: mword) {T: Type} (thenVal elseVal: T),
-    (if ltu (sub y  z) (fromImm 1) then thenVal else elseVal) =
-    (if reg_eqb y z        then thenVal else elseVal).
-  Proof. (*
-    intros. destruct (weq y z).
-    - subst z. unfold wminus. rewrite wminus_inv.
-      destruct (wlt_dec (wzero wXLEN) $1); [reflexivity|].
-
-      exfalso. apply n.
-      do 2 rewrite wordToN_nat. rewrite roundTrip_0.
-      clear.
-      destruct wXLEN as [|w1] eqn: E.
-      + unfold wXLEN in *. destruct bitwidth; discriminate.
-      + rewrite roundTrip_1. simpl. constructor.
-    - destruct (@wlt_dec wXLEN (y ^- z) $ (1)) as [E|NE]; [|reflexivity].
-      exfalso. apply n. apply sub_0_eq.
-      unfold wlt in E.
-      do 2 rewrite wordToN_nat in E.
-      clear -E.
-      destruct wXLEN as [|w1] eqn: F.
-      + unfold wXLEN in *. destruct bitwidth; discriminate.
-      + rewrite roundTrip_1 in E.
-        simpl in E. apply N.lt_1_r in E. change 0%N with (N.of_nat 0) in E.
-        apply Nnat.Nat2N.inj in E. rewrite <- (roundTrip_0 (S w1)) in E.
-        apply wordToNat_inj in E.
-        exact E.
-  Qed.
-*)
-  Admitted.
-*)
-  
   Ltac simpl_run1 :=
     cbv [run1 execState Monads.put Monads.gets Monads.get Return Bind State_Monad OState_Monad
          execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute
@@ -1777,11 +1742,11 @@ Section FlatToRiscv.
   Ltac cleanup :=
     repeat match goal with
     | H : negb ?x = true |- _ =>
-        let H' := fresh in 
+        let H' := fresh in
         assert (x = false) as H' by (eapply negb_true_iff; eauto);
         clear H
     | H : negb ?x = false |- _ =>
-        let H' := fresh in 
+        let H' := fresh in
         assert (x = true) as H' by (eapply negb_false_iff; eauto);
         clear H
     | H : ?x = false |- _ =>
@@ -1797,7 +1762,7 @@ Section FlatToRiscv.
   Ltac tac1 :=
     (match goal with
     | |- context[@Bind _ _ _ _ _ _ ] =>
-        first [rewrite Bind_getRegister0 | 
+        first [rewrite Bind_getRegister0 |
                rewrite Bind_getRegister  | 
                rewrite Bind_getPC]
     | H: eval_bcond _ _ _ = Some _ |- _ =>
@@ -1810,7 +1775,7 @@ Section FlatToRiscv.
         apply execState_Return
     | |- context[remu ?x (ZToReg 4)] =>
         let H' := fresh in
-        assert (remu x (ZToReg 4) = ZToReg 0) as H' by (prove_remu_four_zero); 
+        assert (remu x (ZToReg 4) = ZToReg 0) as H' by (prove_remu_four_zero);
         rewrite H'
     | H1: extends ?initialL_regs ?initialH,
       H2: @get _ ?mword ?stateMap ?initialH ?x = Some ?mx |- _ =>
@@ -1837,7 +1802,7 @@ Section FlatToRiscv.
   Proof.
     intros. simpl_run1. rewrite H. eauto.
   Qed.
-  
+
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
       instsBefore instsAfter,
@@ -1964,8 +1929,7 @@ Section FlatToRiscv.
       eapply runsToStep; simpl in *; subst *.
       fetch_inst.
       eapply sequence_lemma.
-      destruct cond; repeat tac1.
-  
+      destruct cond; repeat tac1. 
       apply execState_step.
       (*run1step.*)
       (* use IH for else-branch *)

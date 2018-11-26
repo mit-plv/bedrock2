@@ -493,7 +493,7 @@ Section RegAlloc.
 
   Definition updateWith := updateWith_recursive.
 
-  Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar) 
+  Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar)
     : option (bcond impvar) :=
     match cond with
     | CondBinary op x y =>
@@ -504,41 +504,6 @@ Section RegAlloc.
         bind_opt x' <- reverse_get m x;
         Some (CondNez x')
     end.
-    
-(*
-    | CondBeq _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBeq impvar x' y')
-    | CondBne _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBne impvar x' y')
-    | CondBlt _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBlt impvar x' y')
-    | CondBge _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBge impvar x' y')
-    | CondBltu _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBltu impvar x' y')
-    | CondBgeu _ x y =>
-        bind_opt x' <- reverse_get m x;
-        bind_opt y' <- reverse_get m y;
-        Some (CondBgeu impvar x' y')
-    | CondBnez _ x =>
-        bind_opt x' <- reverse_get m x;
-        Some (CondBnez impvar x')
-    | CondTrue _ =>
-        Some (CondTrue impvar)
-    | CondFalse _ =>
-        Some (CondFalse impvar)
-    end.
-*)
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=

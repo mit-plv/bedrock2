@@ -36,19 +36,6 @@ Section FlatImp1.
     | CondNez (x: var)
   .
 
-  (*Inductive bcond: Set :=
-    | CondBeq(x y: var) : bcond
-    | CondBne(x y: var) : bcond
-    | CondBlt(x y: var) : bcond
-    | CondBge(x y: var) : bcond
-    | CondBltu(x y: var): bcond
-    | CondBgeu(x y: var): bcond
-    | CondBnez(x: var)  : bcond
-    | CondTrue          : bcond
-    | CondFalse         : bcond
-    .
-  *)
-
   Inductive stmt: Set :=
     | SLoad(x: var)(a: var): stmt
     | SStore(a: var)(v: var): stmt
@@ -84,40 +71,6 @@ Section FlatImp1.
           Return (negb (reg_eqb mx (ZToReg 0)))
       end.
 
-      (*| CondBeq x y =>
-          mx <- get st x;
-          my <- get st y;
-          Return (reg_eqb mx my)
-      | CondBne x y =>
-          mx <- get st x;
-          my <- get st y;
-          Return (negb (reg_eqb mx my))
-      | CondBlt x y =>
-          mx <- get st x;
-          my <- get st y;
-          Return (signed_less_than mx my)
-      | CondBge x y =>
-          mx <- get st x;
-          my <- get st y;
-          Return (signed_less_than my mx || reg_eqb my mx)
-      | CondBltu x y =>
-          mx <- get st x;
-          my <- get st y;
-          Return (ltu mx my)
-      | CondBgeu x y =>
-          mx <- get st x;
-          my <- get st y;
-          Return (ltu my mx || reg_eqb my mx)
-      | CondBnez x =>
-          mx <- get st x;
-          Return (negb (reg_eqb mx (ZToReg 0)))
-      | CondTrue =>
-          Return true
-      | CondFalse =>
-          Return false
-      end.
-*)
-      
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
     Fixpoint eval_stmt(f: nat)(st: state)(m: mem)(s: stmt): option (state * mem) :=
@@ -144,20 +97,12 @@ Section FlatImp1.
             Return (put st x v, m)
         | SIf cond bThen bElse =>
             (* Coq can not infer the type of vcond using the bind notation. *)
-            Bind (eval_bcond st cond) (fun vcond: bool => 
+            Bind (eval_bcond st cond) (fun vcond: bool =>
                   eval_stmt f st m (if vcond then bThen else bElse))
-(*
-            vcond <- eval_bcond st cond; 
-            (*vcond <- get st cond;
-            eval_stmt f st m (if reg_eqb vcond (ZToReg 0) then bElse else bThen)*)
-            eval_stmt f st m (if vcond then bElse else bThen)*)
         | SLoop body1 cond body2 =>
             p <- eval_stmt f st m body1;
             let '(st, m) := p in
-            (*vcond <- get st cond;
-            if reg_eqb vcond (ZToReg 0) then Return (st, m) else*)
             Bind (eval_bcond st cond) (fun vcond: bool=>
-            (*vcond <- eval_bcond st cond;*)
             if negb vcond then Return (st, m) else
               q <- eval_stmt f st m body2;
               let '(st, m) := q in
@@ -185,8 +130,6 @@ Section FlatImp1.
       simpl in *;
       repeat (destruct_one_match_hyp; try discriminate);
       repeat match goal with
-             (*| E: reg_eqb _ _ = true  |- _ => apply reg_eqb_true  in E
-             | E: reg_eqb _ _ = false |- _ => apply reg_eqb_false in E*)
              | E: negb _ = true       |- _ => apply negb_true_iff in E
              | E: negb _ = false      |- _ => apply negb_false_iff in E
              end;
@@ -311,19 +254,6 @@ Section FlatImp1.
     | CondNez x =>
         singleton_set x
     end.
-(*    | CondBeq x y
-    | CondBne x y
-    | CondBlt x y
-    | CondBge x y
-    | CondBltu x y
-    | CondBgeu x y =>
-        union (singleton_set x) (singleton_set y)
-    | CondBnez x =>
-        singleton_set x
-    | CondTrue | CondFalse =>
-        empty_set
-    end.
-*)
 
   Fixpoint accessedVars(s: stmt): vars :=
     match s with
@@ -432,12 +362,10 @@ Section FlatImp2.
       end;
       try congruence;
       try simpl_if;
-      (*rewrite? (proj2 (reg_eqb_true _ _) eq_refl);*)
       repeat match goal with
       | H : _ = true  |- _ => rewrite H
       | H : _ = false |- _ => rewrite H
       end;
-      (*rewrite? reg_eqb_eq by reflexivity;*)
       eauto.
   Qed.
 
