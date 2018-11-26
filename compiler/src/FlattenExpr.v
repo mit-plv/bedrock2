@@ -6,6 +6,7 @@ Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.
 Require Import compiler.Decidable.
 Require Import riscv.util.BitWidths.
+Require Import riscv.Memory.
 Require Import riscv.Utility.
 Require bedrock2.Syntax.
 Require bedrock2.Semantics.
@@ -538,8 +539,15 @@ Section FlattenExpr.
     | |- Some _ = Some _ =>
         f_equal
     end).
+  
+  Lemma one_ne_zero: ZToReg 1 <> ZToReg 0.
+  Proof.
+    apply regToZ_unsigned_ne.
+    pose proof pow2_sz_4.
+    rewrite? regToZ_ZToReg_unsigned; omega.
+  Qed.
 
-   Lemma flattenBooleanExpr_correct_aux env :
+  Lemma flattenBooleanExpr_correct_aux env :
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt var func)
            (initialH initialL: state) initialM res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
@@ -580,6 +588,7 @@ Section FlattenExpr.
       remember (Datatypes.S (fuelS0 + fuelS1)) as f.
       pose_flatten_var_ineqs.
       assert (get initial3L v = Some w) by (state_calc).
+      assert ((ZToReg 1) <> (ZToReg 0)) by (apply one_ne_zero).
 
       repeat destruct_one_match_of_hyp F; repeat destruct_pair_eqs;
       eexists (Datatypes.S f0); eexists; split; simpl;
@@ -601,7 +610,6 @@ Section FlattenExpr.
       | H: context [ get (put _ ?v _) ?v] |- _ =>
           rewrite get_put_same in H
       end; cleanup_options; eauto); simpl;
-      assert ((ZToReg 1) <> (ZToReg 0)) by admit;
       repeat (match goal with
       | |- context[if ?e then _ else _] =>
           destruct e
@@ -616,8 +624,7 @@ Section FlattenExpr.
       end); auto.
    - inversion H0.
    - inversion H0.
-  (* TODO: ZtoReg 1 <> ZToReg 0 *)
-  Admitted.
+  Qed.
 
  Lemma flattenStmt_correct_aux:
     forall fuelH sH sL ngs ngs' (initialH finalH initialL: state) initialM finalM,
