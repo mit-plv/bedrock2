@@ -230,9 +230,8 @@ Ltac rew_set_op_map_specs H :=
       repeat match type of H with
              (* rew_map_specs *)
              | context[get ?m] =>
-               is_var m
-               || lazymatch m with
-                 | remove_key _ _ => t get_remove_key
+                 lazymatch m with
+                 | remove_key _ _ => t (get_remove_key (keq := _))
                  | put _ _ => t get_put
                  | restrict _ _ => t get_restrict
                  | intersect_map _ _ => t get_intersect_map

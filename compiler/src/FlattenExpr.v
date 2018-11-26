@@ -455,9 +455,8 @@ Section FlattenExpr.
         state_calc.
     - simpl in F. inversions F. destruct_pair_eqs.
       exists 1%nat initialL. split. solve [auto]. subst.
-      { cbv [extends]. intros k v. rewrite get_remove_key.
-        destruct_one_match; try discriminate; []. auto. }
-      SearchAbout remove_key.
+      clear IHfuelH.
+      state_calc.
     - repeat (inversionss; try destruct_one_match_hyp).
       match goal with
       | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
