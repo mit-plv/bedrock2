@@ -42,8 +42,7 @@ Example fib(n: Z): stmt  :=
   SSeq (SLit _a 0) (
   SSeq (SLit _b 1) (
   SLoop SSkip
-        (CondBnez var _n)
-        (*_n*)
+        (CondNez _n)
         (SSeq (SOp _s bopname.add _a _b) (
          SSeq (SSet _a _b) (
          SSeq (SSet _b _s) (

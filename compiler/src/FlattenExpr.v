@@ -551,20 +551,6 @@ Section FlattenExpr.
       exists fuelS0 initial2L;
       split; [eassumption| unfold FlatImp.eval_bcond; rewrite G; eauto].
 
-Ltac destruct_one_match_of_hyp H :=
-  match type of H with
-  | context[match ?e with _ => _ end] =>
-      is_var e;
-      destruct e
-  | context[if ?e then _ else _]  =>
-      is_var e;
-      destruct e
-  | context[match ?e with _ => _ end] =>
-      let E := fresh "E" in destruct e eqn: E
-  | context[if ?e then _ else _]  =>
-      let E := fresh "E" in destruct e eqn: E
-  end.
-
     do 4 destruct_one_match_of_hyp F; repeat destruct_pair_eqs; subst.
     inversion Ev. repeat destruct_one_match_of_hyp H0.
     pose proof flattenExpr_correct_aux as P.
@@ -613,19 +599,17 @@ Ltac destruct_one_match_of_hyp H :=
       assert ((ZToReg 1) <> (ZToReg 0)) by admit;
       repeat (match goal with
       | |- Some _ = Some _  =>
-        f_equal
-      | |- ?e = negb (reg_eqb (if ?e then _ else _) _) =>
-        destruct e
-      | |- reg_eqb (if ?e then _ else _) _ =>
-        destruct e
+          f_equal
+      | |- context[if ?e then _ else _] =>
+          destruct e
       | |- true = negb ?b =>
-        let H' := fresh in
-        pose proof (negb_true_iff b) as H'; destruct H' as [_ H'];
-        symmetry; apply H'; simpl_reg_eqb
+          let H' := fresh in
+          pose proof (negb_true_iff b) as H'; destruct H' as [_ H'];
+          symmetry; apply H'; simpl_reg_eqb
       | |- false = negb ?b =>
-        let H' := fresh in
-        pose proof (negb_false_iff b) as H'; destruct H' as [_ H'];
-        symmetry; apply H'; simpl_reg_eqb
+          let H' := fresh in
+          pose proof (negb_false_iff b) as H'; destruct H' as [_ H'];
+          symmetry; apply H'; simpl_reg_eqb
       end); auto.
    - inversion H0.
    - inversion H0.

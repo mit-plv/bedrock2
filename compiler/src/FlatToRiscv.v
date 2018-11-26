@@ -292,15 +292,8 @@ Section FlatToRiscv.
   
   Fixpoint valid_registers_bcond (cond: bcond Register) : Prop :=
     match cond with
-    | CondBeq _ x y
-    | CondBne _ x y
-    | CondBlt _ x y
-    | CondBge _ x y
-    | CondBltu _ x y
-    | CondBgeu _ x y => valid_register x /\ valid_register y
-    | CondBnez _ x => valid_register x
-    | CondTrue _ => True
-    | CondFalse _ => True
+    | CondBinary _ x y => valid_register x /\ valid_register y
+    | CondNez x => valid_register x
     end.
 
   Fixpoint valid_registers(s: stmt): Prop :=
@@ -493,46 +486,22 @@ Section FlatToRiscv.
   Defined.
   *)
 
-  (* TODO: ugly. inverts branch condition *)
-  Definition compile_bcond_by_inverting (cond: bcond Register) amt : Instruction:=
+  (* Inverts the branch condition. *)
+  Definition compile_bcond_by_inverting 
+             (cond: bcond Register) (amt: Z) : Instruction:=
     match cond with
-    | CondBeq _ x y =>
-        Bne x y amt 
-    | CondBne _ x y =>
-        Beq x y amt
-    | CondBlt _ x y =>
-        Bge x y amt 
-    | CondBge _ x y =>
-        Blt x y amt 
-    | CondBltu _ x y =>
-        Bgeu x y amt
-    | CondBgeu _ x y =>
-        Bltu x y amt
-    | CondBnez _ x =>
+    | CondBinary op x y =>
+        match op with
+        | BEq  => Bne x y amt
+        | BNe  => Beq x y amt
+        | BLt  => Bge x y amt
+        | BGe  => Blt x y amt
+        | BLtu => Bgeu x y amt
+        | BGeu => Bltu x y amt
+        end
+    | CondNez x =>
         Beq x Register0 amt
-    | CondTrue _ =>
-        (* TODO: really just a noop...; eg Addi Register0 Register0 0; needed for loop *)
-        Bne Register0 Register0 amt
-    | CondFalse _ =>
-        (* TODO: optimize *)
-        Jal Register0 amt
     end.
-
-  (*
-  Definition cond_bcond (cond: bcond Register) : bool :=
-  match cond with
-  | CondBeq _ x y
-  | CondBne _ x y
-  | CondBlt _ x y
-  | CondBge _ x y
-  | CondBltu _ x y
-  | CondBgeu _ x y
-  | CondBnez _ x 
-  | CondTrue _
-  | CondFalse _
-  *)
-    
-
   
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
@@ -545,10 +514,7 @@ Section FlatToRiscv.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        (*
-        [[Beq cond Register0 ((Zlength bThen' + 2) * 4)]] ++
-        *)
-        [[ compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4) ]] ++ 
+         [[ compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4) ]] ++ 
         bThen' ++
         [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
         bElse'
@@ -557,7 +523,6 @@ Section FlatToRiscv.
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        (*[[Beq cond Register0 ((Zlength body2' + 2) * 4)]] ++*)
         [[ compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4) ]] ++ 
         body2' ++
         [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
@@ -1792,6 +1757,87 @@ Section FlatToRiscv.
   Proof using .
   Admitted.
 
+  Lemma signed_lt_lemma: forall x0 x1 b,
+    signed_less_than x1 x0 || reg_eqb x1 x0 = b ->
+    signed_less_than x0 x1 = negb b.
+  Proof.
+  Admitted.
+
+  Lemma ltu_lemma: forall x0 x1 b,
+    ltu x1 x0 || reg_eqb x1 x0 = b ->
+    ltu x0 x1 = negb b.
+  Proof.
+  Admitted.
+
+  Lemma setPC_lemma: forall l m,
+    setPC l m = (Some tt, with_nextPC l m).
+  Proof.
+  Admitted.
+
+  Ltac cleanup :=
+    repeat match goal with
+    | H : negb ?x = true |- _ =>
+        let H' := fresh in 
+        assert (x = false) as H' by (eapply negb_true_iff; eauto);
+        clear H
+    | H : negb ?x = false |- _ =>
+        let H' := fresh in 
+        assert (x = true) as H' by (eapply negb_false_iff; eauto);
+        clear H
+    | H : ?x = false |- _ =>
+        progress (rewrite H in *)
+    | H : ?x = true |- _ =>
+        progress (rewrite H in *)
+    | H : None = Some _ |- _ =>
+        inversion H
+    | H : Return _ = Some _ |- _ =>
+        inversion H; clear H
+    end.
+
+  Ltac tac1 :=
+    (match goal with
+    | |- context[@Bind _ _ _ _ _ _ ] =>
+        first [rewrite Bind_getRegister0 | 
+               rewrite Bind_getRegister  | 
+               rewrite Bind_getPC]
+    | H: eval_bcond _ _ _ = Some _ |- _ =>
+        inversion H; clear H
+    | H : valid_registers_bcond _ |- _ =>
+        destruct H
+    | H: context[@Bind _ option_Monad _ _ _ _] |- _ =>
+        unfold Bind, option_Monad in H; repeat destruct_one_match_of_hyp H
+    | |- (Return ?a) _ = (Some ?a, _) =>
+        apply execState_Return
+    | |- context[remu ?x (ZToReg 4)] =>
+        let H' := fresh in
+        assert (remu x (ZToReg 4) = ZToReg 0) as H' by (prove_remu_four_zero); 
+        rewrite H'
+    | H1: extends ?initialL_regs ?initialH,
+      H2: @get _ ?mword ?stateMap ?initialH ?x = Some ?mx |- _ =>
+        let H' := fresh in
+        assert (@get Register mword stateMap initialL_regs x = Some mx) as H' by
+                (apply (H1 x mx H2));
+        rewrite H'
+    | H : signed_less_than ?x1 ?x0 || reg_eqb ?x1 ?x0 = ?b |- _ =>
+        rewrite (signed_lt_lemma x0 x1 H)
+    | H : ltu ?x1 ?x0 || reg_eqb ?x1 ?x0 = ?b |- _ =>
+        rewrite (ltu_lemma x0 x1 H)
+    | |- setPC _ _ = _ =>
+        rewrite setPC_lemma
+    | |- context[reg_eqb ?x ?x] =>
+        let H' := fresh in
+        assert (reg_eqb x x = true) as H' by (rewrite reg_eqb_spec; eauto);
+        rewrite H'
+  end; simpl; cleanup; simpl; eauto).
+
+  Lemma sequence_lemma:  forall (t1 t2: OState RiscvMachine unit) m1 m2 m3,
+    t1 m1 = (Some tt, m2) ->
+    t2 m2 = (Some tt, m3) ->
+    (t1;;t2) m1 = (Some tt, m3).
+  Proof.
+    intros. simpl_run1. rewrite H. eauto.
+  Qed.
+  
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
       instsBefore instsAfter,
@@ -1854,8 +1900,6 @@ Section FlatToRiscv.
         * assumption.
 
     - (* SLit *)
-      admit.
-      (*
       clear IHfuelH.
       Time run1step.
       Time run1step.
@@ -1875,7 +1919,6 @@ Section FlatToRiscv.
       run1done.
       f_equal.
       apply compile_lit_correct.
-      *)
 
       (* SOp *)
     - run1step. run1done.
@@ -1903,167 +1946,9 @@ Section FlatToRiscv.
     - (* SIf/Then *)
       (* branch if cond = false (will not branch *)
       eapply runsToStep; simpl in *; subst *.
-      fetch_inst.
-
-Lemma qq : forall initialL_regs initialH x mx,
-  extends initialL_regs initialH /\
-  get initialH x = Some mx ->
-  (match get initialL_regs x with
-   | Some v => v
-   | None => ZToReg 0
-   end) = mx.
-Proof.
-  intros. destruct H.
-  remember (get initialL_regs x) as res.
-  destruct res.
-  unfold extends in H.
-  specialize (H x mx H0). rewrite H in Heqres. 
-  inversion Heqres; eauto.
-  specialize (H x mx H0). rewrite H in Heqres. 
-  inversion Heqres.
-Qed.
-
-Lemma signed_lt: forall x0 x1 b,
-  signed_less_than x1 x0 || reg_eqb x1 x0 = b ->
-  signed_less_than x0 x1 = negb b.
-Proof.
-Admitted.
-
-Lemma ltu_lemma: forall x0 x1 b,
-  ltu x1 x0 || reg_eqb x1 x0 = b ->
-  ltu x0 x1 = negb b.
-Proof.
-Admitted.
-
-Lemma setpc : forall l m,
-  setPC l m = (Some tt, with_nextPC l m).
-Proof.
-   
-Admitted.
-
-Ltac tac1 :=
-  (match goal with
-  | |- execute (compile_bcond_by_inverting _ _) _ = _ =>
-       cbv [compile_bcond_by_inverting execute ExecuteI.execute]
-  | |- ( _ <- getRegister Register0; _) _ = _ =>
-       rewrite Bind_getRegister0; simpl
-  | |- ( _ <- getRegister _; _) _ = _ =>
-       rewrite Bind_getRegister; simpl
-  | |- ( _ <- getPC; _) _ = _ =>
-       rewrite Bind_getPC; simpl
-  | H: eval_bcond Z ?initialH ?cond = Some ?b |- _ =>
-       inversion H; clear H
-  | H : valid_registers_bcond _ |- _ =>
-       destruct H
-  | |- setPC _ _ = _ =>
-       rewrite setpc; simpl
-  | |- (Return ?a) _ = (Some ?a, _) =>
-       rewrite execState_Return; simpl
-  | H : mx <- get ?initialH ?x; my <- get ?initialH ?y; 
-        Return ?f = Some ?b |- _ =>
-       let H1 := fresh in
-       assert (exists mx my, get initialH x = Some mx /\
-                             get initialH y = Some my /\
-                             f = b) as H1;
-       unfold Bind in H; unfold option_Monad in H
-  | H : mx <- get ?initialH ?x; Return ?f = Some ?b |- _ =>
-       let H1 := fresh in
-       assert (exists mx, get initialH x = Some mx /\
-                          f = b) as H1;
-       unfold Bind in H; unfold option_Monad in H
-  | H : match get ?initialH ?x with | Some _ => _ | None => _ end = Some _ 
-    |- exists ma mb, _ = Some ma /\ _ = Some mb /\ ?f = ?c =>
-        destruct (get initialH x)
-  | H : match get ?initialH ?x with | Some _ => _ | None => _ end = Some _ 
-    |- exists ma, _ = Some ma /\ ?f = ?c =>
-        destruct (get initialH x)
-  | H : exists mx, _ |- _ =>
-       destruct H
-  | |- (if negb (reg_eqb (remu ?x (ZToReg 4)) (ZToReg 0))
-            then _ else _) _ = _ =>
-      let H' := fresh in
-      assert (remu x (ZToReg 4) = ZToReg 0) as H' by (prove_remu_four_zero); rewrite H'; simpl
-  | H : _ /\ _ |- _ =>
-       destruct H  
-  | H : _ |- _ /\ _ =>
-       split
-  | H : Return _ = Some _ |- _ =>
-       inversion H; clear H
-  | H1: extends ?initialL_regs ?initialH,
-    H2: get ?initialH ?x = Some ?mx |- _ =>
-        rewrite (qq (initialL_regs := initialL_regs) (initialH := initialH) 
-                    x (mx := mx));
-        try rewrite (qq (initialL_regs := initialL_regs) (initialH := initialH) 
-                    Register0 (mx := (ZToReg 0)))
- | H : negb ?x = true |- _ =>
-     let H' := fresh in 
-     assert (x = false) as H' by (eapply negb_true_iff; eauto);
-     clear H
- | H : negb ?x = false |- _ =>
-     let H' := fresh in 
-     assert (x = true) as H' by (eapply negb_false_iff; eauto);
-     clear H
-  | H : ?x = false |- _ =>
-     rewrite -> H in *
-  | H : ?x = true |- _ =>
-     rewrite -> H in *
-  | H : None = Some _ |- _ =>
-     inversion H
-  | H : signed_less_than ?x1 ?x0 || reg_eqb ?x1 ?x0 = ?b |- _ =>
-     let H' := fresh in
-     add_hypothesis H' (signed_lt x0 x1 H); rewrite H'
-  | H : ltu ?x1 ?x0 || reg_eqb ?x1 ?x0 = ?b |- _ =>
-     let H' := fresh in
-     add_hypothesis H' (ltu_lemma x0 x1 H); rewrite H'
-  | |- (if (negb (reg_eqb ?x ?x)) then _ else _) _ = _ =>
-    let H' := fresh in
-    assert (reg_eqb (ZToReg 0) (ZToReg 0) = true) as H' by 
-          (rewrite reg_eqb_spec; eauto); simpl
-  end; simpl; eauto).
-
-Lemma eval_bcond_true: forall initialH initialL_regs (cond: bcond Z) amt m1 
-                  (LwXLEN: Register -> Register -> Z -> Instruction),
-    valid_registers_bcond cond /\
-    eval_bcond Z initialH cond = Some true /\
-    extends initialL_regs initialH /\
-    m1.(core).(registers) = initialL_regs 
-    -> (execute (compile_bcond_by_inverting cond amt)) m1 = 
-       (Some tt, m1).
-Proof.
-  intros; (* destruct ands *) destruct H; destruct H0; destruct H1.
-  destruct_everything.
-  (*intros; intuition. destruct_everything. *) destruct cond. inversion H0.
-  all: repeat tac1.
-Qed.
-(*
-Lemma eval_bcond_false: forall initialH initialL_regs (cond: bcond Z) amt m1 
-                  (LwXLEN: Register -> Register -> Z -> Instruction),
-    valid_registers_bcond cond /\
-    eval_bcond Z initialH cond = Some false /\
-    extends initialL_regs initialH /\
-    m1.(core).(registers) = initialL_regs 
-    -> (execute (compile_bcond_by_inverting cond amt)) m1 =
-       (Some tt, m1).
-Proof.
-  intros; (* destruct ands *) destruct H; destruct H0; destruct H1.
-  destruct_everything.
-  (*intros; intuition. destruct_everything. *) destruct cond. inversion H0.
-  all: repeat tac1.
-Qed.
-*)
-
-Lemma tmp2:  forall (t1 t2: OState RiscvMachine unit) m1 m2 m3,
-  t1 m1 = (Some tt, m2) ->
-  t2 m2 = (Some tt, m3) ->
-  (t1;;t2) m1 = (Some tt, m3).
-Proof.
-  intros. simpl_run1. rewrite H. eauto.
-Qed.
-  
-     eapply tmp2. 
-     eapply (eval_bcond_true (initialH := initialH) (initialL_regs := initialL_regs)); eauto.
-     apply execState_step.
-     (*split; eauto. apply execState_step.*)
+      fetch_inst. eapply sequence_lemma.
+      destruct cond; repeat tac1.
+      apply execState_step.
       (*run1step.*)
       (* use IH for then-branch *)
       spec_IH IHfuelH IH s1.
@@ -2078,8 +1963,9 @@ Qed.
       (* branch if cond = 0 (will  branch) *)
       eapply runsToStep; simpl in *; subst *.
       fetch_inst.
-      eapply tmp2.
+      eapply sequence_lemma.
       destruct cond; repeat tac1.
+  
       apply execState_step.
       (*run1step.*)
       (* use IH for else-branch *)
@@ -2093,7 +1979,7 @@ Qed.
       destruct_everything.
       eapply runsToStep; simpl in *; subst *.
       fetch_inst.
-      eapply tmp2.
+      eapply sequence_lemma.
       destruct cond; repeat tac1.
       apply execState_step.
       run1done.
@@ -2107,13 +1993,12 @@ Qed.
       (*run1step.
       (* 2nd application of IH: part 2 of loop body *)*)
       eapply runsToStep; simpl in *; subst *.
-      fetch_inst. eapply tmp2.
+      fetch_inst. eapply sequence_lemma.
       destruct cond; repeat tac1.
       apply execState_step.
 
       (*run1step.*)
       (* 2nd application of IH: part 2 of loop body *)      
-(*>>>>>>> 964ebcd... WIP*)
       spec_IH IHfuelH IH s2.
       apply (runsToSatisfying_trans IH). clear IH.
       intros.
@@ -2136,7 +2021,7 @@ Qed.
 
     - (* SCall *)
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
-      Admitted.
+  Qed.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
