@@ -53,19 +53,22 @@ Section FlatImp1.
     Notation env := (map func (list var * list var * stmt)).
     Context (e: env).
 
+    Definition eval_bbinop(st:state)(op:bbinop)(x y: mword): bool :=
+      match op with
+      | BEq  => reg_eqb x y
+      | BNe  => negb (reg_eqb x y)
+      | BLt  => signed_less_than x y
+      | BGe  => signed_less_than y x || reg_eqb y x
+      | BLtu => ltu x y
+      | BGeu => ltu y x || reg_eqb y x
+      end.
+
     Definition eval_bcond(st:state)(cond: bcond): option bool :=
       match cond with
       | CondBinary op x y =>
           mx <- get st x;
           my <- get st y;
-          match op with
-          | BEq  => Return (reg_eqb mx my)
-          | BNe  => Return (negb (reg_eqb mx my))
-          | BLt  => Return (signed_less_than mx my)
-          | BGe  => Return (signed_less_than my mx || reg_eqb my mx)
-          | BLtu => Return (ltu mx my)
-          | BGeu => Return (ltu my mx || reg_eqb my mx)
-          end
+          Return (eval_bbinop st op mx my)
       | CondNez x =>
           mx <- get st x;
           Return (negb (reg_eqb mx (ZToReg 0)))

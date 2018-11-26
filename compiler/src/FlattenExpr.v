@@ -527,6 +527,18 @@ Section FlattenExpr.
            | E: reg_eqb _ _ = false |- _ => apply reg_eqb_false in E
            end.
 
+  Ltac cleanup_options :=
+    repeat (match goal with
+    | H : None = Some _ |- _ =>
+        inversion H
+    | H : Some _ = None |- _ =>
+        inversion H
+    | H : Some _ = Some _ |- _ =>
+        invert_Some_eq_Some
+    | |- Some _ = Some _ =>
+        f_equal
+    end).
+
    Lemma flattenBooleanExpr_correct_aux env :
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt var func)
            (initialH initialL: state) initialM res,
@@ -568,24 +580,19 @@ Section FlattenExpr.
       remember (Datatypes.S (fuelS0 + fuelS1)) as f.
       pose_flatten_var_ineqs.
       assert (get initial3L v = Some w) by (state_calc).
+
       repeat destruct_one_match_of_hyp F; repeat destruct_pair_eqs;
-        exists (Datatypes.S f0); eexists; split; simpl;
+      eexists (Datatypes.S f0); eexists; split; simpl;
       repeat (match goal with
       | H: FlatImp.eval_stmt _ _ ?ENV ?Fuel1 ?initialSt ?initialM ?s = ?final
         |- context [FlatImp.eval_stmt _ _ ?ENV ?Fuel2 ?initialSt ?initialM ?s] =>
           fuel_increasing_rewrite
       | |- context[match ?e with _ => _ end] =>
-          progress destruct_one_match
+          destruct_one_match
       | |- context[FlatImp.eval_stmt _ _ _ (S ?f) _ _ _] =>
-          progress simpl
+          simpl
       | H: ?f = S _ |- context[FlatImp.eval_stmt _ _ _ ?f _ _ _] =>
           rewrite H
-      | H : None = Some _ |- _ =>
-          inversion H
-      | H : Some _ = None |- _ =>
-          inversion H
-      | H : Some _ = Some _ |- _ =>
-          invert_Some_eq_Some
       | H: convert_bopname ?op = _
         |- context[Semantics.interp_binop ?op ?w ?w0] =>
           rewrite <- (eval_binop_compat op w w0); rewrite H
@@ -593,11 +600,9 @@ Section FlattenExpr.
           rewrite <- (eval_binop_compat op w1 w2); rewrite H
       | H: context [ get (put _ ?v _) ?v] |- _ =>
           rewrite get_put_same in H
-      end; eauto); simpl;
+      end; cleanup_options; eauto); simpl;
       assert ((ZToReg 1) <> (ZToReg 0)) by admit;
       repeat (match goal with
-      | |- Some _ = Some _  =>
-          f_equal
       | |- context[if ?e then _ else _] =>
           destruct e
       | |- true = negb ?b =>
