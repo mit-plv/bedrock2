@@ -1935,23 +1935,35 @@ Section FlatToRiscv.
     subst *;
     destruct_containsProgram.
 
+  Ltac simpl_bools ::=
+    repeat match goal with
+           | H : ?x = false |- _ =>
+             progress rewrite H in *
+           | H : ?x = true |- _ =>
+             progress rewrite H in *
+           | |- context [negb true] => progress unfold negb
+           | |- context [negb false] => progress unfold negb
+           | H : negb ?x = true |- _ =>
+             let H' := fresh in
+             assert (x = false) as H' by (eapply negb_true_iff; eauto);
+             clear H
+           | H : negb ?x = false |- _ =>
+             let H' := fresh in
+             assert (x = true) as H' by (eapply negb_false_iff; eauto);
+             clear H
+           end.
 
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
-        destruct cond; [destruct op | ]; simpl in *; destruct_everything.
-        * run1step'''. apply execState_step.
-        * run1step'''. move H12 at bottom. admit.
-        * run1step'''. admit.
-        * run1step'''. admit.
-        * run1step'''. admit.
-        * run1step'''. admit.
-        * run1step'''. admit.
+        destruct cond; [destruct op | ]; simpl in *;
+          destruct_everything;
+          run1step''';
+          apply execState_step.
       + simpl.
         (* use IH for else-branch *)
         spec_IH IHfuelH IH s2.
->>>>>>> reuse-existing-tactics
         IH_done IH.
     - (* SLoop/done *)
       (* We still have to run part 1 of the loop body which is before the break *)
