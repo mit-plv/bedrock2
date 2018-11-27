@@ -58,9 +58,9 @@ Section FlatImp1.
       | BEq  => reg_eqb x y
       | BNe  => negb (reg_eqb x y)
       | BLt  => signed_less_than x y
-      | BGe  => signed_less_than y x || reg_eqb y x
+      | BGe  => negb (signed_less_than x y)
       | BLtu => ltu x y
-      | BGeu => ltu y x || reg_eqb y x
+      | BGeu => negb (ltu x y)
       end.
 
     Definition eval_bcond(st:state)(cond: bcond): option bool :=

@@ -1722,18 +1722,6 @@ Section FlatToRiscv.
   Proof using .
   Admitted.
 
-  Lemma signed_lt_lemma: forall x0 x1 b,
-    signed_less_than x1 x0 || reg_eqb x1 x0 = b ->
-    signed_less_than x0 x1 = negb b.
-  Proof.
-  Admitted.
-
-  Lemma ltu_lemma: forall x0 x1 b,
-    ltu x1 x0 || reg_eqb x1 x0 = b ->
-    ltu x0 x1 = negb b.
-  Proof.
-  Admitted.
-
   Lemma setPC_lemma: forall l m,
     setPC l m = (Some tt, with_nextPC l m).
   Proof.
@@ -1753,11 +1741,9 @@ Section FlatToRiscv.
         progress (rewrite H in *)
     | H : ?x = true |- _ =>
         progress (rewrite H in *)
-    | H : None = Some _ |- _ =>
-        inversion H
     | H : Return _ = Some _ |- _ =>
         inversion H; clear H
-    end.
+    end; try discriminate.
 
   Ltac simplify_bcond :=
     (match goal with
@@ -1783,10 +1769,6 @@ Section FlatToRiscv.
         assert (@get Register mword stateMap initialL_regs x = Some mx) as H' by
                 (apply (H1 x mx H2));
         rewrite H'
-    | H : signed_less_than ?x1 ?x0 || reg_eqb ?x1 ?x0 = ?b |- _ =>
-        rewrite (signed_lt_lemma x0 x1 H)
-    | H : ltu ?x1 ?x0 || reg_eqb ?x1 ?x0 = ?b |- _ =>
-        rewrite (ltu_lemma x0 x1 H)
     | |- setPC _ _ = _ =>
         rewrite setPC_lemma
     | |- context[reg_eqb ?x ?x] =>
@@ -1911,30 +1893,27 @@ Section FlatToRiscv.
     - (* SIf/Then *)
       (* branch if cond = false (will not branch *)
       eapply runsToStep; simpl in *; subst *.
-      fetch_inst. eapply sequence_lemma.
-      destruct cond; [destruct op | ]; repeat simplify_bcond.
-      apply execState_step.
-      (*run1step.*)
-      (* use IH for then-branch *)
-      spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans IH). clear IH.
-      (* jump over else-branch *)
-      intros.
-      destruct_everything.
-      run1step.
-      run1done.
+      + fetch_inst. eapply sequence_lemma.
+        { destruct cond; [destruct op | ]; repeat simplify_bcond. }
+        { apply execState_step. }
+      + (* use IH for then-branch *)
+        spec_IH IHfuelH IH s1.
+        apply (runsToSatisfying_trans IH). clear IH.
+        (* jump over else-branch *)
+        intros.
+        destruct_everything.
+        run1step.
+        run1done.
 
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
       eapply runsToStep; simpl in *; subst *.
-      fetch_inst.
-      eapply sequence_lemma.
-      destruct cond; [destruct op | ]; repeat simplify_bcond.
-      apply execState_step.
-      (*run1step.*)
+      + fetch_inst. eapply sequence_lemma.
+        { destruct cond; [destruct op | ]; repeat simplify_bcond. }
+        { apply execState_step. }
       (* use IH for else-branch *)
-      spec_IH IHfuelH IH s2.
-      IH_done IH.
+      + spec_IH IHfuelH IH s2.
+        IH_done IH.
     - (* SLoop/done *)
       (* We still have to run part 1 of the loop body which is before the break *)
       spec_IH IHfuelH IH s1.
@@ -1942,11 +1921,10 @@ Section FlatToRiscv.
       intros.
       destruct_everything.
       eapply runsToStep; simpl in *; subst *.
-      fetch_inst.
-      eapply sequence_lemma.
-      destruct cond; [destruct op | ]; repeat simplify_bcond.
-      apply execState_step.
-      run1done.
+      + fetch_inst. eapply sequence_lemma.
+        { destruct cond; [destruct op | ]; repeat simplify_bcond. }
+        { apply execState_step. }
+      + run1done.
 
     - (* SLoop/again *)
       (* 1st application of IH: part 1 of loop body *)
@@ -1954,23 +1932,20 @@ Section FlatToRiscv.
       apply (runsToSatisfying_trans IH). clear IH.
       intros.
       destruct_everything.
-      (*run1step.
-      (* 2nd application of IH: part 2 of loop body *)*)
       eapply runsToStep; simpl in *; subst *.
-      fetch_inst. eapply sequence_lemma.
-      destruct cond; [destruct op | ]; repeat simplify_bcond.
-      apply execState_step.
+      + fetch_inst. eapply sequence_lemma.
+        { destruct cond; [destruct op | ]; repeat simplify_bcond. }
+        { apply execState_step. }
 
-      (*run1step.*)
-      (* 2nd application of IH: part 2 of loop body *)      
-      spec_IH IHfuelH IH s2.
-      apply (runsToSatisfying_trans IH). clear IH.
-      intros.
-      destruct_everything.
-      run1step.
-      (* 3rd application of IH: run the whole loop again *)
-      spec_IH IHfuelH IH (SLoop s1 cond s2).
-      IH_done IH.
+      + (* 2nd application of IH: part 2 of loop body *)
+        spec_IH IHfuelH IH s2.
+        apply (runsToSatisfying_trans IH). clear IH.
+        intros.
+        destruct_everything.
+        run1step.
+        (* 3rd application of IH: run the whole loop again *)
+        spec_IH IHfuelH IH (SLoop s1 cond s2).
+        IH_done IH.
 
     - (* SSeq *)
       spec_IH IHfuelH IH s1.

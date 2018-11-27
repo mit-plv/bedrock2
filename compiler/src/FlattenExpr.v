@@ -13,7 +13,6 @@ Require bedrock2.Semantics.
 Require Import bedrock2.Macros.
 Require Import Coq.Bool.Bool.
 
-
 Section FlattenExpr.
 
   Context {p : unique! Semantics.parameters}.
@@ -529,16 +528,12 @@ Section FlattenExpr.
            end.
 
   Ltac cleanup_options :=
-    repeat (match goal with
-    | H : None = Some _ |- _ =>
-        inversion H
-    | H : Some _ = None |- _ =>
-        inversion H
+    repeat match goal with
     | H : Some _ = Some _ |- _ =>
         invert_Some_eq_Some
     | |- Some _ = Some _ =>
         f_equal
-    end).
+    end; try discriminate.
   
   Lemma one_ne_zero: ZToReg 1 <> ZToReg 0.
   Proof.
@@ -564,26 +559,21 @@ Section FlattenExpr.
       repeat destruct_one_match_hyp; repeat destruct_pair_eqs; subst;
       pose proof flattenExpr_correct_aux as P;
       specialize P with (initialM := initialM) (1 := E) (4 := Ev);
-      specializes P; [eassumption | eassumption | ];
-      destruct P as [fuelS0 [initial2L [Evcond G]]];
+      edestruct P as [fuelS0 [initial2L [Evcond G]]]; [eassumption..| ];
       exists fuelS0 initial2L;
       split; [eassumption| unfold FlatImp.eval_bcond; rewrite G; eauto].
 
     do 4 destruct_one_match_of_hyp F; repeat destruct_pair_eqs; subst.
     inversion Ev. repeat destruct_one_match_of_hyp H0.
-    pose proof flattenExpr_correct_aux as P.
-    specialize P with (env := env) (initialM := initialM) (1 := E) (4 := E1).
-    specializes P; [eassumption | eassumption | ].
-    destruct P as [fuelS0 [initial2L [Evcond G]]].
+    - pose proof flattenExpr_correct_aux as P.
+      specialize P with (env := env) (initialM := initialM) (1 := E) (4 := E1).
+      edestruct P as [fuelS0 [initial2L [Evcond G]]]; [eassumption..| ]; clear P.
 
-    pose proof flattenExpr_correct_aux as P.
-    specialize P with (initialL := initial2L) (env := env)
-                      (initialM := initialM) (1 := E0) (4 := E2).
-    pose_flatten_var_ineqs.
-    specializes P.
-    - state_calc.
-    - state_calc.
-    - destruct P as [fuelS1 [initial3L [Evcond2 G2]]].
+      pose proof flattenExpr_correct_aux as Q.
+      specialize Q with (initialL := initial2L) (env := env)
+                        (initialM := initialM) (1 := E0) (4 := E2).
+      pose_flatten_var_ineqs.
+      edestruct Q as [fuelS1 [initial3L [Evcond2 G2]]]; [state_calc..|]; clear Q.
       remember (Datatypes.S (Datatypes.S (fuelS0 + fuelS1))) as f0.
       remember (Datatypes.S (fuelS0 + fuelS1)) as f.
       pose_flatten_var_ineqs.
@@ -599,7 +589,7 @@ Section FlattenExpr.
       | |- context[match ?e with _ => _ end] =>
           destruct_one_match
       | |- context[FlatImp.eval_stmt _ _ _ (S ?f) _ _ _] =>
-          simpl
+          progress simpl
       | H: ?f = S _ |- context[FlatImp.eval_stmt _ _ _ ?f _ _ _] =>
           rewrite H
       | H: convert_bopname ?op = _
@@ -621,7 +611,7 @@ Section FlattenExpr.
           let H' := fresh in
           pose proof (negb_false_iff b) as H'; destruct H' as [_ H'];
           symmetry; apply H'; simpl_reg_eqb
-      end); auto.
+        end); auto.
    - inversion H0.
    - inversion H0.
   Qed.
