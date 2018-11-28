@@ -17,6 +17,18 @@ Ltac destruct_one_dec_eq :=
   | |- context[dec (@eq ?T ?t1 ?t2)] => destruct (dec (@eq T t1 t2)); [subst *|]
   end.
 
+Ltac destruct_one_match_of_hyp H :=
+  match type of H with
+  | context[match ?e with _ => _ end] =>
+      is_var e; destruct e
+  | context[if ?e then _ else _]  =>
+      is_var e; destruct e
+  | context[match ?e with _ => _ end] =>
+      let E := fresh "E" in destruct e eqn: E
+  | context[if ?e then _ else _]  =>
+      let E := fresh "E" in destruct e eqn: E
+  end.
+
 Ltac destruct_one_match_hyp_test type_test :=
   match goal with
   | H: context[match ?e with _ => _ end] |- _ =>

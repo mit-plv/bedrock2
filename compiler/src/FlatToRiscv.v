@@ -18,6 +18,7 @@ Require Export compiler.FlatToRiscvInvariants.
 Require Export compiler.FlatToRiscvBitWidthSpecificProofs.
 Require Import compiler.Decidable.
 Require Import Coq.Program.Tactics.
+Require Import Coq.Bool.Bool.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.AxiomaticRiscv.
 Require Import Coq.micromega.Lia.
@@ -288,6 +289,13 @@ Section FlatToRiscv.
 
   (* This phase assumes that register allocation has already been done on the FlatImp
      level, and expects the following to hold: *)
+
+  Definition valid_registers_bcond (cond: bcond Register) : Prop :=
+    match cond with
+    | CondBinary _ x y => valid_register x /\ valid_register y
+    | CondNez x => valid_register x
+    end.
+
   Fixpoint valid_registers(s: stmt): Prop :=
     match s with
     | SLoad x a => valid_register x /\ valid_register a
@@ -295,8 +303,8 @@ Section FlatToRiscv.
     | SLit x _ => valid_register x
     | SOp x _ y z => valid_register x /\ valid_register y /\ valid_register z
     | SSet x y => valid_register x /\ valid_register y
-    | SIf c s1 s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
-    | SLoop s1 c s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
+    | SIf c s1 s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
+    | SLoop s1 c s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
     | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
     | SSkip => True
     | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
@@ -478,6 +486,23 @@ Section FlatToRiscv.
   Defined.
   *)
 
+  (* Inverts the branch condition. *)
+  Definition compile_bcond_by_inverting
+             (cond: bcond Register) (amt: Z) : Instruction:=
+    match cond with
+    | CondBinary op x y =>
+        match op with
+        | BEq  => Bne x y amt
+        | BNe  => Beq x y amt
+        | BLt  => Bge x y amt
+        | BGe  => Blt x y amt
+        | BLtu => Bgeu x y amt
+        | BGeu => Bltu x y amt
+        end
+    | CondNez x =>
+        Beq x Register0 amt
+    end.
+
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
     | SLoad x y => [[LwXLEN x y 0]]
@@ -489,7 +514,7 @@ Section FlatToRiscv.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [[Beq cond Register0 ((Zlength bThen' + 2) * 4)]] ++
+        [[compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)]] ++
         bThen' ++
         [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
         bElse'
@@ -498,7 +523,7 @@ Section FlatToRiscv.
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[Beq cond Register0 ((Zlength body2' + 2) * 4)]] ++
+        [[compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)]] ++
         body2' ++
         [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
@@ -515,7 +540,6 @@ Section FlatToRiscv.
     destruct Bw; simpl; omega.
   Qed.
   *)
-
   Lemma compile_stmt_size: forall s,
     (length (compile_stmt s) <= 2 * (stmt_size _ _ s))%nat.
   Proof.
@@ -1383,20 +1407,42 @@ Section FlatToRiscv.
       @get_put_same
   : rew_run1step.
 
-  Ltac run1step'' :=
-    fetch_inst;
-    autounfold with unf_pseudo in *;
-    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+  Ltac simpl_bools :=
+    repeat match goal with
+           | H : ?x = false |- _ =>
+             progress rewrite H in *
+           | H : ?x = true |- _ =>
+             progress rewrite H in *
+           | |- context [negb true] => progress unfold negb
+           | |- context [negb false] => progress unfold negb
+           | H : negb ?x = true |- _ =>
+             let H' := fresh in
+             assert (x = false) as H' by (eapply negb_true_iff; eauto);
+             clear H
+           | H : negb ?x = false |- _ =>
+             let H' := fresh in
+             assert (x = true) as H' by (eapply negb_false_iff; eauto);
+             clear H
+           end.
+
+  Ltac run1step''' :=
     repeat (
         autorewrite with
             rew_get_set_Register
             rew_RiscvMachine_get_set
             rew_reg_eqb
             rew_run1step ||
+        simpl_bools ||
         rewrite_getReg ||
         rewrite_setReg ||
         simpl_remu4_test ||
         rewrite_reg_value).
+
+  Ltac run1step'' :=
+    fetch_inst;
+    autounfold with unf_pseudo in *;
+    cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
+    run1step'''.
 
   Ltac run1step' :=
     (eapply runsToStep; simpl in *; subst *); [ run1step'' | ].
@@ -1447,6 +1493,12 @@ Section FlatToRiscv.
     destruct_conjs;
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
+           end;
+    repeat match goal with
+          | H: context[ option_Monad ] |- _ =>
+            unfold Bind, Return, option_Monad in H;
+            repeat destruct_one_match_of_hyp H;
+            (discriminate || apply invert_Some_eq_Some in H)
            end;
     subst *;
     destruct_containsProgram.
@@ -1804,32 +1856,47 @@ Section FlatToRiscv.
       ring.
 
     - (* SIf/Then *)
-      (* branch if cond = 0 (will not branch) *)
-      run1step.
-      (* use IH for then-branch *)
-      spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans IH). clear IH.
-      (* jump over else-branch *)
-      intros.
-      destruct_everything.
-      run1step.
-      run1done.
+      (* branch if cond = false (will not branch *)
+      eapply runsToStep; simpl in *; subst *.
+      + fetch_inst.
+        destruct cond; [destruct op | ]; simpl in *;
+          destruct_everything;
+          run1step''';
+          apply execState_step.
+      + (* use IH for then-branch *)
+        spec_IH IHfuelH IH s1.
+        apply (runsToSatisfying_trans IH). clear IH.
+        (* jump over else-branch *)
+        intros.
+        destruct_everything.
+        run1step.
+        run1done.
 
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
-      run1step.
-      (* use IH for else-branch *)
-      spec_IH IHfuelH IH s2.
-      IH_done IH.
-
+      eapply runsToStep; simpl in *; subst *.
+      + fetch_inst.
+        destruct cond; [destruct op | ]; simpl in *;
+          destruct_everything;
+          run1step''';
+          apply execState_step.
+      + simpl.
+        (* use IH for else-branch *)
+        spec_IH IHfuelH IH s2.
+        IH_done IH.
     - (* SLoop/done *)
       (* We still have to run part 1 of the loop body which is before the break *)
       spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans IH). clear IH.
       intros.
       destruct_everything.
-      run1step.
-      run1done.
+      eapply runsToStep; simpl in *; subst *.
+      + fetch_inst.
+        destruct cond; [destruct op | ]; simpl in *;
+          destruct_everything;
+          run1step''';
+          apply execState_step.
+      + run1done.
 
     - (* SLoop/again *)
       (* 1st application of IH: part 1 of loop body *)
@@ -1837,16 +1904,21 @@ Section FlatToRiscv.
       apply (runsToSatisfying_trans IH). clear IH.
       intros.
       destruct_everything.
-      run1step.
-      (* 2nd application of IH: part 2 of loop body *)
-      spec_IH IHfuelH IH s2.
-      apply (runsToSatisfying_trans IH). clear IH.
-      intros.
-      destruct_everything.
-      run1step.
-      (* 3rd application of IH: run the whole loop again *)
-      spec_IH IHfuelH IH (SLoop s1 cond s2).
-      IH_done IH.
+      eapply runsToStep; simpl in *; subst *.
+      + fetch_inst.
+        destruct cond; [destruct op | ]; simpl in *;
+          destruct_everything;
+          run1step''';
+          apply execState_step.
+      + (* 2nd application of IH: part 2 of loop body *)
+        spec_IH IHfuelH IH s2.
+        apply (runsToSatisfying_trans IH). clear IH.
+        intros.
+        destruct_everything.
+        run1step.
+        (* 3rd application of IH: run the whole loop again *)
+        spec_IH IHfuelH IH (SLoop s1 cond s2).
+        IH_done IH.
 
     - (* SSeq *)
       spec_IH IHfuelH IH s1.
