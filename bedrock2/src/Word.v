@@ -1,6 +1,7 @@
 (* Specification of two's complement machine words wrt Z *)
 
 Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt.
+Local Open Scope Z_scope.
 
 Module word.
   Local Set Primitive Projections.
@@ -10,44 +11,44 @@ Module word.
 
     (* defining relations *)
     unsigned : rep -> Z;
-    (* signed : rep -> Z; *)
+    signed : rep -> Z;
     of_Z : Z -> rep;
 
+    (* operations *)
     add : rep -> rep -> rep;
     sub : rep -> rep -> rep;
-
-    (* adc : bool -> rep -> rep -> rep*bool; *)
-    (* sbb : bool -> rep -> rep -> rep*bool; *)
 
     or : rep -> rep -> rep;
     and : rep -> rep -> rep;
     xor : rep -> rep -> rep;
 
     mul : rep -> rep -> rep;
-    (* mulhss : rep -> rep -> rep; *)
-    (* mulhsu : rep -> rep -> rep; *)
-    (* mulhuu : rep -> rep -> rep; *)
+    mulhss : rep -> rep -> rep;
+    mulhsu : rep -> rep -> rep;
+    mulhuu : rep -> rep -> rep;
 
-    (* divu : rep -> rep -> rep; *)
-    (* divs : rep -> rep -> rep; *)
+    divu : rep -> rep -> rep;
+    divs : rep -> rep -> rep;
 
     slu : rep -> rep -> rep;
     sru : rep -> rep -> rep;
-    (* srs : rep -> rep -> rep; *)
+    srs : rep -> rep -> rep;
 
     eqb : rep -> rep -> bool;
     ltu : rep -> rep -> bool;
-    (* lts : rep -> rep -> bool; *)
+    lts : rep -> rep -> bool;
 
-    (* gtu : rep -> rep -> bool; *)
-    (* gts : rep -> rep -> bool; *)
+    gtu x y := ltu y x;
+    gts x y := lts y x;
   }.
   Arguments word : clear implicits.
   
   Class ok {width} {word : word width} := {
-    wrap z := Z.modulo z (Z.pow 2 width);
+    wrap z := z mod 2^width;
+    swrap z := wrap (z + 2^(width-1)) - 2^(width-1);
 
     unsigned_of_Z : forall z, unsigned (of_Z z) = wrap z;
+    signed_of_Z : forall z, signed (of_Z z) = swrap z;
     of_Z_unsigned : forall x, of_Z (unsigned x) = x;
 
     unsigned_add : forall x y, unsigned (add x y) = wrap (Z.add (unsigned x) (unsigned y));
@@ -58,12 +59,20 @@ Module word.
     unsigned_xor : forall x y, unsigned (xor x y) = wrap (Z.lxor (unsigned x) (unsigned y));
 
     unsigned_mul : forall x y, unsigned (mul x y) = wrap (Z.mul (unsigned x) (unsigned y));
+    unsigned_mulhss : forall x y, signed (mulhss x y) = swrap (Z.mul (signed x) (signed y) / 2^width);
+    unsigned_mulhsu : forall x y, signed (mulhsu x y) = swrap (Z.mul (signed x) (unsigned y) / 2^width);
+    unsigned_mulhuu : forall x y, unsigned (mulhuu x y) = wrap (Z.mul (unsigned x) (unsigned y) / 2^width);
+
+    unsigned_divu : forall x y, unsigned (divu x y) = wrap (Z.div (unsigned x) (unsigned y));
+    signed_divs : forall x y, signed (divs x y) = swrap (Z.div (signed x) (signed y));
 
     unsigned_slu : forall x y, Z.lt (unsigned y) width -> unsigned (slu x y) = wrap (Z.shiftl (unsigned x) (unsigned y));
     unsigned_sru : forall x y, Z.lt (unsigned y) width -> unsigned (sru x y) = wrap (Z.shiftr (unsigned x) (unsigned y));
+    signed_srs : forall x y, Z.lt (unsigned y) width -> signed (srs x y) = swrap (Z.shiftr (signed x) (unsigned y));
 
     unsigned_eqb : forall x y, eqb x y = Z.eqb (unsigned x) (unsigned y);
     unsigned_ltu : forall x y, ltu x y = Z.ltb (unsigned x) (unsigned y);
+    signed_lts : forall x y, lts x y = Z.ltb (signed x) (signed y);
   }.
   Arguments ok {_} _.
 

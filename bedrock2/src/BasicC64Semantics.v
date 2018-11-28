@@ -4,11 +4,9 @@ Require bedrock2.String bedrock2.Map.SortedList bedrock2.Map.SortedListString.
 Require Import bedrock2.Word. Require bedrock2.Word.Naive.
 Import ZArith.
 
-Axiom BasicC64Word_lts : @Word.Naive.rep 64 -> @Word.Naive.rep 64 -> bool.
-Axiom BasicC64Word_srs : @Word.Naive.rep 64 -> @Word.Naive.rep 64 -> @Word.Naive.rep 64.
 Instance parameters : parameters :=
-  let word := Word.Naive.word 64 (Zle_bool_imp_le 0 64 (eq_refl true)) in
-  let byte := Word.Naive.word 8 (Zle_bool_imp_le 0 8 (eq_refl true)) in
+  let word := Word.Naive.word 64 (proj2 (Zlt_is_lt_bool 0 64) eq_refl) in
+  let byte := Word.Naive.word 8 (proj2 (Zlt_is_lt_bool 0 8) eq_refl) in
   {|
   syntax := StringNamesSyntax.make BasicC64Syntax.StringNames_params;
   Semantics.word := word;
@@ -26,9 +24,9 @@ Instance parameters : parameters :=
     | bopname.xor => word.xor
     | bopname.sru => word.sru
     | bopname.slu => word.slu
-    | bopname.srs => BasicC64Word_srs
+    | bopname.srs => word.srs
     | bopname.ltu => fun a b => if word.ltu a b then word.of_Z 1 else word.of_Z 0
-    | bopname.lts => fun a b => if BasicC64Word_lts a b then word.of_Z 1 else word.of_Z 0
+    | bopname.lts => fun a b => if word.lts a b then word.of_Z 1 else word.of_Z 0
     | bopname.eq => fun a b => if word.eqb a b then word.of_Z 1 else word.of_Z 0
     end;
   (* TODO: bedrock2.Byte, bedrock2.Word8 *)
@@ -39,3 +37,4 @@ Instance parameters : parameters :=
   locals := SortedListString.map _;
   funname_eqb := String.eqb;
 |}.
+Existing Instance Word.Naive.ok.

@@ -283,13 +283,13 @@ Ltac show_program :=
 
 Import Word TailRecursion PrimitivePair HList hlist tuple pair.
 
-Local Existing Instance bedrock2.Word.Naive.ok.
 Require Import AdmitAxiom.
 Lemma word_test_true_unsigned x (H : word_test x = true) : word.unsigned x <> 0.
 Proof.
   cbn [parameters word_test] in *.
   rewrite word.unsigned_eqb in H.
   rewrite word.unsigned_of_Z in H.
+  cbv [word.wrap] in H.
   rewrite Z.mod_0_l in H by (intro; discriminate).
   destruct (0 =? word.unsigned x) eqn:? in *; try discriminate; clear H; [].
   eapply Z.eqb_neq in Heqb.
@@ -335,12 +335,14 @@ Proof.
           { rewrite word.unsigned_mod_range. eapply Z.mod_pos_bound. econstructor. }
           { rewrite Z.shiftr_div_pow2 by (cbv; congruence).
             cbn -[Naive.word]; change (18446744073709551616) with (2^64).
-            replace (word.unsigned l) with (word.unsigned l mod 2^64) in * by admit.
+            rewrite word.unsigned_mod_range in *.
             rewrite Z.mod_small.
             eapply Z.div_lt.
             { assert (0 <= word.unsigned l mod 2 ^ 64).
               { eapply Z.mod_pos_bound. econstructor. }
-              Require Import Lia. lia. }
+              { revert H. revert H1. clear.
+                cbn. generalize (Naive.unsigned l mod 18446744073709551616).
+                intros. Lia.lia. } }
             { econstructor. }
             split.
             eapply Z.div_pos. { eapply Z.mod_pos_bound. econstructor. } econstructor.
