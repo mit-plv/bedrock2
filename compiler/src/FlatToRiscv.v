@@ -1415,6 +1415,14 @@ Section FlatToRiscv.
              progress rewrite H in *
            | |- context [negb true] => progress unfold negb
            | |- context [negb false] => progress unfold negb
+           | H : negb ?x = true |- _ =>
+             let H' := fresh in
+             assert (x = false) as H' by (eapply negb_true_iff; eauto);
+             clear H
+           | H : negb ?x = false |- _ =>
+             let H' := fresh in
+             assert (x = true) as H' by (eapply negb_false_iff; eauto);
+             clear H
            end.
 
   Ltac run1step''' :=
@@ -1485,6 +1493,12 @@ Section FlatToRiscv.
     destruct_conjs;
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
+           end;
+    repeat match goal with
+          | H: context[ option_Monad ] |- _ =>
+            unfold Bind, Return, option_Monad in H;
+            repeat destruct_one_match_of_hyp H;
+            (discriminate || apply invert_Some_eq_Some in H)
            end;
     subst *;
     destruct_containsProgram.
@@ -1736,69 +1750,6 @@ Section FlatToRiscv.
   Proof using .
   Admitted.
 
-  Lemma setPC_lemma: forall l m,
-    setPC l m = (Some tt, with_nextPC l m).
-  Proof.
-  Admitted.
-
-  Ltac cleanup :=
-    repeat match goal with
-    | H : negb ?x = true |- _ =>
-        let H' := fresh in
-        assert (x = false) as H' by (eapply negb_true_iff; eauto);
-        clear H
-    | H : negb ?x = false |- _ =>
-        let H' := fresh in
-        assert (x = true) as H' by (eapply negb_false_iff; eauto);
-        clear H
-    | H : ?x = false |- _ =>
-        progress (rewrite H in *)
-    | H : ?x = true |- _ =>
-        progress (rewrite H in *)
-    | H : Return _ = Some _ |- _ =>
-        inversion H; clear H
-    end; try discriminate.
-
-  Ltac simplify_bcond :=
-    (match goal with
-    | |- context[@Bind _ _ _ _ _ _ ] =>
-        first [rewrite Bind_getRegister0 |
-               rewrite Bind_getRegister  |
-               rewrite Bind_getPC]
-    | H: eval_bcond _ _ _ = Some _ |- _ =>
-        inversion H; clear H
-    | H : valid_registers_bcond _ |- _ =>
-        destruct H
-    | H: context[@Bind _ option_Monad _ _ _ _] |- _ =>
-        unfold Bind, option_Monad in H; repeat destruct_one_match_of_hyp H
-    | |- (Return ?a) _ = (Some ?a, _) =>
-        apply execState_Return
-    | |- context[remu ?x (ZToReg 4)] =>
-        let H' := fresh in
-        assert (remu x (ZToReg 4) = ZToReg 0) as H' by (prove_remu_four_zero);
-        rewrite H'
-    | H1: extends ?initialL_regs ?initialH,
-      H2: @get _ ?mword ?stateMap ?initialH ?x = Some ?mx |- _ =>
-        let H' := fresh in
-        assert (@get Register mword stateMap initialL_regs x = Some mx) as H' by
-                (apply (H1 x mx H2));
-        rewrite H'
-    | |- setPC _ _ = _ =>
-        rewrite setPC_lemma
-    | |- context[reg_eqb ?x ?x] =>
-        let H' := fresh in
-        assert (reg_eqb x x = true) as H' by (rewrite reg_eqb_spec; eauto);
-        rewrite H'
-  end; simpl; cleanup; simpl; eauto).
-
-  Lemma sequence_lemma:  forall (t1 t2: OState RiscvMachine unit) m1 m2 m3,
-    t1 m1 = (Some tt, m2) ->
-    t2 m2 = (Some tt, m3) ->
-    (t1;;t2) m1 = (Some tt, m3).
-  Proof.
-    intros. simpl_run1. rewrite H. eauto.
-  Qed.
-
   Lemma compile_stmt_correct_aux:
     forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
       instsBefore instsAfter,
@@ -1907,9 +1858,11 @@ Section FlatToRiscv.
     - (* SIf/Then *)
       (* branch if cond = false (will not branch *)
       eapply runsToStep; simpl in *; subst *.
-      + fetch_inst. eapply sequence_lemma.
-        { destruct cond; [destruct op | ]; repeat simplify_bcond. }
-        { apply execState_step. }
+      + fetch_inst.
+        destruct cond; [destruct op | ]; simpl in *;
+          destruct_everything;
+          run1step''';
+          apply execState_step.
       + (* use IH for then-branch *)
         spec_IH IHfuelH IH s1.
         apply (runsToSatisfying_trans IH). clear IH.
@@ -1918,40 +1871,6 @@ Section FlatToRiscv.
         destruct_everything.
         run1step.
         run1done.
-
-  Ltac destruct_everything ::=
-    destruct_products;
-    try destruct_pair_eqs;
-    destruct_conjs;
-    repeat match goal with
-           | m: _ |- _ => destruct_RiscvMachine m
-           end;
-    repeat match goal with
-          | H: context[ option_Monad ] |- _ =>
-            unfold Bind, Return, option_Monad in H;
-            repeat destruct_one_match_of_hyp H;
-            (discriminate || apply invert_Some_eq_Some in H)
-           end;
-    subst *;
-    destruct_containsProgram.
-
-  Ltac simpl_bools ::=
-    repeat match goal with
-           | H : ?x = false |- _ =>
-             progress rewrite H in *
-           | H : ?x = true |- _ =>
-             progress rewrite H in *
-           | |- context [negb true] => progress unfold negb
-           | |- context [negb false] => progress unfold negb
-           | H : negb ?x = true |- _ =>
-             let H' := fresh in
-             assert (x = false) as H' by (eapply negb_true_iff; eauto);
-             clear H
-           | H : negb ?x = false |- _ =>
-             let H' := fresh in
-             assert (x = true) as H' by (eapply negb_false_iff; eauto);
-             clear H
-           end.
 
     - (* SIf/Else *)
       (* branch if cond = 0 (will  branch) *)
@@ -1972,9 +1891,11 @@ Section FlatToRiscv.
       intros.
       destruct_everything.
       eapply runsToStep; simpl in *; subst *.
-      + fetch_inst. eapply sequence_lemma.
-        { destruct cond; [destruct op | ]; repeat simplify_bcond. }
-        { apply execState_step. }
+      + fetch_inst.
+        destruct cond; [destruct op | ]; simpl in *;
+          destruct_everything;
+          run1step''';
+          apply execState_step.
       + run1done.
 
     - (* SLoop/again *)
@@ -1984,11 +1905,11 @@ Section FlatToRiscv.
       intros.
       destruct_everything.
       eapply runsToStep; simpl in *; subst *.
-<<<<<<< HEAD
-      + fetch_inst. eapply sequence_lemma.
-        { destruct cond; [destruct op | ]; repeat simplify_bcond. }
-        { apply execState_step. }
-
+      + fetch_inst.
+        destruct cond; [destruct op | ]; simpl in *;
+          destruct_everything;
+          run1step''';
+          apply execState_step.
       + (* 2nd application of IH: part 2 of loop body *)
         spec_IH IHfuelH IH s2.
         apply (runsToSatisfying_trans IH). clear IH.
@@ -1998,22 +1919,6 @@ Section FlatToRiscv.
         (* 3rd application of IH: run the whole loop again *)
         spec_IH IHfuelH IH (SLoop s1 cond s2).
         IH_done IH.
-=======
-      fetch_inst. eapply sequence_lemma.
-      destruct cond; [destruct op | ]; repeat simplify_bcond.
-      apply execState_step.
-
-      (*run1step.*)
-      (* 2nd application of IH: part 2 of loop body *)
-      spec_IH IHfuelH IH s2.
-      apply (runsToSatisfying_trans IH). clear IH.
-      intros.
-      destruct_everything.
-      run1step.
-      (* 3rd application of IH: run the whole loop again *)
-      spec_IH IHfuelH IH (SLoop s1 cond s2).
-      IH_done IH.
->>>>>>> reuse-existing-tactics
 
     - (* SSeq *)
       spec_IH IHfuelH IH s1.
