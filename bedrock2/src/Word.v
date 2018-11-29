@@ -73,10 +73,10 @@ Module word.
     unsigned_mulhsu : forall x y, signed (mulhsu x y) = swrap (Z.mul (signed x) (unsigned y) / 2^width);
     unsigned_mulhuu : forall x y, unsigned (mulhuu x y) = wrap (Z.mul (unsigned x) (unsigned y) / 2^width);
 
-    unsigned_divu : forall x y, unsigned (divu x y) = wrap (Z.div (unsigned x) (unsigned y));
-    signed_divs : forall x y, signed (divs x y) = swrap (Z.quot (signed x) (signed y));
-    unsigned_modu : forall x y, unsigned (modu x y) = wrap (Z.modulo (unsigned x) (unsigned y));
-    signed_mods : forall x y, signed (mods x y) = swrap (Z.rem (signed x) (signed y));
+    unsigned_divu : forall x y, unsigned y <> 0 -> unsigned (divu x y) = wrap (Z.div (unsigned x) (unsigned y));
+    signed_divs : forall x y, signed y <> 0 -> signed x <> -2^(width-1) \/ signed y <> -1 -> signed (divs x y) = swrap (Z.quot (signed x) (signed y));
+    unsigned_modu : forall x y, unsigned y <> 0 -> unsigned (modu x y) = wrap (Z.modulo (unsigned x) (unsigned y));
+    signed_mods : forall x y, signed y <> 0 -> signed (mods x y) = swrap (Z.rem (signed x) (signed y));
 
     unsigned_slu : forall x y, Z.lt (unsigned y) width -> unsigned (slu x y) = wrap (Z.shiftl (unsigned x) (unsigned y));
     unsigned_sru : forall x y, Z.lt (unsigned y) width -> unsigned (sru x y) = wrap (Z.shiftr (unsigned x) (unsigned y));
