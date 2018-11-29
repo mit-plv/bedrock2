@@ -15,7 +15,7 @@ Section WithT.
 End WithT.
 
 Module Notations.
-  Declare Scope hide_markers.
+  (* Declare Scope hide_markers. *) (* COMPAT(coq-v8.8) *)
   Notation "x" := (intro x) (only printing, at level 0) : hide_markers.
   Notation "x" := (split x) (only printing, at level 0) : hide_markers.
   Notation "x" := (esplit x) (only printing, at level 0) : hide_markers.
