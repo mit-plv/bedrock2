@@ -38,7 +38,7 @@ Definition minimize_eq_proof{A: Type}(eq_dec: forall (x y: A), {x = y} + {x <> y
 Section WithWidth.
   Context {width : Z}.
   Let wrap_value z := z mod (2^width).
-  Record rep := mk { unsigned : Z ; _ : wrap_value unsigned = unsigned }.
+  Record rep := mk { unsigned : Z ; _unsigned_in_range : wrap_value unsigned = unsigned }.
 
   Context {width_nonneg : Z.lt 0 width}.
 
@@ -115,12 +115,8 @@ Section WithWidth.
     { assert (X/M = 1) by mia; assert ((X + M) / (2 * M) = 1); mia. }
   Qed.
 
-  Check fun (x y : word) => signed_of_Z (Z.shiftr (word.signed x) (word.unsigned y)).
-
   Lemma ok : word.ok word.
   Proof. split; eauto using of_Z_unsigned, signed_of_Z. Qed.
 End WithWidth.
 Arguments word : clear implicits.
 Arguments ok : clear implicits.
-
-Local Instance word8 : word.word 8 := word 8 ltac:(firstorder).
