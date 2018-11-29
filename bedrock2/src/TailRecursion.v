@@ -1,4 +1,4 @@
-Require Import bedrock2.PrimitivePair bedrock2.HList.
+Require Import bedrock2.PrimitivePair bedrock2.HList bedrock2.dlet.
 Require Import Coq.Classes.Morphisms.
 From bedrock2 Require Import Macros Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
@@ -54,19 +54,19 @@ Section TailRecrsion.
     (v0 : measure) (g0 : hlist ghosttypes)
     (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(1))
     (Hbody : forall v, hlist.foralls (fun g => forall t m, tuple.foralls (fun l =>
-      let localsmap := reconstruct variables l in
+      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : Semantics.locals => 
       match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
       (word_test br = true -> cmd rely guarantee progress call c t m localsmap
         (fun t' m' localsmap' =>
-          Markers.unique (exists l', enforce variables l' localsmap' /\ 
+          Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v', 
           match tuple.apply (hlist.apply (spec v') g' t' m') l' with S' =>
           S'.(1) /\ Markers.right (
             (progress t' t \/ lt v' v) /\
-            forall T M L, tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L) end)))))) /\
-      (word_test br = false -> tuple.apply (S_.(2) t m) l))))end)))
+            forall T M L, tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L) end))))))))) /\
+      (word_test br = false -> tuple.apply (S_.(2) t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m l, tuple.apply (Q0 t m) l -> post t m (reconstruct variables l)end)
     : cmd rely guarantee progress call (cmd.while e c) t m localsmap post.
   Proof.
@@ -84,8 +84,8 @@ Section TailRecrsion.
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
     { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
       { eapply Proper_call; firstorder idtac. }
-      intros tj mj lmapj (lj&Elj&HE).
-      eapply reconstruct_enforce in Elj. subst lmapj.
+      intros tj mj lmapj Hlj; eapply hlist.existss_exists in Hlj.
+      destruct Hlj as (lj&Elj&HE); eapply reconstruct_enforce in Elj; subst lmapj.
       eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&?).
       eauto 9. }
     { eauto. }

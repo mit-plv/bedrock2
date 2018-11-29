@@ -161,53 +161,20 @@ Ltac refine_ex :=
 Ltac straightline_cleanup :=
   match goal with
   | x := _ |- _ =>
-         assert_succeeds (clear x);
-           match type of x  with
-           | unit => clear x
-           | bool => clear x
-           | list _ => clear x
-           | nat => clear x
-           | word => clear x
-           | map.rep => clear x
-           | cmd.cmd => clear x
-           | expr.expr => clear x
-           end
-
-  | |- @HList.tuple.foralls ?A ?n (fun x => ?P) =>
-    let n := eval hnf in n in
-    lazymatch n with
-    | O => change (subst! tt for x in P)
-    | S ?n' =>
-      let a := fresh x in
-      let y := fresh x in
-      change (forall a:A, @HList.tuple.foralls A n' (fun y => subst! (PrimitivePair.pair.mk a y) for x in P))
-    end
-  | |- @HList.hlist.foralls ?l (fun x => ?P) =>
-    let l := eval hnf in l in
-    lazymatch l with
-    | nil => change (subst! tt for x in P)
-    | cons ?A ?ts' =>
-      let a := fresh x in
-      let y := fresh x in
-      change (forall a:A, @HList.hlist.foralls ?ts' (fun y => subst! (PrimitivePair.pair.mk a y) for x in P))
-    end
-  | |- @HList.tuple.foralls ?A ?n ?P =>
-    let n' := eval hnf in n in
-    is_nat_literal n'; change (@HList.tuple.foralls A n' P)
-
-  (* bad implementations of reductions that reduce let binders, user sparingly *)
-  | H: PrimitivePair.pair._1 (HList.tuple.apply _ _) |- _ =>
-    cbn [List.repeat Datatypes.length HList.tuple.apply PrimitivePair.pair._1 PrimitivePair.pair._2] in H
-  | |- PrimitivePair.pair._1 (HList.tuple.apply _ _) =>
-    cbn [List.repeat Datatypes.length HList.tuple.apply PrimitivePair.pair._1 PrimitivePair.pair._2]
-  | H: HList.tuple.apply (PrimitivePair.pair._2 _ _ _) _ |- _ =>
-    cbn [List.repeat Datatypes.length HList.tuple.apply PrimitivePair.pair._1 PrimitivePair.pair._2] in H
-  | |- HList.tuple.apply (PrimitivePair.pair._2 _ _ _) _ =>
-    cbn [List.repeat Datatypes.length HList.tuple.apply PrimitivePair.pair._1 PrimitivePair.pair._2]
-  | |- context [@HList.hlist.existss] => progress (cbv beta iota delta [HList.hlist.existss])
-
+         match type of x  with
+         | unit => idtac
+         | bool => idtac
+         | list _ => idtac
+         | nat => idtac
+         | word => idtac
+         | map.rep => idtac
+         | cmd.cmd => idtac
+         | expr.expr => idtac
+         end;
+         clear x
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
+  | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
   | H: exists _, _ |- _ => destruct H
   | H: _ /\ _ |- _ => destruct H
   | x := ?y |- ?G => is_var y; subst x
@@ -240,7 +207,10 @@ Ltac straightline :=
   | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr] (* TODO: eabstract (repeat straightline) *)
   | |- @literal _ _ _ => cbv beta delta [literal]
   | |- @get _ _ _ _ => cbv beta delta [get]
-  | |- TailRecursion.enforce _ _ _ => exact (conj eq_refl eq_refl)
+  | |- TailRecursion.enforce ?names ?values ?map =>
+    let values := eval cbv in values in
+    change (TailRecursion.enforce names values map);
+    exact (conj (eq_refl values) eq_refl)
   | |- word_of_Z ?z = Some ?v =>
     let v := rdelta v in is_evar v; (change (word_of_Z z = Some v)); exact eq_refl
   | |- @eq (@map.rep _ _ (@locals _)) _ _ =>
@@ -308,9 +278,16 @@ Proof.
   refine (TailRecursion.tailrec nil [("e":Syntax.varname);"ret";"x"]
     (fun v t m e ret x => pair.mk (v = Z.to_nat (word.unsigned e))
     (fun t' m' e' ret' x' => t' = t /\ m' = m))
-    lt _ _ tt _ _ _).
+    lt _ _ tt _ _ _);
 
-  { split. exact eq_refl. eapply SortedList.eq_value. exact eq_refl. } (* init locals *)
+    cbn [HList.hlist.foralls HList.tuple.foralls
+         HList.hlist.existss HList.tuple.existss
+         HList.hlist.apply  HList.tuple.apply 
+         HList.hlist
+         List.repeat Datatypes.length
+         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+
+  { repeat straightline. }
   { exact Wf_nat.lt_wf. }
   { repeat straightline. } (* init precondition *)
   { (* loop test *)
@@ -338,10 +315,10 @@ Proof.
             rewrite <-word.unsigned_mod_range in *.
             rewrite Z.mod_small.
             eapply Z.div_lt.
-            { assert (0 <= word.unsigned l mod 2 ^ 64).
+            { assert (0 <= word.unsigned x0 mod 2 ^ 64).
               { eapply Z.mod_pos_bound. econstructor. }
               { revert H. revert H1. clear.
-                cbn. generalize (Naive.unsigned l mod 18446744073709551616).
+                cbn. generalize (Naive.unsigned x0 mod 18446744073709551616).
                 intros. Lia.lia. } }
             { econstructor. }
             split.

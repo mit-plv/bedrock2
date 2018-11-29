@@ -1,5 +1,5 @@
 Require Import bedrock2.Macros bedrock2.Notations bedrock2.Map.
-Require Import bedrock2.Syntax bedrock2.Semantics.
+Require Import bedrock2.dlet bedrock2.Syntax bedrock2.Semantics.
 Require Import Coq.ZArith.BinIntDef.
 
 Section WeakestPrecondition.
@@ -58,10 +58,10 @@ Section WeakestPrecondition.
       | cmd.skip => post t m l
       | cmd.set x ev =>
         bind_ex v <- dexpr m l ev;
-        let l := map.put l x v in
+        dlet! l := map.put l x v in
         post t m l
       | cmd.unset x =>
-        let l := map.remove l x in
+        dlet! l := map.remove l x in
         post t m l
       | cmd.store sz ea ev =>
         bind_ex a <- dexpr m l ea;
@@ -90,7 +90,7 @@ Section WeakestPrecondition.
           post t m l)
       | cmd.interact binds action arges =>
         bind_ex args <- dexprs m l arges;
-        let output := (m, action, args) in
+        dlet! output := (m, action, args) in
         forall m rets (t := cons (output, (m, rets)) t),
           guarantee t /\
           (rely t -> (bind_ex_Some l <- map.putmany binds rets l; post t m l))

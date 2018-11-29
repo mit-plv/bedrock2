@@ -54,7 +54,7 @@ Section WeakestPrecondition.
      Basics.impl))))))))) WeakestPrecondition.cmd.
   Proof.
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
-      cbn in *; intuition (try typeclasses eauto with core).
+      cbn in *; cbv [dlet.dlet] in *; intuition (try typeclasses eauto with core).
     { destruct H4 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto. eauto. }
     { destruct H4 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto.
       destruct H5 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto.
