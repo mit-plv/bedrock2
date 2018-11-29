@@ -60,11 +60,13 @@ Section WithWidth.
 
     add x y := wrap (Z.add (unsigned x) (unsigned y));
     sub x y := wrap (Z.sub (unsigned x) (unsigned y));
+    opp x := wrap (Z.opp (unsigned x));
 
     or x y := wrap (Z.lor (unsigned x) (unsigned y));
-
     and x y := wrap (Z.land (unsigned x) (unsigned y));
     xor x y := wrap (Z.lxor (unsigned x) (unsigned y));
+    not x := wrap (Z.lnot (unsigned x));
+    ndn x y := wrap (Z.land (unsigned x) (Z.lnot (unsigned y)));
 
     mul x y := wrap (Z.mul (unsigned x) (unsigned y));
     mulhss x y := wrap (Z.mul (signed x) (signed y) / 2^width);
@@ -72,7 +74,9 @@ Section WithWidth.
     mulhuu x y := wrap (Z.mul (unsigned x) (unsigned y) / 2^width);
 
     divu x y := wrap (Z.div (unsigned x) (unsigned y));
-    divs x y := wrap (Z.div (signed x) (signed y));
+    divs x y := wrap (Z.quot (signed x) (signed y));
+    modu x y := wrap (Z.modulo (unsigned x) (unsigned y));
+    mods x y := wrap (Z.rem (signed x) (signed y));
 
     slu x y := wrap (Z.shiftl (unsigned x) (unsigned y));
     sru x y := wrap (Z.shiftr (unsigned x) (unsigned y));
