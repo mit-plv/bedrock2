@@ -3,6 +3,8 @@
 Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt.
 Local Open Scope Z_scope.
 
+Require Coq.setoid_ring.Ring_theory Lia.
+
 Module word.
   Local Set Primitive Projections.
   Local Set Universe Polymorphism.
@@ -78,11 +80,23 @@ Module word.
 
   Section WithWord.
     Context {width} {word : word width} {word_ok : ok word}.
-    Lemma unsigned_mod_range x : unsigned x = Z.modulo (unsigned x) (Z.pow 2 width).
+    Lemma unsigned_mod_range x : (unsigned x) mod (2^width) = unsigned x.
     Proof.
       pose proof unsigned_of_Z (unsigned x) as H.
-      rewrite of_Z_unsigned in H.
-      assumption.
+      rewrite of_Z_unsigned in H. congruence.
+    Qed.
+
+    Lemma eq_unsigned x y (H : unsigned x = unsigned y) : x = y.
+    Proof. rewrite <-(of_Z_unsigned x), <-(of_Z_unsigned y). apply f_equal, H. Qed.
+
+    Lemma ring_theory (H:0 <= width) : Ring_theory.ring_theory (of_Z 0) (of_Z 1) add mul sub (sub (of_Z 0)) Logic.eq.
+    Proof.
+     assert (2^width <> 0) by (assert (2 <> 0) by discriminate; apply Z.pow_nonzero; auto).
+     split; intros; apply eq_unsigned; repeat rewrite
+         ?unsigned_add, ?unsigned_sub, ?unsigned_mul, ?unsigned_of_Z, ?unsigned_mod_range,
+         ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?Z.mul_mod_idemp_l, ?Z.mul_mod_idemp_r,
+         ?Z.add_0_l, ?(Z.mod_small 1), ?Z.mul_1_l;
+       f_equal; auto with zarith.
     Qed.
   End WithWord.
 End word. Notation word := word.word.

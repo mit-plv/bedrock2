@@ -332,10 +332,10 @@ Proof.
           2: repeat constructor.
           eapply Znat.Z2Nat.inj_lt.
           { eapply Z.mod_pos_bound; repeat econstructor. }
-          { rewrite word.unsigned_mod_range. eapply Z.mod_pos_bound. econstructor. }
+          { rewrite <-word.unsigned_mod_range. eapply Z.mod_pos_bound. econstructor. }
           { rewrite Z.shiftr_div_pow2 by (cbv; congruence).
             cbn -[Naive.word]; change (18446744073709551616) with (2^64).
-            rewrite word.unsigned_mod_range in *.
+            rewrite <-word.unsigned_mod_range in *.
             rewrite Z.mod_small.
             eapply Z.div_lt.
             { assert (0 <= word.unsigned l mod 2 ^ 64).
