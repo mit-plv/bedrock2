@@ -12,7 +12,6 @@ Require Import compiler.Op.
 Require Import compiler.Memory.
 Require Import compiler.Decidable.
 
-
 Section Syntax.
   Context {pp : unique! Basic_bopnames.parameters}.
 
@@ -59,6 +58,9 @@ Module Import FlatImp.
       once we have adequate separation logic reasoning in the compiler correctness proof.
       Passing in the trace of what happened so far allows ext_spec to impose restrictions
       such as "you can only call foo after calling init". *)
+
+
+    max_ext_call_code_size : actname -> Z;
   }.
 End FlatImp.
 
@@ -137,6 +139,23 @@ Section FlatImp1.
           None (* the deterministic semantics do not support external calls *)
         end
       end.
+
+    Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
+        match s with
+        | SLoad x a => 1
+        | SStore a v => 1
+        | SLit x v => 8
+        | SOp x op y z => 2
+        | SSet x y => 1
+        | SIf cond bThen bElse => 1 + (rec bThen) + (rec bElse)
+        | SLoop body1 cond body2 => 1 + (rec body1) + (rec body2)
+        | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
+        | SSkip => 1
+        | SCall binds f args => 1 + (Zlength binds + Zlength args)
+        | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size f
+        end.
+
+    Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
 
     Local Ltac inversion_lemma :=
       intros;
@@ -486,6 +505,7 @@ Module Import FlatImpSemanticsEquiv.
   Instance to_FlatImp_params(p: parameters): FlatImp.parameters := {|
     FlatImp.Event := Empty_set;
     FlatImp.ext_spec action oldTrace newTrace outcome := False;
+    FlatImp.max_ext_call_code_size := fun _ => 0;
   |}.
 
 End FlatImpSemanticsEquiv.
