@@ -5,7 +5,6 @@ Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
 Require Import riscv.Utility.
 Require Export bedrock2.Syntax.
-Require Export bedrock2.Semantics.
 Require Import bedrock2.Macros.
 Require Import compiler.util.Common.
 Require Import riscv.util.Monads.
@@ -14,7 +13,7 @@ Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.Decidable.
 Require Import compiler.Memory.
-
+Require Import compiler.Semantics. (* TODO: this should be in bedrock2.Semantics *)
 
 Section ExprImp1.
 
@@ -23,13 +22,13 @@ Section ExprImp1.
   Notation mword := (@Semantics.word p).
   Context {MW: MachineWidth mword}.
 
-  Notation var := (@Syntax.varname (@syntax p)).
-  Notation func := (@Syntax.funname (@syntax p)).
+  Notation var := (@Syntax.varname (@Semantics.syntax p)).
+  Notation func := (@Syntax.funname (@Semantics.syntax p)).
 
-  Context {stateMap: MapFunctions var (mword)}.
-  Notation state := (map var mword).
-  Context {varset: SetFunctions var}.
-  Notation vars := (set var).
+  Context {stateMap: MapFunctions varname (mword)}.
+  (*Notation state := (map varname mword).*)
+  Context {varnameset: SetFunctions varname}.
+  Notation vars := (set varname).
 
   (*Hypothesis actname_empty: Syntax.actname = Empty_set.*)
   Local Notation actname := Syntax.actname.
@@ -37,41 +36,24 @@ Section ExprImp1.
   Context {Event: Type}.
   Local Notation trace := (list Event).
 
-  Ltac state_calc := map_solver (@Syntax.varname (@syntax p)) (@Semantics.word p).
-  Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
-
-  Fixpoint eval_expr(m: @Memory.mem mword)(st: state)(e: expr): option mword :=
-    match e with
-    | expr.literal v => Return (ZToReg v)
-    | expr.var x => get st x
-    | expr.load x a =>
-        a' <- eval_expr m st a;
-        Memory.read_mem a' m
-    | expr.op op e1 e2 =>
-        v1 <- eval_expr m st e1;
-        v2 <- eval_expr m st e2;
-        Return (interp_binop op v1 v2)
-    end.
+  Ltac state_calc := map_solver (@varname (@Semantics.syntax p)) (@Semantics.word p).
+  Ltac set_solver := set_solver_generic (@varname (@Semantics.syntax p)).
 
   Section WithEnv.
-    Context {funcMap: MapFunctions func (list var * list var * cmd)}.
-    Notation env := (map func (list var * list var * cmd)).
+    Context {funcMap: MapFunctions funcname (list varname * list varname * cmd)}.
+    Notation env := (map funcname (list varname * list varname * cmd)).
     Context (e: env).
 
-    Fixpoint eval_cmd(f: nat)(st: state)(m: mem)(s: cmd): option (state * mem) :=
+    Notation mem := (map mword Semantics.byte).
+
+    Fixpoint eval_cmd(f: nat)(st: locals)(m: mem)(s: cmd): option (locals * mem) :=
       match f with
       | 0 => None (* out of fuel *)
       | S f => match s with
-        (* TODO
-        | SLoad x a =>
-            a <- eval_expr st a;
-            v <- read_mem a m;
-            Return (put st x v, m)
-        *)
-        | cmd.store number_of_bytes_IGNORED_TODO a v =>
+        | cmd.store n_bytes a v =>
             a <- eval_expr m st a;
             v <- eval_expr m st v;
-            m <- write_mem a v m;
+            m <- Semantics.store n_bytes m a v;
             Return (st, m)
         | cmd.set x e =>
             v <- eval_expr m st e;
@@ -103,87 +85,6 @@ Section ExprImp1.
         | cmd.interact _ _ _ => None (* unsupported *)
         end
       end.
-
-    Local Notation locals := (map var mword).
-
-    Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
-
-    Context (ext_spec:
-      (* given an action label, a trace of what happened so fat,
-         and a list of function call arguments, *)
-      actname -> list Event -> list mword ->
-      (* returns a set of (extended trace, function call results) *)
-      (list Event -> list mword -> Prop) ->
-      Prop). (* or returns no set if the call fails.
-      Will give it access to the memory (and possibly the full registers)
-      once we have adequate separation logic reasoning in the compiler correctness proof.
-      Passing in the trace of what happened so far allows ext_spec to impose restrictions
-      such as "you can only call foo after calling init". *)
-
-
-    Inductive exec_cmd:
-      cmd ->
-      trace -> @Memory.mem mword -> locals ->
-      (trace -> @Memory.mem mword -> locals -> Prop) ->
-      Prop :=
-    | ExSkip: forall t m l post,
-        post t m l ->
-        exec_cmd cmd.skip t m l post
-    | ExSet: forall t m l x y y' post,
-        eval_expr m l y = Some y' ->
-        post t m (put l x y') ->
-        exec_cmd (cmd.set x y) t m l post
-    | ExStore: forall t m m' l number_of_bytes_IGNORED_TODO a addr v val post,
-        eval_expr m l a = Some addr ->
-        eval_expr m l v = Some val ->
-        Memory.write_mem addr val m = Some m' ->
-        post t m' l ->
-        exec_cmd (cmd.store number_of_bytes_IGNORED_TODO a v) t m l post
-    | ExIfThen: forall t m l cond vcond bThen bElse post,
-        eval_expr m l cond = Some vcond ->
-        vcond <> ZToReg 0 ->
-        exec_cmd bThen t m l post ->
-        exec_cmd (cmd.cond cond bThen bElse) t m l post
-    | ExIfElse: forall t m l cond bThen bElse post,
-        eval_expr m l cond = Some (ZToReg 0) ->
-        exec_cmd bElse t m l post ->
-        exec_cmd (cmd.cond cond bThen bElse) t m l post
-     | ExSeq: forall t m l s1 s2 mid post,
-        exec_cmd s1 t m l mid ->
-        (forall t' m' l', mid t' m' l' -> exec_cmd s2 t' m' l' post) ->
-        exec_cmd (cmd.seq s1 s2) t m l post
-     | ExWhileDone: forall t m l cond body post,
-        eval_expr m l cond = Some (ZToReg 0) ->
-        post t m l ->
-        exec_cmd (cmd.while cond body) t m l post
-     | ExWhileStep : forall t m l cond body v mid post,
-        eval_expr m l cond  = Some v ->
-        v <> ZToReg 0 ->
-        exec_cmd body t m l mid ->
-        (forall t' m' l',
-            mid t' m' l' ->
-            exec_cmd (cmd.while cond body) t' m' l' post) ->
-        exec_cmd (cmd.while cond body) t m l post
-     | ExCall: forall t m l binds fname args params rets fbody argvs st0 post outcome,
-        get e fname = Some (params, rets, fbody) ->
-        option_all (List.map (eval_expr m l) args) = Some argvs ->
-        putmany params argvs empty_map = Some st0 ->
-        exec_cmd fbody t m st0 outcome ->
-        (forall t' m' st1,
-            outcome t' m' st1 ->
-            exists retvs l',
-              option_all (List.map (get st1) rets) = Some retvs /\
-              putmany binds retvs l = Some l' /\
-              post t' m' l') ->
-        exec_cmd (cmd.call binds fname args) t m l post
-     | ExInteract: forall t m l action argexprs argvals resvars outcome post,
-        option_all (List.map (eval_expr m l) argexprs) = Some argvals ->
-        ext_spec action t argvals outcome ->
-        (forall new_t resvals,
-            outcome new_t resvals ->
-            exists l', putmany resvars resvals l = Some l' /\ post (new_t) m l') ->
-        exec_cmd (cmd.interact resvars action argexprs) t m l post
-     .
 
     Fixpoint expr_size(e: expr): nat :=
       match e with
@@ -224,7 +125,7 @@ Section ExprImp1.
       eval_cmd (S fuel) initialSt initialM (cmd.store nbytes a v) = Some final ->
       exists av vv finalM, eval_expr initialM initialSt a = Some av /\
                            eval_expr initialM initialSt v = Some vv /\
-                           write_mem av vv initialM = Some finalM /\
+                           Semantics.store nbytes initialM av vv = Some finalM /\
                            final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
 
@@ -280,7 +181,7 @@ Section ExprImp1.
   End WithEnv.
 
   (* Returns a list to make it obvious that it's a finite set. *)
-  Fixpoint allVars_expr(e: expr): list var :=
+  Fixpoint allVars_expr(e: expr): list varname :=
     match e with
     | expr.literal v => []
     | expr.var x => [x]
@@ -288,7 +189,7 @@ Section ExprImp1.
     | expr.op op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
     end.
 
-  Fixpoint allVars_cmd(s: cmd): list var :=
+  Fixpoint allVars_cmd(s: cmd): list varname :=
     match s with
     | cmd.store _ a e => (allVars_expr a) ++ (allVars_expr e)
     | cmd.set v e => v :: allVars_expr e
@@ -373,30 +274,33 @@ Ltac invert_eval_cmd :=
 
 
 Section ExprImp2.
-
   Context {p : unique! Semantics.parameters}.
 
   Notation mword := (@Semantics.word p).
   Context {MW: MachineWidth mword}.
 
-  Notation var := (@Syntax.varname (@syntax p)).
-  Notation func := (@Syntax.funname (@syntax p)).
+  Notation var := (@Syntax.varname (@Semantics.syntax p)).
+  Notation func := (@Syntax.funname (@Semantics.syntax p)).
 
-  Context {stateMap: MapFunctions var (mword)}.
-  Notation state := (map var mword).
-  Context {varset: SetFunctions var}.
-  Notation vars := (set var).
+  Context {stateMap: MapFunctions varname (mword)}.
+  (*Notation state := (map varname mword).*)
+  Context {varnameset: SetFunctions varname}.
+  Notation vars := (set varname).
+
+  (*Hypothesis actname_empty: Syntax.actname = Empty_set.*)
+  Local Notation actname := Syntax.actname.
+
+  Context {Event: Type}.
+  Local Notation trace := (list Event).
+
+  Ltac state_calc := map_solver (@varname (@Semantics.syntax p)) (@Semantics.word p).
+  Ltac set_solver := set_solver_generic (@varname (@Semantics.syntax p)).
 
   (* TODO this one should be wrapped somewhere *)
-  Context {varname_eq_dec: DecidableEq var}.
+  Context {varname_eq_dec: DecidableEq varname}.
 
-  Hypothesis actname_empty: Syntax.actname = Empty_set.
-
-  Ltac state_calc := map_solver (@Syntax.varname (@syntax p)) (@Semantics.word p).
-  Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
-
-  Context {funcMap: MapFunctions func (list var * list var * @cmd (@syntax p))}.
-  Notation env := (map func (list var * list var * cmd)).
+  Context {funcMap: MapFunctions funcname (list varname * list varname * cmd)}.
+  Notation env := (map funcname (list varname * list varname * cmd)).
 
   Lemma modVarsSound: forall (e: env) fuel s initialS initialM finalS finalM,
     eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->
