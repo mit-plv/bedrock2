@@ -209,6 +209,28 @@ Module word.
 
     Lemma signed_eq_swrap_unsigned x : signed x = swrap (unsigned x).
     Proof. cbv [swrap wrap]; rewrite <-signed_of_Z, of_Z_unsigned; trivial. Qed.
+    
+    Definition weightwrap z := (z mod 2^width) mod 2^(width-1) - 2^(width - 1) * (z mod 2^width / 2^(width - 1)).
+    Lemma weightwrap_eq_swrap z : weightwrap z = swrap z.
+    Proof.
+      symmetry. cbv [weightwrap swrap wrap].
+      set (M := 2 ^ (width - 1)).
+      assert (0 < M) by (change 0 with (2^(-1)); eapply Z.pow_lt_mono_r; lia).
+      assert (0 < 2*M) by lia.
+      replace (2^width) with (2*M) in * by
+          (subst M; rewrite <-Z.pow_succ_r, Z.sub_1_r, Z.succ_pred; nia).
+      clearbody M.
+      rewrite (Z.add_mod _ _ _) by lia.
+      assert (M/(2 * M)=0) as H2M by mia;
+        replace (M mod (2 * M)) with M by mia; clear H2M.
+      set (X := z mod (2*M));
+        destruct (ltac:(subst X; mia):(0 <= X < M \/ M <= X < 2*M)); clearbody X.
+      { assert (X/M = 0) by mia; assert ((X + M) / (2 * M) = 0); mia. }
+      { assert (X/M = 1) by mia; assert ((X + M) / (2 * M) = 1); mia. }
+    Qed.
+
+    Lemma signed_alt x : signed x = weightwrap (unsigned x).
+    Proof. rewrite signed_eq_swrap_unsigned. rewrite weightwrap_eq_swrap. trivial. Qed.
 
     Lemma signed_add x y : signed (add x y) = swrap (Z.add (signed x) (signed y)).
     Proof.
