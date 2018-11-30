@@ -21,7 +21,7 @@ Require Import riscv.ListMemory.
 Require Import compiler.FlatToRiscv32Proofs.
 Require Import compiler.FlatToRiscv32Specifics.
 Require Import riscv.RiscvMachine.
-Require Import riscv.MinimalND.
+Require Import riscv.MinimalMMIO. (* not really *)
 Import ListNotations.
 
 Open Scope ilist_scope.
@@ -127,7 +127,6 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
   FlatToRiscv.mword := word 32;
   FlatToRiscv.MachineWidth_Inst := MachineWidth32;
   FlatToRiscv.varMap_Inst := List_Map _ _;
-  FlatToRiscv.Event := Empty_set;
   FlatToRiscv.Memory_Inst := mem_is_Memory (word 32);
   FlatToRiscv.BWS := _;
   FlatToRiscv.BWSP := _;

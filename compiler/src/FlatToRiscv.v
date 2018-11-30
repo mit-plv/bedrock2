@@ -106,7 +106,6 @@ Module Import FlatToRiscv.
     MachineWidth_Inst: MachineWidth mword;
     varMap_Inst: MapFunctions Register mword;
     actname_eq_dec: DecidableEq actname;
-    Event: Set;  (* element of the event trace *)
 
     Memory_Inst: Memory.MemoryFunctions mword;
     BWS: FlatToRiscvBitWidthSpecifics mword;
@@ -116,14 +115,14 @@ Module Import FlatToRiscv.
     MM: Monad M;
     RVM: RiscvProgram M mword;
     RVS: @RiscvState M mword _ _ RVM;
-    RVAX: AxiomaticRiscv mword Event M;
+    RVAX: AxiomaticRiscv mword actname M;
 
     ext_spec:
       (* given an action label, a trace of what happened so fat,
          and a list of function call arguments, *)
-      actname -> list Event -> list mword ->
+      actname -> list (LogItem mword actname) -> list mword ->
       (* returns a set of (extended trace, function call results) *)
-      (list Event -> list mword -> Prop) ->
+      (list (LogItem mword actname) -> list mword -> Prop) ->
       Prop; (* or returns no set if the call fails. *)
 
     translate_id_if_aligned_4: forall a mode,
@@ -146,7 +145,7 @@ Module Import FlatToRiscv.
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
       ext_spec action initialL.(getLog) (List.map (getReg (initialL.(getRegs))) argvars)
                outcome ->
-      runsTo (RiscvMachine Register mword Event) (mcomp_sat (run1 (B := BitWidth))) initialL
+      runsTo (RiscvMachine Register mword actname) (mcomp_sat (run1 (B := BitWidth))) initialL
              (fun finalL =>
                 exists resvals,
                   outcome finalL.(getLog) resvals /\
@@ -202,14 +201,13 @@ Section FlatToRiscv1.
     Basic_bopnames.actname := actname;
   |}.
 
-  Definition trace := list Event.
+  Definition trace := list (LogItem mword actname).
 
-  Local Notation RiscvMachineL := (RiscvMachine Register mword Event).
+  Local Notation RiscvMachineL := (RiscvMachine Register mword actname).
 
   Instance FlatImp_params: FlatImp.parameters := {|
     FlatImp.bopname_params := bopname_params;
     FlatImp.mword := mword;
-    FlatImp.Event := Event;
     FlatImp.varSet_Inst := map_domain_set;
     FlatImp.ext_spec := ext_spec;
   |}.
@@ -543,68 +541,6 @@ Section FlatToRiscv1.
            end.
 *)
 
-  Lemma go_getRegister: forall initialL x post (f : mword -> M unit),
-      valid_register x ->
-      mcomp_sat (f (getReg initialL.(getRegs) x)) initialL post ->
-      mcomp_sat (Bind (getRegister x) f) initialL post.
-  Proof. apply go_getRegister. Qed.
-
-  Lemma go_getRegister0: forall initialL post (f : mword -> M unit),
-      mcomp_sat (f (ZToReg 0)) initialL post ->
-      mcomp_sat (Bind (getRegister Register0) f) initialL post.
-  Proof. Admitted.
-
-  Lemma go_setRegister0: forall initialL v post (f: unit -> M unit),
-      mcomp_sat (f tt) initialL post ->
-      mcomp_sat (Bind (setRegister Register0 v) f) initialL post.
-  Proof. Admitted.
-
-  (* this style has less clutter related to Bind and the continuation of the program,
-     but will require the postcondition to take an answer as additional argument in
-     order to make it work for getRegister as well *)
-  Lemma go_setRegister_alt: forall initialL x v (post: RiscvMachineL -> Prop),
-      valid_register x ->
-      post (setRegs initialL (setReg initialL.(getRegs) x v)) ->
-      mcomp_sat (setRegister x v) initialL post.
-  Abort.
-
-  Lemma go_loadWord: forall initialL addr (f: word 32 -> M unit)
-                            (post: RiscvMachineL -> Prop),
-      (* isMMIOAddr addr = false -> !! *)
-      mcomp_sat (f (Memory.loadWord initialL.(getMem) addr))
-                            initialL post ->
-      mcomp_sat (Bind (Program.loadWord addr) f)
-                            initialL post.
-  Proof. Admitted.
-
-  Lemma go_storeWord: forall initialL addr v post (f: unit -> M unit),
-      (* isMMIOAddr addr = false -> !! *)
-      mcomp_sat (f tt)
-                (setMem initialL (Memory.storeWord initialL.(getMem) addr v))
-                post ->
-      mcomp_sat (Bind (Program.storeWord addr v) f) initialL post.
-  Proof. Admitted.
-
-  Lemma go_getPC: forall initialL f (post: RiscvMachineL -> Prop),
-      mcomp_sat (f initialL.(getPc)) initialL post ->
-      mcomp_sat (Bind getPC f) initialL post.
-  Proof. Admitted.
-
-  Lemma go_setPC: forall initialL v post (f: unit -> M unit),
-      mcomp_sat (f tt) (setNextPc initialL v) post ->
-      mcomp_sat (Bind (setPC v) f) initialL post.
-  Proof. Admitted.
-
-  Lemma go_step: forall initialL (post: RiscvMachineL -> Prop),
-      mcomp_sat
-        (Return tt)
-        (setNextPc (setPc initialL
-                          initialL.(getNextPc))
-                   (add initialL.(getNextPc) (ZToReg 4)))
-        post ->
-      mcomp_sat step initialL post.
-  Proof. Admitted.
-
   Lemma go_done: forall (initialL: RiscvMachineL),
       mcomp_sat (Return tt) initialL (eq initialL).
   Proof. Admitted.
@@ -643,15 +579,17 @@ Section FlatToRiscv1.
     intros. subst *.
     unfold run1. unfold Run.run1.
     apply go_getPC.
-    apply go_loadWord.
     unfold containsProgram in H0. apply proj2 in H0.
     specialize (H0 0 _ eq_refl). subst inst.
     unfold ldInst in *.
-    match type of H1 with
-    | context[?x] => progress (ring_simplify x in H1)
-    end.
-    exact H1.
-  Qed.
+    apply go_loadWord.
+    - admit.
+    - intros.
+      match type of H1 with
+      | context[?x] => progress (ring_simplify x in H1)
+      end.
+      exact H1.
+  Admitted.
 
   Ltac sidecondition :=
     solve_containsProgram || assumption || reflexivity.
@@ -1426,28 +1364,27 @@ Section FlatToRiscv1.
   Lemma compile_stmt_correct_aux:
     forall allInsts s t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
-    forall imemStart instsBefore instsAfter
-           initialRegsL initialPc initialNextPc initialML insts,
+    forall imemStart instsBefore instsAfter initialL insts,
     compile_stmt s = insts ->
     allInsts = instsBefore ++ insts ++ instsAfter ->
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    @extends Register mword _ initialRegsL initialRegsH ->
-    containsMem initialML initialMH ->
-    containsProgram initialML allInsts imemStart ->
-    initialPc = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
-    initialNextPc = add initialPc (ZToReg 4) ->
+    @extends Register mword _ initialL.(getRegs) initialRegsH ->
+    containsMem initialL.(getMem) initialMH ->
+    containsProgram initialL.(getMem) allInsts imemStart ->
+    initialL.(getLog) = t ->
+    initialL.(getPc) = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
+    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
-    runsTo (mkRiscvMachine initialRegsL initialPc (add initialPc (ZToReg 4)) initialML t)
-     (fun '(mkRiscvMachine finalRegsL   finalPc   finalNextPc                finalML   t') =>
+    runsTo initialL (fun finalL =>
         exists finalRegsH finalMH,
-          postH t' finalMH finalRegsH /\
-          extends finalRegsL finalRegsH /\
-          containsMem finalML finalMH /\
-          containsProgram finalML allInsts imemStart /\
-          finalPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalNextPc = add finalPc (ZToReg 4)).
+          postH finalL.(getLog) finalMH finalRegsH /\
+          extends finalL.(getRegs) finalRegsH /\
+          containsMem finalL.(getMem) finalMH /\
+          containsProgram finalL.(getMem) allInsts imemStart /\
+          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
   Proof.
     induction 1; intros;
       repeat match goal with
@@ -1457,7 +1394,7 @@ Section FlatToRiscv1.
              end.
 
     - (* SInteract *)
-      simpl in *; destruct_everything.
+      simpl in *; destruct_everything. simpl in *.
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct; try sidecondition; try assumption; simpl.
         match goal with
@@ -1613,41 +1550,6 @@ Section FlatToRiscv1.
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
   Qed.
   *) Admitted.
-
-  Lemma compile_stmt_correct_aux':
-    forall allInsts s t initialMH initialRegsH postH,
-    eval_stmt s t initialMH initialRegsH postH ->
-    forall imemStart instsBefore instsAfter
-           initialRegsL initialPc initialNextPc initialML insts,
-    compile_stmt s = insts ->
-    allInsts = instsBefore ++ insts ++ instsAfter ->
-    stmt_not_too_big s ->
-    valid_registers s ->
-    divisibleBy4 imemStart ->
-    @extends Register mword _ initialRegsL initialRegsH ->
-    containsMem initialML initialMH ->
-    containsProgram initialML allInsts imemStart ->
-    initialPc = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
-    initialNextPc = add initialPc (ZToReg 4) ->
-    mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
-    runsTo (mkRiscvMachine initialRegsL initialPc (add initialPc (ZToReg 4)) initialML t)
-     (fun '(mkRiscvMachine finalRegsL   finalPc   finalNextPc                finalML   t') =>
-        exists finalRegsH finalMH,
-          postH t' finalMH finalRegsH /\
-          extends finalRegsL finalRegsH /\
-          containsMem finalML finalMH /\
-          containsProgram finalML allInsts imemStart /\
-          finalPc = add initialPc (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalNextPc = add finalPc (ZToReg 4)).
-  Proof.
-    intros.
-    eapply compile_stmt_correct_aux; (eassumption || reflexivity || idtac).
-(*
-    intros. subst.
-    apply runsToDone.
-    eauto 10.
-*)
-  Qed.
 
   (* TODO move to deterministic-specific file
 

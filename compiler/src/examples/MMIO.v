@@ -21,11 +21,13 @@ Require Import riscv.ListMemory.
 Require Import compiler.FlatToRiscv32Proofs.
 Require Import compiler.FlatToRiscv32Specifics.
 Require Import riscv.RiscvMachine.
-Require Import riscv.MinimalND.
+Require Import riscv.MinimalMMIO.
 Require Import compiler.FlatToRiscvDef.
 Require Import riscv.AxiomaticRiscv.
 Require Import compiler.runsToNonDet.
+Require Import compiler.containsProgram.
 Import ListNotations.
+Existing Instance DefaultRiscvState.
 
 Open Scope ilist_scope.
 
@@ -44,52 +46,54 @@ Instance myparams: Basic_bopnames.parameters := {|
 
 Instance annoying: DecidableEq (list varname * list varname * stmt). Admitted.
 
+Definition trace := list (LogItem (word 32) actname).
+
 Module HardToRead.
 
-  Inductive ext_spec: MMIOAction -> list (MMIOEvent (word 32)) -> list (word 32) ->
-                      (list (MMIOEvent (word 32)) -> list (word 32) -> Prop) -> Prop :=
+  Inductive ext_spec: MMIOAction -> trace -> list (word 32) ->
+                      (trace -> list (word 32) -> Prop) -> Prop :=
   | ext_input: forall t addr,
       simple_isMMIOAddr addr = true ->
       ext_spec MMInput t [addr]
                (* note: no restrictions on val: that's the source of non-determinism *)
-               (fun t' results => exists val, t' = (MMInput, addr, val) :: t /\ results = [val])
+               (fun t' results => exists val, t' = (MMInput, [addr], [val]) :: t /\ results = [val])
   | ext_output: forall t addr val,
       simple_isMMIOAddr addr = true ->
       ext_spec MMOutput t [addr; val]
-               (fun t' results => t' = (MMOutput, addr, val) :: t /\ results = nil).
+               (fun t' results => t' = (MMOutput, [addr; val], nil) :: t /\ results = nil).
 
 End HardToRead.
 
 Module Wrong.
 
-  Inductive ext_spec: MMIOAction -> list (MMIOEvent (word 32)) -> list (word 32) ->
-                      (list (MMIOEvent (word 32)) -> list (word 32) -> Prop) -> Prop :=
+  Inductive ext_spec: MMIOAction -> trace -> list (word 32) ->
+                      (trace -> list (word 32) -> Prop) -> Prop :=
   | ext_input: forall t addr val,
       (* note: val is quantified in the wrong place *)
       simple_isMMIOAddr addr = true ->
       ext_spec MMInput t [addr]
-               (fun t' results => t' = (MMInput, addr, val) :: t /\ results = [val])
+               (fun t' results => t' = (MMInput, [addr], [val]) :: t /\ results = [val])
   | ext_output: forall t addr val,
       simple_isMMIOAddr addr = true ->
       ext_spec MMOutput t [addr; val]
-               (fun t' results => t' = (MMOutput, addr, val) :: t /\ results = nil).
+               (fun t' results => t' = (MMOutput, [addr; val], nil) :: t /\ results = nil).
 
 End Wrong.
 
-Definition ext_spec(a: MMIOAction)(t: list (MMIOEvent (word 32)))(argvals: list (word 32))
-                   (outcome: list (MMIOEvent (word 32)) -> list (word 32) -> Prop): Prop :=
+Definition ext_spec(a: MMIOAction)(t: trace)(argvals: list (word 32))
+                   (outcome: trace -> list (word 32) -> Prop): Prop :=
   match a with
   | MMInput =>
     exists addr, argvals = [addr] /\
                  simple_isMMIOAddr addr = true /\
                  forall t' resvals, outcome t' resvals ->
-                                    exists val, t' = (MMInput, addr, val) :: t /\
+                                    exists val, t' = (MMInput, [addr], [val]) :: t /\
                                                 resvals = [val]
   | MMOutput =>
     exists addr val, argvals = [addr; val] /\
                      simple_isMMIOAddr addr = true /\
                      forall t' resvals, outcome t' resvals ->
-                                        t' = (MMOutput, addr, val) :: t /\ resvals = nil
+                                        t' = (MMOutput, [addr; val], nil) :: t /\ resvals = nil
   end.
 
 Lemma hardToRead_implies_ext_spec: forall a t argvals outcome,
@@ -111,7 +115,6 @@ Abort.
 
 Instance myFlatImpParams: FlatImp.parameters := {|
   FlatImp.bopname_params := myparams;
-  FlatImp.Event := MMIOEvent (word 32);
   FlatImp.ext_spec := ext_spec;
 |}.
 
@@ -198,20 +201,46 @@ Definition compiled: list Instruction := Eval cbv in compile_stmt squarer.
 
 Print compiled.
 
+Section TODODontDuplicate.
+
+  Let RiscvMachineL := RiscvMachine Register (word 32) MMIOAction.
+
+  Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
+      pc0 = initialL.(getPc) ->
+      containsProgram initialL.(getMem) [[inst]] pc0 ->
+      mcomp_sat (Bind (Execute.execute inst) (fun (u: unit) => step)) initialL post ->
+      mcomp_sat Run.run1 initialL post.
+  Proof.
+    intros. subst *.
+    unfold run1. unfold Run.run1.
+    apply go_getPC.
+    apply go_loadWord.
+    unfold containsProgram in H0. apply proj2 in H0.
+    specialize (H0 0 _ eq_refl). subst inst.
+    unfold ldInst in *.
+    (*
+    match type of H1 with
+    | context[?x] => progress (ring_simplify x in H1)
+    end.
+    exact H1.
+    *)
+  Admitted.
+
+End TODODontDuplicate.
+
 Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
   FlatToRiscv.def_params := compilation_params;
   FlatToRiscv.mword := word 32;
   FlatToRiscv.MachineWidth_Inst := MachineWidth32;
   FlatToRiscv.varMap_Inst := List_Map _ _;
-  FlatToRiscv.Event := MMIOEvent (word 32);
   FlatToRiscv.Memory_Inst := mem_is_Memory (word 32);
   FlatToRiscv.BWS := _;
   FlatToRiscv.BWSP := _;
-  FlatToRiscv.M := OStateND (RiscvMachine Register (word 32) (MMIOEvent (word 32)));
+  FlatToRiscv.M := OStateND (RiscvMachine Register (word 32) MMIOAction);
   FlatToRiscv.MM := OStateND_Monad _;
   FlatToRiscv.RVM := IsRiscvMachineL;
   FlatToRiscv.RVS := DefaultRiscvState;
-  FlatToRiscv.RVAX := MinimalNDSatisfiesAxioms;
+  FlatToRiscv.RVAX := MinimalMMIOSatisfiesAxioms;
   FlatToRiscv.ext_spec := ext_spec;
 |}.
 - intros. simpl. unfold default_translate.
@@ -229,24 +258,33 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
 - intros. simpl. unfold compile_ext_call.
   repeat destruct_one_match; rewrite? Zlength_cons; rewrite? Zlength_nil; cbv; congruence.
 - intros.
-  destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
-  cbv [getRegs getPc getNextPc getMem getLog] in *.
+  destruct initialL as [initialRegs initialPc initialNpc initialIsMem initialMem initialLog].
+  cbv [getRegs getPc getNextPc isMem getMem getLog] in *.
   destruct action; simpl in H4.
   + destruct H4 as (addr & E & ? & P).
     do 2 (destruct argvars; simpl in E; try discriminate).
     inversion E. clear E.
+    simpl in H.
+    (* want to know that resvars is singleton list: should we make compile_ext_call a partial
+       function? *)
+
     (* if we just
     "eapply runsToNonDet.runsToStep.", we will infer a midset which does not include outcome *)
     refine (runsToNonDet.runsToStep _ _ _ _ (fun mid =>
        exists val,
-         outcome ((MMInput, addr, val) :: initialLog) [val] /\
+         outcome ((MMInput, [addr], [val]) :: initialLog) [val] /\
          mid = mkRiscvMachine
                  (setReg initialRegs _ val)
                  (add initialPc (ZToReg 4))
                  (add initialNpc (ZToReg 4))
+                 initialIsMem
                  initialMem
-                 ((MMInput, addr, val) :: initialLog)) _ _).
-    * unfold Run.run1.
+                 ((MMInput, [addr], [val]) :: initialLog)) _ _).
+    * eapply go_fetch_inst; [reflexivity|..].
+simpl. eassumption.
+      apply go_getPC.
+      apply go_loadWord.
+
       (* needs go_ or do_ lemmas *)
       admit.
     * intros.
