@@ -31,19 +31,25 @@ Section ExprImp1.
   Context {varset: SetFunctions var}.
   Notation vars := (set var).
 
-  Hypothesis actname_empty: Syntax.actname = Empty_set.
+  (*Hypothesis actname_empty: Syntax.actname = Empty_set.*)
+  Local Notation actname := Syntax.actname.
+
+  Context {Event: Type}.
+  Local Notation trace := (list Event).
 
   Ltac state_calc := map_solver (@Syntax.varname (@syntax p)) (@Semantics.word p).
   Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
 
-  Fixpoint eval_expr(st: state)(e: expr): option mword :=
+  Fixpoint eval_expr(m: @Memory.mem mword)(st: state)(e: expr): option mword :=
     match e with
     | expr.literal v => Return (ZToReg v)
     | expr.var x => get st x
-    | expr.load x a => None (* TODO *)
+    | expr.load x a =>
+        a' <- eval_expr m st a;
+        Memory.read_mem a' m
     | expr.op op e1 e2 =>
-        v1 <- eval_expr st e1;
-        v2 <- eval_expr st e2;
+        v1 <- eval_expr m st e1;
+        v2 <- eval_expr m st e2;
         Return (interp_binop op v1 v2)
     end.
 
@@ -63,18 +69,18 @@ Section ExprImp1.
             Return (put st x v, m)
         *)
         | cmd.store number_of_bytes_IGNORED_TODO a v =>
-            a <- eval_expr st a;
-            v <- eval_expr st v;
+            a <- eval_expr m st a;
+            v <- eval_expr m st v;
             m <- write_mem a v m;
             Return (st, m)
         | cmd.set x e =>
-            v <- eval_expr st e;
+            v <- eval_expr m st e;
             Return (put st x v, m)
         | cmd.cond cond bThen bElse =>
-            v <- eval_expr st cond;
+            v <- eval_expr m st cond;
             eval_cmd f st m (if reg_eqb v (ZToReg 0) then bElse else bThen)
         | cmd.while cond body =>
-            v <- eval_expr st cond;
+            v <- eval_expr m st cond;
             if reg_eqb v (ZToReg 0) then Return (st, m) else
               p <- eval_cmd f st m body;
               let '(st, m) := p in
@@ -87,7 +93,7 @@ Section ExprImp1.
         | cmd.call binds fname args =>
           fimpl <- get e fname;
           let '(params, rets, fbody) := fimpl in
-          argvs <- option_all (List.map (eval_expr st) args);
+          argvs <- option_all (List.map (eval_expr m st) args);
           st0 <- putmany params argvs empty_map;
           st1m' <- eval_cmd f st0 m fbody;
           let '(st1, m') := st1m' in
@@ -97,6 +103,87 @@ Section ExprImp1.
         | cmd.interact _ _ _ => None (* unsupported *)
         end
       end.
+
+    Local Notation locals := (map var mword).
+
+    Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
+
+    Context (ext_spec:
+      (* given an action label, a trace of what happened so fat,
+         and a list of function call arguments, *)
+      actname -> list Event -> list mword ->
+      (* returns a set of (extended trace, function call results) *)
+      (list Event -> list mword -> Prop) ->
+      Prop). (* or returns no set if the call fails.
+      Will give it access to the memory (and possibly the full registers)
+      once we have adequate separation logic reasoning in the compiler correctness proof.
+      Passing in the trace of what happened so far allows ext_spec to impose restrictions
+      such as "you can only call foo after calling init". *)
+
+
+    Inductive exec_cmd:
+      cmd ->
+      trace -> @Memory.mem mword -> locals ->
+      (trace -> @Memory.mem mword -> locals -> Prop) ->
+      Prop :=
+    | ExSkip: forall t m l post,
+        post t m l ->
+        exec_cmd cmd.skip t m l post
+    | ExSet: forall t m l x y y' post,
+        eval_expr m l y = Some y' ->
+        post t m (put l x y') ->
+        exec_cmd (cmd.set x y) t m l post
+    | ExStore: forall t m m' l number_of_bytes_IGNORED_TODO a addr v val post,
+        eval_expr m l a = Some addr ->
+        eval_expr m l v = Some val ->
+        Memory.write_mem addr val m = Some m' ->
+        post t m' l ->
+        exec_cmd (cmd.store number_of_bytes_IGNORED_TODO a v) t m l post
+    | ExIfThen: forall t m l cond vcond bThen bElse post,
+        eval_expr m l cond = Some vcond ->
+        vcond <> ZToReg 0 ->
+        exec_cmd bThen t m l post ->
+        exec_cmd (cmd.cond cond bThen bElse) t m l post
+    | ExIfElse: forall t m l cond bThen bElse post,
+        eval_expr m l cond = Some (ZToReg 0) ->
+        exec_cmd bElse t m l post ->
+        exec_cmd (cmd.cond cond bThen bElse) t m l post
+     | ExSeq: forall t m l s1 s2 mid post,
+        exec_cmd s1 t m l mid ->
+        (forall t' m' l', mid t' m' l' -> exec_cmd s2 t' m' l' post) ->
+        exec_cmd (cmd.seq s1 s2) t m l post
+     | ExWhileDone: forall t m l cond body post,
+        eval_expr m l cond = Some (ZToReg 0) ->
+        post t m l ->
+        exec_cmd (cmd.while cond body) t m l post
+     | ExWhileStep : forall t m l cond body v mid post,
+        eval_expr m l cond  = Some v ->
+        v <> ZToReg 0 ->
+        exec_cmd body t m l mid ->
+        (forall t' m' l',
+            mid t' m' l' ->
+            exec_cmd (cmd.while cond body) t' m' l' post) ->
+        exec_cmd (cmd.while cond body) t m l post
+     | ExCall: forall t m l binds fname args params rets fbody argvs st0 post outcome,
+        get e fname = Some (params, rets, fbody) ->
+        option_all (List.map (eval_expr m l) args) = Some argvs ->
+        putmany params argvs empty_map = Some st0 ->
+        exec_cmd fbody t m st0 outcome ->
+        (forall t' m' st1,
+            outcome t' m' st1 ->
+            exists retvs l',
+              option_all (List.map (get st1) rets) = Some retvs /\
+              putmany binds retvs l = Some l' /\
+              post t' m' l') ->
+        exec_cmd (cmd.call binds fname args) t m l post
+     | ExInteract: forall t m l action argexprs argvals resvars outcome post,
+        option_all (List.map (eval_expr m l) argexprs) = Some argvals ->
+        ext_spec action t argvals outcome ->
+        (forall new_t resvals,
+            outcome new_t resvals ->
+            exists l', putmany resvars resvals l = Some l' /\ post (new_t) m l') ->
+        exec_cmd (cmd.interact resvars action argexprs) t m l post
+     .
 
     Fixpoint expr_size(e: expr): nat :=
       match e with
@@ -135,21 +222,21 @@ Section ExprImp1.
 
     Lemma invert_eval_store: forall fuel initialSt initialM a v final nbytes,
       eval_cmd (S fuel) initialSt initialM (cmd.store nbytes a v) = Some final ->
-      exists av vv finalM, eval_expr initialSt a = Some av /\
-                           eval_expr initialSt v = Some vv /\
+      exists av vv finalM, eval_expr initialM initialSt a = Some av /\
+                           eval_expr initialM initialSt v = Some vv /\
                            write_mem av vv initialM = Some finalM /\
                            final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_set: forall f st1 m1 p2 x e,
       eval_cmd (S f) st1 m1 (cmd.set x e) = Some p2 ->
-      exists v, eval_expr st1 e = Some v /\ p2 = (put st1 x v, m1).
+      exists v, eval_expr m1 st1 e = Some v /\ p2 = (put st1 x v, m1).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_cond: forall f st1 m1 p2 cond bThen bElse,
       eval_cmd (S f) st1 m1 (cmd.cond cond bThen bElse) = Some p2 ->
       exists cv,
-        eval_expr st1 cond = Some cv /\
+        eval_expr m1 st1 cond = Some cv /\
         (cv <> ZToReg 0 /\ eval_cmd f st1 m1 bThen = Some p2 \/
          cv = ZToReg 0  /\ eval_cmd f st1 m1 bElse = Some p2).
     Proof. inversion_lemma. Qed.
@@ -157,7 +244,7 @@ Section ExprImp1.
     Lemma invert_eval_while: forall st1 m1 p3 f cond body,
       eval_cmd (S f) st1 m1 (cmd.while cond body) = Some p3 ->
       exists cv,
-        eval_expr st1 cond = Some cv /\
+        eval_expr m1 st1 cond = Some cv /\
         (cv <> ZToReg 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Some (st2, m2) /\
                                      eval_cmd f st2 m2 (cmd.while cond body) = Some p3) \/
          cv = ZToReg 0 /\ p3 = (st1, m1)).
@@ -177,7 +264,7 @@ Section ExprImp1.
       eval_cmd (S f) st m1 (cmd.call binds fname args) = Some p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
         get e fname = Some (params, rets, fbody) /\
-        option_all (List.map (eval_expr st) args) = Some argvs /\
+        option_all (List.map (eval_expr m1 st) args) = Some argvs /\
         putmany params argvs empty_map = Some st0 /\
         eval_cmd f st0 m1 fbody = Some (st1, m') /\
         option_all (List.map (get st1) rets) = Some retvs /\
@@ -210,7 +297,7 @@ Section ExprImp1.
     | cmd.seq s1 s2 => (allVars_cmd s1) ++ (allVars_cmd s2)
     | cmd.skip => []
     | cmd.call binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
-    | cmd.interact _ _ _ => [] (* TODO *)
+    | cmd.interact binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
     end.
 
   (* Returns a static approximation of the set of modified vars.
@@ -248,7 +335,11 @@ Section ExprImp1.
       + apply union_spec in H; destruct H.
         * left. apply singleton_set_spec in H. auto.
         * right. auto.
-    - replace Syntax.actname with Empty_set in *. destruct action.
+    - generalize dependent binds; induction binds; intros H; cbn in *.
+      + apply empty_set_spec in H; destruct H.
+      + apply union_spec in H; destruct H.
+        * left. apply singleton_set_spec in H. auto.
+        * right. auto.
   Qed.
 
 End ExprImp1.
