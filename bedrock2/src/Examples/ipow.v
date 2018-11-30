@@ -91,11 +91,14 @@ Section WithT.
     end.
 End WithT.
 
+Import Word.
 Definition spec_of_ipow := fun functions =>
   forall x e t m,
     WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => False) functions
       "ipow" t m [x; e]
-      (fun t' m' rets => t=t'/\ m=m' /\ exists v, rets = [v]).
+      (fun t' m' rets => t=t'/\ m=m' /\ exists v, rets = [v] /\ (
+        word.unsigned x ^ word.unsigned e < 2^64 ->
+        word.unsigned v = word.unsigned x ^ word.unsigned e)).
 
 Ltac bind_body_of_function f_ :=
   let f := eval cbv in f_ in
@@ -251,9 +254,8 @@ Ltac show_program :=
     change (@cmd A B C D E (fst (c, c')) F G H I)
   end.
 
-Import Word TailRecursion PrimitivePair HList hlist tuple pair.
+Import Word TailRecursion PrimitivePair HList hlist tuple pair word.
 
-Require Import AdmitAxiom.
 Lemma word_test_true_unsigned x (H : word_test x = true) : word.unsigned x <> 0.
 Proof.
   cbn [parameters word_test] in *.
@@ -266,6 +268,7 @@ Proof.
   congruence.
 Qed.
 
+Require Import AdmitAxiom.
 Lemma ipow_ok : forall functions, spec_of_ipow (ipow::functions).
 Proof.
   bind_body_of_function ipow; cbv [spec_of_ipow].
@@ -277,7 +280,9 @@ Proof.
 
   refine (TailRecursion.tailrec nil [("e":Syntax.varname);"ret";"x"]
     (fun v t m e ret x => pair.mk (v = word.unsigned e)
-    (fun t' m' e' ret' x' => t' = t /\ m' = m))
+    (fun t' m' e' ret' x' => t' = t /\ m' = m /\
+       (unsigned ret * unsigned x ^ unsigned e < 2^64 ->
+        unsigned ret' = unsigned ret * unsigned x ^ unsigned e)))
     (fun n m => 0 <= n < m)
     _ _ tt _ _ _);
 
@@ -311,7 +316,24 @@ Proof.
             by (cbv; congruence).
           change (2 ^ (1 mod 2 ^ 64)) with 2.
           Word.mia. }
-        { split; exact eq_refl. } }
+        { (* invariant preserved *)
+          repeat split; try exact eq_refl; intros.
+          cbn [parameters interp_binop] in *.
+          eapply word_test_true_unsigned in H.
+          replace (unsigned x0) with (2 * (unsigned x0 / 2) + 1) in * by (subst v1; revert H0; admit).
+          rewrite ?Z.pow_add_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l, ?Z.mul_assoc in * by ((intro;discriminate)||admit).
+          rewrite H3; cycle 1;
+            repeat match goal with
+                     |- context [?x] => subst x
+                   end;
+            repeat rewrite ?word.unsigned_of_Z,
+                           ?word.unsigned_sru_nowrap,
+                           ?word.unsigned_mul,
+                           ?Z.mul_mod_idemp_l,
+                           ?Z.shiftr_div_pow2;
+            change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. mia. }
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. ring. } } }
       { repeat straightline.
         { (* measure decreases *)
           cbn [parameters interp_binop] in *.
@@ -327,13 +349,56 @@ Proof.
             by (cbv; congruence).
           change (2 ^ (1 mod 2 ^ 64)) with 2.
           Word.mia. }
-        { split; exact eq_refl. } } }
+        { (* invariant preserved *)
+          repeat split; try exact eq_refl; intros.
+          cbn [parameters interp_binop] in *.
+          eapply word_test_true_unsigned in H.
+          replace (unsigned x0) with (2 * (unsigned x0 / 2)) in * by (subst v1; revert H0; admit).
+          rewrite ?Z.pow_add_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l, ?Z.mul_assoc in *.
+          rewrite H3; cycle 1;
+            repeat match goal with
+                     |- context [?x] => subst x
+                   end;
+            repeat rewrite ?word.unsigned_of_Z,
+                           ?word.unsigned_sru_nowrap,
+                           ?word.unsigned_mul,
+                           ?Z.mul_mod_idemp_l,
+                           ?Z.shiftr_div_pow2;
+            change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. mia. }
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. ring. } } } }
     { (* end of loop *)
-      split; exact eq_refl. } }
+      repeat split; intros.
+      replace (unsigned x0) with 0 in * by (revert H; admit).
+      rewrite Z.pow_0_r, Z.mul_1_r. exact eq_refl. } }
 
   repeat straightline.
 
   (* function postcondition *)
   repeat eapply conj; try exact eq_refl.
-  eexists; exact eq_refl.
+  eexists. split. exact eq_refl.
+  intros.
+  repeat match goal with
+           |- context [?x] => subst x
+         end.
+  subst v. rewrite ?unsigned_of_Z, ?Z.mul_1_l in *.
+  rewrite H1; trivial.
+
+  Unshelve. (* WHY does this not get admits? *)
+
+  Grab Existential Variables.
+
+(* 11 subgoals (ID 6265) *)
+(*  word_test x0 = false -> 0 = unsigned x0 *)
+(*  unsigned x1 * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 ^ (unsigned x0 / 2) < 2 ^ 64 -> 0 <= unsigned x2 * unsigned x2 < 2 ^ 64 *)
+(*  unsigned x1 * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 ^ (unsigned x0 / 2) < 2 ^ 64 -> 0 <= unsigned x2 * unsigned x2 < 2 ^ 64 *)
+(*  word_test (and x0 (of_Z 1)) = false -> 2 * (unsigned x0 / 2) = unsigned x0 *)
+(*  unsigned x1 * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 < 2 ^ 64 -> 0 <= unsigned x2 * unsigned x2 < 2 ^ 64 *)
+(*  unsigned x1 * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 < 2 ^ 64 -> 0 <= unsigned x1 * unsigned x2 < 2 ^ 64 *)
+(*  unsigned x1 * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 < 2 ^ 64 -> 0 <= unsigned x2 * unsigned x2 < 2 ^ 64 *)
+(*  unsigned x1 * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 ^ (unsigned x0 / 2) * unsigned x2 < 2 ^ 64 -> 0 <= unsigned x1 * unsigned x2 < 2 ^ 64 *)
+(*  0 <= 2 * (unsigned x0 / 2) *)
+(*  0 <= 2 * (unsigned x0 / 2) *)
+(*  word_test (and x0 (of_Z 1)) = true -> 2 * (unsigned x0 / 2) + 1 = unsigned x0 *)
+
 Defined.
