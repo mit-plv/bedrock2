@@ -1,12 +1,12 @@
 (* Specification of two's complement machine words wrt Z *)
 
-Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt.
+Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt Lia.
 Local Open Scope Z_scope.
 
-(* TODO: move me? *)
-(* from https://github.com/coq/coq/pull/8062/files#diff-c73fff6c197eb53a5ca574b51e21bf82 *)
-Require Import Lia.
-Module Z.  Lemma mod_0_r_ext x y : y = 0 -> x mod y = 0.
+(* NOTE: this stuff does not really belong here, but this way this file is self-contained. *)
+Module Z.
+  (* from https://github.com/coq/coq/pull/8062/files#diff-c73fff6c197eb53a5ca574b51e21bf82 *)
+  Lemma mod_0_r_ext x y : y = 0 -> x mod y = 0.
   Proof. intro; subst; destruct x; reflexivity. Qed.
   Lemma div_0_r_ext x y : y = 0 -> x / y = 0.
   Proof. intro; subst; destruct x; reflexivity. Qed.
@@ -22,30 +22,30 @@ Module Z.  Lemma mod_0_r_ext x y : y = 0 -> x mod y = 0.
     | [ |- context[?x mod ?y] ] => div_mod_to_quot_rem_generalize x y    | [ H : context[?x / ?y] |- _ ] => div_mod_to_quot_rem_generalize x y
     | [ H : context[?x mod ?y] |- _ ] => div_mod_to_quot_rem_generalize x y    end.
   Ltac div_mod_to_quot_rem := repeat div_mod_to_quot_rem_step.
+
+
+  Lemma testbit_minus1 i (H:0<=i) : Z.testbit (-1) i = true.
+  Proof. destruct i; try lia; exact eq_refl. Qed.
+  Lemma testbit_mod_pow2 a n i (H:0<=n)
+    : Z.testbit (a mod 2 ^ n) i = ((i <? n) && Z.testbit a i)%bool.
+  Proof.
+    destruct (Z.ltb_spec i n); rewrite
+      ?Z.mod_pow2_bits_low, ?Z.mod_pow2_bits_high by auto; auto.
+  Qed.
+  Lemma testbit_ones n i (H : 0 <= n) : Z.testbit (Z.ones n) i = ((0 <=? i) && (i <? n))%bool.
+  Proof.
+    destruct (Z.leb_spec 0 i), (Z.ltb_spec i n); cbn;
+      rewrite ?Z.testbit_neg_r, ?Z.ones_spec_low, ?Z.ones_spec_high by lia; trivial.
+  Qed.
+  Lemma testbit_ones_nonneg n i (Hn : 0 <= n) (Hi: 0 <= i) : Z.testbit (Z.ones n) i = (i <? n)%bool.
+  Proof.
+    rewrite testbit_ones by lia.
+    destruct (Z.leb_spec 0 i); cbn; solve [trivial | lia]. 
+  Qed.
 End Z.
 Ltac mia := Z.div_mod_to_quot_rem; nia.
 
-
-(* TODO: move *)
-Lemma Z__testbit_mod_pow2 a n i (H:0<=n)
-  : Z.testbit (a mod 2 ^ n) i = ((i <? n) && Z.testbit a i)%bool.
-Proof.
-  destruct (Z.ltb_spec i n); rewrite
-    ?Z.mod_pow2_bits_low, ?Z.mod_pow2_bits_high by auto; auto.
-Qed.
-Lemma Z__testbit_ones n i (H : 0 <= n) : Z.testbit (Z.ones n) i = ((0 <=? i) && (i <? n))%bool.
-Proof.
-  destruct (Z.leb_spec 0 i), (Z.ltb_spec i n); cbn;
-    rewrite ?Z.testbit_neg_r, ?Z.ones_spec_low, ?Z.ones_spec_high by lia; trivial.
-Qed.
-
-Lemma Z__testbit_ones_nonneg n i (Hn : 0 <= n) (Hi: 0 <= i) : Z.testbit (Z.ones n) i = (i <? n)%bool.
-Proof.
-  rewrite Z__testbit_ones by lia.
-  destruct (Z.leb_spec 0 i); cbn; solve [trivial | lia]. 
-Qed.
-
-Require Coq.setoid_ring.Ring_theory Lia.
+Require Coq.setoid_ring.Ring_theory.
 
 Module word.
   Local Set Primitive Projections.
@@ -195,15 +195,12 @@ Module word.
     Lemma unsigned_modu_nowrap x y (H:unsigned y <> 0) : unsigned (modu x y) = Z.modulo (unsigned x) (unsigned y).
     Proof. unsigned. Qed.
 
-    Lemma Z__testbit_minus1 i (H:0<=i) : Z.testbit (-1) i = true.
-    Admitted.
-
     Require Import Btauto.
     (* Create HintDb z_bitwise discriminated. *) (* DON'T do this, COQBUG(5381) *)
     Hint Rewrite
          Z.shiftl_spec_low Z.lxor_spec Z.lor_spec Z.land_spec Z.lnot_spec Z.ldiff_spec Z.shiftl_spec Z.shiftr_spec Z.ones_spec_high Z.shiftl_spec_alt Z.ones_spec_low Z.shiftr_spec_aux Z.shiftl_spec_high Z.ones_spec_iff Z.testbit_spec 
          Z.div_pow2_bits Z.pow2_bits_eqb Z.bits_opp Z.testbit_0_l
-         Z__testbit_mod_pow2 Z__testbit_ones_nonneg Z__testbit_minus1
+         Z.testbit_mod_pow2 Z.testbit_ones_nonneg Z.testbit_minus1
          using solve [auto with zarith] : z_bitwise.
     Hint Rewrite <-Z.ones_equiv
          using solve [auto with zarith] : z_bitwise.
