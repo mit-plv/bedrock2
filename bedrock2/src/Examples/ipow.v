@@ -276,9 +276,10 @@ Proof.
   repeat straightline; show_program.
 
   refine (TailRecursion.tailrec nil [("e":Syntax.varname);"ret";"x"]
-    (fun v t m e ret x => pair.mk (v = Z.to_nat (word.unsigned e))
+    (fun v t m e ret x => pair.mk (v = word.unsigned e)
     (fun t' m' e' ret' x' => t' = t /\ m' = m))
-    lt _ _ tt _ _ _);
+    (fun n m => 0 <= n < m)
+    _ _ tt _ _ _);
 
     cbn [HList.hlist.foralls HList.tuple.foralls
          HList.hlist.existss HList.tuple.existss
@@ -288,7 +289,7 @@ Proof.
          PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
 
   { repeat straightline. }
-  { exact Wf_nat.lt_wf. }
+  { exact (Z.lt_wf _). }
   { repeat straightline. } (* init precondition *)
   { (* loop test *)
     repeat straightline; try show_program.
@@ -297,45 +298,35 @@ Proof.
       split. (* if cases, path-blasting *)
       { repeat straightline.
         { (* measure decreases *)
+          cbn [parameters interp_binop] in *.
+          eapply word_test_true_unsigned in H.
+          unshelve (idtac; let pf := open_constr:(word.unsigned_range _ x0) in pose proof pf);
+            [exact _|cbv; congruence|].
           repeat match goal with
                    |- context [?x] => subst x
                  end.
-          eapply word_test_true_unsigned in H.
-          cbn [parameters interp_binop] in *.
-          repeat first
-                 [ rewrite word.unsigned_sru
-                 | rewrite word.unsigned_of_Z
-                 ].
-          2: repeat constructor.
-          eapply Znat.Z2Nat.inj_lt.
-          { eapply Z.mod_pos_bound; repeat econstructor. }
-          { rewrite <-word.unsigned_mod_range. eapply Z.mod_pos_bound. econstructor. }
-          { rewrite Z.shiftr_div_pow2 by (cbv; congruence).
-            cbn -[Naive.word]; change (18446744073709551616) with (2^64).
-            rewrite <-word.unsigned_mod_range in *.
-            rewrite Z.mod_small.
-            eapply Z.div_lt.
-            { assert (0 <= word.unsigned x0 mod 2 ^ 64).
-              { eapply Z.mod_pos_bound. econstructor. }
-              { revert H. revert H1. clear.
-                cbn. generalize (Naive.unsigned x0 mod 18446744073709551616).
-                intros. Lia.lia. } }
-            { econstructor. }
-            split.
-            eapply Z.div_pos. { eapply Z.mod_pos_bound. econstructor. } econstructor.
-            eapply Z.le_lt_trans.
-            eapply Z.div_le_upper_bound. econstructor.
-            instantiate (1:=2^63).
-            eapply Z.lt_le_incl.
-            eapply Z.mod_pos_bound. econstructor. econstructor. } }
+          rewrite ?word.unsigned_sru_nowrap,
+                  ?word.unsigned_of_Z,
+                  ?Z.shiftr_div_pow2
+            by (cbv; congruence).
+          change (2 ^ (1 mod 2 ^ 64)) with 2.
+          Word.mia. }
         { split; exact eq_refl. } }
       { repeat straightline.
         { (* measure decreases *)
-          cbn [interp_binop parameters] in *.
+          cbn [parameters interp_binop] in *.
+          eapply word_test_true_unsigned in H.
+          unshelve (idtac; let pf := open_constr:(word.unsigned_range _ x0) in pose proof pf);
+            [exact _|cbv; congruence|].
           repeat match goal with
                    |- context [?x] => subst x
                  end.
-          admit. }
+          rewrite ?word.unsigned_sru_nowrap,
+                  ?word.unsigned_of_Z,
+                  ?Z.shiftr_div_pow2
+            by (cbv; congruence).
+          change (2 ^ (1 mod 2 ^ 64)) with 2.
+          Word.mia. }
         { split; exact eq_refl. } } }
     { (* end of loop *)
       split; exact eq_refl. } }

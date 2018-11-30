@@ -46,6 +46,7 @@ End Z.
 Ltac mia := Z.div_mod_to_quot_rem; nia.
 
 Require Coq.setoid_ring.Ring_theory.
+Require Import Btauto.
 
 Module word.
   Local Set Primitive Projections.
@@ -150,8 +151,14 @@ Module word.
     Lemma eq_unsigned x y (H : unsigned x = unsigned y) : x = y.
     Proof. rewrite <-(of_Z_unsigned x), <-(of_Z_unsigned y). apply f_equal, H. Qed.
 
+    Lemma signed_eq_swrap_unsigned x : signed x = swrap (unsigned x).
+    Proof. cbv [wrap]; rewrite <-signed_of_Z, of_Z_unsigned; trivial. Qed.
+
     Context (width_nonneg : 0 <= width).
     Let m_small : 0 < 2^width. apply Z.pow_pos_nonneg; firstorder idtac. Qed.
+
+    Lemma unsigned_range x : 0 <= unsigned x < 2^width.
+    Proof. rewrite <-unsigned_mod_range. mia. Qed.
 
     Lemma ring_theory : Ring_theory.ring_theory (of_Z 0) (of_Z 1) add mul sub opp Logic.eq.
     Proof.
@@ -195,7 +202,6 @@ Module word.
     Lemma unsigned_modu_nowrap x y (H:unsigned y <> 0) : unsigned (modu x y) = Z.modulo (unsigned x) (unsigned y).
     Proof. unsigned. Qed.
 
-    Require Import Btauto.
     (* Create HintDb z_bitwise discriminated. *) (* DON'T do this, COQBUG(5381) *)
     Hint Rewrite
          Z.shiftl_spec_low Z.lxor_spec Z.lor_spec Z.land_spec Z.lnot_spec Z.ldiff_spec Z.shiftl_spec Z.shiftr_spec Z.ones_spec_high Z.shiftl_spec_alt Z.ones_spec_low Z.shiftr_spec_aux Z.shiftl_spec_high Z.ones_spec_iff Z.testbit_spec 
@@ -218,15 +224,30 @@ Module word.
     Proof. bitwise. Qed.
     Lemma unsigned_ndn_nowrap x y : unsigned (ndn x y) = Z.ldiff (unsigned x) (unsigned y).
     Proof. bitwise. Qed.
-
+    Lemma unsigned_sru_nowrap x y (H:unsigned y < width) : unsigned (sru x y) = Z.shiftr (unsigned x) (unsigned y).
+    Proof.
+      assert (0 <= unsigned y) by (rewrite <-unsigned_mod_range; apply Z.mod_pos_bound; lia).
+      rewrite unsigned_sru by lia.
+      rewrite <-(unsigned_mod_range x).
+      eapply Z.bits_inj'; intros ?i ?Hi; autorewrite with z_bitwise.
+      repeat match goal with |- context [?a <? ?b] =>
+        destruct (Z.ltb_spec a b); trivial; try lia
+      end.
+    Qed.
+      
     Lemma testbit_wrap z i : Z.testbit (wrap z) i = ((i <? width) && Z.testbit z i)%bool.
     Proof. cbv [wrap]. autorewrite with z_bitwise; trivial. Qed.
 
     Context (width_nonzero : 0 < width).
     Let halfm_small : 0 < 2^(width-1). apply Z.pow_pos_nonneg; auto with zarith. Qed.
+    Let twice_halfm : 2^(width-1) * 2 = 2^width.
+    Proof. rewrite Z.mul_comm, <-Z.pow_succ_r by lia; f_equal; lia. Qed.
 
-    Lemma signed_eq_swrap_unsigned x : signed x = swrap (unsigned x).
-    Proof. cbv [wrap]; rewrite <-signed_of_Z, of_Z_unsigned; trivial. Qed.
+    Lemma signed_range x : -2^(width-1) <= signed x < 2^(width-1).
+    Proof.
+      rewrite signed_eq_swrap_unsigned. cbv [swrap].
+      rewrite <-twice_halfm. mia.
+    Qed.
     
     Lemma swrap_as_div_mod z : swrap z = z mod 2^(width-1) - 2^(width-1) * (z / (2^(width - 1)) mod 2).
     Proof.
