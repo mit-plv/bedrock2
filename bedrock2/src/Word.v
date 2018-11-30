@@ -207,56 +207,71 @@ Module word.
     Context (width_nonzero : 0 < width).
     Let halfm_small : 0 < 2^(width-1). apply Z.pow_pos_nonneg; auto with zarith. Qed.
 
-    Require Import AdmitAxiom.
-
     Lemma signed_eq_swrap_unsigned x : signed x = swrap (unsigned x).
     Proof. cbv [swrap wrap]; rewrite <-signed_of_Z, of_Z_unsigned; trivial. Qed.
 
     Lemma signed_add x y : signed (add x y) = swrap (Z.add (signed x) (signed y)).
     Proof.
       rewrite !signed_eq_swrap_unsigned; autorewrite with word_laws.
-      cbv [wrap swrap];
-      generalize_unsigned_mod_range.
+      cbv [wrap swrap]; generalize_unsigned_mod_range.
       replace (2 ^ width) with (2*2 ^ (width - 1)) by
         (rewrite <-Z.pow_succ_r, Z.sub_1_r, Z.succ_pred; lia).
-      set (M := 2 ^ (width - 1)) in*; clearbody M.
-      clear dependent width.
-      assert (0<2*M) by admit.
+      set (M := 2 ^ (width - 1)) in*; clearbody M; clear dependent width.
+      assert (0<2*M) by nia.
+      rewrite <-!Z.add_opp_r.
+      repeat rewrite ?Z.add_assoc, ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?(Z.add_shuffle0 _ (_ mod _)).
+      rewrite 4(Z.add_comm (_ mod _)).
+      repeat rewrite ?Z.add_assoc, ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?(Z.add_shuffle0 _ (_ mod _)).
       f_equal.
-      repeat rewrite
-             ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?Z.mul_mod_idemp_l, ?Z.mul_mod_idemp_r,
-             ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zminus_mod_idemp_r,
-             ?Z.sub_0_l, ?Z.add_0_l, ?(Z.mod_small 1), ?Z.mul_1_l by auto with zarith.
-      transitivity (((x + M) mod (2 * M) - M + (y + M) mod (2 * M)) mod (2 * M)).
-      2: { idtac.
-           rewrite <-Z.add_assoc.
-           rewrite (Z.sub_add M).
-           reflexivity. }
-      repeat rewrite
-             ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?Z.mul_mod_idemp_l, ?Z.mul_mod_idemp_r,
-             ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zminus_mod_idemp_r,
-             ?Z.sub_0_l, ?Z.add_0_l, ?(Z.mod_small 1), ?Z.mul_1_l by auto with zarith.
-           rewrite (Z.add_comm y M).
-           rewrite (Z.add_assoc _ M).
-           rewrite (Z.sub_add M).
-      repeat rewrite
-             ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?Z.mul_mod_idemp_l, ?Z.mul_mod_idemp_r,
-             ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zminus_mod_idemp_r,
-             ?Z.sub_0_l, ?Z.add_0_l, ?(Z.mod_small 1), ?Z.mul_1_l by auto with zarith.
-      rewrite (Z.add_comm _ M).
-      rewrite !Z.add_assoc.
-      repeat rewrite
-             ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?Z.mul_mod_idemp_l, ?Z.mul_mod_idemp_r,
-             ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zminus_mod_idemp_r,
-             ?Z.sub_0_l, ?Z.add_0_l, ?(Z.mod_small 1), ?Z.mul_1_l by auto with zarith.
-      rewrite (Z.add_comm M _).
-      rewrite <-Z.add_assoc.
-      repeat rewrite
-             ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?Z.mul_mod_idemp_l, ?Z.mul_mod_idemp_r,
-             ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zminus_mod_idemp_r,
-             ?Z.sub_0_l, ?Z.add_0_l, ?(Z.mod_small 1), ?Z.mul_1_l by auto with zarith.
       f_equal.
-      lia.
+      all:lia.
+    Qed.
+
+    Lemma signed_mul x y : signed (mul x y) = swrap (Z.mul (signed x) (signed y)).
+    Proof.
+      rewrite !signed_eq_swrap_unsigned; autorewrite with word_laws.
+
+      cbv [wrap swrap]; generalize_unsigned_mod_range.
+      replace (2 ^ width) with (2*2 ^ (width - 1)) by
+        (rewrite <-Z.pow_succ_r, Z.sub_1_r, Z.succ_pred; lia).
+      set (M := 2 ^ (width - 1)) in*; clearbody M; clear dependent width.
+      assert (0<2*M) by nia.
+      f_equal.
+      symmetry.
+      rewrite <-Z.add_mod_idemp_l by lia.
+      rewrite Z.mul_mod by lia.
+      rewrite <-!Z.add_opp_r.
+      rewrite ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r by lia.
+      rewrite !Z.add_opp_r.
+      rewrite !Z.add_simpl_r.
+      rewrite !Z.mod_mod by lia.
+      trivial.
+    Qed.
+
+    Lemma signed_sru x y (H : Z.lt (unsigned y) width) : signed (slu x y) = swrap (Z.shiftl (signed x) (unsigned y)).
+    Proof.
+      rewrite !signed_eq_swrap_unsigned; autorewrite with word_laws.
+      cbv [wrap swrap]; generalize_unsigned_mod_range.
+      replace (2 ^ width) with (2*2 ^ (width - 1)) by
+        (rewrite <-Z.pow_succ_r, Z.sub_1_r, Z.succ_pred; lia).
+      set (M := 2 ^ (width - 1)) in*; clearbody M; clear dependent width.
+      assert (0<2*M) by nia.
+      f_equal.
+      symmetry.
+      rewrite <-(Z.add_mod_idemp_l _ M).
+      symmetry.
+      f_equal.
+      f_equal.
+      rewrite !Z.shiftl_mul_pow2 by mia.
+      generalize (y mod (2 * M)); clear y; intro n.
+      rewrite <-!Z.add_opp_r.
+      rewrite !Z.add_mod_idemp_l.
+      symmetry.
+      rewrite <-(Z.mul_mod_idemp_l _ (2^n)).
+      rewrite !Z.add_mod_idemp_l.
+      rewrite !Z.mul_mod_idemp_l.
+      f_equal.
+      all:lia.
     Qed.
 
   End WithWord.
