@@ -89,12 +89,13 @@ Module word.
 
     gtu x y := ltu y x;
     gts x y := lts y x;
+
+    swrap z := (z + 2^(width-1)) mod 2^width - 2^(width-1);
   }.
   Arguments word : clear implicits.
   
   Class ok {width} {word : word width} := {
     wrap z := z mod 2^width;
-    swrap z := wrap (z + 2^(width-1)) - 2^(width-1);
 
     unsigned_of_Z : forall z, unsigned (of_Z z) = wrap z;
     signed_of_Z : forall z, signed (of_Z z) = swrap z;
@@ -228,7 +229,7 @@ Module word.
     Let halfm_small : 0 < 2^(width-1). apply Z.pow_pos_nonneg; auto with zarith. Qed.
 
     Lemma signed_eq_swrap_unsigned x : signed x = swrap (unsigned x).
-    Proof. cbv [swrap wrap]; rewrite <-signed_of_Z, of_Z_unsigned; trivial. Qed.
+    Proof. cbv [wrap]; rewrite <-signed_of_Z, of_Z_unsigned; trivial. Qed.
     
     Lemma swrap_as_div_mod z : swrap z = z mod 2^(width-1) - 2^(width-1) * (z / (2^(width - 1)) mod 2).
     Proof.
