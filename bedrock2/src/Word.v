@@ -167,8 +167,11 @@ Module word.
     (* Create HintDb z_bitwise discriminated. *) (* DON'T do this, COQBUG(5381) *)
     Hint Rewrite
          Z.shiftl_spec_low Z.lxor_spec Z.lor_spec Z.land_spec Z.lnot_spec Z.ldiff_spec Z.shiftl_spec Z.shiftr_spec Z.ones_spec_high Z.shiftl_spec_alt Z.ones_spec_low Z.shiftr_spec_aux Z.shiftl_spec_high Z.ones_spec_iff Z.testbit_spec' Z.testbit_spec 
+         Z.div_pow2_bits Z.pow2_bits_eqb Z.bits_opp Z.testbit_0_l
          Z__testbit_mod_pow2
-         using auto with zarith : z_bitwise.
+         using solve [auto with zarith] : z_bitwise.
+    Hint Rewrite <-Z.ones_equiv
+         using solve [auto with zarith] : z_bitwise.
 
     Ltac generalize_unsigned_mod_range :=
       repeat match goal with
@@ -181,7 +184,7 @@ Module word.
     Ltac bitwise :=
       autorewrite with word_laws;
       generalize_unsigned_mod_range;
-      eapply Z.bits_inj; intros ?i; autorewrite with z_bitwise; btauto.
+      eapply Z.bits_inj'; intros ?i ?Hi; autorewrite with z_bitwise; btauto.
 
     Ltac unsigned :=
       autorewrite with word_laws;
@@ -231,6 +234,32 @@ Module word.
 
     Lemma signed_alt x : signed x = weightwrap (unsigned x).
     Proof. rewrite signed_eq_swrap_unsigned. rewrite weightwrap_eq_swrap. trivial. Qed.
+
+    Lemma testbit_signed x i (H:0 <= i) : Z.testbit (signed x) i
+                               = if i <? width
+                                 then Z.testbit (unsigned x) i
+                                 else Z.testbit (unsigned x) (width -1).
+    Proof.
+      assert ((unsigned x mod 2 ^ width / 2 ^ (width - 1)) = 0 \/ (unsigned x mod 2 ^ width / 2 ^ (width - 1)) = 1) as HH by admit.
+      rewrite signed_alt.
+      cbv [weightwrap].
+      rewrite <-Z.add_opp_r.
+      destruct HH as [HH|HH]; rewrite ?HH, ?Z.mul_0_r, ?Z.mul_1_r, ?Z.add_0_r; autorewrite with z_bitwise; cbn.
+      { destruct (Z.ltb_spec i (width-1)), (Z.ltb_spec i width); cbn;
+          autorewrite with z_bitwise; cbn; try solve [lia | btauto].
+        all: try replace i with (width-1) by lia.
+        all: replace (Z.testbit (unsigned x) (width-1)) with (Z.testbit (unsigned x mod 2 ^ width / 2 ^ (width - 1)) 0) by admit; rewrite ?HH; cbn; trivial. }
+      rewrite Z.add_nocarry_lxor; cycle 1.
+      { clear i H.
+        eapply Z.bits_inj'; intros ?i ?Hi; autorewrite with z_bitwise.
+        destruct (Z.ltb_spec i (width-1)), (Z.ltb_spec i width); cbn;
+          autorewrite with z_bitwise; cbn; try solve [lia | btauto]. }
+      autorewrite with z_bitwise.
+      destruct (Z.ltb_spec i (width-1)), (Z.ltb_spec i width); cbn;
+        autorewrite with z_bitwise; cbn; try solve [lia | btauto].
+        all: try replace i with (width-1) by lia.
+        all: replace (Z.testbit (unsigned x) (width-1)) with (Z.testbit (unsigned x mod 2 ^ width / 2 ^ (width - 1)) 0) by admit; rewrite ?HH; cbn; trivial.
+    Admitted.
 
     Lemma signed_add x y : signed (add x y) = swrap (Z.add (signed x) (signed y)).
     Proof.
