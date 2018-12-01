@@ -79,6 +79,7 @@ Require Import bedrock2.Semantics bedrock2.BasicC64Semantics bedrock2.Map.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require bedrock2.WeakestPrecondition bedrock2.WeakestPreconditionProperties.
 Require bedrock2.TailRecursion.
+Require bedrock2.WordProperties.
 
 Section WithT.
   Context {T : Type}.
@@ -254,7 +255,7 @@ Ltac show_program :=
     change (@cmd A B C D E (fst (c, c')) F G H I)
   end.
 
-Import Word TailRecursion PrimitivePair HList hlist tuple pair word.
+Import WordProperties Word TailRecursion PrimitivePair HList hlist tuple pair word.
 
 Lemma word_test_true_unsigned x (H : word_test x = true) : word.unsigned x <> 0.
 Proof.
@@ -315,7 +316,7 @@ Proof.
                   ?Z.shiftr_div_pow2
             by (cbv; congruence).
           change (2 ^ (1 mod 2 ^ 64)) with 2.
-          Word.mia. }
+          WordProperties.mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
           cbn [parameters interp_binop] in *.
@@ -332,7 +333,7 @@ Proof.
                            ?Z.mul_mod_idemp_l,
                            ?Z.shiftr_div_pow2;
             change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
-          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. mia. }
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. WordProperties.mia. }
           { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. ring. } } }
       { repeat straightline.
         { (* measure decreases *)
@@ -348,7 +349,7 @@ Proof.
                   ?Z.shiftr_div_pow2
             by (cbv; congruence).
           change (2 ^ (1 mod 2 ^ 64)) with 2.
-          Word.mia. }
+          WordProperties.mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
           cbn [parameters interp_binop] in *.
@@ -365,7 +366,7 @@ Proof.
                            ?Z.mul_mod_idemp_l,
                            ?Z.shiftr_div_pow2;
             change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
-          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. mia. }
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. WordProperties.mia. }
           { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. ring. } } } }
     { (* end of loop *)
       repeat split; intros.

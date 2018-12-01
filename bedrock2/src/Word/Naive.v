@@ -1,7 +1,7 @@
 Local Set Universe Polymorphism.
 Local Set Primitive Projections.
   
-Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt.
+Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt Lia.
 Require Import bedrock2.Word. Import word.
 Local Open Scope Z_scope.
 
