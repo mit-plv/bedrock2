@@ -113,8 +113,8 @@ Module word.
     unsigned_ndn : forall x y, unsigned (ndn x y) = wrap (Z.ldiff (unsigned x) (unsigned y));
 
     unsigned_mul : forall x y, unsigned (mul x y) = wrap (Z.mul (unsigned x) (unsigned y));
-    unsigned_mulhss : forall x y, signed (mulhss x y) = swrap (Z.mul (signed x) (signed y) / 2^width);
-    unsigned_mulhsu : forall x y, signed (mulhsu x y) = swrap (Z.mul (signed x) (unsigned y) / 2^width);
+    signed_mulhss : forall x y, signed (mulhss x y) = swrap (Z.mul (signed x) (signed y) / 2^width);
+    signed_mulhsu : forall x y, signed (mulhsu x y) = swrap (Z.mul (signed x) (unsigned y) / 2^width);
     unsigned_mulhuu : forall x y, unsigned (mulhuu x y) = wrap (Z.mul (unsigned x) (unsigned y) / 2^width);
 
     unsigned_divu : forall x y, unsigned y <> 0 -> unsigned (divu x y) = wrap (Z.div (unsigned x) (unsigned y));
@@ -138,7 +138,7 @@ Module word.
 
     (* Create HintDb word_laws discriminated. *) (* DON'T do this, COQBUG(5381) *)
     Hint Rewrite
-         unsigned_of_Z signed_of_Z of_Z_unsigned unsigned_add unsigned_sub unsigned_opp unsigned_or unsigned_and unsigned_xor unsigned_not unsigned_ndn unsigned_mul unsigned_mulhss unsigned_mulhsu unsigned_mulhuu unsigned_divu signed_divs unsigned_modu signed_mods unsigned_slu unsigned_sru signed_srs unsigned_eqb unsigned_ltu signed_lts
+         unsigned_of_Z signed_of_Z of_Z_unsigned unsigned_add unsigned_sub unsigned_opp unsigned_or unsigned_and unsigned_xor unsigned_not unsigned_ndn unsigned_mul signed_mulhss signed_mulhsu unsigned_mulhuu unsigned_divu signed_divs unsigned_modu signed_mods unsigned_slu unsigned_sru signed_srs unsigned_eqb unsigned_ltu signed_lts
          using trivial
          : word_laws.
 
@@ -226,7 +226,7 @@ Module word.
     Proof. bitwise. Qed.
     Lemma unsigned_sru_nowrap x y (H:unsigned y < width) : unsigned (sru x y) = Z.shiftr (unsigned x) (unsigned y).
     Proof.
-      assert (0 <= unsigned y) by (rewrite <-wrap_unsigned; apply Z.mod_pos_bound; lia).
+      pose proof unsigned_range y.
       rewrite unsigned_sru by lia.
       rewrite <-(wrap_unsigned x).
       eapply Z.bits_inj'; intros ?i ?Hi; autorewrite with z_bitwise.
@@ -248,6 +248,9 @@ Module word.
       rewrite signed_eq_swrap_unsigned. cbv [swrap].
       rewrite <-twice_halfm. mia.
     Qed.
+
+    Lemma swrap_inrange z (H : -2^(width-1) <= z < 2^(width-1)) : swrap z = z.
+    Proof. cbv [swrap]; rewrite Z.mod_small; lia. Qed.
     
     Lemma swrap_as_div_mod z : swrap z = z mod 2^(width-1) - 2^(width-1) * (z / (2^(width - 1)) mod 2).
     Proof.
@@ -394,6 +397,34 @@ Module word.
     Proof. sbitwise. Qed.
     Lemma signed_ndn_nowrap x y : signed (ndn x y) = Z.ldiff (signed x) (signed y).
     Proof. sbitwise. Qed.
+
+    Lemma signed_srs_nowrap x y (H:unsigned y < width) : signed (srs x y) = Z.shiftr (signed x) (unsigned y).
+    Proof.
+      pose proof unsigned_range y; sbitwise.
+      replace (unsigned y) with 0 by lia; rewrite Z.add_0_r; trivial.
+    Qed.
+
+    Lemma signed_mulhss_nowrap x y : signed (mulhss x y) = Z.mul (signed x) (signed y) / 2^width.
+    Proof. rewrite signed_mulhss. apply swrap_inrange. pose (signed_range x); pose (signed_range y). mia. Qed.
+    Lemma signed_mulhsu_nowrap x y : signed (mulhsu x y) = Z.mul (signed x) (unsigned y) / 2^width.
+    Proof. rewrite signed_mulhsu. apply swrap_inrange. pose (signed_range x); pose (unsigned_range y). mia. Qed.
+    Lemma signed_divs_nowrap x y (H:signed y <> 0) (H0:signed x <> -2^(width-1) \/ signed y <> -1) : signed (divs x y) = Z.quot (signed x) (signed y).
+    Proof.
+      rewrite signed_divs by assumption. apply swrap_inrange.
+      rewrite Z.quot_div by assumption. pose proof (signed_range x).
+      destruct (Z.sgn_spec (signed x)) as [[? X]|[[? X]|[? X]]];
+      destruct (Z.sgn_spec (signed y)) as [[? Y]|[[? Y]|[? Y]]];
+      rewrite ?X, ?Y; rewrite ?Z.abs_eq, ?Z.abs_neq by lia; mia.
+    Qed.
+    Lemma signed_mods_nowrap x y (H:signed y <> 0) : signed (mods x y) = Z.rem (signed x) (signed y).
+    Proof.
+      rewrite signed_mods by assumption. apply swrap_inrange.
+      rewrite Z.rem_mod by assumption.
+      pose (signed_range x); pose (signed_range y).
+      destruct (Z.sgn_spec (signed x)) as [[? X]|[[? X]|[? X]]];
+      destruct (Z.sgn_spec (signed y)) as [[? Y]|[[? Y]|[? Y]]];
+      rewrite ?X, ?Y; repeat rewrite ?Z.abs_eq, ?Z.abs_neq by lia; mia.
+    Qed.
 
     Lemma eq_signed x y (H : signed x = signed y) : x = y.
     Proof.
