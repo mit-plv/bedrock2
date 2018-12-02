@@ -65,7 +65,7 @@ Section TailRecrsion.
           match tuple.apply (hlist.apply (spec v') g' t' m') l' with S' =>
           S'.(1) /\ Markers.right (
             (progress t' t \/ lt v' v) /\
-            forall T M L, tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L) end))))))))) /\
+            forall T M, hlist.foralls (fun L => tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L)) end))))))))) /\
       (word_test br = false -> tuple.apply (S_.(2) t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m l, tuple.apply (Q0 t m) l -> post t m (reconstruct variables l)end)
     : cmd rely guarantee progress call (cmd.while e c) t m localsmap post.
@@ -86,7 +86,8 @@ Section TailRecrsion.
       { eapply Proper_call; firstorder idtac. }
       intros tj mj lmapj Hlj; eapply hlist.existss_exists in Hlj.
       destruct Hlj as (lj&Elj&HE); eapply reconstruct_enforce in Elj; subst lmapj.
-      eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&?).
+      eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&HR).
+      pose proof fun T M => hlist.foralls_forall (HR T M); clear HR.
       eauto 9. }
     { eauto. }
   Qed.

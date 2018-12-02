@@ -26,7 +26,7 @@ Module hlist.
     | cons T argts' => fun P f x => binds (fun xs' => f (x, xs'))
     end.
 
-  Fixpoint foralls {argts : list Type} : forall (P : hlist argts -> Type), Type :=
+  Fixpoint foralls {argts : list Type} : forall (P : hlist argts -> Prop), Prop :=
     match argts with
     | nil => fun P => P tt
     | cons T argts' => fun P => forall x:T, foralls (fun xs' => P (x, xs'))
