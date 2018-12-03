@@ -80,6 +80,8 @@ Module Wrong.
 
 End Wrong.
 
+(* returns a prop which says whether "outcome" is an outcome of the external call,
+   ok to have a total Definition here because outermost Prop could be False *)
 Definition ext_spec(a: MMIOAction)(t: trace)(argvals: list (word 32))
                    (outcome: trace -> list (word 32) -> Prop): Prop :=
   match a with
@@ -95,6 +97,13 @@ Definition ext_spec(a: MMIOAction)(t: trace)(argvals: list (word 32))
                      forall t' resvals, outcome t' resvals ->
                                         t' = (MMOutput, [addr; val], nil) :: t /\ resvals = nil
   end.
+
+Lemma input_steps_to_emptyset: forall t addr,
+    simple_isMMIOAddr addr = true ->
+    ext_spec MMInput t [addr] (fun newTrace resVals => False).
+Proof.
+  intros. simpl in *. exists addr. repeat split; [assumption|]. intros. contradiction.
+Qed.
 
 Lemma hardToRead_implies_ext_spec: forall a t argvals outcome,
     HardToRead.ext_spec a t argvals outcome ->
@@ -138,8 +147,8 @@ Instance compilation_params: FlatToRiscvDef.parameters := {|
   FlatToRiscvDef.LwXLEN := Lw;
   FlatToRiscvDef.SwXLEN := Sw;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
-  FlatToRiscvDef.max_ext_call_code_size := 1;
-|}. abstract omega. Defined.
+  FlatToRiscvDef.max_ext_call_code_size _ := 1;
+|}. intros. abstract omega. Defined.
 
 (*
 Lemma compile_ext_call_correct: forall initialL action outcome newPc insts
