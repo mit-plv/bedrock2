@@ -20,7 +20,7 @@ Module Import parameters.
   }.
 End parameters. Notation parameters := parameters.parameters.
 
-Section UnorderedList.
+Section SortedList.
   Context {p : unique! parameters}.
   Fixpoint put m (k:key) (v:value) : list (key * value) :=
     match m with
@@ -74,5 +74,5 @@ Section UnorderedList.
     intro; subst y.
     apply f_equal, Eqdep_dec.UIP_dec; decide equality.
   Qed.
-End UnorderedList.
+End SortedList.
 Arguments map : clear implicits.

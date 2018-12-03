@@ -118,3 +118,36 @@ Section WeakestPrecondition.
 
   Definition program funcs main t m l post : Prop := cmd (call funcs) main t m l post.
 End WeakestPrecondition.
+
+Ltac unfold1_cmd e :=
+  lazymatch e with
+    @cmd ?params ?R ?G ?PR ?CA ?c ?t ?m ?l ?post =>
+    let c := eval hnf in c in
+    constr:(@cmd_body params R G PR CA (@cmd params R G PR CA) c t m l post)
+  end.
+Ltac unfold1_cmd_goal :=
+  let G := lazymatch goal with |- ?G => G end in
+  let G := unfold1_cmd G in
+  change G.
+
+Ltac unfold1_expr e :=
+  lazymatch e with
+    @expr ?params ?m ?l ?arg ?post =>
+    let arg := eval hnf in arg in
+    constr:(@expr_body params m l (@expr params m l) arg post)
+  end.
+Ltac unfold1_expr_goal :=
+  let G := lazymatch goal with |- ?G => G end in
+  let G := unfold1_expr G in
+  change G.
+
+Ltac unfold1_list_map e :=
+  lazymatch e with
+    @list_map ?A ?B ?P ?arg ?post =>
+    let arg := eval hnf in arg in
+    constr:(@list_map_body A B P (@list_map A B P) arg post)
+  end.
+Ltac unfold1_list_map_goal :=
+  let G := lazymatch goal with |- ?G => G end in
+  let G := unfold1_list_map G in
+  change G.
