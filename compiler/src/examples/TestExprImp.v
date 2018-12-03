@@ -11,7 +11,37 @@ Require Import compiler.util.List_Map.
 Require Import compiler.Memory.
 Require Import compiler.ExprImp.
 Require Import bedrock2.ZNamesSyntax.
-Require Import compiler.Basic32Semantics.
+
+
+Instance myparams: Basic_bopnames.parameters := {|
+  Basic_bopnames.varname := Z;
+  Basic_bopnames.funcname := Z;
+  Basic_bopnames.actname := Empty_set;
+|}.
+
+Definition TODO{T: Type}: T. Admitted.
+
+Instance params: Semantics.Semantics.parameters := {|
+    Semantics.Semantics.syntax := myparams;
+    Semantics.Semantics.word := word 32;
+    Semantics.Semantics.word_zero := ZToWord 32 0;
+    Semantics.Semantics.word_succ := TODO;
+    Semantics.Semantics.word_test := TODO;
+    Semantics.Semantics.word_of_Z z := Some (ZToWord 32 z); (* todo should fail if too big *)
+    Semantics.Semantics.interp_binop := eval_binop;
+    Semantics.Semantics.byte := word 8;
+    Semantics.Semantics.combine := TODO;
+    Semantics.Semantics.split := TODO;
+    Semantics.Semantics.mem_Inst := List_Map (word 32) (word 8);
+    Semantics.Semantics.locals_Inst := List_Map Z (word 32);
+    Semantics.Semantics.funname_eqb a b := false;
+    Semantics.Semantics.Event := Empty_set;
+    Semantics.Semantics.ext_spec _ _ _ _ := False;
+|}.
+
+Definition annoying_eq: DecidableEq
+  (list varname * list varname * cmd). Admitted.
+Existing Instance annoying_eq.
 
 (*
 given x, y, z
@@ -45,13 +75,8 @@ Definition isRight(x y z: Z) :=
                                           (expr.op bopname.mul (expr.var _b) (expr.var _b)))
                                (expr.op bopname.mul (expr.var _c) (expr.var _c)))).
 
-Definition annoying_eq: DecidableEq
-  (list varname * list varname * cmd). Admitted.
-Existing Instance annoying_eq.
-
-
-Definition run_isRight(x y z: Z): option word :=
-  let final := eval_cmd empty_map 10 empty_map no_mem (isRight x y z) in
+Definition run_isRight(x y z: Z) :=
+  let final := eval_cmd (p := params) empty_map 10 empty_map empty_map (isRight x y z) in
   match final with
   | Some (finalSt, finalM) => get finalSt _isRight
   | None => None
