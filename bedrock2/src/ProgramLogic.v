@@ -4,7 +4,8 @@ Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.TailRecursion.
 
-Require bedrock2.Map.SortedList. (* special-case eq_refl *)
+Definition spec_of {p:parameters} (procname:Syntax.funname) := list (Syntax.funname * (list Syntax.varname * list Syntax.varname * Syntax.cmd.cmd)) -> Prop.
+Existing Class spec_of.
 
 Section bindcmd.
   Context {p : Syntax.parameters} {T : Type}.
@@ -16,6 +17,41 @@ Section bindcmd.
     | c => k c
     end.
 End bindcmd.
+
+Section callees.
+  Context {p : Syntax.parameters}.
+  (* TODO: use a deduplicating set instead of a list *)
+  Fixpoint callees (c : Syntax.cmd) : list funname :=
+    match c with
+    | cmd.cond _ c1 c2 | cmd.seq c1 c2 => callees c1 ++ callees c2
+    | cmd.while _ c => callees c
+    | cmd.call _ f _ => cons f nil
+    | _ => nil
+    end.
+End callees.
+
+Ltac assuming_correctness_of_in callees functions P :=
+  lazymatch callees with
+  | nil => P
+  | cons ?f ?callees =>
+    let f_spec := lazymatch constr:(_:spec_of f) with ?x => x end in
+    constr:(f_spec functions -> ltac:(let t := assuming_correctness_of_in callees functions P in exact t))
+  end.
+Local Notation function_t := ((funname * (list varname * list varname * Syntax.cmd.cmd))%type).
+Local Notation functions_t := (list function_t).
+
+Ltac program_logic_goal_for_function proc :=
+  let __ := constr:(proc : function_t) in
+  let fname := eval cbv in (fst proc) in
+  let callees := eval cbv in (callees (snd (snd proc))) in
+  let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
+  constr:(forall functions : functions_t, ltac:(
+    let s := assuming_correctness_of_in callees functions (spec (cons proc functions)) in
+    exact s)).
+
+Notation "program_logic_goal_for_function! proc" := (ltac:(
+   let x := program_logic_goal_for_function proc in exact x))
+  (at level 10).
 
 Ltac bind_body_of_function f_ :=
   let f := eval cbv in f_ in
@@ -29,6 +65,8 @@ Ltac bind_body_of_function f_ :=
   let P := lazymatch eval pattern f_ in G with ?P _ => P end in
   change (bindcmd fbody (fun c : Syntax.cmd => P (fname, (fargs, frets, c))));
   cbv beta iota delta [bindcmd]; intros.
+
+Require bedrock2.Map.SortedList. (* special-case eq_refl *)
 
 Ltac straightline_cleanup :=
   match goal with
@@ -119,6 +157,17 @@ Ltac straightline :=
   | |- True => exact I
   | |- False \/ _ => right
   | |- _ \/ False => left
+  end.
+
+(* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
+Ltac straightline_call :=
+  lazymatch goal with
+  | |- @WeakestPrecondition.call _ _ _ _ ?functions ?callee _ _ _ _ =>
+    let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
+    let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
+    eapply WeakestPreconditionProperties.Proper_call; cycle -1;
+      [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
+      [ .. | intros ? ? ? ?]
   end.
 
 Ltac show_program :=

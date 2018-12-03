@@ -17,6 +17,7 @@ Definition swap_swap := ("swap_swap", (("a"::"b"::nil), ([]:list varname), bedro
   Syntax.cmd.call [] "swap" [var "a"; var "b"]
 ))).
 
+Require bedrock2.WeakestPrecondition.
 Require Import bedrock2.Semantics bedrock2.BasicC64Semantics.
 Require Import bedrock2.Map bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
@@ -30,19 +31,31 @@ Local Instance FIXME_mem_ok : Map.map.ok Semantics.mem.
      exact SortedList.map_ok).
 Defined.
 
+
+Require bedrock2.WeakestPreconditionProperties.
+From bedrock2.Tactics Require Import eabstract.
 Require Import bedrock2.ProgramLogic.
-From bedrock2.Tactics Require Import eabstract letexists.
-(*
-Lemma get_sep {key value} {map : map key value} (a:key) (v:value) R m (H : sep (ptsto a v) R m) : map.get m a = Some v.
-Admitted.
-Lemma put_sep {key value} {map : map key value} (k:key) (v1:value) (v2:value) R m :
-  sep (ptsto k v1) R m -> sep (ptsto k v2) R (map.put m k v2).
-Admitted.
-Lemma split_combine n a b : split n (Semantics.combine n a b) = (a, b).
-Admitted.
-*)
 
 Definition ptsto sz a v m := load sz m a = Some v.
+
+Local Infix "*" := sep.
+Local Infix "*" := sep : type_scope.
+Instance spec_of_swap : spec_of "swap" := fun functions =>
+  forall a_addr a b_addr b m R t,
+    (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m ->
+    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
+      "swap" t m [a_addr; b_addr]
+      (fun t' m' rets => t=t'/\ (ptsto 1 a_addr b * (ptsto 1 b_addr a * R)) m' /\ rets = nil).
+
+Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
+  forall a_addr a b_addr b m R t,
+    (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m ->
+    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
+      "swap_swap" t m [a_addr; b_addr]
+      (fun t' m' rets => t=t' /\ (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m' /\ rets = nil).
+
+From bedrock2.Tactics Require Import eabstract letexists.
+
 Lemma load_sep sz a v R m (H : sep (ptsto sz a v) R m) : load sz m a = Some v.
   cbv [load ptsto] in *.
   revert H; revert R; revert v; revert a; revert m.
@@ -65,9 +78,6 @@ Lemma store_sep sz a v1 v2 R m (H : sep (ptsto sz a v1) R m)
   exists m', store sz m a v2 = Some m' /\ post m'.
 Admitted.
 
-Local Infix "*" := sep.
-Local Infix "*" := sep : type_scope.
-
 Ltac _syntactic_unify x y :=
   match constr:(Set) with
   | _ => is_evar x; unify x y
@@ -87,18 +97,10 @@ Ltac _syntactic_unify x y :=
   end.
 Tactic Notation "syntactic_unify" open_constr(x) open_constr(y) :=  _syntactic_unify x y.
 
-Definition spec_of_swap := fun functions =>
-  forall a_addr a b_addr b m R t,
-    (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m ->
-    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
-      (fst swap) t m [a_addr; b_addr]
-      (fun t' m' rets => t=t'/\ (ptsto 1 a_addr b * (ptsto 1 b_addr a * R)) m' /\ rets = nil).
-
-Lemma swap_ok : forall functions, spec_of_swap (swap::functions).
+Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
-  bind_body_of_function swap; cbv [spec_of_swap].
+  bind_body_of_function swap; cbv [spec_of spec_of_swap].
   intros.
-  hnf. (* incoming call dispatch *)
   letexists. split. exact eq_refl. (* argument initialization *)
 
   repeat straightline.
@@ -148,7 +150,7 @@ Proof.
   end.
   { eabstract (instantiate (2 := b); cancel; reflexivity). }
   clear H m; intros m H.
-  cbv beta. (* FIXME *)
+  cbv beta.
 
   letexists; split.
   { eabstract repeat ((letexists; split) || exact eq_refl). }
@@ -175,48 +177,22 @@ Proof.
   assumption.
 Defined.
 
-Definition spec_of_swap_swap := fun functions =>
-  forall a_addr a b_addr b m R t,
-    (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m ->
-    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
-      (fst swap_swap) t m [a_addr; b_addr]
-      (fun t' m' rets => t=t' /\ (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m' /\ rets = nil).
-  
-Lemma swap_swap_ok :
-  forall functions, spec_of_swap functions -> spec_of_swap_swap (swap_swap::functions).
+Lemma swap_swap_ok : program_logic_goal_for_function! swap_swap.
 Proof.
-  intros ? Hcall.
   bind_body_of_function swap_swap; cbv [spec_of_swap_swap].
   intros.
-  hnf. (* incoming call dispatch *)
   letexists. split. exact eq_refl. (* argument initialization *)
 
   repeat straightline.
-  eapply WeakestPreconditionProperties.Proper_call.
-  5: eapply Hcall.
-  1,2,3 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; solve [typeclasses eauto with core].
-  1,2: cycle 1.
-  refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m H). reflexivity. (* TODO: ecancel *)
-  intros ? m' ? (?&Hm'&?).
-  clear H.
-  clear m.
-  rename m' into m.
-  rename Hm' into Hm.
+  straightline_call.
+  { refine ((?[sep]:@Lift1Prop.impl1 mem _ _) _ H1). reflexivity. (* TODO: ecancel *) }
   repeat straightline.
   letexists; split.
   { exact eq_refl. }
 
   repeat straightline.
-  eapply WeakestPreconditionProperties.Proper_call.
-  5: eapply Hcall.
-  1,2,3 : cbv [Morphisms.pointwise_relation trace Basics.flip Basics.impl Morphisms.respectful]; solve [typeclasses eauto with core].
-  1,2: cycle 1.
-  refine ((?[sep]:@Lift1Prop.impl1 mem _ _) m Hm). reflexivity. (* TODO: ecancel *)
-  intros ? m' ? (?&Hm'&?).
-  clear Hm.
-  clear m.
-  rename m' into m.
-  rename Hm' into Hm.
+  straightline_call.
+  { refine ((?[sep]:@Lift1Prop.impl1 mem _ _) _ H3). reflexivity. (* TODO: ecancel *) }
   repeat straightline.
   letexists; split.
   { exact eq_refl. }
@@ -227,4 +203,4 @@ Proof.
 Defined.
 
 Lemma link_swap_swap_swap_swap : spec_of_swap_swap (swap_swap::swap::nil).
-Proof. apply swap_swap_ok, swap_ok. Qed.
+Proof. auto using swap_swap_ok, swap_ok. Qed.
