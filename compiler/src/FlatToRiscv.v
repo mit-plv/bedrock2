@@ -134,7 +134,7 @@ Module Import FlatToRiscv.
       translate mode (ZToReg 8) a = Return a;
 
     compile_ext_call_length: forall binds f args,
-        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size;
+        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
 
     compile_ext_call_correct: forall initialL action outcome newPc insts
       (argvars resvars: list Register),
@@ -210,6 +210,7 @@ Section FlatToRiscv1.
     FlatImp.mword := mword;
     FlatImp.varSet_Inst := map_domain_set;
     FlatImp.ext_spec := ext_spec;
+    FlatImp.max_ext_call_code_size := max_ext_call_code_size;
   |}.
 
   Ltac state_calc0 := map_solver Z (@mword p).
@@ -327,7 +328,8 @@ Section FlatToRiscv1.
       specialize (compile_ext_call_length binds a args);
       pose proof max_ext_call_code_size_nonneg;
       simpl in *.
-      omega.
+    specialize (H1 a).
+    omega.
   Qed.
 
   Definition mem_inaccessible(m: Memory.mem)(start len: Z): Prop :=

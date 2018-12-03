@@ -24,8 +24,8 @@ Module Import FlatToRiscvDef.
     LwXLEN: Register -> Register -> Z -> Instruction;
     SwXLEN: Register -> Register -> Z -> Instruction;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
-    max_ext_call_code_size: Z;
-    max_ext_call_code_size_nonneg: 0 <= max_ext_call_code_size;
+    max_ext_call_code_size: actname -> Z;
+    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
   }.
 End FlatToRiscvDef.
 
@@ -53,7 +53,7 @@ Section FlatToRiscv1.
     | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
     | SSkip => 1
     | SCall binds f args => 1 + (Zlength binds + Zlength args)
-    | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size
+    | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size f
     end.
 
   Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
@@ -68,8 +68,9 @@ Section FlatToRiscv1.
     pose proof (Zlength_nonneg binds);
     pose proof (Zlength_nonneg args);
     pose proof max_ext_call_code_size_nonneg;
-    simpl in *;
-    try omega.
+    simpl in *.
+    - destruct f.
+    - specialize (H1 a). omega.
   Qed.
 
   (* TODO is 2^9 really the best we can get? *)
