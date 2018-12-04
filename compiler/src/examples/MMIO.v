@@ -228,6 +228,29 @@ Section TODODontDuplicate.
 
 End TODODontDuplicate.
 
+Lemma option_all_singleton: forall {A: Type} (a: A) (l: list (option A)),
+    option_all l = Some [a] ->
+    l = [Some a].
+Proof.
+  intros.
+  destruct l; [|destruct l]; simpl in *; inversion H; destruct o; try congruence.
+  destruct o0; destruct (option_all l); discriminate.
+Qed.
+
+Lemma map_singleton: forall {A B: Type} (f: A -> B) (l: list A) (b: B),
+    List.map f l = [b] ->
+    exists a, l = [a] /\ f a = b.
+Proof.
+  intros. destruct l; [|destruct l]; simpl in *; try discriminate; inversion H; eauto.
+Qed.
+
+Lemma Forall_singleton: forall {A: Type} (P: A -> Prop) (a: A),
+    Forall P [a] ->
+    P a.
+Proof.
+  intros. inversion H. assumption.
+Qed.
+
 Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
   FlatToRiscv.def_params := compilation_params;
   FlatToRiscv.mword := word 32;
@@ -260,40 +283,63 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
 - intros initialL action.
   destruct initialL as [initialRegs initialPc initialNpc initialIsMem initialMem initialLog].
   destruct action; cbv [getRegs getPc getNextPc isMem getMem getLog]; intros.
-  + unfold ext_spec in H4. destruct H4 as (addr & E & IM & P).
-    assert (forall t' resvals, outcome t' resvals -> length resvals = length resvars)
-      as A by admit.
-    specialize (P (ZToReg 0)).
-    specialize A with (1 := P).
-    simpl in A.
+  + inversion H4; subst; clear H4.
+    rename H13 into H4. simpl in H4.
+    destruct H4 as (addr & E & IM & P). subst.
+    apply option_all_singleton in H8.
+    apply map_singleton in H8. destruct H8 as (a & ? & H8). subst.
+    assert (exists resvar, resvars = [resvar]) as E. {
+      specialize (P (ZToWord 32 0)).
+      specialize H14 with (1 := P).
+      destruct H14 as (? & ? & ?).
+      clear -H.
+      destruct resvars; [|destruct resvars]; simpl in H; inversion H; eauto.
+    }
+    destruct E as [resvar E]. subst.
+    repeat match goal with
+           | H: Forall _ _ |- _ => apply Forall_singleton in H
+           end.
+    simpl in H3.
+    eapply runsToNonDet.runsToStep.
+    * eapply go_fetch_inst; [reflexivity|eassumption|].
+      cbv [Execute.execute ExecuteI.execute].
+      rewrite associativity.
+      eapply go_getRegister; [assumption|]. rewrite associativity.
+      cbv [getRegs].
+      match goal with
+      | |- context [?T] =>
+        match T with
+        | translate Load ?w ?a => replace T with (Return a)
+        end
+      end.
+      2: admit.
+      rewrite left_identity. rewrite associativity.
+      unfold getReg, State_is_RegisterFile.
+      match goal with
+      | H: ?a = Some ?b |- context [?a'] =>
+        match a' with
+        | @get _ _ _ _ _ => replace a' with a by reflexivity; rewrite H
+        end
+      end.
+      unfold loadWord, IsRiscvMachineL.
+      replace (add addr (ZToReg 0)) with addr by admit.
 
 
-    do 2 (destruct argvars; simpl in E; try discriminate).
-    inversion E. clear E.
-    simpl in H.
+      admit. (* TODO interesting: how to get isMem/simple_isMMIOAddr compatibility?
 
-    (* want to know that resvars is singleton list: should we make compile_ext_call a partial
-       function? *)
+   Probably not so relevant:
+   to make load/store work in FlatToRiscv, some invariants about isMem will have to be
+   carried around (similar to containsProgram invariants), and these will also have
+   to be provided as a hypothesis to compile_ext_call_correct
 
-    (* if we just
-    "eapply runsToNonDet.runsToStep.", we will infer a midset which does not include outcome *)
-    refine (runsToNonDet.runsToStep _ _ _ _ (fun mid =>
-       exists val,
-         outcome ((MMInput, [addr], [val]) :: initialLog) [val] /\
-         mid = mkRiscvMachine
-                 (setReg initialRegs _ val)
-                 (add initialPc (ZToReg 4))
-                 (add initialNpc (ZToReg 4))
-                 initialIsMem
-                 initialMem
-                 ((MMInput, [addr], [val]) :: initialLog)) _ _).
-    * eapply go_fetch_inst; [reflexivity|..].
-simpl. eassumption.
-      apply go_getPC.
-      apply go_loadWord.
+   Relevant:
+   ext_spec for MMIO should get the memory as an argument, and test that the address is
+   not in the memory, and since we get an ext_spec here as a hypothesis, we can use this
+   to replace "isMem mach addr" with "false"
 
-      (* needs go_ or do_ lemmas *)
-      admit.
+   will require proper memory (map from address to byte)
+ *)
+
     * intros.
       destruct H6 as (val & ? & ?).
       specialize H5 with (1 := H6). destruct H5 as (newRegs & ? & H5).
