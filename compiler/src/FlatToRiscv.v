@@ -1321,23 +1321,27 @@ Section FlatToRiscv1.
     - (* SInteract *)
       simpl in *; destruct_everything. simpl in *.
       eapply runsTo_weaken.
-      + eapply compile_ext_call_correct; try sidecondition; try assumption; simpl.
-        match goal with
-        | |- ext_spec _ _ ?A _ => replace A with argvals; [eassumption|]
-        end.
-        clear -H H7.
-        admit. (* should hold *)
+      + eapply compile_ext_call_correct with (postH := post) (initialMH := m);
+          try sidecondition; try assumption; simpl.
+        eapply @ExInteract.
+        * match goal with
+          | _: option_all ?l = Some _ |- option_all ?l' = Some _ =>
+            replace l' with l; [eassumption|]
+          end.
+          admit.
+        * eassumption.
+        * Fail exact H1.
+          admit. (* annoying because locals should really not be
+                                   extensible, but remain the same *)
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst.
-        match goal with
-        | H: _, OC: outcome _ _ |- _ => specialize H with (1 := OC); move H at bottom
-        end.
+        exists finalL_regs m.
         destruct_everything.
-        do 2 eexists; split; [eassumption|].
         repeat match goal with
                | |- _ /\ _ => split
                end; try sidecondition; try solve_word_eq.
-        eapply putmany_extends; eassumption.
+        state_calc0. (* TODO don't clear p *)
+
 (*
     - (* SLoad *)
       simpl in *; destruct_everything.
