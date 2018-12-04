@@ -95,79 +95,6 @@ End RegisterFile.
 
 Existing Instance State_is_RegisterFile.
 
-
-Module Import FlatToRiscv.
-  Export FlatToRiscvDef.FlatToRiscvDef.
-
-  Class parameters := {
-    def_params :> FlatToRiscvDef.parameters;
-
-    mword: Set;
-    MachineWidth_Inst: MachineWidth mword;
-    varMap_Inst: MapFunctions Register mword;
-    actname_eq_dec: DecidableEq actname;
-
-    Memory_Inst: Memory.MemoryFunctions mword;
-    BWS: FlatToRiscvBitWidthSpecifics mword;
-    BWSP: FlatToRiscvBitWidthSpecificProofs mword;
-
-    M: Type -> Type;
-    MM: Monad M;
-    RVM: RiscvProgram M mword;
-    RVS: @RiscvState M mword _ _ RVM;
-    RVAX: AxiomaticRiscv mword actname M;
-
-    ext_spec:
-      (* given an action label, a trace of what happened so fat,
-         and a list of function call arguments, *)
-      actname -> list (LogItem mword actname) -> list mword ->
-      (* returns a set of (extended trace, function call results) *)
-      (list (LogItem mword actname) -> list mword -> Prop) ->
-      Prop; (* or returns no set if the call fails. *)
-
-    translate_id_if_aligned_4: forall a mode,
-      (regToZ_unsigned a) mod 4 = 0 ->
-      translate mode (ZToReg 4) a = Return a;
-
-    translate_id_if_aligned_8: forall a mode,
-      (regToZ_unsigned a) mod 8 = 0 ->
-      translate mode (ZToReg 8) a = Return a;
-
-    compile_ext_call_length: forall binds f args,
-        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
-
-    compile_ext_call_correct: forall initialL action outcome newPc insts
-      (argvars resvars: list Register),
-      insts = compile_ext_call resvars action argvars ->
-      newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
-      Forall valid_register argvars ->
-      Forall valid_register resvars ->
-      containsProgram initialL.(getMem) insts initialL.(getPc) ->
-      ext_spec action initialL.(getLog) (List.map (getReg (initialL.(getRegs))) argvars)
-               outcome ->
-      runsTo (RiscvMachine Register mword actname) (mcomp_sat (run1 (B := BitWidth))) initialL
-             (fun finalL =>
-                exists resvals,
-                  outcome finalL.(getLog) resvals /\
-                  putmany resvars resvals (getRegs initialL) = Some finalL.(getRegs) /\
-                  finalL.(getPc) = newPc /\
-                  finalL.(getNextPc) = add newPc (ZToReg 4) /\
-                  finalL.(getMem) = getMem initialL);
-  }.
-
-  Existing Instance MachineWidth_Inst.
-  Existing Instance varMap_Inst.
-  Existing Instance actname_eq_dec.
-  Existing Instance Memory_Inst.
-  Existing Instance BWS.
-  Existing Instance BWSP.
-  Existing Instance MM.
-  Existing Instance RVM.
-  Existing Instance RVS.
-  Existing Instance RVAX.
-
-End FlatToRiscv.
-
 Instance SetWithoutElements: SetFunctions Empty_set := {|
   set := unit;
   empty_set := tt;
@@ -189,29 +116,93 @@ Instance MapWithoutKeys(V: Type): MapFunctions Empty_set V := {|
 Admitted.
 
 
+Module Import FlatToRiscv.
+  Export FlatToRiscvDef.FlatToRiscvDef.
+
+Set Printing Implicit.
+
+  Class parameters := {
+    def_params :> FlatToRiscvDef.parameters;
+
+    mword: Set;
+    MachineWidth_Inst :> MachineWidth mword;
+    varMap_Inst :> MapFunctions Register mword;
+    actname_eq_dec :> DecidableEq actname;
+
+    Memory_Inst :> Memory.MemoryFunctions mword;
+    BWS :> FlatToRiscvBitWidthSpecifics mword;
+    BWSP :> FlatToRiscvBitWidthSpecificProofs mword;
+
+    M: Type -> Type;
+    MM :> Monad M;
+    RVM :> RiscvProgram M mword;
+    RVS :> @RiscvState M mword _ _ RVM;
+    RVAX :> AxiomaticRiscv mword actname M;
+
+    ext_spec:
+      (* given an action label, a trace of what happened so fat,
+         and a list of function call arguments, *)
+      actname -> list (LogItem mword actname) -> list mword ->
+      (* returns a set of (extended trace, function call results) *)
+      (list (LogItem mword actname) -> list mword -> Prop) ->
+      Prop; (* or returns no set if the call fails. *)
+
+    translate_id_if_aligned_4: forall a mode,
+      (regToZ_unsigned a) mod 4 = 0 ->
+      translate mode (ZToReg 4) a = Return a;
+
+    translate_id_if_aligned_8: forall a mode,
+      (regToZ_unsigned a) mod 8 = 0 ->
+      translate mode (ZToReg 8) a = Return a;
+
+    compile_ext_call_length: forall binds f args,
+        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
+
+    (* these two instances are needed to define compile_ext_call_correct below *)
+
+    bopname_params: Basic_bopnames.parameters := {|
+      Basic_bopnames.varname := Register;
+      Basic_bopnames.funcname := Empty_set;
+      Basic_bopnames.actname := actname;
+    |};
+
+    FlatImp_params: FlatImp.parameters := {|
+      FlatImp.bopname_params := bopname_params;
+      FlatImp.mword := mword;
+      FlatImp.varSet_Inst := map_domain_set;
+      FlatImp.ext_spec := ext_spec;
+      FlatImp.max_ext_call_code_size := max_ext_call_code_size;
+    |};
+
+    compile_ext_call_correct: forall initialL action postH newPc insts initialMH
+      (argvars resvars: list Register),
+      insts = compile_ext_call resvars action argvars ->
+      newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
+      Forall valid_register argvars ->
+      Forall valid_register resvars ->
+      containsProgram initialL.(getMem) insts initialL.(getPc) ->
+      exec empty_map (SInteract resvars action argvars)
+           initialL.(getLog) initialMH initialL.(getRegs) postH ->
+      runsTo (RiscvMachine Register mword actname) (mcomp_sat (run1 (B := BitWidth))) initialL
+             (fun finalL =>
+                  postH finalL.(getLog) initialMH finalL.(getRegs) /\
+                  finalL.(getPc) = newPc /\
+                  finalL.(getNextPc) = add newPc (ZToReg 4) /\
+                  finalL.(getMem) = initialL.(getMem));
+  }.
+
+End FlatToRiscv.
+
+
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscv.parameters}.
 
   Notation locals := (map Register mword).
   Notation var := Z (only parsing).
 
-  Instance bopname_params: Basic_bopnames.parameters := {|
-    Basic_bopnames.varname := Register;
-    Basic_bopnames.funcname := Empty_set;
-    Basic_bopnames.actname := actname;
-  |}.
-
   Definition trace := list (LogItem mword actname).
 
   Local Notation RiscvMachineL := (RiscvMachine Register mword actname).
-
-  Instance FlatImp_params: FlatImp.parameters := {|
-    FlatImp.bopname_params := bopname_params;
-    FlatImp.mword := mword;
-    FlatImp.varSet_Inst := map_domain_set;
-    FlatImp.ext_spec := ext_spec;
-    FlatImp.max_ext_call_code_size := max_ext_call_code_size;
-  |}.
 
   Ltac state_calc0 := map_solver Z (@mword p).
 
@@ -1290,78 +1281,10 @@ Section FlatToRiscv1.
     f_equal. symmetry. apply compile_lit_correct.
   Qed.
 
-  (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
-  Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
+  Existing Instance FlatToRiscv.bopname_params.
+  Existing Instance FlatToRiscv.FlatImp_params.
 
-  Inductive exec:
-    stmt ->
-    trace -> @Memory.mem mword -> locals ->
-    (trace -> @Memory.mem mword -> locals -> Prop)
-    -> Prop :=
-  | ExInteract: forall t m l action argvars argvals resvars outcome post,
-      option_all (List.map (get l) argvars) = Some argvals ->
-      ext_spec action t argvals outcome ->
-      (forall new_t resvals,
-          outcome new_t resvals ->
-          exists l', putmany resvars resvals l = Some l' /\ post (new_t) m l') ->
-      exec (SInteract resvars action argvars) t m l post
-  | ExLoad: forall t m l x a v addr post,
-      get l a = Some addr ->
-      Memory.read_mem addr m = Some v ->
-      post t m (put l x v) ->
-      exec (SLoad x a) t m l post
-  | ExStore: forall t m m' l a addr v val post,
-      get l a = Some addr ->
-      get l v = Some val ->
-      Memory.write_mem addr val m = Some m' ->
-      post t m' l ->
-      exec (SStore a v) t m l post
-  | ExLit: forall t m l x v post,
-      post t m (put l x (ZToReg v)) ->
-      exec (SLit x v) t m l post
-  | ExOp: forall t m l x op y y' z z' post,
-      get l y = Some y' ->
-      get l z = Some z' ->
-      post t m (put l x (eval_binop op y' z')) ->
-      exec (SOp x op y z) t m l post
-  | ExSet: forall t m l x y y' post,
-      get l y = Some y' ->
-      post t m (put l x y') ->
-      exec (SSet x y) t m l post
-  | ExIfThen: forall t m l cond vcond bThen bElse post,
-      get l cond = Some vcond ->
-      vcond <> ZToReg 0 ->
-      exec bThen t m l post ->
-      exec (SIf cond bThen bElse) t m l post
-  | ExIfElse: forall t m l cond bThen bElse post,
-      get l cond = Some (ZToReg 0) ->
-      exec bElse t m l post ->
-      exec (SIf cond bThen bElse) t m l post
-  | ExLoop: forall t m l cond body1 body2 mid post,
-      (* this case is carefully crafted in such a way that recursive uses of exec
-         only appear under forall and ->, but not under exists, /\, \/, to make sure the
-         auto-generated induction principle contains an IH for both recursive uses *)
-      exec body1 t m l mid ->
-      (forall t' m' l', mid t' m' l' -> get l' cond <> None) ->
-      (forall t' m' l',
-          mid t' m' l' ->
-          get l' cond = Some (ZToReg 0) -> post t' m' l') ->
-      (forall t' m' l',
-          mid t' m' l' ->
-          forall v,
-            get l' cond = Some v ->
-            v <> ZToReg 0 ->
-            exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post) ->
-      exec (SLoop body1 cond body2) t m l post
-  | ExSeq: forall t m l s1 s2 mid post,
-      exec s1 t m l mid ->
-      (forall t' m' l', mid t' m' l' -> exec s2 t' m' l' post) ->
-      exec (SSeq s1 s2) t m l post
-  | ExSkip: forall t m l post,
-      post t m l ->
-      exec SSkip t m l post.
-
-  Definition eval_stmt := exec.
+  Definition eval_stmt := exec empty_map.
 
   Lemma compile_stmt_correct_aux:
     forall allInsts s t initialMH initialRegsH postH,

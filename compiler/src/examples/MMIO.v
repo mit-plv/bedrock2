@@ -80,36 +80,27 @@ Module Wrong.
 
 End Wrong.
 
-(* returns a prop which says whether "outcome" is an outcome of the external call,
-   ok to have a total Definition here because outermost Prop could be False *)
+(* returns a Prop which says whether "post" is a safe approximation of the outcome
+   of the external call, ok to have a total Definition here because outermost Prop
+   could be False *)
 Definition ext_spec(a: MMIOAction)(t: trace)(argvals: list (word 32))
-                   (outcome: trace -> list (word 32) -> Prop): Prop :=
+                   (post: trace -> list (word 32) -> Prop): Prop :=
   match a with
   | MMInput =>
     exists addr, argvals = [addr] /\
                  simple_isMMIOAddr addr = true /\
-                 forall t' resvals, outcome t' resvals ->
-                                    exists val, t' = (MMInput, [addr], [val]) :: t /\
-                                                resvals = [val]
+                 forall val, post ((MMInput, [addr], [val]) :: t) [val]
   | MMOutput =>
     exists addr val, argvals = [addr; val] /\
                      simple_isMMIOAddr addr = true /\
-                     forall t' resvals, outcome t' resvals ->
-                                        t' = (MMOutput, [addr; val], nil) :: t /\ resvals = nil
+                     post ((MMOutput, [addr; val], nil) :: t) nil
   end.
-
-Lemma input_steps_to_emptyset: forall t addr,
-    simple_isMMIOAddr addr = true ->
-    ext_spec MMInput t [addr] (fun newTrace resVals => False).
-Proof.
-  intros. simpl in *. exists addr. repeat split; [assumption|]. intros. contradiction.
-Qed.
 
 Lemma hardToRead_implies_ext_spec: forall a t argvals outcome,
     HardToRead.ext_spec a t argvals outcome ->
     ext_spec a t argvals outcome.
 Proof.
-  intros. inversion H; subst; clear H; simpl in *; eauto.
+  intros. inversion H; subst; clear H; simpl in *; eauto 10.
 Qed.
 
 Lemma ext_spec_implies_hardToRead: forall a t argvals outcome,
@@ -266,14 +257,21 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
   + reflexivity.
 - intros. simpl. unfold compile_ext_call.
   repeat destruct_one_match; rewrite? Zlength_cons; rewrite? Zlength_nil; cbv; congruence.
-- intros.
+- intros initialL action.
   destruct initialL as [initialRegs initialPc initialNpc initialIsMem initialMem initialLog].
-  cbv [getRegs getPc getNextPc isMem getMem getLog] in *.
-  destruct action; simpl in H4.
-  + destruct H4 as (addr & E & ? & P).
+  destruct action; cbv [getRegs getPc getNextPc isMem getMem getLog]; intros.
+  + unfold ext_spec in H4. destruct H4 as (addr & E & IM & P).
+    assert (forall t' resvals, outcome t' resvals -> length resvals = length resvars)
+      as A by admit.
+    specialize (P (ZToReg 0)).
+    specialize A with (1 := P).
+    simpl in A.
+
+
     do 2 (destruct argvars; simpl in E; try discriminate).
     inversion E. clear E.
     simpl in H.
+
     (* want to know that resvars is singleton list: should we make compile_ext_call a partial
        function? *)
 
