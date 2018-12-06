@@ -152,6 +152,12 @@ Admitted.
 Lemma fst_split0_combine0 v w : fst (split 0 (combine 0 v w)) = v.
 Admitted.
 
+Ltac sep :=
+  let m := lazymatch goal with |- _ ?m => m end in
+  let H := multimatch goal with H: _ m |- _ => H end  in
+  refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+  ecancel; fail.
+
 Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
   bind_body_of_function swap; cbv [spec_of spec_of_swap].
@@ -165,34 +171,18 @@ Proof.
     { eabstract repeat straightline. }
     repeat straightline.
     letexists; split.
-
-    {
-      eapply load1_sep.
-      let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H.
-      ecancel.
-    }
+    { eapply load1_sep; sep. }
     eabstract repeat straightline. }
 
   repeat straightline.
   letexists; split.
   { repeat straightline.
     letexists; split.
-    { 
-      eapply load1_sep.
-      let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H.
-      ecancel.
-    }
+    { eapply load1_sep; sep. }
     repeat straightline. }
 
   repeat straightline.
-  eapply store1_sep.
-  {
-    let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
-    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-    ecancel.
-  }
+  eapply store1_sep; [sep|].
 
   clear H m; intros m H.
   cbv beta.
@@ -203,12 +193,7 @@ Proof.
   { letexists. split. transitivity (Some v). exact eq_refl. subst v2. exact eq_refl. subst v1. exact eq_refl. }
   repeat straightline.
 
-  eapply store1_sep.
-  {
-    let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
-    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H.
-    ecancel.
-  } 
+  eapply store1_sep; [sep|].
   clear H m; intros m H.
   cbv beta. (* FIXME *)
 
@@ -230,14 +215,14 @@ Proof.
 
   repeat straightline.
   straightline_call.
-  { refine ((?[sep]:@Lift1Prop.impl1 mem _ _) _ H1). reflexivity. (* TODO: ecancel *) }
+  { sep. }
   repeat straightline.
   letexists; split.
   { exact eq_refl. }
 
   repeat straightline.
   straightline_call.
-  { refine ((?[sep]:@Lift1Prop.impl1 mem _ _) _ H3). reflexivity. (* TODO: ecancel *) }
+  { sep. }
   repeat straightline.
   letexists; split.
   { exact eq_refl. }
