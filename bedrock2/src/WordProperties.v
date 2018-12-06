@@ -40,13 +40,13 @@ Module Z.
   Lemma testbit_ones_nonneg n i (Hn : 0 <= n) (Hi: 0 <= i) : Z.testbit (Z.ones n) i = (i <? n)%bool.
   Proof.
     rewrite testbit_ones by lia.
-    destruct (Z.leb_spec 0 i); cbn; solve [trivial | lia]. 
+    destruct (Z.leb_spec 0 i); cbn; solve [trivial | lia].
   Qed.
 
 
   (* Create HintDb z_bitwise discriminated. *) (* DON'T do this, COQBUG(5381) *)
   Hint Rewrite
-       Z.shiftl_spec_low Z.lxor_spec Z.lor_spec Z.land_spec Z.lnot_spec Z.ldiff_spec Z.shiftl_spec Z.shiftr_spec Z.ones_spec_high Z.shiftl_spec_alt Z.ones_spec_low Z.shiftr_spec_aux Z.shiftl_spec_high Z.ones_spec_iff Z.testbit_spec 
+       Z.shiftl_spec_low Z.lxor_spec Z.lor_spec Z.land_spec Z.lnot_spec Z.ldiff_spec Z.shiftl_spec Z.shiftr_spec Z.ones_spec_high Z.shiftl_spec_alt Z.ones_spec_low Z.shiftr_spec_aux Z.shiftl_spec_high Z.ones_spec_iff Z.testbit_spec
        Z.div_pow2_bits Z.pow2_bits_eqb Z.bits_opp Z.testbit_0_l
        Z.testbit_mod_pow2 Z.testbit_ones_nonneg Z.testbit_minus1
        using solve [auto with zarith] : z_bitwise.
@@ -56,6 +56,13 @@ End Z.
 Ltac mia := Z.div_mod_to_quot_rem; nia.
 
 Require Import bedrock2.Word. Import word.
+
+Ltac fix_V881 :=
+  intros;
+  repeat match goal with
+         | H: _ |- _ => rewrite <- H; clear H
+         end;
+  try reflexivity.
 
 Module word.
   (* Create HintDb word_laws discriminated. *) (* DON'T do this, COQBUG(5381) *)
@@ -69,7 +76,7 @@ Module word.
     Lemma wrap_unsigned x : (unsigned x) mod (2^width) = unsigned x.
     Proof.
       pose proof unsigned_of_Z (unsigned x) as H.
-      rewrite of_Z_unsigned in H. congruence.
+      rewrite of_Z_unsigned in H; fix_V881.
     Qed.
 
     Lemma eq_unsigned x y (H : unsigned x = unsigned y) : x = y.
@@ -90,7 +97,7 @@ Module word.
          ?unsigned_add, ?unsigned_sub, ?unsigned_opp, ?unsigned_mul, ?unsigned_of_Z,
          ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?Z.mul_mod_idemp_l, ?Z.mul_mod_idemp_r,
          ?Z.add_0_l, ?(Z.mod_small 1), ?Z.mul_1_l;
-       f_equal; auto with zarith.
+     f_equal; auto with zarith; fix_V881.
     Qed.
 
     Lemma ring_morph :
@@ -105,7 +112,7 @@ Module word.
      { rewrite <-Z.sub_0_l; symmetry; rewrite <-Z.sub_0_l, Zdiv.Zminus_mod_idemp_r. auto. } (* COQBUG? *)
      { f_equal. eapply Z.eqb_eq. auto. } (* Z.eqb -> @eq z *)
     Qed.
-    
+
     Ltac generalize_wrap_unsigned :=
       repeat match goal with
              | x : @word.rep ?a ?b |- _ =>
@@ -144,7 +151,7 @@ Module word.
         destruct (Z.ltb_spec a b); trivial; try lia
       end.
     Qed.
-      
+
     Lemma testbit_wrap z i : Z.testbit (wrap z) i = ((i <? width) && Z.testbit z i)%bool.
     Proof. cbv [wrap]. autorewrite with z_bitwise; trivial. Qed.
   End WithWord.
@@ -163,7 +170,7 @@ Module word.
 
     Lemma swrap_inrange z (H : -2^(width-1) <= z < 2^(width-1)) : swrap z = z.
     Proof. cbv [swrap]; rewrite Z.mod_small; lia. Qed.
-    
+
     Lemma swrap_as_div_mod z : swrap z = z mod 2^(width-1) - 2^(width-1) * (z / (2^(width - 1)) mod 2).
     Proof.
       symmetry; cbv [swrap wrap].
@@ -186,7 +193,11 @@ Module word.
       repeat rewrite ?Z.add_assoc, ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?(Z.add_shuffle0 _ (_ mod _)) by lia.
       rewrite 4(Z.add_comm (_ mod _)).
       repeat rewrite ?Z.add_assoc, ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?(Z.add_shuffle0 _ (_ mod _)) by lia.
-      f_equal; f_equal; lia.
+      f_equal; f_equal; (lia || intros;
+       repeat match goal with
+              | H: _ |- _ => rewrite H
+              end;
+       try reflexivity).
     Qed.
 
     Lemma signed_sub x y : signed (sub x y) = swrap (Z.sub (signed x) (signed y)).
@@ -203,7 +214,7 @@ Module word.
       repeat rewrite ?Z.add_assoc, ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?(Z.add_shuffle0 _ (_ mod _)) by lia.
       replace (-(unsigned y mod (2 * M))+M+unsigned x) with (M+unsigned x-(unsigned y mod(2*M))) by lia.
       replace (-M+-(-M+(unsigned y+M) mod (2*M))+M+unsigned x+M) with (-M+M+unsigned x+M+M-(unsigned y+M)mod(2*M)) by lia.
-      rewrite 2Zdiv.Zminus_mod_idemp_r; f_equal; f_equal; lia.
+      rewrite 2Zdiv.Zminus_mod_idemp_r; f_equal; f_equal; lia || fix_V881.
     Qed.
 
     Lemma signed_opp x : signed (opp x) = swrap (Z.opp (signed x)).
@@ -217,7 +228,7 @@ Module word.
       repeat rewrite ?Z.add_assoc, ?Z.add_mod_idemp_l, ?Z.add_mod_idemp_r, ?(Z.add_shuffle0 _ (_ mod _)) by lia.
       replace (- (unsigned x mod (2 * M)) + M) with (M - unsigned x mod (2 * M)) by lia.
       replace (- ((unsigned x + M) mod (2 * M) + - M) + M) with (M+M-(unsigned x+M) mod (2*M)) by lia.
-      rewrite ?Zdiv.Zminus_mod_idemp_r; f_equal; f_equal; lia.
+      rewrite ?Zdiv.Zminus_mod_idemp_r; f_equal; f_equal; lia || fix_V881.
     Qed.
 
     Lemma signed_mul x y : signed (mul x y) = swrap (Z.mul (signed x) (signed y)).
@@ -228,7 +239,7 @@ Module word.
         (rewrite <-Z.pow_succ_r, Z.sub_1_r, Z.succ_pred; lia).
       set (M := 2 ^ (width - 1)) in*; clearbody M.
       assert (0<2*M) by nia.
-      f_equal.
+      f_equal; try fix_V881.
       symmetry.
       rewrite <-Z.add_mod_idemp_l by lia.
       rewrite Z.mul_mod by lia.
@@ -283,7 +294,7 @@ Module word.
       repeat match goal with |- context [?a <? ?b] =>
         destruct (Z.ltb_spec a b); trivial; try lia
       end.
-    
+
     Lemma swrap_signed x : swrap (signed x) = signed x.
     Proof. rewrite signed_eq_swrap_unsigned. sbitwise. Qed.
 
@@ -351,7 +362,7 @@ Module word.
       rewrite unsigned_eqb.
       destruct (Z.eqb_spec (unsigned x) (unsigned y)) as [?e|?];
         destruct (Z.eqb_spec (  signed x) (  signed y)) as [?e|?];
-        try (apply eq_unsigned in e || apply eq_signed in e); congruence.
+        try (apply eq_unsigned in e || apply eq_signed in e); subst; (reflexivity || contradiction).
     Qed.
   End WithNontrivialWord.
 End word.
