@@ -73,18 +73,37 @@ Ltac _syntactic_unify x y :=
   end.
 Tactic Notation "syntactic_unify" open_constr(x) open_constr(y) :=  _syntactic_unify x y.
 
+Ltac index_and_element_of xs :=
+  multimatch xs with
+  | cons ?x _ => constr:((0%nat, x))
+  | cons _ ?xs =>
+    let r := index_and_element_of xs in
+    multimatch r with
+    | (?i, ?y) => constr:((S i, y))
+    end
+  end.
+
+Ltac find_syntactic_unify xs y :=
+  multimatch xs with
+  | cons ?x _ => constr:(ltac:(syntactic_unify x y; exact 0%nat))
+  | cons _ ?xs => let i := find_syntactic_unify xs y in constr:(S i)
+  end.
+
 Local Notation "X <----------------> Y" :=
   (Lift1Prop.iff1 (seps X) (seps Y))
     (at  level 200, no associativity,
      format "X '//' '<---------------->' '//' Y").
+
 Ltac reify e :=
   lazymatch e with
+  | seps ?xs => xs
   | @sep ?k ?v ?map ?a ?b =>
     let b := reify b in
     uconstr:(@cons (@map.rep k v map -> Prop) a b)
   | ?a =>
     uconstr:(cons a nil)
   end.
+
 Ltac reify_goal :=
   lazymatch goal with
   | |- Lift1Prop.iff1 ?LHS ?RHS =>
@@ -92,6 +111,23 @@ Ltac reify_goal :=
     let RHS := reify RHS in
     change (Lift1Prop.iff1 (seps LHS) (seps RHS))
   end.
+
+Ltac ecancel :=
+  reify_goal;
+  repeat (
+      let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+      let jy := index_and_element_of RHS in
+      let j := lazymatch jy with (?i, _) => i end in
+      let y := lazymatch jy with (_, ?y) => y end in
+      assert_fails (is_evar y);
+
+      let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+      let i := find_syntactic_unify LHS y in
+
+      simple refine (cancel_seps_at_indices i j _ _ _ _);
+      cbn [List.firstn List.skipn List.app List.hd List.tl];
+      [exact (RelationClasses.reflexivity _)|]);
+  cbn [seps]; try exact (RelationClasses.reflexivity _).
 
 Lemma match_option_iff_exists {T : Type} R some none (x : option T) P :
   (x = None /\ P none \/ exists s, x = Some s /\ P (some s)) <->
@@ -133,12 +169,8 @@ Proof.
     {
       eapply load1_sep.
       let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-      reify_goal.
-      simple refine (cancel_seps_at_indices 1 0 _ _ _ _);
-        cbn [List.firstn List.skipn List.app List.hd List.tl].
-      exact (RelationClasses.reflexivity _).
-      exact (RelationClasses.reflexivity _).
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H.
+      ecancel.
     }
     eabstract repeat straightline. }
 
@@ -149,13 +181,8 @@ Proof.
     { 
       eapply load1_sep.
       let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-      reify_goal.
-      simple refine (cancel_seps_at_indices 0 0 _ _ _ _);
-        cbn [List.firstn List.skipn List.app List.hd List.tl].
-      exact (RelationClasses.reflexivity _).
-      exact (RelationClasses.reflexivity _).
-
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H.
+      ecancel.
     }
     repeat straightline. }
 
@@ -164,11 +191,7 @@ Proof.
   {
     let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
     refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-    reify_goal.
-    simple refine (cancel_seps_at_indices 1 0 _ _ _ _);
-      cbn [List.firstn List.skipn List.app List.hd List.tl].
-    exact (RelationClasses.reflexivity _).
-    cbn [seps]; exact (RelationClasses.reflexivity _).
+    ecancel.
   }
 
   clear H m; intros m H.
@@ -184,11 +207,7 @@ Proof.
   {
     let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
     refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H.
-    reify_goal.
-    simple refine (cancel_seps_at_indices 1 0 _ _ _ _);
-      cbn [List.firstn List.skipn List.app List.hd List.tl].
-    exact (RelationClasses.reflexivity _).
-    cbn [seps]; exact (RelationClasses.reflexivity _).
+    ecancel.
   } 
   clear H m; intros m H.
   cbv beta. (* FIXME *)
