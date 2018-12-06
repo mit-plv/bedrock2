@@ -52,87 +52,7 @@ Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
       "swap_swap" t m [a_addr; b_addr]
       (fun t' m' rets => t=t' /\ (ptsto a_addr a * (ptsto b_addr b * R)) m' /\ rets = nil).
 
-From bedrock2.Tactics Require Import eabstract letexists.
-
-Ltac _syntactic_unify x y :=
-  match constr:(Set) with
-  | _ => is_evar x; unify x y
-  | _ => is_evar y; unify x y
-  | _ => lazymatch x with
-         | ?f ?a => lazymatch y with ?g ?b => _syntactic_unify f g; _syntactic_unify a b end
-         | (fun (a:?Ta) => ?f a)
-           => lazymatch y with (fun (b:?Tb) => ?g b) =>
-                               let __ := constr:(fun (a:Ta) (b:Tb) => ltac:(_syntactic_unify f g; exact Set)) in idtac end
-         | let a : ?Ta := ?v in ?f a
-           => lazymatch y with let b : ?Tb := ?w in ?g b =>
-                               _syntactic_unify v w;
-                               let __ := constr:(fun (a:Ta) (b:Tb) => ltac:(_syntactic_unify f g; exact Set)) in idtac end
-         (* TODO: fail fast in more cases *)
-         | _ => unify x y; constr_eq x y
-         end
-  end.
-Tactic Notation "syntactic_unify" open_constr(x) open_constr(y) :=  _syntactic_unify x y.
-
-Ltac index_and_element_of xs :=
-  multimatch xs with
-  | cons ?x _ => constr:((0%nat, x))
-  | cons _ ?xs =>
-    let r := index_and_element_of xs in
-    multimatch r with
-    | (?i, ?y) => constr:((S i, y))
-    end
-  end.
-
-Ltac find_syntactic_unify xs y :=
-  multimatch xs with
-  | cons ?x _ => constr:(ltac:(syntactic_unify x y; exact 0%nat))
-  | cons _ ?xs => let i := find_syntactic_unify xs y in constr:(S i)
-  end.
-
-Local Notation "X <----------------> Y" :=
-  (Lift1Prop.iff1 (seps X) (seps Y))
-    (at  level 200, no associativity,
-     format "X '//' '<---------------->' '//' Y").
-
-Ltac reify e :=
-  lazymatch e with
-  | seps ?xs => xs
-  | @sep ?k ?v ?map ?a ?b =>
-    let b := reify b in
-    uconstr:(@cons (@map.rep k v map -> Prop) a b)
-  | ?a =>
-    uconstr:(cons a nil)
-  end.
-
-Ltac reify_goal :=
-  lazymatch goal with
-  | |- Lift1Prop.iff1 ?LHS ?RHS =>
-    let LHS := reify LHS in
-    let RHS := reify RHS in
-    change (Lift1Prop.iff1 (seps LHS) (seps RHS))
-  end.
-
-Ltac ecancel :=
-  reify_goal;
-  repeat (
-      let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-      let jy := index_and_element_of RHS in
-      let j := lazymatch jy with (?i, _) => i end in
-      let y := lazymatch jy with (_, ?y) => y end in
-      assert_fails (is_evar y);
-
-      let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-      let i := find_syntactic_unify LHS y in
-
-      simple refine (cancel_seps_at_indices i j _ _ _ _);
-      cbn [List.firstn List.skipn List.app List.hd List.tl];
-      [exact (RelationClasses.reflexivity _)|]);
-  cbn [seps]; try exact (RelationClasses.reflexivity _).
-
-Lemma match_option_iff_exists {T : Type} R some none (x : option T) P :
-  (x = None /\ P none \/ exists s, x = Some s /\ P (some s)) <->
-  P match x return R with Some s => some s | None => none end.
-Proof. destruct x; firstorder congruence. Qed.
+From bedrock2.Tactics Require Import eabstract letexists syntactic_unify.
 
 Lemma load1_sep a (v:byte) R m (H:(ptsto a v * R) m) :
   load 1 m a = Some (combine 0 v word_zero).
@@ -156,7 +76,7 @@ Ltac sep :=
   let m := lazymatch goal with |- _ ?m => m end in
   let H := multimatch goal with H: _ m |- _ => H end  in
   refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-  ecancel; fail.
+  SeparationLogic.ecancel; fail.
 
 Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
@@ -165,43 +85,23 @@ Proof.
   letexists. split. exact eq_refl. (* argument initialization *)
 
   repeat straightline.
-
   letexists; split.
-  { letexists; split.
-    { eabstract repeat straightline. }
-    repeat straightline.
-    letexists; split.
-    { eapply load1_sep; sep. }
-    eabstract repeat straightline. }
+  { repeat straightline. letexists; split; [eapply load1_sep; sep|repeat straightline]. }
 
   repeat straightline.
   letexists; split.
-  { repeat straightline.
-    letexists; split.
-    { eapply load1_sep; sep. }
-    repeat straightline. }
+  { repeat straightline. letexists; split; [eapply load1_sep; sep|repeat straightline]. }
 
   repeat straightline.
   eapply store1_sep; [sep|].
 
-  clear H m; intros m H.
-  cbv beta.
-
-  letexists; split.
-  { eabstract repeat ((letexists; split) || exact eq_refl). }
-  letexists; split.
-  { letexists. split. transitivity (Some v). exact eq_refl. subst v2. exact eq_refl. subst v1. exact eq_refl. }
   repeat straightline.
-
   eapply store1_sep; [sep|].
-  clear H m; intros m H.
-  cbv beta. (* FIXME *)
 
-  (* FIXME *)
-  hnf.
+  repeat straightline.
+  (* final postcondition *)
   split. exact eq_refl.
   split. 2:exact eq_refl.
-
   repeat match goal with x := _ |- _ => subst x end.
   rewrite 2fst_split0_combine0 in *.
   assumption.
@@ -214,15 +114,13 @@ Proof.
   letexists. split. exact eq_refl. (* argument initialization *)
 
   repeat straightline.
-  straightline_call.
-  { sep. }
+  straightline_call; [sep|].
   repeat straightline.
   letexists; split.
   { exact eq_refl. }
 
   repeat straightline.
-  straightline_call.
-  { sep. }
+  straightline_call; [sep|].
   repeat straightline.
   letexists; split.
   { exact eq_refl. }

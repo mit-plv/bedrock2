@@ -93,7 +93,7 @@ Section SepProperties.
   Lemma impl1_r_sep_emp a b c : (b /\ impl1 a c) -> impl1 a (emp b * c).
   Proof. cbv [impl1 emp sep split]; t; eauto 10 using union_empty_l, disjoint_empty_l. Qed.
 
-  (* seps *)
+  (* shallow reflection from a list of predicates *)
   Fixpoint seps' (xs : list (rep -> Prop)) : rep -> Prop :=
     match xs with
     | cons x xs => sep x (seps' xs)
@@ -135,3 +135,64 @@ Section SepProperties.
     exact (reflexivity _).
   Qed.
 End SepProperties.
+
+Require Import bedrock2.Tactics.syntactic_unify.
+
+Notation "X '========' 'seps' 'iff' '========' Y" :=
+  (Lift1Prop.iff1 (seps X) (seps Y))
+    (at  level 200, no associativity,
+     format "X '//' '========'  'seps'  'iff'  '========' '//' Y").
+
+Ltac reify e :=
+  lazymatch e with
+  | seps ?xs => xs
+  | @sep ?key ?value ?map ?a ?b =>
+    let b := reify b in
+    uconstr:(@cons (@map.rep key value map -> Prop) a b)
+  | ?a => uconstr:(cons a nil)
+  end.
+
+Ltac reify_goal :=
+  lazymatch goal with
+  | |- Lift1Prop.iff1 ?LHS ?RHS =>
+    let LHS := reify LHS in
+    let RHS := reify RHS in
+    change (Lift1Prop.iff1 (seps LHS) (seps RHS))
+  | |- Lift1Prop.impl1 ?LHS ?RHS =>
+    let LHS := reify LHS in
+    let RHS := reify RHS in
+    change (Lift1Prop.impl1 (seps LHS) (seps RHS))
+  end.
+
+Ltac index_and_element_of xs :=
+  multimatch xs with
+  | cons ?x _ => constr:((0%nat, x))
+  | cons _ ?xs =>
+    let r := index_and_element_of xs in
+    multimatch r with
+    | (?i, ?y) => constr:((S i, y))
+    end
+  end.
+
+Ltac find_syntactic_unify xs y :=
+  multimatch xs with
+  | cons ?x _ => constr:(ltac:(syntactic_unify x y; exact 0%nat))
+  | cons _ ?xs => let i := find_syntactic_unify xs y in constr:(S i)
+  end.
+
+Ltac ecancel :=
+  reify_goal;
+  repeat (
+      let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+      let jy := index_and_element_of RHS in
+      let j := lazymatch jy with (?i, _) => i end in
+      let y := lazymatch jy with (_, ?y) => y end in
+      assert_fails (is_evar y);
+
+      let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+      let i := find_syntactic_unify LHS y in
+
+      simple refine (cancel_seps_at_indices i j _ _ _ _);
+      cbn [List.firstn List.skipn List.app List.hd List.tl];
+      [exact (RelationClasses.reflexivity _)|]);
+  cbn [seps]; try exact (RelationClasses.reflexivity _).
