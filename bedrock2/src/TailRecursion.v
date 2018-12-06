@@ -160,7 +160,7 @@ Section TailRecrsion.
       intros tj mj lj (vj&dR&dP&?&dQ).
       exists vj; split; [|assumption].
       exists (Ri * dR); split; [assumption|].
-      intros. rewrite <-sep_213, sep_comm, dQ, Qi. reflexivity. }
+      intros. rewrite (sep_comm _ dR), <-(sep_assoc _ dR), dQ; trivial. }
     { eapply Hpost, Qi, Hpc. }
   Qed.
 End TailRecrsion.

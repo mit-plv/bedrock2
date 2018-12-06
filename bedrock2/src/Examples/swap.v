@@ -36,47 +36,23 @@ Require bedrock2.WeakestPreconditionProperties.
 From bedrock2.Tactics Require Import eabstract.
 Require Import bedrock2.ProgramLogic.
 
-Definition ptsto sz a v m := load sz m a = Some v.
-
 Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
 Instance spec_of_swap : spec_of "swap" := fun functions =>
   forall a_addr a b_addr b m R t,
-    (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m ->
+    (ptsto a_addr a * (ptsto b_addr b * R)) m ->
     WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
       "swap" t m [a_addr; b_addr]
-      (fun t' m' rets => t=t'/\ (ptsto 1 a_addr b * (ptsto 1 b_addr a * R)) m' /\ rets = nil).
+      (fun t' m' rets => t=t'/\ (ptsto a_addr b * (ptsto b_addr a * R)) m' /\ rets = nil).
 
 Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
   forall a_addr a b_addr b m R t,
-    (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m ->
+    (ptsto a_addr a * (ptsto b_addr b * R)) m ->
     WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
       "swap_swap" t m [a_addr; b_addr]
-      (fun t' m' rets => t=t' /\ (ptsto 1 a_addr a * (ptsto 1 b_addr b * R)) m' /\ rets = nil).
+      (fun t' m' rets => t=t' /\ (ptsto a_addr a * (ptsto b_addr b * R)) m' /\ rets = nil).
 
 From bedrock2.Tactics Require Import eabstract letexists.
-
-Lemma load_sep sz a v R m (H : sep (ptsto sz a v) R m) : load sz m a = Some v.
-  cbv [load ptsto] in *.
-  revert H; revert R; revert v; revert a; revert m.
-  generalize (BinIntDef.Z.to_nat sz) as n; clear sz.
-  induction n.
-  { intros; destruct H as (?&?&?&?&?); auto. }
-  { intros.
-    cbn [load_rec] in *.
-    destruct H as (?&?&?&?&?).
-    destruct (map.get x a) eqn:?; [|discriminate].
-    { assert (map.get m a = Some b) by admit.
-      rewrite H2.
-      destruct (load_rec n x (word_succ a)) eqn:?; [|discriminate].
-      { unshelve erewrite (_:load_rec n m (word_succ a) = Some w); [admit|].
-        assumption. } } }
-Admitted.
-
-Lemma store_sep sz a v1 v2 R m (H : sep (ptsto sz a v1) R m)
-      (post : _ -> Prop) (cont : forall m', sep (ptsto sz a v2) R m' -> post m') :
-  exists m', store sz m a v2 = Some m' /\ post m'.
-Admitted.
 
 Ltac _syntactic_unify x y :=
   match constr:(Set) with
@@ -97,6 +73,49 @@ Ltac _syntactic_unify x y :=
   end.
 Tactic Notation "syntactic_unify" open_constr(x) open_constr(y) :=  _syntactic_unify x y.
 
+Local Notation "X <----------------> Y" :=
+  (Lift1Prop.iff1 (seps X) (seps Y))
+    (at  level 200, no associativity,
+     format "X '//' '<---------------->' '//' Y").
+Ltac reify e :=
+  lazymatch e with
+  | @sep ?k ?v ?map ?a ?b =>
+    let b := reify b in
+    uconstr:(@cons (@map.rep k v map -> Prop) a b)
+  | ?a =>
+    uconstr:(cons a nil)
+  end.
+Ltac reify_goal :=
+  lazymatch goal with
+  | |- Lift1Prop.iff1 ?LHS ?RHS =>
+    let LHS := reify LHS in
+    let RHS := reify RHS in
+    change (Lift1Prop.iff1 (seps LHS) (seps RHS))
+  end.
+
+Lemma match_option_iff_exists {T : Type} R some none (x : option T) P :
+  (x = None /\ P none \/ exists s, x = Some s /\ P (some s)) <->
+  P match x return R with Some s => some s | None => none end.
+Proof. destruct x; firstorder congruence. Qed.
+
+Lemma load1_sep a (v:byte) R m (H:(ptsto a v * R) m) :
+  load 1 m a = Some (combine 0 v word_zero).
+  cbv [load].
+  change (BinIntDef.Z.to_nat 1) with 1%nat.
+  cbn [load_rec].
+  eapply get_sep in H; rewrite H.
+  reflexivity.
+Qed.
+
+Lemma store1_sep a (v1:byte) v2 R m (H : sep (ptsto a v1) R m)
+    (post : _ -> Prop) (cont : forall m', sep (ptsto a (fst (split 0 v2))) R m' -> post m') :
+  exists m', store 1 m a v2 = Some m' /\ post m'.
+Proof.
+Admitted.
+
+Lemma fst_split0_combine0 v w : fst (split 0 (combine 0 v w)) = v.
+Admitted.
+
 Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
   bind_body_of_function swap; cbv [spec_of spec_of_swap].
@@ -110,63 +129,67 @@ Proof.
     { eabstract repeat straightline. }
     repeat straightline.
     letexists; split.
-    { let m := m in
-      let Hm := H in
-      let Tm := type of m in
-      let Pm := lazymatch type of Hm with ?P m => P end in
-      lazymatch goal with
-      | |- load ?sz ?m ?a = Some ?v
-        => simple refine (load_sep sz a v _ m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
-             [ shelve | .. ]
-      end.
-      let __ := constr:(eq_refl : v0 = b) in idtac.
-      repeat straightline.
-      eabstract (cancel; exact (RelationClasses.reflexivity _)). }
+
+    {
+      eapply load1_sep.
+      let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+      reify_goal.
+      simple refine (cancel_seps_at_indices 1 0 _ _ _ _);
+        cbn [List.firstn List.skipn List.app List.hd List.tl].
+      exact (RelationClasses.reflexivity _).
+      exact (RelationClasses.reflexivity _).
+    }
     eabstract repeat straightline. }
 
   repeat straightline.
   letexists; split.
   { repeat straightline.
     letexists; split.
-    { let Hm := H in
-      let Tm := type of m in
-      let Pm := lazymatch type of Hm with ?P m => P end in
-      lazymatch goal with
-      | |- load ?sz ?m ?a = Some ?v
-        => simple refine (load_sep sz a v _ m ((?[sep]:@Lift1Prop.impl1 Tm Pm _) m Hm));
-             [ shelve | .. ]
-      end.
-      let __ := constr:(eq_refl : v0 = a) in idtac. eabstract (cancel; reflexivity). }
+    { 
+      eapply load1_sep.
+      let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+      reify_goal.
+      simple refine (cancel_seps_at_indices 0 0 _ _ _ _);
+        cbn [List.firstn List.skipn List.app List.hd List.tl].
+      exact (RelationClasses.reflexivity _).
+      exact (RelationClasses.reflexivity _).
+
+    }
     repeat straightline. }
 
   repeat straightline.
-  let Hm := H in
-  let Tm := type of m in
-  let Pm := lazymatch type of Hm with ?P m => P end in
-  lazymatch goal with
-  | |- WeakestPrecondition.store ?sz ?m ?a ?v2 ?post
-    => simple refine (store_sep sz a _ v2 _ m ((_:@Lift1Prop.impl1 Tm Pm _) m Hm) post _);
-         [ shelve | shelve | .. ]
-  end.
-  { eabstract (instantiate (2 := b); cancel; reflexivity). }
+  eapply store1_sep.
+  {
+    let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
+    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+    reify_goal.
+    simple refine (cancel_seps_at_indices 1 0 _ _ _ _);
+      cbn [List.firstn List.skipn List.app List.hd List.tl].
+    exact (RelationClasses.reflexivity _).
+    cbn [seps]; exact (RelationClasses.reflexivity _).
+  }
+
   clear H m; intros m H.
   cbv beta.
 
   letexists; split.
   { eabstract repeat ((letexists; split) || exact eq_refl). }
   letexists; split.
-  { eabstract repeat ((letexists; split) || exact eq_refl). }
+  { letexists. split. transitivity (Some v). exact eq_refl. subst v2. exact eq_refl. subst v1. exact eq_refl. }
   repeat straightline.
 
-  let Hm := H in
-  let Tm := type of m in
-  let Pm := lazymatch type of Hm with ?P m => P end in
-  lazymatch goal with
-  | |- WeakestPrecondition.store ?sz ?m ?a ?v2 ?post
-    => simple refine (store_sep sz a _ v2 _ m ((_:@Lift1Prop.impl1 Tm Pm _) m Hm) post _);
-         [ shelve | shelve | .. ]
-  end.
-  eabstract (instantiate (2 := a); cancel; reflexivity).
+  eapply store1_sep.
+  {
+    let H := lazymatch goal with |- _ ?m => lazymatch goal with H: _ m |- _ => H end end in
+    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H.
+    reify_goal.
+    simple refine (cancel_seps_at_indices 1 0 _ _ _ _);
+      cbn [List.firstn List.skipn List.app List.hd List.tl].
+    exact (RelationClasses.reflexivity _).
+    cbn [seps]; exact (RelationClasses.reflexivity _).
+  } 
   clear H m; intros m H.
   cbv beta. (* FIXME *)
 
@@ -174,6 +197,9 @@ Proof.
   hnf.
   split. exact eq_refl.
   split. 2:exact eq_refl.
+
+  repeat match goal with x := _ |- _ => subst x end.
+  rewrite 2fst_split0_combine0 in *.
   assumption.
 Defined.
 
@@ -204,3 +230,6 @@ Defined.
 
 Lemma link_swap_swap_swap_swap : spec_of_swap_swap (swap_swap::swap::nil).
 Proof. auto using swap_swap_ok, swap_ok. Qed.
+
+(* Print Assumptions link_swap_swap_swap_swap. *)
+(* store1_sep SortedList.sorted_remove SortedList.sorted_put SortedList.map_ok fst_split0_combine0 *)

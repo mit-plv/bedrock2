@@ -38,23 +38,6 @@ Module map.
       forall k v1 v2, get a k = Some v1 -> get b k = Some v2 -> False.
     Definition split m m1 m2 : Prop :=
       m = (union m1 m2) /\ disjoint m1 m2.
-    Definition carve m1 m P2 : Prop :=
-      exists m2, split m m2 m1 /\ P2 m2.
-    Fixpoint splits m ms : Prop :=
-      match ms with
-      | nil => m = empty
-      | cons m0 ms' => carve m0 m (fun m => splits m ms')
-      end.
-    Fixpoint splitsS m ms mf : Prop :=
-      match ms with
-      | nil => m = mf
-      | cons m0 ms' => carve m0 m (fun m => splitsS m ms' mf)
-      end.
-    Definition splits' m ms :=
-      match ms with
-      | nil => m = empty
-      | cons m0 ms' => splitsS m ms' m0
-      end.
   End Decomp.
 End map. Notation map := map.map.
 Global Coercion map.rep : map >-> Sortclass.

@@ -7,4 +7,11 @@ Section Sep.
     exists mp mq, split m mp mq /\ p mp /\ q mq.
   Definition ptsto k v := fun m => m = put empty k v.
   Definition read k (P : value -> rep -> Prop) := (ex1 (fun v => sep (ptsto k v) (P v))).
+
+  Fixpoint seps (xs : list (rep -> Prop)) : rep -> Prop :=
+    match xs with
+    | cons x nil => x
+    | cons x xs => sep x (seps xs)
+    | nil => emp True
+    end.
 End Sep.

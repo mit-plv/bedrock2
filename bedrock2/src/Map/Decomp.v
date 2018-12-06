@@ -78,58 +78,12 @@ Section Decomp.
     intuition idtac. subst. eapply disjoint_empty_l.
   Qed.
 
-  Ltac t :=
-    repeat match goal with
-    | _ => progress subst
-    | H:_ /\ _ |- _ => destruct H
-    | H:exists _, _ |- _ => destruct H
-    | H:disjoint (union _ _) _ |- _ => eapply disjoint_union_l in H; destruct H
-    | H:disjoint _ (union _ _) |- _ => eapply disjoint_union_r in H; destruct H
-    | _ => progress intuition idtac
-    end.
-
-  Ltac carve_comm_t := repeat match goal with
-    | _ => progress t
-    | |- union (union ?a ?b) ?c = union (union ?a ?c) ?b  =>
-      rewrite <-2union_assoc by eauto using (fun m1 m2 => proj2 (disjoint_comm m1 m2));
-      rewrite (union_comm b c) by eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3)));
-      reflexivity
-    | _ => solve [eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3))), (fun m1 m2 => proj2 (disjoint_comm m1 m2))]
-    | _ => solve [eapply union_comm; eauto using ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3))), (fun m1 m2 => proj2 (disjoint_comm m1 m2))]
-  end.
-  
-  Lemma carve_comm x y m P :
-    carve y m (fun m_y : rep => carve x m_y (fun m_xy : rep => P m_xy)) <->
-    carve x m (fun m_x : rep => carve y m_x (fun m_xy : rep => P m_xy)).
+  Lemma get_split k m m1 m2 (H : split m m1 m2) :
+    (get m k = get m1 k /\ get m2 k = None) \/ (get m k = get m2 k /\ get m1 k = None).
   Proof.
-    cbv [carve split]; split; intros (? & (? & (? & ? & ?)) );
-      match goal with M : rep, z : rep |- _ => solve [exists (union M z); carve_comm_t] end.
+    destruct H as [?Hm H]; subst m.
+    destruct (get m1 k) eqn:?; [ left | right ];
+      destruct (get m2 k) eqn:?; [ solve[edestruct H; eauto] | | | ];
+      erewrite ?get_union_left, ?get_union_right by eauto; eauto.
   Qed.
-
-  Require Import Permutation.
-  Require Import Coq.Classes.Morphisms.
-  Global Instance splits_Permutation m : Proper (@Permutation _ ==> iff) (splits m).
-  Proof.
-    cbv [Proper respectful]; intros x y H; revert m; induction H; intros;
-      try solve [ eapply carve_comm | firstorder idtac ].
-  Qed.
-
-  Lemma splitsS_iff_snoc m ms mf : splits m (app ms (cons mf nil)) <-> splitsS m ms mf.
-  Proof.
-    revert dependent mf. revert dependent m. induction ms; intros.
-    { cbn. cbv [carve]. split.
-      intros (?&?&?); subst. eapply split_empty_l in H. congruence.
-      intros. subst. exists empty. split. eapply split_empty_l.
-      reflexivity. reflexivity. }
-    { cbn. cbv [carve]. split.
-      { intros (?&?&?). eexists. split. eauto. eapply IHms. eauto. }
-      { intros (?&?&?). eexists. split. eauto. eapply IHms. eauto. } }
-  Qed.
-  Lemma splitS_iff_cons m ms mf : splits m (cons mf ms) <-> splitsS m ms mf.
-  Proof.
-    etransitivity; [|eapply splitsS_iff_snoc].
-    eapply splits_Permutation, Permutation_cons_append.
-  Qed.
-  Lemma splits'_iff m ms : splits m ms <-> splits' m ms.
-  Proof. destruct ms. reflexivity. eapply splitS_iff_cons. Qed.
 End Decomp.
