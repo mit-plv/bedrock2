@@ -6,7 +6,7 @@ Require Import riscv.util.BitWidths.
 Require Import riscv.Utility.
 Require Export bedrock2.Syntax.
 Require Export bedrock2.Semantics.
-Require Import bedrock2.Macros.
+Require Import coqutil.unique.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
