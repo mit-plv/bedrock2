@@ -24,10 +24,6 @@ Instance parameters : parameters :=
   {|
   syntax := StringNamesSyntax.make BasicC64Syntax.StringNames_params;
   Semantics.word := word;
-  word_zero := word.of_Z 0;
-  word_succ := word.add (word.of_Z 1);
-  word_test w := if word.eqb (word.of_Z 0) w then false else true;
-  word_of_Z w := Some (word.of_Z w);
   interp_binop bop :=
     match bop with
     | bopname.add => word.add

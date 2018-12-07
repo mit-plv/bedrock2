@@ -54,6 +54,7 @@ Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
 
 From coqutil.Tactics Require Import eabstract letexists syntactic_unify.
 Require Import coqutil.Datatypes.PrimitivePair.
+Import coqutil.Word.Interface.
 
 Lemma load1_sep a (v:Semantics.byte) R m (H:(ptsto a v * R) m) :
   load m a Syntax.access_size.one = Some (Semantics.combine Syntax.access_size.one (pair.mk v tt)).

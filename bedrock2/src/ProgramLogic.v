@@ -126,8 +126,6 @@ Ltac straightline :=
     let values := eval cbv in values in
     change (TailRecursion.enforce names values map);
     exact (conj (eq_refl values) eq_refl)
-  | |- Semantics.word_of_Z ?z = Some ?v =>
-    let v := rdelta v in is_evar v; (change (Semantics.word_of_Z z = Some v)); exact eq_refl
   | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
   | |- @coqutil.Map.Interface.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
