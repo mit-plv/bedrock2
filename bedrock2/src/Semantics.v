@@ -1,7 +1,8 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
+Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique.
+Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
+Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
 Require Import Coq.ZArith.BinIntDef.
 
-Local Set Primitive Projections.
 Class parameters := {
   syntax :> Syntax.parameters;
 
@@ -13,9 +14,9 @@ Class parameters := {
   interp_binop : bopname -> word -> word -> word;
 
   byte : Type;
-  (* nat included for conceptual completeness, only middle-endian would use it *)
-  combine : nat -> byte -> word -> word;
-  split : nat -> word -> byte * word;
+  bytes_per : access_size -> nat;
+  combine : forall sz, tuple byte (bytes_per sz) -> word;
+  split : forall sz, word -> tuple byte (bytes_per sz);
 
   mem :> map.map word byte;
   locals :> map.map varname word;
@@ -26,27 +27,27 @@ Class parameters := {
 Section semantics.
   Context {pp : unique! parameters}.
   
-  Fixpoint load_rec (sz : nat) (m:mem) (a:word) : option word :=
-    match sz with
-    | O => Some word_zero
-    | S sz =>
-      'Some b <- map.get m a                 | None;
-      'Some w <- load_rec sz m (word_succ a) | None;
-       Some (combine sz b w)
+  Section WithMem.
+    Context (m:mem).
+    Fixpoint load_bytes (n : nat) (a : word) {struct n} : option (tuple byte n) :=
+      match n with
+      | O => Some tt
+      | S n =>
+        'Some b <- map.get m a | None;
+        'Some bs <- load_bytes n (word_succ a) | None;
+        Some (pair.mk b bs)
+      end.
+  End WithMem.
+  Definition load m a sz : option word :=
+    'Some bs <- load_bytes m (bytes_per sz) a | None;
+    Some (combine sz bs).
+  Fixpoint store_bytes (n : nat) (m:mem) (a : word) : forall (bs : tuple byte n), mem :=
+    match n with
+    | O => fun bs => m
+    | S n => fun bs => store_bytes n (map.put m a (pair._1 bs)) (word_succ a) (pair._2 bs)
     end.
-  Definition load n := load_rec (Z.to_nat n).
-  Fixpoint unchecked_store_rec (sz : nat) (m:mem) (a v:word) : mem :=
-    match sz with
-    | O => m
-    | S sz =>
-      let '(b, w) := split sz v in
-      unchecked_store_rec sz (map.put m a b) (word_succ a) w
-    end.
-  Definition unchecked_store n := unchecked_store_rec (Z.to_nat n).
   Definition store sz m a v : option mem :=
-    match load sz m a with
-    | None => None
-    | Some _ => Some (unchecked_store sz m a v)
-    end.
+    'Some _ <- load m a sz | None;
+    Some (store_bytes (bytes_per sz) m a (split sz v)).
   Definition trace := list ((mem * actname * list word) * (mem * list word)).
 End semantics.

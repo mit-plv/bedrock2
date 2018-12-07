@@ -29,7 +29,7 @@ Section WeakestPrecondition.
         post (interp_binop op v1 v2)))
       | expr.load s e =>
         rec e (fun a =>
-        load s m a post)
+        load m a s post)
     end.
     Fixpoint expr e := expr_body expr e.
   End WithMemAndLocals.

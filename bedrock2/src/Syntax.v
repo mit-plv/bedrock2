@@ -10,13 +10,17 @@ Class parameters := {
   bopname : Set;
 }.
 
+Module access_size.
+  Variant access_size := one | two | four | word.
+  Scheme Equality for access_size.
+End access_size. Notation access_size := access_size.access_size.
 
 Module expr. Section expr.
   Context {p : unique! parameters}.
   Inductive expr  : Type :=
   | literal (v: Z)
   | var (x: varname)
-  | load (access_size_in_bytes:Z) (addr:expr)
+  | load (_ : access_size) (addr:expr)
   | op (op: bopname) (e1 e2: expr).
 End expr. End expr. Notation expr := expr.expr.
 
@@ -26,7 +30,7 @@ Module cmd. Section cmd.
   | skip
   | set (lhs : varname) (rhs : expr)
   | unset (lhs : varname)
-  | store (size_in_bytes : Z) (address : expr) (value : expr)
+  | store (_ : access_size) (address : expr) (value : expr)
   | cond (condition : expr) (nonzero_branch zero_branch : cmd)
   | seq (s1 s2: cmd)
   | while (test : expr) (body : cmd)

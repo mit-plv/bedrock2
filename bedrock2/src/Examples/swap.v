@@ -53,23 +53,25 @@ Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
       (fun t' m' rets => t=t' /\ (ptsto a_addr a * (ptsto b_addr b * R)) m' /\ rets = nil).
 
 From coqutil.Tactics Require Import eabstract letexists syntactic_unify.
+Require Import coqutil.Datatypes.PrimitivePair.
 
-Lemma load1_sep a (v:byte) R m (H:(ptsto a v * R) m) :
-  load 1 m a = Some (combine 0 v word_zero).
-  cbv [load].
-  change (BinIntDef.Z.to_nat 1) with 1%nat.
-  cbn [load_rec].
+Lemma load1_sep a (v:Semantics.byte) R m (H:(ptsto a v * R) m) :
+  load m a Syntax.access_size.one = Some (Semantics.combine Syntax.access_size.one (pair.mk v tt)).
+  cbv [load Semantics.bytes_per bytes_per].
+  set (n := Semantics.bytes_per Syntax.access_size.one); cbv in n; subst n.
+  cbv [load_bytes].
   eapply get_sep in H; rewrite H.
-  reflexivity.
+  exact eq_refl.
 Qed.
 
-Lemma store1_sep a (v1:byte) v2 R m (H : sep (ptsto a v1) R m)
-    (post : _ -> Prop) (cont : forall m', sep (ptsto a (fst (split 0 v2))) R m' -> post m') :
-  exists m', store 1 m a v2 = Some m' /\ post m'.
+Lemma store1_sep a (v1:Semantics.byte) v2 (R:mem->Prop) (m:mem) (H : sep (ptsto a v1) R m)
+    (p := (ptsto a (pair._1 (Semantics.split Syntax.access_size.one v2))))
+    (post : mem -> Prop) (cont : forall (m':mem), sep p R m' -> post m') :
+  exists (m':mem), store Syntax.access_size.one m a v2 = Some m' /\ post m'.
 Proof.
 Admitted.
 
-Lemma fst_split0_combine0 v w : fst (split 0 (combine 0 v w)) = v.
+Lemma fst_split0_combine0 v : pair._1 (Semantics.split Syntax.access_size.one (Semantics.combine Syntax.access_size.one (pair.mk v tt))) = v.
 Admitted.
 
 Ltac sep :=

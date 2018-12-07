@@ -18,23 +18,28 @@ Definition require_scalar (t : type)
   end.
 
 Definition rlookup_scalar {par : parameters} {balu : operations}
-           {T : Set} (ok : Z -> expr.expr -> T)
+           {T : Set} (ok : access_size -> expr.expr -> T)
            (t : type) (base : expr.expr) (p : path expr.expr)
 : match @gen_access par bop_add bop_mul base t p with
   | inl err => _
-  | inr (Bytes _, _) => T
+  | inr (Bytes sz, _) => match sz with 1%Z | 2%Z | 4%Z => T | _ => NotAScalar end
   | inr _ => NotAScalar
   end :=
   match @gen_access par bop_add bop_mul base t p as z
         return match z with
                | inl err => _
-               | inr (Bytes _, _) => T
+               | inr (Bytes sz, _) => match sz with 1%Z | 2%Z | 4%Z => T | _ => NotAScalar end
                | inr _ => NotAScalar
                end
   with
   | inl err => err
   | inr (t,e) => match t with
-                | Bytes sz => ok sz e
+                 | Bytes sz => match sz return match sz with 1%Z | 2%Z | 4%Z => T | _ => NotAScalar end with
+                               | 1%Z => ok access_size.one e
+                               | 2%Z => ok access_size.two e
+                               | 4%Z => ok access_size.four e
+                               | _ => mk_NotAScalar t
+                               end
                 | _ => mk_NotAScalar t
                 end
   end.

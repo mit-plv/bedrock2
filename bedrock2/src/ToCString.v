@@ -21,13 +21,12 @@ Section ToCString.
   Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true false false false false) "".
   Local Open Scope string_scope.
 
-  Definition c_size (s : Z) : string :=
+  Definition c_size (s : access_size) : string :=
     match s with
-    | 1 => "uint8_t"
-    | 2 => "uint16_t"
-    | 4 => "uint32_t"
-    | 8 => "uint64_t"
-    | _ => "#error"
+    | access_size.one => "uint8_t"
+    | access_size.two => "uint16_t"
+    | access_size.four => "uint32_t"
+    | access_size.word => "uintptr_t"
     end%Z.
 
   Fixpoint c_expr (e : expr) : string :=

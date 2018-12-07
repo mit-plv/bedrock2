@@ -9,8 +9,8 @@ Section StructAccess.
 
   Definition item : type :=
     Struct (
-    ("a", Bytes 4)::
-    ("b", Bytes 8)::
+    ("a", Bytes 2)::
+    ("b", Bytes 4)::
     nil).
 
   Context (dst src : expr).

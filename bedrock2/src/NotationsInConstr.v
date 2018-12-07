@@ -9,13 +9,13 @@ Bind Scope bedrock_expr with expr.
 Notation "(uintptr_t) v 'ULL'" := (expr.literal v)
  (at level 1, no associativity, format "(uintptr_t) v 'ULL'") : bedrock_expr.
 
-Notation "*(uint8_t*) e" := (expr.load 1 e%bedrock_expr)
+Notation "*(uint8_t*) e" := (expr.load access_size.one e%bedrock_expr)
   (at level 10, no associativity) : bedrock_expr.
-Notation "*(uint16_t*) e" := (expr.load 2 e%bedrock_expr)
+Notation "*(uint16_t*) e" := (expr.load access_size.two e%bedrock_expr)
   (at level 10, no associativity) : bedrock_expr.
-Notation "*(uint32_t*) e" := (expr.load 4 e%bedrock_expr)
+Notation "*(uint32_t*) e" := (expr.load access_size.four e%bedrock_expr)
   (at level 10, no associativity) : bedrock_expr.
-Notation "*(uint64_t*) e" := (expr.load 8 e%bedrock_expr)
+Notation "*(uintptr_t*) e" := (expr.load access_size.word e%bedrock_expr)
   (at level 10, no associativity) : bedrock_expr.
 
 Delimit Scope bedrock_cmd with bedrock_cmd.
@@ -25,13 +25,13 @@ Notation "'/*skip*/'" := cmd.skip
 Notation "x = e" := (cmd.set x%bedrock_var e%bedrock_expr)
   : bedrock_cmd.
 
-Notation "*(uint8_t*) ea = ev" := (cmd.store 1 ea%bedrock_var ev%bedrock_expr)
+Notation "*(uint8_t*) ea = ev" := (cmd.store access_size.one ea%bedrock_var ev%bedrock_expr)
   (at level 76, ea at level 60) : bedrock_cmd.
-Notation "*(uint16_t*) ea = ev" := (cmd.store 2 ea%bedrock_var ev%bedrock_expr)
+Notation "*(uint16_t*) ea = ev" := (cmd.store access_size.two ea%bedrock_var ev%bedrock_expr)
   (at level 76, ea at level 60) : bedrock_cmd.
-Notation "*(uint32_t*) ea = ev" := (cmd.store 4 ea%bedrock_var ev%bedrock_expr)
+Notation "*(uint32_t*) ea = ev" := (cmd.store access_size.four ea%bedrock_var ev%bedrock_expr)
   (at level 76, ea at level 60) : bedrock_cmd.
-Notation "*(uint64_t*) ea = ev" := (cmd.store 8 ea%bedrock_var ev%bedrock_expr)
+Notation "*(uintptr_t*) ea = ev" := (cmd.store access_size.word ea%bedrock_var ev%bedrock_expr)
   (at level 76, ea at level 60) : bedrock_cmd.
 
 Notation "c1 ;; c2" := (cmd.seq c1%bedrock_cmd c2%bedrock_cmd)
