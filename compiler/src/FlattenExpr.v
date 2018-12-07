@@ -10,7 +10,7 @@ Require Import riscv.Memory.
 Require Import riscv.Utility.
 Require bedrock2.Syntax.
 Require bedrock2.Semantics.
-Require Import coqutil.unique.
+Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 
 Section FlattenExpr.

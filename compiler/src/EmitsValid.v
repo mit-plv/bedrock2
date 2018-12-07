@@ -210,7 +210,7 @@ Hint Unfold
 
 Ltac simpl_pow2 :=
       repeat (so fun hyporgoal => match hyporgoal with
-              | context [(2 ^ ?a)%Z] => 
+              | context [(2 ^ ?a)%Z] =>
                   let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
               end).
 
@@ -308,7 +308,7 @@ Section EmitsValid.
              apply nth_error_cons_Some in H; destruct H as [ [? ?] | [? [? ?] ] ]
       | H: nth_error (_ ++ _) _ = Some _ |- _ =>
              apply nth_error_app_Some in H; destruct H as [? | ?]
-      | H: nth_error (compile_lit _ _) _ = Some _ |- _ => 
+      | H: nth_error (compile_lit _ _) _ = Some _ |- _ =>
              apply compile_lit_emits_valid in H; [ | intuition fail ]
       | H: nth_error (compile_op _ _ _ _) _ = Some _ |- _ =>
              apply compile_op_emits_valid in H; [ | intuition fail .. ]
@@ -319,7 +319,7 @@ Section EmitsValid.
       destruct Bw; simpl in *;
       autounfold with unf_encode_consts unf_verify;
       repeat (so fun hyporgoal => match hyporgoal with
-              | context [(2 ^ ?a)%Z] => 
+              | context [(2 ^ ?a)%Z] =>
                   let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
               end);
       repeat match goal with
@@ -333,4 +333,3 @@ Section EmitsValid.
   Qed.
 *)
 End EmitsValid.
-

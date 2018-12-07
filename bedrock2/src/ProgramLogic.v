@@ -1,5 +1,5 @@
+Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 From coqutil.Tactics Require Import letexists eabstract rdelta.
-Require Import coqutil.subst coqutil.unique bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.TailRecursion.

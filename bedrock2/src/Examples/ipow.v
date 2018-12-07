@@ -62,7 +62,7 @@ Proof.
 
     cbn [HList.hlist.foralls HList.tuple.foralls
          HList.hlist.existss HList.tuple.existss
-         HList.hlist.apply  HList.tuple.apply 
+         HList.hlist.apply  HList.tuple.apply
          HList.hlist
          List.repeat Datatypes.length
          PrimitivePair.pair._1 PrimitivePair.pair._2] in *.

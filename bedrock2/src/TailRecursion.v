@@ -1,9 +1,9 @@
-Require Import coqutil.PrimitivePair coqutil.HList coqutil.dlet.
+Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
 Require Import Coq.Classes.Morphisms.
 From bedrock2 Require Import Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 From bedrock2 Require Import Map.Separation Map.SeparationLogic.
-Import coqutil.unique coqutil.Map.Interface map.
+Import coqutil.Macros.unique coqutil.Map.Interface map.
 
 Section TailRecrsion.
   Context

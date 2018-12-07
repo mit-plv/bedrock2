@@ -1,4 +1,4 @@
-Require Import coqutil.subst coqutil.unique.
+Require Import coqutil.Macros.subst coqutil.Macros.unique.
 Require bedrock2.WeakestPrecondition.
 
 Require Import Coq.Classes.Morphisms.

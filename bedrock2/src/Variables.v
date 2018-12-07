@@ -1,4 +1,4 @@
-Require Import coqutil.subst coqutil.unique bedrock2.Syntax.
+Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 
 Require Import Coq.Lists.List.
 

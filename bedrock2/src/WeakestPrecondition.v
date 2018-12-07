@@ -1,4 +1,4 @@
-Require Import coqutil.subst coqutil.unique bedrock2.Notations coqutil.Map.Interface.
+Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations coqutil.Map.Interface.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 Require Import Coq.ZArith.BinIntDef.
 

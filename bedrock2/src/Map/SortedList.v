@@ -1,5 +1,5 @@
 Local Set Primitive Projections.
-Require Import coqutil.subst coqutil.unique coqutil.Map.Interface.
+Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface.
 Require Coq.Lists.List.
 Require Coq.Logic.Eqdep_dec.
 

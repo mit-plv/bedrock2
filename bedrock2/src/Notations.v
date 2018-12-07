@@ -1,4 +1,4 @@
-Require Import coqutil.subst coqutil.unique.
+Require Import coqutil.Macros.subst coqutil.Macros.unique.
 
 Notation "' x <- a | y ; f" :=
   (match a with

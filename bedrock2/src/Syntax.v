@@ -1,4 +1,4 @@
-Require Import coqutil.subst coqutil.unique.
+Require Import coqutil.Macros.subst coqutil.Macros.unique.
 
 Require Import Coq.Numbers.BinNums.
   

@@ -1,4 +1,4 @@
-Require Import coqutil.subst coqutil.unique bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
+Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
 Require Import Coq.ZArith.BinIntDef.
 
 Local Set Primitive Projections.
