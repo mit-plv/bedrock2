@@ -1,4 +1,4 @@
-Require Import bedrock2.Map bedrock2.Lift1Prop. Import map.
+Require Import coqutil.Map.Interface bedrock2.Lift1Prop. Import map.
 
 Section Sep.
   Context {key value} {map : map key value}.

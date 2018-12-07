@@ -1,7 +1,7 @@
 Require Import Coq.NArith.BinNatDef.
 Require Import bedrock2.BasicC64Syntax bedrock2.Semantics.
 Require bedrock2.String bedrock2.Map.SortedList bedrock2.Map.SortedListString.
-Require Import bedrock2.Word. Require bedrock2.Word.Naive.
+Require Import coqutil.Word.Interface. Require coqutil.Word.Naive.
 Import ZArith.
 
 Instance parameters : parameters :=

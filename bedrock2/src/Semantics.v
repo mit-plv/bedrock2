@@ -1,4 +1,4 @@
-Require Import bedrock2.Macros bedrock2.Notations bedrock2.Syntax bedrock2.Map.
+Require Import coqutil.subst coqutil.unique bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
 Require Import Coq.ZArith.BinIntDef.
 
 Local Set Primitive Projections.
@@ -17,8 +17,8 @@ Class parameters := {
   combine : nat -> byte -> word -> word;
   split : nat -> word -> byte * word;
 
-  mem :> map word byte;
-  locals :> map varname word;
+  mem :> map.map word byte;
+  locals :> map.map varname word;
 
   funname_eqb : funname -> funname -> bool
 }.

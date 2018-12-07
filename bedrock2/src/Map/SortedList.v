@@ -1,5 +1,5 @@
 Local Set Primitive Projections.
-Require Import bedrock2.Macros bedrock2.Map.
+Require Import coqutil.subst coqutil.unique coqutil.Map.Interface.
 Require Coq.Lists.List.
 Require Coq.Logic.Eqdep_dec.
 
@@ -52,7 +52,7 @@ Section SortedList.
   Record rep := { value : list (key * value) ; ok : sorted value = true }.
   Lemma sorted_put m k v : sorted m = true -> sorted (put m k v) = true. Admitted.
   Lemma sorted_remove m k : sorted m = true -> sorted (remove m k) = true. Admitted.
-  Definition map : map key parameters.value :=
+  Definition map : map.map key parameters.value :=
     let wrapped_put m k v := Build_rep (put (value m) k v) (minimize_eq_proof Bool.bool_dec (sorted_put _ _ _ (ok m))) in
     let wrapped_remove m k := Build_rep (remove (value m) k) (minimize_eq_proof Bool.bool_dec (sorted_remove _ _ (ok m))) in
     {|
@@ -64,7 +64,7 @@ Section SortedList.
                    end;
     map.put := wrapped_put;
     map.remove := wrapped_remove;
-    map.union m1 m2 := List.fold_right (fun '(k, v) m => wrapped_put m k v) m1 (value m2)
+    map.putmany m1 m2 := List.fold_right (fun '(k, v) m => wrapped_put m k v) m1 (value m2)
   |}.
 
   Global Instance map_ok : map.ok map. Admitted.

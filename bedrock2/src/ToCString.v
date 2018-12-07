@@ -1,4 +1,4 @@
-Require Import bedrock2.Macros bedrock2.Syntax bedrock2.Variables.
+Require Import coqutil.subst coqutil.unique bedrock2.Syntax bedrock2.Variables.
 
 Require Import Coq.Numbers.BinNums.
 Require Import Coq.ZArith.BinIntDef.

@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.BinIntDef.
-Require Import bedrock2.Macros bedrock2.Syntax bedrock2.BasicALU.
+Require Import coqutil.subst coqutil.unique bedrock2.Syntax bedrock2.BasicALU.
 
 
 Delimit Scope bedrock_var with bedrock_var.

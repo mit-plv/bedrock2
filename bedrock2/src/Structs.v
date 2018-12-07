@@ -1,7 +1,7 @@
 (* macros for implementing simple types.
  *)
 Require Coq.Lists.List.
-Require Import bedrock2.Macros bedrock2.Syntax bedrock2.BasicALU.
+Require Import coqutil.subst coqutil.unique bedrock2.Syntax bedrock2.BasicALU.
 
 Require Import Coq.ZArith.BinInt.
 Require Import Coq.Strings.String.

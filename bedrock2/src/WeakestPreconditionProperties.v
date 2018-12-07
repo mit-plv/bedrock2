@@ -1,4 +1,4 @@
-Require Import bedrock2.Macros.
+Require Import coqutil.subst coqutil.unique.
 Require bedrock2.WeakestPrecondition.
 
 Require Import Coq.Classes.Morphisms.
@@ -56,6 +56,7 @@ Section WeakestPrecondition.
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
       cbn in *; cbv [dlet.dlet] in *; intuition (try typeclasses eauto with core).
     { destruct H4 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto. eauto. }
+    { eapply H3, H4. }
     { destruct H4 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto.
       destruct H5 as (?&?&?). eexists. split. eapply Proper_expr. cbv [pointwise_relation Basics.impl]; intuition eauto 2. eauto.
       eapply Proper_store; eauto; cbv [pointwise_relation Basics.impl]; eauto. }

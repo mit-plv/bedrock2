@@ -1,6 +1,8 @@
 Require Import Coq.Classes.Morphisms.
-Require Import bedrock2.Map bedrock2.Map.Decomp bedrock2.Lift1Prop bedrock2.Map.Separation. Import map.
+Require Import bedrock2.Lift1Prop bedrock2.Map.Separation.
 Require Coq.Lists.List.
+Require Import coqutil.sanity coqutil.Map.Interface coqutil.Map.Properties.
+Import Map.Interface.map Map.Properties.map.
 
 Section SepProperties.
   Context {key value} {map : map key value} {ok : ok map}.
@@ -14,16 +16,16 @@ Section SepProperties.
     | _ => progress subst
     | H:_ /\ _ |- _ => destruct H
     | H:exists _, _ |- _ => destruct H
-    | H:disjoint (union _ _) _ |- _ => eapply disjoint_union_l in H; destruct H
-    | H:disjoint _ (union _ _) |- _ => eapply disjoint_union_r in H; destruct H
+    | H:disjoint (putmany _ _) _ |- _ => eapply disjoint_putmany_l in H; destruct H
+    | H:disjoint _ (putmany _ _) |- _ => eapply disjoint_putmany_r in H; destruct H
     | _ => progress intuition idtac
     end.
 
   (* sep and sep *)
   Lemma sep_comm p q : iff1 (p*q) (q*p).
-  Proof. cbv [iff1 sep split]; t; eauto 10 using union_comm, (fun m1 m2 => proj2 (disjoint_comm m1 m2)). Qed.
+  Proof. cbv [iff1 sep split]; t; eauto 10 using putmany_comm, (fun m1 m2 => proj2 (disjoint_comm m1 m2)). Qed.
   Lemma sep_assoc p q r : iff1 ((p*q)*r) (p*(q*r)).
-  Proof. cbv [iff1 sep split]; t; eauto 15 using eq_sym, union_assoc, ((fun m1 m2 m3 => proj2 (disjoint_union_l m1 m2 m3))), ((fun m1 m2 m3 => proj2 (disjoint_union_r m1 m2 m3))). Qed.
+  Proof. cbv [iff1 sep split]; t; eauto 15 using eq_sym, putmany_assoc, ((fun m1 m2 m3 => proj2 (disjoint_putmany_l m1 m2 m3))), ((fun m1 m2 m3 => proj2 (disjoint_putmany_r m1 m2 m3))). Qed.
 
   Lemma get_ptsto k v m (H : ptsto k v m) : get m k = Some v.
   Proof. rewrite H, get_put_same; trivial. Qed.
@@ -40,8 +42,8 @@ Section SepProperties.
     exists mR, (put empty k v); split; [|solve[repeat split; trivial]]; split.
     { eapply map_ext; intro k'; destruct (key_eq_dec k' k); try subst k';
         rewrite ?get_put_same, ?get_put_diff by trivial.
-      { erewrite get_union_right; trivial. rewrite get_put_same; trivial. }
-      { rewrite 2get_union_left; trivial. all:rewrite get_put_diff, get_empty; trivial. } }
+      { erewrite get_putmany_right; trivial. rewrite get_put_same; trivial. }
+      { rewrite 2get_putmany_left; trivial. all:rewrite get_put_diff, get_empty; trivial. } }
     { intros k' ? ? ? Hget; intros; destruct (key_eq_dec k' k); try subst k'.
       { eapply Hd; eauto using get_put_same. }
       { rewrite get_put_diff, get_empty in Hget by trivial; inversion Hget. } }
@@ -56,7 +58,7 @@ Section SepProperties.
 
   (* sep and emp *)
   Lemma sep_emp_emp p q : iff1 (sep (emp p) (emp q)) (emp (p /\ q)).
-  Proof. cbv [iff1 sep emp split]; t; intuition eauto 20 using union_empty_l, disjoint_empty_l. Qed.
+  Proof. cbv [iff1 sep emp split]; t; intuition eauto 20 using putmany_empty_l, disjoint_empty_l. Qed.
   Lemma sep_comm_emp_r a b : iff1 (a * emp b) (emp b * a). eapply sep_comm. Qed.
   Lemma sep_emp_2 a b c : iff1 (a * (emp b * c)) (emp b * (a * c)).
   Proof. rewrite <-sep_assoc. rewrite (sep_comm a). rewrite sep_assoc. reflexivity. Qed.
@@ -66,7 +68,7 @@ Section SepProperties.
   Lemma sep_emp_l a b m : sep (emp a) b m <-> a /\ b m.
   Proof.
     split.
-    { intros (?&?&(?&?)&(?&?)&?); subst; rewrite union_empty_l; auto. }
+    { intros (?&?&(?&?)&(?&?)&?); subst; rewrite putmany_empty_l; auto. }
     { intros (?&?). exists empty, m.
       cbv [emp]; edestruct split_empty_l; intuition eauto. }
   Qed.
@@ -89,9 +91,9 @@ Section SepProperties.
 
   (* impl1 and emp *)
   Lemma impl1_l_sep_emp (a:Prop) b c : impl1 (emp a * b) c <-> (a -> impl1 b c).
-  Proof. cbv [impl1 emp sep split]; t; rewrite ?union_empty_l; eauto 10 using union_empty_l, disjoint_empty_l. Qed.
+  Proof. cbv [impl1 emp sep split]; t; rewrite ?putmany_empty_l; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
   Lemma impl1_r_sep_emp a b c : (b /\ impl1 a c) -> impl1 a (emp b * c).
-  Proof. cbv [impl1 emp sep split]; t; eauto 10 using union_empty_l, disjoint_empty_l. Qed.
+  Proof. cbv [impl1 emp sep split]; t; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
 
   (* shallow reflection from a list of predicates *)
   Fixpoint seps' (xs : list (rep -> Prop)) : rep -> Prop :=
@@ -136,7 +138,7 @@ Section SepProperties.
   Qed.
 End SepProperties.
 
-Require Import bedrock2.Tactics.syntactic_unify.
+Require Import coqutil.Tactics.syntactic_unify.
 
 Notation "X '========' 'seps' 'iff' '========' Y" :=
   (Lift1Prop.iff1 (seps X) (seps Y))

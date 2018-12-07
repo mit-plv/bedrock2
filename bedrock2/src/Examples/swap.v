@@ -19,9 +19,9 @@ Definition swap_swap := ("swap_swap", (("a"::"b"::nil), ([]:list varname), bedro
 
 Require bedrock2.WeakestPrecondition.
 Require Import bedrock2.Semantics bedrock2.BasicC64Semantics.
-Require Import bedrock2.Map bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
-Local Instance FIXME_mem_ok : Map.map.ok Semantics.mem.
+Local Instance FIXME_mem_ok : map.ok Semantics.mem.
   cbv [mem parameters word byte mem].
   try exact SortedList.map_ok || (* TODO: the first fails... *)
   (set {|SortedList.parameters.key := _;
@@ -33,7 +33,7 @@ Defined.
 
 
 Require bedrock2.WeakestPreconditionProperties.
-From bedrock2.Tactics Require Import eabstract.
+From coqutil.Tactics Require Import eabstract.
 Require Import bedrock2.ProgramLogic.
 
 Local Infix "*" := sep.
@@ -52,7 +52,7 @@ Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
       "swap_swap" t m [a_addr; b_addr]
       (fun t' m' rets => t=t' /\ (ptsto a_addr a * (ptsto b_addr b * R)) m' /\ rets = nil).
 
-From bedrock2.Tactics Require Import eabstract letexists syntactic_unify.
+From coqutil.Tactics Require Import eabstract letexists syntactic_unify.
 
 Lemma load1_sep a (v:byte) R m (H:(ptsto a v * R) m) :
   load 1 m a = Some (combine 0 v word_zero).

@@ -1,4 +1,4 @@
-Require Import bedrock2.Macros bedrock2.Syntax.
+Require Import coqutil.subst coqutil.unique bedrock2.Syntax.
 
 Local Set Primitive Projections.
 Class operations {p: unique! Syntax.parameters} :=

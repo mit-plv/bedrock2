@@ -16,8 +16,8 @@ Definition ipow := ("ipow", (["x";"e"], (["ret"]:list varname), bedrock_func_bod
   }}
 ))).
 
-Require Import bedrock2.BasicC64Semantics bedrock2.Word.
-Require bedrock2.WeakestPrecondition bedrock2.WordProperties.
+Require Import bedrock2.BasicC64Semantics coqutil.Word.Interface.
+Require bedrock2.WeakestPrecondition coqutil.Word.Properties.
 
 Definition spec_of_ipow := fun functions =>
   forall x e t m,
@@ -39,7 +39,7 @@ Proof.
   congruence.
 Qed.
 
-From bedrock2.Tactics Require Import letexists eabstract.
+From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic.
 Require Import AdmitAxiom.
 Lemma ipow_ok : forall functions, spec_of_ipow (ipow::functions).
@@ -51,7 +51,7 @@ Proof.
 
   repeat straightline; show_program.
 
-  Import WordProperties Word word.
+  Import Word.Properties.word Word.Interface.word.
   refine (TailRecursion.tailrec nil ["e";"ret";"x"]
     (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e)
     (fun t' m' e' ret' x' => t' = t /\ m' = m /\
@@ -79,17 +79,17 @@ Proof.
         { (* measure decreases *)
           cbn [parameters Semantics.interp_binop] in *.
           eapply word_test_true_unsigned in H.
-          unshelve (idtac; let pf := open_constr:(word.unsigned_range _ x0) in pose proof pf);
+          unshelve (idtac; let pf := open_constr:(unsigned_range _ x0) in pose proof pf);
             [exact _|cbv; congruence|].
           repeat match goal with
                    |- context [?x] => subst x
                  end.
-          rewrite ?word.unsigned_sru_nowrap,
-                  ?word.unsigned_of_Z,
+          rewrite ?unsigned_sru_nowrap,
+                  ?unsigned_of_Z,
                   ?Z.shiftr_div_pow2
             by (cbv; congruence).
           change (2 ^ (1 mod 2 ^ 64)) with 2.
-          WordProperties.mia. }
+          Word.Properties.mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
           cbn [parameters Semantics.interp_binop] in *.
@@ -100,29 +100,29 @@ Proof.
             repeat match goal with
                      |- context [?x] => subst x
                    end;
-            repeat rewrite ?word.unsigned_of_Z,
-                           ?word.unsigned_sru_nowrap,
-                           ?word.unsigned_mul,
+            repeat rewrite ?unsigned_of_Z,
+                           ?unsigned_sru_nowrap,
+                           ?unsigned_mul,
                            ?Z.mul_mod_idemp_l,
                            ?Z.shiftr_div_pow2;
             change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
-          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract (WordProperties.mia). }
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract (Word.Properties.mia). }
           { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract ring. } } }
       { repeat straightline.
         { (* measure decreases *)
           cbn [parameters Semantics.interp_binop] in *.
           eapply word_test_true_unsigned in H.
-          unshelve (idtac; let pf := open_constr:(word.unsigned_range _ x0) in pose proof pf);
+          unshelve (idtac; let pf := open_constr:(unsigned_range _ x0) in pose proof pf);
             [exact _|cbv; congruence|].
           repeat match goal with
                    |- context [?x] => subst x
                  end.
-          rewrite ?word.unsigned_sru_nowrap,
-                  ?word.unsigned_of_Z,
+          rewrite ?unsigned_sru_nowrap,
+                  ?unsigned_of_Z,
                   ?Z.shiftr_div_pow2
             by (cbv; congruence).
           change (2 ^ (1 mod 2 ^ 64)) with 2.
-          WordProperties.mia. }
+          Word.Properties.mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
           cbn [parameters Semantics.interp_binop] in *.
@@ -134,12 +134,12 @@ Proof.
                      |- context [?x] => subst x
                    end;
             repeat rewrite ?word.unsigned_of_Z,
-                           ?word.unsigned_sru_nowrap,
-                           ?word.unsigned_mul,
+                           ?unsigned_sru_nowrap,
+                           ?unsigned_mul,
                            ?Z.mul_mod_idemp_l,
                            ?Z.shiftr_div_pow2;
             change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
-          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract (WordProperties.mia). }
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract (Word.Properties.mia). }
           { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract ring. } } } }
     { (* end of loop *)
       repeat split; intros.

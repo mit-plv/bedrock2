@@ -1,4 +1,4 @@
-Require Import bedrock2.Macros bedrock2.Syntax.
+Require Import coqutil.subst coqutil.unique bedrock2.Syntax.
 Require Import bedrock2.BasicALU bedrock2.Structs.
 Require Import Coq.ZArith.BinIntDef Coq.Lists.List Coq.Strings.String.
 

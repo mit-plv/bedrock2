@@ -1,5 +1,5 @@
-Require Import bedrock2.Macros bedrock2.Notations bedrock2.Map.
-Require Import bedrock2.dlet bedrock2.Syntax bedrock2.Semantics.
+Require Import coqutil.subst coqutil.unique bedrock2.Notations coqutil.Map.Interface.
+Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 Require Import Coq.ZArith.BinIntDef.
 
 Section WeakestPrecondition.
@@ -86,20 +86,20 @@ Section WeakestPrecondition.
       | cmd.call binds fname arges =>
         bind_ex args <- dexprs m l arges;
         call fname t m args (fun t m rets =>
-          bind_ex_Some l <- map.putmany binds rets l;
+          bind_ex_Some l <- map.putmany_of_list binds rets l;
           post t m l)
       | cmd.interact binds action arges =>
         bind_ex args <- dexprs m l arges;
         dlet! output := (m, action, args) in
         forall m rets (t := cons (output, (m, rets)) t),
           guarantee t /\
-          (rely t -> (bind_ex_Some l <- map.putmany binds rets l; post t m l))
+          (rely t -> (bind_ex_Some l <- map.putmany_of_list binds rets l; post t m l))
       end.
     Fixpoint cmd c := cmd_body cmd c.
   End WithFunctions.
 
   Definition func call '(innames, outnames, c) (t : trace) (m : mem) (args : list word) (post : trace -> mem -> list word -> Prop) :=
-      bind_ex_Some l <- map.putmany innames args map.empty;
+      bind_ex_Some l <- map.of_list innames args;
       cmd call c t m l (fun t m l =>
         list_map (get l) outnames (fun rets =>
         post t m rets)).

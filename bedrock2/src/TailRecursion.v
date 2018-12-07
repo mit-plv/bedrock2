@@ -1,8 +1,9 @@
-Require Import bedrock2.PrimitivePair bedrock2.HList bedrock2.dlet.
+Require Import coqutil.PrimitivePair coqutil.HList coqutil.dlet.
 Require Import Coq.Classes.Morphisms.
-From bedrock2 Require Import Macros Syntax Semantics Markers.
+From bedrock2 Require Import Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
-From bedrock2 Require Import Map Map.Separation Map.SeparationLogic.
+From bedrock2 Require Import Map.Separation Map.SeparationLogic.
+Import coqutil.unique coqutil.Map.Interface map.
 
 Section TailRecrsion.
   Context
@@ -16,7 +17,7 @@ Section TailRecrsion.
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
 
   Definition reconstruct (variables:list varname) (values:tuple word (length variables)) : locals :=
-    match map.putmany variables (tuple.to_list values) map.empty with
+    match map.putmany_of_list variables (tuple.to_list values) map.empty with
     | None => map.empty (* never happens by input types *)
     | Some x => x
     end.

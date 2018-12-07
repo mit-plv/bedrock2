@@ -1,4 +1,4 @@
-Require Import bedrock2.Macros bedrock2.Syntax.
+Require Import coqutil.subst coqutil.unique bedrock2.Syntax.
 Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU bedrock2.NotationsInConstr.
 
 Import BinInt String.

@@ -1,5 +1,5 @@
-From bedrock2.Tactics Require Import letexists eabstract rdelta.
-Require Import bedrock2.Macros bedrock2.Syntax.
+From coqutil.Tactics Require Import letexists eabstract rdelta.
+Require Import coqutil.subst coqutil.unique bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.TailRecursion.
@@ -75,7 +75,7 @@ Ltac straightline_cleanup :=
          | Semantics.word => idtac
          | Syntax.cmd => idtac
          | Syntax.expr => idtac
-         | Map.map.rep => idtac
+         | coqutil.Map.Interface.map.rep => idtac
          | BinNums.Z => idtac
          | unit => idtac
          | bool => idtac
@@ -128,9 +128,9 @@ Ltac straightline :=
     exact (conj (eq_refl values) eq_refl)
   | |- Semantics.word_of_Z ?z = Some ?v =>
     let v := rdelta v in is_evar v; (change (Semantics.word_of_Z z = Some v)); exact eq_refl
-  | |- @eq (@Map.map.rep _ _ (@Semantics.locals _)) _ _ =>
+  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
-  | |- @Map.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
+  | |- @coqutil.Map.Interface.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
     let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
   | |- ?x = ?y =>
     let y := rdelta y in is_evar y; change (x=y); exact eq_refl

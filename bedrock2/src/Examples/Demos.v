@@ -1,5 +1,5 @@
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import bedrock2.Macros bedrock2.Syntax.
+Require Import coqutil.subst coqutil.unique bedrock2.Syntax.
 Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU.
 Require bedrock2.NotationsInConstr.
 Require bedrock2.BasicC64Syntax.
