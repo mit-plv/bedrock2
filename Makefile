@@ -20,7 +20,7 @@ bbv:
 coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil
 
-riscv-coq: bbv
+riscv-coq: bbv coqutil
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq all
 
 bedrock2: bbv coqutil

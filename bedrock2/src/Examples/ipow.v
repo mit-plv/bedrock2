@@ -1,3 +1,4 @@
+Require Import coqutil.Z.div_mod_to_quot_rem.
 Require Import bedrock2.BasicC64Syntax bedrock2.NotationsInConstr.
 Import BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -89,7 +90,7 @@ Proof.
                   ?Z.shiftr_div_pow2
             by (cbv; congruence).
           change (2 ^ (1 mod 2 ^ 64)) with 2.
-          Word.Properties.mia. }
+          mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
           cbn [parameters Semantics.interp_binop] in *.
@@ -106,7 +107,7 @@ Proof.
                            ?Z.mul_mod_idemp_l,
                            ?Z.shiftr_div_pow2;
             change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
-          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract (Word.Properties.mia). }
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract mia. }
           { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract ring. } } }
       { repeat straightline.
         { (* measure decreases *)
@@ -122,7 +123,7 @@ Proof.
                   ?Z.shiftr_div_pow2
             by (cbv; congruence).
           change (2 ^ (1 mod 2 ^ 64)) with 2.
-          Word.Properties.mia. }
+          mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
           cbn [parameters Semantics.interp_binop] in *.
@@ -139,7 +140,7 @@ Proof.
                            ?Z.mul_mod_idemp_l,
                            ?Z.shiftr_div_pow2;
             change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
-          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract (Word.Properties.mia). }
+          { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract mia. }
           { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract ring. } } } }
     { (* end of loop *)
       repeat split; intros.

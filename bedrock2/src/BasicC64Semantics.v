@@ -16,7 +16,7 @@ Fixpoint combine (n : nat) : forall (bs : tuple byte n), word :=
 Fixpoint split (n : nat) (w :word) : tuple byte n :=
   match n with
   | O => tt
-  | S n => pair.mk (word.of_Z (word.unsigned w)) (split n (word.slu w (word.of_Z 8)))
+  | S n => pair.mk (word.of_Z (word.unsigned w)) (split n (word.sru w (word.of_Z 8)))
   end.
 Instance parameters : parameters :=
   let word := Word.Naive.word 64 (proj2 (Zlt_is_lt_bool 0 64) eq_refl) in
