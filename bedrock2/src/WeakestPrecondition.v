@@ -1,13 +1,13 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations coqutil.Map.Interface.
+Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
-Require Import Coq.ZArith.BinIntDef.
 
 Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
   Context (rely guarantee : trace -> Prop) (progress : trace -> trace -> Prop).
 
-  Definition literal v post : Prop :=
-    bind_ex_Some v <- word_of_Z v; post v.
+  Definition literal v (post : _ -> Prop) : Prop :=
+    dlet! v := word.of_Z v in post v.
   Definition get (l : locals) (x : varname) (post : word -> Prop) : Prop :=
     bind_ex_Some v <- map.get l x; post v.
   Definition load s m a (post : _ -> Prop) : Prop :=
@@ -70,8 +70,8 @@ Section WeakestPrecondition.
         post t m l)
       | cmd.cond br ct cf =>
         bind_ex v <- dexpr m l br;
-        (word_test v = true  -> rec ct t m l post) /\
-        (word_test v = false -> rec cf t m l post)
+        (word.unsigned v <> 0%Z -> rec ct t m l post) /\
+        (word.unsigned v = 0%Z -> rec cf t m l post)
       | cmd.seq c1 c2 =>
         rec c1 t m l (fun t m l => rec c2 t m l post)
       | cmd.while e c =>
@@ -80,9 +80,9 @@ Section WeakestPrecondition.
         (exists v, inv v t m l) /\
         (forall v t m l, inv v t m l ->
           bind_ex b <- dexpr m l e;
-          (word_test b = true -> rec c t m l (fun t' m l =>
+          (word.unsigned b <> 0%Z -> rec c t m l (fun t' m l =>
             exists v', inv v' t' m l /\ (progress t' t \/ lt v' v))) /\
-          (word_test b = false -> post t m l))
+          (word.unsigned b = 0%Z -> post t m l))
       | cmd.call binds fname arges =>
         bind_ex args <- dexprs m l arges;
         call fname t m args (fun t m rets =>

@@ -1,9 +1,9 @@
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
-Require Import Coq.Classes.Morphisms.
+Require Import Coq.Classes.Morphisms BinIntDef.
+Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Interface. Import map.
+From bedrock2 Require Import Map.Separation Map.SeparationLogic.
 From bedrock2 Require Import Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
-From bedrock2 Require Import Map.Separation Map.SeparationLogic.
-Import coqutil.Macros.unique coqutil.Map.Interface map.
 
 Section TailRecrsion.
   Context
@@ -59,7 +59,7 @@ Section TailRecrsion.
       match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
-      (word_test br = true -> cmd rely guarantee progress call c t m localsmap
+      (word.unsigned br <> 0%Z -> cmd rely guarantee progress call c t m localsmap
         (fun t' m' localsmap' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v', 
@@ -67,7 +67,7 @@ Section TailRecrsion.
           S'.(1) /\ Markers.right (
             (progress t' t \/ lt v' v) /\
             forall T M, hlist.foralls (fun L => tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L)) end))))))))) /\
-      (word_test br = false -> tuple.apply (S_.(2) t m) l))))end))))
+      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m l, tuple.apply (Q0 t m) l -> post t m (reconstruct variables l)end)
     : cmd rely guarantee progress call (cmd.while e c) t m localsmap post.
   Proof.
@@ -103,13 +103,13 @@ Section TailRecrsion.
       let S := spec v t m l in let (P, Q) := S in
       P ->
       exists br, expr m l e (eq br) /\
-      (word_test br = true -> cmd rely guarantee progress call c t m l
+      (word.unsigned br <> 0%Z -> cmd rely guarantee progress call c t m l
         (fun t' m' l' => exists v',
           let S' := spec v' t' m' l' in let '(P', Q') := S' in
           P' /\
           (progress t' t \/ lt v' v) /\
           forall T M L, Q' T M L -> Q T M L)) /\
-      (word_test br = false -> Q t m l))
+      (word.unsigned br = 0%Z -> Q t m l))
     (Hpost : forall t m l, Q0 t m l -> post t m l)
     : cmd rely guarantee progress call (cmd.while e c) t m l post.
   Proof.
@@ -140,11 +140,11 @@ Section TailRecrsion.
     (Hpre : (P v0 t l * R0) m)
     (Hbody : forall v t m l R, (P v t l * R) m ->
       exists br, expr m l e (eq br) /\
-      (word_test br = true -> cmd rely guarantee progress call c t m l
+      (word.unsigned br <> 0%Z -> cmd rely guarantee progress call c t m l
         (fun t' m' l' => exists v' dR, (P v' t' l' * (R * dR)) m' /\
           (progress t' t \/ lt v' v) /\
           forall T L, Q v' T L * dR ==> Q v T L)) /\
-      (word_test br = false -> (Q v t l * R) m))
+      (word.unsigned br = 0%Z -> (Q v t l * R) m))
     (Hpost : forall t m l, (Q v0 t l * R0) m -> post t m l)
     : cmd rely guarantee progress call (cmd.while e c) t m l post.
   Proof.

@@ -1,25 +1,23 @@
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
-Require Import Coq.ZArith.BinIntDef.
+Require Import BinIntDef coqutil.Word.Interface.
 
 Class parameters := {
   syntax :> Syntax.parameters;
 
-  word : Set;
-  word_zero : word;
-  word_succ : word -> word;
-  word_test : word -> bool;
-  word_of_Z : BinNums.Z -> option word;
-  interp_binop : bopname -> word -> word -> word;
-
-  byte : Type;
-  bytes_per : access_size -> nat;
-  combine : forall sz, tuple byte (bytes_per sz) -> word;
-  split : forall sz, word -> tuple byte (bytes_per sz);
+  width : Z;
+  word :> Word.Interface.word width;
+  byte :> Word.Interface.word 8%Z;
 
   mem :> map.map word byte;
   locals :> map.map varname word;
+
+  interp_binop : bopname -> word -> word -> word;
+
+  bytes_per : access_size -> nat;
+  combine : forall sz, tuple byte (bytes_per sz) -> word;
+  split : forall sz, word -> tuple byte (bytes_per sz);
 
   funname_eqb : funname -> funname -> bool
 }.
@@ -34,7 +32,7 @@ Section semantics.
       | O => Some tt
       | S n =>
         'Some b <- map.get m a | None;
-        'Some bs <- load_bytes n (word_succ a) | None;
+        'Some bs <- load_bytes n (word.add (word.of_Z 1%Z) a) | None;
         Some (pair.mk b bs)
       end.
   End WithMem.
@@ -44,7 +42,7 @@ Section semantics.
   Fixpoint store_bytes (n : nat) (m:mem) (a : word) : forall (bs : tuple byte n), mem :=
     match n with
     | O => fun bs => m
-    | S n => fun bs => store_bytes n (map.put m a (pair._1 bs)) (word_succ a) (pair._2 bs)
+    | S n => fun bs => store_bytes n (map.put m a (pair._1 bs)) (word.add (word.of_Z 1%Z) a) (pair._2 bs)
     end.
   Definition store sz m a v : option mem :=
     'Some _ <- load m a sz | None;
