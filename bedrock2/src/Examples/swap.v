@@ -57,22 +57,24 @@ Require Import coqutil.Datatypes.PrimitivePair.
 Import coqutil.Word.Interface.
 
 Lemma load1_sep a (v:Semantics.byte) R m (H:(ptsto a v * R) m) :
-  load m a Syntax.access_size.one = Some (Semantics.combine Syntax.access_size.one (pair.mk v tt)).
-  cbv [load Semantics.bytes_per bytes_per].
-  set (n := Semantics.bytes_per Syntax.access_size.one); cbv in n; subst n.
-  cbv [load_bytes].
+  load m a Syntax.access_size.one = Some (word.of_Z (LittleEndian.combine 1 (pair.mk v tt))).
+  cbv [load Semantics.bytes_per bytes_per footprint List.map List.option_all List.unfoldn].
   eapply get_sep in H; rewrite H.
   exact eq_refl.
 Qed.
 
 Lemma store1_sep a (v1:Semantics.byte) v2 (R:mem->Prop) (m:mem) (H : sep (ptsto a v1) R m)
-    (p := (ptsto a (pair._1 (Semantics.split Syntax.access_size.one v2))))
+    (p := (ptsto a (pair._1 (LittleEndian.split 1 (word.unsigned v2)))))
     (post : mem -> Prop) (cont : forall (m':mem), sep p R m' -> post m') :
   exists (m':mem), store Syntax.access_size.one m a v2 = Some m' /\ post m'.
 Proof.
 Admitted.
 
-Lemma fst_split0_combine0 v : pair._1 (Semantics.split Syntax.access_size.one (Semantics.combine Syntax.access_size.one (pair.mk v tt))) = v.
+Lemma split_combine_1 a :
+  (pair._1 (LittleEndian.split 1 (word.unsigned (word.of_Z (LittleEndian.combine 1 (pair.mk a tt )))))) = a.
+Proof.
+  cbn -[word.of_Z word.unsigned].
+  rewrite Z.lor_0_r.
 Admitted.
 
 Ltac sep :=
@@ -106,7 +108,8 @@ Proof.
   split. exact eq_refl.
   split. 2:exact eq_refl.
   repeat match goal with x := _ |- _ => subst x end.
-  rewrite 2fst_split0_combine0 in *.
+  rewrite word.unsigned_of_Z in H0.
+  rewrite 2split_combine_1 in *.
   assumption.
 Defined.
 
