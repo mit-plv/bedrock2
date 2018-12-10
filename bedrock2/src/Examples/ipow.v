@@ -1,4 +1,4 @@
-Require Import coqutil.Z.div_mod_to_quot_rem.
+Require Import coqutil.Z.div_mod_to_equations.
 Require Import bedrock2.BasicC64Syntax bedrock2.NotationsInConstr.
 Import BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -16,6 +16,9 @@ Definition ipow := ("ipow", (["x";"e"], (["ret"]:list varname), bedrock_func_bod
     Syntax.cmd.unset "t"
   }}
 ))).
+
+Require Import Coq.micromega.Lia.
+Local Ltac mia := Z.div_mod_to_equations; nia.
 
 Require Import bedrock2.BasicC64Semantics coqutil.Word.Interface.
 Require bedrock2.WeakestPrecondition coqutil.Word.Properties.
