@@ -266,12 +266,24 @@ Section RegAlloc.
       destruct IHs1.
       - clear IHs2. set_solver.
       - clear IHs2.
-        (* not solved by set_solver *)
+        (* not solved by set_solver: *)
+        (* set_solver. *)
 
         forget (certainly_written s1) as cws1.
         forget (live s1) as ls1.
         forget (live s2) as ls2.
 
+(** To turn this into a goal understandable for an SMT solver, copy-paste the code from
+https://github.com/samuelgruetter/coq-smt-notations/blob/master/smt_sets_demo.v
+
+Then paste it into the online z3 solver to get a counter-example
+
+*)
+
+
+
+
+(** BEGIN coq-smt-notations *)
 
 (* intro as much as we can *)
 repeat intro.
@@ -295,6 +307,7 @@ repeat match goal with
        end.
 
 Notation reg := (option register).
+
 
 Ltac disj_to_set d :=
   lazymatch d with
@@ -372,13 +385,15 @@ Notation "'or' A B" := (Logic.or A B)
 Notation "= A B" := (@eq _ A B)
    (at level 10, A at level 0, B at level 0, only parsing).
 
+idtac.
+idtac.
 
 (model
   ;; universe for var:
   ;;   var_val_1 var_val_0
   ;; -----------
   ;; definitions for universe elements:
-  (declare-fun var_val_1 () var) idtac.
+  (declare-fun var_val_1 () var)
   (declare-fun var_val_0 () var)
   ;; cardinality constraint:
   (forall ((x var)) (or (= x var_val_1) (= x var_val_0)))
@@ -416,6 +431,8 @@ Open Scope set_scope.
 idtac.
 
 repeat autorewrite with rew_EmptySetOps in *.
+
+(stop processing here)
 
 (* explanation of counterexample:
    in order to use IHs1, we need to show that f0 is injective over the
