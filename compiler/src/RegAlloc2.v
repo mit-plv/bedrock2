@@ -626,6 +626,23 @@ Section RegAlloc.
                progress tryif (let T := type of P in unify T Prop)
                         then revert H else clear H
              end.
+
+(* encoding goals about maps into SMT results in goals with some quantifiers,
+   and even on the simplest goals, Z3 returns "unknown":
+   https://stackoverflow.com/questions/52601053/encoding-partial-maps-in-z3 *)
+
+(* unfold subset, extends. *)
+
+(* However, if you know how to only use quantifiers that your SMT solver likes,
+   you can get excellent results: *)
+Notation "P ⟹ Q" := (P -> Q)
+  (at level 99, right associativity, format "P  ⟹ '/' Q").
+idtac.
+
+(* feed this goal to Isabelle's nitpick (or even Auto Quickcheck works) *)
+
+      (stop processing here)
+
 (*
 Isabelle:
 Auto Quickcheck found a counterexample:
