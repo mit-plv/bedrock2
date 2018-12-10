@@ -1,7 +1,6 @@
 Require Export Coq.omega.Omega.
 Require Export Coq.Lists.List.
 Require Export riscv.util.Word.
-Require Export riscv.util.Monads.
 Require Export compiler.Decidable.
 Require Export compiler.util.Tactics.
 Require Export compiler.util.Set.
@@ -36,8 +35,11 @@ Section WithMap.
 
   Fixpoint putmany (keys : list K) (values : list V) (init : map K V) {struct keys} : option (map K V) :=
     match keys, values with
-    | nil, nil => Return init
-    | b::binders, v::values => t <- putmany binders values init; Return (put t b v)
+    | nil, nil => Some init
+    | b::binders, v::values => match putmany binders values init with
+                               | Some t => Some (put t b v)
+                               | None => None
+                               end
     | _, _ => None
     end.
 
@@ -63,6 +65,39 @@ Section WithMap.
       intros x; destruct (IHbs x);
         autorewrite with rew_set_op_specs in *; rewrite ?get_put;
           destruct (dec (a=x)); eauto. }
+  Qed.
+
+  Lemma putmany_extends_exists: forall (ks: list K) (vs: list V) m1 m1' m2,
+      putmany ks vs m1 = Some m1' ->
+      extends m2 m1 ->
+      exists m2', putmany ks vs m2 = Some m2' /\ extends m2' m1'.
+  Proof.
+    induction ks; intros.
+    - destruct vs; simpl in H; [|discriminate].
+      inversion H. subst m1'. exists m2. simpl. auto.
+    - simpl in *. repeat (destruct_one_match_hyp; try discriminate).
+      inversion H. subst m1'. clear H.
+      specialize IHks with (1 := E) (2 := H0).
+      destruct IHks as (m2' & IH1 & IH2).
+      rewrite IH1.
+      eexists; split; [reflexivity|].
+      map_solver K V.
+  Qed.
+
+  Lemma putmany_extends: forall (ks: list K) (vs: list V) m1 m1' m2 m2',
+      putmany ks vs m1 = Some m1' ->
+      putmany ks vs m2 = Some m2' ->
+      extends m2 m1 ->
+      extends m2' m1'.
+  Proof.
+    induction ks; intros.
+    - destruct vs; simpl in *; [|discriminate].
+      inversion H. inversion H0. subst. assumption.
+    - simpl in *. repeat (destruct_one_match_hyp; try discriminate).
+      inversion H. subst m1'. clear H.
+      inversion H0. subst m2'. clear H0.
+      specialize IHks with (1 := E0) (2 := E) (3 := H1).
+      map_solver K V.
   Qed.
 
 End WithMap.

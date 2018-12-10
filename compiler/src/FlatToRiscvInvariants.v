@@ -2,6 +2,7 @@ Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvBitWidthSpecifics.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.AxiomaticRiscv.
+Require Import riscv.Memory.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
 
@@ -18,11 +19,10 @@ Section Invariants.
 
   Add Ring mword_ring : (@regRing mword MW).
 
-  Context {mem: Set}.
-  Context {IsMem: Memory.Memory mem mword}.
-  Context {BWS: FlatToRiscvBitWidthSpecifics mword mem}.
+  Context {MF: Memory.MemoryFunctions mword}.
+  Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
 
-  Definition containsMem(memL: mem)(memH: compiler.Memory.mem): Prop := forall addr v,
+  Definition containsMem(memL: Mem mword)(memH: compiler.Memory.mem): Prop := forall addr v,
       compiler.Memory.read_mem addr memH = Some v ->
       loadWordwXLEN memL addr = v /\ regToZ_unsigned addr + XLEN_in_bytes <= Memory.memSize memL.
 

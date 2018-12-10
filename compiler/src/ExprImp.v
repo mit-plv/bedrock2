@@ -12,7 +12,7 @@ Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.Decidable.
 Require Import compiler.Memory.
-
+Require Import compiler.Semantics. (* TODO: this should be in bedrock2.Semantics *)
 
 Section ExprImp1.
 
@@ -21,61 +21,49 @@ Section ExprImp1.
   Notation mword := (@Semantics.word p).
   Context {MW: MachineWidth mword}.
 
-  Notation var := (@Syntax.varname (@syntax p)).
-  Notation func := (@Syntax.funname (@syntax p)).
+  Notation var := (@Syntax.varname (@Semantics.syntax p)).
+  Notation func := (@Syntax.funname (@Semantics.syntax p)).
 
-  Context {stateMap: MapFunctions var (mword)}.
-  Notation state := (map var mword).
-  Context {varset: SetFunctions var}.
-  Notation vars := (set var).
+  Context {stateMap: MapFunctions varname (mword)}.
+  (*Notation state := (map varname mword).*)
+  Context {varnameset: SetFunctions varname}.
+  Notation vars := (set varname).
 
-  Hypothesis actname_empty: Syntax.actname = Empty_set.
+  (*Hypothesis actname_empty: Syntax.actname = Empty_set.*)
+  Local Notation actname := Syntax.actname.
 
-  Ltac state_calc := map_solver (@Syntax.varname (@syntax p)) (@Semantics.word p).
-  Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
+  Context {Event: Type}.
+  Local Notation trace := (list Event).
 
-  Fixpoint eval_expr(st: state)(e: expr): option mword :=
-    match e with
-    | expr.literal v => Return (ZToReg v)
-    | expr.var x => get st x
-    | expr.load x a => None (* TODO *)
-    | expr.op op e1 e2 =>
-        v1 <- eval_expr st e1;
-        v2 <- eval_expr st e2;
-        Return (interp_binop op v1 v2)
-    end.
+  Ltac state_calc := map_solver (@varname (@Semantics.syntax p)) (@Semantics.word p).
+  Ltac set_solver := set_solver_generic (@varname (@Semantics.syntax p)).
 
   Section WithEnv.
-    Context {funcMap: MapFunctions func (list var * list var * cmd)}.
-    Notation env := (map func (list var * list var * cmd)).
+    Context {funcMap: MapFunctions funcname (list varname * list varname * cmd)}.
+    Notation env := (map funcname (list varname * list varname * cmd)).
     Context (e: env).
 
-    Print MapFunctions.
-    Fixpoint eval_cmd(f: nat)(st: state)(m: mem)(s: cmd): option (state * mem) :=
+    Notation mem := (map mword Semantics.byte).
+
+    Fixpoint eval_cmd(f: nat)(st: locals)(m: mem)(s: cmd): option (locals * mem) :=
       match f with
       | 0 => None (* out of fuel *)
       | S f => match s with
-        (* TODO
-        | SLoad x a =>
-            a <- eval_expr st a;
-            v <- read_mem a m;
-            Return (put st x v, m)
-        *)
-        | cmd.store number_of_bytes_IGNORED_TODO a v =>
-            a <- eval_expr st a;
-            v <- eval_expr st v;
-            m <- write_mem a v m;
+        | cmd.store n_bytes a v =>
+            a <- eval_expr m st a;
+            v <- eval_expr m st v;
+            m <- Semantics.store n_bytes m a v;
             Return (st, m)
         | cmd.set x e =>
-            v <- eval_expr st e;
+            v <- eval_expr m st e;
             Return (put st x v, m)
         | cmd.unset x =>
             Return (remove_key st x, m)
         | cmd.cond cond bThen bElse =>
-            v <- eval_expr st cond;
+            v <- eval_expr m st cond;
             eval_cmd f st m (if reg_eqb v (ZToReg 0) then bElse else bThen)
         | cmd.while cond body =>
-            v <- eval_expr st cond;
+            v <- eval_expr m st cond;
             if reg_eqb v (ZToReg 0) then Return (st, m) else
               p <- eval_cmd f st m body;
               let '(st, m) := p in
@@ -88,7 +76,7 @@ Section ExprImp1.
         | cmd.call binds fname args =>
           fimpl <- get e fname;
           let '(params, rets, fbody) := fimpl in
-          argvs <- option_all (List.map (eval_expr st) args);
+          argvs <- option_all (List.map (eval_expr m st) args);
           st0 <- putmany params argvs empty_map;
           st1m' <- eval_cmd f st0 m fbody;
           let '(st1, m') := st1m' in
@@ -117,7 +105,10 @@ Section ExprImp1.
       | cmd.skip | cmd.unset _ => 1
       | cmd.call binds f args =>
           S (length binds + length args + List.fold_right Nat.add O (List.map expr_size args))
-      | cmd.interact _ _ _ => 1
+      | cmd.interact _ _ exprs => fold_left (fun res e => res + expr_size e) exprs 0
+                                  + 7 (* randomly chosen max allowed number of instructions
+                                         one interaction can be compiled to, TODO parametrize
+                                         over this *)
       end.
 
     Local Ltac inversion_lemma :=
@@ -133,15 +124,15 @@ Section ExprImp1.
 
     Lemma invert_eval_store: forall fuel initialSt initialM a v final nbytes,
       eval_cmd (S fuel) initialSt initialM (cmd.store nbytes a v) = Some final ->
-      exists av vv finalM, eval_expr initialSt a = Some av /\
-                           eval_expr initialSt v = Some vv /\
-                           write_mem av vv initialM = Some finalM /\
+      exists av vv finalM, eval_expr initialM initialSt a = Some av /\
+                           eval_expr initialM initialSt v = Some vv /\
+                           Semantics.store nbytes initialM av vv = Some finalM /\
                            final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_set: forall f st1 m1 p2 x e,
       eval_cmd (S f) st1 m1 (cmd.set x e) = Some p2 ->
-      exists v, eval_expr st1 e = Some v /\ p2 = (put st1 x v, m1).
+      exists v, eval_expr m1 st1 e = Some v /\ p2 = (put st1 x v, m1).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_unset: forall f st1 m1 p2 x,
@@ -152,7 +143,7 @@ Section ExprImp1.
     Lemma invert_eval_cond: forall f st1 m1 p2 cond bThen bElse,
       eval_cmd (S f) st1 m1 (cmd.cond cond bThen bElse) = Some p2 ->
       exists cv,
-        eval_expr st1 cond = Some cv /\
+        eval_expr m1 st1 cond = Some cv /\
         (cv <> ZToReg 0 /\ eval_cmd f st1 m1 bThen = Some p2 \/
          cv = ZToReg 0  /\ eval_cmd f st1 m1 bElse = Some p2).
     Proof. inversion_lemma. Qed.
@@ -160,7 +151,7 @@ Section ExprImp1.
     Lemma invert_eval_while: forall st1 m1 p3 f cond body,
       eval_cmd (S f) st1 m1 (cmd.while cond body) = Some p3 ->
       exists cv,
-        eval_expr st1 cond = Some cv /\
+        eval_expr m1 st1 cond = Some cv /\
         (cv <> ZToReg 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Some (st2, m2) /\
                                      eval_cmd f st2 m2 (cmd.while cond body) = Some p3) \/
          cv = ZToReg 0 /\ p3 = (st1, m1)).
@@ -180,7 +171,7 @@ Section ExprImp1.
       eval_cmd (S f) st m1 (cmd.call binds fname args) = Some p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
         get e fname = Some (params, rets, fbody) /\
-        option_all (List.map (eval_expr st) args) = Some argvs /\
+        option_all (List.map (eval_expr m1 st) args) = Some argvs /\
         putmany params argvs empty_map = Some st0 /\
         eval_cmd f st0 m1 fbody = Some (st1, m') /\
         option_all (List.map (get st1) rets) = Some retvs /\
@@ -196,7 +187,7 @@ Section ExprImp1.
   End WithEnv.
 
   (* Returns a list to make it obvious that it's a finite set. *)
-  Fixpoint allVars_expr(e: expr): list var :=
+  Fixpoint allVars_expr(e: expr): list varname :=
     match e with
     | expr.literal v => []
     | expr.var x => [x]
@@ -204,7 +195,7 @@ Section ExprImp1.
     | expr.op op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
     end.
 
-  Fixpoint allVars_cmd(s: cmd): list var :=
+  Fixpoint allVars_cmd(s: cmd): list varname :=
     match s with
     | cmd.store _ a e => (allVars_expr a) ++ (allVars_expr e)
     | cmd.set v e => v :: allVars_expr e
@@ -214,7 +205,7 @@ Section ExprImp1.
     | cmd.seq s1 s2 => (allVars_cmd s1) ++ (allVars_cmd s2)
     | cmd.skip => []
     | cmd.call binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
-    | cmd.interact _ _ _ => [] (* TODO *)
+    | cmd.interact binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
     end.
 
   (* Returns a static approximation of the set of modified vars.
@@ -253,7 +244,11 @@ Section ExprImp1.
       + apply union_spec in H; destruct H.
         * left. apply singleton_set_spec in H. auto.
         * right. auto.
-    - replace Syntax.actname with Empty_set in *. destruct action.
+    - generalize dependent binds; induction binds; intros H; cbn in *.
+      + apply empty_set_spec in H; destruct H.
+      + apply union_spec in H; destruct H.
+        * left. apply singleton_set_spec in H. auto.
+        * right. auto.
   Qed.
 
 End ExprImp1.
@@ -295,24 +290,28 @@ Section ExprImp2.
   Notation mword := (@Semantics.word p).
   Context {MW: MachineWidth mword}.
 
-  Notation var := (@Syntax.varname (@syntax p)).
-  Notation func := (@Syntax.funname (@syntax p)).
+  Notation var := (@Syntax.varname (@Semantics.syntax p)).
+  Notation func := (@Syntax.funname (@Semantics.syntax p)).
 
-  Context {stateMap: MapFunctions var (mword)}.
-  Notation state := (map var mword).
-  Context {varset: SetFunctions var}.
-  Notation vars := (set var).
+  Context {stateMap: MapFunctions varname (mword)}.
+  (*Notation state := (map varname mword).*)
+  Context {varnameset: SetFunctions varname}.
+  Notation vars := (set varname).
+
+  (*Hypothesis actname_empty: Syntax.actname = Empty_set.*)
+  Local Notation actname := Syntax.actname.
+
+  Context {Event: Type}.
+  Local Notation trace := (list Event).
+
+  Ltac state_calc := map_solver (@varname (@Semantics.syntax p)) (@Semantics.word p).
+  Ltac set_solver := set_solver_generic (@varname (@Semantics.syntax p)).
 
   (* TODO this one should be wrapped somewhere *)
-  Context {varname_eq_dec: DecidableEq var}.
+  Context {varname_eq_dec: DecidableEq varname}.
 
-  Hypothesis actname_empty: Syntax.actname = Empty_set.
-
-  Ltac state_calc := map_solver (@Syntax.varname (@syntax p)) (@Semantics.word p).
-  Ltac set_solver := set_solver_generic (@Syntax.varname (@syntax p)).
-
-  Context {funcMap: MapFunctions func (list var * list var * @cmd (@syntax p))}.
-  Notation env := (map func (list var * list var * cmd)).
+  Context {funcMap: MapFunctions funcname (list varname * list varname * cmd)}.
+  Notation env := (map funcname (list varname * list varname * cmd)).
 
   Lemma modVarsSound: forall (e: env) fuel s initialS initialM finalS finalM,
     eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->

@@ -1,16 +1,16 @@
 Require Import riscv.util.BitWidths.
 Require Import riscv.Utility.
+Require Import riscv.Memory.
 
-
-Class FlatToRiscvBitWidthSpecifics(mword: Set)(mem: Set){MW: MachineWidth mword} := {
+Class FlatToRiscvBitWidthSpecifics(mword: Set){MW: MachineWidth mword}{MF: MemoryFunctions mword} := {
   BitWidth: BitWidths;
 
-  loadWordwXLEN: mem -> mword ->  mword;
-  
-  storeWordwXLEN: mem -> mword -> mword -> mem;
+  loadWordwXLEN: Mem mword -> mword ->  mword;
+
+  storeWordwXLEN: Mem mword -> mword -> mword -> Mem mword;
 
 }.
-                                                                        
+
 (*
   Definition loadWordwXLEN(memL: mem)(addr: mword): mword.
     clear -addr memL IsMem B mword_word_wXLEN.
@@ -22,7 +22,7 @@ Class FlatToRiscvBitWidthSpecifics(mword: Set)(mem: Set){MW: MachineWidth mword}
   Defined.
 
   Definition TODO{T: Type}: T. Proof using. Admitted.
-  
+
   Definition storeWordwXLEN(m: mem)(a v: mword): mem.
     unfold wXLEN, bitwidth in *.
     clear - m a v IsMem mword_word_wXLEN.

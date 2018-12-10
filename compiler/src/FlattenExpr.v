@@ -9,42 +9,66 @@ Require Import riscv.util.BitWidths.
 Require Import riscv.Memory.
 Require Import riscv.Utility.
 Require bedrock2.Syntax.
-Require bedrock2.Semantics.
+Require Import compiler.Semantics. (* TODO: this should be in bedrock2.Semantics *)
 Require Import coqutil.Macros.unique.
+Require Import compiler.FlatToRiscvDef. (* TODO: This should be independent of Riscv *)
 Require Import Coq.Bool.Bool.
+Require Import compiler.Op.
 
 Section FlattenExpr.
 
-  Context {p : unique! Semantics.parameters}.
+  Context {p : unique! FlatImp.FlatImp.parameters}.
+
+  Existing Instance FlatImp.FlatImp.bopname_params.
+
+  Definition todo {t: Type} : t. Admitted.
+
+  Instance semantics_params : Semantics.parameters := {|
+    Semantics.syntax := FlatImp.FlatImp.bopname_params;
+    Semantics.word := FlatImp.FlatImp.mword;
+    Semantics.word_zero := ZToReg 0;
+    Semantics.word_succ := fun a => add a (ZToReg 1);
+    Semantics.word_test := fun a => negb (reg_eqb a (ZToReg 0));
+    Semantics.word_of_Z := fun a => Some (ZToReg a); (* TODO: fail if too big *)
+    Semantics.interp_binop := eval_binop;
+    Semantics.byte := todo;
+    Semantics.combine := todo;
+    Semantics.split := todo;
+    Semantics.mem_Inst := todo;
+    Semantics.locals_Inst := todo;
+    Semantics.funname_eqb := todo;
+    Semantics.Event := todo;
+    Semantics.ext_spec:= todo;
+  |}.
 
   Notation mword := (@Semantics.word p).
-  Context {MW: MachineWidth mword}.
+  (*Context {MW: MachineWidth mword}.
 
   (* TODO this should be wrapped somewhere *)
-  Context {varname_eq_dec: DecidableEq (@Syntax.varname (@Semantics.syntax p))}.
-  Context {funname_eq_dec: DecidableEq (@Syntax.funname (@Semantics.syntax p))}.
-
+  Context {varname_eq_dec: DecidableEq (@Basic_bopnames.varname (@Semantics.syntax p))}.
+  Context {funname_eq_dec: DecidableEq (@Basic_bopnames.funcname (@Semantics.syntax p))}.
+  *)
   Notation var := (@Syntax.varname (@Semantics.syntax p)).
   Notation func := (@Syntax.funname (@Semantics.syntax p)).
 
-  Context {stateMap: MapFunctions var mword}.
-  Notation state := (map var mword) (only parsing).
-  Context {varset: SetFunctions var}.
+  Context {stateMap: MapFunctions varname mword}.
+  Notation locals := (map var mword) (only parsing).
+  Context {varset: SetFunctions varname}.
   Notation vars := (set var) (only parsing).
-  Context {funcMap: MapFunctions func (list var * list var * Syntax.cmd)}.
-  Notation env := (map func (list var * list var * Syntax.cmd)).
-  Context {funcMap': MapFunctions func (list var * list var * FlatImp.stmt var func)}.
-  Notation env' := (map func (list var * list var * FlatImp.stmt var func)).
+  Context {funcMap: MapFunctions Basic_bopnames.funcname (list varname * list varname * Syntax.cmd)}.
+  Notation env := (map Basic_bopnames.funcname (list varname * list varname * Syntax.cmd)).
+  Context {funcMap': MapFunctions Basic_bopnames.funcname (list varname * list varname * FlatImp.stmt)}.
+  Notation env' := (map Basic_bopnames.funcname (list varname * list varname * FlatImp.stmt varname Basic_bopnames.funcname)).
 
   Context {NGstate: Type}.
-  Context {NG: NameGen var NGstate}.
+  Context {NG: NameGen varname NGstate}.
 
   Hypothesis actname_empty: Syntax.actname = Empty_set.
 
   (* TODO partially specify this in Semantics parameters *)
-  Hypothesis convert_bopname: @Syntax.bopname (@Semantics.syntax p) -> Basic_bopnames.bopname.
-  Hypothesis eval_binop_compat: forall op w w0,
-      Op.eval_binop (convert_bopname op) w w0 = Semantics.interp_binop op w w0.
+  (*Hypothesis convert_bopname: @Syntax.bopname (@Semantics.syntax p) -> Basic_bopnames.bopname. *)
+  (*Hypothesis eval_binop_compat: forall op w w0,
+      Op.eval_binop (convert_bopname op) w w0 = Semantics.interp_binop op w w0. *)
 
   Ltac state_calc0 :=
     map_solver (@Syntax.varname (@Semantics.syntax p)) (@Semantics.word p).
@@ -54,7 +78,7 @@ Section FlattenExpr.
   (* returns stmt and var into which result is saved, and new fresh name generator state
      TODO use state monad? *)
   Fixpoint flattenExpr(ngs: NGstate)(e: Syntax.expr):
-    (FlatImp.stmt var func * var * NGstate) :=
+    (FlatImp.stmt * varname * NGstate) :=
     match e with
     | Syntax.expr.literal n =>
         let '(x, ngs') := genFresh ngs in
@@ -111,9 +135,9 @@ Section FlattenExpr.
         end
     end.
 
-  Definition flattenCall(ngs: NGstate)(binds: list var)(f: func)
+  Definition flattenCall(ngs: NGstate)(binds: list varname)(f: Basic_bopnames.funcname)
              (args: list Syntax.expr):
-    FlatImp.stmt var func * NGstate :=
+    FlatImp.stmt * NGstate :=
     let '(compute_args, argvars, ngs) :=
           List.fold_right
             (fun e '(c, vs, ngs) =>
@@ -121,10 +145,10 @@ Section FlattenExpr.
                let c := FlatImp.SSeq (fst ce_ve) c in
                (c, snd ce_ve::vs, ngs)
             ) (FlatImp.SSkip, nil, ngs) args in
-      (FlatImp.SSeq compute_args (FlatImp.SCall (binds: list var) f argvars), ngs).
+      (FlatImp.SSeq compute_args (FlatImp.SCall (binds: list varname) f argvars), ngs).
 
   (* returns statement and new fresh name generator state *)
-  Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt var func * NGstate) :=
+  Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt * NGstate) :=
     match s with
     | Syntax.cmd.store _ a v =>
         let '(sa, ra, ngs') := flattenExpr ngs a in
@@ -153,7 +177,7 @@ Section FlattenExpr.
 
   Lemma flattenExpr_size: forall e s resVar ngs ngs',
     flattenExpr ngs e = (s, resVar, ngs') ->
-    FlatImp.stmt_size _ _ s <= 2 * ExprImp.expr_size e.
+    FlatImp.stmt_size s <= 2 * ExprImp.expr_size e.
   Proof.
     induction e; intros; simpl in *; repeat destruct_one_match_hyp; inversionss;
       simpl; try omega.
@@ -696,6 +720,8 @@ Section FlattenExpr.
       destruct IHfuelH as [fuelL [finalL [evbranch Ex2]]].
       unfold FlatImp.accessedVarsBcond in *.
       pose_flatten_var_ineqs.
+      specialize IHfuelH with (initialL := initial2L) (1 := E0) (5 := Ev).
+      destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
       * state_calc.
       * state_calc.
       * simpl in Di. state_calc.

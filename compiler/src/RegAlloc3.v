@@ -3,6 +3,7 @@ Require Import compiler.FlatImp.
 Require Import compiler.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
+Require Import bedrock2.Macros.
 Require Import compiler.Op.
 Require Import compiler.util.Map.
 Require Import compiler.util.Set.
@@ -54,10 +55,9 @@ Local Notation "'bind_opt' x <- a ; f" :=
 
 Section Live.
 
-  Context {var func A: Set}.
-  Context {varset: SetFunctions var}.
-  Local Notation stmt := (stmt var func).
-  Local Notation vars := (set var).
+  Context {p: unique! Basic_bopnames.parameters}.
+  Context {varset: SetFunctions varname}.
+  Local Notation vars := (set varname).
 
   (* set of variables which is certainly written while executing s *)
   Fixpoint certainly_written(s: stmt): vars :=
@@ -72,7 +72,7 @@ Section Live.
     | SSeq s1 s2 => union (certainly_written s1) (certainly_written s2)
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list resnames
-    end.
+    | SInteract argnames fname resnames => of_list resnames    end.
 
   Definition live_bcond(cond: bcond var) : vars :=
     match cond with
@@ -96,6 +96,7 @@ Section Live.
     | SSeq s1 s2       => union (live s1) (diff (live s2) (certainly_written s1))
     | SSkip => empty_set
     | SCall argnames fname resnames => of_list argnames
+    | SInteract argnames fname resnames => of_list argnames
     end.
 
 End Live.
@@ -108,6 +109,8 @@ Section RegAlloc.
   Context {impvar_eq_dec: DecidableEq impvar}.
   Variable func: Set.
   Context {func_eq_dec: DecidableEq func}.
+  Variable act: Set.
+  Context {act_eq_dec: DecidableEq act}.
 
   Context {Map: MapFunctions impvar srcvar}.
   Notation srcvars := (@set srcvar (@map_range_set _ _ Map)).
@@ -123,14 +126,27 @@ Section RegAlloc.
     | ASLit(x: srcvar)(x': impvar)(v: Z)
     | ASOp(x: srcvar)(x': impvar)(op: bopname)(y z: srcvar)
     | ASSet(x: srcvar)(x': impvar)(y: srcvar)
-    | ASIf(cond: bcond srcvar)(bThen bElse: astmt)
-    | ASLoop(body1: astmt)(cond: bcond srcvar)(body2: astmt)
+    | ASIf(cond: srcvar)(bThen bElse: astmt)
+    | ASLoop(body1: astmt)(cond: srcvar)(body2: astmt)
     | ASSeq(s1 s2: astmt)
     | ASSkip
-    | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
+    | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar)
+    | ASInteract(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
 
-  Local Notation stmt  := (FlatImp.stmt srcvar func). (* input type *)
-  Local Notation stmt' := (FlatImp.stmt impvar func). (* output type *)
+  Instance srcparams: Basic_bopnames.parameters := {|
+    varname := srcvar;
+    funcname := func;
+    actname := act;
+  |}.
+
+  Instance impparams: Basic_bopnames.parameters := {|
+    varname := impvar;
+    funcname := func;
+    actname := act;
+  |}.
+
+  Local Notation stmt  := (@FlatImp.stmt srcparams). (* input type *)
+  Local Notation stmt' := (@FlatImp.stmt impparams). (* output type *)
 
 (*
   Ltac head e :=
@@ -168,6 +184,7 @@ Section RegAlloc.
       | ASSeq s1 s2 => rec (rec m s1) s2
       | ASSkip => m
       | ASCall binds f args => empty_map (* TODO *)
+      | ASInteract binds f args => empty_map (* TODO *)
       end.
 
   Variable dummy_impvar: impvar.
@@ -246,6 +263,7 @@ Section RegAlloc.
     | SSkip => ASSkip
   (*| SCall argnames fname resnames => fold_left start_interval resnames (o, a, m) *)
     | SCall _ _ _ => ASSkip (* TODO *)
+    | SInteract _ _ _ => ASSkip (* TODO *)
     end.
 
   Hint Resolve
@@ -395,7 +413,12 @@ Section RegAlloc.
           Some (SSeq s1' s2')
       | ASSkip => Some SSkip
       | ASCall binds f args => None (* TODO *)
+      | ASInteract binds f args => None (* TODO *)
       end.
+
+  Existing Instance srcparams.
+  (* ugly hack to change typeclass precedence, TODO how can we make Coq pick up the right
+     instance automatically? *)
 
   Definition erase :=
     fix rec(s: astmt): stmt :=
@@ -410,6 +433,7 @@ Section RegAlloc.
       | ASSeq s1 s2 => SSeq (rec s1) (rec s2)
       | ASSkip => SSkip
       | ASCall binds f args => SCall (List.map fst binds) f args
+      | ASInteract binds f args => SCall (List.map fst binds) f args
       end.
 
   Definition register_allocation(s: stmt)(mBegin mEnd: map impvar srcvar): option stmt' :=
@@ -641,11 +665,9 @@ Section RegAlloc.
       eauto with checker_hints.
     - clear Case_SIf_Then.
       edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
-      admit.
-    - (*clear Case_SIf_Else.
-      edestruct IHn as [st2' [? ?]]; eauto with checker_hints. *)
-      admit.
-    - (*clear Case_SLoop_Done.
+    - clear Case_SIf_Else.
+      edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
+    - clear Case_SLoop_Done.
       edestruct IHn as [st2' [? ?]]; eauto with checker_hints.
       rewrite H0.
       pose proof H1 as P.
@@ -653,10 +675,9 @@ Section RegAlloc.
       specialize P with (2 := H).
       rewrite P.
       + rewrite reg_eqb_eq by reflexivity. eauto.
-      + eassumption. *)
-      admit.
+      + eassumption.
 
-    - (*clear Case_SLoop_NotDone.
+    - clear Case_SLoop_NotDone.
       pose proof E0 as C1. pose proof E1 as C2.
       eapply IHn in E0; [| |reflexivity|]; [|eassumption|]; cycle 1. {
         eapply states_compat_extends; [|eassumption].
@@ -690,8 +711,6 @@ Section RegAlloc.
         simpl in H1.
         subst Inv.
         assumption.
-      *)
-      admit.
 
     - clear Case_SSeq.
       eapply IHn in E.
@@ -702,8 +721,7 @@ Section RegAlloc.
       rewrite El. all: typeclasses eauto with core checker_hints.
     - clear Case_SCall.
       discriminate.
-  (*Qed.*)
-  Admitted.
+  Qed.
 
   Lemma regalloc_respects_afterlife: forall s m l r,
       (* TODO say something about r *)
@@ -720,7 +738,8 @@ Section RegAlloc.
       | set ( case := SLoop )
       | set ( case := SSeq )
       | set ( case := SSkip )
-      | set ( case := SCall ) ];
+      | set ( case := SCall )
+      | set ( case := SInteract ) ];
       move case at top;
       simpl in *;
       repeat (destruct_one_match); simpl in *.
@@ -776,7 +795,8 @@ Section RegAlloc.
       | set ( case := ASLoop )
       | set ( case := ASSeq )
       | set ( case := ASSkip )
-      | set ( case := ASCall ) ];
+      | set ( case := ASCall )
+      | set ( case := ASInteract ) ];
       move case at top;
       repeat (subst ||
               destruct_pair_eqs ||

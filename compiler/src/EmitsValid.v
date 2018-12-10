@@ -11,12 +11,17 @@ Require Import riscv.AxiomaticRiscv.
 Require Import compiler.util.Tactics.
 Require Import riscv.util.Tactics.
 Require Import compiler.FlatImp.
-Require Import compiler.FlatToRiscv.
+Require Import compiler.FlatToRiscvDef. Import FlatToRiscvDef.
 Require Import riscv.Memory.
 
 Local Open Scope Z_scope.
 
 Set Implicit Arguments.
+
+Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
+Proof.
+  intros. destruct i; simpl in *; discriminate.
+Qed.
 
 Lemma nth_error_single_Some: forall A (a1 a2: A) i,
     nth_error (a1 :: nil) i = Some a2 ->
@@ -234,6 +239,7 @@ Qed.
 Section EmitsValid.
 
   Context {Bw: BitWidths}.
+  Context {compilation_params: FlatToRiscvDef.parameters}.
 
   Lemma compile_lit_emits_valid: forall r w i inst,
       nth_error (compile_lit r w) i = Some inst ->
@@ -289,11 +295,8 @@ Section EmitsValid.
   Arguments Z.mul: simpl never.
   Arguments Z.pow: simpl never.
 
-  Variable LwXLEN: Register -> Register -> Z -> Instruction.
-  Variable SwXLEN: Register -> Register -> Z -> Instruction.
-
   Lemma compile_stmt_emits_valid: forall s i inst,
-      Znth_error (compile_stmt LwXLEN SwXLEN s) i = Some inst ->
+      Znth_error (compile_stmt s) i = Some inst ->
       valid_registers s ->
       stmt_not_too_big s ->
       verify inst RV_wXLEN_IM.

@@ -1,9 +1,11 @@
 Require Import lib.LibTacticsMin.
 Require Import bbv.ZLib.
-Require Import riscv.util.Monads.
+Require Import riscv.util.Monads. Require Import riscv.util.MonadNotations.
+Require Import bedrock2.Macros.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
+Require Import Coq.ZArith.ZArith.
 Require Import compiler.Op.
 Require Import riscv.Program.
 Require Import riscv.Decode.
@@ -28,6 +30,10 @@ Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
+Require Import compiler.runsToNonDet.
+Require Import compiler.Rem4.
+Require Import compiler.containsProgram.
+Require Import compiler.FlatToRiscvDef.
 
 (* TODO remove these three *)
 Require Import riscv.MachineWidth_XLEN.
@@ -39,6 +45,11 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+Section TODO.
+  Context {K V: Type}.
+  Context {Mf: MapFunctions K V}.
+  Axiom put_put_same: forall k v1 v2 m, put (put m k v1) k v2 = put m k v2.
+End TODO.
 
 (* State_is_RegisterFile gets its own section so that destructing Bw later does
    not lead to ill-typed terms *)
@@ -49,7 +60,8 @@ Section RegisterFile.
   Context {stateMap: MapFunctions Register mword}.
   Notation state := (map Register mword).
 
-  Instance State_is_RegisterFile: RegisterFile state Register mword := {|
+  Instance State_is_RegisterFile: RegisterFileFunctions Register mword := {|
+    RegisterFile := state;
     getReg rf r := match get rf r with
                    | Some v => v
                    | None => ZToReg 0
@@ -62,11 +74,116 @@ End RegisterFile.
 
 Existing Instance State_is_RegisterFile.
 
+Instance SetWithoutElements: SetFunctions Empty_set := {|
+  set := unit;
+  empty_set := tt;
+  singleton_set _ := tt;
+  contains _ := Empty_set_rect _;
+  contains_dec := Empty_set_rect _;
+  union _ _ := tt;
+  intersect _ _ := tt;
+  diff _ _ := tt;
+  pick_or_else _ := Empty_set_rect _;
+|}.
+all: intros; apply Empty_set_rec; assumption.
+Defined.
 
-Section FlatToRiscv.
+Instance MapWithoutKeys(V: Type): MapFunctions Empty_set V := {|
+   map := unit;
+|}.
+(* TODO MapFunctions shouldn't require "SetFunctions V" *)
+Admitted.
 
-  Context {mword: Set}.
-  Context {MW: MachineWidth mword}.
+
+Module Import FlatToRiscv.
+  Export FlatToRiscvDef.FlatToRiscvDef.
+
+Set Printing Implicit.
+
+  Class parameters := {
+    def_params :> FlatToRiscvDef.parameters;
+
+    mword: Set;
+    MachineWidth_Inst :> MachineWidth mword;
+    varMap_Inst :> MapFunctions Register mword;
+    actname_eq_dec :> DecidableEq actname;
+
+    Memory_Inst :> Memory.MemoryFunctions mword;
+    BWS :> FlatToRiscvBitWidthSpecifics mword;
+    BWSP :> FlatToRiscvBitWidthSpecificProofs mword;
+
+    M: Type -> Type;
+    MM :> Monad M;
+    RVM :> RiscvProgram M mword;
+    RVS :> @RiscvState M mword _ _ RVM;
+    RVAX :> AxiomaticRiscv mword actname M;
+
+    ext_spec:
+      (* given an action label, a trace of what happened so fat,
+         and a list of function call arguments, *)
+      actname -> list (LogItem mword actname) -> list mword ->
+      (* returns a set of (extended trace, function call results) *)
+      (list (LogItem mword actname) -> list mword -> Prop) ->
+      Prop; (* or returns no set if the call fails. *)
+
+    translate_id_if_aligned_4: forall a mode,
+      (regToZ_unsigned a) mod 4 = 0 ->
+      translate mode (ZToReg 4) a = Return a;
+
+    translate_id_if_aligned_8: forall a mode,
+      (regToZ_unsigned a) mod 8 = 0 ->
+      translate mode (ZToReg 8) a = Return a;
+
+    compile_ext_call_length: forall binds f args,
+        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
+
+    (* these two instances are needed to define compile_ext_call_correct below *)
+
+    bopname_params: Basic_bopnames.parameters := {|
+      Basic_bopnames.varname := Register;
+      Basic_bopnames.funcname := Empty_set;
+      Basic_bopnames.actname := actname;
+    |};
+
+    FlatImp_params: FlatImp.parameters := {|
+      FlatImp.bopname_params := bopname_params;
+      FlatImp.mword := mword;
+      FlatImp.varSet_Inst := map_domain_set;
+      FlatImp.ext_spec := ext_spec;
+      FlatImp.max_ext_call_code_size := max_ext_call_code_size;
+    |};
+
+    compile_ext_call_correct: forall initialL action postH newPc insts initialMH
+      (argvars resvars: list Register),
+      insts = compile_ext_call resvars action argvars ->
+      newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
+      Forall valid_register argvars ->
+      Forall valid_register resvars ->
+      containsProgram initialL.(getMem) insts initialL.(getPc) ->
+      exec empty_map (SInteract resvars action argvars)
+           initialL.(getLog) initialMH initialL.(getRegs) postH ->
+      runsTo (RiscvMachine Register mword actname) (mcomp_sat (run1 (B := BitWidth))) initialL
+             (fun finalL =>
+                  postH finalL.(getLog) initialMH finalL.(getRegs) /\
+                  finalL.(getPc) = newPc /\
+                  finalL.(getNextPc) = add newPc (ZToReg 4) /\
+                  finalL.(getMem) = initialL.(getMem));
+  }.
+
+End FlatToRiscv.
+
+
+Section FlatToRiscv1.
+  Context {p: unique! FlatToRiscv.parameters}.
+
+  Notation locals := (map Register mword).
+  Notation var := Z (only parsing).
+
+  Definition trace := list (LogItem mword actname).
+
+  Local Notation RiscvMachineL := (RiscvMachine Register mword actname).
+
+  Ltac state_calc0 := map_solver Z (@mword p).
 
   Ltac mword_cst w :=
     match w with
@@ -85,9 +202,9 @@ Section FlatToRiscv.
     ZToReg_morphism.(morph_opp)
   : rew_ZToReg_morphism.
 
-  Add Ring mword_ring : (@regRing mword MW)
+  Add Ring mword_ring : (@regRing mword MachineWidth_Inst)
       (preprocess [autorewrite with rew_ZToReg_morphism],
-       morphism (@ZToReg_morphism mword MW),
+       morphism (@ZToReg_morphism mword MachineWidth_Inst),
        constants [mword_cst]).
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
@@ -98,105 +215,11 @@ Section FlatToRiscv.
     | _ => fail 1 "wrong shape of goal"
     end;
     subst;
+    try reflexivity;
     clear;
     simpl;
     repeat (autorewrite with rew_Zlength; simpl);
     try ring.
-
-  (* put here so that rem picks up the MachineWidth for wXLEN *)
-
-  (*
-  Lemma four_divides_Npow2_wXLEN:
-      exists k : N, (wordToN (natToWord wXLEN 4) * k)%N = Npow2 wXLEN.
-  Proof.
-    unfold wXLEN, bitwidth in *.
-    destruct Bw.
-    - exists (Npow2 30). reflexivity.
-    - exists (Npow2 62). reflexivity.
-  Qed.
-   *)
-
-  (* check lower two bits approach: how to connect to remu? or replace remu in spec? *)
-
-
-  Axiom euclid_unsigned: forall a b, a = add (mul (divu a b) b) (remu a b).
-  Axiom remu_range: forall (a b: mword), 0 <= regToZ_unsigned (remu a b) < regToZ_unsigned b.
-
-  Axiom unique: forall a b q r,
-      a = add (mul b q) r ->
-      0 <= regToZ_unsigned r < regToZ_unsigned b ->
-      q = divu a b /\ r = remu a b.
-
-  Definition divisibleBy4(a: mword): Prop := exists q, mul (ZToReg 4) q = a.
-
-  Lemma remu40_divisibleBy4: forall (a: mword),
-      remu a (ZToReg 4) = ZToReg 0 ->
-      divisibleBy4 a.
-  Proof.
-    intros.
-    unfold divisibleBy4.
-    exists (divu a (ZToReg 4)).
-    pose proof (euclid_unsigned a (ZToReg 4)) as P.
-    rewrite P at 2.
-    rewrite H.
-    ring.
-  Qed.
-
-  Lemma divisibleBy4_remu40: forall (a: mword),
-      divisibleBy4 a ->
-      remu a (ZToReg 4) = ZToReg 0.
-  Proof.
-    intros.
-    unfold divisibleBy4 in *.
-    destruct H as [q H].
-    destruct (@unique a (ZToReg 4) q (ZToReg 0)).
-    - subst a. ring.
-    - pose proof pow2_sz_4.
-      rewrite regToZ_ZToReg_unsigned by omega.
-      rewrite regToZ_ZToReg_unsigned by omega.
-      omega.
-    - congruence.
-  Qed.
-
-  Lemma remu_four_undo: forall a, remu (mul (ZToReg 4) a) (ZToReg 4) = ZToReg 0.
-  Proof.
-    intros.
-    rewrite remu_def.
-    f_equal.
-    pose proof pow2_sz_4.
-    rewrite mul_def_unsigned.
-    rewrite regToZ_ZToReg_unsigned_mod.
-    rewrite (regToZ_ZToReg_unsigned 4) by omega.
-    pose proof XLEN_lbound.
-    apply Z.rem_mod_eq_0; [omega|].
-    replace XLEN with (2 + (XLEN - 2)) by omega.
-    rewrite Z.pow_add_r by omega.
-    change (2 ^ 2) with 4.
-    pose proof (pow2_pos (XLEN - 2)).
-    div_mod_to_quot_rem. nia.
-  Qed.
-
-  Lemma remu_four_four: remu (ZToReg 4) (ZToReg 4) = ZToReg 0.
-  Proof.
-    intros.
-    apply divisibleBy4_remu40. unfold divisibleBy4.
-    exists (ZToReg 1). ring.
-  Qed.
-
-  Lemma remu_four_zero_distrib_plus: forall a b,
-      remu a (ZToReg 4) = ZToReg 0 ->
-      remu b (ZToReg 4) = ZToReg 0 ->
-      remu (add a b) (ZToReg 4) = ZToReg 0.
-  Proof.
-    intros.
-    apply divisibleBy4_remu40.
-    apply remu40_divisibleBy4 in H.  destruct H  as [q1 H1].
-    apply remu40_divisibleBy4 in H0. destruct H0 as [q2 H2].
-    unfold divisibleBy4 in *.
-    subst.
-    exists (add q1 q2).
-    ring.
-  Qed.
 
   (* TODO is there a principled way of writing such proofs? *)
   Lemma reduce_eq_to_sub_and_lt: forall (y z: mword) {T: Type} (thenVal elseVal: T),
@@ -257,350 +280,30 @@ Section FlatToRiscv.
   Existing Instance eq_name_dec.
    *)
 
-  Context {stateMap: MapFunctions Register mword}.
-  Notation state := (map Register mword).
-
-  Notation stmt := (stmt Z Empty_set).
-
-  Context {funcMap: MapFunctions Empty_set (list Z * list Z * stmt)}. (* TODO meh *)
-
-  Context {mem: Set}.
-  Context {IsMem: Memory.Memory mem mword}.
-  Context {BWS: FlatToRiscvBitWidthSpecifics mword mem}.
-  Context {BWSP: FlatToRiscvBitWidthSpecificProofs mword mem}.
-
-  Local Notation RiscvMachine := (@RiscvMachine mword mem state).
-  Context {RVM: RiscvProgram (OState RiscvMachine) mword}.
-
-  (* assumes generic translate and raiseException functions *)
-  Context {RVS: @RiscvState (OState RiscvMachine) mword _ _ RVM}.
-
-  Context {RVAX: @AxiomaticRiscv mword _ state State_is_RegisterFile mem _ RVM}.
-
-  Ltac state_calc0 := map_solver Z mword.
-
-  Hypothesis translate_id_if_aligned_4: forall a mode,
-      (regToZ_unsigned a) mod 4 = 0 ->
-      translate mode (ZToReg 4) a = Return a.
-
-  Hypothesis translate_id_if_aligned_8: forall a mode,
-      (regToZ_unsigned a) mod 8 = 0 ->
-      translate mode (ZToReg 8) a = Return a.
-
-  (* This phase assumes that register allocation has already been done on the FlatImp
-     level, and expects the following to hold: *)
-
-  Definition valid_registers_bcond (cond: bcond Register) : Prop :=
-    match cond with
-    | CondBinary _ x y => valid_register x /\ valid_register y
-    | CondNez x => valid_register x
-    end.
-
-  Fixpoint valid_registers(s: stmt): Prop :=
-    match s with
-    | SLoad x a => valid_register x /\ valid_register a
-    | SStore a x => valid_register a /\ valid_register x
-    | SLit x _ => valid_register x
-    | SOp x _ y z => valid_register x /\ valid_register y /\ valid_register z
-    | SSet x y => valid_register x /\ valid_register y
-    | SIf c s1 s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
-    | SLoop s1 c s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
-    | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
-    | SSkip => True
-    | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
-    end.
-
-  (*
-  Variable var2Register: var -> Register. (* TODO register allocation *)
-  Hypothesis no_var_mapped_to_Register0: forall (x: var), x <> Register0.
-  Hypothesis var2Register_inj: forall x1 x2, x1 = x2 -> x1 = x2.
-   *)
-
   (* Set Printing Projections.
      Uncaught anomaly when stepping through proofs :(
      https://github.com/coq/coq/issues/6257 *)
 
-  Variable LwXLEN: Register -> Register -> Z -> Instruction.
+  Arguments Z.mul: simpl never.
+  Arguments Z.add: simpl never.
+  Arguments run1: simpl never.
 
-  Variable SwXLEN: Register -> Register -> Z -> Instruction.
-
-  Definition compile_op(rd: Register)(op: bopname)(rs1 rs2: Register): list Instruction :=
-    match op with
-    | bopname.add => [[Add rd rs1 rs2]]
-    | bopname.sub => [[Sub rd rs1 rs2]]
-    | bopname.mul => [[Mul rd rs1 rs2]]
-    | bopname.and => [[And rd rs1 rs2]]
-    | bopname.or  => [[Or  rd rs1 rs2]]
-    | bopname.xor => [[Xor rd rs1 rs2]]
-    | bopname.sru => [[Srl rd rs1 rs2]]
-    | bopname.slu => [[Sll rd rs1 rs2]]
-    | bopname.srs => [[Sra rd rs1 rs2]]
-    | bopname.lts => [[Slt rd rs1 rs2]]
-    | bopname.ltu => [[Sltu rd rs1 rs2]]
-    | bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
-    end.
-
-  Fixpoint compile_lit_rec(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
-    let byte := bitSlice v ((Z.of_nat byteIndex) * 8) ((Z.of_nat byteIndex + 1) * 8) in
-    [[ Addi rd rs byte ]] ++
-    match byteIndex with
-    | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v)
-    | O => [[]]
-    end.
-
-  Fixpoint compile_lit_rec'(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
-    let d := (2 ^ ((Z.of_nat byteIndex) * 8))%Z in
-    let hi := (v / d)%Z in
-    let v' := (v - hi * d)%Z in
-    [[ Addi rd rs hi ]] ++
-    match byteIndex with
-    | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v')
-    | O => [[]]
-    end.
-
-  (*
-  Variable rd: Register.
-  Eval cbv -[Register0] in (compile_lit_rec 7 rd Register0 10000).
-  *)
-
-  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
-    compile_lit_rec 7 rd Register0 v.
-
-  Definition compile_lit_32(rd: Register)(v: word 32): list Instruction :=
-    let h0 := wsplit_lo 16 16 v in
-    let h1 := wsplit_hi 16 16 v in
-    [[Addi rd Register0 (uwordToZ h1); Slli rd rd 16; Addi rd rd (uwordToZ h0)]].
-
-  Definition compile_lit_64(rd: Register)(v: word 64): list Instruction :=
-    let w0 := wsplit_lo 32 32 v in
-    let w1 := wsplit_hi 32 32 v in
-    let h0 := wsplit_lo 16 16 w0 in
-    let h1 := wsplit_hi 16 16 w0 in
-    let h2 := wsplit_lo 16 16 w1 in
-    let h3 := wsplit_hi 16 16 w1 in
-    [[Addi rd Register0 (uwordToZ h3);
-      Slli rd rd 16; Addi rd rd (uwordToZ h2);
-      Slli rd rd 16; Addi rd rd (uwordToZ h1);
-      Slli rd rd 16; Addi rd rd (uwordToZ h0)]].
-
-  (* The problem with the primed version is that we have to destruct the bitwidth to expose
-     the indivdual commands (on which the proof machinery of compile_stmt_correct_aux works),
-     but the proof machinery stops working when the bitwidth is destructed because typeclass
-     search stops working as it should, and destructing the bitwidth only works after unfolding
-     all definitions involving mword.
-  Definition compile_lit'(rd: Register)(v: mword): list Instruction.
-    clear -Bw rd v. unfold wXLEN, bitwidth in *. destruct Bw.
-    - exact (compile_lit_32 rd v).
-    - exact (compile_lit_64 rd v).
-  Defined.
-
-  (* Very stupid workaround: *)
-  Definition make_64_bit(v: mword): word 64.
-    clear -Bw v. unfold wXLEN, bitwidth in *. destruct Bw.
-    - exact (zext v 32).
-    - exact v.
-  Defined.
-
-  Definition compile_lit''(rd: Register)(v: mword): list Instruction :=
-    compile_lit_64 rd (make_64_bit v).
-
-  (* store the n lowest halves (1 half = 16bits) of v into rd *)
-  Fixpoint compile_halves(n: nat)(rd: Register)(v: Z): list Instruction :=
-    if dec (- 2^19 <= v < 2^19)%Z then
-      [[Addi rd Register0 v]]
-    else
-      match n with
-      | O => [[]] (* will not happen because we choose n big enough *)
-      | S n' =>
-        let upper := (v / 2^16)%Z in
-        let lower := (v - upper * 2^16)%Z in
-        (compile_halves n' rd upper) ++ [[Slli rd rd 16; Addi rd rd lower]]
-      end.
-
-  Fixpoint interp_compiled_halves(l: list Instruction)(acc: Z): Z :=
-    match l with
-    | (Addi _ _ v) :: l' => interp_compiled_halves l' (acc + v)
-    | (Slli _ _ _) :: l' => interp_compiled_halves l' (acc * 16)
-    | _ => acc
-    end.
-
-  Lemma compile_halves_correct: forall n rd v acc,
-      v <=2^(16 * n)
-      interp_compiled_halves (compile_halves n rd v) acc = (acc + v)%Z.
-  Proof.
-    induction n; intros.
-    - simpl.
-  Qed.
-
-  Definition compile_lit_old(rd: Register)(v: Z): list Instruction :=
-    compile_halves (wXLEN / 16) rd v.
-
-  Definition add_lit_20(rd rs: Register)(v: word 20): list Instruction :=
-    [[Addi rd rs (wordToZ v)]].
-
-  Definition add_lit_32(rd rs: Register)(v: word 32): list Instruction :=
-    let lobits := split1 20 12 v in
-    let hibits := split2 20 12 v in [[]].
-
-  Definition embed_words(l: list (word 32)): list Instruction :=
-    [[J (Z.of_nat (length l))]] ++ (map (fun w => InvalidInstruction (wordToZ w)) l).
-
-  Definition wXLEN_to_word_list(v: mword): list (word 32).
-    clear -Bw v. unfold wXLEN, bitwidth in *. destruct Bw.
-    - exact [v].
-    - exact [split1 32 32 v; split2 32 32 v].
-  Defined.
-
-  Definition embed_word(v: mword): list Instruction :=
-    List.map (fun w => InvalidInstruction (wordToZ w)) (wXLEN_to_word_list v).
-
-  Definition compile_lit_old1(rd: Register)(v: mword): list Instruction :=
-    let l := embed_word v in
-    [[Auipc rd 0; LwXLEN rd rd 8; J (Z.of_nat (length l))]] ++ l.
-
-  Definition add_lit_20'(rd rs: Register)(v: Z): list Instruction :=
-    [[Addi rd rs v]].
-
-  Definition add_lit_32'(rd rs: Register)(v: Z): list Instruction :=
-    (if dec (- 2^19 <= v < 2^19)%Z then [[]] else (
-         let '(hibits, lobits) := (1%Z, 1%Z) in
-         let maybe1 := 1%Z in
-         ([[ Lui rd hibits ]] ++ (add_lit_20' rd rs (lobits + maybe1))))).
-
-  Definition compile_lit_32(rd: Register)(v: Z): list Instruction :=
-      let lobits := (v mod (2 ^ 20))%Z in
-      if dec (lobits = v)
-      then [[Addi rd Register0 lobits]]
-      else
-        let hibits := (v - lobits)%Z in
-        if Z.testbit v 20
-        (* Xori will sign-extend lobits with 1s, therefore Z.lnot *)
-        then [[Lui rd (Z.lnot hibits); Xori rd rd lobits]]
-        (* Xori will sign-extend lobits with 0s *)
-        else [[Lui rd hibits; Xori rd rd lobits]].
-
-  Definition compile_lit_old'(rd: Register)(v: mword): list Instruction.
-    clear -Bw rd v. unfold wXLEN, bitwidth in *. destruct Bw.
-    - exact (compile_lit_32 rd v).
-    - exact (compile_lit_64 rd v).
-  Defined.
-  *)
-
-  (* Inverts the branch condition. *)
-  Definition compile_bcond_by_inverting
-             (cond: bcond Register) (amt: Z) : Instruction:=
-    match cond with
-    | CondBinary op x y =>
-        match op with
-        | BEq  => Bne x y amt
-        | BNe  => Beq x y amt
-        | BLt  => Bge x y amt
-        | BGe  => Blt x y amt
-        | BLtu => Bgeu x y amt
-        | BGeu => Bltu x y amt
-        end
-    | CondNez x =>
-        Beq x Register0 amt
-    end.
-
-  Fixpoint compile_stmt(s: stmt): list (Instruction) :=
-    match s with
-    | SLoad x y => [[LwXLEN x y 0]]
-    | SStore x y => [[SwXLEN x y 0]]
-    | SLit x v => compile_lit x v
-    | SOp x op y z => compile_op x op y z
-    | SSet x y => [[Add x Register0 y]]
-    | SIf cond bThen bElse =>
-        let bThen' := compile_stmt bThen in
-        let bElse' := compile_stmt bElse in
-        (* only works if branch lengths are < 2^12 *)
-        [[compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)]] ++
-        bThen' ++
-        [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
-        bElse'
-    | SLoop body1 cond body2 =>
-        let body1' := compile_stmt body1 in
-        let body2' := compile_stmt body2 in
-        (* only works if branch lengths are < 2^12 *)
-        body1' ++
-        [[compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)]] ++
-        body2' ++
-        [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
-    | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
-    | SSkip => nil
-    | SCall _ _ _ => nil (* unsupported *)
-    end.
-
-  (*
-  Lemma embed_lit_size: forall v,
-    length (embed_lit v) <= 3.
-  Proof.
-    intros. clear.
-    unfold wXLEN, bitwidth, embed_lit, embed_lit_32, embed_lit_64 in *.
-    destruct Bw; simpl; omega.
-  Qed.
-  *)
   Lemma compile_stmt_size: forall s,
-    (length (compile_stmt s) <= 2 * (stmt_size _ _ s))%nat.
+    Zlength (compile_stmt s) <= 2 * (stmt_size s).
   Proof.
-    induction s; simpl; try destruct op; simpl;
-    repeat (rewrite app_length; simpl); try omega.
+    induction s; simpl; try destruct op; try solve [destruct f]; simpl;
+    repeat (autorewrite with rew_Zlength || simpl in * || unfold compile_lit); try omega;
+      pose proof (Zlength_nonneg binds);
+      pose proof (Zlength_nonneg args);
+      specialize (compile_ext_call_length binds a args);
+      pose proof max_ext_call_code_size_nonneg;
+      simpl in *.
+    specialize (H1 a).
+    omega.
   Qed.
-
-  (* load and decode Inst *)
-  Definition ldInst(m: mem)(a: mword): Instruction :=
-    decode (@RV_wXLEN_IM BitWidth) (uwordToZ (Memory.loadWord m a)).
-
-  Definition decode_prog(prog: list (word 32)): list Instruction :=
-    List.map (fun w => decode (@RV_wXLEN_IM BitWidth) (uwordToZ w)) prog.
 
   Definition mem_inaccessible(m: Memory.mem)(start len: Z): Prop :=
     forall a w, Memory.read_mem a m = Some w -> not_in_range a XLEN_in_bytes start len.
-
-  Definition containsProgram(m: mem)(program: list Instruction)(offset: mword) :=
-    regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\
-    forall i inst, Znth_error program i = Some inst ->
-      ldInst m (add offset (ZToReg (4 * i))) = inst.
-
-  Definition containsProgram'(m: mem)(program: list Instruction)(offset: mword) :=
-    regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\
-    decode_prog (Memory.load_word_list m offset (Zlength program)) = program.
-
-  Lemma containsProgram_alt: forall m program offset,
-      containsProgram m program offset <-> containsProgram' m program offset.
-  Proof.
-    intros. unfold containsProgram, containsProgram', decode_prog.
-    clear LwXLEN SwXLEN.
-    intuition idtac.
-    - apply list_elementwise_same_Z. intros i B. specialize (H1 i).
-      assert (0 <= i < Zlength program \/ Zlength program <= i) as C by omega.
-      destruct C as [C | C].
-      + destruct (Znth_error_Some _ program i) as [_ P].
-        specialize (P C).
-        destruct (Znth_error program i) as [inst|] eqn: E; try contradiction.
-        specialize (H1 _ eq_refl). unfold ldInst in H1.
-        erewrite map_Znth_error.
-        * f_equal. eassumption.
-        * apply Znth_error_load_word_list; try assumption.
-      + pose proof (Znth_error_ge_None _ _ C) as P.
-        rewrite P.
-        apply Znth_error_ge_None.
-        rewrite map_Zlength.
-        rewrite Zlength_load_word_list by (apply Zlength_nonneg).
-        assumption.
-    - unfold ldInst. rewrite <- H1 in H.
-      pose proof (map_Znth_error') as P.
-      specialize P with (1 := H).
-      destruct P as [inst' [P Q] ].
-      subst inst.
-      do 2 f_equal.
-      rewrite Znth_error_load_word_list in P.
-      + congruence.
-      + edestruct (Znth_error_Some _ (Memory.load_word_list m offset (Zlength program)))
-          as [Q _].
-        rewrite Zlength_load_word_list in Q by (apply Zlength_nonneg).
-        apply Q. congruence.
-  Qed.
 
   Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
   Proof.
@@ -841,8 +544,15 @@ Section FlatToRiscv.
     | W: containsProgram_app_will_work ?i1 ?i2 ?p |- containsProgram ?m (?i1 ++ ?i2) ?p =>
       apply (containsProgram_app W)
     | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p => exact Cp
+    (* requires exactly the same instruction list, but allows a p/p' to be too hard
+       to prove equal *)
     | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
-          replace p' with p; [exact Cp|try solve_word_eq]
+      replace p' with p; [exact Cp|try solve_word_eq]
+    (* allows different instruction lists (the one in the goal could contain evars),
+       but requires that p=p' to make sure we don't instantiate wrongly *)
+    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m _ ?p' =>
+      replace p' with p by solve_word_eq;
+      exact Cp
     end;
     try assumption.
 
@@ -871,98 +581,17 @@ Section FlatToRiscv.
   Qed.
   *)
 
-  Definition runsTo_onerun(initial: RiscvMachine)(P: RiscvMachine -> Prop): Prop :=
-    exists fuel,
-      match run (B := BitWidth) fuel initial with
-      | (Some _, final) => P final
-      | (None  , final) => False
-      end.
+  Definition run1: M unit := run1 (B := BitWidth).
 
-  Inductive runsTo: RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
-    | runsToDone: forall (initial: RiscvMachine) (P: RiscvMachine -> Prop),
-        P initial ->
-        runsTo initial P
-    | runsToStep: forall (initial middle: RiscvMachine) (P: RiscvMachine -> Prop),
-        run1 (B := BitWidth) initial = (Some tt, middle) ->
-        runsTo middle P ->
-        runsTo initial P.
-
-  Lemma runsTo_to_onerun: forall initial (P: RiscvMachine -> Prop),
-      runsTo initial P ->
-      runsTo_onerun initial P.
-  Proof.
-    unfold runsTo_onerun. induction 1.
-    - exists O. simpl. assumption.
-    - destruct IHrunsTo as [fuel IH].
-      exists (S fuel). unfold run, power_func.
-      match goal with
-      | |- context [?t] =>
-           match t with
-           | Bind _  _ =>
-             match t with
-             | ?B _ _ => let B' := eval cbv in B in change B with B'
-             end
-           end
-      end.
-      cbv beta.
-      rewrite H.
-      exact IH.
-  Qed.
-
-  Lemma runsTo_from_onerun: forall initial (P: RiscvMachine -> Prop),
-      runsTo_onerun initial P ->
-      runsTo initial P.
-  Proof.
-    unfold runsTo_onerun. intros. destruct H as [fuel H].
-    revert H. revert P. revert initial.
-    induction fuel; intros.
-    - apply runsToDone. exact H.
-    - unfold run, power_func, Bind, OState_Monad in H.
-      match type of H with
-      | context [?t] =>
-        match t with
-        | run1 initial =>  destruct t as [ [u1 | ] s1 ] eqn: E1; [|contradiction]
-        end
-      end.
-      destruct u1.
-      eapply runsToStep; [exact E1|].
-      apply IHfuel.
-      exact H.
-  Qed.
-
-  Lemma runsTo_alt_equiv: forall initial (P: RiscvMachine -> Prop),
-      runsTo_onerun initial P <-> runsTo initial P.
-  Proof.
-    intros. split.
-    - apply runsTo_from_onerun.
-    - apply runsTo_to_onerun.
-  Qed.
-
-  Lemma runsToSatisfying_trans: forall P Q initial,
-    runsTo initial P ->
-    (forall middle, P middle -> runsTo middle Q) ->
-    runsTo initial Q.
-  Proof.
-    introv R1. induction R1; introv R2; [solve [auto]|].
-    eapply runsToStep; [eassumption|]. apply IHR1. apply R2.
-  Qed.
-
-  Lemma runsToSatisfying_imp: forall (P Q : RiscvMachine -> Prop) initial,
-    runsTo initial P ->
-    (forall final, P final -> Q final) ->
-    runsTo initial Q.
-  Proof using .
-    introv R1 R2. eapply runsToSatisfying_trans; [eassumption|].
-    intros final Pf. apply runsToDone. auto.
-  Qed.
-
-  Definition runsToSatisfying: RiscvMachine -> (RiscvMachine -> Prop) -> Prop := runsTo.
+  Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
+    runsTo RiscvMachineL (mcomp_sat run1).
 
   Ltac simpl_run1 :=
-    cbv [run1 execState Monads.put Monads.gets Monads.get Return Bind State_Monad OState_Monad
+    cbv [run1 (*execState*) OStateNDOperations.put OStateNDOperations.get
+         Return Bind State_Monad OStateND_Monad
          execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute
-         core machineMem registers pc nextPC exceptionHandlerAddr
-         getPC setPC getRegister setRegister gets].
+         getRegs getPc getNextPc getMem getLog
+         getPC setPC getRegister setRegister].
 
   Tactic Notation "log_solved" tactic(t) :=
     match goal with
@@ -970,15 +599,16 @@ Section FlatToRiscv.
     | |- ?G => idtac "did not solve" G
     end.
 
-  (* TODO is 2^9 really the best we can get? *)
-  Definition stmt_not_too_big(s: stmt): Prop := (Z.of_nat (stmt_size _ _ s) < 2 ^ 9)%Z.
-
   Local Ltac solve_stmt_not_too_big :=
     lazymatch goal with
     | H: stmt_not_too_big _ |- stmt_not_too_big _ =>
+        clear -H;
         unfold stmt_not_too_big in *;
         change (2 ^ 9)%Z with 512%Z in *;
         simpl stmt_size in H;
+        repeat match goal with
+               | s: stmt |- _ => unique pose proof (stmt_size_pos s)
+               end;
         lia
     end.
 
@@ -991,61 +621,9 @@ Section FlatToRiscv.
     end.
 *)
 
-  Lemma simpl_with_registers: forall (rs1 rs2: state) p npc eh (m: mem),
-    with_registers (mword := mword) rs2 (mkRiscvMachine (mkRiscvMachineCore rs1 p npc eh) m) =
-                                        (mkRiscvMachine (mkRiscvMachineCore rs2 p npc eh) m).
-  Proof. intros. reflexivity. Qed.
+  Ltac simpl_RiscvMachine_get_set := simpl. (* TODO is this enough? *)
 
-  Lemma simpl_with_pc: forall (rs: state) pc1 pc2 npc eh (m: mem),
-    with_pc (mword := mword) pc2 (mkRiscvMachine (mkRiscvMachineCore rs pc1 npc eh) m) =
-                                 (mkRiscvMachine (mkRiscvMachineCore rs pc2 npc eh) m).
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_with_nextPC: forall (rs: state) p npc1 npc2 eh (m: mem),
-    with_nextPC (mword := mword) npc2 (mkRiscvMachine (mkRiscvMachineCore rs p npc1 eh) m) =
-                                      (mkRiscvMachine (mkRiscvMachineCore rs p npc2 eh) m).
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_with_machineMem: forall (c: @RiscvMachineCore _ state) (m1 m2: mem),
-    with_machineMem (mword := mword) m2 (mkRiscvMachine c m1) =
-                                        (mkRiscvMachine c m2).
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_registers: forall (rs: state) p npc eh,
-    registers (mword := mword) (mkRiscvMachineCore rs p npc eh) = rs.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_pc: forall (rs: state) p npc eh,
-    pc (mword := mword) (mkRiscvMachineCore rs p npc eh) = p.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_nextPC: forall (rs: state) p npc eh,
-    nextPC (mword := mword) (mkRiscvMachineCore rs p npc eh) = npc.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_core: forall (c: @RiscvMachineCore _ state) (m: mem),
-    core (mword := mword) (mkRiscvMachine c m) = c.
-  Proof. intros. reflexivity. Qed.
-
-  Lemma simpl_machineMem: forall (c: @RiscvMachineCore mword state) (m: mem),
-    machineMem (mkRiscvMachine c m) = m.
-  Proof. intros. reflexivity. Qed.
-
-  Hint Rewrite
-      simpl_with_registers
-      simpl_with_pc
-      simpl_with_nextPC
-      simpl_with_machineMem
-      simpl_registers
-      simpl_pc
-      simpl_nextPC
-      simpl_core
-      simpl_machineMem
-  : rew_RiscvMachine_get_set.
-
-  Ltac simpl_RiscvMachine_get_set := autorewrite with rew_RiscvMachine_get_set in *.
-
-  Ltac destruct_RiscvMachine m :=
+  Ltac destruct_RiscvMachine_0 m :=
     let t := type of m in
     unify t RiscvMachine;
     let r := fresh m "_regs" in
@@ -1056,31 +634,111 @@ Section FlatToRiscv.
     destruct m as [ [r p n e] me ];
     simpl_RiscvMachine_get_set.
 
+  Ltac destruct_RiscvMachine m :=
+    let t := type of m in
+    unify t RiscvMachineL;
+    let r := fresh m "_regs" in
+    let p := fresh m "_pc" in
+    let n := fresh m "_npc" in
+    let me := fresh m "_mem" in
+    let l := fresh m "_log" in
+    destruct m as [r p n m l];
+    simpl_RiscvMachine_get_set.
+
   Arguments Z.modulo : simpl never.
 
-  Lemma run1_simpl: forall {inst initialL pc0},
-      containsProgram initialL.(machineMem) [[inst]] pc0 ->
-      pc0 = initialL.(core).(pc) ->
-      run1 (B := BitWidth) initialL = (execute inst;; step) initialL.
-  Proof.
-    intros. subst *.
-    unfold run1.
-    destruct_RiscvMachine initialL.
-    rewrite Bind_getPC.
-    simpl_RiscvMachine_get_set.
-    rewrite Bind_loadWord.
-    unfold containsProgram in H. apply proj2 in H.
-    specialize (H 0 _ eq_refl). subst inst.
-    unfold ldInst.
-    simpl_RiscvMachine_get_set.
+  Hint Unfold
+       Program.getRegister
+       Program.setRegister
+       Program.loadByte
+       Program.loadHalf
+       Program.loadWord
+       Program.loadDouble
+       Program.storeByte
+       Program.storeHalf
+       Program.storeWord
+       Program.storeDouble
+       Program.getPC
+       Program.setPC
+       Program.step
+       Program.raiseException
+    : unf_Program_methods.
+
+(*
+  Ltac prove_go_lemma :=
+    intros;
+    unfold valid_register, computation_satisfies in *;
+    autounfold with unf_Program_methods in *;
+    unfold IsRiscvMachineL in *;
+    unfold valid_register, Register0,
+           liftLoad, liftStore, logEvent in *;
     repeat match goal with
-           | |- context[?x] => progress (ring_simplify x)
+           | |- _ => reflexivity
+           | |- _ => progress (subst)
+           | |- _ => solve [exfalso; lia]
+           | |- _ => discriminate
+           | |- _ => assumption
+           | |- _ => rewrite associativity
+           | |- _ => rewrite OStateNDOperations.Bind_get
+           | |- _ => rewrite OStateNDOperations.Bind_put
+           | |- _ => rewrite left_identity
+           | |- context [if ?x then _ else _] => let E := fresh "E" in destruct x eqn: E
+           | _: context [if ?x then _ else _] |- _ => let E := fresh "E" in destruct x eqn: E
            end.
-    reflexivity.
+*)
+
+  Lemma go_done: forall (initialL: RiscvMachineL),
+      mcomp_sat (Return tt) initialL (eq initialL).
+  Proof. Admitted.
+
+  Lemma go_left_identity{A: Type}: forall initialL post a
+         (f : A -> M unit),
+      mcomp_sat (f a) initialL post ->
+      mcomp_sat (Bind (Return a) f) initialL post.
+  Proof.
+    intros. rewrite left_identity. assumption.
   Qed.
 
-  Inductive AllInsts: list Instruction -> Prop :=
-    mkAllInsts: forall l, AllInsts l.
+  Lemma go_right_identity: forall initialL post
+         (m: M unit),
+      mcomp_sat m initialL post ->
+      mcomp_sat (Bind m Return) initialL post.
+  Proof.
+    intros. rewrite right_identity. assumption.
+  Qed.
+
+  Lemma go_associativity{A B: Type}: forall initialL post
+         (m: M A)
+         (f : A -> M B) (g : B -> M unit),
+      mcomp_sat (Bind m (fun x : A => Bind (f x) g)) initialL post ->
+      mcomp_sat (Bind (Bind m f) g) initialL post.
+  Proof.
+    intros. rewrite associativity. assumption.
+  Qed.
+
+  Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
+      pc0 = initialL.(getPc) ->
+      containsProgram initialL.(getMem) [[inst]] pc0 ->
+      mcomp_sat (execute inst;; step) initialL post ->
+      mcomp_sat run1 initialL post.
+  Proof.
+    intros. subst *.
+    unfold run1. unfold Run.run1.
+    apply go_getPC.
+    unfold containsProgram in H0. apply proj2 in H0.
+    specialize (H0 0 _ eq_refl). subst inst.
+    unfold ldInst in *.
+    apply go_loadWord.
+    - admit.
+    - intros.
+      match type of H1 with
+      | context[?x] => progress (ring_simplify x in H1)
+      end.
+      exact H1.
+  Admitted.
+
+  Ltac sidecondition :=
+    solve_containsProgram || assumption || reflexivity.
 
   Ltac head_of_app e :=
     match e with
@@ -1088,13 +746,14 @@ Section FlatToRiscv.
     | _ => e
     end.
 
+  (*
   Notation K := Z.
   Notation V := mword.
+  *)
 
   (* only strictly needed if we want to export the goal into a map_solver-only environment,
      but might result in a speed up if used anyways *)
   Ltac prepare_for_map_solver :=
-    clear translate_id_if_aligned_4 translate_id_if_aligned_8 BWSP RVAX;
     repeat match goal with
              | IH: forall (s : stmt), _ |- _ => clear IH
              | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
@@ -1112,7 +771,6 @@ Section FlatToRiscv.
                | @containsProgram => clear H
                | @mem_inaccessible => clear H
                | @containsProgram_app_will_work => clear H
-               | @AllInsts => clear H
                end
              | H: @eq ?T _ _ |- _ =>
                match T with
@@ -1161,11 +819,11 @@ Section FlatToRiscv.
 
   Ltac state_calc := state_calc_without_logging.
 
-
+(*
   Hint Rewrite
-      (@associativity  _ (OState_Monad RiscvMachine))
-      (@left_identity  _ (OState_Monad RiscvMachine))
-      (@right_identity _ (OState_Monad RiscvMachine))
+      (@associativity  _ (OStateND_Monad RiscvMachine))
+      (@left_identity  _ (OStateND_Monad RiscvMachine))
+      (@right_identity _ (OStateND_Monad RiscvMachine))
       (@Bind_getRegister _ _ _ _ _ _ _)
       (@Bind_getRegister0 _ _ _ _ _ _ _)
       (@Bind_setRegister _ _ _ _ _ _ _)
@@ -1175,24 +833,11 @@ Section FlatToRiscv.
   using assumption : rew_get_set_Register.
 
   Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
-
-  Arguments Z.mul: simpl never.
-  Arguments Z.add: simpl never.
-  Arguments run1: simpl never.
+*)
 
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
-      match goal with
-      | Cp: containsProgram _ [[?inst]] ?pc0 |- ?E = (Some tt, _) =>
-        match E with
-        | run1 ?initialL =>
-          let Eqpc := fresh in
-          assert (pc0 = initialL.(core).(pc)) as Eqpc by solve_word_eq;
-            replace E with ((execute inst;; step) initialL) by
-              (symmetry; eapply run1_simpl; [ exact Cp | exact Eqpc ]);
-            clear Eqpc
-        end
-      end.
+    eapply go_fetch_inst; [reflexivity|simpl; solve_containsProgram|].
 
   Ltac rewrite_reg_value :=
     match goal with
@@ -1304,6 +949,7 @@ Section FlatToRiscv.
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
   Proof. intros. tauto. Qed.
 
+  (*
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: stmt} {initialRegs finalRegs: state},
       eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
@@ -1339,6 +985,7 @@ Section FlatToRiscv.
     - pose proof (eval_stmt_preserves_mem_accessibility H a) as P.
       destruct P as [P _]. specialize (P E). exfalso. congruence.
   Qed.
+  *)
 
   Ltac prove_remu_four_zero :=
     match goal with
@@ -1356,6 +1003,7 @@ Section FlatToRiscv.
            end;
     ring.
 
+(*
   Ltac solve_mem_inaccessible :=
     eapply eval_stmt_preserves_mem_inaccessible; [|eassumption];
     try eassumption;
@@ -1385,6 +1033,7 @@ Section FlatToRiscv.
       | eassumption
       | solve_mem_inaccessible
       | idtac ].
+  *)
 
   Ltac simpl_remu4_test :=
     match goal with
@@ -1403,8 +1052,9 @@ Section FlatToRiscv.
 
   Hint Rewrite
       elim_then_true_else_false
-      (@left_identity _ (OState_Monad RiscvMachine))
+      (@left_identity M MM)
       @get_put_same
+      @put_put_same
   : rew_run1step.
 
   Ltac simpl_bools :=
@@ -1424,6 +1074,42 @@ Section FlatToRiscv.
              assert (x = true) as H' by (eapply negb_false_iff; eauto);
              clear H
            end.
+
+  Ltac simulate :=
+    repeat first
+           [ progress (simpl_RiscvMachine_get_set)
+           | rewrite elim_then_true_else_false
+           | progress rewrite_setReg
+           | progress rewrite_getReg
+           | rewrite @get_put_same
+           | rewrite @put_put_same
+           | progress (autorewrite with rew_reg_eqb)
+           | progress simpl_remu4_test
+           | progress rewrite_reg_value
+           | eapply go_getRegister    ; [sidecondition..|]
+           | eapply go_getRegister0   ; [sidecondition..|]
+           | eapply go_setRegister    ; [sidecondition..|]
+           | eapply go_setRegister0   ; [sidecondition..|]
+           | eapply go_loadWord       ; [sidecondition..|]
+           | eapply go_storeWord      ; [sidecondition..|]
+           | eapply go_getPC          ; [sidecondition..|]
+           | eapply go_setPC          ; [sidecondition..|]
+           | eapply go_step           ; [sidecondition..|]
+           | eapply go_done    (* has no sidecontidions *)
+           | eapply go_left_identity  ; [sidecondition..|]
+           | eapply go_right_identity ; [sidecondition..|]
+           | eapply go_associativity  ; [sidecondition..|]
+           | eapply go_fetch_inst     ; [sidecondition..|] ].
+
+  Ltac destruct_everything :=
+    destruct_products;
+    try destruct_pair_eqs;
+    destruct_conjs;
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end;
+    subst *;
+    destruct_containsProgram.
 
   Ltac run1step''' :=
     repeat (
@@ -1445,32 +1131,27 @@ Section FlatToRiscv.
     run1step'''.
 
   Ltac run1step' :=
-    (eapply runsToStep; simpl in *; subst *); [ run1step'' | ].
+    (eapply runsToStep; simpl in *; subst * ); [ run1step'' | ].
 
   Ltac run1step :=
-    run1step';
-    [ rewrite execState_step;
-      simpl_RiscvMachine_get_set;
-      reflexivity
-    | ].
+    run1step'; do 2 intro; subst.
 
   Ltac run1done :=
-    apply runsToDone;
-    simpl_RiscvMachine_get_set;
-    (* note: less aggressive than "repeat split" because it does not unfold *)
-    repeat match goal with
-           | |- _ /\ _ => split
-           end;
+    intros; subst;
+    match goal with
+    | H: _ |- _ => eapply H (* there's only one "... -> runsTo _ finalPostL" *)
+    end;
     first
-      [ assumption
-      | eapply containsMem_write; eassumption
+      [ eassumption
+      | eapply (@containsMem_write mword _ _ _ BWSP); eassumption
       | match goal with
-        | |- extends _ _ => state_calc
+        | |- extends _ _ => solve [state_calc]
         end
       | solve [solve_containsProgram]
       | solve_word_eq
       | idtac ].
 
+(*
   Ltac IH_done IH :=
     eapply runsToSatisfying_imp; [ exact IH | ];
     subst;
@@ -1486,35 +1167,22 @@ Section FlatToRiscv.
         | H: ?m.(core).(pc) = _ |- ?m.(core).(pc) = _ => rewrite H
         end;
     solve_word_eq.
+*)
 
-  Ltac destruct_everything :=
-    destruct_products;
-    try destruct_pair_eqs;
-    destruct_conjs;
-    repeat match goal with
-           | m: _ |- _ => destruct_RiscvMachine m
-           end;
-    repeat match goal with
-          | H: context[ option_Monad ] |- _ =>
-            unfold Bind, Return, option_Monad in H;
-            repeat destruct_one_match_of_hyp H;
-            (discriminate || apply invert_Some_eq_Some in H)
-           end;
-    subst *;
-    destruct_containsProgram.
-
-  Lemma execute_load: forall {A: Type} (x a: Register) (addr v: mword) (initialMH: Memory.mem)
-           (f:unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+  Lemma execute_load: forall (x a: Register) (addr v: mword) (initialMH: Memory.mem)
+           (f: unit -> M unit) (initialL: RiscvMachineL) post (initialRegsH: locals),
       valid_register x ->
       valid_register a ->
       Memory.read_mem addr initialMH = Some v ->
-      containsMem initialL.(machineMem) initialMH ->
+      containsMem initialL.(getMem) initialMH ->
       get initialRegsH a = Some addr ->
-      extends initialL.(core).(registers) initialRegsH ->
-      (Bind (execute (LwXLEN x a 0)) f) initialL =
-      (f tt) (with_registers (setReg initialL.(core).(registers) x v) initialL).
-  Proof. (*
+      @extends Register mword _ initialL.(getRegs) initialRegsH ->
+      mcomp_sat (f tt) (setRegs initialL (setReg initialL.(getRegs) x v)) post ->
+      mcomp_sat (Bind (execute (LwXLEN x a 0)) f) initialL post.
+  Proof.
     intros.
+    unfold containsMem, Memory.read_mem in *.
+    (*
     pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
     pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
     pose proof (@State_is_RegisterFile _ _) as State_is_RegisterFile.
@@ -1547,18 +1215,17 @@ Section FlatToRiscv.
           *)
   Admitted.
 
-  Lemma execute_store: forall {A: Type} (ra rv: Register) (a v: mword)
-                         (initialMH finalMH: Memory.mem)
-                         (f: unit -> OState RiscvMachine A) (initialL: RiscvMachine) initialRegsH,
+  Lemma execute_store: forall (ra rv: Register) (a v: mword) (initialMH finalMH: Memory.mem)
+            (f: unit -> M unit) (initialL: RiscvMachineL) initialRegsH post,
       valid_register ra ->
       valid_register rv ->
       Memory.write_mem a v initialMH = Some finalMH ->
-      containsMem initialL.(machineMem) initialMH ->
+      containsMem initialL.(getMem) initialMH ->
       get initialRegsH ra = Some a ->
       get initialRegsH rv = Some v ->
-      extends initialL.(core).(registers) initialRegsH ->
-      (Bind (execute (SwXLEN ra rv 0)) f) initialL =
-      (f tt) (with_machineMem (storeWordwXLEN initialL.(machineMem) a v) initialL).
+      @extends Register mword _ initialL.(getRegs) initialRegsH ->
+      mcomp_sat (f tt) (setMem initialL (storeWordwXLEN initialL.(getMem) a v)) post ->
+      mcomp_sat (Bind (execute (SwXLEN ra rv 0)) f) initialL post.
   Proof.
     (*
     intros.
@@ -1750,39 +1417,105 @@ Section FlatToRiscv.
   Proof using .
   Admitted.
 
+  Lemma compile_lit_correct_full: forall initialL post x v,
+      initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+      let insts := compile_stmt (SLit x v) in
+      let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
+      containsProgram initialL.(getMem) insts initialL.(getPc) ->
+      valid_register x ->
+      runsTo (setRegs (setPc (setNextPc initialL (add initialL.(getNextPc) d))
+                             (add initialL.(getPc) d))
+                      (setReg initialL.(getRegs) x (ZToReg v))) post ->
+      runsTo initialL post.
+  Proof.
+    intros. subst insts d.
+    unfold compile_stmt, compile_lit, compile_lit_rec in *.
+    destruct_everything; simpl in *.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    Time run1step.
+    match goal with
+    | R: runsTo ?m post |- runsToNonDet.runsTo _ _ ?m' post =>
+      replace m' with m; [exact R|]
+    end.
+    f_equal; try solve_word_eq.
+    f_equal. symmetry. apply compile_lit_correct.
+  Qed.
+
+  Existing Instance FlatToRiscv.bopname_params.
+  Existing Instance FlatToRiscv.FlatImp_params.
+
+  Definition eval_stmt := exec empty_map.
+
   Lemma compile_stmt_correct_aux:
-    forall allInsts imemStart fuelH s insts initialH  initialMH finalH finalMH initialL
-      instsBefore instsAfter,
+    forall allInsts s t initialMH initialRegsH postH,
+    eval_stmt s t initialMH initialRegsH postH ->
+    forall imemStart instsBefore instsAfter initialL insts,
     compile_stmt s = insts ->
     allInsts = instsBefore ++ insts ++ instsAfter ->
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    eval_stmt _ _ empty_map fuelH initialH initialMH s = Some (finalH, finalMH) ->
-    extends initialL.(core).(registers) initialH ->
-    containsMem initialL.(machineMem) initialMH ->
-    containsProgram initialL.(machineMem) allInsts imemStart ->
-    initialL.(core).(pc) = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
-    initialL.(core).(nextPC) = add initialL.(core).(pc) (ZToReg 4) ->
+    @extends Register mword _ initialL.(getRegs) initialRegsH ->
+    containsMem initialL.(getMem) initialMH ->
+    containsProgram initialL.(getMem) allInsts imemStart ->
+    initialL.(getLog) = t ->
+    initialL.(getPc) = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
+    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
-    runsToSatisfying initialL (fun finalL =>
-       extends finalL.(core).(registers) finalH /\
-       containsMem finalL.(machineMem) finalMH /\
-       containsProgram finalL.(machineMem) allInsts imemStart /\
-       finalL.(core).(pc) = add initialL.(core).(pc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-       finalL.(core).(nextPC) = add finalL.(core).(pc) (ZToReg 4)).
+    runsTo initialL (fun finalL =>
+        exists finalRegsH finalMH,
+          postH finalL.(getLog) finalMH finalRegsH /\
+          extends finalL.(getRegs) finalRegsH /\
+          containsMem finalL.(getMem) finalMH /\
+          containsProgram finalL.(getMem) allInsts imemStart /\
+          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
   Proof.
-    intros allInsts imemStart. pose proof (mkAllInsts allInsts).
-    induction fuelH; [intros; discriminate |].
-    intros.
-    unfold runsToSatisfying in *.
-    invert_eval_stmt;
-      try match goal with
-          | o: bopname |- _ => destruct o (* do this before destruct_containsProgram *)
-          end;
-      simpl in *; unfold compile_lit, compile_lit_rec in *;
-      destruct_everything.
+    induction 1; intros;
+      repeat match goal with
+             | x := _ |- _ => subst x
+             | H: _ /\ _ |- _ => destruct H
+             | H: _ \/ _ |- _ => destruct H
+             end.
 
+    - (* SInteract *)
+      simpl in *; destruct_everything. simpl in *.
+      eapply runsTo_weaken.
+      + eapply compile_ext_call_correct with (postH := post) (initialMH := m);
+          try sidecondition; try assumption; simpl.
+        eapply @ExInteract.
+        * match goal with
+          | _: option_all ?l = Some _ |- option_all ?l' = Some _ =>
+            replace l' with l; [eassumption|]
+          end.
+          admit.
+        * eassumption.
+        * Fail exact H1.
+          admit. (* annoying because locals should really not be
+                                   extensible, but remain the same *)
+      + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
+        destruct_products. subst.
+        exists finalL_regs m.
+        destruct_everything.
+        repeat match goal with
+               | |- _ /\ _ => split
+               end; try sidecondition; try solve_word_eq.
+        state_calc0. (* TODO don't clear p *)
+
+(*
     - (* SLoad *)
       clear IHfuelH.
       eapply runsToStep; simpl in *; subst *.
@@ -1812,44 +1545,26 @@ Section FlatToRiscv.
         * assumption.
 
     - (* SLit *)
-      clear IHfuelH.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
-      Time run1step.
+      subst. destruct_containsProgram.
+      eapply compile_lit_correct_full; [sidecondition..|].
+      simpl in *.
       run1done.
       f_equal.
       apply compile_lit_correct.
 
       (* SOp *)
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1done.
-    - run1step. run1step. run1done.
+    - match goal with
+      | o: bopname |- _ => destruct o (* do this before destruct_containsProgram *)
+      end;
+      simpl in *; destruct_everything;
+      try solve [run1step; run1done].
+      (* all except eq are implemented with one instruction *)
+      run1step. run1step. run1done.
       rewrite reduce_eq_to_sub_and_lt.
-      auto.
+      state_calc.
 
     - (* SSet *)
-      clear IHfuelH.
+      simpl in *; destruct_everything.
       run1step.
       run1done.
       f_equal.
@@ -1934,6 +1649,7 @@ Section FlatToRiscv.
     - (* SCall *)
       match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
   Qed.
+  *) Admitted.
 
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
@@ -1995,6 +1711,6 @@ Section FlatToRiscv.
       exact Q.
     }
   Qed.
+  *)
 
-  Print Assumptions compile_stmt_correct.
-End FlatToRiscv.
+End FlatToRiscv1.
