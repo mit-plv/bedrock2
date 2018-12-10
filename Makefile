@@ -1,4 +1,4 @@
-default_target: all
+default_target: bedrock2
 
 .PHONY: update_all clone_all bbv coqutil riscv-coq bedrock2 compiler
 
