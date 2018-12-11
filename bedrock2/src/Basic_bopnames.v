@@ -8,9 +8,9 @@ Notation bopname := bopname.bopname.
 
 Local Set Primitive Projections.
 Class parameters := {
-  varname: Set;
-  funcname: Set;
-  actname: Set;
+  varname: Type;
+  funcname: Type;
+  actname: Type;
 }.
 
 Instance make (p: parameters) : Syntax.parameters := {|

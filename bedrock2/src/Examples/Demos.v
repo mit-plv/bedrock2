@@ -114,7 +114,7 @@ Section Demos.
      allow Coq to infer p *)
   Local Coercion literal (z : Z) : expr := expr.literal z.
 
-  Definition Prog: Set := string * (list varname * list varname * cmd).
+  Definition Prog: Type := string * (list varname * list varname * cmd).
 
   Import bedrock2.NotationsInConstr.
 

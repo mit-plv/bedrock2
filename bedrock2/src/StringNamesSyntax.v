@@ -4,8 +4,8 @@ Require Import Coq.Strings.String.
 
 Local Set Primitive Projections.
 Class parameters := {
-  actname : Set;
-  bopname : Set;
+  actname : Type;
+  bopname : Type;
 }.
 
 Instance make (p : parameters) : Syntax.parameters := {|

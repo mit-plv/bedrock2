@@ -1,13 +1,13 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique.
+Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique.
 
 Require Import Coq.Numbers.BinNums.
   
 Local Set Primitive Projections.
 Class parameters := {
-  varname : Set;
-  funname : Set;
-  actname : Set;
-  bopname : Set;
+  varname : Type;
+  funname : Type;
+  actname : Type;
+  bopname : Type;
 }.
 
 Module access_size.
