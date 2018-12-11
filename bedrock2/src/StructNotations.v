@@ -1,4 +1,4 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
+Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 Require Import bedrock2.BasicALU bedrock2.Structs.
 Require Import Coq.ZArith.BinIntDef Coq.Lists.List Coq.Strings.String.
 
@@ -18,11 +18,11 @@ Definition require_scalar (t : type)
   end.
 
 Definition rlookup_scalar {par : parameters} {balu : operations}
-           {T : Set} (ok : access_size -> expr.expr -> T)
+           {T : Type} (ok : access_size -> expr.expr -> T)
            (t : type) (base : expr.expr) (p : path expr.expr)
-: match @gen_access par bop_add bop_mul base t p with
+: match @gen_access par bop_add bop_mul base t p return Type with
   | inl err => _
-  | inr (Bytes sz, _) => match sz with 1%Z | 2%Z | 4%Z => T | _ => NotAScalar end
+  | inr (Bytes sz, _) => match sz return Type with 1%Z | 2%Z | 4%Z => T | _ => NotAScalar end
   | inr _ => NotAScalar
   end :=
   match @gen_access par bop_add bop_mul base t p as z

@@ -45,7 +45,7 @@ Section TailRecrsion.
   Import pair.
   Lemma tailrec
     {e c t localsmap} {m : mem}
-    (ghosttypes : list Type)
+    (ghosttypes : polymorphic_list.list Type)
     (variables : list varname)
     {l0 : tuple word (length variables)}
     {Pl : enforce variables l0 localsmap}

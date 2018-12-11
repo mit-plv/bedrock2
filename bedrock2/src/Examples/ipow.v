@@ -44,7 +44,7 @@ Proof.
   repeat straightline; show_program.
 
   Import Word.Properties.word Word.Interface.word.
-  refine (TailRecursion.tailrec nil ["e";"ret";"x"]
+  refine (TailRecursion.tailrec HList.polymorphic_list.nil ["e";"ret";"x"]
     (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e)
     (fun t' m' e' ret' x' => t' = t /\ m' = m /\
        (unsigned ret * unsigned x ^ unsigned e < 2^64 ->
@@ -57,6 +57,7 @@ Proof.
          HList.hlist.apply  HList.tuple.apply
          HList.hlist
          List.repeat Datatypes.length
+         HList.polymorphic_list.repeat HList.polymorphic_list.length
          PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
 
   { repeat straightline. }
@@ -100,7 +101,14 @@ Proof.
             change (1 mod 2 ^ 64) with 1; change (2^1) with 2; try Lia.lia.
           { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract mia. }
           { rewrite !Z.mod_small by (revert H1; admit). rewrite Z.pow_mul_l. abstract ring. } } }
-      { repeat straightline.
+      {
+        straightline; [].
+        straightline; [].
+        straightline; [].
+        (* repeat straightline. *)
+        (* Error: Anomaly "Universe Top.196 undefined." Please report at http://coq.inria.fr/bugs/. *)
+        straightline; [].
+        repeat straightline.
         { (* measure decreases *)
           cbn [parameters Semantics.interp_binop] in *.
           unshelve (idtac; let pf := open_constr:(unsigned_range _ x0) in pose proof pf);
