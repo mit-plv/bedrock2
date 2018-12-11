@@ -70,7 +70,7 @@ Proof.
       split. (* if cases, path-blasting *)
       { repeat straightline.
         { (* measure decreases *)
-          cbn [parameters Semantics.interp_binop Semantics.width] in *.
+          cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
           unshelve (idtac; let pf := open_constr:(unsigned_range _ x0) in pose proof pf);
             [exact _|cbv; congruence|].
           repeat match goal with
@@ -85,7 +85,7 @@ Proof.
           mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
-          cbn [parameters Semantics.interp_binop] in *.
+          cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
           replace (unsigned x0) with (2 * (unsigned x0 / 2) + 1) in * by (subst v1; revert H0; admit).
           rewrite ?Z.pow_add_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l, ?Z.mul_assoc in * by ((intro;discriminate)||admit).
           rewrite H3; cycle 1;
@@ -110,7 +110,7 @@ Proof.
         straightline; [].
         repeat straightline.
         { (* measure decreases *)
-          cbn [parameters Semantics.interp_binop] in *.
+          cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
           unshelve (idtac; let pf := open_constr:(unsigned_range _ x0) in pose proof pf);
             [exact _|cbv; congruence|].
           repeat match goal with
@@ -125,7 +125,7 @@ Proof.
           mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
-          cbn [parameters Semantics.interp_binop] in *.
+          cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
           replace (unsigned x0) with (2 * (unsigned x0 / 2)) in * by (subst v1; revert H0; admit).
           rewrite ?Z.pow_add_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l, ?Z.mul_assoc in *.
           rewrite H3; cycle 1;
