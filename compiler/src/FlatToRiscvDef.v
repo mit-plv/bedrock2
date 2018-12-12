@@ -76,8 +76,12 @@ Section FlatToRiscv1.
   (* TODO is 2^9 really the best we can get? *)
   Definition stmt_not_too_big(s: stmt): Prop := stmt_size s < 2 ^ 9.
 
-  (* This phase assumes that register allocation has already been done on the FlatImp
-     level, and expects the following to hold: *)
+  Definition valid_registers_bcond (cond: bcond) : Prop :=
+    match cond with
+    | CondBinary _ x y => valid_register x /\ valid_register y
+    | CondNez x => valid_register x
+    end.
+
   Fixpoint valid_registers(s: stmt): Prop :=
     match s with
     | SLoad x a => valid_register x /\ valid_register a
@@ -85,8 +89,8 @@ Section FlatToRiscv1.
     | SLit x _ => valid_register x
     | SOp x _ y z => valid_register x /\ valid_register y /\ valid_register z
     | SSet x y => valid_register x /\ valid_register y
-    | SIf c s1 s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
-    | SLoop s1 c s2 => valid_register c /\ valid_registers s1 /\ valid_registers s2
+    | SIf c s1 s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
+    | SLoop s1 c s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
     | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
     | SSkip => True
     | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
@@ -138,6 +142,23 @@ Section FlatToRiscv1.
   Definition compile_lit(rd: Register)(v: Z): list Instruction :=
     compile_lit_rec 7 rd Register0 v.
 
+  (* Inverts the branch condition. *)
+  Definition compile_bcond_by_inverting
+             (cond: bcond) (amt: Z) : Instruction:=
+    match cond with
+    | CondBinary op x y =>
+        match op with
+        | BEq  => Bne x y amt
+        | BNe  => Beq x y amt
+        | BLt  => Bge x y amt
+        | BGe  => Blt x y amt
+        | BLtu => Bgeu x y amt
+        | BGeu => Bltu x y amt
+        end
+    | CondNez x =>
+        Beq x Register0 amt
+    end.
+
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
     | SLoad x y => [[LwXLEN x y 0]]
@@ -149,7 +170,7 @@ Section FlatToRiscv1.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [[Beq cond Register0 ((Zlength bThen' + 2) * 4)]] ++
+        [[compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)]] ++
         bThen' ++
         [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
         bElse'
@@ -158,7 +179,7 @@ Section FlatToRiscv1.
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[Beq cond Register0 ((Zlength body2' + 2) * 4)]] ++
+        [[compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)]] ++
         body2' ++
         [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2

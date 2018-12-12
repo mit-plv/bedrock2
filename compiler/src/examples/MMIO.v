@@ -17,7 +17,6 @@ Require Import riscv.InstructionCoercions.
 Require Import riscv.Program.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscv.
-Require Import compiler.FlatToRiscv32Proofs.
 Require Import compiler.FlatToRiscv32Specifics.
 Require Import riscv.RiscvMachine.
 Require Import riscv.MinimalMMIO.

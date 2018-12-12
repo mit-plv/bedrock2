@@ -14,7 +14,6 @@ Require Import compiler.util.Common.
 Require Import riscv.util.BitWidths.
 Require Import riscv.util.BitWidth32.
 Require Import riscv.MachineWidth32.
-Require Import compiler.FlatToRiscv32Proofs.
 Require Import compiler.FlatToRiscv32Specifics.
 Require Import compiler.util.List_Map.
 Require Import compiler.ZNameGen.

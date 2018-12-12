@@ -16,7 +16,6 @@ Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
 Require Export compiler.FlatToRiscvBitWidthSpecifics.
-Require Export compiler.FlatToRiscvBitWidthSpecificProofs.
 Require Import compiler.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
@@ -73,6 +72,8 @@ End RegisterFile.
 
 Existing Instance State_is_RegisterFile.
 
+Local Set Refine Instance Mode.
+
 Instance SetWithoutElements: SetFunctions Empty_set := {|
   set := unit;
   empty_set := tt;
@@ -107,9 +108,7 @@ Set Printing Implicit.
     varMap_Inst :> MapFunctions Register mword;
     actname_eq_dec :> DecidableEq actname;
 
-    Memory_Inst :> Memory.MemoryFunctions mword;
     BWS :> FlatToRiscvBitWidthSpecifics mword;
-    BWSP :> FlatToRiscvBitWidthSpecificProofs mword;
 
     M: Type -> Type;
     MM :> Monad M;
@@ -159,8 +158,8 @@ Set Printing Implicit.
       Forall valid_register argvars ->
       Forall valid_register resvars ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
-      exec empty_map (SInteract resvars action argvars)
-           initialL.(getLog) initialMH initialL.(getRegs) postH ->
+      exec empty_map (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
+           initialL.(getLog) initialMH (* map-clash: found compiler.util.Maps.map, required coqutil.Map.Interface.map *) initialL.(getRegs) postH ->
       runsTo (RiscvMachine Register mword actname) (mcomp_sat (run1 (B := BitWidth))) initialL
              (fun finalL =>
                   postH finalL.(getLog) initialMH finalL.(getRegs) /\
