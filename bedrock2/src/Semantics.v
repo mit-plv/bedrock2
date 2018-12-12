@@ -80,8 +80,6 @@ Section semantics.
     'Some _ <- load sz m a | None;
     unchecked_store sz m a v.
 
-  Implicit Types post : trace -> mem -> locals -> Prop. (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
-
   Fixpoint eval_expr(m: mem)(st: locals)(e: expr): option word :=
     match e with
     | expr.literal v => Some (word.of_Z v)
@@ -94,73 +92,78 @@ Section semantics.
         'Some v2 <- eval_expr m st e2 | None;
         Some (interp_binop op v1 v2)
     end.
+End semantics.
 
+Module exec.
   Section WithEnv.
-    Context (e: env).
+    Context {pp : unique! parameters} {e: env}.
 
-    Inductive exec_cmd:
+
+  Implicit Types post : trace -> mem -> locals -> Prop. (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
+    Inductive exec:
       cmd ->
       trace -> mem -> locals ->
       (trace -> mem -> locals -> Prop) ->
       Prop :=
-    | ExSkip: forall t m l post,
+    | skip: forall t m l post,
         post t m l ->
-        exec_cmd cmd.skip t m l post
-    | ExSet: forall t m l x y y' post,
+        exec cmd.skip t m l post
+    | set: forall t m l x y y' post,
         eval_expr m l y = Some y' ->
         post t m (map.put l x y') ->
-        exec_cmd (cmd.set x y) t m l post
-    | ExStore: forall t m m' l aSize a addr v val post,
+        exec (cmd.set x y) t m l post
+    | store: forall t m m' l aSize a addr v val post,
         eval_expr m l a = Some addr ->
         eval_expr m l v = Some val ->
         store aSize m addr val = Some m' ->
         post t m' l ->
-        exec_cmd (cmd.store aSize a v) t m l post
-    | ExIfThen: forall t m l cond vcond bThen bElse post,
+        exec (cmd.store aSize a v) t m l post
+    | if_true: forall t m l cond vcond bThen bElse post,
         eval_expr m l cond = Some vcond ->
         vcond <> word.of_Z 0 ->
-        exec_cmd bThen t m l post ->
-        exec_cmd (cmd.cond cond bThen bElse) t m l post
-    | ExIfElse: forall t m l cond bThen bElse post,
+        exec bThen t m l post ->
+        exec (cmd.cond cond bThen bElse) t m l post
+    | if_false: forall t m l cond bThen bElse post,
         eval_expr m l cond = Some (word.of_Z 0) ->
-        exec_cmd bElse t m l post ->
-        exec_cmd (cmd.cond cond bThen bElse) t m l post
-     | ExSeq: forall t m l s1 s2 mid post,
-        exec_cmd s1 t m l mid ->
-        (forall t' m' l', mid t' m' l' -> exec_cmd s2 t' m' l' post) ->
-        exec_cmd (cmd.seq s1 s2) t m l post
-     | ExWhileDone: forall t m l cond body post,
+        exec bElse t m l post ->
+        exec (cmd.cond cond bThen bElse) t m l post
+     | seq: forall t m l s1 s2 mid post,
+        exec s1 t m l mid ->
+        (forall t' m' l', mid t' m' l' -> exec s2 t' m' l' post) ->
+        exec (cmd.seq s1 s2) t m l post
+     | while_false: forall t m l cond body post,
         eval_expr m l cond = Some (word.of_Z 0) ->
         post t m l ->
-        exec_cmd (cmd.while cond body) t m l post
-     | ExWhileStep : forall t m l cond body v mid post,
+        exec (cmd.while cond body) t m l post
+     | while_true : forall t m l cond body v mid post,
         eval_expr m l cond  = Some v ->
         v <> word.of_Z 0 ->
-        exec_cmd body t m l mid ->
+        exec body t m l mid ->
         (forall t' m' l',
             mid t' m' l' ->
-            exec_cmd (cmd.while cond body) t' m' l' post) ->
-        exec_cmd (cmd.while cond body) t m l post
-     | ExCall: forall t m l binds fname args params rets fbody argvs st0 post outcome,
+            exec (cmd.while cond body) t' m' l' post) ->
+        exec (cmd.while cond body) t m l post
+     | call: forall t m l binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
         List.option_all (List.map (eval_expr m l) args) = Some argvs ->
         map.putmany_of_list params argvs map.empty = Some st0 ->
-        exec_cmd fbody t m st0 outcome ->
+        exec fbody t m st0 outcome ->
         (forall t' m' st1,
             outcome t' m' st1 ->
             exists retvs l',
               List.option_all (List.map (map.get st1) rets) = Some retvs /\
               map.putmany_of_list binds retvs l = Some l' /\
               post t' m' l') ->
-        exec_cmd (cmd.call binds fname args) t m l post
-     | ExInteract: forall t m l action argexprs argvals resvars outcome post,
+        exec (cmd.call binds fname args) t m l post
+     | interact: forall t m l action argexprs argvals resvars outcome post,
         List.option_all (List.map (eval_expr m l) argexprs) = Some argvals ->
         ext_spec t m action argvals outcome ->
         (forall new_m resvals,
             outcome new_m resvals ->
             exists l', map.putmany_of_list resvars resvals l = Some l' /\
                        post (cons ((m, action, argvals), (new_m, resvals)) t) new_m l') ->
-        exec_cmd (cmd.interact resvars action argexprs) t m l post
+        exec (cmd.interact resvars action argexprs) t m l post
     .
   End WithEnv.
-End semantics.
+  Arguments exec {_} _.
+End exec. Notation exec := exec.exec.
