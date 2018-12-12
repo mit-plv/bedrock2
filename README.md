@@ -1,6 +1,6 @@
 ## A work-in-progress language and compiler for verified low-level programming
 
-This repository containts ongoing work on a low-level systems programming language. One piece of the puzzle a verified compiler targeting RISC-V. The source language itself is also equiped with a simple program logic for proving correctness of the source programs. It is not ready yet, at least for most uses.
+This repository containts ongoing work on a low-level systems programming language. One piece of the puzzle is a verified compiler targeting RISC-V. The source language itself is also equipped with a simple program logic for proving correctness of the source programs. It is not ready yet, at least for most uses.
 
 This project has similar goals as [bedrock](https://github.com/mit-plv/bedrock), but uses a different design.
 No code is shared between bedrock and bedrock2.
