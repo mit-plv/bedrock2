@@ -66,7 +66,7 @@ Ltac bind_body_of_function f_ :=
   change (bindcmd fbody (fun c : Syntax.cmd => P (fname, (fargs, frets, c))));
   cbv beta iota delta [bindcmd]; intros.
 
-Require bedrock2.Map.SortedList. (* special-case eq_refl *)
+Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
 Ltac straightline_cleanup :=
   match goal with

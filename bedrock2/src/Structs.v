@@ -5,7 +5,7 @@ Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax bedroc
 
 Require Import Coq.ZArith.BinInt.
 Require Import Coq.Strings.String.
-Require bedrock2.String.
+Require coqutil.Datatypes.String.
 
 (* a simple language of statically known types
  * note(gmm): named types are not included, they can be represented using
