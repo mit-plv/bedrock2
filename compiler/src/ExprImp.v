@@ -14,6 +14,13 @@ Require Import compiler.Decidable.
 Require Import compiler.Memory.
 Require Import compiler.Semantics. (* TODO: this should be in bedrock2.Semantics *)
 
+Local Notation "' x <- a ; f" :=
+  (match (a: option _) with
+   | x => f
+   | _ => None
+   end)
+  (right associativity, at level 70, x pattern).
+
 Section ExprImp1.
 
   Context {p : unique! Semantics.parameters}.
@@ -49,40 +56,36 @@ Section ExprImp1.
       match f with
       | 0 => None (* out of fuel *)
       | S f => match s with
-        | cmd.store n_bytes a v =>
-            a <- eval_expr m st a;
-            v <- eval_expr m st v;
-            m <- Semantics.store n_bytes m a v;
-            Return (st, m)
+        | cmd.store aSize a v =>
+            'Some a <- eval_expr m st a;
+            'Some v <- eval_expr m st v;
+            'Some m <- Semantics.store (bytes_per aSize) m a v;
+            Some (st, m)
         | cmd.set x e =>
-            v <- eval_expr m st e;
-            Return (put st x v, m)
+            'Some v <- eval_expr m st e;
+            Some (put st x v, m)
         | cmd.unset x =>
-            Return (remove_key st x, m)
+            Some (remove_key st x, m)
         | cmd.cond cond bThen bElse =>
-            v <- eval_expr m st cond;
+            'Some v <- eval_expr m st cond;
             eval_cmd f st m (if reg_eqb v (ZToReg 0) then bElse else bThen)
         | cmd.while cond body =>
-            v <- eval_expr m st cond;
-            if reg_eqb v (ZToReg 0) then Return (st, m) else
-              p <- eval_cmd f st m body;
-              let '(st, m) := p in
+            'Some v <- eval_expr m st cond;
+            if reg_eqb v (ZToReg 0) then Some (st, m) else
+              'Some (st, m) <- eval_cmd f st m body;
               eval_cmd f st m (cmd.while cond body)
         | cmd.seq s1 s2 =>
-            p <- eval_cmd f st m s1;
-            let '(st, m) := p in
+            'Some (st, m) <- eval_cmd f st m s1;
             eval_cmd f st m s2
-        | cmd.skip => Return (st, m)
+        | cmd.skip => Some (st, m)
         | cmd.call binds fname args =>
-          fimpl <- get e fname;
-          let '(params, rets, fbody) := fimpl in
-          argvs <- option_all (List.map (eval_expr m st) args);
-          st0 <- putmany params argvs empty_map;
-          st1m' <- eval_cmd f st0 m fbody;
-          let '(st1, m') := st1m' in
-          retvs <- option_all (List.map (get st1) rets);
-          st' <- putmany binds retvs st;
-          Return (st', m')
+          'Some (params, rets, fbody) <- get e fname;
+          'Some argvs <- option_all (List.map (eval_expr m st) args);
+          'Some st0 <- putmany params argvs empty_map;
+          'Some (st1, m') <- eval_cmd f st0 m fbody;
+          'Some retvs <- option_all (List.map (get st1) rets);
+          'Some st' <- putmany binds retvs st;
+          Some (st', m')
         | cmd.interact _ _ _ => None (* unsupported *)
         end
       end.
@@ -122,11 +125,11 @@ Section ExprImp1.
       inversionss;
       eauto 16.
 
-    Lemma invert_eval_store: forall fuel initialSt initialM a v final nbytes,
-      eval_cmd (S fuel) initialSt initialM (cmd.store nbytes a v) = Some final ->
+    Lemma invert_eval_store: forall fuel initialSt initialM a v final aSize,
+      eval_cmd (S fuel) initialSt initialM (cmd.store aSize a v) = Some final ->
       exists av vv finalM, eval_expr initialM initialSt a = Some av /\
                            eval_expr initialM initialSt v = Some vv /\
-                           Semantics.store nbytes initialM av vv = Some finalM /\
+                           Semantics.store (bytes_per aSize) initialM av vv = Some finalM /\
                            final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
 

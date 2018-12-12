@@ -1,3 +1,4 @@
+Require Import Coq.ZArith.ZArith.
 Require Import Coq.Program.Tactics.
 Require Import compiler.FlatImp.
 Require Import compiler.util.MapSolverTest.
@@ -256,6 +257,7 @@ Section RegAlloc.
   Local Instance srcvar_eq_dec: DecidableEq srcvar := set_elem_eq_dec.
   Local Instance impvar_eq_dec: DecidableEq impvar := set_elem_eq_dec.
 
+  (*
   (* annotated statement: each assignment is annotated with impvar which it assigns,
      loop has map invariant *)
   Inductive astmt: Type :=
@@ -264,8 +266,8 @@ Section RegAlloc.
     | ASLit(x: srcvar)(x': impvar)(v: Z)
     | ASOp(x: srcvar)(x': impvar)(op: bopname)(y z: srcvar)
     | ASSet(x: srcvar)(x': impvar)(y: srcvar)
-    | ASIf(cond: bcond srcvar)(bThen bElse: astmt)
-    | ASLoop(body1: astmt)(cond: bcond srcvar)(body2: astmt)
+    | ASIf(cond: bcond)(bThen bElse: astmt)
+    | ASLoop(body1: astmt)(cond: bcond)(body2: astmt)
     | ASSeq(s1 s2: astmt)
     | ASSkip
     | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
@@ -886,5 +888,5 @@ Need a "witness": multimap of possible_updates or list (disjunction) of possible
 *)
 
   Abort.
-
+  *)
 End RegAlloc.

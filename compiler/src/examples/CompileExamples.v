@@ -11,7 +11,6 @@ Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
 Require Import compiler.util.Common.
-Require Import riscv.ListMemory.
 Require Import riscv.util.BitWidths.
 Require Import riscv.util.BitWidth32.
 Require Import riscv.MachineWidth32.

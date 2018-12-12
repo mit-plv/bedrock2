@@ -2,6 +2,7 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
 Require Import bbv.ZLib.
+Require Import coqutil.Map.Interface.
 Require Import riscv.Decode.
 Require Import riscv.Run.
 Require Import riscv.Memory.
@@ -19,12 +20,14 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+Local Unset Universe Polymorphism. (* for Add Ring *)
 
 Section ContainsProgram.
 
-  Context {mword: Set}.
+  Context {mword: Type}.
   Context {MW: MachineWidth mword}.
-  Context {MF: Memory.MemoryFunctions mword}.
+  Context {Mem: map.map mword byte}.
+
   Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
 
   Ltac mword_cst w :=
@@ -51,17 +54,23 @@ Section ContainsProgram.
 
 
   (* load and decode Inst *)
-  Definition ldInst(m: Mem mword)(a: mword): Instruction :=
-    decode (@RV_wXLEN_IM BitWidth) (uwordToZ (Memory.loadWord m a)).
+  Definition ldInst(m: Mem)(a: mword): option Instruction :=
+    match Memory.loadWord m a with
+    | Some w => Some (decode (@RV_wXLEN_IM BitWidth) (LittleEndian.combine 4 w))
+    | None => None
+    end.
 
+  (*
   Definition decode_prog(prog: list (word 32)): list Instruction :=
     List.map (fun w => decode (@RV_wXLEN_IM BitWidth) (uwordToZ w)) prog.
+   *)
 
-  Definition containsProgram(m: Mem mword)(program: list Instruction)(offset: mword) :=
-    regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\
+  Definition containsProgram(m: Mem)(program: list Instruction)(offset: mword) :=
+(*    regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\*)
     forall i inst, Znth_error program i = Some inst ->
-      ldInst m (add offset (ZToReg (4 * i))) = inst.
+      ldInst m (add offset (ZToReg (4 * i))) = Some inst.
 
+  (*
   Definition containsProgram'(m: Mem mword)(program: list Instruction)(offset: mword) :=
     regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\
     decode_prog (Memory.load_word_list m offset (Zlength program)) = program.
@@ -100,6 +109,7 @@ Section ContainsProgram.
         rewrite Zlength_load_word_list in Q by (apply Zlength_nonneg).
         apply Q. congruence.
   Qed.
+  *)
 
   (* Note: containsProgram for one single [[inst]] could be simplified, but for automation,
      it's better not to simplify.

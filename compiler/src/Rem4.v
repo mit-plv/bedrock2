@@ -9,6 +9,8 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+Local Unset Universe Polymorphism.
+(* because otherwise "Add Ring" doesn't work https://github.com/coq/coq/issues/9201 *)
 
 Section Rem4.
 

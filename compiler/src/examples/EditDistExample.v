@@ -7,7 +7,6 @@ Require Import riscv.util.Word.
 Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
 Require Import riscv.InstructionCoercions.
-Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
 Require riscv.Utility.
 Require Import riscv.Encode.
@@ -22,7 +21,7 @@ Require Import riscv.util.BitWidth32.
 Module ExampleSrc.
 
 (* Import ExprImpNotations. (* only inside this module *) *)
-  
+
 Definition n: var := 1.
 Definition m: var := 2.
 Definition i: var := 3.

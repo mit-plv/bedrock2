@@ -14,11 +14,14 @@ Require Import compiler.Decidable.
 Require Import compiler.Memory.
 Require Import bedrock2.Notations.
 
+
 Require Coq.Lists.List.
 
 Module Import Semantics.
   Class parameters := {
     syntax :> Basic_bopnames.parameters;
+
+    width : Z;
 
     word : Set;
     word_zero : word;
@@ -76,7 +79,7 @@ Section semantics.
       'Some w <- load_rec sz m (word_succ a) | None;
        Some (combine sz b w)
     end.
-  Definition load n := load_rec (Z.to_nat n).
+  Definition load := load_rec.
   Fixpoint unchecked_store_rec (sz : nat) (m:mem) (a v:word) : mem :=
     match sz with
     | O => m
@@ -84,7 +87,7 @@ Section semantics.
       let '(b, w) := split sz v in
       unchecked_store_rec sz (put m a b) (word_succ a) w
     end.
-  Definition unchecked_store n := unchecked_store_rec (Z.to_nat n).
+  Definition unchecked_store := unchecked_store_rec.
   Definition store sz m a v : option mem :=
     match load sz m a with
     | None => None
@@ -96,13 +99,19 @@ Section semantics.
 
   Implicit Types post : trace -> mem -> locals -> Prop. (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
 
+  Definition bytes_per sz :=
+    match sz with
+      | access_size.one => 1 | access_size.two => 2 | access_size.four => 4
+      | access_size.word => Z.to_nat (Z.div (Z.add width 7) 8)
+    end%nat.
+
   Fixpoint eval_expr(m: mem)(st: locals)(e: expr): option word :=
     match e with
     | expr.literal v => word_of_Z v
     | expr.var x => get st x
-    | expr.load n_bytes a =>
+    | expr.load aSize a =>
         'Some a' <- eval_expr m st a;
-        load n_bytes m a'
+        load (bytes_per aSize) m a'
     | expr.op op e1 e2 =>
         'Some v1 <- eval_expr m st e1;
         'Some v2 <- eval_expr m st e2;
@@ -126,12 +135,12 @@ Section semantics.
         eval_expr m l y = Some y' ->
         post t m (put l x y') ->
         exec_cmd (cmd.set x y) t m l post
-    | ExStore: forall t m m' l n_bytes a addr v val post,
+    | ExStore: forall t m m' l aSize a addr v val post,
         eval_expr m l a = Some addr ->
         eval_expr m l v = Some val ->
-        store n_bytes m addr val = Some m' ->
+        store (bytes_per aSize) m addr val = Some m' ->
         post t m' l ->
-        exec_cmd (cmd.store n_bytes a v) t m l post
+        exec_cmd (cmd.store aSize a v) t m l post
     | ExIfThen: forall t m l cond vcond bThen bElse post,
         eval_expr m l cond = Some vcond ->
         vcond <> word_zero ->

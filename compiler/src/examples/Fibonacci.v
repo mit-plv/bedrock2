@@ -15,7 +15,6 @@ Require Import compiler.util.Common.
 Require Import compiler.Decidable.
 Require Import riscv.util.BitWidths.
 Require        riscv.InstructionNotations.
-Require Import riscv.ListMemory.
 Require Import riscv.MinimalLogging.
 Require Import riscv.Utility.
 Require Import riscv.Encode.

@@ -16,7 +16,20 @@ Require Import compiler.Decidable.
 Section Syntax.
   Context {pp : unique! Basic_bopnames.parameters}.
 
-  Inductive stmt: Set :=
+  Inductive bbinop: Set :=
+    | BEq
+    | BNe
+    | BLt
+    | BGe
+    | BLtu
+    | BGeu.
+
+  Inductive bcond: Type :=
+    | CondBinary (op: bbinop) (x y: varname)
+    | CondNez (x: varname)
+  .
+
+  Inductive stmt: Type :=
     | SLoad(x: varname)(a: varname): stmt
     | SStore(a: varname)(v: varname): stmt
     | SLit(x: varname)(v: Z): stmt
@@ -28,6 +41,7 @@ Section Syntax.
     | SSkip: stmt
     | SCall(binds: list varname)(f: funcname)(args: list varname)
     | SInteract(binds: list varname)(a: actname)(args: list varname).
+
 End Syntax.
 
 
@@ -87,10 +101,12 @@ Local Open Scope Z_scope.
 Section FlatImp1.
   Context {pp : unique! parameters}.
 
+  Notation state := (map varname mword).
+
   Section WithEnv.
     Variable (e: map funcname (list varname * list varname * stmt)).
 
-    Definition eval_bbinop(st:state)(op:bbinop)(x y: mword): bool :=
+    Definition eval_bbinop(st: state)(op: bbinop)(x y: mword): bool :=
       match op with
       | BEq  => reg_eqb x y
       | BNe  => negb (reg_eqb x y)
@@ -103,12 +119,12 @@ Section FlatImp1.
     Definition eval_bcond(st:state)(cond: bcond): option bool :=
       match cond with
       | CondBinary op x y =>
-          mx <- get st x;
-          my <- get st y;
-          Return (eval_bbinop st op mx my)
+          'Some mx <- get st x;
+          'Some my <- get st y;
+          Some (eval_bbinop st op mx my)
       | CondNez x =>
-          mx <- get st x;
-          Return (negb (reg_eqb mx (ZToReg 0)))
+          'Some mx <- get st x;
+          Some (negb (reg_eqb mx (ZToReg 0)))
       end.
 
     (* If we want a bigstep evaluation relation, we either need to put
@@ -138,7 +154,7 @@ Section FlatImp1.
             Some (put st x v, m)
         | SIf cond bThen bElse =>
             'Some vcond <- (eval_bcond st cond);
-             eval_stmt f st m (if vcond then bThen else bElse))
+             eval_stmt f st m (if vcond then bThen else bElse)
         | SLoop body1 cond body2 =>
             'Some (st, m) <- eval_stmt f st m body1;
             'Some vcond <- eval_bcond st cond;
@@ -263,7 +279,6 @@ Section FlatImp1.
         putmany binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. Qed.
-  End WithEnv.
 
     Lemma invert_eval_SInteract : forall st m1 p2 f binds fname args,
       eval_stmt (S f) st m1 (SInteract binds fname args) = Some p2 ->
@@ -324,13 +339,12 @@ Section FlatImp1.
         get l y = Some y' ->
         post t m (put l x y') ->
         exec (SSet x y) t m l post
-    | ExIfThen: forall t m l cond vcond bThen bElse post,
-        get l cond = Some vcond ->
-        vcond <> ZToReg 0 ->
+    | ExIfThen: forall t m l cond  bThen bElse post,
+        eval_bcond l cond = Some true ->
         exec bThen t m l post ->
         exec (SIf cond bThen bElse) t m l post
     | ExIfElse: forall t m l cond bThen bElse post,
-        get l cond = Some (ZToReg 0) ->
+        eval_bcond l cond = Some false ->
         exec bElse t m l post ->
         exec (SIf cond bThen bElse) t m l post
     | ExLoop: forall t m l cond body1 body2 mid post,
@@ -338,16 +352,14 @@ Section FlatImp1.
          only appear under forall and ->, but not under exists, /\, \/, to make sure the
          auto-generated induction principle contains an IH for both recursive uses *)
         exec body1 t m l mid ->
-        (forall t' m' l', mid t' m' l' -> get l' cond <> None) ->
+        (forall t' m' l', mid t' m' l' -> eval_bcond l' cond <> None) ->
         (forall t' m' l',
             mid t' m' l' ->
-            get l' cond = Some (ZToReg 0) -> post t' m' l') ->
+            eval_bcond l' cond = Some false -> post t' m' l') ->
         (forall t' m' l',
             mid t' m' l' ->
-            forall v,
-              get l' cond = Some v ->
-              v <> ZToReg 0 ->
-              exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post) ->
+            eval_bcond l' cond = Some true ->
+            exec (SSeq body2 (SLoop body1 cond body2)) t' m' l' post) ->
         exec (SLoop body1 cond body2) t m l post
     | ExSeq: forall t m l s1 s2 mid post,
         exec s1 t m l mid ->
@@ -376,6 +388,14 @@ Section FlatImp1.
     | SSkip => empty_set
     | SCall binds funcname args => of_list binds
     | SInteract binds funcname args => of_list binds
+    end.
+
+  Definition accessedVarsBcond(cond: bcond): set varname :=
+    match cond with
+    | CondBinary _ x y =>
+        union (singleton_set x) (singleton_set y)
+    | CondNez x =>
+        singleton_set x
     end.
 
   Fixpoint accessedVars(s: stmt): set varname :=

@@ -1,4 +1,5 @@
 Require Import lib.fiat_crypto_tactics.Test.
+Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
 Require Import compiler.Decidable.
 Require Import Coq.Lists.List.
@@ -74,7 +75,7 @@ Section Live.
     | SCall argnames fname resnames => of_list resnames
     | SInteract argnames fname resnames => of_list resnames    end.
 
-  Definition live_bcond(cond: bcond var) : vars :=
+  Definition live_bcond(cond: bcond) : vars :=
     match cond with
     | CondBinary _ x y =>
         union (singleton_set x) (singleton_set y)
@@ -118,21 +119,6 @@ Section RegAlloc.
   Existing Instance map_domain_set.
   Existing Instance map_range_set.
 
-  (* annotated statement: each assignment is annotated with impvar which it assigns,
-     loop has map invariant *)
-  Inductive astmt: Type :=
-    | ASLoad(x: srcvar)(x': impvar)(a: srcvar)
-    | ASStore(a: srcvar)(v: srcvar)
-    | ASLit(x: srcvar)(x': impvar)(v: Z)
-    | ASOp(x: srcvar)(x': impvar)(op: bopname)(y z: srcvar)
-    | ASSet(x: srcvar)(x': impvar)(y: srcvar)
-    | ASIf(cond: srcvar)(bThen bElse: astmt)
-    | ASLoop(body1: astmt)(cond: srcvar)(body2: astmt)
-    | ASSeq(s1 s2: astmt)
-    | ASSkip
-    | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar)
-    | ASInteract(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
-
   Instance srcparams: Basic_bopnames.parameters := {|
     varname := srcvar;
     funcname := func;
@@ -144,6 +130,21 @@ Section RegAlloc.
     funcname := func;
     actname := act;
   |}.
+
+  (* annotated statement: each assignment is annotated with impvar which it assigns,
+     loop has map invariant *)
+  Inductive astmt: Type :=
+    | ASLoad(x: srcvar)(x': impvar)(a: srcvar)
+    | ASStore(a: srcvar)(v: srcvar)
+    | ASLit(x: srcvar)(x': impvar)(v: Z)
+    | ASOp(x: srcvar)(x': impvar)(op: bopname)(y z: srcvar)
+    | ASSet(x: srcvar)(x': impvar)(y: srcvar)
+    | ASIf(cond: bcond)(bThen bElse: astmt)
+    | ASLoop(body1: astmt)(cond: bcond)(body2: astmt)
+    | ASSeq(s1 s2: astmt)
+    | ASSkip
+    | ASCall(binds: list (srcvar * impvar))(f: func)(args: list srcvar)
+    | ASInteract(binds: list (srcvar * impvar))(f: func)(args: list srcvar).
 
   Local Notation stmt  := (@FlatImp.stmt srcparams). (* input type *)
   Local Notation stmt' := (@FlatImp.stmt impparams). (* output type *)
@@ -208,6 +209,8 @@ Section RegAlloc.
     | _ => ASSkip (* not an assignment *)
     end.
 
+  Definition TODO_annotate_bcond(cond: @bcond srcparams): @bcond impparams. Admitted.
+
   Fixpoint regalloc
            (m: map impvar srcvar)(* current mapping *)
            (s: stmt)             (* current sub-statement *)
@@ -246,11 +249,11 @@ Section RegAlloc.
     | SIf cond s1 s2   =>
         let s1' := regalloc m s1 l r in
         let s2' := regalloc m s2 l r in
-        ASIf cond s1' s2'
+        ASIf (TODO_annotate_bcond cond) s1' s2'
     | SLoop s1 cond s2 =>
         let s1' := regalloc m s1 (union (union (live_bcond cond) (live s2)) l) r in
         let s2' := regalloc (mappings m s1') s2 empty_set m in
-        ASLoop s1' cond s2'
+        ASLoop s1' (TODO_annotate_bcond cond) s2'
     | SSeq s1 s2 =>
         let s1' := regalloc m s1 (union (live s2) (diff l (certainly_written s2))) r
                                  (* it would be nice to to this, but then the removed
@@ -364,37 +367,42 @@ Section RegAlloc.
 *)
   Admitted.
 
-  Definition reverse_get_cond (m: map impvar srcvar) (cond: bcond srcvar)
-    : option (bcond impvar) :=
+  Definition reverse_get_cond (m: map impvar srcvar) (cond: @bcond srcparams)
+    : option (@bcond impparams) :=
     match cond with
     | CondBinary op x y =>
         bind_opt x' <- reverse_get m x;
         bind_opt y' <- reverse_get m y;
-        Some (CondBinary op x' y')
+        Some (@CondBinary impparams op x' y')
     | CondNez x =>
         bind_opt x' <- reverse_get m x;
-        Some (CondNez x')
+        Some (@CondNez impparams x')
     end.
+
+  Existing Instance srcparams.
+  (* ugly hack to change typeclass precedence, TODO how can we make Coq pick up the right
+     instance automatically? *)
 
   Definition checker :=
     fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
       match s with
       | ASLoad x x' a =>
           bind_opt a' <- reverse_get m a;
-          Some (SLoad x' a')
+          Some (@SLoad impparams x' a')
       | ASStore a v =>
           bind_opt a' <- reverse_get m a;
           bind_opt v' <- reverse_get m v;
-          Some (SStore a' v')
+          Some (@SStore impparams a' v')
       | ASLit x x' v =>
-          Some (SLit x' v)
+          Some (@SLit impparams x' v)
       | ASOp x x' op y z =>
           bind_opt y' <- reverse_get m y;
           bind_opt z' <- reverse_get m z;
-          Some (SOp x' op y' z')
+          Some (@SOp impparams x' op y' z')
       | ASSet x x' y =>
           bind_opt y' <- reverse_get m y;
-          Some (SSet x' y')
+          Some (@SSet impparams x' y')
+(*
       | ASIf cond s1 s2 =>
           bind_opt cond' <- reverse_get_cond m cond;
           bind_opt s1' <- rec m s1;
@@ -407,6 +415,7 @@ Section RegAlloc.
           bind_opt s1' <- rec m1 s1;
           bind_opt s2' <- rec m2 s2;
           Some (SLoop s1' cond' s2')
+*)
       | ASSeq s1 s2 =>
           bind_opt s1' <- rec m s1;
           bind_opt s2' <- rec (mappings m s1) s2;
@@ -414,11 +423,8 @@ Section RegAlloc.
       | ASSkip => Some SSkip
       | ASCall binds f args => None (* TODO *)
       | ASInteract binds f args => None (* TODO *)
+      | _ => None (* TODO *)
       end.
-
-  Existing Instance srcparams.
-  (* ugly hack to change typeclass precedence, TODO how can we make Coq pick up the right
-     instance automatically? *)
 
   Definition erase :=
     fix rec(s: astmt): stmt :=
@@ -428,12 +434,15 @@ Section RegAlloc.
       | ASLit x x' v => SLit x v
       | ASOp x x' op y z => SOp x op y z
       | ASSet x x' y => SSet x y
+(*
       | ASIf cond s1 s2 => SIf cond (rec s1) (rec s2)
       | ASLoop s1 cond s2 => SLoop (rec s1) cond (rec s2)
+*)
       | ASSeq s1 s2 => SSeq (rec s1) (rec s2)
       | ASSkip => SSkip
       | ASCall binds f args => SCall (List.map fst binds) f args
       | ASInteract binds f args => SCall (List.map fst binds) f args
+      | _ => SSkip
       end.
 
   Definition register_allocation(s: stmt)(mBegin mEnd: map impvar srcvar): option stmt' :=
@@ -450,8 +459,9 @@ Section RegAlloc.
   Context {srcFuncMap: MapFunctions func (list srcvar * list srcvar * stmt)}.
   Context {impFuncMap: MapFunctions func (list impvar * list impvar * stmt')}.
 
+  (*
   Definition eval: nat -> map srcvar mword -> mem -> stmt -> option (map srcvar mword * mem)
-    := eval_stmt _ _ empty_map.
+    := eval_stmt empty_map.
 
   Definition eval': nat -> map impvar mword -> mem -> stmt' -> option (map impvar mword * mem)
     := eval_stmt _ _ empty_map.
@@ -902,6 +912,6 @@ Section RegAlloc.
     - eauto.
     *)
   Abort.
-
+  *)
 
 End RegAlloc.
