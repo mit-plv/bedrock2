@@ -29,7 +29,7 @@ Section WeakestPrecondition.
         post (interp_binop op v1 v2)))
       | expr.load s e =>
         rec e (fun a =>
-        load m a s post)
+        load s m a post)
     end.
     Fixpoint expr e := expr_body expr e.
   End WithMemAndLocals.
@@ -75,7 +75,7 @@ Section WeakestPrecondition.
       | cmd.seq c1 c2 =>
         rec c1 t m l (fun t m l => rec c2 t m l post)
       | cmd.while e c =>
-        exists measure (lt:measure->measure->Prop) (inv:measure->trace->mem->locals->Prop), 
+        exists measure (lt:measure->measure->Prop) (inv:measure->trace->mem->locals->Prop),
         Coq.Init.Wf.well_founded lt /\
         (exists v, inv v t m l) /\
         (forall v t m l, inv v t m l ->
@@ -103,7 +103,7 @@ Section WeakestPrecondition.
       cmd call c t m l (fun t m l =>
         list_map (get l) outnames (fun rets =>
         post t m rets)).
-          
+
   Definition call_body rec (functions : list (funname * (list varname * list varname * cmd.cmd)))
                 (fname : funname) (t : trace) (m : mem) (args : list word)
                 (post : trace -> mem -> list word -> Prop) : Prop :=

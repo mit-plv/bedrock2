@@ -3,6 +3,9 @@ Require Import bedrock2.Syntax bedrock2.BasicC64Syntax bedrock2.Semantics.
 Require bedrock2.String bedrock2.Map.SortedList bedrock2.Map.SortedListString.
 Require Import coqutil.Word.Interface.
 Require coqutil.Word.Naive.
+
+Definition TODO{T: Type}: T. Admitted.
+
 Instance parameters : parameters :=
   let word := Word.Naive.word 64 (proj2 (Zlt_is_lt_bool 0 64) eq_refl) in
   let byte := Word.Naive.word 8 (proj2 (Zlt_is_lt_bool 0 8) eq_refl) in
@@ -28,6 +31,8 @@ Instance parameters : parameters :=
   Semantics.byte := byte;
   mem := SortedList.map (SortedList.parameters.Build_parameters word byte word.eqb word.ltu);
   locals := SortedListString.map _;
+  env := TODO;
   funname_eqb := String.eqb;
+  ext_spec := TODO;
 |}.
 Existing Instance Word.Naive.ok.
