@@ -1,10 +1,10 @@
 Require Export Coq.omega.Omega.
 Require Export Coq.Lists.List.
+Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.Solver.
 Require Export riscv.util.Word.
 Require Export compiler.Decidable.
 Require Export compiler.util.Tactics.
 Require Export compiler.util.Set.
-Require Export compiler.util.Map.
 Require Export lib.fiat_crypto_tactics.UniquePose.
 
 Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := @weq_dec.
@@ -30,6 +30,7 @@ Fixpoint option_all {A} (l : list (option A)) {struct l} : option (list A) :=
   | _ => None
   end.
 
+(*
 Section WithMap.
   Context {K V} {TMap: MapFunctions K V}.
 
@@ -101,3 +102,4 @@ Section WithMap.
   Qed.
 
 End WithMap.
+ *)
