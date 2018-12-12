@@ -94,76 +94,76 @@ Section semantics.
     end.
 End semantics.
 
-Module exec.
-  Section WithEnv.
-    Context {pp : unique! parameters} {e: env}.
-
+Module exec. Section WithEnv.
+  Context {pp : unique! parameters} {e: env}.
 
   Implicit Types post : trace -> mem -> locals -> Prop. (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
-    Inductive exec:
-      cmd ->
-      trace -> mem -> locals ->
-      (trace -> mem -> locals -> Prop) ->
-      Prop :=
-    | skip: forall t m l post,
-        post t m l ->
-        exec cmd.skip t m l post
-    | set: forall t m l x y y' post,
-        eval_expr m l y = Some y' ->
-        post t m (map.put l x y') ->
-        exec (cmd.set x y) t m l post
-    | store: forall t m m' l aSize a addr v val post,
-        eval_expr m l a = Some addr ->
-        eval_expr m l v = Some val ->
-        store aSize m addr val = Some m' ->
-        post t m' l ->
-        exec (cmd.store aSize a v) t m l post
-    | if_true: forall t m l cond vcond bThen bElse post,
-        eval_expr m l cond = Some vcond ->
-        vcond <> word.of_Z 0 ->
-        exec bThen t m l post ->
-        exec (cmd.cond cond bThen bElse) t m l post
-    | if_false: forall t m l cond bThen bElse post,
-        eval_expr m l cond = Some (word.of_Z 0) ->
-        exec bElse t m l post ->
-        exec (cmd.cond cond bThen bElse) t m l post
-     | seq: forall t m l s1 s2 mid post,
-        exec s1 t m l mid ->
-        (forall t' m' l', mid t' m' l' -> exec s2 t' m' l' post) ->
-        exec (cmd.seq s1 s2) t m l post
-     | while_false: forall t m l cond body post,
-        eval_expr m l cond = Some (word.of_Z 0) ->
-        post t m l ->
-        exec (cmd.while cond body) t m l post
-     | while_true : forall t m l cond body v mid post,
-        eval_expr m l cond  = Some v ->
-        v <> word.of_Z 0 ->
-        exec body t m l mid ->
-        (forall t' m' l',
-            mid t' m' l' ->
-            exec (cmd.while cond body) t' m' l' post) ->
-        exec (cmd.while cond body) t m l post
-     | call: forall t m l binds fname args params rets fbody argvs st0 post outcome,
-        map.get e fname = Some (params, rets, fbody) ->
-        List.option_all (List.map (eval_expr m l) args) = Some argvs ->
-        map.putmany_of_list params argvs map.empty = Some st0 ->
-        exec fbody t m st0 outcome ->
-        (forall t' m' st1,
-            outcome t' m' st1 ->
-            exists retvs l',
-              List.option_all (List.map (map.get st1) rets) = Some retvs /\
-              map.putmany_of_list binds retvs l = Some l' /\
-              post t' m' l') ->
-        exec (cmd.call binds fname args) t m l post
-     | interact: forall t m l action argexprs argvals resvars outcome post,
-        List.option_all (List.map (eval_expr m l) argexprs) = Some argvals ->
-        ext_spec t m action argvals outcome ->
-        (forall new_m resvals,
-            outcome new_m resvals ->
-            exists l', map.putmany_of_list resvars resvals l = Some l' /\
-                       post (cons ((m, action, argvals), (new_m, resvals)) t) new_m l') ->
-        exec (cmd.interact resvars action argexprs) t m l post
-    .
+  Inductive exec :
+    cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop :=
+  | skip
+    t m l post
+    (_ : post t m l)
+    : exec cmd.skip t m l post
+  | set x e
+    t m l post
+    v (_ : eval_expr m l e = Some v)
+    (_ : post t m (map.put l x v))
+    : exec (cmd.set x e) t m l post
+  | store sz ea ev
+    t m l post
+    a (_ : eval_expr m l ea = Some a)
+    v (_ : eval_expr m l ev = Some v)
+    m' (_ : store sz m a v = Some m')
+    (_ : post t m' l)
+    : exec (cmd.store sz ea ev) t m l post
+  | if_true t m l e c1 c2 post
+    v (_ : eval_expr m l e = Some v)
+    (_ : v <> word.of_Z 0)
+    (_ : exec c1 t m l post)
+    : exec (cmd.cond e c1 c2) t m l post
+  | if_false e c1 c2
+    t m l post
+    (_ : eval_expr m l e = Some (word.of_Z 0))
+    (_ : exec c2 t m l post)
+    : exec (cmd.cond e c1 c2) t m l post
+  | seq c1 c2
+    t m l post
+    mid (_ : exec c1 t m l mid)
+    (_ : forall t' m' l', mid t' m' l' -> exec c2 t' m' l' post)
+    : exec (cmd.seq c1 c2) t m l post
+  | while_false e c
+    t m l post
+    (_ : eval_expr m l e = Some (word.of_Z 0))
+    (_ : post t m l)
+    : exec (cmd.while e c) t m l post
+  | while_true e c 
+      t m l post
+      v (_ : eval_expr m l e  = Some v)
+      (_ : v <> word.of_Z 0)
+      mid (_ : exec c t m l mid)
+      (_ : forall t' m' l', mid t' m' l' -> exec (cmd.while e c) t' m' l' post)
+    : exec (cmd.while e c) t m l post
+  | call binds fname arges
+         t m l post
+      params rets fbody (_ : map.get e fname = Some (params, rets, fbody))
+      args (_ : List.option_all (List.map (eval_expr m l) arges) = Some args)
+      lf (_ : map.putmany_of_list params args map.empty = Some lf)
+      mid (_ : exec fbody t m lf mid)
+      (_ : forall t' m' st1, mid t' m' st1 ->
+          exists retvs l',
+            List.option_all (List.map (map.get st1) rets) = Some retvs /\
+            map.putmany_of_list binds retvs l = Some l' /\
+            post t' m' l')
+    : exec (cmd.call binds fname arges) t m l post
+  | interact binds action arges 
+             t m l post
+      args (_ : List.option_all (List.map (eval_expr m l) arges) = Some args)
+      mid (_ : ext_spec t m action args mid)
+      (_ : forall new_m resvals, mid new_m resvals ->
+          exists l', map.putmany_of_list binds resvals l = Some l' /\
+                     post (cons ((m, action, args), (new_m, resvals)) t) new_m l')
+    : exec (cmd.interact binds action arges) t m l post
+  .
   End WithEnv.
   Arguments exec {_} _.
 End exec. Notation exec := exec.exec.
