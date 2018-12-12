@@ -2,9 +2,7 @@ Require Import coqutil.Map.Interface Coq.Strings.String.
 Require bedrock2.Map.SortedListString.
 Local Existing Instance bedrock2.Map.SortedListString.map.
 Local Open Scope string_scope. Local Open Scope list_scope.
-
-Local Instance StringMapSortedList T : map.map String.string T :=
-  SortedList.map (SortedList.parameters.Build_parameters _ T String.eqb String.ltb).
+Local Existing Instance SortedListString.map.
 
 Import SortedList List.ListNotations.
 Goal False.

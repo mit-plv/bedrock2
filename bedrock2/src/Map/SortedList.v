@@ -15,50 +15,62 @@ Module Import parameters.
   Class parameters := {
     key : Type;
     value : Type;
-    key_eqb : key -> key -> bool;
-    key_ltb : key -> key -> bool
+    ltb : key -> key -> bool
   }.
+
+  Class strict_order {T} {ltb : T -> T -> bool} := {
+    ltb_antirefl : forall k, ltb k k = false;
+    ltb_trans : forall k1 k2 k3, ltb k1 k2 = true -> ltb k2 k3 = true -> ltb k1 k3 = true;
+    ltb_total : forall k1 k2, ltb k1 k2 = false -> ltb k2 k1 = false -> k1 = k2;
+  }.
+  Global Arguments strict_order {_} _.
 End parameters. Notation parameters := parameters.parameters.
 
 Section SortedList.
-  Context {p : unique! parameters}.
+  Context {p : unique! parameters} {ok : strict_order ltb}.
+  Local Definition eqb k1 k2 := andb (negb (ltb k1 k2)) (negb (ltb k2 k1)).
   Fixpoint put m (k:key) (v:value) : list (key * value) :=
     match m with
     | nil => cons (k, v) nil
     | cons (k', v') m' =>
-      if key_eqb k k'
-      then cons (k, v) m'
-      else 
-        if key_ltb k k'
-        then cons (k, v) m
-        else cons (k', v') (put m' k v)
+      match ltb k k', ltb k' k with
+      | (* < *) true, _ => cons (k, v) m
+      | (* = *) false, false => cons (k, v) m'
+      | (* > *) false, true => cons (k', v') (put m' k v)
+      end
     end.
   Fixpoint remove m (k:key) : list (key * value) :=
     match m with
     | nil => nil
     | cons (k', v') m' =>
-      if key_eqb k k'
-      then m'
-      else 
-        if key_ltb k k'
-        then m
-        else cons (k', v') (remove m' k)
+      match ltb k k', ltb k' k with
+      | (* < *) true, _ => m
+      | (* = *) false, false => m'
+      | (* > *) false, true => cons (k', v') (remove m' k)
+      end
     end.
   Fixpoint sorted (m : list (key * value)) :=
     match m with
-    | cons (k1, _) ((cons (k2, _) m'') as m') => andb (key_ltb k1 k2) (sorted m')
+    | cons (k1, _) ((cons (k2, _) m'') as m') => andb (ltb k1 k2) (sorted m')
     | _ => true
     end.
-  Record rep := { value : list (key * value) ; ok : sorted value = true }.
+  Record rep := { value : list (key * value) ; _value_ok : sorted value = true }.
+  Lemma ltb_antisym k1 k2 (H:eqb k1 k2 = false) : ltb k1 k2 = negb (ltb k2 k1).
+  Proof.
+    apply Bool.andb_false_iff in H.
+    destruct (ltb k1 k2) eqn:H1; destruct (ltb k2 k1) eqn:H2; cbn in *; trivial.
+    { pose proof ltb_trans _ _ _ H1 H2; pose proof ltb_antirefl k1; congruence. }
+    { destruct H; discriminate. }
+  Qed.
   Lemma sorted_put m k v : sorted m = true -> sorted (put m k v) = true. Admitted.
   Lemma sorted_remove m k : sorted m = true -> sorted (remove m k) = true. Admitted.
   Definition map : map.map key parameters.value :=
-    let wrapped_put m k v := Build_rep (put (value m) k v) (minimize_eq_proof Bool.bool_dec (sorted_put _ _ _ (ok m))) in
-    let wrapped_remove m k := Build_rep (remove (value m) k) (minimize_eq_proof Bool.bool_dec (sorted_remove _ _ (ok m))) in
+    let wrapped_put m k v := Build_rep (put (value m) k v) (minimize_eq_proof Bool.bool_dec (sorted_put _ _ _ (_value_ok m))) in
+    let wrapped_remove m k := Build_rep (remove (value m) k) (minimize_eq_proof Bool.bool_dec (sorted_remove _ _ (_value_ok m))) in
     {|
     map.rep := rep;
     map.empty := Build_rep nil eq_refl;
-    map.get m k := match List.find (fun p => key_eqb k (fst p)) (value m) with
+    map.get m k := match List.find (fun p => eqb k (fst p)) (value m) with
                    | Some (_, v) => Some v
                    | None => None
                    end;
