@@ -16,7 +16,6 @@ Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
 Require Export compiler.FlatToRiscvBitWidthSpecifics.
-Require Export compiler.FlatToRiscvInvariants.
 Require Export compiler.FlatToRiscvBitWidthSpecificProofs.
 Require Import compiler.Decidable.
 Require Import Coq.Program.Tactics.

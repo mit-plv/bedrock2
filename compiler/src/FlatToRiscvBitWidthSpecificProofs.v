@@ -1,6 +1,5 @@
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvBitWidthSpecifics.
-Require Import compiler.FlatToRiscvInvariants.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.AxiomaticRiscv.
 Require Import compiler.util.Common.

@@ -59,6 +59,8 @@ Definition annoying_eq: DecidableEq
 Existing Instance annoying_eq.
 
 Instance myFlatImpParams: FlatImp.parameters := {|
+  FlatImp.bopname_params := myparams;
+  FlatImp.mword := word32;
   FlatImp.Event := Empty_set;
   FlatImp.ext_spec action t args outcome := False;
   FlatImp.max_ext_call_code_size name := 0%Z;

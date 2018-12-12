@@ -21,19 +21,15 @@ Instance myparams: Basic_bopnames.parameters := {|
 
 Definition TODO{T: Type}: T. Admitted.
 
+Set Refine Instance Mode.
 Instance params: Semantics.Semantics.parameters := {|
     Semantics.Semantics.syntax := myparams;
-    Semantics.Semantics.word := word 32;
-    Semantics.Semantics.word_zero := ZToWord 32 0;
+    Semantics.Semantics.word := word32;
     Semantics.Semantics.word_succ := TODO;
     Semantics.Semantics.word_test := TODO;
-    Semantics.Semantics.word_of_Z z := Some (ZToWord 32 z); (* todo should fail if too big *)
     Semantics.Semantics.interp_binop := eval_binop;
-    Semantics.Semantics.byte := word 8;
     Semantics.Semantics.combine := TODO;
     Semantics.Semantics.split := TODO;
-    Semantics.Semantics.mem_Inst := List_Map (word 32) (word 8);
-    Semantics.Semantics.locals_Inst := List_Map Z (word 32);
     Semantics.Semantics.funname_eqb a b := false;
     Semantics.Semantics.Event := Empty_set;
     Semantics.Semantics.ext_spec _ _ _ _ := False;
