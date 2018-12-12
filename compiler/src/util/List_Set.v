@@ -8,7 +8,7 @@ Import ListNotations.
 
 Definition TODO{T: Type}: T. Admitted.
 
-Instance List_Set(E: Type){eeq: DecidableEq E}: SetFunctions E := {|
+Instance List_Set(E: Type){eeq: DecidableEq E}: SetFunctions E. refine ({|
   set := list E;
 
   contains A e := List.In e A;
@@ -24,6 +24,6 @@ Instance List_Set(E: Type){eeq: DecidableEq E}: SetFunctions E := {|
                              | a :: rest => (a, rest)
                              | nil => (default, nil)
                             end;
-|}.
+|}).
 all: apply TODO.
 Defined.

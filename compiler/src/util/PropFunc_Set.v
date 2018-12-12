@@ -8,7 +8,7 @@ Import ListNotations.
 
 Definition TODO{T: Type}: T. Admitted.
 
-Instance PropFunc_Set(E: Type){eeq: DecidableEq E}: SetFunctions E := {|
+Instance PropFunc_Set(E: Type){eeq: DecidableEq E}: SetFunctions E. refine ({|
   set := E -> Prop;
 
   contains A e := A e;
@@ -20,6 +20,6 @@ Instance PropFunc_Set(E: Type){eeq: DecidableEq E}: SetFunctions E := {|
   intersect s1 s2 := fun e => s1 e /\ s2 e;
   diff s1 s2 := fun e => s1 e /\ ~ s2 e;
   pick_or_else A default := TODO; (* will never work *)
-|}.
+|}).
 all: apply TODO.
 Defined.
