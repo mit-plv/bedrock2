@@ -2,7 +2,7 @@ Require Export Coq.omega.Omega.
 Require Export Coq.Lists.List.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.Solver.
 Require Export riscv.util.Word.
-Require Export compiler.Decidable.
+Require Export coqutil.Decidable.
 Require Export compiler.util.Tactics.
 Require Export compiler.util.Set.
 Require Export lib.fiat_crypto_tactics.UniquePose.

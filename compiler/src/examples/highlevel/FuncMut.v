@@ -1,6 +1,6 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import riscv.util.Monads.
 Require Import riscv.util.MonadNotations.
 Require Import compiler.util.Common.

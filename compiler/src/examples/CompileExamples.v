@@ -5,7 +5,7 @@ Require bedrock2.Examples.Demos.
 Require Import bedrock2.Basic_bopnames.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.Word.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import compiler.Op.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
@@ -15,7 +15,7 @@ Require Import riscv.util.BitWidths.
 Require Import riscv.util.BitWidth32.
 Require Import riscv.MachineWidth32.
 Require Import compiler.FlatToRiscv32Specifics.
-Require Import compiler.util.List_Map.
+Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
 Require compiler.FlatImp.

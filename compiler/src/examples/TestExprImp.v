@@ -4,10 +4,10 @@ Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import riscv.MachineWidth32.
-Require Import compiler.util.List_Map.
+Require Import coqutil.Map.SortedList.
 Require Import compiler.Memory.
 Require Import compiler.ExprImp.
 Require Import bedrock2.ZNamesSyntax.

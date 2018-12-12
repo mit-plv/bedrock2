@@ -1,16 +1,16 @@
 Require Import lib.fiat_crypto_tactics.Test.
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
-Require Import bedrock2.Macros.
+Require Import coqutil.Macros.unique.
 Require Import compiler.Op.
-Require Import compiler.util.Map.
+Require Import coqutil.Map.Solver.
 Require Import compiler.util.Set.
 Require Import compiler.Memory.
 Require Import compiler.util.Tactics.
-Require Import compiler.util.MapSolverTest.
+Require Import coqutil.Map.TestLemmas.
 Require Import compiler.util.SetSolverTests.
 
 

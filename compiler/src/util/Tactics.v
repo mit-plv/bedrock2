@@ -1,6 +1,6 @@
 Require Export Coq.Program.Tactics.
 Require Import lib.fiat_crypto_tactics.Not.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import lib.LibTacticsMin.
 
 Ltac destruct_one_match :=

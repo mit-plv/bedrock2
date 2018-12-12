@@ -1,4 +1,4 @@
-Require Import bedrock2.Macros.
+Require Import coqutil.Macros.unique.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.

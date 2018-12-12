@@ -1,7 +1,7 @@
 Require Import lib.LibTacticsMin.
 Require Import bbv.ZLib.
 Require Import riscv.util.Monads. Require Import riscv.util.MonadNotations.
-Require Import bedrock2.Macros.
+Require Import coqutil.Macros.unique.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -16,7 +16,7 @@ Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
 Require Export compiler.FlatToRiscvBitWidthSpecifics.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
 Require Import riscv.InstructionCoercions.
@@ -159,7 +159,7 @@ Set Printing Implicit.
       Forall valid_register resvars ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
       exec empty_map (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
-           initialL.(getLog) initialMH (* map-clash: found compiler.util.Maps.map, required coqutil.Map.Interface.map *) initialL.(getRegs) postH ->
+           initialL.(getLog) initialMH (* map-clash: found coqutil.Map.Solvers.map, required coqutil.Map.Interface.map *) initialL.(getRegs) postH ->
       runsTo (RiscvMachine Register mword actname) (mcomp_sat (run1 (B := BitWidth))) initialL
              (fun finalL =>
                   postH finalL.(getLog) initialMH finalL.(getRegs) /\

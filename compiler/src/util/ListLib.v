@@ -1,6 +1,6 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import compiler.util.Tactics.
 Require Import Coq.omega.Omega.
 

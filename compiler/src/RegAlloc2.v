@@ -1,12 +1,12 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Program.Tactics.
 Require Import compiler.FlatImp.
-Require Import compiler.util.MapSolverTest.
-Require Import compiler.Decidable.
+Require Import coqutil.Map.TestLemmas.
+Require Import coqutil.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
 Require Import compiler.Op.
-Require Import compiler.util.Map.
+Require Import coqutil.Map.Solver.
 Require Import compiler.util.Set.
 Require Import compiler.Memory.
 Require Import compiler.util.Tactics.

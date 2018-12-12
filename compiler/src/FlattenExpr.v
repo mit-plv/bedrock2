@@ -4,12 +4,12 @@ Require compiler.ExprImp.
 Require compiler.FlatImp.
 Require Import compiler.NameGen.
 Require Import bbv.DepEqNat.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import riscv.util.BitWidths.
 Require Import riscv.Memory.
 Require Import riscv.Utility.
 Require bedrock2.Syntax.
-Require Import compiler.Semantics. (* TODO: this should be in bedrock2.Semantics *)
+Require Import bedrock2.Semantics. (* TODO: this should be in bedrock2.Semantics *)
 Require Import coqutil.Macros.unique.
 Require Import compiler.FlatToRiscvDef. (* TODO: This should be independent of Riscv *)
 Require Import Coq.Bool.Bool.

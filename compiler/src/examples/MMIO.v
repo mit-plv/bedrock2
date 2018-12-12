@@ -5,7 +5,7 @@ Require Import compiler.util.Common.
 Require Import compiler.Op.
 Require Import riscv.util.BitWidth32.
 Require Import riscv.util.Monads.
-Require Import compiler.util.List_Map.
+Require Import coqutil.Map.SortedList.
 Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
 Require Import riscv.MachineWidth32.

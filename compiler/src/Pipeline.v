@@ -2,7 +2,7 @@ Require Export Coq.Lists.List.
 Export ListNotations.
 Require Export lib.LibTacticsMin.
 Require Export riscv.util.Word.
-Require Export compiler.Decidable.
+Require Export coqutil.Decidable.
 Require Export compiler.Op.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExpr.
@@ -20,14 +20,14 @@ Require Export bbv.DepEqNat.
 Require Export compiler.NameGen.
 Require Export compiler.util.Common.
 Require Export riscv.util.BitWidths.
-Require Export compiler.Decidable.
+Require Export coqutil.Decidable.
 Require Export riscv.Encode.
 Require Export riscv.AxiomaticRiscv.
 Require Export riscv.proofs.DecodeEncode.
 Require Export riscv.proofs.EncodeBound.
 Require Export compiler.EmitsValid.
 Require Export compiler.RegAlloc3.
-Require compiler.util.List_Map.
+Require coqutil.Map.SortedList.
 Require Import riscv.Utility.
 Require Export riscv.Memory.
 Require Export riscv.InstructionCoercions.

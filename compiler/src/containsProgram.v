@@ -6,7 +6,7 @@ Require Import coqutil.Map.Interface.
 Require Import riscv.Decode.
 Require Import riscv.Run.
 Require Import riscv.Memory.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require compiler.Memory.
 Require Import Coq.Program.Tactics.
 Require Import riscv.InstructionCoercions.

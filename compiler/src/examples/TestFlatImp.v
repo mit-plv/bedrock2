@@ -4,9 +4,9 @@ Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.Memory.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import riscv.util.BitWidth32.
-Require Import compiler.util.List_Map.
+Require Import coqutil.Map.SortedList.
 Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
 Require Import riscv.MachineWidth32.

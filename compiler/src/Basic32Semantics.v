@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.Semantics.
-Require Import bedrock2.Map.SortedList.
+Require Import coqutil.Map.SortedList.
 Require Import bedrock2.ZNamesSyntax.
 Require Import compiler.Op.
 Require Import riscv.MachineWidth32.

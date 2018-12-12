@@ -1,5 +1,5 @@
 Require Import compiler.util.Tactics.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 
 

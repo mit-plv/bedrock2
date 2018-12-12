@@ -4,14 +4,14 @@ Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
 Require Import riscv.util.ListLib.
 Require Import riscv.Utility.
-Require Import bedrock2.Macros.
+Require Import coqutil.Macros.unique.
 Require Import bedrock2.Syntax.
 Require compiler.NoActionSyntaxParams.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.Memory.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 
 (* TODO move to PropSet *)

@@ -10,9 +10,9 @@ Require Import coqutil.Macros.unique.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
-Require Import compiler.Decidable.
+Require Import coqutil.Decidable.
 Require Import compiler.Memory.
-Require Import compiler.Semantics. (* TODO: this should be in bedrock2.Semantics *)
+Require Import bedrock2.Semantics. (* TODO: this should be in bedrock2.Semantics *)
 
 Local Notation "' x <- a ; f" :=
   (match (a: option _) with
