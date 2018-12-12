@@ -14,9 +14,6 @@ Require Import compiler.Memory.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 
-(* TODO move to PropSet *)
-Definition set(A: Type) := A -> Prop.
-Definition of_list{A: Type}(l: list A): set A := fun a => List.In a l.
 
 Section Syntax.
   Context {pp : unique! Basic_bopnames.parameters}.
@@ -652,13 +649,8 @@ Section FlatImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      map_solver locals_ok.
-      (*
-      refine (map.only_differ_putmany _ _ _ _ _ _); eassumption.
-       *)
-      Definition TODO{T: Type}: T. Admitted.
-      apply TODO.
-      apply TODO.
+      map_solver locals_ok;
+      refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 
 End FlatImp2.

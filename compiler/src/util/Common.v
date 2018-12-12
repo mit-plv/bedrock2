@@ -30,43 +30,51 @@ Fixpoint option_all {A} (l : list (option A)) {struct l} : option (list A) :=
   | _ => None
   end.
 
-(*
+Require Import coqutil.Datatypes.PropSet.
+(* TODO move to PropSet *)
+Definition set(A: Type) := A -> Prop.
+Definition of_list{A: Type}(l: list A): set A := fun a => List.In a l.
+
+
 Section WithMap.
-  Context {K V} {TMap: MapFunctions K V}.
+  Context {K V} {M: map.map K V} {Ok: map.ok M} {Keq: DecidableEq K}.
 
-  Fixpoint putmany (keys : list K) (values : list V) (init : map K V) {struct keys} : option (map K V) :=
-    match keys, values with
-    | nil, nil => Some init
-    | b::binders, v::values => match putmany binders values init with
-                               | Some t => Some (put t b v)
-                               | None => None
-                               end
-    | _, _ => None
-    end.
-
-  Lemma putmany_sameLength : forall bs vs st st' (H:putmany bs vs st = Some st'),
+  Lemma putmany_of_list_sameLength : forall bs vs st st',
+      map.putmany_of_list bs vs st = Some st' ->
       length bs = length vs.
   Proof.
     induction bs, vs; cbn; try discriminate; trivial; [].
-    intros; destruct (putmany bs vs st) eqn:?; [eauto using f_equal|discriminate].
+    intros; destruct (map.putmany_of_list bs vs st) eqn:?; eauto using f_equal.
   Qed.
 
-  Context {Kset: SetFunctions K}.
-  Context {K_eq_dec: DecidableEq K}.
+  Lemma sameLength_putmany_of_list : forall bs vs st,
+      length bs = length vs ->
+      exists st', map.putmany_of_list bs vs st = Some st'.
+  Proof.
+    induction bs, vs; cbn; try discriminate; intros; eauto.
+  Qed.
 
-  Lemma only_differ_putmany : forall (bs : list K) (vs : list V) st st'
-                                     (H : putmany bs vs st = Some st'),
-      only_differ st (fold_right union empty_set (List.map singleton_set bs)) st'.
+  Lemma only_differ_putmany : forall (bs : list K) (vs : list V) st st',
+      map.putmany_of_list bs vs st = Some st' ->
+      map.only_differ st (of_list bs) st'.
   Proof.
     induction bs, vs; cbn; try discriminate.
-    { inversion 1; subst. cbv; eauto. }
-    { intros ? ? H; destruct (putmany bs vs st) eqn:Heqo; [|discriminate].
-      inversion H; subst.
-      specialize (IHbs _ _ _ Heqo).
-      intros x; destruct (IHbs x);
-        autorewrite with rew_set_op_specs in *; rewrite ?get_put;
-          destruct (dec (a=x)); eauto. }
+    - inversion 1; subst. cbv; eauto.
+    - intros ? ? H x.
+      simpl.
+      destruct (map.putmany_of_list bs vs st) eqn:Heqo.
+      + specialize IHbs with (1 := H). specialize (IHbs x).
+        destruct IHbs as [IHbs | IHbs]; auto.
+        rewrite (map.get_put_dec (key_eq_dec := Keq)) in IHbs.
+        destruct (dec (a = x)); auto.
+      + apply putmany_of_list_sameLength in H.
+        apply (sameLength_putmany_of_list _ _ st) in H.
+        destruct H. rewrite H in Heqo. discriminate.
   Qed.
+
+(*
+  Context {Kset: SetFunctions K}.
+  Context {K_eq_dec: DecidableEq K}.
 
   Lemma putmany_extends_exists: forall (ks: list K) (vs: list V) m1 m1' m2,
       putmany ks vs m1 = Some m1' ->
@@ -100,6 +108,5 @@ Section WithMap.
       specialize IHks with (1 := E0) (2 := E) (3 := H1).
       map_solver K V.
   Qed.
-
+*)
 End WithMap.
- *)
