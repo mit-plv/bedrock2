@@ -12,6 +12,11 @@ Require Import compiler.util.Tactics.
 Require Import compiler.Op.
 Require Import compiler.Memory.
 Require Import compiler.Decidable.
+Require Import coqutil.Datatypes.PropSet.
+
+(* TODO move to PropSet *)
+Definition set(A: Type) := A -> Prop.
+Definition of_list{A: Type}(l: list A): set A := fun a => List.In a l.
 
 Section Syntax.
   Context {pp : unique! Basic_bopnames.parameters}.
@@ -50,15 +55,16 @@ Module Import FlatImp.
     bopname_params :> Basic_bopnames.parameters;
 
     mword : Set;
-    MachineWidth_Inst: MachineWidth mword;
+    MachineWidth_Inst :> MachineWidth mword;
 
-    varname_eq_dec : DecidableEq varname;
-    funcname_eq_dec: DecidableEq funcname;
-    actname_eq_dec : DecidableEq actname;
+    varname_eq_dec  :> DecidableEq varname;
+    funcname_eq_dec :> DecidableEq funcname;
+    actname_eq_dec  :> DecidableEq actname;
 
-    varSet_Inst: SetFunctions varname;
-    varMap_Inst: MapFunctions varname mword;
-    funcMap_Inst: MapFunctions funcname (list varname * list varname * stmt);
+    (* varSet_Inst :> SetFunctions varname; *)
+
+    locals :> map.map varname mword;
+    env :> map.map funcname (list varname * list varname * stmt);
 
     Event: Type;
 
@@ -79,14 +85,6 @@ Module Import FlatImp.
   }.
 End FlatImp.
 
-Existing Instance varname_eq_dec.
-Existing Instance funcname_eq_dec.
-Existing Instance actname_eq_dec.
-Existing Instance varSet_Inst.
-Existing Instance MachineWidth_Inst.
-Existing Instance varMap_Inst.
-Existing Instance funcMap_Inst.
-
 
 Local Notation "' x <- a ; f" :=
   (match (a: option _) with
@@ -104,9 +102,9 @@ Section FlatImp1.
   Notation state := (map varname mword).
 
   Section WithEnv.
-    Variable (e: map funcname (list varname * list varname * stmt)).
+    Variable (e: env).
 
-    Definition eval_bbinop(st: state)(op: bbinop)(x y: mword): bool :=
+    Definition eval_bbinop(st: locals)(op: bbinop)(x y: mword): bool :=
       match op with
       | BEq  => reg_eqb x y
       | BNe  => negb (reg_eqb x y)
@@ -116,42 +114,42 @@ Section FlatImp1.
       | BGeu => negb (ltu x y)
       end.
 
-    Definition eval_bcond(st:state)(cond: bcond): option bool :=
+    Definition eval_bcond(st: locals)(cond: bcond): option bool :=
       match cond with
       | CondBinary op x y =>
-          'Some mx <- get st x;
-          'Some my <- get st y;
+          'Some mx <- map.get st x;
+          'Some my <- map.get st y;
           Some (eval_bbinop st op mx my)
       | CondNez x =>
-          'Some mx <- get st x;
+          'Some mx <- map.get st x;
           Some (negb (reg_eqb mx (ZToReg 0)))
       end.
 
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
-    Fixpoint eval_stmt(f: nat)(st: map varname mword)(m: mem)(s: stmt):
-      option (map varname mword * mem) :=
+    Fixpoint eval_stmt(f: nat)(st: locals)(m: mem)(s: stmt):
+      option (locals * mem) :=
       match f with
       | O => None (* out of fuel *)
       | S f => match s with
         | SLoad x a =>
-            'Some a <- get st a;
+            'Some a <- map.get st a;
             'Some v <- read_mem a m;
-            Some (put st x v, m)
+            Some (map.put st x v, m)
         | SStore a v =>
-            'Some a <- get st a;
-            'Some v <- get st v;
+            'Some a <- map.get st a;
+            'Some v <- map.get st v;
             'Some m <- write_mem a v m;
             Some (st, m)
         | SLit x v =>
-            Some (put st x (ZToReg v), m)
+            Some (map.put st x (ZToReg v), m)
         | SOp x op y z =>
-            'Some y <- get st y;
-            'Some z <- get st z;
-            Some (put st x (eval_binop op y z), m)
+            'Some y <- map.get st y;
+            'Some z <- map.get st z;
+            Some (map.put st x (eval_binop op y z), m)
         | SSet x y =>
-            'Some v <- get st y;
-            Some (put st x v, m)
+            'Some v <- map.get st y;
+            Some (map.put st x v, m)
         | SIf cond bThen bElse =>
             'Some vcond <- (eval_bcond st cond);
              eval_stmt f st m (if vcond then bThen else bElse)
@@ -166,12 +164,12 @@ Section FlatImp1.
             eval_stmt f st m s2
         | SSkip => Some (st, m)
         | SCall binds fname args =>
-          'Some (params, rets, fbody) <- get e fname;
-          'Some argvs <- option_all (List.map (get st) args);
-          'Some st0 <- putmany params argvs empty_map;
+          'Some (params, rets, fbody) <- map.get e fname;
+          'Some argvs <- option_all (List.map (map.get st) args);
+          'Some st0 <- map.putmany_of_list params argvs map.empty;
           'Some (st1, m') <- eval_stmt f st0 m fbody;
-          'Some retvs <- option_all (List.map (get st1) rets);
-          'Some st' <- putmany binds retvs st;
+          'Some retvs <- option_all (List.map (map.get st1) rets);
+          'Some st' <- map.putmany_of_list binds retvs st;
           Some (st', m')
         | SInteract binds fname args =>
           None (* the deterministic semantics do not support external calls *)
@@ -208,36 +206,36 @@ Section FlatImp1.
 
     Lemma invert_eval_SLoad: forall fuel initialSt initialM x y final,
       eval_stmt (S fuel) initialSt initialM (SLoad x y) = Some final ->
-      exists a v, get initialSt y = Some a /\
+      exists a v, map.get initialSt y = Some a /\
                   read_mem a initialM = Some v /\
-                  final = (put initialSt x v, initialM).
+                  final = (map.put initialSt x v, initialM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SStore: forall fuel initialSt initialM x y final,
       eval_stmt (S fuel) initialSt initialM (SStore x y) = Some final ->
-      exists a v finalM, get initialSt x = Some a /\
-                         get initialSt y = Some v /\
+      exists a v finalM, map.get initialSt x = Some a /\
+                         map.get initialSt y = Some v /\
                          write_mem a v initialM = Some finalM /\
                          final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SLit: forall fuel initialSt initialM x v final,
       eval_stmt (S fuel) initialSt initialM (SLit x v) = Some final ->
-      final = (put initialSt x (ZToReg v), initialM).
+      final = (map.put initialSt x (ZToReg v), initialM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SOp: forall fuel x y z op initialSt initialM final,
       eval_stmt (S fuel) initialSt initialM (SOp x op y z) = Some final ->
       exists v1 v2,
-        get initialSt y = Some v1 /\
-        get initialSt z = Some v2 /\
-        final = (put initialSt x (eval_binop op v1 v2), initialM).
+        map.get initialSt y = Some v1 /\
+        map.get initialSt z = Some v2 /\
+        final = (map.put initialSt x (eval_binop op v1 v2), initialM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SSet: forall fuel x y initialSt initialM final,
       eval_stmt (S fuel) initialSt initialM (SSet x y) = Some final ->
       exists v,
-        get initialSt y = Some v /\ final = (put initialSt x v, initialM).
+        map.get initialSt y = Some v /\ final = (map.put initialSt x v, initialM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SIf: forall fuel cond bThen bElse initialSt initialM final,
@@ -271,12 +269,12 @@ Section FlatImp1.
     Lemma invert_eval_SCall : forall st m1 p2 f binds fname args,
       eval_stmt (S f) st m1 (SCall binds fname args) = Some p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
-        get e fname = Some (params, rets, fbody) /\
-        option_all (List.map (get st) args) = Some argvs /\
-        putmany params argvs empty_map = Some st0 /\
+        map.get e fname = Some (params, rets, fbody) /\
+        option_all (List.map (map.get st) args) = Some argvs /\
+        map.putmany_of_list params argvs map.empty = Some st0 /\
         eval_stmt f st0 m1 fbody = Some (st1, m') /\
-        option_all (List.map (get st1) rets) = Some retvs /\
-        putmany binds retvs st = Some st' /\
+        option_all (List.map (map.get st1) rets) = Some retvs /\
+        map.putmany_of_list binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. Qed.
 
@@ -285,7 +283,6 @@ Section FlatImp1.
       False.
     Proof. inversion_lemma. Qed.
 
-    Local Notation locals := (map varname mword).
     Local Notation trace := (list Event).
 
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
@@ -298,46 +295,46 @@ Section FlatImp1.
       (trace -> @Memory.mem mword -> locals -> Prop)
     -> Prop :=
     | ExInteract: forall t m l action argvars argvals resvars outcome post,
-        option_all (List.map (get l) argvars) = Some argvals ->
+        option_all (List.map (map.get l) argvars) = Some argvals ->
         ext_spec action t argvals outcome ->
         (forall new_t resvals,
             outcome new_t resvals ->
-            exists l', putmany resvars resvals l = Some l' /\ post (new_t) m l') ->
+            exists l', map.putmany_of_list resvars resvals l = Some l' /\ post (new_t) m l') ->
         exec (SInteract resvars action argvars) t m l post
     | ExCall: forall t m l binds fname args params rets fbody argvs st0 post outcome,
-        get e fname = Some (params, rets, fbody) ->
-        option_all (List.map (get l) args) = Some argvs ->
-        putmany params argvs empty_map = Some st0 ->
+        map.get e fname = Some (params, rets, fbody) ->
+        option_all (List.map (map.get l) args) = Some argvs ->
+        map.putmany_of_list params argvs map.empty = Some st0 ->
         exec fbody t m st0 outcome ->
         (forall t' m' st1,
             outcome t' m' st1 ->
             exists retvs l',
-              option_all (List.map (get st1) rets) = Some retvs /\
-              putmany binds retvs l = Some l' /\
+              option_all (List.map (map.get st1) rets) = Some retvs /\
+              map.putmany_of_list binds retvs l = Some l' /\
               post t' m' l') ->
         exec (SCall binds fname args) t m l post
     | ExLoad: forall t m l x a v addr post,
-        get l a = Some addr ->
+        map.get l a = Some addr ->
         Memory.read_mem addr m = Some v ->
-        post t m (put l x v) ->
+        post t m (map.put l x v) ->
         exec (SLoad x a) t m l post
     | ExStore: forall t m m' l a addr v val post,
-        get l a = Some addr ->
-        get l v = Some val ->
+        map.get l a = Some addr ->
+        map.get l v = Some val ->
         Memory.write_mem addr val m = Some m' ->
         post t m' l ->
         exec (SStore a v) t m l post
     | ExLit: forall t m l x v post,
-        post t m (put l x (ZToReg v)) ->
+        post t m (map.put l x (ZToReg v)) ->
         exec (SLit x v) t m l post
     | ExOp: forall t m l x op y y' z z' post,
-        get l y = Some y' ->
-        get l z = Some z' ->
-        post t m (put l x (eval_binop op y' z')) ->
+        map.get l y = Some y' ->
+        map.get l z = Some z' ->
+        post t m (map.put l x (eval_binop op y' z')) ->
         exec (SOp x op y z) t m l post
     | ExSet: forall t m l x y y' post,
-        get l y = Some y' ->
-        post t m (put l x y') ->
+        map.get l y = Some y' ->
+        post t m (map.put l x y') ->
         exec (SSet x y) t m l post
     | ExIfThen: forall t m l cond  bThen bElse post,
         eval_bcond l cond = Some true ->
@@ -492,7 +489,7 @@ Section FlatImp2.
 
   Lemma modVarsSound: forall fuel e s initialSt initialM finalSt finalM,
     eval_stmt e fuel initialSt initialM s = Some (finalSt, finalM) ->
-    only_differ initialSt (modVars s) finalSt.
+    map.only_differ initialSt (modVars s) finalSt.
   Proof.
     induction fuel; introv Ev.
     - discriminate.
@@ -504,7 +501,25 @@ Section FlatImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      map_solver varname mword;
+      map_solver varname mword.
+      {
+        match goal with
+        | |- context [ @eq varname ?x ?y ] => destruct (dec (x = y))
+        end;
+      map_solver varname mword.
+        right.
+        rewrite @map.get_put_dec.
+
+        Search Decidable. (* there's two of them, no wonder it doesn't work so well! *)
+        Search map.get map.put.
+      (* this "x = x0" used to be a "x \in ks", where it was obvious that it makes
+         sense to destruct on this, but by forgetting that it's sets and just encoding
+         sets as Props, we forget this
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
+      TODO
   Qed.
+       *)
+      Search compiler.util.Set.singleton_set.
+      singleton_set
+  Admitted.
 End FlatImp2.
