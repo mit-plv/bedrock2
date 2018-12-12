@@ -33,11 +33,6 @@ Require Import compiler.Rem4.
 Require Import compiler.containsProgram.
 Require Import compiler.FlatToRiscvDef.
 
-(* TODO remove these three *)
-Require Import riscv.MachineWidth_XLEN.
-Require Import riscv.MachineWidth32.
-Require Import riscv.MachineWidth64.
-
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
 
@@ -45,27 +40,26 @@ Set Implicit Arguments.
 
 Section TODO.
   Context {K V: Type}.
-  Context {Mf: MapFunctions K V}.
-  Axiom put_put_same: forall k v1 v2 m, put (put m k v1) k v2 = put m k v2.
+  Context {M: map.map K V}.
+  Axiom put_put_same: forall k v1 v2 m, map.put (map.put m k v1) k v2 = map.put m k v2.
 End TODO.
 
 (* State_is_RegisterFile gets its own section so that destructing Bw later does
    not lead to ill-typed terms *)
 Section RegisterFile.
 
-  Context {mword: Set}.
+  Context {mword: Type}.
   Context {MW: MachineWidth mword}.
-  Context {stateMap: MapFunctions Register mword}.
-  Notation state := (map Register mword).
+  Context {M: map.map Register mword}.
 
   Instance State_is_RegisterFile: RegisterFileFunctions Register mword := {|
-    RegisterFile := state;
-    getReg rf r := match get rf r with
+    RegisterFile := M;
+    getReg rf r := match map.get rf r with
                    | Some v => v
                    | None => ZToReg 0
                    end;
-    setReg := put;
-    initialRegs := empty_map;
+    setReg := map.put;
+    initialRegs := map.empty;
   |}.
 
 End RegisterFile.
@@ -74,38 +68,20 @@ Existing Instance State_is_RegisterFile.
 
 Local Set Refine Instance Mode.
 
-Instance SetWithoutElements: SetFunctions Empty_set := {|
-  set := unit;
-  empty_set := tt;
-  singleton_set _ := tt;
-  contains _ := Empty_set_rect _;
-  contains_dec := Empty_set_rect _;
-  union _ _ := tt;
-  intersect _ _ := tt;
-  diff _ _ := tt;
-  pick_or_else _ := Empty_set_rect _;
-|}.
-all: intros; apply Empty_set_rec; assumption.
-Defined.
-
-Instance MapWithoutKeys(V: Type): MapFunctions Empty_set V := {|
-   map := unit;
-|}.
-(* TODO MapFunctions shouldn't require "SetFunctions V" *)
-Admitted.
+Instance SetWithoutElements: SetFunctions Empty_set. Admitted. (* TODO remove *)
 
 
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
-
-Set Printing Implicit.
 
   Class parameters := {
     def_params :> FlatToRiscvDef.parameters;
 
     mword: Set;
     MachineWidth_Inst :> MachineWidth mword;
-    varMap_Inst :> MapFunctions Register mword;
+    locals :> map.map Register mword;
+    locals_ok: map.ok locals;
+    mem :> map.map mword byte;
     actname_eq_dec :> DecidableEq actname;
 
     BWS :> FlatToRiscvBitWidthSpecifics mword;
@@ -143,10 +119,12 @@ Set Printing Implicit.
       Basic_bopnames.actname := actname;
     |};
 
+    env :> map.map funcname (list varname * list varname * stmt);
+    env_ok: map.ok env;
+
     FlatImp_params: FlatImp.parameters := {|
       FlatImp.bopname_params := bopname_params;
       FlatImp.mword := mword;
-      FlatImp.varSet_Inst := map_domain_set;
       FlatImp.ext_spec := ext_spec;
       FlatImp.max_ext_call_code_size := max_ext_call_code_size;
     |};
@@ -158,30 +136,31 @@ Set Printing Implicit.
       Forall valid_register argvars ->
       Forall valid_register resvars ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
-      exec empty_map (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
-           initialL.(getLog) initialMH (* map-clash: found coqutil.Map.Solvers.map, required coqutil.Map.Interface.map *) initialL.(getRegs) postH ->
+      exec map.empty (SInteract resvars action argvars)
+           initialL.(getLog) initialMH initialL.(getRegs) postH ->
       runsTo (RiscvMachine Register mword actname) (mcomp_sat (run1 (B := BitWidth))) initialL
              (fun finalL =>
                   postH finalL.(getLog) initialMH finalL.(getRegs) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   finalL.(getMem) = initialL.(getMem));
+
   }.
 
 End FlatToRiscv.
 
+Local Unset Universe Polymorphism. (* for Add Ring *)
 
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscv.parameters}.
 
-  Notation locals := (map Register mword).
   Notation var := Z (only parsing).
 
   Definition trace := list (LogItem mword actname).
 
   Local Notation RiscvMachineL := (RiscvMachine Register mword actname).
 
-  Ltac state_calc0 := map_solver Z (@mword p).
+  Ltac state_calc0 := map_solver locals_ok.
 
   Ltac mword_cst w :=
     match w with
@@ -427,7 +406,7 @@ Section FlatToRiscv1.
     (* TODO how to automate this nicely? "match" and equate? *)
     replace (add offset (ZToReg 4)) with (add offset (mul (ZToReg 4) (ZToReg (Zlength [[inst]])))); auto.
     rewrite Zlength_cons. rewrite Zlength_nil.
-    simpl.
+    change (0 + 1) with 1.
     rewrite <- regToZ_unsigned_one.
     rewrite ZToReg_regToZ_unsigned.
     ring.
@@ -723,17 +702,15 @@ Section FlatToRiscv1.
     intros. subst *.
     unfold run1. unfold Run.run1.
     apply go_getPC.
-    unfold containsProgram in H0. apply proj2 in H0.
-    specialize (H0 0 _ eq_refl). subst inst.
+    unfold containsProgram in H0.
+    specialize (H0 0 _ eq_refl).
     unfold ldInst in *.
-    apply go_loadWord.
-    - admit.
-    - intros.
-      match type of H1 with
-      | context[?x] => progress (ring_simplify x in H1)
-      end.
-      exact H1.
-  Admitted.
+    destruct_one_match_hyp; [|discriminate].
+    apply invert_Some_eq_Some in H0. subst inst.
+    change (4 * 0) with 0 in E.
+    replace (add (getPc initialL) (ZToReg 0)) with (getPc initialL) in E by ring.
+    eapply go_loadWord; eassumption.
+  Qed.
 
   Ltac sidecondition :=
     solve_containsProgram || assumption || reflexivity.
@@ -765,7 +742,6 @@ Section FlatToRiscv1.
                | @valid_register => clear H
                | @valid_registers => clear H
                | @divisibleBy4 => clear H
-               | @containsMem => clear H
                | @containsProgram => clear H
                | @mem_inaccessible => clear H
                | @containsProgram_app_will_work => clear H
@@ -792,7 +768,6 @@ Section FlatToRiscv1.
            | x: ?T |- _ =>
              lazymatch T with
              | MachineWidth _  => fail
-             | MapFunctions _ _  => fail
              | SetFunctions _ => fail
              | DecidableEq _ => fail
              | _ => revert x
@@ -845,14 +820,14 @@ Section FlatToRiscv1.
     end;
     let G1 := fresh "G1" in
     match goal with
-    | G2: get ?st2 ?x = ?v, E: extends ?st1 ?st2 |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
+    | G2: get ?st2 ?x = ?v, E: map.extends ?st1 ?st2 |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
       let gg := constr:(@getReg RF R V TC st1 x) in
       let gg' := eval unfold getReg, State_is_RegisterFile in gg in
       progress change gg with gg';
       match gg' with
       | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
       end
-    | G2: get ?st2 ?x = ?v, E: extends ?st1 ?st2 |- context [?gg'] =>
+    | G2: get ?st2 ?x = ?v, E: map.extends ?st1 ?st2 |- context [?gg'] =>
       match gg' with
       | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
       end
@@ -1051,7 +1026,7 @@ Section FlatToRiscv1.
   Hint Rewrite
       elim_then_true_else_false
       (@left_identity M MM)
-      @get_put_same
+      @map.get_put_same
       @put_put_same
   : rew_run1step.
 
@@ -1079,7 +1054,7 @@ Section FlatToRiscv1.
            | rewrite elim_then_true_else_false
            | progress rewrite_setReg
            | progress rewrite_getReg
-           | rewrite @get_put_same
+           | rewrite @map.get_put_same
            | rewrite @put_put_same
            | progress (autorewrite with rew_reg_eqb)
            | progress simpl_remu4_test
@@ -1141,9 +1116,9 @@ Section FlatToRiscv1.
     end;
     first
       [ eassumption
-      | eapply (@containsMem_write mword _ _ _ BWSP); eassumption
+(*    | eapply (@containsMem_write mword _ _ _ BWSP); eassumption *)
       | match goal with
-        | |- extends _ _ => solve [state_calc]
+        | |- map.extends _ _ => solve [state_calc]
         end
       | solve [solve_containsProgram]
       | solve_word_eq
@@ -1172,14 +1147,13 @@ Section FlatToRiscv1.
       valid_register x ->
       valid_register a ->
       Memory.read_mem addr initialMH = Some v ->
-      containsMem initialL.(getMem) initialMH ->
-      get initialRegsH a = Some addr ->
-      @extends Register mword _ initialL.(getRegs) initialRegsH ->
+(*      containsMem initialL.(getMem) initialMH ->*)
+      map.get initialRegsH a = Some addr ->
+      @map.extends Register mword _ initialL.(getRegs) initialRegsH ->
       mcomp_sat (f tt) (setRegs initialL (setReg initialL.(getRegs) x v)) post ->
       mcomp_sat (Bind (execute (LwXLEN x a 0)) f) initialL post.
   Proof.
     intros.
-    unfold containsMem, Memory.read_mem in *.
     (*
     pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
     pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
@@ -1213,6 +1187,7 @@ Section FlatToRiscv1.
           *)
   Admitted.
 
+  (*
   Lemma execute_store: forall (ra rv: Register) (a v: mword) (initialMH finalMH: Memory.mem)
             (f: unit -> M unit) (initialL: RiscvMachineL) initialRegsH post,
       valid_register ra ->
@@ -1225,7 +1200,6 @@ Section FlatToRiscv1.
       mcomp_sat (f tt) (setMem initialL (storeWordwXLEN initialL.(getMem) a v)) post ->
       mcomp_sat (Bind (execute (SwXLEN ra rv 0)) f) initialL post.
   Proof.
-    (*
     intros.
     pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
     pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
@@ -1260,8 +1234,8 @@ Section FlatToRiscv1.
         rewrite Bind_storeDouble ];
       rewrite_reg_value;
       reflexivity.
-  Qed.*)
-  Admitted.
+  Qed.
+  Admitted.*)
 
   Arguments Bind: simpl never.
   Arguments Return: simpl never.
@@ -1281,6 +1255,7 @@ Section FlatToRiscv1.
     unfold in_range, Memory.valid_addr. intuition idtac.
   Qed.
 
+  (*
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
       containsProgram initialL_mem insts imemStart ->
       not_in_range a XLEN_in_bytes (regToZ_unsigned imemStart) (4 * (Zlength insts)) ->
@@ -1289,7 +1264,6 @@ Section FlatToRiscv1.
       divisibleBy4 imemStart ->
       containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
   Proof.
-    (*
     unfold containsProgram.
     intros. rename H2 into A. destruct H.
     clear -H H0 H1 H2 A.
@@ -1338,8 +1312,8 @@ Section FlatToRiscv1.
         rewrite wordToNat_wplus' by omega.
         rewrite D by omega.
         omega.
-  Qed.*)
-  Admitted.
+  Qed.
+  Admitted.*)
 
   Lemma mem_inaccessible_read:  forall a initialMH w start len,
       Memory.read_mem a initialMH = Some w ->
@@ -1359,6 +1333,7 @@ Section FlatToRiscv1.
     eapply H0. eassumption.
   Qed.
 
+  (*
   Lemma read_mem_in_range: forall a0 initialMH initialML w,
       Memory.read_mem a0 initialMH = Some w ->
       containsMem initialML initialMH ->
@@ -1368,9 +1343,9 @@ Section FlatToRiscv1.
     specialize H0 with (1 := H). destruct H0 as [A B0].
     unfold Memory.read_mem in *.
     destruct_one_match_hyp; try discriminate.
-    Admitted. (*
+    Admitted.
     omega.
-  Qed.*)
+  Qed.
 
   Lemma write_mem_in_range: forall a0 v0 initialMH finalMH initialML,
       Memory.write_mem a0 v0 initialMH = Some finalMH ->
@@ -1383,7 +1358,6 @@ Section FlatToRiscv1.
     eapply read_mem_in_range; eassumption.
   Qed.
 
-  (*
   Lemma wordToZ_size'': forall (w : mword),
       (- Z.of_nat (pow2 (wXLEN - 1)) <= wordToZ w < Z.of_nat (pow2 (wXLEN - 1)))%Z.
   Proof.
@@ -1421,12 +1395,15 @@ Section FlatToRiscv1.
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
       valid_register x ->
-      runsTo (setRegs (setPc (setNextPc initialL (add initialL.(getNextPc) d))
-                             (add initialL.(getPc) d))
-                      (setReg initialL.(getRegs) x (ZToReg v))) post ->
+      runsTo (withRegs   (setReg initialL.(getRegs) x (ZToReg v))
+             (withPc     (add initialL.(getPc) d)
+             (withNextPc (add initialL.(getNextPc) d)
+                         initialL)))
+             post ->
       runsTo initialL post.
   Proof.
     intros. subst insts d.
+    (*
     unfold compile_stmt, compile_lit, compile_lit_rec in *.
     destruct_everything; simpl in *.
     Time run1step.
@@ -1451,11 +1428,13 @@ Section FlatToRiscv1.
     f_equal; try solve_word_eq.
     f_equal. symmetry. apply compile_lit_correct.
   Qed.
+  *)
+  Admitted.
 
   Existing Instance FlatToRiscv.bopname_params.
   Existing Instance FlatToRiscv.FlatImp_params.
 
-  Definition eval_stmt := exec empty_map.
+  Definition eval_stmt := exec map.empty.
 
   Lemma compile_stmt_correct_aux:
     forall allInsts s t initialMH initialRegsH postH,
@@ -1466,8 +1445,8 @@ Section FlatToRiscv1.
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    @extends Register mword _ initialL.(getRegs) initialRegsH ->
-    containsMem initialL.(getMem) initialMH ->
+    @map.extends Register mword _ initialL.(getRegs) initialRegsH ->
+    (*containsMem initialL.(getMem) initialMH ->*)
     containsProgram initialL.(getMem) allInsts imemStart ->
     initialL.(getLog) = t ->
     initialL.(getPc) = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
@@ -1476,8 +1455,8 @@ Section FlatToRiscv1.
     runsTo initialL (fun finalL =>
         exists finalRegsH finalMH,
           postH finalL.(getLog) finalMH finalRegsH /\
-          extends finalL.(getRegs) finalRegsH /\
-          containsMem finalL.(getMem) finalMH /\
+          map.extends finalL.(getRegs) finalRegsH /\
+          (*containsMem finalL.(getMem) finalMH /\*)
           containsProgram finalL.(getMem) allInsts imemStart /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
@@ -1499,9 +1478,10 @@ Section FlatToRiscv1.
           | _: option_all ?l = Some _ |- option_all ?l' = Some _ =>
             replace l' with l; [eassumption|]
           end.
-          admit.
+          admit. (* TODO replace one-way extends by equality *)
         * eassumption.
-        * Fail exact H1.
+        * (* TODO needs FlatImp.Event to be removed *)
+          Fail exact H1.
           admit. (* annoying because locals should really not be
                                    extensible, but remain the same *)
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
@@ -1511,7 +1491,8 @@ Section FlatToRiscv1.
         repeat match goal with
                | |- _ /\ _ => split
                end; try sidecondition; try solve_word_eq.
-        state_calc0. (* TODO don't clear p *)
+        map_solver locals_ok.
+        (* state_calc0.  TODO don't clear p *)
 
 (*
     - (* SLoad *)
@@ -1649,6 +1630,7 @@ Section FlatToRiscv1.
   Qed.
   *) Admitted.
 
+  (*
   Lemma compile_stmt_correct:
     forall imemStart fuelH s insts initialMH finalH finalMH initialL,
     compile_stmt s = insts ->
