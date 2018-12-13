@@ -77,7 +77,7 @@ Module Import FlatToRiscv.
   Class parameters := {
     def_params :> FlatToRiscvDef.parameters;
 
-    mword: Set;
+    mword: Type;
     MachineWidth_Inst :> MachineWidth mword;
     locals :> map.map Register mword;
     locals_ok: map.ok locals;
@@ -129,16 +129,18 @@ Module Import FlatToRiscv.
       FlatImp.max_ext_call_code_size := max_ext_call_code_size;
     |};
 
-    compile_ext_call_correct: forall initialL action postH newPc insts initialMH
-      (argvars resvars: list Register),
+    Machine := @RiscvMachine Register mword MachineWidth_Inst State_is_RegisterFile mem actname;
+
+    compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts initialMH
+        (argvars resvars: list Register),
       insts = compile_ext_call resvars action argvars ->
       newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
-      exec map.empty (SInteract resvars action argvars)
+      exec map.empty (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) postH ->
-      runsTo (RiscvMachine Register mword actname) (mcomp_sat (run1 (B := BitWidth))) initialL
+      runsTo Machine (mcomp_sat (run1 (B := BitWidth))) initialL
              (fun finalL =>
                   postH finalL.(getLog) initialMH finalL.(getRegs) /\
                   finalL.(getPc) = newPc /\
@@ -1435,12 +1437,15 @@ Section FlatToRiscv1.
   Existing Instance FlatToRiscv.FlatImp_params.
 
   Definition eval_stmt := exec map.empty.
+Set Printing Universes. Set Printing Implicit.
+Print FlatToRiscvDef.
+
 
   Lemma compile_stmt_correct_aux:
-    forall allInsts s t initialMH initialRegsH postH,
+    forall allInsts (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p))) t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
     forall imemStart instsBefore instsAfter initialL insts,
-    compile_stmt s = insts ->
+    @compile_stmt def_params s = insts ->
     allInsts = instsBefore ++ insts ++ instsAfter ->
     stmt_not_too_big s ->
     valid_registers s ->

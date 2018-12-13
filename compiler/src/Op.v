@@ -1,7 +1,7 @@
 Require Import riscv.Utility.
 Require Export bedrock2.Basic_bopnames.
 
-Definition eval_binop{t: Set}{MW: MachineWidth t}(op: bopname)(v1 v2: t): t :=
+Definition eval_binop{t: Type}{MW: MachineWidth t}(op: bopname)(v1 v2: t): t :=
   match op with
   | bopname.add => add v1 v2
   | bopname.sub => sub v1 v2

@@ -18,9 +18,12 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+Definition Register: Type := Z.
+(*Inductive EmptyType: Type :=.*)
+
 Module Import FlatToRiscvDef.
   Class parameters := {
-    actname: Set;
+    actname: Type;
     LwXLEN: Register -> Register -> Z -> Instruction;
     SwXLEN: Register -> Register -> Z -> Instruction;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
@@ -28,7 +31,6 @@ Module Import FlatToRiscvDef.
     max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
   }.
 End FlatToRiscvDef.
-
 
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscvDef.parameters}.

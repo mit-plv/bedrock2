@@ -7,7 +7,7 @@ Local Open Scope Z_scope.
 
 Section Memory.
 
-  Context {mword: Set}.
+  Context {mword: Type}.
   Context {MW: MachineWidth mword}.
 
   Definition mem := mword -> option mword.

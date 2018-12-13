@@ -1,16 +1,17 @@
 Require Import Coq.ZArith.ZArith.
+Require Import coqutil.Macros.unique.
 Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.Op.
-Require Import riscv.util.BitWidth32.
+Require Import bedrock2.Semantics.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
-Require Import riscv.MachineWidth32.
 Require Import riscv.util.ListLib.
 Require Import riscv.Decode.
+Require Import coqutil.sanity.
 Require Import riscv.Utility.
 Require Import riscv.PseudoInstructions.
 Require Import riscv.InstructionCoercions.
@@ -29,92 +30,12 @@ Existing Instance DefaultRiscvState.
 
 Open Scope ilist_scope.
 
-Definition var: Set := Z.
-Definition func: Set := Empty_set.
+Definition var: Type := Z.
+Definition func: Type := Empty_set.
 
 Instance act_dec: DecidableEq MMIOAction.
 intros a b. destruct a; destruct b; (left + right); congruence.
 Defined.
-
-Instance myparams: Basic_bopnames.parameters := {|
-  varname := var;
-  funcname := func;
-  actname := MMIOAction;
-|}.
-
-Instance annoying: DecidableEq (list varname * list varname * stmt). Admitted.
-
-Definition trace := list (LogItem (word 32) actname).
-
-Module HardToRead.
-
-  Inductive ext_spec: MMIOAction -> trace -> list (word 32) ->
-                      (trace -> list (word 32) -> Prop) -> Prop :=
-  | ext_input: forall t addr,
-      simple_isMMIOAddr addr = true ->
-      ext_spec MMInput t [addr]
-               (* note: no restrictions on val: that's the source of non-determinism *)
-               (fun t' results => exists val, t' = (MMInput, [addr], [val]) :: t /\ results = [val])
-  | ext_output: forall t addr val,
-      simple_isMMIOAddr addr = true ->
-      ext_spec MMOutput t [addr; val]
-               (fun t' results => t' = (MMOutput, [addr; val], nil) :: t /\ results = nil).
-
-End HardToRead.
-
-Module Wrong.
-
-  Inductive ext_spec: MMIOAction -> trace -> list (word 32) ->
-                      (trace -> list (word 32) -> Prop) -> Prop :=
-  | ext_input: forall t addr val,
-      (* note: val is quantified in the wrong place *)
-      simple_isMMIOAddr addr = true ->
-      ext_spec MMInput t [addr]
-               (fun t' results => t' = (MMInput, [addr], [val]) :: t /\ results = [val])
-  | ext_output: forall t addr val,
-      simple_isMMIOAddr addr = true ->
-      ext_spec MMOutput t [addr; val]
-               (fun t' results => t' = (MMOutput, [addr; val], nil) :: t /\ results = nil).
-
-End Wrong.
-
-(* returns a Prop which says whether "post" is a safe approximation of the outcome
-   of the external call, ok to have a total Definition here because outermost Prop
-   could be False *)
-Definition ext_spec(a: MMIOAction)(t: trace)(argvals: list (word 32))
-                   (post: trace -> list (word 32) -> Prop): Prop :=
-  match a with
-  | MMInput =>
-    exists addr, argvals = [addr] /\
-                 simple_isMMIOAddr addr = true /\
-                 forall val, post ((MMInput, [addr], [val]) :: t) [val]
-  | MMOutput =>
-    exists addr val, argvals = [addr; val] /\
-                     simple_isMMIOAddr addr = true /\
-                     post ((MMOutput, [addr; val], nil) :: t) nil
-  end.
-
-Lemma hardToRead_implies_ext_spec: forall a t argvals outcome,
-    HardToRead.ext_spec a t argvals outcome ->
-    ext_spec a t argvals outcome.
-Proof.
-  intros. inversion H; subst; clear H; simpl in *; eauto 10.
-Qed.
-
-Lemma ext_spec_implies_hardToRead: forall a t argvals outcome,
-    ext_spec a t argvals outcome ->
-    exists (preciseOutcome: _ -> _ -> Prop),
-      (forall t' resvals, preciseOutcome t' resvals -> outcome t' resvals) /\
-      HardToRead.ext_spec a t argvals preciseOutcome.
-Proof.
-(* not sure if it holds, because preciseOutcome needs to syntactically match,
-   but also needs to imply outcome *)
-Abort.
-
-Instance myFlatImpParams: FlatImp.parameters := {|
-  FlatImp.bopname_params := myparams;
-  FlatImp.ext_spec := ext_spec;
-|}.
 
 Definition compile_ext_call(results: list var)(a: MMIOAction)(args: list var):
   list Instruction :=
@@ -131,13 +52,64 @@ Definition compile_ext_call(results: list var)(a: MMIOAction)(args: list var):
     end
   end.
 
-Instance compilation_params: FlatToRiscvDef.parameters := {|
+Instance myparams: Basic_bopnames.parameters := {|
+  varname := var;
+  funcname := func;
+  actname := MMIOAction;
+|}.
+
+Module Import MMIO.
+  Class parameters := {
+    width : Z;
+    word :> word.word width;
+    byte :> word.word 8;
+    mem :> map.map word byte;
+    locals :> map.map var word;
+    locals_ok :> map.ok locals;
+    env :> map.map func (list var * list var * Syntax.cmd.cmd);
+    env_ok :> map.ok env;
+    interp_binop : bopname -> word -> word -> word;
+  }.
+End MMIO.
+
+Section MMIO1.
+  Context {p: unique! MMIO.parameters}.
+
+  Definition magicMMIOAddrLit: Z := 65524.
+  Definition simple_isMMIOAddr: word -> bool := word.eqb (word.of_Z magicMMIOAddrLit).
+
+  Instance semantics_params: Semantics.parameters := {|
+    Semantics.syntax := Basic_bopnames.make myparams;
+    Semantics.width := width;
+    Semantics.interp_binop := interp_binop;
+    Semantics.funname_eqb f := Empty_set_rect _;
+    Semantics.ext_spec t m action (argvals: list word) (post: (mem -> list word -> Prop)) :=
+      match argvals with
+      | addr :: _ =>
+        simple_isMMIOAddr addr = true /\
+        map.get m addr = None /\ (*TODO use Memory.loadWord/invent Memory.undef, no MachineWidth *)
+        match action with
+        | MMInput => argvals = [addr] /\ forall val, post m [val]
+        | MMOutput => exists val, argvals = [addr; val] /\ post m nil
+        end
+      | nil => False
+      end;
+  |}.
+
+  (*
+Instance myFlatImpParams: FlatImp.parameters := {|
+  FlatImp.bopname_params := myparams;
+  FlatImp.ext_spec := ext_spec;
+|}.
+*)
+
+Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
   FlatToRiscvDef.actname := MMIOAction;
   FlatToRiscvDef.LwXLEN := Lw;
   FlatToRiscvDef.SwXLEN := Sw;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
   FlatToRiscvDef.max_ext_call_code_size _ := 1;
-|}. intros. abstract omega. Defined.
+|}). intros. abstract omega. Defined.
 
 (*
 Lemma compile_ext_call_correct: forall initialL action outcome newPc insts
@@ -172,7 +144,7 @@ Lemma compile_ext_call_correct: forall initialL action outcome newPc insts
        getLog := newLog |} post) ->
 *)
 
-Definition magicMMIOAddrLit: Z := 65524.
+
 
 (*
 addr = magicMMIOAddr;
@@ -191,7 +163,7 @@ Definition _s: varname := 3.
 Definition squarer: stmt :=
   (SSeq (SLit _addr magicMMIOAddrLit)
         (SLoop (SLoad _i _addr)
-               _i
+               (CondNez _i)
                (SSeq (SOp _s bopname.mul _i _i)
                      (SStore _addr _s)))).
 
@@ -199,9 +171,10 @@ Definition compiled: list Instruction := Eval cbv in compile_stmt squarer.
 
 Print compiled.
 
+(*
 Section TODODontDuplicate.
 
-  Let RiscvMachineL := RiscvMachine Register (word 32) MMIOAction.
+  Let RiscvMachineL := RiscvMachine Register word32 MMIOAction.
 
   Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
@@ -225,6 +198,7 @@ Section TODODontDuplicate.
   Admitted.
 
 End TODODontDuplicate.
+*)
 
 Lemma option_all_singleton: forall {A: Type} (a: A) (l: list (option A)),
     option_all l = Some [a] ->
@@ -249,20 +223,26 @@ Proof.
   intros. inversion H. assumption.
 Qed.
 
-Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
+Set Printing All. Set Printing Universes.
+
+Instance foo: map.map Register word := locals.
+
+Set Refine Instance Mode.
+Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
   FlatToRiscv.def_params := compilation_params;
-  FlatToRiscv.mword := word 32;
-  FlatToRiscv.MachineWidth_Inst := MachineWidth32;
-  FlatToRiscv.varMap_Inst := List_Map _ _;
-  FlatToRiscv.Memory_Inst := mem_is_Memory (word 32);
+  FlatToRiscv.mword := word;
+  FlatToRiscv.locals := locals;
+  FlatToRiscv.locals_ok := locals_ok;
+  FlatToRiscv.mem := (@mem p);
+  FlatToRiscv.actname_eq_dec := _;
+  FlatToRiscv.MachineWidth_Inst := _;
   FlatToRiscv.BWS := _;
-  FlatToRiscv.BWSP := _;
-  FlatToRiscv.M := OStateND (RiscvMachine Register (word 32) MMIOAction);
+(*  FlatToRiscv.M := OStateND (RiscvMachine Register (Naive.word 32) MMIOAction);*)
   FlatToRiscv.MM := OStateND_Monad _;
   FlatToRiscv.RVM := IsRiscvMachineL;
   FlatToRiscv.RVS := DefaultRiscvState;
   FlatToRiscv.RVAX := MinimalMMIOSatisfiesAxioms;
-  FlatToRiscv.ext_spec := ext_spec;
+  FlatToRiscv.ext_spec := _ ; (* ext_spec; *)
 |}.
 - intros. simpl. unfold default_translate.
   rewrite remu_def.

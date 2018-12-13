@@ -14,7 +14,7 @@ Local Unset Universe Polymorphism.
 
 Section Rem4.
 
-  Context {mword: Set}.
+  Context {mword: Type}.
   Context {MW: MachineWidth mword}.
 
   Ltac mword_cst w :=

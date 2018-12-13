@@ -14,17 +14,16 @@ Require Import compiler.Memory.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 
+Inductive bbinop: Type :=
+| BEq
+| BNe
+| BLt
+| BGe
+| BLtu
+| BGeu.
 
 Section Syntax.
   Context {pp : unique! Basic_bopnames.parameters}.
-
-  Inductive bbinop: Set :=
-    | BEq
-    | BNe
-    | BLt
-    | BGe
-    | BLtu
-    | BGeu.
 
   Inductive bcond: Type :=
     | CondBinary (op: bbinop) (x y: varname)
@@ -46,12 +45,14 @@ Section Syntax.
 
 End Syntax.
 
+Set Printing Universes.
+Print stmt.
 
 Module Import FlatImp.
   Class parameters := {
     bopname_params :> Basic_bopnames.parameters;
 
-    mword : Set;
+    mword : Type;
     MachineWidth_Inst :> MachineWidth mword;
 
     varname_eq_dec  :> DecidableEq varname;

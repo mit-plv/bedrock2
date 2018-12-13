@@ -1,4 +1,5 @@
-Require Import lib.LibTacticsMin.
+Require Import coqutil.sanity.
+Unset Universe Minimization ToSet.
 Require Export riscv.util.PowerFunc.
 
 
