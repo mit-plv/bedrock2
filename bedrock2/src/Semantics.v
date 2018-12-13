@@ -80,18 +80,21 @@ Section semantics.
     'Some _ <- load sz m a | None;
     unchecked_store sz m a v.
 
-  Fixpoint eval_expr(m: mem)(st: locals)(e: expr): option word :=
-    match e with
-    | expr.literal v => Some (word.of_Z v)
-    | expr.var x => map.get st x
-    | expr.load aSize a =>
-        'Some a' <- eval_expr m st a | None;
-        load aSize m a'
-    | expr.op op e1 e2 =>
-        'Some v1 <- eval_expr m st e1 | None;
-        'Some v2 <- eval_expr m st e2 | None;
-        Some (interp_binop op v1 v2)
-    end.
+  Section WithMemAndLocals.
+    Context (m : mem) (l : locals).
+    Fixpoint eval_expr (e : expr) : option word :=
+      match e with
+      | expr.literal v => Some (word.of_Z v)
+      | expr.var x => map.get l x
+      | expr.load aSize a =>
+          'Some a' <- eval_expr a | None;
+          load aSize m a'
+      | expr.op op e1 e2 =>
+          'Some v1 <- eval_expr e1 | None;
+          'Some v2 <- eval_expr e2 | None;
+          Some (interp_binop op v1 v2)
+      end.
+  End WithMemAndLocals.
 End semantics.
 
 Module exec. Section WithEnv.
