@@ -67,7 +67,7 @@ Section semantics.
     end%nat.
 
   Definition footprint(a: word)(sz: access_size) :=
-    List.unfoldn (word.add (word.of_Z 1)) (bytes_per sz) a.
+    List.unfoldn (fun w => word.add w (word.of_Z 1)) (bytes_per sz) a.
   Definition load(sz: access_size)(m: mem)(a: word): option word :=
     'Some bs <- List.option_all (List.map (map.get m) (footprint a sz)) | None ;
     Some (word.of_Z (LittleEndian.combine _ (tuple.of_list bs))).
