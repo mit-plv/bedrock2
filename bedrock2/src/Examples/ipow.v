@@ -71,8 +71,7 @@ Proof.
       { repeat straightline.
         { (* measure decreases *)
           cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
-          unshelve (idtac; let pf := open_constr:(unsigned_range _ x0) in pose proof pf);
-            [exact _|cbv; congruence|].
+          pose proof (unsigned_range x0) as pf.
           repeat match goal with
                    |- context [?x] => subst x
                  end.
@@ -111,8 +110,7 @@ Proof.
         repeat straightline.
         { (* measure decreases *)
           cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
-          unshelve (idtac; let pf := open_constr:(unsigned_range _ x0) in pose proof pf);
-            [exact _|cbv; congruence|].
+          pose proof (unsigned_range x0) as pf.
           repeat match goal with
                    |- context [?x] => subst x
                  end.
@@ -146,6 +144,17 @@ Proof.
       replace (unsigned x0) with 0 in * by (revert H; admit).
       rewrite Z.pow_0_r, Z.mul_1_r. exact eq_refl. } }
 
+  (* Error: Anomaly "Universe Top.427 undefined." Please report at http://coq.inria.fr/bugs/. *)
+  straightline; [].
+  straightline; [].
+  straightline; [].
+  straightline; [].
+  straightline; [].
+  straightline; [].
+  straightline; [].
+  straightline; [].
+  straightline; [].
+  straightline; [].
   repeat straightline.
 
   (* function postcondition *)

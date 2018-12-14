@@ -25,7 +25,7 @@ Local Unset Universe Polymorphism. (* for Add Ring *)
 
 Section ContainsProgram.
 
-  Context {byte: word 8} {width: Z} {mword: word width} {bound: 0 <= width} {ok: word.ok mword}.
+  Context {byte: word 8} {width: Z} {mword: word width} {ok: word.ok mword}.
   Context {Mem: map.map mword byte}.
   Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
 
@@ -52,7 +52,7 @@ Section ContainsProgram.
        morphism (@ZToReg_morphism mword MW),
        constants [mword_cst]).
    *)
-  Add Ring mword_ring: (@word.ring_theory _ _ _ bound).
+  Add Ring mword_ring: (@word.ring_theory _ mword _).
 
   (* load and decode Inst *)
   Definition ldInst(m: Mem)(a: mword): option Instruction :=
@@ -184,7 +184,7 @@ Section ContainsProgram.
     intros.
     destruct (containsProgram_app_inv0 _ _ H) as [H1 H2].
     unfold add, ZToReg, MkMachineWidth.MachineWidth_XLEN in *.
-    rewrite (@word.ring_morph width mword ok bound).(morph_mul) in H2.
+    rewrite (@word.ring_morph width mword ok).(morph_mul) in H2.
     auto.
   Qed.
 

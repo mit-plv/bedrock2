@@ -14,7 +14,7 @@ Local Unset Universe Polymorphism.
 (* because otherwise "Add Ring" doesn't work https://github.com/coq/coq/issues/9201 *)
 
 Section Rem4.
-  Context {byte: word 8} {width: Z} {mword: word width} {bound: 0 <= width} {ok: word.ok mword}.
+  Context {byte: word 8} {width: Z} {mword: word width} {ok: word.ok mword}.
 
   Ltac mword_cst w :=
     match w with
@@ -39,7 +39,7 @@ Section Rem4.
        morphism (@ZToReg_morphism mword MW),
        constants [mword_cst]).
    *)
-  Add Ring mword_ring: (@word.ring_theory _ _ _ bound).
+  Add Ring mword_ring: (@word.ring_theory _ mword _).
 
   Ltac ring' := unfold ZToReg, mul, add, MachineWidth_XLEN in *; ring.
 

@@ -56,7 +56,7 @@ Section Array.
     set (n := Z.to_nat (word.unsigned i)).
     replace i with ((word.of_Z (Z.of_nat n))); cycle 1.
     { subst n. rewrite Znat.Z2Nat.id, word.of_Z_unsigned; trivial.
-      eapply word.unsigned_range. trivial. }
+      eapply word.unsigned_range. }
     eapply array_index_nat.
   Qed.
 
@@ -86,6 +86,6 @@ Section Array.
     destruct (skipn n xs) in *; cbn [hd hd_error] in *; [exfalso|assumption].
     cbn [length] in H. rewrite PeanoNat.Nat.add_0_r in H.
     cbv [n] in H. rewrite firstn_length, Znat.Nat2Z.inj_min, Znat.Z2Nat.id in H; [Lia.lia|].
-    eapply word.unsigned_range. trivial.
+    eapply word.unsigned_range.
   Qed.
 End Array.
