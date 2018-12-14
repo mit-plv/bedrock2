@@ -3,7 +3,8 @@ Require Import Coq.micromega.Lia.
 Require Import bbv.ZLib.
 Require Import riscv.util.div_mod_to_quot_rem.
 Require Import riscv.Utility.
-
+Require Import coqutil.Word.Properties.
+Require Import riscv.MkMachineWidth.
 
 Local Open Scope Z_scope.
 
@@ -13,9 +14,7 @@ Local Unset Universe Polymorphism.
 (* because otherwise "Add Ring" doesn't work https://github.com/coq/coq/issues/9201 *)
 
 Section Rem4.
-
-  Context {mword: Type}.
-  Context {MW: MachineWidth mword}.
+  Context {byte: word 8} {width: Z} {mword: word width} {bound: 0 <= width} {ok: word.ok mword}.
 
   Ltac mword_cst w :=
     match w with
@@ -27,6 +26,7 @@ Section Rem4.
     | _ => constr:(NotConstant)
   end.
 
+  (*
   Hint Rewrite
     ZToReg_morphism.(morph_add)
     ZToReg_morphism.(morph_sub)
@@ -38,6 +38,10 @@ Section Rem4.
       (preprocess [autorewrite with rew_ZToReg_morphism],
        morphism (@ZToReg_morphism mword MW),
        constants [mword_cst]).
+   *)
+  Add Ring mword_ring: (@word.ring_theory _ _ _ bound).
+
+  Ltac ring' := unfold ZToReg, mul, add, MachineWidth_XLEN in *; ring.
 
   (* put here so that rem picks up the MachineWidth for wXLEN *)
 
@@ -54,8 +58,7 @@ Section Rem4.
 
   (* check lower two bits approach: how to connect to remu? or replace remu in spec? *)
 
-
-  Axiom euclid_unsigned: forall a b, a = add (mul (divu a b) b) (remu a b).
+  Axiom euclid_unsigned: forall (a b: mword), a = add (mul (divu a b) b) (remu a b).
   Axiom remu_range: forall (a b: mword), 0 <= regToZ_unsigned (remu a b) < regToZ_unsigned b.
 
   Axiom unique: forall a b q r,
@@ -74,8 +77,8 @@ Section Rem4.
     exists (divu a (ZToReg 4)).
     pose proof (euclid_unsigned a (ZToReg 4)) as P.
     rewrite P at 2.
-    rewrite H.
-    ring.
+    rewrite H at 1.
+    ring'.
   Qed.
 
   Lemma divisibleBy4_remu40: forall (a: mword),
@@ -86,16 +89,16 @@ Section Rem4.
     unfold divisibleBy4 in *.
     destruct H as [q H].
     destruct (@unique a (ZToReg 4) q (ZToReg 0)).
-    - subst a. ring.
-    - pose proof pow2_sz_4.
+    - subst a. ring'.
+    - (*pose proof pow2_sz_4.
       rewrite regToZ_ZToReg_unsigned by omega.
       rewrite regToZ_ZToReg_unsigned by omega.
       omega.
     - congruence.
-  Qed.
+  Qed.*) Admitted.
 
   Lemma remu_four_undo: forall a, remu (mul (ZToReg 4) a) (ZToReg 4) = ZToReg 0.
-  Proof.
+  Proof. Admitted. (*
     intros.
     rewrite remu_def.
     f_equal.
@@ -110,13 +113,13 @@ Section Rem4.
     change (2 ^ 2) with 4.
     pose proof (pow2_pos (XLEN - 2)).
     div_mod_to_quot_rem. nia.
-  Qed.
+  Qed.*)
 
   Lemma remu_four_four: remu (ZToReg 4) (ZToReg 4) = ZToReg 0.
   Proof.
     intros.
     apply divisibleBy4_remu40. unfold divisibleBy4.
-    exists (ZToReg 1). ring.
+    exists (ZToReg 1). ring'.
   Qed.
 
   Lemma remu_four_zero_distrib_plus: forall a b,
@@ -131,6 +134,6 @@ Section Rem4.
     unfold divisibleBy4 in *.
     subst.
     exists (add q1 q2).
-    ring.
+    ring'.
   Qed.
 End Rem4.

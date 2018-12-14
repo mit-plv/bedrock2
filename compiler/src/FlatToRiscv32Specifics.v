@@ -1,13 +1,11 @@
 Require Import coqutil.Map.Interface.
 Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
-Require Import riscv.MachineWidth32.
 Require Import riscv.Utility.
 Require Import compiler.FlatToRiscvBitWidthSpecifics.
 Require Import riscv.Memory.
 
-
-Instance FlatToRiscv32Specifics{Mem: map.map word32 byte}
+Instance FlatToRiscv32Specifics{byte: word 8}{word32: word 32}{Mem: map.map word32 byte}
   : FlatToRiscvBitWidthSpecifics word32  := {|
 
   BitWidth := BW32;

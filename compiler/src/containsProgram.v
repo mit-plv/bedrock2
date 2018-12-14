@@ -2,6 +2,7 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
 Require Import bbv.ZLib.
+Require Import coqutil.Word.Properties.
 Require Import coqutil.Map.Interface.
 Require Import riscv.Decode.
 Require Import riscv.Run.
@@ -24,10 +25,8 @@ Local Unset Universe Polymorphism. (* for Add Ring *)
 
 Section ContainsProgram.
 
-  Context {mword: Type}.
-  Context {MW: MachineWidth mword}.
+  Context {byte: word 8} {width: Z} {mword: word width} {bound: 0 <= width} {ok: word.ok mword}.
   Context {Mem: map.map mword byte}.
-
   Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
 
   Ltac mword_cst w :=
@@ -40,6 +39,7 @@ Section ContainsProgram.
     | _ => constr:(NotConstant)
   end.
 
+  (*
   Hint Rewrite
     ZToReg_morphism.(morph_add)
     ZToReg_morphism.(morph_sub)
@@ -51,7 +51,8 @@ Section ContainsProgram.
       (preprocess [autorewrite with rew_ZToReg_morphism],
        morphism (@ZToReg_morphism mword MW),
        constants [mword_cst]).
-
+   *)
+  Add Ring mword_ring: (@word.ring_theory _ _ _ bound).
 
   (* load and decode Inst *)
   Definition ldInst(m: Mem)(a: mword): option Instruction :=
@@ -182,9 +183,8 @@ Section ContainsProgram.
   Proof.
     intros.
     destruct (containsProgram_app_inv0 _ _ H) as [H1 H2].
-    rewrite ZToReg_morphism.(morph_mul) in H2.
-    rewrite <- regToZ_unsigned_four in H2.
-    rewrite ZToReg_regToZ_unsigned in H2.
+    unfold add, ZToReg, MkMachineWidth.MachineWidth_XLEN in *.
+    rewrite (@word.ring_morph width mword ok bound).(morph_mul) in H2.
     auto.
   Qed.
 
@@ -201,9 +201,7 @@ Section ContainsProgram.
     replace (add offset (ZToReg 4)) with (add offset (mul (ZToReg 4) (ZToReg (Zlength [[inst]])))); auto.
     rewrite Zlength_cons. rewrite Zlength_nil.
     change (0 + 1) with 1.
-    rewrite <- regToZ_unsigned_one.
-    simpl in *.
-    rewrite ZToReg_regToZ_unsigned.
+    unfold add, mul, ZToReg, MkMachineWidth.MachineWidth_XLEN in *.
     ring.
   Qed.
 
@@ -279,6 +277,8 @@ Section ContainsProgram.
     intros. change (inst :: insts) with ([[inst]] ++ insts).
     apply containsProgram_app; [assumption..|].
     rewrite Zlength_cons, Zlength_nil.
+    unfold add, mul, ZToReg, MkMachineWidth.MachineWidth_XLEN in *.
+    change (0 + 1) with 1.
     repeat match goal with
            | H: containsProgram _ _ ?x |- _ => progress (ring_simplify x in H)
            | |-  containsProgram _ _ ?x     => progress (ring_simplify x)

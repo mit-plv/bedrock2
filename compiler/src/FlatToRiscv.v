@@ -77,8 +77,12 @@ Module Import FlatToRiscv.
   Class parameters := {
     def_params :> FlatToRiscvDef.parameters;
 
-    mword: Type;
-    MachineWidth_Inst :> MachineWidth mword;
+    width: Z;
+    mword :> word width;
+    mword_ok :> word.ok mword;
+    byte :> word 8;
+    byte_ok :> word.ok byte;
+
     locals :> map.map Register mword;
     locals_ok: map.ok locals;
     mem :> map.map mword byte;
@@ -100,11 +104,11 @@ Module Import FlatToRiscv.
       (list (LogItem mword actname) -> list mword -> Prop) ->
       Prop; (* or returns no set if the call fails. *)
 
-    translate_id_if_aligned_4: forall a mode,
+    translate_id_if_aligned_4: forall (a: mword) mode,
       (regToZ_unsigned a) mod 4 = 0 ->
       translate mode (ZToReg 4) a = Return a;
 
-    translate_id_if_aligned_8: forall a mode,
+    translate_id_if_aligned_8: forall (a: mword) mode,
       (regToZ_unsigned a) mod 8 = 0 ->
       translate mode (ZToReg 8) a = Return a;
 
@@ -129,7 +133,7 @@ Module Import FlatToRiscv.
       FlatImp.max_ext_call_code_size := max_ext_call_code_size;
     |};
 
-    Machine := @RiscvMachine Register mword MachineWidth_Inst State_is_RegisterFile mem actname;
+    Machine := @RiscvMachine Register byte width mword State_is_RegisterFile mem actname;
 
     compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts initialMH
         (argvars resvars: list Register),

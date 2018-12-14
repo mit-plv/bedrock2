@@ -1,13 +1,11 @@
 Require Export Coq.omega.Omega.
 Require Export Coq.Lists.List.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.Solver.
-Require Export riscv.util.Word.
 Require Export coqutil.Decidable.
 Require Export compiler.util.Tactics.
 Require Export compiler.util.Set.
 Require Export lib.fiat_crypto_tactics.UniquePose.
 
-Global Instance dec_eq_word : forall sz, DecidableEq (word sz) := @weq_dec.
 
 Lemma nth_error_nth: forall {T: Type} (l: list T) (e d: T) (i: nat),
   nth_error l i = Some e ->
