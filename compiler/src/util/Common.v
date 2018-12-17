@@ -1,6 +1,7 @@
 Require Export Coq.omega.Omega.
 Require Export Coq.Lists.List.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.Solver.
+Require Export coqutil.Word.Interface coqutil.Word.Properties.
 Require Export coqutil.Decidable.
 Require Export compiler.util.Tactics.
 Require Export compiler.util.Set.

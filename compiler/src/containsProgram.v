@@ -25,9 +25,9 @@ Local Unset Universe Polymorphism. (* for Add Ring *)
 
 Section ContainsProgram.
 
-  Context {byte: word 8} {width: Z} {mword: word width} {ok: word.ok mword}.
-  Context {Mem: map.map mword byte}.
-  Context {BWS: FlatToRiscvBitWidthSpecifics mword}.
+  Context {W: Words}.
+  Context {Mem: map.map word byte}.
+  Context {BWS: FlatToRiscvBitWidthSpecifics word}.
 
   Ltac mword_cst w :=
     match w with
@@ -52,10 +52,10 @@ Section ContainsProgram.
        morphism (@ZToReg_morphism mword MW),
        constants [mword_cst]).
    *)
-  Add Ring mword_ring: (@word.ring_theory _ mword _).
+  Add Ring wring: (@word.ring_theory width word word_ok).
 
   (* load and decode Inst *)
-  Definition ldInst(m: Mem)(a: mword): option Instruction :=
+  Definition ldInst(m: Mem)(a: word): option Instruction :=
     match Memory.loadWord m a with
     | Some w => Some (decode (@RV_wXLEN_IM BitWidth) (LittleEndian.combine 4 w))
     | None => None
@@ -66,7 +66,7 @@ Section ContainsProgram.
     List.map (fun w => decode (@RV_wXLEN_IM BitWidth) (uwordToZ w)) prog.
    *)
 
-  Definition containsProgram(m: Mem)(program: list Instruction)(offset: mword) :=
+  Definition containsProgram(m: Mem)(program: list Instruction)(offset: word) :=
 (*    regToZ_unsigned offset + 4 * Zlength program <= Memory.memSize m /\*)
     forall i inst, Znth_error program i = Some inst ->
       ldInst m (add offset (ZToReg (4 * i))) = Some inst.
@@ -133,7 +133,7 @@ Section ContainsProgram.
   Qed.
   *)
 
-  Definition containsProgram_app_will_work(insts1 insts2: list Instruction)(offset: mword) :=
+  Definition containsProgram_app_will_work(insts1 insts2: list Instruction)(offset: word) :=
     (regToZ_unsigned (mul (add offset (ZToReg 4)) (ZToReg (Zlength insts1))) = 0 ->
      insts1 = nil \/ insts2 = nil).
 
@@ -184,7 +184,7 @@ Section ContainsProgram.
     intros.
     destruct (containsProgram_app_inv0 _ _ H) as [H1 H2].
     unfold add, ZToReg, MkMachineWidth.MachineWidth_XLEN in *.
-    rewrite (@word.ring_morph width mword ok).(morph_mul) in H2.
+    rewrite (@word.ring_morph width word word_ok).(morph_mul) in H2.
     auto.
   Qed.
 
@@ -279,11 +279,11 @@ Section ContainsProgram.
     rewrite Zlength_cons, Zlength_nil.
     unfold add, mul, ZToReg, MkMachineWidth.MachineWidth_XLEN in *.
     change (0 + 1) with 1.
-    repeat match goal with
-           | H: containsProgram _ _ ?x |- _ => progress (ring_simplify x in H)
-           | |-  containsProgram _ _ ?x     => progress (ring_simplify x)
-           end.
-    assumption.
+    match goal with
+    | H: containsProgram ?m ?insts ?a |- containsProgram ?m ?insts ?a' =>
+      replace a' with a; [assumption|]
+    end.
+    ring.
   Qed.
 
 End ContainsProgram.

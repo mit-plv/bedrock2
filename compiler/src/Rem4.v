@@ -14,7 +14,7 @@ Local Unset Universe Polymorphism.
 (* because otherwise "Add Ring" doesn't work https://github.com/coq/coq/issues/9201 *)
 
 Section Rem4.
-  Context {byte: word 8} {width: Z} {mword: word width} {ok: word.ok mword}.
+  Context {W: Words}.
 
   Ltac mword_cst w :=
     match w with
@@ -39,7 +39,7 @@ Section Rem4.
        morphism (@ZToReg_morphism mword MW),
        constants [mword_cst]).
    *)
-  Add Ring mword_ring: (@word.ring_theory _ mword _).
+  Add Ring wring: (@word.ring_theory width word word_ok).
 
   Ltac ring' := unfold ZToReg, mul, add, MachineWidth_XLEN in *; ring.
 
@@ -58,17 +58,17 @@ Section Rem4.
 
   (* check lower two bits approach: how to connect to remu? or replace remu in spec? *)
 
-  Axiom euclid_unsigned: forall (a b: mword), a = add (mul (divu a b) b) (remu a b).
-  Axiom remu_range: forall (a b: mword), 0 <= regToZ_unsigned (remu a b) < regToZ_unsigned b.
+  Axiom euclid_unsigned: forall (a b: word), a = add (mul (divu a b) b) (remu a b).
+  Axiom remu_range: forall (a b: word), 0 <= regToZ_unsigned (remu a b) < regToZ_unsigned b.
 
   Axiom unique: forall a b q r,
       a = add (mul b q) r ->
       0 <= regToZ_unsigned r < regToZ_unsigned b ->
       q = divu a b /\ r = remu a b.
 
-  Definition divisibleBy4(a: mword): Prop := exists q, mul (ZToReg 4) q = a.
+  Definition divisibleBy4(a: word): Prop := exists q, mul (ZToReg 4) q = a.
 
-  Lemma remu40_divisibleBy4: forall (a: mword),
+  Lemma remu40_divisibleBy4: forall (a: word),
       remu a (ZToReg 4) = ZToReg 0 ->
       divisibleBy4 a.
   Proof.
@@ -81,7 +81,7 @@ Section Rem4.
     ring'.
   Qed.
 
-  Lemma divisibleBy4_remu40: forall (a: mword),
+  Lemma divisibleBy4_remu40: forall (a: word),
       divisibleBy4 a ->
       remu a (ZToReg 4) = ZToReg 0.
   Proof.

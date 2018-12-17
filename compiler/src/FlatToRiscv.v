@@ -28,6 +28,7 @@ Require Import riscv.Utility.
 Require Import riscv.util.ZBitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
+Require Import riscv.MkMachineWidth.
 Require Import compiler.runsToNonDet.
 Require Import compiler.Rem4.
 Require Import compiler.containsProgram.
@@ -77,38 +78,34 @@ Module Import FlatToRiscv.
   Class parameters := {
     def_params :> FlatToRiscvDef.parameters;
 
-    width: Z;
-    mword :> word width;
-    mword_ok :> word.ok mword;
-    byte :> word 8;
-    byte_ok :> word.ok byte;
+    W :> Words;
 
-    locals :> map.map Register mword;
+    locals :> map.map Register word;
     locals_ok: map.ok locals;
-    mem :> map.map mword byte;
+    mem :> map.map word byte;
     actname_eq_dec :> DecidableEq actname;
 
-    BWS :> FlatToRiscvBitWidthSpecifics mword;
+    BWS :> FlatToRiscvBitWidthSpecifics word;
 
     M: Type -> Type;
     MM :> Monad M;
-    RVM :> RiscvProgram M mword;
-    RVS :> @RiscvState M mword _ _ RVM;
-    RVAX :> AxiomaticRiscv mword actname M;
+    RVM :> RiscvProgram M word;
+    RVS :> @RiscvState M word _ _ RVM;
+    RVAX :> AxiomaticRiscv actname M;
 
     ext_spec:
       (* given an action label, a trace of what happened so fat,
          and a list of function call arguments, *)
-      actname -> list (LogItem mword actname) -> list mword ->
+      actname -> list (LogItem actname) -> list word ->
       (* returns a set of (extended trace, function call results) *)
-      (list (LogItem mword actname) -> list mword -> Prop) ->
+      (list (LogItem actname) -> list word -> Prop) ->
       Prop; (* or returns no set if the call fails. *)
 
-    translate_id_if_aligned_4: forall (a: mword) mode,
+    translate_id_if_aligned_4: forall (a: word) mode,
       (regToZ_unsigned a) mod 4 = 0 ->
       translate mode (ZToReg 4) a = Return a;
 
-    translate_id_if_aligned_8: forall (a: mword) mode,
+    translate_id_if_aligned_8: forall (a: word) mode,
       (regToZ_unsigned a) mod 8 = 0 ->
       translate mode (ZToReg 8) a = Return a;
 
@@ -128,12 +125,12 @@ Module Import FlatToRiscv.
 
     FlatImp_params: FlatImp.parameters := {|
       FlatImp.bopname_params := bopname_params;
-      FlatImp.mword := mword;
+      FlatImp.mword := word;
       FlatImp.ext_spec := ext_spec;
       FlatImp.max_ext_call_code_size := max_ext_call_code_size;
     |};
 
-    Machine := @RiscvMachine Register byte width mword State_is_RegisterFile mem actname;
+    Machine := @RiscvMachine Register W State_is_RegisterFile mem actname;
 
     compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts initialMH
         (argvars resvars: list Register),
@@ -162,9 +159,9 @@ Section FlatToRiscv1.
 
   Notation var := Z (only parsing).
 
-  Definition trace := list (LogItem mword actname).
+  Definition trace := list (LogItem actname).
 
-  Local Notation RiscvMachineL := (RiscvMachine Register mword actname).
+  Local Notation RiscvMachineL := (RiscvMachine Register actname).
 
   Ltac state_calc0 := map_solver locals_ok.
 
@@ -178,6 +175,7 @@ Section FlatToRiscv1.
     | _ => constr:(NotConstant)
   end.
 
+  (*
   Hint Rewrite
     ZToReg_morphism.(morph_add)
     ZToReg_morphism.(morph_sub)
@@ -189,12 +187,16 @@ Section FlatToRiscv1.
       (preprocess [autorewrite with rew_ZToReg_morphism],
        morphism (@ZToReg_morphism mword MachineWidth_Inst),
        constants [mword_cst]).
+  *)
+  Add Ring wring: (@word.ring_theory width word word_ok).
+
+  Ltac ring' := unfold ZToReg, mul, add, MachineWidth_XLEN in *; ring.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Ltac solve_word_eq :=
     match goal with
-    | |- @eq mword _ _ => idtac
+    | |- @eq word _ _ => idtac
     | _ => fail 1 "wrong shape of goal"
     end;
     subst;
@@ -205,7 +207,7 @@ Section FlatToRiscv1.
     try ring.
 
   (* TODO is there a principled way of writing such proofs? *)
-  Lemma reduce_eq_to_sub_and_lt: forall (y z: mword) {T: Type} (thenVal elseVal: T),
+  Lemma reduce_eq_to_sub_and_lt: forall (y z: word) {T: Type} (thenVal elseVal: T),
     (if ltu (sub y  z) (fromImm 1) then thenVal else elseVal) =
     (if reg_eqb y z        then thenVal else elseVal).
   Proof. (*
@@ -304,7 +306,14 @@ Section FlatToRiscv1.
     | (_ >= _)%nat => idtac
     end.
 
-  Definition pow2_wXLEN_4 := pow2_sz_4.
+  Lemma pow2_wXLEN_4: 4 < 2 ^ XLEN.
+  Proof.
+    unfold XLEN, MachineWidth_XLEN.
+    pose proof (@word.width_pos _ _ word_ok).
+    pose proof (Z.pow_gt_1 2 width).
+    (* TODO doesn't hold, if we want this we'll have to add a stronger bound to Words,
+       or somewhere else *)
+  Admitted.
 
   Ltac nat_rel_with_words_pre :=
     match goal with
@@ -322,182 +331,6 @@ Section FlatToRiscv1.
     nat_rel_with_words_pre(*;
     nat_div_mod_to_quot_rem;
     nia *).
-
-  (* Note: containsProgram for one single [[inst]] could be simplified, but for automation,
-     it's better not to simplify.
-  Lemma containsProgram_cons_inv_old: forall m inst insts offset,
-    containsProgram m (inst :: insts) offset ->
-    containsProgram m [[inst]] offset /\
-    containsProgram m insts (add offset ZToReg 4).
-  Proof.
-    intros *. intro Cp. unfold containsProgram in *. cbn [length] in *.
-    intuition (try omega).
-    + specialize (H0 0). specialize H0 with (1 := eq_refl).
-      intros. destruct i; inverts H1.
-      - assumption.
-      - exfalso. eauto using nth_error_nil_Some.
-    + nat_rel_with_words.
-    + rename H0 into Cp. specialize (Cp (S i)). simpl in Cp.
-      specialize (Cp _ H1).
-      rewrite <- Cp. f_equal.
-      solve_word_eq.
-  Qed.
-  *)
-
-  Definition containsProgram_app_will_work(insts1 insts2: list Instruction)(offset: mword) :=
-    (regToZ_unsigned (mul (add offset (ZToReg 4)) (ZToReg (Zlength insts1))) = 0 ->
-     insts1 = nil \/ insts2 = nil).
-
-  Lemma containsProgram_app_inv0: forall s insts1 insts2 offset,
-    containsProgram s (insts1 ++ insts2) offset ->
-    containsProgram s insts1 offset /\
-    containsProgram s insts2 (add offset (ZToReg (4 * Zlength insts1))) /\
-    containsProgram_app_will_work insts1 insts2 offset.
-  Proof.
-  (*
-    intros *. intro Cp. unfold containsProgram, containsProgram_app_will_work in *.
-    rewrite app_length in Cp.
-    intuition (try nat_rel_with_words).
-    + apply H0. rewrite nth_error_app1; [assumption|].
-      apply nth_error_Some. intro E. rewrite E in H1. discriminate.
-    + rewrite <- (H0 (length insts1 + i)).
-      - f_equal. solve_word_eq.
-      - rewrite nth_error_app2 by omega.
-        replace (length insts1 + i - length insts1) with i by omega.
-        assumption.
-    + destruct insts2; [solve [auto]|].
-      destruct insts1; [solve [auto]|].
-      exfalso.
-      simpl (length _) in *.
-      rewrite Nat.mul_add_distr_l in H.
-      rewrite Nat.add_assoc in H.
-      rewrite wordToNat_wplus in H1.
-      rewrite? wordToNat_wmult in *.
-      rewrite? wordToNat_natToWord_eqn in *.
-      pose proof pow2_wXLEN_4.
-      rewrite Nat.add_mod in H1 by omega.
-      rewrite <- Nat.mul_mod in * by omega.
-      rewrite Nat.add_mod_idemp_r in H1 by omega.
-      rewrite <- Nat.add_mod in H1 by omega.
-      pose proof (Memory.memSize_bound s).
-      rewrite Nat.mod_small in H1 by omega.
-      clear -H1. omega.
-  Qed.
-   *)
-  Admitted.
-
-  Lemma containsProgram_app_inv: forall s insts1 insts2 offset,
-    containsProgram s (insts1 ++ insts2) offset ->
-    containsProgram s insts1 offset /\
-    containsProgram s insts2 (add offset (mul (ZToReg 4) (ZToReg (Zlength insts1)))) /\
-    containsProgram_app_will_work insts1 insts2 offset.
-  Proof.
-    intros.
-    destruct (containsProgram_app_inv0 _ _ H) as [H1 H2].
-    rewrite ZToReg_morphism.(morph_mul) in H2.
-    rewrite <- regToZ_unsigned_four in H2.
-    rewrite ZToReg_regToZ_unsigned in H2.
-    auto.
-  Qed.
-
-  Lemma containsProgram_cons_inv: forall m inst insts offset,
-    containsProgram m (inst :: insts) offset ->
-    containsProgram m [[inst]] offset /\
-    containsProgram m insts (add offset (ZToReg 4)) /\
-    containsProgram_app_will_work [[inst]] insts offset.
-  Proof.
-    intros.
-    pose proof containsProgram_app_inv as P.
-    specialize P with (insts1 := [[inst]]) (insts2 := insts).
-    (* TODO how to automate this nicely? "match" and equate? *)
-    replace (add offset (ZToReg 4)) with (add offset (mul (ZToReg 4) (ZToReg (Zlength [[inst]])))); auto.
-    rewrite Zlength_cons. rewrite Zlength_nil.
-    change (0 + 1) with 1.
-    rewrite <- regToZ_unsigned_one.
-    rewrite ZToReg_regToZ_unsigned.
-    ring.
-  Qed.
-
-  Lemma containsProgram_app: forall m insts1 insts2 offset,
-      containsProgram_app_will_work insts1 insts2 offset ->
-      containsProgram m insts1 offset ->
-      containsProgram m insts2 (add offset (mul (ZToReg 4) (ZToReg (Zlength insts1)))) ->
-      containsProgram m (insts1 ++ insts2) offset.
-  Proof.
-    (*
-    unfold containsProgram, containsProgram_app_will_work.
-    intros *. intro A. intros. rewrite app_length.
-    intuition idtac.
-    - clear H2 H3.
-      repeat match goal with
-             | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
-               unique pose proof (@Memory.memSize_bound M _ IsMem m)
-             end.
-      pose proof pow2_wXLEN_4.
-      assert (let x := regToZ_unsigned  (offset ^+ $ (4) ^* $ (length insts1)) in x = 0 \/ x > 0) as C
-        by (cbv zeta; omega).
-      destruct C as [C | C].
-      + specialize (A C). destruct A as [A | A].
-        * subst insts1.
-          change (length [[]]) with 0 in *.
-          rewrite Nat.add_0_l.
-          replace (offset ^+ $ (4) ^* $ (0)) with offset in C by solve_word_eq.
-          apply wordToNat_zero in C. subst offset.
-          rewrite roundTrip_0 in *.
-          match goal with
-          | H: regToZ_unsigned ?b + 4 * length insts2 <= _ |- _ =>
-            replace 0 with (regToZ_unsigned b) at 1; [assumption|]
-          end.
-          rewrite <- roundTrip_0 at 4.
-          f_equal.
-          solve_word_eq.
-        * subst insts2.
-          change (length [[]]) with 0.
-          rewrite Nat.add_0_r.
-          assumption.
-      + repeat match goal with
-             | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
-               unique pose proof (@Memory.memSize_bound M _ IsMem m)
-             end.
-        pose proof pow2_wXLEN_4.
-        rewrite? wordToNat_wplus in *.
-        rewrite? wordToNat_natToWord_eqn in *.
-        rewrite? wordToNat_wmult in *.
-        rewrite? wordToNat_natToWord_eqn in *.
-        rewrite <- Nat.mul_mod in * by omega.
-        rewrite Nat.add_mod_idemp_r in * by omega.
-        nat_div_mod_to_quot_rem.
-        assert (q = 0 \/ q > 0) as D by omega.
-        destruct D as [D | D]; nia.
-    - assert (i < length insts1 \/ length insts1 <= i) as E by omega.
-      destruct E as [E | E].
-      + rewrite nth_error_app1 in H0 by assumption. eauto.
-      + rewrite nth_error_app2 in H0 by assumption.
-        erewrite <- H3; [|exact H0].
-        f_equal.
-        replace i with (i - length insts1 + length insts1) at 1 by omega.
-        forget (i - length insts1) as i'.
-        solve_word_eq.
-  Qed.*)
-  Admitted.
-
-  Lemma containsProgram_cons: forall m inst insts offset,
-    containsProgram_app_will_work [[inst]] insts offset ->
-    containsProgram m [[inst]] offset ->
-    containsProgram m insts (add offset (ZToReg 4)) ->
-    containsProgram m (inst :: insts) offset.
-  Proof.
-    intros. change (inst :: insts) with ([[inst]] ++ insts).
-    apply containsProgram_app; [assumption..|].
-    rewrite Zlength_cons, Zlength_nil.
-    repeat match goal with
-           | H: containsProgram _ _ ?x |- _ => progress (ring_simplify x in H)
-           | |-  containsProgram _ _ ?x     => progress (ring_simplify x)
-           end.
-    assumption.
-  Qed.
-
-  Arguments containsProgram: simpl never.
 
   Ltac destruct_containsProgram :=
     repeat match goal with
@@ -714,7 +547,7 @@ Section FlatToRiscv1.
     destruct_one_match_hyp; [|discriminate].
     apply invert_Some_eq_Some in H0. subst inst.
     change (4 * 0) with 0 in E.
-    replace (add (getPc initialL) (ZToReg 0)) with (getPc initialL) in E by ring.
+    replace (add (getPc initialL) (ZToReg 0)) with (getPc initialL) in E by ring'.
     eapply go_loadWord; eassumption.
   Qed.
 
@@ -755,7 +588,7 @@ Section FlatToRiscv1.
              | H: @eq ?T _ _ |- _ =>
                match T with
             (* | option Semantics.word => don't clear because we have maps of Semantics.word *)
-               | option (map Z mword * Memory.mem) => clear H
+               | option (map Z word * Memory.mem) => clear H
                | option Memory.mem => clear H
                | list _ => clear H
                | nat => clear H
@@ -904,8 +737,31 @@ Section FlatToRiscv1.
     subst targetInsts;
     reflexivity.
 
+  Lemma reg_eqb_true: forall (a b: word), word.eqb a b = true -> a = b.
+  Proof.
+    intros.
+    rewrite word.unsigned_eqb in H. rewrite Z.eqb_eq in H. apply word.unsigned_inj in H.
+    assumption.
+  Qed.
+
+  Lemma reg_eqb_eq: forall (a b: word), a = b -> word.eqb a b = true.
+  Proof.
+    intros. subst. rewrite word.unsigned_eqb. apply Z.eqb_refl.
+  Qed.
+
+  Lemma reg_eqb_false: forall (a b: word), word.eqb a b = false -> a <> b.
+  Proof.
+    intros. intro. rewrite reg_eqb_eq in H; congruence.
+  Qed.
+
+  Lemma reg_eqb_ne: forall (a b: word), a <> b -> word.eqb a b = false.
+  Proof.
+    intros. destruct (word.eqb a b) eqn: E; try congruence.
+    exfalso. apply H. apply reg_eqb_true in E. assumption.
+  Qed.
+
   Lemma write_mem_preserves_mem_accessibility:
-    forall {initialMem finalMem: Memory.mem} {a0 w: mword},
+    forall {initialMem finalMem: Memory.mem} {a0 w: word},
       Memory.write_mem a0 w initialMem = Some finalMem ->
       forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
   Proof.
@@ -922,7 +778,7 @@ Section FlatToRiscv1.
   Qed.
 
   Lemma mem_accessibility_trans:
-    forall {initialMem middleMem finalMem: Memory.mem} {a: mword},
+    forall {initialMem middleMem finalMem: Memory.mem} {a: word},
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a middleMem = None) ->
       (Memory.read_mem a middleMem  = None <-> Memory.read_mem a finalMem  = None) ->
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
@@ -1148,14 +1004,14 @@ Section FlatToRiscv1.
     solve_word_eq.
 *)
 
-  Lemma execute_load: forall (x a: Register) (addr v: mword) (initialMH: Memory.mem)
+  Lemma execute_load: forall (x a: Register) (addr v: word) (initialMH: Memory.mem)
            (f: unit -> M unit) (initialL: RiscvMachineL) post (initialRegsH: locals),
       valid_register x ->
       valid_register a ->
       Memory.read_mem addr initialMH = Some v ->
 (*      containsMem initialL.(getMem) initialMH ->*)
       map.get initialRegsH a = Some addr ->
-      @map.extends Register mword _ initialL.(getRegs) initialRegsH ->
+      @map.extends Register word _ initialL.(getRegs) initialRegsH ->
       mcomp_sat (f tt) (setRegs initialL (setReg initialL.(getRegs) x v)) post ->
       mcomp_sat (Bind (execute (LwXLEN x a 0)) f) initialL post.
   Proof.
@@ -1254,7 +1110,7 @@ Section FlatToRiscv1.
   Arguments ZToWord: simpl never.
   Arguments Nat.pow: simpl never.
 *)
-  Lemma in_range0_valid_addr: forall (a: mword) al l,
+  Lemma in_range0_valid_addr: forall (a: word) al l,
       in_range a al 0 l ->
       Memory.valid_addr a al l.
   Proof.
@@ -1378,7 +1234,7 @@ Section FlatToRiscv1.
   Qed.
   *)
 
-  Definition load_lit_semantics(v: Z): mword :=
+  Definition load_lit_semantics(v: Z): word :=
     add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add
       (ZToReg 0)
       (ZToReg (bitSlice v (7 * 8) (8 * 8)))) 8)
@@ -1441,9 +1297,6 @@ Section FlatToRiscv1.
   Existing Instance FlatToRiscv.FlatImp_params.
 
   Definition eval_stmt := exec map.empty.
-Set Printing Universes. Set Printing Implicit.
-Print FlatToRiscvDef.
-
 
   Lemma compile_stmt_correct_aux:
     forall allInsts (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p))) t initialMH initialRegsH postH,
@@ -1454,7 +1307,7 @@ Print FlatToRiscvDef.
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 imemStart ->
-    @map.extends Register mword _ initialL.(getRegs) initialRegsH ->
+    @map.extends Register word _ initialL.(getRegs) initialRegsH ->
     (*containsMem initialL.(getMem) initialMH ->*)
     containsProgram initialL.(getMem) allInsts imemStart ->
     initialL.(getLog) = t ->
@@ -1480,7 +1333,8 @@ Print FlatToRiscvDef.
     - (* SInteract *)
       simpl in *; destruct_everything. simpl in *.
       eapply runsTo_weaken.
-      + eapply compile_ext_call_correct with (postH := post) (initialMH := m);
+      + eapply compile_ext_call_correct with (postH := post) (initialMH := m) (action0 := action)
+                                             (argvars0 := argvars) (resvars0 := resvars);
           try sidecondition; try assumption; simpl.
         eapply @ExInteract.
         * match goal with

@@ -18,7 +18,6 @@ Require Import riscv.InstructionCoercions.
 Require Import riscv.Program.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscv.
-Require Import compiler.FlatToRiscv32Specifics.
 Require Import riscv.RiscvMachine.
 Require Import riscv.MinimalMMIO.
 Require Import compiler.FlatToRiscvDef.
@@ -60,10 +59,9 @@ Instance myparams: Basic_bopnames.parameters := {|
 
 Module Import MMIO.
   Class parameters := {
-    width : Z;
-    word :> word.word width;
-    byte :> word.word 8;
+    W :> Words;
     mem :> map.map word byte;
+    BWS :> FlatToRiscvBitWidthSpecifics word;
     locals :> map.map var word;
     locals_ok :> map.ok locals;
     env :> map.map func (list var * list var * Syntax.cmd.cmd);
@@ -87,7 +85,9 @@ Section MMIO1.
       match argvals with
       | addr :: _ =>
         simple_isMMIOAddr addr = true /\
-        map.get m addr = None /\ (*TODO use Memory.loadWord/invent Memory.undef, no MachineWidth *)
+        (* TODO this one says "exists addr in the 4-byte range which is undefined", but we probably
+           need "forall addr in the 4 byte range, it is undefined" *)
+        Memory.loadWord m addr = None /\
         match action with
         | MMInput => argvals = [addr] /\ forall val, post m [val]
         | MMOutput => exists val, argvals = [addr; val] /\ post m nil
@@ -223,26 +223,20 @@ Proof.
   intros. inversion H. assumption.
 Qed.
 
-Set Printing All. Set Printing Universes.
-
-Instance foo: map.map Register word := locals.
-
 Set Refine Instance Mode.
 Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
   FlatToRiscv.def_params := compilation_params;
-  FlatToRiscv.mword := word;
   FlatToRiscv.locals := locals;
   FlatToRiscv.locals_ok := locals_ok;
   FlatToRiscv.mem := (@mem p);
   FlatToRiscv.actname_eq_dec := _;
-  FlatToRiscv.MachineWidth_Inst := _;
-  FlatToRiscv.BWS := _;
+  FlatToRiscv.BWS := BWS;
 (*  FlatToRiscv.M := OStateND (RiscvMachine Register (Naive.word 32) MMIOAction);*)
   FlatToRiscv.MM := OStateND_Monad _;
   FlatToRiscv.RVM := IsRiscvMachineL;
   FlatToRiscv.RVS := DefaultRiscvState;
   FlatToRiscv.RVAX := MinimalMMIOSatisfiesAxioms;
-  FlatToRiscv.ext_spec := _ ; (* ext_spec; *)
+  FlatToRiscv.ext_spec := ext_spec;
 |}.
 - intros. simpl. unfold default_translate.
   rewrite remu_def.
