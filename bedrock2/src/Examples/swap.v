@@ -51,7 +51,7 @@ Import coqutil.Word.Interface.
 
 Lemma load1_sep a (v:Semantics.byte) R m (H:(ptsto a v * R) m) :
   load Syntax.access_size.one m a = Some (word.of_Z (LittleEndian.combine 1 (pair.mk v tt))).
-  cbv [load Semantics.bytes_per bytes_per footprint List.map List.option_all List.unfoldn].
+  cbv [load bytes_per footprint List.map List.option_all List.unfoldn].
   eapply get_sep in H; rewrite H.
   exact eq_refl.
 Qed.

@@ -81,8 +81,9 @@ Module Import FlatToRiscv.
     W :> Words;
 
     locals :> map.map Register word;
-    locals_ok: map.ok locals;
+    locals_ok :> map.ok locals;
     mem :> map.map word byte;
+    mem_ok :> map.ok mem;
     actname_eq_dec :> DecidableEq actname;
 
     BWS :> FlatToRiscvBitWidthSpecifics word;
@@ -93,13 +94,8 @@ Module Import FlatToRiscv.
     RVS :> @RiscvState M word _ _ RVM;
     RVAX :> AxiomaticRiscv actname M;
 
-    ext_spec:
-      (* given an action label, a trace of what happened so fat,
-         and a list of function call arguments, *)
-      actname -> list (LogItem actname) -> list word ->
-      (* returns a set of (extended trace, function call results) *)
-      (list (LogItem actname) -> list word -> Prop) ->
-      Prop; (* or returns no set if the call fails. *)
+    trace := list (mem * Syntax.actname * list word * (mem * list word));
+    ext_spec : trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;
 
     translate_id_if_aligned_4: forall (a: word) mode,
       (regToZ_unsigned a) mod 4 = 0 ->
@@ -125,7 +121,6 @@ Module Import FlatToRiscv.
 
     FlatImp_params: FlatImp.parameters := {|
       FlatImp.bopname_params := bopname_params;
-      FlatImp.mword := word;
       FlatImp.ext_spec := ext_spec;
       FlatImp.max_ext_call_code_size := max_ext_call_code_size;
     |};
@@ -287,8 +282,8 @@ Section FlatToRiscv1.
     omega.
   Qed.
 
-  Definition mem_inaccessible(m: Memory.mem)(start len: Z): Prop :=
-    forall a w, Memory.read_mem a m = Some w -> not_in_range a XLEN_in_bytes start len.
+  Definition mem_inaccessible(m: mem)(start len: Z): Prop :=
+    forall a w, map.get m a = Some w -> not_in_range a XLEN_in_bytes start len.
 
   Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
   Proof.
@@ -573,7 +568,7 @@ Section FlatToRiscv1.
              | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
                let n := fresh "mv" s in
                forget (FlatImp.modVars var func s) as n
-             | H: Memory.read_mem _ _ = _ |- _ => clear H
+         (*  | H: Memory.read_mem _ _ = _ |- _ => clear H *)
              | H: ?P |- _ =>
                let h := head_of_app P in
                match h with
@@ -588,8 +583,8 @@ Section FlatToRiscv1.
              | H: @eq ?T _ _ |- _ =>
                match T with
             (* | option Semantics.word => don't clear because we have maps of Semantics.word *)
-               | option (map Z word * Memory.mem) => clear H
-               | option Memory.mem => clear H
+           (*  | option (map Z word * Memory.mem) => clear H *)
+               | option mem => clear H
                | list _ => clear H
                | nat => clear H
                end
@@ -737,34 +732,11 @@ Section FlatToRiscv1.
     subst targetInsts;
     reflexivity.
 
-  Lemma reg_eqb_true: forall (a b: word), word.eqb a b = true -> a = b.
-  Proof.
-    intros.
-    rewrite word.unsigned_eqb in H. rewrite Z.eqb_eq in H. apply word.unsigned_inj in H.
-    assumption.
-  Qed.
-
-  Lemma reg_eqb_eq: forall (a b: word), a = b -> word.eqb a b = true.
-  Proof.
-    intros. subst. rewrite word.unsigned_eqb. apply Z.eqb_refl.
-  Qed.
-
-  Lemma reg_eqb_false: forall (a b: word), word.eqb a b = false -> a <> b.
-  Proof.
-    intros. intro. rewrite reg_eqb_eq in H; congruence.
-  Qed.
-
-  Lemma reg_eqb_ne: forall (a b: word), a <> b -> word.eqb a b = false.
-  Proof.
-    intros. destruct (word.eqb a b) eqn: E; try congruence.
-    exfalso. apply H. apply reg_eqb_true in E. assumption.
-  Qed.
-
   Lemma write_mem_preserves_mem_accessibility:
-    forall {initialMem finalMem: Memory.mem} {a0 w: word},
-      Memory.write_mem a0 w initialMem = Some finalMem ->
-      forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
-  Proof.
+    forall {initialMem finalMem: mem} {a0: word} {w: w32},
+      Memory.storeWord initialMem a0 w = Some finalMem ->
+      forall a, Memory.loadWord initialMem a = None <-> Memory.loadWord finalMem a = None.
+  Proof. Admitted. (*
     intros. unfold Memory.write_mem in *.
     destruct_one_match_hyp; [|discriminate].
     inversions H.
@@ -775,8 +747,9 @@ Section FlatToRiscv1.
       + assumption.
       + reflexivity.
     - repeat destruct_one_match_hyp; subst; reflexivity || discriminate || assumption.
-  Qed.
+  Qed. *)
 
+  (*
   Lemma mem_accessibility_trans:
     forall {initialMem middleMem finalMem: Memory.mem} {a: word},
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a middleMem = None) ->
@@ -784,7 +757,6 @@ Section FlatToRiscv1.
       (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
   Proof. intros. tauto. Qed.
 
-  (*
   Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
       {s: stmt} {initialRegs finalRegs: state},
       eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
@@ -1004,16 +976,18 @@ Section FlatToRiscv1.
     solve_word_eq.
 *)
 
-  Lemma execute_load: forall (x a: Register) (addr v: word) (initialMH: Memory.mem)
-           (f: unit -> M unit) (initialL: RiscvMachineL) post (initialRegsH: locals),
+  Lemma execute_load: forall (x a: Register) (addr: word) (sz: Syntax.access_size) v
+           (f: unit -> M unit) (initialL: RiscvMachineL) post,
       valid_register x ->
       valid_register a ->
-      Memory.read_mem addr initialMH = Some v ->
-(*      containsMem initialL.(getMem) initialMH ->*)
-      map.get initialRegsH a = Some addr ->
-      @map.extends Register word _ initialL.(getRegs) initialRegsH ->
-      mcomp_sat (f tt) (setRegs initialL (setReg initialL.(getRegs) x v)) post ->
-      mcomp_sat (Bind (execute (LwXLEN x a 0)) f) initialL post.
+      Memory.load (Memory.bytes_per sz) initialL.(getMem) addr = Some v ->
+      getReg initialL.(getRegs) a = addr ->
+      mcomp_sat (f tt)
+                (withRegs
+                   (setReg initialL.(getRegs) x
+                           (word.of_Z (LittleEndian.combine (@Memory.bytes_per width sz) v)))
+                   initialL) post ->
+      mcomp_sat (Bind (execute (compile_load sz x a)) f) initialL post.
   Proof.
     intros.
     (*
@@ -1175,7 +1149,7 @@ Section FlatToRiscv1.
         rewrite D by omega.
         omega.
   Qed.
-  Admitted.*)
+  Admitted.
 
   Lemma mem_inaccessible_read:  forall a initialMH w start len,
       Memory.read_mem a initialMH = Some w ->
@@ -1195,7 +1169,6 @@ Section FlatToRiscv1.
     eapply H0. eassumption.
   Qed.
 
-  (*
   Lemma read_mem_in_range: forall a0 initialMH initialML w,
       Memory.read_mem a0 initialMH = Some w ->
       containsMem initialML initialMH ->

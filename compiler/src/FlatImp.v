@@ -4,13 +4,13 @@ Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
 Require Import riscv.util.ListLib.
 Require Import riscv.Utility.
+Require Import riscv.MkMachineWidth.
 Require Import coqutil.Macros.unique.
-Require Import bedrock2.Syntax.
+Require Import bedrock2.Memory.
 Require compiler.NoActionSyntaxParams.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
-Require Import compiler.Memory.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 
@@ -31,8 +31,8 @@ Section Syntax.
   .
 
   Inductive stmt: Type :=
-    | SLoad(x: varname)(a: varname): stmt
-    | SStore(a: varname)(v: varname): stmt
+    | SLoad(sz: Syntax.access_size)(x: varname)(a: varname): stmt
+    | SStore(sz: Syntax.access_size)(a: varname)(v: varname): stmt
     | SLit(x: varname)(v: Z): stmt
     | SOp(x: varname)(op: bopname)(y z: varname): stmt
     | SSet(x y: varname): stmt
@@ -45,47 +45,31 @@ Section Syntax.
 
 End Syntax.
 
-Set Printing Universes.
-Print stmt.
-
 Module Import FlatImp.
   Class parameters := {
     bopname_params :> Basic_bopnames.parameters;
 
-    mword : Type;
-    MachineWidth_Inst :> MachineWidth mword;
+    W :> Words;
 
     varname_eq_dec  :> DecidableEq varname;
     funcname_eq_dec :> DecidableEq funcname;
     actname_eq_dec  :> DecidableEq actname;
 
-    (* varSet_Inst :> SetFunctions varname; *)
-
-    locals :> map.map varname mword;
+    locals :> map.map varname word;
     env :> map.map funcname (list varname * list varname * stmt);
+    mem :> map.map word byte;
 
     locals_ok :> map.ok locals;
     env_ok :> map.ok env;
+    mem_ok :> map.ok mem;
 
-    Event: Type;
+    trace := list (mem * Syntax.actname * list word * (mem * list word));
 
-    ext_spec:
-      (* given an action label, a trace of what happened so fat,
-         and a list of function call arguments, *)
-      actname -> list Event -> list mword ->
-      (* returns a set of (extended trace, function call results) *)
-      (list Event -> list mword -> Prop) ->
-      Prop; (* or returns no set if the call fails.
-      Will give it access to the memory (and possibly the full registers)
-      once we have adequate separation logic reasoning in the compiler correctness proof.
-      Passing in the trace of what happened so far allows ext_spec to impose restrictions
-      such as "you can only call foo after calling init". *)
-
+    ext_spec: trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;
 
     max_ext_call_code_size : actname -> Z;
   }.
 End FlatImp.
-
 
 Local Notation "' x <- a ; f" :=
   (match (a: option _) with
@@ -100,12 +84,10 @@ Local Open Scope Z_scope.
 Section FlatImp1.
   Context {pp : unique! parameters}.
 
-  Notation state := (map varname mword).
-
   Section WithEnv.
     Variable (e: env).
 
-    Definition eval_bbinop(st: locals)(op: bbinop)(x y: mword): bool :=
+    Definition eval_bbinop(st: locals)(op: bbinop)(x y: word): bool :=
       match op with
       | BEq  => reg_eqb x y
       | BNe  => negb (reg_eqb x y)
@@ -133,14 +115,14 @@ Section FlatImp1.
       match f with
       | O => None (* out of fuel *)
       | S f => match s with
-        | SLoad x a =>
+        | SLoad sz x a =>
             'Some a <- map.get st a;
-            'Some v <- read_mem a m;
+            'Some v <- load sz m a;
             Some (map.put st x v, m)
-        | SStore a v =>
+        | SStore sz a v =>
             'Some a <- map.get st a;
             'Some v <- map.get st v;
-            'Some m <- write_mem a v m;
+            'Some m <- store sz m a v;
             Some (st, m)
         | SLit x v =>
             Some (map.put st x (ZToReg v), m)
@@ -179,8 +161,8 @@ Section FlatImp1.
 
     Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
         match s with
-        | SLoad x a => 1
-        | SStore a v => 1
+        | SLoad sz x a => 1
+        | SStore sz a v => 1
         | SLit x v => 8
         | SOp x op y z => 2
         | SSet x y => 1
@@ -205,18 +187,18 @@ Section FlatImp1.
       inversionss;
       eauto 16.
 
-    Lemma invert_eval_SLoad: forall fuel initialSt initialM x y final,
-      eval_stmt (S fuel) initialSt initialM (SLoad x y) = Some final ->
+    Lemma invert_eval_SLoad: forall fuel initialSt initialM sz x y final,
+      eval_stmt (S fuel) initialSt initialM (SLoad sz x y) = Some final ->
       exists a v, map.get initialSt y = Some a /\
-                  read_mem a initialM = Some v /\
+                  load sz initialM a = Some v /\
                   final = (map.put initialSt x v, initialM).
     Proof. inversion_lemma. Qed.
 
-    Lemma invert_eval_SStore: forall fuel initialSt initialM x y final,
-      eval_stmt (S fuel) initialSt initialM (SStore x y) = Some final ->
+    Lemma invert_eval_SStore: forall fuel initialSt initialM sz x y final,
+      eval_stmt (S fuel) initialSt initialM (SStore sz x y) = Some final ->
       exists a v finalM, map.get initialSt x = Some a /\
                          map.get initialSt y = Some v /\
-                         write_mem a v initialM = Some finalM /\
+                         store sz initialM a v = Some finalM /\
                          final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
 
@@ -284,23 +266,22 @@ Section FlatImp1.
       False.
     Proof. inversion_lemma. Qed.
 
-    Local Notation trace := (list Event).
-
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
-    Implicit Types post : trace -> @Memory.mem mword -> locals -> Prop.
+    Implicit Types post : trace -> mem -> locals -> Prop.
 
     (* alternative semantics which allow non-determinism *)
     Inductive exec:
       stmt ->
-      trace -> @Memory.mem mword -> locals ->
-      (trace -> @Memory.mem mword -> locals -> Prop)
+      trace -> mem -> locals ->
+      (trace -> mem -> locals -> Prop)
     -> Prop :=
     | ExInteract: forall t m l action argvars argvals resvars outcome post,
         option_all (List.map (map.get l) argvars) = Some argvals ->
-        ext_spec action t argvals outcome ->
-        (forall new_t resvals,
-            outcome new_t resvals ->
-            exists l', map.putmany_of_list resvars resvals l = Some l' /\ post (new_t) m l') ->
+        ext_spec t m action argvals outcome ->
+        (forall m' resvals,
+            outcome m' resvals ->
+            exists l', map.putmany_of_list resvars resvals l = Some l' /\
+                       post (((m, action, argvals), (m', resvals)) :: t) m' l') ->
         exec (SInteract resvars action argvars) t m l post
     | ExCall: forall t m l binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
@@ -314,17 +295,17 @@ Section FlatImp1.
               map.putmany_of_list binds retvs l = Some l' /\
               post t' m' l') ->
         exec (SCall binds fname args) t m l post
-    | ExLoad: forall t m l x a v addr post,
+    | ExLoad: forall t m l sz x a v addr post,
         map.get l a = Some addr ->
-        Memory.read_mem addr m = Some v ->
+        load sz m addr = Some v ->
         post t m (map.put l x v) ->
-        exec (SLoad x a) t m l post
-    | ExStore: forall t m m' l a addr v val post,
+        exec (SLoad sz x a) t m l post
+    | ExStore: forall t m m' l sz a addr v val post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
-        Memory.write_mem addr val m = Some m' ->
+        store sz m addr val = Some m' ->
         post t m' l ->
-        exec (SStore a v) t m l post
+        exec (SStore sz a v) t m l post
     | ExLit: forall t m l x v post,
         post t m (map.put l x (ZToReg v)) ->
         exec (SLit x v) t m l post
@@ -372,8 +353,8 @@ Section FlatImp1.
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt): set varname :=
     match s with
-    | SLoad x y => singleton_set x
-    | SStore x y => empty_set
+    | SLoad sz x y => singleton_set x
+    | SStore sz x y => empty_set
     | SLit x v => singleton_set x
     | SOp x op y z => singleton_set x
     | SSet x y => singleton_set x
@@ -398,8 +379,8 @@ Section FlatImp1.
 
   Fixpoint accessedVars(s: stmt): set varname :=
     match s with
-    | SLoad x y => union (singleton_set x) (singleton_set y)
-    | SStore x y => union (singleton_set x) (singleton_set y)
+    | SLoad sz x y => union (singleton_set x) (singleton_set y)
+    | SStore sz x y => union (singleton_set x) (singleton_set y)
     | SLit x v => singleton_set x
     | SOp x op y z => union (singleton_set x) (union (singleton_set y) (singleton_set z))
     | SSet x y => union (singleton_set x) (singleton_set y)

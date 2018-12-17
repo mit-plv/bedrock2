@@ -24,8 +24,16 @@ Definition Register: Type := Z.
 Module Import FlatToRiscvDef.
   Class parameters := {
     actname: Type;
-    LwXLEN: Register -> Register -> Z -> Instruction;
-    SwXLEN: Register -> Register -> Z -> Instruction;
+
+    (* These depend on the bitwidth: on 32-bit machines, Lw just loads 4 bytes,
+       while on 64-bit machines, it loads 4 bytes and sign-extends them.
+       If we want a command which always loads 4 bytes without sign-extending them,
+       we need to make a case distinction on the bitwidth and choose Lw on 32-bit,
+       but Lwu on 64-bit.
+       We can't just always choose Lwu, because Lwu is not available on 32-bit machines.
+       So we just wrap all this behind compile_load, and similarly for stores. *)
+    compile_load : Syntax.access_size -> Register -> Register -> Instruction;
+    compile_store: Syntax.access_size -> Register -> Register -> Instruction;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
     max_ext_call_code_size: actname -> Z;
     max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
@@ -45,8 +53,8 @@ Section FlatToRiscv1.
 
   Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
     match s with
-    | SLoad x a => 1
-    | SStore a v => 1
+    | SLoad sz x a => 1
+    | SStore sz a v => 1
     | SLit x v => 8
     | SOp x op y z => 2
     | SSet x y => 1
@@ -86,8 +94,8 @@ Section FlatToRiscv1.
 
   Fixpoint valid_registers(s: stmt): Prop :=
     match s with
-    | SLoad x a => valid_register x /\ valid_register a
-    | SStore a x => valid_register a /\ valid_register x
+    | SLoad _ x a => valid_register x /\ valid_register a
+    | SStore _ a x => valid_register a /\ valid_register x
     | SLit x _ => valid_register x
     | SOp x _ y z => valid_register x /\ valid_register y /\ valid_register z
     | SSet x y => valid_register x /\ valid_register y
@@ -163,8 +171,8 @@ Section FlatToRiscv1.
 
   Fixpoint compile_stmt(s: stmt): list (Instruction) :=
     match s with
-    | SLoad x y => [[LwXLEN x y 0]]
-    | SStore x y => [[SwXLEN x y 0]]
+    | SLoad  sz x y => [[compile_load  sz x y]]
+    | SStore sz x y => [[compile_store sz x y]]
     | SLit x v => compile_lit x v
     | SOp x op y z => compile_op x op y z
     | SSet x y => [[Add x Register0 y]]
