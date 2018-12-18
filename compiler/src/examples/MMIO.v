@@ -30,6 +30,44 @@ Require Import compiler.Rem4.
 Import ListNotations.
 Existing Instance DefaultRiscvState.
 
+
+Module Type LEARNING.
+  Parameter Learnt: Prop -> Prop.
+  Parameter markLearnt: forall {P: Prop} (p: P), Learnt P.
+End LEARNING.
+
+Module Import Learning: LEARNING.
+  Definition Learnt(P: Prop) := P.
+  Definition markLearnt{P: Prop}(p: P): Learnt P := p.
+End Learning.
+
+Ltac learn_tac p H :=
+  let P := type of p in
+  lazymatch goal with
+  | H: Learnt P |- _ => fail
+  | |- _ =>
+    let L := fresh "L" in
+    pose proof (markLearnt p) as L; (* will stay around *)
+    pose proof p as H (* will likely be destructed *)
+  end.
+
+Tactic Notation "learn" constr(p) := let H := fresh in learn_tac p H.
+Tactic Notation "learn" constr(p) "as" ident(H) := learn_tac p H.
+
+Ltac cheap_saturate :=
+  unshelve (repeat match goal with
+    | H: _ /\ _ |- _ => let Hl := fresh H "l" in let Hr := fresh H "r" in destruct H as [Hl Hr]
+    | E: exists y, _ |- _ => let yf := fresh y in destruct E as [yf E]
+    | H: forall (x: ?T), _ |- _ =>
+      match type of T with
+      | Prop => fail 1
+      | _ => let x' := fresh x in (evar (x': T)); specialize (H x'); subst x'
+      end
+    | H1: _, H2: _ -> _ |- _ => let H3 := fresh H1 "_" H2 in learn (H2 H1) as H3
+  end);
+  [eauto..|].
+
+
 Open Scope ilist_scope.
 
 Definition var: Type := Z.
@@ -227,6 +265,51 @@ Proof.
   intros. inversion H. assumption.
 Qed.
 
+Arguments Z.mul: simpl never.
+
+Ltac head e :=
+  match e with
+  | ?f _ => head f
+  | _ => e
+  end.
+
+Definition protected(P: Prop) := P.
+
+Ltac protect_equalities :=
+  repeat match goal with
+         | H: ?a = ?b |- _ => change (protected (a = b)) in H
+         end.
+
+Ltac unprotect_equalities :=
+  repeat match goal with
+         | H: protected (?a = ?b) |- _ => change (a = b) in H
+         end.
+
+Ltac invert_hyp H := protect_equalities; inversion H; clear H; subst; unprotect_equalities.
+
+Ltac invert_ind name :=
+  match goal with
+  | H: ?P |- _ =>
+    let h := head P in constr_eq h name;
+    invert_hyp H
+  end.
+
+Ltac destruct_unique_match :=
+  let contrad := (exfalso; (contradiction || discriminate || congruence)) in
+  match goal with
+  | H: context[match ?e with _ => _ end] |- _ =>
+    is_var e;
+    destruct e;
+    try contrad;
+    let n := numgoals in guard n <= 1
+  | H: context[match ?e with _ => _ end] |- _ =>
+    let E := fresh "E" in destruct e eqn: E;
+    try contrad;
+    let n := numgoals in guard n <= 1
+  end.
+
+Ltac contrad := contradiction || discriminate || congruence.
+
 Set Refine Instance Mode.
 Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
   FlatToRiscv.def_params := compilation_params;
@@ -273,25 +356,25 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
 - intros initialL action.
   destruct initialL as [initialRegs initialPc initialNpc initialIsMem initialMem initialLog].
   destruct action; cbv [getRegs getPc getNextPc getMem getLog]; intros.
-  + inversion H4; subst; clear H4.
-    rename H13 into H4. simpl in H4.
-    destruct H4 as (addr & E & IM & P). subst.
-    apply option_all_singleton in H8.
-    apply map_singleton in H8. destruct H8 as (a & ? & H8). subst.
-    assert (exists resvar, resvars = [resvar]) as E. {
-      specialize (P (ZToWord 32 0)).
-      specialize H14 with (1 := P).
-      destruct H14 as (? & ? & ?).
-      clear -H.
-      destruct resvars; [|destruct resvars]; simpl in H; inversion H; eauto.
-    }
-    destruct E as [resvar E]. subst.
+  + simpl in *|-.
+    invert_ind @exec; [].
+    simpl in *|-.
+    repeat match goal with
+           | l: list _ |- _ => destruct l;
+                                 try (exfalso; (contrad || (cheap_saturate; contrad))); []
+           end.
+    destruct argvars; [| solve [exfalso; simpl in *; repeat destruct_unique_match] ].
+    simpl in *|-.
+    destruct_unique_match.
+    replace r2 with r in * by congruence.
+    destruct_products.
     repeat match goal with
            | H: Forall _ _ |- _ => apply Forall_singleton in H
            end.
-    simpl in H3.
     eapply runsToNonDet.runsToStep.
-    * eapply go_fetch_inst; [reflexivity|eassumption|].
+    *
+
+      eapply go_fetch_inst. ; [reflexivity|eassumption|].
       cbv [Execute.execute ExecuteI.execute].
       rewrite associativity.
       eapply go_getRegister; [assumption|]. rewrite associativity.
