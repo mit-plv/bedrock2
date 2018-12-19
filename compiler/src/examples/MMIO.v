@@ -354,7 +354,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
 - admit.
 - admit.
 - intros initialL action.
-  destruct initialL as [initialRegs initialPc initialNpc initialIsMem initialMem initialLog].
+  destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
   destruct action; cbv [getRegs getPc getNextPc getMem getLog]; intros.
   + simpl in *|-.
     invert_ind @exec; [].
@@ -372,8 +372,17 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
            | H: Forall _ _ |- _ => apply Forall_singleton in H
            end.
     eapply runsToNonDet.runsToStep.
-    *
+    * unfold ignore_unit_answer.
+      unfold Run.run1.
+      eapply go_Bind.
+      ++ (* TODO rename go_ into _spec and reprove old go_ lemmas *)
+        eapply go_getPC.
+         simpl.
+      rewrite
 
+pose proof (@go_fetch_inst) as P.
+
+      unfold mcomp_sat.
       eapply go_fetch_inst. ; [reflexivity|eassumption|].
       cbv [Execute.execute ExecuteI.execute].
       rewrite associativity.

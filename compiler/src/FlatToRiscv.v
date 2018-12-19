@@ -71,6 +71,9 @@ Local Set Refine Instance Mode.
 
 Instance SetWithoutElements: SetFunctions Empty_set. Admitted. (* TODO remove *)
 
+Definition ignore_unit_answer{S: Type}(comp: S -> (unit -> S -> Prop) -> Prop):
+  S -> (S -> Prop) -> Prop :=
+  fun s post => comp s (fun _ s' => post s').
 
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
@@ -136,7 +139,7 @@ Module Import FlatToRiscv.
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
       exec map.empty (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) postH ->
-      runsTo Machine (mcomp_sat (run1 (B := BitWidth))) initialL
+      runsTo Machine (ignore_unit_answer (mcomp_sat (run1 (B := BitWidth)))) initialL
              (fun finalL =>
                   postH finalL.(getLog) initialMH finalL.(getRegs) /\
                   finalL.(getPc) = newPc /\
@@ -395,7 +398,7 @@ Section FlatToRiscv1.
   Definition run1: M unit := run1 (B := BitWidth).
 
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
-    runsTo RiscvMachineL (mcomp_sat run1).
+    runsTo RiscvMachineL (ignore_unit_answer (mcomp_sat run1)).
 
   Ltac simpl_run1 :=
     cbv [run1 (*execState*) OStateNDOperations.put OStateNDOperations.get
@@ -496,7 +499,6 @@ Section FlatToRiscv1.
            | |- context [if ?x then _ else _] => let E := fresh "E" in destruct x eqn: E
            | _: context [if ?x then _ else _] |- _ => let E := fresh "E" in destruct x eqn: E
            end.
-*)
 
   Lemma go_done: forall (initialL: RiscvMachineL),
       mcomp_sat (Return tt) initialL (eq initialL).
@@ -527,7 +529,7 @@ Section FlatToRiscv1.
     intros. rewrite associativity. assumption.
   Qed.
 
-  Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
+  Lemma go_fetch_inst: forall {inst initialL pc0} (post: unit -> RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
       containsProgram initialL.(getMem) [[inst]] pc0 ->
       mcomp_sat (execute inst;; step) initialL post ->
@@ -545,6 +547,7 @@ Section FlatToRiscv1.
     replace (add (getPc initialL) (ZToReg 0)) with (getPc initialL) in E by ring'.
     eapply go_loadWord; eassumption.
   Qed.
+  *)
 
   Ltac sidecondition :=
     solve_containsProgram || assumption || reflexivity.
@@ -642,9 +645,10 @@ Section FlatToRiscv1.
   Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
 *)
 
-  (* requires destructed RiscvMachine and containsProgram *)
+  (* requires destructed RiscvMachine and containsProgram
   Ltac fetch_inst :=
     eapply go_fetch_inst; [reflexivity|simpl; solve_containsProgram|].
+    *)
 
   Ltac rewrite_reg_value :=
     match goal with
@@ -882,6 +886,7 @@ Section FlatToRiscv1.
              clear H
            end.
 
+(*
   Ltac simulate :=
     repeat first
            [ progress (simpl_RiscvMachine_get_set)
@@ -907,6 +912,7 @@ Section FlatToRiscv1.
            | eapply go_right_identity ; [sidecondition..|]
            | eapply go_associativity  ; [sidecondition..|]
            | eapply go_fetch_inst     ; [sidecondition..|] ].
+*)
 
   Ltac destruct_everything :=
     destruct_products;
@@ -931,6 +937,7 @@ Section FlatToRiscv1.
         simpl_remu4_test ||
         rewrite_reg_value).
 
+(*
   Ltac run1step'' :=
     fetch_inst;
     autounfold with unf_pseudo in *;
@@ -958,7 +965,6 @@ Section FlatToRiscv1.
       | solve_word_eq
       | idtac ].
 
-(*
   Ltac IH_done IH :=
     eapply runsToSatisfying_imp; [ exact IH | ];
     subst;
