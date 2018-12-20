@@ -23,10 +23,12 @@ Require Import compiler.FlatToRiscv.
 Require Import riscv.RiscvMachine.
 Require Import riscv.MinimalMMIO.
 Require Import compiler.FlatToRiscvDef.
-Require Import riscv.AxiomaticRiscv.
+Require Import riscv.AxiomaticRiscvMMIO.
 Require Import compiler.runsToNonDet.
 Require Import compiler.containsProgram.
 Require Import compiler.Rem4.
+Require Import compiler.GoFlatToRiscv.
+
 Import ListNotations.
 Existing Instance DefaultRiscvState.
 
@@ -308,7 +310,14 @@ Ltac destruct_unique_match :=
     let n := numgoals in guard n <= 1
   end.
 
+Ltac destruct_unique_matches := repeat destruct_unique_match.
+
 Ltac contrad := contradiction || discriminate || congruence.
+
+Arguments LittleEndian.combine: simpl never. (* TODO can we put this in word interface? *)
+Arguments mcomp_sat: simpl never.
+
+Definition TODO{T: Type}: T. Admitted.
 
 Set Refine Instance Mode.
 Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
@@ -334,7 +343,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
     apply reg_eqb_false in E.
     apply E; clear E.
     apply word.unsigned_inj.
-    assert (4 mod 2 ^ width = 4) as F by admit.
+    assert (4 mod 2 ^ width = 4) as F by apply TODO.
     rewrite word.unsigned_modu; rewrite word.unsigned_of_Z; rewrite F; [|lia].
     rewrite H.
     rewrite word.unsigned_of_Z.
@@ -348,15 +357,16 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
   + pose proof (regToZ_unsigned_bounds a). omega.
   + reflexivity.
   *)
-  admit.
+  apply TODO.
 - intros. simpl. unfold compile_ext_call.
   repeat destruct_one_match; rewrite? Zlength_cons; rewrite? Zlength_nil; cbv; congruence.
-- admit.
-- admit.
+- apply TODO.
+- apply TODO.
 - intros initialL action.
-  destruct initialL as [initialRegs initialPc initialNpc initialIsMem initialMem initialLog].
+  destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
   destruct action; cbv [getRegs getPc getNextPc getMem getLog]; intros.
-  + simpl in *|-.
+  + (* MMInput *)
+    simpl in *|-.
     invert_ind @exec; [].
     simpl in *|-.
     repeat match goal with
@@ -371,10 +381,11 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
     repeat match goal with
            | H: Forall _ _ |- _ => apply Forall_singleton in H
            end.
-    eapply runsToNonDet.runsToStep.
-    *
-
-      eapply go_fetch_inst. ; [reflexivity|eassumption|].
+    subst.
+    eapply runsToNonDet.runsToStep; cycle 1.
+    * intro mid.
+      apply id.
+    * eapply go_fetch_inst; [reflexivity|eassumption|].
       cbv [Execute.execute ExecuteI.execute].
       rewrite associativity.
       eapply go_getRegister; [assumption|]. rewrite associativity.
@@ -385,48 +396,43 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
         | translate Load ?w ?a => replace T with (Return a)
         end
       end.
-      2: admit.
+      {
       rewrite left_identity. rewrite associativity.
       unfold getReg, State_is_RegisterFile.
       match goal with
       | H: ?a = Some ?b |- context [?a'] =>
         match a' with
-        | @get _ _ _ _ _ => replace a' with a by reflexivity; rewrite H
+        | map.get _ _ => replace a' with a by reflexivity; rewrite H
         end
       end.
-      unfold loadWord, IsRiscvMachineL.
-      replace (add addr (ZToReg 0)) with addr by admit.
-
-
-      admit. (* TODO interesting: how to get isMem/simple_isMMIOAddr compatibility?
-
-   Probably not so relevant:
-   to make load/store work in FlatToRiscv, some invariants about isMem will have to be
-   carried around (similar to containsProgram invariants), and these will also have
-   to be provided as a hypothesis to compile_ext_call_correct
-
-   Relevant:
-   ext_spec for MMIO should get the memory as an argument, and test that the address is
-   not in the memory, and since we get an ext_spec here as a hypothesis, we can use this
-   to replace "isMem mach addr" with "false"
-
-   will require proper memory (map from address to byte)
- *)
-
-    * intros.
-      destruct H6 as (val & ? & ?).
-      specialize H5 with (1 := H6). destruct H5 as (newRegs & ? & H5).
-      rewrite H8.
+      rename r into addr.
+      replace (add addr (ZToReg 0)) with addr by apply TODO.
+      apply go_loadWord_MMIO; [assumption..|].
+      intro inp. cbv [getMem].
+      eapply go_setRegister; [ assumption |].
+      eapply go_step.
+      eapply runsToNonDet.runsToDone.
+      simpl.
+      specialize (H15rrr (word.of_Z (BitOps.sextend 32 (LittleEndian.combine 4 inp)))).
+      repeat split; auto.
+      edestruct H16 as [ l' [A B] ]; [eauto|].
+      destruct_unique_matches.
+      invert_hyp E0.
+      invert_hyp A.
+      (* TODO do loadByte instead of loadWord to get rid of sign extension? *)
       match goal with
-      | H: runsTo _ _ ?m1 post |- runsTo _ _ ?m2 post => replace m2 with m1; [apply H|]
-      end.
-      f_equal.
-      -- clear H5.
-         do 2 (destruct resvars; simpl in H9; try discriminate).
-         apply invert_Some_eq_Some in H9. subst newRegs.
-         (* we only get the register too late!
-            possible fixes:
-            - add typechecking for external calls (redundant?)
-            - rephrase ext_call_correct without "CPS" style, but with "call post" style
-          *)
-Abort.
+      | _: context[ [ ?a ] ] |- context[ [ ?a' ] ] =>
+          let h :=  head a  in constr_eq h  @word.of_Z;
+          let h' := head a' in constr_eq h' @word.of_Z;
+          replace a' with a
+      end; [exact B|].
+      apply TODO.
+      }
+      {
+        apply TODO.
+      }
+  + (* MMOutput *)
+    apply TODO.
+  Defined.
+
+End MMIO1.

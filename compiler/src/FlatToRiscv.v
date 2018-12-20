@@ -33,6 +33,7 @@ Require Import compiler.runsToNonDet.
 Require Import compiler.Rem4.
 Require Import compiler.containsProgram.
 Require Import compiler.FlatToRiscvDef.
+Require Import compiler.GoFlatToRiscv.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -131,9 +132,11 @@ Module Import FlatToRiscv.
         (argvars resvars: list Register),
       insts = compile_ext_call resvars action argvars ->
       newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
+      initialMH = initialL.(getMem) -> (* TODO should be "extends" or similar *)
       Forall valid_register argvars ->
       Forall valid_register resvars ->
       containsProgram initialL.(getMem) insts initialL.(getPc) ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       exec map.empty (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) postH ->
       runsTo Machine (mcomp_sat (run1 (B := BitWidth))) initialL
@@ -453,7 +456,7 @@ Section FlatToRiscv1.
     let n := fresh m "_npc" in
     let me := fresh m "_mem" in
     let l := fresh m "_log" in
-    destruct m as [r p n m l];
+    destruct m as [r p n me l];
     simpl_RiscvMachine_get_set.
 
   Arguments Z.modulo : simpl never.
@@ -497,54 +500,6 @@ Section FlatToRiscv1.
            | _: context [if ?x then _ else _] |- _ => let E := fresh "E" in destruct x eqn: E
            end.
 *)
-
-  Lemma go_done: forall (initialL: RiscvMachineL),
-      mcomp_sat (Return tt) initialL (eq initialL).
-  Proof. Admitted.
-
-  Lemma go_left_identity{A: Type}: forall initialL post a
-         (f : A -> M unit),
-      mcomp_sat (f a) initialL post ->
-      mcomp_sat (Bind (Return a) f) initialL post.
-  Proof.
-    intros. rewrite left_identity. assumption.
-  Qed.
-
-  Lemma go_right_identity: forall initialL post
-         (m: M unit),
-      mcomp_sat m initialL post ->
-      mcomp_sat (Bind m Return) initialL post.
-  Proof.
-    intros. rewrite right_identity. assumption.
-  Qed.
-
-  Lemma go_associativity{A B: Type}: forall initialL post
-         (m: M A)
-         (f : A -> M B) (g : B -> M unit),
-      mcomp_sat (Bind m (fun x : A => Bind (f x) g)) initialL post ->
-      mcomp_sat (Bind (Bind m f) g) initialL post.
-  Proof.
-    intros. rewrite associativity. assumption.
-  Qed.
-
-  Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
-      pc0 = initialL.(getPc) ->
-      containsProgram initialL.(getMem) [[inst]] pc0 ->
-      mcomp_sat (execute inst;; step) initialL post ->
-      mcomp_sat run1 initialL post.
-  Proof.
-    intros. subst *.
-    unfold run1. unfold Run.run1.
-    apply go_getPC.
-    unfold containsProgram in H0.
-    specialize (H0 0 _ eq_refl).
-    unfold ldInst in *.
-    destruct_one_match_hyp; [|discriminate].
-    apply invert_Some_eq_Some in H0. subst inst.
-    change (4 * 0) with 0 in E.
-    replace (add (getPc initialL) (ZToReg 0)) with (getPc initialL) in E by ring'.
-    eapply go_loadWord; eassumption.
-  Qed.
 
   Ltac sidecondition :=
     solve_containsProgram || assumption || reflexivity.
@@ -902,7 +857,7 @@ Section FlatToRiscv1.
            | eapply go_getPC          ; [sidecondition..|]
            | eapply go_setPC          ; [sidecondition..|]
            | eapply go_step           ; [sidecondition..|]
-           | eapply go_done    (* has no sidecontidions *)
+        (* | eapply go_done    (* has no sidecontidions *) let's see if needed *)
            | eapply go_left_identity  ; [sidecondition..|]
            | eapply go_right_identity ; [sidecondition..|]
            | eapply go_associativity  ; [sidecondition..|]
@@ -1281,7 +1236,8 @@ Section FlatToRiscv1.
     valid_registers s ->
     divisibleBy4 imemStart ->
     @map.extends Register word _ initialL.(getRegs) initialRegsH ->
-    (*containsMem initialL.(getMem) initialMH ->*)
+    (*containsMem initialL.(getMem) initialMH -> TODO should be extends *)
+    initialMH = initialL.(getMem) ->
     containsProgram initialL.(getMem) allInsts imemStart ->
     initialL.(getLog) = t ->
     initialL.(getPc) = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
@@ -1306,7 +1262,7 @@ Section FlatToRiscv1.
     - (* SInteract *)
       simpl in *; destruct_everything. simpl in *.
       eapply runsTo_weaken.
-      + eapply compile_ext_call_correct with (postH := post) (initialMH := m) (action0 := action)
+      + eapply compile_ext_call_correct with (postH := post) (action0 := action)
                                              (argvars0 := argvars) (resvars0 := resvars);
           try sidecondition; try assumption; simpl.
         eapply @ExInteract.
@@ -1322,16 +1278,16 @@ Section FlatToRiscv1.
                                    extensible, but remain the same *)
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst.
-        exists finalL_regs m.
+        exists finalL_regs initialL_mem.
         destruct_everything.
         repeat match goal with
                | |- _ /\ _ => split
                end; try sidecondition; try solve_word_eq.
         map_solver locals_ok.
-        (* state_calc0.  TODO don't clear p *)
+        admit.
 
-(*
     - (* SLoad *)
+      (*
       clear IHfuelH.
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
