@@ -24,7 +24,7 @@ Require Import riscv.RiscvMachine.
 Require Import riscv.MinimalMMIO.
 Require Import compiler.FlatToRiscvDef.
 Require Import riscv.AxiomaticRiscvMMIO.
-Require Import compiler.runsToNonDet.
+Require Import riscv.runsToNonDet.
 Require Import compiler.containsProgram.
 Require Import compiler.Rem4.
 Require Import compiler.GoFlatToRiscv.

@@ -1,6 +1,6 @@
-default_target: bedrock2 riscv-coq
+default_target: bedrock2 riscv-coq processor
 
-.PHONY: update_all clone_all bbv coqutil riscv-coq bedrock2 compiler
+.PHONY: update_all clone_all bbv coqutil riscv-coq bedrock2 compiler processor
 
 clone_all:
 	git submodule update --init --recursive
@@ -29,4 +29,7 @@ bedrock2: bbv coqutil
 compiler: riscv-coq bedrock2
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
 
-all: compiler bedrock2
+processor: riscv-coq
+	$(MAKE) -C $(ABS_ROOT_DIR)/processor
+
+all: compiler bedrock2 processor

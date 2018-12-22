@@ -29,7 +29,7 @@ Require Import riscv.util.ZBitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.
 Require Import riscv.MkMachineWidth.
-Require Import compiler.runsToNonDet.
+Require Import riscv.runsToNonDet.
 Require Import compiler.Rem4.
 Require Import compiler.containsProgram.
 Require Import compiler.FlatToRiscvDef.
@@ -139,7 +139,7 @@ Module Import FlatToRiscv.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       exec map.empty (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) postH ->
-      runsTo Machine (mcomp_sat (run1 (B := BitWidth))) initialL
+      runsTo (mcomp_sat (run1 (B := BitWidth))) initialL
              (fun finalL =>
                   postH finalL.(getLog) initialMH finalL.(getRegs) /\
                   finalL.(getPc) = newPc /\
@@ -398,7 +398,7 @@ Section FlatToRiscv1.
   Definition run1: M unit := run1 (B := BitWidth).
 
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
-    runsTo RiscvMachineL (mcomp_sat run1).
+    runsTo (mcomp_sat run1).
 
   Ltac simpl_run1 :=
     cbv [run1 (*execState*) OStateNDOperations.put OStateNDOperations.get
