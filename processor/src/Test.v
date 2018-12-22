@@ -67,7 +67,7 @@ Section Equiv.
   Lemma simulate_step_fw: forall (initial: RiscvMachine Register Action)
                                  (post: RiscvMachine Register Action -> Prop),
       (* begin additional hypotheses which should be deleted in a real proof *)
-      (forall addr, Memory.loadWord initial.(getMem) addr = Some NOP) ->
+      Memory.loadWord initial.(getMem) initial.(getPc) = Some NOP ->
       (forall machine1 machine2,
           post machine1 ->
           machine1.(getPc) = machine2.(getPc) ->
@@ -90,7 +90,7 @@ Section Equiv.
     apply spec_loadWord in Hrl.
     destruct Hrl as [A | [_ A]]; [|exfalso; eapply assume_no_MMIO; exact A].
     destruct_products.
-    rewrite AllNOPs in Al. inversion Al. subst v. clear Al.
+    simpl in Al, AllNOPs. rewrite AllNOPs in Al. inversion Al. subst v. clear Al.
     specialize Hrr with (1 := Ar). clear Ar.
     apply spec_Bind in Hrr. destruct_products.
     unfold NOP in Hrrl.
@@ -109,7 +109,78 @@ Section Equiv.
     eapply postOnlyLooksAtPc; [eassumption|reflexivity..].
   Qed.
 
+  Ltac det_step :=
+    match goal with
+    | |- exists (_: ?A -> ?Mach -> Prop), _ =>
+      let a := fresh "a" in evar (a: A);
+      let m := fresh "m" in evar (m: Mach);
+      exists (fun a0 m0 => a0 = a /\ m0 = m);
+      subst a m
+    end.
 
+  Lemma loadWord_store_bytes_same: forall m w addr,
+      Memory.loadWord (Memory.store_bytes 4 m addr w) addr = Some w.
+  Admitted. (* TODO once we have a good map solver and word solver, this should be easy *)
 
+  Lemma simulate_step_bw: forall (m m': FakeProcessor),
+      fakeStep m = m' ->
+      mcomp_sat (run1 (B := BW)) (from_Fake m) (fun _ final => to_Fake final = m').
+  Proof.
+    intros. subst m'. destruct m as [c]. unfold from_Fake, to_Fake, fakeStep, run1.
+    apply spec_Bind.
+    det_step. split.
+    { simpl. apply spec_getPC. simpl. split; reflexivity. }
+    intros. destruct_products. subst.
+    apply spec_Bind.
+    det_step. split.
+    { apply spec_loadWord.
+      left.
+      exists NOP.
+      repeat split. (* also invokes reflexivity *)
+      simpl.
+      apply loadWord_store_bytes_same. }
+    intros. destruct_products. subst.
+    apply spec_Bind.
+    det_step. split.
+    { unfold NOP at 1.
+      rewrite combine_split by apply (encode_range (IInstruction Nop)).
+      rewrite decode_encode by (cbv; clear; intuition congruence).
+      simpl.
+      apply spec_Bind.
+      det_step. split.
+      { apply spec_getRegister.
+        simpl.
+        right.
+        repeat split. }
+      intros. destruct_products. subst.
+      apply spec_setRegister.
+      right.
+      repeat split. }
+    intros. destruct_products. subst.
+    apply spec_step. simpl. reflexivity.
+  Qed.
+
+  Lemma to_Fake_from_Fake: forall (m: FakeProcessor),
+      to_Fake (from_Fake m) = m.
+  Proof.
+    intros. destruct m as [c]. reflexivity.
+  Qed.
+
+  Lemma step_equiv: forall (m m': FakeProcessor),
+      fakeStep m = m' <->
+      mcomp_sat (run1 (B := BW)) (from_Fake m) (fun _ final => to_Fake final = m').
+  Proof.
+    intros. split.
+    - apply simulate_step_bw.
+    - intros.
+      pose proof (simulate_step_fw (from_Fake m) (fun final => to_Fake final = m')) as P.
+      simpl in P.
+      do 2 rewrite to_Fake_from_Fake in P.
+      apply P; clear P.
+      + intros. apply loadWord_store_bytes_same.
+      + intros. destruct machine1, machine2. unfold to_Fake in *; simpl in *. congruence.
+      + reflexivity.
+      + assumption.
+  Qed.
 
 End Equiv.
