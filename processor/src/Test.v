@@ -32,21 +32,23 @@ Section Equiv.
 
   Record FakeProcessor := {
     counter: word;
+    nextCounter: word;
   }.
 
   Definition fakeStep: FakeProcessor -> FakeProcessor :=
-    fun '(Build_FakeProcessor c) => Build_FakeProcessor (word.add c (word.of_Z 4)).
+    fun '(Build_FakeProcessor c nc) => Build_FakeProcessor nc (word.add nc (word.of_Z 4)).
 
   Definition from_Fake(f: FakeProcessor): RiscvMachine Register Action := {|
     getRegs := initialRegs;
     getPc := f.(counter);
-    getNextPc := word.add f.(counter) (word.of_Z 4);
+    getNextPc := f.(nextCounter);
     getMem := Memory.store_bytes 4 map.empty f.(counter) NOP;
     getLog := nil;
   |}.
 
   Definition to_Fake(m: RiscvMachine Register Action): FakeProcessor := {|
     counter := m.(getPc);
+    nextCounter := m.(getNextPc);
   |}.
 
   Definition BW: BitWidths := if width =? 32 then BW32 else BW64.
@@ -74,11 +76,10 @@ Section Equiv.
           machine1.(getNextPc) = machine2.(getNextPc) ->
           post machine2) ->
       (* end hypotheses to be deleted *)
-      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       mcomp_sat (run1 (B := BW)) initial (fun _ => post) ->
       post (from_Fake (fakeStep (to_Fake initial))).
   Proof.
-    intros *. intros AllNOPs postOnlyLooksAtPc EqPC H.
+    intros *. intros AllNOPs postOnlyLooksAtPc H.
     destruct initial as [r pc npc m l].
     unfold to_Fake, fakeStep, from_Fake.
     simpl.
@@ -105,7 +106,6 @@ Section Equiv.
     destruct Hrrlr as [[[A _] _] | [_ A]]; [ cbv in A; discriminate A | ].
     specialize Hrrr with (1 := A). clear A.
     apply spec_step in Hrrr. unfold withPc, withNextPc in Hrrr. simpl in Hrrr.
-    simpl in EqPC. subst npc.
     eapply postOnlyLooksAtPc; [eassumption|reflexivity..].
   Qed.
 
@@ -126,7 +126,7 @@ Section Equiv.
       fakeStep m = m' ->
       mcomp_sat (run1 (B := BW)) (from_Fake m) (fun _ final => to_Fake final = m').
   Proof.
-    intros. subst m'. destruct m as [c]. unfold from_Fake, to_Fake, fakeStep, run1.
+    intros. subst m'. destruct m. unfold from_Fake, to_Fake, fakeStep, run1.
     apply spec_Bind.
     det_step. split.
     { simpl. apply spec_getPC. simpl. split; reflexivity. }
@@ -163,10 +163,10 @@ Section Equiv.
   Lemma to_Fake_from_Fake: forall (m: FakeProcessor),
       to_Fake (from_Fake m) = m.
   Proof.
-    intros. destruct m as [c]. reflexivity.
+    intros. destruct m. reflexivity.
   Qed.
 
-  Lemma step_equiv: forall (m m': FakeProcessor),
+  Lemma step_equiv_too_weak: forall (m m': FakeProcessor),
       fakeStep m = m' <->
       mcomp_sat (run1 (B := BW)) (from_Fake m) (fun _ final => to_Fake final = m').
   Proof.
@@ -179,8 +179,52 @@ Section Equiv.
       apply P; clear P.
       + intros. apply loadWord_store_bytes_same.
       + intros. destruct machine1, machine2. unfold to_Fake in *; simpl in *. congruence.
-      + reflexivity.
       + assumption.
   Qed.
+
+  Lemma from_Fake_to_Fake: forall (m: RiscvMachine Register Action),
+      from_Fake (to_Fake m) = m.
+  Proof.
+    intros. destruct m. unfold to_Fake, from_Fake. simpl.
+    (* Doesn't hold for the fake processor! *)
+  Admitted.
+
+  Lemma weaken_mcomp_sat:
+    forall A m initial (post1 post2: A -> RiscvMachine Register Action -> Prop),
+      mcomp_sat m initial post1 ->
+      (forall (a: A) final, post1 a final -> post2 a final) ->
+      mcomp_sat m initial post2.
+  Proof.
+    intros.
+    rewrite <- (right_identity m).
+    apply spec_Bind.
+    exists post1.
+    split; [assumption|].
+    intros.
+    apply spec_Return.
+    apply H0.
+    assumption.
+  Qed.
+
+  Lemma step_equiv: forall (initial: RiscvMachine Register Action)
+                           (post: RiscvMachine Register Action -> Prop),
+      post (from_Fake (fakeStep (to_Fake initial))) <->
+      mcomp_sat (run1 (B := BW)) initial (fun _ => post).
+  Proof.
+    intros. split; intros.
+    - pose proof (simulate_step_bw (to_Fake initial)) as P.
+      rewrite from_Fake_to_Fake in P.
+      eapply weaken_mcomp_sat.
+      + eapply P. reflexivity.
+      + intros. simpl in H0.
+        rewrite <- H0 in H.
+        rewrite from_Fake_to_Fake in H.
+        exact H.
+    - intros.
+      eapply simulate_step_fw.
+      3: exact H.
+      (* the remaining two goals are assumptions which should be removed from simulate_step_fw,
+         so once that's done, we'll be able to Qed this *)
+  Abort.
 
 End Equiv.
