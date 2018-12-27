@@ -7,3 +7,6 @@
 [submodule "deps/coqutil"]
 	path = deps/coqutil
 	url = ../../mit-plv/coqutil.git
+[submodule "deps/kami"]
+	path = deps/kami
+	url = ../../mit-plv/kami.git
