@@ -5,19 +5,19 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Section Array.
   Context {width : Z} {word : Word.Interface.word width} {Hwidth : 0 <= width} {word_ok : word.ok word}.
   Context {value} {mem : map.map word value} {mem_ok : map.ok mem}.
-  Context {T} {element : T -> word -> mem -> Prop} (size : word).
-  Fixpoint array (xs : list T) (start : word) :=
+  Context {T} (element : word -> T -> mem -> Prop) (size : word).
+  Fixpoint array (start : word) (xs : list T) :=
     match xs with
     | nil => emp True
-    | cons x xs => sep (element x start) (array xs (word.add start size))
+    | cons x xs => sep (element start x) (array (word.add start size) xs)
     end.
   Local Infix "*" := sep.
 
   Lemma array_index_nat xs start n :
-    iff1 (array xs start)
-      ( array (firstn n xs) start * (
-        match hd_error (skipn n xs) with Some x => element x (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)) | None => emp True end *
-        array (tl (skipn n xs)) (word.add (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)) size))).
+    iff1 (array start xs)
+      ( array start (firstn n xs) * (
+        match hd_error (skipn n xs) with Some x => element (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)) x | None => emp True end *
+        array (word.add (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)) size) (tl (skipn n xs)))).
   Proof.
     set (a := (word.add start (word.mul (word.of_Z (Z.of_nat n)) size))).
     destruct (Compare_dec.le_lt_dec (length xs) n) as [H|H].
@@ -48,10 +48,10 @@ Section Array.
   Admitted.
 
   Lemma array_index xs start i :
-    iff1 (array xs start)
-      ( array (firstn (Z.to_nat (word.unsigned i)) xs) start * (
-        match hd_error (skipn (Z.to_nat (word.unsigned i)) xs) with Some x => element x (word.add start (word.mul i size)) |None=>emp True end *
-        array (tl (skipn (Z.to_nat (word.unsigned i)) xs)) (word.add (word.add start (word.mul i size)) size) ) ).
+    iff1 (array start xs)
+      ( array start (firstn (Z.to_nat (word.unsigned i)) xs) * (
+        match hd_error (skipn (Z.to_nat (word.unsigned i)) xs) with Some x => element (word.add start (word.mul i size)) x |None=>emp True end *
+        array (word.add (word.add start (word.mul i size)) size) (tl (skipn (Z.to_nat (word.unsigned i)) xs))) ).
   Proof.
     set (n := Z.to_nat (word.unsigned i)).
     replace i with ((word.of_Z (Z.of_nat n))); cycle 1.
@@ -62,10 +62,10 @@ Section Array.
 
   Context (default : T).
   Lemma array_index_nat_inbounds xs start n (H : (n < length xs)%nat) :
-    iff1 (array xs start)
-      ( array (firstn n xs) start * (
-        element (hd default (skipn n xs)) (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)) *
-        array (tl (skipn n xs)) (word.add (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)) size))).
+    iff1 (array start xs)
+      ( array start (firstn n xs) * (
+        element (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)) (hd default (skipn n xs)) *
+        array (word.add (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)) size) (tl (skipn n xs)))).
   Proof.
     pose proof array_index_nat xs start n.
     rewrite <-(firstn_skipn n xs), app_length in H.
@@ -75,10 +75,10 @@ Section Array.
   Qed.
 
   Lemma array_index_inbounds xs start i (H : word.unsigned i < Z.of_nat (length xs)) :
-    iff1 (array xs start)
-      ( array (firstn (Z.to_nat (word.unsigned i)) xs) start * (
-        element (hd default (skipn (Z.to_nat (word.unsigned i)) xs)) (word.add start (word.mul i size)) *
-        array (tl (skipn (Z.to_nat (word.unsigned i)) xs)) (word.add (word.add start (word.mul i size)) size) ) ).
+    iff1 (array start xs)
+      ( array start (firstn (Z.to_nat (word.unsigned i)) xs) * (
+        element (word.add start (word.mul i size)) (hd default (skipn (Z.to_nat (word.unsigned i)) xs)) *
+        array (word.add (word.add start (word.mul i size)) size) (tl (skipn (Z.to_nat (word.unsigned i)) xs)) ) ).
   Proof.
     pose proof array_index xs start i.
     set (n := Z.to_nat (word.unsigned i)) in *.
