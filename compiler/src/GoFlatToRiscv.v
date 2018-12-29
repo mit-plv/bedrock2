@@ -11,6 +11,7 @@ Require Import riscv.RiscvMachine.
 Require Import riscv.AxiomaticRiscv.
 Require Import riscv.Run.
 Require Import riscv.Execute.
+Require Import riscv.proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.containsProgram.
 Require Import compiler.FlatToRiscvBitWidthSpecifics.
@@ -190,14 +191,21 @@ Section Go.
   Qed.
 
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
-    sep (ptsto_bytes 4 addr (LittleEndian.split 4 (encode instr)))
-        (emp (decode (RV_wXLEN_IM (B := BitWidth)) (encode instr) = instr)).
+    ptsto_bytes 4 addr (LittleEndian.split 4 (encode instr)).
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
 
+  Ltac sep :=
+    let m := lazymatch goal with |- _ ?m => m end in
+    let H := multimatch goal with H: _ m |- _ => H end  in
+    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+    repeat rewrite !sep_assoc; (* TODO: maybe this should be a part of reify_goal *)
+    SeparationLogic.ecancel; fail.
+
   Lemma go_fetch_inst: forall {inst initialL pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
+      verify inst (@RV_wXLEN_IM (@BitWidth _ _ _ BWS)) ->
       (program pc0 [inst] * R) initialL.(getMem) ->
       mcomp_sat (Bind (execute inst) (fun _ => step)) initialL post ->
       mcomp_sat (run1 (B := BitWidth)) initialL post.
@@ -205,36 +213,10 @@ Section Go.
     intros. subst.
     unfold run1.
     apply go_getPC.
-    unfold program, array, ptsto_instr in H0.
+    unfold program, array, ptsto_instr in *.
 
-    (* TODO this should be automated *)
-    match type of H0 with
-    | (((?P * ?E)%type * _)%type * ?R)%type ?m => assert ((E * (P * R)%type)%type m) as A
-    end.
-    {
-      clear -mem_ok H0.
-      revert H0. generalize (getMem initialL) as m.
-      match goal with
-      | |- forall m, ?P1 m -> ?P2 m => change (impl1 P1 P2)
-      end.
-      refine (iff1_fst _).
-      refine (iff1_trans _ (sep_assoc _ _ _)).
-      apply iff1_sep_cancel_r.
-      refine (iff1_trans _ (sep_emp_True_r _)).
-      apply iff1_sep_cancel_r.
-      apply sep_comm.
-    }
-    apply sep_emp_l in A.
-    destruct A as [E A].
-
-    eapply go_loadWord.
-    - eapply ptsto_bytes_to_load. exact A.
-    - rewrite combine_split by apply encode_range.
-      replace (execute (decode (RV_wXLEN_IM (B := BitWidth)) (encode inst)))
-         with (execute inst); [assumption|].
-      f_equal.
-      symmetry.
-      exact E.
+    eapply go_loadWord; [eapply ptsto_bytes_to_load; sep|].
+    rewrite combine_split, decode_encode; auto using encode_range.
   Qed.
 
 End Go.
