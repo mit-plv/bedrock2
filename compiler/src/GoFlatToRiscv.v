@@ -66,12 +66,27 @@ Section Go.
     intros. rewrite associativity. assumption.
   Qed.
 
+  Require Import coqutil.Datatypes.PrimitivePair.
+  Require Import riscv.Encode.
+  Require Import riscv.proofs.EncodeBound.
+
+  Lemma combine_split: forall (n: nat) (z: Z),
+      0 <= z < 2 ^ (Z.of_nat n * 8) ->
+      LittleEndian.combine n (LittleEndian.split n z) = z.
+  Proof.
+    induction n; intros.
+  Admitted.
+
+  (* TODO how can we bind scopes so that * of Z, nat and sep can live together? *)
+  Close Scope Z_scope.
+  Close Scope nat_scope.
+
   Fixpoint ptsto_bytes(n: nat)(addr: word): HList.tuple byte n -> mem -> Prop :=
     match n with
     | O => fun _ => emp True
     | S n0 => fun bytes =>
-                sep (ptsto addr (PrimitivePair.pair._1 bytes))
-                    (ptsto_bytes n0 (word.add addr (word.of_Z 1)) (PrimitivePair.pair._2 bytes))
+                sep (ptsto addr (pair._1 bytes))
+                    (ptsto_bytes n0 (word.add addr (word.of_Z 1)) (pair._2 bytes))
     end.
 
   Lemma impl1_sep_cancel_l: forall P Q1 Q2,
@@ -92,6 +107,56 @@ Section Go.
     unfold sep in *.
     destruct_products.
     eauto 10.
+  Qed.
+
+  Lemma impl1_trans: forall {P1 P2 P3: mem -> Prop},
+      impl1 P1 P2 ->
+      impl1 P2 P3 ->
+      impl1 P1 P3.
+  Proof.
+    unfold impl1. eauto.
+  Qed.
+
+  Lemma iff1_trans: forall {P1 P2 P3: mem -> Prop},
+      iff1 P1 P2 ->
+      iff1 P2 P3 ->
+      iff1 P1 P3.
+  Proof.
+    unfold iff1. intros. split; intros; edestruct H; edestruct H0; eauto.
+  Qed.
+
+  Lemma impl1_refl: forall {P: mem -> Prop},
+      impl1 P P.
+  Proof.
+    unfold impl1. eauto.
+  Qed.
+
+  Lemma iff1_fst: forall {P1 P2: mem -> Prop},
+      iff1 P1 P2 ->
+      impl1 P1 P2.
+  Proof.
+    unfold iff1, impl1. intros. apply H. assumption.
+  Qed.
+
+  Lemma iff1_snd: forall {P1 P2: mem -> Prop},
+      iff1 P1 P2 ->
+      impl1 P2 P1.
+  Proof.
+    unfold iff1, impl1. intros. apply H. assumption.
+  Qed.
+
+  (* Note: there's only iff1_sep_cancel, which cancels on the left, but the default
+     associativity says that (P * Q * R) is parsed as ((P * Q) * R), so canceling on
+     the right by default would make more sense *)
+  Lemma iff1_sep_cancel_r: forall {P1 P2 Q: mem -> Prop},
+      iff1 P1 P2 ->
+      iff1 (P1 * Q) (P2 * Q).
+  Proof.
+    intros.
+    refine (iff1_trans _ (sep_comm _ _)).
+    refine (iff1_trans (sep_comm _ _) _).
+    apply iff1_sep_cancel.
+    assumption.
   Qed.
 
   Lemma ptsto_bytes_to_load: forall n m v addr R,
@@ -125,9 +190,8 @@ Section Go.
   Qed.
 
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
-    ex1 (fun (w: w32) =>
-           sep (ptsto_bytes 4 addr w)
-               (emp (decode (RV_wXLEN_IM (B := BitWidth)) (LittleEndian.combine 4 w) = instr))).
+    sep (ptsto_bytes 4 addr (LittleEndian.split 4 (encode instr)))
+        (emp (decode (RV_wXLEN_IM (B := BitWidth)) (encode instr) = instr)).
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
@@ -142,13 +206,35 @@ Section Go.
     unfold run1.
     apply go_getPC.
     unfold program, array, ptsto_instr in H0.
-    (* TODO how can I destruct this existential? *)
+
+    (* TODO this should be automated *)
+    match type of H0 with
+    | (((?P * ?E)%type * _)%type * ?R)%type ?m => assert ((E * (P * R)%type)%type m) as A
+    end.
+    {
+      clear -mem_ok H0.
+      revert H0. generalize (getMem initialL) as m.
+      match goal with
+      | |- forall m, ?P1 m -> ?P2 m => change (impl1 P1 P2)
+      end.
+      refine (iff1_fst _).
+      refine (iff1_trans _ (sep_assoc _ _ _)).
+      apply iff1_sep_cancel_r.
+      refine (iff1_trans _ (sep_emp_True_r _)).
+      apply iff1_sep_cancel_r.
+      apply sep_comm.
+    }
+    apply sep_emp_l in A.
+    destruct A as [E A].
+
     eapply go_loadWord.
-    - eapply ptsto_bytes_to_load.
-      (* TODO this is implied by H0 *)
-      admit.
-    - (* TODO this is implied by H1 and the equality "inst = ..." in H0 *)
-      admit.
-  Admitted.
+    - eapply ptsto_bytes_to_load. exact A.
+    - rewrite combine_split by apply encode_range.
+      replace (execute (decode (RV_wXLEN_IM (B := BitWidth)) (encode inst)))
+         with (execute inst); [assumption|].
+      f_equal.
+      symmetry.
+      exact E.
+  Qed.
 
 End Go.
