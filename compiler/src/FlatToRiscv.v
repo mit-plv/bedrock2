@@ -106,9 +106,6 @@ Module Import FlatToRiscv.
       (regToZ_unsigned a) mod 8 = 0 ->
       translate mode (ZToReg 8) a = Return a;
 
-    compile_ext_call_length: forall binds f args,
-        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
-
     (* these two instances are needed to define compile_ext_call_correct below *)
 
     bopname_params: Basic_bopnames.parameters := {|
@@ -270,20 +267,6 @@ Section FlatToRiscv1.
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
   Arguments run1: simpl never.
-
-  Lemma compile_stmt_size: forall s,
-    Zlength (compile_stmt s) <= 2 * (stmt_size s).
-  Proof.
-    induction s; simpl; try destruct op; try solve [destruct f]; simpl;
-    repeat (autorewrite with rew_Zlength || simpl in * || unfold compile_lit); try omega;
-      pose proof (Zlength_nonneg binds);
-      pose proof (Zlength_nonneg args);
-      specialize (compile_ext_call_length binds a args);
-      pose proof max_ext_call_code_size_nonneg;
-      simpl in *.
-    specialize (H1 a).
-    omega.
-  Qed.
 
   Definition mem_inaccessible(m: mem)(start len: Z): Prop :=
     forall a w, map.get m a = Some w -> not_in_range a XLEN_in_bytes start len.

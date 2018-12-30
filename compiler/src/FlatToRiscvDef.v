@@ -36,7 +36,8 @@ Module Import FlatToRiscvDef.
     compile_store: Syntax.access_size -> Register -> Register -> Instruction;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
     max_ext_call_code_size: actname -> Z;
-    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
+    compile_ext_call_length: forall binds f args,
+        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
   }.
 End FlatToRiscvDef.
 
@@ -71,6 +72,14 @@ Section FlatToRiscv1.
   Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s. destruct s; reflexivity. Qed.
 
   Arguments Z.add _ _ : simpl never.
+
+  Lemma max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a.
+  Proof.
+    intros.
+    pose proof (compile_ext_call_length [] a []) as P.
+    pose proof (Zlength_nonneg (compile_ext_call [] a [])).
+    lia.
+  Qed.
 
   Lemma stmt_size_pos: forall s, stmt_size s > 0.
   Proof.

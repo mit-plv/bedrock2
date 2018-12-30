@@ -1,6 +1,6 @@
-Require Import Coq.Lists.List.
+Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.micromega.Lia.
-Require Import Coq.omega.Omega.
+Require Import Coq.ZArith.ZArith.
 Require Import riscv.Decode.
 Require Import riscv.Encode.
 Require Import riscv.util.ZBitOps.
@@ -236,103 +236,185 @@ Proof.
   apply Z.mod_mul. congruence.
 Qed.
 
+
+Tactic Notation "so" tactic(f) :=
+  match goal with
+  | _: ?A |- _  => f A
+  |       |- ?A => f A
+  end.
+
+Ltac unify_universes_for_lia :=
+  repeat (so fun hyporgoal => match hyporgoal with
+                              | context [?x] =>
+                                let T := type of x in
+                                unify Z T;
+                                assert_fails (is_var x);
+                                lazymatch goal with
+                                | nn := x |- _ => fail
+                                | |- _ => idtac
+                                end;
+                                let n := fresh "n" in set (n := x) in *
+                              end);
+  repeat match goal with
+         | nn := _ |- _ => subst nn
+         end.
+
+(* workaround for https://github.com/coq/coq/issues/9268 *)
+Ltac lia' := unify_universes_for_lia; lia.
+
+
 Section EmitsValid.
 
   Context {Bw: BitWidths}.
+
+  Definition valid_instructions(prog: list Instruction): Prop :=
+    forall instr, In instr prog -> verify instr RV_wXLEN_IM.
+
   Context {compilation_params: FlatToRiscvDef.parameters}.
 
-  Lemma compile_lit_emits_valid: forall r w i inst,
-      nth_error (compile_lit r w) i = Some inst ->
+  Lemma compile_lit_emits_valid: forall r w,
       valid_register r ->
-      verify inst RV_wXLEN_IM.
+      valid_instructions (compile_lit r w).
   Proof.
+    unfold valid_instructions.
     intros.
     unfold compile_lit, compile_lit_rec, RV_wXLEN_IM in *.
     simpl in *.
-    repeat match goal with
-    | H: nth_error (_ :: _) ?i = Some _ |- _ => destruct i; simpl in *
-    | H: nth_error nil _ = Some _ |- _ => exfalso; eapply nth_error_nil_Some; exact H
-    end;
-    destruct bitwidth; inversions H; unfold verify; simpl;
-      autounfold with unf_verify unf_encode_consts;
-      unfold Register0;
-      repeat match goal with
-      | |- context [ bitSlice ?w ?start ?eend ] =>
-        unique pose proof (@bitSlice_bounds w start eend)
-      end;
-      simpl_pow2;
-      unfold valid_register in *;
-      intuition (try omega).
+    intuition (
+        subst instr;
+        destruct bitwidth; inversions H; unfold verify; simpl;
+        autounfold with unf_verify unf_encode_consts;
+        unfold Register0;
+        repeat match goal with
+               | |- context [ bitSlice ?w ?start ?eend ] =>
+                 unique pose proof (@bitSlice_bounds w start eend)
+               end;
+        simpl_pow2;
+        lia).
   Qed.
 
-  Lemma compile_op_emits_valid: forall x op y z i inst,
-      nth_error (compile_op x op y z) i = Some inst ->
+  Lemma compile_op_emits_valid: forall x op y z,
       valid_register x ->
       valid_register y ->
       valid_register z ->
-      verify inst RV_wXLEN_IM.
+      valid_instructions (compile_op x op y z).
   Proof.
+    unfold valid_instructions.
     intros.
     unfold RV_wXLEN_IM in *.
     destruct op; simpl in *;
-      repeat match goal with
-             | H: nth_error (_ :: _) ?i = Some _ |- _ => destruct i; simpl in *
-             | H: nth_error nil _ = Some _ |- _ => exfalso; eapply nth_error_nil_Some; exact H
-             end;
-      destruct bitwidth; inversions H; unfold verify; simpl;
-      autounfold with unf_verify unf_encode_consts;
-      unfold Register0;
-      repeat match goal with
-      | |- context [ bitSlice ?w ?start ?eend ] =>
-        unique pose proof (@bitSlice_bounds w start eend)
-      end;
-      simpl_pow2;
-      unfold valid_register in *;
-      intuition (try omega).
+      intuition (
+          subst instr;
+          destruct bitwidth; inversions H; unfold verify; simpl;
+          autounfold with unf_verify unf_encode_consts;
+          unfold Register0;
+          repeat match goal with
+                 | |- context [ bitSlice ?w ?start ?eend ] =>
+                   unique pose proof (@bitSlice_bounds w start eend)
+                 end;
+          simpl_pow2;
+          unfold valid_register in *;
+          try lia;
+          (split; [lia|auto])).
   Qed.
+
+  Lemma compile_bcond_by_inverting_emits_valid: forall cond amt,
+      valid_registers_bcond cond ->
+      - 2 ^ 12 <= amt < 2 ^ 12 ->
+      amt mod 2 = 0 ->
+      verify (compile_bcond_by_inverting cond amt) RV_wXLEN_IM.
+  Proof.
+    unfold valid_registers_bcond, valid_register.
+    intros.
+    simpl in *.
+    destruct cond; [destruct op|]; simpl;
+    unfold verify;
+    destruct bitwidth;
+    simpl;
+    autounfold with unf_encode_consts unf_verify;
+    unfold Register0 in *;
+    intuition lia.
+  Qed.
+
+  (* TODO *)
+  Axiom compile_load_emits_valid: forall x y sz,
+      valid_register x ->
+      valid_register y ->
+      valid_instructions [compile_load sz x y].
+
+  (* TODO *)
+  Axiom compile_store_emits_valid: forall x y sz,
+      valid_register x ->
+      valid_register y ->
+      valid_instructions [compile_store sz x y].
+
+  (* TODO *)
+  Axiom compile_ext_call_emits_valid: forall binds a args,
+      Forall valid_register binds ->
+      Forall valid_register args ->
+      valid_instructions (compile_ext_call binds a args).
 
   Arguments Z.of_nat: simpl never.
   Arguments Z.mul: simpl never.
   Arguments Z.pow: simpl never.
+  Arguments Z.add: simpl never.
 
-  Lemma compile_stmt_emits_valid: forall s i inst,
-      Znth_error (compile_stmt s) i = Some inst ->
+  Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
+
+  Lemma compile_stmt_size: forall s,
+    Zlength (compile_stmt s) <= 2 * (stmt_size s).
+  Proof.
+    induction s; simpl; try destruct op; try solve [destruct f]; simpl;
+    repeat (autorewrite with rew_Zlength || simpl in * || unfold compile_lit); try lia;
+      pose proof (Zlength_nonneg binds);
+      pose proof (Zlength_nonneg args);
+      specialize (compile_ext_call_length binds a args);
+      pose proof max_ext_call_code_size_nonneg;
+      simpl in *.
+    specialize (H1 a).
+    omega.
+  Qed.
+
+  Lemma compile_stmt_emits_valid: forall s,
       valid_registers s ->
       stmt_not_too_big s ->
-      verify inst RV_wXLEN_IM.
-  Proof. Admitted. (*
-    induction s; intros; simpl in *;
-    repeat  match goal with
-      | H: nth_error nil _ = Some _ |- _ =>
-             exfalso; eapply nth_error_nil_Some; exact H
-      | H: nth_error (_ :: nil) _ = Some _ |- _ =>
-             apply nth_error_single_Some in H
-      | H: nth_error (_ :: _) _ = Some _ |- _ =>
-             apply nth_error_cons_Some in H; destruct H as [ [? ?] | [? [? ?] ] ]
-      | H: nth_error (_ ++ _) _ = Some _ |- _ =>
-             apply nth_error_app_Some in H; destruct H as [? | ?]
-      | H: nth_error (compile_lit _ _) _ = Some _ |- _ =>
-             apply compile_lit_emits_valid in H; [ | intuition fail ]
-      | H: nth_error (compile_op _ _ _ _) _ = Some _ |- _ =>
-             apply compile_op_emits_valid in H; [ | intuition fail .. ]
-      end;
-      unfold verify, valid_register in *;
-      (intuition subst);
-      unfold Register0, stmt_not_too_big, RV_wXLEN_IM, LwXLEN, SwXLEN, bitwidth in *;
-      destruct Bw; simpl in *;
-      autounfold with unf_encode_consts unf_verify;
-      repeat (so fun hyporgoal => match hyporgoal with
-              | context [(2 ^ ?a)%Z] =>
-                  let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
-              end);
-      repeat match goal with
-             | s: stmt |- _ => unique pose proof (compile_stmt_size s)
-             end;
-      repeat match goal with
-      | IH: forall (i: nat) (inst: Instruction), _ |- _ =>
-            edestruct IH as [? ?]; [ eassumption | assumption | lia | clear IH ]
-      end;
-      (intuition (first [apply times4mod2 | omega | nia | idtac])).
+      valid_instructions (compile_stmt s).
+  Proof.
+    induction s; intros; simpl in *; intuition (
+      auto using compile_load_emits_valid,
+                 compile_store_emits_valid,
+                 compile_lit_emits_valid,
+                 compile_op_emits_valid,
+                 compile_ext_call_emits_valid
+    );
+    unfold valid_instructions, valid_register, Register0, stmt_not_too_big in *;
+    intros; simpl in *;
+    repeat match goal with
+           | H: _ \/ _ |- _ => destruct H
+           | H: In _ (_ ++ _) |- _ => apply in_app_iff in H
+           | H: In _ (_ :: _) |- _ => apply in_inv in H
+           | s: stmt |- _ => unique pose proof (stmt_size_pos s)
+           | s: stmt |- _ => unique pose proof (compile_stmt_size s)
+           | H: context [Zlength ?l] |- _ => unique pose proof (Zlength_nonneg l)
+           end;
+    subst;
+    repeat (so fun hyporgoal => match hyporgoal with
+            | context [(2 ^ ?a)%Z] =>
+              let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
+            end);
+    try solve
+        [ apply compile_bcond_by_inverting_emits_valid; [assumption | lia' | apply times4mod2 ]
+        | match goal with
+          | H: _ |- _ => solve [apply H; (lia || auto)]
+          end
+        | unfold verify, RV_wXLEN_IM, bitwidth in *;
+          destruct Bw; simpl in *; intros;
+          intuition subst; simpl in *;
+          autounfold with unf_encode_consts unf_verify;
+          repeat match goal with
+                 | |- context [(?x * 4) mod 2] => rewrite (times4mod2 x)
+                 end;
+          lia' ].
   Qed.
-*)
+
 End EmitsValid.
