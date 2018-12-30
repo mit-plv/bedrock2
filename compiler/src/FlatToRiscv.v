@@ -34,6 +34,8 @@ Require Import compiler.Rem4.
 Require Import compiler.containsProgram.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
+Require Import compiler.EmitsValid.
+Require Import compiler.SeparationLogic.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -1210,32 +1212,30 @@ Section FlatToRiscv1.
   Definition eval_stmt := exec map.empty.
 
   Lemma compile_stmt_correct_aux:
-    forall allInsts (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p))) t initialMH initialRegsH postH,
+    forall (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
     eval_stmt s t initialMH initialRegsH postH ->
-    forall imemStart instsBefore instsAfter initialL insts,
+    forall initialL insts,
     @compile_stmt def_params s = insts ->
-    allInsts = instsBefore ++ insts ++ instsAfter ->
     stmt_not_too_big s ->
     valid_registers s ->
-    divisibleBy4 imemStart ->
+    divisibleBy4 initialL.(getPc) ->
     @map.extends Register word _ initialL.(getRegs) initialRegsH ->
-    (*containsMem initialL.(getMem) initialMH -> TODO should be extends *)
-    initialMH = initialL.(getMem) ->
-    containsProgram initialL.(getMem) allInsts imemStart ->
+    (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
-    initialL.(getPc) = add imemStart (mul (ZToReg 4) (ZToReg (Zlength instsBefore))) ->
     initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
-    mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength allInsts) ->
     runsTo initialL (fun finalL =>
         exists finalRegsH finalMH,
           postH finalL.(getLog) finalMH finalRegsH /\
           map.extends finalL.(getRegs) finalRegsH /\
-          (*containsMem finalL.(getMem) finalMH /\*)
-          containsProgram finalL.(getMem) allInsts imemStart /\
+          (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
   Proof.
     induction 1; intros;
+      lazymatch goal with
+      | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
+        pose proof (compile_stmt_emits_valid (Bw := BitWidth) H1 H2)
+      end;
       repeat match goal with
              | x := _ |- _ => subst x
              | H: _ /\ _ |- _ => destruct H
@@ -1243,6 +1243,7 @@ Section FlatToRiscv1.
              end.
 
     - (* SInteract *)
+      admit. (*
       simpl in *; destruct_everything. simpl in *.
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with (postH := post) (action0 := action)
@@ -1268,19 +1269,56 @@ Section FlatToRiscv1.
                end; try sidecondition; try solve_word_eq.
         map_solver locals_ok.
         admit.
+             *)
+
+    - (* SCall *)
+      match goal with
+      | A: map.get map.empty _ = Some _ |- _ =>
+        clear -A; exfalso; simpl in *;
+        rewrite (map.get_empty (ok := env_ok)) in A
+      end.
+      discriminate.
 
     - (* SLoad *)
-      (*
-      clear IHfuelH.
-      eapply runsToStep; simpl in *; subst *.
-      + fetch_inst.
-        erewrite execute_load; [|eassumption..].
-        simpl_RiscvMachine_get_set.
-        simpl.
-        rewrite execState_step.
-        simpl_RiscvMachine_get_set.
-        reflexivity.
-      + run1done.
+      evar (mid: RiscvMachineL).
+      eapply runsToStep with (midset := eq mid); simpl in *; subst *; subst mid.
+      + eapply go_fetch_inst.
+        * reflexivity.
+        *
+
+          match goal with
+          | H: _ ?m |- _ ?m =>
+            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+            repeat rewrite !sep_assoc; (* TODO: maybe this should be a part of reify_goal *)
+            solve [SeparationLogic.ecancel]
+          end.
+
+        * clear -H10. unfold valid_instructions in H10.
+          apply H10. constructor. reflexivity.
+        * destruct_products.
+          eapply execute_load; try eassumption; cycle 1.
+          { simpl in *.
+            match goal with
+            | |- context [?g] =>
+              match g with
+              | map.get ?r ?a =>
+                match goal with
+                | G: map.get ?l a = Some ?addr |- _ => replace g with (Some addr); [reflexivity|]
+                end
+              end
+            end.
+            admit. }
+          { eapply go_step. simpl. reflexivity. }
+          { (* basically H0 *) admit. }
+      + intros.
+        apply runsToDone.
+        admit.
+(*
+        do 2 eexists.
+        repeat match goal with
+               | |- _ /\ _ => split
+               end;
+          try eassumption.
 
     - (* SStore *)
       clear IHfuelH.
@@ -1400,8 +1438,6 @@ Section FlatToRiscv1.
     - (* SSkip *)
       run1done.
 
-    - (* SCall *)
-      match goal with H: _ |- _ => solve [rewrite empty_is_empty in H; inversion H] end.
   Qed.
   *) Admitted.
 

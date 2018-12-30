@@ -7,4 +7,8 @@ Require Export bedrock2.Map.Separation.
 Require Export bedrock2.Map.SeparationLogic.
 Require Export bedrock2.Array.
 
-Infix "*" := sep : type_scope.
+Infix "*" := sep : sep_scope.
+
+Delimit Scope sep_scope with sep.
+Arguments impl1 {T} (_)%sep (_)%sep.
+Arguments iff1 {T} (_)%sep (_)%sep.

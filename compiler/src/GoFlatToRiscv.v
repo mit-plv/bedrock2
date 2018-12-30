@@ -78,10 +78,6 @@ Section Go.
     induction n; intros.
   Admitted.
 
-  (* TODO how can we bind scopes so that * of Z, nat and sep can live together? *)
-  Close Scope Z_scope.
-  Close Scope nat_scope.
-
   Fixpoint ptsto_bytes(n: nat)(addr: word): HList.tuple byte n -> mem -> Prop :=
     match n with
     | O => fun _ => emp True
@@ -91,7 +87,7 @@ Section Go.
     end.
 
   Lemma impl1_sep_cancel_l: forall P Q1 Q2,
-      impl1 Q1 Q2 -> impl1 (P * Q1)%type (P * Q2)%type.
+      impl1 Q1 Q2 -> impl1 (P * Q1) (P * Q2).
   Proof.
     unfold impl1 in *.
     intros.
@@ -101,7 +97,7 @@ Section Go.
   Qed.
 
   Lemma impl1_sep_cancel_r: forall P Q1 Q2,
-      impl1 Q1 Q2 -> impl1 (Q1 * P)%type (Q2 * P)%type.
+      impl1 Q1 Q2 -> impl1 (Q1 * P) (Q2 * P).
   Proof.
     unfold impl1 in *.
     intros.
@@ -161,14 +157,14 @@ Section Go.
   Qed.
 
   Lemma ptsto_bytes_to_load: forall n m v addr R,
-      (ptsto_bytes n addr v * R)%type m ->
+      (ptsto_bytes n addr v * R)%sep m ->
       Memory.load n m addr = Some v.
   Proof.
     induction n; intros.
     - simpl in *. destruct v. reflexivity.
     - destruct v as [b v].
       simpl in *.
-      specialize (IHn m v (word.add addr (word.of_Z 1)) (ptsto addr b * R)%type).
+      specialize (IHn m v (word.add addr (word.of_Z 1)) (ptsto addr b * R)%sep).
       rewrite IHn.
       + erewrite get_sep; [reflexivity|].
         apply sep_assoc in H.
@@ -184,7 +180,7 @@ Section Go.
         apply impl1_sep_cancel_r.
         intros x H.
         match type of H with
-        | (?p * ?q)%type x => pose proof (sep_comm p q) as C
+        | (?p * ?q)%sep x => pose proof (sep_comm p q) as C
         end.
         apply C.
         apply H.
@@ -205,8 +201,8 @@ Section Go.
 
   Lemma go_fetch_inst: forall {inst initialL pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
+      (program pc0 [inst] * R)%sep initialL.(getMem) ->
       verify inst (@RV_wXLEN_IM (@BitWidth _ _ _ BWS)) ->
-      (program pc0 [inst] * R) initialL.(getMem) ->
       mcomp_sat (Bind (execute inst) (fun _ => step)) initialL post ->
       mcomp_sat (run1 (B := BitWidth)) initialL post.
   Proof.
