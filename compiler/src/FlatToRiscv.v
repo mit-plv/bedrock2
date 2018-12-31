@@ -15,6 +15,7 @@ Require Import riscv.Execute.
 Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
+Require Import riscv.util.ListLib.
 Require Export compiler.FlatToRiscvBitWidthSpecifics.
 Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
@@ -31,7 +32,6 @@ Require Import riscv.Utility.
 Require Import riscv.MkMachineWidth.
 Require Import riscv.runsToNonDet.
 Require Import compiler.Rem4.
-Require Import compiler.containsProgram.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.EmitsValid.
@@ -128,13 +128,12 @@ Module Import FlatToRiscv.
     Machine := @RiscvMachine Register W State_is_RegisterFile mem actname;
 
     compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts initialMH
-        (argvars resvars: list Register),
+        (argvars resvars: list Register) R,
       insts = compile_ext_call resvars action argvars ->
-      newPc = add initialL.(getPc) (ZToReg (4 * Zlength insts)) ->
-      initialMH = initialL.(getMem) -> (* TODO should be "extends" or similar *)
+      newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
-      containsProgram initialL.(getMem) insts initialL.(getPc) ->
+      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       exec map.empty (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) postH ->
@@ -143,7 +142,8 @@ Module Import FlatToRiscv.
                   postH finalL.(getLog) initialMH finalL.(getRegs) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
-                  finalL.(getMem) = initialL.(getMem));
+                  (* external calls can't modify the memory for now *)
+                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem));
 
   }.
 
@@ -270,9 +270,6 @@ Section FlatToRiscv1.
   Arguments Z.add: simpl never.
   Arguments run1: simpl never.
 
-  Definition mem_inaccessible(m: mem)(start len: Z): Prop :=
-    forall a w, map.get m a = Some w -> not_in_range a XLEN_in_bytes start len.
-
   Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
   Proof.
     intros. destruct i; simpl in *; discriminate.
@@ -314,71 +311,6 @@ Section FlatToRiscv1.
     nat_rel_with_words_pre(*;
     nat_div_mod_to_quot_rem;
     nia *).
-
-  Ltac destruct_containsProgram :=
-    repeat match goal with
-           | Cp: containsProgram _ ?l _ |- _ =>
-             let Cp' := fresh Cp in
-             let W := fresh "W" in
-             match l with
-             | [[]] => clear Cp
-             | [[?inst]] => fail 1
-             | ?h :: ?t => apply containsProgram_cons_inv in Cp;
-                          destruct Cp as [ W [Cp' Cp] ]
-             | ?insts0 ++ ?insts1 => apply containsProgram_app_inv in Cp;
-                                    destruct Cp as [ W [Cp' Cp] ]
-             end
-           end.
-
-  Ltac solve_containsProgram :=
-    match goal with
-    | |- containsProgram _ _ _ => subst
-    end;
-    repeat match goal with
-    | |- context [?a :: ?b :: ?t] => change (a :: b :: t) with ((a :: nil) ++ (b :: t)) in *
-    end;
-    rewrite? app_nil_r in *;
-    rewrite? app_nil_l in *;
-    repeat match goal with
-    | W: containsProgram_app_will_work ?i1 ?i2 ?p |- containsProgram ?m (?i1 ++ ?i2) ?p =>
-      apply (containsProgram_app W)
-    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p => exact Cp
-    (* requires exactly the same instruction list, but allows a p/p' to be too hard
-       to prove equal *)
-    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m ?i ?p' =>
-      replace p' with p; [exact Cp|try solve_word_eq]
-    (* allows different instruction lists (the one in the goal could contain evars),
-       but requires that p=p' to make sure we don't instantiate wrongly *)
-    | Cp: containsProgram ?m ?i ?p |- containsProgram ?m _ ?p' =>
-      replace p' with p by solve_word_eq;
-      exact Cp
-    end;
-    try assumption.
-
-  (*
-  Lemma containsState_put: forall initialH initialRegs x v1 v2,
-    containsState initialRegs initialH ->
-    v1 = v2 ->
-    containsState
-      (fun reg2 =>
-               if dec (x = reg2)
-               then v1
-               else initialRegs reg2)
-     (put initialH x v2).
-  Proof.
-    unfold containsState. intros.
-    rewrite get_put in H1.
-    destruct_one_match_hyp.
-    - clear E. subst. inverts H1.
-      destruct_one_match; [reflexivity|].
-      exfalso.
-      apply n.
-      reflexivity.
-    - destruct_one_match.
-      * clear E0. apply var2Register_inj in e. contradiction.
-      * apply H. assumption.
-  Qed.
-  *)
 
   Definition run1: M unit := run1 (B := BitWidth).
 
@@ -487,7 +419,7 @@ Section FlatToRiscv1.
 *)
 
   Ltac sidecondition :=
-    solve_containsProgram || assumption || reflexivity.
+    assumption || reflexivity.
 
   Ltac head_of_app e :=
     match e with
@@ -516,9 +448,6 @@ Section FlatToRiscv1.
                | @valid_register => clear H
                | @valid_registers => clear H
                | @divisibleBy4 => clear H
-               | @containsProgram => clear H
-               | @mem_inaccessible => clear H
-               | @containsProgram_app_will_work => clear H
                end
              | H: @eq ?T _ _ |- _ =>
                match T with
@@ -584,7 +513,7 @@ Section FlatToRiscv1.
 
   (* requires destructed RiscvMachine and containsProgram *)
   Ltac fetch_inst :=
-    eapply go_fetch_inst; [reflexivity|simpl; solve_containsProgram|].
+    eapply go_fetch_inst; [reflexivity|simpl (*; solve_containsProgram *)|].
 
   Ltac rewrite_reg_value :=
     match goal with
@@ -855,8 +784,8 @@ Section FlatToRiscv1.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end;
-    subst *;
-    destruct_containsProgram.
+    subst * (*;
+    destruct_containsProgram *).
 
   Ltac run1step''' :=
     repeat (
@@ -894,7 +823,7 @@ Section FlatToRiscv1.
       | match goal with
         | |- map.extends _ _ => solve [state_calc]
         end
-      | solve [solve_containsProgram]
+(*    | solve [solve_containsProgram] *)
       | solve_word_eq
       | idtac ].
 
@@ -1023,15 +952,7 @@ Section FlatToRiscv1.
   Arguments split2: simpl never.
   Arguments ZToWord: simpl never.
   Arguments Nat.pow: simpl never.
-*)
-  Lemma in_range0_valid_addr: forall (a: word) al l,
-      in_range a al 0 l ->
-      Memory.valid_addr a al l.
-  Proof.
-    unfold in_range, Memory.valid_addr. intuition idtac.
-  Qed.
 
-  (*
   Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
       containsProgram initialL_mem insts imemStart ->
       not_in_range a XLEN_in_bytes (regToZ_unsigned imemStart) (4 * (Zlength insts)) ->
@@ -1164,11 +1085,11 @@ Section FlatToRiscv1.
   Proof using .
   Admitted.
 
-  Lemma compile_lit_correct_full: forall initialL post x v,
+  Lemma compile_lit_correct_full: forall initialL post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
       let insts := compile_stmt (SLit x v) in
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
-      containsProgram initialL.(getMem) insts initialL.(getPc) ->
+      (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_register x ->
       runsTo (withRegs   (setReg initialL.(getRegs) x (ZToReg v))
              (withPc     (add initialL.(getPc) d)
@@ -1219,14 +1140,13 @@ Section FlatToRiscv1.
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 initialL.(getPc) ->
-    @map.extends Register word _ initialL.(getRegs) initialRegsH ->
+    initialL.(getRegs) = initialRegsH ->
     (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     runsTo initialL (fun finalL =>
-        exists finalRegsH finalMH,
-          postH finalL.(getLog) finalMH finalRegsH /\
-          map.extends finalL.(getRegs) finalRegsH /\
+        exists finalMH,
+          postH finalL.(getLog) finalMH finalL.(getRegs) /\
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
@@ -1243,33 +1163,14 @@ Section FlatToRiscv1.
              end.
 
     - (* SInteract *)
-      admit. (*
       simpl in *; destruct_everything. simpl in *.
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with (postH := post) (action0 := action)
                                              (argvars0 := argvars) (resvars0 := resvars);
-          try sidecondition; try assumption; simpl.
-        eapply @ExInteract.
-        * match goal with
-          | _: option_all ?l = Some _ |- option_all ?l' = Some _ =>
-            replace l' with l; [eassumption|]
-          end.
-          admit. (* TODO replace one-way extends by equality *)
-        * eassumption.
-        * (* TODO needs FlatImp.Event to be removed *)
-          Fail exact H1.
-          admit. (* annoying because locals should really not be
-                                   extensible, but remain the same *)
+          simpl; reflexivity || eassumption || idtac.
+        eapply @ExInteract; eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
-        destruct_products. subst.
-        exists finalL_regs initialL_mem.
-        destruct_everything.
-        repeat match goal with
-               | |- _ /\ _ => split
-               end; try sidecondition; try solve_word_eq.
-        map_solver locals_ok.
-        admit.
-             *)
+        destruct_products. subst. eauto 10.
 
     - (* SCall *)
       match goal with
@@ -1280,6 +1181,7 @@ Section FlatToRiscv1.
       discriminate.
 
     - (* SLoad *)
+
       evar (mid: RiscvMachineL).
       eapply runsToStep with (midset := eq mid); simpl in *; subst *; subst mid.
       + eapply go_fetch_inst.
@@ -1297,19 +1199,12 @@ Section FlatToRiscv1.
           apply H10. constructor. reflexivity.
         * destruct_products.
           eapply execute_load; try eassumption; cycle 1.
-          { simpl in *.
-            match goal with
-            | |- context [?g] =>
-              match g with
-              | map.get ?r ?a =>
-                match goal with
-                | G: map.get ?l a = Some ?addr |- _ => replace g with (Some addr); [reflexivity|]
-                end
-              end
-            end.
-            admit. }
+          { simpl in *. rewrite_match. reflexivity. }
           { eapply go_step. simpl. reflexivity. }
-          { (* basically H0 *) admit. }
+          { unfold bedrock2.Memory.load in *. unfold load.
+
+
+            (* basically H0 *) admit. }
       + intros.
         apply runsToDone.
         admit.

@@ -1,15 +1,16 @@
+Require Import Coq.micromega.Lia.
 Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import compiler.Op.
-Require Import compiler.Memory.
 Require Import coqutil.Decidable.
 Require Import riscv.util.BitWidth32.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
-Require Import riscv.MachineWidth32.
+Require Import riscv.Words32Naive.
+Require Import riscv.DefaultMemImpl32.
 
 
 Definition var: Set := Z. (* only inside this test module *)
@@ -54,30 +55,62 @@ Example fib(n: Z): stmt  :=
               (SOp _n bopname.sub _n _one)))))
   )))).
 
-Definition annoying_eq: DecidableEq
-  (list var * list var * stmt). Admitted.
-Existing Instance annoying_eq.
+Instance Zltb_strictorder: SortedList.parameters.strict_order Z.ltb.
+Proof.
+  constructor; intros; rewrite ?Z.ltb_lt, ?Z.ltb_ge, ?Z.ltb_irrefl in *;
+    reflexivity || lia.
+Qed.
+
+Instance Zkeyed_map_params(V: Type): SortedList.parameters := {|
+  parameters.key := Z;
+  parameters.value := V;
+  parameters.ltb := Z.ltb;
+|}.
+
+Instance Zkeyed_map(V: Type): map.map Z V :=
+  SortedList.map (Zkeyed_map_params V) Zltb_strictorder.
+
+Instance Empty_set_strictorder: SortedList.parameters.strict_order
+                                  (fun (e1 e2: Empty_set) => false).
+Proof.
+  constructor; intros; match goal with x: Empty_set |- _ => destruct x end.
+Qed.
+
+Instance Empty_set_keyed_map_params(V: Type): SortedList.parameters := {|
+  parameters.key := Empty_set;
+  parameters.value := V;
+  parameters.ltb e1 e2 := false;
+|}.
+Instance Empty_set_keyed_map(V: Type): map.map Empty_set V :=
+  SortedList.map (Empty_set_keyed_map_params V) Empty_set_strictorder.
+
+Instance Registers: map.map varname word32 := Zkeyed_map word32.
 
 Instance myFlatImpParams: FlatImp.parameters := {|
   FlatImp.bopname_params := myparams;
-  FlatImp.mword := word32;
-  FlatImp.Event := Empty_set;
-  FlatImp.ext_spec action t args outcome := False;
+  FlatImp.W := Words32Naive;
+  FlatImp.locals := Registers;
+  FlatImp.env := Empty_set_keyed_map _;
+  FlatImp.mem := Mem;
+  FlatImp.locals_ok := @SortedList.map_ok (Zkeyed_map_params _) _;
+  FlatImp.env_ok := @SortedList.map_ok (Empty_set_keyed_map_params _) _;
+  FlatImp.mem_ok := @SortedList.map_ok DefaultMemImpl32.params _;
+  FlatImp.ext_spec t m action args outcome := False;
   FlatImp.max_ext_call_code_size name := 0%Z;
 |}.
 
-Definition eval_stmt_test fuel initialSt := eval_stmt empty_map fuel initialSt no_mem.
+Definition eval_stmt_test fuel initialSt := eval_stmt map.empty fuel initialSt map.empty.
 
-Example finalFibState(n: Z) := (eval_stmt_test 100 empty_map (fib n)).
-Example finalFibVal(n: Z): option (word 32) := match finalFibState n with
-| Some (s, _) => get s _b
+Example finalFibState(n: Z) := (eval_stmt_test 100 map.empty (fib n)).
+Example finalFibVal(n: Z): option word32 := match finalFibState n with
+| Some (s, _) => map.get s _b
 | _ => None
 end.
 
-Goal finalFibVal 0 = Some (ZToWord 32  1). reflexivity. Qed.
-Goal finalFibVal 1 = Some (ZToWord 32  1). reflexivity. Qed.
-Goal finalFibVal 2 = Some (ZToWord 32  2). reflexivity. Qed.
-Goal finalFibVal 3 = Some (ZToWord 32  3). reflexivity. Qed.
-Goal finalFibVal 4 = Some (ZToWord 32  5). reflexivity. Qed.
-Goal finalFibVal 5 = Some (ZToWord 32  8). reflexivity. Qed.
-Goal finalFibVal 6 = Some (ZToWord 32 13). reflexivity. Qed.
+Goal finalFibVal 0 = Some (word.of_Z 1). reflexivity. Qed.
+Goal finalFibVal 1 = Some (word.of_Z  1). reflexivity. Qed.
+Goal finalFibVal 2 = Some (word.of_Z  2). reflexivity. Qed.
+Goal finalFibVal 3 = Some (word.of_Z  3). reflexivity. Qed.
+Goal finalFibVal 4 = Some (word.of_Z  5). reflexivity. Qed.
+Goal finalFibVal 5 = Some (word.of_Z  8). reflexivity. Qed.
+Goal finalFibVal 6 = Some (word.of_Z 13). reflexivity. Qed.

@@ -12,6 +12,7 @@ Require Import compiler.util.Tactics.
 Require Import riscv.util.Tactics.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvDef. Import FlatToRiscvDef.
+Require Import riscv.util.ListLib.
 Require Import riscv.Memory.
 
 Local Open Scope Z_scope.

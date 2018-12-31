@@ -42,7 +42,7 @@ Section Equiv.
     getRegs := initialRegs;
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
-    getMem := Memory.store_bytes 4 map.empty f.(counter) NOP;
+    getMem := Memory.unchecked_store 4 map.empty f.(counter) NOP;
     getLog := nil;
   |}.
 
@@ -53,7 +53,7 @@ Section Equiv.
 
   Definition BW: BitWidths := if width =? 32 then BW32 else BW64.
 
-  Arguments Memory.store_bytes: simpl never.
+  Arguments Memory.unchecked_store: simpl never.
 
   Lemma combine_split: forall (n: nat) (z: Z),
       0 <= z < 2 ^ (Z.of_nat n * 8) ->
@@ -119,7 +119,7 @@ Section Equiv.
     end.
 
   Lemma loadWord_store_bytes_same: forall m w addr,
-      Memory.loadWord (Memory.store_bytes 4 m addr w) addr = Some w.
+      Memory.loadWord (Memory.unchecked_store 4 m addr w) addr = Some w.
   Admitted. (* TODO once we have a good map solver and word solver, this should be easy *)
 
   Lemma simulate_step_bw: forall (m m': FakeProcessor),

@@ -13,7 +13,6 @@ Require Import riscv.Run.
 Require Import riscv.Execute.
 Require Import riscv.proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.containsProgram.
 Require Import compiler.FlatToRiscvBitWidthSpecifics.
 Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.

@@ -25,7 +25,6 @@ Require Import riscv.MinimalMMIO.
 Require Import compiler.FlatToRiscvDef.
 Require Import riscv.AxiomaticRiscvMMIO.
 Require Import riscv.runsToNonDet.
-Require Import compiler.containsProgram.
 Require Import compiler.Rem4.
 Require Import compiler.GoFlatToRiscv.
 
@@ -153,7 +152,12 @@ Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
   FlatToRiscvDef.compile_store sz x y := Sw x y 0; (* TODO respect access_size! *)
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
   FlatToRiscvDef.max_ext_call_code_size _ := 1;
-|}). intros. abstract omega. Defined.
+|}).
+  intros. unfold compile_ext_call.
+  destruct f; destruct binds; try destruct binds;
+  try destruct args; try destruct args; try destruct args;
+  cbv; intros; discriminate.
+Defined.
 
 (*
 Lemma compile_ext_call_correct: forall initialL action outcome newPc insts
