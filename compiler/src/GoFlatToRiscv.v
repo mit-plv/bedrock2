@@ -77,13 +77,8 @@ Section Go.
     induction n; intros.
   Admitted.
 
-  Fixpoint ptsto_bytes(n: nat)(addr: word): HList.tuple byte n -> mem -> Prop :=
-    match n with
-    | O => fun _ => emp True
-    | S n0 => fun bytes =>
-                sep (ptsto addr (pair._1 bytes))
-                    (ptsto_bytes n0 (word.add addr (word.of_Z 1)) (pair._2 bytes))
-    end.
+  Definition ptsto_bytes(n: nat)(addr: word)(bs: HList.tuple byte n): mem -> Prop :=
+    eq (unchecked_store_bytes n map.empty addr bs).
 
   Lemma impl1_sep_cancel_l: forall P Q1 Q2,
       impl1 Q1 Q2 -> impl1 (P * Q1) (P * Q2).
@@ -155,35 +150,24 @@ Section Go.
     assumption.
   Qed.
 
-  Lemma ptsto_bytes_to_load: forall n m v addr R,
+  Lemma ptsto_bytes_to_load_bytes: forall n m v addr R,
       (ptsto_bytes n addr v * R)%sep m ->
-      Memory.load n m addr = Some v.
+      Memory.load_bytes n m addr = Some v.
   Proof.
-    induction n; intros.
-    - simpl in *. destruct v. reflexivity.
-    - destruct v as [b v].
-      simpl in *.
-      specialize (IHn m v (word.add addr (word.of_Z 1)) (ptsto addr b * R)%sep).
-      rewrite IHn.
-      + erewrite get_sep; [reflexivity|].
-        apply sep_assoc in H.
-        exact H.
-      + apply sep_assoc.
-        (* TODO should "ecancel" do this step as well? *)
-        revert H. clear -mem_ok. revert m.
-        match goal with
-        | |- forall m, ?P m -> ?Q m => change (impl1 P Q)
-        end.
-        (* TODO why does "ecancel" not solve this? *)
-        (* manually: *)
-        apply impl1_sep_cancel_r.
-        intros x H.
-        match type of H with
-        | (?p * ?q)%sep x => pose proof (sep_comm p q) as C
-        end.
-        apply C.
-        apply H.
-  Qed.
+    cbv [ptsto_bytes sep load_bytes unchecked_store_bytes].
+    intros.
+    destruct_products.
+    (* TODO *)
+  Admitted.
+
+  Lemma load_bytes_to_ptsto_bytes: forall n m v addr,
+      Memory.load_bytes n m addr = Some v ->
+      exists R, (ptsto_bytes n addr v * R)%sep m.
+  Proof.
+    cbv [ptsto_bytes sep load_bytes unchecked_store_bytes].
+    intros.
+    (* TODO *)
+  Admitted.
 
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
     ptsto_bytes 4 addr (LittleEndian.split 4 (encode instr)).
@@ -210,7 +194,7 @@ Section Go.
     apply go_getPC.
     unfold program, array, ptsto_instr in *.
 
-    eapply go_loadWord; [eapply ptsto_bytes_to_load; sep|].
+    eapply go_loadWord; [eapply ptsto_bytes_to_load_bytes; sep|].
     rewrite combine_split, decode_encode; auto using encode_range.
   Qed.
 

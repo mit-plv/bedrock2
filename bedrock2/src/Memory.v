@@ -1,36 +1,28 @@
 Require Coq.Lists.List.
 Require Import coqutil.sanity.
-Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
-Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
+Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.Datatypes.List.
+Require Import coqutil.Map.Interface.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
+Require Import bedrock2.Notations bedrock2.Syntax.
 
-(* TODO: moveme *)
-Module List.
-  Section WithA.
-    Context {A : Type}.
-    Fixpoint option_all (xs : list (option A)) {struct xs} : option (list A) :=
-      match xs with
-      | nil => Some nil
-      | cons ox xs =>
-        match ox, option_all xs with
-        | Some x, Some ys => Some (cons x ys)
-        | _ , _ => None
-        end
-      end.
-
-    Section WithStep.
-      Context (step : A -> A).
-      Fixpoint unfoldn (n : nat) (start : A) :=
-        match n with
-        | 0%nat => nil
-        | S n => cons start (unfoldn n (step start))
-        end.
-    End WithStep.
-  End WithA.
-End List.
 
 Section Memory.
   Context {byte: word 8} {width: Z} {word: word width} {mem: map.map word byte}.
+
+  Definition footprint(a: word)(sz: nat): tuple word sz :=
+    tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
+
+  Definition load_bytes(sz: nat)(m: mem)(addr: word): option (tuple byte sz) :=
+    map.getmany_of_tuple m (footprint addr sz).
+
+  Definition unchecked_store_bytes(sz: nat)(m: mem)(a: word)(bs: tuple byte sz): mem :=
+    map.putmany_of_tuple (footprint a sz) bs m.
+
+  Definition store_bytes(sz: nat)(m: mem)(a: word)(v: tuple byte sz): option mem :=
+    match load_bytes sz m a with
+    | Some _ => Some (unchecked_store_bytes sz m a v)
+    | None => None (* some addresses were invalid *)
+    end.
 
   Definition bytes_per sz :=
     match sz with
@@ -38,18 +30,13 @@ Section Memory.
       | access_size.word => Z.to_nat (Z.div (Z.add width 7) 8)
     end%nat.
 
-  Definition footprint(a: word)(sz: access_size) :=
-    List.unfoldn (fun w => word.add w (word.of_Z 1)) (bytes_per sz) a.
   Definition load(sz: access_size)(m: mem)(a: word): option word :=
-    'Some bs <- List.option_all (List.map (map.get m) (footprint a sz)) | None ;
-    Some (word.of_Z (LittleEndian.combine _ (tuple.of_list bs))).
-  Definition unchecked_store(sz: access_size)(m: mem)(a: word)(v: word) : option mem :=
-    map.putmany_of_list
-      (footprint a sz)
-      (tuple.to_list (LittleEndian.split (bytes_per sz) (word.unsigned v)))
-      m.
+    match load_bytes (bytes_per sz) m a with
+    | Some bs => Some (word.of_Z (LittleEndian.combine _ bs))
+    | None => None
+    end.
+
   Definition store(sz: access_size)(m: mem)(a: word)(v: word): option mem :=
-    'Some _ <- load sz m a | None;
-    unchecked_store sz m a v.
+    store_bytes (bytes_per sz) m a (LittleEndian.split _ (word.unsigned v)).
 
 End Memory.

@@ -317,6 +317,27 @@ Section FlatToRiscv1.
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat run1).
 
+  Lemma one_step: forall initialL P,
+      mcomp_sat run1 initialL P ->
+      runsTo initialL P.
+  Proof.
+    intros.
+    eapply runsToStep; [eassumption|].
+    intros.
+    apply runsToDone. assumption.
+  Qed.
+
+  Lemma det_step: forall initialL midL P,
+      mcomp_sat run1 initialL (eq midL) ->
+      runsTo midL P ->
+      runsTo initialL P.
+  Proof.
+    intros.
+    eapply runsToStep; [eassumption|].
+    intros. subst.
+    assumption.
+  Qed.
+
   Ltac simpl_run1 :=
     cbv [run1 (*execState*) OStateNDOperations.put OStateNDOperations.get
          Return Bind State_Monad OStateND_Monad
@@ -849,13 +870,10 @@ Section FlatToRiscv1.
            (f: unit -> M unit) (initialL: RiscvMachineL) post,
       valid_register x ->
       valid_register a ->
-      Memory.load (Memory.bytes_per sz) initialL.(getMem) addr = Some v ->
+      Memory.load sz initialL.(getMem) addr = Some v ->
       getReg initialL.(getRegs) a = addr ->
       mcomp_sat (f tt)
-                (withRegs
-                   (setReg initialL.(getRegs) x
-                           (word.of_Z (LittleEndian.combine (@Memory.bytes_per width sz) v)))
-                   initialL) post ->
+                (withRegs (setReg initialL.(getRegs) x v) initialL) post ->
       mcomp_sat (Bind (execute (compile_load sz x a)) f) initialL post.
   Proof.
     intros.
@@ -1132,6 +1150,7 @@ Section FlatToRiscv1.
 
   Definition eval_stmt := exec map.empty.
 
+
   Lemma compile_stmt_correct_aux:
     forall (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
     eval_stmt s t initialMH initialRegsH postH ->
@@ -1181,9 +1200,11 @@ Section FlatToRiscv1.
       discriminate.
 
     - (* SLoad *)
-
-      evar (mid: RiscvMachineL).
-      eapply runsToStep with (midset := eq mid); simpl in *; subst *; subst mid.
+      unfold Memory.load in H0.
+      destruct_one_match_hyp; [|discriminate].
+      apply Option.eq_of_eq_Some in H0.
+      subst.
+      eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
         *
@@ -1197,17 +1218,41 @@ Section FlatToRiscv1.
 
         * clear -H10. unfold valid_instructions in H10.
           apply H10. constructor. reflexivity.
-        * destruct_products.
+        * simpl in H4. destruct_products.
           eapply execute_load; try eassumption; cycle 1.
           { simpl in *. rewrite_match. reflexivity. }
           { eapply go_step. simpl. reflexivity. }
-          { unfold bedrock2.Memory.load in *. unfold load.
+          { unfold Memory.load. erewrite ptsto_bytes_to_load_bytes; [ reflexivity |].
+            pose proof load_bytes_to_ptsto_bytes as P.
+            specialize P with (1 := E).
+            destruct_products.
+            assert ((program (getPc initialL) (compile_stmt (SLoad sz x a)) *
+                     ptsto_bytes (Memory.bytes_per sz) addr t0 * R0 *
+                     R)%sep (getMem initialL)) as Q. {
+              clear -P H7.
+              (* TODO: substitute P for "eq m" in H7 *)
+              admit.
+            }
+            clear -Q.
+            instantiate (2 := t0).
+            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Q); clear Q.
 
+            Fail solve [SeparationLogic.ecancel].
+            admit.
+          }
+      + apply runsToDone.
+        eexists. simpl.
+        repeat split; try eassumption.
+        simpl in *.
+        Fail rewrite H9. (* TODO why does rewrite fail here? *)
+        etransitivity; [exact H9|].
+        (* TODO make solve_word_eq work again *)
+        repeat (autorewrite with rew_Zlength; simpl).
+        f_equal.
+        change (0 + 1) with 1.
+        rewrite <- word.ring_morph.(morph_mul).
+        reflexivity.
 
-            (* basically H0 *) admit. }
-      + intros.
-        apply runsToDone.
-        admit.
 (*
         do 2 eexists.
         repeat match goal with
