@@ -1230,8 +1230,21 @@ Section FlatToRiscv1.
                      ptsto_bytes (Memory.bytes_per sz) addr t0 * R0 *
                      R)%sep (getMem initialL)) as Q. {
               clear -P H7.
-              (* TODO: substitute P for "eq m" in H7 *)
-              admit.
+              remember (program (getPc initialL) (compile_stmt (SLoad sz x a))) as A. clear HeqA.
+              remember (ptsto_bytes (Memory.bytes_per sz) addr t0) as B.
+              setoid_rewrite <- HeqB in P. clear HeqB.
+              remember (getMem initialL) as mL. clear HeqmL.
+              rename m into mH, H7 into H1, P into H2.
+              clear -H1 H2.
+
+              refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ _).
+              { instantiate (1 := (A * (B * R0) * R)%sep).
+                repeat rewrite! sep_assoc.
+                SeparationLogic.ecancel. }
+              { unfold sep in *.
+                destruct_products. subst mq1.
+                eauto 15. }
+
             }
             clear -Q.
             instantiate (2 := t0).
