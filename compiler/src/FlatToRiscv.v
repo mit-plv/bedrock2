@@ -1150,6 +1150,12 @@ Section FlatToRiscv1.
 
   Definition eval_stmt := exec map.empty.
 
+  Lemma seplog_subst_eq: forall {A B: mem -> Prop} {mL mH: mem},
+      A mL ->
+      B mH ->
+      forall R, iff1 A (R * eq mH)%sep -> (R * B)%sep mL.
+  Proof.
+  Admitted.
 
   Lemma compile_stmt_correct_aux:
     forall (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
@@ -1237,20 +1243,44 @@ Section FlatToRiscv1.
               rename m into mH, H7 into H1, P into H2.
               clear -H1 H2.
 
-              refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ _).
-              { instantiate (1 := (A * (B * R0) * R)%sep).
-                repeat rewrite! sep_assoc.
-                SeparationLogic.ecancel. }
-              { unfold sep in *.
-                destruct_products. subst mq1.
-                eauto 15. }
+              refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ _); cycle 1.
+              - eapply seplog_subst_eq; [eassumption..|].
+                (* TODO here "rewrite sep_assoc" introduces more and more evars,
+                   but "rewrite sep_assoc" should be part of reify_goal *)
 
+                rewrite (sep_assoc A (eq mH) R).
+
+                reify_goal.
+
+                Fail refine (cancel_seps_at_indices 1 1 _ _ _ _).
+
+                let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+                let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+                (* note: cancel_seps_at_indices needs LHS and RHS explicitly, otherwise
+                   "refine" fails (bug in coq or ecancel) *)
+                simple refine (cancel_seps_at_indices 1 1 LHS RHS _ _);
+                  simpl; reflexivity.
+
+              - rewrite !sep_assoc. solve [ ecancel ].
+                (* note: because of the multimatch, ecancel always needs to be wrapped inside
+                   "solve" *)
             }
             clear -Q.
             instantiate (2 := t0).
             refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Q); clear Q.
 
-            Fail solve [SeparationLogic.ecancel].
+            rewrite! sep_assoc.
+            reify_goal.
+
+            let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+            let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+            simple refine (cancel_seps_at_indices 1 0 LHS RHS _ _); [reflexivity|].
+            cbn [List.firstn List.skipn List.app List.hd List.tl].
+            (* looks like this should be cbv *)
+            cbv [List.firstn List.skipn List.app List.hd List.tl].
+            simpl.
+            Fail reflexivity. (* evar scope problem *)
+
             admit.
           }
       + apply runsToDone.
