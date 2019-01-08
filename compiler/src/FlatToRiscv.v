@@ -1250,10 +1250,15 @@ Section FlatToRiscv1.
 
                 rewrite (sep_assoc A (eq mH) R).
 
+                Ltac syntactic_unify._syntactic_unify x y ::= unify x y.
+                solve [ecancel].
+
+                (* otherwise I'd have to do this:
                 Set Printing Implicit.
                 unfold FlatImp.mem, FlatImp_params.
                 solve [ecancel].
                 Unset Printing Implicit.
+                *)
 
               - cbv [List.app seps].
                 rewrite !sep_assoc. solve [ ecancel ].
