@@ -1250,18 +1250,13 @@ Section FlatToRiscv1.
 
                 rewrite (sep_assoc A (eq mH) R).
 
-                reify_goal.
+                Set Printing Implicit.
+                unfold FlatImp.mem, FlatImp_params.
+                solve [ecancel].
+                Unset Printing Implicit.
 
-                Fail refine (cancel_seps_at_indices 1 1 _ _ _ _).
-
-                let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-                let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-                (* note: cancel_seps_at_indices needs LHS and RHS explicitly, otherwise
-                   "refine" fails (bug in coq or ecancel) *)
-                simple refine (cancel_seps_at_indices 1 1 LHS RHS _ _);
-                  simpl; reflexivity.
-
-              - rewrite !sep_assoc. solve [ ecancel ].
+              - cbv [List.app seps].
+                rewrite !sep_assoc. solve [ ecancel ].
                 (* note: because of the multimatch, ecancel always needs to be wrapped inside
                    "solve" *)
             }
@@ -1270,6 +1265,9 @@ Section FlatToRiscv1.
             refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Q); clear Q.
 
             rewrite! sep_assoc.
+            Set Printing Implicit.
+            unfold FlatImp.W, FlatImp_params, FlatImp.bopname_params.
+
             reify_goal.
 
             let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in

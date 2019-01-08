@@ -194,7 +194,7 @@ Ltac ecancel :=
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
       let i := find_syntactic_unify LHS y in
 
-      simple refine (cancel_seps_at_indices i j _ _ _ _);
+      simple refine (cancel_seps_at_indices i j LHS RHS _ _);
       cbn [List.firstn List.skipn List.app List.hd List.tl];
       [exact (RelationClasses.reflexivity _)|]);
   cbn [seps]; try exact (RelationClasses.reflexivity _).
