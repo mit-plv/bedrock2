@@ -1212,15 +1212,7 @@ Section FlatToRiscv1.
       eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
-        *
-
-          match goal with
-          | H: _ ?m |- _ ?m =>
-            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-            repeat rewrite !sep_assoc; (* TODO: maybe this should be a part of reify_goal *)
-            solve [SeparationLogic.ecancel]
-          end.
-
+        * seplog.
         * clear -H10. unfold valid_instructions in H10.
           apply H10. constructor. reflexivity.
         * simpl in H4. destruct_products.
@@ -1244,11 +1236,6 @@ Section FlatToRiscv1.
 
               refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ _); cycle 1.
               - eapply seplog_subst_eq; [eassumption..|].
-                (* TODO here "rewrite sep_assoc" introduces more and more evars,
-                   but "rewrite sep_assoc" should be part of reify_goal *)
-
-                rewrite (sep_assoc A (eq mH) R).
-
                 Fail solve [ecancel].
 
                 (* PARAMRECORDS *)
@@ -1258,7 +1245,7 @@ Section FlatToRiscv1.
                 Unset Printing Implicit.
 
               - cbv [List.app seps].
-                rewrite !sep_assoc. solve [ ecancel ].
+                solve [ ecancel ].
                 (* note: because of the multimatch, ecancel always needs to be wrapped inside
                    "solve" *)
             }

@@ -397,13 +397,7 @@ Please report at http://coq.inria.fr/bugs/.
     * intro mid.
       apply id.
     * eapply go_fetch_inst; [reflexivity| | |].
-      { simpl in *.
-          match goal with
-          | H: _ ?m |- _ ?m =>
-            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-            repeat rewrite !sep_assoc (* TODO: maybe this should be a part of reify_goal *)
-          end.
-          solve [SeparationLogic.ecancel]. }
+      { simpl in *. seplog. }
       { unfold valid_register in *.
         cbv -[Z.lt Z.le]. repeat split; auto; try lia. }
       cbv [Execute.execute ExecuteI.execute].

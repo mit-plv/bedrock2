@@ -155,6 +155,11 @@ Ltac reify e :=
   end.
 
 Ltac reify_goal :=
+  repeat match goal with
+         (* explicit matching excludes that first arg of sep is an evar, which
+                   would be replaced by two new evars by rewrite without args *)
+         | |- context [sep (sep ?A ?B) ?C] => rewrite (sep_assoc A B C)
+         end;
   lazymatch goal with
   | |- Lift1Prop.iff1 ?LHS ?RHS =>
     let LHS := reify LHS in

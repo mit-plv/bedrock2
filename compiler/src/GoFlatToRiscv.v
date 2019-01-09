@@ -175,13 +175,6 @@ Section Go.
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
 
-  Ltac sep :=
-    let m := lazymatch goal with |- _ ?m => m end in
-    let H := multimatch goal with H: _ m |- _ => H end  in
-    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-    repeat rewrite !sep_assoc; (* TODO: maybe this should be a part of reify_goal *)
-    SeparationLogic.ecancel; fail.
-
   Lemma go_fetch_inst: forall {inst initialL pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
       (program pc0 [inst] * R)%sep initialL.(getMem) ->
@@ -194,7 +187,7 @@ Section Go.
     apply go_getPC.
     unfold program, array, ptsto_instr in *.
 
-    eapply go_loadWord; [eapply ptsto_bytes_to_load_bytes; sep|].
+    eapply go_loadWord; [eapply ptsto_bytes_to_load_bytes; seplog|].
     rewrite combine_split, decode_encode; auto using encode_range.
   Qed.
 
