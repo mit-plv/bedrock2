@@ -1,9 +1,11 @@
-
 default_target: all
 
 .PHONY: clean force all
 
-VS:=$(shell find src -type f -name '*.v')
+# absolute paths so that emacs compile mode knows where to find error
+SRCDIR := $(shell pwd)/src
+
+VS:=$(shell find $(SRCDIR) -type f -name '*.v')
 
 DEPS_DIR ?= ../deps
 

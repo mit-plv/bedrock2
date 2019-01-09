@@ -11,7 +11,9 @@ DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 _CoqProject:
 	printf -- '$(DEPFLAGS_NL)' > _CoqProject
 
-ALL_VS := $(shell find lib src -type f -name '*.v')
+# absolute paths so that emacs compile mode knows where to find error
+SRCDIR := $(shell pwd)/src
+ALL_VS := $(shell find lib $(SRCDIR) -type f -name '*.v')
 
 all: Makefile.coq.all $(ALL_VS)
 	$(MAKE) -f Makefile.coq.all
