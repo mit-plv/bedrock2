@@ -545,15 +545,7 @@ Section LLG.
                     (member_app_l [var_updates] _
                     (member_app_l l1 _
                     (member_app_r _ l3 m))))).
-              let t := type of vals20 in
-              replace t
-                 with (forall m : member (remove eq_var_dec var_i l2),
-                       interp_type (types20 m)) in vals20
-              by (subst types20; reflexivity).
               set (vals2 := fill_in_val var_i 0 f1 l2 types20 vals20).
-              let t := type of vals2 in
-              replace t with (forall m : member l2, interp_type (types2 m)) in vals2
-              by (subst types2; reflexivity).
               specialize (f2 vals2).
               Fail (exact f2). apply TODO. }
             { apply TODO. }
