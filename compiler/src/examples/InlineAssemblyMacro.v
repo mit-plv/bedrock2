@@ -2,13 +2,12 @@ Require Import Coq.ZArith.ZArith.
 Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
-Require Import compiler.Op.
+Require Import bedrock2.Basic_bopnames.
 Require Import riscv.util.BitWidth32.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
-Require Import riscv.MachineWidth32.
 Require Import riscv.util.ListLib.
 Require Import riscv.Decode.
 Require Import riscv.Utility.
@@ -20,6 +19,10 @@ Require Import compiler.FlatToRiscv.
 Require Import compiler.FlatToRiscv32Specifics.
 Require Import riscv.RiscvMachine.
 Require Import riscv.MinimalMMIO. (* not really *)
+Require Import riscv.Words32Naive.
+Require Import riscv.DefaultMemImpl32.
+Require Import compiler.examples.Empty_set_keyed_map.
+Require Import compiler.examples.Z_keyed_map.
 Import ListNotations.
 
 Open Scope ilist_scope.
@@ -39,23 +42,23 @@ Instance myparams: Basic_bopnames.parameters := {|
 Instance annoying: DecidableEq (list varname * list varname * stmt). Admitted.
 
 
-Inductive ext_spec: act -> list Empty_set -> list (word 32) ->
-                    (list Empty_set -> list (word 32) -> Prop) -> Prop :=
+Inductive ext_spec: act -> list Empty_set -> list word32 ->
+                    (list Empty_set -> list word32 -> Prop) -> Prop :=
 | ext_select: forall i selector args,
-    i = uwordToZ (wshiftr selector (ZToWord 32 2)) ->
+    i = word.unsigned (word.sru selector (word.of_Z 2)) ->
     0 <= i < Zlength args ->
     ext_spec Select nil (selector :: args)
              (fun t' results =>
                 t' = nil /\
                 exists garbageWord,
-                  results = [Znth args i (ZToWord 32 0); garbageWord]).
+                  results = [Znth args i (word.of_Z 0); garbageWord]).
 
-
+(*
 Instance myFlatImpParams: FlatImp.parameters := {|
   FlatImp.bopname_params := myparams;
-  FlatImp.Event := Empty_set; (* no trace to keep track of external calls *)
   FlatImp.ext_spec := ext_spec;
 |}.
+*)
 
 Definition map_with_index{A B: Type}(f: A -> Z -> B)(l: list A): list B :=
   fst (List.fold_right (fun elem '(acc, i) => (f elem i :: acc, i-1)) (nil, Zlength l - 1) l).
@@ -102,37 +105,22 @@ Definition _garbage: varname := 31.
 Definition _s: varname := 9.
 
 Definition test: stmt :=
-  (SSeq (SLoad _s _addr)
+  (SSeq (SLoad Syntax.access_size.four _s _addr)
   (SSeq (SOp _a bopname.mul _inp1 _inp2)
   (SSeq (SOp _b bopname.add _inp1 _inp2)
   (SSeq (SOp _c bopname.sub _inp1 _inp2)
         (SInteract [_r; _garbage] Select [_s; _a; _b; _c]))))).
 
+Local Set Refine Instance Mode.
+
 Instance compilation_params: FlatToRiscvDef.parameters := {|
   FlatToRiscvDef.actname := act;
-  FlatToRiscvDef.LwXLEN := Lw;
-  FlatToRiscvDef.SwXLEN := Sw;
+  FlatToRiscvDef.compile_load := TODO;
+  FlatToRiscvDef.compile_store := TODO;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
-  FlatToRiscvDef.max_ext_call_code_size := 100;
-|}. abstract omega. Defined.
+  FlatToRiscvDef.max_ext_call_code_size _ := 100;
+|}. intros. apply TODO. Defined.
 
 Definition compiled: list Instruction := Eval cbv in compile_stmt test.
 
 Print compiled.
-
-Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
-  FlatToRiscv.def_params := compilation_params;
-  FlatToRiscv.mword := word 32;
-  FlatToRiscv.MachineWidth_Inst := MachineWidth32;
-  FlatToRiscv.varMap_Inst := List_Map _ _;
-  FlatToRiscv.Memory_Inst := mem_is_Memory (word 32);
-  FlatToRiscv.BWS := _;
-  FlatToRiscv.BWSP := _;
-  FlatToRiscv.M := OStateND (RiscvMachine Register (word 32) Empty_set);
-  FlatToRiscv.MM := OStateND_Monad _;
-  FlatToRiscv.RVM := _;(* IsRiscvMachineL; TODO we don't have an appropratiate Machine in risv *)
-  FlatToRiscv.RVS := _;
-  FlatToRiscv.RVAX := _;
-  FlatToRiscv.ext_spec := _;
-|}.
-Abort.

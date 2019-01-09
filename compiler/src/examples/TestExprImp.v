@@ -3,14 +3,16 @@ Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
-Require Import compiler.Op.
 Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
-Require Import riscv.MachineWidth32.
 Require Import coqutil.Map.SortedList.
-Require Import compiler.Memory.
 Require Import compiler.ExprImp.
 Require Import bedrock2.ZNamesSyntax.
+Require Import riscv.Words32Naive.
+Require Import riscv.DefaultMemImpl32.
+Require Import compiler.examples.Empty_set_keyed_map.
+Require Import compiler.examples.Z_keyed_map.
+Require Import bedrock2.Basic_bopnames.
 
 
 Instance myparams: Basic_bopnames.parameters := {|
@@ -21,18 +23,14 @@ Instance myparams: Basic_bopnames.parameters := {|
 
 Definition TODO{T: Type}: T. Admitted.
 
-Set Refine Instance Mode.
-Instance params: Semantics.Semantics.parameters := {|
-    Semantics.Semantics.syntax := myparams;
-    Semantics.Semantics.word := word32;
-    Semantics.Semantics.word_succ := TODO;
-    Semantics.Semantics.word_test := TODO;
-    Semantics.Semantics.interp_binop := eval_binop;
-    Semantics.Semantics.combine := TODO;
-    Semantics.Semantics.split := TODO;
-    Semantics.Semantics.funname_eqb a b := false;
-    Semantics.Semantics.Event := Empty_set;
-    Semantics.Semantics.ext_spec _ _ _ _ := False;
+Instance params: Semantics.parameters := {|
+    Semantics.syntax := Basic_bopnames.make myparams;
+    Semantics.word := word32;
+    Semantics.locals := _;
+    Semantics.env := _;
+    Semantics.interp_binop := Basic_bopnames.interp_binop;
+    Semantics.funname_eqb a b := false;
+    Semantics.ext_spec _ _ _ _ _ := False;
 |}.
 
 Definition annoying_eq: DecidableEq
@@ -72,15 +70,15 @@ Definition isRight(x y z: Z) :=
                                (expr.op bopname.mul (expr.var _c) (expr.var _c)))).
 
 Definition run_isRight(x y z: Z) :=
-  let final := eval_cmd (p := params) empty_map 10 empty_map empty_map (isRight x y z) in
+  let final := eval_cmd (p := params) map.empty 10 map.empty map.empty (isRight x y z) in
   match final with
-  | Some (finalSt, finalM) => get finalSt _isRight
+  | Some (finalSt, finalM) => map.get finalSt _isRight
   | None => None
   end.
 
-Goal run_isRight  3  4  5 = Some (ZToWord 32 1). reflexivity. Qed.
-Goal run_isRight  3  7  5 = Some (ZToWord 32 0). reflexivity. Qed.
-Goal run_isRight  4  3  5 = Some (ZToWord 32 1). reflexivity. Qed.
-Goal run_isRight  5  3  5 = Some (ZToWord 32 0). reflexivity. Qed.
-Goal run_isRight  5  3  4 = Some (ZToWord 32 1). reflexivity. Qed.
-Goal run_isRight 12 13  5 = Some (ZToWord 32 1). reflexivity. Qed.
+Goal run_isRight  3  4  5 = Some (word.of_Z 1). reflexivity. Qed.
+Goal run_isRight  3  7  5 = Some (word.of_Z 0). reflexivity. Qed.
+Goal run_isRight  4  3  5 = Some (word.of_Z 1). reflexivity. Qed.
+Goal run_isRight  5  3  5 = Some (word.of_Z 0). reflexivity. Qed.
+Goal run_isRight  5  3  4 = Some (word.of_Z 1). reflexivity. Qed.
+Goal run_isRight 12 13  5 = Some (word.of_Z 1). reflexivity. Qed.

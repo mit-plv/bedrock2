@@ -16,29 +16,6 @@ Local Unset Universe Polymorphism.
 Section Rem4.
   Context {W: Words}.
 
-  Lemma reg_eqb_true: forall (a b: word), word.eqb a b = true -> a = b.
-  Proof.
-    intros.
-    rewrite word.unsigned_eqb in H. rewrite Z.eqb_eq in H. apply word.unsigned_inj in H.
-    assumption.
-  Qed.
-
-  Lemma reg_eqb_eq: forall (a b: word), a = b -> word.eqb a b = true.
-  Proof.
-    intros. subst. rewrite word.unsigned_eqb. apply Z.eqb_refl.
-  Qed.
-
-  Lemma reg_eqb_false: forall (a b: word), word.eqb a b = false -> a <> b.
-  Proof.
-    intros. intro. rewrite reg_eqb_eq in H; congruence.
-  Qed.
-
-  Lemma reg_eqb_ne: forall (a b: word), a <> b -> word.eqb a b = false.
-  Proof.
-    intros. destruct (word.eqb a b) eqn: E; try congruence.
-    exfalso. apply H. apply reg_eqb_true in E. assumption.
-  Qed.
-
   Ltac mword_cst w :=
     match w with
     | ZToReg ?x => let b := isZcst x in

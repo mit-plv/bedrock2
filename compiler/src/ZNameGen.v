@@ -11,7 +11,7 @@ Proof.
   induction l; intros.
   - simpl in H. contradiction.
   - simpl in *. destruct H.
-    + subst. apply Nat.le_max_l. 
+    + subst. apply Nat.le_max_l.
     + pose proof (Nat.le_max_r a (listmax l)).
       specialize (IHl v H).
       eapply Nat.le_trans; eassumption.
@@ -24,13 +24,15 @@ Proof.
   induction l; intros.
   - simpl in H. contradiction.
   - simpl in *. destruct H.
-    + subst. apply Z.le_max_l. 
+    + subst. apply Z.le_max_l.
     + pose proof (Z.le_max_r a (listmaxZ l)).
       specialize (IHl v H).
       eapply Z.le_trans; eassumption.
 Qed.
 
 Definition TODO{T: Type}: T. Admitted.
+
+Local Set Refine Instance Mode.
 
 Instance ZNameGen: NameGen Z Z := {|
   freshNameGenState := fun l => (listmaxZ l + 1)%Z;

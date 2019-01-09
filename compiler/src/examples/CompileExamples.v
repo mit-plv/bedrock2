@@ -6,14 +6,12 @@ Require Import bedrock2.Basic_bopnames.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.Word.
 Require Import coqutil.Decidable.
-Require Import compiler.Op.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
 Require Import compiler.util.Common.
 Require Import riscv.util.BitWidths.
 Require Import riscv.util.BitWidth32.
-Require Import riscv.MachineWidth32.
 Require Import compiler.FlatToRiscv32Specifics.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
@@ -27,26 +25,28 @@ Require Import bedrock2.Hexdump.
 
 Open Scope Z_scope.
 Open Scope string_scope.
-Open Scope regalloc_scope.
+
 
 Definition var: Set := Z.
 Definition func: Set := Empty_set.
 Definition Reg: Set := Z.
 
-Existing Instance MachineWidth32.MachineWidth32.
 
 Existing Instance DefaultRiscvState.
 
 Existing Instance FlatToRiscv.State_is_RegisterFile.
 
+(*
 Record example := mk_example {
   name: string;
   inputVars: set var;
   outputVars: set var;
   src: cmd;
-  flattened: FlatImp.stmt var func;
+  flattened: FlatImp.stmt;
+  (*
   regallocAnnotated: astmt var var func;
   regallocChecked: FlatImp.stmt var func;
+  *)
   riscv_instructions: list Instruction;
   riscv_bytes: list byte;
 }.
@@ -111,3 +111,4 @@ Time Definition allCompilationResults: list example :=
 
 Set Printing Width 100.
 Print allCompilationResults.
+*)

@@ -6,7 +6,7 @@ Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
-Require Import compiler.Op.
+Require Import bedrock2.Basic_bopnames.
 Require Import riscv.Program.
 Require Import riscv.Decode.
 Require Import riscv.PseudoInstructions.
@@ -72,8 +72,7 @@ Existing Instance State_is_RegisterFile.
 
 Local Set Refine Instance Mode.
 
-Instance SetWithoutElements: SetFunctions Empty_set. Admitted. (* TODO remove *)
-
+Definition TODO{T: Type}: T. Admitted.
 
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
@@ -123,6 +122,7 @@ Module Import FlatToRiscv.
       FlatImp.bopname_params := bopname_params;
       FlatImp.ext_spec := ext_spec;
       FlatImp.max_ext_call_code_size := max_ext_call_code_size;
+      FlatImp.max_ext_call_code_size_nonneg a := TODO;
     |};
 
     Machine := @RiscvMachine Register W State_is_RegisterFile mem actname;
@@ -492,7 +492,6 @@ Section FlatToRiscv1.
            | x: ?T |- _ =>
              lazymatch T with
              | MachineWidth _  => fail
-             | SetFunctions _ => fail
              | DecidableEq _ => fail
              | _ => revert x
              end
@@ -742,10 +741,10 @@ Section FlatToRiscv1.
       | remu ?a (ZToReg 4) => replace r with expectZero by prove_remu_four_zero
       end
     end;
-    rewrite reg_eqb_eq by reflexivity;
+    rewrite word.eqb_eq by reflexivity;
     simpl.
 
-  Hint Rewrite reg_eqb_ne reg_eqb_eq using congruence : rew_reg_eqb.
+  Hint Rewrite word.eqb_ne word.eqb_eq using congruence : rew_reg_eqb.
 
   Hint Rewrite
       elim_then_true_else_false

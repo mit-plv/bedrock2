@@ -4,7 +4,7 @@ Require Import coqutil.Macros.unique.
 Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
-Require Import compiler.Op.
+Require Import bedrock2.Basic_bopnames.
 Require Import bedrock2.Semantics.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
@@ -27,6 +27,8 @@ Require Import riscv.AxiomaticRiscvMMIO.
 Require Import riscv.runsToNonDet.
 Require Import compiler.Rem4.
 Require Import compiler.GoFlatToRiscv.
+Require Import compiler.SeparationLogic.
+
 
 Import ListNotations.
 Existing Instance DefaultRiscvState.
@@ -344,7 +346,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
   destruct_one_match.
   + (* TODO this should be just "word_solver" *)
     exfalso. apply Bool.negb_true_iff in E.
-    apply reg_eqb_false in E.
+    apply word.eqb_false in E.
     apply E; clear E.
     apply word.unsigned_inj.
     assert (4 mod 2 ^ width = 4) as F by apply TODO.
@@ -363,8 +365,13 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
   *)
   apply TODO.
 - intros. simpl. unfold compile_ext_call.
+  (*
+Error: Anomaly "File "kernel/cClosure.ml", line 829, characters 9-15: Assertion failed."
+Please report at http://coq.inria.fr/bugs/.
+
   repeat destruct_one_match; rewrite? Zlength_cons; rewrite? Zlength_nil; cbv; congruence.
-- apply TODO.
+   *)
+  apply TODO.
 - apply TODO.
 - intros initialL action.
   destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
@@ -389,7 +396,16 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
     eapply runsToNonDet.runsToStep; cycle 1.
     * intro mid.
       apply id.
-    * eapply go_fetch_inst; [reflexivity|eassumption|].
+    * eapply go_fetch_inst; [reflexivity| | |].
+      { simpl in *.
+          match goal with
+          | H: _ ?m |- _ ?m =>
+            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+            repeat rewrite !sep_assoc (* TODO: maybe this should be a part of reify_goal *)
+          end.
+          solve [SeparationLogic.ecancel]. }
+      { unfold valid_register in *.
+        cbv -[Z.lt Z.le]. repeat split; auto; try lia. }
       cbv [Execute.execute ExecuteI.execute].
       rewrite associativity.
       eapply go_getRegister; [assumption|]. rewrite associativity.
@@ -411,7 +427,18 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
       end.
       rename r into addr.
       replace (add addr (ZToReg 0)) with addr by apply TODO.
-      apply go_loadWord_MMIO; [assumption..|].
+      apply go_loadWord_MMIO.
+
+      simpl.
+
+      (* TODO addr is not in high-level memory, but what if it is in instruction memory? *)
+      apply TODO.
+      apply TODO.
+      apply TODO.
+      }
+
+      (*
+      [assumption..|].
       intro inp. cbv [getMem].
       eapply go_setRegister; [ assumption |].
       eapply go_step.
@@ -431,7 +458,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
           replace a' with a
       end; [exact B|].
       apply TODO.
-      }
+      *)
       {
         apply TODO.
       }

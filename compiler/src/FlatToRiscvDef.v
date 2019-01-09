@@ -3,7 +3,6 @@ Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
-Require Import compiler.Op.
 Require Import riscv.Program.
 Require Import riscv.Decode.
 Require Import riscv.PseudoInstructions.
@@ -12,6 +11,8 @@ Require Import Coq.micromega.Lia.
 Require Import riscv.AxiomaticRiscv.
 Require Import riscv.Utility.
 Require Import riscv.util.ListLib.
+Require Import bedrock2.Basic_bopnames.
+
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.

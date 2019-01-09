@@ -1,7 +1,8 @@
 Require Import Coq.Lists.List.
-Require Import compiler.util.Set.
+Require Import coqutil.Datatypes.PropSet.
 
-Class NameGen(var st: Type){varsSet: SetFunctions var} := mkNameGen {
+
+Class NameGen(var st: Type) := mkNameGen {
   (* Return a state which generates vars not contained in the given list.
      We use list instead of set to guarantee that it's finite. *)
   freshNameGenState: list var -> st;
@@ -10,8 +11,8 @@ Class NameGen(var st: Type){varsSet: SetFunctions var} := mkNameGen {
   genFresh: st -> (var * st);
 
   (* Set of all vars which will be generated in the future *)
-  allFreshVars: st -> set var;
-  
+  allFreshVars: st -> (var -> Prop);
+
   genFresh_spec: forall (s s': st) (x: var),
     genFresh s = (x, s') ->
     x \in allFreshVars s /\

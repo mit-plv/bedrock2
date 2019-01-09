@@ -10,9 +10,11 @@ Require Import bedrock2.Memory.
 Require compiler.NoActionSyntaxParams.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
-Require Import compiler.Op.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
+Require Import bedrock2.Syntax.
+Require Import Coq.micromega.Lia.
+
 
 Inductive bbinop: Type :=
 | BEq
@@ -40,7 +42,7 @@ Section Syntax.
     | SLoop(body1: stmt)(cond: bcond)(body2: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
-    | SCall(binds: list varname)(f: funcname)(args: list varname)
+    | SCall(binds: list varname)(f: funname)(args: list varname)
     | SInteract(binds: list varname)(a: actname)(args: list varname).
 
 End Syntax.
@@ -52,11 +54,11 @@ Module Import FlatImp.
     W :> Words;
 
     varname_eq_dec  :> DecidableEq varname;
-    funcname_eq_dec :> DecidableEq funcname;
+    funcname_eq_dec :> DecidableEq funname;
     actname_eq_dec  :> DecidableEq actname;
 
     locals :> map.map varname word;
-    env :> map.map funcname (list varname * list varname * stmt);
+    env :> map.map funname (list varname * list varname * stmt);
     mem :> map.map word byte;
 
     locals_ok :> map.ok locals;
@@ -68,6 +70,7 @@ Module Import FlatImp.
     ext_spec: trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;
 
     max_ext_call_code_size : actname -> Z;
+    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
   }.
 End FlatImp.
 
@@ -129,7 +132,7 @@ Section FlatImp1.
         | SOp x op y z =>
             'Some y <- map.get st y;
             'Some z <- map.get st z;
-            Some (map.put st x (eval_binop op y z), m)
+            Some (map.put st x (Basic_bopnames.interp_binop op y z), m)
         | SSet x y =>
             'Some v <- map.get st y;
             Some (map.put st x v, m)
@@ -176,6 +179,32 @@ Section FlatImp1.
 
     Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
 
+    Arguments Z.add: simpl never.
+    Arguments Z.mul: simpl never.
+
+    Lemma stmt_size_pos: forall s, stmt_size s > 0.
+    Proof.
+      induction s; simpl; try omega;
+        repeat match goal with
+               | e: expr |- _ => unique pose proof (expr_size_pos e)
+               | l: list _ |- _ => unique pose proof (Zlength_nonneg l)
+               end;
+        try omega.
+      {
+        (* PARAMRECORDS *)
+        Fail lia.
+        simpl in *.
+        lia.
+      }
+      {
+        pose proof (max_ext_call_code_size_nonneg a).
+        (* PARAMRECORDS *)
+        Fail lia.
+        simpl in *.
+        lia.
+      }
+    Qed.
+
     Local Ltac inversion_lemma :=
       intros;
       simpl in *;
@@ -212,7 +241,7 @@ Section FlatImp1.
       exists v1 v2,
         map.get initialSt y = Some v1 /\
         map.get initialSt z = Some v2 /\
-        final = (map.put initialSt x (eval_binop op v1 v2), initialM).
+        final = (map.put initialSt x (Basic_bopnames.interp_binop op v1 v2), initialM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SSet: forall fuel x y initialSt initialM final,
@@ -312,7 +341,7 @@ Section FlatImp1.
     | ExOp: forall t m l x op y y' z z' post,
         map.get l y = Some y' ->
         map.get l z = Some z' ->
-        post t m (map.put l x (eval_binop op y' z')) ->
+        post t m (map.put l x (Basic_bopnames.interp_binop op y' z')) ->
         exec (SOp x op y z) t m l post
     | ExSet: forall t m l x y y' post,
         map.get l y = Some y' ->

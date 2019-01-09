@@ -5,15 +5,13 @@ Require Import coqutil.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
 Require Import coqutil.Macros.unique.
-Require Import compiler.Op.
 Require Import coqutil.Map.Solver.
 Require Import compiler.util.Set.
-Require Import compiler.Memory.
 Require Import compiler.util.Tactics.
 Require Import coqutil.Map.TestLemmas.
 Require Import compiler.util.SetSolverTests.
 
-
+(*
 Section TODO.
   Context {K V: Type}.
   Context {Mf: MapFunctions K V}.
@@ -149,7 +147,6 @@ Section RegAlloc.
   Local Notation stmt  := (@FlatImp.stmt srcparams). (* input type *)
   Local Notation stmt' := (@FlatImp.stmt impparams). (* output type *)
 
-(*
   Ltac head e :=
     match e with
     | ?a _ => head a
@@ -163,7 +160,6 @@ Section RegAlloc.
     | _ = ?r => let h := head r in idtac "| set ( case :=" h ")"
     end.
   Abort.
-*)
 
   Definition loop_inv(mappings: map impvar srcvar -> astmt -> map impvar srcvar)
                      (m: map impvar srcvar)(s1 s2: astmt): map impvar srcvar :=
@@ -459,7 +455,6 @@ Section RegAlloc.
   Context {srcFuncMap: MapFunctions func (list srcvar * list srcvar * stmt)}.
   Context {impFuncMap: MapFunctions func (list impvar * list impvar * stmt')}.
 
-  (*
   Definition eval: nat -> map srcvar mword -> mem -> stmt -> option (map srcvar mword * mem)
     := eval_stmt empty_map.
 
@@ -825,7 +820,7 @@ Section RegAlloc.
         eexists. reflexivity.
       + (* reverse_get of checker None *)
         exfalso. map_solver impvar srcvar.
-    (*
+
     - destruct (reverse_get m a) eqn: F; destruct (reverse_get m v) eqn: G;
         [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
     - eauto.
@@ -910,8 +905,7 @@ Section RegAlloc.
       map_solver impvar srcvar.
     - eauto.
     - eauto.
-    *)
   Abort.
-  *)
 
 End RegAlloc.
+*)

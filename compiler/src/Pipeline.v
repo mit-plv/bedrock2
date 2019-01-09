@@ -3,7 +3,6 @@ Export ListNotations.
 Require Export lib.LibTacticsMin.
 Require Export riscv.util.Word.
 Require Export coqutil.Decidable.
-Require Export compiler.Op.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
@@ -32,10 +31,11 @@ Require Import riscv.Utility.
 Require Export riscv.Memory.
 Require Export riscv.InstructionCoercions.
 Require Import compiler.Basic32Semantics. (* TODO don't fix bitwidth here *)
-Require Import riscv.MachineWidth32.
+
 
 Open Scope Z_scope.
 
+(*
 Section Pipeline.
 
   Notation mword := (word 32).
@@ -299,3 +299,4 @@ Section Pipeline.
   Admitted.
 
 End Pipeline.
+ *)

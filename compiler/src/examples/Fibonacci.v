@@ -5,7 +5,6 @@ Require Import bedrock2.Basic_bopnames.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.Word.
 Require Import coqutil.Decidable.
-Require Import compiler.Op.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
@@ -19,7 +18,6 @@ Require Import riscv.MinimalLogging.
 Require Import riscv.Utility.
 Require Import riscv.Encode.
 Require Import riscv.util.BitWidth32.
-Require Import riscv.MachineWidth32.
 Require Import compiler.FlatToRiscv32Specifics.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
@@ -35,12 +33,13 @@ Open Scope Z_scope.
 Definition var: Set := Z.
 Definition Reg: Set := Z.
 
-Existing Instance MachineWidth32.MachineWidth32.
 
 Existing Instance DefaultRiscvState.
 
 Existing Instance FlatToRiscv.State_is_RegisterFile.
 
+Set Printing Implicit. Unset Printing Notations.
+Eval cbv in @cmd.cmd (@syntax Basic32Semantics.Basic32Semantics).
 
 Definition fib_ExprImp(n: Z): cmd := Eval cbv in
   snd (snd (Demos.fibonacci (bops := (@Basic_bopnames.BasicALU {|
@@ -53,25 +52,24 @@ Definition fib_ExprImp(n: Z): cmd := Eval cbv in
    bedrock2/Demos.v *)
 Print fib_ExprImp.
 
-Instance fooo: MapFunctions Empty_set (list var * list var * cmd). Admitted.
-
 Definition fib_H_res(fuel: nat)(n: Z): option word :=
-  match (eval_cmd empty_map fuel empty_map Memory.no_mem (fib_ExprImp n)) with
-  | Some (st, m) => Map.get st Demos.Fibonacci.b
+  match (eval_cmd map.empty fuel map.empty map.empty (fib_ExprImp n)) with
+  | Some (st, m) => map.get st Demos.Fibonacci.b
   | None => None
   end.
 
 
-Goal fib_H_res 20 0 = Some (ZToWord 32  1). reflexivity. Qed.
-Goal fib_H_res 20 1 = Some (ZToWord 32  1). reflexivity. Qed.
-Goal fib_H_res 20 2 = Some (ZToWord 32  2). reflexivity. Qed.
-Goal fib_H_res 20 3 = Some (ZToWord 32  3). reflexivity. Qed.
-Goal fib_H_res 20 4 = Some (ZToWord 32  5). reflexivity. Qed.
-Goal fib_H_res 20 5 = Some (ZToWord 32  8). reflexivity. Qed.
-Goal fib_H_res 20 6 = Some (ZToWord 32 13). reflexivity. Qed.
+Goal fib_H_res 20 0 = Some (word.of_Z  1). reflexivity. Qed.
+Goal fib_H_res 20 1 = Some (word.of_Z  1). reflexivity. Qed.
+Goal fib_H_res 20 2 = Some (word.of_Z  2). reflexivity. Qed.
+Goal fib_H_res 20 3 = Some (word.of_Z  3). reflexivity. Qed.
+Goal fib_H_res 20 4 = Some (word.of_Z  5). reflexivity. Qed.
+Goal fib_H_res 20 5 = Some (word.of_Z  8). reflexivity. Qed.
+Goal fib_H_res 20 6 = Some (word.of_Z 13). reflexivity. Qed.
 
 Definition do_regalloc: bool := true.
 
+(*
 Definition compileFunc: cmd -> list Instruction :=
   if do_regalloc then
     (fun s => exprImp2Riscv_with_regalloc Lw Sw Demos.Fibonacci.b s)
@@ -372,3 +370,4 @@ Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 
 Admitted.
 
 Print Assumptions fib6_L_res_is_13_by_proving_it.
+ *)

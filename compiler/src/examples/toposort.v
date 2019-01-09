@@ -105,7 +105,7 @@ Section toposort.
     }} ;;
     inDegs
   }} ;;
-  for i from 0 to N updating (todoSize, todo) {{ 
+  for i from 0 to N updating (todoSize, todo) {{
      if get inDegs i =? 0 then
       let todo := update todo todoSize i in
       let todoSize := S todoSize in
@@ -181,7 +181,7 @@ Section toposort.
         (todoSize, todo, inDegs)
     ) in
     (todoSize, todo, res, inDegs)
-  ) in 
+  ) in
   res.
 *)
 End toposort.
@@ -270,7 +270,7 @@ Require Import List Program.Equality.
 Definition member_empty{T: Type}(m: member (@nil T)): forall (R: Type), R.
 inversion m. Defined.
 
-Definition member_discriminate: forall T (b: T) bs m, 
+Definition member_discriminate: forall T (b: T) bs m,
   member_here b bs = member_there b bs m -> False.
   intros. discriminate. Defined.
 
@@ -471,13 +471,8 @@ Section LLG.
         * apply Some. intro vals.
           specialize (f1 (fun (m: member l1) => vals  (member_app_r l1 (remove eq_var_dec x l2) m))).
           set (vals' := (fun m => vals (member_app_l l1 (remove eq_var_dec x l2) m))).
-          replace (forall m : member (remove eq_var_dec x l2),
-                   interp_type (types (member_app_l l1 (remove eq_var_dec x l2) m)))
-             with (forall m : member (remove eq_var_dec x l2),
-                   interp_type (types' m)) in vals'
-             by (subst types'; reflexivity).
-          subst types''.
           set (vals'' := fill_in_val x n1 f1 l2 types' vals').
+          subst types'.
           exact (f2 vals'').
         * exact None.
       + exact None.
@@ -579,7 +574,7 @@ Section LLG.
   fix rec(e: expr l n) (types: member l -> nat) (vals: forall x: member l, interp_type (types x)) :=
     match e with
     | EVar x => None
-    | ELet x e1 e2 => None 
+    | ELet x e1 e2 => None
     | ENewArray size init => None
     | EGet a i => None
     | EUpdate a i v => None
@@ -603,13 +598,13 @@ Section LLG.
   Definition interp_expr{n: nat}: expr n -> option (interp_type n) :=
     fix rec(e: expr n) := match e with
     | EVar x => None
-    | ELet x e1 e2 => None 
+    | ELet x e1 e2 => None
     | ENewArray size init => None
     | EGet a i => None
     | EUpdate a i v => None
     | EFor i to updates body => None
     end.
-     how to deal with binders? Actually, if e has a free variable of type T, 
+     how to deal with binders? Actually, if e has a free variable of type T,
      the return type of interp_expr should be "option (T -> ...)" instead *)
 
 End LLG.

@@ -5,12 +5,11 @@ Require Import coqutil.Map.TestLemmas.
 Require Import coqutil.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
-Require Import compiler.Op.
 Require Import coqutil.Map.Solver.
 Require Import compiler.util.Set.
-Require Import compiler.Memory.
 Require Import compiler.util.Tactics.
 
+(*
 Section TODO.
   Context {K V: Type}.
   Context {Mf: MapFunctions K V}.
@@ -257,7 +256,6 @@ Section RegAlloc.
   Local Instance srcvar_eq_dec: DecidableEq srcvar := set_elem_eq_dec.
   Local Instance impvar_eq_dec: DecidableEq impvar := set_elem_eq_dec.
 
-  (*
   (* annotated statement: each assignment is annotated with impvar which it assigns,
      loop has map invariant *)
   Inductive astmt: Type :=
@@ -409,7 +407,6 @@ Section RegAlloc.
 
   Hint Extern 1 => autorewrite with map_rew : map_hints.
 
-  (*
   Lemma updateWith_monotone: forall s m1 m2,
       extends m1 m2 ->
       extends (updateWith m1 s) (updateWith m2 s).
@@ -475,7 +472,6 @@ Section RegAlloc.
   Proof.
     intros. apply (updateWith_121 s ASSkip m).
   Qed.
-  *)
 
   Lemma updateWith_idemp: forall s m,
       updateWith_modular (updateWith_modular m s) s = updateWith_modular m s.
@@ -631,7 +627,6 @@ Section RegAlloc.
        extends_intersect_map_r
     : checker_hints.
 
-  (*
   Lemma updateWith_alt1: forall s m,
       extends (updateWith' m s) (updateWith m s).
   Proof.
@@ -749,7 +744,6 @@ Need a "witness": multimap of possible_updates or list (disjunction) of possible
       admit.
     - admit.
   Abort.
-*)
 
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
       eval n st1 m1 s = Some (st2, m2) ->
@@ -827,7 +821,6 @@ Need a "witness": multimap of possible_updates or list (disjunction) of possible
     - (* SSeq *)
       admit.
 
-(*
     - edestruct IHn as [st2' [? ?]]; [ (eassumption || reflexivity).. | ].
       eexists; split; [eassumption|].
       clear IHn.
@@ -885,8 +878,8 @@ Need a "witness": multimap of possible_updates or list (disjunction) of possible
 
         eauto 10 with checker_hints.
         eauto with checker_hints.
-*)
 
   Abort.
-  *)
+
 End RegAlloc.
+*)
