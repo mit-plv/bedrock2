@@ -533,10 +533,6 @@ Section LLG.
           { apply Some. intro vals.
             set (vals1 := (fun m => vals (member_app_l [updates] _
                                          (member_app_r _ (remove eq_var_dec i l2 ++ l3) m)))).
-            let t := type of vals1 in
-            replace t
-               with (forall m : member l1, interp_type (types1 m)) in vals1
-               by (subst types1; reflexivity).
             specialize (f1 vals1).
             rename i into var_i, updates into var_updates.
             set (updates := vals (member_here _ _)).
