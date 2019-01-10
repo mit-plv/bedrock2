@@ -38,9 +38,6 @@ Existing Instance DefaultRiscvState.
 
 Existing Instance FlatToRiscv.State_is_RegisterFile.
 
-Set Printing Implicit. Unset Printing Notations.
-Eval cbv in @cmd.cmd (@syntax Basic32Semantics.Basic32Semantics).
-
 Definition fib_ExprImp(n: Z): cmd := Eval cbv in
   snd (snd (Demos.fibonacci (bops := (@Basic_bopnames.BasicALU {|
   Basic_bopnames.varname := Z;
