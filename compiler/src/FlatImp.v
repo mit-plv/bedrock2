@@ -59,7 +59,7 @@ Module Import FlatImp.
 
     locals :> map.map varname word;
     env :> map.map funname (list varname * list varname * stmt);
-    mem :> map.map word byte;
+    mem :> map.map word (option byte);
 
     locals_ok :> map.ok locals;
     env_ok :> map.ok env;

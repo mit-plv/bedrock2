@@ -7,16 +7,19 @@ Require Import bedrock2.Notations bedrock2.Syntax.
 
 
 Section Memory.
-  Context {byte: word 8} {width: Z} {word: word width} {mem: map.map word byte}.
+  Context {byte: word 8} {width: Z} {word: word width} {mem: map.map word (option byte)}.
 
   Definition footprint(a: word)(sz: nat): tuple word sz :=
     tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
 
   Definition load_bytes(sz: nat)(m: mem)(addr: word): option (tuple byte sz) :=
-    map.getmany_of_tuple m (footprint addr sz).
+    match map.getmany_of_tuple m (footprint addr sz) with
+    | Some optbytes => tuple.option_all optbytes
+    | None => None
+    end.
 
   Definition unchecked_store_bytes(sz: nat)(m: mem)(a: word)(bs: tuple byte sz): mem :=
-    map.putmany_of_tuple (footprint a sz) bs m.
+    map.putmany_of_tuple (footprint a sz) (tuple.map Some bs) m.
 
   Definition store_bytes(sz: nat)(m: mem)(a: word)(v: tuple byte sz): option mem :=
     match load_bytes sz m a with

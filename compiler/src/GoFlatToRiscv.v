@@ -25,7 +25,7 @@ Section Go.
   Context {W: Words}.
   Context {RFF: RegisterFileFunctions Register word}.
   Context {Action: Type}.
-  Context {mem: map.map word byte}.
+  Context {mem: map.map word (option byte)}.
   Context {mem_ok: map.ok mem}.
 
   Local Notation RiscvMachineL := (RiscvMachine Register Action).

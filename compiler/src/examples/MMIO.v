@@ -104,7 +104,7 @@ Instance myparams: Basic_bopnames.parameters := {|
 Module Import MMIO.
   Class parameters := {
     W :> Words;
-    mem :> map.map word byte;
+    mem :> map.map word (option byte);
     mem_ok :> map.ok mem;
     BWS :> FlatToRiscvBitWidthSpecifics word;
     locals :> map.map var word;
@@ -426,7 +426,6 @@ Please report at http://coq.inria.fr/bugs/.
       simpl.
 
       (* TODO addr is not in high-level memory, but what if it is in instruction memory? *)
-      apply TODO.
       apply TODO.
       apply TODO.
       }

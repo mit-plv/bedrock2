@@ -13,7 +13,7 @@ Class parameters := {
   word :> Word.Interface.word width;
   byte :> Word.Interface.word 8%Z;
 
-  mem :> map.map word byte;
+  mem :> map.map word (option byte);
   locals :> map.map varname word;
   env :> map.map funname (list varname * list varname * cmd);
 

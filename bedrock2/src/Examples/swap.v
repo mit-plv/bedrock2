@@ -29,6 +29,7 @@ Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import eabstract.
 Require Import bedrock2.ProgramLogic.
 
+(*
 Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
 Instance spec_of_swap : spec_of "swap" := fun functions =>
@@ -136,3 +137,4 @@ Proof. auto using swap_swap_ok, swap_ok. Qed.
 
 (* Print Assumptions link_swap_swap_swap_swap. *)
 (* store1_sep SortedList.sorted_remove SortedList.sorted_put SortedList.map_ok fst_split0_combine0 *)
+*)

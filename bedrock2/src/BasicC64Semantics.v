@@ -12,7 +12,7 @@ Instance parameters : parameters :=
   let byte := Word.Naive.word 8 eq_refl in
   {|
   syntax := StringNamesSyntax.make BasicC64Syntax.StringNames_params;
-  mem := SortedList.map (SortedList.parameters.Build_parameters word byte word.ltu) (StrictOrderWord _ _ _);
+  mem := SortedList.map (SortedList.parameters.Build_parameters word (option byte) word.ltu) (StrictOrderWord _ _ _);
   locals := SortedListString.map _;
   env := SortedListString.map _;
   funname_eqb := String.eqb;

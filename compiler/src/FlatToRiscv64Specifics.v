@@ -8,7 +8,7 @@ Require Import riscv.Memory.
 Instance FlatToRiscv64Specifics
          {byte: Word.Interface.word 8}
          {word64: Word.Interface.word 64}
-         {Mem: map.map word64 byte}
+         {Mem: map.map word64 (option byte)}
   : FlatToRiscvBitWidthSpecifics word64  := {|
 
   BitWidth := BW64;

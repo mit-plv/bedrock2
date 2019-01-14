@@ -84,7 +84,7 @@ Module Import FlatToRiscv.
 
     locals :> map.map Register word;
     locals_ok :> map.ok locals;
-    mem :> map.map word byte;
+    mem :> map.map word (option byte);
     mem_ok :> map.ok mem;
     actname_eq_dec :> DecidableEq actname;
 
@@ -312,7 +312,7 @@ Section FlatToRiscv1.
     nat_div_mod_to_quot_rem;
     nia *).
 
-  Definition run1: M unit := run1 (B := BitWidth).
+  Definition run1: M unit := run1 (mword := word) (B := BitWidth).
 
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat run1).

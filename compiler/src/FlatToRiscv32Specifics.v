@@ -5,7 +5,7 @@ Require Import riscv.Utility.
 Require Import compiler.FlatToRiscvBitWidthSpecifics.
 Require Import riscv.Memory.
 
-Instance FlatToRiscv32Specifics{byte: word.word 8}{word32: word.word 32}{Mem: map.map word32 byte}
+Instance FlatToRiscv32Specifics{byte: word.word 8}{word32: word.word 32}{Mem: map.map word32 (option byte)}
   : FlatToRiscvBitWidthSpecifics word32  := {|
 
   BitWidth := BW32;
