@@ -203,3 +203,31 @@ Ltac ecancel :=
       cbn [List.firstn List.skipn List.app List.hd List.tl];
       [exact (RelationClasses.reflexivity _)|]);
   cbn [seps]; try exact (RelationClasses.reflexivity _).
+
+Ltac seprewrite0_in Hrw H :=
+  let lemma_lhs := lazymatch type of Hrw with @Lift1Prop.iff1 _ ?lhs _ => lhs end in
+  let Psep := lazymatch type of H with ?P _ => P end in
+  let mem := lazymatch type of Psep with ?mem -> _ => mem end in
+  let pf := fresh in
+  (* COQBUG(faster use ltac:(...) here if that was multi-success *)
+  eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
+      by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
+  eapply (fun m => (proj1 (pf m))) in H; clear pf.
+
+Ltac seprewrite_in Hrw H :=
+  multimatch constr:(Set) with
+  | _ => unshelve
+           (let Hrw := open_constr:(Hrw _) in seprewrite_in Hrw H);
+         shelve_unifiable
+  | _ => seprewrite0_in Hrw H
+  end.
+
+(* last side-condition is solved first *)
+Ltac seprewrite_in_by Hrw H tac :=
+  multimatch constr:(Set) with
+  | _ => unshelve
+           (let Hrw := open_constr:(Hrw _) in seprewrite_in_by Hrw H tac);
+         shelve_unifiable;
+         [solve [tac].. | ]
+  | _ => seprewrite0_in Hrw H
+  end.
