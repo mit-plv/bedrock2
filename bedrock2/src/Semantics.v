@@ -109,10 +109,9 @@ Module exec. Section WithEnv.
       lf (_ : map.putmany_of_list params args map.empty = Some lf)
       mid (_ : exec fbody t m lf mid)
       (_ : forall t' m' st1, mid t' m' st1 ->
-          exists retvs l',
-            List.option_all (List.map (map.get st1) rets) = Some retvs /\
-            map.putmany_of_list binds retvs l = Some l' /\
-            post t' m' l')
+          exists retvs, List.option_all (List.map (map.get st1) rets) = Some retvs /\
+          exists l', map.putmany_of_list binds retvs l = Some l' /\
+          post t' m' l')
     : exec (cmd.call binds fname arges) t m l post
   | interact binds action arges
              t m l post
@@ -120,7 +119,7 @@ Module exec. Section WithEnv.
       mid (_ : ext_spec t m action args mid)
       (_ : forall new_m resvals, mid new_m resvals ->
           exists l', map.putmany_of_list binds resvals l = Some l' /\
-                     post (cons ((m, action, args), (new_m, resvals)) t) new_m l')
+          post (cons ((m, action, args), (new_m, resvals)) t) new_m l')
     : exec (cmd.interact binds action arges) t m l post
   .
   End WithEnv.
