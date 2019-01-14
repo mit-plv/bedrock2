@@ -11,7 +11,6 @@ Require Import Coq.micromega.Lia.
 Require Import riscv.AxiomaticRiscv.
 Require Import riscv.Utility.
 Require Import riscv.util.ListLib.
-Require Import bedrock2.Basic_bopnames.
 
 
 Local Open Scope ilist_scope.
@@ -45,10 +44,10 @@ End FlatToRiscvDef.
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscvDef.parameters}.
 
-  Instance bopname_params: Basic_bopnames.parameters := {|
-    Basic_bopnames.varname := Register;
-    Basic_bopnames.funcname := Empty_set;
-    Basic_bopnames.actname := actname;
+  Instance bopname_params: Syntax.parameters := {|
+    Syntax.varname := Register;
+    Syntax.funname := Empty_set;
+    Syntax.actname := actname;
   |}.
 
   (* Part 1: Definitions needed to state when compilation outputs valid code *)
@@ -120,20 +119,20 @@ Section FlatToRiscv1.
 
   (* Part 2: compilation *)
 
-  Definition compile_op(rd: Register)(op: bopname)(rs1 rs2: Register): list Instruction :=
+  Definition compile_op(rd: Register)(op: Syntax.bopname)(rs1 rs2: Register): list Instruction :=
     match op with
-    | bopname.add => [[Add rd rs1 rs2]]
-    | bopname.sub => [[Sub rd rs1 rs2]]
-    | bopname.mul => [[Mul rd rs1 rs2]]
-    | bopname.and => [[And rd rs1 rs2]]
-    | bopname.or  => [[Or  rd rs1 rs2]]
-    | bopname.xor => [[Xor rd rs1 rs2]]
-    | bopname.sru => [[Srl rd rs1 rs2]]
-    | bopname.slu => [[Sll rd rs1 rs2]]
-    | bopname.srs => [[Sra rd rs1 rs2]]
-    | bopname.lts => [[Slt rd rs1 rs2]]
-    | bopname.ltu => [[Sltu rd rs1 rs2]]
-    | bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
+    | Syntax.bopname.add => [[Add rd rs1 rs2]]
+    | Syntax.bopname.sub => [[Sub rd rs1 rs2]]
+    | Syntax.bopname.mul => [[Mul rd rs1 rs2]]
+    | Syntax.bopname.and => [[And rd rs1 rs2]]
+    | Syntax.bopname.or  => [[Or  rd rs1 rs2]]
+    | Syntax.bopname.xor => [[Xor rd rs1 rs2]]
+    | Syntax.bopname.sru => [[Srl rd rs1 rs2]]
+    | Syntax.bopname.slu => [[Sll rd rs1 rs2]]
+    | Syntax.bopname.srs => [[Sra rd rs1 rs2]]
+    | Syntax.bopname.lts => [[Slt rd rs1 rs2]]
+    | Syntax.bopname.ltu => [[Sltu rd rs1 rs2]]
+    | Syntax.bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
     end.
 
   Fixpoint compile_lit_rec(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=

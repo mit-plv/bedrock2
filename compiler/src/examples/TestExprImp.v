@@ -12,23 +12,21 @@ Require Import riscv.Words32Naive.
 Require Import riscv.DefaultMemImpl32.
 Require Import compiler.examples.Empty_set_keyed_map.
 Require Import compiler.examples.Z_keyed_map.
-Require Import bedrock2.Basic_bopnames.
 
 
-Instance myparams: Basic_bopnames.parameters := {|
-  Basic_bopnames.varname := Z;
-  Basic_bopnames.funcname := Z;
-  Basic_bopnames.actname := Empty_set;
+Instance myparams: Syntax.parameters := {|
+  Syntax.varname := Z;
+  Syntax.funname := Z;
+  Syntax.actname := Empty_set;
 |}.
 
 Definition TODO{T: Type}: T. Admitted.
 
 Instance params: Semantics.parameters := {|
-    Semantics.syntax := Basic_bopnames.make myparams;
+    Semantics.syntax := myparams;
     Semantics.word := word32;
     Semantics.locals := _;
     Semantics.env := _;
-    Semantics.interp_binop := Basic_bopnames.interp_binop;
     Semantics.funname_eqb a b := false;
     Semantics.ext_spec _ _ _ _ _ := False;
 |}.

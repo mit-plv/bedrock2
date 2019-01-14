@@ -2,7 +2,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
-Require Import bedrock2.Basic_bopnames.
 Require Import riscv.util.BitWidth32.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
@@ -33,13 +32,13 @@ Inductive act: Set := Select. (* only one action (= "external call" = inline ass
 
 Instance act_dec: DecidableEq act. left. destruct x; destruct y. reflexivity. Defined.
 
-Instance myparams: Basic_bopnames.parameters := {|
-  varname := var;
-  funcname := func;
-  actname := act;
+Instance myparams: Syntax.parameters := {|
+  Syntax.varname := var;
+  Syntax.funname := func;
+  Syntax.actname := act;
 |}.
 
-Instance annoying: DecidableEq (list varname * list varname * stmt). Admitted.
+Instance annoying: DecidableEq (list Syntax.varname * list Syntax.varname * stmt). Admitted.
 
 
 Inductive ext_spec: act -> list Empty_set -> list word32 ->
@@ -94,21 +93,21 @@ def test(addr, inp1, inp2):
     return r
  *)
 
-Definition _addr: varname := 1.
-Definition _inp1: varname := 2.
-Definition _inp2: varname := 3.
-Definition _a: varname := 4.
-Definition _b: varname := 5.
-Definition _c: varname := 6.
-Definition _r: varname := 7.
-Definition _garbage: varname := 31.
-Definition _s: varname := 9.
+Definition _addr: Syntax.varname := 1.
+Definition _inp1: Syntax.varname := 2.
+Definition _inp2: Syntax.varname := 3.
+Definition _a: Syntax.varname := 4.
+Definition _b: Syntax.varname := 5.
+Definition _c: Syntax.varname := 6.
+Definition _r: Syntax.varname := 7.
+Definition _garbage: Syntax.varname := 31.
+Definition _s: Syntax.varname := 9.
 
 Definition test: stmt :=
   (SSeq (SLoad Syntax.access_size.four _s _addr)
-  (SSeq (SOp _a bopname.mul _inp1 _inp2)
-  (SSeq (SOp _b bopname.add _inp1 _inp2)
-  (SSeq (SOp _c bopname.sub _inp1 _inp2)
+  (SSeq (SOp _a Syntax.bopname.mul _inp1 _inp2)
+  (SSeq (SOp _b Syntax.bopname.add _inp1 _inp2)
+  (SSeq (SOp _c Syntax.bopname.sub _inp1 _inp2)
         (SInteract [_r; _garbage] Select [_s; _a; _b; _c]))))).
 
 Local Set Refine Instance Mode.

@@ -1,6 +1,6 @@
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
-Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU.
+Require Import bedrock2.StringNamesSyntax.
 Require bedrock2.NotationsInConstr.
 Require bedrock2.BasicC64Syntax.
 
@@ -14,7 +14,6 @@ Definition ZNamesSyntaxParams: Syntax.parameters := {|
   Syntax.varname := Z;
   Syntax.funname := Empty_set;
   Syntax.actname := Empty_set;
-  Syntax.bopname := bedrock2.Basic_bopnames.bopname;
 |}.
 
 
@@ -108,7 +107,7 @@ Section Demos.
   Local Coercion var{p : unique! Syntax.parameters}(x : @varname p): @expr.expr p :=
     @expr.var p x.
 
-  Context {p : unique! Syntax.parameters} {bops : BasicALU.operations}.
+  Context {p : unique! Syntax.parameters}.
 
   (* note: this coercion must use the section's p, because its argument z does not
      allow Coq to infer p *)
@@ -181,15 +180,11 @@ End Demos.
 Print allProgs.
 
 Definition allProgsAsCStrings: list string :=
-  Eval cbv in (map BasicC64Syntax.c_func (allProgs (bops := BasicC64Syntax.BasicALU))).
+  Eval cbv in (map BasicC64Syntax.c_func allProgs).
 
 Print allProgsAsCStrings.
 
 Definition allProgsWithZNames :=
-  Eval cbv in (allProgs (bops := (@Basic_bopnames.BasicALU {|
-    Basic_bopnames.varname := Z;
-    Basic_bopnames.funcname := Empty_set;
-    Basic_bopnames.actname := Empty_set;
-  |}))).
+  Eval cbv in allProgs (p:=ZNamesSyntaxParams).
 
 Print allProgsWithZNames.

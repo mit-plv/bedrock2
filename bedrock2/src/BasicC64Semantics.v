@@ -17,5 +17,4 @@ Instance parameters : parameters :=
   env := SortedListString.map _;
   funname_eqb := String.eqb;
   ext_spec := fun _ _ _ _ _ => False;
-  interp_binop := Basic_bopnames.interp_binop;
 |}.

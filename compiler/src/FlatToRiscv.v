@@ -6,7 +6,6 @@ Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Basic_bopnames.
 Require Import riscv.Program.
 Require Import riscv.Decode.
 Require Import riscv.PseudoInstructions.
@@ -109,17 +108,17 @@ Module Import FlatToRiscv.
 
     (* these two instances are needed to define compile_ext_call_correct below *)
 
-    bopname_params: Basic_bopnames.parameters := {|
-      Basic_bopnames.varname := Register;
-      Basic_bopnames.funcname := Empty_set;
-      Basic_bopnames.actname := actname;
+    syntax_params: Syntax.parameters := {|
+      Syntax.varname := Register;
+      Syntax.funname := Empty_set;
+      Syntax.actname := actname;
     |};
 
-    env :> map.map funcname (list varname * list varname * stmt);
+    env :> map.map Syntax.funname (list Syntax.varname * list Syntax.varname * stmt);
     env_ok: map.ok env;
 
     FlatImp_params: FlatImp.parameters := {|
-      FlatImp.bopname_params := bopname_params;
+      FlatImp.syntax_params := syntax_params;
       FlatImp.ext_spec := ext_spec;
       FlatImp.max_ext_call_code_size := max_ext_call_code_size;
       FlatImp.max_ext_call_code_size_nonneg a := TODO;
@@ -135,7 +134,7 @@ Module Import FlatToRiscv.
       Forall valid_register resvars ->
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      exec map.empty (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
+      exec map.empty (@SInteract (@FlatImp.syntax_params FlatImp_params) resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) postH ->
       runsTo (mcomp_sat (run1 (B := BitWidth))) initialL
              (fun finalL =>
@@ -1144,7 +1143,7 @@ Section FlatToRiscv1.
   *)
   Admitted.
 
-  Existing Instance FlatToRiscv.bopname_params.
+  Existing Instance FlatToRiscv.syntax_params.
   Existing Instance FlatToRiscv.FlatImp_params.
 
   Definition eval_stmt := exec map.empty.
@@ -1157,7 +1156,7 @@ Section FlatToRiscv1.
   Admitted.
 
   Lemma compile_stmt_correct_aux:
-    forall (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
+    forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
     eval_stmt s t initialMH initialRegsH postH ->
     forall initialL insts,
     @compile_stmt def_params s = insts ->
@@ -1255,7 +1254,7 @@ Section FlatToRiscv1.
 
             rewrite! sep_assoc.
             Set Printing Implicit.
-            unfold FlatImp.W, FlatImp_params, FlatImp.bopname_params.
+            unfold FlatImp.W, FlatImp_params, FlatImp.syntax_params.
 
             reify_goal.
 

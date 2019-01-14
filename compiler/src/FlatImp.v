@@ -3,6 +3,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.BitWidths.
 Require Import riscv.util.ListLib.
+Require Import bedrock2.Semantics.
 Require Import riscv.Utility.
 Require Import riscv.MkMachineWidth.
 Require Import coqutil.Macros.unique.
@@ -25,7 +26,7 @@ Inductive bbinop: Type :=
 | BGeu.
 
 Section Syntax.
-  Context {pp : unique! Basic_bopnames.parameters}.
+  Context {pp : unique! Syntax.parameters}.
 
   Inductive bcond: Type :=
     | CondBinary (op: bbinop) (x y: varname)
@@ -49,7 +50,7 @@ End Syntax.
 
 Module Import FlatImp.
   Class parameters := {
-    bopname_params :> Basic_bopnames.parameters;
+    syntax_params :> Syntax.parameters;
 
     W :> Words;
 
@@ -132,7 +133,7 @@ Section FlatImp1.
         | SOp x op y z =>
             'Some y <- map.get st y;
             'Some z <- map.get st z;
-            Some (map.put st x (Basic_bopnames.interp_binop op y z), m)
+            Some (map.put st x (interp_binop op y z), m)
         | SSet x y =>
             'Some v <- map.get st y;
             Some (map.put st x v, m)
@@ -191,16 +192,7 @@ Section FlatImp1.
                end;
         try omega.
       {
-        (* PARAMRECORDS *)
-        Fail lia.
-        simpl in *.
-        lia.
-      }
-      {
         pose proof (max_ext_call_code_size_nonneg a).
-        (* PARAMRECORDS *)
-        Fail lia.
-        simpl in *.
         lia.
       }
     Qed.
@@ -241,7 +233,7 @@ Section FlatImp1.
       exists v1 v2,
         map.get initialSt y = Some v1 /\
         map.get initialSt z = Some v2 /\
-        final = (map.put initialSt x (Basic_bopnames.interp_binop op v1 v2), initialM).
+        final = (map.put initialSt x (Semantics.interp_binop op v1 v2), initialM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SSet: forall fuel x y initialSt initialM final,
@@ -341,7 +333,7 @@ Section FlatImp1.
     | ExOp: forall t m l x op y y' z z' post,
         map.get l y = Some y' ->
         map.get l z = Some z' ->
-        post t m (map.put l x (Basic_bopnames.interp_binop op y' z')) ->
+        post t m (map.put l x (interp_binop op y' z')) ->
         exec (SOp x op y z) t m l post
     | ExSet: forall t m l x y y' post,
         map.get l y = Some y' ->

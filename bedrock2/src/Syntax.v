@@ -1,13 +1,17 @@
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique.
 
 Require Import Coq.Numbers.BinNums.
+
+Module Import bopname.
+  Inductive bopname := add | sub | mul | and | or | xor | sru | slu | srs | lts | ltu | eq.
+End bopname.
+Notation bopname := bopname.bopname.
   
 Local Set Primitive Projections.
 Class parameters := {
   varname : Type;
   funname : Type;
   actname : Type;
-  bopname : Type;
 }.
 
 Module access_size.

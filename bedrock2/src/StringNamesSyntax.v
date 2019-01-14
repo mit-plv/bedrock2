@@ -5,7 +5,6 @@ Require Import Coq.Strings.String.
 Local Set Primitive Projections.
 Class parameters := {
   actname : Type;
-  bopname : Type;
 }.
 
 Instance make (p : parameters) : Syntax.parameters := {|
@@ -13,5 +12,4 @@ Instance make (p : parameters) : Syntax.parameters := {|
   Syntax.funname := string;
 
   Syntax.actname := actname;
-  Syntax.bopname := bopname;
 |}.

@@ -17,7 +17,6 @@ Class parameters := {
   locals :> map.map varname word;
   env :> map.map funname (list varname * list varname * cmd);
 
-  interp_binop : bopname -> word -> word -> word;
   funname_eqb : funname -> funname -> bool;
 
   trace := list ((mem * actname * list word) * (mem * list word));
@@ -34,8 +33,31 @@ Class parameters := {
   ext_spec: ExtSpec;
 }.
 
+Section binops.
+  Context {width : Z} {word : Word.Interface.word width}.
+  Definition interp_binop (bop : bopname) : word -> word -> word :=
+    match bop with
+    | bopname.add => word.add
+    | bopname.sub => word.sub
+    | bopname.mul => word.mul
+    | bopname.and => word.and
+    | bopname.or => word.or
+    | bopname.xor => word.xor
+    | bopname.sru => word.sru
+    | bopname.slu => word.slu
+    | bopname.srs => word.srs
+    | bopname.lts => fun a b =>
+      if word.lts a b then word.of_Z 1 else word.of_Z 0
+    | bopname.ltu => fun a b =>
+      if word.ltu a b then word.of_Z 1 else word.of_Z 0
+    | bopname.eq => fun a b =>
+      if word.eqb a b then word.of_Z 1 else word.of_Z 0
+    end.
+End binops.
+
 Section semantics.
   Context {pp : unique! parameters}.
+
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
     Fixpoint eval_expr (e : expr) : option word :=

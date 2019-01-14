@@ -1,4 +1,4 @@
-Require Import bedrock2.Basic_bopnames.
+Require Import bedrock2.Syntax.
 Require Import compiler.RegAlloc3.
 
 Export bopname.

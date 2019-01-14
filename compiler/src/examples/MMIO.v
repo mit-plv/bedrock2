@@ -4,7 +4,6 @@ Require Import coqutil.Macros.unique.
 Require Import riscv.util.Word.
 Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
-Require Import bedrock2.Basic_bopnames.
 Require Import bedrock2.Semantics.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
@@ -95,10 +94,10 @@ Definition compile_ext_call(results: list var)(a: MMIOAction)(args: list var):
     end
   end.
 
-Instance myparams: Basic_bopnames.parameters := {|
-  varname := var;
-  funcname := func;
-  actname := MMIOAction;
+Instance myparams: Syntax.parameters := {|
+  Syntax.varname := var;
+  Syntax.funname := func;
+  Syntax.actname := MMIOAction;
 |}.
 
 Module Import MMIO.
@@ -111,7 +110,6 @@ Module Import MMIO.
     locals_ok :> map.ok locals;
     env :> map.map func (list var * list var * Syntax.cmd.cmd);
     env_ok :> map.ok env;
-    interp_binop : bopname -> word -> word -> word;
   }.
 End MMIO.
 
@@ -122,9 +120,8 @@ Section MMIO1.
   Definition simple_isMMIOAddr: word -> bool := word.eqb (word.of_Z magicMMIOAddrLit).
 
   Instance semantics_params: Semantics.parameters := {|
-    Semantics.syntax := Basic_bopnames.make myparams;
+    Semantics.syntax := myparams;
     Semantics.width := width;
-    Semantics.interp_binop := interp_binop;
     Semantics.funname_eqb f := Empty_set_rect _;
     Semantics.ext_spec t m action (argvals: list word) (post: (mem -> list word -> Prop)) :=
       match argvals with
@@ -206,15 +203,15 @@ loop {
 }
 *)
 
-Definition _addr: varname := 1.
-Definition _i: varname := 2.
-Definition _s: varname := 3.
+Definition _addr: Syntax.varname := 1.
+Definition _i: Syntax.varname := 2.
+Definition _s: Syntax.varname := 3.
 
 Definition squarer: stmt :=
   (SSeq (SLit _addr magicMMIOAddrLit)
         (SLoop (SLoad Syntax.access_size.four _i _addr)
                (CondNez _i)
-               (SSeq (SOp _s bopname.mul _i _i)
+               (SSeq (SOp _s Syntax.bopname.mul _i _i)
                      (SStore Syntax.access_size.four _addr _s)))).
 
 Definition compiled: list Instruction := Eval cbv in compile_stmt squarer.

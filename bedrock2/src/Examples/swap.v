@@ -1,8 +1,8 @@
-Require Import bedrock2.BasicC64Syntax bedrock2.BasicALU bedrock2.NotationsInConstr.
+Require Import bedrock2.BasicC64Syntax bedrock2.NotationsInConstr.
 
-Import BinInt String List.ListNotations.
+Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Existing Instance bedrock2.BasicC64Syntax.Basic_bopnames_params.
+Local Existing Instance bedrock2.BasicC64Syntax.StringNames_params.
 Local Coercion literal (z : Z) : Syntax.expr := Syntax.expr.literal z.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
