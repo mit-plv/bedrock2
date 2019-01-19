@@ -626,6 +626,26 @@ Section RegAlloc.
                progress tryif (let T := type of P in unify T Prop)
                         then revert H else clear H
              end.
+      intros.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      (stop processing here)
+
 
 (* encoding goals about maps into SMT results in goals with some quantifiers,
    and even on the simplest goals, Z3 returns "unknown":
@@ -641,7 +661,6 @@ idtac.
 
 (* feed this goal to Isabelle's nitpick (or even Auto Quickcheck works) *)
 
-      (stop processing here)
 
 (*
 Isabelle:
