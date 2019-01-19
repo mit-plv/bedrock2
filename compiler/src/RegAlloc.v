@@ -213,6 +213,8 @@ Section RegAlloc.
     | _ => e
     end.
 
+  Notation reg := (option register).
+
   Goal forall (s: stmt), False.
     intro s.
     destruct s eqn: E;
@@ -273,17 +275,11 @@ Section RegAlloc.
         forget (live s1) as ls1.
         forget (live s2) as ls2.
 
-(** To turn this into a goal understandable for an SMT solver, copy-paste the code from
-https://github.com/samuelgruetter/coq-smt-notations/blob/master/smt_sets_demo.v
+        (* Require Import compiler.SMT_Print.
+        smtify. *)
 
-Then paste it into the online z3 solver to get a counter-example
-
-Then copy-paste the second part from smt_sets_demo.v
-*)
-
-
-(* and paste the model output by Z3, replacing "!" by "_": *)
-
+        Require Import compiler.SMT_Model.
+        prepare_counterex.
 (model
   ;; universe for var:
   ;;   var_val_1 var_val_0
