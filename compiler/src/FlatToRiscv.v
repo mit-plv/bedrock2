@@ -127,23 +127,23 @@ Module Import FlatToRiscv.
 
     Machine := @RiscvMachine Register W State_is_RegisterFile mem actname;
 
-    compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts initialMH
+    compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts
         (argvars resvars: list Register) R,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
-      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+      (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       exec map.empty (@SInteract (@FlatImp.bopname_params FlatImp_params) resvars action argvars)
-           initialL.(getLog) initialMH initialL.(getRegs) postH ->
+           initialL.(getLog) initialL.(getMem) initialL.(getRegs) postH ->
       runsTo (mcomp_sat (run1 (B := BitWidth))) initialL
              (fun finalL =>
-                  postH finalL.(getLog) initialMH finalL.(getRegs) /\
+                  postH finalL.(getLog) finalL.(getMem) finalL.(getRegs) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (* external calls can't modify the memory for now *)
-                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem));
+                  (program initialL.(getPc) insts * R)%sep finalL.(getMem));
 
   }.
 
@@ -1156,8 +1156,18 @@ Section FlatToRiscv1.
   Proof.
   Admitted.
 
+  (* note: before we can apply this lemma, we have to extend the FlatImp execution from a
+     high-level memory to the low-level memory (which adds the instruction memory and
+     possibly more later).
+     Doing this could also be done at ExprImp level, and will be a separate proof.
+     A similar proof will add one more precondition to ext_spec for MMIO to say that
+     the MMIO action does not happen on physical memory (and this has to include the
+     whole memory).
+     In order to prove compile_ext_call_correct for MMIO, its FlatImp execution needs to be
+     passed the whole memory, and that's why we also need the whole memory for FlatImp here. *)
   Lemma compile_stmt_correct_aux:
-    forall (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
+    forall (s: @stmt (@FlatImp.bopname_params (@FlatImp_params p)))
+           t initialRegsH initialMH postH R,
     eval_stmt s t initialMH initialRegsH postH ->
     forall initialL insts,
     @compile_stmt def_params s = insts ->
@@ -1165,13 +1175,13 @@ Section FlatToRiscv1.
     valid_registers s ->
     divisibleBy4 initialL.(getPc) ->
     initialL.(getRegs) = initialRegsH ->
-    (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+    initialL.(getMem) = initialMH ->
+    (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     runsTo initialL (fun finalL =>
-        exists finalMH,
-          postH finalL.(getLog) finalMH finalL.(getRegs) /\
-          (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
+          postH finalL.(getLog) finalL.(getMem) finalL.(getRegs) /\
+          (program initialL.(getPc) insts * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
   Proof.
@@ -1213,8 +1223,10 @@ Section FlatToRiscv1.
       + eapply go_fetch_inst.
         * reflexivity.
         * seplog.
-        * clear -H10. unfold valid_instructions in H10.
-          apply H10. constructor. reflexivity.
+        * unfold valid_instructions in *.
+          match goal with
+          | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
+          end.
         * simpl in H4. destruct_products.
           eapply execute_load; try eassumption; cycle 1.
           { simpl in *. rewrite_match. reflexivity. }
@@ -1223,6 +1235,7 @@ Section FlatToRiscv1.
             pose proof load_bytes_to_ptsto_bytes as P.
             specialize P with (1 := E).
             destruct_products.
+            eapply P.
             assert ((program (getPc initialL) (compile_stmt (SLoad sz x a)) *
                      ptsto_bytes (Memory.bytes_per sz) addr t0 * R0 *
                      R)%sep (getMem initialL)) as Q. {
