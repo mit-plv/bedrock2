@@ -35,6 +35,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.EmitsValid.
 Require Import compiler.SeparationLogic.
+Require Import bedrock2.Scalars.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -143,6 +144,18 @@ Module Import FlatToRiscv.
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (* external calls can't modify the memory for now *)
                   (program initialL.(getPc) insts * R)%sep finalL.(getMem));
+
+
+    (* TODO move to FlatToRiscvBitWidthSpecifics *)
+    go_load: forall sz x a addr v initialL post f,
+      valid_register x ->
+      valid_register a ->
+      getReg initialL.(getRegs) a = addr ->
+      (* (scalar sz addr v * R)%sep initialL.(getMem) -> *)
+      Memory.load sz (getMem initialL) addr = Some v ->
+      mcomp_sat (f tt)
+                (withRegs (setReg initialL.(getRegs) x v) initialL) post ->
+      mcomp_sat (Bind (execute (compile_load sz x a)) f) initialL post;
 
   }.
 
@@ -864,50 +877,6 @@ Section FlatToRiscv1.
     solve_word_eq.
 *)
 
-  Lemma execute_load: forall (x a: Register) (addr: word) (sz: Syntax.access_size) v
-           (f: unit -> M unit) (initialL: RiscvMachineL) post,
-      valid_register x ->
-      valid_register a ->
-      Memory.load sz initialL.(getMem) addr = Some v ->
-      getReg initialL.(getRegs) a = addr ->
-      mcomp_sat (f tt)
-                (withRegs (setReg initialL.(getRegs) x v) initialL) post ->
-      mcomp_sat (Bind (execute (compile_load sz x a)) f) initialL post.
-  Proof.
-    intros.
-    (*
-    pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
-    pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
-    pose proof (@State_is_RegisterFile _ _) as State_is_RegisterFile.
-    pose proof (@Bind_loadWord _ _ _ _ _ _ _) as Bind_loadWord.
-    pose proof (@Bind_loadDouble _ _ _ _ _ _ _) as Bind_loadDouble.
-    unfold containsMem, Memory.read_mem, wXLEN_in_bytes, wXLEN, bitwidth in *.
-    unfold LwXLEN, bitwidth, loadWordwXLEN in *.
-    destruct Bw eqn: EBw;
-      simpl in H2;
-      specialize H2 with (1 := H1);
-      (destruct_one_match_hyp; [|discriminate]);
-      simpl in H2; inversions H2;
-      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-      rewrite associativity;
-      rewrite Bind_getRegister by assumption;
-      rewrite associativity;
-      unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
-      rewrite_reg_value;
-      rewrite ZToWord_0;
-      rewrite wplus_comm;
-      rewrite wplus_unit;
-      [ rewrite translate_id_if_aligned_4 by assumption |
-        rewrite translate_id_if_aligned_8 by assumption ];
-      rewrite left_identity;
-      rewrite associativity;
-      [ rewrite Bind_loadWord | rewrite Bind_loadDouble ];
-      rewrite Bind_setRegister;
-      first [reflexivity | assumption].
-  Qed.
-          *)
-  Admitted.
-
   (*
   Lemma execute_store: forall (ra rv: Register) (a v: mword) (initialMH finalMH: Memory.mem)
             (f: unit -> M unit) (initialL: RiscvMachineL) initialRegsH post,
@@ -1213,9 +1182,6 @@ Section FlatToRiscv1.
       discriminate.
 
     - (* SLoad *)
-      unfold Memory.load in H0.
-      destruct_one_match_hyp; [|discriminate].
-      apply Option.eq_of_eq_Some in H0.
       subst.
       eapply det_step.
       + eapply go_fetch_inst.
@@ -1226,67 +1192,14 @@ Section FlatToRiscv1.
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
         * simpl in H4. destruct_products.
-          eapply execute_load; try eassumption; cycle 1.
+          eapply go_load; try eassumption.
           { simpl in *. rewrite_match. reflexivity. }
           { eapply go_step. simpl. reflexivity. }
-          { unfold Memory.load. erewrite ptsto_bytes_to_load_bytes; [ reflexivity |].
-            pose proof load_bytes_to_ptsto_bytes as P.
-            specialize P with (1 := E).
-            destruct_products.
-            eapply P.
-            assert ((program (getPc initialL) (compile_stmt (SLoad sz x a)) *
-                     ptsto_bytes (Memory.bytes_per sz) addr t0 * R0 *
-                     R)%sep (getMem initialL)) as Q. {
-              clear -P H7.
-              remember (program (getPc initialL) (compile_stmt (SLoad sz x a))) as A. clear HeqA.
-              remember (ptsto_bytes (Memory.bytes_per sz) addr t0) as B.
-              setoid_rewrite <- HeqB in P. clear HeqB.
-              remember (getMem initialL) as mL. clear HeqmL.
-              rename m into mH, H7 into H1, P into H2.
-              clear -H1 H2.
-
-              refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ _); cycle 1.
-              - eapply seplog_subst_eq; [eassumption..|].
-                Fail solve [ecancel].
-
-                (* PARAMRECORDS *)
-                Set Printing Implicit.
-                unfold FlatImp.mem, FlatImp_params.
-                solve [ecancel].
-                Unset Printing Implicit.
-
-              - cbv [List.app seps].
-                solve [ ecancel ].
-                (* note: because of the multimatch, ecancel always needs to be wrapped inside
-                   "solve" *)
-            }
-            clear -Q.
-            instantiate (2 := t0).
-            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Q); clear Q.
-
-            rewrite! sep_assoc.
-            Set Printing Implicit.
-            unfold FlatImp.W, FlatImp_params, FlatImp.syntax_params.
-
-            reify_goal.
-
-            let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-            let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-            simple refine (cancel_seps_at_indices 1 0 LHS RHS _ _); [reflexivity|].
-            cbn [List.firstn List.skipn List.app List.hd List.tl].
-            (* looks like this should be cbv *)
-            cbv [List.firstn List.skipn List.app List.hd List.tl].
-            simpl.
-            Fail reflexivity. (* evar scope problem *)
-
-            admit.
-          }
       + apply runsToDone.
-        eexists. simpl.
+        simpl.
         repeat split; try eassumption.
-        simpl in *.
-        Fail rewrite H9. (* TODO why does rewrite fail here? *)
-        etransitivity; [exact H9|].
+        Fail rewrite H10. (* TODO why does rewrite fail here? *)
+        etransitivity; [exact H10|].
         (* TODO make solve_word_eq work again *)
         repeat (autorewrite with rew_Zlength; simpl).
         f_equal.

@@ -455,6 +455,8 @@ Please report at http://coq.inria.fr/bugs/.
       }
   + (* MMOutput *)
     apply TODO.
+  - intros.
+    apply TODO.
   Defined.
 
 End MMIO1.
