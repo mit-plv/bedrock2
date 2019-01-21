@@ -12,15 +12,14 @@ Require Import riscv.Words32Naive.
 Require Import riscv.DefaultMemImpl32.
 Require Import compiler.examples.Empty_set_keyed_map.
 Require Import compiler.examples.Z_keyed_map.
-Require Import bedrock2.Basic_bopnames.
 
 
 Definition var: Set := Z. (* only inside this test module *)
 Definition func: Set := Empty_set.
-Instance myparams: Basic_bopnames.parameters := {|
-  varname := var;
-  funcname := func;
-  actname := Empty_set;
+Instance myparams: Syntax.parameters := {|
+  Syntax.varname := var;
+  Syntax.funname := func;
+  Syntax.actname := Empty_set;
 |}.
 
 Notation stmt := (@stmt myparams).
@@ -51,16 +50,16 @@ Example fib(n: Z): stmt  :=
   SSeq (SLit _b 1) (
   SLoop SSkip
         (CondNez _n)
-        (SSeq (SOp _s bopname.add _a _b) (
+        (SSeq (SOp _s Syntax.bopname.add _a _b) (
          SSeq (SSet _a _b) (
          SSeq (SSet _b _s) (
-              (SOp _n bopname.sub _n _one)))))
+              (SOp _n Syntax.bopname.sub _n _one)))))
   )))).
 
 Set Refine Instance Mode.
 
 Instance myFlatImpParams: FlatImp.parameters := {|
-  FlatImp.bopname_params := myparams;
+  FlatImp.syntax_params := myparams;
   FlatImp.W := Words32Naive;
   FlatImp.locals := Zkeyed_map word32;
   FlatImp.env := Empty_set_keyed_map _;

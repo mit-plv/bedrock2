@@ -5,7 +5,7 @@ Require Import bedrock2.StructNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Section StructAccess.
-  Context {p : Syntax.parameters} {bp : BasicALU.operations}.
+  Context {p : Syntax.parameters}.
 
   Definition item : type :=
     Struct (

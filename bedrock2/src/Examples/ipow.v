@@ -1,8 +1,8 @@
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import bedrock2.BasicC64Syntax bedrock2.NotationsInConstr.
-Import BinInt String List.ListNotations.
+Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Existing Instance bedrock2.BasicC64Syntax.Basic_bopnames_params.
+Local Existing Instance bedrock2.BasicC64Syntax.StringNames_params.
 Local Coercion literal (z : Z) : Syntax.expr := Syntax.expr.literal z.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
@@ -70,7 +70,7 @@ Proof.
       split. (* if cases, path-blasting *)
       { repeat straightline.
         { (* measure decreases *)
-          cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
+          cbn [parameters Semantics.interp_binop Semantics.width] in *.
           pose proof (unsigned_range x0) as pf.
           repeat match goal with
                    |- context [?x] => subst x
@@ -84,7 +84,7 @@ Proof.
           mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
-          cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
+          cbn [parameters Semantics.interp_binop Semantics.width] in *.
           replace (unsigned x0) with (2 * (unsigned x0 / 2) + 1) in * by (subst v1; revert H0; admit).
           rewrite ?Z.pow_add_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l, ?Z.mul_assoc in * by ((intro;discriminate)||admit).
           rewrite H3; cycle 1;
@@ -109,7 +109,7 @@ Proof.
         straightline; [].
         repeat straightline.
         { (* measure decreases *)
-          cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
+          cbn [parameters Semantics.interp_binop Semantics.width] in *.
           pose proof (unsigned_range x0) as pf.
           repeat match goal with
                    |- context [?x] => subst x
@@ -123,7 +123,7 @@ Proof.
           mia. }
         { (* invariant preserved *)
           repeat split; try exact eq_refl; intros.
-          cbn [parameters Semantics.interp_binop Basic_bopnames.interp_binop Semantics.width] in *.
+          cbn [parameters Semantics.interp_binop Semantics.width] in *.
           replace (unsigned x0) with (2 * (unsigned x0 / 2)) in * by (subst v1; revert H0; admit).
           rewrite ?Z.pow_add_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l, ?Z.mul_assoc in *.
           rewrite H3; cycle 1;

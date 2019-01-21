@@ -3,7 +3,7 @@ Require Import Coq.Lists.List Coq.ZArith.BinInt. Local Open Scope Z_scope.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 
 Section Array.
-  Context {width : Z} {word : Word.Interface.word width} {Hwidth : 0 <= width} {word_ok : word.ok word}.
+  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
   Context {value} {mem : map.map word value} {mem_ok : map.ok mem}.
   Context {T} (element : word -> T -> mem -> Prop) (size : word).
   Fixpoint array (start : word) (xs : list T) :=
@@ -87,5 +87,34 @@ Section Array.
     cbn [length] in H. rewrite PeanoNat.Nat.add_0_r in H.
     cbv [n] in H. rewrite firstn_length, Znat.Nat2Z.inj_min, Znat.Z2Nat.id in H; [Lia.lia|].
     eapply word.unsigned_range.
+  Qed.
+
+  Lemma array_address_inbounds xs start a
+    (Hlen : word.unsigned (word.sub a start) < Z.mul (Z.of_nat (length xs)) (word.unsigned size))
+    (Hmod : word.unsigned (word.sub a start) mod (word.unsigned size) = 0)
+    i (Hi : i = word.divu (word.sub a start) size)
+    : iff1 (array start xs)
+      ( array start (firstn (Z.to_nat (word.unsigned i)) xs) * (
+        element a (hd default (skipn (Z.to_nat (word.unsigned i)) xs)) *
+        array (word.add (word.add start (word.mul i size)) size) (tl (skipn (Z.to_nat (word.unsigned i)) xs)) ) ).
+  Proof.
+    pose proof word.unsigned_range size.
+    pose proof word.unsigned_range (word.sub a start).
+    destruct (Z.eq_dec (word.unsigned size) 0) as [Hz|Hnz].
+    { rewrite Hz in *. Lia.lia. }
+    replace a with (word.add start (word.mul i size)); subst i.
+    { eapply array_index_inbounds.
+      rewrite word.unsigned_divu_nowrap by assumption.
+      eapply Z.div_lt_upper_bound; Lia.lia. }
+    transitivity (word.add start (word.sub a start)).
+    { apply f_equal; remember (word.sub a start).
+      eapply Properties.word.unsigned_inj.
+      rewrite ?word.unsigned_mul, word.unsigned_divu_nowrap by trivial.
+      rewrite Z.mul_comm, <-Zdiv.Z_div_exact_full_2 by trivial.
+      rewrite Z.mod_small; auto using word.unsigned_range. }
+    { eapply Properties.word.unsigned_inj.
+      rewrite ?word.unsigned_add, word.unsigned_sub.
+      rewrite Z.add_mod_idemp_r, Zplus_minus, word.wrap_unsigned; trivial.
+      { eapply Z.pow_nonzero; pose proof word.width_pos; Lia.lia. } }
   Qed.
 End Array.

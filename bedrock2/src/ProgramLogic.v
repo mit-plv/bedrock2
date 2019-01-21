@@ -3,6 +3,7 @@ From coqutil.Tactics Require Import letexists eabstract rdelta.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.TailRecursion.
+Require Import bedrock2.Map.SeparationLogic.
 
 Definition spec_of {p:parameters} (procname:Syntax.funname) := list (Syntax.funname * (list Syntax.varname * list Syntax.varname * Syntax.cmd.cmd)) -> Prop.
 Existing Class spec_of.
@@ -167,6 +168,22 @@ Ltac straightline_call :=
       [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
       [ .. | intros ? ? ? ?]
   end.
+
+Ltac current_trace_mem_locals :=
+  lazymatch goal with
+  | |- WeakestPrecondition.cmd _ _ _  _  _ ?t ?m ?l _ => constr:((t, m, l))
+  end.
+
+Ltac seprewrite Hrw :=
+  let tml := current_trace_mem_locals in
+  let m := lazymatch tml with (_, ?m, _) => m end in
+  let H := multimatch goal with H: _ m |- _ => H end in
+  seprewrite_in Hrw H.
+Ltac seprewrite_by Hrw tac :=
+  let tml := current_trace_mem_locals in
+  let m := lazymatch tml with (_, ?m, _) => m end in
+  let H := multimatch goal with H: _ m |- _ => H end in
+  seprewrite_in_by Hrw H tac.
 
 Ltac show_program :=
   lazymatch goal with

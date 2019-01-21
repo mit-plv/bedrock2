@@ -1,7 +1,6 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require bedrock2.Examples.Demos.
-Require Import bedrock2.Basic_bopnames.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.Word.
 Require Import coqutil.Decidable.
@@ -39,11 +38,7 @@ Existing Instance DefaultRiscvState.
 Existing Instance FlatToRiscv.State_is_RegisterFile.
 
 Definition fib_ExprImp(n: Z): cmd := Eval cbv in
-  snd (snd (Demos.fibonacci (bops := (@Basic_bopnames.BasicALU {|
-  Basic_bopnames.varname := Z;
-  Basic_bopnames.funcname := Empty_set;
-  Basic_bopnames.actname := Empty_set;
-|})) n)).
+  snd (snd (Demos.fibonacci n)).
 
 (* This is what the bare AST looks like. For a more readable version with notations, see
    bedrock2/Demos.v *)

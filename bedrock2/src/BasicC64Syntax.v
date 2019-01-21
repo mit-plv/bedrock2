@@ -1,24 +1,13 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax bedrock2.ToCString.
-Require Import bedrock2.StringNamesSyntax bedrock2.BasicALU coqutil.Datatypes.String.
+Require Import bedrock2.StringNamesSyntax coqutil.Datatypes.String.
 
 Require Import Coq.Strings.String Coq.Numbers.DecimalZ Coq.Numbers.DecimalString.
 
-Require Export bedrock2.Basic_bopnames.
-Import bedrock2.Basic_bopnames.bopname.
+Import bedrock2.Syntax.bopname.
 
 Definition StringNames_params: bedrock2.StringNamesSyntax.parameters := {|
-  StringNamesSyntax.bopname := bedrock2.Basic_bopnames.bopname;
   StringNamesSyntax.actname := string
 |}.
-
-Definition Basic_bopnames_params: bedrock2.Basic_bopnames.parameters := {|
-  Basic_bopnames.varname := string;
-  Basic_bopnames.funcname := string;
-  Basic_bopnames.actname := string;
-|}.
-
-Definition BasicALU: @BasicALU.operations (StringNamesSyntax.make StringNames_params) :=
-  @Basic_bopnames.BasicALU Basic_bopnames_params.
 
 Definition to_c_parameters : ToCString.parameters := {|
   syntax := (StringNamesSyntax.make StringNames_params);

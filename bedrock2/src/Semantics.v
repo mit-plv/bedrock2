@@ -17,7 +17,6 @@ Class parameters := {
   locals :> map.map varname word;
   env :> map.map funname (list varname * list varname * cmd);
 
-  interp_binop : bopname -> word -> word -> word;
   funname_eqb : funname -> funname -> bool;
 
   trace := list ((mem * actname * list word) * (mem * list word));
@@ -34,8 +33,31 @@ Class parameters := {
   ext_spec: ExtSpec;
 }.
 
+Section binops.
+  Context {width : Z} {word : Word.Interface.word width}.
+  Definition interp_binop (bop : bopname) : word -> word -> word :=
+    match bop with
+    | bopname.add => word.add
+    | bopname.sub => word.sub
+    | bopname.mul => word.mul
+    | bopname.and => word.and
+    | bopname.or => word.or
+    | bopname.xor => word.xor
+    | bopname.sru => word.sru
+    | bopname.slu => word.slu
+    | bopname.srs => word.srs
+    | bopname.lts => fun a b =>
+      if word.lts a b then word.of_Z 1 else word.of_Z 0
+    | bopname.ltu => fun a b =>
+      if word.ltu a b then word.of_Z 1 else word.of_Z 0
+    | bopname.eq => fun a b =>
+      if word.eqb a b then word.of_Z 1 else word.of_Z 0
+    end.
+End binops.
+
 Section semantics.
   Context {pp : unique! parameters}.
+
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
     Fixpoint eval_expr (e : expr) : option word :=
@@ -109,10 +131,9 @@ Module exec. Section WithEnv.
       lf (_ : map.putmany_of_list params args map.empty = Some lf)
       mid (_ : exec fbody t m lf mid)
       (_ : forall t' m' st1, mid t' m' st1 ->
-          exists retvs l',
-            List.option_all (List.map (map.get st1) rets) = Some retvs /\
-            map.putmany_of_list binds retvs l = Some l' /\
-            post t' m' l')
+          exists retvs, List.option_all (List.map (map.get st1) rets) = Some retvs /\
+          exists l', map.putmany_of_list binds retvs l = Some l' /\
+          post t' m' l')
     : exec (cmd.call binds fname arges) t m l post
   | interact binds action arges
              t m l post
@@ -120,7 +141,7 @@ Module exec. Section WithEnv.
       mid (_ : ext_spec t m action args mid)
       (_ : forall new_m resvals, mid new_m resvals ->
           exists l', map.putmany_of_list binds resvals l = Some l' /\
-                     post (cons ((m, action, args), (new_m, resvals)) t) new_m l')
+          post (cons ((m, action, args), (new_m, resvals)) t) new_m l')
     : exec (cmd.interact binds action arges) t m l post
   .
   End WithEnv.

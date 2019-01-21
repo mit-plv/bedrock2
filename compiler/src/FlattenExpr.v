@@ -14,7 +14,6 @@ Require Import bedrock2.Semantics. (* TODO: this should be in bedrock2.Semantics
 Require Import coqutil.Macros.unique.
 Require Import compiler.FlatToRiscvDef. (* TODO: This should be independent of Riscv *)
 Require Import Coq.Bool.Bool.
-Require Import bedrock2.Basic_bopnames.
 Require Import coqutil.Datatypes.PropSet.
 
 
@@ -28,9 +27,8 @@ Section FlattenExpr.
   Definition todo {t: Type} : t. Admitted.
 
   Instance semantics_params : Semantics.parameters := {|
-    Semantics.syntax := Basic_bopnames.make FlatImp.FlatImp.bopname_params;
+    Semantics.syntax := FlatImp.FlatImp.syntax_params;
     Semantics.word := Utility.word;
-    Semantics.interp_binop := Basic_bopnames.interp_binop;
     Semantics.byte := Utility.byte;
     Semantics.env := todo;
     Semantics.funname_eqb := todo;
@@ -53,7 +51,7 @@ Section FlattenExpr.
     map_solver locals_ok.
 
   Ltac set_solver :=
-    set_solver_generic (@varname (@FlatImp.FlatImp.bopname_params p)).
+    set_solver_generic (@varname (@FlatImp.FlatImp.syntax_params p)).
 
   (* returns stmt and var into which result is saved, and new fresh name generator state
      TODO use state monad? *)
@@ -95,27 +93,27 @@ Section FlattenExpr.
         let '(s1, r1, ngs') := flattenExpr ngs e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
         match op with
-        | Basic_bopnames.bopname.add
-        | Basic_bopnames.bopname.sub
-        | Basic_bopnames.bopname.mul
-        | Basic_bopnames.bopname.and
-        | Basic_bopnames.bopname.or
-        | Basic_bopnames.bopname.xor
-        | Basic_bopnames.bopname.sru
-        | Basic_bopnames.bopname.slu
-        | Basic_bopnames.bopname.srs =>
+        | Syntax.bopname.add
+        | Syntax.bopname.sub
+        | Syntax.bopname.mul
+        | Syntax.bopname.and
+        | Syntax.bopname.or
+        | Syntax.bopname.xor
+        | Syntax.bopname.sru
+        | Syntax.bopname.slu
+        | Syntax.bopname.srs =>
             let '(x, ngs''') := genFresh ngs'' in
             (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x op r1 r2)), FlatImp.CondNez x, ngs''')
-        | Basic_bopnames.bopname.lts =>
+        | Syntax.bopname.lts =>
             (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLt r1 r2, ngs'')
-        | Basic_bopnames.bopname.ltu =>
+        | Syntax.bopname.ltu =>
             (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLtu r1 r2, ngs'')
-        | Basic_bopnames.bopname.eq =>
+        | Syntax.bopname.eq =>
             (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BEq r1 r2, ngs'')
         end
     end.
 
-  Definition flattenCall(ngs: NGstate)(binds: list varname)(f: Basic_bopnames.funcname)
+  Definition flattenCall(ngs: NGstate)(binds: list varname)(f: Syntax.funname)
              (args: list Syntax.expr):
     FlatImp.stmt * NGstate :=
     let '(compute_args, argvars, ngs) :=
