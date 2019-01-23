@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all coqutil riscv-coq bedrock2 compiler processor clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_processor clean_manglenames
+.PHONY: update_all clone_all coqutil riscv-coq bedrock2 compiler kami processor clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_manglenames
 
 clone_all:
 	git submodule update --init --recursive
@@ -27,6 +27,12 @@ coqutil:
 
 clean_coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil clean
+
+kami:
+	$(MAKE) -C $(DEPS_DIR)/kami
+
+clean_kami:
+	$(MAKE) -C $(DEPS_DIR)/kami clean
 
 riscv-coq: coqutil
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq all
