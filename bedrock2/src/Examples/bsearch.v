@@ -19,8 +19,17 @@ Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
 
 From coqutil.Tactics Require Import eabstract letexists rdelta.
 
+Ltac seplog :=
+  match goal with
+  | H: _ ?m |- _ ?m =>
+    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+    solve [SeparationLogic.ecancel]
+  end.
+
 Lemma swap_swap_ok : program_logic_goal_for_function! bsearch.
 Proof.
+  assert (map.ok mem) by admit.
+
   bind_body_of_function bsearch. cbv [spec_of_bsearch].
 
   intros.
@@ -47,18 +56,18 @@ Proof.
   { admit. }
   { repeat straightline.
     (* TODO: fix seprewrite to actually rewrite not just factor *)
-    eapply SeparationLogic.Proper_sep_iff1 in H1.
-    3:reflexivity.
-    2:symmetry.
-    2:eapply (array_address_inbounds _ _ (word.of_Z 0) _ _ v0).
-    4:reflexivity.
-    3: {
-      subst v0.
-      cbn [interp_binop].
-      unshelve erewrite (_:forall x y, word.sub (word.add x y) x = y). admit.
-      rewrite word.unsigned_slu, Properties.word.unsigned_sru_nowrap by admit.
-      rewrite Z.shiftl_mul_pow2, Z.shiftr_div_pow2.
-      rewrite !word.unsigned_of_Z.
-      cbn.
-      set ((Naive.unsigned x1 - Naive.unsigned x0) mod 18446744073709551616 / 16)%Z.
+    SeparationLogic.seprewrite_in @array_address_inbounds H2; revgoals.
+    letexists. split.
+    letexists. split. exact eq_refl.
+    letexists. split.
+    eapply load_sep; seplog.
+    cbv [v1]. exact eq_refl.
+
+    repeat straightline.
+    letexists. split.
+    letexists. split.
+    exact eq_refl.
+    letexists. split.
+    exact eq_refl.
+    exact eq_refl.
 Abort All.
