@@ -42,7 +42,7 @@ Section Equiv.
     getRegs := initialRegs;
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
-    getMem := Memory.store_bytes 4 map.empty f.(counter) NOP;
+    getMem := Memory.unchecked_store_bytes 4 map.empty f.(counter) NOP;
     getLog := nil;
   |}.
 
@@ -119,7 +119,7 @@ Section Equiv.
     end.
 
   Lemma loadWord_store_bytes_same: forall m w addr,
-      Memory.loadWord (Memory.store_bytes 4 m addr w) addr = Some w.
+      Memory.loadWord (Memory.unchecked_store_bytes 4 m addr w) addr = Some w.
   Admitted. (* TODO once we have a good map solver and word solver, this should be easy *)
 
   Lemma simulate_step_bw: forall (m m': FakeProcessor),
