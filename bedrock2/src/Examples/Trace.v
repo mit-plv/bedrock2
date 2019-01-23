@@ -207,7 +207,7 @@ Module SpiEth.
       Grab Existential Variables. all: intros; apply True.
     Defined.
 
-    Definition squarer_correct := @Top.squarer_correct squarer_params.
+    Definition squarer_correct := @squarer_correct squarer_params.
     Check squarer_correct.
 
   End WithMem.
@@ -313,7 +313,7 @@ Module Syscalls.
       Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty.
     Defined.
 
-    Definition squarer_correct := @Top.squarer_correct squarer_params.
+    Definition squarer_correct := @squarer_correct squarer_params.
     Check squarer_correct.
 
   End WithMem.
