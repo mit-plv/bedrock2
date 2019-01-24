@@ -60,7 +60,7 @@ Section Array.
     eapply array_index_nat.
   Qed.
 
-  Context (default : T).
+  Context {default : T}.
   Lemma array_index_nat_inbounds xs start n (H : (n < length xs)%nat) :
     iff1 (array start xs)
       ( array start (firstn n xs) * (
