@@ -7,6 +7,7 @@ Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
+Require Import compiler.Basic32Semantics.
 Require Import compiler.util.MyOmega.
 Require Import riscv.util.Monads.
 Require Import compiler.util.Common.
