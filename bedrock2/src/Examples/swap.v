@@ -44,20 +44,10 @@ Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
 
 Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
-  bind_body_of_function swap; cbv [spec_of spec_of_swap].
-  intros.
-  letexists. split. exact eq_refl. (* argument initialization *)
-
-  repeat straightline.
-  eapply Scalars.store_sep; [solve[SeparationLogic.ecancel_assumption]|].
-  repeat straightline.
-  eapply Scalars.store_sep; [solve[SeparationLogic.ecancel_assumption]|].
-  repeat straightline.
-
-  (* final postcondition *)
-  split. exact eq_refl.
-  split. 2:exact eq_refl.
-  SeparationLogic.ecancel_assumption.
+  bind_body_of_function swap; cbv [spec_of spec_of_swap]. intros.
+  (* argument initialization *) letexists. split. exact eq_refl. 
+  (* code *) repeat straightline.
+  (* final postcondition *) eauto.
 Defined.
 
 Lemma swap_swap_ok : program_logic_goal_for_function! swap_swap.
@@ -66,20 +56,16 @@ Proof.
   intros.
   letexists. split. exact eq_refl. (* argument initialization *)
 
-  repeat straightline.
-  straightline_call; [solve[SeparationLogic.ecancel_assumption]|].
-  repeat straightline.
-  letexists; split.
-  { exact eq_refl. }
+  repeat straightline. straightline_call.
+  (* swap precondition *) solve[SeparationLogic.ecancel_assumption].
+  (* swap returns *) repeat straightline. letexists; split. { exact eq_refl. }
 
-  repeat straightline.
-  straightline_call; [solve[SeparationLogic.ecancel_assumption]|].
-  repeat straightline.
-  letexists; split.
-  { exact eq_refl. }
+  repeat straightline. straightline_call.
+  (* swap precondition *) solve[SeparationLogic.ecancel_assumption].
+  (* swap returns *) repeat straightline. letexists; split. { exact eq_refl. }
 
-  repeat straightline.
-  repeat split; assumption.
+  repeat straightline. 
+  eauto.
 Defined.
 
 Lemma link_swap_swap_swap_swap : spec_of_swap_swap (swap_swap::swap::nil).
