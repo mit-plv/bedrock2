@@ -920,7 +920,7 @@ Section FlattenExpr.
 
   Context {varname_eq_dec: DecidableEq varname}. (* TODO *)
 
-  Lemma flattenStmt_correct: forall fuelH sH sL initialM finalH finalM,
+  Lemma flattenStmt_correct_fixpointsemantics: forall fuelH sH sL initialM finalH finalM,
     ExprImp2FlatImp sH = sL ->
     ExprImp.eval_cmd map.empty fuelH map.empty initialM sH = Some (finalH, finalM) ->
     exists fuelL finalL,
@@ -952,5 +952,11 @@ Section FlattenExpr.
     - exists fuelL finalL. apply (conj EvL).
       intros. state_calc.
   Qed.
+
+  Lemma flattenStmt_correct: forall m sH sL post,
+    ExprImp2FlatImp sH = sL ->
+    exec map.empty sH nil m map.empty post ->
+    FlatImp.exec map.empty sL nil m map.empty post.
+  Admitted.
 
 End FlattenExpr.

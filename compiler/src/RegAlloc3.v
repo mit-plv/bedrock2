@@ -102,13 +102,13 @@ End Live.
 
 Section RegAlloc.
 
-  Variable srcvar: Set.
+  Variable srcvar: Type.
   Context {srcvar_eq_dec: DecidableEq srcvar}.
-  Variable impvar: Set.
+  Variable impvar: Type.
   Context {impvar_eq_dec: DecidableEq impvar}.
-  Variable func: Set.
+  Variable func: Type.
   Context {func_eq_dec: DecidableEq func}.
-  Variable act: Set.
+  Variable act: Type.
   Context {act_eq_dec: DecidableEq act}.
 
   Context {mapping: coqutil.Map.Interface.map.map impvar srcvar}.
