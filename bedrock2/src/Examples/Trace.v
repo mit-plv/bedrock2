@@ -12,9 +12,9 @@ Require Import bedrock2.NotationsInConstr.
 
 (* TODO distribute contents of this file into the right places *)
 
-Module Squarer.
+Module IOMacros.
 
-  Class parameters := {
+  Class Interface := {
     semantics_params :> Semantics.parameters;
 
     (* macros to be inlined to read or write a word
@@ -40,15 +40,15 @@ Module Squarer.
           m = m' /\ exists t'', t' = t ++ t'' /\ write_word_trace v t'' /\ l' = l);
   }.
 
-End Squarer.
+End IOMacros.
 
-Section Squarer1.
+Section Squarer.
 
-  Context {p: Squarer.parameters}.
+  Context {ioLib: IOMacros.Interface}.
 
   Definition squarer_trace: trace -> Prop :=
-    kleene (existsl (fun inp => Squarer.read_word_trace inp +++
-                                Squarer.write_word_trace (word.mul inp inp))).
+    kleene (existsl (fun inp => IOMacros.read_word_trace inp +++
+                                IOMacros.write_word_trace (word.mul inp inp))).
 
   Definition squarer: cmd. Admitted.
 
@@ -56,7 +56,7 @@ Section Squarer1.
       exec map.empty squarer nil m l (fun t' m' l' => squarer_trace t').
   Admitted.
 
-End Squarer1.
+End Squarer.
 
 
 (* TODO: on which side of the list do we add new events? *)
@@ -124,7 +124,7 @@ Module SpiEth.
         write_byte b (((m, MMInput, [word.of_Z spi_tx_fifo]), (m, [x])) :: rest).
 
 
-    Instance squarer_syntax_params: Syntax.parameters := {|
+    Instance syntax_params: Syntax.parameters := {|
       Syntax.varname := string;
       Syntax.funname := Empty_set;
       Syntax.actname := MMIOAction;
@@ -134,8 +134,8 @@ Module SpiEth.
     Context {locals: map.map varname word}.
     Context {env: map.map funname (list varname * list varname * cmd)}.
 
-    Instance squarer_semantics_params: Semantics.parameters := {|
-      Semantics.syntax := squarer_syntax_params;
+    Instance semantics_params: Semantics.parameters := {|
+      Semantics.syntax := syntax_params;
       Semantics.width := 32;
       Semantics.word := word;
       Semantics.byte := byte;
@@ -157,22 +157,22 @@ Module SpiEth.
     Local Set Refine Instance Mode.
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
-    Local Coercion var(x : @varname (@syntax squarer_semantics_params)):
-      @expr.expr (@syntax squarer_semantics_params) := Syntax.expr.var x.
+    Local Coercion var(x : @varname (@syntax semantics_params)):
+      @expr.expr (@syntax semantics_params) := Syntax.expr.var x.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
 
     Definition TODO{T: Type}: T. Admitted.
 
-    Instance squarer_params: Squarer.parameters := {|
-      Squarer.semantics_params := squarer_semantics_params;
+    Instance MMIOMacros: IOMacros.Interface := {|
+      IOMacros.semantics_params := semantics_params;
 
       (* TODO these only read a byte rather than a word *)
-      Squarer.read_word_code(x _: varname) := bedrock_func_body:(
+      IOMacros.read_word_code(x _: varname) := bedrock_func_body:(
         x = -1 ;;
         while (var x .& (1 << 31)) {{ cmd.interact [x] MMInput [literal spi_rx] }}
       );
-      Squarer.write_word_code(x tmp: varname) := bedrock_func_body:(
+      IOMacros.write_word_code(x tmp: varname) := bedrock_func_body:(
         cmd.interact [tmp] MMInput [literal spi_tx_fifo] ;;
         while (var tmp .& (1 << 31)) {{ (* high order bit set means fifo is full *)
           cmd.interact [tmp] MMInput [literal spi_tx_fifo]
@@ -180,8 +180,8 @@ Module SpiEth.
         cmd.interact [] MMOutput [literal spi_tx_fifo; var x]
       );
 
-      Squarer.read_word_trace := read_byte;
-      Squarer.write_word_trace := write_byte;
+      IOMacros.read_word_trace := read_byte;
+      IOMacros.write_word_trace := write_byte;
 
     |}.
     - (* read_word_correct: *)
@@ -206,9 +206,6 @@ Module SpiEth.
       apply TODO.
       Grab Existential Variables. all: intros; apply True.
     Defined.
-
-    Definition squarer_correct := @squarer_correct squarer_params.
-    Check squarer_correct.
 
   End WithMem.
 End SpiEth.
@@ -244,7 +241,7 @@ Module Syscalls.
                        (m, [ret1; ret2; err]))].
 
 
-    Instance squarer_syntax_params: Syntax.parameters := {|
+    Instance syntax_params: Syntax.parameters := {|
       Syntax.varname := string;
       Syntax.funname := Empty_set;
       Syntax.actname := SyscallAction;
@@ -254,8 +251,8 @@ Module Syscalls.
     Context {locals: map.map varname word}.
     Context {env: map.map funname (list varname * list varname * cmd)}.
 
-    Instance squarer_semantics_params: Semantics.parameters := {|
-      Semantics.syntax := squarer_syntax_params;
+    Instance semantics_params: Semantics.parameters := {|
+      Semantics.syntax := syntax_params;
       Semantics.width := 32;
       Semantics.word := word;
       Semantics.byte := byte;
@@ -272,26 +269,26 @@ Module Syscalls.
     Local Set Refine Instance Mode.
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
-    Local Coercion var(x : @varname (@syntax squarer_semantics_params)):
-      @expr.expr (@syntax squarer_semantics_params) := Syntax.expr.var x.
+    Local Coercion var(x : @varname (@syntax semantics_params)):
+      @expr.expr (@syntax semantics_params) := Syntax.expr.var x.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
 
     Definition TODO{T: Type}: T. Admitted.
 
-    Instance squarer_params: Squarer.parameters := {|
-      Squarer.semantics_params := squarer_semantics_params;
+    Instance SyscallIOMacros: IOMacros.Interface := {|
+      IOMacros.semantics_params := semantics_params;
 
-      Squarer.read_word_code(x tmp: varname) :=
+      IOMacros.read_word_code(x tmp: varname) :=
         cmd.interact [x; tmp; tmp] Syscall [literal magicValue; literal magicValue;
                                               literal magicValue; literal magicValue];
 
-      Squarer.write_word_code(x tmp: varname) :=
+      IOMacros.write_word_code(x tmp: varname) :=
         cmd.interact [tmp; tmp; tmp] Syscall [var x; literal magicValue;
                                                 literal magicValue; literal magicValue];
 
-      Squarer.read_word_trace := read_word;
-      Squarer.write_word_trace := write_word;
+      IOMacros.read_word_trace := read_word;
+      IOMacros.write_word_trace := write_word;
 
     |}.
     - (* read_word_correct: *)
@@ -313,8 +310,31 @@ Module Syscalls.
       Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty.
     Defined.
 
-    Definition squarer_correct := @squarer_correct squarer_params.
-    Check squarer_correct.
-
   End WithMem.
 End Syscalls.
+
+
+Module MMIOUsage.
+  Section WithParams.
+    Existing Instance SpiEth.syntax_params.
+    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte}.
+    Context {locals: map.map varname word}.
+    Context {env: map.map funname (list varname * list varname * cmd)}.
+
+    Definition squarer_correct := @squarer_correct SpiEth.MMIOMacros.
+    Check squarer_correct.
+  End WithParams.
+End MMIOUsage.
+
+
+Module SyscallsUsage.
+  Section WithParams.
+    Existing Instance Syscalls.syntax_params.
+    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte}.
+    Context {locals: map.map varname word}.
+    Context {env: map.map funname (list varname * list varname * cmd)}.
+
+    Definition squarer_correct := @squarer_correct Syscalls.SyscallIOMacros.
+    Check squarer_correct.
+  End WithParams.
+End SyscallsUsage.
