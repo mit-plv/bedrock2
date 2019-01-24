@@ -17,6 +17,7 @@ Section Scalars.
   Definition scalar sz addr (value:word) : mem -> Prop :=
     littleendian (bytes_per (width:=width) sz) addr (word.unsigned value).
   
+  (* TODO: factor out getmany_sep and putmany_sep *)
   Lemma load_bytes_sep a n bs R m
     (Hsep : sep (array ptsto (word.of_Z 1) a (tuple.to_list bs)) R m)
     : Memory.load_bytes n m a = Some bs.
@@ -33,6 +34,29 @@ Section Scalars.
     refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Hsep); clear Hsep.
     SeparationLogic.ecancel.
   Qed.
+
+  Lemma sep_unchecked_store_bytes a n oldbs bs R m
+    (Hsep : sep (array ptsto (word.of_Z 1) a (tuple.to_list (n:=n) oldbs)) R m)
+    : sep (array ptsto (word.of_Z 1) a (tuple.to_list bs)) R (Memory.unchecked_store_bytes n m a bs).
+  Proof.
+    revert dependent a; revert dependent R; revert dependent m; revert dependent bs; revert dependent oldbs; revert dependent n.
+    induction n; [solve[cbn; intros []; trivial]|].
+    intros [oldb0 oldbs] [b0 bs] m R a Hsep.
+    unshelve epose proof (IHn oldbs bs (map.put m a b0) (sep (ptsto a b0) R) (word.add a (word.of_Z 1)) _) as IHn2; clear IHn; [|clear Hsep].
+    { cbn in Hsep |- *; eapply SeparationLogic.sep_assoc in Hsep.
+      unshelve epose proof sep_put _ _ b0 _ _ _ Hsep as Hsep2; clear Hsep. exact Properties.word.eq_or_neq.
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Hsep2); clear Hsep2.
+      SeparationLogic.ecancel. }
+    cbv [unchecked_store_bytes footprint] in *; cbn.
+    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ IHn2); clear IHn2.
+    SeparationLogic.ecancel.
+  Qed.
+
+  Lemma store_bytes_sep a n oldbs bs R m (post:_->Prop)
+    (Hsep : sep (array ptsto (word.of_Z 1) a (tuple.to_list (n:=n) oldbs)) R m)
+    (Hpost : forall m, sep (array ptsto (word.of_Z 1) a (tuple.to_list bs)) R m -> post m)
+    : exists m1, Memory.store_bytes n m a bs = Some m1 /\ post m1.
+  Proof. cbv [store_bytes]. erewrite load_bytes_sep; eauto using sep_unchecked_store_bytes. Qed.
   
   Lemma combine_split n z :
    LittleEndian.combine n (LittleEndian.split n z) = (z mod 2^(Z.of_nat n*8))%Z.
@@ -79,6 +103,12 @@ Section Scalars.
     destruct (Z.leb_spec0 0 i); cbn; try Btauto.btauto.
     Lia.lia.
   Qed.
+
+  Lemma store_sep sz addr (oldvalue value:word) R m (post:_->Prop)
+    (Hsep : sep (scalar sz addr oldvalue) R m)
+    (Hpost : forall m, sep (scalar sz addr value) R m -> post m)
+    : exists m1, Memory.store sz m addr value = Some m1 /\ post m1.
+  Proof. eapply store_bytes_sep; [eapply Hsep|eapply Hpost]. Qed.
   
   Lemma load_word_sep (sz := Syntax.access_size.word) addr value R m 
     (Hsep : sep (scalar sz addr value) R m)
