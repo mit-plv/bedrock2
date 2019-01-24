@@ -18,6 +18,7 @@ Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
       ).
 
 From coqutil.Tactics Require Import eabstract letexists rdelta.
+From coqutil.Macros Require Import symmetry.
 
 Ltac seplog :=
   match goal with
@@ -83,12 +84,8 @@ Proof.
       intros. destruct H5. split. auto.
 
       subst x8.
-      unshelve eapply (SeparationLogic.Proper_sep_iff1 _ _ _ _ _ (RelationClasses.reflexivity _) _); shelve_unifiable.
-      eapply array_address_inbounds.
-      3: exact eq_refl.
-      3: seplog.
-      admit. admit.
-
+      SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
+      admit. admit. exact eq_refl. exact H6.
     }
     {
       repeat letexists. split. split; cbv [x4 x5 x6]; exact eq_refl.
@@ -106,11 +103,8 @@ Proof.
       intros. destruct H5. split. auto.
 
       subst x8.
-      unshelve eapply (SeparationLogic.Proper_sep_iff1 _ _ _ _ _ (RelationClasses.reflexivity _) _); shelve_unifiable.
-      eapply array_address_inbounds.
-      3: exact eq_refl.
-      3: seplog.
-      admit. admit.
+      SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
+      admit. admit. exact eq_refl. exact H6.
     }
 
     {
@@ -143,63 +137,69 @@ Proof.
 Qed.
 
 (*
-total time:      2.001s
+Warning: Ltac Profiler cannot yet handle backtracking into multi-success tactics; profiling results may be wildly inaccurate. [profile-backtracking,ltac]
+total time:      2.390s
 
  tactic                                   local  total   calls       max 
 ────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
-─straightline --------------------------  28.1%  34.9%     149    0.136s
-─seplog --------------------------------  24.4%  27.7%      10    0.208s
-─SeparationLogic.reify_goal ------------   0.3%  24.0%       6    0.120s
-─SeparationLogic.ecancel --------------- -14.0%  19.6%       4    0.115s
-─unshelve (tactic1) --------------------   3.7%  19.2%      24    0.108s
-─split ---------------------------------  18.0%  18.0%      38    0.177s
-─rewrite (SeparationLogic.sep_assoc A B   16.7%  17.6%      10    0.051s
-─SeparationLogic.find_syntactic_unify --   8.2%  14.6%       0    0.045s
-─syntactic_unify._syntactic_unify ------  14.3%  14.3%    1683    0.033s
-─tac -----------------------------------  10.6%  10.6%      29    0.073s
-─WeakestPrecondition.unfold1_expr_goal -   0.1%   9.2%      16    0.020s
-─WeakestPrecondition.unfold1_expr ------   8.9%   8.9%       0    0.019s
-─change (Lift1Prop.iff1 (seps LHS) (seps   6.1%   6.1%       6    0.034s
-─WeakestPrecondition.unfold1_cmd_goal --   0.0%   4.1%       7    0.009s
-─straightline_cleanup ------------------   3.4%   3.7%     712    0.003s
-─SeparationLogic.seprewrite_in ---------   0.0%   3.6%      63    0.071s
-─SeparationLogic.seprewrite0_in --------   0.1%   3.3%       3    0.034s
-─program_logic_goal_for_function -------   3.2%   3.2%       0    0.064s
-─eabstract (tactic3) -------------------   0.2%   3.2%       3    0.026s
-─WeakestPrecondition.unfold1_cmd -------   3.1%   3.1%       0    0.009s
-─refine (uconstr) ----------------------   2.9%   2.9%      48    0.037s
-─abstract exact_no_check pf ------------   2.8%   2.8%       3    0.023s
-─admit ---------------------------------   0.1%   2.6%       8    0.012s
-─abstract case proof_admitted ----------   2.4%   2.4%       8    0.011s
-─change G ------------------------------   2.3%   2.3%      25    0.023s
-─simple refine (uconstr) ---------------   2.3%   2.3%      10    0.007s
+─unshelve (tactic1) --------------------  27.8%  39.4%      27    0.307s
+─straightline --------------------------  23.5%  29.8%     149    0.134s
+─SeparationLogic.seprewrite_in ---------   0.0%  27.7%     225    0.307s
+─SeparationLogic.reify_goal ------------   0.2%  21.3%       6    0.117s
+─SeparationLogic.ecancel --------------- -10.9%  17.1%       4    0.136s
+─SeparationLogic.seprewrite0_in --------  -2.0%  16.2%       8    0.209s
+─rewrite (SeparationLogic.sep_assoc A B   14.9%  16.0%      10    0.058s
+─split ---------------------------------  15.3%  15.3%      38    0.169s
+─seplog --------------------------------  14.7%  14.7%       6    0.137s
+─eassert (pf : Lift1Prop.iff1 Psep (sep    6.5%  10.9%       2    0.205s
+─SeparationLogic.find_syntactic_unify --   4.7%   8.9%       0    0.037s
+─syntactic_unify._syntactic_unify ------   8.7%   8.7%    1188    0.026s
+─tac -----------------------------------   8.2%   8.2%      27    0.072s
+─WeakestPrecondition.unfold1_expr_goal -   0.1%   6.0%      16    0.016s
+─WeakestPrecondition.unfold1_expr ------   5.8%   5.8%       0    0.016s
+─change (Lift1Prop.iff1 (seps LHS) (seps   5.0%   5.0%       6    0.033s
+─straightline_cleanup ------------------   4.4%   4.6%     712    0.007s
+─eapply (SeparationLogic.Proper_sep_iff1   4.6%   4.6%       3    0.045s
+─WeakestPrecondition.unfold1_cmd_goal --   0.0%   3.7%       7    0.013s
+─eabstract (tactic3) -------------------   0.2%   2.8%       3    0.028s
+─WeakestPrecondition.unfold1_cmd -------   2.8%   2.8%       0    0.013s
+─program_logic_goal_for_function -------   2.6%   2.6%       0    0.062s
+─abstract exact_no_check pf ------------   2.5%   2.5%       3    0.025s
+─refine (uconstr) ----------------------   2.4%   2.4%      46    0.036s
+─exact_sym_under_binders ---------------   2.0%   2.0%       0    0.028s
 
  tactic                                   local  total   calls       max 
 ────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
-─straightline --------------------------  28.1%  34.9%     149    0.136s
- ├─unshelve (tactic1) ------------------   0.1%  14.5%       3    0.108s
- │ ├─tac -------------------------------  10.6%  10.6%       5    0.073s
- │ └─eabstract (tactic3) ---------------   0.2%   3.2%       3    0.026s
- │  └abstract exact_no_check pf --------   2.8%   2.8%       3    0.023s
- ├─WeakestPrecondition.unfold1_expr_goal   0.1%   9.2%      16    0.020s
- │└WeakestPrecondition.unfold1_expr ----   8.9%   8.9%       0    0.019s
- ├─WeakestPrecondition.unfold1_cmd_goal    0.0%   4.1%       7    0.009s
- │└WeakestPrecondition.unfold1_cmd -----   3.1%   3.1%       0    0.009s
- └─straightline_cleanup ----------------   3.4%   3.7%     673    0.003s
-─seplog --------------------------------  24.4%  27.7%      10    0.208s
- ├─SeparationLogic.ecancel ------------- -14.1%  18.4%       3    0.115s
- │ ├─SeparationLogic.reify_goal --------   0.3%  23.5%       5    0.120s
- │ │ ├─rewrite (SeparationLogic.sep_asso  16.7%  17.6%      10    0.051s
- │ │ └─change (Lift1Prop.iff1 (seps LHS)   5.6%   5.6%       5    0.034s
- │ └─SeparationLogic.find_syntactic_unif   4.5%   7.5%       0    0.044s
- │  └syntactic_unify._syntactic_unify --   7.3%   7.4%     870    0.032s
- └─SeparationLogic.find_syntactic_unify    3.7%   6.2%       0    0.045s
-  └syntactic_unify._syntactic_unify ----   6.1%   6.1%     694    0.033s
-─split ---------------------------------  17.6%  17.6%      21    0.177s
-─SeparationLogic.seprewrite_in ---------   0.0%   3.6%      63    0.071s
- ├─unshelve (tactic1) ------------------   3.6%   3.6%      19    0.071s
- └─SeparationLogic.seprewrite0_in ------   0.1%   3.3%       2    0.034s
-─program_logic_goal_for_function -------   3.2%   3.2%       0    0.064s
-─admit ---------------------------------   0.0%   2.3%       6    0.012s
-└abstract case proof_admitted ----------   2.1%   2.1%       6    0.011s
+─straightline --------------------------  23.5%  29.8%     149    0.134s
+ ├─unshelve (tactic1) ------------------   0.1%  11.7%       3    0.111s
+ │ ├─tac -------------------------------   8.2%   8.2%       5    0.072s
+ │ └─eabstract (tactic3) ---------------   0.2%   2.8%       3    0.028s
+ │  └abstract exact_no_check pf --------   2.5%   2.5%       3    0.025s
+ ├─WeakestPrecondition.unfold1_expr_goal   0.1%   6.0%      16    0.016s
+ │└WeakestPrecondition.unfold1_expr ----   5.8%   5.8%       0    0.016s
+ ├─straightline_cleanup ----------------   4.4%   4.6%     673    0.007s
+ └─WeakestPrecondition.unfold1_cmd_goal    0.0%   3.7%       7    0.013s
+  └WeakestPrecondition.unfold1_cmd -----   2.8%   2.8%       0    0.013s
+─SeparationLogic.seprewrite_in ---------   0.0%  27.7%     225    0.307s
+ ├─unshelve (tactic1) ------------------  27.7%  27.7%      24    0.307s
+ │└SeparationLogic.seprewrite0_in ------   0.0%   3.4%       3    0.045s
+ │└eapply (SeparationLogic.Proper_sep_if   3.3%   3.3%       2    0.045s
+ └─SeparationLogic.seprewrite0_in ------  -2.0%  12.8%       5    0.209s
+   ├─eassert (pf : Lift1Prop.iff1 Psep (   6.5%  10.9%       2    0.205s
+   │└SeparationLogic.ecancel ----------- -11.6%   2.5%       1    0.028s
+   │ ├─SeparationLogic.reify_goal ------   0.1%  10.1%       3    0.117s
+   │ │ ├─rewrite (SeparationLogic.sep_as   6.8%   7.3%       4    0.058s
+   │ │ └─change (Lift1Prop.iff1 (seps LH   2.6%   2.6%       3    0.033s
+   │ └─SeparationLogic.find_syntactic_un   1.7%   3.2%       0    0.023s
+   │  └syntactic_unify._syntactic_unify    3.1%   3.1%     399    0.015s
+   └─SeparationLogic.find_syntactic_unif   1.1%   2.3%       0    0.037s
+    └syntactic_unify._syntactic_unify --   2.2%   2.2%     317    0.026s
+─split ---------------------------------  14.7%  14.7%      21    0.169s
+─seplog --------------------------------  14.7%  14.7%       6    0.137s
+└SeparationLogic.ecancel ---------------   0.7%  14.6%       3    0.136s
+└SeparationLogic.reify_goal ------------   0.1%  11.2%       3    0.093s
+ ├─rewrite (SeparationLogic.sep_assoc A    8.1%   8.7%       6    0.046s
+ └─change (Lift1Prop.iff1 (seps LHS) (se   2.4%   2.4%       3    0.024s
+─program_logic_goal_for_function -------   2.6%   2.6%       0    0.062s
+─exact_sym_under_binders ---------------   2.0%   2.0%       0    0.028s
 *)
