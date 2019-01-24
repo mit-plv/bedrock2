@@ -96,7 +96,7 @@ Section Array.
     : iff1 (array start xs)
       ( array start (firstn (Z.to_nat (word.unsigned i)) xs) * (
         element a (hd default (skipn (Z.to_nat (word.unsigned i)) xs)) *
-        array (word.add (word.add start (word.mul i size)) size) (tl (skipn (Z.to_nat (word.unsigned i)) xs)) ) ).
+        array (word.add a size) (tl (skipn (Z.to_nat (word.unsigned i)) xs)) ) ).
   Proof.
     pose proof word.unsigned_range size.
     pose proof word.unsigned_range (word.sub a start).

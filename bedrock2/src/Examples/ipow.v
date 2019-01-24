@@ -50,7 +50,7 @@ Proof.
        (unsigned ret * unsigned x ^ unsigned e < 2^64 ->
         unsigned ret' = unsigned ret * unsigned x ^ unsigned e)))
     (fun n m => 0 <= n < m)
-    _ _ tt _ _ _);
+    _ _ _ _ _);
 
     cbn [HList.hlist.foralls HList.tuple.foralls
          HList.hlist.existss HList.tuple.existss

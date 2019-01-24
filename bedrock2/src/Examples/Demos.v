@@ -122,12 +122,12 @@ Section Demos.
   Definition bsearch: Prog := ("bsearch", ([left; right; target], [left], bedrock_func_body:(
     while (left < right) {{
       mid = left + (((right-left) >> 4) << 3);;
-      tmp = *(uintptr_t*) mid;;
-      if (tmp < target) {{
+      if ((expr.load access_size.word mid) < target) {{
         left = mid + 8
       }} else {{
         right = mid
-      }}
+      }};;
+      cmd.unset mid
     }}
   ))).
 

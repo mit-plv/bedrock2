@@ -42,6 +42,9 @@ Section TailRecrsion.
   Lemma reconstruct_enforce : forall variables ll lm, enforce variables ll lm -> lm = reconstruct variables ll.
   Admitted.
 
+  Lemma hlist_forall_foralls: forall (argts : polymorphic_list.list Type) (P : hlist argts -> Prop), (forall x : hlist argts, P x) -> hlist.foralls P.
+  Proof. induction argts; cbn; auto. Qed.
+
   Import pair.
   Lemma tailrec
     {e c t localsmap} {m : mem}
@@ -52,7 +55,8 @@ Section TailRecrsion.
     {post : _->_->_-> Prop}
     {measure : Type} (spec:_->HList.arrows ghosttypes (_->_->ufunc word (length variables) (Prop*(_->_->ufunc word (length variables) Prop)))) lt
     (Hwf : well_founded lt)
-    (v0 : measure) (g0 : hlist ghosttypes)
+    (v0 : measure)
+    : hlist.foralls (fun (g0 : hlist ghosttypes) => forall
     (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(1))
     (Hbody : forall v, hlist.foralls (fun g => forall t m, tuple.foralls (fun l =>
       @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : Semantics.locals => 
@@ -69,8 +73,9 @@ Section TailRecrsion.
             forall T M, hlist.foralls (fun L => tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L)) end))))))))) /\
       (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m l, tuple.apply (Q0 t m) l -> post t m (reconstruct variables l)end)
-    : cmd rely guarantee progress call (cmd.while e c) t m localsmap post.
+    , cmd rely guarantee progress call (cmd.while e c) t m localsmap post ).
   Proof.
+    eapply hlist_forall_foralls; intros g0 **.
     eexists measure, lt, (fun vi ti mi localsmapi =>
       exists gi li, localsmapi = reconstruct variables li /\
       match tuple.apply (hlist.apply (spec vi) gi ti mi) li with S_ =>
