@@ -3,7 +3,7 @@ From coqutil.Tactics Require Import letexists eabstract rdelta.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.TailRecursion.
-Require Import bedrock2.Map.SeparationLogic.
+Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
 
 Definition spec_of {p:parameters} (procname:Syntax.funname) := list (Syntax.funname * (list Syntax.varname * list Syntax.varname * Syntax.cmd.cmd)) -> Prop.
 Existing Class spec_of.
@@ -123,6 +123,7 @@ Ltac straightline :=
   | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
   | |- @literal _ _ _ => cbv beta delta [literal]
   | |- @get _ _ _ _ => cbv beta delta [get]
+  | |- @load _ _ _ _ _ => cbv beta delta [load]
   | |- TailRecursion.enforce ?names ?values ?map =>
     let values := eval cbv in values in
     change (TailRecursion.enforce names values map);
@@ -137,6 +138,10 @@ Ltac straightline :=
     let x := rdelta x in is_evar x; change (x=y); exact eq_refl
   | |- ?x = ?y =>
     let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl
+  | |- bedrock2.Memory.load Syntax.access_size.word ?m ?a = Some ?ev =>
+    try subst ev; eapply Scalars.load_word_sep; ecancel_assumption
+  | |- bedrock2.Memory.load _ ?m ?a = Some ?ev =>
+    try subst ev; eapply Scalars.load_sep; ecancel_assumption
   | |- exists x, ?P /\ ?Q =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]

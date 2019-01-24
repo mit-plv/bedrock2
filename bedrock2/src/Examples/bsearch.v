@@ -19,32 +19,22 @@ Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
 
 From coqutil.Tactics Require Import eabstract letexists rdelta.
 From coqutil.Macros Require Import symmetry.
+Import PrimitivePair.
 
-Ltac seplog :=
-  match goal with
-  | H: _ ?m |- _ ?m =>
-    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-    solve [SeparationLogic.ecancel]
-  end.
-
+Axiom __mem_ok : map.ok mem. Local Existing Instance __mem_ok.
 Lemma swap_swap_ok : program_logic_goal_for_function! bsearch.
 Proof.
-  assert (map.ok mem) by admit.
-
+  pose proof __mem_ok.
   bind_body_of_function bsearch. cbv [spec_of_bsearch].
 
-  intros.
-  letexists. split. exact eq_refl. (* argument initialization *)
+  intros. letexists. split. exact eq_refl. (* argument initialization *)
 
-  Import Markers.hide.
-  Import PrimitivePair.
   refine (
     tailrec (HList.polymorphic_list.cons _ (HList.polymorphic_list.cons _ HList.polymorphic_list.nil)) ("left"::"right"::"target"::nil)%list%string
         (fun l xs R t m left right target => PrimitivePair.pair.mk
           (sep (array (scalar Syntax.access_size.word) (word.of_Z 8) left xs) R m /\ List.length xs = l)
         (fun        T M LEFT RIGHT TARGET => T = t /\ sep (array (scalar Syntax.access_size.word) (word.of_Z 8) left xs) R M))
         lt _ _ _ _ _ _ _);
-    
     cbn [reconstruct map.putmany_of_list HList.tuple.to_list
          HList.hlist.foralls HList.tuple.foralls
          HList.hlist.existss HList.tuple.existss
@@ -53,53 +43,31 @@ Proof.
          List.repeat Datatypes.length
          HList.polymorphic_list.repeat HList.polymorphic_list.length
          PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+    
   { repeat straightline. }
   { exact lt_wf. }
   { eauto. }
   { repeat straightline.
     2: solve [auto]. (* exiting loop *)
-
     (* loop body *)
-    Arguments array_address_inbounds {_ _ _ _ _ _ _ _ _ _ _ _}.
-    unshelve (
-    let pf := open_constr:(array_address_inbounds (default:=word.of_Z 0) v0 _ _ _ eq_refl) in
-    SeparationLogic.seprewrite_in pf H1);
-    shelve_unifiable.
-    admit. admit.
-
-    letexists. split. repeat straightline.
-    letexists. split. eapply load_sep; seplog.
-    repeat straightline.
-
-    split; intros; repeat straightline.
-    { (* end-of-iteration goals *)
-      repeat letexists. split. repeat straightline.
-      repeat letexists. split; split.
-      { cbn [interp_binop] in *.
-        subst x4; subst x5; subst x6; subst v2.
-        subst x7; subst x8.
-        seplog. }
-      { exact eq_refl. }
-      { left. auto. }
-      repeat straightline_cleanup. split.
-      { auto. }
+    seprewrite @array_address_inbounds.
+    admit. admit. exact eq_refl.
+    (* if expression *)  letexists; split. repeat straightline. (* determines element *)
+    (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
+    { repeat letexists. split. repeat straightline.
+      repeat letexists; repeat split; repeat straightline.
+      { cbn [interp_binop] in *. subst v2; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
+      { left. exact I. }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       admit. admit. exact eq_refl.
-      exact H6. }
-    { (* end-of-iteration goals *)
-      repeat letexists. split. repeat straightline.
-      repeat letexists. split; split.
-      { cbn [interp_binop] in *.
-        subst x4; subst x5; subst x6; subst v1.
-        subst x7; subst x8.
-        seplog. }
-      { exact eq_refl. }
-      { left. auto. }
-      repeat straightline_cleanup. split.
-      { auto. }
+      SeparationLogic.ecancel_assumption. }
+    { repeat letexists. split. repeat straightline.
+      repeat letexists; repeat split; repeat straightline.
+      { cbn [interp_binop] in *. subst v1; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
+      { left. exact I. }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       admit. admit. exact eq_refl.
-      exact H6. } }
+      SeparationLogic.ecancel_assumption. } }
 
   straightline.
   straightline.
@@ -111,11 +79,12 @@ Proof.
   (* Error: Anomaly "Universe Top.370 undefined." Please report at http://coq.inria.fr/bugs/. *)
   straightline.
   repeat straightline.
-  repeat apply conj. (* postcondition *)
+  repeat apply conj; auto; []. (* postcondition *)
+  letexists. split.
+  { exact eq_refl. }
   { auto. }
-  { auto. }
-  { letexists. split.
-    { exact eq_refl. }
-    { auto. } }
-  all:fail "subgoals remaining".
+
+  Unshelve.
+  exact (word.of_Z 0).
+  all:fail "remaining subgoals".
 Admitted.

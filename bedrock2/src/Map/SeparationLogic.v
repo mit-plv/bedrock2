@@ -204,6 +204,16 @@ Ltac ecancel :=
       [exact (RelationClasses.reflexivity _)|]);
   cbn [seps]; try exact (RelationClasses.reflexivity _).
 
+Ltac ecancel_assumption :=
+  multimatch goal with
+  | |- _ ?m =>
+    multimatch goal with
+    | H: _ ?m |- _ =>
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+      solve [ecancel]
+    end
+  end.
+
 Ltac seprewrite0_in Hrw H :=
   let lemma_lhs := lazymatch type of Hrw with @Lift1Prop.iff1 _ ?lhs _ => lhs end in
   let Psep := lazymatch type of H with ?P _ => P end in
