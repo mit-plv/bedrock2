@@ -5,6 +5,7 @@ Require Import coqutil.Decidable.
 Require Import Coq.Lists.List.
 Require Import riscv.Utility.
 Require Import coqutil.Macros.unique.
+Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Solver.
 Require Import compiler.util.Set.
 Require Import compiler.util.Tactics.
@@ -43,6 +44,7 @@ Section TODO.
       extends m2 m1 ->
       m1 = m2. (* requires functional extensionality, or unique internal representation *)
 End TODO.
+*)
 
 Local Notation "'bind_opt' x <- a ; f" :=
   (match a with
@@ -54,18 +56,16 @@ Local Notation "'bind_opt' x <- a ; f" :=
 
 Section Live.
 
-  Context {p: unique! Basic_bopnames.parameters}.
-  Context {varset: SetFunctions varname}.
-  Local Notation vars := (set varname).
+  Context {p: unique! Syntax.parameters}.
+
+  (* we need a computable set of vars *)
+  Context {varset: SetFunctions Syntax.varname}.
+  Local Notation vars := (set Syntax.varname).
 
   (* set of variables which is certainly written while executing s *)
   Fixpoint certainly_written(s: stmt): vars :=
     match s with
-    | SLoad x y    => singleton_set x
-    | SStore x y   => singleton_set x
-    | SLit x v     => singleton_set x
-    | SOp x op y z => singleton_set x
-    | SSet x y     => singleton_set x
+    | SLoad _ x _ | SStore _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ => singleton_set x
     | SIf cond s1 s2 => intersect (certainly_written s1) (certainly_written s2)
     | SLoop s1 cond s2 => certainly_written s1
     | SSeq s1 s2 => union (certainly_written s1) (certainly_written s2)
@@ -84,8 +84,8 @@ Section Live.
   (* set of variables which is live before executing s *)
   Fixpoint live(s: stmt): vars :=
     match s with
-    | SLoad x y    => singleton_set y
-    | SStore x y   => union (singleton_set x) (singleton_set y)
+    | SLoad _ x y  => singleton_set y
+    | SStore _ x y => union (singleton_set x) (singleton_set y)
     | SLit x v     => empty_set
     | SOp x op y z => union (singleton_set y) (singleton_set z)
     | SSet x y     => singleton_set y
@@ -111,31 +111,32 @@ Section RegAlloc.
   Variable act: Set.
   Context {act_eq_dec: DecidableEq act}.
 
-  Context {Map: MapFunctions impvar srcvar}.
-  Notation srcvars := (@set srcvar (@map_range_set _ _ Map)).
-  Notation impvars := (@set impvar (@map_domain_set _ _ Map)).
-  Existing Instance map_domain_set.
-  Existing Instance map_range_set.
+  Context {mapping: coqutil.Map.Interface.map.map impvar srcvar}.
 
-  Instance srcparams: Basic_bopnames.parameters := {|
-    varname := srcvar;
-    funcname := func;
-    actname := act;
+  Context {srcvarset: SetFunctions srcvar}.
+  Context {impvarset: SetFunctions impvar}.
+  Local Notation srcvars := (set Syntax.varname).
+  Local Notation impvars := (set Syntax.varname).
+
+  Instance srcparams: Syntax.parameters := {|
+    Syntax.varname := srcvar;
+    Syntax.funname := func;
+    Syntax.actname := act;
   |}.
 
-  Instance impparams: Basic_bopnames.parameters := {|
-    varname := impvar;
-    funcname := func;
-    actname := act;
+  Instance impparams: Syntax.parameters := {|
+    Syntax.varname := impvar;
+    Syntax.funname := func;
+    Syntax.actname := act;
   |}.
 
   (* annotated statement: each assignment is annotated with impvar which it assigns,
      loop has map invariant *)
   Inductive astmt: Type :=
-    | ASLoad(x: srcvar)(x': impvar)(a: srcvar)
-    | ASStore(a: srcvar)(v: srcvar)
+    | ASLoad(sz: Syntax.access_size.access_size)(x: srcvar)(x': impvar)(a: srcvar)
+    | ASStore(sz: Syntax.access_size.access_size)(a: srcvar)(v: srcvar)
     | ASLit(x: srcvar)(x': impvar)(v: Z)
-    | ASOp(x: srcvar)(x': impvar)(op: bopname)(y z: srcvar)
+    | ASOp(x: srcvar)(x': impvar)(op: Syntax.bopname.bopname)(y z: srcvar)
     | ASSet(x: srcvar)(x': impvar)(y: srcvar)
     | ASIf(cond: bcond)(bThen bElse: astmt)
     | ASLoop(body1: astmt)(cond: bcond)(body2: astmt)
@@ -161,31 +162,33 @@ Section RegAlloc.
     end.
   Abort.
 
-  Definition loop_inv(mappings: map impvar srcvar -> astmt -> map impvar srcvar)
-                     (m: map impvar srcvar)(s1 s2: astmt): map impvar srcvar :=
-    intersect_map m (mappings (mappings m s1) s2).
+  Definition loop_inv(mappings: mapping -> astmt -> mapping)
+                     (m: mapping)(s1 s2: astmt): mapping. Admitted.
+  (*  intersect_map m (mappings (mappings m s1) s2). *)
 
   (* impvar -> srcvar mappings which are guaranteed to hold after running s
      (under-approximation) *)
   Definition mappings :=
-    fix rec(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
+    fix rec(m: mapping)(s: astmt): mapping :=
       match s with
-      | ASLoad x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
+      | ASLoad _ x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
           (* if several impvars store the value of x, they won't all store the value of
              x after the update, but only x' will, because only x' is written in the target
              program, so we first have to remove the others *)
-          put (remove_by_value m x) x' x
-      | ASStore a v => m
+          map.put (* (remove_by_value m x) *) m x' x
+      | ASStore _ a v => m
+      | _ => m (*
       | ASIf cond s1 s2 => intersect_map (rec m s1) (rec m s2)
       | ASLoop s1 cond s2 => rec (loop_inv rec m s1 s2) s1
       | ASSeq s1 s2 => rec (rec m s1) s2
       | ASSkip => m
       | ASCall binds f args => empty_map (* TODO *)
-      | ASInteract binds f args => empty_map (* TODO *)
+      | ASInteract binds f args => empty_map (* TODO *) *)
       end.
 
   Variable dummy_impvar: impvar.
 
+  (*
   Definition start_interval(current: srcvars * impvars * map impvar srcvar)(x: srcvar)
     : srcvars * impvars * map impvar srcvar :=
     let '(o, a, m) := current in
@@ -206,16 +209,18 @@ Section RegAlloc.
     end.
 
   Definition TODO_annotate_bcond(cond: @bcond srcparams): @bcond impparams. Admitted.
+  *)
 
   Fixpoint regalloc
-           (m: map impvar srcvar)(* current mapping *)
+           (m: mapping)          (* current mapping *)
            (s: stmt)             (* current sub-statement *)
            (l: srcvars)          (* variables which have a life after statement s,
                                     but we don't care in what register they end up *)
-           (r: map impvar srcvar)(* requirements on what variables registers should contain
+           (r: mapping)          (* requirements on what variables registers should contain
                                     at the end (i.e variables which have a life after s,
                                     and moreover have to be in a specific register *)
-    : astmt             (* annotated statement *)
+           {struct s}
+    : astmt.                     (* annotated statement *) Admitted. (*
     :=
     (* variables which currently occupy a register (maybe unjustified) *)
     let o_original := range m in
@@ -374,14 +379,16 @@ Section RegAlloc.
         bind_opt x' <- reverse_get m x;
         Some (@CondNez impparams x')
     end.
+  *)
 
   Existing Instance srcparams.
   (* ugly hack to change typeclass precedence, TODO how can we make Coq pick up the right
      instance automatically? *)
 
   Definition checker :=
-    fix rec(m: map impvar srcvar)(s: astmt): option stmt' :=
+    fix rec(m: mapping)(s: astmt): option stmt' :=
       match s with
+(*
       | ASLoad x x' a =>
           bind_opt a' <- reverse_get m a;
           Some (@SLoad impparams x' a')
@@ -398,7 +405,6 @@ Section RegAlloc.
       | ASSet x x' y =>
           bind_opt y' <- reverse_get m y;
           Some (@SSet impparams x' y')
-(*
       | ASIf cond s1 s2 =>
           bind_opt cond' <- reverse_get_cond m cond;
           bind_opt s1' <- rec m s1;
@@ -411,7 +417,6 @@ Section RegAlloc.
           bind_opt s1' <- rec m1 s1;
           bind_opt s2' <- rec m2 s2;
           Some (SLoop s1' cond' s2')
-*)
       | ASSeq s1 s2 =>
           bind_opt s1' <- rec m s1;
           bind_opt s2' <- rec (mappings m s1) s2;
@@ -419,14 +424,15 @@ Section RegAlloc.
       | ASSkip => Some SSkip
       | ASCall binds f args => None (* TODO *)
       | ASInteract binds f args => None (* TODO *)
+*)
       | _ => None (* TODO *)
       end.
 
   Definition erase :=
     fix rec(s: astmt): stmt :=
       match s with
-      | ASLoad x x' a => SLoad x a
-      | ASStore a v => SStore a v
+      | ASLoad sz x x' a => SLoad sz x a
+      | ASStore sz a v => SStore sz a v
       | ASLit x x' v => SLit x v
       | ASOp x x' op y z => SOp x op y z
       | ASSet x x' y => SSet x y
@@ -441,25 +447,42 @@ Section RegAlloc.
       | _ => SSkip
       end.
 
-  Definition register_allocation(s: stmt)(mBegin mEnd: map impvar srcvar): option stmt' :=
+  Definition register_allocation(s: stmt)(mBegin mEnd: mapping): option stmt' :=
     let annotated := regalloc mBegin s empty_set mEnd in
     checker mBegin annotated.
 
   (* claim: for all astmt a, if checker succeeds and returns s', then
      (erase a) behaves the same as s' *)
 
-  Context {mword: Set}.
-  Context {MW: MachineWidth mword}.
-  Context {srcStateMap: MapFunctions srcvar mword}.
-  Context {impStateMap: MapFunctions impvar mword}.
-  Context {srcFuncMap: MapFunctions func (list srcvar * list srcvar * stmt)}.
-  Context {impFuncMap: MapFunctions func (list impvar * list impvar * stmt')}.
+  Context {W: Utility.Words} {mem: map.map word byte}.
+  Context {srcLocals: map.map srcvar word}.
+  Context {impLocals: map.map impvar word}.
+  Context {srcEnv: map.map func (list srcvar * list srcvar * stmt)}.
+  Context {impEnv: map.map func (list impvar * list impvar * stmt')}.
 
-  Definition eval: nat -> map srcvar mword -> mem -> stmt -> option (map srcvar mword * mem)
-    := eval_stmt empty_map.
+  Definition TODO{T: Type}: T. Admitted.
 
-  Definition eval': nat -> map impvar mword -> mem -> stmt' -> option (map impvar mword * mem)
-    := eval_stmt _ _ empty_map.
+  Local Set Refine Instance Mode.
+
+  Instance srcFlatImpParams: FlatImp.parameters := {|
+    FlatImp.syntax_params := srcparams;
+    FlatImp.locals := srcLocals;
+  |}.
+  all: apply TODO.
+  Defined.
+
+  Definition eval (*: nat -> srcLocals -> mem -> stmt -> option (srcLocals * mem)*)
+    := eval_stmt map.empty.
+
+  Instance impFlatImpParams: FlatImp.parameters := {|
+    FlatImp.syntax_params := impparams;
+    FlatImp.locals := impLocals;
+  |}.
+  all: apply TODO.
+  Defined.
+
+  Definition eval' (*: nat -> map impvar mword -> mem -> stmt' -> option (map impvar mword * mem)*)
+    := eval_stmt map.empty.
 
   (*
   Definition states_compat(st: map srcvar mword)(r: map impvar srcvar)(st': map impvar mword) :=
@@ -469,17 +492,18 @@ Section RegAlloc.
       exists (x': impvar), get r x' = Some x /\ get st' x' = Some w.
   *)
 
-  Definition states_compat(st: map srcvar mword)(r: map impvar srcvar)(st': map impvar mword) :=
+  Definition states_compat(st: srcLocals)(r: mapping)(st': impLocals) :=
     forall (x: srcvar) (x': impvar),
-      get r x' = Some x ->
+      map.get r x' = Some x ->
       forall w,
-        get st x = Some w ->
-        get st' x' = Some w.
+        map.get st x = Some w ->
+        map.get st' x' = Some w.
 
+  (*
   Lemma states_compat_put: forall st1 st1' v x x' r,
       ~ x \in (range r) ->
       states_compat st1 r st1' ->
-      states_compat (put st1 x v) (put r x' x) (put st1' x' v).
+      states_compat (map.put st1 x v) (map.put r x' x) (map.put st1' x' v).
   Proof.
     unfold states_compat.
     intros.
@@ -607,13 +631,15 @@ Section RegAlloc.
       loop_inv mappings Inv s1 s2 = Inv.
   Proof using .
   Abort.
+  *)
 
-  Definition precond(m: map impvar srcvar)(s: astmt): map impvar srcvar :=
+  Definition precond(m: mapping)(s: astmt): mapping :=
     match s with
     | ASLoop s1 cond s2 => loop_inv mappings m s1 s2
     | _ => m
     end.
 
+  (*
   Lemma precond_weakens: forall m s,
       extends m (precond m s).
   Proof.
@@ -623,6 +649,7 @@ Section RegAlloc.
   Qed.
 
   Hint Resolve precond_weakens : checker_hints.
+   *)
 
   Lemma checker_correct: forall n r st1 st1' m1 st2 m2 s annotated s',
       eval n st1 m1 s = Some (st2, m2) ->
@@ -632,7 +659,7 @@ Section RegAlloc.
       exists st2',
         eval' n st1' m1 s' = Some (st2', m2) /\
         states_compat st2 (mappings r annotated) st2'.
-  Proof.
+  Proof. Admitted. (*
     induction n; intros; [
       match goal with
       | H: eval 0 _ _ _ = Some _ |- _ => solve [inversion H]
@@ -906,6 +933,6 @@ Section RegAlloc.
     - eauto.
     - eauto.
   Abort.
+  *)
 
 End RegAlloc.
-*)
