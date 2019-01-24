@@ -101,6 +101,15 @@ Proof.
       admit. admit. exact eq_refl.
       exact H6. } }
 
+  straightline.
+  straightline.
+  straightline.
+  straightline.
+  straightline.
+  straightline.
+  (* 8.8> repeat straightline. *)
+  (* Error: Anomaly "Universe Top.370 undefined." Please report at http://coq.inria.fr/bugs/. *)
+  straightline.
   repeat straightline.
   repeat apply conj. (* postcondition *)
   { auto. }
@@ -108,4 +117,5 @@ Proof.
   { letexists. split.
     { exact eq_refl. }
     { auto. } }
+  all:fail "subgoals remaining".
 Admitted.
