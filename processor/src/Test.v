@@ -39,7 +39,7 @@ Section Equiv.
     fun '(Build_FakeProcessor c nc) => Build_FakeProcessor nc (word.add nc (word.of_Z 4)).
 
   Definition from_Fake(f: FakeProcessor): RiscvMachine Register Action := {|
-    getRegs := initialRegs;
+    getRegs := map.empty;
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
     getMem := Memory.unchecked_store_bytes 4 map.empty f.(counter) NOP;

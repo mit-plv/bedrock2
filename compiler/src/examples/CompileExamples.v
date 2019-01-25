@@ -33,8 +33,6 @@ Definition Reg: Set := Z.
 
 Existing Instance DefaultRiscvState.
 
-Existing Instance FlatToRiscv.State_is_RegisterFile.
-
 (*
 Record example := mk_example {
   name: string;

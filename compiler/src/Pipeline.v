@@ -36,7 +36,6 @@ Require Import compiler.SeparationLogic.
 
 Existing Instance riscv.Program.DefaultRiscvState.
 
-Existing Instance FlatToRiscv.State_is_RegisterFile.
 
 Open Scope Z_scope.
 
@@ -268,6 +267,25 @@ Section Pipeline1.
              initialL
              (fun finalL => post finalL.(getLog)).
   Admitted.
+
+
+  Lemma bw_sim: forall sH mH instsL initialL (postH postL: trace -> Prop) imemStart,
+      ExprImp.cmd_size sH < 2 ^ 7 ->
+      enough_registers sH ->
+      exprImp2Riscv sH = instsL ->
+      (GoFlatToRiscv.program imemStart instsL * eq mH)%sep initialL.(getMem) ->
+      Semantics.exec.exec map.empty sH nil mH map.empty (fun t m l => postH t) ->
+      runsTo (mcomp_sat (run1 (B := FlatToRiscvBitWidthSpecifics.BitWidth)))
+             initialL
+             (fun finalL => postL finalL.(getLog)) ->
+      (forall t, postL t -> postH t).
+  Proof.
+    intros.
+    pose proof exprImp2Riscv_correct as P.
+    specialize (P _ _ _ _ _ _ H H0 H1 H2 H3).
+
+  Abort. (* hopefully we won't need this backwards direction *)
+
 
   (*
   (* We could also say something about the memory, but then the statement becomes more complex.

@@ -23,7 +23,7 @@ Local Unset Universe Polymorphism.
 Section Go.
 
   Context {W: Words}.
-  Context {RFF: RegisterFileFunctions Register word}.
+  Context {Registers: map.map Register word}.
   Context {Action: Type}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.

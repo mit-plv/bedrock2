@@ -20,8 +20,8 @@ Require Import riscv.RiscvMachine.
 Require Import riscv.MinimalMMIO. (* not really *)
 Require Import riscv.Words32Naive.
 Require Import riscv.DefaultMemImpl32.
-Require Import compiler.examples.Empty_set_keyed_map.
-Require Import compiler.examples.Z_keyed_map.
+Require Import coqutil.Map.Empty_set_keyed_map.
+Require Import coqutil.Map.Z_keyed_SortedListMap.
 Import ListNotations.
 
 Open Scope ilist_scope.

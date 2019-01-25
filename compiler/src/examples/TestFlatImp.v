@@ -10,8 +10,8 @@ Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
 Require Import riscv.Words32Naive.
 Require Import riscv.DefaultMemImpl32.
-Require Import compiler.examples.Empty_set_keyed_map.
-Require Import compiler.examples.Z_keyed_map.
+Require Import coqutil.Map.Empty_set_keyed_map.
+Require Import coqutil.Map.Z_keyed_SortedListMap.
 
 
 Definition var: Set := Z. (* only inside this test module *)

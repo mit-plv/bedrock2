@@ -48,27 +48,6 @@ Section TODO.
   Axiom put_put_same: forall k v1 v2 m, map.put (map.put m k v1) k v2 = map.put m k v2.
 End TODO.
 
-(* State_is_RegisterFile gets its own section so that destructing Bw later does
-   not lead to ill-typed terms *)
-Section RegisterFile.
-
-  Context {mword: Type}.
-  Context {MW: MachineWidth mword}.
-  Context {M: map.map Register mword}.
-
-  Instance State_is_RegisterFile: RegisterFileFunctions Register mword := {|
-    RegisterFile := M;
-    getReg rf r := match map.get rf r with
-                   | Some v => v
-                   | None => ZToReg 0
-                   end;
-    setReg := map.put;
-    initialRegs := map.empty;
-  |}.
-
-End RegisterFile.
-
-Existing Instance State_is_RegisterFile.
 
 Local Set Refine Instance Mode.
 
@@ -125,7 +104,7 @@ Module Import FlatToRiscv.
       FlatImp.max_ext_call_code_size_nonneg a := TODO;
     |};
 
-    Machine := @RiscvMachine Register W State_is_RegisterFile mem actname;
+    Machine := @RiscvMachine Register W _ mem actname;
 
     compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts
         (argvars resvars: list Register) R,
@@ -150,11 +129,11 @@ Module Import FlatToRiscv.
     go_load: forall sz x a addr v initialL post f,
       valid_register x ->
       valid_register a ->
-      getReg initialL.(getRegs) a = addr ->
+      map.get initialL.(getRegs) a = Some addr ->
       (* (scalar sz addr v * R)%sep initialL.(getMem) -> *)
       Memory.load sz (getMem initialL) addr = Some v ->
       mcomp_sat (f tt)
-                (withRegs (setReg initialL.(getRegs) x v) initialL) post ->
+                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
       mcomp_sat (Bind (execute (compile_load sz x a)) f) initialL post;
 
   }.
@@ -549,10 +528,9 @@ Section FlatToRiscv1.
 
   Ltac rewrite_reg_value :=
     match goal with
-    | |- context [getReg _ _] => idtac
     | |- context [get    _ _] => idtac
     | _ => fail 1 "wrong shape of goal"
-    end;
+    end. (*;
     let G1 := fresh "G1" in
     match goal with
     | G2: get ?st2 ?x = ?v, E: map.extends ?st1 ?st2 |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
@@ -568,23 +546,23 @@ Section FlatToRiscv1.
       end
     end;
     rewrite G1;
-    clear G1.
+    clear G1. *)
 
-  Ltac rewrite_getReg :=
+  Ltac rewrite_getReg := idtac. (*
     match goal with
     | |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
       let gg := constr:(@getReg RF R V TC st1 x) in
       let gg' := eval unfold getReg, State_is_RegisterFile in gg in
           progress change gg with gg'
-    end.
+    end. *)
 
-  Ltac rewrite_setReg :=
+  Ltac rewrite_setReg := idtac. (*
     match goal with
     | |- context [@setReg ?RF ?R ?V ?TC ?st1 ?x ?v] =>
       let gg := constr:(@setReg RF R V TC st1 x v) in
       let gg' := eval unfold setReg, State_is_RegisterFile in gg in
           progress change gg with gg'
-    end.
+    end. *)
 
   Ltac solve_valid_registers :=
     match goal with
@@ -1076,7 +1054,7 @@ Section FlatToRiscv1.
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_register x ->
-      runsTo (withRegs   (setReg initialL.(getRegs) x (ZToReg v))
+      runsTo (withRegs   (map.put initialL.(getRegs) x (ZToReg v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
                          initialL)))
@@ -1193,8 +1171,7 @@ Section FlatToRiscv1.
           end.
         * simpl in H4. destruct_products.
           eapply go_load; try eassumption.
-          { simpl in *. rewrite_match. reflexivity. }
-          { eapply go_step. simpl. reflexivity. }
+          eapply go_step. simpl. reflexivity.
       + apply runsToDone.
         simpl.
         repeat split; try eassumption.

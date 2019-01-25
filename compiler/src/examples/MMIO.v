@@ -399,7 +399,7 @@ Please report at http://coq.inria.fr/bugs/.
         cbv -[Z.lt Z.le]. repeat split; auto; try lia. }
       cbv [Execute.execute ExecuteI.execute].
       rewrite associativity.
-      eapply go_getRegister; [assumption|]. rewrite associativity.
+      eapply go_getRegister; [eassumption..|]. rewrite associativity.
       cbv [getRegs].
       match goal with
       | |- context [?T] =>
@@ -409,13 +409,6 @@ Please report at http://coq.inria.fr/bugs/.
       end.
       {
       rewrite left_identity. rewrite associativity.
-      unfold getReg, State_is_RegisterFile.
-      match goal with
-      | H: ?a = Some ?b |- context [?a'] =>
-        match a' with
-        | map.get _ _ => replace a' with a by reflexivity; rewrite H
-        end
-      end.
       rename r into addr.
       replace (add addr (ZToReg 0)) with addr by apply TODO.
       apply go_loadWord_MMIO.

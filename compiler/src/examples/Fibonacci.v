@@ -36,7 +36,6 @@ Definition Reg: Set := Z.
 
 Existing Instance DefaultRiscvState.
 
-Existing Instance FlatToRiscv.State_is_RegisterFile.
 
 Definition fib_ExprImp(n: Z): cmd := Eval cbv in
   snd (snd (Demos.fibonacci n)).
