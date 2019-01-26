@@ -1,10 +1,8 @@
 Require Import Coq.micromega.Lia.
 Require Import riscv.util.Word.
-Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
-Require Import riscv.util.BitWidth32.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.

@@ -13,7 +13,6 @@ Require Import riscv.Run.
 Require Import riscv.Execute.
 Require Import riscv.proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.FlatToRiscvBitWidthSpecifics.
 Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.
 
@@ -35,7 +34,7 @@ Section Go.
   Context {RVM: RiscvProgram M word}.
   Context {RVS: @RiscvState M word _ _ RVM}.
   Context {RVAX: AxiomaticRiscv Action M}.
-  Context {BWS: FlatToRiscvBitWidthSpecifics word}.
+  Variable iset: InstructionSet.
 
   Add Ring wring: (@word.ring_theory width word word_ok).
 
@@ -178,9 +177,9 @@ Section Go.
   Lemma go_fetch_inst: forall {inst initialL pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
       (program pc0 [inst] * R)%sep initialL.(getMem) ->
-      verify inst (@RV_wXLEN_IM (@BitWidth _ _ _ BWS)) ->
+      verify inst iset ->
       mcomp_sat (Bind (execute inst) (fun _ => step)) initialL post ->
-      mcomp_sat (run1 (B := BitWidth)) initialL post.
+      mcomp_sat (run1 iset) initialL post.
   Proof.
     intros. subst.
     unfold run1.

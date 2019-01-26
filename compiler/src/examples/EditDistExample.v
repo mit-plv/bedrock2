@@ -1,6 +1,5 @@
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.ExprImp.
-Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -15,7 +14,6 @@ Require Import compiler.examples.Fibonacci.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 Require Import compiler.NameGen.
-Require Import riscv.util.BitWidth32.
 
 
 Module ExampleSrc.

@@ -18,7 +18,6 @@ Require Import Coq.micromega.Lia.
 Require Export bbv.DepEqNat.
 Require Export compiler.NameGen.
 Require Export compiler.util.Common.
-Require Export riscv.util.BitWidths.
 Require Export coqutil.Decidable.
 Require Export riscv.Encode.
 Require Export riscv.AxiomaticRiscv.
@@ -63,7 +62,6 @@ Module Import Pipeline.
     RVM :> RiscvProgram M word;
     RVS :> @RiscvState M word _ _ RVM;
     RVAX :> AxiomaticRiscv actname M;
-    BWS :> FlatToRiscvBitWidthSpecifics.FlatToRiscvBitWidthSpecifics word;
   }.
 End Pipeline.
 
@@ -74,6 +72,7 @@ Section Pipeline1.
 
   Definition funname := Empty_set.
   Local Notation RiscvMachine := (RiscvMachine Register actname).
+  Definition iset := if width =? 32 then RV32IM else RV64IM.
 
   Instance syntax_params: Syntax.parameters := {|
     Syntax.varname := varname;
@@ -132,7 +131,6 @@ Section Pipeline1.
     FlatToRiscv.FlatToRiscv.mem := mem;
     FlatToRiscv.FlatToRiscv.mem_ok := TODO;
     FlatToRiscv.FlatToRiscv.actname_eq_dec := actname_eq_dec;
-    FlatToRiscv.FlatToRiscv.BWS := BWS;
     FlatToRiscv.FlatToRiscv.M := M;
     FlatToRiscv.FlatToRiscv.MM := MM;
     FlatToRiscv.FlatToRiscv.RVM := RVM;
@@ -249,7 +247,7 @@ Section Pipeline1.
       exprImp2Riscv sH = instsL ->
       (GoFlatToRiscv.program imemStart instsL * eq mH)%sep initialL.(getMem) ->
       Semantics.exec.exec map.empty sH nil mH map.empty postH ->
-      runsTo (mcomp_sat (run1 (B := FlatToRiscvBitWidthSpecifics.BitWidth)))
+      runsTo (mcomp_sat (run1 iset))
              initialL
              (fun finalL =>
                 exists finalMH,
@@ -263,7 +261,7 @@ Section Pipeline1.
       exprImp2Riscv sH = instsL ->
       (GoFlatToRiscv.program imemStart instsL * eq mH)%sep initialL.(getMem) ->
       Semantics.exec.exec map.empty sH nil mH map.empty (fun t m l => post t) ->
-      runsTo (mcomp_sat (run1 (B := FlatToRiscvBitWidthSpecifics.BitWidth)))
+      runsTo (mcomp_sat (run1 iset))
              initialL
              (fun finalL => post finalL.(getLog)).
   Admitted.
@@ -275,7 +273,7 @@ Section Pipeline1.
       exprImp2Riscv sH = instsL ->
       (GoFlatToRiscv.program imemStart instsL * eq mH)%sep initialL.(getMem) ->
       Semantics.exec.exec map.empty sH nil mH map.empty (fun t m l => postH t) ->
-      runsTo (mcomp_sat (run1 (B := FlatToRiscvBitWidthSpecifics.BitWidth)))
+      runsTo (mcomp_sat (run1 iset))
              initialL
              (fun finalL => postL finalL.(getLog)) ->
       (forall t, postL t -> postH t).

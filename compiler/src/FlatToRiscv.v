@@ -15,7 +15,6 @@ Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
 Require Import riscv.util.ListLib.
-Require Export compiler.FlatToRiscvBitWidthSpecifics.
 Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
@@ -67,7 +66,7 @@ Module Import FlatToRiscv.
     mem_ok :> map.ok mem;
     actname_eq_dec :> DecidableEq actname;
 
-    BWS :> FlatToRiscvBitWidthSpecifics word;
+    iset := if width =? 32 then RV32IM else RV64IM;
 
     M: Type -> Type;
     MM :> Monad M;
@@ -116,7 +115,7 @@ Module Import FlatToRiscv.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       exec map.empty (@SInteract (@FlatImp.syntax_params FlatImp_params) resvars action argvars)
            initialL.(getLog) initialL.(getMem) initialL.(getRegs) postH ->
-      runsTo (mcomp_sat (run1 (B := BitWidth))) initialL
+      runsTo (mcomp_sat (run1 iset)) initialL
              (fun finalL =>
                   postH finalL.(getLog) finalL.(getMem) finalL.(getRegs) /\
                   finalL.(getPc) = newPc /\
@@ -303,13 +302,11 @@ Section FlatToRiscv1.
     nat_div_mod_to_quot_rem;
     nia *).
 
-  Definition run1: M unit := run1 (B := BitWidth).
-
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
-    runsTo (mcomp_sat run1).
+    runsTo (mcomp_sat (run1 iset)).
 
   Lemma one_step: forall initialL P,
-      mcomp_sat run1 initialL P ->
+      mcomp_sat (run1 iset) initialL P ->
       runsTo initialL P.
   Proof.
     intros.
@@ -319,7 +316,7 @@ Section FlatToRiscv1.
   Qed.
 
   Lemma det_step: forall initialL midL P,
-      mcomp_sat run1 initialL (eq midL) ->
+      mcomp_sat (run1 iset) initialL (eq midL) ->
       runsTo midL P ->
       runsTo initialL P.
   Proof.
@@ -1102,6 +1099,11 @@ Section FlatToRiscv1.
   Proof.
   Admitted.
 
+  Lemma doesSupportM: supportsM iset = true.
+  Proof.
+    unfold iset. destruct_one_match; reflexivity.
+  Qed.
+
   (* note: before we can apply this lemma, we have to extend the FlatImp execution from a
      high-level memory to the low-level memory (which adds the instruction memory and
      possibly more later).
@@ -1130,10 +1132,11 @@ Section FlatToRiscv1.
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
   Proof.
+    pose proof compile_stmt_emits_valid.
     induction 1; intros;
       lazymatch goal with
       | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
-        pose proof (compile_stmt_emits_valid (Bw := BitWidth) H1 H2)
+        pose proof (compile_stmt_emits_valid _ doesSupportM H1 H2)
       end;
       repeat match goal with
              | x := _ |- _ => subst x
@@ -1169,14 +1172,14 @@ Section FlatToRiscv1.
           match goal with
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
-        * simpl in H4. destruct_products.
+        * simpl in H5. destruct_products.
           eapply go_load; try eassumption.
           eapply go_step. simpl. reflexivity.
       + apply runsToDone.
         simpl.
         repeat split; try eassumption.
         Fail rewrite H10. (* TODO why does rewrite fail here? *)
-        etransitivity; [exact H10|].
+        etransitivity; [exact H11|].
         (* TODO make solve_word_eq work again *)
         repeat (autorewrite with rew_Zlength; simpl).
         f_equal.
@@ -1184,23 +1187,18 @@ Section FlatToRiscv1.
         rewrite <- word.ring_morph.(morph_mul).
         reflexivity.
 
-(*
-        do 2 eexists.
-        repeat match goal with
-               | |- _ /\ _ => split
-               end;
-          try eassumption.
-
     - (* SStore *)
-      clear IHfuelH.
-      eapply runsToStep; simpl in *; subst *.
-      + fetch_inst.
-        erewrite execute_store; [|eassumption..].
-        simpl_RiscvMachine_get_set.
-        rewrite execState_step.
-        simpl_RiscvMachine_get_set.
-        reflexivity.
-      + run1done.
+      subst.
+      eapply det_step.
+      + eapply go_fetch_inst.
+        * reflexivity.
+        * seplog.
+        * unfold valid_instructions in *.
+          match goal with
+          | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
+          end.
+        * admit.
+      + (* run1done.
         apply store_preserves_containsProgram.
         * solve_containsProgram.
         * eapply mem_inaccessible_write; eassumption.

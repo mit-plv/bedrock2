@@ -3,7 +3,6 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Program.Tactics.
 Require Import bbv.DepEqNat.
 Require Import lib.LibTacticsMin.
-Require Import riscv.util.BitWidths.
 Require Import riscv.Utility.
 Require Export bedrock2.Syntax.
 Require Export bedrock2.Semantics.

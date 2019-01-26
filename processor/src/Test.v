@@ -15,7 +15,6 @@ Require Import riscv.PseudoInstructions.
 Require Import riscv.proofs.EncodeBound.
 Require Import riscv.proofs.DecodeEncode.
 Require Import riscv.Run.
-Require Import riscv.util.BitWidths.
 Require Import riscv.MkMachineWidth.
 Require Import riscv.util.Monads.
 
@@ -51,7 +50,7 @@ Section Equiv.
     nextCounter := m.(getNextPc);
   |}.
 
-  Definition BW: BitWidths := if width =? 32 then BW32 else BW64.
+  Definition iset: InstructionSet := if width =? 32 then RV32IM else RV64IM.
 
   Arguments Memory.unchecked_store_bytes: simpl never.
 
@@ -76,7 +75,7 @@ Section Equiv.
           machine1.(getNextPc) = machine2.(getNextPc) ->
           post machine2) ->
       (* end hypotheses to be deleted *)
-      mcomp_sat (run1 (B := BW)) initial (fun _ => post) ->
+      mcomp_sat (run1 iset) initial (fun _ => post) ->
       post (from_Fake (fakeStep (to_Fake initial))).
   Proof.
     intros *. intros AllNOPs postOnlyLooksAtPc H.
@@ -124,7 +123,7 @@ Section Equiv.
 
   Lemma simulate_step_bw: forall (m m': FakeProcessor),
       fakeStep m = m' ->
-      mcomp_sat (run1 (B := BW)) (from_Fake m) (fun _ final => to_Fake final = m').
+      mcomp_sat (run1 iset) (from_Fake m) (fun _ final => to_Fake final = m').
   Proof.
     intros. subst m'. destruct m. unfold from_Fake, to_Fake, fakeStep, run1.
     apply spec_Bind.
@@ -168,7 +167,7 @@ Section Equiv.
 
   Lemma step_equiv_too_weak: forall (m m': FakeProcessor),
       fakeStep m = m' <->
-      mcomp_sat (run1 (B := BW)) (from_Fake m) (fun _ final => to_Fake final = m').
+      mcomp_sat (run1 iset) (from_Fake m) (fun _ final => to_Fake final = m').
   Proof.
     intros. split.
     - apply simulate_step_bw.
@@ -209,7 +208,7 @@ Section Equiv.
   Lemma step_equiv: forall (initial: RiscvMachine Register Action)
                            (post: RiscvMachine Register Action -> Prop),
       post (from_Fake (fakeStep (to_Fake initial))) <->
-      mcomp_sat (run1 (B := BW)) initial (fun _ => post).
+      mcomp_sat (run1 iset) initial (fun _ => post).
   Proof.
     intros. split; intros.
     - pose proof (simulate_step_bw (to_Fake initial)) as P.

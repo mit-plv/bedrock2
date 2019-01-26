@@ -1,6 +1,5 @@
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.Word.
-Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
@@ -10,8 +9,8 @@ Require Import compiler.ExprImp.
 Require Import bedrock2.ZNamesSyntax.
 Require Import riscv.Words32Naive.
 Require Import riscv.DefaultMemImpl32.
-Require Import compiler.examples.Empty_set_keyed_map.
-Require Import compiler.examples.Z_keyed_map.
+Require Import coqutil.Map.Empty_set_keyed_map.
+Require Import coqutil.Map.Z_keyed_SortedListMap.
 
 
 Instance myparams: Syntax.parameters := {|

@@ -1,8 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import riscv.util.Word.
-Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
-Require Import riscv.util.BitWidth32.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.util.List_Set.
@@ -15,7 +13,6 @@ Require Import riscv.InstructionCoercions.
 Require Import riscv.Program.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscv.
-Require Import compiler.FlatToRiscv32Specifics.
 Require Import riscv.RiscvMachine.
 Require Import riscv.MinimalMMIO. (* not really *)
 Require Import riscv.Words32Naive.

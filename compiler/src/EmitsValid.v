@@ -4,7 +4,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import riscv.Decode.
 Require Import riscv.Encode.
 Require Import riscv.util.ZBitOps.
-Require Import riscv.util.BitWidths.
 Require Import riscv.Run.
 Require Import riscv.Program.
 Require Import riscv.AxiomaticRiscv.
@@ -266,10 +265,10 @@ Ltac lia' := unify_universes_for_lia; lia.
 
 Section EmitsValid.
 
-  Context {Bw: BitWidths}.
+  Context (iset: InstructionSet).
 
   Definition valid_instructions(prog: list Instruction): Prop :=
-    forall instr, In instr prog -> verify instr RV_wXLEN_IM.
+    forall instr, In instr prog -> verify instr iset.
 
   Context {compilation_params: FlatToRiscvDef.parameters}.
 
@@ -279,9 +278,10 @@ Section EmitsValid.
   Proof.
     unfold valid_instructions.
     intros.
-    unfold compile_lit, compile_lit_rec, RV_wXLEN_IM in *.
+    unfold compile_lit, compile_lit_rec in *.
     simpl in *.
-    intuition (
+    repeat destruct H0 as [? | H0];
+        try contradiction;
         subst instr;
         destruct bitwidth; inversions H; unfold verify; simpl;
         autounfold with unf_verify unf_encode_consts;
@@ -291,10 +291,13 @@ Section EmitsValid.
                  unique pose proof (@bitSlice_bounds w start eend)
                end;
         simpl_pow2;
-        lia).
+        intuition try lia;
+        destruct iset;
+        try lia.
   Qed.
 
   Lemma compile_op_emits_valid: forall x op y z,
+      supportsM iset = true ->
       valid_register x ->
       valid_register y ->
       valid_register z ->
@@ -302,11 +305,9 @@ Section EmitsValid.
   Proof.
     unfold valid_instructions.
     intros.
-    unfold RV_wXLEN_IM in *.
-    destruct op; simpl in *;
-      intuition (
-          subst instr;
-          destruct bitwidth; inversions H; unfold verify; simpl;
+    destruct op; simpl in *; (repeat destruct H3; try contradiction);
+          inversions H; unfold verify; simpl;
+          unfold supportsM in *;
           autounfold with unf_verify unf_encode_consts;
           unfold Register0;
           repeat match goal with
@@ -315,15 +316,17 @@ Section EmitsValid.
                  end;
           simpl_pow2;
           unfold valid_register in *;
+          try solve [constructor];
           try lia;
-          (split; [lia|auto])).
+          try (split; [lia|auto]);
+          destruct iset; auto; try discriminate.
   Qed.
 
   Lemma compile_bcond_by_inverting_emits_valid: forall cond amt,
       valid_registers_bcond cond ->
       - 2 ^ 12 <= amt < 2 ^ 12 ->
       amt mod 2 = 0 ->
-      verify (compile_bcond_by_inverting cond amt) RV_wXLEN_IM.
+      verify (compile_bcond_by_inverting cond amt) iset.
   Proof.
     unfold valid_registers_bcond, valid_register.
     intros.
@@ -377,6 +380,7 @@ Section EmitsValid.
   Qed.
 
   Lemma compile_stmt_emits_valid: forall s,
+      supportsM iset = true ->
       valid_registers s ->
       stmt_not_too_big s ->
       valid_instructions (compile_stmt s).
@@ -408,8 +412,9 @@ Section EmitsValid.
         | match goal with
           | H: _ |- _ => solve [apply H; (lia || auto)]
           end
-        | unfold verify, RV_wXLEN_IM, bitwidth in *;
-          destruct Bw; simpl in *; intros;
+        | unfold verify in *;
+          destruct iset;
+          simpl in *; intros;
           intuition subst; simpl in *;
           autounfold with unf_encode_consts unf_verify;
           repeat match goal with

@@ -1,7 +1,6 @@
 Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import lib.LibTacticsMin.
-Require Import riscv.util.BitWidths.
 Require Import riscv.util.ListLib.
 Require Import bedrock2.Semantics.
 Require Import riscv.Utility.

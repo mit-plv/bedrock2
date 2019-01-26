@@ -2,7 +2,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Macros.unique.
 Require Import riscv.util.Word.
-Require Import riscv.util.BitWidths.
 Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
 Require Import riscv.util.Monads.
@@ -105,7 +104,6 @@ Module Import MMIO.
     W :> Words;
     mem :> map.map word byte;
     mem_ok :> map.ok mem;
-    BWS :> FlatToRiscvBitWidthSpecifics word;
     locals :> map.map var word;
     locals_ok :> map.ok locals;
     env :> map.map func (list var * list var * Syntax.cmd.cmd);
@@ -330,7 +328,6 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
   FlatToRiscv.mem := (@mem p);
   FlatToRiscv.mem_ok := mem_ok;
   FlatToRiscv.actname_eq_dec := _;
-  FlatToRiscv.BWS := BWS;
 (*  FlatToRiscv.M := OStateND (RiscvMachine Register (Naive.word 32) MMIOAction);*)
   FlatToRiscv.MM := OStateND_Monad _;
   FlatToRiscv.RVM := IsRiscvMachineL;

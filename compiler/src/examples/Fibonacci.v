@@ -12,13 +12,10 @@ Require Import compiler.util.MyOmega.
 Require Import riscv.util.Monads.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
-Require Import riscv.util.BitWidths.
 Require        riscv.InstructionNotations.
 Require Import riscv.MinimalLogging.
 Require Import riscv.Utility.
 Require Import riscv.Encode.
-Require Import riscv.util.BitWidth32.
-Require Import compiler.FlatToRiscv32Specifics.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
