@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import bbv.HexNotationZ.
 Require Import Coq.Strings.String.
@@ -30,11 +31,17 @@ Module IOMacros.
        several events if we have to poll a "ready to accept next word" flag before writing *)
     write_word_trace: word -> trace -> Prop;
 
+    (* the IOMacros module is allowed to reserve part of the address space,
+       eg for MMIO, or to communicate with the kernel *)
+    is_reserved_addr: word -> Prop;
+
     read_word_correct: forall t m l x tmp,
+        (forall a, is_reserved_addr a -> map.get m a = None) ->
         exec map.empty (read_word_code x tmp) t m l (fun t' m' l' =>
           m = m' /\ exists t'' v, t' = t ++ t'' /\ read_word_trace v t'' /\ l' = map.put l x v);
 
     write_word_correct: forall t m l x tmp v,
+        (forall a, is_reserved_addr a -> map.get m a = None) ->
         map.get l x = Some v ->
         exec map.empty (write_word_code x tmp) t m l (fun t' m' l' =>
           m = m' /\ exists t'', t' = t ++ t'' /\ write_word_trace v t'' /\ l' = l);
@@ -183,6 +190,7 @@ Module SpiEth.
       IOMacros.read_word_trace := read_byte;
       IOMacros.write_word_trace := write_byte;
 
+      IOMacros.is_reserved_addr := isMMIOAddr;
     |}.
     - (* read_word_correct: *)
       intros.
@@ -198,8 +206,11 @@ Module SpiEth.
         - simpl. reflexivity.
         - simpl. repeat split.
           + unfold isMMIOAddr. auto.
-          + (* TODO interesting: How to know that memory is undefined at spi_tx_fifo? *)
-            apply TODO.
+          + (* Interesting: How to know that memory is undefined at spi_tx_fifo? *)
+            apply load_None; [lia|].
+            apply H.
+            unfold isMMIOAddr.
+            auto.
           + apply TODO.
         - apply TODO.
       }
@@ -290,6 +301,8 @@ Module Syscalls.
       IOMacros.read_word_trace := read_word;
       IOMacros.write_word_trace := write_word;
 
+      (* this says "no reserved memory addresses", but probably there are (TODO) *)
+      IOMacros.is_reserved_addr addr := False;
     |}.
     - (* read_word_correct: *)
       intros.

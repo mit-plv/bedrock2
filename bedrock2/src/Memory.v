@@ -1,3 +1,5 @@
+Require Import Coq.ZArith.ZArith.
+Require Import Coq.micromega.Lia.
 Require Coq.Lists.List.
 Require Import coqutil.sanity.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.Datatypes.List.
@@ -5,6 +7,7 @@ Require Import coqutil.Map.Interface.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
 Require Import bedrock2.Notations bedrock2.Syntax.
 
+Open Scope Z_scope.
 
 Section Memory.
   Context {byte: word 8} {width: Z} {word: word width} {mem: map.map word byte}.
@@ -38,5 +41,29 @@ Section Memory.
 
   Definition store(sz: access_size)(m: mem)(a: word)(v: word): option mem :=
     store_bytes (bytes_per sz) m a (LittleEndian.split _ (word.unsigned v)).
+
+  Lemma load_None: forall sz m a,
+      8 <= width ->
+      map.get m a = None ->
+      load sz m a = None.
+  Proof.
+    intros.
+    destruct sz;
+      try solve [
+            cbv [load load_bytes map.getmany_of_tuple footprint
+                 tuple.option_all tuple.map tuple.unfoldn bytes_per];
+            rewrite H0; reflexivity].
+    cbv [load load_bytes map.getmany_of_tuple footprint bytes_per].
+    destruct (Z.to_nat ((width + 7) / 8)) eqn: E.
+    - exfalso.
+      assert (0 < (width + 7) / 8) as A. {
+        apply Z.div_str_pos. lia.
+      }
+      change O with (Z.to_nat 0) in E.
+      apply Z2Nat.inj in E; lia.
+    - cbv [tuple.option_all tuple.map tuple.unfoldn].
+      rewrite H0.
+      reflexivity.
+  Qed.
 
 End Memory.
