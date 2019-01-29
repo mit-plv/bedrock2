@@ -145,8 +145,6 @@ Instance myFlatImpParams: FlatImp.parameters := {|
 
 Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
   FlatToRiscvDef.actname := MMIOAction;
-  FlatToRiscvDef.compile_load sz x y := Lw x y 0; (* TODO respect access_size! *)
-  FlatToRiscvDef.compile_store sz x y := Sw x y 0; (* TODO respect access_size! *)
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
   FlatToRiscvDef.max_ext_call_code_size _ := 1;
 |}).
@@ -212,7 +210,7 @@ Definition squarer: stmt :=
                (SSeq (SOp _s Syntax.bopname.mul _i _i)
                      (SStore Syntax.access_size.four _addr _s)))).
 
-Definition compiled: list Instruction := Eval cbv in compile_stmt squarer.
+Definition compiled: list Instruction := Eval cbv in compile_stmt RV32IM squarer.
 
 Print compiled.
 
@@ -335,37 +333,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
   FlatToRiscv.RVAX := MinimalMMIOSatisfiesAxioms;
   FlatToRiscv.ext_spec := ext_spec;
 |}.
-- intros. simpl. unfold default_translate.
-  unfold ZToReg, reg_eqb, remu, regToZ_unsigned, MachineWidth_XLEN in *.
-  destruct_one_match.
-  + (* TODO this should be just "word_solver" *)
-    exfalso. apply Bool.negb_true_iff in E.
-    apply word.eqb_false in E.
-    apply E; clear E.
-    apply word.unsigned_inj.
-    assert (4 mod 2 ^ width = 4) as F by apply TODO.
-    rewrite word.unsigned_modu; rewrite word.unsigned_of_Z; rewrite F; [|lia].
-    rewrite H.
-    rewrite word.unsigned_of_Z.
-    reflexivity.
-  + reflexivity.
-- intros. simpl. unfold default_translate.
-  (*
-  rewrite remu_def.
-  rewrite Z.rem_mod_nonneg.
-  + change (regToZ_unsigned (ZToWord 32 8)) with 8. rewrite H. reflexivity.
-  + pose proof (regToZ_unsigned_bounds a). omega.
-  + reflexivity.
-  *)
-  apply TODO.
-- intros. simpl. unfold compile_ext_call.
-  (*
-Error: Anomaly "File "kernel/cClosure.ml", line 829, characters 9-15: Assertion failed."
-Please report at http://coq.inria.fr/bugs/.
-
-  repeat destruct_one_match; rewrite? Zlength_cons; rewrite? Zlength_nil; cbv; congruence.
-   *)
-  apply TODO.
+- apply TODO.
 - apply TODO.
 - intros initialL action.
   destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].

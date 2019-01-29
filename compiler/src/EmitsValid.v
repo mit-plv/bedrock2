@@ -340,17 +340,39 @@ Section EmitsValid.
     intuition lia.
   Qed.
 
-  (* TODO *)
-  Axiom compile_load_emits_valid: forall x y sz,
+  Lemma compile_load_emits_valid: forall x y sz,
       valid_register x ->
       valid_register y ->
-      valid_instructions [compile_load sz x y].
+      valid_instructions [compile_load iset sz x y 0].
+  Proof.
+    intros.
+    destruct sz; destruct iset eqn: E; unfold valid_instructions, valid_register in *; simpl;
+      intros;
+      (destruct H1; [|contradiction]);
+      subst instr;
+      unfold verify;
+      simpl;
+      autounfold with unf_encode_consts unf_verify;
+      unfold Register0 in *;
+      intuition (try lia).
+  Qed.
 
-  (* TODO *)
-  Axiom compile_store_emits_valid: forall x y sz,
+  Lemma compile_store_emits_valid: forall x y sz,
       valid_register x ->
       valid_register y ->
-      valid_instructions [compile_store sz x y].
+      valid_instructions [compile_store iset sz x y 0].
+  Proof.
+    intros.
+    destruct sz; destruct iset eqn: E; unfold valid_instructions, valid_register in *; simpl;
+      intros;
+      (destruct H1; [|contradiction]);
+      subst instr;
+      unfold verify;
+      simpl;
+      autounfold with unf_encode_consts unf_verify;
+      unfold Register0 in *;
+      intuition (try lia).
+  Qed.
 
   (* TODO *)
   Axiom compile_ext_call_emits_valid: forall binds a args,
@@ -366,7 +388,7 @@ Section EmitsValid.
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Lemma compile_stmt_size: forall s,
-    Zlength (compile_stmt s) <= 2 * (stmt_size s).
+    Zlength (compile_stmt iset s) <= 2 * (stmt_size s).
   Proof.
     induction s; simpl; try destruct op; try solve [destruct f]; simpl;
     repeat (autorewrite with rew_Zlength || simpl in * || unfold compile_lit); try lia;
@@ -383,7 +405,7 @@ Section EmitsValid.
       supportsM iset = true ->
       valid_registers s ->
       stmt_not_too_big s ->
-      valid_instructions (compile_stmt s).
+      valid_instructions (compile_stmt iset s).
   Proof.
     induction s; intros; simpl in *; intuition (
       auto using compile_load_emits_valid,

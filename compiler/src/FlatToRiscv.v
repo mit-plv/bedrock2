@@ -77,14 +77,6 @@ Module Import FlatToRiscv.
     trace := list (mem * Syntax.actname * list word * (mem * list word));
     ext_spec : trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;
 
-    translate_id_if_aligned_4: forall (a: word) mode,
-      (regToZ_unsigned a) mod 4 = 0 ->
-      translate mode (ZToReg 4) a = Return a;
-
-    translate_id_if_aligned_8: forall (a: word) mode,
-      (regToZ_unsigned a) mod 8 = 0 ->
-      translate mode (ZToReg 8) a = Return a;
-
     (* these two instances are needed to define compile_ext_call_correct below *)
 
     syntax_params: Syntax.parameters := {|
@@ -133,7 +125,7 @@ Module Import FlatToRiscv.
       Memory.load sz (getMem initialL) addr = Some v ->
       mcomp_sat (f tt)
                 (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
-      mcomp_sat (Bind (execute (compile_load sz x a)) f) initialL post;
+      mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post;
 
   }.
 
@@ -1047,7 +1039,7 @@ Section FlatToRiscv1.
 
   Lemma compile_lit_correct_full: forall initialL post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
-      let insts := compile_stmt (SLit x v) in
+      let insts := compile_stmt iset (SLit x v) in
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_register x ->
@@ -1117,7 +1109,7 @@ Section FlatToRiscv1.
     forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
     eval_stmt s t initialMH initialRegsH postH ->
     forall initialL insts,
-    @compile_stmt def_params s = insts ->
+    @compile_stmt def_params iset s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 initialL.(getPc) ->

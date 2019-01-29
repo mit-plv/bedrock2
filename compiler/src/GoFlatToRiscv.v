@@ -1,4 +1,6 @@
 Require Import Coq.ZArith.BinInt.
+Require Import Coq.micromega.Lia.
+Require Import Coq.omega.Omega.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -15,7 +17,7 @@ Require Import riscv.proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.
-
+Require Import bedrock2.Scalars.
 
 Local Unset Universe Polymorphism.
 
@@ -35,10 +37,6 @@ Section Go.
   Context {RVS: @RiscvState M word _ _ RVM}.
   Context {RVAX: AxiomaticRiscv Action M}.
   Variable iset: InstructionSet.
-
-  Add Ring wring: (@word.ring_theory width word word_ok).
-
-  Ltac ring' := unfold ZToReg, mul, add, MkMachineWidth.MachineWidth_XLEN in *; ring.
 
   Lemma go_left_identity{A: Type}: forall initialL post a
          (f : A -> M unit),
@@ -65,111 +63,11 @@ Section Go.
     intros. rewrite associativity. assumption.
   Qed.
 
-  Require Import coqutil.Datatypes.PrimitivePair.
   Require Import riscv.Encode.
   Require Import riscv.proofs.EncodeBound.
 
-  Lemma combine_split: forall (n: nat) (z: Z),
-      0 <= z < 2 ^ (Z.of_nat n * 8) ->
-      LittleEndian.combine n (LittleEndian.split n z) = z.
-  Proof.
-    induction n; intros.
-  Admitted.
-
-  Definition ptsto_bytes(n: nat)(addr: word)(bs: HList.tuple byte n): mem -> Prop :=
-    eq (unchecked_store_bytes n map.empty addr bs).
-
-  Lemma impl1_sep_cancel_l: forall P Q1 Q2,
-      impl1 Q1 Q2 -> impl1 (P * Q1) (P * Q2).
-  Proof.
-    unfold impl1 in *.
-    intros.
-    unfold sep in *.
-    destruct_products.
-    eauto 10.
-  Qed.
-
-  Lemma impl1_sep_cancel_r: forall P Q1 Q2,
-      impl1 Q1 Q2 -> impl1 (Q1 * P) (Q2 * P).
-  Proof.
-    unfold impl1 in *.
-    intros.
-    unfold sep in *.
-    destruct_products.
-    eauto 10.
-  Qed.
-
-  Lemma impl1_trans: forall {P1 P2 P3: mem -> Prop},
-      impl1 P1 P2 ->
-      impl1 P2 P3 ->
-      impl1 P1 P3.
-  Proof.
-    unfold impl1. eauto.
-  Qed.
-
-  Lemma iff1_trans: forall {P1 P2 P3: mem -> Prop},
-      iff1 P1 P2 ->
-      iff1 P2 P3 ->
-      iff1 P1 P3.
-  Proof.
-    unfold iff1. intros. split; intros; edestruct H; edestruct H0; eauto.
-  Qed.
-
-  Lemma impl1_refl: forall {P: mem -> Prop},
-      impl1 P P.
-  Proof.
-    unfold impl1. eauto.
-  Qed.
-
-  Lemma iff1_fst: forall {P1 P2: mem -> Prop},
-      iff1 P1 P2 ->
-      impl1 P1 P2.
-  Proof.
-    unfold iff1, impl1. intros. apply H. assumption.
-  Qed.
-
-  Lemma iff1_snd: forall {P1 P2: mem -> Prop},
-      iff1 P1 P2 ->
-      impl1 P2 P1.
-  Proof.
-    unfold iff1, impl1. intros. apply H. assumption.
-  Qed.
-
-  (* Note: there's only iff1_sep_cancel, which cancels on the left, but the default
-     associativity says that (P * Q * R) is parsed as ((P * Q) * R), so canceling on
-     the right by default would make more sense *)
-  Lemma iff1_sep_cancel_r: forall {P1 P2 Q: mem -> Prop},
-      iff1 P1 P2 ->
-      iff1 (P1 * Q) (P2 * Q).
-  Proof.
-    intros.
-    refine (iff1_trans _ (sep_comm _ _)).
-    refine (iff1_trans (sep_comm _ _) _).
-    apply iff1_sep_cancel.
-    assumption.
-  Qed.
-
-  Lemma ptsto_bytes_to_load_bytes: forall n m v addr R,
-      (ptsto_bytes n addr v * R)%sep m ->
-      Memory.load_bytes n m addr = Some v.
-  Proof.
-    cbv [ptsto_bytes sep load_bytes unchecked_store_bytes].
-    intros.
-    destruct_products.
-    (* TODO *)
-  Admitted.
-
-  Lemma load_bytes_to_ptsto_bytes: forall n m v addr,
-      Memory.load_bytes n m addr = Some v ->
-      exists R, (ptsto_bytes n addr v * R)%sep m.
-  Proof.
-    cbv [ptsto_bytes sep load_bytes unchecked_store_bytes].
-    intros.
-    (* TODO *)
-  Admitted.
-
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
-    ptsto_bytes 4 addr (LittleEndian.split 4 (encode instr)).
+    scalar Syntax.access_size.four addr (word.of_Z (encode instr)).
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
@@ -186,8 +84,28 @@ Section Go.
     apply go_getPC.
     unfold program, array, ptsto_instr in *.
 
-    eapply go_loadWord; [eapply ptsto_bytes_to_load_bytes; seplog|].
-    rewrite combine_split, decode_encode; auto using encode_range.
+    eapply go_loadWord.
+    unfold Memory.loadWord.
+
+    - eapply load_bytes_sep.
+      unfold scalar, littleendian, Memory.bytes_per in H0.
+      (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
+         ie. did more than just syntactic unify *)
+      seplog.
+    - rewrite combine_split.
+      rewrite word.unsigned_of_Z.
+      assert (0 <= encode inst < 2 ^ width) as F. {
+        pose proof (encode_range inst) as P.
+        destruct width_cases as [E | E]; rewrite E; split.
+        + Fail lia. omega. (* COQBUG lia doesn't understand universes well enough *)
+        + Fail lia. omega.
+        + Fail lia. omega.
+        + let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *.
+          let r := eval cbv in (2 ^ 64) in change (2 ^ 64) with r in *.
+          omega.
+      }
+      do 2 rewrite Z.mod_small; try assumption; try apply encode_range.
+      rewrite decode_encode; assumption.
   Qed.
 
 End Go.

@@ -116,8 +116,6 @@ Section Pipeline1.
 
   Instance FlatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
     FlatToRiscvDef.FlatToRiscvDef.actname := actname;
-    FlatToRiscvDef.FlatToRiscvDef.compile_load := TODO;
-    FlatToRiscvDef.FlatToRiscvDef.compile_store := TODO;
     FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := TODO;
     FlatToRiscvDef.FlatToRiscvDef.max_ext_call_code_size := TODO;
     FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length := TODO;
@@ -137,8 +135,6 @@ Section Pipeline1.
     FlatToRiscv.FlatToRiscv.RVS := RVS;
     FlatToRiscv.FlatToRiscv.RVAX := RVAX;
     FlatToRiscv.FlatToRiscv.ext_spec := TODO;
-    FlatToRiscv.FlatToRiscv.translate_id_if_aligned_4 := TODO;
-    FlatToRiscv.FlatToRiscv.translate_id_if_aligned_8 := TODO;
     FlatToRiscv.FlatToRiscv.env := TODO;
     FlatToRiscv.FlatToRiscv.env_ok := TODO;
     FlatToRiscv.FlatToRiscv.compile_ext_call_correct := TODO;
@@ -151,7 +147,7 @@ Section Pipeline1.
 
   (* only works if varname=Register *)
   Definition exprImp2Riscv(s: Syntax.cmd): list Instruction :=
-    FlatToRiscvDef.compile_stmt (flatten s).
+    FlatToRiscvDef.compile_stmt iset (flatten s).
 
   Notation registerset := (@compiler.util.Set.set Register registerSetFunctions).
 
@@ -168,7 +164,7 @@ Section Pipeline1.
                            map.empty
                            (interesting_alloc resVar)) in
       match oStmt with
-      | Some s => FlatToRiscvDef.compile_stmt s
+      | Some s => FlatToRiscvDef.compile_stmt iset s
       | None => nil
       end.
 

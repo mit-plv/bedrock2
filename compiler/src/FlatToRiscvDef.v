@@ -11,29 +11,16 @@ Require Import Coq.micromega.Lia.
 Require Import riscv.AxiomaticRiscv.
 Require Import riscv.Utility.
 Require Import riscv.util.ListLib.
-
+Require Import bedrock2.Syntax.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Definition Register: Type := Z.
-(*Inductive EmptyType: Type :=.*)
-
 Module Import FlatToRiscvDef.
   Class parameters := {
     actname: Type;
-
-    (* These depend on the bitwidth: on 32-bit machines, Lw just loads 4 bytes,
-       while on 64-bit machines, it loads 4 bytes and sign-extends them.
-       If we want a command which always loads 4 bytes without sign-extending them,
-       we need to make a case distinction on the bitwidth and choose Lw on 32-bit,
-       but Lwu on 64-bit.
-       We can't just always choose Lwu, because Lwu is not available on 32-bit machines.
-       So we just wrap all this behind compile_load, and similarly for stores. *)
-    compile_load : Syntax.access_size -> Register -> Register -> Instruction;
-    compile_store: Syntax.access_size -> Register -> Register -> Instruction;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
     max_ext_call_code_size: actname -> Z;
     compile_ext_call_length: forall binds f args,
@@ -119,6 +106,43 @@ Section FlatToRiscv1.
 
   (* Part 2: compilation *)
 
+  (* load & store depend on the bitwidth: on 32-bit machines, Lw just loads 4 bytes,
+     while on 64-bit machines, it loads 4 bytes and sign-extends them.
+     If we want a command which always loads 4 bytes without sign-extending them,
+     we need to make a case distinction on the bitwidth and choose Lw on 32-bit,
+     but Lwu on 64-bit.
+     We can't just always choose Lwu, because Lwu is not available on 32-bit machines. *)
+
+  Definition compile_load(iset: InstructionSet)(sz: access_size):
+    Register -> Register -> Z -> Instruction :=
+    match sz with
+    | access_size.one => Lbu
+    | access_size.two => Lhu
+    | access_size.four =>
+      match iset with
+      | RV32I | RV32IM | RV32IA | RV32IMA => Lw
+      | RV64I | RV64IM | RV64IA | RV64IMA => Lwu
+      end
+    | access_size.word =>
+      match iset with
+      | RV32I | RV32IM | RV32IA | RV32IMA => Lw
+      | RV64I | RV64IM | RV64IA | RV64IMA => Ld
+      end
+    end.
+
+  Definition compile_store(iset: InstructionSet)(sz: access_size):
+    Register -> Register -> Z -> Instruction :=
+    match sz with
+    | access_size.one => Sb
+    | access_size.two => Sh
+    | access_size.four => Sw
+    | access_size.word =>
+      match iset with
+      | RV32I | RV32IM | RV32IA | RV32IMA => Sw
+      | RV64I | RV64IM | RV64IA | RV64IMA => Sd
+      end
+    end.
+
   Definition compile_op(rd: Register)(op: Syntax.bopname)(rs1 rs2: Register): list Instruction :=
     match op with
     | Syntax.bopname.add => [[Add rd rs1 rs2]]
@@ -178,10 +202,12 @@ Section FlatToRiscv1.
         Beq x Register0 amt
     end.
 
-  Fixpoint compile_stmt(s: stmt): list (Instruction) :=
+  Context (iset: InstructionSet).
+
+  Fixpoint compile_stmt(s: stmt): list Instruction :=
     match s with
-    | SLoad  sz x y => [[compile_load  sz x y]]
-    | SStore sz x y => [[compile_store sz x y]]
+    | SLoad  sz x y => [[compile_load  iset sz x y 0]]
+    | SStore sz x y => [[compile_store iset sz x y 0]]
     | SLit x v => compile_lit x v
     | SOp x op y z => compile_op x op y z
     | SSet x y => [[Add x Register0 y]]
