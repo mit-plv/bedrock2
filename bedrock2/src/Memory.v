@@ -2,8 +2,10 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Coq.Lists.List.
 Require Import coqutil.sanity.
+Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.Datatypes.List.
-Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Tactics.Tactics coqutil.Datatypes.Option.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
 Require Import bedrock2.Notations bedrock2.Syntax.
 
@@ -64,6 +66,22 @@ Section Memory.
     - cbv [tuple.option_all tuple.map tuple.unfoldn].
       rewrite H0.
       reflexivity.
+  Qed.
+
+  Context {mem_ok: map.ok mem}.
+  Context {word_eq_dec: DecidableEq word}.
+
+  Lemma store_preserves_domain: forall sz m a v m',
+      store sz m a v = Some m' ->
+      forall k, map.get m k = None <-> map.get m' k = None.
+  Proof.
+    destruct sz;
+      cbv [store store_bytes bytes_per load_bytes unchecked_store_bytes];
+      intros;
+      (destruct_one_match_hyp; [|discriminate]);
+      inversion_option;
+      (eapply map.putmany_of_tuple_preserves_domain; [|exact H]);
+      congruence.
   Qed.
 
 End Memory.
