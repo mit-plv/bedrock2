@@ -329,7 +329,6 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
 (*  FlatToRiscv.M := OStateND (RiscvMachine Register (Naive.word 32) MMIOAction);*)
   FlatToRiscv.MM := OStateND_Monad _;
   FlatToRiscv.RVM := IsRiscvMachineL;
-  FlatToRiscv.RVS := DefaultRiscvState;
   FlatToRiscv.RVAX := MinimalMMIOSatisfiesAxioms;
   FlatToRiscv.ext_spec := ext_spec;
 |}.
@@ -412,8 +411,6 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
         apply TODO.
       }
   + (* MMOutput *)
-    apply TODO.
-  - intros.
     apply TODO.
   Defined.
 

@@ -60,7 +60,6 @@ Module Import Pipeline.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    RVS :> @RiscvState M word _ _ RVM;
     RVAX :> AxiomaticRiscv actname M;
   }.
 End Pipeline.
@@ -132,13 +131,11 @@ Section Pipeline1.
     FlatToRiscv.FlatToRiscv.M := M;
     FlatToRiscv.FlatToRiscv.MM := MM;
     FlatToRiscv.FlatToRiscv.RVM := RVM;
-    FlatToRiscv.FlatToRiscv.RVS := RVS;
     FlatToRiscv.FlatToRiscv.RVAX := RVAX;
     FlatToRiscv.FlatToRiscv.ext_spec := TODO;
     FlatToRiscv.FlatToRiscv.env := TODO;
     FlatToRiscv.FlatToRiscv.env_ok := TODO;
     FlatToRiscv.FlatToRiscv.compile_ext_call_correct := TODO;
-    FlatToRiscv.FlatToRiscv.go_load := TODO;
   |}.
 
   Definition flatten(s: Syntax.cmd): FlatImp.stmt :=

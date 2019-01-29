@@ -71,7 +71,6 @@ Module Import FlatToRiscv.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    RVS :> @RiscvState M word _ _ RVM;
     RVAX :> AxiomaticRiscv actname M;
 
     trace := list (mem * Syntax.actname * list word * (mem * list word));
@@ -114,18 +113,6 @@ Module Import FlatToRiscv.
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (* external calls can't modify the memory for now *)
                   (program initialL.(getPc) insts * R)%sep finalL.(getMem));
-
-
-    (* TODO move to FlatToRiscvBitWidthSpecifics *)
-    go_load: forall sz x a addr v initialL post f,
-      valid_register x ->
-      valid_register a ->
-      map.get initialL.(getRegs) a = Some addr ->
-      (* (scalar sz addr v * R)%sep initialL.(getMem) -> *)
-      Memory.load sz (getMem initialL) addr = Some v ->
-      mcomp_sat (f tt)
-                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
-      mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post;
 
   }.
 
@@ -420,7 +407,12 @@ Section FlatToRiscv1.
 *)
 
   Ltac sidecondition :=
-    assumption || reflexivity.
+    assumption ||
+    match goal with
+    | H: map.get _ _ = Some _ |- _ => exact H
+    end ||
+    reflexivity ||
+    idtac.
 
   Ltac head_of_app e :=
     match e with
@@ -750,9 +742,8 @@ Section FlatToRiscv1.
              clear H
            end.
 
-  Ltac simulate :=
-    repeat first
-           [ progress (simpl_RiscvMachine_get_set)
+  Ltac simulate_step :=
+    first  [ progress (simpl_RiscvMachine_get_set)
            | rewrite elim_then_true_else_false
            | progress rewrite_setReg
            | progress rewrite_getReg
@@ -775,6 +766,8 @@ Section FlatToRiscv1.
            | eapply go_right_identity ; [sidecondition..|]
            | eapply go_associativity  ; [sidecondition..|]
            | eapply go_fetch_inst     ; [sidecondition..|] ].
+
+  Ltac simulate := repeat simulate_step.
 
   Ltac destruct_everything :=
     destruct_products;
@@ -843,6 +836,26 @@ Section FlatToRiscv1.
         end;
     solve_word_eq.
 *)
+
+  Arguments LittleEndian.combine: simpl never.
+
+  Lemma go_load: forall sz x a addr v initialL post f,
+      valid_register x ->
+      valid_register a ->
+      map.get initialL.(getRegs) a = Some addr ->
+      (* (scalar sz addr v * R)%sep initialL.(getMem) -> *)
+      Memory.load sz (getMem initialL) addr = Some v ->
+      mcomp_sat (f tt)
+                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
+      mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post.
+  Proof.
+    intros. unfold compile_load. destruct sz.
+    {
+
+      unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState.
+      simulate.
+
+  Admitted.
 
   (*
   Lemma execute_store: forall (ra rv: Register) (a v: mword) (initialMH finalMH: Memory.mem)

@@ -106,6 +106,12 @@ Section FlatToRiscv1.
 
   (* Part 2: compilation *)
 
+  Definition is32bit(iset: InstructionSet): bool :=
+    match iset with
+    | RV32I | RV32IM | RV32IA | RV32IMA => true
+    | RV64I | RV64IM | RV64IA | RV64IMA => false
+    end.
+
   (* load & store depend on the bitwidth: on 32-bit machines, Lw just loads 4 bytes,
      while on 64-bit machines, it loads 4 bytes and sign-extends them.
      If we want a command which always loads 4 bytes without sign-extending them,
@@ -118,16 +124,8 @@ Section FlatToRiscv1.
     match sz with
     | access_size.one => Lbu
     | access_size.two => Lhu
-    | access_size.four =>
-      match iset with
-      | RV32I | RV32IM | RV32IA | RV32IMA => Lw
-      | RV64I | RV64IM | RV64IA | RV64IMA => Lwu
-      end
-    | access_size.word =>
-      match iset with
-      | RV32I | RV32IM | RV32IA | RV32IMA => Lw
-      | RV64I | RV64IM | RV64IA | RV64IMA => Ld
-      end
+    | access_size.four => if is32bit iset then Lw else Lwu
+    | access_size.word => if is32bit iset then Lw else Ld
     end.
 
   Definition compile_store(iset: InstructionSet)(sz: access_size):
@@ -136,11 +134,7 @@ Section FlatToRiscv1.
     | access_size.one => Sb
     | access_size.two => Sh
     | access_size.four => Sw
-    | access_size.word =>
-      match iset with
-      | RV32I | RV32IM | RV32IA | RV32IMA => Sw
-      | RV64I | RV64IM | RV64IA | RV64IMA => Sd
-      end
+    | access_size.word => if is32bit iset then Sw else Sd
     end.
 
   Definition compile_op(rd: Register)(op: Syntax.bopname)(rs1 rs2: Register): list Instruction :=
