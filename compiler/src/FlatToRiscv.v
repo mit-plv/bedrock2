@@ -160,6 +160,15 @@ Section FlatToRiscv1.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
+  Lemma add_0_l: forall (x: word), word.add (word.of_Z 0) x = x. Proof. intros. ring. Qed.
+  Lemma add_0_r: forall (x: word), word.add x (word.of_Z 0) = x. Proof. intros. ring. Qed.
+  Lemma mul_0_l: forall (x: word), word.mul (word.of_Z 0) x = word.of_Z 0. Proof. intros. ring. Qed.
+  Lemma mul_0_r: forall (x: word), word.mul x (word.of_Z 0) = word.of_Z 0. Proof. intros. ring. Qed.
+  Lemma mul_1_l: forall (x: word), word.mul (word.of_Z 1) x = x. Proof. intros. ring. Qed.
+  Lemma mul_1_r: forall (x: word), word.mul x (word.of_Z 1) = x. Proof. intros. ring. Qed.
+
+  Hint Rewrite add_0_l add_0_r mul_0_l mul_0_r mul_1_l mul_1_r : rew_simpl_words.
+
   Ltac solve_word_eq :=
     match goal with
     | |- @eq word _ _ => idtac
@@ -756,8 +765,14 @@ Section FlatToRiscv1.
            | eapply go_getRegister0   ; [sidecondition..|]
            | eapply go_setRegister    ; [sidecondition..|]
            | eapply go_setRegister0   ; [sidecondition..|]
+           | eapply go_loadByte       ; [sidecondition..|]
+           | eapply go_storeByte      ; [sidecondition..|]
+           | eapply go_loadHalf       ; [sidecondition..|]
+           | eapply go_storeHalf      ; [sidecondition..|]
            | eapply go_loadWord       ; [sidecondition..|]
            | eapply go_storeWord      ; [sidecondition..|]
+           | eapply go_loadDouble     ; [sidecondition..|]
+           | eapply go_storeDouble    ; [sidecondition..|]
            | eapply go_getPC          ; [sidecondition..|]
            | eapply go_setPC          ; [sidecondition..|]
            | eapply go_step           ; [sidecondition..|]
@@ -839,6 +854,41 @@ Section FlatToRiscv1.
 
   Arguments LittleEndian.combine: simpl never.
 
+
+Ltac destruct_unique_match :=
+  match goal with
+  | H: context[match ?e with _ => _ end] |- _ =>
+    match goal with
+    | |- _ => is_var e; destruct e
+    | |- _ => let N := fresh "E" in destruct e eqn: N
+    end;
+    try (exfalso; (contradiction || discriminate || congruence));
+    let n := numgoals in guard n <= 1
+  end.
+
+Require Import lib.fiat_crypto_tactics.Not.
+
+Ltac unique_inversion :=
+  match goal with
+  | H: ?P |- _ =>
+    (let h := head_of_app P in is_constructor h || constr_eq h @eq);
+    inversion H;
+    (let n := numgoals in guard n <= 1);
+    subst;
+    clear H;
+    match goal with
+    | H': ?P' |- _ => unify P P'; fail 1 (* inversion didn't do anything except simplifying *)
+    | |- _ => idtac
+    end
+  end.
+
+Ltac simp_step :=
+  destruct_unique_match
+  || unique_inversion.
+
+Ltac simp := repeat simp_step.
+
+
   Lemma go_load: forall sz x a addr v initialL post f,
       valid_register x ->
       valid_register a ->
@@ -849,12 +899,20 @@ Section FlatToRiscv1.
                 (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
       mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post.
   Proof.
-    intros. unfold compile_load. destruct sz.
+    intros. unfold compile_load.
+    destruct sz;
+      unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
+             Memory.load in *.
     {
 
-      unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState.
-      simulate.
+      simp.
 
+      simulate.
+      - unfold loadByte.
+        autorewrite with rew_simpl_words in *.
+        exact E.
+      - assumption.
+    }
   Admitted.
 
   (*
