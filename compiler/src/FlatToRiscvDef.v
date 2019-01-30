@@ -8,7 +8,7 @@ Require Import riscv.Decode.
 Require Import riscv.PseudoInstructions.
 Require Import riscv.InstructionCoercions.
 Require Import Coq.micromega.Lia.
-Require Import riscv.AxiomaticRiscv.
+Require Import riscv.Primitives.
 Require Import riscv.Utility.
 Require Import riscv.util.ListLib.
 Require Import bedrock2.Syntax.

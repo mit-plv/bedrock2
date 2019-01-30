@@ -19,7 +19,7 @@ Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
 Require Import riscv.InstructionCoercions.
-Require Import riscv.AxiomaticRiscv.
+Require Import riscv.Primitives.
 Require Import Coq.micromega.Lia.
 Require Import riscv.util.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
@@ -71,7 +71,7 @@ Module Import FlatToRiscv.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    RVAX :> AxiomaticRiscv actname M;
+    PR :> Primitives actname M;
 
     trace := list (mem * Syntax.actname * list word * (mem * list word));
     ext_spec : trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;

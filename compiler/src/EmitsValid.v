@@ -6,7 +6,7 @@ Require Import riscv.Encode.
 Require Import riscv.util.ZBitOps.
 Require Import riscv.Run.
 Require Import riscv.Program.
-Require Import riscv.AxiomaticRiscv.
+Require Import riscv.Primitives.
 Require Import compiler.util.Tactics.
 Require Import riscv.util.Tactics.
 Require Import compiler.FlatImp.

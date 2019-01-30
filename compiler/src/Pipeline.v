@@ -20,7 +20,8 @@ Require Export compiler.NameGen.
 Require Export compiler.util.Common.
 Require Export coqutil.Decidable.
 Require Export riscv.Encode.
-Require Export riscv.AxiomaticRiscv.
+Require Export riscv.Primitives.
+Require Import compiler.GoFlatToRiscv.
 Require Import riscv.MkMachineWidth.
 Require Export riscv.proofs.DecodeEncode.
 Require Export riscv.proofs.EncodeBound.
@@ -60,7 +61,7 @@ Module Import Pipeline.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    RVAX :> AxiomaticRiscv actname M;
+    PR :> Primitives actname M;
   }.
 End Pipeline.
 
@@ -131,7 +132,7 @@ Section Pipeline1.
     FlatToRiscv.FlatToRiscv.M := M;
     FlatToRiscv.FlatToRiscv.MM := MM;
     FlatToRiscv.FlatToRiscv.RVM := RVM;
-    FlatToRiscv.FlatToRiscv.RVAX := RVAX;
+    FlatToRiscv.FlatToRiscv.PR := PR;
     FlatToRiscv.FlatToRiscv.ext_spec := TODO;
     FlatToRiscv.FlatToRiscv.env := TODO;
     FlatToRiscv.FlatToRiscv.env_ok := TODO;

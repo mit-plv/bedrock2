@@ -11,7 +11,6 @@ Require Import riscv.Utility.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.Semantics. (* TODO: this should be in bedrock2.Semantics *)
 Require Import coqutil.Macros.unique.
-Require Import compiler.FlatToRiscvDef. (* TODO: This should be independent of Riscv *)
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
 

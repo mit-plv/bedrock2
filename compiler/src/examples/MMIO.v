@@ -20,12 +20,13 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscv.
 Require Import riscv.RiscvMachine.
 Require Import riscv.MinimalMMIO.
+Require Import riscv.Primitives.
 Require Import compiler.FlatToRiscvDef.
-Require Import riscv.AxiomaticRiscvMMIO.
 Require Import riscv.runsToNonDet.
 Require Import compiler.Rem4.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
+Require Import coqutil.Datatypes.Option.
 
 
 Import ListNotations.
@@ -136,13 +137,6 @@ Section MMIO1.
       end;
   |}.
 
-  (*
-Instance myFlatImpParams: FlatImp.parameters := {|
-  FlatImp.bopname_params := myparams;
-  FlatImp.ext_spec := ext_spec;
-|}.
-*)
-
 Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
   FlatToRiscvDef.actname := MMIOAction;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
@@ -153,41 +147,6 @@ Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
   try destruct args; try destruct args; try destruct args;
   cbv; intros; discriminate.
 Defined.
-
-(*
-Lemma compile_ext_call_correct: forall initialL action outcome newPc insts
-    (argvars resvars: list Register),
-  insts = FlatToRiscvDef.compile_ext_call resvars action argvars ->
-  newPc = add (getPc initialL) (ZToReg (4 * Zlength insts)) ->
-  Forall valid_register argvars ->
-  Forall valid_register resvars ->
-  containsProgram.containsProgram (getMem initialL) insts (getPc initialL) ->
-  ext_spec action (getLog initialL) (List.map (getReg (getRegs initialL)) argvars) outcome ->
-  runsTo (RiscvMachine Register (word 32) (MMIOEvent (word 32))) (mcomp_sat Run.run1) initialL
-         (fun finalL =>
-            forall newLog resvals, outcome newLog resvals ->
-              putmany resvars resvals (getRegs initialL) = Some finalL.(getRegs) /\
-              finalL.(getPc) = newPc /\
-              finalL.(getNextPc) = add newPc (ZToReg 4) /\
-              finalL.(getMem) = getMem initialL /\
-              finalL.(getLog) = newLog).
-
-            postH
-  (forall (newLog : list (MMIOEvent (word 32))) (resvals : list (word 32)),
-   outcome newLog resvals ->
-   exists newRegs : map Register (word 32),
-     putmany resvars resvals (getRegs initialL) = Some newRegs /\
-     runsTo (RiscvMachine Register (word 32) (MMIOEvent (word 32)))
-       (mcomp_sat Run.run1)
-       {|
-       getRegs := newRegs;
-       getPc := newPc;
-       getNextPc := add newPc (ZToReg 4);
-       getMem := getMem initialL;
-       getLog := newLog |} post) ->
-*)
-
-
 
 (*
 addr = magicMMIOAddr;
@@ -213,35 +172,6 @@ Definition squarer: stmt :=
 Definition compiled: list Instruction := Eval cbv in compile_stmt RV32IM squarer.
 
 Print compiled.
-
-(*
-Section TODODontDuplicate.
-
-  Let RiscvMachineL := RiscvMachine Register word32 MMIOAction.
-
-  Lemma go_fetch_inst: forall {inst initialL pc0} (post: RiscvMachineL -> Prop),
-      pc0 = initialL.(getPc) ->
-      containsProgram initialL.(getMem) [[inst]] pc0 ->
-      mcomp_sat (Bind (Execute.execute inst) (fun (u: unit) => step)) initialL post ->
-      mcomp_sat Run.run1 initialL post.
-  Proof.
-    intros. subst *.
-    unfold run1. unfold Run.run1.
-    apply go_getPC.
-    apply go_loadWord.
-    unfold containsProgram in H0. apply proj2 in H0.
-    specialize (H0 0 _ eq_refl). subst inst.
-    unfold ldInst in *.
-    (*
-    match type of H1 with
-    | context[?x] => progress (ring_simplify x in H1)
-    end.
-    exact H1.
-    *)
-  Admitted.
-
-End TODODontDuplicate.
-*)
 
 Lemma option_all_singleton: forall {A: Type} (a: A) (l: list (option A)),
     option_all l = Some [a] ->
@@ -329,7 +259,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
 (*  FlatToRiscv.M := OStateND (RiscvMachine Register (Naive.word 32) MMIOAction);*)
   FlatToRiscv.MM := OStateND_Monad _;
   FlatToRiscv.RVM := IsRiscvMachineL;
-  FlatToRiscv.RVAX := MinimalMMIOSatisfiesAxioms;
+  FlatToRiscv.PR := MinimalMMIOSatisfiesPrimitives;
   FlatToRiscv.ext_spec := ext_spec;
 |}.
 - apply TODO.
@@ -360,7 +290,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
     * eapply go_fetch_inst; [reflexivity| | |].
       { simpl in *. seplog. }
       { unfold valid_register in *.
-        cbv -[Z.lt Z.le]. repeat split; auto; try lia. }
+        cbv -[Z.lt Z.le]; repeat split; auto; try lia. }
       cbv [Execute.execute ExecuteI.execute].
       rewrite associativity.
       eapply go_getRegister; [eassumption..|]. rewrite associativity.
@@ -375,41 +305,26 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
       rewrite left_identity. rewrite associativity.
       rename r into addr.
       replace (add addr (ZToReg 0)) with addr by apply TODO.
-      apply go_loadWord_MMIO.
-
-      simpl.
-
-      (* TODO addr is not in high-level memory, but what if it is in instruction memory? *)
-      apply TODO.
-      apply TODO.
-      apply TODO.
+      apply spec_Bind.
+      refine (ex_intro _ (fun v m => m = _) _).
+      split.
+      - apply spec_loadWord. simpl. right. repeat split; assumption.
+      - intros. subst. apply go_setRegister; [assumption|].
+        apply go_step.
+        apply runsToDone.
+        simpl.
+        repeat split.
+        + unfold mmioLoadEvent.
+          specialize (H15 initialMem [signedByteTupleToReg a]).
+          destruct H15 as [ l' [A B] ]; [eauto|].
+          inversion_option.
+          subst l'.
+          exact B.
+        + rewrite Zlength_cons, Zlength_nil. apply TODO. (* TODO word solver *)
+        + rewrite Zlength_cons, Zlength_nil. apply TODO. (* TODO word solver *)
+        + seplog.
       }
-
-      (*
-      [assumption..|].
-      intro inp. cbv [getMem].
-      eapply go_setRegister; [ assumption |].
-      eapply go_step.
-      eapply runsToNonDet.runsToDone.
-      simpl.
-      specialize (H15rrr (word.of_Z (BitOps.sextend 32 (LittleEndian.combine 4 inp)))).
-      repeat split; auto.
-      edestruct H16 as [ l' [A B] ]; [eauto|].
-      destruct_unique_matches.
-      invert_hyp E0.
-      invert_hyp A.
-      (* TODO do loadByte instead of loadWord to get rid of sign extension? *)
-      match goal with
-      | _: context[ [ ?a ] ] |- context[ [ ?a' ] ] =>
-          let h :=  head a  in constr_eq h  @word.of_Z;
-          let h' := head a' in constr_eq h' @word.of_Z;
-          replace a' with a
-      end; [exact B|].
-      apply TODO.
-      *)
-      {
-        apply TODO.
-      }
+      { reflexivity. }
   + (* MMOutput *)
     apply TODO.
   Defined.
