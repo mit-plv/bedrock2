@@ -81,7 +81,9 @@ Section Memory.
       (destruct_one_match_hyp; [|discriminate]);
       inversion_option;
       (eapply map.putmany_of_tuple_preserves_domain; [|exact H]);
-      congruence.
+      intro A;
+      rewrite A in E;
+      discriminate E || let t := type of E in idtac t.
   Qed.
 
 End Memory.
