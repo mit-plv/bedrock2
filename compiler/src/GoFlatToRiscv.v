@@ -73,7 +73,7 @@ Section Go.
 
   Lemma go_setRegister: forall initialL x v post (f: unit -> M unit),
       valid_register x ->
-      mcomp_sat (f tt) (setRegs initialL (map.put initialL.(getRegs) x v)) post ->
+      mcomp_sat (f tt) (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
       mcomp_sat (Bind (setRegister x v) f) initialL post.
   Proof. t spec_setRegister. Qed.
 
@@ -136,9 +136,12 @@ Section Go.
   Proof. t spec_getPC. Qed.
 
   Lemma go_setPC: forall initialL v post (f: unit -> M unit),
-        mcomp_sat (f tt) (setNextPc initialL v) post ->
+        mcomp_sat (f tt) (withNextPc v initialL) post ->
         mcomp_sat (Bind (setPC v) f) initialL post.
-  Proof. t spec_setPC. Qed.
+  Proof.
+    intros.
+    t (spec_setPC initialL v (fun a' mid' => a' = tt /\ mid' = withNextPc v initialL)).
+  Qed.
 
   Lemma go_step: forall initialL (post: RiscvMachineL -> Prop),
       post (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))

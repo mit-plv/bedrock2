@@ -423,6 +423,8 @@ Section FlatToRiscv1.
     reflexivity ||
     idtac.
 
+  Ltac sidecondition_less_safe := eassumption || reflexivity || idtac.
+
   Ltac head_of_app e :=
     match e with
     | ?f ?a => head_of_app f
@@ -866,8 +868,6 @@ Ltac destruct_unique_match :=
     let n := numgoals in guard n <= 1
   end.
 
-Require Import lib.fiat_crypto_tactics.Not.
-
 Ltac unique_inversion :=
   match goal with
   | H: ?P |- _ =>
@@ -882,12 +882,39 @@ Ltac unique_inversion :=
     end
   end.
 
+Ltac simpl_Z_eqb :=
+  match goal with
+  | H: _ =? _ = true  |- _ => apply Z.eqb_eq in H; subst
+  | H: _ =? _ = false |- _ => apply Z.eqb_neq in H
+  end.
+
 Ltac simp_step :=
   destruct_unique_match
-  || unique_inversion.
+  || unique_inversion
+  || simpl_Z_eqb.
 
 Ltac simp := repeat simp_step.
 
+
+  Lemma sextend_width_nop: forall (w v: Z),
+    w = width ->
+    word.of_Z (BitOps.sextend w v) = (word.of_Z v: word).
+  Proof.
+    intros. subst. unfold BitOps.sextend. apply word.unsigned_inj.
+    rewrite! word.unsigned_of_Z.
+    pose proof (@word.width_pos _ _ word_ok).
+    pose proof (Z.pow_pos_nonneg 2 width).
+    remember (2 ^ width) as M.
+    remember (2 ^ (width - 1)) as M2.
+    rewrite Z.add_mod by omega. (* lia fails! *)
+    rewrite Zminus_mod by omega.
+    rewrite Z.mod_mod by omega.
+    rewrite <- (Z.mod_mod M2 M) at 2 by omega.
+    rewrite <- Zminus_mod by omega.
+    rewrite Z.add_simpl_r.
+    rewrite Z.mod_mod by omega.
+    reflexivity.
+  Qed.
 
   Lemma go_load: forall sz x a addr v initialL post f,
       valid_register x ->
@@ -901,18 +928,19 @@ Ltac simp := repeat simp_step.
   Proof.
     intros. unfold compile_load.
     destruct sz;
-      unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
-             Memory.load in *.
+    unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
+           Memory.load in *;
+    destruct (is32bit iset) eqn: E;
+    unfold is32bit, iset in *;
+    simp; simulate;
+    autorewrite with rew_simpl_words in *;
+    rewrite? sextend_width_nop by omega; (* lia won't work due to universes *)
+    try eassumption.
     {
 
-      simp.
+      unfold Memory.bytes_per in *.
+      Fail rewrite E0 in E1.
 
-      simulate.
-      - unfold loadByte.
-        autorewrite with rew_simpl_words in *.
-        exact E.
-      - assumption.
-    }
   Admitted.
 
   (*
