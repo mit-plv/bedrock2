@@ -222,3 +222,45 @@ Section Go.
   Qed.
 
 End Go.
+
+
+Ltac sidecondition :=
+  assumption ||
+             match goal with
+             | H: map.get _ _ = Some _ |- _ => exact H
+             end ||
+             reflexivity ||
+             idtac.
+
+Ltac simulate_step :=
+  first  [ (*progress (simpl_RiscvMachine_get_set)
+         | rewrite elim_then_true_else_false
+         | progress rewrite_setReg
+         | progress rewrite_getReg
+         | rewrite @map.get_put_same
+         | rewrite @put_put_same
+         | progress (autorewrite with rew_reg_eqb)
+         | progress simpl_remu4_test
+         | progress rewrite_reg_value
+         | *)eapply go_getRegister    ; [sidecondition..|]
+         | eapply go_getRegister0   ; [sidecondition..|]
+         | eapply go_setRegister    ; [sidecondition..|]
+         | eapply go_setRegister0   ; [sidecondition..|]
+         | eapply go_loadByte       ; [sidecondition..|]
+         | eapply go_storeByte      ; [sidecondition..|]
+         | eapply go_loadHalf       ; [sidecondition..|]
+         | eapply go_storeHalf      ; [sidecondition..|]
+         | eapply go_loadWord       ; [sidecondition..|]
+         | eapply go_storeWord      ; [sidecondition..|]
+         | eapply go_loadDouble     ; [sidecondition..|]
+         | eapply go_storeDouble    ; [sidecondition..|]
+         | eapply go_getPC          ; [sidecondition..|]
+         | eapply go_setPC          ; [sidecondition..|]
+         | eapply go_step           ; [sidecondition..|]
+         (* | eapply go_done    (* has no sidecontidions *) let's see if needed *)
+         | eapply go_left_identity  ; [sidecondition..|]
+         | eapply go_right_identity ; [sidecondition..|]
+         | eapply go_associativity  ; [sidecondition..|]
+         | eapply go_fetch_inst     ; [sidecondition..|] ].
+
+Ltac simulate := repeat simulate_step.

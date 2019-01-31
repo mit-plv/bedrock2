@@ -327,6 +327,8 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
       { reflexivity. }
   + (* MMOutput *)
     apply TODO.
+  - (* go_load *)
+    apply TODO.
   Defined.
 
 End MMIO1.

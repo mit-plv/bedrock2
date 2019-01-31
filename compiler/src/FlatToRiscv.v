@@ -35,6 +35,8 @@ Require Import compiler.GoFlatToRiscv.
 Require Import compiler.EmitsValid.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
+Require Import compiler.Simp.
+Require Import compiler.SimplWordExpr.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -114,6 +116,16 @@ Module Import FlatToRiscv.
                   (* external calls can't modify the memory for now *)
                   (program initialL.(getPc) insts * R)%sep finalL.(getMem));
 
+    (* bitwidth-specific: *)
+    go_load: forall sz x a (addr v: word) initialL post f,
+      valid_register x ->
+      valid_register a ->
+      map.get initialL.(getRegs) a = Some addr ->
+      Memory.load sz (getMem initialL) addr = Some v ->
+      mcomp_sat (f tt)
+                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
+      mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post;
+
   }.
 
 End FlatToRiscv.
@@ -159,15 +171,6 @@ Section FlatToRiscv1.
   Ltac ring' := unfold ZToReg, mul, add, MachineWidth_XLEN in *; ring.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
-
-  Lemma add_0_l: forall (x: word), word.add (word.of_Z 0) x = x. Proof. intros. ring. Qed.
-  Lemma add_0_r: forall (x: word), word.add x (word.of_Z 0) = x. Proof. intros. ring. Qed.
-  Lemma mul_0_l: forall (x: word), word.mul (word.of_Z 0) x = word.of_Z 0. Proof. intros. ring. Qed.
-  Lemma mul_0_r: forall (x: word), word.mul x (word.of_Z 0) = word.of_Z 0. Proof. intros. ring. Qed.
-  Lemma mul_1_l: forall (x: word), word.mul (word.of_Z 1) x = x. Proof. intros. ring. Qed.
-  Lemma mul_1_r: forall (x: word), word.mul x (word.of_Z 1) = x. Proof. intros. ring. Qed.
-
-  Hint Rewrite add_0_l add_0_r mul_0_l mul_0_r mul_1_l mul_1_r : rew_simpl_words.
 
   Ltac solve_word_eq :=
     match goal with
@@ -415,21 +418,7 @@ Section FlatToRiscv1.
            end.
 *)
 
-  Ltac sidecondition :=
-    assumption ||
-    match goal with
-    | H: map.get _ _ = Some _ |- _ => exact H
-    end ||
-    reflexivity ||
-    idtac.
-
   Ltac sidecondition_less_safe := eassumption || reflexivity || idtac.
-
-  Ltac head_of_app e :=
-    match e with
-    | ?f ?a => head_of_app f
-    | _ => e
-    end.
 
   (*
   Notation K := Z.
@@ -753,39 +742,6 @@ Section FlatToRiscv1.
              clear H
            end.
 
-  Ltac simulate_step :=
-    first  [ progress (simpl_RiscvMachine_get_set)
-           | rewrite elim_then_true_else_false
-           | progress rewrite_setReg
-           | progress rewrite_getReg
-           | rewrite @map.get_put_same
-           | rewrite @put_put_same
-           | progress (autorewrite with rew_reg_eqb)
-           | progress simpl_remu4_test
-           | progress rewrite_reg_value
-           | eapply go_getRegister    ; [sidecondition..|]
-           | eapply go_getRegister0   ; [sidecondition..|]
-           | eapply go_setRegister    ; [sidecondition..|]
-           | eapply go_setRegister0   ; [sidecondition..|]
-           | eapply go_loadByte       ; [sidecondition..|]
-           | eapply go_storeByte      ; [sidecondition..|]
-           | eapply go_loadHalf       ; [sidecondition..|]
-           | eapply go_storeHalf      ; [sidecondition..|]
-           | eapply go_loadWord       ; [sidecondition..|]
-           | eapply go_storeWord      ; [sidecondition..|]
-           | eapply go_loadDouble     ; [sidecondition..|]
-           | eapply go_storeDouble    ; [sidecondition..|]
-           | eapply go_getPC          ; [sidecondition..|]
-           | eapply go_setPC          ; [sidecondition..|]
-           | eapply go_step           ; [sidecondition..|]
-        (* | eapply go_done    (* has no sidecontidions *) let's see if needed *)
-           | eapply go_left_identity  ; [sidecondition..|]
-           | eapply go_right_identity ; [sidecondition..|]
-           | eapply go_associativity  ; [sidecondition..|]
-           | eapply go_fetch_inst     ; [sidecondition..|] ].
-
-  Ltac simulate := repeat simulate_step.
-
   Ltac destruct_everything :=
     destruct_products;
     try destruct_pair_eqs;
@@ -855,93 +811,6 @@ Section FlatToRiscv1.
 *)
 
   Arguments LittleEndian.combine: simpl never.
-
-
-Ltac destruct_unique_match :=
-  match goal with
-  | H: context[match ?e with _ => _ end] |- _ =>
-    match goal with
-    | |- _ => is_var e; destruct e
-    | |- _ => let N := fresh "E" in destruct e eqn: N
-    end;
-    try (exfalso; (contradiction || discriminate || congruence));
-    let n := numgoals in guard n <= 1
-  end.
-
-Ltac unique_inversion :=
-  match goal with
-  | H: ?P |- _ =>
-    (let h := head_of_app P in is_constructor h || constr_eq h @eq);
-    inversion H;
-    (let n := numgoals in guard n <= 1);
-    subst;
-    clear H;
-    match goal with
-    | H': ?P' |- _ => unify P P'; fail 1 (* inversion didn't do anything except simplifying *)
-    | |- _ => idtac
-    end
-  end.
-
-Ltac simpl_Z_eqb :=
-  match goal with
-  | H: _ =? _ = true  |- _ => apply Z.eqb_eq in H; subst
-  | H: _ =? _ = false |- _ => apply Z.eqb_neq in H
-  end.
-
-Ltac simp_step :=
-  destruct_unique_match
-  || unique_inversion
-  || simpl_Z_eqb.
-
-Ltac simp := repeat simp_step.
-
-
-  Lemma sextend_width_nop: forall (w v: Z),
-    w = width ->
-    word.of_Z (BitOps.sextend w v) = (word.of_Z v: word).
-  Proof.
-    intros. subst. unfold BitOps.sextend. apply word.unsigned_inj.
-    rewrite! word.unsigned_of_Z.
-    pose proof (@word.width_pos _ _ word_ok).
-    pose proof (Z.pow_pos_nonneg 2 width).
-    remember (2 ^ width) as M.
-    remember (2 ^ (width - 1)) as M2.
-    rewrite Z.add_mod by omega. (* lia fails! *)
-    rewrite Zminus_mod by omega.
-    rewrite Z.mod_mod by omega.
-    rewrite <- (Z.mod_mod M2 M) at 2 by omega.
-    rewrite <- Zminus_mod by omega.
-    rewrite Z.add_simpl_r.
-    rewrite Z.mod_mod by omega.
-    reflexivity.
-  Qed.
-
-  Lemma go_load: forall sz x a addr v initialL post f,
-      valid_register x ->
-      valid_register a ->
-      map.get initialL.(getRegs) a = Some addr ->
-      (* (scalar sz addr v * R)%sep initialL.(getMem) -> *)
-      Memory.load sz (getMem initialL) addr = Some v ->
-      mcomp_sat (f tt)
-                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
-      mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post.
-  Proof.
-    intros. unfold compile_load.
-    destruct sz;
-    unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
-           Memory.load in *;
-    destruct (is32bit iset) eqn: E;
-    unfold is32bit, iset in *;
-    simp; simulate;
-    autorewrite with rew_simpl_words in *;
-    rewrite? sextend_width_nop by omega; (* lia won't work due to universes *)
-    try eassumption.
-    {
-
-      unfold Memory.bytes_per in *.
-      Fail rewrite E0 in E1.
-
-  Admitted.
 
   (*
   Lemma execute_store: forall (ra rv: Register) (a v: mword) (initialMH finalMH: Memory.mem)
