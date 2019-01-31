@@ -21,6 +21,16 @@ From coqutil.Tactics Require Import eabstract letexists rdelta.
 From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
 
+Lemma word__sub_add_l_same_l (x y : word) : (word.sub (word.add x y) x) = y.
+Proof.
+  eapply Properties.word.unsigned_inj.
+  rewrite word.unsigned_sub, word.unsigned_add, Zminus_mod_idemp_l.
+  unshelve erewrite (_:(_ - _=_)%Z); shelve_unifiable; [ring_simplify; exact eq_refl|].
+  eapply Properties.word.wrap_unsigned.
+Qed.
+
+From coqutil Require Import Z.div_mod_to_equations.
+
 Axiom __mem_ok : map.ok mem. Local Existing Instance __mem_ok.
 Lemma swap_swap_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -56,11 +66,44 @@ Proof.
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split. repeat straightline.
       repeat letexists; repeat split; repeat straightline.
-      { cbn [interp_binop] in *. subst v2; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
+      { cbn [interp_binop] in *. subst v2; subst x7. SeparationLogic.ecancel_assumption. }
       { left. exact I. }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      admit. admit. exact eq_refl.
-      SeparationLogic.ecancel_assumption. }
+      { cbn [interp_binop] in *.
+        clear.
+        subst v0.
+        Local Infix "^+" := word.add  (at level 50, left associativity).
+        Local Infix "^-" := word.sub  (at level 50, left associativity).
+        Local Infix "^<<" := word.slu  (at level 37, left associativity).
+        Local Infix "^>>" := word.sru  (at level 37, left associativity).
+        Local Notation "/_" := word.of_Z.
+        Local Notation "\_" := word.unsigned.
+        Local Open Scope Z_scope.
+        assert (word__add_sub : forall x y : word, (x^+y^-x) = y) by admit.
+        assert (Z.of_nat (Datatypes.length x) <> 0) by admit.
+        assert (\_ (x2 ^- x1) = 8*Z.of_nat (Datatypes.length x)) by admit.
+
+        rewrite word__add_sub.
+
+        pose proof Properties.word.unsigned_sru_nowrap (x2 ^- x1) (/_ 4) eq_refl.
+        rewrite H0 in H1 ; change (\_ (/_ 4)) with 4 in H1.
+
+        pose proof word.unsigned_slu ((x2 ^- x1) ^>> /_ 4) (/_ 3) eq_refl as H2.
+        change (\_ (/_ 3)) with 3 in H2.
+        setoid_rewrite H1 in H2.
+
+        setoid_rewrite H2.
+        clear -H.
+        change (\_ (/_ 8)) with 8.
+        rewrite Z.shiftr_div_pow2, Z.shiftl_mul_pow2 by discriminate .
+        zify. Z.div_mod_to_equations. Lia.lia.
+      }
+      {
+        rewrite word.unsigned_of_Z, (Z.mod_small 8) by (split; (discriminate || exact eq_refl)).
+        assert (word.unsigned (word.sub v0 x1) mod 8 = 0)%Z by admit; trivial.
+      }
+      { exact eq_refl. }
+      { SeparationLogic.ecancel_assumption. } }
     { repeat letexists. split. repeat straightline.
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v1; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
