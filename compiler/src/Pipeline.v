@@ -138,6 +138,7 @@ Section Pipeline1.
     FlatToRiscv.FlatToRiscv.env_ok := TODO;
     FlatToRiscv.FlatToRiscv.compile_ext_call_correct := TODO;
     FlatToRiscv.FlatToRiscv.go_load := TODO; (* interesting: how to instantiate this one?? *)
+    FlatToRiscv.FlatToRiscv.go_store := TODO; (* interesting: how to instantiate this one?? *)
   |}.
 
   Definition flatten(s: Syntax.cmd): FlatImp.stmt :=

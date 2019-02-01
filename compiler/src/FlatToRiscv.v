@@ -122,9 +122,17 @@ Module Import FlatToRiscv.
       valid_register a ->
       map.get initialL.(getRegs) a = Some addr ->
       Memory.load sz (getMem initialL) addr = Some v ->
-      mcomp_sat (f tt)
-                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
+      mcomp_sat (f tt) (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
       mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post;
+
+    go_store: forall sz x a (addr v: word) initialL m' post f,
+      valid_register x ->
+      valid_register a ->
+      map.get initialL.(getRegs) x = Some v ->
+      map.get initialL.(getRegs) a = Some addr ->
+      Memory.store sz (getMem initialL) addr v = Some m' ->
+      mcomp_sat (f tt) (withMem m' initialL) post ->
+      mcomp_sat (Bind (execute (compile_store iset sz a x 0)) f) initialL post;
 
   }.
 
@@ -736,18 +744,13 @@ Section FlatToRiscv1.
     run1step'; do 2 intro; subst.
 
   Ltac run1done :=
-    intros; subst;
-    match goal with
-    | H: _ |- _ => eapply H (* there's only one "... -> runsTo _ finalPostL" *)
-    end;
+    apply runsToDone;
+    simpl in *;
+    repeat split;
     first
       [ eassumption
-(*    | eapply (@containsMem_write mword _ _ _ BWSP); eassumption *)
-      | match goal with
-        | |- map.extends _ _ => solve [state_calc]
-        end
-(*    | solve [solve_containsProgram] *)
-      | solve_word_eq
+      | solve_word_eq (@word_ok (@W p))
+      | seplog
       | idtac ].
 
 (*
@@ -769,182 +772,6 @@ Section FlatToRiscv1.
 *)
 
   Arguments LittleEndian.combine: simpl never.
-
-  (*
-  Lemma execute_store: forall (ra rv: Register) (a v: mword) (initialMH finalMH: Memory.mem)
-            (f: unit -> M unit) (initialL: RiscvMachineL) initialRegsH post,
-      valid_register ra ->
-      valid_register rv ->
-      Memory.write_mem a v initialMH = Some finalMH ->
-      containsMem initialL.(getMem) initialMH ->
-      get initialRegsH ra = Some a ->
-      get initialRegsH rv = Some v ->
-      @extends Register mword _ initialL.(getRegs) initialRegsH ->
-      mcomp_sat (f tt) (setMem initialL (storeWordwXLEN initialL.(getMem) a v)) post ->
-      mcomp_sat (Bind (execute (SwXLEN ra rv 0)) f) initialL post.
-  Proof.
-    intros.
-    pose proof (@Bind_getRegister _ _ _ _ _ _ _) as Bind_getRegister.
-    pose proof (@Bind_setRegister _ _ _ _ _ _ _) as Bind_setRegister.
-    pose proof (@State_is_RegisterFile _ _) as State_is_RegisterFile.
-    pose proof (@Bind_storeWord _ _ _ _ _ _ _) as Bind_storeWord.
-    pose proof (@Bind_storeDouble _ _ _ _ _ _ _) as Bind_storeDouble.
-    intros.
-    unfold containsMem, Memory.write_mem, Memory.read_mem,
-      wXLEN_in_bytes in *.
-    unfold SwXLEN, bitwidth, loadWordwXLEN, storeWordwXLEN in *.
-    destruct Bw eqn: EBw;
-      simpl in H2;
-      (destruct_one_match_hyp; [|discriminate]);
-      inversions H1;
-      (destruct_one_match_hyp; [|discriminate]);
-      cbn [execute ExecuteI.execute ExecuteM.execute ExecuteI64.execute ExecuteM64.execute];
-      rewrite associativity;
-      rewrite Bind_getRegister by assumption;
-      rewrite associativity;
-      unfold add, fromImm, MachineWidthInst, bitwidth, MachineWidth32, MachineWidth64;
-      rewrite ZToWord_0;
-      rewrite wplus_comm;
-      rewrite wplus_unit;
-      unfold wXLEN, bitwidth in *;
-      rewrite_reg_value;
-      [ rewrite translate_id_if_aligned_4 by assumption |
-        rewrite translate_id_if_aligned_8 by assumption ];
-      rewrite left_identity;
-      rewrite associativity;
-      rewrite Bind_getRegister by assumption;
-      [ rewrite Bind_storeWord   |
-        rewrite Bind_storeDouble ];
-      rewrite_reg_value;
-      reflexivity.
-  Qed.
-  Admitted.*)
-
-  Arguments Bind: simpl never.
-  Arguments Return: simpl never.
-  Arguments app: simpl never. (* don't simpl ([[ oneInst ]] ++ rest) into oneInst :: rest
-    because otherwise solve_imem doesn't recognize "middle" any more *)
-
-  (* otherwise simpl takes forever:
-  Arguments split1: simpl never.
-  Arguments split2: simpl never.
-  Arguments ZToWord: simpl never.
-  Arguments Nat.pow: simpl never.
-
-  Lemma store_preserves_containsProgram: forall initialL_mem insts imemStart a v,
-      containsProgram initialL_mem insts imemStart ->
-      not_in_range a XLEN_in_bytes (regToZ_unsigned imemStart) (4 * (Zlength insts)) ->
-      in_range a XLEN_in_bytes 0 (Memory.memSize initialL_mem) ->
-      (* better than using $4 ^* imemStart because that prevents overflow *)
-      divisibleBy4 imemStart ->
-      containsProgram (storeWordwXLEN initialL_mem a v) insts imemStart.
-  Proof.
-    unfold containsProgram.
-    intros. rename H2 into A. destruct H.
-    clear -H H0 H1 H2 A.
-    pose proof pow2_wXLEN_4 as X.
-    assert (forall (a: mword), a = a ^+ $ (4) ^- $ (4)) as helper4 by (intros; solve_word_eq).
-    rename H1 into IR.
-    pose proof (in_range0_valid_addr IR) as H1.
-    unfold storeWordwXLEN, ldInst, wXLEN_in_bytes, wXLEN, bitwidth in *;
-      destruct Bw; simpl in *;
-        split;
-        rewrite? Memory.storeWord_preserves_memSize;
-        rewrite? Memory.storeDouble_preserves_memSize;
-        try assumption;
-        intros;
-        specialize H2 with (1 := H3).
-    - pose proof (Memory.memSize_bound initialL_mem) as B.
-      assert (nth_error insts i <> None) as F by congruence.
-      apply nth_error_Some in F.
-      pose proof (@wordToNat_natToWord_idempotent' 32 (4 * i)) as D.
-      rewrite Memory.loadStoreWord_ne; try assumption.
-      + unfold Memory.valid_addr. split.
-        * rewrite wordToNat_wplus'; omega.
-        * rewrite wordToNat_wplus' by omega.
-          rewrite D by omega.
-          rewrite Nat.add_mod by omega.
-          rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
-          rewrite A.
-          reflexivity.
-      + intro C. subst a. rename H0 into R.
-        unfold not_in_range in *.
-        rewrite wordToNat_wplus' in R; omega.
-    - pose proof (Memory.memSize_bound initialL_mem) as B.
-      assert (nth_error insts i <> None) as F by congruence.
-      apply nth_error_Some in F.
-      pose proof (@wordToNat_natToWord_idempotent' 64 (4 * i)) as D.
-      rewrite loadWord_storeDouble_ne'; try assumption.
-      + unfold in_range in *.
-        rewrite wordToNat_wplus' by omega.
-        rewrite D by omega.
-        rewrite Nat.add_mod by omega.
-        rewrite Nat.mul_comm. rewrite Nat.mod_mul by omega.
-        rewrite A.
-        intuition (omega || reflexivity).
-      + clear H1 H2.
-        unfold not_in_range, in_range in *.
-        rewrite wordToNat_wplus' by omega.
-        rewrite D by omega.
-        omega.
-  Qed.
-  Admitted.
-
-  Lemma mem_inaccessible_read:  forall a initialMH w start len,
-      Memory.read_mem a initialMH = Some w ->
-      mem_inaccessible initialMH start len ->
-      not_in_range a XLEN_in_bytes start len.
-  Proof.
-    intros. unfold mem_inaccessible in *. eapply H0. eassumption.
-  Qed.
-
-  Lemma mem_inaccessible_write:  forall a v initialMH finalMH start len,
-      Memory.write_mem a v initialMH = Some finalMH ->
-      mem_inaccessible initialMH start len ->
-      not_in_range a XLEN_in_bytes start len.
-  Proof.
-    intros. unfold Memory.write_mem, mem_inaccessible in *.
-    destruct_one_match_hyp; [|discriminate].
-    eapply H0. eassumption.
-  Qed.
-
-  Lemma read_mem_in_range: forall a0 initialMH initialML w,
-      Memory.read_mem a0 initialMH = Some w ->
-      containsMem initialML initialMH ->
-      in_range a0 XLEN_in_bytes 0 (Memory.memSize initialML).
-  Proof.
-    intros. unfold in_range, containsMem in *.
-    specialize H0 with (1 := H). destruct H0 as [A B0].
-    unfold Memory.read_mem in *.
-    destruct_one_match_hyp; try discriminate.
-    Admitted.
-    omega.
-  Qed.
-
-  Lemma write_mem_in_range: forall a0 v0 initialMH finalMH initialML,
-      Memory.write_mem a0 v0 initialMH = Some finalMH ->
-      containsMem initialML initialMH ->
-      in_range a0 XLEN_in_bytes 0 (Memory.memSize initialML).
-  Proof.
-    intros. unfold Memory.write_mem in *.
-    destruct_one_match_hyp; try discriminate.
-    inversion H. clear H. subst finalMH.
-    eapply read_mem_in_range; eassumption.
-  Qed.
-
-  Lemma wordToZ_size'': forall (w : mword),
-      (- Z.of_nat (pow2 (wXLEN - 1)) <= wordToZ w < Z.of_nat (pow2 (wXLEN - 1)))%Z.
-  Proof.
-    clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply  wordToZ_size'.
-  Qed.
-
-  Lemma wordToZ_ZToWord': forall (z : Z),
-      (- Z.of_nat (pow2 (wXLEN - 1)) <= z < Z.of_nat (pow2 (wXLEN - 1)))%Z ->
-      wordToZ (ZToWord wXLEN z) = z.
-  Proof.
-    clear. unfold wXLEN, bitwidth. destruct Bw; intros; apply wordToZ_ZToWord; assumption.
-  Qed.
-  *)
 
   Definition load_lit_semantics(v: Z): word :=
     add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add
@@ -1087,88 +914,9 @@ Section FlatToRiscv1.
           end.
         * eapply go_load; try eassumption.
           eapply go_step. simpl. reflexivity.
-      + apply runsToDone.
-        simpl in *.
-        repeat split.  try eassumption.
-        {
-          (*
-          Time seplog. (* 13.388 secs *)
-          Time exact H9. (* 6.738 secs *)
-          *)
-
-          match goal with
-          | |- (?A * ?B * ?C)%sep _ =>
-            let LHS := constr:([A; B; C]) in
-            let y := constr:(A) in
-            time (let i := find_syntactic_unify LHS y in idtac LHS y i)
-          end.
-
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H9). clear H9.
-
-  reify_goal.
-
-
-  let LHS := constr:([ptsto_instr initialL_pc (compile_load iset sz x a 0); emp True; R]) in
-  let y := constr:(ptsto_instr initialL_pc (compile_load iset sz x a 0)) in
-  let i := find_syntactic_unify LHS y in
-  idtac i.
-  (* fast, because universes are easy to unify *)
-
-
-  Set Printing Universes.
-
-  match goal with
-  | |- iff1 (seps [?A; ?B; ?C]) (seps [?A'; ?B'; ?C']) =>
-    let h := head_of_app A in
-    let h' := head_of_app A' in
-    idtac "will unify" h "with" h';
-    time (unify h h')
-  end.
- (* SLOW: Tactic call ran for 6.729 secs (6.677u,0.s) (success) *)
-
-  Unset Printing Universes.
-
-  Set Ltac Profiling.
-
-  (* therefore, the body of ecancel takes as long: *)
-try (
-      let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-      let jy := index_and_element_of RHS in
-      let j := lazymatch jy with (?i, _) => i end in
-      let y := lazymatch jy with (_, ?y) => y end in
-      assert_fails (is_evar y);
-
-      let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-      time (let i := find_syntactic_unify LHS y in idtac "<---" i);
-        fail).
-
-
-Show Ltac Profile.
-
-(*
-total time:      6.664s
-
- tactic                                   local  total   calls       max
-────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
-─find_syntactic_unify ------------------   0.1% 100.0%       0    6.652s
-─syntactic_unify._syntactic_unify ------ 100.0% 100.0%      65    6.652s
-─unify (constr) (constr) ---------------  99.8%  99.8%      38    6.647s
-
- tactic                                   local  total   calls       max
-────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
-─find_syntactic_unify ------------------   0.1% 100.0%       0    6.652s
-└syntactic_unify._syntactic_unify ------ 100.0% 100.0%      65    6.652s
-└unify (constr) (constr) ---------------  99.8%  99.8%      38    6.647s
-*)
-
-  cbn [seps]; try exact (RelationClasses.reflexivity _).
-        }
-
-
-        solve_word_eq word_ok.
+      + run1done.
 
     - (* SStore *)
-      subst.
       eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
@@ -1177,13 +925,24 @@ total time:      6.664s
           match goal with
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
-        * admit.
-      + (* run1done.
-        apply store_preserves_containsProgram.
-        * solve_containsProgram.
-        * eapply mem_inaccessible_write; eassumption.
-        * eapply write_mem_in_range; eassumption.
-        * assumption.
+        * eapply go_store; try eassumption.
+          eapply go_step. simpl. reflexivity.
+      + run1done.
+        (* mismatch between m and m' !
+
+        exact H10.
+
+        Problem: FlatImp execution is on the whole memory, so
+
+          Memory.store sz m addr val = Some m'
+
+        is not strong enough, it could be that addr falls inside the instruction memory.
+
+My plan for address space managment doesn't work:
+The question is: Should the FlatImp execution given as a hyp to the FlatToRiscv proof be on the whole memory (including instruction mem & stack) or only on the FlatImp mem?
+In both cases, we have a problem:
+- If the FlatImp execution is only on the FlatImp mem, an external call could attempt to do MMIO on the instruction memory, so this external call could not be compiled correctly (I already knew this)
+- If the FlatImp execution is on the whole memory, a regular store in FlatImp could write to the instruction memory and still succeed, so this store could not be compiled in a way which preserves the contents of the instruction memory (that's what I noticed today).
 
     - (* SLit *)
       subst. destruct_containsProgram.

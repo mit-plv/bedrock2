@@ -121,4 +121,20 @@ Section Proofs.
     simp; simulate; simpl; simpl_word_exprs word_ok; eassumption.
   Qed.
 
+  Lemma go_store: forall sz x a (addr v: word) initialL m' post f,
+      valid_register x ->
+      valid_register a ->
+      map.get initialL.(getRegs) x = Some v ->
+      map.get initialL.(getRegs) a = Some addr ->
+      Memory.store sz (getMem initialL) addr v = Some m' ->
+      mcomp_sat (f tt) (withMem m' initialL) post ->
+      mcomp_sat (Bind (execute (compile_store RV32IM sz a x 0)) f) initialL post.
+  Proof.
+    intros. unfold compile_store.
+    destruct sz;
+    unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
+           Memory.store in *;
+    simp; simulate; simpl; simpl_word_exprs word_ok; eassumption.
+  Qed.
+
 End Proofs.
