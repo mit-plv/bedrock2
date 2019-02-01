@@ -130,8 +130,6 @@ Module Import FlatToRiscv.
 
 End FlatToRiscv.
 
-Local Unset Universe Polymorphism. (* for Add Ring *)
-
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscv.parameters}.
 
@@ -143,46 +141,7 @@ Section FlatToRiscv1.
 
   Ltac state_calc0 := map_solver locals_ok.
 
-  Ltac mword_cst w :=
-    match w with
-    | ZToReg ?x => let b := isZcst x in
-                  match b with
-                  | true => x
-                  | _ => constr:(NotConstant)
-                  end
-    | _ => constr:(NotConstant)
-  end.
-
-  (*
-  Hint Rewrite
-    ZToReg_morphism.(morph_add)
-    ZToReg_morphism.(morph_sub)
-    ZToReg_morphism.(morph_mul)
-    ZToReg_morphism.(morph_opp)
-  : rew_ZToReg_morphism.
-
-  Add Ring mword_ring : (@regRing mword MachineWidth_Inst)
-      (preprocess [autorewrite with rew_ZToReg_morphism],
-       morphism (@ZToReg_morphism mword MachineWidth_Inst),
-       constants [mword_cst]).
-  *)
-  Add Ring wring: (@word.ring_theory width word word_ok).
-
-  Ltac ring' := unfold ZToReg, mul, add, MachineWidth_XLEN in *; ring.
-
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
-
-  Ltac solve_word_eq :=
-    match goal with
-    | |- @eq word _ _ => idtac
-    | _ => fail 1 "wrong shape of goal"
-    end;
-    subst;
-    try reflexivity;
-    clear;
-    simpl;
-    repeat (autorewrite with rew_Zlength; simpl);
-    try ring.
 
   (* TODO is there a principled way of writing such proofs? *)
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word) {T: Type} (thenVal elseVal: T),
@@ -352,7 +311,7 @@ Section FlatToRiscv1.
     end.
 *)
 
-  Ltac simpl_RiscvMachine_get_set := simpl. (* TODO is this enough? *)
+  Ltac simpl_RiscvMachine_get_set := simpl in *. (* TODO is this enough? *)
 
   Ltac destruct_RiscvMachine_0 m :=
     let t := type of m in
@@ -749,8 +708,7 @@ Section FlatToRiscv1.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end;
-    subst * (*;
-    destruct_containsProgram *).
+    subst.
 
   Ltac run1step''' :=
     repeat (
@@ -1098,21 +1056,17 @@ Section FlatToRiscv1.
       | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
         pose proof (compile_stmt_emits_valid _ doesSupportM H1 H2)
       end;
-      repeat match goal with
-             | x := _ |- _ => subst x
-             | H: _ /\ _ |- _ => destruct H
-             | H: _ \/ _ |- _ => destruct H
-             end.
+      simpl in *;
+      destruct_everything.
 
     - (* SInteract *)
-      simpl in *; destruct_everything. simpl in *.
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with (postH := post) (action0 := action)
                                              (argvars0 := argvars) (resvars0 := resvars);
           simpl; reflexivity || eassumption || idtac.
         eapply @ExInteract; eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
-        destruct_products. subst. eauto 10.
+        destruct_products. subst. eauto.
 
     - (* SCall *)
       match goal with
@@ -1123,7 +1077,6 @@ Section FlatToRiscv1.
       discriminate.
 
     - (* SLoad *)
-      subst.
       eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
@@ -1132,20 +1085,87 @@ Section FlatToRiscv1.
           match goal with
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
-        * simpl in H5. destruct_products.
-          eapply go_load; try eassumption.
+        * eapply go_load; try eassumption.
           eapply go_step. simpl. reflexivity.
       + apply runsToDone.
-        simpl.
-        repeat split; try eassumption.
-        Fail rewrite H10. (* TODO why does rewrite fail here? *)
-        etransitivity; [exact H11|].
-        (* TODO make solve_word_eq work again *)
-        repeat (autorewrite with rew_Zlength; simpl).
-        f_equal.
-        change (0 + 1) with 1.
-        rewrite <- word.ring_morph.(morph_mul).
-        reflexivity.
+        simpl in *.
+        repeat split.  try eassumption.
+        {
+          (*
+          Time seplog. (* 13.388 secs *)
+          Time exact H9. (* 6.738 secs *)
+          *)
+
+          match goal with
+          | |- (?A * ?B * ?C)%sep _ =>
+            let LHS := constr:([A; B; C]) in
+            let y := constr:(A) in
+            time (let i := find_syntactic_unify LHS y in idtac LHS y i)
+          end.
+
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H9). clear H9.
+
+  reify_goal.
+
+
+  let LHS := constr:([ptsto_instr initialL_pc (compile_load iset sz x a 0); emp True; R]) in
+  let y := constr:(ptsto_instr initialL_pc (compile_load iset sz x a 0)) in
+  let i := find_syntactic_unify LHS y in
+  idtac i.
+  (* fast, because universes are easy to unify *)
+
+
+  Set Printing Universes.
+
+  match goal with
+  | |- iff1 (seps [?A; ?B; ?C]) (seps [?A'; ?B'; ?C']) =>
+    let h := head_of_app A in
+    let h' := head_of_app A' in
+    idtac "will unify" h "with" h';
+    time (unify h h')
+  end.
+ (* SLOW: Tactic call ran for 6.729 secs (6.677u,0.s) (success) *)
+
+  Unset Printing Universes.
+
+  Set Ltac Profiling.
+
+  (* therefore, the body of ecancel takes as long: *)
+try (
+      let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+      let jy := index_and_element_of RHS in
+      let j := lazymatch jy with (?i, _) => i end in
+      let y := lazymatch jy with (_, ?y) => y end in
+      assert_fails (is_evar y);
+
+      let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+      time (let i := find_syntactic_unify LHS y in idtac "<---" i);
+        fail).
+
+
+Show Ltac Profile.
+
+(*
+total time:      6.664s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─find_syntactic_unify ------------------   0.1% 100.0%       0    6.652s
+─syntactic_unify._syntactic_unify ------ 100.0% 100.0%      65    6.652s
+─unify (constr) (constr) ---------------  99.8%  99.8%      38    6.647s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─find_syntactic_unify ------------------   0.1% 100.0%       0    6.652s
+└syntactic_unify._syntactic_unify ------ 100.0% 100.0%      65    6.652s
+└unify (constr) (constr) ---------------  99.8%  99.8%      38    6.647s
+*)
+
+  cbn [seps]; try exact (RelationClasses.reflexivity _).
+        }
+
+
+        solve_word_eq word_ok.
 
     - (* SStore *)
       subst.

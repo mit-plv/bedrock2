@@ -53,3 +53,16 @@ Ltac simpl_word_exprs OK :=
       in * by (assumption || symmetry; assumption || reflexivity)
   | _ => fail 10000 "wordok is not of type word.ok"
   end.
+
+Ltac solve_word_eq OK :=
+  match goal with
+  | |- @eq (@word.rep _ _) _ _ => idtac
+  | _ => fail 1 "wrong shape of goal"
+  end;
+  subst;
+  try reflexivity;
+  clear;
+  simpl;
+  repeat (autorewrite with rew_Zlength; simpl);
+  simpl_word_exprs OK;
+  try reflexivity.
