@@ -137,6 +137,8 @@ Section Pipeline1.
     FlatToRiscv.FlatToRiscv.env := TODO;
     FlatToRiscv.FlatToRiscv.env_ok := TODO;
     FlatToRiscv.FlatToRiscv.compile_ext_call_correct := TODO;
+    FlatToRiscv.FlatToRiscv.ext_guarantee := TODO;
+    FlatToRiscv.FlatToRiscv.ext_guarantee_preservable := TODO;
     FlatToRiscv.FlatToRiscv.go_load := TODO; (* interesting: how to instantiate this one?? *)
     FlatToRiscv.FlatToRiscv.go_store := TODO; (* interesting: how to instantiate this one?? *)
   |}.

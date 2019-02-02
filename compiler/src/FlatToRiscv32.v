@@ -117,8 +117,9 @@ Section Proofs.
     intros. unfold compile_load.
     destruct sz;
     unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
-           Memory.load in *;
-    simp; simulate; simpl; simpl_word_exprs word_ok; eassumption.
+           Memory.load, Memory.load_Z in *;
+    simp; simulate; simpl; simpl_word_exprs word_ok;
+    eassumption.
   Qed.
 
   Lemma go_store: forall sz x a (addr v: word) initialL m' post f,
@@ -133,7 +134,7 @@ Section Proofs.
     intros. unfold compile_store.
     destruct sz;
     unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
-           Memory.store in *;
+           Memory.store, Memory.store_Z in *;
     simp; simulate; simpl; simpl_word_exprs word_ok; eassumption.
   Qed.
 

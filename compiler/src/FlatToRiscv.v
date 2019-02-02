@@ -98,23 +98,41 @@ Module Import FlatToRiscv.
 
     Machine := @RiscvMachine Register W _ mem actname;
 
+    (* An abstract predicate on the low-level state, which can be chosen by authors of
+       extensions. The compiler will ensure that this guarantee holds before each external
+       call. *)
+    ext_guarantee: Machine -> Prop;
+
+    (* For authors of extensions, a freely choosable ext_guarantee sounds too good to be true!
+       And indeed, there are two restrictions:
+       The first restriction is that ext_guarantee needs to be preservable for the compiler: *)
+    ext_guarantee_preservable: forall (m1 m2: Machine),
+        ext_guarantee m1 ->
+        (forall a: word, map.get m1.(getMem) a = None <-> map.get m2.(getMem) a = None) ->
+        m1.(getLog) = m2.(getLog) ->
+        ext_guarantee m2;
+
+    (* And the second restriction is part of the correctness requirement for compilation of
+       external calls: Every compiled external call has to preserve ext_guarantee *)
     compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts
-        (argvars resvars: list Register) R,
+        (argvars resvars: list Register) initialMH R,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
-      (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
+      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      ext_guarantee initialL ->
       exec map.empty (@SInteract (@FlatImp.syntax_params FlatImp_params) resvars action argvars)
-           initialL.(getLog) initialL.(getMem) initialL.(getRegs) postH ->
+           initialL.(getLog) initialMH initialL.(getRegs) postH ->
       runsTo (mcomp_sat (run1 iset)) initialL
              (fun finalL =>
-                  postH finalL.(getLog) finalL.(getMem) finalL.(getRegs) /\
+                  (* external calls can't modify the memory for now *)
+                  postH finalL.(getLog) initialMH finalL.(getRegs) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
-                  (* external calls can't modify the memory for now *)
-                  (program initialL.(getPc) insts * R)%sep finalL.(getMem));
+                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  ext_guarantee finalL);
 
     (* bitwidth-specific: *)
     go_load: forall sz x a (addr v: word) initialL post f,
@@ -837,10 +855,11 @@ Section FlatToRiscv1.
 
   Definition eval_stmt := exec map.empty.
 
-  Lemma seplog_subst_eq: forall {A B: mem -> Prop} {mL mH: mem},
+  Lemma seplog_subst_eq: forall {A B R: mem -> Prop} {mL mH: mem},
       A mL ->
+      iff1 A (R * eq mH)%sep ->
       B mH ->
-      forall R, iff1 A (R * eq mH)%sep -> (R * B)%sep mL.
+      (B * R)%sep mL.
   Proof.
   Admitted.
 
@@ -867,15 +886,16 @@ Section FlatToRiscv1.
     valid_registers s ->
     divisibleBy4 initialL.(getPc) ->
     initialL.(getRegs) = initialRegsH ->
-    initialL.(getMem) = initialMH ->
-    (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
+    (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
-    runsTo initialL (fun finalL =>
-          postH finalL.(getLog) finalL.(getMem) finalL.(getRegs) /\
-          (program initialL.(getPc) insts * R)%sep finalL.(getMem) /\
+    ext_guarantee initialL ->
+    runsTo initialL (fun finalL => exists finalML,
+          postH finalL.(getLog) finalML finalL.(getRegs) /\
+          (program initialL.(getPc) insts * eq finalML * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4)).
+          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          ext_guarantee finalL).
   Proof.
     pose proof compile_stmt_emits_valid.
     induction 1; intros;
@@ -890,10 +910,10 @@ Section FlatToRiscv1.
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with (postH := post) (action0 := action)
                                              (argvars0 := argvars) (resvars0 := resvars);
-          simpl; reflexivity || eassumption || idtac.
-        eapply @ExInteract; eassumption.
+          simpl; reflexivity || eassumption || seplog || idtac.
+        eapply @ExInteract; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
-        destruct_products. subst. eauto.
+        destruct_products. subst. eauto 7.
 
     - (* SCall *)
       match goal with
@@ -904,6 +924,9 @@ Section FlatToRiscv1.
       discriminate.
 
     - (* SLoad *)
+      unfold Memory.load in *. simp.
+      assert (exists R0, (truncated_scalar sz addr z * R0)%sep m) as A by admit.
+      destruct A as [R0 A].
       eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
@@ -912,9 +935,28 @@ Section FlatToRiscv1.
           match goal with
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
-        * eapply go_load; try eassumption.
-          eapply go_step. simpl. reflexivity.
-      + run1done.
+        * eapply go_load; try eassumption. 2: eapply go_step; simpl; reflexivity.
+          simpl.
+
+          unfold Memory.load.
+          evar (HLR: mem -> Prop). evar (LLR: mem -> Prop).
+          erewrite load_Z_of_sep with (R1 := (HLR * LLR)%sep); [reflexivity|].
+          subst HLR LLR.
+          eapply sep_assoc.
+
+          eapply seplog_subst_eq.
+          { exact H8. }
+          { ecancel. }
+          { exact A. }
+      + run1done. eexists. repeat split; try eassumption.
+        * match goal with
+          | H: post _ _ (map.put _ _ ?v) |- post _ _ (map.put _ _ ?v') =>
+            assert (v = v') as F
+          end.
+          { (* TODO meh why so many conversions? *) admit. }
+          rewrite <- F. assumption.
+        * solve_word_eq word_ok.
+        * eapply ext_guarantee_preservable; [eassumption | simpl; intuition idtac | reflexivity ].
 
     - (* SStore *)
       eapply det_step.
@@ -926,24 +968,10 @@ Section FlatToRiscv1.
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
         * eapply go_store; try eassumption.
-          eapply go_step. simpl. reflexivity.
+          { admit. }
+          { eapply go_step. simpl. reflexivity. }
       + run1done.
-        (* mismatch between m and m' !
-
-        exact H10.
-
-        Problem: FlatImp execution is on the whole memory, so
-
-          Memory.store sz m addr val = Some m'
-
-        is not strong enough, it could be that addr falls inside the instruction memory.
-
-My plan for address space managment doesn't work:
-The question is: Should the FlatImp execution given as a hyp to the FlatToRiscv proof be on the whole memory (including instruction mem & stack) or only on the FlatImp mem?
-In both cases, we have a problem:
-- If the FlatImp execution is only on the FlatImp mem, an external call could attempt to do MMIO on the instruction memory, so this external call could not be compiled correctly (I already knew this)
-- If the FlatImp execution is on the whole memory, a regular store in FlatImp could write to the instruction memory and still succeed, so this store could not be compiled in a way which preserves the contents of the instruction memory (that's what I noticed today).
-
+        (*
     - (* SLit *)
       subst. destruct_containsProgram.
       eapply compile_lit_correct_full; [sidecondition..|].

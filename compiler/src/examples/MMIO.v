@@ -264,6 +264,9 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
 |}.
 - apply TODO.
 - apply TODO.
+- evar (ext_guarantee: RiscvMachine Register FlatToRiscvDef.actname -> Prop).
+  exact ext_guarantee.
+- apply TODO.
 - intros initialL action.
   destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
   destruct action; cbv [getRegs getPc getNextPc getMem getLog]; intros.
@@ -308,21 +311,25 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
       apply spec_Bind.
       refine (ex_intro _ (fun v m => m = _) _).
       split.
-      - apply spec_loadWord. simpl. right. repeat split; assumption.
+      - apply spec_loadWord. simpl. right. repeat split; try assumption.
+        (* TODO use ext_guarantee here *) admit.
       - intros. subst. apply go_setRegister; [assumption|].
         apply go_step.
         apply runsToDone.
         simpl.
         repeat split.
         + unfold mmioLoadEvent.
-          specialize (H15 initialMem [signedByteTupleToReg a]).
-          destruct H15 as [ l' [A B] ]; [eauto|].
-          inversion_option.
-          subst l'.
-          exact B.
+          specialize (H16 initialMem [signedByteTupleToReg a]).
+          destruct H16 as [ l' [A B] ].
+          { (* TODO trace translation *) admit. }
+          { inversion_option.
+            subst l'.
+            Fail exact B.
+            (* TODO trace translation *) admit. }
         + rewrite Zlength_cons, Zlength_nil. apply TODO. (* TODO word solver *)
         + rewrite Zlength_cons, Zlength_nil. apply TODO. (* TODO word solver *)
         + seplog.
+        + admit. (* prove ext_guarantee preservation *)
       }
       { reflexivity. }
   + (* MMOutput *)
@@ -331,6 +338,6 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
     apply TODO.
   - (* go_store *)
     apply TODO.
-  Defined.
+  Admitted.
 
 End MMIO1.
