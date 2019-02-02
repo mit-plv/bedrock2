@@ -7,16 +7,28 @@ Import HList List.
 Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
   Context {byte : Word.Interface.word 8} {byte_ok : word.ok byte}.
+  Context {word16 : Word.Interface.word 16} {word16_ok : word.ok word16}.
+  Context {word32 : Word.Interface.word 32} {word32_ok : word.ok word32}.
+
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
 
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
     array ptsto (word.of_Z 1) addr (tuple.to_list (LittleEndian.split n value)).
 
-  (* TODO: this definition should also enforce that [value] fits
-    within the specified width. Further, it might be better to take [value] as a Z. *)
-  Definition scalar sz addr (value:word) : mem -> Prop :=
-    littleendian (bytes_per (width:=width) sz) addr (word.unsigned value).
-  
+  Definition truncated_scalar sz addr (value:Z) : mem -> Prop :=
+    littleendian (bytes_per (width:=width) sz) addr value.
+
+  Definition scalar8 := ptsto.
+
+  Definition scalar16 addr (value: word16) : mem -> Prop :=
+    truncated_scalar Syntax.access_size.two addr (word.unsigned value).
+
+  Definition scalar32 addr (value: word32) : mem -> Prop :=
+    truncated_scalar Syntax.access_size.four addr (word.unsigned value).
+
+  Definition scalar addr (value: word) : mem -> Prop :=
+    truncated_scalar Syntax.access_size.word addr (word.unsigned value).
+
   (* TODO: factor out getmany_sep and putmany_sep *)
   Lemma load_bytes_sep a n bs R m
     (Hsep : sep (array ptsto (word.of_Z 1) a (tuple.to_list bs)) R m)
@@ -57,7 +69,7 @@ Section Scalars.
     (Hpost : forall m, sep (array ptsto (word.of_Z 1) a (tuple.to_list bs)) R m -> post m)
     : exists m1, Memory.store_bytes n m a bs = Some m1 /\ post m1.
   Proof. cbv [store_bytes]. erewrite load_bytes_sep; eauto using sep_unchecked_store_bytes. Qed.
-  
+
   Lemma combine_split n z :
    LittleEndian.combine n (LittleEndian.split n z) = (z mod 2^(Z.of_nat n*8))%Z.
   Proof.
@@ -80,17 +92,14 @@ Section Scalars.
           (Z.ltb_spec0 i (Z.of_nat n * 8 + 8));
           trivial; Lia.lia. } }
   Qed.
-  
-  Lemma load_sep sz addr (value:word) R m
-    (Hsep : sep (scalar sz addr value) R m)
-    : Memory.load sz m addr = Some (word.and value (word.of_Z (Z.ones (Z.of_nat (bytes_per (width:=width) sz)*8)))).
+
+  Lemma load_Z_of_sep sz addr (value: Z) R m
+    (Hsep : sep (truncated_scalar sz addr value) R m)
+    : Memory.load_Z sz m addr = Some (Z.land value (Z.ones (Z.of_nat (bytes_per (width:=width) sz)*8))).
   Proof.
-    cbv [load scalar littleendian] in *.
+    cbv [load scalar littleendian load_Z] in *.
     erewrite load_bytes_sep by exact Hsep; apply f_equal.
-    eapply Properties.word.unsigned_inj.
     rewrite combine_split.
-    rewrite word.unsigned_and.
-    rewrite !word.unsigned_of_Z.
     set (x := (Z.of_nat (bytes_per sz) * 8)%Z).
     assert ((0 <= x)%Z) by (subst x; destruct sz; Lia.lia).
     (* bitwise proof, automatable: *)
@@ -104,20 +113,21 @@ Section Scalars.
     Lia.lia.
   Qed.
 
-  Lemma store_sep sz addr (oldvalue value:word) R m (post:_->Prop)
-    (Hsep : sep (scalar sz addr oldvalue) R m)
-    (Hpost : forall m, sep (scalar sz addr value) R m -> post m)
-    : exists m1, Memory.store sz m addr value = Some m1 /\ post m1.
+  Lemma store_Z_of_sep sz addr (oldvalue value: Z) R m (post:_->Prop)
+    (Hsep : sep (truncated_scalar sz addr oldvalue) R m)
+    (Hpost : forall m, sep (truncated_scalar sz addr value) R m -> post m)
+    : exists m1, Memory.store_Z sz m addr value = Some m1 /\ post m1.
   Proof. eapply store_bytes_sep; [eapply Hsep|eapply Hpost]. Qed.
-  
-  Lemma load_word_sep (sz := Syntax.access_size.word) addr value R m 
-    (Hsep : sep (scalar sz addr value) R m)
-    : Memory.load sz m addr = Some value.
+
+  Lemma load_word_of_sep addr value R m
+    (Hsep : sep (scalar addr value) R m)
+    : Memory.load Syntax.access_size.word m addr = Some value.
   Proof.
-    erewrite load_sep by exact Hsep; f_equal.
-    cbv [bytes_per sz].
+    cbv [load].
+    erewrite load_Z_of_sep by exact Hsep; f_equal.
+    cbv [bytes_per].
     eapply Properties.word.unsigned_inj.
-    rewrite !word.unsigned_and, !word.unsigned_of_Z.
+    rewrite !word.unsigned_of_Z.
     rewrite <-Properties.word.wrap_unsigned at 2.
     eapply Z.bits_inj'; intros i Hi.
     pose proof word.width_pos (width:=width).
@@ -128,4 +138,11 @@ Section Scalars.
     eapply Z.ltb_lt.
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
   Qed.
+
+  Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
+    (Hsep : sep (scalar addr oldvalue) R m)
+    (Hpost : forall m, sep (scalar addr value) R m -> post m)
+    : exists m1, Memory.store Syntax.access_size.word m addr value = Some m1 /\ post m1.
+  Proof. eapply store_bytes_sep; [eapply Hsep|eapply Hpost]. Qed.
+
 End Scalars.

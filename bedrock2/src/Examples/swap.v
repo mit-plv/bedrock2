@@ -30,22 +30,22 @@ Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
 Instance spec_of_swap : spec_of "swap" := fun functions =>
   forall a_addr a b_addr b m R t,
-    (scalar access_size.word a_addr a * (scalar access_size.word b_addr b * R)) m ->
+    (scalar a_addr a * (scalar b_addr b * R)) m ->
     WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
       "swap" t m [a_addr; b_addr]
-      (fun t' m' rets => t=t'/\ (scalar access_size.word a_addr b * (scalar access_size.word b_addr a * R)) m' /\ rets = nil).
+      (fun t' m' rets => t=t'/\ (scalar a_addr b * (scalar b_addr a * R)) m' /\ rets = nil).
 
 Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
   forall a_addr a b_addr b m R t,
-    (scalar access_size.word a_addr a * (scalar access_size.word b_addr b * R)) m ->
+    (scalar a_addr a * (scalar b_addr b * R)) m ->
     WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
       "swap_swap" t m [a_addr; b_addr]
-      (fun t' m' rets => t=t' /\ (scalar access_size.word a_addr a * (scalar access_size.word b_addr b * R)) m' /\ rets = nil).
+      (fun t' m' rets => t=t' /\ (scalar a_addr a * (scalar b_addr b * R)) m' /\ rets = nil).
 
 Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
   bind_body_of_function swap; cbv [spec_of spec_of_swap]. intros.
-  (* argument initialization *) letexists. split. exact eq_refl. 
+  (* argument initialization *) letexists. split. exact eq_refl.
   (* code *) repeat straightline.
   (* final postcondition *) eauto.
 Defined.
@@ -64,7 +64,7 @@ Proof.
   (* swap precondition *) solve[SeparationLogic.ecancel_assumption].
   (* swap returns *) repeat straightline. letexists; split. { exact eq_refl. }
 
-  repeat straightline. 
+  repeat straightline.
   eauto.
 Defined.
 

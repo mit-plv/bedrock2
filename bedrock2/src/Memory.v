@@ -35,14 +35,23 @@ Section Memory.
       | access_size.word => Z.to_nat (Z.div (Z.add width 7) 8)
     end%nat.
 
-  Definition load(sz: access_size)(m: mem)(a: word): option word :=
+  Definition load_Z(sz: access_size)(m: mem)(a: word): option Z :=
     match load_bytes (bytes_per sz) m a with
-    | Some bs => Some (word.of_Z (LittleEndian.combine _ bs))
+    | Some bs => Some (LittleEndian.combine _ bs)
+    | None => None
+    end.
+
+  Definition store_Z(sz: access_size)(m: mem)(a: word)(v: Z): option mem :=
+    store_bytes (bytes_per sz) m a (LittleEndian.split _ v).
+
+  Definition load(sz: access_size)(m: mem)(a: word): option word :=
+    match load_Z sz m a with
+    | Some v => Some (word.of_Z v)
     | None => None
     end.
 
   Definition store(sz: access_size)(m: mem)(a: word)(v: word): option mem :=
-    store_bytes (bytes_per sz) m a (LittleEndian.split _ (word.unsigned v)).
+    store_Z sz m a (word.unsigned v).
 
   Lemma load_None: forall sz m a,
       8 <= width ->
@@ -52,10 +61,10 @@ Section Memory.
     intros.
     destruct sz;
       try solve [
-            cbv [load load_bytes map.getmany_of_tuple footprint
+            cbv [load load_Z load_bytes map.getmany_of_tuple footprint
                  tuple.option_all tuple.map tuple.unfoldn bytes_per];
             rewrite H0; reflexivity].
-    cbv [load load_bytes map.getmany_of_tuple footprint bytes_per].
+    cbv [load load_Z load_bytes map.getmany_of_tuple footprint bytes_per].
     destruct (Z.to_nat ((width + 7) / 8)) eqn: E.
     - exfalso.
       assert (0 < (width + 7) / 8) as A. {
@@ -76,7 +85,7 @@ Section Memory.
       forall k, map.get m k = None <-> map.get m' k = None.
   Proof.
     destruct sz;
-      cbv [store store_bytes bytes_per load_bytes unchecked_store_bytes];
+      cbv [store store_Z store_bytes bytes_per load_bytes unchecked_store_bytes];
       intros;
       (destruct_one_match_hyp; [|discriminate]);
       inversion_option;

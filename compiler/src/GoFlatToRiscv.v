@@ -180,7 +180,7 @@ Section Go.
   Qed.
 
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
-    scalar Syntax.access_size.four addr (word.of_Z (encode instr)).
+    truncated_scalar Syntax.access_size.four addr (encode instr).
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
@@ -201,12 +201,11 @@ Section Go.
     unfold Memory.loadWord.
 
     - eapply load_bytes_sep.
-      unfold scalar, littleendian, Memory.bytes_per in H0.
+      unfold truncated_scalar, littleendian, Memory.bytes_per in H0.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
       seplog.
     - rewrite combine_split.
-      rewrite word.unsigned_of_Z.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.
         destruct width_cases as [E | E]; rewrite E; split.
@@ -217,7 +216,7 @@ Section Go.
           let r := eval cbv in (2 ^ 64) in change (2 ^ 64) with r in *.
           omega.
       }
-      do 2 rewrite Z.mod_small; try assumption; try apply encode_range.
+      rewrite Z.mod_small; try assumption; try apply encode_range.
       rewrite decode_encode; assumption.
   Qed.
 
