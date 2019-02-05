@@ -34,6 +34,23 @@ Section SepProperties.
     destruct H as (mk&mR&H&Hp&HR); eapply get_ptsto in Hp; subst.
     destruct (get_split k _ _ _ H) as [[]|[]]; congruence.
   Qed.
+  Lemma sep_get{keq: Decidable.DecidableEq key} k v m (H : get m k = Some v) :
+    sep (ptsto k v) (eq (map.remove m k)) m.
+  Proof.
+    unfold sep. exists (map.put map.empty k v).
+    eexists. repeat split.
+    - apply map_ext. intros.
+      rewrite get_putmany_dec.
+      rewrite get_remove_dec.
+      destruct (Decidable.dec (k = k0)).
+      + subst. rewrite get_put_same. assumption.
+      + rewrite get_put_diff by congruence. rewrite get_empty.
+        destruct (get m k0); reflexivity.
+    - unfold disjoint. intros.
+      destruct (Decidable.dec (k = k0)).
+      + subst. rewrite get_remove_same in H1. discriminate.
+      + rewrite get_put_diff in H0 by congruence. rewrite get_empty in H0. discriminate.
+  Qed.
   Lemma sep_put (key_eq_dec : forall k1 k2 : key, k1 = k2 \/ k1 <> k2)
         k v m v_old R (H : sep (ptsto k v_old) R m) : sep (ptsto k v) R (put m k v).
   Proof.
