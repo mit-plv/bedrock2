@@ -21,6 +21,8 @@ Proof.
   rewrite Zminus_mod_idemp_l, Z.add_simpl_l.
   apply Properties.word.wrap_unsigned.
 Qed.
+Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory.
+Add Ring word_ring : word__monomorphic_ring_theory.
 
 Import HList List.
 Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
@@ -80,9 +82,9 @@ Proof.
       { cbn [interp_binop] in *. subst v2; subst x7. SeparationLogic.ecancel_assumption. }
       { cbn [interp_binop] in *. subst v2; subst x7. subst v0.
         replace (x2 ^- (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^+ /_ 8))
-           with (x2 ^- x1 ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8) by admit.
+           with ((x2 ^- x1) ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8) by ring.
         replace (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1)
-           with ((x2 ^- x1) ^>> /_ 4 ^<< /_ 3) by admit.
+           with ((x2 ^- x1) ^>> /_ 4 ^<< /_ 3) by ring.
         set (delta := (x2 ^- x1) ^>> /_ 4).
         replace (word.divu (delta ^<< /_ 3) (/_ 8)) with delta by admit.
         unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). admit.
