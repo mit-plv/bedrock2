@@ -896,11 +896,123 @@ Section FlatToRiscv1.
     unfold iset. destruct_one_match; reflexivity.
   Qed.
 
+  Definition sub_footprint(m1 m2: mem): Prop :=
+    forall (a: word) (b1: byte), map.get m1 a = Some b1 -> exists b2, map.get m2 a = Some b2.
+
+  Definition same_footprint(m1 m2: mem): Prop :=
+    sub_footprint m1 m2 /\ sub_footprint m2 m1.
+
+  Lemma getmany_of_tuple_in_disjoint_putmany: forall n (m1 m2: mem) (ks: HList.tuple word n) (vs: HList.tuple byte n),
+      map.getmany_of_tuple m1 ks = Some vs ->
+      map.disjoint m1 m2 ->
+      map.getmany_of_tuple (map.putmany m1 m2) ks = Some vs.
+  Proof.
+  Admitted.
+
+  Lemma putmany_of_tuple_to_putmany: forall n (m: mem) (ks: HList.tuple word n) (vs: HList.tuple byte n),
+      map.putmany_of_tuple ks vs m = map.putmany m (map.putmany_of_tuple ks vs map.empty).
+  Proof.
+  Admitted.
+
+  Lemma disjoint_putmany_commutes: forall (m1 m2 m3: mem),
+      map.disjoint m2 m3 ->
+      map.putmany (map.putmany m1 m2) m3 = map.putmany (map.putmany m1 m3) m2.
+  Proof.
+  Admitted.
+
+  Lemma getmany_of_tuple_to_sub_footprint: forall n (m: mem) (ks: HList.tuple word n) (vs: HList.tuple byte n),
+      map.getmany_of_tuple m ks = Some vs ->
+      sub_footprint (map.putmany_of_tuple ks vs map.empty) m.
+  Proof.
+  Admitted.
+
+  Lemma sub_footprint_value_indep: forall n (m: mem) (ks: HList.tuple word n) (vs1 vs2: HList.tuple byte n),
+      sub_footprint (map.putmany_of_tuple ks vs1 map.empty) m ->
+      sub_footprint (map.putmany_of_tuple ks vs2 map.empty) m.
+  Proof.
+  Admitted.
+
+  Lemma sub_footprint_disjoint: forall (m1 m1' m2: mem),
+      map.disjoint m1' m2 ->
+      sub_footprint m1 m1' ->
+      map.disjoint m1 m2.
+  Proof.
+  Admitted.
+
+  Lemma disjoint_putmany_preserves_store_bytes: forall n a v (m1 m1' mq: mem),
+      store_bytes n m1 a v = Some m1' ->
+      map.disjoint m1 mq ->
+      store_bytes n (map.putmany m1 mq) a v = Some (map.putmany m1' mq).
+  Proof.
+    intros.
+    unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
+    erewrite getmany_of_tuple_in_disjoint_putmany by eassumption.
+    f_equal.
+    rewrite putmany_of_tuple_to_putmany.
+    rewrite (putmany_of_tuple_to_putmany n m1 (footprint a n) v).
+    apply disjoint_putmany_commutes.
+    pose proof getmany_of_tuple_to_sub_footprint as P.
+    specialize P with (1 := E).
+    apply sub_footprint_value_indep with (vs2 := v) in P.
+    set (mp := (map.putmany_of_tuple (footprint a n) v map.empty)) in *.
+    apply map.disjoint_comm.
+    eauto using sub_footprint_disjoint.
+  Qed.
+
+  Axiom word_eq_dec: DecidableEq word. (* TODO *)
+
+  (* TODO move to map library *)
+  Lemma putmany_of_tuple_preserves_footprint: forall (n : nat) (ks : HList.tuple word n) (oldvs vs : HList.tuple byte n) (m : mem),
+      map.getmany_of_tuple m ks = Some oldvs ->
+      same_footprint m (map.putmany_of_tuple ks vs m).
+  Proof.
+    intros.
+    pose proof @map.putmany_of_tuple_preserves_domain as P.
+    specialize P with (m := m) (ks := ks) (4 := eq_refl).
+    specialize (P mem_ok word_eq_dec).
+    unfold same_footprint, sub_footprint. split; intros.
+    - destruct (map.get (map.putmany_of_tuple ks vs m) a) eqn: E.
+      + clear. eauto.
+      + exfalso. edestruct P as [A B].
+        * destruct (map.getmany_of_tuple m ks); congruence.
+        * specialize (B E). rewrite B in H0. discriminate.
+    - destruct (map.get m a) eqn: E.
+      + clear. eauto.
+      + exfalso. edestruct P as [A B].
+        * destruct (map.getmany_of_tuple m ks); congruence.
+        * specialize (A E). rewrite A in H0. discriminate.
+  Qed.
+
+  Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
+      Memory.store_bytes n m a v = Some m' ->
+      same_footprint m m'.
+  Proof.
+    intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
+    eauto using putmany_of_tuple_preserves_footprint.
+  Qed.
+
   Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
       Memory.store_bytes n m1 a v = Some m1' ->
       (eq m1 * F)%sep m ->
       exists m', (eq m1' * F)%sep m' /\ Memory.store_bytes n m a v = Some m'.
-  Admitted.
+  Proof.
+    intros.
+    unfold sep in H0.
+    destruct H0 as (mp & mq & A & B & C).
+    subst mp.
+    unfold map.split in A. destruct A as [A1 A2].
+    eexists (map.putmany m1' mq).
+    split.
+    - unfold sep.
+      exists m1' mq. repeat split; trivial.
+      apply store_bytes_preserves_footprint in H.
+      clear -H A2.
+      unfold map.disjoint, same_footprint, sub_footprint in *. destruct H as [P Q].
+      intros.
+      edestruct Q; eauto.
+    - subst m.
+      eauto using disjoint_putmany_preserves_store_bytes.
+  Qed.
 
   Lemma compile_stmt_correct_aux:
     forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
