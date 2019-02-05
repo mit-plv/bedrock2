@@ -209,9 +209,11 @@ Section Go.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.
         destruct width_cases as [E | E]; rewrite E; split.
-        + Fail lia. omega. (* COQBUG lia doesn't understand universes well enough *)
-        + Fail lia. omega.
-        + Fail lia. omega.
+        (* TODO if https://github.com/coq/coq/pull/9291 makes it into 8.9.1,
+           omega can be replaced by lia *)
+        + omega.
+        + omega.
+        + omega.
         + let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *.
           let r := eval cbv in (2 ^ 64) in change (2 ^ 64) with r in *.
           omega.
