@@ -116,9 +116,9 @@ Section ToCString.
     let decl := fst (fst decl_retvar_retrenames) in
     let retvar := snd (fst decl_retvar_retrenames) in
     let retrenames := snd decl_retvar_retrenames in
-    let localvars : list varname := List_uniq varname_eqb (List.app
-        (match retvar with None => nil | Some v => cons v nil end)
-        (List_minus varname_eqb (cmd.vars body) args)) in
+    let localvars : list varname := List_uniq varname_eqb (
+        let allvars := (List.app (match retvar with None => nil | Some v => cons v nil end) (cmd.vars body)) in
+        (List_minus varname_eqb allvars args)) in
     LF ++ decl ++ " {" ++ LF ++
       let indent := "  " in
       (match localvars with nil => "" | _ => indent ++ "uintptr_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
