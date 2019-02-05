@@ -862,7 +862,34 @@ Section FlatToRiscv1.
       B mH ->
       (B * R)%sep mL.
   Proof.
-  Admitted.
+    intros. unfold iff1 in *.
+    destruct (H0 mL) as [P1 P2]. specialize (P1 H).
+    apply sep_comm.
+    unfold sep in *.
+    destruct P1 as (mR & mH' & P11 & P12 & P13). subst mH'. eauto.
+  Qed.
+
+  Lemma subst_load_bytes_for_eq: forall {sz} {mH mL: mem} {addr: word} {bs P R},
+      let n := @Memory.bytes_per width sz in
+      bedrock2.Memory.load_bytes n mH addr = Some bs ->
+      (P * eq mH * R)%sep mL ->
+      exists Q, (P * ptsto_bytes n addr bs * Q * R)%sep mL.
+  Proof.
+    intros.
+    apply sep_of_load_bytes in H; cycle 1. {
+      subst n. clear. destruct sz; destruct width_cases as [C | C]; rewrite C; cbv; discriminate.
+    }
+    destruct H as [Q A]. exists Q.
+    assert (((ptsto_bytes n addr bs * Q) * (P * R))%sep mL); [|ecancel_assumption].
+    eapply seplog_subst_eq; [exact H0|..|exact A]. ecancel.
+  Qed.
+
+  Ltac subst_load_bytes_for_eq :=
+    match goal with
+    | Load: bedrock2.Memory.load_bytes _ ?m _ = _, Sep: (_ * eq ?m * _)%sep _ |- _ =>
+      let Q := fresh "Q" in
+      destruct (subst_load_bytes_for_eq Load Sep) as [Q ?]
+    end.
 
   Lemma doesSupportM: supportsM iset = true.
   Proof.
@@ -925,11 +952,7 @@ Section FlatToRiscv1.
       discriminate.
 
     - (* SLoad *)
-      unfold Memory.load, Memory.load_Z in *. simp.
-      apply sep_of_load_bytes in E0; cycle 1. {
-        clear. destruct sz; destruct width_cases as [C | C]; rewrite C; cbv; discriminate.
-      }
-      destruct E0 as [R0 A].
+      unfold Memory.load, Memory.load_Z in *. simp. subst_load_bytes_for_eq.
       eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
@@ -939,19 +962,8 @@ Section FlatToRiscv1.
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
         * eapply go_load; try eassumption. 2: eapply go_step; simpl; reflexivity.
-          simpl.
-
-          unfold Memory.load.
-          evar (HLR: mem -> Prop). evar (LLR: mem -> Prop).
-          unfold Memory.load_Z.
-          erewrite load_bytes_of_sep with (R1 := (HLR * LLR)%sep); [reflexivity|].
-          subst HLR LLR.
-          eapply sep_assoc.
-
-          eapply seplog_subst_eq.
-          { exact H8. }
-          { ecancel. }
-          { exact A. }
+          simpl. unfold Memory.load, Memory.load_Z.
+          erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ].
       + run1done. eexists. repeat split.
         * eassumption.
         * Time exact H8. (* universe unification takes 6 seconds *)
@@ -959,6 +971,8 @@ Section FlatToRiscv1.
         * eapply ext_guarantee_preservable; [eassumption | simpl; intuition idtac | reflexivity ].
 
     - (* SStore *)
+      unfold Memory.store, Memory.store_Z, bedrock2.Memory.store_bytes in *. simp.
+      subst_load_bytes_for_eq.
       eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
@@ -968,9 +982,12 @@ Section FlatToRiscv1.
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
         * eapply go_store; try eassumption.
-          { admit. }
+          { simpl. unfold Memory.store, Memory.store_Z, bedrock2.Memory.store_bytes in *.
+            erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]. }
           { eapply go_step. simpl. reflexivity. }
       + run1done.
+        eexists. repeat split; try eassumption.
+
         (*
     - (* SLit *)
       subst. destruct_containsProgram.
