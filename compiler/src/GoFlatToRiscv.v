@@ -17,6 +17,7 @@ Require Import riscv.proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.
+Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Encode.
 Require Import riscv.proofs.EncodeBound.
@@ -200,7 +201,7 @@ Section Go.
     eapply go_loadWord.
     unfold Memory.loadWord.
 
-    - eapply load_bytes_sep.
+    - eapply load_bytes_of_sep.
       unfold truncated_scalar, littleendian, Memory.bytes_per in H0.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)

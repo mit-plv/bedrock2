@@ -2,6 +2,7 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
 Require Import coqutil.Z.div_mod_to_equations.
+Require Import bedrock2.ptsto_bytes.
 Import HList List.
 
 Section Scalars.
@@ -13,7 +14,7 @@ Section Scalars.
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
 
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
-    array ptsto (word.of_Z 1) addr (tuple.to_list (LittleEndian.split n value)).
+    ptsto_bytes n addr (LittleEndian.split n value).
 
   Definition truncated_scalar sz addr (value:Z) : mem -> Prop :=
     littleendian (bytes_per (width:=width) sz) addr value.
@@ -28,47 +29,6 @@ Section Scalars.
 
   Definition scalar addr (value: word) : mem -> Prop :=
     truncated_scalar Syntax.access_size.word addr (word.unsigned value).
-
-  (* TODO: factor out getmany_sep and putmany_sep *)
-  Lemma load_bytes_sep a n bs R m
-    (Hsep : sep (array ptsto (word.of_Z 1) a (tuple.to_list bs)) R m)
-    : Memory.load_bytes n m a = Some bs.
-  Proof.
-    cbv [load_bytes footprint].
-    revert dependent a; revert dependent R; revert dependent m; revert dependent n.
-    induction n; [solve[cbn; intros []; trivial]|].
-    intros [b0 bs] m R a Hsep.
-    cbn in Hsep; eapply SeparationLogic.sep_assoc in Hsep.
-    cbn [map.getmany_of_tuple tuple.option_all tuple.map tuple.unfoldn].
-    erewrite SeparationLogic.get_sep by exact Hsep.
-    setoid_rewrite IHn; [exact eq_refl|].
-    cbn.
-    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Hsep); clear Hsep.
-    SeparationLogic.ecancel.
-  Qed.
-
-  Lemma sep_unchecked_store_bytes a n oldbs bs R m
-    (Hsep : sep (array ptsto (word.of_Z 1) a (tuple.to_list (n:=n) oldbs)) R m)
-    : sep (array ptsto (word.of_Z 1) a (tuple.to_list bs)) R (Memory.unchecked_store_bytes n m a bs).
-  Proof.
-    revert dependent a; revert dependent R; revert dependent m; revert dependent bs; revert dependent oldbs; revert dependent n.
-    induction n; [solve[cbn; intros []; trivial]|].
-    intros [oldb0 oldbs] [b0 bs] m R a Hsep.
-    unshelve epose proof (IHn oldbs bs (map.put m a b0) (sep (ptsto a b0) R) (word.add a (word.of_Z 1)) _) as IHn2; clear IHn; [|clear Hsep].
-    { cbn in Hsep |- *; eapply SeparationLogic.sep_assoc in Hsep.
-      unshelve epose proof sep_put _ _ b0 _ _ _ Hsep as Hsep2; clear Hsep. exact Properties.word.eq_or_neq.
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Hsep2); clear Hsep2.
-      SeparationLogic.ecancel. }
-    cbv [unchecked_store_bytes footprint] in *; cbn.
-    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ IHn2); clear IHn2.
-    SeparationLogic.ecancel.
-  Qed.
-
-  Lemma store_bytes_sep a n oldbs bs R m (post:_->Prop)
-    (Hsep : sep (array ptsto (word.of_Z 1) a (tuple.to_list (n:=n) oldbs)) R m)
-    (Hpost : forall m, sep (array ptsto (word.of_Z 1) a (tuple.to_list bs)) R m -> post m)
-    : exists m1, Memory.store_bytes n m a bs = Some m1 /\ post m1.
-  Proof. cbv [store_bytes]. erewrite load_bytes_sep; eauto using sep_unchecked_store_bytes. Qed.
 
   Lemma combine_split n z :
    LittleEndian.combine n (LittleEndian.split n z) = (z mod 2^(Z.of_nat n*8))%Z.
@@ -98,7 +58,7 @@ Section Scalars.
     : Memory.load_Z sz m addr = Some (Z.land value (Z.ones (Z.of_nat (bytes_per (width:=width) sz)*8))).
   Proof.
     cbv [load scalar littleendian load_Z] in *.
-    erewrite load_bytes_sep by exact Hsep; apply f_equal.
+    erewrite load_bytes_of_sep by exact Hsep; apply f_equal.
     rewrite combine_split.
     set (x := (Z.of_nat (bytes_per sz) * 8)%Z).
     assert ((0 <= x)%Z) by (subst x; destruct sz; Lia.lia).
@@ -117,7 +77,7 @@ Section Scalars.
     (Hsep : sep (truncated_scalar sz addr oldvalue) R m)
     (Hpost : forall m, sep (truncated_scalar sz addr value) R m -> post m)
     : exists m1, Memory.store_Z sz m addr value = Some m1 /\ post m1.
-  Proof. eapply store_bytes_sep; [eapply Hsep|eapply Hpost]. Qed.
+  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
 
   Lemma load_word_of_sep addr value R m
     (Hsep : sep (scalar addr value) R m)
@@ -143,6 +103,6 @@ Section Scalars.
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.word m addr value = Some m1 /\ post m1.
-  Proof. eapply store_bytes_sep; [eapply Hsep|eapply Hpost]. Qed.
+  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
 
 End Scalars.
