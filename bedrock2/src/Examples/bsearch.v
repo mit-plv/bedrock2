@@ -7,6 +7,33 @@ Definition bsearch := @Demos.bsearch _ Demos.BinarySearch.StringNames.Inst.
 From coqutil Require Import Word.Interface Map.Interface. (* coercions word and rep *)
 From bedrock2 Require Import Semantics BasicC64Semantics.
 
+From coqutil.Tactics Require Import syntactic_unify.
+
+(* custom rewrite tactic to work around COQBUG(4885) *)
+Ltac set_evars := repeat match goal with |- context[?e] => is_evar e; set e end.
+Ltac subst_evars := repeat match goal with x := ?e |- _ => is_evar e; subst x end.
+Ltac _ureplace_in_by pat hyp tac :=
+  multimatch goal with
+  | H: context [?lhs] |- _ =>
+    assert_succeeds (idtac;
+                     let pat := open_constr:(pat) in (* uconstr -> open_constr *)
+                     let pat := lazymatch pat with ?pat => pat end in (* strip casts if any *)
+                     syntactic_unify lhs pat);
+    let T := type of lhs in
+    let rhs := open_constr:(_:T) in
+    let rhs := lazymatch rhs with ?rhs => rhs end in (* strip cast *)
+    replace lhs with rhs in H by tac
+  end.
+Tactic Notation "ureplace" uconstr(pat) "in" hyp(hyp) "by" tactic3(tac) := _ureplace_in_by pat hyp tac.
+
+Ltac _ureplace_by pat tac :=
+  let g := fresh in
+  let H := fresh in
+  lazymatch goal with |- ?G => remember G as g eqn:H end;
+  ureplace pat in H by tac;
+  subst g.
+Tactic Notation "ureplace" uconstr(pat) "by" tactic3(tac) := _ureplace_by pat tac.
+
 Local Infix "^+" := word.add  (at level 50, left associativity).
 Local Infix "^-" := word.sub  (at level 50, left associativity).
 Local Infix "^<<" := word.slu  (at level 37, left associativity).
@@ -81,25 +108,32 @@ Proof.
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v2; subst x7. SeparationLogic.ecancel_assumption. }
       { cbn [interp_binop] in *. subst v2; subst x7. subst v0.
-        replace (x2 ^- (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^+ /_ 8))
-           with ((x2 ^- x1) ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8) by ring.
-        replace (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1)
-           with ((x2 ^- x1) ^>> /_ 4 ^<< /_ 3) by ring.
-        set (delta := (x2 ^- x1) ^>> /_ 4).
-        replace (word.divu (delta ^<< /_ 3) (/_ 8)) with delta by admit.
+        repeat ureplace (_:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
+        rewrite Properties.word.unsigned_divu_nowrap by discriminate.
+        change (\_ (/_ 8)) with 8.
+        rewrite word.unsigned_slu by exact eq_refl.
+        rewrite Z.mod_small by admit.
+        rewrite Z.shiftl_mul_pow2 by discriminate.
+        change (2^\_ (/_ 3)) with 8.
+        rewrite Z.div_mul by discriminate.
         unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). admit.
         unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). admit.
-        replace (Z.of_nat (Init.Nat.pred (Datatypes.length x - Z.to_nat (\_ delta))))
-           with (Z.of_nat (Datatypes.length x) - \_ delta -1) by admit.
-        ring_simplify.
-        rewrite <-H3.
+        unshelve erewrite (_ : forall n, n <> O -> Z.of_nat (Init.Nat.pred n) = Z.of_nat n - 1). { clear. intros. Lia.lia. }
+        rewrite Nat2Z.inj_sub, Z2Nat.id.
         rewrite word.unsigned_sub, Z.mod_small.
         rewrite word.unsigned_sub, Z.mod_small.
         rewrite word.unsigned_slu, Z.mod_small.
         rewrite Z.shiftl_mul_pow2 by discriminate.
+        rewrite !Properties.word.unsigned_sru_nowrap by (exact eq_refl).
+        rewrite Z.shiftr_div_pow2 by discriminate.
         change (2^\_ (/_ 3)) with 8.
         change (\_ (/_ 8)) with 8.
-        ring.
+        change (2^\_ (/_ 4)) with 16.
+        setoid_rewrite H3.
+        Lia.lia.
+        admit.
+        admit.
+        admit.
         admit.
         admit.
         admit.
