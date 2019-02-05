@@ -896,15 +896,12 @@ Section FlatToRiscv1.
     unfold iset. destruct_one_match; reflexivity.
   Qed.
 
-  (* note: before we can apply this lemma, we have to extend the FlatImp execution from a
-     high-level memory to the low-level memory (which adds the instruction memory and
-     possibly more later).
-     Doing this could also be done at ExprImp level, and will be a separate proof.
-     A similar proof will add one more precondition to ext_spec for MMIO to say that
-     the MMIO action does not happen on physical memory (and this has to include the
-     whole memory).
-     In order to prove compile_ext_call_correct for MMIO, its FlatImp execution needs to be
-     passed the whole memory, and that's why we also need the whole memory for FlatImp here. *)
+  Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
+      Memory.store_bytes n m1 a v = Some m1' ->
+      (eq m1 * F)%sep m ->
+      exists m', (eq m1' * F)%sep m' /\ Memory.store_bytes n m a v = Some m'.
+  Admitted.
+
   Lemma compile_stmt_correct_aux:
     forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
     eval_stmt s t initialMH initialRegsH postH ->
@@ -918,9 +915,9 @@ Section FlatToRiscv1.
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     ext_guarantee initialL ->
-    runsTo initialL (fun finalL => exists finalML,
-          postH finalL.(getLog) finalML finalL.(getRegs) /\
-          (program initialL.(getPc) insts * eq finalML * R)%sep finalL.(getMem) /\
+    runsTo initialL (fun finalL => exists finalMH,
+          postH finalL.(getLog) finalMH finalL.(getRegs) /\
+          (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
           ext_guarantee finalL).
@@ -971,8 +968,10 @@ Section FlatToRiscv1.
         * eapply ext_guarantee_preservable; [eassumption | simpl; intuition idtac | reflexivity ].
 
     - (* SStore *)
-      unfold Memory.store, Memory.store_Z, bedrock2.Memory.store_bytes in *. simp.
-      subst_load_bytes_for_eq.
+      assert ((eq m * (program initialL_pc [[compile_store iset sz a v 0]] * R))%sep initialL_mem)
+             as A by ecancel_assumption.
+      pose proof (store_bytes_frame H2 A) as P.
+      destruct P as (finalML & P1 & P2).
       eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
@@ -981,15 +980,15 @@ Section FlatToRiscv1.
           match goal with
           | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
           end.
-        * eapply go_store; try eassumption.
-          { simpl. unfold Memory.store, Memory.store_Z, bedrock2.Memory.store_bytes in *.
-            erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]. }
-          { eapply go_step. simpl. reflexivity. }
+        * eapply go_store; try eassumption. eapply go_step. simpl. reflexivity.
       + run1done.
-        eexists. repeat split; try eassumption.
+        exists m'. repeat split; try eassumption.
+        * ecancel_assumption.
+        * solve_word_eq word_ok.
+        * eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ].
+          admit. (* store_bytes_preserves_domain P2 *)
 
-        (*
-    - (* SLit *)
+    - (* SLit *) (*
       subst. destruct_containsProgram.
       eapply compile_lit_correct_full; [sidecondition..|].
       simpl in *.

@@ -205,6 +205,20 @@ Section Scalars.
       ecancel_assumption.
   Qed.
 
+  Lemma unchecked_store_bytes_of_sep':
+    forall (a: word)(n: nat)(bs1 bs2: tuple byte n)(R1 R2 F: mem -> Prop)(m: mem),
+      R1 m ->
+      iff1 R1 (sep (ptsto_bytes n a bs1) F) ->
+      iff1 R2 (sep (ptsto_bytes n a bs2) F) ->
+      R2 (Memory.unchecked_store_bytes n m a bs2).
+  Proof.
+    intros.
+    apply H1.
+    eapply unchecked_store_bytes_of_sep.
+    apply H0.
+    assumption.
+  Qed.
+
   Lemma store_bytes_of_sep(a: word)(n: nat)(oldbs bs: tuple byte n)(R post: mem -> Prop)(m: mem)
     (Hsep : sep (ptsto_bytes n a oldbs) R m)
     (Hpost : forall m, sep (ptsto_bytes n a bs) R m -> post m)
