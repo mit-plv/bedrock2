@@ -37,6 +37,7 @@ Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
 Require Import compiler.Simp.
 Require Import compiler.SimplWordExpr.
+Require Import bedrock2.ptsto_bytes.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -924,9 +925,11 @@ Section FlatToRiscv1.
       discriminate.
 
     - (* SLoad *)
-      unfold Memory.load in *. simp.
-      assert (exists R0, (truncated_scalar sz addr z * R0)%sep m) as A by admit.
-      destruct A as [R0 A].
+      unfold Memory.load, Memory.load_Z in *. simp.
+      apply sep_of_load_bytes in E0; cycle 1. {
+        clear. destruct sz; destruct width_cases as [C | C]; rewrite C; cbv; discriminate.
+      }
+      destruct E0 as [R0 A].
       eapply det_step.
       + eapply go_fetch_inst.
         * reflexivity.
@@ -940,7 +943,8 @@ Section FlatToRiscv1.
 
           unfold Memory.load.
           evar (HLR: mem -> Prop). evar (LLR: mem -> Prop).
-          erewrite load_Z_of_sep with (R1 := (HLR * LLR)%sep); [reflexivity|].
+          unfold Memory.load_Z.
+          erewrite load_bytes_of_sep with (R1 := (HLR * LLR)%sep); [reflexivity|].
           subst HLR LLR.
           eapply sep_assoc.
 
@@ -948,13 +952,9 @@ Section FlatToRiscv1.
           { exact H8. }
           { ecancel. }
           { exact A. }
-      + run1done. eexists. repeat split; try eassumption.
-        * match goal with
-          | H: post _ _ (map.put _ _ ?v) |- post _ _ (map.put _ _ ?v') =>
-            assert (v = v') as F
-          end.
-          { (* TODO meh why so many conversions? *) admit. }
-          rewrite <- F. assumption.
+      + run1done. eexists. repeat split.
+        * eassumption.
+        * Time exact H8. (* universe unification takes 6 seconds *)
         * solve_word_eq word_ok.
         * eapply ext_guarantee_preservable; [eassumption | simpl; intuition idtac | reflexivity ].
 
