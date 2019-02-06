@@ -45,7 +45,7 @@ Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
 Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
   bind_body_of_function swap; cbv [spec_of spec_of_swap]. intros.
-  (* argument initialization *) letexists. split. exact eq_refl.
+  (* argument initialization *) letexists. split; [exact eq_refl|].
   (* code *) repeat straightline.
   (* final postcondition *) eauto.
 Defined.
@@ -54,15 +54,15 @@ Lemma swap_swap_ok : program_logic_goal_for_function! swap_swap.
 Proof.
   bind_body_of_function swap_swap; cbv [spec_of_swap_swap].
   intros.
-  letexists. split. exact eq_refl. (* argument initialization *)
+  letexists. split; [exact eq_refl|]. (* argument initialization *)
 
   repeat straightline. straightline_call.
-  (* swap precondition *) solve[SeparationLogic.ecancel_assumption].
-  (* swap returns *) repeat straightline. letexists; split. { exact eq_refl. }
+  (* swap precondition *) { solve[SeparationLogic.ecancel_assumption]. }
+  (* swap returns *) (* repeat straightline. Error: Anomaly "Universe Top.1897 undefined." *) straightline. straightline. straightline. straightline. straightline. letexists; split. { exact eq_refl. }
 
   repeat straightline. straightline_call.
-  (* swap precondition *) solve[SeparationLogic.ecancel_assumption].
-  (* swap returns *) repeat straightline. letexists; split. { exact eq_refl. }
+  (* swap precondition *) { solve[SeparationLogic.ecancel_assumption]. }
+  (* swap returns *) (* repeat  straightline. Error: Anomaly "Universe Top.2593 undefined." *) straightline. straightline. straightline. straightline. straightline. letexists; split. { exact eq_refl. }
 
   repeat straightline.
   eauto.

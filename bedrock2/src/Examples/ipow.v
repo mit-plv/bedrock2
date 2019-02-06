@@ -39,7 +39,7 @@ Proof.
   bind_body_of_function ipow; cbv [spec_of_ipow].
   intros.
   hnf. (* incoming call dispatch *)
-  letexists. split. exact eq_refl. (* argument initialization *)
+  letexists. split; [exact eq_refl|]. (* argument initialization *)
 
   repeat straightline; show_program.
 
@@ -159,7 +159,7 @@ Proof.
 
   (* function postcondition *)
   repeat eapply conj; try exact eq_refl.
-  letexists. split. exact eq_refl.
+  letexists. split; [exact eq_refl|].
   intros.
   repeat match goal with
            |- context [?x] => subst x
