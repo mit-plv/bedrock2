@@ -26,7 +26,7 @@ It is a design decision to *not* support the following features:
 
 ### Build [![Build Status](https://travis-ci.com/mit-plv/bedrock2.svg?branch=master)](https://travis-ci.com/mit-plv/bedrock2)
 
-You'll need [Coq](https://coq.inria.fr/), version 8.8, 8.9, or master.
+You'll need [Coq](https://coq.inria.fr/), version 8.9 or master.
 
 In case you didn't clone with `--recursive`, use `make clone_all` to clone the git submodules.
 
@@ -42,5 +42,3 @@ Main correctness theorems:
 *   `flattenStmt_correct_aux` in `FlattenExpr.v`
 *   `compile_stmt_correct_aux` in `FlatToRiscv.v`
 *   `exprImp2Riscv_correct` in `Pipeline.v` combining the two
-
-

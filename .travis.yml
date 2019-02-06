@@ -10,7 +10,6 @@ matrix:
   fast_finish: true
   include:
     - env: COQ_VERSION="master" COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-master-daily"
-    - env: COQ_VERSION="v8.8"   COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-8.8-daily"
     - env: COQ_VERSION="v8.9"   COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-8.9-daily"
 
 before_install:
