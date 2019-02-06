@@ -28,7 +28,7 @@ Import HList List.
 Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
   forall left right target xs R t m,
     sep (array scalar (word.of_Z 8) left xs) R m ->
-    \_ (right ^- left) = 8*Z.of_nat (Datatypes.length xs) -> 
+    \_ (right ^- left) = 8*Z.of_nat (Datatypes.length xs) ->
     WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
       "bsearch"%string t m (left::right::target::nil)%list
       (fun t' m' rets => t=t' /\ sep (array scalar (word.of_Z 8) left xs) R m' /\ exists i, rets = (i::nil)%list /\
@@ -48,7 +48,7 @@ Proof.
   pose proof __mem_ok.
   bind_body_of_function bsearch. cbv [spec_of_bsearch].
 
-  intros. letexists. split. exact eq_refl. (* argument initialization *)
+  intros. letexists. split; [exact eq_refl|]. (* argument initialization *)
 
   refine (
     tailrec (HList.polymorphic_list.cons _ (HList.polymorphic_list.cons _ HList.polymorphic_list.nil)) ("left"::"right"::"target"::nil)%list%string
@@ -74,10 +74,10 @@ Proof.
     2: solve [auto]. (* exiting loop *)
     (* loop body *)
     seprewrite @array_address_inbounds.
-    admit. admit. exact eq_refl.
-    (* if expression *)  letexists; split. repeat straightline. (* determines element *)
+    1: admit. 1: admit. 1: exact eq_refl.
+    (* if expression *)  letexists; split. 1: repeat straightline. (* determines element *)
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
-    { repeat letexists. split. repeat straightline.
+    { repeat letexists. split. 1: repeat straightline.
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v2; subst x7. SeparationLogic.ecancel_assumption. }
       { cbn [interp_binop] in *. subst v2; subst x7. subst v0.
@@ -87,24 +87,24 @@ Proof.
            with ((x2 ^- x1) ^>> /_ 4 ^<< /_ 3) by ring.
         set (delta := (x2 ^- x1) ^>> /_ 4).
         replace (word.divu (delta ^<< /_ 3) (/_ 8)) with delta by admit.
-        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). admit.
-        unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). admit.
+        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). 1: admit. {
+        unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). 1: admit. {
         replace (Z.of_nat (Init.Nat.pred (Datatypes.length x - Z.to_nat (\_ delta))))
            with (Z.of_nat (Datatypes.length x) - \_ delta -1) by admit.
         ring_simplify.
         rewrite <-H3.
         rewrite word.unsigned_sub, Z.mod_small.
-        rewrite word.unsigned_sub, Z.mod_small.
-        rewrite word.unsigned_slu, Z.mod_small.
-        rewrite Z.shiftl_mul_pow2 by discriminate.
-        change (2^\_ (/_ 3)) with 8.
-        change (\_ (/_ 8)) with 8.
-        ring.
-        admit.
-        admit.
-        admit.
-        admit.
-        admit.
+        { rewrite word.unsigned_sub, Z.mod_small.
+          { rewrite word.unsigned_slu, Z.mod_small.
+            { rewrite Z.shiftl_mul_pow2 by discriminate.
+              change (2^\_ (/_ 3)) with 8.
+              change (\_ (/_ 8)) with 8.
+              ring. }
+            { admit. }
+            { admit. } }
+          { admit. } }
+        { admit. } }
+        { admit. } }
         admit. }
       { left. exact I. }
 
@@ -159,17 +159,17 @@ Proof.
 
         change (\_ (/_ 8)) with 8.
         setoid_rewrite HH2.
-        
-        Z.div_mod_to_equations; Lia.lia. } 
+
+        Z.div_mod_to_equations; Lia.lia. }
       { exact eq_refl. }
       { SeparationLogic.ecancel_assumption. } }
-    { repeat letexists. split. repeat straightline.
+    { repeat letexists. split. 1: solve [repeat straightline].
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v1; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
       { admit. }
       { left. exact I. }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H8.
-      admit. admit. exact eq_refl.
+      1: admit. 1: admit. 1: exact eq_refl.
       SeparationLogic.ecancel_assumption. } }
 
   straightline.

@@ -59,14 +59,14 @@ Section TailRecrsion.
     : hlist.foralls (fun (g0 : hlist ghosttypes) => forall
     (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(1))
     (Hbody : forall v, hlist.foralls (fun g => forall t m, tuple.foralls (fun l =>
-      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : Semantics.locals => 
+      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : Semantics.locals =>
       match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
       (word.unsigned br <> 0%Z -> cmd rely guarantee progress call c t m localsmap
         (fun t' m' localsmap' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
-          Markers.unique (Markers.left (hlist.existss (fun g' => exists v', 
+          Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
           match tuple.apply (hlist.apply (spec v') g' t' m') l' with S' =>
           S'.(1) /\ Markers.right (
             (progress t' t \/ lt v' v) /\
@@ -82,8 +82,8 @@ Section TailRecrsion.
       S_.(1) /\ forall T M L, tuple.apply (S_.(2) T M) L ->
         tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) T M) L end).
     cbv [Markers.split Markers.left Markers.right] in *.
-    split. assumption.
-    split. { exists v0, g0, l0. split. eapply reconstruct_enforce. eassumption. split; eauto. }
+    split; [assumption|].
+    split. { exists v0, g0, l0. split. 1: eapply reconstruct_enforce; eassumption. split; eauto. }
     intros vi ti mi lmapi (gi&?&?&?&Qi); subst.
     destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi) _ ltac:(eassumption)) as (br&?&X).
     exists br; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
@@ -121,7 +121,7 @@ Section TailRecrsion.
     eexists measure, lt, (fun v t m l =>
       let S := spec v t m l in let '(P, Q) := S in
       P /\ forall T M L, Q T M L -> Q0 T M L).
-    split. assumption.
+    split; [assumption|].
     cbv [Markers.split] in *.
     split; [solve[eauto]|].
     intros vi ti mi li (?&Qi).
@@ -155,8 +155,8 @@ Section TailRecrsion.
   Proof.
     eexists measure, lt, (fun v t m l => exists R, (P v t l * R) m /\
                           forall T L, Q v T L * R ==> Q v0 T L * R0).
-    split. assumption.
-    split. { exists v0, R0. split. assumption. intros. reflexivity. }
+    split; [assumption|].
+    split. { exists v0, R0. split; [assumption|]. intros. reflexivity. }
     intros vi ti mi li (Ri&?&Qi).
     destruct (Hbody _ _ _ _ _ ltac:(eassumption)) as (br&?&X); exists br; split; [assumption|].
     destruct X as (Htrue&Hfalse). split; intros Hbr;
