@@ -634,7 +634,7 @@ Section FlattenExpr.
     Unset Printing Implicit.
 
     do 5 destruct_one_match_of_hyp F; repeat destruct_pair_eqs; subst.
-    inversion Ev. repeat destruct_one_match_of_hyp H0.
+    { inversion Ev. repeat destruct_one_match_of_hyp H0.
     - pose proof flattenExpr_correct_aux as P.
       specialize P with (env := env) (initialM := initialM) (1 := E) (4 := E1).
       edestruct P as [fuelS0 [initial2L [Evcond G]]]; [eassumption..| ]; clear P.

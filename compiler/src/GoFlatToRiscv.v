@@ -197,11 +197,9 @@ Section Go.
     unfold run1.
     apply go_getPC.
     unfold program, array, ptsto_instr in *.
-
     eapply go_loadWord.
-    unfold Memory.loadWord.
-
-    - eapply load_bytes_of_sep.
+    - unfold Memory.loadWord.
+      eapply load_bytes_of_sep.
       unfold truncated_scalar, littleendian, Memory.bytes_per in H0.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
