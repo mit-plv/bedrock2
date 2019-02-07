@@ -7,6 +7,33 @@ Definition bsearch := @Demos.bsearch _ Demos.BinarySearch.StringNames.Inst.
 From coqutil Require Import Word.Interface Map.Interface. (* coercions word and rep *)
 From bedrock2 Require Import Semantics BasicC64Semantics.
 
+From coqutil.Tactics Require Import syntactic_unify.
+
+(* custom rewrite tactic to work around COQBUG(4885) *)
+Ltac set_evars := repeat match goal with |- context[?e] => is_evar e; set e end.
+Ltac subst_evars := repeat match goal with x := ?e |- _ => is_evar e; subst x end.
+Ltac _ureplace_in_by pat hyp tac :=
+  multimatch goal with
+  | H: context [?lhs] |- _ =>
+    assert_succeeds (idtac;
+                     let pat := open_constr:(pat) in (* uconstr -> open_constr *)
+                     let pat := lazymatch pat with ?pat => pat end in (* strip casts if any *)
+                     syntactic_unify lhs pat);
+    let T := type of lhs in
+    let rhs := open_constr:(_:T) in
+    let rhs := lazymatch rhs with ?rhs => rhs end in (* strip cast *)
+    replace lhs with rhs in H by tac
+  end.
+Tactic Notation "ureplace" uconstr(pat) "in" hyp(hyp) "by" tactic3(tac) := _ureplace_in_by pat hyp tac.
+
+Ltac _ureplace_by pat tac :=
+  let g := fresh in
+  let H := fresh in
+  lazymatch goal with |- ?G => remember G as g eqn:H end;
+  ureplace pat in H by tac;
+  subst g.
+Tactic Notation "ureplace" uconstr(pat) "by" tactic3(tac) := _ureplace_by pat tac.
+
 Local Infix "^+" := word.add  (at level 50, left associativity).
 Local Infix "^-" := word.sub  (at level 50, left associativity).
 Local Infix "^<<" := word.slu  (at level 37, left associativity).
@@ -21,6 +48,7 @@ Proof.
   rewrite Zminus_mod_idemp_l, Z.add_simpl_l.
   apply Properties.word.wrap_unsigned.
 Qed.
+
 Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory.
 Add Ring word_ring : word__monomorphic_ring_theory.
 
@@ -42,6 +70,8 @@ Import PrimitivePair.
 From coqutil Require Import Z.div_mod_to_equations.
 
 Axiom __mem_ok : map.ok mem. Local Existing Instance __mem_ok.
+
+Local Set Default Goal Selector "1".
 
 Lemma swap_swap_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -81,30 +111,37 @@ Proof.
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v2; subst x7. SeparationLogic.ecancel_assumption. }
       { cbn [interp_binop] in *. subst v2; subst x7. subst v0.
-        replace (x2 ^- (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^+ /_ 8))
-           with ((x2 ^- x1) ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8) by ring.
-        replace (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1)
-           with ((x2 ^- x1) ^>> /_ 4 ^<< /_ 3) by ring.
-        set (delta := (x2 ^- x1) ^>> /_ 4).
-        replace (word.divu (delta ^<< /_ 3) (/_ 8)) with delta by admit.
-        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). 1: admit. {
-        unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). 1: admit. {
-        replace (Z.of_nat (Init.Nat.pred (Datatypes.length x - Z.to_nat (\_ delta))))
-           with (Z.of_nat (Datatypes.length x) - \_ delta -1) by admit.
-        ring_simplify.
-        rewrite <-H3.
+        repeat ureplace (_:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
+        rewrite Properties.word.unsigned_divu_nowrap by discriminate.
+        change (\_ (/_ 8)) with 8.
+        rewrite word.unsigned_slu by exact eq_refl.
+        rewrite Z.mod_small by admit.
+        rewrite Z.shiftl_mul_pow2 by discriminate.
+        change (2^\_ (/_ 3)) with 8.
+        rewrite Z.div_mul by discriminate.
+        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). admit.
+        unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). admit.
+        unshelve erewrite (_ : forall n, n <> O -> Z.of_nat (Init.Nat.pred n) = Z.of_nat n - 1). { clear. intros. Lia.lia. }
+        rewrite Nat2Z.inj_sub, Z2Nat.id.
         rewrite word.unsigned_sub, Z.mod_small.
-        { rewrite word.unsigned_sub, Z.mod_small.
-          { rewrite word.unsigned_slu, Z.mod_small.
-            { rewrite Z.shiftl_mul_pow2 by discriminate.
-              change (2^\_ (/_ 3)) with 8.
-              change (\_ (/_ 8)) with 8.
-              ring. }
-            { admit. }
-            { admit. } }
-          { admit. } }
-        { admit. } }
-        { admit. } }
+        rewrite word.unsigned_sub, Z.mod_small.
+        rewrite word.unsigned_slu, Z.mod_small.
+        rewrite Z.shiftl_mul_pow2 by discriminate.
+        rewrite !Properties.word.unsigned_sru_nowrap by (exact eq_refl).
+        rewrite Z.shiftr_div_pow2 by discriminate.
+        change (2^\_ (/_ 3)) with 8.
+        change (\_ (/_ 8)) with 8.
+        change (2^\_ (/_ 4)) with 16.
+        setoid_rewrite H3.
+        Lia.lia.
+        admit.
+        admit.
+        admit.
+        admit.
+        admit.
+        admit.
+        admit.
+        admit.
         admit. }
       { left. exact I. }
 
@@ -145,22 +182,87 @@ Proof.
       { cbn [interp_binop] in *.
         subst v0.
 
+        (* repeat ureplace (_:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl). *)
         rewrite word__add_sub.
 
-        pose proof Properties.word.unsigned_range (x2 ^- x1) as Hb; rewrite length_rep in Hb; change width with 64 in Hb.
-        pose proof Properties.word.unsigned_sru_nowrap (x2 ^- x1) (/_ 4) eq_refl as HH.
-        rewrite length_rep in HH ; change (\_ (/_ 4)) with 4 in HH.
+        (* absint: bottomup (repeat (rewrite_head || memoized_bottomup bounded_head))
+           - recurse into arguments
+           - repeat:
+             - f_equal_n; (eassumption || exact eq_refl)
+             - call "typeclasses" based on head symbol with goal [f arg1 args... = ?e]
+             - refocus on ?e
+           - call "typeclasses" based on head symbol in [?x <= f arg1 args... < ?y]
+         *)
 
-        pose proof word.unsigned_slu ((x2 ^- x1) ^>> /_ 4) (/_ 3) eq_refl as HH2.
-        change (\_ (/_ 3)) with 3 in HH2.
-        setoid_rewrite HH in HH2.
-        rewrite Z.shiftr_div_pow2, Z.shiftl_mul_pow2 in HH2 by discriminate.
-        rewrite Z.mod_small in HH2 by (Z.div_mod_to_equations; Lia.lia).
+        Ltac requireZcst z :=
+          lazymatch Coq.setoid_ring.InitialRing.isZcst z with
+          | true => idtac
+          end.
 
-        change (\_ (/_ 8)) with 8.
-        setoid_rewrite HH2.
+        Inductive treeshape := br2 (_ _ : treeshape) | lf.
+        Ltac etransitivity_at_branches ts :=
+          lazymatch ts with
+          | lf => idtac
+          | br2 ?b1 ?b2 =>
+            etransitivity; [eapply f_equal2; [etransitivity_at_branches b1|etransitivity_at_branches b2]|]
+          end.
+        Ltac idtac_goal :=
+          lazymatch goal with |- ?g => idtac g end.
 
-        Z.div_mod_to_equations; Lia.lia. }
+        Ltac absint_rewrite_head :=
+          repeat (etransitivity; [typeclasses eauto with absint_rewrite|]); exact eq_refl.
+
+        Ltac lia := Omega.omega.
+
+        Hint Extern 1 (@snd (@word.rep ?n ?W) _ (?x, _)) => exact (@word.unsigned n W x) : absint_semantics.
+        Hint Extern 9999999 (@snd _ _ (?x, _)) => exact x : absint_semantics.
+
+        Hint Extern 1 (?a mod ?b = _) => exact (Z.mod_small a b ltac:(lia)) : absint_rewrite.
+        Hint Extern 1 (word.unsigned (word.of_Z ?a) = _)
+        => (etransitivity; [exact (word.unsigned_of_Z a)|]; eapply f_equal2; absint_rewrite_head) : absint_rewrite.
+        Hint Extern 1 (word.unsigned (word.add ?a ?b) = _)
+        => (etransitivity; [exact (word.unsigned_add a b)|]; eapply f_equal2; absint_rewrite_head) : absint_rewrite.
+        Hint Extern 1 (word.unsigned (word.sub ?a ?b) = _)
+        => (etransitivity; [exact (word.unsigned_sub a b)|]; eapply f_equal2; absint_rewrite_head) : absint_rewrite.
+
+        (* WHY is the following [solve] necessary? *)
+        Hint Extern 1 (word.unsigned (word.slu ?a ?b) = _)
+        => (etransitivity; [exact (word.unsigned_slu a b ltac:(lia))
+                           |etransitivity_at_branches constr:(br2 (br2 lf lf) lf); solve[absint_rewrite_head]]) : absint_rewrite.
+        Hint Extern 1 (word.unsigned (word.sru ?a ?b) = _)
+        => (etransitivity; [exact (Properties.word.unsigned_sru_nowrap a b ltac:(lia)) | eapply f_equal2; absint_rewrite_head]) : absint_rewrite.
+
+        Hint Extern 1 (Z.shiftr ?a ?b = _) => exact (Z.shiftr_div_pow2 a b ltac:(lia)) : absint_rewrite.
+        Hint Extern 1 (Z.shiftl ?a ?b = _) => exact (Z.shiftl_mul_pow2 a b ltac:(lia)) : absint_rewrite.
+
+        Ltac absint_head e :=
+          let l := lazymatch constr:(ltac:(typeclasses eauto with absint_semantics) : (snd (e, _))) with ?l => l end in
+          lazymatch goal with H: l = _ |- _ => fail | |- _ => idtac end;
+          let r := open_constr:(_) in
+          let H := fresh in
+          eassert (l = r) as H by (absint_rewrite_head);
+          assert_fails (constr_eq l r);
+          (* idtac e ":  " l "=" r; *)
+          idtac.
+
+        Ltac absint e :=
+          assert_fails (idtac; requireZcst e);
+          assert_fails (idtac; lazymatch type of e with Type => idtac | Set => idtac | Prop => idtac end);
+          (* idtac e; *)
+          try match e with
+              | ?f ?x => try absint f; try absint x
+              end;
+          try absint_head e.
+
+        pose proof (eq_refl : 64 = width).
+        pose proof (eq_refl : 18446744073709551616 = 2^width).
+
+        let e := lazymatch goal with |- ?e = _ => e end in 
+        absint e.
+        rewrite H11, H12.
+        rewrite (Z.mod_small _ (2^width)); cycle 1.
+        { clear -H5. rewrite <-H5. Z.div_mod_to_equations. Lia.lia. }
+        clear. Z.div_mod_to_equations. Lia.lia. }
       { exact eq_refl. }
       { SeparationLogic.ecancel_assumption. } }
     { repeat letexists. split. 1: solve [repeat straightline].
