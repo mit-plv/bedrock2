@@ -704,7 +704,7 @@ Section FlatToRiscv1.
     first
       [ eassumption
       | solve_word_eq (@word_ok (@W p))
-      | seplog
+      | ecancel_assumption
       | prove_ext_guarantee
       | idtac ].
 
@@ -896,7 +896,7 @@ Section FlatToRiscv1.
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with (postH := post) (action0 := action)
                                              (argvars0 := argvars) (resvars0 := resvars);
-          simpl; reflexivity || eassumption || seplog || idtac.
+          simpl; reflexivity || eassumption || ecancel_assumption || idtac.
         eapply @ExInteract; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst. eauto 7.
@@ -911,34 +911,80 @@ Section FlatToRiscv1.
 
     - (* SLoad *)
       unfold Memory.load, Memory.load_Z in *. simp. subst_load_bytes_for_eq.
-      eapply det_step.
-      + eapply go_fetch_inst.
-        * reflexivity.
-        * seplog.
-        * unfold valid_instructions in *.
-          match goal with
-          | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
-          end.
-        * eapply go_load; try eassumption. 2: eapply go_step; simpl; reflexivity.
-          simpl. unfold Memory.load, Memory.load_Z.
-          erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ].
-      + run1done.
+
+Ltac sidecondition ::=
+  match goal with
+  (* these branches are allowed to instantiate evars in a controlled manner: *)
+  | H: map.get _ _ = Some _ |- _ => exact H
+  | |- sep ?P ?Q ?m => ecancel_assumption
+  | |- _ => reflexivity
+  (* but we don't have a general "eassumption" branch, only "assumption": *)
+  | |- _ => assumption
+  | H: valid_instructions _ _ |- Encode.verify _ _ => apply H; constructor; reflexivity
+  | |- Memory.load ?sz ?m ?addr = Some ?v =>
+    simpl; unfold Memory.load, Memory.load_Z;
+    erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
+  | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
+  | |- _ => idtac
+  end.
+
+
+Ltac simulate_step ::=
+  first (* lemmas packing multiple primitives need to go first: *)
+        [ eapply go_fetch_inst     ; [sidecondition..|]
+        (* single-primitive lemmas: *)
+        (* lemmas about Register0 need to go before lemmas about other Registers *)
+        | eapply go_getRegister0   ; [sidecondition..|]
+        | eapply go_setRegister0   ; [sidecondition..|]
+        | eapply go_getRegister    ; [sidecondition..|]
+        | eapply go_setRegister    ; [sidecondition..|]
+        | eapply go_loadByte       ; [sidecondition..|]
+        | eapply go_storeByte      ; [sidecondition..|]
+        | eapply go_loadHalf       ; [sidecondition..|]
+        | eapply go_storeHalf      ; [sidecondition..|]
+        | eapply go_loadWord       ; [sidecondition..|]
+        | eapply go_storeWord      ; [sidecondition..|]
+        | eapply go_loadDouble     ; [sidecondition..|]
+        | eapply go_storeDouble    ; [sidecondition..|]
+        | eapply go_getPC          ; [sidecondition..|]
+        | eapply go_setPC          ; [sidecondition..|]
+        | eapply go_step           ; [sidecondition..|]
+        (* monad law lemmas: *)
+        | eapply go_left_identity  ; [sidecondition..|]
+        | eapply go_right_identity ; [sidecondition..|]
+        | eapply go_associativity  ; [sidecondition..|] ].
+
+Ltac simulate'_step :=
+  first (* lemmas introduced only in this file: *)
+        [ eapply go_load  ; [sidecondition..|]
+        | eapply go_store ; [sidecondition..|]
+        | simulate_step ].
+
+Ltac simulate' := repeat simulate'_step.
+
+Ltac run1det :=
+  eapply det_step;
+  [ simulate';
+    match goal with
+    | |- ?mid = ?RHS =>
+        (* simpl RHS because mid will be instantiated to it and turn up again in the next step *)
+        is_evar mid; simpl; reflexivity
+    | |- _ => fail 10000 "simulate' did not go through completely"
+    end
+  | ].
+
+run1det.
+
+      run1done.
 
     - (* SStore *)
       assert ((eq m * (program initialL_pc [[compile_store iset sz a v 0]] * R))%sep initialL_mem)
              as A by ecancel_assumption.
       pose proof (store_bytes_frame H2 A) as P.
       destruct P as (finalML & P1 & P2).
-      eapply det_step.
-      + eapply go_fetch_inst.
-        * reflexivity.
-        * seplog.
-        * unfold valid_instructions in *.
-          match goal with
-          | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
-          end.
-        * eapply go_store; try eassumption. eapply go_step. simpl. reflexivity.
-      + run1done.
+
+      run1det.
+      run1done.
 
     - (* SLit *)
       remember (compile_lit x v) as insts.
@@ -963,16 +1009,7 @@ Section FlatToRiscv1.
       *)
 
     - (* SSet *)
-      eapply det_step.
-      + eapply go_fetch_inst.
-        * reflexivity.
-        * seplog.
-        * unfold valid_instructions in *.
-          match goal with
-          | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
-          end.
-        * simpl. simulate. simpl. reflexivity.
-      + run1done.
+      run1det. run1done.
 
     - (* SIf/Then *) (*
       (* branch if cond = false (will not branch *)

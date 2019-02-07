@@ -290,7 +290,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
     * intro mid.
       apply id.
     * eapply go_fetch_inst; [reflexivity| | |].
-      { simpl in *. seplog. }
+      { simpl in *. ecancel_assumption. }
       { unfold valid_register in *.
         cbv -[Z.lt Z.le]; repeat split; auto; try lia. }
       cbv [Execute.execute ExecuteI.execute].
@@ -327,7 +327,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
             (* TODO trace translation *) admit. }
         + rewrite Zlength_cons, Zlength_nil. apply TODO. (* TODO word solver *)
         + rewrite Zlength_cons, Zlength_nil. apply TODO. (* TODO word solver *)
-        + seplog.
+        + ecancel_assumption.
         + admit. (* prove ext_guarantee preservation *)
       }
       { reflexivity. }

@@ -203,7 +203,7 @@ Section Go.
       unfold truncated_scalar, littleendian, Memory.bytes_per in H0.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
-      seplog.
+      ecancel_assumption.
     - rewrite combine_split.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.

@@ -15,5 +15,3 @@ Arguments iff1 {T} (_)%sep (_)%sep.
 
 (* TODO does not get rid of %sep in printing as intended *)
 Arguments sep {key} {value} {map} (_)%sep (_)%sep.
-
-Ltac seplog := SeparationLogic.ecancel_assumption.
