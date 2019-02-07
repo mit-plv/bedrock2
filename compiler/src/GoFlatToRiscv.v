@@ -17,6 +17,7 @@ Require Import riscv.proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.
+Require Import compiler.EmitsValid.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Encode.
@@ -225,32 +226,44 @@ End Go.
 
 
 Ltac sidecondition :=
-  assumption ||
-             match goal with
-             | H: map.get _ _ = Some _ |- _ => exact H
-             end ||
-             reflexivity ||
-             idtac.
+  match goal with
+  (* these branches are allowed to instantiate evars in a controlled manner: *)
+  | H: map.get _ _ = Some _ |- _ => exact H
+  | |- sep ?P ?Q ?m => ecancel_assumption
+  | |- _ => reflexivity
+  (* but we don't have a general "eassumption" branch, only "assumption": *)
+  | |- _ => assumption
+  | H: valid_instructions _ _ |- Encode.verify _ _ => apply H; constructor; reflexivity
+  | |- Memory.load ?sz ?m ?addr = Some ?v =>
+    simpl; unfold Memory.load, Memory.load_Z;
+    erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
+  | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
+  | |- _ => idtac
+  end.
 
 Ltac simulate_step :=
-  first  [ eapply go_getRegister0   ; [sidecondition..|]
-         | eapply go_setRegister0   ; [sidecondition..|]
-         | eapply go_getRegister    ; [sidecondition..|]
-         | eapply go_setRegister    ; [sidecondition..|]
-         | eapply go_loadByte       ; [sidecondition..|]
-         | eapply go_storeByte      ; [sidecondition..|]
-         | eapply go_loadHalf       ; [sidecondition..|]
-         | eapply go_storeHalf      ; [sidecondition..|]
-         | eapply go_loadWord       ; [sidecondition..|]
-         | eapply go_storeWord      ; [sidecondition..|]
-         | eapply go_loadDouble     ; [sidecondition..|]
-         | eapply go_storeDouble    ; [sidecondition..|]
-         | eapply go_getPC          ; [sidecondition..|]
-         | eapply go_setPC          ; [sidecondition..|]
-         | eapply go_step           ; [sidecondition..|]
-         | eapply go_left_identity  ; [sidecondition..|]
-         | eapply go_right_identity ; [sidecondition..|]
-         | eapply go_associativity  ; [sidecondition..|]
-         | eapply go_fetch_inst     ; [sidecondition..|] ].
+  first (* lemmas packing multiple primitives need to go first: *)
+        [ eapply go_fetch_inst     ; [sidecondition..|]
+        (* single-primitive lemmas: *)
+        (* lemmas about Register0 need to go before lemmas about other Registers *)
+        | eapply go_getRegister0   ; [sidecondition..|]
+        | eapply go_setRegister0   ; [sidecondition..|]
+        | eapply go_getRegister    ; [sidecondition..|]
+        | eapply go_setRegister    ; [sidecondition..|]
+        | eapply go_loadByte       ; [sidecondition..|]
+        | eapply go_storeByte      ; [sidecondition..|]
+        | eapply go_loadHalf       ; [sidecondition..|]
+        | eapply go_storeHalf      ; [sidecondition..|]
+        | eapply go_loadWord       ; [sidecondition..|]
+        | eapply go_storeWord      ; [sidecondition..|]
+        | eapply go_loadDouble     ; [sidecondition..|]
+        | eapply go_storeDouble    ; [sidecondition..|]
+        | eapply go_getPC          ; [sidecondition..|]
+        | eapply go_setPC          ; [sidecondition..|]
+        | eapply go_step           ; [sidecondition..|]
+        (* monad law lemmas: *)
+        | eapply go_left_identity  ; [sidecondition..|]
+        | eapply go_right_identity ; [sidecondition..|]
+        | eapply go_associativity  ; [sidecondition..|] ].
 
 Ltac simulate := repeat simulate_step.
