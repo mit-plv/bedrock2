@@ -577,97 +577,39 @@ Section FlatToRiscv1.
     subst targetInsts;
     reflexivity.
 
-  Lemma write_mem_preserves_mem_accessibility:
-    forall {initialMem finalMem: mem} {a0: word} {w: w32},
-      Memory.storeWord initialMem a0 w = Some finalMem ->
-      forall a, Memory.loadWord initialMem a = None <-> Memory.loadWord finalMem a = None.
-  Proof. Admitted. (*
-    intros. unfold Memory.write_mem in *.
-    destruct_one_match_hyp; [|discriminate].
-    inversions H.
-    unfold Memory.read_mem in *.
-    split; intros.
-    - repeat destruct_one_match. subst.
-      + apply reg_eqb_true in E1. subst. rewrite E0 in E. rewrite E in H. discriminate.
-      + assumption.
-      + reflexivity.
-    - repeat destruct_one_match_hyp; subst; reflexivity || discriminate || assumption.
-  Qed. *)
+  Instance word_eq_dec: DecidableEq word. (* TODO *) Admitted.
 
-  (*
-  Lemma mem_accessibility_trans:
-    forall {initialMem middleMem finalMem: Memory.mem} {a: word},
-      (Memory.read_mem a initialMem = None <-> Memory.read_mem a middleMem = None) ->
-      (Memory.read_mem a middleMem  = None <-> Memory.read_mem a finalMem  = None) ->
-      (Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem  = None).
-  Proof. intros. tauto. Qed.
-
-  Lemma eval_stmt_preserves_mem_accessibility:  forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: stmt} {initialRegs finalRegs: state},
-      eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
-      forall a, Memory.read_mem a initialMem = None <-> Memory.read_mem a finalMem = None.
+  Lemma disjoint_putmany_preserves_store_bytes: forall n a vs (m1 m1' mq: mem),
+      store_bytes n m1 a vs = Some m1' ->
+      map.disjoint m1 mq ->
+      store_bytes n (map.putmany m1 mq) a vs = Some (map.putmany m1' mq).
   Proof.
-    induction fuel; intros; try (simpl in *; discriminate).
-    destruct s; simpl in *;
-      repeat (destruct_one_match_hyp; [|discriminate]);
-      inversions H;
-      try reflexivity.
-    - eauto using write_mem_preserves_mem_accessibility.
-    - destruct_one_match_hyp; eauto.
-    - destruct p.
-      repeat (destruct_one_match_hyp; try discriminate).
-      + inversions H1. eauto.
-      + eapply mem_accessibility_trans; [ eauto | ].
-        eapply mem_accessibility_trans; [ eauto | ].
-        eauto.
-    - destruct p.
-      eapply mem_accessibility_trans; eauto.
-    - rewrite empty_is_empty in E. discriminate E.
+    intros.
+    unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
+    erewrite map.getmany_of_tuple_in_disjoint_putmany by eassumption.
+    f_equal.
+    set (ks := (footprint a n)) in *.
+    rename mq into m2.
+    rewrite map.putmany_of_tuple_to_putmany.
+    rewrite (map.putmany_of_tuple_to_putmany n m1 ks vs).
+    apply map.disjoint_putmany_commutes.
+    pose proof map.getmany_of_tuple_to_sub_domain as P.
+    specialize P with (1 := E).
+    apply map.sub_domain_value_indep with (vs2 := vs) in P.
+    set (mp := (map.putmany_of_tuple ks vs map.empty)) in *.
+    apply map.disjoint_comm.
+    eapply map.sub_domain_disjoint; eassumption.
   Qed.
 
-  Lemma eval_stmt_preserves_mem_inaccessible: forall {fuel: nat} {initialMem finalMem: Memory.mem}
-      {s: stmt} {initialRegs finalRegs: state},
-      eval_stmt _ _ empty_map fuel initialRegs initialMem s = Some (finalRegs, finalMem) ->
-      forall start len,
-        mem_inaccessible initialMem start len -> mem_inaccessible finalMem start len.
+  Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
+      Memory.store_bytes n m a v = Some m' ->
+      map.same_domain m m'.
   Proof.
-    unfold mem_inaccessible. intros.
-    destruct (Memory.read_mem a initialMem) eqn: E.
-    - eapply H0. exact E.
-    - pose proof (eval_stmt_preserves_mem_accessibility H a) as P.
-      destruct P as [P _]. specialize (P E). exfalso. congruence.
+    intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
+    eauto using map.putmany_of_tuple_preserves_domain.
   Qed.
-  *)
-
-  Ltac prove_remu_four_zero :=
-    match goal with
-    | |- remu _ (ZToReg 4) = ZToReg 0 => idtac
-    | |- ZToReg 0 = remu _ (ZToReg 4) => symmetry
-    | _ => fail 1 "wrong shape of goal"
-    end;
-    rewrite <-? (Z.mul_comm 4);
-    autorewrite with rew_ZToReg_morphism;
-    repeat (apply remu_four_zero_distrib_plus);
-    rewrite? remu_four_undo;
-    rewrite? remu_four_four;
-    repeat match goal with
-           | H: divisibleBy4 _ |- _ => apply divisibleBy4_remu40 in H; rewrite H
-           end;
-    ring.
 
 (*
-  Ltac solve_mem_inaccessible :=
-    eapply eval_stmt_preserves_mem_inaccessible; [|eassumption];
-    try eassumption;
-    let Eq := fresh "Eq" in
-    match goal with
-    | E1: eval_stmt _ _ ?env ?f ?r1 ?m1 ?s1 = Some (?r2, ?m2),
-      E2: eval_stmt _ _ ?env ?f ?r2 ?m2 ?s2 = Some (?r3, ?m3)
-      |-   eval_stmt _ _ ?env _ _ ?m1 _ = Some (_, ?m3)
-      => assert (eval_stmt _ _ env (S f) r1 m1 (SSeq s1 s2) = Some (r3, m3)) as Eq
-          by (simpl; rewrite E1; exact E2); exact Eq
-    end.
-
   Ltac spec_IH originalIH IH stmt1 :=
     pose proof originalIH as IH;
     match goal with
@@ -686,19 +628,6 @@ Section FlatToRiscv1.
       | solve_mem_inaccessible
       | idtac ].
   *)
-
-  Ltac simpl_remu4_test :=
-    match goal with
-    | |- context [reg_eqb ?r ?expectZero] =>
-      match expectZero with
-      | ZToReg 0 => idtac
-      end;
-      match r with
-      | remu ?a (ZToReg 4) => replace r with expectZero by prove_remu_four_zero
-      end
-    end;
-    rewrite word.eqb_eq by reflexivity;
-    simpl.
 
   Hint Rewrite word.eqb_ne word.eqb_eq using congruence : rew_reg_eqb.
 
@@ -746,7 +675,6 @@ Section FlatToRiscv1.
         simpl_bools ||
         rewrite_getReg ||
         rewrite_setReg ||
-        simpl_remu4_test ||
         rewrite_reg_value).
 
   Ltac run1step'' :=
@@ -761,14 +689,22 @@ Section FlatToRiscv1.
   Ltac run1step :=
     run1step'; do 2 intro; subst.
 
+  Ltac prove_ext_guarantee :=
+    eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ];
+    (* eauto using the lemmas below doesn't work, why? *)
+    first [ eapply map.same_domain_refl |
+            eapply store_bytes_preserves_footprint; eassumption ].
+
   Ltac run1done :=
     apply runsToDone;
     simpl in *;
+    eexists;
     repeat split;
     first
       [ eassumption
       | solve_word_eq (@word_ok (@W p))
       | seplog
+      | prove_ext_guarantee
       | idtac ].
 
 (*
@@ -903,38 +839,6 @@ Section FlatToRiscv1.
     unfold iset. destruct_one_match; reflexivity.
   Qed.
 
-  Instance word_eq_dec: DecidableEq word. (* TODO *) Admitted.
-
-  Lemma disjoint_putmany_preserves_store_bytes: forall n a vs (m1 m1' mq: mem),
-      store_bytes n m1 a vs = Some m1' ->
-      map.disjoint m1 mq ->
-      store_bytes n (map.putmany m1 mq) a vs = Some (map.putmany m1' mq).
-  Proof.
-    intros.
-    unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
-    erewrite map.getmany_of_tuple_in_disjoint_putmany by eassumption.
-    f_equal.
-    set (ks := (footprint a n)) in *.
-    rename mq into m2.
-    rewrite map.putmany_of_tuple_to_putmany.
-    rewrite (map.putmany_of_tuple_to_putmany n m1 ks vs).
-    apply map.disjoint_putmany_commutes.
-    pose proof map.getmany_of_tuple_to_sub_domain as P.
-    specialize P with (1 := E).
-    apply map.sub_domain_value_indep with (vs2 := vs) in P.
-    set (mp := (map.putmany_of_tuple ks vs map.empty)) in *.
-    apply map.disjoint_comm.
-    eapply map.sub_domain_disjoint; eassumption.
-  Qed.
-
-  Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
-      Memory.store_bytes n m a v = Some m' ->
-      map.same_domain m m'.
-  Proof.
-    intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
-    eauto using map.putmany_of_tuple_preserves_domain.
-  Qed.
-
   Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
       Memory.store_bytes n m1 a v = Some m1' ->
       (eq m1 * F)%sep m ->
@@ -1017,12 +921,7 @@ Section FlatToRiscv1.
         * eapply go_load; try eassumption. 2: eapply go_step; simpl; reflexivity.
           simpl. unfold Memory.load, Memory.load_Z.
           erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ].
-      + run1done. eexists. repeat split.
-        * eassumption.
-        * Time exact H8. (* universe unification takes 6 seconds *)
-        * solve_word_eq word_ok.
-        * eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ].
-          apply map.same_domain_refl.
+      + run1done.
 
     - (* SStore *)
       assert ((eq m * (program initialL_pc [[compile_store iset sz a v 0]] * R))%sep initialL_mem)
@@ -1039,22 +938,12 @@ Section FlatToRiscv1.
           end.
         * eapply go_store; try eassumption. eapply go_step. simpl. reflexivity.
       + run1done.
-        exists m'. repeat split; try eassumption.
-        * ecancel_assumption.
-        * solve_word_eq word_ok.
-        * eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ].
-          eapply store_bytes_preserves_footprint. eassumption.
 
     - (* SLit *)
       remember (compile_lit x v) as insts.
       eapply compile_lit_correct_full; [sidecondition..|]; cycle 1.
       + eassumption.
-      + simpl. run1done. exists m.
-        repeat split; try eassumption.
-        * solve_word_eq word_ok.
-        * subst insts. ring.
-        * simpl. eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ].
-          apply map.same_domain_refl.
+      + simpl. run1done.
       + unfold compile_stmt. unfold getPc, getMem. subst insts. ecancel_assumption.
 
       (* SOp *)

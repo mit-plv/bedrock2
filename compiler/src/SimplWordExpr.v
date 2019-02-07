@@ -64,5 +64,4 @@ Ltac solve_word_eq OK :=
   clear;
   simpl;
   repeat (autorewrite with rew_Zlength; simpl);
-  simpl_word_exprs OK;
-  try reflexivity.
+  (ring || (simpl_word_exprs OK; try reflexivity)).
