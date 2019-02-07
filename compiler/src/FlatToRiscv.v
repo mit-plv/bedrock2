@@ -157,6 +157,8 @@ Module Import FlatToRiscv.
 
 End FlatToRiscv.
 
+Local Unset Universe Polymorphism. (* for Add Ring *)
+
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscv.parameters}.
 
@@ -165,6 +167,9 @@ Section FlatToRiscv1.
   Definition trace := list (LogItem actname).
 
   Local Notation RiscvMachineL := (RiscvMachine Register actname).
+
+  Definition word_ring_theory := word.ring_theory (word := word).
+  Add Ring word_ring : word_ring_theory.
 
   Ltac state_calc0 := map_solver locals_ok.
 
@@ -825,8 +830,9 @@ Section FlatToRiscv1.
       runsTo initialL post.
   Proof.
     intros. substs.
-    (*
     unfold compile_stmt, compile_lit, compile_lit_rec in *.
+    simpl in *.
+  (*
     destruct_everything; simpl in *.
     Time run1step.
     Time run1step.
@@ -1040,18 +1046,22 @@ Section FlatToRiscv1.
         * eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ].
           eapply store_bytes_preserves_footprint. eassumption.
 
-    - (* SLit *) (*
-      subst. destruct_containsProgram.
-      eapply compile_lit_correct_full; [sidecondition..|].
-      simpl in *.
-      run1done.
-      f_equal.
-      apply compile_lit_correct.
+    - (* SLit *)
+      remember (compile_lit x v) as insts.
+      eapply compile_lit_correct_full; [sidecondition..|]; cycle 1.
+      + eassumption.
+      + simpl. run1done. exists m.
+        repeat split; try eassumption.
+        * solve_word_eq word_ok.
+        * subst insts. ring.
+        * simpl. eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ].
+          apply map.same_domain_refl.
+      + unfold compile_stmt. unfold getPc, getMem. subst insts. ecancel_assumption.
 
       (* SOp *)
     - match goal with
-      | o: bopname |- _ => destruct o (* do this before destruct_containsProgram *)
-      end;
+      | o: Syntax.bopname.bopname |- _ => destruct o (* do this before destruct_containsProgram *)
+      end. (*
       simpl in *; destruct_everything;
       try solve [run1step; run1done].
       (* all except eq are implemented with one instruction *)
