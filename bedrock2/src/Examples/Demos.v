@@ -120,7 +120,7 @@ Section Demos.
   Context {bsearchNames: unique! BinarySearch.Names}.
   Import BinarySearch.
   Definition bsearch: Prog := ("bsearch", ([left; right; target], [left], bedrock_func_body:(
-    while (left < right) {{
+    while (left .^ right) {{
       mid = left + (((right-left) >> 4) << 3);;
       if ((expr.load access_size.word mid) < target) {{
         left = mid + 8

@@ -147,18 +147,13 @@ Proof.
 
       rename H3 into length_rep.
 
-      cbv [interp_binop br] in H5; destruct (word.ltu x1 x2) eqn:Hbr; [clear H5|contradiction H5; exact eq_refl].
-      rewrite word.unsigned_ltu, Z.ltb_lt in Hbr.
-      assert (\_ (x2 ^- x1) <> 0) as Hnz. {
-        assert (\_ x2 <> \_ x1) as HC by Lia.lia.
-        intros HX. apply HC. clear -HX.
-        rewrite word.unsigned_sub in HX.
-        pose proof Properties.word.unsigned_range x1.
-        pose proof Properties.word.unsigned_range x2.
-        change width with 64 in *.
-        Z.div_mod_to_equations; Lia.lia. }
+      cbn [interp_binop] in *.
+      subst br.
+      rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_eq_0_iff in H5.
 
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H8.
+
+      1,2: repeat match goal with H: sep _ _ _ |- _ => clear H end.
 
       { cbn [interp_binop] in *.
         subst v0.
@@ -178,7 +173,14 @@ Proof.
         change (\_ (/_ 8)) with 8.
         setoid_rewrite HH2.
 
-        Z.div_mod_to_equations; Lia.lia. }
+        clear -length_rep H5.
+        rewrite word.unsigned_sub in length_rep.
+        setoid_rewrite (_:Z.of_nat (Datatypes.length x) * 8 = 8 * Z.of_nat (Datatypes.length x)); [|Lia.lia].
+        setoid_rewrite <-length_rep; clear dependent x.
+        pose proof Properties.word.unsigned_range x1.
+        pose proof Properties.word.unsigned_range x2.
+        change (2^width) with 18446744073709551616 in *.
+        Z.div_mod_to_equations. Lia.lia. }
       { cbn [interp_binop] in *.
         subst v0.
 
@@ -254,14 +256,31 @@ Proof.
               end;
           try absint_head e.
 
-        pose proof (eq_refl : 64 = width).
-        pose proof (eq_refl : 18446744073709551616 = 2^width).
+        repeat match goal with H: context[@map.rep _ _  mem] |- _ => clear dependent H end.
+        repeat match goal with H: context[trace] |- _ => clear dependent H end.
+        straightline_cleanup.
+        clear dependent v1; clear dependent v; clear dependent functions; clear dependent left; clear dependent right; clear dependent target.
+
+        pose proof (eq_refl : 64 = width) as Hw.
+        pose proof (eq_refl : 18446744073709551616 = 2^width) as H2w.
 
         let e := lazymatch goal with |- ?e = _ => e end in 
         absint e.
-        rewrite H11, H12.
+
+        rewrite H3, H4.
+
         rewrite (Z.mod_small _ (2^width)); cycle 1.
-        { clear -H5. rewrite <-H5. Z.div_mod_to_equations. Lia.lia. }
+        { clear -H2w.
+          change (2 ^ 4) with 16.
+          change (2 ^ 3) with 8.
+          Z.div_mod_to_equations.
+          (*
+          Set Printing Depth 9999999.
+          Set Printing All.
+          Set Printing Universes.
+           *)
+          zify. (* WHY is this necessary? *)
+          Omega.omega. }
         clear. Z.div_mod_to_equations. Lia.lia. }
       { exact eq_refl. }
       { SeparationLogic.ecancel_assumption. } }
