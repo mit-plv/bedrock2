@@ -1,7 +1,6 @@
 Require Export Coq.Lists.List.
 Export ListNotations.
 Require Export lib.LibTacticsMin.
-Require Export riscv.util.Word.
 Require Export coqutil.Decidable.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExpr.

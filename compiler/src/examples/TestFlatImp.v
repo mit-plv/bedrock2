@@ -1,5 +1,4 @@
 Require Import Coq.micromega.Lia.
-Require Import riscv.util.Word.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.

@@ -1,5 +1,4 @@
 Require Import Coq.ZArith.ZArith.
-Require Import riscv.util.Word.
 Require Import compiler.util.Common.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.

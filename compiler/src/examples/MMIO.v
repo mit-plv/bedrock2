@@ -1,7 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Macros.unique.
-Require Import riscv.util.Word.
 Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
 Require Import riscv.util.Monads.

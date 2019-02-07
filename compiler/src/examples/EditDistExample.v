@@ -3,12 +3,11 @@ Require Import compiler.ExprImp.
 Require Import compiler.util.Common.
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require Import riscv.util.Word.
 Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.MinimalLogging.
-Require riscv.Utility.
+Require Import riscv.Utility.
 Require Import riscv.Encode.
 Require Import compiler.examples.Fibonacci.
 Require Import Coq.Strings.String.
@@ -121,17 +120,17 @@ Example edit_dist: stmt :=
 *)
 End ExampleSrc.
 
-Fixpoint str_to_words(s: string): list (word 32) :=
+Fixpoint str_to_words(s: string): list word :=
   match s with
-  | String c rest => (ZToWord 32 (Z.of_N (N_of_ascii c))) :: (str_to_words rest)
+  | String c rest => (word.of_Z (Z.of_N (N_of_ascii c))) :: (str_to_words rest)
   | EmptyString => nil
   end.
 
-Definition a_str: list (word 32) := str_to_words "RISCV".
-Definition b_str: list (word 32) := str_to_words "CRISP".
+Definition a_str: list word := str_to_words "RISCV".
+Definition b_str: list word := str_to_words "CRISP".
 
-Definition input: list (word 32) :=
-  (ZToWord 32 (Zlength a_str)) :: (ZToWord 32 (Zlength b_str)) :: a_str ++ b_str.
+Definition input: list word :=
+  (word.of_Z (Zlength a_str)) :: (word.of_Z (Zlength b_str)) :: a_str ++ b_str.
 
 (*
 
