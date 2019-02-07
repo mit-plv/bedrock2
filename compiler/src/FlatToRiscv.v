@@ -109,7 +109,7 @@ Module Import FlatToRiscv.
        The first restriction is that ext_guarantee needs to be preservable for the compiler: *)
     ext_guarantee_preservable: forall (m1 m2: Machine),
         ext_guarantee m1 ->
-        (forall a: word, map.get m1.(getMem) a = None <-> map.get m2.(getMem) a = None) ->
+        map.same_domain m1.(getMem) m2.(getMem) ->
         m1.(getLog) = m2.(getLog) ->
         ext_guarantee m2;
 
@@ -1016,7 +1016,8 @@ Section FlatToRiscv1.
         * eassumption.
         * Time exact H8. (* universe unification takes 6 seconds *)
         * solve_word_eq word_ok.
-        * eapply ext_guarantee_preservable; [eassumption | simpl; intuition idtac | reflexivity ].
+        * eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ].
+          apply map.same_domain_refl.
 
     - (* SStore *)
       assert ((eq m * (program initialL_pc [[compile_store iset sz a v 0]] * R))%sep initialL_mem)
@@ -1037,7 +1038,7 @@ Section FlatToRiscv1.
         * ecancel_assumption.
         * solve_word_eq word_ok.
         * eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ].
-          admit. (* store_bytes_preserves_domain P2 *)
+          eapply store_bytes_preserves_footprint. eassumption.
 
     - (* SLit *) (*
       subst. destruct_containsProgram.
