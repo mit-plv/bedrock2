@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all bbv coqutil riscv-coq bedrock2 compiler processor
+.PHONY: update_all clone_all coqutil riscv-coq bedrock2 compiler processor
 
 clone_all:
 	git submodule update --init --recursive
@@ -14,16 +14,13 @@ ABS_ROOT_DIR:=$(abspath $(dir $(REL_PATH_OF_THIS_MAKEFILE)))
 DEPS_DIR ?= $(ABS_ROOT_DIR)/deps
 export DEPS_DIR
 
-bbv:
-	$(MAKE) -C $(DEPS_DIR)/bbv
-
 coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil
 
-riscv-coq: bbv coqutil
+riscv-coq: coqutil
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq all
 
-bedrock2: bbv coqutil
+bedrock2: coqutil
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2
 
 compiler: riscv-coq bedrock2

@@ -1,7 +1,6 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.Arith.PeanoNat.
-Require Import bbv.Word.
 Require Import compiler.Decidable.
 Require Import compiler.Op.
 Require Import compiler.member.
@@ -94,7 +93,7 @@ Section LLG.
 
   Definition update_vals(l: list var)(G: member l -> type)(i: member l)(v: interp_type (G i))
     (vals: forall m: member l, interp_type (G m)):
-           forall m: member l, interp_type (G m).
+	   forall m: member l, interp_type (G m).
     intro m.
     destruct (eq_member_dec _ i m).
     - rewrite <- e. exact v.
@@ -109,32 +108,32 @@ Section LLG.
       | EVar m => fun vals => vals m
       | EOp e1 op e2 => fun vals => eval_binop op (rec _ _ _ e1 vals) (rec _ _ _ e2 vals)
       | @ELet l G t1 t2 x e1 e2 => fun vals =>
-          let r1 := rec _ _ _ e1 vals in
-          let vals' := extend_vals G vals x t1 r1 in
-          rec _ _ _ e2 vals'
+	  let r1 := rec _ _ _ e1 vals in
+	  let vals' := extend_vals G vals x t1 r1 in
+	  rec _ _ _ e2 vals'
       | @ENewArray l G t size => fun vals =>
-          let size1 := rec _ _ _ size vals in
-          @newArray _ _ (interp_type_IsArray t) size1
+	  let size1 := rec _ _ _ size vals in
+	  @newArray _ _ (interp_type_IsArray t) size1
       | @EGet l G t a i => fun vals =>
-          let a1 := rec _ _ _ a vals in
-          let i1 := rec _ _ _ i vals in
-          @get _ _ (interp_type_IsArray t) a1 i1
+	  let a1 := rec _ _ _ a vals in
+	  let i1 := rec _ _ _ i vals in
+	  @get _ _ (interp_type_IsArray t) a1 i1
       | @EUpdate l G t a i v => fun vals =>
-          let a1 := rec _ _ _ a vals in
-          let i1 := rec _ _ _ i vals in
-          let v1 := rec _ _ _ v vals in
-          @update _ _ (interp_type_IsArray t) a1 i1 v1
+	  let a1 := rec _ _ _ a vals in
+	  let i1 := rec _ _ _ i vals in
+	  let v1 := rec _ _ _ v vals in
+	  @update _ _ (interp_type_IsArray t) a1 i1 v1
       | @EFor l G t i to updates body rest => fun vals =>
-          let to1 := rec _ _ _ to vals in
-          let bodyFun := rec _ _ _ body in
-          let s1 := vals updates in
-          for m from 0 to to1 updating (s1) {{
-            let vals' := update_vals _ _ updates s1 vals in
-            let vals'' := extend_vals G vals' i TInt m in
-            bodyFun vals''
-          }} ;;
-          let vals' := update_vals _ _ updates s1 vals in
-          rec _ _ _ rest vals'
+	  let to1 := rec _ _ _ to vals in
+	  let bodyFun := rec _ _ _ body in
+	  let s1 := vals updates in
+	  for m from 0 to to1 updating (s1) {{
+	    let vals' := update_vals _ _ updates s1 vals in
+	    let vals'' := extend_vals G vals' i TInt m in
+	    bodyFun vals''
+	  }} ;;
+	  let vals' := update_vals _ _ updates s1 vals in
+	  rec _ _ _ rest vals'
       end.
 
 End LLG.

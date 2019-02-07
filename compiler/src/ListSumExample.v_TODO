@@ -1,5 +1,3 @@
-Require Import bbv.Word.
-Import ArithmeticNotations.
 Local Open Scope word_scope.
 Require Import compiler.ExprImp.
 Require Import riscv.util.BitWidths.
@@ -31,7 +29,7 @@ Definition input_base: Z := 512.
 Module ExampleSrc.
 
   Import ExprImpNotations. (* only inside this module *)
-  
+
   Definition n: var := 1.
   Definition i: var := 2.
   Definition sumreg: var := 3.
@@ -64,7 +62,7 @@ Module ExampleSrc.
       sumreg <-- EVar sumreg + EVar a;
       i <-- EVar i + ELit 1
     done.
-  
+
   Print listsum.
 
 End ExampleSrc.
@@ -98,16 +96,16 @@ Eval cbv in infJalMem.
 
 Instance State_RegisterFile: RegisterFile state Register (word 32) := {|
     getReg rf r := match rf r with
-                   | Some v => v
-                   | None => ZToWord 32 0
-                   end(*;
+		   | Some v => v
+		   | None => ZToWord 32 0
+		   end(*;
     setReg := put;
     initialRegs := empty_map;*)
 |}.
 
 Admitted.
 Existing Instance State_RegisterFile.
-         
+
 Definition initialRiscvMachineCore: @RiscvMachineCore _ state := {|
   registers := initialRegs;
   pc := ZToWord _ instructionMemStart;
@@ -118,9 +116,9 @@ Definition initialRiscvMachineCore: @RiscvMachineCore _ state := {|
 Definition initialRiscvMachine_without_instructions(l: list Z): RiscvMachine := {|
     core := initialRiscvMachineCore;
     machineMem := Memory.store_word_list
-                    (mk_input l)
-                    (ZToWord 32 input_base)
-                    infJalMem
+		    (mk_input l)
+		    (ZToWord 32 input_base)
+		    infJalMem
 |}.
 
 Definition initialRiscvMachine(l: list Z): RiscvMachine
@@ -141,10 +139,10 @@ Definition listsum_res(fuel: nat)(l: list Z): word 32 :=
 
 (*
 Definition initialize_with_wXLEN_list_H{Bw : BitWidths}(l: list (word wXLEN))
-           (offset: word wXLEN) : Memory.mem :=
+	   (offset: word wXLEN) : Memory.mem :=
   fun (a: word wXLEN) =>
     if dec (#offset <= #a < #offset + (length l * wXLEN_in_bytes)
-            /\ #a mod wXLEN_in_bytes = 0) then
+	    /\ #a mod wXLEN_in_bytes = 0) then
       nth_error l (#(a ^- offset)  / wXLEN_in_bytes)
     else
       None.
@@ -157,7 +155,7 @@ Proof.
 Defined.
 
 Definition initialize_with_word_list_H{Bw : BitWidths}(l: list (word 32))
-           (offset: word 32) : Memory.mem :=
+	   (offset: word 32) : Memory.mem :=
   fun (a: word 32) =>
     if dec (Memory.in_range a (Z.of_nat wXLEN_in_bytes) (uwordToZ offset) (Z.of_nat wXLEN_in_bytes * Memory.Zlength l)) then
       Znth_error l (uwordToZ (wsub a offset) / 4)
@@ -166,7 +164,7 @@ Definition initialize_with_word_list_H{Bw : BitWidths}(l: list (word 32))
 
 (*
 Definition initialize_with_wXLEN_list_H{Bw : BitWidths}(l: list (word wXLEN))
-           (offset: word wXLEN) : Memory.mem :=
+	   (offset: word wXLEN) : Memory.mem :=
   fun (a: word wXLEN) =>
     if dec (#offset <= #a) then
       nth_error l (#(a ^- offset) / wXLEN_in_bytes)
@@ -198,7 +196,7 @@ Proof.
   assert (# (a ^- offset) / wXLEN_in_bytes < length l). {
     apply nth_error_Some. congruence.
   }
-  
+
   repeat split; auto.
 Qed.
  *)
@@ -224,7 +222,7 @@ Lemma store_word_list_contains_initialize: forall words offset m,
     uwordToZ offset mod 4 = 0 ->
     uwordToZ offset + 4 * Memory.Zlength words <= Memory.memSize m ->
     FlatToRiscvInvariants.containsMem (Memory.store_word_list words offset m)
-                                      (initialize_with_word_list_H words offset).
+				      (initialize_with_word_list_H words offset).
 Proof. Admitted. (*
   unfold FlatToRiscvInvariants.containsMem.
   unfold FlatToRiscv.loadWordwXLEN, wXLEN, wXLEN_in_bytes,
@@ -258,7 +256,7 @@ Proof.
   apply const_mem_mem_size.
   - reflexivity.
   - change 32 with (10 + 22). cbv. split; congruence.
-Qed.  
+Qed.
 
 Lemma memory_size_without_instructions: forall l,
   Memory.memSize (machineMem (initialRiscvMachine_without_instructions l)) = memory_size.
@@ -293,7 +291,7 @@ Proof.
   unfold listsum_res, listsum_final.
   pose proof exprImp2Riscv_correct as Q.
   specialize Q with (sH := ExampleSrc.listsum)
-                    (initialL := (initialRiscvMachine_without_instructions l)).
+		    (initialL := (initialRiscvMachine_without_instructions l)).
   unfold Pipeline.evalH in Q.
   edestruct Q as [fuelL P]; try eassumption.
   - cbv. reflexivity.
