@@ -1,6 +1,3 @@
-[submodule "deps/bbv"]
-	path = deps/bbv
-	url = ../../mit-plv/bbv.git
 [submodule "deps/riscv-coq"]
 	path = deps/riscv-coq
 	url = ../../mit-plv/riscv-coq.git
