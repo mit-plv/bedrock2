@@ -1,6 +1,8 @@
 Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.BitOps.
+Require Import coqutil.Tactics.Tactics.
+
 
 Local Unset Universe Polymorphism. (* for Add Ring *)
 
@@ -39,18 +41,29 @@ Section Lemmas.
 
 End Lemmas.
 
+(* If "rewrite (sextend_width_nop (word_ok := OK))" encounters a term of the form
+   "(word.of_Z ?v)", it will instantiate ?v to "(BitOps.sextend ?w0 ?v0)" and replace
+   "(word.of_Z ?v)" by the RHS of the lemma, i.e. again "(word.of_Z ?Goal11)", so
+   no useful progress is made. This tactic prevents this from happending. *)
+Ltac rewrite_sextend_width_nop OK :=
+  so fun hyporgoal => match hyporgoal with
+  | context[word.of_Z (BitOps.sextend ?w ?v)] =>
+    rewrite (@sextend_width_nop _ _ OK w v) in * by reflexivity
+  end.
+
+Ltac simpl_word_exprs_step OK :=
+  let t := (assumption || symmetry; assumption || reflexivity) in
+  first [ rewrite (add_0_l (word_ok := OK)) in * by t
+        | rewrite (add_0_r (word_ok := OK)) in * by t
+        | rewrite (mul_0_l (word_ok := OK)) in * by t
+        | rewrite (mul_0_r (word_ok := OK)) in * by t
+        | rewrite (mul_1_l (word_ok := OK)) in * by t
+        | rewrite (mul_1_r (word_ok := OK)) in * by t
+        | rewrite_sextend_width_nop OK ].
+
 Ltac simpl_word_exprs OK :=
   lazymatch type of OK with
-  | @word.ok ?width ?Inst =>
-    repeat rewrite
-           ?(add_0_l (word_ok := OK)),
-           ?(add_0_r (word_ok := OK)),
-           ?(mul_0_l (word_ok := OK)),
-           ?(mul_0_r (word_ok := OK)),
-           ?(mul_1_l (word_ok := OK)),
-           ?(mul_1_r (word_ok := OK)),
-           ?(sextend_width_nop (word_ok := OK))
-      in * by (assumption || symmetry; assumption || reflexivity)
+  | @word.ok ?width ?Inst => repeat simpl_word_exprs_step OK
   | _ => fail 10000 "wordok is not of type word.ok"
   end.
 

@@ -700,6 +700,7 @@ Section FlatToRiscv1.
     simpl in *;
     eexists;
     repeat split;
+    simpl_word_exprs (@word_ok (@W p));
     first
       [ eassumption
       | solve_word_eq (@word_ok (@W p))
@@ -947,24 +948,33 @@ Section FlatToRiscv1.
       + unfold compile_stmt. unfold getPc, getMem. subst insts. ecancel_assumption.
 
       (* SOp *)
-    - match goal with
+    - admit.
+      (*
+      match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o (* do this before destruct_containsProgram *)
-      end. (*
+      end.
+      admit.
       simpl in *; destruct_everything;
       try solve [run1step; run1done].
       (* all except eq are implemented with one instruction *)
       run1step. run1step. run1done.
       rewrite reduce_eq_to_sub_and_lt.
       state_calc.
+      *)
 
     - (* SSet *)
-      simpl in *; destruct_everything.
-      run1step.
-      run1done.
-      f_equal.
-      ring.
+      eapply det_step.
+      + eapply go_fetch_inst.
+        * reflexivity.
+        * seplog.
+        * unfold valid_instructions in *.
+          match goal with
+          | H: forall (_: Instruction), _ |- _ => apply H; constructor; reflexivity
+          end.
+        * simpl. simulate. simpl. reflexivity.
+      + run1done.
 
-    - (* SIf/Then *)
+    - (* SIf/Then *) (*
       (* branch if cond = false (will not branch *)
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
