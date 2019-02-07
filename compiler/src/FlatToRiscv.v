@@ -921,29 +921,7 @@ Section FlatToRiscv1.
         * eapply go_load; try eassumption. 2: eapply go_step; simpl; reflexivity.
           simpl. unfold Memory.load, Memory.load_Z.
           erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ].
-      + apply runsToDone. simpl. eexists. repeat split.
-        * eassumption.
-        * unfold program, array in H8.
-          match goal with
-          | |- (?A * ?B * ?C * ?D)%sep ?M => let h := head_of_app A in set (p1 := h)
-          end.
-          match type of H8 with
-          | (?A * ?B * ?C * ?D)%sep ?M => let h := head_of_app A in set (p2 := h)
-          end.
-          exfalso.
-          clear -p1 p2.
-          idtac "UNIFICATION SLOWNESS".
-          Set Printing Universes.
-          idtac "First term:".
-          let r := eval cbv [p1] in p1 in idtac r.
-          idtac "Second term:".
-          let r := eval cbv [p2] in p2 in idtac r.
-          Time unify p1 p2.
-
-          Unset Printing Universes.
-          admit.
-        * solve_word_eq word_ok.
-        * prove_ext_guarantee.
+      + run1done.
 
     - (* SStore *)
       assert ((eq m * (program initialL_pc [[compile_store iset sz a v 0]] * R))%sep initialL_mem)
