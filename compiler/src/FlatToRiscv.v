@@ -1,5 +1,4 @@
 Require Import lib.LibTacticsMin.
-Require Import bbv.ZLib.
 Require Import riscv.util.Monads. Require Import riscv.util.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import compiler.FlatImp.

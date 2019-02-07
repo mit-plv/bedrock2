@@ -14,7 +14,6 @@ Require Export riscv.util.Monads.
 Require Import riscv.runsToNonDet.
 Require Import compiler.util.MyOmega.
 Require Import Coq.micromega.Lia.
-Require Export bbv.DepEqNat.
 Require Export compiler.NameGen.
 Require Export compiler.util.Common.
 Require Export coqutil.Decidable.

@@ -4,7 +4,6 @@ Require Import compiler.util.Common.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
 Require Import compiler.NameGen.
-Require Import bbv.DepEqNat.
 Require Import coqutil.Decidable.
 Require Import riscv.Memory.
 Require Import riscv.Utility.
