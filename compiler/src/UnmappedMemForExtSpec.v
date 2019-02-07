@@ -36,7 +36,10 @@ Section WithParams.
     intros.
     pose proof @store_preserves_domain as P.
     specialize P with (3 := H).
-    eapply P; eauto.
+    pose proof (P _ _) as Q. unfold map.same_domain, map.sub_domain in Q. destruct Q as [Q1 Q2].
+    specialize H0 with (1 := H1).
+    destruct (map.get m' a0) eqn: E; [exfalso|reflexivity].
+    specialize Q2 with (1 := E). destruct Q2 as [v2 Q2]. rewrite Q2 in H0. discriminate.
   Qed.
 
   Hint Resolve store_preserves_respects_unmapped.

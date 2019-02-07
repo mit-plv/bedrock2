@@ -82,17 +82,16 @@ Section Memory.
 
   Lemma store_preserves_domain: forall sz m a v m',
       store sz m a v = Some m' ->
-      forall k, map.get m k = None <-> map.get m' k = None.
+      map.same_domain m m'.
   Proof.
     destruct sz;
       cbv [store store_Z store_bytes bytes_per load_bytes unchecked_store_bytes];
       intros;
       (destruct_one_match_hyp; [|discriminate]);
       inversion_option;
-      (eapply map.putmany_of_tuple_preserves_domain; [|exact H]);
-      intro A;
-      rewrite A in E;
-      discriminate E || let t := type of E in idtac t.
+      subst;
+      eapply map.putmany_of_tuple_preserves_domain;
+      eassumption.
   Qed.
 
 End Memory.

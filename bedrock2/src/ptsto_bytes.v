@@ -46,25 +46,6 @@ Section Scalars.
     SeparationLogic.ecancel_assumption.
   Qed.
 
-  Lemma build_getmany_of_tuple_Some: forall (n : nat) (k: word) (ks : tuple word n) (v: byte) (vs : tuple byte n) (m : mem),
-       map.get m k = Some v ->
-       map.getmany_of_tuple m ks = Some vs ->
-       map.getmany_of_tuple m ({| pair._1 := k; pair._2 := ks |}: tuple word (S n)) = Some {| pair._1 := v; pair._2 := vs |}.
-  Proof.
-    intros.
-    unfold map.getmany_of_tuple, tuple.option_all, tuple.map.
-    rewrite H.
-    change (
-        match
-          map.getmany_of_tuple m ks
-        with
-        | Some ys => Some {| pair._1 := v; pair._2 := ys |}
-        | None => None
-        end = Some {| pair._1 := v; pair._2 := vs |}).
-    rewrite H0.
-    reflexivity.
-  Qed.
-
   Arguments Z.of_nat: simpl never.
 
   Lemma invert_getmany_of_tuple_Some_footprint:
@@ -114,7 +95,7 @@ Section Scalars.
       + destruct vs. reflexivity.
       + apply map.invert_getmany_of_tuple_Some in B2. simpl in B2. destruct B2 as [A B].
         destruct vs as [v vs]. simpl in *.
-        apply build_getmany_of_tuple_Some.
+        apply map.build_getmany_of_tuple_Some; simpl.
         * rewrite map.get_remove_diff; [assumption|].
           clear -X Y word_ok.
           intro C.
@@ -196,13 +177,13 @@ Section Scalars.
     revert dependent a; revert dependent R; revert dependent m; revert dependent bs; revert dependent oldbs; revert dependent n.
     induction n; [solve[cbn; intros []; trivial]|].
     intros [oldb0 oldbs] [b0 bs] m R a Hsep.
-    unshelve epose proof (IHn oldbs bs (map.put m a b0) (sep (ptsto a b0) R) (word.add a (word.of_Z 1)) _) as IHn2; clear IHn; [|clear Hsep].
-    - cbn in Hsep |- *; eapply SeparationLogic.sep_assoc in Hsep.
-      unshelve epose proof sep_put _ _ b0 _ _ _ Hsep as Hsep2; clear Hsep.
-      + exact Properties.word.eq_or_neq.
-      + ecancel_assumption.
-    - cbv [unchecked_store_bytes footprint] in *; cbn.
-      ecancel_assumption.
+    cbn in *.
+    apply sep_assoc.
+    eapply sep_put. 1: exact Properties.word.eq_or_neq.
+    apply sep_assoc in Hsep.
+    unshelve epose proof (IHn oldbs bs m _ (word.add a (word.of_Z 1)) _) as IHn2. 1: shelve.
+    - unfold ptsto_bytes. ecancel_assumption.
+    - ecancel_assumption.
   Qed.
 
   Lemma unchecked_store_bytes_of_sep':
