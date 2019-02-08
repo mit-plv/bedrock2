@@ -19,7 +19,7 @@ _CoqProject:
 all: Makefile.coq.all $(VS)
 	$(MAKE) -f Makefile.coq.all
 
-COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2
+COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
 Makefile.coq.all: force _CoqProject
 	$(COQ_MAKEFILE) $(VS) -o Makefile.coq.all
