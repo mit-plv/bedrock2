@@ -917,10 +917,11 @@ Section FlatToRiscv1.
 
     - (* SLit *)
       remember (compile_lit x v) as insts.
-      eapply compile_lit_correct_full; [sidecondition..|]; cycle 1.
-      + eassumption.
-      + simpl. run1done.
+      eapply compile_lit_correct_full.
+      + sidecondition.
       + unfold compile_stmt. unfold getPc, getMem. subst insts. ecancel_assumption.
+      + sidecondition.
+      + simpl. run1done.
 
       (* SOp *)
     - admit.
@@ -940,8 +941,23 @@ Section FlatToRiscv1.
     - (* SSet *)
       run1det. run1done.
 
-    - (* SIf/Then *) (*
+    - (* SIf/Then *)
       (* branch if cond = false (will not branch *)
+      eapply det_step.
+      {
+        simulate'.
+        {
+          simpl in *.
+          seplog.
+          Fail cancel_emp_r. (* TODO should not fail *)
+
+          admit.
+        }
+        admit.
+      }
+      admit.
+
+      (*
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
         destruct cond; [destruct op | ]; simpl in *;
@@ -956,8 +972,9 @@ Section FlatToRiscv1.
         destruct_everything.
         run1step.
         run1done.
+       *)
 
-    - (* SIf/Else *)
+    - (* SIf/Else *) (*
       (* branch if cond = 0 (will  branch) *)
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.

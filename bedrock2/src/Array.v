@@ -24,8 +24,7 @@ Section Array.
     { (* TODO(lemma): skipn_all *)
       pose proof (firstn_skipn n xs) as H0.
       rewrite firstn_all2 in * by assumption.
-      rewrite <-app_nil_r in H0; apply app_inv_head in H0; rewrite H0; cbn.
-      (* FIXME *) ecancel. rewrite sep_emp_True_l. ecancel. }
+      rewrite <-app_nil_r in H0; apply app_inv_head in H0; rewrite H0; cbn. ecancel. }
     rewrite <-(firstn_skipn n xs) at 1.
     replace a with (word.add start (word.mul (word.of_Z (Z.of_nat (length (firstn n xs)))) size)); cycle 1.
     { subst a. rewrite firstn_length_le by Lia.lia. trivial. }

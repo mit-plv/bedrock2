@@ -153,6 +153,21 @@ Section SepProperties.
     rewrite <-(seps_nth_to_head i xs), <-(seps_nth_to_head j ys), Hij, Hrest.
     exact (reflexivity _).
   Qed.
+  Lemma cancel_emp_at_index_l i xs ys
+        (Hi : iff1 (nth i xs) (emp True))
+        (Hrest : iff1 (seps (remove_nth i xs)) (seps ys))
+    : iff1 (seps xs) (seps ys).
+  Proof.
+    rewrite <-(seps_nth_to_head i xs), Hi, Hrest. exact (sep_emp_True_l _).
+  Qed.
+  Lemma cancel_emp_at_index_r j xs ys
+        (Hj : iff1 (nth j ys) (emp True))
+        (Hrest : iff1 (seps xs) (seps (remove_nth j ys)))
+    : iff1 (seps xs) (seps ys).
+  Proof.
+    rewrite <-(seps_nth_to_head j ys), Hj, Hrest, sep_emp_True_l.
+    exact (reflexivity _).
+  Qed.
 End SepProperties.
 
 Require Import coqutil.Tactics.syntactic_unify.
@@ -204,9 +219,43 @@ Ltac find_syntactic_unify xs y :=
   | cons _ ?xs => let i := find_syntactic_unify xs y in constr:(S i)
   end.
 
-Ltac ecancel :=
-  reify_goal;
-  repeat (
+Ltac find_constr_eq xs y :=
+  multimatch xs with
+  | cons ?x _ => constr:(ltac:(constr_eq x y; exact 0%nat))
+  | cons _ ?xs => let i := find_constr_eq xs y in constr:(S i)
+  end.
+
+Ltac cancel_emp_l :=
+  let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+  let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+  let i := find_constr_eq LHS constr:(emp True) in
+  simple refine (cancel_emp_at_index_l i LHS RHS _ _);
+  cbn [List.firstn List.skipn List.app List.hd List.tl];
+  [exact (RelationClasses.reflexivity _)|].
+
+Ltac cancel_emp_r :=
+  let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+  let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+  let j := find_constr_eq RHS constr:(emp True) in
+  simple refine (cancel_emp_at_index_r j LHS RHS _ _);
+  cbn [List.firstn List.skipn List.app List.hd List.tl];
+  [exact (RelationClasses.reflexivity _)|].
+
+Ltac cancel_step :=
+      let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+      let jy := index_and_element_of RHS in
+      let j := lazymatch jy with (?i, _) => i end in
+      let y := lazymatch jy with (_, ?y) => y end in
+      assert_fails (has_evar y); (* <-- different from ecancel_step *)
+
+      let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+      let i := find_constr_eq LHS y in (* <-- different from ecancel_step *)
+
+      simple refine (cancel_seps_at_indices i j LHS RHS _ _);
+      cbn [List.firstn List.skipn List.app List.hd List.tl];
+      [exact (RelationClasses.reflexivity _)|].
+
+Ltac ecancel_step :=
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
       let jy := index_and_element_of RHS in
       let j := lazymatch jy with (?i, _) => i end in
@@ -218,8 +267,20 @@ Ltac ecancel :=
 
       simple refine (cancel_seps_at_indices i j LHS RHS _ _);
       cbn [List.firstn List.skipn List.app List.hd List.tl];
-      [exact (RelationClasses.reflexivity _)|]);
-  cbn [seps]; try exact (RelationClasses.reflexivity _).
+      [exact (RelationClasses.reflexivity _)|].
+
+Ltac cancel :=
+  reify_goal;
+  repeat cancel_step;
+  repeat cancel_emp_l;
+  repeat cancel_emp_r;
+  try solve [ cbn [seps]; exact (RelationClasses.reflexivity _) ].
+
+Ltac ecancel :=
+  cancel;
+  repeat ecancel_step;
+  cbn [seps];
+  exact (RelationClasses.reflexivity _).
 
 Ltac ecancel_assumption :=
   multimatch goal with
@@ -228,6 +289,17 @@ Ltac ecancel_assumption :=
     | H: _ ?m |- _ =>
       refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
       solve [ecancel]
+    end
+  end.
+
+Ltac seplog :=
+  match goal with
+  | |- _ ?m =>
+    match goal with
+    | H: _ ?m |- _ =>
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+      cancel;
+      try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ]
     end
   end.
 
