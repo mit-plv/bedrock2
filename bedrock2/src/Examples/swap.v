@@ -1,19 +1,21 @@
-Require Import bedrock2.BasicC64Syntax bedrock2.NotationsInConstr.
+Require Import bedrock2.BasicC64Syntax bedrock2.NotationsCustomEntry.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Local Existing Instance bedrock2.BasicC64Syntax.StringNames_params.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
-Definition swap := ("swap", (["a";"b"], ([]:list varname), bedrock_func_body:(
-  "t" = *(uintptr_t*) "b";;
-  *(uintptr_t*) "b" = *(uintptr_t*) "a";;
-  *(uintptr_t*) "a" = "t"
+Definition swap := let a := "a" in let b := "b" in let t := "t" in
+  ("swap", ([a; b], ([]:list varname), bedrock_func_body:(
+  t = (load(b)) ;
+  store(b, load(a));
+  store(a, t)
 ))).
 
-Definition swap_swap := ("swap_swap", (("a"::"b"::nil), ([]:list varname), bedrock_func_body:(
-  Syntax.cmd.call [] "swap" [var "a"; var "b"];;
-  Syntax.cmd.call [] "swap" [var "a"; var "b"]
+Definition swap_swap := let swap := "swap" in let a := "a" in let b := "b" in
+  ("swap_swap", (("a"::"b"::nil), ([]:list varname), bedrock_func_body:(
+  swap(a, b);
+  swap(a, b)
 ))).
 
 Require bedrock2.WeakestPrecondition.

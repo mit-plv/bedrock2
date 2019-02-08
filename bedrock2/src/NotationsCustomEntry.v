@@ -68,7 +68,7 @@ Notation "'while' e { c }" := (while e c%bedrock_nontail)
   format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
 
 (* COQBUG(9517) *)
-Notation "{ x = e }" := (set x e) (in custom bedrock_cmd at level 0, x constr at level 0, e custom bedrock_expr).
+Notation "x = ( e )" := (set x e) (in custom bedrock_cmd at level 0, x constr at level 0, e custom bedrock_expr).
 (* DRAFT: *)
 Notation "/*skip*/" := skip (in custom bedrock_cmd).
 Notation "store1( a , v )" := (store access_size.one a v)
@@ -80,7 +80,32 @@ Notation "store4( a , v )" := (store access_size.four a v)
 Notation  "store( a , v )" := (store access_size.word a v)
                               (in custom bedrock_cmd at level 0, a custom bedrock_expr, v custom bedrock_expr).
 
-(* require statements are only allowed at tail-call positions *)
+Declare Custom Entry bedrock_call_lhs.
+Notation "bedrock_call_lhs:( e )"   := e   (e custom bedrock_call_lhs,
+                                            format "'bedrock_call_lhs:(' e ')'").
+Notation "constr:( e )"         := e   (in custom bedrock_call_lhs, e constr,
+                                        format "'constr:(' e ')'").
+Notation "x" := (@cons varname x nil) (in custom bedrock_call_lhs at level 0, x ident).
+Notation "x , y , .. , z" := (@cons varname x (@cons varname y .. (@cons varname z (@nil varname)) ..))
+  (in custom bedrock_call_lhs at level 0, x ident, y constr at level 0, z constr at level 0).
+
+(* COQBUG(9532) *)
+(* functions of up to 6 arguments *)
+Notation "f ( )" :=  (call nil f nil) (in custom bedrock_cmd at level 0, f ident).
+Notation "f ( x )" :=  (call nil f (@cons expr x nil)) (in custom bedrock_cmd at level 0, f ident, x custom bedrock_expr).
+Notation "f ( x , y )" :=  (call nil f (@cons expr x (@cons expr y nil))) (in custom bedrock_cmd at level 0, f ident, x custom bedrock_expr, y custom bedrock_expr).
+Notation "f ( x , y , z )" :=  (call nil f (@cons expr x (@cons expr y (@cons expr z (@nil expr))))) (in custom bedrock_cmd at level 0, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr).
+Notation "f ( x , y , z , a )" :=  (call nil f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@nil expr)))))) (in custom bedrock_cmd at level 0, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr).
+Notation "f ( x , y , z , a , b )" :=  (call nil f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons expr b (@nil expr))))))) (in custom bedrock_cmd at level 0, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr).
+Notation "f ( x , y , z , a , b , c )" :=  (call nil f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons expr b (@cons expr c (@nil expr)))))))) (in custom bedrock_cmd at level 0, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr, c custom bedrock_expr).
+
+Notation "unpack! lhs = f ( )" :=  (call lhs f nil) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident).
+Notation "unpack! lhs = f ( x )" :=  (call lhs f (@cons expr x nil)) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr).
+Notation "unpack! lhs = f ( x , y )" :=  (call lhs f (@cons expr x (@cons expr y nil))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr, y custom bedrock_expr).
+Notation "unpack! lhs = f ( x , y , z )" :=  (call lhs f (@cons expr x (@cons expr y (@cons expr z (@nil expr))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr).
+Notation "unpack! lhs = f ( x , y , z , a )" :=  (call lhs f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@nil expr)))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr).
+Notation "unpack! lhs = f ( x , y , z , a , b )" :=  (call lhs f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons b (@nil expr))))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr).
+Notation "unpack! lhs = f ( x , y , z , a , b , c )" :=  (call lhs f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons expr b (@cons expr c (@nil expr)))))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr, c custom bedrock_expr).
 
 Delimit Scope bedrock_tail with bedrock_tail.
 Notation "bedrock_func_body:( c )"   := (c%bedrock_tail) (c custom bedrock_cmd at level 0,
@@ -97,12 +122,18 @@ Undelimit Scope bedrock_nontail.
 
 
 Module test.
-  Notation "1" := (expr.literal 1) (in custom bedrock_expr).
+  Local Notation "1" := (expr.literal 1) (in custom bedrock_expr).
   
   Goal True.
   assert (p : parameters) by admit.
-  epose (fun x => bedrock_cmd:( store1(1<<(1+1+1), 1+1) ; if 1 { store1(1,1) } ; { _ = 1 } )).
-  epose (fun W a b e x y => bedrock_func_body:(
+  epose (fun x => bedrock_cmd:( store1(1<<(1+1+1), 1+1) ; if 1 { store1(1,1) } ; _ = (1) )).
+  epose (fun a => bedrock_cmd:( if 1 { _ = (1);  _ = (a) } )).
+  epose (fun a => bedrock_cmd:( a (1+1 , 1+1,1, 1 ) )).
+  epose (fun a => bedrock_cmd:( a (1+1 , 1+1,1, 1 ,1 ) )).
+  epose (fun a => bedrock_cmd:( a (1+1 , 1+1,1, 1,1,1 ) )).
+  epose (fun (a b c d:varname) (f:funname) => bedrock_cmd:( unpack! a,b,c,d = f ( 1 + 1 , 1 + 1 ) )).
+  epose (fun (a b:varname) (f:funname) => bedrock_cmd:( unpack! a = f ( 1 + 1 , 1 + 1 ) ; a = (1) )).
+  epose (fun W a b e x y f => bedrock_func_body:(
     require (load(1) ^ constr:(expr.literal 231321) ) else { _ };
     require (1 ^ load4(1+1+1+load(1))) else { _ };
     { a = (1+1) } ;
@@ -113,9 +144,13 @@ Module test.
     store(e, load(load(load(1))));
     require (1 ^ 1) else { _ };
     if (W+1<<(1+1)*(1+1) ^ (1+1+1)) {
-      x
+      a = (constr:(expr.var x))
     } else {
       while (W+1<<(1+1)*(1+1) ^ (1+1+1)) {
+        a = (1);
+        x = (constr:(expr.var a));
+        unpack! x = f(1,W,1, 1,1,1);
+        unpack! x,a = f(1,W,1, 1,1,1);
         store(1,1)
       }
     }
@@ -162,27 +197,27 @@ Module test.
 
   assert_fails (epose bedrock_func_body:(
     if (1) { require (1 ^ 1) else { _ }; _  } ;
-    { _ = _}
+    { _ = (_)}
   )).
 
   assert_fails (epose bedrock_func_body:(
     if (1) { require (1 ^ 1) else { _ }; _  }
     else { _ };
-    { _ = _}
+    _ = (_)
   )).
 
   assert_fails (epose bedrock_func_body:(
     if (1) { _  } else { require (1 ^ 1) else { _ }; _ };
-    { _ = _}
+    { _ = (_)}
   )).
   
   assert_fails (epose bedrock_func_body:(
     while (1) { require (1 ^ 1) else { _ }; _ };
-    { _ = _}
+    { _ = (_)}
   )).
 
   assert_fails (epose bedrock_func_body:(
-    while (1) { require (1 ^ 1) else { _ }; _ }
+    while (1) { require (1 ^ 1) else { _ }; _ = (_) }
   )).
   Abort.
 End test.
