@@ -100,6 +100,7 @@ Module test.
   Notation "1" := (expr.literal 1) (in custom bedrock_expr).
   
   Goal True.
+  assert (p : parameters) by admit.
   epose (fun x => bedrock_cmd:( store1(1<<(1+1+1), 1+1) ; if 1 { store1(1,1) } ; { _ = 1 } )).
   epose (fun W a b e x y => bedrock_func_body:(
     require (load(1) ^ constr:(expr.literal 231321) ) else { _ };
@@ -119,6 +120,26 @@ Module test.
       }
     }
   )).
+
+  let lhs := open_constr:( bedrock_func_body:(
+    require 1 else { store1(1,1) } ;
+    require 1 else { store2(1,1) } ;
+    store4(1,1)
+  )) in
+  let rhs := open_constr:( bedrock_func_body:(
+    if 1 {
+      if 1 {
+        store4(1,1)
+      }
+      else {
+        store2(1,1)
+      }
+    }
+    else {
+      store1(1,1)
+    }
+  )) in
+  assert (lhs = rhs) by exact eq_refl.
 
   epose bedrock_func_body:(
       if (1<<(1+1)*(1+1) ^ (1+1+1)) {
