@@ -121,6 +121,31 @@ Section Equiv.
       Memory.loadWord (Memory.unchecked_store_bytes 4 m addr w) addr = Some w.
   Admitted. (* TODO once we have a good map solver and word solver, this should be easy *)
 
+  (* list is kind of redundant (already in RiscvMachine.(getLog)))
+     and should at most contain one event *)
+  Inductive riscvStep: RiscvMachine Register Action -> RiscvMachine Register Action -> list (LogItem Action) -> Prop :=
+  | foo: forall initialL finalL t post,
+      mcomp_sat (run1 iset) initialL post ->
+      post tt finalL ->
+      riscvStep initialL finalL t.
+
+  Inductive Event: Type :=
+  | MMInputEvent(addr v: word)
+  | MMOutputEvent(addr v: word).
+
+  Definition riscvTrace_to_common: list (LogItem Action) -> list Event. Admitted.
+  Definition commonTrace_to_riscv: list Event -> list (LogItem Action). Admitted.
+
+  Axiom fakestep: FakeProcessor -> FakeProcessor -> list Event -> Prop.
+
+  Lemma simulate: forall (m m': FakeProcessor) t,
+      fakestep m m' t ->
+      riscvStep (from_Fake m) (from_Fake m') (commonTrace_to_riscv t).
+  Proof.
+    intros.
+    econstructor.
+  Abort.
+
   Lemma simulate_step_bw: forall (m m': FakeProcessor),
       fakeStep m = m' ->
       mcomp_sat (run1 iset) (from_Fake m) (fun _ final => to_Fake final = m').
