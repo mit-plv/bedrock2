@@ -25,7 +25,7 @@ Require bedrock2.WeakestPrecondition coqutil.Word.Properties.
 
 Definition spec_of_ipow := fun functions =>
   forall x e t m,
-    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => False) functions
+    WeakestPrecondition.call functions
       "ipow" t m [x; e]
       (fun t' m' rets => t=t'/\ m=m' /\ exists v, rets = [v] /\ (
         word.unsigned x ^ word.unsigned e < 2^64 ->
@@ -41,10 +41,10 @@ Proof.
   hnf. (* incoming call dispatch *)
   letexists. split; [exact eq_refl|]. (* argument initialization *)
 
-  repeat straightline; show_program.
+  repeat straightline.
 
   Import Word.Properties.word Word.Interface.word.
-  refine (TailRecursion.tailrec HList.polymorphic_list.nil ["e";"ret";"x"]
+  refine (TailRecursion.tailrec HList.polymorphic_list.nil (["e";"ret";"x"] : list varname)
     (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e)
     (fun t' m' e' ret' x' => t' = t /\ m' = m /\
        (unsigned ret * unsigned x ^ unsigned e < 2^64 ->

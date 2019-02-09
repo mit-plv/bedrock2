@@ -108,7 +108,7 @@ Import WeakestPrecondition.
 Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
-  | |- @cmd _ _ _ _ _ ?c _ _ _ ?post =>
+  | |- @cmd _ _ ?c _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
     | cmd.while _ _ => fail
@@ -168,7 +168,7 @@ Ltac straightline :=
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
 Ltac straightline_call :=
   lazymatch goal with
-  | |- @WeakestPrecondition.call _ _ _ _ ?functions ?callee _ _ _ _ =>
+  | |- @WeakestPrecondition.call _ ?functions ?callee _ _ _ _ =>
     let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
     let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
     eapply WeakestPreconditionProperties.Proper_call; cycle -1;
@@ -178,7 +178,7 @@ Ltac straightline_call :=
 
 Ltac current_trace_mem_locals :=
   lazymatch goal with
-  | |- WeakestPrecondition.cmd _ _ _  _  _ ?t ?m ?l _ => constr:((t, m, l))
+  | |- WeakestPrecondition.cmd _  _ ?t ?m ?l _ => constr:((t, m, l))
   end.
 
 Ltac seprewrite Hrw :=
@@ -194,9 +194,9 @@ Ltac seprewrite_by Hrw tac :=
 
 Ltac show_program :=
   lazymatch goal with
-  | |- @cmd ?A ?B ?C ?D ?E ?c ?F ?G ?H ?I =>
+  | |- @cmd ?D ?E ?c ?F ?G ?H ?I =>
     let c' := eval cbv in c in
-    change (@cmd A B C D E (fst (c, c')) F G H I)
+    change (@cmd D E (fst (c, c')) F G H I)
   end.
 
 

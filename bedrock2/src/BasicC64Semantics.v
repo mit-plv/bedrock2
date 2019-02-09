@@ -18,3 +18,11 @@ Instance parameters : parameters :=
   funname_eqb := String.eqb;
   ext_spec := fun _ _ _ _ _ => False;
 |}.
+
+Global Instance parameters_ok trace m0 act args :
+  Morphisms.Proper
+    (Morphisms.respectful
+       (Morphisms.pointwise_relation Interface.map.rep
+          (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
+       Basics.impl) (Semantics.ext_spec trace m0 act args).
+Proof. cbv. trivial. Qed.

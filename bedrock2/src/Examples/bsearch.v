@@ -57,7 +57,7 @@ Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
   forall left right target xs R t m,
     sep (array scalar (word.of_Z 8) left xs) R m ->
     \_ (right ^- left) = 8*Z.of_nat (Datatypes.length xs) ->
-    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
+    WeakestPrecondition.call functions
       "bsearch"%string t m (left::right::target::nil)%list
       (fun t' m' rets => t=t' /\ sep (array scalar (word.of_Z 8) left xs) R m' /\ exists i, rets = (i::nil)%list /\
       ((*sorted*)False -> True)
@@ -143,7 +143,7 @@ Proof.
         admit.
         admit.
         admit. }
-      { left. exact I. }
+      { subst v'; subst v. subst x7. admit. }
 
       rename H3 into length_rep.
 
@@ -288,7 +288,7 @@ Proof.
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v1; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
       { admit. }
-      { left. exact I. }
+      { subst v. subst v'. subst x7. admit. }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H8.
       1: admit. 1: admit. 1: exact eq_refl.
       SeparationLogic.ecancel_assumption. } }

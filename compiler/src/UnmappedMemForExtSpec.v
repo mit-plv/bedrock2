@@ -56,6 +56,7 @@ Section WithParams.
          to list these constructors with p2 explicitly? *)
       [ eapply (@exec.skip p2)
       | eapply (@exec.set p2)
+      | eapply (@exec.unset p2)
       | eapply (@exec.store p2)
       | eapply (@exec.if_true p2)
       | eapply (@exec.if_false p2)

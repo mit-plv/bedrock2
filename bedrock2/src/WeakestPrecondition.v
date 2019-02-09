@@ -4,7 +4,6 @@ Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 
 Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
-  Context (rely guarantee : trace -> Prop) (progress : trace -> trace -> Prop).
 
   Definition literal v (post : _ -> Prop) : Prop :=
     dlet! v := word.of_Z v in post v.
@@ -81,7 +80,7 @@ Section WeakestPrecondition.
         (forall v t m l, inv v t m l ->
           bind_ex b <- dexpr m l e;
           (word.unsigned b <> 0%Z -> rec c t m l (fun t' m l =>
-            exists v', inv v' t' m l /\ (progress t' t \/ lt v' v))) /\
+            exists v', inv v' t' m l /\ lt v' v)) /\
           (word.unsigned b = 0%Z -> post t m l))
       | cmd.call binds fname arges =>
         bind_ex args <- dexprs m l arges;
@@ -90,10 +89,9 @@ Section WeakestPrecondition.
           post t m l)
       | cmd.interact binds action arges =>
         bind_ex args <- dexprs m l arges;
-        dlet! output := (m, action, args) in
-        forall m rets (t := cons (output, (m, rets)) t),
-          guarantee t /\
-          (rely t -> (bind_ex_Some l <- map.putmany_of_list binds rets l; post t m l))
+        ext_spec t m action args (let old_mem := m in fun m rets =>
+          bind_ex_Some l <- map.putmany_of_list binds rets l;
+          post (cons ((old_mem, action, args), (m, rets)) t) m l)
       end.
     Fixpoint cmd c := cmd_body cmd c.
   End WithFunctions.
@@ -121,9 +119,9 @@ End WeakestPrecondition.
 
 Ltac unfold1_cmd e :=
   lazymatch e with
-    @cmd ?params ?R ?G ?PR ?CA ?c ?t ?m ?l ?post =>
+    @cmd ?params ?CA ?c ?t ?m ?l ?post =>
     let c := eval hnf in c in
-    constr:(@cmd_body params R G PR CA (@cmd params R G PR CA) c t m l post)
+    constr:(@cmd_body params CA (@cmd params CA) c t m l post)
   end.
 Ltac unfold1_cmd_goal :=
   let G := lazymatch goal with |- ?G => G end in

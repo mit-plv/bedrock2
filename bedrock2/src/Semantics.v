@@ -90,6 +90,10 @@ Module exec. Section WithEnv.
     v (_ : eval_expr m l e = Some v)
     (_ : post t m (map.put l x v))
     : exec (cmd.set x e) t m l post
+  | unset x
+    t m l post
+    (_ : post t m (map.remove l x))
+    : exec (cmd.unset x) t m l post
   | store sz ea ev
     t m l post
     a (_ : eval_expr m l ea = Some a)

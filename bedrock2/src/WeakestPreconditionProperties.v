@@ -1,4 +1,4 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique.
+Require Import  coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Properties.
 Require bedrock2.WeakestPrecondition.
 
 Require Import Coq.Classes.Morphisms.
@@ -41,46 +41,40 @@ Section WeakestPrecondition.
       cbn in *; intuition (try typeclasses eauto with core).
   Qed.
 
+  Context {Proper_ext_spec : forall trace m act args, Proper ((pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> Basics.impl) (Semantics.ext_spec trace m act args)}.
   Global Instance Proper_cmd :
     Proper (
-     (pointwise_relation _ (Basics.flip Basics.impl)) ==> (
-     (pointwise_relation _ Basics.impl) ==> (
-     (pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ (pointwise_relation _ Basics.impl))) ==> Basics.impl)))) ==>
      pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
-     Basics.impl))))))))) WeakestPrecondition.cmd.
+     Basics.impl)))))) WeakestPrecondition.cmd.
   Proof.
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
       cbn in *; cbv [dlet.dlet] in *; intuition (try typeclasses eauto with core).
-    { destruct H4 as (?&?&?). eexists. split.
+    { destruct H1 as (?&?&?). eexists. split.
       1: eapply Proper_expr.
       1: cbv [pointwise_relation Basics.impl]; intuition eauto 2.
       all: eauto. }
-    { eapply H3, H4. }
-    { destruct H4 as (?&?&?). eexists. split.
+    { eapply H0, H1. }
+    { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_expr.
         { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
         { eauto. } }
-      { destruct H5 as (?&?&?). eexists. split.
+      { destruct H2 as (?&?&?). eexists. split.
         { eapply Proper_expr.
           { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
           { eauto. } }
         { eapply Proper_store; eauto; cbv [pointwise_relation Basics.impl]; eauto. } } }
-    { destruct H4 as (?&?&?). eexists. split.
+    { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_expr.
         { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
         { eauto. } }
       { intuition eauto 6. } }
-    { eapply IHa1; try solve [typeclasses eauto with core].
-      { eapply H. }
-      { intros. eapply IHa2; try solve [typeclasses eauto with core].
-        { eapply H. }
-        { eauto. } } }
-    { destruct H4 as (?&?&?&?&?&HH).
+    { eapply H2; try solve [typeclasses eauto with core]. eassumption. }
+    { destruct H1 as (?&?&?&?&?&HH).
       eassumption || eexists.
       eassumption || eexists.
       eassumption || eexists.
@@ -92,44 +86,38 @@ Section WeakestPrecondition.
       1: eapply Proper_expr.
       1: cbv [pointwise_relation Basics.impl].
       all:intuition eauto 2.
-      - eapply IHa; eauto; cbn; intros.
-        destruct H8 as (?&?&[|]); eexists; eauto.
+      - eapply H2; eauto; cbn; intros.
+        match goal with H:_ |- _ => destruct H as (?&?&?); solve[eauto] end.
       - intuition eauto. }
-    { destruct H4 as (?&?&?). eexists. split.
+    { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
         eapply Proper_expr; eauto. }
-      { eapply H2; eauto; firstorder eauto. } }
-    { destruct H4 as (?&?&?). eexists. split.
+      { eapply H; eauto; firstorder eauto. } }
+    { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl].
         { eapply Proper_expr; eauto. }
         { eauto. } }
-      { intros.
-        edestruct H5.
-        split; [solve [eauto]|]; intros.
-        destruct (H7 ltac:(eauto)); intuition eauto. } }
+      { eapply Proper_ext_spec; [|solve[eassumption]]; firstorder eauto. } }
   Qed.
 
   Global Instance Proper_func :
     Proper (
-     (pointwise_relation _ (Basics.flip Basics.impl)) ==> (
-     (pointwise_relation _ Basics.impl) ==> (
-     (pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ (pointwise_relation _ Basics.impl))) ==> Basics.impl)))) ==>
      pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
-     Basics.impl))))))))) WeakestPrecondition.func.
+     Basics.impl)))))) WeakestPrecondition.func.
   Proof.
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func]; intros.
     destruct a. destruct p0.
-    destruct H4; intuition idtac.
+    destruct H1; intuition idtac.
     eexists.
     split; [eauto|].
     eapply Proper_cmd;
       cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func];
-      try solve [typeclasses eauto with core]; [eapply H|].
+      try solve [typeclasses eauto with core].
     intros.
     eapply Proper_list_map;
       cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func];
@@ -143,16 +131,13 @@ Section WeakestPrecondition.
 
   Global Instance Proper_call :
     Proper (
-     (pointwise_relation _ (Basics.flip Basics.impl)) ==> (
-     (pointwise_relation _ Basics.impl) ==> (
-     (pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> (
      (pointwise_relation _ (
      (pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
-     Basics.impl))))))))))) WeakestPrecondition.call.
+     Basics.impl)))))))) WeakestPrecondition.call.
   Proof.
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on (list (Syntax.funname * (list Syntax.varname * list Syntax.varname * Syntax.cmd.cmd)));
       cbn in *; intuition (try typeclasses eauto with core).
@@ -165,25 +150,76 @@ Section WeakestPrecondition.
 
   Global Instance Proper_program :
     Proper (
-     (pointwise_relation _ (Basics.flip Basics.impl)) ==> (
-     (pointwise_relation _ Basics.impl) ==> (
-     (pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> (
      pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
-     Basics.impl))))))))) WeakestPrecondition.program.
+     Basics.impl)))))) WeakestPrecondition.program.
   Proof.
     cbv [Proper respectful pointwise_relation Basics.impl  WeakestPrecondition.program]; intros.
     eapply Proper_cmd;
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func];
-    try solve [typeclasses eauto with core]; [eapply H|].
+    try solve [typeclasses eauto with core].
     intros.
     eapply Proper_call;
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func];
-    try solve [typeclasses eauto with core].
-    eauto.
+    solve [typeclasses eauto with core].
   Qed.
+
+  Ltac t :=
+      repeat match goal with
+             | |- forall _, _ => progress intros
+             | H: exists _, _ |- _ => destruct H
+             | H: and _ _ |- _ => destruct H
+             | H: eq _ ?y |- _ => subst y
+             | H: False |- _ => destruct H
+             | _ => progress cbn in *
+             | _ => progress cbv [dlet.dlet WeakestPrecondition.dexpr WeakestPrecondition.dexprs WeakestPrecondition.store] in *
+             end; eauto.
+
+  Lemma expr_sound m l e post (H : WeakestPrecondition.expr m l e post)
+    : exists v, Semantics.eval_expr m l e = Some v /\ post v.
+  Proof.
+    ind_on Syntax.expr; t.
+    { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H; eauto. }
+    { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
+  Qed.
+
+  Local Hint Constructors Semantics.exec.
+  Lemma sound_nil c t m l post
+        (H:WeakestPrecondition.cmd (fun _ _ _ _ _ => False) c t m l post)
+    : Semantics.exec map.empty c t m l post.
+  Proof.
+    ind_on Syntax.cmd; repeat (t; try match goal with H : WeakestPrecondition.expr _ _ _ _ |- _ => eapply expr_sound in H end).
+    { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
+      { econstructor; t. admit. }
+      { eapply Semantics.exec.if_false; t. rewrite H. f_equal. admit. } }
+    { revert dependent l; revert dependent m; revert dependent t; pattern x2.
+      eapply (well_founded_ind H); t.
+      pose proof (H1 _ _ _ _ ltac:(eassumption));
+        repeat (t; try match goal with H : WeakestPrecondition.expr _ _ _ _ |- _ => eapply expr_sound in H end).
+      { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x4) (BinNums.Z0)) as [Hb|Hb].
+        { eapply Semantics.exec.while_false; t. rewrite H3; f_equal. revert Hb; admit. }
+        { eapply Semantics.exec.while_true; t. 1:admit. t. } } }
+    { econstructor; t.
+      revert H. admit. }
+    (*
+subgoal 1 (ID 1478) is:
+ x <> Interface.word.of_Z BinNums.Z0
+subgoal 2 (ID 1674) is:
+ x = Interface.word.of_Z BinNums.Z0
+subgoal 3 (ID 2116) is:
+ Interface.word.unsigned x4 = BinNums.Z0 ->
+ x4 = Interface.word.of_Z BinNums.Z0
+subgoal 4 (ID 2122) is:
+ x4 <> Interface.word.of_Z BinNums.Z0
+subgoal 5 (ID 2561) is:
+ WeakestPrecondition.list_map (WeakestPrecondition.expr m l) args (eq x) ->
+ List.option_all (List.map (Semantics.eval_expr m l) args) = Some x
+You need to go back and solve them.
+*)
+  Admitted.
+
 End WeakestPrecondition.

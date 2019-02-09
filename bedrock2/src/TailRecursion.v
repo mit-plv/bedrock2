@@ -8,10 +8,9 @@ From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 Section TailRecrsion.
   Context
     {p : unique! Semantics.parameters}
-    {rely guarantee : trace -> Prop}
-    {progress : trace -> trace -> Prop}
+    {p_ok :  forall (trace : list (mem * actname * list word * (mem * list word))) (m0 : mem) (act : actname) (args : list word),  Proper (pointwise_relation mem (pointwise_relation (list word) Basics.impl) ==> Basics.impl) (ext_spec trace m0 act args) }
     {functions : list (funname * (list varname * list varname * Syntax.cmd))}.
-  Let call := WeakestPrecondition.call rely guarantee progress functions.
+  Let call := WeakestPrecondition.call functions.
 
   Local Notation "A /\ B" := (Markers.split (A /\ B)).
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
@@ -63,17 +62,17 @@ Section TailRecrsion.
       match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
-      (word.unsigned br <> 0%Z -> cmd rely guarantee progress call c t m localsmap
+      (word.unsigned br <> 0%Z -> cmd call c t m localsmap
         (fun t' m' localsmap' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
           match tuple.apply (hlist.apply (spec v') g' t' m') l' with S' =>
           S'.(1) /\ Markers.right (
-            (progress t' t \/ lt v' v) /\
+            lt v' v /\
             forall T M, hlist.foralls (fun L => tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L)) end))))))))) /\
       (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m l, tuple.apply (Q0 t m) l -> post t m (reconstruct variables l)end)
-    , cmd rely guarantee progress call (cmd.while e c) t m localsmap post ).
+    , cmd call (cmd.while e c) t m localsmap post ).
   Proof.
     eapply hlist_forall_foralls; intros g0 **.
     eexists measure, lt, (fun vi ti mi localsmapi =>
@@ -96,6 +95,7 @@ Section TailRecrsion.
       pose proof fun T M => hlist.foralls_forall (HR T M); clear HR.
       eauto 9. }
     { eauto. }
+    Unshelve.
   Qed.
 
   Lemma tailrec_localsmap
@@ -108,15 +108,15 @@ Section TailRecrsion.
       let S := spec v t m l in let (P, Q) := S in
       P ->
       exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd rely guarantee progress call c t m l
+      (word.unsigned br <> 0%Z -> cmd call c t m l
         (fun t' m' l' => exists v',
           let S' := spec v' t' m' l' in let '(P', Q') := S' in
           P' /\
-          (progress t' t \/ lt v' v) /\
+          lt v' v /\
           forall T M L, Q' T M L -> Q T M L)) /\
       (word.unsigned br = 0%Z -> Q t m l))
     (Hpost : forall t m l, Q0 t m l -> post t m l)
-    : cmd rely guarantee progress call (cmd.while e c) t m l post.
+    : cmd call (cmd.while e c) t m l post.
   Proof.
     eexists measure, lt, (fun v t m l =>
       let S := spec v t m l in let '(P, Q) := S in
@@ -145,13 +145,13 @@ Section TailRecrsion.
     (Hpre : (P v0 t l * R0) m)
     (Hbody : forall v t m l R, (P v t l * R) m ->
       exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd rely guarantee progress call c t m l
+      (word.unsigned br <> 0%Z -> cmd call c t m l
         (fun t' m' l' => exists v' dR, (P v' t' l' * (R * dR)) m' /\
-          (progress t' t \/ lt v' v) /\
+          lt v' v /\
           forall T L, Q v' T L * dR ==> Q v T L)) /\
       (word.unsigned br = 0%Z -> (Q v t l * R) m))
     (Hpost : forall t m l, (Q v0 t l * R0) m -> post t m l)
-    : cmd rely guarantee progress call (cmd.while e c) t m l post.
+    : cmd call (cmd.while e c) t m l post.
   Proof.
     eexists measure, lt, (fun v t m l => exists R, (P v t l * R) m /\
                           forall T L, Q v T L * R ==> Q v0 T L * R0).

@@ -33,14 +33,14 @@ Local Infix "*" := sep : type_scope.
 Instance spec_of_swap : spec_of "swap" := fun functions =>
   forall a_addr a b_addr b m R t,
     (scalar a_addr a * (scalar b_addr b * R)) m ->
-    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
+    WeakestPrecondition.call functions
       "swap" t m [a_addr; b_addr]
       (fun t' m' rets => t=t'/\ (scalar a_addr b * (scalar b_addr a * R)) m' /\ rets = nil).
 
 Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
   forall a_addr a b_addr b m R t,
     (scalar a_addr a * (scalar b_addr b * R)) m ->
-    WeakestPrecondition.call (fun _ => True) (fun _ => False) (fun _ _ => True) functions
+    WeakestPrecondition.call functions
       "swap_swap" t m [a_addr; b_addr]
       (fun t' m' rets => t=t' /\ (scalar a_addr a * (scalar b_addr b * R)) m' /\ rets = nil).
 
@@ -68,6 +68,7 @@ Proof.
 
   repeat straightline.
   eauto.
+  Unshelve. all:cbv; trivial.
 Defined.
 
 Lemma link_swap_swap_swap_swap : spec_of_swap_swap (swap_swap::swap::nil).
