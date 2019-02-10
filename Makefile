@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all coqutil riscv-coq bedrock2 compiler processor clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_processor
+.PHONY: update_all clone_all coqutil riscv-coq bedrock2 compiler processor clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_processor clean_manglenames
 
 clone_all:
 	git submodule update --init --recursive
@@ -13,6 +13,14 @@ ABS_ROOT_DIR:=$(abspath $(dir $(REL_PATH_OF_THIS_MAKEFILE)))
 
 DEPS_DIR ?= $(ABS_ROOT_DIR)/deps
 export DEPS_DIR
+
+ifeq ($(TRY_MANGLE_NAMES),1)
+COQC := $(ABS_ROOT_DIR)/coqc-try-mangle-names.sh
+export COQC
+endif
+
+clean_manglenames:
+	find . -type f -name '*.manglenames' -delete
 
 coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil
