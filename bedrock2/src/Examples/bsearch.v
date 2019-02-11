@@ -278,8 +278,37 @@ Proof.
         Ltac ebounded e :=
           match goal with
           | H :  _ <= e < _ |- _ => H
-          | |- _ => let G := fresh in let __ := multimatch constr:(Set) with _ => eassert (_ <= e < _) as G by _ebounded_prove end in G
+          | |- _ => let G := fresh in let __ := match constr:(Set) with _ => eassert (_ <= e < _) as G by _ebounded_prove end in G
           end.
+
+Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
+Proof.
+intros.
+Ltac rbounded e :=
+  match goal with
+  | H :  _ <= e < _ |- _ => H
+  | _ =>
+    match e with
+    | Z.mul ?a ?b =>
+      let Ha := rbounded a in
+      let Hb := rbounded b in
+      let He := fresh in
+      
+      let __ := match constr:(Set) with _ => pose proof (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl)) as He end
+      in He
+    | _ =>
+      let G := fresh in
+      let __ := match constr:(Set) with _ => eassert (_ <= e < _) as G by _ebounded_prove end
+      in G
+    end
+  end.
+
+let e := constr:((x*y)*(x*y)) in
+let b := rbounded e in
+idtac b.
+Z__range_mul_nonneg
+    
+
 
         Goal forall
   (x : list word)
