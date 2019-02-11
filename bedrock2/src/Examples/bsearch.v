@@ -198,6 +198,9 @@ Proof.
 
         Abort All.
 
+        Lemma Z__range_add a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1)
+              : a0+b0 <= a+b < a1 + b1 - 1.
+        Proof. Lia.nia. Qed.
         Lemma Z__range_div_pos_const_r n0 n n1 (Hn : n0 <= n < n1) d (Hd : 0 < d)
           : n0/d <= n/d < n1/d + 1.
         Proof. Z.div_mod_to_equations. Lia.nia. Qed.
@@ -272,7 +275,7 @@ Proof.
         Ltac _ebounded_prove :=
           match goal with
           | |- _ => eassumption
-          | |- ?x <= ?e < ?y => is_evar x; is_evar y; exact (boundscheck_constant e)
+          | |- ?x <= ?e < ?y => requireZcst e; is_evar x; is_evar y; exact (boundscheck_constant e)
           end.
 
         Ltac ebounded e :=
@@ -281,32 +284,64 @@ Proof.
           | |- _ => let G := fresh in let __ := match constr:(Set) with _ => eassert (_ <= e < _) as G by _ebounded_prove end in G
           end.
 
-Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
-Proof.
-intros.
+From coqutil.Tactics Require Import rdelta.
 Ltac rbounded e :=
+  let re := rdelta e in
   match goal with
   | H :  _ <= e < _ |- _ => H
+  | H :  _ <= re < _ |- _ => H
   | _ =>
-    match e with
+    match re with
+    | Z.add ?a ?b =>
+      let Ha := rbounded a in
+      let Hb := rbounded b in
+      let He := fresh in
+      
+      let __ := match constr:(Set) with _ => pose proof (Z__range_add _ a _ Ha _ b _ Hb : _ <= e < _) as He end
+      in He
     | Z.mul ?a ?b =>
       let Ha := rbounded a in
       let Hb := rbounded b in
       let He := fresh in
       
-      let __ := match constr:(Set) with _ => pose proof (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl)) as He end
+      let __ := match constr:(Set) with _ => pose proof (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl) : _ <= e < _) as He end
+      in He
+    | Z.div ?a ?b =>
+      let __ := match constr:(Set) with _ => requireZcst b end in
+      let Ha := rbounded a in
+      let He := fresh in
+      let __ := match constr:(Set) with _ => pose proof (Z__range_div_pos_const_r _ a _ Ha b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _) as He end
+      in He
+    | Z.modulo ?a ?b =>
+      let __ := match constr:(Set) with _ => requireZcst b end in
+      let He := fresh in
+      let __ := match constr:(Set) with _ => pose proof (Z.mod_pos_bound a b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _) as He end
       in He
     | _ =>
-      let G := fresh in
-      let __ := match constr:(Set) with _ => eassert (_ <= e < _) as G by _ebounded_prove end
-      in G
+      let __ := match constr:(Set) with _ => requireZcst e end in
+      let He := fresh in
+      let __ := match constr:(Set) with _ => pose proof (boundscheck_constant e) as He end
+      in He
     end
   end.
 
-let e := constr:((x*y)*(x*y)) in
-let b := rbounded e in
-idtac b.
-Z__range_mul_nonneg
+Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
+Proof.
+  intros.
+
+  set (a := x+y).
+  set (b := y+x).
+  set (c := a*b+7).
+
+  let e := constr:(a + y mod 2 * (b*(x*y/4)) + c) in
+  let H := rbounded e in
+  cbn in *.
+
+  let e := constr:(a*c + b) in
+  let H := rbounded e in
+  idtac H;
+  cbn in *.
+Abort All.
     
 
 
@@ -327,21 +362,15 @@ Z__range_mul_nonneg
         absint e.
 
         rewrite H2, H3 in *.
+        change (2^3) with 8 in *.
+        change (2^4) with 16 in *.
+        change (2^width) with 18446744073709551616.
 
+        let e := constr:(((\_ x2 - \_ x1) mod 18446744073709551616 / 16 * 8)) in
+        let H := rbounded e in
+        idtac.
 
-        unshelve epose proof (Z.mod_pos_bound (\_ x2 - \_ x1 ) (2^width) _) as Hrange; trivial; [].
-
-        let e := constr:((\_ x2 - \_ x1) mod 2 ^ width) in
-        let H := ebounded e
-        in unshelve epose proof (Z__range_div_pos_const_r _ e _ H 16 ltac:(eapply Z.ltb_lt; exact eq_refl)).
-        
-        let e := constr:((\_ x2 - \_ x1) mod 2 ^ width / 16) in
-        let He := ebounded e in
-        let _8 := constr:(8)  in
-        let H8 := ebounded _8 in
-        unshelve epose proof (Z__range_mul_nonneg _ e _ He _ 8 _ H8 ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl)).
-
-        rewrite (Z.mod_small _ (2^width)) by (eapply boundscheck; [ eassumption | eapply Z.leb_le; exact eq_refl ..]).
+        rewrite (Z.mod_small _ 18446744073709551616) by (eapply boundscheck; [ eassumption | eapply Z.leb_le; exact eq_refl ..]).
 
         clear. Z.div_mod_to_equations. Lia.lia. }
       { exact eq_refl. }
