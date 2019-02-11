@@ -226,20 +226,22 @@ Ltac find_constr_eq xs y :=
   end.
 
 Ltac cancel_emp_l :=
-  let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-  let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-  let i := find_constr_eq LHS constr:(emp True) in
-  simple refine (cancel_emp_at_index_l i LHS RHS _ _);
-  cbn [List.firstn List.skipn List.app List.hd List.tl];
-  [exact (RelationClasses.reflexivity _)|].
+  lazymatch goal with
+  | |- Lift1Prop.iff1 (@seps ?K ?V ?M ?LHS) (seps ?RHS) =>
+    let i := find_constr_eq LHS constr:(@emp K V M True) in
+    simple refine (cancel_emp_at_index_l i LHS RHS _ _);
+    cbn [List.firstn List.skipn List.app List.hd List.tl];
+    [exact (RelationClasses.reflexivity _)|]
+  end.
 
 Ltac cancel_emp_r :=
-  let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-  let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-  let j := find_constr_eq RHS constr:(emp True) in
-  simple refine (cancel_emp_at_index_r j LHS RHS _ _);
-  cbn [List.firstn List.skipn List.app List.hd List.tl];
-  [exact (RelationClasses.reflexivity _)|].
+  lazymatch goal with
+  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
+    let j := find_constr_eq RHS constr:(@emp K V M True) in
+    simple refine (cancel_emp_at_index_r j LHS RHS _ _);
+    cbn [List.firstn List.skipn List.app List.hd List.tl];
+    [exact (RelationClasses.reflexivity _)|]
+  end.
 
 Ltac cancel_step :=
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in

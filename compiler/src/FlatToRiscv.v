@@ -945,14 +945,7 @@ Section FlatToRiscv1.
       (* branch if cond = false (will not branch *)
       eapply det_step.
       {
-        simulate'.
-        {
-          simpl in *.
-          seplog.
-          Fail cancel_emp_r. (* TODO should not fail *)
-
-          admit.
-        }
+        simulate'; [simpl in *; seplog|].
         admit.
       }
       admit.
