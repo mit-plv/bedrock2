@@ -196,6 +196,17 @@ Proof.
            - call "typeclasses" based on head symbol in [?x <= f arg1 args... < ?y]
          *)
 
+        Abort All.
+
+        Lemma Z__range_div_pos_const_r n0 n n1 (Hn : n0 <= n < n1) d (Hd : 0 < d)
+          : n0/d <= n/d < n1/d + 1.
+        Proof. Z.div_mod_to_equations. Lia.nia. Qed.
+        Lemma Z__range_mul_nonneg a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1) (Ha0 : 0 <= a0) (Hb0 : 0 <= b0)
+              : a0*b0 <= a*b < (a1-1)*(b1-1) + 1.
+        Proof. Lia.nia. Qed.
+        Lemma boundscheck x0 x x1 (H: x0 <= x < x1) X0 X1 (H0 : X0 <= x0) (H1: x1 <= X1) : X0 <= x < X1.
+        Proof. Lia.lia. Qed.
+
         Ltac requireZcst z :=
           lazymatch Coq.setoid_ring.InitialRing.isZcst z with
           | true => idtac
@@ -214,7 +225,7 @@ Proof.
         Ltac absint_rewrite_head :=
           repeat (etransitivity; [typeclasses eauto with absint_rewrite|]); exact eq_refl.
 
-        Ltac lia := Omega.omega.
+        Ltac lia := zify; Omega.omega.
 
         Hint Extern 1 (@snd (@word.rep ?n ?W) _ (?x, _)) => exact (@word.unsigned n W x) : absint_semantics.
         Hint Extern 9999999 (@snd _ _ (?x, _)) => exact x : absint_semantics.
@@ -256,31 +267,53 @@ Proof.
               end;
           try absint_head e.
 
-        repeat match goal with H: context[@map.rep _ _  mem] |- _ => clear dependent H end.
-        repeat match goal with H: context[trace] |- _ => clear dependent H end.
-        straightline_cleanup.
-        clear dependent v1; clear dependent v; clear dependent functions; clear dependent left; clear dependent right; clear dependent target.
+        Lemma boundscheck_constant c : c <= c < c+1. Proof. Lia.lia. Qed.
+
+        Ltac _ebounded_prove :=
+          match goal with
+          | |- _ => eassumption
+          | |- ?x <= ?e < ?y => is_evar x; is_evar y; exact (boundscheck_constant e)
+          end.
+
+        Ltac ebounded e :=
+          match goal with
+          | H :  _ <= e < _ |- _ => H
+          | |- _ => let G := fresh in let __ := multimatch constr:(Set) with _ => eassert (_ <= e < _) as G by _ebounded_prove end in G
+          end.
+
+        Goal forall
+  (x : list word)
+  (x1 x2 : word)
+  (length_rep : \_ (x2 ^- x1) = 8 * Z.of_nat (Datatypes.length x))
+  (length_nonzero : \_ x1 <> \_ x2)
+  ,
+  \_ ((x2 ^- x1) ^>> /_ 4 ^<< /_ 3) mod \_ (/_ 8) = 0. intros.
+
 
         pose proof (eq_refl : 64 = width) as Hw.
         pose proof (eq_refl : 18446744073709551616 = 2^width) as H2w.
+        assert (0 < 2 ^ width) as Hnz by (change tt with tt in *; rewrite <-H2w; Lia.lia).
 
         let e := lazymatch goal with |- ?e = _ => e end in 
         absint e.
 
-        rewrite H3, H4.
+        rewrite H2, H3 in *.
 
-        rewrite (Z.mod_small _ (2^width)); cycle 1.
-        { clear -H2w.
-          change (2 ^ 4) with 16.
-          change (2 ^ 3) with 8.
-          Z.div_mod_to_equations.
-          (*
-          Set Printing Depth 9999999.
-          Set Printing All.
-          Set Printing Universes.
-           *)
-          zify. (* WHY is this necessary? *)
-          Omega.omega. }
+
+        unshelve epose proof (Z.mod_pos_bound (\_ x2 - \_ x1 ) (2^width) _) as Hrange; trivial; [].
+
+        let e := constr:((\_ x2 - \_ x1) mod 2 ^ width) in
+        let H := ebounded e
+        in unshelve epose proof (Z__range_div_pos_const_r _ e _ H 16 ltac:(eapply Z.ltb_lt; exact eq_refl)).
+        
+        let e := constr:((\_ x2 - \_ x1) mod 2 ^ width / 16) in
+        let He := ebounded e in
+        let _8 := constr:(8)  in
+        let H8 := ebounded _8 in
+        unshelve epose proof (Z__range_mul_nonneg _ e _ He _ 8 _ H8 ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl)).
+
+        rewrite (Z.mod_small _ (2^width)) by (eapply boundscheck; [ eassumption | eapply Z.leb_le; exact eq_refl ..]).
+
         clear. Z.div_mod_to_equations. Lia.lia. }
       { exact eq_refl. }
       { SeparationLogic.ecancel_assumption. } }
