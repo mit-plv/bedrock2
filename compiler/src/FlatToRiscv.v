@@ -699,7 +699,7 @@ Section FlatToRiscv1.
     first
       [ eassumption
       | solve_word_eq (@word_ok (@W p))
-      | ecancel_assumption
+      | seplog
       | prove_ext_guarantee
       | idtac ].
 
@@ -945,7 +945,7 @@ Section FlatToRiscv1.
       (* branch if cond = false (will not branch *)
       eapply det_step.
       {
-        simulate'; [simpl in *; seplog|].
+        simulate'.
         admit.
       }
       admit.

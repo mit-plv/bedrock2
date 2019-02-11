@@ -200,7 +200,7 @@ Section Scalars.
     end.
     - shelve.
     - unfold ptsto_bytes. ecancel_assumption.
-    - ecancel_assumption.
+    - seplog.
   Qed.
 
   Lemma unchecked_store_bytes_of_sep'

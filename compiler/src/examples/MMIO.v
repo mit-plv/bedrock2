@@ -327,51 +327,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
             (* TODO trace translation *) admit. }
         + rewrite Zlength_cons, Zlength_nil. apply TODO. (* TODO word solver *)
         + rewrite Zlength_cons, Zlength_nil. apply TODO. (* TODO word solver *)
-        +
-
-(* TODO "seplog" which should do partial cancellation doesn't work here
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H3).
-
-
-  try (match goal with
-  | |- _ ?m =>
-    match goal with
-    | H: _ ?m |- _ =>
-      idtac "picked" H;
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H) (*; clear H ;
-      cancel;
-      try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ]*)
-    end
-  end).
-
-Ltac seplogg :=
-  match goal with
-  | |- _ ?m =>
-    match goal with
-    | H: _ ?m |- _ =>
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-      cancel;
-      try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ]
-    end
-  end.
-
-seplogg.
-
-  match goal with
-  | |- _ ?m =>
-    match goal with
-    | H: _ ?m |- _ =>
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H (*;
-      cancel;
-      try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ]
-*)
-    end
-  end.
-
- seplog.
-*)
-          unfold program, array in *.
-          ecancel_assumption.
+        + simpl in *. seplog.
         + admit. (* prove ext_guarantee preservation *)
       }
       { reflexivity. }

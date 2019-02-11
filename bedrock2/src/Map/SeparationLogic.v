@@ -125,6 +125,17 @@ Section SepProperties.
     eapply Proper_sep_iff1, IHxs.
     exact (reflexivity _).
   Qed.
+  Lemma seps_cons(P: rep -> Prop)(Ps: list (rep -> Prop)):
+    iff1 (seps (P :: Ps)) (sep P (seps Ps)).
+  Proof. rewrite <-! seps'_iff1_seps. reflexivity. Qed.
+  Lemma seps_app(Ps Qs: list (rep -> Prop)):
+    iff1 (seps (Ps ++ Qs)) (sep (seps Ps) (seps Qs)).
+  Proof.
+    induction Ps.
+    - simpl. symmetry. apply sep_emp_True_l.
+    - rewrite <- List.app_comm_cons. rewrite! seps_cons. rewrite IHPs.
+      symmetry. apply sep_assoc.
+  Qed.
 
   Let nth n xs := List.hd (emp True) (List.skipn n xs).
   Let remove_nth n (xs : list (rep -> Prop)) :=
@@ -177,31 +188,72 @@ Notation "X '========' 'seps' 'iff' '========' Y" :=
     (at  level 200, no associativity,
      format "X '//' '========'  'seps'  'iff'  '========' '//' Y").
 
+Module Tree.
+  Inductive Tree(A: Type): Type :=
+  | Leaf(a: A)
+  | Node(left right: Tree A).
+  Arguments Leaf {A} _.
+  Arguments Node {A} _ _.
+  Section Interp.
+    Context {A B: Type}.
+    Context (interp_Leaf: A -> B).
+    Context (interp_Node: B -> B -> B).
+    Fixpoint interp(t: Tree A): B :=
+      match t with
+      | Leaf a => interp_Leaf a
+      | Node t1 t2 => interp_Node (interp t1) (interp t2)
+      end.
+  End Interp.
+
+  Definition flatten{A: Type}: Tree A -> list A := interp (fun a => cons a nil) (@app A).
+
+  Section WithMap.
+    Context {key value} {map : map key value} {ok : ok map}.
+
+    Definition to_sep: Tree (map -> Prop) -> map -> Prop := interp id sep.
+
+    Lemma flatten_iff1_to_sep(t : Tree.Tree (map -> Prop)):
+      Lift1Prop.iff1 (seps (flatten t)) (to_sep t).
+    Proof.
+      induction t; [reflexivity|].
+      simpl. rewrite seps_app. rewrite IHt1, IHt2. reflexivity.
+    Qed.
+
+    Lemma iff1_to_sep_of_iff1_flatten(LHS RHS : Tree (map -> Prop)):
+      Lift1Prop.iff1 (seps (flatten LHS)) (seps (flatten RHS)) ->
+      Lift1Prop.iff1 (to_sep LHS) (to_sep RHS).
+    Proof. rewrite! flatten_iff1_to_sep. exact id. Qed.
+
+    Lemma impl1_to_sep_of_impl1_flatten(LHS RHS : Tree (map -> Prop)):
+      Lift1Prop.impl1 (seps (flatten LHS)) (seps (flatten RHS)) ->
+      Lift1Prop.impl1 (to_sep LHS) (to_sep RHS).
+    Proof. rewrite! flatten_iff1_to_sep. exact id. Qed.
+  End WithMap.
+End Tree.
+
 Ltac reify e :=
   lazymatch e with
-  | seps ?xs => xs
   | @sep ?key ?value ?map ?a ?b =>
+    let a := reify a in
     let b := reify b in
-    uconstr:(@cons (@map.rep key value map -> Prop) a b)
-  | ?a => uconstr:(cons a nil)
+    uconstr:(@Tree.Node (@map.rep key value map -> Prop) a b)
+  | ?a => uconstr:(Tree.Leaf a)
   end.
 
 Ltac reify_goal :=
-  repeat match goal with
-         (* explicit matching excludes that first arg of sep is an evar, which
-                   would be replaced by two new evars by rewrite without args *)
-         | |- context [sep (sep ?A ?B) ?C] => rewrite (sep_assoc A B C)
-         end;
   lazymatch goal with
   | |- Lift1Prop.iff1 ?LHS ?RHS =>
     let LHS := reify LHS in
     let RHS := reify RHS in
-    change (Lift1Prop.iff1 (seps LHS) (seps RHS))
+    change (Lift1Prop.iff1 (Tree.to_sep LHS) (Tree.to_sep RHS));
+    apply Tree.iff1_to_sep_of_iff1_flatten
   | |- Lift1Prop.impl1 ?LHS ?RHS =>
     let LHS := reify LHS in
     let RHS := reify RHS in
-    change (Lift1Prop.impl1 (seps LHS) (seps RHS))
-  end.
+    change (Lift1Prop.impl1 (Tree.to_sep LHS) (Tree.to_sep RHS));
+    apply Tree.impl1_to_sep_of_impl1_flatten
+  end;
+  cbn [Tree.flatten Tree.interp List.app].
 
 Ltac index_and_element_of xs :=
   multimatch xs with
@@ -286,9 +338,10 @@ Ltac ecancel :=
 
 Ltac ecancel_assumption :=
   multimatch goal with
-  | |- _ ?m =>
+  | |- _ ?m1 =>
     multimatch goal with
-    | H: _ ?m |- _ =>
+    | H: _ ?m2 |- _ =>
+      syntactic_unify m1 m2;
       refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
       solve [ecancel]
     end
@@ -296,9 +349,10 @@ Ltac ecancel_assumption :=
 
 Ltac seplog :=
   match goal with
-  | |- _ ?m =>
+  | |- _ ?m1 =>
     match goal with
-    | H: _ ?m |- _ =>
+    | H: _ ?m2 |- _ =>
+      unify m1 m2;
       refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
       cancel;
       try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ]
@@ -314,7 +368,7 @@ Ltac seprewrite0_in Hrw H :=
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
       by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   eapply (fun m => (proj1 (pf m))) in H; clear pf;
-  eapply (SeparationLogic.Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) in H.
+  eapply (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) in H.
 
 Ltac seprewrite_in Hrw H :=
   multimatch constr:(Set) with

@@ -229,7 +229,7 @@ Ltac sidecondition :=
   match goal with
   (* these branches are allowed to instantiate evars in a controlled manner: *)
   | H: map.get _ _ = Some _ |- _ => exact H
-  | |- sep ?P ?Q ?m => ecancel_assumption
+  | |- sep ?P ?Q ?m => simpl in *; solve [seplog]
   | |- _ => reflexivity
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => assumption

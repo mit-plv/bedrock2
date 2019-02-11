@@ -52,7 +52,7 @@ Ltac program_logic_goal_for_function proc :=
 
 Notation "program_logic_goal_for_function! proc" := (ltac:(
    let x := program_logic_goal_for_function proc in exact x))
-  (at level 10).
+  (at level 10, only parsing).
 
 Ltac bind_body_of_function f_ :=
   let f := eval cbv in f_ in
