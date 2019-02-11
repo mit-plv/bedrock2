@@ -20,7 +20,6 @@ Module word.
 End word.
 Set Universe Polymorphism.
 
-
 Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
   Context {byte : Word.Interface.word 8} {byte_ok : word.ok byte}.
@@ -35,31 +34,30 @@ Section Scalars.
     : Memory.load_bytes n m a = Some bs.
   Proof.
     cbv [load_bytes footprint].
-    revert dependent a; revert dependent R; revert dependent m; revert dependent n.
+    revert bs m R a Hsep.
     induction n; [solve[cbn; intros []; trivial]|].
     intros [b0 bs] m R a Hsep.
     cbn in Hsep; eapply SeparationLogic.sep_assoc in Hsep.
     cbn [map.getmany_of_tuple tuple.option_all tuple.map tuple.unfoldn].
     erewrite SeparationLogic.get_sep by exact Hsep.
-    setoid_rewrite IHn; [exact eq_refl|].
+    match goal with IH: _ |- _ => setoid_rewrite IH; [exact eq_refl|] end.
     unfold ptsto_bytes.
     SeparationLogic.ecancel_assumption.
   Qed.
 
   Arguments Z.of_nat: simpl never.
 
-  Lemma invert_getmany_of_tuple_Some_footprint:
-    forall (n : nat) (a: word) (vs : tuple byte (S n)) (m : mem),
-      (Z.of_nat n < 2 ^ width)%Z ->
-      map.getmany_of_tuple m (footprint a (S n)) = Some vs ->
-      exists m', map.split m (map.put map.empty a (pair._1 vs)) m' /\
-         map.getmany_of_tuple m' (footprint (word.add a (word.of_Z 1)) n) = Some (pair._2 vs).
+  Lemma invert_getmany_of_tuple_Some_footprint
+    (n : nat) (a: word) (vs : tuple byte (S n)) (m : mem)
+    (D: Z.of_nat n < 2 ^ width)
+    (H: map.getmany_of_tuple m (footprint a (S n)) = Some vs):
+    exists m', map.split m (map.put map.empty a (pair._1 vs)) m' /\
+      map.getmany_of_tuple m' (footprint (word.add a (word.of_Z 1)) n) = Some (pair._2 vs).
   Proof.
-    intros until 0. intros D H.
     apply map.invert_getmany_of_tuple_Some in H. destruct H as [B1 B2].
     exists (map.remove m a).
     repeat split.
-    - apply map.map_ext. intros.
+    - apply map.map_ext. intros k.
       pose proof (map.putmany_spec (map.put map.empty a (pair._1 vs)) (map.remove m a) k) as P.
       destruct P as [[v [A B]] | [A B]].
       + rewrite B.
@@ -76,13 +74,13 @@ Section Scalars.
           rewrite map.get_remove_diff in A by congruence.
           rewrite map.get_put_diff by congruence.
           rewrite map.get_empty. exact A.
-    - unfold map.disjoint. intros.
+    - unfold map.disjoint. intros k ? ? G1 G2.
       destruct (word.eqb a k) eqn: E.
         * apply word.eqb_true in E. subst k.
-          rewrite map.get_remove_same in H0. discriminate.
+          rewrite map.get_remove_same in G2. discriminate.
         * apply word.eqb_false in E.
-          rewrite map.get_put_diff in H by congruence.
-          rewrite map.get_empty in H. discriminate.
+          rewrite map.get_put_diff in G1 by congruence.
+          rewrite map.get_empty in G1. discriminate.
     - simpl in B2.
       clear -B2 mem_ok word_ok D. destruct vs as [v vs]. simpl in *.
       assert (0 < 1) as Y by lia.
@@ -90,8 +88,8 @@ Section Scalars.
       revert Y X B2.
       generalize 1%Z as d.
       clear v.
-      revert n a vs.
-      induction n; intros; simpl in *.
+      revert a vs.
+      induction n; intros a vs d Y X B2; simpl in *.
       + destruct vs. reflexivity.
       + apply map.invert_getmany_of_tuple_Some in B2. simpl in B2. destruct B2 as [A B].
         destruct vs as [v vs]. simpl in *.
@@ -119,7 +117,7 @@ Section Scalars.
           }
           assert (0 < k) by nia.
           nia.
-        * specialize (IHn a vs (d + 1)%Z).
+        * match goal with IH: _ |- _ => specialize (IH a vs (d + 1)%Z); rename IH into IHn end.
           replace (word.add a (word.of_Z (d + 1)))
             with (word.add (word.add a (word.of_Z d)) (word.of_Z 1)) in IHn.
           { apply IHn; lia || assumption. }
@@ -132,27 +130,44 @@ Section Scalars.
       exists R, sep (ptsto_bytes n a bs) (sep R Q) m.
   Proof.
     cbv [load_bytes footprint]. unfold ptsto_bytes.
-    induction n; intros.
+    intro n; induction n; intros.
     - cbv [ptsto_bytes array tuple.to_list].
-      simpl in *. unfold map.getmany_of_tuple, tuple.option_all in H0.
-      destruct H0 as (mp & mq & A & B & C).
+      simpl in *. unfold map.getmany_of_tuple, tuple.option_all in *.
+      match goal with
+      | H: sep _ _ _ |- _ => destruct H as (mp & mq & A & B & C)
+      end.
       exists (eq mp).
       apply sep_emp_l. split; auto.
       unfold sep. eauto.
-    - unfold sep in H0.
-      destruct H0 as (mp & mq & A & B & C).
+    - match goal with
+      | H: sep _ _ _ |- _ => destruct H as (mp & mq & A & B & C)
+      end.
       apply invert_getmany_of_tuple_Some_footprint in B; [|lia].
       destruct B as (mo & B1 & B2).
-      destruct bs as [b bs]. simpl in *.
-      specialize (IHn (word.add a (word.of_Z 1)) bs m (sep Q (ptsto a b))).
-      destruct IHn as [R IH].
+      match goal with
+      | x: tuple _ (S _) |- _ => destruct x as [b bs]; simpl in *
+      end.
+
+      Fail (* TODO ecancel_assumption why does it fail? *)
+      match goal with
+      | IHn: _ |- _ => edestruct IHn as [R IH]; [..|exists R; ecancel_assumption]
+      end.
+
+      Ltac ecancel_assumption_fix_just_for_here :=
+        seplog;
+        simple refine (cancel_seps_at_indices 0 1 _ _ _ _);
+        cbn [List.firstn List.skipn List.app List.hd List.tl];
+        [exact (RelationClasses.reflexivity _)|];
+        ecancel.
+
+      match goal with
+      | IHn: _ |- _ => edestruct IHn as [R IH]; [..|exists R; ecancel_assumption_fix_just_for_here]
+      end.
       + lia.
       + match goal with
-        | |- sep ?BS (sep Q ?P) m => assert (sep (sep P BS) Q m); [|ecancel_assumption]
+        | |- sep ?BS (sep ?P ?Q) ?m => assert (sep (sep P BS) Q m); [|ecancel_assumption]
         end.
         unfold sep, ptsto, footprint in *. eauto 10.
-      + exists R.
-        ecancel_assumption.
   Qed.
 
   (* The side condition is actually needed: If n was bigger than 2^width,
@@ -163,10 +178,9 @@ Section Scalars.
       exists R, sep (ptsto_bytes n a bs) R m.
   Proof.
     intros.
-    pose proof (sep_of_load_bytes_aux n a bs m (emp True)) as P.
-    destruct P as [R P].
-    - assumption.
-    - apply sep_comm. apply sep_emp_l. auto.
+    edestruct sep_of_load_bytes_aux as [R P].
+    - eassumption.
+    - apply sep_comm. apply sep_emp_l. split; [apply I|eassumption].
     - exists R. ecancel_assumption.
   Qed.
 
@@ -174,29 +188,32 @@ Section Scalars.
     (Hsep : sep (ptsto_bytes n a oldbs) R m)
     : sep (ptsto_bytes n a bs) R (Memory.unchecked_store_bytes n m a bs).
   Proof.
-    revert dependent a; revert dependent R; revert dependent m; revert dependent bs; revert dependent oldbs; revert dependent n.
+    revert oldbs bs m R a Hsep.
     induction n; [solve[cbn; intros []; trivial]|].
     intros [oldb0 oldbs] [b0 bs] m R a Hsep.
     cbn in *.
     apply sep_assoc.
     eapply sep_put. 1: exact Properties.word.eq_or_neq.
     apply sep_assoc in Hsep.
-    unshelve epose proof (IHn oldbs bs m _ (word.add a (word.of_Z 1)) _) as IHn2. 1: shelve.
+    match goal with
+    | IH: _ |- _ => unshelve epose proof (IH oldbs bs m _ (word.add a (word.of_Z 1)) _)
+    end.
+    - shelve.
     - unfold ptsto_bytes. ecancel_assumption.
     - ecancel_assumption.
   Qed.
 
-  Lemma unchecked_store_bytes_of_sep':
-    forall (a: word)(n: nat)(bs1 bs2: tuple byte n)(R1 R2 F: mem -> Prop)(m: mem),
+  Lemma unchecked_store_bytes_of_sep'
+      (a: word)(n: nat)(bs1 bs2: tuple byte n)(R1 R2 F: mem -> Prop)(m: mem):
       R1 m ->
       iff1 R1 (sep (ptsto_bytes n a bs1) F) ->
       iff1 R2 (sep (ptsto_bytes n a bs2) F) ->
       R2 (Memory.unchecked_store_bytes n m a bs2).
   Proof.
-    intros.
-    apply H1.
+    intros A B C.
+    apply C.
     eapply unchecked_store_bytes_of_sep.
-    apply H0.
+    apply B.
     assumption.
   Qed.
 
