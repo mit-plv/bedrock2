@@ -49,6 +49,175 @@ Proof.
   apply Properties.word.wrap_unsigned.
 Qed.
 
+  From coqutil Require Import Z.div_mod_to_equations.
+  From coqutil.Tactics Require Import rdelta.
+
+  (** Bounds propagation *)
+
+  Lemma Z__range_add a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1)
+        : a0+b0 <= a+b < a1 + b1 - 1.
+  Proof. Lia.nia. Qed.
+  Lemma Z__range_div_pos_const_r n0 n n1 (Hn : n0 <= n < n1) d (Hd : 0 < d)
+    : n0/d <= n/d < n1/d + 1.
+  Proof. Z.div_mod_to_equations. Lia.nia. Qed.
+  Lemma Z__range_mul_nonneg a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1) (Ha0 : 0 <= a0) (Hb0 : 0 <= b0)
+        : a0*b0 <= a*b < (a1-1)*(b1-1) + 1.
+  Proof. Lia.nia. Qed.
+  Lemma boundscheck {x0 x x1} (H: x0 <= x < x1) {X0 X1} (Hcheck : andb (X0 <=? x0) (x1 <=? X1) = true) : X0 <= x < X1.
+  Proof. eapply andb_prop in Hcheck; case Hcheck; intros H1 H2; eapply Z.leb_le in H1; eapply Z.leb_le in H2. Lia.lia. Qed.
+  Lemma boundscheck_lt {x0 x x1} (H: x0 <= x < x1) {X1} (Hcheck: Z.leb x1 X1 = true) : x < X1.
+  Proof. eapply Z.leb_le in Hcheck. Lia.lia. Qed.
+  Lemma bounded_constant c : c <= c < c+1. Proof. Lia.lia. Qed.
+
+  Ltac named_pose_proof pf :=
+    let H := fresh in
+    let __ := match constr:(Set) with _ => pose proof pf as H end in
+    H.
+
+  Ltac requireZcst z :=
+    lazymatch Coq.setoid_ring.InitialRing.isZcst z with
+    | true => idtac
+    end.
+  Ltac requireZcstExpr e :=
+    match e with
+    | _ => requireZcst e
+    | Z.pow ?x ?y => requireZcstExpr x; requireZcstExpr y
+    end.
+  
+  Ltac rbounded e :=
+    let re := rdelta e in
+    match goal with
+    | H :  _ <= e < _ |- _ => H
+    | H :  _ <= re < _ |- _ => H
+    | _ =>
+      match re with
+      | word.unsigned ?a =>
+        named_pose_proof (Properties.word.unsigned_range a : _ <= e < _)
+      | Z.add ?a ?b =>
+        let Ha := rbounded a in
+        let Hb := rbounded b in
+        named_pose_proof (Z__range_add _ a _ Ha _ b _ Hb : _ <= e < _)
+      | Z.mul ?a ?b =>
+        let Ha := rbounded a in
+        let Hb := rbounded b in
+        named_pose_proof (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl) : _ <= e < _)
+      | Z.div ?a ?b =>
+        let __ := match constr:(Set) with _ => requireZcstExpr b end in
+        let Ha := rbounded a in
+        named_pose_proof (Z__range_div_pos_const_r _ a _ Ha b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _)
+      | Z.modulo ?a ?b =>
+        let __ := match constr:(Set) with _ => requireZcst b end in
+        named_pose_proof (Z.mod_pos_bound a b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _)
+      end
+    | _ =>
+      let __ := match constr:(Set) with _ => requireZcstExpr re end in
+      constr:(bounded_constant e)
+    end.
+
+  (** Abstract interpretation *)
+    
+  Notation "absint_lemma! pf" := (ltac:(
+    etransitivity; [ eapply pf | ]; cycle -1;
+      [unshelve (repeat match goal with
+        | |-context [Z.shiftr ?x (word.unsigned ?y)] => assert_fails(is_evar x||is_evar y);
+          setoid_rewrite (Z.shiftr_div_pow2 x (word.unsigned y) (proj1 (Properties.word.unsigned_range _)))
+        | |-context [Z.shiftl ?x (word.unsigned ?y)] => assert_fails(is_evar x||is_evar y);
+          setoid_rewrite (Z.shiftl_mul_pow2 x (word.unsigned y) (proj1 (Properties.word.unsigned_range _)))
+        | |-context [?x mod (2^?y)] => assert_fails(is_evar x||is_evar y);
+          rewrite (Z.mod_small x (2^y)) by shelve
+        | |-context [word.unsigned ?x] => assert_fails(is_evar x);
+          erewrite (_:word.unsigned _=_) by shelve
+        end; exact eq_refl)
+      |..];
+      (* WHY do I need [> here? *)
+      [> (repeat match goal with
+                 | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
+                 end;
+          match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).. ]
+    )) (at level 10, only parsing).
+  
+  Lemma absint_of_Z (x : Z) (Hrange : 0 <= x < 2^width) : word.unsigned (word.of_Z x) = x.
+  Proof. rewrite word.unsigned_of_Z, Z.mod_small; trivial. Qed.
+  Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : _ = _ :=
+    absint_lemma! (word.unsigned_add x y).
+  Definition absint_sub (x y : word.rep) ux Hx uy Hy Hbounds : _ = _ :=
+    absint_lemma! (word.unsigned_sub x y).
+  Definition absint_and (x y : word.rep) ux Hx uy Hy : _ = _ :=
+    absint_lemma! (Properties.word.unsigned_and_nowrap x y).
+  Definition absint_or (x y : word.rep) ux Hx uy Hy : _ = _ :=
+    absint_lemma! (Properties.word.unsigned_or_nowrap x y).
+  Definition absint_xor (x y : word.rep) ux Hx uy Hy : _ = _ :=
+    absint_lemma! (Properties.word.unsigned_xor_nowrap x y).
+  Definition absint_ndn (x y : word.rep) ux Hx uy Hy : _ = _ :=
+    absint_lemma! (Properties.word.unsigned_ndn_nowrap x y).
+  Definition absint_mul (x y : word.rep) ux Hx uy Hy Hbounds : _ = _ :=
+    absint_lemma! (word.unsigned_mul x y).
+  Definition absint_sru (x y : word.rep) ux Hx uy Hy Hshift  : _ = _ :=
+    absint_lemma! (Properties.word.unsigned_sru_nowrap x y).
+  Definition absint_divu (x y : word.rep) ux Hx uy Hy Hshift  : _ = _ :=
+    absint_lemma! (Properties.word.unsigned_divu_nowrap x y).
+  Definition absint_modu (x y : word.rep) ux Hx uy Hy Hnz  : _ = _ :=
+    absint_lemma! (Properties.word.unsigned_modu_nowrap x y).
+  Definition absint_slu (x y : word.rep) ux Hx uy Hy Hrange Hshift : _ = _ :=
+    absint_lemma! (word.unsigned_slu x y).
+
+  Ltac absint e :=
+    lazymatch type of e with
+    | word.rep =>
+      match e with
+      | word.of_Z ?a =>
+        let Ba := rbounded a in
+        named_pose_proof (absint_of_Z a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)))
+      | word.sru ?a ?b =>
+        let Ha := absint a in let Ra := lazymatch type of Ha with _ = ?x => x end in
+        let Aa := rbounded Ra in
+        let Hb := absint b in let Rb := lazymatch type of Hb with _ = ?x => x end in
+        let Bb := rbounded Rb in
+        named_pose_proof (absint_sru a b Ra Ha Rb Hb (@boundscheck_lt _ Rb _ Bb width eq_refl))
+      | word.slu ?a ?b =>
+        let Ha := absint a in let Ra := lazymatch type of Ha with _ = ?x => x end in
+        let Aa := rbounded Ra in
+        let Hb := absint b in let Rb := lazymatch type of Hb with _ = ?x => x end in
+        let Bb := rbounded Rb in
+        let Re := constr:((Ra * 2 ^ Rb)) in
+        let Be := rbounded Re in
+        named_pose_proof (absint_slu a b Ra Ha Rb Hb (boundscheck (X0:=0) (X1:=2^width) Be (eq_refl true)) (@boundscheck_lt _ Rb _ Bb width eq_refl))
+      | _ =>
+        let __ := match constr:(Set) with _ => idtac "ABSINT PASSTHROUGH WORD" e end in
+        constr:(eq_refl (word.unsigned e))
+      end
+    | Z =>
+      match e with
+      | word.unsigned ?a =>
+        absint a
+      | Z.modulo ?a ?b =>
+        let Ha := absint a in
+        let Hb := absint b in
+        named_pose_proof (f_equal2 Z.modulo Ha Hb)
+      | _ =>
+        let __ := match constr:(Set) with _ => idtac "ABSINT PASSTHROUGH Z" e end in
+        constr:(eq_refl e)
+      end
+    end.
+
+  Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
+  Proof.
+    intros.
+  
+    set (a := x+y).
+    set (b := y+x).
+    set (c := a*b+7).
+  
+    let e := constr:(a + y mod 2 * (b*(x*y/4)) + c) in
+    let H := rbounded e in
+    cbn in *.
+  
+    let e := constr:(a*c + b) in
+    let H := rbounded e in
+    idtac H;
+    cbn in *.
+  Abort.
+
 Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory.
 Add Ring word_ring : word__monomorphic_ring_theory.
 
@@ -67,7 +236,6 @@ From coqutil.Tactics Require Import eabstract letexists rdelta.
 From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
 
-From coqutil Require Import Z.div_mod_to_equations.
 
 Axiom __mem_ok : map.ok mem. Local Existing Instance __mem_ok.
 
@@ -160,292 +328,26 @@ Proof.
 
         rewrite word__add_sub.
 
-        pose proof Properties.word.unsigned_range (x2 ^- x1) as Hb; rewrite length_rep in Hb; change width with 64 in Hb.
-        pose proof Properties.word.unsigned_sru_nowrap (x2 ^- x1) (/_ 4) eq_refl as HH.
-        rewrite length_rep in HH ; change (\_ (/_ 4)) with 4 in HH.
+        let e := constr:(((x2 ^- x1) ^>> /_ 4 ^<< /_ 3)) in
+        let H := absint e in
+        setoid_rewrite H.
 
-        pose proof word.unsigned_slu ((x2 ^- x1) ^>> /_ 4) (/_ 3) eq_refl as HH2.
-        change (\_ (/_ 3)) with 3 in HH2.
-        setoid_rewrite HH in HH2.
-        rewrite Z.shiftr_div_pow2, Z.shiftl_mul_pow2 in HH2 by discriminate.
-        rewrite Z.mod_small in HH2 by (Z.div_mod_to_equations; Lia.lia).
+        let e := constr:(/_ 8) in
+        let H := absint e in
+        setoid_rewrite H.
 
-        change (\_ (/_ 8)) with 8.
-        setoid_rewrite HH2.
+        rewrite (Z.mul_comm (Z.of_nat _) 8), <-length_rep.
+        rewrite word.unsigned_sub.
 
-        clear -length_rep H5.
-        rewrite word.unsigned_sub in length_rep.
-        setoid_rewrite (_:Z.of_nat (Datatypes.length x) * 8 = 8 * Z.of_nat (Datatypes.length x)); [|Lia.lia].
-        setoid_rewrite <-length_rep; clear dependent x.
         pose proof Properties.word.unsigned_range x1.
         pose proof Properties.word.unsigned_range x2.
+
+        change (2^4) with 16.
         change (2^width) with 18446744073709551616 in *.
-        Z.div_mod_to_equations. Lia.lia. }
+        clear -H5 H12 H13. Z.div_mod_to_equations; Lia.lia.
+      }
       { cbn [interp_binop] in *.
         subst v0.
-
-        (* repeat ureplace (_:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl). *)
-        rewrite word__add_sub.
-
-        (* absint: bottomup (repeat (rewrite_head || memoized_bottomup bounded_head))
-           - recurse into arguments
-           - repeat:
-             - f_equal_n; (eassumption || exact eq_refl)
-             - call "typeclasses" based on head symbol with goal [f arg1 args... = ?e]
-             - refocus on ?e
-           - call "typeclasses" based on head symbol in [?x <= f arg1 args... < ?y]
-         *)
-
-        Abort All.
-
-        Lemma Z__range_add a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1)
-              : a0+b0 <= a+b < a1 + b1 - 1.
-        Proof. Lia.nia. Qed.
-        Lemma Z__range_div_pos_const_r n0 n n1 (Hn : n0 <= n < n1) d (Hd : 0 < d)
-          : n0/d <= n/d < n1/d + 1.
-        Proof. Z.div_mod_to_equations. Lia.nia. Qed.
-        Lemma Z__range_mul_nonneg a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1) (Ha0 : 0 <= a0) (Hb0 : 0 <= b0)
-              : a0*b0 <= a*b < (a1-1)*(b1-1) + 1.
-        Proof. Lia.nia. Qed.
-        Lemma boundscheck x0 x x1 (H: x0 <= x < x1) X0 X1 (H0 : X0 <= x0) (H1: x1 <= X1) : X0 <= x < X1.
-        Proof. Lia.lia. Qed.
-
-        Ltac requireZcst z :=
-          lazymatch Coq.setoid_ring.InitialRing.isZcst z with
-          | true => idtac
-          end.
-
-        Inductive treeshape := br2 (_ _ : treeshape) | lf.
-        Ltac etransitivity_at_branches ts :=
-          lazymatch ts with
-          | lf => idtac
-          | br2 ?b1 ?b2 =>
-            etransitivity; [eapply f_equal2; [etransitivity_at_branches b1|etransitivity_at_branches b2]|]
-          end.
-        Ltac idtac_goal :=
-          lazymatch goal with |- ?g => idtac g end.
-
-        Ltac absint_rewrite_head :=
-          repeat (etransitivity; [typeclasses eauto with absint_rewrite|]); exact eq_refl.
-
-        Ltac lia := zify; Omega.omega.
-
-        Hint Extern 1 (@snd (@word.rep ?n ?W) _ (?x, _)) => exact (@word.unsigned n W x) : absint_semantics.
-        Hint Extern 9999999 (@snd _ _ (?x, _)) => exact x : absint_semantics.
-
-        Hint Extern 1 (?a mod ?b = _) => exact (Z.mod_small a b ltac:(lia)) : absint_rewrite.
-        Hint Extern 1 (word.unsigned (word.of_Z ?a) = _)
-        => (etransitivity; [exact (word.unsigned_of_Z a)|]; eapply f_equal2; absint_rewrite_head) : absint_rewrite.
-        Hint Extern 1 (word.unsigned (word.add ?a ?b) = _)
-        => (etransitivity; [exact (word.unsigned_add a b)|]; eapply f_equal2; absint_rewrite_head) : absint_rewrite.
-        Hint Extern 1 (word.unsigned (word.sub ?a ?b) = _)
-        => (etransitivity; [exact (word.unsigned_sub a b)|]; eapply f_equal2; absint_rewrite_head) : absint_rewrite.
-
-        (* WHY is the following [solve] necessary? *)
-        Hint Extern 1 (word.unsigned (word.slu ?a ?b) = _)
-        => (etransitivity; [exact (word.unsigned_slu a b ltac:(lia))
-                           |etransitivity_at_branches constr:(br2 (br2 lf lf) lf); solve[absint_rewrite_head]]) : absint_rewrite.
-        Hint Extern 1 (word.unsigned (word.sru ?a ?b) = _)
-        => (etransitivity; [exact (Properties.word.unsigned_sru_nowrap a b ltac:(lia)) | eapply f_equal2; absint_rewrite_head]) : absint_rewrite.
-
-        Hint Extern 1 (Z.shiftr ?a ?b = _) => exact (Z.shiftr_div_pow2 a b ltac:(lia)) : absint_rewrite.
-        Hint Extern 1 (Z.shiftl ?a ?b = _) => exact (Z.shiftl_mul_pow2 a b ltac:(lia)) : absint_rewrite.
-
-        Ltac absint_head e :=
-          let l := lazymatch constr:(ltac:(typeclasses eauto with absint_semantics) : (snd (e, _))) with ?l => l end in
-          lazymatch goal with H: l = _ |- _ => fail | |- _ => idtac end;
-          let r := open_constr:(_) in
-          let H := fresh in
-          eassert (l = r) as H by (absint_rewrite_head);
-          assert_fails (constr_eq l r);
-          (* idtac e ":  " l "=" r; *)
-          idtac.
-
-        Ltac absint e :=
-          assert_fails (idtac; requireZcst e);
-          assert_fails (idtac; lazymatch type of e with Type => idtac | Set => idtac | Prop => idtac end);
-          (* idtac e; *)
-          try match e with
-              | ?f ?x => try absint f; try absint x
-              end;
-          try absint_head e.
-
-        Lemma boundscheck_constant c : c <= c < c+1. Proof. Lia.lia. Qed.
-
-        Ltac _ebounded_prove :=
-          match goal with
-          | |- _ => eassumption
-          | |- ?x <= ?e < ?y => requireZcst e; is_evar x; is_evar y; exact (boundscheck_constant e)
-          end.
-
-        Ltac ebounded e :=
-          match goal with
-          | H :  _ <= e < _ |- _ => H
-          | |- _ => let G := fresh in let __ := match constr:(Set) with _ => eassert (_ <= e < _) as G by _ebounded_prove end in G
-          end.
-
-Ltac named_pose_proof pf :=
-  let H := fresh in
-  let __ := match constr:(Set) with _ => pose proof pf as H end in
-  H.
-
-From coqutil.Tactics Require Import rdelta.
-Ltac rbounded e :=
-  let re := rdelta e in
-  match goal with
-  | H :  _ <= e < _ |- _ => H
-  | H :  _ <= re < _ |- _ => H
-  | _ =>
-    match re with
-    | Z.add ?a ?b =>
-      let Ha := rbounded a in
-      let Hb := rbounded b in
-      named_pose_proof (Z__range_add _ a _ Ha _ b _ Hb : _ <= e < _)
-    | Z.mul ?a ?b =>
-      let Ha := rbounded a in
-      let Hb := rbounded b in
-      named_pose_proof (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl) : _ <= e < _)
-    | Z.div ?a ?b =>
-      let __ := match constr:(Set) with _ => requireZcst b end in
-      let Ha := rbounded a in
-      named_pose_proof (Z__range_div_pos_const_r _ a _ Ha b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _)
-    | Z.modulo ?a ?b =>
-      let __ := match constr:(Set) with _ => requireZcst b end in
-      named_pose_proof (Z.mod_pos_bound a b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _)
-    | _ =>
-      let __ := match constr:(Set) with _ => requireZcst e end in
-      named_pose_proof (boundscheck_constant e)
-    end
-  end.
-
-Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
-Proof.
-  intros.
-
-  set (a := x+y).
-  set (b := y+x).
-  set (c := a*b+7).
-
-  let e := constr:(a + y mod 2 * (b*(x*y/4)) + c) in
-  let H := rbounded e in
-  cbn in *.
-
-  let e := constr:(a*c + b) in
-  let H := rbounded e in
-  idtac H;
-  cbn in *.
-Abort All.
-    
-Notation "absint_lemma! pf" := (ltac:(
-  etransitivity; [ eapply pf | ]; cycle -1;
-    [unshelve (
-       repeat match goal with
-              | |-context [word.unsigned ?x] =>
-                assert_fails(is_evar x);
-                erewrite (_:word.unsigned _=_) by shelve
-              | |-context [?x mod (2^?y)] =>
-                assert_fails(is_evar x||is_evar y);
-                erewrite (Z.mod_small x (2^y)) by shelve
-              end;
-       exact eq_refl)
-     |..];
-    (
-      repeat match goal with
-           | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
-           end;
-        match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end
-    )
-  )) (at level 10, only parsing).
-
-Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : _ = _ :=
-  absint_lemma! (word.unsigned_add x y).
-Definition absint_mul (x y : word.rep) ux Hx uy Hy Hbounds : _ = _ :=
-  absint_lemma! (word.unsigned_mul x y).
-Definition absint_slu (x y : word.rep) ux Hx uy Hy A B : _ = _ :=
-  absint_lemma! (word.unsigned_slu x y).
-Definition absint_sru (x y : word.rep) ux Hx uy Hy Hshift  : _ = _ :=
-  absint_lemma! (Properties.word.unsigned_sru_nowrap x y).
-Definition absint_divu (x y : word.rep) ux Hx uy Hy Hshift  : _ = _ :=
-  absint_lemma! (Properties.word.unsigned_divu_nowrap x y).
-Definition absint_modu (x y : word.rep) ux Hx uy Hy Hnz  : _ = _ :=
-  absint_lemma! (Properties.word.unsigned_modu_nowrap x y).
-
-Goal True.
-  eassert (forall (x y : word.rep) ux Hx uy Hy A B , _ = _); intros. {
-  let pf := constr:((word.unsigned_slu x y)) in
-  etransitivity; [ eapply pf | ]; cycle -1;
-    [unshelve (
-       repeat match goal with
-              | |-context [word.unsigned ?x] =>
-                assert_fails(is_evar x);
-                erewrite (_:word.unsigned _=_) by shelve
-              | |-context [?x mod (2^?y)] =>
-                assert_fails(is_evar x||is_evar y);
-                erewrite (Z.mod_small x (2^y)) by shelve
-              end;
-       exact eq_refl)
-     |..].
-    1,2,3,4,5 : (repeat match goal with
-           | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
-           end;
-                 match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).
-    all : (repeat match goal with
-           | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
-           end;
-                 match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).
-  }
-(repeat match goal with
-           | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
-           end;
-    match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).
-
-
-Goal forall (x y : word.rep) X Y, word.unsigned x = X -> word.unsigned y = Y -> 0 <= X < 5 -> 10 <= Y < 20 -> True.
-Proof. intros.
-  eassert (word.unsigned (word.add x y) = _). {
-  etransitivity.
-  { eapply word.unsigned_add. }
-  etransitivity.
-  { 
-    unshelve erewrite !(_ : word.unsigned _ = _), Z.mod_small by shelve; [..|exact eq_refl].
-    all: shelve_unifiable.
-  { eapply f_equal2; [eapply f_equal2 | exact eq_refl].
-    { exact H. }
-    { exact H0. } }
-  eapply Z.mod_small.
-  let e := lazymatch goal with |- _ <= ?e < _ => e end in
-  let He := rbounded e in
-  idtac.
-  eapply (boundscheck _ _ _ ltac:(eassumption));
-    eapply Z.leb_le; exact eq_refl.
-  }
-
-        Goal forall
-  (x : list word)
-  (x1 x2 : word)
-  (length_rep : \_ (x2 ^- x1) = 8 * Z.of_nat (Datatypes.length x))
-  (length_nonzero : \_ x1 <> \_ x2)
-  ,
-  \_ ((x2 ^- x1) ^>> /_ 4 ^<< /_ 3) mod \_ (/_ 8) = 0. intros.
-
-
-        pose proof (eq_refl : 64 = width) as Hw.
-        pose proof (eq_refl : 18446744073709551616 = 2^width) as H2w.
-        assert (0 < 2 ^ width) as Hnz by (change tt with tt in *; rewrite <-H2w; Lia.lia).
-
-        let e := lazymatch goal with |- ?e = _ => e end in 
-        absint e.
-
-        rewrite H2, H3 in *.
-        change (2^3) with 8 in *.
-        change (2^4) with 16 in *.
-        change (2^width) with 18446744073709551616.
-
-        let e := constr:(((\_ x2 - \_ x1) mod 18446744073709551616 / 16 * 8)) in
-        let H := rbounded e in
-        idtac.
-
-        rewrite (Z.mod_small _ 18446744073709551616) by (eapply boundscheck; [ eassumption | eapply Z.leb_le; exact eq_refl ..]).
 
         clear. Z.div_mod_to_equations. Lia.lia. }
       { exact eq_refl. }
