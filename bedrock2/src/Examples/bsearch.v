@@ -73,6 +73,14 @@ Qed.
     let H := fresh in
     let __ := match constr:(Set) with _ => pose proof pf as H end in
     H.
+  Ltac named_pose pf :=
+    let H := fresh in
+    let __ := match constr:(Set) with _ => pose pf as H end in
+    H.
+  Ltac named_pose_asfresh pf x :=
+    let H := fresh x in
+    let __ := match constr:(Set) with _ => pose pf as H end in
+    H.
 
   Ltac requireZcst z :=
     lazymatch Coq.setoid_ring.InitialRing.isZcst z with
@@ -80,38 +88,76 @@ Qed.
     end.
   Ltac requireZcstExpr e :=
     match e with
-    | _ => requireZcst e
+    | Z.pred ?x => requireZcstExpr x
+    | Z.succ ?x => requireZcstExpr x
+    | Z.opp ?x => requireZcstExpr x
+    | Z.lnot ?x => requireZcstExpr x
+    | Z.add ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.sub ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.mul ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.div ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.modulo ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.quot ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.rem ?x ?y => requireZcstExpr x; requireZcstExpr y
     | Z.pow ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.shiftl ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.shiftr ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.land ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.lor ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.lxor ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.ldiff ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.clearbit ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.setbit ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.min ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.max ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.gcd ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | Z.lcm ?x ?y => requireZcstExpr x; requireZcstExpr y
+    | _ => requireZcst e
     end.
+
+  Ltac zsimp x :=
+    match constr:(Set) with
+    | _ => let __ := requireZcstExpr x in let y := eval cbv in x in y
+    | _ => x
+    end.
+
+  Local Notation "zbsimp! H" :=
+    (ltac:(
+       lazymatch type of H with
+             ?L <= ?X < ?R =>
+             let L := zsimp L in
+             let R := zsimp R in
+             exact ((H : L <= X < R))
+           end
+    )) (at level 10, only parsing).
   
   Ltac rbounded e :=
     let re := rdelta e in
     match goal with
     | H :  _ <= e < _ |- _ => H
-    | H :  _ <= re < _ |- _ => H
     | _ =>
       match re with
       | word.unsigned ?a =>
-        named_pose_proof (Properties.word.unsigned_range a : _ <= e < _)
+        named_pose_proof (zbsimp! (Properties.word.unsigned_range a : _ <= e < _))
       | Z.add ?a ?b =>
         let Ha := rbounded a in
         let Hb := rbounded b in
-        named_pose_proof (Z__range_add _ a _ Ha _ b _ Hb : _ <= e < _)
+        named_pose_proof (zbsimp! (Z__range_add _ a _ Ha _ b _ Hb : _ <= e < _))
       | Z.mul ?a ?b =>
         let Ha := rbounded a in
         let Hb := rbounded b in
-        named_pose_proof (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl) : _ <= e < _)
+        named_pose_proof (zbsimp! (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl) : _ <= e < _))
       | Z.div ?a ?b =>
         let __ := match constr:(Set) with _ => requireZcstExpr b end in
         let Ha := rbounded a in
-        named_pose_proof (Z__range_div_pos_const_r _ a _ Ha b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _)
+        named_pose_proof (zbsimp! (Z__range_div_pos_const_r _ a _ Ha b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _))
       | Z.modulo ?a ?b =>
         let __ := match constr:(Set) with _ => requireZcst b end in
-        named_pose_proof (Z.mod_pos_bound a b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _)
+        named_pose_proof (zbsimp! (Z.mod_pos_bound a b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _))
       end
     | _ =>
       let __ := match constr:(Set) with _ => requireZcstExpr re end in
-      constr:(bounded_constant e)
+      constr:(zbsimp! (bounded_constant e))
     end.
 
   (** Abstract interpretation *)
@@ -161,33 +207,44 @@ Qed.
   Definition absint_slu (x y : word.rep) ux Hx uy Hy Hrange Hshift : _ = _ :=
     absint_lemma! (word.unsigned_slu x y).
 
+  Definition absint_eq {T} := @eq T.
+  Local Infix "=~>" := absint_eq (at level 70, no associativity).
+  
   Ltac absint e :=
+    let re := rdelta e in
     lazymatch type of e with
     | word.rep =>
-      match e with
+      match re with
+      | _ => match goal with H: word.unsigned e =~> _ |- _ => H end
       | word.of_Z ?a =>
         let Ba := rbounded a in
         named_pose_proof (absint_of_Z a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)))
+      | word.add ?a ?b =>
+        let Ha := absint a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
+        let Hb := absint b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
+        let Re := constr:(Ra+Rb) in
+        let Re := match e with re => Re | _ => named_pose_asfresh Re e end in
+        let Be := rbounded Re in
+        named_pose_proof (absint_add a b Ra Ha Rb Hb (boundscheck (X0:=0) (X1:=2^width) Be (eq_refl true)) : word.unsigned e =~> Re)
       | word.sru ?a ?b =>
-        let Ha := absint a in let Ra := lazymatch type of Ha with _ = ?x => x end in
-        let Aa := rbounded Ra in
-        let Hb := absint b in let Rb := lazymatch type of Hb with _ = ?x => x end in
+        let Ha := absint a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
+        let Hb := absint b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
         let Bb := rbounded Rb in
         named_pose_proof (absint_sru a b Ra Ha Rb Hb (@boundscheck_lt _ Rb _ Bb width eq_refl))
       | word.slu ?a ?b =>
-        let Ha := absint a in let Ra := lazymatch type of Ha with _ = ?x => x end in
-        let Aa := rbounded Ra in
-        let Hb := absint b in let Rb := lazymatch type of Hb with _ = ?x => x end in
+        let Ha := absint a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
+        let Hb := absint b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
         let Bb := rbounded Rb in
-        let Re := constr:((Ra * 2 ^ Rb)) in
+        let Re := constr:((Ra * 2^Rb)) in
         let Be := rbounded Re in
         named_pose_proof (absint_slu a b Ra Ha Rb Hb (boundscheck (X0:=0) (X1:=2^width) Be (eq_refl true)) (@boundscheck_lt _ Rb _ Bb width eq_refl))
       | _ =>
-        let __ := match constr:(Set) with _ => idtac "ABSINT PASSTHROUGH WORD" e end in
-        constr:(eq_refl (word.unsigned e))
+        (* let __ := match constr:(Set) with _ => idtac "ABSINT PASSTHROUGH WORD" e end in *)
+        constr:((eq_refl (word.unsigned e)) : _ =~> _)
       end
     | Z =>
       match e with
+      | _ => match goal with H: e =~> _ |- _ => H end
       | word.unsigned ?a =>
         absint a
       | Z.modulo ?a ?b =>
@@ -195,10 +252,30 @@ Qed.
         let Hb := absint b in
         named_pose_proof (f_equal2 Z.modulo Ha Hb)
       | _ =>
-        let __ := match constr:(Set) with _ => idtac "ABSINT PASSTHROUGH Z" e end in
-        constr:(eq_refl e)
+        (* let __ := match constr:(Set) with _ => idtac "ABSINT PASSTHROUGH Z" e end in *)
+        constr:((eq_refl e) : _ =~> _)
       end
     end.
+
+  Goal forall x, 0 <= word.unsigned x < 5 ->
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   True.
+  Proof.
+    intros.
+
+    Set Ltac Profiling.
+    let e := match goal with x := _ |- _ => x end in
+    let H := absint e in
+    idtac H.
+
 
   Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
   Proof.
