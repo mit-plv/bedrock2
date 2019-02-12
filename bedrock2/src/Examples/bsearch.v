@@ -284,6 +284,11 @@ Proof.
           | |- _ => let G := fresh in let __ := match constr:(Set) with _ => eassert (_ <= e < _) as G by _ebounded_prove end in G
           end.
 
+Ltac named_pose_proof pf :=
+  let H := fresh in
+  let __ := match constr:(Set) with _ => pose proof pf as H end in
+  H.
+
 From coqutil.Tactics Require Import rdelta.
 Ltac rbounded e :=
   let re := rdelta e in
@@ -295,33 +300,21 @@ Ltac rbounded e :=
     | Z.add ?a ?b =>
       let Ha := rbounded a in
       let Hb := rbounded b in
-      let He := fresh in
-      
-      let __ := match constr:(Set) with _ => pose proof (Z__range_add _ a _ Ha _ b _ Hb : _ <= e < _) as He end
-      in He
+      named_pose_proof (Z__range_add _ a _ Ha _ b _ Hb : _ <= e < _)
     | Z.mul ?a ?b =>
       let Ha := rbounded a in
       let Hb := rbounded b in
-      let He := fresh in
-      
-      let __ := match constr:(Set) with _ => pose proof (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl) : _ <= e < _) as He end
-      in He
+      named_pose_proof (Z__range_mul_nonneg _ a _ Ha _ b _ Hb ltac:(eapply Z.leb_le; exact eq_refl) ltac:(eapply Z.leb_le; exact eq_refl) : _ <= e < _)
     | Z.div ?a ?b =>
       let __ := match constr:(Set) with _ => requireZcst b end in
       let Ha := rbounded a in
-      let He := fresh in
-      let __ := match constr:(Set) with _ => pose proof (Z__range_div_pos_const_r _ a _ Ha b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _) as He end
-      in He
+      named_pose_proof (Z__range_div_pos_const_r _ a _ Ha b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _)
     | Z.modulo ?a ?b =>
       let __ := match constr:(Set) with _ => requireZcst b end in
-      let He := fresh in
-      let __ := match constr:(Set) with _ => pose proof (Z.mod_pos_bound a b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _) as He end
-      in He
+      named_pose_proof (Z.mod_pos_bound a b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _)
     | _ =>
       let __ := match constr:(Set) with _ => requireZcst e end in
-      let He := fresh in
-      let __ := match constr:(Set) with _ => pose proof (boundscheck_constant e) as He end
-      in He
+      named_pose_proof (boundscheck_constant e)
     end
   end.
 
@@ -343,7 +336,89 @@ Proof.
   cbn in *.
 Abort All.
     
+Notation "absint_lemma! pf" := (ltac:(
+  etransitivity; [ eapply pf | ]; cycle -1;
+    [unshelve (
+       repeat match goal with
+              | |-context [word.unsigned ?x] =>
+                assert_fails(is_evar x);
+                erewrite (_:word.unsigned _=_) by shelve
+              | |-context [?x mod (2^?y)] =>
+                assert_fails(is_evar x||is_evar y);
+                erewrite (Z.mod_small x (2^y)) by shelve
+              end;
+       exact eq_refl)
+     |..];
+    (
+      repeat match goal with
+           | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
+           end;
+        match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end
+    )
+  )) (at level 10, only parsing).
 
+Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : _ = _ :=
+  absint_lemma! (word.unsigned_add x y).
+Definition absint_mul (x y : word.rep) ux Hx uy Hy Hbounds : _ = _ :=
+  absint_lemma! (word.unsigned_mul x y).
+Definition absint_slu (x y : word.rep) ux Hx uy Hy A B : _ = _ :=
+  absint_lemma! (word.unsigned_slu x y).
+Definition absint_sru (x y : word.rep) ux Hx uy Hy Hshift  : _ = _ :=
+  absint_lemma! (Properties.word.unsigned_sru_nowrap x y).
+Definition absint_divu (x y : word.rep) ux Hx uy Hy Hshift  : _ = _ :=
+  absint_lemma! (Properties.word.unsigned_divu_nowrap x y).
+Definition absint_modu (x y : word.rep) ux Hx uy Hy Hnz  : _ = _ :=
+  absint_lemma! (Properties.word.unsigned_modu_nowrap x y).
+
+Goal True.
+  eassert (forall (x y : word.rep) ux Hx uy Hy A B , _ = _); intros. {
+  let pf := constr:((word.unsigned_slu x y)) in
+  etransitivity; [ eapply pf | ]; cycle -1;
+    [unshelve (
+       repeat match goal with
+              | |-context [word.unsigned ?x] =>
+                assert_fails(is_evar x);
+                erewrite (_:word.unsigned _=_) by shelve
+              | |-context [?x mod (2^?y)] =>
+                assert_fails(is_evar x||is_evar y);
+                erewrite (Z.mod_small x (2^y)) by shelve
+              end;
+       exact eq_refl)
+     |..].
+    1,2,3,4,5 : (repeat match goal with
+           | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
+           end;
+                 match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).
+    all : (repeat match goal with
+           | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
+           end;
+                 match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).
+  }
+(repeat match goal with
+           | H: ?P |- ?G => assert_fails (has_evar P || has_evar G); rewrite H
+           end;
+    match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).
+
+
+Goal forall (x y : word.rep) X Y, word.unsigned x = X -> word.unsigned y = Y -> 0 <= X < 5 -> 10 <= Y < 20 -> True.
+Proof. intros.
+  eassert (word.unsigned (word.add x y) = _). {
+  etransitivity.
+  { eapply word.unsigned_add. }
+  etransitivity.
+  { 
+    unshelve erewrite !(_ : word.unsigned _ = _), Z.mod_small by shelve; [..|exact eq_refl].
+    all: shelve_unifiable.
+  { eapply f_equal2; [eapply f_equal2 | exact eq_refl].
+    { exact H. }
+    { exact H0. } }
+  eapply Z.mod_small.
+  let e := lazymatch goal with |- _ <= ?e < _ => e end in
+  let He := rbounded e in
+  idtac.
+  eapply (boundscheck _ _ _ ltac:(eassumption));
+    eapply Z.leb_le; exact eq_refl.
+  }
 
         Goal forall
   (x : list word)
