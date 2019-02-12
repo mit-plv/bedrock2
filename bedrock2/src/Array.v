@@ -11,6 +11,36 @@ Section Array.
     | nil => emp True
     | cons x xs => sep (element start x) (array (word.add start size) xs)
     end.
+
+  Lemma array_cons x xs start:
+    iff1 (array start (x :: xs)) (sep (element start x) (array (word.add start size) xs)).
+  Proof. reflexivity. Qed.
+
+  Lemma array_append xs ys start:
+    let mid := word.add start (word.mul size (word.of_Z (Zcomplements.Zlength xs))) in
+    iff1 (array start (xs ++ ys)) (sep (array start xs) (array mid ys)).
+  Proof.
+    revert ys start. induction xs; intros ys start mid; subst mid.
+    - simpl. rewrite Zcomplements.Zlength_nil.
+      match goal with
+      | |- iff1 _ (sep _ (array ?mid _)) => replace mid with start; cycle 1
+      end.
+      { admit. (* ring *) }
+      cancel.
+    - rewrite <- app_comm_cons. rewrite array_cons. simpl.
+      specialize (IHxs ys (word.add start size)). simpl in IHxs.
+      rewrite IHxs.
+      cancel.
+      (* TODO this step should be done by an automatic semi-canceler *)
+      match goal with
+      | |- iff1 (seps (array ?addr1 ys :: nil)) (seps (array ?addr2 ys :: nil)) =>
+        replace addr1 with addr2; [reflexivity|]
+      end.
+      rewrite Zcomplements.Zlength_cons. rewrite <- Z.add_1_l.
+      rewrite (Ring_theory.morph_add word.ring_morph).
+      admit. (* ring *)
+  Admitted.
+
   Local Infix "*" := sep.
 
   Lemma array_index_nat xs start n :

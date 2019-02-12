@@ -14,21 +14,21 @@ Ltac destruct_unique_match :=
     | |- _ => let N := fresh "E" in destruct e eqn: N
     end;
     try (exfalso; (contradiction || discriminate || congruence));
-    let n := numgoals in guard n <= 1
+    [> ] (* "(let n := numgoals in guard n = 1)" would not be executed if 0 goals *)
   end.
 
 Ltac unique_inversion :=
   match goal with
   | H: ?P |- _ =>
-    (let h := head_of_app P in is_constructor h || constr_eq h @eq);
+    (let h := head_of_app P in is_ind h);
     inversion H;
-    (let n := numgoals in guard n <= 1);
-    subst;
-    clear H;
-    match goal with
-    | H': ?P' |- _ => unify P P'; fail 1 (* inversion didn't do anything except simplifying *)
-    | |- _ => idtac
-    end
+    [> (* require exactly one goal *)
+     subst;
+     clear H;
+     match goal with
+     | H': ?P' |- _ => unify P P'; fail 1 (* inversion didn't do anything except simplifying *)
+     | |- _ => idtac
+     end]
   end.
 
 Ltac simpl_Z_eqb :=

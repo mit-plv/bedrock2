@@ -613,7 +613,7 @@ Section FlattenExpr.
     @eval_expr semantics_params initialM initialH e = Some res ->
     exists (fuel: nat) (finalL: locals),
       FlatImp.eval_stmt env fuel initialL initialM s = Some (finalL, initialM) /\
-      FlatImp.eval_bcond finalL resCond = Some (negb (reg_eqb res (ZToReg 0))).
+      FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))).
   Proof.
     destruct e; introv F Ex U Ev;
     unfold flattenExprAsBoolExpr in F.

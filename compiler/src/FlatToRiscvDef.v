@@ -26,58 +26,32 @@ Module Import FlatToRiscvDef.
     compile_ext_call_length: forall binds f args,
         Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
   }.
-End FlatToRiscvDef.
 
-Section FlatToRiscv1.
-  Context {p: unique! FlatToRiscvDef.parameters}.
-
-  Instance bopname_params: Syntax.parameters := {|
+  Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
     Syntax.varname := Register;
     Syntax.funname := Empty_set;
     Syntax.actname := actname;
   |}.
 
+  Local Set Refine Instance Mode.
+
+  Instance mk_FlatImpSize_params(p: parameters): FlatImpSize.parameters := {|
+    FlatImpSize.max_ext_call_code_size := max_ext_call_code_size;
+  |}.
+  Proof.
+    abstract (
+        intros a;
+        pose proof (compile_ext_call_length [] a []);
+        pose proof (Zlength_nonneg (compile_ext_call [] a []));
+        lia).
+  Defined.
+
+End FlatToRiscvDef.
+
+Section FlatToRiscv1.
+  Context {p: unique! FlatToRiscvDef.parameters}.
+
   (* Part 1: Definitions needed to state when compilation outputs valid code *)
-
-  Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
-    match s with
-    | SLoad sz x a => 1
-    | SStore sz a v => 1
-    | SLit x v => 8
-    | SOp x op y z => 2
-    | SSet x y => 1
-    | SIf cond bThen bElse => 1 + (rec bThen) + (rec bElse)
-    | SLoop body1 cond body2 => 1 + (rec body1) + (rec body2)
-    | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
-    | SSkip => 1
-    | SCall binds f args => 1 + (Zlength binds + Zlength args)
-    | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size f
-    end.
-
-  Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
-  (* TODO: in coq 8.9 it will be possible to state this lemma automatically: https://github.com/coq/coq/blob/91e8dfcd7192065f21273d02374dce299241616f/CHANGES#L16 *)
-  Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s. destruct s; reflexivity. Qed.
-
-  Arguments Z.add _ _ : simpl never.
-
-  Lemma max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a.
-  Proof.
-    intros.
-    pose proof (compile_ext_call_length [] a []) as P.
-    pose proof (Zlength_nonneg (compile_ext_call [] a [])).
-    lia.
-  Qed.
-
-  Lemma stmt_size_pos: forall s, stmt_size s > 0.
-  Proof.
-    induction s; simpl; try omega;
-    pose proof (Zlength_nonneg binds);
-    pose proof (Zlength_nonneg args);
-    pose proof max_ext_call_code_size_nonneg;
-    simpl in *.
-    - destruct f.
-    - specialize (H1 a). omega.
-  Qed.
 
   (* TODO is 2^9 really the best we can get? *)
   Definition stmt_not_too_big(s: stmt): Prop := stmt_size s < 2 ^ 9.

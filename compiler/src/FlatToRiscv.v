@@ -93,7 +93,7 @@ Module Import FlatToRiscv.
       FlatImp.syntax_params := syntax_params;
       FlatImp.ext_spec := ext_spec;
       FlatImp.max_ext_call_code_size := max_ext_call_code_size;
-      FlatImp.max_ext_call_code_size_nonneg := FlatToRiscvDef.max_ext_call_code_size_nonneg;
+      FlatImp.max_ext_call_code_size_nonneg := FlatImpSize.max_ext_call_code_size_nonneg;
     |};
 
     Machine := @RiscvMachine Register W _ mem actname;
@@ -325,6 +325,10 @@ Section FlatToRiscv1.
         repeat match goal with
                | s: stmt |- _ => unique pose proof (stmt_size_pos s)
                end;
+        match goal with
+        | |- ?SZ _ _ < _ => (* COQBUG https://github.com/coq/coq/issues/9268 *)
+          change @stmt_size with SZ in *
+        end;
         lia
     end.
 
@@ -656,15 +660,6 @@ Section FlatToRiscv1.
              clear H
            end.
 
-  Ltac destruct_everything :=
-    destruct_products;
-    try destruct_pair_eqs;
-    destruct_conjs;
-    repeat match goal with
-           | m: _ |- _ => destruct_RiscvMachine m
-           end;
-    subst.
-
   Ltac prove_ext_guarantee :=
     eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ];
     (* eauto using the lemmas below doesn't work, why? *)
@@ -859,9 +854,9 @@ Section FlatToRiscv1.
   Qed.
 
   Lemma compile_stmt_correct_aux:
-    forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH R,
+    forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
-    forall initialL insts,
+    forall R initialL insts,
     @compile_stmt def_params iset s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
@@ -884,8 +879,11 @@ Section FlatToRiscv1.
       | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
         pose proof (compile_stmt_emits_valid _ doesSupportM H1 H2)
       end;
+      repeat match goal with
+             | m: _ |- _ => destruct_RiscvMachine m
+             end;
       simpl in *;
-      destruct_everything.
+      simp.
 
     - (* SInteract *)
       eapply runsTo_weaken.
@@ -943,29 +941,63 @@ Section FlatToRiscv1.
 
     - (* SIf/Then *)
       (* branch if cond = false (will not branch *)
-      eapply det_step.
-      {
-        simulate'.
-        admit.
-      }
-      admit.
-
-      (*
-      eapply runsToStep; simpl in *; subst *.
-      + fetch_inst.
-        destruct cond; [destruct op | ]; simpl in *;
-          destruct_everything;
-          run1step''';
-          apply execState_step.
+      eapply det_step; simpl in *; subst.
+      + simulate'.
+        destruct cond; [destruct op | ];
+          simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + (* use IH for then-branch *)
-        spec_IH IHfuelH IH s1.
-        apply (runsToSatisfying_trans IH). clear IH.
-        (* jump over else-branch *)
-        intros.
-        destruct_everything.
-        run1step.
-        run1done.
-       *)
+        eapply runsTo_trans.
+        * eapply IHexec.
+          1: reflexivity.
+          1: solve_stmt_not_too_big.
+          1: assumption.
+          1: admit. (* TODO divisibleBy4 *)
+          1: reflexivity.
+          1: simpl.
+          { unfold program in *.
+            move H7 at bottom.
+            match type of H7 with
+            | context [array ptsto_instr ?size ?start (?xs ++ ?ys)] =>
+              pose proof (array_append ptsto_instr size xs ys start) as P
+            end.
+            simpl in P.
+
+            Fail rewrite P in H7.
+            (* TODO why does that fail, while I can do the same manually below? *)
+            match type of P with
+            | iff1 ?LHS ?RHS =>
+              match type of H7 with
+              | context C [ LHS ] => let t := context C [ RHS ] in assert t as H7'
+              end
+            end.
+            { seplog. exact P. }
+            clear H7. rename H7' into H7.
+
+            clear P.
+            seplog.
+          }
+          { reflexivity. }
+          { reflexivity. }
+          { prove_ext_guarantee. }
+        * simpl. intros. simp. destruct_RiscvMachine middle. subst.
+          eapply det_step.
+          { simulate'.
+            { simpl.
+              replace ((word.eqb
+            (word.modu
+               (word.add
+                  (word.add (word.add initialL_pc (word.of_Z 4))
+                     (word.mul (word.of_Z 4) (word.of_Z (Zlength (compile_stmt iset bThen)))))
+                  (word.of_Z ((Zlength (compile_stmt iset bElse) + 1) * 4)))
+               (word.of_Z 4)) (word.of_Z 0))) with true by admit.
+              simpl.
+              simulate'.
+              simpl.
+              reflexivity. }
+          }
+          { run1done.
+            - admit.
+            - simpl_word_exprs word_ok. admit. }
 
     - (* SIf/Else *) (*
       (* branch if cond = 0 (will  branch) *)

@@ -395,7 +395,7 @@ Section EmitsValid.
       pose proof (Zlength_nonneg binds);
       pose proof (Zlength_nonneg args);
       specialize (compile_ext_call_length binds a args);
-      pose proof max_ext_call_code_size_nonneg;
+      pose proof FlatImpSize.max_ext_call_code_size_nonneg;
       simpl in *.
     specialize (H1 a).
     omega.

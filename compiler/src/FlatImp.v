@@ -4,7 +4,6 @@ Require Import lib.LibTacticsMin.
 Require Import riscv.util.ListLib.
 Require Import bedrock2.Semantics.
 Require Import riscv.Utility.
-Require Import riscv.MkMachineWidth.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require compiler.NoActionSyntaxParams.
@@ -47,6 +46,54 @@ Section Syntax.
 
 End Syntax.
 
+
+Module Import FlatImpSize.
+  Class parameters := {
+    bopname_params :> Syntax.parameters;
+    max_ext_call_code_size: actname -> Z;
+    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
+  }.
+End FlatImpSize.
+
+Section FlatImpSize1.
+
+  Context {p: unique! FlatImpSize.parameters}.
+
+
+  Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
+    match s with
+    | SLoad sz x a => 1
+    | SStore sz a v => 1
+    | SLit x v => 8
+    | SOp x op y z => 2
+    | SSet x y => 1
+    | SIf cond bThen bElse => 1 + (rec bThen) + (rec bElse)
+    | SLoop body1 cond body2 => 1 + (rec body1) + (rec body2)
+    | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
+    | SSkip => 1
+    | SCall binds f args => 1 + (Zlength binds + Zlength args)
+    | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size f
+    end.
+
+  Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
+  Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s.
+  Proof. destruct s; reflexivity. Qed.
+
+  Arguments Z.add _ _ : simpl never.
+
+  Lemma stmt_size_pos: forall s, stmt_size s > 0.
+  Proof.
+    induction s; simpl; try omega;
+    pose proof (Zlength_nonneg binds);
+    pose proof (Zlength_nonneg args);
+    pose proof max_ext_call_code_size_nonneg;
+    simpl in *.
+    - omega.
+    - specialize (H1 a). omega.
+  Qed.
+
+End FlatImpSize1.
+
 Module Import FlatImp.
   Class parameters := {
     syntax_params :> Syntax.parameters;
@@ -74,6 +121,12 @@ Module Import FlatImp.
   }.
 End FlatImp.
 
+Instance mk_FlatImpSize_params(p: FlatImp.parameters): FlatImpSize.parameters := {|
+    FlatImpSize.bopname_params := FlatImp.syntax_params;
+    FlatImpSize.max_ext_call_code_size := FlatImp.max_ext_call_code_size;
+    FlatImpSize.max_ext_call_code_size_nonneg := FlatImp.max_ext_call_code_size_nonneg;
+|}.
+
 Local Notation "' x <- a ; f" :=
   (match (a: option _) with
    | x => f
@@ -92,12 +145,12 @@ Section FlatImp1.
 
     Definition eval_bbinop(st: locals)(op: bbinop)(x y: word): bool :=
       match op with
-      | BEq  => reg_eqb x y
-      | BNe  => negb (reg_eqb x y)
-      | BLt  => signed_less_than x y
-      | BGe  => negb (signed_less_than x y)
-      | BLtu => ltu x y
-      | BGeu => negb (ltu x y)
+      | BEq  => word.eqb x y
+      | BNe  => negb (word.eqb x y)
+      | BLt  => word.lts x y
+      | BGe  => negb (word.lts x y)
+      | BLtu => word.ltu x y
+      | BGeu => negb (word.ltu x y)
       end.
 
     Definition eval_bcond(st: locals)(cond: bcond): option bool :=
@@ -108,7 +161,7 @@ Section FlatImp1.
           Some (eval_bbinop st op mx my)
       | CondNez x =>
           'Some mx <- map.get st x;
-          Some (negb (reg_eqb mx (ZToReg 0)))
+          Some (negb (word.eqb mx (word.of_Z 0)))
       end.
 
     (* If we want a bigstep evaluation relation, we either need to put
@@ -128,7 +181,7 @@ Section FlatImp1.
             'Some m <- store sz m a v;
             Some (st, m)
         | SLit x v =>
-            Some (map.put st x (ZToReg v), m)
+            Some (map.put st x (word.of_Z v), m)
         | SOp x op y z =>
             'Some y <- map.get st y;
             'Some z <- map.get st z;
@@ -162,40 +215,6 @@ Section FlatImp1.
         end
       end.
 
-    Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
-        match s with
-        | SLoad sz x a => 1
-        | SStore sz a v => 1
-        | SLit x v => 8
-        | SOp x op y z => 2
-        | SSet x y => 1
-        | SIf cond bThen bElse => 1 + (rec bThen) + (rec bElse)
-        | SLoop body1 cond body2 => 1 + (rec body1) + (rec body2)
-        | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
-        | SSkip => 1
-        | SCall binds f args => 1 + (Zlength binds + Zlength args)
-        | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size f
-        end.
-
-    Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
-
-    Arguments Z.add: simpl never.
-    Arguments Z.mul: simpl never.
-
-    Lemma stmt_size_pos: forall s, stmt_size s > 0.
-    Proof.
-      induction s; simpl; try omega;
-        repeat match goal with
-               | e: expr |- _ => unique pose proof (expr_size_pos e)
-               | l: list _ |- _ => unique pose proof (Zlength_nonneg l)
-               end;
-        try omega.
-      {
-        pose proof (max_ext_call_code_size_nonneg a).
-        lia.
-      }
-    Qed.
-
     Local Ltac inversion_lemma :=
       intros;
       simpl in *;
@@ -224,7 +243,7 @@ Section FlatImp1.
 
     Lemma invert_eval_SLit: forall fuel initialSt initialM x v final,
       eval_stmt (S fuel) initialSt initialM (SLit x v) = Some final ->
-      final = (map.put initialSt x (ZToReg v), initialM).
+      final = (map.put initialSt x (word.of_Z v), initialM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SOp: forall fuel x y z op initialSt initialM final,
@@ -327,7 +346,7 @@ Section FlatImp1.
         post t m' l ->
         exec (SStore sz a v) t m l post
     | ExLit: forall t m l x v post,
-        post t m (map.put l x (ZToReg v)) ->
+        post t m (map.put l x (word.of_Z v)) ->
         exec (SLit x v) t m l post
     | ExOp: forall t m l x op y y' z z' post,
         map.get l y = Some y' ->
