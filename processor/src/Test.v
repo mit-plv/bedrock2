@@ -288,10 +288,46 @@ Section Equiv.
      or say: kami trace related to bedrock2 trace if memory doesn't change and IO matches
   *)
 
+  (* note: only holds if the nondet machine never picks an arbitrary value of the empty set,
+     which is the case for all riscv machines, but not for a more abstract runsTo,
+     and also requires no memory-changing or invalid events *)
+  Lemma pick_from_runsTo: forall init post,
+      runsTo init post ->
+      exists final, post final. (* /\ traces_related t final.(getLog).*) (* and steps there? *)
+  Admitted.
+
+  Lemma simulate_multistep: forall (init final: FakeProcessor) (t: list Event),
+      star fakestep init final t ->
+      forall (post: RiscvMachine -> Prop),
+      (forall m, post m -> exists t, traces_related t m.(getLog)) -> (* no malformed traces *)
+      runsTo (from_Fake init) post ->
+      exists (rest : list Event) (final : RiscvMachine),
+        post final /\ traces_related (rest ++ t) final.(getLog).
+  Proof.
+    induction 1; intros post C R.
+    - apply pick_from_runsTo in R. destruct R as (final & R).
+      specialize (C final R). destruct C as [t C].
+      exists t. exists final. rewrite app_nil_r. auto.
+    - inversion R.
+      + (* riscv-coq is done *)
+        specialize (C (from_Fake x) H1). destruct C as [t C].
+        exists (firstn (length t - (length t2 + length t1)) t).
+        exists (from_Fake x). split; auto.
+        replace (firstn (length t - (length t2 + length t1)) t ++ t2 ++ t1) with t by admit.
+        exact C.
+
+      (* what if the fake machine steps further than the riscv spec machine?
+         Then it's supposed to be silent (creating no events).
+         But where do we show that?
+         -> Problem: from_Fake should take in trace to add  *)
+  Abort.
+
   Lemma impl_to_end_of_compiler_in_one_go(init: FakeProcessor)(post: RiscvMachine -> Prop):
       runsTo (from_Fake init) post -> (* <-- will be proved by bedrock2 program logic & compiler *)
       subset (fakeTraces init) (prefixes (post_to_traces post)).
   Proof.
+    intros R t H. unfold fakeTraces in *.
+    unfold prefixes, post_to_traces.
   Abort.
 
   Lemma simulate_step_bw: forall (m m': FakeProcessor),
