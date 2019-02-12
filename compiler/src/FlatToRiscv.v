@@ -28,7 +28,6 @@ Require Import compiler.util.Common.
 Require Import riscv.Utility.
 Require Import riscv.MkMachineWidth.
 Require Import riscv.runsToNonDet.
-Require Import compiler.Rem4.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.EmitsValid.
@@ -429,7 +428,7 @@ Section FlatToRiscv1.
                | @stmt_not_too_big => clear H
                | @valid_register => clear H
                | @valid_registers => clear H
-               | @divisibleBy4 => clear H
+        (*     | @divisibleBy4 => clear H  *)
                end
              | H: @eq ?T _ _ |- _ =>
                match T with
@@ -853,6 +852,43 @@ Section FlatToRiscv1.
       eauto using disjoint_putmany_preserves_store_bytes.
   Qed.
 
+(*
+  Definition divisibleBy4(x: word): Prop :=
+    word.modu x (word.of_Z 4) = word.of_Z 0.
+*)
+
+  Definition divisibleBy4(x: word): Prop := (word.unsigned x) mod 4 = 0.
+
+  Lemma four_fits: 4 < 2 ^ width.
+  Proof.
+    destruct width_cases as [C | C]; rewrite C; reflexivity.
+  Qed.
+
+  Ltac div4_sidecondition :=
+    pose proof four_fits;
+    rewrite ?word.unsigned_of_Z, ?Z.mod_small;
+    lia.
+
+  Lemma unsigned_of_Z_4: word.unsigned (word.of_Z (word := word) 4) = 4.
+  Proof. div4_sidecondition. Qed.
+
+  Lemma unsigned_of_Z_0: word.unsigned (word.of_Z (word := word) 0) = 0.
+  Proof. div4_sidecondition. Qed.
+
+  Lemma divisibleBy4_add_4_r(x: word)
+    (D: divisibleBy4 x):
+    divisibleBy4 (word.add x (word.of_Z 4)).
+  Proof.
+    unfold divisibleBy4 in *.
+    rewrite word.unsigned_add.
+    rewrite <- Znumtheory.Zmod_div_mod.
+    - rewrite Zplus_mod. rewrite D. rewrite unsigned_of_Z_4. reflexivity.
+    - lia.
+    - destruct width_cases as [C | C]; rewrite C; reflexivity.
+    - unfold Z.divide. exists (2 ^ width / 4).
+      destruct width_cases as [C | C]; rewrite C; reflexivity.
+  Qed.
+
   Lemma compile_stmt_correct_aux:
     forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
@@ -951,30 +987,30 @@ Section FlatToRiscv1.
           1: reflexivity.
           1: solve_stmt_not_too_big.
           1: assumption.
-          1: admit. (* TODO divisibleBy4 *)
+          {
+
+  Ltac solve_divisibleBy4 :=
+    lazymatch goal with
+    | |- divisibleBy4 _ => idtac
+    | |- _ => fail "not a divisibleBy4 goal"
+    end;
+    repeat match goal with
+           | H: ?P |- _ => let h := head_of_app P in
+                           assert_fails (constr_eq h @divisibleBy4);
+                           clear H
+           end;
+    simpl;
+    auto using divisibleBy4_add_4_r.
+
+            solve_divisibleBy4.
+          }
           1: reflexivity.
           1: simpl.
-          { unfold program in *.
-            move H7 at bottom.
-
-            seprewrite_in @array_append H7.
-            seprewrite_in @array_cons H7. (* only transforms P1*P2*P3 into P2*P1*P3 *)
-
-            match type of H7 with
-            | context [array ptsto_instr ?size ?start (?x :: ?xs)] =>
-              pose proof (array_cons ptsto_instr size x xs start) as P
+          { move H7 at bottom.
+            unfold program in *.
+            repeat match goal with
+            | H: _ ?m |- _ ?m => simpl in H (* does array_cons *) || seprewrite_in @array_append H
             end.
-            seprewrite_in P H7. (* still does nothing *)
-
-            match type of P with
-            | iff1 ?LHS ?RHS =>
-              match type of H7 with
-              | context C [ LHS ] => let t := context C [ RHS ] in assert t as H7'
-              end
-            end.
-            { seplog. }
-            clear H7. rename H7' into H7. clear P.
-
             seplog.
           }
           { reflexivity. }
