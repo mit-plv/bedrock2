@@ -127,7 +127,7 @@ Section MMIO1.
         simple_isMMIOAddr addr = true /\
         (* TODO this one says "exists addr in the 4-byte range which is undefined", but we probably
            need "forall addr in the 4 byte range, it is undefined" *)
-        Memory.loadWord m addr = None /\
+        Memory.loadWord m addr = None /\ (* <-- TODO move to ext_guarantee *)
         match action with
         | MMInput => argvals = [addr] /\ forall val, post m [val]
         | MMOutput => exists val, argvals = [addr; val] /\ post m nil

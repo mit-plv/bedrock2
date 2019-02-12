@@ -144,20 +144,23 @@ Section Equiv.
   | MMInputEvent(addr v: word)
   | MMOutputEvent(addr v: word).
 
-  Definition riscvEvent_to_common(e: LogItem MMIOAction): Event :=
-    match e with
-    | ((m1, MMInput, [addr]), (m2, [v])) => MMInputEvent addr v
-    | ((m1, MMOutput, [addr; v]), (m2, [])) => MMOutputEvent addr v
-    | _ => MMOutputEvent (word.of_Z 0) (word.of_Z 0) (* TODO what to do in error case? *)
-    end.
+  (* note: memory can't change *)
+  Inductive events_related: Event -> LogItem MMIOAction -> Prop :=
+  | relate_MMInput: forall m addr v,
+      events_related (MMInputEvent addr v) ((m, MMInput, [addr]), (m, [v]))
+  | relate_MMOutput: forall m addr v,
+      events_related (MMOutputEvent addr v) ((m, MMOutput, [addr; v]), (m, [])).
 
-  Definition riscvTrace_to_common: list (LogItem MMIOAction) -> list Event :=
-    List.map riscvEvent_to_common.
+  (* given a kami trace, assert that there exists list of memories s.t zipped together,
+     we get bedrock2 trace ? *)
 
-  (* TODO!! this direction cannot be defined because it misses information such as the memory *)
-  Definition commonEvent_to_riscv: Event -> LogItem MMIOAction. Admitted.
-  Definition commonTrace_to_riscv: list Event -> list (LogItem MMIOAction) :=
-    List.map commonEvent_to_riscv.
+  Inductive traces_related: list Event -> list (LogItem MMIOAction) -> Prop :=
+  | relate_nil:
+      traces_related nil nil
+  | relate_cons: forall e e' t t',
+      events_related e e' ->
+      traces_related t t' ->
+      traces_related (e :: t) (e' :: t').
 
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Definition mcomp_sat_unit(m: M unit)(initialL: RiscvMachine)(post: RiscvMachine -> Prop): Prop :=
@@ -187,10 +190,10 @@ Section Equiv.
     fun prefix => exists rest, traces (rest ++ prefix).
 
   Definition riscvTraces(initial: RiscvMachine): list Event -> Prop :=
-    fun t => exists final t', star riscvStep initial final t' /\ riscvTrace_to_common t' = t.
+    fun t => exists final t', star riscvStep initial final t' /\ traces_related t t'.
 
   Definition post_to_traces(post: RiscvMachine -> Prop): list Event -> Prop :=
-    fun t => exists final, post final /\ t = riscvTrace_to_common final.(getLog).
+    fun t => exists final, post final /\ traces_related t final.(getLog).
 
   Definition runsTo: RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
     runsTo (mcomp_sat_unit (run1 iset)).
@@ -202,12 +205,11 @@ Section Equiv.
 
   Axiom fakestep: FakeProcessor -> FakeProcessor -> list Event -> Prop.
 
-  Lemma simulate_bw_step: forall (m m': FakeProcessor) (t: list Event),
-      fakestep m m' t ->
-      riscvStep (from_Fake m) (from_Fake m') (commonTrace_to_riscv t).
+  Lemma simulate_bw_step: forall (m1 m2: FakeProcessor) (t: list Event),
+      fakestep m1 m2 t ->
+      exists t', riscvStep (from_Fake m1) (from_Fake m2) t' /\ traces_related t t'.
   Proof.
     intros.
-    econstructor.
   Admitted.
 
   Section Lift.
@@ -232,12 +234,15 @@ Section Equiv.
   End Lift.
 
   (* TODO the "from_Fake" direction doesn't really work *)
-  Lemma simulate_bw_star: forall (m m': FakeProcessor) (t: list Event),
-      star fakestep m m' t ->
-      star riscvStep (from_Fake m) (from_Fake m') (commonTrace_to_riscv t).
+  Lemma simulate_bw_star: forall (m1 m2: FakeProcessor) (t: list Event),
+      star fakestep m1 m2 t ->
+      exists t', star riscvStep (from_Fake m1) (from_Fake m2) t' /\ traces_related t t'.
   Proof.
-    apply lift_star_simulation. apply simulate_bw_step.
-  Qed.
+    (* TODO
+       apply lift_star_simulation
+       doesn't work any more .
+       apply simulate_bw_step. *)
+  Admitted.
 
   Definition fakeTraces(init: FakeProcessor): list Event -> Prop :=
     fun t => exists final, star fakestep init final t.
@@ -247,10 +252,9 @@ Section Equiv.
   Proof.
     intros m t H. unfold fakeTraces, riscvTraces in *.
     destruct H as [m' H].
-    apply simulate_bw_star in H.
-    do 2 eexists; split; [eassumption|].
-    (* TODO trace conversion does not really commute *)
-  Admitted.
+    apply simulate_bw_star in H. destruct H as (t' & H).
+    do 2 eexists. exact H.
+  Qed.
 
   (* assume this first converts the FakeProcessor from SpecProcessor to ImplProcessor state,
      and also converts from Kami trace to common trace *)
@@ -278,6 +282,17 @@ Section Equiv.
     rewrite from_Fake_to_Fake. (* <-- TODO doesn't hold! *)
     apply subset_refl.
   Qed.
+
+  (* TODO in bedrock2: differential memory in trace instead of whole memory ?
+
+     or say: kami trace related to bedrock2 trace if memory doesn't change and IO matches
+  *)
+
+  Lemma impl_to_end_of_compiler_in_one_go(init: FakeProcessor)(post: RiscvMachine -> Prop):
+      runsTo (from_Fake init) post -> (* <-- will be proved by bedrock2 program logic & compiler *)
+      subset (fakeTraces init) (prefixes (post_to_traces post)).
+  Proof.
+  Abort.
 
   Lemma simulate_step_bw: forall (m m': FakeProcessor),
       fakeStep m = m' ->
