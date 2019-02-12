@@ -956,24 +956,25 @@ Section FlatToRiscv1.
           1: simpl.
           { unfold program in *.
             move H7 at bottom.
-            match type of H7 with
-            | context [array ptsto_instr ?size ?start (?xs ++ ?ys)] =>
-              pose proof (array_append ptsto_instr size xs ys start) as P
-            end.
-            simpl in P.
 
-            Fail rewrite P in H7.
-            (* TODO why does that fail, while I can do the same manually below? *)
+            seprewrite_in @array_append H7.
+            seprewrite_in @array_cons H7. (* only transforms P1*P2*P3 into P2*P1*P3 *)
+
+            match type of H7 with
+            | context [array ptsto_instr ?size ?start (?x :: ?xs)] =>
+              pose proof (array_cons ptsto_instr size x xs start) as P
+            end.
+            seprewrite_in P H7. (* still does nothing *)
+
             match type of P with
             | iff1 ?LHS ?RHS =>
               match type of H7 with
               | context C [ LHS ] => let t := context C [ RHS ] in assert t as H7'
               end
             end.
-            { seplog. exact P. }
-            clear H7. rename H7' into H7.
+            { seplog. }
+            clear H7. rename H7' into H7. clear P.
 
-            clear P.
             seplog.
           }
           { reflexivity. }

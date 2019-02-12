@@ -17,10 +17,11 @@ Section Array.
   Proof. reflexivity. Qed.
 
   Lemma array_append xs ys start:
-    let mid := word.add start (word.mul size (word.of_Z (Zcomplements.Zlength xs))) in
-    iff1 (array start (xs ++ ys)) (sep (array start xs) (array mid ys)).
+    iff1 (array start (xs ++ ys))
+         (sep (array start xs)
+              (array (word.add start (word.mul size (word.of_Z (Zcomplements.Zlength xs)))) ys)).
   Proof.
-    revert ys start. induction xs; intros ys start mid; subst mid.
+    revert ys start. induction xs; intros ys start.
     - simpl. rewrite Zcomplements.Zlength_nil.
       match goal with
       | |- iff1 _ (sep _ (array ?mid _)) => replace mid with start; cycle 1
