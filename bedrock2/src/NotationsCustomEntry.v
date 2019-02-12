@@ -31,7 +31,7 @@ Infix "|"   := (expr.op or)   (in custom bedrock_expr at level 9, left associati
 
 Infix  "<"  := (expr.op ltu)  (in custom bedrock_expr at level 10, no associativity).
 Infix ".<"  := (expr.op lts)  (in custom bedrock_expr at level 10, no associativity). (* DRAFT *)
-Infix "=="  := (expr.op lts)  (in custom bedrock_expr at level 10, no associativity).
+Infix "=="  := (expr.op  eq)  (in custom bedrock_expr at level 10, no associativity).
 
 (* DRAFT *)
 Notation "load1( a )" := (expr.load access_size.one a)
@@ -152,7 +152,7 @@ Module test.
   epose (fun W a b e x y f read write => bedrock_func_body:(
     require (load(1) ^ constr:(expr.literal 231321) ) else { _ };
     require (1 ^ load4(1+1+1+load(1))) else { _ };
-    { a = (1+1) } ;
+    { a = (1+1 == 1) } ;
     require (1 ^ 1) else { _ };
     store1(e, load2(1)+load4(1)+load1(load(1))) ;
     store2(e, 1+1+1);
@@ -196,7 +196,7 @@ Module test.
 
   epose bedrock_func_body:(
       if (1<<(1+1)*(1+1) ^ (1+1+1)) {
-          require (1 ^ 1) else { _ }; _
+          require (1 ^ 1 == 1) else { _ }; _
       }).
 
   epose bedrock_func_body:(
