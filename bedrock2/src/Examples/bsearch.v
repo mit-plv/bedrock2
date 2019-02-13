@@ -209,23 +209,36 @@ Qed.
 
   Definition absint_eq {T} := @eq T.
   Local Infix "=~>" := absint_eq (at level 70, no associativity).
-  
+
+  (* 
+    let eval_early := match goal with _ => restart_timer end in
+    let eval_early := match goal with _ =>  finish_timing ( "named_pose_asfresh" ) end in
+  *)
+  Ltac time_constr idtacv tac :=
+  let eval_early := match goal with _ => restart_timer end in
+  let ret := tac () in
+  let eval_early := match goal with _ => idtacv (); finish_timing ( "Tactic evaluation" ) end in
+  ret.
+
   Ltac absint e :=
+    let __ := match constr:(Set) with _ => idtac "absint" e end in
     let re := rdelta e in
     lazymatch type of e with
     | word.rep =>
       match re with
       | _ => match goal with H: word.unsigned e =~> _ |- _ => H end
       | word.of_Z ?a =>
-        let Ba := rbounded a in
+        let Ba := time_constr ltac:(fun _ => idtac re "rbounded" a) ltac:(fun _ => rbounded a) in
         named_pose_proof (absint_of_Z a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)))
       | word.add ?a ?b =>
         let Ha := absint a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
         let Hb := absint b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
         let Re := constr:(Ra+Rb) in
         let Re := match e with re => Re | _ => named_pose_asfresh Re e end in
-        let Be := rbounded Re in
-        named_pose_proof (absint_add a b Ra Ha Rb Hb (boundscheck (X0:=0) (X1:=2^width) Be (eq_refl true)) : word.unsigned e =~> Re)
+        let Be := time_constr ltac:(fun _ => idtac re "rbounded" Re) ltac:(fun _ => rbounded Re) in
+        let res := time_constr ltac:(fun _ => idtac "npp") ltac:(fun _ => constr:((absint_add a b Ra Ha Rb Hb (boundscheck (X0:=0) (X1:=2^width) Be (eq_refl true)) : word.unsigned e =~> Re))) in
+        let __ := match goal with _ => idtac "absint_add" a b Ra Ha Rb Hb "(" "boundscheck" "(X0:=0)" "(X1:=2^width)" Be "(eq_refl true)" ":" "word.unsigned" e "=~>" Re end in
+        named_pose_proof res
       | word.sru ?a ?b =>
         let Ha := absint a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
         let Hb := absint b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
@@ -257,6 +270,109 @@ Qed.
       end
     end.
 
+  Definition PARAMETERS : Semantics.parameters :=
+  let word := Naive.word 64 eq_refl in
+let byte := Naive.word 8 eq_refl in
+{|
+syntax := StringNamesSyntax.make BasicC64Syntax.StringNames_params;
+width := 64;
+word := word;
+byte := byte;
+mem := SortedList.map
+         {|
+         SortedList.parameters.key := word;
+         SortedList.parameters.value := byte;
+         SortedList.parameters.ltb := word.ltu |}
+         (StrictOrderWord 64 word (Naive.ok 64 eq_refl));
+locals := SortedListString.map Naive.rep;
+env := SortedListString.map
+         (list Syntax.varname * list Syntax.varname * Syntax.cmd.cmd);
+funname_eqb := eqb;
+ext_spec := fun
+              (_ : list
+                     (SortedList.map
+                        {|
+                        SortedList.parameters.key := word;
+                        SortedList.parameters.value := byte;
+                        SortedList.parameters.ltb := word.ltu |}
+                        (StrictOrderWord 64 word (Naive.ok 64 eq_refl)) *
+                      Syntax.actname * list word *
+                      (SortedList.map
+                         {|
+                         SortedList.parameters.key := word;
+                         SortedList.parameters.value := byte;
+                         SortedList.parameters.ltb := word.ltu |}
+                         (StrictOrderWord 64 word (Naive.ok 64 eq_refl)) *
+                       list word)))
+              (_ : SortedList.map
+                     {|
+                     SortedList.parameters.key := word;
+                     SortedList.parameters.value := byte;
+                     SortedList.parameters.ltb := word.ltu |}
+                     (StrictOrderWord 64 word (Naive.ok 64 eq_refl)))
+              (_ : Syntax.actname) (_ : list word)
+              (_ : SortedList.map
+                     {|
+                     SortedList.parameters.key := word;
+                     SortedList.parameters.value := byte;
+                     SortedList.parameters.ltb := word.ltu |}
+                     (StrictOrderWord 64 word (Naive.ok 64 eq_refl)) ->
+                   list word -> Prop) => False |}
+     : Semantics.parameters.
+
+  Goal
+
+  forall x : @word.rep _ (@word PARAMETERS),
+  let x0 : @word.rep _ (@word PARAMETERS) :=
+    @word.add _ (@word PARAMETERS) x x in
+  let x1 : @word.rep _ (@word PARAMETERS) :=
+    @word.add _ (@word PARAMETERS) x0 x0 in
+  let x2 : @word.rep _ (@word PARAMETERS) :=
+    @word.add _ (@word PARAMETERS) x1 x1 in
+  let x3 : @word.rep _ (@word PARAMETERS) :=
+    @word.add _ (@word PARAMETERS) x2 x2 in
+  let x4 : @word.rep _ (@word PARAMETERS) :=
+    @word.add _ (@word PARAMETERS) x3 x3 in
+  let x5 : @word.rep _ (@word PARAMETERS) :=
+    @word.add _ (@word PARAMETERS) x4 x4 in
+  let x6 : @word.rep _ (@word PARAMETERS) :=
+    @word.add _ (@word PARAMETERS) x5 x5 in
+  let x9 : Z :=
+    Z.add (@word.unsigned _ (@word PARAMETERS) x)
+      (@word.unsigned _ (@word PARAMETERS) x) in
+  let x10 : Z := Z.add x9 x9 in
+  let x11 : Z := Z.add x10 x10 in
+  let x12 : Z := Z.add x11 x11 in
+  let x13 : Z := Z.add x12 x12 in
+  let x14 : Z := Z.add x13 x13 in
+  let x15 : Z := Z.add x14 x14 in
+  let x16 : Z := Z.add x15 x15 in
+  let x7 : @word.rep _ (@word PARAMETERS) :=
+    @word.add _ (@word PARAMETERS) x6 x6 in
+  @eq Prop
+    (@eq Z
+       (@word.unsigned _
+          (Naive.word (Zpos (xO (xO (xO (xO (xO (xO xH)))))))
+             (@eq_refl comparison Lt)) x7) x16)
+    (@eq Z (@word.unsigned _ (@word PARAMETERS) x7) x16).
+  intros.
+  
+  Time reflexivity.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   Goal forall x, 0 <= word.unsigned x < 5 ->
                    let x := x^+x in
                    let x := x^+x in
@@ -271,10 +387,83 @@ Qed.
   Proof.
     intros.
 
+    Strategy -1000 [word].
     Set Ltac Profiling.
+    Time
     let e := match goal with x := _ |- _ => x end in
     let H := absint e in
     idtac H.
+    Time Check absint_add x7 x7 x16    H15 x16    H15 (boundscheck (X0:=0) (X1:=2^width) H16 (eq_refl true)).
+    pose ( absint_add x7 x7 x16 ) as LA.
+    let T := type of H15 in let T2 := match type of LA with ?T -> _ => T end in
+                            assert (T2 = T); [ clear | ].
+    {
+      clear.
+      move x7 at bottom.
+      Strategy 1000 [word.add].
+      Opaque word.add.
+      Set Printing All.
+      cbv [absint_eq].
+      cbv [Z.compare].
+  assert (@eq Prop
+    (@eq Z
+       (@word.unsigned _
+          (Naive.word (Zpos (xO (xO (xO (xO (xO (xO xH)))))))
+             (@eq_refl comparison Lt)) x7) x16)
+    (@eq Z (@word.unsigned _ (@word parameters) x7) x16)
+         ).
+  {
+    repeat match goal with H : _ |- _ => revert H end.
+
+    Goal 
+    Time reflexivity.
+      apply f_equal2.
+      {
+        
+        match goal with
+        | [ |- ?f ?x ?y = ?f' ?x' ?y ] => pose f as F; change (F x y = F x' y)
+        end.
+        Time reflexivity.
+        Strategy 1000 [word.unsigned].
+        generalize (@word.unsigned).
+        Time reflexivity.
+      assert (@eq Prop (
+      cbv [word parameters Z.compare].
+      Time reflexivity.
+      clearbody x7.
+      Time reflexivity.
+      generalize x7; reflexivity.
+      Time reflexivity.
+      clearbody x7.
+      Time reflexivity.
+      cbv [absint_eq].
+    Set Printing All.
+      apply f_equal2.
+      Time 2: reflexivity.
+      change tt with tt.
+      Set Printing Universes.
+      cbv [word].
+      clear.
+      clearbody x7.
+      Time reflexivity.
+      Time reflexivity.
+      lazymatch goal with |- @word.unsigned _ ?A _ = @word.unsigned _ ?B _ => change A with B
+      end.
+      Time reflexivity.
+      clear.
+      Set Printing Universes.
+      Time reflexivity.
+      progress change tt with tt in *.
+      Time 1:reflexivity.
+      apply (f_equal (fun k => k x7)).
+      Time reflexivity.
+      change (@width parameters) with 64.
+      Time reflexivity.
+      apply f_equal2_dep.
+    Time Check absint_add x7 x7 x16    H15 x16    H15 (boundscheck (X0:=0) (X1:=2^width) H16 (eq_refl true)).
+
+    Show Ltac Profile CutOff 0.
+    Print Ltac time_constr.
 
 
   Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
