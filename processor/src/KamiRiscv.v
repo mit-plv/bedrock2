@@ -9,6 +9,7 @@ Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Word.Properties.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
+Require Import processor.KamiWord.
 Require Import riscv.Utility.
 Require Import riscv.Primitives.
 Require Import riscv.RiscvMachine.
@@ -65,6 +66,9 @@ Section Equiv.
 
   (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {M: Type -> Type}.
+  Context {width : Z}.
+  Context {width_cases : width = 32 \/ width = 64}.
+
   Context `{Pr: Primitives MMIOAction M}.
   Context {RVS: RiscvState M word}.
   Notation RiscvMachine := (RiscvMachine Register MMIOAction).
@@ -75,12 +79,22 @@ Section Equiv.
 
   Definition KamiMachine := KamiMachine.t width.
 
-  Definition KamiRegsToKamiMachine(k: RegsT): RiscvMachine. Admitted.
+  Definition convertRegs(rf: kword 5 -> kword width): Registers :=
+    let kkeys := HList.tuple.unfoldn (wplus (natToWord 5 1)) 31 (natToWord 5 1) in
+    let kvalues := HList.tuple.map rf kkeys in
+    let keys := HList.tuple.map (@wordToZ 5) kkeys in
+    let values := HList.tuple.map (@word
+    keys.
 
-  Definition fromKami_withLog(k: KamiMachine)(t: list (LogItem MMIOAction)): RiscvMachine.
-  Admitted.
-(*
- := {|
+      map
+  Definition KamiRegsToKamiMachine(k: RegsT): RiscvMachine. Admitted.
+  Set Printing Implicit.
+  Check getRegs.
+  Print Registers.
+  Eval cbv in RiscvMachine..RiscvMachine.
+
+
+  Definition fromKami_withLog(k: KamiMachine)(t: list (LogItem MMIOAction)): RiscvMachine := {|
     getRegs := map.empty;
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
