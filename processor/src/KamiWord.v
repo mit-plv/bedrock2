@@ -3,15 +3,14 @@ Require Import coqutil.sanity coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.
 
+Definition TODO{T: Type}: T. Admitted.
 
 Section WithWidth.
   Context {width : Z}.
-
   Context {width_nonneg : Z.lt 0 width}.
   Definition sz: nat := Z.to_nat width.
 
   Local Set Refine Instance Mode.
-  Definition TODO{T: Type}: T. Admitted.
 
   Instance word : word.word width := {|
     word.rep := Kami.Lib.Word.word sz;
@@ -88,11 +87,11 @@ Section MkWords.
   Context {width_cases : width = 32 \/ width = 64}.
 
   Lemma boundW: 0 < width. lia. Qed.
-  Instance wordW: word.word width := word width boundW.
+  Instance wordW: word.word width := word width.
   Instance wordWok: word.ok wordW := ok width boundW.
 
   Lemma bound8: 0 < 8. lia. Qed.
-  Instance word8: word.word 8 := word 8 bound8.
+  Instance word8: word.word 8 := word 8.
   Instance word8ok: word.ok word8 := ok 8 bound8.
 
   Instance WordsKami: Utility.Words := {|

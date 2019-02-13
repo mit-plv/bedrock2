@@ -34,11 +34,11 @@ Local Open Scope Z_scope.
 
 Definition kword(w: Z): Type := Kami.Lib.Word.word (Z.to_nat w).
 
-Module KamiMachine.
+Module KamiRecord.
 
   Section Width.
-    Variable width: Z.
-    
+    Context {width: Z}.
+
     Record t :=
       { pgm: kword width -> kword 32;
         rf: kword 5 -> kword width;
@@ -59,8 +59,8 @@ Module KamiMachine.
                   mem := memv |}))%mapping.
 
   End Width.
-
-End KamiMachine.
+  Arguments t: clear implicits.
+End KamiRecord.
 
 Section Equiv.
 
@@ -69,7 +69,9 @@ Section Equiv.
   Context {width : Z}.
   Context {width_cases : width = 32 \/ width = 64}.
 
-  Context `{Pr: Primitives MMIOAction M}.
+  Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
+
+  Context `{Pr: Primitives (W := W) MMIOAction M}.
   Context {RVS: RiscvState M word}.
   Notation RiscvMachine := (RiscvMachine Register MMIOAction).
 
@@ -77,45 +79,35 @@ Section Equiv.
 
   Definition NOP: w32 := LittleEndian.split 4 (encode (IInstruction Nop)).
 
-  Definition KamiMachine := KamiMachine.t width.
+  Definition KamiMachine := RegsT.
 
   Definition convertRegs(rf: kword 5 -> kword width): Registers :=
     let kkeys := HList.tuple.unfoldn (wplus (natToWord 5 1)) 31 (natToWord 5 1) in
-    let kvalues := HList.tuple.map rf kkeys in
+    let values := HList.tuple.map rf kkeys in
     let keys := HList.tuple.map (@wordToZ 5) kkeys in
-    let values := HList.tuple.map (@word
-    keys.
+    map.putmany_of_tuple keys values map.empty.
 
-      map
-  Definition KamiRegsToKamiMachine(k: RegsT): RiscvMachine. Admitted.
-  Set Printing Implicit.
-  Check getRegs.
-  Print Registers.
-  Eval cbv in RiscvMachine..RiscvMachine.
+  (* TODO
+  Definition convertMem(instrStart: word)(instrCount: nat)(dataStart: word)(dataCount: nat)
+             (instrMem: kword width -> kword 32)(dataMem: kword width -> kword width)
+    (* ranges, or a footprint defined by map? *)
+    *)
 
+  Definition KamiRecord_to_RiscvMachine
+             (k: KamiRecord.t width)(t: list (LogItem MMIOAction)): RiscvMachine :=
+    {|
+      getRegs := convertRegs (KamiRecord.rf k);
+      getPc := KamiRecord.pc k;
+      getNextPc := word.add (KamiRecord.pc k) (word.of_Z 4);
+      getMem := map.empty; (* TODO *)
+      getLog := t;
+    |}.
 
-  Definition fromKami_withLog(k: KamiMachine)(t: list (LogItem MMIOAction)): RiscvMachine := {|
-    getRegs := map.empty;
-    getPc := f.(counter);
-    getNextPc := f.(nextCounter);
-    getMem := Memory.unchecked_store_bytes 4 map.empty f.(counter) NOP;
-    getLog := t;
-  |}.
-*)
-
-(*
-  Record FakeProcessor := {
-    counter: word;
-    nextCounter: word;
-  }.
-
-  Definition fromFake_withLog(f: FakeProcessor)(t: list (LogItem MMIOAction)): RiscvMachine := {|
-    getRegs := map.empty;
-    getPc := f.(counter);
-    getNextPc := f.(nextCounter);
-    getMem := Memory.unchecked_store_bytes 4 map.empty f.(counter) NOP;
-    getLog := t;
-  |}.
+  Definition fromKami_withLog(k: KamiMachine)(t: list (LogItem MMIOAction)): option RiscvMachine :=
+    match KamiRecord.RegsToT k with
+    | Some r => Some (KamiRecord_to_RiscvMachine r t)
+    | None => None
+    end.
 
   (* common event between riscv-coq and Kami *)
   Inductive Event: Type :=
@@ -128,9 +120,6 @@ Section Equiv.
       events_related (MMInputEvent addr v) ((m, MMInput, [addr]), (m, [v]))
   | relate_MMOutput: forall m addr v,
       events_related (MMOutputEvent addr v) ((m, MMOutput, [addr; v]), (m, [])).
-
-  (* given a kami trace, assert that there exists list of memories s.t zipped together,
-     we get bedrock2 trace ? *)
 
   Inductive traces_related: list Event -> list (LogItem MMIOAction) -> Prop :=
   | relate_nil:
@@ -181,12 +170,15 @@ Section Equiv.
     subset (riscvTraces init) (prefixes (post_to_traces post)).
   Admitted.
 
-  Axiom fakestep: FakeProcessor -> FakeProcessor -> list Event -> Prop.
+  Definition kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop. Admitted. (* TODO *)
 
-  Lemma simulate_bw_step: forall (m1 m2: FakeProcessor) (t: list Event),
-      fakestep m1 m2 t ->
-      exists t', riscvStep (fromFake_withLog m1 nil) (fromFake_withLog m2 t') t' /\
-                 traces_related t t'.
+  Lemma simulate_bw_step: forall (m1 m2: KamiMachine) (t: list Event),
+      kamiStep m1 m2 t ->
+      exists t' m1' m2',
+        traces_related t t' /\
+        fromKami_withLog m1 nil = Some m1' /\
+        fromKami_withLog m2 t' = Some m2' /\
+        riscvStep m1' m2' t'.
   Proof.
     intros.
   Admitted.
@@ -212,10 +204,13 @@ Section Equiv.
     Qed.
   End Lift.
 
-  Lemma simulate_bw_star: forall (m1 m2: FakeProcessor) (t: list Event),
-      star fakestep m1 m2 t ->
-      exists t', star riscvStep (fromFake_withLog m1 nil) (fromFake_withLog m2 t') t' /\
-                 traces_related t t'.
+  Lemma simulate_bw_star: forall (m1 m2: KamiMachine) (t: list Event),
+      star kamiStep m1 m2 t ->
+      exists t' m1' m2',
+        traces_related t t' /\
+        fromKami_withLog m1 nil = Some m1' /\
+        fromKami_withLog m2 t' = Some m2' /\
+        star riscvStep m1' m2' t'.
   Proof.
     (* TODO
        apply lift_star_simulation
@@ -223,24 +218,26 @@ Section Equiv.
        apply simulate_bw_step. *)
   Admitted.
 
-  Definition fakeTraces(init: FakeProcessor): list Event -> Prop :=
-    fun t => exists final, star fakestep init final t.
+  Definition kamiTraces(init: KamiMachine): list Event -> Prop :=
+    fun t => exists final, star kamiStep init final t.
 
-  Lemma connection: forall (m: FakeProcessor),
-      subset (fakeTraces m) (riscvTraces (fromFake_withLog m nil)).
+  Lemma connection: forall (m: KamiMachine) (m': RiscvMachine),
+      fromKami_withLog m nil = Some m' ->
+      subset (kamiTraces m) (riscvTraces m').
   Proof.
-    intros m t H. unfold fakeTraces, riscvTraces in *.
-    destruct H as [m' H].
-    apply simulate_bw_star in H. destruct H as (t' & H).
-    do 2 eexists. exact H.
+    intros m1 m1' A t H. unfold kamiTraces, riscvTraces in *.
+    destruct H as [m2 H].
+    apply simulate_bw_star in H. destruct H as (t' & m1'' & m2' & R1 & R2 & R3 & R4).
+    rewrite R2 in A. inversion A. clear A. subst m1''.
+    eauto.
   Qed.
 
-  (* assume this first converts the FakeProcessor from SpecProcessor to ImplProcessor state,
+  (* assume this first converts the KamiMachine from SpecProcessor to ImplProcessor state,
      and also converts from Kami trace to common trace *)
-  Definition kamiImplTraces(init: FakeProcessor): list Event -> Prop. Admitted.
+  Definition kamiImplTraces(init: KamiMachine): list Event -> Prop. Admitted.
 
-  Axiom kamiImplSoundness: forall (init: FakeProcessor),
-      subset (kamiImplTraces init) (fakeTraces init).
+  Axiom kamiImplSoundness: forall (init: KamiMachine),
+      subset (kamiImplTraces init) (kamiTraces init).
 
   Lemma subset_trans{A: Type}(s1 s2 s3: A -> Prop):
     subset s1 s2 ->
@@ -250,14 +247,16 @@ Section Equiv.
 
   Lemma subset_refl{A: Type}(s: A -> Prop): subset s s. Proof. unfold subset. auto. Qed.
 
-  Lemma impl_to_end_of_compiler(init: FakeProcessor)(post: RiscvMachine -> Prop):
-      runsTo (fromFake_withLog init nil) post -> (* <-- will be proved by bedrock2 program logic & compiler *)
+  Lemma impl_to_end_of_compiler
+        (init: KamiMachine)(init': RiscvMachine)(post: RiscvMachine -> Prop):
+      fromKami_withLog init nil = Some init' ->
+      runsTo init' post -> (* <-- proved by bedrock2 *)
       subset (kamiImplTraces init) (prefixes (post_to_traces post)).
   Proof.
-    intro H.
+    intros E H.
     eapply subset_trans; [apply kamiImplSoundness|].
     eapply subset_trans; [|apply bridge; eassumption].
-    eapply subset_trans; [apply connection|].
+    eapply subset_trans; [apply connection; eassumption|].
     apply subset_refl.
   Qed.
 
@@ -274,25 +273,27 @@ Section Equiv.
       exists final, post final. (* /\ traces_related t final.(getLog).*) (* and steps there? *)
   Admitted.
 
-  Lemma simulate_multistep: forall (init final: FakeProcessor) (t: list Event),
-      star fakestep init final t ->
+  Lemma simulate_multistep: forall (init final: KamiMachine) (t: list Event),
+      star kamiStep init final t ->
       forall (post: RiscvMachine -> Prop),
       (forall m, post m -> exists t, traces_related t m.(getLog)) -> (* no malformed traces *)
-      runsTo (fromFake_withLog init nil) post ->
+      forall (init': RiscvMachine),
+      fromKami_withLog init nil = Some init' ->
+      runsTo init' post ->
       exists (rest : list Event) (final : RiscvMachine),
         post final /\ traces_related (rest ++ t) final.(getLog).
   Proof.
-    induction 1; intros post C R.
+    induction 1; intros post C init' E R.
     - apply pick_from_runsTo in R. destruct R as (final & R).
       specialize (C final R). destruct C as [t C].
       exists t. exists final. rewrite app_nil_r. auto.
     - inversion R.
       + (* riscv-coq is done *)
-        specialize (C (fromFake_withLog x nil) H1). destruct C as [t C].
+        edestruct C as [t D]; [eassumption|].
         exists (firstn (length t - (length t2 + length t1)) t).
-        exists (fromFake_withLog x nil). split; auto.
+        eexists; split; eauto.
         replace (firstn (length t - (length t2 + length t1)) t ++ t2 ++ t1) with t by admit.
-        exact C.
+        exact D.
 
       (* what if the fake machine steps further than the riscv spec machine?
          Then it's supposed to be silent (creating no events).
@@ -300,12 +301,4 @@ Section Equiv.
          -> Problem: from_Fake should take in trace to add  *)
   Abort.
 
-  Lemma impl_to_end_of_compiler_in_one_go(init: FakeProcessor)(post: RiscvMachine -> Prop):
-      runsTo (fromFake_withLog init nil) post -> (* <-- will be proved by bedrock2 program logic & compiler *)
-      subset (fakeTraces init) (prefixes (post_to_traces post)).
-  Proof.
-    intros R t H. unfold fakeTraces in *.
-    unfold prefixes, post_to_traces.
-  Abort.
-*)
 End Equiv.
