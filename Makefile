@@ -60,4 +60,4 @@ clean_processor:
 
 all: coqutil riscv-coq bedrock2 compiler processor
 
-clean: clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_processor
+clean: clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor
