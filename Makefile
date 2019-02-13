@@ -52,7 +52,7 @@ compiler: riscv-coq bedrock2
 clean_compiler:
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler clean
 
-processor: riscv-coq
+processor: riscv-coq kami
 	$(MAKE) -C $(ABS_ROOT_DIR)/processor
 
 clean_processor:
