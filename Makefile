@@ -28,7 +28,7 @@ coqutil:
 clean_coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil clean
 
-kami:
+kami: riscv-coq
 	$(MAKE) -C $(DEPS_DIR)/kami
 
 clean_kami:
