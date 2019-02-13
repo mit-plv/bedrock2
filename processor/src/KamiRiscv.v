@@ -87,11 +87,27 @@ Section Equiv.
     let keys := HList.tuple.map (@wordToZ 5) kkeys in
     map.putmany_of_tuple keys values map.empty.
 
-  (* TODO
-  Definition convertMem(instrStart: word)(instrCount: nat)(dataStart: word)(dataCount: nat)
-             (instrMem: kword width -> kword 32)(dataMem: kword width -> kword width)
-    (* ranges, or a footprint defined by map? *)
-    *)
+  (* kamiTODO: connect these two to Kami *)
+  Definition instrMemSize: nat. Admitted.
+  Definition dataMemSize: nat. Admitted.
+
+  Definition instrMemStart: word := word.of_Z 0.
+  Definition dataMemStart: word := word.of_Z (Z.of_nat (4 * instrMemSize)).
+
+  Definition word32_to_4bytes(w: kword 32): HList.tuple byte 4 :=
+    LittleEndian.split 4 (word.unsigned w).
+
+  Definition convertInstrMem(instrMem: kword width -> kword 32): mem :=
+    let keys := List.unfoldn (word.add (word.of_Z 4)) instrMemSize (word.of_Z 0) in
+    let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
+    Memory.unchecked_store_byte_tuple_list instrMemStart values map.empty.
+
+  Definition convertDataMem(dataMem: kword width -> kword width): mem :=
+    let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize (word.of_Z 0) in
+    let values := List.map (fun key => LittleEndian.split (Z.to_nat (width / 8))
+                                                          (word.unsigned (dataMem key)))
+                           keys in
+    Memory.unchecked_store_byte_tuple_list dataMemStart values map.empty.
 
   Definition KamiRecord_to_RiscvMachine
              (k: KamiRecord.t width)(t: list (LogItem MMIOAction)): RiscvMachine :=
@@ -99,7 +115,8 @@ Section Equiv.
       getRegs := convertRegs (KamiRecord.rf k);
       getPc := KamiRecord.pc k;
       getNextPc := word.add (KamiRecord.pc k) (word.of_Z 4);
-      getMem := map.empty; (* TODO *)
+      getMem := map.putmany (convertInstrMem (KamiRecord.pgm k))
+                            (convertDataMem (KamiRecord.mem k));
       getLog := t;
     |}.
 
