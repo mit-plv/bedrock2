@@ -17,7 +17,7 @@ fi
 
 rm -f "$VFILE.*.manglenames"
 
-if coqc -mangle-names HH "$@" ; then
+if coqc -mangle-names HH "$@" &>/dev/null ; then
     echo "[manglenames] SUCCESS: $VFILE does not depend on auto-generated names"
     touch "$VFILE.SUCCESS.manglenames"
 else
