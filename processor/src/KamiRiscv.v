@@ -1,3 +1,4 @@
+Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -25,19 +26,39 @@ Require Import riscv.MMIOTrace.
 Require Import Kami.Ex.MemTypes.
 Require Import Kami.Ex.SCMMTrace.
 Require Import Kami.Ex.SC.
-Require Import Kami.Semantics.
+Require Import Kami.Syntax Kami.Semantics.
+Require Import Kami.Tactics.
 
 Local Open Scope Z_scope.
 
 Definition kword(w: Z): Type := Kami.Lib.Word.word (Z.to_nat w).
 
 Module KamiMachine.
-  Record t(width: Z) := {
-    pgm: kword width -> kword 32;
-    rf: kword 5 -> kword width;
-    pc: kword width;
-    mem: kword width -> kword width
-  }.
+
+  Section Width.
+    Variable width: Z.
+    
+    Record t :=
+      { pgm: kword width -> kword 32;
+        rf: kword 5 -> kword width;
+        pc: kword width;
+        mem: kword width -> kword width
+      }.
+
+    Local Definition nwidth := Z.to_nat width.
+
+    Definition RegsToT (r: RegsT): option t :=
+      (mlet pgmv: (Vector (Bit 32) nwidth) <- r |> "pgm" <| None;
+         mlet rfv: (Vector (Bit nwidth) 5) <- r |> "rf" <| None;
+         mlet pcv: (Bit nwidth) <- r |> "pc" <| None;
+         mlet memv: (Vector (Bit nwidth) nwidth) <- r |> "mem" <| None;
+         (Some {| pgm := pgmv;
+                  rf := rfv;
+                  pc := pcv;
+                  mem := memv |}))%mapping.
+
+  End Width.
+
 End KamiMachine.
 
 Section Equiv.
