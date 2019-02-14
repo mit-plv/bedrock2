@@ -320,7 +320,7 @@ ext_spec := fun
                    list word -> Prop) => False |}
      : Semantics.parameters.
 
-  Goal
+  (*Goal
 
   forall x : @word.rep _ (@word PARAMETERS),
   let x0 : @word.rep _ (@word PARAMETERS) :=
@@ -356,7 +356,7 @@ ext_spec := fun
              (@eq_refl comparison Lt)) x7) x16)
     (@eq Z (@word.unsigned _ (@word PARAMETERS) x7) x16).
   intros.
-  
+  cbv [word PARAMETERS].
   Time reflexivity.
 
 
@@ -367,13 +367,89 @@ ext_spec := fun
 
 
 
+*)
 
 
 
 
 
-
+  Strategy -1000 [word parameters].
   Goal forall x, 0 <= word.unsigned x < 5 ->
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
+                   let x := x^+x in
                    let x := x^+x in
                    let x := x^+x in
                    let x := x^+x in
@@ -387,7 +463,6 @@ ext_spec := fun
   Proof.
     intros.
 
-    Strategy -1000 [word].
     Set Ltac Profiling.
     Time
     let e := match goal with x := _ |- _ => x end in
