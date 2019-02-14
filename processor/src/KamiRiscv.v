@@ -98,12 +98,12 @@ Section Equiv.
     LittleEndian.split 4 (word.unsigned w).
 
   Definition convertInstrMem(instrMem: kword width -> kword 32): mem :=
-    let keys := List.unfoldn (word.add (word.of_Z 4)) instrMemSize (word.of_Z 0) in
+    let keys := List.unfoldn (word.add (word.of_Z 4)) instrMemSize instrMemStart in
     let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
     Memory.unchecked_store_byte_tuple_list instrMemStart values map.empty.
 
   Definition convertDataMem(dataMem: kword width -> kword width): mem :=
-    let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize (word.of_Z 0) in
+    let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize dataMemStart in
     let values := List.map (fun key => LittleEndian.split (Z.to_nat (width / 8))
                                                           (word.unsigned (dataMem key)))
                            keys in
