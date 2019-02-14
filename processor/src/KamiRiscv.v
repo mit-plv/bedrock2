@@ -187,7 +187,7 @@ Section Equiv.
     subset (riscvTraces init) (prefixes (post_to_traces post)).
   Admitted.
 
-  Definition kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop. Admitted. (* TODO *)
+  Definition kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop. Admitted. (* kamiTODO *)
 
   Lemma simulate_bw_step: forall (m1 m2: KamiMachine) (t: list Event),
       kamiStep m1 m2 t ->
@@ -197,7 +197,8 @@ Section Equiv.
         fromKami_withLog m2 t' = Some m2' /\
         riscvStep m1' m2' t'.
   Proof.
-    intros.
+    (* kamiTODO invert kamiStep *)
+    (* TODO after that, use the available facts to prove that riscv-coq simulates kami *)
   Admitted.
 
   Section Lift.
@@ -277,10 +278,7 @@ Section Equiv.
     apply subset_refl.
   Qed.
 
-  (* TODO in bedrock2: differential memory in trace instead of whole memory ?
-
-     or say: kami trace related to bedrock2 trace if memory doesn't change and IO matches
-  *)
+  (* TODO in bedrock2: differential memory in trace instead of whole memory ? *)
 
   (* note: only holds if the nondet machine never picks an arbitrary value of the empty set,
      which is the case for all riscv machines, but not for a more abstract runsTo,
@@ -290,6 +288,8 @@ Section Equiv.
       exists final, post final. (* /\ traces_related t final.(getLog).*) (* and steps there? *)
   Admitted.
 
+  (* Alternative approach to proving something from which impl_to_end_of_compiler would follow
+     too, but without the intermediate lemmas. Can't see at the moment how this would work. *)
   Lemma simulate_multistep: forall (init final: KamiMachine) (t: list Event),
       star kamiStep init final t ->
       forall (post: RiscvMachine -> Prop),
