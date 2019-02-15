@@ -12,7 +12,8 @@ _CoqProject:
 	printf -- '$(DEPFLAGS_NL)' > _CoqProject
 
 # absolute paths so that emacs compile mode knows where to find error
-SRCDIR := $(shell pwd)/src
+# use cygpath -m because Coq on Windows cannot handle cygwin paths
+SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src
 ALL_VS := $(shell find $(SRCDIR) -type f -name '*.v')
 
 all: Makefile.coq.all $(ALL_VS)
