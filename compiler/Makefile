@@ -12,8 +12,9 @@ _CoqProject:
 	printf -- '$(DEPFLAGS_NL)' > _CoqProject
 
 # absolute paths so that emacs compile mode knows where to find error
-SRCDIR := $(shell pwd)/src
-LIBDIR := $(shell pwd)/lib
+# use cygpath -m because Coq on Windows cannot handle cygwin paths
+SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src
+LIBDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/lib
 
 ALL_VS := $(shell find $(SRCDIR) $(LIBDIR) -type f -name '*.v')
 
