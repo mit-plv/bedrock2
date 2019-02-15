@@ -39,7 +39,7 @@ Module KamiRecord.
   Section Width.
     Context {width: Z}.
 
-    Record t :=
+    Record t := mk
       { pgm: kword width -> kword 32;
         rf: kword 5 -> kword width;
         pc: kword width;
@@ -145,6 +145,21 @@ Section Equiv.
       events_related e e' ->
       traces_related t t' ->
       traces_related (e :: t) (e' :: t').
+
+  (* "exists m', states_related (m, t) m'"
+     might be simpler to use than
+     "exists m' t', fromKami_withLog m t' = Some 2' /\ traces_related t t'"
+     and require less unfolding/destructing *)
+  Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
+  | relate_states: forall t t' m rf pc instrMem dataMem,
+      traces_related t t' ->
+      KamiRecord.RegsToT m = Some (KamiRecord.mk instrMem rf pc dataMem) ->
+      states_related (m, t) {| getRegs := convertRegs rf;
+                               getPc := pc;
+                               getNextPc := word.add pc (word.of_Z 4);
+                               getMem := map.putmany (convertInstrMem instrMem)
+                                                     (convertDataMem dataMem);
+                               getLog := t'; |}.
 
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Definition mcomp_sat_unit(m: M unit)(initialL: RiscvMachine)(post: RiscvMachine -> Prop): Prop :=
@@ -279,6 +294,29 @@ Section Equiv.
   Qed.
 
   (* TODO in bedrock2: differential memory in trace instead of whole memory ? *)
+
+  Lemma kamiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
+                               (post: RiscvMachine -> Prop),
+      kamiStep m1 m2 t ->
+      states_related (m1, nil) m1' ->
+      mcomp_sat_unit (run1 iset) m1' post ->
+      exists m2', states_related (m2, t) m2' /\ post m2'.
+  Proof.
+  Admitted.
+
+  Lemma kamiMultiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
+                               (post: RiscvMachine -> Prop),
+      star kamiStep m1 m2 t ->
+      states_related (m1, nil) m1' ->
+      runsTo m1' post ->
+      exists m2', states_related (m2, t) m2' /\ post m2'.
+  Proof.
+  Abort. (* doesn't hold because kami might step less or more than riscv *)
+
+  Definition is_silence_invariant(post: RiscvMachine -> Prop): Prop :=
+    forall m: RiscvMachine,
+      post m ->
+      mcomp_sat_unit (run1 iset) m (fun m' => post m' /\ m'.(getLog) = m.(getLog)).
 
   (* note: only holds if the nondet machine never picks an arbitrary value of the empty set,
      which is the case for all riscv machines, but not for a more abstract runsTo,
