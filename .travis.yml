@@ -17,7 +17,6 @@ before_install:
   - sudo apt-get update -q
   - sudo apt-get install $COQ_PACKAGE -y
 
-# Slows down the build too much:
 # script: TIMED=1 TRY_MANGLE_NAMES=1 make -j2 && ./manglenames-stats.sh
 
 script: TIMED=1 make -j2
