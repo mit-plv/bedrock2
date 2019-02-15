@@ -166,8 +166,30 @@ Section FlatToRiscv1.
 
   Local Notation RiscvMachineL := (RiscvMachine Register actname).
 
+  Ltac word_cst w :=
+    match w with
+    | word.of_Z ?x => let b := isZcst x in
+                      match b with
+                      | true => x
+                      | _ => constr:(NotConstant)
+                      end
+    | _ => constr:(NotConstant)
+    end.
+
+  Definition word_ring_morph := word.ring_morph (word := word).
   Definition word_ring_theory := word.ring_theory (word := word).
-  Add Ring word_ring : word_ring_theory.
+
+  Hint Rewrite
+    word_ring_morph.(morph_add)
+    word_ring_morph.(morph_sub)
+    word_ring_morph.(morph_mul)
+    word_ring_morph.(morph_opp)
+  : rew_word_morphism.
+
+  Add Ring wring : word_ring_theory
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism word_ring_morph,
+       constants [word_cst]).
 
   Ltac state_calc0 := map_solver locals_ok.
 
@@ -684,6 +706,20 @@ Section FlatToRiscv1.
       end
     | ].
 
+  (* seplog which knows that "program" is an array and how to deal with cons and append in
+     that array *)
+  Ltac pseplog :=
+    unfold program in *;
+    repeat match goal with
+           | H: _ ?m |- _ ?m => progress (simpl in * (* does array_cons *))
+           (* just unprotected seprewrite will instantiate evars in undesired ways *)
+           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             seprewrite0 (array_append PT SZ xs ys start)
+           | H: context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] |- _ =>
+             seprewrite0_in (array_append PT SZ xs ys start) H
+           end;
+    seplog.
+
   Ltac run1done :=
     apply runsToDone;
     simpl in *;
@@ -693,7 +729,7 @@ Section FlatToRiscv1.
     first
       [ eassumption
       | solve_word_eq (@word_ok (@W p))
-      | seplog
+      | solve [pseplog]
       | prove_ext_guarantee
       | idtac ].
 
@@ -889,6 +925,31 @@ Section FlatToRiscv1.
       destruct width_cases as [C | C]; rewrite C; reflexivity.
   Qed.
 
+  Ltac solve_divisibleBy4 :=
+    lazymatch goal with
+    | |- divisibleBy4 _ => idtac
+    | |- _ => fail "not a divisibleBy4 goal"
+    end;
+    repeat match goal with
+           | H: ?P |- _ => let h := head_of_app P in
+                           assert_fails (constr_eq h @divisibleBy4);
+                           clear H
+           end;
+    simpl;
+    auto using divisibleBy4_add_4_r.
+
+  Ltac IH_sidecondition :=
+    simpl_word_exprs (@word_ok (@W p));
+    first
+      [ reflexivity
+      | assumption
+      | solve_stmt_not_too_big
+      | solve_word_eq (@word_ok (@W p))
+      | solve_divisibleBy4
+      | prove_ext_guarantee
+      | pseplog
+      | idtac ].
+
   Lemma compile_stmt_correct_aux:
     forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
@@ -983,39 +1044,7 @@ Section FlatToRiscv1.
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + (* use IH for then-branch *)
         eapply runsTo_trans.
-        * eapply IHexec.
-          1: reflexivity.
-          1: solve_stmt_not_too_big.
-          1: assumption.
-          {
-
-  Ltac solve_divisibleBy4 :=
-    lazymatch goal with
-    | |- divisibleBy4 _ => idtac
-    | |- _ => fail "not a divisibleBy4 goal"
-    end;
-    repeat match goal with
-           | H: ?P |- _ => let h := head_of_app P in
-                           assert_fails (constr_eq h @divisibleBy4);
-                           clear H
-           end;
-    simpl;
-    auto using divisibleBy4_add_4_r.
-
-            solve_divisibleBy4.
-          }
-          1: reflexivity.
-          1: simpl.
-          { move H7 at bottom.
-            unfold program in *.
-            repeat match goal with
-            | H: _ ?m |- _ ?m => simpl in H (* does array_cons *) || seprewrite_in @array_append H
-            end.
-            seplog.
-          }
-          { reflexivity. }
-          { reflexivity. }
-          { prove_ext_guarantee. }
+        * eapply IHexec; IH_sidecondition.
         * simpl. intros. simp. destruct_RiscvMachine middle. subst.
           eapply det_step.
           { simulate'.
@@ -1032,9 +1061,7 @@ Section FlatToRiscv1.
               simpl.
               reflexivity. }
           }
-          { run1done.
-            - admit.
-            - simpl_word_exprs word_ok. admit. }
+          { run1done. }
 
     - (* SIf/Else *) (*
       (* branch if cond = 0 (will  branch) *)
