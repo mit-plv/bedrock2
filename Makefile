@@ -9,6 +9,7 @@ update_all:
 	git submodule update --recursive --remote
 
 REL_PATH_OF_THIS_MAKEFILE:=$(lastword $(MAKEFILE_LIST))
+ABS_ROOT_DIR:=$(abspath $(dir $(REL_PATH_OF_THIS_MAKEFILE)))
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
 ABS_ROOT_DIR:=$(shell cygpath -m '$(ABS_ROOT_DIR)' 2>/dev/null || echo '$(ABS_ROOT_DIR)')
 
