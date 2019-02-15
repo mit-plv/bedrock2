@@ -299,6 +299,72 @@ Section FlatToRiscv1.
     nat_div_mod_to_quot_rem;
     nia *).
 
+  Definition divisibleBy4(x: word): Prop := (word.unsigned x) mod 4 = 0.
+
+  Definition divisibleBy4'(x: word): Prop := word.modu x (word.of_Z 4) = word.of_Z 0.
+
+  Lemma four_fits: 4 < 2 ^ width.
+  Proof.
+    destruct width_cases as [C | C]; rewrite C; reflexivity.
+  Qed.
+
+  Ltac div4_sidecondition :=
+    pose proof four_fits;
+    rewrite ?word.unsigned_of_Z, ?Z.mod_small;
+    lia.
+
+  Lemma divisibleBy4_alt(x: word): divisibleBy4 x -> divisibleBy4' x.
+  Proof.
+    intro H. unfold divisibleBy4, divisibleBy4' in *.
+    apply word.unsigned_inj.
+    rewrite word.unsigned_modu_nowrap by div4_sidecondition.
+    replace (word.unsigned (word.of_Z 4)) with 4 by div4_sidecondition.
+    rewrite H.
+    div4_sidecondition.
+  Qed.
+
+  Lemma unsigned_of_Z_4: word.unsigned (word.of_Z (word := word) 4) = 4.
+  Proof. div4_sidecondition. Qed.
+
+  Lemma unsigned_of_Z_0: word.unsigned (word.of_Z (word := word) 0) = 0.
+  Proof. div4_sidecondition. Qed.
+
+  Lemma divisibleBy4_add_4_r(x: word)
+    (D: divisibleBy4 x):
+    divisibleBy4 (word.add x (word.of_Z 4)).
+  Proof.
+    unfold divisibleBy4 in *.
+    rewrite word.unsigned_add.
+    rewrite <- Znumtheory.Zmod_div_mod.
+    - rewrite Zplus_mod. rewrite D. rewrite unsigned_of_Z_4. reflexivity.
+    - lia.
+    - destruct width_cases as [C | C]; rewrite C; reflexivity.
+    - unfold Z.divide. exists (2 ^ width / 4).
+      destruct width_cases as [C | C]; rewrite C; reflexivity.
+  Qed.
+
+  Ltac solve_divisibleBy4 :=
+    lazymatch goal with
+    | |- divisibleBy4 _ => idtac
+    | |- _ => fail "not a divisibleBy4 goal"
+    end;
+    repeat match goal with
+           | H: ?P |- _ => let h := head_of_app P in
+                           assert_fails (constr_eq h @divisibleBy4);
+                           clear H
+           end;
+    simpl;
+    auto using divisibleBy4_add_4_r;
+    shelve. (* TODO *)
+
+  Ltac simpl_modu4_0 :=
+    simpl;
+    match goal with
+    | |- context [word.eqb ?a ?b] =>
+      rewrite (word.eqb_eq a b) by (apply divisibleBy4_alt; solve_divisibleBy4)
+    end;
+    simpl.
+
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
@@ -691,7 +757,8 @@ Section FlatToRiscv1.
     first (* lemmas introduced only in this file: *)
           [ eapply go_load  ; [sidecondition..|]
           | eapply go_store ; [sidecondition..|]
-          | simulate_step ].
+          | simulate_step
+          | simpl_modu4_0 ].
 
   Ltac simulate' := repeat simulate'_step.
 
@@ -888,56 +955,6 @@ Section FlatToRiscv1.
       eauto using disjoint_putmany_preserves_store_bytes.
   Qed.
 
-(*
-  Definition divisibleBy4(x: word): Prop :=
-    word.modu x (word.of_Z 4) = word.of_Z 0.
-*)
-
-  Definition divisibleBy4(x: word): Prop := (word.unsigned x) mod 4 = 0.
-
-  Lemma four_fits: 4 < 2 ^ width.
-  Proof.
-    destruct width_cases as [C | C]; rewrite C; reflexivity.
-  Qed.
-
-  Ltac div4_sidecondition :=
-    pose proof four_fits;
-    rewrite ?word.unsigned_of_Z, ?Z.mod_small;
-    lia.
-
-  Lemma unsigned_of_Z_4: word.unsigned (word.of_Z (word := word) 4) = 4.
-  Proof. div4_sidecondition. Qed.
-
-  Lemma unsigned_of_Z_0: word.unsigned (word.of_Z (word := word) 0) = 0.
-  Proof. div4_sidecondition. Qed.
-
-  Lemma divisibleBy4_add_4_r(x: word)
-    (D: divisibleBy4 x):
-    divisibleBy4 (word.add x (word.of_Z 4)).
-  Proof.
-    unfold divisibleBy4 in *.
-    rewrite word.unsigned_add.
-    rewrite <- Znumtheory.Zmod_div_mod.
-    - rewrite Zplus_mod. rewrite D. rewrite unsigned_of_Z_4. reflexivity.
-    - lia.
-    - destruct width_cases as [C | C]; rewrite C; reflexivity.
-    - unfold Z.divide. exists (2 ^ width / 4).
-      destruct width_cases as [C | C]; rewrite C; reflexivity.
-  Qed.
-
-  Ltac solve_divisibleBy4 :=
-    lazymatch goal with
-    | |- divisibleBy4 _ => idtac
-    | |- _ => fail "not a divisibleBy4 goal"
-    end;
-    repeat match goal with
-           | H: ?P |- _ => let h := head_of_app P in
-                           assert_fails (constr_eq h @divisibleBy4);
-                           clear H
-           end;
-    simpl;
-    auto using divisibleBy4_add_4_r.
-
   Ltac IH_sidecondition :=
     simpl_word_exprs (@word_ok (@W p));
     first
@@ -1046,24 +1063,10 @@ Section FlatToRiscv1.
         eapply runsTo_trans.
         * eapply IHexec; IH_sidecondition.
         * simpl. intros. simp. destruct_RiscvMachine middle. subst.
-          eapply det_step.
-          { simulate'.
-            { simpl.
-              replace ((word.eqb
-            (word.modu
-               (word.add
-                  (word.add (word.add initialL_pc (word.of_Z 4))
-                     (word.mul (word.of_Z 4) (word.of_Z (Zlength (compile_stmt iset bThen)))))
-                  (word.of_Z ((Zlength (compile_stmt iset bElse) + 1) * 4)))
-               (word.of_Z 4)) (word.of_Z 0))) with true by admit.
-              simpl.
-              simulate'.
-              simpl.
-              reflexivity. }
-          }
-          { run1done. }
+          run1det. run1done.
 
-    - (* SIf/Else *) (*
+    - (* SIf/Else *)
+      admit. (*
       (* branch if cond = 0 (will  branch) *)
       eapply runsToStep; simpl in *; subst *.
       + fetch_inst.
@@ -1088,8 +1091,10 @@ Section FlatToRiscv1.
           run1step''';
           apply execState_step.
       + run1done.
+      *)
 
     - (* SLoop/again *)
+      admit. (*
       (* 1st application of IH: part 1 of loop body *)
       spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans IH). clear IH.
@@ -1110,20 +1115,22 @@ Section FlatToRiscv1.
         (* 3rd application of IH: run the whole loop again *)
         spec_IH IHfuelH IH (SLoop s1 cond s2).
         IH_done IH.
+      *)
 
     - (* SSeq *)
+      admit. (*
       spec_IH IHfuelH IH s1.
       apply (runsToSatisfying_trans IH). clear IH.
       intros.
       destruct_everything.
       spec_IH IHfuelH IH s2.
       IH_done IH.
+      *)
 
     - (* SSkip *)
       run1done.
 
-  Qed.
-  *) Admitted.
+  Admitted.
 
   (*
   Lemma compile_stmt_correct:
