@@ -387,3 +387,36 @@ Ltac seprewrite_in_by Hrw H tac :=
          [solve [tac].. | ]
   | _ => seprewrite0_in Hrw H
   end.
+
+
+(* the same (but slightly different) for rewriting in the goal
+   TODO can we do with less duplication, but without unreadable abstraction? *)
+
+Ltac seprewrite0 Hrw :=
+  let lemma_lhs := lazymatch type of Hrw with @Lift1Prop.iff1 _ ?lhs _ => lhs end in
+  let Psep := lazymatch goal with |- ?P _ => P end in
+  let mem := lazymatch type of Psep with ?mem -> _ => mem end in
+  let pf := fresh in
+  (* COQBUG(faster use ltac:(...) here if that was multi-success *)
+  eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
+      by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
+  eapply (fun m => (proj2 (pf m))); clear pf; (* <-- note: proj2 instead of proj1 *)
+  eapply (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _).
+
+Ltac seprewrite Hrw :=
+  multimatch constr:(Set) with
+  | _ => unshelve
+           (let Hrw := open_constr:(Hrw _) in seprewrite Hrw);
+         shelve_unifiable
+  | _ => seprewrite0 Hrw
+  end.
+
+(* last side-condition is solved first *)
+Ltac seprewrite_by Hrw tac :=
+  multimatch constr:(Set) with
+  | _ => unshelve
+           (let Hrw := open_constr:(Hrw _) in seprewrite_by Hrw tac);
+         shelve_unifiable;
+         [solve [tac].. | ]
+  | _ => seprewrite0 Hrw
+  end.
