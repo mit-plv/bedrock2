@@ -122,6 +122,7 @@ Section Pipeline1.
   Instance FlatToRiscv_params: FlatToRiscv.FlatToRiscv.parameters := {|
     FlatToRiscv.FlatToRiscv.def_params := _;
     FlatToRiscv.FlatToRiscv.W := W;
+    FlatToRiscv.FlatToRiscv.word_riscv_ok := TODO;
     FlatToRiscv.FlatToRiscv.locals := locals;
     FlatToRiscv.FlatToRiscv.locals_ok := TODO;
     FlatToRiscv.FlatToRiscv.mem := mem;

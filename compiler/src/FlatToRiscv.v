@@ -36,6 +36,8 @@ Require Import bedrock2.Scalars.
 Require Import compiler.Simp.
 Require Import compiler.SimplWordExpr.
 Require Import bedrock2.ptsto_bytes.
+Require Import compiler.RiscvWordProperties.
+Require Import compiler.eqexact.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -60,6 +62,7 @@ Module Import FlatToRiscv.
     def_params :> FlatToRiscvDef.parameters;
 
     W :> Words;
+    word_riscv_ok :> word.riscv_ok (@word W);
 
     locals :> map.map Register word;
     locals_ok :> map.ok locals;
@@ -195,8 +198,14 @@ Section FlatToRiscv1.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
-  (* TODO is there a principled way of writing such proofs? *)
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word) {T: Type} (thenVal elseVal: T),
+      (if word.eqb y z then thenVal else elseVal) =
+      (if word.ltu (word.sub y z) (word.of_Z 1) then thenVal else elseVal).
+  Proof.
+  Admitted.
+
+  (* TODO is there a principled way of writing such proofs? *)
+  Lemma reduce_eq_to_sub_and_lt_old: forall (y z: word) {T: Type} (thenVal elseVal: T),
     (if ltu (sub y  z) (fromImm 1) then thenVal else elseVal) =
     (if reg_eqb y z        then thenVal else elseVal).
   Proof. (*
@@ -787,6 +796,15 @@ Section FlatToRiscv1.
            end;
     seplog.
 
+  Ltac apply_post :=
+    match goal with
+    | H: ?post _ _ _ |- ?post _ _ _ =>
+      eqexact H; f_equal; symmetry;
+      (apply word.sru_ignores_hibits ||
+       apply word.slu_ignores_hibits ||
+       apply word.srs_ignores_hibits)
+    end.
+
   Ltac run1done :=
     apply runsToDone;
     simpl in *;
@@ -798,6 +816,7 @@ Section FlatToRiscv1.
       | solve_word_eq (@word_ok (@W p))
       | solve [pseplog]
       | prove_ext_guarantee
+      | apply_post
       | idtac ].
 
 (*
@@ -1036,19 +1055,16 @@ Section FlatToRiscv1.
       + simpl. run1done.
 
       (* SOp *)
-    - admit.
-      (*
+    - match goal with
+      | o: Syntax.bopname.bopname |- _ => destruct o
+      end;
+      simpl in *; run1det; try solve [run1done].
+      run1det. run1done.
       match goal with
-      | o: Syntax.bopname.bopname |- _ => destruct o (* do this before destruct_containsProgram *)
+      | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
       end.
-      admit.
-      simpl in *; destruct_everything;
-      try solve [run1step; run1done].
-      (* all except eq are implemented with one instruction *)
-      run1step. run1step. run1done.
       rewrite reduce_eq_to_sub_and_lt.
-      state_calc.
-      *)
+      symmetry. apply put_put_same.
 
     - (* SSet *)
       run1det. run1done.
