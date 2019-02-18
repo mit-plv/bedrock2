@@ -354,6 +354,11 @@ Section FlatToRiscv1.
       destruct width_cases as [C | C]; rewrite C; reflexivity.
   Qed.
 
+  Lemma divisibleBy4_admit(x y: word):
+    divisibleBy4 x ->
+    divisibleBy4 y.
+  Admitted.
+
   Ltac solve_divisibleBy4 :=
     lazymatch goal with
     | |- divisibleBy4 _ => idtac
@@ -366,7 +371,7 @@ Section FlatToRiscv1.
            end;
     simpl;
     auto using divisibleBy4_add_4_r;
-    shelve. (* TODO *)
+    solve [eapply divisibleBy4_admit; eassumption (* TODO *) ].
 
   Ltac simpl_modu4_0 :=
     simpl;
