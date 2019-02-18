@@ -783,11 +783,13 @@ Section FlatToRiscv1.
     | ].
 
   (* seplog which knows that "program" is an array and how to deal with cons and append in
-     that array *)
+     that array, and how to make addresses match *)
   Ltac pseplog :=
     unfold program in *;
     repeat match goal with
            | H: _ ?m |- _ ?m => progress (simpl in * (* does array_cons *))
+           | H: context [array _ _ ?addr1 ?content] |- context [array _ _ ?addr2 ?content] =>
+             progress replace addr2 with addr1 in * by ring
            (* just unprotected seprewrite will instantiate evars in undesired ways *)
            | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
              seprewrite0 (array_append PT SZ xs ys start)
@@ -1070,44 +1072,30 @@ Section FlatToRiscv1.
       run1det. run1done.
 
     - (* SIf/Then *)
-      (* branch if cond = false (will not branch *)
+      (* execute branch instruction, which will not jump *)
       eapply det_step; simpl in *; subst.
       + simulate'.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + (* use IH for then-branch *)
-        eapply runsTo_trans.
-        * eapply IHexec; IH_sidecondition.
-        * simpl. intros. simp. destruct_RiscvMachine middle. subst.
+      + eapply runsTo_trans.
+        * (* use IH for then-branch *)
+          eapply IHexec; IH_sidecondition.
+        * (* jump over else-branch *)
+          simpl. intros. simp. destruct_RiscvMachine middle. subst.
           run1det. run1done.
 
     - (* SIf/Else *)
-      admit. (*
-      (* branch if cond = 0 (will  branch) *)
-      eapply runsToStep; simpl in *; subst *.
-      + fetch_inst.
-        destruct cond; [destruct op | ]; simpl in *;
-          destruct_everything;
-          run1step''';
-          apply execState_step.
-      + simpl.
-        (* use IH for else-branch *)
-        spec_IH IHfuelH IH s2.
-        IH_done IH.
-    - (* SLoop/done *)
-      (* We still have to run part 1 of the loop body which is before the break *)
-      spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans IH). clear IH.
-      intros.
-      destruct_everything.
-      eapply runsToStep; simpl in *; subst *.
-      + fetch_inst.
-        destruct cond; [destruct op | ]; simpl in *;
-          destruct_everything;
-          run1step''';
-          apply execState_step.
-      + run1done.
-      *)
+      (* execute branch instruction, which will jump over then-branch *)
+      eapply det_step; simpl in *; subst.
+      + simulate'.
+        destruct cond; [destruct op | ];
+          simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
+      + eapply runsTo_trans.
+        * (* use IH for else-branch *)
+          eapply IHexec; IH_sidecondition.
+        * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
+             computed post satisfies required post *)
+          simpl. intros. simp. destruct_RiscvMachine middle. subst. run1done.
 
     - (* SLoop/again *)
       admit. (*
@@ -1134,14 +1122,13 @@ Section FlatToRiscv1.
       *)
 
     - (* SSeq *)
-      admit. (*
-      spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans IH). clear IH.
-      intros.
-      destruct_everything.
-      spec_IH IHfuelH IH s2.
-      IH_done IH.
-      *)
+      rename IHexec into IH1, H2 into IH2.
+      eapply runsTo_trans.
+      + eapply IH1; IH_sidecondition.
+      + simpl. intros. simp. destruct_RiscvMachine middle. subst.
+        eapply runsTo_trans.
+        * eapply IH2; IH_sidecondition.
+        * simpl. intros. simp. destruct_RiscvMachine middle. subst. run1done.
 
     - (* SSkip *)
       run1done.
