@@ -28,8 +28,6 @@ From coqutil.Tactics Require Import syntactic_unify.
   Proof. eapply andb_prop in Hcheck; case Hcheck; intros H1 H2; eapply Z.leb_le in H1; eapply Z.leb_le in H2. Lia.lia. Qed.
   Lemma boundscheck_lt {x0 x x1} (H: x0 <= x < x1) {X1} (Hcheck: Z.ltb x1 X1 = true) : x < X1.
   Proof. eapply Z.ltb_lt in Hcheck. Lia.lia. Qed.
-  Lemma boundscheck_le {x0 x x1} (H: x0 <= x < x1) {X1} (Hcheck: Z.leb x1 X1 = true) : x <= X1.
-  Proof. eapply Z.leb_le in Hcheck. Lia.lia. Qed.
   Lemma bounded_constant c : c <= c < c+1. Proof. Lia.lia. Qed.
 
   Ltac named_pose_proof pf :=
@@ -120,7 +118,7 @@ From coqutil.Tactics Require Import syntactic_unify.
         match op with
         | Z.add => named_pose_proof (zbsimp! (Z__range_add a0 a a1 Ha b0 b b1 Hb : a0 + b0 <= e < a1 + b1 - 1))
         | Z.sub => named_pose_proof (zbsimp! (Z__range_sub a0 a a1 Ha b0 b b1 Hb : a0-b1+1 <= e < a1-b0))
-        | Z.mul => named_pose_proof (zbsimp! (Z__range_mul_nonneg a0 a a1 Ha b0 b b1 Hb (boundscheck_le Ha eq_refl) (boundscheck_le Ha eq_refl) : _ <= e < _))
+        | Z.mul => named_pose_proof (zbsimp! (Z__range_mul_nonneg a0 a a1 Ha b0 b b1 Hb (Zle_bool_imp_le 0 a0 eq_refl) (Zle_bool_imp_le 0 b0 eq_refl) : _ <= e < _))
         end
       end
     | _ =>
@@ -251,17 +249,13 @@ From coqutil.Tactics Require Import syntactic_unify.
        | S n' => let x := word.add x x in goal x n'
        end.
   Goal forall x X, 1 <= X < 10 -> absint_eq (word.unsigned x) X -> goal x 7.
-  Proof. cbv beta iota delta [goal]; intros.
+  Proof.
+    cbv beta iota delta [goal].
+    intros.
 
     Time
     let e := match goal with x := _ |- _ => x end in
-    let e := constr:(word.mul x x) in
-    let H := absint e in
-    idtac H.
-
-    Time
-    let e := match goal with x := _ |- _ => x end in
-    let e := constr:(word.mul (word.slu (word.sru e (word.of_Z 4)) (word.of_Z 3)) x) in
+    let e := constr:(word.sub (word.mul (word.slu (word.sru e (word.of_Z 4)) (word.of_Z 3)) x) x) in
     let H := absint e in
     idtac H.
 
