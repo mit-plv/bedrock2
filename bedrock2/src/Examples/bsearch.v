@@ -429,31 +429,37 @@ Proof.
 
       1,2: repeat match goal with H: sep _ _ _ |- _ => clear H end.
 
-      { cbn [interp_binop] in *.
-        subst v0.
+      { 
+        setoid_rewrite (_ : _^-_ = _); [|eapply word__add_sub].
 
-        rewrite word__add_sub.
+        destruct x; cbn [Datatypes.length] in *.
+        { rewrite Z.mul_0_r in length_rep.
+          assert (Hsub0 : forall x y : word, word.unsigned (word.sub x y) = 0 -> x = y).
+          { clear.
+            intros.
+            rewrite word.unsigned_sub in H.
+            pose proof Properties.word.unsigned_range x.
+            pose proof Properties.word.unsigned_range y.
+            eapply Properties.word.unsigned_inj.
+            change (2^width) with 18446744073709551616 in *.
+            Z.div_mod_to_equations; Lia.lia. }
+          eapply Hsub0 in length_rep. subst. contradiction. }
 
-        let e := constr:(((x2 ^- x1) ^>> /_ 4 ^<< /_ 3)) in
-        let H := absint e in
-        setoid_rewrite H.
+        lazymatch goal with
+          |- word.unsigned ?a < _ * ?b =>
+          let H := absint a in rewrite H;
+          let H := absint b in rewrite H
+        end.
+        rewrite length_rep.
+        clear. Z.div_mod_to_equations. Lia.lia. }
+      { 
+        setoid_rewrite (_ : _^-_ = _); [|eapply word__add_sub].
 
-        let e := constr:(/_ 8) in
-        let H := absint e in
-        setoid_rewrite H.
-
-        rewrite (Z.mul_comm (Z.of_nat _) 8), <-length_rep.
-        rewrite word.unsigned_sub.
-
-        pose proof Properties.word.unsigned_range x1.
-        pose proof Properties.word.unsigned_range x2.
-
-        change (2^4) with 16.
-        change (2^width) with 18446744073709551616 in *.
-        clear -H5 H12 H13. Z.div_mod_to_equations; Lia.lia.
-      }
-      { cbn [interp_binop] in *.
-        subst v0.
+        lazymatch goal with
+          |- word.unsigned ?a mod ?b = 0 =>
+          let H := absint a in rewrite H;
+          let H := absint b in rewrite H
+        end.
 
         clear. Z.div_mod_to_equations. Lia.lia. }
       { exact eq_refl. }
@@ -467,15 +473,6 @@ Proof.
       1: admit. 1: admit. 1: exact eq_refl.
       SeparationLogic.ecancel_assumption. } }
 
-  straightline.
-  straightline.
-  straightline.
-  straightline.
-  straightline.
-  straightline.
-  (* 8.8> repeat straightline. *)
-  (* Error: Anomaly "Universe Top.370 undefined." Please report at http://coq.inria.fr/bugs/. *)
-  straightline.
   repeat straightline.
   repeat apply conj; auto; []. (* postcondition *)
   letexists. split.
