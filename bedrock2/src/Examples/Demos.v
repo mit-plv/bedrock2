@@ -2,13 +2,13 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 Require Import bedrock2.StringNamesSyntax.
 Require bedrock2.NotationsInConstr.
-Require bedrock2.BasicC64Syntax.
+Require bedrock2.BasicCSyntax.
 
 Import BinInt String.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Definition StringNamesSyntaxParams: Syntax.parameters :=
-  StringNamesSyntax.make BasicC64Syntax.StringNames_params.
+  StringNamesSyntax.make BasicCSyntax.StringNames_params.
 
 Definition ZNamesSyntaxParams: Syntax.parameters := {|
   Syntax.varname := Z;
@@ -180,7 +180,7 @@ End Demos.
 Print allProgs.
 
 Definition allProgsAsCStrings: list string :=
-  Eval cbv in (map BasicC64Syntax.c_func allProgs).
+  Eval cbv in (map BasicCSyntax.c_func allProgs).
 
 Print allProgsAsCStrings.
 

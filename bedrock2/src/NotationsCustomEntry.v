@@ -116,7 +116,7 @@ Notation "output! f ( x , y , z , a , b )" :=  (interact nil f (@cons expr x (@c
 Notation "output! f ( x , y , z , a , b , c )" :=  (interact nil f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons expr b (@cons expr c (@nil expr)))))))) (in custom bedrock_cmd at level 0, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr, c custom bedrock_expr).
 
 Notation "io! lhs = f ( )" :=  (interact lhs f nil) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident).
-Notation "unpack! lhs = f ( x )" :=  (interact lhs f (@cons expr x nil)) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr).
+Notation "io! lhs = f ( x )" :=  (interact lhs f (@cons expr x nil)) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr).
 Notation "io! lhs = f ( x , y )" :=  (interact lhs f (@cons expr x (@cons expr y nil))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr, y custom bedrock_expr).
 Notation "io! lhs = f ( x , y , z )" :=  (interact lhs f (@cons expr x (@cons expr y (@cons expr z (@nil expr))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr).
 Notation "io! lhs = f ( x , y , z , a )" :=  (interact lhs f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@nil expr)))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f ident, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr).
@@ -168,6 +168,7 @@ Module test.
         unpack! x = f(1,W,1, 1,1,1);
         unpack! x,a = f(1,W,1, 1,1,1);
         io! a, x = read(1,W,1, 1,1,1);
+        io! a = read(1, 1);
         output! write(1,W,1, 1,1,1);
         store(1,1)
       }
