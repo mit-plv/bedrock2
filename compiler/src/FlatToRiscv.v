@@ -796,7 +796,9 @@ Section FlatToRiscv1.
     repeat match goal with
            | H: _ ?m |- _ ?m => progress (simpl in * (* does array_cons *))
            | H: context [array _ _ ?addr1 ?content] |- context [array _ _ ?addr2 ?content] =>
-             progress replace addr2 with addr1 in * by ring
+             progress replace addr1 with addr2 in H by ring;
+               ring_simplify addr2;
+               ring_simplify addr2 in H
            (* just unprotected seprewrite will instantiate evars in undesired ways *)
            | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
              seprewrite0 (array_append PT SZ xs ys start)
@@ -821,7 +823,7 @@ Section FlatToRiscv1.
     repeat split;
     simpl_word_exprs (@word_ok (@W p));
     first
-      [ eassumption
+      [ solve [eauto]
       | solve_word_eq (@word_ok (@W p))
       | solve [pseplog]
       | prove_ext_guarantee
@@ -987,7 +989,7 @@ Section FlatToRiscv1.
     simpl_word_exprs (@word_ok (@W p));
     first
       [ reflexivity
-      | assumption
+      | solve [auto]
       | solve_stmt_not_too_big
       | solve_word_eq (@word_ok (@W p))
       | solve_divisibleBy4
@@ -1106,7 +1108,8 @@ Section FlatToRiscv1.
 
     - (* SLoop/again *)
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
-      on hyp[body1; body2; runsTo] do (fun H => rename H into IH2).
+      on hyp[(stmt_not_too_big body2); runsTo] do (fun H => rename H into IH2).
+      on hyp[(stmt_not_too_big (SLoop body1 cond body2)); runsTo] do (fun H => rename H into IH12).
       eapply runsTo_trans.
       + (* 1st application of IH: part 1 of loop body *)
         eapply IH1; IH_sidecondition.
@@ -1122,17 +1125,24 @@ Section FlatToRiscv1.
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { (* 2nd application of IH: part 2 of loop body *)
-            (* problem: IH2 is for body1++body2, we don't have one for just body2 *)
-            admit.
-            (* 3rd application of IH: run the whole loop again *)
-          }
+          { eapply runsTo_trans.
+            - (* 2nd application of IH: part 2 of loop body *)
+              eapply IH2; IH_sidecondition.
+            - simpl in *. simpl. intros. simp. destruct_RiscvMachine middle. subst.
+              (* jump back to beginning of loop: *)
+              run1det.
+              eapply runsTo_trans.
+              + (* 3rd application of IH: run the whole loop again *)
+                eapply IH12; IH_sidecondition.
+              + (* at end of loop, just prove that computed post satisfies required post *)
+                simpl. intros. simp. destruct_RiscvMachine middle. subst.
+                run1done. }
         * (* false: done, jump over body2 *)
           eapply det_step; simpl in *; subst.
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { simpl in *. run1done. { eapply H2. all: assumption. } }
+          { simpl in *. run1done. }
 
     - (* SSeq *)
       rename IHexec into IH1, H2 into IH2.
@@ -1146,7 +1156,7 @@ Section FlatToRiscv1.
     - (* SSkip *)
       run1done.
 
-  Admitted.
+  Qed.
 
   (*
   Lemma compile_stmt_correct:

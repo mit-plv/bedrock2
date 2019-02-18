@@ -240,7 +240,7 @@ Ltac sidecondition :=
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => assumption
   | H: valid_instructions _ _ |- Encode.verify _ _ =>
-    apply H; clear; eauto using in_cons, in_or_app, in_eq
+    apply H; clear; eauto 10 using in_cons, in_or_app, in_eq
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
     simpl; unfold Memory.load, Memory.load_Z;
     erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
