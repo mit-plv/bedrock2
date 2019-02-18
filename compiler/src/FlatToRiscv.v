@@ -38,6 +38,8 @@ Require Import compiler.SimplWordExpr.
 Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
+Require Import compiler.on_hyp_containing.
+
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -1098,28 +1100,34 @@ Section FlatToRiscv1.
           simpl. intros. simp. destruct_RiscvMachine middle. subst. run1done.
 
     - (* SLoop/again *)
-      admit. (*
-      (* 1st application of IH: part 1 of loop body *)
-      spec_IH IHfuelH IH s1.
-      apply (runsToSatisfying_trans IH). clear IH.
-      intros.
-      destruct_everything.
-      eapply runsToStep; simpl in *; subst *.
-      + fetch_inst.
-        destruct cond; [destruct op | ]; simpl in *;
-          destruct_everything;
-          run1step''';
-          apply execState_step.
-      + (* 2nd application of IH: part 2 of loop body *)
-        spec_IH IHfuelH IH s2.
-        apply (runsToSatisfying_trans IH). clear IH.
-        intros.
-        destruct_everything.
-        run1step.
-        (* 3rd application of IH: run the whole loop again *)
-        spec_IH IHfuelH IH (SLoop s1 cond s2).
-        IH_done IH.
-      *)
+      on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
+      on hyp[body1; body2; runsTo] do (fun H => rename H into IH2).
+      eapply runsTo_trans.
+      + (* 1st application of IH: part 1 of loop body *)
+        eapply IH1; IH_sidecondition.
+      + simpl in *. simpl. intros. simp. destruct_RiscvMachine middle. subst.
+        destruct (@eval_bcond (@FlatImp_params p) middle_regs cond) as [condB|] eqn: E.
+        2: exfalso;
+           match goal with
+           | H: context [_ <> None] |- _ => solve [eapply H; eauto]
+           end.
+        destruct condB.
+        * (* true: iterate again *)
+          eapply det_step; simpl in *; subst.
+          { simulate'.
+            destruct cond; [destruct op | ];
+              simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
+          { (* 2nd application of IH: part 2 of loop body *)
+            (* problem: IH2 is for body1++body2, we don't have one for just body2 *)
+            admit.
+            (* 3rd application of IH: run the whole loop again *)
+          }
+        * (* false: done, jump over body2 *)
+          eapply det_step; simpl in *; subst.
+          { simulate'.
+            destruct cond; [destruct op | ];
+              simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
+          { simpl in *. run1done. { eapply H2. all: assumption. } }
 
     - (* SSeq *)
       rename IHexec into IH1, H2 into IH2.
