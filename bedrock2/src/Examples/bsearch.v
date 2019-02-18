@@ -248,17 +248,17 @@ From coqutil.Tactics Require Import syntactic_unify.
        | O => True
        | S n' => let x := word.add x x in goal x n'
        end.
-  Goal forall x X, 1 <= X < 10 -> absint_eq (word.unsigned x) X -> goal x 7.
+  Goal forall x X, 1 <= X < 2^60 -> absint_eq (word.unsigned x) X -> goal x 7.
   Proof.
     cbv beta iota delta [goal].
     intros.
 
-    Time
     let e := match goal with x := _ |- _ => x end in
-    let e := constr:(word.sub (word.mul (word.slu (word.sru e (word.of_Z 4)) (word.of_Z 3)) x) x) in
+    let e := constr:(word.sub (word.mul (word.slu (word.sru e (word.of_Z 16)) (word.of_Z 3)) x) x) in
     let H := absint e in
     idtac H.
 
+    exact I.
   Qed.
 
 
@@ -279,7 +279,8 @@ From coqutil.Tactics Require Import syntactic_unify.
     let H := rbounded e in
     idtac H;
     cbn in *.
-  Abort.
+    exact I.
+  Qed.
 
 (* custom rewrite tactic to work around COQBUG(4885) *)
 Ltac set_evars := repeat match goal with |- context[?e] => is_evar e; set e end.
