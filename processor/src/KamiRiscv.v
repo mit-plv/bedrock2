@@ -24,31 +24,45 @@ Require Import riscv.util.Monads.
 Require Import riscv.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.MMIOTrace.
-Require Import Kami.Ex.MemTypes.
-Require Import Kami.Ex.SCMMTrace.
-Require Import Kami.Ex.SC.
-Require Import Kami.Syntax Kami.Semantics.
-Require Import Kami.Tactics.
+Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
+Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl.
+Require Import Kami.Ex.IsaRv32.
 
 Local Open Scope Z_scope.
 
 Definition kword(w: Z): Type := Kami.Lib.Word.word (Z.to_nat w).
 
-Module KamiRecord.
+Module KamiProc.
 
   Section Width.
     Context {width: Z}.
 
-    Record t := mk
+    Local Definition nwidth := Z.to_nat width.
+
+    Definition procInit: ProcInit nwidth rv32DataBytes rv32RfIdx :=
+      {| pcInit := getDefaultConst _;
+         rfInit := getDefaultConst _ |}.
+
+    Definition isMMIO: IsMMIOT nwidth. Admitted.
+    Definition getNextPc: NextPcT nwidth rv32DataBytes rv32RfIdx. Admitted.
+
+    Definition proc: Kami.Syntax.Modules :=
+      projT1 (@Kami.Ex.SCMMInl.scmmInl
+                nwidth nwidth rv32DataBytes rv32RfIdx rv32GetOptype
+                rv32GetLdDst (rv32GetLdAddr _) rv32GetLdSrc (rv32CalcLdAddr _)
+                (rv32GetStAddr _) rv32GetStSrc (rv32CalcStAddr _) rv32GetStVSrc
+                rv32GetSrc1 rv32GetSrc2 rv32GetDst (rv32Exec _)
+                getNextPc (rv32AlignPc _ _) (rv32AlignAddr _)
+                isMMIO procInit).
+
+    Record st := mk
       { pgm: kword width -> kword 32;
         rf: kword 5 -> kword width;
         pc: kword width;
         mem: kword width -> kword width
       }.
 
-    Local Definition nwidth := Z.to_nat width.
-
-    Definition RegsToT (r: RegsT): option t :=
+    Definition RegsToT (r: RegsT): option st :=
       (mlet pgmv: (Vector (Bit 32) nwidth) <- r |> "pgm" <| None;
          mlet rfv: (Vector (Bit nwidth) 5) <- r |> "rf" <| None;
          mlet pcv: (Bit nwidth) <- r |> "pc" <| None;
@@ -59,8 +73,10 @@ Module KamiRecord.
                   mem := memv |}))%mapping.
 
   End Width.
-  Arguments t: clear implicits.
-End KamiRecord.
+  
+  Arguments st: clear implicits.
+  
+End KamiProc.
 
 Section Equiv.
 
@@ -87,9 +103,7 @@ Section Equiv.
     let keys := HList.tuple.map (@wordToZ 5) kkeys in
     map.putmany_of_tuple keys values map.empty.
 
-  (* kamiTODO: connect these two to Kami *)
-  Definition instrMemSize: nat. Admitted.
-  Definition dataMemSize: nat. Admitted.
+  Variables instrMemSize dataMemSize: nat.
 
   Definition instrMemStart: word := word.of_Z 0.
   Definition dataMemStart: word := word.of_Z (Z.of_nat (4 * instrMemSize)).
@@ -109,20 +123,20 @@ Section Equiv.
                            keys in
     Memory.unchecked_store_byte_tuple_list dataMemStart values map.empty.
 
-  Definition KamiRecord_to_RiscvMachine
-             (k: KamiRecord.t width)(t: list (LogItem MMIOAction)): RiscvMachine :=
+  Definition KamiProc_st_to_RiscvMachine
+             (k: KamiProc.st width)(t: list (LogItem MMIOAction)): RiscvMachine :=
     {|
-      getRegs := convertRegs (KamiRecord.rf k);
-      getPc := KamiRecord.pc k;
-      getNextPc := word.add (KamiRecord.pc k) (word.of_Z 4);
-      getMem := map.putmany (convertInstrMem (KamiRecord.pgm k))
-                            (convertDataMem (KamiRecord.mem k));
+      getRegs := convertRegs (KamiProc.rf k);
+      getPc := KamiProc.pc k;
+      getNextPc := word.add (KamiProc.pc k) (word.of_Z 4);
+      getMem := map.putmany (convertInstrMem (KamiProc.pgm k))
+                            (convertDataMem (KamiProc.mem k));
       getLog := t;
     |}.
 
   Definition fromKami_withLog(k: KamiMachine)(t: list (LogItem MMIOAction)): option RiscvMachine :=
-    match KamiRecord.RegsToT k with
-    | Some r => Some (KamiRecord_to_RiscvMachine r t)
+    match KamiProc.RegsToT k with
+    | Some r => Some (KamiProc_st_to_RiscvMachine r t)
     | None => None
     end.
 
@@ -153,7 +167,7 @@ Section Equiv.
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
   | relate_states: forall t t' m rf pc instrMem dataMem,
       traces_related t t' ->
-      KamiRecord.RegsToT m = Some (KamiRecord.mk instrMem rf pc dataMem) ->
+      KamiProc.RegsToT m = Some (KamiProc.mk instrMem rf pc dataMem) ->
       states_related (m, t) {| getRegs := convertRegs rf;
                                getPc := pc;
                                getNextPc := word.add pc (word.of_Z 4);
@@ -202,7 +216,47 @@ Section Equiv.
     subset (riscvTraces init) (prefixes (post_to_traces post)).
   Admitted.
 
-  Definition kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop. Admitted. (* kamiTODO *)
+  Definition KamiLabelR (klbl: Kami.Semantics.LabelT) (ev: option Event): Prop.
+  Proof.
+    refine (match FMap.M.find "mmioExec"%string klbl.(defs) with
+            | Some sv => _
+            | None => ev = None
+            end).
+    destruct sv as [[argT retT] [argV retV]].
+    destruct (decKind argT (Struct (RqFromProc (Z.to_nat width) rv32DataBytes)));
+      [subst|exact False].
+    destruct (decKind retT (Struct (RsToProc rv32DataBytes)));
+      [subst|exact False].
+
+    destruct (argV (Fin.FS Fin.F1)).
+    - (* MMIO-store *)
+      set (argV Fin.F1) as mmioAddr; simpl in mmioAddr.
+      set (argV (Fin.FS (Fin.FS Fin.F1))) as mmioVal; simpl in mmioVal.
+      (* exact (ev = Some (MMOutputEvent mmioAddr mmioVal)). *) (** ??? *)
+      admit.
+    - (* MMIO-load *)
+      set (argV Fin.F1) as mmioAddr; simpl in mmioAddr.
+      set (retV Fin.F1) as mmioVal; simpl in mmioVal.
+      (* exact (ev = Some (MMInputEvent (argV Fin.F1) (retV Fin.F1))). *)
+      admit.
+  Admitted.
+
+  Inductive KamiTraceR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
+  | KTRNil: KamiTraceR nil nil
+  | KTRConsMMIO:
+      forall ktr tr klbl ev,
+        KamiTraceR ktr tr -> KamiLabelR klbl (Some ev) ->
+        KamiTraceR (klbl :: ktr) (ev :: tr)
+  | KTRConsTau:
+      forall ktr tr klbl,
+        KamiTraceR ktr tr -> KamiLabelR klbl None ->
+        KamiTraceR (klbl :: ktr) tr.
+  
+  Definition kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop :=
+    fun st1 st2 tr =>
+      exists ktr,
+        Multistep (@KamiProc.proc width) st1 st2 ktr /\
+        KamiTraceR ktr tr.
 
   Lemma simulate_bw_step: forall (m1 m2: KamiMachine) (t: list Event),
       kamiStep m1 m2 t ->
@@ -212,8 +266,13 @@ Section Equiv.
         fromKami_withLog m2 t' = Some m2' /\
         riscvStep m1' m2' t'.
   Proof.
-    (* kamiTODO invert kamiStep *)
-    (* TODO after that, use the available facts to prove that riscv-coq simulates kami *)
+    intros.
+    destruct H as [ktr [? ?]].
+    induction H; simpl; subst.
+    - inversion_clear H0. admit.
+    - kinvert.
+      (* kamiTODO invert kamiStep *)
+      (* TODO after that, use the available facts to prove that riscv-coq simulates kami *)
   Admitted.
 
   Section Lift.
