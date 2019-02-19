@@ -101,12 +101,12 @@ From coqutil.Tactics Require Import syntactic_unify.
       match re with
       | word.unsigned ?a =>
         named_pose_proof (zbsimp! (Properties.word.unsigned_range a : _ <= e < _))
-      | Z.div ?a ?b =>
+      | Z.div ?a ?b => (* TODO: non-constant denominator? *)
         let __ := match constr:(Set) with _ => requireZcstExpr b end in
         let Ha := rbounded a in
         named_pose_proof (zbsimp! (Z__range_div_pos_const_r _ a _ Ha b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _))
-      | Z.modulo ?a ?b =>
-        let __ := match constr:(Set) with _ => requireZcst b end in
+      | Z.modulo ?a ?b => (* TODO: non-constant denominator? *)
+        let __ := match constr:(Set) with _ => requireZcstExpr b end in
         named_pose_proof (zbsimp! (Z.mod_pos_bound a b ltac:(eapply Z.ltb_lt; exact eq_refl) : _ <= e < _))
       | ?op ?a ?b =>
         let Ha := rbounded a in
@@ -119,6 +119,8 @@ From coqutil.Tactics Require Import syntactic_unify.
         | Z.add => named_pose_proof (zbsimp! (Z__range_add a0 a a1 Ha b0 b b1 Hb : a0 + b0 <= e < a1 + b1 - 1))
         | Z.sub => named_pose_proof (zbsimp! (Z__range_sub a0 a a1 Ha b0 b b1 Hb : a0-b1+1 <= e < a1-b0))
         | Z.mul => named_pose_proof (zbsimp! (Z__range_mul_nonneg a0 a a1 Ha b0 b b1 Hb (Zle_bool_imp_le 0 a0 eq_refl) (Zle_bool_imp_le 0 b0 eq_refl) : _ <= e < _))
+        (* TODO: pow *)
+        (* TODO: and, or, xor, ndn *)
         end
       end
     | _ =>
@@ -133,7 +135,7 @@ From coqutil.Tactics Require Import syntactic_unify.
   Definition absint_eq {T} := @eq T.
   Local Infix "=~>" := absint_eq (at level 70, no associativity).
     
-  Notation "absint_lemma! pf" := (ltac:(
+  Local Notation "absint_lemma! pf" := (ltac:(
     cbv [absint_eq] in *;
     etransitivity; [ eapply pf | ]; cycle -1;
       [unshelve (repeat match goal with
@@ -160,6 +162,8 @@ From coqutil.Tactics Require Import syntactic_unify.
     absint_lemma! (word.unsigned_add x y).
   Definition absint_sub (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
     absint_lemma! (word.unsigned_sub x y).
+  Definition absint_mul (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
+    absint_lemma! (word.unsigned_mul x y).
   Definition absint_and (x y : word.rep) ux Hx uy Hy : word.unsigned _ =~> _ :=
     absint_lemma! (Properties.word.unsigned_and_nowrap x y).
   Definition absint_or (x y : word.rep) ux Hx uy Hy : word.unsigned _ =~> _ :=
@@ -168,16 +172,14 @@ From coqutil.Tactics Require Import syntactic_unify.
     absint_lemma! (Properties.word.unsigned_xor_nowrap x y).
   Definition absint_ndn (x y : word.rep) ux Hx uy Hy : word.unsigned _ =~> _ :=
     absint_lemma! (Properties.word.unsigned_ndn_nowrap x y).
-  Definition absint_mul (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
-    absint_lemma! (word.unsigned_mul x y).
   Definition absint_sru (x y : word.rep) ux Hx uy Hy Hshift  : word.unsigned _ =~> _ :=
     absint_lemma! (Properties.word.unsigned_sru_nowrap x y).
-  Definition absint_divu (x y : word.rep) ux Hx uy Hy Hshift  : word.unsigned _ =~> _ :=
+  Definition absint_slu (x y : word.rep) ux Hx uy Hy Hrange Hshift : word.unsigned _ =~> _ :=
+    absint_lemma! (word.unsigned_slu x y).
+  Definition absint_divu (x y : word.rep) ux Hx uy Hy Hnz  : word.unsigned _ =~> _ :=
     absint_lemma! (Properties.word.unsigned_divu_nowrap x y).
   Definition absint_modu (x y : word.rep) ux Hx uy Hy Hnz  : word.unsigned _ =~> _ :=
     absint_lemma! (Properties.word.unsigned_modu_nowrap x y).
-  Definition absint_slu (x y : word.rep) ux Hx uy Hy Hrange Hshift : word.unsigned _ =~> _ :=
-    absint_lemma! (word.unsigned_slu x y).
 
   Ltac named_pose_asfresh_or_id x n :=
     let y := match constr:(Set) with _ => named_pose_asfresh x n | _ => x end in
@@ -197,6 +199,15 @@ From coqutil.Tactics Require Import syntactic_unify.
         let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
         let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
         match op with
+        | word.and =>
+          named_pose_proof constr:(absint_and a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.land Ra Rb))
+        | word.or =>
+          named_pose_proof constr:(absint_or a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.lor Ra Rb))
+        | word.xor =>
+          named_pose_proof constr:(absint_xor a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.lxor Ra Rb))
+        | word.ndn =>
+          named_pose_proof constr:(absint_ndn a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.ldiff Ra Rb))
+
         | word.add =>
           let Re := named_pose_asfresh_or_id constr:(Ra+Rb) e in
           let Be := rbounded Re in
@@ -215,6 +226,7 @@ From coqutil.Tactics Require Import syntactic_unify.
           let Hbounds := match type of Be with ?x0 <= ?x < ?x1 =>
                            constr:(@boundscheck x0 x x1 Be 0 (2^width) (@eq_refl bool true)) end in
           named_pose_proof constr:(absint_mul a b Ra Ha Rb Hb Hbounds : @absint_eq Z (@word.unsigned _ word_parameters e) Re)
+
         | word.sru =>
           let Re := named_pose_asfresh_or_id constr:((Ra / 2^Rb)) e in
           let Bb := rbounded Rb in
@@ -227,6 +239,7 @@ From coqutil.Tactics Require Import syntactic_unify.
           named_pose_proof (absint_slu a b Ra Ha Rb Hb (boundscheck (X0:=0) (X1:=2^width) Be (eq_refl true)) (@boundscheck_lt _ Rb _ Bb width eq_refl): @absint_eq Z (@word.unsigned _ word_parameters e) Re)
         | _ => (* unknown binop or bad bounds, don't backtrack to keep Ha and Hb *)
           constr:(@absint_eq_refl Z (@word.unsigned _ word_parameters e))
+         (* TODO: divu, modu (how do we prove denominator nonzero?) *)
         end
       | _ =>
         constr:(@absint_eq_refl Z (@word.unsigned _ word_parameters e))
@@ -240,6 +253,7 @@ From coqutil.Tactics Require Import syntactic_unify.
     end.
   End unsigned.
   
+  Import unsigned.
 
 
 
@@ -257,10 +271,9 @@ From coqutil.Tactics Require Import syntactic_unify.
     intros.
 
     let e := match goal with x := _ |- _ => x end in
-    let e := constr:(word.sub (word.mul (word.slu (word.sru e (word.of_Z 16)) (word.of_Z 3)) x) x) in
+    let e := constr:(word.ndn (word.xor (word.or (word.and (word.sub (word.mul (word.slu (word.sru e (word.of_Z 16)) (word.of_Z 3)) x) x) x) x) x) x) in
     let H := unsigned.zify_expr e in
     idtac H.
-
     exact I.
   Qed.
 
