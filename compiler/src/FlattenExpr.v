@@ -534,6 +534,55 @@ Section FlattenExpr1.
 
   Ltac state_calc := state_calc0.
 
+  Arguments map.empty: simpl never.
+
+  (* only instantiates evars when it's sure to make the correct choice *)
+  Ltac t_safe :=
+    repeat match goal with
+    | |- _ /\ _ => split
+    | |- _ => solve [auto]
+    | |- map.get (map.put _ ?x _) ?y = Some _ =>
+      (* might instantiate the value, but this choice is definitely correct *)
+      constr_eq x y; apply map.get_put_same
+    end.
+
+  Lemma flattenExpr_correct_aux : forall e ngs1 ngs2 resVar s initialH initialL initialM res t,
+    flattenExpr ngs1 e = (s, resVar, ngs2) ->
+    map.extends initialL initialH ->
+    map.undef_on initialH (allFreshVars ngs1) ->
+    @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
+    FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
+      t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res /\
+      (* Note: the line below also follows from FlatImp.modVarsSound, but it's simpler to
+         reprove it, because then we don't need to prove the exec hyp of FlatImp.modVarsSound *)
+      map.only_differ initialL (FlatImp.modVars s) finalL).
+  Proof.
+    induction e; intros *; intros F Ex U Ev; simpl in *; simp.
+
+    - (* expr.literal *)
+      eapply @FlatImp.exec.lit; t_safe; simpl; map_solver locals_ok.
+
+    - (* expr.var *)
+      eapply @FlatImp.exec.set; t_safe; simpl; map_solver locals_ok.
+
+    - (* expr.load *)
+      eapply @FlatImp.exec.seq.
+      + eapply IHe; eassumption.
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.load; t_safe; try eassumption. map_solver locals_ok.
+
+    - (* expr.op *)
+      eapply @FlatImp.exec.seq.
+      + eapply IHe1; eassumption.
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.seq.
+        * eapply IHe2. 1: eassumption. 3: eassumption.
+          { pose_flatten_var_ineqs.  admit. (*map_solver locals_ok.*) }
+          { admit. }
+        * intros. simpl in *. simp. clear IHe1 IHe2.
+          eapply @FlatImp.exec.op; t_safe; t_safe.
+  Abort.
+
   (* Note: If you want to get in the conclusion
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
@@ -545,10 +594,33 @@ Section FlattenExpr1.
     (* TODO why do I have to give semantics params explicitly? *)
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
     FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
-      t' = t /\ finalM = initialM /\  map.get finalL resVar = Some res).
+      t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res).
   Proof.
-    induction e; intros *; intros F Ex U Ev.
-    - repeat (inversionss; try destruct_one_match_hyp).
+    induction e; intros *; intros F Ex U Ev; simpl in *; simp.
+
+    - (* expr.literal *)
+      eapply @FlatImp.exec.lit; t_safe.
+
+    - (* expr.var *)
+      eapply @FlatImp.exec.set; t_safe. map_solver locals_ok.
+
+    - (* expr.load *)
+      eapply @FlatImp.exec.seq.
+      + eapply IHe; eassumption.
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.load; t_safe; eassumption.
+
+    - (* expr.op *)
+      eapply @FlatImp.exec.seq.
+      + eapply IHe1; eassumption.
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.seq.
+        * eapply IHe2. 1: eassumption. 3: eassumption.
+          { pose_flatten_var_ineqs.  admit. (*map_solver locals_ok.*) }
+          { admit. }
+        * intros. simpl in *. simp. clear IHe1 IHe2.
+          eapply @FlatImp.exec.op; t_safe; t_safe.
+
   Admitted.
   (*
       match goal with
@@ -750,8 +822,6 @@ Section FlattenExpr1.
   *)
   Admitted.
 
-  Arguments map.empty: simpl never.
-
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
       Semantics.exec e sH t m lH post ->
       e = map.empty ->
@@ -789,7 +859,8 @@ Section FlattenExpr1.
       map_solver locals_ok.
 
     - (* exec.store *)
-      admit.
+      eapply @FlatImp.exec.det_step.
+      all: admit.
 
     - (* if_true *)
       admit.
