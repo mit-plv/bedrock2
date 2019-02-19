@@ -454,6 +454,17 @@ Module exec.
         post t m l ->
         exec SSkip t m l post.
 
+    Lemma det_step: forall t0 m0 l0 s1 s2 t1 m1 l1 post,
+        exec s1 t0 m0 l0 (fun t1' m1' l1' => t1' = t1 /\ m1' = m1 /\ l1' = l1) ->
+        exec s2 t1 m1 l1 post ->
+        exec (SSeq s1 s2) t0 m0 l0 post.
+    Proof.
+      intros.
+      eapply seq; [eassumption|].
+      intros. simpl in *. simp.
+      assumption.
+    Qed.
+
     Lemma weaken: forall t l m s post1,
         exec s t m l post1 ->
         forall post2,
