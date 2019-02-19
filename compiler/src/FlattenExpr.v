@@ -12,7 +12,7 @@ Require Import bedrock2.Semantics. (* TODO: this should be in bedrock2.Semantics
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
-
+Require Import compiler.Simp.
 
 Open Scope Z_scope.
 
@@ -701,19 +701,25 @@ Section FlattenExpr.
   *)
   Admitted.
 
- Lemma flattenStmt_correct_aux:
-    forall fuelH sH sL ngs ngs' (initialH finalH initialL: locals) initialM finalM,
-    flattenStmt ngs sH = (sL, ngs') ->
-    map.extends initialL initialH ->
-    map.undef_on initialH (allFreshVars ngs) ->
-    disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
-    ExprImp.eval_cmd map.empty fuelH initialH initialM sH = Some (finalH, finalM) ->
-    exists fuelL finalL,
-      FlatImp.eval_stmt map.empty fuelL initialL initialM sL = Some (finalL, finalM) /\
-      map.extends finalL finalH.
+  Lemma flattenStmt_correct_aux: forall e sH t m lH post,
+      Semantics.exec e sH t m lH post ->
+      e = map.empty ->
+      forall ngs ngs' sL lL,
+      flattenStmt ngs sH = (sL, ngs') ->
+      map.extends lL lH ->
+      map.undef_on lH (allFreshVars ngs) ->
+      disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
+      FlatImp.exec map.empty sL t m lL (fun t' m' lL' => exists lH',
+        map.extends lL' lH' /\
+        post t' m' lH').
   Proof.
-    induction fuelH; introv F Ex U Di Ev; [solve [inversionss] |].
-  Admitted. (*
+    induction 1; intros; simpl in *.
+    {
+      simp. (* TODO put locals_ok into record so that simp does not do "inversion locals_ok" *)
+
+  Abort.
+
+   (*
     ExprImp.invert_eval_cmd.
     - simpl in F. inversions F. destruct_pair_eqs.
       exists 1%nat initialL. auto.
@@ -926,6 +932,7 @@ Section FlattenExpr.
   Proof.
     introv C EvH.
     unfold ExprImp2FlatImp, fst in C. destruct_one_match_hyp. subst s.
+  (*
     pose proof flattenStmt_correct_aux as P.
     specialize P with (1 := E).
     specialize P with (4 := EvH).
@@ -949,6 +956,8 @@ Section FlattenExpr.
     - exists fuelL finalL. apply (conj EvL).
       intros. state_calc.
   Qed.
+  *)
+  Abort.
 
   Lemma flattenStmt_correct: forall m sH sL post,
     ExprImp2FlatImp sH = sL ->
