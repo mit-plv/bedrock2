@@ -99,6 +99,11 @@ Section Scalars.
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
   Qed.
 
+  Lemma load_one addr value R m
+    (Hsep : sep (scalar8 addr value) R m)
+    : Memory.load Syntax.access_size.one m addr = Some (word.of_Z (word.unsigned value)).
+  Admitted.
+
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)
