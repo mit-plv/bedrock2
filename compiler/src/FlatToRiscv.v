@@ -1034,7 +1034,7 @@ Section FlatToRiscv1.
       + eapply compile_ext_call_correct with (postH := post) (action0 := action)
                                              (argvars0 := argvars) (resvars0 := resvars);
           simpl; reflexivity || eassumption || ecancel_assumption || idtac.
-        eapply @ExInteract; try eassumption.
+        eapply @exec.interact; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst. eauto 7.
 
