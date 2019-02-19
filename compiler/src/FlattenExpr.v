@@ -150,6 +150,18 @@ Section FlattenExpr1.
             ) (FlatImp.SSkip, nil, ngs) args in
       (FlatImp.SSeq compute_args (FlatImp.SCall (binds: list varname) f argvars), ngs).
 
+  Definition flattenInteract(ngs: NGstate)(binds: list varname)(a: actname)
+             (args: list Syntax.expr):
+    FlatImp.stmt * NGstate :=
+    let '(compute_args, argvars, ngs) :=
+          List.fold_right
+            (fun e '(c, vs, ngs) =>
+               let (ce_ve, ngs) := flattenExpr ngs e in
+               let c := FlatImp.SSeq (fst ce_ve) c in
+               (c, snd ce_ve::vs, ngs)
+            ) (FlatImp.SSkip, nil, ngs) args in
+      (FlatImp.SSeq compute_args (FlatImp.SInteract (binds: list varname) a argvars), ngs).
+
   (* returns statement and new fresh name generator state *)
   Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt * NGstate) :=
     match s with
@@ -175,7 +187,7 @@ Section FlattenExpr1.
         (FlatImp.SSeq s1' s2', ngs'')
     | Syntax.cmd.skip | Syntax.cmd.unset _ => (FlatImp.SSkip, ngs)
     | Syntax.cmd.call binds f args => flattenCall ngs binds f args
-    | Syntax.cmd.interact _ _ _ => (FlatImp.SSkip, ngs) (* unsupported *)
+    | Syntax.cmd.interact binds a args => flattenInteract ngs binds a args
     end.
 
   Arguments Z.add : simpl never.
@@ -411,6 +423,20 @@ Section FlattenExpr1.
       set_solver. }
   Qed.
 
+  Lemma flattenInteract_freshVarUsage: forall args s' binds a ngs1 ngs2,
+      flattenInteract ngs1 binds a args = (s', ngs2) ->
+      subset (allFreshVars ngs2) (allFreshVars ngs1).
+  Proof.
+    induction args; intros; unfold flattenInteract in *; simp; try solve [map_solver locals_ok].
+    - simpl in E. simp. destruct p0.
+      specialize IHargs with (ngs1 := ngs1).
+      rewrite E0 in IHargs.
+      specialize IHargs with (1 := eq_refl).
+      apply flattenExpr_freshVarUsage in E1.
+      map_solver locals_ok.
+      Unshelve. all: assumption.
+  Qed.
+
   Lemma flattenStmt_freshVarUsage: forall s s' ngs1 ngs2,
     flattenStmt ngs1 s = (s', ngs2) ->
     subset (allFreshVars ngs2) (allFreshVars ngs1).
@@ -420,6 +446,7 @@ Section FlattenExpr1.
     | H: _ |- _ => apply genFresh_spec in H
     | H: _ |- _ => apply flattenExpr_freshVarUsage in H
     | H: _ |- _ => apply flattenExprAsBoolExpr_freshVarUsage in H
+    | H: _ |- _ => apply flattenInteract_freshVarUsage in H
     | H: (_, _) = (_, _) |- _ => inversion H; subst; clear H
     end;
     repeat match goal with
@@ -511,15 +538,14 @@ Section FlattenExpr1.
      "only_differ initialL (vars_range firstFree (S resVar)) finalL"
      this needn't be part of this lemma, because it follows from
      flattenExpr_modVars_spec and FlatImp.modVarsSound *)
-  Lemma flattenExpr_correct_aux env : forall e ngs1 ngs2 resVar (s: FlatImp.stmt) (initialH initialL: locals) initialM res,
+  Lemma flattenExpr_correct_aux : forall e ngs1 ngs2 resVar (s: FlatImp.stmt) (initialH initialL: locals) initialM res t,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
-    (* TODO why do I have to give semantics_params explicitly? *)
+    (* TODO why do I have to give semantics params explicitly? *)
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
-    exists (fuel: nat) (finalL: locals),
-      FlatImp.eval_stmt env fuel initialL initialM s = Some (finalL, initialM) /\
-      map.get finalL resVar = Some res.
+    FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
+      t' = t /\ finalM = initialM /\  map.get finalL resVar = Some res).
   Proof.
     induction e; intros *; intros F Ex U Ev.
     - repeat (inversionss; try destruct_one_match_hyp).
@@ -724,6 +750,8 @@ Section FlattenExpr1.
   *)
   Admitted.
 
+  Arguments map.empty: simpl never.
+
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
       Semantics.exec e sH t m lH post ->
       e = map.empty ->
@@ -736,9 +764,53 @@ Section FlattenExpr1.
         map.extends lL' lH' /\
         post t' m' lH').
   Proof.
-    induction 1; intros; simpl in *.
-    {
-      simp. (* TODO put locals_ok into record so that simp does not do "inversion locals_ok" *)
+    induction 1; intros; simpl in *; simp.
+
+    - (* exec.skip *)
+      eapply @FlatImp.ExSkip.
+      eauto.
+
+    - (* exec.set *)
+      pose proof flattenExpr_correct_aux as P.
+      specialize P with (initialM := m) (t := t) (1 := E) (2 := H3) (3 := H4) (4 := H).
+      unique eapply FlatImp.modVarsSound in copy of P.
+      eapply @FlatImp.ExSeq.
+      { eapply FlatImp.intersect_exec; [exact P|exact P_uac]. }
+      clear P P_uac.
+      intros. simpl in *. simp.
+      eapply @FlatImp.ExSet; [eassumption|].
+      eexists; split; [|eassumption].
+      pose_flatten_var_ineqs.
+      map_solver locals_ok.
+
+    - (* exec.unset *)
+      eapply @FlatImp.ExSkip.
+      eexists; split; [|eassumption].
+      map_solver locals_ok.
+
+    - (* exec.store *)
+      admit.
+
+    - (* if_true *)
+      admit.
+
+    - (* if_false *)
+      admit.
+
+    - (* seq *)
+      admit.
+
+    - (* while_false *)
+      admit.
+
+    - (* while_true *)
+      admit.
+
+    - (* call *)
+      admit.
+
+    - (* interact *)
+      admit.
 
   Abort.
 

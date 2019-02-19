@@ -13,6 +13,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import bedrock2.Syntax.
 Require Import Coq.micromega.Lia.
+Require Import compiler.Simp.
 
 
 Inductive bbinop: Type :=
@@ -393,6 +394,94 @@ Section FlatImp1.
         post t m l ->
         exec SSkip t m l post.
 
+    Lemma weaken_exec: forall t l m s post1,
+        exec s t m l post1 ->
+        forall post2,
+          (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
+          exec s t m l post2.
+    Proof.
+      induction 1; intros; try solve [econstructor; eauto].
+      - eapply ExInteract; try eassumption.
+        intros; simp.
+        match goal with
+        | H: _ |- _ => solve [edestruct H; simp; eauto]
+        end.
+      - eapply @ExCall.
+        4: eapply IHexec.
+        all: eauto.
+        intros. simp.
+        specialize H3 with (1 := H5).
+        simp. eauto 10.
+    Qed.
+
+    Lemma intersect_exec: forall t l m s post1,
+        exec s t m l post1 ->
+        forall post2,
+          exec s t m l post2 ->
+          exec s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
+    Proof.
+      induction 1; intros;
+        match goal with
+        | H: exec _ _ _ _ _ |- _ => inversion H; subst; clear H
+        end;
+        try solve [
+              repeat match goal with
+                     | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                       replace v2 with v1 in * by congruence;
+                       clear H2
+                     end;
+              econstructor; eauto].
+      - (* SInteract *)
+        admit.
+      - (* SCall *)
+        match goal with
+        | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
+          replace x2 with x1 in * by congruence;
+            replace y2 with y1 in * by congruence;
+            replace z2 with z1 in * by congruence;
+            clear x2 y2 z2 H2
+        end.
+        repeat match goal with
+               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                 replace v2 with v1 in * by congruence;
+                   clear v2 H2
+               end.
+        rename IHexec into IH.
+        specialize IH with (1 := H15).
+        eapply @ExCall; [..|exact IH|]; eauto.
+        rename H3 into Ex1.
+        rename H16 into Ex2.
+        move Ex1 before Ex2.
+        intros. simpl in *. destruct_conjs.
+        specialize Ex1 with (1 := H3).
+        specialize Ex2 with (1 := H4).
+        destruct_conjs.
+        repeat match goal with
+               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                 replace v2 with v1 in * by congruence;
+                   clear v2 H2
+               end.
+        eauto 10.
+      - (* SIf *)
+        admit.
+      - (* SIf *)
+        admit.
+      - (* SLoop *)
+        pose proof IHexec as IH1.
+        (*
+        specialize IH1 with (1 := H8).
+        eapply @ExLoop; [exact IH1 | intros; simpl in *; destruct_conjs; eauto ..].
+         *)
+        admit.
+      - (* SSeq *)
+        pose proof IHexec as IH1.
+        specialize IH1 with (1 := H5).
+        eapply @ExSeq; [exact IH1|].
+        intros; simpl in *.
+        destruct H2.
+        eauto.
+    Admitted. (* TODO *)
+
   End WithEnv.
 
   (* returns the set of modified vars *)
@@ -479,6 +568,40 @@ Ltac invert_eval_stmt :=
     | let x := fresh "Case_SInteract" in pose proof tt as x; move x at top ]
   end.
 
+Ltac prove_exec :=
+  let useOnce := fresh "useOnce_name" in
+  pose proof @ExLoop as useOnce;
+  repeat match goal with
+         | |- _ => progress destruct_pair_eqs
+         | H: _ /\ _ |- _ => destruct H
+         | |- _ => progress (simpl in *; subst)
+         | |- _ => progress eauto 10
+         | |- _ => congruence
+         | |- _ => contradiction
+         | |- _ => progress rewrite_match
+      (* | |- _ => rewrite reg_eqb_ne by congruence *)
+      (* | |- _ => rewrite reg_eqb_eq by congruence *)
+         | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+           replace v2 with v1 in * by congruence;
+           clear H2
+         (* | |- _ => eapply @ExInteract  not possible because actname=Empty_set *)
+         | |- _ => eapply @ExCall
+         | |- _ => eapply @ExLoad
+         | |- _ => eapply @ExStore
+         | |- _ => eapply @ExLit
+         | |- _ => eapply @ExOp
+         | |- _ => eapply @ExSet
+         | |- _ => solve [eapply @ExIfThen; eauto]
+         | |- _ => solve [eapply @ExIfElse; eauto]
+         (* | |- _ => eapply @ExLoop    could loop infinitely     *)
+         | |- _ => eapply useOnce; clear useOnce
+         | |- _ => eapply @ExSeq
+         | |- _ => eapply @ExSkip
+         | |- _ => progress intros
+         end;
+  try clear useOnce.
+
+
 Section FlatImp2.
   Context {pp : unique! parameters}.
 
@@ -513,7 +636,7 @@ Section FlatImp2.
       contradiction.
   Qed.
 
-  Lemma modVarsSound: forall fuel e s initialSt initialM finalSt finalM,
+  Lemma modVarsSound_fixpoint: forall fuel e s initialSt initialM finalSt finalM,
     eval_stmt e fuel initialSt initialM s = Some (finalSt, finalM) ->
     map.only_differ initialSt (modVars s) finalSt.
   Proof.
@@ -529,6 +652,55 @@ Section FlatImp2.
       end;
       map_solver locals_ok;
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
+  Qed.
+  
+  Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM post,
+      exec e s initialT initialM initialSt post ->
+      exec e s initialT initialM initialSt
+           (fun finalT finalM finalSt => map.only_differ initialSt (modVars s) finalSt).
+  Proof.
+    induction 1;
+      try solve [ econstructor; [eassumption..|map_solver locals_ok] ].
+    - eapply ExInteract; try eassumption.
+      intros; simp.
+      edestruct H1; try eassumption. simp.
+      eexists; split; [eassumption|].
+      simpl. try split; eauto.
+      eapply only_differ_putmany. eassumption.
+    - eapply ExCall. 4: exact H2. (* don't pick IHexec! *) all: try eassumption. 
+      intros; simpl in *; simp.
+      edestruct H3; try eassumption. simp.
+      do 2 eexists; split; [|split]; try eassumption.
+      eapply only_differ_putmany. eassumption.
+    - eapply ExIfThen; try eassumption.
+      eapply weaken_exec; [eassumption|].
+      simpl; intros. map_solver locals_ok.
+    - eapply ExIfElse; try eassumption.
+      eapply weaken_exec; [eassumption|].
+      simpl; intros. map_solver locals_ok.
+    - eapply ExLoop with
+          (mid3 := fun t' m' l' => mid1 t' m' l' /\ map.only_differ l (modVars body1) l')
+          (mid4 := fun t' m' l' => mid2 t' m' l' /\
+                                   map.only_differ l (modVars (SLoop body1 cond body2)) l').
+      + eapply intersect_exec; eassumption.
+      + intros. simp. eauto.
+      + intros. simp. simpl. map_solver locals_ok.
+      + intros. simp. simpl in *.
+        eapply intersect_exec; [eauto|].
+        eapply weaken_exec.
+        * eapply H3; eassumption.
+        * simpl. intros. map_solver locals_ok.
+      + intros. simp. simpl in *.
+        eapply weaken_exec.
+        * eapply H5; eassumption.
+        * simpl. intros. map_solver locals_ok.
+    - eapply ExSeq with
+          (mid0 := fun t' m' l' => mid t' m' l' /\ map.only_differ l (modVars s1) l').
+      + eapply intersect_exec; eassumption.
+      + simpl; intros. simp.
+        eapply weaken_exec; [eapply H1; eauto|].
+        simpl; intros.
+        map_solver locals_ok.
   Qed.
 
 End FlatImp2.
@@ -594,74 +766,6 @@ Section FlatImp3.
       exec env s nil m l (fun t'' m'' l'' => t'' = nil /\ m'' = m' /\ l'' = l').
   Proof.
     induction fuel; intros; [ simpl in *; discriminate | invert_eval_stmt ]; prove_exec.
-  Qed.
-
-  Lemma intersect_exec: forall env t l m s post1,
-      exec env s t m l post1 ->
-      forall post2,
-      exec env s t m l post2 ->
-      exec env s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
-  Proof.
-    induction 1; intros;
-      match goal with
-      | H: exec _ _ _ _ _ _ |- _ => inversion H; subst; clear H
-      end;
-      try solve [prove_exec].
-    - (* SCall *)
-      match goal with
-      | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
-        replace x2 with x1 in * by congruence;
-        replace y2 with y1 in * by congruence;
-        replace z2 with z1 in * by congruence;
-        clear x2 y2 z2 H2
-      end.
-      repeat match goal with
-             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-               replace v2 with v1 in * by congruence;
-               clear v2 H2
-             end.
-      rename IHexec into IH.
-      specialize IH with (1 := H15).
-      eapply @ExCall; [..|exact IH|]; eauto.
-      rename H3 into Ex1.
-      rename H16 into Ex2.
-      move Ex1 before Ex2.
-      intros. simpl in *. destruct_conjs.
-      specialize Ex1 with (1 := H3).
-      specialize Ex2 with (1 := H4).
-      destruct_conjs.
-      repeat match goal with
-             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-               replace v2 with v1 in * by congruence;
-               clear v2 H2
-             end.
-      eauto 10.
-    - (* SLoop *)
-      pose proof IHexec as IH1.
-      specialize IH1 with (1 := H8).
-      eapply @ExLoop; [exact IH1 | intros; simpl in *; destruct_conjs; eauto ..].
-    - (* SSeq *)
-      pose proof IHexec as IH1.
-      specialize IH1 with (1 := H5).
-      eapply @ExSeq; [exact IH1|].
-      intros; simpl in *.
-      destruct H2.
-      eauto.
-  Qed.
-
-  Lemma weaken_exec: forall env t l m s post1,
-      exec env s t m l post1 ->
-      forall post2 : list Event -> mem -> map varname FlatImp.mword -> Prop,
-      (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
-      exec env s t m l post2.
-  Proof.
-    induction 1; intros; try solve [prove_exec].
-    eapply @ExCall.
-    4: eapply IHexec.
-    all: eauto.
-    intros.
-    specialize H3 with (1 := H5).
-    destruct_conjs. eauto 10.
   Qed.
 
   Lemma inductive_to_fixpoint_semantics_aux: forall env t l m s post,
