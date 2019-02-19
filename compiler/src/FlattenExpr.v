@@ -1,57 +1,81 @@
-Require Import lib.LibTacticsMin.
 Require Import coqutil.Word.Properties.
 Require Import compiler.util.Common.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
 Require Import compiler.NameGen.
 Require Import coqutil.Decidable.
-Require Import riscv.Memory.
-Require Import riscv.Utility.
 Require Import bedrock2.Syntax.
-Require Import bedrock2.Semantics. (* TODO: this should be in bedrock2.Semantics *)
+Require Import riscv.Utility.
+Require Import bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import compiler.Simp.
+Require Import coqutil.Map.Empty_set_keyed_map.
+
 
 Open Scope Z_scope.
 
+Definition TODO{T: Type}: T. Admitted.
 
-Section FlattenExpr.
+Module Import FlattenExpr.
+  Class parameters := {
+    varname: Type;
+    actname: Type;
+    W :> Words;
+    varname_eq_dec :> DecidableEq varname;
+    actname_eq_dec :> DecidableEq actname;
+    locals :> map.map varname Utility.word;
+    mem :> map.map Utility.word Utility.byte;
+    locals_ok :> map.ok locals;
+    mem_ok :> map.ok mem;
+    trace := list (mem * actname * list Utility.word * (mem * list Utility.word));
+    ext_spec : trace ->
+               mem -> actname -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
+    max_ext_call_code_size : actname -> Z;
+    max_ext_call_code_size_nonneg : forall a : actname, 0 <= max_ext_call_code_size a;
+    NGstate: Type;
+    NG :> NameGen varname NGstate;
+  }.
 
-  Context {p : unique! FlatImp.FlatImp.parameters}.
+  Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
+    Syntax.varname := varname;
+    Syntax.funname := Empty_set;
+    Syntax.actname := actname;
+  |}.
 
-  Definition todo {t: Type} : t. Admitted.
+  Instance mk_FlatImp_params(p: parameters): FlatImp.FlatImp.parameters := {|
+    FlatImp.FlatImp.syntax_params := mk_Syntax_params p;
+    FlatImp.FlatImp.env := Empty_set_keyed_map _;
+    FlatImp.FlatImp.env_ok := TODO;
+    FlatImp.FlatImp.mem_ok := mem_ok;
+    FlatImp.FlatImp.ext_spec := ext_spec;
+    FlatImp.FlatImp.max_ext_call_code_size := max_ext_call_code_size;
+    FlatImp.FlatImp.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
+  |}.
 
-  Instance semantics_params : Semantics.parameters := {|
+  Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
     Semantics.syntax := FlatImp.FlatImp.syntax_params;
     Semantics.word := Utility.word;
     Semantics.byte := Utility.byte;
-    Semantics.env := todo;
-    Semantics.funname_eqb := todo;
-    Semantics.ext_spec:= todo;
+    Semantics.env := Empty_set_keyed_map (list varname * list varname * cmd);
+    Semantics.funname_eqb f := Empty_set_rect _;
+    Semantics.ext_spec:= FlatImp.FlatImp.ext_spec;
   |}.
 
-  (* TODO where to put these? *)
-  Context {NGstate: Type}.
-  Context {NG: NameGen varname NGstate}.
-  Context {locals_ok: map.ok locals}.
+End FlattenExpr.
 
-  Hypothesis actname_empty: Syntax.actname = Empty_set.
+Section FlattenExpr1.
 
-  (* TODO partially specify this in Semantics parameters *)
-  (*Hypothesis convert_bopname: @Syntax.bopname (@Semantics.syntax p) -> Basic_bopnames.bopname. *)
-  (*Hypothesis eval_binop_compat: forall op w w0,
-      Op.eval_binop (convert_bopname op) w w0 = Semantics.interp_binop op w w0. *)
+  Context {p : unique! parameters}.
 
   Ltac state_calc0 :=
-    map_solver locals_ok.
+    map_solver (@locals_ok p).
 
   Ltac set_solver :=
-    set_solver_generic (@varname (@FlatImp.FlatImp.syntax_params p)).
+    set_solver_generic (@varname p).
 
-  (* returns stmt and var into which result is saved, and new fresh name generator state
-     TODO use state monad? *)
+  (* returns stmt and var into which result is saved, and new fresh name generator state *)
   Fixpoint flattenExpr(ngs: NGstate)(e: Syntax.expr):
     (FlatImp.stmt * varname * NGstate) :=
     match e with
@@ -66,12 +90,14 @@ Section FlattenExpr.
     | Syntax.expr.load sz e =>
         let '(s1, r1, ngs') := flattenExpr ngs e in
         let '(x, ngs'') := genFresh ngs' in
-        (FlatImp.SSeq s1 (FlatImp.SLoad sz x r1), x, ngs'')
+        (FlatImp.SSeq s1 (@FlatImp.SLoad (mk_Syntax_params p) sz x r1), x, ngs'')
     | Syntax.expr.op op e1 e2 =>
         let '(s1, r1, ngs') := flattenExpr ngs e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
         let '(x, ngs''') := genFresh ngs'' in
-        (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x op r1 r2)), x, ngs''')
+        (FlatImp.SSeq s1
+          (FlatImp.SSeq s2
+            (@FlatImp.SOp (mk_Syntax_params p) x op r1 r2)), x, ngs''')
     end.
 
   Fixpoint flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr):
@@ -100,7 +126,8 @@ Section FlattenExpr.
         | Syntax.bopname.slu
         | Syntax.bopname.srs =>
             let '(x, ngs''') := genFresh ngs'' in
-            (FlatImp.SSeq s1 (FlatImp.SSeq s2 (FlatImp.SOp x op r1 r2)), FlatImp.CondNez x, ngs''')
+            (FlatImp.SSeq s1 (FlatImp.SSeq s2 (@FlatImp.SOp (mk_Syntax_params p) x op r1 r2)),
+             FlatImp.CondNez x, ngs''')
         | Syntax.bopname.lts =>
             (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLt r1 r2, ngs'')
         | Syntax.bopname.ltu =>
@@ -110,6 +137,7 @@ Section FlattenExpr.
         end
     end.
 
+  (* TODO this is only useful if we also flatten the bodies of all functions *)
   Definition flattenCall(ngs: NGstate)(binds: list varname)(f: Syntax.funname)
              (args: list Syntax.expr):
     FlatImp.stmt * NGstate :=
@@ -153,12 +181,19 @@ Section FlattenExpr.
   Arguments Z.add : simpl never.
   Arguments Z.mul : simpl never.
 
+  Ltac specializes H :=
+    match type of H with
+    | ?P -> ?Q => let n := fresh in assert P as n; [|specialize (H n); specializes H]
+    | forall (x: ?T), _ => let n := fresh x in evar (n: T);
+                           specialize (H n); subst n; specializes H
+    | _ => idtac
+    end.
+
   Lemma flattenExpr_size: forall e s resVar ngs ngs',
     flattenExpr ngs e = (s, resVar, ngs') ->
     0 <= FlatImp.stmt_size s <= 2 * ExprImp.expr_size e.
   Proof.
-    induction e; intros; simpl in *; repeat destruct_one_match_hyp; inversionss;
-      simpl; try omega.
+    induction e; intros; simpl in *; simp; simpl; try omega.
     - specializes IHe; [eassumption|]. omega.
     - specializes IHe1; [eassumption|].
       specializes IHe2; [eassumption|].
@@ -391,7 +426,6 @@ Section FlattenExpr.
     | IH: forall _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
     end;
     try solve [set_solver].
-    eapply flattenCall_freshVarUsage. eassumption.
   Qed.
 
   Ltac pose_flatten_var_ineqs :=
@@ -404,18 +438,6 @@ Section FlattenExpr.
     | H: _ |- _ => unique eapply flattenExpr_modVars_spec in copy of H
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modVars_spec in copy of H
     | H: _ |- _ => unique eapply flattenStmt_freshVarUsage in copy of H
-    end.
-
-  Tactic Notation "nofail" tactic3(t) := first [ t | fail 1000 "should not have failed"].
-
-  Ltac fuel_increasing_rewrite :=
-    lazymatch goal with
-    | Ev:        FlatImp.eval_stmt _ _ ?ENV ?Fuel1 ?initialSt ?initialM ?s = ?final
-      |- context [FlatImp.eval_stmt _ _ ?ENV ?Fuel2 ?initialSt ?initialM ?s]
-      => let IE := fresh in assert (Fuel1 <= Fuel2) as IE by omega;
-         eapply FlatImp.increase_fuel_still_Success in Ev; [|apply IE];
-         clear IE;
-         rewrite Ev
     end.
 
   (* only needed if we want to export the goal into a map_solver-only environment *)
@@ -445,7 +467,6 @@ Section FlattenExpr.
     repeat match goal with
            | x: NGstate |- _ => clear x
            end;
-    clear NG NGstate;
     (repeat (so fun hyporgoal => match hyporgoal with
     | context [ZToReg ?x] => let x' := fresh x in forget (ZToReg x) as x'
     end));
@@ -495,13 +516,15 @@ Section FlattenExpr.
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     (* TODO why do I have to give semantics_params explicitly? *)
-    @eval_expr semantics_params initialM initialH e = Some res ->
+    @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
     exists (fuel: nat) (finalL: locals),
       FlatImp.eval_stmt env fuel initialL initialM s = Some (finalL, initialM) /\
       map.get finalL resVar = Some res.
   Proof.
-    induction e; introv F Ex U Ev.
+    induction e; intros *; intros F Ex U Ev.
     - repeat (inversionss; try destruct_one_match_hyp).
+  Admitted.
+  (*
       match goal with
       | |- context [map.get _ resVar = Some ?res] =>
          exists 1%nat (map.put initialL resVar res)
@@ -535,8 +558,6 @@ Section FlattenExpr.
       specialize IHe2 with (initialH := initialH) (initialL := midL) (initialM := initialM)
          (1 := E0).
       specializes IHe2.
-  Admitted.
-  (*
       { state_calc. }
       { state_calc. }
       { eassumption. }
@@ -593,13 +614,15 @@ Section FlattenExpr.
     {
       (* PARAMRECORDS *)
       Fail omega.
-      unfold width, semantics_params.
+      unfold Utility.width, W, mk_Semantics_params, mk_FlatImp_params.
+      simpl.
       omega.
     }
     {
       (* PARAMRECORDS *)
       Fail omega.
-      unfold width, semantics_params.
+      unfold Utility.width, W, mk_Semantics_params, mk_FlatImp_params.
+      simpl.
       omega.
     }
   Qed.
@@ -610,13 +633,14 @@ Section FlattenExpr.
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
-    @eval_expr semantics_params initialM initialH e = Some res ->
+    @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
     exists (fuel: nat) (finalL: locals),
       FlatImp.eval_stmt env fuel initialL initialM s = Some (finalL, initialM) /\
       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))).
   Proof.
-    destruct e; introv F Ex U Ev;
+    destruct e; intros *; intros F Ex U Ev;
     unfold flattenExprAsBoolExpr in F.
+   (*
     1,2,3:
       repeat destruct_one_match_hyp; repeat destruct_pair_eqs; subst;
       pose proof flattenExpr_correct_aux as P;
@@ -657,7 +681,6 @@ Section FlattenExpr.
       *)
 
 
-      (*
         Error: Anomaly "Universe Top.71868 undefined." Please report at http://coq.inria.fr/bugs/.
 
       repeat destruct_one_match_of_hyp F; repeat destruct_pair_eqs;
@@ -930,9 +953,9 @@ Section FlattenExpr.
       FlatImp.eval_stmt map.empty fuelL map.empty initialM sL = Some (finalL, finalM) /\
       forall resVar res, map.get finalH resVar = Some res -> map.get finalL resVar = Some res.
   Proof.
+  (*
     introv C EvH.
     unfold ExprImp2FlatImp, fst in C. destruct_one_match_hyp. subst s.
-  (*
     pose proof flattenStmt_correct_aux as P.
     specialize P with (1 := E).
     specialize P with (4 := EvH).
@@ -965,4 +988,4 @@ Section FlattenExpr.
     FlatImp.exec map.empty sL nil m map.empty post.
   Admitted.
 
-End FlattenExpr.
+End FlattenExpr1.

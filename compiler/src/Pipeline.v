@@ -80,36 +80,21 @@ Section Pipeline1.
 
   Definition TODO{T: Type}: T. Admitted.
 
-  Instance semantics_params: Semantics.parameters := {|
-    Semantics.syntax := syntax_params;
-    Semantics.width := width;
-    Semantics.word := word;
-    Semantics.byte := byte;
-    Semantics.mem := mem;
-    Semantics.locals := locals;
-    Semantics.env := TODO; (* map with Empty_set keys *)
-    Semantics.funname_eqb := TODO;
-    Semantics.ext_spec := TODO;
-  |}.
-
-  (* TODO should we have two instances, one for FlatImp with varname (before regalloc),
-     and one for FlatImp with Register (after regaloc) ? *)
-
-  Instance FlatImp_params: FlatImp.FlatImp.parameters := {|
-    FlatImp.FlatImp.syntax_params := syntax_params;
-    FlatImp.FlatImp.W := W;
-    FlatImp.FlatImp.varname_eq_dec := TODO;
-    FlatImp.FlatImp.funcname_eq_dec := TODO;
-    FlatImp.FlatImp.actname_eq_dec := TODO;
-    FlatImp.FlatImp.locals := locals;
-    FlatImp.FlatImp.env := TODO;
-    FlatImp.FlatImp.mem := mem;
-    FlatImp.FlatImp.locals_ok := TODO;
-    FlatImp.FlatImp.env_ok := TODO;
-    FlatImp.FlatImp.mem_ok := TODO;
-    FlatImp.FlatImp.ext_spec := TODO;
-    FlatImp.FlatImp.max_ext_call_code_size action := TODO;
-    FlatImp.FlatImp.max_ext_call_code_size_nonneg := TODO;
+  Instance FlattenExpr_parameters: FlattenExpr.parameters := {|
+    FlattenExpr.varname := varname;
+    FlattenExpr.actname := actname;
+    FlattenExpr.W := W;
+    FlattenExpr.varname_eq_dec := TODO;
+    FlattenExpr.actname_eq_dec := TODO;
+    FlattenExpr.locals := locals;
+    FlattenExpr.mem := mem;
+    FlattenExpr.locals_ok := TODO;
+    FlattenExpr.mem_ok := TODO;
+    FlattenExpr.ext_spec := ext_spec;
+    FlattenExpr.max_ext_call_code_size := TODO;
+    FlattenExpr.max_ext_call_code_size_nonneg := TODO;
+    FlattenExpr.NGstate := NGstate;
+    FlattenExpr.NG := NG;
   |}.
 
   Instance FlatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
