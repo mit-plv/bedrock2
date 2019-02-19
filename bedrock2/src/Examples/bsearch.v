@@ -128,6 +128,8 @@ From coqutil.Tactics Require Import syntactic_unify.
 
   (** Abstract interpretation *)
 
+  Module unsigned.
+
   Definition absint_eq {T} := @eq T.
   Local Infix "=~>" := absint_eq (at level 70, no associativity).
     
@@ -182,7 +184,7 @@ From coqutil.Tactics Require Import syntactic_unify.
     y.
 
   Definition absint_eq_refl {T} v := ((@eq_refl T v) : @absint_eq T v v).
-  Ltac absint e :=
+  Ltac zify_expr e :=
     let re := rdelta e in
     lazymatch type of e with
     | @word.rep ?width ?word_parameters =>
@@ -192,8 +194,8 @@ From coqutil.Tactics Require Import syntactic_unify.
         let Ba := rbounded a in
         named_pose_proof (absint_of_Z a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)) : @absint_eq Z (@word.unsigned _ word_parameters e) a)
       | ?op ?a ?b =>
-        let Ha := absint a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
-        let Hb := absint b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
+        let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
+        let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
         match op with
         | word.add =>
           let Re := named_pose_asfresh_or_id constr:(Ra+Rb) e in
@@ -232,10 +234,11 @@ From coqutil.Tactics Require Import syntactic_unify.
     | Z =>
       match e with
       | _ => match goal with H: e =~> _ |- _ => H end
-      | word.unsigned ?a => absint a
+      | word.unsigned ?a => zify_expr a
       | _ => constr:(@absint_eq_refl Z e)
       end
     end.
+  End unsigned.
   
 
 
@@ -248,14 +251,14 @@ From coqutil.Tactics Require Import syntactic_unify.
        | O => True
        | S n' => let x := word.add x x in goal x n'
        end.
-  Goal forall x X, 1 <= X < 2^60 -> absint_eq (word.unsigned x) X -> goal x 7.
+  Goal forall x X, 1 <= X < 2^60 -> unsigned.absint_eq (word.unsigned x) X -> goal x 7.
   Proof.
     cbv beta iota delta [goal].
     intros.
 
     let e := match goal with x := _ |- _ => x end in
     let e := constr:(word.sub (word.mul (word.slu (word.sru e (word.of_Z 16)) (word.of_Z 3)) x) x) in
-    let H := absint e in
+    let H := unsigned.zify_expr e in
     idtac H.
 
     exact I.
@@ -447,8 +450,8 @@ Proof.
 
         lazymatch goal with
           |- word.unsigned ?a < _ * ?b =>
-          let H := absint a in rewrite H;
-          let H := absint b in rewrite H
+          let H := unsigned.zify_expr a in rewrite H;
+          let H := unsigned.zify_expr b in rewrite H
         end.
         rewrite length_rep.
         clear. Z.div_mod_to_equations. Lia.lia. }
@@ -457,8 +460,8 @@ Proof.
 
         lazymatch goal with
           |- word.unsigned ?a mod ?b = 0 =>
-          let H := absint a in rewrite H;
-          let H := absint b in rewrite H
+          let H := unsigned.zify_expr a in rewrite H;
+          let H := unsigned.zify_expr b in rewrite H
         end.
 
         clear. Z.div_mod_to_equations. Lia.lia. }
