@@ -767,24 +767,24 @@ Section FlattenExpr1.
     induction 1; intros; simpl in *; simp.
 
     - (* exec.skip *)
-      eapply @FlatImp.ExSkip.
+      eapply @FlatImp.exec.skip.
       eauto.
 
     - (* exec.set *)
       pose proof flattenExpr_correct_aux as P.
       specialize P with (initialM := m) (t := t) (1 := E) (2 := H3) (3 := H4) (4 := H).
       unique eapply FlatImp.modVarsSound in copy of P.
-      eapply @FlatImp.ExSeq.
-      { eapply FlatImp.intersect_exec; [exact P|exact P_uac]. }
+      eapply @FlatImp.exec.seq.
+      { eapply FlatImp.exec.intersect; [exact P|exact P_uac]. }
       clear P P_uac.
       intros. simpl in *. simp.
-      eapply @FlatImp.ExSet; [eassumption|].
+      eapply @FlatImp.exec.set; [eassumption|].
       eexists; split; [|eassumption].
       pose_flatten_var_ineqs.
       map_solver locals_ok.
 
     - (* exec.unset *)
-      eapply @FlatImp.ExSkip.
+      eapply @FlatImp.exec.skip.
       eexists; split; [|eassumption].
       map_solver locals_ok.
 

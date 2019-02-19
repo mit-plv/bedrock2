@@ -306,182 +306,6 @@ Section FlatImp1.
       False.
     Proof. inversion_lemma. Qed.
 
-    (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
-    Implicit Types post : trace -> mem -> locals -> Prop.
-
-    (* alternative semantics which allow non-determinism *)
-    Inductive exec:
-      stmt ->
-      trace -> mem -> locals ->
-      (trace -> mem -> locals -> Prop)
-    -> Prop :=
-    | ExInteract: forall t m l action argvars argvals resvars outcome post,
-        option_all (List.map (map.get l) argvars) = Some argvals ->
-        ext_spec t m action argvals outcome ->
-        (forall m' resvals,
-            outcome m' resvals ->
-            exists l', map.putmany_of_list resvars resvals l = Some l' /\
-                       post (((m, action, argvals), (m', resvals)) :: t) m' l') ->
-        exec (SInteract resvars action argvars) t m l post
-    | ExCall: forall t m l binds fname args params rets fbody argvs st0 post outcome,
-        map.get e fname = Some (params, rets, fbody) ->
-        option_all (List.map (map.get l) args) = Some argvs ->
-        map.putmany_of_list params argvs map.empty = Some st0 ->
-        exec fbody t m st0 outcome ->
-        (forall t' m' st1,
-            outcome t' m' st1 ->
-            exists retvs l',
-              option_all (List.map (map.get st1) rets) = Some retvs /\
-              map.putmany_of_list binds retvs l = Some l' /\
-              post t' m' l') ->
-        exec (SCall binds fname args) t m l post
-    | ExLoad: forall t m l sz x a v addr post,
-        map.get l a = Some addr ->
-        load sz m addr = Some v ->
-        post t m (map.put l x v) ->
-        exec (SLoad sz x a) t m l post
-    | ExStore: forall t m m' l sz a addr v val post,
-        map.get l a = Some addr ->
-        map.get l v = Some val ->
-        store sz m addr val = Some m' ->
-        post t m' l ->
-        exec (SStore sz a v) t m l post
-    | ExLit: forall t m l x v post,
-        post t m (map.put l x (word.of_Z v)) ->
-        exec (SLit x v) t m l post
-    | ExOp: forall t m l x op y y' z z' post,
-        map.get l y = Some y' ->
-        map.get l z = Some z' ->
-        post t m (map.put l x (interp_binop op y' z')) ->
-        exec (SOp x op y z) t m l post
-    | ExSet: forall t m l x y y' post,
-        map.get l y = Some y' ->
-        post t m (map.put l x y') ->
-        exec (SSet x y) t m l post
-    | ExIfThen: forall t m l cond  bThen bElse post,
-        eval_bcond l cond = Some true ->
-        exec bThen t m l post ->
-        exec (SIf cond bThen bElse) t m l post
-    | ExIfElse: forall t m l cond bThen bElse post,
-        eval_bcond l cond = Some false ->
-        exec bElse t m l post ->
-        exec (SIf cond bThen bElse) t m l post
-    | ExLoop: forall t m l cond body1 body2 mid1 mid2 post,
-        (* This case is carefully crafted in such a way that recursive uses of exec
-         only appear under forall and ->, but not under exists, /\, \/, to make sure the
-         auto-generated induction principle contains an IH for all recursive uses. *)
-        exec body1 t m l mid1 ->
-        (forall t' m' l',
-            mid1 t' m' l' ->
-            eval_bcond l' cond <> None) ->
-        (forall t' m' l',
-            mid1 t' m' l' ->
-            eval_bcond l' cond = Some false ->
-            post t' m' l') ->
-        (forall t' m' l',
-            mid1 t' m' l' ->
-            eval_bcond l' cond = Some true ->
-            exec body2 t' m' l' mid2) ->
-        (forall t'' m'' l'',
-            mid2 t'' m'' l'' ->
-            exec (SLoop body1 cond body2) t'' m'' l'' post) ->
-        exec (SLoop body1 cond body2) t m l post
-    | ExSeq: forall t m l s1 s2 mid post,
-        exec s1 t m l mid ->
-        (forall t' m' l', mid t' m' l' -> exec s2 t' m' l' post) ->
-        exec (SSeq s1 s2) t m l post
-    | ExSkip: forall t m l post,
-        post t m l ->
-        exec SSkip t m l post.
-
-    Lemma weaken_exec: forall t l m s post1,
-        exec s t m l post1 ->
-        forall post2,
-          (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
-          exec s t m l post2.
-    Proof.
-      induction 1; intros; try solve [econstructor; eauto].
-      - eapply ExInteract; try eassumption.
-        intros; simp.
-        match goal with
-        | H: _ |- _ => solve [edestruct H; simp; eauto]
-        end.
-      - eapply @ExCall.
-        4: eapply IHexec.
-        all: eauto.
-        intros. simp.
-        specialize H3 with (1 := H5).
-        simp. eauto 10.
-    Qed.
-
-    Lemma intersect_exec: forall t l m s post1,
-        exec s t m l post1 ->
-        forall post2,
-          exec s t m l post2 ->
-          exec s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
-    Proof.
-      induction 1; intros;
-        match goal with
-        | H: exec _ _ _ _ _ |- _ => inversion H; subst; clear H
-        end;
-        try solve [
-              repeat match goal with
-                     | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                       replace v2 with v1 in * by congruence;
-                       clear H2
-                     end;
-              econstructor; eauto].
-      - (* SInteract *)
-        admit.
-      - (* SCall *)
-        match goal with
-        | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
-          replace x2 with x1 in * by congruence;
-            replace y2 with y1 in * by congruence;
-            replace z2 with z1 in * by congruence;
-            clear x2 y2 z2 H2
-        end.
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence;
-                   clear v2 H2
-               end.
-        rename IHexec into IH.
-        specialize IH with (1 := H15).
-        eapply @ExCall; [..|exact IH|]; eauto.
-        rename H3 into Ex1.
-        rename H16 into Ex2.
-        move Ex1 before Ex2.
-        intros. simpl in *. destruct_conjs.
-        specialize Ex1 with (1 := H3).
-        specialize Ex2 with (1 := H4).
-        destruct_conjs.
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence;
-                   clear v2 H2
-               end.
-        eauto 10.
-      - (* SIf *)
-        admit.
-      - (* SIf *)
-        admit.
-      - (* SLoop *)
-        pose proof IHexec as IH1.
-        (*
-        specialize IH1 with (1 := H8).
-        eapply @ExLoop; [exact IH1 | intros; simpl in *; destruct_conjs; eauto ..].
-         *)
-        admit.
-      - (* SSeq *)
-        pose proof IHexec as IH1.
-        specialize IH1 with (1 := H5).
-        eapply @ExSeq; [exact IH1|].
-        intros; simpl in *.
-        destruct H2.
-        eauto.
-    Admitted. (* TODO *)
-
   End WithEnv.
 
   (* returns the set of modified vars *)
@@ -537,6 +361,191 @@ Section FlatImp1.
 End FlatImp1.
 
 
+Module exec.
+  Section FlatImpExec.
+    Context {pp : unique! parameters}.
+    Variable (e: env).
+
+    (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
+    Implicit Types post : trace -> mem -> locals -> Prop.
+
+    (* alternative semantics which allow non-determinism *)
+    Inductive exec:
+      stmt ->
+      trace -> mem -> locals ->
+      (trace -> mem -> locals -> Prop)
+    -> Prop :=
+    | interact: forall t m l action argvars argvals resvars outcome post,
+        option_all (List.map (map.get l) argvars) = Some argvals ->
+        ext_spec t m action argvals outcome ->
+        (forall m' resvals,
+            outcome m' resvals ->
+            exists l', map.putmany_of_list resvars resvals l = Some l' /\
+                       post (((m, action, argvals), (m', resvals)) :: t) m' l') ->
+        exec (SInteract resvars action argvars) t m l post
+    | call: forall t m l binds fname args params rets fbody argvs st0 post outcome,
+        map.get e fname = Some (params, rets, fbody) ->
+        option_all (List.map (map.get l) args) = Some argvs ->
+        map.putmany_of_list params argvs map.empty = Some st0 ->
+        exec fbody t m st0 outcome ->
+        (forall t' m' st1,
+            outcome t' m' st1 ->
+            exists retvs l',
+              option_all (List.map (map.get st1) rets) = Some retvs /\
+              map.putmany_of_list binds retvs l = Some l' /\
+              post t' m' l') ->
+        exec (SCall binds fname args) t m l post
+    | load: forall t m l sz x a v addr post,
+        map.get l a = Some addr ->
+        load sz m addr = Some v ->
+        post t m (map.put l x v) ->
+        exec (SLoad sz x a) t m l post
+    | store: forall t m m' l sz a addr v val post,
+        map.get l a = Some addr ->
+        map.get l v = Some val ->
+        store sz m addr val = Some m' ->
+        post t m' l ->
+        exec (SStore sz a v) t m l post
+    | lit: forall t m l x v post,
+        post t m (map.put l x (word.of_Z v)) ->
+        exec (SLit x v) t m l post
+    | op: forall t m l x op y y' z z' post,
+        map.get l y = Some y' ->
+        map.get l z = Some z' ->
+        post t m (map.put l x (interp_binop op y' z')) ->
+        exec (SOp x op y z) t m l post
+    | set: forall t m l x y y' post,
+        map.get l y = Some y' ->
+        post t m (map.put l x y') ->
+        exec (SSet x y) t m l post
+    | if_true: forall t m l cond  bThen bElse post,
+        eval_bcond l cond = Some true ->
+        exec bThen t m l post ->
+        exec (SIf cond bThen bElse) t m l post
+    | if_false: forall t m l cond bThen bElse post,
+        eval_bcond l cond = Some false ->
+        exec bElse t m l post ->
+        exec (SIf cond bThen bElse) t m l post
+    | loop: forall t m l cond body1 body2 mid1 mid2 post,
+        (* This case is carefully crafted in such a way that recursive uses of exec
+         only appear under forall and ->, but not under exists, /\, \/, to make sure the
+         auto-generated induction principle contains an IH for all recursive uses. *)
+        exec body1 t m l mid1 ->
+        (forall t' m' l',
+            mid1 t' m' l' ->
+            eval_bcond l' cond <> None) ->
+        (forall t' m' l',
+            mid1 t' m' l' ->
+            eval_bcond l' cond = Some false ->
+            post t' m' l') ->
+        (forall t' m' l',
+            mid1 t' m' l' ->
+            eval_bcond l' cond = Some true ->
+            exec body2 t' m' l' mid2) ->
+        (forall t'' m'' l'',
+            mid2 t'' m'' l'' ->
+            exec (SLoop body1 cond body2) t'' m'' l'' post) ->
+        exec (SLoop body1 cond body2) t m l post
+    | seq: forall t m l s1 s2 mid post,
+        exec s1 t m l mid ->
+        (forall t' m' l', mid t' m' l' -> exec s2 t' m' l' post) ->
+        exec (SSeq s1 s2) t m l post
+    | skip: forall t m l post,
+        post t m l ->
+        exec SSkip t m l post.
+
+    Lemma weaken: forall t l m s post1,
+        exec s t m l post1 ->
+        forall post2,
+          (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
+          exec s t m l post2.
+    Proof.
+      induction 1; intros; try solve [econstructor; eauto].
+      - eapply interact; try eassumption.
+        intros; simp.
+        match goal with
+        | H: _ |- _ => solve [edestruct H; simp; eauto]
+        end.
+      - eapply call.
+        4: eapply IHexec.
+        all: eauto.
+        intros. simp.
+        specialize H3 with (1 := H5).
+        simp. eauto 10.
+    Qed.
+
+    Lemma intersect: forall t l m s post1,
+        exec s t m l post1 ->
+        forall post2,
+          exec s t m l post2 ->
+          exec s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
+    Proof.
+      induction 1; intros;
+        match goal with
+        | H: exec _ _ _ _ _ |- _ => inversion H; subst; clear H
+        end;
+        try solve [
+              repeat match goal with
+                     | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                       replace v2 with v1 in * by congruence;
+                       clear H2
+                     end;
+              econstructor; eauto].
+      - (* SInteract *)
+        admit.
+      - (* SCall *)
+        match goal with
+        | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
+          replace x2 with x1 in * by congruence;
+            replace y2 with y1 in * by congruence;
+            replace z2 with z1 in * by congruence;
+            clear x2 y2 z2 H2
+        end.
+        repeat match goal with
+               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                 replace v2 with v1 in * by congruence;
+                   clear v2 H2
+               end.
+        rename IHexec into IH.
+        specialize IH with (1 := H15).
+        eapply @call; [..|exact IH|]; eauto.
+        rename H3 into Ex1.
+        rename H16 into Ex2.
+        move Ex1 before Ex2.
+        intros. simpl in *. destruct_conjs.
+        specialize Ex1 with (1 := H3).
+        specialize Ex2 with (1 := H4).
+        destruct_conjs.
+        repeat match goal with
+               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                 replace v2 with v1 in * by congruence;
+                   clear v2 H2
+               end.
+        eauto 10.
+      - (* SIf *)
+        admit.
+      - (* SIf *)
+        admit.
+      - (* SLoop *)
+        pose proof IHexec as IH1.
+        (*
+        specialize IH1 with (1 := H8).
+        eapply @ExLoop; [exact IH1 | intros; simpl in *; destruct_conjs; eauto ..].
+         *)
+        admit.
+      - (* SSeq *)
+        pose proof IHexec as IH1.
+        specialize IH1 with (1 := H5).
+        eapply @seq; [exact IH1|].
+        intros; simpl in *.
+        destruct H2.
+        eauto.
+    Admitted. (* TODO *)
+
+  End FlatImpExec.
+End exec.
+Notation exec := exec.exec.
+
 Ltac invert_eval_stmt :=
   lazymatch goal with
   | E: eval_stmt _ (S ?fuel) _ _ ?s = Some _ |- _ =>
@@ -567,39 +576,6 @@ Ltac invert_eval_stmt :=
     | let x := fresh "Case_SCall" in pose proof tt as x; move x at top
     | let x := fresh "Case_SInteract" in pose proof tt as x; move x at top ]
   end.
-
-Ltac prove_exec :=
-  let useOnce := fresh "useOnce_name" in
-  pose proof @ExLoop as useOnce;
-  repeat match goal with
-         | |- _ => progress destruct_pair_eqs
-         | H: _ /\ _ |- _ => destruct H
-         | |- _ => progress (simpl in *; subst)
-         | |- _ => progress eauto 10
-         | |- _ => congruence
-         | |- _ => contradiction
-         | |- _ => progress rewrite_match
-      (* | |- _ => rewrite reg_eqb_ne by congruence *)
-      (* | |- _ => rewrite reg_eqb_eq by congruence *)
-         | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-           replace v2 with v1 in * by congruence;
-           clear H2
-         (* | |- _ => eapply @ExInteract  not possible because actname=Empty_set *)
-         | |- _ => eapply @ExCall
-         | |- _ => eapply @ExLoad
-         | |- _ => eapply @ExStore
-         | |- _ => eapply @ExLit
-         | |- _ => eapply @ExOp
-         | |- _ => eapply @ExSet
-         | |- _ => solve [eapply @ExIfThen; eauto]
-         | |- _ => solve [eapply @ExIfElse; eauto]
-         (* | |- _ => eapply @ExLoop    could loop infinitely     *)
-         | |- _ => eapply useOnce; clear useOnce
-         | |- _ => eapply @ExSeq
-         | |- _ => eapply @ExSkip
-         | |- _ => progress intros
-         end;
-  try clear useOnce.
 
 
 Section FlatImp2.
@@ -653,7 +629,7 @@ Section FlatImp2.
       map_solver locals_ok;
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
-  
+
   Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM post,
       exec e s initialT initialM initialSt post ->
       exec e s initialT initialM initialSt
@@ -661,44 +637,44 @@ Section FlatImp2.
   Proof.
     induction 1;
       try solve [ econstructor; [eassumption..|map_solver locals_ok] ].
-    - eapply ExInteract; try eassumption.
+    - eapply exec.interact; try eassumption.
       intros; simp.
       edestruct H1; try eassumption. simp.
       eexists; split; [eassumption|].
       simpl. try split; eauto.
       eapply only_differ_putmany. eassumption.
-    - eapply ExCall. 4: exact H2. (* don't pick IHexec! *) all: try eassumption. 
+    - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
       intros; simpl in *; simp.
       edestruct H3; try eassumption. simp.
       do 2 eexists; split; [|split]; try eassumption.
       eapply only_differ_putmany. eassumption.
-    - eapply ExIfThen; try eassumption.
-      eapply weaken_exec; [eassumption|].
+    - eapply exec.if_true; try eassumption.
+      eapply exec.weaken; [eassumption|].
       simpl; intros. map_solver locals_ok.
-    - eapply ExIfElse; try eassumption.
-      eapply weaken_exec; [eassumption|].
+    - eapply exec.if_false; try eassumption.
+      eapply exec.weaken; [eassumption|].
       simpl; intros. map_solver locals_ok.
-    - eapply ExLoop with
+    - eapply exec.loop with
           (mid3 := fun t' m' l' => mid1 t' m' l' /\ map.only_differ l (modVars body1) l')
           (mid4 := fun t' m' l' => mid2 t' m' l' /\
                                    map.only_differ l (modVars (SLoop body1 cond body2)) l').
-      + eapply intersect_exec; eassumption.
+      + eapply exec.intersect; eassumption.
       + intros. simp. eauto.
       + intros. simp. simpl. map_solver locals_ok.
       + intros. simp. simpl in *.
-        eapply intersect_exec; [eauto|].
-        eapply weaken_exec.
+        eapply exec.intersect; [eauto|].
+        eapply exec.weaken.
         * eapply H3; eassumption.
         * simpl. intros. map_solver locals_ok.
       + intros. simp. simpl in *.
-        eapply weaken_exec.
+        eapply exec.weaken.
         * eapply H5; eassumption.
         * simpl. intros. map_solver locals_ok.
-    - eapply ExSeq with
+    - eapply exec.seq with
           (mid0 := fun t' m' l' => mid t' m' l' /\ map.only_differ l (modVars s1) l').
-      + eapply intersect_exec; eassumption.
+      + eapply exec.intersect; eassumption.
       + simpl; intros. simp.
-        eapply weaken_exec; [eapply H1; eauto|].
+        eapply exec.weaken; [eapply H1; eauto|].
         simpl; intros.
         map_solver locals_ok.
   Qed.
