@@ -400,32 +400,25 @@ Proof.
     { repeat letexists. split. 1: repeat straightline.
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v2; subst x7. SeparationLogic.ecancel_assumption. }
-      { cbn [interp_binop] in *. subst v2; subst x7. subst v0.
+      { cbn [interp_binop] in *.
+        lazymatch goal with |- word.unsigned ?e = _ => let H := unsigned.zify_expr e in idtac H end.
+        subst v2; subst x7. subst v0.
         repeat ureplace (_:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
         rewrite Properties.word.unsigned_divu_nowrap by discriminate.
         change (\_ (/_ 8)) with 8.
-        rewrite word.unsigned_slu by exact eq_refl.
-        rewrite Z.mod_small by admit.
-        rewrite Z.shiftl_mul_pow2 by discriminate.
-        change (2^\_ (/_ 3)) with 8.
-        rewrite Z.div_mul by discriminate.
+        rewrite H13.
         unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). admit.
         unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). admit.
         unshelve erewrite (_ : forall n, n <> O -> Z.of_nat (Init.Nat.pred n) = Z.of_nat n - 1). { clear. intros. Lia.lia. }
         rewrite Nat2Z.inj_sub, Z2Nat.id.
         rewrite word.unsigned_sub, Z.mod_small.
         rewrite word.unsigned_sub, Z.mod_small.
-        rewrite word.unsigned_slu, Z.mod_small.
-        rewrite Z.shiftl_mul_pow2 by discriminate.
-        rewrite !Properties.word.unsigned_sru_nowrap by (exact eq_refl).
-        rewrite Z.shiftr_div_pow2 by discriminate.
-        change (2^\_ (/_ 3)) with 8.
-        change (\_ (/_ 8)) with 8.
-        change (2^\_ (/_ 4)) with 16.
+        rewrite H13.
+        setoid_rewrite H14.
         setoid_rewrite H3.
+        change (2^4) with 16.
+        rewrite Z.div_mul by discriminate.
         Lia.lia.
-        admit.
-        admit.
         admit.
         admit.
         admit.
@@ -480,6 +473,7 @@ Proof.
         clear. Z.div_mod_to_equations. Lia.lia. }
       { exact eq_refl. }
       { SeparationLogic.ecancel_assumption. } }
+    (* second branch of the if, very similar goals... *)
     { repeat letexists. split. 1: solve [repeat straightline].
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v1; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
