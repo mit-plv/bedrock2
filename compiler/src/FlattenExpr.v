@@ -100,41 +100,21 @@ Section FlattenExpr1.
             (@FlatImp.SOp (mk_Syntax_params p) x op r1 r2)), x, ngs''')
     end.
 
-  Fixpoint flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr):
+  Definition flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr):
     (FlatImp.stmt * FlatImp.bcond * NGstate) :=
+    let default := (* always correct, but in some cases we can do better *)
+        (let '(stmt, x, ngs') := flattenExpr ngs e in (stmt, FlatImp.CondNez x, ngs')) in
     match e with
-    | Syntax.expr.literal n =>
-        let '(stmt, x, ngs') := flattenExpr ngs e in
-        (stmt, FlatImp.CondNez x, ngs')
-    | Syntax.expr.var x =>
-        let '(stmt, x, ngs') := flattenExpr ngs e in
-        (stmt, FlatImp.CondNez x, ngs')
-    | Syntax.expr.load _ e' =>
-        let '(stmt, x, ngs') := flattenExpr ngs e in
-        (stmt, FlatImp.CondNez x, ngs')
     | Syntax.expr.op op e1 e2 =>
         let '(s1, r1, ngs') := flattenExpr ngs e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
         match op with
-        | Syntax.bopname.add
-        | Syntax.bopname.sub
-        | Syntax.bopname.mul
-        | Syntax.bopname.and
-        | Syntax.bopname.or
-        | Syntax.bopname.xor
-        | Syntax.bopname.sru
-        | Syntax.bopname.slu
-        | Syntax.bopname.srs =>
-            let '(x, ngs''') := genFresh ngs'' in
-            (FlatImp.SSeq s1 (FlatImp.SSeq s2 (@FlatImp.SOp (mk_Syntax_params p) x op r1 r2)),
-             FlatImp.CondNez x, ngs''')
-        | Syntax.bopname.lts =>
-            (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLt r1 r2, ngs'')
-        | Syntax.bopname.ltu =>
-            (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLtu r1 r2, ngs'')
-        | Syntax.bopname.eq =>
-            (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BEq r1 r2, ngs'')
+        | Syntax.bopname.lts => (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLt  r1 r2, ngs'')
+        | Syntax.bopname.ltu => (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLtu r1 r2, ngs'')
+        | Syntax.bopname.eq  => (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BEq  r1 r2, ngs'')
+        | _ => default
         end
+    | _ => default
     end.
 
   (* TODO this is only useful if we also flatten the bodies of all functions *)
