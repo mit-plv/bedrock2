@@ -384,6 +384,12 @@ Section FlattenExpr1.
     try solve [set_solver].
   Qed.
 
+  Lemma flattenStmt_modVars_spec: forall s ngs ngs' s',
+      flattenStmt ngs s = (s', ngs') ->
+      subset (FlatImp.modVars s') (union (ExprImp.modVars s)
+                                         (diff (allFreshVars ngs) (allFreshVars ngs'))).
+  Abort. (* hopefully not needed *)
+
   Lemma flattenCall_freshVarUsage: forall f args binds ngs1 ngs2 s,
       flattenCall ngs1 binds f args = (s, ngs2) ->
       subset (allFreshVars ngs2) (allFreshVars ngs1).
@@ -744,18 +750,66 @@ Section FlattenExpr1.
             clear IHexec.
             set_solver_generic varname. (* TODO make the generic "maps" work here too *) }
 
+Set Nested Proofs Allowed.
+  Lemma seq_with_modVars: forall env t m l s1 s2 mid post,
+    FlatImp.exec env s1 t m l mid ->
+    (forall t' m' l',
+        mid t' m' l' ->
+        map.only_differ l (FlatImp.modVars s1) l' ->
+        FlatImp.exec env s2 t' m' l' post) ->
+    FlatImp.exec env (FlatImp.SSeq s1 s2) t m l post.
+  Proof.
+    intros *. intros E1 E2. eapply @FlatImp.exec.seq.
+    - eapply @FlatImp.exec.intersect.
+      + exact E1.
+      + eapply @FlatImp.modVarsSound. exact E1.
+    - simpl. intros. simp. eauto.
+  Qed.
+
     - (* seq *)
-      eapply @FlatImp.exec.seq.
+      eapply seq_with_modVars.
       + eapply IHexec; try reflexivity; try eassumption. maps.
-      + intros. simpl in *. simp.
+      + simpl. intros. simp.
         eapply H1 (* <-- that's an IH too *); try reflexivity; try eassumption.
         * clear IHexec H1.
           pose_flatten_var_ineqs. simpl in *.
-          assert (map.undef_on l (allFreshVars n)) as A by map_solver locals_ok.
-          assert (map.extends l x) as B by admit. (* TODO we don't have strong enough hyps here *)
-          simpl in *.
-          (* TODO should follow from A and B *)
-          admit.
+          rename l into lH, l' into lL', x into lH'.
+
+          assert (map.undef_on lH (allFreshVars n)) as A by map_solver locals_ok.
+          assert (map.only_differ lH (FlatImp.modVars s) lH') as B. {
+            admit. (* TODO make map_solver work, or somehow use ExprImp.modVarsSound, but the map.only_differ will be inside a post *)
+          }
+          assert (disjoint (allFreshVars n) (FlatImp.modVars s)) as C. {
+            pose_flatten_var_ineqs.
+            (* SOL1: based on flattenStmt_modVars_spec *)
+
+            admit.
+  Ltac pose_flatten_var_ineqs ::=
+    repeat match goal with
+    (* fresh var usage: new fresh vars are a subset of old fresh vars: *)
+    | H: _ |- _ => unique eapply flattenExpr_freshVarUsage in copy of H
+    | H: _ |- _ => unique eapply flattenExprAsBoolExpr_freshVarUsage in copy of H
+    | H: _ |- _ => unique eapply flattenStmt_freshVarUsage in copy of H
+    (* resvar of flattened expr was modified by statement resulting from flattening: *)
+    | H: _ |- _ => unique eapply flattenExpr_modifies_resVar in copy of H
+    | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modifies_cond_vars in copy of H
+    (* a flattened statement only modifies vars obtained from the fresh var generator: *)
+    | H: _ |- _ => unique eapply flattenExpr_modVars_spec in copy of H
+    | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modVars_spec in copy of H
+    end.
+          }
+
+          clear C.
+
+          (* SOL2:
+ could use ExprImp.intersect_exec and ExprImp.modVarsSound to obtain a stronger mid,
+which also says this:
+           *)
+          assert (map.only_differ lH (ExprImp.modVars c1) lH') as C. {
+            admit.
+          }
+          maps.
+
         * maps.
 
     - (* while_false *)
