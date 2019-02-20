@@ -311,7 +311,7 @@ Section ExprImp2.
   Ltac state_calc := map_solver locals_ok.
   Ltac set_solver := set_solver_generic (@Syntax.varname (@Semantics.syntax p)).
 
-  Lemma modVarsSound: forall (e: env) fuel s initialS initialM finalS finalM,
+  Lemma modVarsSound_fixpointsemantics: forall (e: env) fuel s initialS initialM finalS finalM,
     eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->
     map.only_differ initialS (modVars s) finalS.
   Proof.
@@ -327,6 +327,165 @@ Section ExprImp2.
       end;
       state_calc;
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
+  Qed.
+
+  (* TODO is this the canconical form to impose as a requirement?
+     Or should we impose post1 <-> post2, or something else? *)
+  Axiom ext_spec_intersect: forall t m a args post1 post2,
+    ext_spec t m a args post1 ->
+    ext_spec t m a args post2 ->
+    ext_spec t m a args (fun m' resvals => post1 m' resvals /\ post2 m' resvals).
+
+  Lemma intersect_exec: forall env t l m s post1,
+      exec env s t m l post1 ->
+      forall post2,
+        exec env s t m l post2 ->
+        exec env s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
+  Proof.
+    induction 1; intros;
+      match goal with
+      | H: exec _ _ _ _ _ _ |- _ => inversion H; subst; clear H
+      end;
+      try match goal with
+      | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
+        replace x2 with x1 in * by congruence;
+          replace y2 with y1 in * by congruence;
+          replace z2 with z1 in * by congruence;
+          clear x2 y2 z2 H2
+      end;
+      repeat match goal with
+             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+               replace v2 with v1 in * by congruence; clear H2
+             end;
+      try solve [econstructor; eauto | exfalso; congruence].
+
+    - econstructor.
+      + eapply IHexec. exact H5. (* not H *)
+      + simpl. intros *. intros [? ?]. eauto.
+    - eapply exec.while_true. 1, 2: eassumption.
+      + eapply IHexec. exact H9. (* not H1 *)
+      + simpl. intros *. intros [? ?]. eauto.
+    - eapply exec.call. 1, 2, 3: eassumption.
+      + eapply IHexec. exact H15. (* not H2 *)
+      + simpl. intros *. intros [? ?].
+        edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
+        edestruct H16 as (? & ? & ? & ? & ?); [eassumption|].
+        repeat match goal with
+               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                 replace v2 with v1 in * by congruence; clear H2
+               end.
+        eauto 10.
+    - eapply exec.interact. 1: eassumption.
+      + eapply ext_spec_intersect; [ exact H0 | exact H11 ].
+      + simpl. intros *. intros [? ?].
+        edestruct H1 as (? & ? & ?); [eassumption|].
+        edestruct H12 as (? & ? & ?); [eassumption|].
+        repeat match goal with
+               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                 replace v2 with v1 in * by congruence; clear H2
+               end.
+        eauto 10.
+  Qed.
+
+  Lemma weaken_exec: forall env t l m s post1,
+      exec env s t m l post1 ->
+      forall post2: _ -> _ -> _ -> Prop,
+        (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
+        exec env s t m l post2.
+  Proof.
+    induction 1; intros; try solve [econstructor; eauto].
+    - eapply @exec.call.
+      4: eapply IHexec.
+      all: eauto.
+      intros.
+      edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
+      eauto 10.
+    - eapply @exec.interact; try eassumption.
+      intros.
+      edestruct H1 as (? & ? & ?); [eassumption|].
+      eauto 10.
+  Qed.
+
+  (* As we see, one can prove this lemma as is, but the proof is a bit cumbersome because
+     the seq and while case have to instantiate mid with the intersection, and use
+     intersect_exec to prove it.
+     And it turns out that users of this lemma will encounter the same problem:
+     What they really want is one exec where the post is the conjunction, because they
+     can only feed one exec to other lemmas or IHs, so all clients will use the lemma below
+     in combination with intersect_exec.
+     So it makes more sense to directly prove the conjunction version which follows after
+     this proof. *)
+  Lemma modVarsSound_less_useful: forall e s t m l post,
+      exec e s t m l post ->
+      exec e s t m l (fun t' m' l' => map.only_differ l (modVars s) l').
+  Proof.
+    induction 1;
+      try solve [ econstructor; [eassumption..|map_solver locals_ok] ].
+    - eapply exec.if_true; try eassumption.
+      eapply weaken_exec; [eassumption|].
+      simpl; intros. map_solver locals_ok.
+    - eapply exec.if_false; try eassumption.
+      eapply weaken_exec; [eassumption|].
+      simpl; intros. map_solver locals_ok.
+    - eapply exec.seq with
+          (mid0 := fun t' m' l' => mid t' m' l' /\ map.only_differ l (modVars c1) l').
+      + eapply intersect_exec; eassumption.
+      + simpl. intros *. intros [? ?].
+        eapply weaken_exec; [eapply H1; eauto|].
+        simpl; intros.
+        map_solver locals_ok.
+    - eapply exec.while_true with
+          (mid0 := fun t' m' l' => mid t' m' l' /\ map.only_differ l (modVars c) l');
+        try eassumption.
+      + eapply intersect_exec; eassumption.
+      + intros *. intros [? ?]. simpl in *.
+        eapply weaken_exec.
+        * eapply H3; eassumption.
+        * simpl. intros. map_solver locals_ok.
+    - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
+      simpl. intros.
+      edestruct H3 as (? & ? & ? & ? & ?); try eassumption.
+      eexists; split; [eassumption|].
+      eexists; split; [eassumption|].
+      eapply only_differ_putmany. eassumption.
+    - eapply exec.interact; try eassumption.
+      intros.
+      edestruct H1 as (? & ? & ?); try eassumption.
+      eexists; split; [eassumption|].
+      eapply only_differ_putmany. eassumption.
+  Qed.
+
+  Lemma modVarsSound: forall e s t m l post,
+      exec e s t m l post ->
+      exec e s t m l (fun t' m' l' => map.only_differ l (modVars s) l' /\ post t' m' l').
+  Proof.
+    induction 1; try solve [econstructor; repeat split; try eassumption; map_solver locals_ok].
+    - eapply exec.if_true; try eassumption.
+      eapply weaken_exec; [eassumption|].
+      simpl; intros. intuition idtac. map_solver locals_ok.
+    - eapply exec.if_false; try eassumption.
+      eapply weaken_exec; [eassumption|].
+      simpl; intros. intuition idtac. map_solver locals_ok.
+    - eapply exec.seq.
+      + eapply IHexec.
+      + simpl; intros *. intros [? ?].
+        eapply weaken_exec; [eapply H1; eauto|].
+        simpl; intros. intuition idtac. map_solver locals_ok.
+    - eapply exec.while_true. 3: exact IHexec. all: try eassumption.
+      intros *. intros [? ?]. simpl in *.
+      eapply weaken_exec.
+      + eapply H3; eassumption.
+      + simpl. intros. intuition idtac. map_solver locals_ok.
+    - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
+      simpl. intros.
+      edestruct H3 as (? & ? & ? & ? & ?); try eassumption.
+      repeat (eexists || split || eassumption).
+      eapply only_differ_putmany. eassumption.
+    - eapply exec.interact; try eassumption.
+      intros.
+      edestruct H1 as (? & ? & ?); try eassumption.
+      repeat (eexists || split || eassumption).
+      eapply only_differ_putmany. eassumption.
   Qed.
 
 End ExprImp2.
