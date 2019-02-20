@@ -443,14 +443,16 @@ Section FlattenExpr1.
 
   Ltac pose_flatten_var_ineqs :=
     repeat match goal with
+    (* fresh var usage: new fresh vars are a subset of old fresh vars: *)
     | H: _ |- _ => unique eapply flattenExpr_freshVarUsage in copy of H
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_freshVarUsage in copy of H
-    | H: _ |- _ => unique eapply FlatImp.modVarsSound in copy of H
+    | H: _ |- _ => unique eapply flattenStmt_freshVarUsage in copy of H
+    (* resvar of flattened expr was modified by statement resulting from flattening: *)
     | H: _ |- _ => unique eapply flattenExpr_modifies_resVar in copy of H
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modifies_cond_vars in copy of H
+    (* a flattened statement only modifies vars obtained from the fresh var generator: *)
     | H: _ |- _ => unique eapply flattenExpr_modVars_spec in copy of H
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modVars_spec in copy of H
-    | H: _ |- _ => unique eapply flattenStmt_freshVarUsage in copy of H
     end.
 
   (* only needed if we want to export the goal into a map_solver-only environment *)
@@ -682,6 +684,21 @@ Section FlattenExpr1.
       eapply flattenBooleanExpr_correct_aux; eassumption.
   Qed.
 
+  Lemma seq_with_modVars: forall env t m l s1 s2 mid post,
+    FlatImp.exec env s1 t m l mid ->
+    (forall t' m' l',
+        mid t' m' l' ->
+        map.only_differ l (FlatImp.modVars s1) l' ->
+        FlatImp.exec env s2 t' m' l' post) ->
+    FlatImp.exec env (FlatImp.SSeq s1 s2) t m l post.
+  Proof.
+    intros *. intros E1 E2. eapply @FlatImp.exec.seq.
+    - eapply @FlatImp.exec.intersect.
+      + exact E1.
+      + eapply @FlatImp.modVarsSound. exact E1.
+    - simpl. intros. simp. eauto.
+  Qed.
+
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
       Semantics.exec e sH t m lH post ->
       e = map.empty ->
@@ -701,17 +718,12 @@ Section FlattenExpr1.
       eauto.
 
     - (* exec.set *)
-      pose proof flattenExpr_correct_aux as P.
-      specialize P with (initialM := m) (t := t) (1 := E) (2 := H3) (3 := H4) (4 := H).
-      unique eapply FlatImp.modVarsSound in copy of P.
       eapply @FlatImp.exec.seq.
-      { eapply FlatImp.exec.intersect; [exact P|exact P_uac]. }
-      clear P P_uac.
-      intros. simpl in *. simp.
-      eapply @FlatImp.exec.set; [eassumption|].
-      eexists; split; [|eassumption].
-      pose_flatten_var_ineqs.
-      map_solver locals_ok.
+      + eapply flattenExpr_correct_aux; eassumption.
+      + simpl. intros. simp.
+        eapply @FlatImp.exec.set; [eassumption|].
+        eexists; split; [|eassumption].
+        maps.
 
     - (* exec.unset *)
       eapply @FlatImp.exec.skip.
@@ -750,23 +762,9 @@ Section FlattenExpr1.
             clear IHexec.
             set_solver_generic varname. (* TODO make the generic "maps" work here too *) }
 
-Set Nested Proofs Allowed.
-  Lemma seq_with_modVars: forall env t m l s1 s2 mid post,
-    FlatImp.exec env s1 t m l mid ->
-    (forall t' m' l',
-        mid t' m' l' ->
-        map.only_differ l (FlatImp.modVars s1) l' ->
-        FlatImp.exec env s2 t' m' l' post) ->
-    FlatImp.exec env (FlatImp.SSeq s1 s2) t m l post.
-  Proof.
-    intros *. intros E1 E2. eapply @FlatImp.exec.seq.
-    - eapply @FlatImp.exec.intersect.
-      + exact E1.
-      + eapply @FlatImp.modVarsSound. exact E1.
-    - simpl. intros. simp. eauto.
-  Qed.
 
     - (* seq *)
+
       eapply seq_with_modVars.
       + eapply IHexec; try reflexivity; try eassumption. maps.
       + simpl. intros. simp.
@@ -784,19 +782,6 @@ Set Nested Proofs Allowed.
             (* SOL1: based on flattenStmt_modVars_spec *)
 
             admit.
-  Ltac pose_flatten_var_ineqs ::=
-    repeat match goal with
-    (* fresh var usage: new fresh vars are a subset of old fresh vars: *)
-    | H: _ |- _ => unique eapply flattenExpr_freshVarUsage in copy of H
-    | H: _ |- _ => unique eapply flattenExprAsBoolExpr_freshVarUsage in copy of H
-    | H: _ |- _ => unique eapply flattenStmt_freshVarUsage in copy of H
-    (* resvar of flattened expr was modified by statement resulting from flattening: *)
-    | H: _ |- _ => unique eapply flattenExpr_modifies_resVar in copy of H
-    | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modifies_cond_vars in copy of H
-    (* a flattened statement only modifies vars obtained from the fresh var generator: *)
-    | H: _ |- _ => unique eapply flattenExpr_modVars_spec in copy of H
-    | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modVars_spec in copy of H
-    end.
           }
 
           clear C.
