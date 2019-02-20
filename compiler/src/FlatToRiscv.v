@@ -801,9 +801,9 @@ Section FlatToRiscv1.
                ring_simplify addr2 in H
            (* just unprotected seprewrite will instantiate evars in undesired ways *)
            | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             seprewrite0 (array_append PT SZ xs ys start)
+             seprewrite0 (array_append_DEPRECATED PT SZ xs ys start)
            | H: context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] |- _ =>
-             seprewrite0_in (array_append PT SZ xs ys start) H
+             seprewrite0_in (array_append_DEPRECATED PT SZ xs ys start) H
            end;
     seplog.
 
