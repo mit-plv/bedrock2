@@ -526,6 +526,11 @@ Section FlattenExpr1.
       constr_eq x y; apply map.get_put_same
     end.
 
+  Ltac maps :=
+    pose_flatten_var_ineqs;
+    simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
+    map_solver (@locals_ok p).
+
   Lemma flattenExpr_correct_aux : forall e ngs1 ngs2 resVar s initialH initialL initialM res t,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
@@ -540,122 +545,26 @@ Section FlattenExpr1.
     induction e; intros *; intros F Ex U Ev; simpl in *; simp.
 
     - (* expr.literal *)
-      eapply @FlatImp.exec.lit; t_safe; simpl; map_solver locals_ok.
+      eapply @FlatImp.exec.lit; t_safe; maps.
 
     - (* expr.var *)
-      eapply @FlatImp.exec.set; t_safe; simpl; map_solver locals_ok.
+      eapply @FlatImp.exec.set; t_safe; maps.
 
     - (* expr.load *)
       eapply @FlatImp.exec.seq.
       + eapply IHe; eassumption.
       + intros. simpl in *. simp.
-        eapply @FlatImp.exec.load; t_safe; try eassumption. map_solver locals_ok.
+        eapply @FlatImp.exec.load; t_safe; try eassumption; maps.
 
     - (* expr.op *)
       eapply @FlatImp.exec.seq.
       + eapply IHe1; eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.seq.
-        * eapply IHe2. 1: eassumption. 3: eassumption.
-          { pose_flatten_var_ineqs.  admit. (*map_solver locals_ok.*) }
-          { admit. }
+        * eapply IHe2; try eassumption; maps.
         * intros. simpl in *. simp. clear IHe1 IHe2.
-          eapply @FlatImp.exec.op; t_safe; t_safe.
-  Abort.
-
-  (* Note: If you want to get in the conclusion
-     "only_differ initialL (vars_range firstFree (S resVar)) finalL"
-     this needn't be part of this lemma, because it follows from
-     flattenExpr_modVars_spec and FlatImp.modVarsSound *)
-  Lemma flattenExpr_correct_aux : forall e ngs1 ngs2 resVar (s: FlatImp.stmt) (initialH initialL: locals) initialM res t,
-    flattenExpr ngs1 e = (s, resVar, ngs2) ->
-    map.extends initialL initialH ->
-    map.undef_on initialH (allFreshVars ngs1) ->
-    (* TODO why do I have to give semantics params explicitly? *)
-    @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
-    FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
-      t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res).
-  Proof.
-    induction e; intros *; intros F Ex U Ev; simpl in *; simp.
-
-    - (* expr.literal *)
-      eapply @FlatImp.exec.lit; t_safe.
-
-    - (* expr.var *)
-      eapply @FlatImp.exec.set; t_safe. map_solver locals_ok.
-
-    - (* expr.load *)
-      eapply @FlatImp.exec.seq.
-      + eapply IHe; eassumption.
-      + intros. simpl in *. simp.
-        eapply @FlatImp.exec.load; t_safe; eassumption.
-
-    - (* expr.op *)
-      eapply @FlatImp.exec.seq.
-      + eapply IHe1; eassumption.
-      + intros. simpl in *. simp.
-        eapply @FlatImp.exec.seq.
-        * eapply IHe2. 1: eassumption. 3: eassumption.
-          { pose_flatten_var_ineqs.  admit. (*map_solver locals_ok.*) }
-          { admit. }
-        * intros. simpl in *. simp. clear IHe1 IHe2.
-          eapply @FlatImp.exec.op; t_safe; t_safe.
-
-  Admitted.
-  (*
-      match goal with
-      | |- context [map.get _ resVar = Some ?res] =>
-         exists 1%nat (map.put initialL resVar res)
-      end.
-      split; [reflexivity|state_calc].
-    - repeat (inversionss; try destruct_one_match_hyp).
-      exists 1%nat (map.put initialL resVar res). repeat split.
-      + simpl. unfold map.extends in Ex. apply Ex in H0.
-
-        (* PARAMRECORDS *)
-        Fail rewrite H0.
-        Set Printing Implicit.
-        simpl in *.
-        rewrite H0.
-        Unset Printing Implicit.
-
-        reflexivity.
-
-      + state_calc.
-    - admit. (* load *)
-    - repeat (inversionss; try destruct_one_match_hyp).
-      pose_flatten_var_ineqs.
-      specialize IHe1 with (initialM := initialM) (1 := E) (2 := Ex).
-      specializes IHe1. {
-        clear IHe2.
-        state_calc.
-      }
-      { eassumption. }
-      destruct IHe1 as [fuel1 [midL [Ev1 G1]]].
-      progress pose_flatten_var_ineqs.
-      specialize IHe2 with (initialH := initialH) (initialL := midL) (initialM := initialM)
-         (1 := E0).
-      specializes IHe2.
-      { state_calc. }
-      { state_calc. }
-      { eassumption. }
-      destruct IHe2 as [fuel2 [preFinalL [Ev2 G2]]].
-      remember (Datatypes.S (Datatypes.S (fuel1 + fuel2))) as f0.
-      remember (Datatypes.S (fuel1 + fuel2)) as f.
-      (*                                or     (Op.eval_binop (convert_bopname op) w w0) ? *)
-      exists (Datatypes.S f0) (put preFinalL resVar (Semantics.interp_binop op w w0)).
-      pose_flatten_var_ineqs.
-      split; [|apply get_put_same].
-      simpl. fuel_increasing_rewrite.
-      subst f0. simpl. fuel_increasing_rewrite.
-      subst f. simpl.
-      assert (get preFinalL v = Some w) as G1'. {
-        state_calc.
-      }
-      rewrite G1'. simpl. rewrite G2. simpl. repeat f_equal.
-      apply eval_binop_compat.
+          eapply @FlatImp.exec.op; t_safe; t_safe; maps.
   Qed.
-   *)
 
   Ltac simpl_reg_eqb :=
     rewrite? word.eqb_eq by congruence;
@@ -705,85 +614,37 @@ Section FlattenExpr1.
     }
   Qed.
 
-  Lemma flattenBooleanExpr_correct_aux env :
-    forall e ngs1 ngs2 resCond (s: FlatImp.stmt)
-           (initialH initialL: locals) initialM res,
+  Ltac default_flattenBooleanExpr :=
+    eapply FlatImp.exec.weaken;
+    [ eapply flattenExpr_correct_aux; try eassumption; try reflexivity
+    | intros; simpl in *; simp; rewrite_match; auto ].
+
+  Lemma flattenBooleanExpr_correct_aux :
+    forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
-    exists (fuel: nat) (finalL: locals),
-      FlatImp.eval_stmt env fuel initialL initialM s = Some (finalL, initialM) /\
-      FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))).
+    FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
+      t' = t /\ finalM = initialM /\
+      FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0)))).
   Proof.
-    destruct e; intros *; intros F Ex U Ev;
-    unfold flattenExprAsBoolExpr in F.
-   (*
-    1,2,3:
-      repeat destruct_one_match_hyp; repeat destruct_pair_eqs; subst;
-      pose proof flattenExpr_correct_aux as P;
-      specialize P with (initialM := initialM) (1 := E) (4 := Ev);
-      edestruct P as [fuelS0 [initial2L [Evcond G]]]; [eassumption..| ];
-      exists fuelS0 initial2L;
-      split; [eassumption| unfold FlatImp.eval_bcond].
+    destruct e; intros *; intros F Ex U Ev; unfold flattenExprAsBoolExpr in F; simp.
 
-    Set Printing Implicit.
-    (* PARAMRECORDS *)
-    { Fail rewrite G. simpl in G. rewrite G. solve [eauto]. }
-    { Fail rewrite G. simpl in G. rewrite G. solve [eauto]. }
-    { Fail rewrite G. simpl in G. rewrite G. solve [eauto]. }
-    Unset Printing Implicit.
+    1, 2, 3: default_flattenBooleanExpr.
 
-    do 5 destruct_one_match_of_hyp F; repeat destruct_pair_eqs; subst.
-    { inversion Ev. repeat destruct_one_match_of_hyp H0.
-    - pose proof flattenExpr_correct_aux as P.
-      specialize P with (env := env) (initialM := initialM) (1 := E) (4 := E1).
-      edestruct P as [fuelS0 [initial2L [Evcond G]]]; [eassumption..| ]; clear P.
+    destruct op; simp; try solve [default_flattenBooleanExpr].
 
-      pose proof flattenExpr_correct_aux as Q.
-      specialize Q with (initialL := initial2L) (env := env)
-                        (initialM := initialM) (1 := E0) (4 := E2).
-      pose_flatten_var_ineqs.
+    all: simpl in *; simp;
+      eapply @FlatImp.exec.seq;
+      [ eapply flattenExpr_correct_aux; try eassumption; try reflexivity
+      | intros; simpl in *; simp;
+        eapply FlatImp.exec.weaken;
+        [ eapply flattenExpr_correct_aux; try eassumption; try reflexivity; maps
+        | intros; simpl in *; simp; repeat rewrite_match; t_safe ] ].
 
-      (* PARAMRECORDS ? *)
-      Fail edestruct Q as [fuelS1 [initial3L [Evcond2 G2]]]; [solve [state_calc]..|]; clear Q.
-      simpl in *.
-      edestruct Q as [fuelS1 [initial3L [Evcond2 G2]]]; [solve [state_calc]..|]; clear Q.
-
-      remember (Datatypes.S (Datatypes.S (fuelS0 + fuelS1))) as f0.
-      remember (Datatypes.S (fuelS0 + fuelS1)) as f.
-      pose_flatten_var_ineqs.
-      (*
-      assert (map.get initial3L v = Some w) by (state_calc).
-      assert ((ZToReg 1) <> (ZToReg 0)) by (apply one_ne_zero).
-      *)
-
-
-        Error: Anomaly "Universe Top.71868 undefined." Please report at http://coq.inria.fr/bugs/.
-
-      repeat destruct_one_match_of_hyp F; repeat destruct_pair_eqs;
-      eexists (Datatypes.S f0); eexists; split; simpl;
-      repeat (match goal with
-      | H: FlatImp.eval_stmt _ _ ?ENV ?Fuel1 ?initialSt ?initialM ?s = ?final
-        |- context [FlatImp.eval_stmt _ _ ?ENV ?Fuel2 ?initialSt ?initialM ?s] =>
-          fuel_increasing_rewrite
-      | |- context[match ?e with _ => _ end] =>
-          destruct_one_match
-      | |- context[FlatImp.eval_stmt _ _ _ (S ?f) _ _ _] =>
-          progress simpl
-      | H: ?f = S _ |- context[FlatImp.eval_stmt _ _ _ ?f _ _ _] =>
-          rewrite H
-                  (*
-      | H: convert_bopname ?op = _
-        |- context[Semantics.interp_binop ?op ?w ?w0] =>
-          rewrite <- (eval_binop_compat op w w0); rewrite H
-
-      | H: convert_bopname ?op = _ |- Some (put _ _ (_ ?w1 ?w2), _) = Some _ =>
-          rewrite <- (eval_binop_compat op w1 w2); rewrite H
-      | H: context [ get (put _ ?v _) ?v] |- _ =>
-          rewrite get_put_same in H
-*)
-      end; cleanup_options; eauto); simpl;
+    all: replace (map.get l'0 v) with (Some r) by maps;
+      f_equal;
       repeat (match goal with
       | |- context[if ?e then _ else _] =>
           destruct e
@@ -795,12 +656,25 @@ Section FlattenExpr1.
           let H' := fresh in
           pose proof (negb_false_iff b) as H'; destruct H' as [_ H'];
           symmetry; apply H'; simpl_reg_eqb
-        end); auto.
-   - inversion H0.
-   - inversion H0.
+        end); auto using word.eqb_ne, one_ne_zero.
   Qed.
-  *)
-  Admitted.
+
+  Lemma flattenBooleanExpr_correct:
+    forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t res,
+    flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
+    map.extends initialL initialH ->
+    map.undef_on initialH (allFreshVars ngs1) ->
+    @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
+    FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
+      (t' = t /\ finalM = initialM /\
+       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0)))) /\
+      map.only_differ initialL (FlatImp.modVars s) finalL (* <-- added *)).
+  Proof.
+    intros. eapply FlatImp.exec.intersect.
+    - eapply flattenBooleanExpr_correct_aux; eassumption.
+    - eapply @FlatImp.modVarsSound.
+      eapply flattenBooleanExpr_correct_aux; eassumption.
+  Qed.
 
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
       Semantics.exec e sH t m lH post ->
@@ -839,17 +713,50 @@ Section FlattenExpr1.
       map_solver locals_ok.
 
     - (* exec.store *)
-      eapply @FlatImp.exec.det_step.
-      all: admit.
+      eapply @FlatImp.exec.seq.
+      + eapply flattenExpr_correct_aux; try eassumption.
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.seq.
+        * eapply flattenExpr_correct_aux; try eassumption; maps.
+        * intros. simpl in *. simp.
+          eapply @FlatImp.exec.store; try eassumption. 1: maps.
+          eexists; split; [|eassumption]. maps.
 
     - (* if_true *)
-      admit.
+      eapply @FlatImp.exec.seq.
+      + eapply flattenBooleanExpr_correct; try eassumption.
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.if_true.
+        * rewrite H3. f_equal. simpl_reg_eqb. reflexivity.
+        * eapply IHexec; try reflexivity; try eassumption; maps.
 
     - (* if_false *)
-      admit.
+      eapply @FlatImp.exec.seq.
+      + eapply flattenBooleanExpr_correct; try eassumption.
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.if_false.
+        * rewrite H2. f_equal. simpl_reg_eqb. reflexivity.
+        * eapply IHexec; try reflexivity; try eassumption.
+          { maps. }
+          { maps. }
+          { pose_flatten_var_ineqs.
+            progress simpl in *.
+            clear IHexec.
+            set_solver_generic varname. (* TODO make the generic "maps" work here too *) }
 
     - (* seq *)
-      admit.
+      eapply @FlatImp.exec.seq.
+      + eapply IHexec; try reflexivity; try eassumption. maps.
+      + intros. simpl in *. simp.
+        eapply H1 (* <-- that's an IH too *); try reflexivity; try eassumption.
+        * clear IHexec H1.
+          pose_flatten_var_ineqs. simpl in *.
+          assert (map.undef_on l (allFreshVars n)) as A by map_solver locals_ok.
+          assert (map.extends l x) as B by admit. (* TODO we don't have strong enough hyps here *)
+          simpl in *.
+          (* TODO should follow from A and B *)
+          admit.
+        * maps.
 
     - (* while_false *)
       admit.
@@ -858,257 +765,21 @@ Section FlattenExpr1.
       admit.
 
     - (* call *)
-      admit.
+      destruct fname.
 
     - (* interact *)
       admit.
 
-  Abort.
-
-   (*
-    ExprImp.invert_eval_cmd.
-    - simpl in F. inversions F. destruct_pair_eqs.
-      exists 1%nat initialL. auto.
-    - repeat (inversionss; try destruct_one_match_hyp).
-      pose proof flattenExpr_correct_aux as P.
-      specialize (P empty_map) with (initialM := initialM) (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
-      destruct P as [fuelL [prefinalL [Evs G]]].
-      remember (Datatypes.S fuelL) as SfuelL.
-      exists (Datatypes.S SfuelL). eexists. repeat split.
-      + simpl.
-        assert (FlatImp.eval_stmt _ _ empty_map SfuelL initialL initialM s = Some (prefinalL, initialM)) as Evs'. {
-          eapply FlatImp.increase_fuel_still_Success; [|eassumption]. omega.
-        }
-        simpl in *.
-        rewrite Evs'. subst SfuelL. simpl. rewrite G. simpl. reflexivity.
-      + clear IHfuelH.
-        pose_flatten_var_ineqs.
-        state_calc.
-    - simpl in F. inversions F. destruct_pair_eqs.
-      exists 1%nat initialL. split. solve [auto]. subst.
-      clear IHfuelH.
-      state_calc.
-    - repeat (inversionss; try destruct_one_match_hyp).
-      match goal with
-      | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
-        let P := fresh "P" in
-        pose proof (flattenExpr_correct_aux empty_map) as P;
-        specialize P with (initialM := initialM) (4 := Ev);
-        specializes P; [ eassumption .. | ];
-        let fuelL := fresh "fuelL" in
-        let prefinalL := fresh "prefinalL" in
-        destruct P as [fuelL [prefinalL P]];
-        deep_destruct P
-      end.
-      match goal with
-      | Ev: ExprImp.eval_expr _ _ = Some _ |- _ =>
-        let P := fresh "P" in
-        pose proof (flattenExpr_correct_aux empty_map) as P;
-        specialize P with (initialL := prefinalL) (initialM := initialM) (4 := Ev)
-      end.
-      specializes P1.
-      { eassumption. }
-      { pose_flatten_var_ineqs. clear IHfuelH.
-        state_calc. }
-      { pose_flatten_var_ineqs. clear IHfuelH. state_calc. }
-      destruct P1 as [fuelL2 P1]. deep_destruct P1.
-      exists (S (S (S (fuelL + fuelL2)))). eexists.
-      remember (S (S (fuelL + fuelL2))) as Sf.
-      split.
-      + simpl in *. fuel_increasing_rewrite. simpl. subst Sf.
-        remember (S (fuelL + fuelL2)) as Sf. simpl. fuel_increasing_rewrite.
-        subst Sf. simpl. rewrite_match.
-        assert (get finalL v = Some av) as G. {
-          clear IHfuelH. pose_flatten_var_ineqs. state_calc.
-        }
-        rewrite_match.
-        reflexivity.
-      + clear IHfuelH.
-        pose_flatten_var_ineqs.
-        state_calc. (* TODO this takes more than a minute, which is annoying *)
-
-    - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
-      pose_flatten_var_ineqs.
-      rename condition into condH, s into condL, s0 into sL1, s1 into sL2.
-
-      pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
-      specialize P with (initialM := initialM)
-                        (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
-      destruct P as [fuelLcond [initial2L [Evcond G]]].
-
-      specialize IHfuelH with (initialL := initial2L) (1:= E0) (5:= Ev).
-      destruct IHfuelH as [fuelL [finalL [evbranch Ex2]]].
-      unfold FlatImp.accessedVarsBcond in *.
-      pose_flatten_var_ineqs.
-      specialize IHfuelH with (initialL := initial2L) (1 := E0) (5 := Ev).
-      destruct IHfuelH as [fuelL [finalL [Evbranch Ex2]]].
-      * state_calc.
-      * state_calc.
-      * simpl in Di. state_calc.
-      * exists (S (S (fuelLcond + fuelL))). eexists.
-        refine (conj _ Ex2).
-        remember (S (fuelLcond + fuelL)) as f.
-        simpl in *.
-        fuel_increasing_rewrite.
-        subst f.
-        simpl. rewrite G. simpl.
-        simpl_reg_eqb.
-        assert (negb false = true) by auto. rewrite H.
-        fuel_increasing_rewrite.
-        reflexivity.
-    - inversions F. repeat destruct_one_match_hyp. destruct_pair_eqs. subst.
-      pose_flatten_var_ineqs.
-      rename condition into condH, s into condL, s0 into sL1, s1 into sL2.
-
-      pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
-      specialize P with (initialM := initialM)
-                        (1 := E) (2 := Ex) (3 := U) (4 := Ev0).
-      destruct P as [fuelLcond [initial2L [Evcond G]]].
-      pose_flatten_var_ineqs.
-      specialize IHfuelH with (initialL := initial2L) (1 := E1) (5 := Ev).
-      destruct IHfuelH as [fuelL [finalL [evbranch Ex2]]].
-      unfold FlatImp.accessedVarsBcond in *.
-      pose_flatten_var_ineqs.
-      * state_calc.
-      * state_calc.
-      * simpl in Di. set_solver.
-      * exists (S (S (fuelLcond + fuelL))). eexists.
-        refine (conj _ Ex2).
-        remember (S (fuelLcond + fuelL)) as tempFuel.
-        simpl in *.
-        fuel_increasing_rewrite.
-        subst tempFuel.
-        simpl. rewrite G. simpl.
-        simpl_reg_eqb.
-        assert (negb true = false) by auto. rewrite H.
-        fuel_increasing_rewrite.
-        reflexivity.
-
-    - simpl in F. do 2 destruct_one_match_hyp. inversions F.
-      pose proof IHfuelH as IHfuelH2.
-      specializes IHfuelH.
-      1: exact E. 1: exact Ex. 3: eassumption.
-      { clear IHfuelH2. state_calc. }
-      { simpl in Di. set_solver. }
-      destruct IHfuelH as [fuelL1 [middleL [EvL1 Ex1]]].
-      rename IHfuelH2 into IHfuelH.
-      rename s into sL1, s0 into sL2.
-      pose_flatten_var_ineqs.
-      simpl in Di.
-      pose proof ExprImp.modVarsSound as D1.
-      specialize D1 with (1 := Ev0).
-      specialize IHfuelH with (1 := E0) (2 := Ex1).
-      specializes IHfuelH. 3: eassumption.
-      { state_calc. }
-      { state_calc. }
-      destruct IHfuelH as [fuelL2 [finalL [EvL2 Ex2]]].
-      exists (S (fuelL1 + fuelL2)) finalL.
-      refine (conj _ Ex2).
-      simpl in *.
-      fuel_increasing_rewrite. fuel_increasing_rewrite. reflexivity.
-
-    - simpl in Di.
-      pose proof F as F0.
-      simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
-      rename s into sCond, s0 into sBody.
-
-      pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
-      specialize P with (initialM := initialM) (1 := E) (2 := Ex).
-      specializes P; [eassumption|eassumption|].
-      destruct P as [fuelLcond [initial2L [EvcondL G]]].
-      pose_flatten_var_ineqs.
-
-      specialize IHfuelH with (1 := E0) (5 := Ev2) as IH.
-      specialize (IH initial2L).
-      specializes IH; [clear IHfuelH .. |].
-      { state_calc. }
-      { state_calc. }
-      { set_solver. }
-      destruct IH as [fuelL1 [middleL [EvL1 Ex1]]].
-      pose_flatten_var_ineqs.
-      specialize IHfuelH with (initialL := middleL) (1 := F0) (5 := Ev).
-      specializes IHfuelH.
-      { state_calc. }
-      { pose proof ExprImp.modVarsSound as D1.
-        specialize D1 with (1 := Ev2).
-        state_calc. }
-      { set_solver. }
-      destruct IHfuelH as [fuelL2 [finalL [EvL2 Ex2]]].
-      exists (S (fuelL1 + fuelL2 + fuelLcond)) finalL.
-      refine (conj _ Ex2).
-      simpl in *.
-      fuel_increasing_rewrite.
-      rewrite G. simpl. simpl_reg_eqb.
-      fuel_increasing_rewrite.
-      fuel_increasing_rewrite.
-      reflexivity.
-    - simpl in Di.
-      pose proof F as F0.
-      simpl in F. do 3 destruct_one_match_hyp. destruct_pair_eqs. subst.
-      rename s into sCond, s0 into sBody.
-
-      pose proof (flattenBooleanExpr_correct_aux empty_map) as P.
-      specialize P with (initialM := initialM) (1 := E) (2 := Ex).
-      specializes P; [eassumption|eassumption|].
-      destruct P as [fuelLcond [initial2L [EvcondL G]]].
-      exists (S fuelLcond) initial2L.
-      pose_flatten_var_ineqs.
-      split; [|clear IHfuelH; state_calc].
-      simpl in *.
-      fuel_increasing_rewrite.
-      rewrite G. simpl. simpl_reg_eqb. reflexivity.
-
-    - rewrite empty_is_empty in Ev0. inversion Ev0.
-
-    - clear -action actname_empty. rewrite actname_empty in action. destruct action.
-  Qed.
-  *)
+  Admitted.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).
-
-  Context {varname_eq_dec: DecidableEq varname}. (* TODO *)
-
-  Lemma flattenStmt_correct_fixpointsemantics: forall fuelH sH sL initialM finalH finalM,
-    ExprImp2FlatImp sH = sL ->
-    ExprImp.eval_cmd map.empty fuelH map.empty initialM sH = Some (finalH, finalM) ->
-    exists fuelL finalL,
-      FlatImp.eval_stmt map.empty fuelL map.empty initialM sL = Some (finalL, finalM) /\
-      forall resVar res, map.get finalH resVar = Some res -> map.get finalL resVar = Some res.
-  Proof.
-  (*
-    introv C EvH.
-    unfold ExprImp2FlatImp, fst in C. destruct_one_match_hyp. subst s.
-    pose proof flattenStmt_correct_aux as P.
-    specialize P with (1 := E).
-    specialize P with (4 := EvH).
-    specialize P with (initialL := map.empty).
-    destruct P as [fuelL [finalL [EvL ExtL]]].
-    - unfold map.extends. auto.
-    - unfold map.undef_on. repeat intro. rewrite map.get_empty. reflexivity.
-    - unfold disjoint.
-      intro x.
-      pose proof (freshNameGenState_spec (ExprImp.allVars_cmd sH) x) as P.
-      (* PARAMRECORDS ? : why do I have to give semantics_params explicitly? *)
-      destruct (in_dec varname_eq_dec x (@ExprImp.allVars_cmd semantics_params sH)) as [Iyes | Ino].
-      + auto.
-      + left. clear -Ino actname_empty.
-        intro. apply Ino.
-
-        (* PARAMRECORDS *)
-        Fail apply ExprImp.modVars_subset_allVars; assumption.
-        pose proof ExprImp.modVars_subset_allVars as P; apply P; assumption.
-
-    - exists fuelL finalL. apply (conj EvL).
-      intros. state_calc.
-  Qed.
-  *)
-  Abort.
 
   Lemma flattenStmt_correct: forall m sH sL post,
     ExprImp2FlatImp sH = sL ->
     exec map.empty sH nil m map.empty post ->
     FlatImp.exec map.empty sL nil m map.empty post.
+  Proof.
   Admitted.
 
 End FlattenExpr1.
