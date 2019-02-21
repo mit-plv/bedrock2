@@ -362,6 +362,7 @@ Import PrimitivePair.
 
 Axiom __mem_ok : map.ok mem. Local Existing Instance __mem_ok.
 
+Local Unset Simplex. (* COQBUG(9615) *)
 Lemma swap_swap_ok : program_logic_goal_for_function! bsearch.
 Proof.
   pose proof __mem_ok.
@@ -495,3 +496,4 @@ Proof.
 
   all:fail "remaining subgoals".
 Admitted.
+Local Set Simplex.
