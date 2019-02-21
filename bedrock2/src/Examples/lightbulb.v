@@ -1,14 +1,9 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
-Require Import bedrock2.StringNamesSyntax bedrock2.NotationsCustomEntry.
-Require Import coqutil.Z.HexNotation.
-Require Import bedrock2.FE310CSemantics.
-Require Import bedrock2.Array.
+Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
+Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
+
 Import Syntax BinInt String List.ListNotations.
-
-Import BinInt String.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-
-
 Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
 
@@ -32,7 +27,7 @@ Definition lightbulb :=
     protocol = (load1(packet + constr:(23)));
     require (protocol == constr:(Ox"11")) else { r = (constr:(-1)) };
 
-    command = (load1(packet + constr:(42))); (* TODO: one bit only *)
+    command = (load1(packet + constr:(42))); (* TODO: MMIOWRITE one bit only *)
 
     io! mmio_val = MMIOREAD(constr:(Ox"10012008"));
     output! MMIOWRITE(constr:(Ox"10012008"), mmio_val | constr:(1) << constr:(23));
@@ -44,91 +39,50 @@ Definition lightbulb :=
   ))).
 
 
-(* MMIO macro cannot be implemented in bedrock2 b/c volatile *)
-
-Require bedrock2.BasicCSyntax.
-
-Example lightbulb_c_string := Eval compute in
-  BasicCSyntax.c_func (lightbulb).
-
-
-Require bedrock2.WeakestPreconditionProperties.
+From coqutil Require Import Word.Interface Map.Interface.
 From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars.
-
-Require Import bedrock2.Semantics.
-Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
-
-Axiom __map_ok : map.ok Semantics.mem. Local Existing Instance __map_ok. (* FIXME *)
-
-Require bedrock2.WeakestPreconditionProperties.
-From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars.
+From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars.
+From bedrock2.Map Require Import Separation SeparationLogic.
 
 Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
-
-Require Import coqutil.Word.Interface.
-Require bedrock2.WeakestPrecondition coqutil.Word.Properties.
-Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
-
 Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions => 
-  forall p_addr p l_addr l ps m R t,
-    sep (array scalar8 (word.of_Z 1) p_addr ps) R m ->
-    (scalar p_addr p * (scalar l_addr l * R)) m ->
-    WeakestPrecondition.call functions 
-      "lightbulb" t m [p_addr; l_addr]
+  forall p_addr packet len R m t,
+    (array scalar8 (word.of_Z 1) p_addr packet * R) m ->
+    42 < Z.of_nat (List.length packet) ->
+    (* ^ TODO from andres: when code is changed to check length, this precondition can be removed *)
+    WeakestPrecondition.call functions "lightbulb" t m [p_addr; len]
       (fun t' m' rets => exists v, rets = [v]).
+
+Ltac seplog_use_array_load1 H i :=
+  let iNat := eval cbv in (Z.to_nat i) in
+  let H0 := fresh in pose proof H as H0;
+  unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H0;
+    [exact iNat|exact (word.of_Z 0)|Lia.lia|];
+  change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
 
 (* bsearch.v has examples to deal with arrays *)
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
 Proof.
-  bind_body_of_function lightbulb; cbv [spec_of spec_of_lightbulb]. intros.
+  bind_body_of_function lightbulb; cbv [spec_of spec_of_lightbulb]. intros * H Hlen.
   (* argument initialization *) intros. letexists. split; [exact eq_refl|].
-  (* code *) repeat straightline.
-
-
-
-SeparationLogic.seprewrite_in @array_address_inbounds H0.
-
-1: admit. 1: admit. 1: reflexivity. letexists. split. {
-   repeat straightline. letexists. {
-  split. {try subst v1; eapply Scalars.load_one.
-  change ptsto with scalar8 in *.
-  ecancel_assumption. }
- { repeat straightline. letexists. subst v4. split. { 
-     eapply Scalars.load_one.
-     clear H0.
-     SeparationLogic.seprewrite_in @array_address_inbounds H.
-    { 1: admit. } { 1: admit. } 1: reflexivity.
-    refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H.
-    cancel.
-    refine (cancel_seps_at_indices 1 0 _ _ _ _);
-    cbn[List.firstn List.skipn app List.hd List.tl].
-    { refine (RelationClasses.reflexivity _). (* TODO: we totally saw a stack overflow here??*) }
-    cbn[seps]; exact (RelationClasses.reflexivity _). }
-{ subst v. (* exact eq_refl (* FIXME *) *) admit. } } } }
+  seplog_use_array_load1 H 12.
+  seplog_use_array_load1 H 13.
+  seplog_use_array_load1 H 23.
+  seplog_use_array_load1 H 42.
   repeat straightline.
 
-  letexists. split. { repeat straightline. }
-  split; cycle 1. { repeat straightline. eauto. }
-  { repeat straightline. letexists.
+  (* if for early out *)
+  letexists; split; repeat straightline; split; [|repeat straightline; eauto].
+  repeat straightline.
 
-    split. 1:admit.
-    repeat straightline.
-    letexists. repeat straightline.
-    split. { repeat straightline. }
-    split; cycle 1.
-    { repeat straightline. eauto. } 
+  (* if for early out *)
+  letexists; split; repeat straightline; split; [|repeat straightline; eauto].
+  repeat straightline.
 
-    repeat straightline.
-    letexists.
-    split. { admit. }
-
-(* the 1st MMIOREAD *)
-    repeat straightline.
-
-  { hnf. letexists. split. { 
+  (* the 1st MMIOREAD *)
+  { hnf.
+    letexists. split. { 
        left. split. { exact eq_refl. } { split. { exact eq_refl. }
        intros. { letexists. split. { subst l1. exact eq_refl. } 
     repeat straightline.
@@ -147,7 +101,7 @@ SeparationLogic.seprewrite_in @array_address_inbounds H0.
   { hnf. letexists. split. { 
        right. split. { exact eq_refl. } { letexists. split. { subst args0. exact eq_refl. }
        intros. { letexists. split. { subst l1. exact eq_refl. } 
-  (* TODO: accumulate trace in context instead of goal *)
+  (* TODO for andres: accumulate trace in context instead of goal *)
     repeat straightline.
     eauto. } } }
   cbv. eauto. 
@@ -155,11 +109,7 @@ SeparationLogic.seprewrite_in @array_address_inbounds H0.
 } } } }
   cbv. eauto. } } } }
   cbv. eauto. } } } }
-  cbv. eauto. } }
-Unshelve.
-all:admit.
-Admitted.
+  cbv. eauto. } 
+Qed.
 
-Print lightbulb_c_string.
-
-
+Compute BasicCSyntax.c_func (lightbulb).

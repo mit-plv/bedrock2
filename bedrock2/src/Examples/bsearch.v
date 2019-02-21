@@ -407,7 +407,7 @@ Proof.
     { repeat letexists. split; [repeat straightline|].
       cbn [interp_binop] in *.
       repeat letexists; repeat split; repeat straightline.
-      { subst v1; subst x7. SeparationLogic.ecancel_assumption. }
+      { subst v1; subst x7. subst x8. SeparationLogic.ecancel_assumption. }
       { subst v1. subst x7.
         clear H2 x8 H3 v0.
         repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).

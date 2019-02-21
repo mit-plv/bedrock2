@@ -181,7 +181,7 @@ Section SepProperties.
   Qed.
 End SepProperties.
 
-Require Import coqutil.Tactics.syntactic_unify.
+Require Import coqutil.Tactics.syntactic_unify coqutil.Tactics.rdelta.
 
 Notation "X '========' 'seps' 'iff' '========' Y" :=
   (Lift1Prop.iff1 (seps X) (seps Y))
@@ -265,10 +265,10 @@ Ltac index_and_element_of xs :=
     end
   end.
 
-Ltac find_syntactic_unify xs y :=
+Ltac find_syntactic_unify_deltavar xs y :=
   multimatch xs with
-  | cons ?x _ => constr:(ltac:(syntactic_unify x y; exact 0%nat))
-  | cons _ ?xs => let i := find_syntactic_unify xs y in constr:(S i)
+  | cons ?x _ => constr:(ltac:(syntactic_unify_deltavar x y; exact 0%nat))
+  | cons _ ?xs => let i := find_syntactic_unify_deltavar xs y in constr:(S i)
   end.
 
 Ltac find_constr_eq xs y :=
@@ -314,10 +314,10 @@ Ltac ecancel_step :=
       let jy := index_and_element_of RHS in
       let j := lazymatch jy with (?i, _) => i end in
       let y := lazymatch jy with (_, ?y) => y end in
-      assert_fails (is_evar y);
+      assert_fails (idtac; let y := rdelta_var y in is_evar y);
 
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-      let i := find_syntactic_unify LHS y in
+      let i := find_syntactic_unify_deltavar LHS y in
 
       simple refine (cancel_seps_at_indices i j LHS RHS _ _);
       cbn [List.firstn List.skipn List.app List.hd List.tl];
@@ -341,7 +341,7 @@ Ltac ecancel_assumption :=
   | |- _ ?m1 =>
     multimatch goal with
     | H: _ ?m2 |- _ =>
-      syntactic_unify m1 m2;
+      syntactic_unify_deltavar m1 m2;
       refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
       solve [ecancel]
     end

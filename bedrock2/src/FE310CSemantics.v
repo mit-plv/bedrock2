@@ -43,3 +43,8 @@ Instance parameters : parameters :=
         word.ltu addr (word.of_Z (Ox"10025000")) = true));
 |}.
 
+Lemma __map_ok : Map.Interface.map.ok Semantics.mem. (* FIXME *)
+  cbn.
+  (* eapply SortedList.map_ok. (* fails, IDK why ~ andres *) *)
+Admitted.
+Existing Instance __map_ok. 
