@@ -1,8 +1,8 @@
-Require Import bedrock2.BasicC64Syntax bedrock2.NotationsCustomEntry.
+Require Import bedrock2.BasicCSyntax bedrock2.NotationsCustomEntry.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Existing Instance bedrock2.BasicC64Syntax.StringNames_params.
+Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
 Definition swap := let a := "a" in let b := "b" in let t := "t" in

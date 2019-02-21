@@ -8,7 +8,7 @@ Axiom StrictOrderWord : forall width word, @word.ok width word -> @SortedList.pa
 
 Existing Instance Word.Naive.ok.
 Instance parameters : parameters :=
-  let word := Word.Naive.word 64 eq_refl in
+  let word := Word.Naive.word 32 eq_refl in
   let byte := Word.Naive.word 8 eq_refl in
   {|
   syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
@@ -18,11 +18,3 @@ Instance parameters : parameters :=
   funname_eqb := String.eqb;
   ext_spec := fun _ _ _ _ _ => False;
 |}.
-
-Global Instance parameters_ok trace m0 act args :
-  Morphisms.Proper
-    (Morphisms.respectful
-       (Morphisms.pointwise_relation Interface.map.rep
-          (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
-       Basics.impl) (Semantics.ext_spec trace m0 act args).
-Proof. cbv. trivial. Qed.

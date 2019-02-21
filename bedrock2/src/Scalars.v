@@ -99,6 +99,16 @@ Section Scalars.
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
   Qed.
 
+  Lemma load_one_of_sep addr value R m
+    (Hsep : sep (scalar8 addr value) R m)
+    : Memory.load Syntax.access_size.one m addr = Some (word.of_Z (word.unsigned value)).
+  Proof.
+    cbv [load load_Z load_bytes bytes_per footprint tuple.unfoldn map.getmany_of_tuple tuple.option_all tuple.map].
+    erewrite get_sep by exact Hsep; repeat f_equal.
+    cbn.
+    eapply Z.lor_0_r.
+  Qed.
+
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)

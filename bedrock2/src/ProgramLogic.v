@@ -87,6 +87,7 @@ Ltac straightline_cleanup :=
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
+  | _ => progress (cbn [Semantics.interp_binop] in * )
   | H: exists _, _ |- _ => destruct H
   | H: _ /\ _ |- _ => destruct H
   | x := ?y |- ?G => is_var y; subst x
@@ -141,9 +142,9 @@ Ltac straightline :=
   | |- @store _ _ _ _ _ _ =>  eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]
   | |- bedrock2.Memory.load Syntax.access_size.word ?m ?a = Some ?ev =>
     try subst ev; eapply Scalars.load_word_of_sep; ecancel_assumption
-  | |- bedrock2.Memory.load _ ?m ?a = Some ?ev =>
-    (* TODO do we need lemmas for all load sizes? *)
-    try subst ev; eapply Scalars.load_word_of_sep; ecancel_assumption
+  | |- bedrock2.Memory.load Syntax.access_size.one ?m ?a = Some ?ev =>
+    try subst ev; eapply Scalars.load_one_of_sep; ecancel_assumption
+  (* TODO: load and store for scalar16 and scalar32 *)
   | |- exists x, ?P /\ ?Q =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
