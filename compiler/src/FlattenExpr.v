@@ -117,30 +117,29 @@ Section FlattenExpr1.
     | _ => default
     end.
 
+  (* returns seq of stmt which calculate the list of expressions, and a list of vars into which
+     the results are saved, and new fresh name generator state *)
+  Definition flattenExprs(ngs: NGstate)(es: list Syntax.expr):
+    (FlatImp.stmt * list varname * NGstate) :=
+    List.fold_right
+      (fun e '(c, vs, ngs) =>
+         let '(ci, vi, ngs) := flattenExpr ngs e in
+         let c := FlatImp.SSeq ci c in
+         (c, vi :: vs, ngs)
+      ) (FlatImp.SSkip, nil, ngs) es.
+
   (* TODO this is only useful if we also flatten the bodies of all functions *)
   Definition flattenCall(ngs: NGstate)(binds: list varname)(f: Syntax.funname)
              (args: list Syntax.expr):
     FlatImp.stmt * NGstate :=
-    let '(compute_args, argvars, ngs) :=
-          List.fold_right
-            (fun e '(c, vs, ngs) =>
-               let (ce_ve, ngs) := flattenExpr ngs e in
-               let c := FlatImp.SSeq (fst ce_ve) c in
-               (c, snd ce_ve::vs, ngs)
-            ) (FlatImp.SSkip, nil, ngs) args in
-      (FlatImp.SSeq compute_args (FlatImp.SCall (binds: list varname) f argvars), ngs).
+    let '(compute_args, argvars, ngs) := flattenExprs ngs args in
+    (FlatImp.SSeq compute_args (FlatImp.SCall binds f argvars), ngs).
 
   Definition flattenInteract(ngs: NGstate)(binds: list varname)(a: actname)
              (args: list Syntax.expr):
     FlatImp.stmt * NGstate :=
-    let '(compute_args, argvars, ngs) :=
-          List.fold_right
-            (fun e '(c, vs, ngs) =>
-               let (ce_ve, ngs) := flattenExpr ngs e in
-               let c := FlatImp.SSeq (fst ce_ve) c in
-               (c, snd ce_ve::vs, ngs)
-            ) (FlatImp.SSkip, nil, ngs) args in
-      (FlatImp.SSeq compute_args (FlatImp.SInteract (binds: list varname) a argvars), ngs).
+    let '(compute_args, argvars, ngs) := flattenExprs ngs args in
+    (FlatImp.SSeq compute_args (FlatImp.SInteract binds a argvars), ngs).
 
   (* returns statement and new fresh name generator state *)
   Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt * NGstate) :=
@@ -230,7 +229,6 @@ Section FlattenExpr1.
       unfold ExprImp.cmd_size.
       unfold ExprImp.cmd_size in IHargs.
       rewrite map_cons. rewrite fold_right_cons.
-      destruct p0.
       apply flattenExpr_size in E1.
       simpl in *.
       rewrite! ListLib.Zlength_cons.
@@ -254,7 +252,7 @@ Section FlattenExpr1.
       | e: FlatImp.stmt |- _ => unique pose proof (FlatImp.stmt_size_pos e)
       end.
 
-      forget (FlatImp.stmt_size s) as sz0.
+      forget (FlatImp.stmt_size s2) as sz0.
       forget (FlatImp.stmt_size s1) as sz1.
       forget (ExprImp.expr_size a) as esz.
 
@@ -403,7 +401,6 @@ Section FlattenExpr1.
       specialize (IHargs binds ngs1).
       rewrite E0 in IHargs.
       specialize IHargs with (1 := eq_refl).
-      destruct p0.
       apply flattenExpr_freshVarUsage in E1.
       clear -IHargs E1.
       set_solver. }
@@ -414,7 +411,7 @@ Section FlattenExpr1.
       subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
     induction args; intros; unfold flattenInteract in *; simp; try solve [map_solver locals_ok].
-    - simpl in E. simp. destruct p0.
+    - simpl in E. simp.
       specialize IHargs with (ngs1 := ngs1).
       rewrite E0 in IHargs.
       specialize IHargs with (1 := eq_refl).
