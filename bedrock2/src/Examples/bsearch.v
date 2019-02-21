@@ -463,7 +463,11 @@ Proof.
         { assert (Datatypes.length x <> 0)%nat by Lia.lia.
           revert H14. clear. intros. Z.div_mod_to_equations; zify; rewrite Z2Nat.id by Lia.lia; Lia.lia. }
         rewrite Z2Nat.id by (clear; Z.div_mod_to_equations; Lia.lia).
-        clear. Z.div_mod_to_equations. Lia.lia. }
+        clear. Z.div_mod_to_equations.
+        Local Unset Simplex.
+        Lia.lia.
+        Local Set Simplex.
+      }
       { subst v. subst v'. subst x7.
         repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
