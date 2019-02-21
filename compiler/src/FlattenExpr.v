@@ -808,15 +808,39 @@ Section FlattenExpr1.
           eexists; repeat (split || eassumption); maps.
 
     - (* while_false *)
-      admit.
+      eapply @FlatImp.exec.loop;
+        [ eapply flattenBooleanExpr_correct; try eassumption
+        | intros; simpl in *; simp .. ].
+      + congruence.
+      + eexists; repeat (split || eassumption); maps.
+      + exfalso. rewrite word.eqb_eq in H6 by reflexivity. simpl in *. congruence.
+      + exfalso. exact H1. (* instantiates mid2 to (fun _ _ _ => False) *)
 
     - (* while_true *)
-      admit.
+      eapply @FlatImp.exec.loop;
+      (* eapply flattenBooleanExpr_correct. 1: eassumption. 3: eassumption. all: eassumption. *)
+        [ eapply flattenBooleanExpr_correct; try eassumption
+        | intros; simpl in *; simp .. ].
+      + congruence.
+      + exfalso. rewrite word.eqb_ne in H9 by congruence. simpl in *. congruence.
+      + eapply IHexec; try eassumption; try reflexivity; maps.
+      + simpl in *. simp.
+        specialize H3 with (1 := H4).
+        eapply FlatImp.exec.weaken.
+        * eapply H3; try reflexivity. (* <-- also an IH *)
+          { clear H3 IHexec. rewrite E. rewrite E0. reflexivity. }
+          { maps. }
+          { maps. }
+          { maps. }
+        * simpl. intros. simp.
+          eexists; repeat (split || eassumption); maps.
 
     - (* call *)
       destruct fname.
 
     - (* interact *)
+      unfold flattenInteract in *. simp.
+      eapply @seq_with_modVars.
       admit.
 
   Admitted.
