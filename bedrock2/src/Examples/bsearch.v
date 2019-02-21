@@ -410,33 +410,24 @@ Proof.
       { subst v1. subst x7.
         clear H2 x8 H3 v0.
         repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
-        rewrite H11.
-        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). { intros l. destruct l. { contradiction. } { reflexivity. } }
-        2: admit.
-        unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). { admit. }
-        2: {
-          repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
-          rewrite length_rep.
-          rewrite length_rep in H5.
-          revert H5. clear. intros. zify. rewrite Z2Nat.id; (Z.div_mod_to_equations; Lia.lia). }
-        unshelve erewrite (_ : forall n, n <> O -> Z.of_nat (Init.Nat.pred n) = Z.of_nat n - 1). { clear. intros. Lia.lia. }
-        2: admit.
-        rewrite Nat2Z.inj_sub, Z2Nat.id.
-        2: { rewrite H10. Z.div_mod_to_equations. Lia.lia. }
-        2: { rewrite H10. zify. rewrite Z2Nat.id; (Z.div_mod_to_equations; Lia.lia). }
-        rewrite word.unsigned_sub, Z.mod_small.
-        2: admit.
-        rewrite word.unsigned_sub, Z.mod_small.
-        2: {
-          pose proof Properties.word.unsigned_range (word.sub x2 x1) as HE; revert HE.
-          rewrite H10. revert H5. rewrite length_rep. clear. intros.
-          Z.div_mod_to_equations. Lia.lia. }
-        rewrite H10.
-        rewrite H11.
-        rewrite length_rep.
-        rewrite Z.div_mul by discriminate.
-        clear. Lia.lia. }
+        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
+        replace (\_ (x2 ^- x1 ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8))
+           with (8 * ((word.unsigned (x2 ^- x1)/8)/2)); cycle 1.
+        { (* 8 * (\_ (x2 ^- x1) / 8 / 2) = \_ (x2 ^- x1 ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8) *) admit. }
+        replace (\_ (x2 ^- x1) / 2 ^ 4 * 2 ^ 3 / 8)
+           with (word.unsigned (x2 ^- x1)/8/2); cycle 1.
+        { rewrite Z.div_mul by discriminate. clear. Z.div_mod_to_equations. Lia.lia. }
+        rewrite length_rep, (Z.mul_comm 8 (Z.of_nat _)), Z.div_mul by discriminate; f_equal.
+        clear. 
+        (* Z and nat ... *)
+        change 2 with (Z.of_nat 2); rewrite <-div_Zdiv by discriminate; rewrite ?Nat2Z.id; f_equal.
+        (* list manipulation... *)
+        unshelve erewrite (_ : forall xs, Datatypes.length (List.tl xs) = pred (Datatypes.length xs)).
+        { intros l. destruct l. { reflexivity. } { reflexivity. } }
+        unshelve erewrite (_ : forall xs delta, Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat).
+        { admit. }
+        pattern (Datatypes.length x); set (n := Datatypes.length x); clearbody n; cbv beta; clear.
+        (*  forall n, (n / 2)%nat = Init.Nat.pred (n - n / 2) *) admit. }
       { subst v'. subst v. subst x7.
         set (\_ (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1) / \_ (/_ 8)) as X.
         assert (X < Z.of_nat (Datatypes.length x)). {
