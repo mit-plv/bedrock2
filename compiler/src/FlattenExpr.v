@@ -708,27 +708,35 @@ Section FlattenExpr1.
       map.undef_on lH (allFreshVars ngs) ->
       disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
       FlatImp.exec map.empty sL t m lL (fun t' m' lL' => exists lH',
+        post t' m' lH' /\ (* <-- put first so that eassumption will instantiate lH' correctly *)
         map.extends lL' lH' /\
-        post t' m' lH').
+        (* this one is a property purely about ExprImp (it's the conclusion of
+           ExprImp.modVarsSound). In the previous proof, which was by induction
+           on the fuel of the ExprImp execution, we did not need to carry it
+           around in the IH, but could just apply ExprImp.modVarsSound as needed,
+           (eg after the when proving the second part of a (SSeq s1 s2)), but
+           now we have to make it part of the conclusion in order to get a stronger
+           "mid" in that case, because once we're at s2, it's too late to learn/prove
+           more things about the (t', m', l') in mid *)
+        map.only_differ lH (ExprImp.modVars sH) lH').
   Proof.
     induction 1; intros; simpl in *; simp.
 
     - (* exec.skip *)
       eapply @FlatImp.exec.skip.
-      eauto.
+      eexists; repeat (split || eassumption).
+      maps.
 
     - (* exec.set *)
       eapply @FlatImp.exec.seq.
       + eapply flattenExpr_correct_aux; eassumption.
       + simpl. intros. simp.
         eapply @FlatImp.exec.set; [eassumption|].
-        eexists; split; [|eassumption].
-        maps.
+        eexists; repeat (split || eassumption); maps.
 
     - (* exec.unset *)
       eapply @FlatImp.exec.skip.
-      eexists; split; [|eassumption].
-      map_solver locals_ok.
+      eexists; repeat (split || eassumption); maps.
 
     - (* exec.store *)
       eapply @FlatImp.exec.seq.
@@ -738,7 +746,7 @@ Section FlattenExpr1.
         * eapply flattenExpr_correct_aux; try eassumption; maps.
         * intros. simpl in *. simp.
           eapply @FlatImp.exec.store; try eassumption. 1: maps.
-          eexists; split; [|eassumption]. maps.
+          eexists; repeat (split || eassumption). 2: maps. maps.
 
     - (* if_true *)
       eapply @FlatImp.exec.seq.
@@ -746,7 +754,12 @@ Section FlattenExpr1.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_true.
         * rewrite H3. f_equal. simpl_reg_eqb. reflexivity.
-        * eapply IHexec; try reflexivity; try eassumption; maps.
+        * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
+             requires us to do one more weakening step here than otherwise needed: *)
+          eapply @FlatImp.exec.weaken.
+          { eapply IHexec; try reflexivity; try eassumption; maps. }
+          { intros. simpl in *. simp.
+            eexists; repeat (split || eassumption); maps. }
 
     - (* if_false *)
       eapply @FlatImp.exec.seq.
@@ -754,48 +767,45 @@ Section FlattenExpr1.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_false.
         * rewrite H2. f_equal. simpl_reg_eqb. reflexivity.
-        * eapply IHexec; try reflexivity; try eassumption.
-          { maps. }
-          { maps. }
-          { pose_flatten_var_ineqs.
-            progress simpl in *.
-            clear IHexec.
-            set_solver_generic varname. (* TODO make the generic "maps" work here too *) }
-
+        * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
+             requires us to do one more weakening step here than otherwise needed: *)
+          eapply @FlatImp.exec.weaken.
+          { eapply IHexec; try reflexivity; try eassumption.
+            - maps.
+            - maps.
+            - pose_flatten_var_ineqs. progress simpl in *.
+              (* TODO make map_solver work without the intermediate steps *)
+              assert (disjoint (ExprImp.modVars c2) (allFreshVars ngs)) as A
+                  by map_solver locals_ok.
+              assert (subset (allFreshVars n0) (allFreshVars ngs)) as B
+                  by map_solver locals_ok.
+              clear -A B.
+              map_solver locals_ok. }
+          { intros. simpl in *. simp.
+            eexists; repeat (split || eassumption); maps. }
 
     - (* seq *)
-
       eapply seq_with_modVars.
       + eapply IHexec; try reflexivity; try eassumption. maps.
       + simpl. intros. simp.
-        eapply H1 (* <-- that's an IH too *); try reflexivity; try eassumption.
+        rename l into lH, l' into lL', x into lH'.
+        (* NOTE how the new high-level locals (lH') are not only constrained by mid and
+           by "map.extends lL' lH'" but also by the additional
+           "map.only_differ lH (ExprImp.modVars c1) lH'".
+           This additional constraint is not related to the flattening at all, but we still
+           have to carry it in the conclusion of the statement in order to get it here *)
+
+        (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
+           requires us to do one more weakening step here than otherwise needed: *)
+        eapply @FlatImp.exec.weaken.
+        * eapply H1 (* <-- that's an IH too *); try reflexivity; try eassumption.
+          { (* note: here we need the high-level map.only_differ we were carrying around *)
+            Fail (solve [clear H9; maps]).
+            solve [maps]. }
+          { maps. }
         * clear IHexec H1.
-          pose_flatten_var_ineqs. simpl in *.
-          rename l into lH, l' into lL', x into lH'.
-
-          assert (map.undef_on lH (allFreshVars n)) as A by map_solver locals_ok.
-          assert (map.only_differ lH (FlatImp.modVars s) lH') as B. {
-            admit. (* TODO make map_solver work, or somehow use ExprImp.modVarsSound, but the map.only_differ will be inside a post *)
-          }
-          assert (disjoint (allFreshVars n) (FlatImp.modVars s)) as C. {
-            pose_flatten_var_ineqs.
-            (* SOL1: based on flattenStmt_modVars_spec *)
-
-            admit.
-          }
-
-          clear C.
-
-          (* SOL2:
- could use ExprImp.intersect_exec and ExprImp.modVarsSound to obtain a stronger mid,
-which also says this:
-           *)
-          assert (map.only_differ lH (ExprImp.modVars c1) lH') as C. {
-            admit.
-          }
-          maps.
-
-        * maps.
+          simpl. intros. simp.
+          eexists; repeat (split || eassumption); maps.
 
     - (* while_false *)
       admit.
