@@ -117,16 +117,20 @@ Section FlattenExpr1.
     | _ => default
     end.
 
-  (* returns seq of stmt which calculate the list of expressions, and a list of vars into which
-     the results are saved, and new fresh name generator state *)
-  Definition flattenExprs(ngs: NGstate)(es: list Syntax.expr):
+  (* Returns seq of stmt which calculate the list of expressions, and a list of vars into which
+     the results are saved, and new fresh name generator state.
+     Note: We don't use fold_left or fold_right because none of them does the recursion in
+     the way which is easiest to prove: We need the fold_right direction to expose the head of the
+     returned list, but we want to first invoke flattenExpr and then flattenExprs, which is
+     the opposite order of what fold_right does. *)
+  Fixpoint flattenExprs(ngs1: NGstate)(es: list Syntax.expr):
     (FlatImp.stmt * list varname * NGstate) :=
-    List.fold_right
-      (fun e '(c, vs, ngs) =>
-         let '(ci, vi, ngs) := flattenExpr ngs e in
-         let c := FlatImp.SSeq ci c in
-         (c, vi :: vs, ngs)
-      ) (FlatImp.SSkip, nil, ngs) es.
+    match es with
+    | nil => (FlatImp.SSkip, nil, ngs1)
+    | e :: rest => let '(ci, vi, ngs2) := flattenExpr ngs1 e in
+                   let '(cs, vs, ngs3) := flattenExprs ngs2 rest in
+                   (FlatImp.SSeq ci cs, vi :: vs, ngs3)
+    end.
 
   (* TODO this is only useful if we also flatten the bodies of all functions *)
   Definition flattenCall(ngs: NGstate)(binds: list varname)(f: Syntax.funname)
@@ -222,14 +226,14 @@ Section FlattenExpr1.
       repeat destruct_one_match_hyp.
       inversions H.
       inversions E.
-      specialize (IHargs binds ngs).
-      rewrite E0 in IHargs.
+      specialize (IHargs binds n0).
+      rewrite E1 in IHargs.
       specialize IHargs with (1 := eq_refl).
 
       unfold ExprImp.cmd_size.
       unfold ExprImp.cmd_size in IHargs.
       rewrite map_cons. rewrite fold_right_cons.
-      apply flattenExpr_size in E1.
+      apply flattenExpr_size in E0.
       simpl in *.
       rewrite! ListLib.Zlength_cons.
 
@@ -296,6 +300,16 @@ Section FlattenExpr1.
     set_solver.
   Qed.
 
+  Lemma flattenExprs_freshVarUsage: forall es ngs ngs' s vs,
+    flattenExprs ngs es = (s, vs, ngs') ->
+    subset (allFreshVars ngs') (allFreshVars ngs).
+  Proof.
+    induction es; intros; simpl in *; simp; [ set_solver |].
+    specialize IHes with (1 := E0).
+    eapply flattenExpr_freshVarUsage in E.
+    set_solver.
+  Qed.
+
   Lemma flattenExprAsBoolExpr_freshVarUsage: forall e ngs ngs' s v,
     flattenExprAsBoolExpr ngs e = (s, v, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).
@@ -312,6 +326,7 @@ Section FlattenExpr1.
     set_solver.
   Qed.
 
+  (* TODO investigate if this one is really needed, might allow to simplify flatten function *)
   Lemma flattenExpr_modifies_resVar: forall e s ngs ngs' resVar,
     flattenExpr ngs e = (s, resVar, ngs') ->
     resVar \in (FlatImp.modVars s).
@@ -362,6 +377,27 @@ Section FlattenExpr1.
     try solve [set_solver].
   Qed.
 
+  Lemma flattenExprs_modVars_spec: forall es s ngs ngs' resVars,
+    flattenExprs ngs es = (s, resVars, ngs') ->
+    subset (FlatImp.modVars s) (diff (allFreshVars ngs) (allFreshVars ngs')).
+  Proof.
+    induction es; intros; simpl in *; simp; simpl; [set_solver|].
+    repeat match goal with
+    | IH: forall _ _ _ _, _ = _ -> _ |- _ => specializes IH; [ eassumption | ]
+    end;
+    repeat match goal with
+    | H: genFresh _ = _ |- _ => apply genFresh_spec in H
+    | H: flattenExpr _ _ = _ |- _ =>
+      unique eapply flattenExpr_freshVarUsage in copy of H;
+      unique eapply flattenExpr_modVars_spec in copy of H
+    | H: flattenExprs _ _ = _ |- _ =>
+      unique eapply flattenExprs_freshVarUsage in copy of H
+    | H: (_, _, _) = (_, _, _) |- _ => inversion H; subst; clear H
+    | |- _ => progress simpl in *
+    end;
+    try solve [set_solver].
+  Qed.
+
   Lemma flattenExprAsBoolExpr_modVars_spec: forall e s ngs ngs' cond,
     flattenExprAsBoolExpr ngs e = (s, cond, ngs') ->
     subset (FlatImp.modVars s) (diff (allFreshVars ngs) (allFreshVars ngs')).
@@ -398,11 +434,11 @@ Section FlattenExpr1.
       repeat destruct_one_match_hyp.
       inversions H.
       inversions E.
-      specialize (IHargs binds ngs1).
-      rewrite E0 in IHargs.
+      specialize (IHargs binds n0).
+      rewrite E1 in IHargs.
       specialize IHargs with (1 := eq_refl).
-      apply flattenExpr_freshVarUsage in E1.
-      clear -IHargs E1.
+      apply flattenExpr_freshVarUsage in E0.
+      clear -IHargs E0.
       set_solver. }
   Qed.
 
@@ -412,10 +448,10 @@ Section FlattenExpr1.
   Proof.
     induction args; intros; unfold flattenInteract in *; simp; try solve [map_solver locals_ok].
     - simpl in E. simp.
-      specialize IHargs with (ngs1 := ngs1).
-      rewrite E0 in IHargs.
+      specialize IHargs with (ngs1 := n).
+      rewrite E1 in IHargs.
       specialize IHargs with (1 := eq_refl).
-      apply flattenExpr_freshVarUsage in E1.
+      apply flattenExpr_freshVarUsage in E0.
       map_solver locals_ok.
       Unshelve. all: assumption.
   Qed.
@@ -442,6 +478,7 @@ Section FlattenExpr1.
     repeat match goal with
     (* fresh var usage: new fresh vars are a subset of old fresh vars: *)
     | H: _ |- _ => unique eapply flattenExpr_freshVarUsage in copy of H
+    | H: _ |- _ => unique eapply flattenExprs_freshVarUsage in copy of H
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_freshVarUsage in copy of H
     | H: _ |- _ => unique eapply flattenStmt_freshVarUsage in copy of H
     (* resvar of flattened expr was modified by statement resulting from flattening: *)
@@ -449,6 +486,7 @@ Section FlattenExpr1.
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modifies_cond_vars in copy of H
     (* a flattened statement only modifies vars obtained from the fresh var generator: *)
     | H: _ |- _ => unique eapply flattenExpr_modVars_spec in copy of H
+    | H: _ |- _ => unique eapply flattenExprs_modVars_spec in copy of H
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modVars_spec in copy of H
     end.
 
@@ -597,6 +635,29 @@ Section FlattenExpr1.
     eapply FlatImp.exec.intersect; cycle 1.
     - exact P.
     - eapply @FlatImp.modVarsSound. exact P.
+  Qed.
+
+  Lemma flattenExprs_correct: forall es ngs1 ngs2 resVars s t m lH lL resVals,
+    flattenExprs ngs1 es = (s, resVars, ngs2) ->
+    map.extends lL lH ->
+    map.undef_on lH (allFreshVars ngs1) ->
+    List.option_all (List.map (@eval_expr (mk_Semantics_params p) m lH) es) = Some resVals ->
+    FlatImp.exec map.empty s t m lL (fun t' m' lL' =>
+      t' = t /\ m' = m /\
+      List.option_all (List.map (map.get lL') resVars) = Some resVals /\
+      map.only_differ lL (FlatImp.modVars s) lL').
+  Proof.
+    induction es; intros *; intros F Ex U Evs; simpl in *; simp;
+      [ eapply @FlatImp.exec.skip; simpl; repeat split; auto; maps | ].
+    rename n into ngs2, ngs2 into ngs3.
+    eapply seq_with_modVars.
+    - eapply flattenExpr_correct_aux; eassumption.
+    - intros. simpl in *. simp.
+      eapply @FlatImp.exec.weaken.
+      + eapply IHes; try eassumption; maps.
+      + intros. simpl in *. simp.
+        replace (map.get l'0 v) with (Some r) by maps.
+        rewrite_match. repeat (split || auto). maps.
   Qed.
 
   Ltac simpl_reg_eqb :=
@@ -849,9 +910,33 @@ Section FlattenExpr1.
 
     - (* interact *)
       unfold flattenInteract in *. simp.
-      eapply @seq_with_modVars.
+      eapply @FlatImp.exec.seq.
+      + eapply flattenExprs_correct. 1: eassumption. 3: eassumption. all: eassumption.
+      + simpl in *. intros. simp.
+        rename l into lH, l' into lL'. rename l0 into argValNames.
+        eapply @FlatImp.exec.interact.
+        1: eassumption. 1: eassumption.
+        intros. edestruct H1 as (lH' & P & Q). 1: eassumption.
 
+  Set Nested Proofs Allowed.
+  (* commented out version of this is in compiler.util.Common *)
+  Lemma putmany_extends_exists: forall (ks: list varname) (vs: list word) m1 m1' m2,
+      map.putmany_of_list ks vs m1 = Some m1' ->
+      map.extends m2 m1 ->
+      exists m2', map.putmany_of_list ks vs m2 = Some m2' /\ map.extends m2' m1'.
+  Proof.
   Admitted.
+
+
+        pose proof (putmany_extends_exists binds resvals ) as R.
+        specialize R with (m2 := lL').
+        edestruct R as (lL'' & R1 & R2); cycle 2.
+        { repeat eexists. 2: eassumption.
+          3: eapply only_differ_putmany. 3: exact P.
+          1: exact R1. exact R2. }
+        { exact P. }
+        { maps. }
+  Qed.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).

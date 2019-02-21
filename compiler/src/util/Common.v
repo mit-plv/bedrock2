@@ -18,16 +18,6 @@ Proof.
     + simpl. auto.
 Qed.
 
-Fixpoint option_all {A} (l : list (option A)) {struct l} : option (list A) :=
-  match l with
-  | nil => Some nil
-  | (Some x)::l =>
-    match option_all l with
-    | Some l' => Some (x::l')
-    | _ => None end
-  | _ => None
-  end.
-
 Require Import coqutil.Datatypes.PropSet.
 (* TODO move to PropSet *)
 Definition set(A: Type) := A -> Prop.

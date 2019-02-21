@@ -205,10 +205,10 @@ Section FlatImp1.
         | SSkip => Some (st, m)
         | SCall binds fname args =>
           'Some (params, rets, fbody) <- map.get e fname;
-          'Some argvs <- option_all (List.map (map.get st) args);
+          'Some argvs <- List.option_all (List.map (map.get st) args);
           'Some st0 <- map.putmany_of_list params argvs map.empty;
           'Some (st1, m') <- eval_stmt f st0 m fbody;
-          'Some retvs <- option_all (List.map (map.get st1) rets);
+          'Some retvs <- List.option_all (List.map (map.get st1) rets);
           'Some st' <- map.putmany_of_list binds retvs st;
           Some (st', m')
         | SInteract binds fname args =>
@@ -293,10 +293,10 @@ Section FlatImp1.
       eval_stmt (S f) st m1 (SCall binds fname args) = Some p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
         map.get e fname = Some (params, rets, fbody) /\
-        option_all (List.map (map.get st) args) = Some argvs /\
+        List.option_all (List.map (map.get st) args) = Some argvs /\
         map.putmany_of_list params argvs map.empty = Some st0 /\
         eval_stmt f st0 m1 fbody = Some (st1, m') /\
-        option_all (List.map (map.get st1) rets) = Some retvs /\
+        List.option_all (List.map (map.get st1) rets) = Some retvs /\
         map.putmany_of_list binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. Qed.
@@ -376,7 +376,7 @@ Module exec.
       (trace -> mem -> locals -> Prop)
     -> Prop :=
     | interact: forall t m l action argvars argvals resvars outcome post,
-        option_all (List.map (map.get l) argvars) = Some argvals ->
+        List.option_all (List.map (map.get l) argvars) = Some argvals ->
         ext_spec t m action argvals outcome ->
         (forall m' resvals,
             outcome m' resvals ->
@@ -385,13 +385,13 @@ Module exec.
         exec (SInteract resvars action argvars) t m l post
     | call: forall t m l binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
-        option_all (List.map (map.get l) args) = Some argvs ->
+        List.option_all (List.map (map.get l) args) = Some argvs ->
         map.putmany_of_list params argvs map.empty = Some st0 ->
         exec fbody t m st0 outcome ->
         (forall t' m' st1,
             outcome t' m' st1 ->
             exists retvs l',
-              option_all (List.map (map.get st1) rets) = Some retvs /\
+              List.option_all (List.map (map.get st1) rets) = Some retvs /\
               map.putmany_of_list binds retvs l = Some l' /\
               post t' m' l') ->
         exec (SCall binds fname args) t m l post
