@@ -394,7 +394,6 @@ Proof.
     2: solve [auto]. (* exiting loop *)
     (* loop body *)
     rename H3 into length_rep. subst br. subst v0.
-    cbn [interp_binop] in *.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
     { rewrite word__add_sub.
@@ -406,9 +405,8 @@ Proof.
       Z.div_mod_to_equations. Lia.lia. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
-      cbn [interp_binop] in *.
       repeat letexists; repeat split; repeat straightline.
-      { subst v1; subst x7. subst x8. SeparationLogic.ecancel_assumption. }
+      { SeparationLogic.ecancel_assumption. }
       { subst v1. subst x7.
         clear H2 x8 H3 v0.
         repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
@@ -439,8 +437,22 @@ Proof.
         rewrite length_rep.
         rewrite Z.div_mul by discriminate.
         clear. Lia.lia. }
-      { subst v'; subst v. subst x7. admit. }
-      subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H7.
+      { subst v'. subst v. subst x7.
+        set (\_ (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1) / \_ (/_ 8)) as X.
+        assert (X < Z.of_nat (Datatypes.length x)). {
+          eapply Z.div_lt_upper_bound; [exact eq_refl|].
+          rewrite word__add_sub.
+          repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
+          rewrite length_rep in *. (* WHY does lia need this? *)
+          revert H5. clear. intros. Z.div_mod_to_equations. Lia.lia. }
+        clearbody X.
+        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat ->
+                                          Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). {
+          intros l. destruct l. { contradiction. } { reflexivity. } }
+        { assert ((Datatypes.length (List.skipn (Z.to_nat X) x) <= Datatypes.length x)%nat) by admit. (* length_skipn_le? *)
+          rewrite length_rep in *; Lia.lia. }
+        { (* skipn with less than all elements returns a nonempty list *) admit. } }
+      SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H7.
       { rewrite word__add_sub.
         destruct x; cbn [Datatypes.length] in *.
         { rewrite Z.mul_0_r in length_rep. Lia.lia. }
@@ -454,7 +466,7 @@ Proof.
     (* second branch of the if, very similar goals... *)
     { repeat letexists. split. 1: solve [repeat straightline].
       repeat letexists; repeat split; repeat straightline.
-      { cbn [interp_binop] in *. subst v1; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
+      { SeparationLogic.ecancel_assumption. }
       { subst v1. subst x7.
         repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
