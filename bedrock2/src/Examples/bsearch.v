@@ -362,8 +362,6 @@ Import PrimitivePair.
 
 Axiom __mem_ok : map.ok mem. Local Existing Instance __mem_ok.
 
-Local Set Default Goal Selector "1".
-
 Lemma swap_swap_ok : program_logic_goal_for_function! bsearch.
 Proof.
   pose proof __mem_ok.
@@ -396,8 +394,8 @@ Proof.
     (* loop body *)
     rename H3 into length_rep. subst br. subst v0.
     cbn [interp_binop] in *.
-    seprewrite @array_address_inbounds.
-    all: (* if expression *) [> ..|exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
+    seprewrite @array_address_inbounds;
+       [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
     { rewrite word__add_sub.
       repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
       rewrite length_rep in *. (* WHY is this necessary for lia? *)
@@ -406,38 +404,42 @@ Proof.
       repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
       Z.div_mod_to_equations. Lia.lia. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
-    { repeat letexists. split. 1: repeat straightline.
-      repeat letexists; repeat split; repeat straightline.
-      { cbn [interp_binop] in *. subst v1; subst x7. SeparationLogic.ecancel_assumption. }
-      { cbn [interp_binop] in *.
-        lazymatch goal with |- word.unsigned ?e = _ => let H := unsigned.zify_expr e in idtac H end.
-        subst v1; subst x7. subst v0.
-        repeat ureplace (_:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
-        rewrite H13.
-        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). admit.
-        unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). admit.
-        unshelve erewrite (_ : forall n, n <> O -> Z.of_nat (Init.Nat.pred n) = Z.of_nat n - 1). { clear. intros. Lia.lia. }
-        rewrite Nat2Z.inj_sub, Z2Nat.id.
-        rewrite word.unsigned_sub, Z.mod_small.
-        rewrite word.unsigned_sub, Z.mod_small.
-        rewrite H12.
-        setoid_rewrite H13.
-        setoid_rewrite length_rep.
-        change (2^4) with 16.
-        rewrite Z.div_mul by discriminate.
-        Lia.lia.
-        admit.
-        admit.
-        admit.
-        admit.
-        admit.
-        admit.
-        admit. }
-      { subst v'; subst v. subst x7. admit. }
-
+    { repeat letexists. split; [repeat straightline|].
       cbn [interp_binop] in *.
+      repeat letexists; repeat split; repeat straightline.
+      { subst v1; subst x7. SeparationLogic.ecancel_assumption. }
+      { subst v1. subst x7.
+        clear H2 x8 H3 v0.
+        repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
+        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
+        rewrite H11.
+        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat -> Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). { intros l. destruct l. { contradiction. } { reflexivity. } }
+        2: admit.
+        unshelve erewrite (_ : forall xs delta, (Datatypes.length xs > delta)%nat -> Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat). { admit. }
+        2: {
+          repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
+          rewrite length_rep.
+          rewrite length_rep in H5.
+          revert H5. clear. intros. zify. rewrite Z2Nat.id; (Z.div_mod_to_equations; Lia.lia). }
+        unshelve erewrite (_ : forall n, n <> O -> Z.of_nat (Init.Nat.pred n) = Z.of_nat n - 1). { clear. intros. Lia.lia. }
+        2: admit.
+        rewrite Nat2Z.inj_sub, Z2Nat.id.
+        2: { rewrite H10. Z.div_mod_to_equations. Lia.lia. }
+        2: { rewrite H10. zify. rewrite Z2Nat.id; (Z.div_mod_to_equations; Lia.lia). }
+        rewrite word.unsigned_sub, Z.mod_small.
+        2: admit.
+        rewrite word.unsigned_sub, Z.mod_small.
+        2: {
+          pose proof Properties.word.unsigned_range (word.sub x2 x1) as HE; revert HE.
+          rewrite H10. revert H5. rewrite length_rep. clear. intros.
+          Z.div_mod_to_equations. Lia.lia. }
+        rewrite H10.
+        rewrite H11.
+        rewrite length_rep.
+        rewrite Z.div_mul by discriminate.
+        clear. Lia.lia. }
+      { subst v'; subst v. subst x7. admit. }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H7.
-
       { rewrite word__add_sub.
         destruct x; cbn [Datatypes.length] in *.
         { rewrite Z.mul_0_r in length_rep. Lia.lia. }
@@ -452,17 +454,44 @@ Proof.
     { repeat letexists. split. 1: solve [repeat straightline].
       repeat letexists; repeat split; repeat straightline.
       { cbn [interp_binop] in *. subst v1; subst x7; subst x8. SeparationLogic.ecancel_assumption. }
-      { admit. }
-      { subst v. subst v'. subst x7. admit. }
+      { subst v1. subst x7.
+        repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
+        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
+        rewrite ?length_rep.
+        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
+        rewrite List.firstn_length_le; cycle 1.
+        { assert (Datatypes.length x <> 0)%nat by Lia.lia.
+          revert H14. clear. intros. Z.div_mod_to_equations; zify; rewrite Z2Nat.id by Lia.lia; Lia.lia. }
+        rewrite Z2Nat.id by (clear; Z.div_mod_to_equations; Lia.lia).
+        clear. Z.div_mod_to_equations. Lia.lia. }
+      { subst v. subst v'. subst x7.
+        repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
+        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
+        rewrite ?length_rep.
+        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
+        assert (Datatypes.length x <> 0)%nat by Lia.lia.
+        rewrite List.firstn_length_le; cycle 1.
+        { revert H13. clear. intros. Z.div_mod_to_equations; zify; rewrite Z2Nat.id by Lia.lia; Lia.lia. }
+        revert H13. clear. zify. rewrite Z2Nat.id; (Z.div_mod_to_equations; Lia.lia). }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H7.
-      1: admit. 1: admit. 1: exact eq_refl.
-      SeparationLogic.ecancel_assumption. } }
-
+      { rewrite word__add_sub.
+        destruct x; cbn [Datatypes.length] in *.
+        { rewrite Z.mul_0_r in length_rep. Lia.lia. }
+        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
+        rewrite length_rep.  clear. Z.div_mod_to_equations. Lia.lia. }
+      { rewrite word__add_sub.
+        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
+        rewrite length_rep.  clear. Z.div_mod_to_equations. Lia.lia. }
+      { exact eq_refl. }
+      { SeparationLogic.ecancel_assumption. } } }
   repeat straightline.
   repeat apply conj; auto; []. (* postcondition *)
   letexists. split.
   { exact eq_refl. }
   { auto. }
+
+  Unshelve.
+  all: exact (word.of_Z 0).
 
   all:fail "remaining subgoals".
 Admitted.
