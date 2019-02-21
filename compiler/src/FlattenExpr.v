@@ -536,16 +536,28 @@ Section FlattenExpr1.
     simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
     map_solver (@locals_ok p).
 
+  Lemma seq_with_modVars: forall env t m l s1 s2 mid post,
+    FlatImp.exec env s1 t m l mid ->
+    (forall t' m' l',
+        mid t' m' l' ->
+        map.only_differ l (FlatImp.modVars s1) l' ->
+        FlatImp.exec env s2 t' m' l' post) ->
+    FlatImp.exec env (FlatImp.SSeq s1 s2) t m l post.
+  Proof.
+    intros *. intros E1 E2. eapply @FlatImp.exec.seq.
+    - eapply @FlatImp.exec.intersect.
+      + exact E1.
+      + eapply @FlatImp.modVarsSound. exact E1.
+    - simpl. intros. simp. eauto.
+  Qed.
+
   Lemma flattenExpr_correct_aux : forall e ngs1 ngs2 resVar s initialH initialL initialM res t,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
     FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
-      t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res /\
-      (* Note: the line below also follows from FlatImp.modVarsSound, but it's simpler to
-         reprove it, because then we don't need to prove the exec hyp of FlatImp.modVarsSound *)
-      map.only_differ initialL (FlatImp.modVars s) finalL).
+      t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res).
   Proof.
     induction e; intros *; intros F Ex U Ev; simpl in *; simp.
 
@@ -562,13 +574,29 @@ Section FlattenExpr1.
         eapply @FlatImp.exec.load; t_safe; try eassumption; maps.
 
     - (* expr.op *)
-      eapply @FlatImp.exec.seq.
+      eapply seq_with_modVars.
       + eapply IHe1; eassumption.
       + intros. simpl in *. simp.
-        eapply @FlatImp.exec.seq.
+        eapply seq_with_modVars.
         * eapply IHe2; try eassumption; maps.
         * intros. simpl in *. simp. clear IHe1 IHe2.
           eapply @FlatImp.exec.op; t_safe; t_safe; maps.
+  Qed.
+
+  Lemma flattenExpr_correct_with_modVars : forall e ngs1 ngs2 resVar s t m lH lL res,
+    flattenExpr ngs1 e = (s, resVar, ngs2) ->
+    map.extends lL lH ->
+    map.undef_on lH (allFreshVars ngs1) ->
+    @eval_expr (mk_Semantics_params p) m lH e = Some res ->
+    FlatImp.exec map.empty s t m lL (fun t' m' lL' =>
+      map.only_differ lL (FlatImp.modVars s) lL' /\
+      t' = t /\ m' = m /\ map.get lL' resVar = Some res).
+  Proof.
+    intros *. intros F Ex U Ev.
+    epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ F Ex U Ev) as P.
+    eapply FlatImp.exec.intersect; cycle 1.
+    - exact P.
+    - eapply @FlatImp.modVarsSound. exact P.
   Qed.
 
   Ltac simpl_reg_eqb :=
@@ -641,11 +669,11 @@ Section FlattenExpr1.
     destruct op; simp; try solve [default_flattenBooleanExpr].
 
     all: simpl in *; simp;
-      eapply @FlatImp.exec.seq;
-      [ eapply flattenExpr_correct_aux; try eassumption; try reflexivity
+      eapply seq_with_modVars;
+      [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity
       | intros; simpl in *; simp;
         eapply FlatImp.exec.weaken;
-        [ eapply flattenExpr_correct_aux; try eassumption; try reflexivity; maps
+        [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity; maps
         | intros; simpl in *; simp; repeat rewrite_match; t_safe ] ].
 
     all: replace (map.get l'0 v) with (Some r) by maps;
@@ -664,7 +692,7 @@ Section FlattenExpr1.
         end); auto using word.eqb_ne, one_ne_zero.
   Qed.
 
-  Lemma flattenBooleanExpr_correct:
+  Lemma flattenBooleanExpr_correct_with_modVars:
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
@@ -679,21 +707,6 @@ Section FlattenExpr1.
     - eapply flattenBooleanExpr_correct_aux; eassumption.
     - eapply @FlatImp.modVarsSound.
       eapply flattenBooleanExpr_correct_aux; eassumption.
-  Qed.
-
-  Lemma seq_with_modVars: forall env t m l s1 s2 mid post,
-    FlatImp.exec env s1 t m l mid ->
-    (forall t' m' l',
-        mid t' m' l' ->
-        map.only_differ l (FlatImp.modVars s1) l' ->
-        FlatImp.exec env s2 t' m' l' post) ->
-    FlatImp.exec env (FlatImp.SSeq s1 s2) t m l post.
-  Proof.
-    intros *. intros E1 E2. eapply @FlatImp.exec.seq.
-    - eapply @FlatImp.exec.intersect.
-      + exact E1.
-      + eapply @FlatImp.modVarsSound. exact E1.
-    - simpl. intros. simp. eauto.
   Qed.
 
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
@@ -726,7 +739,7 @@ Section FlattenExpr1.
 
     - (* exec.set *)
       eapply @FlatImp.exec.seq.
-      + eapply flattenExpr_correct_aux; eassumption.
+      + eapply flattenExpr_correct_with_modVars; eassumption.
       + simpl. intros. simp.
         eapply @FlatImp.exec.set; [eassumption|].
         eexists; repeat (split || eassumption); maps.
@@ -737,17 +750,17 @@ Section FlattenExpr1.
 
     - (* exec.store *)
       eapply @FlatImp.exec.seq.
-      + eapply flattenExpr_correct_aux; try eassumption.
+      + eapply flattenExpr_correct_with_modVars; try eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.seq.
-        * eapply flattenExpr_correct_aux; try eassumption; maps.
+        * eapply flattenExpr_correct_with_modVars; try eassumption; maps.
         * intros. simpl in *. simp.
           eapply @FlatImp.exec.store; try eassumption. 1: maps.
           eexists; repeat (split || eassumption). 2: maps. maps.
 
     - (* if_true *)
       eapply @FlatImp.exec.seq.
-      + eapply flattenBooleanExpr_correct; try eassumption.
+      + eapply flattenBooleanExpr_correct_with_modVars; try eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_true.
         * rewrite H3. f_equal. simpl_reg_eqb. reflexivity.
@@ -760,7 +773,7 @@ Section FlattenExpr1.
 
     - (* if_false *)
       eapply @FlatImp.exec.seq.
-      + eapply flattenBooleanExpr_correct; try eassumption.
+      + eapply flattenBooleanExpr_correct_with_modVars; try eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_false.
         * rewrite H2. f_equal. simpl_reg_eqb. reflexivity.
@@ -806,7 +819,7 @@ Section FlattenExpr1.
 
     - (* while_false *)
       eapply @FlatImp.exec.loop;
-        [ eapply flattenBooleanExpr_correct; try eassumption
+        [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
         | intros; simpl in *; simp .. ].
       + congruence.
       + eexists; repeat (split || eassumption); maps.
@@ -815,8 +828,7 @@ Section FlattenExpr1.
 
     - (* while_true *)
       eapply @FlatImp.exec.loop;
-      (* eapply flattenBooleanExpr_correct. 1: eassumption. 3: eassumption. all: eassumption. *)
-        [ eapply flattenBooleanExpr_correct; try eassumption
+        [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
         | intros; simpl in *; simp .. ].
       + congruence.
       + exfalso. rewrite word.eqb_ne in H9 by congruence. simpl in *. congruence.
@@ -838,7 +850,6 @@ Section FlattenExpr1.
     - (* interact *)
       unfold flattenInteract in *. simp.
       eapply @seq_with_modVars.
-      admit.
 
   Admitted.
 
