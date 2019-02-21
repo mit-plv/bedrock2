@@ -470,7 +470,54 @@ Proof.
       }
       { subst v. subst v'. subst x7.
         repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
+        let e := constr:(((x2 ^- x1) ^>> /_ 4 ^<< /_ 3)) in let __ := unsigned.zify_expr e in idtac.
+        clear -H11.
+
+        Set Printing All.
+        Set Nested Proofs Allowed.
+          Goal forall
+  (x : list (@word.rep _ (@word parameters)))
+  (x1 x2 : @word.rep _ (@word parameters))
+  (H11 : @absint_eq Z
+          (@word.unsigned _ (@word parameters)
+             (@word.slu _ (@word parameters)
+                (@word.sru _ (@word parameters)
+                   (@word.sub _ (@word parameters) x2 x1)
+                   (@word.of_Z _ (@word parameters) (Zpos (xO (xO xH)))))
+                (@word.of_Z _ (@word parameters) (Zpos (xI xH)))))
+          (Z.mul
+             (Z.div
+                (@word.unsigned _ (@word parameters)
+                   (@word.sub _ (@word parameters) x2 x1))
+                (Z.pow (Zpos (xO xH)) (Zpos (xO (xO xH)))))
+             (Z.pow (Zpos (xO xH)) (Zpos (xI xH))))),
+
+  lt
+    (@Datatypes.length (@word.rep _ (@word parameters))
+       (@List.firstn (@word.rep _ (@word parameters))
+          (Z.to_nat
+             (Z.div
+                (@word.unsigned _ (@word parameters)
+                   (@word.slu _ (@word parameters)
+                      (@word.sru _ (@word parameters)
+                         (@word.sub _ (@word parameters) x2 x1)
+                         (@word.of_Z _ (@word parameters) (Zpos (xO (xO xH)))))
+                      (@word.of_Z _ (@word parameters) (Zpos (xI xH)))))
+                (@word.unsigned _ (@word parameters)
+                   (@word.of_Z _ (@word parameters) (Zpos (xO (xO (xO xH))))))))
+          x)) (@Datatypes.length (@word.rep _ (@word parameters)) x).
+            intros.
+            try rewrite H11.
+            Abort.
+
+          try rewrite H11.
+(* Toplevel input, characters 0-16: *)
+(* > try rewrite H11. *)
+(* > ^^^^^^^^^^^^^^^^ *)
+(* Error: Anomaly "Universe bedrock2.Examples.bsearch.1297 undefined." *)
+(* Please report at http://coq.inria.fr/bugs/. *)
+
+
         rewrite ?length_rep.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
         assert (Datatypes.length x <> 0)%nat by Lia.lia.
