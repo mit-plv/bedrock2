@@ -40,6 +40,9 @@ Section binops.
     | bopname.add => word.add
     | bopname.sub => word.sub
     | bopname.mul => word.mul
+    | bopname.mulhuu => word.mulhuu
+    | bopname.divu => word.divu
+    | bopname.remu => word.modu
     | bopname.and => word.and
     | bopname.or => word.or
     | bopname.xor => word.xor

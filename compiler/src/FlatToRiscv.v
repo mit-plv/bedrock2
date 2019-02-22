@@ -813,7 +813,10 @@ Section FlatToRiscv1.
       eqexact H; f_equal; symmetry;
       (apply word.sru_ignores_hibits ||
        apply word.slu_ignores_hibits ||
-       apply word.srs_ignores_hibits)
+       apply word.srs_ignores_hibits ||
+       apply word.mulhuu_simpl ||
+       apply word.divu0_simpl ||
+       apply word.modu0_simpl)
     end.
 
   Ltac run1done :=
