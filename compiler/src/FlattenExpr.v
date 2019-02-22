@@ -899,9 +899,7 @@ Section FlattenExpr1.
         eapply FlatImp.exec.weaken.
         * eapply H3; try reflexivity. (* <-- also an IH *)
           { clear H3 IHexec. rewrite E. rewrite E0. reflexivity. }
-          { maps. }
-          { maps. }
-          { maps. }
+          all: maps.
         * simpl. intros. simp.
           eexists; repeat (split || eassumption); maps.
 
@@ -914,38 +912,44 @@ Section FlattenExpr1.
       + eapply flattenExprs_correct. 1: eassumption. 3: eassumption. all: eassumption.
       + simpl in *. intros. simp.
         rename l into lH, l' into lL'. rename l0 into argValNames.
-        eapply @FlatImp.exec.interact.
-        1: eassumption. 1: eassumption.
+        eapply @FlatImp.exec.interact; [eassumption..|].
         intros. edestruct H1 as (lH' & P & Q). 1: eassumption.
-
-  Set Nested Proofs Allowed.
-  (* commented out version of this is in compiler.util.Common *)
-  Lemma putmany_extends_exists: forall (ks: list varname) (vs: list word) m1 m1' m2,
-      map.putmany_of_list ks vs m1 = Some m1' ->
-      map.extends m2 m1 ->
-      exists m2', map.putmany_of_list ks vs m2 = Some m2' /\ map.extends m2' m1'.
-  Proof.
-  Admitted.
-
-
-        pose proof (putmany_extends_exists binds resvals ) as R.
-        specialize R with (m2 := lL').
-        edestruct R as (lL'' & R1 & R2); cycle 2.
-        { repeat eexists. 2: eassumption.
-          3: eapply only_differ_putmany. 3: exact P.
-          1: exact R1. exact R2. }
-        { exact P. }
-        { maps. }
+        pose proof (map.putmany_of_list_extends_exists binds resvals) as R.
+        assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
+        destruct R as (lL'' & R1 & R2).
+        eauto 10 using only_differ_putmany.
   Qed.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).
 
-  Lemma flattenStmt_correct: forall m sH sL post,
-    ExprImp2FlatImp sH = sL ->
-    exec map.empty sH nil m map.empty post ->
-    FlatImp.exec map.empty sL nil m map.empty post.
+  Lemma flattenStmt_correct: forall sH sL t m post,
+      ExprImp2FlatImp sH = sL ->
+      Semantics.exec map.empty sH t m map.empty post ->
+      FlatImp.exec map.empty sL t m map.empty (fun t' m' lL' => exists lH',
+        post t' m' lH' /\
+        map.extends lL' lH').
   Proof.
-  Admitted.
+    intros.
+    unfold ExprImp2FlatImp in *.
+    match goal with
+    | H: fst ?x = _ |- _ => destruct x as [sL' ngs'] eqn: E
+    end.
+    simpl in *. subst sL'.
+    eapply @FlatImp.exec.weaken.
+    - eapply flattenStmt_correct_aux; try solve [eassumption | reflexivity | maps].
+      unfold disjoint.
+      intro x.
+      pose proof (freshNameGenState_spec (ExprImp.allVars_cmd sH) x) as P.
+      match type of P with
+      | In ?x ?l -> _ => destruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
+      end.
+      + auto.
+      + left. clear -Ino.
+        intro. apply Ino.
+        pose proof @ExprImp.modVars_subset_allVars as Q.
+        specialize Q with (1 := H). exact Q.
+    - simpl. intros. simp. eauto.
+  Qed.
 
 End FlattenExpr1.
