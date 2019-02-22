@@ -16,15 +16,14 @@ Instance Basic32Syntax: bedrock2.Syntax.parameters := {|
   Syntax.actname := Empty_set;
 |}.
 
-Instance Basic32Semantics: bedrock2.Semantics.parameters. unshelve refine {|
+Instance Basic32Semantics: bedrock2.Semantics.parameters := {|
   Semantics.syntax := Basic32Syntax;
   Semantics.width := 32;
   Semantics.word := word32;
   Semantics.byte := word8;
   Semantics.locals := _;
-  Semantics.env := Empty_set_keyed_map _;
+  Semantics.env := Empty_set_keyed_map.map _;
+  Semantics.funname_eqb f := Empty_set_rect _;
   Semantics.mem := Mem;
+  Semantics.ext_spec t m := Empty_set_rect _;
 |}.
-Proof.
-  all: apply TODO.
-Defined.

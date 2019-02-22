@@ -53,20 +53,19 @@ Example fib(n: Z): stmt  :=
               (SOp _n Syntax.bopname.sub _n _one)))))
   )))).
 
-Set Refine Instance Mode.
-
 Instance myFlatImpParams: FlatImp.parameters := {|
   FlatImp.syntax_params := myparams;
   FlatImp.W := Words32Naive;
   FlatImp.locals := Zkeyed_map word32;
-  FlatImp.env := Empty_set_keyed_map _;
+  FlatImp.env := Empty_set_keyed_map.map _;
   FlatImp.mem := Mem;
   FlatImp.locals_ok := @SortedList.map_ok (Zkeyed_map_params _) _;
-  FlatImp.env_ok := @SortedList.map_ok (Empty_set_keyed_map_params _) _;
+  FlatImp.env_ok := Empty_set_keyed_map.ok _;
   FlatImp.mem_ok := @SortedList.map_ok DefaultMemImpl32.params _;
   FlatImp.ext_spec t m action args outcome := False;
-  FlatImp.max_ext_call_code_size name := 0%Z;
-|}. cbv. intros. discriminate. Defined.
+  FlatImp.max_ext_call_code_size := Empty_set_rect _;
+  FlatImp.max_ext_call_code_size_nonneg := Empty_set_rect _;
+|}.
 
 Definition eval_stmt_test fuel initialSt := eval_stmt map.empty fuel initialSt map.empty.
 

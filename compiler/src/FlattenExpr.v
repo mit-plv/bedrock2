@@ -11,12 +11,10 @@ Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import compiler.Simp.
-Require Import coqutil.Map.Empty_set_keyed_map.
+Require coqutil.Map.Empty_set_keyed_map.
 
 
 Open Scope Z_scope.
-
-Definition TODO{T: Type}: T. Admitted.
 
 Module Import FlattenExpr.
   Class parameters := {
@@ -46,9 +44,6 @@ Module Import FlattenExpr.
 
   Instance mk_FlatImp_params(p: parameters): FlatImp.FlatImp.parameters := {|
     FlatImp.FlatImp.syntax_params := mk_Syntax_params p;
-    FlatImp.FlatImp.env := Empty_set_keyed_map _;
-    FlatImp.FlatImp.env_ok := TODO;
-    FlatImp.FlatImp.mem_ok := mem_ok;
     FlatImp.FlatImp.ext_spec := ext_spec;
     FlatImp.FlatImp.max_ext_call_code_size := max_ext_call_code_size;
     FlatImp.FlatImp.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
@@ -58,7 +53,7 @@ Module Import FlattenExpr.
     Semantics.syntax := FlatImp.FlatImp.syntax_params;
     Semantics.word := Utility.word;
     Semantics.byte := Utility.byte;
-    Semantics.env := Empty_set_keyed_map (list varname * list varname * cmd);
+    Semantics.env := Empty_set_keyed_map.map _;
     Semantics.funname_eqb f := Empty_set_rect _;
     Semantics.ext_spec:= FlatImp.FlatImp.ext_spec;
   |}.
