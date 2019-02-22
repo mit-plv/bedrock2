@@ -145,6 +145,10 @@ Ltac straightline :=
   | |- bedrock2.Memory.load Syntax.access_size.one ?m ?a = Some ?ev =>
     try subst ev; eapply Scalars.load_one_of_sep; ecancel_assumption
   (* TODO: load and store for scalar16 and scalar32 *)
+  | |- exists l', Interface.map.of_list ?ks ?vs = Some l' /\ _ =>
+    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+  | |- exists l', Interface.map.putmany_of_list ?ks ?vs ?l = Some l' /\ _ =>
+    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
   | |- exists x, ?P /\ ?Q =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
