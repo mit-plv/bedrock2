@@ -71,7 +71,7 @@ Section TailRecrsion.
             lt v' v /\
             forall T M, hlist.foralls (fun L => tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L)) end))))))))) /\
       (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
-    (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m l, tuple.apply (Q0 t m) l -> post t m (reconstruct variables l)end)
+    (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m, hlist.foralls (fun l =>  tuple.apply (Q0 t m) l -> post t m (reconstruct variables l))end)
     , cmd call (cmd.while e c) t m localsmap post ).
   Proof.
     eapply hlist_forall_foralls; intros g0 **.
@@ -94,8 +94,7 @@ Section TailRecrsion.
       eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&HR).
       pose proof fun T M => hlist.foralls_forall (HR T M); clear HR.
       eauto 9. }
-    { eauto. }
-    Unshelve.
+    { pose proof fun t m => hlist.foralls_forall (Hpost t m); clear Hpost; eauto. }
   Qed.
 
   Lemma tailrec_localsmap
