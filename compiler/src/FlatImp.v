@@ -485,6 +485,21 @@ Module exec.
         simp. eauto 10.
     Qed.
 
+    Ltac equalities :=
+      repeat match goal with
+             | H1: ?e = ?e1, H2: ?e = ?e2 |- _ =>
+               progress (let H := fresh in assert (e1 = e2) as H by congruence; ensure_new H; simp)
+             | H1: ?P, H2: ?P |- _ => clear H2
+             end;
+      simp.
+
+    (* TODO is this the canconical form to impose as a requirement?
+     Or should we impose post1 <-> post2, or something else? *)
+    Axiom ext_spec_intersect: forall t m a args (post1 post2: mem -> list word -> Prop),
+        ext_spec t m a args post1 ->
+        ext_spec t m a args post2 ->
+        ext_spec t m a args (fun m' resvals => post1 m' resvals /\ post2 m' resvals).
+
     Lemma intersect: forall t l m s post1,
         exec s t m l post1 ->
         forall post2,
@@ -495,28 +510,20 @@ Module exec.
         match goal with
         | H: exec _ _ _ _ _ |- _ => inversion H; subst; clear H
         end;
-        try solve [
-              repeat match goal with
-                     | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                       replace v2 with v1 in * by congruence;
-                       clear H2
-                     end;
-              econstructor; eauto].
+        equalities;
+        try solve [econstructor; eauto | exfalso; congruence].
+
       - (* SInteract *)
-        admit.
+        eapply @interact.
+        + eassumption.
+        + eapply ext_spec_intersect; [ exact H0 | exact H11 ].
+        + simpl. intros. simp.
+        edestruct H1 as (? & ? & ?); [eassumption|].
+        edestruct H12 as (? & ? & ?); [eassumption|].
+        equalities.
+        eauto 10.
+
       - (* SCall *)
-        match goal with
-        | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
-          replace x2 with x1 in * by congruence;
-            replace y2 with y1 in * by congruence;
-            replace z2 with z1 in * by congruence;
-            clear x2 y2 z2 H2
-        end.
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence;
-                   clear v2 H2
-               end.
         rename IHexec into IH.
         specialize IH with (1 := H15).
         eapply @call; [..|exact IH|]; eauto.
@@ -527,23 +534,19 @@ Module exec.
         specialize Ex1 with (1 := H3).
         specialize Ex2 with (1 := H4).
         destruct_conjs.
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence;
-                   clear v2 H2
-               end.
+        equalities.
         eauto 10.
-      - (* SIf *)
-        admit.
-      - (* SIf *)
-        admit.
+
       - (* SLoop *)
-        pose proof IHexec as IH1.
-        (*
-        specialize IH1 with (1 := H8).
-        eapply @ExLoop; [exact IH1 | intros; simpl in *; destruct_conjs; eauto ..].
-         *)
-        admit.
+        eapply @loop.
+        + eapply IHexec. exact H10.
+        + simpl. intros. simp. eauto.
+        + simpl. intros. simp. eauto.
+        + simpl. intros. simp. eapply H3; [eassumption..|]. (* also an IH *)
+          eapply H17; eassumption.
+        + simpl. intros. simp. eapply H5; [eassumption..|]. (* also an IH *)
+          eapply H18; eassumption.
+
       - (* SSeq *)
         pose proof IHexec as IH1.
         specialize IH1 with (1 := H5).
@@ -551,7 +554,7 @@ Module exec.
         intros; simpl in *.
         destruct H2.
         eauto.
-    Admitted. (* TODO *)
+    Qed.
 
   End FlatImpExec.
 End exec.
