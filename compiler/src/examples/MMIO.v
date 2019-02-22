@@ -173,12 +173,12 @@ Definition compiled: list Instruction := Eval cbv in compile_stmt RV32IM squarer
 Print compiled.
 
 Lemma option_all_singleton: forall {A: Type} (a: A) (l: list (option A)),
-    option_all l = Some [a] ->
+    List.option_all l = Some [a] ->
     l = [Some a].
 Proof.
   intros.
   destruct l; [|destruct l]; simpl in *; inversion H; destruct o; try congruence.
-  destruct o0; destruct (option_all l); discriminate.
+  destruct o0; destruct (List.option_all l); discriminate.
 Qed.
 
 Lemma map_singleton: forall {A B: Type} (f: A -> B) (l: list A) (b: B),
