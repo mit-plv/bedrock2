@@ -42,9 +42,12 @@ Module Import Pipeline.
     varname := Register;
     actname: Type;
     actname_eq_dec :> DecidableEq actname;
+    varname_eq_dec :> DecidableEq varname;
     W :> Words;
     mem :> map.map word byte;
+    mem_ok :> map.ok mem;
     locals :> map.map varname word;
+    locals_ok :> map.ok locals;
     trace := list (mem * actname * list word * (mem * list word));
     ExtSpec := trace -> mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
@@ -55,6 +58,12 @@ Module Import Pipeline.
     (* registers :> map.map Register word; (* same as locals at the moment *) *)
     registerSetFunctions :> compiler.util.Set.SetFunctions Register;
     reg2varMapping :> map.map Register varname;
+
+    max_ext_call_code_size: actname -> Z;
+    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
+    compile_ext_call: list Register -> actname -> list Register -> list Instruction;
+    compile_ext_call_length: forall binds f args,
+        Zcomplements.Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
 
     M: Type -> Type;
     MM :> Monad M;
@@ -84,42 +93,44 @@ Section Pipeline1.
     FlattenExpr.varname := varname;
     FlattenExpr.actname := actname;
     FlattenExpr.W := W;
-    FlattenExpr.varname_eq_dec := TODO;
-    FlattenExpr.actname_eq_dec := TODO;
+    FlattenExpr.varname_eq_dec := varname_eq_dec;
+    FlattenExpr.actname_eq_dec := actname_eq_dec;
     FlattenExpr.locals := locals;
     FlattenExpr.mem := mem;
-    FlattenExpr.locals_ok := TODO;
-    FlattenExpr.mem_ok := TODO;
+    FlattenExpr.locals_ok := locals_ok;
+    FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.ext_spec := ext_spec;
-    FlattenExpr.max_ext_call_code_size := TODO;
-    FlattenExpr.max_ext_call_code_size_nonneg := TODO;
+    FlattenExpr.max_ext_call_code_size := max_ext_call_code_size;
+    FlattenExpr.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
     FlattenExpr.NGstate := NGstate;
     FlattenExpr.NG := NG;
   |}.
 
   Instance FlatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
     FlatToRiscvDef.FlatToRiscvDef.actname := actname;
-    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := TODO;
-    FlatToRiscvDef.FlatToRiscvDef.max_ext_call_code_size := TODO;
-    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length := TODO;
+    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
+    FlatToRiscvDef.FlatToRiscvDef.max_ext_call_code_size := max_ext_call_code_size;
+    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length;
   |}.
+
+  Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
 
   Instance FlatToRiscv_params: FlatToRiscv.FlatToRiscv.parameters := {|
     FlatToRiscv.FlatToRiscv.def_params := _;
     FlatToRiscv.FlatToRiscv.W := W;
-    FlatToRiscv.FlatToRiscv.word_riscv_ok := TODO;
+    FlatToRiscv.FlatToRiscv.word_riscv_ok := word_riscv_ok;
     FlatToRiscv.FlatToRiscv.locals := locals;
-    FlatToRiscv.FlatToRiscv.locals_ok := TODO;
+    FlatToRiscv.FlatToRiscv.locals_ok := locals_ok;
     FlatToRiscv.FlatToRiscv.mem := mem;
-    FlatToRiscv.FlatToRiscv.mem_ok := TODO;
+    FlatToRiscv.FlatToRiscv.mem_ok := mem_ok;
     FlatToRiscv.FlatToRiscv.actname_eq_dec := actname_eq_dec;
     FlatToRiscv.FlatToRiscv.M := M;
     FlatToRiscv.FlatToRiscv.MM := MM;
     FlatToRiscv.FlatToRiscv.RVM := RVM;
     FlatToRiscv.FlatToRiscv.PR := PR;
-    FlatToRiscv.FlatToRiscv.ext_spec := TODO;
-    FlatToRiscv.FlatToRiscv.env := TODO;
-    FlatToRiscv.FlatToRiscv.env_ok := TODO;
+    FlatToRiscv.FlatToRiscv.ext_spec := ext_spec;
+    FlatToRiscv.FlatToRiscv.env := Empty_set_keyed_map.map _;
+    FlatToRiscv.FlatToRiscv.env_ok := Empty_set_keyed_map.ok _;
     FlatToRiscv.FlatToRiscv.compile_ext_call_correct := TODO;
     FlatToRiscv.FlatToRiscv.ext_guarantee := TODO;
     FlatToRiscv.FlatToRiscv.ext_guarantee_preservable := TODO;
