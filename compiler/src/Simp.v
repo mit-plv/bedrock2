@@ -21,6 +21,11 @@ Ltac unique_inversion :=
   match goal with
   | H: ?P |- _ =>
     (let h := head_of_app P in is_ind h);
+    match constr:(Set) with
+    | _ => let dummy := constr:(_: P) in idtac;
+           fail 1 (* don't destruct typeclass instances *)
+    | _ => idtac
+    end;
     inversion H;
     [> (* require exactly one goal *)
      subst;
