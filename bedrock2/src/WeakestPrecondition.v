@@ -149,3 +149,14 @@ Ltac unfold1_list_map_goal :=
   let G := lazymatch goal with |- ?G => G end in
   let G := unfold1_list_map G in
   change G.
+
+Ltac unfold1_call e :=
+  lazymatch e with
+    @call ?params ?fs ?fname ?t ?m ?l ?post =>
+    let fs := eval hnf in fs in
+    constr:(@call_body params (@call params) fs fname t m l post)
+  end.
+Ltac unfold1_call_goal :=
+  let G := lazymatch goal with |- ?G => G end in
+  let G := unfold1_call G in
+  change G.

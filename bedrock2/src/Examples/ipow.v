@@ -6,19 +6,23 @@ Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : Syntax.expr := Syntax.expr.literal z.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
-Definition ipow := ("ipow", (["x";"e"], (["ret"]:list varname), bedrock_func_body:(
-  "ret" = 1;;
-  while ("e") {{
-    if ("e" .& 1) {{ "ret" = "ret" * "x" }};;
-    "e" = "e" >> 1;;
-    "x" = "x" * "x"
+Definition ipow :=
+  let x := "x" in
+  let e := "e" in
+  let ret := "ret" in
+  ("ipow", ([x;e], ([ret]:list varname), bedrock_func_body:(
+  ret = 1;;
+  while (e) {{
+    if (e .& 1) {{ ret = ret * x }};;
+    e = e >> 1;;
+    x = x * x
   }}
 ))).
 
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
 
-Definition spec_of_ipow := fun functions =>
+Instance spec_of_ipow : spec_of "ipow" := fun functions =>
   forall x e t m,
     WeakestPrecondition.call functions
       "ipow" t m [x; e]
@@ -62,9 +66,8 @@ Ltac t :=
   repeat match goal with H: unsigned.absint_eq ?x ?x |- _ => clear H end;
   cbv [unsigned.absint_eq] in *.
 
-Lemma ipow_ok : forall functions, spec_of_ipow (ipow::functions).
+Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
-  bind_body_of_function ipow; cbv [spec_of_ipow]; intros; hnf.
   repeat straightline.
 
   refine (TailRecursion.tailrec
@@ -92,7 +95,8 @@ Proof.
     { (* loop body *)
       letexists; split; [repeat straightline|]. (* if condition evaluation *)
       split. (* if cases, path-blasting *)
-      { repeat (straightline || (split; trivial; [])); t.
+      {
+        repeat (straightline || (split; trivial; [])). all:t.
         { (* measure decreases *)
           set (word.unsigned x0) in *. (* WHY does lia need this? *)
           Z.div_mod_to_equations; Lia.lia. }
@@ -109,7 +113,7 @@ Proof.
           rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } }
-      { repeat (straightline || (split; trivial; [])); t.
+      { repeat (straightline || (split; trivial; [])). all: t.
         { (* measure decreases *)
           set (word.unsigned x0) in *. (* WHY does lia need this? *)
           Z.div_mod_to_equations; Lia.lia. }

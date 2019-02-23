@@ -4,6 +4,7 @@ Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.TailRecursion.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
+Require bedrock2.string2ident.
 
 Definition spec_of {p:parameters} (procname:Syntax.funname) := list (Syntax.funname * (list Syntax.varname * list Syntax.varname * Syntax.cmd.cmd)) -> Prop.
 Existing Class spec_of.
@@ -49,8 +50,9 @@ Ltac program_logic_goal_for_function proc :=
   constr:(forall functions : functions_t, ltac:(
     let s := assuming_correctness_of_in callees functions (spec (cons proc functions)) in
     exact s)).
+Definition program_logic_goal_for {_:parameters} (_ : function_t) (P : Prop) := P.
 
-Notation "program_logic_goal_for_function! proc" := (ltac:(
+Notation "program_logic_goal_for_function! proc" := (program_logic_goal_for proc ltac:(
    let x := program_logic_goal_for_function proc in exact x))
   (at level 10, only parsing).
 
@@ -66,6 +68,15 @@ Ltac bind_body_of_function f_ :=
   let P := lazymatch eval pattern f_ in G with ?P _ => P end in
   change (bindcmd fbody (fun c : Syntax.cmd => P (fname, (fargs, frets, c))));
   cbv beta iota delta [bindcmd]; intros.
+
+Ltac enter f :=
+  cbv beta delta [program_logic_goal_for]; intros;
+  bind_body_of_function f;
+  let fdefn := eval cbv delta [f] in f in
+  let ctx := string2ident.learn fdefn in
+  let H := fresh "_string_to_ident" in
+  pose ctx as H;
+  lazymatch goal with |- ?s _ => cbv beta delta [s] end.
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
@@ -109,6 +120,20 @@ Import WeakestPrecondition.
 Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
+  | |- program_logic_goal_for ?f _ =>
+    enter f; intros;
+    unfold1_call_goal; cbv match beta delta [call_body];
+    lazymatch goal with |- if ?test then ?T else _ =>
+      replace test with true by reflexivity; change T end;
+    cbv match beta delta [WeakestPrecondition.func]
+  | names := _ : string2ident.Context.list
+             |- @WeakestPrecondition.cmd _ _ (cmd.set ?s ?e) _ _ _ ?post =>
+    unfold1_cmd_goal; cbv beta match delta [cmd_body];
+    let names := eval unfold names in names in
+    let x := string2ident.lookup s names in
+    string2ident.ensure_free x;
+    (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
+    letexists _ as x; split; [solve [repeat straightline]|]
   | |- @cmd _ _ ?c _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with

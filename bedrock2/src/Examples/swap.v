@@ -44,15 +44,15 @@ Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
       "swap_swap" t m [a_addr; b_addr]
       (fun t' m' rets => t=t' /\ (scalar a_addr a * (scalar b_addr b * R)) m' /\ rets = nil).
 
+Require Import bedrock2.string2ident.
+
 Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
-  bind_body_of_function swap; cbv [spec_of_swap]; intros; hnf.
   repeat straightline; []; eauto.
 Defined.
 
 Lemma swap_swap_ok : program_logic_goal_for_function! swap_swap.
 Proof.
-  bind_body_of_function swap_swap; cbv [spec_of_swap_swap]; intros; hnf.
   repeat (straightline || (straightline_call; [solve[SeparationLogic.ecancel_assumption]|])); []; eauto.
 Defined.
 

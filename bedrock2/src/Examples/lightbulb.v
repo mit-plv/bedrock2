@@ -64,8 +64,8 @@ Ltac seplog_use_array_load1 H i :=
 (* bsearch.v has examples to deal with arrays *)
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
 Proof.
-  bind_body_of_function lightbulb; cbv [spec_of spec_of_lightbulb]. intros * H Hlen.
-  (* argument initialization *) intros. letexists. split; [exact eq_refl|].
+  repeat straightline.
+
   seplog_use_array_load1 H 12.
   seplog_use_array_load1 H 13.
   seplog_use_array_load1 H 23.

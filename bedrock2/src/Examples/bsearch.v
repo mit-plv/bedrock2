@@ -117,13 +117,12 @@ Import PrimitivePair.
 
 Axiom __mem_ok : map.ok mem. Local Existing Instance __mem_ok.
 
+
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma swap_swap_ok : program_logic_goal_for_function! bsearch.
 Proof.
   pose proof __mem_ok.
-  bind_body_of_function bsearch. cbv [spec_of_bsearch].
-
-  intros. letexists. split; [exact eq_refl|]. (* argument initialization *)
+  repeat straightline.
 
   refine (
     tailrec (HList.polymorphic_list.cons _ (HList.polymorphic_list.cons _ HList.polymorphic_list.nil)) ("left"::"right"::"target"::nil)%list%string
