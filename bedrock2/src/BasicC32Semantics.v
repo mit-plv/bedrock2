@@ -14,7 +14,7 @@ Instance parameters : parameters :=
   syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
   mem := SortedList.map (SortedList.parameters.Build_parameters word byte word.ltu) (StrictOrderWord _ _ _);
   locals := SortedListString.map _;
-  env := SortedListString.map _;
+  funname_env := SortedListString.map;
   funname_eqb := String.eqb;
   ext_spec := fun _ _ _ _ _ => False;
 |}.

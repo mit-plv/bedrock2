@@ -16,7 +16,7 @@ Definition MMIOWRITE : string := "MMIOWRITE".
 Existing Instance Word.Naive.ok.
 
 
-Instance parameters : parameters := 
+Instance parameters : parameters :=
   let word := Word.Naive.word 32 eq_refl in
   let byte := Word.Naive.word 8 eq_refl in
 
@@ -24,13 +24,13 @@ Instance parameters : parameters :=
   syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
   mem := SortedList.map (SortedList.parameters.Build_parameters word byte word.ltu) (StrictOrderWord _ _ _);
   locals := SortedListString.map _;
-  env := SortedListString.map _;
+  funname_env := SortedListString.map;
   funname_eqb := String.eqb;
-  ext_spec := fun t m a args post => 
+  ext_spec := fun t m a args post =>
      exists addr,
 
-   (Logic.or 
-      (a = MMIOREAD /\ args = [addr] /\ forall v, post m [v]) 
+   (Logic.or
+      (a = MMIOREAD /\ args = [addr] /\ forall v, post m [v])
       (a = MMIOWRITE /\ exists val, args = [addr;val] /\ post m []))
     /\
     (* address should be an MMIO address. we use GPIO1 and QSPI1 *)
@@ -47,4 +47,4 @@ Lemma __map_ok : Map.Interface.map.ok Semantics.mem. (* FIXME *)
   cbn.
   (* eapply SortedList.map_ok. (* fails, IDK why ~ andres *) *)
 Admitted.
-Existing Instance __map_ok. 
+Existing Instance __map_ok.

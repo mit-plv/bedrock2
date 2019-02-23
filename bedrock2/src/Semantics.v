@@ -15,7 +15,7 @@ Class parameters := {
 
   mem :> map.map word byte;
   locals :> map.map varname word;
-  env :> map.map funname (list varname * list varname * cmd);
+  funname_env : forall T: Type, map.map funname T; (* abstract T for better reusability *)
 
   funname_eqb : funname -> funname -> bool;
 
@@ -32,6 +32,9 @@ Class parameters := {
 
   ext_spec: ExtSpec;
 }.
+
+Instance env{p: parameters}: map.map funname (list varname * list varname * cmd) :=
+  funname_env _.
 
 Section binops.
   Context {width : Z} {word : Word.Interface.word width}.

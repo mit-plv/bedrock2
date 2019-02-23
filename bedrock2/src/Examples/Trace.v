@@ -135,10 +135,9 @@ Module SpiEth.
       Syntax.funname := Empty_set;
       Syntax.actname := MMIOAction;
     |}.
-    Local Set Refine Instance Mode.
 
     Context {locals: map.map varname word}.
-    Context {env: map.map funname (list varname * list varname * cmd)}.
+    Context {funname_env: forall T, map.map funname T}.
 
     Instance semantics_params: Semantics.parameters := {|
       Semantics.syntax := syntax_params;
@@ -256,10 +255,9 @@ Module Syscalls.
       Syntax.funname := Empty_set;
       Syntax.actname := SyscallAction;
     |}.
-    Local Set Refine Instance Mode.
 
     Context {locals: map.map varname word}.
-    Context {env: map.map funname (list varname * list varname * cmd)}.
+    Context {funname_env: forall T, map.map funname T}.
 
     Instance semantics_params: Semantics.parameters := {|
       Semantics.syntax := syntax_params;
@@ -331,7 +329,7 @@ Module MMIOUsage.
     Existing Instance SpiEth.syntax_params.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte}.
     Context {locals: map.map varname word}.
-    Context {env: map.map funname (list varname * list varname * cmd)}.
+    Context {funname_env: forall T, map.map funname T}.
 
     Definition squarer_correct := @squarer_correct SpiEth.MMIOMacros.
     Check squarer_correct.
@@ -344,7 +342,7 @@ Module SyscallsUsage.
     Existing Instance Syscalls.syntax_params.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte}.
     Context {locals: map.map varname word}.
-    Context {env: map.map funname (list varname * list varname * cmd)}.
+    Context {funname_env: forall T, map.map funname T}.
 
     Definition squarer_correct := @squarer_correct Syscalls.SyscallIOMacros.
     Check squarer_correct.
