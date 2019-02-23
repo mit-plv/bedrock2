@@ -129,7 +129,7 @@ Ltac straightline :=
   | names := _ : string2ident.Context.list
              |- @WeakestPrecondition.cmd _ _ (cmd.set ?s ?e) _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
-    let names := eval unfold names in names in
+    let names := eval cbv [names] in names in
     let x := string2ident.lookup s names in
     string2ident.ensure_free x;
     (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)

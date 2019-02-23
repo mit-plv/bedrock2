@@ -53,7 +53,7 @@ Proof.
   pose ctx as STRING_TO_IDENT.
 
   let ctx := STRING_TO_IDENT in
-  let ctx := eval unfold ctx in ctx in
+  let ctx := eval cbv [ctx] in ctx in
   let s := constr:("x") in
   let n := lookup s ctx in
   ensure_free n;
