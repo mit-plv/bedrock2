@@ -68,7 +68,8 @@ Module Import Pipeline.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PR :> Primitives actname M;
+    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
+    PR :> Primitives PRParams;
   }.
 End Pipeline.
 

@@ -37,7 +37,8 @@ Section Go.
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PR: Primitives Action M}.
+  Context {PRParams: PrimitivesParams M (RiscvMachine Register Action)}.
+  Context {PR: Primitives PRParams}.
   Variable iset: InstructionSet.
 
   Lemma spec_Bind_det{A B: Type}: forall (initialL: RiscvMachineL)
@@ -154,7 +155,7 @@ Section Go.
   Lemma go_done: forall initialL (post: RiscvMachineL -> Prop),
       post initialL ->
       mcomp_sat (Return tt) initialL post.
-  Proof. t @spec_Return. Qed.
+  Proof. intros. apply (spec_Return (Primitives := PR)). exact H. Qed.
 
   Lemma go_left_identity{A: Type}: forall initialL post a
          (f : A -> M unit),

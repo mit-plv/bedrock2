@@ -77,7 +77,8 @@ Module Import FlatToRiscv.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PR :> Primitives actname M;
+    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
+    PR :> Primitives PRParams;
 
     trace := list (mem * Syntax.actname * list word * (mem * list word));
     ext_spec : trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;

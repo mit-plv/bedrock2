@@ -74,7 +74,8 @@ Module Import FlatToRiscv32.
     |};
 
     RVM :> RiscvProgram M word;
-    PR :> Primitives actname M;
+    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
+    PR :> Primitives PRParams;
 
     syntax_params: Syntax.parameters := {|
       Syntax.varname := Register;
