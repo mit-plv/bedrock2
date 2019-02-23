@@ -247,25 +247,22 @@ Arguments mcomp_sat: simpl never.
 
 Definition TODO{T: Type}: T. Admitted.
 
-Set Refine Instance Mode.
-Instance FlatToRiscv_params: FlatToRiscv.parameters := (*unshelve refine ( *) {|
+Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
   FlatToRiscv.def_params := compilation_params;
   FlatToRiscv.locals := locals;
-  FlatToRiscv.locals_ok := locals_ok;
   FlatToRiscv.mem := (@mem p);
-  FlatToRiscv.mem_ok := mem_ok;
-  FlatToRiscv.actname_eq_dec := _;
-(*  FlatToRiscv.M := OStateND (RiscvMachine Register (Naive.word 32) MMIOAction);*)
   FlatToRiscv.MM := OStateND_Monad _;
   FlatToRiscv.RVM := IsRiscvMachineL;
-  FlatToRiscv.PR := MinimalMMIOSatisfiesPrimitives;
   FlatToRiscv.ext_spec := ext_spec;
+  FlatToRiscv.ext_guarantee := TODO;
 |}.
+
+Set Refine Instance Mode.
+
+Instance FlatToRiscv_hyps: FlatToRiscv.assumptions.
+Proof.
+econstructor. all: try typeclasses eauto.
 - apply TODO.
-- apply TODO.
-- apply TODO.
-- evar (ext_guarantee: RiscvMachine Register FlatToRiscvDef.actname -> Prop).
-  exact ext_guarantee.
 - apply TODO.
 - intros initialL action.
   destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].

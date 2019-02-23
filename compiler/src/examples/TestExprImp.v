@@ -24,7 +24,7 @@ Instance params: Semantics.parameters := {|
     Semantics.syntax := myparams;
     Semantics.word := word32;
     Semantics.locals := _;
-    Semantics.env := _;
+    Semantics.funname_env := _;
     Semantics.funname_eqb a b := false;
     Semantics.ext_spec _ _ _ _ _ := False;
 |}.

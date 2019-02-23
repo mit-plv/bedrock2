@@ -8,8 +8,6 @@ Require Import coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 
 
-Definition TODO{T: Type}: T. Admitted.
-
 Instance Basic32Syntax: bedrock2.Syntax.parameters := {|
   Syntax.varname := Z;
   Syntax.funname := Empty_set;
@@ -22,7 +20,7 @@ Instance Basic32Semantics: bedrock2.Semantics.parameters := {|
   Semantics.word := word32;
   Semantics.byte := word8;
   Semantics.locals := _;
-  Semantics.env := Empty_set_keyed_map.map _;
+  Semantics.funname_env := Empty_set_keyed_map.map;
   Semantics.funname_eqb f := Empty_set_rect _;
   Semantics.mem := Mem;
   Semantics.ext_spec t m := Empty_set_rect _;

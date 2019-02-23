@@ -119,21 +119,22 @@ Section Pipeline1.
   Instance FlatToRiscv_params: FlatToRiscv.FlatToRiscv.parameters := {|
     FlatToRiscv.FlatToRiscv.def_params := _;
     FlatToRiscv.FlatToRiscv.W := W;
-    FlatToRiscv.FlatToRiscv.word_riscv_ok := word_riscv_ok;
     FlatToRiscv.FlatToRiscv.locals := locals;
-    FlatToRiscv.FlatToRiscv.locals_ok := locals_ok;
     FlatToRiscv.FlatToRiscv.mem := mem;
-    FlatToRiscv.FlatToRiscv.mem_ok := mem_ok;
-    FlatToRiscv.FlatToRiscv.actname_eq_dec := actname_eq_dec;
     FlatToRiscv.FlatToRiscv.M := M;
     FlatToRiscv.FlatToRiscv.MM := MM;
     FlatToRiscv.FlatToRiscv.RVM := RVM;
-    FlatToRiscv.FlatToRiscv.PR := PR;
     FlatToRiscv.FlatToRiscv.ext_spec := ext_spec;
-    FlatToRiscv.FlatToRiscv.env := Empty_set_keyed_map.map _;
-    FlatToRiscv.FlatToRiscv.env_ok := Empty_set_keyed_map.ok _;
-    FlatToRiscv.FlatToRiscv.compile_ext_call_correct := TODO;
     FlatToRiscv.FlatToRiscv.ext_guarantee := TODO;
+  |}.
+
+  Instance FlatToRiscv_hyps: FlatToRiscv.FlatToRiscv.assumptions := {|
+    FlatToRiscv.FlatToRiscv.word_riscv_ok := word_riscv_ok;
+    FlatToRiscv.FlatToRiscv.locals_ok := locals_ok;
+    FlatToRiscv.FlatToRiscv.mem_ok := mem_ok;
+    FlatToRiscv.FlatToRiscv.actname_eq_dec := actname_eq_dec;
+    FlatToRiscv.FlatToRiscv.PR := PR;
+    FlatToRiscv.FlatToRiscv.compile_ext_call_correct := TODO;
     FlatToRiscv.FlatToRiscv.ext_guarantee_preservable := TODO;
     FlatToRiscv.FlatToRiscv.go_load := TODO; (* interesting: how to instantiate this one?? *)
     FlatToRiscv.FlatToRiscv.go_store := TODO; (* interesting: how to instantiate this one?? *)
@@ -154,6 +155,7 @@ Section Pipeline1.
   (* convention: there's one single result which is put into register $x1 *)
   Definition interesting_alloc(resVar: varname): reg2varMapping := map.put map.empty 1 resVar.
 
+  (*
   Definition exprImp2Riscv_with_regalloc(resVar: varname)(s: Syntax.cmd): list Instruction :=
     let oStmt :=
       (register_allocation varname Register funname actname
@@ -165,6 +167,7 @@ Section Pipeline1.
       | Some s => FlatToRiscvDef.compile_stmt iset s
       | None => nil
       end.
+   *)
 
   (*
   Lemma putProgram_containsProgram: forall {Bw: BitWidths} s a p (initial: RiscvMachine),

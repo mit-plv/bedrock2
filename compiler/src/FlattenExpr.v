@@ -42,20 +42,19 @@ Module Import FlattenExpr.
     Syntax.actname := actname;
   |}.
 
-  Instance mk_FlatImp_params(p: parameters): FlatImp.FlatImp.parameters := {|
-    FlatImp.FlatImp.syntax_params := mk_Syntax_params p;
-    FlatImp.FlatImp.ext_spec := ext_spec;
-    FlatImp.FlatImp.max_ext_call_code_size := max_ext_call_code_size;
-    FlatImp.FlatImp.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
-  |}.
-
   Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
-    Semantics.syntax := FlatImp.FlatImp.syntax_params;
+    Semantics.syntax := _;
     Semantics.word := Utility.word;
     Semantics.byte := Utility.byte;
-    Semantics.env := Empty_set_keyed_map.map _;
+    Semantics.funname_env _ := Empty_set_keyed_map.map _;
     Semantics.funname_eqb f := Empty_set_rect _;
-    Semantics.ext_spec:= FlatImp.FlatImp.ext_spec;
+    Semantics.ext_spec:= ext_spec;
+  |}.
+
+  Instance mk_FlatImpSize_params(p: parameters): FlatImp.FlatImpSize.parameters := {|
+    FlatImp.FlatImpSize.bopname_params := _;
+    FlatImp.FlatImpSize.max_ext_call_code_size := max_ext_call_code_size;
+    FlatImp.FlatImpSize.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
   |}.
 
 End FlattenExpr.
@@ -580,7 +579,7 @@ Section FlattenExpr1.
     intros *. intros E1 E2. eapply @FlatImp.exec.seq.
     - eapply @FlatImp.exec.intersect.
       + exact E1.
-      + eapply @FlatImp.modVarsSound. exact E1.
+      + eapply FlatImp.modVarsSound. exact E1.
     - simpl. intros. simp. eauto.
   Qed.
 
@@ -629,7 +628,7 @@ Section FlattenExpr1.
     epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ F Ex U Ev) as P.
     eapply FlatImp.exec.intersect; cycle 1.
     - exact P.
-    - eapply @FlatImp.modVarsSound. exact P.
+    - eapply FlatImp.modVarsSound. exact P.
   Qed.
 
   Lemma flattenExprs_correct: forall es ngs1 ngs2 resVars s t m lH lL resVals,
@@ -690,14 +689,12 @@ Section FlattenExpr1.
     {
       (* PARAMRECORDS *)
       Fail omega.
-      unfold Utility.width, W, mk_Semantics_params, mk_FlatImp_params.
       simpl.
       omega.
     }
     {
       (* PARAMRECORDS *)
       Fail omega.
-      unfold Utility.width, W, mk_Semantics_params, mk_FlatImp_params.
       simpl.
       omega.
     }
@@ -761,7 +758,8 @@ Section FlattenExpr1.
   Proof.
     intros. eapply FlatImp.exec.intersect.
     - eapply flattenBooleanExpr_correct_aux; eassumption.
-    - eapply @FlatImp.modVarsSound.
+    - (* PARAMRECORDS why not just "eapply @FlatImp.modVarsSound" ? *)
+      eapply @FlatImp.modVarsSound; [typeclasses eauto..|].
       eapply flattenBooleanExpr_correct_aux; eassumption.
   Qed.
 

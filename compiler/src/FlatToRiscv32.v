@@ -88,14 +88,6 @@ Module Import FlatToRiscv32.
 
     env :> map.map Syntax.funname (list Syntax.varname * list Syntax.varname * stmt);
     env_ok: map.ok env;
-
-    FlatImp_params: FlatImp.parameters := {|
-      FlatImp.syntax_params := syntax_params;
-      FlatImp.ext_spec := ext_spec;
-      FlatImp.max_ext_call_code_size := max_ext_call_code_size;
-      FlatImp.max_ext_call_code_size_nonneg a := TODO;
-    |};
-
   }.
 End FlatToRiscv32.
 

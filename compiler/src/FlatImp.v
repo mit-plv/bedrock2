@@ -2,8 +2,6 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.ListLib.
-Require Import bedrock2.Semantics.
-Require Import riscv.Utility.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require compiler.NoActionSyntaxParams.
@@ -14,6 +12,7 @@ Require Import coqutil.Datatypes.PropSet.
 Require Import bedrock2.Syntax.
 Require Import Coq.micromega.Lia.
 Require Import compiler.Simp.
+Require Import bedrock2.Semantics.
 
 
 Inductive bbinop: Type :=
@@ -60,7 +59,6 @@ Section FlatImpSize1.
 
   Context {p: unique! FlatImpSize.parameters}.
 
-
   Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
     match s with
     | SLoad sz x a => 1
@@ -95,39 +93,6 @@ Section FlatImpSize1.
 
 End FlatImpSize1.
 
-Module Import FlatImp.
-  Class parameters := {
-    syntax_params :> Syntax.parameters;
-
-    W :> Words;
-
-    varname_eq_dec  :> DecidableEq varname;
-    funcname_eq_dec :> DecidableEq funname;
-    actname_eq_dec  :> DecidableEq actname;
-
-    locals :> map.map varname word;
-    env :> map.map funname (list varname * list varname * stmt);
-    mem :> map.map word byte;
-
-    locals_ok :> map.ok locals;
-    env_ok :> map.ok env;
-    mem_ok :> map.ok mem;
-
-    trace := list (mem * Syntax.actname * list word * (mem * list word));
-
-    ext_spec: trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;
-
-    max_ext_call_code_size : actname -> Z;
-    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
-  }.
-End FlatImp.
-
-Instance mk_FlatImpSize_params(p: FlatImp.parameters): FlatImpSize.parameters := {|
-    FlatImpSize.bopname_params := FlatImp.syntax_params;
-    FlatImpSize.max_ext_call_code_size := FlatImp.max_ext_call_code_size;
-    FlatImpSize.max_ext_call_code_size_nonneg := FlatImp.max_ext_call_code_size_nonneg;
-|}.
-
 Local Notation "' x <- a ; f" :=
   (match (a: option _) with
    | x => f
@@ -138,8 +103,13 @@ Local Notation "' x <- a ; f" :=
 
 Local Open Scope Z_scope.
 
+(* shadows Semantics.env, which maps funnames to cmd (non-flattened) with a new instance
+   which maps funnames to stmt (flattened) *)
+Instance env{p: Semantics.parameters}: map.map funname (list varname * list varname * stmt) :=
+  funname_env _.
+
 Section FlatImp1.
-  Context {pp : unique! parameters}.
+  Context {pp : unique! Semantics.parameters}.
 
   Section WithEnv.
     Variable (e: env).
@@ -334,36 +304,12 @@ Section FlatImp1.
     | CondNez x =>
         singleton_set x
     end.
-
-  Fixpoint accessedVars(s: stmt): set varname :=
-    match s with
-    | SLoad sz x y => union (singleton_set x) (singleton_set y)
-    | SStore sz x y => union (singleton_set x) (singleton_set y)
-    | SLit x v => singleton_set x
-    | SOp x op y z => union (singleton_set x) (union (singleton_set y) (singleton_set z))
-    | SSet x y => union (singleton_set x) (singleton_set y)
-    | SIf cond bThen bElse =>
-        union (accessedVarsBcond cond) (union (accessedVars bThen) (accessedVars bElse))
-    | SLoop body1 cond body2 =>
-        union (accessedVarsBcond cond) (union (accessedVars body1) (accessedVars body2))
-    | SSeq s1 s2 =>
-        union (accessedVars s1) (accessedVars s2)
-    | SSkip => empty_set
-    | SCall binds funcname args => union (of_list binds) (of_list args)
-    | SInteract binds funcname args => union (of_list binds) (of_list args)
-    end.
-
-  Lemma modVars_subset_accessedVars: forall s,
-    subset (modVars s) (accessedVars s).
-  Proof.
-    intro s. induction s; simpl; map_solver locals_ok.
-  Qed.
 End FlatImp1.
 
 
 Module exec.
   Section FlatImpExec.
-    Context {pp : unique! parameters}.
+    Context {pp : unique! Semantics.parameters}.
     Variable (e: env).
 
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
@@ -593,7 +539,9 @@ Ltac invert_eval_stmt :=
 
 
 Section FlatImp2.
-  Context {pp : unique! parameters}.
+  Context {pp : unique! Semantics.parameters}.
+  Context {locals_ok: map.ok locals}.
+  Context {varname_eq_dec: DecidableEq varname}.
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 e initialSt initialM s final,
     (fuel1 <= fuel2)%nat ->

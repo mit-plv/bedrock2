@@ -19,7 +19,7 @@ Section WithParams.
     Semantics.byte := @byte p1;
     Semantics.mem := @mem p1;
     Semantics.locals := @locals p1;
-    Semantics.env := @env p1;
+    Semantics.funname_env := @funname_env p1;
     Semantics.funname_eqb := @funname_eqb p1;
     Semantics.ext_spec t m a args post :=
       respects_unmapped m -> @ext_spec p1 t m a args post;

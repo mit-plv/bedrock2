@@ -39,7 +39,7 @@ Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
-
+Require coqutil.Map.Empty_set_keyed_map.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -53,8 +53,6 @@ Section TODO.
 End TODO.
 
 
-Local Set Refine Instance Mode.
-
 Definition TODO{T: Type}: T. Admitted.
 
 Module Import FlatToRiscv.
@@ -64,54 +62,53 @@ Module Import FlatToRiscv.
     def_params :> FlatToRiscvDef.parameters;
 
     W :> Words;
-    word_riscv_ok :> word.riscv_ok (@word W);
 
     locals :> map.map Register word;
-    locals_ok :> map.ok locals;
     mem :> map.map word byte;
-    mem_ok :> map.ok mem;
-    actname_eq_dec :> DecidableEq actname;
-
-    iset := if width =? 32 then RV32IM else RV64IM;
 
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
-    PR :> Primitives PRParams;
 
-    trace := list (mem * Syntax.actname * list word * (mem * list word));
-    ext_spec : trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;
-
-    (* these two instances are needed to define compile_ext_call_correct below *)
-
-    syntax_params: Syntax.parameters := {|
-      Syntax.varname := Register;
-      Syntax.funname := Empty_set;
-      Syntax.actname := actname;
-    |};
-
-    env :> map.map Syntax.funname (list Syntax.varname * list Syntax.varname * stmt);
-    env_ok: map.ok env;
-
-    FlatImp_params: FlatImp.parameters := {|
-      FlatImp.syntax_params := syntax_params;
-      FlatImp.ext_spec := ext_spec;
-      FlatImp.max_ext_call_code_size := max_ext_call_code_size;
-      FlatImp.max_ext_call_code_size_nonneg := FlatImpSize.max_ext_call_code_size_nonneg;
-    |};
-
-    Machine := @RiscvMachine Register W _ mem actname;
+    ext_spec : list (mem * actname * list word * (mem * list word)) ->
+               mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
 
     (* An abstract predicate on the low-level state, which can be chosen by authors of
        extensions. The compiler will ensure that this guarantee holds before each external
        call. *)
-    ext_guarantee: Machine -> Prop;
+    ext_guarantee: RiscvMachine Register actname -> Prop;
+  }.
+
+  Section Defs.
+    Context {p: unique! parameters}.
+    Definition iset := if width =? 32 then RV32IM else RV64IM.
+  End Defs.
+
+  Instance syntax_params{p: parameters}: Syntax.parameters := {|
+    Syntax.varname := Register;
+    Syntax.funname := Empty_set;
+    Syntax.actname := actname;
+  |}.
+
+  Instance Semantics_params{p: parameters}: Semantics.parameters := {|
+    Semantics.syntax := syntax_params;
+    Semantics.ext_spec := ext_spec;
+    Semantics.funname_eqb := Empty_set_rect _;
+    Semantics.funname_env := Empty_set_keyed_map.map;
+  |}.
+
+  Class assumptions{p: parameters} := {
+    word_riscv_ok :> word.riscv_ok (@word W);
+    locals_ok :> map.ok locals;
+    mem_ok :> map.ok mem;
+    actname_eq_dec :> DecidableEq actname;
+    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
+    PR :> Primitives PRParams;
 
     (* For authors of extensions, a freely choosable ext_guarantee sounds too good to be true!
        And indeed, there are two restrictions:
        The first restriction is that ext_guarantee needs to be preservable for the compiler: *)
-    ext_guarantee_preservable: forall (m1 m2: Machine),
+    ext_guarantee_preservable: forall (m1 m2: RiscvMachine Register actname),
         ext_guarantee m1 ->
         map.same_domain m1.(getMem) m2.(getMem) ->
         m1.(getLog) = m2.(getLog) ->
@@ -119,7 +116,7 @@ Module Import FlatToRiscv.
 
     (* And the second restriction is part of the correctness requirement for compilation of
        external calls: Every compiled external call has to preserve ext_guarantee *)
-    compile_ext_call_correct: forall (initialL: Machine) action postH newPc insts
+    compile_ext_call_correct: forall (initialL: RiscvMachine Register actname) action postH newPc insts
         (argvars resvars: list Register) initialMH R,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
@@ -128,7 +125,7 @@ Module Import FlatToRiscv.
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       ext_guarantee initialL ->
-      exec map.empty (@SInteract (@FlatImp.syntax_params FlatImp_params) resvars action argvars)
+      exec map.empty (SInteract resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) postH ->
       runsTo (mcomp_sat (run1 iset)) initialL
              (fun finalL =>
@@ -156,7 +153,6 @@ Module Import FlatToRiscv.
       Memory.store sz (getMem initialL) addr v = Some m' ->
       mcomp_sat (f tt) (withMem m' initialL) post ->
       mcomp_sat (Bind (execute (compile_store iset sz a x 0)) f) initialL post;
-
   }.
 
 End FlatToRiscv.
@@ -165,6 +161,7 @@ Local Unset Universe Polymorphism. (* for Add Ring *)
 
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscv.parameters}.
+  Context {h: unique! FlatToRiscv.assumptions}.
 
   Notation var := Z (only parsing).
 
@@ -365,13 +362,6 @@ Section FlatToRiscv1.
     | |- divisibleBy4 _ => idtac
     | |- _ => fail "not a divisibleBy4 goal"
     end;
-    repeat match goal with
-           | H: ?P |- _ => let h := head_of_app P in
-                           assert_fails (constr_eq h @divisibleBy4);
-                           clear H
-           end;
-    simpl;
-    auto using divisibleBy4_add_4_r;
     solve [eapply divisibleBy4_admit; eassumption (* TODO *) ].
 
   Ltac simpl_modu4_0 :=
@@ -717,35 +707,6 @@ Section FlatToRiscv1.
     eauto using map.putmany_of_tuple_preserves_domain.
   Qed.
 
-(*
-  Ltac spec_IH originalIH IH stmt1 :=
-    pose proof originalIH as IH;
-    match goal with
-    | |- runsTo ?st _ => specialize IH with (initialL := st); simpl in IH
-    end;
-    specialize IH with (s := stmt1);
-    specializes IH;
-    first
-      [ reflexivity
-      | solve_imem
-      | solve_stmt_not_too_big
-      | solve_valid_registers
-      | solve_containsProgram
-      | solve_word_eq
-      | eassumption
-      | solve_mem_inaccessible
-      | idtac ].
-  *)
-
-  Hint Rewrite word.eqb_ne word.eqb_eq using congruence : rew_reg_eqb.
-
-  Hint Rewrite
-      elim_then_true_else_false
-      (@left_identity M MM)
-      @map.get_put_same
-      @put_put_same
-  : rew_run1step.
-
   Ltac simpl_bools :=
     repeat match goal with
            | H : ?x = false |- _ =>
@@ -921,9 +882,6 @@ Section FlatToRiscv1.
   *)
   Admitted.
 
-  Existing Instance FlatToRiscv.syntax_params.
-  Existing Instance FlatToRiscv.FlatImp_params.
-
   Definition eval_stmt := exec map.empty.
 
   Lemma seplog_subst_eq{A B R: mem -> Prop} {mL mH: mem}
@@ -1001,8 +959,11 @@ Section FlatToRiscv1.
       | pseplog
       | idtac ].
 
-  Lemma compile_stmt_correct_aux:
-    forall (s: @stmt (@FlatImp.syntax_params (@FlatImp_params p))) t initialMH initialRegsH postH,
+  Arguments map.empty: simpl never.
+  Arguments map.get: simpl never.
+
+  Lemma compile_stmt_correct:
+    forall (s: stmt) t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
     forall R initialL insts,
     @compile_stmt def_params iset s = insts ->
@@ -1046,7 +1007,7 @@ Section FlatToRiscv1.
       match goal with
       | A: map.get map.empty _ = Some _ |- _ =>
         clear -A; exfalso; simpl in *;
-        rewrite (map.get_empty (ok := env_ok)) in A
+        rewrite map.get_empty in A
       end.
       discriminate.
 
@@ -1118,7 +1079,7 @@ Section FlatToRiscv1.
       + (* 1st application of IH: part 1 of loop body *)
         eapply IH1; IH_sidecondition.
       + simpl in *. simpl. intros. simp. destruct_RiscvMachine middle. subst.
-        destruct (@eval_bcond (@FlatImp_params p) middle_regs cond) as [condB|] eqn: E.
+        destruct (@eval_bcond (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
            | H: context [_ <> None] |- _ => solve [eapply H; eauto]
@@ -1159,70 +1120,6 @@ Section FlatToRiscv1.
 
     - (* SSkip *)
       run1done.
-
   Qed.
-
-  (*
-  Lemma compile_stmt_correct:
-    forall imemStart fuelH s insts initialMH finalH finalMH initialL,
-    compile_stmt s = insts ->
-    stmt_not_too_big s ->
-    valid_registers s ->
-    divisibleBy4 imemStart ->
-    eval_stmt _ _ empty_map fuelH empty_map initialMH s = Some (finalH, finalMH) ->
-    containsMem initialL.(machineMem) initialMH ->
-    containsProgram initialL.(machineMem) insts imemStart ->
-    initialL.(core).(pc) = imemStart ->
-    initialL.(core).(nextPC) = add initialL.(core).(pc) (ZToReg 4) ->
-    mem_inaccessible initialMH (regToZ_unsigned imemStart) (4 * Zlength insts) ->
-    exists fuelL,
-      let finalL := execState (run (B := BitWidth) fuelL) initialL in
-      extends finalL.(core).(registers) finalH /\
-      containsMem finalL.(machineMem) finalMH.
-  Proof.
-    intros.
-    pose proof runsTo_to_onerun as Q.
-    specialize (Q initialL
-                  (fun finalL => extends (registers (core finalL)) finalH /\
-                                 containsMem (machineMem finalL) finalMH)).
-    cbv beta zeta in *.
-    unfold runsTo_onerun in Q.
-    destruct Q as [fuel Q].
-    {
-    eapply runsToSatisfying_imp.
-    - eapply @compile_stmt_correct_aux with (s := s) (initialH := empty_map)
-        (fuelH := fuelH) (finalH := finalH) (instsBefore := nil) (instsAfter := nil).
-      + reflexivity.
-      + reflexivity.
-      + assumption.
-      + assumption.
-      + eassumption.
-      + eassumption.
-      + clear. unfold extends. intros. rewrite empty_is_empty in H. discriminate.
-      + assumption.
-      + rewrite app_nil_r. rewrite app_nil_l. subst *. assumption.
-      + simpl. subst imemStart.
-        rewrite Zlength_nil.
-        ring.
-      + assumption.
-      + rewrite app_nil_r. rewrite app_nil_l. subst *. assumption.
-    - intros.
-      rename H9 into A.
-      cbv beta in A. tauto.
-    }
-    {
-      match type of Q with
-      | context [?r] =>
-          match r with
-          | run fuel initialL => destruct r as [ [ u | ] final ] eqn: E; [|contradiction]
-          end
-      end.
-      exists fuel. unfold execState.
-      change Register with Z in *.
-      rewrite E.
-      exact Q.
-    }
-  Qed.
-  *)
 
 End FlatToRiscv1.

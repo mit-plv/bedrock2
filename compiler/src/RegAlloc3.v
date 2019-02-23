@@ -44,7 +44,6 @@ Section TODO.
       extends m2 m1 ->
       m1 = m2. (* requires functional extensionality, or unique internal representation *)
 End TODO.
-*)
 
 Local Notation "'bind_opt' x <- a ; f" :=
   (match a with
@@ -464,7 +463,7 @@ Section RegAlloc.
 
   Local Set Refine Instance Mode.
 
-  Instance srcFlatImpParams: FlatImp.parameters := {|
+  Instance srcFlatImpParams: Semantics.parameters := {|
     FlatImp.syntax_params := srcparams;
     FlatImp.locals := srcLocals;
   |}.
@@ -936,3 +935,4 @@ Section RegAlloc.
   *)
 
 End RegAlloc.
+*)
