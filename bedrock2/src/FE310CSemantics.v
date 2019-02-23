@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Syntax bedrock2.BasicCSyntax bedrock2.Semantics.
+Require Import bedrock2.Syntax bedrock2.Syntax.Basic bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface.
 Require coqutil.Word.Naive.
@@ -13,15 +13,13 @@ Axiom StrictOrderWord : forall width word, @word.ok width word -> @SortedList.pa
 Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 
-Existing Instance Word.Naive.ok.
 
-
-Instance parameters : parameters := 
+Definition parameters : parameters := 
   let word := Word.Naive.word 32 eq_refl in
   let byte := Word.Naive.word 8 eq_refl in
 
   {|
-  syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
+  syntax := Syntax.Basic.parameters;
   mem := SortedList.map (SortedList.parameters.Build_parameters word byte word.ltu) (StrictOrderWord _ _ _);
   locals := SortedListString.map _;
   env := SortedListString.map _;
@@ -43,7 +41,7 @@ Instance parameters : parameters :=
         word.ltu addr (word.of_Z (Ox"10025000")) = true));
 |}.
 
-Lemma __map_ok : Map.Interface.map.ok Semantics.mem. (* FIXME *)
+Lemma __map_ok (_:=parameters) : Map.Interface.map.ok Semantics.mem. (* FIXME *)
   cbn.
   (* eapply SortedList.map_ok. (* fails, IDK why ~ andres *) *)
 Admitted.

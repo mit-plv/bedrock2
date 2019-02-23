@@ -1,8 +1,9 @@
 Require Import coqutil.Z.div_mod_to_equations.
-Require Import bedrock2.BasicCSyntax bedrock2.NotationsInConstr.
+Require Import bedrock2.Syntax.Basic bedrock2.NotationsInConstr.
+
 Import Syntax BinInt String List.ListNotations.
+Local Existing Instance Syntax.Basic.parameters.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : Syntax.expr := Syntax.expr.literal z.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
@@ -21,6 +22,8 @@ Definition ipow :=
 
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
+
+Local Existing Instance BasicC64Semantics.parameters.
 
 Instance spec_of_ipow : spec_of "ipow" := fun functions =>
   forall x e t m,

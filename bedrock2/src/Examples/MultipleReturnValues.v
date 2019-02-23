@@ -1,11 +1,11 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
-Require Import bedrock2.StringNamesSyntax bedrock2.NotationsInConstr.
+Require Import bedrock2.Syntax.Basic bedrock2.NotationsInConstr.
 
+Local Existing Instance Syntax.Basic.parameters.
 Import BinInt String.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Section MultipleReturnValues.
-  Context {p : unique! StringNamesSyntax.parameters}.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
 
@@ -27,12 +27,10 @@ Section MultipleReturnValues.
   ))).
 End MultipleReturnValues.
 
-Require bedrock2.BasicCSyntax.
-
 Example addsub_c_string := Eval compute in
-  BasicCSyntax.c_func (addsub).
+  c_func (addsub).
 Example addsub_test_c_string := Eval compute in
-  BasicCSyntax.c_func (addsub_test).
+  c_func (addsub_test).
 
 (*
 Print addsub_c_string.

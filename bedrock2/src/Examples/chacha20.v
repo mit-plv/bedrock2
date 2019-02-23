@@ -1,8 +1,8 @@
-Require Import bedrock2.BasicC64Syntax bedrock2.NotationsInConstr coqutil.Z.HexNotation.
+Require Import bedrock2.Syntax.Basic bedrock2.NotationsInConstr coqutil.Z.HexNotation.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Existing Instance bedrock2.BasicC64Syntax.StringNames_params.
+Local Existing Instance bedrock2.Syntax.Basic.parameters.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
 From coqutil.Macros Require Import unique subst.
