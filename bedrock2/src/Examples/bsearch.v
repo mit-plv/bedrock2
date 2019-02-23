@@ -1,8 +1,7 @@
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
 From bedrock2 Require Import NotationsInConstr ProgramLogic Map.Separation Array Scalars TailRecursion.
 
-Require bedrock2.Examples.Demos.
-Definition bsearch := @Demos.bsearch _ Demos.BinarySearch.StringNames.Inst.
+Require Import bedrock2.Examples.Demos.
 
 From coqutil Require Import Word.Interface Map.Interface. (* coercions word and rep *)
 From bedrock2 Require Import Semantics BasicC64Semantics.
@@ -16,6 +15,7 @@ Require Import bedrock2.TODO_absint.
 Strategy -1000 [word parameters]. (* TODO where should this go? *)
 
 Module absint_test.
+  Local Existing Instance BasicC64Semantics.parameters.
   Fixpoint goal (x : word) (n : nat) : Prop
     := match n with
        | O => True
@@ -86,7 +86,7 @@ Local Infix "^>>" := word.sru  (at level 37, left associativity).
 Local Notation "/_" := word.of_Z.
 Local Notation "\_" := word.unsigned.
 Local Open Scope Z_scope.
-Lemma word__add_sub x y : (x^+y^-x) = y.
+Lemma word__add_sub {width} {w : word.word width} {ok : word.ok w} x y : (x^+y^-x) = y.
 Proof.
   apply Properties.word.unsigned_inj.
   rewrite word.unsigned_sub, word.unsigned_add.
@@ -94,7 +94,9 @@ Proof.
   apply Properties.word.wrap_unsigned.
 Qed.
 
-  From coqutil Require Import Z.div_mod_to_equations.
+From coqutil Require Import Z.div_mod_to_equations.
+
+Local Existing Instance BasicC64Semantics.parameters.
 
 Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory.
 Add Ring word_ring : word__monomorphic_ring_theory.
@@ -147,7 +149,7 @@ Proof.
   { repeat straightline.
     2: solve [auto]. (* exiting loop *)
     (* loop body *)
-    rename H3 into length_rep. subst br. subst v0.
+    rename H3 into length_rep. subst br. subst mid.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
     { rewrite word__add_sub.
@@ -161,7 +163,7 @@ Proof.
     { repeat letexists. split; [repeat straightline|].
       repeat letexists; repeat split; repeat straightline.
       { SeparationLogic.ecancel_assumption. }
-      { subst v1. subst x7.
+      { subst left. subst x7.
         clear H2 x8 H3 v0.
         repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
@@ -212,7 +214,7 @@ Proof.
     { repeat letexists. split. 1: solve [repeat straightline].
       repeat letexists; repeat split; repeat straightline.
       { SeparationLogic.ecancel_assumption. }
-      { subst v1. subst x7.
+      { subst right. subst x7.
         repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
         rewrite ?length_rep.

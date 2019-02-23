@@ -1,16 +1,16 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax bedrock2.ToCString.
-Require Import bedrock2.StringNamesSyntax coqutil.Datatypes.String.
+Require Import bedrock2.Syntax bedrock2.ToCString.
+Require Import coqutil.Datatypes.String.
+Require Coq.Strings.String Coq.Numbers.DecimalZ Coq.Numbers.DecimalString.
 
-Require Import Coq.Strings.String Coq.Numbers.DecimalZ Coq.Numbers.DecimalString.
-
-Import bedrock2.Syntax.bopname.
-
-Definition StringNames_params: bedrock2.StringNamesSyntax.parameters := {|
-  StringNamesSyntax.actname := string
+Definition parameters := {|
+  Syntax.varname := String.string;
+  Syntax.funname := String.string;
+  Syntax.actname := String.string;
 |}.
 
+Import bedrock2.Syntax.bopname.
 Definition to_c_parameters : ToCString.parameters := {|
-  syntax := (StringNamesSyntax.make StringNames_params);
+  syntax := parameters;
   c_lit w := DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL";
   c_bop := fun e1 op e2 =>
              match op with

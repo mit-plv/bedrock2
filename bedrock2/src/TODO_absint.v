@@ -4,6 +4,7 @@ From coqutil Require Import Tactics.rdelta Z.div_mod_to_equations.
 
 (* TODO: generalize over word *)
 From bedrock2 Require Import Semantics BasicC64Semantics.
+Local Existing Instance BasicC64Semantics.parameters.
 (** Bounds propagation *)
 
 Lemma Z__range_add a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1)
@@ -178,6 +179,7 @@ Definition absint_modu (x y : word.rep) ux Hx uy Hy Hnz  : word.unsigned _ =~> _
 Ltac named_pose_asfresh_or_id x n :=
   let y := match constr:(Set) with _ => named_pose_asfresh x n | _ => x end in
   y.
+
 
 Definition absint_eq_refl {T} v := ((@eq_refl T v) : @absint_eq T v v).
 Ltac zify_expr e :=

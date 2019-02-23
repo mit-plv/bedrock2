@@ -1,8 +1,9 @@
-Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
+Require Import bedrock2.Syntax bedrock2.Syntax.Basic.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
 
 Import Syntax BinInt String List.ListNotations.
+Local Existing Instance Syntax.Basic.parameters.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
@@ -44,6 +45,7 @@ From coqutil.Tactics Require Import letexists eabstract.
 From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars.
 From bedrock2.Map Require Import Separation SeparationLogic.
 
+Local Existing Instance bedrock2.FE310CSemantics.parameters.
 Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
 Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions => 
@@ -112,4 +114,4 @@ Proof.
   cbv. eauto. } 
 Qed.
 
-Compute BasicCSyntax.c_func (lightbulb).
+Compute c_func lightbulb.

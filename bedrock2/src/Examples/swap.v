@@ -1,8 +1,9 @@
-Require Import bedrock2.BasicCSyntax bedrock2.NotationsCustomEntry.
+Require Coq.ZArith.BinInt Coq.Strings.String.
+Require Import bedrock2.Syntax.Basic bedrock2.NotationsCustomEntry.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
+Local Existing Instance bedrock2.Syntax.Basic.parameters.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
 Definition swap := let a := "a" in let b := "b" in let t := "t" in
@@ -21,6 +22,8 @@ Definition swap_swap := let swap := "swap" in let a := "a" in let b := "b" in
 Require bedrock2.WeakestPrecondition.
 Require Import bedrock2.Semantics bedrock2.BasicC64Semantics.
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+
+Local Existing Instance bedrock2.BasicC64Semantics.parameters.
 
 Axiom __map_ok : map.ok Semantics.mem. Local Existing Instance __map_ok. (* FIXME *)
 
