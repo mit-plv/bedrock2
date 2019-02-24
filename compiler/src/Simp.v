@@ -17,6 +17,20 @@ Ltac destruct_unique_match :=
     [> ] (* "(let n := numgoals in guard n = 1)" would not be executed if 0 goals *)
   end.
 
+Definition protected(P: Prop) := P.
+
+Ltac protect_equalities :=
+  repeat match goal with
+         | H: ?a = ?b |- _ => change (protected (a = b)) in H
+         end.
+
+Ltac unprotect_equalities :=
+  repeat match goal with
+         | H: protected (?a = ?b) |- _ => change (a = b) in H
+         end.
+
+Ltac invert_hyp H := protect_equalities; inversion H; clear H; subst; unprotect_equalities.
+
 Ltac unique_inversion :=
   match goal with
   | H: ?P |- _ =>
@@ -26,14 +40,16 @@ Ltac unique_inversion :=
            fail 1 (* don't destruct typeclass instances *)
     | _ => idtac
     end;
+    protect_equalities;
     inversion H;
     [> (* require exactly one goal *)
-     subst;
      clear H;
      match goal with
      | H': ?P' |- _ => unify P P'; fail 1 (* inversion didn't do anything except simplifying *)
      | |- _ => idtac
-     end]
+     end;
+     subst;
+     unprotect_equalities]
   end.
 
 Ltac simpl_Z_eqb :=

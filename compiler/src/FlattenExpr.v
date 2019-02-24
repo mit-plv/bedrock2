@@ -784,7 +784,7 @@ Section FlattenExpr1.
            more things about the (t', m', l') in mid *)
         map.only_differ lH (ExprImp.modVars sH) lH').
   Proof.
-    induction 1; intros; simpl in *; simp.
+    induction 1; intros; simpl in *; subst; simp.
 
     - (* exec.skip *)
       eapply @FlatImp.exec.skip.

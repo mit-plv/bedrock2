@@ -992,6 +992,7 @@ Section FlatToRiscv1.
              | m: _ |- _ => destruct_RiscvMachine m
              end;
       simpl in *;
+      subst;
       simp.
 
     - (* SInteract *)
