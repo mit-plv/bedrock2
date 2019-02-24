@@ -23,17 +23,22 @@ Instance parameters : parameters :=
   funname_env := SortedListString.map;
   funname_eqb := String.eqb;
   ext_spec t m action args post :=
-    match action, args with
-    | MMIOREAD, [addr] =>
+    if string_dec action MMIOREAD then
+    match args with
+    | [addr] =>
       ((Ox"10012000" <= word.unsigned addr < Ox"10013000") \/
        (Ox"10024000" <= word.unsigned addr < Ox"10025000")  ) 
       /\ forall v, post m [v]
-    | MMIOWRITE, [addr; val] =>
+    | _ => False
+    end else
+    if string_dec action MMIOWRITE then
+    match args with
+    | [addr; val] =>
       ((Ox"10012000" <= word.unsigned addr < Ox"10013000") \/
        (Ox"10024000" <= word.unsigned addr < Ox"10025000")  )
       /\ post m []
-    | _, _ => False
-    end;
+    |  _ => False
+    end else False;
 |}.
 
 Global Instance ok trace m0 act args :
@@ -44,7 +49,8 @@ Global Instance ok trace m0 act args :
        Basics.impl) (Semantics.ext_spec trace m0 act args).
 Proof.
   cbv [ext_spec parameters].
-  cbv [Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl] in *.
+  cbv [Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl] in *;
+  repeat match goal with |- context [string_dec ?a ?b] => destruct (string_dec a b) end;
   destruct args as [|? [|? [|]]]; intuition idtac.
-  all:eapply H; eauto.
+  all: eapply H; eauto.
 Qed.
