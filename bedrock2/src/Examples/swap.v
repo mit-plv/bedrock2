@@ -22,8 +22,6 @@ Require bedrock2.WeakestPrecondition.
 Require Import bedrock2.Semantics bedrock2.BasicC64Semantics.
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
-Axiom __map_ok : map.ok Semantics.mem. Local Existing Instance __map_ok. (* FIXME *)
-
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.

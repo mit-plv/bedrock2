@@ -1,50 +1,50 @@
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.BasicCSyntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
 Require coqutil.Word.Naive.
 Require Import coqutil.Z.HexNotation.
 
 Import String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Axiom StrictOrderWord : forall width word, @word.ok width word -> @SortedList.parameters.strict_order (@word.rep _ word) (@word.ltu _ word).
-
 Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
-
-Existing Instance Word.Naive.ok.
-
 
 Instance parameters : parameters :=
   let word := Word.Naive.word 32 eq_refl in
   let byte := Word.Naive.word 8 eq_refl in
 
   {|
+  width := 32;
   syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
-  mem := SortedList.map (SortedList.parameters.Build_parameters word byte word.ltu) (StrictOrderWord _ _ _);
+  mem := SortedListWord.map _ _;
   locals := SortedListString.map _;
   funname_env := SortedListString.map;
   funname_eqb := String.eqb;
-  ext_spec := fun t m a args post =>
-     exists addr,
-
-   (Logic.or
-      (a = MMIOREAD /\ args = [addr] /\ forall v, post m [v])
-      (a = MMIOWRITE /\ exists val, args = [addr;val] /\ post m []))
-    /\
-    (* address should be an MMIO address. we use GPIO1 and QSPI1 *)
-    (((word.ltu (word.of_Z (Ox"10012000")) addr = true \/
-         word.eqb (word.of_Z (Ox"10012000")) addr = true) /\
-        word.ltu addr (word.of_Z (Ox"10013000")) = true)
-       \/
-       ((word.ltu (word.of_Z (Ox"10024000")) addr = true \/
-        word.eqb (word.of_Z (Ox"10024000")) addr = true) /\
-        word.ltu addr (word.of_Z (Ox"10025000")) = true));
+  ext_spec t m action args post :=
+    match action, args with
+    | MMIOREAD, [addr] =>
+      ((Ox"10012000" <= word.unsigned addr < Ox"10013000") \/
+       (Ox"10024000" <= word.unsigned addr < Ox"10025000")  ) 
+      /\ forall v, post m [v]
+    | MMIOWRITE, [addr; val] =>
+      ((Ox"10012000" <= word.unsigned addr < Ox"10013000") \/
+       (Ox"10024000" <= word.unsigned addr < Ox"10025000")  )
+      /\ post m []
+    | _, _ => False
+    end;
 |}.
 
-Lemma __map_ok : Map.Interface.map.ok Semantics.mem. (* FIXME *)
-  cbn.
-  (* eapply SortedList.map_ok. (* fails, IDK why ~ andres *) *)
-Admitted.
-Existing Instance __map_ok.
+Global Instance ok trace m0 act args :
+  Morphisms.Proper
+    (Morphisms.respectful
+       (Morphisms.pointwise_relation Interface.map.rep
+          (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
+       Basics.impl) (Semantics.ext_spec trace m0 act args).
+Proof.
+  cbv [ext_spec parameters].
+  cbv [Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl] in *.
+  destruct args as [|? [|? [|]]]; intuition idtac.
+  all:eapply H; eauto.
+Qed.

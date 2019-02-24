@@ -81,35 +81,22 @@ Proof.
   repeat straightline.
 
   (* the 1st MMIOREAD *)
-  { hnf.
-    letexists. split. { 
-       left. split. { exact eq_refl. } { split. { exact eq_refl. }
-       intros. { letexists. split. { subst l1. exact eq_refl. } 
-    repeat straightline.
+  cbn [args ext_spec FE310CSemantics.parameters]; split;
+    [abstract (cbv; clear; intuition congruence) | intros].
+  repeat straightline.
 
-  { hnf. letexists. split. { 
-       right. split. { exact eq_refl. } { letexists. split. { subst args0. exact eq_refl. }
-       intros. { letexists. split. { subst l1. exact eq_refl. } 
+  cbn [args ext_spec FE310CSemantics.parameters]; split;
+    [abstract (cbv; clear; intuition congruence) | intros].
+  repeat straightline.
 
-    repeat straightline.
+  cbn [args ext_spec FE310CSemantics.parameters]; split;
+    [abstract (cbv; clear; intuition congruence) | intros].
+  repeat straightline.
 
-  { hnf. letexists. split. { 
-       left. split. { exact eq_refl. } { split. { exact eq_refl. }
-       intros. { letexists. split. { subst l1. exact eq_refl. } 
-    repeat straightline.
-
-  { hnf. letexists. split. { 
-       right. split. { exact eq_refl. } { letexists. split. { subst args0. exact eq_refl. }
-       intros. { letexists. split. { subst l1. exact eq_refl. } 
-  (* TODO for andres: accumulate trace in context instead of goal *)
-    repeat straightline.
-    eauto. } } }
-  cbv. eauto. 
-  (* TODO: reorder subgoals in ext_spec -- address range checks should be earlier *)
-} } } }
-  cbv. eauto. } } } }
-  cbv. eauto. } } } }
-  cbv. eauto. } 
+  cbn [args ext_spec FE310CSemantics.parameters]; split;
+    [abstract (cbv; clear; intuition congruence) | intros].
+  repeat straightline.
+  eauto.
 Qed.
 
 Compute BasicCSyntax.c_func (lightbulb).
