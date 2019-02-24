@@ -46,8 +46,8 @@ Module Import FlattenExpr.
     Semantics.syntax := _;
     Semantics.word := Utility.word;
     Semantics.byte := Utility.byte;
-    Semantics.funname_env _ := Empty_set_keyed_map.map _;
-    Semantics.funname_eqb f := Empty_set_rect _;
+    Semantics.funname_env := Empty_set_keyed_map.map;
+    Semantics.funname_eqb := Empty_set_rect _;
     Semantics.ext_spec:= ext_spec;
   |}.
 

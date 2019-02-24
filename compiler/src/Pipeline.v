@@ -30,6 +30,7 @@ Require Import riscv.Utility.
 Require Export riscv.Memory.
 Require Export riscv.InstructionCoercions.
 Require Import compiler.SeparationLogic.
+Require Import compiler.Simp.
 
 
 Existing Instance riscv.Program.DefaultRiscvState.
@@ -38,16 +39,15 @@ Existing Instance riscv.Program.DefaultRiscvState.
 Open Scope Z_scope.
 
 Module Import Pipeline.
+  Definition varname := Register.
+
   Class parameters := {
-    varname := Register;
-    actname: Type;
-    actname_eq_dec :> DecidableEq actname;
-    varname_eq_dec :> DecidableEq varname;
+    FlatToRiscvDef_params :> FlatToRiscvDef.FlatToRiscvDef.parameters;
+    actname := FlatToRiscvDef.FlatToRiscvDef.actname;
+
     W :> Words;
     mem :> map.map word byte;
-    mem_ok :> map.ok mem;
     locals :> map.map varname word;
-    locals_ok :> map.ok locals;
     trace := list (mem * actname * list word * (mem * list word));
     ExtSpec := trace -> mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
@@ -55,40 +55,37 @@ Module Import Pipeline.
     NGstate: Type;
     NG :> NameGen varname NGstate;
 
-    (* registers :> map.map Register word; (* same as locals at the moment *) *)
-    registerSetFunctions :> compiler.util.Set.SetFunctions Register;
-    reg2varMapping :> map.map Register varname;
-
-    max_ext_call_code_size: actname -> Z;
-    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
-    compile_ext_call: list Register -> actname -> list Register -> list Instruction;
-    compile_ext_call_length: forall binds f args,
-        Zcomplements.Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
-
+    ext_guarantee : RiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname -> Prop;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
     PRParams :> PrimitivesParams M (RiscvMachine Register actname);
-    PR :> Primitives PRParams;
   }.
+
+  Instance FlatToRisvc_params{p: parameters}: FlatToRiscv.FlatToRiscv.parameters := {|
+    FlatToRiscv.FlatToRiscv.ext_spec := ext_spec;
+    FlatToRiscv.FlatToRiscv.ext_guarantee := ext_guarantee;
+  |}.
+
+  Class assumptions{p: parameters} := {
+    actname_eq_dec :> DecidableEq actname;
+    varname_eq_dec :> DecidableEq varname;
+    mem_ok :> map.ok mem;
+    locals_ok :> map.ok locals;
+    PR :> Primitives PRParams;
+    FlatToRiscv_hyps :> FlatToRiscv.FlatToRiscv.assumptions;
+  }.
+
 End Pipeline.
 
 
 Section Pipeline1.
 
   Context {p: parameters}.
+  Context {h: assumptions}.
 
   Definition funname := Empty_set.
-  Local Notation RiscvMachine := (RiscvMachine Register actname).
   Definition iset := if width =? 32 then RV32IM else RV64IM.
-
-  Instance syntax_params: Syntax.parameters := {|
-    Syntax.varname := varname;
-    Syntax.funname := funname;
-    Syntax.actname := actname;
-  |}.
-
-  Definition TODO{T: Type}: T. Admitted.
 
   Instance FlattenExpr_parameters: FlattenExpr.parameters := {|
     FlattenExpr.varname := varname;
@@ -101,44 +98,13 @@ Section Pipeline1.
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.ext_spec := ext_spec;
-    FlattenExpr.max_ext_call_code_size := max_ext_call_code_size;
-    FlattenExpr.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
+    FlattenExpr.max_ext_call_code_size := _;
+    FlattenExpr.max_ext_call_code_size_nonneg := FlatImp.FlatImpSize.max_ext_call_code_size_nonneg;
     FlattenExpr.NGstate := NGstate;
     FlattenExpr.NG := NG;
   |}.
 
-  Instance FlatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
-    FlatToRiscvDef.FlatToRiscvDef.actname := actname;
-    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
-    FlatToRiscvDef.FlatToRiscvDef.max_ext_call_code_size := max_ext_call_code_size;
-    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length;
-  |}.
-
   Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
-
-  Instance FlatToRiscv_params: FlatToRiscv.FlatToRiscv.parameters := {|
-    FlatToRiscv.FlatToRiscv.def_params := _;
-    FlatToRiscv.FlatToRiscv.W := W;
-    FlatToRiscv.FlatToRiscv.locals := locals;
-    FlatToRiscv.FlatToRiscv.mem := mem;
-    FlatToRiscv.FlatToRiscv.M := M;
-    FlatToRiscv.FlatToRiscv.MM := MM;
-    FlatToRiscv.FlatToRiscv.RVM := RVM;
-    FlatToRiscv.FlatToRiscv.ext_spec := ext_spec;
-    FlatToRiscv.FlatToRiscv.ext_guarantee := TODO;
-  |}.
-
-  Instance FlatToRiscv_hyps: FlatToRiscv.FlatToRiscv.assumptions := {|
-    FlatToRiscv.FlatToRiscv.word_riscv_ok := word_riscv_ok;
-    FlatToRiscv.FlatToRiscv.locals_ok := locals_ok;
-    FlatToRiscv.FlatToRiscv.mem_ok := mem_ok;
-    FlatToRiscv.FlatToRiscv.actname_eq_dec := actname_eq_dec;
-    FlatToRiscv.FlatToRiscv.PR := PR;
-    FlatToRiscv.FlatToRiscv.compile_ext_call_correct := TODO;
-    FlatToRiscv.FlatToRiscv.ext_guarantee_preservable := TODO;
-    FlatToRiscv.FlatToRiscv.go_load := TODO; (* interesting: how to instantiate this one?? *)
-    FlatToRiscv.FlatToRiscv.go_store := TODO; (* interesting: how to instantiate this one?? *)
-  |}.
 
   Definition flatten(s: Syntax.cmd): FlatImp.stmt :=
     let ngs: NGstate := freshNameGenState (ExprImp.allVars_cmd s) in
@@ -148,93 +114,6 @@ Section Pipeline1.
   Definition exprImp2Riscv(s: Syntax.cmd): list Instruction :=
     FlatToRiscvDef.compile_stmt iset (flatten s).
 
-  Notation registerset := (@compiler.util.Set.set Register registerSetFunctions).
-
-  Definition riscvRegisters: registerset := compiler.util.Set.of_list (List.map Z.of_nat (List.seq 1 31)).
-
-  (* convention: there's one single result which is put into register $x1 *)
-  Definition interesting_alloc(resVar: varname): reg2varMapping := map.put map.empty 1 resVar.
-
-  (*
-  Definition exprImp2Riscv_with_regalloc(resVar: varname)(s: Syntax.cmd): list Instruction :=
-    let oStmt :=
-      (register_allocation varname Register funname actname
-                           Register0
-                           (flatten s)
-                           map.empty
-                           (interesting_alloc resVar)) in
-      match oStmt with
-      | Some s => FlatToRiscvDef.compile_stmt iset s
-      | None => nil
-      end.
-   *)
-
-  (*
-  Lemma putProgram_containsProgram: forall {Bw: BitWidths} s a p (initial: RiscvMachine),
-      FlatToRiscv.valid_registers s ->
-      FlatToRiscv.compile_stmt LwXLEN SwXLEN s = p ->
-      FlatToRiscv.stmt_not_too_big s ->
-      regToZ_unsigned a mod 4 = 0 ->
-      regToZ_unsigned a + 4 * (Zlength p) <= Memory.memSize initial.(machineMem) ->
-      FlatToRiscv.containsProgram
-        (putProgram (List.map (fun i => ZToWord 32 (encode i)) p) a initial).(machineMem) p a.
-  Proof.
-    intros. subst p. unfold putProgram.
-    pose proof BitWidths.pow2_wXLEN_4 as X.
-    rewrite FlatToRiscv.containsProgram_alt.
-    unfold FlatToRiscv.containsProgram', FlatToRiscv.decode_prog, Minimal.putProgram.
-    destruct initial as [ [regs pc0 eh] m ].
-    simpl in *. split.
-    - rewrite Memory.store_word_list_preserves_memSize. assumption.
-    - rewrite Memory.load_store_word_list_eq; rewrite? map_Zlength; auto.
-      rewrite map_map.
-      apply Memory.list_elementwise_same_Z'. intuition idtac.
-      (* TODO de-duplicate *)
-      + pose proof Memory.map_Znth_error' as P.
-        specialize P with (1 := H0).
-        destruct P as [ inst [A B] ]. subst e.
-        rewrite A. f_equal.
-        rewrite uwordToZ_ZToWord.
-        rewrite Z.mod_small.
-        * symmetry. apply decode_encode.
-          eapply compile_stmt_emits_valid; try eassumption.
-          Fail exact A.
-          Admitted. (*
-        * apply encode_range.
-      + erewrite map_nth_error by eassumption.
-        f_equal.
-        rewrite uwordToZ_ZToWord.
-        * apply decode_encode.
-          eapply compile_stmt_emits_valid; eassumption.
-        * apply encode_range.
-  Qed.
-*)
-
-  Lemma store_word_list_preserves_containsMem: forall offset words mL mH,
-      regToZ_unsigned offset + 4 * Zlength words <= Memory.memSize mL ->
-      Memory.valid_addr offset 4 (Memory.memSize mL) ->
-      FlatToRiscv.mem_inaccessible mH (regToZ_unsigned offset) (4 * Zlength words) ->
-      FlatToRiscvInvariants.containsMem mL mH ->
-      FlatToRiscvInvariants.containsMem (Memory.store_word_list words offset mL) mH.
-  Proof.
-    unfold FlatToRiscvInvariants.containsMem. intros.
-    specialize (H2 addr v H3).
-    rewrite Memory.store_word_list_preserves_memSize.
-    intuition idtac.
-    unfold FlatToRiscv.mem_inaccessible in *.
-    pose proof H3.
-    unfold Memory.read_mem in H3.
-    destruct_one_match_hyp; try discriminate. clear E.
-    unfold FlatToRiscvBitWidthSpecifics.loadWordwXLEN, wXLEN_in_bytes, wXLEN, bitwidth in *.
-    (*
-    destruct Bw;
-      [ rewrite Memory.loadWord_outside_store_word_list
-      |  erewrite Memory.loadDouble_outside_store_word_list ];
-      eauto; Memory.mem_simpl.
-  Qed.
-     *)
-  Admitted.
-  *)
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_registers (flatten s).
 
@@ -256,31 +135,37 @@ Section Pipeline1.
       ExprImp.cmd_size sH < 2 ^ 7 ->
       enough_registers sH ->
       exprImp2Riscv sH = instsL ->
-      (GoFlatToRiscv.program imemStart instsL * eq mH)%sep initialL.(getMem) ->
+      initialL.(getLog) = nil ->
+      initialL.(getRegs) = map.empty ->
+      (program imemStart instsL * eq mH)%sep initialL.(getMem) ->
       Semantics.exec.exec map.empty sH nil mH map.empty (fun t m l => post t) ->
       runsTo (mcomp_sat (run1 iset))
              initialL
              (fun finalL => post finalL.(getLog)).
-  Admitted.
-
-
-  Lemma bw_sim: forall sH mH instsL initialL (postH postL: trace -> Prop) imemStart,
-      ExprImp.cmd_size sH < 2 ^ 7 ->
-      enough_registers sH ->
-      exprImp2Riscv sH = instsL ->
-      (GoFlatToRiscv.program imemStart instsL * eq mH)%sep initialL.(getMem) ->
-      Semantics.exec.exec map.empty sH nil mH map.empty (fun t m l => postH t) ->
-      runsTo (mcomp_sat (run1 iset))
-             initialL
-             (fun finalL => postL finalL.(getLog)) ->
-      (forall t, postL t -> postH t).
   Proof.
     intros.
-    pose proof exprImp2Riscv_correct as P.
-    specialize (P _ _ _ _ _ _ H H0 H1 H2 H3).
-
-  Abort. (* hopefully we won't need this backwards direction *)
-
+    eapply runsTo_weaken.
+    - eapply @FlatToRiscv.compile_stmt_correct
+        with (postH := (fun t m l => post t)); try reflexivity.
+      + admit.
+      + eapply FlatImp.exec.weaken.
+        * rewrite H2, H3.
+          match goal with
+          | |- _ ?env ?s ?t ?m ?l ?post =>
+            epose proof (@FlattenExpr.flattenStmt_correct _ _ s t m _ eq_refl) as Q
+          end.
+          eapply Q.
+          eassumption.
+        * simpl. intros. simp. assumption.
+      + admit.
+      + admit.
+      + admit.
+      + admit.
+      + admit.
+      + admit.
+    - simpl. intros. simp. assumption.
+      Unshelve. intros. apply True.
+  Admitted.
 
   (*
   (* We could also say something about the memory, but then the statement becomes more complex.

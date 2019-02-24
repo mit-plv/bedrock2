@@ -69,6 +69,7 @@ Module Import FlatToRiscv.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
+    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
 
     ext_spec : list (mem * actname * list word * (mem * list word)) ->
                mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
@@ -102,7 +103,6 @@ Module Import FlatToRiscv.
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     actname_eq_dec :> DecidableEq actname;
-    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
     PR :> Primitives PRParams;
 
     (* For authors of extensions, a freely choosable ext_guarantee sounds too good to be true!

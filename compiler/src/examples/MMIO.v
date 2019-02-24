@@ -253,6 +253,7 @@ Instance FlatToRiscv_params: FlatToRiscv.parameters := {|
   FlatToRiscv.mem := (@mem p);
   FlatToRiscv.MM := OStateND_Monad _;
   FlatToRiscv.RVM := IsRiscvMachineL;
+  FlatToRiscv.PRParams := MinimalMMIOPrimitivesParams;
   FlatToRiscv.ext_spec := ext_spec;
   FlatToRiscv.ext_guarantee := TODO;
 |}.
