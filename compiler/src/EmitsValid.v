@@ -267,14 +267,11 @@ Section EmitsValid.
 
   Context (iset: InstructionSet).
 
-  Definition valid_instructions(prog: list Instruction): Prop :=
-    forall instr, In instr prog -> verify instr iset.
-
   Context {compilation_params: FlatToRiscvDef.parameters}.
 
   Lemma compile_lit_emits_valid: forall r w,
       valid_register r ->
-      valid_instructions (compile_lit r w).
+      valid_instructions iset (compile_lit r w).
   Proof.
     unfold valid_instructions.
     intros.
@@ -301,7 +298,7 @@ Section EmitsValid.
       valid_register x ->
       valid_register y ->
       valid_register z ->
-      valid_instructions (compile_op x op y z).
+      valid_instructions iset (compile_op x op y z).
   Proof.
     unfold valid_instructions.
     intros.
@@ -343,7 +340,7 @@ Section EmitsValid.
   Lemma compile_load_emits_valid: forall x y sz,
       valid_register x ->
       valid_register y ->
-      valid_instructions [compile_load iset sz x y 0].
+      valid_instructions iset [compile_load iset sz x y 0].
   Proof.
     intros.
     destruct sz; destruct iset eqn: E; unfold valid_instructions, valid_register in *; simpl;
@@ -360,7 +357,7 @@ Section EmitsValid.
   Lemma compile_store_emits_valid: forall x y sz,
       valid_register x ->
       valid_register y ->
-      valid_instructions [compile_store iset sz x y 0].
+      valid_instructions iset [compile_store iset sz x y 0].
   Proof.
     intros.
     destruct sz; destruct iset eqn: E; unfold valid_instructions, valid_register in *; simpl;
@@ -373,12 +370,6 @@ Section EmitsValid.
       unfold Register0 in *;
       intuition (try lia).
   Qed.
-
-  (* TODO *)
-  Axiom compile_ext_call_emits_valid: forall binds a args,
-      Forall valid_register binds ->
-      Forall valid_register args ->
-      valid_instructions (compile_ext_call binds a args).
 
   Arguments Z.of_nat: simpl never.
   Arguments Z.mul: simpl never.
@@ -405,7 +396,7 @@ Section EmitsValid.
       supportsM iset = true ->
       valid_registers s ->
       stmt_not_too_big s ->
-      valid_instructions (compile_stmt iset s).
+      valid_instructions iset (compile_stmt iset s).
   Proof.
     induction s; intros; simpl in *; intuition (
       auto using compile_load_emits_valid,

@@ -112,7 +112,7 @@ Instance compilation_params: FlatToRiscvDef.parameters := {|
   FlatToRiscvDef.actname := act;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
   FlatToRiscvDef.max_ext_call_code_size _ := 100;
-|}. intros. apply TODO. Defined.
+|}. all: apply TODO. Defined.
 
 Definition compiled: list Instruction := Eval cbv in compile_stmt RV32IM test.
 

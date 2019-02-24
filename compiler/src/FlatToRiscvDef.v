@@ -11,12 +11,16 @@ Require Import Coq.micromega.Lia.
 Require Import riscv.Primitives.
 Require Import riscv.Utility.
 Require Import riscv.util.ListLib.
+Require Import riscv.Encode.
 Require Import bedrock2.Syntax.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
 
 Set Implicit Arguments.
+
+Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Prop :=
+  forall instr, In instr prog -> verify instr iset.
 
 Module Import FlatToRiscvDef.
   Class parameters := {
@@ -25,6 +29,12 @@ Module Import FlatToRiscvDef.
     max_ext_call_code_size: actname -> Z;
     compile_ext_call_length: forall binds f args,
         Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
+    (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
+       be elsewhere *)
+    compile_ext_call_emits_valid: forall iset binds a args,
+      Forall valid_register binds ->
+      Forall valid_register args ->
+      valid_instructions iset (compile_ext_call binds a args)
   }.
 
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
