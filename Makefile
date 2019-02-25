@@ -6,7 +6,7 @@ clone_all:
 	git submodule update --init --recursive
 
 update_all:
-	git submodule update --recursive --remote
+	git submodule update --recursive
 
 REL_PATH_OF_THIS_MAKEFILE:=$(lastword $(MAKEFILE_LIST))
 ABS_ROOT_DIR:=$(abspath $(dir $(REL_PATH_OF_THIS_MAKEFILE)))
