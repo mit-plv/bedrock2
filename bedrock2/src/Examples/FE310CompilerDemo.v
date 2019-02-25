@@ -6,12 +6,15 @@ Require Import bedrock2.Syntax.
 Monomorphic Inductive MMIOAction : Set :=
   MMInput : MMIOAction | MMOutput : MMIOAction.
 
-
 Local Instance syntax_parameters : Syntax.parameters := {|
   varname := Z;
   funname := Empty_set;
   actname := MMIOAction;
 |}.
+
+
+
+
 
 From coqutil.Map Require SortedListWord Z_keyed_SortedListMap Empty_set_keyed_map.
 From coqutil Require Import Word.Interface Word.Naive Z.HexNotation String.
@@ -55,3 +58,26 @@ Local Instance parameters : parameters :=
     end%list%bool;
 |}.
 (* hfrosccfg: Z.testbit value 30 = true  *)
+
+
+
+
+
+Require Import bedrock2.NotationsCustomEntry.
+(* both variable names and literals are Z in this file, disambiguate... *)
+Local Coercion literal (x : Z) : expr := expr.literal x.
+Local Notation "$ a" := (expr.var a) (in custom bedrock_expr at level 10, a ident).
+
+
+Definition swap_chars_over_uart :=
+  let trim : varname := 1%Z in
+  let MMIOREAD  := MMInput in (* COQBUG(9514) *)
+  let MMIOWRITE := MMOutput in (* COQBUG(9514) *)
+  bedrock_func_body:(
+    io! trim = MMIOREAD (constr:(Ox"0x00021fec"))
+  ).
+
+(*
+Unset Printing Notations.
+Compute swap_chars_over_uart.
+*)
