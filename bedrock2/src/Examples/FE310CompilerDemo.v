@@ -65,16 +65,42 @@ Local Instance parameters : parameters :=
 
 Require Import bedrock2.NotationsCustomEntry.
 (* both variable names and literals are Z in this file, disambiguate... *)
+Local Coercion var {p} (x : @varname p) : expr := expr.var x. (* COQBUG(4593) *)
 Local Coercion literal (x : Z) : expr := expr.literal x.
-Local Notation "$ a" := (expr.var a) (in custom bedrock_expr at level 10, a ident).
-
 
 Definition swap_chars_over_uart :=
   let trim : varname := 1%Z in
-  let MMIOREAD  := MMInput in (* COQBUG(9514) *)
-  let MMIOWRITE := MMOutput in (* COQBUG(9514) *)
+  let prev : varname := 2%Z in
+  let rx : varname := 3%Z in
+  let tx : varname := 4%Z in
+
+  let MMIOREAD  := MMInput in (* COQBUG(9514) ... *)
+  let MMIOWRITE := MMOutput in
+  let hfrosccfg := hfrosccfg in
+  let uart0_base := uart0_base in
+  let gpio0_base := gpio0_base in
+  let period : Z := 46 in
+
   bedrock_func_body:(
-    io! trim = MMIOREAD (constr:(Ox"0x00021fec"))
+    (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
+    io! trim = MMIOREAD (constr:(Ox"0x00021fec"));
+    output! MMIOWRITE(hfrosccfg, constr:(2^30) | (trim & constr:(2^5-1)) << constr:(16));
+
+    output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! MMIOWRITE(constr:(uart0_base + Ox"008"), constr:(1)); (* tx enable *)
+    output! MMIOWRITE(constr:(uart0_base + Ox"00c"), constr:(1)); (* rx enable *)
+    output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16));
+
+    while (prev ^ period) {
+      rx = (constr:(2^32-1));
+      while (rx & constr:(2^32-1)) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")) };
+
+      tx = (constr:(2^32-1));
+      while (tx & constr:(2^32-1)) { io! tx = MMIOREAD(constr:(uart0_base + Ox"000")) };
+      output! MMIOWRITE(constr:(uart0_base + Ox"000"), prev);
+
+      prev = (rx)
+    }
   ).
 
 (*
