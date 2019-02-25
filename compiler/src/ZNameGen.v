@@ -34,6 +34,8 @@ Definition TODO{T: Type}: T. Admitted.
 
 Local Set Refine Instance Mode.
 
+Unset Universe Minimization ToSet.
+
 Instance ZNameGen: NameGen Z Z := {|
   freshNameGenState := fun l => (listmaxZ l + 1)%Z;
   genFresh := fun s => (s, (s + 1)%Z);

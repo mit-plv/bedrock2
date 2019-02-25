@@ -19,7 +19,6 @@ Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
 Require Import riscv.InstructionCoercions.
 Require Import bedrock2.Byte.
-Require compiler.examples.TestFlatImp.
 Require bedrock2.Hexdump.
 Require Import compiler.RegAllocAnnotatedNotations.
 
@@ -55,14 +54,27 @@ Goal fib_H_res 20 4 = Some (word.of_Z  5). reflexivity. Qed.
 Goal fib_H_res 20 5 = Some (word.of_Z  8). reflexivity. Qed.
 Goal fib_H_res 20 6 = Some (word.of_Z 13). reflexivity. Qed.
 
-Definition do_regalloc: bool := true.
+Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
+  FlatToRiscvDef.FlatToRiscvDef.actname := Empty_set;
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ := Empty_set_rect _;
+  FlatToRiscvDef.FlatToRiscvDef.max_ext_call_code_size := Empty_set_rect _;
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := Empty_set_rect _;
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := Empty_set_rect _;
+}.
 
-(*
-Definition compileFunc: cmd -> list Instruction :=
-  if do_regalloc then
-    (fun s => exprImp2Riscv_with_regalloc Lw Sw Demos.Fibonacci.b s)
-  else
-    (exprImp2Riscv Lw Sw).
+Notation RiscvMachine := (RiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
+
+Instance pipeline_params: Pipeline.parameters := {
+  Pipeline.W := Words32Naive.Words32Naive;
+  Pipeline.ext_spec _ _ := Empty_set_rect _;
+  Pipeline.ext_guarantee _ := False;
+  Pipeline.M := OState RiscvMachine;
+  Pipeline.PRParams := MinimalPrimitivesParams;
+}.
+
+Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
+
+Definition compileFunc: cmd -> list Instruction := exprImp2Riscv.
 
 Definition resVar := Demos.Fibonacci.b.
 
@@ -74,32 +86,6 @@ Module PrintFlatImp.
   Eval cbv in (flatten (fib_ExprImp 6)).
 End PrintFlatImp.
 
-Module PrintRegAllocAnnotatedFlatImp.
-  Import compiler.RegAllocAnnotatedNotations.
-  Open Scope regalloc_scope.
-
-  Definition regAlloc flat resVar :=
-    regalloc var var func
-             Register0
-             riscvRegisters
-             empty_map
-             flat
-             empty_set
-             (interesting_alloc resVar).
-
-  Definition regAllocWithCheck flat resVar :=
-    checker var var func empty_map (regAlloc flat resVar).
-
-  Goal False.
-let r := eval cbv in (regAlloc          (TestFlatImp.fib 6) TestFlatImp._b) in idtac r.
-let r := eval cbv in (regAllocWithCheck (TestFlatImp.fib 6) TestFlatImp._b) in idtac r.
-
-let r := eval cbv in (regAlloc          (flatten (fib_ExprImp 6)) Demos.Fibonacci.b) in idtac r.
-let r := eval cbv in (regAllocWithCheck (flatten (fib_ExprImp 6)) Demos.Fibonacci.b) in idtac r.
-  Abort.
-
-End PrintRegAllocAnnotatedFlatImp.
-
 Time Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
 
 Print fib6_riscv.
@@ -110,53 +96,40 @@ Module PrintAssembly.
 End PrintAssembly.
 
 Definition fib6_bits: list word :=
-  List.map (fun i => ZToWord 32 (encode i)) fib6_riscv.
+  List.map (fun i => word.of_Z (encode i)) fib6_riscv.
 
-Eval cbv in fib6_bits.
+(* Eval cbv in fib6_bits. *)
 
 Definition fib6_bits_as_Z: list Z :=
   List.map (fun i => (encode i)) fib6_riscv.
 
-Eval cbv in fib6_bits_as_Z.
+(* Eval cbv in fib6_bits_as_Z. *)
 
 (* This example uses the memory only as instruction memory
    TODO make an example which uses memory to store data *)
-Definition zeroedRiscvMachineCore: RiscvMachineCore := {|
-  registers := initialRegs;
-  pc := ZToWord 32 0;
-  nextPC := (ZToWord 32 4);
-  exceptionHandlerAddr := 3;
-|}.
-
 Definition zeroedRiscvMachine: RiscvMachine := {|
-    core := zeroedRiscvMachineCore;
-    machineMem := @zero_mem ((Memory.Zlength fib6_riscv + 1) * 4);
+  getRegs := map.empty;
+  getPc := word.of_Z 0;
+  getNextPc := word.of_Z 4;
+  getMem := map.empty;
+  getLog := nil;
 |}.
 
-Definition initialRiscvMachine(imem: list word): RiscvMachine :=
-  Minimal.putProgram imem (ZToWord 32 0) zeroedRiscvMachine.
+Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
+  putProgram imem (word.of_Z 0) zeroedRiscvMachine.
 
-Definition zeroedRiscvMachineL: RiscvMachineL := {|
-    machine := zeroedRiscvMachine;
-    log := nil;
-|}.
+Definition run: nat -> RiscvMachine -> option unit * RiscvMachine := Run.run RV32IM.
 
-Definition initialRiscvMachineL(imem: list word): RiscvMachineL :=
-  putProgram imem (ZToWord 32 0) zeroedRiscvMachineL.
+Definition testInitialMem := Eval vm_compute in (initialRiscvMachine fib6_bits_as_Z).(getMem).
+(* Print testInitialMem. *)
 
-Definition run: nat -> RiscvMachine -> option unit * RiscvMachine :=
- @Run.run BitWidth32 _ MachineWidth32 (OState RiscvMachine) (OState_Monad _) _ _  .
+Definition instructions_to_word8(insts: list Instruction): list Utility.byte :=
+  List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) insts.
 
-Definition runL: nat -> RiscvMachineL -> option unit * RiscvMachineL :=
- @Run.run BitWidth32 _ MachineWidth32 (OState RiscvMachineL) (OState_Monad _) _ _  .
-
-Eval cbv in ((initialRiscvMachine fib6_bits).(machineMem)).
-
-Definition fib6_as_word8: list (RecordWord.word 8) :=
-  store_word_list fib6_bits (ZToReg 0) (@zero_mem ((Memory.Zlength fib6_riscv + 1) * 4)).
+Definition fib6_as_word8: list Utility.byte := instructions_to_word8 fib6_riscv.
 
 Definition fib6_as_bytes: list byte :=
-  List.map (fun w => Byte.of_Z (uwordToZ w)) fib6_as_word8.
+  List.map (fun w => Byte.of_Z (word.unsigned w)) fib6_as_word8.
 
 Module PrintBytes.
   Import bedrock2.Hexdump.
@@ -211,35 +184,25 @@ Module PrintBytes.
   *)
 End PrintBytes.
 
-Definition fib6_L_final(fuel: nat): RiscvMachine :=
-  snd (run fuel (initialRiscvMachine fib6_bits)).
-
-Definition fib6_L_finalL(fuel: nat): RiscvMachineL :=
-  snd (runL fuel (initialRiscvMachineL fib6_bits)).
+Definition fib6_final(fuel: nat): RiscvMachine :=
+  match run fuel (initialRiscvMachine fib6_bits_as_Z) with
+  | (answer, state) => state
+  end.
 
 Definition force_option(o: option word): word :=
   match o with
   | Some w => w
-  | None => ZToWord 32 0
+  | None => word.of_Z 0
   end.
 
-Definition fib6_L_res(fuel: nat): word :=
-  force_option (Map.get (fib6_L_final fuel).(core).(registers) resVar).
-
-Definition fib6_L_resL(fuel: nat): word :=
-  force_option (Map.get (fib6_L_finalL fuel).(machine).(core).(registers) resVar).
-
-Definition fib6_L_trace(fuel: nat): Log :=
-  (fib6_L_finalL fuel).(log).
+Definition fib6_res(fuel: nat): word :=
+  force_option (map.get (fib6_final fuel).(getRegs) resVar).
 
 (* only uncomment this if you're sure there are no admits in the computational parts,
    and that no computations match on opaque proofs,
    otherwise this will eat all your memory *)
 
-Eval cbv in (fib6_L_trace 1000).
-Eval cbv in (length (fib6_L_trace 1000)).
-
-Eval cbv in (fib6_L_res 400).
+Eval vm_compute in (fib6_res 400).
 
 (* If cbv and vm_compute block or better performance is needed, we can extract to Haskell:
 Definition finalfibres: nat := wordToNat (fib6_L_res 400).
@@ -250,13 +213,13 @@ Extraction "Fib6.hs" finalfibres.
  *)
 
 (* 1st method: Run it *)
-Lemma fib6_L_res_is_13_by_running_it: exists fuel, uwordToZ (fib6_L_res fuel) = 13.
+Lemma fib6_L_res_is_13_by_running_it: exists fuel, word.unsigned (fib6_res fuel) = 13.
   exists 400%nat.
   cbv.
   reflexivity.
 Qed.
 
-Lemma fib_H_res_value: fib_H_res 20 6 = Some (ZToWord 32 13).
+Lemma fib_H_res_value: fib_H_res 20 6 = Some (word.of_Z 13).
 Proof. cbv. reflexivity. Qed.
 
 Lemma enough_registers_for_fib6: enough_registers (fib_ExprImp 6).
@@ -266,9 +229,11 @@ Qed.
 
 (* 2nd method: Prove it without running it on low level, but using the
    compiler correctness theorem *)
-Lemma fib6_L_res_is_13_by_proving_it: exists fuel, uwordToZ (fib6_L_res fuel) = 13.
-  unfold fib6_L_res. unfold fib6_L_final.
+Lemma fib6_L_res_is_13_by_proving_it: exists fuel, word.unsigned (fib6_res fuel) = 13.
+  unfold fib6_res. unfold fib6_final.
   pose proof @exprImp2Riscv_correct as P.
+Abort.
+(*
   assert (exists finalH,
     evalH Lw Sw empty_map 20 empty_map Memory.no_mem (fib_ExprImp 6)
     = Some finalH) as F. {
