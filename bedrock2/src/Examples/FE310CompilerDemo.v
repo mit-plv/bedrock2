@@ -1,10 +1,9 @@
 Require Import Coq.ZArith.BinInt.
 Require Import bedrock2.Syntax.
 
-(* Require Import riscv.MMIOTrace. *)
-(* -*- coq-prog-args: ("-Q" "/home/fiat/plv/bedrock2/deps/riscv-coq/src" "riscv"); -*- *)
-Monomorphic Inductive MMIOAction : Set :=
-  MMInput : MMIOAction | MMOutput : MMIOAction.
+Definition MMIOAction: Type := bool.
+Definition MMInput: MMIOAction := false.
+Definition MMOutput: MMIOAction := true.
 
 Local Instance syntax_parameters : Syntax.parameters := {|
   varname := Z;
@@ -69,7 +68,7 @@ Require Import bedrock2.NotationsCustomEntry.
 Local Coercion var {p} (x : @varname p) : expr := expr.var x. (* COQBUG(4593) *)
 Local Coercion literal (x : Z) : expr := expr.literal x.
 
-Definition swap_chars_over_uart :=
+Definition swap_chars_over_uart: cmd :=
   let trim : varname := 1%Z in
   let prev : varname := 2%Z in
   let rx : varname := 3%Z in

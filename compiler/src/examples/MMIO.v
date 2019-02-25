@@ -44,18 +44,16 @@ Defined.
 
 Definition compile_ext_call(results: list varname)(a: MMIOAction)(args: list varname):
   list Instruction :=
-  match a with
-  | MMInput =>
-    match results, args with
-    | [res], [addr] => [[ Lw res addr 0 ]]
-    | _, _ => [[]] (* invalid, excluded by ext_spec *)
-    end
-  | MMOutput =>
+  if isMMOutput a then
     match results, args with
     | [], [addr; val] => [[ Sw addr val 0 ]]
     | _, _ => [[]] (* invalid, excluded by ext_spec *)
     end
-  end.
+  else
+    match results, args with
+    | [res], [addr] => [[ Lw res addr 0 ]]
+    | _, _ => [[]] (* invalid, excluded by ext_spec *)
+    end.
 
 Lemma compile_ext_call_length: forall binds f args,
     Zlength (compile_ext_call binds f args) <= 1.
@@ -78,20 +76,20 @@ Proof.
   - rewrite <- H1.
     simp_step.
     simp_step.
+    (* try simp_step. (* TODO this should not fail fatally *) *)
+    split; [|cbv;auto].
+    unfold Encode.respects_bounds. simpl.
+    unfold Encode.verify_S, valid_register, opcode_STORE, funct3_SW in *.
+    repeat split; (lia || assumption).
+  - rewrite <- H1.
+    simp_step.
+    simp_step.
     simp_step.
     simp_step.
     (* try simp_step. (* TODO this should not fail fatally *) *)
     split; [|cbv;auto].
     unfold Encode.respects_bounds. simpl.
     unfold Encode.verify_I, valid_register, opcode_LOAD, funct3_LW in *.
-    repeat split; (lia || assumption).
-  - rewrite <- H1.
-    simp_step.
-    simp_step.
-    (* try simp_step. (* TODO this should not fail fatally *) *)
-    split; [|cbv;auto].
-    unfold Encode.respects_bounds. simpl.
-    unfold Encode.verify_S, valid_register, opcode_STORE, funct3_SW in *.
     repeat split; (lia || assumption).
 Qed.
 
@@ -144,10 +142,10 @@ Section MMIO1.
       match argvals with
       | addr :: _ =>
         isMMIOAddr addr /\
-        match action with
-        | MMInput => argvals = [addr] /\ forall val, post m [val]
-        | MMOutput => exists val, argvals = [addr; val] /\ post m nil
-        end
+        if isMMOutput action then
+          exists val, argvals = [addr; val] /\ post m nil
+        else
+          argvals = [addr] /\ forall val, post m [val]
       | nil => False
       end;
   |}.
@@ -219,6 +217,8 @@ Section MMIO1.
       pose proof (compile_ext_call_emits_valid FlatToRiscv.iset _ action _ V_resvars V_argvars).
       destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
       destruct action; cbv [getRegs getPc getNextPc getMem getLog] in *.
+      + (* MMOutput *)
+        apply TODO.
       + (* MMInput *)
         simpl in *|-.
         simp.
@@ -261,13 +261,11 @@ Section MMIO1.
                 subst l'.
                 unfold mmioLoadEvent, signedByteTupleToReg in *. simpl in *.
                 Fail exact B. (* TODO trace translation *) apply TODO. } }
-      + (* MMOutput *)
-        apply TODO.
-      - (* go_load *)
-        (* TODO make FlatToRiscv32.parameters and eapply go_load *)
-        apply TODO.
-      - (* go_store *)
-        apply TODO.
+    - (* go_load *)
+      (* TODO make FlatToRiscv32.parameters and eapply go_load *)
+      apply TODO.
+    - (* go_store *)
+      apply TODO.
   Qed.
 
 End MMIO1.

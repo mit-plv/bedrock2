@@ -18,6 +18,7 @@ Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import compiler.examples.MMIO.
 
+Unset Universe Minimization ToSet.
 
 Open Scope Z_scope.
 
