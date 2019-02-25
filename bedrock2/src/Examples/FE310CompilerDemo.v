@@ -18,13 +18,11 @@ From coqutil Require Import Word.Interface Word.Naive Z.HexNotation String.
 Require Import bedrock2.Semantics.
 Import List.ListNotations.
 
-Definition patience : Z.                                     exact (10^150). Qed.
-
 Definition otp_base   := Ox"0x00020000". Definition otp_pastend   := Ox"0x00022000".
 Definition hfrosccfg  := Ox"10008000".
 Definition gpio0_base := Ox"0x10012000". Definition gpio0_pastend := Ox"0x10013000".
 Definition uart0_base := Ox"0x10013000". Definition uart0_pastend := Ox"0x10014000".
-Definition uart0_rxdata := Ox"10013004". Definition uart0_txdata := Ox"10013000".
+Definition uart0_rxdata := Ox"10013004". Definition uart0_txdata  := Ox"10013000".
 
 Local Instance parameters : parameters :=
   let word := Word.Naive.word 32 eq_refl in
@@ -37,25 +35,23 @@ Local Instance parameters : parameters :=
   funname_eqb := fun _ _ => true;
   ext_spec t m action args post :=
     match action, List.map word.unsigned args with
-    | MMOutput, [addr; value] =>
-      if addr =? hfrosccfg                                then Z.testbit value 30 = true else
-      if (gpio0_base <=? addr) && (addr+3 <? gpio0_pastend) then True else
-      if (uart0_base <=? addr) && (addr+3 <? uart0_pastend) then True else
-      False
-      /\ post m []
     | MMInput, [addr] =>
-      if addr =? hfrosccfg                                  then True else
-      if (  otp_base <=? addr) && (addr+3 <?   otp_pastend) then True else
-      if (gpio0_base <=? addr) && (addr+3 <? gpio0_pastend) then True else
-      if (uart0_base <=? addr) && (addr+3 <? uart0_pastend) then True else
+      if addr =? hfrosccfg                                then True else
+      if (  otp_base <=? addr) && (addr <?   otp_pastend) then True else
+      if (gpio0_base <=? addr) && (addr <? gpio0_pastend) then True else
+      if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
       False
-      /\ forall v,
-          (patience < Z.of_nat (List.length t) -> addr = uart0_rxdata ->
-            word.and v (word.of_Z 255) = word.of_Z 46) /\
-          (patience < Z.of_nat (List.length t) -> addr = uart0_txdata ->
-            word.and v (word.slu (word.of_Z 1) (word.of_Z 31)) = (word.slu (word.of_Z 1) (word.of_Z 31))) /\
-          post m [v]
+      /\ addr mod 4 = 0
+      /\ forall v, post m [v]
+    | MMOutput, [addr; value] =>
+      if addr =? hfrosccfg                                then True else
+      if (gpio0_base <=? addr) && (addr <? gpio0_pastend) then True else
+      if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
+      False
+      /\ addr mod 4 = 0
+      /\ post m []
     | _, _ =>
       False
     end%list%bool;
 |}.
+(* hfrosccfg: Z.testbit value 30 = true  *)
