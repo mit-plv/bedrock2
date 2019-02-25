@@ -146,11 +146,11 @@ Proof.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
     { rewrite word__add_sub.
-      repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
+      repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in progress (* COQBUG(9652) *) rewrite H end.
       rewrite length_rep in *. (* WHY is this necessary for lia? *)
       Z.div_mod_to_equations. Lia.lia. }
     { rewrite word__add_sub.
-      repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
+      repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in progress (* COQBUG(9652) *) rewrite H end.
       Z.div_mod_to_equations. Lia.lia. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
