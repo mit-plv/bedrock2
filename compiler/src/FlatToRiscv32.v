@@ -68,7 +68,7 @@ Module Import FlatToRiscv32.
       Utility.byte := byte;
       Utility.byte_ok := byte_ok;
       Utility.width := 32;
-      Utility.width_cases := TODO;
+      Utility.width_cases := or_introl eq_refl;
       Utility.word := word;
       Utility.word_ok := word_ok;
     |};

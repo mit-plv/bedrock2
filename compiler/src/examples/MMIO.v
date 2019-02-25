@@ -117,12 +117,10 @@ End MMIO.
 Section MMIO1.
   Context {p: unique! MMIO.parameters}.
 
-  Lemma cases32: 32 = 32 \/ 32 = 64. lia. Qed.
-
   Instance Words32: Utility.Words := {
     Utility.byte := byte;
     Utility.word := word;
-    Utility.width_cases := cases32;
+    Utility.width_cases := or_introl eq_refl;
   }.
 
   (* Using the memory layout of FE310-G000 *)
@@ -273,3 +271,10 @@ Section MMIO1.
   Qed.
 
 End MMIO1.
+
+Existing Instance Words32.
+Existing Instance mmio_semantics_params.
+Existing Instance compilation_params.
+Existing Instance FlatToRiscv_params.
+Existing Instance assume_riscv_word_properties.
+Existing Instance FlatToRiscv_hyps.
