@@ -1,3 +1,5 @@
+From coqutil Require Import sanity.
+Local Unset Universe Minimization ToSet.
 Require Import Coq.ZArith.BinInt.
 Require Import bedrock2.Syntax.
 
@@ -56,7 +58,7 @@ Local Instance parameters : parameters :=
     | _, _ =>
       False
     end%list%bool;
-|}.
+  |}.
 (* hfrosccfg: Z.testbit value 30 = true  *)
 
 
@@ -118,4 +120,8 @@ Lemma swap_chars_over_uart_correct m :
   (fun t m l => True).
 Proof.
   repeat (straightline || refine (conj I (conj eq_refl _))).
+  WeakestPrecondition.unfold1_cmd_goal.
+  cbv [WeakestPrecondition.cmd_body].
+  eexists Z, _, (fun _ _ _ _ => True).
+  split. 1:unshelve eapply (Z.lt_wf 0).
 Abort.
