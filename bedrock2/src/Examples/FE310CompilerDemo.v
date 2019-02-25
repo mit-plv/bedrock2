@@ -31,6 +31,7 @@ Local Instance parameters : parameters :=
   let word := Word.Naive.word 32 eq_refl in
   let byte := Word.Naive.word 8 eq_refl in
   {|
+  width := 32;
   syntax := syntax_parameters;
   mem := SortedListWord.map _ _;
   locals := Z_keyed_SortedListMap.Zkeyed_map _;
@@ -38,19 +39,19 @@ Local Instance parameters : parameters :=
   funname_eqb := fun _ _ => true;
   ext_spec t m action args post :=
     match action, List.map word.unsigned args with
-    | MMInput, [addr] =>
+    | MMInput, [addr] => (
       if addr =? hfrosccfg                                then True else
       if (  otp_base <=? addr) && (addr <?   otp_pastend) then True else
       if (gpio0_base <=? addr) && (addr <? gpio0_pastend) then True else
       if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
-      False
+      False )
       /\ addr mod 4 = 0
       /\ forall v, post m [v]
-    | MMOutput, [addr; value] =>
+    | MMOutput, [addr; value] => (
       if addr =? hfrosccfg                                then True else
       if (gpio0_base <=? addr) && (addr <? gpio0_pastend) then True else
       if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
-      False
+      False )
       /\ addr mod 4 = 0
       /\ post m []
     | _, _ =>
@@ -73,6 +74,7 @@ Definition swap_chars_over_uart :=
   let prev : varname := 2%Z in
   let rx : varname := 3%Z in
   let tx : varname := 4%Z in
+  let running : varname := 5%Z in
 
   let MMIOREAD  := MMInput in (* COQBUG(9514) ... *)
   let MMIOWRITE := MMOutput in
@@ -91,7 +93,8 @@ Definition swap_chars_over_uart :=
     output! MMIOWRITE(constr:(uart0_base + Ox"00c"), constr:(1)); (* rx enable *)
     output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16));
 
-    while (prev ^ period) {
+    running = (constr:(2^32-1));
+    while (running) {
       rx = (constr:(2^32-1));
       while (rx & constr:(2^32-1)) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")) };
 
@@ -99,11 +102,21 @@ Definition swap_chars_over_uart :=
       while (tx & constr:(2^32-1)) { io! tx = MMIOREAD(constr:(uart0_base + Ox"000")) };
       output! MMIOWRITE(constr:(uart0_base + Ox"000"), prev);
 
-      prev = (rx)
+      prev = (rx);
+      running = (running - constr:(1));
+      if (prev == period) { running = (running ^ running) }
     }
   ).
 
 (*
-Unset Printing Notations.
 Compute swap_chars_over_uart.
 *)
+
+Require Import bedrock2.ProgramLogic coqutil.Map.Interface.
+
+Lemma swap_chars_over_uart_correct m :
+  WeakestPrecondition.cmd (Empty_set_rect _) swap_chars_over_uart nil m map.empty
+  (fun t m l => True).
+Proof.
+  repeat (straightline || refine (conj I (conj eq_refl _))).
+Abort.
