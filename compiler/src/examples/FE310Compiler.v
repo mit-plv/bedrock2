@@ -65,9 +65,33 @@ Eval vm_compute in compileFunc mmio_adder.
 
 Definition mmio_adder_bytes: list byte := Eval vm_compute in main mmio_adder.
 
+
+Require Import bedrock2.Examples.FE310CompilerDemo.
+Time Definition swap_demo_byte: list byte := Eval vm_compute in main swap_chars_over_uart.
+
+Module PrintAssembly.
+  Import riscv.InstructionNotations.
+  Eval vm_compute in compileFunc swap_chars_over_uart.
+End PrintAssembly.
+
+
 Module PrintBytes.
   Import bedrock2.Hexdump.
   Local Open Scope hexdump_scope.
   Set Printing Width 100.
   Goal True. let x := eval cbv in mmio_adder_bytes in idtac x. Abort.
 End PrintBytes.
+
+
+(* This example uses the memory only as instruction memory
+   TODO make an example which uses memory to store data *)
+Definition zeroedRiscvMachine: RiscvMachine := {|
+  getRegs := map.empty;
+  getPc := word.of_Z 0;
+  getNextPc := word.of_Z 4;
+  getMem := map.empty;
+  getLog := nil;
+|}.
+
+Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
+  putProgram imem (word.of_Z 0) zeroedRiscvMachine.
