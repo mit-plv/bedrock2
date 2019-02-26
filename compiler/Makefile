@@ -26,7 +26,7 @@ COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedroc
 Makefile.coq.all: force _CoqProject
 	$(COQ_MAKEFILE) $(ALL_VS) -o Makefile.coq.all
 
-src/examples/swap_bytes_over_uart.hex: src/examples/swap_bytes_over_uart_hexdump.v _CoqProject src/examples/FE310Compiler.v
+src/examples/swap_bytes_over_uart.hex: src/examples/swap_bytes_over_uart_hexdump.v _CoqProject src/examples/FE310Compiler.vo
 	coqc -q $(shell cat _CoqProject) $< > $@
 src/examples/swap_bytes_over_uart.bin: src/examples/swap_bytes_over_uart.hex
 	xxd -r -p $< > $@

@@ -81,15 +81,6 @@ Module PrintAssembly.
   (* Eval vm_compute in compileFunc swap_chars_over_uart. *)
 End PrintAssembly.
 
-
-Module PrintBytes.
-  Import bedrock2.Hexdump.
-  Local Open Scope hexdump_scope.
-  Set Printing Width 100.
-  Goal True. let x := eval cbv in swap_demo_byte in idtac x. Abort.
-End PrintBytes.
-
-
 (* This example uses the memory only as instruction memory
    TODO make an example which uses memory to store data *)
 Definition zeroedRiscvMachine: RiscvMachine := {|
@@ -107,9 +98,14 @@ Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
 
 Definition awesome_postcondition: trace -> Prop. Admitted.
 
+Require bedrock2.WeakestPreconditionProperties.
 Lemma WP_framework_is_awesome:
   exec map.empty swap_chars_over_uart nil map.empty map.empty
        (fun t m l => awesome_postcondition t).
+Proof.
+  eapply bedrock2.WeakestPreconditionProperties.sound_nil.
+(* WeakestPrecondition.cmd (fun _ _ _ _ _  => False) *)
+(*   swap_chars_over_uart [] map.empty map.empty (fun t _ _ => awesome_postcondition t) *)
 Admitted.
 
 Definition initialSwapMachine: RiscvMachine :=

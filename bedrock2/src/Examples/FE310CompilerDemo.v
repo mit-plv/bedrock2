@@ -71,16 +71,15 @@ Local Coercion var {p} (x : @varname p) : expr := expr.var x. (* COQBUG(4593) *)
 Local Coercion literal (x : Z) : expr := expr.literal x.
 
 Definition swap_chars_over_uart: cmd :=
-  let trim : varname := 1%Z in
-  let prev : varname := 2%Z in
-  let rx : varname := 3%Z in
-  let tx : varname := 4%Z in
-  let running : varname := 5%Z in
+  let prev : varname := 1%Z in
+  let rx : varname := 2%Z in
+  let tx : varname := 3%Z in
+  let running : varname := 4%Z in
 
-  let bit31 : varname := 6%Z in
-  let one : varname := 7%Z in
-  let dot : varname := 8%Z in
-  let uart_tx : varname := 9%Z in
+  let bit31 : varname := 5%Z in
+  let one : varname := 6%Z in
+  let dot : varname := 7%Z in
+  let uart_tx : varname := 8%Z in
 
   let MMIOREAD  := MMInput in (* COQBUG(9514) ... *)
   let MMIOWRITE := MMOutput in
@@ -90,9 +89,9 @@ Definition swap_chars_over_uart: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! trim = MMIOREAD (constr:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, constr:(2^30) | (trim & constr:(2^5-1)) << constr:(16));
-    constr:(cmd.unset trim);
+    io! rx = MMIOREAD (constr:(Ox"0x00021fec"));
+    output! MMIOWRITE(hfrosccfg, constr:(2^30) | (rx & constr:(2^5-1)) << constr:(16));
+    constr:(cmd.unset rx);
 
     one = (constr:(1));
     output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
@@ -100,20 +99,24 @@ Definition swap_chars_over_uart: cmd :=
     output! MMIOWRITE(constr:(uart0_base + Ox"00c"), one); (* rx enable *)
     output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    dot = (constr:(46)); prev = (dot);
-    bit31 = (constr:(2^31)); running = (bit31);
+    dot = (constr:(46));
+    prev = (dot);
+    running = (one-dot);
     while (running) {
+      bit31 = (constr:(2^31)); 
       rx = (bit31);
-      while (rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")) };
+      while (running & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); running = (running-one) };
 
       uart_tx = (constr:(uart0_base + Ox"000"));
       tx = (bit31);
-      while (tx & bit31) { io! tx = MMIOREAD(uart_tx) }; constr:(cmd.unset tx);
-      output! MMIOWRITE(uart_tx, prev); constr:(cmd.unset uart_tx);
+      while (running & tx & bit31) { io! tx = MMIOREAD(uart_tx); running = (running-one) };
+      output! MMIOWRITE(uart_tx, prev);
 
-      prev = (rx); constr:(cmd.unset rx);
+      prev = (rx);
       running = (running - one);
-      if (prev == dot) { running = (running ^ running) }
+      if (prev == dot) { running = (running ^ running) };
+
+      constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31)
     }
   ).
 
@@ -135,19 +138,20 @@ Proof.
   cbv [WeakestPrecondition.cmd_body].
 
   refine (
-  let trim : varname := 1%Z in
-  let prev : varname := 2%Z in
-  let rx : varname := 3%Z in
-  let tx : varname := 4%Z in
-  let running : varname := 5%Z in
-  let bit31 : varname := 6%Z in
-  let one : varname := 7%Z in
-  let dot : varname := 8%Z in
-  let uart_tx : varname := 9%Z in
+  let prev : varname := 1%Z in
+  let rx : varname := 2%Z in
+  let tx : varname := 3%Z in
+  let running : varname := 4%Z in
+
+  let bit31 : varname := 5%Z in
+  let one : varname := 6%Z in
+  let dot : varname := 7%Z in
+  let uart_tx : varname := 8%Z in
+
   _).
 
-  let keys := eval cbv in [running; prev; bit31; one; dot] in
-  eexists Z, _, (fun v t _ l => exists p, map.of_list keys [word.of_Z v; p; word.of_Z(2^31); word.of_Z(1); word.of_Z(46)] = Some l ).
+  let keys := eval cbv in [running; prev; one; dot] in
+  eexists Z, _, (fun v t _ l => exists p, map.of_list keys [word.of_Z v; p; word.of_Z(1); word.of_Z(46)] = Some l ).
   split; [unshelve eapply (Z.lt_wf 0)|].
   split.
   { eexists. eexists. cbn. reflexivity. }
