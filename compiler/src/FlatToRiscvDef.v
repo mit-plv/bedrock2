@@ -63,8 +63,13 @@ Section FlatToRiscv1.
 
   (* Part 1: Definitions needed to state when compilation outputs valid code *)
 
-  (* TODO is 2^9 really the best we can get? *)
-  Definition stmt_not_too_big(s: stmt): Prop := stmt_size s < 2 ^ 9.
+  (* If stmt_size is < 2^10, it is compiled to < 2^10 instructions, which is
+     < 2^12 bytes, and the branch instructions have 12 bits to encode the
+     relative jump length. One of them is used for the sign, and the other
+     11 encode the jump length as a multiple of 2, so jump lengths have to
+     be < 2^12 bytes, i.e. < 2^10 instructions, so this bound is tight,
+     unless we start using multi-instruction jumps. *)
+  Definition stmt_not_too_big(s: stmt): Prop := stmt_size s < 2 ^ 10.
 
   Definition valid_registers_bcond (cond: bcond) : Prop :=
     match cond with
