@@ -5,7 +5,7 @@ Require Export coqutil.Word.Interface coqutil.Word.Properties.
 Require Export coqutil.Decidable.
 Require Export compiler.util.Tactics.
 Require Export lib.fiat_crypto_tactics.UniquePose.
-
+Require Import coqutil.Datatypes.PropSet.
 
 Lemma nth_error_nth: forall {T: Type} (l: list T) (e d: T) (i: nat),
   nth_error l i = Some e ->
@@ -17,11 +17,6 @@ Proof.
     + reflexivity.
     + simpl. auto.
 Qed.
-
-Require Import coqutil.Datatypes.PropSet.
-(* TODO move to PropSet *)
-Definition set(A: Type) := A -> Prop.
-Definition of_list{A: Type}(l: list A): set A := fun a => List.In a l.
 
 
 Section WithMap.
