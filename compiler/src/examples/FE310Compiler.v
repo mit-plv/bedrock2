@@ -104,19 +104,9 @@ Lemma WP_framework_is_awesome:
 Proof.
   eapply bedrock2.WeakestPreconditionProperties.sound_nil.
   epose proof bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct _ as H.
-  (* TODO *)
-  (* eapply H. *)
-  lazymatch goal with H: ?L |- ?R => assert (L = R) end.
-  1: { clear.
-       repeat f_equal.
-       2: {
-         unfold parameters, mmio_semantics_params.
-         f_equal.
-         1:admit.
-         {
-           cbv [MMIO.word mmio_params].
-           unfold word32.
-           Locate bound32.
+  eapply H.
+  Unshelve.
+  (* TODO Morphisms.Proper *)
 Admitted.
 
 Definition initialSwapMachine: RiscvMachine :=

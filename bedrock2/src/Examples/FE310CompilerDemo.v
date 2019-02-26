@@ -37,7 +37,7 @@ Local Instance parameters : parameters :=
   mem := SortedListWord.map _ _;
   locals := Z_keyed_SortedListMap.Zkeyed_map _;
   funname_env := Empty_set_keyed_map.map;
-  funname_eqb := fun _ _ => true;
+  funname_eqb := Empty_set_rect _;
   ext_spec t m action args post :=
     match action, List.map word.unsigned args with
     | MMInput, [addr] => (
@@ -102,7 +102,7 @@ Definition swap_chars_over_uart: cmd :=
     prev = (dot);
     running = (one-dot);
     while (running) {
-      bit31 = (constr:(2^31)); 
+      bit31 = (constr:(2^31));
       rx = (bit31);
       polling = (one-dot);
       while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = (polling-one) };
@@ -229,7 +229,7 @@ Proof.
       pose proof Properties.word.unsigned_range Vr.
       rewrite word.unsigned_sub, word.unsigned_of_Z; repeat rewrite ?Z.mod_small;
         (Omega.omega || clear; cbv; split; congruence). }
-    { 
+    {
       repeat straightline.
       eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l).
       split; [eapply word.well_founded_lt_unsigned|].
