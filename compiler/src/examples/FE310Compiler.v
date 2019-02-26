@@ -97,16 +97,26 @@ Definition imemStart: word. Admitted. (* TODO *)
 Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
   putProgram imem imemStart zeroedRiscvMachine.
 
-Definition awesome_postcondition: trace -> Prop. Admitted.
-
 Require bedrock2.WeakestPreconditionProperties.
 Lemma WP_framework_is_awesome:
   exec map.empty swap_chars_over_uart nil map.empty map.empty
-       (fun t m l => awesome_postcondition t).
+       (fun t m l => True).
 Proof.
   eapply bedrock2.WeakestPreconditionProperties.sound_nil.
-(* WeakestPrecondition.cmd (fun _ _ _ _ _  => False) *)
-(*   swap_chars_over_uart [] map.empty map.empty (fun t _ _ => awesome_postcondition t) *)
+  epose proof bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct _ as H.
+  (* TODO *)
+  (* eapply H. *)
+  lazymatch goal with H: ?L |- ?R => assert (L = R) end.
+  1: { clear.
+       repeat f_equal.
+       2: {
+         unfold parameters, mmio_semantics_params.
+         f_equal.
+         1:admit.
+         {
+           cbv [MMIO.word mmio_params].
+           unfold word32.
+           Locate bound32.
 Admitted.
 
 Definition initialSwapMachine: RiscvMachine :=
@@ -120,7 +130,7 @@ Definition mcomp_sat:
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
                       initialSwapMachine
-                      (fun (finalL: RiscvMachine) => awesome_postcondition finalL.(getLog)).
+                      (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
 Proof.
   (* TODO why does "eapply @exprImp2Riscv_correct" not work? *)
   unshelve epose proof (@exprImp2Riscv_correct _ _
