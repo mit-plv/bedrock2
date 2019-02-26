@@ -4,8 +4,8 @@ Require Import Coq.ZArith.BinInt.
 Require Import bedrock2.Syntax.
 
 Definition MMIOAction: Type := bool.
-Definition MMInput: MMIOAction := false.
-Definition MMOutput: MMIOAction := true.
+Notation MMInput := false (only parsing).
+Notation MMOutput := true (only parsing).
 
 Local Instance syntax_parameters : Syntax.parameters := {|
   varname := Z;
@@ -59,8 +59,6 @@ Local Instance parameters : parameters :=
       False
     end%list%bool;
   |}.
-(* hfrosccfg: Z.testbit value 30 = true  *)
-
 
 
 
@@ -150,6 +148,35 @@ Module word.
 End word.
 
 From coqutil Require Import Z.div_mod_to_equations.
+
+Import List. Import ListNotations.
+Fixpoint spec (t : trace) (output_to_explain : option word) : Prop.
+  cbv [trace] in *.
+  refine (
+      match t with
+      | nil => output_to_explain = None
+      | (_, MMInput, [addr], (_, [value]))::trace =>
+        if (word.unsigned addr =? uart0_base + Ox"004") && negb (Z.testbit (word.unsigned value) 31)
+        then output_to_explain = Some value /\ spec trace None
+        else spec trace output_to_explain
+      | (_, MMOutput, [addr; value], (_, []))::trace => (
+        if word.unsigned addr =? hfrosccfg 
+          then Z.testbit (word.unsigned value) 30 = true else
+        if word.unsigned addr =? uart0_base + Ox"018"
+          then word.unsigned value = 640 /\ spec trace output_to_explain else
+        if (word.unsigned addr =? uart0_base + Ox"000")
+        then match trace with
+             | (_, MMInput, [addr'], (_, [value']))::trace =>
+               word.unsigned addr' = uart0_base + Ox"000" /\ 
+               Z.testbit (word.unsigned value') 31 = false /\
+               output_to_explain = None /\ spec trace (Some value)
+             | _ => False end else
+        True
+        ) /\ spec trace output_to_explain
+      | _ => False
+      end%bool%list
+    ).
+Defined.
 
 Lemma swap_chars_over_uart_correct m :
   WeakestPrecondition.cmd (fun _ _ _ _ _ => False) swap_chars_over_uart nil m map.empty
