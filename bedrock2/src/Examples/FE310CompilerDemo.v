@@ -80,6 +80,7 @@ Definition swap_chars_over_uart: cmd :=
   let one : varname := 6%Z in
   let dot : varname := 7%Z in
   let uart_tx : varname := 8%Z in
+  let polling : varname := 9%Z in
 
   let MMIOREAD  := MMInput in (* COQBUG(9514) ... *)
   let MMIOWRITE := MMOutput in
@@ -105,18 +106,20 @@ Definition swap_chars_over_uart: cmd :=
     while (running) {
       bit31 = (constr:(2^31)); 
       rx = (bit31);
-      while (running & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); running = (running-one) };
+      polling = (one-dot);
+      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = (polling-one) };
 
       uart_tx = (constr:(uart0_base + Ox"000"));
       tx = (bit31);
-      while (running & tx & bit31) { io! tx = MMIOREAD(uart_tx); running = (running-one) };
+      polling = (one-dot);
+      while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = (polling-one) };
       output! MMIOWRITE(uart_tx, prev);
 
       prev = (rx);
       running = (running - one);
       if (prev == dot) { running = (running ^ running) };
 
-      constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31)
+      constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31); constr:(cmd.unset polling)
     }
   ).
 
@@ -127,11 +130,29 @@ Compute swap_chars_over_uart.
 Require Import bedrock2.ProgramLogic coqutil.Map.Interface.
 Import Coq.Lists.List. Import ListNotations.
 
-Definition invert_Some {A} (x : option A)
-  : match x with Some _ => A | None => True end :=
-    match x with Some x => x | None => I end.
+Local Opaque word.of_Z.
+Module Z.
+  Lemma land_nonzero a b : Z.land a b <> 0 -> a <> 0 /\ b <> 0.
+  Proof.
+    destruct (Z.eq_dec a 0), (Z.eq_dec b 0); subst;
+      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; Lia.lia.
+  Qed.
+End Z.
+
+Module word.
+  Lemma well_founded_lt_unsigned : well_founded (fun a b : word => word.unsigned a < word.unsigned b).
+  Proof.
+    simple refine (Wf_nat.well_founded_lt_compat _ (fun x => Z.to_nat (word.unsigned x)) _ _).
+    cbv beta; intros a b H.
+    pose proof proj1 (Properties.word.unsigned_range a); pose proof proj1 (Properties.word.unsigned_range b).
+    eapply Znat.Z2Nat.inj_lt; trivial.
+  Qed.
+End word.
+
+From coqutil Require Import Z.div_mod_to_equations.
+
 Lemma swap_chars_over_uart_correct m :
-  WeakestPrecondition.cmd (Empty_set_rect _) swap_chars_over_uart nil m map.empty
+  WeakestPrecondition.cmd (fun _ _ _ _ _ => False) swap_chars_over_uart nil m map.empty
   (fun t m l => True).
 Proof.
   repeat (straightline || refine (conj I (conj eq_refl _))).
@@ -147,18 +168,72 @@ Proof.
   let one : varname := 6%Z in
   let dot : varname := 7%Z in
   let uart_tx : varname := 8%Z in
+  let polling : varname := 9%Z in
 
   _).
+  (* SearchAbout well_founded. (* ANOMALY *) *)
+
 
   let keys := eval cbv in [running; prev; one; dot] in
-  eexists Z, _, (fun v t _ l => exists p, map.of_list keys [word.of_Z v; p; word.of_Z(1); word.of_Z(46)] = Some l ).
-  split; [unshelve eapply (Z.lt_wf 0)|].
+  eexists _, _, (fun v t _ l => exists p, map.of_list keys [v; p; word.of_Z(1); word.of_Z(46)] = Some l ).
+  split; [eapply word.well_founded_lt_unsigned|].
+  repeat straightline.
   split.
-  { eexists. eexists. cbn. reflexivity. }
+  { eexists. eexists. exact eq_refl. }
   { intros V t ? ? H.
     destruct H. cbn in H. injection H; clear H; intro H; symmetry in H.
     repeat straightline.
     split; repeat straightline.
-    (* FIXME: inner loops do not terminate intrinsically *)
-    admit. }
-Abort.
+    eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list [polling; rx] [v; rxv] l0 = Some l).
+    split; [eapply word.well_founded_lt_unsigned|].
+    split.
+    { eexists. eexists. cbn. exact eq_refl. }
+    intros Vr tr ? ? Hr.
+    destruct Hr as [? Hr]. cbn in Hr. injection Hr; clear Hr; intro Hr; symmetry in Hr.
+    repeat straightline.
+    split; repeat (straightline || refine (conj I (conj eq_refl _))).
+    { eexists. eexists. 1:eexists; exact eq_refl.
+      subst b.
+      repeat match goal with
+             | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H
+             | H: _ |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
+             end.
+      subst v6.
+      pose proof Properties.word.unsigned_range Vr.
+      rewrite word.unsigned_sub, word.unsigned_of_Z; repeat rewrite ?Z.mod_small;
+        (Omega.omega || clear; cbv; split; congruence). }
+    { 
+      repeat straightline.
+      eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l).
+      split; [eapply word.well_founded_lt_unsigned|].
+      split.
+      { eexists. eexists. cbn. reflexivity. }
+      intros Vrr trr ? ? Hrr.
+      destruct Hrr as [? Hrr]. cbn in Hrr. injection Hrr; clear Hrr; intro Hrr; symmetry in Hrr.
+      repeat straightline.
+      split; repeat (straightline || refine (conj I (conj eq_refl _))).
+    { eexists. eexists. 1:eexists; exact eq_refl.
+      subst b0.
+      repeat match goal with
+             | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H
+             | H: _ |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
+             end.
+      subst v8.
+      pose proof Properties.word.unsigned_range Vrr.
+      rewrite word.unsigned_sub, word.unsigned_of_Z; repeat rewrite ?Z.mod_small;
+        (Omega.omega || clear; cbv; split; congruence). }
+    eexists; split; [repeat straightline|]; split; repeat straightline.
+    { eexists. split; [eexists; exact eq_refl|].
+      subst v8. rewrite ?Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent.
+      pose proof Properties.word.unsigned_range V; Omega.omega. }
+    { eexists. eexists. 1:eexists; exact eq_refl.
+      subst b0.
+      repeat match goal with
+             | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H
+             | H: _ |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
+             end.
+      subst v7.
+      pose proof Properties.word.unsigned_range V.
+      rewrite word.unsigned_sub, word.unsigned_of_Z; repeat rewrite ?Z.mod_small;
+        (Omega.omega || clear; cbv; split; congruence). } } }
+Defined.

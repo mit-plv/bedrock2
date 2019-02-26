@@ -79,7 +79,7 @@ Section ExprImp1.
 
     Fixpoint expr_size(e: expr): Z :=
       match e with
-      | expr.literal _ => 8
+      | expr.literal _ => 15
       | expr.load _ e => expr_size e + 1
       | expr.var _ => 1
       | expr.op op e1 e2 => expr_size e1 + expr_size e2 + 2
@@ -90,39 +90,35 @@ Section ExprImp1.
       induction exp; simpl; try omega.
     Qed.
 
+    Definition exprs_size(es: list expr): Z := fold_right (fun e res => res + expr_size e) 0 es.
+
     Fixpoint cmd_size(s: cmd): Z :=
       match s with
       | cmd.store _ a v => expr_size a + expr_size v + 1
-      | cmd.set x e => expr_size e + 1
-      | cmd.cond cond bThen bElse => expr_size cond + cmd_size bThen + cmd_size bElse + 1
-      | cmd.while cond body => expr_size cond + cmd_size body + 1
-      | cmd.seq s1 s2 => cmd_size s1 + cmd_size s2 + 1
-      | cmd.skip | cmd.unset _ => 1
-      | cmd.call binds f args =>
-          Zlength binds + Zlength args + List.fold_right Z.add 0 (List.map expr_size args) + 1
-      | cmd.interact _ _ exprs => fold_right (fun e res => res + expr_size e) 0 exprs
+      | cmd.set x e => expr_size e
+      | cmd.cond cond bThen bElse => expr_size cond + cmd_size bThen + cmd_size bElse + 2
+      | cmd.while cond body => expr_size cond + cmd_size body + 2
+      | cmd.seq s1 s2 => cmd_size s1 + cmd_size s2
+      | cmd.skip | cmd.unset _ => 0
+      | cmd.call binds f args => exprs_size args + 1000 (* TODO *)
+      | cmd.interact _ _ exprs => exprs_size exprs
                                   + 7 (* randomly chosen max allowed number of instructions
                                          one interaction can be compiled to, TODO parametrize
                                          over this *)
       end.
 
-    Lemma cmd_size_pos: forall s, cmd_size s > 0.
+    Lemma exprs_size_nonneg: forall es, 0 <= exprs_size es.
+    Proof.
+      induction es; simpl in *; try omega. pose proof (expr_size_pos a). omega.
+    Qed.
+
+    Lemma cmd_size_nonneg: forall s, 0 <= cmd_size s.
     Proof.
       induction s; simpl;
       repeat match goal with
       | e: expr |- _ => unique pose proof (expr_size_pos e)
+      | es: list expr |- _ => unique pose proof (exprs_size_nonneg es)
       | l: list _ |- _ => unique pose proof (Zlength_nonneg l)
-      end;
-      try omega;
-      induction args;
-      simpl;
-      rewrite? Zlength_nil in *;
-      try omega;
-      rewrite? Zlength_cons in *;
-      repeat match goal with
-      | e: expr |- _ => unique pose proof (expr_size_pos e)
-      | l: list _ |- _ => unique pose proof (Zlength_nonneg l)
-      | A: _ -> _, B: _ |- _ => specialize (A B)
       end;
       try omega.
     Qed.

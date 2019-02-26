@@ -63,15 +63,15 @@ Section FlatImpSize1.
     match s with
     | SLoad sz x a => 1
     | SStore sz a v => 1
-    | SLit x v => 8
+    | SLit x v => 15
     | SOp x op y z => 2
     | SSet x y => 1
-    | SIf cond bThen bElse => 1 + (rec bThen) + (rec bElse)
-    | SLoop body1 cond body2 => 1 + (rec body1) + (rec body2)
-    | SSeq s1 s2 => 1 + (rec s1) + (rec s2)
-    | SSkip => 1
-    | SCall binds f args => 1 + (Zlength binds + Zlength args)
-    | SInteract binds f args => 1 + (Zlength binds + Zlength args) + max_ext_call_code_size f
+    | SIf cond bThen bElse => 1 + (rec bThen) + 1 + (rec bElse)
+    | SLoop body1 cond body2 => (rec body1) + 1 + (rec body2) + 1
+    | SSeq s1 s2 => (rec s1) + (rec s2)
+    | SSkip => 0
+    | SCall binds f args => 1000 (* TODO not sure how much register saving will cost etc *)
+    | SInteract binds f args => max_ext_call_code_size f
     end.
 
   Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
@@ -80,15 +80,10 @@ Section FlatImpSize1.
 
   Arguments Z.add _ _ : simpl never.
 
-  Lemma stmt_size_pos: forall s, stmt_size s > 0.
+  Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.
-    induction s; simpl; try omega;
-    pose proof (Zlength_nonneg binds);
-    pose proof (Zlength_nonneg args);
-    pose proof max_ext_call_code_size_nonneg;
-    simpl in *.
-    - omega.
-    - specialize (H1 a). omega.
+    induction s; simpl; try omega.
+    apply max_ext_call_code_size_nonneg.
   Qed.
 
 End FlatImpSize1.

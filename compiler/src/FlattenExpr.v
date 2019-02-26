@@ -188,18 +188,18 @@ Section FlattenExpr1.
 
   Lemma flattenExpr_size: forall e s oResVar resVar ngs ngs',
     flattenExpr ngs oResVar e = (s, resVar, ngs') ->
-    0 <= FlatImp.stmt_size s <= 2 * ExprImp.expr_size e.
-  Proof. Admitted. (*
-    induction e; intros; simpl in *; simp; simpl; try omega.
-    - specializes IHe; [eassumption|]. omega.
-    - specializes IHe1; [eassumption|].
-      specializes IHe2; [eassumption|].
-      omega.
+    0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
+  Proof.
+    induction e; intros; destruct oResVar; simpl in *; simp; simpl;
+      repeat match goal with
+             | IH: _, H: _ |- _ => specialize IH with (1 := H)
+             end;
+      try omega.
   Qed.
 
   Lemma flattenExprAsBoolExpr_size: forall e s bcond ngs ngs',
       flattenExprAsBoolExpr ngs e = (s, bcond, ngs') ->
-      FlatImp.stmt_size s <= 2 * ExprImp.expr_size e.
+      0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
   Proof.
     induction e; intros; simpl in *; repeat destruct_one_match_hyp;
       inversionss; simpl;
@@ -214,80 +214,64 @@ Section FlattenExpr1.
     intros. reflexivity.
   Qed.
 
+  Lemma flattenExprs_size: forall es s resVars ngs ngs',
+    flattenExprs ngs es = (s, resVars, ngs') ->
+    0 <= FlatImp.stmt_size s <= ExprImp.exprs_size es.
+  Proof.
+    induction es; intros; simpl in *; simp; simpl; try omega.
+    specialize IHes with (1 := E0).
+    apply flattenExpr_size in E.
+    omega.
+  Qed.
+
   Lemma flattenCall_size: forall f args binds ngs ngs' s,
       flattenCall ngs binds f args = (s, ngs') ->
-      0 < FlatImp.stmt_size s <= 3 * ExprImp.cmd_size (Syntax.cmd.call binds f args).
+      0 < FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.call binds f args).
   Proof.
-    intro f.
-    induction args; intros.
-    - unfold flattenCall in *. simpl in H. inversions H. simpl.
-      rewrite! Zcomplements.Zlength_nil in *.
-      pose proof (ListLib.Zlength_nonneg binds).
-      omega.
-    - unfold flattenCall in *. simpl in H.
-      repeat destruct_one_match_hyp.
-      inversions H.
-      inversions E.
-      specialize (IHargs binds n0).
-      rewrite E1 in IHargs.
-      specialize IHargs with (1 := eq_refl).
+    intros. unfold flattenCall in *.
+    destruct_one_match_hyp.
+    destruct_one_match_hyp.
+    simp. simpl.
+    apply flattenExprs_size in E.
+    omega.
+  Qed.
 
-      unfold ExprImp.cmd_size.
-      unfold ExprImp.cmd_size in IHargs.
-      rewrite map_cons. rewrite fold_right_cons.
-      apply flattenExpr_size in E0.
-      simpl in *.
-      rewrite! ListLib.Zlength_cons.
+  (* TODO remove magic number *)
+  Axiom max_ext_call_code_size_bound: forall f,
+      0 <= max_ext_call_code_size f <= 7.
 
-      (* PARAMRECORDS ? *)
-
-      (* doesn't match
-      forget (@map expr Z (@ExprImp.expr_size semantics_params) args) as FR. *)
-
-      lazymatch goal with
-      | H: context [fold_right Z.add 0 ?a] |- context [fold_right Z.add 0 ?a'] =>
-        constr_eq a a';
-        forget (fold_right Z.add 0 a) as FR
-      end.
-
-      repeat match goal with
-      | H: context [Zcomplements.Zlength ?a] |- _ =>
-        let n := fresh "l" in
-        forget (Zcomplements.Zlength a) as n
-      | e: expr |- _ => unique pose proof (ExprImp.expr_size_pos e)
-      | e: FlatImp.stmt |- _ => unique pose proof (FlatImp.stmt_size_pos e)
-      end.
-
-      forget (FlatImp.stmt_size s2) as sz0.
-      forget (FlatImp.stmt_size s1) as sz1.
-      forget (ExprImp.expr_size a) as esz.
-
-      match goal with
-      | |- 0 < ?a <= ?b => ring_simplify a b
-      end.
-      lazymatch type of IHargs with
-      | 0 < ?a <= ?b => ring_simplify a b in IHargs
-      end.
-
-      Lia.lia.
+  Lemma flattenInteract_size: forall f args binds ngs ngs' s,
+      flattenInteract ngs binds f args = (s, ngs') ->
+      0 <= FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.interact binds f args).
+  Proof.
+    intros. unfold flattenInteract in *.
+    destruct_one_match_hyp.
+    destruct_one_match_hyp.
+    simp. simpl.
+    apply flattenExprs_size in E.
+    pose proof (max_ext_call_code_size_bound f).
+    omega.
   Qed.
 
   Lemma flattenStmt_size: forall s s' ngs ngs',
     flattenStmt ngs s = (s', ngs') ->
-    0 < FlatImp.stmt_size s' <= 3 * ExprImp.cmd_size s.
+    0 <= FlatImp.stmt_size s' <= ExprImp.cmd_size s.
   Proof.
     induction s; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl;
     repeat match goal with
     | IH: _, A: _ |- _ => specialize IH with (1 := A)
     end;
     repeat match goal with
-    | H: flattenExpr _ _ = _ |- _ => apply flattenExpr_size in H
+    | H: flattenExpr _ _ _ = _ |- _ => apply flattenExpr_size in H
     | H: flattenExprAsBoolExpr _ _ = _ |- _ => apply flattenExprAsBoolExpr_size in H
+    | H: flattenCall _ _ _ _ = _ |- _ => apply flattenCall_size in H
+    | H: flattenInteract _ _ _ _ = _ |- _ => apply flattenInteract_size in H
     end;
-    try omega;
-    try eapply flattenCall_size; try eassumption.
-  Admitted.
+    simpl in *;
+    try omega.
+  Qed.
 
+  (*
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' s v,
     flattenExpr ngs e = (s, v, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).

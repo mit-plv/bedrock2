@@ -379,17 +379,13 @@ Section EmitsValid.
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Lemma compile_stmt_size: forall s,
-    Zlength (compile_stmt iset s) <= 2 * (stmt_size s).
+    0 <= Zlength (compile_stmt iset s) <= stmt_size s.
   Proof.
     induction s; simpl; try destruct op; try solve [destruct f]; simpl;
-    repeat (autorewrite with rew_Zlength || simpl in * || unfold compile_lit); try lia;
-      pose proof (Zlength_nonneg binds);
-      pose proof (Zlength_nonneg args);
-      specialize (compile_ext_call_length binds a args);
-      pose proof FlatImpSize.max_ext_call_code_size_nonneg;
-      simpl in *.
-    specialize (H1 a).
-    omega.
+    repeat (autorewrite with rew_Zlength || simpl in * || unfold compile_lit); try lia.
+    pose proof (Zlength_nonneg (compile_ext_call binds a args)).
+    pose proof (compile_ext_call_length binds a args).
+    lia.
   Qed.
 
   Lemma compile_stmt_emits_valid: forall s,
