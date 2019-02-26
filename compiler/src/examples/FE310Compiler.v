@@ -100,7 +100,7 @@ Require bedrock2.WeakestPreconditionProperties.
 Local Instance ext_spec_Proper :   forall
     (trace : list
                (mem * actname * list Semantics.word *
-                (mem * list Semantics.word))) (m : mem) 
+                (mem * list Semantics.word))) (m : mem)
     (act : actname) (args : list Semantics.word),
   Morphisms.Proper
     (Morphisms.respectful
@@ -117,11 +117,16 @@ Definition mcomp_sat:
   OStateND RiscvMachine unit -> RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
   GoFlatToRiscv.mcomp_sat.
 
-Lemma TODO_relate_putProgram_to_GoFlatToRiscv_program :
-  Separation.sep
-    (@GoFlatToRiscv.program _ _ imemStart (@exprImp2Riscv pipeline_params pipeline_assumptions swap_chars_over_uart))
-    (eq map.empty)
-    (getMem (putProgram (List.map encode (compileFunc swap_chars_over_uart)) imemStart zeroedRiscvMachine)).
+Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
+  unchecked_store_byte_tuple_list addr (List.map (LittleEndian.split 4) (List.map encode p)) m.
+
+Lemma store_program_empty: forall prog addr,
+    GoFlatToRiscv.program addr prog (unchecked_store_program addr prog map.empty).
+Proof.
+  induction prog; intros.
+  - cbv. auto.
+  - cbv [GoFlatToRiscv.program]. simpl.
+    do 2 eexists. split; [|split].
 Admitted.
 
 Lemma end2endDemo:
@@ -137,10 +142,12 @@ Proof.
   - cbv. repeat constructor.
   - reflexivity.
   - reflexivity.
-  - unfold initialSwapMachine, initialRiscvMachine, getMem.
-    eapply TODO_relate_putProgram_to_GoFlatToRiscv_program.
+  - cbv [initialSwapMachine initialRiscvMachine getMem putProgram zeroedRiscvMachine
+         getMem withPc withNextPc withMem].
+    unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].
+    1: apply map.split_empty_r; reflexivity.
+    apply store_program_empty.
   - eapply bedrock2.WeakestPreconditionProperties.sound_nil.
     eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
-  all : fail "goals remaining".
 Qed.
 Print Assumptions end2endDemo.
