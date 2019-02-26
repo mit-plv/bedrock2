@@ -61,7 +61,7 @@ Example mmio_adder: cmd :=
            (cmd.interact [] MMOutput [expr.literal magicMMIOAddrLit;
                                         expr.op bopname.add (expr.var a) (expr.var b)]))).
 
-Eval vm_compute in compileFunc mmio_adder.
+(* Eval vm_compute in compileFunc mmio_adder. *)
 
 Definition mmio_adder_bytes: list byte := Eval vm_compute in main mmio_adder.
 
@@ -71,7 +71,7 @@ Time Definition swap_demo_byte: list byte := Eval vm_compute in main swap_chars_
 
 Module PrintAssembly.
   Import riscv.InstructionNotations.
-  Eval vm_compute in compileFunc swap_chars_over_uart.
+  (* Eval vm_compute in compileFunc swap_chars_over_uart. *)
 End PrintAssembly.
 
 
@@ -79,7 +79,7 @@ Module PrintBytes.
   Import bedrock2.Hexdump.
   Local Open Scope hexdump_scope.
   Set Printing Width 100.
-  Goal True. let x := eval cbv in mmio_adder_bytes in idtac x. Abort.
+  Goal True. let x := eval cbv in swap_demo_byte in idtac x. Abort.
 End PrintBytes.
 
 
