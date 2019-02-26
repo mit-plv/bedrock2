@@ -1,4 +1,5 @@
 Require Import Coq.Lists.List.
+Require Import Coq.micromega.Lia.
 Import ListNotations.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
@@ -125,7 +126,7 @@ Proof.
   unshelve epose proof (@exprImp2Riscv_correct _ _
     swap_chars_over_uart map.empty _ _ _ imemStart _ _ eq_refl _ _ _ _) as P;
     [..|eapply P].
-  - cbv - [Z.lt]. (* TODO will need to tighten bounds... *) admit.
+  - cbv - [Z.lt]. lia.
   - cbv. repeat constructor.
   - reflexivity.
   - reflexivity.

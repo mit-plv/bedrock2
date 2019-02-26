@@ -1,4 +1,5 @@
 Require Export Coq.Lists.List.
+Require Import Coq.ZArith.ZArith.
 Export ListNotations.
 Require Export lib.LibTacticsMin.
 Require Export coqutil.Decidable.
@@ -131,8 +132,47 @@ Section Pipeline1.
                   postH finalL.(getLog) finalMH finalL.(getRegs)).
     Abort. (* won't hold because low-level registers differ from locals *)
 
+  (* simpler than debugging why omega/lia fails *)
+  Ltac ineq_step :=
+    first
+      [ eapply Z.le_trans; [eassumption|]
+      | eapply Z.le_trans; [|eassumption]
+      | eapply Z.lt_le_trans; [eassumption|]
+      | eapply Z.lt_le_trans; [|eassumption]
+      | eapply Z.le_lt_trans; [eassumption|]
+      | eapply Z.le_lt_trans; [|eassumption] ].
+
+  (* The following two size lemmas are nice to have, but not really needed here:
+     FlatToRiscv.compile_stmt_correct will apply them on its own when needed. *)
+
+  Lemma flatToRiscv_size: forall (s: FlatImp.stmt) (insts: list Instruction),
+      FlatToRiscvDef.compile_stmt iset s = insts ->
+      0 <= Zlength insts <= FlatImp.stmt_size s.
+  Proof.
+    intros. subst.
+    apply (EmitsValid.compile_stmt_size iset s).
+  Qed.
+
+  Lemma exprImp2Riscv_size: forall (s: Syntax.cmd) (insts: list Instruction),
+      exprImp2Riscv s = insts ->
+      0 <= Zlength insts <= ExprImp.cmd_size s.
+  Proof.
+    intros.
+    unfold exprImp2Riscv, flatten in *.
+    destruct_one_match_hyp.
+    apply FlattenExpr.flattenStmt_size in E.
+    apply flatToRiscv_size in H.
+    split; [lia|].
+    destruct E as [_ E].
+    destruct H as [_ H].
+    simpl in *.
+    (* TODO why do omega and lia fail here? PARAMRECORDS? *)
+    Fail omega. Fail lia.
+    eapply Z.le_trans; eassumption.
+  Qed.
+
   Lemma exprImp2Riscv_correct: forall sH mH instsL initialL (post: trace -> Prop) imemStart,
-      ExprImp.cmd_size sH < 2 ^ 7 ->
+      ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       exprImp2Riscv sH = instsL ->
       initialL.(getLog) = nil ->
@@ -157,7 +197,20 @@ Section Pipeline1.
           eapply Q.
           eassumption.
         * simpl. intros. simp. assumption.
-      + admit.
+      + unfold FlatToRiscvDef.stmt_not_too_big.
+        unfold exprImp2Riscv, ExprImp2FlatImp, flatten in *.
+        destruct_one_match_hyp.
+        match goal with
+        | H: _ = (?a, ?b) |- context [fst ?x] => replace x with (a, b)
+        end.
+        unfold fst.
+        apply FlattenExpr.flattenStmt_size in E.
+        ineq_step.
+        destruct E as [_ E].
+        simpl in *.
+        (* TODO why do omega and lia fail here? PARAMRECORDS? *)
+        Fail omega. Fail lia.
+        exact E.
       + admit.
       + admit.
       + admit.
