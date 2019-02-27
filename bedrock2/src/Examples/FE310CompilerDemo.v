@@ -149,43 +149,16 @@ End word.
 
 From coqutil Require Import Z.div_mod_to_equations.
 
-Import List. Import ListNotations.
-Fixpoint echo_server_spec (t : trace) (output_to_explain : option word) : Prop := let spec := echo_server_spec in
-  match t with
-  | nil => output_to_explain = None
-  | (_, MMInput, [addr], (_, [value]))::trace =>
-    if (word.unsigned addr =? uart0_base + Ox"004") && negb (Z.testbit (word.unsigned value) 31)
-    then output_to_explain = Some value /\ spec trace None
-    else spec trace output_to_explain
-  | (_, MMOutput, [addr; value], (_, []))::trace => (
-    if word.unsigned addr =? hfrosccfg 
-      then Z.testbit (word.unsigned value) 30 = true else
-    if word.unsigned addr =? uart0_base + Ox"018"
-      then word.unsigned value = 640 /\ spec trace output_to_explain else
-    if (word.unsigned addr =? uart0_base + Ox"000")
-    then match trace with
-         | (_, MMInput, [addr'], (_, [value']))::trace =>
-           word.unsigned addr' = uart0_base + Ox"000" /\ 
-           Z.testbit (word.unsigned value') 31 = false /\
-           output_to_explain = None /\ spec trace (Some value)
-         | _ => False end else
-    True
-    ) /\ spec trace output_to_explain
-  | _ => False
-  end%bool%list.
-
 Ltac t :=
   match goal with
   | H: map.of_list ?ks ?vs = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
   | H: map.putmany_of_list ?ks ?vs ?m0 = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
   | _ => straightline
-  | |- exists _, map.of_list _ _ = Some _ => eexists; exact eq_refl
-  | |- exists _, map.putmany_of_list _ _ _ = Some _ => eexists; exact eq_refl
-  | |- exists _ _, map.of_list _ _ = Some _ => eexists; eexists; exact eq_refl
-  | |- exists _ _, map.putmany_of_list _ _ _ = Some _ => eexists; eexists; exact eq_refl
-  | |- exists _, _ /\ _ => eexists; split; [solve[repeat t]|]
-  | |- well_founded _ => eapply word.well_founded_lt_unsigned
+  | |- map.of_list _ _ = Some _ => exact eq_refl
+  | |- map.putmany_of_list _ _ _ = Some _ => exact eq_refl
+  | |- exists _, _ => eexists
   | |- _ /\ _ => split
+  | |- well_founded _ => eapply word.well_founded_lt_unsigned
   | |- ext_spec _ _ _ _ _ => refine (conj I (conj eq_refl _))
   | |- _ < _ => solve[
     repeat match goal with
@@ -198,6 +171,7 @@ Ltac t :=
                                           repeat rewrite ?Z.mod_small;
                                             (Omega.omega || clear; cbv; split; congruence)
            end]
+  | _ => solve [trivial]
   end.
 
 Lemma swap_chars_over_uart_correct m :
@@ -226,3 +200,140 @@ Proof.
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l); repeat t.
   eexists; split; repeat t.
 Defined.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Import List. Import ListNotations.
+Fixpoint echo_server_spec (t : trace) (output_to_explain : option word) : Prop := let spec := echo_server_spec in
+  match t with
+  | nil => output_to_explain = None
+  | (_, MMInput, [addr], (_, [value]))::trace =>
+    if (word.unsigned addr =? uart0_base + Ox"004") && (word.unsigned (word.and value (word.of_Z (2 ^ 31))) =? 0)
+    then output_to_explain = Some value /\ spec trace None
+    else spec trace output_to_explain
+  | (_, MMOutput, [addr; value], (_, []))::trace => (
+    if word.unsigned addr =? hfrosccfg 
+      then Z.testbit (word.unsigned value) 30 = true /\ spec trace output_to_explain else
+    if word.unsigned addr =? uart0_base + Ox"018"
+      then word.unsigned value = 624 /\ spec trace output_to_explain else
+    if (word.unsigned addr =? uart0_base + Ox"000")
+    then match trace with
+         | (_, MMInput, [addr'], (_, [value']))::trace =>
+           word.unsigned addr' = uart0_base + Ox"000" /\ 
+           word.unsigned (word.and value' (word.of_Z (2 ^ 31))) = 0 /\
+           output_to_explain = None /\ spec trace (Some value)
+         | _ => False end else
+    spec trace output_to_explain
+    )
+  | _ => False
+  end%bool%list.
+
+Definition echo_server: cmd :=
+  let rx : varname := 2%Z in
+  let tx : varname := 3%Z in
+  let running : varname := 4%Z in
+
+  let bit31 : varname := 5%Z in
+  let one : varname := 6%Z in
+  let dot : varname := 7%Z in
+  let uart_tx : varname := 8%Z in
+  let polling : varname := 9%Z in
+
+  let MMIOREAD  := MMInput in (* COQBUG(9514) ... *)
+  let MMIOWRITE := MMOutput in
+  let hfrosccfg := hfrosccfg in
+  let uart0_base := uart0_base in
+  let gpio0_base := gpio0_base in
+
+  bedrock_func_body:(
+    (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
+    io! rx = MMIOREAD (constr:(Ox"0x00021fec"));
+    output! MMIOWRITE(hfrosccfg, constr:(2^30) | (rx & constr:(2^5-1)) << constr:(16));
+    constr:(cmd.unset rx);
+
+    one = (constr:(1));
+    output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! MMIOWRITE(constr:(uart0_base + Ox"008"), one); (* tx enable *)
+    output! MMIOWRITE(constr:(uart0_base + Ox"00c"), one); (* rx enable *)
+    output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16)); (* pinmux uart tx rx *)
+
+    running = (constr:(-1));
+    while (running) {
+      bit31 = (constr:(2^31));
+      rx = (bit31);
+      polling = (constr:(-1));
+      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = (polling-one) };
+      if (rx & bit31) { constr:(cmd.skip) } else {
+        uart_tx = (constr:(uart0_base + Ox"000"));
+        tx = (bit31);
+        polling = (constr:(-1));
+        while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = (polling-one) };
+        output! MMIOWRITE(uart_tx, tx)
+      };
+      running = (running - one);
+      constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31); constr:(cmd.unset polling)
+    }
+  ).
+
+Lemma echo_server_correct m :
+  WeakestPrecondition.cmd (fun _ _ _ _ _ => False) echo_server nil m map.empty
+  (fun t m l => echo_server_spec t None).
+Proof.
+  repeat t.
+
+  refine (
+  let prev : varname := 1%Z in
+  let rx : varname := 2%Z in
+  let tx : varname := 3%Z in
+  let running : varname := 4%Z in
+
+  let bit31 : varname := 5%Z in
+  let one : varname := 6%Z in
+  let dot : varname := 7%Z in
+  let uart_tx : varname := 8%Z in
+  let polling : varname := 9%Z in
+
+  _).
+  (* SearchAbout I (* ANOMALY *) *)
+
+  eexists _, _, (fun v t _ l => map.of_list [running; one] [v; word.of_Z(1)] = Some l /\ echo_server_spec t None ); repeat t.
+  { repeat split. admit. (* hfrosccfg*) }
+  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list [polling; rx] [v; rxv] l0 = Some l /\
+                                            if Z.eq_dec (word.unsigned (word.and rxv (word.of_Z (2^31)))) 0
+                                            then echo_server_spec t (Some rxv)
+                                            else echo_server_spec t None); repeat t.
+  { match goal with |- if ?D then _ else _ => destruct D end; cbn [Z.eq_dec echo_server_spec args].
+    all: try rewrite e, ?Bool.andb_true_r.
+    all: repeat match goal with |- if _ then ?A else ?B => change A end.
+    { split; auto. destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
+      exfalso; revert H1 e0; clear. subst b v3. admit. }
+    { rewrite (proj2 (Z.eqb_neq _ 0)), Bool.andb_false_r by eassumption.
+      destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
+      exfalso; revert H1 e; clear. subst b v3. admit. } }
+  eexists; split; repeat t.
+  { destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
+    exfalso; revert H1 e; clear. subst b v3. admit. } 
+  eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l /\
+                                            if Z.eq_dec (word.unsigned (word.and txv (word.of_Z (2^31)))) 0
+                                            then echo_server_spec ((m, MMInput, [word.of_Z (uart0_base + Ox"000")], (m, [txv]))::t) None
+                                            else echo_server_spec t (Some x)); repeat t.
+  { subst v3.
+    rewrite word.unsigned_and, ?word.unsigned_of_Z by admit; cbn.
+    destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; (trivial||contradiction). }
+  { admit. }
+  { admit. }
+Abort.
+  
