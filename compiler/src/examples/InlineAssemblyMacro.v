@@ -2,7 +2,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import compiler.util.Common.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
-Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
 Require Import riscv.util.ListLib.
 Require Import riscv.Decode.

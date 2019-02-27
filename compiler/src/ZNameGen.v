@@ -1,7 +1,6 @@
 Require Import Coq.Lists.List.
 Require Import Coq.omega.Omega.
 Require Import compiler.util.Set.
-Require Import compiler.util.List_Set.
 Require Import compiler.NameGen.
 
 Definition listmax(l: list nat): nat := fold_right max 0 l.
