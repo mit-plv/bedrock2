@@ -26,8 +26,7 @@ Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 
-Local Infix "*" := sep.
-Local Infix "*" := sep : type_scope.
+Local Infix "*" := sep. Local Infix "*" := sep : type_scope.
 Instance spec_of_swap : spec_of "swap" := fun functions =>
   forall a_addr a b_addr b m R t,
     (scalar a_addr a * (scalar b_addr b * R)) m ->
@@ -58,4 +57,4 @@ Lemma link_swap_swap_swap_swap : spec_of_swap_swap (swap_swap::swap::nil).
 Proof. auto using swap_swap_ok, swap_ok. Qed.
 
 Print Assumptions link_swap_swap_swap_swap.
-(* __map_ok SortedListString.string_strict_order SortedList.sorted_remove SortedList.sorted_put StrictOrderWord *)
+(* SortedList.* SortedListString.* *)
