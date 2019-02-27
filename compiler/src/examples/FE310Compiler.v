@@ -82,8 +82,6 @@ Module PrintAssembly.
   (* Eval vm_compute in compileFunc swap_chars_over_uart. *)
 End PrintAssembly.
 
-(* This example uses the memory only as instruction memory
-   TODO make an example which uses memory to store data *)
 Definition zeroedRiscvMachine: RiscvMachine := {|
   getRegs := map.empty;
   getPc := word.of_Z 0;
@@ -98,15 +96,17 @@ Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
   putProgram imem imemStart zeroedRiscvMachine.
 
 Require bedrock2.WeakestPreconditionProperties.
-Lemma WP_framework_is_awesome:
-  exec map.empty swap_chars_over_uart nil map.empty map.empty
-       (fun t m l => True).
-Proof.
-  eapply bedrock2.WeakestPreconditionProperties.sound_nil.
-  epose proof bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct _ as H.
-  eapply H.
-  Unshelve.
-  (* TODO Morphisms.Proper *)
+
+Local Instance ext_spec_Proper :   forall
+    (trace : list
+               (mem * actname * list Semantics.word *
+                (mem * list Semantics.word))) (m : mem) 
+    (act : actname) (args : list Semantics.word),
+  Morphisms.Proper
+    (Morphisms.respectful
+       (Morphisms.pointwise_relation mem
+          (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
+       Basics.impl) (ext_spec trace m act args).
 Admitted.
 
 Definition initialSwapMachine: RiscvMachine :=
@@ -132,5 +132,8 @@ Proof.
   - reflexivity.
   - unfold initialSwapMachine, initialRiscvMachine, getMem.
     (* TODO relate putProgram to GoFlatToRiscv.program *) admit.
-  - apply WP_framework_is_awesome.
+  - eapply bedrock2.WeakestPreconditionProperties.sound_nil.
+    eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
+  all : fail "goals remaining".
 Admitted.
+
