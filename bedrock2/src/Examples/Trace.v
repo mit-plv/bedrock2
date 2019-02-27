@@ -162,7 +162,7 @@ Module SpiEth.
     Local Set Refine Instance Mode.
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
-    Local Coercion var(x : @varname (@syntax semantics_params)):
+    Local Definition var(x : @varname (@syntax semantics_params)):
       @expr.expr (@syntax semantics_params) := Syntax.expr.var x.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
@@ -277,7 +277,7 @@ Module Syscalls.
     Local Set Refine Instance Mode.
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
-    Local Coercion var(x : @varname (@syntax semantics_params)):
+    Local Definition var(x : @varname (@syntax semantics_params)):
       @expr.expr (@syntax semantics_params) := Syntax.expr.var x.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)

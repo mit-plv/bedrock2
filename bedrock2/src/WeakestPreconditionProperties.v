@@ -194,32 +194,25 @@ Section WeakestPrecondition.
   Proof.
     ind_on Syntax.cmd; repeat (t; try match goal with H : WeakestPrecondition.expr _ _ _ _ |- _ => eapply expr_sound in H end).
     { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
-      { econstructor; t. admit. }
-      { eapply Semantics.exec.if_false; t. rewrite H. f_equal. admit. } }
+      { econstructor; t. }
+      { eapply Semantics.exec.if_false; t. } }
     { revert dependent l; revert dependent m; revert dependent t; pattern x2.
       eapply (well_founded_ind H); t.
       pose proof (H1 _ _ _ _ ltac:(eassumption));
         repeat (t; try match goal with H : WeakestPrecondition.expr _ _ _ _ |- _ => eapply expr_sound in H end).
       { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x4) (BinNums.Z0)) as [Hb|Hb].
-        { eapply Semantics.exec.while_false; t. rewrite H3; f_equal. revert Hb; admit. }
-        { eapply Semantics.exec.while_true; t. 1:admit. t. } } }
+        { eapply Semantics.exec.while_false; t. }
+        { eapply Semantics.exec.while_true; t. t. } } }
     { econstructor; t.
-      revert H. admit. }
-    (*
-subgoal 1 (ID 1478) is:
- x <> Interface.word.of_Z BinNums.Z0
-subgoal 2 (ID 1674) is:
- x = Interface.word.of_Z BinNums.Z0
-subgoal 3 (ID 2116) is:
- Interface.word.unsigned x4 = BinNums.Z0 ->
- x4 = Interface.word.of_Z BinNums.Z0
-subgoal 4 (ID 2122) is:
- x4 <> Interface.word.of_Z BinNums.Z0
-subgoal 5 (ID 2561) is:
- WeakestPrecondition.list_map (WeakestPrecondition.expr m l) args (eq x) ->
- List.option_all (List.map (Semantics.eval_expr m l) args) = Some x
-You need to go back and solve them.
-*)
-  Admitted.
-
+      revert H.
+      clear -Proper_ext_spec.
+      assert (forall P, WeakestPrecondition.list_map (WeakestPrecondition.expr m l) args P ->
+                        exists x, List.option_all (List.map (Semantics.eval_expr m l) args) = Some x /\ P x). {
+        induction args; cbn; repeat (subst; t).
+        eapply expr_sound in H; t; rewrite H.
+        eapply IHargs in H0; t; rewrite H0.
+        eauto. }
+      intro XH.
+      eapply H in XH. t. }
+  Qed.
 End WeakestPrecondition.
