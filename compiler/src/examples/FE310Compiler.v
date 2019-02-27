@@ -117,6 +117,13 @@ Definition mcomp_sat:
   OStateND RiscvMachine unit -> RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
   GoFlatToRiscv.mcomp_sat.
 
+Lemma TODO_relate_putProgram_to_GoFlatToRiscv_program :
+  Separation.sep
+    (@GoFlatToRiscv.program _ _ imemStart (@exprImp2Riscv pipeline_params pipeline_assumptions swap_chars_over_uart))
+    (eq map.empty)
+    (getMem (putProgram (List.map encode (compileFunc swap_chars_over_uart)) imemStart zeroedRiscvMachine)).
+Admitted.
+
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
                       initialSwapMachine
@@ -131,9 +138,9 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold initialSwapMachine, initialRiscvMachine, getMem.
-    (* TODO relate putProgram to GoFlatToRiscv.program *) admit.
+    eapply TODO_relate_putProgram_to_GoFlatToRiscv_program.
   - eapply bedrock2.WeakestPreconditionProperties.sound_nil.
     eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
   all : fail "goals remaining".
-Admitted.
-
+Qed.
+Print Assumptions end2endDemo.
