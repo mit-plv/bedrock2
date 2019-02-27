@@ -150,33 +150,29 @@ End word.
 From coqutil Require Import Z.div_mod_to_equations.
 
 Import List. Import ListNotations.
-Fixpoint spec (t : trace) (output_to_explain : option word) : Prop.
-  cbv [trace] in *.
-  refine (
-      match t with
-      | nil => output_to_explain = None
-      | (_, MMInput, [addr], (_, [value]))::trace =>
-        if (word.unsigned addr =? uart0_base + Ox"004") && negb (Z.testbit (word.unsigned value) 31)
-        then output_to_explain = Some value /\ spec trace None
-        else spec trace output_to_explain
-      | (_, MMOutput, [addr; value], (_, []))::trace => (
-        if word.unsigned addr =? hfrosccfg 
-          then Z.testbit (word.unsigned value) 30 = true else
-        if word.unsigned addr =? uart0_base + Ox"018"
-          then word.unsigned value = 640 /\ spec trace output_to_explain else
-        if (word.unsigned addr =? uart0_base + Ox"000")
-        then match trace with
-             | (_, MMInput, [addr'], (_, [value']))::trace =>
-               word.unsigned addr' = uart0_base + Ox"000" /\ 
-               Z.testbit (word.unsigned value') 31 = false /\
-               output_to_explain = None /\ spec trace (Some value)
-             | _ => False end else
-        True
-        ) /\ spec trace output_to_explain
-      | _ => False
-      end%bool%list
-    ).
-Defined.
+Fixpoint echo_server_spec (t : trace) (output_to_explain : option word) : Prop := let spec := echo_server_spec in
+  match t with
+  | nil => output_to_explain = None
+  | (_, MMInput, [addr], (_, [value]))::trace =>
+    if (word.unsigned addr =? uart0_base + Ox"004") && negb (Z.testbit (word.unsigned value) 31)
+    then output_to_explain = Some value /\ spec trace None
+    else spec trace output_to_explain
+  | (_, MMOutput, [addr; value], (_, []))::trace => (
+    if word.unsigned addr =? hfrosccfg 
+      then Z.testbit (word.unsigned value) 30 = true else
+    if word.unsigned addr =? uart0_base + Ox"018"
+      then word.unsigned value = 640 /\ spec trace output_to_explain else
+    if (word.unsigned addr =? uart0_base + Ox"000")
+    then match trace with
+         | (_, MMInput, [addr'], (_, [value']))::trace =>
+           word.unsigned addr' = uart0_base + Ox"000" /\ 
+           Z.testbit (word.unsigned value') 31 = false /\
+           output_to_explain = None /\ spec trace (Some value)
+         | _ => False end else
+    True
+    ) /\ spec trace output_to_explain
+  | _ => False
+  end%bool%list.
 
 Ltac t :=
   match goal with
