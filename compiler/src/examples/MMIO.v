@@ -253,7 +253,7 @@ Section MMIO1.
       destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
       destruct action; cbv [getRegs getPc getNextPc getMem getLog] in *.
       + (* MMOutput *)
-        apply TODO.
+        case TODO.
       + (* MMInput *)
         simpl in *|-.
         simp.
@@ -293,16 +293,16 @@ Section MMIO1.
               specialize (H15 initialMem [signedByteTupleToReg a]).
               destruct H15 as [ l' [A B] ].
               { specialize (H8 (signedByteTupleToReg a)).
-                Fail exact H8. (* TODO trace translation *) apply TODO. }
+                Fail exact H8. (* TODO trace translation *) case TODO. }
               { inversion_option.
                 subst l'.
                 unfold mmioLoadEvent, signedByteTupleToReg in *. simpl in *.
-                Fail exact B. (* TODO trace translation *) apply TODO. } }
+                Fail exact B. (* TODO trace translation *) case TODO. } }
     - (* go_load *)
       (* TODO make FlatToRiscv32.parameters and eapply go_load *)
-      apply TODO.
+      case TODO.
     - (* go_store *)
-      apply TODO.
+      case TODO.
   Qed.
 
 End MMIO1.

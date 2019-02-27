@@ -18,7 +18,7 @@ Instance myparams: Syntax.parameters := {|
   Syntax.actname := Empty_set;
 |}.
 
-Definition TODO{T: Type}: T. Admitted.
+Axiom TODO: False.
 
 Instance params: Semantics.parameters := {|
     Semantics.syntax := myparams;

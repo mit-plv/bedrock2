@@ -459,7 +459,7 @@ Section RegAlloc.
   Context {srcEnv: map.map func (list srcvar * list srcvar * stmt)}.
   Context {impEnv: map.map func (list impvar * list impvar * stmt')}.
 
-  Definition TODO{T: Type}: T. Admitted.
+  Axiom TODO: False.
 
   Local Set Refine Instance Mode.
 
@@ -467,7 +467,7 @@ Section RegAlloc.
     FlatImp.syntax_params := srcparams;
     FlatImp.locals := srcLocals;
   |}.
-  all: apply TODO.
+  all: case TODO.
   Defined.
 
   Definition eval (*: nat -> srcLocals -> mem -> stmt -> option (srcLocals * mem)*)
@@ -477,7 +477,7 @@ Section RegAlloc.
     FlatImp.syntax_params := impparams;
     FlatImp.locals := impLocals;
   |}.
-  all: apply TODO.
+  all: case TODO.
   Defined.
 
   Definition eval' (*: nat -> map impvar mword -> mem -> stmt' -> option (map impvar mword * mem)*)

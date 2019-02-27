@@ -53,7 +53,7 @@ Section TODO.
 End TODO.
 
 
-Definition TODO{T: Type}: T. Admitted.
+Axiom TODO: False.
 
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
