@@ -178,12 +178,37 @@ Fixpoint spec (t : trace) (output_to_explain : option word) : Prop.
     ).
 Defined.
 
+Ltac t :=
+  match goal with
+  | H: map.of_list ?ks ?vs = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
+  | H: map.putmany_of_list ?ks ?vs ?m0 = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
+  | _ => straightline
+  | |- exists _, map.of_list _ _ = Some _ => eexists; exact eq_refl
+  | |- exists _, map.putmany_of_list _ _ _ = Some _ => eexists; exact eq_refl
+  | |- exists _ _, map.of_list _ _ = Some _ => eexists; eexists; exact eq_refl
+  | |- exists _ _, map.putmany_of_list _ _ _ = Some _ => eexists; eexists; exact eq_refl
+  | |- exists _, _ /\ _ => eexists; split; [solve[repeat t]|]
+  | |- well_founded _ => eapply word.well_founded_lt_unsigned
+  | |- _ /\ _ => split
+  | |- ext_spec _ _ _ _ _ => refine (conj I (conj eq_refl _))
+  | |- _ < _ => solve[
+    repeat match goal with
+           | x := _ |- _ => subst x
+           | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H
+           | _ => progress repeat (rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent)
+           | H: Z.land _ _ <> 0 |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
+           | |- _ < word.unsigned ?x => pose proof Properties.word.unsigned_range x;
+                                          repeat rewrite ?word.unsigned_sub, ?word.unsigned_of_Z;
+                                          repeat rewrite ?Z.mod_small;
+                                            (Omega.omega || clear; cbv; split; congruence)
+           end]
+  end.
+
 Lemma swap_chars_over_uart_correct m :
   WeakestPrecondition.cmd (fun _ _ _ _ _ => False) swap_chars_over_uart nil m map.empty
   (fun t m l => True).
 Proof.
-  repeat (straightline || refine (conj I (conj eq_refl _))).
-  cbv [WeakestPrecondition.cmd_body].
+  repeat t.
 
   refine (
   let prev : varname := 1%Z in
@@ -198,69 +223,10 @@ Proof.
   let polling : varname := 9%Z in
 
   _).
-  (* SearchAbout well_founded. (* ANOMALY *) *)
+  (* SearchAbout I (* ANOMALY *) *)
 
-
-  let keys := eval cbv in [running; prev; one; dot] in
-  eexists _, _, (fun v t _ l => exists p, map.of_list keys [v; p; word.of_Z(1); word.of_Z(46)] = Some l ).
-  split; [eapply word.well_founded_lt_unsigned|].
-  repeat straightline.
-  split.
-  { eexists. eexists. exact eq_refl. }
-  { intros V t ? ? H.
-    destruct H. cbn in H. injection H; clear H; intro H; symmetry in H.
-    repeat straightline.
-    split; repeat straightline.
-    eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list [polling; rx] [v; rxv] l0 = Some l).
-    split; [eapply word.well_founded_lt_unsigned|].
-    split.
-    { eexists. eexists. cbn. exact eq_refl. }
-    intros Vr tr ? ? Hr.
-    destruct Hr as [? Hr]. cbn in Hr. injection Hr; clear Hr; intro Hr; symmetry in Hr.
-    repeat straightline.
-    split; repeat (straightline || refine (conj I (conj eq_refl _))).
-    { eexists. eexists. 1:eexists; exact eq_refl.
-      subst b.
-      repeat match goal with
-             | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H
-             | H: _ |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
-             end.
-      subst v6.
-      pose proof Properties.word.unsigned_range Vr.
-      rewrite word.unsigned_sub, word.unsigned_of_Z; repeat rewrite ?Z.mod_small;
-        (Omega.omega || clear; cbv; split; congruence). }
-    {
-      repeat straightline.
-      eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l).
-      split; [eapply word.well_founded_lt_unsigned|].
-      split.
-      { eexists. eexists. cbn. reflexivity. }
-      intros Vrr trr ? ? Hrr.
-      destruct Hrr as [? Hrr]. cbn in Hrr. injection Hrr; clear Hrr; intro Hrr; symmetry in Hrr.
-      repeat straightline.
-      split; repeat (straightline || refine (conj I (conj eq_refl _))).
-    { eexists. eexists. 1:eexists; exact eq_refl.
-      subst b0.
-      repeat match goal with
-             | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H
-             | H: _ |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
-             end.
-      subst v8.
-      pose proof Properties.word.unsigned_range Vrr.
-      rewrite word.unsigned_sub, word.unsigned_of_Z; repeat rewrite ?Z.mod_small;
-        (Omega.omega || clear; cbv; split; congruence). }
-    eexists; split; [repeat straightline|]; split; repeat straightline.
-    { eexists. split; [eexists; exact eq_refl|].
-      subst v8. rewrite ?Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent.
-      pose proof Properties.word.unsigned_range V; Omega.omega. }
-    { eexists. eexists. 1:eexists; exact eq_refl.
-      subst b0.
-      repeat match goal with
-             | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H
-             | H: _ |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
-             end.
-      subst v7.
-      pose proof Properties.word.unsigned_range V.
-      rewrite word.unsigned_sub, word.unsigned_of_Z; repeat rewrite ?Z.mod_small;
-        (Omega.omega || clear; cbv; split; congruence). } } }
+  eexists _, _, (fun v t _ l => exists p, map.of_list [running; prev; one; dot] [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
+  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list [polling; rx] [v; rxv] l0 = Some l); repeat t.
+  eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l); repeat t.
+  eexists; split; repeat t.
 Defined.
