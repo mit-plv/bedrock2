@@ -109,12 +109,13 @@ Module exec. Section WithEnv.
     : exec (cmd.store sz ea ev) t m l post
   | if_true t m l e c1 c2 post
     v (_ : eval_expr m l e = Some v)
-    (_ : v <> word.of_Z 0)
+    (_ : word.unsigned v <> 0)
     (_ : exec c1 t m l post)
     : exec (cmd.cond e c1 c2) t m l post
   | if_false e c1 c2
     t m l post
-    (_ : eval_expr m l e = Some (word.of_Z 0))
+    v (_ : eval_expr m l e = Some v)
+    (_ : word.unsigned v = 0)
     (_ : exec c2 t m l post)
     : exec (cmd.cond e c1 c2) t m l post
   | seq c1 c2
@@ -124,13 +125,14 @@ Module exec. Section WithEnv.
     : exec (cmd.seq c1 c2) t m l post
   | while_false e c
     t m l post
-    (_ : eval_expr m l e = Some (word.of_Z 0))
+    v (_ : eval_expr m l e  = Some v)
+    (_ : word.unsigned v = 0)
     (_ : post t m l)
     : exec (cmd.while e c) t m l post
   | while_true e c
       t m l post
       v (_ : eval_expr m l e  = Some v)
-      (_ : v <> word.of_Z 0)
+      (_ : word.unsigned v <> 0)
       mid (_ : exec c t m l mid)
       (_ : forall t' m' l', mid t' m' l' -> exec (cmd.while e c) t' m' l' post)
     : exec (cmd.while e c) t m l post

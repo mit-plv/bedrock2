@@ -5,7 +5,6 @@ Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
-Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
 Require Import riscv.util.ListLib.
 Require Import riscv.Decode.
@@ -30,6 +29,7 @@ Require Import compiler.Simp.
 Require Import compiler.util.Learning.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.FlatToRiscv32.
+Require bedrock2.Examples.FE310CompilerDemo.
 Import ListNotations.
 
 
@@ -134,11 +134,10 @@ Section MMIO1.
   Proof.
   Admitted.
 
-  Instance mmio_semantics_params: Semantics.parameters := {|
-    Semantics.syntax := mmio_syntax_params;
-    Semantics.width := 32;
-    Semantics.funname_eqb := Empty_set_rect _;
-    Semantics.ext_spec t m action (argvals: list word) (post: (mem -> list word -> Prop)) :=
+  Definition trace: Type := list (mem * MMIOAction * list word * (mem * list word)).
+
+  Definition simple_ext_spec(t: trace) m action (argvals: list word)
+             (post: mem -> list word -> Prop) :=
       match argvals with
       | addr :: _ =>
         isMMIOAddr addr /\
@@ -147,7 +146,43 @@ Section MMIO1.
         else
           argvals = [addr] /\ forall val, post m [val]
       | nil => False
-      end;
+      end.
+
+  Section Real.
+    Import FE310CompilerDemo.
+    Definition real_ext_spec(t: trace) m (action: MMIOAction) args
+               (post: mem -> list word -> Prop) :=
+      match action, List.map word.unsigned args with
+      | MMInput, [addr] => (
+        if addr =? hfrosccfg                                then True else
+        if (  otp_base <=? addr) && (addr <?   otp_pastend) then True else
+        if (gpio0_base <=? addr) && (addr <? gpio0_pastend) then True else
+        if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
+        False )
+        /\ addr mod 4 = 0
+        /\ forall v, post m [v]
+      | MMOutput, [addr; value] => (
+        if addr =? hfrosccfg                                then True else
+        if (gpio0_base <=? addr) && (addr <? gpio0_pastend) then True else
+        if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
+        False )
+        /\ addr mod 4 = 0
+        /\ post m []
+      | _, _ =>
+        False
+      end%list%bool.
+  End Real.
+
+  Lemma real_ext_spec_implies_simple_ext_spec: forall t m a args post,
+      real_ext_spec t m a args post ->
+      simple_ext_spec t m a args post.
+  Admitted.
+
+  Instance mmio_semantics_params: Semantics.parameters := {|
+    Semantics.syntax := mmio_syntax_params;
+    Semantics.width := 32;
+    Semantics.funname_eqb := Empty_set_rect _;
+    Semantics.ext_spec := real_ext_spec;
   |}.
 
   Instance compilation_params: FlatToRiscvDef.parameters := {
@@ -218,10 +253,12 @@ Section MMIO1.
       destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
       destruct action; cbv [getRegs getPc getNextPc getMem getLog] in *.
       + (* MMOutput *)
-        apply TODO.
+        case TODO.
       + (* MMInput *)
         simpl in *|-.
         simp.
+        apply real_ext_spec_implies_simple_ext_spec in H14.
+        unfold simple_ext_spec in *.
         simpl in *|-.
         repeat match goal with
                | l: list _ |- _ => destruct l;
@@ -256,16 +293,16 @@ Section MMIO1.
               specialize (H15 initialMem [signedByteTupleToReg a]).
               destruct H15 as [ l' [A B] ].
               { specialize (H8 (signedByteTupleToReg a)).
-                Fail exact H8. (* TODO trace translation *) apply TODO. }
+                Fail exact H8. (* TODO trace translation *) case TODO. }
               { inversion_option.
                 subst l'.
                 unfold mmioLoadEvent, signedByteTupleToReg in *. simpl in *.
-                Fail exact B. (* TODO trace translation *) apply TODO. } }
+                Fail exact B. (* TODO trace translation *) case TODO. } }
     - (* go_load *)
       (* TODO make FlatToRiscv32.parameters and eapply go_load *)
-      apply TODO.
+      case TODO.
     - (* go_store *)
-      apply TODO.
+      case TODO.
   Qed.
 
 End MMIO1.

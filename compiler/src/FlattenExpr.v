@@ -69,26 +69,34 @@ Section FlattenExpr1.
   Ltac set_solver :=
     set_solver_generic (@varname p).
 
-  (* returns stmt and var into which result is saved, and new fresh name generator state *)
-  Fixpoint flattenExpr(ngs: NGstate)(e: Syntax.expr):
+  Definition genFresh_if_needed(resVar: option varname)(ngs: NGstate): (varname * NGstate) :=
+    match resVar with
+    | Some r => (r, ngs)
+    | None => genFresh ngs
+    end.
+
+  (* returns stmt and var into which result is saved, and new fresh name generator state.
+     If resVar is not None, the result will be stored there, otherwise a fresh var will
+     be generated for the result if needed (not needed if e already is a var) *)
+  Fixpoint flattenExpr(ngs: NGstate)(resVar: option varname)(e: Syntax.expr):
     (FlatImp.stmt * varname * NGstate) :=
     match e with
     | Syntax.expr.literal n =>
-        let '(x, ngs') := genFresh ngs in
+        let '(x, ngs') := genFresh_if_needed resVar ngs in
         (FlatImp.SLit x n, x, ngs')
     | Syntax.expr.var x =>
-        (* (FlatImp.SSkip, x, ngs)  would be simpler but doesn't satisfy the invariant that
-           the returned var is in modVars of the returned statement *)
-        let '(y, ngs') := genFresh ngs in
-        (FlatImp.SSet y x, y, ngs')
+        match resVar with
+        | Some r => (FlatImp.SSet r x, r, ngs)
+        | None => (FlatImp.SSkip, x, ngs)
+        end
     | Syntax.expr.load sz e =>
-        let '(s1, r1, ngs') := flattenExpr ngs e in
-        let '(x, ngs'') := genFresh ngs' in
+        let '(s1, r1, ngs') := flattenExpr ngs None e in
+        let '(x, ngs'') := genFresh_if_needed resVar ngs' in
         (FlatImp.SSeq s1 (@FlatImp.SLoad (mk_Syntax_params p) sz x r1), x, ngs'')
     | Syntax.expr.op op e1 e2 =>
-        let '(s1, r1, ngs') := flattenExpr ngs e1 in
-        let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
-        let '(x, ngs''') := genFresh ngs'' in
+        let '(s1, r1, ngs') := flattenExpr ngs None e1 in
+        let '(s2, r2, ngs'') := flattenExpr ngs' None e2 in
+        let '(x, ngs''') := genFresh_if_needed resVar ngs'' in
         (FlatImp.SSeq s1
           (FlatImp.SSeq s2
             (@FlatImp.SOp (mk_Syntax_params p) x op r1 r2)), x, ngs''')
@@ -97,11 +105,11 @@ Section FlattenExpr1.
   Definition flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr):
     (FlatImp.stmt * FlatImp.bcond * NGstate) :=
     let default := (* always correct, but in some cases we can do better *)
-        (let '(stmt, x, ngs') := flattenExpr ngs e in (stmt, FlatImp.CondNez x, ngs')) in
+        (let '(stmt, x, ngs') := flattenExpr ngs None e in (stmt, FlatImp.CondNez x, ngs')) in
     match e with
     | Syntax.expr.op op e1 e2 =>
-        let '(s1, r1, ngs') := flattenExpr ngs e1 in
-        let '(s2, r2, ngs'') := flattenExpr ngs' e2 in
+        let '(s1, r1, ngs') := flattenExpr ngs None e1 in
+        let '(s2, r2, ngs'') := flattenExpr ngs' None e2 in
         match op with
         | Syntax.bopname.lts => (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLt  r1 r2, ngs'')
         | Syntax.bopname.ltu => (FlatImp.SSeq s1 s2, FlatImp.CondBinary FlatImp.BLtu r1 r2, ngs'')
@@ -121,7 +129,7 @@ Section FlattenExpr1.
     (FlatImp.stmt * list varname * NGstate) :=
     match es with
     | nil => (FlatImp.SSkip, nil, ngs1)
-    | e :: rest => let '(ci, vi, ngs2) := flattenExpr ngs1 e in
+    | e :: rest => let '(ci, vi, ngs2) := flattenExpr ngs1 None e in
                    let '(cs, vs, ngs3) := flattenExprs ngs2 rest in
                    (FlatImp.SSeq ci cs, vi :: vs, ngs3)
     end.
@@ -143,12 +151,12 @@ Section FlattenExpr1.
   Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt * NGstate) :=
     match s with
     | Syntax.cmd.store sz a v =>
-        let '(sa, ra, ngs') := flattenExpr ngs a in
-        let '(sv, rv, ngs'') := flattenExpr ngs' v in
+        let '(sa, ra, ngs') := flattenExpr ngs None a in
+        let '(sv, rv, ngs'') := flattenExpr ngs' None v in
         (FlatImp.SSeq sa (FlatImp.SSeq sv (FlatImp.SStore sz ra rv)), ngs'')
     | Syntax.cmd.set x e =>
-        let '(e', r, ngs') := flattenExpr ngs e in
-        (FlatImp.SSeq e' (FlatImp.SSet x r), ngs')
+        let '(e', x', ngs') := flattenExpr ngs (Some x) e in (* assert(x' = x) *)
+        (e', ngs')
     | Syntax.cmd.cond cond sThen sElse =>
         let '(cond', bcond, ngs') := flattenExprAsBoolExpr ngs cond in
         let '(sThen', ngs'') := flattenStmt ngs' sThen in
@@ -178,20 +186,20 @@ Section FlattenExpr1.
     | _ => idtac
     end.
 
-  Lemma flattenExpr_size: forall e s resVar ngs ngs',
-    flattenExpr ngs e = (s, resVar, ngs') ->
-    0 <= FlatImp.stmt_size s <= 2 * ExprImp.expr_size e.
+  Lemma flattenExpr_size: forall e s oResVar resVar ngs ngs',
+    flattenExpr ngs oResVar e = (s, resVar, ngs') ->
+    0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
   Proof.
-    induction e; intros; simpl in *; simp; simpl; try omega.
-    - specializes IHe; [eassumption|]. omega.
-    - specializes IHe1; [eassumption|].
-      specializes IHe2; [eassumption|].
-      omega.
+    induction e; intros; destruct oResVar; simpl in *; simp; simpl;
+      repeat match goal with
+             | IH: _, H: _ |- _ => specialize IH with (1 := H)
+             end;
+      try omega.
   Qed.
 
   Lemma flattenExprAsBoolExpr_size: forall e s bcond ngs ngs',
       flattenExprAsBoolExpr ngs e = (s, bcond, ngs') ->
-      FlatImp.stmt_size s <= 2 * ExprImp.expr_size e.
+      0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
   Proof.
     induction e; intros; simpl in *; repeat destruct_one_match_hyp;
       inversionss; simpl;
@@ -206,80 +214,64 @@ Section FlattenExpr1.
     intros. reflexivity.
   Qed.
 
+  Lemma flattenExprs_size: forall es s resVars ngs ngs',
+    flattenExprs ngs es = (s, resVars, ngs') ->
+    0 <= FlatImp.stmt_size s <= ExprImp.exprs_size es.
+  Proof.
+    induction es; intros; simpl in *; simp; simpl; try omega.
+    specialize IHes with (1 := E0).
+    apply flattenExpr_size in E.
+    omega.
+  Qed.
+
   Lemma flattenCall_size: forall f args binds ngs ngs' s,
       flattenCall ngs binds f args = (s, ngs') ->
-      0 < FlatImp.stmt_size s <= 3 * ExprImp.cmd_size (Syntax.cmd.call binds f args).
+      0 < FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.call binds f args).
   Proof.
-    intro f.
-    induction args; intros.
-    - unfold flattenCall in *. simpl in H. inversions H. simpl.
-      rewrite! Zcomplements.Zlength_nil in *.
-      pose proof (ListLib.Zlength_nonneg binds).
-      omega.
-    - unfold flattenCall in *. simpl in H.
-      repeat destruct_one_match_hyp.
-      inversions H.
-      inversions E.
-      specialize (IHargs binds n0).
-      rewrite E1 in IHargs.
-      specialize IHargs with (1 := eq_refl).
+    intros. unfold flattenCall in *.
+    destruct_one_match_hyp.
+    destruct_one_match_hyp.
+    simp. simpl.
+    apply flattenExprs_size in E.
+    omega.
+  Qed.
 
-      unfold ExprImp.cmd_size.
-      unfold ExprImp.cmd_size in IHargs.
-      rewrite map_cons. rewrite fold_right_cons.
-      apply flattenExpr_size in E0.
-      simpl in *.
-      rewrite! ListLib.Zlength_cons.
+  (* TODO remove magic number *)
+  Axiom max_ext_call_code_size_bound: forall f,
+      0 <= max_ext_call_code_size f <= 7.
 
-      (* PARAMRECORDS ? *)
-
-      (* doesn't match
-      forget (@map expr Z (@ExprImp.expr_size semantics_params) args) as FR. *)
-
-      lazymatch goal with
-      | H: context [fold_right Z.add 0 ?a] |- context [fold_right Z.add 0 ?a'] =>
-        constr_eq a a';
-        forget (fold_right Z.add 0 a) as FR
-      end.
-
-      repeat match goal with
-      | H: context [Zcomplements.Zlength ?a] |- _ =>
-        let n := fresh "l" in
-        forget (Zcomplements.Zlength a) as n
-      | e: expr |- _ => unique pose proof (ExprImp.expr_size_pos e)
-      | e: FlatImp.stmt |- _ => unique pose proof (FlatImp.stmt_size_pos e)
-      end.
-
-      forget (FlatImp.stmt_size s2) as sz0.
-      forget (FlatImp.stmt_size s1) as sz1.
-      forget (ExprImp.expr_size a) as esz.
-
-      match goal with
-      | |- 0 < ?a <= ?b => ring_simplify a b
-      end.
-      lazymatch type of IHargs with
-      | 0 < ?a <= ?b => ring_simplify a b in IHargs
-      end.
-
-      Lia.lia.
+  Lemma flattenInteract_size: forall f args binds ngs ngs' s,
+      flattenInteract ngs binds f args = (s, ngs') ->
+      0 <= FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.interact binds f args).
+  Proof.
+    intros. unfold flattenInteract in *.
+    destruct_one_match_hyp.
+    destruct_one_match_hyp.
+    simp. simpl.
+    apply flattenExprs_size in E.
+    pose proof (max_ext_call_code_size_bound f).
+    omega.
   Qed.
 
   Lemma flattenStmt_size: forall s s' ngs ngs',
     flattenStmt ngs s = (s', ngs') ->
-    0 < FlatImp.stmt_size s' <= 3 * ExprImp.cmd_size s.
+    0 <= FlatImp.stmt_size s' <= ExprImp.cmd_size s.
   Proof.
     induction s; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl;
     repeat match goal with
     | IH: _, A: _ |- _ => specialize IH with (1 := A)
     end;
     repeat match goal with
-    | H: flattenExpr _ _ = _ |- _ => apply flattenExpr_size in H
+    | H: flattenExpr _ _ _ = _ |- _ => apply flattenExpr_size in H
     | H: flattenExprAsBoolExpr _ _ = _ |- _ => apply flattenExprAsBoolExpr_size in H
+    | H: flattenCall _ _ _ _ = _ |- _ => apply flattenCall_size in H
+    | H: flattenInteract _ _ _ _ = _ |- _ => apply flattenInteract_size in H
     end;
-    try omega;
-    try eapply flattenCall_size; try eassumption.
-  Admitted.
+    simpl in *;
+    try omega.
+  Qed.
 
+  (*
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' s v,
     flattenExpr ngs e = (s, v, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).
@@ -320,37 +312,17 @@ Section FlattenExpr1.
     set_solver.
   Qed.
 
-  (* TODO investigate if this one is really needed, might allow to simplify flatten function *)
-  Lemma flattenExpr_modifies_resVar: forall e s ngs ngs' resVar,
-    flattenExpr ngs e = (s, resVar, ngs') ->
-    resVar \in (FlatImp.modVars s).
+  Lemma flattenExpr_valid_resVar: forall e s ngs ngs' resVar,
+      flattenExpr ngs e = (s, resVar, ngs') ->
+      disjoint (of_list (ExprImp.allVars_expr e)) (allFreshVars ngs) ->
+      ~ resVar \in (allFreshVars ngs').
   Proof.
     intros.
-    destruct e; repeat (inversionss; try destruct_one_match_hyp); simpl in *; set_solver.
-  Qed.
-
-  Lemma flattenExprAsBoolExpr_modifies_cond_vars: forall e s ngs ngs' cond,
-    flattenExprAsBoolExpr ngs e = (s, cond, ngs') ->
-    subset (FlatImp.accessedVarsBcond cond) (FlatImp.modVars s).
-  Proof.
-    intros.
-    destruct e; simpl in *; repeat (destruct_one_match_hyp);
-      repeat match goal with
-             | H: (_, _, _) = (_, _, _) |- _ => inversion H; subst; clear H
-             | H : flattenExpr _ _ = _ |- _ => apply flattenExpr_modifies_resVar in H
-             | |- _ => progress simpl in *
-             end; set_solver.
-  Qed.
-
-  Lemma flattenExpr_resVar: forall e s ngs ngs' resVar,
-    flattenExpr ngs e = (s, resVar, ngs') ->
-    ~ resVar \in (allFreshVars ngs').
-  Proof.
-    intros. destruct e; repeat (inversionss; try destruct_one_match_hyp); simpl in *;
-    repeat match goal with
-    | H: _ |- _ => apply genFresh_spec in H
-    end;
-    set_solver.
+    destruct e; simp; simpl in *; simp;
+      try match goal with
+          | H: _ |- _ => apply genFresh_spec in H; simp; assumption
+          end.
+    unfold of_list in *. simpl in *. set_solver.
   Qed.
 
   Lemma flattenExpr_modVars_spec: forall e s ngs ngs' resVar,
@@ -475,9 +447,6 @@ Section FlattenExpr1.
     | H: _ |- _ => unique eapply flattenExprs_freshVarUsage in copy of H
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_freshVarUsage in copy of H
     | H: _ |- _ => unique eapply flattenStmt_freshVarUsage in copy of H
-    (* resvar of flattened expr was modified by statement resulting from flattening: *)
-    | H: _ |- _ => unique eapply flattenExpr_modifies_resVar in copy of H
-    | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modifies_cond_vars in copy of H
     (* a flattened statement only modifies vars obtained from the fresh var generator: *)
     | H: _ |- _ => unique eapply flattenExpr_modVars_spec in copy of H
     | H: _ |- _ => unique eapply flattenExprs_modVars_spec in copy of H
@@ -566,7 +535,7 @@ Section FlattenExpr1.
   Ltac maps :=
     pose_flatten_var_ineqs;
     simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
-    map_solver (@locals_ok p).
+    try solve [set_solver | map_solver (@locals_ok p)].
 
   Lemma seq_with_modVars: forall env t m l mc s1 s2 mid post,
     FlatImp.exec env s1 t m l mc mid ->
@@ -587,17 +556,18 @@ Section FlattenExpr1.
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
+    disjoint (of_list (ExprImp.allVars_expr e)) (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
     FlatImp.exec map.empty s t initialM initialL initialMc (fun t' finalM finalL finalMc =>
       t' = t /\ finalM = initialM /\ finalMc = initialMc /\ map.get finalL resVar = Some res).
   Proof.
-    induction e; intros *; intros F Ex U Ev; simpl in *; simp.
+    induction e; intros *; intros F Ex U D Ev; simpl in *; simp.
 
     - (* expr.literal *)
       eapply @FlatImp.exec.lit; t_safe; maps.
 
     - (* expr.var *)
-      eapply @FlatImp.exec.set; t_safe; maps.
+      eapply @FlatImp.exec.skip; t_safe.
 
     - (* expr.load *)
       eapply @FlatImp.exec.seq.
@@ -607,51 +577,72 @@ Section FlattenExpr1.
 
     - (* expr.op *)
       eapply seq_with_modVars.
-      + eapply IHe1; eassumption.
+      + eapply IHe1. 1: eassumption. 4: eassumption. 1,2: eassumption.
+        clear -D. set_solver.
       + intros. simpl in *. simp.
         eapply seq_with_modVars.
-        * eapply IHe2; try eassumption; maps.
+        * eapply IHe2. 1: eassumption. 4: eassumption. 1,2: solve [maps].
+          clear IHe1 IHe2. pose_flatten_var_ineqs. set_solver.
         * intros. simpl in *. simp. clear IHe1 IHe2.
-          eapply @FlatImp.exec.op; t_safe; t_safe; maps.
+          eapply @FlatImp.exec.op; t_safe; t_safe.
+          eapply flattenExpr_valid_resVar in E1.
+          { maps. }
+          { clear -D. maps. (* TODO can it also work in reasonable time without clearing? *) }
   Qed.
 
   Lemma flattenExpr_correct_with_modVars : forall e ngs1 ngs2 resVar s t m lH lL mc res,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     map.extends lL lH ->
     map.undef_on lH (allFreshVars ngs1) ->
+    disjoint (of_list (ExprImp.allVars_expr e)) (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) m lH e = Some res ->
     FlatImp.exec map.empty s t m lL mc (fun t' m' lL' mc' =>
       map.only_differ lL (FlatImp.modVars s) lL' /\
       t' = t /\ m' = m /\ mc' = mc /\ map.get lL' resVar = Some res).
   Proof.
-    intros *. intros F Ex U Ev.
-    epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ _ F Ex U Ev) as P.
+    intros *. intros F Ex U D Ev.
+    epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ _ F Ex U D Ev) as P.
     eapply FlatImp.exec.intersect; cycle 1.
     - exact P.
-    - eapply FlatImp.modVarsSound. exact P.
+    - (* PARAMRECORDS why can't this just be "eapply FlatImp.modVarsSound" ? *)
+      eapply @FlatImp.modVarsSound; try typeclasses eauto.
+      exact P.
   Qed.
 
   Lemma flattenExprs_correct: forall es ngs1 ngs2 resVars s t m lH lL mc resVals,
     flattenExprs ngs1 es = (s, resVars, ngs2) ->
     map.extends lL lH ->
     map.undef_on lH (allFreshVars ngs1) ->
+    disjoint (of_list (List.flat_map ExprImp.allVars_expr es)) (allFreshVars ngs1) ->
     List.option_all (List.map (@eval_expr (mk_Semantics_params p) m lH) es) = Some resVals ->
     FlatImp.exec map.empty s t m lL mc (fun t' m' lL' mc' =>
       t' = t /\ m' = m /\ mc' = mc /\
       List.option_all (List.map (map.get lL') resVars) = Some resVals /\
       map.only_differ lL (FlatImp.modVars s) lL').
   Proof.
-    induction es; intros *; intros F Ex U Evs; simpl in *; simp;
+    induction es; intros *; intros F Ex U D Evs; simpl in *; simp;
       [ eapply @FlatImp.exec.skip; simpl; repeat split; auto; maps | ].
     rename n into ngs2, ngs2 into ngs3.
     eapply seq_with_modVars.
-    - eapply flattenExpr_correct_aux; eassumption.
+    - eapply flattenExpr_correct_aux; try eassumption.
+      clear -D.
+      simpl in *. (* PARAMRECORDS *)
+      set_solver.
     - intros. simpl in *. simp.
+      assert (disjoint (of_list (flat_map ExprImp.allVars_expr es)) (allFreshVars ngs2)). {
+        pose_flatten_var_ineqs.
+        simpl in *. (* PARAMRECORDS *)
+        set_solver.
+      }
       eapply @FlatImp.exec.weaken.
       + eapply IHes; try eassumption; maps.
       + intros. simpl in *. simp.
-        replace (map.get l'0 v) with (Some r) by maps.
-        rewrite_match. repeat (split || auto). maps.
+        replace (map.get l'0 v) with (Some r).
+        * rewrite_match. repeat (split || auto). maps.
+        * eapply flattenExpr_valid_resVar in E1; [maps|].
+          clear -D.
+          progress simpl in *. (* PARAMRECORDS without this set_solver cannot solve the goal *)
+          set_solver.
   Qed.
 
   Ltac simpl_reg_eqb :=
@@ -705,29 +696,58 @@ Section FlattenExpr1.
     [ eapply flattenExpr_correct_aux; try eassumption; try reflexivity
     | intros; simpl in *; simp; rewrite_match; auto ].
 
+  (* TODO if we had a decently fast map solver, we needn't prove and apply such lemmas
+     manually: *)
+  Lemma disjoint_of_list_app: forall (T: Type) (l1 l2: list T) (s: set T),
+      disjoint (of_list (l1 ++ l2)) s ->
+      disjoint (of_list l1) s /\ disjoint (of_list l2) s.
+  Proof.
+    intros. split; simpl in *; set_solver_generic T.
+  Qed.
+
   Lemma flattenBooleanExpr_correct_aux :
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMc res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
+    disjoint (of_list (ExprImp.allVars_expr e)) (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
     FlatImp.exec map.empty s t initialM initialL initialMc (fun t' finalM finalL finalMc =>
       t' = t /\ finalM = initialM /\ finalMc = initialMc /\
       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0)))).
   Proof.
-    destruct e; intros *; intros F Ex U Ev; unfold flattenExprAsBoolExpr in F; simp.
+    destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F; simp.
 
     1, 2, 3: default_flattenBooleanExpr.
 
     destruct op; simp; try solve [default_flattenBooleanExpr].
+
+    all: simpl in D; apply disjoint_of_list_app in D; destruct D as [D1 D2].
 
     all: simpl in *; simp;
       eapply seq_with_modVars;
       [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity
       | intros; simpl in *; simp;
         eapply FlatImp.exec.weaken;
-        [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity; maps
+        [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity(*; maps*)
         | intros; simpl in *; simp; repeat rewrite_match; t_safe ] ].
+
+    all: try match goal with
+             | |- disjoint _ _ => shelve
+             end.
+    all: try match goal with
+             | |- _ = Some _ => shelve
+             end.
+
+    {
+      (* TODO consolidate E0 and E5 *)
+      pose_flatten_var_ineqs.
+(*
+      eapply flattenExpr_valid_resVar in E5.
+
+          { maps. }
+          { clear -D. maps. (* TODO can it also work in reasonable time without clearing? *) }
+
 
     all: replace (map.get l'0 v) with (Some r) by maps;
       f_equal;
@@ -743,7 +763,7 @@ Section FlattenExpr1.
           pose proof (negb_false_iff b) as H'; destruct H' as [_ H'];
           symmetry; apply H'; simpl_reg_eqb
         end); auto using word.eqb_ne, one_ne_zero.
-  Qed.
+*)Admitted.
 
   Lemma flattenBooleanExpr_correct_with_modVars:
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMc res,
@@ -757,11 +777,13 @@ Section FlattenExpr1.
       map.only_differ initialL (FlatImp.modVars s) finalL (* <-- added *)).
   Proof.
     intros. eapply FlatImp.exec.intersect.
-    - eapply flattenBooleanExpr_correct_aux; eassumption.
+    - eapply flattenBooleanExpr_correct_aux; try eassumption.
+      admit.
     - (* PARAMRECORDS why not just "eapply @FlatImp.modVarsSound" ? *)
       eapply @FlatImp.modVarsSound; [typeclasses eauto..|].
-      eapply flattenBooleanExpr_correct_aux; eassumption.
-  Qed.
+      eapply flattenBooleanExpr_correct_aux; try eassumption.
+      admit.
+  Admitted.
 
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
       Semantics.exec e sH t m lH post ->
@@ -793,7 +815,7 @@ Section FlattenExpr1.
 
     - (* exec.set *)
       eapply @FlatImp.exec.seq.
-      + eapply flattenExpr_correct_with_modVars; eassumption.
+      + eapply flattenExpr_correct_with_modVars; try eassumption. admit.
       + simpl. intros. simp.
         eapply @FlatImp.exec.set; [eassumption|].
         eexists; repeat (split || eassumption); maps.
@@ -804,13 +826,27 @@ Section FlattenExpr1.
 
     - (* exec.store *)
       eapply @FlatImp.exec.seq.
-      + eapply flattenExpr_correct_with_modVars; try eassumption.
+      + eapply flattenExpr_correct_with_modVars; try eassumption. admit.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.seq.
-        * eapply flattenExpr_correct_with_modVars; try eassumption; maps.
+        * eapply flattenExpr_correct_with_modVars; try eassumption; maps. admit.
         * intros. simpl in *. simp.
-          eapply @FlatImp.exec.store; try eassumption. 1: maps.
-          eexists; repeat (split || eassumption). 2: maps. maps.
+          eapply @FlatImp.exec.store; try eassumption. 1: maps. 1: admit.
+          eexists; repeat (split || eassumption).
+
+  Ltac maps ::=
+    pose_flatten_var_ineqs;
+    simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
+    try solve [map_solver (@locals_ok p)].
+
+          2: maps.
+          pose_flatten_var_ineqs. simpl in *.
+          assert (map.only_differ l'0 (union (FlatImp.modVars s0) (FlatImp.modVars s)) lL)
+            by (simpl in *; map_solver locals_ok).
+          simpl in *.
+(* TODO...
+map_solver locals_ok.
+ idtac. maps.
 
     - (* if_true *)
       eapply @FlatImp.exec.seq.
@@ -912,6 +948,9 @@ Section FlattenExpr1.
         destruct R as (lL'' & R1 & R2).
         eauto 10 using only_differ_putmany.
   Qed.
+*)
+  Admitted.
+  *)
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).
@@ -923,6 +962,7 @@ Section FlattenExpr1.
         post t' m' lH' /\
         map.extends lL' lH').
   Proof.
+  Admitted. (*
     intros.
     unfold ExprImp2FlatImp in *.
     match goal with
@@ -944,5 +984,6 @@ Section FlattenExpr1.
         specialize Q with (1 := H). exact Q.
     - simpl. intros. simp. eauto.
   Qed.
+  *)
 
 End FlattenExpr1.

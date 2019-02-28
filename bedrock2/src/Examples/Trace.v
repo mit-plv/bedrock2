@@ -162,12 +162,12 @@ Module SpiEth.
     Local Set Refine Instance Mode.
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
-    Local Coercion var(x : @varname (@syntax semantics_params)):
+    Local Definition var(x : @varname (@syntax semantics_params)):
       @expr.expr (@syntax semantics_params) := Syntax.expr.var x.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
 
-    Definition TODO{T: Type}: T. Admitted.
+    Axiom TODO: False.
 
     Instance MMIOMacros: IOMacros.Interface := {|
       IOMacros.semantics_params := semantics_params;
@@ -195,7 +195,7 @@ Module SpiEth.
       eapply exec.seq with
           (mid := fun t' m' l' => t' = t /\ m' = m /\ l' = map.put l x (word.of_Z (-1))).
       { eapply exec.set; [reflexivity|auto]. }
-      { intros. apply TODO. (* will require a loop invariant *) }
+      { intros. case TODO. (* will require a loop invariant *) }
     - (* write_word_correct: *)
       intros.
       (* need to show that this imperative code corresponds to the Inductive write_byte *)
@@ -209,10 +209,10 @@ Module SpiEth.
             apply H.
             unfold isMMIOAddr.
             auto.
-          + apply TODO.
-        - apply TODO.
+          + case TODO.
+        - case TODO.
       }
-      apply TODO.
+      case TODO.
       Grab Existential Variables. all: intros; apply True.
     Defined.
 
@@ -277,12 +277,12 @@ Module Syscalls.
     Local Set Refine Instance Mode.
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
-    Local Coercion var(x : @varname (@syntax semantics_params)):
+    Local Definition var(x : @varname (@syntax semantics_params)):
       @expr.expr (@syntax semantics_params) := Syntax.expr.var x.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
 
-    Definition TODO{T: Type}: T. Admitted.
+    Axiom TODO: False.
 
     Instance SyscallIOMacros: IOMacros.Interface := {|
       IOMacros.semantics_params := semantics_params;
@@ -313,10 +313,10 @@ Module Syscalls.
         eexists. repeat split.
         do 2 eexists. repeat split.
         * (* TODO direction doesn't match *)
-          apply TODO.
+          case TODO.
         * (* TODO need to specify that some ignored1, ignored2 are updated too *)
-          apply TODO.
-    - apply TODO.
+          case TODO.
+    - case TODO.
       Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty.
     Defined.
 

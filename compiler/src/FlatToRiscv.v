@@ -54,7 +54,7 @@ Section TODO.
 End TODO.
 
 
-Definition TODO{T: Type}: T. Admitted.
+Axiom TODO: False.
 
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
@@ -418,7 +418,7 @@ Section FlatToRiscv1.
         change (2 ^ 9)%Z with 512%Z in *;
         simpl stmt_size in H;
         repeat match goal with
-               | s: stmt |- _ => unique pose proof (stmt_size_pos s)
+               | s: stmt |- _ => unique pose proof (stmt_size_nonneg s)
                end;
         match goal with
         | |- ?SZ _ _ < _ => (* COQBUG https://github.com/coq/coq/issues/9268 *)

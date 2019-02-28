@@ -1,7 +1,6 @@
 Require Import Coq.Lists.List.
 Require Import Coq.omega.Omega.
 Require Import compiler.util.Set.
-Require Import compiler.util.List_Set.
 Require Import compiler.NameGen.
 
 Definition listmax(l: list nat): nat := fold_right max 0 l.
@@ -30,7 +29,7 @@ Proof.
       eapply Z.le_trans; eassumption.
 Qed.
 
-Definition TODO{T: Type}: T. Admitted.
+Axiom TODO: False.
 
 Local Set Refine Instance Mode.
 
@@ -41,7 +40,7 @@ Instance ZNameGen: NameGen Z Z := {|
   genFresh := fun s => (s, (s + 1)%Z);
 (*  allFreshVars := fun s => fun x => (s <= x)%Z *)
 |}.
-  all: apply TODO. (*
+  all: case TODO. (*
   abstract (intros; inversion H; subst; unfold subset; simpl; intuition omega).
   abstract (unfold contains, Function_Set; intros; apply listmaxZ_spec in H; omega).
 *)

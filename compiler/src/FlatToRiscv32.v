@@ -42,7 +42,7 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Definition TODO{T: Type}: T. Admitted.
+Axiom TODO: False.
 
 Module Import FlatToRiscv32.
   Export FlatToRiscvDef.FlatToRiscvDef.

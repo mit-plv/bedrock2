@@ -3,7 +3,7 @@ Require Import coqutil.sanity coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.
 
-Definition TODO{T: Type}: T. Admitted.
+Axiom TODO: False.
 
 Section WithWidth.
   Context {width : Z}.
@@ -51,7 +51,7 @@ Section WithWidth.
     sextend oldwidth z := wrap ((unsigned z + 2^(oldwidth-1)) mod 2^oldwidth - 2^(oldwidth-1));
     *)
   |}.
-  all: apply TODO. Defined.
+  all: case TODO. Defined.
 
   (*
   Lemma eq_unsigned {x y : rep} : unsigned x = unsigned y -> x = y.

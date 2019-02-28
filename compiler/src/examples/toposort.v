@@ -448,7 +448,7 @@ Section LLG.
     - exact (vals m).
   Defined.
 
-  Definition TODO{T: Type}: T. Admitted.
+  Axiom TODO: False.
 
   Fixpoint interp_expr{n: nat}{l: list var}
     (e: expr l n) (types: member l -> nat)
@@ -547,8 +547,8 @@ Section LLG.
                     (member_app_r _ l3 m))))).
               set (vals2 := fill_in_val var_i 0 f1 l2 types20 vals20).
               specialize (f2 vals2).
-              Fail (exact f2). apply TODO. }
-            { apply TODO. }
+              Fail (exact f2). case TODO. }
+            { case TODO. }
           }
           { exact None. }
         * exact None.

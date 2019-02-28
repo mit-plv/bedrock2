@@ -1,10 +1,16 @@
 Require Import Coq.Lists.List.
+Require Import Coq.micromega.Lia.
 Import ListNotations.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
-Require Import compiler.Basic32Semantics.
+Require Import Coq.ZArith.ZArith.
+Require Import coqutil.Map.SortedList.
+Require Import riscv.Words32Naive.
+Require Import riscv.DefaultMemImpl32.
+Require Import coqutil.Map.Empty_set_keyed_map.
+Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import riscv.util.Monads.
 Require Import compiler.util.Common.
 Require        riscv.InstructionNotations.
@@ -25,6 +31,8 @@ Open Scope Z_scope.
 Notation RiscvMachine := (RiscvMachine Register MMIOAction).
 
 Instance mmio_params: MMIO.parameters := { (* everything is inferred automatically *) }.
+
+Existing Instance MinimalMMIOPrimitivesParams. (* needed because it's in a section *)
 
 Instance foo: FlatToRiscv.FlatToRiscv.parameters := _.
 
@@ -61,13 +69,85 @@ Example mmio_adder: cmd :=
            (cmd.interact [] MMOutput [expr.literal magicMMIOAddrLit;
                                         expr.op bopname.add (expr.var a) (expr.var b)]))).
 
-Eval vm_compute in compileFunc mmio_adder.
+(* Eval vm_compute in compileFunc mmio_adder. *)
 
 Definition mmio_adder_bytes: list byte := Eval vm_compute in main mmio_adder.
 
-Module PrintBytes.
-  Import bedrock2.Hexdump.
-  Local Open Scope hexdump_scope.
-  Set Printing Width 100.
-  Goal True. let x := eval cbv in mmio_adder_bytes in idtac x. Abort.
-End PrintBytes.
+
+Require Import bedrock2.Examples.FE310CompilerDemo.
+Time Definition swap_demo_byte: list byte := Eval vm_compute in main swap_chars_over_uart.
+
+Module PrintAssembly.
+  Import riscv.InstructionNotations.
+  (* Eval vm_compute in compileFunc swap_chars_over_uart. *)
+End PrintAssembly.
+
+Definition zeroedRiscvMachine: RiscvMachine := {|
+  getRegs := map.empty;
+  getPc := word.of_Z 0;
+  getNextPc := word.of_Z 4;
+  getMem := map.empty;
+  getLog := nil;
+|}.
+
+Definition imemStart: word. Admitted. (* TODO *)
+
+Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
+  putProgram imem imemStart zeroedRiscvMachine.
+
+Require bedrock2.WeakestPreconditionProperties.
+
+Local Instance ext_spec_Proper :   forall
+    (trace : list
+               (mem * actname * list Semantics.word *
+                (mem * list Semantics.word))) (m : mem)
+    (act : actname) (args : list Semantics.word),
+  Morphisms.Proper
+    (Morphisms.respectful
+       (Morphisms.pointwise_relation mem
+          (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
+       Basics.impl) (ext_spec trace m act args).
+Admitted.
+
+Definition initialSwapMachine: RiscvMachine :=
+  initialRiscvMachine (List.map encode (compileFunc swap_chars_over_uart)).
+
+(* just to make sure all typeclass instances are available: *)
+Definition mcomp_sat:
+  OStateND RiscvMachine unit -> RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
+  GoFlatToRiscv.mcomp_sat.
+
+Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
+  unchecked_store_byte_tuple_list addr (List.map (LittleEndian.split 4) (List.map encode p)) m.
+
+Lemma store_program_empty: forall prog addr,
+    GoFlatToRiscv.program addr prog (unchecked_store_program addr prog map.empty).
+Proof.
+  induction prog; intros.
+  - cbv. auto.
+  - cbv [GoFlatToRiscv.program]. simpl.
+    do 2 eexists. split; [|split].
+Admitted.
+
+Lemma end2endDemo:
+  runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
+                      initialSwapMachine
+                      (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
+Proof.
+  (* TODO why does "eapply @exprImp2Riscv_correct" not work? *)
+  unshelve epose proof (@exprImp2Riscv_correct _ _
+    swap_chars_over_uart map.empty _ _ _ imemStart _ _ eq_refl _ _ _ _) as P;
+    [..|eapply P].
+  - cbv - [Z.lt]. lia.
+  - cbv. repeat constructor.
+  - reflexivity.
+  - reflexivity.
+  - cbv [initialSwapMachine initialRiscvMachine getMem putProgram zeroedRiscvMachine
+         getMem withPc withNextPc withMem].
+    unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].
+    1: apply map.split_empty_r; reflexivity.
+    apply store_program_empty.
+  - eapply bedrock2.WeakestPreconditionProperties.sound_nil.
+    eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
+Qed.
+Print Assumptions end2endDemo.

@@ -2,7 +2,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import compiler.util.Common.
 Require Import riscv.util.Monads.
 Require Import coqutil.Map.SortedList.
-Require Import compiler.util.List_Set.
 Require Import compiler.FlatImp.
 Require Import riscv.util.ListLib.
 Require Import riscv.Decode.
@@ -112,7 +111,7 @@ Instance compilation_params: FlatToRiscvDef.parameters := {|
   FlatToRiscvDef.actname := act;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
   FlatToRiscvDef.max_ext_call_code_size _ := 100;
-|}. all: apply TODO. Defined.
+|}. all: case TODO. Defined.
 
 Definition compiled: list Instruction := Eval cbv in compile_stmt RV32IM test.
 
