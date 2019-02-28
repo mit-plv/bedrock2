@@ -8,7 +8,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import riscv.Program.
 Require Import riscv.Decode.
 Require Import riscv.PseudoInstructions.
-Require Import riscv.RiscvMachine.
+Require Import riscv.MetricRiscvMachine.
 Require Import riscv.Execute.
 Require Import riscv.Run.
 Require Import riscv.Memory.
@@ -19,6 +19,7 @@ Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.Primitives.
+Require Import riscv.MetricPrimitives.
 Require Import Coq.micromega.Lia.
 Require Import riscv.util.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
@@ -69,7 +70,7 @@ Module Import FlatToRiscv.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
+    PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
 
     ext_spec : list (mem * actname * list word * (mem * list word)) ->
                mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
@@ -77,7 +78,7 @@ Module Import FlatToRiscv.
     (* An abstract predicate on the low-level state, which can be chosen by authors of
        extensions. The compiler will ensure that this guarantee holds before each external
        call. *)
-    ext_guarantee: RiscvMachine Register actname -> Prop;
+    ext_guarantee: MetricRiscvMachine Register actname -> Prop;
   }.
 
   Section Defs.
@@ -97,18 +98,18 @@ Module Import FlatToRiscv.
     Semantics.funname_eqb := Empty_set_rect _;
     Semantics.funname_env := Empty_set_keyed_map.map;
   |}.
-
+Set Printing Implicit.
   Class assumptions{p: parameters} := {
     word_riscv_ok :> word.riscv_ok (@word W);
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     actname_eq_dec :> DecidableEq actname;
-    PR :> Primitives PRParams;
+    PR :> MetricPrimitives PRParams;
 
     (* For authors of extensions, a freely choosable ext_guarantee sounds too good to be true!
        And indeed, there are two restrictions:
        The first restriction is that ext_guarantee needs to be preservable for the compiler: *)
-    ext_guarantee_preservable: forall (m1 m2: RiscvMachine Register actname),
+    ext_guarantee_preservable: forall (m1 m2: MetricRiscvMachine Register actname),
         ext_guarantee m1 ->
         map.same_domain m1.(getMem) m2.(getMem) ->
         m1.(getLog) = m2.(getLog) ->
@@ -116,7 +117,7 @@ Module Import FlatToRiscv.
 
     (* And the second restriction is part of the correctness requirement for compilation of
        external calls: Every compiled external call has to preserve ext_guarantee *)
-    compile_ext_call_correct: forall (initialL: RiscvMachine Register actname) action postH newPc insts
+    compile_ext_call_correct: forall (initialL: MetricRiscvMachine Register actname) action postH newPc insts
         (argvars resvars: list Register) initialMH R,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
@@ -126,11 +127,11 @@ Module Import FlatToRiscv.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       ext_guarantee initialL ->
       exec map.empty (SInteract resvars action argvars)
-           initialL.(getLog) initialMH initialL.(getRegs) postH ->
+           initialL.(getLog) initialMH initialL.(getRegs) initialL.(getMetrics) postH ->
       runsTo (mcomp_sat (run1 iset)) initialL
              (fun finalL =>
                   (* external calls can't modify the memory for now *)
-                  postH finalL.(getLog) initialMH finalL.(getRegs) /\
+                  postH finalL.(getLog) initialMH finalL.(getRegs) finalL.(getMetrics) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\

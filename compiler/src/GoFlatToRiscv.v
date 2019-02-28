@@ -9,8 +9,9 @@ Require Import riscv.Utility.
 Require Import riscv.Decode.
 Require Import riscv.Memory.
 Require Import riscv.Program.
-Require Import riscv.RiscvMachine.
+Require Import riscv.MetricRiscvMachine.
 Require Import riscv.Primitives.
+Require Import riscv.MetricPrimitives.
 Require Import riscv.Run.
 Require Import riscv.Execute.
 Require Import riscv.proofs.DecodeEncode.
@@ -32,13 +33,13 @@ Section Go.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
-  Local Notation RiscvMachineL := (RiscvMachine Register Action).
+  Local Notation RiscvMachineL := (MetricRiscvMachine Register Action).
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PRParams: PrimitivesParams M (RiscvMachine Register Action)}.
-  Context {PR: Primitives PRParams}.
+  Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register Action)}.
+  Context {PR: MetricPrimitives PRParams}.
   Variable iset: InstructionSet.
 
   Lemma spec_Bind_det{A B: Type}: forall (initialL: RiscvMachineL)
@@ -89,7 +90,13 @@ Section Go.
       Memory.loadByte initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) initialL post ->
       mcomp_sat (Bind (Program.loadByte addr) f) initialL post.
-  Proof. t spec_loadByte. Qed.
+  Proof.
+    intros.
+    try (eapply spec_Bind_det; [|eassumption]). (* try because go_step doesn't need Bind *)
+    apply MetricPrimitives.spec_loadByte;
+    rewrite_match;
+    eauto.
+  Qed.
 
   Lemma go_loadHalf: forall initialL addr (v: w16) (f: w16 -> M unit) post,
       Memory.loadHalf initialL.(getMem) addr = Some v ->

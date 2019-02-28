@@ -568,13 +568,13 @@ Section FlattenExpr1.
     simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
     map_solver (@locals_ok p).
 
-  Lemma seq_with_modVars: forall env t m l s1 s2 mid post,
-    FlatImp.exec env s1 t m l mid ->
-    (forall t' m' l',
-        mid t' m' l' ->
+  Lemma seq_with_modVars: forall env t m l mc s1 s2 mid post,
+    FlatImp.exec env s1 t m l mc mid ->
+    (forall t' m' l' mc',
+        mid t' m' l' mc' ->
         map.only_differ l (FlatImp.modVars s1) l' ->
-        FlatImp.exec env s2 t' m' l' post) ->
-    FlatImp.exec env (FlatImp.SSeq s1 s2) t m l post.
+        FlatImp.exec env s2 t' m' l' mc' post) ->
+    FlatImp.exec env (FlatImp.SSeq s1 s2) t m l mc post.
   Proof.
     intros *. intros E1 E2. eapply @FlatImp.exec.seq.
     - eapply @FlatImp.exec.intersect.
@@ -583,13 +583,13 @@ Section FlattenExpr1.
     - simpl. intros. simp. eauto.
   Qed.
 
-  Lemma flattenExpr_correct_aux : forall e ngs1 ngs2 resVar s initialH initialL initialM res t,
+  Lemma flattenExpr_correct_aux : forall e ngs1 ngs2 resVar s initialH initialL initialM initialMc res t,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
-    FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
-      t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res).
+    FlatImp.exec map.empty s t initialM initialL initialMc (fun t' finalM finalL finalMc =>
+      t' = t /\ finalM = initialM /\ finalMc = initialMc /\ map.get finalL resVar = Some res).
   Proof.
     induction e; intros *; intros F Ex U Ev; simpl in *; simp.
 
@@ -615,29 +615,29 @@ Section FlattenExpr1.
           eapply @FlatImp.exec.op; t_safe; t_safe; maps.
   Qed.
 
-  Lemma flattenExpr_correct_with_modVars : forall e ngs1 ngs2 resVar s t m lH lL res,
+  Lemma flattenExpr_correct_with_modVars : forall e ngs1 ngs2 resVar s t m lH lL mc res,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     map.extends lL lH ->
     map.undef_on lH (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) m lH e = Some res ->
-    FlatImp.exec map.empty s t m lL (fun t' m' lL' =>
+    FlatImp.exec map.empty s t m lL mc (fun t' m' lL' mc' =>
       map.only_differ lL (FlatImp.modVars s) lL' /\
-      t' = t /\ m' = m /\ map.get lL' resVar = Some res).
+      t' = t /\ m' = m /\ mc' = mc /\ map.get lL' resVar = Some res).
   Proof.
     intros *. intros F Ex U Ev.
-    epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ F Ex U Ev) as P.
+    epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ _ F Ex U Ev) as P.
     eapply FlatImp.exec.intersect; cycle 1.
     - exact P.
     - eapply FlatImp.modVarsSound. exact P.
   Qed.
 
-  Lemma flattenExprs_correct: forall es ngs1 ngs2 resVars s t m lH lL resVals,
+  Lemma flattenExprs_correct: forall es ngs1 ngs2 resVars s t m lH lL mc resVals,
     flattenExprs ngs1 es = (s, resVars, ngs2) ->
     map.extends lL lH ->
     map.undef_on lH (allFreshVars ngs1) ->
     List.option_all (List.map (@eval_expr (mk_Semantics_params p) m lH) es) = Some resVals ->
-    FlatImp.exec map.empty s t m lL (fun t' m' lL' =>
-      t' = t /\ m' = m /\
+    FlatImp.exec map.empty s t m lL mc (fun t' m' lL' mc' =>
+      t' = t /\ m' = m /\ mc' = mc /\
       List.option_all (List.map (map.get lL') resVars) = Some resVals /\
       map.only_differ lL (FlatImp.modVars s) lL').
   Proof.
@@ -706,13 +706,13 @@ Section FlattenExpr1.
     | intros; simpl in *; simp; rewrite_match; auto ].
 
   Lemma flattenBooleanExpr_correct_aux :
-    forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t res,
+    forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMc res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
-    FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
-      t' = t /\ finalM = initialM /\
+    FlatImp.exec map.empty s t initialM initialL initialMc (fun t' finalM finalL finalMc =>
+      t' = t /\ finalM = initialM /\ finalMc = initialMc /\
       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0)))).
   Proof.
     destruct e; intros *; intros F Ex U Ev; unfold flattenExprAsBoolExpr in F; simp.
@@ -746,13 +746,13 @@ Section FlattenExpr1.
   Qed.
 
   Lemma flattenBooleanExpr_correct_with_modVars:
-    forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t res,
+    forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMc res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
-    FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
-      (t' = t /\ finalM = initialM /\
+    FlatImp.exec map.empty s t initialM initialL initialMc (fun t' finalM finalL finalMc =>
+      (t' = t /\ finalM = initialM /\ finalMc = initialMc /\
        FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0)))) /\
       map.only_differ initialL (FlatImp.modVars s) finalL (* <-- added *)).
   Proof.
@@ -766,12 +766,12 @@ Section FlattenExpr1.
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
       Semantics.exec e sH t m lH post ->
       e = map.empty ->
-      forall ngs ngs' sL lL,
+      forall ngs ngs' sL lL mc,
       flattenStmt ngs sH = (sL, ngs') ->
       map.extends lL lH ->
       map.undef_on lH (allFreshVars ngs) ->
       disjoint (ExprImp.modVars sH) (allFreshVars ngs) ->
-      FlatImp.exec map.empty sL t m lL (fun t' m' lL' => exists lH',
+      FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' _ => exists lH',
         post t' m' lH' /\ (* <-- put first so that eassumption will instantiate lH' correctly *)
         map.extends lL' lH' /\
         (* this one is a property purely about ExprImp (it's the conclusion of
@@ -817,7 +817,7 @@ Section FlattenExpr1.
       + eapply flattenBooleanExpr_correct_with_modVars; try eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_true.
-        * rewrite H3. f_equal. simpl_reg_eqb. reflexivity.
+        * rewrite H8. f_equal. simpl_reg_eqb. reflexivity.
         * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
              requires us to do one more weakening step here than otherwise needed: *)
           eapply @FlatImp.exec.weaken.
@@ -830,7 +830,7 @@ Section FlattenExpr1.
       + eapply flattenBooleanExpr_correct_with_modVars; try eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_false.
-        * rewrite H2. f_equal. simpl_reg_eqb. reflexivity.
+        * rewrite H7. f_equal. simpl_reg_eqb. reflexivity.
         * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
              requires us to do one more weakening step here than otherwise needed: *)
           eapply @FlatImp.exec.weaken.
@@ -877,7 +877,7 @@ Section FlattenExpr1.
         | intros; simpl in *; simp .. ].
       + congruence.
       + eexists; repeat (split || eassumption); maps.
-      + exfalso. rewrite word.eqb_eq in H6 by reflexivity. simpl in *. congruence.
+      + exfalso. rewrite word.eqb_eq in H8 by reflexivity. simpl in *. congruence.
       + exfalso. exact H1. (* instantiates mid2 to (fun _ _ _ => False) *)
 
     - (* while_true *)
@@ -885,7 +885,7 @@ Section FlattenExpr1.
         [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
         | intros; simpl in *; simp .. ].
       + congruence.
-      + exfalso. rewrite word.eqb_ne in H9 by congruence. simpl in *. congruence.
+      + exfalso. rewrite word.eqb_ne in H11 by congruence. simpl in *. congruence.
       + eapply IHexec; try eassumption; try reflexivity; maps.
       + simpl in *. simp.
         specialize H3 with (1 := H4).
@@ -916,10 +916,10 @@ Section FlattenExpr1.
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).
 
-  Lemma flattenStmt_correct: forall sH sL t m post,
+  Lemma flattenStmt_correct: forall sH sL t m mc post,
       ExprImp2FlatImp sH = sL ->
       Semantics.exec map.empty sH t m map.empty post ->
-      FlatImp.exec map.empty sL t m map.empty (fun t' m' lL' => exists lH',
+      FlatImp.exec map.empty sL t m map.empty mc (fun t' m' lL' mc' => exists lH',
         post t' m' lH' /\
         map.extends lL' lH').
   Proof.

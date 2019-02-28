@@ -2,6 +2,7 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import lib.LibTacticsMin.
 Require Import riscv.util.ListLib.
+Require Import riscv.MetricLogging.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require compiler.NoActionSyntaxParams.
@@ -312,98 +313,100 @@ Module exec.
     Context {pp : unique! Semantics.parameters}.
     Variable (e: env).
 
+    Local Notation metrics := MetricLog.
+
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
-    Implicit Types post : trace -> mem -> locals -> Prop.
+    Implicit Types post : trace -> mem -> locals -> metrics -> Prop.
 
     (* alternative semantics which allow non-determinism *)
     Inductive exec:
       stmt ->
-      trace -> mem -> locals ->
-      (trace -> mem -> locals -> Prop)
+      trace -> mem -> locals -> metrics ->
+      (trace -> mem -> locals -> metrics -> Prop)
     -> Prop :=
-    | interact: forall t m l action argvars argvals resvars outcome post,
+    | interact: forall t m l mc action argvars argvals resvars outcome post,
         List.option_all (List.map (map.get l) argvars) = Some argvals ->
         ext_spec t m action argvals outcome ->
-        (forall m' resvals,
+        (forall m' mc' resvals,
             outcome m' resvals ->
             exists l', map.putmany_of_list resvars resvals l = Some l' /\
-                       post (((m, action, argvals), (m', resvals)) :: t) m' l') ->
-        exec (SInteract resvars action argvars) t m l post
-    | call: forall t m l binds fname args params rets fbody argvs st0 post outcome,
+                       post (((m, action, argvals), (m', resvals)) :: t) m' l' mc') ->
+        exec (SInteract resvars action argvars) t m l mc post
+    | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
         List.option_all (List.map (map.get l) args) = Some argvs ->
         map.putmany_of_list params argvs map.empty = Some st0 ->
-        exec fbody t m st0 outcome ->
-        (forall t' m' st1,
-            outcome t' m' st1 ->
+        exec fbody t m st0 mc outcome ->
+        (forall t' m' mc' st1,
+            outcome t' m' st1 mc' ->
             exists retvs l',
               List.option_all (List.map (map.get st1) rets) = Some retvs /\
               map.putmany_of_list binds retvs l = Some l' /\
-              post t' m' l') ->
-        exec (SCall binds fname args) t m l post
-    | load: forall t m l sz x a v addr post,
+              post t' m' l' mc') ->
+        exec (SCall binds fname args) t m l mc post
+    | load: forall t m l mc sz x a v addr post,
         map.get l a = Some addr ->
         load sz m addr = Some v ->
-        post t m (map.put l x v) ->
-        exec (SLoad sz x a) t m l post
-    | store: forall t m m' l sz a addr v val post,
+        post t m (map.put l x v) mc ->
+        exec (SLoad sz x a) t m l mc post
+    | store: forall t m m' mc l sz a addr v val post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
         store sz m addr val = Some m' ->
-        post t m' l ->
-        exec (SStore sz a v) t m l post
-    | lit: forall t m l x v post,
-        post t m (map.put l x (word.of_Z v)) ->
-        exec (SLit x v) t m l post
-    | op: forall t m l x op y y' z z' post,
+        post t m' l mc ->
+        exec (SStore sz a v) t m l mc post
+    | lit: forall t m l mc x v post,
+        post t m (map.put l x (word.of_Z v)) mc ->
+        exec (SLit x v) t m l mc post
+    | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
         map.get l z = Some z' ->
-        post t m (map.put l x (interp_binop op y' z')) ->
-        exec (SOp x op y z) t m l post
-    | set: forall t m l x y y' post,
+        post t m (map.put l x (interp_binop op y' z')) mc ->
+        exec (SOp x op y z) t m l mc post
+    | set: forall t m l mc x y y' post,
         map.get l y = Some y' ->
-        post t m (map.put l x y') ->
-        exec (SSet x y) t m l post
-    | if_true: forall t m l cond  bThen bElse post,
+        post t m (map.put l x y') mc ->
+        exec (SSet x y) t m l mc post
+    | if_true: forall t m l mc cond  bThen bElse post,
         eval_bcond l cond = Some true ->
-        exec bThen t m l post ->
-        exec (SIf cond bThen bElse) t m l post
-    | if_false: forall t m l cond bThen bElse post,
+        exec bThen t m l mc post ->
+        exec (SIf cond bThen bElse) t m l mc post
+    | if_false: forall t m l mc cond bThen bElse post,
         eval_bcond l cond = Some false ->
-        exec bElse t m l post ->
-        exec (SIf cond bThen bElse) t m l post
-    | loop: forall t m l cond body1 body2 mid1 mid2 post,
+        exec bElse t m l mc post ->
+        exec (SIf cond bThen bElse) t m l mc post
+    | loop: forall t m l mc cond body1 body2 mid1 mid2 post,
         (* This case is carefully crafted in such a way that recursive uses of exec
          only appear under forall and ->, but not under exists, /\, \/, to make sure the
          auto-generated induction principle contains an IH for all recursive uses. *)
-        exec body1 t m l mid1 ->
-        (forall t' m' l',
-            mid1 t' m' l' ->
+        exec body1 t m l mc mid1 ->
+        (forall t' m' l' mc',
+            mid1 t' m' l' mc' ->
             eval_bcond l' cond <> None) ->
-        (forall t' m' l',
-            mid1 t' m' l' ->
+        (forall t' m' l' mc',
+            mid1 t' m' l' mc' ->
             eval_bcond l' cond = Some false ->
-            post t' m' l') ->
-        (forall t' m' l',
-            mid1 t' m' l' ->
+            post t' m' l' mc') ->
+        (forall t' m' l' mc',
+            mid1 t' m' l' mc' ->
             eval_bcond l' cond = Some true ->
-            exec body2 t' m' l' mid2) ->
-        (forall t'' m'' l'',
-            mid2 t'' m'' l'' ->
-            exec (SLoop body1 cond body2) t'' m'' l'' post) ->
-        exec (SLoop body1 cond body2) t m l post
-    | seq: forall t m l s1 s2 mid post,
-        exec s1 t m l mid ->
-        (forall t' m' l', mid t' m' l' -> exec s2 t' m' l' post) ->
-        exec (SSeq s1 s2) t m l post
-    | skip: forall t m l post,
-        post t m l ->
-        exec SSkip t m l post.
+            exec body2 t' m' l' mc' mid2) ->
+        (forall t'' m'' l'' mc'',
+            mid2 t'' m'' l'' mc'' ->
+            exec (SLoop body1 cond body2) t'' m'' l'' mc'' post) ->
+        exec (SLoop body1 cond body2) t m l mc post
+    | seq: forall t m l mc s1 s2 mid post,
+        exec s1 t m l mc mid ->
+        (forall t' m' l' mc', mid t' m' l' mc' -> exec s2 t' m' l' mc' post) ->
+        exec (SSeq s1 s2) t m l mc post
+    | skip: forall t m l mc post,
+        post t m l mc ->
+        exec SSkip t m l mc post.
 
-    Lemma det_step: forall t0 m0 l0 s1 s2 t1 m1 l1 post,
-        exec s1 t0 m0 l0 (fun t1' m1' l1' => t1' = t1 /\ m1' = m1 /\ l1' = l1) ->
-        exec s2 t1 m1 l1 post ->
-        exec (SSeq s1 s2) t0 m0 l0 post.
+    Lemma det_step: forall t0 m0 l0 mc0 s1 s2 t1 m1 l1 mc1 post,
+        exec s1 t0 m0 l0 mc0 (fun t1' m1' l1' mc1' => t1' = t1 /\ m1' = m1 /\ l1' = l1 /\ mc1 = mc1') ->
+        exec s2 t1 m1 l1 mc1 post ->
+        exec (SSeq s1 s2) t0 m0 l0 mc0 post.
     Proof.
       intros.
       eapply seq; [eassumption|].
@@ -411,11 +414,11 @@ Module exec.
       assumption.
     Qed.
 
-    Lemma weaken: forall t l m s post1,
-        exec s t m l post1 ->
+    Lemma weaken: forall t l m mc s post1,
+        exec s t m l mc post1 ->
         forall post2,
-          (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
-          exec s t m l post2.
+          (forall t' m' l' mc', post1 t' m' l' mc' -> post2 t' m' l' mc') ->
+          exec s t m l mc post2.
     Proof.
       induction 1; intros; try solve [econstructor; eauto].
       - eapply interact; try eassumption.
@@ -446,15 +449,15 @@ Module exec.
         ext_spec t m a args post2 ->
         ext_spec t m a args (fun m' resvals => post1 m' resvals /\ post2 m' resvals).
 
-    Lemma intersect: forall t l m s post1,
-        exec s t m l post1 ->
+    Lemma intersect: forall t l m mc s post1,
+        exec s t m l mc post1 ->
         forall post2,
-          exec s t m l post2 ->
-          exec s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
+          exec s t m l mc post2 ->
+          exec s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
     Proof.
       induction 1; intros;
         match goal with
-        | H: exec _ _ _ _ _ |- _ => inversion H; subst; clear H
+        | H: exec _ _ _ _ _ _ |- _ => inversion H; subst; clear H
         end;
         equalities;
         try solve [econstructor; eauto | exfalso; congruence].
@@ -462,19 +465,19 @@ Module exec.
       - (* SInteract *)
         eapply @interact.
         + eassumption.
-        + eapply ext_spec_intersect; [ exact H0 | exact H11 ].
+        + eapply ext_spec_intersect; [ exact H0 | exact H12 ].
         + simpl. intros. simp.
         edestruct H1 as (? & ? & ?); [eassumption|].
-        edestruct H12 as (? & ? & ?); [eassumption|].
+        edestruct H13 as (? & ? & ?); [eassumption|].
         equalities.
         eauto 10.
 
       - (* SCall *)
         rename IHexec into IH.
-        specialize IH with (1 := H15).
+        specialize IH with (1 := H16).
         eapply @call; [..|exact IH|]; eauto.
         rename H3 into Ex1.
-        rename H16 into Ex2.
+        rename H17 into Ex2.
         move Ex1 before Ex2.
         intros. simpl in *. destruct_conjs.
         specialize Ex1 with (1 := H3).
@@ -489,9 +492,9 @@ Module exec.
         + simpl. intros. simp. eauto.
         + simpl. intros. simp. eauto.
         + simpl. intros. simp. eapply H3; [eassumption..|]. (* also an IH *)
-          eapply H17; eassumption.
-        + simpl. intros. simp. eapply H5; [eassumption..|]. (* also an IH *)
           eapply H18; eassumption.
+        + simpl. intros. simp. eapply H5; [eassumption..|]. (* also an IH *)
+          eapply H19; eassumption.
 
       - (* SSeq *)
         pose proof IHexec as IH1.
@@ -592,15 +595,16 @@ Section FlatImp2.
       refine (only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 
-  Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM post,
-      exec e s initialT initialM initialSt post ->
-      exec e s initialT initialM initialSt
-           (fun finalT finalM finalSt => map.only_differ initialSt (modVars s) finalSt).
+  Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM (initialMc: MetricLog) post,
+      exec e s initialT initialM initialSt initialMc post ->
+      exec e s initialT initialM initialSt initialMc
+           (fun finalT finalM finalSt _ => map.only_differ initialSt (modVars s) finalSt).
   Proof.
     induction 1;
       try solve [ econstructor; [eassumption..|map_solver locals_ok] ].
     - eapply exec.interact; try eassumption.
       intros; simp.
+      specialize H1 with (mc' := mc).
       edestruct H1; try eassumption. simp.
       eexists; split; [eassumption|].
       simpl. try split; eauto.
@@ -617,8 +621,9 @@ Section FlatImp2.
       eapply exec.weaken; [eassumption|].
       simpl; intros. map_solver locals_ok.
     - eapply exec.loop with
-          (mid3 := fun t' m' l' => mid1 t' m' l' /\ map.only_differ l (modVars body1) l')
-          (mid4 := fun t' m' l' => mid2 t' m' l' /\
+          (mid3 := fun t' m' l' mc' => mid1 t' m' l' mc' /\
+                                   map.only_differ l (modVars body1) l')
+          (mid4 := fun t' m' l' mc' => mid2 t' m' l' mc' /\
                                    map.only_differ l (modVars (SLoop body1 cond body2)) l').
       + eapply exec.intersect; eassumption.
       + intros. simp. eauto.
@@ -633,7 +638,7 @@ Section FlatImp2.
         * eapply H5; eassumption.
         * simpl. intros. map_solver locals_ok.
     - eapply exec.seq with
-          (mid0 := fun t' m' l' => mid t' m' l' /\ map.only_differ l (modVars s1) l').
+          (mid0 := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars s1) l').
       + eapply exec.intersect; eassumption.
       + simpl; intros. simp.
         eapply exec.weaken; [eapply H1; eauto|].
