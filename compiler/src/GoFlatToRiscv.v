@@ -12,6 +12,7 @@ Require Import riscv.Program.
 Require Import riscv.MetricRiscvMachine.
 Require Import riscv.Primitives.
 Require Import riscv.MetricPrimitives.
+Require Import riscv.MetricLogging.
 Require Import riscv.Run.
 Require Import riscv.Execute.
 Require Import riscv.proofs.DecodeEncode.
@@ -88,55 +89,49 @@ Section Go.
 
   Lemma go_loadByte: forall initialL addr (v: w8) (f: w8 -> M unit) post,
       Memory.loadByte initialL.(getMem) addr = Some v ->
-      mcomp_sat (f v) initialL post ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Program.loadByte addr) f) initialL post.
-  Proof.
-    intros.
-    try (eapply spec_Bind_det; [|eassumption]). (* try because go_step doesn't need Bind *)
-    apply MetricPrimitives.spec_loadByte;
-    rewrite_match;
-    eauto.
-  Qed.
+  Proof. t spec_loadByte. Qed.
 
   Lemma go_loadHalf: forall initialL addr (v: w16) (f: w16 -> M unit) post,
       Memory.loadHalf initialL.(getMem) addr = Some v ->
-      mcomp_sat (f v) initialL post ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Program.loadHalf addr) f) initialL post.
   Proof. t spec_loadHalf. Qed.
 
   Lemma go_loadWord: forall initialL addr (v: w32) (f: w32 -> M unit) post,
       Memory.loadWord initialL.(getMem) addr = Some v ->
-      mcomp_sat (f v) initialL post ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Program.loadWord addr) f) initialL post.
   Proof. t spec_loadWord. Qed.
 
   Lemma go_loadDouble: forall initialL addr (v: w64) (f: w64 -> M unit) post,
       Memory.loadDouble initialL.(getMem) addr = Some v ->
-      mcomp_sat (f v) initialL post ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Program.loadDouble addr) f) initialL post.
   Proof. t spec_loadDouble. Qed.
 
   Lemma go_storeByte: forall initialL addr v m' post (f: unit -> M unit),
         Memory.storeByte initialL.(getMem) addr v = Some m' ->
-        mcomp_sat (f tt) (withMem m' initialL) post ->
+        mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
         mcomp_sat (Bind (Program.storeByte addr v) f) initialL post.
   Proof. t spec_storeByte. Qed.
 
   Lemma go_storeHalf: forall initialL addr v m' post (f: unit -> M unit),
         Memory.storeHalf initialL.(getMem) addr v = Some m' ->
-        mcomp_sat (f tt) (withMem m' initialL) post ->
+        mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
         mcomp_sat (Bind (Program.storeHalf addr v) f) initialL post.
   Proof. t spec_storeHalf. Qed.
 
   Lemma go_storeWord: forall initialL addr v m' post (f: unit -> M unit),
         Memory.storeWord initialL.(getMem) addr v = Some m' ->
-        mcomp_sat (f tt) (withMem m' initialL) post ->
+        mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
         mcomp_sat (Bind (Program.storeWord addr v) f) initialL post.
   Proof. t spec_storeWord. Qed.
 
   Lemma go_storeDouble: forall initialL addr v m' post (f: unit -> M unit),
         Memory.storeDouble initialL.(getMem) addr v = Some m' ->
-        mcomp_sat (f tt) (withMem m' initialL) post ->
+        mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
         mcomp_sat (Bind (Program.storeDouble addr v) f) initialL post.
   Proof. t spec_storeDouble. Qed.
 
@@ -146,23 +141,26 @@ Section Go.
   Proof. t spec_getPC. Qed.
 
   Lemma go_setPC: forall initialL v post (f: unit -> M unit),
-        mcomp_sat (f tt) (withNextPc v initialL) post ->
+        mcomp_sat (f tt) (updateMetrics (addMetricJumps 1) (withNextPc v initialL)) post ->
         mcomp_sat (Bind (setPC v) f) initialL post.
   Proof.
     intros.
-    t (spec_setPC initialL v (fun a' mid' => a' = tt /\ mid' = withNextPc v initialL)).
+    t (spec_setPC initialL v (fun a' mid' => a' = tt /\
+                                             mid' = updateMetrics (addMetricJumps 1)
+                                                                  (withNextPc v initialL))).
   Qed.
 
   Lemma go_step: forall initialL (post: RiscvMachineL -> Prop),
-      post (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))
-                       (withPc initialL.(getNextPc) initialL)) ->
+      post (updateMetrics (addMetricInstructions 1)
+                          (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))
+                       (withPc initialL.(getNextPc) initialL))) ->
       mcomp_sat step initialL post.
   Proof. t spec_step. Qed.
 
   Lemma go_done: forall initialL (post: RiscvMachineL -> Prop),
       post initialL ->
       mcomp_sat (Return tt) initialL post.
-  Proof. intros. apply (spec_Return (Primitives := PR)). exact H. Qed.
+  Proof. intros. apply (spec_Return (MetricPrimitives := PR)). exact H. Qed.
 
   Lemma go_left_identity{A: Type}: forall initialL post a
          (f : A -> M unit),
@@ -199,7 +197,8 @@ Section Go.
       pc0 = initialL.(getPc) ->
       (program pc0 [inst] * R)%sep initialL.(getMem) ->
       verify inst iset ->
-      mcomp_sat (Bind (execute inst) (fun _ => step)) initialL post ->
+      mcomp_sat (Bind (execute inst) (fun _ => step))
+                (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
   Proof.
     intros. subst.
