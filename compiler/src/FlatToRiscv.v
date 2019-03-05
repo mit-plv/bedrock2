@@ -1,33 +1,33 @@
 Require Import lib.LibTacticsMin.
-Require Import riscv.util.Monads. Require Import riscv.util.MonadNotations.
+Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
-Require Import riscv.Program.
-Require Import riscv.Decode.
-Require Import riscv.PseudoInstructions.
-Require Import riscv.RiscvMachine.
-Require Import riscv.Execute.
-Require Import riscv.Run.
-Require Import riscv.Memory.
-Require Import riscv.util.PowerFunc.
-Require Import riscv.util.ListLib.
+Require Import riscv.Spec.Machine.
+Require Import riscv.Spec.Decode.
+Require Import riscv.Spec.PseudoInstructions.
+Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Spec.Execute.
+Require Import riscv.Platform.Run.
+Require Import riscv.Platform.Memory.
+Require Import riscv.Utility.PowerFunc.
+Require Import riscv.Utility.ListLib.
 Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
-Require Import riscv.InstructionCoercions.
-Require Import riscv.Primitives.
+Require Import riscv.Utility.InstructionCoercions.
+Require Import riscv.Spec.Primitives.
 Require Import Coq.micromega.Lia.
-Require Import riscv.util.div_mod_to_quot_rem.
+Require Import riscv.Utility.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
-Require Import riscv.Utility.
-Require Import riscv.util.ZBitOps.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Utility.ZBitOps.
 Require Import compiler.util.Common.
-Require Import riscv.Utility.
-Require Import riscv.MkMachineWidth.
-Require Import riscv.runsToNonDet.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Utility.MkMachineWidth.
+Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.EmitsValid.
@@ -461,48 +461,6 @@ Section FlatToRiscv1.
 
   Arguments Z.modulo : simpl never.
 
-  Hint Unfold
-       Program.getRegister
-       Program.setRegister
-       Program.loadByte
-       Program.loadHalf
-       Program.loadWord
-       Program.loadDouble
-       Program.storeByte
-       Program.storeHalf
-       Program.storeWord
-       Program.storeDouble
-       Program.getPC
-       Program.setPC
-       Program.step
-       Program.raiseException
-    : unf_Program_methods.
-
-(*
-  Ltac prove_go_lemma :=
-    intros;
-    unfold valid_register, computation_satisfies in *;
-    autounfold with unf_Program_methods in *;
-    unfold IsRiscvMachineL in *;
-    unfold valid_register, Register0,
-           liftLoad, liftStore, logEvent in *;
-    repeat match goal with
-           | |- _ => reflexivity
-           | |- _ => progress (subst)
-           | |- _ => solve [exfalso; lia]
-           | |- _ => discriminate
-           | |- _ => assumption
-           | |- _ => rewrite associativity
-           | |- _ => rewrite OStateNDOperations.Bind_get
-           | |- _ => rewrite OStateNDOperations.Bind_put
-           | |- _ => rewrite left_identity
-           | |- context [if ?x then _ else _] => let E := fresh "E" in destruct x eqn: E
-           | _: context [if ?x then _ else _] |- _ => let E := fresh "E" in destruct x eqn: E
-           end.
-*)
-
-  Ltac sidecondition_less_safe := eassumption || reflexivity || idtac.
-
   (*
   Notation K := Z.
   Notation V := mword.
@@ -919,9 +877,9 @@ Section FlatToRiscv1.
       destruct (subst_load_bytes_for_eq Load Sep) as [Q ?]
     end.
 
-  Lemma doesSupportM: supportsM iset = true.
+  Lemma iset_is_supported: supported_iset iset.
   Proof.
-    unfold iset. destruct_one_match; reflexivity.
+    unfold iset. destruct_one_match; constructor.
   Qed.
 
   Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
@@ -986,7 +944,7 @@ Section FlatToRiscv1.
     induction 1; intros;
       lazymatch goal with
       | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
-        pose proof (compile_stmt_emits_valid _ doesSupportM H1 H2)
+        pose proof (compile_stmt_emits_valid iset_is_supported H1 H2)
       end;
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m

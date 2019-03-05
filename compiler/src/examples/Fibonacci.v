@@ -8,16 +8,16 @@ Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
 Require Import compiler.Basic32Semantics.
 Require Import compiler.util.MyOmega.
-Require Import riscv.util.Monads.
+Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
-Require        riscv.InstructionNotations.
-Require Import riscv.MinimalLogging.
-Require Import riscv.Utility.
-Require Import riscv.Encode.
+Require        riscv.Utility.InstructionNotations.
+Require Import riscv.Platform.MinimalLogging.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
-Require Import riscv.InstructionCoercions.
+Require Import riscv.Utility.InstructionCoercions.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import compiler.RegAllocAnnotatedNotations.
@@ -91,7 +91,7 @@ Time Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
 Print fib6_riscv.
 
 Module PrintAssembly.
-  Import riscv.InstructionNotations.
+  Import riscv.Utility.InstructionNotations.
   Print fib6_riscv.
 End PrintAssembly.
 

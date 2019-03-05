@@ -5,10 +5,10 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
-Require Import riscv.InstructionCoercions.
-Require Import riscv.MinimalLogging.
-Require Import riscv.Utility.
-Require Import riscv.Encode.
+Require Import riscv.Utility.InstructionCoercions.
+Require Import riscv.Platform.MinimalLogging.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Utility.Encode.
 Require Import compiler.examples.Fibonacci.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.

@@ -4,24 +4,24 @@ Require Import Coq.omega.Omega.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
-Require Import riscv.util.Monads.
-Require Import riscv.Utility.
-Require Import riscv.Decode.
-Require Import riscv.Memory.
-Require Import riscv.Program.
-Require Import riscv.RiscvMachine.
-Require Import riscv.Primitives.
-Require Import riscv.Run.
-Require Import riscv.Execute.
-Require Import riscv.proofs.DecodeEncode.
+Require Import riscv.Utility.Monads.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Spec.Decode.
+Require Import riscv.Platform.Memory.
+Require Import riscv.Spec.Machine.
+Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Spec.Primitives.
+Require Import riscv.Platform.Run.
+Require Import riscv.Spec.Execute.
+Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.
 Require Import compiler.EmitsValid.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
-Require Import riscv.Encode.
-Require Import riscv.proofs.EncodeBound.
+Require Import riscv.Utility.Encode.
+Require Import riscv.Proofs.EncodeBound.
 
 
 Section Go.
@@ -85,52 +85,52 @@ Section Go.
       mcomp_sat (Bind (setRegister Register0 v) f) initialL post.
   Proof. t spec_setRegister. Qed.
 
-  Lemma go_loadByte: forall initialL addr (v: w8) (f: w8 -> M unit) post,
+  Lemma go_loadByte: forall initialL kind addr (v: w8) (f: w8 -> M unit) post,
       Memory.loadByte initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) initialL post ->
-      mcomp_sat (Bind (Program.loadByte addr) f) initialL post.
+      mcomp_sat (Bind (Machine.loadByte kind addr) f) initialL post.
   Proof. t spec_loadByte. Qed.
 
-  Lemma go_loadHalf: forall initialL addr (v: w16) (f: w16 -> M unit) post,
+  Lemma go_loadHalf: forall initialL kind addr (v: w16) (f: w16 -> M unit) post,
       Memory.loadHalf initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) initialL post ->
-      mcomp_sat (Bind (Program.loadHalf addr) f) initialL post.
+      mcomp_sat (Bind (Machine.loadHalf kind addr) f) initialL post.
   Proof. t spec_loadHalf. Qed.
 
-  Lemma go_loadWord: forall initialL addr (v: w32) (f: w32 -> M unit) post,
+  Lemma go_loadWord: forall initialL kind addr (v: w32) (f: w32 -> M unit) post,
       Memory.loadWord initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) initialL post ->
-      mcomp_sat (Bind (Program.loadWord addr) f) initialL post.
+      mcomp_sat (Bind (Machine.loadWord kind addr) f) initialL post.
   Proof. t spec_loadWord. Qed.
 
-  Lemma go_loadDouble: forall initialL addr (v: w64) (f: w64 -> M unit) post,
+  Lemma go_loadDouble: forall initialL kind addr (v: w64) (f: w64 -> M unit) post,
       Memory.loadDouble initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) initialL post ->
-      mcomp_sat (Bind (Program.loadDouble addr) f) initialL post.
+      mcomp_sat (Bind (Machine.loadDouble kind addr) f) initialL post.
   Proof. t spec_loadDouble. Qed.
 
-  Lemma go_storeByte: forall initialL addr v m' post (f: unit -> M unit),
+  Lemma go_storeByte: forall initialL kind addr v m' post (f: unit -> M unit),
         Memory.storeByte initialL.(getMem) addr v = Some m' ->
         mcomp_sat (f tt) (withMem m' initialL) post ->
-        mcomp_sat (Bind (Program.storeByte addr v) f) initialL post.
+        mcomp_sat (Bind (Machine.storeByte kind addr v) f) initialL post.
   Proof. t spec_storeByte. Qed.
 
-  Lemma go_storeHalf: forall initialL addr v m' post (f: unit -> M unit),
+  Lemma go_storeHalf: forall initialL kind addr v m' post (f: unit -> M unit),
         Memory.storeHalf initialL.(getMem) addr v = Some m' ->
         mcomp_sat (f tt) (withMem m' initialL) post ->
-        mcomp_sat (Bind (Program.storeHalf addr v) f) initialL post.
+        mcomp_sat (Bind (Machine.storeHalf kind addr v) f) initialL post.
   Proof. t spec_storeHalf. Qed.
 
-  Lemma go_storeWord: forall initialL addr v m' post (f: unit -> M unit),
+  Lemma go_storeWord: forall initialL kind addr v m' post (f: unit -> M unit),
         Memory.storeWord initialL.(getMem) addr v = Some m' ->
         mcomp_sat (f tt) (withMem m' initialL) post ->
-        mcomp_sat (Bind (Program.storeWord addr v) f) initialL post.
+        mcomp_sat (Bind (Machine.storeWord kind addr v) f) initialL post.
   Proof. t spec_storeWord. Qed.
 
-  Lemma go_storeDouble: forall initialL addr v m' post (f: unit -> M unit),
+  Lemma go_storeDouble: forall initialL kind addr v m' post (f: unit -> M unit),
         Memory.storeDouble initialL.(getMem) addr v = Some m' ->
         mcomp_sat (f tt) (withMem m' initialL) post ->
-        mcomp_sat (Bind (Program.storeDouble addr v) f) initialL post.
+        mcomp_sat (Bind (Machine.storeDouble kind addr v) f) initialL post.
   Proof. t spec_storeDouble. Qed.
 
   Lemma go_getPC: forall initialL (f: word -> M unit) post,

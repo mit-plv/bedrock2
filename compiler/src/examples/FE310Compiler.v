@@ -7,19 +7,19 @@ Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.SortedList.
-Require Import riscv.Words32Naive.
-Require Import riscv.DefaultMemImpl32.
+Require Import riscv.Utility.Words32Naive.
+Require Import riscv.Utility.DefaultMemImpl32.
 Require Import coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
-Require Import riscv.util.Monads.
+Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
-Require        riscv.InstructionNotations.
-Require Import riscv.MinimalMMIO.
-Require Import riscv.Utility.
-Require Import riscv.Encode.
+Require        riscv.Utility.InstructionNotations.
+Require Import riscv.Platform.MinimalMMIO.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
-Require Import riscv.InstructionCoercions.
+Require Import riscv.Utility.InstructionCoercions.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import compiler.examples.MMIO.
@@ -78,7 +78,7 @@ Require Import bedrock2.Examples.FE310CompilerDemo.
 Time Definition swap_demo_byte: list byte := Eval vm_compute in main swap_chars_over_uart.
 
 Module PrintAssembly.
-  Import riscv.InstructionNotations.
+  Import riscv.Utility.InstructionNotations.
   (* Eval vm_compute in compileFunc swap_chars_over_uart. *)
 End PrintAssembly.
 

@@ -1,18 +1,18 @@
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
-Require Import riscv.Decode.
-Require Import riscv.Encode.
-Require Import riscv.util.ZBitOps.
-Require Import riscv.Run.
-Require Import riscv.Program.
-Require Import riscv.Primitives.
+Require Import riscv.Spec.Decode.
+Require Import riscv.Utility.Encode.
+Require Import riscv.Utility.ZBitOps.
+Require Import riscv.Platform.Run.
+Require Import riscv.Spec.Machine.
+Require Import riscv.Spec.Primitives.
 Require Import compiler.util.Tactics.
-Require Import riscv.util.Tactics.
+Require Import riscv.Utility.Tactics.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvDef. Import FlatToRiscvDef.
-Require Import riscv.util.ListLib.
-Require Import riscv.Memory.
+Require Import riscv.Utility.ListLib.
+Require Import riscv.Platform.Memory.
 
 Local Open Scope Z_scope.
 
@@ -262,6 +262,9 @@ Ltac unify_universes_for_lia :=
 (* workaround for https://github.com/coq/coq/issues/9268 *)
 Ltac lia' := unify_universes_for_lia; lia.
 
+Inductive supported_iset: InstructionSet -> Prop :=
+| supported_RV32IM: supported_iset RV32IM
+| supported_RV64IM: supported_iset RV64IM.
 
 Section EmitsValid.
 
@@ -294,7 +297,7 @@ Section EmitsValid.
   Qed.
 
   Lemma compile_op_emits_valid: forall x op y z,
-      supportsM iset = true ->
+      supported_iset iset ->
       valid_register x ->
       valid_register y ->
       valid_register z ->
@@ -304,7 +307,6 @@ Section EmitsValid.
     intros.
     destruct op; simpl in *; (repeat destruct H3; try contradiction);
           inversions H; unfold verify; simpl;
-          unfold supportsM in *;
           autounfold with unf_verify unf_encode_consts;
           unfold Register0;
           repeat match goal with
@@ -338,14 +340,15 @@ Section EmitsValid.
   Qed.
 
   Lemma compile_load_emits_valid: forall x y sz,
+      supported_iset iset ->
       valid_register x ->
       valid_register y ->
       valid_instructions iset [compile_load iset sz x y 0].
   Proof.
     intros.
-    destruct sz; destruct iset eqn: E; unfold valid_instructions, valid_register in *; simpl;
+    destruct sz; inversions H; unfold valid_instructions, valid_register in *; simpl;
       intros;
-      (destruct H1; [|contradiction]);
+      (destruct H; [|contradiction]);
       subst instr;
       unfold verify;
       simpl;
@@ -355,14 +358,15 @@ Section EmitsValid.
   Qed.
 
   Lemma compile_store_emits_valid: forall x y sz,
+      supported_iset iset ->
       valid_register x ->
       valid_register y ->
       valid_instructions iset [compile_store iset sz x y 0].
   Proof.
     intros.
-    destruct sz; destruct iset eqn: E; unfold valid_instructions, valid_register in *; simpl;
+    destruct sz; inversions H; unfold valid_instructions, valid_register in *; simpl;
       intros;
-      (destruct H1; [|contradiction]);
+      (destruct H; [|contradiction]);
       subst instr;
       unfold verify;
       simpl;
@@ -389,7 +393,7 @@ Section EmitsValid.
   Qed.
 
   Lemma compile_stmt_emits_valid: forall s,
-      supportsM iset = true ->
+      supported_iset iset ->
       valid_registers s ->
       stmt_not_too_big s ->
       valid_instructions iset (compile_stmt iset s).

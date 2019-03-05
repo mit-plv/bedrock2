@@ -1,8 +1,8 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import coqutil.Decidable.
-Require Import riscv.util.Monads.
-Require Import riscv.util.MonadNotations.
+Require Import riscv.Utility.Monads.
+Require Import riscv.Utility.MonadNotations.
 Require Import compiler.util.Common.
 
 Inductive binop: Set := OPlus | OMinus | OTimes | OEq | OLt | OAnd.

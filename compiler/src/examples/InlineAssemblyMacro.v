@@ -1,20 +1,20 @@
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.util.Common.
-Require Import riscv.util.Monads.
+Require Import riscv.Utility.Monads.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.FlatImp.
-Require Import riscv.util.ListLib.
-Require Import riscv.Decode.
-Require Import riscv.Utility.
-Require Import riscv.PseudoInstructions.
-Require Import riscv.InstructionCoercions.
-Require Import riscv.Program.
+Require Import riscv.Utility.ListLib.
+Require Import riscv.Spec.Decode.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Spec.PseudoInstructions.
+Require Import riscv.Utility.InstructionCoercions.
+Require Import riscv.Spec.Machine.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscv.
-Require Import riscv.RiscvMachine.
-Require Import riscv.MinimalMMIO. (* not really *)
-Require Import riscv.Words32Naive.
-Require Import riscv.DefaultMemImpl32.
+Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Platform.MinimalMMIO. (* not really *)
+Require Import riscv.Utility.Words32Naive.
+Require Import riscv.Utility.DefaultMemImpl32.
 Require Import coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 Import ListNotations.
