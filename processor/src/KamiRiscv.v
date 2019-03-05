@@ -49,7 +49,7 @@ Module KamiProc.
 
     Definition proc: Kami.Syntax.Modules :=
       projT1 (@Kami.Ex.SCMMInl.scmmInl
-                nwidth nwidth
+                nwidth (nwidth - 2)
                 rv32InstBytes rv32DataBytes rv32RfIdx rv32GetOptype
                 rv32GetLdDst (rv32GetLdAddr _) rv32GetLdSrc (rv32CalcLdAddr _)
                 (rv32GetStAddr _) rv32GetStSrc (rv32CalcStAddr _) rv32GetStVSrc
@@ -60,7 +60,7 @@ Module KamiProc.
     Record st :=
       mk { pc: kword width;
            rf: kword 5 -> kword width;
-           pgm: kword width -> kword width;
+           pgm: kword (width - 2) -> kword width;
            mem: kword width -> kword width
          }.
 
@@ -69,8 +69,8 @@ Module KamiProc.
          if pinit
          then (mlet pcv: (Bit nwidth) <- r |> "pc" <| None;
                  mlet rfv: (Vector (Bit nwidth) 5) <- r |> "rf" <| None;
-                 mlet pinitOfs: (Bit nwidth) <- r |> "pinitOfs" <| None;
-                 mlet pgmv: (Vector (Bit 32) nwidth) <- r |> "pgm" <| None;
+                 mlet pinitOfs: (Bit (nwidth - 2)) <- r |> "pinitOfs" <| None;
+                 mlet pgmv: (Vector (Bit nwidth) (nwidth - 2)) <- r |> "pgm" <| None;
                  mlet memv: (Vector (Bit nwidth) nwidth) <- r |> "mem" <| None;
                  (Some {| pc := pcv;
                           rf := rfv;
@@ -107,7 +107,6 @@ Section Equiv.
     let keys := HList.tuple.map (@wordToZ 5) kkeys in
     map.putmany_of_tuple keys values map.empty.
 
-  (** joonwonc: maybe below variables are related to the FIXME above. *)
   Variables instrMemSize dataMemSize: nat.
 
   Definition instrMemStart: word := word.of_Z 0.
@@ -116,10 +115,12 @@ Section Equiv.
   Definition word32_to_4bytes(w: kword 32): HList.tuple byte 4 :=
     LittleEndian.split 4 (word.unsigned w).
 
-  Definition convertInstrMem(instrMem: kword width -> kword 32): mem :=
-    let keys := List.unfoldn (word.add (word.of_Z 4)) instrMemSize instrMemStart in
-    let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
-    Memory.unchecked_store_byte_tuple_list instrMemStart values map.empty.
+  (** TODO: how to define this with the new [instrMem] type? *)
+  Definition convertInstrMem(instrMem: kword (width - 2) -> kword 32): mem.
+  Admitted.
+  (* let keys := List.unfoldn (word.add (word.of_Z 4)) instrMemSize instrMemStart in *)
+  (* let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in *)
+  (* Memory.unchecked_store_byte_tuple_list instrMemStart values map.empty. *)
 
   Definition convertDataMem(dataMem: kword width -> kword width): mem :=
     let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize dataMemStart in
@@ -261,7 +262,7 @@ Section Equiv.
         KamiProc.RegsToT (FMap.M.union kupd km1) = Some kt2 /\
         exists curInst npc prf dst exec_val,
           curInst = (KamiProc.pgm kt1)
-                      (evalExpr (rv32AlignPc _ _ type (KamiProc.pc kt1))) /\
+                      (evalExpr (rv32AlignPc _ _ _ (KamiProc.pc kt1))) /\
           npc = evalExpr (rv32NextPc
                             _ _
                             (KamiProc.rf kt1) (KamiProc.pc kt1)
@@ -314,9 +315,6 @@ Section Equiv.
 
   Qed.
 
-  Inductive PHide: Prop -> Prop :=
-  | PHidden: forall P: Prop, P -> PHide P.
-
   Lemma simulate_bw_step:
     forall (m1 m2: KamiMachine) (t: list Event)
            (m1': RiscvMachine) (pt: list (LogItem MMIOAction)),
@@ -330,69 +328,6 @@ Section Equiv.
         fromKami_withLog m2 (t' ++ pt) = Some m2' /\
         riscvStep m1' m2' t'.
   Proof.
-    intros.
-    destruct H0 as [kupd [klbl [? [? ?]]]]; subst.
-    assert (PHide (Step KamiProc.proc m1 kupd klbl))
-      by (constructor; assumption).
-    kinvert.
-
-    - (* [EmptyRule] step *)
-      left; FMap.mred; assumption.
-    - (* [EmptyMeth] step *)
-      left; FMap.mred; assumption.
-    - (* "pgmInit" *)
-      exfalso.
-      kinv_action_dest.
-      kinv_red.
-      unfold fromKami_withLog, KamiProc.RegsToT in H.
-      kinv_regmap_red.
-      discriminate.
-    - (* "pgmInitEnd" *)
-      exfalso.
-      kinv_action_dest.
-      kinv_red.
-      unfold fromKami_withLog, KamiProc.RegsToT in H.
-      kinv_regmap_red.
-      discriminate.
-
-    - (* "execLd" *) admit.
-    - (* "execLdZ" *) admit.
-    - (* "execSt" *) admit.
-    - (* "execNm" *)
-      inversion H4; subst; clear H4 HAction.
-      inversion_clear H1.
-
-      destruct klbl as [annot defs calls]; simpl in *; subst.
-      destruct annot; [|discriminate].
-      inversion H6; subst; clear H6.
-      unfold fromKami_withLog in H.
-      remember (KamiProc.RegsToT m1) as km1.
-      apply eq_sym in Heqkm1.
-      destruct km1 as [km1|]; [|discriminate].
-      inversion H; subst; clear H.
-
-      eapply invert_Kami_execNm in H3; eauto.
-      destruct H3 as [km2 [? [? ?]]].
-      simpl in H; subst.
-
-      right.
-      unfold fromKami_withLog.
-      rewrite H0.
-      inversion_clear H2.
-
-      exists []; eexists; simpl.
-      split; [|split]; [constructor|reflexivity|].
-      
-      econstructor.
-
-      + (* forall post, *)
-        (* KamiStep s s' -> *)
-        (* RiscvStep s post -> *)
-        (* post s'. *)
-        admit.
-      
-    - (* "execNmZ" *) admit.
-
   Admitted.
 
   Section Lift.
@@ -473,6 +408,8 @@ Section Equiv.
   Qed.
 
   (* TODO in bedrock2: differential memory in trace instead of whole memory ? *)
+  Inductive PHide: Prop -> Prop :=
+  | PHidden: forall P: Prop, P -> PHide P.
 
   Lemma kamiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),
@@ -481,6 +418,59 @@ Section Equiv.
       mcomp_sat_unit (run1 iset) m1' post ->
       exists m2', states_related (m2, t) m2' /\ post m2'.
   Proof.
+    intros.
+    destruct H as [kupd [klbl [? [? ?]]]]; subst.
+    assert (PHide (Step KamiProc.proc m1 kupd klbl)) by (constructor; assumption).
+    kinvert.
+
+    - (* [EmptyRule] step *)
+      red in H3; rewrite <-H8 in H3.
+      FMap.mred; subst.
+      exists m1'.
+      split; [assumption|].
+      admit.
+    - (* [EmptyMeth] step *)
+      red in H3; rewrite <-H8 in H3.
+      FMap.mred; subst.
+      exists m1'.
+      split; [assumption|].
+      admit.
+    - (* "pgmInit" *)
+      exfalso.
+      inversion_clear H0.
+      kinv_action_dest; kinv_red.
+      unfold KamiProc.RegsToT in H6.
+      kinv_regmap_red.
+      discriminate.
+    - (* "pgmInitEnd" *)
+      exfalso.
+      inversion_clear H0.
+      kinv_action_dest; kinv_red.
+      unfold KamiProc.RegsToT in H6.
+      kinv_regmap_red.
+      discriminate.
+
+    - (* "execLd" *) admit.
+    - (* "execLdZ" *) admit.
+    - (* "execSt" *) admit.
+    - (* "execNm" *)
+      inversion H5; subst; clear H5 HAction.
+      inversion_clear H0.
+      destruct klbl as [annot defs calls]; simpl in *; subst.
+      destruct annot; [|discriminate].
+      inversion H7; subst; clear H7.
+      inversion H2; subst; clear H2.
+      eapply invert_Kami_execNm in H; eauto.
+      unfold KamiProc.pc, KamiProc.rf, KamiProc.pgm, KamiProc.mem in H.
+      destruct H as [km2 [? [? ?]]].
+      simpl in H; subst.
+      inversion_clear H3.
+
+      red in H1.
+      admit.
+      
+    - (* "execNmZ" *) admit.
+    
   Admitted.
 
   Lemma kamiMultiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
