@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface.
-Require Import riscv.util.ZBitOps.
+Require Import riscv.Utility.ZBitOps.
 
 Module word.
 

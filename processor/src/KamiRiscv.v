@@ -3,27 +3,27 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
-Require Import riscv.Decode.
-Require Import riscv.Encode.
+Require Import riscv.Spec.Decode.
+Require Import riscv.Utility.Encode.
 Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Word.Properties.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import processor.KamiWord.
-Require Import riscv.Utility.
-Require Import riscv.Primitives.
-Require Import riscv.RiscvMachine.
-Require Import riscv.Program.
-Require riscv.Memory.
-Require Import riscv.PseudoInstructions.
-Require Import riscv.proofs.EncodeBound.
-Require Import riscv.proofs.DecodeEncode.
-Require Import riscv.Run.
-Require Import riscv.MkMachineWidth.
-Require Import riscv.util.Monads.
-Require Import riscv.runsToNonDet.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Spec.Primitives.
+Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Spec.Machine.
+Require riscv.Platform.Memory.
+Require Import riscv.Spec.PseudoInstructions.
+Require Import riscv.Proofs.EncodeBound.
+Require Import riscv.Proofs.DecodeEncode.
+Require Import riscv.Platform.Run.
+Require Import riscv.Utility.MkMachineWidth.
+Require Import riscv.Utility.Monads.
+Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
-Require Import riscv.MMIOTrace.
+Require Import riscv.Utility.MMIOTrace.
 Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl.
 Require Import Kami.Ex.IsaRv32.
@@ -79,7 +79,7 @@ Module KamiProc.
          else None)%mapping.
 
   End Width.
-  
+
   Arguments st: clear implicits.
   
 End KamiProc.
@@ -92,8 +92,8 @@ Section Equiv.
   Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
 
   Context `{Pr: Primitives (W := W) MMIOAction M}.
-  Context {RVS: RiscvState M word}.
-  Notation RiscvMachine := (RiscvMachine Register MMIOAction).
+  Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
+  Notation RiscvMachine := (riscv.Platform.RiscvMachine.RiscvMachine Register MMIOAction).
 
   Definition iset: InstructionSet := if width =? 32 then RV32IM else RV64IM.
 
@@ -311,6 +311,7 @@ Section Equiv.
       repeat (split; [reflexivity|]).
       reflexivity.
       Transparent evalExpr.
+
   Qed.
 
   Inductive PHide: Prop -> Prop :=
@@ -334,7 +335,7 @@ Section Equiv.
     assert (PHide (Step KamiProc.proc m1 kupd klbl))
       by (constructor; assumption).
     kinvert.
-    
+
     - (* [EmptyRule] step *)
       left; FMap.mred; assumption.
     - (* [EmptyMeth] step *)
@@ -388,10 +389,7 @@ Section Equiv.
         (* KamiStep s s' -> *)
         (* RiscvStep s post -> *)
         (* post s'. *)
-      
-
-
-      admit.
+        admit.
       
     - (* "execNmZ" *) admit.
 

@@ -4,7 +4,7 @@ Require Import compiler.FlatImp.
 Require Import coqutil.Map.TestLemmas.
 Require Import coqutil.Decidable.
 Require Import Coq.Lists.List.
-Require Import riscv.Utility.
+Require Import riscv.Utility.Utility.
 Require Import coqutil.Map.Solver.
 Require Import compiler.util.Set.
 Require Import compiler.util.Tactics.

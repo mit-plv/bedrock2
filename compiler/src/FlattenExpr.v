@@ -5,7 +5,7 @@ Require compiler.FlatImp.
 Require Import compiler.NameGen.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Syntax.
-Require Import riscv.Utility.
+Require Import riscv.Utility.Utility.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.

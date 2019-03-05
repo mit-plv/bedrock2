@@ -2,7 +2,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Program.Tactics.
 Require Import lib.LibTacticsMin.
-Require Import riscv.Utility.
+Require Import riscv.Utility.Utility.
 Require Export bedrock2.Syntax.
 Require Export bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
@@ -10,7 +10,7 @@ Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
-Require Import riscv.util.ListLib.
+Require Import riscv.Utility.ListLib.
 
 
 Open Scope Z_scope.
