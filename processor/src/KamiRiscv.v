@@ -257,54 +257,33 @@ Section Equiv.
       Step KamiProc.proc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execNm"%string) ->
       exists kt2,
+        klbl.(calls) = FMap.M.empty _ /\
         KamiProc.RegsToT (FMap.M.union kupd km1) = Some kt2 /\
-        (let curInst := evalExpr
-                          (ReadIndex
-                             (rv32AlignPc
-                                KamiProc.nwidth KamiProc.nwidth
-                                type (KamiProc.pc kt1))
-                             (Var type
-                                  (SyntaxKind (Vector (Bit KamiProc.nwidth) KamiProc.nwidth))
-                                  (KamiProc.pgm kt1))) in
-         kt2 = {| KamiProc.pc :=
-                    evalExpr (rv32NextPc
-                                KamiProc.nwidth type
-                                (KamiProc.rf kt1) (KamiProc.pc kt1)
-                                curInst);
-                  KamiProc.rf :=
-                    evalExpr
-                      (UpdateVector
-                         (* To update [rf] *)
-                         (Var type (SyntaxKind (Vector (Bit KamiProc.nwidth) rv32RfIdx))
-                              (KamiProc.rf kt1))
-                         (* of the destination index of the current instruction *)
-                         (Var type (SyntaxKind (Bit rv32RfIdx))
-                              (evalExpr (rv32GetDst type curInst)))
-                         (* with the executed value *)
-                         (Var type (SyntaxKind (Bit KamiProc.nwidth))
-                              (evalExpr
-                                 (rv32Exec
-                                    KamiProc.nwidth type
-                                    (evalExpr
-                                       (ReadIndex
-                                          (Var type (SyntaxKind (Bit rv32RfIdx))
-                                               (evalExpr (rv32GetSrc1 type curInst)))
-                                          (Var type
-                                               (SyntaxKind (Vector (Bit KamiProc.nwidth)
-                                                                   rv32RfIdx))
-                                               (KamiProc.rf kt1))))
-                                    (evalExpr
-                                       (ReadIndex
-                                          (Var type (SyntaxKind (Bit rv32RfIdx))
-                                               (evalExpr (rv32GetSrc2 type curInst)))
-                                          (Var type
-                                               (SyntaxKind (Vector (Bit KamiProc.nwidth)
-                                                                   rv32RfIdx))
-                                               (KamiProc.rf kt1))))
-                                    (KamiProc.pc kt1)
-                                    curInst))));
-                  KamiProc.pgm := KamiProc.pgm kt1;
-                  KamiProc.mem := KamiProc.mem kt1 |}).
+        exists curInst npc prf dst exec_val,
+          curInst = (KamiProc.pgm kt1)
+                      (evalExpr (rv32AlignPc _ _ type (KamiProc.pc kt1))) /\
+          npc = evalExpr (rv32NextPc
+                            _ _
+                            (KamiProc.rf kt1) (KamiProc.pc kt1)
+                            curInst) /\
+          prf = KamiProc.rf kt1 /\
+          dst = evalExpr (rv32GetDst _ curInst) /\
+          exec_val = evalExpr
+                       (rv32Exec
+                          _ _
+                          (KamiProc.rf kt1 (evalExpr (rv32GetSrc1 _ curInst)))
+                          (KamiProc.rf kt1 (evalExpr (rv32GetSrc2 _ curInst)))
+                          (KamiProc.pc kt1)
+                          curInst) /\
+          kt2 = {| KamiProc.pc := npc;
+                   KamiProc.rf :=
+                     evalExpr
+                       (UpdateVector
+                          (Var _ (SyntaxKind (Vector (Bit KamiProc.nwidth) rv32RfIdx)) prf)
+                          (Var _ (SyntaxKind (Bit rv32RfIdx)) dst)
+                          (Var _ (SyntaxKind (Bit KamiProc.nwidth)) exec_val));
+                   KamiProc.pgm := KamiProc.pgm kt1;
+                   KamiProc.mem := KamiProc.mem kt1 |}.
   Proof.
     intros.
     kinvert; try (repeat
@@ -325,10 +304,17 @@ Section Equiv.
       try discriminate.
     kregmap_red.
     inversion_clear H.
-    eexists; split; reflexivity.
-    Transparent evalExpr.
-    
+    eexists; split; [|split].
+    - assumption.
+    - reflexivity.
+    - do 5 eexists.
+      repeat (split; [reflexivity|]).
+      reflexivity.
+      Transparent evalExpr.
   Qed.
+
+  Inductive PHide: Prop -> Prop :=
+  | PHidden: forall P: Prop, P -> PHide P.
 
   Lemma simulate_bw_step:
     forall (m1 m2: KamiMachine) (t: list Event)
@@ -345,6 +331,8 @@ Section Equiv.
   Proof.
     intros.
     destruct H0 as [kupd [klbl [? [? ?]]]]; subst.
+    assert (PHide (Step KamiProc.proc m1 kupd klbl))
+      by (constructor; assumption).
     kinvert.
     
     - (* [EmptyRule] step *)
@@ -370,43 +358,41 @@ Section Equiv.
     - (* "execLdZ" *) admit.
     - (* "execSt" *) admit.
     - (* "execNm" *)
-
-      (** * FIXME: so stupid to recover [Step] inverted before.. *)
-      assert (Step KamiProc.proc m1 kupd klbl).
-      { inversion H3; subst; clear H3.
-        replace klbl with (getLabel (Rle (Some "execNm"%string)) (calls klbl)).
-        { eapply SemFacts.substepZero_imp_step; [reflexivity|].
-          eapply SingleRule.
-          { simpl; tauto. }
-          { assumption. }
-        }
-        { clear -H0 H5.
-          destruct klbl as [ann defs calls]; simpl in *.
-          destruct ann; [|discriminate].
-          inversion H5; subst; clear H5.
-          reflexivity.
-        }
-      }
-      inversion H3; subst; clear H3.
-      clear HAction.
+      inversion H4; subst; clear H4 HAction.
+      inversion_clear H1.
 
       destruct klbl as [annot defs calls]; simpl in *; subst.
       destruct annot; [|discriminate].
-      inversion H5; subst; clear H5.
+      inversion H6; subst; clear H6.
       unfold fromKami_withLog in H.
       remember (KamiProc.RegsToT m1) as km1.
       apply eq_sym in Heqkm1.
       destruct km1 as [km1|]; [|discriminate].
       inversion H; subst; clear H.
 
-      eapply invert_Kami_execNm in H1; eauto.
-      destruct H1 as [km2 [? ?]].
+      eapply invert_Kami_execNm in H3; eauto.
+      destruct H3 as [km2 [? [? ?]]].
+      simpl in H; subst.
 
       right.
       unfold fromKami_withLog.
-      rewrite H.
+      rewrite H0.
+      inversion_clear H2.
+
+      exists []; eexists; simpl.
+      split; [|split]; [constructor|reflexivity|].
       
+      econstructor.
+
+      + (* forall post, *)
+        (* KamiStep s s' -> *)
+        (* RiscvStep s post -> *)
+        (* post s'. *)
+      
+
+
       admit.
+      
     - (* "execNmZ" *) admit.
 
   Admitted.
