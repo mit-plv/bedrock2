@@ -231,8 +231,49 @@ Section Go.
 
 End Go.
 
+Hint Unfold
+     withMetrics
+     updateMetrics
+     getMachine
+     getMetrics
+     liftGet
+     liftWith
+     getRegs
+     getPc
+     getNextPc
+     getMem
+     getLog
+     withRegs
+     withPc
+     withNextPc
+     withMem
+     withLog
+     withLogItem
+     withLogItems
+     RiscvMachine.withRegs
+     RiscvMachine.withPc
+     RiscvMachine.withNextPc
+     RiscvMachine.withMem
+     RiscvMachine.withLog
+     RiscvMachine.withLogItem
+     RiscvMachine.withLogItems
+  : unf_metric_machine.
+
+Ltac simpl_MetricRiscvMachine_get_set :=
+  repeat (autounfold with unf_metric_machine in *;
+  simpl RiscvMachine.getRegs in *;
+  simpl RiscvMachine.getPc in *;
+  simpl RiscvMachine.getNextPc in *;
+  simpl RiscvMachine.getMem in *;
+  simpl RiscvMachine.getLog in *).
+
+Ltac simpl_MetricRiscvMachine_mem :=
+  unfold getPc, getMem, liftGet in *;
+  simpl RiscvMachine.getPc in *;
+  simpl RiscvMachine.getMem in *.
 
 Ltac sidecondition :=
+  simpl_MetricRiscvMachine_get_set;
   match goal with
   (* these branches are allowed to instantiate evars in a controlled manner: *)
   | H: map.get _ _ = Some _ |- _ => exact H
@@ -249,7 +290,8 @@ Ltac sidecondition :=
   | H: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify _ _ =>
     apply H; clear; eauto 10 using in_cons, in_or_app, in_eq
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
-    simpl; unfold Memory.load, Memory.load_Z;
+    unfold Memory.load, Memory.load_Z in *;
+    simpl_MetricRiscvMachine_mem;
     erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
   | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
   | |- _ => idtac
