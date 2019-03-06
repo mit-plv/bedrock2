@@ -610,29 +610,7 @@ Section FlattenExpr1.
     pose_flatten_var_ineqs.
     simpl in *. (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
 
-  repeat autounfold with unf_map_defs in *.
-
-(* without preprocessing:    intros. Time map_solver locals_ok. (* 11.263s *) *)
-
-Definition elem_of{K: Type}(k: K)(ks: K -> Prop): Prop := ks k.
-Set Nested Proofs Allowed.
-
-Lemma to_elem_of: forall (K: Type) (ks: K -> Prop) (k: K),
-    ks k = elem_of k ks.
-Proof. reflexivity. Qed.
-
-repeat match goal with
-| H: context [?e] |- _ =>
-  match e with
-  | FlatImp.modVars _ => setoid_rewrite (to_elem_of _ e) in H
-  | allFreshVars _ => setoid_rewrite (to_elem_of _ e) in H
-  end
-| H: ?e _ |- _ =>
-  match e with
-  | FlatImp.modVars _ => rewrite (to_elem_of _ e) in H
-  | allFreshVars _ => rewrite (to_elem_of _ e) in H
-  end
-end.
+    repeat autounfold with unf_derived_set_defs unf_derived_map_defs in *.
 
 Record unrecogs{K V: Type} := {
   unrecog_Props: list Prop;
@@ -748,6 +726,22 @@ with unrecogs_in_key K V e :=
 with unrecogs_in_keyset K V e :=
   let e := eval cbn [fst snd] in e in
   lazymatch e with
+  | (fun (x: ?T) => empty_set) =>
+    constr:(empty_unrecogs K V)
+  | (fun (x: ?T) => singleton_set (@?k x)) =>
+    unrecogs_in_key K V (fun (y: T) => k y)
+  | (fun (x: ?T) => union (@?ks1 x) (@?ks2 x)) =>
+    let u1 := unrecogs_in_prop K V (fun (y: T) => ks1 y) in
+    let u2 := unrecogs_in_prop K V (fun (y: T) => ks2 y) in
+    constr:(union_unrecogs u1 u2)
+  | (fun (x: ?T) => intersect (@?ks1 x) (@?ks2 x)) =>
+    let u1 := unrecogs_in_prop K V (fun (y: T) => ks1 y) in
+    let u2 := unrecogs_in_prop K V (fun (y: T) => ks2 y) in
+    constr:(union_unrecogs u1 u2)
+  | (fun (x: ?T) => diff (@?ks1 x) (@?ks2 x)) =>
+    let u1 := unrecogs_in_prop K V (fun (y: T) => ks1 y) in
+    let u2 := unrecogs_in_prop K V (fun (y: T) => ks2 y) in
+    constr:(union_unrecogs u1 u2)
   | (fun (x: ?T) => ?B) =>
     match is_var' B with
     | true => constr:(empty_unrecogs K V)
@@ -983,7 +977,6 @@ Time preprocess locals_ok. (* 0.245s *)
 
 intros K V M Ok.
 assert (DecidableEq K) by case TODO. (* TODO this should follow from map.ok *)
-unfold elem_of.
 intros.
 clear A. (* this one was artificially added *)
 Time map_solver Ok. (* 1.748 s*)
@@ -1300,7 +1293,7 @@ Time map_solver Ok. (* 1.748 s*)
         pose proof (map.putmany_of_list_extends_exists binds resvals) as R.
         assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
         destruct R as (lL'' & R1 & R2).
-        eauto 10 using only_differ_putmany.
+        eauto 10 using map.only_differ_putmany.
   Qed.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=

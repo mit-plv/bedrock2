@@ -584,7 +584,7 @@ Section FlatImp2.
           ensure_new IH'
       end;
       map_solver locals_ok;
-      refine (only_differ_putmany _ _ _ _ _ _); eassumption.
+      refine (map.only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 
   Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM post,
@@ -599,12 +599,12 @@ Section FlatImp2.
       edestruct H1; try eassumption. simp.
       eexists; split; [eassumption|].
       simpl. try split; eauto.
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
     - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
       intros; simpl in *; simp.
       edestruct H3; try eassumption. simp.
       do 2 eexists; split; [|split]; try eassumption.
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
     - eapply exec.if_true; try eassumption.
       eapply exec.weaken; [eassumption|].
       simpl; intros. map_solver locals_ok.

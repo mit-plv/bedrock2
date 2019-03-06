@@ -322,7 +322,7 @@ Section ExprImp2.
           ensure_new IH'
       end;
       state_calc;
-      refine (only_differ_putmany _ _ _ _ _ _); eassumption.
+      refine (map.only_differ_putmany _ _ _ _ _ _); eassumption.
   Qed.
 
   (* TODO is this the canconical form to impose as a requirement?
@@ -443,12 +443,12 @@ Section ExprImp2.
       edestruct H3 as (? & ? & ? & ? & ?); try eassumption.
       eexists; split; [eassumption|].
       eexists; split; [eassumption|].
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
     - eapply exec.interact; try eassumption.
       intros.
       edestruct H1 as (? & ? & ?); try eassumption.
       eexists; split; [eassumption|].
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
   Qed.
 
   Lemma modVarsSound: forall e s t m l post,
@@ -476,12 +476,12 @@ Section ExprImp2.
       simpl. intros.
       edestruct H3 as (? & ? & ? & ? & ?); try eassumption.
       repeat (eexists || split || eassumption).
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
     - eapply exec.interact; try eassumption.
       intros.
       edestruct H1 as (? & ? & ?); try eassumption.
       repeat (eexists || split || eassumption).
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
   Qed.
 
 End ExprImp2.
