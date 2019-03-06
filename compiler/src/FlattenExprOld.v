@@ -575,8 +575,6 @@ Section FlattenExpr1.
     - simpl. intros. simp. eauto.
   Qed.
 
-  Axiom TODO: False.
-
   Lemma flattenExpr_correct_aux : forall e ngs1 ngs2 resVar s initialH initialL initialM res t,
     flattenExpr ngs1 e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
@@ -609,8 +607,6 @@ Section FlattenExpr1.
 
     pose_flatten_var_ineqs.
     simpl in *. (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
-
-    repeat autounfold with unf_derived_set_defs unf_derived_map_defs in *.
 
 Record unrecogs{K V: Type} := {
   unrecog_Props: list Prop;
@@ -731,16 +727,16 @@ with unrecogs_in_keyset K V e :=
   | (fun (x: ?T) => singleton_set (@?k x)) =>
     unrecogs_in_key K V (fun (y: T) => k y)
   | (fun (x: ?T) => union (@?ks1 x) (@?ks2 x)) =>
-    let u1 := unrecogs_in_prop K V (fun (y: T) => ks1 y) in
-    let u2 := unrecogs_in_prop K V (fun (y: T) => ks2 y) in
+    let u1 := unrecogs_in_keyset K V (fun (y: T) => ks1 y) in
+    let u2 := unrecogs_in_keyset K V (fun (y: T) => ks2 y) in
     constr:(union_unrecogs u1 u2)
   | (fun (x: ?T) => intersect (@?ks1 x) (@?ks2 x)) =>
-    let u1 := unrecogs_in_prop K V (fun (y: T) => ks1 y) in
-    let u2 := unrecogs_in_prop K V (fun (y: T) => ks2 y) in
+    let u1 := unrecogs_in_keyset K V (fun (y: T) => ks1 y) in
+    let u2 := unrecogs_in_keyset K V (fun (y: T) => ks2 y) in
     constr:(union_unrecogs u1 u2)
   | (fun (x: ?T) => diff (@?ks1 x) (@?ks2 x)) =>
-    let u1 := unrecogs_in_prop K V (fun (y: T) => ks1 y) in
-    let u2 := unrecogs_in_prop K V (fun (y: T) => ks2 y) in
+    let u1 := unrecogs_in_keyset K V (fun (y: T) => ks1 y) in
+    let u2 := unrecogs_in_keyset K V (fun (y: T) => ks2 y) in
     constr:(union_unrecogs u1 u2)
   | (fun (x: ?T) => ?B) =>
     match is_var' B with
@@ -836,9 +832,11 @@ mytest2 locals_ok E3.
 mytest2 locals_ok E2.
 mytest2 locals_ok IHe1.
 
+(*
 assert (forall x y : varname, elem_of x (FlatImp.modVars s0) \/ elem_of y (FlatImp.modVars s1)) as A by case TODO.
 
 mytest2 locals_ok A.
+*)
 
 Inductive Abstracted{T}: T -> T -> Type :=
   mk_Abstracted: forall (t1 t2: T), t1 = t2 -> Abstracted t1 t2.
@@ -897,6 +895,14 @@ Ltac clear_unused_Props :=
            clear p P
          end.
 
+Ltac clear_abstract_Props :=
+  repeat match goal with
+         (* "dependent" also clears (p: P), or (P1 -> P2) or (~ P1) leftovers,
+            which might be a bit too agressive, but I haven't seen any example
+            where we actually need abstract Props *)
+         | P: Prop |- _ => clear dependent P
+         end.
+
 Ltac revert_all_Props :=
   repeat match goal with
          | x: ?T |- _ => match type of T with
@@ -940,10 +946,17 @@ Ltac revert_all_maps mapok :=
 Ltac generalize_KVM mapok :=
   lazymatch type of mapok with
   | @map.ok ?K ?V ?M =>
+    let Needed := constr:(DecidableEq K) in
+    let key_eq_dec := match constr:(Set) with
+                      | _ => constr:(_: Needed)
+                      | _ => fail 10000 "map_solver won't work without" Needed
+                      end in
     let kname := fresh "key" in
     let vname := fresh "value" in
     let mname := fresh "map" in
+    let eqdecname := fresh "key_eq_dec" in
     let okname := fresh "mapok" in
+    generalize key_eq_dec as eqdecname;
     generalize mapok as okname;
     generalize M as mname;
     generalize V as vname;
@@ -951,10 +964,11 @@ Ltac generalize_KVM mapok :=
   end.
 
 Ltac preprocess mapok :=
+  repeat autounfold with unf_derived_set_defs unf_derived_map_defs in *;
   abstract_unrecogs mapok;
   clear;
   intros;
-  clear_unused_Props;
+  clear_abstract_Props;
   revert_all_Props;
   unfold set in *; simpl in *;
   revert_all_values mapok;
@@ -969,21 +983,33 @@ Ltac preprocess mapok :=
   end.
 
 
-revert U.
-
 (* abstract_unrecogs locals_ok. *)
 
-Time preprocess locals_ok. (* 0.245s *)
+(* Time preprocess locals_ok. (* 0.245s *) *)
 
-intros K V M Ok.
-assert (DecidableEq K) by case TODO. (* TODO this should follow from map.ok *)
-intros.
-clear A. (* this one was artificially added *)
-Time map_solver Ok. (* 1.748 s*)
+Ltac map_solver_core :=
+  let K := fresh "K" in let V := fresh "V" in let M := fresh "M" in
+  let Ok := fresh "Ok" in let keq := fresh "keq" in
+  intros K V M Ok keq;
+  let MT := type of M in unify MT (map.map K V);
+  let OkT := type of Ok in unify OkT (map.ok M);
+  let keqT := type of keq in unify keqT (DecidableEq K);
+  intros;
+  map_solver Ok.
+
+Ltac map_solver mapok := preprocess mapok; map_solver_core.
+
+Time map_solver locals_ok.
 }
+  Ltac maps ::=
+    pose_flatten_var_ineqs;
+    simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
+    map_solver (@locals_ok p).
+
 {
   maps.
 }
+
         * intros. simpl in *. simp. clear IHe1 IHe2.
           eapply @FlatImp.exec.op; t_safe; t_safe; maps.
   Qed.
@@ -1218,14 +1244,10 @@ Time map_solver Ok. (* 1.748 s*)
           { eapply IHexec; try reflexivity; try eassumption.
             - maps.
             - maps.
-            - pose_flatten_var_ineqs. progress simpl in *.
-              (* TODO make map_solver work without the intermediate steps *)
-              assert (disjoint (ExprImp.modVars c2) (allFreshVars ngs)) as A
-                  by map_solver locals_ok.
-              assert (subset (allFreshVars n0) (allFreshVars ngs)) as B
-                  by map_solver locals_ok.
-              clear -A B.
-              map_solver locals_ok. }
+            - (* TODO make map_solver work without the intermediate steps *)
+              assert (disjoint (ExprImp.modVars c2) (allFreshVars ngs)) as A by maps.
+              assert (subset (allFreshVars n0) (allFreshVars ngs)) as B by maps.
+              maps. }
           { intros. simpl in *. simp.
             eexists; repeat (split || eassumption); maps. }
 
