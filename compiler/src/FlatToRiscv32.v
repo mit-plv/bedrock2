@@ -8,17 +8,19 @@ Require Import Coq.ZArith.ZArith.
 Require Import riscv.Program.
 Require Import riscv.Decode.
 Require Import riscv.PseudoInstructions.
-Require Import riscv.RiscvMachine.
+Require Import riscv.MetricRiscvMachine.
 Require Import riscv.Execute.
 Require Import riscv.Run.
 Require Import riscv.Memory.
 Require Import riscv.util.PowerFunc.
 Require Import riscv.util.ListLib.
+Require Import riscv.MetricLogging.
 Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
 Require Import riscv.InstructionCoercions.
 Require Import riscv.Primitives.
+Require Import riscv.MetricPrimitives.
 Require Import Coq.micromega.Lia.
 Require Import riscv.util.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
@@ -74,8 +76,8 @@ Module Import FlatToRiscv32.
     |};
 
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
-    PR :> Primitives PRParams;
+    PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
+    PR :> MetricPrimitives PRParams;
 
     syntax_params: Syntax.parameters := {|
       Syntax.varname := Register;
@@ -103,14 +105,15 @@ Section Proofs.
       map.get initialL.(getRegs) a = Some addr ->
       Memory.load sz (getMem initialL) addr = Some v ->
       mcomp_sat (f tt)
-                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
+                (updateMetrics (addMetricLoads 1)
+                (withRegs (map.put initialL.(getRegs) x v) initialL)) post ->
       mcomp_sat (Bind (execute (compile_load RV32IM sz x a 0)) f) initialL post.
   Proof.
     intros. unfold compile_load.
     destruct sz;
     unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
-           Memory.load, Memory.load_Z in *;
-    simp; simulate; simpl; simpl_word_exprs word_ok;
+    Memory.load, Memory.load_Z in *;
+    simp; simulate; simpl; simpl_word_exprs word_ok; simpl_MetricRiscvMachine_get_set;
     eassumption.
   Qed.
 
@@ -120,14 +123,18 @@ Section Proofs.
       map.get initialL.(getRegs) x = Some v ->
       map.get initialL.(getRegs) a = Some addr ->
       Memory.store sz (getMem initialL) addr v = Some m' ->
-      mcomp_sat (f tt) (withMem m' initialL) post ->
+      mcomp_sat (f tt)
+                (updateMetrics (addMetricStores 1)
+                (withMem m' initialL))
+                post ->
       mcomp_sat (Bind (execute (compile_store RV32IM sz a x 0)) f) initialL post.
   Proof.
     intros. unfold compile_store.
     destruct sz;
     unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
            Memory.store, Memory.store_Z in *;
-    simp; simulate; simpl; simpl_word_exprs word_ok; eassumption.
+    simp; simulate; simpl; simpl_word_exprs word_ok; simpl_MetricRiscvMachine_get_set;
+    eassumption.
   Qed.
 
 End Proofs.
