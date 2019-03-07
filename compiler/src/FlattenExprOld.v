@@ -63,9 +63,6 @@ Section FlattenExpr1.
 
   Context {p : unique! parameters}.
 
-  Ltac state_calc0 :=
-    map_solver (@locals_ok p).
-
   Ltac set_solver :=
     set_solver_generic (@varname p).
 
@@ -198,12 +195,6 @@ Section FlattenExpr1.
       repeat match goal with
       | H : _ |- _ => apply flattenExpr_size in H
       end; try omega.
-  Qed.
-
-  Lemma fold_right_cons: forall (A B: Type) (f: B -> A -> A) (a0: A) (b: B) (bs: list B),
-      fold_right f a0 (b :: bs) = f b (fold_right f a0 bs).
-  Proof.
-    intros. reflexivity.
   Qed.
 
   Lemma flattenExprs_size: forall es s resVars ngs ngs',
@@ -477,73 +468,6 @@ Section FlattenExpr1.
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modVars_spec in copy of H
     end.
 
-  (* only needed if we want to export the goal into a map_solver-only environment *)
-  Ltac prepare_for_map_solver :=
-    repeat match goal with
-             | H: context [allFreshVars ?ngs] |- _ =>
-               let n := fresh "fv" ngs in
-               forget (allFreshVars ngs) as n
-             | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
-               let n := fresh "mv" s in
-               forget (FlatImp.modVars var func s) as n
-             | H: context [ExprImp.modVars ?s] |- _ =>
-               let n := fresh "emv" in
-               forget (ExprImp.modVars s) as n
-             | H: @eq ?T _ _ |- _ =>
-               match T with
-            (* | option Semantics.word => don't clear because we have maps of Semantics.word *)
-               | nat => clear H
-               end
-           end;
-    repeat match goal with
-           | H: context[?x] |- _ =>
-             let t := type of x in
-             unify t NGstate;
-             clear H
-           end;
-    repeat match goal with
-           | x: NGstate |- _ => clear x
-           end;
-    (repeat (so fun hyporgoal => match hyporgoal with
-    | context [ZToReg ?x] => let x' := fresh x in forget (ZToReg x) as x'
-    end));
-    repeat match goal with
-           | H: ?P |- _ =>
-             progress
-               tryif (let T := type of P in unify T Prop)
-               then revert H
-               else (match P with
-                     | DecidableEq _ => idtac
-                     | _ => clear H
-                     end)
-           end;
-    repeat match goal with
-           | x: ?T |- _ =>
-             lazymatch T with
-             | MachineWidth _  => fail
-             | DecidableEq _ => fail
-             | _ => revert x
-             end
-           end.
-
-  Ltac state_calc_with_logging :=
-    prepare_for_map_solver;
-    idtac "map_solver goal:";
-    match goal with
-    | |- ?G => idtac G
-    end;
-    time state_calc0.
-
-  Ltac state_calc_with_timing :=
-    prepare_for_map_solver;
-    time state_calc0.
-
-  Ltac state_calc_without_logging :=
-    prepare_for_map_solver;
-    state_calc0.
-
-  Ltac state_calc := state_calc0.
-
   Arguments map.empty: simpl never.
 
   (* only instantiates evars when it's sure to make the correct choice *)
@@ -647,22 +571,6 @@ Section FlattenExpr1.
         rewrite_match. repeat (split || auto). maps.
   Qed.
 
-  Ltac simpl_reg_eqb :=
-    rewrite? word.eqb_eq by congruence;
-    rewrite? word.eqb_ne by congruence;
-    repeat match goal with
-           | E: _ _ _ = true  |- _ => apply word.eqb_true  in E
-           | E: _ _ _ = false |- _ => apply word.eqb_false in E
-           end.
-
-  Ltac cleanup_options :=
-    repeat match goal with
-    | H : Some _ = Some _ |- _ =>
-        invert_Some_eq_Some
-    | |- Some _ = Some _ =>
-        f_equal
-    end; try discriminate.
-
   Lemma unsigned_ne: forall (a b: word), word.unsigned a <> word.unsigned b -> a <> b.
   Proof.
     intros.
@@ -691,6 +599,15 @@ Section FlattenExpr1.
       simpl.
       omega.
     }
+  Qed.
+
+  Lemma bool_to_word_to_bool_id: forall (b: bool),
+      negb (word.eqb (if b then word.of_Z 1 else word.of_Z 0) (word.of_Z 0)) = b.
+  Proof.
+    intro b. unfold negb.
+    destruct_one_match; destruct_one_match; try reflexivity.
+    - apply word.eqb_true in E. exfalso. apply one_ne_zero. assumption.
+    - apply word.eqb_false in E. congruence.
   Qed.
 
   Ltac default_flattenBooleanExpr :=
@@ -722,20 +639,10 @@ Section FlattenExpr1.
         [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity; maps
         | intros; simpl in *; simp; repeat rewrite_match; t_safe ] ].
 
-    all: replace (map.get l'0 v) with (Some r) by maps;
-      f_equal;
-      repeat (match goal with
-      | |- context[if ?e then _ else _] =>
-          destruct e
-      | |- true = negb ?b =>
-          let H' := fresh in
-          pose proof (negb_true_iff b) as H'; destruct H' as [_ H'];
-          symmetry; apply H'; simpl_reg_eqb
-      | |- false = negb ?b =>
-          let H' := fresh in
-          pose proof (negb_false_iff b) as H'; destruct H' as [_ H'];
-          symmetry; apply H'; simpl_reg_eqb
-        end); auto using word.eqb_ne, one_ne_zero.
+    all: rewrite bool_to_word_to_bool_id;
+      destruct_one_match;
+      [ f_equal; f_equal; maps
+      | exfalso; maps ].
   Qed.
 
   Lemma flattenBooleanExpr_correct_with_modVars:
@@ -835,10 +742,7 @@ Section FlattenExpr1.
         * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
              requires us to do one more weakening step here than otherwise needed: *)
           eapply @FlatImp.exec.weaken.
-          { eapply IHexec; try reflexivity; try eassumption.
-            - maps.
-            - maps.
-            - maps. }
+          { eapply IHexec; try reflexivity; try eassumption; maps. }
           { intros. simpl in *. simp.
             eexists; repeat (split || eassumption); maps. }
 
