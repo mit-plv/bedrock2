@@ -108,7 +108,7 @@ Section Pipeline1.
   Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
 
   Definition flatten(s: Syntax.cmd): FlatImp.stmt :=
-    let ngs: NGstate := freshNameGenState (ExprImp.allVars_cmd s) in
+    let ngs: NGstate := freshNameGenState (ExprImp.allVars_cmd_as_list s) in
     let (sFlat, ngs') := flattenStmt ngs s in sFlat.
 
   (* only works if varname=Register *)

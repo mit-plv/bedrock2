@@ -199,25 +199,52 @@ Section ExprImp1.
   End WithEnv.
 
   (* Returns a list to make it obvious that it's a finite set. *)
-  Fixpoint allVars_expr(e: expr): list var :=
+  Fixpoint allVars_expr_as_list(e: expr): list var :=
     match e with
     | expr.literal v => []
     | expr.var x => [x]
-    | expr.load nbytes e => allVars_expr e
-    | expr.op op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
+    | expr.load nbytes e => allVars_expr_as_list e
+    | expr.op op e1 e2 => (allVars_expr_as_list e1) ++ (allVars_expr_as_list e2)
     end.
 
-  Fixpoint allVars_cmd(s: cmd): list var :=
+  Definition allVars_exprs_as_list(es: list expr): list var :=
+    List.flat_map allVars_expr_as_list es.
+
+  Fixpoint allVars_cmd_as_list(s: cmd): list var :=
     match s with
-    | cmd.store _ a e => (allVars_expr a) ++ (allVars_expr e)
-    | cmd.set v e => v :: allVars_expr e
+    | cmd.store _ a e => (allVars_expr_as_list a) ++ (allVars_expr_as_list e)
+    | cmd.set v e => v :: allVars_expr_as_list e
     | cmd.unset v => v :: nil
-    | cmd.cond c s1 s2 => (allVars_expr c) ++ (allVars_cmd s1) ++ (allVars_cmd s2)
-    | cmd.while c body => (allVars_expr c) ++ (allVars_cmd body)
-    | cmd.seq s1 s2 => (allVars_cmd s1) ++ (allVars_cmd s2)
+    | cmd.cond c s1 s2 => (allVars_expr_as_list c) ++ (allVars_cmd_as_list s1) ++ (allVars_cmd_as_list s2)
+    | cmd.while c body => (allVars_expr_as_list c) ++ (allVars_cmd_as_list body)
+    | cmd.seq s1 s2 => (allVars_cmd_as_list s1) ++ (allVars_cmd_as_list s2)
     | cmd.skip => []
-    | cmd.call binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
-    | cmd.interact binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
+    | cmd.call binds _ args => binds ++ allVars_exprs_as_list args
+    | cmd.interact binds _ args => binds ++ allVars_exprs_as_list args
+    end.
+
+  Fixpoint allVars_expr(e: expr): set var :=
+    match e with
+    | expr.literal v => empty_set
+    | expr.var x => singleton_set x
+    | expr.load nbytes e => allVars_expr e
+    | expr.op op e1 e2 => union (allVars_expr e1) (allVars_expr e2)
+    end.
+
+  Definition allVars_exprs(es: list expr): set var :=
+    List.fold_right union empty_set (List.map allVars_expr es).
+
+  Fixpoint allVars_cmd(s: cmd): set var :=
+    match s with
+    | cmd.store _ a e => union (allVars_expr a) (allVars_expr e)
+    | cmd.set v e => add (allVars_expr e) v
+    | cmd.unset v => singleton_set v
+    | cmd.cond c s1 s2 => union (allVars_expr c) (union (allVars_cmd s1) (allVars_cmd s2))
+    | cmd.while c body => union (allVars_expr c) (allVars_cmd body)
+    | cmd.seq s1 s2 => union (allVars_cmd s1) (allVars_cmd s2)
+    | cmd.skip => empty_set
+    | cmd.call binds _ args => union (of_list binds) (allVars_exprs args)
+    | cmd.interact binds _ args => union (of_list binds) (allVars_exprs args)
     end.
 
   (* Returns a static approximation of the set of modified vars.
@@ -234,27 +261,9 @@ Section ExprImp1.
     | cmd.interact binds _ _ => of_list binds
     end.
 
-  Lemma modVars_subset_allVars: forall x s,
-    x \in modVars s ->
-    In x (allVars_cmd s).
+  Lemma modVars_subset_allVars: forall s, subset (modVars s) (allVars_cmd s).
   Proof.
-    intros.
-    induction s; simpl in *.
-    - set_solver.
-    - set_solver.
-    - set_solver.
-    - set_solver.
-    - set_solver.
-      + apply in_or_app. right. apply in_or_app. left. assumption.
-      + apply in_or_app. right. apply in_or_app. right. assumption.
-    - set_solver; apply in_or_app; auto.
-    - apply in_or_app. right. auto.
-    - generalize dependent binds; induction binds; intros H; cbn in *.
-      + contradiction.
-      + destruct H; auto.
-    - generalize dependent binds; induction binds; intros H; cbn in *.
-      + contradiction.
-      + destruct H; auto.
+    intros. induction s; simpl in *; set_solver.
   Qed.
 
 End ExprImp1.

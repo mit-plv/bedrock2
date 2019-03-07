@@ -405,33 +405,15 @@ Section FlattenExpr1.
       flattenCall ngs1 binds f args = (s, ngs2) ->
       subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
-    induction args; cbn; intros.
-    { inversionss; subst; set_solver. }
-    { unfold flattenCall in *. simpl in H.
-      repeat destruct_one_match_hyp.
-      inversions H.
-      inversions E.
-      specialize (IHargs binds n0).
-      rewrite E1 in IHargs.
-      specialize IHargs with (1 := eq_refl).
-      apply flattenExpr_freshVarUsage in E0.
-      clear -IHargs E0.
-      set_solver. }
+    intros. destruct f.
   Qed.
 
   Lemma flattenInteract_freshVarUsage: forall args s' binds a ngs1 ngs2,
       flattenInteract ngs1 binds a args = (s', ngs2) ->
       subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
-    induction args; intros; unfold flattenInteract in *; simp.
-    - map_solver locals_ok.
-    - simpl in E. simp.
-      specialize IHargs with (ngs1 := n).
-      rewrite E1 in IHargs.
-      specialize IHargs with (1 := eq_refl).
-      apply flattenExpr_freshVarUsage in E0.
-      map_solver locals_ok.
-      Unshelve. all: assumption.
+    unfold flattenInteract.
+    intros. simp. eauto using flattenExprs_freshVarUsage.
   Qed.
 
   Lemma flattenStmt_freshVarUsage: forall s s' ngs1 ngs2,
@@ -814,7 +796,10 @@ Section FlattenExpr1.
   Qed.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
-    fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).
+    fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
+
+  Axiom allVars_cmd_allVars_cmd_as_list: forall x sH,
+      x \in ExprImp.allVars_cmd sH <-> In x (ExprImp.allVars_cmd_as_list sH).
 
   Lemma flattenStmt_correct: forall sH sL t m post,
       ExprImp2FlatImp sH = sL ->
@@ -833,7 +818,7 @@ Section FlattenExpr1.
     - eapply flattenStmt_correct_aux; [eassumption | reflexivity | eassumption | maps | maps | ].
       unfold disjoint.
       intro x.
-      pose proof (freshNameGenState_spec (ExprImp.allVars_cmd sH) x) as P.
+      pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
       match type of P with
       | In ?x ?l -> _ => destruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
       end.
@@ -841,7 +826,10 @@ Section FlattenExpr1.
       + left. clear -Ino.
         intro. apply Ino.
         pose proof @ExprImp.modVars_subset_allVars as Q.
-        specialize Q with (1 := H). exact Q.
+        unfold subset in Q.
+        specialize Q with (1 := H).
+        apply allVars_cmd_allVars_cmd_as_list.
+        exact Q.
     - simpl. intros. simp. eauto.
   Qed.
 
