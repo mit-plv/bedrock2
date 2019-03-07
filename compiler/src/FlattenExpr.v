@@ -714,6 +714,7 @@ map_solver locals_ok.
       eapply @FlatImp.modVarsSound; [typeclasses eauto..|].
       eapply flattenBooleanExpr_correct_aux; eassumption.
   Qed.
+*)
 
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
       Semantics.exec e sH t m lH post ->
@@ -736,6 +737,8 @@ map_solver locals_ok.
            more things about the (t', m', l') in mid *)
         map.only_differ lH (ExprImp.modVars sH) lH').
   Proof.
+  Admitted.
+  (*
     induction 1; intros; simpl in *; subst; simp.
 
     - (* exec.skip *)
@@ -876,7 +879,6 @@ map_solver locals_ok.
         post t' m' lH' /\
         map.extends lL' lH').
   Proof.
-  Admitted. (*
     intros.
     unfold ExprImp2FlatImp in *.
     match goal with
@@ -887,7 +889,7 @@ map_solver locals_ok.
     - eapply flattenStmt_correct_aux; try solve [eassumption | reflexivity | maps].
       unfold disjoint.
       intro x.
-      pose proof (freshNameGenState_spec (ExprImp.allVars_cmd sH) x) as P.
+      pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
       match type of P with
       | In ?x ?l -> _ => destruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
       end.
@@ -895,9 +897,12 @@ map_solver locals_ok.
       + left. clear -Ino.
         intro. apply Ino.
         pose proof @ExprImp.modVars_subset_allVars as Q.
-        specialize Q with (1 := H). exact Q.
+        unfold subset in Q.
+        specialize Q with (1 := H).
+        epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
+        apply P.
+        apply Q.
     - simpl. intros. simp. eauto.
   Qed.
-  *)
 
 End FlattenExpr1.

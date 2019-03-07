@@ -798,9 +798,6 @@ Section FlattenExpr1.
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
-  Axiom allVars_cmd_allVars_cmd_as_list: forall x sH,
-      x \in ExprImp.allVars_cmd sH <-> In x (ExprImp.allVars_cmd_as_list sH).
-
   Lemma flattenStmt_correct: forall sH sL t m post,
       ExprImp2FlatImp sH = sL ->
       Semantics.exec map.empty sH t m map.empty post ->
@@ -828,8 +825,9 @@ Section FlattenExpr1.
         pose proof @ExprImp.modVars_subset_allVars as Q.
         unfold subset in Q.
         specialize Q with (1 := H).
-        apply allVars_cmd_allVars_cmd_as_list.
-        exact Q.
+        epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
+        apply P.
+        apply Q.
     - simpl. intros. simp. eauto.
   Qed.
 

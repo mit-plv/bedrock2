@@ -247,6 +247,41 @@ Section ExprImp1.
     | cmd.interact binds _ args => union (of_list binds) (allVars_exprs args)
     end.
 
+  Lemma allVars_expr_allVars_expr_as_list: forall e x,
+      x \in allVars_expr e <-> In x (allVars_expr_as_list e).
+  Proof.
+    induction e; intros; simpl in *; set_solver; try apply in_or_app; set_solver.
+    apply in_app_or in H3.
+    destruct H3; eauto.
+  Qed.
+
+  Lemma allVars_exprs_allVars_exprs_as_list: forall es x,
+      x \in allVars_exprs es <-> In x (allVars_exprs_as_list es).
+  Proof.
+    induction es; intros; simpl in *; set_solver.
+    - apply in_or_app. unfold allVars_exprs in H1. simpl in H1.
+      pose proof (allVars_expr_allVars_expr_as_list a).
+      set_solver.
+    - apply in_app_or in H1. unfold allVars_exprs.
+      pose proof (allVars_expr_allVars_expr_as_list a).
+      simpl. destruct H1; set_solver.
+  Qed.
+
+  Lemma allVars_cmd_allVars_cmd_as_list: forall s x,
+      x \in allVars_cmd s <-> In x (allVars_cmd_as_list s).
+  Proof.
+    induction s; intros; simpl in *;
+      repeat match goal with
+             | e: expr |- _ => unique pose proof (allVars_expr_allVars_expr_as_list e x)
+             | es: list expr |- _ => unique pose proof (allVars_exprs_allVars_exprs_as_list es x)
+             | _: context [?l1 ++ ?l2] |- _ =>
+               unique pose proof (in_app_or l1 l2 x)
+             | |- context [?l1 ++ ?l2] =>
+               unique pose proof (in_or_app l1 l2 x)
+             end;
+      try solve [set_solver].
+  Qed.
+
   (* Returns a static approximation of the set of modified vars.
      The returned set might be too big, but is guaranteed to include all modified vars. *)
   Fixpoint modVars(s: cmd): vars :=
