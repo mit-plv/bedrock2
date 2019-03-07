@@ -63,9 +63,6 @@ Section FlattenExpr1.
 
   Context {p : unique! parameters}.
 
-  Ltac state_calc0 :=
-    map_solver (@locals_ok p).
-
   Ltac set_solver :=
     set_solver_generic (@varname p).
 
@@ -206,12 +203,6 @@ Section FlattenExpr1.
       repeat match goal with
       | H : _ |- _ => apply flattenExpr_size in H
       end; try omega.
-  Qed.
-
-  Lemma fold_right_cons: forall (A B: Type) (f: B -> A -> A) (a0: A) (b: B) (bs: list B),
-      fold_right f a0 (b :: bs) = f b (fold_right f a0 bs).
-  Proof.
-    intros. reflexivity.
   Qed.
 
   Lemma flattenExprs_size: forall es s resVars ngs ngs',
@@ -412,7 +403,8 @@ Section FlattenExpr1.
       flattenInteract ngs1 binds a args = (s', ngs2) ->
       subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
-    induction args; intros; unfold flattenInteract in *; simp; try solve [map_solver locals_ok].
+    induction args; intros; unfold flattenInteract in *; simp.
+    - map_solver locals_ok.
     - simpl in E. simp.
       specialize IHargs with (ngs1 := n).
       rewrite E1 in IHargs.
@@ -453,73 +445,6 @@ Section FlattenExpr1.
     | H: _ |- _ => unique eapply flattenExprAsBoolExpr_modVars_spec in copy of H
     end.
 
-  (* only needed if we want to export the goal into a map_solver-only environment *)
-  Ltac prepare_for_map_solver :=
-    repeat match goal with
-             | H: context [allFreshVars ?ngs] |- _ =>
-               let n := fresh "fv" ngs in
-               forget (allFreshVars ngs) as n
-             | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
-               let n := fresh "mv" s in
-               forget (FlatImp.modVars var func s) as n
-             | H: context [ExprImp.modVars ?s] |- _ =>
-               let n := fresh "emv" in
-               forget (ExprImp.modVars s) as n
-             | H: @eq ?T _ _ |- _ =>
-               match T with
-            (* | option Semantics.word => don't clear because we have maps of Semantics.word *)
-               | nat => clear H
-               end
-           end;
-    repeat match goal with
-           | H: context[?x] |- _ =>
-             let t := type of x in
-             unify t NGstate;
-             clear H
-           end;
-    repeat match goal with
-           | x: NGstate |- _ => clear x
-           end;
-    (repeat (so fun hyporgoal => match hyporgoal with
-    | context [ZToReg ?x] => let x' := fresh x in forget (ZToReg x) as x'
-    end));
-    repeat match goal with
-           | H: ?P |- _ =>
-             progress
-               tryif (let T := type of P in unify T Prop)
-               then revert H
-               else (match P with
-                     | DecidableEq _ => idtac
-                     | _ => clear H
-                     end)
-           end;
-    repeat match goal with
-           | x: ?T |- _ =>
-             lazymatch T with
-             | MachineWidth _  => fail
-             | DecidableEq _ => fail
-             | _ => revert x
-             end
-           end.
-
-  Ltac state_calc_with_logging :=
-    prepare_for_map_solver;
-    idtac "map_solver goal:";
-    match goal with
-    | |- ?G => idtac G
-    end;
-    time state_calc0.
-
-  Ltac state_calc_with_timing :=
-    prepare_for_map_solver;
-    time state_calc0.
-
-  Ltac state_calc_without_logging :=
-    prepare_for_map_solver;
-    state_calc0.
-
-  Ltac state_calc := state_calc0.
-
   Arguments map.empty: simpl never.
 
   (* only instantiates evars when it's sure to make the correct choice *)
@@ -535,7 +460,7 @@ Section FlattenExpr1.
   Ltac maps :=
     pose_flatten_var_ineqs;
     simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
-    try solve [set_solver | map_solver (@locals_ok p)].
+    map_solver (@locals_ok p).
 
   Lemma seq_with_modVars: forall env t m l s1 s2 mid post,
     FlatImp.exec env s1 t m l mid ->
@@ -645,22 +570,6 @@ Section FlattenExpr1.
           set_solver.
   Qed.
 
-  Ltac simpl_reg_eqb :=
-    rewrite? word.eqb_eq by congruence;
-    rewrite? word.eqb_ne by congruence;
-    repeat match goal with
-           | E: _ _ _ = true  |- _ => apply word.eqb_true  in E
-           | E: _ _ _ = false |- _ => apply word.eqb_false in E
-           end.
-
-  Ltac cleanup_options :=
-    repeat match goal with
-    | H : Some _ = Some _ |- _ =>
-        invert_Some_eq_Some
-    | |- Some _ = Some _ =>
-        f_equal
-    end; try discriminate.
-
   Lemma unsigned_ne: forall (a b: word), word.unsigned a <> word.unsigned b -> a <> b.
   Proof.
     intros.
@@ -689,6 +598,15 @@ Section FlattenExpr1.
       simpl.
       omega.
     }
+  Qed.
+
+  Lemma bool_to_word_to_bool_id: forall (b: bool),
+      negb (word.eqb (if b then word.of_Z 1 else word.of_Z 0) (word.of_Z 0)) = b.
+  Proof.
+    intro b. unfold negb.
+    destruct_one_match; destruct_one_match; try reflexivity.
+    - apply word.eqb_true in E. exfalso. apply one_ne_zero. assumption.
+    - apply word.eqb_false in E. congruence.
   Qed.
 
   Ltac default_flattenBooleanExpr :=
@@ -729,41 +647,14 @@ Section FlattenExpr1.
       [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity
       | intros; simpl in *; simp;
         eapply FlatImp.exec.weaken;
-        [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity(*; maps*)
+        [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity; maps
         | intros; simpl in *; simp; repeat rewrite_match; t_safe ] ].
 
-    all: try match goal with
-             | |- disjoint _ _ => shelve
-             end.
-    all: try match goal with
-             | |- _ = Some _ => shelve
-             end.
-
-    {
-      (* TODO consolidate E0 and E5 *)
-      pose_flatten_var_ineqs.
-(*
-      eapply flattenExpr_valid_resVar in E5.
-
-          { maps. }
-          { clear -D. maps. (* TODO can it also work in reasonable time without clearing? *) }
-
-
-    all: replace (map.get l'0 v) with (Some r) by maps;
-      f_equal;
-      repeat (match goal with
-      | |- context[if ?e then _ else _] =>
-          destruct e
-      | |- true = negb ?b =>
-          let H' := fresh in
-          pose proof (negb_true_iff b) as H'; destruct H' as [_ H'];
-          symmetry; apply H'; simpl_reg_eqb
-      | |- false = negb ?b =>
-          let H' := fresh in
-          pose proof (negb_false_iff b) as H'; destruct H' as [_ H'];
-          symmetry; apply H'; simpl_reg_eqb
-        end); auto using word.eqb_ne, one_ne_zero.
-*)Admitted.
+    all: rewrite bool_to_word_to_bool_id;
+      destruct_one_match;
+      [ f_equal; f_equal; maps
+      | exfalso; maps ].
+  Qed.
 
   Lemma flattenBooleanExpr_correct_with_modVars:
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t res,
@@ -777,13 +668,11 @@ Section FlattenExpr1.
       map.only_differ initialL (FlatImp.modVars s) finalL (* <-- added *)).
   Proof.
     intros. eapply FlatImp.exec.intersect.
-    - eapply flattenBooleanExpr_correct_aux; try eassumption.
-      admit.
+    - eapply flattenBooleanExpr_correct_aux; eassumption.
     - (* PARAMRECORDS why not just "eapply @FlatImp.modVarsSound" ? *)
       eapply @FlatImp.modVarsSound; [typeclasses eauto..|].
-      eapply flattenBooleanExpr_correct_aux; try eassumption.
-      admit.
-  Admitted.
+      eapply flattenBooleanExpr_correct_aux; eassumption.
+  Qed.
 
   Lemma flattenStmt_correct_aux: forall e sH t m lH post,
       Semantics.exec e sH t m lH post ->
@@ -815,7 +704,7 @@ Section FlattenExpr1.
 
     - (* exec.set *)
       eapply @FlatImp.exec.seq.
-      + eapply flattenExpr_correct_with_modVars; try eassumption. admit.
+      + eapply flattenExpr_correct_with_modVars; eassumption.
       + simpl. intros. simp.
         eapply @FlatImp.exec.set; [eassumption|].
         eexists; repeat (split || eassumption); maps.
@@ -826,34 +715,24 @@ Section FlattenExpr1.
 
     - (* exec.store *)
       eapply @FlatImp.exec.seq.
-      + eapply flattenExpr_correct_with_modVars; try eassumption. admit.
+      + eapply flattenExpr_correct_with_modVars; try eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.seq.
-        * eapply flattenExpr_correct_with_modVars; try eassumption; maps. admit.
+        * eapply flattenExpr_correct_with_modVars; try eassumption; maps.
         * intros. simpl in *. simp.
-          eapply @FlatImp.exec.store; try eassumption. 1: maps. 1: admit.
-          eexists; repeat (split || eassumption).
-
-  Ltac maps ::=
-    pose_flatten_var_ineqs;
-    simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
-    try solve [map_solver (@locals_ok p)].
-
-          2: maps.
-          pose_flatten_var_ineqs. simpl in *.
-          assert (map.only_differ l'0 (union (FlatImp.modVars s0) (FlatImp.modVars s)) lL)
-            by (simpl in *; map_solver locals_ok).
-          simpl in *.
-(* TODO...
-map_solver locals_ok.
- idtac. maps.
+          eapply @FlatImp.exec.store; try eassumption. 1: maps.
+          eexists; repeat (split || eassumption). 2: maps. maps.
 
     - (* if_true *)
       eapply @FlatImp.exec.seq.
       + eapply flattenBooleanExpr_correct_with_modVars; try eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_true.
-        * rewrite H3. f_equal. simpl_reg_eqb. reflexivity.
+        * rewrite H3. f_equal.
+          rewrite word.eqb_ne; [reflexivity|].
+          apply unsigned_ne.
+          rewrite word.unsigned_of_Z.
+          assumption.
         * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
              requires us to do one more weakening step here than otherwise needed: *)
           eapply @FlatImp.exec.weaken.
@@ -866,21 +745,15 @@ map_solver locals_ok.
       + eapply flattenBooleanExpr_correct_with_modVars; try eassumption.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_false.
-        * rewrite H2. f_equal. simpl_reg_eqb. reflexivity.
+        * rewrite H3. f_equal.
+          rewrite word.eqb_eq; [reflexivity|].
+          apply word.unsigned_inj.
+          rewrite word.unsigned_of_Z.
+          assumption.
         * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
              requires us to do one more weakening step here than otherwise needed: *)
           eapply @FlatImp.exec.weaken.
-          { eapply IHexec; try reflexivity; try eassumption.
-            - maps.
-            - maps.
-            - pose_flatten_var_ineqs. progress simpl in *.
-              (* TODO make map_solver work without the intermediate steps *)
-              assert (disjoint (ExprImp.modVars c2) (allFreshVars ngs)) as A
-                  by map_solver locals_ok.
-              assert (subset (allFreshVars n0) (allFreshVars ngs)) as B
-                  by map_solver locals_ok.
-              clear -A B.
-              map_solver locals_ok. }
+          { eapply IHexec; try reflexivity; try eassumption; maps. }
           { intros. simpl in *. simp.
             eexists; repeat (split || eassumption); maps. }
 
@@ -900,7 +773,7 @@ map_solver locals_ok.
         eapply @FlatImp.exec.weaken.
         * eapply H1 (* <-- that's an IH too *); try reflexivity; try eassumption.
           { (* note: here we need the high-level map.only_differ we were carrying around *)
-            Fail (solve [clear H9; maps]).
+            (* Fail (solve [clear H9; maps]). *)
             solve [maps]. }
           { maps. }
         * clear IHexec H1.
@@ -913,15 +786,17 @@ map_solver locals_ok.
         | intros; simpl in *; simp .. ].
       + congruence.
       + eexists; repeat (split || eassumption); maps.
-      + exfalso. rewrite word.eqb_eq in H6 by reflexivity. simpl in *. congruence.
-      + exfalso. exact H1. (* instantiates mid2 to (fun _ _ _ => False) *)
+      + exfalso. rewrite word.eqb_eq in H7. 1: simpl in *; congruence.
+        apply word.unsigned_inj. rewrite word.unsigned_of_Z. assumption.
+      + exfalso. exact H2. (* instantiates mid2 to (fun _ _ _ => False) *)
 
     - (* while_true *)
       eapply @FlatImp.exec.loop;
         [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
         | intros; simpl in *; simp .. ].
       + congruence.
-      + exfalso. rewrite word.eqb_ne in H9 by congruence. simpl in *. congruence.
+      + exfalso. rewrite word.eqb_ne in H9. 1: simpl in *; congruence.
+        apply unsigned_ne. rewrite word.unsigned_of_Z. assumption.
       + eapply IHexec; try eassumption; try reflexivity; maps.
       + simpl in *. simp.
         specialize H3 with (1 := H4).
@@ -946,11 +821,9 @@ map_solver locals_ok.
         pose proof (map.putmany_of_list_extends_exists binds resvals) as R.
         assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
         destruct R as (lL'' & R1 & R2).
-        eauto 10 using only_differ_putmany.
+        eauto 10 using map.only_differ_putmany.
   Qed.
 *)
-  Admitted.
-  *)
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd s)) s).
