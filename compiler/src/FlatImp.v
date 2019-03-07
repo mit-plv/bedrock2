@@ -583,8 +583,7 @@ Section FlatImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      map_solver locals_ok;
-      refine (map.only_differ_putmany _ _ _ _ _ _); eassumption.
+      try solve [map_solver locals_ok|refine (map.only_differ_putmany _ _ _ _ _); eassumption].
   Qed.
 
   Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM post,
@@ -593,7 +592,7 @@ Section FlatImp2.
            (fun finalT finalM finalSt => map.only_differ initialSt (modVars s) finalSt).
   Proof.
     induction 1;
-      try solve [ econstructor; [eassumption..|map_solver locals_ok] ].
+      try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
     - eapply exec.interact; try eassumption.
       intros; simp.
       edestruct H1; try eassumption. simp.

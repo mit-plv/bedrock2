@@ -321,8 +321,7 @@ Section ExprImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      state_calc;
-      refine (map.only_differ_putmany _ _ _ _ _ _); eassumption.
+      try solve [state_calc | refine (map.only_differ_putmany _ _ _ _ _); eassumption].
   Qed.
 
   (* TODO is this the canconical form to impose as a requirement?
@@ -416,7 +415,7 @@ Section ExprImp2.
       exec e s t m l (fun t' m' l' => map.only_differ l (modVars s) l').
   Proof.
     induction 1;
-      try solve [ econstructor; [eassumption..|map_solver locals_ok] ].
+      try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
       simpl; intros. map_solver locals_ok.
@@ -455,7 +454,8 @@ Section ExprImp2.
       exec e s t m l post ->
       exec e s t m l (fun t' m' l' => map.only_differ l (modVars s) l' /\ post t' m' l').
   Proof.
-    induction 1; try solve [econstructor; repeat split; try eassumption; map_solver locals_ok].
+    induction 1;
+      try solve [econstructor; repeat split; try eassumption; simpl; map_solver locals_ok].
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
       simpl; intros. intuition idtac. map_solver locals_ok.
