@@ -838,10 +838,7 @@ Section FlattenExpr1.
           { eapply IHexec; try reflexivity; try eassumption.
             - maps.
             - maps.
-            - (* TODO make map_solver work without the intermediate steps *)
-              assert (disjoint (ExprImp.modVars c2) (allFreshVars ngs)) as A by maps.
-              assert (subset (allFreshVars n0) (allFreshVars ngs)) as B by maps.
-              maps. }
+            - maps. }
           { intros. simpl in *. simp.
             eexists; repeat (split || eassumption); maps. }
 
