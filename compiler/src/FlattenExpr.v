@@ -606,8 +606,9 @@ Section FlattenExpr1.
 
   Ltac default_flattenBooleanExpr :=
     eapply FlatImp.exec.weaken;
-    [ eapply flattenExpr_correct_aux; try eassumption; try reflexivity; set_solver
-    | intros; simpl in *; simp; rewrite_match; auto ].
+    [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity;
+      try solve [maps]
+    | intros; simpl in *; simp; repeat rewrite_match; t_safe ].
 
   Lemma flattenBooleanExpr_correct_aux :
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t res,
@@ -622,74 +623,33 @@ Section FlattenExpr1.
   Proof.
     destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F.
 
-    1: solve [simp; default_flattenBooleanExpr].
-Admitted. (*
-    {
-Ltac unique_inversion ::=
-  match goal with
-  | H: ?P |- _ =>
-    (let h := head_of_app P in is_ind h);
-    match constr:(Set) with
-    | _ => let dummy := constr:(_: P) in idtac;
-           fail 1 (* don't destruct typeclass instances *)
-    | _ => idtac
-    end;
-    lazymatch P with
-    | ?LHS = ?RHS =>
-      (* don't simpl if user didn't simpl *)
-      let h1 := head_of_app LHS in is_constructor h1;
-      let h2 := head_of_app RHS in is_constructor h2
-    | _ => idtac
-    end;
-    protect_equalities;
-    inversion H;
-    [> (* require exactly one goal *)
-     clear H;
-     match goal with
-     | H': ?P' |- _ => unify P P'; fail 1 (* inversion didn't do anything except simplifying *)
-     | |- _ => idtac
-     end;
-     subst;
-     unprotect_equalities]
-  end.
-
-  simp.
-
-      simp_step.
-      simp_step.
-      simp_step.
-
-
-      unique_inversion.
-
-      simp_step.
-
-
-      simp.
-      eapply FlatImp.exec.weaken.
-      - eapply flattenExpr_correct_aux; try eassumption; try reflexivity.
-        set_solver.
-
-map_solver locals_ok.
-    [ eapply flattenExpr_correct_aux; try eassumption; try reflexivity
-    | intros; simpl in *; simp; rewrite_match; auto ].
-
-
-
-
-    1, 2, 3: default_flattenBooleanExpr.
+    1, 2, 3: solve [simp; default_flattenBooleanExpr].
 
     destruct op; simp; try solve [default_flattenBooleanExpr].
 
-    all: simpl in D; apply disjoint_of_list_app in D; destruct D as [D1 D2].
-
     all: simpl in *; simp;
       eapply seq_with_modVars;
-      [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity
+      [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity; try solve [maps]
       | intros; simpl in *; simp;
-        eapply FlatImp.exec.weaken;
-        [ eapply flattenExpr_correct_with_modVars; try eassumption; try reflexivity; maps
-        | intros; simpl in *; simp; repeat rewrite_match; t_safe ] ].
+        default_flattenBooleanExpr ].
+
+    {
+      rewrite bool_to_word_to_bool_id.
+        destruct_one_match.
+        - f_equal; f_equal.
+          pose_flatten_var_ineqs.
+          simpl in *.
+          repeat match goal with
+                 | H: flattenExpr _ _ _ = _ |- _ => unique pose proof (flattenExpr_valid_resVar _ _ _ _ _ _ H)
+                 end.
+          simpl in *.
+          specializes H. {
+            (* maps. runs forever *)
+            simpl in *. (* map_solver locals_ok. runs forever *)
+            (* debug_preprocess locals_ok. seems to do the right thing *)
+            preprocess locals_ok.
+
+  Admitted. (*
 
     all: rewrite bool_to_word_to_bool_id;
       destruct_one_match;
@@ -702,6 +662,7 @@ map_solver locals_ok.
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
+    disjoint (ExprImp.allVars_expr e) (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e = Some res ->
     FlatImp.exec map.empty s t initialM initialL (fun t' finalM finalL =>
       (t' = t /\ finalM = initialM /\
