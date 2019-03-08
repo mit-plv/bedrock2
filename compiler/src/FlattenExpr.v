@@ -644,11 +644,7 @@ Section FlattenExpr1.
                  end.
           simpl in *.
           specializes H. {
-            (* maps. runs forever *)
-            simpl in *. (* map_solver locals_ok. runs forever *)
-            (* debug_preprocess locals_ok. seems to do the right thing *)
-            preprocess locals_ok.
-
+            maps. (* "only" takes 30s *)
   Admitted. (*
 
     all: rewrite bool_to_word_to_bool_id;
