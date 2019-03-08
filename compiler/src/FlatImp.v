@@ -342,33 +342,50 @@ Module exec.
     | load: forall t m l mc sz x a v addr post,
         map.get l a = Some addr ->
         load sz m addr = Some v ->
-        post t m (map.put l x v) mc ->
+        post t m (map.put l x v)
+             (addMetricLoads 2
+             (addMetricInstructions 1 mc)) ->
         exec (SLoad sz x a) t m l mc post
     | store: forall t m m' mc l sz a addr v val post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
         store sz m addr val = Some m' ->
-        post t m' l mc ->
+        post t m' l
+             (addMetricLoads 1
+             (addMetricInstructions 1
+             (addMetricStores 1 mc))) ->
         exec (SStore sz a v) t m l mc post
     | lit: forall t m l mc x v post,
-        post t m (map.put l x (word.of_Z v)) mc ->
+        post t m (map.put l x (word.of_Z v))
+             (addMetricLoads 1
+             (addMetricInstructions 16 mc)) ->
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
         map.get l z = Some z' ->
-        post t m (map.put l x (interp_binop op y' z')) mc ->
+        post t m (map.put l x (interp_binop op y' z'))
+             (addMetricLoads 2
+             (addMetricInstructions 2 mc)) ->
         exec (SOp x op y z) t m l mc post
     | set: forall t m l mc x y y' post,
         map.get l y = Some y' ->
-        post t m (map.put l x y') mc ->
+        post t m (map.put l x y')
+             (addMetricLoads 1
+             (addMetricInstructions 1 mc)) ->
         exec (SSet x y) t m l mc post
     | if_true: forall t m l mc cond  bThen bElse post,
         eval_bcond l cond = Some true ->
-        exec bThen t m l mc post ->
+        exec bThen t m l
+             (addMetricLoads 2
+             (addMetricInstructions 2
+             (addMetricJumps 1 mc))) post ->
         exec (SIf cond bThen bElse) t m l mc post
     | if_false: forall t m l mc cond bThen bElse post,
         eval_bcond l cond = Some false ->
-        exec bElse t m l mc post ->
+        exec bElse t m l
+             (addMetricLoads 2
+             (addMetricInstructions 2
+             (addMetricJumps 1 mc))) post ->
         exec (SIf cond bThen bElse) t m l mc post
     | loop: forall t m l mc cond body1 body2 mid1 mid2 post,
         (* This case is carefully crafted in such a way that recursive uses of exec
@@ -381,14 +398,20 @@ Module exec.
         (forall t' m' l' mc',
             mid1 t' m' l' mc' ->
             eval_bcond l' cond = Some false ->
-            post t' m' l' mc') ->
+            post t' m' l'
+                 (addMetricLoads 1
+                 (addMetricInstructions 1
+                 (addMetricJumps 1 mc')))) ->
         (forall t' m' l' mc',
             mid1 t' m' l' mc' ->
             eval_bcond l' cond = Some true ->
             exec body2 t' m' l' mc' mid2) ->
         (forall t'' m'' l'' mc'',
             mid2 t'' m'' l'' mc'' ->
-            exec (SLoop body1 cond body2) t'' m'' l'' mc'' post) ->
+            exec (SLoop body1 cond body2) t'' m'' l''
+                 (addMetricLoads 2
+                 (addMetricInstructions 2
+                 (addMetricJumps 1 mc''))) post) ->
         exec (SLoop body1 cond body2) t m l mc post
     | seq: forall t m l mc s1 s2 mid post,
         exec s1 t m l mc mid ->
