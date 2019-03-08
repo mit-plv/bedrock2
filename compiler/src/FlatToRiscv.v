@@ -120,7 +120,7 @@ Module Import FlatToRiscv.
     (* And the second restriction is part of the correctness requirement for compilation of
        external calls: Every compiled external call has to preserve ext_guarantee *)
     compile_ext_call_correct: forall (initialL: MetricRiscvMachine Register actname) action postH newPc insts
-        (argvars resvars: list Register) initialMH R,
+        (argvars resvars: list Register) initialMH initialMetricsH R,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
       Forall valid_register argvars ->
@@ -129,14 +129,17 @@ Module Import FlatToRiscv.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       ext_guarantee initialL ->
       exec map.empty (SInteract resvars action argvars)
-           initialL.(getLog) initialMH initialL.(getRegs) initialL.(getMetrics) postH ->
+           initialL.(getLog) initialMH initialL.(getRegs) initialMetricsH postH ->
       runsTo (mcomp_sat (run1 iset)) initialL
              (fun finalL =>
-                  (* external calls can't modify the memory for now *)
+                  (* external calls can't modify the memory or metrics for now *)
                   postH finalL.(getLog) initialMH finalL.(getRegs) finalL.(getMetrics) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  boundMetricLog UnitMetricLog
+                         (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
+                         (metricLogDifference initialMetricsH finalL.(getMetrics)) /\
                   ext_guarantee finalL);
 
     (* bitwidth-specific: *)
@@ -145,7 +148,10 @@ Module Import FlatToRiscv.
       valid_register a ->
       map.get initialL.(getRegs) a = Some addr ->
       Memory.load sz (getMem initialL) addr = Some v ->
-      mcomp_sat (f tt) (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
+      mcomp_sat (f tt)
+                (updateMetrics (addMetricLoads 1)
+                (withRegs (map.put initialL.(getRegs) x v) initialL))
+                post ->
       mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post;
 
     go_store: forall sz x a (addr v: word) initialL m' post f,
@@ -154,7 +160,10 @@ Module Import FlatToRiscv.
       map.get initialL.(getRegs) x = Some v ->
       map.get initialL.(getRegs) a = Some addr ->
       Memory.store sz (getMem initialL) addr v = Some m' ->
-      mcomp_sat (f tt) (withMem m' initialL) post ->
+      mcomp_sat (f tt)
+                (updateMetrics (addMetricStores 1)
+                (withMem m' initialL))
+                post ->
       mcomp_sat (Bind (execute (compile_store iset sz a x 0)) f) initialL post;
   }.
 
@@ -796,6 +805,7 @@ Section FlatToRiscv1.
     simpl_word_exprs (@word_ok (@W p));
     first
       [ solve [eauto]
+      | solve_MetricLog
       | solve_word_eq (@word_ok (@W p))
       | solve [pseplog]
       | prove_ext_guarantee
@@ -987,6 +997,9 @@ Section FlatToRiscv1.
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          boundMetricLog UnitMetricLog
+                         (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
+                         (metricLogDifference initialMetricsH finalMetricsH) /\
           ext_guarantee finalL).
   Proof.
     pose proof compile_stmt_emits_valid.
@@ -1010,7 +1023,8 @@ Section FlatToRiscv1.
         eapply @exec.interact; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL.
         simpl_MetricRiscvMachine_get_set. simpl in *.
-        destruct_products. subst. eauto 7.
+        destruct_products. subst. exists m. exists finalL_metrics.
+        repeat (split; try eassumption).
 
     - (* SCall *)
       match goal with
@@ -1047,11 +1061,12 @@ Section FlatToRiscv1.
     - match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
-      simpl in *; run1det; try solve [run1done].
-      run1det. run1done.
-      match goal with
+        simpl in *; run1det; try solve [run1done].
+      + simpl_MetricRiscvMachine_get_set.
+        run1det. run1done;
+      [match goal with
       | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
-      end.
+      end | solve_MetricLog..].
       rewrite reduce_eq_to_sub_and_lt.
       symmetry. apply put_put_same.
 
