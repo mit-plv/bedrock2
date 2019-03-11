@@ -91,6 +91,7 @@ Definition zeroedRiscvMachine: RiscvMachine := {|
 |}.
 
 Definition imemStart: word. Admitted. (* TODO *)
+Axiom imemStart_div4: word.unsigned imemStart mod 4 = 0.
 
 Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
   putProgram imem imemStart zeroedRiscvMachine.
@@ -129,6 +130,7 @@ Proof.
     do 2 eexists. split; [|split].
 Admitted.
 
+
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
                       initialSwapMachine
@@ -136,12 +138,13 @@ Lemma end2endDemo:
 Proof.
   (* TODO why does "eapply @exprImp2Riscv_correct" not work? *)
   unshelve epose proof (@exprImp2Riscv_correct _ _
-    swap_chars_over_uart map.empty _ _ _ imemStart _ _ eq_refl _ _ _ _) as P;
+    swap_chars_over_uart map.empty _ _ _ _ _ eq_refl _ _ _ _) as P;
     [..|eapply P].
   - cbv - [Z.lt]. lia.
   - cbv. repeat constructor.
   - reflexivity.
   - reflexivity.
+  - exact imemStart_div4.
   - cbv [initialSwapMachine initialRiscvMachine getMem putProgram zeroedRiscvMachine
          getMem withPc withNextPc withMem].
     unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].

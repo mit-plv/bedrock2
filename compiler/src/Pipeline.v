@@ -36,6 +36,7 @@ Require Import compiler.Simp.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
+Axiom TODO: False.
 
 Open Scope Z_scope.
 
@@ -118,20 +119,6 @@ Section Pipeline1.
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_registers (flatten s).
 
-  Lemma exprImp2Riscv_correct: forall sH mH instsL initialL postH imemStart,
-      ExprImp.cmd_size sH < 2 ^ 7 ->
-      enough_registers sH ->
-      exprImp2Riscv sH = instsL ->
-      (GoFlatToRiscv.program imemStart instsL * eq mH)%sep initialL.(getMem) ->
-      Semantics.exec.exec map.empty sH nil mH map.empty postH ->
-      runsTo (mcomp_sat (run1 iset))
-             initialL
-             (fun finalL =>
-                exists finalMH,
-                  (GoFlatToRiscv.program imemStart instsL * eq finalMH)%sep finalL.(getMem) /\
-                  postH finalL.(getLog) finalMH finalL.(getRegs)).
-    Abort. (* won't hold because low-level registers differ from locals *)
-
   (* simpler than debugging why omega/lia fails *)
   Ltac ineq_step :=
     first
@@ -171,13 +158,14 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH instsL initialL (post: trace -> Prop) imemStart,
+  Lemma exprImp2Riscv_correct: forall sH mH instsL initialL (post: trace -> Prop),
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       exprImp2Riscv sH = instsL ->
       initialL.(getLog) = nil ->
       initialL.(getRegs) = map.empty ->
-      (program imemStart instsL * eq mH)%sep initialL.(getMem) ->
+      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
+      (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
       Semantics.exec.exec map.empty sH nil mH map.empty (fun t m l => post t) ->
       runsTo (mcomp_sat (run1 iset))
              initialL
@@ -187,7 +175,7 @@ Section Pipeline1.
     eapply runsTo_weaken.
     - eapply @FlatToRiscv.compile_stmt_correct
         with (postH := (fun t m l => post t)); try reflexivity.
-      + admit.
+      + case TODO.
       + eapply FlatImp.exec.weaken.
         * rewrite H2, H3.
           match goal with
@@ -211,13 +199,17 @@ Section Pipeline1.
         (* TODO why do omega and lia fail here? PARAMRECORDS? *)
         Fail omega. Fail lia.
         exact E.
-      + admit.
-      + admit.
-      + admit.
+      + unfold enough_registers, ExprImp2FlatImp, flatten, fst in *. assumption.
+      + assumption.
+      + instantiate (1 := emp True). subst. seplog. (* surprisingly, this does some unification *)
+        (*
+        subst instsL. unfold exprImp2Riscv in *. simpl in *.
+        unfold FlatToRiscv.FlatToRiscv.iset, ExprImp2FlatImp in *.
+        unfold iset in *.
+        *)
       + admit.
       + admit.
     - simpl. intros. simp. assumption.
-      Unshelve. intros. apply True.
   Admitted.
 
   (*

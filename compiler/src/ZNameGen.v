@@ -3,6 +3,7 @@ Require Import Coq.omega.Omega.
 Require Import compiler.util.Set.
 Require Import compiler.NameGen.
 
+
 Definition listmax(l: list nat): nat := fold_right max 0 l.
 
 Lemma listmax_spec: forall l v, In v l -> v <= listmax l.
@@ -16,9 +17,11 @@ Proof.
       eapply Nat.le_trans; eassumption.
 Qed.
 
-Definition listmaxZ(l: list Z): Z := fold_right Z.max 0%Z l.
+Local Open Scope Z_scope.
 
-Lemma listmaxZ_spec: forall l v, In v l -> (v <= listmaxZ l)%Z.
+Definition listmaxZ(l: list Z): Z := fold_right Z.max 0 l.
+
+Lemma listmaxZ_spec: forall l v, In v l -> v <= listmaxZ l.
 Proof.
   induction l; intros.
   - simpl in H. contradiction.
@@ -29,19 +32,17 @@ Proof.
       eapply Z.le_trans; eassumption.
 Qed.
 
-Axiom TODO: False.
-
 Local Set Refine Instance Mode.
 
 Unset Universe Minimization ToSet.
 
-Instance ZNameGen: NameGen Z Z := {|
-  freshNameGenState := fun l => (listmaxZ l + 1)%Z;
-  genFresh := fun s => (s, (s + 1)%Z);
-(*  allFreshVars := fun s => fun x => (s <= x)%Z *)
-|}.
-  all: case TODO. (*
-  abstract (intros; inversion H; subst; unfold subset; simpl; intuition omega).
-  abstract (unfold contains, Function_Set; intros; apply listmaxZ_spec in H; omega).
-*)
+Instance ZNameGen: NameGen Z Z := {
+  freshNameGenState := fun l => listmaxZ l + 1;
+  genFresh s := (s, s + 1);
+  allFreshVars s := fun x => (s <= x)
+}.
+- abstract (intros; repeat autounfold with unf_basic_set_defs unf_derived_set_defs;
+            inversion H; subst; clear H; intuition omega).
+- abstract (intros; repeat autounfold with unf_basic_set_defs unf_derived_set_defs;
+            apply listmaxZ_spec in H; omega).
 Defined.
