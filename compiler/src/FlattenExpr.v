@@ -645,7 +645,7 @@ Section FlattenExpr1.
                  end.
           simpl in *.
           specializes H. {
-            maps. (* "only" takes 30s *)
+            Time maps. (* "only" takes 8s *)
   Admitted. (*
 
     all: rewrite bool_to_word_to_bool_id;
