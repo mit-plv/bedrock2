@@ -14,6 +14,7 @@ Require Import Coq.micromega.Lia.
 Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
 
+Local Set Ltac Profiling.
 
 Inductive bbinop: Type :=
 | BEq
@@ -800,3 +801,5 @@ Section FlatImp3.
 
 End FlatImp3.
 *)
+
+Goal True. idtac "End of FlatImp.v". Abort.

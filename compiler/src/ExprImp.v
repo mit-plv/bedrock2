@@ -12,6 +12,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.ListLib.
 
+Local Set Ltac Profiling.
 
 Open Scope Z_scope.
 
@@ -529,3 +530,5 @@ Section ExprImp2.
   Qed.
 
 End ExprImp2.
+
+Goal True. idtac "End of ExprImp.v". Abort.

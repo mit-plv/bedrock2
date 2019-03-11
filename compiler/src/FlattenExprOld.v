@@ -13,6 +13,7 @@ Require Import coqutil.Datatypes.PropSet.
 Require Import compiler.Simp.
 Require coqutil.Map.Empty_set_keyed_map.
 
+Local Set Ltac Profiling.
 
 Open Scope Z_scope.
 
@@ -832,3 +833,5 @@ Section FlattenExpr1.
   Qed.
 
 End FlattenExpr1.
+
+Goal True. idtac "End of FlattenExprOld.v". Abort.
