@@ -55,11 +55,27 @@ Notation "constr:( c )"        := c   (in custom bedrock_cmd, c constr,
 Notation  "{ c }" := c                 (in custom bedrock_cmd at level 0).
 Notation "x" := x (in custom bedrock_cmd at level 0, x ident).
 
+Declare Custom Entry bedrock_else.
+Notation "bedrock_else:( c )"   := c   (c custom bedrock_else at level 0,
+                                       format "'bedrock_else:(' c ')'").
+Notation "constr:( c )"        := c   (in custom bedrock_else, c constr,
+                                       format "'constr:(' c ')'").
+Notation  "{ c }" := c                 (in custom bedrock_else at level 0, c custom bedrock_cmd at level 0,
+                                       format "{  '/  ' c '/' }").
+Notation "x" := x (in custom bedrock_else at level 0, x ident).
+
+Notation "'if' e { c1 }" := (cond e c1 skip)
+  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0,
+  format "'[v' 'if'  e  {  '/  ' c1 '/' } ']'").
+Notation "'if' e { c1 } 'else' c2" := (cond e c1 c2)
+  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
+  format "'[v' 'if'  e  {  '/  ' c1 '/' }  'else'  c2 ']'").
+
 Notation "c1 ; c2" := (seq c1%bedrock_nontail c2) (in custom bedrock_cmd at level 0, right associativity,
                                    format "'[v' c1 ; '/' c2 ']'").
-Notation "'if' e { c1 } 'else' { c2 }" := (cond e c1 c2)
-  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
-  format "'[v' 'if'  e  {  '/  ' c1 '/' }  'else'  { '/  ' c2 '/' } ']'").
+Notation "'if' e { c1 } 'else' c2" := (cond e c1 c2)
+  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
+  format "'[v' 'if'  e  {  '/  ' c1 '/' }  'else'  c2 ']'").
 Notation "'if' e { c }" := (cond e c skip)
   (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
   format "'[v' 'if'  e  {  '/  ' c '/' } ']'").
@@ -127,6 +143,9 @@ Delimit Scope bedrock_tail with bedrock_tail.
 Notation "bedrock_func_body:( c )"   := (c%bedrock_tail) (c custom bedrock_cmd at level 0,
                                                           format "'bedrock_func_body:(' c ')'").
 Definition require_is_not_available_inside_conditionals_and_loops := I.
+Notation "'require' e ; c2" := (cond e c2 skip)
+  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c2 at level 0,
+  format "'[v' 'require'  e ; '//' c2 ']'") : bedrock_tail.
 Notation "'require' e 'else' { c1 } ; c2" := (cond e c2 c1)
   (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
   format "'[v' 'require'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_tail.
@@ -149,51 +168,17 @@ Module test.
   epose (fun a => bedrock_cmd:( a (1+1 , 1+1,1, 1,1,1 ) )).
   epose (fun (a b c d:varname) (f:funname) => bedrock_cmd:( unpack! a,b,c,d = f ( 1 + 1 , 1 + 1 ) )).
   epose (fun (a b:varname) (f:funname) => bedrock_cmd:( unpack! a = f ( 1 + 1 , 1 + 1 ) ; a = (1) )).
-  epose (fun W a b e x y f read write => bedrock_func_body:(
-    require (load(1) ^ constr:(expr.literal 231321) ) else { _ };
-    require (1 ^ load4(1+1+1+load(1))) else { _ };
-    { a = (1+1 == 1) } ;
-    require (1 ^ 1) else { _ };
-    store1(e, load2(1)+load4(1)+load1(load(1))) ;
-    store2(e, 1+1+1);
-    store4(e, 1+1+1) ;
-    store(e, load(load(load(1))));
-    require (1 ^ 1) else { _ };
-    if (W+1<<(1+1)*(1+1) ^ (1+1+1)) {
-      a = (constr:(expr.var x))
-    } else {
-      while (W+1<<(1+1)*(1+1) ^ (1+1+1)) {
-        a = (1);
-        x = (constr:(expr.var a));
-        unpack! x = f(1,W,1, 1,1,1);
-        unpack! x,a = f(1,W,1, 1,1,1);
-        io! a, x = read(1,W,1, 1,1,1);
-        io! a = read(1, 1);
-        output! write(1,W,1, 1,1,1);
-        store(1,1)
-      }
-    }
-  )).
+  epose (fun (a b:varname) (f:funname) => bedrock_cmd:( if _ { _ } else if _ { _ } )).
 
-  let lhs := open_constr:( bedrock_func_body:(
-    require 1 else { store1(1,1) } ;
-    require 1 else { store2(1,1) } ;
-    store4(1,1)
-  )) in
-  let rhs := open_constr:( bedrock_func_body:(
-    if 1 {
-      if 1 {
-        store4(1,1)
-      }
-      else {
-        store2(1,1)
-      }
-    }
-    else {
-      store1(1,1)
-    }
-  )) in
-  assert (lhs = rhs) by exact eq_refl.
+  epose (bedrock_cmd:(
+      if _ { _ }
+      else if _ { _ }
+      else if _ { _ }
+      else if _ { _ };
+      _)).
+
+  epose bedrock_func_body:( require _ else { _ } ; _ ).
+  epose bedrock_func_body:( require _ ; _ ).
 
   epose bedrock_func_body:(
       if (1<<(1+1)*(1+1) ^ (1+1+1)) {
@@ -238,5 +223,52 @@ Module test.
   assert_fails (epose bedrock_func_body:(
     while (1) { require (1 ^ 1) else { _ }; _ = (_) }
   )).
+
+  let lhs := open_constr:( bedrock_func_body:(
+    require 1 else { store1(1,1) } ;
+    require 1 else { store2(1,1) } ;
+    store4(1,1)
+  )) in
+  let rhs := open_constr:( bedrock_func_body:(
+    if 1 {
+      if 1 {
+        store4(1,1)
+      }
+      else {
+        store2(1,1)
+      }
+    }
+    else {
+      store1(1,1)
+    }
+  )) in
+  assert (lhs = rhs) by exact eq_refl.
+
+  epose (fun W a b e x y f read write => bedrock_func_body:(
+    require (load(1) ^ constr:(expr.literal 231321) ) else { _ };
+    require (1 ^ load4(1+1+1+load(1))) else { _ };
+    { a = (1+1 == 1) } ;
+    require (1 ^ 1) else { _ };
+    store1(e, load2(1)+load4(1)+load1(load(1))) ;
+    store2(e, 1+1+1);
+    store4(e, 1+1+1) ;
+    store(e, load(load(load(1))));
+    require (1 ^ 1) else { _ };
+    if (W+1<<(1+1)*(1+1) ^ (1+1+1)) {
+      a = (constr:(expr.var x))
+    } else {
+      while (W+1<<(1+1)*(1+1) ^ (1+1+1)) {
+        a = (1);
+        x = (constr:(expr.var a));
+        unpack! x = f(1,W,1, 1,1,1);
+        unpack! x,a = f(1,W,1, 1,1,1);
+        io! a, x = read(1,W,1, 1,1,1);
+        io! a = read(1, 1);
+        output! write(1,W,1, 1,1,1);
+        store(1,1)
+      }
+    }
+  )).
+
   Abort.
 End test.
