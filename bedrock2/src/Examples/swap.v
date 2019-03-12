@@ -4,15 +4,17 @@ Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
+Local Definition bedrock_func : Type := funname * (list varname * list varname * cmd).
+Local Coercion name_of_func (f : bedrock_func) := fst f.
 
-Definition swap := let a := "a" in let b := "b" in let t := "t" in
+Definition swap : bedrock_func := let a := "a" in let b := "b" in let t := "t" in
   ("swap", ([a; b], ([]:list varname), bedrock_func_body:(
   t = (load(b)) ;
   store(b, load(a));
   store(a, t)
 ))).
 
-Definition swap_swap := let swap := "swap" in let a := "a" in let b := "b" in
+Definition swap_swap := let a := "a" in let b := "b" in
   ("swap_swap", (("a"::"b"::nil), ([]:list varname), bedrock_func_body:(
   swap(a, b);
   swap(a, b)
