@@ -138,7 +138,7 @@ Section ToCString.
     match fs with
     | nil => "#error ""c_module nil"" "
     | cons main fs => 
-      concat LF (List.map (fun f => "static " ++ c_decl f) fs) ++ LF ++
+      concat LF (List.map (fun f => "static " ++ c_decl f) fs) ++ LF ++ LF ++
       c_func main ++ LF ++
       concat LF (List.map (fun f => "static " ++ c_func f) fs)
     end.
