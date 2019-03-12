@@ -1,9 +1,9 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
-Require Import riscv.util.div_mod_to_quot_rem.
-Require Import riscv.Utility.
+Require Import riscv.Utility.div_mod_to_quot_rem.
+Require Import riscv.Utility.Utility.
 Require Import coqutil.Word.Properties.
-Require Import riscv.MkMachineWidth.
+Require Import riscv.Utility.MkMachineWidth.
 
 Local Open Scope Z_scope.
 

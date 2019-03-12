@@ -7,34 +7,34 @@ Require        compiler.ExprImp.
 Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
 Require        compiler.FlatToRiscv.
-Require Export riscv.Decode.
-Require Export riscv.Program.
-Require Export riscv.Run.
-Require Export riscv.Minimal.
-Require Export riscv.util.Monads.
-Require Import riscv.runsToNonDet.
+Require Export riscv.Spec.Decode.
+Require Export riscv.Spec.Machine.
+Require Export riscv.Platform.Run.
+Require Export riscv.Platform.Minimal.
+Require Export riscv.Utility.Monads.
+Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.util.MyOmega.
 Require Import Coq.micromega.Lia.
 Require Export compiler.NameGen.
 Require Export compiler.util.Common.
 Require Export coqutil.Decidable.
-Require Export riscv.Encode.
-Require Export riscv.Primitives.
+Require Export riscv.Utility.Encode.
+Require Export riscv.Spec.Primitives.
 Require Import compiler.GoFlatToRiscv.
-Require Import riscv.MkMachineWidth.
-Require Export riscv.proofs.DecodeEncode.
-Require Export riscv.proofs.EncodeBound.
+Require Import riscv.Utility.MkMachineWidth.
+Require Export riscv.Proofs.DecodeEncode.
+Require Export riscv.Proofs.EncodeBound.
 Require Export compiler.EmitsValid.
 Require Export compiler.RegAlloc3.
 Require coqutil.Map.SortedList.
-Require Import riscv.Utility.
-Require Export riscv.Memory.
-Require Export riscv.InstructionCoercions.
+Require Import riscv.Utility.Utility.
+Require Export riscv.Platform.Memory.
+Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
 
 
-Existing Instance riscv.Program.DefaultRiscvState.
+Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 
 Open Scope Z_scope.

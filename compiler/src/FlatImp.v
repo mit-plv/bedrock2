@@ -1,8 +1,8 @@
 Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import lib.LibTacticsMin.
-Require Import riscv.util.ListLib.
-Require Import riscv.MetricLogging.
+Require Import riscv.Utility.ListLib.
+Require Import riscv.Platform.MetricLogging.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require compiler.NoActionSyntaxParams.

@@ -10,12 +10,12 @@ Require Import compiler.Pipeline.
 Require Import compiler.util.Common.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
-Require Import riscv.InstructionCoercions.
+Require Import riscv.Utility.InstructionCoercions.
 Require compiler.FlatImp.
 Require Import compiler.RegAlloc3.
 Require Import bedrock2.Byte.
 Require Import compiler.RegAllocAnnotatedNotations.
-Require Import riscv.InstructionNotations.
+Require Import riscv.Utility.InstructionNotations.
 Require Import bedrock2.Hexdump.
 
 Open Scope Z_scope.
@@ -52,7 +52,7 @@ Arguments mk_example
           flattened
           regallocAnnotated%regalloc_scope
           regallocChecked
-          riscv_instructions (* TODO add scope to riscv.InstructionNotations *)
+          riscv_instructions (* TODO add scope to riscv.Utility.InstructionNotations *)
           riscv_bytes%hexdump_scope.
 
 Instance bops: @BasicALU.operations (@syntax Basic32Semantics.Basic32Semantics) :=

@@ -1,7 +1,7 @@
 Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt Lia.
 Require Import coqutil.sanity coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
-Require riscv.Utility.
+Require riscv.Utility.Utility.
 
 Axiom TODO: False.
 

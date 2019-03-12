@@ -4,26 +4,26 @@ Require Import Coq.omega.Omega.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
-Require Import riscv.util.Monads.
-Require Import riscv.Utility.
-Require Import riscv.Decode.
-Require Import riscv.Memory.
-Require Import riscv.Program.
-Require Import riscv.MetricRiscvMachine.
-Require Import riscv.Primitives.
-Require Import riscv.MetricPrimitives.
-Require Import riscv.MetricLogging.
-Require Import riscv.Run.
-Require Import riscv.Execute.
-Require Import riscv.proofs.DecodeEncode.
+Require Import riscv.Utility.Monads.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Spec.Decode.
+Require Import riscv.Platform.Memory.
+Require Import riscv.Spec.Machine.
+Require Import riscv.Platform.MetricRiscvMachine.
+Require Import riscv.Spec.Primitives.
+Require Import riscv.Spec.MetricPrimitives.
+Require Import riscv.Platform.MetricLogging.
+Require Import riscv.Platform.Run.
+Require Import riscv.Spec.Execute.
+Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.
 Require Import compiler.EmitsValid.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
-Require Import riscv.Encode.
-Require Import riscv.proofs.EncodeBound.
+Require Import riscv.Utility.Encode.
+Require Import riscv.Proofs.EncodeBound.
 
 
 Section Go.

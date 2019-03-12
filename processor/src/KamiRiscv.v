@@ -3,27 +3,27 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
-Require Import riscv.Decode.
-Require Import riscv.Encode.
+Require Import riscv.Spec.Decode.
+Require Import riscv.Utility.Encode.
 Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Word.Properties.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import processor.KamiWord.
-Require Import riscv.Utility.
-Require Import riscv.Primitives.
-Require Import riscv.RiscvMachine.
-Require Import riscv.Program.
-Require riscv.Memory.
-Require Import riscv.PseudoInstructions.
-Require Import riscv.proofs.EncodeBound.
-Require Import riscv.proofs.DecodeEncode.
-Require Import riscv.Run.
-Require Import riscv.MkMachineWidth.
-Require Import riscv.util.Monads.
-Require Import riscv.runsToNonDet.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Spec.Primitives.
+Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Spec.Machine.
+Require riscv.Platform.Memory.
+Require Import riscv.Spec.PseudoInstructions.
+Require Import riscv.Proofs.EncodeBound.
+Require Import riscv.Proofs.DecodeEncode.
+Require Import riscv.Platform.Run.
+Require Import riscv.Utility.MkMachineWidth.
+Require Import riscv.Utility.Monads.
+Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
-Require Import riscv.MMIOTrace.
+Require Import riscv.Utility.MMIOTrace.
 Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl.
 Require Import Kami.Ex.IsaRv32.

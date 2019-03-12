@@ -1,18 +1,18 @@
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
-Require Import riscv.Decode.
-Require Import riscv.Encode.
-Require Import riscv.util.ZBitOps.
-Require Import riscv.Run.
-Require Import riscv.Program.
-Require Import riscv.Primitives.
+Require Import riscv.Spec.Decode.
+Require Import riscv.Utility.Encode.
+Require Import riscv.Utility.ZBitOps.
+Require Import riscv.Platform.Run.
+Require Import riscv.Spec.Machine.
+Require Import riscv.Spec.Primitives.
 Require Import compiler.util.Tactics.
-Require Import riscv.util.Tactics.
+Require Import riscv.Utility.Tactics.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvDef. Import FlatToRiscvDef.
-Require Import riscv.util.ListLib.
-Require Import riscv.Memory.
+Require Import riscv.Utility.ListLib.
+Require Import riscv.Platform.Memory.
 
 Local Open Scope Z_scope.
 
