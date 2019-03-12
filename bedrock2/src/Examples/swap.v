@@ -60,3 +60,12 @@ Proof. auto using swap_swap_ok, swap_ok. Qed.
 
 Print Assumptions link_swap_swap_swap_swap.
 (* SortedList.* SortedListString.* *)
+
+(*
+From bedrock2 Require Import ToCString Byte Bytedump.
+Local Open Scope bytedump_scope.
+Goal True.
+  let c_code := eval cbv in (of_string (@c_module to_c_parameters (swap_swap::swap::nil))) in
+  idtac (* c_code *).
+Abort.
+*)
