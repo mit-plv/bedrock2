@@ -19,7 +19,6 @@ _CoqProject:
 
 all: Makefile.coq.all $(VS)
 	$(MAKE) -f Makefile.coq.all
-	$(MAKE) src/BytedumpTest.out
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
