@@ -824,10 +824,10 @@ Section FlattenExpr1.
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
-  Lemma flattenStmt_correct: forall sH sL t m post,
+  Lemma flattenStmt_correct: forall sH sL lL t m post,
       ExprImp2FlatImp sH = sL ->
       Semantics.exec map.empty sH t m map.empty post ->
-      FlatImp.exec map.empty sL t m map.empty (fun t' m' lL' => exists lH',
+      FlatImp.exec map.empty sL t m lL (fun t' m' lL' => exists lH',
         post t' m' lH' /\
         map.extends lL' lH').
   Proof.

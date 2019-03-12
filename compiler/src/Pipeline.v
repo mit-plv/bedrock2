@@ -36,8 +36,6 @@ Require Import compiler.Simp.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
-Axiom TODO: False.
-
 Open Scope Z_scope.
 
 Module Import Pipeline.
@@ -158,29 +156,28 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH instsL initialL (post: trace -> Prop),
+  Lemma exprImp2Riscv_correct: forall sH mH t instsL initialL (post: trace -> Prop),
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       exprImp2Riscv sH = instsL ->
-      initialL.(getLog) = nil ->
-      initialL.(getRegs) = map.empty ->
       (word.unsigned initialL.(getPc)) mod 4 = 0 ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getLog) = t ->
       (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
-      Semantics.exec.exec map.empty sH nil mH map.empty (fun t m l => post t) ->
+      ext_guarantee initialL ->
+      Semantics.exec.exec map.empty sH t mH map.empty (fun t' m' l' => post t') ->
       runsTo (mcomp_sat (run1 iset))
              initialL
              (fun finalL => post finalL.(getLog)).
   Proof.
-    intros.
+    intros. subst.
     eapply runsTo_weaken.
-    - eapply @FlatToRiscv.compile_stmt_correct
+    - eapply FlatToRiscv.compile_stmt_correct
         with (postH := (fun t m l => post t)); try reflexivity.
-      + case TODO.
       + eapply FlatImp.exec.weaken.
-        * rewrite H2, H3.
-          match goal with
+        * match goal with
           | |- _ ?env ?s ?t ?m ?l ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ s t m _ eq_refl) as Q
+            epose proof (@FlattenExpr.flattenStmt_correct _ _ s _ t m _ eq_refl) as Q
           end.
           eapply Q.
           eassumption.
@@ -201,115 +198,15 @@ Section Pipeline1.
         exact E.
       + unfold enough_registers, ExprImp2FlatImp, flatten, fst in *. assumption.
       + assumption.
-      + instantiate (1 := emp True). subst. seplog. (* surprisingly, this does some unification *)
-        (*
-        subst instsL. unfold exprImp2Riscv in *. simpl in *.
-        unfold FlatToRiscv.FlatToRiscv.iset, ExprImp2FlatImp in *.
-        unfold iset in *.
-        *)
-      + admit.
-      + admit.
+      + match goal with
+        | H: context [ program _ ?insts ] |- context [ program _ ?insts' ] =>
+          change insts' with insts
+        end.
+        simpl in *.
+        seplog.
+      + assumption.
+      + assumption.
     - simpl. intros. simp. assumption.
-  Admitted.
-
-  (*
-  (* We could also say something about the memory, but then the statement becomes more complex.
-     And note that the register we look at could contain any value loaded from the memory. *)
-  Lemma exprImp2Riscv_correct: forall {Bw: BitWidths} sH initialL instsL fuelH finalH initialMemH finalMemH,
-    (Z.of_nat (ExprImp.cmd_size sH) < 2 ^ 7)%Z ->
-    enough_registers sH ->
-    exprImp2Riscv sH = instsL ->
-    4 * Zlength instsL <= Memory.memSize initialL.(machineMem) ->
-    evalH empty_map fuelH empty_map initialMemH sH = Some (finalH, finalMemH) ->
-    FlatToRiscv.mem_inaccessible initialMemH 0 (4 * Zlength instsL) ->
-    FlatToRiscvInvariants.containsMem initialL.(machineMem) initialMemH ->
-    exists fuelL,
-      forall resVar res,
-      get finalH resVar = Some res ->
-      getReg (evalL fuelL instsL initialL).(core).(registers) resVar = res.
-  Proof.
-    introv B ER C MB EvH Ina Cm.
-    unfold exprImp2Riscv, flatten in C.
-    unfold enough_registers, flatten in ER.
-    destruct_one_match_hyp.
-    unfold evalH in EvH.
-    assert (FlatToRiscv.stmt_not_too_big s) as N. {
-      unfold FlatToRiscv.stmt_not_too_big.
-      pose proof @flattenStmt_size as D1.
-      clear -B D1.
-      (* specialize (D1 E).*)
-      (* apply Nat2Z.inj_le in D1. *)
-      repeat (so fun hyporgoal => match hyporgoal with
-      | context [ (2 ^ ?a)%Z ] => let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
-      end).
-      Set Printing Implicit.
-      (* TODO ZName.ZName vs Name mismatch *)
-      lia.
-    }
-    pose proof @flattenStmt_correct as P.
-    specialize (P _ _ _ _ _ _ _ _ _ _ fuelH sH s initialMemH finalH finalMemH).
-    destruct P as [fuelM [finalM [EvM GM] ] ].
-    - unfold ExprImp2FlatImp. rewrite E. reflexivity.
-    - unfold evalH. apply EvH.
-    - pose proof  FlatToRiscv.compile_stmt_correct as P.
-      specialize P with (imemStart := (@ZToReg _ MW 0)).
-      let r := eval unfold evalL in (evalL 0 instsL initialL) in
-          match r with
-          | execState _ ?x => specialize P with (initialL := x)
-          end.
-      edestruct P as [fuelL [P1 P2] ]; clear P.
-      + unfold translate, DefaultRiscvState, default_translate.
-        intros.
-          autorewrite with alu_defs.
-        (* TODO all of this should be something like autorewrite in * *)
-        destruct_one_match; [exfalso|reflexivity].
-        apply Bool.negb_true_iff in E0.
-        apply reg_eqb_false in E0.
-        pose proof pow2_wXLEN_4 as Q.
-        rewrite <- (wordToNat_natToWord_idempotent' wXLEN Q) in H.
-        rewrite <- wordToNat_mod in H.
-        * apply wordToNat_zero in H. contradiction.
-        * apply natToWord_nzero; omega.
-      + unfold translate, DefaultRiscvState, default_translate.
-        intros.
-        autorewrite with alu_defs.
-        destruct_one_match; [exfalso|reflexivity].
-        apply Bool.negb_true_iff in E0.
-        apply weqb_false_iff in E0.
-        pose proof ZToReg 8_lt_pow2_wXLEN as Q.
-        rewrite <- (wordToNat_natToWord_idempotent' wXLEN Q) in H.
-        rewrite <- wordToNat_mod in H.
-        * apply wordToNat_zero in H. contradiction.
-        * apply natToWord_nzero; omega.
-      + eassumption.
-      + assumption.
-      + assumption.
-      + rewrite roundTrip_0. reflexivity.
-      + eassumption.
-      + unfold putProgram. simpl.
-        Memory.destruct_list_length.
-        * rewrite H. simpl. assumption.
-        * pose proof MB.
-          rewrite H in MB.
-          apply store_word_list_preserves_containsMem;
-            unfold Memory.valid_addr;
-            rewrite? map_length;
-            rewrite? roundTrip_0;
-            auto;
-            simpl;
-            omega.
-      + apply putProgram_containsProgram with (s := s);
-          rewrite? roundTrip_0; rewrite? Nat.add_0_l; (assumption || reflexivity).
-      + reflexivity.
-      + simpl. rewrite wplus_unit. reflexivity.
-      + rewrite roundTrip_0. assumption.
-      + exists fuelL. intros.
-        unfold getReg, FlatToRiscv.State_is_RegisterFile.
-        unfold extends in P1.
-        unfold evalL.
-        erewrite P1; try reflexivity.
-        apply GM. exact H.
   Qed.
-         *)
 
 End Pipeline1.

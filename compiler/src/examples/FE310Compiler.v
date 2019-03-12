@@ -23,6 +23,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import compiler.examples.MMIO.
+Require Import coqutil.Z.HexNotation.
 
 Unset Universe Minimization ToSet.
 
@@ -34,12 +35,10 @@ Instance mmio_params: MMIO.parameters := { (* everything is inferred automatical
 
 Existing Instance MinimalMMIOPrimitivesParams. (* needed because it's in a section *)
 
-Instance foo: FlatToRiscv.FlatToRiscv.parameters := _.
-
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.W := Words32Naive.Words32Naive;
   Pipeline.ext_spec := FlatToRiscv.FlatToRiscv.ext_spec;
-  Pipeline.ext_guarantee := @FlatToRiscv.FlatToRiscv.ext_guarantee foo;
+  Pipeline.ext_guarantee := FlatToRiscv.FlatToRiscv.ext_guarantee;
   Pipeline.M := OStateND RiscvMachine;
   Pipeline.PRParams := MinimalMMIOPrimitivesParams;
 }.
@@ -90,8 +89,8 @@ Definition zeroedRiscvMachine: RiscvMachine := {|
   getLog := nil;
 |}.
 
-Definition imemStart: word. Admitted. (* TODO *)
-Axiom imemStart_div4: word.unsigned imemStart mod 4 = 0.
+Definition imemStart: word := word.of_Z (Ox "20400000").
+Lemma imemStart_div4: word.unsigned imemStart mod 4 = 0. reflexivity. Qed.
 
 Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
   putProgram imem imemStart zeroedRiscvMachine.
@@ -130,26 +129,64 @@ Proof.
     do 2 eexists. split; [|split].
 Admitted.
 
+Lemma undef_on_unchecked_store_byte_tuple_list:
+  forall (n: nat) (l: list (HList.tuple word8 n)) (start: word32),
+    map.undef_on (unchecked_store_byte_tuple_list start l map.empty)
+                 (fun x => ~ word.unsigned start <=
+                           word.unsigned x <
+                           word.unsigned start + Z.of_nat n * Zlength l).
+Proof.
+  induction l; intros.
+  - admit.
+  - rewrite unchecked_store_byte_tuple_list_cons.
+Admitted.
+
+Lemma map_undef_on_weaken: forall (P Q: PropSet.set word32) (m: Mem),
+    map.undef_on m Q ->
+    PropSet.subset P Q ->
+    map.undef_on m P.
+Admitted.
+
+Lemma initialMachine_undef_on_MMIO_addresses: map.undef_on (getMem initialSwapMachine) isMMIOAddr.
+Proof.
+  cbv [getMem initialSwapMachine initialRiscvMachine putProgram].
+  cbv [withPc withNextPc withMem getMem zeroedRiscvMachine].
+  eapply map_undef_on_weaken.
+  - apply undef_on_unchecked_store_byte_tuple_list.
+  - unfold PropSet.subset, PropSet.elem_of.
+    intros addr El C. unfold isMMIOAddr in El. destruct El as [El1 El2].
+    match type of C with
+    | ?x <= _ < ?y => let y' := eval cbv in y in change y with y' in C;
+                      let x' := eval cbv in x in change x with x' in C
+    end.
+    cbv [isGPIO0 isQSPI1] in *.
+    repeat match goal with
+           | _: context [Ox ?s] |- _ => let r := eval cbv in (Ox s) in change (Ox s) with r in *
+           end.
+    simpl in *.
+    lia.
+Qed.
 
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
                       initialSwapMachine
                       (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
 Proof.
-  (* TODO why does "eapply @exprImp2Riscv_correct" not work? *)
-  unshelve epose proof (@exprImp2Riscv_correct _ _
-    swap_chars_over_uart map.empty _ _ _ _ _ eq_refl _ _ _ _) as P;
-    [..|eapply P].
-  - cbv - [Z.lt]. lia.
+  refine (@exprImp2Riscv_correct _ _ swap_chars_over_uart map.empty nil _ _ _ _ _ _ _ _ _ _ _ _).
+  - reflexivity.
   - cbv. repeat constructor.
   - reflexivity.
-  - reflexivity.
   - exact imemStart_div4.
+  - reflexivity.
+  - reflexivity.
   - cbv [initialSwapMachine initialRiscvMachine getMem putProgram zeroedRiscvMachine
          getMem withPc withNextPc withMem].
     unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].
     1: apply map.split_empty_r; reflexivity.
     apply store_program_empty.
+  - cbv [Pipeline.ext_guarantee pipeline_params FlatToRiscv.FlatToRiscv.ext_guarantee
+         FlatToRiscv_params mmio_params].
+    exact initialMachine_undef_on_MMIO_addresses.
   - eapply bedrock2.WeakestPreconditionProperties.sound_nil.
     eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
 Qed.
