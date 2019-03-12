@@ -274,7 +274,7 @@ Section MMIO1.
       + (* MMOutput *)
         simpl in *|-.
         simp.
-        apply real_ext_spec_implies_simple_ext_spec in H14.
+        apply real_ext_spec_implies_simple_ext_spec in H15.
         unfold simple_ext_spec in *.
         simpl in *|-.
         repeat match goal with
@@ -283,11 +283,11 @@ Section MMIO1.
                end.
         simp.
         destruct argvars. {
-          exfalso. rename H9 into A. clear -A. simpl in *.
+          exfalso. rename H10 into A. clear -A. simpl in *.
           destruct_one_match_hyp; congruence.
         }
         destruct argvars; cycle 1. {
-          exfalso. rename H9 into A. clear -A. simpl in *. simp.
+          exfalso. rename H10 into A. clear -A. simpl in *. simp.
           destruct_one_match_hyp; congruence.
         }
         simpl in *|-.
@@ -313,8 +313,8 @@ Section MMIO1.
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
             simpl.
             repeat split; try assumption.
-              specialize (H15 initialMem []).
-              destruct H15 as [ l' [A B] ].
+              specialize (H16 initialMem []).
+              destruct H16 as [ l' [A B] ].
               { Fail exact H8. (* TODO trace translation *) case TODO. }
               { inversion_option.
                 subst l'.
@@ -324,7 +324,7 @@ Section MMIO1.
       + (* MMInput *)
         simpl in *|-.
         simp.
-        apply real_ext_spec_implies_simple_ext_spec in H14.
+        apply real_ext_spec_implies_simple_ext_spec in H15.
         unfold simple_ext_spec in *.
         simpl in *|-.
         repeat match goal with
@@ -333,7 +333,7 @@ Section MMIO1.
                end.
         simp.
         destruct argvars; cycle 1. {
-          exfalso. rename H9 into A. clear -A. simpl in *. simp.
+          exfalso. rename H10 into A. clear -A. simpl in *. simp.
           destruct_one_match_hyp; congruence.
         }
         simpl in *|-.
@@ -357,8 +357,8 @@ Section MMIO1.
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
             simpl.
             repeat split; try assumption.
-              specialize (H15 initialMem [signedByteTupleToReg a]).
-              destruct H15 as [ l' [A B] ].
+              specialize (H16 initialMem [signedByteTupleToReg a]).
+              destruct H16 as [ l' [A B] ].
               { specialize (H8 (signedByteTupleToReg a)).
                 Fail exact H8. (* TODO trace translation *) case TODO. }
               { inversion_option.

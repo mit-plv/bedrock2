@@ -371,10 +371,32 @@ Section ExprImp2.
 
   (* TODO is this the canconical form to impose as a requirement?
      Or should we impose post1 <-> post2, or something else? *)
-  Axiom ext_spec_intersect: forall t m a args post1 post2,
-    ext_spec t m a args post1 ->
-    ext_spec t m a args post2 ->
-    ext_spec t m a args (fun m' resvals => post1 m' resvals /\ post2 m' resvals).
+  Axiom ext_spec_intersect: forall t mGive1 mGive2 a args post1 post2,
+    ext_spec t mGive1 a args post1 ->
+    ext_spec t mGive2 a args post2 ->
+    mGive1 = mGive2 /\ (* TODO will this be provable? *)
+    ext_spec t mGive1 a args (fun mReceive resvals => post1 mReceive resvals /\
+                                                     post2 mReceive resvals).
+
+  Lemma map_split_diff: forall {m m1 m2 m3: mem},
+      map.split m m2 m1 ->
+      map.split m m3 m1 ->
+      m2 = m3.
+  Proof.
+    unfold map.split.
+    intros *. intros [? ?] [? ?].
+  Admitted.
+
+  Lemma map_split_det: forall {m m' m1 m2: mem},
+      map.split m  m1 m2 ->
+      map.split m' m1 m2 ->
+      m = m'.
+  Proof.
+    unfold map.split.
+    intros *. intros [? ?] [? ?].
+    subst.
+    reflexivity.
+  Qed.
 
   Lemma intersect_exec: forall env t l m s post1,
       exec env s t m l post1 ->
@@ -415,15 +437,21 @@ Section ExprImp2.
                  replace v2 with v1 in * by congruence; clear H2
                end.
         eauto 10.
-    - eapply exec.interact. 1: eassumption.
-      + eapply ext_spec_intersect; [ exact H0 | exact H11 ].
+    - pose proof ext_spec_intersect as P.
+      specialize P with (1 := H1) (2 := H13). destruct P as [? P]. subst mGive0.
+      pose proof (map_split_diff H H7). subst mKeep0. clear H7.
+      eapply exec.interact. 1,2: eassumption.
+      + eapply ext_spec_intersect; [ exact H1 | exact H13 ].
       + simpl. intros *. intros [? ?].
-        edestruct H1 as (? & ? & ?); [eassumption|].
-        edestruct H12 as (? & ? & ?); [eassumption|].
+        edestruct H2 as (? & ? & ?); [eassumption|].
+        edestruct H14 as (? & ? & ?); [eassumption|].
         repeat match goal with
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
                end.
+        destruct H6 as (m'1 & S1 & P1).
+        destruct H8 as (m'2 & S2 & P2).
+        pose proof (map_split_det S1 S2) as Q. subst m'2. rename m'1 into m'.
         eauto 10.
   Qed.
 
@@ -442,7 +470,8 @@ Section ExprImp2.
       eauto 10.
     - eapply @exec.interact; try eassumption.
       intros.
-      edestruct H1 as (? & ? & ?); [eassumption|].
+      edestruct H2 as (? & ? & ?); [eassumption|].
+      destruct H6 as (? & ? & ?).
       eauto 10.
   Qed.
 
@@ -490,7 +519,9 @@ Section ExprImp2.
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.interact; try eassumption.
       intros.
-      edestruct H1 as (? & ? & ?); try eassumption.
+      edestruct H2 as (? & ? & ?); try eassumption.
+      destruct H5 as (? & ? & ?).
+      eexists; split; [eassumption|].
       eexists; split; [eassumption|].
       eapply map.only_differ_putmany. eassumption.
   Qed.
@@ -524,7 +555,10 @@ Section ExprImp2.
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.interact; try eassumption.
       intros.
-      edestruct H1 as (? & ? & ?); try eassumption.
+      edestruct H2 as (? & ? & ?); try eassumption.
+      destruct H5 as (? & ? & ?).
+      eexists; split; [eassumption|].
+      eexists; split; [eassumption|].
       repeat (eexists || split || eassumption).
       eapply map.only_differ_putmany. eassumption.
   Qed.

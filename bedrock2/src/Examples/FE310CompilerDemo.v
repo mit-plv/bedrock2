@@ -151,6 +151,7 @@ From coqutil Require Import Z.div_mod_to_equations.
 
 Ltac t :=
   match goal with
+  | |- map.split _ _ _ => eapply Properties.map.split_empty_r; reflexivity
   | H: map.of_list ?ks ?vs = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
   | H: map.putmany_of_list ?ks ?vs ?m0 = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
   | _ => straightline
@@ -225,14 +226,14 @@ Fixpoint echo_server_spec (t : trace) (output_to_explain : option word) : Prop :
     then output_to_explain = Some value /\ spec trace None
     else spec trace output_to_explain
   | (_, MMOutput, [addr; value], (_, []))::trace => (
-    if word.unsigned addr =? hfrosccfg 
+    if word.unsigned addr =? hfrosccfg
       then Z.testbit (word.unsigned value) 30 = true /\ spec trace output_to_explain else
     if word.unsigned addr =? uart0_base + Ox"018"
       then word.unsigned value = 624 /\ spec trace output_to_explain else
     if (word.unsigned addr =? uart0_base + Ox"000")
     then match trace with
          | (_, MMInput, [addr'], (_, [value']))::trace =>
-           word.unsigned addr' = uart0_base + Ox"000" /\ 
+           word.unsigned addr' = uart0_base + Ox"000" /\
            word.unsigned (word.and value' (word.of_Z (2 ^ 31))) = 0 /\
            output_to_explain = None /\ spec trace (Some value)
          | _ => False end else
@@ -325,7 +326,7 @@ Proof.
       exfalso; revert H1 e; clear. subst b v3. admit. } }
   eexists; split; repeat t.
   { destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
-    exfalso; revert H1 e; clear. subst b v3. admit. } 
+    exfalso; revert H1 e; clear. subst b v3. admit. }
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l /\
                                             if Z.eq_dec (word.unsigned (word.and txv (word.of_Z (2^31)))) 0
                                             then echo_server_spec ((m, MMInput, [word.of_Z (uart0_base + Ox"000")], (m, [txv]))::t) None
@@ -336,4 +337,3 @@ Proof.
   { admit. }
   { admit. }
 Abort.
-  

@@ -72,7 +72,7 @@ Module SpiEth.
   Inductive MMIOAction := MMInput | MMOutput.
 
   Section WithMem.
-    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte}.
+    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
 
     Definition Event: Type := (mem * MMIOAction * list word) * (mem * list word).
 
@@ -146,14 +146,13 @@ Module SpiEth.
       Semantics.byte := byte;
       Semantics.mem := mem;
       Semantics.funname_eqb f1 f2 := Empty_set_rect (fun _ : Empty_set => bool) f1;
-      Semantics.ext_spec t m action (argvals: list word) (post: (mem -> list word -> Prop)) :=
+      Semantics.ext_spec t mGive action (argvals: list word) (post: (mem -> list word -> Prop)) :=
         match argvals with
         | addr :: _ =>
           isMMIOAddr addr /\
-          Memory.load access_size.four m addr = None /\
           match action with
-          | MMInput => argvals = [addr] /\ forall val, post m [val]
-          | MMOutput => exists val, argvals = [addr; val] /\ post m nil
+          | MMInput => argvals = [addr] /\ forall val, post map.empty [val]
+          | MMOutput => exists val, argvals = [addr; val] /\ post map.empty nil
           end
         | nil => False
         end;
@@ -200,15 +199,12 @@ Module SpiEth.
       intros.
       (* need to show that this imperative code corresponds to the Inductive write_byte *)
       eapply exec.seq.
-      { eapply exec.interact. (* proving that MMIO ext_spec is satisfied *)
+      { (* proving that MMIO ext_spec is satisfied *)
+        eapply exec.interact with (mKeep := m) (mGive := map.empty).
+        - apply Map.Properties.map.split_empty_r. reflexivity.
         - simpl. reflexivity.
         - simpl. repeat split.
           + unfold isMMIOAddr. auto.
-          + (* Interesting: How to know that memory is undefined at spi_tx_fifo? *)
-            apply load_None; [lia|].
-            apply H.
-            unfold isMMIOAddr.
-            auto.
           + case TODO.
         - case TODO.
       }
@@ -229,7 +225,7 @@ Module Syscalls.
      so we will have syscalls with 4 word arguments and 3 word return values *)
 
   Section WithMem.
-    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte}.
+    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
 
     Definition Event: Type := (mem * SyscallAction * list word) * (mem * list word).
 
@@ -304,18 +300,25 @@ Module Syscalls.
     - (* read_word_correct: *)
       intros.
       eapply exec.interact with (mid := fun newM resvals =>
-         newM = m /\ exists v ignored1 ignored2, resvals = [v; ignored1; ignored2]).
+         newM = map.empty /\ exists v ignored1 ignored2, resvals = [v; ignored1; ignored2])
+         (mKeep := m) (mGive := map.empty).
+      + apply Map.Properties.map.split_empty_r. reflexivity.
       + simpl. reflexivity.
       + simpl. eauto.
       + intros.
-        destruct_products.
+        (* destruct_products. Error: Anomaly "Universe Top.2435 undefined." Please report at http://coq.inria.fr/bugs/. *)
+        destruct H0 as (? & ? & ? & ? & ?).
         subst.
         eexists. repeat split.
-        do 2 eexists. repeat split.
-        * (* TODO direction doesn't match *)
-          case TODO.
-        * (* TODO need to specify that some ignored1, ignored2 are updated too *)
-          case TODO.
+        exists m.
+        repeat split.
+        * apply Map.Properties.map.split_empty_r. reflexivity.
+        * apply Map.Properties.map.disjoint_empty_r.
+        * do 2 eexists. repeat split.
+          { (* TODO direction doesn't match *)
+            case TODO. }
+          { (* TODO need to specify that some ignored1, ignored2 are updated too *)
+            case TODO. }
     - case TODO.
       Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty.
     Defined.
@@ -327,7 +330,7 @@ End Syscalls.
 Module MMIOUsage.
   Section WithParams.
     Existing Instance SpiEth.syntax_params.
-    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte}.
+    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
     Context {locals: map.map varname word}.
     Context {funname_env: forall T, map.map funname T}.
 
@@ -340,7 +343,7 @@ End MMIOUsage.
 Module SyscallsUsage.
   Section WithParams.
     Existing Instance Syscalls.syntax_params.
-    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte}.
+    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
     Context {locals: map.map varname word}.
     Context {funname_env: forall T, map.map funname T}.
 

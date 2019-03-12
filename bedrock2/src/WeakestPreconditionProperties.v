@@ -97,7 +97,10 @@ Section WeakestPrecondition.
       { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl].
         { eapply Proper_expr; eauto. }
         { eauto. } }
-      { eapply Proper_ext_spec; [|solve[eassumption]]; firstorder eauto. } }
+      { destruct H2 as (mKeep & mGive & ? & ?).
+        exists mKeep. exists mGive.
+        split; [assumption|].
+        eapply Proper_ext_spec; [|solve[eassumption]]; firstorder eauto. } }
   Qed.
 
   Global Instance Proper_func :

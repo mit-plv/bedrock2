@@ -149,11 +149,13 @@ Module exec. Section WithEnv.
     : exec (cmd.call binds fname arges) t m l post
   | interact binds action arges
              t m l post
+      mKeep mGive (_: map.split m mKeep mGive)
       args (_ : List.option_all (List.map (eval_expr m l) arges) = Some args)
-      mid (_ : ext_spec t m action args mid)
-      (_ : forall new_m resvals, mid new_m resvals ->
+      mid (_ : ext_spec t mGive action args mid)
+      (_ : forall mReceive resvals, mid mReceive resvals ->
           exists l', map.putmany_of_list binds resvals l = Some l' /\
-          post (cons ((m, action, args), (new_m, resvals)) t) new_m l')
+          exists m', map.split m' mKeep mReceive /\
+          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l')
     : exec (cmd.interact binds action arges) t m l post
   .
   End WithEnv.

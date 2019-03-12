@@ -814,10 +814,11 @@ Section FlattenExpr1.
       + simpl in *. intros. simp.
         rename l into lH, l' into lL'. rename l0 into argValNames.
         eapply @FlatImp.exec.interact; [eassumption..|].
-        intros. edestruct H1 as (lH' & P & Q). 1: eassumption.
+        intros. edestruct H2 as (lH' & P & Q). 1: eassumption.
         pose proof (map.putmany_of_list_extends_exists binds resvals) as R.
         assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
         destruct R as (lL'' & R1 & R2).
+        simp.
         eauto 10 using map.only_differ_putmany.
   Qed.
 
