@@ -47,14 +47,14 @@ Local Instance parameters : parameters :=
       if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
       False )
       /\ addr mod 4 = 0
-      /\ forall v, post m [v]
+      /\ forall v, post Map.Interface.map.empty [v]
     | MMOutput, [addr; value] => (
       if addr =? hfrosccfg                                then True else
       if (gpio0_base <=? addr) && (addr <? gpio0_pastend) then True else
       if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
       False )
       /\ addr mod 4 = 0
-      /\ post m []
+      /\ post Map.Interface.map.empty []
     | _, _ =>
       False
     end%list%bool;

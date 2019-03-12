@@ -153,21 +153,22 @@ Section MMIO1.
 
   Definition trace: Type := list (mem * MMIOAction * list word * (mem * list word)).
 
-  Definition simple_ext_spec(t: trace) m action (argvals: list word)
+  Definition simple_ext_spec(t: trace)(mGive: mem)(action: MMIOAction)(argvals: list word)
              (post: mem -> list word -> Prop) :=
       match argvals with
       | addr :: _ =>
         isMMIOAddr addr /\
+        mGive = map.empty /\
         if isMMOutput action then
-          exists val, argvals = [addr; val] /\ post m nil
+          exists val, argvals = [addr; val] /\ post map.empty nil
         else
-          argvals = [addr] /\ forall val, post m [val]
+          argvals = [addr] /\ forall val, post map.empty [val]
       | nil => False
       end.
 
   Section Real.
     Import FE310CompilerDemo.
-    Definition real_ext_spec(t: trace) m (action: MMIOAction) args
+    Definition real_ext_spec(t: trace)(mGive: mem)(action: MMIOAction)(args: list word)
                (post: mem -> list word -> Prop) :=
       match action, List.map word.unsigned args with
       | MMInput, [addr] => (
@@ -177,14 +178,14 @@ Section MMIO1.
         if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
         False )
         /\ addr mod 4 = 0
-        /\ forall v, post m [v]
+        /\ forall v, post map.empty [v]
       | MMOutput, [addr; value] => (
         if addr =? hfrosccfg                                then True else
         if (gpio0_base <=? addr) && (addr <? gpio0_pastend) then True else
         if (uart0_base <=? addr) && (addr <? uart0_pastend) then True else
         False )
         /\ addr mod 4 = 0
-        /\ post m []
+        /\ post map.empty []
       | _, _ =>
         False
       end%list%bool.
@@ -313,13 +314,16 @@ Section MMIO1.
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
             simpl.
             repeat split; try assumption.
-              specialize (H16 initialMem []).
-              destruct H16 as [ l' [A B] ].
-              { Fail exact H8. (* TODO trace translation *) case TODO. }
-              { inversion_option.
-                subst l'.
-                unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
-                Fail exact B. (* TODO trace translation & other matching *) case TODO. } }
+            specialize H16 with (1 := H8).
+            simp.
+            apply map.split_empty_r in H2. subst.
+            apply map.split_empty_r in H9. subst.
+            unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
+            rewrite Scalars.combine_split.
+            rewrite sextend_width_nop by reflexivity.
+            rewrite Z.mod_small by apply word.unsigned_range.
+            rewrite word.of_Z_unsigned.
+            assumption. }
 
       + (* MMInput *)
         simpl in *|-.
@@ -357,14 +361,16 @@ Section MMIO1.
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
             simpl.
             repeat split; try assumption.
-              specialize (H16 initialMem [signedByteTupleToReg a]).
-              destruct H16 as [ l' [A B] ].
-              { specialize (H8 (signedByteTupleToReg a)).
-                Fail exact H8. (* TODO trace translation *) case TODO. }
-              { inversion_option.
-                subst l'.
-                unfold mmioLoadEvent, signedByteTupleToReg in *. simpl in *.
-                Fail exact B. (* TODO trace translation *) case TODO. } }
+            match goal with
+            | |- context [map.put _ _ ?resval] => specialize (H7 resval)
+            end.
+            specialize H16 with (1 := H7).
+            simp.
+            apply map.split_empty_r in H2. subst.
+            apply map.split_empty_r in H9. subst.
+            unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
+            assumption. }
+
     - (* go_load *)
       (* TODO make FlatToRiscv32.parameters and eapply go_load *)
       case TODO.
