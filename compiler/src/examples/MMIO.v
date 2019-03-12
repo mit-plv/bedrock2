@@ -127,12 +127,29 @@ Section MMIO1.
   Definition isMMIOAddr(addr: word): Prop :=
     word.unsigned addr mod 4 = 0 /\ (isGPIO0 addr \/ isQSPI1 addr).
 
+  Lemma load4bytes_in_MMIO_is_None: forall (m: mem) (addr: word),
+      map.undef_on m isMMIOAddr ->
+      isMMIOAddr addr ->
+      Memory.load_bytes 4 m addr = None.
+  Admitted.
+
   Lemma loadWord_in_MMIO_is_None: forall (m: mem) (addr: word),
       map.undef_on m isMMIOAddr ->
       isMMIOAddr addr ->
       Memory.loadWord m addr = None.
   Proof.
-  Admitted.
+    intros. unfold Memory.loadWord.
+    apply load4bytes_in_MMIO_is_None; assumption.
+  Qed.
+
+  Lemma storeWord_in_MMIO_is_None: forall (m: mem) (addr: word) v,
+      map.undef_on m isMMIOAddr ->
+      isMMIOAddr addr ->
+      Memory.storeWord m addr v = None.
+  Proof.
+    unfold Memory.storeWord. intros. unfold Memory.store_bytes.
+    rewrite load4bytes_in_MMIO_is_None; auto.
+  Qed.
 
   Definition trace: Type := list (mem * MMIOAction * list word * (mem * list word)).
 
@@ -237,6 +254,8 @@ Section MMIO1.
 
   Ltac contrad := contradiction || discriminate || congruence.
 
+  Arguments LittleEndian.split: simpl never.
+
   Instance FlatToRiscv_hyps: FlatToRiscv.assumptions.
   Proof.
     constructor. all: try typeclasses eauto.
@@ -253,7 +272,55 @@ Section MMIO1.
       destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
       destruct action; cbv [getRegs getPc getNextPc getMem getLog] in *.
       + (* MMOutput *)
-        case TODO.
+        simpl in *|-.
+        simp.
+        apply real_ext_spec_implies_simple_ext_spec in H14.
+        unfold simple_ext_spec in *.
+        simpl in *|-.
+        repeat match goal with
+               | l: list _ |- _ => destruct l;
+                                     try (exfalso; (contrad || (cheap_saturate; contrad))); []
+               end.
+        simp.
+        destruct argvars. {
+          exfalso. rename H9 into A. clear -A. simpl in *.
+          destruct_one_match_hyp; congruence.
+        }
+        destruct argvars; cycle 1. {
+          exfalso. rename H9 into A. clear -A. simpl in *. simp.
+          destruct_one_match_hyp; congruence.
+        }
+        simpl in *|-.
+        simp.
+        subst insts.
+        eapply runsToNonDet.runsToStep; cycle 1.
+        * intro mid.
+          apply id.
+        * simulate_step.
+          simulate_step.
+          simulate_step.
+          simulate_step.
+          simulate_step.
+          simulate_step.
+          simulate_step.
+          simpl_word_exprs word_ok.
+          apply spec_Bind.
+          unfold Utility.regToInt32, MachineWidth_XLEN.
+          refine (ex_intro _ (fun v m => m = _) _).
+          split.
+          { apply spec_storeWord. simpl. right. split; [|reflexivity]. repeat split.
+            apply storeWord_in_MMIO_is_None; assumption. }
+          { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
+            simpl.
+            repeat split; try assumption.
+              specialize (H15 initialMem []).
+              destruct H15 as [ l' [A B] ].
+              { Fail exact H8. (* TODO trace translation *) case TODO. }
+              { inversion_option.
+                subst l'.
+                unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
+                Fail exact B. (* TODO trace translation & other matching *) case TODO. } }
+
       + (* MMInput *)
         simpl in *|-.
         simp.

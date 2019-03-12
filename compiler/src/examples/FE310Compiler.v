@@ -43,7 +43,33 @@ Instance pipeline_params: Pipeline.parameters := {
   Pipeline.PRParams := MinimalMMIOPrimitivesParams;
 }.
 
-Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
+Instance word32eqdec: DecidableEq word32. Admitted.
+
+Lemma undef_on_same_domain{K V: Type}{M: map.map K V}{keq: DecidableEq K}{Ok: map.ok M}
+      (m1 m2: M)(P: K -> Prop):
+  map.undef_on m1 P ->
+  map.same_domain m1 m2 ->
+  map.undef_on m2 P.
+Proof.
+  intros. unfold map.same_domain, map.sub_domain in *.
+  Fail solve [map_solver Ok]. (* TODO map_solver make this work (without separate lemma) *)
+  repeat autounfold with unf_map_defs in *.
+  intros k Pk.
+  rewrite map.get_empty.
+  destruct (map.get m2 k) eqn: E; [exfalso|reflexivity].
+  destruct H0 as [_ A].
+  specialize A with (1 := E).
+  destruct A as [v2 A].
+  specialize (H k Pk).
+  rewrite map.get_empty in H.
+  congruence.
+Qed.
+
+Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
+constructor.
+all: try typeclasses eauto.
+exact MMIO.FlatToRiscv_hyps. (* TODO why does "typeclasses eauto" not find this one? *)
+Qed.
 
 Definition compileFunc: cmd -> list Instruction := exprImp2Riscv.
 
