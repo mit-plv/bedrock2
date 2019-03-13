@@ -253,6 +253,10 @@ Section MMIO1.
 
   Instance assume_riscv_word_properties: RiscvWordProperties.word.riscv_ok word. Admitted.
 
+  Instance FlatToRiscv32_params: FlatToRiscv32.parameters := {
+    FlatToRiscv32.ext_spec := ext_spec;
+  }.
+
   Ltac contrad := contradiction || discriminate || congruence.
 
   Arguments LittleEndian.split: simpl never.
@@ -372,10 +376,9 @@ Section MMIO1.
             assumption. }
 
     - (* go_load *)
-      (* TODO make FlatToRiscv32.parameters and eapply go_load *)
-      case TODO.
+      intros. refine (@go_load _ _ _ _ _ _ _ _ _ _ _ _ _ _); eassumption.
     - (* go_store *)
-      case TODO.
+      intros. refine (@go_store _ _ _  _ _ _ _ _ _ _ _ _ _ _ _ _); eassumption.
   Qed.
 
 End MMIO1.
