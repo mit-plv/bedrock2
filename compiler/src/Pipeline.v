@@ -13,6 +13,7 @@ Require Export riscv.Platform.Run.
 Require Export riscv.Platform.Minimal.
 Require Export riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
+Require Export riscv.Platform.MetricRiscvMachine.
 Require Import compiler.util.MyOmega.
 Require Import Coq.micromega.Lia.
 Require Export compiler.NameGen.
@@ -20,6 +21,7 @@ Require Export compiler.util.Common.
 Require Export coqutil.Decidable.
 Require Export riscv.Utility.Encode.
 Require Export riscv.Spec.Primitives.
+Require Export riscv.Spec.MetricPrimitives.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.MkMachineWidth.
 Require Export riscv.Proofs.DecodeEncode.
@@ -35,10 +37,6 @@ Require Import compiler.Simp.
 
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
 
 Open Scope Z_scope.
 
@@ -59,11 +57,11 @@ Module Import Pipeline.
     NGstate: Type;
     NG :> NameGen varname NGstate;
 
-    ext_guarantee : RiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname -> Prop;
+    ext_guarantee : MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname -> Prop;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
+    PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
   }.
 
   Instance FlatToRisvc_params{p: parameters}: FlatToRiscv.FlatToRiscv.parameters := {|
@@ -76,7 +74,7 @@ Module Import Pipeline.
     varname_eq_dec :> DecidableEq varname;
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
-    PR :> Primitives PRParams;
+    PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscv.FlatToRiscv.assumptions;
   }.
 
@@ -175,13 +173,13 @@ Section Pipeline1.
              (fun finalL => post finalL.(getLog)).
   Proof.
     intros. subst.
-    eapply runsTo_weaken.
-    - eapply FlatToRiscv.compile_stmt_correct
-        with (postH := (fun t m l => post t)); try reflexivity.
+    eapply runsTo_weaken. Unshelve.
+     - eapply FlatToRiscv.compile_stmt_correct
+        with (postH := (fun t m l mc => post t)); try reflexivity.
       + eapply FlatImp.exec.weaken.
         * match goal with
-          | |- _ ?env ?s ?t ?m ?l ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ s _ t m _ eq_refl) as Q
+          | |- _ ?env ?s ?t ?m ?l _ ?post =>
+            epose proof (@FlattenExpr.flattenStmt_correct _ _ s _ t m _ _ eq_refl) as Q
           end.
           eapply Q.
           eassumption.
@@ -210,7 +208,8 @@ Section Pipeline1.
         seplog.
       + assumption.
       + assumption.
-    - simpl. intros. simp. assumption.
+     - simpl. intros. simp. assumption.
+     Unshelve. apply (initialL.(getMetrics)).
   Qed.
 
 End Pipeline1.
