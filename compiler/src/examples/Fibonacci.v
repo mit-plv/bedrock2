@@ -13,11 +13,13 @@ Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
 Require        riscv.Utility.InstructionNotations.
 Require Import riscv.Platform.MinimalLogging.
+Require Import riscv.Platform.MetricMinimal.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
 Require Import riscv.Utility.InstructionCoercions.
+Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import compiler.RegAllocAnnotatedNotations.
@@ -62,14 +64,16 @@ Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := Empty_set_rect _;
 }.
 
-Notation RiscvMachine := (RiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
+Set Printing Implicit.
+
+Notation RiscvMachine := (MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
 
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.W := Words32Naive.Words32Naive;
   Pipeline.ext_spec _ _ := Empty_set_rect _;
   Pipeline.ext_guarantee _ := False;
   Pipeline.M := OState RiscvMachine;
-  Pipeline.PRParams := MinimalPrimitivesParams;
+  Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
 }.
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
@@ -107,12 +111,16 @@ Definition fib6_bits_as_Z: list Z :=
 
 (* This example uses the memory only as instruction memory
    TODO make an example which uses memory to store data *)
-Definition zeroedRiscvMachine: RiscvMachine := {|
-  getRegs := map.empty;
-  getPc := word.of_Z 0;
-  getNextPc := word.of_Z 4;
-  getMem := map.empty;
-  getLog := nil;
+Definition zeroedRiscvMachine: RiscvMachine :=
+{|
+  getMachine := {|
+    RiscvMachine.getRegs := map.empty;
+    RiscvMachine.getPc := word.of_Z 0;
+    RiscvMachine.getNextPc := word.of_Z 4;
+    RiscvMachine.getMem := map.empty;
+    RiscvMachine.getLog := nil;
+  |};
+  getMetrics := MetricLogging.EmptyMetricLog;
 |}.
 
 Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
@@ -218,6 +226,20 @@ Lemma fib6_L_res_is_13_by_running_it: exists fuel, word.unsigned (fib6_res fuel)
   cbv.
   reflexivity.
 Qed.
+
+Axiom metrics_alright: Prop.
+
+Lemma fib_bounding_metrics: forall (n: nat) t m l ii,
+   map.get l Demos.Fibonacci.i = Some ii ->
+   exec map.empty (fib_ExprImp (Z.of_nat n)) t m l (fun t' m ' l' =>
+      metrics_alright /\ map.get l' Demos.Fibonacci.i = Some (word.add ii
+(word.of_Z 1))).
+Proof.
+ intros.
+ unfold fib_ExprImp.
+ eapply @exec.seq with (mid := (fun t' m' l' => t = t' /\ metrics_alright)).
+ - eapply @exec.set.
+Admitted.
 
 Lemma fib_H_res_value: fib_H_res 20 6 = Some (word.of_Z 13).
 Proof. cbv. reflexivity. Qed.
