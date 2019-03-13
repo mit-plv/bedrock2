@@ -194,8 +194,6 @@ Section FlatToRiscv1.
        morphism word_ring_morph,
        constants [word_cst]).
 
-  Ltac state_calc0 := map_solver locals_ok.
-
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word) {T: Type} (thenVal elseVal: T),
@@ -461,177 +459,10 @@ Section FlatToRiscv1.
 
   Arguments Z.modulo : simpl never.
 
-  (*
-  Notation K := Z.
-  Notation V := mword.
-  *)
-
-  (* only strictly needed if we want to export the goal into a map_solver-only environment,
-     but might result in a speed up if used anyways *)
-  Ltac prepare_for_map_solver :=
-    repeat match goal with
-             | IH: forall (s : stmt), _ |- _ => clear IH
-             | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
-               let n := fresh "mv" s in
-               forget (FlatImp.modVars var func s) as n
-         (*  | H: Memory.read_mem _ _ = _ |- _ => clear H *)
-             | H: ?P |- _ =>
-               let h := head_of_app P in
-               match h with
-               | @stmt_not_too_big => clear H
-               | @valid_register => clear H
-               | @valid_registers => clear H
-        (*     | @divisibleBy4 => clear H  *)
-               end
-             | H: @eq ?T _ _ |- _ =>
-               match T with
-            (* | option Semantics.word => don't clear because we have maps of Semantics.word *)
-           (*  | option (map Z word * Memory.mem) => clear H *)
-               | option mem => clear H
-               | list _ => clear H
-               | nat => clear H
-               end
-           end;
-    repeat match goal with
-           | H: ?P |- _ =>
-             progress
-               tryif (let T := type of P in unify T Prop)
-               then revert H
-               else (match P with
-                     | _ => clear H
-                     end)
-           end;
-    repeat match goal with
-           | x: ?T |- _ =>
-             lazymatch T with
-             | MachineWidth _  => fail
-             | DecidableEq _ => fail
-             | _ => revert x
-             end
-           end.
-
-  Ltac state_calc_with_logging :=
-    prepare_for_map_solver;
-    idtac "map_solver goal:";
-    match goal with
-    | |- ?G => idtac G
-    end;
-    time state_calc0.
-
-  Ltac state_calc_with_timing :=
-    prepare_for_map_solver;
-    time state_calc0.
-
-  Ltac state_calc_without_logging :=
-    prepare_for_map_solver;
-    state_calc0.
-
-  Ltac state_calc := state_calc_without_logging.
-
-(*
-  Hint Rewrite
-      (@associativity  _ (OStateND_Monad RiscvMachine))
-      (@left_identity  _ (OStateND_Monad RiscvMachine))
-      (@right_identity _ (OStateND_Monad RiscvMachine))
-      (@Bind_getRegister _ _ _ _ _ _ _)
-      (@Bind_getRegister0 _ _ _ _ _ _ _)
-      (@Bind_setRegister _ _ _ _ _ _ _)
-      (@Bind_setRegister0 _ _ _ _ _ _ _)
-      (@Bind_getPC _ _ _ _ _ _ _)
-      (@Bind_setPC _ _ _ _ _ _ _)
-  using assumption : rew_get_set_Register.
-
-  Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
-*)
-
-  (* requires destructed RiscvMachine and containsProgram *)
-  Ltac fetch_inst :=
-    eapply go_fetch_inst; [reflexivity|simpl (*; solve_containsProgram *)|].
-
-  Ltac rewrite_reg_value :=
-    match goal with
-    | |- context [get    _ _] => idtac
-    | _ => fail 1 "wrong shape of goal"
-    end. (*;
-    let G1 := fresh "G1" in
-    match goal with
-    | G2: get ?st2 ?x = ?v, E: map.extends ?st1 ?st2 |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
-      let gg := constr:(@getReg RF R V TC st1 x) in
-      let gg' := eval unfold getReg, State_is_RegisterFile in gg in
-      progress change gg with gg';
-      match gg' with
-      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
-      end
-    | G2: get ?st2 ?x = ?v, E: map.extends ?st1 ?st2 |- context [?gg'] =>
-      match gg' with
-      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
-      end
-    end;
-    rewrite G1;
-    clear G1. *)
-
-  Ltac rewrite_getReg := idtac. (*
-    match goal with
-    | |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
-      let gg := constr:(@getReg RF R V TC st1 x) in
-      let gg' := eval unfold getReg, State_is_RegisterFile in gg in
-          progress change gg with gg'
-    end. *)
-
-  Ltac rewrite_setReg := idtac. (*
-    match goal with
-    | |- context [@setReg ?RF ?R ?V ?TC ?st1 ?x ?v] =>
-      let gg := constr:(@setReg RF R V TC st1 x v) in
-      let gg' := eval unfold setReg, State_is_RegisterFile in gg in
-          progress change gg with gg'
-    end. *)
-
   Ltac solve_valid_registers :=
     match goal with
     | |- valid_registers _ => solve [simpl; auto]
     end.
-
-  Lemma add_to_instsBefore: forall (before insts1 insts2 after: list Instruction),
-      before ++ (insts1 ++ insts2) ++ after = (before ++ insts1) ++ insts2 ++ after.
-  Proof. intros. rewrite <-? app_assoc. reflexivity. Qed.
-
-  Lemma add_to_instsAfter: forall (before insts1 insts2 after: list Instruction),
-      before ++ (insts1 ++ insts2) ++ after = before ++ insts1 ++ (insts2 ++ after).
-  Proof. intros. rewrite <-? app_assoc. reflexivity. Qed.
-
-  (* Solves an equality of the form
-        before ++ insts ++ after = evarForBefore ++ subseqOfInsts ++ evarForAfter
-     instantiating evarForBefore and evarForAfter appropriately.
-     Works by first shoveling instructions from "insts" into "before" until "subseqOfInsts"
-     is found, and then shoveling the remaining instructions from "insts" into "after". *)
-  Ltac solve_imem :=
-    repeat match goal with
-           | H: _ |- _ => clear H
-           end;
-    let targetInsts := fresh "targetInsts" in
-    lazymatch goal with
-    | |- ?lhs = _ ++ ?insts ++ _ =>
-      match lhs with
-      | context [insts] => remember insts as targetInsts
-      end
-    end;
-    repeat match goal with
-           | |- context [?h :: ?t] =>
-             tryif (unify t [[]])
-             then fail
-             else (change (h :: t) with ([h] ++ t))
-           end;
-    repeat match goal with
-           | |- ?before ++ (targetInsts ++ ?insts2) ++ ?after = _ => fail 1 (* success/quit loop *)
-           | |- ?before ++ (?insts1 ++ ?insts2) ++ ?after = _ =>
-             rewrite (add_to_instsBefore before insts1 insts2 after)
-           end;
-    repeat match goal with
-           | |- ?before ++ (?insts1 ++ ?insts2) ++ ?after = _ =>
-             rewrite (add_to_instsAfter before insts1 insts2 after)
-           end;
-    subst targetInsts;
-    reflexivity.
 
   Instance word_eq_dec: DecidableEq word. (* TODO *) Admitted.
 
@@ -773,6 +604,11 @@ Section FlatToRiscv1.
 
   Arguments LittleEndian.combine: simpl never.
 
+  Lemma iset_is_supported: supported_iset iset.
+  Proof.
+    unfold iset. destruct_one_match; constructor.
+  Qed.
+
   Definition load_lit_semantics(v: Z): word :=
     add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add
       (ZToReg 0)
@@ -802,7 +638,7 @@ Section FlatToRiscv1.
       let insts := compile_stmt iset (SLit x v) in
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
-      valid_register x ->
+      valid_registers (SLit x v) ->
       runsTo (withRegs   (map.put initialL.(getRegs) x (ZToReg v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
@@ -810,34 +646,48 @@ Section FlatToRiscv1.
              post ->
       runsTo initialL post.
   Proof.
-    intros. substs.
-    unfold compile_stmt, compile_lit, compile_lit_rec in *.
-    simpl in *.
-  (*
-    destruct_everything; simpl in *.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    match goal with
-    | R: runsTo ?m post |- runsToNonDet.runsTo _ _ ?m' post =>
-      replace m' with m; [exact R|]
+    intros *. intros E1 insts d P V N. substs.
+    lazymatch goal with
+    | H1: valid_registers ?s |- _ =>
+      pose proof (compile_stmt_emits_valid iset_is_supported H1 eq_refl) as EV
     end.
-    f_equal; try solve_word_eq.
-    f_equal. symmetry. apply compile_lit_correct.
-  Qed.
-  *)
+    simpl in *.
+    destruct_RiscvMachine initialL.
+    subst.
+    unfold compile_lit_new in *.
+    destruct (dec (- 2 ^ 11 <= v < 2 ^ 11)). {
+      unfold compile_lit_small in *.
+      run1det.
+      simpl_word_exprs word_ok.
+      exact N.
+    }
+    destruct (dec (- 2 ^ 31 <= v < 2 ^ 31)). {
+      unfold compile_lit_medium in *.
+      run1det.
+      run1det.
+      match goal with
+      | R: runsTo ?m post |- runsTo ?m' post =>
+        replace m' with m; [exact R|]
+      end.
+      cbv [withRegs withPc withNextPc withMem withLog]. clear N. f_equal.
+      - rewrite put_put_same. f_equal.
+        apply word.signed_inj.
+        rewrite word.signed_of_Z.
+        (* rewrite word.swrap_inrange; cycle 1. { case TODO. } *)
+        rewrite word.signed_add.
+        rewrite! word.signed_of_Z.
+        unfold word.swrap.
+        remember (2 ^ (width - 1)) as B.
+        remember (2 ^ width) as M.
+        remember (signExtend 11 (bitSlice v 0 12)) as E.
+        f_equal.
+(*
+do we have ready-to-use push/pull mod tactics to solve goals like
+
+(v + B) mod M = ((v - E + B) mod M - B + ((E + B) mod M - B) + B) mod M
+
+?
+*)
   Admitted.
 
   Definition eval_stmt := exec map.empty.
@@ -876,11 +726,6 @@ Section FlatToRiscv1.
       let Q := fresh "Q" in
       destruct (subst_load_bytes_for_eq Load Sep) as [Q ?]
     end.
-
-  Lemma iset_is_supported: supported_iset iset.
-  Proof.
-    unfold iset. destruct_one_match; constructor.
-  Qed.
 
   Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
       Memory.store_bytes n m1 a v = Some m1' ->

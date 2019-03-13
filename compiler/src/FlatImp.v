@@ -14,6 +14,7 @@ Require Import Coq.micromega.Lia.
 Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
 
+Local Set Ltac Profiling.
 
 Inductive bbinop: Type :=
 | BEq
@@ -316,13 +317,15 @@ Module exec.
       trace -> mem -> locals ->
       (trace -> mem -> locals -> Prop)
     -> Prop :=
-    | interact: forall t m l action argvars argvals resvars outcome post,
+    | interact: forall t m mKeep mGive l action argvars argvals resvars outcome post,
+        map.split m mKeep mGive ->
         List.option_all (List.map (map.get l) argvars) = Some argvals ->
-        ext_spec t m action argvals outcome ->
-        (forall m' resvals,
-            outcome m' resvals ->
+        ext_spec t mGive action argvals outcome ->
+        (forall mReceive resvals,
+            outcome mReceive resvals ->
             exists l', map.putmany_of_list resvars resvals l = Some l' /\
-                       post (((m, action, argvals), (m', resvals)) :: t) m' l') ->
+                       exists m', map.split m' mKeep mReceive /\
+                       post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l') ->
         exec (SInteract resvars action argvars) t m l post
     | call: forall t m l binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
@@ -415,9 +418,8 @@ Module exec.
       induction 1; intros; try solve [econstructor; eauto].
       - eapply interact; try eassumption.
         intros; simp.
-        match goal with
-        | H: _ |- _ => solve [edestruct H; simp; eauto]
-        end.
+        edestruct H2; [eassumption|].
+        simp. eauto 10.
       - eapply call.
         4: eapply IHexec.
         all: eauto.
@@ -435,11 +437,33 @@ Module exec.
       simp.
 
     (* TODO is this the canconical form to impose as a requirement?
-     Or should we impose post1 <-> post2, or something else? *)
-    Axiom ext_spec_intersect: forall t m a args (post1 post2: mem -> list word -> Prop),
-        ext_spec t m a args post1 ->
-        ext_spec t m a args post2 ->
-        ext_spec t m a args (fun m' resvals => post1 m' resvals /\ post2 m' resvals).
+       Or should we impose post1 <-> post2, or something else? *)
+    Axiom ext_spec_intersect: forall t mGive1 mGive2 a args (post1 post2: mem -> list word -> Prop),
+      ext_spec t mGive1 a args post1 ->
+      ext_spec t mGive2 a args post2 ->
+      mGive1 = mGive2 /\ (* TODO will this be provable? *)
+      ext_spec t mGive1 a args (fun mReceive resvals => post1 mReceive resvals /\
+                                                        post2 mReceive resvals).
+
+    Lemma map_split_diff: forall {m m1 m2 m3: mem},
+        map.split m m2 m1 ->
+        map.split m m3 m1 ->
+        m2 = m3.
+    Proof.
+      unfold map.split.
+      intros *. intros [? ?] [? ?].
+    Admitted.
+
+    Lemma map_split_det: forall {m m' m1 m2: mem},
+        map.split m  m1 m2 ->
+        map.split m' m1 m2 ->
+        m = m'.
+    Proof.
+      unfold map.split.
+      intros *. intros [? ?] [? ?].
+      subst.
+      reflexivity.
+    Qed.
 
     Lemma intersect: forall t l m s post1,
         exec s t m l post1 ->
@@ -455,14 +479,20 @@ Module exec.
         try solve [econstructor; eauto | exfalso; congruence].
 
       - (* SInteract *)
+        pose proof ext_spec_intersect as P.
+        specialize P with (1 := H1) (2 := H13). destruct P as [? P]. subst mGive0.
+        pose proof (map_split_diff H H7). subst mKeep0. clear H7.
         eapply @interact.
         + eassumption.
-        + eapply ext_spec_intersect; [ exact H0 | exact H11 ].
+        + eassumption.
+        + eapply ext_spec_intersect; [ exact H1 | exact H13 ].
         + simpl. intros. simp.
-        edestruct H1 as (? & ? & ?); [eassumption|].
-        edestruct H12 as (? & ? & ?); [eassumption|].
-        equalities.
-        eauto 10.
+          edestruct H2 as (? & ? & ?); [eassumption|].
+          edestruct H14 as (? & ? & ?); [eassumption|].
+          simp.
+          equalities.
+          pose proof (map_split_det H8 H6). subst.
+          eauto 10.
 
       - (* SCall *)
         rename IHexec into IH.
@@ -583,8 +613,7 @@ Section FlatImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      map_solver locals_ok;
-      refine (only_differ_putmany _ _ _ _ _ _); eassumption.
+      try solve [map_solver locals_ok|refine (map.only_differ_putmany _ _ _ _ _); eassumption].
   Qed.
 
   Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM post,
@@ -593,18 +622,19 @@ Section FlatImp2.
            (fun finalT finalM finalSt => map.only_differ initialSt (modVars s) finalSt).
   Proof.
     induction 1;
-      try solve [ econstructor; [eassumption..|map_solver locals_ok] ].
+      try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
     - eapply exec.interact; try eassumption.
       intros; simp.
-      edestruct H1; try eassumption. simp.
+      edestruct H2; try eassumption. simp.
       eexists; split; [eassumption|].
       simpl. try split; eauto.
-      eapply only_differ_putmany. eassumption.
+      eexists; split; [eassumption|].
+      eapply map.only_differ_putmany. eassumption.
     - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
       intros; simpl in *; simp.
       edestruct H3; try eassumption. simp.
       do 2 eexists; split; [|split]; try eassumption.
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
     - eapply exec.if_true; try eassumption.
       eapply exec.weaken; [eassumption|].
       simpl; intros. map_solver locals_ok.
@@ -801,3 +831,5 @@ Section FlatImp3.
 
 End FlatImp3.
 *)
+
+Goal True. idtac "End of FlatImp.v". Abort.

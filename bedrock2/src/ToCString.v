@@ -17,6 +17,7 @@ Class parameters := {
 }.
 
 Section ToCString.
+  Local Open Scope string_scope.
   Context {p : unique! parameters}.
   Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true false false false false) "".
   Local Open Scope string_scope.
@@ -84,13 +85,20 @@ Section ToCString.
       indent ++ c_call (List.map c_var args) (c_fun f) (List.map c_expr es)
     | cmd.interact binds action es =>
       indent ++ c_act binds action (List.map c_expr es)
-    end%string.
+    end.
 
-  Definition c_decl (rett : string) (args : list varname) (name : funname) (retptrs : list varname) : string :=
+  Definition fmt_c_decl (rett : string) (args : list varname) (name : funname) (retptrs : list varname) : string :=
     (rett ++ " " ++ c_fun name ++ "(" ++ concat ", " (
                     List.map (fun a => "uintptr_t "++c_var a) args ++
                     List.map (fun r => "uintptr_t* "++c_var r) retptrs) ++
-                  ")")%string.
+                  ")").
+
+  Definition c_decl (f : funname * (list varname * list varname * cmd)) :=
+    let '(name, (args, rets, body)) := f in
+    match rets with
+    | nil => fmt_c_decl "void" args name nil
+    | cons _ _ => fmt_c_decl "uintptr_t" args name (List.removelast rets)
+    end ++ ";".
 
   Fixpoint rename_outs (outs : list varname) (used : list varname) : list (varname*varname) * list varname :=
     match outs with
@@ -102,16 +110,15 @@ Section ToCString.
     | nil => (nil, used)
     end.
 
-  Local Open Scope string_scope.
   Definition c_func '(name, (args, rets, body)) :=
     let decl_retvar_retrenames : string * option varname * list (varname * varname) :=
     match rets with
-    | nil => (c_decl "void" args name nil, None, nil)
+    | nil => (fmt_c_decl "void" args name nil, None, nil)
     | cons r0 _ =>
       let r0 := List.last rets r0 in
       let rets' := List.removelast rets in
       let retrenames := fst (rename_outs rets' (cmd.vars body)) in
-      (c_decl "uintptr_t" args name (List.map snd retrenames), Some r0, retrenames)
+      (fmt_c_decl "uintptr_t" args name (List.map snd retrenames), Some r0, retrenames)
     end in
     let decl := fst (fst decl_retvar_retrenames) in
     let retvar := snd (fst decl_retvar_retrenames) in
@@ -119,11 +126,20 @@ Section ToCString.
     let localvars : list varname := List_uniq varname_eqb (
         let allvars := (List.app (match retvar with None => nil | Some v => cons v nil end) (cmd.vars body)) in
         (List_minus varname_eqb allvars args)) in
-    LF ++ decl ++ " {" ++ LF ++
+    decl ++ " {" ++ LF ++
       let indent := "  " in
       (match localvars with nil => "" | _ => indent ++ "uintptr_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
       c_cmd indent body ++
       concat "" (List.map (fun '(o, optr) => indent ++ "*" ++ c_var optr ++ " = " ++ c_var o ++ ";" ++ LF) retrenames) ++
       indent ++ "return" ++ (match retvar with None => "" | Some rv => " "++c_var rv end) ++ ";" ++ LF ++
       "}" ++ LF.
+
+  Definition c_module (fs : list (funname * (list varname * list varname * cmd))) :=
+    match fs with
+    | nil => "#error ""c_module nil"" "
+    | cons main fs => 
+      concat LF (List.map (fun f => "static " ++ c_decl f) fs) ++ LF ++ LF ++
+      c_func main ++ LF ++
+      concat LF (List.map (fun f => "static " ++ c_func f) fs)
+    end.
 End ToCString.

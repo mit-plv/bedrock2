@@ -12,6 +12,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.ListLib.
 
+Local Set Ltac Profiling.
 
 Open Scope Z_scope.
 
@@ -199,26 +200,88 @@ Section ExprImp1.
   End WithEnv.
 
   (* Returns a list to make it obvious that it's a finite set. *)
-  Fixpoint allVars_expr(e: expr): list var :=
+  Fixpoint allVars_expr_as_list(e: expr): list var :=
     match e with
     | expr.literal v => []
     | expr.var x => [x]
-    | expr.load nbytes e => allVars_expr e
-    | expr.op op e1 e2 => (allVars_expr e1) ++ (allVars_expr e2)
+    | expr.load nbytes e => allVars_expr_as_list e
+    | expr.op op e1 e2 => (allVars_expr_as_list e1) ++ (allVars_expr_as_list e2)
     end.
 
-  Fixpoint allVars_cmd(s: cmd): list var :=
+  Definition allVars_exprs_as_list(es: list expr): list var :=
+    List.flat_map allVars_expr_as_list es.
+
+  Fixpoint allVars_cmd_as_list(s: cmd): list var :=
     match s with
-    | cmd.store _ a e => (allVars_expr a) ++ (allVars_expr e)
-    | cmd.set v e => v :: allVars_expr e
+    | cmd.store _ a e => (allVars_expr_as_list a) ++ (allVars_expr_as_list e)
+    | cmd.set v e => v :: allVars_expr_as_list e
     | cmd.unset v => v :: nil
-    | cmd.cond c s1 s2 => (allVars_expr c) ++ (allVars_cmd s1) ++ (allVars_cmd s2)
-    | cmd.while c body => (allVars_expr c) ++ (allVars_cmd body)
-    | cmd.seq s1 s2 => (allVars_cmd s1) ++ (allVars_cmd s2)
+    | cmd.cond c s1 s2 => (allVars_expr_as_list c) ++ (allVars_cmd_as_list s1) ++ (allVars_cmd_as_list s2)
+    | cmd.while c body => (allVars_expr_as_list c) ++ (allVars_cmd_as_list body)
+    | cmd.seq s1 s2 => (allVars_cmd_as_list s1) ++ (allVars_cmd_as_list s2)
     | cmd.skip => []
-    | cmd.call binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
-    | cmd.interact binds _ args => binds ++ List.fold_right (@List.app _) nil (List.map allVars_expr args)
+    | cmd.call binds _ args => binds ++ allVars_exprs_as_list args
+    | cmd.interact binds _ args => binds ++ allVars_exprs_as_list args
     end.
+
+  Fixpoint allVars_expr(e: expr): set var :=
+    match e with
+    | expr.literal v => empty_set
+    | expr.var x => singleton_set x
+    | expr.load nbytes e => allVars_expr e
+    | expr.op op e1 e2 => union (allVars_expr e1) (allVars_expr e2)
+    end.
+
+  Definition allVars_exprs(es: list expr): set var :=
+    List.fold_right union empty_set (List.map allVars_expr es).
+
+  Fixpoint allVars_cmd(s: cmd): set var :=
+    match s with
+    | cmd.store _ a e => union (allVars_expr a) (allVars_expr e)
+    | cmd.set v e => add (allVars_expr e) v
+    | cmd.unset v => singleton_set v
+    | cmd.cond c s1 s2 => union (allVars_expr c) (union (allVars_cmd s1) (allVars_cmd s2))
+    | cmd.while c body => union (allVars_expr c) (allVars_cmd body)
+    | cmd.seq s1 s2 => union (allVars_cmd s1) (allVars_cmd s2)
+    | cmd.skip => empty_set
+    | cmd.call binds _ args => union (of_list binds) (allVars_exprs args)
+    | cmd.interact binds _ args => union (of_list binds) (allVars_exprs args)
+    end.
+
+  Lemma allVars_expr_allVars_expr_as_list: forall e x,
+      x \in allVars_expr e <-> In x (allVars_expr_as_list e).
+  Proof.
+    induction e; intros; simpl in *; set_solver; try apply in_or_app; set_solver.
+    apply in_app_or in H3.
+    destruct H3; eauto.
+  Qed.
+
+  Lemma allVars_exprs_allVars_exprs_as_list: forall es x,
+      x \in allVars_exprs es <-> In x (allVars_exprs_as_list es).
+  Proof.
+    induction es; intros; simpl in *; set_solver.
+    - apply in_or_app. unfold allVars_exprs in H1. simpl in H1.
+      pose proof (allVars_expr_allVars_expr_as_list a).
+      set_solver.
+    - apply in_app_or in H1. unfold allVars_exprs.
+      pose proof (allVars_expr_allVars_expr_as_list a).
+      simpl. destruct H1; set_solver.
+  Qed.
+
+  Lemma allVars_cmd_allVars_cmd_as_list: forall s x,
+      x \in allVars_cmd s <-> In x (allVars_cmd_as_list s).
+  Proof.
+    induction s; intros; simpl in *;
+      repeat match goal with
+             | e: expr |- _ => unique pose proof (allVars_expr_allVars_expr_as_list e x)
+             | es: list expr |- _ => unique pose proof (allVars_exprs_allVars_exprs_as_list es x)
+             | _: context [?l1 ++ ?l2] |- _ =>
+               unique pose proof (in_app_or l1 l2 x)
+             | |- context [?l1 ++ ?l2] =>
+               unique pose proof (in_or_app l1 l2 x)
+             end;
+      try solve [set_solver].
+  Qed.
 
   (* Returns a static approximation of the set of modified vars.
      The returned set might be too big, but is guaranteed to include all modified vars. *)
@@ -234,27 +297,9 @@ Section ExprImp1.
     | cmd.interact binds _ _ => of_list binds
     end.
 
-  Lemma modVars_subset_allVars: forall x s,
-    x \in modVars s ->
-    In x (allVars_cmd s).
+  Lemma modVars_subset_allVars: forall s, subset (modVars s) (allVars_cmd s).
   Proof.
-    intros.
-    induction s; simpl in *.
-    - set_solver.
-    - set_solver.
-    - set_solver.
-    - set_solver.
-    - set_solver.
-      + apply in_or_app. right. apply in_or_app. left. assumption.
-      + apply in_or_app. right. apply in_or_app. right. assumption.
-    - set_solver; apply in_or_app; auto.
-    - apply in_or_app. right. auto.
-    - generalize dependent binds; induction binds; intros H; cbn in *.
-      + contradiction.
-      + destruct H; auto.
-    - generalize dependent binds; induction binds; intros H; cbn in *.
-      + contradiction.
-      + destruct H; auto.
+    intros. induction s; simpl in *; set_solver.
   Qed.
 
 End ExprImp1.
@@ -321,16 +366,37 @@ Section ExprImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      state_calc;
-      refine (only_differ_putmany _ _ _ _ _ _); eassumption.
+      try solve [state_calc | refine (map.only_differ_putmany _ _ _ _ _); eassumption].
   Qed.
 
   (* TODO is this the canconical form to impose as a requirement?
      Or should we impose post1 <-> post2, or something else? *)
-  Axiom ext_spec_intersect: forall t m a args post1 post2,
-    ext_spec t m a args post1 ->
-    ext_spec t m a args post2 ->
-    ext_spec t m a args (fun m' resvals => post1 m' resvals /\ post2 m' resvals).
+  Axiom ext_spec_intersect: forall t mGive1 mGive2 a args post1 post2,
+    ext_spec t mGive1 a args post1 ->
+    ext_spec t mGive2 a args post2 ->
+    mGive1 = mGive2 /\ (* TODO will this be provable? *)
+    ext_spec t mGive1 a args (fun mReceive resvals => post1 mReceive resvals /\
+                                                     post2 mReceive resvals).
+
+  Lemma map_split_diff: forall {m m1 m2 m3: mem},
+      map.split m m2 m1 ->
+      map.split m m3 m1 ->
+      m2 = m3.
+  Proof.
+    unfold map.split.
+    intros *. intros [? ?] [? ?].
+  Admitted.
+
+  Lemma map_split_det: forall {m m' m1 m2: mem},
+      map.split m  m1 m2 ->
+      map.split m' m1 m2 ->
+      m = m'.
+  Proof.
+    unfold map.split.
+    intros *. intros [? ?] [? ?].
+    subst.
+    reflexivity.
+  Qed.
 
   Lemma intersect_exec: forall env t l m s post1,
       exec env s t m l post1 ->
@@ -371,15 +437,21 @@ Section ExprImp2.
                  replace v2 with v1 in * by congruence; clear H2
                end.
         eauto 10.
-    - eapply exec.interact. 1: eassumption.
-      + eapply ext_spec_intersect; [ exact H0 | exact H11 ].
+    - pose proof ext_spec_intersect as P.
+      specialize P with (1 := H1) (2 := H13). destruct P as [? P]. subst mGive0.
+      pose proof (map_split_diff H H7). subst mKeep0. clear H7.
+      eapply exec.interact. 1,2: eassumption.
+      + eapply ext_spec_intersect; [ exact H1 | exact H13 ].
       + simpl. intros *. intros [? ?].
-        edestruct H1 as (? & ? & ?); [eassumption|].
-        edestruct H12 as (? & ? & ?); [eassumption|].
+        edestruct H2 as (? & ? & ?); [eassumption|].
+        edestruct H14 as (? & ? & ?); [eassumption|].
         repeat match goal with
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
                end.
+        destruct H6 as (m'1 & S1 & P1).
+        destruct H8 as (m'2 & S2 & P2).
+        pose proof (map_split_det S1 S2) as Q. subst m'2. rename m'1 into m'.
         eauto 10.
   Qed.
 
@@ -398,7 +470,8 @@ Section ExprImp2.
       eauto 10.
     - eapply @exec.interact; try eassumption.
       intros.
-      edestruct H1 as (? & ? & ?); [eassumption|].
+      edestruct H2 as (? & ? & ?); [eassumption|].
+      destruct H6 as (? & ? & ?).
       eauto 10.
   Qed.
 
@@ -416,7 +489,7 @@ Section ExprImp2.
       exec e s t m l (fun t' m' l' => map.only_differ l (modVars s) l').
   Proof.
     induction 1;
-      try solve [ econstructor; [eassumption..|map_solver locals_ok] ].
+      try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
       simpl; intros. map_solver locals_ok.
@@ -443,19 +516,22 @@ Section ExprImp2.
       edestruct H3 as (? & ? & ? & ? & ?); try eassumption.
       eexists; split; [eassumption|].
       eexists; split; [eassumption|].
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
     - eapply exec.interact; try eassumption.
       intros.
-      edestruct H1 as (? & ? & ?); try eassumption.
+      edestruct H2 as (? & ? & ?); try eassumption.
+      destruct H5 as (? & ? & ?).
       eexists; split; [eassumption|].
-      eapply only_differ_putmany. eassumption.
+      eexists; split; [eassumption|].
+      eapply map.only_differ_putmany. eassumption.
   Qed.
 
   Lemma modVarsSound: forall e s t m l post,
       exec e s t m l post ->
       exec e s t m l (fun t' m' l' => map.only_differ l (modVars s) l' /\ post t' m' l').
   Proof.
-    induction 1; try solve [econstructor; repeat split; try eassumption; map_solver locals_ok].
+    induction 1;
+      try solve [econstructor; repeat split; try eassumption; simpl; map_solver locals_ok].
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
       simpl; intros. intuition idtac. map_solver locals_ok.
@@ -476,12 +552,17 @@ Section ExprImp2.
       simpl. intros.
       edestruct H3 as (? & ? & ? & ? & ?); try eassumption.
       repeat (eexists || split || eassumption).
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
     - eapply exec.interact; try eassumption.
       intros.
-      edestruct H1 as (? & ? & ?); try eassumption.
+      edestruct H2 as (? & ? & ?); try eassumption.
+      destruct H5 as (? & ? & ?).
+      eexists; split; [eassumption|].
+      eexists; split; [eassumption|].
       repeat (eexists || split || eassumption).
-      eapply only_differ_putmany. eassumption.
+      eapply map.only_differ_putmany. eassumption.
   Qed.
 
 End ExprImp2.
+
+Goal True. idtac "End of ExprImp.v". Abort.

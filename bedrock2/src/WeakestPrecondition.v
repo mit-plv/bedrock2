@@ -89,9 +89,11 @@ Section WeakestPrecondition.
           post t m l)
       | cmd.interact binds action arges =>
         bind_ex args <- dexprs m l arges;
-        ext_spec t m action args (let old_mem := m in fun m rets =>
+        exists mKeep mGive, map.split m mKeep mGive /\
+        ext_spec t mGive action args (fun mReceive rets =>
           bind_ex_Some l <- map.putmany_of_list binds rets l;
-          post (cons ((old_mem, action, args), (m, rets)) t) m l)
+          exists m, map.split m mKeep mReceive /\
+          post (cons ((mGive, action, args), (mReceive, rets)) t) m l)
       end.
     Fixpoint cmd c := cmd_body cmd c.
   End WithFunctions.

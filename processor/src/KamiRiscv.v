@@ -81,7 +81,7 @@ Module KamiProc.
   End Width.
 
   Arguments st: clear implicits.
-  
+
 End KamiProc.
 
 Import MonadNotations.
@@ -425,6 +425,7 @@ Section Equiv.
     destruct H as [m2 H].
     apply simulate_bw_star in H. destruct H as (t' & m1'' & m2' & R1 & R2 & R3 & R4).
     rewrite R2 in A. inversion A. clear A. subst m1''.
+    unfold elem_of.
     eauto.
   Qed.
 
@@ -673,7 +674,7 @@ Section Equiv.
       all: admit.
       
     - (* "execNmZ" *) admit.
-    
+
   Admitted.
 
   Lemma kamiMultiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
