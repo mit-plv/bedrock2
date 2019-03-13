@@ -604,6 +604,11 @@ Section FlatToRiscv1.
 
   Arguments LittleEndian.combine: simpl never.
 
+  Lemma iset_is_supported: supported_iset iset.
+  Proof.
+    unfold iset. destruct_one_match; constructor.
+  Qed.
+
   Definition load_lit_semantics(v: Z): word :=
     add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add
       (ZToReg 0)
@@ -633,7 +638,7 @@ Section FlatToRiscv1.
       let insts := compile_stmt iset (SLit x v) in
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
-      valid_register x ->
+      valid_registers (SLit x v) ->
       runsTo (withRegs   (map.put initialL.(getRegs) x (ZToReg v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
@@ -641,34 +646,48 @@ Section FlatToRiscv1.
              post ->
       runsTo initialL post.
   Proof.
-    intros. substs.
-    unfold compile_stmt, compile_lit, compile_lit_rec in *.
-    simpl in *.
-  (*
-    destruct_everything; simpl in *.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    Time run1step.
-    match goal with
-    | R: runsTo ?m post |- runsToNonDet.runsTo _ _ ?m' post =>
-      replace m' with m; [exact R|]
+    intros *. intros E1 insts d P V N. substs.
+    lazymatch goal with
+    | H1: valid_registers ?s |- _ =>
+      pose proof (compile_stmt_emits_valid iset_is_supported H1 eq_refl) as EV
     end.
-    f_equal; try solve_word_eq.
-    f_equal. symmetry. apply compile_lit_correct.
-  Qed.
-  *)
+    simpl in *.
+    destruct_RiscvMachine initialL.
+    subst.
+    unfold compile_lit_new in *.
+    destruct (dec (- 2 ^ 11 <= v < 2 ^ 11)). {
+      unfold compile_lit_small in *.
+      run1det.
+      simpl_word_exprs word_ok.
+      exact N.
+    }
+    destruct (dec (- 2 ^ 31 <= v < 2 ^ 31)). {
+      unfold compile_lit_medium in *.
+      run1det.
+      run1det.
+      match goal with
+      | R: runsTo ?m post |- runsTo ?m' post =>
+        replace m' with m; [exact R|]
+      end.
+      cbv [withRegs withPc withNextPc withMem withLog]. clear N. f_equal.
+      - rewrite put_put_same. f_equal.
+        apply word.signed_inj.
+        rewrite word.signed_of_Z.
+        (* rewrite word.swrap_inrange; cycle 1. { case TODO. } *)
+        rewrite word.signed_add.
+        rewrite! word.signed_of_Z.
+        unfold word.swrap.
+        remember (2 ^ (width - 1)) as B.
+        remember (2 ^ width) as M.
+        remember (signExtend 11 (bitSlice v 0 12)) as E.
+        f_equal.
+(*
+do we have ready-to-use push/pull mod tactics to solve goals like
+
+(v + B) mod M = ((v - E + B) mod M - B + ((E + B) mod M - B) + B) mod M
+
+?
+*)
   Admitted.
 
   Definition eval_stmt := exec map.empty.
@@ -707,11 +726,6 @@ Section FlatToRiscv1.
       let Q := fresh "Q" in
       destruct (subst_load_bytes_for_eq Load Sep) as [Q ?]
     end.
-
-  Lemma iset_is_supported: supported_iset iset.
-  Proof.
-    unfold iset. destruct_one_match; constructor.
-  Qed.
 
   Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
       Memory.store_bytes n m1 a v = Some m1' ->

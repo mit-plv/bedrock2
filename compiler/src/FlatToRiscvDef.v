@@ -1,4 +1,5 @@
 Require Import coqutil.Macros.unique.
+Require Import coqutil.Decidable.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -171,6 +172,19 @@ Section FlatToRiscv1.
   Definition compile_lit(rd: Register)(v: Z): list Instruction :=
     compile_lit_rec 7 rd Register0 v.
 
+  Definition compile_lit_small(rd: Register)(v: Z): list Instruction :=
+    [[ Addi rd Register0 v ]].
+
+  Definition compile_lit_medium(rd: Register)(v: Z): list Instruction :=
+    let lo := signExtend 11 (bitSlice v 0 12) in
+    let hi := v - lo in
+    [[ Lui rd hi ; Addi rd rd lo ]].
+
+  Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
+    if dec (-2^11 <= v < 2^11) then compile_lit_small rd v else
+    if dec (-2^31 <= v < 2^31) then compile_lit_medium rd v else
+    compile_lit rd v.
+
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting
              (cond: bcond) (amt: Z) : Instruction:=
@@ -194,7 +208,7 @@ Section FlatToRiscv1.
     match s with
     | SLoad  sz x y => [[compile_load  iset sz x y 0]]
     | SStore sz x y => [[compile_store iset sz x y 0]]
-    | SLit x v => compile_lit x v
+    | SLit x v => compile_lit_new x v
     | SOp x op y z => compile_op x op y z
     | SSet x y => [[Add x Register0 y]]
     | SIf cond bThen bElse =>
