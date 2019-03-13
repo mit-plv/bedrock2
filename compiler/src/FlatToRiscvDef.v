@@ -23,6 +23,8 @@ Set Implicit Arguments.
 Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Prop :=
   forall instr, In instr prog -> verify instr iset.
 
+Definition swrap(width: Z)(z: Z): Z := (z + 2^(width-1)) mod 2^width - 2^(width-1).
+
 Module Import FlatToRiscvDef.
   Class parameters := {
     actname: Type;
@@ -176,8 +178,8 @@ Section FlatToRiscv1.
     [[ Addi rd Register0 v ]].
 
   Definition compile_lit_medium(rd: Register)(v: Z): list Instruction :=
-    let lo := signExtend 11 (bitSlice v 0 12) in
-    let hi := v - lo in
+    let lo := signExtend 12 (bitSlice v 0 12) in
+    let hi := swrap 32 (v - lo) in
     [[ Lui rd hi ; Addi rd rd lo ]].
 
   Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
