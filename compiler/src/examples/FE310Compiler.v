@@ -193,6 +193,14 @@ Proof.
     lia.
 Qed.
 
+Lemma input_program_correct:
+  exec map.empty swap_chars_over_uart [] map.empty map.empty (fun t m l => True).
+Proof.
+  eapply bedrock2.WeakestPreconditionProperties.sound_nil.
+  eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
+Qed.
+Print Assumptions input_program_correct. (* 4 axioms *)
+
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
                       initialSwapMachine
@@ -213,7 +221,6 @@ Proof.
   - cbv [Pipeline.ext_guarantee pipeline_params FlatToRiscv.FlatToRiscv.ext_guarantee
          FlatToRiscv_params mmio_params].
     exact initialMachine_undef_on_MMIO_addresses.
-  - eapply bedrock2.WeakestPreconditionProperties.sound_nil.
-    eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
+  - apply input_program_correct.
 Qed.
-Print Assumptions end2endDemo.
+Print Assumptions end2endDemo. (* many axioms *)
