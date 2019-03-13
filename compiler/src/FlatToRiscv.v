@@ -206,8 +206,6 @@ Section FlatToRiscv1.
        morphism word_ring_morph,
        constants [word_cst]).
 
-  Ltac state_calc0 := map_solver locals_ok.
-
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word) {T: Type} (thenVal elseVal: T),
@@ -475,219 +473,10 @@ Section FlatToRiscv1.
 
   Arguments Z.modulo : simpl never.
 
-  Hint Unfold
-       Program.getRegister
-       Program.setRegister
-       Program.loadByte
-       Program.loadHalf
-       Program.loadWord
-       Program.loadDouble
-       Program.storeByte
-       Program.storeHalf
-       Program.storeWord
-       Program.storeDouble
-       Program.getPC
-       Program.setPC
-       Program.step
-       Program.raiseException
-    : unf_Program_methods.
-
-(*
-  Ltac prove_go_lemma :=
-    intros;
-    unfold valid_register, computation_satisfies in *;
-    autounfold with unf_Program_methods in *;
-    unfold IsRiscvMachineL in *;
-    unfold valid_register, Register0,
-           liftLoad, liftStore, logEvent in *;
-    repeat match goal with
-           | |- _ => reflexivity
-           | |- _ => progress (subst)
-           | |- _ => solve [exfalso; lia]
-           | |- _ => discriminate
-           | |- _ => assumption
-           | |- _ => rewrite associativity
-           | |- _ => rewrite OStateNDOperations.Bind_get
-           | |- _ => rewrite OStateNDOperations.Bind_put
-           | |- _ => rewrite left_identity
-           | |- context [if ?x then _ else _] => let E := fresh "E" in destruct x eqn: E
-           | _: context [if ?x then _ else _] |- _ => let E := fresh "E" in destruct x eqn: E
-           end.
-*)
-
-  Ltac sidecondition_less_safe := eassumption || reflexivity || idtac.
-
-  (*
-  Notation K := Z.
-  Notation V := mword.
-  *)
-
-  (* only strictly needed if we want to export the goal into a map_solver-only environment,
-     but might result in a speed up if used anyways *)
-  Ltac prepare_for_map_solver :=
-    repeat match goal with
-             | IH: forall (s : stmt), _ |- _ => clear IH
-             | H: context [FlatImp.modVars ?var ?func ?s] |- _ =>
-               let n := fresh "mv" s in
-               forget (FlatImp.modVars var func s) as n
-         (*  | H: Memory.read_mem _ _ = _ |- _ => clear H *)
-             | H: ?P |- _ =>
-               let h := head_of_app P in
-               match h with
-               | @stmt_not_too_big => clear H
-               | @valid_register => clear H
-               | @valid_registers => clear H
-        (*     | @divisibleBy4 => clear H  *)
-               end
-             | H: @eq ?T _ _ |- _ =>
-               match T with
-            (* | option Semantics.word => don't clear because we have maps of Semantics.word *)
-           (*  | option (map Z word * Memory.mem) => clear H *)
-               | option mem => clear H
-               | list _ => clear H
-               | nat => clear H
-               end
-           end;
-    repeat match goal with
-           | H: ?P |- _ =>
-             progress
-               tryif (let T := type of P in unify T Prop)
-               then revert H
-               else (match P with
-                     | _ => clear H
-                     end)
-           end;
-    repeat match goal with
-           | x: ?T |- _ =>
-             lazymatch T with
-             | MachineWidth _  => fail
-             | DecidableEq _ => fail
-             | _ => revert x
-             end
-           end.
-
-  Ltac state_calc_with_logging :=
-    prepare_for_map_solver;
-    idtac "map_solver goal:";
-    match goal with
-    | |- ?G => idtac G
-    end;
-    time state_calc0.
-
-  Ltac state_calc_with_timing :=
-    prepare_for_map_solver;
-    time state_calc0.
-
-  Ltac state_calc_without_logging :=
-    prepare_for_map_solver;
-    state_calc0.
-
-  Ltac state_calc := state_calc_without_logging.
-
-(*
-  Hint Rewrite
-      (@associativity  _ (OStateND_Monad RiscvMachine))
-      (@left_identity  _ (OStateND_Monad RiscvMachine))
-      (@right_identity _ (OStateND_Monad RiscvMachine))
-      (@Bind_getRegister _ _ _ _ _ _ _)
-      (@Bind_getRegister0 _ _ _ _ _ _ _)
-      (@Bind_setRegister _ _ _ _ _ _ _)
-      (@Bind_setRegister0 _ _ _ _ _ _ _)
-      (@Bind_getPC _ _ _ _ _ _ _)
-      (@Bind_setPC _ _ _ _ _ _ _)
-  using assumption : rew_get_set_Register.
-
-  Ltac do_get_set_Register := autorewrite with rew_get_set_Register.
-*)
-
-  (* requires destructed RiscvMachine and containsProgram *)
-  Ltac fetch_inst :=
-    eapply go_fetch_inst; [reflexivity|simpl (*; solve_containsProgram *)|].
-
-  Ltac rewrite_reg_value :=
-    match goal with
-    | |- context [get    _ _] => idtac
-    | _ => fail 1 "wrong shape of goal"
-    end. (*;
-    let G1 := fresh "G1" in
-    match goal with
-    | G2: get ?st2 ?x = ?v, E: map.extends ?st1 ?st2 |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
-      let gg := constr:(@getReg RF R V TC st1 x) in
-      let gg' := eval unfold getReg, State_is_RegisterFile in gg in
-      progress change gg with gg';
-      match gg' with
-      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
-      end
-    | G2: get ?st2 ?x = ?v, E: map.extends ?st1 ?st2 |- context [?gg'] =>
-      match gg' with
-      | match ?gg'' with | _ => _ end => assert (G1: gg'' = v) by state_calc
-      end
-    end;
-    rewrite G1;
-    clear G1. *)
-
-  Ltac rewrite_getReg := idtac. (*
-    match goal with
-    | |- context [@getReg ?RF ?R ?V ?TC ?st1 ?x] =>
-      let gg := constr:(@getReg RF R V TC st1 x) in
-      let gg' := eval unfold getReg, State_is_RegisterFile in gg in
-          progress change gg with gg'
-    end. *)
-
-  Ltac rewrite_setReg := idtac. (*
-    match goal with
-    | |- context [@setReg ?RF ?R ?V ?TC ?st1 ?x ?v] =>
-      let gg := constr:(@setReg RF R V TC st1 x v) in
-      let gg' := eval unfold setReg, State_is_RegisterFile in gg in
-          progress change gg with gg'
-    end. *)
-
   Ltac solve_valid_registers :=
     match goal with
     | |- valid_registers _ => solve [simpl; auto]
     end.
-
-  Lemma add_to_instsBefore: forall (before insts1 insts2 after: list Instruction),
-      before ++ (insts1 ++ insts2) ++ after = (before ++ insts1) ++ insts2 ++ after.
-  Proof. intros. rewrite <-? app_assoc. reflexivity. Qed.
-
-  Lemma add_to_instsAfter: forall (before insts1 insts2 after: list Instruction),
-      before ++ (insts1 ++ insts2) ++ after = before ++ insts1 ++ (insts2 ++ after).
-  Proof. intros. rewrite <-? app_assoc. reflexivity. Qed.
-
-  (* Solves an equality of the form
-        before ++ insts ++ after = evarForBefore ++ subseqOfInsts ++ evarForAfter
-     instantiating evarForBefore and evarForAfter appropriately.
-     Works by first shoveling instructions from "insts" into "before" until "subseqOfInsts"
-     is found, and then shoveling the remaining instructions from "insts" into "after". *)
-  Ltac solve_imem :=
-    repeat match goal with
-           | H: _ |- _ => clear H
-           end;
-    let targetInsts := fresh "targetInsts" in
-    lazymatch goal with
-    | |- ?lhs = _ ++ ?insts ++ _ =>
-      match lhs with
-      | context [insts] => remember insts as targetInsts
-      end
-    end;
-    repeat match goal with
-           | |- context [?h :: ?t] =>
-             tryif (unify t [[]])
-             then fail
-             else (change (h :: t) with ([h] ++ t))
-           end;
-    repeat match goal with
-           | |- ?before ++ (targetInsts ++ ?insts2) ++ ?after = _ => fail 1 (* success/quit loop *)
-           | |- ?before ++ (?insts1 ++ ?insts2) ++ ?after = _ =>
-             rewrite (add_to_instsBefore before insts1 insts2 after)
-           end;
-    repeat match goal with
-           | |- ?before ++ (?insts1 ++ ?insts2) ++ ?after = _ =>
-             rewrite (add_to_instsAfter before insts1 insts2 after)
-           end;
-    subst targetInsts;
-    reflexivity.
 
   Instance word_eq_dec: DecidableEq word. (* TODO *) Admitted.
 
@@ -936,9 +725,9 @@ Section FlatToRiscv1.
       destruct (subst_load_bytes_for_eq Load Sep) as [Q ?]
     end.
 
-  Lemma doesSupportM: supportsM iset = true.
+  Lemma iset_is_supported: supported_iset iset.
   Proof.
-    unfold iset. destruct_one_match; reflexivity.
+    unfold iset. destruct_one_match; constructor.
   Qed.
 
   Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
@@ -1006,7 +795,7 @@ Section FlatToRiscv1.
     induction 1; intros;
       lazymatch goal with
       | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
-        pose proof (compile_stmt_emits_valid _ doesSupportM H1 H2)
+        pose proof (compile_stmt_emits_valid iset_is_supported H1 H2)
       end;
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set

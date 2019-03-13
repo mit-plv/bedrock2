@@ -40,6 +40,13 @@ Ltac unique_inversion :=
            fail 1 (* don't destruct typeclass instances *)
     | _ => idtac
     end;
+    lazymatch P with
+    | ?LHS = ?RHS =>
+      (* don't simpl if user didn't simpl *)
+      let h1 := head_of_app LHS in is_constructor h1;
+      let h2 := head_of_app RHS in is_constructor h2
+    | _ => idtac
+    end;
     protect_equalities;
     inversion H;
     [> (* require exactly one goal *)

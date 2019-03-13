@@ -7,7 +7,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
 
-Definition lightbulb := 
+Definition lightbulb :=
     let packet : varname := "packet" in
     let len : varname := "len" in
     let ethertype : varname := "ethertype" in
@@ -46,7 +46,7 @@ From bedrock2.Map Require Import Separation SeparationLogic.
 
 Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
-Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions => 
+Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions =>
   forall p_addr packet len R m t,
     (array scalar8 (word.of_Z 1) p_addr packet * R) m ->
     42 < Z.of_nat (List.length packet) ->
@@ -81,22 +81,34 @@ Proof.
   repeat straightline.
 
   (* the 1st MMIOREAD *)
-  cbn [args ext_spec FE310CSemantics.parameters]; split;
-    [abstract (cbv; clear; intuition congruence) | intros].
+  cbn [args ext_spec FE310CSemantics.parameters].
+  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
+  split; [cbv; clear; intuition congruence | intros].
   repeat straightline.
+  exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
+  repeat straightline.
+  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
 
-  cbn [args ext_spec FE310CSemantics.parameters]; split;
-    [abstract (cbv; clear; intuition congruence) | intros].
+  cbn [args ext_spec FE310CSemantics.parameters].
+  split. { cbv; clear; intuition congruence. }
   repeat straightline.
+  exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
+  repeat straightline.
+  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
 
-  cbn [args ext_spec FE310CSemantics.parameters]; split;
-    [abstract (cbv; clear; intuition congruence) | intros].
+  cbn [args ext_spec FE310CSemantics.parameters].
+  split. { cbv; clear; intuition congruence. }
   repeat straightline.
+  exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
+  repeat straightline.
+  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
 
-  cbn [args ext_spec FE310CSemantics.parameters]; split;
-    [abstract (cbv; clear; intuition congruence) | intros].
+  cbn [args ext_spec FE310CSemantics.parameters].
+  split. { cbv; clear; intuition congruence. }
   repeat straightline.
-  eauto.
+  exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
+  repeat straightline.
+  clear. eauto.
 Qed.
 
 Compute BasicCSyntax.c_func (lightbulb).

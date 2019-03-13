@@ -25,6 +25,11 @@ COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedroc
 Makefile.coq.all: force _CoqProject
 	$(COQ_MAKEFILE) $(VS) -o Makefile.coq.all
 
+src/BytedumpTest.out: src/BytedumpTest.v src/BytedumpTest.golden.txt
+	coqc -q $(shell cat _CoqProject | grep -v ^-arg) $< | head --bytes -1 | hexdump -C > src/BytedumpTest.out.tmp
+	diff -u src/BytedumpTest.golden.txt src/BytedumpTest.out.tmp
+	mv src/BytedumpTest.out.tmp src/BytedumpTest.out
+
 force:
 
 clean:: Makefile.coq.all

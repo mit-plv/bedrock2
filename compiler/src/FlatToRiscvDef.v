@@ -97,8 +97,8 @@ Section FlatToRiscv1.
 
   Definition is32bit(iset: InstructionSet): bool :=
     match iset with
-    | RV32I | RV32IM | RV32IA | RV32IMA => true
-    | RV64I | RV64IM | RV64IA | RV64IMA => false
+    | RV32I | RV32IM | RV32IA | RV32IMA | RV32IF | RV32IMF | RV32IAF | RV32IMAF => true
+    | RV64I | RV64IM | RV64IA | RV64IMA | RV64IF | RV64IMF | RV64IAF | RV64IMAF => false
     end.
 
   (* load & store depend on the bitwidth: on 32-bit machines, Lw just loads 4 bytes,

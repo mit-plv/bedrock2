@@ -29,8 +29,8 @@ Section Equiv.
   (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {M: Type -> Type}.
   Context `{Pr: Primitives MMIOAction M}.
-  Context {RVS: RiscvState M word}.
-  Notation RiscvMachine := (RiscvMachine Register MMIOAction).
+  Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
+  Notation RiscvMachine := (riscv.Platform.RiscvMachine.RiscvMachine Register MMIOAction).
 
   Definition iset: InstructionSet := if width =? 32 then RV32IM else RV64IM.
 
