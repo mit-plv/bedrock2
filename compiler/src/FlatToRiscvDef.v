@@ -182,10 +182,23 @@ Section FlatToRiscv1.
     let hi := swrap 32 (v - lo) in
     [[ Lui rd hi ; Addi rd rd lo ]].
 
+  Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
+    let v0 := bitSlice v  0 11 in
+    let v1 := bitSlice v 11 22 in
+    let v2 := bitSlice v 22 32 in
+    let hi := bitSlice v 32 64 in
+    compile_lit_medium rd (signExtend 32 hi) ++
+    [[ Slli rd rd 10 ;
+       Addi rd rd v2 ;
+       Slli rd rd 11 ;
+       Addi rd rd v1 ;
+       Slli rd rd 11 ;
+       Addi rd rd v0 ]].
+
   Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
     if dec (-2^11 <= v < 2^11) then compile_lit_small rd v else
     if dec (-2^31 <= v < 2^31) then compile_lit_medium rd v else
-    compile_lit rd v.
+    compile_lit_large rd (v mod 2 ^ 64). (* TODO do better for 2^31<=v<2^32 *)
 
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting

@@ -439,6 +439,72 @@ Section EmitsValid.
         lia.
   Qed.
 
+  Lemma valid_Slli: forall rd rs shamt,
+      0 <= shamt < 32 ->
+      valid_register rd ->
+      valid_register rs ->
+      verify (IInstruction (Slli rd rs shamt)) iset.
+  Proof.
+    intros.
+    unfold verify, valid_register in *;
+    simpl;
+    autounfold with unf_encode_consts unf_verify;
+    unfold Register0 in *;
+    destruct iset;
+    lia.
+  Qed.
+
+  Lemma valid_Addi_bitSlice: forall rd rs w i j,
+      0 <= i <= j ->
+      j - i <= 11 ->
+      valid_register rd ->
+      valid_register rs ->
+      verify (IInstruction (Addi rd rs (bitSlice w i j))) iset.
+  Proof.
+    intros.
+    assert (- 2 ^ 11 <= bitSlice w i j < 2 ^ 11). {
+      rewrite bitSlice_alt by assumption.
+      unfold bitSlice'.
+      assert (2 ^ (j - i) <> 0) as A. {
+        apply Z.pow_nonzero; lia.
+      }
+      pose proof (Z.mod_bound_or (w / 2 ^ i) (2 ^ (j - i)) A) as P.
+      assert (0 < 2 ^ 11) by reflexivity.
+      assert (0 < 2 ^ (j - i)). {
+        apply Z.pow_pos_nonneg; lia.
+      }
+      assert (2 ^ (j - i) <= 2 ^ 11) as B. {
+        apply Z.pow_le_mono_r; lia.
+      }
+      lia.
+    }
+    unfold verify, valid_register in *;
+    simpl;
+    autounfold with unf_encode_consts unf_verify;
+    unfold Register0 in *;
+    destruct iset;
+    lia.
+  Qed.
+
+  Lemma compile_lit_large_emits_valid: forall r w,
+      0 <= w < 2^64 ->
+      valid_register r ->
+      valid_instructions iset (compile_lit_large r w).
+  Proof.
+    intros. unfold compile_lit_large, valid_instructions.
+    intros. apply in_app_or in H1. destruct H1. {
+      eapply compile_lit_medium_emits_valid; try eassumption.
+      change 31 with (32 - 1).
+      eapply signExtend_range; [reflexivity|].
+      change 32 with (64 - 32) at 3.
+      apply bitSlice_bounds.
+      lia.
+    }
+    simpl in *.
+    repeat destruct H1 as [H1 | H1]; [subst instr..|contradiction];
+      (eapply valid_Addi_bitSlice || eapply valid_Slli); try eassumption; try lia.
+  Qed.
+
   Lemma compile_lit_new_emits_valid: forall r w,
       valid_register r ->
       valid_instructions iset (compile_lit_new r w).
@@ -452,7 +518,8 @@ Section EmitsValid.
     destruct_one_match_hyp. {
       eapply compile_lit_medium_emits_valid; eassumption.
     }
-    eapply compile_lit_emits_valid; eassumption.
+    eapply compile_lit_large_emits_valid; try eassumption.
+    apply Z.mod_pos_bound. reflexivity.
   Qed.
 
   Lemma compile_op_emits_valid: forall x op y z,
