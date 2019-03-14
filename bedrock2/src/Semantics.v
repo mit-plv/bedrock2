@@ -69,7 +69,7 @@ Section semantics.
 
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
-    Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
+    Fixpoint eval_expr_log (e : expr) (mc : metrics) : option (word * metrics) :=
       match e with
       | expr.literal v => Some (word.of_Z v, addMetricInstructions 16
                                              (addMetricLoads 16 mc))
@@ -79,21 +79,34 @@ Section semantics.
                       | None => None
                       end
       | expr.load aSize a =>
-          'Some (a', mc') <- eval_expr a mc | None;
+          'Some (a', mc') <- eval_expr_log a mc | None;
           'Some v <- load aSize m a' | None;
           Some (v, addMetricInstructions 1
                    (addMetricLoads 2 mc'))
       | expr.op op e1 e2 =>
-          'Some (v1, mc') <- eval_expr e1 mc | None;
-          'Some (v2, mc'') <- eval_expr e2 mc' | None;
+          'Some (v1, mc') <- eval_expr_log e1 mc | None;
+          'Some (v2, mc'') <- eval_expr_log e2 mc' | None;
           Some (interp_binop op v1 v2, addMetricInstructions 1
                                        (addMetricLoads 1 mc''))
+      end.
+
+    Fixpoint eval_expr (e : expr) : option word :=
+      match e with
+      | expr.literal v => Some (word.of_Z v)
+      | expr.var x => map.get l x
+      | expr.load aSize a =>
+          'Some a' <- eval_expr a | None;
+          load aSize m a'
+      | expr.op op e1 e2 =>
+          'Some v1 <- eval_expr e1 | None;
+          'Some v2 <- eval_expr e2 | None;
+          Some (interp_binop op v1 v2)
       end.
 
     Definition expr_list_log_folder (e : expr) (b : option (list word * metrics))
       : option (list word * metrics) :=
       'Some (vs, mc) <- b | None;
-      'Some (v, mc') <- eval_expr e mc | None;
+      'Some (v, mc') <- eval_expr_log e mc | None;
       Some (List.cons v vs, mc').
 
     Definition evaluate_call_args_log (arges : list expr) (mc : metrics) :=
@@ -117,7 +130,7 @@ Module exec. Section WithEnv.
     : exec cmd.skip t m l mc post
   | set x e
     t m l mc post
-    v mc' (_ : eval_expr m l e mc = Some (v, mc'))
+    v mc' (_ : eval_expr_log m l e mc = Some (v, mc'))
     (_ : post t m (map.put l x v) (addMetricInstructions 1
                                   (addMetricLoads 1 mc')))
     : exec (cmd.set x e) t m l mc post
@@ -127,15 +140,15 @@ Module exec. Section WithEnv.
     : exec (cmd.unset x) t m l mc post
   | store sz ea ev
     t m l mc post
-    a mc' (_ : eval_expr m l ea mc = Some (a, mc'))
-    v mc'' (_ : eval_expr m l ev mc' = Some (v, mc''))
+    a mc' (_ : eval_expr_log m l ea mc = Some (a, mc'))
+    v mc'' (_ : eval_expr_log m l ev mc' = Some (v, mc''))
     m' (_ : store sz m a v = Some m')
     (_ : post t m' l (addMetricInstructions 1
                      (addMetricLoads 1
                      (addMetricStores 1 mc''))))
     : exec (cmd.store sz ea ev) t m l mc post
   | if_true t m l mc e c1 c2 post
-    v mc' (_ : eval_expr m l e mc = Some (v, mc'))
+    v mc' (_ : eval_expr_log m l e mc = Some (v, mc'))
     (_ : word.unsigned v <> 0)
     (_ : exec c1 t m l (addMetricInstructions 1
                        (addMetricLoads 1
@@ -143,7 +156,7 @@ Module exec. Section WithEnv.
     : exec (cmd.cond e c1 c2) t m l mc post
   | if_false e c1 c2
     t m l mc post
-    v mc' (_ : eval_expr m l e mc = Some (v, mc'))
+    v mc' (_ : eval_expr_log m l e mc = Some (v, mc'))
     (_ : word.unsigned v = 0)
     (_ : exec c2 t m l (addMetricInstructions 1
                        (addMetricLoads 1
@@ -156,7 +169,7 @@ Module exec. Section WithEnv.
     : exec (cmd.seq c1 c2) t m l mc post
   | while_false e c
     t m l mc post
-    v mc' (_ : eval_expr m l e mc = Some (v, mc'))
+    v mc' (_ : eval_expr_log m l e mc = Some (v, mc'))
     (_ : word.unsigned v = 0)
     (_ : post t m l (addMetricInstructions 1
                     (addMetricLoads 1
@@ -164,7 +177,7 @@ Module exec. Section WithEnv.
     : exec (cmd.while e c) t m l mc post
   | while_true e c
       t m l mc post
-      v mc' (_ : eval_expr m l e mc = Some (v, mc'))
+      v mc' (_ : eval_expr_log m l e mc = Some (v, mc'))
       (_ : word.unsigned v <> 0)
       mid (_ : exec c t m l mc' mid)
       (_ : forall t' m' l' mc'', mid t' m' l' mc'' ->
