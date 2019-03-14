@@ -681,15 +681,37 @@ Section FlatToRiscv1.
             let hi := fun v => (swrap 32 (v - signExtend 12 (bitSlice v 0 12))) in
             word.swrap v = word.swrap (word.swrap (hi v) + word.swrap (lo v))).
         intros lo hi.
+        assert (v mod (2 ^ width) = (hi v + lo v) mod (2 ^ width)) as A by admit.
+
         unfold word.swrap.
         simpl.
         remember (2 ^ (width - 1)) as B.
         remember (2 ^ width) as M.
         f_equal.
         match goal with
-        | |- (_ + ?x) mod ?m = (_ + ?x) mod ?m => idtac x
+        | |- (?a + ?b) mod ?n = (?a' + ?b) mod ?n =>
+          rewrite (Zplus_mod a b n); rewrite (Zplus_mod a' b n)
         end.
-        Search ((_ + _) mod _).
+        f_equal.
+        f_equal.
+        (* push *)
+        rewrite Zplus_mod.
+        rewrite (Zminus_mod ((hi v + B) mod M) B M).
+        rewrite (Zminus_mod ((lo v + B) mod M) B M).
+        rewrite (Zplus_mod (hi v) B M).
+        rewrite (Zplus_mod (lo v) B M).
+
+        rewrite! Zmod_mod.
+
+        (* pull *)
+        rewrite <- (Zplus_mod (hi v) B M).
+        rewrite <- (Zplus_mod (lo v) B M).
+        rewrite <- (Zminus_mod (hi v + B) B M).
+        rewrite <- (Zminus_mod (lo v + B) B M).
+        rewrite <- (Zplus_mod (hi v + B - B) (lo v + B - B) M).
+        ring_simplify (hi v + B - B + (lo v + B - B)).
+
+        exact A.
 
 (*
 do we have ready-to-use push/pull mod tactics to solve goals like
@@ -697,7 +719,11 @@ do we have ready-to-use push/pull mod tactics to solve goals like
 (v + B) mod M = ((v - E + B) mod M - B + ((E + B) mod M - B) + B) mod M
 
 ?
-*)
+ *)
+      - solve_word_eq word_ok.
+      - solve_word_eq word_ok.
+    }
+
   Admitted.
 
   Definition eval_stmt := exec map.empty.
