@@ -11,6 +11,7 @@ Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.ListLib.
+Require Import riscv.Platform.MetricLogging.
 
 Local Set Ltac Profiling.
 
@@ -398,15 +399,15 @@ Section ExprImp2.
     reflexivity.
   Qed.
 
-  Lemma intersect_exec: forall env t l m s post1,
-      exec env s t m l post1 ->
+  Lemma intersect_exec: forall env t l m mc s post1,
+      exec env s t m l mc post1 ->
       forall post2,
-        exec env s t m l post2 ->
-        exec env s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
+        exec env s t m l mc post2 ->
+        exec env s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
   Proof.
     induction 1; intros;
       match goal with
-      | H: exec _ _ _ _ _ _ |- _ => inversion H; subst; clear H
+      | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H
       end;
       try match goal with
       | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
@@ -415,6 +416,11 @@ Section ExprImp2.
           replace z2 with z1 in * by congruence;
           clear x2 y2 z2 H2
       end;
+      repeat match goal with
+             | H1: ?e = Some (?v1, ?mc1), H2: ?e = Some (?v2, ?mc2) |- _ =>
+               replace v2 with v1 in * by congruence;
+               replace mc2 with mc1 in * by congruence; clear H2
+             end;
       repeat match goal with
              | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                replace v2 with v1 in * by congruence; clear H2
@@ -428,23 +434,23 @@ Section ExprImp2.
       + eapply IHexec. exact H9. (* not H1 *)
       + simpl. intros *. intros [? ?]. eauto.
     - eapply exec.call. 1, 2, 3: eassumption.
-      + eapply IHexec. exact H15. (* not H2 *)
+      + eapply IHexec. exact H16. (* not H2 *)
       + simpl. intros *. intros [? ?].
         edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
-        edestruct H16 as (? & ? & ? & ? & ?); [eassumption|].
+        edestruct H17 as (? & ? & ? & ? & ?); [eassumption|].
         repeat match goal with
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
                end.
         eauto 10.
     - pose proof ext_spec_intersect as P.
-      specialize P with (1 := H1) (2 := H13). destruct P as [? P]. subst mGive0.
+      specialize P with (1 := H1) (2 := H14). destruct P as [? P]. subst mGive0.
       pose proof (map_split_diff H H7). subst mKeep0. clear H7.
       eapply exec.interact. 1,2: eassumption.
-      + eapply ext_spec_intersect; [ exact H1 | exact H13 ].
+      + eapply ext_spec_intersect; [ exact H1 | exact H14 ].
       + simpl. intros *. intros [? ?].
         edestruct H2 as (? & ? & ?); [eassumption|].
-        edestruct H14 as (? & ? & ?); [eassumption|].
+        edestruct H15 as (? & ? & ?); [eassumption|].
         repeat match goal with
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
@@ -455,11 +461,11 @@ Section ExprImp2.
         eauto 10.
   Qed.
 
-  Lemma weaken_exec: forall env t l m s post1,
-      exec env s t m l post1 ->
-      forall post2: _ -> _ -> _ -> Prop,
-        (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
-        exec env s t m l post2.
+  Lemma weaken_exec: forall env t l m mc s post1,
+      exec env s t m l mc post1 ->
+      forall post2: _ -> _ -> _ -> _ -> Prop,
+        (forall t' m' l' mc', post1 t' m' l' mc' -> post2 t' m' l' mc') ->
+        exec env s t m l mc post2.
   Proof.
     induction 1; intros; try solve [econstructor; eauto].
     - eapply @exec.call.
@@ -484,9 +490,9 @@ Section ExprImp2.
      in combination with intersect_exec.
      So it makes more sense to directly prove the conjunction version which follows after
      this proof. *)
-  Lemma modVarsSound_less_useful: forall e s t m l post,
-      exec e s t m l post ->
-      exec e s t m l (fun t' m' l' => map.only_differ l (modVars s) l').
+  Lemma modVarsSound_less_useful: forall e s t m l mc post,
+      exec e s t m l mc post ->
+      exec e s t m l mc (fun t' m' l' mc' => map.only_differ l (modVars s) l').
   Proof.
     induction 1;
       try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
@@ -497,14 +503,14 @@ Section ExprImp2.
       eapply weaken_exec; [eassumption|].
       simpl; intros. map_solver locals_ok.
     - eapply exec.seq with
-          (mid0 := fun t' m' l' => mid t' m' l' /\ map.only_differ l (modVars c1) l').
+          (mid0 := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars c1) l').
       + eapply intersect_exec; eassumption.
       + simpl. intros *. intros [? ?].
         eapply weaken_exec; [eapply H1; eauto|].
         simpl; intros.
         map_solver locals_ok.
     - eapply exec.while_true with
-          (mid0 := fun t' m' l' => mid t' m' l' /\ map.only_differ l (modVars c) l');
+          (mid0 := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars c) l');
         try eassumption.
       + eapply intersect_exec; eassumption.
       + intros *. intros [? ?]. simpl in *.
@@ -526,9 +532,9 @@ Section ExprImp2.
       eapply map.only_differ_putmany. eassumption.
   Qed.
 
-  Lemma modVarsSound: forall e s t m l post,
-      exec e s t m l post ->
-      exec e s t m l (fun t' m' l' => map.only_differ l (modVars s) l' /\ post t' m' l').
+  Lemma modVarsSound: forall e s t m l mc post,
+      exec e s t m l mc post ->
+      exec e s t m l mc (fun t' m' l' mc' => map.only_differ l (modVars s) l' /\ post t' m' l' mc').
   Proof.
     induction 1;
       try solve [econstructor; repeat split; try eassumption; simpl; map_solver locals_ok].
