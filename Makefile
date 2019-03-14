@@ -42,7 +42,7 @@ riscv-coq: coqutil
 clean_riscv-coq:
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq clean
 
-bedrock2: coqutil
+bedrock2: coqutil riscv-coq
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2
 
 clean_bedrock2:
