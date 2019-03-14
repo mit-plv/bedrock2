@@ -676,11 +676,21 @@ Section FlatToRiscv1.
         (* rewrite word.swrap_inrange; cycle 1. { case TODO. } *)
         rewrite word.signed_add.
         rewrite! word.signed_of_Z.
+        change (
+            let lo := fun v => (signExtend 12 (bitSlice v 0 12)) in
+            let hi := fun v => (swrap 32 (v - signExtend 12 (bitSlice v 0 12))) in
+            word.swrap v = word.swrap (word.swrap (hi v) + word.swrap (lo v))).
+        intros lo hi.
         unfold word.swrap.
+        simpl.
         remember (2 ^ (width - 1)) as B.
         remember (2 ^ width) as M.
-        remember (signExtend 11 (bitSlice v 0 12)) as E.
         f_equal.
+        match goal with
+        | |- (_ + ?x) mod ?m = (_ + ?x) mod ?m => idtac x
+        end.
+        Search ((_ + _) mod _).
+
 (*
 do we have ready-to-use push/pull mod tactics to solve goals like
 
