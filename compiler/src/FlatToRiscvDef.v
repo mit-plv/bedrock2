@@ -177,16 +177,22 @@ Section FlatToRiscv1.
   Definition compile_lit_small(rd: Register)(v: Z): list Instruction :=
     [[ Addi rd Register0 v ]].
 
-  Definition correction(v: Z): Z :=
-    (* we branch on (Z.testbit v 31) and (Z.testbit v 12), but writing it this way
-       makes the proofs simpler *)
-    (if dec (v < 0) then 2 ^ 11 else 0) +
-    (if dec (2 ^ 11 <= bitSlice v 0 12) then 2 ^ 11 else 0).
+  (* On a 64bit machine, loading a constant -2^31 <= v < 2^31 is not always possible with
+     a Lui followed by an Addi:
+     If the constant is of the form 0x7ffffXXX, and XXX has its highest bit set, ...
+
+     Or spelled differently:
+     If we consider all possible combinations of a Lui followed by an Addi, we get 2^32
+     different values, but some of them are not in the range -2^31 <= v < 2^31.
+     On the other hand, this property holds for combining Lui followed by a Xori. *)
+
+  Definition f: Z -> Z := id.
+  Arguments f: simpl never.
 
   Definition compile_lit_medium(rd: Register)(v: Z): list Instruction :=
-    let lo := bitSlice v 0 12 - correction v in
-    let hi := v - lo in
-    [[ Lui rd hi ; Addi rd rd lo ]].
+    let lo := f v in
+    let hi := Z.lxor v lo in
+    [[ Lui rd hi ; Xori rd rd lo ]].
 
   Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
     let v0 := bitSlice v  0 11 in

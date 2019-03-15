@@ -403,31 +403,6 @@ Section EmitsValid.
 
   Axiom doesn't_hold: False.
 
-  Lemma correction_correct_mod: forall v,
-      -2^31 <= v < 2^31 ->
-      (v - (bitSlice v 0 12 - correction v)) mod 2 ^ 12 = 0.
-  Proof.
-    intros.
-    rewrite <- Zminus_mod_idemp_r.
-    rewrite <- (Zminus_mod_idemp_r (bitSlice v 0 12) (correction v) (2 ^ 12)).
-    unfold correction.
-    do 2 destruct_one_match;
-      match goal with
-      | |- context C [ (bitSlice v 0 12) - ?x ] =>
-        let x' := eval cbv in x in change x with x'
-      end.
-    - rewrite Z.sub_0_r.
-      rewrite Zminus_mod_idemp_r.
-      apply remove_lobits.
-      lia.
-    - case doesn't_hold. (* doesn't work *)
-    - case doesn't_hold. (* doesn't work *)
-    - rewrite Z.sub_0_r.
-      rewrite Zminus_mod_idemp_r.
-      apply remove_lobits.
-      lia.
-  Qed.
-
   Lemma compile_lit_medium_emits_valid: forall r v,
       -2^31 <= v < 2^31 ->
       valid_register r ->
@@ -472,15 +447,13 @@ Section EmitsValid.
       rewrite Z.sub_diag.
       reflexivity.
     }
-    pose proof (correction_correct_mod H) as P5.
     destruct H1 as [ ? | [? | ?] ]; [subst..|contradiction];
       (split; [|exact I]); simpl;
         autounfold with unf_verify unf_encode_consts;
-        unfold Register0, valid_register, correction in *;
+        unfold Register0, valid_register in *;
         simpl_pow2;
-        do 2 destruct_one_match;
-        lia.
-  Qed.
+        repeat split; try lia.
+  Admitted.
 
   Lemma valid_Slli: forall rd rs shamt,
       0 <= shamt < 32 ->

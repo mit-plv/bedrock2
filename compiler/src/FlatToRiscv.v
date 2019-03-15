@@ -633,6 +633,11 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
+  Definition swrap'(width n: Z): Z :=
+    if Z.testbit n (width - 1)
+    then (Z.lor (Z.land n (Z.ones (width - 1))) (Z.shiftl (-1) width))
+    else n.
+
   Lemma compile_lit_correct_full: forall initialL post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
       let insts := compile_stmt iset (SLit x v) in
@@ -673,9 +678,36 @@ Section FlatToRiscv1.
       - rewrite put_put_same. f_equal.
         apply word.signed_inj.
         rewrite word.signed_of_Z.
-        (* rewrite word.swrap_inrange; cycle 1. { case TODO. } *)
-        rewrite word.signed_add.
+        replace (word.swrap v) with v; cycle 1. { case TODO. }
+        rewrite word.signed_xor.
         rewrite! word.signed_of_Z.
+        replace (word.swrap (f v)) with (f v); cycle 1. { case TODO. }
+        idtac.
+        assert (@word.swrap (@width (@W p)) (@word (@W p)) = swrap' width). {
+          case TODO.
+        }
+        rewrite H.
+        unfold swrap'.
+
+        (* not sure if that's better...
+        destruct_one_match; destruct_one_match.
+        + prove_Zeq_bitwise.prove_Zeq_bitwise.
+
+        (* signExtend_alt2  signExtend2 *)
+
+      - rewrite put_put_same. f_equal.
+        apply word.signed_inj.
+        rewrite word.signed_of_Z.
+        rewrite word.signed_xor.
+        rewrite! word.signed_of_Z.
+
+
+      - rewrite put_put_same. f_equal.
+        apply word.unsigned_inj.
+        rewrite word.unsigned_of_Z.
+        rewrite word.unsigned_xor.
+        rewrite! word.unsigned_of_Z.
+        rewrite (Z.mod_small (Z.lxor v (f v)) (2 ^ width)); cycle 1. { case TODO.
         remember (bitSlice v 0 12 - correction v) as lo.
         remember (v - lo) as hi.
 
@@ -721,7 +753,7 @@ do we have ready-to-use push/pull mod tactics to solve goals like
       - solve_word_eq word_ok.
       - solve_word_eq word_ok.
     }
-
+*)
   Admitted.
 
   Definition eval_stmt := exec map.empty.
