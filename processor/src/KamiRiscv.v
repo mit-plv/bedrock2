@@ -104,7 +104,7 @@ Section Equiv.
           {rvm: RiscvProgram M word}.
 
   Arguments mcomp_sat {A}.
-  
+
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
     word.of_Z (BitOps.sextend (8 * Z.of_nat n) (LittleEndian.combine n v)).
 
@@ -482,7 +482,89 @@ Section Equiv.
       wordToZ (instrMem (evalExpr (rv32AlignPc (Z.to_nat width) (Z.to_nat (width - 2)) type pc))).
   Proof.
   Admitted.
-  
+
+  Ltac lets_in_hyp_to_eqs :=
+    repeat lazymatch goal with
+           | |- (let x := ?a in ?b) = ?c -> ?Q =>
+             change (let x := a in b = c -> Q); intro
+           | x := bitSlice _ 25 26 |- _ =>
+            (* shamtHi is the only field which another field depends on *)
+             subst x
+           | x := ?t : ?T |- _ =>
+             pose proof (eq_refl t : x = t); clearbody x
+           end.
+
+  Ltac invert_decode_if_true G :=
+    first [ apply Bool.andb_true_iff in G;
+            let G1 := fresh G in let G2 := fresh G in destruct G as [G1 G2];
+            invert_decode_if_true G1; invert_decode_if_true G2
+          | apply Z.eqb_eq in G
+          | idtac ].
+
+  (* TODO rather than stating this as a lemma, write a tactic which
+     infers & poses the conclusion *)
+  Lemma invert_decode_Add: forall inst rd rs1 rs2: Z,
+      decode RV32IM inst = IInstruction (Decode.Add rd rs1 rs2) ->
+      bitSlice inst 0 7 = opcode_OP /\
+      bitSlice inst 7 12 = rd /\
+      bitSlice inst 12 15 = funct3_ADD /\
+      bitSlice inst 15 20 = rs1 /\
+      bitSlice inst 20 25 = rs2 /\
+      bitSlice inst 25 32 = funct7_ADD.
+  Proof.
+    intros *.
+    cbv beta delta [decode].
+    lets_in_hyp_to_eqs.
+    subst
+      resultI
+      resultM
+      resultA
+      resultF
+      resultI64
+      resultM64
+      resultA64
+      resultF64
+      resultCSR.
+    repeat match type of H with
+    | context C [if ?a then ?b else ?c] =>
+      ((let P := context C [ b ] in change P in H) ||
+       (let P := context C [ c ] in change P in H))
+    end.
+    subst results.
+    destruct (isValidI decodeI) eqn: VI;
+    destruct (isValidM decodeM) eqn: VM;
+    destruct (isValidCSR decodeCSR) eqn: VCSR.
+    all: try (clear; simpl; discriminate).
+    simpl.
+    intro E.
+    injection E. clear E.
+    subst decodeI.
+    intro E.
+    repeat match type of E with
+    | (if ?a then ?b else ?c) = ?d => destruct a; [discriminate E|]
+    end.
+    match type of E with
+    | (if ?a then ?b else ?c) = ?d => destruct a eqn: G; cycle 1
+    end.
+    { (* more invalid cases *)
+      repeat match type of E with
+             | (if ?a then ?b else ?c) = ?d => destruct a; [discriminate E|]
+             end.
+      discriminate E.
+    }
+    (* the only valid case remains *)
+    subst rd0 rs4 rs0.
+    invert_decode_if_true G.
+    assert (bitSlice inst 0 7 = opcode_OP) as R1 by congruence; revert R1.
+    assert (bitSlice inst 12 15 = funct3_ADD) as R2 by congruence; revert R2.
+    assert (bitSlice inst 25 32 = funct7_ADD) as R3 by congruence; revert R3.
+    injection E.
+    clear.
+    (* if we automate this further, we might be able to infer the conclusion with a tactic
+       rather than having to state it manually *)
+    intros. auto.
+  Qed.
+
   Lemma kamiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),
       kamiStep m1 m2 t ->
@@ -546,13 +628,7 @@ Section Equiv.
       apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H1.
       destruct H1 as (mid1 & ? & ?).
       apply spec_loadWord in H1; simpl in H1.
-      destruct H1.
-
-      2: {
-        destruct H1; clear -H1.
-
-        
-      
+      destruct H1;
         [|destruct H1; clear -H1;
           (** TODO @joonwonc: prove that [pc] is always in the instruction memory.
            * Then [H1] implies False. It should be provable using the conversion
@@ -588,23 +664,24 @@ Section Equiv.
       end.
       destruct iInstruction.
       21: { (* Case of Add *)
+        apply invert_decode_Add in Hdec.
         simpl in H3.
-        (** TODO @samuelgruetter: using [Hdec] we should be able to derive 
-         * the relation among [inst], [rd], [rs1], and [rs2], 
+        (** TODO @samuelgruetter: using [Hdec] we should be able to derive
+         * the relation among [inst], [rd], [rs1], and [rs2],
          * e.g., [bitSlice inst _ _ = rs1].
          *)
-        
+
         apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H3.
         destruct H3 as (mid2 & ? & ?).
         apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H3.
         destruct H3 as (mid3 & ? & ?).
         apply spec_getRegister with (post0:= mid3) in H3.
-        destruct H3; [|admit (** TODO @joonwonc: prove the value of `R0` is 
+        destruct H3; [|admit (** TODO @joonwonc: prove the value of `R0` is
                               * always zero in Kami steps. *)].
         simpl in H3; destruct H3.
         remember (map.get (convertRegs rf) rs1) as v1.
         destruct v1 as [v1|]; [|admit (** TODO: prove it never fails to read
-                                       * a register value once the register 
+                                       * a register value once the register
                                        * is valid. *)].
         specialize (H12 _ _ H13).
         apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H12.
@@ -664,7 +741,7 @@ Section Equiv.
           admit.
       }
       all: admit.
-      
+
     - (* "execNmZ" *) admit.
 
   Admitted.

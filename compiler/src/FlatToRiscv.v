@@ -676,18 +676,52 @@ Section FlatToRiscv1.
         (* rewrite word.swrap_inrange; cycle 1. { case TODO. } *)
         rewrite word.signed_add.
         rewrite! word.signed_of_Z.
+        remember (bitSlice v 0 12 - correction v) as lo.
+        remember (v - lo) as hi.
+
         unfold word.swrap.
+        simpl.
         remember (2 ^ (width - 1)) as B.
         remember (2 ^ width) as M.
-        remember (signExtend 11 (bitSlice v 0 12)) as E.
         f_equal.
+        match goal with
+        | |- (?a + ?b) mod ?n = (?a' + ?b) mod ?n =>
+          rewrite (Zplus_mod a b n); rewrite (Zplus_mod a' b n)
+        end.
+        f_equal.
+        f_equal.
+        (* push *)
+        rewrite Zplus_mod.
+        rewrite (Zminus_mod ((hi + B) mod M) B M).
+        rewrite (Zminus_mod ((lo + B) mod M) B M).
+        rewrite (Zplus_mod hi B M).
+        rewrite (Zplus_mod lo B M).
+
+        rewrite! Zmod_mod.
+
+        (* pull *)
+        rewrite <- (Zplus_mod hi B M).
+        rewrite <- (Zplus_mod lo B M).
+        rewrite <- (Zminus_mod (hi + B) B M).
+        rewrite <- (Zminus_mod (lo + B) B M).
+        rewrite <- (Zplus_mod (hi + B - B) (lo + B - B) M).
+        ring_simplify (hi + B - B + (lo + B - B)).
+
 (*
 do we have ready-to-use push/pull mod tactics to solve goals like
 
 (v + B) mod M = ((v - E + B) mod M - B + ((E + B) mod M - B) + B) mod M
 
 ?
-*)
+ *)
+        subst hi.
+        f_equal.
+        lia.
+
+      - solve_word_eq word_ok.
+      - solve_word_eq word_ok.
+    }
+
   Admitted.
 
   Definition eval_stmt := exec map.empty.

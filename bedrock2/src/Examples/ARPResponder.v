@@ -24,8 +24,10 @@ Definition arp : bedrock_func :=
             & (load1(buf+constr:(5)) == constr:(4))
             ) else { /*skip*/ };
     (* TODO: update sender mapping if present *)
-    require (load1(buf+constr:(6)) == constr:(1)) else { /*skip*/ }; (* request *)
-    store1(buf+constr:(6), constr:(2)); (* response *)
+    require ( (load1(buf+constr:(6)) == constr:(0))
+            & (load1(buf+constr:(6+1)) == constr:(1))
+            ) else { /*skip*/ }; (* request *)
+    store1(buf+constr:(6+1), constr:(2)); (* response *)
     (* TODO: add sender mapping to arp table *)
 
     (* dst := src *)
