@@ -157,6 +157,17 @@ Section Equiv.
     let keys := HList.tuple.map (@wordToZ 5) kkeys in
     map.putmany_of_tuple keys values map.empty.
 
+  Lemma convertRegs_put:
+    forall rf r v,
+      convertRegs (fun w => if weq w (ZToWord 5 r) then v else rf w) =
+      map.put (convertRegs rf) r v.
+  Proof.
+    intros.
+    eapply map.map_ext.
+    intros k.
+    destruct (Z.eq_dec k r).
+  Admitted.
+
   Variables instrMemSize dataMemSize: nat.
 
   Definition instrMemStart: kword (width - 2) := Word.ZToWord _ 0.
@@ -461,55 +472,17 @@ Section Equiv.
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
 
-  Lemma rv32Exec_opcode_OP_add:
-    forall pc rf curInst,
-      evalExpr (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) curInst)) =
-      ZToWord 7 opcode_OP ->
-      evalExpr (getFunct7E (Var type (SyntaxKind (Data rv32InstBytes)) curInst)) =
-      WO~0~0~0~0~0~0~0 ->
-      evalExpr (getFunct3E (Var type (SyntaxKind (Data rv32InstBytes)) curInst)) =
-      ZToWord 3 funct3_ADD ->
-      evalExpr (rv32Exec (Z.to_nat width) _
-                         (rf (evalExpr (rv32GetSrc1 type curInst)))
-                         (rf (evalExpr (rv32GetSrc2 type curInst)))
-                         pc curInst) =
-      (rf (evalExpr (rv32GetSrc1 type curInst)))
-        ^+ (rf (evalExpr (rv32GetSrc2 type curInst))).
+  Lemma fetch_consistent:
+    forall instrMem dataMem pc inst,
+      wordToZ pc < Z.of_nat (4 * instrMemSize) ->
+      Memory.loadWord
+        (map.putmany (convertInstrMem instrMem)
+                     (convertDataMem dataMem)) pc = Some inst ->
+      combine 4 inst =
+      wordToZ (instrMem (evalExpr (rv32AlignPc (Z.to_nat width) (Z.to_nat (width - 2)) type pc))).
   Proof.
-    intros.
-    unfold rv32Exec.
-    unfold evalExpr; fold evalExpr.
-    destruct (isEq _ _ _); [rewrite H in e; discriminate|].
-    destruct (isEq _ _ _); [rewrite H in e; discriminate|].
-    destruct (isEq _ _ _).
-    - destruct (isEq _ _ _).
-      + destruct (isEq _ _ _).
-        * reflexivity.
-        * exfalso; rewrite H1 in n1; auto.
-      + exfalso; rewrite H0 in n1; auto.
-    - exfalso; rewrite H in n1; auto.
-  Qed.
-
-  Lemma rv32NextPc_opcode_OP_add:
-    forall pc rf curInst,
-      evalExpr (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) curInst)) =
-      ZToWord 7 opcode_OP ->
-      evalExpr (getFunct7E (Var type (SyntaxKind (Data rv32InstBytes)) curInst)) =
-      WO~0~0~0~0~0~0~0 ->
-      evalExpr (getFunct3E (Var type (SyntaxKind (Data rv32InstBytes)) curInst)) =
-      ZToWord 3 funct3_ADD ->
-      evalExpr (rv32NextPc (Z.to_nat width) type rf pc curInst) =
-      pc ^+ (ZToWord _ 4).
-  Proof.
-    intros.
-    unfold rv32NextPc.
-    unfold evalExpr; fold evalExpr.
-    destruct (isEq _ _ _); [rewrite H in e; discriminate|].
-    destruct (isEq _ _ _); [rewrite H in e; discriminate|].
-    destruct (isEq _ _ _); [rewrite H in e; discriminate|].
-    reflexivity.
-  Qed.
-
+  Admitted.
+  
   Lemma kamiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),
       kamiStep m1 m2 t ->
@@ -573,7 +546,13 @@ Section Equiv.
       apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H1.
       destruct H1 as (mid1 & ? & ?).
       apply spec_loadWord in H1; simpl in H1.
-      destruct H1;
+      destruct H1.
+
+      2: {
+        destruct H1; clear -H1.
+
+        
+      
         [|destruct H1; clear -H1;
           (** TODO @joonwonc: prove that [pc] is always in the instruction memory.
            * Then [H1] implies False. It should be provable using the conversion
@@ -588,6 +567,13 @@ Section Equiv.
         as (curInst & npc & prf & dst & exec_val
             & ? & ? & ? & ? & ? & ?).
       subst prf.
+
+      (* Relation between the two raw instructions *)
+      assert (combine 4 inst = wordToZ curInst) as Hfetch.
+      { subst curInst.
+        eapply fetch_consistent; [|eassumption].
+        admit. (** TODO @joonwonc: requires the correctness of [pc]. *)
+      }
 
       (** Invert riscv-coq decode/execute *)
       match type of H3 with
@@ -660,7 +646,13 @@ Section Equiv.
              (** TODO: should be true once getting the relation between [inst] and [rs2]. *)
              replace (evalExpr (rv32GetSrc2 type curInst))
                with (Word.ZToWord 5 rs2) by admit. (* TODO cons:2 *)
-             admit. (** TODO @joonwonc: correctness of [convertRegs] *)
+             (** TODO: should be true once getting the decode information of [inst]. *)
+             replace (evalExpr (rv32Exec (Z.to_nat width) type
+                                         (rf (ZToWord 5 rs1))
+                                         (rf (ZToWord 5 rs2))
+                                         pc curInst))
+               with (v1 ^+ v2) by admit.
+             apply convertRegs_put.
         }
 
         constructor.
@@ -668,7 +660,7 @@ Section Equiv.
         - rewrite H0, H11.
           do 2 f_equal.
           subst npc.
-          (** TODO: need to know [curInst] is for Add .. *)
+          (** TODO: should be true once getting the decode information of [inst]. *)
           admit.
       }
       all: admit.
