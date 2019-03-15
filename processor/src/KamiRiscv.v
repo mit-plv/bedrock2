@@ -157,15 +157,21 @@ Section Equiv.
     let keys := HList.tuple.map (@wordToZ 5) kkeys in
     map.putmany_of_tuple keys values map.empty.
 
+  Lemma convertRegs_get:
+    forall rf r v,
+      map.get (convertRegs rf) (Word.wordToZ r) = Some v ->
+      v = rf r.
+  Proof.
+  Admitted.
+
   Lemma convertRegs_put:
     forall rf r v,
-      convertRegs (fun w => if weq w (ZToWord 5 r) then v else rf w) =
-      map.put (convertRegs rf) r v.
+      convertRegs (fun w => if weq w r then v else rf w) =
+      map.put (convertRegs rf) (Word.wordToZ r) v.
   Proof.
     intros.
     eapply map.map_ext.
     intros k.
-    destruct (Z.eq_dec k r).
   Admitted.
 
   Variables instrMemSize dataMemSize: nat.
@@ -483,6 +489,7 @@ Section Equiv.
   Proof.
   Admitted.
 
+  
   Ltac lets_in_hyp_to_eqs :=
     repeat lazymatch goal with
            | |- (let x := ?a in ?b) = ?c -> ?Q =>
@@ -565,6 +572,197 @@ Section Equiv.
     intros. auto.
   Qed.
 
+  Ltac inv_bind H :=
+    apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H;
+    let mid := fresh "mid" in
+    destruct H as (mid & ? & ?).
+
+  Ltac inv_getPC H :=
+    match type of H with
+    | _ _ _ ?mid =>
+      apply spec_getPC with (post0:= mid) in H; simpl in H
+    end.
+
+  Ltac inv_bind_apply H :=
+    match type of H with
+    | ?mid _ _ =>
+      repeat
+        match goal with
+        | [H0: forall _ _, mid _ _ -> _ |- _] => specialize (H0 _ _ H)
+        end
+    end.
+
+  Ltac inv_loadWord H :=
+    apply spec_loadWord in H; simpl in H.
+
+  Ltac inv_step H :=
+    apply spec_step in H;
+    unfold withNextPc, getNextPc, withRegs in H;
+    simpl in H.
+
+  Lemma kami_split_bitSlice_consistent_1:
+    forall (i: nat) kinst,
+      wordToZ (split1 i (32 - i) kinst) =
+      bitSlice (wordToZ kinst) 0 (Z.of_nat i).
+  Proof.
+  Admitted.
+
+  Lemma kami_split_bitSlice_consistent_2:
+    forall (i j: nat) kinst,
+      wordToZ (split2 i j kinst) =
+      bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
+  Proof.
+  Admitted.
+
+  Lemma kami_split_bitSlice_consistent_3:
+    forall (i j: nat) kinst,
+      wordToZ
+        (split2 i j (split1 (i + j) (32 - (i + j)) kinst)) =
+      bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
+  Proof.
+  Admitted.
+
+  Lemma kami_getOpcode_ok:
+    forall kinst,
+      wordToZ
+        (evalExpr
+           (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      bitSlice (wordToZ kinst) 0 7.
+  Proof.
+    intros.
+    unfold getOpcodeE.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_1.
+    reflexivity.
+  Qed.
+
+  Lemma kami_getFunct7_ok:
+    forall kinst,
+      wordToZ
+        (evalExpr
+           (getFunct7E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      bitSlice (wordToZ kinst) 25 32.
+  Proof.
+    intros.
+    unfold getFunct7E.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_2.
+    reflexivity.
+  Qed.
+
+  Lemma kami_getFunct3_ok:
+    forall kinst,
+      wordToZ
+        (evalExpr
+           (getFunct3E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      bitSlice (wordToZ kinst) 12 15.
+  Proof.
+    intros.
+    unfold getFunct3E.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_3.
+    reflexivity.
+  Qed.
+
+  Lemma kami_getRdE_ok:
+    forall kinst,
+      wordToZ
+        (evalExpr (getRdE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      bitSlice (wordToZ kinst) 7 12.
+  Proof.
+    intros.
+    unfold getRdE.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_3.
+    reflexivity.
+  Qed.
+  
+  Lemma kami_rv32GetDst_ok:
+    forall kinst,
+      bitSlice (wordToZ kinst) 0 7 = opcode_OP ->
+      Word.wordToZ (evalExpr (rv32GetDst type kinst)) =
+      bitSlice (wordToZ kinst) 7 12.
+  Proof.
+    intros.
+    unfold rv32GetDst.
+    unfold evalExpr; fold evalExpr.
+    destruct (isEq _ _) as [Heq|Hne].
+    - exfalso.
+      pose proof (kami_getOpcode_ok kinst).
+      rewrite Heq, H in H0; discriminate.
+    - rewrite kami_getRdE_ok; reflexivity.
+  Qed.
+
+  Lemma kami_rv32GetSrc1_ok:
+    forall kinst,
+      Word.wordToZ (evalExpr (rv32GetSrc1 type kinst)) =
+      bitSlice (wordToZ kinst) 15 20.
+  Proof.
+    intros.
+    unfold rv32GetSrc1, getRs1E.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_3.
+    reflexivity.
+  Qed.
+
+  Lemma kami_rv32GetSrc2_ok:
+    forall kinst,
+      Word.wordToZ (evalExpr (rv32GetSrc2 type kinst)) =
+      bitSlice (wordToZ kinst) 20 25.
+  Proof.
+    intros.
+    unfold rv32GetSrc2, getRs2E.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_3.
+    reflexivity.
+  Qed.
+
+  (** TODO @joonwonc: ditto [invert_decode_Add]; better to have a tactic. *)
+  Lemma kami_rv32Exec_Add_ok:
+    forall v1 v2 pc kinst,
+      wordToZ
+        (evalExpr
+           (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      opcode_OP ->
+      wordToZ
+        (evalExpr (getFunct7E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      funct7_ADD ->
+      wordToZ
+        (evalExpr (getFunct3E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      funct3_ADD ->
+      evalExpr (rv32Exec (Z.to_nat width) type v1 v2 pc kinst) =
+      v1 ^+ v2.
+  Proof.
+    intros.
+    unfold rv32Exec.
+    unfold evalExpr; fold evalExpr.
+    do 2 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
+    do 3 (destruct (isEq _ _); [|exfalso; elim n; apply wordToZ_inj; assumption]).
+    reflexivity.
+  Qed.
+
+  Lemma kami_rv32NextPc_op_ok:
+    forall rf pc kinst,
+      wordToZ
+        (evalExpr
+           (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      opcode_OP ->
+      evalExpr (rv32NextPc (Z.to_nat width) type rf pc kinst) =
+      pc ^+ (ZToWord _ 4).
+  Proof.
+    intros.
+    unfold rv32NextPc.
+    unfold evalExpr; fold evalExpr.
+    do 3 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
+    reflexivity.
+  Qed.
+  
   Lemma kamiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),
       kamiStep m1 m2 t ->
@@ -620,14 +818,12 @@ Section Equiv.
       (** Invert a riscv-coq step. *)
       move H1 at bottom.
       red in H1; unfold run1 in H1.
-
-      apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H1.
-      destruct H1 as (mid0 & ? & ?).
-      apply spec_getPC with (post0:= mid0) in H; simpl in H.
-      specialize (H1 _ _ H).
-      apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H1.
-      destruct H1 as (mid1 & ? & ?).
-      apply spec_loadWord in H1; simpl in H1.
+      
+      inv_bind H1.
+      inv_getPC H.
+      inv_bind_apply H.
+      inv_bind H1.
+      inv_loadWord H1.
       destruct H1;
         [|destruct H1; clear -H1;
           (** TODO @joonwonc: prove that [pc] is always in the instruction memory.
@@ -635,21 +831,24 @@ Section Equiv.
            * from [KamiProc.st] to the corresponding riscv-coq state.
            *)
           admit].
-      destruct H1 as (inst & ? & ?).
-      specialize (H3 _ _ H4).
+      destruct H1 as (rinst & ? & ?).
+      inv_bind_apply H4.
 
       (** Invert Kami decode/execute *)
       destruct H2
-        as (curInst & npc & prf & dst & exec_val
+        as (kinst & npc & prf & dst & exec_val
             & ? & ? & ? & ? & ? & ?).
       subst prf.
 
       (* Relation between the two raw instructions *)
-      assert (combine 4 inst = wordToZ curInst) as Hfetch.
-      { subst curInst.
+      assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
+                      4 rinst =
+              wordToZ kinst) as Hfetch.
+      { subst kinst.
         eapply fetch_consistent; [|eassumption].
         admit. (** TODO @joonwonc: requires the correctness of [pc]. *)
       }
+      rewrite Hfetch in *.
 
       (** Invert riscv-coq decode/execute *)
       match type of H3 with
@@ -665,17 +864,17 @@ Section Equiv.
       destruct iInstruction.
       21: { (* Case of Add *)
         apply invert_decode_Add in Hdec.
+        destruct Hdec as [Hopc [Hrd [Hf3 [Hrs1 [Hrs2 Hf7]]]]].
+        
         simpl in H3.
         (** TODO @samuelgruetter: using [Hdec] we should be able to derive
          * the relation among [inst], [rd], [rs1], and [rs2],
          * e.g., [bitSlice inst _ _ = rs1].
          *)
 
-        apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H3.
-        destruct H3 as (mid2 & ? & ?).
-        apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H3.
-        destruct H3 as (mid3 & ? & ?).
-        apply spec_getRegister with (post0:= mid3) in H3.
+        inv_bind H3.
+        inv_bind H3.
+        apply spec_getRegister with (post0:= mid2) in H3.
         destruct H3; [|admit (** TODO @joonwonc: prove the value of `R0` is
                               * always zero in Kami steps. *)].
         simpl in H3; destruct H3.
@@ -683,22 +882,19 @@ Section Equiv.
         destruct v1 as [v1|]; [|admit (** TODO: prove it never fails to read
                                        * a register value once the register
                                        * is valid. *)].
-        specialize (H12 _ _ H13).
-        apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H12.
-        destruct H12 as (mid4 & ? & ?).
-        apply spec_getRegister with (post0:= mid4) in H12.
+        inv_bind_apply H13.
+        inv_bind H12.
+        apply spec_getRegister with (post0:= mid3) in H12.
         destruct H12; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
         simpl in H12; destruct H12.
         remember (map.get (convertRegs rf) rs2) as v2.
         destruct v2 as [v2|]; [|admit (** TODO: ditto, about valid register reads *)].
-        specialize (H14 _ _ H15).
+        inv_bind_apply H15.
         apply spec_setRegister in H14.
         destruct H14; [|admit (** TODO @joonwonc: writing to `R0` *)].
         simpl in H14; destruct H14.
-        specialize (H7 _ _ H16).
-        apply spec_step in H7.
-        unfold withNextPc, getNextPc, withRegs in H7.
-        simpl in H7.
+        inv_bind_apply H16.
+        inv_step H7.
 
         (** Construction *)
         eexists.
@@ -715,20 +911,20 @@ Section Equiv.
                         (Var type (SyntaxKind (Bit KamiProc.nwidth)) exec_val)))).
         2: { unfold evalExpr; fold evalExpr.
              subst exec_val.
-             (** TODO: should be true once getting the relation between [inst] and [rd]. *)
-             replace dst with (Word.ZToWord 5 rd) by admit.
-             (** TODO: should be true once getting the relation between [inst] and [rs1]. *)
-             replace (evalExpr (rv32GetSrc1 type curInst))
-               with (Word.ZToWord 5 rs1) by admit. (* TODO cons:2 *)
-             (** TODO: should be true once getting the relation between [inst] and [rs2]. *)
-             replace (evalExpr (rv32GetSrc2 type curInst))
-               with (Word.ZToWord 5 rs2) by admit. (* TODO cons:2 *)
-             (** TODO: should be true once getting the decode information of [inst]. *)
-             replace (evalExpr (rv32Exec (Z.to_nat width) type
-                                         (rf (ZToWord 5 rs1))
-                                         (rf (ZToWord 5 rs2))
-                                         pc curInst))
-               with (v1 ^+ v2) by admit.
+             replace rd with (Word.wordToZ dst) in *
+               by (subst dst rd; apply kami_rv32GetDst_ok; assumption).
+             replace rs1
+               with (Word.wordToZ (evalExpr (rv32GetSrc1 type kinst))) in *
+               by (subst rs1; apply kami_rv32GetSrc1_ok).
+             replace rs2
+               with (Word.wordToZ (evalExpr (rv32GetSrc2 type kinst))) in *
+               by (subst rs2; apply kami_rv32GetSrc2_ok).
+             rewrite <-convertRegs_get with (v:= v1) by auto.
+             rewrite <-convertRegs_get with (v:= v2) by auto.
+             rewrite kami_rv32Exec_Add_ok;
+               [|rewrite kami_getOpcode_ok; assumption
+                |rewrite kami_getFunct7_ok; assumption
+                |rewrite kami_getFunct3_ok; assumption].
              apply convertRegs_put.
         }
 
@@ -736,9 +932,10 @@ Section Equiv.
         - assumption.
         - rewrite H0, H11.
           do 2 f_equal.
+          (* next pc *)
           subst npc.
-          (** TODO: should be true once getting the decode information of [inst]. *)
-          admit.
+          apply kami_rv32NextPc_op_ok.
+          rewrite kami_getOpcode_ok; assumption.
       }
       all: admit.
 
