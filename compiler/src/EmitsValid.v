@@ -401,8 +401,6 @@ Section EmitsValid.
     apply Zmod_0_l.
   Qed.
 
-  Axiom doesn't_hold: False.
-
   Lemma compile_lit_medium_emits_valid: forall r v,
       -2^31 <= v < 2^31 ->
       valid_register r ->
@@ -452,8 +450,8 @@ Section EmitsValid.
         autounfold with unf_verify unf_encode_consts;
         unfold Register0, valid_register in *;
         simpl_pow2;
-        repeat split; try lia.
-  Admitted.
+        lia.
+  Qed.
 
   Lemma valid_Slli: forall rd rs shamt,
       0 <= shamt < 32 ->
@@ -523,7 +521,7 @@ Section EmitsValid.
 
   Lemma compile_lit_new_emits_valid: forall r w,
       valid_register r ->
-      valid_instructions iset (compile_lit_new r w).
+      valid_instructions iset (compile_lit_new iset r w).
   Proof.
     unfold valid_instructions.
     intros.
@@ -532,7 +530,10 @@ Section EmitsValid.
       eapply compile_lit_small_emits_valid; eassumption.
     }
     destruct_one_match_hyp. {
-      eapply compile_lit_medium_emits_valid; eassumption.
+      eapply compile_lit_medium_emits_valid; try eassumption.
+      change 31 with (32 - 1).
+      apply swrap_range.
+      reflexivity.
     }
     eapply compile_lit_large_emits_valid; try eassumption.
     apply Z.mod_pos_bound. reflexivity.
@@ -620,7 +621,7 @@ Section EmitsValid.
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Lemma compile_lit_new_size: forall x v,
-      0 <= Zlength (compile_lit_new x v) <= 15.
+      0 <= Zlength (compile_lit_new iset x v) <= 15.
   Admitted.
 
   Lemma compile_stmt_size: forall s,

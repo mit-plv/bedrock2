@@ -179,20 +179,26 @@ Section FlatToRiscv1.
 
   (* On a 64bit machine, loading a constant -2^31 <= v < 2^31 is not always possible with
      a Lui followed by an Addi:
-     If the constant is of the form 0x7ffffXXX, and XXX has its highest bit set, ...
+     If the constant is of the form 0x7ffffXXX, and XXX has its highest bit set, we would
+     have to put 0x80000--- into the Lui, but then that value will be sign-extended.
 
      Or spelled differently:
      If we consider all possible combinations of a Lui followed by an Addi, we get 2^32
      different values, but some of them are not in the range -2^31 <= v < 2^31.
-     On the other hand, this property holds for combining Lui followed by a Xori. *)
+     On the other hand, this property holds for combining Lui followed by a Xori.
 
-  Definition f: Z -> Z := id.
-  Arguments f: simpl never.
+     Or yet differently:
+     Lui 0x80000--- ; Addi 0xXXX
+     where XXX has the highest bit set,
+     loads a value < 2^31, so some Lui+Addi pairs do not load a value in the range
+     -2^31 <= v < 2^31, so some Lui+Addi pairs are "wasted" and we won't find a
+     Lui+Addi pairs for all desired values in the range -2^31 <= v < 2^31
+ *)
 
   Definition compile_lit_medium(rd: Register)(v: Z): list Instruction :=
-    let lo := f v in
-    let hi := Z.lxor v lo in
-    [[ Lui rd hi ; Xori rd rd lo ]].
+    let lo := signExtend 12 (bitSlice v 0 12) in
+    let hi := swrap 32 (v - lo) in
+    [[ Lui rd hi ; Addi rd rd lo ]].
 
   Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
     let v0 := bitSlice v  0 11 in
@@ -207,10 +213,12 @@ Section FlatToRiscv1.
        Slli rd rd 11 ;
        Addi rd rd v0 ]].
 
+  Context (iset: InstructionSet).
+
   Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
     if dec (-2^11 <= v < 2^11) then compile_lit_small rd v else
-    if dec (-2^31 <= v < 2^31) then compile_lit_medium rd v else
-    compile_lit_large rd (v mod 2 ^ 64). (* TODO do better for 2^31<=v<2^32 *)
+    if is32bit iset then compile_lit_medium rd (swrap 32 v) else
+    compile_lit_large rd (v mod 2 ^ 64).
 
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting
@@ -228,8 +236,6 @@ Section FlatToRiscv1.
     | CondNez x =>
         Beq x Register0 amt
     end.
-
-  Context (iset: InstructionSet).
 
   Fixpoint compile_stmt(s: stmt): list Instruction :=
     match s with

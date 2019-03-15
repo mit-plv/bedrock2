@@ -633,11 +633,6 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
-  Definition swrap'(width n: Z): Z :=
-    if Z.testbit n (width - 1)
-    then (Z.lor (Z.land n (Z.ones (width - 1))) (Z.shiftl (-1) width))
-    else n.
-
   Lemma compile_lit_correct_full: forall initialL post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
       let insts := compile_stmt iset (SLit x v) in
@@ -666,7 +661,7 @@ Section FlatToRiscv1.
       simpl_word_exprs word_ok.
       exact N.
     }
-    destruct (dec (- 2 ^ 31 <= v < 2 ^ 31)). {
+    destruct (is32bit iset) eqn: E. {
       unfold compile_lit_medium in *.
       run1det.
       run1det.
@@ -678,44 +673,17 @@ Section FlatToRiscv1.
       - rewrite put_put_same. f_equal.
         apply word.signed_inj.
         rewrite word.signed_of_Z.
-        replace (word.swrap v) with v; cycle 1. { case TODO. }
-        rewrite word.signed_xor.
+        rewrite word.signed_add.
         rewrite! word.signed_of_Z.
-        replace (word.swrap (f v)) with (f v); cycle 1. { case TODO. }
-        idtac.
-        assert (@word.swrap (@width (@W p)) (@word (@W p)) = swrap' width). {
-          case TODO.
-        }
-        rewrite H.
-        unfold swrap'.
-
-        (* not sure if that's better...
-        destruct_one_match; destruct_one_match.
-        + prove_Zeq_bitwise.prove_Zeq_bitwise.
-
-        (* signExtend_alt2  signExtend2 *)
-
-      - rewrite put_put_same. f_equal.
-        apply word.signed_inj.
-        rewrite word.signed_of_Z.
-        rewrite word.signed_xor.
-        rewrite! word.signed_of_Z.
-
-
-      - rewrite put_put_same. f_equal.
-        apply word.unsigned_inj.
-        rewrite word.unsigned_of_Z.
-        rewrite word.unsigned_xor.
-        rewrite! word.unsigned_of_Z.
-        rewrite (Z.mod_small (Z.lxor v (f v)) (2 ^ width)); cycle 1. { case TODO.
-        remember (bitSlice v 0 12 - correction v) as lo.
+        remember (signExtend 12 (bitSlice (swrap 32 v) 0 12)) as lo.
         remember (v - lo) as hi.
-
-        unfold word.swrap.
-        simpl.
+        unfold word.swrap, swrap.
+        assert (width = 32) as A by case TODO.
+        rewrite <- A.
         remember (2 ^ (width - 1)) as B.
         remember (2 ^ width) as M.
         f_equal.
+        (*
         match goal with
         | |- (?a + ?b) mod ?n = (?a' + ?b) mod ?n =>
           rewrite (Zplus_mod a b n); rewrite (Zplus_mod a' b n)
