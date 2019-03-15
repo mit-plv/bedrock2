@@ -177,9 +177,15 @@ Section FlatToRiscv1.
   Definition compile_lit_small(rd: Register)(v: Z): list Instruction :=
     [[ Addi rd Register0 v ]].
 
+  Definition correction(v: Z): Z :=
+    (* we branch on (Z.testbit v 31) and (Z.testbit v 12), but writing it this way
+       makes the proofs simpler *)
+    (if dec (v < 0) then 2 ^ 11 else 0) +
+    (if dec (2 ^ 11 <= bitSlice v 0 12) then 2 ^ 11 else 0).
+
   Definition compile_lit_medium(rd: Register)(v: Z): list Instruction :=
-    let lo := signExtend 12 (bitSlice v 0 12) in
-    let hi := swrap 32 (v - lo) in
+    let lo := bitSlice v 0 12 - correction v in
+    let hi := v - lo in
     [[ Lui rd hi ; Addi rd rd lo ]].
 
   Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=

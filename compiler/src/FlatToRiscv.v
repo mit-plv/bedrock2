@@ -676,12 +676,8 @@ Section FlatToRiscv1.
         (* rewrite word.swrap_inrange; cycle 1. { case TODO. } *)
         rewrite word.signed_add.
         rewrite! word.signed_of_Z.
-        change (
-            let lo := fun v => (signExtend 12 (bitSlice v 0 12)) in
-            let hi := fun v => (swrap 32 (v - signExtend 12 (bitSlice v 0 12))) in
-            word.swrap v = word.swrap (word.swrap (hi v) + word.swrap (lo v))).
-        intros lo hi.
-        assert (v mod (2 ^ width) = (hi v + lo v) mod (2 ^ width)) as A by admit.
+        remember (bitSlice v 0 12 - correction v) as lo.
+        remember (v - lo) as hi.
 
         unfold word.swrap.
         simpl.
@@ -696,22 +692,20 @@ Section FlatToRiscv1.
         f_equal.
         (* push *)
         rewrite Zplus_mod.
-        rewrite (Zminus_mod ((hi v + B) mod M) B M).
-        rewrite (Zminus_mod ((lo v + B) mod M) B M).
-        rewrite (Zplus_mod (hi v) B M).
-        rewrite (Zplus_mod (lo v) B M).
+        rewrite (Zminus_mod ((hi + B) mod M) B M).
+        rewrite (Zminus_mod ((lo + B) mod M) B M).
+        rewrite (Zplus_mod hi B M).
+        rewrite (Zplus_mod lo B M).
 
         rewrite! Zmod_mod.
 
         (* pull *)
-        rewrite <- (Zplus_mod (hi v) B M).
-        rewrite <- (Zplus_mod (lo v) B M).
-        rewrite <- (Zminus_mod (hi v + B) B M).
-        rewrite <- (Zminus_mod (lo v + B) B M).
-        rewrite <- (Zplus_mod (hi v + B - B) (lo v + B - B) M).
-        ring_simplify (hi v + B - B + (lo v + B - B)).
-
-        exact A.
+        rewrite <- (Zplus_mod hi B M).
+        rewrite <- (Zplus_mod lo B M).
+        rewrite <- (Zminus_mod (hi + B) B M).
+        rewrite <- (Zminus_mod (lo + B) B M).
+        rewrite <- (Zplus_mod (hi + B - B) (lo + B - B) M).
+        ring_simplify (hi + B - B + (lo + B - B)).
 
 (*
 do we have ready-to-use push/pull mod tactics to solve goals like
@@ -720,6 +714,10 @@ do we have ready-to-use push/pull mod tactics to solve goals like
 
 ?
  *)
+        subst hi.
+        f_equal.
+        lia.
+
       - solve_word_eq word_ok.
       - solve_word_eq word_ok.
     }
