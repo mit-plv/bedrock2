@@ -253,9 +253,7 @@ Section MMIO1.
 
   Instance assume_riscv_word_properties: RiscvWordProperties.word.riscv_ok word. Admitted.
 
-  Instance FlatToRiscv32_params: FlatToRiscv32.parameters := {
-    FlatToRiscv32.ext_spec := ext_spec;
-  }.
+  Instance FlatToRiscv32_params: FlatToRiscv32.parameters := { }.
 
   Ltac contrad := contradiction || discriminate || congruence.
 

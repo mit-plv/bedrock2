@@ -59,7 +59,6 @@ Module Import FlatToRiscv32.
     locals_ok :> map.ok locals;
     mem :> map.map word byte;
     mem_ok :> map.ok mem;
-    actname_eq_dec :> DecidableEq actname;
 
     M: Type -> Type;
     MM :> Monad M;
@@ -76,18 +75,6 @@ Module Import FlatToRiscv32.
     RVM :> RiscvProgram M word;
     PRParams :> PrimitivesParams M (RiscvMachine Register actname);
     PR :> Primitives PRParams;
-
-    syntax_params: Syntax.parameters := {|
-      Syntax.varname := Register;
-      Syntax.funname := Empty_set;
-      Syntax.actname := actname;
-    |};
-
-    trace := list (mem * Syntax.actname * list word * (mem * list word));
-    ext_spec : trace -> mem -> Syntax.actname -> list word -> (mem -> list word -> Prop) -> Prop;
-
-    env :> map.map Syntax.funname (list Syntax.varname * list Syntax.varname * stmt);
-    env_ok: map.ok env;
   }.
 End FlatToRiscv32.
 
