@@ -39,6 +39,7 @@ Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
+Require Import compiler.FlatToRiscvBW.
 Require coqutil.Map.Empty_set_keyed_map.
 
 Local Open Scope ilist_scope.
@@ -61,8 +62,6 @@ Module Import FlatToRiscv.
   Class parameters := {
     def_params :> FlatToRiscvDef.parameters;
 
-    W :> Words;
-
     locals :> map.map Register word;
     mem :> map.map word byte;
 
@@ -79,11 +78,6 @@ Module Import FlatToRiscv.
        call. *)
     ext_guarantee: RiscvMachine Register actname -> Prop;
   }.
-
-  Section Defs.
-    Context {p: unique! parameters}.
-    Definition iset := if width =? 32 then RV32IM else RV64IM.
-  End Defs.
 
   Instance syntax_params{p: parameters}: Syntax.parameters := {|
     Syntax.varname := Register;
@@ -135,26 +129,21 @@ Module Import FlatToRiscv.
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   ext_guarantee finalL);
-
-    (* bitwidth-specific: *)
-    go_load: forall sz x a (addr v: word) initialL post f,
-      valid_register x ->
-      valid_register a ->
-      map.get initialL.(getRegs) a = Some addr ->
-      Memory.load sz (getMem initialL) addr = Some v ->
-      mcomp_sat (f tt) (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
-      mcomp_sat (Bind (execute (compile_load iset sz x a 0)) f) initialL post;
-
-    go_store: forall sz x a (addr v: word) initialL m' post f,
-      valid_register x ->
-      valid_register a ->
-      map.get initialL.(getRegs) x = Some v ->
-      map.get initialL.(getRegs) a = Some addr ->
-      Memory.store sz (getMem initialL) addr v = Some m' ->
-      mcomp_sat (f tt) (withMem m' initialL) post ->
-      mcomp_sat (Bind (execute (compile_store iset sz a x 0)) f) initialL post;
   }.
 
+  Instance BW_params(p: parameters)(h: assumptions): FlatToRiscvBW.parameters width width_cases :=
+  {
+    FlatToRiscvBW.actname := actname;
+    FlatToRiscvBW.compile_ext_call := compile_ext_call;
+    FlatToRiscvBW.max_ext_call_code_size := max_ext_call_code_size;
+    FlatToRiscvBW.compile_ext_call_length := compile_ext_call_length;
+    FlatToRiscvBW.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
+    FlatToRiscvBW.PRParams := PRParams;
+    FlatToRiscvBW.PR := PR;
+  }.
+
+  Instance BW_specific_proofs(p: parameters)(h: assumptions):
+    FlatToRiscvBW.proofs (@BW_params p h) := ProofsBW width width_cases (BW_params h).
 End FlatToRiscv.
 
 Local Unset Universe Polymorphism. (* for Add Ring *)
@@ -522,10 +511,10 @@ Section FlatToRiscv1.
 
   Ltac simulate'_step :=
     first (* lemmas introduced only in this file: *)
-          [ eapply go_load  ; [sidecondition..|]
-          | eapply go_store ; [sidecondition..|]
-          | simulate_step
-          | simpl_modu4_0 ].
+    [ refine (@FlatToRiscvBW.go_load _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _); [sidecondition..|]
+    | refine (@FlatToRiscvBW.go_store _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _); [sidecondition..|]
+    | simulate_step
+    | simpl_modu4_0 ].
 
   Ltac simulate' := repeat simulate'_step.
 
@@ -575,10 +564,10 @@ Section FlatToRiscv1.
     simpl in *;
     eexists;
     repeat split;
-    simpl_word_exprs (@word_ok (@W p));
+    simpl_word_exprs (@word_ok (@W (@def_params p)));
     first
       [ solve [eauto]
-      | solve_word_eq (@word_ok (@W p))
+      | solve_word_eq (@word_ok (@W (@def_params p)))
       | solve [pseplog]
       | prove_ext_guarantee
       | apply_post
@@ -635,7 +624,7 @@ Section FlatToRiscv1.
 
   Lemma compile_lit_correct_full: forall initialL post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
-      let insts := compile_stmt iset (SLit x v) in
+      let insts := compile_stmt (SLit x v) in
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_registers (SLit x v) ->
@@ -661,7 +650,7 @@ Section FlatToRiscv1.
       simpl_word_exprs word_ok.
       exact N.
     }
-    destruct (is32bit iset) eqn: E. {
+    destruct (width =? 32) eqn: E. {
       unfold compile_lit_medium in *.
       run1det.
       run1det.
@@ -785,12 +774,12 @@ do we have ready-to-use push/pull mod tactics to solve goals like
   Qed.
 
   Ltac IH_sidecondition :=
-    simpl_word_exprs (@word_ok (@W p));
+    simpl_word_exprs (@word_ok (@W (@def_params p)));
     first
       [ reflexivity
       | solve [auto]
       | solve_stmt_not_too_big
-      | solve_word_eq (@word_ok (@W p))
+      | solve_word_eq (@word_ok (@W (@def_params p)))
       | solve_divisibleBy4
       | prove_ext_guarantee
       | pseplog
@@ -803,7 +792,7 @@ do we have ready-to-use push/pull mod tactics to solve goals like
     forall (s: stmt) t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
     forall R initialL insts,
-    @compile_stmt def_params iset s = insts ->
+    @compile_stmt def_params s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 initialL.(getPc) ->
@@ -854,7 +843,7 @@ do we have ready-to-use push/pull mod tactics to solve goals like
       run1det. run1done.
 
     - (* SStore *)
-      assert ((eq m * (program initialL_pc [[compile_store iset sz a v 0]] * R))%sep initialL_mem)
+      assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * R))%sep initialL_mem)
              as A by ecancel_assumption.
       pose proof (store_bytes_frame H2 A) as P.
       destruct P as (finalML & P1 & P2).

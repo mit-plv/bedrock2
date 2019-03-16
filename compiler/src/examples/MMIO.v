@@ -28,7 +28,6 @@ Require Import coqutil.Z.HexNotation.
 Require Import compiler.Simp.
 Require Import compiler.util.Learning.
 Require Import compiler.SimplWordExpr.
-Require Import compiler.FlatToRiscv32.
 Require bedrock2.Examples.FE310CompilerDemo.
 Import ListNotations.
 
@@ -233,7 +232,7 @@ Section MMIO1.
                    (SSeq (SOp s Syntax.bopname.mul i i)
                          (SStore Syntax.access_size.four addr s)))).
 
-    Definition compiled: list Instruction := Eval cbv in compile_stmt RV32IM squarer.
+    Definition compiled: list Instruction := Eval cbv in compile_stmt squarer.
     Print compiled.
   End CompilationTest.
 
@@ -253,8 +252,6 @@ Section MMIO1.
 
   Instance assume_riscv_word_properties: RiscvWordProperties.word.riscv_ok word. Admitted.
 
-  Instance FlatToRiscv32_params: FlatToRiscv32.parameters := { }.
-
   Ltac contrad := contradiction || discriminate || congruence.
 
   Arguments LittleEndian.split: simpl never.
@@ -271,7 +268,7 @@ Section MMIO1.
       edestruct B; [eassumption|]. congruence.
     - (* compile_ext_call_correct *)
       intros *. intros ? ? V_argvars V_resvars. intros.
-      pose proof (compile_ext_call_emits_valid FlatToRiscv.iset _ action _ V_resvars V_argvars).
+      pose proof (compile_ext_call_emits_valid EmitsValid.iset _ action _ V_resvars V_argvars).
       destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
       destruct action; cbv [getRegs getPc getNextPc getMem getLog] in *.
       + (* MMOutput *)
@@ -372,11 +369,6 @@ Section MMIO1.
             apply map.split_empty_r in H9. subst.
             unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
             assumption. }
-
-    - (* go_load *)
-      intros. refine (@go_load _ _ _ _ _ _ _ _ _ _ _ _ _ _); eassumption.
-    - (* go_store *)
-      intros. refine (@go_store _ _ _  _ _ _ _ _ _ _ _ _ _ _ _ _); eassumption.
   Qed.
 
 End MMIO1.

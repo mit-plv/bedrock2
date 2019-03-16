@@ -65,7 +65,6 @@ Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
 Notation RiscvMachine := (RiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
 
 Instance pipeline_params: Pipeline.parameters := {
-  Pipeline.W := Words32Naive.Words32Naive;
   Pipeline.ext_spec _ _ := Empty_set_rect _;
   Pipeline.ext_guarantee _ := False;
   Pipeline.M := OState RiscvMachine;

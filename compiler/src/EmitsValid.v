@@ -269,11 +269,9 @@ Inductive supported_iset: InstructionSet -> Prop :=
 
 Section EmitsValid.
 
-  Context (iset: InstructionSet).
-
   Context {compilation_params: FlatToRiscvDef.parameters}.
 
-  Lemma compile_lit_emits_valid: forall r w,
+  Lemma compile_lit_emits_valid: forall iset r w,
       valid_register r ->
       valid_instructions iset (compile_lit r w).
   Proof.
@@ -302,7 +300,7 @@ Section EmitsValid.
   Arguments Z.pow: simpl never.
   Arguments Z.add: simpl never.
 
-  Lemma compile_lit_small_emits_valid: forall r w,
+  Lemma compile_lit_small_emits_valid: forall r iset w,
       -2^11 <= w < 2^11 ->
       valid_register r ->
       valid_instructions iset (compile_lit_small r w).
@@ -401,7 +399,7 @@ Section EmitsValid.
     apply Zmod_0_l.
   Qed.
 
-  Lemma compile_lit_medium_emits_valid: forall r v,
+  Lemma compile_lit_medium_emits_valid: forall r v iset,
       -2^31 <= v < 2^31 ->
       valid_register r ->
       valid_instructions iset (compile_lit_medium r v).
@@ -450,10 +448,10 @@ Section EmitsValid.
         autounfold with unf_verify unf_encode_consts;
         unfold Register0, valid_register in *;
         simpl_pow2;
-        lia.
+        omega. (* TODO PARAMRECORDS? lia doesn't work *)
   Qed.
 
-  Lemma valid_Slli: forall rd rs shamt,
+  Lemma valid_Slli: forall rd rs shamt iset,
       0 <= shamt < 32 ->
       valid_register rd ->
       valid_register rs ->
@@ -468,7 +466,7 @@ Section EmitsValid.
     lia.
   Qed.
 
-  Lemma valid_Addi_bitSlice: forall rd rs w i j,
+  Lemma valid_Addi_bitSlice: forall rd rs w i j iset,
       0 <= i <= j ->
       j - i <= 11 ->
       valid_register rd ->
@@ -500,7 +498,7 @@ Section EmitsValid.
     lia.
   Qed.
 
-  Lemma compile_lit_large_emits_valid: forall r w,
+  Lemma compile_lit_large_emits_valid: forall r w iset,
       0 <= w < 2^64 ->
       valid_register r ->
       valid_instructions iset (compile_lit_large r w).
@@ -519,9 +517,9 @@ Section EmitsValid.
       (eapply valid_Addi_bitSlice || eapply valid_Slli); try eassumption; try lia.
   Qed.
 
-  Lemma compile_lit_new_emits_valid: forall r w,
+  Lemma compile_lit_new_emits_valid: forall r w iset,
       valid_register r ->
-      valid_instructions iset (compile_lit_new iset r w).
+      valid_instructions iset (compile_lit_new r w).
   Proof.
     unfold valid_instructions.
     intros.
@@ -539,7 +537,7 @@ Section EmitsValid.
     apply Z.mod_pos_bound. reflexivity.
   Qed.
 
-  Lemma compile_op_emits_valid: forall x op y z,
+  Lemma compile_op_emits_valid: forall iset x op y z,
       supported_iset iset ->
       valid_register x ->
       valid_register y ->
@@ -564,7 +562,7 @@ Section EmitsValid.
           destruct iset; auto; try discriminate.
   Qed.
 
-  Lemma compile_bcond_by_inverting_emits_valid: forall cond amt,
+  Lemma compile_bcond_by_inverting_emits_valid: forall iset cond amt,
       valid_registers_bcond cond ->
       - 2 ^ 12 <= amt < 2 ^ 12 ->
       amt mod 2 = 0 ->
@@ -582,36 +580,42 @@ Section EmitsValid.
     intuition lia.
   Qed.
 
+  Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
+
   Lemma compile_load_emits_valid: forall x y sz,
-      supported_iset iset ->
       valid_register x ->
       valid_register y ->
-      valid_instructions iset [compile_load iset sz x y 0].
+      valid_instructions iset [compile_load sz x y 0].
   Proof.
-    intros.
+    intros. unfold iset.
+    destruct Utility.width_cases as [E | E]; rewrite E; simpl;
+    destruct sz eqn: Eqsz; unfold valid_instructions, valid_register in *; simpl;
+      intros;
+      (destruct H1; [|contradiction]);
+      subst instr;
+      unfold verify;
+      simpl;
+      rewrite? E; simpl;
+      autounfold with unf_encode_consts unf_verify;
+      unfold Register0 in *;
+      rewrite? E; simpl;
+      intuition (try lia).
+  Qed.
+
+  Lemma compile_store_emits_valid: forall x y sz,
+      valid_register x ->
+      valid_register y ->
+      valid_instructions iset [compile_store sz x y 0].
+  Proof.
+    intros. unfold iset.
+    destruct Utility.width_cases as [E | E]; rewrite E; simpl;
     destruct sz; inversions H; unfold valid_instructions, valid_register in *; simpl;
       intros;
       (destruct H; [|contradiction]);
       subst instr;
       unfold verify;
       simpl;
-      autounfold with unf_encode_consts unf_verify;
-      unfold Register0 in *;
-      intuition (try lia).
-  Qed.
-
-  Lemma compile_store_emits_valid: forall x y sz,
-      supported_iset iset ->
-      valid_register x ->
-      valid_register y ->
-      valid_instructions iset [compile_store iset sz x y 0].
-  Proof.
-    intros.
-    destruct sz; inversions H; unfold valid_instructions, valid_register in *; simpl;
-      intros;
-      (destruct H; [|contradiction]);
-      subst instr;
-      unfold verify;
+      rewrite? E;
       simpl;
       autounfold with unf_encode_consts unf_verify;
       unfold Register0 in *;
@@ -621,11 +625,11 @@ Section EmitsValid.
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Lemma compile_lit_new_size: forall x v,
-      0 <= Zlength (compile_lit_new iset x v) <= 15.
+      0 <= Zlength (compile_lit_new x v) <= 15.
   Admitted.
 
   Lemma compile_stmt_size: forall s,
-    0 <= Zlength (compile_stmt iset s) <= stmt_size s.
+    0 <= Zlength (compile_stmt s) <= stmt_size s.
   Proof.
     induction s; simpl; try apply compile_lit_new_size;
       try destruct op; try solve [destruct f]; simpl;
@@ -639,7 +643,7 @@ Section EmitsValid.
       supported_iset iset ->
       valid_registers s ->
       stmt_not_too_big s ->
-      valid_instructions iset (compile_stmt iset s).
+      valid_instructions iset (compile_stmt s).
   Proof.
     induction s; intros; simpl in *; intuition (
       auto using compile_load_emits_valid,
@@ -655,7 +659,6 @@ Section EmitsValid.
            | H: _ \/ _ |- _ => destruct H
            | H: In _ (_ ++ _) |- _ => apply in_app_iff in H
            | H: In _ (_ :: _) |- _ => apply in_inv in H
-           | s: stmt |- _ => unique pose proof (stmt_size_pos s)
            | s: stmt |- _ => unique pose proof (compile_stmt_size s)
            | H: context [Zlength ?l] |- _ => unique pose proof (Zlength_nonneg l)
            end;

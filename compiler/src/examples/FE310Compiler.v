@@ -36,7 +36,6 @@ Instance mmio_params: MMIO.parameters := { (* everything is inferred automatical
 Existing Instance MinimalMMIOPrimitivesParams. (* needed because it's in a section *)
 
 Instance pipeline_params: Pipeline.parameters := {
-  Pipeline.W := Words32Naive.Words32Naive;
   Pipeline.ext_spec := FlatToRiscv.FlatToRiscv.ext_spec;
   Pipeline.ext_guarantee := FlatToRiscv.FlatToRiscv.ext_guarantee;
   Pipeline.M := OStateND RiscvMachine;
@@ -65,11 +64,7 @@ Proof.
   congruence.
 Qed.
 
-Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
-constructor.
-all: try typeclasses eauto.
-exact MMIO.FlatToRiscv_hyps. (* TODO why does "typeclasses eauto" not find this one? *)
-Qed.
+Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params := { }.
 
 Definition compileFunc: cmd -> list Instruction := exprImp2Riscv.
 

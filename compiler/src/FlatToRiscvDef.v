@@ -23,10 +23,11 @@ Set Implicit Arguments.
 Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Prop :=
   forall instr, In instr prog -> verify instr iset.
 
-Definition swrap(width: Z)(z: Z): Z := (z + 2^(width-1)) mod 2^width - 2^(width-1).
-
 Module Import FlatToRiscvDef.
   Class parameters := {
+    (* the words implementations are not needed, but we need width,
+       and EmitsValid needs width_cases *)
+    W :> Utility.Words;
     actname: Type;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
     max_ext_call_code_size: actname -> Z;
@@ -98,12 +99,6 @@ Section FlatToRiscv1.
 
   (* Part 2: compilation *)
 
-  Definition is32bit(iset: InstructionSet): bool :=
-    match iset with
-    | RV32I | RV32IM | RV32IA | RV32IMA | RV32IF | RV32IMF | RV32IAF | RV32IMAF => true
-    | RV64I | RV64IM | RV64IA | RV64IMA | RV64IF | RV64IMF | RV64IAF | RV64IMAF => false
-    end.
-
   (* load & store depend on the bitwidth: on 32-bit machines, Lw just loads 4 bytes,
      while on 64-bit machines, it loads 4 bytes and sign-extends them.
      If we want a command which always loads 4 bytes without sign-extending them,
@@ -111,22 +106,22 @@ Section FlatToRiscv1.
      but Lwu on 64-bit.
      We can't just always choose Lwu, because Lwu is not available on 32-bit machines. *)
 
-  Definition compile_load(iset: InstructionSet)(sz: access_size):
+  Definition compile_load(sz: access_size):
     Register -> Register -> Z -> Instruction :=
     match sz with
     | access_size.one => Lbu
     | access_size.two => Lhu
-    | access_size.four => if is32bit iset then Lw else Lwu
-    | access_size.word => if is32bit iset then Lw else Ld
+    | access_size.four => if width =? 32 then Lw else Lwu
+    | access_size.word => if width =? 32 then Lw else Ld
     end.
 
-  Definition compile_store(iset: InstructionSet)(sz: access_size):
+  Definition compile_store(sz: access_size):
     Register -> Register -> Z -> Instruction :=
     match sz with
     | access_size.one => Sb
     | access_size.two => Sh
     | access_size.four => Sw
-    | access_size.word => if is32bit iset then Sw else Sd
+    | access_size.word => if width =? 32 then Sw else Sd
     end.
 
   Definition compile_op(rd: Register)(op: Syntax.bopname)(rs1 rs2: Register): list Instruction :=
@@ -195,6 +190,8 @@ Section FlatToRiscv1.
      Lui+Addi pairs for all desired values in the range -2^31 <= v < 2^31
  *)
 
+  Definition swrap(width: Z)(z: Z): Z := (z + 2^(width-1)) mod 2^width - 2^(width-1).
+
   Definition compile_lit_medium(rd: Register)(v: Z): list Instruction :=
     let lo := signExtend 12 (bitSlice v 0 12) in
     let hi := swrap 32 (v - lo) in
@@ -213,11 +210,9 @@ Section FlatToRiscv1.
        Slli rd rd 11 ;
        Addi rd rd v0 ]].
 
-  Context (iset: InstructionSet).
-
   Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
     if dec (-2^11 <= v < 2^11) then compile_lit_small rd v else
-    if is32bit iset then compile_lit_medium rd (swrap 32 v) else
+    if width =? 32 then compile_lit_medium rd (swrap 32 v) else
     compile_lit_large rd (v mod 2 ^ 64).
 
   (* Inverts the branch condition. *)
@@ -239,8 +234,8 @@ Section FlatToRiscv1.
 
   Fixpoint compile_stmt(s: stmt): list Instruction :=
     match s with
-    | SLoad  sz x y => [[compile_load  iset sz x y 0]]
-    | SStore sz x y => [[compile_store iset sz x y 0]]
+    | SLoad  sz x y => [[compile_load  sz x y 0]]
+    | SStore sz x y => [[compile_store sz x y 0]]
     | SLit x v => compile_lit_new x v
     | SOp x op y z => compile_op x op y z
     | SSet x y => [[Add x Register0 y]]
