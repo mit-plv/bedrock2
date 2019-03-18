@@ -303,9 +303,9 @@ Section EmitsValid.
   Lemma compile_lit_small_emits_valid: forall r iset w,
       -2^11 <= w < 2^11 ->
       valid_register r ->
-      valid_instructions iset (compile_lit_small r w).
+      valid_instructions iset (compile_lit_12bit r w).
   Proof.
-    intros. unfold compile_lit_small, valid_instructions.
+    intros. unfold compile_lit_12bit, valid_instructions.
     intros. simpl in *. destruct H1; [subst|contradiction].
     split; [|exact I]. simpl.
     autounfold with unf_verify unf_encode_consts.
@@ -399,12 +399,12 @@ Section EmitsValid.
     apply Zmod_0_l.
   Qed.
 
-  Lemma compile_lit_medium_emits_valid: forall r v iset,
+  Lemma compile_lit_32bit_emits_valid: forall r v iset,
       -2^31 <= v < 2^31 ->
       valid_register r ->
-      valid_instructions iset (compile_lit_medium r v).
+      valid_instructions iset (compile_lit_32bit r v).
   Proof.
-    intros. unfold compile_lit_medium, valid_instructions.
+    intros. unfold compile_lit_32bit, valid_instructions.
     intros. simpl in *.
     pose proof (@swrap_range (v - signExtend 12 (bitSlice v 0 12)) 32 eq_refl) as P1.
     pose proof (bitSlice_range 12 v) as P2.
@@ -498,14 +498,14 @@ Section EmitsValid.
     lia.
   Qed.
 
-  Lemma compile_lit_large_emits_valid: forall r w iset,
+  Lemma compile_lit_64bit_emits_valid: forall r w iset,
       0 <= w < 2^64 ->
       valid_register r ->
-      valid_instructions iset (compile_lit_large r w).
+      valid_instructions iset (compile_lit_64bit r w).
   Proof.
-    intros. unfold compile_lit_large, valid_instructions.
+    intros. unfold compile_lit_64bit, valid_instructions.
     intros. apply in_app_or in H1. destruct H1. {
-      eapply compile_lit_medium_emits_valid; try eassumption.
+      eapply compile_lit_32bit_emits_valid; try eassumption.
       change 31 with (32 - 1).
       eapply signExtend_range; [reflexivity|].
       change 32 with (64 - 32) at 3.
@@ -517,24 +517,30 @@ Section EmitsValid.
       (eapply valid_Addi_bitSlice || eapply valid_Slli); try eassumption; try lia.
   Qed.
 
+  Lemma compile_lit_large_emits_valid: forall r w iset,
+      valid_register r ->
+      valid_instructions iset (compile_lit_large r w).
+  Proof.
+    unfold compile_lit_large; intros.
+    destruct_one_match.
+    - eapply compile_lit_32bit_emits_valid; try eassumption.
+      change 31 with (32 - 1).
+      apply swrap_range.
+      reflexivity.
+    - eapply compile_lit_64bit_emits_valid; try eassumption.
+      apply Z.mod_pos_bound. reflexivity.
+  Qed.
+
+  Global Arguments compile_lit_large_emits_valid : clear implicits.
+
   Lemma compile_lit_new_emits_valid: forall r w iset,
       valid_register r ->
       valid_instructions iset (compile_lit_new r w).
   Proof.
-    unfold valid_instructions.
     intros.
     unfold compile_lit_new in *.
-    destruct_one_match_hyp. {
-      eapply compile_lit_small_emits_valid; eassumption.
-    }
-    destruct_one_match_hyp. {
-      eapply compile_lit_medium_emits_valid; try eassumption.
-      change 31 with (32 - 1).
-      apply swrap_range.
-      reflexivity.
-    }
-    eapply compile_lit_large_emits_valid; try eassumption.
-    apply Z.mod_pos_bound. reflexivity.
+    destruct_one_match;
+    eauto using compile_lit_small_emits_valid, compile_lit_large_emits_valid.
   Qed.
 
   Lemma compile_op_emits_valid: forall iset x op y z,

@@ -47,13 +47,6 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Section TODO.
-  Context {K V: Type}.
-  Context {M: map.map K V}.
-  Axiom put_put_same: forall k v1 v2 m, map.put (map.put m k v1) k v2 = map.put m k v2.
-End TODO.
-
-
 Axiom TODO: False.
 
 Module Import FlatToRiscv.
@@ -372,17 +365,6 @@ Section FlatToRiscv1.
     apply runsToDone. assumption.
   Qed.
 
-  Lemma det_step: forall initialL midL P,
-      mcomp_sat (run1 iset) initialL (eq midL) ->
-      runsTo midL P ->
-      runsTo initialL P.
-  Proof.
-    intros.
-    eapply runsToStep; [eassumption|].
-    intros. subst.
-    assumption.
-  Qed.
-
   Ltac simpl_run1 :=
     cbv [run1 (*execState*) OStateNDOperations.put OStateNDOperations.get
          Return Bind State_Monad OStateND_Monad
@@ -519,7 +501,7 @@ Section FlatToRiscv1.
   Ltac simulate' := repeat simulate'_step.
 
   Ltac run1det :=
-    eapply det_step;
+    eapply runsTo_det_step;
     [ simulate';
       match goal with
       | |- ?mid = ?RHS =>
@@ -645,73 +627,14 @@ Section FlatToRiscv1.
     subst.
     unfold compile_lit_new in *.
     destruct (dec (- 2 ^ 11 <= v < 2 ^ 11)). {
-      unfold compile_lit_small in *.
+      unfold compile_lit_12bit in *.
       run1det.
       simpl_word_exprs word_ok.
       exact N.
     }
-    destruct (width =? 32) eqn: E. {
-      unfold compile_lit_medium in *.
-      run1det.
-      run1det.
-      match goal with
-      | R: runsTo ?m post |- runsTo ?m' post =>
-        replace m' with m; [exact R|]
-      end.
-      cbv [withRegs withPc withNextPc withMem withLog]. clear N. f_equal.
-      - rewrite put_put_same. f_equal.
-        apply word.signed_inj.
-        rewrite word.signed_of_Z.
-        rewrite word.signed_add.
-        rewrite! word.signed_of_Z.
-        remember (signExtend 12 (bitSlice (swrap 32 v) 0 12)) as lo.
-        remember (v - lo) as hi.
-        unfold word.swrap, swrap.
-        assert (width = 32) as A by case TODO.
-        rewrite <- A.
-        remember (2 ^ (width - 1)) as B.
-        remember (2 ^ width) as M.
-        f_equal.
-        (*
-        match goal with
-        | |- (?a + ?b) mod ?n = (?a' + ?b) mod ?n =>
-          rewrite (Zplus_mod a b n); rewrite (Zplus_mod a' b n)
-        end.
-        f_equal.
-        f_equal.
-        (* push *)
-        rewrite Zplus_mod.
-        rewrite (Zminus_mod ((hi + B) mod M) B M).
-        rewrite (Zminus_mod ((lo + B) mod M) B M).
-        rewrite (Zplus_mod hi B M).
-        rewrite (Zplus_mod lo B M).
-
-        rewrite! Zmod_mod.
-
-        (* pull *)
-        rewrite <- (Zplus_mod hi B M).
-        rewrite <- (Zplus_mod lo B M).
-        rewrite <- (Zminus_mod (hi + B) B M).
-        rewrite <- (Zminus_mod (lo + B) B M).
-        rewrite <- (Zplus_mod (hi + B - B) (lo + B - B) M).
-        ring_simplify (hi + B - B + (lo + B - B)).
-
-(*
-do we have ready-to-use push/pull mod tactics to solve goals like
-
-(v + B) mod M = ((v - E + B) mod M - B + ((E + B) mod M - B) + B) mod M
-
-?
- *)
-        subst hi.
-        f_equal.
-        lia.
-
-      - solve_word_eq word_ok.
-      - solve_word_eq word_ok.
-    }
-*)
-  Admitted.
+    refine (@FlatToRiscvBW.compile_lit_large_correct _ _ _ _ _ _ _ _ _ _ _ _ _ _ _); [ sidecondition..|].
+    assumption.
+  Qed.
 
   Definition eval_stmt := exec map.empty.
 
@@ -874,7 +797,7 @@ do we have ready-to-use push/pull mod tactics to solve goals like
 
     - (* SIf/Then *)
       (* execute branch instruction, which will not jump *)
-      eapply det_step; simpl in *; subst.
+      eapply runsTo_det_step; simpl in *; subst.
       + simulate'.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
@@ -887,7 +810,7 @@ do we have ready-to-use push/pull mod tactics to solve goals like
 
     - (* SIf/Else *)
       (* execute branch instruction, which will jump over then-branch *)
-      eapply det_step; simpl in *; subst.
+      eapply runsTo_det_step; simpl in *; subst.
       + simulate'.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
@@ -913,7 +836,7 @@ do we have ready-to-use push/pull mod tactics to solve goals like
            end.
         destruct condB.
         * (* true: iterate again *)
-          eapply det_step; simpl in *; subst.
+          eapply runsTo_det_step; simpl in *; subst.
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
@@ -930,7 +853,7 @@ do we have ready-to-use push/pull mod tactics to solve goals like
                 simpl. intros. simp. destruct_RiscvMachine middle. subst.
                 run1done. }
         * (* false: done, jump over body2 *)
-          eapply det_step; simpl in *; subst.
+          eapply runsTo_det_step; simpl in *; subst.
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }

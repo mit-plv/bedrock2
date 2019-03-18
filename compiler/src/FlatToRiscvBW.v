@@ -40,6 +40,13 @@ Require Import compiler.SimplWordExpr.
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
 
+Section TODO.
+  Context {K V: Type}.
+  Context {M: map.map K V}.
+  Axiom put_put_same: forall k v1 v2 m, map.put (map.put m k v1) k v2 = map.put m k v2.
+End TODO.
+
+Axiom TODO: False.
 
 Module Import FlatToRiscvBW.
   Export FlatToRiscvDef.FlatToRiscvDef.
@@ -111,15 +118,58 @@ Module Import FlatToRiscvBW.
       Memory.store sz (getMem initialL) addr v = Some m' ->
       mcomp_sat (f tt) (withMem m' initialL) post ->
       mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post;
+
+
+   compile_lit_large_correct: forall initialL post x v R d,
+      initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
+      d = mul (word.of_Z 4) (word.of_Z (Zlength (compile_lit_large x v))) ->
+      (program initialL.(getPc) (compile_lit_large x v) * R)%sep initialL.(getMem) ->
+      valid_registers (SLit x v) ->
+      runsTo (mcomp_sat (run1 iset))
+             (withRegs   (map.put initialL.(getRegs) x (word.of_Z v))
+             (withPc     (add initialL.(getPc) d)
+             (withNextPc (add initialL.(getNextPc) d)
+                         initialL)))
+             post ->
+      runsTo (mcomp_sat (run1 iset))
+             initialL post;
   }.
 
 End FlatToRiscvBW.
 
+Ltac word_cst w :=
+match w with
+| word.of_Z ?x => let b := isZcst x in
+                 match b with
+                 | true => x
+                 | _ => constr:(NotConstant)
+                 end
+| _ => constr:(NotConstant)
+end.
+
+Local Unset Universe Polymorphism. (* for Add Ring *)
 
 Section Proofs32.
   Context (p: FlatToRiscvBW.parameters 32 (or_introl eq_refl)).
 
   Arguments LittleEndian.combine: simpl never.
+
+  Definition word_ring_morph := word.ring_morph (word := word).
+  Definition word_ring_theory := word.ring_theory (word := word).
+
+  Hint Rewrite
+       word_ring_morph.(morph_add)
+word_ring_morph.(morph_sub)
+word_ring_morph.(morph_mul)
+word_ring_morph.(morph_opp)
+    : rew_word_morphism.
+
+  Add Ring wring : word_ring_theory
+(preprocess [autorewrite with rew_word_morphism],
+ morphism word_ring_morph,
+ constants [word_cst]).
+
+  Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Instance Proofs32: proofs p.
   Proof.
@@ -135,6 +185,79 @@ Section Proofs32.
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.store, Memory.store_Z in *;
         simp; simulate; simpl; simpl_word_exprs word_ok; eassumption.
+    - intros *. intros E1 Hd P V N. subst d.
+      pose proof (compile_lit_large_emits_valid x v iset ltac:(auto)) as EV.
+      simpl in *.
+      destruct initialL; simpl in *.
+      subst.
+      unfold compile_lit_large, compile_lit_32bit in *.
+      change (width =? 32) with true in *; cbn iota in *.
+      eapply runsTo_det_step.
+      { change word with Utility.word.
+        simulate; reflexivity. }
+      eapply runsTo_det_step.
+      { change word with Utility.word.
+        simulate; reflexivity. }
+      simpl.
+
+      match goal with
+      | R: runsTo _ ?m post |- runsTo _ ?m' post =>
+        replace m' with m; [exact R|]
+      end.
+
+      cbv [withRegs withPc withNextPc withMem withLog]. clear N. f_equal.
+      + rewrite put_put_same. f_equal.
+        apply word.signed_inj.
+        rewrite word.signed_of_Z.
+        rewrite word.signed_add.
+        rewrite! word.signed_of_Z.
+        remember (signExtend 12 (bitSlice (swrap 32 v) 0 12)) as lo.
+        remember (v - lo) as hi.
+        unfold word.swrap, swrap.
+        assert (width = 32) as A by case TODO.
+        rewrite <- A.
+        remember (2 ^ (width - 1)) as B.
+        remember (2 ^ width) as M.
+        f_equal.
+
+        case TODO.
+  (*
+        match goal with
+        | |- (?a + ?b) mod ?n = (?a' + ?b) mod ?n =>
+          rewrite (Zplus_mod a b n); rewrite (Zplus_mod a' b n)
+        end.
+        f_equal.
+        f_equal.
+        (* push *)
+        rewrite Zplus_mod.
+        rewrite (Zminus_mod ((hi + B) mod M) B M).
+        rewrite (Zminus_mod ((lo + B) mod M) B M).
+        rewrite (Zplus_mod hi B M).
+        rewrite (Zplus_mod lo B M).
+
+        rewrite! Zmod_mod.
+
+        (* pull *)
+        rewrite <- (Zplus_mod hi B M).
+        rewrite <- (Zplus_mod lo B M).
+        rewrite <- (Zminus_mod (hi + B) B M).
+        rewrite <- (Zminus_mod (lo + B) B M).
+        rewrite <- (Zplus_mod (hi + B - B) (lo + B - B) M).
+        ring_simplify (hi + B - B + (lo + B - B)).
+
+(*
+do we have ready-to-use push/pull mod tactics to solve goals like
+
+(v + B) mod M = ((v - E + B) mod M - B + ((E + B) mod M - B) + B) mod M
+
+?
+   *)
+        subst hi.
+        f_equal.
+        lia.
+  *)
+      + solve_word_eq word_ok.
+      + solve_word_eq word_ok.
   Qed.
 
 End Proofs32.
@@ -159,6 +282,7 @@ Section Proofs64.
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.store, Memory.store_Z in *;
         simp; simulate; simpl; simpl_word_exprs word_ok; eassumption.
+    - case TODO.
   Qed.
 
 End Proofs64.

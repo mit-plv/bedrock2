@@ -21,6 +21,8 @@ Import ListNotations.
 
 Open Scope ilist_scope.
 
+Axiom TODO: False.
+
 Definition var: Set := Z.
 Definition func: Set := Empty_set.
 Inductive act: Set := Select. (* only one action (= "external call" = inline assembly snippet) *)
