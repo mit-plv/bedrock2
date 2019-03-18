@@ -149,6 +149,8 @@ end.
 
 Local Unset Universe Polymorphism. (* for Add Ring *)
 
+Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
+
 Section Proofs32.
   Context (p: FlatToRiscvBW.parameters 32 (or_introl eq_refl)).
 
@@ -168,8 +170,6 @@ word_ring_morph.(morph_opp)
 (preprocess [autorewrite with rew_word_morphism],
  morphism word_ring_morph,
  constants [word_cst]).
-
-  Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Instance Proofs32: proofs p.
   Proof.
@@ -268,6 +268,44 @@ Section Proofs64.
 
   Arguments LittleEndian.combine: simpl never.
 
+  Definition word_ring_morph' := word.ring_morph (word := word).
+  Definition word_ring_theory' := word.ring_theory (word := word).
+
+  Hint Rewrite
+       word_ring_morph'.(morph_add)
+       word_ring_morph'.(morph_sub)
+       word_ring_morph'.(morph_mul)
+       word_ring_morph'.(morph_opp)
+    : rew_word_morphism'.
+
+  Add Ring wring' : word_ring_theory'
+(preprocess [autorewrite with rew_word_morphism'],
+ morphism word_ring_morph',
+ constants [word_cst]).
+
+  Definition compile_lit_64bit_semantics(w: Z): word :=
+    let mid := signExtend 12 (bitSlice (signExtend 32 (bitSlice w 32 64)) 0 12) in
+    let hi := swrap 32 (signExtend 32 (bitSlice w 32 64) - mid) in
+    (word.add
+       (word.slu
+          (word.add
+             (word.slu
+                (word.add
+                   (word.slu
+                      (word.add
+                         (word.of_Z hi)
+                         (word.of_Z mid))
+                      (word.of_Z 10))
+                   (word.of_Z (bitSlice w 22 32)))
+                (word.of_Z 11))
+             (word.of_Z (bitSlice w 11 22)))
+          (word.of_Z 11))
+       (word.of_Z (bitSlice w 0 11))).
+
+  Lemma compile_lit_64bit_correct: forall v,
+      v mod 2 ^ 64 = word.unsigned (compile_lit_64bit_semantics (v  mod 2 ^ 64)).
+  Admitted.
+
   Instance Proofs64: proofs p.
   Proof.
     constructor.
@@ -282,7 +320,41 @@ Section Proofs64.
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.store, Memory.store_Z in *;
         simp; simulate; simpl; simpl_word_exprs word_ok; eassumption.
-    - case TODO.
+    - intros *. intros E1 Hd P V N. subst d.
+      pose proof (compile_lit_large_emits_valid x v iset ltac:(auto)) as EV.
+      unfold compile_lit_large in *.
+      change (width =? 32) with false in *; cbn iota in *.
+      unfold compile_lit_64bit, compile_lit_32bit in *.
+      match type of EV with
+      | context [ Addi _ _ ?a ] => remember a as mid
+      end.
+      match type of EV with
+      | context [ ?a - mid ] => remember a as hi
+      end.
+      cbv [List.app program array] in P.
+      simpl in *. (* if you don't remember enough values, this might take forever *)
+      destruct initialL; simpl in *. subst getNextPc.
+      autorewrite with rew_Zlength in N.
+      simpl in N.
+      eapply runsTo_det_step. { change word with Utility.word. simulate. simpl. reflexivity. }
+      eapply runsTo_det_step. { change word with Utility.word. simulate. simpl. reflexivity. }
+      eapply runsTo_det_step. { change word with Utility.word. simulate. simpl. reflexivity. }
+      eapply runsTo_det_step. { change word with Utility.word. simulate. simpl. reflexivity. }
+      eapply runsTo_det_step. { change word with Utility.word. simulate. simpl. reflexivity. }
+      eapply runsTo_det_step. { change word with Utility.word. simulate. simpl. reflexivity. }
+      eapply runsTo_det_step. { change word with Utility.word. simulate. simpl. reflexivity. }
+      eapply runsTo_det_step. { change word with Utility.word. simulate. simpl. reflexivity. }
+      match goal with
+      | R: runsTo _ ?m post |- runsTo _ ?m' post =>
+        replace m' with m; [exact R|]
+      end.
+      cbv [withRegs withPc withNextPc withMem withLog]. clear N P EV. f_equal.
+      + rewrite! put_put_same. f_equal. subst. change (BinInt.Z.pow_pos 2 64) with (2 ^ 64).
+        apply word.unsigned_inj.
+        rewrite word.unsigned_of_Z.
+        apply compile_lit_64bit_correct.
+      + solve_word_eq word_ok.
+      + solve_word_eq word_ok.
   Qed.
 
 End Proofs64.

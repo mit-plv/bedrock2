@@ -580,23 +580,6 @@ Section FlatToRiscv1.
     unfold iset. destruct_one_match; constructor.
   Qed.
 
-  Definition load_lit_semantics(v: Z): word :=
-    add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add (sll (add
-      (ZToReg 0)
-      (ZToReg (bitSlice v (7 * 8) (8 * 8)))) 8)
-      (ZToReg (bitSlice v (6 * 8) (7 * 8)))) 8)
-      (ZToReg (bitSlice v (5 * 8) (6 * 8)))) 8)
-      (ZToReg (bitSlice v (4 * 8) (5 * 8)))) 8)
-      (ZToReg (bitSlice v (3 * 8) (4 * 8)))) 8)
-      (ZToReg (bitSlice v (2 * 8) (3 * 8)))) 8)
-      (ZToReg (bitSlice v (1 * 8) (2 * 8)))) 8)
-      (ZToReg (bitSlice v (0 * 8) (1 * 8))).
-
-  Lemma compile_lit_correct: forall v: Z,
-      load_lit_semantics v = ZToReg v.
-  Proof using .
-  Admitted.
-
   Ltac substs :=
     repeat match goal with
            | x := _ |- _ => subst x
