@@ -177,7 +177,8 @@ Ltac straightline :=
     let x := rdelta x in is_evar x; change (x=y); exact eq_refl
   | |- ?x = ?y =>
     let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl
-  | |- @store _ _ _ _ _ _ =>  eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]
+  | |- @store _ Syntax.access_size.one _ _ _ _ =>  eapply Scalars.store_one_of_sep; [solve[ecancel_assumption]|]
+  | |- @store _ Syntax.access_size.word _ _ _ _ =>  eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]
   | |- bedrock2.Memory.load Syntax.access_size.word ?m ?a = Some ?ev =>
     try subst ev; eapply Scalars.load_word_of_sep; ecancel_assumption
   | |- bedrock2.Memory.load Syntax.access_size.one ?m ?a = Some ?ev =>

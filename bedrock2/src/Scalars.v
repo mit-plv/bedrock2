@@ -109,6 +109,15 @@ Section Scalars.
     eapply Z.lor_0_r.
   Qed.
 
+  Lemma store_one_of_sep addr (oldvalue : byte) (value : word) R m (post:_->Prop)
+    (Hsep : sep (scalar8 addr oldvalue) R m)
+    (Hpost : forall m, sep (scalar8 addr (word.of_Z (word.unsigned value))) R m -> post m)
+    : exists m1, Memory.store Syntax.access_size.one m addr value = Some m1 /\ post m1.
+  Proof.
+    eapply (store_bytes_of_sep _ 1 (PrimitivePair.pair.mk _ tt)); cbn; [ecancel_assumption|].
+    intros; eapply Hpost; ecancel_assumption.
+  Qed.
+
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)
