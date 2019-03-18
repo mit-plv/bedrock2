@@ -169,7 +169,7 @@ Section FlatToRiscv1.
   Definition compile_lit(rd: Register)(v: Z): list Instruction :=
     compile_lit_rec 7 rd Register0 v.
 
-  Definition compile_lit_small(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit_12bit(rd: Register)(v: Z): list Instruction :=
     [[ Addi rd Register0 v ]].
 
   (* On a 64bit machine, loading a constant -2^31 <= v < 2^31 is not always possible with
@@ -192,17 +192,17 @@ Section FlatToRiscv1.
 
   Definition swrap(width: Z)(z: Z): Z := (z + 2^(width-1)) mod 2^width - 2^(width-1).
 
-  Definition compile_lit_medium(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit_32bit(rd: Register)(v: Z): list Instruction :=
     let lo := signExtend 12 (bitSlice v 0 12) in
     let hi := swrap 32 (v - lo) in
     [[ Lui rd hi ; Addi rd rd lo ]].
 
-  Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit_64bit(rd: Register)(v: Z): list Instruction :=
     let v0 := bitSlice v  0 11 in
     let v1 := bitSlice v 11 22 in
     let v2 := bitSlice v 22 32 in
     let hi := bitSlice v 32 64 in
-    compile_lit_medium rd (signExtend 32 hi) ++
+    compile_lit_32bit rd (signExtend 32 hi) ++
     [[ Slli rd rd 10 ;
        Addi rd rd v2 ;
        Slli rd rd 11 ;
@@ -210,10 +210,13 @@ Section FlatToRiscv1.
        Slli rd rd 11 ;
        Addi rd rd v0 ]].
 
+  Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
+    if width =? 32 then compile_lit_32bit rd (swrap 32 v) else
+    compile_lit_64bit rd (v mod 2 ^ 64).
+
   Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
-    if dec (-2^11 <= v < 2^11) then compile_lit_small rd v else
-    if width =? 32 then compile_lit_medium rd (swrap 32 v) else
-    compile_lit_large rd (v mod 2 ^ 64).
+    if dec (-2^11 <= v < 2^11) then compile_lit_12bit rd v else
+    compile_lit_large rd v.
 
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting
