@@ -39,13 +39,18 @@ Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
-Require Import compiler.FlatToRiscvBW.
 Require coqutil.Map.Empty_set_keyed_map.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
 
 Set Implicit Arguments.
+
+Section TODO.
+  Context {K V: Type}.
+  Context {M: map.map K V}.
+  Axiom put_put_same: forall k v1 v2 m, map.put (map.put m k v1) k v2 = map.put m k v2.
+End TODO.
 
 Axiom TODO: False.
 
@@ -124,19 +129,6 @@ Module Import FlatToRiscv.
                   ext_guarantee finalL);
   }.
 
-  Instance BW_params(p: parameters)(h: assumptions): FlatToRiscvBW.parameters width width_cases :=
-  {
-    FlatToRiscvBW.actname := actname;
-    FlatToRiscvBW.compile_ext_call := compile_ext_call;
-    FlatToRiscvBW.max_ext_call_code_size := max_ext_call_code_size;
-    FlatToRiscvBW.compile_ext_call_length := compile_ext_call_length;
-    FlatToRiscvBW.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
-    FlatToRiscvBW.PRParams := PRParams;
-    FlatToRiscvBW.PR := PR;
-  }.
-
-  Instance BW_specific_proofs(p: parameters)(h: assumptions):
-    FlatToRiscvBW.proofs (@BW_params p h) := ProofsBW width width_cases (BW_params h).
 End FlatToRiscv.
 
 Local Unset Universe Polymorphism. (* for Add Ring *)
@@ -352,6 +344,61 @@ Section FlatToRiscv1.
     end;
     simpl.
 
+  Arguments LittleEndian.combine: simpl never.
+
+  Lemma go_load: forall sz x a (addr v: word) initialL post f,
+      valid_register x ->
+      valid_register a ->
+      map.get initialL.(getRegs) a = Some addr ->
+      Memory.load sz (getMem initialL) addr = Some v ->
+      mcomp_sat (f tt)
+                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
+      mcomp_sat (Bind (execute (compile_load sz x a 0)) f) initialL post.
+  Proof.
+    unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per.
+    destruct width_cases as [E | E];
+      (* note: "rewrite E" does not work because "width" also appears in the type of "word",
+         but we don't need to rewrite in the type of word, only in the type of the tuple,
+         which works if we do it before intro'ing it *)
+      (destruct (width =? 32) eqn: E'; [apply Z.eqb_eq in E' | apply Z.eqb_neq in E']);
+      try congruence;
+      clear E';
+      [set (nBytes := 4%nat) | set (nBytes := 8%nat)];
+      replace (Z.to_nat ((width + 7) / 8)) with nBytes by (subst nBytes; rewrite E; reflexivity);
+      subst nBytes;
+      intros; destruct sz; try solve [
+        unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
+        Memory.load, Memory.load_Z in *;
+        simp; simulate; simpl; simpl_word_exprs word_ok;
+          try eassumption].
+  Qed.
+
+  Lemma go_store: forall sz x a (addr v: word) initialL m' post f,
+      valid_register x ->
+      valid_register a ->
+      map.get initialL.(getRegs) x = Some v ->
+      map.get initialL.(getRegs) a = Some addr ->
+      Memory.store sz (getMem initialL) addr v = Some m' ->
+      mcomp_sat (f tt) (withMem m' initialL) post ->
+      mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post.
+  Proof.
+    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per;
+    destruct width_cases as [E | E];
+      (* note: "rewrite E" does not work because "width" also appears in the type of "word",
+         but we don't need to rewrite in the type of word, only in the type of the tuple,
+         which works if we do it before intro'ing it *)
+      (destruct (width =? 32) eqn: E'; [apply Z.eqb_eq in E' | apply Z.eqb_neq in E']);
+      try congruence;
+      clear E';
+      [set (nBytes := 4%nat) | set (nBytes := 8%nat)];
+      replace (Z.to_nat ((width + 7) / 8)) with nBytes by (subst nBytes; rewrite E; reflexivity);
+      subst nBytes;
+      intros; destruct sz; try solve [
+        unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
+        Memory.store, Memory.store_Z in *;
+        simp; simulate; simpl; simpl_word_exprs word_ok; eassumption].
+  Qed.
+
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
@@ -493,10 +540,10 @@ Section FlatToRiscv1.
 
   Ltac simulate'_step :=
     first (* lemmas introduced only in this file: *)
-    [ refine (@FlatToRiscvBW.go_load _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _); [sidecondition..|]
-    | refine (@FlatToRiscvBW.go_store _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _); [sidecondition..|]
-    | simulate_step
-    | simpl_modu4_0 ].
+          [ eapply go_load  ; [sidecondition..|]
+          | eapply go_store ; [sidecondition..|]
+          | simulate_step
+          | simpl_modu4_0 ].
 
   Ltac simulate' := repeat simulate'_step.
 
@@ -587,6 +634,145 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
+  Definition compile_lit_64bit_semantics(w: Z): word :=
+    let mid := signExtend 12 (bitSlice (signExtend 32 (bitSlice w 32 64)) 0 12) in
+    let hi := swrap 32 (signExtend 32 (bitSlice w 32 64) - mid) in
+    (word.add
+       (word.slu
+          (word.add
+             (word.slu
+                (word.add
+                   (word.slu
+                      (word.add
+                         (word.of_Z hi)
+                         (word.of_Z mid))
+                      (word.of_Z 10))
+                   (word.of_Z (bitSlice w 22 32)))
+                (word.of_Z 11))
+             (word.of_Z (bitSlice w 11 22)))
+          (word.of_Z 11))
+       (word.of_Z (bitSlice w 0 11))).
+
+  Lemma compile_lit_64bit_correct: forall v,
+      v mod 2 ^ 64 = word.unsigned (compile_lit_64bit_semantics (v  mod 2 ^ 64)).
+  Admitted.
+
+  Lemma compile_lit_large_correct: forall initialL post x v R d,
+      initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
+      d = mul (word.of_Z 4) (word.of_Z (Zlength (compile_lit_large x v))) ->
+      (program initialL.(getPc) (compile_lit_large x v) * R)%sep initialL.(getMem) ->
+      valid_registers (SLit x v) ->
+      runsTo (withRegs   (map.put initialL.(getRegs) x (word.of_Z v))
+             (withPc     (add initialL.(getPc) d)
+             (withNextPc (add initialL.(getNextPc) d)
+                         initialL)))
+             post ->
+      runsTo initialL post.
+  Proof.
+    unfold compile_lit_large, compile_lit_64bit, compile_lit_32bit in *.
+    destruct width_cases as [E | E];
+      (destruct (width =? 32) eqn: E'; pose proof E' as E'';
+       [apply Z.eqb_eq in E'' | apply Z.eqb_neq in E'']);
+      try congruence;
+      clear E'';
+      intros *; intros E1 Hd P V N; subst d;
+      pose proof (compile_lit_large_emits_valid x v iset ltac:(auto)) as EV.
+    - unfold compile_lit_large, compile_lit_32bit in *.
+      rewrite E' in EV.
+      destruct_RiscvMachine initialL. subst.
+      simpl in *.
+      run1det. run1det.
+      match goal with
+      | R: runsTo ?m post |- runsToNonDet.runsTo _ ?m' post =>
+        replace m' with m; [exact R|]
+      end.
+      cbv [withRegs withPc withNextPc withMem withLog]. clear N. f_equal.
+      + rewrite put_put_same. f_equal.
+        apply word.signed_inj.
+        rewrite word.signed_of_Z.
+        rewrite word.signed_add.
+        rewrite! word.signed_of_Z.
+        remember (signExtend 12 (bitSlice (swrap 32 v) 0 12)) as lo.
+        remember (v - lo) as hi.
+        unfold word.swrap, swrap.
+        assert (width = 32) as A by case TODO.
+        rewrite <- A.
+        remember (2 ^ (width - 1)) as B.
+        remember (2 ^ width) as M.
+        f_equal.
+
+        case TODO.
+  (*
+        match goal with
+        | |- (?a + ?b) mod ?n = (?a' + ?b) mod ?n =>
+          rewrite (Zplus_mod a b n); rewrite (Zplus_mod a' b n)
+        end.
+        f_equal.
+        f_equal.
+        (* push *)
+        rewrite Zplus_mod.
+        rewrite (Zminus_mod ((hi + B) mod M) B M).
+        rewrite (Zminus_mod ((lo + B) mod M) B M).
+        rewrite (Zplus_mod hi B M).
+        rewrite (Zplus_mod lo B M).
+
+        rewrite! Zmod_mod.
+
+        (* pull *)
+        rewrite <- (Zplus_mod hi B M).
+        rewrite <- (Zplus_mod lo B M).
+        rewrite <- (Zminus_mod (hi + B) B M).
+        rewrite <- (Zminus_mod (lo + B) B M).
+        rewrite <- (Zplus_mod (hi + B - B) (lo + B - B) M).
+        ring_simplify (hi + B - B + (lo + B - B)).
+
+(*
+do we have ready-to-use push/pull mod tactics to solve goals like
+
+(v + B) mod M = ((v - E + B) mod M - B + ((E + B) mod M - B) + B) mod M
+
+?
+   *)
+        subst hi.
+        f_equal.
+        lia.
+  *)
+      + solve_word_eq word_ok.
+      + solve_word_eq word_ok.
+    - unfold compile_lit_large, compile_lit_64bit, compile_lit_32bit in *.
+      rewrite E' in EV.
+      match type of EV with
+      | context [ Addi _ _ ?a ] => remember a as mid
+      end.
+      match type of EV with
+      | context [ ?a - mid ] => remember a as hi
+      end.
+      cbv [List.app program array] in P.
+      simpl in *. (* if you don't remember enough values, this might take forever *)
+      destruct initialL; simpl in *. subst getNextPc.
+      autorewrite with rew_Zlength in N.
+      simpl in N.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      match goal with
+      | R: runsTo ?m post |- runsToNonDet.runsTo _ ?m' post =>
+        replace m' with m; [exact R|]
+      end.
+      cbv [withRegs withPc withNextPc withMem withLog]. clear N P EV. f_equal.
+      + rewrite! put_put_same. f_equal. subst. change (BinInt.Z.pow_pos 2 64) with (2 ^ 64).
+        apply word.unsigned_inj.
+        rewrite word.unsigned_of_Z. replace (2 ^ width) with (2 ^ 64) by congruence.
+        apply compile_lit_64bit_correct.
+      + solve_word_eq word_ok.
+      + solve_word_eq word_ok.
+  Qed.
+
   Lemma compile_lit_correct_full: forall initialL post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
       let insts := compile_stmt (SLit x v) in
@@ -615,8 +801,7 @@ Section FlatToRiscv1.
       simpl_word_exprs word_ok.
       exact N.
     }
-    refine (@FlatToRiscvBW.compile_lit_large_correct _ _ _ _ _ _ _ _ _ _ _ _ _ _ _); [ sidecondition..|].
-    assumption.
+    eapply compile_lit_large_correct; sidecondition.
   Qed.
 
   Definition eval_stmt := exec map.empty.

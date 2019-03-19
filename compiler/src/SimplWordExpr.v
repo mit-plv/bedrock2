@@ -48,7 +48,7 @@ End Lemmas.
 Ltac rewrite_sextend_width_nop OK :=
   so fun hyporgoal => match hyporgoal with
   | context[word.of_Z (BitOps.sextend ?w ?v)] =>
-    rewrite (@sextend_width_nop _ _ OK w v) in * by reflexivity
+    rewrite (@sextend_width_nop _ _ OK w v) in * by (reflexivity || congruence)
   end.
 
 Ltac simpl_word_exprs_step OK :=
