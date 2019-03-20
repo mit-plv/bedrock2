@@ -39,6 +39,7 @@ Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
+Require Import compiler.PushPullMod.
 Require coqutil.Map.Empty_set_keyed_map.
 
 Local Open Scope ilist_scope.
@@ -132,6 +133,64 @@ Module Import FlatToRiscv.
 End FlatToRiscv.
 
 Local Unset Universe Polymorphism. (* for Add Ring *)
+
+Section compile_lit64bit_equiv.
+  Context {width: Z} {word: word.word width} {word_ok: word.ok word}.
+  Hypothesis W: width = 64.
+
+  Definition compile_lit_64bit_semantics(w: Z): word :=
+    let mid := signExtend 12 (bitSlice (signExtend 32 (bitSlice w 32 64)) 0 12) in
+    let hi := swrap 32 (signExtend 32 (bitSlice w 32 64) - mid) in
+    (word.add
+       (word.slu
+          (word.add
+             (word.slu
+                (word.add
+                   (word.slu
+                      (word.add
+                         (word.of_Z hi)
+                         (word.of_Z mid))
+                      (word.of_Z 10))
+                   (word.of_Z (bitSlice w 22 32)))
+                (word.of_Z 11))
+             (word.of_Z (bitSlice w 11 22)))
+          (word.of_Z 11))
+       (word.of_Z (bitSlice w 0 11))).
+
+  Lemma compile_lit_64bit_correct: forall v,
+      v mod 2 ^ 64 = word.unsigned (compile_lit_64bit_semantics (v  mod 2 ^ 64)).
+  Proof.
+    intros.
+    unfold compile_lit_64bit_semantics.
+    rewrite word.unsigned_add.
+    assert (word.unsigned (word.of_Z 11) = 11) as A. {
+      rewrite word.unsigned_of_Z. rewrite W. reflexivity.
+    }
+    assert (word.unsigned (word.of_Z 10) = 10) as A'. {
+      rewrite word.unsigned_of_Z. rewrite W. reflexivity.
+    }
+    rewrite word.unsigned_slu by (rewrite A, W; reflexivity).
+    rewrite word.unsigned_add.
+    rewrite word.unsigned_slu by (rewrite A, W; reflexivity).
+    rewrite word.unsigned_add.
+    rewrite word.unsigned_slu by (rewrite A', W; reflexivity).
+    rewrite word.unsigned_add.
+    rewrite A, A', W.
+    rewrite! Z.shiftl_mul_pow2 by lia.
+    rewrite! word.unsigned_of_Z.
+    rewrite W.
+    rewrite! signExtend_alt by reflexivity.
+    unfold signExtend'.
+    rewrite! bitSlice_alt by lia.
+    unfold bitSlice'.
+    unfold swrap.
+
+    Set Printing Depth 100000.
+
+  Admitted.
+
+End compile_lit64bit_equiv.
+
 
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscv.parameters}.
@@ -634,29 +693,6 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
-  Definition compile_lit_64bit_semantics(w: Z): word :=
-    let mid := signExtend 12 (bitSlice (signExtend 32 (bitSlice w 32 64)) 0 12) in
-    let hi := swrap 32 (signExtend 32 (bitSlice w 32 64) - mid) in
-    (word.add
-       (word.slu
-          (word.add
-             (word.slu
-                (word.add
-                   (word.slu
-                      (word.add
-                         (word.of_Z hi)
-                         (word.of_Z mid))
-                      (word.of_Z 10))
-                   (word.of_Z (bitSlice w 22 32)))
-                (word.of_Z 11))
-             (word.of_Z (bitSlice w 11 22)))
-          (word.of_Z 11))
-       (word.of_Z (bitSlice w 0 11))).
-
-  Lemma compile_lit_64bit_correct: forall v,
-      v mod 2 ^ 64 = word.unsigned (compile_lit_64bit_semantics (v  mod 2 ^ 64)).
-  Admitted.
-
   Lemma compile_lit_large_correct: forall initialL post x v R d,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       d = mul (word.of_Z 4) (word.of_Z (Zlength (compile_lit_large x v))) ->
@@ -700,43 +736,7 @@ Section FlatToRiscv1.
         remember (2 ^ (width - 1)) as B.
         remember (2 ^ width) as M.
         f_equal.
-
-        case TODO.
-  (*
-        match goal with
-        | |- (?a + ?b) mod ?n = (?a' + ?b) mod ?n =>
-          rewrite (Zplus_mod a b n); rewrite (Zplus_mod a' b n)
-        end.
-        f_equal.
-        f_equal.
-        (* push *)
-        rewrite Zplus_mod.
-        rewrite (Zminus_mod ((hi + B) mod M) B M).
-        rewrite (Zminus_mod ((lo + B) mod M) B M).
-        rewrite (Zplus_mod hi B M).
-        rewrite (Zplus_mod lo B M).
-
-        rewrite! Zmod_mod.
-
-        (* pull *)
-        rewrite <- (Zplus_mod hi B M).
-        rewrite <- (Zplus_mod lo B M).
-        rewrite <- (Zminus_mod (hi + B) B M).
-        rewrite <- (Zminus_mod (lo + B) B M).
-        rewrite <- (Zplus_mod (hi + B - B) (lo + B - B) M).
-        ring_simplify (hi + B - B + (lo + B - B)).
-
-(*
-do we have ready-to-use push/pull mod tactics to solve goals like
-
-(v + B) mod M = ((v - E + B) mod M - B + ((E + B) mod M - B) + B) mod M
-
-?
-   *)
-        subst hi.
-        f_equal.
-        lia.
-  *)
+        mod_equality.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
     - unfold compile_lit_large, compile_lit_64bit, compile_lit_32bit in *.
@@ -768,7 +768,7 @@ do we have ready-to-use push/pull mod tactics to solve goals like
       + rewrite! put_put_same. f_equal. subst. change (BinInt.Z.pow_pos 2 64) with (2 ^ 64).
         apply word.unsigned_inj.
         rewrite word.unsigned_of_Z. replace (2 ^ width) with (2 ^ 64) by congruence.
-        apply compile_lit_64bit_correct.
+        apply compile_lit_64bit_correct. assumption.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
   Qed.
