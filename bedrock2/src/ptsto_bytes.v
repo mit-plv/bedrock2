@@ -156,7 +156,7 @@ Section Scalars.
       Ltac ecancel_assumption_fix_just_for_here :=
         seplog;
         simple refine (cancel_seps_at_indices 0 1 _ _ _ _);
-        cbn [List.firstn List.skipn List.app List.hd List.tl];
+        cbn [SeparationLogic.firstn SeparationLogic.skipn SeparationLogic.app SeparationLogic.hd SeparationLogic.tl];
         [exact (RelationClasses.reflexivity _)|];
         ecancel.
 
