@@ -41,6 +41,7 @@ Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
 Require Import compiler.PushPullMod.
 Require coqutil.Map.Empty_set_keyed_map.
+Require Import Coq.btauto.Btauto.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -176,6 +177,52 @@ Proof.
     lia.
   - change (Z.b2z false) with 0. lia.
 Qed.
+
+Definition mask(x start eend: Z): Z :=
+  (x - x mod 2 ^ start) mod 2 ^ eend.
+
+Lemma sub_mod_exists_q: forall v m,
+    0 < m ->
+    exists q, v - v mod m = m * q.
+Proof.
+  intros.
+  apply (Zmod_divides (v - v mod m) m); [lia|].
+  rewrite <- Zminus_mod_idemp_l.
+  rewrite Z.sub_diag.
+  rewrite Z.mod_0_l; lia.
+Qed.
+
+Lemma mask_app_plus: forall v i j k,
+    0 <= i ->
+    i <= j ->
+    j <= k ->
+    mask v i j + mask v j k = mask v i k.
+Proof.
+  intros. unfold mask.
+  destruct (@sub_mod_exists_q v (2 ^ i)) as [qi Ei]. { apply Z.pow_pos_nonneg; lia. }
+  destruct (@sub_mod_exists_q v (2 ^ j)) as [qj Ej]. { apply Z.pow_pos_nonneg; lia. }
+  rewrite Ei. rewrite Ej.
+  rewrite <-! Z.land_ones by lia.
+  rewrite <- (Z.mul_comm qi).
+  rewrite <- (Z.mul_comm qj).
+  rewrite <-! Z.shiftl_mul_pow2 by lia.
+  rename i into l.
+
+  Hint Rewrite
+       Z.shiftl_spec_low Z.lxor_spec Z.lor_spec Z.land_spec Z.lnot_spec Z.ldiff_spec Z.shiftl_spec Z.shiftr_spec Z.ones_spec_high Z.shiftl_spec_alt Z.ones_spec_low Z.shiftr_spec_aux Z.shiftl_spec_high Z.ones_spec_iff Z.testbit_spec
+       Z.div_pow2_bits Z.pow2_bits_eqb Z.bits_opp Z.testbit_0_l
+       Z.testbit_mod_pow2 Z.testbit_ones_nonneg Z.testbit_minus1
+       using solve [auto with zarith] : z_bitwise.
+  Hint Rewrite <-Z.ones_equiv
+       using solve [auto with zarith] : z_bitwise.
+
+
+  rewrite <- BitOps.or_to_plus.
+  - eapply Z.bits_inj'; intros ?i ?Hi. autorewrite with z_bitwise.
+    Fail btauto. admit.
+  - eapply Z.bits_inj'; intros ?i ?Hi. autorewrite with z_bitwise.
+    Fail btauto. admit.
+Admitted.
 
 Ltac simpl_pow2_products :=
   repeat match goal with
@@ -337,8 +384,27 @@ Ltac pull_mod_step ::=
     | |- ?x mod _ = ?y mod _ => ring_simplify x y
     end.
     clear b1 Heqb1 b2 Heqb2.
-
-  Admitted.
+    replace (v - v mod 2 ^ 32 + (v - v mod 2 ^ 22) mod 2 ^ 32 + (v - v mod 2 ^ 11) mod 2 ^ 22 +
+             v mod 2 ^ 11)
+      with ((v - v mod 2 ^ 32) + ((v - v mod 2 ^ 22) mod 2 ^ 32 + (v - v mod 2 ^ 11) mod 2 ^ 22 +
+             v mod 2 ^ 11)) by lia.
+    rewrite <- Zplus_mod_idemp_l.
+    rewrite !Z.add_assoc.
+    repeat match goal with
+    | |- context [ (?x - ?x mod 2 ^ ?start) mod 2 ^ ?eend ] =>
+      change ((x - x mod 2 ^ start) mod 2 ^ eend) with (mask x start eend)
+    end.
+    pose proof (eq_refl : mask v 0 11 = mask v 0 11) as E.
+    unfold mask at 2 in E. change (2 ^ 0) with 1 in E. rewrite Z.mod_1_r in E.
+    rewrite Z.sub_0_r in E. rewrite <- E. clear E.
+    replace (mask v 32 64 + mask v 22 32 + mask v 11 22 + mask v 0 11)
+      with  (mask v 0 11 + mask v 11 22 + mask v 22 32 + mask v 32 64) by lia.
+    rewrite! mask_app_plus by lia.
+    unfold mask.
+    rewrite Zmod_mod.
+    change (2 ^ 0) with 1. rewrite Z.mod_1_r. rewrite Z.sub_0_r.
+    reflexivity.
+  Qed.
 
 End compile_lit64bit_equiv.
 
