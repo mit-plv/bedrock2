@@ -164,12 +164,38 @@ Proof.
   lia.
 Qed.
 
+Definition signExtend3(l n: Z): Z := n - (Z.b2z (Z.testbit n (l - 1))) * 2 ^ l.
+
+Lemma signExtend_alt3: forall l n,
+    signExtend l n = signExtend3 l n.
+Proof.
+  intros.
+  unfold signExtend, signExtend3.
+  destruct (BinInt.Z.testbit n (l - 1)).
+  - rewrite Z.setbit_spec'. rewrite Z.lor_0_l. change (Z.b2z true) with 1.
+    lia.
+  - change (Z.b2z false) with 0. lia.
+Qed.
+
 Ltac simpl_pow2_products :=
   repeat match goal with
          | |- context [ 2 ^ ?a * 2 ^ ?b ] =>
            match isZcst a with true => idtac end;
            match isZcst b with true => idtac end;
            let c := eval cbv in (a + b) in change (2 ^ a * 2 ^ b) with (2 ^ c)
+         end.
+
+Ltac simpl_Zcsts :=
+  repeat match goal with
+         | |- context [?op ?a ?b] =>
+           match isZcst a with true => idtac end;
+           match isZcst b with true => idtac end;
+           match op with
+           | Z.add => idtac
+           | Z.sub => idtac
+           | Z.mul => idtac
+           end;
+           let r := eval cbv in (op a b) in change (op a b) with r
          end.
 
 Section compile_lit64bit_equiv.
@@ -220,51 +246,25 @@ Section compile_lit64bit_equiv.
     rewrite! bitSlice_alt by lia.
     unfold bitSlice'.
     unfold swrap.
-    unfold signExtend.
+    rewrite! signExtend_alt3.
+    unfold signExtend3.
     Set Printing Depth 100000.
-
-    repeat match goal with
-    | |- context [?op ?a ?b] =>
-        match isZcst a with true => idtac end;
-        match isZcst b with true => idtac end;
-        match op with
-        | Z.add => idtac
-        | Z.sub => idtac
-        | Z.mul => idtac
-        end;
-        let r := eval cbv in (op a b) in change (op a b) with r
-    end.
+    simpl_Zcsts.
     change (2 ^ 0) with 1.
     rewrite! Z.div_1_r.
 
     match goal with
-    | |- context [BinInt.Z.testbit ?x ?i] => remember (BinInt.Z.testbit x i) as t1
+    | |- context [Z.b2z ?x] => remember (Z.b2z x) as b1
     end.
     match goal with
-    | |- context [BinInt.Z.testbit ?x ?i] => remember (BinInt.Z.testbit x i) as t2
+    | |- context [Z.b2z ?x] => remember (Z.b2z x) as b2
     end.
+    push_mod. rewrite! Zmod_mod.
+
     repeat match goal with
-    | |- context [Z.setbit 0 ?i] => change (Z.setbit 0 i) with (2 ^ i)
-    end.
-    destruct t1; destruct t2.
-
-    - push_mod. rewrite! Zmod_mod.
-
-      repeat first [ rewrite !Z_mod_same by reflexivity
-                   | rewrite !Z.mul_0_r
-                   | rewrite !Zmod_0_l
-                   | rewrite !Z.sub_0_r
-                   | rewrite !Zmod_mod ].
-
-      repeat match goal with
-      | |- context [(?a mod ?m1) mod ?m2] =>
-        rewrite (@mod_mod_remove_inner a m1 m2) by (repeat split)
-      end.
-      (*
-      Fail match goal with
-      | |- context [(?a mod ?m1) mod ?m2] => idtac m1 m2; fail
-      end.
-       *)
+           | |- context [(?a mod ?m1) mod ?m2] =>
+             rewrite (@mod_mod_remove_inner a m1 m2) by (repeat split)
+           end.
 
 Ltac pull_mod_step ::=
   match goal with
@@ -275,8 +275,8 @@ Ltac pull_mod_step ::=
     | Z.add => rewrite <- (Zplus_mod a b m)
     | Z.sub => rewrite <- (Zminus_mod a b m)
     | Z.mul => rewrite <- (Zmult_mod a b m)
-    end;
-     idtac a "======" op "======" b
+    end
+(*     idtac a "======" op "======" b*)
 (*
   | |- context [(?a mod ?m1) mod ?m2] =>
     mod_free a m2;
@@ -294,7 +294,7 @@ Ltac pull_mod_step ::=
     rewrite <-!Z.mul_assoc.
     simpl_pow2_products.
     rewrite <-! Zmult_mod_distr_r.
-    subst.
+    subst a b c.
     rewrite !div_mul_same by (cbv;  discriminate).
     simpl_pow2_products.
     push_mod. rewrite! Zmod_mod.
@@ -308,13 +308,15 @@ Ltac pull_mod_step ::=
     rewrite !Z.mul_sub_distr_r.
     simpl_pow2_products.
     match goal with
-    | |- ?x mod _ = ?y mod _ => ring_simplify x y
+    | |- ?x mod _ = ?y mod _ => ring_simplify x y (* +/- 2 ^ 63 cancels out *)
     end.
     change 4294967296 with (2 ^ 32).
+    change 18446744073709551616 with (2 ^ 64).
     rewrite <- Zmult_mod_distr_l.
     simpl_pow2_products.
-    remember (2 ^ 32 * hi) as hii. subst hi.
-    rewrite Z.mul_comm in Heqhii.
+    rewrite !(Z.mul_comm (2 ^ 32)) in *.
+    rewrite Z.mul_sub_distr_r.
+    remember (hi * 2 ^ 32) as hii. subst hi.
     rewrite div_mul_same in Heqhii by lia.
     subst hii.
     repeat match goal with
@@ -327,11 +329,14 @@ Ltac pull_mod_step ::=
              (rewrite (@mod_mod_remove_inner a m1 m2) by (repeat split)) ||
              (rewrite (@mod_mod_remove_outer a m1 m2) by (repeat split))
            end.
-    push_mod. rewrite! Zmod_mod.
+    push_mod.
+    rewrite Z_mod_same_full. rewrite Z.mul_0_l. rewrite Zmod_0_l. rewrite Z.sub_0_r.
+    rewrite! Zmod_mod.
     pull_mod.
     match goal with
     | |- ?x mod _ = ?y mod _ => ring_simplify x y
     end.
+    clear b1 Heqb1 b2 Heqb2.
 
   Admitted.
 
