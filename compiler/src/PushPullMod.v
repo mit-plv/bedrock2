@@ -21,24 +21,24 @@ Ltac push_mod_step :=
 
 Ltac push_mod := repeat push_mod_step.
 
-Ltac mod_free t :=
+Ltac mod_free t m :=
   match t with
   | ?op ?t1 ?t2 =>
-    match op with
-    | Z.add => idtac
-    | Z.sub => idtac
-    | Z.mul => idtac
-    end;
-    mod_free t1;
-    mod_free t2
+    mod_free t1 m;
+    mod_free t2 m;
+    lazymatch op with
+    | Z.modulo => assert_fails (unify t2 m)
+    | _ => idtac
+    end
   | _ => is_var t
+  | _ => match isZcst t with true => idtac end
   end.
 
 Ltac pull_mod_step :=
   match goal with
   | |- context [ (?op (?a mod ?m) (?b mod ?m)) mod ?m ] =>
-    mod_free a;
-    mod_free b;
+    mod_free a m;
+    mod_free b m;
     match op with
     | Z.add => rewrite <- (Zplus_mod a b m)
     | Z.sub => rewrite <- (Zminus_mod a b m)
