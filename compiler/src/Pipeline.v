@@ -158,7 +158,7 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH t instsL initialL (post: trace -> Prop),
+  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL initialL (post: trace -> Prop),
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       exprImp2Riscv sH = instsL ->
@@ -167,7 +167,7 @@ Section Pipeline1.
       initialL.(getLog) = t ->
       (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
       ext_guarantee initialL ->
-      Semantics.exec.exec map.empty sH t mH map.empty (fun t' m' l' => post t') ->
+      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
       runsTo (mcomp_sat (run1 iset))
              initialL
              (fun finalL => post finalL.(getLog)).
@@ -209,7 +209,6 @@ Section Pipeline1.
       + assumption.
       + assumption.
      - simpl. intros. simp. assumption.
-     Unshelve. apply (initialL.(getMetrics)).
   Qed.
 
 End Pipeline1.
