@@ -43,20 +43,38 @@ Goal program_logic_goal_for_function! arp.
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
     [instantiate (1 := iNat); Lia.lia|instantiate (1 := word.of_Z 0) in H];
     eapply load_one_of_sep;
+    change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
     SeparationLogic.ecancel_assumption
   end end.
 
-  1: {
-  lazymatch goal with |- Memory.load Syntax.access_size.one ?m (word.add ?base (word.of_Z ?i)) = Some ?v =>
+  all:try tload.
+  1: subst v0; exact eq_refl.
+  split; [|solve[repeat straightline]]; repeat straightline.
+
+  letexists; split; [|split; [|solve[repeat straightline]]].
+  1: solve [repeat (split || letexists || straightline || tload)].
+
+  repeat straightline.
+
+  lazymatch goal with |- WeakestPrecondition.store Syntax.access_size.one ?m ?a ?v ?post =>
   lazymatch goal with H: _ m |- _ =>
+    let av := rdelta a in
+    let i := lazymatch av with word.add ?base (word.of_Z ?i) => i end in
     let iNat := eval cbv in (Z.to_nat i) in
+    pose i;
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
     [instantiate (1 := iNat); Lia.lia|instantiate (1 := word.of_Z 0) in H];
-    eapply load_one_of_sep;
-    simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H);
-    idtac
+    eapply store_one_of_sep;
+    change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
+    [SeparationLogic.ecancel_assumption|]
   end end.
 
-  SeparationLogic.cancel.
-  simple refine (SeparationLogic.cancel_seps_at_indices 1 0 _ _ _ _); cbn[SeparationLogic.firstn SeparationLogic.skipn SeparationLogic.app].
+  straightline.
+  straightline.
+  straightline.
+  straightline.
+  straightline.
+  straightline.
+
 Abort.
+  
