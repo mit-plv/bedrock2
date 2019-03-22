@@ -21,7 +21,7 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.SimplWordExpr.
 Require Import riscv.Platform.RiscvMachine.
-Require Import riscv.Utility.ListLib.
+Require Import bedrock2.ptsto_bytes.
 
 
 Open Scope Z_scope.
@@ -30,20 +30,22 @@ Open Scope ilist_scope.
 Definition x1: Z := 1.
 Definition x2: Z := 2.
 
-Definition base: Z := Ox"400".
-
 (* average of register x1 and x2 put into x2 *)
 Definition asm_prog_1: list Instruction := [[
   Add x2 x1 x2;
   Srai x2 x2 1
 ]].
 
+Definition input_ptr: Z := Ox"400".
+Definition output_ptr: Z := Ox"500".
+
 (* a program with memory operations *)
 Definition asm_prog_2: list Instruction := [[
-  Addi x1 Register0 base;
-  Lw x2 x1 0;
-  Add x2 x2 x2;
-  Sw x1 x2 0
+  Lw x1 Register0 input_ptr;
+  Lw x2 Register0 (input_ptr+4)
+]] ++
+asm_prog_1 ++ [[
+  Sw Register0 x2 output_ptr
 ]].
 
 Local Unset Universe Polymorphism. (* for Add Ring *)
@@ -90,9 +92,16 @@ Section Verif.
        morphism word_ring_morph,
        constants [word_cst]).
 
+  Ltac simulate'_step :=
+    first [ eapply go_loadWord_sep ; simpl_word_exprs (@word_ok W); [sidecondition..|]
+          | eapply go_storeWord_sep; simpl_word_exprs (@word_ok W); [sidecondition..|]
+          | simulate_step ].
+
+  Ltac simulate' := repeat simulate'_step.
+
   Ltac run1det :=
     eapply runsTo_det_step;
-    [ simulate;
+    [ simulate';
       match goal with
       | |- ?mid = ?RHS =>
         (* simpl RHS because mid will be instantiated to it and turn up again in the next step *)
@@ -101,7 +110,7 @@ Section Verif.
       end
     | ].
 
-  Let asm_prog_1_encodable: valid_instructions iset asm_prog_1.
+  Lemma asm_prog_1_encodable: valid_instructions iset asm_prog_1.
   Proof.
     unfold valid_instructions. intros. simpl in *.
     repeat destruct H as [? | H]; subst instr || contradiction.
@@ -111,12 +120,11 @@ Section Verif.
   Definition gallina_prog_1(v1 v2: word): word :=
     word.srs (word.add v1 v2) (word.of_Z 1).
 
-  Lemma asm_prog_1_correct: forall (initial: RiscvMachine Register actname) newPc
-                                  (argvars resvars: list Register) R (v1 v2: word),
+  Lemma asm_prog_1_correct: forall (initial: RiscvMachine Register actname) newPc R (v1 v2: word),
       map.get initial.(getRegs) x1 = Some v1 ->
       map.get initial.(getRegs) x2 = Some v2 ->
       newPc = word.add initial.(getPc)
-                       (word.mul (word.of_Z 4) (word.of_Z (Zlength asm_prog_1))) ->
+                       (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_1)))) ->
       (program initial.(getPc) asm_prog_1 * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
@@ -129,11 +137,11 @@ Section Verif.
     intros.
     assert (valid_register x1). { unfold valid_register, x1. lia. }
     assert (valid_register x2). { unfold valid_register, x2. lia. }
+    pose proof asm_prog_1_encodable.
     destruct initial as [initial_regs initial_pc initial_nextPc initial_mem initial_trace].
     unfold asm_prog_1 in *.
     simpl in *.
     subst.
-    rewrite! Zlength_cons, Zlength_nil.
     simpl.
     run1det.
     run1det.
@@ -142,5 +150,112 @@ Section Verif.
     repeat split; first [ solve_word_eq word_ok | assumption | idtac ].
     apply map.get_put_same.
   Qed.
+
+  Opaque asm_prog_1.
+
+  Lemma asm_prog_2_encodable: valid_instructions iset asm_prog_2.
+  Proof.
+    unfold valid_instructions. intros. simpl in *.
+    repeat destruct H as [? | H]; subst instr || contradiction.
+    all: destruct iset; cbv; clear; firstorder discriminate.
+  Qed.
+
+  Arguments LittleEndian.combine: simpl never.
+
+  Lemma asm_prog_2_correct: forall (initial: RiscvMachine Register actname) newPc
+                                  (argvars resvars: list Register) R (v1 v2 dummy: w32),
+      newPc = word.add initial.(getPc)
+                       (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_2)))) ->
+      (program initial.(getPc) asm_prog_2 *
+       ptsto_bytes 4 (word.of_Z input_ptr) v1 *
+       ptsto_bytes 4 (word.of_Z (input_ptr+4)) v2 *
+       ptsto_bytes 4 (word.of_Z output_ptr) dummy * R)%sep initial.(getMem) ->
+      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+      runsTo (mcomp_sat (run1 iset)) initial
+             (fun final =>
+                final.(getPc) = newPc /\
+                final.(getNextPc) = add newPc (word.of_Z 4) /\
+                (program initial.(getPc) asm_prog_1 * R)%sep final.(getMem) /\
+                map.get final.(getRegs) x2 = Some (word.of_Z 0)).
+  Proof.
+    intros.
+    assert (valid_register x1). { unfold valid_register, x1. lia. }
+    assert (valid_register x2). { unfold valid_register, x2. lia. }
+    pose proof asm_prog_2_encodable.
+    destruct initial as [initial_regs initial_pc initial_nextPc initial_mem initial_trace].
+    unfold asm_prog_2 in *.
+    simpl in *.
+    unfold program in *.
+    seprewrite_in @array_append H0. simpl in *.
+    subst.
+    simpl.
+    run1det.
+    run1det.
+    eapply runsTo_trans. {
+      eapply asm_prog_1_correct; simpl.
+      - rewrite map.get_put_diff by (unfold x1, x2; lia).
+        apply map.get_put_same.
+      - apply map.get_put_same.
+      - reflexivity.
+      - sidecondition.
+      - reflexivity.
+    }
+    simpl.
+    intros middle (? & ? & ? & ?).
+    destruct middle as [middle_regs middle_pc middle_nextPc middle_mem middle_trace].
+    simpl in *.
+    subst.
+
+    clear H0.
+
+    (* TODO matching up addresses should work automatically *)
+    replace (@word.add _ (@word W)
+              (@word.add _ (@word W)
+                 (@word.add _ (@word W) initial_pc (@word.of_Z _ (@word W) 4))
+                 (@word.of_Z _ (@word W) 4))
+              (@word.of_Z _ (@word W)
+                 (@word.unsigned _ (@word W) (@word.of_Z _ (@word W) 4) *
+                  BinInt.Z.of_nat (@Datatypes.length Instruction asm_prog_1))))
+      with (@word.add _ (@word W)
+        (@word.add _ (@word W) (@word.add _ (@word W) initial_pc (@word.of_Z _ (@word W) 4))
+           (@word.of_Z _ (@word W) 4))
+        (@word.mul _ (@word W) (@word.of_Z _ (@word W) 4)
+           (@word.of_Z _ (@word W) (Z.of_nat (@Datatypes.length Instruction asm_prog_1)))))
+      in H5; cycle 1. {
+      clear.
+      change BinInt.Z.of_nat with Z.of_nat in *.
+      f_equal.
+      apply word.unsigned_inj.
+      rewrite word.unsigned_mul.
+      rewrite word.unsigned_of_Z at 2.
+      rewrite (word.unsigned_of_Z (4 mod 2 ^ width * Z.of_nat (Datatypes.length asm_prog_1))).
+      rewrite word.unsigned_of_Z.
+      rewrite word.unsigned_of_Z.
+      apply Zmult_mod_idemp_r.
+    }
+
+    (*
+    eapply runsToStep. {
+      simulate'_step.
+      simulate'_step.
+      simulate'_step.
+      simulate'_step.
+      simulate'_step.
+      simulate'_step.
+      simulate'_step.
+
+      simulate'_step.
+
+      intros.
+      simulate'.
+      simpl.
+     *)
+
+    eapply runsTo_det_step. {
+      simulate'.
+      intros.
+      simulate'.
+      simpl. Fail reflexivity. (* evar scoping problem *)
+  Abort.
 
 End Verif.

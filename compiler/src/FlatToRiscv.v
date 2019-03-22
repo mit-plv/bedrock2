@@ -622,6 +622,22 @@ Section FlatToRiscv1.
 
   Arguments LittleEndian.combine: simpl never.
 
+  Ltac simulate''_step :=
+    first (* not everyone wants these: *)
+          [ eapply go_loadByte       ; [sidecondition..|]
+          | eapply go_storeByte      ; [sidecondition..|]
+          | eapply go_loadHalf       ; [sidecondition..|]
+          | eapply go_storeHalf      ; [sidecondition..|]
+          | eapply go_loadWord       ; [sidecondition..|]
+          | eapply go_storeWord      ; [sidecondition..|]
+          | eapply go_loadDouble     ; [sidecondition..|]
+          | eapply go_storeDouble    ; [sidecondition..|]
+          (* reuse defaults which everyone wants: *)
+          | simulate_step
+          | simpl_modu4_0 ].
+
+  Ltac simulate'' := repeat simulate''_step.
+
   Lemma go_load: forall sz x a (addr v: word) initialL post f,
       valid_register x ->
       valid_register a ->
@@ -645,7 +661,7 @@ Section FlatToRiscv1.
       intros; destruct sz; try solve [
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.load, Memory.load_Z in *;
-        simp; simulate; simpl; simpl_word_exprs word_ok;
+        simp; simulate''; simpl; simpl_word_exprs word_ok;
           try eassumption].
   Qed.
 
@@ -672,7 +688,7 @@ Section FlatToRiscv1.
       intros; destruct sz; try solve [
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.store, Memory.store_Z in *;
-        simp; simulate; simpl; simpl_word_exprs word_ok; eassumption].
+        simp; simulate''; simpl; simpl_word_exprs word_ok; eassumption].
   Qed.
 
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
