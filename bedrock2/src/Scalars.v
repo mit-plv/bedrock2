@@ -19,7 +19,7 @@ Section Scalars.
   Definition truncated_scalar sz addr (value:Z) : mem -> Prop :=
     littleendian (bytes_per (width:=width) sz) addr value.
 
-  Definition scalar8 := ptsto.
+  Notation scalar8 := ptsto (only parsing).
 
   Definition scalar16 addr (value: word16) : mem -> Prop :=
     truncated_scalar Syntax.access_size.two addr (word.unsigned value).
@@ -125,3 +125,5 @@ Section Scalars.
   Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
 
 End Scalars.
+
+Notation scalar8 := ptsto (only parsing).

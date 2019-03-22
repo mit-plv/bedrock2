@@ -291,7 +291,7 @@ Ltac cancel_emp_l :=
     let i := find_constr_eq LHS constr:(@emp K V M True) in
     simple refine (cancel_emp_at_index_l i LHS RHS _ _);
     cbn [firstn skipn app hd tl];
-    [exact (RelationClasses.reflexivity _)|]
+    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
   end.
 
 Ltac cancel_emp_r :=
@@ -300,7 +300,7 @@ Ltac cancel_emp_r :=
     let j := find_constr_eq RHS constr:(@emp K V M True) in
     simple refine (cancel_emp_at_index_r j LHS RHS _ _);
     cbn [firstn skipn app hd tl];
-    [exact (RelationClasses.reflexivity _)|]
+    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
   end.
 
 Ltac cancel_step :=
@@ -315,7 +315,7 @@ Ltac cancel_step :=
 
       simple refine (cancel_seps_at_indices i j LHS RHS _ _);
       cbn [firstn skipn app hd tl];
-      [exact (RelationClasses.reflexivity _)|].
+      [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|].
 
 Ltac ecancel_step :=
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
@@ -329,20 +329,19 @@ Ltac ecancel_step :=
 
       simple refine (cancel_seps_at_indices i j LHS RHS _ _);
       cbn [firstn skipn app hd tl];
-      [exact (RelationClasses.reflexivity _)|].
+      [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|].
 
 Ltac cancel :=
   reify_goal;
   repeat cancel_step;
   repeat cancel_emp_l;
   repeat cancel_emp_r;
-  try solve [ cbn [seps]; exact (RelationClasses.reflexivity _) ].
+  try solve [ cbn [seps]; syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)].
 
 Ltac ecancel :=
   cancel;
   repeat ecancel_step;
-  cbn [seps];
-  exact (RelationClasses.reflexivity _).
+  solve [ cbn [seps]; syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)].
 
 Ltac ecancel_assumption :=
   multimatch goal with
