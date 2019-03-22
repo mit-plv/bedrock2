@@ -186,10 +186,46 @@ Lemma sub_mod_exists_q: forall v m,
     exists q, v - v mod m = m * q.
 Proof.
   intros.
+  assert (m <> 0) as A by lia.
+  pose proof (Z.div_mod v m A) as P.
+  exists (v / m).
+(*
+    v - v mod m = m * (v / m)
+
+  lia.
+
+Search (?a = ?b * (?a / ?b) + ?a mod ?b).
+Search "eucl" Z.
+*)
+Abort.
+
+Lemma sub_mod_exists_q: forall v m,
+    0 < m ->
+    exists q, v - v mod m = m * q.
+Proof.
+  intros.
   apply (Zmod_divides (v - v mod m) m); [lia|].
   rewrite <- Zminus_mod_idemp_l.
   rewrite Z.sub_diag.
   rewrite Z.mod_0_l; lia.
+Qed.
+
+Lemma shiftr_spec'': forall a n m : Z,
+    Z.testbit (Z.shiftr a n) m = (0 <=? m) &&  Z.testbit a (m + n).
+Proof.
+  intros.
+  destruct (Z.leb_spec 0 m).
+  - apply Z.shiftr_spec. assumption.
+  - rewrite Z.testbit_neg_r; trivial.
+Qed.
+
+Lemma shiftr_spec': forall a n m : Z,
+    Z.testbit (Z.shiftr a n) m = negb (m <? 0) &&  Z.testbit a (m + n).
+Proof.
+  intros.
+  destruct (Z.ltb_spec m 0).
+  - rewrite Z.testbit_neg_r; trivial.
+  - apply Z.shiftr_spec. assumption.
 Qed.
 
 Lemma mask_app_plus: forall v i j k,
@@ -199,30 +235,68 @@ Lemma mask_app_plus: forall v i j k,
     mask v i j + mask v j k = mask v i k.
 Proof.
   intros. unfold mask.
-  destruct (@sub_mod_exists_q v (2 ^ i)) as [qi Ei]. { apply Z.pow_pos_nonneg; lia. }
-  destruct (@sub_mod_exists_q v (2 ^ j)) as [qj Ej]. { apply Z.pow_pos_nonneg; lia. }
-  rewrite Ei. rewrite Ej.
+  do 2 rewrite <- div_mul_same by (apply Z.pow_nonzero; lia).
   rewrite <-! Z.land_ones by lia.
-  rewrite <- (Z.mul_comm qi).
-  rewrite <- (Z.mul_comm qj).
   rewrite <-! Z.shiftl_mul_pow2 by lia.
-  rename i into l.
+  rewrite <-! Z.shiftr_div_pow2 by lia.
 
   Hint Rewrite
        Z.shiftl_spec_low Z.lxor_spec Z.lor_spec Z.land_spec Z.lnot_spec Z.ldiff_spec Z.shiftl_spec Z.shiftr_spec Z.ones_spec_high Z.shiftl_spec_alt Z.ones_spec_low Z.shiftr_spec_aux Z.shiftl_spec_high Z.ones_spec_iff Z.testbit_spec
        Z.div_pow2_bits Z.pow2_bits_eqb Z.bits_opp Z.testbit_0_l
-       Z.testbit_mod_pow2 Z.testbit_ones_nonneg Z.testbit_minus1
+       Z.testbit_mod_pow2 Z.testbit_ones_nonneg Z.testbit_minus1 shiftr_spec'
        using solve [auto with zarith] : z_bitwise.
   Hint Rewrite <-Z.ones_equiv
        using solve [auto with zarith] : z_bitwise.
 
+  Ltac destruct_ltbs :=
+    repeat match goal with
+           | |- context [ ?a <? ?b ] => destruct (Z.ltb_spec a b)
+           end.
+
+  Ltac destruct_lt0s :=
+    repeat match goal with
+           | |- context [Z.testbit ?a ?i] =>
+             match goal with
+             | _: i < 0 |- _ => fail 1
+             | _: 0 <= i |- _ => fail 1
+             | |- _ => idtac
+             end;
+             let E := fresh "E" in
+             destruct (Z.ltb_spec i 0) as [E | E]; [rewrite (Z.testbit_neg_r a i E)|]
+           end.
 
   rewrite <- BitOps.or_to_plus.
-  - eapply Z.bits_inj'; intros ?i ?Hi. autorewrite with z_bitwise.
-    Fail btauto. admit.
-  - eapply Z.bits_inj'; intros ?i ?Hi. autorewrite with z_bitwise.
-    Fail btauto. admit.
-Admitted.
+  - eapply Z.bits_inj'. intros ?i ?Hi. autorewrite with z_bitwise.
+    repeat match goal with
+    | |- context [Z.testbit _ ?i] =>
+      assert_fails (is_var i);
+        let l := fresh "l" in remember i as l
+    end.
+    repeat match goal with
+    | i: Z, j: Z |- _ => replace i with j in * by lia; clear i
+    end.
+
+    destruct_ltbs;
+      try (exfalso; lia);
+      destruct_lt0s;
+      try (exfalso; lia);
+      try btauto.
+  - eapply Z.bits_inj'. intros ?i ?Hi. autorewrite with z_bitwise.
+    repeat match goal with
+    | |- context [Z.testbit _ ?i] =>
+      assert_fails (is_var i);
+        let l := fresh "l" in remember i as l
+    end.
+    repeat match goal with
+    | i: Z, j: Z |- _ => replace i with j in * by lia; clear i
+    end.
+
+    destruct_ltbs;
+      try (exfalso; lia);
+      destruct_lt0s;
+      try (exfalso; lia);
+      try btauto.
+Qed.
 
 Ltac simpl_pow2_products :=
   repeat match goal with
