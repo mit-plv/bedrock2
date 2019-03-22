@@ -94,7 +94,7 @@ Section Verif.
 
   Ltac simulate'_step :=
     first [ eapply go_loadWord_sep ; simpl_word_exprs (@word_ok W); [sidecondition..|]
-          | eapply go_storeWord_sep; simpl_word_exprs (@word_ok W); [sidecondition..|]
+          | eapply go_storeWord_sep; simpl_word_exprs (@word_ok W); [sidecondition..|intros]
           | simulate_step ].
 
   Ltac simulate' := repeat simulate'_step.
@@ -160,7 +160,26 @@ Section Verif.
     all: destruct iset; cbv; clear; firstorder discriminate.
   Qed.
 
+  Definition gallina_prog_2(v1 v2: w32): word :=
+    gallina_prog_1 (word.of_Z (BitOps.sextend 32 (LittleEndian.combine 4 v1)))
+                   (word.of_Z (BitOps.sextend 32 (LittleEndian.combine 4 v2))).
+
   Arguments LittleEndian.combine: simpl never.
+
+  Lemma word_goal_1_TODO: forall initial_pc : word,
+      word.add
+        (word.add (word.add (word.add initial_pc (word.of_Z 4)) (word.of_Z 4))
+                  (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (Datatypes.length asm_prog_1)))))
+        (word.of_Z 4) =
+      word.add initial_pc
+               (word.mul (word.of_Z 4)
+                         (word.of_Z
+                            (Z.pos (Pos.succ
+                                      (Pos.of_succ_nat (Datatypes.length asm_prog_1 + 1)))))).
+  Proof using .
+  Admitted.
+
+  Axiom fix_updated_mem_TODO: False.
 
   Lemma asm_prog_2_correct: forall (initial: RiscvMachine Register actname) newPc
                                   (argvars resvars: list Register) R (v1 v2 dummy: w32),
@@ -175,8 +194,8 @@ Section Verif.
              (fun final =>
                 final.(getPc) = newPc /\
                 final.(getNextPc) = add newPc (word.of_Z 4) /\
-                (program initial.(getPc) asm_prog_1 * R)%sep final.(getMem) /\
-                map.get final.(getRegs) x2 = Some (word.of_Z 0)).
+                (program initial.(getPc) asm_prog_2 * R)%sep final.(getMem) /\
+                map.get final.(getRegs) x2 = Some (gallina_prog_2 v1 v2)).
   Proof.
     intros.
     assert (valid_register x1). { unfold valid_register, x1. lia. }
@@ -234,28 +253,21 @@ Section Verif.
       apply Zmult_mod_idemp_r.
     }
 
-    (*
-    eapply runsToStep. {
-      simulate'_step.
-      simulate'_step.
-      simulate'_step.
-      simulate'_step.
-      simulate'_step.
-      simulate'_step.
-      simulate'_step.
-
-      simulate'_step.
-
-      intros.
-      simulate'.
-      simpl.
-     *)
-
-    eapply runsTo_det_step. {
-      simulate'.
-      intros.
-      simulate'.
-      simpl. Fail reflexivity. (* evar scoping problem *)
-  Abort.
+    run1det.
+    match goal with
+    | |- context [ withMem ?m ] => set (m' := m) in *
+    end.
+    clearbody m'.
+    simpl in *.
+    eapply runsToDone.
+    simpl.
+    repeat split.
+    - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
+    - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
+    - (* TODO "clearboy m'" was a bad idea, we need it here too *) case fix_updated_mem_TODO.
+    - assumption.
+  Qed.
 
 End Verif.
+
+Print Assumptions asm_prog_2_correct. (* just word_goal_1_TODO and fix_updated_mem *)

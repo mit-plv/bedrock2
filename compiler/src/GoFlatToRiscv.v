@@ -297,6 +297,45 @@ Section Go.
 
   Lemma go_storeWord_sep:
     forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
+           (m': mem) (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
+      (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
+      (ptsto_bytes 4 addr v_new * R)%sep m' ->
+      mcomp_sat (f tt) (withMem m' initialL) post ->
+      mcomp_sat (Bind (storeWord kind addr v_new) f) initialL post.
+  Proof.
+    intros.
+    eapply go_storeWord; [|eassumption].
+    unfold Memory.storeWord.
+    pose proof (unchecked_store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    specialize P with (1 := H). specialize (P v_new).
+    (* Does not hold because if R does not completely determine the contents of the memory,
+       initialL.(getMem) and m' could change in locations other than at addr,
+       and post could check for that, so if the post in the hyp requires some specific value
+       in m', this value might not be present in initialL.(getMem), and still not be present
+       after the storeWord operation, so the conclusion would not hold. *)
+  Abort.
+
+  Lemma go_storeWord_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
+           (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
+      (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
+      (let m' := Memory.unchecked_store_bytes 4 (getMem initialL) addr v_new in
+          (ptsto_bytes 4 addr v_new * R)%sep m' ->
+          mcomp_sat (f tt) (withMem m' initialL) post) ->
+      mcomp_sat (Bind (storeWord kind addr v_new) f) initialL post.
+  Proof.
+    intros.
+    pose proof (unchecked_store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    specialize P with (1 := H). specialize (P v_new).
+    simpl in *.
+    specialize (H0 P).
+    eapply go_storeWord; [|eassumption].
+    unfold Memory.storeWord, store_bytes.
+    erewrite load_bytes_of_sep; eauto using unchecked_store_bytes_of_sep.
+  Qed.
+
+  Lemma go_storeWord_sep_holds_but_results_in_evars_out_of_scope:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
       (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
       (forall m': mem,
