@@ -41,7 +41,7 @@ Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
 Require Import compiler.PushPullMod.
 Require coqutil.Map.Empty_set_keyed_map.
-Require Import Coq.btauto.Btauto.
+Require Import coqutil.Z.bitblast.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -238,64 +238,7 @@ Proof.
   do 2 rewrite <- div_mul_same by (apply Z.pow_nonzero; lia).
   rewrite <-! Z.land_ones by lia.
   rewrite <-! Z.shiftl_mul_pow2 by lia.
-  rewrite <-! Z.shiftr_div_pow2 by lia.
-
-  Hint Rewrite
-       Z.shiftl_spec_low Z.lxor_spec Z.lor_spec Z.land_spec Z.lnot_spec Z.ldiff_spec Z.shiftl_spec Z.shiftr_spec Z.ones_spec_high Z.shiftl_spec_alt Z.ones_spec_low Z.shiftr_spec_aux Z.shiftl_spec_high Z.ones_spec_iff Z.testbit_spec
-       Z.div_pow2_bits Z.pow2_bits_eqb Z.bits_opp Z.testbit_0_l
-       Z.testbit_mod_pow2 Z.testbit_ones_nonneg Z.testbit_minus1 shiftr_spec'
-       using solve [auto with zarith] : z_bitwise.
-  Hint Rewrite <-Z.ones_equiv
-       using solve [auto with zarith] : z_bitwise.
-
-  Ltac destruct_ltbs :=
-    repeat match goal with
-           | |- context [ ?a <? ?b ] => destruct (Z.ltb_spec a b)
-           end.
-
-  Ltac destruct_lt0s :=
-    repeat match goal with
-           | |- context [Z.testbit ?a ?i] =>
-             match goal with
-             | _: i < 0 |- _ => fail 1
-             | _: 0 <= i |- _ => fail 1
-             | |- _ => idtac
-             end;
-             let E := fresh "E" in
-             destruct (Z.ltb_spec i 0) as [E | E]; [rewrite (Z.testbit_neg_r a i E)|]
-           end.
-
-  rewrite <- BitOps.or_to_plus.
-  - eapply Z.bits_inj'. intros ?i ?Hi. autorewrite with z_bitwise.
-    repeat match goal with
-    | |- context [Z.testbit _ ?i] =>
-      assert_fails (is_var i);
-        let l := fresh "l" in remember i as l
-    end.
-    repeat match goal with
-    | i: Z, j: Z |- _ => replace i with j in * by lia; clear i
-    end.
-
-    destruct_ltbs;
-      try (exfalso; lia);
-      destruct_lt0s;
-      try (exfalso; lia);
-      try btauto.
-  - eapply Z.bits_inj'. intros ?i ?Hi. autorewrite with z_bitwise.
-    repeat match goal with
-    | |- context [Z.testbit _ ?i] =>
-      assert_fails (is_var i);
-        let l := fresh "l" in remember i as l
-    end.
-    repeat match goal with
-    | i: Z, j: Z |- _ => replace i with j in * by lia; clear i
-    end.
-
-    destruct_ltbs;
-      try (exfalso; lia);
-      destruct_lt0s;
-      try (exfalso; lia);
-      try btauto.
+  rewrite <- BitOps.or_to_plus; Z.bitblast.
 Qed.
 
 Ltac simpl_pow2_products :=
