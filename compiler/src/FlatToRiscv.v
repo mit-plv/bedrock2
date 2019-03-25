@@ -974,19 +974,40 @@ Section FlatToRiscv1.
       end.
       cbv [withRegs withPc withNextPc withMem withLog]. clear N. f_equal.
       + rewrite put_put_same. f_equal.
-        apply word.signed_inj.
-        rewrite word.signed_of_Z.
-        rewrite word.signed_add.
-        rewrite! word.signed_of_Z.
-        remember (signExtend 12 (bitSlice (swrap 32 v) 0 12)) as lo.
-        remember (v - lo) as hi.
-        unfold word.swrap, swrap.
-        assert (width = 32) as A by case TODO.
-        rewrite <- A.
-        remember (2 ^ (width - 1)) as B.
-        remember (2 ^ width) as M.
-        f_equal.
-        mod_equality.
+        unfold swrap_bitwise.
+        apply word.unsigned_inj.
+        rewrite word.unsigned_of_Z.
+        rewrite word.unsigned_xor.
+        rewrite! word.unsigned_of_Z.
+        rewrite <-! Z.land_ones by lia.
+        rewrite E.
+        prove_Zeq_bitwise.prove_Zeq_bitwise.
+
+        Search Z.testbit Z.ones.
+
+        {
+          rewrite Z.ones_spec_low by omega.
+          autorewrite with bool_rewriting.
+          rewrite xorb_nilpotent.
+          rewrite xorb_false_l.
+          reflexivity.
+        }
+
+        {
+          rewrite Z.ones_spec_low by omega.
+          autorewrite with bool_rewriting.
+          (* here, mere rewriting with bool lemmas doesn't work, we'd need
+             smartness to discover that it's worth applying associativity,
+             so this is an example where btauto is really needed *)
+          Btauto.btauto.
+        }
+
+        {
+          rewrite Z.ones_spec_high by omega.
+          autorewrite with bool_rewriting.
+          (* TODO doesn't hold we should have used signed_inj ? *)
+          admit.
+        }
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
     - unfold compile_lit_large, compile_lit_64bit, compile_lit_32bit in *.
@@ -994,6 +1015,7 @@ Section FlatToRiscv1.
       match type of EV with
       | context [ Addi _ _ ?a ] => remember a as mid
       end.
+      (*
       match type of EV with
       | context [ ?a - mid ] => remember a as hi
       end.
@@ -1021,7 +1043,7 @@ Section FlatToRiscv1.
         apply compile_lit_64bit_correct. assumption.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
-  Qed.
+  Qed.*) Admitted.
 
   Lemma compile_lit_correct_full: forall initialL post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
@@ -1191,10 +1213,9 @@ Section FlatToRiscv1.
       run1det. run1done.
 
     - (* SLit *)
-      remember (compile_lit x v) as insts.
       eapply compile_lit_correct_full.
       + sidecondition.
-      + unfold compile_stmt. unfold getPc, getMem. subst insts. ecancel_assumption.
+      + unfold compile_stmt. unfold getPc, getMem. ecancel_assumption.
       + sidecondition.
       + simpl. run1done.
 

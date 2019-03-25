@@ -143,32 +143,6 @@ Section FlatToRiscv1.
     | Syntax.bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
     end.
 
-  Fixpoint compile_lit_rec(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
-    let byte := bitSlice v ((Z.of_nat byteIndex) * 8) ((Z.of_nat byteIndex + 1) * 8) in
-    [[ Addi rd rs byte ]] ++
-    match byteIndex with
-    | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v)
-    | O => [[]]
-    end.
-
-  Fixpoint compile_lit_rec'(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
-    let d := (2 ^ ((Z.of_nat byteIndex) * 8))%Z in
-    let hi := (v / d)%Z in
-    let v' := (v - hi * d)%Z in
-    [[ Addi rd rs hi ]] ++
-    match byteIndex with
-    | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v')
-    | O => [[]]
-    end.
-
-  (*
-  Variable rd: Register.
-  Eval cbv -[Register0] in (compile_lit_rec 7 rd Register0 10000).
-  *)
-
-  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
-    compile_lit_rec 7 rd Register0 v.
-
   Definition compile_lit_12bit(rd: Register)(v: Z): list Instruction :=
     [[ Addi rd Register0 v ]].
 
@@ -192,10 +166,15 @@ Section FlatToRiscv1.
 
   Definition swrap(width: Z)(z: Z): Z := (z + 2^(width-1)) mod 2^width - 2^(width-1).
 
+  Definition swrap_bitwise(width n: Z): Z :=
+    if Z.testbit n (width - 1)
+    then (Z.lor (Z.land n (Z.ones (width - 1))) (Z.shiftl (-1) width))
+    else (Z.land n (Z.ones (width - 1))).
+
   Definition compile_lit_32bit(rd: Register)(v: Z): list Instruction :=
-    let lo := signExtend 12 (bitSlice v 0 12) in
-    let hi := swrap 32 (v - lo) in
-    [[ Lui rd hi ; Addi rd rd lo ]].
+    let lo := swrap_bitwise 12 v in
+    let hi := Z.lxor v lo in
+    [[ Lui rd hi ; Xori rd rd lo ]].
 
   Definition compile_lit_64bit(rd: Register)(v: Z): list Instruction :=
     let v0 := bitSlice v  0 11 in
@@ -211,7 +190,7 @@ Section FlatToRiscv1.
        Addi rd rd v0 ]].
 
   Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
-    if width =? 32 then compile_lit_32bit rd (swrap 32 v) else
+    if width =? 32 then compile_lit_32bit rd (swrap_bitwise 32 v) else
     compile_lit_64bit rd (v mod 2 ^ 64).
 
   Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=

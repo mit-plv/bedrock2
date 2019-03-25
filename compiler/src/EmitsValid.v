@@ -271,30 +271,6 @@ Section EmitsValid.
 
   Context {compilation_params: FlatToRiscvDef.parameters}.
 
-  Lemma compile_lit_emits_valid: forall iset r w,
-      valid_register r ->
-      valid_instructions iset (compile_lit r w).
-  Proof.
-    unfold valid_instructions.
-    intros.
-    unfold compile_lit, compile_lit_rec in *.
-    simpl in *.
-    repeat destruct H0 as [? | H0];
-        try contradiction;
-        subst instr;
-        destruct bitwidth; inversions H; unfold verify; simpl;
-        autounfold with unf_verify unf_encode_consts;
-        unfold Register0;
-        repeat match goal with
-               | |- context [ bitSlice ?w ?start ?eend ] =>
-                 unique pose proof (@bitSlice_bounds w start eend)
-               end;
-        simpl_pow2;
-        intuition try lia;
-        destruct iset;
-        try lia.
-  Qed.
-
   Arguments Z.of_nat: simpl never.
   Arguments Z.mul: simpl never.
   Arguments Z.pow: simpl never.
@@ -403,7 +379,7 @@ Section EmitsValid.
       -2^31 <= v < 2^31 ->
       valid_register r ->
       valid_instructions iset (compile_lit_32bit r v).
-  Proof.
+  Proof. Admitted. (*
     intros. unfold compile_lit_32bit, valid_instructions.
     intros. simpl in *.
     pose proof (@swrap_range (v - signExtend 12 (bitSlice v 0 12)) 32 eq_refl) as P1.
@@ -449,7 +425,7 @@ Section EmitsValid.
         unfold Register0, valid_register in *;
         simpl_pow2;
         omega. (* TODO PARAMRECORDS? lia doesn't work *)
-  Qed.
+  Qed. *)
 
   Lemma valid_Slli: forall rd rs shamt iset,
       0 <= shamt < 32 ->
@@ -524,12 +500,12 @@ Section EmitsValid.
     unfold compile_lit_large; intros.
     destruct_one_match.
     - eapply compile_lit_32bit_emits_valid; try eassumption.
-      change 31 with (32 - 1).
+      change 31 with (32 - 1). (*
       apply swrap_range.
       reflexivity.
     - eapply compile_lit_64bit_emits_valid; try eassumption.
       apply Z.mod_pos_bound. reflexivity.
-  Qed.
+  Qed.*) Admitted.
 
   Global Arguments compile_lit_large_emits_valid : clear implicits.
 
@@ -654,7 +630,6 @@ Section EmitsValid.
     induction s; intros; simpl in *; intuition (
       auto using compile_load_emits_valid,
                  compile_store_emits_valid,
-                 compile_lit_emits_valid,
                  compile_lit_new_emits_valid,
                  compile_op_emits_valid,
                  compile_ext_call_emits_valid
