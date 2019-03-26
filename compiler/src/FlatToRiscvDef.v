@@ -164,15 +164,8 @@ Section FlatToRiscv1.
      Lui+Addi pairs for all desired values in the range -2^31 <= v < 2^31
  *)
 
-  Definition swrap(width: Z)(z: Z): Z := (z + 2^(width-1)) mod 2^width - 2^(width-1).
-
-  Definition swrap_bitwise(width n: Z): Z :=
-    if Z.testbit n (width - 1)
-    then (Z.lor (Z.land n (Z.ones width)) (Z.shiftl (-1) width))
-    else (Z.land n (Z.ones width)).
-
   Definition compile_lit_32bit(rd: Register)(v: Z): list Instruction :=
-    let lo := swrap_bitwise 12 v in
+    let lo := signExtend 12 v in
     let hi := Z.lxor v lo in
     [[ Lui rd hi ; Xori rd rd lo ]].
 
@@ -190,7 +183,7 @@ Section FlatToRiscv1.
        Addi rd rd v0 ]].
 
   Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
-    if width =? 32 then compile_lit_32bit rd (swrap_bitwise 32 v) else
+    if width =? 32 then compile_lit_32bit rd (signExtend 32 v) else
     compile_lit_64bit rd (v mod 2 ^ 64).
 
   Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
