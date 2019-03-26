@@ -161,8 +161,8 @@ Section Verif.
   Qed.
 
   Definition gallina_prog_2(v1 v2: w32): word :=
-    gallina_prog_1 (word.of_Z (BitOps.sextend 32 (LittleEndian.combine 4 v1)))
-                   (word.of_Z (BitOps.sextend 32 (LittleEndian.combine 4 v2))).
+    gallina_prog_1 (word.of_Z (BitOps.signExtend 32 (LittleEndian.combine 4 v1)))
+                   (word.of_Z (BitOps.signExtend 32 (LittleEndian.combine 4 v2))).
 
   Arguments LittleEndian.combine: simpl never.
 

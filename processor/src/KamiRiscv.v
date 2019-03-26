@@ -106,7 +106,7 @@ Section Equiv.
   Arguments mcomp_sat {A}.
 
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
-    word.of_Z (BitOps.sextend (8 * Z.of_nat n) (LittleEndian.combine n v)).
+    word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
 
   Definition mmioLoadEvent(m: mem)(addr: word){n: nat}(v: HList.tuple byte n):
     LogItem MMIOAction := ((m, MMInput, [addr]), (m, [signedByteTupleToReg v])).
@@ -489,7 +489,7 @@ Section Equiv.
   Proof.
   Admitted.
 
-  
+
   Ltac lets_in_hyp_to_eqs :=
     repeat lazymatch goal with
            | |- (let x := ?a in ?b) = ?c -> ?Q =>
@@ -680,7 +680,7 @@ Section Equiv.
     rewrite kami_split_bitSlice_consistent_3.
     reflexivity.
   Qed.
-  
+
   Lemma kami_rv32GetDst_ok:
     forall kinst,
       bitSlice (wordToZ kinst) 0 7 = opcode_OP ->
@@ -762,7 +762,7 @@ Section Equiv.
     do 3 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
     reflexivity.
   Qed.
-  
+
   Lemma kamiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),
       kamiStep m1 m2 t ->
@@ -818,7 +818,7 @@ Section Equiv.
       (** Invert a riscv-coq step. *)
       move H1 at bottom.
       red in H1; unfold run1 in H1.
-      
+
       inv_bind H1.
       inv_getPC H.
       inv_bind_apply H.
@@ -865,7 +865,7 @@ Section Equiv.
       21: { (* Case of Add *)
         apply invert_decode_Add in Hdec.
         destruct Hdec as [Hopc [Hrd [Hf3 [Hrs1 [Hrs2 Hf7]]]]].
-        
+
         simpl in H3.
         (** TODO @samuelgruetter: using [Hdec] we should be able to derive
          * the relation among [inst], [rd], [rs1], and [rs2],
