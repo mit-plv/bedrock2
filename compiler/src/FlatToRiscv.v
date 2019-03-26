@@ -974,39 +974,32 @@ Section FlatToRiscv1.
       end.
       cbv [withRegs withPc withNextPc withMem withLog]. clear N. f_equal.
       + rewrite put_put_same. f_equal.
+        apply word.signed_inj.
+        rewrite word.signed_of_Z.
+        rewrite word.signed_xor.
+        rewrite! word.signed_of_Z.
+        replace word.swrap with (swrap_bitwise 32) by case TODO.
+        clear.
+
         unfold swrap_bitwise.
-        apply word.unsigned_inj.
-        rewrite word.unsigned_of_Z.
-        rewrite word.unsigned_xor.
-        rewrite! word.unsigned_of_Z.
-        rewrite <-! Z.land_ones by lia.
-        rewrite E.
         prove_Zeq_bitwise.prove_Zeq_bitwise.
 
-        Search Z.testbit Z.ones.
-
         {
           rewrite Z.ones_spec_low by omega.
           autorewrite with bool_rewriting.
-          rewrite xorb_nilpotent.
-          rewrite xorb_false_l.
-          reflexivity.
-        }
-
-        {
-          rewrite Z.ones_spec_low by omega.
-          autorewrite with bool_rewriting.
-          (* here, mere rewriting with bool lemmas doesn't work, we'd need
-             smartness to discover that it's worth applying associativity,
-             so this is an example where btauto is really needed *)
           Btauto.btauto.
         }
 
         {
+          Btauto.btauto.
+          (* here, mere rewriting with bool lemmas doesn't work, we'd need
+             smartness to discover that it's worth applying associativity,
+             so this is an example where btauto is really needed *)
+        }
+
+        {
           rewrite Z.ones_spec_high by omega.
-          autorewrite with bool_rewriting.
-          (* TODO doesn't hold we should have used signed_inj ? *)
-          admit.
+          Btauto.btauto.
         }
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.

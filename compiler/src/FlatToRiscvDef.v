@@ -168,8 +168,8 @@ Section FlatToRiscv1.
 
   Definition swrap_bitwise(width n: Z): Z :=
     if Z.testbit n (width - 1)
-    then (Z.lor (Z.land n (Z.ones (width - 1))) (Z.shiftl (-1) width))
-    else (Z.land n (Z.ones (width - 1))).
+    then (Z.lor (Z.land n (Z.ones width)) (Z.shiftl (-1) width))
+    else (Z.land n (Z.ones width)).
 
   Definition compile_lit_32bit(rd: Register)(v: Z): list Instruction :=
     let lo := swrap_bitwise 12 v in
