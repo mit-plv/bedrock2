@@ -42,6 +42,7 @@ Require Import compiler.on_hyp_containing.
 Require Import compiler.PushPullMod.
 Require coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Z.bitblast.
+Require Import riscv.Utility.prove_Zeq_bitwise.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -979,12 +980,8 @@ Section FlatToRiscv1.
         rewrite! word.signed_of_Z.
         replace word.swrap with (swrap_bitwise 32) by case TODO.
         clear.
-
         unfold swrap_bitwise.
-        prove_Zeq_bitwise.prove_Zeq_bitwise.
-
-        rewrite Z.ones_spec_high by omega.
-        Btauto.btauto.
+        Zbitwise.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
     - unfold compile_lit_large, compile_lit_64bit, compile_lit_32bit in *.
