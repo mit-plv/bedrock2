@@ -306,12 +306,12 @@ Section EmitsValid.
   Qed.
 
   Lemma compile_lit_32bit_emits_valid: forall r v iset,
-      -2^31 <= v < 2^31 ->
+      - 2^31 <= v < 2^31 ->
       valid_register r ->
       valid_instructions iset (compile_lit_32bit r v).
   Proof.
     intros. unfold compile_lit_32bit, valid_instructions.
-    intros. simpl in *.
+    intros instr HIn. simpl in HIn.
     assert (- 2 ^ 31 <= Z.lxor v (signExtend 12 v) < 2 ^ 31) as P1. {
       match goal with
       | |- _ <= ?x < _ => replace x with (signExtend 32 x)
@@ -319,13 +319,6 @@ Section EmitsValid.
       - change 31 with (32 - 1). apply signExtend_range. reflexivity.
       - clear -H.
         prove_Zeq_bitwise.
-        (* TODO this should also be done by prove_Zeq_bitwise *)
-        erewrite testbit_above_signed'' with (i := i);
-          try eassumption;
-          change (Z.log2_up (2 ^ 31)) with 31;
-          simpl_pow2;
-          try omega.
-        reflexivity.
     }
     assert (Z.lxor v (signExtend 12 v) mod 2 ^ 12 = 0) as P2. {
       rewrite <- Z.land_ones by lia.
@@ -335,7 +328,7 @@ Section EmitsValid.
     assert (- 2 ^ 11 <= signExtend 12 v < 2 ^ 11) as P3. {
       change 11 with (12 - 1). apply signExtend_range. reflexivity.
     }
-    destruct H1 as [ ? | [? | ?] ]; [subst..|contradiction];
+    destruct HIn as [ ? | [? | ?] ]; [subst..|contradiction];
       (split; [|exact I]); simpl;
         autounfold with unf_verify unf_encode_consts;
         unfold Register0, valid_register in *;
