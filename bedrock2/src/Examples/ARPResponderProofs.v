@@ -27,15 +27,7 @@ Local Instance spec_of_arp : spec_of "arp" := fun functions =>
     (sep (array scalar8 (word.of_Z 1) ethbuf packet) R) m ->
     word.unsigned len = Z.of_nat (length packet) ->
   WeakestPrecondition.call functions "arp" t m [ethbuf; len] (fun T M rets => True).
-Goal program_logic_goal_for_function! arp.
-  repeat straightline.
-  letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.
-  eapply word__if_nonzero in H1.
-  rewrite word.unsigned_ltu, word.unsigned_of_Z, Z.mod_small in H1 by admit.
-  eapply Z.ltb_lt in H1.
-  repeat (letexists || straightline).
-  split.
-  1: repeat (split || letexists || straightline).
+
   Ltac tload := 
   lazymatch goal with |- Memory.load Syntax.access_size.one ?m (word.add ?base (word.of_Z ?i)) = Some ?v =>
   lazymatch goal with H: _ m |- _ =>
@@ -46,6 +38,15 @@ Goal program_logic_goal_for_function! arp.
     change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
     SeparationLogic.ecancel_assumption
   end end.
+Goal program_logic_goal_for_function! arp.
+  repeat straightline.
+  letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.
+  eapply word__if_nonzero in H1.
+  rewrite word.unsigned_ltu, word.unsigned_of_Z, Z.mod_small in H1 by admit.
+  eapply Z.ltb_lt in H1.
+  repeat (letexists || straightline).
+  split.
+  1: repeat (split || letexists || straightline).
 
   all:try tload.
   1: subst v0; exact eq_refl.
@@ -69,12 +70,23 @@ Goal program_logic_goal_for_function! arp.
     [SeparationLogic.ecancel_assumption|]
   end end.
 
+
   straightline.
   straightline.
   straightline.
   straightline.
   straightline.
   straightline.
+
+
+  set (aL := (bytes ethbuf (firstn 21 packet))) in *.
+  SearchAbout length firstn.
+  set (aM := (ptsto a (word.of_Z (word.unsigned v2)))) in *.
+  set (aR := (bytes (word.add (word.add ethbuf (word.of_Z 21)) (word.of_Z 1))
+                  (tl (skipn 21 packet)))) in *.
+
+  assert (a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))).
+  SearchAbout length firstn.
 
 Abort.
   
