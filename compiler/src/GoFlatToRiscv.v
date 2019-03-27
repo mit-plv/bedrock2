@@ -229,6 +229,161 @@ Section Go.
       rewrite decode_encode; assumption.
   Qed.
 
+  (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
+     Memory.load/storeXxx *)
+
+
+  Lemma go_loadByte_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v : w8)
+           (f : w8 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
+      (ptsto_bytes 1 addr v * R)%sep initialL.(getMem) ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
+      mcomp_sat (Bind (loadByte kind addr) f) initialL post.
+  Proof.
+    intros.
+    eapply go_loadByte; [|eassumption].
+    eapply load_bytes_of_sep. eassumption.
+  Qed.
+
+  Lemma go_storeByte_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w8)
+           (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
+      (ptsto_bytes 1 addr v_old * R)%sep initialL.(getMem) ->
+      (forall m': mem,
+          (ptsto_bytes 1 addr v_new * R)%sep m' ->
+          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
+      mcomp_sat (Bind (storeByte kind addr v_new) f) initialL post.
+  Proof.
+    intros.
+    pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    specialize P with (1 := H) (2 := H0).
+    destruct P as (m' & P & Q).
+    eapply go_storeByte; eassumption.
+  Qed.
+
+  Lemma go_loadHalf_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v : w16)
+           (f : w16 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
+      (ptsto_bytes 2 addr v * R)%sep initialL.(getMem) ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
+      mcomp_sat (Bind (loadHalf kind addr) f) initialL post.
+  Proof.
+    intros.
+    eapply go_loadHalf; [|eassumption].
+    eapply load_bytes_of_sep. eassumption.
+  Qed.
+
+  Lemma go_storeHalf_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w16)
+           (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
+      (ptsto_bytes 2 addr v_old * R)%sep initialL.(getMem) ->
+      (forall m': mem,
+          (ptsto_bytes 2 addr v_new * R)%sep m' ->
+          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
+      mcomp_sat (Bind (storeHalf kind addr v_new) f) initialL post.
+  Proof.
+    intros.
+    pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    specialize P with (1 := H) (2 := H0).
+    destruct P as (m' & P & Q).
+    eapply go_storeHalf; eassumption.
+  Qed.
+
+  Lemma go_loadWord_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v : w32)
+           (f : w32 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
+      (ptsto_bytes 4 addr v * R)%sep initialL.(getMem) ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
+      mcomp_sat (Bind (loadWord kind addr) f) initialL post.
+  Proof.
+    intros.
+    eapply go_loadWord; [|eassumption].
+    eapply load_bytes_of_sep. eassumption.
+  Qed.
+
+  Lemma go_storeWord_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
+           (m': mem) (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
+      (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
+      (ptsto_bytes 4 addr v_new * R)%sep m' ->
+      mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
+      mcomp_sat (Bind (storeWord kind addr v_new) f) initialL post.
+  Proof.
+    intros.
+    eapply go_storeWord; [|eassumption].
+    unfold Memory.storeWord.
+    pose proof (unchecked_store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    specialize P with (1 := H). specialize (P v_new).
+    (* Does not hold because if R does not completely determine the contents of the memory,
+       initialL.(getMem) and m' could change in locations other than at addr,
+       and post could check for that, so if the post in the hyp requires some specific value
+       in m', this value might not be present in initialL.(getMem), and still not be present
+       after the storeWord operation, so the conclusion would not hold. *)
+  Abort.
+
+  Lemma go_storeWord_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
+           (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
+      (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
+      (let m' := Memory.unchecked_store_bytes 4 (getMem initialL) addr v_new in
+          (ptsto_bytes 4 addr v_new * R)%sep m' ->
+          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
+      mcomp_sat (Bind (storeWord kind addr v_new) f) initialL post.
+  Proof.
+    intros.
+    pose proof (unchecked_store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    specialize P with (1 := H). specialize (P v_new).
+    simpl in *.
+    specialize (H0 P).
+    eapply go_storeWord; [|eassumption].
+    unfold Memory.storeWord, store_bytes.
+    erewrite load_bytes_of_sep; eauto using unchecked_store_bytes_of_sep.
+  Qed.
+
+  Lemma go_storeWord_sep_holds_but_results_in_evars_out_of_scope:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
+           (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
+      (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
+      (forall m': mem,
+          (ptsto_bytes 4 addr v_new * R)%sep m' ->
+          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
+      mcomp_sat (Bind (storeWord kind addr v_new) f) initialL post.
+  Proof.
+    intros.
+    pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    specialize P with (1 := H) (2 := H0).
+    destruct P as (m' & P & Q).
+    eapply go_storeWord; eassumption.
+  Qed.
+
+  Lemma go_loadDouble_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v : w64)
+           (f : w64 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
+      (ptsto_bytes 8 addr v * R)%sep initialL.(getMem) ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
+      mcomp_sat (Bind (loadDouble kind addr) f) initialL post.
+  Proof.
+    intros.
+    eapply go_loadDouble; [|eassumption].
+    eapply load_bytes_of_sep. eassumption.
+  Qed.
+
+  Lemma go_storeDouble_sep:
+    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w64)
+           (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
+      (ptsto_bytes 8 addr v_old * R)%sep initialL.(getMem) ->
+      (forall m': mem,
+          (ptsto_bytes 8 addr v_new * R)%sep m' ->
+          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
+      mcomp_sat (Bind (storeDouble kind addr v_new) f) initialL post.
+  Proof.
+    intros.
+    pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    specialize P with (1 := H) (2 := H0).
+    destruct P as (m' & P & Q).
+    eapply go_storeDouble; eassumption.
+  Qed.
+
 End Go.
 
 Hint Unfold
@@ -283,11 +438,12 @@ Ltac sidecondition :=
     | |- map.get (map.put _ ?x _) ?y = Some _ =>
       constr_eq x y; apply map.get_put_same
     end
-  | |- sep ?P ?Q ?m => simpl in *; solve [seplog]
+  | |- sep ?P ?Q ?m => simpl in *; simpl_MetricRiscvMachine_get_set; subst; solve [seplog]
   | |- _ => reflexivity
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => assumption
-  | H: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify _ _ =>
+  | H: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
+    assert_fails (is_evar inst);
     apply H; clear; eauto 10 using in_cons, in_or_app, in_eq
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
     unfold Memory.load, Memory.load_Z in *;
@@ -306,6 +462,8 @@ Ltac simulate_step :=
         | eapply go_setRegister0   ; [sidecondition..|]
         | eapply go_getRegister    ; [sidecondition..|]
         | eapply go_setRegister    ; [sidecondition..|]
+        (* Note: One might not want these, but a the separation logic version, or
+           the version expressed in terms of compile_load/store, so they're commented out
         | eapply go_loadByte       ; [sidecondition..|]
         | eapply go_storeByte      ; [sidecondition..|]
         | eapply go_loadHalf       ; [sidecondition..|]
@@ -314,6 +472,7 @@ Ltac simulate_step :=
         | eapply go_storeWord      ; [sidecondition..|]
         | eapply go_loadDouble     ; [sidecondition..|]
         | eapply go_storeDouble    ; [sidecondition..|]
+        *)
         | eapply go_getPC          ; [sidecondition..|]
         | eapply go_setPC          ; [sidecondition..|]
         | eapply go_step           ; [sidecondition..|]

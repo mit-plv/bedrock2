@@ -137,20 +137,28 @@ Section SepProperties.
       symmetry. apply sep_assoc.
   Qed.
 
-  Let nth n xs := List.hd (emp True) (List.skipn n xs).
+  Definition hd {T} := Eval cbv delta in @List.hd T.
+  Definition tl {T} := Eval cbv delta in @List.tl T.
+  Definition firstn {T} := Eval cbv delta in @List.firstn T.
+  Definition skipn {T} := Eval cbv delta in @List.skipn T.
+  Definition app {T} := Eval cbv delta in @List.app T.
+
+  Local Infix "++" := app. Local Infix "++" := app : list_scope.
+  Let nth n xs := hd (emp True) (skipn n xs).
   Let remove_nth n (xs : list (rep -> Prop)) :=
-    (List.firstn n xs ++ List.tl (List.skipn n xs))%list.
+    (firstn n xs ++ tl (skipn n xs)).
+
   Lemma seps_nth_to_head n xs : iff1 (sep (nth n xs) (seps (remove_nth n xs))) (seps xs).
   Proof.
     cbv [nth remove_nth].
-    pose proof (List.firstn_skipn n xs).
-    set (xsr := List.skipn n xs) in *; clearbody xsr.
-    set (xsl := List.firstn n xs) in *; clearbody xsl.
+    pose proof (List.firstn_skipn n xs : (firstn n xs ++ skipn n xs) = xs).
+    set (xsr := skipn n xs) in *; clearbody xsr.
+    set (xsl := firstn n xs) in *; clearbody xsl.
     subst xs.
     setoid_rewrite <-seps'_iff1_seps.
     destruct xsr.
     { cbn [seps']; rewrite sep_emp_True_l, 2List.app_nil_r; exact (reflexivity _). }
-    cbn [List.hd List.tl].
+    cbn [hd tl].
     induction xsl; cbn; [exact (reflexivity _)|].
     rewrite <-IHxsl; clear IHxsl.
     rewrite (sep_comm _ (seps' _)), <-(sep_assoc _ (seps' _)), <-(sep_comm _ (_ * seps' _)).
@@ -253,7 +261,7 @@ Ltac reify_goal :=
     change (Lift1Prop.impl1 (Tree.to_sep LHS) (Tree.to_sep RHS));
     apply Tree.impl1_to_sep_of_impl1_flatten
   end;
-  cbn [Tree.flatten Tree.interp List.app].
+  cbn [Tree.flatten Tree.interp app].
 
 Ltac index_and_element_of xs :=
   multimatch xs with
@@ -282,8 +290,8 @@ Ltac cancel_emp_l :=
   | |- Lift1Prop.iff1 (@seps ?K ?V ?M ?LHS) (seps ?RHS) =>
     let i := find_constr_eq LHS constr:(@emp K V M True) in
     simple refine (cancel_emp_at_index_l i LHS RHS _ _);
-    cbn [List.firstn List.skipn List.app List.hd List.tl];
-    [exact (RelationClasses.reflexivity _)|]
+    cbn [firstn skipn app hd tl];
+    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
   end.
 
 Ltac cancel_emp_r :=
@@ -291,8 +299,8 @@ Ltac cancel_emp_r :=
   | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
     let j := find_constr_eq RHS constr:(@emp K V M True) in
     simple refine (cancel_emp_at_index_r j LHS RHS _ _);
-    cbn [List.firstn List.skipn List.app List.hd List.tl];
-    [exact (RelationClasses.reflexivity _)|]
+    cbn [firstn skipn app hd tl];
+    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
   end.
 
 Ltac cancel_step :=
@@ -306,8 +314,8 @@ Ltac cancel_step :=
       let i := find_constr_eq LHS y in (* <-- different from ecancel_step *)
 
       simple refine (cancel_seps_at_indices i j LHS RHS _ _);
-      cbn [List.firstn List.skipn List.app List.hd List.tl];
-      [exact (RelationClasses.reflexivity _)|].
+      cbn [firstn skipn app hd tl];
+      [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|].
 
 Ltac ecancel_step :=
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
@@ -320,21 +328,20 @@ Ltac ecancel_step :=
       let i := find_syntactic_unify_deltavar LHS y in
 
       simple refine (cancel_seps_at_indices i j LHS RHS _ _);
-      cbn [List.firstn List.skipn List.app List.hd List.tl];
-      [exact (RelationClasses.reflexivity _)|].
+      cbn [firstn skipn app hd tl];
+      [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|].
 
 Ltac cancel :=
   reify_goal;
   repeat cancel_step;
   repeat cancel_emp_l;
   repeat cancel_emp_r;
-  try solve [ cbn [seps]; exact (RelationClasses.reflexivity _) ].
+  try solve [ cbn [seps]; syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)].
 
 Ltac ecancel :=
   cancel;
   repeat ecancel_step;
-  cbn [seps];
-  exact (RelationClasses.reflexivity _).
+  solve [ cbn [seps]; syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)].
 
 Ltac ecancel_assumption :=
   multimatch goal with

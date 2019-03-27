@@ -19,15 +19,21 @@ _CoqProject:
 
 all: Makefile.coq.all $(VS)
 	$(MAKE) -f Makefile.coq.all
+	$(MAKE) src/BytedumpTest.out
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
 Makefile.coq.all: force _CoqProject
 	$(COQ_MAKEFILE) $(VS) -o Makefile.coq.all
 
-src/BytedumpTest.out: src/BytedumpTest.v src/BytedumpTest.golden.txt
-	coqc -q $(shell cat _CoqProject | grep -v ^-arg) $< | head --bytes -1 | hexdump -C > src/BytedumpTest.out.tmp
-	diff -u src/BytedumpTest.golden.txt src/BytedumpTest.out.tmp
+src/BytedumpTest.out: src/BytedumpTest.v src/BytedumpTest.golden.bin
+	coqc -q $(shell cat _CoqProject | grep -v ^-arg) $< | head --bytes -1 > src/BytedumpTest.out.tmp
+	hexdump < /dev/null && \
+		hexdump -C src/BytedumpTest.golden.bin > src/BytedumpTest.golden.hex && \
+		hexdump -C src/BytedumpTest.out.tmp > src/BytedumpTest.out.hex && \
+		diff -u src/BytedumpTest.golden.hex src/BytedumpTest.out.hex && \
+		rm src/BytedumpTest.golden.hex src/BytedumpTest.out.hex || true
+	diff -u src/BytedumpTest.golden.bin src/BytedumpTest.out.tmp
 	mv src/BytedumpTest.out.tmp src/BytedumpTest.out
 
 force:

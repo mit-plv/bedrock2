@@ -360,8 +360,8 @@ Module exec.
         exec (SStore sz a v) t m l mc post
     | lit: forall t m l mc x v post,
         post t m (map.put l x (word.of_Z v))
-             (addMetricLoads 1
-             (addMetricInstructions 16 mc)) ->
+             (addMetricLoads 2
+             (addMetricInstructions 2 mc)) ->
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->

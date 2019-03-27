@@ -84,6 +84,8 @@ Module KamiProc.
 
 End KamiProc.
 
+Import MonadNotations.
+
 Section Equiv.
 
   (* TODO not sure if we want to use ` or rather a parameter record *)
@@ -91,11 +93,59 @@ Section Equiv.
 
   Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
 
-  Context `{Pr: Primitives (W := W) MMIOAction M}.
-  Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
   Notation RiscvMachine := (riscv.Platform.RiscvMachine.RiscvMachine Register MMIOAction).
 
-  Definition iset: InstructionSet := if width =? 32 then RV32IM else RV64IM.
+  Context {Registers: map.map Register word}
+          {mem: map.map word byte}
+          (mcomp_sat:
+             forall A: Type,
+               M A -> RiscvMachine -> (A -> RiscvMachine -> Prop) -> Prop)
+          {mm: Monad M}
+          {rvm: RiscvProgram M word}.
+
+  Arguments mcomp_sat {A}.
+
+  Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
+    word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
+
+  Definition mmioLoadEvent(m: mem)(addr: word){n: nat}(v: HList.tuple byte n):
+    LogItem MMIOAction := ((m, MMInput, [addr]), (m, [signedByteTupleToReg v])).
+
+  Definition mmioStoreEvent(m: mem)(addr: word){n: nat}(v: HList.tuple byte n):
+    LogItem MMIOAction :=
+    ((m, MMOutput, [addr; signedByteTupleToReg v]), (m, [])).
+
+  Instance MinimalMMIOPrimitivesParams:
+    PrimitivesParams M RiscvMachine :=
+    {| Primitives.mcomp_sat := @mcomp_sat;
+
+       (* any value can be found in an uninitialized register *)
+       Primitives.is_initial_register_value x := True;
+
+       Primitives.nonmem_loadByte_sat initialL addr post :=
+         forall (v: w8), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr v) initialL);
+       Primitives.nonmem_loadHalf_sat initialL addr post :=
+         forall (v: w16), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr v) initialL);
+       Primitives.nonmem_loadWord_sat initialL addr post :=
+         forall (v: w32), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr v) initialL);
+       Primitives.nonmem_loadDouble_sat initialL addr post :=
+         forall (v: w64), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr v) initialL);
+
+       Primitives.nonmem_storeByte_sat initialL addr v post :=
+         post (withLogItem (mmioStoreEvent initialL.(getMem) addr v) initialL);
+       Primitives.nonmem_storeHalf_sat initialL addr v post :=
+         post (withLogItem (mmioStoreEvent initialL.(getMem) addr v) initialL);
+       Primitives.nonmem_storeWord_sat initialL addr v post :=
+         post (withLogItem (mmioStoreEvent initialL.(getMem) addr v) initialL);
+       Primitives.nonmem_storeDouble_sat initialL addr v post :=
+         post (withLogItem (mmioStoreEvent initialL.(getMem) addr v) initialL);
+    |}.
+
+  Context {Pr: Primitives MinimalMMIOPrimitivesParams}.
+  Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
+
+  Definition iset: InstructionSet :=
+    RV32IM.
 
   Definition NOP: w32 := LittleEndian.split 4 (encode (IInstruction Nop)).
 
@@ -107,20 +157,36 @@ Section Equiv.
     let keys := HList.tuple.map (@wordToZ 5) kkeys in
     map.putmany_of_tuple keys values map.empty.
 
+  Lemma convertRegs_get:
+    forall rf r v,
+      map.get (convertRegs rf) (Word.wordToZ r) = Some v ->
+      v = rf r.
+  Proof.
+  Admitted.
+
+  Lemma convertRegs_put:
+    forall rf r v,
+      convertRegs (fun w => if weq w r then v else rf w) =
+      map.put (convertRegs rf) (Word.wordToZ r) v.
+  Proof.
+    intros.
+    eapply map.map_ext.
+    intros k.
+  Admitted.
+
   Variables instrMemSize dataMemSize: nat.
 
-  Definition instrMemStart: word := word.of_Z 0.
+  Definition instrMemStart: kword (width - 2) := Word.ZToWord _ 0.
   Definition dataMemStart: word := word.of_Z (Z.of_nat (4 * instrMemSize)).
 
   Definition word32_to_4bytes(w: kword 32): HList.tuple byte 4 :=
     LittleEndian.split 4 (word.unsigned w).
 
-  (** TODO: how to define this with the new [instrMem] type? *)
-  Definition convertInstrMem(instrMem: kword (width - 2) -> kword 32): mem.
-  Admitted.
-  (* let keys := List.unfoldn (word.add (word.of_Z 4)) instrMemSize instrMemStart in *)
-  (* let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in *)
-  (* Memory.unchecked_store_byte_tuple_list instrMemStart values map.empty. *)
+  Definition convertInstrMem(instrMem: kword (width - 2) -> kword 32): mem :=
+    let keys := List.unfoldn (Word.wplus (Word.ZToWord (KamiProc.nwidth - 2) 1))
+                             instrMemSize instrMemStart in
+    let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
+    Memory.unchecked_store_byte_tuple_list (word.of_Z 0) values map.empty.
 
   Definition convertDataMem(dataMem: kword width -> kword width): mem :=
     let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize dataMemStart in
@@ -412,12 +478,299 @@ Section Equiv.
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
 
+  Lemma fetch_consistent:
+    forall instrMem dataMem pc inst,
+      wordToZ pc < Z.of_nat (4 * instrMemSize) ->
+      Memory.loadWord
+        (map.putmany (convertInstrMem instrMem)
+                     (convertDataMem dataMem)) pc = Some inst ->
+      combine 4 inst =
+      wordToZ (instrMem (evalExpr (rv32AlignPc (Z.to_nat width) (Z.to_nat (width - 2)) type pc))).
+  Proof.
+  Admitted.
+
+
+  Ltac lets_in_hyp_to_eqs :=
+    repeat lazymatch goal with
+           | |- (let x := ?a in ?b) = ?c -> ?Q =>
+             change (let x := a in b = c -> Q); intro
+           | x := bitSlice _ 25 26 |- _ =>
+            (* shamtHi is the only field which another field depends on *)
+             subst x
+           | x := ?t : ?T |- _ =>
+             pose proof (eq_refl t : x = t); clearbody x
+           end.
+
+  Ltac invert_decode_if_true G :=
+    first [ apply Bool.andb_true_iff in G;
+            let G1 := fresh G in let G2 := fresh G in destruct G as [G1 G2];
+            invert_decode_if_true G1; invert_decode_if_true G2
+          | apply Z.eqb_eq in G
+          | idtac ].
+
+  (* TODO rather than stating this as a lemma, write a tactic which
+     infers & poses the conclusion *)
+  Lemma invert_decode_Add: forall inst rd rs1 rs2: Z,
+      decode RV32IM inst = IInstruction (Decode.Add rd rs1 rs2) ->
+      bitSlice inst 0 7 = opcode_OP /\
+      bitSlice inst 7 12 = rd /\
+      bitSlice inst 12 15 = funct3_ADD /\
+      bitSlice inst 15 20 = rs1 /\
+      bitSlice inst 20 25 = rs2 /\
+      bitSlice inst 25 32 = funct7_ADD.
+  Proof.
+    intros *.
+    cbv beta delta [decode].
+    lets_in_hyp_to_eqs.
+    subst
+      resultI
+      resultM
+      resultA
+      resultF
+      resultI64
+      resultM64
+      resultA64
+      resultF64
+      resultCSR.
+    repeat match type of H with
+    | context C [if ?a then ?b else ?c] =>
+      ((let P := context C [ b ] in change P in H) ||
+       (let P := context C [ c ] in change P in H))
+    end.
+    subst results.
+    destruct (isValidI decodeI) eqn: VI;
+    destruct (isValidM decodeM) eqn: VM;
+    destruct (isValidCSR decodeCSR) eqn: VCSR.
+    all: try (clear; simpl; discriminate).
+    simpl.
+    intro E.
+    injection E. clear E.
+    subst decodeI.
+    intro E.
+    repeat match type of E with
+    | (if ?a then ?b else ?c) = ?d => destruct a; [discriminate E|]
+    end.
+    match type of E with
+    | (if ?a then ?b else ?c) = ?d => destruct a eqn: G; cycle 1
+    end.
+    { (* more invalid cases *)
+      repeat match type of E with
+             | (if ?a then ?b else ?c) = ?d => destruct a; [discriminate E|]
+             end.
+      discriminate E.
+    }
+    (* the only valid case remains *)
+    subst rd0 rs4 rs0.
+    invert_decode_if_true G.
+    assert (bitSlice inst 0 7 = opcode_OP) as R1 by congruence; revert R1.
+    assert (bitSlice inst 12 15 = funct3_ADD) as R2 by congruence; revert R2.
+    assert (bitSlice inst 25 32 = funct7_ADD) as R3 by congruence; revert R3.
+    injection E.
+    clear.
+    (* if we automate this further, we might be able to infer the conclusion with a tactic
+       rather than having to state it manually *)
+    intros. auto.
+  Qed.
+
+  Ltac inv_bind H :=
+    apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H;
+    let mid := fresh "mid" in
+    destruct H as (mid & ? & ?).
+
+  Ltac inv_getPC H :=
+    match type of H with
+    | _ _ _ ?mid =>
+      apply spec_getPC with (post0:= mid) in H; simpl in H
+    end.
+
+  Ltac inv_bind_apply H :=
+    match type of H with
+    | ?mid _ _ =>
+      repeat
+        match goal with
+        | [H0: forall _ _, mid _ _ -> _ |- _] => specialize (H0 _ _ H)
+        end
+    end.
+
+  Ltac inv_loadWord H :=
+    apply spec_loadWord in H; simpl in H.
+
+  Ltac inv_step H :=
+    apply spec_step in H;
+    unfold withNextPc, getNextPc, withRegs in H;
+    simpl in H.
+
+  Lemma kami_split_bitSlice_consistent_1:
+    forall (i: nat) kinst,
+      wordToZ (split1 i (32 - i) kinst) =
+      bitSlice (wordToZ kinst) 0 (Z.of_nat i).
+  Proof.
+  Admitted.
+
+  Lemma kami_split_bitSlice_consistent_2:
+    forall (i j: nat) kinst,
+      wordToZ (split2 i j kinst) =
+      bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
+  Proof.
+  Admitted.
+
+  Lemma kami_split_bitSlice_consistent_3:
+    forall (i j: nat) kinst,
+      wordToZ
+        (split2 i j (split1 (i + j) (32 - (i + j)) kinst)) =
+      bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
+  Proof.
+  Admitted.
+
+  Lemma kami_getOpcode_ok:
+    forall kinst,
+      wordToZ
+        (evalExpr
+           (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      bitSlice (wordToZ kinst) 0 7.
+  Proof.
+    intros.
+    unfold getOpcodeE.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_1.
+    reflexivity.
+  Qed.
+
+  Lemma kami_getFunct7_ok:
+    forall kinst,
+      wordToZ
+        (evalExpr
+           (getFunct7E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      bitSlice (wordToZ kinst) 25 32.
+  Proof.
+    intros.
+    unfold getFunct7E.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_2.
+    reflexivity.
+  Qed.
+
+  Lemma kami_getFunct3_ok:
+    forall kinst,
+      wordToZ
+        (evalExpr
+           (getFunct3E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      bitSlice (wordToZ kinst) 12 15.
+  Proof.
+    intros.
+    unfold getFunct3E.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_3.
+    reflexivity.
+  Qed.
+
+  Lemma kami_getRdE_ok:
+    forall kinst,
+      wordToZ
+        (evalExpr (getRdE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      bitSlice (wordToZ kinst) 7 12.
+  Proof.
+    intros.
+    unfold getRdE.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_3.
+    reflexivity.
+  Qed.
+
+  Lemma kami_rv32GetDst_ok:
+    forall kinst,
+      bitSlice (wordToZ kinst) 0 7 = opcode_OP ->
+      Word.wordToZ (evalExpr (rv32GetDst type kinst)) =
+      bitSlice (wordToZ kinst) 7 12.
+  Proof.
+    intros.
+    unfold rv32GetDst.
+    unfold evalExpr; fold evalExpr.
+    destruct (isEq _ _) as [Heq|Hne].
+    - exfalso.
+      pose proof (kami_getOpcode_ok kinst).
+      rewrite Heq, H in H0; discriminate.
+    - rewrite kami_getRdE_ok; reflexivity.
+  Qed.
+
+  Lemma kami_rv32GetSrc1_ok:
+    forall kinst,
+      Word.wordToZ (evalExpr (rv32GetSrc1 type kinst)) =
+      bitSlice (wordToZ kinst) 15 20.
+  Proof.
+    intros.
+    unfold rv32GetSrc1, getRs1E.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_3.
+    reflexivity.
+  Qed.
+
+  Lemma kami_rv32GetSrc2_ok:
+    forall kinst,
+      Word.wordToZ (evalExpr (rv32GetSrc2 type kinst)) =
+      bitSlice (wordToZ kinst) 20 25.
+  Proof.
+    intros.
+    unfold rv32GetSrc2, getRs2E.
+    unfold evalExpr; fold evalExpr.
+    unfold evalUniBit.
+    rewrite kami_split_bitSlice_consistent_3.
+    reflexivity.
+  Qed.
+
+  (** TODO @joonwonc: ditto [invert_decode_Add]; better to have a tactic. *)
+  Lemma kami_rv32Exec_Add_ok:
+    forall v1 v2 pc kinst,
+      wordToZ
+        (evalExpr
+           (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      opcode_OP ->
+      wordToZ
+        (evalExpr (getFunct7E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      funct7_ADD ->
+      wordToZ
+        (evalExpr (getFunct3E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      funct3_ADD ->
+      evalExpr (rv32Exec (Z.to_nat width) type v1 v2 pc kinst) =
+      v1 ^+ v2.
+  Proof.
+    intros.
+    unfold rv32Exec.
+    unfold evalExpr; fold evalExpr.
+    do 2 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
+    do 3 (destruct (isEq _ _); [|exfalso; elim n; apply wordToZ_inj; assumption]).
+    reflexivity.
+  Qed.
+
+  Lemma kami_rv32NextPc_op_ok:
+    forall rf pc kinst,
+      wordToZ
+        (evalExpr
+           (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      opcode_OP ->
+      evalExpr (rv32NextPc (Z.to_nat width) type rf pc kinst) =
+      pc ^+ (ZToWord _ 4).
+  Proof.
+    intros.
+    unfold rv32NextPc.
+    unfold evalExpr; fold evalExpr.
+    do 3 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
+    reflexivity.
+  Qed.
+
   Lemma kamiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),
       kamiStep m1 m2 t ->
       states_related (m1, nil) m1' ->
       mcomp_sat_unit (run1 iset) m1' post ->
-      exists m2', states_related (m2, t) m2' /\ post m2'.
+      (* Either Kami doesn't proceed or riscv-coq simulates. *)
+      (m1 = m2 \/
+       exists m2', states_related (m2, t) m2' /\ post m2').
   Proof.
     intros.
     destruct H as [kupd [klbl [? [? ?]]]]; subst.
@@ -425,17 +778,9 @@ Section Equiv.
     kinvert.
 
     - (* [EmptyRule] step *)
-      red in H3; rewrite <-H8 in H3.
-      FMap.mred; subst.
-      exists m1'.
-      split; [assumption|].
-      admit.
+      red in H3; rewrite <-H8 in H3; FMap.mred.
     - (* [EmptyMeth] step *)
-      red in H3; rewrite <-H8 in H3.
-      FMap.mred; subst.
-      exists m1'.
-      split; [assumption|].
-      admit.
+      red in H3; rewrite <-H8 in H3; FMap.mred.
     - (* "pgmInit" *)
       exfalso.
       inversion_clear H0.
@@ -455,8 +800,11 @@ Section Equiv.
     - (* "execLdZ" *) admit.
     - (* "execSt" *) admit.
     - (* "execNm" *)
+      right.
+
+      (** Apply the Kami inversion lemma for the [execNm] rule. *)
       inversion H5; subst; clear H5 HAction.
-      inversion_clear H0.
+      inversion H0; subst; clear H0.
       destruct klbl as [annot defs calls]; simpl in *; subst.
       destruct annot; [|discriminate].
       inversion H7; subst; clear H7.
@@ -467,8 +815,129 @@ Section Equiv.
       simpl in H; subst.
       inversion_clear H3.
 
-      red in H1.
-      admit.
+      (** Invert a riscv-coq step. *)
+      move H1 at bottom.
+      red in H1; unfold run1 in H1.
+
+      inv_bind H1.
+      inv_getPC H.
+      inv_bind_apply H.
+      inv_bind H1.
+      inv_loadWord H1.
+      destruct H1;
+        [|destruct H1; clear -H1;
+          (** TODO @joonwonc: prove that [pc] is always in the instruction memory.
+           * Then [H1] implies False. It should be provable using the conversion
+           * from [KamiProc.st] to the corresponding riscv-coq state.
+           *)
+          admit].
+      destruct H1 as (rinst & ? & ?).
+      inv_bind_apply H4.
+
+      (** Invert Kami decode/execute *)
+      destruct H2
+        as (kinst & npc & prf & dst & exec_val
+            & ? & ? & ? & ? & ? & ?).
+      subst prf.
+
+      (* Relation between the two raw instructions *)
+      assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
+                      4 rinst =
+              wordToZ kinst) as Hfetch.
+      { subst kinst.
+        eapply fetch_consistent; [|eassumption].
+        admit. (** TODO @joonwonc: requires the correctness of [pc]. *)
+      }
+      rewrite Hfetch in *.
+
+      (** Invert riscv-coq decode/execute *)
+      match type of H3 with
+      | context [decode ?i ?al] =>
+        destruct (decode i al) eqn:Hdec;
+          [(* IInstruction *)
+          |(* MInstruction *) admit
+          |(** TODO @samuelgruetter: remove the other cases except I and M --
+            * execution with [iset] (= RV32IM) cannot have such cases.
+            *)
+          admit..]
+      end.
+      destruct iInstruction.
+      21: { (* Case of Add *)
+        apply invert_decode_Add in Hdec.
+        destruct Hdec as [Hopc [Hrd [Hf3 [Hrs1 [Hrs2 Hf7]]]]].
+
+        simpl in H3.
+        (** TODO @samuelgruetter: using [Hdec] we should be able to derive
+         * the relation among [inst], [rd], [rs1], and [rs2],
+         * e.g., [bitSlice inst _ _ = rs1].
+         *)
+
+        inv_bind H3.
+        inv_bind H3.
+        apply spec_getRegister with (post0:= mid2) in H3.
+        destruct H3; [|admit (** TODO @joonwonc: prove the value of `R0` is
+                              * always zero in Kami steps. *)].
+        simpl in H3; destruct H3.
+        remember (map.get (convertRegs rf) rs1) as v1.
+        destruct v1 as [v1|]; [|admit (** TODO: prove it never fails to read
+                                       * a register value once the register
+                                       * is valid. *)].
+        inv_bind_apply H13.
+        inv_bind H12.
+        apply spec_getRegister with (post0:= mid3) in H12.
+        destruct H12; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
+        simpl in H12; destruct H12.
+        remember (map.get (convertRegs rf) rs2) as v2.
+        destruct v2 as [v2|]; [|admit (** TODO: ditto, about valid register reads *)].
+        inv_bind_apply H15.
+        apply spec_setRegister in H14.
+        destruct H14; [|admit (** TODO @joonwonc: writing to `R0` *)].
+        simpl in H14; destruct H14.
+        inv_bind_apply H16.
+        inv_step H7.
+
+        (** Construction *)
+        eexists.
+        split; [|eassumption].
+
+        (* next rf *)
+        replace (map.put (convertRegs rf) rd (v1 ^+ v2))
+          with (convertRegs
+                  (evalExpr
+                     (UpdateVector
+                        (Var type
+                             (SyntaxKind (Vector (Bit KamiProc.nwidth) rv32RfIdx))
+                             rf) (Var type (SyntaxKind (Bit rv32RfIdx)) dst)
+                        (Var type (SyntaxKind (Bit KamiProc.nwidth)) exec_val)))).
+        2: { unfold evalExpr; fold evalExpr.
+             subst exec_val.
+             replace rd with (Word.wordToZ dst) in *
+               by (subst dst rd; apply kami_rv32GetDst_ok; assumption).
+             replace rs1
+               with (Word.wordToZ (evalExpr (rv32GetSrc1 type kinst))) in *
+               by (subst rs1; apply kami_rv32GetSrc1_ok).
+             replace rs2
+               with (Word.wordToZ (evalExpr (rv32GetSrc2 type kinst))) in *
+               by (subst rs2; apply kami_rv32GetSrc2_ok).
+             rewrite <-convertRegs_get with (v:= v1) by auto.
+             rewrite <-convertRegs_get with (v:= v2) by auto.
+             rewrite kami_rv32Exec_Add_ok;
+               [|rewrite kami_getOpcode_ok; assumption
+                |rewrite kami_getFunct7_ok; assumption
+                |rewrite kami_getFunct3_ok; assumption].
+             apply convertRegs_put.
+        }
+
+        constructor.
+        - assumption.
+        - rewrite H0, H11.
+          do 2 f_equal.
+          (* next pc *)
+          subst npc.
+          apply kami_rv32NextPc_op_ok.
+          rewrite kami_getOpcode_ok; assumption.
+      }
+      all: admit.
 
     - (* "execNmZ" *) admit.
 

@@ -11,7 +11,7 @@ Definition StringNames_params: bedrock2.StringNamesSyntax.parameters := {|
 
 Definition to_c_parameters : ToCString.parameters := {|
   syntax := (StringNamesSyntax.make StringNames_params);
-  c_lit w := DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL";
+  c_lit w := "(uintptr_t)" ++ DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL";
   c_bop := fun e1 op e2 =>
              match op with
              | add => e1++"+"++e2

@@ -1,4 +1,5 @@
 Require Import coqutil.Macros.unique.
+Require Import coqutil.Decidable.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -24,6 +25,9 @@ Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Pro
 
 Module Import FlatToRiscvDef.
   Class parameters := {
+    (* the words implementations are not needed, but we need width,
+       and EmitsValid needs width_cases *)
+    W :> Utility.Words;
     actname: Type;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
     max_ext_call_code_size: actname -> Z;
@@ -95,12 +99,6 @@ Section FlatToRiscv1.
 
   (* Part 2: compilation *)
 
-  Definition is32bit(iset: InstructionSet): bool :=
-    match iset with
-    | RV32I | RV32IM | RV32IA | RV32IMA | RV32IF | RV32IMF | RV32IAF | RV32IMAF => true
-    | RV64I | RV64IM | RV64IA | RV64IMA | RV64IF | RV64IMF | RV64IAF | RV64IMAF => false
-    end.
-
   (* load & store depend on the bitwidth: on 32-bit machines, Lw just loads 4 bytes,
      while on 64-bit machines, it loads 4 bytes and sign-extends them.
      If we want a command which always loads 4 bytes without sign-extending them,
@@ -108,22 +106,22 @@ Section FlatToRiscv1.
      but Lwu on 64-bit.
      We can't just always choose Lwu, because Lwu is not available on 32-bit machines. *)
 
-  Definition compile_load(iset: InstructionSet)(sz: access_size):
+  Definition compile_load(sz: access_size):
     Register -> Register -> Z -> Instruction :=
     match sz with
     | access_size.one => Lbu
     | access_size.two => Lhu
-    | access_size.four => if is32bit iset then Lw else Lwu
-    | access_size.word => if is32bit iset then Lw else Ld
+    | access_size.four => if width =? 32 then Lw else Lwu
+    | access_size.word => if width =? 32 then Lw else Ld
     end.
 
-  Definition compile_store(iset: InstructionSet)(sz: access_size):
+  Definition compile_store(sz: access_size):
     Register -> Register -> Z -> Instruction :=
     match sz with
     | access_size.one => Sb
     | access_size.two => Sh
     | access_size.four => Sw
-    | access_size.word => if is32bit iset then Sw else Sd
+    | access_size.word => if width =? 32 then Sw else Sd
     end.
 
   Definition compile_op(rd: Register)(op: Syntax.bopname)(rs1 rs2: Register): list Instruction :=
@@ -145,31 +143,59 @@ Section FlatToRiscv1.
     | Syntax.bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
     end.
 
-  Fixpoint compile_lit_rec(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
-    let byte := bitSlice v ((Z.of_nat byteIndex) * 8) ((Z.of_nat byteIndex + 1) * 8) in
-    [[ Addi rd rs byte ]] ++
-    match byteIndex with
-    | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v)
-    | O => [[]]
-    end.
+  Definition compile_lit_12bit(rd: Register)(v: Z): list Instruction :=
+    [[ Addi rd Register0 v ]].
 
-  Fixpoint compile_lit_rec'(byteIndex: nat)(rd rs: Register)(v: Z): list Instruction :=
-    let d := (2 ^ ((Z.of_nat byteIndex) * 8))%Z in
-    let hi := (v / d)%Z in
-    let v' := (v - hi * d)%Z in
-    [[ Addi rd rs hi ]] ++
-    match byteIndex with
-    | S b => [[ Slli rd rd 8]] ++ (compile_lit_rec b rd rd v')
-    | O => [[]]
-    end.
+  (* On a 64bit machine, loading a constant -2^31 <= v < 2^31 is not always possible with
+     a Lui followed by an Addi:
+     If the constant is of the form 0x7ffffXXX, and XXX has its highest bit set, we would
+     have to put 0x80000--- into the Lui, but then that value will be sign-extended.
 
-  (*
-  Variable rd: Register.
-  Eval cbv -[Register0] in (compile_lit_rec 7 rd Register0 10000).
-  *)
+     Or spelled differently:
+     If we consider all possible combinations of a Lui followed by an Addi, we get 2^32
+     different values, but some of them are not in the range -2^31 <= v < 2^31.
+     On the other hand, this property holds for combining Lui followed by a Xori.
 
-  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
-    compile_lit_rec 7 rd Register0 v.
+     Or yet differently:
+     Lui 0x80000--- ; Addi 0xXXX
+     where XXX has the highest bit set,
+     loads a value < 2^31, so some Lui+Addi pairs do not load a value in the range
+     -2^31 <= v < 2^31, so some Lui+Addi pairs are "wasted" and we won't find a
+     Lui+Addi pairs for all desired values in the range -2^31 <= v < 2^31
+ *)
+
+  Definition swrap(width: Z)(z: Z): Z := (z + 2^(width-1)) mod 2^width - 2^(width-1).
+
+  Definition swrap_bitwise(width n: Z): Z :=
+    if Z.testbit n (width - 1)
+    then (Z.lor (Z.land n (Z.ones width)) (Z.shiftl (-1) width))
+    else (Z.land n (Z.ones width)).
+
+  Definition compile_lit_32bit(rd: Register)(v: Z): list Instruction :=
+    let lo := swrap_bitwise 12 v in
+    let hi := Z.lxor v lo in
+    [[ Lui rd hi ; Xori rd rd lo ]].
+
+  Definition compile_lit_64bit(rd: Register)(v: Z): list Instruction :=
+    let v0 := bitSlice v  0 11 in
+    let v1 := bitSlice v 11 22 in
+    let v2 := bitSlice v 22 32 in
+    let hi := bitSlice v 32 64 in
+    compile_lit_32bit rd (signExtend 32 hi) ++
+    [[ Slli rd rd 10 ;
+       Addi rd rd v2 ;
+       Slli rd rd 11 ;
+       Addi rd rd v1 ;
+       Slli rd rd 11 ;
+       Addi rd rd v0 ]].
+
+  Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
+    if width =? 32 then compile_lit_32bit rd (swrap_bitwise 32 v) else
+    compile_lit_64bit rd (v mod 2 ^ 64).
+
+  Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
+    if dec (-2^11 <= v < 2^11) then compile_lit_12bit rd v else
+    compile_lit_large rd v.
 
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting
@@ -188,13 +214,11 @@ Section FlatToRiscv1.
         Beq x Register0 amt
     end.
 
-  Context (iset: InstructionSet).
-
   Fixpoint compile_stmt(s: stmt): list Instruction :=
     match s with
-    | SLoad  sz x y => [[compile_load  iset sz x y 0]]
-    | SStore sz x y => [[compile_store iset sz x y 0]]
-    | SLit x v => compile_lit x v
+    | SLoad  sz x y => [[compile_load  sz x y 0]]
+    | SStore sz x y => [[compile_store sz x y 0]]
+    | SLit x v => compile_lit_new x v
     | SOp x op y z => compile_op x op y z
     | SSet x y => [[Add x Register0 y]]
     | SIf cond bThen bElse =>

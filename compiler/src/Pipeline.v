@@ -47,7 +47,6 @@ Module Import Pipeline.
     FlatToRiscvDef_params :> FlatToRiscvDef.FlatToRiscvDef.parameters;
     actname := FlatToRiscvDef.FlatToRiscvDef.actname;
 
-    W :> Words;
     mem :> map.map word byte;
     locals :> map.map varname word;
     trace := list (mem * actname * list word * (mem * list word));
@@ -92,7 +91,7 @@ Section Pipeline1.
   Instance FlattenExpr_parameters: FlattenExpr.parameters := {|
     FlattenExpr.varname := varname;
     FlattenExpr.actname := actname;
-    FlattenExpr.W := W;
+    FlattenExpr.W := _;
     FlattenExpr.varname_eq_dec := varname_eq_dec;
     FlattenExpr.actname_eq_dec := actname_eq_dec;
     FlattenExpr.locals := locals;
@@ -114,7 +113,7 @@ Section Pipeline1.
 
   (* only works if varname=Register *)
   Definition exprImp2Riscv(s: Syntax.cmd): list Instruction :=
-    FlatToRiscvDef.compile_stmt iset (flatten s).
+    FlatToRiscvDef.compile_stmt (flatten s).
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_registers (flatten s).
@@ -133,11 +132,11 @@ Section Pipeline1.
      FlatToRiscv.compile_stmt_correct will apply them on its own when needed. *)
 
   Lemma flatToRiscv_size: forall (s: FlatImp.stmt) (insts: list Instruction),
-      FlatToRiscvDef.compile_stmt iset s = insts ->
+      FlatToRiscvDef.compile_stmt s = insts ->
       0 <= Zlength insts <= FlatImp.stmt_size s.
   Proof.
     intros. subst.
-    apply (EmitsValid.compile_stmt_size iset s).
+    apply (EmitsValid.compile_stmt_size s).
   Qed.
 
   Lemma exprImp2Riscv_size: forall (s: Syntax.cmd) (insts: list Instruction),

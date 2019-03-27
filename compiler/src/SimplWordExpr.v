@@ -20,9 +20,9 @@ Section Lemmas.
 
   Lemma sextend_width_nop: forall (w v: Z),
     w = width ->
-    word.of_Z (BitOps.sextend w v) = word.of_Z v.
+    word.of_Z (BitOps.signExtend w v) = word.of_Z v.
   Proof.
-    intros. subst. unfold BitOps.sextend. apply word.unsigned_inj.
+    intros. subst. unfold BitOps.signExtend. apply word.unsigned_inj.
     rewrite! word.unsigned_of_Z.
     pose proof (@word.width_pos _ _ word_ok).
     pose proof (Z.pow_pos_nonneg 2 width).
@@ -47,8 +47,8 @@ End Lemmas.
    no useful progress is made. This tactic prevents this from happending. *)
 Ltac rewrite_sextend_width_nop OK :=
   so fun hyporgoal => match hyporgoal with
-  | context[word.of_Z (BitOps.sextend ?w ?v)] =>
-    rewrite (@sextend_width_nop _ _ OK w v) in * by reflexivity
+  | context[word.of_Z (BitOps.signExtend ?w ?v)] =>
+    rewrite (@sextend_width_nop _ _ OK w v) in * by (reflexivity || congruence)
   end.
 
 Ltac simpl_word_exprs_step OK :=

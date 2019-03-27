@@ -21,6 +21,8 @@ Import ListNotations.
 
 Open Scope ilist_scope.
 
+Axiom TODO: False.
+
 Definition var: Set := Z.
 Definition func: Set := Empty_set.
 Inductive act: Set := Select. (* only one action (= "external call" = inline assembly snippet) *)
@@ -113,6 +115,6 @@ Instance compilation_params: FlatToRiscvDef.parameters := {|
   FlatToRiscvDef.max_ext_call_code_size _ := 100;
 |}. all: case TODO. Defined.
 
-Definition compiled: list Instruction := Eval cbv in compile_stmt RV32IM test.
+Definition compiled: list Instruction := Eval cbv in compile_stmt test.
 
 Print compiled.
