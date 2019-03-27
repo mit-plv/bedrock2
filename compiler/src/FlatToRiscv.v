@@ -171,42 +171,34 @@ Section FlatToRiscv1.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
-  Lemma reduce_eq_to_sub_and_lt: forall (y z: word) {T: Type} (thenVal elseVal: T),
-      (if word.eqb y z then thenVal else elseVal) =
-      (if word.ltu (word.sub y z) (word.of_Z 1) then thenVal else elseVal).
+  Lemma reduce_eq_to_sub_and_lt: forall (y z: word),
+      word.eqb y z = word.ltu (word.sub y z) (word.of_Z 1).
   Proof.
-  Admitted.
-
-  (* TODO is there a principled way of writing such proofs? *)
-  Lemma reduce_eq_to_sub_and_lt_old: forall (y z: word) {T: Type} (thenVal elseVal: T),
-    (if ltu (sub y  z) (fromImm 1) then thenVal else elseVal) =
-    (if reg_eqb y z        then thenVal else elseVal).
-  Proof. (*
-    intros. destruct (weq y z).
-    - subst z. unfold wminus. rewrite wminus_inv.
-      destruct (wlt_dec (wzero wXLEN) $1); [reflexivity|].
-      change (wzero wXLEN) with (natToWord wXLEN 0) in n. unfold wlt in n.
-      exfalso. apply n.
-      do 2 rewrite wordToN_nat. rewrite roundTrip_0.
-      clear.
-      destruct wXLEN as [|w1] eqn: E.
-      + unfold wXLEN in *. destruct bitwidth; discriminate.
-      + rewrite roundTrip_1. simpl. constructor.
-    - destruct (@wlt_dec wXLEN (y ^- z) $ (1)) as [E|NE]; [|reflexivity].
-      exfalso. apply n. apply sub_0_eq.
-      unfold wlt in E.
-      do 2 rewrite wordToN_nat in E.
-      clear -E.
-      destruct wXLEN as [|w1] eqn: F.
-      + unfold wXLEN in *. destruct bitwidth; discriminate.
-      + rewrite roundTrip_1 in E.
-        simpl in E. apply N.lt_1_r in E. change 0%N with (N.of_nat 0) in E.
-        apply Nnat.Nat2N.inj in E. rewrite <- (roundTrip_0 (S w1)) in E.
-        apply wordToNat_inj in E.
-        exact E.
+    intros.
+    rewrite word.unsigned_eqb.
+    rewrite word.unsigned_ltu.
+    rewrite word.unsigned_sub.
+    rewrite word.unsigned_of_Z.
+    pose proof (word.unsigned_range y) as Ry.
+    pose proof (word.unsigned_range z) as Rz.
+    remember (word.unsigned y) as a; clear Heqa.
+    remember (word.unsigned z) as b; clear Heqb.
+    assert (1 < 2 ^ width). {
+      destruct width_cases as [E | E]; rewrite E; reflexivity.
+    }
+    destruct (Z.eqb_spec a b).
+    - subst a. rewrite Z.sub_diag. rewrite Z.mod_0_l by lia.
+      rewrite Z.mod_small; [reflexivity|lia].
+    - rewrite (Z.mod_small 1) by lia.
+      destruct (Z.ltb_spec ((a - b) mod 2 ^ width) 1); [exfalso|reflexivity].
+      pose proof (Z.mod_pos_bound (a - b) (2 ^ width)).
+      assert ((a - b) mod 2 ^ width = 0) as A by lia.
+      apply Znumtheory.Zmod_divide in A; [|lia].
+      unfold Z.divide in A.
+      destruct A as [k A].
+      clear -Ry Rz A n.
+      assert (k <> 0); nia.
   Qed.
-*)
-  Admitted.
 
   (* Set Printing Projections.
      Prints some implicit arguments it shouldn't print :(
