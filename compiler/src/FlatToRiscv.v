@@ -377,7 +377,9 @@ Section FlatToRiscv1.
         change (2 ^ 9)%Z with 512%Z in *;
         simpl stmt_size in H;
         repeat match goal with
-               | s: stmt |- _ => unique pose proof (stmt_size_nonneg s)
+               | s: stmt |- @stmt_size ?params _ < _ =>
+                 (* PARAMRECORDS *)
+                 unique pose proof (@stmt_size_nonneg params s)
                end;
         match goal with
         | |- ?SZ _ _ < _ => (* COQBUG https://github.com/coq/coq/issues/9268 *)

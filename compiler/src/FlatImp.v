@@ -48,17 +48,9 @@ Section Syntax.
 End Syntax.
 
 
-Module Import FlatImpSize.
-  Class parameters := {
-    bopname_params :> Syntax.parameters;
-    max_ext_call_code_size: actname -> Z;
-    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
-  }.
-End FlatImpSize.
-
 Section FlatImpSize1.
 
-  Context {p: unique! FlatImpSize.parameters}.
+  Context {p: unique! Syntax.parameters}.
 
   Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
     match s with
@@ -72,7 +64,7 @@ Section FlatImpSize1.
     | SSeq s1 s2 => (rec s1) + (rec s2)
     | SSkip => 0
     | SCall binds f args => 1000 (* TODO not sure how much register saving will cost etc *)
-    | SInteract binds f args => max_ext_call_code_size f
+    | SInteract binds f args => 7 (* TODO don't hardcode a magic number *)
     end.
 
   Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
@@ -84,7 +76,6 @@ Section FlatImpSize1.
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.
     induction s; simpl; try omega.
-    apply max_ext_call_code_size_nonneg.
   Qed.
 
 End FlatImpSize1.
@@ -679,7 +670,6 @@ Module Import FlatImpSemanticsEquiv.
   }.
 
   Instance to_FlatImp_params(p: parameters): FlatImp.parameters := {|
-    FlatImp.max_ext_call_code_size _ := 0;
     FlatImp.ext_spec _ _ _ _ _ := False;
   |}.
 

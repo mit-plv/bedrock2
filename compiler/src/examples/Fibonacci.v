@@ -57,7 +57,6 @@ Goal fib_H_res 20 6 = Some (word.of_Z 13). reflexivity. Qed.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.actname := Empty_set;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ := Empty_set_rect _;
-  FlatToRiscvDef.FlatToRiscvDef.max_ext_call_code_size := Empty_set_rect _;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := Empty_set_rect _;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := Empty_set_rect _;
 }.

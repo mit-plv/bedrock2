@@ -63,6 +63,10 @@ Proof.
   cbv; intros; discriminate.
 Qed.
 
+Lemma compile_ext_call_length': forall binds f args,
+    Zlength (compile_ext_call binds f args) <= 7.
+Proof. intros. rewrite compile_ext_call_length. lia. Qed.
+
 Lemma compile_ext_call_emits_valid: forall iset binds a args,
     Forall valid_register binds ->
     Forall valid_register args ->
@@ -205,8 +209,7 @@ Section MMIO1.
   Instance compilation_params: FlatToRiscvDef.parameters := {
     FlatToRiscvDef.actname := MMIOAction;
     FlatToRiscvDef.compile_ext_call := compile_ext_call;
-    FlatToRiscvDef.max_ext_call_code_size _ := 1;
-    FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length;
+    FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
     FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
   }.
 

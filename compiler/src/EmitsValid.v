@@ -542,7 +542,10 @@ Section EmitsValid.
       repeat (autorewrite with rew_Zlength || simpl in *); try lia.
     pose proof (Zlength_nonneg (compile_ext_call binds a args)).
     pose proof (compile_ext_call_length binds a args).
-    lia.
+    (* COQBUG *)
+    tryif lia
+    then idtac
+    else (idtac "compile_stmt_size: lia should not have failed!"; split; lia).
   Qed.
 
   Lemma compile_stmt_emits_valid: forall s,

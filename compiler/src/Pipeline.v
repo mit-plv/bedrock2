@@ -97,8 +97,6 @@ Section Pipeline1.
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.ext_spec := ext_spec;
-    FlattenExpr.max_ext_call_code_size := _;
-    FlattenExpr.max_ext_call_code_size_nonneg := FlatImp.FlatImpSize.max_ext_call_code_size_nonneg;
     FlattenExpr.NGstate := NGstate;
     FlattenExpr.NG := NG;
   |}.

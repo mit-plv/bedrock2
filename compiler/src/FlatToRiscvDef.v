@@ -30,9 +30,8 @@ Module Import FlatToRiscvDef.
     W :> Utility.Words;
     actname: Type;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
-    max_ext_call_code_size: actname -> Z;
     compile_ext_call_length: forall binds f args,
-        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
+        Zlength (compile_ext_call binds f args) <= 7;
     (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
        be elsewhere *)
     compile_ext_call_emits_valid: forall iset binds a args,
@@ -46,19 +45,6 @@ Module Import FlatToRiscvDef.
     Syntax.funname := Empty_set;
     Syntax.actname := actname;
   |}.
-
-  Local Set Refine Instance Mode.
-
-  Instance mk_FlatImpSize_params(p: parameters): FlatImpSize.parameters := {|
-    FlatImpSize.max_ext_call_code_size := max_ext_call_code_size;
-  |}.
-  Proof.
-    abstract (
-        intros a;
-        pose proof (compile_ext_call_length [] a []);
-        pose proof (Zlength_nonneg (compile_ext_call [] a []));
-        lia).
-  Defined.
 
 End FlatToRiscvDef.
 

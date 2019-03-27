@@ -31,8 +31,6 @@ Module Import FlattenExpr.
     trace := list (mem * actname * list Utility.word * (mem * list Utility.word));
     ext_spec : trace ->
                mem -> actname -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
-    max_ext_call_code_size : actname -> Z;
-    max_ext_call_code_size_nonneg : forall a : actname, 0 <= max_ext_call_code_size a;
     NGstate: Type;
     NG :> NameGen varname NGstate;
   }.
@@ -50,12 +48,6 @@ Module Import FlattenExpr.
     Semantics.funname_env := Empty_set_keyed_map.map;
     Semantics.funname_eqb := Empty_set_rect _;
     Semantics.ext_spec:= ext_spec;
-  |}.
-
-  Instance mk_FlatImpSize_params(p: parameters): FlatImp.FlatImpSize.parameters := {|
-    FlatImp.FlatImpSize.bopname_params := _;
-    FlatImp.FlatImpSize.max_ext_call_code_size := max_ext_call_code_size;
-    FlatImp.FlatImpSize.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
   |}.
 
 End FlattenExpr.
@@ -228,10 +220,6 @@ Section FlattenExpr1.
     omega.
   Qed.
 
-  (* TODO remove magic number *)
-  Axiom max_ext_call_code_size_bound: forall f,
-      0 <= max_ext_call_code_size f <= 7.
-
   Lemma flattenInteract_size: forall f args binds ngs ngs' s,
       flattenInteract ngs binds f args = (s, ngs') ->
       0 <= FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.interact binds f args).
@@ -241,7 +229,6 @@ Section FlattenExpr1.
     destruct_one_match_hyp.
     simp. simpl.
     apply flattenExprs_size in E.
-    pose proof (max_ext_call_code_size_bound f).
     omega.
   Qed.
 
