@@ -71,8 +71,8 @@ Section semantics.
     Context (m : mem) (l : locals).
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
       match e with
-      | expr.literal v => Some (word.of_Z v, addMetricInstructions 16
-                                             (addMetricLoads 16 mc))
+      | expr.literal v => Some (word.of_Z v, addMetricInstructions 2
+                                             (addMetricLoads 2 mc))
       | expr.var x => match map.get l x with
                       | Some v => Some (v, addMetricInstructions 1
                                            (addMetricLoads 2 mc))

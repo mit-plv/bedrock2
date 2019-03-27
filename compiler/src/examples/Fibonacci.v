@@ -245,7 +245,7 @@ Lemma fib_bounding_metrics_body: forall t m (l : locals) mc a b i,
       map.get l' 1 = Some b /\
       map.get l' 2 = Some (word.add a b) /\
       map.get l' 4 = Some (word.add i (word.of_Z 1)) /\
-      instructions mc' - instructions mc = 27).
+      instructions mc' - instructions mc = 13).
 Proof.
   intros.
   unfold fib_while_body.
@@ -319,7 +319,7 @@ Lemma fib_bounding_metrics_while: forall (n : nat) (iter : nat) t m (l : locals)
     map.get l 2 = Some b ->
     map.get l 4 = Some (word.of_Z ((Z.of_nat n) - (Z.of_nat iter)) : word) ->
     exec map.empty (fib_while (Z.of_nat n)) t m l mc (fun t' m' l' mc' =>
-      instructions mc' <= instructions mc + (Z.of_nat iter) * 46 + 19).
+      instructions mc' <= instructions mc + (Z.of_nat iter) * 18 + 5).
 Proof.
   induction iter.
   - intros.
@@ -353,9 +353,9 @@ Proof.
       specialize IHiter with (t := t').
       specialize IHiter with (m := m').
       simpl in H7.
-      assert (instructions mc'' = 27 + (instructions mc + 18)) by Lia.lia.
+      assert (instructions mc'' = 13 + (instructions mc + 4)) by Lia.lia.
       unfold_MetricLog. simpl in IHiter.
-      apply weaken_exec with (post2 := fun t' (_ _ : rep) mc' => instructions mc' <= instructions mc + Z.pos (Pos.of_succ_nat iter * 46) + 19) in IHiter; [| intros; Lia.lia].
+      apply weaken_exec with (post2 := fun t' (_ _ : rep) mc' => instructions mc' <= instructions mc + Z.pos (Pos.of_succ_nat iter * 18) + 5) in IHiter; [| intros; Lia.lia].
       unfold fib_while in *. simpl.
       apply IHiter.
 Qed.
@@ -363,14 +363,14 @@ Qed.
 Lemma fib_bounding_metrics: forall (n: nat) t m (l : locals) mc,
    (Z.of_nat n) < BinInt.Z.pow_pos 2 32 ->
    exec map.empty (fib_ExprImp (Z.of_nat n)) t m l mc (fun t' m ' l' mc' =>
-       instructions mc' <= instructions mc + (Z.of_nat n) * 46 + 70).
+       instructions mc' <= instructions mc + (Z.of_nat n) * 18 + 14).
 Proof.
   intros.
   unfold fib_ExprImp.
   eapply @exec.seq with (mid := (fun t' m' l' mc' =>
                                    t' = t /\
                                    map.get l' 1 = Some (word.of_Z 0) /\
-                                   instructions mc' = instructions mc + 17)).
+                                   instructions mc' = instructions mc + 3)).
   - eapply @exec.set.
     + unfold eval_expr. eauto.
     + repeat split.
@@ -382,7 +382,7 @@ Proof.
                                      t' = t /\
                                      map.get l' 1 = Some (word.of_Z 0) /\
                                      map.get l' 2 = Some (word.of_Z 1) /\
-                                     instructions mc' = instructions mc + 34)).
+                                     instructions mc' = instructions mc + 6)).
     + eapply @exec.set.
       * unfold eval_expr. eauto.
       * repeat split.
@@ -397,7 +397,7 @@ Proof.
                                        map.get l' 1 = Some (word.of_Z 0) /\
                                        map.get l' 2 = Some (word.of_Z 1) /\
                                        map.get l' 4 = Some (word.of_Z 0) /\
-                                       instructions mc' = instructions mc + 51)).
+                                       instructions mc' = instructions mc + 9)).
       * eapply @exec.set.
         -- unfold eval_expr. eauto.
         -- repeat split.
@@ -414,10 +414,10 @@ Proof.
         replace (Z.of_nat n - Z.of_nat n) with 0 in HWhile by Lia.lia.
         specialize HWhile with (1 := H) (2 := H12) (3 := H8) (4 := H9) (5 := H10).
         specialize (HWhile t'1 m'1 mc'1).
-        apply weaken_exec with (post2 := fun t' (_ _ : rep) mc' => instructions mc' <= instructions mc + Z.of_nat n * 46 + 70) in HWhile.
+        apply weaken_exec with (post2 := fun t' (_ _ : rep) mc' => instructions mc' <= instructions mc + Z.of_nat n * 18 + 14) in HWhile.
         -- apply HWhile.
         -- intros. Lia.lia.
-Qed.        
+Qed.
         
 Lemma fib_H_res_value: fib_H_res 20 6 = Some (word.of_Z 13).
 Proof. cbv. reflexivity. Qed.
