@@ -64,7 +64,7 @@ Section FlatImpSize1.
     match s with
     | SLoad sz x a => 1
     | SStore sz a v => 1
-    | SLit x v => 15
+    | SLit x v => 8
     | SOp x op y z => 2
     | SSet x y => 1
     | SIf cond bThen bElse => 1 + (rec bThen) + 1 + (rec bElse)

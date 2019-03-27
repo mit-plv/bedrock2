@@ -10,6 +10,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.Primitives.
 Require Import compiler.util.Tactics.
 Require Import riscv.Utility.Tactics.
+Require Import riscv.Utility.Utility.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvDef. Import FlatToRiscvDef.
 Require Import riscv.Utility.ListLib.
@@ -277,16 +278,16 @@ Section EmitsValid.
   Arguments Z.pow: simpl never.
   Arguments Z.add: simpl never.
 
-  Lemma compile_lit_small_emits_valid: forall r iset w,
-      -2^11 <= w < 2^11 ->
+  Lemma compile_lit_12bit_emits_valid: forall r iset w,
       valid_register r ->
       valid_instructions iset (compile_lit_12bit r w).
   Proof.
     intros. unfold compile_lit_12bit, valid_instructions.
-    intros. simpl in *. destruct H1; [subst|contradiction].
+    intros. simpl in *. destruct H0; [subst|contradiction].
     split; [|exact I]. simpl.
     autounfold with unf_verify unf_encode_consts.
     unfold Register0, valid_register in *.
+    pose proof (signExtend_range 12 w eq_refl).
     simpl_pow2.
     lia.
   Qed.
@@ -306,13 +307,12 @@ Section EmitsValid.
   Qed.
 
   Lemma compile_lit_32bit_emits_valid: forall r v iset,
-      - 2^31 <= v < 2^31 ->
       valid_register r ->
       valid_instructions iset (compile_lit_32bit r v).
   Proof.
     intros. unfold compile_lit_32bit, valid_instructions.
     intros instr HIn. simpl in HIn.
-    assert (- 2 ^ 31 <= Z.lxor v (signExtend 12 v) < 2 ^ 31) as P1. {
+    assert (- 2 ^ 31 <= Z.lxor (signExtend 32 v) (signExtend 12 v) < 2 ^ 31) as P1. {
       match goal with
       | |- _ <= ?x < _ => replace x with (signExtend 32 x)
       end.
@@ -320,7 +320,7 @@ Section EmitsValid.
       - clear -H.
         prove_Zeq_bitwise.
     }
-    assert (Z.lxor v (signExtend 12 v) mod 2 ^ 12 = 0) as P2. {
+    assert (Z.lxor (signExtend 32 v) (signExtend 12 v) mod 2 ^ 12 = 0) as P2. {
       rewrite <- Z.land_ones by lia.
       rewrite signExtend_alt_bitwise by lia. unfold signExtend_bitwise.
       prove_Zeq_bitwise.
@@ -383,47 +383,61 @@ Section EmitsValid.
     lia.
   Qed.
 
+  Lemma valid_Xori_bitSlice: forall rd rs w i j iset,
+      0 <= i <= j ->
+      j - i <= 11 ->
+      valid_register rd ->
+      valid_register rs ->
+      verify (IInstruction (Xori rd rs (bitSlice w i j))) iset.
+  Proof.
+    intros.
+    assert (- 2 ^ 11 <= bitSlice w i j < 2 ^ 11). {
+      rewrite bitSlice_alt by assumption.
+      unfold bitSlice'.
+      assert (2 ^ (j - i) <> 0) as A. {
+        apply Z.pow_nonzero; lia.
+      }
+      pose proof (Z.mod_bound_or (w / 2 ^ i) (2 ^ (j - i)) A) as P.
+      assert (0 < 2 ^ 11) by reflexivity.
+      assert (0 < 2 ^ (j - i)). {
+        apply Z.pow_pos_nonneg; lia.
+      }
+      assert (2 ^ (j - i) <= 2 ^ 11) as B. {
+        apply Z.pow_le_mono_r; lia.
+      }
+      lia.
+    }
+    unfold verify, valid_register in *;
+    simpl;
+    autounfold with unf_encode_consts unf_verify;
+    unfold Register0 in *;
+    destruct iset;
+    lia.
+  Qed.
+
   Lemma compile_lit_64bit_emits_valid: forall r w iset,
-      0 <= w < 2^64 ->
       valid_register r ->
       valid_instructions iset (compile_lit_64bit r w).
   Proof.
     intros. unfold compile_lit_64bit, valid_instructions.
-    intros. apply in_app_or in H1. destruct H1. {
+    intros. apply in_app_or in H0. destruct H0. {
       eapply compile_lit_32bit_emits_valid; try eassumption.
-      change 31 with (32 - 1).
-      eapply signExtend_range.
-      reflexivity.
     }
     simpl in *.
-    repeat destruct H1 as [H1 | H1]; [subst instr..|contradiction];
-      (eapply valid_Addi_bitSlice || eapply valid_Slli); try eassumption; try lia.
+    repeat destruct H0 as [H0 | H0]; [subst instr..|contradiction];
+      (eapply valid_Xori_bitSlice || eapply valid_Slli); try eassumption; try lia.
   Qed.
 
-  Lemma compile_lit_large_emits_valid: forall r w iset,
+  Lemma compile_lit_emits_valid: forall r w iset,
       valid_register r ->
-      valid_instructions iset (compile_lit_large r w).
-  Proof.
-    unfold compile_lit_large; intros.
-    destruct_one_match.
-    - eapply compile_lit_32bit_emits_valid; try eassumption.
-      change 31 with (32 - 1). (*
-      apply swrap_range.
-      reflexivity.
-    - eapply compile_lit_64bit_emits_valid; try eassumption.
-      apply Z.mod_pos_bound. reflexivity.
-  Qed.*) Admitted.
-
-  Global Arguments compile_lit_large_emits_valid : clear implicits.
-
-  Lemma compile_lit_new_emits_valid: forall r w iset,
-      valid_register r ->
-      valid_instructions iset (compile_lit_new r w).
+      valid_instructions iset (compile_lit r w).
   Proof.
     intros.
-    unfold compile_lit_new in *.
-    destruct_one_match;
-    eauto using compile_lit_small_emits_valid, compile_lit_large_emits_valid.
+    unfold compile_lit.
+    repeat (destruct_one_match ||
+            eauto using compile_lit_12bit_emits_valid,
+                        compile_lit_32bit_emits_valid,
+                        compile_lit_64bit_emits_valid).
   Qed.
 
   Lemma compile_op_emits_valid: forall iset x op y z,
@@ -513,14 +527,17 @@ Section EmitsValid.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
-  Lemma compile_lit_new_size: forall x v,
-      0 <= Zlength (compile_lit_new x v) <= 15.
-  Admitted.
+  Lemma compile_lit_size: forall x v,
+      0 <= Zlength (compile_lit x v) <= 8.
+  Proof.
+    intros. unfold compile_lit, compile_lit_64bit, compile_lit_32bit, compile_lit_12bit.
+    repeat destruct_one_match; cbv; split; discriminate.
+  Qed.
 
   Lemma compile_stmt_size: forall s,
     0 <= Zlength (compile_stmt s) <= stmt_size s.
   Proof.
-    induction s; simpl; try apply compile_lit_new_size;
+    induction s; simpl; try apply compile_lit_size;
       try destruct op; try solve [destruct f]; simpl;
       repeat (autorewrite with rew_Zlength || simpl in *); try lia.
     pose proof (Zlength_nonneg (compile_ext_call binds a args)).
@@ -537,7 +554,7 @@ Section EmitsValid.
     induction s; intros; simpl in *; intuition (
       auto using compile_load_emits_valid,
                  compile_store_emits_valid,
-                 compile_lit_new_emits_valid,
+                 compile_lit_emits_valid,
                  compile_op_emits_valid,
                  compile_ext_call_emits_valid
     );

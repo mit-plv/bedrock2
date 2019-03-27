@@ -941,6 +941,7 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
+(*
   Lemma compile_lit_large_correct: forall initialL post x v R d,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       d = mul (word.of_Z 4) (word.of_Z (Zlength (compile_lit_large x v))) ->
@@ -1017,6 +1018,31 @@ Section FlatToRiscv1.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
   Qed.*) Admitted.
+*)
+
+  Ltac match_apply_runsTo :=
+    match goal with
+    | R: runsTo ?m ?post |- runsToNonDet.runsTo _ ?m' ?post =>
+      replace m' with m; [exact R|]
+    end;
+    cbv [withRegs withPc withNextPc withMem withLog];
+    f_equal.
+
+  Lemma signExtend_nop: forall l w v,
+      - 2 ^ l <= v < 2 ^ l ->
+      0 <= l < w ->
+      signExtend w v = v.
+  Proof.
+    intros.
+    unfold signExtend.
+    assert (2 ^ (w - 1) * 2 = 2 ^ w). {
+      replace w with (w - 1 + 1) at 2 by lia.
+      rewrite Z.pow_add_r by lia.
+      reflexivity.
+    }
+    pose proof (Z.pow_le_mono_r 2 l (w-1)).
+    rewrite Z.mod_small; lia.
+  Qed.
 
   Lemma compile_lit_correct_full: forall initialL post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
@@ -1039,14 +1065,94 @@ Section FlatToRiscv1.
     simpl in *.
     destruct_RiscvMachine initialL.
     subst.
-    unfold compile_lit_new in *.
-    destruct (dec (- 2 ^ 11 <= v < 2 ^ 11)). {
-      unfold compile_lit_12bit in *.
+    unfold compile_lit in *.
+    destruct (dec (- 2 ^ 11 <= v < 2 ^ 11));
+      [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
+    - unfold compile_lit_12bit in *.
       run1det.
       simpl_word_exprs word_ok.
-      exact N.
-    }
-    eapply compile_lit_large_correct; sidecondition.
+      match_apply_runsTo.
+      erewrite signExtend_nop; eauto; lia.
+    - unfold compile_lit_32bit in *.
+      simpl in P.
+      run1det. run1det.
+      match_apply_runsTo.
+      + rewrite put_put_same. f_equal.
+        apply word.signed_inj.
+        rewrite word.signed_of_Z.
+        rewrite word.signed_xor.
+        rewrite! word.signed_of_Z.
+        change word.swrap with (signExtend width).
+        assert (0 < width) as Wpos. {
+          clear. destruct width_cases; rewrite H; reflexivity.
+        }
+        rewrite! signExtend_alt_bitwise by (reflexivity || assumption).
+        clear -Wpos o.
+        destruct o as [E | B ].
+        * rewrite E. unfold signExtend_bitwise. Zbitwise.
+        * unfold signExtend_bitwise. Zbitwise.
+          (* TODO these should also be solved by Zbitwise *)
+          {
+            assert (32 <= i < width) by omega. (* PARAMRECORDS? lia fails *)
+            destruct B.
+            assert (31 < i) by lia.
+            assert (0 < 31) by reflexivity.
+            erewrite testbit_above_signed' with (i := i); try eassumption.
+            change (Z.log2_up (2 ^ 31)) with (32 - 1).
+            Btauto.btauto.
+          }
+          {
+            destruct B.
+            assert (0 < 31) by reflexivity.
+            assert (31 < width - 1) by lia.
+            erewrite testbit_above_signed' with (i := width - 1); try eassumption.
+            change (Z.log2_up (2 ^ 31)) with (32 - 1).
+            Btauto.btauto.
+          }
+      + solve_word_eq word_ok.
+      + solve_word_eq word_ok.
+    - unfold compile_lit_64bit, compile_lit_32bit in *.
+      match type of EV with
+      | context [ Xori _ _ ?a ] => remember a as mid
+      end.
+      match type of EV with
+      | context [ Z.lxor ?a mid ] => remember a as hi
+      end.
+      cbv [List.app program array] in P.
+      simpl in *. (* if you don't remember enough values, this might take forever *)
+      autorewrite with rew_Zlength in N.
+      simpl in N.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      match_apply_runsTo.
+      + rewrite! put_put_same. f_equal. subst.
+        apply word.unsigned_inj.
+        assert (width = 64) as W64. {
+          clear -n0.
+          destruct width_cases as [E | E]; rewrite E in *; try reflexivity.
+          exfalso. apply n0. left. reflexivity.
+        }
+        (repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_xor, ?word.unsigned_slu);
+        rewrite W64; try reflexivity.
+        clear.
+        change (10 mod 2 ^ 64) with 10.
+        change (11 mod 2 ^ 64) with 11.
+        rewrite <-! Z.land_ones by lia.
+        rewrite! signExtend_alt_bitwise by reflexivity.
+        unfold bitSlice, signExtend_bitwise.
+        Zbitwise.
+        (* TODO this should be done by Zbitwise, but not too eagerly because it's very
+           expensive on large goals *)
+        all: replace (i - 11 - 11 - 10 + 32) with i by lia.
+        all: Btauto.btauto.
+      + solve_word_eq word_ok.
+      + solve_word_eq word_ok.
   Qed.
 
   Definition eval_stmt := exec map.empty.
