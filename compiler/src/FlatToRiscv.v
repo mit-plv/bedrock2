@@ -49,12 +49,6 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Section TODO.
-  Context {K V: Type}.
-  Context {M: map.map K V}.
-  Axiom put_put_same: forall k v1 v2 m, map.put (map.put m k v1) k v2 = map.put m k v2.
-End TODO.
-
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
 
@@ -594,7 +588,7 @@ Section FlatToRiscv1.
       simpl in P.
       run1det. run1det.
       match_apply_runsTo.
-      + rewrite put_put_same. f_equal.
+      + rewrite map.put_put_same. f_equal.
         apply word.signed_inj.
         rewrite word.signed_of_Z.
         rewrite word.signed_xor.
@@ -648,7 +642,7 @@ Section FlatToRiscv1.
       run1det.
       run1det.
       match_apply_runsTo.
-      + rewrite! put_put_same. f_equal. subst.
+      + rewrite! map.put_put_same. f_equal. subst.
         apply word.unsigned_inj.
         assert (width = 64) as W64. {
           clear -n0.
@@ -825,7 +819,7 @@ Section FlatToRiscv1.
       | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
       end.
       rewrite reduce_eq_to_sub_and_lt.
-      symmetry. apply put_put_same.
+      symmetry. apply map.put_put_same.
 
     - (* SSet *)
       run1det. run1done.
