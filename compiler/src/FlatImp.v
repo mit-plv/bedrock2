@@ -427,22 +427,23 @@ Module exec.
              end;
       simp.
 
-    (* TODO is this the canconical form to impose as a requirement?
-       Or should we impose post1 <-> post2, or something else? *)
-    Axiom ext_spec_intersect: forall t mGive1 mGive2 a args (post1 post2: mem -> list word -> Prop),
-      ext_spec t mGive1 a args post1 ->
-      ext_spec t mGive2 a args post2 ->
-      mGive1 = mGive2 /\ (* TODO will this be provable? *)
-      ext_spec t mGive1 a args (fun mReceive resvals => post1 mReceive resvals /\
-                                                        post2 mReceive resvals).
+    Axiom ext_spec_unique: forall t mGive1 mGive2 a args (post1 post2: mem -> list word -> Prop),
+        ext_spec t mGive1 a args post1 ->
+        ext_spec t mGive2 a args post2 ->
+        map.same_domain mGive1 mGive2 /\
+        forall mReceive resvals, post1 mReceive resvals <-> post2 mReceive resvals.
 
-    Lemma map_split_diff: forall {m m1 m2 m3: mem},
-        map.split m m2 m1 ->
-        map.split m m3 m1 ->
-        m2 = m3.
+    Instance memok: map.ok mem. Admitted.
+
+    Lemma map_split_diff: forall {m m1 m2 m3 m4: mem},
+        map.same_domain m2 m4 ->
+        map.split m m1 m2 ->
+        map.split m m3 m4 ->
+        m1 = m3 /\ m2 = m4.
     Proof.
-      unfold map.split.
-      intros *. intros [? ?] [? ?].
+      intros. split.
+      - apply map.map_ext.
+        intro k.
     Admitted.
 
     Lemma map_split_det: forall {m m' m1 m2: mem},
@@ -470,19 +471,19 @@ Module exec.
         try solve [econstructor; eauto | exfalso; congruence].
 
       - (* SInteract *)
-        pose proof ext_spec_intersect as P.
-        specialize P with (1 := H1) (2 := H13). destruct P as [? P]. subst mGive0.
-        pose proof (map_split_diff H H7). subst mKeep0. clear H7.
+        pose proof ext_spec_unique as P.
+        specialize P with (1 := H1) (2 := H13). destruct P as [D P].
+        destruct (map_split_diff D H H7). subst mKeep0 mGive0.
         eapply @interact.
         + eassumption.
         + eassumption.
-        + eapply ext_spec_intersect; [ exact H1 | exact H13 ].
+        + exact H1.
         + simpl. intros. simp.
           edestruct H2 as (? & ? & ?); [eassumption|].
-          edestruct H14 as (? & ? & ?); [eassumption|].
+          edestruct H14 as (? & ? & ?); [eapply P; eassumption|].
           simp.
           equalities.
-          pose proof (map_split_det H8 H6). subst.
+          pose proof (map_split_det H8 H5). subst.
           eauto 10.
 
       - (* SCall *)
