@@ -3,7 +3,7 @@ From bedrock2 Require Import BasicC64Semantics ProgramLogic.
 
 Require Import bedrock2.Examples.ARPResponder.
 
-Import ListNotations.
+Import Datatypes List ListNotations.
 Local Open Scope string_scope. Local Open Scope list_scope. Local Open Scope Z_scope.
 Require Import bedrock2.NotationsInConstr.
 From coqutil.Word Require Import Interface.
@@ -76,5 +76,35 @@ Goal program_logic_goal_for_function! arp.
   straightline.
   straightline.
 
+  assert (length_firstn_inbounds : forall {T} n (xs : list T), le n (length xs) -> length (firstn n xs) = n). {
+    intros.
+    rewrite firstn_length, PeanoNat.Nat.min_comm.
+    destruct (Min.min_spec (length xs) n); Lia.lia.
+  }
+
+  unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H4. {
+    rewrite length_firstn_inbounds by Lia.lia.
+    trivial. }
+
+  Check array.
+  assert (array_snoc : forall {T} rep size a vsa b (vb:T)
+                              (H:b = word.add a (word.of_Z (word.unsigned size * Z.of_nat (length vsa)) )),
+             Lift1Prop.iff1 (sep (array rep size a vsa) (rep b vb)) (array rep size a (vsa ++ cons vb nil))). {
+    clear. intros. subst b.
+    etransitivity; [|symmetry; eapply Array.array_append].
+    cbn [array]; SeparationLogic.cancel. }
+  SeparationLogic.seprewrite_in @array_snoc H4.
+  { change (word.unsigned (word.of_Z 1)) with 1; rewrite Z.mul_1_l; trivial. }
+
+  assert (array_append_merge : forall {T} rep size start (xs ys : list T) start' (H: start' = (word.add start (word.of_Z (word.unsigned size * Z.of_nat (length xs))))),
+            Lift1Prop.iff1 (sep (array rep size start xs) (array rep size start' ys)) (array rep size start (xs ++ ys))). {
+    clear; intros; subst start'; symmetry; eapply array_append. }
+  SeparationLogic.seprewrite_in @array_append_merge H4. {
+    change (word.unsigned (word.of_Z 1)) with 1; rewrite Z.mul_1_l.
+    rewrite app_length; cbn [length].
+    rewrite length_firstn_inbounds by Lia.lia.
+    change (Z.of_nat (21 + 1)) with 22.
+    admit. (* wring *) }
+ 
 Abort.
   
