@@ -297,6 +297,7 @@ End FlatImp1.
 Module exec.
   Section FlatImpExec.
     Context {pp : unique! Semantics.parameters}.
+    Context {ok : Semantics.parameters_ok pp}.
     Variable (e: env).
 
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
@@ -427,24 +428,6 @@ Module exec.
              end;
       simp.
 
-    (* the action name and arguments uniquely determine the footprint of the given-away memory *)
-    Axiom ext_spec_unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
-                                                  (post1 post2: mem -> list word -> Prop),
-        ext_spec t1 mGive1 a args post1 ->
-        ext_spec t2 mGive2 a args post2 ->
-        map.same_domain mGive1 mGive2.
-
-    (* The trace of events which happened so far & the given-away memory & the action name &
-       the arguments uniquely determine the set of possible outcomes of the external call.
-       That is, the external call CAN be non-deterministic, but ext_spec must return the
-       tightest possible set of outcomes. *)
-    Axiom ext_spec_unique_post: forall t mGive a args (post1 post2: mem -> list word -> Prop),
-        ext_spec t mGive a args post1 ->
-        ext_spec t mGive a args post2 ->
-        forall mReceive resvals, post1 mReceive resvals <-> post2 mReceive resvals.
-
-    Instance memok: map.ok mem. Admitted.
-
     Lemma map_split_diff: forall {m m1 m2 m3 m4: mem},
         map.same_domain m2 m4 ->
         map.split m m1 m2 ->
@@ -481,21 +464,20 @@ Module exec.
         try solve [econstructor; eauto | exfalso; congruence].
 
       - (* SInteract *)
-        pose proof ext_spec_unique_mGive_footprint as P.
+        pose proof ext_spec.unique_mGive_footprint as P.
         specialize P with (1 := H1) (2 := H13).
         destruct (map_split_diff P H H7). subst mKeep0 mGive0.
         eapply @interact.
         + eassumption.
         + eassumption.
-        + exact H1.
+        + eapply ext_spec.intersect; [exact H1|exact H13].
         + simpl. intros. simp.
           edestruct H2 as (? & ? & ?); [eassumption|].
-          edestruct H14 as (? & ? & ?).
-          * eapply (ext_spec_unique_post _ _ _ _ _ _ H1 H13). eassumption.
-          * simp.
-            equalities.
-            pose proof (map_split_det H8 H5). subst.
-            eauto 10.
+          edestruct H14 as (? & ? & ?); [eassumption|].
+          simp.
+          equalities.
+          pose proof (map_split_det H6 H9). subst.
+          eauto 10.
 
       - (* SCall *)
         rename IHexec into IH.
@@ -568,8 +550,7 @@ Ltac invert_eval_stmt :=
 
 Section FlatImp2.
   Context {pp : unique! Semantics.parameters}.
-  Context {locals_ok: map.ok locals}.
-  Context {varname_eq_dec: DecidableEq varname}.
+  Context {ok : Semantics.parameters_ok pp}.
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 e initialSt initialM s final,
     (fuel1 <= fuel2)%nat ->

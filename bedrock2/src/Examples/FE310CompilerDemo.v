@@ -38,7 +38,8 @@ Local Instance parameters : parameters :=
   locals := Z_keyed_SortedListMap.Zkeyed_map _;
   funname_env := Empty_set_keyed_map.map;
   funname_eqb := Empty_set_rect _;
-  ext_spec t m action args post :=
+  ext_spec t mGive action args post :=
+    mGive = Map.Interface.map.empty /\
     match action, List.map word.unsigned args with
     | MMInput, [addr] => (
       if addr =? hfrosccfg                                then True else
@@ -160,7 +161,7 @@ Ltac t :=
   | |- exists _, _ => eexists
   | |- _ /\ _ => split
   | |- well_founded _ => eapply word.well_founded_lt_unsigned
-  | |- ext_spec _ _ _ _ _ => refine (conj I (conj eq_refl _))
+  | |- ext_spec _ _ _ _ _ => refine (conj eq_refl (conj I (conj eq_refl _)))
   | |- _ < _ => solve[
     repeat match goal with
            | x := _ |- _ => subst x

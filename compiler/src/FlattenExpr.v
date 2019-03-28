@@ -22,17 +22,12 @@ Module Import FlattenExpr.
     varname: Type;
     actname: Type;
     W :> Words;
-    varname_eq_dec :> DecidableEq varname;
-    actname_eq_dec :> DecidableEq actname;
     locals :> map.map varname Utility.word;
     mem :> map.map Utility.word Utility.byte;
-    locals_ok :> map.ok locals;
-    mem_ok :> map.ok mem;
     trace := list (mem * actname * list Utility.word * (mem * list Utility.word));
     ext_spec : trace ->
                mem -> actname -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
     NGstate: Type;
-    NG :> NameGen varname NGstate;
   }.
 
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
@@ -50,11 +45,27 @@ Module Import FlattenExpr.
     Semantics.ext_spec:= ext_spec;
   |}.
 
+  Class assumptions{p: parameters} := {
+    varname_eq_dec :> DecidableEq varname;
+    actname_eq_dec :> DecidableEq actname;
+    locals_ok :> map.ok locals;
+    mem_ok :> map.ok mem;
+    NG :> NameGen varname NGstate;
+    ext_spec_ok: ext_spec.ok (mk_Semantics_params p);
+  }.
+  Arguments assumptions: clear implicits.
+
+  Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
+    Semantics.parameters_ok (mk_Semantics_params p) :=
+  {
+    Semantics.width_cases := Utility.width_cases;
+    Semantics.ext_spec_ok := ext_spec_ok;
+  }.
 End FlattenExpr.
 
 Section FlattenExpr1.
 
-  Context {p : unique! parameters}.
+  Context {p : unique! parameters} {hyps: assumptions p}.
 
   Ltac set_solver :=
     set_solver_generic (@varname p).
@@ -443,7 +454,7 @@ Section FlattenExpr1.
   Ltac maps :=
     pose_flatten_var_ineqs;
     simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
-    map_solver (@locals_ok p).
+    map_solver (@locals_ok p hyps).
 
   Lemma seq_with_modVars: forall env t m l s1 s2 mid post,
     FlatImp.exec env s1 t m l mid ->
@@ -454,7 +465,7 @@ Section FlattenExpr1.
     FlatImp.exec env (FlatImp.SSeq s1 s2) t m l post.
   Proof.
     intros *. intros E1 E2. eapply @FlatImp.exec.seq.
-    - eapply @FlatImp.exec.intersect.
+    - eapply FlatImp.exec.intersect.
       + exact E1.
       + eapply FlatImp.modVarsSound. exact E1.
     - simpl. intros. simp. eauto.

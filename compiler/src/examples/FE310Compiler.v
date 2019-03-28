@@ -64,7 +64,17 @@ Proof.
   congruence.
 Qed.
 
-Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params := { }.
+Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
+Proof.
+  constructor; try typeclasses eauto.
+  constructor; unfold ext_spec, pipeline_params; simpl.
+  - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
+  - unfold real_ext_spec. intros.
+    destruct H; destruct H0. subst.
+    split; [reflexivity|].
+    repeat (destruct_one_match_hyp; try contradiction).
+    all: intuition eauto.
+Qed.
 
 Definition compileFunc: cmd -> list Instruction := exprImp2Riscv.
 
@@ -194,7 +204,7 @@ Proof.
   eapply bedrock2.WeakestPreconditionProperties.sound_nil.
   eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
 Qed.
-Print Assumptions input_program_correct. (* 4 axioms *)
+Print Assumptions input_program_correct. (* some axioms *)
 
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))

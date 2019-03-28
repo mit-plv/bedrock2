@@ -173,6 +173,7 @@ Section MMIO1.
     Import FE310CompilerDemo.
     Definition real_ext_spec(t: trace)(mGive: mem)(action: MMIOAction)(args: list word)
                (post: mem -> list word -> Prop) :=
+      mGive = map.empty /\
       match action, List.map word.unsigned args with
       | MMInput, [addr] => (
         if addr =? hfrosccfg                                then True else
