@@ -86,7 +86,6 @@ Goal program_logic_goal_for_function! arp.
     rewrite length_firstn_inbounds by Lia.lia.
     trivial. }
 
-  Check array.
   assert (array_snoc : forall {T} rep size a vsa b (vb:T)
                               (H:b = word.add a (word.of_Z (word.unsigned size * Z.of_nat (length vsa)) )),
              Lift1Prop.iff1 (sep (array rep size a vsa) (rep b vb)) (array rep size a (vsa ++ cons vb nil))). {
@@ -105,6 +104,165 @@ Goal program_logic_goal_for_function! arp.
     rewrite length_firstn_inbounds by Lia.lia.
     change (Z.of_nat (21 + 1)) with 22.
     admit. (* wring *) }
- 
+  move H4 at bottom.
+
+  letexists; split.
+  1: {
+    repeat (split || letexists || straightline).
+
+    lazymatch goal with |- Memory.load Syntax.access_size.one ?m (word.add ?base (word.of_Z ?i)) = Some ?v =>
+    lazymatch goal with H: _ m |- _ =>
+      let iNat := eval cbv in (Z.to_nat i) in
+      SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
+      [instantiate (1 := iNat) |instantiate (1 := word.of_Z 0) in H;
+      eapply load_one_of_sep;
+      change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
+      SeparationLogic.ecancel_assumption ]
+    end end.
+
+    repeat rewrite ?app_length, ?length_firstn_inbounds by Lia.lia; cbn [length].
+    assert (length_skipn_inbounds : forall {T} n (xs : list T), le n (length xs) -> length (skipn n xs) = (length xs - n)%nat). {
+      clear -length_firstn_inbounds. intros.
+      pose proof firstn_skipn n xs as HH; eapply (f_equal (@length _)) in HH; rewrite <-HH.
+      rewrite app_length, length_firstn_inbounds; Lia.lia.
+    }
+
+    assert (length_tl_inbounds : forall {T} xs (H : le 1 (length xs)), length (@tl T xs) = (length xs - 1)%nat). {
+      destruct xs; cbn [length tl]; Lia.lia.
+    }
+
+    rewrite length_tl_inbounds by (rewrite ?length_skipn_inbounds; Lia.lia).
+    rewrite length_skipn_inbounds by Lia.lia.
+    Lia.lia.
+  }
+
+  assert (skipn_app : forall n {T} (xs ys : list T), skipn n (xs ++ ys) = skipn n xs ++ skipn (n - length xs) ys). {
+    (* reduce to UF_LIA *) admit. }
+  remember (word.of_Z
+          (word.unsigned
+             (hd (word.of_Z 0)
+                (skipn 22
+                   ((firstn 21 packet ++ [word.of_Z (word.unsigned v2)]) ++
+                    tl (skipn 21 packet)))))) as w.
+  assert (skipn_all_exact : forall {T} (xs : list T), skipn (length xs) xs = nil). {
+    clear; intros. induction xs; eauto. }
+  assert (skipn_all : forall n {T} (xs : list T), le (length xs) n -> skipn n xs = nil). {
+    admit. }
+  rewrite !skipn_app in Heqw.
+  rewrite skipn_all in Heqw by (rewrite length_firstn_inbounds ; Lia.lia).
+  cbn [app] in Heqw.
+  replace ((22 - length (firstn 21 packet ++ [word.of_Z (word.unsigned v2)]))%nat) with 0%nat in Heqw. 2: {
+    rewrite app_length; cbn [length]; rewrite length_firstn_inbounds; Lia.lia.
+  } 
+  assert (skipn_0_l : forall {T} (xs : list T), skipn 0 xs = xs).
+  { reflexivity. }
+  rewrite skipn_0_l in *.
+
+  assert (tl_is_skipn1 : forall {T} (xs : list T), tl xs = skipn 1 xs). {
+    destruct xs; reflexivity. }
+  rewrite tl_is_skipn1 in Heqw.
+
+  assert (skipn_skipn : forall n m {T} (xs : list T), skipn n (skipn m xs) = skipn (n + m) xs). {
+    admit. }
+
+  rewrite skipn_skipn in Heqw.
+  change (1+21)%nat with 22%nat in *.
+  subst w.
+  subst v3.
+  rewrite tl_is_skipn1 in *.
+  rewrite skipn_skipn in H4.
+  change (1+21)%nat with 22%nat in *.
+  rewrite <-app_assoc in H4.
+
+  assert (length_skipn_inbounds : forall {T} n (xs : list T), le n (length xs) -> length (skipn n xs) = (length xs - n)%nat). {
+    clear -length_firstn_inbounds; intros.
+    rewrite <-(firstn_skipn n xs) at 2.
+    rewrite app_length.
+    rewrite length_firstn_inbounds; Lia.lia.
+  }
+
+  assert (length ((firstn 21 packet ++ [word.of_Z (word.unsigned v2)] ++ skipn 22 packet)) = length packet). {
+    rewrite ?app_length, ?length_firstn_inbounds, ?length_skipn_inbounds by Lia.lia.
+    cbn [length]; Lia.lia.
+  }
+
+  lazymatch goal with |- WeakestPrecondition.store Syntax.access_size.one ?m ?a ?v ?post =>
+  lazymatch goal with H: _ m |- _ =>
+    let av := rdelta a in
+    let i := lazymatch av with word.add ?base (word.of_Z ?i) => i end in
+    let iNat := eval cbv in (Z.to_nat i) in
+    pose i;
+    let HH := fresh H in pose proof H as HH;
+    SeparationLogic.seprewrite_in @array_index_nat_inbounds HH;
+    [instantiate (1 := iNat); Lia.lia|instantiate (1 := word.of_Z 0) in HH];
+    eapply store_one_of_sep;
+    change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
+    [SeparationLogic.ecancel_assumption|]; clear HH
+  end end.
+
+  repeat straightline.
+  
+  rewrite ?firstn_app in H6.
+  replace (firstn 32 (firstn 21 packet)) with (firstn 21 packet) in H6; cycle 1. {
+    Fail rewrite (@firstn_all2 _ _) by (rewrite length_firstn_inbounds; Lia.lia).
+    rewrite (@firstn_all2 _ 32) by (rewrite length_firstn_inbounds; Lia.lia).
+    trivial.
+  }
+  Notation "a [ i ]" := (hd _ (skipn i a)) (at level 10, left associativity, format "a [ i ]").
+  Notation "a [: i ]" := (firstn i a) (at level 10, left associativity, format "a [: i ]").
+  Notation "a [ i :]" := (skipn i a) (at level 10, left associativity, format "a [ i :]").
+
+  match type of H6 with
+         | context [firstn ?n [?x]] => rewrite (@firstn_all2 _ n [x]) in H6
+         end.
+  2: cbn [length]; rewrite length_firstn_inbounds; Lia.lia.
+  cbn [length] in H6.
+  rewrite length_firstn_inbounds in H6 by Lia.lia.
+  change (32 - 21 - 1)%nat with 10%nat in H6.
+
+  rewrite !skipn_app in H6.
+
+  rewrite (skipn_all 32%nat _ (firstn 21%nat _)) in H6 by (rewrite !length_firstn_inbounds ; Lia.lia).
+  cbn [app] in H6.
+  change (22 - 21)%nat with 1%nat in *.
+
+  rewrite skipn_all in H6 by trivial.
+  cbn [app] in H6.
+
+  rewrite tl_is_skipn1 in H6.
+  rewrite !skipn_app in H6.
+  rewrite !length_firstn_inbounds in H6 by Omega.omega.
+  rewrite !skipn_skipn in H6.
+  change (1 + (32 - 21))%nat with 12%nat in H6.
+  rewrite (skipn_all 12%nat) in H6 by (cbn [length]; Omega.omega).
+  cbn [app length] in H6.
+
+  rewrite (skipn_all (S _ - S _)%nat) in H6 by (cbn; Omega.omega).
+  cbn [length] in *.
+
+  change (1 - 0 + (32 - 21 - 1) + 22)%nat with 33%nat in H6.
+
+  SeparationLogic.seprewrite_in @array_snoc H6. {
+    rewrite app_length, length_firstn_inbounds by Omega.omega.
+    cbn [length].
+    rewrite length_firstn_inbounds by (rewrite length_skipn_inbounds ; Omega.omega).
+    eapply f_equal.
+    eapply f_equal.
+    cbv.
+    trivial.
+  }
+
+  repeat rewrite <-?app_assoc, <-?app_comm_cons in H6.
+
+  assert (length_cons : forall {T} x xs, length (@cons T x xs) = S (length xs)). { reflexivity. }
+  
+  SeparationLogic.seprewrite_in @array_append_merge H6. {
+    repeat rewrite ?length_cons, ?app_length, ?length_firstn_inbounds, ?length_skipn_inbounds by Omega.omega.
+    repeat rewrite ?length_cons, ?app_length, ?length_firstn_inbounds, ?length_skipn_inbounds; [|Omega.omega..].
+    replace (word.add (word.add ethbuf (word.of_Z 32)) (word.of_Z 1))
+            with (word.add ethbuf (word.add (word.of_Z 32) (word.of_Z 1))) by admit.
+    eapply f_equal; exact eq_refl. }
+
+  repeat rewrite ?app_nil_l, <-?app_assoc, <-?app_comm_cons in H6.
 Abort.
   
