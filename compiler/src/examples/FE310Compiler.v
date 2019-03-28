@@ -24,6 +24,7 @@ Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import compiler.examples.MMIO.
 Require Import coqutil.Z.HexNotation.
+Require Import compiler.GoFlatToRiscv.
 
 Unset Universe Minimization ToSet.
 
@@ -148,17 +149,23 @@ Definition mcomp_sat:
   OStateND RiscvMachine unit -> RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
   GoFlatToRiscv.mcomp_sat.
 
-Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
-  unchecked_store_byte_tuple_list addr (List.map (LittleEndian.split 4) (List.map encode p)) m.
+Lemma eq_empty: Lift1Prop.iff1 (eq (map.empty: mem)) (Separation.emp True).
+Proof.
+  split; intros.
+  - repeat split. congruence.
+  - destruct H. congruence.
+Qed.
 
 Lemma store_program_empty: forall prog addr,
-    GoFlatToRiscv.program addr prog (unchecked_store_program addr prog map.empty).
+    program addr prog (unchecked_store_program addr prog map.empty).
 Proof.
-  induction prog; intros.
-  - cbv. auto.
-  - cbv [GoFlatToRiscv.program]. simpl.
-    do 2 eexists. split; [|split].
-Admitted.
+  intros.
+  pose proof (store_program RV32IM prog addr map.empty) as P.
+  SeparationLogic.seplog.
+  remember (program addr prog) as a. (* PARAMRECORDS *)
+  SeparationLogic.cancel_step.
+  apply eq_empty.
+Qed.
 
 Lemma undef_on_unchecked_store_byte_tuple_list:
   forall (n: nat) (l: list (HList.tuple word8 n)) (start: word32),

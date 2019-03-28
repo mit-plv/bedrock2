@@ -22,7 +22,7 @@ Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
-
+Require Import coqutil.Decidable.
 
 Section Go.
 
@@ -187,6 +187,95 @@ Section Go.
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
+
+  Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
+    unchecked_store_byte_tuple_list addr (List.map (LittleEndian.split 4) (List.map encode p)) m.
+
+  Lemma sep_on_undef_put: forall (m: mem) (addr: word) (b: byte),
+      map.get m addr = None ->
+      (ptsto addr b * eq m)%sep (map.put m addr b).
+  Proof.
+    intros. unfold sep. exists (map.put map.empty addr b). exists m. repeat split.
+    - apply map.map_ext. intros.
+      rewrite map.get_put_dec.
+      destruct (dec (addr = k)).
+      + subst. rewrite map.get_putmany_left by assumption.
+        rewrite map.get_put_same. reflexivity.
+      + rewrite map.get_putmany_dec.
+        destruct (map.get m k); [reflexivity|].
+        rewrite map.get_put_diff by congruence.
+        rewrite map.get_empty.
+        reflexivity.
+    - unfold map.disjoint.
+      intros.
+      rewrite map.get_put_dec in H0.
+      destruct (dec (addr = k)).
+      + subst. congruence.
+      + rewrite map.get_empty in H0. congruence.
+  Qed.
+
+  Lemma sep_on_undef_store_bytes: forall n m addr bs,
+      map.undef_on m (PropSet.of_list (HList.tuple.to_list (footprint addr n))) ->
+      (ptsto_bytes n addr bs * eq m)%sep (unchecked_store_bytes n m addr bs).
+  Proof.
+    induction n; intros.
+    - cbn. apply sep_emp_l. auto.
+    - destruct bs as [b bs]. cbn in *.
+      remember (map.putmany_of_tuple
+          (HList.tuple.unfoldn (fun w : word => word.add w (word.of_Z 1)) n
+             (word.add addr (word.of_Z 1))) bs m) as m'.
+      match goal with
+      | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
+      end.
+      assert (iff1
+       (array ptsto (word.of_Z 1) (word.add addr (word.of_Z 1)) (HList.tuple.to_list bs) * eq m)
+       (eq m')) as E.
+      { subst m'. intro m'. split; intros A.
+        - unfold sep in A. destruct A as (mp & m0 & Sp & A & ?). subst m0.
+          admit.
+        - admit.
+      }
+      seprewrite E; clear E.
+      apply sep_comm.
+      apply sep_on_undef_put.
+  Admitted.
+
+  (* induction won't work with map.empty *)
+  Lemma ptsto_bytes_putmany_of_tuple: forall n addr vs,
+      ptsto_bytes n addr vs (map.putmany_of_tuple (footprint addr n) vs map.empty).
+  Admitted.
+
+  Axiom TODO_ok: False.
+
+  Lemma store_program: forall prog addr m,
+      (program addr prog * eq m)%sep (unchecked_store_program addr prog m).
+  Proof.
+    induction prog; intros.
+    - simpl. change (unchecked_store_program addr [] m) with m. apply sep_emp_l. auto.
+    - unfold unchecked_store_program.
+      rewrite !map_cons.
+      rewrite unchecked_store_byte_tuple_list_cons.
+      unfold program. seprewrite @array_cons.
+      match goal with
+      | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
+      end.
+      unfold sep at 1.
+      unfold ptsto_instr, truncated_scalar, littleendian, Memory.bytes_per.
+      set (m1 := (map.putmany_of_tuple (footprint addr 4)
+                                       (LittleEndian.split 4 (encode a)) map.empty)).
+      set (m0 := (unchecked_store_program (word.add addr (word.of_Z 4)) prog m)).
+      exists m1. exists m0.
+      change ((unchecked_store_byte_tuple_list (word.add addr (word.of_Z (BinInt.Z.of_nat 4)))
+          (map (LittleEndian.split 4) (map encode prog)) m)) with m0.
+      split; [|split].
+      + apply map.split_comm. split.
+        * subst m1. unfold unchecked_store_bytes.
+          apply map.putmany_of_tuple_to_putmany.
+        * case TODO_ok.
+      + subst m1.
+        apply ptsto_bytes_putmany_of_tuple.
+      + eapply IHprog.
+  Qed.
 
   Lemma go_fetch_inst: forall {inst initialL pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->

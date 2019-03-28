@@ -413,8 +413,6 @@ Section FlatToRiscv1.
     | |- valid_registers _ => solve [simpl; auto]
     end.
 
-  Instance word_eq_dec: DecidableEq word. (* TODO *) Admitted.
-
   Lemma disjoint_putmany_preserves_store_bytes: forall n a vs (m1 m1' mq: mem),
       store_bytes n m1 a vs = Some m1' ->
       map.disjoint m1 mq ->
