@@ -66,6 +66,26 @@ Section SepProperties.
       { rewrite get_put_diff, get_empty in Hget by trivial; inversion Hget. } }
   Qed.
 
+  Lemma sepeq_on_undef_put{keq: Decidable.DecidableEq key}: forall m addr b,
+      map.get m addr = None ->
+      (sep (ptsto addr b) (eq m)) (map.put m addr b).
+  Proof.
+    intros. unfold sep. exists (map.put map.empty addr b). exists m.
+    split; [|split; reflexivity].
+    apply map.split_undef_put. assumption.
+  Qed.
+
+  Lemma sep_on_undef_put{keq: Decidable.DecidableEq key}:
+    forall m addr b (R: _ -> Prop),
+      map.get m addr = None ->
+      R m ->
+      (sep (ptsto addr b) R) (map.put m addr b).
+  Proof.
+    intros. unfold sep. exists (map.put map.empty addr b). exists m.
+    split; [|split; reflexivity || trivial].
+    apply split_undef_put. assumption.
+  Qed.
+
   Lemma iff1_sep_cancel P Q1 Q2 (H : iff1 Q1 Q2) : iff1 (P * Q1) (P * Q2).
   Proof. exact (Proper_sep_iff1 _ _ (reflexivity _) _ _ H). Qed.
 

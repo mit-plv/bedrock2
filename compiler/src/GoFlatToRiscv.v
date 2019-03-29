@@ -191,165 +191,6 @@ Section Go.
   Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
     unchecked_store_byte_list addr (Z32s_to_bytes (List.map encode p)) m.
 
-  Lemma split_undef_put: forall (m: mem) k v,
-      map.get m k = None ->
-      map.split (map.put m k v) (map.put map.empty k v) m.
-  Proof.
-    intros.
-    repeat split.
-    - apply map.map_ext. intros.
-      rewrite map.get_put_dec.
-      destruct (dec (k = k0)).
-      + subst. rewrite map.get_putmany_left by assumption.
-        rewrite map.get_put_same. reflexivity.
-      + rewrite map.get_putmany_dec.
-        destruct (map.get m k0); [reflexivity|].
-        rewrite map.get_put_diff by congruence.
-        rewrite map.get_empty.
-        reflexivity.
-    - unfold map.disjoint.
-      intros.
-      rewrite map.get_put_dec in H0.
-      destruct (dec (k = k0)).
-      + subst. congruence.
-      + rewrite map.get_empty in H0. congruence.
-  Qed.
-
-  Lemma sepeq_on_undef_put: forall (m: mem) (addr: word) (b: byte),
-      map.get m addr = None ->
-      (ptsto addr b * eq m)%sep (map.put m addr b).
-  Proof.
-    intros. unfold sep. exists (map.put map.empty addr b). exists m.
-    split; [|split; reflexivity].
-    apply split_undef_put. assumption.
-  Qed.
-
-  Lemma sep_on_undef_put: forall (m: mem) (addr: word) (b: byte) (R: mem -> Prop),
-      map.get m addr = None ->
-      R m ->
-      (ptsto addr b * R)%sep (map.put m addr b).
-  Proof.
-    intros. unfold sep. exists (map.put map.empty addr b). exists m.
-    split; [|split; reflexivity || trivial].
-    apply split_undef_put. assumption.
-  Qed.
-
-  Fixpoint in_tuple{T: Type}(a: T){n: nat}: HList.tuple T n -> Prop :=
-    match n with
-    | O => fun _ => False
-    | S n' => fun '(PrimitivePair.pair.mk t ts) => a = t \/ in_tuple a ts
-    end.
-
-  Lemma putmany_of_footprint_None'': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
-      Z.of_nat n < word.unsigned (word.sub a1 a2) ->
-      map.get m a1 = None ->
-      map.get (map.putmany_of_tuple (footprint a2 n) vs m) a1 = None.
-  Proof.
-    induction n; intros.
-    - simpl. assumption.
-    - destruct vs as [v vs]. simpl.
-      assert (2 ^ width > 1) as Gz. {
-        destruct width_cases as [E | E]; rewrite E; reflexivity.
-      }
-      rewrite map.get_put_diff; cycle 1. {
-        clear -H H0 Gz. intro C.
-        subst.
-        rewrite word.unsigned_sub in H.
-        rewrite Z.sub_diag in H.
-        rewrite Z.mod_0_l in H by omega. (* LIAFAIL *)
-        lia.
-      }
-      eapply IHn; try assumption.
-      rewrite word.unsigned_sub.
-      rewrite word.unsigned_add.
-      rewrite word.unsigned_of_Z.
-      rewrite Z.mod_1_l by omega.
-      rewrite Zdiv.Zminus_mod_idemp_r.
-      replace (Z.of_nat (S n)) with (Z.of_nat n + 1) in H by lia.
-      rewrite word.unsigned_sub in H.
-      rewrite Z.sub_add_distr.
-      remember (word.unsigned a1 - word.unsigned a2) as d.
-      pose proof (word.unsigned_range a1) as R1.
-      pose proof (word.unsigned_range a2) as R2.
-      assert (- 2 ^ width < d < 2 ^ width) as R3 by omega.
-      assert (d < 0 \/ d = 0 \/ 0 < d) as C by lia. destruct C as [C | [C | C]].
-      + rewrite Z.mod_eq by omega.
-        replace (d - 1) with (- (1 - d)) at 2 by lia.
-        rewrite Z.div_opp_l_nz.
-        * admit.
-        * omega.
-        * intro D.
-          rewrite Z.mod_eq in D.
-          -- remember (2 ^ width) as WW.
-             remember ((1 - d) / WW) as k.
-             assert (k < 0 \/ k = 0 \/ k > 0) as F by lia. destruct F as [F | [F | F]]; try nia.
-  Abort.
-
-  Lemma putmany_of_footprint_None'': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
-      Z.of_nat n < word.unsigned (word.sub a2 a1) ->
-      map.get m a1 = None ->
-      map.get (map.putmany_of_tuple (footprint a2 n) vs m) a1 = None.
-  Proof.
-    induction n; intros.
-    - simpl. assumption.
-    - destruct vs as [v vs]. simpl.
-      assert (2 ^ width > 1) as Gz. {
-        destruct width_cases as [E | E]; rewrite E; reflexivity.
-      }
-      rewrite map.get_put_diff; cycle 1. {
-        clear -H H0 Gz. intro C.
-        subst.
-        rewrite word.unsigned_sub in H.
-        rewrite Z.sub_diag in H.
-        rewrite Z.mod_0_l in H by omega. (* LIAFAIL *)
-        lia.
-      }
-      eapply IHn; try assumption.
-      rewrite word.unsigned_sub.
-      rewrite word.unsigned_add.
-      rewrite word.unsigned_of_Z.
-      rewrite Z.mod_1_l by omega.
-      rewrite Zdiv.Zminus_mod_idemp_l.
-      replace (Z.of_nat (S n)) with (Z.of_nat n + 1) in H by lia.
-      rewrite word.unsigned_sub in H.
-      replace (word.unsigned a2 + 1 - word.unsigned a1) with
-          (word.unsigned a2 - word.unsigned a1 + 1) by lia.
-      remember (word.unsigned a2 - word.unsigned a1) as d.
-      pose proof (word.unsigned_range a1) as R1.
-      pose proof (word.unsigned_range a2) as R2.
-      assert (- 2 ^ width <= d < 2 ^ width) as R3 by omega.
-      assert (d = 2 ^ width - 1 \/ d + 1 < 2 ^ width) as C by omega.
-      destruct C as [C | C].
-      +  rewrite C.
-  Admitted.
-
-
-  Lemma putmany_of_footprint_None': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
-      ~ in_tuple a1 (footprint a2 n) ->
-      map.get m a1 = None ->
-      map.get (map.putmany_of_tuple (footprint a2 n) vs m) a1 = None.
-  Proof.
-    induction n; intros.
-    - simpl. assumption.
-    - destruct vs as [v vs]. simpl.
-      assert (2 ^ width > 0) as Gz. {
-        destruct width_cases as [E | E]; rewrite E; reflexivity.
-      }
-      rewrite map.get_put_diff; cycle 1. {
-        clear -H H0 Gz. intro C.
-        apply H.
-        subst.
-        simpl.
-        left. reflexivity.
-      }
-      eapply IHn; try assumption.
-      intro C.
-      apply H.
-      simpl.
-      right.
-      assumption.
-  Qed.
-
   Lemma putmany_of_footprint_None: forall n (vs: HList.tuple byte n) (addr: word) (z: Z) (m: mem),
       0 < z ->
       z + Z.of_nat n < 2 ^ width ->
@@ -400,41 +241,11 @@ Section Go.
     apply putmany_of_footprint_None; try assumption.
   Qed.
 
-  Lemma unchecked_store_byte_list_None':
-    forall (l: list byte) (a1 a2: word) m,
-      ~ in_tuple a2 (footprint a1 (length l)) ->
-      map.get m a2 = None ->
-      map.get (unchecked_store_byte_list a1 l m) a2 = None.
-  Proof.
-    intros. unfold unchecked_store_byte_list, unchecked_store_bytes.
-    apply putmany_of_footprint_None'; try assumption.
-  Qed.
-(*
-  Lemma unchecked_store_byte_tuple_list_None:
-    forall n (l: list (HList.tuple byte n)) (a1 a2: word) m,
-      Z.of_nat n * Z.of_nat (length l) < word.unsigned (word.sub a2 a1) ->
-      map.get m a2 = None ->
-      map.get (unchecked_store_byte_tuple_list a1 l m) a2 = None.
-  Proof.
-    induction l; intros.
-    - simpl in *. assumption.
-    - rewrite unchecked_store_byte_tuple_list_cons.
-      apply putmany_of_footprint_None'.
-      + admit.
-      + eapply IHl; [|assumption].
-        change (Z.of_nat (length (a :: l))) with (Z.of_nat (1 + length l)) in H.
-        rewrite word.unsigned_sub in *.
-        rewrite word.unsigned_add.
-        rewrite Zdiv.Zminus_mod_idemp_r.
-        rewrite Z.sub_add_distr.
-        remember (word.unsigned a2 - word.unsigned a1) as d.
-        rewrite word.unsigned_of_Z.
-        rewrite Zdiv.Zminus_mod_idemp_r.
-        pose proof (word.unsigned_range a1) as R1.
-        pose proof (word.unsigned_range a2) as R2.
-        assert (- 2 ^ width <= d < 2 ^ width) as R3 by lia.
-  Abort.
-*)
+  Fixpoint in_tuple{T: Type}(a: T){n: nat}: HList.tuple T n -> Prop :=
+    match n with
+    | O => fun _ => False
+    | S n' => fun '(PrimitivePair.pair.mk t ts) => a = t \/ in_tuple a ts
+    end.
 
   Lemma ptsto_bytes_putmany_of_tuple: forall n addr vs (R: mem -> Prop) m,
       Z.of_nat n < 2 ^ width ->
@@ -478,29 +289,25 @@ Section Go.
       + apply IHn. omega. (* LIAFIAL *)
   Qed.
 
-  Lemma ptsto_bytes_array: forall (addr: word) (l: list byte),
-      iff1 (array ptsto addr (word.of_Z 1) l)
+  Lemma ptsto_bytes_array: forall (l: list byte) (addr: word),
+      iff1 (array ptsto (word.of_Z 1) addr l)
            (ptsto_bytes (length l) addr (HList.tuple.of_list l)).
-  Admitted.
-
+  Proof.
+    induction l; intros.
+    - simpl. reflexivity.
+    - simpl. unfold ptsto_bytes. simpl. apply iff1_sep_cancel. apply IHl.
+  Qed.
 
   Lemma array_on_undef_store_byte_list: forall addr l (R: mem -> Prop) m,
       Z.of_nat (length l) < 2 ^ width ->
       R m ->
       (forall k, in_tuple k (footprint addr (length l)) -> map.get m k = None) ->
-      (array ptsto addr (word.of_Z 1) l * R)%sep (unchecked_store_byte_list addr l m).
+      (array ptsto (word.of_Z 1) addr l * R)%sep (unchecked_store_byte_list addr l m).
   Proof.
     intros.
     seprewrite ptsto_bytes_array.
     apply ptsto_bytes_putmany_of_tuple; assumption.
   Qed.
-
-  Axiom TODO: False.
-
-  Lemma not_in_footprint: forall (a1 a2: word) n,
-
-      ~ in_tuple a2 (footprint a1 n).
-  Abort.
 
   Lemma length_flat_map: forall {A B: Type} (f: A -> list B) n (l: list A),
       (forall (a: A), length (f a) = n) ->
