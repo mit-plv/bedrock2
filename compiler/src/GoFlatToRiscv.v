@@ -230,6 +230,53 @@ Section Go.
       assumption.
   Qed.
 
+  Lemma putmany_of_footprint_None'': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
+      0 < word.unsigned (word.sub a1 a2) ->
+      word.unsigned (word.sub a1 a2) + Z.of_nat n < 2 ^ width ->
+      map.get m a2 = None ->
+      map.get (map.putmany_of_tuple (footprint a1 n) vs m) a2 = None.
+  Proof.
+    intros.
+    pose proof putmany_of_footprint_None as P.
+    specialize P with (1 := H) (2 := H0) (3 := H1).
+    specialize (P vs).
+    replace (word.add a2 (word.of_Z (word.unsigned (word.sub a1 a2)))) with a1 in P; [exact P|].
+    apply word.unsigned_inj.
+    rewrite word.unsigned_add.
+    rewrite word.of_Z_unsigned.
+    rewrite word.unsigned_sub.
+    rewrite Z.add_mod_idemp_r by (destruct width_cases as [E | E]; rewrite E; cbv; discriminate).
+    rewrite <- (word.of_Z_unsigned a1) at 1.
+    rewrite word.unsigned_of_Z.
+    f_equal.
+    lia.
+  Qed.
+
+  Lemma putmany_of_footprint_None': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
+      a1 <> a2 ->
+      word.unsigned (word.sub a1 a2) + Z.of_nat n < 2 ^ width ->
+      map.get m a2 = None ->
+      map.get (map.putmany_of_tuple (footprint a1 n) vs m) a2 = None.
+  Proof.
+    intros.
+    apply putmany_of_footprint_None''; try assumption.
+    pose proof (word.unsigned_range (word.sub a1 a2)).
+    assert (word.unsigned (word.sub a1 a2) = 0 \/ 0 < word.unsigned (word.sub a1 a2)) as C
+        by omega. destruct C as [C | C].
+    - exfalso. apply H.
+      rewrite word.unsigned_sub in C.
+      apply word.unsigned_inj.
+      apply Z.div_exact in C; [|(destruct width_cases as [E | E]; rewrite E; cbv; discriminate)].
+      remember ((word.unsigned a1 - word.unsigned a2) / 2 ^ width) as k.
+      pose proof (word.unsigned_range a1).
+      pose proof (word.unsigned_range a2).
+      assert (k < 0 \/ k = 0 \/ 0 < k) as D by lia. destruct D as [D | [D | D]]; try nia.
+      rewrite D in C.
+      rewrite Z.mul_0_r in C.
+      lia.
+    - assumption.
+  Qed.
+
   Lemma unchecked_store_byte_list_None: forall (l: list byte) (z: Z) m (addr: word),
       0 < z ->
       z + Z.of_nat (length l) < 2 ^ width ->
