@@ -86,8 +86,8 @@ Section semantics.
       | expr.op op e1 e2 =>
           'Some (v1, mc') <- eval_expr e1 mc | None;
           'Some (v2, mc'') <- eval_expr e2 mc' | None;
-          Some (interp_binop op v1 v2, addMetricInstructions 1
-                                       (addMetricLoads 1 mc''))
+          Some (interp_binop op v1 v2, addMetricInstructions 2
+                                       (addMetricLoads 2 mc''))
       end.
 
     Fixpoint eval_expr_old (e : expr) : option word :=
@@ -150,16 +150,16 @@ Module exec. Section WithEnv.
   | if_true t m l mc e c1 c2 post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
     (_ : word.unsigned v <> 0)
-    (_ : exec c1 t m l (addMetricInstructions 1
-                       (addMetricLoads 1
+    (_ : exec c1 t m l (addMetricInstructions 2
+                       (addMetricLoads 2
                        (addMetricJumps 1 mc'))) post)
     : exec (cmd.cond e c1 c2) t m l mc post
   | if_false e c1 c2
     t m l mc post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
     (_ : word.unsigned v = 0)
-    (_ : exec c2 t m l (addMetricInstructions 1
-                       (addMetricLoads 1
+    (_ : exec c2 t m l (addMetricInstructions 2
+                       (addMetricLoads 2
                        (addMetricJumps 1 mc'))) post)
     : exec (cmd.cond e c1 c2) t m l mc post
   | seq c1 c2
@@ -181,8 +181,8 @@ Module exec. Section WithEnv.
       (_ : word.unsigned v <> 0)
       mid (_ : exec c t m l mc' mid)
       (_ : forall t' m' l' mc'', mid t' m' l' mc'' ->
-                                 exec (cmd.while e c) t' m' l' (addMetricInstructions 1
-                                                               (addMetricLoads 1
+                                 exec (cmd.while e c) t' m' l' (addMetricInstructions 2
+                                                               (addMetricLoads 2
                                                                (addMetricJumps 1 mc''))) post)
     : exec (cmd.while e c) t m l mc post
   | call binds fname arges
