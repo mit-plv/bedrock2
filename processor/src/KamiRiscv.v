@@ -182,18 +182,28 @@ Section Equiv.
   Definition word32_to_4bytes(w: kword 32): HList.tuple byte 4 :=
     LittleEndian.split 4 (word.unsigned w).
 
+  (* TODO this structure might not be very proof friendly, use Memory.unchecked_store_byte_list
+   instead *)
+  Fixpoint unchecked_store_byte_tuple_list{n: nat}(a: word)(l: list (HList.tuple byte n))(m: mem): mem :=
+    match l with
+    | w :: rest =>
+      let m' := unchecked_store_byte_tuple_list (word.add a (word.of_Z (Z.of_nat n))) rest m in
+      Memory.unchecked_store_bytes n m' a w
+    | nil => m
+    end.
+
   Definition convertInstrMem(instrMem: kword (width - 2) -> kword 32): mem :=
     let keys := List.unfoldn (Word.wplus (Word.ZToWord (KamiProc.nwidth - 2) 1))
                              instrMemSize instrMemStart in
     let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
-    Memory.unchecked_store_byte_tuple_list (word.of_Z 0) values map.empty.
+    unchecked_store_byte_tuple_list (word.of_Z 0) values map.empty.
 
   Definition convertDataMem(dataMem: kword width -> kword width): mem :=
     let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize dataMemStart in
     let values := List.map (fun key => LittleEndian.split (Z.to_nat (width / 8))
                                                           (word.unsigned (dataMem key)))
                            keys in
-    Memory.unchecked_store_byte_tuple_list dataMemStart values map.empty.
+    unchecked_store_byte_tuple_list dataMemStart values map.empty.
 
   Definition KamiProc_st_to_RiscvMachine
              (k: KamiProc.st)(t: list (LogItem MMIOAction)): RiscvMachine :=

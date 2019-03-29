@@ -149,16 +149,13 @@ Definition mcomp_sat:
   OStateND RiscvMachine unit -> RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
   GoFlatToRiscv.mcomp_sat.
 
-Lemma undef_on_unchecked_store_byte_tuple_list:
-  forall (n: nat) (l: list (HList.tuple word8 n)) (start: word32),
-    map.undef_on (unchecked_store_byte_tuple_list start l map.empty)
+Lemma undef_on_unchecked_store_byte_list:
+  forall (l: list word8) (start: word32),
+    map.undef_on (unchecked_store_byte_list start l map.empty)
                  (fun x => ~ word.unsigned start <=
                            word.unsigned x <
-                           word.unsigned start + Z.of_nat n * Zlength l).
+                           word.unsigned start + Zlength l).
 Proof.
-  induction l; intros.
-  - admit.
-  - rewrite unchecked_store_byte_tuple_list_cons.
 Admitted.
 
 Lemma map_undef_on_weaken: forall (P Q: PropSet.set word32) (m: Mem),
@@ -172,7 +169,7 @@ Proof.
   cbv [getMem initialSwapMachine initialRiscvMachine putProgram].
   cbv [withPc withNextPc withMem getMem zeroedRiscvMachine].
   eapply map_undef_on_weaken.
-  - apply undef_on_unchecked_store_byte_tuple_list.
+  - apply undef_on_unchecked_store_byte_list.
   - unfold PropSet.subset, PropSet.elem_of.
     intros addr El C. unfold isMMIOAddr in El. destruct El as [El1 El2].
     match type of C with
@@ -195,6 +192,10 @@ Proof.
 Qed.
 Print Assumptions input_program_correct. (* some axioms *)
 
+Lemma input_program_not_too_long:
+  4 * Z.of_nat (Datatypes.length (compileFunc swap_chars_over_uart)) < 2 ^ width.
+Proof. reflexivity. Qed.
+
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
                       initialSwapMachine
@@ -212,6 +213,7 @@ Proof.
     unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].
     1: apply map.split_empty_r; reflexivity.
     apply store_program_empty.
+    apply input_program_not_too_long.
   - cbv [Pipeline.ext_guarantee pipeline_params FlatToRiscv.FlatToRiscv.ext_guarantee
          FlatToRiscv_params mmio_params].
     exact initialMachine_undef_on_MMIO_addresses.
