@@ -245,7 +245,7 @@ Lemma fib_bounding_metrics_body: forall t m (l : locals) mc a b i,
       map.get l' 1 = Some b /\
       map.get l' 2 = Some (word.add a b) /\
       map.get l' 4 = Some (word.add i (word.of_Z 1)) /\
-      instructions mc' - instructions mc = 13).
+      instructions mc' - instructions mc = 15).
 Proof.
   intros.
   unfold fib_while_body.
@@ -255,7 +255,7 @@ Proof.
                                    map.get l' 2 = Some b /\
                                    map.get l' 3 = Some (word.add a b) /\
                                    map.get l' 4 = Some i /\
-                                   instructions mc' = instructions mc + 4)).
+                                   instructions mc' = instructions mc + 5)).
   - eapply @exec.set.
     + unfold eval_expr. rewrite H. rewrite H0. eauto.
     + repeat split.
@@ -271,7 +271,7 @@ Proof.
                                      map.get l' 2 = Some b /\
                                      map.get l' 3 = Some (word.add a b) /\
                                      map.get l' 4 = Some i /\
-                                     instructions mc' = instructions mc + 6)).
+                                     instructions mc' = instructions mc + 7)).
     + destruct_hyp.
       eapply @exec.set.
       * unfold eval_expr.
@@ -290,7 +290,7 @@ Proof.
                                        map.get l' 2 = Some (word.add a b) /\
                                        map.get l' 3 = Some (word.add a b) /\
                                        map.get l' 4 = Some i /\
-                                       instructions mc' = instructions mc + 8)).
+                                       instructions mc' = instructions mc + 9)).
       * destruct_hyp.
         eapply @exec.set.
         -- unfold eval_expr. rewrite H6. eauto.
@@ -319,7 +319,7 @@ Lemma fib_bounding_metrics_while: forall (n : nat) (iter : nat) t m (l : locals)
     map.get l 2 = Some b ->
     map.get l 4 = Some (word.of_Z ((Z.of_nat n) - (Z.of_nat iter)) : word) ->
     exec map.empty (fib_while (Z.of_nat n)) t m l mc (fun t' m' l' mc' =>
-      instructions mc' <= instructions mc + (Z.of_nat iter) * 18 + 5).
+      instructions mc' <= instructions mc + (Z.of_nat iter) * 22 + 6).
 Proof.
   induction iter.
   - intros.
@@ -349,21 +349,18 @@ Proof.
         simpl; f_equal;
         rewrite Z.mod_small; [rewrite Z.mod_small; Lia.lia | Lia.lia ]).
       specialize IHiter with (1 := H) (2 := H8) (3 := H4) (4 := H5) (5 := H9).
-      specialize IHiter with (mc := (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 mc'')))).
-      specialize IHiter with (t := t').
-      specialize IHiter with (m := m').
+      specialize IHiter with (mc := (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'')))).
       simpl in H7.
-      assert (instructions mc'' = 13 + (instructions mc + 4)) by Lia.lia.
       unfold_MetricLog. simpl in IHiter.
-      apply weaken_exec with (post2 := fun t' (_ _ : rep) mc' => instructions mc' <= instructions mc + Z.pos (Pos.of_succ_nat iter * 18) + 5) in IHiter; [| intros; Lia.lia].
-      unfold fib_while in *. simpl.
-      apply IHiter.
+      eapply weaken_exec in IHiter.
+      * eapply IHiter.
+      * intros. simpl. Lia.lia.
 Qed.
 
 Lemma fib_bounding_metrics: forall (n: nat) t m (l : locals) mc,
    (Z.of_nat n) < BinInt.Z.pow_pos 2 32 ->
    exec map.empty (fib_ExprImp (Z.of_nat n)) t m l mc (fun t' m ' l' mc' =>
-       instructions mc' <= instructions mc + (Z.of_nat n) * 18 + 14).
+       instructions mc' <= instructions mc + (Z.of_nat n) * 22 + 15).
 Proof.
   intros.
   unfold fib_ExprImp.
@@ -414,9 +411,9 @@ Proof.
         replace (Z.of_nat n - Z.of_nat n) with 0 in HWhile by Lia.lia.
         specialize HWhile with (1 := H) (2 := H12) (3 := H8) (4 := H9) (5 := H10).
         specialize (HWhile t'1 m'1 mc'1).
-        apply weaken_exec with (post2 := fun t' (_ _ : rep) mc' => instructions mc' <= instructions mc + Z.of_nat n * 18 + 14) in HWhile.
+        eapply weaken_exec in HWhile.
         -- apply HWhile.
-        -- intros. Lia.lia.
+        -- intros. simpl. Lia.lia.
 Qed.
         
 Lemma fib_H_res_value: fib_H_res 20 6 = Some (word.of_Z 13).

@@ -324,11 +324,11 @@ Module exec.
         map.split m mKeep mGive ->
         List.option_all (List.map (map.get l) argvars) = Some argvals ->
         ext_spec t mGive action argvals outcome ->
-        (forall mReceive resvals mc',
+        (forall mReceive resvals,
             outcome mReceive resvals ->
             exists l', map.putmany_of_list resvars resvals l = Some l' /\
                        exists m', map.split m' mKeep mReceive /\
-                       post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l' mc') ->
+                       post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l' mc) ->
         exec (SInteract resvars action argvars) t m l mc post
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
@@ -651,7 +651,6 @@ Section FlatImp2.
       try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
     - eapply exec.interact; try eassumption.
       intros; simp.
-      specialize H2 with (mc' := mc).
       edestruct H2; try eassumption. simp.
       eexists; split; [eassumption|].
       simpl. try split; eauto.

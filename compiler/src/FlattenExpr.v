@@ -825,7 +825,7 @@ Section FlattenExpr1.
         map.only_differ l (@ExprImp.modVars (mk_Semantics_params p) c) lH' /\
         boundMetricLog UnitMetricLog (metricLogDifference mcL mcL')
                                      (metricLogDifference mc mcH'))); 
-        [ eapply flattenBooleanExpr_correct_with_modVars (* eapply Hexpr *); try eassumption
+        [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
         | intros; simpl in *; simp .. ].
       + maps.
       + congruence.
@@ -861,8 +861,13 @@ Section FlattenExpr1.
         assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
         destruct R as (lL'' & R1 & R2).
         simp.
-        eauto 10 using (map.only_differ_putmany (ok := locals_ok)).
-  Admitted.
+        eexists; split; [exact R1|].
+        eexists; split; [eassumption|].
+        eexists; eexists; split; [eassumption|].
+        split; [eassumption|].
+        split; [simple eapply map.only_differ_putmany; exact P|].
+        solve_MetricLog.
+  Qed.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
@@ -870,9 +875,12 @@ Section FlattenExpr1.
   Lemma flattenStmt_correct: forall sH sL lL t m mc post,
       ExprImp2FlatImp sH = sL ->
       Semantics.exec map.empty sH t m map.empty mc post ->
-      FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' mc' => exists lH' mc',
-        post t' m' lH' mc' /\
-        map.extends lL' lH').
+      FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
+        post t' m' lH' mcH' /\
+        map.extends lL' lH' /\
+        boundMetricLog UnitMetricLog
+          (metricLogDifference mc mcL')
+          (metricLogDifference mc mcH')).
   Proof.
     intros.
     unfold ExprImp2FlatImp in *.
