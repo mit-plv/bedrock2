@@ -43,41 +43,18 @@ Section Run.
   Context {PR: Primitives PRParams}.
   Variable iset: InstructionSet.
 
-  Lemma run_Lw: forall (base addr: word) (v: w32) (rd rs: Register) (ofs: MachineInt)
-                       (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (Lw rd rs ofs) iset ->
-      (* valid_register almost follows from verify except for then the register is Register0 *)
-      valid_register rd ->
-      valid_register rs ->
-      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      map.get initialL.(getRegs) rs = Some base ->
-      addr = word.add base (word.of_Z ofs) ->
-      (program initialL.(getPc) [[Lw rd rs ofs]] * ptsto_bytes 4 addr v * R)%sep
-        initialL.(getMem) ->
-      mcomp_sat (run1 iset) initialL (fun finalL =>
-        finalL.(getRegs) = map.put initialL.(getRegs) rd (int32ToReg v) /\
-        finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[Lw rd rs ofs]] * ptsto_bytes 4 addr v * R)%sep
-          finalL.(getMem) /\
-        finalL.(getPc) = initialL.(getNextPc) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
-  Proof.
-    intros.
-    destruct initialL as [initial_regs initial_pc initial_npc initial_mem initial_log].
-    simpl in *. subst.
-    simulate.
-    eapply go_loadWord_sep. {
-      simpl. ecancel_assumption.
-    }
-    simulate.
-    simpl.
-    repeat match goal with
-           | |- _ /\ _ => split
-           | |- _ => reflexivity
-           | |- _ => ecancel_assumption
-           end.
-  Qed.
+  Ltac simulate'_step :=
+    first [ eapply go_loadByte_sep ; simpl; [sidecondition..|]
+          | eapply go_storeByte_sep; simpl; [sidecondition..|intros]
+          | eapply go_loadHalf_sep ; simpl; [sidecondition..|]
+          | eapply go_storeHalf_sep; simpl; [sidecondition..|intros]
+          | eapply go_loadWord_sep ; simpl; [sidecondition..|]
+          | eapply go_storeWord_sep; simpl; [sidecondition..|intros]
+          | eapply go_loadDouble_sep ; simpl; [sidecondition..|]
+          | eapply go_storeDouble_sep; simpl; [sidecondition..|intros]
+          | simulate_step ].
+
+  Ltac simulate' := repeat simulate'_step.
 
   Definition run_Load_spec(n: nat)(L: Register -> Register -> MachineInt -> Instruction): Prop :=
     forall (base addr: word) (v: HList.tuple byte n) (rd rs: Register) (ofs: MachineInt)
@@ -101,42 +78,66 @@ Section Run.
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
-  Lemma run_Lw': run_Load_spec 4 Lw.
-  Proof.
-    unfold run_Load_spec.
-    intros.
-    destruct initialL as [initial_regs initial_pc initial_npc initial_mem initial_log].
-    simpl in *. subst.
-    simulate.
-    eapply go_loadWord_sep. {
-      simpl. ecancel_assumption.
-    }
-    simulate.
-    simpl.
+  Definition run_Store_spec(n: nat)(S: Register -> Register -> MachineInt -> Instruction): Prop :=
+    forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
+           (ofs: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
+      verify (S rs1 rs2 ofs) iset ->
+      (* valid_register almost follows from verify except for then the register is Register0 *)
+      valid_register rs1 ->
+      valid_register rs2 ->
+      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      map.get initialL.(getRegs) rs1 = Some base ->
+      map.get initialL.(getRegs) rs2 = Some v_new ->
+      addr = word.add base (word.of_Z ofs) ->
+      (program initialL.(getPc) [[S rs1 rs2 ofs]] * ptsto_bytes n addr v_old * R)%sep
+        initialL.(getMem) ->
+      mcomp_sat (run1 iset) initialL (fun finalL =>
+        finalL.(getRegs) = initialL.(getRegs) /\
+        finalL.(getLog) = initialL.(getLog) /\
+        (program initialL.(getPc) [[S rs1 rs2 ofs]] *
+         ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
+            finalL.(getMem) /\
+        finalL.(getPc) = initialL.(getNextPc) /\
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+
+  Ltac t :=
+    unfold run_Load_spec, run_Store_spec;
+    intros;
+    match goal with
+    | initialL: RiscvMachineL |- _ => destruct initialL
+    end;
+    simpl in *; subst;
+    simulate';
+    simpl;
     repeat match goal with
            | |- _ /\ _ => split
            | |- _ => reflexivity
            | |- _ => ecancel_assumption
            end.
-  Qed.
+
+  Lemma run_Lb: run_Load_spec 1 Lb.
+  Proof. t. Qed.
 
   Lemma run_Lh: run_Load_spec 2 Lh.
-  Proof.
-    unfold run_Load_spec.
-    intros.
-    destruct initialL as [initial_regs initial_pc initial_npc initial_mem initial_log].
-    simpl in *. subst.
-    simulate.
-    eapply go_loadHalf_sep. {
-      simpl. ecancel_assumption.
-    }
-    simulate.
-    simpl.
-    repeat match goal with
-           | |- _ /\ _ => split
-           | |- _ => reflexivity
-           | |- _ => ecancel_assumption
-           end.
-  Qed.
+  Proof. t. Qed.
+
+  Lemma run_Lw: run_Load_spec 4 Lw.
+  Proof. t. Qed.
+
+  Lemma run_Ld: run_Load_spec 8 Ld.
+  Proof. t. Qed.
+
+  Lemma run_Sb: run_Store_spec 1 Sb.
+  Proof. t. Qed.
+
+  Lemma run_Sh: run_Store_spec 2 Sh.
+  Proof. t. Qed.
+
+  Lemma run_Sw: run_Store_spec 4 Sw.
+  Proof. t. Qed.
+
+  Lemma run_Sd: run_Store_spec 8 Sd.
+  Proof. t. Qed.
 
 End Run.

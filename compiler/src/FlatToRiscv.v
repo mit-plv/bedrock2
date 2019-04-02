@@ -43,6 +43,7 @@ Require Import compiler.PushPullMod.
 Require coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Z.bitblast.
 Require Import riscv.Utility.prove_Zeq_bitwise.
+Require Import compiler.RunInstruction.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -336,6 +337,33 @@ Section FlatToRiscv1.
         Memory.store, Memory.store_Z in *;
         simp; simulate''; simpl; simpl_word_exprs word_ok; eassumption].
   Qed.
+
+  (*
+  Lemma run_compile_load: forall sz: Syntax.access_size,
+      run_Load_spec iset (@Memory.bytes_per width sz) (compile_load sz).
+  Proof.
+    intro sz. destruct sz; simpl.
+    - refine (run_Lb iset).
+    - apply run_Lh.
+    - apply run_Lw.
+    - destruct width_cases as [E | E]; rewrite E; simpl.
+      + apply run_Lw.
+      + apply run_Ld.
+  Qed.
+   *)
+
+  Lemma run_compile_store: forall sz: Syntax.access_size,
+      run_Store_spec iset (@Memory.bytes_per width sz) (compile_store sz).
+  Proof.
+    intro sz. destruct sz; simpl.
+    - apply run_Sb.
+    - apply run_Sh.
+    - apply run_Sw.
+    - destruct width_cases as [E | E]; rewrite E; simpl.
+      + apply run_Sw.
+      + apply run_Sd.
+  Qed.
+
 
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
