@@ -394,8 +394,10 @@ Ltac seprewrite0_in Hrw H :=
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
       by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
-  eapply (fun m => (proj1 (pf m))) in H; clear pf;
-  eapply (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) in H.
+  let H' := fresh H in rename H into H';
+  pose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H')) as H;
+  clear H' pf.
+
 
 Ltac seprewrite_in Hrw H :=
   multimatch constr:(Set) with
