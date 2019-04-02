@@ -355,7 +355,7 @@ Section MMIO1.
             apply map.split_empty_r in H2. subst.
             apply map.split_empty_r in H9. subst.
             unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
-            rewrite Scalars.combine_split.
+            rewrite LittleEndian.combine_split.
             rewrite sextend_width_nop by reflexivity.
             rewrite Z.mod_small by apply word.unsigned_range.
             rewrite word.of_Z_unsigned.

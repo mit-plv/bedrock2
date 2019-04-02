@@ -491,7 +491,7 @@ Section Go.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
       ecancel_assumption.
-    - rewrite combine_split.
+    - rewrite LittleEndian.combine_split.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.
         destruct width_cases as [E | E]; rewrite E; split.
