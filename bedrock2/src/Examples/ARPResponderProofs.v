@@ -12,9 +12,6 @@ From bedrock2 Require Import Array Scalars Separation.
 From coqutil.Tactics Require Import letexists rdelta.
 Local Notation bytes := (array scalar8 (word.of_Z 1)).
 
-Lemma word__if_zero (t:bool) (H : word.unsigned (if t then word.of_Z 1 else word.of_Z 0) = 0) : t = false. Admitted.
-Lemma word__if_nonzero (t:bool) (H : word.unsigned (if t then word.of_Z 1 else word.of_Z 0) <> 0) : t = true. Admitted.
-
 Set Printing Width 90.
 Ltac seplog_use_array_load1 H i :=
   let iNat := eval cbv in (Z.to_nat i) in
@@ -28,9 +25,44 @@ Local Instance spec_of_arp : spec_of "arp" := fun functions =>
     word.unsigned len = Z.of_nat (length packet) ->
   WeakestPrecondition.call functions "arp" t m [ethbuf; len] (fun T M rets => True).
 Goal program_logic_goal_for_function! arp.
+  assert (array_snoc : forall {T} rep size a vsa b (vb:T)
+                              (H:b = word.add a (word.of_Z (word.unsigned size * Z.of_nat (length vsa)) )),
+             Lift1Prop.iff1 (sep (array rep size a vsa) (rep b vb)) (array rep size a (vsa ++ cons vb nil))). {
+    clear. intros. subst b.
+    etransitivity; [|symmetry; eapply Array.array_append].
+    cbn [array]; SeparationLogic.cancel. }
+  assert (length_firstn_inbounds : forall {T} n (xs : list T), le n (length xs) -> length (firstn n xs) = n). {
+    intros.
+    rewrite firstn_length, PeanoNat.Nat.min_comm.
+    destruct (Min.min_spec (length xs) n); Lia.lia.
+  }
+  assert (length_skipn_inbounds : forall {T} n (xs : list T), le n (length xs) -> length (skipn n xs) = (length xs - n)%nat). {
+    clear -length_firstn_inbounds. intros.
+    pose proof firstn_skipn n xs as HH; eapply (f_equal (@length _)) in HH; rewrite <-HH.
+    rewrite app_length, length_firstn_inbounds; Lia.lia.
+  }
+  assert (length_tl_inbounds : forall {T} xs (H : le 1 (length xs)), length (@tl T xs) = (length xs - 1)%nat). {
+    destruct xs; cbn [length tl]; Lia.lia.
+  }
+  assert (skipn_app : forall n {T} (xs ys : list T), skipn n (xs ++ ys) = skipn n xs ++ skipn (n - length xs) ys). {
+    (* reduce to UF_LIA *) admit. }
+  assert (skipn_all_exact : forall {T} (xs : list T), skipn (length xs) xs = nil). {
+    clear; intros. induction xs; eauto. }
+  assert (skipn_all : forall n {T} (xs : list T), le (length xs) n -> skipn n xs = nil). {
+    admit. }
+  assert (skipn_0_l : forall {T} (xs : list T), skipn 0 xs = xs).
+  { reflexivity. }
+  assert (tl_is_skipn1 : forall {T} (xs : list T), tl xs = skipn 1 xs). {
+    destruct xs; reflexivity. }
+
+  assert (skipn_skipn : forall n m {T} (xs : list T), skipn n (skipn m xs) = skipn (n + m) xs). {
+    admit. }
+  assert (length_cons : forall {T} x xs, length (@cons T x xs) = S (length xs)). { reflexivity. }
+
+
   repeat straightline.
   letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.
-  eapply word__if_nonzero in H1.
+  eapply Properties.word.if_nonzero in H1.
   rewrite word.unsigned_ltu, word.unsigned_of_Z, Z.mod_small in H1 by admit.
   eapply Z.ltb_lt in H1.
   repeat (letexists || straightline).
@@ -76,22 +108,10 @@ Goal program_logic_goal_for_function! arp.
   straightline.
   straightline.
 
-  assert (length_firstn_inbounds : forall {T} n (xs : list T), le n (length xs) -> length (firstn n xs) = n). {
-    intros.
-    rewrite firstn_length, PeanoNat.Nat.min_comm.
-    destruct (Min.min_spec (length xs) n); Lia.lia.
-  }
-
   unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H4. {
     rewrite length_firstn_inbounds by Lia.lia.
     trivial. }
 
-  assert (array_snoc : forall {T} rep size a vsa b (vb:T)
-                              (H:b = word.add a (word.of_Z (word.unsigned size * Z.of_nat (length vsa)) )),
-             Lift1Prop.iff1 (sep (array rep size a vsa) (rep b vb)) (array rep size a (vsa ++ cons vb nil))). {
-    clear. intros. subst b.
-    etransitivity; [|symmetry; eapply Array.array_append].
-    cbn [array]; SeparationLogic.cancel. }
   SeparationLogic.seprewrite_in @array_snoc H4.
   { change (word.unsigned (word.of_Z 1)) with 1; rewrite Z.mul_1_l; trivial. }
 
@@ -106,6 +126,7 @@ Goal program_logic_goal_for_function! arp.
     admit. (* wring *) }
   move H4 at bottom.
 
+  (*
   letexists; split.
   1: {
     repeat (split || letexists || straightline).
@@ -121,49 +142,24 @@ Goal program_logic_goal_for_function! arp.
     end end.
 
     repeat rewrite ?app_length, ?length_firstn_inbounds by Lia.lia; cbn [length].
-    assert (length_skipn_inbounds : forall {T} n (xs : list T), le n (length xs) -> length (skipn n xs) = (length xs - n)%nat). {
-      clear -length_firstn_inbounds. intros.
-      pose proof firstn_skipn n xs as HH; eapply (f_equal (@length _)) in HH; rewrite <-HH.
-      rewrite app_length, length_firstn_inbounds; Lia.lia.
-    }
-
-    assert (length_tl_inbounds : forall {T} xs (H : le 1 (length xs)), length (@tl T xs) = (length xs - 1)%nat). {
-      destruct xs; cbn [length tl]; Lia.lia.
-    }
 
     rewrite length_tl_inbounds by (rewrite ?length_skipn_inbounds; Lia.lia).
     rewrite length_skipn_inbounds by Lia.lia.
     Lia.lia.
   }
 
-  assert (skipn_app : forall n {T} (xs ys : list T), skipn n (xs ++ ys) = skipn n xs ++ skipn (n - length xs) ys). {
-    (* reduce to UF_LIA *) admit. }
   remember (word.of_Z
           (word.unsigned
              (hd (word.of_Z 0)
                 (skipn 22
                    ((firstn 21 packet ++ [word.of_Z (word.unsigned v2)]) ++
                     tl (skipn 21 packet)))))) as w.
-  assert (skipn_all_exact : forall {T} (xs : list T), skipn (length xs) xs = nil). {
-    clear; intros. induction xs; eauto. }
-  assert (skipn_all : forall n {T} (xs : list T), le (length xs) n -> skipn n xs = nil). {
-    admit. }
   rewrite !skipn_app in Heqw.
   rewrite skipn_all in Heqw by (rewrite length_firstn_inbounds ; Lia.lia).
   cbn [app] in Heqw.
   replace ((22 - length (firstn 21 packet ++ [word.of_Z (word.unsigned v2)]))%nat) with 0%nat in Heqw. 2: {
     rewrite app_length; cbn [length]; rewrite length_firstn_inbounds; Lia.lia.
   } 
-  assert (skipn_0_l : forall {T} (xs : list T), skipn 0 xs = xs).
-  { reflexivity. }
-  rewrite skipn_0_l in *.
-
-  assert (tl_is_skipn1 : forall {T} (xs : list T), tl xs = skipn 1 xs). {
-    destruct xs; reflexivity. }
-  rewrite tl_is_skipn1 in Heqw.
-
-  assert (skipn_skipn : forall n m {T} (xs : list T), skipn n (skipn m xs) = skipn (n + m) xs). {
-    admit. }
 
   rewrite skipn_skipn in Heqw.
   change (1+21)%nat with 22%nat in *.
@@ -174,12 +170,6 @@ Goal program_logic_goal_for_function! arp.
   change (1+21)%nat with 22%nat in *.
   rewrite <-app_assoc in H4.
 
-  assert (length_skipn_inbounds : forall {T} n (xs : list T), le n (length xs) -> length (skipn n xs) = (length xs - n)%nat). {
-    clear -length_firstn_inbounds; intros.
-    rewrite <-(firstn_skipn n xs) at 2.
-    rewrite app_length.
-    rewrite length_firstn_inbounds; Lia.lia.
-  }
 
   assert (length ((firstn 21 packet ++ [word.of_Z (word.unsigned v2)] ++ skipn 22 packet)) = length packet). {
     rewrite ?app_length, ?length_firstn_inbounds, ?length_skipn_inbounds by Lia.lia.
@@ -254,7 +244,6 @@ Goal program_logic_goal_for_function! arp.
 
   repeat rewrite <-?app_assoc, <-?app_comm_cons in H6.
 
-  assert (length_cons : forall {T} x xs, length (@cons T x xs) = S (length xs)). { reflexivity. }
   
   SeparationLogic.seprewrite_in @array_append_merge H6. {
     repeat rewrite ?length_cons, ?app_length, ?length_firstn_inbounds, ?length_skipn_inbounds by Omega.omega.
@@ -264,5 +253,6 @@ Goal program_logic_goal_for_function! arp.
     eapply f_equal; exact eq_refl. }
 
   repeat rewrite ?app_nil_l, <-?app_assoc, <-?app_comm_cons in H6.
+*)
 Abort.
   
