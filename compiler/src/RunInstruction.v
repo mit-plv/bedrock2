@@ -25,6 +25,8 @@ Require Import riscv.Proofs.EncodeBound.
 Require Import coqutil.Decidable.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.InstructionCoercions. Local Open Scope ilist_scope.
+Require Import compiler.SimplWordExpr.
+
 
 Section Run.
 
@@ -41,7 +43,8 @@ Section Run.
   Context {RVM: RiscvProgram M word}.
   Context {PRParams: PrimitivesParams M (RiscvMachine Register Action)}.
   Context {PR: Primitives PRParams}.
-  Variable iset: InstructionSet.
+
+  Definition iset := if width =? 32 then RV32IM else RV64IM.
 
   Ltac simulate'_step :=
     first [ eapply go_loadByte_sep ; simpl; [sidecondition..|]
@@ -56,7 +59,8 @@ Section Run.
 
   Ltac simulate' := repeat simulate'_step.
 
-  Definition run_Load_spec(n: nat)(L: Register -> Register -> MachineInt -> Instruction): Prop :=
+  Definition run_Load_spec(n: nat)(L: Register -> Register -> MachineInt -> Instruction)
+             (opt_sign_extender: Z -> Z): Prop :=
     forall (base addr: word) (v: HList.tuple byte n) (rd rs: Register) (ofs: MachineInt)
            (initialL: RiscvMachineL) (R: mem -> Prop),
       verify (L rd rs ofs) iset ->
@@ -71,7 +75,7 @@ Section Run.
         initialL.(getMem) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
-                  (word.of_Z (signExtend (8 * Z.of_nat n) (LittleEndian.combine n v))) /\
+                  (word.of_Z (opt_sign_extender (LittleEndian.combine n v))) /\
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
           finalL.(getMem) /\
@@ -116,17 +120,39 @@ Section Run.
            | |- _ => ecancel_assumption
            end.
 
-  Lemma run_Lb: run_Load_spec 1 Lb.
+  Lemma run_Lb: run_Load_spec 1 Lb (signExtend 8).
   Proof. t. Qed.
 
-  Lemma run_Lh: run_Load_spec 2 Lh.
+  Lemma run_Lbu: run_Load_spec 1 Lbu id.
   Proof. t. Qed.
 
-  Lemma run_Lw: run_Load_spec 4 Lw.
+  Lemma run_Lh: run_Load_spec 2 Lh (signExtend 16).
   Proof. t. Qed.
 
-  Lemma run_Ld: run_Load_spec 8 Ld.
+  Lemma run_Lhu: run_Load_spec 2 Lhu id.
   Proof. t. Qed.
+
+  Lemma run_Lw: run_Load_spec 4 Lw (signExtend 32).
+  Proof. t. Qed.
+
+  Lemma run_Lw_unsigned: width = 32 -> run_Load_spec 4 Lw id.
+  Proof.
+    t. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
+  Qed.
+
+  Lemma run_Lwu: run_Load_spec 4 Lwu id.
+  Proof. t. Qed.
+
+  Lemma run_Ld: run_Load_spec 8 Ld (signExtend 64).
+  Proof. t. Qed.
+
+  (* Note: there's no Ldu instruction, because Ld does the same *)
+  Lemma run_Ld_unsigned: run_Load_spec 8 Ld id.
+  Proof.
+    t. rewrite sextend_width_nop; [reflexivity|]. unfold iset in *.
+    clear -H. destruct H as [_ H]. unfold verify_iset in *.
+    destruct width_cases as [E | E]; rewrite E in *; simpl in *; intuition congruence.
+  Qed.
 
   Lemma run_Sb: run_Store_spec 1 Sb.
   Proof. t. Qed.

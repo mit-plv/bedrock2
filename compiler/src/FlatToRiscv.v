@@ -338,32 +338,31 @@ Section FlatToRiscv1.
         simp; simulate''; simpl; simpl_word_exprs word_ok; eassumption].
   Qed.
 
-  (*
   Lemma run_compile_load: forall sz: Syntax.access_size,
-      run_Load_spec iset (@Memory.bytes_per width sz) (compile_load sz).
+      run_Load_spec (@Memory.bytes_per width sz) (compile_load sz) id.
   Proof.
     intro sz. destruct sz; simpl.
-    - refine (run_Lb iset).
-    - apply run_Lh.
-    - apply run_Lw.
+    - refine run_Lbu.
+    - refine run_Lhu.
     - destruct width_cases as [E | E]; rewrite E; simpl.
-      + apply run_Lw.
-      + apply run_Ld.
+      + refine (run_Lw_unsigned E).
+      + refine run_Lwu.
+    - destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Lw_unsigned E).
+      + refine run_Ld_unsigned.
   Qed.
-   *)
 
   Lemma run_compile_store: forall sz: Syntax.access_size,
-      run_Store_spec iset (@Memory.bytes_per width sz) (compile_store sz).
+      run_Store_spec (@Memory.bytes_per width sz) (compile_store sz).
   Proof.
     intro sz. destruct sz; simpl.
-    - apply run_Sb.
-    - apply run_Sh.
-    - apply run_Sw.
+    - refine run_Sb.
+    - refine run_Sh.
+    - refine run_Sw.
     - destruct width_cases as [E | E]; rewrite E; simpl.
-      + apply run_Sw.
-      + apply run_Sd.
+      + refine run_Sw.
+      + refine run_Sd.
   Qed.
-
 
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
