@@ -926,4 +926,38 @@ Section FlatToRiscv1.
       run1done.
   Qed.
 
+  Context {fun_pos_env : map.map Syntax.funname Z}.
+
+  Arguments compile_store: simpl never.
+  Arguments compile_load: simpl never.
+
+  Lemma compile_function_correct:
+    forall f useargs useresults t initialMH initialRegsH postH,
+    eval_stmt (SCall useresults f useargs) t initialMH initialRegsH postH ->
+    forall R initialL insts e pos body defargs defresults,
+    @compile_function def_params fun_pos_env e pos (defargs, defresults, body) = insts ->
+    stmt_not_too_big body ->
+    valid_registers body ->
+    divisibleBy4 initialL.(getPc) ->
+    initialL.(getRegs) = initialRegsH ->
+    (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+    initialL.(getLog) = t ->
+    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    ext_guarantee initialL ->
+    runsTo initialL (fun finalL => exists finalMH,
+          postH finalL.(getLog) finalMH finalL.(getRegs) /\
+          (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
+          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          ext_guarantee finalL).
+  Proof.
+    intros.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    simpl in *.
+    subst.
+    simp.
+  Abort.
+
 End FlatToRiscv1.
