@@ -9,6 +9,7 @@ Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Spec.Machine.
+Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
@@ -76,71 +77,71 @@ Section Go.
       mcomp_sat (Bind (getRegister Register0) f) initialL post.
   Proof. t spec_getRegister. Qed.
 
-  Lemma go_setRegister: forall initialL x v post (f: unit -> M unit),
+  Lemma go_setRegister: forall (initialL: RiscvMachineL) x v post (f: unit -> M unit),
       valid_register x ->
       mcomp_sat (f tt) (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
       mcomp_sat (Bind (setRegister x v) f) initialL post.
   Proof. t spec_setRegister. Qed.
 
-  Lemma go_setRegister0: forall initialL v post (f: unit -> M unit),
+  Lemma go_setRegister0: forall (initialL: RiscvMachineL) v post (f: unit -> M unit),
       mcomp_sat (f tt) initialL post ->
       mcomp_sat (Bind (setRegister Register0 v) f) initialL post.
   Proof. t spec_setRegister. Qed.
 
-  Lemma go_loadByte: forall initialL kind addr (v: w8) (f: w8 -> M unit) post,
+  Lemma go_loadByte: forall (initialL: RiscvMachineL) kind addr (v: w8) (f: w8 -> M unit) post,
       Memory.loadByte initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Machine.loadByte kind addr) f) initialL post.
   Proof. t spec_loadByte. Qed.
 
-  Lemma go_loadHalf: forall initialL kind addr (v: w16) (f: w16 -> M unit) post,
+  Lemma go_loadHalf: forall (initialL: RiscvMachineL) kind addr (v: w16) (f: w16 -> M unit) post,
       Memory.loadHalf initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Machine.loadHalf kind addr) f) initialL post.
   Proof. t spec_loadHalf. Qed.
 
-  Lemma go_loadWord: forall initialL kind addr (v: w32) (f: w32 -> M unit) post,
+  Lemma go_loadWord: forall (initialL: RiscvMachineL) kind addr (v: w32) (f: w32 -> M unit) post,
       Memory.loadWord initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Machine.loadWord kind addr) f) initialL post.
   Proof. t spec_loadWord. Qed.
 
-  Lemma go_loadDouble: forall initialL kind addr (v: w64) (f: w64 -> M unit) post,
+  Lemma go_loadDouble: forall (initialL: RiscvMachineL) kind addr (v: w64) (f: w64 -> M unit) post,
       Memory.loadDouble initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Machine.loadDouble kind addr) f) initialL post.
   Proof. t spec_loadDouble. Qed.
 
-  Lemma go_storeByte: forall initialL kind addr v m' post (f: unit -> M unit),
+  Lemma go_storeByte: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeByte initialL.(getMem) addr v = Some m' ->
         mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
         mcomp_sat (Bind (Machine.storeByte kind addr v) f) initialL post.
   Proof. t spec_storeByte. Qed.
 
-  Lemma go_storeHalf: forall initialL kind addr v m' post (f: unit -> M unit),
+  Lemma go_storeHalf: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeHalf initialL.(getMem) addr v = Some m' ->
         mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
         mcomp_sat (Bind (Machine.storeHalf kind addr v) f) initialL post.
   Proof. t spec_storeHalf. Qed.
 
-  Lemma go_storeWord: forall initialL kind addr v m' post (f: unit -> M unit),
+  Lemma go_storeWord: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeWord initialL.(getMem) addr v = Some m' ->
         mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
         mcomp_sat (Bind (Machine.storeWord kind addr v) f) initialL post.
   Proof. t spec_storeWord. Qed.
 
-  Lemma go_storeDouble: forall initialL kind addr v m' post (f: unit -> M unit),
+  Lemma go_storeDouble: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeDouble initialL.(getMem) addr v = Some m' ->
         mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
         mcomp_sat (Bind (Machine.storeDouble kind addr v) f) initialL post.
   Proof. t spec_storeDouble. Qed.
 
-  Lemma go_getPC: forall initialL (f: word -> M unit) post,
+  Lemma go_getPC: forall (initialL: RiscvMachineL) (f: word -> M unit) post,
         mcomp_sat (f initialL.(getPc)) initialL post ->
         mcomp_sat (Bind getPC f) initialL post.
   Proof. t spec_getPC. Qed.
 
-  Lemma go_setPC: forall initialL v post (f: unit -> M unit),
+  Lemma go_setPC: forall (initialL: RiscvMachineL) v post (f: unit -> M unit),
         mcomp_sat (f tt) (updateMetrics (addMetricJumps 1) (withNextPc v initialL)) post ->
         mcomp_sat (Bind (setPC v) f) initialL post.
   Proof.
@@ -150,19 +151,19 @@ Section Go.
                                                                   (withNextPc v initialL))).
   Qed.
 
-  Lemma go_step: forall initialL (post: RiscvMachineL -> Prop),
+  Lemma go_step: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
       post (updateMetrics (addMetricInstructions 1)
                           (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))
                        (withPc initialL.(getNextPc) initialL))) ->
       mcomp_sat step initialL post.
   Proof. t spec_step. Qed.
 
-  Lemma go_done: forall initialL (post: RiscvMachineL -> Prop),
+  Lemma go_done: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
       post initialL ->
       mcomp_sat (Return tt) initialL post.
   Proof. intros. apply (spec_Return (MetricPrimitives := PR)). exact H. Qed.
 
-  Lemma go_left_identity{A: Type}: forall initialL post a
+  Lemma go_left_identity{A: Type}: forall (initialL: RiscvMachineL) post a
          (f : A -> M unit),
       mcomp_sat (f a) initialL post ->
       mcomp_sat (Bind (Return a) f) initialL post.
@@ -170,7 +171,7 @@ Section Go.
     intros. rewrite left_identity. assumption.
   Qed.
 
-  Lemma go_right_identity: forall initialL post
+  Lemma go_right_identity: forall (initialL: RiscvMachineL) post
          (m: M unit),
       mcomp_sat m initialL post ->
       mcomp_sat (Bind m Return) initialL post.
@@ -178,7 +179,7 @@ Section Go.
     intros. rewrite right_identity. assumption.
   Qed.
 
-  Lemma go_associativity{A B: Type}: forall initialL post
+  Lemma go_associativity{A B: Type}: forall (initialL: RiscvMachineL) post
          (m: M A)
          (f : A -> M B) (g : B -> M unit),
       mcomp_sat (Bind m (fun x : A => Bind (f x) g)) initialL post ->
@@ -193,7 +194,7 @@ Section Go.
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
 
-  Lemma go_fetch_inst: forall {inst initialL pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
+  Lemma go_fetch_inst: forall {initialL : RiscvMachineL} {inst pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
       (program pc0 [inst] * R)%sep initialL.(getMem) ->
       verify inst iset ->

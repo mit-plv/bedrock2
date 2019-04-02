@@ -661,7 +661,7 @@ Section FlatToRiscv1.
 
   Ltac simulate'' := repeat simulate''_step.
 
-  Lemma go_load: forall sz x a (addr v: word) initialL post f,
+  Lemma go_load: forall sz x a (addr v: word) (initialL: RiscvMachineL) post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) a = Some addr ->
@@ -688,7 +688,7 @@ Section FlatToRiscv1.
           try eassumption].
   Qed.
 
-  Lemma go_store: forall sz x a (addr v: word) initialL m' post f,
+  Lemma go_store: forall sz x a (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) x = Some v ->
@@ -954,7 +954,7 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
-  Lemma compile_lit_large_correct: forall initialL post x v R d,
+  Lemma compile_lit_large_correct: forall (initialL: RiscvMachineL) post x v R d,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       d = mul (word.of_Z 4) (word.of_Z (Zlength (compile_lit_large x v))) ->
       (program initialL.(getPc) (compile_lit_large x v) * R)%sep initialL.(getMem) ->
@@ -1033,7 +1033,7 @@ Section FlatToRiscv1.
       + solve_word_eq word_ok.
   Qed.*) Admitted.
 
-  Lemma compile_lit_correct_full: forall initialL post x v R,
+  Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
       let insts := compile_stmt (SLit x v) in
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
@@ -1158,7 +1158,7 @@ Section FlatToRiscv1.
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
     eval_stmt s t initialMH initialRegsH initialMetricsH postH ->
-    forall R initialL insts,
+    forall R (initialL: RiscvMachineL) insts,
     @compile_stmt def_params s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->

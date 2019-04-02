@@ -86,6 +86,8 @@ Section Pipeline1.
   Context {p: parameters}.
   Context {h: assumptions}.
 
+  Local Notation RiscvMachineL := (MetricRiscvMachine Register _).
+
   Definition funname := Empty_set.
   Definition iset := if width =? 32 then RV32IM else RV64IM.
 
@@ -158,7 +160,7 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH mcH mcH' t instsL initialL (post: trace -> Prop),
+  Lemma exprImp2Riscv_correct: forall sH mH mcH mcH' t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       exprImp2Riscv sH = instsL ->
