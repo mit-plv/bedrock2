@@ -125,10 +125,12 @@ Section MMIO1.
   }.
 
   (* Using the memory layout of FE310-G000 *)
+  Definition isOTP  (addr: word): Prop := Ox"00020000" <= word.unsigned addr < Ox"00022000".
+  Definition isPRCI (addr: word): Prop := Ox"10008000" <= word.unsigned addr < Ox"10010000".
   Definition isGPIO0(addr: word): Prop := Ox"10012000" <= word.unsigned addr < Ox"10013000".
-  Definition isQSPI1(addr: word): Prop := Ox"10024000" <= word.unsigned addr < Ox"10025000".
+  Definition isUART0(addr: word): Prop := Ox"10013000" <= word.unsigned addr < Ox"10014000".
   Definition isMMIOAddr(addr: word): Prop :=
-    word.unsigned addr mod 4 = 0 /\ (isGPIO0 addr \/ isQSPI1 addr).
+    word.unsigned addr mod 4 = 0 /\ (isOTP addr \/ isPRCI addr \/ isGPIO0 addr \/ isUART0 addr).
 
   Lemma load4bytes_in_MMIO_is_None: forall (m: mem) (addr: word),
       map.undef_on m isMMIOAddr ->
@@ -198,7 +200,38 @@ Section MMIO1.
   Lemma real_ext_spec_implies_simple_ext_spec: forall t m a args post,
       real_ext_spec t m a args post ->
       simple_ext_spec t m a args post.
-  Admitted.
+  Proof.
+    unfold real_ext_spec, simple_ext_spec.
+    intros.
+    simp.
+    unfold
+      FE310CompilerDemo.otp_base,
+      FE310CompilerDemo.otp_pastend,
+      FE310CompilerDemo.hfrosccfg,
+      FE310CompilerDemo.gpio0_base,
+      FE310CompilerDemo.gpio0_pastend,
+      FE310CompilerDemo.uart0_base,
+      FE310CompilerDemo.uart0_pastend,
+      FE310CompilerDemo.uart0_rxdata,
+      FE310CompilerDemo.uart0_txdata in *.
+    repeat (destruct_one_match_hyp; simp; try contradiction);
+      repeat ((destruct args; simpl in *; try discriminate); []);
+      simp;
+      repeat split;
+      eauto;
+      unfold isOTP, isPRCI, isGPIO0, isUART0;
+      repeat match goal with
+             | H: (_ =? _) = true |- _ => apply Z.eqb_eq in H; rewrite ?H
+             | H: (_ =? _) = false |- _ => apply Z.eqb_neq in H
+             | H: (_ && _)%bool = true |- _ => apply andb_prop in H; destruct H
+             | H: (_ && _)%bool = false |- _ => apply Bool.andb_false_iff in H; destruct H
+             | H: (_ <? _) = true |- _ => apply Z.ltb_lt in H
+             | H: (_ <? _) = false |- _ => apply Z.ltb_ge in H
+             | H: (_ <=? _) = true |- _ => apply Z.leb_le in H
+             | H: (_ <=? _) = false |- _ => apply Z.leb_gt in H
+             end;
+      try solve [ hex_csts_to_dec; lia ].
+  Qed.
 
   Instance mmio_semantics_params: Semantics.parameters := {|
     Semantics.syntax := mmio_syntax_params;

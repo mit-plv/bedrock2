@@ -185,7 +185,7 @@ Proof.
   - apply undef_on_unchecked_store_byte_list.
   - unfold PropSet.subset, PropSet.elem_of.
     intros addr El. unfold isMMIOAddr in El. destruct El as [El1 El2].
-    cbv [isGPIO0 isQSPI1] in *.
+    cbv [isOTP isPRCI isGPIO0 isUART0] in *.
     split.
     + intro C. rewrite <- C in *. unfold imemStart in *. cbv in El2. intuition congruence.
     + rewrite Zlength_length.
@@ -201,10 +201,7 @@ Proof.
       match goal with
       | |- (_ - ?a) mod _ + _ < _ => replace a with addr'
       end.
-      repeat so fun hyporgoal => match hyporgoal with
-                                 | context [Ox ?y] => let y' := eval cbv in (Ox y) in
-                                                          change (Ox y) with y' in *
-                                 end.
+      hex_csts_to_dec.
       rewrite Z.mod_small; lia.
 Qed.
 
