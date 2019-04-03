@@ -931,24 +931,64 @@ Section FlatToRiscv1.
   Arguments compile_store: simpl never.
   Arguments compile_load: simpl never.
 
+  Ltac simpl_program_sep H :=
+    unfold program in H;
+    repeat match type of H with
+           | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+             seprewrite0_in (array_cons PT SZ x xs start) H
+        (*
+           | H: _ ?m |- _ ?m => progress (simpl in * (* does array_cons *))
+           | H: context [array _ _ ?addr1 ?content] |- context [array _ _ ?addr2 ?content] =>
+             progress replace addr1 with addr2 in H by ring;
+               ring_simplify addr2;
+               ring_simplify addr2 in H
+           (* just unprotected seprewrite will instantiate evars in undesired ways *)
+           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             seprewrite0 (array_append_DEPRECATED PT SZ xs ys start)
+*)
+           | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             seprewrite0_in (array_append_DEPRECATED PT SZ xs ys start) H
+           end.
+
+  Require Import Coq.Classes.Morphisms.
+
+  Definition holds(P: mem -> Prop)(m: mem): Prop := P m.
+  Instance holds_Proper: Proper (iff1 ==> eq ==> iff) holds.
+  Proof.
+    unfold Proper, iff1, iff, holds, respectful.
+    generalize (@map.rep _ _ (@mem p)).
+    clear.
+    firstorder congruence.
+  Qed.
+
+  Axiom TODO: False.
+
+  Definition ll_regs: PropSet.set Register :=
+    PropSet.union (PropSet.singleton_set RegisterNames.sp)
+                  (PropSet.singleton_set RegisterNames.ra).
+
   Lemma compile_function_correct:
     forall f useargs useresults t initialMH initialRegsH postH,
     eval_stmt (SCall useresults f useargs) t initialMH initialRegsH postH ->
-    forall R initialL insts e pos body defargs defresults,
+    forall R initialL insts e pos body defargs defresults p_ra p_sp,
     @compile_function def_params fun_pos_env e pos (defargs, defresults, body) = insts ->
     stmt_not_too_big body ->
     valid_registers body ->
     divisibleBy4 initialL.(getPc) ->
-    initialL.(getRegs) = initialRegsH ->
+    map.undef_on initialRegsH ll_regs ->
+    map.only_differ initialL.(getRegs) ll_regs initialRegsH ->
+    map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
+    map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
     (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
-    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
     ext_guarantee initialL ->
     runsTo initialL (fun finalL => exists finalMH,
-          postH finalL.(getLog) finalMH finalL.(getRegs) /\
+          postH finalL.(getLog) finalMH (map.remove (map.remove finalL.(getRegs)
+                                               RegisterNames.sp) RegisterNames.ra) /\
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
-          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          finalL.(getPc) = add initialL.(getPc) (mul (word.of_Z 4) (word.of_Z (Zlength insts))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (word.of_Z 4) /\
           ext_guarantee finalL).
   Proof.
     intros.
@@ -956,8 +996,33 @@ Section FlatToRiscv1.
            | m: _ |- _ => destruct_RiscvMachine m
            end.
     simpl in *.
+    assert (valid_instructions EmitsValid.iset insts) by case TODO.
+    assert (valid_register RegisterNames.sp). {
+      cbv. auto.
+    }
+    assert (valid_register RegisterNames.ra). {
+      cbv. auto.
+    }
     subst.
-    simp.
+
+    match goal with
+    | H: ?P ?m |- _ => change (holds P m) in H; rename H into Q
+    end.
+    unfold program in Q.
+    simpl in Q.
+    repeat match type of Q with
+    | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+      let Hrw := constr:(array_append_DEPRECATED PT SZ xs ys start) in
+      rewrite Hrw in Q
+    end.
+    unfold holds in Q.
+
+    (* decrease sp *)
+    run1det.
+
+    (* save ra on stack *)
+    eapply runsToStep. {
+      eapply run_compile_store; sidecondition.
   Abort.
 
 End FlatToRiscv1.
