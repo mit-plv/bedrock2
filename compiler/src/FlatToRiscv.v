@@ -44,6 +44,7 @@ Require coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Z.bitblast.
 Require Import riscv.Utility.prove_Zeq_bitwise.
 Require Import compiler.RunInstruction.
+Require Import compiler.DivisibleBy4.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -203,8 +204,6 @@ Section FlatToRiscv1.
   Arguments Z.add: simpl never.
   Arguments run1: simpl never.
 
-  Definition divisibleBy4(x: word): Prop := (word.unsigned x) mod 4 = 0.
-
   Definition divisibleBy4'(x: word): Prop := word.modu x (word.of_Z 4) = word.of_Z 0.
 
   Lemma four_fits: 4 < 2 ^ width.
@@ -226,38 +225,6 @@ Section FlatToRiscv1.
     rewrite H.
     div4_sidecondition.
   Qed.
-
-  Lemma unsigned_of_Z_4: word.unsigned (word.of_Z (word := word) 4) = 4.
-  Proof. div4_sidecondition. Qed.
-
-  Lemma unsigned_of_Z_0: word.unsigned (word.of_Z (word := word) 0) = 0.
-  Proof. div4_sidecondition. Qed.
-
-  Lemma divisibleBy4_add_4_r(x: word)
-    (D: divisibleBy4 x):
-    divisibleBy4 (word.add x (word.of_Z 4)).
-  Proof.
-    unfold divisibleBy4 in *.
-    rewrite word.unsigned_add.
-    rewrite <- Znumtheory.Zmod_div_mod.
-    - rewrite Zplus_mod. rewrite D. rewrite unsigned_of_Z_4. reflexivity.
-    - lia.
-    - destruct width_cases as [C | C]; rewrite C; reflexivity.
-    - unfold Z.divide. exists (2 ^ width / 4).
-      destruct width_cases as [C | C]; rewrite C; reflexivity.
-  Qed.
-
-  Lemma divisibleBy4_admit(x y: word):
-    divisibleBy4 x ->
-    divisibleBy4 y.
-  Admitted.
-
-  Ltac solve_divisibleBy4 :=
-    lazymatch goal with
-    | |- divisibleBy4 _ => idtac
-    | |- _ => fail "not a divisibleBy4 goal"
-    end;
-    solve [eapply divisibleBy4_admit; eassumption (* TODO *) ].
 
   Ltac simpl_modu4_0 :=
     simpl;
@@ -753,15 +720,14 @@ Section FlatToRiscv1.
 
   Ltac IH_sidecondition :=
     simpl_word_exprs (@word_ok (@W (@def_params p)));
-    first
+    try solve
       [ reflexivity
-      | solve [auto]
+      | auto
       | solve_stmt_not_too_big
       | solve_word_eq (@word_ok (@W (@def_params p)))
-      | solve_divisibleBy4
+      | simpl; solve_divisibleBy4
       | prove_ext_guarantee
-      | pseplog
-      | idtac ].
+      | pseplog ].
 
   Arguments map.empty: simpl never.
   Arguments map.get: simpl never.
