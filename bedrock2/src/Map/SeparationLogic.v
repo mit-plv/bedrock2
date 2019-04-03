@@ -295,7 +295,9 @@ Ltac index_and_element_of xs :=
 
 Ltac find_syntactic_unify_deltavar xs y :=
   multimatch xs with
-  | cons ?x _ => constr:(ltac:(syntactic_unify_deltavar x y; exact 0%nat))
+  | cons ?x _ =>
+    let __ := match constr:(Set) with _ => syntactic_unify_deltavar x y end in
+    constr:(O)
   | cons _ ?xs => let i := find_syntactic_unify_deltavar xs y in constr:(S i)
   end.
 
@@ -395,7 +397,7 @@ Ltac seprewrite0_in Hrw H :=
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
       by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   let H' := fresh H in rename H into H';
-  pose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H')) as H;
+  epose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H')) as H;
   clear H' pf.
 
 

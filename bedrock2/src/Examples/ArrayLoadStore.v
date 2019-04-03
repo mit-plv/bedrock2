@@ -37,6 +37,18 @@ From coqutil.Tactics Require Import letexists.
 
 Import SeparationLogic Lift1Prop.
 
+  Import List.
+  Local Infix "*" := sep : type_scope.
+  Local Infix "*" := sep.
+  Local Notation "a [ i ]" := (List.hd _ (List.skipn i a)) (at level 10, left associativity, format "a [ i ]").
+  Local Notation "a [: i ]" := (List.firstn i a) (at level 10, left associativity, format "a [: i ]").
+  Local Notation "a [ i :]" := (List.skipn i a) (at level 10, left associativity, format "a [ i :]").
+  Local Notation bytes := (array ptsto (word.of_Z 1)).
+  Local Notation n_o_w x := (Z.to_nat (word.unsigned x)).
+  Local Infix "+" := word.add.
+  From coqutil.Tactics Require Import syntactic_unify.
+  From coqutil.Macros Require Import symmetry.
+
 Goal program_logic_goal_for_function! tf.
 Proof.
   repeat straightline.
@@ -46,9 +58,7 @@ Proof.
   assert (word.unsigned i < word.unsigned len) by admit.
 
   simple refine (store_one_of_sep _ _ _ _ _ _ (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H) _); shelve_unifiable.
-  1: (etransitivity; [|etransitivity]); [ |  | ].
-  2: eapply Proper_sep_iff1; [|reflexivity].
-  2: eapply array_address_inbounds.
+  1: (etransitivity; [|etransitivity]); [ | eapply Proper_sep_iff1; [|reflexivity]; eapply array_address_inbounds | ].
   5: ecancel.
   1: ecancel.
 
@@ -59,27 +69,15 @@ Proof.
 
   intros.
 
-  Import List.
-  Local Infix "*" := sep : type_scope.
-  Local Infix "*" := sep.
-  Local Notation "a [ i ]" := (List.hd _ (List.skipn i a)) (at level 10, left associativity, format "a [ i ]").
-  Local Notation "a [: i ]" := (List.firstn i a) (at level 10, left associativity, format "a [: i ]").
-  Local Notation "a [ i :]" := (List.skipn i a) (at level 10, left associativity, format "a [ i :]").
-  Local Notation bytes := (array ptsto (word.of_Z 1)).
-  Local Notation n_o_w x := (Z.to_nat (word.unsigned x)).
-  Local Infix "+" := word.add.
-
-  From coqutil.Macros Require Import symmetry.
   seprewrite_in (symmetry! @array_cons) H3.
   replace (word.add buf i)
-     with (buf +
-             word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat (Datatypes.length (bs[:n_o_w i])))) in H3 by admit.
+     with (buf + word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat (Datatypes.length (bs[:n_o_w i])))) in H3
+       by admit.
   seprewrite_in (symmetry! @array_append) H3.
 
-  letexists. split.
-  1: repeat straightline.
-  split.
-  2: repeat straightline.
+  letexists.
+  split; [solve[repeat straightline]|].
+  split; [|solve [repeat straightline]].
 
   repeat straightline.
 
@@ -90,32 +88,13 @@ Proof.
     letexists; split. {
       eapply load_one_of_sep.
       simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H3).
-      1: (etransitivity; [|etransitivity]); [ |  | ].
-      2: eapply Proper_sep_iff1; [|reflexivity].
-      2: eapply array_address_inbounds.
-      5: {
-        reify_goal.
-        let j := open_constr:(0%nat) in
-        let i := open_constr:(1%nat) in
-        simple refine (@cancel_seps_at_indices _ _ _ _ i j _ _ _ _);
-          cbn[firstn skipn app hd tl].
-        1: {
-          let pf := open_constr:((@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)) in
-          (* exact pf. (* FAILS *) *)
-          let G := match goal with |- ?G => G end in
-          let T := type of pf in
-          let __ := open_constr:(eq_refl : T = G) in
-          exact pf. (* succeeds *)
-          (* unify T G. *)
-          (* pose proof (eq_refl : T = G). *)
-        } 
-        1: ecancel.
-      } 
+      (etransitivity; [|etransitivity]); [ | eapply Proper_sep_iff1; [|reflexivity]; eapply array_address_inbounds | ].
+      5: ecancel.
       1: ecancel.
   all: change (word.unsigned (word.of_Z 1)) with 1 in *.
   all: rewrite ?Z.mul_1_l, ?Z.mod_1_r, ?Z.div_1_r; trivial.
   all: unshelve erewrite (_ : forall x y, word.sub (word.add x y) x = y) in *; [admit|].
-  1: admit. (* length_set_nth *)
+  admit. (* length_set_nth *)
   } 
   1: subst v2.
   refine eq_refl.
