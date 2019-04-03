@@ -10,10 +10,12 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.Primitives.
 Require Import compiler.util.Tactics.
 Require Import riscv.Utility.Tactics.
+Require Import riscv.Utility.Utility.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvDef. Import FlatToRiscvDef.
 Require Import riscv.Utility.ListLib.
 Require Import riscv.Platform.Memory.
+Require Import riscv.Utility.prove_Zeq_bitwise.
 
 Local Open Scope Z_scope.
 
@@ -276,91 +278,19 @@ Section EmitsValid.
   Arguments Z.pow: simpl never.
   Arguments Z.add: simpl never.
 
-  Lemma compile_lit_small_emits_valid: forall r iset w,
-      -2^11 <= w < 2^11 ->
+  Lemma compile_lit_12bit_emits_valid: forall r iset w,
       valid_register r ->
       valid_instructions iset (compile_lit_12bit r w).
   Proof.
     intros. unfold compile_lit_12bit, valid_instructions.
-    intros. simpl in *. destruct H1; [subst|contradiction].
+    intros. simpl in *. destruct H0; [subst|contradiction].
     split; [|exact I]. simpl.
     autounfold with unf_verify unf_encode_consts.
     unfold Register0, valid_register in *.
+    pose proof (signExtend_range 12 w eq_refl).
     simpl_pow2.
     lia.
   Qed.
-
-  Lemma swrap_range: forall z w,
-      0 < w ->
-      -2^(w-1) <= swrap w z < 2^(w-1).
-  Proof.
-    intros. unfold swrap.
-    pose proof (Z.mod_pos_bound (z + 2 ^ (w - 1)) (2 ^ w)).
-    pose proof (Z.pow_pos_nonneg 2 w).
-    assert (2 ^ (w - 1) * 2 = 2 ^ w). {
-      replace w with (w - 1 + 1) at 2 by lia.
-      rewrite Z.pow_add_r; try reflexivity; lia.
-    }
-    lia.
-  Qed.
-
-  Lemma signExtend_range: forall i z,
-      0 < i ->
-      0 <= z < 2^i ->
-      -2^(i-1) <= signExtend i z < 2^(i-1).
-  Proof. Admitted. (*
-    intros. unfold signExtend.
-    assert (0 < 2 ^ (i - 1)). {
-      apply Z.pow_pos_nonneg; lia.
-    }
-    destruct (Z.testbit z (i - 1)) eqn: E.
-    - apply Z.testbit_true in E; [|lia].
-      rewrite Z.mod_eq in E by lia.
-      rewrite Z.div_div in E by lia.
-      replace (2 ^ (i - 1) * 2) with (2 ^ i) in E; cycle 1. {
-        replace i with (i - 1 + 1) at 1 by lia.
-        rewrite Z.pow_add_r; try reflexivity; lia.
-      }
-      replace (z / 2 ^ i) with 0 in E; cycle 1. {
-        symmetry. apply Z.div_small. lia.
-      }
-      assert (z / 2 ^ (i - 1) = 1) as E' by lia. clear E. rename E' into E.
-      assert (~ z < 2 ^ (i - 1)). {
-        intro C.
-        pose proof (Z.div_small z (2 ^ (i - 1))) as D.
-        lia.
-      }
-      replace (Z.setbit 0 i) with (2 ^ i); cycle 1. {
-        rewrite Z.setbit_spec'.
-        rewrite Z.lor_0_l.
-        reflexivity.
-      }
-      replace (2 ^ i) with (2 ^ (i - 1) * 2) in *; cycle 1. {
-        replace i with (i - 1 + 1) at 2 by lia.
-        rewrite Z.pow_add_r; try reflexivity; lia.
-      }
-      lia.
-    - apply Z.testbit_false in E; [|lia].
-      rewrite Z.mod_eq in E by lia.
-      rewrite Z.div_div in E by lia.
-      replace (2 ^ (i - 1) * 2) with (2 ^ i) in E; cycle 1. {
-        replace i with (i - 1 + 1) at 1 by lia.
-        rewrite Z.pow_add_r; try reflexivity; lia.
-      }
-      replace (z / 2 ^ i) with 0 in E; cycle 1. {
-        symmetry. apply Z.div_small. lia.
-      }
-      assert (z / 2 ^ (i - 1) = 0) as E' by lia. clear E. rename E' into E.
-      assert (z < 2 ^ (i - 1)). {
-        epose proof (Z.div_small_iff _ _ _) as P. destruct P as [P _].
-        specialize (P E).
-        lia.
-      }
-      lia.
-      Unshelve.
-      lia.
-  Qed.
-*)
 
   Lemma remove_lobits: forall v i,
       0 <= i ->
@@ -377,56 +307,34 @@ Section EmitsValid.
   Qed.
 
   Lemma compile_lit_32bit_emits_valid: forall r v iset,
-      -2^31 <= v < 2^31 ->
       valid_register r ->
       valid_instructions iset (compile_lit_32bit r v).
-  Proof. Admitted. (*
+  Proof.
     intros. unfold compile_lit_32bit, valid_instructions.
-    intros. simpl in *.
-    pose proof (@swrap_range (v - signExtend 12 (bitSlice v 0 12)) 32 eq_refl) as P1.
-    pose proof (bitSlice_range 12 v) as P2.
-    pose proof (@signExtend_range 12 (bitSlice v 0 12) eq_refl) as P3.
-    assert (swrap 32 (v - signExtend 12 (bitSlice v 0 12)) mod (2 ^ 12) = 0) as P4. {
-      unfold swrap.
-      simpl.
-      rewrite Zminus_mod.
-      rewrite <- Znumtheory.Zmod_div_mod; try reflexivity; cycle 1. {
-        unfold Z.divide. exists (2 ^ 20). reflexivity.
-      }
-      rewrite (Znumtheory.Zdivide_mod (2 ^ 31) (2 ^ 12)); cycle 1. {
-        unfold Z.divide. exists (2 ^ 19). reflexivity.
-      }
-      rewrite Z.sub_0_r.
-      rewrite Z.mod_mod by lia.
-      rewrite Zplus_mod.
-      rewrite (Znumtheory.Zdivide_mod (2 ^ 31) (2 ^ 12)); cycle 1. {
-        unfold Z.divide. exists (2 ^ 19). reflexivity.
-      }
-      rewrite Z.add_0_r.
-      rewrite Z.mod_mod by lia.
-      rewrite signExtend_alt by reflexivity.
-      unfold signExtend'.
-      rewrite Zminus_mod.
-      rewrite (Zminus_mod (bitSlice v 0 12) ((bitSlice v 0 12 / 2 ^ (12 - 1)) mod 2 * 2 ^ 12)).
-      rewrite Z_mod_mult.
-      rewrite Z.sub_0_r.
-      rewrite Z.mod_mod by lia.
-      rewrite <- Zminus_mod.
-      rewrite bitSlice_alt by lia.
-      unfold bitSlice'. simpl.
-      change (2 ^ 0) with 1.
-      rewrite Z.div_1_r.
-      rewrite Zminus_mod_idemp_r.
-      rewrite Z.sub_diag.
-      reflexivity.
+    intros instr HIn. simpl in HIn.
+    assert (- 2 ^ 31 <= Z.lxor (signExtend 32 v) (signExtend 12 v) < 2 ^ 31) as P1. {
+      match goal with
+      | |- _ <= ?x < _ => replace x with (signExtend 32 x)
+      end.
+      - change 31 with (32 - 1). apply signExtend_range. reflexivity.
+      - clear -H.
+        prove_Zeq_bitwise.
     }
-    destruct H1 as [ ? | [? | ?] ]; [subst..|contradiction];
+    assert (Z.lxor (signExtend 32 v) (signExtend 12 v) mod 2 ^ 12 = 0) as P2. {
+      rewrite <- Z.land_ones by lia.
+      rewrite signExtend_alt_bitwise by lia. unfold signExtend_bitwise.
+      prove_Zeq_bitwise.
+    }
+    assert (- 2 ^ 11 <= signExtend 12 v < 2 ^ 11) as P3. {
+      change 11 with (12 - 1). apply signExtend_range. reflexivity.
+    }
+    destruct HIn as [ ? | [? | ?] ]; [subst..|contradiction];
       (split; [|exact I]); simpl;
         autounfold with unf_verify unf_encode_consts;
         unfold Register0, valid_register in *;
         simpl_pow2;
-        omega. (* TODO PARAMRECORDS? lia doesn't work *)
-  Qed. *)
+        lia.
+  Qed.
 
   Lemma valid_Slli: forall rd rs shamt iset,
       0 <= shamt < 32 ->
@@ -475,49 +383,61 @@ Section EmitsValid.
     lia.
   Qed.
 
+  Lemma valid_Xori_bitSlice: forall rd rs w i j iset,
+      0 <= i <= j ->
+      j - i <= 11 ->
+      valid_register rd ->
+      valid_register rs ->
+      verify (IInstruction (Xori rd rs (bitSlice w i j))) iset.
+  Proof.
+    intros.
+    assert (- 2 ^ 11 <= bitSlice w i j < 2 ^ 11). {
+      rewrite bitSlice_alt by assumption.
+      unfold bitSlice'.
+      assert (2 ^ (j - i) <> 0) as A. {
+        apply Z.pow_nonzero; lia.
+      }
+      pose proof (Z.mod_bound_or (w / 2 ^ i) (2 ^ (j - i)) A) as P.
+      assert (0 < 2 ^ 11) by reflexivity.
+      assert (0 < 2 ^ (j - i)). {
+        apply Z.pow_pos_nonneg; lia.
+      }
+      assert (2 ^ (j - i) <= 2 ^ 11) as B. {
+        apply Z.pow_le_mono_r; lia.
+      }
+      lia.
+    }
+    unfold verify, valid_register in *;
+    simpl;
+    autounfold with unf_encode_consts unf_verify;
+    unfold Register0 in *;
+    destruct iset;
+    lia.
+  Qed.
+
   Lemma compile_lit_64bit_emits_valid: forall r w iset,
-      0 <= w < 2^64 ->
       valid_register r ->
       valid_instructions iset (compile_lit_64bit r w).
   Proof.
     intros. unfold compile_lit_64bit, valid_instructions.
-    intros. apply in_app_or in H1. destruct H1. {
+    intros. apply in_app_or in H0. destruct H0. {
       eapply compile_lit_32bit_emits_valid; try eassumption.
-      change 31 with (32 - 1).
-      eapply signExtend_range; [reflexivity|].
-      change 32 with (64 - 32) at 3.
-      apply bitSlice_bounds.
-      lia.
     }
     simpl in *.
-    repeat destruct H1 as [H1 | H1]; [subst instr..|contradiction];
-      (eapply valid_Addi_bitSlice || eapply valid_Slli); try eassumption; try lia.
+    repeat destruct H0 as [H0 | H0]; [subst instr..|contradiction];
+      (eapply valid_Xori_bitSlice || eapply valid_Slli); try eassumption; try lia.
   Qed.
 
-  Lemma compile_lit_large_emits_valid: forall r w iset,
+  Lemma compile_lit_emits_valid: forall r w iset,
       valid_register r ->
-      valid_instructions iset (compile_lit_large r w).
-  Proof.
-    unfold compile_lit_large; intros.
-    destruct_one_match.
-    - eapply compile_lit_32bit_emits_valid; try eassumption.
-      change 31 with (32 - 1). (*
-      apply swrap_range.
-      reflexivity.
-    - eapply compile_lit_64bit_emits_valid; try eassumption.
-      apply Z.mod_pos_bound. reflexivity.
-  Qed.*) Admitted.
-
-  Global Arguments compile_lit_large_emits_valid : clear implicits.
-
-  Lemma compile_lit_new_emits_valid: forall r w iset,
-      valid_register r ->
-      valid_instructions iset (compile_lit_new r w).
+      valid_instructions iset (compile_lit r w).
   Proof.
     intros.
-    unfold compile_lit_new in *.
-    destruct_one_match;
-    eauto using compile_lit_small_emits_valid, compile_lit_large_emits_valid.
+    unfold compile_lit.
+    repeat (destruct_one_match ||
+            eauto using compile_lit_12bit_emits_valid,
+                        compile_lit_32bit_emits_valid,
+                        compile_lit_64bit_emits_valid).
   Qed.
 
   Lemma compile_op_emits_valid: forall iset x op y z,
@@ -607,19 +527,25 @@ Section EmitsValid.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
-  Lemma compile_lit_new_size: forall x v,
-      0 <= Zlength (compile_lit_new x v) <= 15.
-  Admitted.
+  Lemma compile_lit_size: forall x v,
+      0 <= Zlength (compile_lit x v) <= 8.
+  Proof.
+    intros. unfold compile_lit, compile_lit_64bit, compile_lit_32bit, compile_lit_12bit.
+    repeat destruct_one_match; cbv; split; discriminate.
+  Qed.
 
   Lemma compile_stmt_size: forall s,
     0 <= Zlength (compile_stmt s) <= stmt_size s.
   Proof.
-    induction s; simpl; try apply compile_lit_new_size;
+    induction s; simpl; try apply compile_lit_size;
       try destruct op; try solve [destruct f]; simpl;
       repeat (autorewrite with rew_Zlength || simpl in *); try lia.
     pose proof (Zlength_nonneg (compile_ext_call binds a args)).
     pose proof (compile_ext_call_length binds a args).
-    lia.
+    (* COQBUG *)
+    tryif lia
+    then idtac
+    else (idtac "compile_stmt_size: lia should not have failed!"; split; lia).
   Qed.
 
   Lemma compile_stmt_emits_valid: forall s,
@@ -631,7 +557,7 @@ Section EmitsValid.
     induction s; intros; simpl in *; intuition (
       auto using compile_load_emits_valid,
                  compile_store_emits_valid,
-                 compile_lit_new_emits_valid,
+                 compile_lit_emits_valid,
                  compile_op_emits_valid,
                  compile_ext_call_emits_valid
     );

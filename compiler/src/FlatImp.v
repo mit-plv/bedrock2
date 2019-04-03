@@ -1,5 +1,6 @@
 Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
+Require Import Coq.Lists.List. Import ListNotations.
 Require Import lib.LibTacticsMin.
 Require Import riscv.Utility.ListLib.
 Require Import riscv.Platform.MetricLogging.
@@ -14,6 +15,7 @@ Require Import bedrock2.Syntax.
 Require Import Coq.micromega.Lia.
 Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
+Require Import compiler.util.ListLib.
 
 Local Set Ltac Profiling.
 
@@ -49,23 +51,15 @@ Section Syntax.
 End Syntax.
 
 
-Module Import FlatImpSize.
-  Class parameters := {
-    bopname_params :> Syntax.parameters;
-    max_ext_call_code_size: actname -> Z;
-    max_ext_call_code_size_nonneg: forall a, 0 <= max_ext_call_code_size a;
-  }.
-End FlatImpSize.
-
 Section FlatImpSize1.
 
-  Context {p: unique! FlatImpSize.parameters}.
+  Context {p: unique! Syntax.parameters}.
 
   Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
     match s with
     | SLoad sz x a => 1
     | SStore sz a v => 1
-    | SLit x v => 15
+    | SLit x v => 8
     | SOp x op y z => 2
     | SSet x y => 1
     | SIf cond bThen bElse => 1 + (rec bThen) + 1 + (rec bElse)
@@ -73,7 +67,7 @@ Section FlatImpSize1.
     | SSeq s1 s2 => (rec s1) + (rec s2)
     | SSkip => 0
     | SCall binds f args => 1000 (* TODO not sure how much register saving will cost etc *)
-    | SInteract binds f args => max_ext_call_code_size f
+    | SInteract binds f args => 7 (* TODO don't hardcode a magic number *)
     end.
 
   Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
@@ -85,8 +79,16 @@ Section FlatImpSize1.
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.
     induction s; simpl; try omega.
-    apply max_ext_call_code_size_nonneg.
   Qed.
+
+  Fixpoint modVars_as_list{veq: DecidableEq varname}(s: stmt): list varname :=
+    match s with
+    | SSkip | SStore _ _ _ => []
+    | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ => [x]
+    | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 =>
+        list_union (modVars_as_list s1) (modVars_as_list s2)
+    | SCall binds _ _ | SInteract binds _ _ => binds
+    end.
 
 End FlatImpSize1.
 
@@ -307,6 +309,7 @@ End FlatImp1.
 Module exec.
   Section FlatImpExec.
     Context {pp : unique! Semantics.parameters}.
+    Context {ok : Semantics.parameters_ok pp}.
     Variable (e: env).
 
     Local Notation metrics := MetricLog.
@@ -360,8 +363,8 @@ Module exec.
         exec (SStore sz a v) t m l mc post
     | lit: forall t m l mc x v post,
         post t m (map.put l x (word.of_Z v))
-             (addMetricLoads 2
-             (addMetricInstructions 2 mc)) ->
+             (addMetricLoads 8
+             (addMetricInstructions 8 mc)) ->
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
@@ -462,22 +465,15 @@ Module exec.
              end;
       simp.
 
-    (* TODO is this the canconical form to impose as a requirement?
-       Or should we impose post1 <-> post2, or something else? *)
-    Axiom ext_spec_intersect: forall t mGive1 mGive2 a args (post1 post2: mem -> list word -> Prop),
-      ext_spec t mGive1 a args post1 ->
-      ext_spec t mGive2 a args post2 ->
-      mGive1 = mGive2 /\ (* TODO will this be provable? *)
-      ext_spec t mGive1 a args (fun mReceive resvals => post1 mReceive resvals /\
-                                                        post2 mReceive resvals).
-
-    Lemma map_split_diff: forall {m m1 m2 m3: mem},
-        map.split m m2 m1 ->
-        map.split m m3 m1 ->
-        m2 = m3.
+    Lemma map_split_diff: forall {m m1 m2 m3 m4: mem},
+        map.same_domain m2 m4 ->
+        map.split m m1 m2 ->
+        map.split m m3 m4 ->
+        m1 = m3 /\ m2 = m4.
     Proof.
-      unfold map.split.
-      intros *. intros [? ?] [? ?].
+      intros. split.
+      - apply map.map_ext.
+        intro k.
     Admitted.
 
     Lemma map_split_det: forall {m m' m1 m2: mem},
@@ -505,19 +501,19 @@ Module exec.
         try solve [econstructor; eauto | exfalso; congruence].
 
       - (* SInteract *)
-        pose proof ext_spec_intersect as P.
-        specialize P with (1 := H1) (2 := H14). destruct P as [? P]. subst mGive0.
-        pose proof (map_split_diff H H7). subst mKeep0. clear H7.
+        pose proof ext_spec.unique_mGive_footprint as P.
+        specialize P with (1 := H1) (2 := H14).
+        destruct (map_split_diff P H H7). subst mKeep0 mGive0.
         eapply @interact.
         + eassumption.
         + eassumption.
-        + eapply ext_spec_intersect; [ exact H1 | exact H14 ].
+        + eapply ext_spec.intersect; [exact H1|exact H14].
         + simpl. intros. simp.
           edestruct H2 as (? & ? & ?); [eassumption|].
           edestruct H15 as (? & ? & ?); [eassumption|].
           simp.
           equalities.
-          pose proof (map_split_det H8 H6). subst.
+          pose proof (map_split_det H6 H9). subst.
           eauto 10.
 
       - (* SCall *)
@@ -591,8 +587,7 @@ Ltac invert_eval_stmt :=
 
 Section FlatImp2.
   Context {pp : unique! Semantics.parameters}.
-  Context {locals_ok: map.ok locals}.
-  Context {varname_eq_dec: DecidableEq varname}.
+  Context {ok : Semantics.parameters_ok pp}.
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 e initialSt initialM s final,
     (fuel1 <= fuel2)%nat ->
@@ -706,7 +701,6 @@ Module Import FlatImpSemanticsEquiv.
   }.
 
   Instance to_FlatImp_params(p: parameters): FlatImp.parameters := {|
-    FlatImp.max_ext_call_code_size _ := 0;
     FlatImp.ext_spec _ _ _ _ _ := False;
   |}.
 

@@ -12,8 +12,11 @@ Require Import Coq.micromega.Lia.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.ListLib.
+Require Import compiler.util.ListLib.
 Require Import riscv.Utility.Encode.
+Require Import riscv.Utility.RegisterNames.
 Require Import bedrock2.Syntax.
+Require Import coqutil.Map.Interface.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -30,9 +33,8 @@ Module Import FlatToRiscvDef.
     W :> Utility.Words;
     actname: Type;
     compile_ext_call: list Register -> actname -> list Register -> list Instruction;
-    max_ext_call_code_size: actname -> Z;
     compile_ext_call_length: forall binds f args,
-        Zlength (compile_ext_call binds f args) <= max_ext_call_code_size f;
+        Zlength (compile_ext_call binds f args) <= 7;
     (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
        be elsewhere *)
     compile_ext_call_emits_valid: forall iset binds a args,
@@ -46,19 +48,6 @@ Module Import FlatToRiscvDef.
     Syntax.funname := Empty_set;
     Syntax.actname := actname;
   |}.
-
-  Local Set Refine Instance Mode.
-
-  Instance mk_FlatImpSize_params(p: parameters): FlatImpSize.parameters := {|
-    FlatImpSize.max_ext_call_code_size := max_ext_call_code_size;
-  |}.
-  Proof.
-    abstract (
-        intros a;
-        pose proof (compile_ext_call_length [] a []);
-        pose proof (Zlength_nonneg (compile_ext_call [] a []));
-        lia).
-  Defined.
 
 End FlatToRiscvDef.
 
@@ -144,7 +133,7 @@ Section FlatToRiscv1.
     end.
 
   Definition compile_lit_12bit(rd: Register)(v: Z): list Instruction :=
-    [[ Addi rd Register0 v ]].
+    [[ Addi rd Register0 (signExtend 12 v) ]].
 
   (* On a 64bit machine, loading a constant -2^31 <= v < 2^31 is not always possible with
      a Lui followed by an Addi:
@@ -164,16 +153,9 @@ Section FlatToRiscv1.
      Lui+Addi pairs for all desired values in the range -2^31 <= v < 2^31
  *)
 
-  Definition swrap(width: Z)(z: Z): Z := (z + 2^(width-1)) mod 2^width - 2^(width-1).
-
-  Definition swrap_bitwise(width n: Z): Z :=
-    if Z.testbit n (width - 1)
-    then (Z.lor (Z.land n (Z.ones width)) (Z.shiftl (-1) width))
-    else (Z.land n (Z.ones width)).
-
   Definition compile_lit_32bit(rd: Register)(v: Z): list Instruction :=
-    let lo := swrap_bitwise 12 v in
-    let hi := Z.lxor v lo in
+    let lo := signExtend 12 v in
+    let hi := Z.lxor (signExtend 32 v) lo in
     [[ Lui rd hi ; Xori rd rd lo ]].
 
   Definition compile_lit_64bit(rd: Register)(v: Z): list Instruction :=
@@ -183,19 +165,16 @@ Section FlatToRiscv1.
     let hi := bitSlice v 32 64 in
     compile_lit_32bit rd (signExtend 32 hi) ++
     [[ Slli rd rd 10 ;
-       Addi rd rd v2 ;
+       Xori rd rd v2 ;
        Slli rd rd 11 ;
-       Addi rd rd v1 ;
+       Xori rd rd v1 ;
        Slli rd rd 11 ;
-       Addi rd rd v0 ]].
+       Xori rd rd v0 ]].
 
-  Definition compile_lit_large(rd: Register)(v: Z): list Instruction :=
-    if width =? 32 then compile_lit_32bit rd (swrap_bitwise 32 v) else
-    compile_lit_64bit rd (v mod 2 ^ 64).
-
-  Definition compile_lit_new(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
     if dec (-2^11 <= v < 2^11) then compile_lit_12bit rd v else
-    compile_lit_large rd v.
+    if dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31) then compile_lit_32bit rd v else
+    compile_lit_64bit rd v.
 
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting
@@ -214,11 +193,149 @@ Section FlatToRiscv1.
         Beq x Register0 amt
     end.
 
+  Fixpoint save_regs(regs: list Register)(offset: Z): list Instruction :=
+    match regs with
+    | nil => nil
+    | r :: regs => compile_store access_size.word sp r offset :: (save_regs regs (offset - 4))
+    end.
+
+  Fixpoint load_regs(regs: list Register)(offset: Z): list Instruction :=
+    match regs with
+    | nil => nil
+    | r :: regs => compile_load access_size.word sp r offset :: (load_regs regs (offset - 4))
+    end.
+
+  Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width access_size.word).
+
+  (* All positions are relative to the beginning of the progam, so we get completely
+     position independent code. *)
+
+  Context {fun_pos_env: map.map funname Z}.
+
+  Section WithEnv.
+    Variable e: fun_pos_env.
+
+    Definition compile_stmt_new: Z -> stmt -> list Instruction :=
+      fix compile_stmt(mypos: Z)(s: stmt) :=
+      match s with
+      | SLoad  sz x y => [[compile_load  sz x y 0]]
+      | SStore sz x y => [[compile_store sz x y 0]]
+      | SLit x v => compile_lit x v
+      | SOp x op y z => compile_op x op y z
+      | SSet x y => [[Add x Register0 y]]
+      | SIf cond bThen bElse =>
+          let bThen' := compile_stmt (mypos + 4) bThen in
+          let bElse' := compile_stmt (mypos + 4 + 4 * Z.of_nat (length bThen') + 4) bElse in
+          (* only works if branch lengths are < 2^12 *)
+          [[compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)]] ++
+          bThen' ++
+          [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
+          bElse'
+      | SLoop body1 cond body2 =>
+          let body1' := compile_stmt mypos body1 in
+          let body2' := compile_stmt (mypos + Z.of_nat (length body1') + 4) body2 in
+          (* only works if branch lengths are < 2^12 *)
+          body1' ++
+          [[compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)]] ++
+          body2' ++
+          [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
+      | SSeq s1 s2 =>
+          let s1' := compile_stmt mypos s1 in
+          let s2' := compile_stmt (mypos + 4 * Z.of_nat (length s1')) s2 in
+          s1' ++ s2'
+      | SSkip => nil
+      | SCall resvars f argvars =>
+        let fpos := match map.get e f with
+                    | Some pos => pos
+                    (* don't fail so that we can measure the size of the resulting code *)
+                    | None => 42
+                    end in
+        save_regs argvars 0 ++
+        [[ Jal ra (fpos - mypos) ]] ++
+        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars))
+      | SInteract resvars action argvars => compile_ext_call resvars action argvars
+      end.
+
+    (*
+     Stack layout:
+     high addresses   old sp --> arg0
+                                 ...
+                                 argn
+                                 ret0
+                                 ...
+                                 retn
+                                 ra
+                                 mod_var_0
+                                 ...
+                                 mod_var_n
+                      new sp --> arg0 of next function call
+     low addresses               ...
+
+     Expected stack layout at beginning of function call: like above, but only filled up to argn.
+     Stack grows towards low addresses.
+    *)
+
+    Definition compile_function(mypos: Z):
+      (list varname * list varname * stmt) -> list Instruction :=
+      fun '(argvars, resvars, body) =>
+        let mod_vars := modVars_as_list body in
+        let framelength := Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
+        let framesize := bytes_per_word * framelength in
+        let ra_offset := bytes_per_word * (1 + Z.of_nat (length mod_vars)) in
+        [[ Addi sp sp (-framesize) ]] ++
+        [[ compile_store access_size.word sp ra ra_offset ]] ++
+        save_regs mod_vars (bytes_per_word * (Z.of_nat (length mod_vars))) ++
+        load_regs argvars framesize ++
+        compile_stmt_new mypos body ++
+        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
+        load_regs mod_vars (bytes_per_word * (Z.of_nat (length mod_vars))) ++
+        [[ compile_load access_size.word ra sp ra_offset ]] ++
+        [[ Addi sp sp framesize ]] ++
+        [[ Jalr zero ra 0 ]].
+
+    Fixpoint compile_funs(pos: Z)(funs: list (funname * (list varname * list varname * stmt))):
+      list Instruction :=
+      match funs with
+      | nil => nil
+      | (fname, F) :: funs =>
+        let insts := compile_function pos F in
+        let size := 4 * Z.of_nat (length (insts)) in
+        insts ++ compile_funs (pos + size) funs
+      end.
+
+  End WithEnv.
+
+  (* compiles all functions just to obtain their code size *)
+  Fixpoint build_fun_pos_env(pos: Z)(funs: list (funname * (list varname * list varname * stmt))):
+    fun_pos_env :=
+    match funs with
+    | nil => map.empty
+    | (fname, F) :: funs =>
+      let size := 4 * Z.of_nat (length (compile_function map.empty 42 F)) in
+      map.put (build_fun_pos_env (pos + size) funs)
+              fname pos
+    end.
+
+  Definition compile_functions(funs: list (funname * (list varname * list varname * stmt))):
+    list Instruction :=
+    let e := build_fun_pos_env 0 funs in
+    compile_funs e 0 funs.
+
+  Definition compile_prog(s: stmt)(funs: list (funname * (list varname * list varname * stmt))):
+    list Instruction :=
+    let size1 := 4 * Z.of_nat (length (compile_stmt_new map.empty 42 s)) in
+    let e := build_fun_pos_env size1 funs in
+    let insts1 := compile_stmt_new e 0 s in
+    let insts2 := compile_funs e size1 funs in
+    insts1 ++ insts2.
+
+
+  (* original compile_stmt: *)
   Fixpoint compile_stmt(s: stmt): list Instruction :=
     match s with
     | SLoad  sz x y => [[compile_load  sz x y 0]]
     | SStore sz x y => [[compile_store sz x y 0]]
-    | SLit x v => compile_lit_new x v
+    | SLit x v => compile_lit x v
     | SOp x op y z => compile_op x op y z
     | SSet x y => [[Add x Register0 y]]
     | SIf cond bThen bElse =>

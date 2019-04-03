@@ -1,5 +1,6 @@
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
+Require Import coqutil.Decidable.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
 Require Import riscv.Platform.MetricLogging.
@@ -33,6 +34,62 @@ Class parameters := {
 
   ext_spec: ExtSpec;
 }.
+
+Module ext_spec.
+  Class ok{p: parameters} := {
+    (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
+    unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
+                                            (post1 post2: mem -> list word -> Prop),
+        ext_spec t1 mGive1 a args post1 ->
+        ext_spec t2 mGive2 a args post2 ->
+        map.same_domain mGive1 mGive2;
+
+    (* This one is less useful because it doesn't allow for "built-in weakining" in
+       ext_specs: Each ext_spec has to require that its post is tight,
+       i.e. it not only has to require
+       "forall mReceive resvals, possible mReceive resvals -> post my_mReceive my_resvals"
+       but also the opposite direction, which is cumbersome.
+
+       The trace of events which happened so far & the given-away memory & the action name &
+       the arguments uniquely determine the set of possible outcomes of the external call.
+       That is, the external call CAN be non-deterministic, but ext_spec must return the
+       tightest possible set of outcomes.
+    unique_post: forall t mGive a args (post1 post2: mem -> list word -> Prop),
+        ext_spec t mGive a args post1 ->
+        ext_spec t mGive a args post2 ->
+        forall mReceive resvals, post1 mReceive resvals <-> post2 mReceive resvals;
+    *)
+
+    (* Should hold, but not needed at the moment
+    weaken: forall t mGive a args (post1 post2: mem -> list word -> Prop),
+        ext_spec t mGive a args post1 ->
+        (forall mReceive resvals, post1 mReceive resvals -> post2 mReceive resvals) ->
+        ext_spec t mGive a args post2;
+     *)
+
+    intersect: forall t mGive a args
+                      (post1 post2: mem -> list word -> Prop),
+        ext_spec t mGive a args post1 ->
+        ext_spec t mGive a args post2 ->
+        ext_spec t mGive a args (fun mReceive resvals =>
+                                   post1 mReceive resvals /\ post2 mReceive resvals);
+  }.
+End ext_spec.
+Arguments ext_spec.ok: clear implicits.
+
+Class parameters_ok{p: parameters} := {
+  varname_eq_dec :> DecidableEq varname;
+  funname_eq_dec :> DecidableEq funname;
+  actname_eq_dec :> DecidableEq actname;
+  width_cases : width = 32 \/ width = 64;
+  word_ok :> word.ok word;
+  byte_ok :> word.ok byte;
+  mem_ok :> map.ok mem;
+  locals_ok :> map.ok locals;
+  funname_env_ok : forall T: Type, map.ok (funname_env T);
+  ext_spec_ok :> ext_spec.ok p;
+}.
+Arguments parameters_ok: clear implicits.
 
 Instance env{p: parameters}: map.map funname (list varname * list varname * cmd) :=
   funname_env _.
@@ -71,8 +128,8 @@ Section semantics.
     Context (m : mem) (l : locals).
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
       match e with
-      | expr.literal v => Some (word.of_Z v, addMetricInstructions 2
-                                             (addMetricLoads 2 mc))
+      | expr.literal v => Some (word.of_Z v, addMetricInstructions 8
+                                             (addMetricLoads 8 mc))
       | expr.var x => match map.get l x with
                       | Some v => Some (v, addMetricInstructions 1
                                            (addMetricLoads 2 mc))

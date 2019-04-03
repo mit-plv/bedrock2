@@ -64,6 +64,16 @@ Module Import Pipeline.
     PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
   }.
 
+  Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
+    FlattenExpr.varname := varname;
+    FlattenExpr.actname := actname;
+    FlattenExpr.W := _;
+    FlattenExpr.locals := locals;
+    FlattenExpr.mem := mem;
+    FlattenExpr.ext_spec := ext_spec;
+    FlattenExpr.NGstate := NGstate;
+  }.
+
   Instance FlatToRisvc_params{p: parameters}: FlatToRiscv.FlatToRiscv.parameters := {|
     FlatToRiscv.FlatToRiscv.ext_spec := ext_spec;
     FlatToRiscv.FlatToRiscv.ext_guarantee := ext_guarantee;
@@ -76,6 +86,7 @@ Module Import Pipeline.
     locals_ok :> map.ok locals;
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscv.FlatToRiscv.assumptions;
+    ext_spec_ok :> Semantics.ext_spec.ok _;
   }.
 
 End Pipeline.
@@ -91,22 +102,13 @@ Section Pipeline1.
   Definition funname := Empty_set.
   Definition iset := if width =? 32 then RV32IM else RV64IM.
 
-  Instance FlattenExpr_parameters: FlattenExpr.parameters := {|
-    FlattenExpr.varname := varname;
-    FlattenExpr.actname := actname;
-    FlattenExpr.W := _;
+  Program Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
     FlattenExpr.varname_eq_dec := varname_eq_dec;
     FlattenExpr.actname_eq_dec := actname_eq_dec;
-    FlattenExpr.locals := locals;
-    FlattenExpr.mem := mem;
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
-    FlattenExpr.ext_spec := ext_spec;
-    FlattenExpr.max_ext_call_code_size := _;
-    FlattenExpr.max_ext_call_code_size_nonneg := FlatImp.FlatImpSize.max_ext_call_code_size_nonneg;
-    FlattenExpr.NGstate := NGstate;
     FlattenExpr.NG := NG;
-  |}.
+  }.
 
   Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
 
@@ -183,8 +185,8 @@ Section Pipeline1.
         with (postH := (fun t m l mc => post t /\ boundMetricLog UnitMetricLog (metricLogDifference mcH mc) (metricLogDifference mcH mcH'))); try reflexivity.
       + eapply FlatImp.exec.weaken.
         * match goal with
-          | |- _ ?env ?s ?t ?m ?l _ ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ s _ t m _ _ eq_refl) as Q
+          | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
+            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ s _ t m _ _ eq_refl) as Q
           end.
           eapply Q.
           eassumption.

@@ -112,7 +112,6 @@ Local Set Refine Instance Mode.
 Instance compilation_params: FlatToRiscvDef.parameters := {|
   FlatToRiscvDef.actname := act;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
-  FlatToRiscvDef.max_ext_call_code_size _ := 100;
 |}. all: case TODO. Defined.
 
 Definition compiled: list Instruction := Eval cbv in compile_stmt test.

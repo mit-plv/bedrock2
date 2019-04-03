@@ -264,10 +264,10 @@ Section Equiv.
       0 <= z < 2 ^ (Z.of_nat n * 8) ->
       combine n (split n z) = z.
   Proof.
-    induction n; intros.
-    - simpl in *. lia.
-    - unfold combine. (* TODO *)
-  Admitted.
+    intros. rewrite LittleEndian.combine_split.
+    apply Z.mod_small.
+    assumption.
+  Qed.
 
   Hypothesis assume_no_MMIO: forall mach addr post, ~ nonmem_loadWord_sat mach addr post.
 

@@ -23,19 +23,12 @@ Module Import FlattenExpr.
     varname: Type;
     actname: Type;
     W :> Words;
-    varname_eq_dec :> DecidableEq varname;
-    actname_eq_dec :> DecidableEq actname;
     locals :> map.map varname Utility.word;
     mem :> map.map Utility.word Utility.byte;
-    locals_ok :> map.ok locals;
-    mem_ok :> map.ok mem;
     trace := list (mem * actname * list Utility.word * (mem * list Utility.word));
     ext_spec : trace ->
                mem -> actname -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
-    max_ext_call_code_size : actname -> Z;
-    max_ext_call_code_size_nonneg : forall a : actname, 0 <= max_ext_call_code_size a;
     NGstate: Type;
-    NG :> NameGen varname NGstate;
   }.
 
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
@@ -53,17 +46,27 @@ Module Import FlattenExpr.
     Semantics.ext_spec:= ext_spec;
   |}.
 
-  Instance mk_FlatImpSize_params(p: parameters): FlatImp.FlatImpSize.parameters := {|
-    FlatImp.FlatImpSize.bopname_params := _;
-    FlatImp.FlatImpSize.max_ext_call_code_size := max_ext_call_code_size;
-    FlatImp.FlatImpSize.max_ext_call_code_size_nonneg := max_ext_call_code_size_nonneg;
-  |}.
+  Class assumptions{p: parameters} := {
+    varname_eq_dec :> DecidableEq varname;
+    actname_eq_dec :> DecidableEq actname;
+    locals_ok :> map.ok locals;
+    mem_ok :> map.ok mem;
+    NG :> NameGen varname NGstate;
+    ext_spec_ok: ext_spec.ok (mk_Semantics_params p);
+  }.
+  Arguments assumptions: clear implicits.
 
+  Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
+    Semantics.parameters_ok (mk_Semantics_params p) :=
+  {
+    Semantics.width_cases := Utility.width_cases;
+    Semantics.ext_spec_ok := ext_spec_ok;
+  }.
 End FlattenExpr.
 
 Section FlattenExpr1.
 
-  Context {p : unique! parameters}.
+  Context {p : unique! parameters} {hyps: assumptions p}.
 
   Ltac set_solver :=
     set_solver_generic (@varname p).
@@ -229,10 +232,6 @@ Section FlattenExpr1.
     omega.
   Qed.
 
-  (* TODO remove magic number *)
-  Axiom max_ext_call_code_size_bound: forall f,
-      0 <= max_ext_call_code_size f <= 7.
-
   Lemma flattenInteract_size: forall f args binds ngs ngs' s,
       flattenInteract ngs binds f args = (s, ngs') ->
       0 <= FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.interact binds f args).
@@ -242,7 +241,6 @@ Section FlattenExpr1.
     destruct_one_match_hyp.
     simp. simpl.
     apply flattenExprs_size in E.
-    pose proof (max_ext_call_code_size_bound f).
     omega.
   Qed.
 
@@ -457,7 +455,7 @@ Section FlattenExpr1.
   Ltac maps :=
     pose_flatten_var_ineqs;
     simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
-    map_solver (@locals_ok p).
+    map_solver (@locals_ok p hyps).
 
   Lemma seq_with_modVars: forall env t m l mc s1 s2 mid post,
     FlatImp.exec env s1 t m l mc mid ->
@@ -468,7 +466,7 @@ Section FlattenExpr1.
     FlatImp.exec env (FlatImp.SSeq s1 s2) t m l mc post.
   Proof.
     intros *. intros E1 E2. eapply @FlatImp.exec.seq.
-    - eapply @FlatImp.exec.intersect.
+    - eapply FlatImp.exec.intersect.
       + exact E1.
       + eapply FlatImp.modVarsSound. exact E1.
     - simpl. intros. simp. eauto.
@@ -861,12 +859,7 @@ Section FlattenExpr1.
         assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
         destruct R as (lL'' & R1 & R2).
         simp.
-        eexists; split; [exact R1|].
-        eexists; split; [eassumption|].
-        eexists; eexists; split; [eassumption|].
-        split; [eassumption|].
-        split; [simple eapply map.only_differ_putmany; exact P|].
-        solve_MetricLog.
+        eauto 11 using (map.only_differ_putmany (ok := locals_ok)).
   Qed.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=

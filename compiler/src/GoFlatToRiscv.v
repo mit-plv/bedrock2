@@ -25,7 +25,7 @@ Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
-
+Require Import coqutil.Decidable.
 
 Section Go.
 
@@ -194,6 +194,291 @@ Section Go.
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
 
+  Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
+    unchecked_store_byte_list addr (Z32s_to_bytes (List.map encode p)) m.
+
+  Lemma putmany_of_footprint_None: forall n (vs: HList.tuple byte n) (addr: word) (z: Z) (m: mem),
+      0 < z ->
+      z + Z.of_nat n < 2 ^ width ->
+      map.get m addr = None ->
+      map.get (map.putmany_of_tuple (footprint (word.add addr (word.of_Z z)) n) vs m)
+              addr = None.
+  Proof.
+    induction n; intros.
+    - simpl. assumption.
+    - destruct vs as [v vs]. simpl.
+      assert (2 ^ width > 0) as Gz. {
+        destruct width_cases as [E | E]; rewrite E; reflexivity.
+      }
+      rewrite map.get_put_diff; cycle 1. {
+        clear -H H0 Gz. intro C.
+        apply (f_equal word.unsigned) in C.
+        rewrite word.unsigned_add in C.
+        rewrite word.unsigned_of_Z in C.
+        pose proof (word.unsigned_range addr) as R.
+        remember (word.unsigned addr) as w.
+        rewrite Z.add_mod_idemp_r in C by lia.
+        rewrite Z.mod_eq in C by lia.
+        assert (z = 2 ^ width * ((w + z) / 2 ^ width)) by lia.
+        remember ((w + z) / 2 ^ width) as k.
+        assert (k < 0 \/ k = 0 \/ 0 < k) as D by lia. destruct D as [D | [D | D]]; nia.
+      }
+      rewrite <- word.add_assoc.
+      replace ((word.add (word.of_Z (word := @word W) z) (word.of_Z 1)))
+        with (word.of_Z (word := @word W) (z + 1)); cycle 1. {
+        apply word.unsigned_inj.
+        rewrite word.unsigned_add.
+        rewrite! word.unsigned_of_Z.
+        apply Z.add_mod.
+        destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
+      }
+      eapply IHn; try lia.
+      assumption.
+  Qed.
+
+  Lemma putmany_of_footprint_None'': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
+      0 < word.unsigned (word.sub a1 a2) ->
+      word.unsigned (word.sub a1 a2) + Z.of_nat n < 2 ^ width ->
+      map.get m a2 = None ->
+      map.get (map.putmany_of_tuple (footprint a1 n) vs m) a2 = None.
+  Proof.
+    intros.
+    pose proof putmany_of_footprint_None as P.
+    specialize P with (1 := H) (2 := H0) (3 := H1).
+    specialize (P vs).
+    replace (word.add a2 (word.of_Z (word.unsigned (word.sub a1 a2)))) with a1 in P; [exact P|].
+    apply word.unsigned_inj.
+    rewrite word.unsigned_add.
+    rewrite word.of_Z_unsigned.
+    rewrite word.unsigned_sub.
+    rewrite Z.add_mod_idemp_r by (destruct width_cases as [E | E]; rewrite E; cbv; discriminate).
+    rewrite <- (word.of_Z_unsigned a1) at 1.
+    rewrite word.unsigned_of_Z.
+    f_equal.
+    lia.
+  Qed.
+
+  Lemma putmany_of_footprint_None': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
+      a1 <> a2 ->
+      word.unsigned (word.sub a1 a2) + Z.of_nat n < 2 ^ width ->
+      map.get m a2 = None ->
+      map.get (map.putmany_of_tuple (footprint a1 n) vs m) a2 = None.
+  Proof.
+    intros.
+    apply putmany_of_footprint_None''; try assumption.
+    pose proof (word.unsigned_range (word.sub a1 a2)).
+    assert (word.unsigned (word.sub a1 a2) = 0 \/ 0 < word.unsigned (word.sub a1 a2)) as C
+        by omega. destruct C as [C | C].
+    - exfalso. apply H.
+      rewrite word.unsigned_sub in C.
+      apply word.unsigned_inj.
+      apply Z.div_exact in C; [|(destruct width_cases as [E | E]; rewrite E; cbv; discriminate)].
+      remember ((word.unsigned a1 - word.unsigned a2) / 2 ^ width) as k.
+      pose proof (word.unsigned_range a1).
+      pose proof (word.unsigned_range a2).
+      assert (k < 0 \/ k = 0 \/ 0 < k) as D by lia. destruct D as [D | [D | D]]; try nia.
+      rewrite D in C.
+      rewrite Z.mul_0_r in C.
+      lia.
+    - assumption.
+  Qed.
+
+  Lemma unchecked_store_byte_list_None: forall (l: list byte) (z: Z) m (addr: word),
+      0 < z ->
+      z + Z.of_nat (length l) < 2 ^ width ->
+      map.get m addr = None ->
+      map.get (unchecked_store_byte_list (word.add addr (word.of_Z z)) l m)
+              addr = None.
+  Proof.
+    intros. unfold unchecked_store_byte_list, unchecked_store_bytes.
+    apply putmany_of_footprint_None; try assumption.
+  Qed.
+
+  Fixpoint in_tuple{T: Type}(a: T){n: nat}: HList.tuple T n -> Prop :=
+    match n with
+    | O => fun _ => False
+    | S n' => fun '(PrimitivePair.pair.mk t ts) => a = t \/ in_tuple a ts
+    end.
+
+  Lemma ptsto_bytes_putmany_of_tuple: forall n addr vs (R: mem -> Prop) m,
+      Z.of_nat n < 2 ^ width ->
+      R m ->
+      (forall k, in_tuple k (footprint addr n) -> map.get m k = None) ->
+      (ptsto_bytes n addr vs * R)%sep (map.putmany_of_tuple (footprint addr n) vs m).
+  Proof.
+    assert (2 ^ width > 0) as Gz. {
+      destruct width_cases as [E | E]; rewrite E; reflexivity.
+    }
+    induction n; intros.
+    - simpl. unfold ptsto_bytes. destruct vs. simpl. apply sep_emp_l. auto.
+    - simpl. unfold ptsto_bytes. destruct vs as [v vs].
+      simpl.
+      replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by lia.
+      match goal with
+      | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
+      end.
+      apply sep_on_undef_put.
+      + apply putmany_of_footprint_None; try lia.
+        eapply H1.
+        simpl. left. reflexivity.
+      + apply IHn; lia || assumption || idtac.
+        intros. eapply H1.
+        simpl. right. assumption.
+  Qed.
+
+  Lemma ptsto_bytes_putmany_of_tuple_empty: forall n addr vs,
+      Z.of_nat n < 2 ^ width ->
+      ptsto_bytes n addr vs (map.putmany_of_tuple (footprint addr n) vs map.empty).
+  Proof.
+    induction n; intros.
+    - cbv. auto.
+    - simpl. unfold ptsto_bytes. destruct vs as [v vs].
+      simpl.
+      replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by lia.
+      apply sep_on_undef_put.
+      + apply putmany_of_footprint_None; try lia.
+        * omega. (* LIAFAIL *)
+        * apply map.get_empty.
+      + apply IHn. omega. (* LIAFIAL *)
+  Qed.
+
+  Lemma ptsto_bytes_array: forall (l: list byte) (addr: word),
+      iff1 (array ptsto (word.of_Z 1) addr l)
+           (ptsto_bytes (length l) addr (HList.tuple.of_list l)).
+  Proof.
+    induction l; intros.
+    - simpl. reflexivity.
+    - simpl. unfold ptsto_bytes. simpl. apply iff1_sep_cancel. apply IHl.
+  Qed.
+
+  Lemma array_on_undef_store_byte_list: forall addr l (R: mem -> Prop) m,
+      Z.of_nat (length l) < 2 ^ width ->
+      R m ->
+      (forall k, in_tuple k (footprint addr (length l)) -> map.get m k = None) ->
+      (array ptsto (word.of_Z 1) addr l * R)%sep (unchecked_store_byte_list addr l m).
+  Proof.
+    intros.
+    seprewrite ptsto_bytes_array.
+    apply ptsto_bytes_putmany_of_tuple; assumption.
+  Qed.
+
+  Lemma length_flat_map: forall {A B: Type} (f: A -> list B) n (l: list A),
+      (forall (a: A), length (f a) = n) ->
+      length (flat_map f l) = (n * length l)%nat.
+  Proof.
+    induction l; intros.
+    - simpl. lia.
+    - simpl. rewrite app_length. rewrite H. rewrite IHl; assumption || lia.
+  Qed.
+
+  Lemma mod_eq_to_diff: forall e1 e2 m,
+      m <> 0 ->
+      e1 mod m = e2 mod m ->
+      (e1 - e2) mod m = 0.
+  Proof.
+    intros. rewrite !Z.mod_eq in H0 by assumption.
+    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by lia.
+    rewrite Z.mod_eq by assumption.
+    rewrite <- Z.mul_sub_distr_l.
+    rewrite (Z.mul_comm m (e1 / m - e2 / m)).
+    rewrite Z.div_mul by assumption.
+    rewrite Z.mul_comm.
+    apply Z.sub_diag.
+  Qed.
+
+  Ltac word_simpl :=
+    rewrite <-? word.add_assoc;
+    rewrite <-? word.ring_morph.(morph_add);
+    simpl.
+
+  (* proves goals of the form
+  addr <> word.add (word.add (word.add addr (word.of_Z 1)) (word.of_Z 1)) (word.of_Z 1)
+  (any number of +1s)
+   *)
+  Ltac word_neq_add :=
+    word_simpl;
+    let C := fresh in
+    intro C;
+    apply (f_equal word.unsigned) in C;
+    match type of C with
+    | word.unsigned ?addr = _ => rewrite <- (word.of_Z_unsigned addr) in C at 1
+    end;
+    rewrite !word.unsigned_add in C;
+    rewrite !word.unsigned_of_Z in C;
+    destruct width_cases as [E | E]; rewrite E in C;
+    rewrite ?Z.add_mod_idemp_r in C by (cbv; discriminate);
+    rewrite ?Z.mod_mod in C by (cbv; discriminate);
+    (apply mod_eq_to_diff in C; [|cbv; discriminate]);
+    match type of C with
+    | ?x mod _ = 0 => ring_simplify x in C
+    end;
+    cbv in C; discriminate C.
+
+  Lemma store_program_empty: forall prog addr,
+      4 * Z.of_nat (length prog) < 2 ^ width ->
+      program addr prog (unchecked_store_program addr prog map.empty).
+  Proof.
+    induction prog; intros.
+    - cbv. auto.
+    - unfold unchecked_store_program, Z32s_to_bytes. simpl.
+      rewrite! unchecked_store_byte_list_cons.
+      unfold ptsto_instr, truncated_scalar, littleendian, Memory.bytes_per, ptsto_bytes. simpl.
+      match goal with
+      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?B)%sep ?m =>
+        assert ((A1 * (A2 * (A3 * (A4 * B))))%sep m); [|ecancel_assumption]
+      end.
+      apply sep_on_undef_put. {
+        rewrite !map.get_put_diff by word_neq_add.
+        word_simpl.
+        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
+        erewrite length_flat_map by (intro; simpl; reflexivity).
+        rewrite map_length.
+        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+        lia.
+      }
+      apply sep_on_undef_put. {
+        rewrite !map.get_put_diff by word_neq_add.
+        remember (word.add addr (word.of_Z 1)) as addr'.
+        word_simpl.
+        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
+        erewrite length_flat_map by (intro; simpl; reflexivity).
+        rewrite map_length.
+        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+        lia.
+      }
+      apply sep_on_undef_put. {
+        rewrite !map.get_put_diff by word_neq_add.
+        remember (word.add (word.add addr (word.of_Z 1)) (word.of_Z 1)) as addr'.
+        word_simpl.
+        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
+        erewrite length_flat_map by (intro; simpl; reflexivity).
+        rewrite map_length.
+        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+        lia.
+      }
+      apply sep_on_undef_put. {
+        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
+        erewrite length_flat_map by (intro; simpl; reflexivity).
+        rewrite map_length.
+        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+        lia.
+      }
+      word_simpl.
+      apply IHprog.
+      change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+      (* LIAFAIL *)
+      clear -H. lia.
+  Qed.
+
+  Lemma array_map: forall {T1 T2: Type} sz (f: T1 -> T2) elem (l: list T1) (addr: word),
+      iff1 (array elem                                (word.of_Z sz) addr (List.map f l))
+           (array (fun addr0 v0 => elem addr0 (f v0)) (word.of_Z sz) addr l).
+  Proof.
+    induction l; intros.
+    - simpl. reflexivity.
+    - simpl. apply iff1_sep_cancel. apply IHl.
+  Qed.
+
   Lemma go_fetch_inst: forall {initialL : RiscvMachineL} {inst pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
       (program pc0 [inst] * R)%sep initialL.(getMem) ->
@@ -213,7 +498,7 @@ Section Go.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
       ecancel_assumption.
-    - rewrite combine_split.
+    - rewrite LittleEndian.combine_split.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.
         destruct width_cases as [E | E]; rewrite E; split.

@@ -46,19 +46,12 @@ Require Import compiler.PushPullMod.
 Require coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Z.bitblast.
 Require Import riscv.Utility.prove_Zeq_bitwise.
+Require Import compiler.RunInstruction.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
 
 Set Implicit Arguments.
-
-Section TODO.
-  Context {K V: Type}.
-  Context {M: map.map K V}.
-  Axiom put_put_same: forall k v1 v2 m, map.put (map.put m k v1) k v2 = map.put m k v2.
-End TODO.
-
-Axiom TODO: False.
 
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
@@ -142,296 +135,6 @@ End FlatToRiscv.
 
 Local Unset Universe Polymorphism. (* for Add Ring *)
 
-Lemma mod_mod_remove_outer: forall a m n,
-    0 < m < n ->
-    n mod m = 0 ->
-    (a mod m) mod n = a mod m.
-Proof.
-  intros *. intros [A B] C. apply Z.mod_small.
-  pose proof (Z.mod_pos_bound a m A). lia.
-Qed.
-
-Lemma mod_mod_remove_inner: forall a m n,
-    0 < n < m ->
-    m mod n = 0 ->
-    (a mod m) mod n = a mod n.
-Proof.
-  intros. rewrite <- Znumtheory.Zmod_div_mod; try lia.
-  unfold Z.divide.
-  apply Zmod_divides in H0; [|lia].
-  destruct H0. subst m.
-  exists x. lia.
-Qed.
-
-Lemma div_mul_same: forall a b,
-    b <> 0 ->
-    a / b * b = a - a mod b.
-Proof.
-  intros.
-  pose proof (Zmod_eq_full a b H).
-  lia.
-Qed.
-
-Definition signExtend3(l n: Z): Z := n - (Z.b2z (Z.testbit n (l - 1))) * 2 ^ l.
-
-Lemma signExtend_alt3: forall l n,
-    signExtend l n = signExtend3 l n.
-Proof.
-  intros.
-  unfold signExtend, signExtend3.
-  destruct (BinInt.Z.testbit n (l - 1)).
-  - change (Z.b2z true) with 1.
-    (* TODO does not hold any more *)
-Admitted.
-
-Definition mask(x start eend: Z): Z :=
-  (x - x mod 2 ^ start) mod 2 ^ eend.
-
-Lemma sub_mod_exists_q: forall v m,
-    0 < m ->
-    exists q, v - v mod m = m * q.
-Proof.
-  intros.
-  assert (m <> 0) as A by lia.
-  pose proof (Z.div_mod v m A) as P.
-  exists (v / m).
-(*
-    v - v mod m = m * (v / m)
-
-  lia.
-
-Search (?a = ?b * (?a / ?b) + ?a mod ?b).
-Search "eucl" Z.
-*)
-Abort.
-
-Lemma sub_mod_exists_q: forall v m,
-    0 < m ->
-    exists q, v - v mod m = m * q.
-Proof.
-  intros.
-  apply (Zmod_divides (v - v mod m) m); [lia|].
-  rewrite <- Zminus_mod_idemp_l.
-  rewrite Z.sub_diag.
-  rewrite Z.mod_0_l; lia.
-Qed.
-
-Lemma shiftr_spec'': forall a n m : Z,
-    Z.testbit (Z.shiftr a n) m = (0 <=? m) &&  Z.testbit a (m + n).
-Proof.
-  intros.
-  destruct (Z.leb_spec 0 m).
-  - apply Z.shiftr_spec. assumption.
-  - rewrite Z.testbit_neg_r; trivial.
-Qed.
-
-Lemma shiftr_spec': forall a n m : Z,
-    Z.testbit (Z.shiftr a n) m = negb (m <? 0) &&  Z.testbit a (m + n).
-Proof.
-  intros.
-  destruct (Z.ltb_spec m 0).
-  - rewrite Z.testbit_neg_r; trivial.
-  - apply Z.shiftr_spec. assumption.
-Qed.
-
-Lemma mask_app_plus: forall v i j k,
-    0 <= i ->
-    i <= j ->
-    j <= k ->
-    mask v i j + mask v j k = mask v i k.
-Proof.
-  intros. unfold mask.
-  do 2 rewrite <- div_mul_same by (apply Z.pow_nonzero; lia).
-  rewrite <-! Z.land_ones by lia.
-  rewrite <-! Z.shiftl_mul_pow2 by lia.
-  rewrite <- BitOps.or_to_plus; Z.bitblast.
-Qed.
-
-Ltac simpl_pow2_products :=
-  repeat match goal with
-         | |- context [ 2 ^ ?a * 2 ^ ?b ] =>
-           match isZcst a with true => idtac end;
-           match isZcst b with true => idtac end;
-           let c := eval cbv in (a + b) in change (2 ^ a * 2 ^ b) with (2 ^ c)
-         end.
-
-Ltac simpl_Zcsts :=
-  repeat match goal with
-         | |- context [?op ?a ?b] =>
-           match isZcst a with true => idtac end;
-           match isZcst b with true => idtac end;
-           match op with
-           | Z.add => idtac
-           | Z.sub => idtac
-           | Z.mul => idtac
-           end;
-           let r := eval cbv in (op a b) in change (op a b) with r
-         end.
-
-Section compile_lit64bit_equiv.
-  Context {width: Z} {word: word.word width} {word_ok: word.ok word}.
-  Hypothesis W: width = 64.
-
-  Definition compile_lit_64bit_semantics(w: Z): word :=
-    let mid := signExtend 12 (bitSlice (signExtend 32 (bitSlice w 32 64)) 0 12) in
-    let hi := swrap 32 (signExtend 32 (bitSlice w 32 64) - mid) in
-    (word.add
-       (word.slu
-          (word.add
-             (word.slu
-                (word.add
-                   (word.slu
-                      (word.add
-                         (word.of_Z hi)
-                         (word.of_Z mid))
-                      (word.of_Z 10))
-                   (word.of_Z (bitSlice w 22 32)))
-                (word.of_Z 11))
-             (word.of_Z (bitSlice w 11 22)))
-          (word.of_Z 11))
-       (word.of_Z (bitSlice w 0 11))).
-
-  Lemma compile_lit_64bit_correct: forall v,
-      v mod 2 ^ 64 = word.unsigned (compile_lit_64bit_semantics (v  mod 2 ^ 64)).
-  Proof.
-    intros.
-    unfold compile_lit_64bit_semantics.
-    rewrite word.unsigned_add.
-    assert (word.unsigned (word.of_Z 11) = 11) as A. {
-      rewrite word.unsigned_of_Z. rewrite W. reflexivity.
-    }
-    assert (word.unsigned (word.of_Z 10) = 10) as A'. {
-      rewrite word.unsigned_of_Z. rewrite W. reflexivity.
-    }
-    rewrite word.unsigned_slu by (rewrite A, W; reflexivity).
-    rewrite word.unsigned_add.
-    rewrite word.unsigned_slu by (rewrite A, W; reflexivity).
-    rewrite word.unsigned_add.
-    rewrite word.unsigned_slu by (rewrite A', W; reflexivity).
-    rewrite word.unsigned_add.
-    rewrite A, A', W.
-    rewrite! Z.shiftl_mul_pow2 by lia.
-    rewrite! word.unsigned_of_Z.
-    rewrite W.
-    rewrite! bitSlice_alt by lia.
-    unfold bitSlice'.
-    unfold swrap.
-    rewrite! signExtend_alt3.
-    unfold signExtend3.
-    Set Printing Depth 100000.
-    simpl_Zcsts.
-    change (2 ^ 0) with 1.
-    rewrite! Z.div_1_r.
-
-    match goal with
-    | |- context [Z.b2z ?x] => remember (Z.b2z x) as b1
-    end.
-    match goal with
-    | |- context [Z.b2z ?x] => remember (Z.b2z x) as b2
-    end.
-    push_mod. rewrite! Zmod_mod.
-
-    repeat match goal with
-           | |- context [(?a mod ?m1) mod ?m2] =>
-             rewrite (@mod_mod_remove_inner a m1 m2) by (repeat split)
-           end.
-
-Ltac pull_mod_step ::=
-  match goal with
-  | |- context [ (?op (?a mod ?m) (?b mod ?m)) mod ?m ] =>
-    mod_free a m;
-    mod_free b m;
-    match op with
-    | Z.add => rewrite <- (Zplus_mod a b m)
-    | Z.sub => rewrite <- (Zminus_mod a b m)
-    | Z.mul => rewrite <- (Zmult_mod a b m)
-    end
-(*     idtac a "======" op "======" b*)
-(*
-  | |- context [(?a mod ?m1) mod ?m2] =>
-    mod_free a m2;
-    rewrite (@mod_mod_remove_outer a m1 m2) by (repeat split);
-    idtac m1 "_______" m2
-*)
-  end.
-
-    remember (v mod 2 ^ 64 / 2 ^ 32) as a.
-    remember (v mod 2 ^ 64 / 2 ^ 22) as b.
-    remember (v mod 2 ^ 64 / 2 ^ 11) as c.
-    pull_mod.
-    rewrite !Z.mul_add_distr_r.
-    rewrite !Z.mul_sub_distr_r.
-    rewrite <-!Z.mul_assoc.
-    simpl_pow2_products.
-    rewrite <-! Zmult_mod_distr_r.
-    subst a b c.
-    rewrite !div_mul_same by (cbv;  discriminate).
-    simpl_pow2_products.
-    push_mod. rewrite! Zmod_mod.
-    remember (v mod 2 ^ 64 / 2 ^ 32) as hi.
-    repeat match goal with
-           | |- context [(?a mod ?m1) mod ?m2] =>
-             rewrite (@mod_mod_remove_inner a m1 m2) by (repeat split)
-           end.
-    pull_mod.
-    rewrite !Z.mul_add_distr_r.
-    rewrite !Z.mul_sub_distr_r.
-    simpl_pow2_products.
-    match goal with
-    | |- ?x mod _ = ?y mod _ => ring_simplify x y (* +/- 2 ^ 63 cancels out *)
-    end.
-    change 4294967296 with (2 ^ 32).
-    change 18446744073709551616 with (2 ^ 64).
-    rewrite <- Zmult_mod_distr_l.
-    simpl_pow2_products.
-    rewrite !(Z.mul_comm (2 ^ 32)) in *.
-    rewrite Z.mul_sub_distr_r.
-    remember (hi * 2 ^ 32) as hii. subst hi.
-    rewrite div_mul_same in Heqhii by lia.
-    subst hii.
-    repeat match goal with
-           | |- context [(?a mod ?m1) mod ?m2] =>
-             rewrite (@mod_mod_remove_inner a m1 m2) by (repeat split)
-           end.
-    push_mod. rewrite! Zmod_mod.
-    repeat match goal with
-           | |- context [(?a mod ?m1) mod ?m2] =>
-             (rewrite (@mod_mod_remove_inner a m1 m2) by (repeat split)) ||
-             (rewrite (@mod_mod_remove_outer a m1 m2) by (repeat split))
-           end.
-    push_mod.
-    rewrite Z_mod_same_full. rewrite Z.mul_0_l. rewrite Zmod_0_l. rewrite Z.sub_0_r.
-    rewrite! Zmod_mod.
-    pull_mod.
-    match goal with
-    | |- ?x mod _ = ?y mod _ => ring_simplify x y
-    end.
-    clear b1 Heqb1 b2 Heqb2.
-    replace (v - v mod 2 ^ 32 + (v - v mod 2 ^ 22) mod 2 ^ 32 + (v - v mod 2 ^ 11) mod 2 ^ 22 +
-             v mod 2 ^ 11)
-      with ((v - v mod 2 ^ 32) + ((v - v mod 2 ^ 22) mod 2 ^ 32 + (v - v mod 2 ^ 11) mod 2 ^ 22 +
-             v mod 2 ^ 11)) by lia.
-    rewrite <- Zplus_mod_idemp_l.
-    rewrite !Z.add_assoc.
-    repeat match goal with
-    | |- context [ (?x - ?x mod 2 ^ ?start) mod 2 ^ ?eend ] =>
-      change ((x - x mod 2 ^ start) mod 2 ^ eend) with (mask x start eend)
-    end.
-    pose proof (eq_refl : mask v 0 11 = mask v 0 11) as E.
-    unfold mask at 2 in E. change (2 ^ 0) with 1 in E. rewrite Z.mod_1_r in E.
-    rewrite Z.sub_0_r in E. rewrite <- E. clear E.
-    replace (mask v 32 64 + mask v 22 32 + mask v 11 22 + mask v 0 11)
-      with  (mask v 0 11 + mask v 11 22 + mask v 22 32 + mask v 32 64) by lia.
-    rewrite! mask_app_plus by lia.
-    unfold mask.
-    rewrite Zmod_mod.
-    change (2 ^ 0) with 1. rewrite Z.mod_1_r. rewrite Z.sub_0_r.
-    reflexivity.
-  Qed.
-
-End compile_lit64bit_equiv.
-
-
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscv.parameters}.
   Context {h: unique! FlatToRiscv.assumptions}.
@@ -469,115 +172,42 @@ Section FlatToRiscv1.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
-  Lemma reduce_eq_to_sub_and_lt: forall (y z: word) {T: Type} (thenVal elseVal: T),
-      (if word.eqb y z then thenVal else elseVal) =
-      (if word.ltu (word.sub y z) (word.of_Z 1) then thenVal else elseVal).
+  Lemma reduce_eq_to_sub_and_lt: forall (y z: word),
+      word.eqb y z = word.ltu (word.sub y z) (word.of_Z 1).
   Proof.
-  Admitted.
-
-  (* TODO is there a principled way of writing such proofs? *)
-  Lemma reduce_eq_to_sub_and_lt_old: forall (y z: word) {T: Type} (thenVal elseVal: T),
-    (if ltu (sub y  z) (fromImm 1) then thenVal else elseVal) =
-    (if reg_eqb y z        then thenVal else elseVal).
-  Proof. (*
-    intros. destruct (weq y z).
-    - subst z. unfold wminus. rewrite wminus_inv.
-      destruct (wlt_dec (wzero wXLEN) $1); [reflexivity|].
-      change (wzero wXLEN) with (natToWord wXLEN 0) in n. unfold wlt in n.
-      exfalso. apply n.
-      do 2 rewrite wordToN_nat. rewrite roundTrip_0.
-      clear.
-      destruct wXLEN as [|w1] eqn: E.
-      + unfold wXLEN in *. destruct bitwidth; discriminate.
-      + rewrite roundTrip_1. simpl. constructor.
-    - destruct (@wlt_dec wXLEN (y ^- z) $ (1)) as [E|NE]; [|reflexivity].
-      exfalso. apply n. apply sub_0_eq.
-      unfold wlt in E.
-      do 2 rewrite wordToN_nat in E.
-      clear -E.
-      destruct wXLEN as [|w1] eqn: F.
-      + unfold wXLEN in *. destruct bitwidth; discriminate.
-      + rewrite roundTrip_1 in E.
-        simpl in E. apply N.lt_1_r in E. change 0%N with (N.of_nat 0) in E.
-        apply Nnat.Nat2N.inj in E. rewrite <- (roundTrip_0 (S w1)) in E.
-        apply wordToNat_inj in E.
-        exact E.
+    intros.
+    rewrite word.unsigned_eqb.
+    rewrite word.unsigned_ltu.
+    rewrite word.unsigned_sub.
+    rewrite word.unsigned_of_Z.
+    pose proof (word.unsigned_range y) as Ry.
+    pose proof (word.unsigned_range z) as Rz.
+    remember (word.unsigned y) as a; clear Heqa.
+    remember (word.unsigned z) as b; clear Heqb.
+    assert (1 < 2 ^ width). {
+      destruct width_cases as [E | E]; rewrite E; reflexivity.
+    }
+    destruct (Z.eqb_spec a b).
+    - subst a. rewrite Z.sub_diag. rewrite Z.mod_0_l by lia.
+      rewrite Z.mod_small; [reflexivity|lia].
+    - rewrite (Z.mod_small 1) by lia.
+      destruct (Z.ltb_spec ((a - b) mod 2 ^ width) 1); [exfalso|reflexivity].
+      pose proof (Z.mod_pos_bound (a - b) (2 ^ width)).
+      assert ((a - b) mod 2 ^ width = 0) as A by lia.
+      apply Znumtheory.Zmod_divide in A; [|lia].
+      unfold Z.divide in A.
+      destruct A as [k A].
+      clear -Ry Rz A n.
+      assert (k <> 0); nia.
   Qed.
-*)
-  Admitted.
-
-  (*
-  Lemma wlshift_bitSlice_plus: forall (sz1 sz2: Z) v,
-      (0 <= sz1)%Z ->
-      (0 <= sz2)%Z ->
-      wlshift (ZToWord wXLEN (bitSlice v sz1 (sz1 + sz2))) (Z.to_nat sz1)
-      ^+ ZToWord wXLEN (bitSlice v 0 sz1)
-      = ZToWord wXLEN (bitSlice v 0 (sz1 + sz2)).
-  Proof.
-    intros. rewrite wlshift_alt.
-    rewrite wlshift_mul_Zpow2 by assumption.
-    rewrite <- ZToWord_mult.
-    rewrite <- ZToWord_plus.
-    f_equal.
-    apply bitSlice_split; assumption.
-  Qed.
-  *)
-
-  (*
-  Context {Name: NameWithEq}.
-
-  (* If we made it a definition instead, destructing an if on "@dec (@eq (@var Name) x x0)"
-     (from this file), where a "@dec (@eq (@Reg Name) x x0)" (from another file, Riscv.v)
-     is in the context, will not recognize that these two are the same (they both reduce to
-     "@dec (@eq var x x0)", which is annoying. *)
-  Notation var := var.
-  Existing Instance eq_name_dec.
-   *)
 
   (* Set Printing Projections.
-     Uncaught anomaly when stepping through proofs :(
-     https://github.com/coq/coq/issues/6257 *)
+     Prints some implicit arguments it shouldn't print :(
+     COQBUG https://github.com/coq/coq/issues/9814 *)
 
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
   Arguments run1: simpl never.
-
-  Ltac ensure_is_nat_rel R :=
-    match R with
-    | ?P /\ ?Q => ensure_is_nat_rel P; ensure_is_nat_rel Q
-    | ?P \/ ?Q => ensure_is_nat_rel P; ensure_is_nat_rel Q
-    | @eq nat _ _  => idtac (* can't use %nat here because = is polymorphic *)
-    | (_ <  _)%nat => idtac
-    | (_ <= _)%nat => idtac
-    | (_ >  _)%nat => idtac
-    | (_ >= _)%nat => idtac
-    end.
-
-  Lemma pow2_wXLEN_4: 4 < 2 ^ XLEN.
-  Proof.
-    unfold XLEN, MachineWidth_XLEN.
-    pose proof (@word.width_pos _ _ word_ok).
-    pose proof (Z.pow_gt_1 2 width).
-    (* TODO doesn't hold, if we want this we'll have to add a stronger bound to Words,
-       or somewhere else *)
-  Admitted.
-
-  Ltac nat_rel_with_words_pre :=
-    match goal with
-    | |- ?P => ensure_is_nat_rel P
-    end(*;
-    repeat match goal with
-           | IsMem: Memory.Memory ?M _, m: ?M |- _ =>
-             unique pose proof (@Memory.memSize_bound M _ IsMem m)
-           end;
-    pose proof pow2_wXLEN_4;
-    rewrite? wordToNat_wplus in *;
-    rewrite? wordToNat_natToWord_eqn in * *).
-
-  Ltac nat_rel_with_words :=
-    nat_rel_with_words_pre(*;
-    nat_div_mod_to_quot_rem;
-    nia *).
 
   Definition divisibleBy4(x: word): Prop := (word.unsigned x) mod 4 = 0.
 
@@ -714,6 +344,32 @@ Section FlatToRiscv1.
         simp; simulate''; simpl; simpl_word_exprs word_ok; eassumption].
   Qed.
 
+  Lemma run_compile_load: forall sz: Syntax.access_size,
+      run_Load_spec (@Memory.bytes_per width sz) (compile_load sz) id.
+  Proof.
+    intro sz. destruct sz; simpl.
+    - refine run_Lbu.
+    - refine run_Lhu.
+    - destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Lw_unsigned E).
+      + refine run_Lwu.
+    - destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Lw_unsigned E).
+      + refine run_Ld_unsigned.
+  Qed.
+
+  Lemma run_compile_store: forall sz: Syntax.access_size,
+      run_Store_spec (@Memory.bytes_per width sz) (compile_store sz).
+  Proof.
+    intro sz. destruct sz; simpl.
+    - refine run_Sb.
+    - refine run_Sh.
+    - refine run_Sw.
+    - destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine run_Sw.
+      + refine run_Sd.
+  Qed.
+
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
@@ -748,7 +404,9 @@ Section FlatToRiscv1.
         change (2 ^ 9)%Z with 512%Z in *;
         simpl stmt_size in H;
         repeat match goal with
-               | s: stmt |- _ => unique pose proof (stmt_size_nonneg s)
+               | s: stmt |- @stmt_size ?params _ < _ =>
+                 (* PARAMRECORDS *)
+                 unique pose proof (@stmt_size_nonneg params s)
                end;
         match goal with
         | |- ?SZ _ _ < _ => (* COQBUG https://github.com/coq/coq/issues/9268 *)
@@ -756,15 +414,6 @@ Section FlatToRiscv1.
         end;
         lia
     end.
-
-  (* Needed because simpl will unfold (4 * ...) which is unreadable *)
-  Local Ltac simpl_pow2 := idtac. (*
-    repeat match goal with
-    | |- context [1 + ?a] => change (1 + a) with (S a)
-    | |- context [pow2 (S ?a)] => change (pow2 (S a)) with (2 * pow2 a)
-    | |- context [pow2 0] => change (pow2 0) with 1
-    end.
-*)
 
   Ltac simpl_RiscvMachine_get_set := simpl in *. (* TODO is this enough? *)
 
@@ -798,8 +447,6 @@ Section FlatToRiscv1.
     match goal with
     | |- valid_registers _ => solve [simpl; auto]
     end.
-
-  Instance word_eq_dec: DecidableEq word. (* TODO *) Admitted.
 
   Lemma disjoint_putmany_preserves_store_bytes: forall n a vs (m1 m1' mq: mem),
       store_bytes n m1 a vs = Some m1' ->
@@ -922,24 +569,6 @@ Section FlatToRiscv1.
       | apply_post
       | idtac ].
 
-(*
-  Ltac IH_done IH :=
-    eapply runsToSatisfying_imp; [ exact IH | ];
-    subst;
-    clear;
-    simpl;
-    intros;
-    destruct_products;
-    repeat match goal with
-           | |- _ /\ _ => split
-           end;
-    try assumption;
-    try match goal with
-        | H: ?m.(core).(pc) = _ |- ?m.(core).(pc) = _ => rewrite H
-        end;
-    solve_word_eq.
-*)
-
   Arguments LittleEndian.combine: simpl never.
 
   Lemma iset_is_supported: supported_iset iset.
@@ -954,84 +583,13 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
-  Lemma compile_lit_large_correct: forall (initialL: RiscvMachineL) post x v R d,
-      initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
-      d = mul (word.of_Z 4) (word.of_Z (Zlength (compile_lit_large x v))) ->
-      (program initialL.(getPc) (compile_lit_large x v) * R)%sep initialL.(getMem) ->
-      valid_registers (SLit x v) ->
-      runsTo (withRegs   (map.put initialL.(getRegs) x (word.of_Z v))
-             (withPc     (add initialL.(getPc) d)
-             (withNextPc (add initialL.(getNextPc) d)
-             (updateMetrics (addMetricInstructions 2)
-             (updateMetrics (addMetricLoads 2)
-                                        initialL)))))
-             post ->
-      runsTo initialL post.
-  Proof.
-    unfold compile_lit_large, compile_lit_64bit, compile_lit_32bit in *.
-    destruct width_cases as [E | E];
-      (destruct (width =? 32) eqn: E'; pose proof E' as E'';
-       [apply Z.eqb_eq in E'' | apply Z.eqb_neq in E'']);
-      try congruence;
-      clear E'';
-      intros *; intros E1 Hd P V N; subst d;
-      pose proof (compile_lit_large_emits_valid x v iset ltac:(auto)) as EV.
-    - unfold compile_lit_large, compile_lit_32bit in *.
-      rewrite E' in EV.
-      destruct_RiscvMachine initialL. subst.
-      simpl in *.
-      run1det. run1det.
-      match goal with
-      | R: runsTo ?m post |- runsToNonDet.runsTo _ ?m' post =>
-        replace m' with m; [exact R|]
-      end.
-      simpl_MetricRiscvMachine_get_set.
-      clear N. f_equal; [|solve_MetricLog]. f_equal.
-      + rewrite put_put_same. f_equal.
-        apply word.signed_inj.
-        rewrite word.signed_of_Z.
-        rewrite word.signed_xor.
-        rewrite! word.signed_of_Z.
-        replace word.swrap with (swrap_bitwise 32) by case TODO.
-        clear.
-        unfold swrap_bitwise.
-        Zbitwise.
-      + solve_word_eq word_ok.
-      + solve_word_eq word_ok.
-    - unfold compile_lit_large, compile_lit_64bit, compile_lit_32bit in *.
-      rewrite E' in EV.
-      match type of EV with
-      | context [ Addi _ _ ?a ] => remember a as mid
-      end.
-      (*
-      match type of EV with
-      | context [ ?a - mid ] => remember a as hi
-      end.
-      cbv [List.app program array] in P.
-      simpl in *. (* if you don't remember enough values, this might take forever *)
-      destruct initialL; simpl in *. subst getNextPc.
-      autorewrite with rew_Zlength in N.
-      simpl in N.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      match goal with
-      | R: runsTo ?m post |- runsToNonDet.runsTo _ ?m' post =>
-        replace m' with m; [exact R|]
-      end.
-      cbv [withRegs withPc withNextPc withMem withLog]. clear N P EV. f_equal.
-      + rewrite! put_put_same. f_equal. subst. change (BinInt.Z.pow_pos 2 64) with (2 ^ 64).
-        apply word.unsigned_inj.
-        rewrite word.unsigned_of_Z. replace (2 ^ width) with (2 ^ 64) by congruence.
-        apply compile_lit_64bit_correct. assumption.
-      + solve_word_eq word_ok.
-      + solve_word_eq word_ok.
-  Qed.*) Admitted.
+  Ltac match_apply_runsTo :=
+    match goal with
+    | R: runsTo ?m ?post |- runsToNonDet.runsTo _ ?m' ?post =>
+      replace m' with m; [exact R|]
+    end;
+    simpl_MetricRiscvMachine_get_set;
+    f_equal.
 
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
@@ -1039,18 +597,25 @@ Section FlatToRiscv1.
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_registers (SLit x v) ->
-       - 2 ^ 11 <= v < 2 ^ 11  /\ runsTo (withRegs   (map.put initialL.(getRegs) x (ZToReg v))
+      - 2 ^ 11 <= v < 2 ^ 11 /\ runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
              (updateMetrics (addMetricInstructions 1)
              (updateMetrics (addMetricLoads 1)
                                         initialL)))))
              post \/
-      not (- 2 ^ 11 <= v < 2 ^ 11) /\ runsTo (withRegs   (map.put initialL.(getRegs) x (ZToReg v))
+      not (- 2 ^ 11 <= v < 2 ^ 11) /\ (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31) /\ runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
              (updateMetrics (addMetricInstructions 2)
              (updateMetrics (addMetricLoads 2)
+                                        initialL)))))
+             post \/
+      not (- 2 ^ 11 <= v < 2 ^ 11) /\ not (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31) /\ runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
+             (withPc     (add initialL.(getPc) d)
+             (withNextPc (add initialL.(getNextPc) d)
+             (updateMetrics (addMetricInstructions 8)
+             (updateMetrics (addMetricLoads 8)
                                         initialL)))))
              post ->
       runsTo initialL post.
@@ -1063,22 +628,105 @@ Section FlatToRiscv1.
     simpl in *.
     destruct_RiscvMachine initialL.
     subst.
-    unfold compile_lit_new in *.
-    destruct N as [N|N].
-    - destruct N as [Vx N].
-      destruct (dec (- 2 ^ 11 <= v < 2 ^ 11)).
-      + unfold compile_lit_12bit in *.
-        run1det.
-        simpl_word_exprs word_ok.
-        simpl_MetricRiscvMachine_get_set.
-        subst.
-        exact N.
-      + contradiction Vx.
-    - destruct N as [Vx N].
-      destruct (dec (- 2 ^ 11 <= v < 2 ^ 11)).
-      + contradiction Vx.
-      + eapply compile_lit_large_correct; sidecondition.
-  Qed.
+    unfold compile_lit in *.
+    destruct (dec (- 2 ^ 11 <= v < 2 ^ 11));
+      [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
+    - unfold compile_lit_12bit in *.
+      destruct N; [|destruct H; destruct H; exfalso; apply H; exact a].
+      destruct H.
+      run1det.
+      simpl_word_exprs word_ok.
+      match_apply_runsTo.
+      erewrite signExtend_nop; eauto; lia.
+    - unfold compile_lit_32bit in *.
+      destruct N; [destruct H; exfalso; apply n; assumption |].
+      destruct H; [| destruct H; destruct H0; exfalso; apply H0; apply o].
+      simpl in P.
+      destruct H. destruct H0.
+      run1det. run1det.
+      match_apply_runsTo; [| solve_MetricLog].
+      f_equal.
+      + rewrite map.put_put_same. f_equal.
+        apply word.signed_inj.
+        rewrite word.signed_of_Z.
+        rewrite word.signed_xor.
+        rewrite! word.signed_of_Z.
+        change word.swrap with (signExtend width).
+        assert (0 < width) as Wpos. {
+          clear. destruct width_cases; rewrite H; reflexivity.
+        }
+        rewrite! signExtend_alt_bitwise by (reflexivity || assumption).
+        clear -Wpos o.
+        destruct o as [E | B ].
+        * rewrite E. unfold signExtend_bitwise. Zbitwise.
+        * unfold signExtend_bitwise. Zbitwise.
+          (* TODO these should also be solved by Zbitwise *)
+          {
+            assert (32 <= i < width) by omega. (* PARAMRECORDS? lia fails *)
+            destruct B.
+            assert (31 < i) by lia.
+            assert (0 < 31) by reflexivity.
+            erewrite testbit_above_signed' with (i := i); try eassumption.
+            change (Z.log2_up (2 ^ 31)) with (32 - 1).
+            Btauto.btauto.
+          }
+          {
+            destruct B.
+            assert (0 < 31) by reflexivity.
+            assert (31 < width - 1) by lia.
+            erewrite testbit_above_signed' with (i := width - 1); try eassumption.
+            change (Z.log2_up (2 ^ 31)) with (32 - 1).
+            Btauto.btauto.
+          }
+      + solve_word_eq word_ok.
+      + solve_word_eq word_ok.
+    - unfold compile_lit_64bit, compile_lit_32bit in *.
+      match type of EV with
+      | context [ Xori _ _ ?a ] => remember a as mid
+      end.
+      match type of EV with
+      | context [ Z.lxor ?a mid ] => remember a as hi
+      end.
+      cbv [List.app program array] in P.
+      destruct N; [destruct H; exfalso; apply n; assumption|].
+      destruct H; [destruct H; destruct H0; exfalso; apply n0; assumption|].
+      destruct H. destruct H0.
+      simpl_MetricRiscvMachine_get_set. (* if you don't remember enough values, this might take forever *)
+      autorewrite with rew_Zlength in H1.
+  Admitted.
+  (*
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      run1det.
+      match_apply_runsTo.
+      + rewrite! map.put_put_same. f_equal. subst.
+        apply word.unsigned_inj.
+        assert (width = 64) as W64. {
+          clear -n0.
+          destruct width_cases as [E | E]; rewrite E in *; try reflexivity.
+          exfalso. apply n0. left. reflexivity.
+        }
+        (repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_xor, ?word.unsigned_slu);
+        rewrite W64; try reflexivity.
+        clear.
+        change (10 mod 2 ^ 64) with 10.
+        change (11 mod 2 ^ 64) with 11.
+        rewrite <-! Z.land_ones by lia.
+        rewrite! signExtend_alt_bitwise by reflexivity.
+        unfold bitSlice, signExtend_bitwise.
+        Zbitwise.
+        (* TODO this should be done by Zbitwise, but not too eagerly because it's very
+           expensive on large goals *)
+        all: replace (i - 11 - 11 - 10 + 32) with i by lia.
+        all: Btauto.btauto.
+      + solve_word_eq word_ok.
+      + solve_word_eq word_ok.
+  Qed. *)
 
   Definition eval_stmt := exec map.empty.
 
@@ -1228,9 +876,11 @@ Section FlatToRiscv1.
       + sidecondition.
       + unfold compile_stmt. unfold getPc, getMem, liftGet in *. simpl. ecancel_assumption.
       + sidecondition.
-      + destruct (dec (- 2 ^ 11 <= v < 2 ^ 11)).
+      + destruct (dec (- 2 ^ 11 <= v < 2 ^ 11));
+          [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
         * left. split; [assumption|]. run1done.
-        * right. split; [assumption|]. run1done.
+        * right. left. repeat (split; [assumption|]). run1done.
+        * right. right. repeat (split; [assumption|]). run1done.
 
     (* SOp *)
     - match goal with
@@ -1243,7 +893,7 @@ Section FlatToRiscv1.
       | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
       end | solve_MetricLog..].
       rewrite reduce_eq_to_sub_and_lt.
-      symmetry. apply put_put_same.
+      symmetry. apply map.put_put_same.
 
     - (* SSet *)
       run1det. run1done.
@@ -1324,5 +974,42 @@ Section FlatToRiscv1.
     - (* SSkip *)
       run1done.
   Qed.
+
+  Context {fun_pos_env : map.map Syntax.funname Z}.
+
+  Arguments compile_store: simpl never.
+  Arguments compile_load: simpl never.
+
+  Lemma compile_function_correct:
+    forall f useargs useresults t initialMH initialRegsH initialMetricsH postH,
+    eval_stmt (SCall useresults f useargs) t initialMH initialRegsH initialMetricsH postH ->
+    forall R (initialL: RiscvMachineL) insts e pos body defargs defresults,
+    @compile_function def_params fun_pos_env e pos (defargs, defresults, body) = insts ->
+    stmt_not_too_big body ->
+    valid_registers body ->
+    divisibleBy4 initialL.(getPc) ->
+    initialL.(getRegs) = initialRegsH ->
+    (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+    initialL.(getLog) = t ->
+    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    ext_guarantee initialL ->
+    runsTo initialL (fun finalL => exists finalMH finalMetricsH,
+          postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
+          (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
+          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          boundMetricLog UnitMetricLog
+                         (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
+                         (metricLogDifference initialMetricsH finalMetricsH) /\
+          ext_guarantee finalL).
+  Proof.
+    intros.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    simpl in *.
+    subst.
+    simp.
+  Abort.
 
 End FlatToRiscv1.

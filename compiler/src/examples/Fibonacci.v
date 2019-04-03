@@ -60,7 +60,6 @@ Goal fib_H_res 20 6 = Some (word.of_Z 13). reflexivity. Qed.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.actname := Empty_set;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ := Empty_set_rect _;
-  FlatToRiscvDef.FlatToRiscvDef.max_ext_call_code_size := Empty_set_rect _;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := Empty_set_rect _;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := Empty_set_rect _;
 }.
@@ -245,7 +244,7 @@ Lemma fib_bounding_metrics_body: forall t m (l : locals) mc a b i,
       map.get l' 1 = Some b /\
       map.get l' 2 = Some (word.add a b) /\
       map.get l' 4 = Some (word.add i (word.of_Z 1)) /\
-      instructions mc' - instructions mc = 15).
+      instructions mc' - instructions mc = 21).
 Proof.
   intros.
   unfold fib_while_body.
@@ -319,7 +318,7 @@ Lemma fib_bounding_metrics_while: forall (n : nat) (iter : nat) t m (l : locals)
     map.get l 2 = Some b ->
     map.get l 4 = Some (word.of_Z ((Z.of_nat n) - (Z.of_nat iter)) : word) ->
     exec map.empty (fib_while (Z.of_nat n)) t m l mc (fun t' m' l' mc' =>
-      instructions mc' <= instructions mc + (Z.of_nat iter) * 22 + 6).
+      instructions mc' <= instructions mc + (Z.of_nat iter) * 34 + 12).
 Proof.
   induction iter.
   - intros.
@@ -360,14 +359,14 @@ Qed.
 Lemma fib_bounding_metrics: forall (n: nat) t m (l : locals) mc,
    (Z.of_nat n) < BinInt.Z.pow_pos 2 32 ->
    exec map.empty (fib_ExprImp (Z.of_nat n)) t m l mc (fun t' m ' l' mc' =>
-       instructions mc' <= instructions mc + (Z.of_nat n) * 22 + 15).
+       instructions mc' <= instructions mc + (Z.of_nat n) * 34 + 39).
 Proof.
   intros.
   unfold fib_ExprImp.
   eapply @exec.seq with (mid := (fun t' m' l' mc' =>
                                    t' = t /\
                                    map.get l' 1 = Some (word.of_Z 0) /\
-                                   instructions mc' = instructions mc + 3)).
+                                   instructions mc' = instructions mc + 9)).
   - eapply @exec.set.
     + unfold eval_expr. eauto.
     + repeat split.
@@ -379,7 +378,7 @@ Proof.
                                      t' = t /\
                                      map.get l' 1 = Some (word.of_Z 0) /\
                                      map.get l' 2 = Some (word.of_Z 1) /\
-                                     instructions mc' = instructions mc + 6)).
+                                     instructions mc' = instructions mc + 18)).
     + eapply @exec.set.
       * unfold eval_expr. eauto.
       * repeat split.
@@ -394,7 +393,7 @@ Proof.
                                        map.get l' 1 = Some (word.of_Z 0) /\
                                        map.get l' 2 = Some (word.of_Z 1) /\
                                        map.get l' 4 = Some (word.of_Z 0) /\
-                                       instructions mc' = instructions mc + 9)).
+                                       instructions mc' = instructions mc + 27)).
       * eapply @exec.set.
         -- unfold eval_expr. eauto.
         -- repeat split.
