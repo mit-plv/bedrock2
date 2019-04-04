@@ -171,8 +171,6 @@ Proof.
         (* Z and nat ... *)
         change 2 with (Z.of_nat 2); rewrite <-div_Zdiv by discriminate; rewrite ?Nat2Z.id; f_equal.
         (* list manipulation... *)
-        unshelve erewrite (_ : forall xs, Datatypes.length (List.tl xs) = pred (Datatypes.length xs)).
-        { intros l. destruct l. { reflexivity. } { reflexivity. } }
         unshelve erewrite (_ : forall xs delta, Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat).
         { admit. }
         pattern (Datatypes.length x); set (n := Datatypes.length x); clearbody n; cbv beta; clear.
@@ -186,9 +184,10 @@ Proof.
           rewrite length_rep in *. (* WHY does lia need this? *)
           revert H4. clear. intros. Z.div_mod_to_equations. Lia.lia. }
         clearbody X.
-        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat ->
-                                          Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). {
-          intros l. destruct l. { contradiction. } { reflexivity. } }
+        Require Import coqutil.Datatypes.List.
+        rewrite length_skipn_inbounds. all: try Lia.lia.
+        Fail idtac.
+
         { assert ((Datatypes.length (List.skipn (Z.to_nat X) x) <= Datatypes.length x)%nat) by admit. (* length_skipn_le? *)
           rewrite length_rep in *; Lia.lia. }
         { (* skipn with less than all elements returns a nonempty list *) admit. } }
