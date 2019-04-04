@@ -28,6 +28,7 @@ Require Import coqutil.Decidable.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.InstructionCoercions. Local Open Scope ilist_scope.
 Require Import compiler.SimplWordExpr.
+Require Import compiler.DivisibleBy4.
 
 
 Section Run.
@@ -69,7 +70,7 @@ Section Run.
       (* valid_register almost follows from verify except for then the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
-      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
+      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
@@ -91,7 +92,7 @@ Section Run.
       (* valid_register almost follows from verify except for then the register is Register0 *)
       valid_register rs1 ->
       valid_register rs2 ->
-      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
+      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs1 = Some base ->
       map.get initialL.(getRegs) rs2 = Some v_new ->

@@ -47,6 +47,7 @@ Require coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Z.bitblast.
 Require Import riscv.Utility.prove_Zeq_bitwise.
 Require Import compiler.RunInstruction.
+Require Import compiler.DivisibleBy4.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -209,8 +210,6 @@ Section FlatToRiscv1.
   Arguments Z.add: simpl never.
   Arguments run1: simpl never.
 
-  Definition divisibleBy4(x: word): Prop := (word.unsigned x) mod 4 = 0.
-
   Definition divisibleBy4'(x: word): Prop := word.modu x (word.of_Z 4) = word.of_Z 0.
 
   Lemma four_fits: 4 < 2 ^ width.
@@ -232,38 +231,6 @@ Section FlatToRiscv1.
     rewrite H.
     div4_sidecondition.
   Qed.
-
-  Lemma unsigned_of_Z_4: word.unsigned (word.of_Z (word := word) 4) = 4.
-  Proof. div4_sidecondition. Qed.
-
-  Lemma unsigned_of_Z_0: word.unsigned (word.of_Z (word := word) 0) = 0.
-  Proof. div4_sidecondition. Qed.
-
-  Lemma divisibleBy4_add_4_r(x: word)
-    (D: divisibleBy4 x):
-    divisibleBy4 (word.add x (word.of_Z 4)).
-  Proof.
-    unfold divisibleBy4 in *.
-    rewrite word.unsigned_add.
-    rewrite <- Znumtheory.Zmod_div_mod.
-    - rewrite Zplus_mod. rewrite D. rewrite unsigned_of_Z_4. reflexivity.
-    - lia.
-    - destruct width_cases as [C | C]; rewrite C; reflexivity.
-    - unfold Z.divide. exists (2 ^ width / 4).
-      destruct width_cases as [C | C]; rewrite C; reflexivity.
-  Qed.
-
-  Lemma divisibleBy4_admit(x y: word):
-    divisibleBy4 x ->
-    divisibleBy4 y.
-  Admitted.
-
-  Ltac solve_divisibleBy4 :=
-    lazymatch goal with
-    | |- divisibleBy4 _ => idtac
-    | |- _ => fail "not a divisibleBy4 goal"
-    end;
-    solve [eapply divisibleBy4_admit; eassumption (* TODO *) ].
 
   Ltac simpl_modu4_0 :=
     simpl;
@@ -834,15 +801,14 @@ Section FlatToRiscv1.
 
   Ltac IH_sidecondition :=
     simpl_word_exprs (@word_ok (@W (@def_params p)));
-    first
+    try solve
       [ reflexivity
-      | solve [auto]
+      | auto
       | solve_stmt_not_too_big
       | solve_word_eq (@word_ok (@W (@def_params p)))
-      | solve_divisibleBy4
+      | simpl; solve_divisibleBy4
       | prove_ext_guarantee
-      | pseplog
-      | idtac ].
+      | pseplog ].
 
   Arguments map.empty: simpl never.
   Arguments map.get: simpl never.
@@ -1025,27 +991,125 @@ Section FlatToRiscv1.
   Arguments compile_store: simpl never.
   Arguments compile_load: simpl never.
 
+  Ltac simpl_program_sep H :=
+    unfold program in H;
+    repeat match type of H with
+           | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+             seprewrite0_in (array_cons PT SZ x xs start) H
+        (*
+           | H: _ ?m |- _ ?m => progress (simpl in * (* does array_cons *))
+           | H: context [array _ _ ?addr1 ?content] |- context [array _ _ ?addr2 ?content] =>
+             progress replace addr1 with addr2 in H by ring;
+               ring_simplify addr2;
+               ring_simplify addr2 in H
+           (* just unprotected seprewrite will instantiate evars in undesired ways *)
+           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             seprewrite0 (array_append_DEPRECATED PT SZ xs ys start)
+*)
+           | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             seprewrite0_in (array_append_DEPRECATED PT SZ xs ys start) H
+           end.
+
+  Require Import Coq.Classes.Morphisms.
+
+  Definition holds(P: mem -> Prop)(m: mem): Prop := P m.
+  Instance holds_Proper: Proper (iff1 ==> eq ==> iff) holds.
+  Proof.
+    unfold Proper, iff1, iff, holds, respectful.
+    generalize (@map.rep _ _ (@mem p)).
+    clear.
+    firstorder congruence.
+  Qed.
+
+  Axiom TODO: False.
+
+  Definition ll_regs: PropSet.set Register :=
+    PropSet.union (PropSet.singleton_set RegisterNames.sp)
+                  (PropSet.singleton_set RegisterNames.ra).
+
+  Definition word_array: word -> list word -> mem -> Prop :=
+    array (fun addr w => ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
+                                     (LittleEndian.split _ (word.unsigned w)))
+          (word.of_Z (Z.of_nat (@Memory.bytes_per width Syntax.access_size.word))).
+
+  (* What compile_function currently does:
+
+     high addresses!  p_sp   --> arg0
+                                 ...
+                                 argn
+                                 ret0
+                                 ...
+                                 retn
+                                 ra
+                                 mod_var_0
+                                 ...
+                                 mod_var_n
+                      next   --> arg0 of next function call
+     low addresses               ...
+  *)
+
+  (* What stackframe does:
+
+     high addresses!             ...
+                      p_sp   --> mod_var_0 of previous function call arg0
+                                 argn
+                                 ...
+                                 arg0
+                                 retn
+                                 ...
+                                 ret0
+                                 ra
+                                 mod_var_n
+                                 ...
+                      new_sp --> mod_var_0
+     low addresses               ...
+  *)
+  Definition stackframe(p_sp: word)(argvals retvals: list word)
+             (ra_val: word)(modvarvals: list word): mem -> Prop :=
+    word_array
+      (word.add p_sp
+                (word.of_Z
+                   (- (bytes_per_word *
+                       Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
+      (modvarvals ++ [ra_val] ++ retvals ++ argvals).
+
   Lemma compile_function_correct:
-    forall f useargs useresults t initialMH initialRegsH initialMetricsH postH,
-    eval_stmt (SCall useresults f useargs) t initialMH initialRegsH initialMetricsH postH ->
-    forall R (initialL: RiscvMachineL) insts e pos body defargs defresults,
+    forall body useargs useresults defargs defresults t initialMH initialMcH
+           (initialRegsH: locals) postH argvals sublocals outcome,
+      (* FlatImp function execution works: *)
+      List.option_all (List.map (map.get initialRegsH) useargs) = Some argvals ->
+      map.putmany_of_list defargs argvals map.empty = Some sublocals ->
+      exec map.empty body t initialMH sublocals initialMcH outcome ->
+      (forall (t' : trace) (m' : mem) (st : locals) (mc' : MetricLog),
+          outcome t' m' st mc' ->
+          exists (retvals : list word) (l' : locals),
+            List.option_all (List.map (map.get st) defresults) = Some retvals /\
+            map.putmany_of_list useresults retvals initialRegsH = Some l' /\
+            postH t' m' l') ->
+    forall R (initialL : RiscvMachineL) insts e pos p_ra p_sp old_retvals old_ra old_modvarvals,
+    length argvals = length defargs ->
+    length old_retvals = length defresults ->
+    length old_modvarvals = length (modVars_as_list body)  ->
     @compile_function def_params fun_pos_env e pos (defargs, defresults, body) = insts ->
     stmt_not_too_big body ->
     valid_registers body ->
     divisibleBy4 initialL.(getPc) ->
-    initialL.(getRegs) = initialRegsH ->
-    (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+    map.undef_on initialRegsH ll_regs ->
+    map.only_differ initialL.(getRegs) ll_regs initialRegsH ->
+    map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
+    map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
+    (program initialL.(getPc) insts *
+     stackframe p_sp argvals old_retvals old_ra old_modvarvals *
+     eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
-    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
     ext_guarantee initialL ->
-    runsTo initialL (fun finalL => exists finalMH finalMetricsH,
-          postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
+    runsTo initialL (fun finalL => exists finalMH,
+          postH finalL.(getLog) finalMH (map.remove (map.remove finalL.(getRegs)
+                                               RegisterNames.sp) RegisterNames.ra) /\
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
-          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
-          boundMetricLog UnitMetricLog
-                         (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
-                         (metricLogDifference initialMetricsH finalMetricsH) /\
+          finalL.(getPc) = add initialL.(getPc) (mul (word.of_Z 4) (word.of_Z (Zlength insts))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (word.of_Z 4) /\
           ext_guarantee finalL).
   Proof.
     intros.
@@ -1053,8 +1117,78 @@ Section FlatToRiscv1.
            | m: _ |- _ => destruct_RiscvMachine m
            end.
     simpl in *.
+    assert (valid_instructions EmitsValid.iset insts) by case TODO.
+    assert (valid_register RegisterNames.sp). {
+      cbv. auto.
+    }
+    assert (valid_register RegisterNames.ra). {
+      cbv. auto.
+    }
     subst.
-    simp.
+
+    match goal with
+    | H: ?P ?m |- _ => change (holds P m) in H; rename H into Q
+    end.
+    unfold program, stackframe, word_array in Q.
+    Set Printing Depth 100000.
+    simpl in Q.
+    repeat match type of Q with
+    | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+      let Hrw := constr:(array_append_DEPRECATED PT SZ xs ys start) in
+      rewrite Hrw in Q
+    end.
+    unfold holds in Q.
+    simpl in Q.
+    match type of Q with
+    | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+      pose proof (array_append_DEPRECATED PT SZ xs ys start) as Hrw
+      (* remember (array PT SZ start (xs ++ ys)) as X *)
+    end.
+    (* "rewrite Hrw in Q" runs forever *)
+    seprewrite0_in Hrw Q.
+
+    (* decrease sp *)
+    run1det.
+
+    (* save ra on stack *)
+    eapply runsToStep. {
+      eapply run_compile_store; try solve [sidecondition | simpl; solve_divisibleBy4].
+      {
+        simpl.
+        rewrite map.get_put_diff by (clear; cbv; congruence).
+        eassumption.
+      }
+      simpl.
+      replace
+        (word.add
+           (word.add p_sp
+                     (word.of_Z
+                        (-
+                         (bytes_per_word *
+                          Z.of_nat (length defargs + length defresults + 1 +
+                                    length (modVars_as_list body))))))
+           (word.of_Z (bytes_per_word * (1 + Z.of_nat (length (modVars_as_list body))))))
+        with
+          (word.add
+             (word.add p_sp
+                       (word.of_Z
+                          (- (bytes_per_word *
+                              Z.of_nat (length argvals + length old_retvals + 1 +
+                                       length old_modvarvals)))))
+             (word.mul (word.of_Z (Z.of_nat (Z.to_nat ((width + 7) / 8))))
+                       (word.of_Z (Zlength old_modvarvals))));
+        [ ecancel_assumption | ].
+      simpl.
+      rewrite Zlength_correct.
+      repeat match goal with
+             | H: ?T |- _ => lazymatch T with
+                             | length _ = length _ => progress rewrite H
+                             | _ => clear H
+                             end
+             end.
+      f_equal.
+      (* TODO off-by one because compile_function needs to be update to match stackframe *)
+
   Abort.
 
 End FlatToRiscv1.
