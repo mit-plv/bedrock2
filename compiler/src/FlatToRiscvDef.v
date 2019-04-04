@@ -8,7 +8,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Utility.InstructionCoercions.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.ListLib.

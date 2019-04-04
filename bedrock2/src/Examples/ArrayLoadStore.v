@@ -1,6 +1,7 @@
 Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics.
+Require Import coqutil.Z.Lia.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -9,7 +10,7 @@ Local Coercion var (x : String.string) : expr := expr.var x.
 Local Definition bedrock_func : Type := funname * (list varname * list varname * cmd).
 Local Coercion name_of_func (f : bedrock_func) := fst f.
 
-Definition tf : bedrock_func := 
+Definition tf : bedrock_func :=
     let buf : varname := "buf" in
     let len : varname := "len" in
     let i : varname := "i" in
@@ -65,7 +66,7 @@ Proof.
   all: change (word.unsigned (word.of_Z 1)) with 1 in *.
   all: rewrite ?Z.mul_1_l, ?Z.mod_1_r, ?Z.div_1_r; trivial.
   all: unshelve erewrite (_ : forall x y, word.sub (word.add x y) x = y) in *; [admit|].
-  1: Omega.omega.
+  1: blia.
 
   intros.
 
@@ -95,7 +96,7 @@ Proof.
   all: rewrite ?Z.mul_1_l, ?Z.mod_1_r, ?Z.div_1_r; trivial.
   all: unshelve erewrite (_ : forall x y, word.sub (word.add x y) x = y) in *; [admit|].
   admit. (* length_set_nth *)
-  } 
+  }
   1: subst v2.
   refine eq_refl.
   exact (word.of_Z 0). }
@@ -104,7 +105,7 @@ Proof.
 
   Unshelve.
   exact (word.of_Z 0).
-  
+
 Abort.
 
   (* [eseptract] solves goals of the form [state == needle * ?r] by

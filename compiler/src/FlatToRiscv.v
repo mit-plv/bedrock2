@@ -19,7 +19,7 @@ Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Primitives.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import riscv.Utility.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.Utility.
@@ -183,17 +183,17 @@ Section FlatToRiscv1.
       destruct width_cases as [E | E]; rewrite E; reflexivity.
     }
     destruct (Z.eqb_spec a b).
-    - subst a. rewrite Z.sub_diag. rewrite Z.mod_0_l by lia.
-      rewrite Z.mod_small; [reflexivity|lia].
-    - rewrite (Z.mod_small 1) by lia.
+    - subst a. rewrite Z.sub_diag. rewrite Z.mod_0_l by blia.
+      rewrite Z.mod_small; [reflexivity|blia].
+    - rewrite (Z.mod_small 1) by blia.
       destruct (Z.ltb_spec ((a - b) mod 2 ^ width) 1); [exfalso|reflexivity].
       pose proof (Z.mod_pos_bound (a - b) (2 ^ width)).
-      assert ((a - b) mod 2 ^ width = 0) as A by lia.
-      apply Znumtheory.Zmod_divide in A; [|lia].
+      assert ((a - b) mod 2 ^ width = 0) as A by blia.
+      apply Znumtheory.Zmod_divide in A; [|blia].
       unfold Z.divide in A.
       destruct A as [k A].
       clear -Ry Rz A n.
-      assert (k <> 0); nia.
+      assert (k <> 0); Lia.nia.
   Qed.
 
   (* Set Printing Projections.
@@ -214,7 +214,7 @@ Section FlatToRiscv1.
   Ltac div4_sidecondition :=
     pose proof four_fits;
     rewrite ?word.unsigned_of_Z, ?Z.mod_small;
-    lia.
+    blia.
 
   Lemma divisibleBy4_alt(x: word): divisibleBy4 x -> divisibleBy4' x.
   Proof.
@@ -373,7 +373,7 @@ Section FlatToRiscv1.
         | |- ?SZ _ _ < _ => (* COQBUG https://github.com/coq/coq/issues/9268 *)
           change @stmt_size with SZ in *
         end;
-        lia
+        blia
     end.
 
   Ltac simpl_RiscvMachine_get_set := simpl in *. (* TODO is this enough? *)
@@ -575,7 +575,7 @@ Section FlatToRiscv1.
       run1det.
       simpl_word_exprs word_ok.
       match_apply_runsTo.
-      erewrite signExtend_nop; eauto; lia.
+      erewrite signExtend_nop; eauto; blia.
     - unfold compile_lit_32bit in *.
       simpl in P.
       run1det. run1det.
@@ -596,9 +596,9 @@ Section FlatToRiscv1.
         * unfold signExtend_bitwise. Zbitwise.
           (* TODO these should also be solved by Zbitwise *)
           {
-            assert (32 <= i < width) by omega. (* PARAMRECORDS? lia fails *)
+            assert (32 <= i < width) by blia. (* PARAMRECORDS? blia fails *)
             destruct B.
-            assert (31 < i) by lia.
+            assert (31 < i) by blia.
             assert (0 < 31) by reflexivity.
             erewrite testbit_above_signed' with (i := i); try eassumption.
             change (Z.log2_up (2 ^ 31)) with (32 - 1).
@@ -607,7 +607,7 @@ Section FlatToRiscv1.
           {
             destruct B.
             assert (0 < 31) by reflexivity.
-            assert (31 < width - 1) by lia.
+            assert (31 < width - 1) by blia.
             erewrite testbit_above_signed' with (i := width - 1); try eassumption.
             change (Z.log2_up (2 ^ 31)) with (32 - 1).
             Btauto.btauto.
@@ -646,13 +646,13 @@ Section FlatToRiscv1.
         clear.
         change (10 mod 2 ^ 64) with 10.
         change (11 mod 2 ^ 64) with 11.
-        rewrite <-! Z.land_ones by lia.
+        rewrite <-! Z.land_ones by blia.
         rewrite! signExtend_alt_bitwise by reflexivity.
         unfold bitSlice, signExtend_bitwise.
         Zbitwise.
         (* TODO this should be done by Zbitwise, but not too eagerly because it's very
            expensive on large goals *)
-        all: replace (i - 11 - 11 - 10 + 32) with i by lia.
+        all: replace (i - 11 - 11 - 10 + 32) with i by blia.
         all: Btauto.btauto.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.

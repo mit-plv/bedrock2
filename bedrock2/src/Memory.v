@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Coq.Lists.List.
 Require Import coqutil.sanity.
 Require Import coqutil.Decidable.
@@ -68,10 +68,10 @@ Section Memory.
     destruct (Z.to_nat ((width + 7) / 8)) eqn: E.
     - exfalso.
       assert (0 < (width + 7) / 8) as A. {
-        apply Z.div_str_pos. lia.
+        apply Z.div_str_pos. blia.
       }
       change O with (Z.to_nat 0) in E.
-      apply Z2Nat.inj in E; lia.
+      apply Z2Nat.inj in E; blia.
     - cbv [tuple.option_all tuple.map tuple.unfoldn].
       rewrite H0.
       reflexivity.

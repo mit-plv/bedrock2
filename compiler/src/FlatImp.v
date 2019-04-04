@@ -11,7 +11,7 @@ Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import bedrock2.Syntax.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
 Require Import compiler.util.ListLib.
@@ -77,7 +77,7 @@ Section FlatImpSize1.
 
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.
-    induction s; simpl; try omega.
+    induction s; simpl; try blia.
   Qed.
 
   Fixpoint modVars_as_list{veq: DecidableEq varname}(s: stmt): list varname :=
@@ -570,8 +570,8 @@ Section FlatImp2.
   Proof.
     induction fuel1; introv L Ev.
     - inversions Ev.
-    - destruct fuel2; [omega|].
-      assert (fuel1 <= fuel2)%nat as F by omega. specialize IHfuel1 with (1 := F).
+    - destruct fuel2; [blia|].
+      assert (fuel1 <= fuel2)%nat as F by blia. specialize IHfuel1 with (1 := F).
       destruct final as [finalSt finalM].
       invert_eval_stmt; cbn in *;
       repeat match goal with

@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Macros.unique.
 Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
@@ -65,7 +65,7 @@ Qed.
 
 Lemma compile_ext_call_length': forall binds f args,
     Zlength (compile_ext_call binds f args) <= 7.
-Proof. intros. rewrite compile_ext_call_length. lia. Qed.
+Proof. intros. rewrite compile_ext_call_length. blia. Qed.
 
 Lemma compile_ext_call_emits_valid: forall iset binds a args,
     Forall valid_register binds ->
@@ -83,7 +83,7 @@ Proof.
     split; [|cbv;auto].
     unfold Encode.respects_bounds. simpl.
     unfold Encode.verify_S, valid_register, opcode_STORE, funct3_SW in *.
-    repeat split; (lia || assumption).
+    repeat split; (blia || assumption).
   - rewrite <- H1.
     simp_step.
     simp_step.
@@ -93,7 +93,7 @@ Proof.
     split; [|cbv;auto].
     unfold Encode.respects_bounds. simpl.
     unfold Encode.verify_I, valid_register, opcode_LOAD, funct3_LW in *.
-    repeat split; (lia || assumption).
+    repeat split; (blia || assumption).
 Qed.
 
 Instance mmio_syntax_params: Syntax.parameters := {|
@@ -230,7 +230,7 @@ Section MMIO1.
              | H: (_ <=? _) = true |- _ => apply Z.leb_le in H
              | H: (_ <=? _) = false |- _ => apply Z.leb_gt in H
              end;
-      try solve [ hex_csts_to_dec; lia ].
+      try solve [ hex_csts_to_dec; blia ].
   Qed.
 
   Instance mmio_semantics_params: Semantics.parameters := {|

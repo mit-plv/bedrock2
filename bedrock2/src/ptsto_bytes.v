@@ -3,7 +3,7 @@ Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Map.Interface.
 Require Import coqutil.Z.div_mod_to_equations.
 Import HList List PrimitivePair.
-Require Import Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.ZArith.
 
 Open Scope Z_scope.
@@ -83,8 +83,8 @@ Section Scalars.
           rewrite map.get_empty in G1. discriminate.
     - simpl in B2.
       clear -B2 mem_ok word_ok D. destruct vs as [v vs]. simpl in *.
-      assert (0 < 1) as Y by lia.
-      assert (1 + Z.of_nat n <= 2 ^ width)%Z as X by lia. clear D.
+      assert (0 < 1) as Y by blia.
+      assert (1 + Z.of_nat n <= 2 ^ width)%Z as X by blia. clear D.
       revert Y X B2.
       generalize 1%Z as d.
       clear v.
@@ -106,21 +106,21 @@ Section Scalars.
           rewrite <- Zminus_mod in C.
           rewrite Z.add_simpl_l in C.
           rewrite word.unsigned_of_Z in C.
-          rewrite Z.mod_mod in C by lia.
-          apply Z.mod_divide in C; [|lia].
+          rewrite Z.mod_mod in C by blia.
+          apply Z.mod_divide in C; [|blia].
           unfold Z.divide in C.
           destruct C as [k C].
           subst d.
           assert (0 < 2 ^ width). {
             pose proof word.width_pos.
-            apply Z.pow_pos_nonneg; lia.
+            apply Z.pow_pos_nonneg; blia.
           }
-          assert (0 < k) by nia.
-          nia.
+          assert (0 < k) by Lia.nia.
+          Lia.nia.
         * match goal with IH: _ |- _ => specialize (IH a vs (d + 1)%Z); rename IH into IHn end.
           replace (word.add a (word.of_Z (d + 1)))
             with (word.add (word.add a (word.of_Z d)) (word.of_Z 1)) in IHn.
-          { apply IHn; lia || assumption. }
+          { apply IHn; blia || assumption. }
           { rewrite (morph_add word.ring_morph). rewrite word.add_assoc. reflexivity. }
   Qed.
 
@@ -142,7 +142,7 @@ Section Scalars.
     - match goal with
       | H: sep _ _ _ |- _ => destruct H as (mp & mq & A & B & C)
       end.
-      apply invert_getmany_of_tuple_Some_footprint in B; [|lia].
+      apply invert_getmany_of_tuple_Some_footprint in B; [|blia].
       destruct B as (mo & B1 & B2).
       match goal with
       | x: tuple _ (S _) |- _ => destruct x as [b bs]; simpl in *
@@ -163,7 +163,7 @@ Section Scalars.
       match goal with
       | IHn: _ |- _ => edestruct IHn as [R IH]; [..|exists R; ecancel_assumption_fix_just_for_here]
       end.
-      + lia.
+      + blia.
       + match goal with
         | |- sep ?BS (sep ?P ?Q) ?m => assert (sep (sep P BS) Q m); [|ecancel_assumption]
         end.

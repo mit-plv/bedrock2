@@ -88,7 +88,7 @@ Section ExprImp1.
 
     Lemma expr_size_pos: forall exp, expr_size exp > 0.
     Proof.
-      induction exp; simpl; try omega.
+      induction exp; simpl; try blia.
     Qed.
 
     Definition exprs_size(es: list expr): Z := fold_right (fun e res => res + expr_size e) 0 es.
@@ -110,7 +110,7 @@ Section ExprImp1.
 
     Lemma exprs_size_nonneg: forall es, 0 <= exprs_size es.
     Proof.
-      induction es; simpl in *; try omega. pose proof (expr_size_pos a). omega.
+      induction es; simpl in *; try blia. pose proof (expr_size_pos a). blia.
     Qed.
 
     Lemma cmd_size_nonneg: forall s, 0 <= cmd_size s.
@@ -121,7 +121,7 @@ Section ExprImp1.
       | es: list expr |- _ => unique pose proof (exprs_size_nonneg es)
       | l: list _ |- _ => unique pose proof (Zlength_nonneg l)
       end;
-      try omega.
+      try blia.
     Qed.
 
     Local Ltac inversion_lemma :=

@@ -1,6 +1,6 @@
 Require Import String.
 Require Import Coq.ZArith.ZArith.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import riscv.Spec.Decode.

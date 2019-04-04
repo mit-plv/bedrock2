@@ -1,5 +1,5 @@
 Require Import Coq.Lists.List.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Import ListNotations.
 Require Import coqutil.Word.Properties.
 Require Import riscv.Utility.Monads.
@@ -135,8 +135,8 @@ Section Verif.
                 map.get final.(getRegs) x2 = Some (gallina_prog_1 v1 v2)).
   Proof.
     intros.
-    assert (valid_register x1). { unfold valid_register, x1. lia. }
-    assert (valid_register x2). { unfold valid_register, x2. lia. }
+    assert (valid_register x1). { unfold valid_register, x1. blia. }
+    assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_1_encodable.
     destruct initial as [initial_regs initial_pc initial_nextPc initial_mem initial_trace].
     unfold asm_prog_1 in *.
@@ -198,8 +198,8 @@ Section Verif.
                 map.get final.(getRegs) x2 = Some (gallina_prog_2 v1 v2)).
   Proof.
     intros.
-    assert (valid_register x1). { unfold valid_register, x1. lia. }
-    assert (valid_register x2). { unfold valid_register, x2. lia. }
+    assert (valid_register x1). { unfold valid_register, x1. blia. }
+    assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_2_encodable.
     destruct initial as [initial_regs initial_pc initial_nextPc initial_mem initial_trace].
     unfold asm_prog_2 in *.
@@ -212,7 +212,7 @@ Section Verif.
     run1det.
     eapply runsTo_trans. {
       eapply asm_prog_1_correct; simpl.
-      - rewrite map.get_put_diff by (unfold x1, x2; lia).
+      - rewrite map.get_put_diff by (unfold x1, x2; blia).
         apply map.get_put_same.
       - apply map.get_put_same.
       - reflexivity.

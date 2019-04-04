@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import riscv.Utility.div_mod_to_quot_rem.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Word.Properties.
@@ -90,9 +90,9 @@ Section Rem4.
     destruct (@unique a (ZToReg 4) q (ZToReg 0)).
     - subst a. ring'.
     - (*pose proof pow2_sz_4.
-      rewrite regToZ_ZToReg_unsigned by omega.
-      rewrite regToZ_ZToReg_unsigned by omega.
-      omega.
+      rewrite regToZ_ZToReg_unsigned by blia.
+      rewrite regToZ_ZToReg_unsigned by blia.
+      blia.
     - congruence.
   Qed.*) Admitted.
 
@@ -104,11 +104,11 @@ Section Rem4.
     pose proof pow2_sz_4.
     rewrite mul_def_unsigned.
     rewrite regToZ_ZToReg_unsigned_mod.
-    rewrite (regToZ_ZToReg_unsigned 4) by omega.
+    rewrite (regToZ_ZToReg_unsigned 4) by blia.
     pose proof XLEN_lbound.
-    apply Z.rem_mod_eq_0; [omega|].
-    replace XLEN with (2 + (XLEN - 2)) by omega.
-    rewrite Z.pow_add_r by omega.
+    apply Z.rem_mod_eq_0; [blia|].
+    replace XLEN with (2 + (XLEN - 2)) by blia.
+    rewrite Z.pow_add_r by blia.
     change (2 ^ 2) with 4.
     pose proof (pow2_pos (XLEN - 2)).
     div_mod_to_quot_rem. nia.

@@ -1,5 +1,5 @@
 Require Import Coq.Lists.List.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Import ListNotations.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
@@ -151,7 +151,7 @@ Lemma Zlength_length: forall {A: Type} (l: list A),
     Z.of_nat (Datatypes.length l) = Zlength l.
 Proof.
   induction l; try reflexivity.
-  rewrite Zlength_cons. simpl. lia.
+  rewrite Zlength_cons. simpl. blia.
 Qed.
 
 Lemma undef_on_unchecked_store_byte_list:
@@ -202,7 +202,7 @@ Proof.
       | |- (_ - ?a) mod _ + _ < _ => replace a with addr'
       end.
       hex_csts_to_dec.
-      rewrite Z.mod_small; lia.
+      rewrite Z.mod_small; blia.
 Qed.
 
 Lemma input_program_correct:

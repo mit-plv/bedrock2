@@ -3,6 +3,7 @@ Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.bitblast.
+Require Import coqutil.Z.Lia.
 Require Import bedrock2.ptsto_bytes.
 Import HList List.
 
@@ -39,7 +40,7 @@ Section Scalars.
     erewrite load_bytes_of_sep by exact Hsep; apply f_equal.
     rewrite LittleEndian.combine_split.
     set (x := (Z.of_nat (bytes_per sz) * 8)%Z).
-    assert ((0 <= x)%Z) by (subst x; destruct sz; Lia.lia).
+    assert ((0 <= x)%Z) by (subst x; destruct sz; blia).
     rewrite <- Z.land_ones by assumption.
     reflexivity.
   Qed.
@@ -62,10 +63,10 @@ Section Scalars.
     rewrite <-Properties.word.wrap_unsigned at 2.
     eapply Z.bits_inj'; intros i Hi.
     pose proof word.width_pos (width:=width).
-    repeat rewrite ?bitblast.Z.testbit_mod_pow2, ?bitblast.Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by Lia.lia.
+    repeat rewrite ?bitblast.Z.testbit_mod_pow2, ?bitblast.Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by blia.
     destruct (Z.ltb_spec0 i width); cbn [andb]; trivial; [].
     destruct (Z.testbit (word.unsigned value) i); cbn [andb]; trivial; [].
-    destruct (Z.leb_spec0 0 i); try Lia.lia; cbn [andb]; [].
+    destruct (Z.leb_spec0 0 i); try blia; cbn [andb]; [].
     eapply Z.ltb_lt.
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
   Qed.

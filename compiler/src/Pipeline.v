@@ -13,8 +13,7 @@ Require Export riscv.Platform.Run.
 Require Export riscv.Platform.Minimal.
 Require Export riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
-Require Import compiler.util.MyOmega.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Export compiler.NameGen.
 Require Export compiler.util.Common.
 Require Export coqutil.Decidable.
@@ -118,7 +117,7 @@ Section Pipeline1.
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_registers (flatten s).
 
-  (* simpler than debugging why omega/lia fails *)
+  (* simpler than debugging why blia/blia fails *)
   Ltac ineq_step :=
     first
       [ eapply Z.le_trans; [eassumption|]
@@ -148,12 +147,12 @@ Section Pipeline1.
     destruct_one_match_hyp.
     apply FlattenExpr.flattenStmt_size in E.
     apply flatToRiscv_size in H.
-    split; [lia|].
+    split; [blia|].
     destruct E as [_ E].
     destruct H as [_ H].
     simpl in *.
-    (* TODO why do omega and lia fail here? PARAMRECORDS? *)
-    Fail omega. Fail lia.
+    (* TODO why do blia and blia fail here? PARAMRECORDS? *)
+    Fail blia. Fail blia.
     eapply Z.le_trans; eassumption.
   Qed.
 
@@ -194,8 +193,8 @@ Section Pipeline1.
         ineq_step.
         destruct E as [_ E].
         simpl in *.
-        (* TODO why do omega and lia fail here? PARAMRECORDS? *)
-        Fail omega. Fail lia.
+        (* TODO why do blia and blia fail here? PARAMRECORDS? *)
+        Fail blia. Fail blia.
         exact E.
       + unfold enough_registers, ExprImp2FlatImp, flatten, fst in *. assumption.
       + assumption.

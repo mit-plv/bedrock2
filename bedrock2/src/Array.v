@@ -1,6 +1,7 @@
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop.
 Require Import Coq.Lists.List Coq.ZArith.BinInt. Local Open Scope Z_scope.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Z.Lia.
 
 Section Array.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
@@ -29,7 +30,7 @@ Section Array.
       end.
       { eapply word.unsigned_inj.
         repeat rewrite ?word.unsigned_add, ?word.unsigned_of_Z, ?Z.mul_0_r, ?Z.mod_0_l, ?Z.add_0_r, ?word.wrap_unsigned; trivial.
-        pose proof word.width_pos; eapply Z.pow_nonzero; Lia.lia. }
+        pose proof word.width_pos; eapply Z.pow_nonzero; blia. }
       cancel.
     - rewrite <- app_comm_cons. rewrite array_cons. simpl.
       specialize (IHxs ys (word.add start size)). simpl in IHxs.
@@ -43,7 +44,7 @@ Section Array.
       { eapply word.unsigned_inj.
         repeat rewrite ?word.unsigned_add, ?word.unsigned_of_Z, ?Z.mul_0_r, ?Z.mul_1_r, ?Z.mod_0_l, ?Z.add_0_r, ?Z.mul_add_distr_l, ?word.wrap_unsigned, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l; trivial.
         f_equal.
-        Lia.lia. }
+        blia. }
   Qed.
 
   Lemma array_append_DEPRECATED xs ys start:
@@ -70,7 +71,7 @@ Section Array.
     destruct B; cbn [array hd_error tl]; [solve[cancel]|].
     subst A; destruct (Compare_dec.le_le_S_dec (length xs) n) as [Hle|Hle].
     { rewrite firstn_all2, <-app_nil_r in H by assumption; eapply app_inv_head in H; discriminate H. }
-    rewrite firstn_length_le by Lia.lia; reflexivity.
+    rewrite firstn_length_le by blia; reflexivity.
   Qed.
 
   Context {default : T}.
@@ -84,7 +85,7 @@ Section Array.
     rewrite <-(firstn_skipn n xs), app_length in H.
     destruct (skipn n xs) in *; cbn [tl hd hd_error] in *; [|assumption].
     { cbn [length] in H. rewrite PeanoNat.Nat.add_0_r in H.
-      rewrite firstn_length in H. Lia.lia. }
+      rewrite firstn_length in H. blia. }
   Qed.
 
   Lemma array_address_inbounds xs start a
@@ -100,24 +101,24 @@ Section Array.
     pose proof word.unsigned_range size.
     pose proof word.unsigned_range (word.sub a start).
     destruct (Z.eq_dec (word.unsigned size) 0) as [Hz|Hnz].
-    { rewrite Hz in *. Lia.lia. }
+    { rewrite Hz in *. blia. }
     replace a with (word.add start (word.mul (word.of_Z (Z.of_nat n)) size)); cycle 1.
     { subst n.
-      rewrite Znat.Z2Nat.id by (eapply Z.div_pos; Lia.lia).
+      rewrite Znat.Z2Nat.id by (eapply Z.div_pos; blia).
       eapply word.unsigned_inj.
       repeat rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z.
       repeat rewrite ?Zdiv.Zmult_mod_idemp_l, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l.
       rewrite Z.mul_comm, <-Zdiv.Z_div_exact_full_2 by trivial.
       rewrite ?word.unsigned_sub, ?Zdiv.Zminus_mod_idemp_r, ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l.
-      replace (word.unsigned start + (word.unsigned a - word.unsigned start)) with (word.unsigned a) by Lia.lia.
+      replace (word.unsigned start + (word.unsigned a - word.unsigned start)) with (word.unsigned a) by blia.
       rewrite Z.mod_small by assumption; trivial. }
     replace (word.mul (word.of_Z (Z.of_nat n)) size) with (word.of_Z (word.unsigned size * Z.of_nat n)); cycle 1.
     { eapply word.unsigned_inj.
       repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zmult_mod_idemp_l.
-      f_equal. Lia.lia. }
+      f_equal. blia. }
     eapply (array_index_nat_inbounds xs start n); subst n.
     rewrite <-Znat.Nat2Z.id.
-    eapply Znat.Z2Nat.inj_lt; try eapply Z.div_pos; try Lia.lia; [].
-    eapply Z.div_lt_upper_bound; Lia.lia.
+    eapply Znat.Z2Nat.inj_lt; try eapply Z.div_pos; try blia; [].
+    eapply Z.div_lt_upper_bound; blia.
   Qed.
 End Array.

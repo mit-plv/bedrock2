@@ -1,4 +1,5 @@
-Require Export Coq.omega.Omega.
+Require Export coqutil.Z.Lia.
+Require Export Coq.ZArith.ZArith.
 Require Export Coq.Lists.List.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.Solver.
 Require Export coqutil.Word.Interface coqutil.Word.Properties.

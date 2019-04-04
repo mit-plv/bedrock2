@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.BinInt.
-Require Import Coq.micromega.Lia.
-Require Import Coq.omega.Omega.
+Require Import coqutil.Z.Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.

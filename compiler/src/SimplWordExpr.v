@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.BitOps.
 Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Z.Lia.
 
 
 Local Unset Universe Polymorphism. (* for Add Ring *)
@@ -28,13 +29,13 @@ Section Lemmas.
     pose proof (Z.pow_pos_nonneg 2 width).
     remember (2 ^ width) as M.
     remember (2 ^ (width - 1)) as M2.
-    rewrite Z.add_mod by omega. (* lia fails! *)
-    rewrite Zminus_mod by omega.
-    rewrite Z.mod_mod by omega.
-    rewrite <- (Z.mod_mod M2 M) at 2 by omega.
-    rewrite <- Zminus_mod by omega.
+    rewrite Z.add_mod by blia.
+    rewrite Zminus_mod by blia.
+    rewrite Z.mod_mod by blia.
+    rewrite <- (Z.mod_mod M2 M) at 2 by blia.
+    rewrite <- Zminus_mod by blia.
     rewrite Z.add_simpl_r.
-    rewrite Z.mod_mod by omega.
+    rewrite Z.mod_mod by blia.
     reflexivity.
   Qed.
 

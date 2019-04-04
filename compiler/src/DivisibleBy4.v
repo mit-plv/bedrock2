@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import riscv.Utility.Utility.
 Require Import compiler.mod4_0.

@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.BinInt.
-Require Import Coq.micromega.Lia.
-Require Import Coq.omega.Omega.
+Require Import coqutil.Z.Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -211,11 +211,11 @@ Section Go.
         rewrite word.unsigned_of_Z in C.
         pose proof (word.unsigned_range addr) as R.
         remember (word.unsigned addr) as w.
-        rewrite Z.add_mod_idemp_r in C by lia.
-        rewrite Z.mod_eq in C by lia.
-        assert (z = 2 ^ width * ((w + z) / 2 ^ width)) by lia.
+        rewrite Z.add_mod_idemp_r in C by blia.
+        rewrite Z.mod_eq in C by blia.
+        assert (z = 2 ^ width * ((w + z) / 2 ^ width)) by blia.
         remember ((w + z) / 2 ^ width) as k.
-        assert (k < 0 \/ k = 0 \/ 0 < k) as D by lia. destruct D as [D | [D | D]]; nia.
+        assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; Lia.nia.
       }
       rewrite <- word.add_assoc.
       replace ((word.add (word.of_Z (word := @word W) z) (word.of_Z 1)))
@@ -226,7 +226,7 @@ Section Go.
         apply Z.add_mod.
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
       }
-      eapply IHn; try lia.
+      eapply IHn; try blia.
       assumption.
   Qed.
 
@@ -249,7 +249,7 @@ Section Go.
     rewrite <- (word.of_Z_unsigned a1) at 1.
     rewrite word.unsigned_of_Z.
     f_equal.
-    lia.
+    blia.
   Qed.
 
   Lemma putmany_of_footprint_None': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
@@ -262,7 +262,7 @@ Section Go.
     apply putmany_of_footprint_None''; try assumption.
     pose proof (word.unsigned_range (word.sub a1 a2)).
     assert (word.unsigned (word.sub a1 a2) = 0 \/ 0 < word.unsigned (word.sub a1 a2)) as C
-        by omega. destruct C as [C | C].
+        by blia. destruct C as [C | C].
     - exfalso. apply H.
       rewrite word.unsigned_sub in C.
       apply word.unsigned_inj.
@@ -270,10 +270,10 @@ Section Go.
       remember ((word.unsigned a1 - word.unsigned a2) / 2 ^ width) as k.
       pose proof (word.unsigned_range a1).
       pose proof (word.unsigned_range a2).
-      assert (k < 0 \/ k = 0 \/ 0 < k) as D by lia. destruct D as [D | [D | D]]; try nia.
+      assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; try Lia.nia.
       rewrite D in C.
       rewrite Z.mul_0_r in C.
-      lia.
+      blia.
     - assumption.
   Qed.
 
@@ -307,15 +307,15 @@ Section Go.
     - simpl. unfold ptsto_bytes. destruct vs. simpl. apply sep_emp_l. auto.
     - simpl. unfold ptsto_bytes. destruct vs as [v vs].
       simpl.
-      replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by lia.
+      replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by blia.
       match goal with
       | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
       end.
       apply sep_on_undef_put.
-      + apply putmany_of_footprint_None; try lia.
+      + apply putmany_of_footprint_None; try blia.
         eapply H1.
         simpl. left. reflexivity.
-      + apply IHn; lia || assumption || idtac.
+      + apply IHn; blia || assumption || idtac.
         intros. eapply H1.
         simpl. right. assumption.
   Qed.
@@ -328,12 +328,11 @@ Section Go.
     - cbv. auto.
     - simpl. unfold ptsto_bytes. destruct vs as [v vs].
       simpl.
-      replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by lia.
+      replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by blia.
       apply sep_on_undef_put.
-      + apply putmany_of_footprint_None; try lia.
-        * omega. (* LIAFAIL *)
-        * apply map.get_empty.
-      + apply IHn. omega. (* LIAFIAL *)
+      + apply putmany_of_footprint_None; try blia.
+        apply map.get_empty.
+      + apply IHn. blia.
   Qed.
 
   Lemma ptsto_bytes_array: forall (l: list byte) (addr: word),
@@ -361,8 +360,8 @@ Section Go.
       length (flat_map f l) = (n * length l)%nat.
   Proof.
     induction l; intros.
-    - simpl. lia.
-    - simpl. rewrite app_length. rewrite H. rewrite IHl; assumption || lia.
+    - simpl. blia.
+    - simpl. rewrite app_length. rewrite H. rewrite IHl; assumption || blia.
   Qed.
 
   Lemma mod_eq_to_diff: forall e1 e2 m,
@@ -371,7 +370,7 @@ Section Go.
       (e1 - e2) mod m = 0.
   Proof.
     intros. rewrite !Z.mod_eq in H0 by assumption.
-    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by lia.
+    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by blia.
     rewrite Z.mod_eq by assumption.
     rewrite <- Z.mul_sub_distr_l.
     rewrite (Z.mul_comm m (e1 / m - e2 / m)).
@@ -428,7 +427,7 @@ Section Go.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        lia.
+        blia.
       }
       apply sep_on_undef_put. {
         rewrite !map.get_put_diff by word_neq_add.
@@ -438,7 +437,7 @@ Section Go.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        lia.
+        blia.
       }
       apply sep_on_undef_put. {
         rewrite !map.get_put_diff by word_neq_add.
@@ -448,20 +447,20 @@ Section Go.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        lia.
+        blia.
       }
       apply sep_on_undef_put. {
         apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        lia.
+        blia.
       }
       word_simpl.
       apply IHprog.
       change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
       (* LIAFAIL *)
-      clear -H. lia.
+      clear -H. blia.
   Qed.
 
   Lemma array_map: forall {T1 T2: Type} sz (f: T1 -> T2) elem (l: list T1) (addr: word),
@@ -496,13 +495,13 @@ Section Go.
         pose proof (encode_range inst) as P.
         destruct width_cases as [E | E]; rewrite E; split.
         (* TODO if https://github.com/coq/coq/pull/9291 makes it into 8.9.1,
-           omega can be replaced by lia *)
-        + omega.
-        + omega.
-        + omega.
+           blia can be replaced by blia *)
+        + blia.
+        + blia.
+        + blia.
         + let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *.
           let r := eval cbv in (2 ^ 64) in change (2 ^ 64) with r in *.
-          omega.
+          blia.
       }
       rewrite Z.mod_small; try assumption; try apply encode_range.
       rewrite decode_encode; assumption.

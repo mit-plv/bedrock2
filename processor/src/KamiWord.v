@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt Lia.
+Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt coqutil.Z.Lia.
 Require Import coqutil.sanity coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.Utility.
@@ -86,11 +86,11 @@ Section MkWords.
   Context {width : Z}.
   Context {width_cases : width = 32 \/ width = 64}.
 
-  Lemma boundW: 0 < width. lia. Qed.
+  Lemma boundW: 0 < width. blia. Qed.
   Instance wordW: word.word width := word width.
   Instance wordWok: word.ok wordW := ok width boundW.
 
-  Lemma bound8: 0 < 8. lia. Qed.
+  Lemma bound8: 0 < 8. blia. Qed.
   Instance word8: word.word 8 := word 8.
   Instance word8ok: word.ok word8 := ok 8 bound8.
 
