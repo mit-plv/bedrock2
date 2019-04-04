@@ -933,10 +933,69 @@ Section FlatToRiscv1.
     PropSet.union (PropSet.singleton_set RegisterNames.sp)
                   (PropSet.singleton_set RegisterNames.ra).
 
+  Definition word_array: word -> list word -> mem -> Prop :=
+    array (fun addr w => ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
+                                     (LittleEndian.split _ (word.unsigned w)))
+          (word.of_Z (Z.of_nat (@Memory.bytes_per width Syntax.access_size.word))).
+
+  (* What compile_function currently does:
+
+     high addresses!  p_sp   --> arg0
+                                 ...
+                                 argn
+                                 ret0
+                                 ...
+                                 retn
+                                 ra
+                                 mod_var_0
+                                 ...
+                                 mod_var_n
+                      next   --> arg0 of next function call
+     low addresses               ...
+  *)
+
+  (* What stackframe does:
+
+     high addresses!             ...
+                      p_sp   --> mod_var_0 of previous function call arg0
+                                 argn
+                                 ...
+                                 arg0
+                                 retn
+                                 ...
+                                 ret0
+                                 ra
+                                 mod_var_n
+                                 ...
+                      new_sp --> mod_var_0
+     low addresses               ...
+  *)
+  Definition stackframe(p_sp: word)(argvals retvals: list word)
+             (ra_val: word)(modvarvals: list word): mem -> Prop :=
+    word_array
+      (word.add p_sp
+                (word.of_Z
+                   (- (bytes_per_word *
+                       Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
+      (modvarvals ++ [ra_val] ++ retvals ++ argvals).
+
   Lemma compile_function_correct:
-    forall f useargs useresults t initialMH initialRegsH postH,
-    eval_stmt (SCall useresults f useargs) t initialMH initialRegsH postH ->
-    forall R initialL insts e pos body defargs defresults p_ra p_sp,
+    forall body useargs useresults defargs defresults t initialMH (initialRegsH: locals)
+           postH argvals sublocals outcome,
+      (* FlatImp function execution works: *)
+      List.option_all (List.map (map.get initialRegsH) useargs) = Some argvals ->
+      map.putmany_of_list defargs argvals map.empty = Some sublocals ->
+      exec map.empty body t initialMH sublocals outcome ->
+      (forall (t' : trace) (m' : mem) (st : locals),
+          outcome t' m' st ->
+          exists (retvals : list word) (l' : locals),
+            List.option_all (List.map (map.get st) defresults) = Some retvals /\
+            map.putmany_of_list useresults retvals initialRegsH = Some l' /\
+            postH t' m' l') ->
+    forall R initialL insts e pos p_ra p_sp old_retvals old_ra old_modvarvals,
+    length argvals = length defargs ->
+    length old_retvals = length defresults ->
+    length old_modvarvals = length (modVars_as_list body)  ->
     @compile_function def_params fun_pos_env e pos (defargs, defresults, body) = insts ->
     stmt_not_too_big body ->
     valid_registers body ->
@@ -945,7 +1004,9 @@ Section FlatToRiscv1.
     map.only_differ initialL.(getRegs) ll_regs initialRegsH ->
     map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
     map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
-    (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+    (program initialL.(getPc) insts *
+     stackframe p_sp argvals old_retvals old_ra old_modvarvals *
+     eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
     ext_guarantee initialL ->
@@ -974,7 +1035,8 @@ Section FlatToRiscv1.
     match goal with
     | H: ?P ?m |- _ => change (holds P m) in H; rename H into Q
     end.
-    unfold program in Q.
+    unfold program, stackframe, word_array in Q.
+    Set Printing Depth 100000.
     simpl in Q.
     repeat match type of Q with
     | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
@@ -982,13 +1044,57 @@ Section FlatToRiscv1.
       rewrite Hrw in Q
     end.
     unfold holds in Q.
+    simpl in Q.
+    match type of Q with
+    | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+      pose proof (array_append_DEPRECATED PT SZ xs ys start) as Hrw
+      (* remember (array PT SZ start (xs ++ ys)) as X *)
+    end.
+    (* "rewrite Hrw in Q" runs forever *)
+    seprewrite0_in Hrw Q.
 
     (* decrease sp *)
     run1det.
 
     (* save ra on stack *)
     eapply runsToStep. {
-      eapply run_compile_store; sidecondition.
+      eapply run_compile_store; try solve [sidecondition | simpl; solve_divisibleBy4].
+      {
+        simpl.
+        rewrite map.get_put_diff by (clear; cbv; congruence).
+        eassumption.
+      }
+      simpl.
+      replace
+        (word.add
+           (word.add p_sp
+                     (word.of_Z
+                        (-
+                         (bytes_per_word *
+                          Z.of_nat (length defargs + length defresults + 1 +
+                                    length (modVars_as_list body))))))
+           (word.of_Z (bytes_per_word * (1 + Z.of_nat (length (modVars_as_list body))))))
+        with
+          (word.add
+             (word.add p_sp
+                       (word.of_Z
+                          (- (bytes_per_word *
+                              Z.of_nat (length argvals + length old_retvals + 1 +
+                                       length old_modvarvals)))))
+             (word.mul (word.of_Z (Z.of_nat (Z.to_nat ((width + 7) / 8))))
+                       (word.of_Z (Zlength old_modvarvals))));
+        [ ecancel_assumption | ].
+      simpl.
+      rewrite Zlength_correct.
+      repeat match goal with
+             | H: ?T |- _ => lazymatch T with
+                             | length _ = length _ => progress rewrite H
+                             | _ => clear H
+                             end
+             end.
+      f_equal.
+      (* TODO off-by one because compile_function needs to be update to match stackframe *)
+
   Abort.
 
 End FlatToRiscv1.
