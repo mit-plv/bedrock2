@@ -585,84 +585,46 @@ Section FlatToRiscv1.
 
   Definition updateMetricsForLiteral v initialMetrics : MetricLog :=
     let cost :=
-        match andb (-2 ^ 11 <=? v) (v <? 2 ^ 11) with
-        | true => 1
-        | false => match orb (width =? 32) (andb (-2 ^ 31 <=? v) (v <? 2 ^ 31)) with
-                   | true => 2
-                   | false => 8
-                   end
-        end in
+        if dec (- 2 ^ 11 <= v < 2 ^ 11)
+        then 1
+        else
+          if dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31)
+          then 2
+          else 8 in
     addMetricInstructions cost (addMetricLoads cost initialMetrics).
 
-  Ltac leb_ltb_dec_true :=
-    match goal with
-    | H: ?x1 <= ?v < ?x2 |- context [(?x1 <=? ?v) && (?v <? ?x2)] =>
-      let H1 := fresh "H1" in
-      let H2 := fresh "H2" in
-      inversion H as [H1 H2];
-      apply Z.leb_le in H1; rewrite H1;
-      apply Z.ltb_lt in H2; rewrite H2
-    end.
-
-  Ltac leb_ltb_dec_and_split x :=
-    let x1 := fresh "x1" in
-    let x2 := fresh "x2" in
-    apply andb_prop in x as [x1 x2];
-    apply Z.leb_le in x1;
-    apply Z.ltb_lt in x2;
-    auto.
-  
-  Ltac leb_ltb_dec_false :=
-    match goal with
-    | H: ~ ?x1 <= ?v < ?x2 |- context [(?x1 <=? ?v) && (?v <? ?x2)] =>
-      let Hb := fresh "Hb" in
-      destruct ((x1 <=? v) && (v <? x2)) eqn:Hb;
-      [exfalso; leb_ltb_dec_and_split Hb|]
-    end.
+  Ltac update_metrics_invert :=
+    intros;
+    unfold updateMetricsForLiteral in *;
+    repeat match goal with
+           | H: ?P |- context[dec(?P)] =>
+             let H' := fresh "H'" in
+             destruct (dec P) as [|H']; [|exfalso; apply H'; apply H]
+           | H: ~?P |- context[dec(?P)] =>
+             let H'  := fresh "H'" in
+             destruct (dec P) as [H'|]; [exfalso; apply H; apply H'|]
+           end;
+    reflexivity.
 
   Lemma invert_update_metrics_for_literal_1: forall v initialMetrics,
     -2 ^ 11 <= v < 2 ^ 11 ->
     updateMetricsForLiteral v initialMetrics =
     addMetricInstructions 1 (addMetricLoads 1 initialMetrics).
-  Proof.
-    intros *. intros a.
-    unfold updateMetricsForLiteral in *.
-    leb_ltb_dec_true.
-    reflexivity.
-  Qed.
+  Proof. update_metrics_invert. Qed.
 
   Lemma invert_update_metrics_for_literal_2: forall v initialMetrics,
     ~(-2 ^ 11 <= v < 2 ^ 11) ->
     width = 32 \/ -2 ^ 31 <= v < 2 ^ 31 ->
     updateMetricsForLiteral v initialMetrics =
     addMetricInstructions 2 (addMetricLoads 2 initialMetrics).
-  Proof.
-    intros *. intros s a.
-    unfold updateMetricsForLiteral in *.
-    leb_ltb_dec_false.
-    destruct a as [a|a].
-    - apply Z.eqb_eq in a. rewrite a.
-      reflexivity.
-    - leb_ltb_dec_true. rewrite orb_true_r. reflexivity.
-  Qed.
+  Proof. update_metrics_invert. Qed.
 
   Lemma invert_update_metrics_for_literal_8: forall v initialMetrics,
     ~(-2 ^ 11 <= v < 2 ^ 11) ->
     ~(width = 32 \/ -2 ^ 31 <= v < 2 ^ 31)->
     updateMetricsForLiteral v initialMetrics =
     addMetricInstructions 8 (addMetricLoads 8 initialMetrics).
-  Proof.
-    intros *. intros s a.
-    unfold updateMetricsForLiteral in *.
-    leb_ltb_dec_false.
-    destruct ((width =? 32) || (- 2 ^ 31 <=? v) && (v <? 2 ^ 31)) eqn:abw.
-    - exfalso.
-      apply orb_prop in abw.
-      destruct abw as [abw|abw].
-      + apply Z.eqb_eq in abw. auto.
-      + leb_ltb_dec_and_split abw.
-    - reflexivity.
-  Qed.
+  Proof. update_metrics_invert. Qed.
 
   Ltac bound_for_literal P :=
     match goal with
