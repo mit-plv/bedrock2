@@ -583,13 +583,114 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
+  Definition updateMetricsForLiteral v initialMetrics : MetricLog :=
+    let cost :=
+        match andb (-2 ^ 11 <=? v) (v <? 2 ^ 11) with
+        | true => 1
+        | false => match orb (width =? 32) (andb (-2 ^ 31 <=? v) (v <? 2 ^ 31)) with
+                   | true => 2
+                   | false => 8
+                   end
+        end in
+    addMetricInstructions cost (addMetricLoads cost initialMetrics).
+
+  Ltac leb_ltb_dec_true :=
+    match goal with
+    | H: ?x1 <= ?v < ?x2 |- context [(?x1 <=? ?v) && (?v <? ?x2)] =>
+      let H1 := fresh "H1" in
+      let H2 := fresh "H2" in
+      inversion H as [H1 H2];
+      apply Z.leb_le in H1; rewrite H1;
+      apply Z.ltb_lt in H2; rewrite H2
+    end.
+
+  Ltac leb_ltb_dec_and_split x :=
+    let x1 := fresh "x1" in
+    let x2 := fresh "x2" in
+    apply andb_prop in x as [x1 x2];
+    apply Z.leb_le in x1;
+    apply Z.ltb_lt in x2;
+    auto.
+  
+  Ltac leb_ltb_dec_false :=
+    match goal with
+    | H: ~ ?x1 <= ?v < ?x2 |- context [(?x1 <=? ?v) && (?v <? ?x2)] =>
+      let Hb := fresh "Hb" in
+      destruct ((x1 <=? v) && (v <? x2)) eqn:Hb;
+      [exfalso; leb_ltb_dec_and_split Hb|]
+    end.
+
+  Lemma invert_update_metrics_for_literal_1: forall v initialMetrics,
+    -2 ^ 11 <= v < 2 ^ 11 ->
+    updateMetricsForLiteral v initialMetrics =
+    addMetricInstructions 1 (addMetricLoads 1 initialMetrics).
+  Proof.
+    intros *. intros a.
+    unfold updateMetricsForLiteral in *.
+    leb_ltb_dec_true.
+    reflexivity.
+  Qed.
+
+  Lemma invert_update_metrics_for_literal_2: forall v initialMetrics,
+    ~(-2 ^ 11 <= v < 2 ^ 11) ->
+    width = 32 \/ -2 ^ 31 <= v < 2 ^ 31 ->
+    updateMetricsForLiteral v initialMetrics =
+    addMetricInstructions 2 (addMetricLoads 2 initialMetrics).
+  Proof.
+    intros *. intros s a.
+    unfold updateMetricsForLiteral in *.
+    leb_ltb_dec_false.
+    destruct a as [a|a].
+    - apply Z.eqb_eq in a. rewrite a.
+      reflexivity.
+    - leb_ltb_dec_true. rewrite orb_true_r. reflexivity.
+  Qed.
+
+  Lemma invert_update_metrics_for_literal_8: forall v initialMetrics,
+    ~(-2 ^ 11 <= v < 2 ^ 11) ->
+    ~(width = 32 \/ -2 ^ 31 <= v < 2 ^ 31)->
+    updateMetricsForLiteral v initialMetrics =
+    addMetricInstructions 8 (addMetricLoads 8 initialMetrics).
+  Proof.
+    intros *. intros s a.
+    unfold updateMetricsForLiteral in *.
+    leb_ltb_dec_false.
+    destruct ((width =? 32) || (- 2 ^ 31 <=? v) && (v <? 2 ^ 31)) eqn:abw.
+    - exfalso.
+      apply orb_prop in abw.
+      destruct abw as [abw|abw].
+      + apply Z.eqb_eq in abw. auto.
+      + leb_ltb_dec_and_split abw.
+    - reflexivity.
+  Qed.
+
+  Ltac bound_for_literal P :=
+    match goal with
+    | H : updateMetricsForLiteral _ _ = ?finalMetrics |- _ =>
+      rewrite P in H; [|assumption..];
+      subst finalMetrics; repeat split; solve_MetricLog
+    end.
+
+  Lemma update_metrics_for_literal_bounded: forall v initialMetrics finalMetrics,
+      updateMetricsForLiteral v initialMetrics = finalMetrics ->
+      finalMetrics.(instructions) <= initialMetrics.(instructions) + 8 /\
+      finalMetrics.(loads) <= initialMetrics.(loads) + 8 /\
+      finalMetrics.(stores) <= initialMetrics.(stores) /\
+      finalMetrics.(jumps) <= initialMetrics.(jumps).
+  Proof.
+    intros.
+    destruct (dec (- 2 ^ 11 <= v < 2 ^ 11));
+      [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
+    - bound_for_literal invert_update_metrics_for_literal_1.
+    - bound_for_literal invert_update_metrics_for_literal_2.
+    - bound_for_literal invert_update_metrics_for_literal_8.
+  Qed.
+      
   Ltac match_apply_runsTo :=
     match goal with
     | R: runsTo ?m ?post |- runsToNonDet.runsTo _ ?m' ?post =>
       replace m' with m; [exact R|]
-    end;
-    simpl_MetricRiscvMachine_get_set;
-    f_equal.
+    end.
 
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
@@ -597,26 +698,10 @@ Section FlatToRiscv1.
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_registers (SLit x v) ->
-      - 2 ^ 11 <= v < 2 ^ 11 /\ runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
+      runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
-             (updateMetrics (addMetricInstructions 1)
-             (updateMetrics (addMetricLoads 1)
-                                        initialL)))))
-             post \/
-      not (- 2 ^ 11 <= v < 2 ^ 11) /\ (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31) /\ runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
-             (withPc     (add initialL.(getPc) d)
-             (withNextPc (add initialL.(getNextPc) d)
-             (updateMetrics (addMetricInstructions 2)
-             (updateMetrics (addMetricLoads 2)
-                                        initialL)))))
-             post \/
-      not (- 2 ^ 11 <= v < 2 ^ 11) /\ not (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31) /\ runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
-             (withPc     (add initialL.(getPc) d)
-             (withNextPc (add initialL.(getNextPc) d)
-             (updateMetrics (addMetricInstructions 8)
-             (updateMetrics (addMetricLoads 8)
-                                        initialL)))))
+             (withMetrics (updateMetricsForLiteral v initialL.(getMetrics)) initialL))))
              post ->
       runsTo initialL post.
   Proof.
@@ -632,19 +717,17 @@ Section FlatToRiscv1.
     destruct (dec (- 2 ^ 11 <= v < 2 ^ 11));
       [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
     - unfold compile_lit_12bit in *.
-      destruct N; [|destruct H; destruct H; exfalso; apply H; exact a].
-      destruct H.
+      rewrite invert_update_metrics_for_literal_1 in N; [|assumption].
       run1det.
       simpl_word_exprs word_ok.
       match_apply_runsTo.
-      erewrite signExtend_nop; eauto; lia.
+      erewrite signExtend_nop; eauto; simpl; lia.
     - unfold compile_lit_32bit in *.
-      destruct N; [destruct H; exfalso; apply n; assumption |].
-      destruct H; [| destruct H; destruct H0; exfalso; apply H0; apply o].
+      rewrite invert_update_metrics_for_literal_2 in N; [|assumption..].
       simpl in P.
-      destruct H. destruct H0.
       run1det. run1det.
-      match_apply_runsTo; [| solve_MetricLog].
+      match_apply_runsTo.
+      simpl_MetricRiscvMachine_get_set. f_equal; [| solve_MetricLog].
       f_equal.
       + rewrite map.put_put_same. f_equal.
         apply word.signed_inj.
@@ -681,6 +764,7 @@ Section FlatToRiscv1.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
     - unfold compile_lit_64bit, compile_lit_32bit in *.
+      rewrite invert_update_metrics_for_literal_8 in N; [|assumption..].
       match type of EV with
       | context [ Xori _ _ ?a ] => remember a as mid
       end.
@@ -688,22 +772,20 @@ Section FlatToRiscv1.
       | context [ Z.lxor ?a mid ] => remember a as hi
       end.
       cbv [List.app program array] in P.
-      destruct N; [destruct H; exfalso; apply n; assumption|].
-      destruct H; [destruct H; destruct H0; exfalso; apply n0; assumption|].
-      destruct H. destruct H0.
-      simpl_MetricRiscvMachine_get_set. (* if you don't remember enough values, this might take forever *)
-      autorewrite with rew_Zlength in H1.
-  Admitted.
-  (*
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
+      simpl in *. (* if you don't remember enough values, this might take forever *)
+      autorewrite with rew_Zlength in N.
+      simpl in N.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
       match_apply_runsTo.
+      f_equal; [|simpl; solve_MetricLog].
+      f_equal.
       + rewrite! map.put_put_same. f_equal. subst.
         apply word.unsigned_inj.
         assert (width = 64) as W64. {
@@ -726,7 +808,7 @@ Section FlatToRiscv1.
         all: Btauto.btauto.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
-  Qed. *)
+  Qed.
 
   Definition eval_stmt := exec map.empty.
 
@@ -876,11 +958,12 @@ Section FlatToRiscv1.
       + sidecondition.
       + unfold compile_stmt. unfold getPc, getMem, liftGet in *. simpl. ecancel_assumption.
       + sidecondition.
-      + destruct (dec (- 2 ^ 11 <= v < 2 ^ 11));
-          [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
-        * left. split; [assumption|]. run1done.
-        * right. left. repeat (split; [assumption|]). run1done.
-        * right. right. repeat (split; [assumption|]). run1done.
+      + simpl. run1done;
+        remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
+        symmetry in HeqfinalMetrics;
+        pose proof update_metrics_for_literal_bounded as Hlit;
+        specialize Hlit with (1 := HeqfinalMetrics);
+        solve_MetricLog.
 
     (* SOp *)
     - match goal with

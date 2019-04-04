@@ -714,7 +714,7 @@ Ltac simpl_MetricRiscvMachine_mem :=
   simpl RiscvMachine.getMem in *.
 
 Ltac sidecondition :=
-  simpl_MetricRiscvMachine_get_set;
+  simpl; simpl_MetricRiscvMachine_get_set;
   match goal with
   (* these branches are allowed to instantiate evars in a controlled manner: *)
   | H: map.get _ _ = Some _ |- _ => exact H
@@ -724,7 +724,7 @@ Ltac sidecondition :=
     | |- map.get (map.put _ ?x _) ?y = Some _ =>
       constr_eq x y; apply map.get_put_same
     end
-  | |- sep ?P ?Q ?m => simpl in *; simpl_MetricRiscvMachine_get_set; subst; solve [seplog]
+  | |- sep ?P ?Q ?m => simpl in *; simpl_MetricRiscvMachine_get_set; solve [seplog]
   | |- _ => reflexivity
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => assumption
