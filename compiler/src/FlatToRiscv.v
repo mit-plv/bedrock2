@@ -938,24 +938,7 @@ Section FlatToRiscv1.
                                      (LittleEndian.split _ (word.unsigned w)))
           (word.of_Z (Z.of_nat (@Memory.bytes_per width Syntax.access_size.word))).
 
-  (* What compile_function currently does:
-
-     high addresses!  p_sp   --> arg0
-                                 ...
-                                 argn
-                                 ret0
-                                 ...
-                                 retn
-                                 ra
-                                 mod_var_0
-                                 ...
-                                 mod_var_n
-                      next   --> arg0 of next function call
-     low addresses               ...
-  *)
-
-  (* What stackframe does:
-
+  (*
      high addresses!             ...
                       p_sp   --> mod_var_0 of previous function call arg0
                                  argn
@@ -1032,31 +1015,25 @@ Section FlatToRiscv1.
     }
     subst.
 
+
+    (* PARAMRECORDS *)
     match goal with
-    | H: ?P ?m |- _ => change (holds P m) in H; rename H into Q
+    | |- context [@modVars_as_list ?p ?veq ?body] =>
+      set (modvarnames := (@modVars_as_list p veq body)) in *
     end.
-    unfold program, stackframe, word_array in Q.
-    Set Printing Depth 100000.
-    simpl in Q.
-    repeat match type of Q with
-    | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-      let Hrw := constr:(array_append_DEPRECATED PT SZ xs ys start) in
-      rewrite Hrw in Q
+    match goal with
+    | H: length old_modvarvals = length ?x |- _ => change x with modvarnames in *
     end.
-    unfold holds in Q.
-    simpl in Q.
-    match type of Q with
-    | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-      pose proof (array_append_DEPRECATED PT SZ xs ys start) as Hrw
-      (* remember (array PT SZ start (xs ++ ys)) as X *)
-    end.
-    (* "rewrite Hrw in Q" runs forever *)
-    seprewrite0_in Hrw Q.
+    subst modvarnames.
 
     (* decrease sp *)
-    run1det.
+    eapply runsToStep. {
+      eapply run_Addi; try solve [sidecondition | simpl; solve_divisibleBy4 | pseplog].
+    }
+    (* problem: pseplog modifies unrelated sepclauses (it unfolds program, and does simpl) *)
+    (* intros. (* therefore takes forever *) *)
 
-    (* save ra on stack *)
+    (* save ra on stack
     eapply runsToStep. {
       eapply run_compile_store; try solve [sidecondition | simpl; solve_divisibleBy4].
       {
@@ -1064,6 +1041,7 @@ Section FlatToRiscv1.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         eassumption.
       }
+      {
       simpl.
       replace
         (word.add
@@ -1093,8 +1071,7 @@ Section FlatToRiscv1.
                              end
              end.
       f_equal.
-      (* TODO off-by one because compile_function needs to be update to match stackframe *)
-
+      *)
   Abort.
 
 End FlatToRiscv1.

@@ -196,13 +196,13 @@ Section FlatToRiscv1.
   Fixpoint save_regs(regs: list Register)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
-    | r :: regs => compile_store access_size.word sp r offset :: (save_regs regs (offset - 4))
+    | r :: regs => compile_store access_size.word sp r offset :: (save_regs regs (offset + 4))
     end.
 
   Fixpoint load_regs(regs: list Register)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
-    | r :: regs => compile_load access_size.word sp r offset :: (load_regs regs (offset - 4))
+    | r :: regs => compile_load access_size.word sp r offset :: (load_regs regs (offset + 4))
     end.
 
   Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width access_size.word).
@@ -258,38 +258,40 @@ Section FlatToRiscv1.
 
     (*
      Stack layout:
-     high addresses   old sp --> arg0
-                                 ...
+
+     high addresses              ...
+                      old sp --> mod_var_0 of previous function call arg0
                                  argn
-                                 ret0
                                  ...
+                                 arg0
                                  retn
-                                 ra
-                                 mod_var_0
                                  ...
+                                 ret0
+                                 ra
                                  mod_var_n
-                      new sp --> arg0 of next function call
+                                 ...
+                      new sp --> mod_var_0
      low addresses               ...
 
-     Expected stack layout at beginning of function call: like above, but only filled up to argn.
+     Expected stack layout at beginning of function call: like above, but only filled up to arg0.
      Stack grows towards low addresses.
     *)
-
     Definition compile_function(mypos: Z):
       (list varname * list varname * stmt) -> list Instruction :=
       fun '(argvars, resvars, body) =>
         let mod_vars := modVars_as_list body in
         let framelength := Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
         let framesize := bytes_per_word * framelength in
-        let ra_offset := bytes_per_word * (1 + Z.of_nat (length mod_vars)) in
         [[ Addi sp sp (-framesize) ]] ++
-        [[ compile_store access_size.word sp ra ra_offset ]] ++
-        save_regs mod_vars (bytes_per_word * (Z.of_nat (length mod_vars))) ++
-        load_regs argvars framesize ++
+        [[ compile_store access_size.word sp ra
+                         (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
+        save_regs mod_vars 0 ++
+        load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
         compile_stmt_new mypos body ++
-        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
-        load_regs mod_vars (bytes_per_word * (Z.of_nat (length mod_vars))) ++
-        [[ compile_load access_size.word ra sp ra_offset ]] ++
+        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
+        load_regs mod_vars 0 ++
+        [[ compile_load access_size.word ra sp
+                        (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 
