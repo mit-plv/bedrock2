@@ -211,11 +211,11 @@ Section Go.
         rewrite word.unsigned_of_Z in C.
         pose proof (word.unsigned_range addr) as R.
         remember (word.unsigned addr) as w.
-        rewrite Z.add_mod_idemp_r in C by blia.
-        rewrite Z.mod_eq in C by blia.
-        assert (z = 2 ^ width * ((w + z) / 2 ^ width)) by blia.
+        rewrite Z.add_mod_idemp_r in C by bomega.
+        rewrite Z.mod_eq in C by bomega.
+        assert (z = 2 ^ width * ((w + z) / 2 ^ width)) by bomega.
         remember ((w + z) / 2 ^ width) as k.
-        assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; Lia.nia.
+        assert (k < 0 \/ k = 0 \/ 0 < k) as D by bomega. destruct D as [D | [D | D]]; Lia.nia.
       }
       rewrite <- word.add_assoc.
       replace ((word.add (word.of_Z (word := @word W) z) (word.of_Z 1)))
@@ -249,7 +249,7 @@ Section Go.
     rewrite <- (word.of_Z_unsigned a1) at 1.
     rewrite word.unsigned_of_Z.
     f_equal.
-    blia.
+    bomega.
   Qed.
 
   Lemma putmany_of_footprint_None': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
@@ -262,7 +262,7 @@ Section Go.
     apply putmany_of_footprint_None''; try assumption.
     pose proof (word.unsigned_range (word.sub a1 a2)).
     assert (word.unsigned (word.sub a1 a2) = 0 \/ 0 < word.unsigned (word.sub a1 a2)) as C
-        by blia. destruct C as [C | C].
+        by bomega. destruct C as [C | C].
     - exfalso. apply H.
       rewrite word.unsigned_sub in C.
       apply word.unsigned_inj.
@@ -270,10 +270,10 @@ Section Go.
       remember ((word.unsigned a1 - word.unsigned a2) / 2 ^ width) as k.
       pose proof (word.unsigned_range a1).
       pose proof (word.unsigned_range a2).
-      assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; try Lia.nia.
+      assert (k < 0 \/ k = 0 \/ 0 < k) as D by bomega. destruct D as [D | [D | D]]; try Lia.nia.
       rewrite D in C.
       rewrite Z.mul_0_r in C.
-      blia.
+      bomega.
     - assumption.
   Qed.
 
@@ -312,10 +312,10 @@ Section Go.
       | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
       end.
       apply sep_on_undef_put.
-      + apply putmany_of_footprint_None; try blia.
+      + apply putmany_of_footprint_None; try bomega.
         eapply H1.
         simpl. left. reflexivity.
-      + apply IHn; blia || assumption || idtac.
+      + apply IHn; bomega || assumption || idtac.
         intros. eapply H1.
         simpl. right. assumption.
   Qed.
@@ -330,9 +330,9 @@ Section Go.
       simpl.
       replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by blia.
       apply sep_on_undef_put.
-      + apply putmany_of_footprint_None; try blia.
+      + apply putmany_of_footprint_None; try bomega.
         apply map.get_empty.
-      + apply IHn. blia.
+      + apply IHn. bomega.
   Qed.
 
   Lemma ptsto_bytes_array: forall (l: list byte) (addr: word),
@@ -360,7 +360,7 @@ Section Go.
       length (flat_map f l) = (n * length l)%nat.
   Proof.
     induction l; intros.
-    - simpl. blia.
+    - simpl. bomega.
     - simpl. rewrite app_length. rewrite H. rewrite IHl; assumption || blia.
   Qed.
 
@@ -370,7 +370,7 @@ Section Go.
       (e1 - e2) mod m = 0.
   Proof.
     intros. rewrite !Z.mod_eq in H0 by assumption.
-    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by blia.
+    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by bomega.
     rewrite Z.mod_eq by assumption.
     rewrite <- Z.mul_sub_distr_l.
     rewrite (Z.mul_comm m (e1 / m - e2 / m)).
@@ -495,13 +495,13 @@ Section Go.
         pose proof (encode_range inst) as P.
         destruct width_cases as [E | E]; rewrite E; split.
         (* TODO if https://github.com/coq/coq/pull/9291 makes it into 8.9.1,
-           blia can be replaced by blia *)
-        + blia.
-        + blia.
-        + blia.
+           bomega can be replaced *)
+        + bomega.
+        + bomega.
+        + bomega.
         + let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *.
           let r := eval cbv in (2 ^ 64) in change (2 ^ 64) with r in *.
-          blia.
+          bomega.
       }
       rewrite Z.mod_small; try assumption; try apply encode_range.
       rewrite decode_encode; assumption.

@@ -596,7 +596,7 @@ Section FlatToRiscv1.
         * unfold signExtend_bitwise. Zbitwise.
           (* TODO these should also be solved by Zbitwise *)
           {
-            assert (32 <= i < width) by blia. (* PARAMRECORDS? blia fails *)
+            assert (32 <= i < width) by bomega. (* PARAMRECORDS? blia fails *)
             destruct B.
             assert (31 < i) by blia.
             assert (0 < 31) by reflexivity.

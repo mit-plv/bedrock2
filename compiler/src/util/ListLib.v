@@ -27,11 +27,11 @@ Lemma listUpdate_length: forall E i l (e: E),
   length (listUpdate l i e) = length l.
 Proof.
   induction i; intros.
-  - destruct l; simpl in *; [blia|reflexivity].
-  - destruct l; simpl in *; [blia|].
+  - destruct l; simpl in *; [bomega|reflexivity].
+  - destruct l; simpl in *; [bomega|].
     f_equal.
     apply IHi.
-    blia.
+    bomega.
 Qed.
 
 Definition listUpdate_error{E: Type}(l: list E)(i: nat)(e: E): option (list E) :=
@@ -54,18 +54,18 @@ Proof.
   - unfold listUpdate_error in H.
     destruct_one_match_hyp; [|discriminate].
     destruct l.
-    + simpl in *; blia.
+    + simpl in *; bomega.
     + unfold listUpdate in H. simpl in *. inversion H. rewrite <- H2 in H0.
       inversion H0. reflexivity.
   - unfold listUpdate_error in H.
     destruct_one_match_hyp; [|discriminate].
     destruct l.
-    + simpl in *; blia.
+    + simpl in *; bomega.
     + unfold listUpdate in H. simpl in *. inversion H. rewrite <- H2 in H0.
       eapply IHi with (l := l).
       2: eassumption.
       unfold listUpdate_error.
-      destruct (dec (i < length l)); [reflexivity|blia].
+      destruct (dec (i < length l)); [reflexivity|bomega].
 Qed.
 
 Lemma nth_error_firstn: forall E i (l: list E) j,
@@ -73,12 +73,12 @@ Lemma nth_error_firstn: forall E i (l: list E) j,
   nth_error (firstn i l) j = nth_error l j.
 Proof.
   induction i; intros.
-  - blia.
+  - bomega.
   - simpl. destruct l; [reflexivity|].
     destruct j; [reflexivity|].
     simpl.
     apply IHi.
-    blia.
+    bomega.
 Qed.
 
 Lemma nth_error_skipn: forall E i j (l: list E),
@@ -86,13 +86,13 @@ Lemma nth_error_skipn: forall E i j (l: list E),
   nth_error (skipn i l) (j - i) = nth_error l j.
 Proof.
   induction i; intros.
-  - replace (j - 0) with j by blia. reflexivity.
+  - replace (j - 0) with j by bomega. reflexivity.
   - simpl. destruct l.
     * destruct j; simpl; [reflexivity|].
       destruct (j - i); reflexivity.
-    * simpl. destruct j; [blia|].
-      replace (S j - S i) with (j - i) by blia.
-      rewrite IHi by blia.
+    * simpl. destruct j; [bomega|].
+      replace (S j - S i) with (j - i) by bomega.
+      rewrite IHi by bomega.
       reflexivity.
 Qed.
 
@@ -103,21 +103,21 @@ Lemma nth_error_listUpdate_error_diff: forall E l l' i j (e: E),
 Proof.
   intros. unfold listUpdate_error in H.
   destruct_one_match_hyp; [|discriminate].
-  assert (j < i \/ i < j < length l \/ length l <= j) as C by blia.
+  assert (j < i \/ i < j < length l \/ length l <= j) as C by bomega.
   destruct C as [C|[C|C]].
   - inversion H. clear H. subst l'. unfold listUpdate.
     rewrite nth_error_app1.
     + apply nth_error_firstn. assumption.
-    + pose proof (@firstn_length_le _ l i). blia.
+    + pose proof (@firstn_length_le _ l i). bomega.
   - inversion H. subst l'. unfold listUpdate.
     pose proof (firstn_le_length i l).
-    rewrite nth_error_app2 by blia.
-    rewrite nth_error_app2 by (simpl; blia).
-    rewrite firstn_length_le by blia.
+    rewrite nth_error_app2 by bomega.
+    rewrite nth_error_app2 by (simpl; bomega).
+    rewrite firstn_length_le by bomega.
     change (length [e]) with 1.
-    replace (j - i -1) with (j - (S i)) by blia.
+    replace (j - i -1) with (j - (S i)) by bomega.
     apply nth_error_skipn.
-    blia.
+    bomega.
   - inversion H.
     pose proof (nth_error_None l j) as P.
     destruct P as [_ P]. rewrite P by assumption.

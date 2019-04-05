@@ -135,7 +135,7 @@ Module Z.
   Lemma land_nonzero a b : Z.land a b <> 0 -> a <> 0 /\ b <> 0.
   Proof.
     destruct (Z.eq_dec a 0), (Z.eq_dec b 0); subst;
-      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; blia.
+      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; bomega.
   Qed.
 End Z.
 
@@ -172,7 +172,7 @@ Ltac t :=
            | |- _ < word.unsigned ?x => pose proof Properties.word.unsigned_range x;
                                           repeat rewrite ?word.unsigned_sub, ?word.unsigned_of_Z;
                                           repeat rewrite ?Z.mod_small;
-                                            (blia || clear; cbv; split; congruence)
+                                            (bomega || clear; cbv; split; congruence)
            end]
   | _ => solve [trivial]
   end.
