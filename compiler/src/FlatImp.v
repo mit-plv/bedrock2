@@ -1,7 +1,6 @@
 Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import lib.LibTacticsMin.
 Require Import riscv.Utility.ListLib.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
@@ -192,8 +191,9 @@ Section FlatImp1.
              | E: negb _ = true       |- _ => apply negb_true_iff in E
              | E: negb _ = false      |- _ => apply negb_false_iff in E
              end;
-      inversionss;
-      eauto 16.
+      simp;
+      subst;
+      eauto 10.
 
     Lemma invert_eval_SLoad: forall fuel initialSt initialM sz x y final,
       eval_stmt (S fuel) initialSt initialM (SLoad sz x y) = Some final ->
@@ -267,12 +267,12 @@ Section FlatImp1.
         List.option_all (List.map (map.get st1) rets) = Some retvs /\
         map.putmany_of_list binds retvs st = Some st' /\
         p2 = (st', m').
-    Proof. inversion_lemma. Qed.
+    Proof. inversion_lemma. eauto 16. Qed.
 
     Lemma invert_eval_SInteract : forall st m1 p2 f binds fname args,
       eval_stmt (S f) st m1 (SInteract binds fname args) = Some p2 ->
       False.
-    Proof. inversion_lemma. Qed.
+    Proof. inversion_lemma. discriminate. Qed.
 
   End WithEnv.
 
@@ -568,8 +568,8 @@ Section FlatImp2.
     eval_stmt e fuel1 initialSt initialM s = Some final ->
     eval_stmt e fuel2 initialSt initialM s = Some final.
   Proof.
-    induction fuel1; introv L Ev.
-    - inversions Ev.
+    induction fuel1; intros *; intros L Ev.
+    - inversion Ev.
     - destruct fuel2; [blia|].
       assert (fuel1 <= fuel2)%nat as F by blia. specialize IHfuel1 with (1 := F).
       destruct final as [finalSt finalM].
@@ -598,9 +598,9 @@ Section FlatImp2.
     eval_stmt e fuel initialSt initialM s = Some (finalSt, finalM) ->
     map.only_differ initialSt (modVars s) finalSt.
   Proof.
-    induction fuel; introv Ev.
+    induction fuel; intros *; intro Ev.
     - discriminate.
-    - invert_eval_stmt; simpl in *; inversionss;
+    - invert_eval_stmt; simpl in *; simp; subst;
       repeat match goal with
       | IH: _, H: _ |- _ =>
           let IH' := fresh IH in pose proof IH as IH';

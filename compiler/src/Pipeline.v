@@ -1,7 +1,6 @@
 Require Export Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
-Require Export lib.LibTacticsMin.
 Require Export coqutil.Decidable.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExpr.

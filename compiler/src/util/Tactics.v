@@ -1,7 +1,7 @@
 Require Export Coq.Program.Tactics.
-Require Import lib.fiat_crypto_tactics.Not.
 Require Import coqutil.Decidable.
-Require Import lib.LibTacticsMin.
+Require Export coqutil.Tactics.Tactics.
+Require Import coqutil.sanity.
 
 Ltac destruct_one_match :=
   match goal with
@@ -53,17 +53,6 @@ Ltac destruct_one_match_hyp_of_type T :=
 Ltac destruct_one_match_hyp :=
   destruct_one_match_hyp_test ltac:(fun t => idtac).
 
-Tactic Notation "inversions" hyp(H) := inverts H.
-
-Ltac inversionss :=
-  repeat match goal with
-  | H: ?a = ?b |- _ => inverts H;
-                       match goal with
-                       | H': a = b |- _ => fail 1
-                       | _ => idtac
-                       end
-  end.
-
 Ltac repeat_at_least_once tac := tac; repeat tac.
 Tactic Notation "repeatplus" tactic(t) := (repeat_at_least_once t).
 
@@ -75,9 +64,9 @@ Ltac destruct_pair_eqs := repeatplus
 
 Ltac ensure_new H :=
   let t := type of H in
-  not (clear H; match goal with
-                | A: t |- _ => idtac
-                end).
+  assert_fails (clear H; match goal with
+                         | A: t |- _ => idtac
+                         end).
 
 Tactic Notation "forget" constr(X) "as" ident(y) := set (y:=X) in *; clearbody y.
 

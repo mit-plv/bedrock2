@@ -1,4 +1,3 @@
-Require Import lib.fiat_crypto_tactics.Test.
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.

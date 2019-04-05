@@ -2,7 +2,6 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.Strings.String.
 Require bedrock2.Examples.Demos.
-Require Import lib.LibTacticsMin.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.

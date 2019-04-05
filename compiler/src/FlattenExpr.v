@@ -203,7 +203,7 @@ Section FlattenExpr1.
       0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
   Proof.
     induction e; intros; simpl in *; repeat destruct_one_match_hyp;
-      inversionss; simpl;
+      simp; subst; simpl;
       repeat match goal with
       | H : _ |- _ => apply flattenExpr_size in H
       end; try bomega.
@@ -247,7 +247,7 @@ Section FlattenExpr1.
     flattenStmt ngs s = (s', ngs') ->
     0 <= FlatImp.stmt_size s' <= ExprImp.cmd_size s.
   Proof.
-    induction s; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl;
+    induction s; intros; simpl in *; repeat destruct_one_match_hyp; simp; subst; simpl;
     repeat match goal with
     | IH: _, A: _ |- _ => specialize IH with (1 := A)
     end;
@@ -265,7 +265,8 @@ Section FlattenExpr1.
     flattenExpr ngs oResVar e = (s, v, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).
   Proof.
-    induction e; intros; destruct oResVar; repeat (inversionss; try destruct_one_match_hyp);
+    induction e; intros; destruct oResVar;
+      repeat (simpl in *; simp; subst; try destruct_one_match_hyp);
     repeat match goal with
     | H: _ |- _ => apply genFresh_spec in H
     end;

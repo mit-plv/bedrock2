@@ -1,4 +1,3 @@
-Require Import lib.LibTacticsMin.
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import compiler.FlatImp.
@@ -708,7 +707,7 @@ Section FlatToRiscv1.
     eexists (map.putmany m1' mq).
     split.
     - unfold sep.
-      exists m1' mq. repeat split; trivial.
+      exists m1', mq. repeat split; trivial.
       apply store_bytes_preserves_footprint in H.
       clear -H A2.
       unfold map.disjoint, map.same_domain, map.sub_domain in *. destruct H as [P Q].

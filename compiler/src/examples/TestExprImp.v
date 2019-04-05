@@ -1,4 +1,3 @@
-Require Import lib.LibTacticsMin.
 Require Import compiler.util.Common.
 Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.

@@ -1,7 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Program.Tactics.
-Require Import lib.LibTacticsMin.
 Require Import riscv.Utility.Utility.
 Require Export bedrock2.Syntax.
 Require Export bedrock2.Semantics.
@@ -11,6 +10,7 @@ Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.ListLib.
+Require Import compiler.Simp.
 
 Local Set Ltac Profiling.
 
@@ -132,8 +132,9 @@ Section ExprImp1.
              | E: _ _ _ = true  |- _ => apply word.eqb_true  in E
              | E: _ _ _ = false |- _ => apply word.eqb_false in E
              end;
-      inversionss;
-      eauto 16.
+      simp;
+      subst;
+      eauto 10.
 
     Lemma invert_eval_store: forall fuel initialSt initialM a v final aSize,
       eval_cmd (S fuel) initialSt initialM (cmd.store aSize a v) = Some final ->
@@ -190,12 +191,12 @@ Section ExprImp1.
         List.option_all (List.map (map.get st1) rets) = Some retvs /\
         map.putmany_of_list binds retvs st = Some st' /\
         p2 = (st', m').
-    Proof. inversion_lemma. Qed.
+    Proof. inversion_lemma. eauto 16. Qed.
 
     Lemma invert_eval_interact : forall st m1 p2 f binds fname args,
       eval_cmd (S f) st m1 (cmd.interact binds fname args) = Some p2 ->
       False.
-    Proof. inversion_lemma. Qed.
+    Proof. inversion_lemma. discriminate. Qed.
 
   End WithEnv.
 
@@ -356,9 +357,9 @@ Section ExprImp2.
     eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->
     map.only_differ initialS (modVars s) finalS.
   Proof.
-    induction fuel; introv Ev.
+    induction fuel; intros *; intro Ev.
     - discriminate.
-    - invert_eval_cmd; simpl in *; inversionss;
+    - invert_eval_cmd; simpl in *; simp; subst;
       repeat match goal with
       | IH: _, H: _ |- _ =>
           let IH' := fresh IH in pose proof IH as IH';

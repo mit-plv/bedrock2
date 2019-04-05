@@ -39,7 +39,7 @@ Lemma nth_error_cons_Some: forall A (a1 a2: A) (l: list A) i,
     i = O /\ a1 = a2 \/ exists j, i = S j /\ nth_error l j = Some a2.
 Proof.
   intros. destruct i; simpl in *.
-  - inversions H. auto.
+  - inversion H. auto.
   - eauto.
 Qed.
 
@@ -450,7 +450,7 @@ Section EmitsValid.
     unfold valid_instructions.
     intros.
     destruct op; simpl in *; (repeat destruct H3; try contradiction);
-          inversions H; unfold verify; simpl;
+          inversion H; unfold verify; simpl;
           autounfold with unf_verify unf_encode_consts;
           unfold Register0;
           repeat match goal with
@@ -512,7 +512,7 @@ Section EmitsValid.
   Proof.
     intros. unfold iset.
     destruct Utility.width_cases as [E | E]; rewrite E; simpl;
-    destruct sz; inversions H; unfold valid_instructions, valid_register in *; simpl;
+    destruct sz; inversion H; clear H; unfold valid_instructions, valid_register in *; simpl;
       intros;
       (destruct H; [|contradiction]);
       subst instr;
