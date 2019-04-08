@@ -1027,8 +1027,95 @@ Section FlatToRiscv1.
 
     (* decrease sp *)
     eapply runsToStep. {
-      eapply run_Addi; try solve [sidecondition | simpl; solve_divisibleBy4 | pseplog].
-    }
+      eapply run_Addi; try solve [sidecondition | simpl; solve_divisibleBy4 ].
+
+      cbn [getRegs getPc getNextPc getMem getLog].
+      unfold program in *.
+      unfold array. (* only for singleton array *)
+      match goal with
+      | |- _ ?m1 =>
+        match goal with
+        | H: _ ?m2 |- _ =>
+          unify m1 m2;
+            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H
+        end
+      end.
+      rewrite array_address_inbounds.
+      { cancel.
+
+        Require Import coqutil.Tactics.syntactic_unify.
+        Require Import bedrock2.Map.SeparationLogic.
+
+Set Printing Implicit.
+Set Printing Universes.
+Set Printing All.
+
+Time progress change tt with tt in *.
+
+
+  lazymatch goal with
+  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
+    let ee := constr:(@emp K V M True) in
+    match RHS with
+    | cons ?e1 (cons ?e2 (cons ?e3 nil)) =>
+      constr_eq e2 ee; (* fails if we dont' do change tt with tt in * before *)
+
+      idtac e2; idtac ee
+    end
+  end.
+
+(*
+My goal contains
+
+(@mem p)
+
+and
+
+(@mem@{riscv.Utility.Monads.1 Top.2834 Top.2835 Top.2836 Top.2837 Top.2838 Top.2839 Top.2840 Top.2841 Top.2842 Top.2843 Top.2844 Top.2845 Top.2846 Top.2847 Top.2848 Top.2849 Top.2850 Top.2851 Top.2852 Top.2853 Top.2854 Top.2855 Top.2856} p)
+
+which are not considered equal by constr_eq, which causes separation logic tactics to fail
+
+If I do "change tt with tt in *" before, the (@mem p) without universes is replaced by the one with universes, and constr_eq works.
+
+What should we do about that? I see several bug reports related to constr_eq and universes, and don't even know if it's a bug. Should we add "change tt with tt in *" at the beginning of all separation logic tactics? Would that even be sufficient, or are incompatible terms created later?
+
+
+(@mem@{riscv.Utility.Monads.1 Top.2834 Top.2835 Top.2836 Top.2837 Top.2838 Top.2839 Top.2840
+      Top.2841 Top.2842 Top.2843 Top.2844 Top.2845 Top.2846 Top.2847 Top.2848 Top.2849 Top.2850
+      Top.2851 Top.2852 Top.2853 Top.2854 Top.2855 Top.2856} p)
+
+(@mem@{riscv.Utility.Monads.1 Top.2834 Top.2835 Top.2836 Top.2837 Top.2838 Top.2839 Top.2840
+      Top.2841 Top.2842 Top.2843 Top.2844 Top.2845 Top.2846 Top.2847 Top.2848 Top.2849 Top.2850
+      Top.2851 Top.2852 Top.2853 Top.2854 Top.2855 Top.2856} p)
+
+  end.
+    multimatch xs with
+  | cons ?x _ => constr:(ltac:(constr_eq x y; exact 0%nat))
+  | cons _ ?xs => let i := find_constr_eq xs y in constr:(S i)
+  end.
+
+
+  lazymatch goal with
+  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
+    idtac RHS;
+      let e := constr:(@emp K V M True) in idtac e
+  end.
+
+  lazymatch goal with
+  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
+    let j := find_constr_eq RHS constr:(@emp K V M True) in
+    simple refine (cancel_emp_at_index_r j LHS RHS _ _);
+    cbn [firstn skipn app hd tl];
+    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
+  end.
+
+        cancel_emp_r.
+        repeat ecancel_step.
+  solve [ cbn [seps]; syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)].
+
+      4: reflexivity.
+*)
+
     (* problem: pseplog modifies unrelated sepclauses (it unfolds program, and does simpl) *)
     (* intros. (* therefore takes forever *) *)
 
