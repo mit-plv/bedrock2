@@ -1046,21 +1046,70 @@ Section FlatToRiscv1.
         Require Import coqutil.Tactics.syntactic_unify.
         Require Import bedrock2.Map.SeparationLogic.
 
+        Fail cancel_emp_r.
+
+(*
+Ltac cancel_emp_r ::=
+  lazymatch goal with
+  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
+    let j := find_syntactic_unify_deltavar RHS constr:(@emp K V M True) in
+    simple refine (cancel_emp_at_index_r j LHS RHS _ _);
+    cbn [firstn skipn app hd tl];
+    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
+  end.
+
+cancel_emp_r.
+
+*)
 Set Printing Implicit.
 Set Printing Universes.
 Set Printing All.
 
-Time progress change tt with tt in *.
+(*Time progress change tt with tt in *.*)
 
+(*
+Ltac _syntactic_unify x y ::=
+  idtac x;
+  idtac "AND";
+  idtac y;
+  idtac "------";
+  (tryif is_proj x then
+    idtac "1st isproj"
+  else
+    idtac "1st not proj");
+  (tryif is_proj y then
+    idtac "2nd isproj"
+  else
+    idtac "2nd not proj");
+  idtac "=========";
+  match constr:(Set) with
+  | _ => is_evar x; unify x y
+  | _ => is_evar y; unify x y
+  | _ => lazymatch x with
+         | ?f ?a => lazymatch y with ?g ?b =>
+                                     _syntactic_unify f g; _syntactic_unify a b end
+         | (fun (a:?Ta) => ?f a)
+           => lazymatch y with (fun (b:?Tb) => ?g b) =>
+                               let __ := constr:(fun (a:Ta) (b:Tb) => ltac:(_syntactic_unify f g; exact Set)) in idtac end
+         | let a : ?Ta := ?v in ?f a
+           => lazymatch y with let b : ?Tb := ?w in ?g b =>
+                               _syntactic_unify v w;
+                               let __ := constr:(fun (a:Ta) (b:Tb) => ltac:(_syntactic_unify f g; exact Set)) in idtac end
+         (* TODO: fail fast in more cases *)
+         | _ => unify x y; constr_eq x y
+         end
+  end.
+*)
 
   lazymatch goal with
   | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
     let ee := constr:(@emp K V M True) in
-    match RHS with
+    lazymatch RHS with
     | cons ?e1 (cons ?e2 (cons ?e3 nil)) =>
-      constr_eq e2 ee; (* fails if we dont' do change tt with tt in * before *)
-
-      idtac e2; idtac ee
+      (*syntactic_unify e2 ee;*)
+      tryif constr_eq e2 ee
+      then idtac e2  "IS_constr_eq" ee
+      else idtac e2 "NOT_constr_eq" ee
     end
   end.
 
