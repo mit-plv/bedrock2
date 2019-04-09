@@ -927,6 +927,23 @@ Section FlatToRiscv1.
     firstorder congruence.
   Qed.
 
+  Lemma length_list_union: forall {T: Type} {teq: DecidableEq T} (l1 l2: list T),
+      (length (ListLib.list_union l1 l2) <= length l1 + length l2)%nat.
+  Proof.
+    induction l1; intros; simpl; [blia|].
+    destruct_one_match.
+    - specialize (IHl1 l2). blia.
+    - specialize (IHl1 (a :: l2)). simpl in *. blia.
+  Qed.
+
+  (* not a very strong bound, but requires no preconditions *)
+  Lemma modVars_as_list_le_stmt_size: forall (s: @stmt (@syntax_params p)),
+      Z.of_nat (length (modVars_as_list s)) <= FlatImp.stmt_size s.
+  Proof.
+    induction s; simpl; try blia.
+    (* call and interact cases still need more conditions *)
+  Abort.
+
   Axiom TODO: False.
 
   Definition ll_regs: PropSet.set Register :=
@@ -1030,143 +1047,18 @@ Section FlatToRiscv1.
     eapply runsToStep. {
       eapply run_Addi; try solve [sidecondition | simpl; solve_divisibleBy4 ].
     }
-    (* all this is not needed if primitive projections are off:
-      cbn [getRegs getPc getNextPc getMem getLog].
-      unfold program in *.
-      unfold array. (* only for singleton array *)
-      match goal with
-      | |- _ ?m1 =>
-        match goal with
-        | H: _ ?m2 |- _ =>
-          unify m1 m2;
-            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H
-        end
-      end.
-      rewrite array_address_inbounds.
-      { cancel.
 
-        Require Import coqutil.Tactics.syntactic_unify.
-        Require Import bedrock2.Map.SeparationLogic.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: context [sep] |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
 
-        Fail cancel_emp_r.
-*)
-(*
-Ltac cancel_emp_r ::=
-  lazymatch goal with
-  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
-    let j := find_syntactic_unify_deltavar RHS constr:(@emp K V M True) in
-    simple refine (cancel_emp_at_index_r j LHS RHS _ _);
-    cbn [firstn skipn app hd tl];
-    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
-  end.
-
-cancel_emp_r.
-
-Set Printing Implicit.
-Set Printing Universes.
-Set Printing All.
-
-(*Time progress change tt with tt in *.*)
-
-Ltac _syntactic_unify x y ::=
-  idtac x;
-  idtac "AND";
-  idtac y;
-  idtac "------";
-  (tryif is_proj x then
-    idtac "1st isproj"
-  else
-    idtac "1st not proj");
-  (tryif is_proj y then
-    idtac "2nd isproj"
-  else
-    idtac "2nd not proj");
-  idtac "=========";
-  match constr:(Set) with
-  | _ => is_evar x; unify x y
-  | _ => is_evar y; unify x y
-  | _ => lazymatch x with
-         | ?f ?a => lazymatch y with ?g ?b =>
-                                     _syntactic_unify f g; _syntactic_unify a b end
-         | (fun (a:?Ta) => ?f a)
-           => lazymatch y with (fun (b:?Tb) => ?g b) =>
-                               let __ := constr:(fun (a:Ta) (b:Tb) => ltac:(_syntactic_unify f g; exact Set)) in idtac end
-         | let a : ?Ta := ?v in ?f a
-           => lazymatch y with let b : ?Tb := ?w in ?g b =>
-                               _syntactic_unify v w;
-                               let __ := constr:(fun (a:Ta) (b:Tb) => ltac:(_syntactic_unify f g; exact Set)) in idtac end
-         (* TODO: fail fast in more cases *)
-         | _ => unify x y; constr_eq x y
-         end
-  end.
-
-  lazymatch goal with
-  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
-    let ee := constr:(@emp K V M True) in
-    lazymatch RHS with
-    | cons ?e1 (cons ?e2 (cons ?e3 nil)) =>
-      (*syntactic_unify e2 ee;*)
-      tryif constr_eq e2 ee
-      then idtac e2  "IS_constr_eq" ee
-      else idtac e2 "NOT_constr_eq" ee
-    end
-  end.
-
-My goal contains
-
-(@mem p)
-
-and
-
-(@mem@{riscv.Utility.Monads.1 Top.2834 Top.2835 Top.2836 Top.2837 Top.2838 Top.2839 Top.2840 Top.2841 Top.2842 Top.2843 Top.2844 Top.2845 Top.2846 Top.2847 Top.2848 Top.2849 Top.2850 Top.2851 Top.2852 Top.2853 Top.2854 Top.2855 Top.2856} p)
-
-which are not considered equal by constr_eq, which causes separation logic tactics to fail
-
-If I do "change tt with tt in *" before, the (@mem p) without universes is replaced by the one with universes, and constr_eq works.
-
-What should we do about that? I see several bug reports related to constr_eq and universes, and don't even know if it's a bug. Should we add "change tt with tt in *" at the beginning of all separation logic tactics? Would that even be sufficient, or are incompatible terms created later?
-
-
-(@mem@{riscv.Utility.Monads.1 Top.2834 Top.2835 Top.2836 Top.2837 Top.2838 Top.2839 Top.2840
-      Top.2841 Top.2842 Top.2843 Top.2844 Top.2845 Top.2846 Top.2847 Top.2848 Top.2849 Top.2850
-      Top.2851 Top.2852 Top.2853 Top.2854 Top.2855 Top.2856} p)
-
-(@mem@{riscv.Utility.Monads.1 Top.2834 Top.2835 Top.2836 Top.2837 Top.2838 Top.2839 Top.2840
-      Top.2841 Top.2842 Top.2843 Top.2844 Top.2845 Top.2846 Top.2847 Top.2848 Top.2849 Top.2850
-      Top.2851 Top.2852 Top.2853 Top.2854 Top.2855 Top.2856} p)
-
-  end.
-    multimatch xs with
-  | cons ?x _ => constr:(ltac:(constr_eq x y; exact 0%nat))
-  | cons _ ?xs => let i := find_constr_eq xs y in constr:(S i)
-  end.
-
-
-  lazymatch goal with
-  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
-    idtac RHS;
-      let e := constr:(@emp K V M True) in idtac e
-  end.
-
-  lazymatch goal with
-  | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
-    let j := find_constr_eq RHS constr:(@emp K V M True) in
-    simple refine (cancel_emp_at_index_r j LHS RHS _ _);
-    cbn [firstn skipn app hd tl];
-    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
-  end.
-
-        cancel_emp_r.
-        repeat ecancel_step.
-  solve [ cbn [seps]; syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)].
-
-      4: reflexivity.
-*)
-
-    (* problem: pseplog modifies unrelated sepclauses (it unfolds program, and does simpl) *)
-    (* intros. (* therefore takes forever *) *)
-
-    (* save ra on stack
+    (* save ra on stack *)
     eapply runsToStep. {
       eapply run_compile_store; try solve [sidecondition | simpl; solve_divisibleBy4].
       {
@@ -1176,35 +1068,66 @@ What should we do about that? I see several bug reports related to constr_eq and
       }
       {
       simpl.
-      replace
-        (word.add
-           (word.add p_sp
-                     (word.of_Z
-                        (-
-                         (bytes_per_word *
-                          Z.of_nat (length defargs + length defresults + 1 +
-                                    length (modVars_as_list body))))))
-           (word.of_Z (bytes_per_word * (1 + Z.of_nat (length (modVars_as_list body))))))
-        with
-          (word.add
-             (word.add p_sp
-                       (word.of_Z
-                          (- (bytes_per_word *
-                              Z.of_nat (length argvals + length old_retvals + 1 +
-                                       length old_modvarvals)))))
-             (word.mul (word.of_Z (Z.of_nat (Z.to_nat ((width + 7) / 8))))
-                       (word.of_Z (Zlength old_modvarvals))));
-        [ ecancel_assumption | ].
-      simpl.
-      rewrite Zlength_correct.
-      repeat match goal with
-             | H: ?T |- _ => lazymatch T with
-                             | length _ = length _ => progress rewrite H
-                             | _ => clear H
-                             end
-             end.
-      f_equal.
-      *)
+      match goal with
+      | |- _ ?m1 =>
+        match goal with
+        | H: _ ?m2 |- _ =>
+          unify m1 m2;
+            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H
+        end
+      end.
+      unfold stackframe, word_array in *.
+      rewrite array_address_inbounds.
+      { unfold Memory.bytes_per. ecancel. }
+      { rewrite ?List.app_length. simpl.
+        remember (Z.of_nat (length old_modvarvals + S (length old_retvals + length argvals)))
+          as F.
+        replace (Z.of_nat (length argvals + length old_retvals + 1 + length old_modvarvals))
+                with F by blia.
+        change (Z.of_nat (Z.to_nat ((width + 7) / 8))) with bytes_per_word.
+        rewrite word.unsigned_of_Z. unfold word.wrap.
+        replace (bytes_per_word mod 2 ^ width) with bytes_per_word; cycle 1. {
+          clear. unfold bytes_per_word. simpl.
+          destruct width_cases as [E | E]; rewrite E; reflexivity.
+        }
+
+        replace (Z.of_nat
+                   (length defargs + length defresults + 1 + length (modVars_as_list body)))
+          with F;
+        (* PARAMRECORDS *)
+        change (@modVars_as_list (mk_Syntax_params (@def_params p)))
+          with (@modVars_as_list (@syntax_params p)) in *;
+          change (@Syntax.varname (@syntax_params p)) with Register in *;
+          [|blia].
+
+        match goal with
+          | |- word.unsigned ?x < _ => ring_simplify x
+        end.
+
+        rewrite word.unsigned_mul, ?word.unsigned_of_Z. unfold word.wrap.
+        rewrite Zmult_mod_idemp_r. rewrite Zmult_mod_idemp_l.
+        rewrite Z.mod_small.
+        - apply Z.mul_lt_mono_pos_l; [|blia].
+          unfold bytes_per_word, Memory.bytes_per. clear.
+          destruct width_cases as [E | E]; rewrite E; reflexivity.
+        - case TODO. (* length of list of mod vars *)
+      }
+      { case TODO. (* something divided by bytes_per_word = 0 *) }
+      { reflexivity. }
+      }
+    }
+
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: context [sep] |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+    (* save vars modified by callee onto stack *)
   Abort.
 
 End FlatToRiscv1.
