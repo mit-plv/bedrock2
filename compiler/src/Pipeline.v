@@ -101,6 +101,7 @@ Section Pipeline1.
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.NG := NG;
+    FlattenExpr.ext_spec_ok := ext_spec_ok;
   }.
 
   Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.

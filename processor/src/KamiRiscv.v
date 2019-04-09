@@ -603,10 +603,10 @@ Section Equiv.
     end.
 
   Ltac inv_loadWord H :=
-    apply spec_loadWord in H; simpl in H.
+    apply @spec_loadWord in H; [|assumption..]; simpl in H.
 
   Ltac inv_step H :=
-    apply spec_step in H;
+    apply @spec_step in H; [|assumption..];
     unfold withNextPc, getNextPc, withRegs in H;
     simpl in H.
 
@@ -858,6 +858,7 @@ Section Equiv.
         eapply fetch_consistent; [|eassumption].
         admit. (** TODO @joonwonc: requires the correctness of [pc]. *)
       }
+      simpl in H3, Hfetch. (* normalizes implicit arguments *)
       rewrite Hfetch in *.
 
       (** Invert riscv-coq decode/execute *)
@@ -888,8 +889,7 @@ Section Equiv.
         destruct H3; [|admit (** TODO @joonwonc: prove the value of `R0` is
                               * always zero in Kami steps. *)].
         simpl in H3; destruct H3.
-        remember (map.get (convertRegs rf) rs1) as v1.
-        destruct v1 as [v1|]; [|admit (** TODO: prove it never fails to read
+        destruct_one_match_hyp; [rename w into v1|admit (** TODO: prove it never fails to read
                                        * a register value once the register
                                        * is valid. *)].
         inv_bind_apply H13.
@@ -897,10 +897,10 @@ Section Equiv.
         apply spec_getRegister with (post0:= mid3) in H12.
         destruct H12; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
         simpl in H12; destruct H12.
-        remember (map.get (convertRegs rf) rs2) as v2.
-        destruct v2 as [v2|]; [|admit (** TODO: ditto, about valid register reads *)].
+        destruct_one_match_hyp; [rename w into v2|
+                                 admit (** TODO: ditto, about valid register reads *)].
         inv_bind_apply H15.
-        apply spec_setRegister in H14.
+        apply @spec_setRegister in H14; [|assumption..].
         destruct H14; [|admit (** TODO @joonwonc: writing to `R0` *)].
         simpl in H14; destruct H14.
         inv_bind_apply H16.
@@ -911,14 +911,17 @@ Section Equiv.
         split; [|eassumption].
 
         (* next rf *)
-        replace (map.put (convertRegs rf) rd (v1 ^+ v2))
+        match goal with
+        | |- context [ riscv.Platform.RiscvMachine.mkRiscvMachine ?REGS _ _ _ _ ] =>
+          replace REGS
           with (convertRegs
                   (evalExpr
                      (UpdateVector
                         (Var type
                              (SyntaxKind (Vector (Bit KamiProc.nwidth) rv32RfIdx))
                              rf) (Var type (SyntaxKind (Bit rv32RfIdx)) dst)
-                        (Var type (SyntaxKind (Bit KamiProc.nwidth)) exec_val)))).
+                        (Var type (SyntaxKind (Bit KamiProc.nwidth)) exec_val))))
+        end.
         2: { unfold evalExpr; fold evalExpr.
              subst exec_val.
              replace rd with (Word.wordToZ dst) in *

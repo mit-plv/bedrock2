@@ -207,8 +207,8 @@ Section Go.
       rewrite map.get_put_diff; cycle 1. {
         clear -H H0 Gz. intro C.
         apply (f_equal word.unsigned) in C.
-        rewrite word.unsigned_add in C.
-        rewrite word.unsigned_of_Z in C.
+        rewrite word.unsigned_add in C. unfold word.wrap in C.
+        rewrite word.unsigned_of_Z in C. unfold word.wrap in C.
         pose proof (word.unsigned_range addr) as R.
         remember (word.unsigned addr) as w.
         rewrite Z.add_mod_idemp_r in C by bomega.
@@ -242,12 +242,12 @@ Section Go.
     specialize (P vs).
     replace (word.add a2 (word.of_Z (word.unsigned (word.sub a1 a2)))) with a1 in P; [exact P|].
     apply word.unsigned_inj.
-    rewrite word.unsigned_add.
+    rewrite word.unsigned_add. unfold word.wrap.
     rewrite word.of_Z_unsigned.
-    rewrite word.unsigned_sub.
+    rewrite word.unsigned_sub. unfold word.wrap.
     rewrite Z.add_mod_idemp_r by (destruct width_cases as [E | E]; rewrite E; cbv; discriminate).
     rewrite <- (word.of_Z_unsigned a1) at 1.
-    rewrite word.unsigned_of_Z.
+    rewrite word.unsigned_of_Z. unfold word.wrap.
     f_equal.
     bomega.
   Qed.
@@ -271,9 +271,11 @@ Section Go.
       pose proof (word.unsigned_range a1).
       pose proof (word.unsigned_range a2).
       assert (k < 0 \/ k = 0 \/ 0 < k) as D by bomega. destruct D as [D | [D | D]]; try Lia.nia.
+      (* LIABUG if primitive projections are on, we need this:
       rewrite D in C.
       rewrite Z.mul_0_r in C.
       bomega.
+      *)
     - assumption.
   Qed.
 
@@ -384,6 +386,11 @@ Section Go.
     rewrite <-? word.ring_morph.(morph_add);
     simpl.
 
+  Lemma pow2width_nonzero: 2 ^ width <> 0.
+  Proof.
+    destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
+  Qed.
+
   (* proves goals of the form
   addr <> word.add (word.add (word.add addr (word.of_Z 1)) (word.of_Z 1)) (word.of_Z 1)
   (any number of +1s)
@@ -396,15 +403,16 @@ Section Go.
     match type of C with
     | word.unsigned ?addr = _ => rewrite <- (word.of_Z_unsigned addr) in C at 1
     end;
-    rewrite !word.unsigned_add in C;
-    rewrite !word.unsigned_of_Z in C;
-    destruct width_cases as [E | E]; rewrite E in C;
-    rewrite ?Z.add_mod_idemp_r in C by (cbv; discriminate);
-    rewrite ?Z.mod_mod in C by (cbv; discriminate);
-    (apply mod_eq_to_diff in C; [|cbv; discriminate]);
+    unfold word.wrap in C;
+    rewrite !word.unsigned_add in C; unfold word.wrap in C;
+    rewrite !word.unsigned_of_Z in C; unfold word.wrap in C;
+    rewrite ?Z.add_mod_idemp_r in C by (apply pow2width_nonzero);
+    rewrite ?Z.mod_mod in C by (apply pow2width_nonzero);
+    (apply mod_eq_to_diff in C; [|apply pow2width_nonzero]);
     match type of C with
     | ?x mod _ = 0 => ring_simplify x in C
     end;
+    destruct width_cases as [E | E]; rewrite E in C;
     cbv in C; discriminate C.
 
   Lemma store_program_empty: forall prog addr,

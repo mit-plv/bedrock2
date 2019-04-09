@@ -58,6 +58,9 @@ Module Import FlattenExpr.
   Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
     Semantics.parameters_ok (mk_Semantics_params p) :=
   {
+    Semantics.word_ok := Utility.word_ok;
+    Semantics.byte_ok := Utility.byte_ok;
+    Semantics.mem_ok := mem_ok;
     Semantics.width_cases := Utility.width_cases;
     Semantics.ext_spec_ok := ext_spec_ok;
   }.
@@ -577,20 +580,20 @@ Section FlattenExpr1.
   Lemma one_ne_zero: word.of_Z 1 <> word.of_Z 0.
   Proof.
     apply unsigned_ne.
-    rewrite! word.unsigned_of_Z.
+    rewrite! word.unsigned_of_Z. unfold word.wrap.
     rewrite! Z.mod_small;
       [bomega|
        pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 Utility.width) as Q ..].
     {
       (* PARAMRECORDS *)
       Fail bomega.
-      simpl.
+      simpl in *.
       bomega.
     }
     {
       (* PARAMRECORDS *)
       Fail bomega.
-      simpl.
+      simpl in *.
       bomega.
     }
   Qed.

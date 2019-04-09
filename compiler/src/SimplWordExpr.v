@@ -27,6 +27,7 @@ Section Lemmas.
     rewrite! word.unsigned_of_Z.
     pose proof (@word.width_pos _ _ word_ok).
     pose proof (Z.pow_pos_nonneg 2 width).
+    unfold word.wrap.
     remember (2 ^ width) as M.
     remember (2 ^ (width - 1)) as M2.
     rewrite Z.add_mod by blia.

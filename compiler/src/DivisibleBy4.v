@@ -21,7 +21,7 @@ Ltac divisibleBy4_pre :=
          | |- divisibleBy4 _ -> _ => intro
          end;
   unfold divisibleBy4 in *;
-  repeat rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z.
+  repeat (rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z || unfold word.wrap).
 
 Ltac solve_divisibleBy4 := divisibleBy4_pre; solve_mod4_0.
 

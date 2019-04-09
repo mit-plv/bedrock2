@@ -65,7 +65,7 @@ Qed.
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
 Proof.
-  constructor; try typeclasses eauto.
+  constructor; try typeclasses eauto; try refine FlatToRiscv_hyps.
   constructor; unfold ext_spec, pipeline_params; simpl.
   - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
   - unfold real_ext_spec. intros.
@@ -190,7 +190,7 @@ Proof.
     + intro C. rewrite <- C in *. unfold imemStart in *. cbv in El2. intuition congruence.
     + rewrite Zlength_length.
       rewrite word.unsigned_sub.
-      unfold imemStart. rewrite word.unsigned_of_Z. rewrite Zminus_mod_idemp_l.
+      unfold imemStart. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Zminus_mod_idemp_l.
       match goal with
       | |- _ + ?L < ?M => let L' := eval cbv in L in change L with L';
                           let M' := eval cbv in M in change M with M'

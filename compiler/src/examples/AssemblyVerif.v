@@ -93,8 +93,8 @@ Section Verif.
        constants [word_cst]).
 
   Ltac simulate'_step :=
-    first [ eapply go_loadWord_sep ; simpl_word_exprs (@word_ok W); [sidecondition..|]
-          | eapply go_storeWord_sep; simpl_word_exprs (@word_ok W); [sidecondition..|intros]
+    first [ eapply go_loadWord_sep ; simpl in *; simpl_word_exprs (@word_ok W); [sidecondition..|]
+          | eapply go_storeWord_sep; simpl in *; simpl_word_exprs (@word_ok W); [sidecondition..|intros]
           | simulate_step ].
 
   Ltac simulate' := repeat simulate'_step.
@@ -208,6 +208,7 @@ Section Verif.
     seprewrite_in @array_append H0. simpl in *.
     subst.
     simpl.
+
     run1det.
     run1det.
     eapply runsTo_trans. {
@@ -246,25 +247,20 @@ Section Verif.
       f_equal.
       apply word.unsigned_inj.
       rewrite word.unsigned_mul.
-      rewrite word.unsigned_of_Z at 2.
+      rewrite word.unsigned_of_Z at 2. unfold word.wrap.
       rewrite (word.unsigned_of_Z (4 mod 2 ^ width * Z.of_nat (Datatypes.length asm_prog_1))).
-      rewrite word.unsigned_of_Z.
-      rewrite word.unsigned_of_Z.
+      rewrite! word.unsigned_of_Z. unfold word.wrap.
       apply Zmult_mod_idemp_r.
     }
 
     run1det.
-    match goal with
-    | |- context [ withMem ?m ] => set (m' := m) in *
-    end.
-    clearbody m'.
     simpl in *.
     eapply runsToDone.
     simpl.
     repeat split.
     - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
     - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
-    - (* TODO "clearboy m'" was a bad idea, we need it here too *) case fix_updated_mem_TODO.
+    - (* TODO *) case fix_updated_mem_TODO.
     - assumption.
   Qed.
 

@@ -301,13 +301,15 @@ Section MMIO1.
       intros. destruct H0 as [A B].
       specialize H with (1 := H2).
       rewrite map.get_empty in *.
-      destruct (map.get (getMem m2) k) eqn: E; [exfalso|reflexivity].
-      edestruct B; [eassumption|]. congruence.
+      match goal with
+      | |- ?X = None => destruct X eqn: E; [exfalso|reflexivity]
+      end.
+      edestruct B; [eassumption|]. rewrite H in H0. discriminate.
     - (* compile_ext_call_correct *)
       intros *. intros ? ? V_argvars V_resvars. intros.
       pose proof (compile_ext_call_emits_valid EmitsValid.iset _ action _ V_resvars V_argvars).
       destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
-      destruct action; cbv [getRegs getPc getNextPc getMem getLog] in *.
+      destruct action; cbn [getRegs getPc getNextPc getMem getLog] in *.
       + (* MMOutput *)
         simpl in *|-.
         simp.
@@ -340,18 +342,17 @@ Section MMIO1.
           simulate_step.
           simulate_step.
           simulate_step.
+          unfold Utility.add, Utility.ZToReg, Utility.regToInt32, MachineWidth_XLEN.
           simpl_word_exprs word_ok.
           apply spec_Bind.
-          unfold Utility.regToInt32, MachineWidth_XLEN.
-          refine (ex_intro _ (fun v m => m = _) _).
+          refine (ex_intro _ (fun v m => m = {| getLog := _ |}) _).
           split.
-          { apply spec_storeWord. simpl. right. split; [|reflexivity]. repeat split.
-            apply storeWord_in_MMIO_is_None; assumption. }
-          { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
-            simpl.
-            repeat split; try assumption.
+          { apply spec_storeWord. simpl. right. simpl. split; [|reflexivity].
+            apply storeWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
+          { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone. simpl.
             specialize H16 with (1 := H8).
             simp.
+            repeat split; try assumption.
             apply map.split_empty_r in H2. subst.
             apply map.split_empty_r in H9. subst.
             unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
@@ -390,10 +391,10 @@ Section MMIO1.
           simulate_step.
           simpl_word_exprs word_ok.
           apply spec_Bind.
-          refine (ex_intro _ (fun v m => m = _) _).
+          refine (ex_intro _ (fun v m => m = {| getLog := _ |}) _).
           split.
           { apply spec_loadWord. simpl. right. repeat split; try assumption.
-            apply loadWord_in_MMIO_is_None; assumption. }
+            apply loadWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
             simpl.
             repeat split; try assumption.
@@ -405,7 +406,9 @@ Section MMIO1.
             apply map.split_empty_r in H2. subst.
             apply map.split_empty_r in H9. subst.
             unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
-            assumption. }
+            replace (word.add r (word.of_Z 0)) with r; [assumption|].
+            simpl_word_exprs word_ok.
+            reflexivity. }
   Qed.
 
 End MMIO1.

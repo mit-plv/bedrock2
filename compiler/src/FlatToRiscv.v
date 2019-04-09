@@ -182,9 +182,9 @@ Section FlatToRiscv1.
       destruct width_cases as [E | E]; rewrite E; reflexivity.
     }
     destruct (Z.eqb_spec a b).
-    - subst a. rewrite Z.sub_diag. rewrite Z.mod_0_l by blia.
+    - subst a. rewrite Z.sub_diag. unfold word.wrap. rewrite Z.mod_0_l by blia.
       rewrite Z.mod_small; [reflexivity|blia].
-    - rewrite (Z.mod_small 1) by blia.
+    - unfold word.wrap. rewrite (Z.mod_small 1) by blia.
       destruct (Z.ltb_spec ((a - b) mod 2 ^ width) 1); [exfalso|reflexivity].
       pose proof (Z.mod_pos_bound (a - b) (2 ^ width)).
       assert ((a - b) mod 2 ^ width = 0) as A by blia.
@@ -212,7 +212,7 @@ Section FlatToRiscv1.
 
   Ltac div4_sidecondition :=
     pose proof four_fits;
-    rewrite ?word.unsigned_of_Z, ?Z.mod_small;
+    rewrite ?word.unsigned_of_Z; unfold word.wrap; rewrite ?Z.mod_small;
     blia.
 
   Lemma divisibleBy4_alt(x: word): divisibleBy4 x -> divisibleBy4' x.
@@ -641,6 +641,7 @@ Section FlatToRiscv1.
           exfalso. apply n0. left. reflexivity.
         }
         (repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_xor, ?word.unsigned_slu);
+        unfold word.wrap;
         rewrite W64; try reflexivity.
         clear.
         change (10 mod 2 ^ 64) with 10.
@@ -1028,7 +1029,8 @@ Section FlatToRiscv1.
     (* decrease sp *)
     eapply runsToStep. {
       eapply run_Addi; try solve [sidecondition | simpl; solve_divisibleBy4 ].
-
+    }
+    (* all this is not needed if primitive projections are off:
       cbn [getRegs getPc getNextPc getMem getLog].
       unfold program in *.
       unfold array. (* only for singleton array *)
@@ -1047,7 +1049,7 @@ Section FlatToRiscv1.
         Require Import bedrock2.Map.SeparationLogic.
 
         Fail cancel_emp_r.
-
+*)
 (*
 Ltac cancel_emp_r ::=
   lazymatch goal with
@@ -1060,14 +1062,12 @@ Ltac cancel_emp_r ::=
 
 cancel_emp_r.
 
-*)
 Set Printing Implicit.
 Set Printing Universes.
 Set Printing All.
 
 (*Time progress change tt with tt in *.*)
 
-(*
 Ltac _syntactic_unify x y ::=
   idtac x;
   idtac "AND";
@@ -1099,7 +1099,6 @@ Ltac _syntactic_unify x y ::=
          | _ => unify x y; constr_eq x y
          end
   end.
-*)
 
   lazymatch goal with
   | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
@@ -1113,7 +1112,6 @@ Ltac _syntactic_unify x y ::=
     end
   end.
 
-(*
 My goal contains
 
 (@mem p)
