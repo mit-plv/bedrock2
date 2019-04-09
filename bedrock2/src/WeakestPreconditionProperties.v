@@ -31,7 +31,6 @@ Section WeakestPrecondition.
     { eapply Proper_literal; eauto. }
     { eapply Proper_get; eauto. }
     { eapply IHa1; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load. }
-    { eapply IHa1_1; [|eauto]. intros; eapply IHa1_2; cycle 1; [eapply H1|intuition eauto]. }
   Qed.
 
   Global Instance Proper_list_map {A B} :
@@ -58,7 +57,6 @@ Section WeakestPrecondition.
       1: eapply Proper_expr.
       1: cbv [pointwise_relation Basics.impl]; intuition eauto 2.
       all: eauto. }
-    { eapply H0, H1. }
     { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_expr.
         { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
@@ -73,7 +71,6 @@ Section WeakestPrecondition.
         { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
         { eauto. } }
       { intuition eauto 6. } }
-    { eapply H2; try solve [typeclasses eauto with core]. eassumption. }
     { destruct H1 as (?&?&?&?&?&HH).
       eassumption || eexists.
       eassumption || eexists.

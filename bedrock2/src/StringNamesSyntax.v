@@ -2,7 +2,6 @@ Require Import bedrock2.Syntax.
 
 Require Import Coq.Strings.String.
 
-Local Set Primitive Projections.
 Class parameters := {
   actname : Type;
 }.

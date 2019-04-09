@@ -7,7 +7,6 @@ Module Import bopname.
 End bopname.
 Notation bopname := bopname.bopname.
 
-Local Set Primitive Projections.
 Class parameters := {
   varname : Type;
   funname : Type;

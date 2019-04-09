@@ -45,6 +45,10 @@ Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
 
 Require Import bedrock2.string2ident.
 
+Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
+Local Instance wordok: coqutil.Word.Interface.word.ok word := coqutil.Word.Naive.ok _ _.
+Local Instance byteok: coqutil.Word.Interface.word.ok byte := coqutil.Word.Naive.ok _ _.
+
 Lemma swap_ok : program_logic_goal_for_function! swap.
 Proof.
   repeat straightline; []; eauto.

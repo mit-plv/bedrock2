@@ -62,6 +62,10 @@ Ltac seplog_use_array_load1 H i :=
     [exact iNat|exact (word.of_Z 0)|blia|];
   change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
 
+(* TODO why does typeclass search fail here? *)
+Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 32 eq_refl) _.
+Local Instance wordok: word.ok word := coqutil.Word.Naive.ok _ _.
+
 (* bsearch.v has examples to deal with arrays *)
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
 Proof.

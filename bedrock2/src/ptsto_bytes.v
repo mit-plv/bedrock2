@@ -103,9 +103,11 @@ Section Scalars.
           apply Z.sub_move_0_r in C.
           apply (f_equal (fun x => x mod (2 ^ width))) in C.
           change (0 mod 2 ^ width) with 0 in C.
+          unfold word.wrap in C.
           rewrite <- Zminus_mod in C.
           rewrite Z.add_simpl_l in C.
           rewrite word.unsigned_of_Z in C.
+          unfold word.wrap in C.
           rewrite Z.mod_mod in C by blia.
           apply Z.mod_divide in C; [|blia].
           unfold Z.divide in C.

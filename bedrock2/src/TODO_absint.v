@@ -134,6 +134,7 @@ Local Notation "absint_lemma! pf" := (ltac:(
   cbv [absint_eq] in *;
   etransitivity; [ eapply pf | ]; cycle -1;
     [unshelve (repeat match goal with
+      | |- _ => progress unfold word.wrap in *
       | |-context [Z.shiftr ?x (word.unsigned ?y)] => assert_fails(is_evar x||is_evar y);
         setoid_rewrite (Z.shiftr_div_pow2 x (word.unsigned y) (proj1 (Properties.word.unsigned_range _)))
       | |-context [Z.shiftl ?x (word.unsigned ?y)] => assert_fails(is_evar x||is_evar y);
@@ -151,9 +152,11 @@ Local Notation "absint_lemma! pf" := (ltac:(
         match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).. ]
   )) (at level 10, only parsing).
 
+Instance word_ok: word.ok word. cbn. typeclasses eauto. Qed.
+
 Lemma absint_of_Z (x : Z) (Hrange : 0 <= x < 2^width) : word.unsigned (word.of_Z x) = x.
-Proof. rewrite word.unsigned_of_Z, Z.mod_small; trivial. Qed.
-Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
+Proof. rewrite word.unsigned_of_Z; unfold word.wrap; rewrite Z.mod_small; trivial. Qed.
+Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : _ =~> _ :=
   absint_lemma! (word.unsigned_add x y).
 Definition absint_sub (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
   absint_lemma! (word.unsigned_sub x y).

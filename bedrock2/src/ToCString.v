@@ -4,7 +4,6 @@ Require Import Coq.Numbers.BinNums.
 Require Import Coq.ZArith.BinIntDef.
 Require Import Coq.Strings.String.
 
-Local Set Primitive Projections.
 Class parameters := {
   syntax :> Syntax.parameters;
   varname_eqb : varname -> varname -> bool;
@@ -137,7 +136,7 @@ Section ToCString.
   Definition c_module (fs : list (funname * (list varname * list varname * cmd))) :=
     match fs with
     | nil => "#error ""c_module nil"" "
-    | cons main fs => 
+    | cons main fs =>
       concat LF (List.map (fun f => "static " ++ c_decl f) fs) ++ LF ++ LF ++
       c_func main ++ LF ++
       concat LF (List.map (fun f => "static " ++ c_func f) fs)

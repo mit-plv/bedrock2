@@ -23,6 +23,12 @@ Ltac seplog_use_array_load1 H i :=
     [exact iNat|exact (word.of_Z 0)|blia|];
   change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
 
+Local Instance mapok: coqutil.Map.Interface.map.ok Semantics.mem :=
+  SortedListWord.ok (Naive.word 32 eq_refl) _.
+Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
+Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
+
+
 Local Instance spec_of_arp : spec_of "arp" := fun functions =>
   forall t m packet ethbuf len R,
     (sep (array scalar8 (word.of_Z 1) ethbuf packet) R) m ->
@@ -32,7 +38,8 @@ Goal program_logic_goal_for_function! arp.
   repeat straightline.
   letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.
   eapply word__if_nonzero in H1.
-  rewrite word.unsigned_ltu, word.unsigned_of_Z, Z.mod_small in H1 by admit.
+  rewrite word.unsigned_ltu, word.unsigned_of_Z in H1. unfold word.wrap in H1.
+  rewrite Z.mod_small in H1; cycle 1. { cbv. split; congruence. }
   eapply Z.ltb_lt in H1.
   repeat (letexists || straightline).
   split.

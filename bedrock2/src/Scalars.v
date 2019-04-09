@@ -63,7 +63,7 @@ Section Scalars.
     rewrite <-Properties.word.wrap_unsigned at 2.
     eapply Z.bits_inj'; intros i Hi.
     pose proof word.width_pos (width:=width).
-    repeat rewrite ?bitblast.Z.testbit_mod_pow2, ?bitblast.Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by blia.
+    repeat ((rewrite ?bitblast.Z.testbit_mod_pow2, ?bitblast.Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by blia) || unfold word.wrap).
     destruct (Z.ltb_spec0 i width); cbn [andb]; trivial; [].
     destruct (Z.testbit (word.unsigned value) i); cbn [andb]; trivial; [].
     destruct (Z.leb_spec0 0 i); try blia; cbn [andb]; [].

@@ -91,6 +91,7 @@ Lemma word__add_sub x y : (x^+y^-x) = y.
 Proof.
   apply Properties.word.unsigned_inj.
   rewrite word.unsigned_sub, word.unsigned_add.
+  unfold word.wrap.
   rewrite Zminus_mod_idemp_l, Z.add_simpl_l.
   apply Properties.word.wrap_unsigned.
 Qed.
@@ -114,6 +115,11 @@ Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
 From coqutil.Tactics Require Import eabstract letexists rdelta.
 From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
+
+Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
+Local Instance wordok: coqutil.Word.Interface.word.ok word := coqutil.Word.Naive.ok _ _.
+Local Instance byteok: coqutil.Word.Interface.word.ok byte := coqutil.Word.Naive.ok _ _.
+
 
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma swap_swap_ok : program_logic_goal_for_function! bsearch.

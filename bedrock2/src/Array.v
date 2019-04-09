@@ -29,8 +29,7 @@ Section Array.
       | |- iff1 _ (sep _ (array ?mid _)) => replace mid with start; cycle 1
       end.
       { eapply word.unsigned_inj.
-        repeat rewrite ?word.unsigned_add, ?word.unsigned_of_Z, ?Z.mul_0_r, ?Z.mod_0_l, ?Z.add_0_r, ?word.wrap_unsigned; trivial.
-        pose proof word.width_pos; eapply Z.pow_nonzero; blia. }
+        repeat (rewrite ?word.unsigned_add, ?word.unsigned_of_Z, ?Z.mul_0_r, ?Z.mod_0_l, ?Z.add_0_r, ?word.wrap_unsigned || unfold word.wrap); trivial. }
       cancel.
     - rewrite <- app_comm_cons. rewrite array_cons. simpl.
       specialize (IHxs ys (word.add start size)). simpl in IHxs.
@@ -42,7 +41,7 @@ Section Array.
         replace addr1 with addr2; [reflexivity|]
       end.
       { eapply word.unsigned_inj.
-        repeat rewrite ?word.unsigned_add, ?word.unsigned_of_Z, ?Z.mul_0_r, ?Z.mul_1_r, ?Z.mod_0_l, ?Z.add_0_r, ?Z.mul_add_distr_l, ?word.wrap_unsigned, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l; trivial.
+        repeat (rewrite ?word.unsigned_add, ?word.unsigned_of_Z, ?Z.mul_0_r, ?Z.mul_1_r, ?Z.mod_0_l, ?Z.add_0_r, ?Z.mul_add_distr_l, ?word.wrap_unsigned, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l || unfold word.wrap); trivial.
         f_equal.
         blia. }
   Qed.
@@ -55,7 +54,7 @@ Section Array.
     etransitivity; [eapply array_append|].
     repeat Morphisms.f_equiv.
     eapply word.unsigned_inj.
-    repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r.
+    repeat (rewrite ?word.unsigned_of_Z, ?word.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r || unfold word.wrap).
     reflexivity.
   Qed.
 
@@ -107,14 +106,14 @@ Section Array.
       rewrite Znat.Z2Nat.id by (eapply Z.div_pos; blia).
       eapply word.unsigned_inj.
       repeat rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z.
-      repeat rewrite ?Zdiv.Zmult_mod_idemp_l, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l.
+      repeat (rewrite ?Zdiv.Zmult_mod_idemp_l, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l || unfold word.wrap).
       rewrite Z.mul_comm, <-Zdiv.Z_div_exact_full_2 by trivial.
-      rewrite ?word.unsigned_sub, ?Zdiv.Zminus_mod_idemp_r, ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l.
+      repeat (rewrite ?word.unsigned_sub, ?Zdiv.Zminus_mod_idemp_r, ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l || unfold word.wrap).
       replace (word.unsigned start + (word.unsigned a - word.unsigned start)) with (word.unsigned a) by blia.
       rewrite Z.mod_small by assumption; trivial. }
     replace (word.mul (word.of_Z (Z.of_nat n)) size) with (word.of_Z (word.unsigned size * Z.of_nat n)); cycle 1.
     { eapply word.unsigned_inj.
-      repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zmult_mod_idemp_l.
+      repeat (rewrite ?word.unsigned_of_Z, ?word.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zmult_mod_idemp_l || unfold word.wrap).
       f_equal. blia. }
     eapply (array_index_nat_inbounds xs start n); subst n.
     rewrite <-Znat.Nat2Z.id.

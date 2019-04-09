@@ -67,6 +67,11 @@ Ltac t :=
   repeat match goal with H: unsigned.absint_eq ?x ?x |- _ => clear H end;
   cbv [unsigned.absint_eq] in *.
 
+
+Local Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
+Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
+Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
+
 Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
   repeat straightline.
@@ -108,13 +113,20 @@ Proof.
           epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
           rewrite Heq at 2; clear Hbit Heq.
           (* rewriting with equivalence modulo ... *)
-          rewrite !word.unsigned_mul, ?Z.mul_mod_idemp_l by discriminate.
+          rewrite !word.unsigned_mul.
+          unfold word.wrap.
+          rewrite ?Z.mul_mod_idemp_l by discriminate.
           rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
           rewrite ?Z.pow_add_r by (pose proof word.unsigned_range x0; Z.div_mod_to_equations; blia).
           rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } }
-      { repeat (straightline || (split; trivial; [])). all: t.
+      { (straightline || (split; trivial; [])).
+        (straightline || (split; trivial; [])).
+        (* straightline
+        Error: Anomaly "Universe Top.1137 undefined." Please report at http://coq.inria.fr/bugs/. *)
+        admit. } } (*
+        repeat (straightline || (split; trivial; [])). all: t.
         { (* measure decreases *)
           set (word.unsigned x0) in *. (* WHY does blia need this? *)
           Z.div_mod_to_equations; blia. }
@@ -129,11 +141,15 @@ Proof.
           rewrite ?Z.add_0_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } } }
+          *)
     { (* postcondition *) rewrite H, Z.pow_0_r, Z.mul_1_r, word.wrap_unsigned; auto. } }
 
+  (* Error: Anomaly "Universe Top.873 undefined." Please report at http://coq.inria.fr/bugs/.
   repeat straightline.
 
   (* function postcontition *)
   repeat (split || letexists || t || trivial).
   setoid_rewrite H1; setoid_rewrite Z.mul_1_l; trivial.
 Defined.
+*)
+Admitted.
