@@ -5,7 +5,7 @@ From bedrock2 Require Import NotationsInConstr ProgramLogic Map.Separation Array
 Require bedrock2.Examples.Demos.
 Definition bsearch := @Demos.bsearch _ Demos.BinarySearch.StringNames.Inst.
 
-From coqutil Require Import Word.Interface Map.Interface. (* coercions word and rep *)
+From coqutil Require Import Datatypes.List Word.Interface Map.Interface. (* coercions word and rep *)
 From bedrock2 Require Import Semantics BasicC64Semantics.
 
 From coqutil Require Import Z.div_mod_to_equations.
@@ -165,40 +165,26 @@ Proof.
       { SeparationLogic.ecancel_assumption. }
       { subst v1. subst x7.
         clear H1 x8 H2 v0.
-        repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
-        replace (\_ (x2 ^- x1 ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8))
-           with (8 * ((word.unsigned (x2 ^- x1)/8)/2)); cycle 1.
-        { (* 8 * (\_ (x2 ^- x1) / 8 / 2) = \_ (x2 ^- x1 ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8) *) admit. }
-        replace (\_ (x2 ^- x1) / 2 ^ 4 * 2 ^ 3 / 8)
-           with (word.unsigned (x2 ^- x1)/8/2); cycle 1.
-        { rewrite Z.div_mul by discriminate. clear. Z.div_mod_to_equations. blia. }
-        rewrite length_rep, (Z.mul_comm 8 (Z.of_nat _)), Z.div_mul by discriminate; f_equal.
-        clear.
+        rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
+        unshelve erewrite (_ : _ ^- _ = x2 ^- x1 ^- (/_ 8 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3)); [ring|].
+        rewrite word.unsigned_sub.
+        repeat (rewrite ?length_rep || match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end).
+        pose proof Properties.word.unsigned_range (x2 ^- x1) as HH; rewrite length_rep in HH, H4.
+        cbv [word.wrap].
+        rewrite Z.mod_small; cycle 1. { clear -HH H4. PreOmega.zify. Z.div_mod_to_equations. blia. }
+        rewrite length_skipn.
+        rewrite Z.div_mul by discriminate.
         (* Z and nat ... *)
-        change 2 with (Z.of_nat 2); rewrite <-div_Zdiv by discriminate; rewrite ?Nat2Z.id; f_equal.
-        (* list manipulation... *)
-        unshelve erewrite (_ : forall xs, Datatypes.length (List.tl xs) = pred (Datatypes.length xs)).
-        { intros l. destruct l. { reflexivity. } { reflexivity. } }
-        unshelve erewrite (_ : forall xs delta, Datatypes.length (List.skipn delta xs) = (Datatypes.length xs - delta)%nat).
-        { admit. }
-        pattern (Datatypes.length x); set (n := Datatypes.length x); clearbody n; cbv beta; clear.
-        (*  forall n, (n / 2)%nat = Init.Nat.pred (n - n / 2) *) admit. }
+        PreOmega.zify; rewrite Z2Nat.id in *; Z.div_mod_to_equations; blia. }
       { subst v'. subst v. subst x7.
         set (\_ (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1) / \_ (/_ 8)) as X.
         assert (X < Z.of_nat (Datatypes.length x)). {
           eapply Z.div_lt_upper_bound; [exact eq_refl|].
           rewrite word__add_sub.
           repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
-          rewrite length_rep in *. (* WHY does blia need this? *)
+          rewrite length_rep in *. (* WHY does lia need this? *)
           revert H4. clear. intros. Z.div_mod_to_equations. blia. }
-        clearbody X.
-        unshelve erewrite (_ : forall xs, Datatypes.length xs <> 0%nat ->
-                                          Datatypes.length (List.tl xs) = pred (Datatypes.length xs)). {
-          intros l. destruct l. { contradiction. } { reflexivity. } }
-        { assert ((Datatypes.length (List.skipn (Z.to_nat X) x) <= Datatypes.length x)%nat) by admit. (* length_skipn_le? *)
-          rewrite length_rep in *; blia. }
-        { (* skipn with less than all elements returns a nonempty list *) admit. } }
+        rewrite length_skipn; blia. }
       SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { rewrite word__add_sub.
         destruct x; cbn [Datatypes.length] in *.
@@ -215,7 +201,7 @@ Proof.
       repeat letexists; repeat split; repeat straightline.
       { SeparationLogic.ecancel_assumption. }
       { subst v1. subst x7.
-        repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
+        rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
         rewrite ?length_rep.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
@@ -225,7 +211,7 @@ Proof.
         rewrite Z2Nat.id by (clear; Z.div_mod_to_equations; blia).
         clear. Z.div_mod_to_equations. blia. }
       { subst v. subst v'. subst x7.
-        repeat ureplace (_ ^- _:word) by (set_evars; progress ring_simplify; subst_evars; exact eq_refl).
+        rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
         rewrite ?length_rep.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
@@ -254,5 +240,6 @@ Proof.
   all: exact (word.of_Z 0).
 
   all:fail "remaining subgoals".
-Admitted.
+Admitted. (* Error: No such section variable or assumption: H6. *)
+
 Local Set Simplex.

@@ -58,13 +58,17 @@ Section Array.
     reflexivity.
   Qed.
 
+  Lemma list__tl_skipn {A} n (xs : list A) : tl (skipn n xs) = skipn (S n) xs.
+  Proof. revert xs; induction n, xs; auto; []; eapply IHn. Qed.
+
   Lemma array_index_nat xs start n :
     iff1 (array start xs)
       ( array start (firstn n xs) * (
         match hd_error (skipn n xs) with Some x => element (word.add start (word.of_Z (word.unsigned size*Z.of_nat n))) x | None => emp True end *
-        array (word.add (word.add start (word.of_Z (word.unsigned size*Z.of_nat n))) size) (tl (skipn n xs)))).
+        array (word.add (word.add start (word.of_Z (word.unsigned size*Z.of_nat n))) size) (skipn (S n) xs))).
   Proof.
     pose proof (firstn_skipn n xs) as H.
+    rewrite <-!list__tl_skipn.
     remember (firstn n xs) as A in *; remember (skipn n xs) as B in *; rewrite <-H.
     etransitivity; [eapply array_append|]; eapply iff1_sep_cancel.
     destruct B; cbn [array hd_error tl]; [solve[cancel]|].
@@ -78,7 +82,7 @@ Section Array.
     iff1 (array start xs)
        (array start (firstn n xs) *
        (element (word.add start (word.of_Z (word.unsigned size * Z.of_nat n))) (hd default (skipn n xs)) *
-       array (word.add (word.add start (word.of_Z (word.unsigned size * Z.of_nat n))) size) (tl (skipn n xs)))).
+       array (word.add (word.add start (word.of_Z (word.unsigned size * Z.of_nat n))) size) (skipn (S n) xs))).
   Proof.
     pose proof array_index_nat xs start n.
     rewrite <-(firstn_skipn n xs), app_length in H.
@@ -94,7 +98,7 @@ Section Array.
     : iff1 (array start xs)
       ( array start (firstn n xs) * (
         element a (hd default (skipn n xs)) *
-        array (word.add a size) (tl (skipn n xs)) ) ).
+        array (word.add a size) (skipn (S n) xs) ) ).
   Proof.
     pose proof word.unsigned_range a.
     pose proof word.unsigned_range size.
@@ -121,3 +125,54 @@ Section Array.
     eapply Z.div_lt_upper_bound; blia.
   Qed.
 End Array.
+
+Section ByteArray.
+  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
+  Context {byte : Word.Interface.word 8} {byte_ok : word.ok byte}.
+  Context {mem : map.map word byte} {mem_ok : map.ok mem}.
+  Local Notation array := (array (mem:=mem) ptsto (word.of_Z 1)).
+  Local Infix "*" := sep.
+
+  Lemma bytearray_address_inbounds xs (start : word) a
+    (Hlen : word.unsigned (word.sub a start) < Z.of_nat (length xs))
+    (i := Z.to_nat (word.unsigned (word.sub a start)))
+    : iff1 (array start xs)
+      (array start (firstn i xs) * (
+        ptsto a (hd (word.of_Z 0) (skipn i xs)) *
+        array (word.add a (word.of_Z 1)) (skipn (S i) xs) ) ).
+  Proof.
+    eapply array_address_inbounds;
+      rewrite ?word.unsigned_of_Z_1, ?Z.mul_1_l, ?Z.mod_1_r, ?Z.div_1_r; auto.
+  Qed.
+
+  Lemma bytearray_index_inbounds xs (start iw : word)
+    (Hlen : word.unsigned iw < Z.of_nat (length xs))
+    (i := Z.to_nat (word.unsigned iw))
+    : iff1 (array start xs)
+      (array start (firstn i xs) * (
+        ptsto (word.add start iw) (hd (word.of_Z 0) (skipn i xs)) *
+        array (word.add (word.add start iw) (word.of_Z 1)) (skipn (S i) xs) ) ).
+  Proof.
+    rewrite (bytearray_address_inbounds xs start (word.add start iw));
+    replace (word.sub (word.add start iw) start) with iw; try (reflexivity || assumption).
+    all : rewrite word.word_sub_add_l_same_l; trivial.
+  Qed.
+
+  Lemma bytearray_append xs ys start : 
+    iff1 (array start (xs ++ ys))
+         (array start xs * array (word.add start (word.of_Z (Z.of_nat (length xs)))) ys).
+  Proof. 
+    replace (Z.of_nat (length xs))
+       with (Z.mul (word.unsigned (word.of_Z 1 : word)) (Z.of_nat (length xs)));
+      auto using array_append; []; rewrite word.unsigned_of_Z_1; Omega.omega.
+  Qed.
+
+  Lemma bytearray_index_merge xs ys (start i : word)
+        (H : word.unsigned i = (Z.of_nat (length xs)))
+    : iff1 (array start xs * array (word.add start i) ys)
+           (array start (xs ++ ys)).
+  Proof. 
+    pose proof word.of_Z_unsigned i as HH; rewrite H in HH.
+    subst i; symmetry; apply bytearray_append.
+  Qed.
+End ByteArray.
