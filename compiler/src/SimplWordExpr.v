@@ -69,6 +69,9 @@ Ltac simpl_word_exprs OK :=
   | _ => fail 10000 "wordok is not of type word.ok"
   end.
 
+Require Import riscv.Utility.ListLib.
+Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
+
 Ltac solve_word_eq OK :=
   match goal with
   | |- @eq (@word.rep _ _) _ _ => idtac

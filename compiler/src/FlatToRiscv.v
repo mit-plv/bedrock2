@@ -139,32 +139,10 @@ Section FlatToRiscv1.
 
   Local Notation RiscvMachineL := (RiscvMachine Register actname).
 
-  Ltac word_cst w :=
-    match w with
-    | word.of_Z ?x => let b := isZcst x in
-                      match b with
-                      | true => x
-                      | _ => constr:(NotConstant)
-                      end
-    | _ => constr:(NotConstant)
-    end.
-
-  Definition word_ring_morph := word.ring_morph (word := word).
-  Definition word_ring_theory := word.ring_theory (word := word).
-
-  Hint Rewrite
-    word_ring_morph.(morph_add)
-    word_ring_morph.(morph_sub)
-    word_ring_morph.(morph_mul)
-    word_ring_morph.(morph_opp)
-  : rew_word_morphism.
-
-  Add Ring wring : word_ring_theory
+  Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism word_ring_morph,
+       morphism (word.ring_morph (word := word)),
        constants [word_cst]).
-
-  Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word),
       word.eqb y z = word.ltu (word.sub y z) (word.of_Z 1).
