@@ -18,16 +18,18 @@ Goal exists (x4 : list word) (x5 : mem -> Prop), forall M : mem,
     sep (array scalar (word.of_Z 0) (word.of_Z 0) nil) (fun _ => False) M
 .
 Proof.
+  pose proof I as X.
   unshelve (refine (ex_intro _ ?[e1] _); refine (ex_intro _ ?[e2] _); intros M H); cycle -1.
   1: unshelve epose proof ((admit : forall n, n = n -> Lift1Prop.iff1
        (sep (array scalar (word.of_Z 0) (word.of_Z 0) ?[Goal]) (sep ?[P] ?[Q]))
        (array ?[element] ?[a] ?[aa] ?[xs]))_) as Hrw; cycle -1.
   1: unshelve (let Hrw := open_constr:((Hrw _)) in clear H;
-       epose proof (proj1 (SeparationLogic.Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) admit) as XX).
-  1: destruct M.
+       epose proof (proj1 (SeparationLogic.Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) admit) as _).
+  1: destruct X.
   all: apply admit.
   Show Proof.
-(* (ex_intro *)
+(* (let X : True := I in *)
+(*  ex_intro *)
 (*    (fun x4 : list word => *)
 (*     exists x5 : mem -> Prop, *)
 (*       forall M : mem, *)
@@ -49,34 +51,18 @@ Proof.
 (*            (sep (array scalar (word.of_Z 0) (word.of_Z 0) admit) *)
 (*               (sep admit admit)) (array admit admit admit admit) := *)
 (*          admit admit in *)
-(*        let XX : sep (array admit admit admit admit) admit admit := *)
+(*        let H : sep (array admit admit admit admit) admit admit := *)
 (*          proj1 *)
 (*            (SeparationLogic.Proper_sep_iff1 *)
 (*               (sep (array scalar (word.of_Z 0) (word.of_Z 0) admit) *)
 (*                  (sep admit admit)) (array admit admit admit admit) *)
 (*               (Hrw *)
-(*                  (match *)
-(*                     M as r *)
-(*                     return *)
-(*                       (sep (array scalar (word.of_Z 0) (word.of_Z 0) admit) *)
-(*                          admit r -> *)
-(*                        (admit = admit -> *)
-(*                         Lift1Prop.iff1 *)
-(*                           (sep *)
-(*                              (array scalar (word.of_Z 0) (word.of_Z 0) admit) *)
-(*                              (sep admit admit)) *)
-(*                           (array admit admit admit admit)) ->  *)
-(*                        admit = admit) *)
-(*                   with *)
-(*                   | {| SortedList.value := value; SortedList._value_ok := *)
-(*                     _value_ok |} => *)
+(*                  (match X with *)
+(*                   | I => *)
 (*                       fun *)
 (*                         (_ : sep *)
 (*                                (array scalar (word.of_Z 0)  *)
-(*                                   (word.of_Z 0) admit) admit *)
-(*                                {| *)
-(*                                SortedList.value := value; *)
-(*                                SortedList._value_ok := _value_ok |}) *)
+(*                                   (word.of_Z 0) admit) admit M) *)
 (*                         (_ : admit = admit -> *)
 (*                              Lift1Prop.iff1 *)
 (*                                (sep *)
@@ -87,4 +73,4 @@ Proof.
 (*                   end H Hrw)) admit admit (RelationClasses.reflexivity admit) *)
 (*               admit) admit in *)
 (*        admit))) *)
-Qed. (* Error: No such section variable or assumption: H9. *)
+Qed. (* Error: No such section variable or assumption: H. *)
