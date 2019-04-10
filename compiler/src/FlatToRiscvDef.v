@@ -193,19 +193,21 @@ Section FlatToRiscv1.
         Beq x Register0 amt
     end.
 
+  Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width access_size.word).
+
   Fixpoint save_regs(regs: list Register)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
-    | r :: regs => compile_store access_size.word sp r offset :: (save_regs regs (offset + 4))
+    | r :: regs => compile_store access_size.word sp r offset
+                   :: (save_regs regs (offset + bytes_per_word))
     end.
 
   Fixpoint load_regs(regs: list Register)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
-    | r :: regs => compile_load access_size.word sp r offset :: (load_regs regs (offset + 4))
+    | r :: regs => compile_load access_size.word sp r offset
+                   :: (load_regs regs (offset + bytes_per_word))
     end.
-
-  Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width access_size.word).
 
   (* All positions are relative to the beginning of the progam, so we get completely
      position independent code. *)
