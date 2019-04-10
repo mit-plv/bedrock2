@@ -371,7 +371,7 @@ Ltac ecancel_assumption :=
     multimatch goal with
     | H: _ ?m2 |- _ =>
       syntactic_unify_deltavar m1 m2;
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H);
       solve [ecancel]
     end
   end.
@@ -382,7 +382,7 @@ Ltac seplog :=
     match goal with
     | H: _ ?m2 |- _ =>
       unify m1 m2;
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H);
       cancel;
       try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ]
     end
@@ -397,8 +397,7 @@ Ltac seprewrite0_in Hrw H :=
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
       by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   let H' := fresh H in rename H into H';
-  epose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H')) as H;
-  clear H' pf.
+  epose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H')) as H.
 
 
 Ltac seprewrite_in Hrw H :=
@@ -431,7 +430,7 @@ Ltac seprewrite0 Hrw :=
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
       by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
-  eapply (fun m => (proj2 (pf m))); clear pf; (* <-- note: proj2 instead of proj1 *)
+  eapply (fun m => (proj2 (pf m))); (* <-- note: proj2 instead of proj1 *)
   eapply (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _).
 
 Ltac seprewrite Hrw :=

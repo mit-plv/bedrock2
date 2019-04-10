@@ -82,32 +82,6 @@ Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
 Ltac straightline_cleanup :=
   match goal with
-  | x : Word.Interface.word.rep _ |- _ => clear x
-  | x : Semantics.word |- _ => clear x
-  | x : Semantics.byte |- _ => clear x
-  | x : Semantics.locals |- _ => clear x
-  | x : Semantics.trace |- _ => clear x
-  | x : Syntax.cmd |- _ => clear x
-  | x : Syntax.expr |- _ => clear x
-  | x : coqutil.Map.Interface.map.rep |- _ => clear x
-  | x : BinNums.Z |- _ => clear x
-  | x : unit |- _ => clear x
-  | x : bool |- _ => clear x
-  | x : list _ |- _ => clear x
-  | x : nat |- _ => clear x
-  | x := _ : Word.Interface.word.rep _ |- _ => clear x
-  | x := _ : Semantics.word |- _ => clear x
-  | x := _ : Semantics.byte |- _ => clear x
-  | x := _ : Semantics.locals |- _ => clear x
-  | x := _ : Semantics.trace |- _ => clear x
-  | x := _ : Syntax.cmd |- _ => clear x
-  | x := _ : Syntax.expr |- _ => clear x
-  | x := _ : coqutil.Map.Interface.map.rep |- _ => clear x
-  | x := _ : BinNums.Z |- _ => clear x
-  | x := _ : unit |- _ => clear x
-  | x := _ : bool |- _ => clear x
-  | x := _ : list _ |- _ => clear x
-  | x := _ : nat |- _ => clear x
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
@@ -115,7 +89,6 @@ Ltac straightline_cleanup :=
   | H: exists _, _ |- _ => destruct H
   | H: _ /\ _ |- _ => destruct H
   | x := ?y |- ?G => is_var y; subst x
-  | H: ?x = ?y |- _ => constr_eq x y; clear H
   | H: ?x = ?y |- _ => is_var x; is_var y; destruct H
   | H: ?x = ?v |- _ =>
     is_var x;
