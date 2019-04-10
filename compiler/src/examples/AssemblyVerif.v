@@ -226,7 +226,7 @@ Section Verif.
     simpl in *.
     subst.
 
-    clear H0.
+    clear H6.
 
     (* TODO matching up addresses should work automatically *)
     replace (@word.add _ (@word W)
@@ -241,7 +241,7 @@ Section Verif.
            (@word.of_Z _ (@word W) 4))
         (@word.mul _ (@word W) (@word.of_Z _ (@word W) 4)
            (@word.of_Z _ (@word W) (Z.of_nat (@Datatypes.length Instruction asm_prog_1)))))
-      in H5; cycle 1. {
+      in H1; cycle 1. {
       clear.
       change BinInt.Z.of_nat with Z.of_nat in *.
       f_equal.

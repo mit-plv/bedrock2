@@ -80,7 +80,7 @@ Proof.
   intros.
 
   seprewrite_in (symmetry! @array_cons) H2.
-  seprewrite_in (@bytearray_index_merge) H2. {
+  seprewrite_in (@bytearray_index_merge) H4. {
     pose proof Properties.word.unsigned_range i.
     Time change tt with tt in *.
     rewrite length_firstn_inbounds;
@@ -92,7 +92,7 @@ Proof.
   split; [|solve [repeat straightline]].
 
   repeat straightline.
-  eapply Properties.word.if_nonzero in H3; rewrite word.unsigned_ltu in H3; eapply Z.ltb_lt in H3.
+  eapply Properties.word.if_nonzero in H2; rewrite word.unsigned_ltu in H2; eapply Z.ltb_lt in H2.
 
   letexists.
   split. {
@@ -100,7 +100,7 @@ Proof.
     split; repeat straightline.
     letexists; split. {
       eapply load_one_of_sep.
-      simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H2).
+      simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H3).
       (etransitivity; [|etransitivity]); [ | eapply Proper_sep_iff1; [|reflexivity]; eapply bytearray_index_inbounds | ].
       3: ecancel.
       1: ecancel.
