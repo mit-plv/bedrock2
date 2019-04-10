@@ -979,6 +979,75 @@ Section FlatToRiscv1.
                        Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
       (modvarvals ++ [ra_val] ++ retvals ++ argvals).
 
+  (* TODO move *)
+
+  Ltac use_sep_assumption :=
+    match goal with
+    | |- _ ?m1 =>
+      match goal with
+      | H: _ ?m2 |- _ =>
+        unify m1 m2;
+        refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H
+      end
+    end.
+
+  Require Import coqutil.Tactics.syntactic_unify.
+
+  Ltac cancel_seps_at_indices i j :=
+    lazymatch goal with
+    | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
+      simple refine (cancel_seps_at_indices i j LHS RHS _ _);
+      cbn [firstn skipn app hd tl];
+      [syntactic_exact_deltavar
+         (@RelationClasses.reflexivity _ _
+           (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _) | ]
+    end.
+
+  Lemma save_regs_correct: forall vars offset R initial p_sp oldvalues newvalues,
+      Forall valid_register vars ->
+      offset mod 4 = 0 ->
+      divisibleBy4 initial.(getPc) ->
+      divisibleBy4 p_sp ->
+      List.option_all (List.map (map.get initial.(getRegs)) vars) = Some newvalues ->
+      map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
+      length oldvalues = length vars ->
+      (program initial.(getPc) (save_regs vars offset) *
+       word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
+      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+      runsTo initial (fun final =>
+          final.(getRegs) = initial.(getRegs) /\
+          (program initial.(getPc) (save_regs vars offset) *
+           word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep
+              final.(getMem) /\
+          final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
+                                                        (word.of_Z (Z.of_nat (length vars)))) /\
+          final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
+  Proof.
+    induction vars; intros.
+    - simpl in *. simp. destruct oldvalues; simpl in *; [|discriminate].
+      apply runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
+    - simpl in *. simp.
+      assert (valid_instructions EmitsValid.iset
+                [(compile_store Syntax.access_size.word RegisterNames.sp a offset)]) by case TODO.
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+      destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
+      eapply runsToStep. {
+        eapply run_compile_store; try solve [sidecondition].
+      }
+      simpl. intros. simp.
+      eapply runsTo_weaken; cycle 1; [|eapply IHvars]. {
+        simpl. intros. simp.
+        repeat split; try solve [sidecondition].
+        - congruence.
+        - use_sep_assumption.
+          cancel.
+          unfold program.
+          replace (getPc mid) with (word.add (getPc initial) (word.of_Z 4)) by congruence.
+          cancel_seps_at_indices 0%nat 1%nat.
+          (* bug: should not add 4 to offset, but bytes_per_word *)
+
+  Admitted.
+
   Lemma compile_function_correct:
     forall body useargs useresults defargs defresults t initialMH (initialRegsH: locals)
            postH argvals sublocals outcome,
@@ -1128,6 +1197,7 @@ Section FlatToRiscv1.
     subst.
 
     (* save vars modified by callee onto stack *)
+
   Abort.
 
 End FlatToRiscv1.
