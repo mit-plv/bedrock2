@@ -179,6 +179,7 @@ Section FlatToRiscv1.
 
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
+  Arguments Z.of_nat: simpl never.
   Arguments run1: simpl never.
 
   Definition divisibleBy4'(x: word): Prop := word.modu x (word.of_Z 4) = word.of_Z 0.
@@ -922,6 +923,22 @@ Section FlatToRiscv1.
     (* call and interact cases still need more conditions *)
   Abort.
 
+  Lemma union_Forall: forall {T: Type} {teq: DecidableEq T} (P: T -> Prop) (l1 l2: list T),
+      Forall P l1 ->
+      Forall P l2 ->
+      Forall P (ListLib.list_union l1 l2).
+  Proof.
+    induction l1; intros; simpl; [assumption|].
+    simp. destruct_one_match; eauto.
+  Qed.
+
+  Lemma modVars_as_list_valid_registers: forall (s: @stmt (@syntax_params p)),
+      valid_registers s ->
+      Forall valid_register (modVars_as_list s).
+  Proof.
+    induction s; intros; simpl in *; simp; eauto 10 using @union_Forall.
+  Qed.
+
   Axiom TODO: False.
 
   Definition ll_regs: PropSet.set Register :=
@@ -1013,18 +1030,44 @@ Section FlatToRiscv1.
         eapply run_compile_store; try solve [sidecondition].
       }
       simpl. intros. simp.
+      destruct_RiscvMachine initial.
+      destruct_RiscvMachine mid.
+      subst.
       eapply runsTo_weaken; cycle 1; [|eapply IHvars]. {
         simpl. intros. simp.
         repeat split; try solve [sidecondition].
-        - congruence.
-        - use_sep_assumption.
+        - (* TODO all of this should be one more powerful cancel tactic
+             with matching of addresses using ring *)
+          use_sep_assumption.
           cancel.
           unfold program.
-          replace (getPc mid) with (word.add (getPc initial) (word.of_Z 4)) by congruence.
-          cancel_seps_at_indices 0%nat 1%nat.
-          (* bug: should not add 4 to offset, but bytes_per_word *)
-
-  Admitted.
+          symmetry.
+          cancel_seps_at_indices 1%nat 0%nat.
+          unfold bytes_per_word, Memory.bytes_per.
+          rewrite word.ring_morph_add.
+          rewrite word.add_assoc.
+          ecancel_step.
+          ecancel.
+        - replace (Z.of_nat (S (length oldvalues)))
+            with (1 + Z.of_nat (length oldvalues)) by blia.
+          etransitivity; [eassumption|].
+          replace (length vars) with (length oldvalues) by blia.
+          solve_word_eq word_ok.
+      }
+      all: try eassumption.
+      + assert (bytes_per_word mod 4 = 0). {
+          unfold bytes_per_word, Memory.bytes_per.
+          clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+        }
+        mod4_0.solve_mod4_0.
+      + simpl. solve_divisibleBy4.
+      + simpl. pseplog.
+        unfold bytes_per_word, Memory.bytes_per.
+        rewrite word.ring_morph_add.
+        rewrite word.add_assoc.
+        ecancel.
+      + reflexivity.
+  Qed.
 
   Lemma compile_function_correct:
     forall body useargs useresults defargs defresults t initialMH (initialRegsH: locals)
@@ -1115,14 +1158,7 @@ Section FlatToRiscv1.
       }
       {
       simpl.
-      match goal with
-      | |- _ ?m1 =>
-        match goal with
-        | H: _ ?m2 |- _ =>
-          unify m1 m2;
-            refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H
-        end
-      end.
+      use_sep_assumption.
       unfold stackframe, word_array in *.
       rewrite array_address_inbounds.
       { unfold Memory.bytes_per. ecancel. }
@@ -1159,7 +1195,7 @@ Section FlatToRiscv1.
           destruct width_cases as [E | E]; rewrite E; reflexivity.
         - case TODO. (* length of list of mod vars *)
       }
-      { case TODO. (* something divided by bytes_per_word = 0 *) }
+      { case TODO. (* something modulo bytes_per_word = 0 *) }
       { reflexivity. }
       }
     }
@@ -1175,6 +1211,61 @@ Section FlatToRiscv1.
     subst.
 
     (* save vars modified by callee onto stack *)
+    eapply runsTo_trans. {
+      eapply save_regs_correct; simpl; cycle 2.
+      1: solve_divisibleBy4.
+      3: rewrite map.get_put_same; reflexivity.
+      1: solve_divisibleBy4.
+      1: case TODO. (* similar do divisibleBy 4 *)
+      1: (* PROBLEM: the register values being saved on the stack might be undefined,
+            i.e. not in initialL_regs, so List.option_all would return None *)
+        admit.
+      4: eapply modVars_as_list_valid_registers; eassumption.
+      1: eassumption.
+      2: reflexivity.
+      1: {
+        use_sep_assumption.
+        unfold program.
+        progress repeat match goal with
+                        | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+                          rewrite (array_append_DEPRECATED PT SZ xs ys start)
+                        end.
+        cancel.
+        simpl_word_exprs word_ok.
+
+        (* PARAMRECORDS *)
+        match goal with
+        | |- iff1 (seps ?LHS) (seps ?RHS) =>
+          match LHS with
+          | context [array ?PT ?SZ ?start ?L] =>
+            match RHS with
+            | context [array PT SZ ?start' ?L'] =>
+              let v1 := constr:(array PT SZ start L) in
+              let v2 := constr:(array PT SZ start' L') in
+              (* idtac v1 v2; *)
+              change v1 with v2
+            end
+          end
+        end.
+
+        cancel_step.
+        (* TODO need to simpl firstn and index expression *)
+        admit.
+      }
+      reflexivity.
+    }
+
+    simpl.
+
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: context [sep] |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
 
   Abort.
 
