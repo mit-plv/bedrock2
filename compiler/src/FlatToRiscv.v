@@ -73,14 +73,8 @@ Module Import FlatToRiscv.
     ext_guarantee: RiscvMachine Register actname -> Prop;
   }.
 
-  Instance syntax_params{p: parameters}: Syntax.parameters := {|
-    Syntax.varname := Register;
-    Syntax.funname := Empty_set;
-    Syntax.actname := actname;
-  |}.
-
   Instance Semantics_params{p: parameters}: Semantics.parameters := {|
-    Semantics.syntax := syntax_params;
+    Semantics.syntax := FlatToRiscvDef.mk_Syntax_params _;
     Semantics.ext_spec := ext_spec;
     Semantics.funname_eqb := Empty_set_rect _;
     Semantics.funname_env := Empty_set_keyed_map.map;
@@ -916,7 +910,7 @@ Section FlatToRiscv1.
   Qed.
 
   (* not a very strong bound, but requires no preconditions *)
-  Lemma modVars_as_list_le_stmt_size: forall (s: @stmt (@syntax_params p)),
+  Lemma modVars_as_list_le_stmt_size: forall (s: @stmt (mk_Syntax_params _)),
       Z.of_nat (length (modVars_as_list s)) <= FlatImp.stmt_size s.
   Proof.
     induction s; simpl; try blia.
@@ -932,7 +926,7 @@ Section FlatToRiscv1.
     simp. destruct_one_match; eauto.
   Qed.
 
-  Lemma modVars_as_list_valid_registers: forall (s: @stmt (@syntax_params p)),
+  Lemma modVars_as_list_valid_registers: forall (s: @stmt (mk_Syntax_params _)),
       valid_registers s ->
       Forall valid_register (modVars_as_list s).
   Proof.
@@ -1122,17 +1116,6 @@ Section FlatToRiscv1.
     }
     subst.
 
-
-    (* PARAMRECORDS *)
-    match goal with
-    | |- context [@modVars_as_list ?p ?veq ?body] =>
-      set (modvarnames := (@modVars_as_list p veq body)) in *
-    end.
-    match goal with
-    | H: length old_modvarvals = length ?x |- _ => change x with modvarnames in *
-    end.
-    subst modvarnames.
-
     (* decrease sp *)
     eapply runsToStep. {
       eapply run_Addi; try solve [sidecondition | simpl; solve_divisibleBy4 ].
@@ -1177,12 +1160,8 @@ Section FlatToRiscv1.
         replace (Z.of_nat
                    (length defargs + length defresults + 1 + length (modVars_as_list body)))
           with F;
-        (* PARAMRECORDS *)
-        change (@modVars_as_list (mk_Syntax_params (@def_params p)))
-          with (@modVars_as_list (@syntax_params p)) in *;
-          change (@Syntax.varname (@syntax_params p)) with Register in *;
-          [|blia].
-
+        (* PARAMRECORDS *) simpl;
+        [|blia].
         match goal with
           | |- word.unsigned ?x < _ => ring_simplify x
         end.
@@ -1233,21 +1212,8 @@ Section FlatToRiscv1.
         cancel.
         simpl_word_exprs word_ok.
 
-        (* PARAMRECORDS *)
-        match goal with
-        | |- iff1 (seps ?LHS) (seps ?RHS) =>
-          match LHS with
-          | context [array ?PT ?SZ ?start ?L] =>
-            match RHS with
-            | context [array PT SZ ?start' ?L'] =>
-              let v1 := constr:(array PT SZ start L) in
-              let v2 := constr:(array PT SZ start' L') in
-              (* idtac v1 v2; *)
-              change v1 with v2
-            end
-          end
-        end.
-
+        Set Printing Implicit.
+        (* PARAMRECORDS *) change Syntax.varname with Register in *.
         cancel_step.
         (* TODO need to simpl firstn and index expression *)
         admit.
