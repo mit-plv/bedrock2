@@ -1026,6 +1026,28 @@ Section FlatToRiscv1.
         reflexivity.
   Qed.
 
+  Lemma push_firstn_into_concat: forall {T: Type} (m n: nat) (L: list (list T)),
+      sum_lengths (List.firstn m L) = n ->
+      List.firstn n (List.concat L) = List.concat (List.firstn m L).
+  Proof.
+    induction m; intros.
+    - simpl in *. subst n. reflexivity.
+    - simpl in *.
+      destruct L as [|l L].
+      + destruct n; simpl in *; try congruence.
+      + simpl in *. subst n. erewrite <- IHm; [|reflexivity].
+        rewrite List.firstn_app.
+        rewrite minus_plus.
+        rewrite List.firstn_all2 by blia.
+        reflexivity.
+  Qed.
+
+  Ltac is_nat_const n :=
+    lazymatch isnatcst n with
+    | true => idtac
+    | false => fail "the number" n "is not a nat constant"
+    end.
+
   Lemma save_regs_correct: forall vars offset R initial p_sp oldvalues newvalues,
       Forall valid_register vars ->
       offset mod 4 = 0 ->
@@ -1283,19 +1305,17 @@ Section FlatToRiscv1.
         replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
 
         match goal with
-        | |- context [List.skipn _ ?l] => concatenize l; cycle 1
-        end. {
-          clear. cbn [List.concat List.app]. rewrite List.app_nil_r. reflexivity.
-        }
+        | |- context [List.skipn _ ?l] =>
+          concatenize l;
+            [|cbn [List.concat List.app]; rewrite ?List.app_nil_r; reflexivity]
+        end.
+
         rewrite (push_skipn_into_concat 2); cycle 1. {
           cbv [sum_lengths List.firstn List.fold_right]. simpl. blia.
         }
-
-Ltac is_nat_const n :=
-  lazymatch isnatcst n with
-  | true => idtac
-  | false => fail "the number" n "is not a nat constant"
-  end.
+        rewrite (push_firstn_into_concat 1); cycle 1. {
+          cbv [sum_lengths List.firstn List.fold_right]. simpl. blia.
+        }
 
         match goal with
         | |- context [List.skipn ?n ?L] =>
@@ -1303,15 +1323,26 @@ Ltac is_nat_const n :=
             let r := eval cbv [List.skipn] in (List.skipn n L) in
                 change (List.skipn n L) with r
         end.
+        match goal with
+        | |- context [List.firstn ?n ?L] =>
+          is_nat_const n;
+            let r := eval cbv [List.firstn] in (List.firstn n L) in
+                change (List.firstn n L) with r
+        end.
 
         repeat match goal with
         | |- context [List.concat ?L] =>
             let r := eval cbn [List.concat List.app] in (List.concat L) in
                 change (List.concat L) with r
         end.
-        (* TODO need to simpl firstn and index expression *)
+        rewrite !List.app_nil_r.
 
-        admit.
+        unfold word_array, bytes_per_word.
+        replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
+        unfold Memory.bytes_per.
+        (* cancel_seps_at_indices 8%nat 0%nat. *)
+        cancel_step.
+        ecancel.
       }
       reflexivity.
     }
