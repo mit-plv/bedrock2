@@ -331,7 +331,10 @@ Module exec.
             outcome mReceive resvals ->
             exists l', map.putmany_of_list resvars resvals l = Some l' /\
                        exists m', map.split m' mKeep mReceive /\
-                       post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l' mc) ->
+                                  post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
+                                       (addMetricInstructions 1
+                                       (addMetricStores 1
+                                       (addMetricLoads 2 mc)))) ->
         exec (SInteract resvars action argvars) t m l mc post
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->

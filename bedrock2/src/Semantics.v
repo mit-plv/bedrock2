@@ -261,7 +261,10 @@ Module exec. Section WithEnv.
       (_ : forall mReceive resvals, mid mReceive resvals ->
           exists l', map.putmany_of_list binds resvals l = Some l' /\
           exists m', map.split m' mKeep mReceive /\
-          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l' mc')
+                     post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
+                       (addMetricInstructions 1
+                       (addMetricStores 1
+                       (addMetricLoads 2 mc'))))
     : exec (cmd.interact binds action arges) t m l mc post
   .
   End WithEnv.

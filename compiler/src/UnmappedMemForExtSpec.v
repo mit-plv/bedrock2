@@ -46,10 +46,10 @@ Section WithParams.
 
   Hint Constructors exec.exec.
 
-  Lemma add_respects_unmapped_aux: forall e c t m l post,
-      @exec.exec p1 e c t m l post ->
+  Lemma add_respects_unmapped_aux: forall e c t m l mc post,
+      @exec.exec p1 e c t m l mc post ->
       respects_unmapped m ->
-      @exec.exec p2 e c t m l (fun t' m' l' => respects_unmapped m' /\ post t' m' l').
+      @exec.exec p2 e c t m l mc (fun t' m' l' mc' => respects_unmapped m' /\ post t' m' l' mc').
   Proof.
     induction 1; intros;
       (* TODO can we make unification smart enough so that we don't have

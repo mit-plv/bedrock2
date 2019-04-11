@@ -120,15 +120,15 @@ Module Import FlatToRiscv.
       exec map.empty (SInteract resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) initialMetricsH postH ->
       runsTo (mcomp_sat (run1 iset)) initialL
-             (fun finalL =>
-                  (* external calls can't modify the memory or metrics for now *)
-                  postH finalL.(getLog) initialMH finalL.(getRegs) finalL.(getMetrics) /\
+             (fun finalL => exists finalMetricsH,
+                  (* external calls can't modify the memory for now *)
+                  postH finalL.(getLog) initialMH finalL.(getRegs) finalMetricsH /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   boundMetricLog UnitMetricLog
                          (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
-                         (metricLogDifference initialMetricsH finalL.(getMetrics)) /\
+                         (metricLogDifference initialMetricsH finalMetricsH) /\
                   ext_guarantee finalL);
   }.
 
@@ -857,7 +857,7 @@ Section FlatToRiscv1.
         eapply @exec.interact; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL.
         simpl_MetricRiscvMachine_get_set. simpl in *.
-        destruct_products. subst. exists m. exists finalL_metrics.
+        destruct_products. subst. exists m. exists finalMetricsH.
         repeat (split; try eassumption).
 
     - (* SCall *)

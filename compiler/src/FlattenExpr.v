@@ -859,7 +859,15 @@ Section FlattenExpr1.
         assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
         destruct R as (lL'' & R1 & R2).
         simp.
-        eauto 11 using (map.only_differ_putmany (ok := locals_ok)).
+        simple eapply ex_intro.
+        simple apply conj; [exact R1|].
+        simple eapply ex_intro.
+        simple apply conj; [exact H11|].
+        eapply ex_intro. eapply ex_intro.
+        simple apply conj; [exact H12|].
+        simple apply conj; [exact R2|].
+        split; [simple eapply map.only_differ_putmany; eassumption|].
+        solve_MetricLog.
   Qed.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
