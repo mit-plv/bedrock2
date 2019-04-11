@@ -992,6 +992,40 @@ Section FlatToRiscv1.
            (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _) | ]
     end.
 
+  Ltac linearize_list l :=
+    lazymatch l with
+    | @nil ?T => constr:(@nil (list T))
+    | ?h :: ?t => let ts := linearize_list t in constr:([h] :: ts)
+    | ?t1 ++ ?t2 => let ts1 := linearize_list t1 in
+                    let ts2 := linearize_list t2 in
+                    constr:(ts1 ++ ts2)
+    | ?L => constr:([L])
+    end.
+
+  Ltac concatenize l :=
+    let l' := linearize_list l in
+    let l'' := eval cbv [List.app] in l' in
+        replace l with (List.concat l'').
+
+  Definition sum_lengths{T: Type}(L: list (list T)): nat :=
+    List.fold_right (fun l s => (length l + s)%nat) 0%nat L.
+
+  Lemma push_skipn_into_concat: forall {T: Type} (m n: nat) (L: list (list T)),
+      sum_lengths (List.firstn m L) = n ->
+      List.skipn n (List.concat L) = List.concat (List.skipn m L).
+  Proof.
+    induction m; intros.
+    - simpl in *. subst n. rewrite List.skipn_0_l. reflexivity.
+    - simpl in *.
+      destruct L as [|l L].
+      + destruct n; simpl in *; try congruence.
+      + simpl in *. subst n. erewrite <- IHm; [|reflexivity].
+        rewrite List.skipn_app.
+        rewrite minus_plus.
+        rewrite List.skipn_all by blia.
+        reflexivity.
+  Qed.
+
   Lemma save_regs_correct: forall vars offset R initial p_sp oldvalues newvalues,
       Forall valid_register vars ->
       offset mod 4 = 0 ->
@@ -1062,6 +1096,9 @@ Section FlatToRiscv1.
         ecancel.
       + reflexivity.
   Qed.
+
+  Arguments List.firstn : simpl never.
+  Arguments List.skipn: simpl never.
 
   Lemma compile_function_correct:
     forall body useargs useresults defargs defresults t initialMH (initialRegsH: locals)
@@ -1212,10 +1249,68 @@ Section FlatToRiscv1.
         cancel.
         simpl_word_exprs word_ok.
 
-        Set Printing Implicit.
         (* PARAMRECORDS *) change Syntax.varname with Register in *.
         cancel_step.
+        replace (Z.of_nat (length argvals + length old_retvals + 1 + length old_modvarvals))
+          with (Z.of_nat (length defargs + length defresults + 1 + length (modVars_as_list body)))
+          by (simpl; blia).
+        rewrite ?Nat2Z.inj_add in *.
+        change BinInt.Z.of_nat with Z.of_nat in *.
+        change BinInt.Z.to_nat with Z.to_nat in *.
+        change (Z.of_nat 1) with 1 in *.
+        match goal with
+        | |- context [word.unsigned ?x / word.unsigned _] => ring_simplify x
+        end.
+        change (Z.of_nat (Z.to_nat ((width + 7) / 8))) with bytes_per_word.
+        rewrite word.unsigned_mul.
+        rewrite ?word.unsigned_of_Z. unfold word.wrap.
+        replace (bytes_per_word mod 2 ^ width) with bytes_per_word; cycle 1. {
+          clear. unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; reflexivity.
+        }
+        rewrite Z.mul_mod_idemp_r; cycle 1. {
+          clear. destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
+        }
+        assert (0 <= bytes_per_word * Z.of_nat (length (modVars_as_list body)) < 2 ^ width). {
+          case TODO.
+        }
+        rewrite Z.mod_small by assumption.
+        rewrite !(Z.mul_comm bytes_per_word).
+        rewrite Z.div_mul; cycle 1. {
+          clear. unfold bytes_per_word.
+          destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
+        }
+        rewrite !Nat2Z.id.
+        replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
+
+        match goal with
+        | |- context [List.skipn _ ?l] => concatenize l; cycle 1
+        end. {
+          clear. cbn [List.concat List.app]. rewrite List.app_nil_r. reflexivity.
+        }
+        rewrite (push_skipn_into_concat 2); cycle 1. {
+          cbv [sum_lengths List.firstn List.fold_right]. simpl. blia.
+        }
+
+Ltac is_nat_const n :=
+  lazymatch isnatcst n with
+  | true => idtac
+  | false => fail "the number" n "is not a nat constant"
+  end.
+
+        match goal with
+        | |- context [List.skipn ?n ?L] =>
+          is_nat_const n;
+            let r := eval cbv [List.skipn] in (List.skipn n L) in
+                change (List.skipn n L) with r
+        end.
+
+        repeat match goal with
+        | |- context [List.concat ?L] =>
+            let r := eval cbn [List.concat List.app] in (List.concat L) in
+                change (List.concat L) with r
+        end.
         (* TODO need to simpl firstn and index expression *)
+
         admit.
       }
       reflexivity.
@@ -1232,6 +1327,8 @@ Section FlatToRiscv1.
            | m: _ |- _ => destruct_RiscvMachine m
            end.
     subst.
+
+    (* load argvars from stack *)
 
   Abort.
 
