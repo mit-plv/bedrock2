@@ -102,7 +102,7 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
   Definition run_Store_spec(n: nat)(S: Register -> Register -> MachineInt -> Instruction): Prop :=
-    forall (base addr: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
+    forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
            (ofs: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
       verify (S rs1 rs2 ofs) iset ->
       (* valid_register almost follows from verify except for when the register is Register0 *)
@@ -111,18 +111,16 @@ Section Run.
       divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs1 = Some base ->
+      map.get initialL.(getRegs) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
       (program initialL.(getPc) [[S rs1 rs2 ofs]] * ptsto_bytes n addr v_old * R)%sep
         initialL.(getMem) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (exists v_new,
-            (map.get initialL.(getRegs) rs2 = Some v_new  \/
-             map.get initialL.(getRegs) rs2 = None /\ is_initial_register_value v_new) /\
-            (program initialL.(getPc) [[S rs1 rs2 ofs]] *
-             ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
-                finalL.(getMem)) /\
+        (program initialL.(getPc) [[S rs1 rs2 ofs]] *
+         ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
+            finalL.(getMem) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
@@ -179,32 +177,7 @@ Section Run.
   Qed.
 
   Lemma run_Sb: run_Store_spec 1 Sb.
-  Proof.
-    unfold run_ImmReg_spec, run_Load_spec, run_Store_spec;
-    intros.
-    destruct (map.get (getRegs initialL) rs2) as [v_new|] eqn: E; [t|].
-    {
-    repeat match goal with
-           | |- _ /\ _ => split
-           | |- exists _, _ => eexists
-           | |- _ = _ \/ _ => left; reflexivity
-           | |- _ => reflexivity
-           | |- _ => ecancel_assumption
-           end.
-    }
-
-    match goal with
-    | initialL: RiscvMachineL |- _ => destruct initialL
-    end;
-    simpl in *; subst.
-    simulate'_step.
-    simulate'_step.
-    simulate'_step.
-    simulate'_step.
-    simulate'_step.
-    simulate'_step.
-
-  Qed.
+  Proof. t. Qed.
 
   Lemma run_Sh: run_Store_spec 2 Sh.
   Proof. t. Qed.
