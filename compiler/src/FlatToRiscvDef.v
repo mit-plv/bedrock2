@@ -205,7 +205,7 @@ Section FlatToRiscv1.
   Fixpoint load_regs(regs: list Register)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
-    | r :: regs => compile_load access_size.word sp r offset
+    | r :: regs => compile_load access_size.word r sp offset
                    :: (load_regs regs (offset + bytes_per_word))
     end.
 

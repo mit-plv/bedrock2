@@ -1157,10 +1157,11 @@ Section FlatToRiscv1.
         - sidecondition.
         - use_sep_assumption.
           simpl.
-          Time Fail ecancel. (* 0.15s *)
-          Time cancel. (* 0.06s *)
-
-          admit.
+          cancel.
+          unfold Register, MachineInt.
+          cancel_step.
+          ecancel_step.
+          ecancel.
       }
       simpl. intros. simp.
       destruct_RiscvMachine initial.
