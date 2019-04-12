@@ -162,7 +162,7 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH mcH mcH' t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
+  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       exprImp2Riscv sH = instsL ->
@@ -171,18 +171,16 @@ Section Pipeline1.
       initialL.(getLog) = t ->
       (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
       ext_guarantee initialL ->
-      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t' /\ mc' = mcH') ->
+      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
       runsTo (mcomp_sat (run1 iset))
              initialL
-             (fun finalL => post finalL.(getLog) /\
-                            boundMetricLog UnitMetricLog
-                              (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
-                              (metricLogDifference mcH mcH')).
+             (fun finalL =>
+                  post finalL.(getLog)).
   Proof.
     intros. subst.
     eapply runsTo_weaken. Unshelve.
      - eapply FlatToRiscv.compile_stmt_correct
-        with (postH := (fun t m l mc => post t /\ boundMetricLog UnitMetricLog (metricLogDifference mcH mc) (metricLogDifference mcH mcH'))); try reflexivity.
+        with (postH := (fun t m l mc => post t)); try reflexivity.
       + eapply FlatImp.exec.weaken.
         * match goal with
           | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
@@ -190,7 +188,7 @@ Section Pipeline1.
           end.
           eapply Q.
           eassumption.
-        * simpl. intros. simp. split; assumption.
+        * simpl. intros. simp. assumption.
       + unfold FlatToRiscvDef.stmt_not_too_big.
         unfold exprImp2Riscv, ExprImp2FlatImp, flatten in *.
         destruct_one_match_hyp.
@@ -215,9 +213,7 @@ Section Pipeline1.
         seplog.
       + assumption.
       + assumption.
-     - simpl. intros. simp. split.
-       + assumption.
-       + solve_MetricLog.
+     - simpl. intros. simp. assumption.
   Qed.
 
 End Pipeline1.

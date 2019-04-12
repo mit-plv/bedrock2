@@ -45,6 +45,7 @@ Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_guarantee := FlatToRiscv.FlatToRiscv.ext_guarantee;
   Pipeline.M := OStateND RiscvMachine;
   Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
+  Pipeline.RVM := IsMetricRiscvMachineL;
 }.
 
 Lemma undef_on_same_domain{K V: Type}{M: map.map K V}{keq: DecidableEq K}{Ok: map.ok M}
@@ -116,11 +117,14 @@ Module PrintAssembly.
 End PrintAssembly.
 
 Definition zeroedRiscvMachine: RiscvMachine := {|
-  getRegs := map.empty;
-  getPc := word.of_Z 0;
-  getNextPc := word.of_Z 4;
-  getMem := map.empty;
-  getLog := nil;
+  getMetrics := EmptyMetricLog;
+  getMachine := {|
+    getRegs := map.empty;
+    getPc := word.of_Z 0;
+    getNextPc := word.of_Z 4;
+    getMem := map.empty;
+    getLog := nil;
+  |};
 |}.
 
 Definition imemStart: word := word.of_Z (Ox "20400000").
@@ -210,7 +214,7 @@ Proof.
 Qed.
 
 Lemma input_program_correct:
-  exec map.empty swap_chars_over_uart [] map.empty map.empty (fun t m l => True).
+  exec map.empty swap_chars_over_uart [] map.empty map.empty EmptyMetricLog (fun t m l mc => True).
 Proof.
   eapply bedrock2.WeakestPreconditionProperties.sound_nil.
   eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
@@ -221,12 +225,14 @@ Lemma input_program_not_too_long:
   4 * Z.of_nat (Datatypes.length (compileFunc swap_chars_over_uart)) < 2 ^ width.
 Proof. reflexivity. Qed.
 
+Definition run1 : OStateND RiscvMachine unit := @run1 _ _ _ _ IsMetricRiscvMachineL _ RV32IM.
+
 Lemma end2endDemo:
-  runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
+  runsToNonDet.runsTo (mcomp_sat run1)
                       initialSwapMachine
                       (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
 Proof.
-  refine (@exprImp2Riscv_correct _ _ swap_chars_over_uart map.empty nil _ _ _ _ _ _ _ _ _ _ _ _).
+  refine (@exprImp2Riscv_correct _ _ swap_chars_over_uart map.empty EmptyMetricLog nil _ _ (fun _ => True) _ _ _ _ _ _ _ _ _).
   - reflexivity.
   - cbv. repeat constructor.
   - reflexivity.
