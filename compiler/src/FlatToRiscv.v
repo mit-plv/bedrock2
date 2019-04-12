@@ -1116,8 +1116,12 @@ Section FlatToRiscv1.
       + reflexivity.
   Qed.
 
-  Lemma load_regs_correct: forall vars offset R initial p_sp values,
-      Forall valid_register vars ->
+  (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
+  Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
+
+  Lemma load_regs_correct: forall p_sp vars offset R initial values,
+      Forall valid_FlatImp_var vars ->
+      NoDup vars ->
       offset mod 4 = 0 ->
       divisibleBy4 initial.(getPc) ->
       divisibleBy4 p_sp ->
@@ -1127,7 +1131,6 @@ Section FlatToRiscv1.
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo initial (fun final =>
-          final.(getRegs) = initial.(getRegs) /\
           map.only_differ initial.(getRegs) (PropSet.of_list vars) final.(getRegs) /\
           map.getmany_of_list final.(getRegs) vars = Some values /\
           (program initial.(getPc) (load_regs vars offset) *
@@ -1147,64 +1150,84 @@ Section FlatToRiscv1.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       destruct values as [|value values]; simpl in *; [discriminate|].
       eapply runsToStep. {
-        eapply run_compile_load.
-        - sidecondition.
-        - sidecondition.
-        - sidecondition.
-        - sidecondition.
-        - sidecondition.
-        - sidecondition.
-        - sidecondition.
-        - use_sep_assumption.
-          simpl.
-          cancel.
-          unfold Register, MachineInt.
-          cancel_step.
-          ecancel_step.
-          ecancel.
+        eapply run_compile_load; try solve [sidecondition].
+        unfold valid_FlatImp_var, valid_register in *. blia.
       }
       simpl. intros. simp.
       destruct_RiscvMachine initial.
       destruct_RiscvMachine mid.
       subst.
-      eapply runsTo_weaken; cycle 1; [|eapply IHvars]. {
-        simpl. intros. simp.
-(*
-        repeat split; try solve [sidecondition].
-        - (* TODO all of this should be one more powerful cancel tactic
-             with matching of addresses using ring *)
-          use_sep_assumption.
+      eapply runsTo_weaken.
+      + eapply IHvars; simpl; cycle -2; auto.
+        * use_sep_assumption.
+          match goal with
+          | |- iff1 ?LHS ?RHS =>
+            match LHS with
+            | context [word_array ?i] =>
+              match RHS with
+              | context [word_array ?i'] =>
+                replace i with i'; cycle 1
+              end
+            end
+          end.
+          { rewrite <- word.add_assoc. rewrite <- word.ring_morph_add. reflexivity. }
           cancel.
-          unfold program.
-          symmetry.
-          cancel_seps_at_indices 1%nat 0%nat.
+          ecancel_step.
           unfold bytes_per_word, Memory.bytes_per.
-          rewrite word.ring_morph_add.
-          rewrite word.add_assoc.
           ecancel_step.
           ecancel.
-        - replace (Z.of_nat (S (length oldvalues)))
-            with (1 + Z.of_nat (length oldvalues)) by blia.
-          etransitivity; [eassumption|].
-          replace (length vars) with (length oldvalues) by blia.
-          solve_word_eq word_ok.
-      }
-      all: try eassumption.
-      + assert (bytes_per_word mod 4 = 0). {
+        * assert (bytes_per_word mod 4 = 0). {
+            unfold bytes_per_word, Memory.bytes_per.
+            clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+          }
+          mod4_0.solve_mod4_0.
+        * solve_divisibleBy4.
+        * rewrite map.get_put_diff. 1: assumption.
+          unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
+        * blia.
+      + simpl. intros. simp.
+        repeat split.
+        * unfold map.only_differ, PropSet.elem_of, PropSet.of_list in *.
+          intros x. rename H7 into HO.
+          specialize (HO x).
+          destruct (Z.eqb_spec x a).
+          -- subst x. left. constructor. reflexivity.
+          -- destruct HO as [HO | HO].
+             ++ simpl. auto.
+             ++ right. rewrite <- HO. rewrite map.get_put_diff; congruence.
+        * unfold map.getmany_of_list in *. simpl. rewrite H5.
+          rename H7 into HO.
+          specialize (HO a). destruct HO as [HO | HO].
+          -- unfold PropSet.elem_of, PropSet.of_list in HO. contradiction.
+          -- unfold Register, MachineInt in *. rewrite <- HO.
+             rewrite map.get_put_same. f_equal. f_equal.
+             unfold id.
+             rewrite LittleEndian.combine_split.
+             apply word.unsigned_inj.
+             rewrite word.unsigned_of_Z. unfold word.wrap.
+             replace (BinInt.Z.of_nat (Z.to_nat ((width + 7) / 8)) * 8) with width; cycle 1. {
+               clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+             }
+             rewrite !word.wrap_unsigned. reflexivity.
+        * pseplog.
+          match goal with
+          | |- iff1 ?LHS ?RHS =>
+            match LHS with
+            | context [word_array ?i] =>
+              match RHS with
+              | context [word_array ?i'] =>
+                replace i with i' by solve_word_eq word_ok
+              end
+            end
+          end.
           unfold bytes_per_word, Memory.bytes_per.
-          clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
-        }
-        mod4_0.solve_mod4_0.
-      + simpl. solve_divisibleBy4.
-      + simpl. pseplog.
-        unfold bytes_per_word, Memory.bytes_per.
-        rewrite word.ring_morph_add.
-        rewrite word.add_assoc.
-        ecancel.
-      + reflexivity.
+          ecancel.
+        * etransitivity; [eassumption|].
+          rewrite Nat2Z.inj_succ. rewrite <- Z.add_1_r.
+          replace (length values) with (length vars) by congruence.
+          solve_word_eq word_ok.
+        * assumption.
   Qed.
-*)
-  Abort.
 
   Arguments List.firstn : simpl never.
   Arguments List.skipn: simpl never.
