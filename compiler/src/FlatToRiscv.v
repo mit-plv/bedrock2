@@ -1049,7 +1049,7 @@ Section FlatToRiscv1.
       offset mod 4 = 0 ->
       divisibleBy4 initial.(getPc) ->
       divisibleBy4 p_sp ->
-      List.option_all (List.map (map.get initial.(getRegs)) vars) = Some newvalues ->
+      map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       length oldvalues = length vars ->
       (program initial.(getPc) (save_regs vars offset) *
@@ -1064,6 +1064,7 @@ Section FlatToRiscv1.
                                                         (word.of_Z (Z.of_nat (length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
   Proof.
+    unfold map.getmany_of_list.
     induction vars; intros.
     - simpl in *. simp. destruct oldvalues; simpl in *; [|discriminate].
       apply runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
@@ -1114,6 +1115,95 @@ Section FlatToRiscv1.
         ecancel.
       + reflexivity.
   Qed.
+
+  Lemma load_regs_correct: forall vars offset R initial p_sp values,
+      Forall valid_register vars ->
+      offset mod 4 = 0 ->
+      divisibleBy4 initial.(getPc) ->
+      divisibleBy4 p_sp ->
+      map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
+      length values = length vars ->
+      (program initial.(getPc) (load_regs vars offset) *
+       word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
+      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+      runsTo initial (fun final =>
+          final.(getRegs) = initial.(getRegs) /\
+          map.only_differ initial.(getRegs) (PropSet.of_list vars) final.(getRegs) /\
+          map.getmany_of_list final.(getRegs) vars = Some values /\
+          (program initial.(getPc) (load_regs vars offset) *
+           word_array (word.add p_sp (word.of_Z offset)) values * R)%sep
+              final.(getMem) /\
+          final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
+                                                        (word.of_Z (Z.of_nat (length vars)))) /\
+          final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
+  Proof.
+    induction vars; intros.
+    - simpl in *. simp. destruct values; simpl in *; [|discriminate].
+      apply runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
+      unfold map.only_differ. auto.
+    - simpl in *. simp.
+      assert (valid_instructions EmitsValid.iset
+                [(compile_load Syntax.access_size.word a RegisterNames.sp offset)]) by case TODO.
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+      destruct values as [|value values]; simpl in *; [discriminate|].
+      eapply runsToStep. {
+        eapply run_compile_load.
+        - sidecondition.
+        - sidecondition.
+        - sidecondition.
+        - sidecondition.
+        - sidecondition.
+        - sidecondition.
+        - sidecondition.
+        - use_sep_assumption.
+          simpl.
+          Time Fail ecancel. (* 25.742 secs ! *)
+          Time cancel. (* 6.475 secs ! *)
+
+          admit.
+      }
+      simpl. intros. simp.
+      destruct_RiscvMachine initial.
+      destruct_RiscvMachine mid.
+      subst.
+      eapply runsTo_weaken; cycle 1; [|eapply IHvars]. {
+        simpl. intros. simp.
+(*
+        repeat split; try solve [sidecondition].
+        - (* TODO all of this should be one more powerful cancel tactic
+             with matching of addresses using ring *)
+          use_sep_assumption.
+          cancel.
+          unfold program.
+          symmetry.
+          cancel_seps_at_indices 1%nat 0%nat.
+          unfold bytes_per_word, Memory.bytes_per.
+          rewrite word.ring_morph_add.
+          rewrite word.add_assoc.
+          ecancel_step.
+          ecancel.
+        - replace (Z.of_nat (S (length oldvalues)))
+            with (1 + Z.of_nat (length oldvalues)) by blia.
+          etransitivity; [eassumption|].
+          replace (length vars) with (length oldvalues) by blia.
+          solve_word_eq word_ok.
+      }
+      all: try eassumption.
+      + assert (bytes_per_word mod 4 = 0). {
+          unfold bytes_per_word, Memory.bytes_per.
+          clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+        }
+        mod4_0.solve_mod4_0.
+      + simpl. solve_divisibleBy4.
+      + simpl. pseplog.
+        unfold bytes_per_word, Memory.bytes_per.
+        rewrite word.ring_morph_add.
+        rewrite word.add_assoc.
+        ecancel.
+      + reflexivity.
+  Qed.
+*)
+  Abort.
 
   Arguments List.firstn : simpl never.
   Arguments List.skipn: simpl never.
