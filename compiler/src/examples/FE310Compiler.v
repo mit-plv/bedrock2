@@ -14,7 +14,11 @@ Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
 Require        riscv.Utility.InstructionNotations.
+Require Import riscv.Platform.MetricLogging.
+Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Platform.MinimalMMIO.
+Require Import riscv.Platform.MetricMinimalMMIO.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
@@ -30,17 +34,17 @@ Unset Universe Minimization ToSet.
 
 Open Scope Z_scope.
 
-Notation RiscvMachine := (RiscvMachine Register MMIOAction).
+Notation RiscvMachine := (MetricRiscvMachine Register MMIOAction).
 
 Instance mmio_params: MMIO.parameters := { (* everything is inferred automatically *) }.
 
-Existing Instance MinimalMMIOPrimitivesParams. (* needed because it's in a section *)
+Existing Instance MetricMinimalMMIOPrimitivesParams. (* needed because it's in a section *)
 
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_spec := FlatToRiscv.FlatToRiscv.ext_spec;
   Pipeline.ext_guarantee := FlatToRiscv.FlatToRiscv.ext_guarantee;
   Pipeline.M := OStateND RiscvMachine;
-  Pipeline.PRParams := MinimalMMIOPrimitivesParams;
+  Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
 }.
 
 Lemma undef_on_same_domain{K V: Type}{M: map.map K V}{keq: DecidableEq K}{Ok: map.ok M}
