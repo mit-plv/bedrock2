@@ -1157,8 +1157,8 @@ Section FlatToRiscv1.
         - sidecondition.
         - use_sep_assumption.
           simpl.
-          Time Fail ecancel. (* 25.742 secs ! *)
-          Time cancel. (* 6.475 secs ! *)
+          Time Fail ecancel. (* 0.15s *)
+          Time cancel. (* 0.06s *)
 
           admit.
       }
