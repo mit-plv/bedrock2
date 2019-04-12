@@ -935,10 +935,6 @@ Section FlatToRiscv1.
 
   Axiom TODO: False.
 
-  Definition ll_regs: PropSet.set Register :=
-    PropSet.union (PropSet.singleton_set RegisterNames.sp)
-                  (PropSet.singleton_set RegisterNames.ra).
-
   Definition word_array: word -> list word -> mem -> Prop :=
     array (fun addr w => ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
                                      (LittleEndian.split _ (word.unsigned w)))
@@ -1122,6 +1118,25 @@ Section FlatToRiscv1.
   Arguments List.firstn : simpl never.
   Arguments List.skipn: simpl never.
 
+  Definition ll_regs: PropSet.set Register :=
+    PropSet.union (PropSet.singleton_set RegisterNames.sp)
+                  (PropSet.singleton_set RegisterNames.ra).
+
+  Definition hl_regs: PropSet.set Register :=
+    fun r => 3 <= r < 32. (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
+
+  Lemma getmany_of_list_defined{K V: Type}{M: map.map K V}: forall (m: M) (keys: list K),
+      Forall (fun k => map.get m k <> None) keys ->
+      exists values, map.getmany_of_list m keys = Some values.
+  Proof.
+    induction keys; intros.
+    - exists nil. reflexivity.
+    - inversion H. subst. destruct (map.get m a) eqn: E; try contradiction.
+      edestruct IHkeys as [vs IH]; [assumption|].
+      exists (v :: vs). cbn. rewrite E. unfold map.getmany_of_list in IH.
+      rewrite IH. reflexivity.
+  Qed.
+
   Lemma compile_function_correct:
     forall body useargs useresults defargs defresults t initialMH (initialRegsH: locals)
            postH argvals sublocals outcome,
@@ -1143,7 +1158,7 @@ Section FlatToRiscv1.
     stmt_not_too_big body ->
     valid_registers body ->
     divisibleBy4 initialL.(getPc) ->
-    map.undef_on initialRegsH ll_regs ->
+    (forall r, hl_regs r <-> map.get initialRegsH r <> None) ->
     map.only_differ initialL.(getRegs) ll_regs initialRegsH ->
     map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
     map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
@@ -1249,15 +1264,20 @@ Section FlatToRiscv1.
     subst.
 
     (* save vars modified by callee onto stack *)
+    match goal with
+    | |- context [ {| getRegs := ?l |} ] =>
+      pose proof (@getmany_of_list_defined _ _ _ l (modVars_as_list body)) as P
+    end.
+    edestruct P as [newvalues P2]. {
+      admit.
+    }
     eapply runsTo_trans. {
       eapply save_regs_correct; simpl; cycle 2.
       1: solve_divisibleBy4.
       3: rewrite map.get_put_same; reflexivity.
       1: solve_divisibleBy4.
       1: case TODO. (* similar do divisibleBy 4 *)
-      1: (* PROBLEM: the register values being saved on the stack might be undefined,
-            i.e. not in initialL_regs, so List.option_all would return None *)
-        admit.
+      1: exact P2.
       4: eapply modVars_as_list_valid_registers; eassumption.
       1: eassumption.
       2: reflexivity.
