@@ -988,6 +988,13 @@ Section FlatToRiscv1.
            (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _) | ]
     end.
 
+  Ltac cancel_seps_at_indices_by_iff i j :=
+    lazymatch goal with
+    | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
+      simple refine (cancel_seps_at_indices i j LHS RHS _ _);
+      cbn [firstn skipn app hd tl]
+    end.
+
   Ltac linearize_list l :=
     lazymatch l with
     | @nil ?T => constr:(@nil (list T))
@@ -1251,6 +1258,12 @@ Section FlatToRiscv1.
       rewrite IH. reflexivity.
   Qed.
 
+  Lemma length_save_regs: forall vars offset,
+      length (save_regs vars offset) = length vars.
+  Proof.
+    induction vars; intros; simpl; rewrite? IHvars; reflexivity.
+  Qed.
+
   Lemma compile_function_correct:
     forall body useargs useresults defargs defresults t initialMH (initialRegsH: locals)
            postH argvals sublocals outcome,
@@ -1383,6 +1396,7 @@ Section FlatToRiscv1.
       pose proof (@getmany_of_list_defined _ _ _ l (modVars_as_list body)) as P
     end.
     edestruct P as [newvalues P2]. {
+      move H10 at bottom.
       admit.
     }
     eapply runsTo_trans. {
@@ -1482,7 +1496,6 @@ Section FlatToRiscv1.
     }
 
     simpl.
-
     cbn [getRegs getPc getNextPc getMem getLog].
     repeat match goal with
            | H: context [sep] |- _ => clear H
@@ -1494,6 +1507,32 @@ Section FlatToRiscv1.
     subst.
 
     (* load argvars from stack *)
+    eapply runsTo_trans. {
+      eapply load_regs_correct; simpl; cycle -2.
+      - use_sep_assumption.
+        progress repeat match goal with
+        | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+          rewrite (array_append_DEPRECATED PT SZ xs ys start)
+        end.
+        unfold program.
+        rewrite ?Zlength_correct.
+        rewrite ?length_save_regs.
+        cancel.
+        cancel_seps_at_indices_by_iff 5%nat 0%nat. {
+          exact (RelationClasses.reflexivity _). (* some expensive unification *)
+        }
+        cancel_seps_at_indices_by_iff 12%nat 0%nat. {
+          unfold iff1. intro m.
+          assert (forall (P Q: Prop), P = Q -> P <-> Q) as A. {
+            intros; subst; tauto.
+          }
+          apply A.
+          unfold word_array.
+          f_equal.
+
+          rewrite <- add_0_l.
+          simpl_word_exprs word_ok.
+
 
   Abort.
 
