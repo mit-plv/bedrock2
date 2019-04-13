@@ -64,14 +64,14 @@ Ltac simpl_word_exprs_step OK :=
   (* If "rewrite (add_0_l (word_ok := OK))" encounters a term of the form
      "(word.add ?v otherstuff)", it will instantiate ?v to "word.of_Z 0" and replace
      "(word.add ?v otherstuff)" by "otherstuff". Explicit matching prevents this from happening. *)
-  | context[ word.add (word.of_Z 0) ?x ] => rewrite (@add_0_l _ _ OK x) in *
+  | context[ @word.add ?wi ?wo (word.of_Z 0) ?x ] => rewrite (@add_0_l wi wo OK x) in *
 
   (* similar problems for the other lemmas: *)
-  | context[ word.add ?x (word.of_Z 0) ] => rewrite (@add_0_r _ _ OK x) in *
-  | context[ word.mul (word.of_Z 0) ?x ] => rewrite (@mul_0_l _ _ OK x) in *
-  | context[ word.mul ?x (word.of_Z 0) ] => rewrite (@mul_0_r _ _ OK x) in *
-  | context[ word.mul (word.of_Z 1) ?x ] => rewrite (@mul_1_l _ _ OK x) in *
-  | context[ word.mul ?x (word.of_Z 1) ] => rewrite (@mul_1_r _ _ OK x) in *
+  | context[ @word.add ?wi ?wo ?x (word.of_Z 0) ] => rewrite (@add_0_r wi wo OK x) in *
+  | context[ @word.mul ?wi ?wo (word.of_Z 0) ?x ] => rewrite (@mul_0_l wi wo OK x) in *
+  | context[ @word.mul ?wi ?wo ?x (word.of_Z 0) ] => rewrite (@mul_0_r wi wo OK x) in *
+  | context[ @word.mul ?wi ?wo (word.of_Z 1) ?x ] => rewrite (@mul_1_l wi wo OK x) in *
+  | context[ @word.mul ?wi ?wo ?x (word.of_Z 1) ] => rewrite (@mul_1_r wi wo OK x) in *
 
    (* If "rewrite (sextend_width_nop (word_ok := OK))" encounters a term of the form
       "(word.of_Z ?v)", it will instantiate ?v to "(BitOps.sextend ?w0 ?v0)" and replace
