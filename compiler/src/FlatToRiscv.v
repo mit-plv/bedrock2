@@ -1406,7 +1406,7 @@ Section FlatToRiscv1.
         simpl_word_exprs word_ok.
 
         (* PARAMRECORDS *) change Syntax.varname with Register in *.
-        cancel_step.
+        ecancel_step.
         replace (Z.of_nat (length argvals + length old_retvals + 1 + length old_modvarvals))
           with (Z.of_nat (length defargs + length defresults + 1 + length (modVars_as_list body)))
           by (simpl; blia).
@@ -1474,7 +1474,7 @@ Section FlatToRiscv1.
         unfold word_array, bytes_per_word.
         replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
         unfold Memory.bytes_per.
-        (* cancel_seps_at_indices 8%nat 0%nat. *)
+        simpl_word_exprs word_ok.
         cancel_step.
         ecancel.
       }

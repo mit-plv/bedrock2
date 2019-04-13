@@ -43,34 +43,54 @@ Section Lemmas.
 
 End Lemmas.
 
-(* If "rewrite (sextend_width_nop (word_ok := OK))" encounters a term of the form
-   "(word.of_Z ?v)", it will instantiate ?v to "(BitOps.sextend ?w0 ?v0)" and replace
-   "(word.of_Z ?v)" by the RHS of the lemma, i.e. again "(word.of_Z ?Goal11)", so
-   no useful progress is made. This tactic prevents this from happending. *)
-Ltac rewrite_sextend_width_nop OK :=
+Ltac simpl_Zcsts :=
+  repeat so fun hyporgoal => match hyporgoal with
+         | context [?op ?a ?b] =>
+           match isZcst a with true => idtac end;
+           match isZcst b with true => idtac end;
+           match op with
+           | Z.add => idtac
+           | Z.sub => idtac
+           | Z.mul => idtac
+           end;
+           let r := eval cbv in (op a b) in change (op a b) with r in *
+         | context [Z.of_nat ?x] =>
+           match isnatcst x with true => idtac end;
+           let r := eval cbv in (Z.of_nat x) in change (Z.of_nat x) with r in *
+         end.
+
+Ltac simpl_word_exprs_step OK :=
   so fun hyporgoal => match hyporgoal with
+  (* If "rewrite (add_0_l (word_ok := OK))" encounters a term of the form
+     "(word.add ?v otherstuff)", it will instantiate ?v to "word.of_Z 0" and replace
+     "(word.add ?v otherstuff)" by "otherstuff". Explicit matching prevents this from happening. *)
+  | context[ word.add (word.of_Z 0) ?x ] => rewrite (@add_0_l _ _ OK x) in *
+
+  (* similar problems for the other lemmas: *)
+  | context[ word.add ?x (word.of_Z 0) ] => rewrite (@add_0_r _ _ OK x) in *
+  | context[ word.mul (word.of_Z 0) ?x ] => rewrite (@mul_0_l _ _ OK x) in *
+  | context[ word.mul ?x (word.of_Z 0) ] => rewrite (@mul_0_r _ _ OK x) in *
+  | context[ word.mul (word.of_Z 1) ?x ] => rewrite (@mul_1_l _ _ OK x) in *
+  | context[ word.mul ?x (word.of_Z 1) ] => rewrite (@mul_1_r _ _ OK x) in *
+
+   (* If "rewrite (sextend_width_nop (word_ok := OK))" encounters a term of the form
+      "(word.of_Z ?v)", it will instantiate ?v to "(BitOps.sextend ?w0 ?v0)" and replace
+      "(word.of_Z ?v)" by the RHS of the lemma, i.e. again "(word.of_Z ?Goal11)", so
+      no useful progress is made. This explicit matching prevents this from happening. *)
   | context[word.of_Z (BitOps.signExtend ?w ?v)] =>
     rewrite (@sextend_width_nop _ _ OK w v) in * by (reflexivity || congruence)
   end.
 
-Ltac simpl_word_exprs_step OK :=
-  let t := (assumption || symmetry; assumption || reflexivity) in
-  first [ rewrite (add_0_l (word_ok := OK)) in * by t
-        | rewrite (add_0_r (word_ok := OK)) in * by t
-        | rewrite (mul_0_l (word_ok := OK)) in * by t
-        | rewrite (mul_0_r (word_ok := OK)) in * by t
-        | rewrite (mul_1_l (word_ok := OK)) in * by t
-        | rewrite (mul_1_r (word_ok := OK)) in * by t
-        | rewrite_sextend_width_nop OK ].
+Require Import riscv.Utility.ListLib.
+Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
 Ltac simpl_word_exprs OK :=
+  autorewrite with rew_Zlength in *;
+  simpl_Zcsts;
   lazymatch type of OK with
   | @word.ok ?width ?Inst => repeat simpl_word_exprs_step OK
   | _ => fail 10000 "wordok is not of type word.ok"
   end.
-
-Require Import riscv.Utility.ListLib.
-Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
 Ltac solve_word_eq OK :=
   match goal with
