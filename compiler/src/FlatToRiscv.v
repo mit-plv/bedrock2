@@ -1280,7 +1280,15 @@ Section FlatToRiscv1.
     forall R initialL insts e pos p_ra p_sp old_retvals old_ra old_modvarvals,
     length argvals = length defargs ->
     length old_retvals = length defresults ->
-    length old_modvarvals = length (modVars_as_list body)  ->
+    length old_modvarvals = length (modVars_as_list body) ->
+    Forall valid_FlatImp_var useargs ->
+    Forall valid_FlatImp_var useresults ->
+    Forall valid_FlatImp_var defargs ->
+    Forall valid_FlatImp_var defresults ->
+    (* note: use-site argument/result names are allowed to have duplicates, but definition-site
+       argument/result names aren't *)
+    NoDup defargs ->
+    NoDup defresults ->
     @compile_function def_params fun_pos_env e pos (defargs, defresults, body) = insts ->
     stmt_not_too_big body ->
     valid_registers body ->
@@ -1508,7 +1516,7 @@ Section FlatToRiscv1.
 
     (* load argvars from stack *)
     eapply runsTo_trans. {
-      eapply load_regs_correct; simpl; cycle -2.
+      eapply load_regs_correct; simpl; cycle -2; try assumption.
       - use_sep_assumption.
         progress repeat match goal with
         | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
@@ -1529,10 +1537,54 @@ Section FlatToRiscv1.
           apply A.
           unfold word_array.
           f_equal.
+          match goal with
+          | |- ?x = ?y => ring_simplify x y
+          end.
+          assert (forall (a b c: word), word.sub a b = c -> a = word.add b c) as D. {
+            intros. subst. clear. ring.
+          }
+          apply D.
+          reflexivity.
+        }
+        exact (RelationClasses.reflexivity _). (* just instantiates frame *)
+      - reflexivity.
+      - assumption.
+      - assumption.
+      - assert (bytes_per_word mod 4 = 0); unfold bytes_per_word, Memory.bytes_per in *. {
+          clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+        }
+        mod4_0.solve_mod4_0.
+      - solve_divisibleBy4.
+      - (* more divisibleBy4 *) case TODO.
+      - rewrite map.get_put_same. f_equal.
+        admit. (*
+        simpl_word_exprs word_ok.
+        solve_word_eq word_ok. *)
+      - blia.
+    }
 
-          rewrite <- add_0_l.
-          simpl_word_exprs word_ok.
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: context [sep] |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
 
+    (* execute function body *)
+    eapply runsTo_trans. {
+      eapply compile_stmt_correct; simpl; try assumption.
+      - eassumption.
+      - reflexivity.
+      - assumption.
+      - assumption.
+      - solve_divisibleBy4.
+      - (* TODO will have to adapt hyp
+           "getRegs initialL = initialRegsH"
+           of compile_stmt_correct *)
 
   Abort.
 
