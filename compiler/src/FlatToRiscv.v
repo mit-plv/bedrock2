@@ -705,6 +705,140 @@ Section FlatToRiscv1.
   Arguments map.empty: simpl never.
   Arguments map.get: simpl never.
 
+  Definition word_array: word -> list word -> mem -> Prop :=
+    array (fun addr w => ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
+                                     (LittleEndian.split _ (word.unsigned w)))
+          (word.of_Z (Z.of_nat (@Memory.bytes_per width Syntax.access_size.word))).
+
+  (*
+     high addresses!             ...
+                      p_sp   --> mod_var_0 of previous function call arg0
+                                 argn
+                                 ...
+                                 arg0
+                                 retn
+                                 ...
+                                 ret0
+                                 ra
+                                 mod_var_n
+                                 ...
+                      new_sp --> mod_var_0
+     low addresses               ...
+  *)
+  Definition stackframe(p_sp: word)(argvals retvals: list word)
+             (ra_val: word)(modvarvals: list word): mem -> Prop :=
+    word_array
+      (word.add p_sp
+                (word.of_Z
+                   (- (bytes_per_word *
+                       Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
+      (modvarvals ++ [ra_val] ++ retvals ++ argvals).
+
+  Lemma compile_stmt_correct_new:
+    forall (s: stmt) t initialMH initialRegsH postH,
+    eval_stmt s t initialMH initialRegsH postH ->
+    forall R initialL insts argvals p_sp old_retvals p_ra modvarvals,
+    @compile_stmt def_params s = insts ->
+    stmt_not_too_big s ->
+    valid_registers s ->
+    divisibleBy4 initialL.(getPc) ->
+    map.extends initialL.(getRegs) initialRegsH ->
+    map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
+    map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
+    (program initialL.(getPc) insts *
+     stackframe p_sp argvals old_retvals p_ra modvarvals *
+     eq initialMH * R)%sep initialL.(getMem) ->
+    initialL.(getLog) = t ->
+    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    ext_guarantee initialL ->
+    runsTo initialL (fun finalL => exists finalRegsH finalMH,
+          postH finalL.(getLog) finalMH finalRegsH /\
+          map.extends finalL.(getRegs) finalRegsH /\
+          (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
+          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          ext_guarantee finalL).
+(* TODO these constrains will have to be added:
+
+    length argvals = length defargs ->
+    length old_retvals = length defresults ->
+    length old_modvarvals = length (modVars_as_list body) ->
+    Forall valid_FlatImp_var useargs ->
+    Forall valid_FlatImp_var useresults ->
+    Forall valid_FlatImp_var defargs ->
+    Forall valid_FlatImp_var defresults ->
+
+    (* note: use-site argument/result names are allowed to have duplicates, but definition-site
+       argument/result names aren't *)
+    NoDup defargs ->
+    NoDup defresults ->
+ *)
+  Proof.
+    pose proof compile_stmt_emits_valid.
+    induction 1; intros;
+      lazymatch goal with
+      | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
+        pose proof (compile_stmt_emits_valid iset_is_supported H1 H2)
+      end;
+      repeat match goal with
+             | m: _ |- _ => destruct_RiscvMachine m
+             end;
+      simpl in *;
+      subst;
+      simp.
+
+    - (* SInteract *)
+      eapply runsTo_weaken.
+      + eapply compile_ext_call_correct with (postH := post) (action0 := action)
+                                             (argvars0 := argvars) (resvars0 := resvars);
+          simpl.
+
+(* need to change compile_ext_call_correct
+reflexivity || eassumption || ecancel_assumption || idtac.
+        eapply @exec.interact; try eassumption.
+        * eapply map.getmany_of_list_extends; eassumption.
+        * intros mReceive resvals HO.
+          specialize (H3 mReceive resvals HO).
+          destruct H3 as (finalRegsH & ? & finalMH & ? & ?).
+          eexists; split; [|eauto].
+
+split; cycle 1.
+
+simp.
+          edestruct (map.putmany_of_list_extends_exists (ok := locals_ok))
+            as (finalRegsL & ? & ?); [eassumption..|].
+          eexists. split; cycle 1.
+          { eexists. eauto. }
+          {
+
+          1: eassumption.
+          pose proof (map.putmany_of_list_extends_exists resvars resvals) as P.
+          eexists. split; cycle 1.
+          { eexists. eauto. }
+          { Search map.putmany_of_list. split; [|eassumption].
+          repeat eexists; try eassumption.
+
+        {
+          clear -H1 H8.
+          rename l into m, initialL_regs into m'.
+
+  H1 : List.option_all (map (map.get m) argvars) = Some argvals
+  m' : locals
+  H8 : map.extends m' m
+  ============================
+  List.option_all (map (map.get m') argvars) = Some argvals
+
+
+Search map.getmany_of_list.
+Search List.option_all.
+
+      + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
+        destruct_products. subst. eauto 7.
+
+    - (* SCall *)
+*)
+  Abort.
+
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH,
     eval_stmt s t initialMH initialRegsH postH ->
@@ -934,35 +1068,6 @@ Section FlatToRiscv1.
   Qed.
 
   Axiom TODO: False.
-
-  Definition word_array: word -> list word -> mem -> Prop :=
-    array (fun addr w => ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
-                                     (LittleEndian.split _ (word.unsigned w)))
-          (word.of_Z (Z.of_nat (@Memory.bytes_per width Syntax.access_size.word))).
-
-  (*
-     high addresses!             ...
-                      p_sp   --> mod_var_0 of previous function call arg0
-                                 argn
-                                 ...
-                                 arg0
-                                 retn
-                                 ...
-                                 ret0
-                                 ra
-                                 mod_var_n
-                                 ...
-                      new_sp --> mod_var_0
-     low addresses               ...
-  *)
-  Definition stackframe(p_sp: word)(argvals retvals: list word)
-             (ra_val: word)(modvarvals: list word): mem -> Prop :=
-    word_array
-      (word.add p_sp
-                (word.of_Z
-                   (- (bytes_per_word *
-                       Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
-      (modvarvals ++ [ra_val] ++ retvals ++ argvals).
 
   (* TODO move *)
 
