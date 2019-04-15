@@ -485,16 +485,17 @@ Section EmitsValid.
 
   Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
 
-  Lemma compile_load_emits_valid: forall x y sz,
+  Lemma compile_load_emits_valid: forall x y sz offset,
       valid_register x ->
       valid_register y ->
-      valid_instructions iset [compile_load sz x y 0].
+      - 2 ^ 11 <= offset < 2 ^ 11 ->
+      valid_instructions iset [compile_load sz x y offset].
   Proof.
     intros. unfold iset.
     destruct Utility.width_cases as [E | E]; rewrite E; simpl;
     destruct sz eqn: Eqsz; unfold valid_instructions, valid_register in *; simpl;
       intros;
-      (destruct H1; [|contradiction]);
+      (destruct H2; [|contradiction]);
       subst instr;
       unfold verify;
       simpl;
@@ -505,10 +506,11 @@ Section EmitsValid.
       intuition (try blia).
   Qed.
 
-  Lemma compile_store_emits_valid: forall x y sz,
+  Lemma compile_store_emits_valid: forall x y sz offset,
       valid_register x ->
       valid_register y ->
-      valid_instructions iset [compile_store sz x y 0].
+      - 2 ^ 11 <= offset < 2 ^ 11 ->
+      valid_instructions iset [compile_store sz x y offset].
   Proof.
     intros. unfold iset.
     destruct Utility.width_cases as [E | E]; rewrite E; simpl;
@@ -554,6 +556,7 @@ Section EmitsValid.
       stmt_not_too_big s ->
       valid_instructions iset (compile_stmt s).
   Proof.
+    assert (- 2 ^ 11 <= 0 < 2 ^ 11) by blia.
     induction s; intros; simpl in *; intuition (
       auto using compile_load_emits_valid,
                  compile_store_emits_valid,
