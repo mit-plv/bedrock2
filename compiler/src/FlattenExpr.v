@@ -540,7 +540,7 @@ Section FlattenExpr1.
     List.option_all (List.map (@eval_expr (mk_Semantics_params p) m lH) es) = Some resVals ->
     FlatImp.exec map.empty s t m lL (fun t' m' lL' =>
       t' = t /\ m' = m /\
-      List.option_all (List.map (map.get lL') resVars) = Some resVals /\
+      map.getmany_of_list lL' resVars = Some resVals /\
       map.only_differ lL (FlatImp.modVars s) lL').
   Proof.
     induction es; intros *; intros F Ex U D Evs; simpl in *; simp;
@@ -561,7 +561,7 @@ Section FlattenExpr1.
       }
       eapply @FlatImp.exec.weaken.
       + eapply IHes; try eassumption; maps.
-      + intros. simpl in *. simp.
+      + intros. simpl in *. simp. cbn. unfold map.getmany_of_list in *.
         replace (map.get l'0 v) with (Some r).
         * rewrite_match. repeat (split || auto). maps.
         * unfold ExprImp.allVars_exprs in D.

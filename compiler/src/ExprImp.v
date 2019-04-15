@@ -71,7 +71,7 @@ Section ExprImp1.
           'Some argvs <- List.option_all (List.map (eval_expr m st) args);
           'Some st0 <- map.putmany_of_list params argvs map.empty;
           'Some (st1, m') <- eval_cmd f st0 m fbody;
-          'Some retvs <- List.option_all (List.map (map.get st1) rets);
+          'Some retvs <- map.getmany_of_list st1 rets;
           'Some st' <- map.putmany_of_list binds retvs st;
           Some (st', m')
         | cmd.interact _ _ _ => None (* unsupported *)
@@ -188,7 +188,7 @@ Section ExprImp1.
         List.option_all (List.map (eval_expr m1 st) args) = Some argvs /\
         map.putmany_of_list params argvs map.empty = Some st0 /\
         eval_cmd f st0 m1 fbody = Some (st1, m') /\
-        List.option_all (List.map (map.get st1) rets) = Some retvs /\
+        map.getmany_of_list st1 rets = Some retvs /\
         map.putmany_of_list binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. eauto 16. Qed.

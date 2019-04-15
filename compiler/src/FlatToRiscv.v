@@ -1373,13 +1373,13 @@ Search List.option_all.
     forall body useargs useresults defargs defresults t initialMH (initialRegsH: locals)
            postH argvals sublocals outcome,
       (* FlatImp function execution works: *)
-      List.option_all (List.map (map.get initialRegsH) useargs) = Some argvals ->
+      map.getmany_of_list initialRegsH useargs = Some argvals ->
       map.putmany_of_list defargs argvals map.empty = Some sublocals ->
       exec map.empty body t initialMH sublocals outcome ->
       (forall (t' : trace) (m' : mem) (st : locals),
           outcome t' m' st ->
           exists (retvals : list word) (l' : locals),
-            List.option_all (List.map (map.get st) defresults) = Some retvals /\
+            map.getmany_of_list st defresults = Some retvals /\
             map.putmany_of_list useresults retvals initialRegsH = Some l' /\
             postH t' m' l') ->
     forall R initialL insts e pos p_ra p_sp old_retvals old_ra old_modvarvals,

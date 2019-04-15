@@ -200,7 +200,7 @@ Module exec. Section WithEnv.
       lf (_ : map.putmany_of_list params args map.empty = Some lf)
       mid (_ : exec fbody t m lf mid)
       (_ : forall t' m' st1, mid t' m' st1 ->
-          exists retvs, List.option_all (List.map (map.get st1) rets) = Some retvs /\
+          exists retvs, map.getmany_of_list st1 rets = Some retvs /\
           exists l', map.putmany_of_list binds retvs l = Some l' /\
           post t' m' l')
     : exec (cmd.call binds fname arges) t m l post

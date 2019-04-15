@@ -322,14 +322,14 @@ Section MMIO1.
                end.
         simp.
         destruct argvars. {
-          exfalso. rename H10 into A. clear -A. simpl in *.
+          exfalso. rename H10 into A. clear -A. cbn in *.
           destruct_one_match_hyp; congruence.
         }
         destruct argvars; cycle 1. {
-          exfalso. rename H10 into A. clear -A. simpl in *. simp.
+          exfalso. rename H10 into A. clear -A. cbn in *. simp.
           destruct_one_match_hyp; congruence.
         }
-        simpl in *|-.
+        cbn in *|-.
         simp.
         subst insts.
         eapply runsToNonDet.runsToStep; cycle 1.
@@ -374,10 +374,10 @@ Section MMIO1.
                end.
         simp.
         destruct argvars; cycle 1. {
-          exfalso. rename H10 into A. clear -A. simpl in *. simp.
+          exfalso. rename H10 into A. clear -A. cbn in *. simp.
           destruct_one_match_hyp; congruence.
         }
-        simpl in *|-.
+        cbn in *|-.
         simp.
         subst insts.
         eapply runsToNonDet.runsToStep; cycle 1.
