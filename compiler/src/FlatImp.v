@@ -6,7 +6,6 @@ Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require compiler.NoActionSyntaxParams.
 Require Import compiler.util.Common.
-Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import bedrock2.Syntax.
@@ -497,10 +496,10 @@ Module exec.
         rename H3 into Ex1.
         rename H16 into Ex2.
         move Ex1 before Ex2.
-        intros. simpl in *. destruct_conjs.
-        specialize Ex1 with (1 := H3).
-        specialize Ex2 with (1 := H4).
-        destruct_conjs.
+        intros. simpl in *. simp.
+        edestruct Ex1; [eassumption|].
+        edestruct Ex2; [eassumption|].
+        simp.
         equalities.
         eauto 10.
 

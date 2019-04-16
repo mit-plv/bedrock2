@@ -1213,31 +1213,16 @@ Section FlatToRiscv1.
         refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
         refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
 
-        assert (forall (T: Type) (l l1 l2: list T) (n: nat),
-                   List.firstn n l = l1 ->
-                   List.skipn n l = l2 ->
-                   l = l1 ++ l2) as firstn_skipn_reassemble. {
-          intros. subst. symmetry. apply firstn_skipn.
-        }
-        assert (forall (T: Type) (i: nat) (L: list T) (d: T),
-                   (i < length L)%nat ->
-                   List.firstn 1 (List.skipn i L) = [List.nth i L d]) as firstn_skipn_nth. {
-          induction i; intros.
-          - simpl. destruct L; simpl in *; try (exfalso; blia). reflexivity.
-          - simpl. destruct L; try (simpl in *; exfalso; blia). simpl.
-            rewrite <- IHi; [reflexivity|]. simpl in *. blia.
-        }
-
         repeat split.
-        1: eapply firstn_skipn_reassemble; [reflexivity|].
-        1: eapply firstn_skipn_reassemble; [reflexivity|].
+        1: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
+        1: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
         1: rewrite List.skipn_skipn.
-        1: eapply firstn_skipn_reassemble.
-        1: eapply firstn_skipn_nth.
+        1: eapply ListLib.firstn_skipn_reassemble.
+        1: eapply ListLib.firstn_skipn_nth.
         2: rewrite List.skipn_skipn.
-        2: eapply firstn_skipn_reassemble; [reflexivity|].
+        2: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
         2: rewrite List.skipn_skipn.
-        2: rewrite firstn_all.
+        2: rewrite List.firstn_all.
         2: reflexivity.
         2: rewrite List.length_firstn_inbounds.
         2: reflexivity.
@@ -1263,26 +1248,12 @@ Section FlatToRiscv1.
                                 & ? & ? &  ? & ?).
       subst old_stackvals.
 
-      assert (forall ks vs (m0: locals),
-                 map.getmany_of_list m0 ks = Some vs ->
-                 length ks = length vs) as getmany_of_list_length. {
-        induction ks; intros vs m0 E.
-        - inversion E. reflexivity.
-        - cbn in E. destruct (map.get m0 a) eqn: F; try discriminate.
-          destruct (List.option_all (map (map.get m0) ks)) eqn: G; try discriminate.
-          inversion E.
-          simpl.
-          f_equal.
-          eapply IHks.
-          eassumption.
-      }
-
       assert (length old_argvals = length args). {
         match goal with
         | H: _ |- _ => apply map.putmany_of_list_sameLength in H; move H at bottom
         end.
         match goal with
-        | H: _ |- _ => apply getmany_of_list_length in H; move H at bottom
+        | H: _ |- _ => apply map.getmany_of_list_length in H; move H at bottom
         end.
           (* TODO it's bad we need that (kind of PARAMRECORDS) *)
         unfold Register, MachineInt in *.
@@ -1365,33 +1336,8 @@ Section FlatToRiscv1.
     specialize (P program_base funnames).
     seprewrite_in P H17. clear P.
 
-Ltac ret_type P :=
-  lazymatch P with
-  | forall x, @?Q x => let Q' := open_constr:(Q _) in
-                       let Q'' := eval cbv beta in Q' in
-                           ret_type Q''
-  | _ -> ?Q => ret_type Q
-  | ?Q => open_constr:(Q)
-  end.
-
-Ltac _especialize_as P H :=
-  let T := type of P in
-  let R := ret_type T in
-  assert R as H; [eapply P|].
-
-Ltac _especialize H :=
-  let T := type of H in
-  let R := ret_type T in
-  let N := fresh in
-  rename H into N;
-  assert R as H; [eapply N|]; clear N.
-
-Tactic Notation "especialize" constr(P) "as" ident(H) := _especialize_as P H.
-(* Tactic Notation "especialize" ident(H) := _especialize H. TODO how can these two
-   live together? *)
-
     pose proof (@compile_function_emits_valid e_pos funpos argnames retnames body) as V.
-    _especialize V.
+    especialize V.
     { exact iset_is_supported. }
     { admit. (* valid argnames *) }
     { admit. (* valid retnames *) }

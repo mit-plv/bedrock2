@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import coqutil.Decidable.
-Require Import compiler.util.Tactics.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Z.Lia.
 
 Section ListSet.
@@ -18,6 +18,26 @@ Section ListSet.
     fold_left (fun res b => remove eeq b res) B A.
 
 End ListSet.
+
+
+Lemma firstn_skipn_reassemble: forall (T: Type) (l l1 l2: list T) (n: nat),
+    List.firstn n l = l1 ->
+    List.skipn n l = l2 ->
+    l = l1 ++ l2.
+Proof.
+  intros. subst. symmetry. apply firstn_skipn.
+Qed.
+
+Lemma firstn_skipn_nth: forall (T: Type) (i: nat) (L: list T) (d: T),
+    (i < length L)%nat ->
+    List.firstn 1 (List.skipn i L) = [List.nth i L d].
+Proof.
+  induction i; intros.
+  - simpl. destruct L; simpl in *; try (exfalso; blia). reflexivity.
+  - simpl. destruct L; try (simpl in *; exfalso; blia). simpl.
+    rewrite <- IHi; [reflexivity|]. simpl in *. blia.
+Qed.
+
 
 Definition listUpdate{E: Type}(l: list E)(i: nat)(e: E): list E :=
   firstn i l ++ [e] ++ skipn (S i) l.

@@ -8,7 +8,7 @@ Require Import coqutil.Z.BitOps.
 Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.Primitives.
-Require Import compiler.util.Tactics.
+Require Import coqutil.Tactics.Tactics.
 Require Import riscv.Utility.Tactics.
 Require Import riscv.Utility.Utility.
 Require Import compiler.FlatImp.

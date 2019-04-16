@@ -6,7 +6,7 @@ Require Export bedrock2.Syntax.
 Require Export bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
 Require Import compiler.util.Common.
-Require Import compiler.util.Tactics.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.ListLib.
