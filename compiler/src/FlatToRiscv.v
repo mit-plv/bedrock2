@@ -1065,7 +1065,6 @@ Section FlatToRiscv1.
     forall (s: stmt) t initialMH initialRegsH postH,
     exec e_impl s t initialMH initialRegsH postH ->
     forall R initialL insts p_stacklimit p_sp p_ra old_stackvals pos,
-
     @compile_stmt_new def_params _ e_pos pos s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
@@ -1225,36 +1224,40 @@ Section FlatToRiscv1.
                                 & ? & ? &  ? & ?).
       subst old_stackvals.
 
+      assert (forall ks vs (m0: locals),
+                 map.getmany_of_list m0 ks = Some vs ->
+                 length ks = length vs) as getmany_of_list_length. {
+        induction ks; intros vs m0 E.
+        - inversion E. reflexivity.
+        - cbn in E. destruct (map.get m0 a) eqn: F; try discriminate.
+          destruct (List.option_all (map (map.get m0) ks)) eqn: G; try discriminate.
+          inversion E.
+          simpl.
+          f_equal.
+          eapply IHks.
+          eassumption.
+      }
+
+      assert (length old_argvals = length args). {
+        match goal with
+        | H: _ |- _ => apply map.putmany_of_list_sameLength in H; move H at bottom
+        end.
+        match goal with
+        | H: _ |- _ => apply getmany_of_list_length in H; move H at bottom
+        end.
+          (* TODO it's bad we need that (kind of PARAMRECORDS) *)
+        unfold Register, MachineInt in *.
+        congruence.
+      }
+
       (* put arguments on stack *)
       eapply runsTo_trans. {
-        assert (-2048 <= 0 < 2 ^ 11 - bytes_per_word * Z.of_nat (length args)) by admit.
-        eapply save_regs_correct with (vars := args) (offset := 0); simpl;
+        eapply save_regs_correct with (vars := args) (offset := - bytes_per_word * Z.of_nat (length args)); simpl;
           try solve [sidecondition].
+        - admit.
         - eapply map.getmany_of_list_extends; eassumption.
-        - assert (forall ks vs (m0: locals),
-                     map.getmany_of_list m0 ks = Some vs ->
-                     length ks = length vs) as getmany_of_list_length. {
-            induction ks; intros vs m0 E.
-            - inversion E. reflexivity.
-            - cbn in E. destruct (map.get m0 a) eqn: F; try discriminate.
-              destruct (List.option_all (map (map.get m0) ks)) eqn: G; try discriminate.
-              inversion E.
-              simpl.
-              f_equal.
-              eapply IHks.
-              eassumption.
-          }
-
-          match goal with
-          | H: _ |- _ => apply map.putmany_of_list_sameLength in H; move H at bottom
-          end.
-          match goal with
-          | H: _ |- _ => apply getmany_of_list_length in H; move H at bottom
-          end.
-          instantiate (1 := old_argvals).
-          (* TODO it's bad we need that (kind of PARAMRECORDS) *)
-          unfold Register, MachineInt in *.
-          congruence.
+        - instantiate (1 := old_argvals).
+          eassumption.
         - use_sep_assumption.
           unfold program, word_array.
           progress repeat match goal with
@@ -1269,22 +1272,17 @@ Section FlatToRiscv1.
             end.
 
             (* TODO should be part of simpl_word_exprs *)
-            rewrite ?app_length. change (length [old_ra]) with 1%nat.
+            rewrite ?app_length.
+            rewrite !Zlength_correct.
+            change (length [old_ra]) with 1%nat.
             rewrite ?Nat2Z.inj_add.
             unfold bytes_per_word, Memory.bytes_per.
             autorewrite with rew_word_morphism.
             simpl_word_exprs word_ok.
-            rewrite !Zlength_correct.
             change BinInt.Z.of_nat with Z.of_nat.
-            remember (word.of_Z (Z.of_nat (Z.to_nat ((width + 7) / 8)))) as B.
-            remember (word.of_Z (Z.of_nat (length remaining_stack))) as L1.
-            remember (word.of_Z (Z.of_nat (length old_modvarvals))) as L2.
-            remember (word.of_Z (Z.of_nat (length old_retvals))) as L3.
-            (* RHS is by (B * length old_argvals too big)
-               --> BUG: in compile_stmt_new/case SCall, save_regs should be called with
-                   an offset of (-bytes_per_word * length argvars) instead of 0
-                   (and fix load_regs too) *)
-            admit.
+            replace (length old_argvals) with (length args) by blia.
+            replace (length old_retvals) with (length retnames) by blia.
+            solve_word_eq word_ok.
           }
           exact (RelationClasses.reflexivity _).
       }

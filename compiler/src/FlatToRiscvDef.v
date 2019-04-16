@@ -252,9 +252,9 @@ Section FlatToRiscv1.
                     (* don't fail so that we can measure the size of the resulting code *)
                     | None => 42
                     end in
-        save_regs argvars 0 ++
+        save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
         [[ Jal ra (fpos - mypos) ]] ++
-        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars))
+        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
       | SInteract resvars action argvars => compile_ext_call resvars action argvars
       end.
 
