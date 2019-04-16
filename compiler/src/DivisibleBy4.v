@@ -15,10 +15,12 @@ Ltac divisibleBy4_pre :=
   end;
   repeat match goal with
          | H: divisibleBy4 _ |- _ => revert H
+         | H: _ mod 4 = 0 |- _ => revert H
          end;
   clear;
   repeat match goal with
          | |- divisibleBy4 _ -> _ => intro
+         | |- _ mod 4 = 0 -> _ => intro
          end;
   unfold divisibleBy4 in *;
   repeat (rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z || unfold word.wrap).
@@ -58,3 +60,39 @@ Goal forall {W: Words} (pc: word) (l n m: Z), divisibleBy4 pc -> False.
                (word.of_Z
                   (- m * 4)))) as A by solve_divisibleBy4. clear A.
 Abort.
+
+
+Section Modu.
+  Context {W: Words}.
+
+  Definition divisibleBy4'(x: word): Prop := word.modu x (word.of_Z 4) = word.of_Z 0.
+
+  Lemma four_fits: 4 < 2 ^ width.
+  Proof.
+    destruct width_cases as [C | C]; rewrite C; reflexivity.
+  Qed.
+
+  Ltac div4_sidecondition :=
+    pose proof four_fits;
+    rewrite ?word.unsigned_of_Z; unfold word.wrap; rewrite ?Z.mod_small;
+    blia.
+
+  Lemma divisibleBy4_alt(x: word): divisibleBy4 x -> divisibleBy4' x.
+  Proof.
+    intro H. unfold divisibleBy4, divisibleBy4' in *.
+    apply word.unsigned_inj.
+    rewrite word.unsigned_modu_nowrap by div4_sidecondition.
+    replace (word.unsigned (word.of_Z 4)) with 4 by div4_sidecondition.
+    rewrite H.
+    div4_sidecondition.
+  Qed.
+
+End Modu.
+
+Ltac simpl_modu4_0 :=
+  simpl;
+  match goal with
+  | |- context [word.eqb ?a ?b] =>
+    rewrite (word.eqb_eq a b) by (apply divisibleBy4_alt; solve_divisibleBy4)
+  end;
+  simpl.

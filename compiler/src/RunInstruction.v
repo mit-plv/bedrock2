@@ -56,9 +56,28 @@ Section Run.
           | eapply go_storeWord_sep; simpl; [sidecondition..|intros]
           | eapply go_loadDouble_sep ; simpl; [sidecondition..|]
           | eapply go_storeDouble_sep; simpl; [sidecondition..|intros]
+          | simpl_modu4_0
           | simulate_step ].
 
   Ltac simulate' := repeat simulate'_step.
+
+  Definition run_Jal_spec :=
+    forall (rd: Register) (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
+      verify (Jal rd jimm20) iset ->
+      (* [verify] only enforces [jimm20 mod 2 = 0] because there could be compressed
+         instructions, but we don't support them so we require divisibility by 4: *)
+      jimm20 mod 4 = 0 ->
+      (* valid_register almost follows from verify except for when the register is Register0 *)
+      valid_register rd ->
+      divisibleBy4 initialL.(getPc) ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep initialL.(getMem) ->
+      mcomp_sat (run1 iset) initialL (fun finalL =>
+        finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
+        finalL.(getLog) = initialL.(getLog) /\
+        (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep finalL.(getMem) /\
+        finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
   Definition run_ImmReg_spec(Op: Register -> Register -> MachineInt -> Instruction)
                             (f: word -> word -> word): Prop :=
@@ -125,7 +144,7 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
   Ltac t :=
-    unfold run_ImmReg_spec, run_Load_spec, run_Store_spec;
+    unfold run_Jal_spec, run_ImmReg_spec, run_Load_spec, run_Store_spec;
     intros;
     match goal with
     | initialL: RiscvMachineL |- _ => destruct initialL
@@ -138,6 +157,9 @@ Section Run.
            | |- _ => reflexivity
            | |- _ => ecancel_assumption
            end.
+
+  Lemma run_Jal: run_Jal_spec.
+  Proof. t. Qed.
 
   Lemma run_Addi: run_ImmReg_spec Addi word.add.
   Proof. t. Qed.

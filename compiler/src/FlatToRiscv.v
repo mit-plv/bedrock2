@@ -176,38 +176,6 @@ Section FlatToRiscv1.
   Arguments Z.of_nat: simpl never.
   Arguments run1: simpl never.
 
-  Definition divisibleBy4'(x: word): Prop := word.modu x (word.of_Z 4) = word.of_Z 0.
-
-  Lemma four_fits: 4 < 2 ^ width.
-  Proof.
-    destruct width_cases as [C | C]; rewrite C; reflexivity.
-  Qed.
-
-  Ltac div4_sidecondition :=
-    pose proof four_fits;
-    rewrite ?word.unsigned_of_Z; unfold word.wrap; rewrite ?Z.mod_small;
-    blia.
-
-  Lemma divisibleBy4_alt(x: word): divisibleBy4 x -> divisibleBy4' x.
-  Proof.
-    intro H. unfold divisibleBy4, divisibleBy4' in *.
-    apply word.unsigned_inj.
-    rewrite word.unsigned_modu_nowrap by div4_sidecondition.
-    replace (word.unsigned (word.of_Z 4)) with 4 by div4_sidecondition.
-    rewrite H.
-    div4_sidecondition.
-  Qed.
-
-  Ltac simpl_modu4_0 :=
-    simpl;
-    match goal with
-    | |- context [word.eqb ?a ?b] =>
-      rewrite (word.eqb_eq a b) by (apply divisibleBy4_alt; solve_divisibleBy4)
-    end;
-    simpl.
-
-  Arguments LittleEndian.combine: simpl never.
-
   Ltac simulate''_step :=
     first (* not everyone wants these: *)
           [ eapply go_loadByte       ; [sidecondition..|]
