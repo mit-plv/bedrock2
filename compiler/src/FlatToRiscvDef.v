@@ -253,7 +253,7 @@ Section FlatToRiscv1.
                     | None => 42
                     end in
         save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
-        [[ Jal ra (fpos - mypos) ]] ++
+        [[ Jal ra (fpos - (mypos + 4 * Z.of_nat (length argvars))) ]] ++
         load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
       | SInteract resvars action argvars => compile_ext_call resvars action argvars
       end.
