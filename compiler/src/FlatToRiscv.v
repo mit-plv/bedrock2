@@ -1136,13 +1136,158 @@ Section FlatToRiscv1.
         do 3 eexists. repeat split; try eassumption. ecancel_assumption.
 
     - (* SCall *)
+      (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
+      match goal with
+      | H: @map.get ?K ?V ?M e_impl fname = ?RHS,
+           G: context C [@map.get ?K' ?V' ?M' e_impl fname] |- _ =>
+        let Gb := context C [ @map.get K V M e_impl fname ] in
+        let Gb' := context C [ RHS ] in
+        lazymatch goal with
+        | H: Gb' |- _ => fail
+        | _ => idtac
+        end;
+        let F := fresh in
+        assert Gb' as F by (assert Gb by assumption; congruence);
+        inversion F; subst; clear F
+      end.
+
+      set (FL := framelength (argnames, retnames, body)) in *.
+      (* We have enough stack space for this call: *)
+      assert (FL <= Z.of_nat (length old_stackvals)) as enough_stack_space. {
+        match goal with
+        | H: fits_stack _ _ _ |- _ => apply fits_stack_nonneg in H; clear -H
+        end.
+        blia.
+      }
+
+      assert (exists remaining_stack old_modvarvals old_ra old_retvals old_argvals,
+                 old_stackvals = remaining_stack ++ old_modvarvals ++ [old_ra] ++
+                                                 old_retvals ++ old_argvals /\
+                 length old_modvarvals = length (modVars_as_list body) /\
+                 length old_retvals = length retnames /\
+                 length old_argvals = length argnames) as TheSplit. {
+        subst FL. unfold framelength in *.
+        clear -enough_stack_space.
+
+        refine (ex_intro _ (List.firstn _ old_stackvals) _).
+        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
+        refine (ex_intro _ (List.nth _ old_stackvals (word.of_Z 0)) _).
+        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
+        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
+
+        assert (forall (T: Type) (l l1 l2: list T) (n: nat),
+                   List.firstn n l = l1 ->
+                   List.skipn n l = l2 ->
+                   l = l1 ++ l2) as firstn_skipn_reassemble. {
+          intros. subst. symmetry. apply firstn_skipn.
+        }
+        assert (forall (T: Type) (i: nat) (L: list T) (d: T),
+                   (i < length L)%nat ->
+                   List.firstn 1 (List.skipn i L) = [List.nth i L d]) as firstn_skipn_nth. {
+          induction i; intros.
+          - simpl. destruct L; simpl in *; try (exfalso; blia). reflexivity.
+          - simpl. destruct L; try (simpl in *; exfalso; blia). simpl.
+            rewrite <- IHi; [reflexivity|]. simpl in *. blia.
+        }
+
+        repeat split.
+        1: eapply firstn_skipn_reassemble; [reflexivity|].
+        1: eapply firstn_skipn_reassemble; [reflexivity|].
+        1: rewrite List.skipn_skipn.
+        1: eapply firstn_skipn_reassemble.
+        1: eapply firstn_skipn_nth.
+        2: rewrite List.skipn_skipn.
+        2: eapply firstn_skipn_reassemble; [reflexivity|].
+        2: rewrite List.skipn_skipn.
+        2: rewrite firstn_all.
+        2: reflexivity.
+        2: rewrite List.length_firstn_inbounds.
+        2: reflexivity.
+        3: rewrite List.length_firstn_inbounds.
+        3: reflexivity.
+        4: rewrite List.length_firstn_inbounds.
+        4: rewrite List.length_skipn.
+        4: lazymatch goal with
+           | |- ?LHS = ?RHS =>
+             match LHS with
+             | context C [ ?x ] =>
+               is_evar x;
+               let LHS' := context C [ 0%nat ] in
+               assert (LHS' - RHS = x)%nat
+             end
+           end.
+        4: reflexivity.
+
+        all: rewrite ?List.length_skipn.
+        all: try blia.
+      }
+      destruct TheSplit as (remaining_stack & old_modvarvals & old_ra & old_retvals & old_argvals
+                                & ? & ? &  ? & ?).
+      subst old_stackvals.
+
       (* put arguments on stack *)
       eapply runsTo_trans. {
         assert (-2048 <= 0 < 2 ^ 11 - bytes_per_word * Z.of_nat (length args)) by admit.
         eapply save_regs_correct with (vars := args) (offset := 0); simpl;
           try solve [sidecondition].
         - eapply map.getmany_of_list_extends; eassumption.
-        - (* will need more space for stack (that's where oldvalues will be saved *)
+        - assert (forall ks vs (m0: locals),
+                     map.getmany_of_list m0 ks = Some vs ->
+                     length ks = length vs) as getmany_of_list_length. {
+            induction ks; intros vs m0 E.
+            - inversion E. reflexivity.
+            - cbn in E. destruct (map.get m0 a) eqn: F; try discriminate.
+              destruct (List.option_all (map (map.get m0) ks)) eqn: G; try discriminate.
+              inversion E.
+              simpl.
+              f_equal.
+              eapply IHks.
+              eassumption.
+          }
+
+          match goal with
+          | H: _ |- _ => apply map.putmany_of_list_sameLength in H; move H at bottom
+          end.
+          match goal with
+          | H: _ |- _ => apply getmany_of_list_length in H; move H at bottom
+          end.
+          instantiate (1 := old_argvals).
+          (* TODO it's bad we need that (kind of PARAMRECORDS) *)
+          unfold Register, MachineInt in *.
+          congruence.
+        - use_sep_assumption.
+          unfold program, word_array.
+          progress repeat match goal with
+                          | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+                            rewrite (array_append_DEPRECATED PT SZ xs ys start)
+                          end.
+          cancel.
+          cancel_seps_at_indices_by_iff 5%nat 0%nat. {
+            match goal with
+            | |- iff1 (array _ _ ?p1 _) (array _ _ ?p2 _) =>
+              replace p2 with p1; [exact (RelationClasses.reflexivity _)|]
+            end.
+
+            (* TODO should be part of simpl_word_exprs *)
+            rewrite ?app_length. change (length [old_ra]) with 1%nat.
+            rewrite ?Nat2Z.inj_add.
+            unfold bytes_per_word, Memory.bytes_per.
+            autorewrite with rew_word_morphism.
+            simpl_word_exprs word_ok.
+            rewrite !Zlength_correct.
+            change BinInt.Z.of_nat with Z.of_nat.
+            remember (word.of_Z (Z.of_nat (Z.to_nat ((width + 7) / 8)))) as B.
+            remember (word.of_Z (Z.of_nat (length remaining_stack))) as L1.
+            remember (word.of_Z (Z.of_nat (length old_modvarvals))) as L2.
+            remember (word.of_Z (Z.of_nat (length old_retvals))) as L3.
+            (* RHS is by (B * length old_argvals too big)
+               --> BUG: in compile_stmt_new/case SCall, save_regs should be called with
+                   an offset of (-bytes_per_word * length argvars) instead of 0
+                   (and fix load_regs too) *)
+            admit.
+          }
+          exact (RelationClasses.reflexivity _).
+      }
 
   Abort.
 
