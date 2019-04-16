@@ -289,7 +289,7 @@ Section FlatToRiscv1.
                          (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
         save_regs mod_vars 0 ++
         load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
-        compile_stmt_new mypos body ++
+        compile_stmt_new (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) body ++
         save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
         load_regs mod_vars 0 ++
         [[ compile_load access_size.word ra sp

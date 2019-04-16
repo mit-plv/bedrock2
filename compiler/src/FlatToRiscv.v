@@ -1081,8 +1081,6 @@ Section FlatToRiscv1.
   Proof.
   Admitted.
 
-  (* TODO compile_function will have to pass a bigger mypos to compile_stmt_new *)
-
   Lemma compile_stmt_correct_new:
     forall (program_base: word),
     forall e_impl (s: stmt) t initialMH initialRegsH postH,
