@@ -983,37 +983,116 @@ Section FlatToRiscv1.
                        Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
       (modvarvals ++ [ra_val] ++ retvals ++ argvals).
 
+  (* measured in words, needs to be multiplied by 4 or 8 *)
+  Definition framelength: list var * list var * stmt -> Z :=
+    fun '(argvars, resvars, body) =>
+      let mod_vars := modVars_as_list body in
+      Z.of_nat (length argvars + length resvars + 1 + length mod_vars).
+
+  Lemma framesize_nonneg: forall argvars resvars body,
+      0 <= framelength (argvars, resvars, body).
+  Proof.
+    intros. unfold framelength.
+    unfold bytes_per_word, Memory.bytes_per. blia.
+  Qed.
+
+  (* Note:
+     - This predicate cannot be proved for recursive functions
+     - Measured in words, needs to be multiplied by 4 or 8 *)
+  Inductive fits_stack: Z -> env -> stmt -> Prop :=
+  | fits_stack_load: forall n e sz x y,
+      0 <= n ->
+      fits_stack n e (SLoad sz x y)
+  | fits_stack_store: forall n e sz x y,
+      0 <= n ->
+      fits_stack n e (SStore sz x y)
+  | fits_stack_lit: forall n e x v,
+      0 <= n ->
+      fits_stack n e (SLit x v)
+  | fits_stack_op: forall n e op x y z,
+      0 <= n ->
+      fits_stack n e (SOp x op y z)
+  | fits_stack_set: forall n e x y,
+      0 <= n ->
+      fits_stack n e (SSet x y)
+  | fits_stack_if: forall n e c s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SIf c s1 s2)
+  | fits_stack_loop: forall n e c s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SLoop s1 c s2)
+  | fits_stack_seq: forall n e s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SSeq s1 s2)
+  | fits_stack_skip: forall n e,
+      0 <= n ->
+      fits_stack n e SSkip
+  | fits_stack_call: forall n e binds fname args argnames retnames body,
+      map.get e fname = Some (argnames, retnames, body) ->
+      fits_stack (n - framelength (argnames, retnames, body)) e body ->
+      fits_stack n e (SCall binds fname args)
+  | fits_stack_interact: forall n e binds act args,
+      0 <= n ->
+      fits_stack n e (SInteract binds act args).
+
+  Lemma fits_stack_nonneg: forall n e s,
+      fits_stack n e s ->
+      0 <= n.
+  Proof.
+    induction 1; try blia. pose proof (@framesize_nonneg argnames retnames body). blia.
+  Qed.
+
+  (* high stack addresses     | stackframe of main             \
+                              ...                               \
+    g|                        ---                                }- stuffed into R
+    r|                        | stackframe of current func      /
+    o|              p_sp -->  ---                              /
+    w|                        |
+    s|                        | currently unused stack
+     |                        | (old_stackvals)
+     V                        |
+            p_stacklimit -->  ---
+
+     low stack addresses *)
+
   Lemma compile_stmt_correct_new:
+    forall e_impl e_pos,
+    (forall f, (exists impl, map.get e_impl f = Some impl)
+               <-> (exists pos, map.get e_pos f = Some pos)) ->
     forall (s: stmt) t initialMH initialRegsH postH,
-    eval_stmt s t initialMH initialRegsH postH ->
-    forall R initialL insts argvals p_sp old_retvals p_ra modvarvals e pos,
-    @compile_stmt_new def_params _ e pos s = insts ->
+    exec e_impl s t initialMH initialRegsH postH ->
+    forall R initialL insts p_stacklimit p_sp p_ra old_stackvals pos,
+
+    @compile_stmt_new def_params _ e_pos pos s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
     divisibleBy4 initialL.(getPc) ->
     map.extends initialL.(getRegs) initialRegsH ->
     map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
     map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
-    (program initialL.(getPc) insts *
-     stackframe p_sp argvals old_retvals p_ra modvarvals *
+    fits_stack (Z.of_nat (length old_stackvals)) e_impl s ->
+    p_sp = word.add p_stacklimit
+                    (word.of_Z (bytes_per_word * Z.of_nat (length old_stackvals))) ->
+    (program initialL.(getPc) insts * word_array p_stacklimit old_stackvals *
      eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     ext_guarantee initialL ->
-    runsTo initialL (fun finalL => exists finalRegsH finalMH,
+    runsTo initialL (fun finalL => exists finalRegsH finalMH final_stackvals,
           postH finalL.(getLog) finalMH finalRegsH /\
           map.extends finalL.(getRegs) finalRegsH /\
-          (program initialL.(getPc) insts *
-           stackframe p_sp argvals old_retvals p_ra modvarvals *
+          map.get finalL.(getRegs) RegisterNames.sp = Some p_sp ->
+          map.get finalL.(getRegs) RegisterNames.ra = Some p_ra ->
+          length final_stackvals = length old_stackvals /\
+          (program initialL.(getPc) insts * word_array p_stacklimit final_stackvals *
            eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
           ext_guarantee finalL).
 (* TODO these constrains will have to be added:
-
-    length argvals = length defargs ->
-    length old_retvals = length defresults ->
-    length old_modvarvals = length (modVars_as_list body) ->
     Forall valid_FlatImp_var useargs ->
     Forall valid_FlatImp_var useresults ->
     Forall valid_FlatImp_var defargs ->
@@ -1026,10 +1105,10 @@ Section FlatToRiscv1.
  *)
   Proof.
     pose proof compile_stmt_emits_valid.
-    induction 1; intros;
+    induction 2; intros;
       lazymatch goal with
       | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
-        pose proof (@compile_stmt_new_emits_valid s e pos iset_is_supported H1 H2)
+        pose proof (@compile_stmt_new_emits_valid s e_impl pos iset_is_supported H1 H2)
       end;
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m
@@ -1047,14 +1126,14 @@ Section FlatToRiscv1.
         eapply @exec.interact; try eassumption.
         * eapply map.getmany_of_list_extends; eassumption.
         * intros mReceive resvals HO.
-          specialize (H3 mReceive resvals HO).
-          destruct H3 as (finalRegsH & ? & finalMH & ? & ?).
+          specialize (H4 mReceive resvals HO).
+          destruct H4 as (finalRegsH & ? & finalMH & ? & ?).
           edestruct (map.putmany_of_list_extends_exists (ok := locals_ok))
             as (finalRegsL & ? & ?); [eassumption..|].
           eauto 7.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst.
-        do 2 eexists. repeat split; try eassumption. ecancel_assumption.
+        do 3 eexists. repeat split; try eassumption. ecancel_assumption.
 
     - (* SCall *)
       (* put arguments on stack *)
