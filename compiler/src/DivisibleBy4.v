@@ -9,20 +9,18 @@ Local Open Scope Z_scope.
 Definition divisibleBy4{W: Words}(x: word): Prop := (word.unsigned x) mod 4 = 0.
 
 Ltac divisibleBy4_pre :=
+  unfold divisibleBy4 in *;
   lazymatch goal with
-  | |- divisibleBy4 _ => idtac
+  | |- _ mod 4 = 0 => idtac
   | |- _ => fail "not a divisibleBy4 goal"
   end;
   repeat match goal with
-         | H: divisibleBy4 _ |- _ => revert H
          | H: _ mod 4 = 0 |- _ => revert H
          end;
   clear;
   repeat match goal with
-         | |- divisibleBy4 _ -> _ => intro
          | |- _ mod 4 = 0 -> _ => intro
          end;
-  unfold divisibleBy4 in *;
   repeat (rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z || unfold word.wrap).
 
 Ltac solve_divisibleBy4 := divisibleBy4_pre; solve_mod4_0.
