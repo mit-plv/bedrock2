@@ -271,6 +271,77 @@ Section FlatToRiscv1.
       + refine run_Sd.
   Qed.
 
+  Definition ptsto_word(addr w: word): mem -> Prop :=
+    ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
+                (LittleEndian.split _ (word.unsigned w)).
+
+  Definition word_array: word -> list word -> mem -> Prop :=
+    array ptsto_word (word.of_Z bytes_per_word).
+
+  (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
+     Memory.bytes_per, but using ptsto_word instead *)
+  Lemma run_load_word: forall (base addr v : word) (rd rs : Register) (ofs : MachineInt)
+                              (initialL : RiscvMachineL) (R : mem -> Prop),
+      Encode.verify (compile_load Syntax.access_size.word rd rs ofs) iset ->
+      valid_register rd ->
+      valid_register rs ->
+      divisibleBy4 (getPc initialL) ->
+      getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
+      map.get (getRegs initialL) rs = Some base ->
+      addr = word.add base (word.of_Z ofs) ->
+      (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
+       ptsto_word addr v * R)%sep (getMem initialL) ->
+      mcomp_sat (run1 iset) initialL
+         (fun finalL : RiscvMachineL =>
+            getRegs finalL = map.put (getRegs initialL) rd v /\
+            getLog finalL = getLog initialL /\
+            (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
+             ptsto_word addr v * R)%sep (getMem finalL) /\
+            getPc finalL = getNextPc initialL /\
+            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
+  Proof.
+    intros.
+    eapply mcomp_sat_weaken; cycle 1.
+    - eapply (run_compile_load Syntax.access_size.word); try eassumption.
+    - cbv beta. intros. simp. repeat split; try assumption.
+      rewrite H8.
+      unfold id.
+      f_equal.
+      rewrite LittleEndian.combine_split.
+      replace (BinInt.Z.of_nat (Memory.bytes_per Syntax.access_size.word) * 8) with width.
+      + rewrite word.wrap_unsigned. rewrite word.of_Z_unsigned. reflexivity.
+      + clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+  Qed.
+
+  (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
+     Memory.bytes_per, but using ptsto_word instead *)
+  Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Register)
+                               (ofs : MachineInt) (initialL : RiscvMachineL) (R : mem -> Prop),
+      Encode.verify (compile_store Syntax.access_size.word rs1 rs2 ofs) iset ->
+      valid_register rs1 ->
+      valid_register rs2 ->
+      divisibleBy4 (getPc initialL) ->
+      getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
+      map.get (getRegs initialL) rs1 = Some base ->
+      map.get (getRegs initialL) rs2 = Some v_new ->
+      addr = word.add base (word.of_Z ofs) ->
+      (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
+       ptsto_word addr v_old * R)%sep (getMem initialL) ->
+      mcomp_sat (run1 iset) initialL
+        (fun finalL : RiscvMachineL =>
+           getRegs finalL = getRegs initialL /\
+           getLog finalL = getLog initialL /\
+           (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
+            ptsto_word addr v_new * R)%sep (getMem finalL) /\
+           getPc finalL = getNextPc initialL /\
+           getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
+  Proof.
+    intros.
+    eapply mcomp_sat_weaken; cycle 1.
+    - eapply (run_compile_store Syntax.access_size.word); try eassumption.
+    - cbv beta. intros. simp. repeat split; try assumption.
+  Qed.
+
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
@@ -689,11 +760,6 @@ Section FlatToRiscv1.
       stmt_not_too_big body ->
       valid_instructions iset (compile_function e pos (argnames, resnames, body)).
 
-  Definition word_array: word -> list word -> mem -> Prop :=
-    array (fun addr w => ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
-                                     (LittleEndian.split _ (word.unsigned w)))
-          (word.of_Z (Z.of_nat (@Memory.bytes_per width Syntax.access_size.word))).
-
   Arguments Z.pow: simpl never.
   Arguments Z.sub: simpl never.
   Arguments compile_store: simpl never.
@@ -767,7 +833,7 @@ Section FlatToRiscv1.
       }
       destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
       eapply runsToStep. {
-        eapply run_compile_store; try solve [sidecondition].
+        eapply run_store_word; try solve [sidecondition].
       }
       simpl. intros. simp.
       destruct_RiscvMachine initial.
@@ -783,7 +849,6 @@ Section FlatToRiscv1.
           unfold program.
           symmetry.
           cancel_seps_at_indices 1%nat 0%nat.
-          unfold bytes_per_word, Memory.bytes_per.
           rewrite word.ring_morph_add.
           rewrite word.add_assoc.
           ecancel_step.
@@ -805,7 +870,6 @@ Section FlatToRiscv1.
         bomega.
       + simpl. solve_divisibleBy4.
       + simpl. pseplog.
-        unfold bytes_per_word, Memory.bytes_per.
         rewrite word.ring_morph_add.
         rewrite word.add_assoc.
         ecancel.
@@ -862,7 +926,7 @@ Section FlatToRiscv1.
       }
       destruct values as [|value values]; simpl in *; [discriminate|].
       eapply runsToStep. {
-        eapply run_compile_load; try solve [sidecondition].
+        eapply run_load_word; try solve [sidecondition].
       }
       simpl. intros. simp.
       destruct_RiscvMachine initial.
@@ -882,10 +946,6 @@ Section FlatToRiscv1.
             end
           end.
           { rewrite <- word.add_assoc. rewrite <- word.ring_morph_add. reflexivity. }
-          cancel.
-          ecancel_step.
-          unfold bytes_per_word, Memory.bytes_per.
-          ecancel_step.
           ecancel.
         * unfold bytes_per_word, Memory.bytes_per in *.
           rewrite Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
@@ -914,15 +974,7 @@ Section FlatToRiscv1.
           specialize (HO a). destruct HO as [HO | HO].
           -- unfold PropSet.elem_of, PropSet.of_list in HO. contradiction.
           -- unfold Register, MachineInt in *. rewrite <- HO.
-             rewrite map.get_put_same. f_equal. f_equal.
-             unfold id.
-             rewrite LittleEndian.combine_split.
-             apply word.unsigned_inj.
-             rewrite word.unsigned_of_Z. unfold word.wrap.
-             replace (BinInt.Z.of_nat (Z.to_nat ((width + 7) / 8)) * 8) with width; cycle 1. {
-               clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
-             }
-             rewrite !word.wrap_unsigned. reflexivity.
+             rewrite map.get_put_same. reflexivity.
         * pseplog.
           match goal with
           | |- iff1 ?LHS ?RHS =>
@@ -934,7 +986,6 @@ Section FlatToRiscv1.
               end
             end
           end.
-          unfold bytes_per_word, Memory.bytes_per.
           ecancel.
         * etransitivity; [eassumption|].
           rewrite Nat2Z.inj_succ. rewrite <- Z.add_1_r.
@@ -1325,7 +1376,6 @@ Section FlatToRiscv1.
             rewrite !Zlength_correct.
             change (length [old_ra]) with 1%nat.
             rewrite ?Nat2Z.inj_add.
-            unfold bytes_per_word, Memory.bytes_per.
             autorewrite with rew_word_morphism.
             simpl_word_exprs word_ok.
             change BinInt.Z.of_nat with Z.of_nat.
@@ -1423,7 +1473,7 @@ Section FlatToRiscv1.
 
     (* save ra on stack *)
     eapply runsToStep. {
-      eapply run_compile_store; try solve [sidecondition | simpl; solve_divisibleBy4]. {
+      eapply run_store_word; try solve [sidecondition | simpl; solve_divisibleBy4]. {
         simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         rewrite map.get_put_same. reflexivity.
@@ -1433,7 +1483,6 @@ Section FlatToRiscv1.
       unfold stackframe, word_array in *.
       cancel.
       cancel_seps_at_indices_by_iff 2%nat 0%nat. {
-        unfold bytes_per_word, Memory.bytes_per.
         match goal with
         | |- iff1 ?LHS ?RHS =>
           match LHS with
@@ -1447,13 +1496,12 @@ Section FlatToRiscv1.
         ecancel.
       }
       cancel_seps_at_indices_by_iff 10%nat 0%nat. {
-        unfold bytes_per_word, Memory.bytes_per.
         match goal with
         | |- iff1 ?LHS ?RHS =>
           match LHS with
-          | context [ptsto_bytes _ ?i] =>
+          | context [ptsto_word ?i] =>
             match RHS with
-            | context [ptsto_bytes _ ?i'] =>
+            | context [ptsto_word ?i'] =>
               replace i with i'; cycle 1
             end
           end
@@ -1571,7 +1619,7 @@ Ltac word_iff1 OK :=
           word_iff1 word_ok.
         }
         cancel_seps_at_indices_by_iff 15%nat 0%nat. {
-          unfold word_array, bytes_per_word, Memory.bytes_per.
+          unfold word_array.
           repeat (
               rewrite !List.app_length ||
               simpl ||
@@ -1616,7 +1664,7 @@ Ltac word_iff1 OK :=
         cancel_seps_at_indices_by_iff 14%nat 0%nat. {
           instantiate (2 := (word.add p_stacklimit
                  (word.of_Z (bytes_per_word * Z.of_nat (length remaining_stack))))).
-          unfold word_array, bytes_per_word, Memory.bytes_per.
+          unfold word_array.
           repeat (
               rewrite !List.app_length ||
               simpl ||
@@ -1640,7 +1688,7 @@ Ltac word_iff1 OK :=
       - admit. (* offset stuff *)
       - solve_divisibleBy4.
       - rewrite map.get_put_same. f_equal.
-          unfold word_array, bytes_per_word, Memory.bytes_per.
+          unfold word_array.
           repeat (
               rewrite !List.app_length ||
               simpl ||

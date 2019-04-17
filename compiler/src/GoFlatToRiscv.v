@@ -181,6 +181,19 @@ Section Go.
     intros. rewrite associativity. assumption.
   Qed.
 
+  Lemma mcomp_sat_weaken: forall initialL m (post1 post2: RiscvMachineL -> Prop),
+      (forall mach, post1 mach -> post2 mach) ->
+      mcomp_sat m initialL post1 ->
+      mcomp_sat m initialL post2.
+  Proof.
+    intros.
+    rewrite <- (@right_identity M MM unit m).
+    eapply spec_Bind.
+    eexists. split.
+    - exact H0.
+    - intros. simpl in *. apply spec_Return. eapply H. assumption.
+  Qed.
+
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
     truncated_scalar Syntax.access_size.four addr (encode instr).
 
