@@ -673,6 +673,8 @@ Section FlatToRiscv1.
   Arguments map.empty: simpl never.
   Arguments map.get: simpl never.
 
+  Goal True. idtac "FlatToRiscv: Entering slow lemmas section". Abort.
+
   Axiom compile_stmt_new_emits_valid: forall s e pos,
       supported_iset iset ->
       valid_registers s ->
@@ -1719,6 +1721,7 @@ Ltac word_iff1 OK :=
     }
 
   Abort.
+  Goal True. idtac "FlatToRiscv: compile_stmt_correct_new done". Abort.
 
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH,
@@ -1879,6 +1882,7 @@ Ltac word_iff1 OK :=
     - (* SSkip *)
       run1done.
   Qed.
+  Goal True. idtac "FlatToRiscv: compile_stmt_correct done". Abort.
 
   (* TODO move *)
   Lemma length_list_union: forall {T: Type} {teq: DecidableEq T} (l1 l2: list T),
