@@ -1165,6 +1165,8 @@ Section FlatToRiscv1.
       rewrite IH. reflexivity.
   Qed.
 
+  Hint Unfold program word_array: unf_to_array.
+
   Lemma compile_stmt_correct_new:
     forall (program_base: word),
     forall e_impl (s: stmt) t initialMH initialRegsH postH,
@@ -1337,17 +1339,17 @@ Section FlatToRiscv1.
                                 & ? & ? &  ? & ?).
       subst old_stackvals.
 
-      assert (length old_argvals = length args). {
-        match goal with
-        | H: _ |- _ => apply map.putmany_of_list_sameLength in H; move H at bottom
-        end.
-        match goal with
-        | H: _ |- _ => apply map.getmany_of_list_length in H; move H at bottom
-        end.
-          (* TODO it's bad we need that (kind of PARAMRECORDS) *)
-        unfold Register, MachineInt in *.
-        congruence.
-      }
+      (* note: left-to-right rewriting with all [length _ = length _] equations has to
+         be terminating *)
+      match goal with
+      | H: _ |- _ => let N := fresh in pose proof H as N;
+                     apply map.putmany_of_list_sameLength in N;
+                     symmetry in N
+      end.
+      match goal with
+      | H: _ |- _ => let N := fresh in pose proof H as N;
+                     apply map.getmany_of_list_length in N
+      end.
 
       (* put arguments on stack *)
       eapply runsTo_trans. {
@@ -1356,34 +1358,62 @@ Section FlatToRiscv1.
         - admit.
         - solve_divisibleBy4.
         - eapply map.getmany_of_list_extends; eassumption.
-        - instantiate (1 := old_argvals).
-          eassumption.
-        - use_sep_assumption.
-          unfold program, word_array.
-          progress repeat match goal with
-                          | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-                            rewrite (array_append_DEPRECATED PT SZ xs ys start)
-                          end.
-          cancel.
-          cancel_seps_at_indices_by_iff 6%nat 0%nat. {
-            match goal with
-            | |- iff1 (array _ _ ?p1 _) (array _ _ ?p2 _) =>
-              replace p2 with p1; [exact (RelationClasses.reflexivity _)|]
-            end.
+        - instantiate (1 := old_argvals). unfold Register, MachineInt in *. blia.
 
-            (* TODO should be part of simpl_word_exprs *)
-            rewrite ?app_length.
-            rewrite !Zlength_correct.
-            change (length [old_ra]) with 1%nat.
-            rewrite ?Nat2Z.inj_add.
-            autorewrite with rew_word_morphism.
-            simpl_word_exprs word_ok.
-            change BinInt.Z.of_nat with Z.of_nat.
-            replace (length old_argvals) with (length args) by blia.
-            replace (length old_retvals) with (length retnames) by blia.
-            solve_word_eq word_ok.
-          }
-          exact (RelationClasses.reflexivity _).
+
+Ltac ecancel_refl :=
+  cbn [seps];
+  syntactic_exact_deltavar
+    (@RelationClasses.reflexivity _ _
+       (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
+
+
+Ltac wseplog OK :=
+  use_sep_assumption;
+  autounfold with unf_to_array;
+  unfold program, word_array;
+  repeat match goal with
+         | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+           rewrite (array_append_DEPRECATED PT SZ xs ys start)
+         end;
+  repeat (
+      rewrite !List.app_length ||
+      simpl ||
+      rewrite !Nat2Z.inj_add ||
+      rewrite !Zlength_correct ||
+      rewrite !Nat2Z.inj_succ ||
+      rewrite <-! Z.add_1_r ||
+      autorewrite with rew_word_morphism);
+  unfold Register, MachineInt in *;
+  (* note: it's the user's responsability to ensure that left-to-right rewriting with all
+     nat and Z equations terminates, otherwise we'll loop infinitely here *)
+  repeat match goal with
+         | E: @eq ?T _ _ |- _ =>
+           lazymatch T with
+           | Z => idtac
+           | nat => idtac
+           end;
+           progress rewrite E
+         end;
+  let t x y := (tryif constr_eq x y
+                 then (* idtac y "====" x; *) fail "already equal"
+                 else replace y with x by solve_word_eq OK (*; idtac y "--->" x *)) in
+  repeat lazymatch goal with
+         | |- iff1 ?LHS ?RHS =>
+           match LHS with
+           | context [array ?PT ?SZ ?addr _] =>
+             match RHS with context [array PT SZ ?addr' _] => t addr' addr end
+           | context [ptsto_word ?addr _] =>
+             match RHS with context [ptsto_word ?addr' _] => t addr' addr end
+           | context [ptsto_instr ?addr _] =>
+             match RHS with context [ptsto_instr ?addr' _] => t addr' addr end
+           end
+         end;
+  cancel;
+  try solve [repeat ecancel_step; ecancel_refl].
+
+
+        - wseplog word_ok.
       }
 
     cbn [getRegs getPc getNextPc getMem getLog].
@@ -1402,9 +1432,8 @@ Section FlatToRiscv1.
     (* jump to function *)
     eapply runsToStep. {
       eapply run_Jal; simpl; try solve [sidecondition | solve_divisibleBy4].
-      rewrite !Zlength_correct in *.
       rewrite !length_save_regs in *.
-      ecancel_assumption.
+      wseplog word_ok.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog].
@@ -1443,22 +1472,7 @@ Section FlatToRiscv1.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         eassumption.
       - simpl.
-        use_sep_assumption.
-        cancel.
-        cancel_seps_at_indices_by_iff 1%nat 0%nat. {
-          match goal with
-          | |- iff1 ?LHS ?RHS =>
-            match LHS with
-            | context [ptsto_instr ?i] =>
-              match RHS with
-              | context [ptsto_instr ?i'] =>
-                replace i with i' by solve_word_eq word_ok
-              end
-            end
-          end.
-          exact (RelationClasses.reflexivity _).
-        }
-        exact (RelationClasses.reflexivity _).
+        wseplog word_ok.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog].
@@ -1479,48 +1493,7 @@ Section FlatToRiscv1.
         rewrite map.get_put_same. reflexivity.
       }
       simpl.
-      use_sep_assumption.
-      unfold stackframe, word_array in *.
-      cancel.
-      cancel_seps_at_indices_by_iff 2%nat 0%nat. {
-        match goal with
-        | |- iff1 ?LHS ?RHS =>
-          match LHS with
-          | context [ptsto_instr ?i] =>
-            match RHS with
-            | context [ptsto_instr ?i'] =>
-              replace i with i' by solve_word_eq word_ok
-            end
-          end
-        end.
-        ecancel.
-      }
-      cancel_seps_at_indices_by_iff 10%nat 0%nat. {
-        match goal with
-        | |- iff1 ?LHS ?RHS =>
-          match LHS with
-          | context [ptsto_word ?i] =>
-            match RHS with
-            | context [ptsto_word ?i'] =>
-              replace i with i'; cycle 1
-            end
-          end
-        end.
-        { repeat (
-              rewrite !List.app_length ||
-              simpl ||
-              rewrite !Nat2Z.inj_add ||
-              rewrite !Zlength_correct ||
-              rewrite !Nat2Z.inj_succ ||
-              rewrite <-! Z.add_1_r).
-          replace (length old_retvals) with (length retnames) by blia.
-          replace (length old_argvals) with (length argnames) by blia.
-          unfold Register, MachineInt.
-          solve_word_eq word_ok.
-        }
-        ecancel.
-      }
-      ecancel.
+      wseplog word_ok.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog].
@@ -1555,17 +1528,28 @@ Section FlatToRiscv1.
       4: eapply modVars_as_list_valid_registers; eassumption.
       1: eassumption.
       2: reflexivity.
-      1: {
-        use_sep_assumption.
-        unfold program.
-        progress repeat match goal with
-                        | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-                          rewrite (array_append_DEPRECATED PT SZ xs ys start)
-                        end.
-        cancel.
-        simpl_word_exprs word_ok.
+      1: { (* PARAMRECORDS *)
 
-        (* PARAMRECORDS *) change Syntax.varname with Register in *.
+        change Syntax.varname with Register in *.
+
+        repeat match goal with
+        | H: _ = length ?M |- _ =>
+          lazymatch M with
+          | @modVars_as_list ?params ?eqd ?s =>
+            so fun hyporgoal => match hyporgoal with
+                                | context [?M'] =>
+                                  lazymatch M' with
+                                  | @modVars_as_list ?params' ?eqd' ?s =>
+                                    assert_fails (constr_eq M M');
+                                    change M' with M in *;
+                                    idtac M' "--->" M
+                                  end
+                                end
+          end
+        end.
+
+        wseplog word_ok.
+
         cancel_seps_at_indices_by_iff 4%nat 0%nat. {
 
 Ltac word_unify x y OK :=
@@ -1604,12 +1588,6 @@ Ltac word_unify x y OK :=
   | _ => fail "" OK "is not of type word.ok"
   end.
 
-Ltac ecancel_refl :=
-  cbn [seps];
-  syntactic_exact_deltavar
-    (@RelationClasses.reflexivity _ _
-       (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
-
 Ltac word_iff1 OK :=
   lazymatch goal with
   | |- iff1 ?LHS ?RHS => word_unify LHS RHS OK
@@ -1618,7 +1596,7 @@ Ltac word_iff1 OK :=
 
           word_iff1 word_ok.
         }
-        cancel_seps_at_indices_by_iff 15%nat 0%nat. {
+        cancel_seps_at_indices_by_iff 17%nat 0%nat. {
           unfold word_array.
           repeat (
               rewrite !List.app_length ||
@@ -1629,12 +1607,24 @@ Ltac word_iff1 OK :=
               rewrite <-! Z.add_1_r).
           replace (length old_retvals) with (length retnames) by blia.
           replace (length old_argvals) with (length argnames) by blia.
-          replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
           unfold Register, MachineInt.
           autorewrite with rew_word_morphism.
           word_iff1 word_ok.
         }
-        ecancel_refl.
+
+Ltac ecancel_refl ::=
+  cbn [seps];
+  match goal with
+  | |- iff1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
+  end;
+  (* note: we do not use syntactic_exact_deltavar because it calls "unify", which does
+     not give a detailed "evar not in scope" error message, while "exact" does *)
+  exact
+    (@RelationClasses.reflexivity _ _
+       (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
+
+ecancel_refl.
+
       }
       1: admit. (* offet 0 not too big *)
     }
@@ -1652,35 +1642,76 @@ Ltac word_iff1 OK :=
 
     (* load argvars from stack *)
     eapply runsTo_trans. {
-      eapply load_regs_correct; simpl; cycle -2; try assumption.
-      - use_sep_assumption.
-        unfold program.
-        rewrite ?Zlength_correct.
-        rewrite ?length_save_regs.
-        cancel.
-        cancel_seps_at_indices_by_iff 6%nat 0%nat. {
+      eapply load_regs_correct with
+          (vars := argnames) (values := argvs)
+          (p_sp := (word.add p_stacklimit
+                             (word.of_Z (bytes_per_word * Z.of_nat (length remaining_stack)))));
+        simpl; cycle -2; try assumption.
+      - rewrite !length_save_regs in *.
+
+        wseplog word_ok.
+
+Ltac maybe_unifiable x y OK :=
+  lazymatch type of OK with
+  | word.ok ?WORD =>
+    let tx := type of x in
+    let ty := type of y in
+    tryif (unify tx ty) then (
+      tryif first [is_evar x | is_evar y] then idtac
+      else tryif (unify tx (@word.rep _ WORD)) then idtac
+      else lazymatch x with
+           | ?x1 ?x2 => lazymatch y with
+                        | ?y1 ?y2 => maybe_unifiable x1 y1 OK; maybe_unifiable x2 y2 OK
+                        | _ => fail "" x "is an application while" y "is not"
+                        end
+           | _ => lazymatch y with
+                  | ?y1 ?y2 => fail "" x "is not an application while" y "is"
+                  | _ => tryif constr_eq x y then idtac else fail "" x "does not match" y
+                  end
+           end
+    ) else (
+      fail "not the same type"
+    )
+  | _ => fail "" OK "is not of type word.ok"
+  end.
+
+Ltac maybe_unifiableL x y OK :=
+  idtac x;
+  idtac "AND";
+  idtac y;
+  tryif maybe_unifiable x y OK
+  then (idtac "YES"; idtac "-------")
+  else (idtac "NO"; idtac "-------"; fail).
+
+Ltac find_maybe_unifiable xs y OK :=
+  multimatch xs with
+  | cons ?x _ => constr:(ltac:(maybe_unifiableL x y OK; exact 0%nat))
+  | cons _ ?xs => let i := find_maybe_unifiable xs y OK in constr:(S i)
+  end.
+
+Ltac manual_ecancel_step OK :=
+  let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+  let jy := index_and_element_of RHS in
+  let j := lazymatch jy with (?i, _) => i end in
+  let y := lazymatch jy with (_, ?y) => y end in
+  assert_fails (idtac; let y := rdelta.rdelta_var y in is_evar y);
+
+  let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+  let i := find_maybe_unifiable LHS y OK in
+  cancel_seps_at_indices_by_iff i j.
+
+(*
+try (manual_ecancel_step word_ok; fail).
+*)
+
+        manual_ecancel_step word_ok. {
           word_iff1 word_ok.
         }
-        cancel_seps_at_indices_by_iff 14%nat 0%nat. {
-          instantiate (2 := (word.add p_stacklimit
-                 (word.of_Z (bytes_per_word * Z.of_nat (length remaining_stack))))).
-          unfold word_array.
-          repeat (
-              rewrite !List.app_length ||
-              simpl ||
-              rewrite !Nat2Z.inj_add ||
-              rewrite !Zlength_correct ||
-              rewrite !Nat2Z.inj_succ ||
-              rewrite <-! Z.add_1_r).
-          replace (length old_retvals) with (length retnames) by blia.
-          replace (length old_argvals) with (length argnames) by blia.
-          replace (length args) with (length argnames) by blia.
-          replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
-          unfold Register, MachineInt.
-          autorewrite with rew_word_morphism.
+        manual_ecancel_step word_ok. {
           word_iff1 word_ok.
         }
         ecancel_refl.
+
       - reflexivity.
       - replace valid_FlatImp_var with valid_register by admit.
         assumption.
@@ -1688,7 +1719,6 @@ Ltac word_iff1 OK :=
       - admit. (* offset stuff *)
       - solve_divisibleBy4.
       - rewrite map.get_put_same. f_equal.
-          unfold word_array.
           repeat (
               rewrite !List.app_length ||
               simpl ||
@@ -1698,15 +1728,10 @@ Ltac word_iff1 OK :=
               rewrite <-! Z.add_1_r).
           replace (length old_retvals) with (length retnames) by blia.
           replace (length old_argvals) with (length argnames) by blia.
-          replace (length args) with (length argnames) by blia.
           replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
           unfold Register, MachineInt.
           autorewrite with rew_word_morphism.
           solve_word_eq word_ok.
-      - unfold Register, MachineInt in *.
-        match goal with
-        | H: _ |- _ => apply map.putmany_of_list_sameLength in H; rewrite H; reflexivity
-        end.
     }
 
     simpl.
@@ -1722,7 +1747,8 @@ Ltac word_iff1 OK :=
 
     (* execute function body *)
     eapply runsTo_trans. {
-      eapply IHexec with (funnames := (remove funname_eq_dec fname funnames));
+      eapply IHexec with (funnames := (remove funname_eq_dec fname funnames))
+                (p_stacklimit := p_stacklimit); (* <- TODO should not change in induction *)
         simpl; try assumption.
       - (* Note: we'd have to shrink e_impl in FlatImp.exec if we want to shrink it in
            the induction too *)
@@ -1754,9 +1780,88 @@ Ltac word_iff1 OK :=
         rewrite !app_length.
         blia.
       - reflexivity.
-      - use_sep_assumption.
-        cancel.
-        admit. (* TODO interesting *)
+      - unfold fun_pos_env in *.
+        rewrite !length_load_regs in *.
+        wseplog word_ok.
+        match goal with
+        | |- iff1 ?LHS ?RHS =>
+          match LHS with
+          | context [ compile_stmt_new _ ?pos1 _ ] =>
+            match RHS with
+            | context [ compile_stmt_new _ ?pos2 _ ] =>
+              replace pos2 with pos1
+            end
+          end
+        end.
+        {
+          manual_ecancel_step word_ok. {
+            word_iff1 word_ok.
+          }
+          (* again shrink e_impl vs not *)
+          admit.
+        }
+        admit.
+
+
+(*
+TODO make word_unify return an equality proof rather than rewrite
+
+          assert (forall {T: Type} (P1 P2: T -> Prop), P1 = P2 -> iff1 P1 P2) as iff1_from_eq. {
+            intros. subst. reflexivity.
+          }
+
+          apply iff1_from_eq.
+          f_equal.
+
+          solve_word_eq word_ok.
+*)
+
+Ltac word_unify x y OK ::=
+(*
+  idtac "----------";
+  idtac x;
+  idtac "AND";
+  idtac y;
+*)
+  lazymatch type of OK with
+  | word.ok ?WORD =>
+    tryif constr_eq x y then idtac else
+    let tx := type of x in
+    let ty := type of y in
+    tryif (unify tx ty) then (
+      tryif first [is_evar x | is_evar y] then (
+        unify x y
+      ) else (
+        tryif (unify tx (@word.rep _ WORD)) then (
+          (*
+          let E := fresh in
+          tryif (assert (x = y) as E by (autorewrite with rew_word_morphism; solve_word_eq OK))
+          then (replace x with y by exact E)
+          else (fail "" x "does not equal" y)
+          *)
+            idtac x "------>" y;
+          replace x with y; [ | try solve [autorewrite with rew_word_morphism; solve_word_eq OK] ]
+        ) else (
+          lazymatch x with
+          | ?x1 ?x2 => lazymatch y with
+                       | ?y1 ?y2 => word_unify x1 y1 OK; word_unify x2 y2 OK
+                       | _ => fail "" x "is an application while" y "is not"
+                       end
+          | _ => lazymatch y with
+                 | ?y1 ?y2 => fail "" x "is not an application while" y "is"
+                 | _ => tryif constr_eq x y then idtac else fail "" x "does not match" y
+                 end
+          end
+        )
+      )
+    ) else (
+      fail "not the same type"
+    )
+  | _ => fail "" OK "is not of type word.ok"
+  end.
+
+(* TODO PROBLEM: "replace" might replace occurrences it should not replace, eg in RHS *)
+
       - admit. (* log equality?? *)
       - reflexivity.
       - eapply ext_guarantee_preservable.
