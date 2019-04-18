@@ -2,6 +2,7 @@ Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
+Require Import coqutil.Macros.symmetry.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -115,16 +116,23 @@ Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
     1518 <= Z.of_nat (List.length rx_packet) ->
     (* comment on wormhole mentions < 0x400 for lan9250_readword. TODO check against manual *)
     WeakestPrecondition.call functions "recvEthernet" t m [p_addr]
-      (fun t' m' rets => exists bytes_written, rets = [bytes_written] /\
-      (
-        (exists rx_packet', (array scalar8 (word.of_Z 1) p_addr rx_packet' * 
-                          array scalar8 (word.of_Z 1) bytes_written rx_packet *
-                          R) m' /\
-        word.unsigned bytes_written = Z.of_nat (List.length rx_packet') /\
-        word.unsigned bytes_written <> word.unsigned (word.of_Z (-1)))
-        \/
-        (bytes_written = word.of_Z (-1))
-      )).
+      (fun t' m' rets =>
+         (* Success, we wrote 0+ bytes to the buffer *)
+       (
+         exists bytes_written:word, rets = [bytes_written]
+         /\
+         exists rx_packet', (array scalar8 (word.of_Z 1) p_addr rx_packet' * 
+                             array scalar8 (word.of_Z 1) bytes_written rx_packet *
+                             R) m'
+         /\
+         word.unsigned bytes_written = Z.of_nat (List.length rx_packet')
+         /\
+         word.unsigned bytes_written <> word.unsigned (word.of_Z (-1))
+       )
+       \/
+       (* Fail, we return -1 and don't write anything *)
+       (rets = [word.of_Z (-1)] /\ m' = m)
+      ).
 
 Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions =>
   forall p_addr (rx_packet:list byte) (len:word) R m t,
@@ -149,25 +157,36 @@ Proof.
   repeat straightline.
 
   (* from Print Ltac straightline_call. *)
+  (* recvEthernet call *)
   eapply WeakestPreconditionProperties.Proper_call; cycle -1;
          [ eapply H | try eabstract solve [ Morphisms.solve_proper ].. ];
          [ .. | intros ? ? ? ? ].
   { ecancel_assumption. }
   { Lia.lia. }
-  { repeat straightline. letexists. 
-    { repeat straightline; split; [|repeat straightline; eauto]. 
+  repeat straightline. destruct H3.
+    { repeat straightline. letexists. split.
       { repeat straightline. }
-      { split; repeat straightline. 2:eauto.
-        destruct H4.
-        2:{ repeat straightline. admit. (* v != and = 0 *) }
+      { split.
         { repeat straightline.
+          (* lightbulb call *)
           eapply WeakestPreconditionProperties.Proper_call; cycle -1;
-         [ eapply H0 | try eabstract solve [ Morphisms.solve_proper ].. ];
-         [ .. | intros ? ? ? ? ].
-        { ecancel_assumption. }
-        { Lia.lia. }
-        { repeat straightline. eauto. } } } }
-Admitted.
+           [ eapply H0 | try eabstract solve [ Morphisms.solve_proper ].. ];
+           [ .. | intros ? ? ? ? ].
+          { repeat straightline. ecancel_assumption. } (* separation logic *)
+          { repeat straightline. trivial. }
+          { repeat straightline. eauto. }}
+          repeat straightline. eauto. }}
+          repeat straightline.
+          (* cmd is an if statement *)
+          letexists; split; repeat straightline; split; [|repeat straightline; eauto].
+          repeat straightline.
+          eapply WeakestPreconditionProperties.Proper_call; cycle -1;
+           [ eapply H0 | try eabstract solve [ Morphisms.solve_proper ].. ];
+           [ .. | intros ? ? ? ? ].
+          { repeat straightline. ecancel_assumption. }
+          { repeat straightline. contradiction. }
+          { repeat straightline. eauto. }
+Qed.
 
 
 Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
@@ -181,6 +200,82 @@ Proof.
 
   cbn [args ext_spec FE310CSemantics.parameters].
   do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
+  repeat straightline. split.
+  { repeat straightline. cbv. split. (* for inequalities like Ox "0" <= word.unsigned (word.of_Z 124) < Ox "400" *)
+    { discriminate. } trivial. }
+  { repeat straightline. letexists. split.
+    { eapply Properties.map.split_empty_r. repeat straightline. }
+    { letexists. repeat straightline. split.
+      { repeat straightline. }
+      { repeat straightline. letexists. split.
+        { repeat straightline. }
+        { split.
+          { repeat straightline. do 2 eexists. split.
+            { eapply Properties.map.split_empty_r. reflexivity. }
+            { cbn [args ext_spec FE310CSemantics.parameters]. split. 
+              { repeat straightline. cbv. split. { discriminate. } trivial. }
+              { repeat straightline. letexists. split.
+                { eapply Properties.map.split_empty_r. repeat straightline. }
+                { repeat straightline. 
+                  letexists; split; repeat straightline; split; [|repeat straightline; eauto].
+                  repeat straightline.
+                  letexists.
+
+
+(* while loop *)
+  refine (TailRecursion.tailrec
+    (* types of ghost variables*) HList.polymorphic_list.nil
+    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
+    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
+        PrimitivePair.pair.mk (v = word.unsigned c /\
+        exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) )  scratch * R) m /\
+        Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
+        len_words_loop = len_words)  (* precondition *)
+    (fun   T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => True)) (* postcondition *)
+    (fun n m : Z => m < n <= word.unsigned len_words) (* well_founded relation *)
+    _ _ _ _ _);
+    (* TODO wrap this into a tactic with the previous refine *)
+    cbn [HList.hlist.foralls HList.tuple.foralls
+         HList.hlist.existss HList.tuple.existss
+         HList.hlist.apply  HList.tuple.apply
+         HList.hlist
+         List.repeat Datatypes.length
+         HList.polymorphic_list.repeat HList.polymorphic_list.length
+         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+
+
+
+admit. (* TailRec *) }}}}
+
+
+
+
+        repeat straightline. letexists. split.
+        { repeat straightline. admit. }
+        { right. repeat straightline. }
+Admitted.
+
+(*
+ (* while loop *)
+  refine (TailRecursion.tailrec
+    (* types of ghost variables*) HList.polymorphic_list.nil
+    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
+    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
+        PrimitivePair.pair.mk (v = word.unsigned c /\
+        exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) )  scratch * R) m /\
+        Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
+        len_words_loop = len_words)  (* precondition *)
+    (fun   T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => True)) (* postcondition *)
+    (fun n m : Z => m < n <= word.unsigned len_words) (* well_founded relation *)
+    _ _ _ _ _);
+    (* TODO wrap this into a tactic with the previous refine *)
+    cbn [HList.hlist.foralls HList.tuple.foralls
+         HList.hlist.existss HList.tuple.existss
+         HList.hlist.apply  HList.tuple.apply
+         HList.hlist
+         List.repeat Datatypes.length
+         HList.polymorphic_list.repeat HList.polymorphic_list.length
+         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
 
 
 
@@ -282,24 +377,44 @@ Require Import coqutil.Macros.symmetry.
 
 Admitted.
 
+*)
+
 (* bsearch.v has examples to deal with arrays *)
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
 Proof.
   repeat straightline.
 
+(*
   seplog_use_array_load1 H 12.
   seplog_use_array_load1 H 13.
   seplog_use_array_load1 H 23.
   seplog_use_array_load1 H 42.
   repeat straightline.
+*)
 
-  (* if for early out *)
+
   letexists; split; repeat straightline; split; [|repeat straightline; eauto].
   repeat straightline.
 
-  (* if for early out *)
+  
+  letexists; split; repeat straightline; [|repeat straightline; eauto].
+  { letexists; split; repeat straightline; [|repeat straightline; eauto].
+    { admit. }
+    { letexists; split; repeat straightline; [|repeat straightline; eauto].
+      { admit. }
+      admit. }}
+
   letexists; split; repeat straightline; split; [|repeat straightline; eauto].
   repeat straightline.
+
+  letexists; split; repeat straightline.
+  { letexists; split; repeat straightline. admit. }
+
+  letexists; split; repeat straightline; split; [|repeat straightline; eauto].
+  repeat straightline.
+
+  letexists; split; repeat straightline.
+  { letexists; split; repeat straightline. admit. }
 
   (* the 1st MMIOREAD *)
   cbn [args ext_spec FE310CSemantics.parameters].
@@ -330,7 +445,7 @@ Proof.
   exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
   repeat straightline.
   clear. eauto.
-Qed.
+Admitted.
 
 Compute BasicCSyntax.c_func (recvEthernet).
 Compute BasicCSyntax.c_func (lightbulb).
