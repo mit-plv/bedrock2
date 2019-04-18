@@ -1,5 +1,5 @@
 Require Import Coq.Lists.List.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Import ListNotations.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
@@ -70,7 +70,7 @@ Qed.
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
 Proof.
-  constructor; try typeclasses eauto.
+  constructor; try typeclasses eauto; try refine FlatToRiscv_hyps.
   constructor; unfold ext_spec, pipeline_params; simpl.
   - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
   - unfold real_ext_spec. intros.
@@ -159,7 +159,7 @@ Lemma Zlength_length: forall {A: Type} (l: list A),
     Z.of_nat (Datatypes.length l) = Zlength l.
 Proof.
   induction l; try reflexivity.
-  rewrite Zlength_cons. simpl. lia.
+  rewrite Zlength_cons. simpl. blia.
 Qed.
 
 Lemma undef_on_unchecked_store_byte_list:
@@ -198,7 +198,7 @@ Proof.
     + intro C. rewrite <- C in *. unfold imemStart in *. cbv in El2. intuition congruence.
     + rewrite Zlength_length.
       rewrite word.unsigned_sub.
-      unfold imemStart. rewrite word.unsigned_of_Z. rewrite Zminus_mod_idemp_l.
+      unfold imemStart. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Zminus_mod_idemp_l.
       match goal with
       | |- _ + ?L < ?M => let L' := eval cbv in L in change L with L';
                           let M' := eval cbv in M in change M with M'
@@ -210,7 +210,7 @@ Proof.
       | |- (_ - ?a) mod _ + _ < _ => replace a with addr'
       end.
       hex_csts_to_dec.
-      rewrite Z.mod_small; lia.
+      rewrite Z.mod_small; blia.
 Qed.
 
 Lemma input_program_correct:

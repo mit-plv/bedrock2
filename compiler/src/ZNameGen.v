@@ -1,6 +1,5 @@
 Require Import Coq.Lists.List.
-Require Import Coq.omega.Omega.
-Require Import compiler.util.Set.
+Require Import compiler.util.Common.
 Require Import compiler.NameGen.
 
 

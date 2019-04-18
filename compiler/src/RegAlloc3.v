@@ -1,4 +1,3 @@
-Require Import lib.fiat_crypto_tactics.Test.
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.
@@ -7,10 +6,9 @@ Require Import riscv.Utility.Utility.
 Require Import coqutil.Macros.unique.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Solver.
-Require Import compiler.util.Set.
-Require Import compiler.util.Tactics.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.TestLemmas.
-Require Import compiler.util.SetSolverTests.
+
 
 (*
 Section TODO.

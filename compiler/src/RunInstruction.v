@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.BinInt.
-Require Import Coq.micromega.Lia.
-Require Import Coq.omega.Omega.
+Require Import coqutil.Z.Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -17,7 +17,6 @@ Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Execute.
 Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.
 Require Import compiler.EmitsValid.
 Require Import bedrock2.ptsto_bytes.
@@ -58,16 +57,53 @@ Section Run.
           | eapply go_storeWord_sep; simpl; [sidecondition..|intros]
           | eapply go_loadDouble_sep ; simpl; [sidecondition..|]
           | eapply go_storeDouble_sep; simpl; [sidecondition..|intros]
+          | simpl_modu4_0
           | simulate_step ].
 
   Ltac simulate' := repeat simulate'_step.
+
+  Definition run_Jal_spec :=
+    forall (rd: Register) (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
+      verify (Jal rd jimm20) iset ->
+      (* [verify] only enforces [jimm20 mod 2 = 0] because there could be compressed
+         instructions, but we don't support them so we require divisibility by 4: *)
+      jimm20 mod 4 = 0 ->
+      (* valid_register almost follows from verify except for when the register is Register0 *)
+      valid_register rd ->
+      divisibleBy4 initialL.(getPc) ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep initialL.(getMem) ->
+      mcomp_sat (run1 iset) initialL (fun finalL =>
+        finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
+        finalL.(getLog) = initialL.(getLog) /\
+        (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep finalL.(getMem) /\
+        finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+
+  Definition run_ImmReg_spec(Op: Register -> Register -> MachineInt -> Instruction)
+                            (f: word -> word -> word): Prop :=
+    forall (rd rs: Register) rs_val (imm: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
+      verify (Op rd rs imm) iset ->
+      (* valid_register almost follows from verify except for when the register is Register0 *)
+      valid_register rd ->
+      valid_register rs ->
+      divisibleBy4 initialL.(getPc) ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      map.get initialL.(getRegs) rs = Some rs_val ->
+      (program initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
+      mcomp_sat (run1 iset) initialL (fun finalL =>
+        finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
+        finalL.(getLog) = initialL.(getLog) /\
+        (program initialL.(getPc) [[Op rd rs imm]] * R)%sep finalL.(getMem) /\
+        finalL.(getPc) = initialL.(getNextPc) /\
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
   Definition run_Load_spec(n: nat)(L: Register -> Register -> MachineInt -> Instruction)
              (opt_sign_extender: Z -> Z): Prop :=
     forall (base addr: word) (v: HList.tuple byte n) (rd rs: Register) (ofs: MachineInt)
            (initialL: RiscvMachineL) (R: mem -> Prop),
       verify (L rd rs ofs) iset ->
-      (* valid_register almost follows from verify except for then the register is Register0 *)
+      (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
       divisibleBy4 initialL.(getPc) ->
@@ -89,7 +125,7 @@ Section Run.
     forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
            (ofs: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
       verify (S rs1 rs2 ofs) iset ->
-      (* valid_register almost follows from verify except for then the register is Register0 *)
+      (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rs1 ->
       valid_register rs2 ->
       divisibleBy4 initialL.(getPc) ->
@@ -109,10 +145,10 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
   Ltac t :=
-    unfold run_Load_spec, run_Store_spec;
+    unfold run_Jal_spec, run_ImmReg_spec, run_Load_spec, run_Store_spec;
     intros;
     match goal with
-    | initialL: RiscvMachineL |- _ => destruct initialL
+    | initialL: RiscvMachineL |- _ => destruct initialL as [ [regs pc npc m l] mc]
     end;
     simpl in *; subst;
     simulate';
@@ -122,6 +158,12 @@ Section Run.
            | |- _ => reflexivity
            | |- _ => ecancel_assumption
            end.
+
+  Lemma run_Jal: run_Jal_spec.
+  Proof. t. Qed.
+
+  Lemma run_Addi: run_ImmReg_spec Addi word.add.
+  Proof. t. Qed.
 
   Lemma run_Lb: run_Load_spec 1 Lb (signExtend 8).
   Proof. t. Qed.

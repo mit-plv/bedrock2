@@ -1,4 +1,3 @@
-Require Import lib.LibTacticsMin.
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import compiler.FlatImp.
@@ -22,7 +21,7 @@ Require Import Coq.Bool.Bool.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import riscv.Utility.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.Utility.
@@ -77,14 +76,8 @@ Module Import FlatToRiscv.
     ext_guarantee: MetricRiscvMachine Register actname -> Prop;
   }.
 
-  Instance syntax_params{p: parameters}: Syntax.parameters := {|
-    Syntax.varname := Register;
-    Syntax.funname := Empty_set;
-    Syntax.actname := actname;
-  |}.
-
   Instance Semantics_params{p: parameters}: Semantics.parameters := {|
-    Semantics.syntax := syntax_params;
+    Semantics.syntax := FlatToRiscvDef.mk_Syntax_params _;
     Semantics.ext_spec := ext_spec;
     Semantics.funname_eqb := Empty_set_rect _;
     Semantics.funname_env := Empty_set_keyed_map.map;
@@ -146,32 +139,10 @@ Section FlatToRiscv1.
 
   Local Notation RiscvMachineL := (MetricRiscvMachine Register actname).
 
-  Ltac word_cst w :=
-    match w with
-    | word.of_Z ?x => let b := isZcst x in
-                      match b with
-                      | true => x
-                      | _ => constr:(NotConstant)
-                      end
-    | _ => constr:(NotConstant)
-    end.
-
-  Definition word_ring_morph := word.ring_morph (word := word).
-  Definition word_ring_theory := word.ring_theory (word := word).
-
-  Hint Rewrite
-    word_ring_morph.(morph_add)
-    word_ring_morph.(morph_sub)
-    word_ring_morph.(morph_mul)
-    word_ring_morph.(morph_opp)
-  : rew_word_morphism.
-
-  Add Ring wring : word_ring_theory
+  Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism word_ring_morph,
+       morphism (word.ring_morph (word := word)),
        constants [word_cst]).
-
-  Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
 
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word),
       word.eqb y z = word.ltu (word.sub y z) (word.of_Z 1).
@@ -189,17 +160,17 @@ Section FlatToRiscv1.
       destruct width_cases as [E | E]; rewrite E; reflexivity.
     }
     destruct (Z.eqb_spec a b).
-    - subst a. rewrite Z.sub_diag. rewrite Z.mod_0_l by lia.
-      rewrite Z.mod_small; [reflexivity|lia].
-    - rewrite (Z.mod_small 1) by lia.
+    - subst a. rewrite Z.sub_diag. unfold word.wrap. rewrite Z.mod_0_l by blia.
+      rewrite Z.mod_small; [reflexivity|blia].
+    - unfold word.wrap. rewrite (Z.mod_small 1) by blia.
       destruct (Z.ltb_spec ((a - b) mod 2 ^ width) 1); [exfalso|reflexivity].
       pose proof (Z.mod_pos_bound (a - b) (2 ^ width)).
-      assert ((a - b) mod 2 ^ width = 0) as A by lia.
-      apply Znumtheory.Zmod_divide in A; [|lia].
+      assert ((a - b) mod 2 ^ width = 0) as A by blia.
+      apply Znumtheory.Zmod_divide in A; [|blia].
       unfold Z.divide in A.
       destruct A as [k A].
       clear -Ry Rz A n.
-      assert (k <> 0); nia.
+      assert (k <> 0); Lia.nia.
   Qed.
 
   (* Set Printing Projections.
@@ -208,39 +179,8 @@ Section FlatToRiscv1.
 
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
+  Arguments Z.of_nat: simpl never.
   Arguments run1: simpl never.
-
-  Definition divisibleBy4'(x: word): Prop := word.modu x (word.of_Z 4) = word.of_Z 0.
-
-  Lemma four_fits: 4 < 2 ^ width.
-  Proof.
-    destruct width_cases as [C | C]; rewrite C; reflexivity.
-  Qed.
-
-  Ltac div4_sidecondition :=
-    pose proof four_fits;
-    rewrite ?word.unsigned_of_Z, ?Z.mod_small;
-    lia.
-
-  Lemma divisibleBy4_alt(x: word): divisibleBy4 x -> divisibleBy4' x.
-  Proof.
-    intro H. unfold divisibleBy4, divisibleBy4' in *.
-    apply word.unsigned_inj.
-    rewrite word.unsigned_modu_nowrap by div4_sidecondition.
-    replace (word.unsigned (word.of_Z 4)) with 4 by div4_sidecondition.
-    rewrite H.
-    div4_sidecondition.
-  Qed.
-
-  Ltac simpl_modu4_0 :=
-    simpl;
-    match goal with
-    | |- context [word.eqb ?a ?b] =>
-      rewrite (word.eqb_eq a b) by (apply divisibleBy4_alt; solve_divisibleBy4)
-    end;
-    simpl.
-
-  Arguments LittleEndian.combine: simpl never.
 
   Ltac simulate''_step :=
     first (* not everyone wants these: *)
@@ -278,10 +218,11 @@ Section FlatToRiscv1.
       [set (nBytes := 4%nat) | set (nBytes := 8%nat)];
       replace (Z.to_nat ((width + 7) / 8)) with nBytes by (subst nBytes; rewrite E; reflexivity);
       subst nBytes;
-      intros; destruct sz; try solve [
+      intros; destruct sz;
+      try solve [
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.load, Memory.load_Z in *;
-        simp; simulate''; simpl; simpl_word_exprs word_ok;
+        simp; simulate''; simpl; simpl_word_exprs word_ok; destruct initialL;
           try eassumption].
   Qed.
 
@@ -337,6 +278,77 @@ Section FlatToRiscv1.
       + refine run_Sd.
   Qed.
 
+  Definition ptsto_word(addr w: word): mem -> Prop :=
+    ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
+                (LittleEndian.split _ (word.unsigned w)).
+
+  Definition word_array: word -> list word -> mem -> Prop :=
+    array ptsto_word (word.of_Z bytes_per_word).
+
+  (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
+     Memory.bytes_per, but using ptsto_word instead *)
+  Lemma run_load_word: forall (base addr v : word) (rd rs : Register) (ofs : MachineInt)
+                              (initialL : RiscvMachineL) (R : mem -> Prop),
+      Encode.verify (compile_load Syntax.access_size.word rd rs ofs) iset ->
+      valid_register rd ->
+      valid_register rs ->
+      divisibleBy4 (getPc initialL) ->
+      getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
+      map.get (getRegs initialL) rs = Some base ->
+      addr = word.add base (word.of_Z ofs) ->
+      (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
+       ptsto_word addr v * R)%sep (getMem initialL) ->
+      mcomp_sat (run1 iset) initialL
+         (fun finalL : RiscvMachineL =>
+            getRegs finalL = map.put (getRegs initialL) rd v /\
+            getLog finalL = getLog initialL /\
+            (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
+             ptsto_word addr v * R)%sep (getMem finalL) /\
+            getPc finalL = getNextPc initialL /\
+            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
+  Proof.
+    intros.
+    eapply mcomp_sat_weaken; cycle 1.
+    - eapply (run_compile_load Syntax.access_size.word); try eassumption.
+    - cbv beta. intros. simp. repeat split; try assumption.
+      rewrite H8.
+      unfold id.
+      f_equal.
+      rewrite LittleEndian.combine_split.
+      replace (BinInt.Z.of_nat (Memory.bytes_per Syntax.access_size.word) * 8) with width.
+      + rewrite word.wrap_unsigned. rewrite word.of_Z_unsigned. reflexivity.
+      + clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+  Qed.
+
+  (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
+     Memory.bytes_per, but using ptsto_word instead *)
+  Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Register)
+                               (ofs : MachineInt) (initialL : RiscvMachineL) (R : mem -> Prop),
+      Encode.verify (compile_store Syntax.access_size.word rs1 rs2 ofs) iset ->
+      valid_register rs1 ->
+      valid_register rs2 ->
+      divisibleBy4 (getPc initialL) ->
+      getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
+      map.get (getRegs initialL) rs1 = Some base ->
+      map.get (getRegs initialL) rs2 = Some v_new ->
+      addr = word.add base (word.of_Z ofs) ->
+      (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
+       ptsto_word addr v_old * R)%sep (getMem initialL) ->
+      mcomp_sat (run1 iset) initialL
+        (fun finalL : RiscvMachineL =>
+           getRegs finalL = getRegs initialL /\
+           getLog finalL = getLog initialL /\
+           (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
+            ptsto_word addr v_new * R)%sep (getMem finalL) /\
+           getPc finalL = getNextPc initialL /\
+           getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
+  Proof.
+    intros.
+    eapply mcomp_sat_weaken; cycle 1.
+    - eapply (run_compile_store Syntax.access_size.word); try eassumption.
+    - cbv beta. intros. simp. repeat split; try assumption.
+  Qed.
+
   Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
@@ -379,7 +391,7 @@ Section FlatToRiscv1.
         | |- ?SZ _ _ < _ => (* COQBUG https://github.com/coq/coq/issues/9268 *)
           change @stmt_size with SZ in *
         end;
-        lia
+        blia
     end.
 
   Ltac simpl_RiscvMachine_get_set := simpl in *. (* TODO is this enough? *)
@@ -650,13 +662,13 @@ Section FlatToRiscv1.
       run1det.
       simpl_word_exprs word_ok.
       match_apply_runsTo.
-      erewrite signExtend_nop; eauto; simpl; lia.
+      erewrite signExtend_nop; eauto; blia.
     - unfold compile_lit_32bit in *.
       rewrite invert_update_metrics_for_literal_2 in N; [|assumption..].
       simpl in P.
       run1det. run1det.
       match_apply_runsTo.
-      simpl_MetricRiscvMachine_get_set. f_equal; [| solve_MetricLog].
+      simpl_MetricRiscvMachine_get_set. f_equal; [|solve_MetricLog].
       f_equal.
       + rewrite map.put_put_same. f_equal.
         apply word.signed_inj.
@@ -674,9 +686,9 @@ Section FlatToRiscv1.
         * unfold signExtend_bitwise. Zbitwise.
           (* TODO these should also be solved by Zbitwise *)
           {
-            assert (32 <= i < width) by omega. (* PARAMRECORDS? lia fails *)
+            assert (32 <= i < width) by bomega. (* PARAMRECORDS? blia fails *)
             destruct B.
-            assert (31 < i) by lia.
+            assert (31 < i) by blia.
             assert (0 < 31) by reflexivity.
             erewrite testbit_above_signed' with (i := i); try eassumption.
             change (Z.log2_up (2 ^ 31)) with (32 - 1).
@@ -685,7 +697,7 @@ Section FlatToRiscv1.
           {
             destruct B.
             assert (0 < 31) by reflexivity.
-            assert (31 < width - 1) by lia.
+            assert (31 < width - 1) by blia.
             erewrite testbit_above_signed' with (i := width - 1); try eassumption.
             change (Z.log2_up (2 ^ 31)) with (32 - 1).
             Btauto.btauto.
@@ -723,17 +735,18 @@ Section FlatToRiscv1.
           exfalso. apply n0. left. reflexivity.
         }
         (repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_xor, ?word.unsigned_slu);
+        unfold word.wrap;
         rewrite W64; try reflexivity.
         clear.
         change (10 mod 2 ^ 64) with 10.
         change (11 mod 2 ^ 64) with 11.
-        rewrite <-! Z.land_ones by lia.
+        rewrite <-! Z.land_ones by blia.
         rewrite! signExtend_alt_bitwise by reflexivity.
         unfold bitSlice, signExtend_bitwise.
         Zbitwise.
         (* TODO this should be done by Zbitwise, but not too eagerly because it's very
            expensive on large goals *)
-        all: replace (i - 11 - 11 - 10 + 32) with i by lia.
+        all: replace (i - 11 - 11 - 10 + 32) with i by blia.
         all: Btauto.btauto.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
@@ -789,7 +802,7 @@ Section FlatToRiscv1.
     eexists (map.putmany m1' mq).
     split.
     - unfold sep.
-      exists m1' mq. repeat split; trivial.
+      exists m1', mq. repeat split; trivial.
       apply store_bytes_preserves_footprint in H.
       clear -H A2.
       unfold map.disjoint, map.same_domain, map.sub_domain in *. destruct H as [P Q].
@@ -812,6 +825,1035 @@ Section FlatToRiscv1.
 
   Arguments map.empty: simpl never.
   Arguments map.get: simpl never.
+
+  Goal True. idtac "FlatToRiscv: Entering slow lemmas section". Abort.
+
+  Axiom compile_stmt_new_emits_valid: forall s e pos,
+      supported_iset iset ->
+      valid_registers s ->
+      stmt_not_too_big s ->
+      valid_instructions iset (compile_stmt_new e pos s).
+
+  Axiom compile_function_emits_valid: forall e pos argnames resnames body,
+      supported_iset iset ->
+      Forall valid_register argnames ->
+      Forall valid_register resnames ->
+      valid_registers body ->
+      stmt_not_too_big body ->
+      valid_instructions iset (compile_function e pos (argnames, resnames, body)).
+
+  Arguments Z.pow: simpl never.
+  Arguments Z.sub: simpl never.
+  Arguments compile_store: simpl never.
+  Arguments compile_load: simpl never.
+
+  (* TODO move *)
+
+  Ltac use_sep_assumption :=
+    match goal with
+    | |- _ ?m1 =>
+      match goal with
+      | H: _ ?m2 |- _ =>
+        unify m1 m2;
+        refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H
+      end
+    end.
+
+  Require Import coqutil.Tactics.syntactic_unify.
+
+  Ltac cancel_seps_at_indices i j :=
+    lazymatch goal with
+    | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
+      simple refine (cancel_seps_at_indices i j LHS RHS _ _);
+      cbn [firstn skipn app hd tl];
+      [syntactic_exact_deltavar
+         (@RelationClasses.reflexivity _ _
+           (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _) | ]
+    end.
+
+  Ltac cancel_seps_at_indices_by_iff i j :=
+    lazymatch goal with
+    | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
+      simple refine (cancel_seps_at_indices i j LHS RHS _ _);
+      cbn [firstn skipn app hd tl]
+    end.
+
+  Lemma save_regs_correct: forall vars offset R (initial: RiscvMachineL) p_sp oldvalues newvalues,
+      Forall valid_register vars ->
+      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (length vars) ->
+      divisibleBy4 initial.(getPc) ->
+      map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
+      map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
+      length oldvalues = length vars ->
+      (program initial.(getPc) (save_regs vars offset) *
+       word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
+      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+      runsTo initial (fun final =>
+          final.(getRegs) = initial.(getRegs) /\
+          (program initial.(getPc) (save_regs vars offset) *
+           word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep
+              final.(getMem) /\
+          final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
+                                                        (word.of_Z (Z.of_nat (length vars)))) /\
+          final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
+  Proof.
+    unfold map.getmany_of_list.
+    induction vars; intros.
+    - simpl in *. simp. destruct oldvalues; simpl in *; [|discriminate].
+      apply runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
+    - simpl in *. simp.
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+      assert (valid_instructions EmitsValid.iset
+                [(compile_store Syntax.access_size.word RegisterNames.sp a offset)]). {
+        eapply compile_store_emits_valid; try eassumption.
+        assert (bytes_per_word * Z.of_nat (S (length vars)) > 0). {
+          unfold Z.of_nat.
+          unfold bytes_per_word, Memory.bytes_per in *.
+          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
+        }
+        simpl. bomega.
+      }
+      destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
+      eapply runsToStep. {
+        eapply run_store_word; try solve [sidecondition].
+      }
+      simpl. intros.
+      destruct_RiscvMachine initial.
+      destruct_RiscvMachine mid.
+      simp. subst.
+      eapply runsTo_weaken; cycle 1; [|eapply IHvars]. {
+        simpl. intros. simp.
+        repeat split; try solve [sidecondition].
+        - (* TODO all of this should be one more powerful cancel tactic
+             with matching of addresses using ring *)
+          use_sep_assumption.
+          cancel.
+          unfold program.
+          symmetry.
+          cancel_seps_at_indices 1%nat 0%nat.
+          rewrite word.ring_morph_add.
+          rewrite word.add_assoc.
+          ecancel_step.
+          ecancel.
+        - replace (Z.of_nat (S (length oldvalues)))
+            with (1 + Z.of_nat (length oldvalues)) by blia.
+          etransitivity; [eassumption|].
+          replace (length vars) with (length oldvalues) by blia.
+          solve_word_eq word_ok.
+      }
+      all: try eassumption.
+      + rewrite Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
+        rewrite Z.mul_add_distr_l in *.
+        remember (bytes_per_word * BinInt.Z.of_nat (length vars)) as K.
+        assert (bytes_per_word > 0). {
+          unfold bytes_per_word, Memory.bytes_per in *.
+          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
+        }
+        bomega.
+      + simpl. solve_divisibleBy4.
+      + simpl. pseplog.
+        rewrite word.ring_morph_add.
+        rewrite word.add_assoc.
+        ecancel.
+      + reflexivity.
+  Qed.
+
+  Lemma length_save_regs: forall vars offset,
+      length (save_regs vars offset) = length vars.
+  Proof.
+    induction vars; intros; simpl; rewrite? IHvars; reflexivity.
+  Qed.
+
+  (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
+  Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
+
+  Lemma load_regs_correct: forall p_sp vars offset R (initial: RiscvMachineL) values,
+      Forall valid_FlatImp_var vars ->
+      NoDup vars ->
+      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (length vars) ->
+      divisibleBy4 initial.(getPc) ->
+      map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
+      length values = length vars ->
+      (program initial.(getPc) (load_regs vars offset) *
+       word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
+      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+      runsTo initial (fun final =>
+          map.only_differ initial.(getRegs) (PropSet.of_list vars) final.(getRegs) /\
+          map.getmany_of_list final.(getRegs) vars = Some values /\
+          (program initial.(getPc) (load_regs vars offset) *
+           word_array (word.add p_sp (word.of_Z offset)) values * R)%sep
+              final.(getMem) /\
+          final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
+                                                        (word.of_Z (Z.of_nat (length vars)))) /\
+          final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
+  Proof.
+    induction vars; intros.
+    - simpl in *. simp. destruct values; simpl in *; [|discriminate].
+      apply runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
+      unfold map.only_differ. auto.
+    - simpl in *. simp.
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+      assert (valid_register a). {
+        unfold valid_register, valid_FlatImp_var in *. blia.
+      }
+      assert (valid_instructions EmitsValid.iset
+                [(compile_load Syntax.access_size.word a RegisterNames.sp offset)]). {
+        eapply compile_load_emits_valid; try eassumption.
+        assert (bytes_per_word * Z.of_nat (S (length vars)) > 0). {
+          unfold Z.of_nat.
+          unfold bytes_per_word, Memory.bytes_per in *.
+          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
+        }
+        simpl. bomega.
+      }
+      destruct values as [|value values]; simpl in *; [discriminate|].
+      eapply runsToStep. {
+        eapply run_load_word; try solve [sidecondition].
+      }
+      simpl. intros.
+      destruct_RiscvMachine initial.
+      destruct_RiscvMachine mid.
+      simp. subst.
+      eapply runsTo_weaken.
+      + eapply IHvars; simpl; cycle -2; auto.
+        * use_sep_assumption.
+          match goal with
+          | |- iff1 ?LHS ?RHS =>
+            match LHS with
+            | context [word_array ?i] =>
+              match RHS with
+              | context [word_array ?i'] =>
+                replace i with i'; cycle 1
+              end
+            end
+          end.
+          { rewrite <- word.add_assoc. rewrite <- word.ring_morph_add. reflexivity. }
+          ecancel.
+        * unfold bytes_per_word, Memory.bytes_per in *.
+          rewrite Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
+          rewrite Z.mul_add_distr_l in *.
+          assert (bytes_per_word > 0). {
+            unfold bytes_per_word, Memory.bytes_per in *.
+            destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
+          }
+          bomega.
+        * solve_divisibleBy4.
+        * rewrite map.get_put_diff. 1: assumption.
+          unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
+        * blia.
+      + simpl. intros. simp.
+        repeat split.
+        * unfold map.only_differ, PropSet.elem_of, PropSet.of_list in *.
+          intros x. rename H6 into HO.
+          specialize (HO x).
+          destruct (Z.eqb_spec x a).
+          -- subst x. left. constructor. reflexivity.
+          -- destruct HO as [HO | HO].
+             ++ simpl. auto.
+             ++ right. rewrite <- HO. rewrite map.get_put_diff; congruence.
+        * unfold map.getmany_of_list in *. simpl. rewrite_match.
+          rename H6 into HO.
+          specialize (HO a). destruct HO as [HO | HO].
+          -- unfold PropSet.elem_of, PropSet.of_list in HO. contradiction.
+          -- unfold Register, MachineInt in *. rewrite <- HO.
+             rewrite map.get_put_same. reflexivity.
+        * pseplog.
+          match goal with
+          | |- iff1 ?LHS ?RHS =>
+            match LHS with
+            | context [word_array ?i] =>
+              match RHS with
+              | context [word_array ?i'] =>
+                replace i with i' by solve_word_eq word_ok
+              end
+            end
+          end.
+          ecancel.
+        * etransitivity; [eassumption|].
+          rewrite Nat2Z.inj_succ. rewrite <- Z.add_1_r.
+          replace (length values) with (length vars) by congruence.
+          solve_word_eq word_ok.
+        * assumption.
+  Qed.
+
+  Lemma length_load_regs: forall vars offset,
+      length (load_regs vars offset) = length vars.
+  Proof.
+    induction vars; intros; simpl; rewrite? IHvars; reflexivity.
+  Qed.
+
+  (*
+     high addresses!             ...
+                      p_sp   --> mod_var_0 of previous function call arg0
+                                 argn
+                                 ...
+                                 arg0
+                                 retn
+                                 ...
+                                 ret0
+                                 ra
+                                 mod_var_n
+                                 ...
+                      new_sp --> mod_var_0
+     low addresses               ...
+  *)
+  Definition stackframe(p_sp: word)(argvals retvals: list word)
+             (ra_val: word)(modvarvals: list word): mem -> Prop :=
+    word_array
+      (word.add p_sp
+                (word.of_Z
+                   (- (bytes_per_word *
+                       Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
+      (modvarvals ++ [ra_val] ++ retvals ++ argvals).
+
+  (* measured in words, needs to be multiplied by 4 or 8 *)
+  Definition framelength: list var * list var * stmt -> Z :=
+    fun '(argvars, resvars, body) =>
+      let mod_vars := modVars_as_list body in
+      Z.of_nat (length argvars + length resvars + 1 + length mod_vars).
+
+  Lemma framesize_nonneg: forall argvars resvars body,
+      0 <= framelength (argvars, resvars, body).
+  Proof.
+    intros. unfold framelength.
+    unfold bytes_per_word, Memory.bytes_per. blia.
+  Qed.
+
+  (* Note:
+     - This predicate cannot be proved for recursive functions
+     - Measured in words, needs to be multiplied by 4 or 8 *)
+  Inductive fits_stack: Z -> env -> stmt -> Prop :=
+  | fits_stack_load: forall n e sz x y,
+      0 <= n ->
+      fits_stack n e (SLoad sz x y)
+  | fits_stack_store: forall n e sz x y,
+      0 <= n ->
+      fits_stack n e (SStore sz x y)
+  | fits_stack_lit: forall n e x v,
+      0 <= n ->
+      fits_stack n e (SLit x v)
+  | fits_stack_op: forall n e op x y z,
+      0 <= n ->
+      fits_stack n e (SOp x op y z)
+  | fits_stack_set: forall n e x y,
+      0 <= n ->
+      fits_stack n e (SSet x y)
+  | fits_stack_if: forall n e c s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SIf c s1 s2)
+  | fits_stack_loop: forall n e c s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SLoop s1 c s2)
+  | fits_stack_seq: forall n e s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SSeq s1 s2)
+  | fits_stack_skip: forall n e,
+      0 <= n ->
+      fits_stack n e SSkip
+  | fits_stack_call: forall n e binds fname args argnames retnames body,
+      map.get e fname = Some (argnames, retnames, body) ->
+      fits_stack (n - framelength (argnames, retnames, body)) e body ->
+      fits_stack n e (SCall binds fname args)
+  | fits_stack_interact: forall n e binds act args,
+      0 <= n ->
+      fits_stack n e (SInteract binds act args).
+
+  Lemma fits_stack_nonneg: forall n e s,
+      fits_stack n e s ->
+      0 <= n.
+  Proof.
+    induction 1; try blia. pose proof (@framesize_nonneg argnames retnames body). blia.
+  Qed.
+
+  (* high stack addresses     | stackframe of main             \
+                              ...                               \
+    g|                        ---                                }- stuffed into R
+    r|                        | stackframe of current func      /
+    o|              p_sp -->  ---                              /
+    w|                        |
+    s|                        | currently unused stack
+     |                        | (old_stackvals)
+     V                        |
+            p_stacklimit -->  ---
+
+     low stack addresses *)
+
+  Instance fun_pos_env: map.map Syntax.funname Z := _.
+
+  (* Note: This definition would not be usable in the same way if we wanted to support
+     recursive functions, because separation logic would prevent us from mentioning
+     the snippet of code being run twice (once in [program initialL.(getPc) insts] and
+     a second time inside [functions]).
+     To avoid this double mentioning, we will remove the function being called from the
+     list of functions before entering the body of the function. *)
+  Definition functions(base: word)(rel_positions: fun_pos_env)(impls: env):
+    list Syntax.funname -> mem -> Prop :=
+    fix rec funnames :=
+      match funnames with
+      | nil => emp True
+      | fname :: rest =>
+        (match map.get rel_positions fname, map.get impls fname with
+         | Some pos, Some impl =>
+           program (word.add base (word.of_Z pos))
+                   (compile_function rel_positions pos impl)
+         | _, _ => emp True
+         end * (rec rest))%sep
+      end.
+
+  Instance funname_eq_dec: DecidableEq Syntax.funname := _.
+
+  Lemma functions_expose: forall base rel_positions impls funnames f pos impl,
+      map.get rel_positions f = Some pos ->
+      map.get impls f = Some impl ->
+      iff1 (functions base rel_positions impls funnames)
+           (functions base (map.remove rel_positions f)
+                           (map.remove impls f)
+                           (List.remove funname_eq_dec f funnames) *
+            program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
+  Proof.
+  Admitted.
+
+  Lemma union_Forall: forall {T: Type} {teq: DecidableEq T} (P: T -> Prop) (l1 l2: list T),
+      Forall P l1 ->
+      Forall P l2 ->
+      Forall P (ListLib.list_union l1 l2).
+  Proof.
+    induction l1; intros; simpl; [assumption|].
+    simp. destruct_one_match; eauto.
+  Qed.
+
+  Lemma modVars_as_list_valid_registers: forall (s: @stmt (mk_Syntax_params _)),
+      valid_registers s ->
+      Forall valid_register (modVars_as_list s).
+  Proof.
+    induction s; intros; simpl in *; simp; eauto 10 using @union_Forall.
+  Qed.
+
+  Lemma getmany_of_list_exists{K V: Type}{M: map.map K V}:
+    forall (m: M) (P: K -> Prop) (ks: list K),
+      Forall P ks ->
+      (forall k, P k -> exists v, map.get m k = Some v) ->
+      exists vs, map.getmany_of_list m ks = Some vs.
+  Proof.
+    induction ks; intros.
+    - exists nil. reflexivity.
+    - inversion H. subst. clear H.
+      edestruct IHks as [vs IH]; [assumption..|].
+      edestruct H0 as [v ?]; [eassumption|].
+      exists (v :: vs). cbn. rewrite H. unfold map.getmany_of_list in IH.
+      rewrite IH. reflexivity.
+  Qed.
+
+  Lemma compile_stmt_correct_new:
+    forall (program_base: word),
+    forall e_impl (s: stmt) t initialMH initialRegsH initialMetricsH postH,
+    exec e_impl s t (initialMH: mem) initialRegsH initialMetricsH postH ->
+    (* note: [e_impl], [e_pos] and [funnames] will shrink one function at a time each time
+       we enter a new function body, to make sure functions cannot call themselves *)
+    forall e_pos funnames,
+    (forall f (argnames retnames: list Syntax.varname) (body: stmt),
+        map.get e_impl f = Some (argnames, retnames, body) ->
+        Forall valid_register argnames /\
+        Forall valid_register retnames /\
+        valid_registers body /\
+        List.In f funnames /\
+        exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0) ->
+    forall (R: mem -> Prop) (initialL: RiscvMachineL) insts p_stacklimit p_sp p_ra
+           (old_stackvals: list word) pos,
+    @compile_stmt_new def_params _ e_pos pos s = insts ->
+    stmt_not_too_big s ->
+    valid_registers s ->
+    initialL.(getPc) = word.add program_base (word.of_Z pos) ->
+    pos mod 4 = 0 ->
+    divisibleBy4 program_base ->
+    map.extends initialL.(getRegs) initialRegsH ->
+    map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
+    map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
+    (forall r, 0 < r < 32 -> exists v, map.get initialL.(getRegs) r = Some v) ->
+    fits_stack (Z.of_nat (length old_stackvals)) e_impl s ->
+    p_sp = word.add p_stacklimit
+                    (word.of_Z (bytes_per_word * Z.of_nat (length old_stackvals))) ->
+    (R * eq initialMH *
+     word_array p_stacklimit old_stackvals *
+     program initialL.(getPc) insts *
+     functions program_base e_pos e_impl funnames)%sep initialL.(getMem) ->
+    initialL.(getLog) = t ->
+    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    ext_guarantee initialL ->
+    runsTo initialL (fun finalL => exists finalRegsH finalMH finalMetricsH
+                                          (final_stackvals: list word),
+          postH finalL.(getLog) finalMH finalRegsH finalMetricsH /\
+          map.extends finalL.(getRegs) finalRegsH /\
+          map.get finalL.(getRegs) RegisterNames.sp = Some p_sp ->
+          map.get finalL.(getRegs) RegisterNames.ra = Some p_ra ->
+          length final_stackvals = length old_stackvals /\
+          (R * eq finalMH *
+           word_array p_stacklimit final_stackvals *
+           program initialL.(getPc) insts *
+           functions program_base e_pos e_impl funnames)%sep finalL.(getMem) /\
+          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          ext_guarantee finalL).
+(* TODO these constrains will have to be added:
+    Forall valid_FlatImp_var useargs ->
+    Forall valid_FlatImp_var useresults ->
+    Forall valid_FlatImp_var defargs ->
+    Forall valid_FlatImp_var defresults ->
+
+    (* note: use-site argument/result names are allowed to have duplicates, but definition-site
+       argument/result names aren't *)
+    NoDup defargs ->
+    NoDup defresults ->
+ *)
+  Proof.
+    pose proof compile_stmt_emits_valid.
+    induction 1; intros;
+      lazymatch goal with
+      | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
+        pose proof (@compile_stmt_new_emits_valid s e_pos pos iset_is_supported H1 H2)
+      end;
+      repeat match goal with
+             | m: _ |- _ => destruct_RiscvMachine m
+             end;
+      simpl in *;
+      subst;
+      simp.
+
+    - (* SInteract *)
+      eapply runsTo_weaken.
+      + eapply compile_ext_call_correct with
+            (postH := fun t' m' lL' mc' => exists lH', map.extends lL' lH' /\ post t' m' lH' mc')
+            (action0 := action) (argvars0 := argvars) (resvars0 := resvars);
+          simpl; reflexivity || eassumption || ecancel_assumption || idtac.
+        eapply @exec.interact; try eassumption.
+        * eapply map.getmany_of_list_extends; eassumption.
+        * intros mReceive resvals HO.
+          match goal with
+          | H: _ |- _ => specialize (H mReceive resvals HO);
+                         destruct H as (finalRegsH & ? & finalMH & ? & ?)
+          end.
+          edestruct (map.putmany_of_list_extends_exists (ok := locals_ok))
+            as (finalRegsL & ? & ?); [eassumption..|].
+          eauto 7.
+      + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
+        destruct_products. subst.
+        do 4 eexists. repeat split; try eassumption. ecancel_assumption.
+
+    - (* SCall *)
+      (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
+      match goal with
+      | H1: map.get e_impl fname = ?RHS1, H2: map.get e_impl fname = ?RHS2 |- _ =>
+        let F := fresh in
+        assert (RHS1 = RHS2) as F by (etransitivity; [symmetry; exact H1 | exact H2]);
+        inversion F; subst; clear F H2
+      end.
+      unfold fun_pos_env in *.
+      match goal with
+      | H: map.get e_impl fname = Some _, G: _ |- _ =>
+          specialize G with (1 := H);
+          destruct G as [? [? [? [? [funpos [GetPos ?] ] ] ] ] ]
+      end.
+      rewrite GetPos in *.
+      (* normal rewrite doesn't always work *)
+      match goal with
+      | H: context [map.get e_pos fname] |- _ => setoid_rewrite GetPos in H
+      end.
+
+      set (FL := framelength (argnames, retnames, body)) in *.
+      (* We have enough stack space for this call: *)
+      assert (FL <= Z.of_nat (length old_stackvals)) as enough_stack_space. {
+        match goal with
+        | H: fits_stack _ _ _ |- _ => apply fits_stack_nonneg in H; clear -H
+        end.
+        blia.
+      }
+
+      assert (exists remaining_stack old_modvarvals old_ra old_retvals old_argvals,
+                 old_stackvals = remaining_stack ++ old_modvarvals ++ [old_ra] ++
+                                                 old_retvals ++ old_argvals /\
+                 length old_modvarvals = length (modVars_as_list body) /\
+                 length old_retvals = length retnames /\
+                 length old_argvals = length argnames) as TheSplit. {
+        subst FL. unfold framelength in *.
+        clear -enough_stack_space.
+
+        refine (ex_intro _ (List.firstn _ old_stackvals) _).
+        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
+        refine (ex_intro _ (List.nth _ old_stackvals (word.of_Z 0)) _).
+        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
+        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
+
+        repeat split.
+        1: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
+        1: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
+        1: rewrite List.skipn_skipn.
+        1: eapply ListLib.firstn_skipn_reassemble.
+        1: eapply ListLib.firstn_skipn_nth.
+        2: rewrite List.skipn_skipn.
+        2: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
+        2: rewrite List.skipn_skipn.
+        2: rewrite List.firstn_all.
+        2: reflexivity.
+        2: rewrite List.length_firstn_inbounds.
+        2: reflexivity.
+        3: rewrite List.length_firstn_inbounds.
+        3: reflexivity.
+        4: rewrite List.length_firstn_inbounds.
+        4: rewrite List.length_skipn.
+        4: lazymatch goal with
+           | |- ?LHS = ?RHS =>
+             match LHS with
+             | context C [ ?x ] =>
+               is_evar x;
+               let LHS' := context C [ 0%nat ] in
+               assert (LHS' - RHS = x)%nat
+             end
+           end.
+        4: reflexivity.
+
+        all: rewrite ?List.length_skipn.
+        all: try blia.
+      }
+      destruct TheSplit as (remaining_stack & old_modvarvals & old_ra & old_retvals & old_argvals
+                                & ? & ? &  ? & ?).
+      subst old_stackvals.
+
+      assert (length old_argvals = length args). {
+        match goal with
+        | H: _ |- _ => apply map.putmany_of_list_sameLength in H; move H at bottom
+        end.
+        match goal with
+        | H: _ |- _ => apply map.getmany_of_list_length in H; move H at bottom
+        end.
+          (* TODO it's bad we need that (kind of PARAMRECORDS) *)
+        unfold Register, MachineInt in *.
+        congruence.
+      }
+
+      (* put arguments on stack *)
+      eapply runsTo_trans. {
+        eapply save_regs_correct with (vars := args) (offset := - bytes_per_word * Z.of_nat (length args)); simpl;
+          try solve [sidecondition].
+        - admit.
+        - solve_divisibleBy4.
+        - eapply map.getmany_of_list_extends; eassumption.
+        - instantiate (1 := old_argvals).
+          eassumption.
+        - use_sep_assumption.
+          unfold program, word_array.
+          progress repeat match goal with
+                          | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+                            rewrite (array_append_DEPRECATED PT SZ xs ys start)
+                          end.
+          cancel.
+          cancel_seps_at_indices_by_iff 6%nat 0%nat. {
+            match goal with
+            | |- iff1 (array _ _ ?p1 _) (array _ _ ?p2 _) =>
+              replace p2 with p1; [exact (RelationClasses.reflexivity _)|]
+            end.
+
+            (* TODO should be part of simpl_word_exprs *)
+            rewrite ?app_length.
+            rewrite !Zlength_correct.
+            change (length [old_ra]) with 1%nat.
+            rewrite ?Nat2Z.inj_add.
+            autorewrite with rew_word_morphism.
+            simpl_word_exprs word_ok.
+            change BinInt.Z.of_nat with Z.of_nat.
+            replace (length old_argvals) with (length args) by blia.
+            replace (length old_retvals) with (length retnames) by blia.
+            solve_word_eq word_ok.
+          }
+          exact (RelationClasses.reflexivity _).
+      }
+
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+    assert (valid_register RegisterNames.ra) by (cbv; auto).
+    assert (valid_register RegisterNames.sp) by (cbv; auto).
+
+    (* jump to function *)
+    eapply runsToStep. {
+      eapply run_Jal; simpl; try solve [sidecondition | solve_divisibleBy4].
+      rewrite !Zlength_correct in *.
+      rewrite !length_save_regs in *.
+      ecancel_assumption.
+    }
+
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+    pose proof functions_expose as P.
+    do 2 match goal with
+    | H: _ |- _ => specialize P with (1 := H)
+    end.
+    specialize (P program_base funnames).
+    match goal with
+    | H: (_ * _)%sep _ |- _ => seprewrite_in P H; clear P
+    end.
+
+    pose proof (@compile_function_emits_valid e_pos funpos argnames retnames body) as V.
+    especialize V.
+    { exact iset_is_supported. }
+    { admit. (* valid argnames *) }
+    { admit. (* valid retnames *) }
+    { admit. (* valid_registers for function being called *) }
+    { admit. (* stmt_not_too_big for function being called *) }
+
+    simpl in *.
+
+    (* decrease sp *)
+    eapply runsToStep. {
+      eapply run_Addi; try solve [sidecondition | simpl; solve_divisibleBy4 ].
+      - simpl.
+        rewrite map.get_put_diff by (clear; cbv; congruence).
+        eassumption.
+      - simpl.
+        use_sep_assumption.
+        cancel.
+        cancel_seps_at_indices_by_iff 1%nat 0%nat. {
+          match goal with
+          | |- iff1 ?LHS ?RHS =>
+            match LHS with
+            | context [ptsto_instr ?i] =>
+              match RHS with
+              | context [ptsto_instr ?i'] =>
+                replace i with i' by solve_word_eq word_ok
+              end
+            end
+          end.
+          exact (RelationClasses.reflexivity _).
+        }
+        exact (RelationClasses.reflexivity _).
+    }
+
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+    (* save ra on stack *)
+    eapply runsToStep. {
+      eapply run_store_word; try solve [sidecondition | simpl; solve_divisibleBy4]. {
+        simpl.
+        rewrite map.get_put_diff by (clear; cbv; congruence).
+        rewrite map.get_put_same. reflexivity.
+      }
+      simpl.
+      use_sep_assumption.
+      unfold stackframe, word_array in *.
+      cancel.
+      cancel_seps_at_indices_by_iff 2%nat 0%nat. {
+        match goal with
+        | |- iff1 ?LHS ?RHS =>
+          match LHS with
+          | context [ptsto_instr ?i] =>
+            match RHS with
+            | context [ptsto_instr ?i'] =>
+              replace i with i' by solve_word_eq word_ok
+            end
+          end
+        end.
+        ecancel.
+      }
+      cancel_seps_at_indices_by_iff 10%nat 0%nat. {
+        match goal with
+        | |- iff1 ?LHS ?RHS =>
+          match LHS with
+          | context [ptsto_word ?i] =>
+            match RHS with
+            | context [ptsto_word ?i'] =>
+              replace i with i'; cycle 1
+            end
+          end
+        end.
+        { repeat (
+              rewrite !List.app_length ||
+              simpl ||
+              rewrite !Nat2Z.inj_add ||
+              rewrite !Zlength_correct ||
+              rewrite !Nat2Z.inj_succ ||
+              rewrite <-! Z.add_1_r).
+          replace (length old_retvals) with (length retnames) by blia.
+          replace (length old_argvals) with (length argnames) by blia.
+          unfold Register, MachineInt.
+          solve_word_eq word_ok.
+        }
+        ecancel.
+      }
+      ecancel.
+    }
+
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+    (* save vars modified by callee onto stack *)
+    match goal with
+    | |- context [ {| getRegs := ?l |} ] =>
+      pose proof (@getmany_of_list_exists _ _ _ l valid_register (modVars_as_list body)) as P
+    end.
+    edestruct P as [newvalues P2]; clear P.
+    { apply modVars_as_list_valid_registers. assumption. }
+    {
+      intros.
+      rewrite !map.get_put_dec.
+      destruct_one_dec_eq; [eexists; reflexivity|].
+      destruct_one_dec_eq; [eexists; reflexivity|].
+      eauto.
+    }
+    eapply runsTo_trans. {
+      eapply save_regs_correct; simpl; cycle 2.
+      1: solve_divisibleBy4.
+      2: rewrite map.get_put_same; reflexivity.
+      1: exact P2.
+      4: eapply modVars_as_list_valid_registers; eassumption.
+      1: eassumption.
+      2: reflexivity.
+      1: {
+        use_sep_assumption.
+        unfold program.
+        progress repeat match goal with
+                        | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+                          rewrite (array_append_DEPRECATED PT SZ xs ys start)
+                        end.
+        cancel.
+        simpl_word_exprs word_ok.
+
+        (* PARAMRECORDS *) change Syntax.varname with Register in *.
+        cancel_seps_at_indices_by_iff 4%nat 0%nat. {
+
+Ltac word_unify x y OK :=
+  lazymatch type of OK with
+  | word.ok ?WORD =>
+    let tx := type of x in
+    let ty := type of y in
+    tryif (unify tx ty) then (
+      tryif first [is_evar x | is_evar y] then (
+        unify x y
+      ) else (
+        tryif (unify tx (@word.rep _ WORD)) then (
+          (*
+          let E := fresh in
+          tryif (assert (x = y) as E by (autorewrite with rew_word_morphism; solve_word_eq OK))
+          then (replace x with y by exact E)
+          else (fail "" x "does not equal" y)
+          *)
+          replace x with y; [ | try solve [autorewrite with rew_word_morphism; solve_word_eq OK] ]
+        ) else (
+          lazymatch x with
+          | ?x1 ?x2 => lazymatch y with
+                       | ?y1 ?y2 => word_unify x1 y1 OK; word_unify x2 y2 OK
+                       | _ => fail "" x "is an application while" y "is not"
+                       end
+          | _ => lazymatch y with
+                 | ?y1 ?y2 => fail "" x "is not an application while" y "is"
+                 | _ => tryif constr_eq x y then idtac else fail "" x "does not match" y
+                 end
+          end
+        )
+      )
+    ) else (
+      fail "not the same type"
+    )
+  | _ => fail "" OK "is not of type word.ok"
+  end.
+
+Ltac ecancel_refl :=
+  cbn [seps];
+  syntactic_exact_deltavar
+    (@RelationClasses.reflexivity _ _
+       (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
+
+Ltac word_iff1 OK :=
+  lazymatch goal with
+  | |- iff1 ?LHS ?RHS => word_unify LHS RHS OK
+  end;
+  [ecancel_refl | .. ].
+
+          word_iff1 word_ok.
+        }
+        cancel_seps_at_indices_by_iff 15%nat 0%nat. {
+          unfold word_array.
+          repeat (
+              rewrite !List.app_length ||
+              simpl ||
+              rewrite !Nat2Z.inj_add ||
+              rewrite !Zlength_correct ||
+              rewrite !Nat2Z.inj_succ ||
+              rewrite <-! Z.add_1_r).
+          replace (length old_retvals) with (length retnames) by blia.
+          replace (length old_argvals) with (length argnames) by blia.
+          replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
+          unfold Register, MachineInt.
+          autorewrite with rew_word_morphism.
+          word_iff1 word_ok.
+        }
+        ecancel_refl.
+      }
+      1: admit. (* offet 0 not too big *)
+    }
+
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+    (* load argvars from stack *)
+    eapply runsTo_trans. {
+      eapply load_regs_correct; simpl; cycle -2; try assumption.
+      - use_sep_assumption.
+        unfold program.
+        rewrite ?Zlength_correct.
+        rewrite ?length_save_regs.
+        cancel.
+        cancel_seps_at_indices_by_iff 6%nat 0%nat. {
+          word_iff1 word_ok.
+        }
+        cancel_seps_at_indices_by_iff 14%nat 0%nat. {
+          instantiate (2 := (word.add p_stacklimit
+                 (word.of_Z (bytes_per_word * Z.of_nat (length remaining_stack))))).
+          unfold word_array.
+          repeat (
+              rewrite !List.app_length ||
+              simpl ||
+              rewrite !Nat2Z.inj_add ||
+              rewrite !Zlength_correct ||
+              rewrite !Nat2Z.inj_succ ||
+              rewrite <-! Z.add_1_r).
+          replace (length old_retvals) with (length retnames) by blia.
+          replace (length old_argvals) with (length argnames) by blia.
+          replace (length args) with (length argnames) by blia.
+          replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
+          unfold Register, MachineInt.
+          autorewrite with rew_word_morphism.
+          word_iff1 word_ok.
+        }
+        ecancel_refl.
+      - reflexivity.
+      - replace valid_FlatImp_var with valid_register by admit.
+        assumption.
+      - admit. (* NoDup *)
+      - admit. (* offset stuff *)
+      - solve_divisibleBy4.
+      - rewrite map.get_put_same. f_equal.
+          unfold word_array.
+          repeat (
+              rewrite !List.app_length ||
+              simpl ||
+              rewrite !Nat2Z.inj_add ||
+              rewrite !Zlength_correct ||
+              rewrite !Nat2Z.inj_succ ||
+              rewrite <-! Z.add_1_r).
+          replace (length old_retvals) with (length retnames) by blia.
+          replace (length old_argvals) with (length argnames) by blia.
+          replace (length args) with (length argnames) by blia.
+          replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
+          unfold Register, MachineInt.
+          autorewrite with rew_word_morphism.
+          solve_word_eq word_ok.
+      - unfold Register, MachineInt in *.
+        match goal with
+        | H: _ |- _ => apply map.putmany_of_list_sameLength in H; rewrite H; reflexivity
+        end.
+    }
+
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+    (* execute function body *)
+    eapply runsTo_trans. {
+      eapply IHexec with (funnames := (remove funname_eq_dec fname funnames));
+        simpl; try assumption.
+      - (* Note: we'd have to shrink e_impl in FlatImp.exec if we want to shrink it in
+           the induction too *)
+        admit.
+      - reflexivity.
+      - admit. (* stmt_not_too_big *)
+      - match goal with
+        | |- ?x = word.add ?y (word.of_Z ?E) =>
+          is_evar E; instantiate (1 := word.unsigned (word.sub x y))
+        end.
+        rewrite word.of_Z_unsigned.
+        solve_word_eq word_ok.
+      - (* TODO put this into solve_divisibleBy4 *)
+        rewrite word.unsigned_sub. unfold word.wrap.
+        divisibleBy4_pre.
+        auto 25 with mod4_0_hints.
+      - (* map_solver with middle_regs and middle_regs0 *) admit.
+      - (* map_solver with middle_regs and middle_regs0 *) admit.
+      - (* map_solver with middle_regs and middle_regs0 *) admit.
+      - (* map_solver with middle_regs and middle_regs0 *) admit.
+      - instantiate (1 := remaining_stack).
+        match goal with
+        | H: fits_stack ?n1 _ _ |- fits_stack ?n2 _ _ =>
+          replace n2 with n1; [exact H|]
+        end.
+        subst FL.
+        rewrite !app_length. simpl.
+        replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
+        rewrite !app_length.
+        blia.
+      - reflexivity.
+      - use_sep_assumption.
+        cancel.
+        admit. (* TODO interesting *)
+      - admit. (* log equality?? *)
+      - reflexivity.
+      - eapply ext_guarantee_preservable.
+        + eassumption.
+        + cbn.
+          (* TODO will need stronger prove_ext_guarantee, derive same_domain from sep *)
+          admit.
+        + cbn.  (* log equality?? *)
+          admit.
+    }
+
+  Abort.
+  Goal True. idtac "FlatToRiscv: compile_stmt_correct_new done". Abort.
 
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
@@ -919,7 +1961,7 @@ Section FlatToRiscv1.
         * (* use IH for then-branch *)
           eapply IHexec; IH_sidecondition.
         * (* jump over else-branch *)
-          simpl. intros. simp. destruct_RiscvMachine middle. subst.
+          simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
 
     - (* SIf/Else *)
@@ -933,7 +1975,7 @@ Section FlatToRiscv1.
           eapply IHexec; IH_sidecondition.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
-          simpl. intros. simp. destruct_RiscvMachine middle. subst. run1done.
+          simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - (* SLoop/again *)
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
@@ -942,7 +1984,7 @@ Section FlatToRiscv1.
       eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + (* 1st application of IH: part 1 of loop body *)
         eapply IH1; IH_sidecondition.
-      + simpl in *. simpl. intros. simp. destruct_RiscvMachine middle. subst.
+      + simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
         destruct (@eval_bcond (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
@@ -957,14 +1999,14 @@ Section FlatToRiscv1.
           { eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
               eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
-            - simpl in *. simpl. intros. simp. destruct_RiscvMachine middle. subst.
+            - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
               (* jump back to beginning of loop: *)
               run1det.
               eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
               + (* 3rd application of IH: run the whole loop again *)
                 eapply IH12; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
               + (* at end of loop, just prove that computed post satisfies required post *)
-                simpl. intros. simp. destruct_RiscvMachine middle. subst.
+                simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
         * (* false: done, jump over body2 *)
           eapply runsTo_det_step; simpl in *; subst.
@@ -977,218 +2019,24 @@ Section FlatToRiscv1.
       rename IHexec into IH1, H2 into IH2.
       eapply runsTo_trans.
       + eapply IH1; IH_sidecondition.
-      + simpl. intros. simp. destruct_RiscvMachine middle. subst.
+      + simpl. intros. destruct_RiscvMachine middle. simp. subst.
         eapply runsTo_trans.
         * eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
-        * simpl. intros. simp. destruct_RiscvMachine middle. subst. run1done.
+        * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - (* SSkip *)
       run1done.
   Qed.
+  Goal True. idtac "FlatToRiscv: compile_stmt_correct done". Abort.
 
-  Context {fun_pos_env : map.map Syntax.funname Z}.
-
-  Arguments compile_store: simpl never.
-  Arguments compile_load: simpl never.
-
-  Ltac simpl_program_sep H :=
-    unfold program in H;
-    repeat match type of H with
-           | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
-             seprewrite0_in (array_cons PT SZ x xs start) H
-        (*
-           | H: _ ?m |- _ ?m => progress (simpl in * (* does array_cons *))
-           | H: context [array _ _ ?addr1 ?content] |- context [array _ _ ?addr2 ?content] =>
-             progress replace addr1 with addr2 in H by ring;
-               ring_simplify addr2;
-               ring_simplify addr2 in H
-           (* just unprotected seprewrite will instantiate evars in undesired ways *)
-           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             seprewrite0 (array_append_DEPRECATED PT SZ xs ys start)
-*)
-           | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             seprewrite0_in (array_append_DEPRECATED PT SZ xs ys start) H
-           end.
-
-  Require Import Coq.Classes.Morphisms.
-
-  Definition holds(P: mem -> Prop)(m: mem): Prop := P m.
-  Instance holds_Proper: Proper (iff1 ==> eq ==> iff) holds.
+  (* TODO move *)
+  Lemma length_list_union: forall {T: Type} {teq: DecidableEq T} (l1 l2: list T),
+      (length (ListLib.list_union l1 l2) <= length l1 + length l2)%nat.
   Proof.
-    unfold Proper, iff1, iff, holds, respectful.
-    generalize (@map.rep _ _ (@mem p)).
-    clear.
-    firstorder congruence.
+    induction l1; intros; simpl; [blia|].
+    destruct_one_match.
+    - specialize (IHl1 l2). blia.
+    - specialize (IHl1 (a :: l2)). simpl in *. blia.
   Qed.
-
-  Axiom TODO: False.
-
-  Definition ll_regs: PropSet.set Register :=
-    PropSet.union (PropSet.singleton_set RegisterNames.sp)
-                  (PropSet.singleton_set RegisterNames.ra).
-
-  Definition word_array: word -> list word -> mem -> Prop :=
-    array (fun addr w => ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
-                                     (LittleEndian.split _ (word.unsigned w)))
-          (word.of_Z (Z.of_nat (@Memory.bytes_per width Syntax.access_size.word))).
-
-  (* What compile_function currently does:
-
-     high addresses!  p_sp   --> arg0
-                                 ...
-                                 argn
-                                 ret0
-                                 ...
-                                 retn
-                                 ra
-                                 mod_var_0
-                                 ...
-                                 mod_var_n
-                      next   --> arg0 of next function call
-     low addresses               ...
-  *)
-
-  (* What stackframe does:
-
-     high addresses!             ...
-                      p_sp   --> mod_var_0 of previous function call arg0
-                                 argn
-                                 ...
-                                 arg0
-                                 retn
-                                 ...
-                                 ret0
-                                 ra
-                                 mod_var_n
-                                 ...
-                      new_sp --> mod_var_0
-     low addresses               ...
-  *)
-  Definition stackframe(p_sp: word)(argvals retvals: list word)
-             (ra_val: word)(modvarvals: list word): mem -> Prop :=
-    word_array
-      (word.add p_sp
-                (word.of_Z
-                   (- (bytes_per_word *
-                       Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
-      (modvarvals ++ [ra_val] ++ retvals ++ argvals).
-
-  Lemma compile_function_correct:
-    forall body useargs useresults defargs defresults t initialMH initialMcH
-           (initialRegsH: locals) postH argvals sublocals outcome,
-      (* FlatImp function execution works: *)
-      List.option_all (List.map (map.get initialRegsH) useargs) = Some argvals ->
-      map.putmany_of_list defargs argvals map.empty = Some sublocals ->
-      exec map.empty body t initialMH sublocals initialMcH outcome ->
-      (forall (t' : trace) (m' : mem) (st : locals) (mc' : MetricLog),
-          outcome t' m' st mc' ->
-          exists (retvals : list word) (l' : locals),
-            List.option_all (List.map (map.get st) defresults) = Some retvals /\
-            map.putmany_of_list useresults retvals initialRegsH = Some l' /\
-            postH t' m' l') ->
-    forall R (initialL : RiscvMachineL) insts e pos p_ra p_sp old_retvals old_ra old_modvarvals,
-    length argvals = length defargs ->
-    length old_retvals = length defresults ->
-    length old_modvarvals = length (modVars_as_list body)  ->
-    @compile_function def_params fun_pos_env e pos (defargs, defresults, body) = insts ->
-    stmt_not_too_big body ->
-    valid_registers body ->
-    divisibleBy4 initialL.(getPc) ->
-    map.undef_on initialRegsH ll_regs ->
-    map.only_differ initialL.(getRegs) ll_regs initialRegsH ->
-    map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
-    map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
-    (program initialL.(getPc) insts *
-     stackframe p_sp argvals old_retvals old_ra old_modvarvals *
-     eq initialMH * R)%sep initialL.(getMem) ->
-    initialL.(getLog) = t ->
-    initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
-    ext_guarantee initialL ->
-    runsTo initialL (fun finalL => exists finalMH,
-          postH finalL.(getLog) finalMH (map.remove (map.remove finalL.(getRegs)
-                                               RegisterNames.sp) RegisterNames.ra) /\
-          (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
-          finalL.(getPc) = add initialL.(getPc) (mul (word.of_Z 4) (word.of_Z (Zlength insts))) /\
-          finalL.(getNextPc) = add finalL.(getPc) (word.of_Z 4) /\
-          ext_guarantee finalL).
-  Proof.
-    intros.
-    repeat match goal with
-           | m: _ |- _ => destruct_RiscvMachine m
-           end.
-    simpl in *.
-    assert (valid_instructions EmitsValid.iset insts) by case TODO.
-    assert (valid_register RegisterNames.sp). {
-      cbv. auto.
-    }
-    assert (valid_register RegisterNames.ra). {
-      cbv. auto.
-    }
-    subst.
-
-    match goal with
-    | H: ?P ?m |- _ => change (holds P m) in H; rename H into Q
-    end.
-    unfold program, stackframe, word_array in Q.
-    Set Printing Depth 100000.
-    simpl in Q.
-    repeat match type of Q with
-    | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-      let Hrw := constr:(array_append_DEPRECATED PT SZ xs ys start) in
-      rewrite Hrw in Q
-    end.
-    unfold holds in Q.
-    simpl in Q.
-    match type of Q with
-    | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-      pose proof (array_append_DEPRECATED PT SZ xs ys start) as Hrw
-      (* remember (array PT SZ start (xs ++ ys)) as X *)
-    end.
-    (* "rewrite Hrw in Q" runs forever *)
-    seprewrite0_in Hrw Q.
-
-    (* decrease sp *)
-    run1det.
-
-    (* save ra on stack *)
-    eapply runsToStep. {
-      eapply run_compile_store; try solve [sidecondition | simpl; solve_divisibleBy4].
-      {
-        simpl.
-        rewrite map.get_put_diff by (clear; cbv; congruence).
-        eassumption.
-      }
-      simpl.
-      replace
-        (word.add
-           (word.add p_sp
-                     (word.of_Z
-                        (-
-                         (bytes_per_word *
-                          Z.of_nat (length defargs + length defresults + 1 +
-                                    length (modVars_as_list body))))))
-           (word.of_Z (bytes_per_word * (1 + Z.of_nat (length (modVars_as_list body))))))
-        with
-          (word.add
-             (word.add p_sp
-                       (word.of_Z
-                          (- (bytes_per_word *
-                              Z.of_nat (length argvals + length old_retvals + 1 +
-                                       length old_modvarvals)))))
-             (word.mul (word.of_Z (Z.of_nat (Z.to_nat ((width + 7) / 8))))
-                       (word.of_Z (Zlength old_modvarvals))));
-        [ ecancel_assumption | ].
-      simpl.
-      rewrite Zlength_correct.
-      repeat match goal with
-             | H: ?T |- _ => lazymatch T with
-                             | length _ = length _ => progress rewrite H
-                             | _ => clear H
-                             end
-             end.
-      f_equal.
-      (* TODO off-by one because compile_function needs to be update to match stackframe *)
-
-  Abort.
 
 End FlatToRiscv1.

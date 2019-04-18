@@ -59,6 +59,9 @@ Module Import FlattenExpr.
   Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
     Semantics.parameters_ok (mk_Semantics_params p) :=
   {
+    Semantics.word_ok := Utility.word_ok;
+    Semantics.byte_ok := Utility.byte_ok;
+    Semantics.mem_ok := mem_ok;
     Semantics.width_cases := Utility.width_cases;
     Semantics.ext_spec_ok := ext_spec_ok;
   }.
@@ -196,7 +199,7 @@ Section FlattenExpr1.
       repeat match goal with
              | IH: _, H: _ |- _ => specialize IH with (1 := H)
              end;
-      try omega.
+      try bomega.
   Qed.
 
   Lemma flattenExprAsBoolExpr_size: forall e s bcond ngs ngs',
@@ -204,20 +207,20 @@ Section FlattenExpr1.
       0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
   Proof.
     induction e; intros; simpl in *; repeat destruct_one_match_hyp;
-      inversionss; simpl;
+      simp; subst; simpl;
       repeat match goal with
       | H : _ |- _ => apply flattenExpr_size in H
-      end; try omega.
+      end; try bomega.
   Qed.
 
   Lemma flattenExprs_size: forall es s resVars ngs ngs',
     flattenExprs ngs es = (s, resVars, ngs') ->
     0 <= FlatImp.stmt_size s <= ExprImp.exprs_size es.
   Proof.
-    induction es; intros; simpl in *; simp; simpl; try omega.
+    induction es; intros; simpl in *; simp; simpl; try bomega.
     specialize IHes with (1 := E0).
     apply flattenExpr_size in E.
-    omega.
+    bomega.
   Qed.
 
   Lemma flattenCall_size: forall f args binds ngs ngs' s,
@@ -229,7 +232,7 @@ Section FlattenExpr1.
     destruct_one_match_hyp.
     simp. simpl.
     apply flattenExprs_size in E.
-    omega.
+    bomega.
   Qed.
 
   Lemma flattenInteract_size: forall f args binds ngs ngs' s,
@@ -241,14 +244,14 @@ Section FlattenExpr1.
     destruct_one_match_hyp.
     simp. simpl.
     apply flattenExprs_size in E.
-    omega.
+    bomega.
   Qed.
 
   Lemma flattenStmt_size: forall s s' ngs ngs',
     flattenStmt ngs s = (s', ngs') ->
     0 <= FlatImp.stmt_size s' <= ExprImp.cmd_size s.
   Proof.
-    induction s; intros; simpl in *; repeat destruct_one_match_hyp; inversionss; simpl;
+    induction s; intros; simpl in *; repeat destruct_one_match_hyp; simp; subst; simpl;
     repeat match goal with
     | IH: _, A: _ |- _ => specialize IH with (1 := A)
     end;
@@ -259,14 +262,15 @@ Section FlattenExpr1.
     | H: flattenInteract _ _ _ _ = _ |- _ => apply flattenInteract_size in H
     end;
     simpl in *;
-    try omega.
+    try bomega.
   Qed.
 
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' oResVar s v,
     flattenExpr ngs oResVar e = (s, v, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).
   Proof.
-    induction e; intros; destruct oResVar; repeat (inversionss; try destruct_one_match_hyp);
+    induction e; intros; destruct oResVar;
+      repeat (simpl in *; simp; subst; try destruct_one_match_hyp);
     repeat match goal with
     | H: _ |- _ => apply genFresh_spec in H
     end;
@@ -472,6 +476,8 @@ Section FlattenExpr1.
     - simpl. intros. simp. eauto.
   Qed.
 
+  Goal True. idtac "FlattenExpr: Entering slow lemmas section". Abort.
+
   Lemma flattenExpr_correct_aux : forall e oResVar ngs1 ngs2 resVar s initialH initialL initialM initialMcH initialMcL finalMcH res t,
     flattenExpr ngs1 oResVar e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
@@ -512,6 +518,7 @@ Section FlattenExpr1.
           eapply @FlatImp.exec.op; t_safe; t_safe. 2 : solve_MetricLog.
           eapply flattenExpr_valid_resVar in E1; maps.
   Qed.
+  Goal True. idtac "FlattenExpr: flattenExpr_correct_aux done". Abort.
 
   Lemma flattenExpr_correct_with_modVars : forall e oResVar ngs1 ngs2 resVar s t m lH lL initialMcH initialMcL finalMcH res,
     flattenExpr ngs1 oResVar e = (s, resVar, ngs2) ->
@@ -544,7 +551,7 @@ Section FlattenExpr1.
     (* List.option_all (List.map (@eval_expr (mk_Semantics_params p) m lH) es) = Some resVals -> *)
     FlatImp.exec map.empty s t m lL initialMcL (fun t' m' lL' finalMcL =>
       t' = t /\ m' = m /\
-      List.option_all (List.map (map.get lL') resVars) = Some resVals /\
+      map.getmany_of_list lL' resVars = Some resVals /\
       map.only_differ lL (FlatImp.modVars s) lL' /\
       boundMetricLog UnitMetricLog
                      (metricLogDifference initialMcL finalMcL)
@@ -567,15 +574,14 @@ Section FlattenExpr1.
         set_solver.
       }
       eapply @FlatImp.exec.weaken.
-      + eapply IHes; try eassumption.
-        * maps.
-        * maps.
-      + intros. simpl in *. simp.
+      + eapply IHes; try eassumption; maps.
+      + intros. simpl in *. simp. cbn. unfold map.getmany_of_list in *.
         replace (map.get l'0 v) with (Some r).
         * rewrite_match. repeat (split || auto); try solve_MetricLog. maps.
         * unfold ExprImp.allVars_exprs in D.
           eapply flattenExpr_valid_resVar in E1; maps.
   Qed.
+  Goal True. idtac "FlattenExpr: flattenExprs_correct done". Abort.
 
   Lemma unsigned_ne: forall (a b: word), word.unsigned a <> word.unsigned b -> a <> b.
   Proof.
@@ -589,21 +595,21 @@ Section FlattenExpr1.
   Lemma one_ne_zero: word.of_Z 1 <> word.of_Z 0.
   Proof.
     apply unsigned_ne.
-    rewrite! word.unsigned_of_Z.
+    rewrite! word.unsigned_of_Z. unfold word.wrap.
     rewrite! Z.mod_small;
-      [omega|
+      [bomega|
        pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 Utility.width) as Q ..].
     {
       (* PARAMRECORDS *)
-      Fail omega.
-      simpl.
-      omega.
+      Fail bomega.
+      simpl in *.
+      bomega.
     }
     {
       (* PARAMRECORDS *)
-      Fail omega.
-      simpl.
-      omega.
+      Fail bomega.
+      simpl in *.
+      bomega.
     }
   Qed.
 
@@ -659,6 +665,7 @@ Section FlattenExpr1.
       [ f_equal; f_equal; maps
       | exfalso; maps ].
   Qed.
+  Goal True. idtac "FlattenExpr: flattenBooleanExpr_correct_aux done". Abort.
 
   Lemma flattenBooleanExpr_correct_with_modVars:
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
@@ -869,6 +876,7 @@ Section FlattenExpr1.
         split; [simple eapply map.only_differ_putmany; eassumption|].
         solve_MetricLog.
   Qed.
+  Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).

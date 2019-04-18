@@ -1,7 +1,6 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.Arith.PeanoNat.
-Require Import lib.LibTacticsMin.
 
 (* Note: you can't ask an array for its length *)
 Class IsArray(T E: Type) := mkIsArray {

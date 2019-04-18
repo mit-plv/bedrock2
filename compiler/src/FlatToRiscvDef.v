@@ -8,7 +8,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Utility.InstructionCoercions.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.ListLib.
@@ -193,19 +193,21 @@ Section FlatToRiscv1.
         Beq x Register0 amt
     end.
 
+  Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width access_size.word).
+
   Fixpoint save_regs(regs: list Register)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
-    | r :: regs => compile_store access_size.word sp r offset :: (save_regs regs (offset - 4))
+    | r :: regs => compile_store access_size.word sp r offset
+                   :: (save_regs regs (offset + bytes_per_word))
     end.
 
   Fixpoint load_regs(regs: list Register)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
-    | r :: regs => compile_load access_size.word sp r offset :: (load_regs regs (offset - 4))
+    | r :: regs => compile_load access_size.word r sp offset
+                   :: (load_regs regs (offset + bytes_per_word))
     end.
-
-  Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width access_size.word).
 
   (* All positions are relative to the beginning of the progam, so we get completely
      position independent code. *)
@@ -227,18 +229,18 @@ Section FlatToRiscv1.
           let bThen' := compile_stmt (mypos + 4) bThen in
           let bElse' := compile_stmt (mypos + 4 + 4 * Z.of_nat (length bThen') + 4) bElse in
           (* only works if branch lengths are < 2^12 *)
-          [[compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)]] ++
+          [[compile_bcond_by_inverting cond ((Z.of_nat (length bThen') + 2) * 4)]] ++
           bThen' ++
-          [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
+          [[Jal Register0 ((Z.of_nat (length bElse') + 1) * 4)]] ++
           bElse'
       | SLoop body1 cond body2 =>
           let body1' := compile_stmt mypos body1 in
           let body2' := compile_stmt (mypos + Z.of_nat (length body1') + 4) body2 in
           (* only works if branch lengths are < 2^12 *)
           body1' ++
-          [[compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)]] ++
+          [[compile_bcond_by_inverting cond ((Z.of_nat (length body2') + 2) * 4)]] ++
           body2' ++
-          [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
+          [[Jal Register0 (- Z.of_nat (length body1' + 1 + length body2') * 4)]]
       | SSeq s1 s2 =>
           let s1' := compile_stmt mypos s1 in
           let s2' := compile_stmt (mypos + 4 * Z.of_nat (length s1')) s2 in
@@ -250,46 +252,48 @@ Section FlatToRiscv1.
                     (* don't fail so that we can measure the size of the resulting code *)
                     | None => 42
                     end in
-        save_regs argvars 0 ++
-        [[ Jal ra (fpos - mypos) ]] ++
-        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars))
+        save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
+        [[ Jal ra (fpos - (mypos + 4 * Z.of_nat (length argvars))) ]] ++
+        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
       | SInteract resvars action argvars => compile_ext_call resvars action argvars
       end.
 
     (*
      Stack layout:
-     high addresses   old sp --> arg0
-                                 ...
+
+     high addresses              ...
+                      old sp --> mod_var_0 of previous function call arg0
                                  argn
-                                 ret0
                                  ...
+                                 arg0
                                  retn
-                                 ra
-                                 mod_var_0
                                  ...
+                                 ret0
+                                 ra
                                  mod_var_n
-                      new sp --> arg0 of next function call
+                                 ...
+                      new sp --> mod_var_0
      low addresses               ...
 
-     Expected stack layout at beginning of function call: like above, but only filled up to argn.
+     Expected stack layout at beginning of function call: like above, but only filled up to arg0.
      Stack grows towards low addresses.
     *)
-
     Definition compile_function(mypos: Z):
       (list varname * list varname * stmt) -> list Instruction :=
       fun '(argvars, resvars, body) =>
         let mod_vars := modVars_as_list body in
         let framelength := Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
         let framesize := bytes_per_word * framelength in
-        let ra_offset := bytes_per_word * (1 + Z.of_nat (length mod_vars)) in
         [[ Addi sp sp (-framesize) ]] ++
-        [[ compile_store access_size.word sp ra ra_offset ]] ++
-        save_regs mod_vars (bytes_per_word * (Z.of_nat (length mod_vars))) ++
-        load_regs argvars framesize ++
-        compile_stmt_new mypos body ++
-        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
-        load_regs mod_vars (bytes_per_word * (Z.of_nat (length mod_vars))) ++
-        [[ compile_load access_size.word ra sp ra_offset ]] ++
+        [[ compile_store access_size.word sp ra
+                         (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
+        save_regs mod_vars 0 ++
+        load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
+        compile_stmt_new (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) body ++
+        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
+        load_regs mod_vars 0 ++
+        [[ compile_load access_size.word ra sp
+                        (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 

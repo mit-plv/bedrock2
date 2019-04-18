@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Macros.unique.
 Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
@@ -68,7 +68,7 @@ Qed.
 
 Lemma compile_ext_call_length': forall binds f args,
     Zlength (compile_ext_call binds f args) <= 7.
-Proof. intros. rewrite compile_ext_call_length. lia. Qed.
+Proof. intros. rewrite compile_ext_call_length. blia. Qed.
 
 Lemma compile_ext_call_emits_valid: forall iset binds a args,
     Forall valid_register binds ->
@@ -86,7 +86,7 @@ Proof.
     split; [|cbv;auto].
     unfold Encode.respects_bounds. simpl.
     unfold Encode.verify_S, valid_register, opcode_STORE, funct3_SW in *.
-    repeat split; (lia || assumption).
+    repeat split; (blia || assumption).
   - rewrite <- H1.
     simp_step.
     simp_step.
@@ -96,7 +96,7 @@ Proof.
     split; [|cbv;auto].
     unfold Encode.respects_bounds. simpl.
     unfold Encode.verify_I, valid_register, opcode_LOAD, funct3_LW in *.
-    repeat split; (lia || assumption).
+    repeat split; (blia || assumption).
 Qed.
 
 Instance mmio_syntax_params: Syntax.parameters := {|
@@ -233,7 +233,7 @@ Section MMIO1.
              | H: (_ <=? _) = true |- _ => apply Z.leb_le in H
              | H: (_ <=? _) = false |- _ => apply Z.leb_gt in H
              end;
-      try solve [ hex_csts_to_dec; lia ].
+      try solve [ hex_csts_to_dec; blia ].
   Qed.
 
   Instance mmio_semantics_params: Semantics.parameters := {|
@@ -304,13 +304,15 @@ Section MMIO1.
       intros. destruct H0 as [A B].
       specialize H with (1 := H2).
       rewrite map.get_empty in *.
-      destruct (map.get (getMem m2) k) eqn: E; [exfalso|reflexivity].
-      edestruct B; [eassumption|]. congruence.
+      match goal with
+      | |- ?X = None => destruct X eqn: E; [exfalso|reflexivity]
+      end.
+      edestruct B; [eassumption|]. rewrite H in H0. discriminate.
     - (* compile_ext_call_correct *)
       intros *. intros ? ? V_argvars V_resvars. intros.
       pose proof (compile_ext_call_emits_valid EmitsValid.iset _ action _ V_resvars V_argvars).
       destruct initialL as [ [initialRegs initialPc initialNpc initialMem initialLog] initialMetrics].
-      destruct action; cbv [getRegs getPc getNextPc getMem getLog getMachine getMetrics] in *.
+      destruct action; cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics] in *.
       + (* MMOutput *)
         simpl in *|-.
         simp.
@@ -323,14 +325,14 @@ Section MMIO1.
                end.
         simp.
         destruct argvars. {
-          exfalso. rename H10 into A. clear -A. simpl in *.
+          exfalso. rename H10 into A. clear -A. cbn in *.
           destruct_one_match_hyp; congruence.
         }
         destruct argvars; cycle 1. {
-          exfalso. rename H10 into A. clear -A. simpl in *. simp.
+          exfalso. rename H10 into A. clear -A. cbn in *. simp.
           destruct_one_match_hyp; congruence.
         }
-        simpl in *|-.
+        cbn in *|-.
         simp.
         subst insts.
         eapply runsToNonDet.runsToStep; cycle 1.
@@ -343,26 +345,26 @@ Section MMIO1.
           simulate_step.
           simulate_step.
           simulate_step.
+          unfold Utility.add, Utility.ZToReg, Utility.regToInt32, MachineWidth_XLEN.
           simpl_word_exprs word_ok.
           apply spec_Bind.
-          unfold Utility.regToInt32, MachineWidth_XLEN.
-          refine (ex_intro _ (fun v m => m = _) _).
+          refine (ex_intro _ (fun v m => m = {| getMachine := {| getLog := _ |} |}) _).
           split.
-          { apply spec_storeWord. simpl. right. split; [|reflexivity]. repeat split.
-            apply storeWord_in_MMIO_is_None; assumption. }
-          { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
-            simpl. exists (addMetricInstructions 1 (addMetricStores 1 (addMetricLoads 2 initialMetricsH))).
-            repeat split; try (assumption || solve_MetricLog).
+          { apply spec_storeWord. simpl. right. simpl. split; [|reflexivity].
+            apply storeWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
+          { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone. simpl.
             specialize H17 with (1 := H8).
-            simp.
-            apply map.split_empty_r in H2. subst.
-            apply map.split_empty_r in H9. subst.
-            unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
-            rewrite LittleEndian.combine_split.
-            rewrite sextend_width_nop by reflexivity.
-            rewrite Z.mod_small by apply word.unsigned_range.
-            rewrite word.of_Z_unsigned.
-            eassumption. }
+            eexists. simp.
+            repeat split; try eassumption.
+            { apply map.split_empty_r in H2. subst.
+              apply map.split_empty_r in H9. subst.
+              unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
+              rewrite LittleEndian.combine_split.
+              rewrite sextend_width_nop by reflexivity.
+              rewrite Z.mod_small by apply word.unsigned_range.
+              rewrite word.of_Z_unsigned.
+              eassumption. }
+            all: solve [solve_MetricLog]. }
 
       + (* MMInput *)
         simpl in *|-.
@@ -376,10 +378,10 @@ Section MMIO1.
                end.
         simp.
         destruct argvars; cycle 1. {
-          exfalso. rename H10 into A. clear -A. simpl in *. simp.
+          exfalso. rename H10 into A. clear -A. cbn in *. simp.
           destruct_one_match_hyp; congruence.
         }
-        simpl in *|-.
+        cbn in *|-.
         simp.
         subst insts.
         eapply runsToNonDet.runsToStep; cycle 1.
@@ -393,22 +395,25 @@ Section MMIO1.
           simulate_step.
           simpl_word_exprs word_ok.
           apply spec_Bind.
-          refine (ex_intro _ (fun v m => m = _) _).
+          refine (ex_intro _ (fun v m => m = {| getMachine := {| getLog := _ |} |}) _).
           split.
           { apply spec_loadWord. simpl. right. repeat split; try assumption.
-            apply loadWord_in_MMIO_is_None; assumption. }
+            apply loadWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
-            simpl. exists (addMetricInstructions 1 (addMetricStores 1 (addMetricLoads 2 initialMetricsH))).
-            repeat split; try (assumption || solve_MetricLog).
-            match goal with
-            | |- context [map.put _ _ ?resval] => specialize (H7 resval)
-            end.
-            specialize H17 with (1 := H7).
-            simp.
-            apply map.split_empty_r in H2. subst.
-            apply map.split_empty_r in H9. subst.
-            unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
-            assumption. }
+            simpl. eexists.
+            repeat split; try assumption.
+            { match goal with
+              | |- context [map.put _ _ ?resval] => specialize (H7 resval)
+              end.
+              specialize H17 with (1 := H7).
+              simp.
+              apply map.split_empty_r in H2. subst.
+              apply map.split_empty_r in H9. subst.
+              unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
+              replace (word.add r (word.of_Z 0)) with r; [eassumption|].
+              simpl_word_exprs word_ok.
+              reflexivity. }
+            all: solve [solve_MetricLog]. }
   Qed.
 
 End MMIO1.

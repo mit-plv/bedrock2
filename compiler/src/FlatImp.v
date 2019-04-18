@@ -1,18 +1,16 @@
 Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import lib.LibTacticsMin.
 Require Import riscv.Utility.ListLib.
 Require Import riscv.Platform.MetricLogging.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require compiler.NoActionSyntaxParams.
 Require Import compiler.util.Common.
-Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import bedrock2.Syntax.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
 Require Import compiler.util.ListLib.
@@ -78,7 +76,7 @@ Section FlatImpSize1.
 
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.
-    induction s; simpl; try omega.
+    induction s; simpl; try blia.
   Qed.
 
   Fixpoint modVars_as_list{veq: DecidableEq varname}(s: stmt): list varname :=
@@ -174,10 +172,10 @@ Section FlatImp1.
         | SSkip => Some (st, m)
         | SCall binds fname args =>
           'Some (params, rets, fbody) <- map.get e fname;
-          'Some argvs <- List.option_all (List.map (map.get st) args);
+          'Some argvs <- map.getmany_of_list st args;
           'Some st0 <- map.putmany_of_list params argvs map.empty;
           'Some (st1, m') <- eval_stmt f st0 m fbody;
-          'Some retvs <- List.option_all (List.map (map.get st1) rets);
+          'Some retvs <- map.getmany_of_list st1 rets;
           'Some st' <- map.putmany_of_list binds retvs st;
           Some (st', m')
         | SInteract binds fname args =>
@@ -193,8 +191,9 @@ Section FlatImp1.
              | E: negb _ = true       |- _ => apply negb_true_iff in E
              | E: negb _ = false      |- _ => apply negb_false_iff in E
              end;
-      inversionss;
-      eauto 16.
+      simp;
+      subst;
+      eauto 10.
 
     Lemma invert_eval_SLoad: forall fuel initialSt initialM sz x y final,
       eval_stmt (S fuel) initialSt initialM (SLoad sz x y) = Some final ->
@@ -262,18 +261,18 @@ Section FlatImp1.
       eval_stmt (S f) st m1 (SCall binds fname args) = Some p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
         map.get e fname = Some (params, rets, fbody) /\
-        List.option_all (List.map (map.get st) args) = Some argvs /\
+        map.getmany_of_list st args = Some argvs /\
         map.putmany_of_list params argvs map.empty = Some st0 /\
         eval_stmt f st0 m1 fbody = Some (st1, m') /\
-        List.option_all (List.map (map.get st1) rets) = Some retvs /\
+        map.getmany_of_list st1 rets = Some retvs /\
         map.putmany_of_list binds retvs st = Some st' /\
         p2 = (st', m').
-    Proof. inversion_lemma. Qed.
+    Proof. inversion_lemma. eauto 16. Qed.
 
     Lemma invert_eval_SInteract : forall st m1 p2 f binds fname args,
       eval_stmt (S f) st m1 (SInteract binds fname args) = Some p2 ->
       False.
-    Proof. inversion_lemma. Qed.
+    Proof. inversion_lemma. discriminate. Qed.
 
   End WithEnv.
 
@@ -325,7 +324,7 @@ Module exec.
     -> Prop :=
     | interact: forall t m mKeep mGive l mc action argvars argvals resvars outcome post,
         map.split m mKeep mGive ->
-        List.option_all (List.map (map.get l) argvars) = Some argvals ->
+        map.getmany_of_list l argvars = Some argvals ->
         ext_spec t mGive action argvals outcome ->
         (forall mReceive resvals,
             outcome mReceive resvals ->
@@ -338,13 +337,13 @@ Module exec.
         exec (SInteract resvars action argvars) t m l mc post
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
-        List.option_all (List.map (map.get l) args) = Some argvs ->
+        map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list params argvs map.empty = Some st0 ->
         exec fbody t m st0 mc outcome ->
         (forall t' m' mc' st1,
             outcome t' m' st1 mc' ->
             exists retvs l',
-              List.option_all (List.map (map.get st1) rets) = Some retvs /\
+              map.getmany_of_list st1 rets = Some retvs /\
               map.putmany_of_list binds retvs l = Some l' /\
               post t' m' l' mc') ->
         exec (SCall binds fname args) t m l mc post
@@ -526,10 +525,10 @@ Module exec.
         rename H3 into Ex1.
         rename H17 into Ex2.
         move Ex1 before Ex2.
-        intros. simpl in *. destruct_conjs.
-        specialize Ex1 with (1 := H3).
-        specialize Ex2 with (1 := H4).
-        destruct_conjs.
+        intros. simpl in *. simp.
+        edestruct Ex1; [eassumption|].
+        edestruct Ex2; [eassumption|].
+        simp.
         equalities.
         eauto 10.
 
@@ -597,10 +596,10 @@ Section FlatImp2.
     eval_stmt e fuel1 initialSt initialM s = Some final ->
     eval_stmt e fuel2 initialSt initialM s = Some final.
   Proof.
-    induction fuel1; introv L Ev.
-    - inversions Ev.
-    - destruct fuel2; [omega|].
-      assert (fuel1 <= fuel2)%nat as F by omega. specialize IHfuel1 with (1 := F).
+    induction fuel1; intros *; intros L Ev.
+    - inversion Ev.
+    - destruct fuel2; [blia|].
+      assert (fuel1 <= fuel2)%nat as F by blia. specialize IHfuel1 with (1 := F).
       destruct final as [finalSt finalM].
       invert_eval_stmt; cbn in *;
       repeat match goal with
@@ -627,9 +626,9 @@ Section FlatImp2.
     eval_stmt e fuel initialSt initialM s = Some (finalSt, finalM) ->
     map.only_differ initialSt (modVars s) finalSt.
   Proof.
-    induction fuel; introv Ev.
+    induction fuel; intros *; intro Ev.
     - discriminate.
-    - invert_eval_stmt; simpl in *; inversionss;
+    - invert_eval_stmt; simpl in *; simp; subst;
       repeat match goal with
       | IH: _, H: _ |- _ =>
           let IH' := fresh IH in pose proof IH as IH';

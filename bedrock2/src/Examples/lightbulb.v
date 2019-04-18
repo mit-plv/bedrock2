@@ -1,3 +1,4 @@
+Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
@@ -58,8 +59,12 @@ Ltac seplog_use_array_load1 H i :=
   let iNat := eval cbv in (Z.to_nat i) in
   let H0 := fresh in pose proof H as H0;
   unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H0;
-    [exact iNat|exact (word.of_Z 0)|Lia.lia|];
+    [exact iNat|exact (word.of_Z 0)|blia|];
   change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
+
+(* TODO why does typeclass search fail here? *)
+Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 32 eq_refl) _.
+Local Instance wordok: word.ok word := coqutil.Word.Naive.ok _ _.
 
 (* bsearch.v has examples to deal with arrays *)
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.

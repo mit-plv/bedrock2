@@ -1,6 +1,7 @@
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import bedrock2.BasicCSyntax bedrock2.NotationsInConstr.
 Import Syntax BinInt String List.ListNotations.
+Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : Syntax.expr := Syntax.expr.literal z.
@@ -43,9 +44,9 @@ Module Z.
       rewrite Z.mul_mod_idemp_l, Z.mul_mod_idemp_r; solve[trivial]. }
     { rewrite 2Z.pow_neg_r; trivial. }
   Qed.
-  
+
   Lemma mod2_nonzero x : x mod 2 <> 0 -> x mod 2 = 1.
-  Proof. Z.div_mod_to_equations. Lia.lia. Qed.
+  Proof. Z.div_mod_to_equations. blia. Qed.
 
   Lemma land_1_r x : Z.land x 1 = x mod 2.
   Proof.
@@ -55,7 +56,7 @@ Module Z.
   Qed.
 End Z.
 
-Require Import bedrock2.TODO_absint Coq.micromega.Lia.
+Require Import bedrock2.TODO_absint coqutil.Z.Lia.
 
 Ltac t :=
   repeat match goal with x := _ |- _ => subst x end;
@@ -65,6 +66,11 @@ Ltac t :=
   repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := unsigned.zify_expr e in try rewrite H in G) end;
   repeat match goal with H: unsigned.absint_eq ?x ?x |- _ => clear H end;
   cbv [unsigned.absint_eq] in *.
+
+
+Local Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
+Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
+Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
 
 Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
@@ -98,8 +104,8 @@ Proof.
       {
         repeat (straightline || (split; trivial; [])). all:t.
         { (* measure decreases *)
-          set (word.unsigned x0) in *. (* WHY does lia need this? *)
-          Z.div_mod_to_equations; Lia.lia. }
+          set (word.unsigned x0) in *. (* WHY does blia need this? *)
+          Z.div_mod_to_equations; blia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
           erewrite Z.land_1_r in *; change (2^1) with 2 in *.
@@ -107,16 +113,23 @@ Proof.
           epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
           rewrite Heq at 2; clear Hbit Heq.
           (* rewriting with equivalence modulo ... *)
-          rewrite !word.unsigned_mul, ?Z.mul_mod_idemp_l by discriminate.
+          rewrite !word.unsigned_mul.
+          unfold word.wrap.
+          rewrite ?Z.mul_mod_idemp_l by discriminate.
           rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
-          rewrite ?Z.pow_add_r by (pose proof word.unsigned_range x0; Z.div_mod_to_equations; Lia.lia).
+          rewrite ?Z.pow_add_r by (pose proof word.unsigned_range x0; Z.div_mod_to_equations; blia).
           rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } }
-      { repeat (straightline || (split; trivial; [])). all: t.
+      { (straightline || (split; trivial; [])).
+        (straightline || (split; trivial; [])).
+        (* straightline
+        Error: Anomaly "Universe Top.1137 undefined." Please report at http://coq.inria.fr/bugs/. *)
+        admit. } } (*
+        repeat (straightline || (split; trivial; [])). all: t.
         { (* measure decreases *)
-          set (word.unsigned x0) in *. (* WHY does lia need this? *)
-          Z.div_mod_to_equations; Lia.lia. }
+          set (word.unsigned x0) in *. (* WHY does blia need this? *)
+          Z.div_mod_to_equations; blia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
           rewrite Z.land_1_r in *; change (2^1) with 2 in *.
@@ -128,11 +141,15 @@ Proof.
           rewrite ?Z.add_0_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } } }
+          *)
     { (* postcondition *) rewrite H, Z.pow_0_r, Z.mul_1_r, word.wrap_unsigned; auto. } }
 
+  (* Error: Anomaly "Universe Top.873 undefined." Please report at http://coq.inria.fr/bugs/.
   repeat straightline.
 
   (* function postcontition *)
   repeat (split || letexists || t || trivial).
   setoid_rewrite H1; setoid_rewrite Z.mul_1_l; trivial.
 Defined.
+*)
+Admitted.

@@ -1,17 +1,17 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Program.Tactics.
-Require Import lib.LibTacticsMin.
 Require Import riscv.Utility.Utility.
 Require Export bedrock2.Syntax.
 Require Export bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
 Require Import compiler.util.Common.
-Require Import compiler.util.Tactics.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.ListLib.
 Require Import riscv.Platform.MetricLogging.
+Require Import compiler.Simp.
 
 Local Set Ltac Profiling.
 
@@ -72,7 +72,7 @@ Section ExprImp1.
           'Some argvs <- List.option_all (List.map (eval_expr_old m st) args);
           'Some st0 <- map.putmany_of_list params argvs map.empty;
           'Some (st1, m') <- eval_cmd f st0 m fbody;
-          'Some retvs <- List.option_all (List.map (map.get st1) rets);
+          'Some retvs <- map.getmany_of_list st1 rets;
           'Some st' <- map.putmany_of_list binds retvs st;
           Some (st', m')
         | cmd.interact _ _ _ => None (* unsupported *)
@@ -89,7 +89,7 @@ Section ExprImp1.
 
     Lemma expr_size_pos: forall exp, expr_size exp > 0.
     Proof.
-      induction exp; simpl; try omega.
+      induction exp; simpl; try blia.
     Qed.
 
     Definition exprs_size(es: list expr): Z := fold_right (fun e res => res + expr_size e) 0 es.
@@ -111,7 +111,7 @@ Section ExprImp1.
 
     Lemma exprs_size_nonneg: forall es, 0 <= exprs_size es.
     Proof.
-      induction es; simpl in *; try omega. pose proof (expr_size_pos a). omega.
+      induction es; simpl in *; try blia. pose proof (expr_size_pos a). blia.
     Qed.
 
     Lemma cmd_size_nonneg: forall s, 0 <= cmd_size s.
@@ -122,7 +122,7 @@ Section ExprImp1.
       | es: list expr |- _ => unique pose proof (exprs_size_nonneg es)
       | l: list _ |- _ => unique pose proof (Zlength_nonneg l)
       end;
-      try omega.
+      try blia.
     Qed.
 
     Local Ltac inversion_lemma :=
@@ -133,8 +133,9 @@ Section ExprImp1.
              | E: _ _ _ = true  |- _ => apply word.eqb_true  in E
              | E: _ _ _ = false |- _ => apply word.eqb_false in E
              end;
-      inversionss;
-      eauto 16.
+      simp;
+      subst;
+      eauto 10.
 
     Lemma invert_eval_store: forall fuel initialSt initialM a v final aSize,
       eval_cmd (S fuel) initialSt initialM (cmd.store aSize a v) = Some final ->
@@ -188,15 +189,15 @@ Section ExprImp1.
         List.option_all (List.map (eval_expr_old m1 st) args) = Some argvs /\
         map.putmany_of_list params argvs map.empty = Some st0 /\
         eval_cmd f st0 m1 fbody = Some (st1, m') /\
-        List.option_all (List.map (map.get st1) rets) = Some retvs /\
+        map.getmany_of_list st1 rets = Some retvs /\
         map.putmany_of_list binds retvs st = Some st' /\
         p2 = (st', m').
-    Proof. inversion_lemma. Qed.
+    Proof. inversion_lemma. eauto 16. Qed.
 
     Lemma invert_eval_interact : forall st m1 p2 f binds fname args,
       eval_cmd (S f) st m1 (cmd.interact binds fname args) = Some p2 ->
       False.
-    Proof. inversion_lemma. Qed.
+    Proof. inversion_lemma. discriminate. Qed.
 
   End WithEnv.
 
@@ -357,9 +358,9 @@ Section ExprImp2.
     eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->
     map.only_differ initialS (modVars s) finalS.
   Proof.
-    induction fuel; introv Ev.
+    induction fuel; intros *; intro Ev.
     - discriminate.
-    - invert_eval_cmd; simpl in *; inversionss;
+    - invert_eval_cmd; simpl in *; simp; subst;
       repeat match goal with
       | IH: _, H: _ |- _ =>
           let IH' := fresh IH in pose proof IH as IH';

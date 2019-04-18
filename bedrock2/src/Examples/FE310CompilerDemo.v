@@ -1,5 +1,6 @@
 From coqutil Require Import sanity.
 Local Unset Universe Minimization ToSet.
+Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.BinInt.
 Require Import bedrock2.Syntax.
 
@@ -28,7 +29,7 @@ Definition gpio0_base := Ox"0x10012000". Definition gpio0_pastend := Ox"0x100130
 Definition uart0_base := Ox"0x10013000". Definition uart0_pastend := Ox"0x10014000".
 Definition uart0_rxdata := Ox"10013004". Definition uart0_txdata  := Ox"10013000".
 
-Local Instance parameters : parameters :=
+Local Instance parameters : parameters. refine (
   let word := Word.Naive.word 32 eq_refl in
   let byte := Word.Naive.word 8 eq_refl in
   {|
@@ -59,7 +60,7 @@ Local Instance parameters : parameters :=
     | _, _ =>
       False
     end%list%bool;
-  |}.
+  |}). Unshelve. reflexivity. Defined.
 
 
 
@@ -134,7 +135,7 @@ Module Z.
   Lemma land_nonzero a b : Z.land a b <> 0 -> a <> 0 /\ b <> 0.
   Proof.
     destruct (Z.eq_dec a 0), (Z.eq_dec b 0); subst;
-      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; Lia.lia.
+      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; bomega.
   Qed.
 End Z.
 
@@ -143,8 +144,10 @@ Module word.
   Proof.
     simple refine (Wf_nat.well_founded_lt_compat _ (fun x => Z.to_nat (word.unsigned x)) _ _).
     cbv beta; intros a b H.
-    pose proof proj1 (Properties.word.unsigned_range a); pose proof proj1 (Properties.word.unsigned_range b).
+    epose proof proj1 (Properties.word.unsigned_range a); epose proof proj1 (Properties.word.unsigned_range b).
     eapply Znat.Z2Nat.inj_lt; trivial.
+    Unshelve.
+    all: unfold word; typeclasses eauto.
   Qed.
 End word.
 
@@ -165,22 +168,29 @@ Ltac t :=
   | |- _ < _ => solve[
     repeat match goal with
            | x := _ |- _ => subst x
-           | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H
+           | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H; unfold word.wrap in H
            | _ => progress repeat (rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent)
            | H: Z.land _ _ <> 0 |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
            | |- _ < word.unsigned ?x => pose proof Properties.word.unsigned_range x;
-                                          repeat rewrite ?word.unsigned_sub, ?word.unsigned_of_Z;
+                                          repeat (rewrite ?word.unsigned_sub, ?word.unsigned_of_Z || unfold word.wrap);
                                           repeat rewrite ?Z.mod_small;
-                                            (Omega.omega || clear; cbv; split; congruence)
+                                            (bomega || clear; cbv; split; congruence)
            end]
   | _ => solve [trivial]
   end.
+
+(* TODO COQBUG? why does typeclass search not succeed here?
+   It used to work with primitive projections on *)
+Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 32 eq_refl) (@rep 8).
+
+Local Instance wordok: word.ok word := coqutil.Word.Naive.ok _ _.
 
 Lemma swap_chars_over_uart_correct m :
   WeakestPrecondition.cmd (fun _ _ _ _ _ => False) swap_chars_over_uart nil m map.empty
   (fun t m l => True).
 Proof.
   repeat t.
+
 
   refine (
   let prev : varname := 1%Z in

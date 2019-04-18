@@ -11,7 +11,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 
-Instance parameters : parameters :=
+Instance parameters : parameters. refine (
   let word := Word.Naive.word 32 eq_refl in
   let byte := Word.Naive.word 8 eq_refl in
 
@@ -27,7 +27,7 @@ Instance parameters : parameters :=
     match args with
     | [addr] =>
       ((Ox"10012000" <= word.unsigned addr < Ox"10013000") \/
-       (Ox"10024000" <= word.unsigned addr < Ox"10025000")  ) 
+       (Ox"10024000" <= word.unsigned addr < Ox"10025000")  )
       /\ forall v, post m [v]
     | _ => False
     end else
@@ -39,7 +39,8 @@ Instance parameters : parameters :=
       /\ post m []
     |  _ => False
     end else False;
-|}.
+|}). Unshelve. reflexivity.
+Defined.
 
 Global Instance ok trace m0 act args :
   Morphisms.Proper

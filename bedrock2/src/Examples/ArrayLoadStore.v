@@ -1,6 +1,7 @@
 Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics.
+Require Import coqutil.Z.Lia.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -9,7 +10,7 @@ Local Coercion var (x : String.string) : expr := expr.var x.
 Local Definition bedrock_func : Type := funname * (list varname * list varname * cmd).
 Local Coercion name_of_func (f : bedrock_func) := fst f.
 
-Definition tf : bedrock_func := 
+Definition tf : bedrock_func :=
     let buf : varname := "buf" in
     let len : varname := "len" in
     let i : varname := "i" in
@@ -26,28 +27,42 @@ From bedrock2 Require Import BasicC64Semantics ProgramLogic.
 From bedrock2 Require Import Array Scalars Separation.
 From coqutil Require Import Word.Interface Map.Interface.
 
-Local Instance spec_of_tf : spec_of "tf" := fun functions =>
-  forall t m buf len bs i j R,
-    (sep (array ptsto (word.of_Z 1) buf bs) R) m ->
-    word.unsigned len = Z.of_nat (List.length bs) ->
-    WeakestPrecondition.call functions "tf" t m [buf; len; i; j]
-    (fun T M rets => True).
-
-From coqutil.Tactics Require Import letexists.
-
-Import SeparationLogic Lift1Prop.
-
-  Import List.
   Local Infix "*" := sep : type_scope.
   Local Infix "*" := sep.
   Local Notation "a [ i ]" := (List.hd _ (List.skipn i a)) (at level 10, left associativity, format "a [ i ]").
   Local Notation "a [: i ]" := (List.firstn i a) (at level 10, left associativity, format "a [: i ]").
   Local Notation "a [ i :]" := (List.skipn i a) (at level 10, left associativity, format "a [ i :]").
   Local Notation bytes := (array ptsto (word.of_Z 1)).
-  Local Notation n_o_w x := (Z.to_nat (word.unsigned x)).
+  (* Local Notation word_to_nat x := (Z.to_nat (word.unsigned x)). *)
+  Local Infix "+" := word.add.
   Local Infix "+" := word.add.
   From coqutil.Tactics Require Import syntactic_unify.
   From coqutil.Macros Require Import symmetry.
+
+Local Instance spec_of_tf : spec_of "tf". refine (fun functions =>
+  forall t m buf len bs i j R,
+    (sep (array ptsto (word.of_Z 1) buf bs) R) m ->
+    word.unsigned len = Z.of_nat (List.length bs) ->
+    WeakestPrecondition.call functions "tf" t m [buf; len; i; j]
+    (fun T M rets => 
+       True)).
+(* word.unsigned i < word.unsigned len -> word.unsigned j < word.unsigned len ->
+       rets = [word.of_Z (word.unsigned
+              ((bs[:word_to_nat i]++ word.of_Z 0 :: List.tl (bs[word_to_nat i:]))[word_to_nat j]))] *)
+Defined.
+
+From coqutil.Tactics Require Import letexists.
+
+Import SeparationLogic Lift1Prop.
+
+Local Instance mapok: coqutil.Map.Interface.map.ok Semantics.mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
+Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
+Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
+
+  From coqutil.Tactics Require Import syntactic_unify.
+  From coqutil.Macros Require Import symmetry.
+  Require Import coqutil.Datatypes.List.
+  Require Import Coq.micromega.Lia.
 
 Goal program_logic_goal_for_function! tf.
 Proof.
@@ -55,31 +70,29 @@ Proof.
 
   letexists. split; [solve[repeat straightline] |].
   split; [|solve [repeat straightline]]; repeat straightline.
-  assert (word.unsigned i < word.unsigned len) by admit.
+  eapply Properties.word.if_nonzero in H1; rewrite word.unsigned_ltu in H1; eapply Z.ltb_lt in H1.
 
   simple refine (store_one_of_sep _ _ _ _ _ _ (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H) _); shelve_unifiable.
-  1: (etransitivity; [|etransitivity]); [ | eapply Proper_sep_iff1; [|reflexivity]; eapply array_address_inbounds | ].
-  5: ecancel.
-  1: ecancel.
+  1: (etransitivity; [etransitivity|]); cycle -1; [ | | eapply Proper_sep_iff1; [|reflexivity]; eapply bytearray_index_inbounds]; try ecancel; try bomega.
 
-  all: change (word.unsigned (word.of_Z 1)) with 1 in *.
-  all: rewrite ?Z.mul_1_l, ?Z.mod_1_r, ?Z.div_1_r; trivial.
-  all: unshelve erewrite (_ : forall x y, word.sub (word.add x y) x = y) in *; [admit|].
-  1: Omega.omega.
+  repeat straightline.
 
   intros.
 
-  seprewrite_in (symmetry! @array_cons) H3.
-  replace (word.add buf i)
-     with (buf + word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat (Datatypes.length (bs[:n_o_w i])))) in H3
-       by admit.
-  seprewrite_in (symmetry! @array_append) H3.
-
+  seprewrite_in (symmetry! @array_cons) H2.
+  seprewrite_in (@bytearray_index_merge) H4. {
+    pose proof Properties.word.unsigned_range i.
+    Time change tt with tt in *.
+    rewrite length_firstn_inbounds;
+      (PreOmega.zify; rewrite Znat.Z2Nat.id; bomega).
+  }
+  
   letexists.
   split; [solve[repeat straightline]|].
   split; [|solve [repeat straightline]].
 
   repeat straightline.
+  eapply Properties.word.if_nonzero in H2; rewrite word.unsigned_ltu in H2; eapply Z.ltb_lt in H2.
 
   letexists.
   split. {
@@ -88,24 +101,24 @@ Proof.
     letexists; split. {
       eapply load_one_of_sep.
       simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H3).
-      (etransitivity; [|etransitivity]); [ | eapply Proper_sep_iff1; [|reflexivity]; eapply array_address_inbounds | ].
-      5: ecancel.
+      (etransitivity; [|etransitivity]); [ | eapply Proper_sep_iff1; [|reflexivity]; eapply bytearray_index_inbounds | ].
+      3: ecancel.
       1: ecancel.
-  all: change (word.unsigned (word.of_Z 1)) with 1 in *.
-  all: rewrite ?Z.mul_1_l, ?Z.mod_1_r, ?Z.div_1_r; trivial.
-  all: unshelve erewrite (_ : forall x y, word.sub (word.add x y) x = y) in *; [admit|].
-  admit. (* length_set_nth *)
+      pose proof Properties.word.unsigned_range i.
+      pose proof Properties.word.unsigned_range j.
+      Time change tt with tt in *.
+      rewrite List.app_length, length_cons, length_firstn_inbounds, length_skipn.
+      all : PreOmega.zify.
+      1: blia.
+      1: (PreOmega.zify; rewrite ?Znat.Z2Nat.id; bomega).
   } 
   1: subst v2.
-  refine eq_refl.
-  exact (word.of_Z 0). }
+  exact eq_refl.
+  }
 
   repeat straightline.
-
-  Unshelve.
-  exact (word.of_Z 0).
   
-Abort.
+Qed.
 
   (* [eseptract] solves goals of the form [state == needle * ?r] by
     "subtracting" [needle] from [state] with the help of decomposition

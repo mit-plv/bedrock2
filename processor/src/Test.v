@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
@@ -387,7 +387,8 @@ Section Equiv.
     - intros.
       pose proof (simulate_step_fw (from_Fake m) (fun final => to_Fake final = m')) as P.
       simpl in P.
-      do 2 rewrite to_Fake_from_Fake in P.
+      rewrite to_Fake_from_Fake in P.
+      unfold fakeStep. destruct m.
       apply P; clear P.
       + intros. apply loadWord_store_bytes_same.
       + intros. destruct machine1, machine2. unfold to_Fake in *; simpl in *. congruence.
@@ -421,7 +422,7 @@ Section Equiv.
       rewrite from_Fake_to_Fake in P.
       eapply weaken_mcomp_sat.
       + eapply P. reflexivity.
-      + intros. simpl in H0.
+      + intros. destruct initial. simpl in *.
         rewrite <- H0 in H.
         rewrite from_Fake_to_Fake in H.
         exact H.

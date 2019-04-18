@@ -1,5 +1,5 @@
 Require Import Coq.Lists.List.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Import ListNotations.
 Require Import coqutil.Word.Properties.
 Require Import riscv.Utility.Monads.
@@ -95,8 +95,8 @@ Section Verif.
        constants [word_cst]).
 
   Ltac simulate'_step :=
-    first [ eapply go_loadWord_sep ; simpl_word_exprs (@word_ok W); [sidecondition..|]
-          | eapply go_storeWord_sep; simpl_word_exprs (@word_ok W); [sidecondition..|intros]
+    first [ eapply go_loadWord_sep ; simpl in *; simpl_word_exprs (@word_ok W); [sidecondition..|]
+          | eapply go_storeWord_sep; simpl in *; simpl_word_exprs (@word_ok W); [sidecondition..|intros]
           | simulate_step ].
 
   Ltac simulate' := repeat simulate'_step.
@@ -137,8 +137,8 @@ Section Verif.
                 map.get final.(getRegs) x2 = Some (gallina_prog_1 v1 v2)).
   Proof.
     intros.
-    assert (valid_register x1). { unfold valid_register, x1. lia. }
-    assert (valid_register x2). { unfold valid_register, x2. lia. }
+    assert (valid_register x1). { unfold valid_register, x1. blia. }
+    assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_1_encodable.
     destruct initial as [ [initial_regs initial_pc initial_nextPc initial_mem initial_trace] initial_metrics].
     unfold asm_prog_1 in *.
@@ -200,8 +200,8 @@ Section Verif.
                 map.get final.(getRegs) x2 = Some (gallina_prog_2 v1 v2)).
   Proof.
     intros.
-    assert (valid_register x1). { unfold valid_register, x1. lia. }
-    assert (valid_register x2). { unfold valid_register, x2. lia. }
+    assert (valid_register x1). { unfold valid_register, x1. blia. }
+    assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_2_encodable.
     destruct initial as [ [initial_regs initial_pc initial_nextPc initial_mem initial_trace] initial_metrics].
     unfold asm_prog_2 in *.
@@ -210,11 +210,12 @@ Section Verif.
     seprewrite_in @array_append H0. simpl in *.
     subst.
     simpl.
+
     run1det.
     run1det.
     eapply runsTo_trans. {
       eapply asm_prog_1_correct; simpl.
-      - rewrite map.get_put_diff by (unfold x1, x2; lia).
+      - rewrite map.get_put_diff by (unfold x1, x2; blia).
         apply map.get_put_same.
       - apply map.get_put_same.
       - reflexivity.
@@ -226,7 +227,7 @@ Section Verif.
     destruct middle as [ [middle_regs middle_pc middle_nextPc middle_mem middle_trace] middle_metrics].    simpl in *.
     subst.
 
-    clear H0.
+    clear H6.
 
     (* TODO matching up addresses should work automatically *)
     replace (@word.add _ (@word W)
@@ -241,31 +242,26 @@ Section Verif.
            (@word.of_Z _ (@word W) 4))
         (@word.mul _ (@word W) (@word.of_Z _ (@word W) 4)
            (@word.of_Z _ (@word W) (Z.of_nat (@Datatypes.length Instruction asm_prog_1)))))
-      in H5; cycle 1. {
+      in H1; cycle 1. {
       clear.
       change BinInt.Z.of_nat with Z.of_nat in *.
       f_equal.
       apply word.unsigned_inj.
       rewrite word.unsigned_mul.
-      rewrite word.unsigned_of_Z at 2.
+      rewrite word.unsigned_of_Z at 2. unfold word.wrap.
       rewrite (word.unsigned_of_Z (4 mod 2 ^ width * Z.of_nat (Datatypes.length asm_prog_1))).
-      rewrite word.unsigned_of_Z.
-      rewrite word.unsigned_of_Z.
+      rewrite! word.unsigned_of_Z. unfold word.wrap.
       apply Zmult_mod_idemp_r.
     }
 
     run1det.
-    match goal with
-    | |- context [ withMem ?m ] => set (m' := m) in *
-    end.
-    clearbody m'.
     simpl in *.
     eapply runsToDone.
     simpl.
     repeat split.
     - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
     - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
-    - (* TODO "clearboy m'" was a bad idea, we need it here too *) case fix_updated_mem_TODO.
+    - (* TODO *) case fix_updated_mem_TODO.
     - assumption.
   Qed.
 

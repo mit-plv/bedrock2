@@ -23,4 +23,9 @@ Global Instance ok trace m0 act args :
        (Morphisms.pointwise_relation Interface.map.rep
           (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
        Basics.impl) (Semantics.ext_spec trace m0 act args).
-Proof. cbv. trivial. Qed.
+Proof.
+  cbn in *.
+  unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation, Basics.impl.
+  intros.
+  assumption.
+Qed.

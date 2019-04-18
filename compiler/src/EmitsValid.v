@@ -1,5 +1,5 @@
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Decidable.
 Require Import riscv.Spec.Decode.
@@ -8,7 +8,7 @@ Require Import coqutil.Z.BitOps.
 Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.Primitives.
-Require Import compiler.util.Tactics.
+Require Import coqutil.Tactics.Tactics.
 Require Import riscv.Utility.Tactics.
 Require Import riscv.Utility.Utility.
 Require Import compiler.FlatImp.
@@ -39,7 +39,7 @@ Lemma nth_error_cons_Some: forall A (a1 a2: A) (l: list A) i,
     i = O /\ a1 = a2 \/ exists j, i = S j /\ nth_error l j = Some a2.
 Proof.
   intros. destruct i; simpl in *.
-  - inversions H. auto.
+  - inversion H. auto.
   - eauto.
 Qed.
 
@@ -48,7 +48,7 @@ Lemma nth_error_app_Some: forall A (a: A) (l1 l2: list A) i,
     nth_error l1 i = Some a \/ nth_error l2 (i - length l1) = Some a.
 Proof.
   intros.
-  assert (i < length l1 \/ length l1 <= i)%nat as C by omega.
+  assert (i < length l1 \/ length l1 <= i)%nat as C by blia.
   destruct C as [C | C].
   - left. rewrite nth_error_app1 in H; assumption.
   - right. rewrite nth_error_app2 in H; assumption.
@@ -229,7 +229,7 @@ Proof.
   intros. rewrite bitSlice_alt by assumption.
   unfold bitSlice'.
   apply Z.mod_pos_bound.
-  apply Z.pow_pos_nonneg; omega.
+  apply Z.pow_pos_nonneg; blia.
 Qed.
 
 Lemma times4mod2: forall (a: Z),
@@ -246,7 +246,7 @@ Tactic Notation "so" tactic(f) :=
   |       |- ?A => f A
   end.
 
-Ltac unify_universes_for_lia :=
+Ltac unify_universes_for_blia :=
   repeat (so fun hyporgoal => match hyporgoal with
                               | context [?x] =>
                                 let T := type of x in
@@ -263,7 +263,7 @@ Ltac unify_universes_for_lia :=
          end.
 
 (* workaround for https://github.com/coq/coq/issues/9268 *)
-Ltac lia' := unify_universes_for_lia; lia.
+Ltac blia' := unify_universes_for_blia; blia.
 
 Inductive supported_iset: InstructionSet -> Prop :=
 | supported_RV32IM: supported_iset RV32IM
@@ -289,7 +289,7 @@ Section EmitsValid.
     unfold Register0, valid_register in *.
     pose proof (signExtend_range 12 w eq_refl).
     simpl_pow2.
-    lia.
+    blia.
   Qed.
 
   Lemma remove_lobits: forall v i,
@@ -297,7 +297,7 @@ Section EmitsValid.
       (v - bitSlice v 0 i) mod 2 ^ i = 0.
   Proof.
     intros.
-    rewrite bitSlice_alt by lia. unfold bitSlice'.
+    rewrite bitSlice_alt by blia. unfold bitSlice'.
     rewrite Z.sub_0_r.
     change (2 ^ 0) with 1.
     rewrite Z.div_1_r.
@@ -321,8 +321,8 @@ Section EmitsValid.
         prove_Zeq_bitwise.
     }
     assert (Z.lxor (signExtend 32 v) (signExtend 12 v) mod 2 ^ 12 = 0) as P2. {
-      rewrite <- Z.land_ones by lia.
-      rewrite signExtend_alt_bitwise by lia. unfold signExtend_bitwise.
+      rewrite <- Z.land_ones by blia.
+      rewrite signExtend_alt_bitwise by blia. unfold signExtend_bitwise.
       prove_Zeq_bitwise.
     }
     assert (- 2 ^ 11 <= signExtend 12 v < 2 ^ 11) as P3. {
@@ -333,7 +333,7 @@ Section EmitsValid.
         autounfold with unf_verify unf_encode_consts;
         unfold Register0, valid_register in *;
         simpl_pow2;
-        lia.
+        blia.
   Qed.
 
   Lemma valid_Slli: forall rd rs shamt iset,
@@ -348,7 +348,7 @@ Section EmitsValid.
     autounfold with unf_encode_consts unf_verify;
     unfold Register0 in *;
     destruct iset;
-    lia.
+    blia.
   Qed.
 
   Lemma valid_Addi_bitSlice: forall rd rs w i j iset,
@@ -363,24 +363,24 @@ Section EmitsValid.
       rewrite bitSlice_alt by assumption.
       unfold bitSlice'.
       assert (2 ^ (j - i) <> 0) as A. {
-        apply Z.pow_nonzero; lia.
+        apply Z.pow_nonzero; blia.
       }
       pose proof (Z.mod_bound_or (w / 2 ^ i) (2 ^ (j - i)) A) as P.
       assert (0 < 2 ^ 11) by reflexivity.
       assert (0 < 2 ^ (j - i)). {
-        apply Z.pow_pos_nonneg; lia.
+        apply Z.pow_pos_nonneg; blia.
       }
       assert (2 ^ (j - i) <= 2 ^ 11) as B. {
-        apply Z.pow_le_mono_r; lia.
+        apply Z.pow_le_mono_r; blia.
       }
-      lia.
+      blia.
     }
     unfold verify, valid_register in *;
     simpl;
     autounfold with unf_encode_consts unf_verify;
     unfold Register0 in *;
     destruct iset;
-    lia.
+    blia.
   Qed.
 
   Lemma valid_Xori_bitSlice: forall rd rs w i j iset,
@@ -395,24 +395,24 @@ Section EmitsValid.
       rewrite bitSlice_alt by assumption.
       unfold bitSlice'.
       assert (2 ^ (j - i) <> 0) as A. {
-        apply Z.pow_nonzero; lia.
+        apply Z.pow_nonzero; blia.
       }
       pose proof (Z.mod_bound_or (w / 2 ^ i) (2 ^ (j - i)) A) as P.
       assert (0 < 2 ^ 11) by reflexivity.
       assert (0 < 2 ^ (j - i)). {
-        apply Z.pow_pos_nonneg; lia.
+        apply Z.pow_pos_nonneg; blia.
       }
       assert (2 ^ (j - i) <= 2 ^ 11) as B. {
-        apply Z.pow_le_mono_r; lia.
+        apply Z.pow_le_mono_r; blia.
       }
-      lia.
+      blia.
     }
     unfold verify, valid_register in *;
     simpl;
     autounfold with unf_encode_consts unf_verify;
     unfold Register0 in *;
     destruct iset;
-    lia.
+    blia.
   Qed.
 
   Lemma compile_lit_64bit_emits_valid: forall r w iset,
@@ -425,7 +425,7 @@ Section EmitsValid.
     }
     simpl in *.
     repeat destruct H0 as [H0 | H0]; [subst instr..|contradiction];
-      (eapply valid_Xori_bitSlice || eapply valid_Slli); try eassumption; try lia.
+      (eapply valid_Xori_bitSlice || eapply valid_Slli); try eassumption; try blia.
   Qed.
 
   Lemma compile_lit_emits_valid: forall r w iset,
@@ -450,7 +450,7 @@ Section EmitsValid.
     unfold valid_instructions.
     intros.
     destruct op; simpl in *; (repeat destruct H3; try contradiction);
-          inversions H; unfold verify; simpl;
+          inversion H; unfold verify; simpl;
           autounfold with unf_verify unf_encode_consts;
           unfold Register0;
           repeat match goal with
@@ -460,8 +460,8 @@ Section EmitsValid.
           simpl_pow2;
           unfold valid_register in *;
           try solve [constructor];
-          try lia;
-          try (split; [lia|auto]);
+          try blia;
+          try (split; [blia|auto]);
           destruct iset; auto; try discriminate.
   Qed.
 
@@ -480,21 +480,22 @@ Section EmitsValid.
     simpl;
     autounfold with unf_encode_consts unf_verify;
     unfold Register0 in *;
-    intuition lia.
+    intuition blia.
   Qed.
 
   Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
 
-  Lemma compile_load_emits_valid: forall x y sz,
+  Lemma compile_load_emits_valid: forall x y sz offset,
       valid_register x ->
       valid_register y ->
-      valid_instructions iset [compile_load sz x y 0].
+      - 2 ^ 11 <= offset < 2 ^ 11 ->
+      valid_instructions iset [compile_load sz x y offset].
   Proof.
     intros. unfold iset.
     destruct Utility.width_cases as [E | E]; rewrite E; simpl;
     destruct sz eqn: Eqsz; unfold valid_instructions, valid_register in *; simpl;
       intros;
-      (destruct H1; [|contradiction]);
+      (destruct H2; [|contradiction]);
       subst instr;
       unfold verify;
       simpl;
@@ -502,17 +503,18 @@ Section EmitsValid.
       autounfold with unf_encode_consts unf_verify;
       unfold Register0 in *;
       rewrite? E; simpl;
-      intuition (try lia).
+      intuition (try blia).
   Qed.
 
-  Lemma compile_store_emits_valid: forall x y sz,
+  Lemma compile_store_emits_valid: forall x y sz offset,
       valid_register x ->
       valid_register y ->
-      valid_instructions iset [compile_store sz x y 0].
+      - 2 ^ 11 <= offset < 2 ^ 11 ->
+      valid_instructions iset [compile_store sz x y offset].
   Proof.
     intros. unfold iset.
     destruct Utility.width_cases as [E | E]; rewrite E; simpl;
-    destruct sz; inversions H; unfold valid_instructions, valid_register in *; simpl;
+    destruct sz; inversion H; clear H; unfold valid_instructions, valid_register in *; simpl;
       intros;
       (destruct H; [|contradiction]);
       subst instr;
@@ -522,7 +524,7 @@ Section EmitsValid.
       simpl;
       autounfold with unf_encode_consts unf_verify;
       unfold Register0 in *;
-      intuition (try lia).
+      intuition (try blia).
   Qed.
 
   Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
@@ -539,13 +541,13 @@ Section EmitsValid.
   Proof.
     induction s; simpl; try apply compile_lit_size;
       try destruct op; try solve [destruct f]; simpl;
-      repeat (autorewrite with rew_Zlength || simpl in *); try lia.
+      repeat (autorewrite with rew_Zlength || simpl in *); try blia.
     pose proof (Zlength_nonneg (compile_ext_call binds a args)).
     pose proof (compile_ext_call_length binds a args).
     (* COQBUG *)
-    tryif lia
+    tryif blia
     then idtac
-    else (idtac "compile_stmt_size: lia should not have failed!"; split; lia).
+    else (idtac "compile_stmt_size: blia should not have failed!"; split; blia).
   Qed.
 
   Lemma compile_stmt_emits_valid: forall s,
@@ -554,6 +556,7 @@ Section EmitsValid.
       stmt_not_too_big s ->
       valid_instructions iset (compile_stmt s).
   Proof.
+    assert (- 2 ^ 11 <= 0 < 2 ^ 11) by blia.
     induction s; intros; simpl in *; intuition (
       auto using compile_load_emits_valid,
                  compile_store_emits_valid,
@@ -576,9 +579,9 @@ Section EmitsValid.
               let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
             end);
     try solve
-        [ apply compile_bcond_by_inverting_emits_valid; [assumption | lia' | apply times4mod2 ]
+        [ apply compile_bcond_by_inverting_emits_valid; [assumption | blia' | apply times4mod2 ]
         | match goal with
-          | H: _ |- _ => solve [apply H; (lia || auto)]
+          | H: _ |- _ => solve [apply H; (blia || auto)]
           end
         | unfold verify in *;
           destruct iset;
@@ -588,7 +591,7 @@ Section EmitsValid.
           repeat match goal with
                  | |- context [(?x * 4) mod 2] => rewrite (times4mod2 x)
                  end;
-          lia' ].
+          blia' ].
   Qed.
 
 End EmitsValid.

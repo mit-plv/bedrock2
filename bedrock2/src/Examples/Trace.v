@@ -1,4 +1,4 @@
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Word.Interface.

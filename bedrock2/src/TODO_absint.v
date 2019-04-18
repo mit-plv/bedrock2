@@ -1,6 +1,7 @@
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
 From coqutil Require Import Word.Interface Word.Properties.
 From coqutil Require Import Tactics.rdelta Z.div_mod_to_equations.
+Require Import coqutil.Z.Lia.
 
 (* TODO: generalize over word *)
 From bedrock2 Require Import Semantics BasicC64Semantics.
@@ -19,10 +20,10 @@ Lemma Z__range_mul_nonneg a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1)
       : a0*b0 <= a*b < (a1-1)*(b1-1) + 1.
 Proof. Lia.nia. Qed.
 Lemma boundscheck {x0 x x1} (H: x0 <= x < x1) {X0 X1} (Hcheck : andb (X0 <=? x0) (x1 <=? X1) = true) : X0 <= x < X1.
-Proof. eapply andb_prop in Hcheck; case Hcheck; intros H1 H2; eapply Z.leb_le in H1; eapply Z.leb_le in H2. Lia.lia. Qed.
+Proof. eapply andb_prop in Hcheck; case Hcheck; intros H1 H2; eapply Z.leb_le in H1; eapply Z.leb_le in H2. blia. Qed.
 Lemma boundscheck_lt {x0 x x1} (H: x0 <= x < x1) {X1} (Hcheck: Z.ltb x1 X1 = true) : x < X1.
-Proof. eapply Z.ltb_lt in Hcheck. Lia.lia. Qed.
-Lemma bounded_constant c : c <= c < c+1. Proof. Lia.lia. Qed.
+Proof. eapply Z.ltb_lt in Hcheck. blia. Qed.
+Lemma bounded_constant c : c <= c < c+1. Proof. blia. Qed.
 
 Ltac named_pose_proof pf :=
   let H := fresh in
@@ -128,11 +129,12 @@ Module unsigned.
 
 Definition absint_eq {T} := @eq T.
 Local Infix "=~>" := absint_eq (at level 70, no associativity).
-  
+
 Local Notation "absint_lemma! pf" := (ltac:(
   cbv [absint_eq] in *;
   etransitivity; [ eapply pf | ]; cycle -1;
     [unshelve (repeat match goal with
+      | |- _ => progress unfold word.wrap in *
       | |-context [Z.shiftr ?x (word.unsigned ?y)] => assert_fails(is_evar x||is_evar y);
         setoid_rewrite (Z.shiftr_div_pow2 x (word.unsigned y) (proj1 (Properties.word.unsigned_range _)))
       | |-context [Z.shiftl ?x (word.unsigned ?y)] => assert_fails(is_evar x||is_evar y);
@@ -150,9 +152,11 @@ Local Notation "absint_lemma! pf" := (ltac:(
         match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).. ]
   )) (at level 10, only parsing).
 
+Instance word_ok: word.ok word. cbn. typeclasses eauto. Qed.
+
 Lemma absint_of_Z (x : Z) (Hrange : 0 <= x < 2^width) : word.unsigned (word.of_Z x) = x.
-Proof. rewrite word.unsigned_of_Z, Z.mod_small; trivial. Qed.
-Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
+Proof. rewrite word.unsigned_of_Z; unfold word.wrap; rewrite Z.mod_small; trivial. Qed.
+Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : _ =~> _ :=
   absint_lemma! (word.unsigned_add x y).
 Definition absint_sub (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
   absint_lemma! (word.unsigned_sub x y).

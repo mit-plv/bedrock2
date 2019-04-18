@@ -1,6 +1,5 @@
-Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import compiler.util.Common.
-Require Import compiler.util.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.FlatImp.
