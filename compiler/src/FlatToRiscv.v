@@ -784,9 +784,7 @@ Section FlatToRiscv1.
     | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
       simple refine (cancel_seps_at_indices i j LHS RHS _ _);
       cbn [firstn skipn app hd tl];
-      [syntactic_exact_deltavar
-         (@RelationClasses.reflexivity _ _
-           (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _) | ]
+      [syntactic_exact_deltavar (@eq_refl _ _) | ]
     end.
 
   Ltac cancel_seps_at_indices_by_iff i j :=
@@ -1590,9 +1588,9 @@ Ltac word_unify x y OK :=
 
 Ltac word_iff1 OK :=
   lazymatch goal with
-  | |- iff1 ?LHS ?RHS => word_unify LHS RHS OK
+  | |- ?LHS = ?RHS => word_unify LHS RHS OK
   end;
-  [ecancel_refl | .. ].
+  [reflexivity | .. ].
 
           word_iff1 word_ok.
         }
