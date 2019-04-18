@@ -219,36 +219,81 @@ Proof.
                 { repeat straightline. 
                   letexists; split; repeat straightline; split; [|repeat straightline; eauto].
                   repeat straightline.
-                  letexists.
 
+                  (* while loop *)
+                  refine (TailRecursion.tailrec
+                    (* types of ghost variables*) HList.polymorphic_list.nil
+                    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
+                    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
+                        PrimitivePair.pair.mk (v = word.unsigned c /\
+                        exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) )  scratch * R) m /\
+                        Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
+                        len_words_loop = len_words)  (* precondition *)
+                    (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => True)) (* postcondition *)
+                    (fun n m : Z => m < n <= word.unsigned len_words) (* well_founded relation *)
+                    _ _ _ _ _);
+                    (* TODO wrap this into a tactic with the previous refine *)
+                    cbn [HList.hlist.foralls HList.tuple.foralls
+                         HList.hlist.existss HList.tuple.existss
+                         HList.hlist.apply  HList.tuple.apply
+                         HList.hlist
+                         List.repeat Datatypes.length
+                         HList.polymorphic_list.repeat HList.polymorphic_list.length
+                         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+                  { repeat straightline. }
+                  { exact (Z.gt_wf _). }
 
-(* while loop *)
-  refine (TailRecursion.tailrec
-    (* types of ghost variables*) HList.polymorphic_list.nil
-    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
-    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
-        PrimitivePair.pair.mk (v = word.unsigned c /\
-        exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) )  scratch * R) m /\
-        Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
-        len_words_loop = len_words)  (* precondition *)
-    (fun   T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => True)) (* postcondition *)
-    (fun n m : Z => m < n <= word.unsigned len_words) (* well_founded relation *)
-    _ _ _ _ _);
-    (* TODO wrap this into a tactic with the previous refine *)
-    cbn [HList.hlist.foralls HList.tuple.foralls
-         HList.hlist.existss HList.tuple.existss
-         HList.hlist.apply  HList.tuple.apply
-         HList.hlist
-         List.repeat Datatypes.length
-         HList.polymorphic_list.repeat HList.polymorphic_list.length
-         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+ { repeat straightline. eauto. 1:admit. }
+  { repeat straightline.  cbn [args ext_spec FE310CSemantics.parameters].
+    do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
+    split; [cbv; clear; intuition congruence | intros].
+    repeat straightline.
+    eexists. split. { eapply Properties.map.split_empty_r. eauto. }
 
+  repeat straightline.
+  apply Properties.word.if_nonzero in H6.
+  rewrite word.unsigned_ltu in H6.
+  rewrite Z.ltb_lt in H6.
 
+  rewrite <- (List.firstn_skipn 4 x7) in H7.
+Require Import coqutil.Macros.symmetry.
+   SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H7.
 
-admit. (* TailRec *) }}}}
+  { rewrite List.length_firstn_inbounds. { instantiate (1:= word.of_Z 4). eauto. }
+  apply Znat.Nat2Z.inj_le.
+  rewrite H8. revert H6. admit. }
 
+  eapply store_word_of_sep. { 
+    revert H10. unfold scalar. unfold truncated_scalar. unfold littleendian. unfold ptsto_bytes.ptsto_bytes. admit. (* this needs to be proven to fill in H7, scratch *)}
+  { 
+  
+  do 6 straightline.
+  (* TODO more than 6 straightlines takes too long *)
+    Import Markers.hide.
+    do 8 letexists. split. 
+    { repeat straightline. }
+    { letexists. split.
+    { split. { repeat straightline. }
+             { letexists. 
+               { repeat straightline. letexists. 
+                 { split. {
+  replace (word.add
+             (word.add x2 (word.mul x3 (word.of_Z 4)))
+             (word.of_Z 4)) with (word.add x2 (word.mul c (word.of_Z 4))) in H10.
+  { ecancel_assumption. }
+  { subst c. (* TODO ring. *) admit. }}
 
+  assert (scratch=(List.skipn 4 x7)). { repeat straightline. }
+  { repeat straightline. subst scratch. rewrite List.length_skipn. subst c.
+  rewrite Znat.Nat2Z.inj_sub.
+  { rewrite H8. (* ring *) admit. }
+  (* same as apply Znat.Nat2Z.inj_le admitted above  *) admit. }}}}}
+  repeat straightline. split.
+  { subst v3. subst v'. subst c. admit. }
+  repeat straightline. }}}
+  do 15 straightline. admit. (* do 16+ straightline is Coq anomaly *) }}}}
 
+  idtac "Anomalies on local".
 
         repeat straightline. letexists. split.
         { repeat straightline. admit. }
