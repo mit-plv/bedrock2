@@ -1766,7 +1766,7 @@ Section FlatToRiscv1.
     | H: forall _, _ |- _ =>
       specialize H with (1 := HO);
       move H at bottom;
-      destruct H as (finalRegsH & ? & finalMH & ? & ?)
+      destruct H as (retvs & finalRegsH & ? & ? & ?)
     end.
 
     (* save results onto stack *)
@@ -1800,8 +1800,79 @@ Section FlatToRiscv1.
       - admit. (* offset bounds *)
     }
 
+    Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
+    Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
+    Infix "+" := word.add : word_scope.
+    Infix "-" := word.sub : word_scope.
+    Infix "*" := word.mul : word_scope.
+    Notation "- x" := (word.opp x) : word_scope.
+
+    Delimit Scope word_scope with word.
+
+    Open Scope word_scope.
+
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
     (* load back the modified vars *)
-    (* TODO *)
+    eapply runsTo_trans. {
+      eapply load_regs_correct with
+          (vars := (modVars_as_list body)) (values := newvalues)
+          (p_sp := (word.add p_stacklimit
+                             (word.of_Z (bytes_per_word * Z.of_nat (length remaining_stack)))));
+        simpl; cycle -2; try assumption.
+      - wseplog_pre word_ok.
+        wcancel.
+        wcancel_step.
+        {
+          match goal with
+          | |- ?LHS = ?RHS =>
+            match LHS with
+            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+              match RHS with
+              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (length (compile_stmt_new epos1 pos1 s))
+                  with (length (compile_stmt_new epos2 pos2 s))
+                    by apply compile_stmt_length_position_indep
+              end
+            end
+          end.
+          solve_word_eq word_ok.
+        }
+        wcancel_step.
+        ecancel_done'.
+      - reflexivity.
+      - replace valid_FlatImp_var with valid_register by admit.
+        apply modVars_as_list_valid_registers.
+        assumption.
+      - admit. (* NoDup *)
+      - admit. (* offset stuff *)
+      - solve_divisibleBy4.
+      - repeat match goal with
+               | H: map.getmany_of_list _ _ = Some _ |- _ =>
+                 unique eapply @map.getmany_of_list_length in copy of H
+               end.
+        blia.
+    }
+
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
 
     (* load back the return address *)
     (* TODO *)
