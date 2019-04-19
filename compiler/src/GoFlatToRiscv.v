@@ -15,7 +15,6 @@ Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Execute.
 Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.util.Tactics.
 Require Import compiler.SeparationLogic.
 Require Import compiler.EmitsValid.
 Require Import bedrock2.ptsto_bytes.
@@ -180,6 +179,19 @@ Section Go.
       mcomp_sat (Bind (Bind m f) g) initialL post.
   Proof.
     intros. rewrite associativity. assumption.
+  Qed.
+
+  Lemma mcomp_sat_weaken: forall initialL m (post1 post2: RiscvMachineL -> Prop),
+      (forall mach, post1 mach -> post2 mach) ->
+      mcomp_sat m initialL post1 ->
+      mcomp_sat m initialL post2.
+  Proof.
+    intros.
+    rewrite <- (@right_identity M MM unit m).
+    eapply spec_Bind.
+    eexists. split.
+    - exact H0.
+    - intros. simpl in *. apply spec_Return. eapply H. assumption.
   Qed.
 
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=

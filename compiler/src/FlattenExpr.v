@@ -475,6 +475,8 @@ Section FlattenExpr1.
     - simpl. intros. simp. eauto.
   Qed.
 
+  Goal True. idtac "FlattenExpr: Entering slow lemmas section". Abort.
+
   Lemma flattenExpr_correct_aux : forall e oResVar ngs1 ngs2 resVar s initialH initialL initialM res t,
     flattenExpr ngs1 oResVar e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
@@ -512,6 +514,7 @@ Section FlattenExpr1.
           eapply @FlatImp.exec.op; t_safe; t_safe.
           eapply flattenExpr_valid_resVar in E1; maps.
   Qed.
+  Goal True. idtac "FlattenExpr: flattenExpr_correct_aux done". Abort.
 
   Lemma flattenExpr_correct_with_modVars : forall e oResVar ngs1 ngs2 resVar s t m lH lL res,
     flattenExpr ngs1 oResVar e = (s, resVar, ngs2) ->
@@ -567,6 +570,7 @@ Section FlattenExpr1.
         * unfold ExprImp.allVars_exprs in D.
           eapply flattenExpr_valid_resVar in E1; maps.
   Qed.
+  Goal True. idtac "FlattenExpr: flattenExprs_correct done". Abort.
 
   Lemma unsigned_ne: forall (a b: word), word.unsigned a <> word.unsigned b -> a <> b.
   Proof.
@@ -645,6 +649,7 @@ Section FlattenExpr1.
       [ f_equal; f_equal; maps
       | exfalso; maps ].
   Qed.
+  Goal True. idtac "FlattenExpr: flattenBooleanExpr_correct_aux done". Abort.
 
   Lemma flattenBooleanExpr_correct_with_modVars:
     forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t res,
@@ -823,6 +828,7 @@ Section FlattenExpr1.
         simp.
         eauto 10 using (map.only_differ_putmany (ok := locals_ok)).
   Qed.
+  Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).

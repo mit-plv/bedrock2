@@ -229,18 +229,18 @@ Section FlatToRiscv1.
           let bThen' := compile_stmt (mypos + 4) bThen in
           let bElse' := compile_stmt (mypos + 4 + 4 * Z.of_nat (length bThen') + 4) bElse in
           (* only works if branch lengths are < 2^12 *)
-          [[compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)]] ++
+          [[compile_bcond_by_inverting cond ((Z.of_nat (length bThen') + 2) * 4)]] ++
           bThen' ++
-          [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
+          [[Jal Register0 ((Z.of_nat (length bElse') + 1) * 4)]] ++
           bElse'
       | SLoop body1 cond body2 =>
           let body1' := compile_stmt mypos body1 in
           let body2' := compile_stmt (mypos + Z.of_nat (length body1') + 4) body2 in
           (* only works if branch lengths are < 2^12 *)
           body1' ++
-          [[compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)]] ++
+          [[compile_bcond_by_inverting cond ((Z.of_nat (length body2') + 2) * 4)]] ++
           body2' ++
-          [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
+          [[Jal Register0 (- Z.of_nat (length body1' + 1 + length body2') * 4)]]
       | SSeq s1 s2 =>
           let s1' := compile_stmt mypos s1 in
           let s2' := compile_stmt (mypos + 4 * Z.of_nat (length s1')) s2 in
@@ -252,9 +252,9 @@ Section FlatToRiscv1.
                     (* don't fail so that we can measure the size of the resulting code *)
                     | None => 42
                     end in
-        save_regs argvars 0 ++
-        [[ Jal ra (fpos - mypos) ]] ++
-        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars))
+        save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
+        [[ Jal ra (fpos - (mypos + 4 * Z.of_nat (length argvars))) ]] ++
+        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
       | SInteract resvars action argvars => compile_ext_call resvars action argvars
       end.
 
@@ -289,7 +289,7 @@ Section FlatToRiscv1.
                          (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
         save_regs mod_vars 0 ++
         load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
-        compile_stmt_new mypos body ++
+        compile_stmt_new (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) body ++
         save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
         load_regs mod_vars 0 ++
         [[ compile_load access_size.word ra sp

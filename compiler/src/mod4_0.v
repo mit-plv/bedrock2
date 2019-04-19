@@ -10,6 +10,15 @@ Proof.
   rewrite Zplus_mod. rewrite Hx, Hy. reflexivity.
 Qed.
 
+Lemma mod4_0_sub: forall (x y: Z),
+    x mod 4 = 0 ->
+    y mod 4 = 0 ->
+    (x - y) mod 4 = 0.
+Proof.
+  intros *. intros Hx Hy.
+  rewrite Zminus_mod. rewrite Hx, Hy. reflexivity.
+Qed.
+
 Lemma mod4_mul4_l: forall (x: Z),
     (4 * x) mod 4 = 0.
 Proof. intros. rewrite Z.mul_comm. rewrite Z.mod_mul; blia. Qed.
@@ -71,6 +80,7 @@ Lemma mod4_0_4: 4 mod 4 = 0. Proof. reflexivity. Qed.
 Hint Resolve
      mod4_0_mod_pow2
      mod4_0_add
+     mod4_0_sub
      mod4_0_mod_pow2
      mod4_mul4_l
      mod4_mul4_r
