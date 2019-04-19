@@ -1182,6 +1182,43 @@ Section FlatToRiscv1.
 
   Hint Unfold program word_array: unf_to_array.
 
+  (* TODO make sure it's compatible with users of it *)
+  Axiom compile_ext_call_correct_new: forall (initialL: RiscvMachine Register actname)
+        action postH newPc insts (argvars resvars: list Register) initialMH R initialRegsH
+        argvals mGive outcome p_sp p_ra,
+      insts = compile_ext_call resvars action argvars ->
+      newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
+      map.extends initialL.(getRegs) initialRegsH ->
+      Forall valid_register argvars ->
+      Forall valid_register resvars ->
+      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
+      map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
+      ext_guarantee initialL ->
+      (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
+      map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
+      ext_spec initialL.(getLog) mGive action argvals outcome ->
+      (forall (resvals : list word),
+          outcome map.empty resvals ->
+          mGive = map.empty ->
+          exists finalRegsH: locals,
+            map.putmany_of_list resvars resvals initialRegsH = Some finalRegsH /\
+            postH ((map.empty, action, argvals, (map.empty, resvals)) :: initialL.(getLog))
+                  initialMH finalRegsH) ->
+      runsTo initialL
+             (fun finalL =>
+                exists finalRegsH: locals,
+                  map.extends finalL.(getRegs) finalRegsH /\
+                  map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
+                  map.get finalL.(getRegs) RegisterNames.ra = Some p_ra /\
+                  (* external calls can't modify the memory for now *)
+                  postH finalL.(getLog) initialMH finalRegsH /\
+                  finalL.(getPc) = newPc /\
+                  finalL.(getNextPc) = add newPc (ZToReg 4) /\
+                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  ext_guarantee finalL).
+
   Lemma compile_stmt_correct_new:
     forall (program_base p_stacklimit: word),
     forall e_impl_full (s: stmt) t initialMH initialRegsH postH,
@@ -1223,8 +1260,8 @@ Section FlatToRiscv1.
     runsTo initialL (fun finalL => exists finalRegsH finalMH (final_stackvals: list word),
           postH finalL.(getLog) finalMH finalRegsH /\
           map.extends finalL.(getRegs) finalRegsH /\
-          map.get finalL.(getRegs) RegisterNames.sp = Some p_sp ->
-          map.get finalL.(getRegs) RegisterNames.ra = Some p_ra ->
+          map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
+          map.get finalL.(getRegs) RegisterNames.ra = Some p_ra /\
           length final_stackvals = length old_stackvals /\
           (R * eq finalMH *
            word_array p_stacklimit final_stackvals *
@@ -1260,20 +1297,27 @@ Section FlatToRiscv1.
 
     - (* SInteract *)
       eapply runsTo_weaken.
-      + eapply compile_ext_call_correct with
-            (postH := fun t' m' lL' => exists lH', map.extends lL' lH' /\ post t' m' lH')
-            (action0 := action) (argvars0 := argvars) (resvars0 := resvars);
+      + eapply compile_ext_call_correct_new with
+            (postH := fun t' m' l' => post t' m (* <- not m' because unchanged *) l')
+            (action := action) (argvars := argvars) (resvars := resvars);
           simpl; reflexivity || eassumption || ecancel_assumption || idtac.
-        eapply @exec.interact; try eassumption.
         * eapply map.getmany_of_list_extends; eassumption.
-        * intros mReceive resvals HO.
+        * intros resvals HO ?. subst mGive.
           match goal with
-          | H: _ |- _ => specialize (H mReceive resvals HO);
-                         destruct H as (finalRegsH & ? & finalMH & ? & ?)
+          | H: forall _, _ |- _ =>
+            specialize H with (1 := HO);
+            move H at bottom;
+            destruct H as (finalRegsH & ? & finalMH & ? & ?)
           end.
           edestruct (map.putmany_of_list_extends_exists (ok := locals_ok))
             as (finalRegsL & ? & ?); [eassumption..|].
-          eauto 7.
+          do 2 match goal with
+          | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H
+          end.
+          replace mKeep with m in * by congruence. clear mKeep.
+          replace finalMH with m in * by congruence. clear finalMH.
+          eexists.
+          repeat split; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst.
         do 3 eexists. repeat split; try eassumption. ecancel_assumption.
