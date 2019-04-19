@@ -11,7 +11,7 @@ Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
 Require        riscv.Utility.InstructionNotations.
 Require Import riscv.Platform.MinimalLogging.
-Require Import riscv.Platform.MetricLogging.
+Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MetricMinimal.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.

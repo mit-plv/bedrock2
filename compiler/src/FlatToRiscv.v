@@ -9,7 +9,6 @@ Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
-Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Spec.Execute.
 Require Import riscv.Platform.Run.
 Require Import riscv.Platform.Memory.
@@ -47,6 +46,7 @@ Require Import coqutil.Z.bitblast.
 Require Import riscv.Utility.prove_Zeq_bitwise.
 Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
+Require Import compiler.MetricsToRiscv.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -55,6 +55,8 @@ Set Implicit Arguments.
 
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
+
+  Local Notation metricLogDifferenceH := bedrock2.MetricLogging.metricLogDifference.
 
   Class parameters := {
     def_params :> FlatToRiscvDef.parameters;
@@ -119,9 +121,9 @@ Module Import FlatToRiscv.
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
-                  boundMetricLog UnitMetricLog
+                  boundMetricLog MetricLogging.UnitMetricLog
                          (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
-                         (metricLogDifference initialMetricsH finalMetricsH) /\
+                         (metricLogDifferenceH initialMetricsH finalMetricsH) /\
                   ext_guarantee finalL);
   }.
 
@@ -138,6 +140,7 @@ Section FlatToRiscv1.
   Definition trace := list (LogItem actname).
 
   Local Notation RiscvMachineL := (MetricRiscvMachine Register actname).
+  Local Notation metricLogDifferenceH := bedrock2.MetricLogging.metricLogDifference.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -1875,7 +1878,7 @@ Ltac word_iff1 OK :=
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
           boundMetricLog UnitMetricLog
                          (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
-                         (metricLogDifference initialMetricsH finalMetricsH) /\
+                         (metricLogDifferenceH initialMetricsH finalMetricsH) /\
           ext_guarantee finalL).
   Proof.
     pose proof compile_stmt_emits_valid.

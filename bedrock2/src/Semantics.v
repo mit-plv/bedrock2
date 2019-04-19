@@ -3,7 +3,7 @@ Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
-Require Import riscv.Platform.MetricLogging.
+Require Import bedrock2.MetricLogging.
 Require Export bedrock2.Memory.
 
 Require Import Coq.Lists.List.

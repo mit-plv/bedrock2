@@ -15,12 +15,12 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Machine.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscv.
-Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MinimalMMIO.
 Require Import riscv.Platform.MetricMinimalMMIO.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
+Require Import compiler.ToRiscvMetrics.
 Require Import compiler.FlatToRiscvDef.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.Rem4.
@@ -364,7 +364,7 @@ Section MMIO1.
               rewrite Z.mod_small by apply word.unsigned_range.
               rewrite word.of_Z_unsigned.
               eassumption. }
-            all: solve [solve_MetricLog]. }
+              all: solve [MetricsToRiscv.solve_MetricLog]. }
 
       + (* MMInput *)
         simpl in *|-.
@@ -413,7 +413,7 @@ Section MMIO1.
               replace (word.add r (word.of_Z 0)) with r; [eassumption|].
               simpl_word_exprs word_ok.
               reflexivity. }
-            all: solve [solve_MetricLog]. }
+            all: solve [MetricsToRiscv.solve_MetricLog]. }
   Qed.
 
 End MMIO1.

@@ -214,7 +214,8 @@ Proof.
 Qed.
 
 Lemma input_program_correct:
-  exec map.empty swap_chars_over_uart [] map.empty map.empty EmptyMetricLog (fun t m l mc => True).
+  exec map.empty swap_chars_over_uart [] map.empty map.empty
+       bedrock2.MetricLogging.EmptyMetricLog (fun t m l mc => True).
 Proof.
   eapply bedrock2.WeakestPreconditionProperties.sound_nil.
   eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
@@ -232,7 +233,8 @@ Lemma end2endDemo:
                       initialSwapMachine
                       (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
 Proof.
-  refine (@exprImp2Riscv_correct _ _ swap_chars_over_uart map.empty EmptyMetricLog nil _ _ (fun _ => True) _ _ _ _ _ _ _ _ _).
+  refine (@exprImp2Riscv_correct _ _ swap_chars_over_uart map.empty
+            bedrock2.MetricLogging.EmptyMetricLog nil _ _ (fun _ => True) _ _ _ _ _ _ _ _ _).
   - reflexivity.
   - cbv. repeat constructor.
   - reflexivity.

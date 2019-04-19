@@ -6,7 +6,7 @@ Require Import compiler.NameGen.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Syntax.
 Require Import riscv.Utility.Utility.
-Require Import riscv.Platform.MetricLogging.
+Require Import bedrock2.MetricLogging.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
