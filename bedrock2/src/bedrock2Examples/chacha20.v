@@ -86,3 +86,116 @@ Example chacha20_block_c_string := Eval vm_compute in
   ToCString.c_module [chacha20_quarter; chacha20_block_separate].
 Print chacha20_block_c_string.
 *)
+
+From coqutil Require Import Word.Interface Map.Interface.
+From coqutil.Word Require Import Naive.
+From coqutil.Tactics Require Import letexists eabstract.
+From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars.
+From bedrock2.Map Require Import Separation SeparationLogic.
+From coqutil.Z Require Import Lia.
+
+Local Infix "*" := sep.
+Local Infix "*" := sep : type_scope.
+
+Local Instance word32: Interface.word 32 := coqutil.Word.Naive.word 32 eq_refl.
+Local Instance word32_ok: word.ok word32 := coqutil.Word.Naive.ok _ _.
+Local Instance byte_ok: word.ok byte := coqutil.Word.Naive.ok _ _.
+Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 32 eq_refl) _.
+Local Instance wordok: word.ok word := coqutil.Word.Naive.ok _ _.
+
+Instance spec_of_chacha20 : spec_of "chacha20_block" := fun functions =>
+  forall outAddr out keyAddr key nonceAddr nonce cval R m t,
+    (array scalar32 (word.of_Z 4) outAddr out *
+     array scalar32 (word.of_Z 4) keyAddr key *
+     array scalar32 (word.of_Z 4) nonceAddr nonce *
+     R) m ->
+    16 = Z.of_nat (List.length out) ->
+    8 = Z.of_nat (List.length key) ->
+    3 = Z.of_nat (List.length nonce) ->
+    WeakestPrecondition.call functions "chacha20_block" t m [outAddr; keyAddr; nonceAddr; cval]
+                             (fun t' m' rets => rets = []).
+
+Lemma chacha20_ok : program_logic_goal_for_function! chacha20_block.
+Proof.
+  straightline.
+  destruct key; [cbn in H1; congruence |].
+  cbn [array] in H.
+  repeat straightline.
+
+  letexists; split.
+  1: {
+   repeat straightline.
+   letexists; split.
+   1: {
+     Print Ltac straightline.
+     (* try subst v0; eapply Scalars.load_four_of_sep. *)
+     (* try subst v0; refine (@Scalars.load_four_of_sep _ (@word FE310CSemantics.parameters) (@byte FE310CSemantics.parameters) ltac:(typeclasses eauto) ltac:(typeclasses eauto) ltac:(typeclasses eauto) (@mem FE310CSemantics.parameters) ltac:(typeclasses eauto) _ _ _ _ _). *)
+     try subst v0; refine (@Scalars.load_four_of_sep _ (@word FE310CSemantics.parameters) (@byte FE310CSemantics.parameters) _ _ _ (@mem FE310CSemantics.parameters) _ _ _ _ _ _).
+     refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H).
+     ecancel.
+     Set Printing Implicit.
+     cbv [word32].
+     cbn [Z.compare].
+     ecancel.
+     cancel.
+
+     let RHS := lazymatch goal with
+                | |- @Lift1Prop.iff1 _ _ (@seps _ _ _ ?RHS) => RHS
+                end in
+     let jy := index_and_element_of RHS in
+     let j := lazymatch jy with
+              | @pair _ _ ?i _ => i
+              end in
+     let y := lazymatch jy with
+              | @pair _ _ _ ?y => y
+              end in
+     assert_fails (idtac; (let y := rdelta.rdelta_var y in
+                          is_evar y));
+     (let LHS := lazymatch goal with
+                 | |- @Lift1Prop.iff1 _ (@seps _ _ _ ?LHS) _ => LHS
+                 end in
+      idtac LHS y).
+      let i := find_syntactic_unify_deltavar LHS y in
+      idtac).
+      simple refine (@cancel_seps_at_indices _ _ _ _ i j LHS RHS _ _);
+      idtac).
+      cbn[firstn skipn app hd tl];
+      [ syntactic_unify._syntactic_exact_deltavar
+          (@RelationClasses.reflexivity _ _
+                                        (@RelationClasses.Equivalence_Reflexive _ _ (Lift1Prop.Equivalence_iff1 _)) _)
+      |  ]).
+
+     let RHS := lazymatch goal with
+                | |- Lift1Prop.iff1 _ (seps ?RHS) => RHS
+                end in
+     let jy := index_and_element_of RHS in
+     let j := lazymatch jy with
+              | (?i, _) => i
+              end in
+     let y := lazymatch jy with
+              | (_, ?y) => y
+              end in
+     assert_fails idtac; (let y := rdelta.rdelta_var y in
+                          is_evar y);
+     (let LHS := lazymatch goal with
+                 | |- Lift1Prop.iff1 (seps ?LHS) _ => LHS
+                 end in
+      let i := find_syntactic_unify_deltavar LHS y in
+      simple refine (cancel_seps_at_indices i j LHS RHS _ _); cbn[firstn skipn app hd tl];
+      [ syntactic_exact_deltavar (RelationClasses.reflexivity _) |  ]).
+     ecancel_step.
+     Print Ltac ecancel_step.
+     match goal with
+     | [ |- Lift1Prop.iff1 (seps ?lhs) (seps ?rhs) ] =>
+       refine (cancel_seps_at_indices 1 0 lhs rhs _ _); cbn [firstn skipn app hd tl]; [reflexivity |]
+     end.
+     eapply RelationClasses.reflexivity.
+     cbn [seps].
+     reflexivity.
+   }
+   1: {
+     subst v v0.
+     reflexivity.
+   }
+  }
+  repeat straightline.
