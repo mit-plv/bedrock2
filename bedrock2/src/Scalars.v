@@ -1,6 +1,7 @@
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Semantics bedrock2.Array coqutil.Word.LittleEndian.
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
+Require Import coqutil.Word.Properties.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.bitblast.
 Require Import coqutil.Z.Lia.
@@ -81,6 +82,30 @@ Section Scalars.
     eapply Z.lor_0_r.
   Qed.
 
+  Lemma load_two_of_sep addr value R m
+    (Hsep : sep (scalar16 addr value) R m)
+    : Memory.load Syntax.access_size.two m addr = Some (word.of_Z (word.unsigned value)).
+  Proof.
+    cbv [load].
+    erewrite load_Z_of_sep by exact Hsep; f_equal.
+    cbv [bytes_per].
+    rewrite Z.land_ones; [| blia].
+    rewrite Properties.word.wrap_unsigned.
+    reflexivity.
+  Qed.
+
+  Lemma load_four_of_sep addr value R m
+    (Hsep : sep (scalar32 addr value) R m)
+    : Memory.load Syntax.access_size.four m addr = Some (word.of_Z (word.unsigned value)).
+  Proof.
+    cbv [load].
+    erewrite load_Z_of_sep by exact Hsep; f_equal.
+    cbv [bytes_per].
+    rewrite Z.land_ones; [| blia].
+    rewrite Properties.word.wrap_unsigned.
+    reflexivity.
+  Qed.
+
   Lemma store_one_of_sep addr (oldvalue : byte) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar8 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar8 addr (word.of_Z (word.unsigned value))) R m -> post m)
@@ -89,6 +114,57 @@ Section Scalars.
     eapply (store_bytes_of_sep _ 1 (PrimitivePair.pair.mk _ tt)); cbn; [ecancel_assumption|].
     cbv [LittleEndian.split].
     intros; eapply Hpost; ecancel_assumption.
+  Qed.
+
+  Local Ltac remove_wrap x :=
+    match x with
+    | Z.shiftr ?x' ?n =>
+      let x'' := remove_wrap x' in
+      constr:(Z.shiftr x'' n)
+    | word.wrap ?v =>
+      constr:(v)
+    end.
+
+  Local Ltac word_bitblast :=
+    apply word.unsigned_inj;
+    rewrite !word.unsigned_of_Z;
+    cbv [word.wrap];
+    Z.bitblast.
+
+  Lemma store_two_of_sep addr (oldvalue : word16) (value : word) R m (post:_->Prop)
+    (Hsep : sep (scalar16 addr oldvalue) R m)
+    (Hpost : forall m, sep (scalar16 addr (word.of_Z (word.unsigned value))) R m -> post m)
+    : exists m1, Memory.store Syntax.access_size.two m addr value = Some m1 /\ post m1.
+  Proof.
+    cbv [scalar16 truncated_scalar littleendian ptsto_bytes bytes_per tuple.to_list LittleEndian.split PrimitivePair.pair._1 PrimitivePair.pair._2 array] in Hsep, Hpost.
+    eapply (store_bytes_of_sep _ 2 (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ tt))); cbn; [ecancel_assumption|].
+    cbv [LittleEndian.split].
+    intros; eapply Hpost.
+    rewrite word.unsigned_of_Z.
+    repeat match goal with
+           | [ |- context[@word.of_Z _ ?w ?x] ] =>
+             let x' := remove_wrap x in
+             replace (@word.of_Z _ w x) with (@word.of_Z _ w x') by word_bitblast
+           end.
+    ecancel_assumption.
+  Qed.
+
+  Lemma store_four_of_sep addr (oldvalue : word32) (value : word) R m (post:_->Prop)
+    (Hsep : sep (scalar32 addr oldvalue) R m)
+    (Hpost : forall m, sep (scalar32 addr (word.of_Z (word.unsigned value))) R m -> post m)
+    : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
+  Proof.
+    cbv [scalar32 truncated_scalar littleendian ptsto_bytes bytes_per tuple.to_list LittleEndian.split PrimitivePair.pair._1 PrimitivePair.pair._2 array] in Hsep, Hpost.
+    eapply (store_bytes_of_sep _ 4 (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ tt))))); cbn; [ecancel_assumption|].
+    cbv [LittleEndian.split].
+    intros; eapply Hpost.
+    rewrite word.unsigned_of_Z.
+    repeat match goal with
+           | [ |- context[@word.of_Z _ ?w ?x] ] =>
+             let x' := remove_wrap x in
+             replace (@word.of_Z _ w x) with (@word.of_Z _ w x') by word_bitblast
+           end.
+    ecancel_assumption.
   Qed.
 
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
