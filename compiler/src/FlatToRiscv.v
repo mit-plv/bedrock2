@@ -1874,8 +1874,37 @@ Section FlatToRiscv1.
            end.
     subst.
 
+Ltac sidecondition ::=
+  match goal with
+  | H:map.get _ _ = Some _ |- _ => exact H
+  | |- map.get _ _ = Some _ =>
+        simpl;
+         match goal with
+         | |- map.get (map.put _ ?x _) ?y = Some _ => constr_eq x y; apply map.get_put_same
+         end
+  | |- (?P * ?Q)%sep ?m => simpl in *; (solve [ seplog ])
+  | |- _ => reflexivity
+  | |- _ => assumption
+  | V: valid_instructions _ _
+    |- Encode.verify ?inst ?iset =>
+        assert_fails is_evar inst;
+        apply V;
+        repeat match goal with
+               | H: _ |- _ => clear H
+               end;
+        eauto 30 using in_cons, in_or_app, in_eq
+  | |- Memory.load ?sz ?m ?addr = Some ?v =>
+        simpl; unfold Memory.load, Memory.load_Z; erewrite load_bytes_of_sep;
+         [ reflexivity | ecancel_assumption ]
+  | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
+  | |- _ => idtac
+  end.
+
     (* load back the return address *)
-    (* TODO *)
+    eapply runsToStep. {
+      eapply run_load_word; try solve [sidecondition].
+      - simpl. solve_divisibleBy4.
+      - simpl.
 
     (* increase sp *)
     (* TODO *)
