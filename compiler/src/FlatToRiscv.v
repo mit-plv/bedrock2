@@ -1905,9 +1905,97 @@ Ltac sidecondition ::=
       eapply run_load_word; try solve [sidecondition].
       - simpl. solve_divisibleBy4.
       - simpl.
+        instantiate (1 := (p_stacklimit + !(bytes_per_word * #(length remaining_stack)))).
+        repeat match goal with
+               | H: ?T |- _ => lazymatch T with
+                               | assumptions => fail
+                               | map.only_differ middle_regs1 _ middle_regs2 => fail
+                               | map.get middle_regs1 RegisterNames.sp = Some _ => fail
+                               | _ => clear H
+                               end
+               end.
+        match goal with
+        | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
+          specialize (D RegisterNames.sp); destruct D as [A | A]
+        end.
+        + exfalso. (* contradiction: sp cannot be in modVars of body *) admit.
+        + etransitivity; [symmetry|]; eassumption.
+      - simpl.
+        wseplog_pre word_ok.
+        wcancel.
+        wcancel_step.
+        {
+          match goal with
+          | |- ?LHS = ?RHS =>
+            match LHS with
+            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+              match RHS with
+              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (length (compile_stmt_new epos1 pos1 s))
+                  with (length (compile_stmt_new epos2 pos2 s))
+                    by apply compile_stmt_length_position_indep
+              end
+            end
+          end.
+          solve_word_eq word_ok.
+        }
+        ecancel_done'.
+    }
+
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
 
     (* increase sp *)
-    (* TODO *)
+    eapply runsToStep. {
+      eapply (run_Addi _ _ _
+             (* otherwise it will pick the decreasing (with a - in front) *)
+              (bytes_per_word *
+                  #(length argnames + length retnames + 1 + length (modVars_as_list body)))%Z);
+        try solve [sidecondition | simpl; solve_divisibleBy4 ].
+      - simpl.
+        rewrite map.get_put_diff by (clear; cbv; congruence).
+        repeat match goal with
+               | H: ?T |- _ => lazymatch T with
+                               | assumptions => fail
+                               | map.only_differ middle_regs1 _ middle_regs2 => fail
+                               | map.get middle_regs1 RegisterNames.sp = Some _ => fail
+                               | _ => clear H
+                               end
+               end.
+        match goal with
+        | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
+          specialize (D RegisterNames.sp); destruct D as [A | A]
+        end.
+        + exfalso. (* contradiction: sp cannot be in modVars of body *) admit.
+        + etransitivity; [symmetry|]; eassumption.
+      - simpl.
+        wseplog_pre word_ok.
+        wcancel.
+        wcancel_step. {
+          match goal with
+          | |- ?LHS = ?RHS =>
+            match LHS with
+            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+              match RHS with
+              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (length (compile_stmt_new epos1 pos1 s))
+                  with (length (compile_stmt_new epos2 pos2 s))
+                    by apply compile_stmt_length_position_indep
+              end
+            end
+          end.
+          solve_word_eq word_ok.
+        }
+        ecancel_done'.
+    }
 
     (* jump back to caller *)
     (* TODO *)
