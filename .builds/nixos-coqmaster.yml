@@ -11,4 +11,4 @@ tasks:
       nix-env -if "$path" --extra-substituters "https://coq.cachix.org" --trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= coq.cachix.org-1:5QW/wwEnD+l2jvN6QRbRRsa4hBHG3QiQQ26cxu1F5tI="
   - build: |
       coqc --version
-      make -C bedrock2 -j"$(nproc)" | iconv -t UTF-8 -c
+      make -C bedrock2 -j"$(nproc)" 2>&1 | iconv -t UTF-8 -c
