@@ -177,12 +177,56 @@ Proof.
     straightline.
     straightline.
     straightline.
+    Set Ltac Profiling.
     do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
+    Show Ltac Profile CutOff 0.
+    straightline.
+
+  match goal with
+  | names:=_:string2ident.Context.list
+    |- @cmd _ _ (@cmd.set _ ?s ?e) _ _ _ ?post =>
+        unfold1_cmd_goal; cbv beta match delta [cmd_body];
+         (let names := eval cbv[names] in names in
+          let x := string2ident.lookup s names in
+          string2ident.ensure_free x; letexists _ as x; split)
+  end.
+{ 
+  do 57 straightline.
+  straightline.
+  straightline.
+  straightline.
+  straightline.
+  Print Ltac straightline.
+  match goal with
+  | |- exists x, ?P /\ ?Q =>
+        let x := fresh x in
+        refine (let x := _ in ex_intro (fun x => P /\ Q) x _); split
+  end.
+  {
+
+    Print Ltac straightline.
+    match goal with
+  | |- map.get _ _ = Some ?v =>
+        let v' := rdelta.rdelta v in
+        is_evar v'; pose v' as X
+  end
+.
+
+  change v with X. subst X.
+  Time exact eq_refl.
+(* Finished transaction in 1.907 secs (1.905u,0.s) (successful) *)
+  }
+  repeat straightline.
+  }
+
+
+
+
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
@@ -211,3 +255,4 @@ Proof.
     Time do 10 straightline.
     Time do 10 straightline.
 
+Abort.
