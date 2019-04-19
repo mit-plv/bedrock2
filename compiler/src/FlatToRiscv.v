@@ -1182,6 +1182,77 @@ Section FlatToRiscv1.
 
   Hint Unfold program word_array: unf_to_array.
 
+  Lemma compile_stmt_length_position_indep: forall e_pos1 e_pos2 s pos1 pos2,
+        length (compile_stmt_new e_pos1 pos1 s) = length (compile_stmt_new e_pos2 pos2 s).
+  Proof.
+    induction s; intros; simpl; try reflexivity;
+      repeat (simpl; rewrite ?app_length); erewrite ?IHs1; erewrite ?IHs2; try reflexivity.
+  Qed.
+
+  Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
+      f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2.
+  Proof. intros. congruence. Qed.
+
+  (* deliberately leaves word and Z goals open if it fails to solve them, so that the
+     user can inspect them and solve them manually or tweak things to make them solvable
+     automatically *)
+  Ltac sepclause_part_eq OK :=
+    lazymatch type of OK with
+    | word.ok ?WORD =>
+      lazymatch goal with
+      | |- @eq ?T ?x ?y =>
+        tryif first [is_evar x | is_evar y | constr_eq x y] then (
+          reflexivity
+        ) else (
+          tryif (unify T (@word.rep _ WORD)) then (
+            try solve [autorewrite with rew_word_morphism; solve_word_eq OK]
+          ) else (
+            tryif (unify T Z) then (
+              try solve [bomega]
+            ) else (
+              lazymatch x with
+              | ?x1 ?x2 => lazymatch y with
+                           | ?y1 ?y2 => refine (f_equal2 _ _); sepclause_part_eq OK
+                           | _ => fail "" x "is an application while" y "is not"
+                           end
+              | _ => lazymatch y with
+                     | ?y1 ?y2 => fail "" x "is not an application while" y "is"
+                     | _ => tryif constr_eq x y then idtac else fail "" x "does not match" y
+                     end
+              end
+            )
+          )
+        )
+      end
+    | _ => fail 1000 "OK does not have the right type"
+    end.
+
+  Ltac sepclause_eq := sepclause_part_eq (@word_ok (@W (@def_params p))).
+
+  Ltac pick_nat n :=
+    multimatch n with
+    | S ?m => constr:(m)
+    | S ?m => pick_nat m
+    end.
+
+  Require Import coqutil.Tactics.rdelta.
+
+  Ltac wcancel_step :=
+    let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
+    let jy := index_and_element_of RHS in
+    let j := lazymatch jy with (?i, _) => i end in
+    let y := lazymatch jy with (_, ?y) => y end in
+    assert_fails (idtac; let y := rdelta_var y in is_evar y);
+    let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
+    let l := eval cbv [length] in (length LHS) in
+    let i := pick_nat l in
+    cancel_seps_at_indices i j; [sepclause_eq|].
+
+  Ltac wcancel :=
+    cancel;
+    repeat (wcancel_step; let n := numgoals in guard n <= 1);
+    try solve [ecancel_done'].
+
   (* TODO make sure it's compatible with users of it *)
   Axiom compile_ext_call_correct_new: forall (initialL: RiscvMachine Register actname)
         action postH newPc insts (argvars resvars: list Register) initialMH R initialRegsH
@@ -1427,79 +1498,6 @@ Section FlatToRiscv1.
         - eapply map.getmany_of_list_extends; eassumption.
         - instantiate (1 := old_argvals). unfold Register, MachineInt in *. blia.
         - wseplog_pre word_ok.
-
-  Set Nested Proofs Allowed.
-
-  Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
-      f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2.
-  Proof. intros. congruence. Qed.
-
-
-          assert (forall (A B: Type) (f1 f2: A -> B) (a1 a2: A), f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2) as TEST. {
-            intros.
-            refine (f_equal2 _ _); assumption.
-          }
-          clear TEST.
-
-  (* deliberately leaves word and Z goals open if it fails to solve them, so that the
-     user can inspect them and solve them manually or tweak things to make them solvable
-     automatically *)
-  Ltac sepclause_part_eq OK :=
-    lazymatch type of OK with
-    | word.ok ?WORD =>
-      lazymatch goal with
-      | |- @eq ?T ?x ?y =>
-        tryif first [is_evar x | is_evar y | constr_eq x y] then (
-          reflexivity
-        ) else (
-          tryif (unify T (@word.rep _ WORD)) then (
-            try solve [autorewrite with rew_word_morphism; solve_word_eq OK]
-          ) else (
-            tryif (unify T Z) then (
-              try solve [bomega]
-            ) else (
-              lazymatch x with
-              | ?x1 ?x2 => lazymatch y with
-                           | ?y1 ?y2 => refine (f_equal2 _ _); sepclause_part_eq OK
-                           | _ => fail "" x "is an application while" y "is not"
-                           end
-              | _ => lazymatch y with
-                     | ?y1 ?y2 => fail "" x "is not an application while" y "is"
-                     | _ => tryif constr_eq x y then idtac else fail "" x "does not match" y
-                     end
-              end
-            )
-          )
-        )
-      end
-    | _ => fail 1000 "OK does not have the right type"
-    end.
-
-  Ltac sepclause_eq := sepclause_part_eq (@word_ok (@W (@def_params p))).
-
-  Ltac pick_nat n :=
-    multimatch n with
-    | S ?m => constr:(m)
-    | S ?m => pick_nat m
-    end.
-
-  Require Import coqutil.Tactics.rdelta.
-
-  Ltac wcancel_step :=
-    let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-    let jy := index_and_element_of RHS in
-    let j := lazymatch jy with (?i, _) => i end in
-    let y := lazymatch jy with (_, ?y) => y end in
-    assert_fails (idtac; let y := rdelta_var y in is_evar y);
-    let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-    let l := eval cbv [length] in (length LHS) in
-    let i := pick_nat l in
-    cancel_seps_at_indices i j; [sepclause_eq|].
-
-  Ltac wcancel :=
-    cancel;
-    repeat (wcancel_step; let n := numgoals in guard n <= 1);
-    try solve [ecancel_done'].
 
         wcancel.
       }
@@ -1761,8 +1759,58 @@ Section FlatToRiscv1.
            end.
     subst.
 
+    match goal with
+    | H: outcome _ _ _ |- _ => rename H into HO
+    end.
+    match goal with
+    | H: forall _, _ |- _ =>
+      specialize H with (1 := HO);
+      move H at bottom;
+      destruct H as (finalRegsH & ? & finalMH & ? & ?)
+    end.
+
+    (* save results onto stack *)
     eapply runsTo_trans. {
-      eapply save_regs_correct; simpl; cycle 2.
+      eapply save_regs_correct with (vars := retnames); simpl; cycle 2.
+      - solve_divisibleBy4.
+      - eapply map.getmany_of_list_extends; try eassumption.
+      - eassumption.
+      - instantiate (1 := old_retvals). unfold Register, MachineInt in *. blia.
+      - wseplog_pre word_ok.
+        wcancel.
+        wcancel_step. {
+          match goal with
+          | |- ?LHS = ?RHS =>
+            match LHS with
+            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+              match RHS with
+              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (length (compile_stmt_new epos1 pos1 s))
+                  with (length (compile_stmt_new epos2 pos2 s))
+                    by apply compile_stmt_length_position_indep
+              end
+            end
+          end.
+          solve_word_eq word_ok.
+        }
+        wcancel_step.
+        ecancel_done'.
+      - reflexivity.
+      - assumption.
+      - admit. (* offset bounds *)
+    }
+
+    (* load back the modified vars *)
+    (* TODO *)
+
+    (* load back the return address *)
+    (* TODO *)
+
+    (* increase sp *)
+    (* TODO *)
+
+    (* jump back to caller *)
+    (* TODO *)
 
   Abort.
   Goal True. idtac "FlatToRiscv: compile_stmt_correct_new done". Abort.
