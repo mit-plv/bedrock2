@@ -1,9 +1,9 @@
 [submodule "deps/riscv-coq"]
 	path = deps/riscv-coq
-	url = ../../mit-plv/riscv-coq.git
+	url = https://github.com/mit-plv/riscv-coq.git
 [submodule "deps/coqutil"]
 	path = deps/coqutil
-	url = ../../mit-plv/coqutil.git
+	url = https://github.com/mit-plv/coqutil.git
 [submodule "deps/kami"]
 	path = deps/kami
-	url = ../../mit-plv/kami.git
+	url = https://github.com/mit-plv/kami.git

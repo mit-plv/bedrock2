@@ -1,0 +1,14 @@
+image: nixos/unstable
+repositories:
+  nixpkgs: https://nixos.org/channels/nixpkgs-unstable
+packages:
+  - nixpkgs.gnumake
+sources:
+  - https://git.sr.ht/~andres/bedrock2
+tasks:
+  - coq: |
+      path=$(nix-prefetch-url --unpack 'https://github.com/coq/coq-on-cachix/tarball/master' --name source 2>&1 | tee /dev/stderr | grep -m1 '^path is' | cut -d\' -f2)
+      nix-env -if "$path" --extra-substituters "https://coq.cachix.org" --trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= coq.cachix.org-1:5QW/wwEnD+l2jvN6QRbRRsa4hBHG3QiQQ26cxu1F5tI="
+  - build: |
+      coqc --version
+      make -C bedrock2 -j"$(nproc)" 2>&1 | iconv -t UTF-8 -c

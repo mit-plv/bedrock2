@@ -1,0 +1,9 @@
+image: debian/testing
+packages:
+  - coq
+sources:
+  - https://git.sr.ht/~andres/bedrock2
+tasks:
+  - build: |
+      coqc --version
+      make -C bedrock2 -j"$(nproc)" 2>&1 | iconv -t UTF-8 -c
