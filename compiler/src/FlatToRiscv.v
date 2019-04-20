@@ -1874,11 +1874,128 @@ Section FlatToRiscv1.
            end.
     subst.
 
+Ltac sidecondition ::=
+  match goal with
+  | H:map.get _ _ = Some _ |- _ => exact H
+  | |- map.get _ _ = Some _ =>
+        simpl;
+         match goal with
+         | |- map.get (map.put _ ?x _) ?y = Some _ => constr_eq x y; apply map.get_put_same
+         end
+  | |- (?P * ?Q)%sep ?m => simpl in *; (solve [ seplog ])
+  | |- _ => reflexivity
+  | |- _ => assumption
+  | V: valid_instructions _ _
+    |- Encode.verify ?inst ?iset =>
+        assert_fails is_evar inst;
+        apply V;
+        repeat match goal with
+               | H: _ |- _ => clear H
+               end;
+        eauto 30 using in_cons, in_or_app, in_eq
+  | |- Memory.load ?sz ?m ?addr = Some ?v =>
+        simpl; unfold Memory.load, Memory.load_Z; erewrite load_bytes_of_sep;
+         [ reflexivity | ecancel_assumption ]
+  | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
+  | |- _ => idtac
+  end.
+
     (* load back the return address *)
-    (* TODO *)
+    eapply runsToStep. {
+      eapply run_load_word; try solve [sidecondition].
+      - simpl. solve_divisibleBy4.
+      - simpl.
+        instantiate (1 := (p_stacklimit + !(bytes_per_word * #(length remaining_stack)))).
+        repeat match goal with
+               | H: ?T |- _ => lazymatch T with
+                               | assumptions => fail
+                               | map.only_differ middle_regs1 _ middle_regs2 => fail
+                               | map.get middle_regs1 RegisterNames.sp = Some _ => fail
+                               | _ => clear H
+                               end
+               end.
+        match goal with
+        | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
+          specialize (D RegisterNames.sp); destruct D as [A | A]
+        end.
+        + exfalso. (* contradiction: sp cannot be in modVars of body *) admit.
+        + etransitivity; [symmetry|]; eassumption.
+      - simpl.
+        wseplog_pre word_ok.
+        wcancel.
+        wcancel_step.
+        {
+          match goal with
+          | |- ?LHS = ?RHS =>
+            match LHS with
+            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+              match RHS with
+              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (length (compile_stmt_new epos1 pos1 s))
+                  with (length (compile_stmt_new epos2 pos2 s))
+                    by apply compile_stmt_length_position_indep
+              end
+            end
+          end.
+          solve_word_eq word_ok.
+        }
+        ecancel_done'.
+    }
+
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
 
     (* increase sp *)
-    (* TODO *)
+    eapply runsToStep. {
+      eapply (run_Addi _ _ _
+             (* otherwise it will pick the decreasing (with a - in front) *)
+              (bytes_per_word *
+                  #(length argnames + length retnames + 1 + length (modVars_as_list body)))%Z);
+        try solve [sidecondition | simpl; solve_divisibleBy4 ].
+      - simpl.
+        rewrite map.get_put_diff by (clear; cbv; congruence).
+        repeat match goal with
+               | H: ?T |- _ => lazymatch T with
+                               | assumptions => fail
+                               | map.only_differ middle_regs1 _ middle_regs2 => fail
+                               | map.get middle_regs1 RegisterNames.sp = Some _ => fail
+                               | _ => clear H
+                               end
+               end.
+        match goal with
+        | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
+          specialize (D RegisterNames.sp); destruct D as [A | A]
+        end.
+        + exfalso. (* contradiction: sp cannot be in modVars of body *) admit.
+        + etransitivity; [symmetry|]; eassumption.
+      - simpl.
+        wseplog_pre word_ok.
+        wcancel.
+        wcancel_step. {
+          match goal with
+          | |- ?LHS = ?RHS =>
+            match LHS with
+            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+              match RHS with
+              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (length (compile_stmt_new epos1 pos1 s))
+                  with (length (compile_stmt_new epos2 pos2 s))
+                    by apply compile_stmt_length_position_indep
+              end
+            end
+          end.
+          solve_word_eq word_ok.
+        }
+        ecancel_done'.
+    }
 
     (* jump back to caller *)
     (* TODO *)
