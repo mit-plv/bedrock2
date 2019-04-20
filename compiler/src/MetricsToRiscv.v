@@ -23,14 +23,10 @@ Section MetricsToRiscv.
     storesL := storesH mh;
   |}.
 
-  (* Provide a better definition which includes the lowering of the metrics *)
-  Definition boundMetricLog(mBound: metricsL)(m1: metricsL)(m2: metricsH): Prop :=
-    riscv.Platform.MetricLogging.boundMetricLog mBound m1 (lowerMetrics m2).
-
 End MetricsToRiscv.
 
 Ltac solve_MetricLog :=
-  cbv [lowerMetrics boundMetricLog] in *;
+  cbv [lowerMetrics] in *;
   repeat bedrock2.MetricLogging.unfold_MetricLog;
   repeat bedrock2.MetricLogging.simpl_MetricLog;
   riscv.Platform.MetricLogging.solve_MetricLog.

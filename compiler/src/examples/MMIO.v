@@ -20,7 +20,7 @@ Require Import riscv.Platform.MinimalMMIO.
 Require Import riscv.Platform.MetricMinimalMMIO.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
-Require Import compiler.ToRiscvMetrics.
+Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.Rem4.

@@ -56,8 +56,6 @@ Set Implicit Arguments.
 Module Import FlatToRiscv.
   Export FlatToRiscvDef.FlatToRiscvDef.
 
-  Local Notation metricLogDifferenceH := bedrock2.MetricLogging.metricLogDifference.
-
   Class parameters := {
     def_params :> FlatToRiscvDef.parameters;
 
@@ -121,9 +119,8 @@ Module Import FlatToRiscv.
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
-                  boundMetricLog MetricLogging.UnitMetricLog
-                         (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
-                         (metricLogDifferenceH initialMetricsH finalMetricsH) /\
+                  (finalL.(getMetrics) - initialL.(getMetrics) <=
+                   lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
                   ext_guarantee finalL);
   }.
 
@@ -140,7 +137,6 @@ Section FlatToRiscv1.
   Definition trace := list (LogItem actname).
 
   Local Notation RiscvMachineL := (MetricRiscvMachine Register actname).
-  Local Notation metricLogDifferenceH := bedrock2.MetricLogging.metricLogDifference.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -1876,9 +1872,8 @@ Ltac word_iff1 OK :=
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
-          boundMetricLog UnitMetricLog
-                         (metricLogDifference initialL.(getMetrics) finalL.(getMetrics))
-                         (metricLogDifferenceH initialMetricsH finalMetricsH) /\
+          (finalL.(getMetrics) - initialL.(getMetrics) <=
+           lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
           ext_guarantee finalL).
   Proof.
     pose proof compile_stmt_emits_valid.

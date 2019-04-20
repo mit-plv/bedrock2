@@ -486,9 +486,7 @@ Section FlattenExpr1.
     @eval_expr (mk_Semantics_params p) initialM initialH e initialMcH = Some (res, finalMcH) ->
     FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res /\
-      boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)).
+      (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     induction e; intros *; intros F Ex U D Ev; simpl in *; simp.
 
@@ -529,9 +527,7 @@ Section FlattenExpr1.
     FlatImp.exec map.empty s t m lL initialMcL (fun t' m' lL' finalMcL =>
       map.only_differ lL (FlatImp.modVars s) lL' /\
       t' = t /\ m' = m /\ map.get lL' resVar = Some res /\
-      boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)).
+      (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     intros *. intros F Ex U D Ev.
     epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ _ _ _ _ F Ex U D Ev) as P.
@@ -553,9 +549,7 @@ Section FlattenExpr1.
       t' = t /\ m' = m /\
       map.getmany_of_list lL' resVars = Some resVals /\
       map.only_differ lL (FlatImp.modVars s) lL' /\
-      boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)).
+      (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     induction es; intros *; intros F Ex U D Evs; simpl in *; simp;
       [ eapply @FlatImp.exec.skip; simpl; repeat split; try solve_MetricLog; auto; maps | ].
@@ -638,9 +632,7 @@ Section FlattenExpr1.
     FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\
       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
-      boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)).
+      (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F.
 
@@ -677,9 +669,7 @@ Section FlattenExpr1.
     FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       (t' = t /\ finalM = initialM /\
        FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
-       boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)) /\
+       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH) /\
        map.only_differ initialL (FlatImp.modVars s) finalL (* <-- added *)).
   Proof.
     intros. eapply FlatImp.exec.intersect.
@@ -689,8 +679,8 @@ Section FlattenExpr1.
       eapply flattenBooleanExpr_correct_aux; eassumption.
   Qed.
 
-  Lemma flattenStmt_correct_aux: forall e sH t m mc lH post,
-      Semantics.exec e sH t m lH mc post ->
+  Lemma flattenStmt_correct_aux: forall e sH t m mcH lH post,
+      Semantics.exec e sH t m lH mcH post ->
       e = map.empty ->
       forall ngs ngs' sL lL mcL,
       flattenStmt ngs sH = (sL, ngs') ->
@@ -709,9 +699,7 @@ Section FlattenExpr1.
            "mid" in that case, because once we're at s2, it's too late to learn/prove
            more things about the (t', m', l') in mid *)
         map.only_differ lH (ExprImp.modVars sH) lH' /\
-        boundMetricLog UnitMetricLog
-          (metricLogDifference mcL mcL')
-          (metricLogDifference mc mcH')).
+        (mcL' - mcL <= mcH' - mcH)%metricsH).
   Proof.
     induction 1; intros; simpl in *; subst; simp.
 
@@ -828,8 +816,7 @@ Section FlattenExpr1.
         mid t' m' lH' mcH' /\
         map.extends lL' lH' /\
         map.only_differ l (@ExprImp.modVars (mk_Semantics_params p) c) lH' /\
-        boundMetricLog UnitMetricLog (metricLogDifference mcL mcL')
-                                     (metricLogDifference mc mcH'))); 
+        (mcL' - mcL <= mcH' - mc)%metricsH));
         [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
         | intros; simpl in *; simp .. ].
       + maps.
@@ -887,9 +874,7 @@ Section FlattenExpr1.
       FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
         map.extends lL' lH' /\
-        boundMetricLog UnitMetricLog
-          (metricLogDifference mc mcL')
-          (metricLogDifference mc mcH')).
+        (mcL' - mc <= mcH' - mc)%metricsH).
   Proof.
     intros.
     unfold ExprImp2FlatImp in *.
