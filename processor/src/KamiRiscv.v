@@ -20,81 +20,40 @@ Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.Run.
 Require Import riscv.Utility.MkMachineWidth.
-Require Import riscv.Utility.Monads.
+Require Import riscv.Utility.Monads. Import MonadNotations.
 Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.MMIOTrace.
+
 Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl.
 Require Import Kami.Ex.IsaRv32.
+Require Import processor.KamiProc.
 
 Local Open Scope Z_scope.
 
-Definition kword(w: Z): Type := Kami.Lib.Word.word (Z.to_nat w).
-
-Definition width: Z := 32.
-Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
-
-Module KamiProc.
-
-  Section Width.
-
-    Local Definition nwidth := Z.to_nat width.
-
-    Definition procInit: ProcInit nwidth rv32DataBytes rv32RfIdx :=
-      {| pcInit := getDefaultConst _;
-         rfInit := getDefaultConst _ |}.
-
-    Definition isMMIO: IsMMIOT nwidth. Admitted.
-
-    Definition proc: Kami.Syntax.Modules :=
-      projT1 (@Kami.Ex.SCMMInl.scmmInl
-                nwidth (nwidth - 2)
-                rv32InstBytes rv32DataBytes rv32RfIdx rv32GetOptype
-                rv32GetLdDst (rv32GetLdAddr _) rv32GetLdSrc (rv32CalcLdAddr _)
-                (rv32GetStAddr _) rv32GetStSrc (rv32CalcStAddr _) rv32GetStVSrc
-                rv32GetSrc1 rv32GetSrc2 rv32GetDst (rv32Exec _)
-                (rv32NextPc _) (rv32AlignPc _ _) (rv32AlignAddr _)
-                isMMIO procInit).
-
-    Record st :=
-      mk { pc: kword width;
-           rf: kword 5 -> kword width;
-           pgm: kword (width - 2) -> kword width;
-           mem: kword width -> kword width
-         }.
-
-    Definition RegsToT (r: RegsT): option st :=
-      (mlet pinit: Bool <- r |> "pinit" <| None;
-         if pinit
-         then (mlet pcv: (Bit nwidth) <- r |> "pc" <| None;
-                 mlet rfv: (Vector (Bit nwidth) 5) <- r |> "rf" <| None;
-                 mlet pinitOfs: (Bit (nwidth - 2)) <- r |> "pinitOfs" <| None;
-                 mlet pgmv: (Vector (Bit nwidth) (nwidth - 2)) <- r |> "pgm" <| None;
-                 mlet memv: (Vector (Bit nwidth) nwidth) <- r |> "mem" <| None;
-                 (Some {| pc := pcv;
-                          rf := rfv;
-                          pgm := pgmv;
-                          mem := memv |}))
-         else None)%mapping.
-
-  End Width.
-
-  Arguments st: clear implicits.
-
-End KamiProc.
-
-Import MonadNotations.
+Definition kword (w: Z): Type := Kami.Lib.Word.word (Z.to_nat w).
 
 Section Equiv.
 
   (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {M: Type -> Type}.
-
   Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
 
-  Notation RiscvMachine := (riscv.Platform.RiscvMachine.RiscvMachine Register MMIOAction).
+  (** * Processor, software machine, and states *)
 
+  (* [instrMemSizeLg] is the log number of instructions in the instruction cache.
+   * If the instruction base address is just 0, then the address range for
+   * the instructions is [0 -- 4 * 2^(instSize)].
+   *)
+  Variable instrMemSizeLg: Z.
+  Local Definition instrMemSize: nat := Z.to_nat (Z.pow 2 instrMemSizeLg).
+
+  Local Definition kamiProc := @KamiProc.proc instrMemSizeLg.
+  Local Definition KamiMachine := KamiProc.hst.
+  Local Definition KamiSt := @KamiProc.st instrMemSizeLg.
+
+  Local Notation RiscvMachine := (riscv.Platform.RiscvMachine.RiscvMachine Register MMIOAction).
   Context {Registers: map.map Register word}
           {mem: map.map word byte}
           (mcomp_sat:
@@ -102,9 +61,88 @@ Section Equiv.
                M A -> RiscvMachine -> (A -> RiscvMachine -> Prop) -> Prop)
           {mm: Monad M}
           {rvm: RiscvProgram M word}.
-
   Arguments mcomp_sat {A}.
 
+  Definition iset: InstructionSet := RV32IM.
+
+  (** * State mappings *)
+
+  (* register file *) 
+  
+  Definition convertRegs (rf: kword 5 -> kword width): Registers :=
+    let kkeys := HList.tuple.unfoldn (wplus (natToWord 5 1)) 31 (natToWord 5 1) in
+    let values := HList.tuple.map rf kkeys in
+    let keys := HList.tuple.map (@wordToZ 5) kkeys in
+    map.putmany_of_tuple keys values map.empty.
+
+  Lemma convertRegs_get:
+    forall rf r v,
+      map.get (convertRegs rf) (Word.wordToZ r) = Some v ->
+      v = rf r.
+  Proof.
+  Admitted.
+
+  Lemma convertRegs_put:
+    forall rf r v,
+      convertRegs (fun w => if weq w r then v else rf w) =
+      map.put (convertRegs rf) (Word.wordToZ r) v.
+  Proof.
+    intros.
+    eapply map.map_ext.
+    intros k.
+  Admitted.
+
+  (* instruction and data memory *)
+  
+  Variable dataMemSize: nat.
+  Definition instrMemStart: kword instrMemSizeLg := Word.ZToWord _ 0.
+  Definition dataMemStart: word := word.of_Z (Z.of_nat (4 * instrMemSize)).
+
+  Definition word32_to_4bytes(w: kword 32): HList.tuple byte 4 :=
+    LittleEndian.split 4 (word.unsigned w).
+
+  (* TODO this structure might not be very proof friendly, use Memory.unchecked_store_byte_list
+   instead *)
+  Fixpoint unchecked_store_byte_tuple_list{n: nat}(a: word)(l: list (HList.tuple byte n))(m: mem): mem :=
+    match l with
+    | w :: rest =>
+      let m' := unchecked_store_byte_tuple_list (word.add a (word.of_Z (Z.of_nat n))) rest m in
+      Memory.unchecked_store_bytes n m' a w
+    | nil => m
+    end.
+
+  Definition convertInstrMem (instrMem: kword instrMemSizeLg -> kword 32): mem :=
+    let keys := List.unfoldn (Word.wplus (Word.ZToWord (Z.to_nat instrMemSizeLg) 1))
+                             instrMemSize instrMemStart in
+    let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
+    unchecked_store_byte_tuple_list (word.of_Z 0) values map.empty.
+
+  Definition convertDataMem(dataMem: kword width -> kword width): mem :=
+    let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize dataMemStart in
+    let values := List.map (fun key => LittleEndian.split (Z.to_nat (width / 8))
+                                                          (word.unsigned (dataMem key)))
+                           keys in
+    unchecked_store_byte_tuple_list dataMemStart values map.empty.
+
+  Definition KamiSt_to_RiscvMachine
+             (k: KamiSt) (t: list (LogItem MMIOAction)): RiscvMachine :=
+    {| getRegs := convertRegs (KamiProc.rf k);
+       getPc := KamiProc.pc k;
+       getNextPc := word.add (KamiProc.pc k) (word.of_Z 4);
+       getMem := map.putmany (convertInstrMem (KamiProc.pgm k))
+                             (convertDataMem (KamiProc.mem k));
+       getLog := t;
+    |}.
+
+  Definition fromKami_withLog
+             (k: KamiMachine) (t: list (LogItem MMIOAction)): option RiscvMachine :=
+    match KamiProc.RegsToT k with
+    | Some r => Some (KamiSt_to_RiscvMachine r t)
+    | None => None
+    end.
+
+  (** * The Observable Behavior: MMIO events *)
+  
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
     word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
 
@@ -143,84 +181,6 @@ Section Equiv.
 
   Context {Pr: Primitives MinimalMMIOPrimitivesParams}.
   Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
-
-  Definition iset: InstructionSet :=
-    RV32IM.
-
-  Definition NOP: w32 := LittleEndian.split 4 (encode (IInstruction Nop)).
-
-  Definition KamiMachine := RegsT.
-
-  Definition convertRegs(rf: kword 5 -> kword width): Registers :=
-    let kkeys := HList.tuple.unfoldn (wplus (natToWord 5 1)) 31 (natToWord 5 1) in
-    let values := HList.tuple.map rf kkeys in
-    let keys := HList.tuple.map (@wordToZ 5) kkeys in
-    map.putmany_of_tuple keys values map.empty.
-
-  Lemma convertRegs_get:
-    forall rf r v,
-      map.get (convertRegs rf) (Word.wordToZ r) = Some v ->
-      v = rf r.
-  Proof.
-  Admitted.
-
-  Lemma convertRegs_put:
-    forall rf r v,
-      convertRegs (fun w => if weq w r then v else rf w) =
-      map.put (convertRegs rf) (Word.wordToZ r) v.
-  Proof.
-    intros.
-    eapply map.map_ext.
-    intros k.
-  Admitted.
-
-  Variables instrMemSize dataMemSize: nat.
-
-  Definition instrMemStart: kword (width - 2) := Word.ZToWord _ 0.
-  Definition dataMemStart: word := word.of_Z (Z.of_nat (4 * instrMemSize)).
-
-  Definition word32_to_4bytes(w: kword 32): HList.tuple byte 4 :=
-    LittleEndian.split 4 (word.unsigned w).
-
-  (* TODO this structure might not be very proof friendly, use Memory.unchecked_store_byte_list
-   instead *)
-  Fixpoint unchecked_store_byte_tuple_list{n: nat}(a: word)(l: list (HList.tuple byte n))(m: mem): mem :=
-    match l with
-    | w :: rest =>
-      let m' := unchecked_store_byte_tuple_list (word.add a (word.of_Z (Z.of_nat n))) rest m in
-      Memory.unchecked_store_bytes n m' a w
-    | nil => m
-    end.
-
-  Definition convertInstrMem(instrMem: kword (width - 2) -> kword 32): mem :=
-    let keys := List.unfoldn (Word.wplus (Word.ZToWord (KamiProc.nwidth - 2) 1))
-                             instrMemSize instrMemStart in
-    let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
-    unchecked_store_byte_tuple_list (word.of_Z 0) values map.empty.
-
-  Definition convertDataMem(dataMem: kword width -> kword width): mem :=
-    let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize dataMemStart in
-    let values := List.map (fun key => LittleEndian.split (Z.to_nat (width / 8))
-                                                          (word.unsigned (dataMem key)))
-                           keys in
-    unchecked_store_byte_tuple_list dataMemStart values map.empty.
-
-  Definition KamiProc_st_to_RiscvMachine
-             (k: KamiProc.st)(t: list (LogItem MMIOAction)): RiscvMachine :=
-    {|
-      getRegs := convertRegs (KamiProc.rf k);
-      getPc := KamiProc.pc k;
-      getNextPc := word.add (KamiProc.pc k) (word.of_Z 4);
-      getMem := map.putmany (convertInstrMem (KamiProc.pgm k))
-                            (convertDataMem (KamiProc.mem k));
-      getLog := t;
-    |}.
-
-  Definition fromKami_withLog(k: KamiMachine)(t: list (LogItem MMIOAction)): option RiscvMachine :=
-    match KamiProc.RegsToT k with
-    | Some r => Some (KamiProc_st_to_RiscvMachine r t)
-    | None => None
-    end.
 
   (* common event between riscv-coq and Kami *)
   Inductive Event: Type :=
@@ -324,16 +284,16 @@ Section Equiv.
   Definition kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop :=
     fun km1 km2 tr =>
       exists kupd klbl,
-        Step KamiProc.proc km1 kupd klbl /\
+        Step kamiProc km1 kupd klbl /\
         km2 = FMap.M.union kupd km1  /\
         KamiLabelR klbl tr.
 
   Lemma invert_Kami_execNm:
     forall km1 kt1 kupd klbl,
       KamiProc.RegsToT km1 = Some kt1 ->
-      Step KamiProc.proc km1 kupd klbl ->
+      Step kamiProc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execNm"%string) ->
-      exists kt2,
+      exists kt2: KamiSt,
         klbl.(calls) = FMap.M.empty _ /\
         KamiProc.RegsToT (FMap.M.union kupd km1) = Some kt2 /\
         exists curInst npc prf dst exec_val,
@@ -443,7 +403,7 @@ Section Equiv.
 
   Definition kamiTraces(init: KamiMachine): list Event -> Prop :=
     fun t => exists final, star kamiStep init final t.
-
+  
   Lemma connection: forall (m: KamiMachine) (m': RiscvMachine),
       fromKami_withLog m nil = Some m' ->
       subset (kamiTraces m) (riscvTraces m').
@@ -456,7 +416,7 @@ Section Equiv.
     eauto.
   Qed.
 
-  (* assume this first converts the KamiMachine from SpecProcessor to ImplProcessor state,
+  (* assume this first converts the KamiSt from SpecProcessor to ImplProcessor state,
      and also converts from Kami trace to common trace *)
   Definition kamiImplTraces(init: KamiMachine): list Event -> Prop. Admitted.
 
@@ -495,10 +455,11 @@ Section Equiv.
         (map.putmany (convertInstrMem instrMem)
                      (convertDataMem dataMem)) pc = Some inst ->
       combine 4 inst =
-      wordToZ (instrMem (evalExpr (rv32AlignPc (Z.to_nat width) (Z.to_nat (width - 2)) type pc))).
+      wordToZ
+        (instrMem
+           (evalExpr (rv32AlignPc (Z.to_nat width) (Z.to_nat instrMemSizeLg) type pc))).
   Proof.
   Admitted.
-
 
   Ltac lets_in_hyp_to_eqs :=
     repeat lazymatch goal with
@@ -752,7 +713,7 @@ Section Equiv.
     intros.
     unfold rv32Exec.
     unfold evalExpr; fold evalExpr.
-    do 2 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
+    do 5 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
     do 3 (destruct (isEq _ _); [|exfalso; elim n; apply wordToZ_inj; assumption]).
     reflexivity.
   Qed.
@@ -784,7 +745,7 @@ Section Equiv.
   Proof.
     intros.
     destruct H as [kupd [klbl [? [? ?]]]]; subst.
-    assert (PHide (Step KamiProc.proc m1 kupd klbl)) by (constructor; assumption).
+    assert (PHide (Step kamiProc m1 kupd klbl)) by (constructor; assumption).
     kinvert.
 
     - (* [EmptyRule] step *)
