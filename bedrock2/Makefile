@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: clean force all
+.PHONY: clean force all all_coqmakefile
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
@@ -17,15 +17,17 @@ DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 _CoqProject:
 	printf -- '$(DEPFLAGS_NL)' > _CoqProject
 
-all: Makefile.coq.all $(VS) special/BytedumpTest.out
+all_coqmakefile: Makefile.coq.all $(VS)
 	$(MAKE) -f Makefile.coq.all
+
+all: all_coqmakefile special/BytedumpTest.out
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
 Makefile.coq.all: force _CoqProject
 	$(COQ_MAKEFILE) $(VS) -o Makefile.coq.all
 
-special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin
+special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin all_coqmakefile
 	coqc -q $(DEPFLAGS) $< | head --bytes -1 > special/BytedumpTest.out.tmp
 	hexdump < /dev/null && \
 		hexdump -C special/BytedumpTest.golden.bin > special/BytedumpTest.golden.hex && \
