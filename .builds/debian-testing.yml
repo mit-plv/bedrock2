@@ -6,4 +6,4 @@ sources:
 tasks:
   - build: |
       coqc --version
-      make -C bedrock2 -j"$(nproc)" 2>&1 | iconv -t UTF-8 -c
+      make -C bedrock2 -j"$(nproc)"
