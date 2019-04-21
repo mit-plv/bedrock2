@@ -81,35 +81,24 @@ Hint Unfold
   
 Ltac unfold_MetricLog := autounfold with unf_metric_log in *.
 
+Lemma MetricLog_eq: forall m,
+    {|
+      instructions := instructions m;
+      stores := stores m;
+      loads := loads m;
+      jumps := jumps m;
+    |} = m.
+Proof.
+  destruct m; reflexivity.
+Qed.
+
 Ltac fold_MetricLog :=
-  match goal with
-  | _ : _ |- context[?x] =>
-    match x with
-    | {| instructions := instructions ?y;
-         stores := stores ?y;
-         loads := loads ?y;
-         jumps := jumps ?y; |} => replace x with y by (destruct y; reflexivity)
-    end
-  end.
+  rewrite MetricLog_eq in *.
 
 Ltac simpl_MetricLog :=
-  cbn [fst snd] in *; (* Unfold logs in tuples *)
   cbn [instructions loads stores jumps] in *.
-
-Ltac try_equality_MetricLog :=
-  repeat match goal with
-         | H : MetricLog |- context[{| instructions := ?i; |}] =>
-           progress replace i with (instructions H) by bomega
-         | H : MetricLog |- context[{| stores := ?i; |}] =>
-           progress replace i with (stores H) by bomega      
-         | H : MetricLog |- context[{| loads := ?i; |}] =>
-           progress replace i with (loads H) by bomega      
-         | H : MetricLog |- context[{| jumps := ?i; |}] =>
-           progress replace i with (jumps H) by bomega
-         end.
 
 Ltac solve_MetricLog :=
   repeat unfold_MetricLog;
   repeat simpl_MetricLog;
-  try_equality_MetricLog;
-  bomega || f_equal; bomega || fold_MetricLog.
+  bomega.
