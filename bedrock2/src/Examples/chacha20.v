@@ -200,6 +200,62 @@ Proof.
 .
 
   change v with X. subst X.
+(* Goal : map.get l k = Some ?e , l = map.put k' ... *)
+cbv [
+    (* N.mul appears *)
+    map.get map.put
+            SortedList.map SortedList.parameters.key SortedList.parameters.value SortedListString.Build_parameters
+            SortedList.value SortedList.put
+            SortedList.eqb SortedList.parameters.ltb ltb Ascii.eqb Ascii.ltb Ascii.N_of_ascii Ascii.N_of_digits N.ltb Bool.eqb
+            List.find
+            SortedListString.map locals FE310CSemantics.parameters
+            l39 l38 l37
+            fst snd
+ l0
+ l1
+ l2
+ l3
+ l4
+ l5
+ l6
+ l7
+ l8
+ l9
+ l10
+ l11
+ l12
+ l13
+ l14
+ l15
+ l16
+ l17
+ l18
+ l19
+ l20
+ l21
+ l22
+ l23
+ l24
+ l25
+ l26
+ l27
+ l28
+ l29
+ l30
+ l31
+ l32
+ l33
+ l34
+ l35
+ l36
+ l37
+ l38
+ l39
+
+
+
+    ].
+revert dependent l.
   Time exact eq_refl.
 (* Finished transaction in 1.907 secs (1.905u,0.s) (successful) *)
   }
