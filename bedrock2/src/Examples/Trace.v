@@ -34,15 +34,15 @@ Module IOMacros.
        eg for MMIO, or to communicate with the kernel *)
     is_reserved_addr: word -> Prop;
 
-    read_word_correct: forall t m l x tmp,
+    read_word_correct: forall t m l mc x tmp,
         (forall a, is_reserved_addr a -> map.get m a = None) ->
-        exec map.empty (read_word_code x tmp) t m l (fun t' m' l' =>
+        exec map.empty (read_word_code x tmp) t m l mc (fun t' m' l' mc' =>
           m = m' /\ exists t'' v, t' = t ++ t'' /\ read_word_trace v t'' /\ l' = map.put l x v);
 
-    write_word_correct: forall t m l x tmp v,
+    write_word_correct: forall t m l mc x tmp v,
         (forall a, is_reserved_addr a -> map.get m a = None) ->
         map.get l x = Some v ->
-        exec map.empty (write_word_code x tmp) t m l (fun t' m' l' =>
+        exec map.empty (write_word_code x tmp) t m l mc (fun t' m' l' mc' =>
           m = m' /\ exists t'', t' = t ++ t'' /\ write_word_trace v t'' /\ l' = l);
   }.
 
@@ -58,8 +58,8 @@ Section Squarer.
 
   Definition squarer: cmd. Admitted.
 
-  Lemma squarer_correct: forall (m: mem) (l: locals),
-      exec map.empty squarer nil m l (fun t' m' l' => squarer_trace t').
+  Lemma squarer_correct: forall (m: mem) (l: locals) mc,
+      exec map.empty squarer nil m l mc (fun t' m' l' mc' => squarer_trace t').
   Admitted.
 
 End Squarer.
@@ -192,7 +192,7 @@ Module SpiEth.
     - (* read_word_correct: *)
       intros.
       eapply exec.seq with
-          (mid := fun t' m' l' => t' = t /\ m' = m /\ l' = map.put l x (word.of_Z (-1))).
+          (mid := fun t' m' l' mc' => t' = t /\ m' = m /\ l' = map.put l x (word.of_Z (-1))).
       { eapply exec.set; [reflexivity|auto]. }
       { intros. case TODO. (* will require a loop invariant *) }
     - (* write_word_correct: *)

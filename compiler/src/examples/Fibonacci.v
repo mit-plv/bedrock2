@@ -11,11 +11,14 @@ Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
 Require        riscv.Utility.InstructionNotations.
 Require Import riscv.Platform.MinimalLogging.
+Require Import bedrock2.MetricLogging.
+Require Import riscv.Platform.MetricMinimal.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
 Require Import riscv.Utility.InstructionCoercions.
+Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import compiler.RegAllocAnnotatedNotations.
@@ -59,13 +62,13 @@ Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := Empty_set_rect _;
 }.
 
-Notation RiscvMachine := (RiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
+Notation RiscvMachine := (MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
 
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_spec _ _ := Empty_set_rect _;
   Pipeline.ext_guarantee _ := False;
   Pipeline.M := OState RiscvMachine;
-  Pipeline.PRParams := MinimalPrimitivesParams;
+  Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
 }.
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
@@ -103,12 +106,16 @@ Definition fib6_bits_as_Z: list Z :=
 
 (* This example uses the memory only as instruction memory
    TODO make an example which uses memory to store data *)
-Definition zeroedRiscvMachine: RiscvMachine := {|
-  getRegs := map.empty;
-  getPc := word.of_Z 0;
-  getNextPc := word.of_Z 4;
-  getMem := map.empty;
-  getLog := nil;
+Definition zeroedRiscvMachine: RiscvMachine :=
+{|
+  getMachine := {|
+    RiscvMachine.getRegs := map.empty;
+    RiscvMachine.getPc := word.of_Z 0;
+    RiscvMachine.getNextPc := word.of_Z 4;
+    RiscvMachine.getMem := map.empty;
+    RiscvMachine.getLog := nil;
+  |};
+  getMetrics := MetricLogging.EmptyMetricLog;
 |}.
 
 Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
@@ -215,6 +222,219 @@ Lemma fib6_L_res_is_13_by_running_it: exists fuel, word.unsigned (fib6_res fuel)
   reflexivity.
 Qed.
 
+Fixpoint get_next_bb exprimp :=
+  match exprimp with
+  | cmd.seq _ x => get_next_bb x
+  | _ => exprimp
+  end.
+
+Definition get_while_body exprimp :=
+  match exprimp with
+  | cmd.while _ x => x
+  | _ => exprimp
+  end.
+
+Definition fib_while n := get_next_bb (fib_ExprImp n).
+
+Definition fib_while_body n := get_while_body (fib_while n).
+
+Ltac destruct_hyp :=
+  repeat match goal with
+         | H : _ /\ _ |- _ => destruct H
+         end.
+
+Ltac eval_fib_var_names :=
+  cbv [Demos.Fibonacci.a
+         Demos.Fibonacci.b
+         Demos.Fibonacci.c
+         Demos.Fibonacci.i
+         Demos.Fibonacci.ZNames.Inst] in *.
+
+Lemma fib_bounding_metrics_body: forall t m (l : locals) mc a b i n,
+    map.get l Demos.Fibonacci.a = Some a ->
+    map.get l Demos.Fibonacci.b = Some b ->
+    map.get l Demos.Fibonacci.i = Some i ->
+    exec map.empty (fib_while_body n) t m l mc (fun t' m' l' mc' =>
+      map.get l' Demos.Fibonacci.a = Some b /\
+      map.get l' Demos.Fibonacci.b = Some (word.add a b) /\
+      map.get l' Demos.Fibonacci.i = Some (word.add i (word.of_Z 1)) /\
+      instructions mc' - instructions mc = 21).
+Proof.
+  intros.
+  cbv [fib_ExprImp get_next_bb get_while_body fib_while fib_while_body].
+  eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                   t' = t /\
+                                   map.get l' Demos.Fibonacci.a = Some a /\
+                                   map.get l' Demos.Fibonacci.b = Some b /\
+                                   map.get l' Demos.Fibonacci.c = Some (word.add a b) /\
+                                   map.get l' Demos.Fibonacci.i = Some i /\
+                                   instructions mc' = instructions mc + 5)).
+  - eapply @exec.set.
+    + unfold eval_expr. eval_fib_var_names.
+      rewrite H. rewrite H0. eauto.
+    + repeat split.
+      * rewrite map.get_put_diff; [assumption | discriminate].
+      * rewrite map.get_put_diff; [assumption | discriminate].
+      * apply map.get_put_same.
+      * rewrite map.get_put_diff; [assumption | discriminate].
+      * simpl. Lia.lia.
+  - intros.
+    eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                     t' = t /\
+                                     map.get l' Demos.Fibonacci.a = Some b /\
+                                     map.get l' Demos.Fibonacci.b = Some b /\
+                                     map.get l' Demos.Fibonacci.c = Some (word.add a b) /\
+                                     map.get l' Demos.Fibonacci.i = Some i /\
+                                     instructions mc' = instructions mc + 7)).
+    + destruct_hyp.
+      eapply @exec.set.
+      * unfold eval_expr. eval_fib_var_names.
+        rewrite H4. eauto.
+      * repeat split.
+        -- assumption.
+        -- apply map.get_put_same.
+        -- rewrite map.get_put_diff; [assumption | discriminate].
+        -- rewrite map.get_put_diff; [assumption | discriminate].
+        -- rewrite map.get_put_diff; [assumption | discriminate].
+        -- simpl. Lia.lia.
+    + intros.
+      eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                       t' = t /\
+                                       map.get l' Demos.Fibonacci.a = Some b /\
+                                       map.get l' Demos.Fibonacci.b = Some (word.add a b) /\
+                                       map.get l' Demos.Fibonacci.c = Some (word.add a b) /\
+                                       map.get l' Demos.Fibonacci.i = Some i /\
+                                       instructions mc' = instructions mc + 9)).
+      * destruct_hyp.
+        eapply @exec.set.
+        -- unfold eval_expr. eval_fib_var_names.
+           rewrite H6. eauto.
+        -- repeat split.
+           ++ assumption.
+           ++ rewrite map.get_put_diff; [assumption | discriminate].
+           ++ apply map.get_put_same.
+           ++ rewrite map.get_put_diff; [assumption | discriminate].
+           ++ rewrite map.get_put_diff; [assumption | discriminate].
+           ++ simpl. Lia.lia.
+      * intros.
+        destruct_hyp.
+        eapply @exec.set.
+        -- unfold eval_expr. eval_fib_var_names.
+           rewrite H8. eauto.
+        -- repeat split.
+           ++ rewrite map.get_put_diff; [assumption | discriminate].
+           ++ rewrite map.get_put_diff; [assumption | discriminate].
+           ++ apply map.get_put_same.
+           ++ simpl. Lia.lia.
+Qed.
+
+Lemma fib_bounding_metrics_while: forall (n : nat) (iter : nat) t m (l : locals) mc a b,
+    (Z.of_nat n) < BinInt.Z.pow_pos 2 32 ->
+    (iter <= n)%nat ->
+    map.get l Demos.Fibonacci.a = Some a ->
+    map.get l Demos.Fibonacci.b = Some b ->
+    map.get l Demos.Fibonacci.i = Some (word.of_Z ((Z.of_nat n) - (Z.of_nat iter)) : word) ->
+    exec map.empty (fib_while (Z.of_nat n)) t m l mc (fun t' m' l' mc' =>
+      instructions mc' <= instructions mc + (Z.of_nat iter) * 34 + 12).
+Proof.
+  induction iter.
+  - intros.
+    eapply @exec.while_false.
+    + unfold eval_expr. eval_fib_var_names.
+      rewrite H3. eauto.
+    + simpl. destruct_one_match.
+      * rewrite Z.sub_0_r in E. pose proof Z.ltb_irrefl. specialize (H4 (Z.of_nat n mod BinInt.Z.pow_pos 2 32)). rewrite H4 in E. discriminate.
+      * auto.
+    + simpl. Lia.lia.
+  - intros.
+    eapply @exec.while_true.
+    + unfold eval_expr. eval_fib_var_names.
+      rewrite H3. eauto.
+    + simpl. destruct_one_match.
+      * simpl. rewrite Zdiv.Zmod_1_l.
+        { discriminate. }
+        { cbv. reflexivity. }
+      * rewrite Z.mod_small in E; [| Lia.lia].
+        rewrite Z.mod_small in E; [| Lia.lia].
+        assert (Z.of_nat n - Z.pos (Pos.of_succ_nat iter) < Z.of_nat n) by Lia.lia.
+        apply Z.ltb_lt in H4.
+        rewrite H4 in E. discriminate.
+    + eapply fib_bounding_metrics_body with (n := Z.of_nat n); eauto.
+    + intros. destruct H4. destruct H5. destruct H6.
+      eval_fib_var_names.
+      assert (iter <= n)%nat by Lia.lia.
+      assert (map.get l' 4 = Some (word.of_Z (Z.of_nat n - Z.of_nat iter))) by
+      ( rewrite H6; f_equal;
+        simpl; f_equal;
+        rewrite Z.mod_small; [rewrite Z.mod_small; Lia.lia | Lia.lia ]).
+      specialize IHiter with (1 := H) (2 := H8) (3 := H4) (4 := H5) (5 := H9).
+      specialize IHiter with (mc := (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'')))).
+      simpl in H7.
+      unfold_MetricLog. simpl in IHiter.
+      eapply weaken_exec in IHiter.
+      * eapply IHiter.
+      * intros. simpl. Lia.lia.
+Qed.
+
+Lemma fib_bounding_metrics: forall (n: nat) t m (l : locals) mc,
+   (Z.of_nat n) < BinInt.Z.pow_pos 2 32 ->
+   exec map.empty (fib_ExprImp (Z.of_nat n)) t m l mc (fun t' m ' l' mc' =>
+       instructions mc' <= instructions mc + (Z.of_nat n) * 34 + 39).
+Proof.
+  intros.
+  unfold fib_ExprImp.
+  eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                   t' = t /\
+                                   map.get l' Demos.Fibonacci.a = Some (word.of_Z 0) /\
+                                   instructions mc' = instructions mc + 9)).
+  - eapply @exec.set.
+    + unfold eval_expr. eauto.
+    + repeat split.
+      * apply map.get_put_same.
+      * simpl. Lia.lia.
+  - intros.
+    destruct H0. destruct H1.
+    eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                     t' = t /\
+                                     map.get l' Demos.Fibonacci.a = Some (word.of_Z 0) /\
+                                     map.get l' Demos.Fibonacci.b = Some (word.of_Z 1) /\
+                                     instructions mc' = instructions mc + 18)).
+    + eapply @exec.set.
+      * unfold eval_expr. eauto.
+      * repeat split.
+        -- assumption.
+        -- rewrite map.get_put_diff; [assumption | discriminate].
+        -- apply map.get_put_same.
+        -- simpl. Lia.lia.
+    + intros.
+      destruct H3. destruct H4. destruct H5.
+      eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                       t' = t /\
+                                       map.get l' Demos.Fibonacci.a = Some (word.of_Z 0) /\
+                                       map.get l' Demos.Fibonacci.b = Some (word.of_Z 1) /\
+                                       map.get l' Demos.Fibonacci.i = Some (word.of_Z 0) /\
+                                       instructions mc' = instructions mc + 27)).
+      * eapply @exec.set.
+        -- unfold eval_expr. eauto.
+        -- repeat split.
+           ++ assumption.
+           ++ rewrite map.get_put_diff; [assumption | discriminate].
+           ++ rewrite map.get_put_diff; [assumption | discriminate].
+           ++ apply map.get_put_same.
+           ++ simpl. Lia.lia.
+      * intros.
+        destruct H7. destruct H8. destruct H9. destruct H10.
+        assert (n <= n)%nat by auto.
+        pose proof fib_bounding_metrics_while as HWhile.
+        specialize HWhile with (iter := n) (n := n).
+        replace (Z.of_nat n - Z.of_nat n) with 0 in HWhile by Lia.lia.
+        specialize HWhile with (1 := H) (2 := H12) (3 := H8) (4 := H9) (5 := H10).
+        specialize (HWhile t'1 m'1 mc'1).
+        eapply weaken_exec in HWhile.
+        -- apply HWhile.
+        -- intros. simpl. Lia.lia.
+Qed.
+        
 Lemma fib_H_res_value: fib_H_res 20 6 = Some (word.of_Z 13).
 Proof. cbv. reflexivity. Qed.
 

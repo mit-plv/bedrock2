@@ -17,7 +17,10 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscv.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MinimalMMIO.
+Require Import riscv.Platform.MetricMinimalMMIO.
 Require Import riscv.Spec.Primitives.
+Require Import riscv.Spec.MetricPrimitives.
+Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.Rem4.
@@ -281,8 +284,8 @@ Section MMIO1.
     FlatToRiscv.locals := locals;
     FlatToRiscv.mem := (@mem p);
     FlatToRiscv.MM := OStateND_Monad _;
-    FlatToRiscv.RVM := IsRiscvMachineL;
-    FlatToRiscv.PRParams := MinimalMMIOPrimitivesParams;
+    FlatToRiscv.RVM := IsMetricRiscvMachineL;
+    FlatToRiscv.PRParams := MetricMinimalMMIOPrimitivesParams;
     FlatToRiscv.ext_spec := ext_spec;
     FlatToRiscv.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
   }.
@@ -308,12 +311,12 @@ Section MMIO1.
     - (* compile_ext_call_correct *)
       intros *. intros ? ? V_argvars V_resvars. intros.
       pose proof (compile_ext_call_emits_valid EmitsValid.iset _ action _ V_resvars V_argvars).
-      destruct initialL as [initialRegs initialPc initialNpc initialMem initialLog].
-      destruct action; cbn [getRegs getPc getNextPc getMem getLog] in *.
+      destruct initialL as [ [initialRegs initialPc initialNpc initialMem initialLog] initialMetrics].
+      destruct action; cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics] in *.
       + (* MMOutput *)
         simpl in *|-.
         simp.
-        apply real_ext_spec_implies_simple_ext_spec in H15.
+        apply real_ext_spec_implies_simple_ext_spec in H16.
         unfold simple_ext_spec in *.
         simpl in *|-.
         repeat match goal with
@@ -345,27 +348,28 @@ Section MMIO1.
           unfold Utility.add, Utility.ZToReg, Utility.regToInt32, MachineWidth_XLEN.
           simpl_word_exprs word_ok.
           apply spec_Bind.
-          refine (ex_intro _ (fun v m => m = {| getLog := _ |}) _).
+          refine (ex_intro _ (fun v m => m = {| getMachine := {| getLog := _ |} |}) _).
           split.
           { apply spec_storeWord. simpl. right. simpl. split; [|reflexivity].
             apply storeWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone. simpl.
-            specialize H16 with (1 := H8).
-            simp.
-            repeat split; try assumption.
-            apply map.split_empty_r in H2. subst.
-            apply map.split_empty_r in H9. subst.
-            unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
-            rewrite LittleEndian.combine_split.
-            rewrite sextend_width_nop by reflexivity.
-            rewrite Z.mod_small by apply word.unsigned_range.
-            rewrite word.of_Z_unsigned.
-            assumption. }
+            specialize H17 with (1 := H8).
+            eexists. simp.
+            repeat split; try eassumption.
+            { apply map.split_empty_r in H2. subst.
+              apply map.split_empty_r in H9. subst.
+              unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
+              rewrite LittleEndian.combine_split.
+              rewrite sextend_width_nop by reflexivity.
+              rewrite Z.mod_small by apply word.unsigned_range.
+              rewrite word.of_Z_unsigned.
+              eassumption. }
+              all: solve [MetricsToRiscv.solve_MetricLog]. }
 
       + (* MMInput *)
         simpl in *|-.
         simp.
-        apply real_ext_spec_implies_simple_ext_spec in H15.
+        apply real_ext_spec_implies_simple_ext_spec in H16.
         unfold simple_ext_spec in *.
         simpl in *|-.
         repeat match goal with
@@ -391,24 +395,25 @@ Section MMIO1.
           simulate_step.
           simpl_word_exprs word_ok.
           apply spec_Bind.
-          refine (ex_intro _ (fun v m => m = {| getLog := _ |}) _).
+          refine (ex_intro _ (fun v m => m = {| getMachine := {| getLog := _ |} |}) _).
           split.
           { apply spec_loadWord. simpl. right. repeat split; try assumption.
             apply loadWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
-            simpl.
+            simpl. eexists.
             repeat split; try assumption.
-            match goal with
-            | |- context [map.put _ _ ?resval] => specialize (H7 resval)
-            end.
-            specialize H16 with (1 := H7).
-            simp.
-            apply map.split_empty_r in H2. subst.
-            apply map.split_empty_r in H9. subst.
-            unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
-            replace (word.add r (word.of_Z 0)) with r; [assumption|].
-            simpl_word_exprs word_ok.
-            reflexivity. }
+            { match goal with
+              | |- context [map.put _ _ ?resval] => specialize (H7 resval)
+              end.
+              specialize H17 with (1 := H7).
+              simp.
+              apply map.split_empty_r in H2. subst.
+              apply map.split_empty_r in H9. subst.
+              unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
+              replace (word.add r (word.of_Z 0)) with r; [eassumption|].
+              simpl_word_exprs word_ok.
+              reflexivity. }
+            all: solve [MetricsToRiscv.solve_MetricLog]. }
   Qed.
 
 End MMIO1.

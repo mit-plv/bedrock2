@@ -10,14 +10,17 @@ Require Export riscv.Spec.Decode.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
 Require Export riscv.Platform.Minimal.
+Require Export riscv.Platform.MetricLogging.
 Require Export riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
+Require Export riscv.Platform.MetricRiscvMachine.
 Require Import coqutil.Z.Lia.
 Require Export compiler.NameGen.
 Require Export compiler.util.Common.
 Require Export coqutil.Decidable.
 Require Export riscv.Utility.Encode.
 Require Export riscv.Spec.Primitives.
+Require Export riscv.Spec.MetricPrimitives.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.MkMachineWidth.
 Require Export riscv.Proofs.DecodeEncode.
@@ -52,11 +55,11 @@ Module Import Pipeline.
     NGstate: Type;
     NG :> NameGen varname NGstate;
 
-    ext_guarantee : RiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname -> Prop;
+    ext_guarantee : MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname -> Prop;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
+    PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
   }.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
@@ -79,7 +82,7 @@ Module Import Pipeline.
     varname_eq_dec :> DecidableEq varname;
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
-    PR :> Primitives PRParams;
+    PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscv.FlatToRiscv.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
   }.
@@ -91,6 +94,8 @@ Section Pipeline1.
 
   Context {p: parameters}.
   Context {h: assumptions}.
+
+  Local Notation RiscvMachineL := (MetricRiscvMachine Register _).
 
   Definition funname := Empty_set.
   Definition iset := if width =? 32 then RV32IM else RV64IM.
@@ -156,7 +161,7 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH t instsL initialL (post: trace -> Prop),
+  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       exprImp2Riscv sH = instsL ->
@@ -165,19 +170,20 @@ Section Pipeline1.
       initialL.(getLog) = t ->
       (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
       ext_guarantee initialL ->
-      Semantics.exec.exec map.empty sH t mH map.empty (fun t' m' l' => post t') ->
+      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
       runsTo (mcomp_sat (run1 iset))
              initialL
-             (fun finalL => post finalL.(getLog)).
+             (fun finalL =>
+                  post finalL.(getLog)).
   Proof.
     intros. subst.
-    eapply runsTo_weaken.
-    - eapply FlatToRiscv.compile_stmt_correct
-        with (postH := (fun t m l => post t)); try reflexivity.
+    eapply runsTo_weaken. Unshelve.
+     - eapply FlatToRiscv.compile_stmt_correct
+        with (postH := (fun t m l mc => post t)); try reflexivity.
       + eapply FlatImp.exec.weaken.
         * match goal with
-          | |- _ ?env ?s ?t ?m ?l ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ s _ t m _ eq_refl) as Q
+          | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
+            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ s _ t m _ _ eq_refl) as Q
           end.
           eapply Q.
           eassumption.
@@ -206,7 +212,7 @@ Section Pipeline1.
         seplog.
       + assumption.
       + assumption.
-    - simpl. intros. simp. assumption.
+     - simpl. intros. simp. assumption.
   Qed.
 
 End Pipeline1.

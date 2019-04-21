@@ -4,6 +4,7 @@ Import ListNotations.
 Require Import coqutil.Word.Properties.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Spec.Primitives.
+Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.Decode.
 Require Import Coq.ZArith.ZArith.
@@ -21,6 +22,7 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.SimplWordExpr.
 Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.ptsto_bytes.
 
 
@@ -62,8 +64,8 @@ Section Verif.
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PRParams: PrimitivesParams M (RiscvMachine Register actname)}.
-  Context {PR: Primitives PRParams}.
+  Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register actname)}.
+  Context {PR: MetricPrimitives PRParams}.
 
   Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
 
@@ -120,7 +122,7 @@ Section Verif.
   Definition gallina_prog_1(v1 v2: word): word :=
     word.srs (word.add v1 v2) (word.of_Z 1).
 
-  Lemma asm_prog_1_correct: forall (initial: RiscvMachine Register actname) newPc R (v1 v2: word),
+  Lemma asm_prog_1_correct: forall (initial: MetricRiscvMachine Register actname) newPc R (v1 v2: word),
       map.get initial.(getRegs) x1 = Some v1 ->
       map.get initial.(getRegs) x2 = Some v2 ->
       newPc = word.add initial.(getPc)
@@ -138,7 +140,7 @@ Section Verif.
     assert (valid_register x1). { unfold valid_register, x1. blia. }
     assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_1_encodable.
-    destruct initial as [initial_regs initial_pc initial_nextPc initial_mem initial_trace].
+    destruct initial as [ [initial_regs initial_pc initial_nextPc initial_mem initial_trace] initial_metrics].
     unfold asm_prog_1 in *.
     simpl in *.
     subst.
@@ -181,7 +183,7 @@ Section Verif.
 
   Axiom fix_updated_mem_TODO: False.
 
-  Lemma asm_prog_2_correct: forall (initial: RiscvMachine Register actname) newPc
+  Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine Register actname) newPc
                                   (argvars resvars: list Register) R (v1 v2 dummy: w32),
       newPc = word.add initial.(getPc)
                        (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_2)))) ->
@@ -201,7 +203,7 @@ Section Verif.
     assert (valid_register x1). { unfold valid_register, x1. blia. }
     assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_2_encodable.
-    destruct initial as [initial_regs initial_pc initial_nextPc initial_mem initial_trace].
+    destruct initial as [ [initial_regs initial_pc initial_nextPc initial_mem initial_trace] initial_metrics].
     unfold asm_prog_2 in *.
     simpl in *.
     unfold program in *.
@@ -222,8 +224,7 @@ Section Verif.
     }
     simpl.
     intros middle (? & ? & ? & ?).
-    destruct middle as [middle_regs middle_pc middle_nextPc middle_mem middle_trace].
-    simpl in *.
+    destruct middle as [ [middle_regs middle_pc middle_nextPc middle_mem middle_trace] middle_metrics].    simpl in *.
     subst.
 
     clear H6.

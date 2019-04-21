@@ -10,7 +10,9 @@ Require Import riscv.Spec.Decode.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Spec.Primitives.
+Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Execute.
 Require Import riscv.Proofs.DecodeEncode.
@@ -36,13 +38,13 @@ Section Run.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
-  Local Notation RiscvMachineL := (RiscvMachine Register Action).
+  Local Notation RiscvMachineL := (MetricRiscvMachine Register Action).
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PRParams: PrimitivesParams M (RiscvMachine Register Action)}.
-  Context {PR: Primitives PRParams}.
+  Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register Action)}.
+  Context {PR: MetricPrimitives PRParams}.
 
   Definition iset := if width =? 32 then RV32IM else RV64IM.
 
@@ -146,7 +148,7 @@ Section Run.
     unfold run_Jal_spec, run_ImmReg_spec, run_Load_spec, run_Store_spec;
     intros;
     match goal with
-    | initialL: RiscvMachineL |- _ => destruct initialL
+    | initialL: RiscvMachineL |- _ => destruct initialL as [ [regs pc npc m l] mc]
     end;
     simpl in *; subst;
     simulate';

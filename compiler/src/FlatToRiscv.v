@@ -8,6 +8,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Spec.Execute.
 Require Import riscv.Platform.Run.
 Require Import riscv.Platform.Memory.
@@ -18,6 +19,7 @@ Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Primitives.
+Require Import riscv.Spec.MetricPrimitives.
 Require Import coqutil.Z.Lia.
 Require Import riscv.Utility.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
@@ -44,6 +46,7 @@ Require Import coqutil.Z.bitblast.
 Require Import riscv.Utility.prove_Zeq_bitwise.
 Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
+Require Import compiler.MetricsToRiscv.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -62,7 +65,7 @@ Module Import FlatToRiscv.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (RiscvMachine Register actname);
+    PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
 
     ext_spec : list (mem * actname * list word * (mem * list word)) ->
                mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
@@ -70,7 +73,7 @@ Module Import FlatToRiscv.
     (* An abstract predicate on the low-level state, which can be chosen by authors of
        extensions. The compiler will ensure that this guarantee holds before each external
        call. *)
-    ext_guarantee: RiscvMachine Register actname -> Prop;
+    ext_guarantee: MetricRiscvMachine Register actname -> Prop;
   }.
 
   Instance Semantics_params{p: parameters}: Semantics.parameters := {|
@@ -85,12 +88,12 @@ Module Import FlatToRiscv.
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     actname_eq_dec :> DecidableEq actname;
-    PR :> Primitives PRParams;
+    PR :> MetricPrimitives PRParams;
 
     (* For authors of extensions, a freely choosable ext_guarantee sounds too good to be true!
        And indeed, there are two restrictions:
        The first restriction is that ext_guarantee needs to be preservable for the compiler: *)
-    ext_guarantee_preservable: forall (m1 m2: RiscvMachine Register actname),
+    ext_guarantee_preservable: forall (m1 m2: MetricRiscvMachine Register actname),
         ext_guarantee m1 ->
         map.same_domain m1.(getMem) m2.(getMem) ->
         m1.(getLog) = m2.(getLog) ->
@@ -98,8 +101,8 @@ Module Import FlatToRiscv.
 
     (* And the second restriction is part of the correctness requirement for compilation of
        external calls: Every compiled external call has to preserve ext_guarantee *)
-    compile_ext_call_correct: forall (initialL: RiscvMachine Register actname) action postH newPc insts
-        (argvars resvars: list Register) initialMH R,
+    compile_ext_call_correct: forall (initialL: MetricRiscvMachine Register actname) action postH newPc insts
+        (argvars resvars: list Register) initialMH initialMetricsH R,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
       Forall valid_register argvars ->
@@ -108,14 +111,16 @@ Module Import FlatToRiscv.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       ext_guarantee initialL ->
       exec map.empty (SInteract resvars action argvars)
-           initialL.(getLog) initialMH initialL.(getRegs) postH ->
+           initialL.(getLog) initialMH initialL.(getRegs) initialMetricsH postH ->
       runsTo (mcomp_sat (run1 iset)) initialL
-             (fun finalL =>
+             (fun finalL => exists finalMetricsH,
                   (* external calls can't modify the memory for now *)
-                  postH finalL.(getLog) initialMH finalL.(getRegs) /\
+                  postH finalL.(getLog) initialMH finalL.(getRegs) finalMetricsH /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  (finalL.(getMetrics) - initialL.(getMetrics) <=
+                   lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
                   ext_guarantee finalL);
   }.
 
@@ -131,7 +136,7 @@ Section FlatToRiscv1.
 
   Definition trace := list (LogItem actname).
 
-  Local Notation RiscvMachineL := (RiscvMachine Register actname).
+  Local Notation RiscvMachineL := (MetricRiscvMachine Register actname).
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -192,13 +197,13 @@ Section FlatToRiscv1.
 
   Ltac simulate'' := repeat simulate''_step.
 
-  Lemma go_load: forall sz x a (addr v: word) initialL post f,
+  Lemma go_load: forall sz x a (addr v: word) (initialL: RiscvMachineL) post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) a = Some addr ->
       Memory.load sz (getMem initialL) addr = Some v ->
       mcomp_sat (f tt)
-                (withRegs (map.put initialL.(getRegs) x v) initialL) post ->
+                (withRegs (map.put initialL.(getRegs) x v) (updateMetrics (addMetricLoads 1) initialL)) post ->
       mcomp_sat (Bind (execute (compile_load sz x a 0)) f) initialL post.
   Proof.
     unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per.
@@ -212,20 +217,21 @@ Section FlatToRiscv1.
       [set (nBytes := 4%nat) | set (nBytes := 8%nat)];
       replace (Z.to_nat ((width + 7) / 8)) with nBytes by (subst nBytes; rewrite E; reflexivity);
       subst nBytes;
-      intros; destruct sz; try solve [
+      intros; destruct sz;
+      try solve [
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.load, Memory.load_Z in *;
-        simp; simulate''; simpl; simpl_word_exprs word_ok;
+        simp; simulate''; simpl; simpl_word_exprs word_ok; destruct initialL;
           try eassumption].
   Qed.
 
-  Lemma go_store: forall sz x a (addr v: word) initialL m' post f,
+  Lemma go_store: forall sz x a (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) x = Some v ->
       map.get initialL.(getRegs) a = Some addr ->
       Memory.store sz (getMem initialL) addr v = Some m' ->
-      mcomp_sat (f tt) (withMem m' initialL) post ->
+      mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
       mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post.
   Proof.
     unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per;
@@ -397,7 +403,8 @@ Section FlatToRiscv1.
     let n := fresh m "_npc" in
     let e := fresh m "_eh" in
     let me := fresh m "_mem" in
-    destruct m as [ [r p n e] me ];
+    let mc := fresh m "_metrics" in
+    destruct m as [ [ [r p n e] me] mc ];
     simpl_RiscvMachine_get_set.
 
   Ltac destruct_RiscvMachine m :=
@@ -408,7 +415,8 @@ Section FlatToRiscv1.
     let n := fresh m "_npc" in
     let me := fresh m "_mem" in
     let l := fresh m "_log" in
-    destruct m as [r p n me l];
+    let mc := fresh m "_metrics" in
+    destruct m as [ [r p n me l] mc ];
     simpl_RiscvMachine_get_set.
 
   Arguments Z.modulo : simpl never.
@@ -524,12 +532,15 @@ Section FlatToRiscv1.
 
   Ltac run1done :=
     apply runsToDone;
+    simpl_MetricRiscvMachine_get_set;
     simpl in *;
-    eexists;
+    eexists; (* finalMH *)
+    eexists; (* finalMetricsH *)
     repeat split;
     simpl_word_exprs (@word_ok (@W (@def_params p)));
     first
       [ solve [eauto]
+      | solve_MetricLog
       | solve_word_eq (@word_ok (@W (@def_params p)))
       | solve [pseplog]
       | prove_ext_guarantee
@@ -550,24 +561,87 @@ Section FlatToRiscv1.
            | _: _ = ?x |- _ => subst x
            end.
 
+  Definition updateMetricsForLiteral v initialMetrics : MetricLog :=
+    let cost :=
+        if dec (- 2 ^ 11 <= v < 2 ^ 11)
+        then 1
+        else
+          if dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31)
+          then 2
+          else 8 in
+    addMetricInstructions cost (addMetricLoads cost initialMetrics).
+
+  Ltac update_metrics_invert :=
+    intros;
+    unfold updateMetricsForLiteral in *;
+    repeat match goal with
+           | H: ?P |- context[dec(?P)] =>
+             let H' := fresh "H'" in
+             destruct (dec P) as [|H']; [|exfalso; apply H'; apply H]
+           | H: ~?P |- context[dec(?P)] =>
+             let H'  := fresh "H'" in
+             destruct (dec P) as [H'|]; [exfalso; apply H; apply H'|]
+           end;
+    reflexivity.
+
+  Lemma invert_update_metrics_for_literal_1: forall v initialMetrics,
+    -2 ^ 11 <= v < 2 ^ 11 ->
+    updateMetricsForLiteral v initialMetrics =
+    addMetricInstructions 1 (addMetricLoads 1 initialMetrics).
+  Proof. update_metrics_invert. Qed.
+
+  Lemma invert_update_metrics_for_literal_2: forall v initialMetrics,
+    ~(-2 ^ 11 <= v < 2 ^ 11) ->
+    width = 32 \/ -2 ^ 31 <= v < 2 ^ 31 ->
+    updateMetricsForLiteral v initialMetrics =
+    addMetricInstructions 2 (addMetricLoads 2 initialMetrics).
+  Proof. update_metrics_invert. Qed.
+
+  Lemma invert_update_metrics_for_literal_8: forall v initialMetrics,
+    ~(-2 ^ 11 <= v < 2 ^ 11) ->
+    ~(width = 32 \/ -2 ^ 31 <= v < 2 ^ 31)->
+    updateMetricsForLiteral v initialMetrics =
+    addMetricInstructions 8 (addMetricLoads 8 initialMetrics).
+  Proof. update_metrics_invert. Qed.
+
+  Ltac bound_for_literal P :=
+    match goal with
+    | H : updateMetricsForLiteral _ _ = ?finalMetrics |- _ =>
+      rewrite P in H; [|assumption..];
+      subst finalMetrics; repeat split; solve_MetricLog
+    end.
+
+  Lemma update_metrics_for_literal_bounded: forall v initialMetrics finalMetrics,
+      updateMetricsForLiteral v initialMetrics = finalMetrics ->
+      finalMetrics.(instructions) <= initialMetrics.(instructions) + 8 /\
+      finalMetrics.(loads) <= initialMetrics.(loads) + 8 /\
+      finalMetrics.(stores) <= initialMetrics.(stores) /\
+      finalMetrics.(jumps) <= initialMetrics.(jumps).
+  Proof.
+    intros.
+    destruct (dec (- 2 ^ 11 <= v < 2 ^ 11));
+      [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
+    - bound_for_literal invert_update_metrics_for_literal_1.
+    - bound_for_literal invert_update_metrics_for_literal_2.
+    - bound_for_literal invert_update_metrics_for_literal_8.
+  Qed.
+      
   Ltac match_apply_runsTo :=
     match goal with
     | R: runsTo ?m ?post |- runsToNonDet.runsTo _ ?m' ?post =>
       replace m' with m; [exact R|]
-    end;
-    cbv [withRegs withPc withNextPc withMem withLog];
-    f_equal.
+    end.
 
-  Lemma compile_lit_correct_full: forall initialL post x v R,
+  Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R,
       initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
       let insts := compile_stmt (SLit x v) in
       let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_registers (SLit x v) ->
-      runsTo (withRegs   (map.put initialL.(getRegs) x (ZToReg v))
+      runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
-                         initialL)))
+             (withMetrics (updateMetricsForLiteral v initialL.(getMetrics)) initialL))))
              post ->
       runsTo initialL post.
   Proof.
@@ -583,14 +657,18 @@ Section FlatToRiscv1.
     destruct (dec (- 2 ^ 11 <= v < 2 ^ 11));
       [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
     - unfold compile_lit_12bit in *.
+      rewrite invert_update_metrics_for_literal_1 in N; [|assumption].
       run1det.
       simpl_word_exprs word_ok.
       match_apply_runsTo.
       erewrite signExtend_nop; eauto; blia.
     - unfold compile_lit_32bit in *.
+      rewrite invert_update_metrics_for_literal_2 in N; [|assumption..].
       simpl in P.
       run1det. run1det.
       match_apply_runsTo.
+      simpl_MetricRiscvMachine_get_set. f_equal; [|solve_MetricLog].
+      f_equal.
       + rewrite map.put_put_same. f_equal.
         apply word.signed_inj.
         rewrite word.signed_of_Z.
@@ -626,6 +704,7 @@ Section FlatToRiscv1.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
     - unfold compile_lit_64bit, compile_lit_32bit in *.
+      rewrite invert_update_metrics_for_literal_8 in N; [|assumption..].
       match type of EV with
       | context [ Xori _ _ ?a ] => remember a as mid
       end.
@@ -636,15 +715,17 @@ Section FlatToRiscv1.
       simpl in *. (* if you don't remember enough values, this might take forever *)
       autorewrite with rew_Zlength in N.
       simpl in N.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
-      run1det.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
       match_apply_runsTo.
+      f_equal; [|simpl; solve_MetricLog].
+      f_equal.
       + rewrite! map.put_put_same. f_equal. subst.
         apply word.unsigned_inj.
         assert (width = 64) as W64. {
@@ -782,7 +863,7 @@ Section FlatToRiscv1.
       end
     end.
 
-  Lemma save_regs_correct: forall vars offset R initial p_sp oldvalues newvalues,
+  Lemma save_regs_correct: forall vars offset R (initial: RiscvMachineL) p_sp oldvalues newvalues,
       Forall valid_register vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (length vars) ->
       divisibleBy4 initial.(getPc) ->
@@ -821,10 +902,10 @@ Section FlatToRiscv1.
       eapply runsToStep. {
         eapply run_store_word; try solve [sidecondition].
       }
-      simpl. intros. simp.
+      simpl. intros.
       destruct_RiscvMachine initial.
       destruct_RiscvMachine mid.
-      subst.
+      simp. subst.
       eapply runsTo_weaken; cycle 1; [|eapply IHvars]. {
         simpl. intros. simp.
         repeat split; try solve [sidecondition].
@@ -871,7 +952,7 @@ Section FlatToRiscv1.
   (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
   Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
 
-  Lemma load_regs_correct: forall p_sp vars offset R initial values,
+  Lemma load_regs_correct: forall p_sp vars offset R (initial: RiscvMachineL) values,
       Forall valid_FlatImp_var vars ->
       NoDup vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (length vars) ->
@@ -914,10 +995,10 @@ Section FlatToRiscv1.
       eapply runsToStep. {
         eapply run_load_word; try solve [sidecondition].
       }
-      simpl. intros. simp.
+      simpl. intros.
       destruct_RiscvMachine initial.
       destruct_RiscvMachine mid.
-      subst.
+      simp. subst.
       eapply runsTo_weaken.
       + eapply IHvars; simpl; cycle -2; auto.
         * use_sep_assumption.
@@ -1254,9 +1335,9 @@ Section FlatToRiscv1.
     try solve [ecancel_done'].
 
   (* TODO make sure it's compatible with users of it *)
-  Axiom compile_ext_call_correct_new: forall (initialL: RiscvMachine Register actname)
+  Axiom compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
         action postH newPc insts (argvars resvars: list Register) initialMH R initialRegsH
-        argvals mGive outcome p_sp p_ra,
+        initialMetricsH argvals mGive outcome p_sp p_ra,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
       map.extends initialL.(getRegs) initialRegsH ->
@@ -1273,27 +1354,29 @@ Section FlatToRiscv1.
       (forall (resvals : list word),
           outcome map.empty resvals ->
           mGive = map.empty ->
-          exists finalRegsH: locals,
+          exists (finalRegsH: locals) finalMetricsH,
             map.putmany_of_list resvars resvals initialRegsH = Some finalRegsH /\
             postH ((map.empty, action, argvals, (map.empty, resvals)) :: initialL.(getLog))
-                  initialMH finalRegsH) ->
+                  initialMH finalRegsH finalMetricsH) ->
       runsTo initialL
              (fun finalL =>
-                exists finalRegsH: locals,
+                exists (finalRegsH: locals) finalMetricsH,
                   map.extends finalL.(getRegs) finalRegsH /\
                   map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
                   map.get finalL.(getRegs) RegisterNames.ra = Some p_ra /\
                   (* external calls can't modify the memory for now *)
-                  postH finalL.(getLog) initialMH finalRegsH /\
+                  postH finalL.(getLog) initialMH finalRegsH finalMetricsH /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (ZToReg 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  (finalL.(getMetrics) - initialL.(getMetrics) <=
+                   lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
                   ext_guarantee finalL).
 
   Lemma compile_stmt_correct_new:
     forall (program_base p_stacklimit: word),
-    forall e_impl_full (s: stmt) t initialMH initialRegsH postH,
-    exec e_impl_full s t (initialMH: mem) initialRegsH postH ->
+    forall e_impl_full (s: stmt) t initialMH initialRegsH initialMetricsH postH,
+    exec e_impl_full s t (initialMH: mem) initialRegsH initialMetricsH postH ->
     (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
        we enter a new function body, to make sure functions cannot call themselves, while
        [e_impl_full] and [e_pos] remain the same throughout because that's mandated by
@@ -1307,7 +1390,7 @@ Section FlatToRiscv1.
         valid_registers body /\
         List.In f funnames /\
         exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0) ->
-    forall (R: mem -> Prop) initialL insts p_sp p_ra (old_stackvals: list word) pos,
+    forall (R: mem -> Prop) (initialL: RiscvMachineL) insts p_sp p_ra (old_stackvals: list word) pos,
     @compile_stmt_new def_params _ e_pos pos s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
@@ -1328,8 +1411,9 @@ Section FlatToRiscv1.
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     ext_guarantee initialL ->
-    runsTo initialL (fun finalL => exists finalRegsH finalMH (final_stackvals: list word),
-          postH finalL.(getLog) finalMH finalRegsH /\
+    runsTo initialL (fun finalL => exists finalRegsH finalMH finalMetricsH
+                                          (final_stackvals: list word),
+          postH finalL.(getLog) finalMH finalRegsH finalMetricsH /\
           map.extends finalL.(getRegs) finalRegsH /\
           map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
           map.get finalL.(getRegs) RegisterNames.ra = Some p_ra /\
@@ -1369,7 +1453,7 @@ Section FlatToRiscv1.
     - (* SInteract *)
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct_new with
-            (postH := fun t' m' l' => post t' m (* <- not m' because unchanged *) l')
+            (postH := fun t' m' l' mc' => post t' m (* <- not m' because unchanged *) l' mc')
             (action := action) (argvars := argvars) (resvars := resvars);
           simpl; reflexivity || eassumption || ecancel_assumption || idtac.
         * eapply map.getmany_of_list_extends; eassumption.
@@ -1387,11 +1471,11 @@ Section FlatToRiscv1.
           end.
           replace mKeep with m in * by congruence. clear mKeep.
           replace finalMH with m in * by congruence. clear finalMH.
-          eexists.
+          repeat eexists;
           repeat split; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst.
-        do 3 eexists. repeat split; try eassumption. ecancel_assumption.
+        do 4 eexists. repeat split; try eassumption. ecancel_assumption.
 
     - (* SCall *)
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
@@ -1502,7 +1586,7 @@ Section FlatToRiscv1.
         wcancel.
       }
 
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -1523,7 +1607,7 @@ Section FlatToRiscv1.
       wcancel.
     }
 
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -1563,7 +1647,7 @@ Section FlatToRiscv1.
         wcancel.
     }
 
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -1585,7 +1669,7 @@ Section FlatToRiscv1.
       wcancel.
     }
 
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -1644,7 +1728,7 @@ Section FlatToRiscv1.
     }
 
     simpl.
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -1687,7 +1771,7 @@ Section FlatToRiscv1.
     }
 
     simpl.
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -1749,7 +1833,7 @@ Section FlatToRiscv1.
     }
 
     simpl.
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -1760,7 +1844,7 @@ Section FlatToRiscv1.
     subst.
 
     match goal with
-    | H: outcome _ _ _ |- _ => rename H into HO
+    | H: outcome _ _ _ _ |- _ => rename H into HO
     end.
     match goal with
     | H: forall _, _ |- _ =>
@@ -1812,7 +1896,7 @@ Section FlatToRiscv1.
     Open Scope word_scope.
 
     simpl.
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -1864,7 +1948,7 @@ Section FlatToRiscv1.
     }
 
     simpl.
-    cbn [getRegs getPc getNextPc getMem getLog].
+    cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
            | H: (_ * _)%sep _ |- _ => clear H
            end.
@@ -2004,9 +2088,9 @@ Ltac sidecondition ::=
   Goal True. idtac "FlatToRiscv: compile_stmt_correct_new done". Abort.
 
   Lemma compile_stmt_correct:
-    forall (s: stmt) t initialMH initialRegsH postH,
-    eval_stmt s t initialMH initialRegsH postH ->
-    forall R initialL insts,
+    forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
+    eval_stmt s t initialMH initialRegsH initialMetricsH postH ->
+    forall R (initialL: RiscvMachineL) insts,
     @compile_stmt def_params s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
@@ -2016,11 +2100,13 @@ Ltac sidecondition ::=
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
     ext_guarantee initialL ->
-    runsTo initialL (fun finalL => exists finalMH,
-          postH finalL.(getLog) finalMH finalL.(getRegs) /\
+    runsTo initialL (fun finalL => exists finalMH finalMetricsH,
+          postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
           finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          (finalL.(getMetrics) - initialL.(getMetrics) <=
+           lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
           ext_guarantee finalL).
   Proof.
     pose proof compile_stmt_emits_valid.
@@ -2030,7 +2116,7 @@ Ltac sidecondition ::=
         pose proof (compile_stmt_emits_valid iset_is_supported H1 H2)
       end;
       repeat match goal with
-             | m: _ |- _ => destruct_RiscvMachine m
+             | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
              end;
       simpl in *;
       subst;
@@ -2042,8 +2128,10 @@ Ltac sidecondition ::=
                                              (argvars0 := argvars) (resvars0 := resvars);
           simpl; reflexivity || eassumption || ecancel_assumption || idtac.
         eapply @exec.interact; try eassumption.
-      + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
-        destruct_products. subst. eauto 7.
+      + simpl. intros finalL A. destruct_RiscvMachine finalL.
+        simpl_MetricRiscvMachine_get_set. simpl in *.
+        destruct_products. subst. exists m. exists finalMetricsH.
+        repeat (split; try eassumption).
 
     - (* SCall *)
       match goal with
@@ -2058,28 +2146,36 @@ Ltac sidecondition ::=
       run1det. run1done.
 
     - (* SStore *)
+      simpl_MetricRiscvMachine_get_set.
       assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * R))%sep initialL_mem)
              as A by ecancel_assumption.
       pose proof (store_bytes_frame H2 A) as P.
+
       destruct P as (finalML & P1 & P2).
       run1det. run1done.
 
     - (* SLit *)
       eapply compile_lit_correct_full.
       + sidecondition.
-      + unfold compile_stmt. unfold getPc, getMem. ecancel_assumption.
+      + unfold compile_stmt. unfold getPc, getMem, liftGet in *. simpl. ecancel_assumption.
       + sidecondition.
-      + simpl. run1done.
+      + simpl. run1done;
+        remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
+        symmetry in HeqfinalMetrics;
+        pose proof update_metrics_for_literal_bounded as Hlit;
+        specialize Hlit with (1 := HeqfinalMetrics);
+        solve_MetricLog.
 
-      (* SOp *)
+    (* SOp *)
     - match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
-      simpl in *; run1det; try solve [run1done].
-      run1det. run1done.
-      match goal with
+        simpl in *; run1det; try solve [run1done].
+      + simpl_MetricRiscvMachine_get_set.
+        run1det. run1done;
+      [match goal with
       | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
-      end.
+      end | solve_MetricLog..].
       rewrite reduce_eq_to_sub_and_lt.
       symmetry. apply map.put_put_same.
 
@@ -2089,14 +2185,14 @@ Ltac sidecondition ::=
     - (* SIf/Then *)
       (* execute branch instruction, which will not jump *)
       eapply runsTo_det_step; simpl in *; subst.
-      + simulate'.
+      + simulate'. simpl_MetricRiscvMachine_get_set.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + eapply runsTo_trans.
+      + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
           eapply IHexec; IH_sidecondition.
         * (* jump over else-branch *)
-          simpl. intros. simp. destruct_RiscvMachine middle. subst.
+          simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
 
     - (* SIf/Else *)
@@ -2105,21 +2201,21 @@ Ltac sidecondition ::=
       + simulate'.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + eapply runsTo_trans.
+      + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
           eapply IHexec; IH_sidecondition.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
-          simpl. intros. simp. destruct_RiscvMachine middle. subst. run1done.
+          simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - (* SLoop/again *)
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
       on hyp[(stmt_not_too_big body2); runsTo] do (fun H => rename H into IH2).
       on hyp[(stmt_not_too_big (SLoop body1 cond body2)); runsTo] do (fun H => rename H into IH12).
-      eapply runsTo_trans.
+      eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + (* 1st application of IH: part 1 of loop body *)
         eapply IH1; IH_sidecondition.
-      + simpl in *. simpl. intros. simp. destruct_RiscvMachine middle. subst.
+      + simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
         destruct (@eval_bcond (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
@@ -2131,17 +2227,17 @@ Ltac sidecondition ::=
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { eapply runsTo_trans.
+          { eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
-              eapply IH2; IH_sidecondition.
-            - simpl in *. simpl. intros. simp. destruct_RiscvMachine middle. subst.
+              eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+            - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
               (* jump back to beginning of loop: *)
               run1det.
-              eapply runsTo_trans.
+              eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
               + (* 3rd application of IH: run the whole loop again *)
-                eapply IH12; IH_sidecondition.
+                eapply IH12; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
               + (* at end of loop, just prove that computed post satisfies required post *)
-                simpl. intros. simp. destruct_RiscvMachine middle. subst.
+                simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
         * (* false: done, jump over body2 *)
           eapply runsTo_det_step; simpl in *; subst.
@@ -2154,10 +2250,10 @@ Ltac sidecondition ::=
       rename IHexec into IH1, H2 into IH2.
       eapply runsTo_trans.
       + eapply IH1; IH_sidecondition.
-      + simpl. intros. simp. destruct_RiscvMachine middle. subst.
+      + simpl. intros. destruct_RiscvMachine middle. simp. subst.
         eapply runsTo_trans.
-        * eapply IH2; IH_sidecondition.
-        * simpl. intros. simp. destruct_RiscvMachine middle. subst. run1done.
+        * eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+        * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - (* SSkip *)
       run1done.

@@ -14,7 +14,11 @@ Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
 Require        riscv.Utility.InstructionNotations.
+Require Import riscv.Platform.MetricLogging.
+Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Platform.MinimalMMIO.
+Require Import riscv.Platform.MetricMinimalMMIO.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
@@ -30,17 +34,18 @@ Unset Universe Minimization ToSet.
 
 Open Scope Z_scope.
 
-Notation RiscvMachine := (RiscvMachine Register MMIOAction).
+Notation RiscvMachine := (MetricRiscvMachine Register MMIOAction).
 
 Instance mmio_params: MMIO.parameters := { (* everything is inferred automatically *) }.
 
-Existing Instance MinimalMMIOPrimitivesParams. (* needed because it's in a section *)
+Existing Instance MetricMinimalMMIOPrimitivesParams. (* needed because it's in a section *)
 
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_spec := FlatToRiscv.FlatToRiscv.ext_spec;
   Pipeline.ext_guarantee := FlatToRiscv.FlatToRiscv.ext_guarantee;
   Pipeline.M := OStateND RiscvMachine;
-  Pipeline.PRParams := MinimalMMIOPrimitivesParams;
+  Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
+  Pipeline.RVM := IsMetricRiscvMachineL;
 }.
 
 Lemma undef_on_same_domain{K V: Type}{M: map.map K V}{keq: DecidableEq K}{Ok: map.ok M}
@@ -112,11 +117,14 @@ Module PrintAssembly.
 End PrintAssembly.
 
 Definition zeroedRiscvMachine: RiscvMachine := {|
-  getRegs := map.empty;
-  getPc := word.of_Z 0;
-  getNextPc := word.of_Z 4;
-  getMem := map.empty;
-  getLog := nil;
+  getMetrics := EmptyMetricLog;
+  getMachine := {|
+    getRegs := map.empty;
+    getPc := word.of_Z 0;
+    getNextPc := word.of_Z 4;
+    getMem := map.empty;
+    getLog := nil;
+  |};
 |}.
 
 Definition imemStart: word := word.of_Z (Ox "20400000").
@@ -206,7 +214,8 @@ Proof.
 Qed.
 
 Lemma input_program_correct:
-  exec map.empty swap_chars_over_uart [] map.empty map.empty (fun t m l => True).
+  exec map.empty swap_chars_over_uart [] map.empty map.empty
+       bedrock2.MetricLogging.EmptyMetricLog (fun t m l mc => True).
 Proof.
   eapply bedrock2.WeakestPreconditionProperties.sound_nil.
   eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
@@ -217,12 +226,15 @@ Lemma input_program_not_too_long:
   4 * Z.of_nat (Datatypes.length (compileFunc swap_chars_over_uart)) < 2 ^ width.
 Proof. reflexivity. Qed.
 
+Definition run1 : OStateND RiscvMachine unit := @run1 _ _ _ _ IsMetricRiscvMachineL _ RV32IM.
+
 Lemma end2endDemo:
-  runsToNonDet.runsTo (mcomp_sat (run1 RV32IM))
+  runsToNonDet.runsTo (mcomp_sat run1)
                       initialSwapMachine
                       (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
 Proof.
-  refine (@exprImp2Riscv_correct _ _ swap_chars_over_uart map.empty nil _ _ _ _ _ _ _ _ _ _ _ _).
+  refine (@exprImp2Riscv_correct _ _ swap_chars_over_uart map.empty
+            bedrock2.MetricLogging.EmptyMetricLog nil _ _ (fun _ => True) _ _ _ _ _ _ _ _ _).
   - reflexivity.
   - cbv. repeat constructor.
   - reflexivity.
