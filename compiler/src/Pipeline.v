@@ -114,13 +114,14 @@ Section Pipeline1.
 
   Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
 
-  Definition flatten(s: Syntax.cmd): FlatImp.stmt :=
-    let ngs: NGstate := freshNameGenState (ExprImp.allVars_cmd_as_list s) in
-    let (sFlat, ngs') := flattenStmt ngs s in sFlat.
-
   (* only works if varname=Register *)
-  Definition exprImp2Riscv(s: Syntax.cmd): list Instruction :=
-    FlatToRiscvDef.compile_stmt (flatten s).
+  Definition ExprImp2Riscv(s: Syntax.cmd): list Instruction :=
+    FlatToRiscvDef.compile_stmt (ExprImp2FlatImp s).
+
+  Definition fooo(e: FlatImp.env)(funnames: list funname): list Instruction. Admitted.
+
+  Definition compile_functions(e: Semantics.env)(funnames: list funname): list Instruction :=
+    fooo (flatten_functions e funnames) funnames.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_registers (flatten s).
