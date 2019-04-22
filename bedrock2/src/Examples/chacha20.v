@@ -154,7 +154,6 @@ Proof.
     straightline.
     straightline.
     straightline.
-    Set Ltac Profiling.
     do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
@@ -166,126 +165,74 @@ Proof.
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
-    Show Ltac Profile CutOff 0.
+    Time do 10 straightline.
     straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
 
-  match goal with
-  | names:=_:string2ident.Context.list
-    |- @cmd _ _ (@cmd.set _ ?s ?e) _ _ _ ?post =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body];
-         (let names := eval cbv[names] in names in
-          let x := string2ident.lookup s names in
-          string2ident.ensure_free x; letexists _ as x; split)
-  end.
-{ 
-  do 57 straightline.
-  straightline.
-  straightline.
-  straightline.
-  straightline.
-  Print Ltac straightline.
-  match goal with
-  | |- exists x, ?P /\ ?Q =>
-        let x := fresh x in
-        refine (let x := _ in ex_intro (fun x => P /\ Q) x _); split
-  end.
-  {
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
 
-    Print Ltac straightline.
-    match goal with
-  | |- map.get _ _ = Some ?v =>
-        let v' := rdelta.rdelta v in
-        is_evar v'; pose v' as X
-  end
-.
+    (* prove [enforce] *)
+    match goal with |- Markers.unique (Markers.left (exists x131 x132 x133 x134 x135 x136 x137 x138 x139 x140 x141 x142 x143 x144 x145 x146 x147 x148 x149 x150 x151, _)) => idtac end.
 
-  change v with X. subst X.
-(* Goal : map.get l k = Some ?e , l = map.put k' ... *)
-cbv [
-    (* N.mul appears *)
-    map.get map.put
-            SortedList.map SortedList.parameters.key SortedList.parameters.value SortedListString.Build_parameters
-            SortedList.value SortedList.put
-            SortedList.eqb SortedList.parameters.ltb ltb Ascii.eqb Ascii.ltb Ascii.N_of_ascii Ascii.N_of_digits N.ltb Bool.eqb
-            List.find
-            SortedListString.map locals FE310CSemantics.parameters
-            l39 l38 l37
-            fst snd
- l0
- l1
- l2
- l3
- l4
- l5
- l6
- l7
- l8
- l9
- l10
- l11
- l12
- l13
- l14
- l15
- l16
- l17
- l18
- l19
- l20
- l21
- l22
- l23
- l24
- l25
- l26
- l27
- l28
- l29
- l30
- l31
- l32
- l33
- l34
- l35
- l36
- l37
- l38
- l39
+    repeat letexists. split.
+    { 
+      cbv [enforce gather].
+      repeat match goal with
+      | |- context G [@map.get ?K ?V ?M ?m ?k] =>
+        let v := match goal with H := context [map.put _ k ?v] |- _ => v end in
+        let goal := context G [Some v] in
+        change goal
+      end.
+    cbv beta iota.
+    split; exact eq_refl.
+    }
+               
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
+    Time do 10 straightline.
 
+    letexists. split.
+    2:split.
 
+    all : repeat straightline.
+    all : try typeclasses eauto with core.
 
-    ].
-revert dependent l.
-  Time exact eq_refl.
-(* Finished transaction in 1.907 secs (1.905u,0.s) (successful) *)
-  }
-  repeat straightline.
-  }
-
-
-
-
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
-    Time do 10 straightline.
+    subst v'.
+    revert dependent v.
+    (* GOAL: forall v : nat, (?Goal0 < v)%nat *)
 
 Abort.
