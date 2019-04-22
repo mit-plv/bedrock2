@@ -64,6 +64,9 @@ Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
 
 Notation RiscvMachine := (MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
 
+Existing Instance coqutil.Map.SortedListString.map.
+Existing Instance coqutil.Map.SortedListString.ok.
+
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_spec _ _ := Empty_set_rect _;
   Pipeline.ext_guarantee _ := False;
@@ -363,10 +366,13 @@ Proof.
     + intros. destruct H4. destruct H5. destruct H6.
       eval_fib_var_names.
       assert (iter <= n)%nat by Lia.lia.
-      assert (map.get l' 4 = Some (word.of_Z (Z.of_nat n - Z.of_nat iter))) by
-      ( rewrite H6; f_equal;
-        simpl; f_equal;
-        rewrite Z.mod_small; [rewrite Z.mod_small; Lia.lia | Lia.lia ]).
+      assert (map.get l' 4 = Some (word.of_Z (Z.of_nat n - Z.of_nat iter))). {
+        rewrite H6. f_equal.
+        apply word.unsigned_inj.
+        rewrite word.unsigned_add. rewrite !word.unsigned_of_Z.
+        f_equal. unfold word.wrap. change (1 mod 2 ^ Semantics.width) with 1. simpl.
+        rewrite Z.mod_small; blia.
+      }
       specialize IHiter with (1 := H) (2 := H8) (3 := H4) (4 := H5) (5 := H9).
       specialize IHiter with (mc := (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'')))).
       simpl in H7.
@@ -434,7 +440,7 @@ Proof.
         -- apply HWhile.
         -- intros. simpl. Lia.lia.
 Qed.
-        
+
 Lemma fib_H_res_value: fib_H_res 20 6 = Some (word.of_Z 13).
 Proof. cbv. reflexivity. Qed.
 

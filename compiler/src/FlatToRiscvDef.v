@@ -45,7 +45,7 @@ Module Import FlatToRiscvDef.
 
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
     Syntax.varname := Register;
-    Syntax.funname := Empty_set;
+    Syntax.funname := String.string;
     Syntax.actname := actname;
   |}.
 

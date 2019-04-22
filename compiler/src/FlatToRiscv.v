@@ -61,6 +61,7 @@ Module Import FlatToRiscv.
 
     locals :> map.map Register word;
     mem :> map.map word byte;
+    funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
 
     M: Type -> Type;
     MM :> Monad M;
@@ -79,14 +80,16 @@ Module Import FlatToRiscv.
   Instance Semantics_params{p: parameters}: Semantics.parameters := {|
     Semantics.syntax := FlatToRiscvDef.mk_Syntax_params _;
     Semantics.ext_spec := ext_spec;
-    Semantics.funname_eqb := Empty_set_rect _;
-    Semantics.funname_env := Empty_set_keyed_map.map;
+    Semantics.funname_eqb := String.eqb;
+    Semantics.funname_env := funname_env;
   |}.
 
   Class assumptions{p: parameters} := {
     word_riscv_ok :> word.riscv_ok (@word W);
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
+    funname_env_ok :> forall T, map.ok (funname_env T);
+
     actname_eq_dec :> DecidableEq actname;
     PR :> MetricPrimitives PRParams;
 
@@ -625,7 +628,7 @@ Section FlatToRiscv1.
     - bound_for_literal invert_update_metrics_for_literal_2.
     - bound_for_literal invert_update_metrics_for_literal_8.
   Qed.
-      
+
   Ltac match_apply_runsTo :=
     match goal with
     | R: runsTo ?m ?post |- runsToNonDet.runsTo _ ?m' ?post =>
@@ -751,8 +754,6 @@ Section FlatToRiscv1.
       + solve_word_eq word_ok.
   Qed.
 
-  Definition eval_stmt := exec map.empty.
-
   Lemma seplog_subst_eq{A B R: mem -> Prop} {mL mH: mem}
       (H: A mL)
       (H0: iff1 A (R * eq mH)%sep)
@@ -865,11 +866,11 @@ Section FlatToRiscv1.
 
   Lemma save_regs_correct: forall vars offset R (initial: RiscvMachineL) p_sp oldvalues newvalues,
       Forall valid_register vars ->
-      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (length vars) ->
+      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       divisibleBy4 initial.(getPc) ->
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
-      length oldvalues = length vars ->
+      List.length oldvalues = List.length vars ->
       (program initial.(getPc) (save_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
@@ -879,7 +880,7 @@ Section FlatToRiscv1.
            word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep
               final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
-                                                        (word.of_Z (Z.of_nat (length vars)))) /\
+                                                   (word.of_Z (Z.of_nat (List.length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
   Proof.
     unfold map.getmany_of_list.
@@ -891,7 +892,7 @@ Section FlatToRiscv1.
       assert (valid_instructions EmitsValid.iset
                 [(compile_store Syntax.access_size.word RegisterNames.sp a offset)]). {
         eapply compile_store_emits_valid; try eassumption.
-        assert (bytes_per_word * Z.of_nat (S (length vars)) > 0). {
+        assert (bytes_per_word * Z.of_nat (S (List.length vars)) > 0). {
           unfold Z.of_nat.
           unfold bytes_per_word, Memory.bytes_per in *.
           destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
@@ -920,16 +921,16 @@ Section FlatToRiscv1.
           rewrite word.add_assoc.
           ecancel_step.
           ecancel.
-        - replace (Z.of_nat (S (length oldvalues)))
-            with (1 + Z.of_nat (length oldvalues)) by blia.
+        - replace (Z.of_nat (S (List.length oldvalues)))
+            with (1 + Z.of_nat (List.length oldvalues)) by blia.
           etransitivity; [eassumption|].
-          replace (length vars) with (length oldvalues) by blia.
+          replace (List.length vars) with (List.length oldvalues) by blia.
           solve_word_eq word_ok.
       }
       all: try eassumption.
       + rewrite Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
         rewrite Z.mul_add_distr_l in *.
-        remember (bytes_per_word * BinInt.Z.of_nat (length vars)) as K.
+        remember (bytes_per_word * BinInt.Z.of_nat (List.length vars)) as K.
         assert (bytes_per_word > 0). {
           unfold bytes_per_word, Memory.bytes_per in *.
           destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
@@ -944,7 +945,7 @@ Section FlatToRiscv1.
   Qed.
 
   Lemma length_save_regs: forall vars offset,
-      length (save_regs vars offset) = length vars.
+      List.length (save_regs vars offset) = List.length vars.
   Proof.
     induction vars; intros; simpl; rewrite? IHvars; reflexivity.
   Qed.
@@ -955,10 +956,10 @@ Section FlatToRiscv1.
   Lemma load_regs_correct: forall p_sp vars offset R (initial: RiscvMachineL) values,
       Forall valid_FlatImp_var vars ->
       NoDup vars ->
-      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (length vars) ->
+      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       divisibleBy4 initial.(getPc) ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
-      length values = length vars ->
+      List.length values = List.length vars ->
       (program initial.(getPc) (load_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
@@ -969,7 +970,7 @@ Section FlatToRiscv1.
            word_array (word.add p_sp (word.of_Z offset)) values * R)%sep
               final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
-                                                        (word.of_Z (Z.of_nat (length vars)))) /\
+                                                   (word.of_Z (Z.of_nat (List.length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
   Proof.
     induction vars; intros.
@@ -984,7 +985,7 @@ Section FlatToRiscv1.
       assert (valid_instructions EmitsValid.iset
                 [(compile_load Syntax.access_size.word a RegisterNames.sp offset)]). {
         eapply compile_load_emits_valid; try eassumption.
-        assert (bytes_per_word * Z.of_nat (S (length vars)) > 0). {
+        assert (bytes_per_word * Z.of_nat (S (List.length vars)) > 0). {
           unfold Z.of_nat.
           unfold bytes_per_word, Memory.bytes_per in *.
           destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
@@ -1056,13 +1057,13 @@ Section FlatToRiscv1.
           ecancel.
         * etransitivity; [eassumption|].
           rewrite Nat2Z.inj_succ. rewrite <- Z.add_1_r.
-          replace (length values) with (length vars) by congruence.
+          replace (List.length values) with (List.length vars) by congruence.
           solve_word_eq word_ok.
         * assumption.
   Qed.
 
   Lemma length_load_regs: forall vars offset,
-      length (load_regs vars offset) = length vars.
+      List.length (load_regs vars offset) = List.length vars.
   Proof.
     induction vars; intros; simpl; rewrite? IHvars; reflexivity.
   Qed.
@@ -1086,16 +1087,16 @@ Section FlatToRiscv1.
              (ra_val: word)(modvarvals: list word): mem -> Prop :=
     word_array
       (word.add p_sp
-                (word.of_Z
-                   (- (bytes_per_word *
-                       Z.of_nat (length argvals + length retvals + 1 + length modvarvals)))))
+         (word.of_Z
+           (- (bytes_per_word *
+             Z.of_nat (List.length argvals + List.length retvals + 1 + List.length modvarvals)))))
       (modvarvals ++ [ra_val] ++ retvals ++ argvals).
 
   (* measured in words, needs to be multiplied by 4 or 8 *)
   Definition framelength: list var * list var * stmt -> Z :=
     fun '(argvars, resvars, body) =>
       let mod_vars := modVars_as_list body in
-      Z.of_nat (length argvars + length resvars + 1 + length mod_vars).
+      Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
 
   Lemma framesize_nonneg: forall argvars resvars body,
       0 <= framelength (argvars, resvars, body).
@@ -1188,7 +1189,7 @@ Section FlatToRiscv1.
          end * (rec rest))%sep
       end.
 
-  Instance funname_eq_dec: DecidableEq Syntax.funname := _.
+  Instance funname_eq_dec: DecidableEq Syntax.funname := string_dec.
 
   Lemma functions_expose: forall base rel_positions impls funnames f pos impl,
       map.get rel_positions f = Some pos ->
@@ -1264,10 +1265,11 @@ Section FlatToRiscv1.
   Hint Unfold program word_array: unf_to_array.
 
   Lemma compile_stmt_length_position_indep: forall e_pos1 e_pos2 s pos1 pos2,
-        length (compile_stmt_new e_pos1 pos1 s) = length (compile_stmt_new e_pos2 pos2 s).
+      List.length (compile_stmt_new e_pos1 pos1 s) =
+      List.length (compile_stmt_new e_pos2 pos2 s).
   Proof.
     induction s; intros; simpl; try reflexivity;
-      repeat (simpl; rewrite ?app_length); erewrite ?IHs1; erewrite ?IHs2; try reflexivity.
+      repeat (simpl; rewrite ?List.app_length); erewrite ?IHs1; erewrite ?IHs2; try reflexivity.
   Qed.
 
   Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
@@ -1325,7 +1327,7 @@ Section FlatToRiscv1.
     let y := lazymatch jy with (_, ?y) => y end in
     assert_fails (idtac; let y := rdelta_var y in is_evar y);
     let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-    let l := eval cbv [length] in (length LHS) in
+    let l := eval cbv [List.length] in (List.length LHS) in
     let i := pick_nat l in
     cancel_seps_at_indices i j; [sepclause_eq|].
 
@@ -1401,9 +1403,9 @@ Section FlatToRiscv1.
     map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
     map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
     (forall r, 0 < r < 32 -> exists v, map.get initialL.(getRegs) r = Some v) ->
-    fits_stack (Z.of_nat (length old_stackvals)) e_impl_reduced s ->
+    fits_stack (Z.of_nat (List.length old_stackvals)) e_impl_reduced s ->
     p_sp = word.add p_stacklimit
-                    (word.of_Z (bytes_per_word * Z.of_nat (length old_stackvals))) ->
+                    (word.of_Z (bytes_per_word * Z.of_nat (List.length old_stackvals))) ->
     (R * eq initialMH *
      word_array p_stacklimit old_stackvals *
      program initialL.(getPc) insts *
@@ -1417,7 +1419,7 @@ Section FlatToRiscv1.
           map.extends finalL.(getRegs) finalRegsH /\
           map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
           map.get finalL.(getRegs) RegisterNames.ra = Some p_ra /\
-          length final_stackvals = length old_stackvals /\
+          List.length final_stackvals = List.length old_stackvals /\
           (R * eq finalMH *
            word_array p_stacklimit final_stackvals *
            program initialL.(getPc) insts *
@@ -1497,14 +1499,10 @@ Section FlatToRiscv1.
           destruct G as [? [? [? [? [funpos [GetPos ?] ] ] ] ] ]
       end.
       rewrite GetPos in *.
-      (* normal rewrite doesn't always work *)
-      match goal with
-      | H: context [map.get e_pos fname] |- _ => setoid_rewrite GetPos in H
-      end.
 
       set (FL := framelength (argnames, retnames, body)) in *.
       (* We have enough stack space for this call: *)
-      assert (FL <= Z.of_nat (length old_stackvals)) as enough_stack_space. {
+      assert (FL <= Z.of_nat (List.length old_stackvals)) as enough_stack_space. {
         match goal with
         | H: fits_stack _ _ _ |- _ => apply fits_stack_nonneg in H; clear -H
         end.
@@ -1514,9 +1512,9 @@ Section FlatToRiscv1.
       assert (exists remaining_stack old_modvarvals old_ra old_retvals old_argvals,
                  old_stackvals = remaining_stack ++ old_modvarvals ++ [old_ra] ++
                                                  old_retvals ++ old_argvals /\
-                 length old_modvarvals = length (modVars_as_list body) /\
-                 length old_retvals = length retnames /\
-                 length old_argvals = length argnames) as TheSplit. {
+                 List.length old_modvarvals = List.length (modVars_as_list body) /\
+                 List.length old_retvals = List.length retnames /\
+                 List.length old_argvals = List.length argnames) as TheSplit. {
         subst FL. unfold framelength in *.
         clear -enough_stack_space.
 
@@ -1575,7 +1573,7 @@ Section FlatToRiscv1.
 
       (* put arguments on stack *)
       eapply runsTo_trans. {
-        eapply save_regs_correct with (vars := args) (offset := - bytes_per_word * Z.of_nat (length args)); simpl;
+        eapply save_regs_correct with (vars := args) (offset := - bytes_per_word * Z.of_nat (List.length args)); simpl;
           try solve [sidecondition].
         - admit.
         - solve_divisibleBy4.
@@ -1618,9 +1616,10 @@ Section FlatToRiscv1.
     subst.
 
     pose proof functions_expose as P.
-    do 2 match goal with
-    | H: _ |- _ => specialize P with (1 := H)
+    match goal with
+    | H: map.get e_impl_full _ = Some _ |- _ => specialize P with (2 := H)
     end.
+    specialize P with (1 := GetPos).
     specialize (P program_base funnames).
     match goal with
     | H: (_ * _)%sep _ |- _ => seprewrite_in P H; clear P
@@ -1706,7 +1705,7 @@ Section FlatToRiscv1.
         change Syntax.varname with Register in *.
 
         repeat match goal with
-        | H: _ = length ?M |- _ =>
+        | H: _ = List.length ?M |- _ =>
           lazymatch M with
           | @modVars_as_list ?params ?eqd ?s =>
             so fun hyporgoal => match hyporgoal with
@@ -1743,7 +1742,7 @@ Section FlatToRiscv1.
       eapply load_regs_correct with
           (vars := argnames) (values := argvs)
           (p_sp := (word.add p_stacklimit
-                             (word.of_Z (bytes_per_word * Z.of_nat (length remaining_stack)))));
+                         (word.of_Z (bytes_per_word * Z.of_nat (List.length remaining_stack)))));
         simpl; cycle -2; try assumption.
       - rewrite !length_save_regs in *.
         wseplog_pre word_ok.
@@ -1762,9 +1761,9 @@ Section FlatToRiscv1.
               rewrite !Zlength_correct ||
               rewrite !Nat2Z.inj_succ ||
               rewrite <-! Z.add_1_r).
-          replace (length old_retvals) with (length retnames) by blia.
-          replace (length old_argvals) with (length argnames) by blia.
-          replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
+          replace (List.length old_retvals) with (List.length retnames) by blia.
+          replace (List.length old_argvals) with (List.length argnames) by blia.
+          replace (List.length (modVars_as_list body)) with (List.length old_modvarvals) by blia.
           unfold Register, MachineInt.
           autorewrite with rew_word_morphism.
           solve_word_eq word_ok.
@@ -1785,6 +1784,7 @@ Section FlatToRiscv1.
     eapply runsTo_trans. {
       eapply IHexec with (funnames := (remove funname_eq_dec fname funnames));
         simpl; try assumption.
+      - eassumption.
       - (* Note: we'd have to shrink e_impl in FlatImp.exec if we want to shrink it in
            the induction too *)
         admit.
@@ -1804,15 +1804,15 @@ Section FlatToRiscv1.
       - (* map_solver with middle_regs and middle_regs0 *) admit.
       - (* map_solver with middle_regs and middle_regs0 *) admit.
       - (* map_solver with middle_regs and middle_regs0 *) admit.
-      - instantiate (2 := remaining_stack).
+      - instantiate (1 := remaining_stack).
         match goal with
         | H: fits_stack ?n1 _ _ |- fits_stack ?n2 _ _ =>
           replace n2 with n1; [exact H|]
         end.
         subst FL.
-        rewrite !app_length. simpl.
-        replace (length (modVars_as_list body)) with (length old_modvarvals) by blia.
-        rewrite !app_length.
+        rewrite !List.app_length. simpl.
+        replace (List.length (modVars_as_list body)) with (List.length old_modvarvals) by blia.
+        rewrite !List.app_length.
         blia.
       - reflexivity.
       - unfold fun_pos_env in *.
@@ -1866,11 +1866,11 @@ Section FlatToRiscv1.
           match goal with
           | |- ?LHS = ?RHS =>
             match LHS with
-            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+            | context [List.length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
               match RHS with
-              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
-                replace (length (compile_stmt_new epos1 pos1 s))
-                  with (length (compile_stmt_new epos2 pos2 s))
+              | context [List.length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (List.length (compile_stmt_new epos1 pos1 s))
+                  with (List.length (compile_stmt_new epos2 pos2 s))
                     by apply compile_stmt_length_position_indep
               end
             end
@@ -1911,7 +1911,7 @@ Section FlatToRiscv1.
       eapply load_regs_correct with
           (vars := (modVars_as_list body)) (values := newvalues)
           (p_sp := (word.add p_stacklimit
-                             (word.of_Z (bytes_per_word * Z.of_nat (length remaining_stack)))));
+                             (word.of_Z (bytes_per_word * Z.of_nat (List.length remaining_stack)))));
         simpl; cycle -2; try assumption.
       - wseplog_pre word_ok.
         wcancel.
@@ -1920,11 +1920,11 @@ Section FlatToRiscv1.
           match goal with
           | |- ?LHS = ?RHS =>
             match LHS with
-            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+            | context [List.length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
               match RHS with
-              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
-                replace (length (compile_stmt_new epos1 pos1 s))
-                  with (length (compile_stmt_new epos2 pos2 s))
+              | context [List.length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (List.length (compile_stmt_new epos1 pos1 s))
+                  with (List.length (compile_stmt_new epos2 pos2 s))
                     by apply compile_stmt_length_position_indep
               end
             end
@@ -1989,7 +1989,7 @@ Ltac sidecondition ::=
       eapply run_load_word; try solve [sidecondition].
       - simpl. solve_divisibleBy4.
       - simpl.
-        instantiate (1 := (p_stacklimit + !(bytes_per_word * #(length remaining_stack)))).
+        instantiate (1 := (p_stacklimit + !(bytes_per_word * #(List.length remaining_stack)))).
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
                                | assumptions => fail
@@ -2012,11 +2012,11 @@ Ltac sidecondition ::=
           match goal with
           | |- ?LHS = ?RHS =>
             match LHS with
-            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+            | context [List.length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
               match RHS with
-              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
-                replace (length (compile_stmt_new epos1 pos1 s))
-                  with (length (compile_stmt_new epos2 pos2 s))
+              | context [List.length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (List.length (compile_stmt_new epos1 pos1 s))
+                  with (List.length (compile_stmt_new epos2 pos2 s))
                     by apply compile_stmt_length_position_indep
               end
             end
@@ -2042,7 +2042,7 @@ Ltac sidecondition ::=
       eapply (run_Addi _ _ _
              (* otherwise it will pick the decreasing (with a - in front) *)
               (bytes_per_word *
-                  #(length argnames + length retnames + 1 + length (modVars_as_list body)))%Z);
+                  #(List.length argnames + List.length retnames + 1 + List.length (modVars_as_list body)))%Z);
         try solve [sidecondition | simpl; solve_divisibleBy4 ].
       - simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
@@ -2067,11 +2067,11 @@ Ltac sidecondition ::=
           match goal with
           | |- ?LHS = ?RHS =>
             match LHS with
-            | context [length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+            | context [List.length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
               match RHS with
-              | context [length (compile_stmt_new ?epos2 ?pos2 s)] =>
-                replace (length (compile_stmt_new epos1 pos1 s))
-                  with (length (compile_stmt_new epos2 pos2 s))
+              | context [List.length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (List.length (compile_stmt_new epos1 pos1 s))
+                  with (List.length (compile_stmt_new epos2 pos2 s))
                     by apply compile_stmt_length_position_indep
               end
             end
@@ -2089,7 +2089,7 @@ Ltac sidecondition ::=
 
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
-    eval_stmt s t initialMH initialRegsH initialMetricsH postH ->
+    FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
     forall R (initialL: RiscvMachineL) insts,
     @compile_stmt def_params s = insts ->
     stmt_not_too_big s ->
@@ -2134,9 +2134,9 @@ Ltac sidecondition ::=
         repeat (split; try eassumption).
 
     - (* SCall *)
-      match goal with
+      lazymatch goal with
       | A: map.get map.empty _ = Some _ |- _ =>
-        clear -A; exfalso; simpl in *;
+        exfalso; simpl in *;
         rewrite map.get_empty in A
       end.
       discriminate.
@@ -2262,7 +2262,7 @@ Ltac sidecondition ::=
 
   (* TODO move *)
   Lemma length_list_union: forall {T: Type} {teq: DecidableEq T} (l1 l2: list T),
-      (length (ListLib.list_union l1 l2) <= length l1 + length l2)%nat.
+      (List.length (ListLib.list_union l1 l2) <= List.length l1 + List.length l2)%nat.
   Proof.
     induction l1; intros; simpl; [blia|].
     destruct_one_match.

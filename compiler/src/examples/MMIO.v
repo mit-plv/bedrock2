@@ -38,7 +38,7 @@ Import ListNotations.
 Open Scope ilist_scope.
 
 Definition varname: Type := Z.
-Definition funname: Type := Empty_set.
+Definition funname: Type := string.
 
 Instance actname_eq_dec: DecidableEq MMIOAction.
 intros a b. destruct a; destruct b; (left + right); congruence.
@@ -115,6 +115,8 @@ Module Import MMIO.
     mem_ok :> map.ok mem;
     locals :> map.map varname word;
     locals_ok :> map.ok locals;
+    funname_env: forall T, map.map funname T;
+    funname_env_ok :> forall T, map.ok (funname_env T);
   }.
 End MMIO.
 
@@ -239,8 +241,9 @@ Section MMIO1.
   Instance mmio_semantics_params: Semantics.parameters := {|
     Semantics.syntax := mmio_syntax_params;
     Semantics.width := 32;
-    Semantics.funname_eqb := Empty_set_rect _;
+    Semantics.funname_eqb := String.eqb;
     Semantics.ext_spec := real_ext_spec;
+    Semantics.funname_env := funname_env;
   |}.
 
   Instance compilation_params: FlatToRiscvDef.parameters := {
@@ -283,6 +286,7 @@ Section MMIO1.
     FlatToRiscv.def_params := compilation_params;
     FlatToRiscv.locals := locals;
     FlatToRiscv.mem := (@mem p);
+    FlatToRiscv.funname_env := funname_env;
     FlatToRiscv.MM := OStateND_Monad _;
     FlatToRiscv.RVM := IsMetricRiscvMachineL;
     FlatToRiscv.PRParams := MetricMinimalMMIOPrimitivesParams;

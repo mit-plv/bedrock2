@@ -1,5 +1,6 @@
 From coqutil Require Import sanity.
 Local Unset Universe Minimization ToSet.
+Require Coq.Strings.String.
 Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.BinInt.
 Require Import bedrock2.Syntax.
@@ -10,7 +11,7 @@ Notation MMOutput := true (only parsing).
 
 Local Instance syntax_parameters : Syntax.parameters := {|
   varname := Z;
-  funname := Empty_set;
+  funname := String.string;
   actname := MMIOAction;
 |}.
 
@@ -18,7 +19,7 @@ Local Instance syntax_parameters : Syntax.parameters := {|
 
 
 
-From coqutil.Map Require SortedListWord Z_keyed_SortedListMap Empty_set_keyed_map.
+From coqutil.Map Require SortedListWord SortedListString Z_keyed_SortedListMap Empty_set_keyed_map.
 From coqutil Require Import Word.Interface Word.Naive Z.HexNotation String.
 Require Import bedrock2.Semantics.
 Import List.ListNotations.
@@ -37,8 +38,8 @@ Local Instance parameters : parameters. refine (
   syntax := syntax_parameters;
   mem := SortedListWord.map _ _;
   locals := Z_keyed_SortedListMap.Zkeyed_map _;
-  funname_env := Empty_set_keyed_map.map;
-  funname_eqb := Empty_set_rect _;
+  funname_env := SortedListString.map;
+  funname_eqb := String.eqb;
   ext_spec t mGive action args post :=
     mGive = Map.Interface.map.empty /\
     match action, List.map word.unsigned args with

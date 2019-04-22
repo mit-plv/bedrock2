@@ -24,7 +24,7 @@ Open Scope ilist_scope.
 Axiom TODO: False.
 
 Definition var: Set := Z.
-Definition func: Set := Empty_set.
+Definition func: Set := string.
 Inductive act: Set := Select. (* only one action (= "external call" = inline assembly snippet) *)
 
 Instance act_dec: DecidableEq act. left. destruct x; destruct y. reflexivity. Defined.

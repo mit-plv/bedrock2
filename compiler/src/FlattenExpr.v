@@ -12,7 +12,6 @@ Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import compiler.Simp.
-Require coqutil.Map.Empty_set_keyed_map.
 
 Local Set Ltac Profiling.
 
@@ -25,6 +24,7 @@ Module Import FlattenExpr.
     W :> Words;
     locals :> map.map varname Utility.word;
     mem :> map.map Utility.word Utility.byte;
+    funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
     trace := list (mem * actname * list Utility.word * (mem * list Utility.word));
     ext_spec : trace ->
                mem -> actname -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
@@ -33,7 +33,7 @@ Module Import FlattenExpr.
 
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
     Syntax.varname := varname;
-    Syntax.funname := Empty_set;
+    Syntax.funname := string;
     Syntax.actname := actname;
   |}.
 
@@ -41,8 +41,8 @@ Module Import FlattenExpr.
     Semantics.syntax := _;
     Semantics.word := Utility.word;
     Semantics.byte := Utility.byte;
-    Semantics.funname_env := Empty_set_keyed_map.map;
-    Semantics.funname_eqb := Empty_set_rect _;
+    Semantics.funname_env := funname_env;
+    Semantics.funname_eqb := String.eqb;
     Semantics.ext_spec:= ext_spec;
   |}.
 
@@ -51,6 +51,7 @@ Module Import FlattenExpr.
     actname_eq_dec :> DecidableEq actname;
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
+    funname_env_ok :> forall T, map.ok (funname_env T);
     NG :> NameGen varname NGstate;
     ext_spec_ok: ext_spec.ok (mk_Semantics_params p);
   }.
@@ -59,9 +60,11 @@ Module Import FlattenExpr.
   Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
     Semantics.parameters_ok (mk_Semantics_params p) :=
   {
+    Semantics.funname_eq_dec := string_dec;
     Semantics.word_ok := Utility.word_ok;
     Semantics.byte_ok := Utility.byte_ok;
     Semantics.mem_ok := mem_ok;
+    Semantics.funname_env_ok := funname_env_ok;
     Semantics.width_cases := Utility.width_cases;
     Semantics.ext_spec_ok := ext_spec_ok;
   }.
@@ -440,7 +443,8 @@ Section FlattenExpr1.
       flattenCall ngs1 binds f args = (s, ngs2) ->
       subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
-    intros. destruct f.
+    unfold flattenCall.
+    intros. simp. eauto using flattenExprs_freshVarUsage.
   Qed.
 
   Lemma flattenInteract_freshVarUsage: forall args s' binds a ngs1 ngs2,
@@ -461,6 +465,7 @@ Section FlattenExpr1.
     | H: _ |- _ => apply flattenExpr_freshVarUsage in H
     | H: _ |- _ => apply flattenExprAsBoolExpr_freshVarUsage in H
     | H: _ |- _ => apply flattenInteract_freshVarUsage in H
+    | H: _ |- _ => apply flattenCall_freshVarUsage in H
     | H: (_, _) = (_, _) |- _ => inversion H; subst; clear H
     end;
     repeat match goal with
@@ -883,7 +888,9 @@ Section FlattenExpr1.
           repeat eexists; repeat (split || eassumption || solve_MetricLog). maps.
 
     - (* call *)
-      destruct fname.
+      match goal with
+      | E: map.get map.empty _ = Some _ |- _ => rewrite map.get_empty in E; discriminate E
+      end.
 
     - (* interact *)
       unfold flattenInteract in *. simp.

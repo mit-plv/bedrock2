@@ -605,7 +605,7 @@ Definition var_x2: myvar := 2.
 Definition test1a(v1 v2: nat): expr (@nil myvar) 0 :=
   ELet var_x1 (ELit v1) (ELet var_x2 (ELit v2) (EVar 0 var_x1)).
 
-Definition empty_types: member (@nil myvar) -> nat. intro. inversion H. Defined.
+Definition empty_types: member (@nil myvar) -> nat. intro H. inversion H. Defined.
 Definition empty_vals: forall m : member (@nil myvar), interp_type (empty_types m).
   intro. inversion m. Defined.
 

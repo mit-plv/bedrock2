@@ -7,6 +7,7 @@ Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.SortedList.
+Require coqutil.Map.SortedListString.
 Require Import riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
 Require Import coqutil.Map.Empty_set_keyed_map.
@@ -35,6 +36,9 @@ Unset Universe Minimization ToSet.
 Open Scope Z_scope.
 
 Notation RiscvMachine := (MetricRiscvMachine Register MMIOAction).
+
+Existing Instance coqutil.Map.SortedListString.map.
+Existing Instance coqutil.Map.SortedListString.ok.
 
 Instance mmio_params: MMIO.parameters := { (* everything is inferred automatically *) }.
 
@@ -233,7 +237,7 @@ Lemma end2endDemo:
                       initialSwapMachine
                       (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
 Proof.
-  refine (@exprImp2Riscv_correct _ _ swap_chars_over_uart map.empty
+  refine (@exprImp2Riscv_correct pipeline_params _ swap_chars_over_uart map.empty
             bedrock2.MetricLogging.EmptyMetricLog nil _ _ (fun _ => True) _ _ _ _ _ _ _ _ _).
   - reflexivity.
   - cbv. repeat constructor.
