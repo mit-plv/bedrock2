@@ -180,6 +180,50 @@ Section FlattenExpr1.
     | Syntax.cmd.interact binds a args => flattenInteract ngs binds a args
     end.
 
+  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
+    fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
+
+  Definition flatten_function(e: bedrock2.Semantics.env)(f: funname):
+    (list varname * list varname * FlatImp.stmt) :=
+    match map.get e f with
+    | Some (argnames, retnames, body) => (argnames, retnames, ExprImp2FlatImp body)
+    | None => (nil, nil, FlatImp.SSkip)
+    end.
+
+  Definition flatten_functions(e: bedrock2.Semantics.env): list funname -> FlatImp.env :=
+    fix rec funs :=
+      match funs with
+      | f :: rest => map.put (rec rest) f (flatten_function e f)
+      | nil => map.empty
+      end.
+
+  Lemma flattenStmt_correct_aux_new: forall eH sH t m mcH lH post,
+      Semantics.exec eH sH t m lH mcH post ->
+      forall ngs ngs' eL sL lL mcL funs,
+      (forall f argnames retnames bodyH,
+          map.get eH f = Some (argnames, retnames, bodyH) ->
+          List.In f funs /\
+          map.get eL f = Some (argnames, retnames, ExprImp2FlatImp bodyH)) ->
+      flattenStmt ngs sH = (sL, ngs') ->
+      eL = flatten_functions eH funs ->
+      map.extends lL lH ->
+      map.undef_on lH (allFreshVars ngs) ->
+      disjoint (ExprImp.allVars_cmd sH) (allFreshVars ngs) ->
+      FlatImp.exec eL sL t m lL mcL (fun t' m' lL' mcL' => exists lH' mcH',
+        post t' m' lH' mcH' /\ (* <-- put first so that eassumption will instantiate lH' correctly *)
+        map.extends lL' lH' /\
+        (* this one is a property purely about ExprImp (it's the conclusion of
+           ExprImp.modVarsSound). In the previous proof, which was by induction
+           on the fuel of the ExprImp execution, we did not need to carry it
+           around in the IH, but could just apply ExprImp.modVarsSound as needed,
+           (eg after the when proving the second part of a (SSeq s1 s2)), but
+           now we have to make it part of the conclusion in order to get a stronger
+           "mid" in that case, because once we're at s2, it's too late to learn/prove
+           more things about the (t', m', l') in mid *)
+        map.only_differ lH (ExprImp.modVars sH) lH' /\
+        (mcL' - mcL <= mcH' - mcH)%metricsH).
+  Abort.
+
   Arguments Z.add : simpl never.
   Arguments Z.mul : simpl never.
 
@@ -864,9 +908,6 @@ Section FlattenExpr1.
         solve_MetricLog.
   Qed.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
-
-  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
-    fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
   Lemma flattenStmt_correct: forall sH sL lL t m mc post,
       ExprImp2FlatImp sH = sL ->
