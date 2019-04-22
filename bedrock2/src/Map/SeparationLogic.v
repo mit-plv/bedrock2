@@ -184,8 +184,10 @@ Section SepProperties.
     rewrite (sep_comm _ (seps' _)), <-(sep_assoc _ (seps' _)), <-(sep_comm _ (_ * seps' _)).
     exact (reflexivity _).
   Qed.
+
+  (* iff1 instead of eq as a hyp would be a more general lemma, but eq is more convenient to use *)
   Lemma cancel_seps_at_indices i j xs ys
-        (Hij : iff1 (nth i xs) (nth j ys))
+        (Hij : nth i xs = nth j ys)
         (Hrest : iff1 (seps (remove_nth i xs)) (seps (remove_nth j ys)))
     : iff1 (seps xs) (seps ys).
   Proof.
@@ -193,14 +195,14 @@ Section SepProperties.
     exact (reflexivity _).
   Qed.
   Lemma cancel_emp_at_index_l i xs ys
-        (Hi : iff1 (nth i xs) (emp True))
+        (Hi : nth i xs = emp True)
         (Hrest : iff1 (seps (remove_nth i xs)) (seps ys))
     : iff1 (seps xs) (seps ys).
   Proof.
     rewrite <-(seps_nth_to_head i xs), Hi, Hrest. exact (sep_emp_True_l _).
   Qed.
   Lemma cancel_emp_at_index_r j xs ys
-        (Hj : iff1 (nth j ys) (emp True))
+        (Hj : nth j ys = emp True)
         (Hrest : iff1 (seps xs) (seps (remove_nth j ys)))
     : iff1 (seps xs) (seps ys).
   Proof.
@@ -313,7 +315,7 @@ Ltac cancel_emp_l :=
     let i := find_constr_eq LHS constr:(@emp K V M True) in
     simple refine (cancel_emp_at_index_l i LHS RHS _ _);
     cbn [firstn skipn app hd tl];
-    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
+    [syntactic_exact_deltavar (@eq_refl _ _)|]
   end.
 
 Ltac cancel_emp_r :=
@@ -322,7 +324,17 @@ Ltac cancel_emp_r :=
     let j := find_constr_eq RHS constr:(@emp K V M True) in
     simple refine (cancel_emp_at_index_r j LHS RHS _ _);
     cbn [firstn skipn app hd tl];
-    [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|]
+    [syntactic_exact_deltavar (@eq_refl _ _)|]
+  end.
+
+(* leaves two open goals:
+   1) equality between left sep clause #i and right sep clause #j
+   2) updated main goal *)
+Ltac cancel_seps_at_indices i j :=
+  lazymatch goal with
+  | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
+    simple refine (cancel_seps_at_indices i j LHS RHS _ _);
+    cbn [firstn skipn app hd tl]
   end.
 
 Ltac cancel_step :=
@@ -331,13 +343,9 @@ Ltac cancel_step :=
       let j := lazymatch jy with (?i, _) => i end in
       let y := lazymatch jy with (_, ?y) => y end in
       assert_fails (has_evar y); (* <-- different from ecancel_step *)
-
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
       let i := find_constr_eq LHS y in (* <-- different from ecancel_step *)
-
-      simple refine (cancel_seps_at_indices i j LHS RHS _ _);
-      cbn [firstn skipn app hd tl];
-      [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|].
+      cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|].
 
 Ltac ecancel_step :=
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
@@ -345,25 +353,40 @@ Ltac ecancel_step :=
       let j := lazymatch jy with (?i, _) => i end in
       let y := lazymatch jy with (_, ?y) => y end in
       assert_fails (idtac; let y := rdelta_var y in is_evar y);
-
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
       let i := find_syntactic_unify_deltavar LHS y in
+      cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|].
 
-      simple refine (cancel_seps_at_indices i j LHS RHS _ _);
-      cbn [firstn skipn app hd tl];
-      [syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)|].
+Ltac ecancel_done :=
+  cbn [seps];
+  syntactic_exact_deltavar
+    (@RelationClasses.reflexivity _ _
+        (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
+
+(* might be slightly less efficient than ecancel_done because it uses [exact] instead of
+   [exact_no_check], but it gives better error messages in case of evar scoping problems,
+   because [syntactic_exact_deltavar] calls [unify], which gives no details about evar
+   scoping problems, while the [exact] called below does give details *)
+Ltac ecancel_done' :=
+  cbn [seps];
+  match goal with
+  | |- iff1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
+  end;
+  exact
+    (@RelationClasses.reflexivity _ _
+       (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
 
 Ltac cancel :=
   reify_goal;
   repeat cancel_step;
   repeat cancel_emp_l;
   repeat cancel_emp_r;
-  try solve [ cbn [seps]; syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)].
+  try solve [ ecancel_done ].
 
 Ltac ecancel :=
   cancel;
   repeat ecancel_step;
-  solve [ cbn [seps]; syntactic_exact_deltavar (@RelationClasses.reflexivity _ _ (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _)].
+  solve [ ecancel_done ].
 
 Ltac ecancel_assumption :=
   multimatch goal with

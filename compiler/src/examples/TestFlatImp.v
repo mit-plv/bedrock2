@@ -10,7 +10,7 @@ Require Import coqutil.Map.Z_keyed_SortedListMap.
 
 
 Definition var: Set := Z. (* only inside this test module *)
-Definition func: Set := Empty_set.
+Definition func: Set := string.
 Instance myparams: Syntax.parameters := {|
   Syntax.varname := var;
   Syntax.funname := func;

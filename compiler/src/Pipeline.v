@@ -48,6 +48,7 @@ Module Import Pipeline.
 
     mem :> map.map word byte;
     locals :> map.map varname word;
+    funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
     trace := list (mem * actname * list word * (mem * list word));
     ExtSpec := trace -> mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
@@ -82,6 +83,7 @@ Module Import Pipeline.
     varname_eq_dec :> DecidableEq varname;
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
+    funname_env_ok :> forall T, map.ok (funname_env T);
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscv.FlatToRiscv.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
@@ -97,14 +99,15 @@ Section Pipeline1.
 
   Local Notation RiscvMachineL := (MetricRiscvMachine Register _).
 
-  Definition funname := Empty_set.
+  Definition funname := string.
   Definition iset := if width =? 32 then RV32IM else RV64IM.
 
-  Program Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
+  Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
     FlattenExpr.varname_eq_dec := varname_eq_dec;
     FlattenExpr.actname_eq_dec := actname_eq_dec;
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
+    FlattenExpr.funname_env_ok := funname_env_ok;
     FlattenExpr.NG := NG;
     FlattenExpr.ext_spec_ok := ext_spec_ok;
   }.

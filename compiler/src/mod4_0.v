@@ -89,4 +89,4 @@ Hint Resolve
      mod4_mul_r
   : mod4_0_hints.
 
-Ltac solve_mod4_0 := auto 15 with mod4_0_hints.
+Ltac solve_mod4_0 := auto 30 with mod4_0_hints.

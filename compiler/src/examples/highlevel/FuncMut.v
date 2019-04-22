@@ -1,9 +1,10 @@
 Require Import Coq.Lists.List.
+Require Import compiler.util.Common.
 Import ListNotations.
 Require Import coqutil.Decidable.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.MonadNotations.
-Require Import compiler.util.Common.
+
 
 Inductive binop: Set := OPlus | OMinus | OTimes | OEq | OLt | OAnd.
 
@@ -97,7 +98,7 @@ Section FuncMut.
         r <- interp_expr ctx size s;
         let '(size, s1) := r in
         size <- force_nat size;
-        let i := length s1 in Some (VRef i, s1 ++ [NewArray size])
+        let i := List.length s1 in Some (VRef i, s1 ++ [NewArray size])
     | EGet a i =>
         ar <- interp_expr ctx a s;
         let '(av, s1) := ar in

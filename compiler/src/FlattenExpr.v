@@ -12,7 +12,6 @@ Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import compiler.Simp.
-Require coqutil.Map.Empty_set_keyed_map.
 
 Local Set Ltac Profiling.
 
@@ -25,6 +24,7 @@ Module Import FlattenExpr.
     W :> Words;
     locals :> map.map varname Utility.word;
     mem :> map.map Utility.word Utility.byte;
+    funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
     trace := list (mem * actname * list Utility.word * (mem * list Utility.word));
     ext_spec : trace ->
                mem -> actname -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
@@ -33,7 +33,7 @@ Module Import FlattenExpr.
 
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
     Syntax.varname := varname;
-    Syntax.funname := Empty_set;
+    Syntax.funname := string;
     Syntax.actname := actname;
   |}.
 
@@ -41,8 +41,8 @@ Module Import FlattenExpr.
     Semantics.syntax := _;
     Semantics.word := Utility.word;
     Semantics.byte := Utility.byte;
-    Semantics.funname_env := Empty_set_keyed_map.map;
-    Semantics.funname_eqb := Empty_set_rect _;
+    Semantics.funname_env := funname_env;
+    Semantics.funname_eqb := String.eqb;
     Semantics.ext_spec:= ext_spec;
   |}.
 
@@ -51,6 +51,7 @@ Module Import FlattenExpr.
     actname_eq_dec :> DecidableEq actname;
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
+    funname_env_ok :> forall T, map.ok (funname_env T);
     NG :> NameGen varname NGstate;
     ext_spec_ok: ext_spec.ok (mk_Semantics_params p);
   }.
@@ -59,9 +60,11 @@ Module Import FlattenExpr.
   Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
     Semantics.parameters_ok (mk_Semantics_params p) :=
   {
+    Semantics.funname_eq_dec := string_dec;
     Semantics.word_ok := Utility.word_ok;
     Semantics.byte_ok := Utility.byte_ok;
     Semantics.mem_ok := mem_ok;
+    Semantics.funname_env_ok := funname_env_ok;
     Semantics.width_cases := Utility.width_cases;
     Semantics.ext_spec_ok := ext_spec_ok;
   }.
@@ -179,6 +182,50 @@ Section FlattenExpr1.
     | Syntax.cmd.call binds f args => flattenCall ngs binds f args
     | Syntax.cmd.interact binds a args => flattenInteract ngs binds a args
     end.
+
+  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
+    fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
+
+  Definition flatten_function(e: bedrock2.Semantics.env)(f: funname):
+    (list varname * list varname * FlatImp.stmt) :=
+    match map.get e f with
+    | Some (argnames, retnames, body) => (argnames, retnames, ExprImp2FlatImp body)
+    | None => (nil, nil, FlatImp.SSkip)
+    end.
+
+  Definition flatten_functions(e: bedrock2.Semantics.env): list funname -> FlatImp.env :=
+    fix rec funs :=
+      match funs with
+      | f :: rest => map.put (rec rest) f (flatten_function e f)
+      | nil => map.empty
+      end.
+
+  Lemma flattenStmt_correct_aux_new: forall eH sH t m mcH lH post,
+      Semantics.exec eH sH t m lH mcH post ->
+      forall ngs ngs' eL sL lL mcL funs,
+      (forall f argnames retnames bodyH,
+          map.get eH f = Some (argnames, retnames, bodyH) ->
+          List.In f funs /\
+          map.get eL f = Some (argnames, retnames, ExprImp2FlatImp bodyH)) ->
+      flattenStmt ngs sH = (sL, ngs') ->
+      eL = flatten_functions eH funs ->
+      map.extends lL lH ->
+      map.undef_on lH (allFreshVars ngs) ->
+      disjoint (ExprImp.allVars_cmd sH) (allFreshVars ngs) ->
+      FlatImp.exec eL sL t m lL mcL (fun t' m' lL' mcL' => exists lH' mcH',
+        post t' m' lH' mcH' /\ (* <-- put first so that eassumption will instantiate lH' correctly *)
+        map.extends lL' lH' /\
+        (* this one is a property purely about ExprImp (it's the conclusion of
+           ExprImp.modVarsSound). In the previous proof, which was by induction
+           on the fuel of the ExprImp execution, we did not need to carry it
+           around in the IH, but could just apply ExprImp.modVarsSound as needed,
+           (eg after the when proving the second part of a (SSeq s1 s2)), but
+           now we have to make it part of the conclusion in order to get a stronger
+           "mid" in that case, because once we're at s2, it's too late to learn/prove
+           more things about the (t', m', l') in mid *)
+        map.only_differ lH (ExprImp.modVars sH) lH' /\
+        (mcL' - mcL <= mcH' - mcH)%metricsH).
+  Abort.
 
   Arguments Z.add : simpl never.
   Arguments Z.mul : simpl never.
@@ -396,7 +443,8 @@ Section FlattenExpr1.
       flattenCall ngs1 binds f args = (s, ngs2) ->
       subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
-    intros. destruct f.
+    unfold flattenCall.
+    intros. simp. eauto using flattenExprs_freshVarUsage.
   Qed.
 
   Lemma flattenInteract_freshVarUsage: forall args s' binds a ngs1 ngs2,
@@ -417,6 +465,7 @@ Section FlattenExpr1.
     | H: _ |- _ => apply flattenExpr_freshVarUsage in H
     | H: _ |- _ => apply flattenExprAsBoolExpr_freshVarUsage in H
     | H: _ |- _ => apply flattenInteract_freshVarUsage in H
+    | H: _ |- _ => apply flattenCall_freshVarUsage in H
     | H: (_, _) = (_, _) |- _ => inversion H; subst; clear H
     end;
     repeat match goal with
@@ -486,9 +535,7 @@ Section FlattenExpr1.
     @eval_expr (mk_Semantics_params p) initialM initialH e initialMcH = Some (res, finalMcH) ->
     FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res /\
-      boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)).
+      (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     induction e; intros *; intros F Ex U D Ev; simpl in *; simp.
 
@@ -529,9 +576,7 @@ Section FlattenExpr1.
     FlatImp.exec map.empty s t m lL initialMcL (fun t' m' lL' finalMcL =>
       map.only_differ lL (FlatImp.modVars s) lL' /\
       t' = t /\ m' = m /\ map.get lL' resVar = Some res /\
-      boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)).
+      (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     intros *. intros F Ex U D Ev.
     epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ _ _ _ _ F Ex U D Ev) as P.
@@ -553,9 +598,7 @@ Section FlattenExpr1.
       t' = t /\ m' = m /\
       map.getmany_of_list lL' resVars = Some resVals /\
       map.only_differ lL (FlatImp.modVars s) lL' /\
-      boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)).
+      (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     induction es; intros *; intros F Ex U D Evs; simpl in *; simp;
       [ eapply @FlatImp.exec.skip; simpl; repeat split; try solve_MetricLog; auto; maps | ].
@@ -638,9 +681,7 @@ Section FlattenExpr1.
     FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\
       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
-      boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)).
+      (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F.
 
@@ -677,9 +718,7 @@ Section FlattenExpr1.
     FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       (t' = t /\ finalM = initialM /\
        FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
-       boundMetricLog UnitMetricLog
-                     (metricLogDifference initialMcL finalMcL)
-                     (metricLogDifference initialMcH finalMcH)) /\
+       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH) /\
        map.only_differ initialL (FlatImp.modVars s) finalL (* <-- added *)).
   Proof.
     intros. eapply FlatImp.exec.intersect.
@@ -689,8 +728,8 @@ Section FlattenExpr1.
       eapply flattenBooleanExpr_correct_aux; eassumption.
   Qed.
 
-  Lemma flattenStmt_correct_aux: forall e sH t m mc lH post,
-      Semantics.exec e sH t m lH mc post ->
+  Lemma flattenStmt_correct_aux: forall e sH t m mcH lH post,
+      Semantics.exec e sH t m lH mcH post ->
       e = map.empty ->
       forall ngs ngs' sL lL mcL,
       flattenStmt ngs sH = (sL, ngs') ->
@@ -709,9 +748,7 @@ Section FlattenExpr1.
            "mid" in that case, because once we're at s2, it's too late to learn/prove
            more things about the (t', m', l') in mid *)
         map.only_differ lH (ExprImp.modVars sH) lH' /\
-        boundMetricLog UnitMetricLog
-          (metricLogDifference mcL mcL')
-          (metricLogDifference mc mcH')).
+        (mcL' - mcL <= mcH' - mcH)%metricsH).
   Proof.
     induction 1; intros; simpl in *; subst; simp.
 
@@ -828,8 +865,7 @@ Section FlattenExpr1.
         mid t' m' lH' mcH' /\
         map.extends lL' lH' /\
         map.only_differ l (@ExprImp.modVars (mk_Semantics_params p) c) lH' /\
-        boundMetricLog UnitMetricLog (metricLogDifference mcL mcL')
-                                     (metricLogDifference mc mcH'))); 
+        (mcL' - mcL <= mcH' - mc)%metricsH));
         [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
         | intros; simpl in *; simp .. ].
       + maps.
@@ -852,7 +888,9 @@ Section FlattenExpr1.
           repeat eexists; repeat (split || eassumption || solve_MetricLog). maps.
 
     - (* call *)
-      destruct fname.
+      match goal with
+      | E: map.get map.empty _ = Some _ |- _ => rewrite map.get_empty in E; discriminate E
+      end.
 
     - (* interact *)
       unfold flattenInteract in *. simp.
@@ -878,18 +916,13 @@ Section FlattenExpr1.
   Qed.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
-  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
-    fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
-
   Lemma flattenStmt_correct: forall sH sL lL t m mc post,
       ExprImp2FlatImp sH = sL ->
       Semantics.exec map.empty sH t m map.empty mc post ->
       FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
         map.extends lL' lH' /\
-        boundMetricLog UnitMetricLog
-          (metricLogDifference mc mcL')
-          (metricLogDifference mc mcH')).
+        (mcL' - mc <= mcH' - mc)%metricsH).
   Proof.
     intros.
     unfold ExprImp2FlatImp in *.
