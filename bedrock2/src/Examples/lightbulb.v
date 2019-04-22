@@ -226,7 +226,7 @@ Proof.
                     (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
                     (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
                         PrimitivePair.pair.mk (v = word.unsigned c /\
-                        exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) )  scratch * R) m /\
+                        exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) scratch * R) m /\
                         Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
                         len_words_loop = len_words)  (* precondition *)
                     (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => True)) (* postcondition *)
@@ -242,10 +242,30 @@ Proof.
                          PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
                   { repeat straightline. }
                   { exact (Z.gt_wf _). }
+                  { repeat straightline. split.
+                    { repeat straightline. } 
+                    { do 2 letexists. (* do 2 eexists. *) split. 2:{ split. 2:{ reflexivity. }
+                                                                     subst c. subst len_words. subst len_bytes.
+                                                                     subst v1. 
 
- { repeat straightline. eauto. 1:admit. }
-  { repeat straightline.  cbn [args ext_spec FE310CSemantics.parameters].
-    do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
+
+
+                                               About Naive.word. Print eq_refl. Search "". rewrite -> v2. subst v2. subst v1.
+                                               subst v3. subst word. destruct H2. repeat straightline.
+                                               
+                       { do 2 eexists. split.
+                         { eapply Properties.map.split_empty_r. reflexivity. }
+                         { split.
+                           2:{  eapply Properties.map.split_empty_r. reflexivity. }
+                           { Search array. apply H. apply get_sep. admit. }}}
+                       { split.
+                         2:{ reflexivity. }
+                         subst c. subst len_words. subst len_bytes. Print eq_refl. Search eq_refl.
+                         Print Naive.word.
+                         apply v3. Search "word". Search word.sru.
+                         admit. }}}
+                          { repeat straightline.  cbn [args ext_spec FE310CSemantics.parameters].
+                            do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
     split; [cbv; clear; intuition congruence | intros].
     repeat straightline.
     eexists. split. { eapply Properties.map.split_empty_r. eauto. }
@@ -261,7 +281,9 @@ Require Import coqutil.Macros.symmetry.
 
   { rewrite List.length_firstn_inbounds. { instantiate (1:= word.of_Z 4). eauto. }
   apply Znat.Nat2Z.inj_le.
-  rewrite H8. revert H6. admit. }
+    rewrite H8. revert H6. repeat straightline. admit. (* H6 is x3 < x5, should prove if we can reason about nats and words *) }
+
+
 
   eapply store_word_of_sep. { 
     revert H10. unfold scalar. unfold truncated_scalar. unfold littleendian. unfold ptsto_bytes.ptsto_bytes. admit. (* this needs to be proven to fill in H7, scratch *)}
@@ -286,15 +308,13 @@ Require Import coqutil.Macros.symmetry.
   assert (scratch=(List.skipn 4 x7)). { repeat straightline. }
   { repeat straightline. subst scratch. rewrite List.length_skipn. subst c.
   rewrite Znat.Nat2Z.inj_sub.
-  { rewrite H8. (* ring *) admit. }
-  (* same as apply Znat.Nat2Z.inj_le admitted above  *) admit. }}}}}
-  repeat straightline. split.
-  { subst v3. subst v'. subst c. admit. }
-  repeat straightline. }}}
-  do 15 straightline. admit. (* do 16+ straightline is Coq anomaly *) }}}}
-
-  idtac "Anomalies on local".
-
+  { rewrite H8.  split. 2:{ trivial. }  { (* arithmetic *) admit. } }
+  repeat straightline. (* arithmetic *) admit. }}}}}
+  repeat straightline. split. { subst v'. subst c. admit. }
+                              repeat straightline. }} }
+                          repeat straightline.
+    left. letexists. split. { admit. }
+   letexists. split. { ecancel_assumption. 
         repeat straightline. letexists. split.
         { repeat straightline. admit. }
         { right. repeat straightline. }
