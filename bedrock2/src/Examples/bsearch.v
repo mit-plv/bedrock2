@@ -65,7 +65,6 @@ Local Open Scope Z_scope.
 
 From coqutil Require Import Z.div_mod_to_equations.
 From bedrock2 Require Import Semantics BasicC64Semantics.
-Local Instance word_ok: word.ok word. cbn. typeclasses eauto. Qed.
 
 Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory.
 Add Ring word_ring : word__monomorphic_ring_theory.
@@ -84,11 +83,6 @@ Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
 From coqutil.Tactics Require Import eabstract letexists rdelta.
 From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
-
-Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
-Local Instance wordok: coqutil.Word.Interface.word.ok word := coqutil.Word.Naive.ok _ _.
-Local Instance byteok: coqutil.Word.Interface.word.ok byte := coqutil.Word.Naive.ok _ _.
-
 
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.

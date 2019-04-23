@@ -55,10 +55,6 @@ From coqutil.Tactics Require Import letexists.
 
 Import SeparationLogic Lift1Prop.
 
-Local Instance mapok: coqutil.Map.Interface.map.ok Semantics.mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
-Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
-Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
-
   From coqutil.Tactics Require Import syntactic_unify.
   From coqutil.Macros Require Import symmetry.
   Require Import coqutil.Datatypes.List.
