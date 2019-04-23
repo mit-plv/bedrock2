@@ -173,6 +173,35 @@ Section Scalars.
     : exists m1, Memory.store Syntax.access_size.word m addr value = Some m1 /\ post m1.
   Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
 
+  Lemma scalar16_of_bytes a l (H : List.length l = 2%nat) :
+    Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
+                   (scalar16 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
+  Proof.
+    do 2 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate]. 
+    cbv [scalar16 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
+    eapply Morphisms.eq_subrelation; [exact _|].
+    f_equal.
+    rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
+    { erewrite LittleEndian.split_combine; exact eq_refl. }
+    erewrite <-(LittleEndian.split_combine _ (HList.tuple.of_list (x :: x0 :: nil)%list)).
+    erewrite LittleEndian.combine_split.
+    eapply Z.mod_pos_bound; reflexivity.
+  Qed.
+  Lemma scalar32_of_bytes a l (H : List.length l = 4%nat) :
+    Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
+                   (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
+  Proof.
+    do 4 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate]. 
+    cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
+    eapply Morphisms.eq_subrelation; [exact _|].
+    f_equal.
+    rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
+    { erewrite LittleEndian.split_combine; exact eq_refl. }
+    erewrite <-(LittleEndian.split_combine _ (HList.tuple.of_list (x :: x0 :: x1 :: x2 :: nil)%list)).
+    erewrite LittleEndian.combine_split.
+    eapply Z.mod_pos_bound; reflexivity.
+  Qed.
+
 End Scalars.
 
 Notation scalar8 := ptsto (only parsing).
