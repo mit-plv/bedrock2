@@ -2,4 +2,9 @@
 # On coq, master branch
 coqide -Q /Users/a/Thesis-Workspace/bedrock2-new/bedrock2/bedrock2/src bedrock2 -Q /Users/a/Thesis-Workspace/bedrock2-new/bedrock2/deps/coqutil/src coqutil
 
+# PATH (Need master version, coqc --version should show something like
+# The Coq Proof Assistant, version 8.10+alpha (April 2019)
+# compiled on Apr 18 2019 17:10:03 with OCaml 4.06.1
+#
+/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Applications/VMware Fusion.app/Contents/Public:/Library/TeX/texbin:/usr/local/go/bin:/Applications/Wireshark.app/Contents/MacOS
 
