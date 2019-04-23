@@ -128,8 +128,6 @@ Module Import FlatToRiscv.
 
 End FlatToRiscv.
 
-Local Unset Universe Polymorphism. (* for Add Ring *)
-
 Arguments Z.mul: simpl never.
 Arguments Z.add: simpl never.
 Arguments Z.of_nat: simpl never.

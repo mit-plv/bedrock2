@@ -50,8 +50,6 @@ asm_prog_1 ++ [[
   Sw Register0 x2 output_ptr
 ]].
 
-Local Unset Universe Polymorphism. (* for Add Ring *)
-
 Section Verif.
 
   Definition actname := Empty_set. (* no external actions *)

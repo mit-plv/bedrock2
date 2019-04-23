@@ -151,11 +151,11 @@ Proof.
           repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
           rewrite length_rep in *. (* WHY does lia need this? *)
           revert H4. clear. intros. Z.div_mod_to_equations. blia. }
-        rewrite length_skipn; blia. }
+        rewrite length_skipn; bomega. }
       SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
         destruct x; cbn [Datatypes.length] in *.
-        { rewrite Z.mul_0_r in length_rep. blia. }
+        { rewrite Z.mul_0_r in length_rep. bomega. }
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
         rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
@@ -173,7 +173,7 @@ Proof.
         rewrite ?length_rep.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
         rewrite List.firstn_length_le; cycle 1.
-        { assert (Datatypes.length x <> 0)%nat by blia.
+        { assert (Datatypes.length x <> 0)%nat by bomega.
           revert H13. clear. intros. Z.div_mod_to_equations; zify; rewrite Z2Nat.id by blia; blia. }
         rewrite Z2Nat.id by (clear; Z.div_mod_to_equations; blia).
         clear. Z.div_mod_to_equations. blia. }
@@ -182,14 +182,14 @@ Proof.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
         rewrite ?length_rep.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
-        assert (Datatypes.length x <> 0)%nat by blia.
+        assert (Datatypes.length x <> 0)%nat by bomega.
         rewrite List.firstn_length_le; cycle 1.
         { revert H12. clear. intros. Z.div_mod_to_equations; zify; rewrite Z2Nat.id by blia; blia. }
         revert H12. clear. zify. rewrite Z2Nat.id; (Z.div_mod_to_equations; blia). }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
         destruct x; cbn [Datatypes.length] in *.
-        { rewrite Z.mul_0_r in length_rep. blia. }
+        { rewrite Z.mul_0_r in length_rep. bomega. }
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
         rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.

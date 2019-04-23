@@ -25,8 +25,6 @@ Require Import compiler.FlatToRiscvLiterals.
 
 Open Scope ilist_scope.
 
-Local Unset Universe Polymorphism. (* for Add Ring *)
-
 Section Proofs.
   Context {p: FlatToRiscv.parameters}.
   Context {h: FlatToRiscv.assumptions}.

@@ -5,8 +5,6 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Z.Lia.
 
 
-Local Unset Universe Polymorphism. (* for Add Ring *)
-
 Section Lemmas.
   Context {width: Z} {word: word.word width} {word_ok: word.ok word}.
 

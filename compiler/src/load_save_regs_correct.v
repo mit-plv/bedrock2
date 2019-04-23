@@ -15,8 +15,6 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 
 
-Local Unset Universe Polymorphism. (* for Add Ring *)
-
 Section Proofs.
   Context {p: FlatToRiscv.parameters}.
   Context {h: FlatToRiscv.assumptions}.

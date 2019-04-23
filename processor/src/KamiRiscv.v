@@ -67,8 +67,8 @@ Section Equiv.
 
   (** * State mappings *)
 
-  (* register file *) 
-  
+  (* register file *)
+
   Definition convertRegs (rf: kword 5 -> kword width): Registers :=
     let kkeys := HList.tuple.unfoldn (wplus (natToWord 5 1)) 31 (natToWord 5 1) in
     let values := HList.tuple.map rf kkeys in
@@ -93,7 +93,7 @@ Section Equiv.
   Admitted.
 
   (* instruction and data memory *)
-  
+
   Variable dataMemSize: nat.
   Definition instrMemStart: kword instrMemSizeLg := Word.ZToWord _ 0.
   Definition dataMemStart: word := word.of_Z (Z.of_nat (4 * instrMemSize)).
@@ -115,7 +115,7 @@ Section Equiv.
     let keys := List.unfoldn (Word.wplus (Word.ZToWord (Z.to_nat instrMemSizeLg) 1))
                              instrMemSize instrMemStart in
     let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
-    unchecked_store_byte_tuple_list (word.of_Z 0) values map.empty.
+    @unchecked_store_byte_tuple_list 4 (word.of_Z 0) values map.empty.
 
   Definition convertDataMem(dataMem: kword width -> kword width): mem :=
     let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize dataMemStart in
@@ -142,14 +142,14 @@ Section Equiv.
     end.
 
   (** * The Observable Behavior: MMIO events *)
-  
+
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
     word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
 
-  Definition mmioLoadEvent(m: mem)(addr: word){n: nat}(v: HList.tuple byte n):
+  Definition mmioLoadEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n):
     LogItem MMIOAction := ((m, MMInput, [addr]), (m, [signedByteTupleToReg v])).
 
-  Definition mmioStoreEvent(m: mem)(addr: word){n: nat}(v: HList.tuple byte n):
+  Definition mmioStoreEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n):
     LogItem MMIOAction :=
     ((m, MMOutput, [addr; signedByteTupleToReg v]), (m, [])).
 
@@ -161,22 +161,22 @@ Section Equiv.
        Primitives.is_initial_register_value x := True;
 
        Primitives.nonmem_loadByte_sat initialL addr post :=
-         forall (v: w8), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr v) initialL);
+         forall (v: w8), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 1 v) initialL);
        Primitives.nonmem_loadHalf_sat initialL addr post :=
-         forall (v: w16), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr v) initialL);
+         forall (v: w16), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 2 v) initialL);
        Primitives.nonmem_loadWord_sat initialL addr post :=
-         forall (v: w32), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr v) initialL);
+         forall (v: w32), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 4 v) initialL);
        Primitives.nonmem_loadDouble_sat initialL addr post :=
-         forall (v: w64), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr v) initialL);
+         forall (v: w64), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 8 v) initialL);
 
        Primitives.nonmem_storeByte_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr v) initialL);
+         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 1 v) initialL);
        Primitives.nonmem_storeHalf_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr v) initialL);
+         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 2 v) initialL);
        Primitives.nonmem_storeWord_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr v) initialL);
+         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 4 v) initialL);
        Primitives.nonmem_storeDouble_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr v) initialL);
+         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 8 v) initialL);
     |}.
 
   Context {Pr: Primitives MinimalMMIOPrimitivesParams}.
@@ -403,7 +403,7 @@ Section Equiv.
 
   Definition kamiTraces(init: KamiMachine): list Event -> Prop :=
     fun t => exists final, star kamiStep init final t.
-  
+
   Lemma connection: forall (m: KamiMachine) (m': RiscvMachine),
       fromKami_withLog m nil = Some m' ->
       subset (kamiTraces m) (riscvTraces m').
