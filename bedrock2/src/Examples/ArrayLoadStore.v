@@ -78,9 +78,7 @@ Proof.
   seprewrite_in (symmetry! @array_cons) H2.
   seprewrite_in (@bytearray_index_merge) H4. {
     pose proof Properties.word.unsigned_range i.
-    Time change tt with tt in *.
-    rewrite length_firstn_inbounds;
-      (PreOmega.zify; rewrite Znat.Z2Nat.id; bomega).
+    rewrite length_firstn_inbounds; (PreOmega.zify; rewrite Znat.Z2Nat.id; bomega).
   }
 
   letexists.
@@ -102,7 +100,6 @@ Proof.
       1: ecancel.
       pose proof Properties.word.unsigned_range i.
       pose proof Properties.word.unsigned_range j.
-      Time change tt with tt in *.
       rewrite List.app_length, length_cons, length_firstn_inbounds, length_skipn.
       all : PreOmega.zify.
       1: bomega.
@@ -112,8 +109,9 @@ Proof.
   exact eq_refl.
   }
 
-  repeat straightline.
+  repeat (straightline; [|..]).
 
+  exact I.
 Qed.
 
   (* [eseptract] solves goals of the form [state == needle * ?r] by
