@@ -124,11 +124,24 @@ Section Equiv.
                            keys in
     unchecked_store_byte_tuple_list dataMemStart values map.empty.
 
+  Variable pad: nat.
+  Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat).
+
+  Definition alignPc (kpc: Word.word (2 + Z.to_nat instrMemSizeLg)%nat): word :=
+    eq_rec (2 + Z.to_nat instrMemSizeLg + pad)%nat
+           Word.word (Word.combine kpc $ (0)) nwidth Hpad.
+
+  Lemma alignPc_next:
+    forall kpc,
+      alignPc kpc ^+ $4 = alignPc (kpc ^+ $4).
+  Proof.
+  Admitted.
+  
   Definition KamiSt_to_RiscvMachine
              (k: KamiSt) (t: list (LogItem MMIOAction)): RiscvMachine :=
     {| getRegs := convertRegs (KamiProc.rf k);
-       getPc := KamiProc.pc k;
-       getNextPc := word.add (KamiProc.pc k) (word.of_Z 4);
+       getPc := alignPc (KamiProc.pc k);
+       getNextPc := word.add (alignPc (KamiProc.pc k)) (word.of_Z 4);
        getMem := map.putmany (convertInstrMem (KamiProc.pgm k))
                              (convertDataMem (KamiProc.mem k));
        getLog := t;
@@ -211,8 +224,8 @@ Section Equiv.
       traces_related t t' ->
       KamiProc.RegsToT m = Some (KamiProc.mk pc rf instrMem dataMem) ->
       states_related (m, t) {| getRegs := convertRegs rf;
-                               getPc := pc;
-                               getNextPc := word.add pc (word.of_Z 4);
+                               getPc := alignPc pc;
+                               getNextPc := word.add (alignPc pc) (word.of_Z 4);
                                getMem := map.putmany (convertInstrMem instrMem)
                                                      (convertDataMem dataMem);
                                getLog := t'; |}.
@@ -297,8 +310,7 @@ Section Equiv.
         klbl.(calls) = FMap.M.empty _ /\
         KamiProc.RegsToT (FMap.M.union kupd km1) = Some kt2 /\
         exists curInst npc prf dst exec_val,
-          curInst = (KamiProc.pgm kt1)
-                      (evalExpr (rv32AlignPc _ _ _ (KamiProc.pc kt1))) /\
+          curInst = (KamiProc.pgm kt1) (split2 _ _ (KamiProc.pc kt1)) /\
           npc = evalExpr (rv32NextPc
                             _ _
                             (KamiProc.rf kt1) (KamiProc.pc kt1)
@@ -450,14 +462,11 @@ Section Equiv.
 
   Lemma fetch_consistent:
     forall instrMem dataMem pc inst,
-      wordToZ pc < Z.of_nat (4 * instrMemSize) ->
       Memory.loadWord
         (map.putmany (convertInstrMem instrMem)
-                     (convertDataMem dataMem)) pc = Some inst ->
+                     (convertDataMem dataMem)) (alignPc pc) = Some inst ->
       combine 4 inst =
-      wordToZ
-        (instrMem
-           (evalExpr (rv32AlignPc (Z.to_nat width) (Z.to_nat instrMemSizeLg) type pc))).
+      wordToZ (instrMem (split2 _ _ pc)).
   Proof.
   Admitted.
 
@@ -707,7 +716,7 @@ Section Equiv.
       wordToZ
         (evalExpr (getFunct3E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
       funct3_ADD ->
-      evalExpr (rv32Exec (Z.to_nat width) type v1 v2 pc kinst) =
+      evalExpr (rv32Exec (Z.to_nat instrMemSizeLg) type v1 v2 pc kinst) =
       v1 ^+ v2.
   Proof.
     intros.
@@ -724,15 +733,17 @@ Section Equiv.
         (evalExpr
            (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
       opcode_OP ->
-      evalExpr (rv32NextPc (Z.to_nat width) type rf pc kinst) =
-      pc ^+ (ZToWord _ 4).
+      evalExpr (rv32NextPc (Z.to_nat instrMemSizeLg) type rf pc kinst) =
+      pc ^+ $4.
   Proof.
     intros.
     unfold rv32NextPc.
     unfold evalExpr; fold evalExpr.
     do 3 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
-    reflexivity.
-  Qed.
+    unfold evalBinBit.
+    unfold evalConstT.
+    f_equal.
+  Admitted.
 
   Lemma kamiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),
@@ -816,8 +827,8 @@ Section Equiv.
                       4 rinst =
               wordToZ kinst) as Hfetch.
       { subst kinst.
-        eapply fetch_consistent; [|eassumption].
-        admit. (** TODO @joonwonc: requires the correctness of [pc]. *)
+        eapply fetch_consistent.
+        eassumption.
       }
       simpl in H3, Hfetch. (* normalizes implicit arguments *)
       rewrite Hfetch in *.
@@ -902,14 +913,16 @@ Section Equiv.
              apply convertRegs_put.
         }
 
+        rewrite alignPc_next.
         constructor.
         - assumption.
         - rewrite H0, H11.
           do 2 f_equal.
           (* next pc *)
           subst npc.
-          apply kami_rv32NextPc_op_ok.
-          rewrite kami_getOpcode_ok; assumption.
+          rewrite kami_rv32NextPc_op_ok
+            by (rewrite kami_getOpcode_ok; assumption).
+          reflexivity.
       }
       all: admit.
 
