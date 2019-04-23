@@ -44,7 +44,7 @@ Local Instance spec_of_tf : spec_of "tf". refine (fun functions =>
     (sep (array ptsto (word.of_Z 1) buf bs) R) m ->
     word.unsigned len = Z.of_nat (List.length bs) ->
     WeakestPrecondition.call functions "tf" t m [buf; len; i; j]
-    (fun T M rets => 
+    (fun T M rets =>
        True)).
 (* word.unsigned i < word.unsigned len -> word.unsigned j < word.unsigned len ->
        rets = [word.of_Z (word.unsigned
@@ -86,7 +86,7 @@ Proof.
     rewrite length_firstn_inbounds;
       (PreOmega.zify; rewrite Znat.Z2Nat.id; bomega).
   }
-  
+
   letexists.
   split; [solve[repeat straightline]|].
   split; [|solve [repeat straightline]].
@@ -109,15 +109,15 @@ Proof.
       Time change tt with tt in *.
       rewrite List.app_length, length_cons, length_firstn_inbounds, length_skipn.
       all : PreOmega.zify.
-      1: blia.
+      1: bomega.
       1: (PreOmega.zify; rewrite ?Znat.Z2Nat.id; bomega).
-  } 
+  }
   1: subst v2.
   exact eq_refl.
   }
 
   repeat straightline.
-  
+
 Qed.
 
   (* [eseptract] solves goals of the form [state == needle * ?r] by

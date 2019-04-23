@@ -5,7 +5,7 @@ Require Export coqutil.Decidable.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
-Require        compiler.FlatToRiscv.
+Require        compiler.FlatToRiscvMetric.
 Require Export riscv.Spec.Decode.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
@@ -73,9 +73,9 @@ Module Import Pipeline.
     FlattenExpr.NGstate := NGstate;
   }.
 
-  Instance FlatToRisvc_params{p: parameters}: FlatToRiscv.FlatToRiscv.parameters := {|
-    FlatToRiscv.FlatToRiscv.ext_spec := ext_spec;
-    FlatToRiscv.FlatToRiscv.ext_guarantee := ext_guarantee;
+  Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.FlatToRiscv.parameters := {|
+    FlatToRiscvCommon.FlatToRiscv.ext_spec := ext_spec;
+    FlatToRiscvCommon.FlatToRiscv.ext_guarantee := ext_guarantee;
   |}.
 
   Class assumptions{p: parameters} := {
@@ -85,7 +85,7 @@ Module Import Pipeline.
     locals_ok :> map.ok locals;
     funname_env_ok :> forall T, map.ok (funname_env T);
     PR :> MetricPrimitives PRParams;
-    FlatToRiscv_hyps :> FlatToRiscv.FlatToRiscv.assumptions;
+    FlatToRiscv_hyps :> FlatToRiscvCommon.FlatToRiscv.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
   }.
 
@@ -108,22 +108,22 @@ Section Pipeline1.
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
-    FlattenExpr.NG := NG;
     FlattenExpr.ext_spec_ok := ext_spec_ok;
   }.
 
   Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
 
-  Definition flatten(s: Syntax.cmd): FlatImp.stmt :=
-    let ngs: NGstate := freshNameGenState (ExprImp.allVars_cmd_as_list s) in
-    let (sFlat, ngs') := flattenStmt ngs s in sFlat.
-
   (* only works if varname=Register *)
-  Definition exprImp2Riscv(s: Syntax.cmd): list Instruction :=
-    FlatToRiscvDef.compile_stmt (flatten s).
+  Definition ExprImp2Riscv(s: Syntax.cmd): list Instruction :=
+    FlatToRiscvDef.compile_stmt (ExprImp2FlatImp s).
+
+  Definition fooo(e: FlatImp.env)(funnames: list funname): list Instruction. Admitted.
+
+  Definition compile_functions(e: Semantics.env)(funnames: list funname): list Instruction :=
+    fooo (flatten_functions e funnames) funnames.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
-    FlatToRiscvDef.valid_registers (flatten s).
+    FlatToRiscvDef.valid_registers (ExprImp2FlatImp s).
 
   (* simpler than debugging why blia/blia fails *)
   Ltac ineq_step :=
@@ -147,27 +147,29 @@ Section Pipeline1.
   Qed.
 
   Lemma exprImp2Riscv_size: forall (s: Syntax.cmd) (insts: list Instruction),
-      exprImp2Riscv s = insts ->
+      ExprImp2Riscv s = insts ->
       0 <= Zlength insts <= ExprImp.cmd_size s.
   Proof.
     intros.
-    unfold exprImp2Riscv, flatten in *.
-    destruct_one_match_hyp.
+    unfold ExprImp2Riscv, ExprImp2FlatImp in *.
+    match goal with
+    | H: context [fst ?x] |- _ => destruct x eqn: E
+    end.
     apply FlattenExpr.flattenStmt_size in E.
     apply flatToRiscv_size in H.
     split; [blia|].
     destruct E as [_ E].
     destruct H as [_ H].
     simpl in *.
-    (* TODO why do blia and blia fail here? PARAMRECORDS? *)
-    Fail blia. Fail blia.
+    (* TODO why do lia and omega fail here? PARAMRECORDS? *)
+    Fail blia. Fail bomega.
     eapply Z.le_trans; eassumption.
   Qed.
 
   Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
-      exprImp2Riscv sH = instsL ->
+      ExprImp2Riscv sH = instsL ->
       (word.unsigned initialL.(getPc)) mod 4 = 0 ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       initialL.(getLog) = t ->
@@ -181,7 +183,7 @@ Section Pipeline1.
   Proof.
     intros. subst.
     eapply runsTo_weaken. Unshelve.
-     - eapply FlatToRiscv.compile_stmt_correct
+     - eapply FlatToRiscvMetric.compile_stmt_correct
         with (postH := (fun t m l mc => post t)); try reflexivity.
       + eapply FlatImp.exec.weaken.
         * match goal with
@@ -192,10 +194,12 @@ Section Pipeline1.
           eassumption.
         * simpl. intros. simp. assumption.
       + unfold FlatToRiscvDef.stmt_not_too_big.
-        unfold exprImp2Riscv, ExprImp2FlatImp, flatten in *.
-        destruct_one_match_hyp.
+        unfold ExprImp2Riscv, ExprImp2FlatImp in *.
         match goal with
-        | H: _ = (?a, ?b) |- context [fst ?x] => replace x with (a, b)
+        | |- context [fst ?x] => destruct x eqn: E
+        end.
+        match goal with
+        | H: _ = (?a, ?b) |- context [fst ?x] => replace x with (a, b) by reflexivity
         end.
         unfold fst.
         apply FlattenExpr.flattenStmt_size in E.
@@ -205,7 +209,7 @@ Section Pipeline1.
         (* TODO why do blia and blia fail here? PARAMRECORDS? *)
         Fail blia. Fail blia.
         exact E.
-      + unfold enough_registers, ExprImp2FlatImp, flatten, fst in *. assumption.
+      + unfold enough_registers, ExprImp2FlatImp, fst in *. assumption.
       + assumption.
       + match goal with
         | H: context [ program _ ?insts ] |- context [ program _ ?insts' ] =>

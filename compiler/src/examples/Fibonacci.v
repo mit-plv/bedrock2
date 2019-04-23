@@ -74,9 +74,20 @@ Instance pipeline_params: Pipeline.parameters := {
   Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
 }.
 
-Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
+Axiom TODO: forall {T: Type}, T.
 
-Definition compileFunc: cmd -> list Instruction := exprImp2Riscv.
+Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params := {
+  Pipeline.actname_eq_dec := _;
+  Pipeline.varname_eq_dec := _ ;
+  Pipeline.mem_ok := _ ;
+  Pipeline.locals_ok := _ ;
+  Pipeline.funname_env_ok := _ ;
+  Pipeline.PR := MetricMinimalSatisfiesMetricPrimitives;
+  Pipeline.FlatToRiscv_hyps := TODO ;
+  Pipeline.ext_spec_ok := TODO;
+}.
+
+Definition compileFunc: cmd -> list Instruction := ExprImp2Riscv.
 
 Definition resVar := Demos.Fibonacci.b.
 
@@ -85,7 +96,7 @@ Definition fib_riscv0(n: Z): list Instruction :=
 
 Module PrintFlatImp.
   Import FlatImp bopname.
-  Eval cbv in (flatten (fib_ExprImp 6)).
+  Eval vm_compute in (ExprImp2FlatImp (fib_ExprImp 6)).
 End PrintFlatImp.
 
 Time Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.
@@ -332,7 +343,7 @@ Proof.
 Qed.
 
 Lemma fib_bounding_metrics_while: forall (n : nat) (iter : nat) t m (l : locals) mc a b,
-    (Z.of_nat n) < BinInt.Z.pow_pos 2 32 ->
+    (Z.of_nat n) < 2 ^ 32 ->
     (iter <= n)%nat ->
     map.get l Demos.Fibonacci.a = Some a ->
     map.get l Demos.Fibonacci.b = Some b ->
@@ -346,7 +357,8 @@ Proof.
     + unfold eval_expr. eval_fib_var_names.
       rewrite H3. eauto.
     + simpl. destruct_one_match.
-      * rewrite Z.sub_0_r in E. pose proof Z.ltb_irrefl. specialize (H4 (Z.of_nat n mod BinInt.Z.pow_pos 2 32)). rewrite H4 in E. discriminate.
+      * rewrite Z.sub_0_r in E. pose proof Z.ltb_irrefl.
+        specialize (H4 (Z.of_nat n mod 2 ^ 32)). rewrite H4 in E. discriminate.
       * auto.
     + simpl. Lia.lia.
   - intros.
@@ -357,9 +369,9 @@ Proof.
       * simpl. rewrite Zdiv.Zmod_1_l.
         { discriminate. }
         { cbv. reflexivity. }
-      * rewrite Z.mod_small in E; [| Lia.lia].
-        rewrite Z.mod_small in E; [| Lia.lia].
-        assert (Z.of_nat n - Z.pos (Pos.of_succ_nat iter) < Z.of_nat n) by Lia.lia.
+      * rewrite Z.mod_small in E; [| blia ].
+        rewrite Z.mod_small in E; [| blia ].
+        assert (Z.of_nat n - Z.of_nat (S iter) < Z.of_nat n) by Lia.lia.
         apply Z.ltb_lt in H4.
         rewrite H4 in E. discriminate.
     + eapply fib_bounding_metrics_body with (n := Z.of_nat n); eauto.

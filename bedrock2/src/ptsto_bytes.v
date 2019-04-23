@@ -8,18 +8,6 @@ Require Import Coq.ZArith.ZArith.
 
 Open Scope Z_scope.
 
-(* TODO move *)
-Local Unset Universe Polymorphism. (* for Add Ring *)
-Module word.
-  Section WordLemmas.
-    Context {width: Z} {word: word.word width} {word_ok: word.ok word}.
-    Add Ring wring: (@word.ring_theory width word word_ok).
-    Lemma add_assoc: forall (x y z: word), word.add x (word.add y z) = word.add (word.add x y) z.
-    Proof. intros. ring. Qed.
-  End WordLemmas.
-End word.
-Set Universe Polymorphism.
-
 Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
   Context {byte : Word.Interface.word 8} {byte_ok : word.ok byte}.

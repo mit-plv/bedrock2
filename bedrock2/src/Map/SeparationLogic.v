@@ -399,17 +399,20 @@ Ltac ecancel_assumption :=
     end
   end.
 
-Ltac seplog :=
+Ltac use_sep_assumption :=
   match goal with
   | |- _ ?m1 =>
     match goal with
     | H: _ ?m2 |- _ =>
       unify m1 m2;
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-      cancel;
-      try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ]
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H
     end
   end.
+
+Ltac seplog :=
+  use_sep_assumption;
+  cancel;
+  try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ].
 
 Ltac seprewrite0_in Hrw H :=
   let lemma_lhs := lazymatch type of Hrw with @Lift1Prop.iff1 _ ?lhs _ => lhs end in

@@ -5,7 +5,6 @@ Require Import riscv.Utility.ListLib.
 Require Import bedrock2.MetricLogging.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
-Require compiler.NoActionSyntaxParams.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.

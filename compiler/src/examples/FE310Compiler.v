@@ -45,8 +45,8 @@ Instance mmio_params: MMIO.parameters := { (* everything is inferred automatical
 Existing Instance MetricMinimalMMIOPrimitivesParams. (* needed because it's in a section *)
 
 Instance pipeline_params: Pipeline.parameters := {
-  Pipeline.ext_spec := FlatToRiscv.FlatToRiscv.ext_spec;
-  Pipeline.ext_guarantee := FlatToRiscv.FlatToRiscv.ext_guarantee;
+  Pipeline.ext_spec := FlatToRiscvCommon.FlatToRiscv.ext_spec;
+  Pipeline.ext_guarantee := FlatToRiscvCommon.FlatToRiscv.ext_guarantee;
   Pipeline.M := OStateND RiscvMachine;
   Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
   Pipeline.RVM := IsMetricRiscvMachineL;
@@ -84,7 +84,7 @@ Proof.
     all: intuition eauto.
 Qed.
 
-Definition compileFunc: cmd -> list Instruction := exprImp2Riscv.
+Definition compileFunc: cmd -> list Instruction := ExprImp2Riscv.
 
 Definition instructions_to_word8(insts: list Instruction): list Utility.byte :=
   List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) insts.
@@ -251,7 +251,7 @@ Proof.
     1: apply map.split_empty_r; reflexivity.
     apply store_program_empty.
     apply input_program_not_too_long.
-  - cbv [Pipeline.ext_guarantee pipeline_params FlatToRiscv.FlatToRiscv.ext_guarantee
+  - cbv [Pipeline.ext_guarantee pipeline_params FlatToRiscvCommon.FlatToRiscv.ext_guarantee
          FlatToRiscv_params mmio_params].
     exact initialMachine_undef_on_MMIO_addresses.
   - apply input_program_correct.
