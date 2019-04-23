@@ -46,20 +46,20 @@ Section ExprImp1.
       | O => None (* out of fuel *)
       | S f => match s with
         | cmd.store aSize a v =>
-            'Some a <- eval_expr_old m st a;
-            'Some v <- eval_expr_old m st v;
+            'Some a <- eval_expr m st a;
+            'Some v <- eval_expr m st v;
             'Some m <- store aSize m a v;
             Some (st, m)
         | cmd.set x e =>
-            'Some v <- eval_expr_old m st e;
+            'Some v <- eval_expr m st e;
             Some (map.put st x v, m)
         | cmd.unset x =>
             Some (map.remove st x, m)
         | cmd.cond cond bThen bElse =>
-            'Some v <- eval_expr_old m st cond;
+            'Some v <- eval_expr m st cond;
             eval_cmd f st m (if word.eqb v (word.of_Z 0) then bElse else bThen)
         | cmd.while cond body =>
-            'Some v <- eval_expr_old m st cond;
+            'Some v <- eval_expr m st cond;
             if word.eqb v (word.of_Z 0) then Some (st, m) else
               'Some (st, m) <- eval_cmd f st m body;
               eval_cmd f st m (cmd.while cond body)
@@ -69,7 +69,7 @@ Section ExprImp1.
         | cmd.skip => Some (st, m)
         | cmd.call binds fname args =>
           'Some (params, rets, fbody) <- map.get e fname;
-          'Some argvs <- List.option_all (List.map (eval_expr_old m st) args);
+          'Some argvs <- List.option_all (List.map (eval_expr m st) args);
           'Some st0 <- map.putmany_of_list params argvs map.empty;
           'Some (st1, m') <- eval_cmd f st0 m fbody;
           'Some retvs <- map.getmany_of_list st1 rets;
@@ -139,15 +139,15 @@ Section ExprImp1.
 
     Lemma invert_eval_store: forall fuel initialSt initialM a v final aSize,
       eval_cmd (S fuel) initialSt initialM (cmd.store aSize a v) = Some final ->
-      exists av vv finalM, eval_expr_old initialM initialSt a = Some av /\
-                           eval_expr_old initialM initialSt v = Some vv /\
+      exists av vv finalM, eval_expr initialM initialSt a = Some av /\
+                           eval_expr initialM initialSt v = Some vv /\
                            store aSize initialM av vv = Some finalM /\
                            final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_set: forall f st1 m1 p2 x e,
       eval_cmd (S f) st1 m1 (cmd.set x e) = Some p2 ->
-      exists v, eval_expr_old m1 st1 e = Some v /\ p2 = (map.put st1 x v, m1).
+      exists v, eval_expr m1 st1 e = Some v /\ p2 = (map.put st1 x v, m1).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_unset: forall f st1 m1 p2 x,
@@ -158,7 +158,7 @@ Section ExprImp1.
     Lemma invert_eval_cond: forall f st1 m1 p2 cond bThen bElse,
       eval_cmd (S f) st1 m1 (cmd.cond cond bThen bElse) = Some p2 ->
       exists cv,
-        eval_expr_old m1 st1 cond = Some cv /\
+        eval_expr m1 st1 cond = Some cv /\
         (cv <> word.of_Z 0 /\ eval_cmd f st1 m1 bThen = Some p2 \/
          cv = word.of_Z 0  /\ eval_cmd f st1 m1 bElse = Some p2).
     Proof. inversion_lemma. Qed.
@@ -166,7 +166,7 @@ Section ExprImp1.
     Lemma invert_eval_while: forall st1 m1 p3 f cond body,
       eval_cmd (S f) st1 m1 (cmd.while cond body) = Some p3 ->
       exists cv,
-        eval_expr_old m1 st1 cond = Some cv /\
+        eval_expr m1 st1 cond = Some cv /\
         (cv <> word.of_Z 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Some (st2, m2) /\
                                      eval_cmd f st2 m2 (cmd.while cond body) = Some p3) \/
          cv = word.of_Z 0 /\ p3 = (st1, m1)).
@@ -186,7 +186,7 @@ Section ExprImp1.
       eval_cmd (S f) st m1 (cmd.call binds fname args) = Some p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
         map.get e fname = Some (params, rets, fbody) /\
-        List.option_all (List.map (eval_expr_old m1 st) args) = Some argvs /\
+        List.option_all (List.map (eval_expr m1 st) args) = Some argvs /\
         map.putmany_of_list params argvs map.empty = Some st0 /\
         eval_cmd f st0 m1 fbody = Some (st1, m') /\
         map.getmany_of_list st1 rets = Some retvs /\
