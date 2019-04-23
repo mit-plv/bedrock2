@@ -85,7 +85,7 @@ Section Proofs.
           symmetry.
           cancel_seps_at_indices 1%nat 0%nat; [reflexivity|].
           rewrite word.ring_morph_add.
-          rewrite ptsto_bytes.word.add_assoc. (* TODO move it *)
+          rewrite word.add_assoc.
           ecancel_step.
           ecancel.
         - replace (Z.of_nat (S (List.length oldvalues)))
@@ -106,7 +106,7 @@ Section Proofs.
       + simpl. solve_divisibleBy4.
       + simpl. pseplog.
         rewrite word.ring_morph_add.
-        rewrite ptsto_bytes.word.add_assoc. (* TODO move it *)
+        rewrite word.add_assoc.
         ecancel.
       + reflexivity.
   Qed.
@@ -177,7 +177,7 @@ Section Proofs.
               end
             end
           end.
-          { rewrite <- ptsto_bytes.word.add_assoc. rewrite <- word.ring_morph_add. reflexivity. }
+          { rewrite <- word.add_assoc. rewrite <- word.ring_morph_add. reflexivity. }
           ecancel.
         * unfold bytes_per_word, Memory.bytes_per in *.
           rewrite Znat.Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.

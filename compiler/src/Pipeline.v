@@ -108,7 +108,6 @@ Section Pipeline1.
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
-    FlattenExpr.NG := NG;
     FlattenExpr.ext_spec_ok := ext_spec_ok;
   }.
 
@@ -124,7 +123,7 @@ Section Pipeline1.
     fooo (flatten_functions e funnames) funnames.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
-    FlatToRiscvDef.valid_registers (flatten s).
+    FlatToRiscvDef.valid_registers (ExprImp2FlatImp s).
 
   (* simpler than debugging why blia/blia fails *)
   Ltac ineq_step :=
@@ -148,27 +147,29 @@ Section Pipeline1.
   Qed.
 
   Lemma exprImp2Riscv_size: forall (s: Syntax.cmd) (insts: list Instruction),
-      exprImp2Riscv s = insts ->
+      ExprImp2Riscv s = insts ->
       0 <= Zlength insts <= ExprImp.cmd_size s.
   Proof.
     intros.
-    unfold exprImp2Riscv, flatten in *.
-    destruct_one_match_hyp.
+    unfold ExprImp2Riscv, ExprImp2FlatImp in *.
+    match goal with
+    | H: context [fst ?x] |- _ => destruct x eqn: E
+    end.
     apply FlattenExpr.flattenStmt_size in E.
     apply flatToRiscv_size in H.
     split; [blia|].
     destruct E as [_ E].
     destruct H as [_ H].
     simpl in *.
-    (* TODO why do blia and blia fail here? PARAMRECORDS? *)
-    Fail blia. Fail blia.
+    (* TODO why do lia and omega fail here? PARAMRECORDS? *)
+    Fail blia. Fail bomega.
     eapply Z.le_trans; eassumption.
   Qed.
 
   Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
-      exprImp2Riscv sH = instsL ->
+      ExprImp2Riscv sH = instsL ->
       (word.unsigned initialL.(getPc)) mod 4 = 0 ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       initialL.(getLog) = t ->
@@ -193,10 +194,12 @@ Section Pipeline1.
           eassumption.
         * simpl. intros. simp. assumption.
       + unfold FlatToRiscvDef.stmt_not_too_big.
-        unfold exprImp2Riscv, ExprImp2FlatImp, flatten in *.
-        destruct_one_match_hyp.
+        unfold ExprImp2Riscv, ExprImp2FlatImp in *.
         match goal with
-        | H: _ = (?a, ?b) |- context [fst ?x] => replace x with (a, b)
+        | |- context [fst ?x] => destruct x eqn: E
+        end.
+        match goal with
+        | H: _ = (?a, ?b) |- context [fst ?x] => replace x with (a, b) by reflexivity
         end.
         unfold fst.
         apply FlattenExpr.flattenStmt_size in E.
@@ -206,7 +209,7 @@ Section Pipeline1.
         (* TODO why do blia and blia fail here? PARAMRECORDS? *)
         Fail blia. Fail blia.
         exact E.
-      + unfold enough_registers, ExprImp2FlatImp, flatten, fst in *. assumption.
+      + unfold enough_registers, ExprImp2FlatImp, fst in *. assumption.
       + assumption.
       + match goal with
         | H: context [ program _ ?insts ] |- context [ program _ ?insts' ] =>
