@@ -117,10 +117,13 @@ Section Pipeline1.
   Definition ExprImp2Riscv(s: Syntax.cmd): list Instruction :=
     FlatToRiscvDef.compile_stmt (ExprImp2FlatImp s).
 
-  Definition fooo(e: FlatImp.env)(funnames: list funname): list Instruction. Admitted.
-
   Definition compile_functions(e: Semantics.env)(funnames: list funname): list Instruction :=
-    fooo (flatten_functions e funnames) funnames.
+    FlatToRiscvDef.compile_functions (flatten_functions e funnames) funnames.
+
+  Definition compile_prog(e: Semantics.env)(s: Syntax.cmd)(funs: list funname): list Instruction :=
+    let e' := flatten_functions e funs in
+    let s' := ExprImp2FlatImp s in
+    FlatToRiscvDef.compile_prog e' s' funs.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_registers (ExprImp2FlatImp s).
