@@ -550,6 +550,22 @@ Section EmitsValid.
     else (idtac "compile_stmt_size: blia should not have failed!"; split; blia).
   Qed.
 
+  Context {fun_pos_env: coqutil.Map.Interface.map.map Syntax.funname Z}.
+
+  Axiom compile_stmt_new_emits_valid: forall s e pos,
+      supported_iset iset ->
+      valid_registers s ->
+      stmt_not_too_big s ->
+      valid_instructions iset (compile_stmt_new e pos s).
+
+  Axiom compile_function_emits_valid: forall e pos argnames resnames body,
+      supported_iset iset ->
+      Forall valid_register argnames ->
+      Forall valid_register resnames ->
+      valid_registers body ->
+      stmt_not_too_big body ->
+      valid_instructions iset (compile_function e pos (argnames, resnames, body)).
+
   Lemma compile_stmt_emits_valid: forall s,
       supported_iset iset ->
       valid_registers s ->

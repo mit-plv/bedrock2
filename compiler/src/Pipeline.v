@@ -5,7 +5,7 @@ Require Export coqutil.Decidable.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
-Require        compiler.FlatToRiscv.
+Require        compiler.FlatToRiscvMetric.
 Require Export riscv.Spec.Decode.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
@@ -73,9 +73,9 @@ Module Import Pipeline.
     FlattenExpr.NGstate := NGstate;
   }.
 
-  Instance FlatToRisvc_params{p: parameters}: FlatToRiscv.FlatToRiscv.parameters := {|
-    FlatToRiscv.FlatToRiscv.ext_spec := ext_spec;
-    FlatToRiscv.FlatToRiscv.ext_guarantee := ext_guarantee;
+  Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.FlatToRiscv.parameters := {|
+    FlatToRiscvCommon.FlatToRiscv.ext_spec := ext_spec;
+    FlatToRiscvCommon.FlatToRiscv.ext_guarantee := ext_guarantee;
   |}.
 
   Class assumptions{p: parameters} := {
@@ -85,7 +85,7 @@ Module Import Pipeline.
     locals_ok :> map.ok locals;
     funname_env_ok :> forall T, map.ok (funname_env T);
     PR :> MetricPrimitives PRParams;
-    FlatToRiscv_hyps :> FlatToRiscv.FlatToRiscv.assumptions;
+    FlatToRiscv_hyps :> FlatToRiscvCommon.FlatToRiscv.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
   }.
 
@@ -182,7 +182,7 @@ Section Pipeline1.
   Proof.
     intros. subst.
     eapply runsTo_weaken. Unshelve.
-     - eapply FlatToRiscv.compile_stmt_correct
+     - eapply FlatToRiscvMetric.compile_stmt_correct
         with (postH := (fun t m l mc => post t)); try reflexivity.
       + eapply FlatImp.exec.weaken.
         * match goal with
