@@ -12,7 +12,7 @@ From coqutil Require Import Z.div_mod_to_equations.
 From coqutil.Tactics Require Import syntactic_unify.
 From coqutil.Tactics Require Import rdelta.
 
-Require Import bedrock2.TODO_absint.
+Require Import bedrock2.AbsintWordToZ.
 
 Strategy -1000 [word parameters]. (* TODO where should this go? *)
 
@@ -22,7 +22,7 @@ Module absint_test.
        | O => True
        | S n' => let x := word.add x x in goal x n'
        end.
-  Goal forall x X, 1 <= X < 2^60 -> unsigned.absint_eq (word.unsigned x) X -> goal x 7.
+  Goal forall x X, 1 <= X < 2^60 -> absint_eq (word.unsigned x) X -> goal x 7.
   Proof.
     cbv beta iota delta [goal].
     intros.
@@ -63,7 +63,9 @@ Local Notation "/_" := word.of_Z.
 Local Notation "\_" := word.unsigned.
 Local Open Scope Z_scope.
 
-  From coqutil Require Import Z.div_mod_to_equations.
+From coqutil Require Import Z.div_mod_to_equations.
+From bedrock2 Require Import Semantics BasicC64Semantics.
+Local Instance word_ok: word.ok word. cbn. typeclasses eauto. Qed.
 
 Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory.
 Add Ring word_ring : word__monomorphic_ring_theory.
@@ -207,7 +209,7 @@ Proof.
   all: exact (word.of_Z 0).
 
   all:fail "remaining subgoals".
-Qed. (* Error: No such section variable or assumption: H6. *)
+Qed.
 (* Print Assumptions bsearch_ok. *)
 (* SortedListString.string_strict_order *)
 (* reconstruct_enforce *)
