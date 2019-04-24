@@ -170,63 +170,7 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
-      ExprImp.cmd_size sH < 2 ^ 10 ->
-      enough_registers sH ->
-      ExprImp2Riscv sH = instsL ->
-      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      initialL.(getLog) = t ->
-      (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
-      ext_guarantee initialL ->
-      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
-      runsTo (mcomp_sat (run1 iset))
-             initialL
-             (fun finalL =>
-                  post finalL.(getLog)).
-  Proof.
-    intros. subst.
-    eapply runsTo_weaken. Unshelve.
-     - eapply FlatToRiscvMetric.compile_stmt_correct
-        with (postH := (fun t m l mc => post t)); try reflexivity.
-      + eapply FlatImp.exec.weaken.
-        * match goal with
-          | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ s _ t m _ _ eq_refl) as Q
-          end.
-          eapply Q.
-          eassumption.
-        * simpl. intros. simp. assumption.
-      + unfold FlatToRiscvDef.stmt_not_too_big.
-        unfold ExprImp2Riscv, ExprImp2FlatImp in *.
-        match goal with
-        | |- context [fst ?x] => destruct x eqn: E
-        end.
-        match goal with
-        | H: _ = (?a, ?b) |- context [fst ?x] => replace x with (a, b) by reflexivity
-        end.
-        unfold fst.
-        apply FlattenExpr.flattenStmt_size in E.
-        ineq_step.
-        destruct E as [_ E].
-        simpl in *.
-        (* TODO why do blia and blia fail here? PARAMRECORDS? *)
-        Fail blia. Fail blia.
-        exact E.
-      + unfold enough_registers, ExprImp2FlatImp, fst in *. assumption.
-      + assumption.
-      + match goal with
-        | H: context [ program _ ?insts ] |- context [ program _ ?insts' ] =>
-          change insts' with insts
-        end.
-        simpl in *.
-        seplog.
-      + assumption.
-      + assumption.
-     - simpl. intros. simp. assumption.
-  Qed.
-
-  Lemma exprImp2Riscv_correct_full: forall sH mH mcH t instsL (initialL: RiscvMachineL) post,
+  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) post,
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       ExprImp2Riscv sH = instsL ->
@@ -290,6 +234,29 @@ Section Pipeline1.
     - simpl. intros. simp. do 3 eexists. do 3 (split; try eassumption).
       + seplog.
       + solve_MetricLog.
+  Qed.
+
+  Lemma exprImp2Riscv_correctTrace: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
+      ExprImp.cmd_size sH < 2 ^ 10 ->
+      enough_registers sH ->
+      ExprImp2Riscv sH = instsL ->
+      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getLog) = t ->
+      (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
+
+      ext_guarantee initialL ->
+      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
+      runsTo (mcomp_sat (run1 iset))
+             initialL
+             (fun finalL =>
+                  post finalL.(getLog)).
+  Proof.
+    intros.
+    eapply runsTo_weaken.
+    - eapply exprImp2Riscv_correct; try eassumption.
+    - intros. simpl in *. simp.
+      assumption.
   Qed.
 
 End Pipeline1.

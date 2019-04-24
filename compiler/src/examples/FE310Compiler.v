@@ -237,7 +237,7 @@ Lemma end2endDemo:
                       initialSwapMachine
                       (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
 Proof.
-  refine (@exprImp2Riscv_correct pipeline_params _ swap_chars_over_uart map.empty
+  refine (@exprImp2Riscv_correctTrace pipeline_params _ swap_chars_over_uart map.empty
             bedrock2.MetricLogging.EmptyMetricLog nil _ _ (fun _ => True) _ _ _ _ _ _ _ _ _).
   - reflexivity.
   - cbv. repeat constructor.
