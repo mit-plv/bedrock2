@@ -91,7 +91,11 @@ Instance spec_of_chacha20 : spec_of "chacha20_block" := fun functions =>
     8 = Z.of_nat (List.length key) ->
     3 = Z.of_nat (List.length nonce) ->
     WeakestPrecondition.call functions "chacha20_block" t m [outAddr; keyAddr; nonceAddr; cval]
-                             (fun t' m' rets => rets = []).
+                             (fun t' m' rets => exists out',
+                                  t' = t /\ (array scalar32 (word.of_Z 4) outAddr out' *
+                                            array scalar32 (word.of_Z 4) keyAddr key *
+                                            array scalar32 (word.of_Z 4) nonceAddr nonce *
+                                            R) m' /\ rets = []).
 
 Hint Rewrite
      word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
@@ -341,4 +345,35 @@ Proof.
     ring.
   }
   repeat straightline.
-Qed.
+  intuition.
+  destruct out; cbn in H0; [| blia].
+  cbn [array] in H19.
+  let x := open_constr:(@cons word32 _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ nil)))))))))))))))) in
+  unify out' x.
+  subst out'.
+  cbn [array].
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x47 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x47 x) y) with (@word.add _ w x47 (word.add x y)) by ring
+  end.
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x16 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x16 x) y) with (@word.add _ w x16 (word.add x y)) by ring
+  end.
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x17 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x17 x) y) with (@word.add _ w x17 (word.add x y)) by ring
+  end.
+  repeat match goal with
+         | [ |- context[@word.add _ ?w (word.of_Z ?x) (word.of_Z ?y)] ] =>
+           let z := eval cbv in (x + y) in
+               change (@word.add _ w (word.of_Z x) (word.of_Z y)) with (@word.of_Z _ w z)
+         end.
+  rewrite !word.of_Z_unsigned in H19.
+  repeat match type of H19 with
+         | context[scalar32 ?a _] =>
+           subst a
+         end.
+  replace (word.add x47 (word.of_Z 0)) with x47 in H19 by ring.
+  ecancel_assumption.
+Defined.
