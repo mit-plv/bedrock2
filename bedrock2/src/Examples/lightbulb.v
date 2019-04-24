@@ -291,13 +291,8 @@ Require Import coqutil.Macros.symmetry.
   repeat straightline. split.
   { subst v3. subst v'. subst c. admit. }
   repeat straightline. }}}
-  do 15 straightline. admit. (* do 16+ straightline is Coq anomaly *) }}}}
-
-  idtac "Anomalies on local".
-
-        repeat straightline. letexists. split.
-        { repeat straightline. admit. }
-        { right. repeat straightline. }
+  repeat straightline.
+  (* TODO: the loop postcondition is too weak to prove anything here *)
 Admitted.
 
 (*
@@ -492,6 +487,8 @@ Proof.
   clear. eauto.
 Admitted.
 
+(*
 Compute BasicCSyntax.c_func (recvEthernet).
 Compute BasicCSyntax.c_func (lightbulb).
 Compute BasicCSyntax.c_func (iot).
+*)
