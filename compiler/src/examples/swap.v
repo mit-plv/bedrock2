@@ -83,8 +83,47 @@ Definition swap_asm: list Instruction := Eval cbv in compile_prog e s funnames.
 
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.
-  (* TODO missing because irregular formatting in Decode.v *)
-  Notation "'ld' 'x' r1 , 'x' r2 , i" := (Ld r1 r2 i) (at level 10, i at level 200, format "'//'     'ld'       'x' r1 ,  'x' r2 ,  i").
+  Goal True. let r := eval unfold swap_asm in swap_asm in idtac r. Abort.
+  (* Annotated:
 
-  Print swap_asm.
+  main:
+     addi    x3, x0, 100   // load literals
+     addi    x4, x0, 108
+     sd      x2, x3, -16   // push args on stack
+     sd      x2, x4, -8
+     jal     x1, 64        // call swap_swap
+
+  swap:
+     addi    x2, x2, -40   // decrease sp
+     sd      x2, x1, 16    // save ra
+     sd      x2, x5, 0     // save registers modified by swap
+     sd      x2, x6, 8
+     ld      x3, x2, 24    // load args
+     ld      x4, x2, 32    // body of swap
+     ld      x5, x4, 0
+     ld      x6, x3, 0
+     sd      x4, x6, 0
+     sd      x3, x5, 0
+     ld      x5, x2, 0     // restore modified registers
+     ld      x6, x2, 8
+     ld      x1, x2, 16    // load ra
+     addi    x2, x2, 40    // increase sp
+     jalr    x0, x1, 0     // return
+
+  swap_swap:
+     addi    x2, x2, -24   // decrease sp
+     sd      x2, x1, 0     // save ra
+     ld      x3, x2, 8     // load args from stack
+     ld      x4, x2, 16
+     sd      x2, x3, -16
+     sd      x2, x4, -8
+     jal     x1, -84       // first call to swap
+     sd      x2, x3, -16   // previous call had no ret vals to be loaded. push args onto stack
+     sd      x2, x4, -8
+     jal     x1, -96       // second call to swap
+     ld      x1, x2, 0     // load ra
+     addi    x2, x2, 24    // increase sp
+     jalr    x0, x1, 0     // return
+
+  *)
 End PrintAssembly.
