@@ -20,6 +20,12 @@ Ltac seplog_use_array_load1 H i :=
   change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
 
 
+Ltac bomega ::=
+  match goal with
+  | |- ?G => idtac G; assert_succeeds (time "lia" Lia.lia); time "omega" Omega.omega
+  end.
+
+
 Local Instance spec_of_arp : spec_of "arp" := fun functions =>
   forall t m packet ethbuf len R,
     (sep (array scalar8 (word.of_Z 1) ethbuf packet) R) m ->
@@ -76,6 +82,11 @@ Goal program_logic_goal_for_function! arp.
   straightline.
 
   unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H. {
-    rewrite length_firstn_inbounds by bomega.
-    trivial. }
+    rewrite length_firstn_inbounds; [trivial|].
+    do 20 (assert_succeeds (time "lia" Lia.lia)). (* ~ 220 ms each *)
+
+    do 20 (assert_succeeds (time "omega" Omega.omega)).    (* ~10 ms each *)
+
+    Omega.omega.
+  }
 Abort.

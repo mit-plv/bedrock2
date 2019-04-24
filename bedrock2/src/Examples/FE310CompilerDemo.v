@@ -16,6 +16,10 @@ Local Instance syntax_parameters : Syntax.parameters := {|
 |}.
 
 
+Ltac bomega ::=
+  match goal with
+  | |- ?G => idtac G; assert_succeeds (time "lia" Lia.lia); time "omega" Omega.omega
+  end.
 
 
 
