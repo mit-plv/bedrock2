@@ -745,7 +745,7 @@ Section Proofs.
 
     (* execute function body *)
     eapply runsTo_trans. {
-      eapply IHexec with (funnames := (remove funname_eq_dec fname funnames));
+      eapply IHexec with (funnames := (remove funname_eq_dec fname funnames)) (p_ra := p_ra);
         simpl; try assumption.
       - eassumption.
       - (* Note: we'd have to shrink e_impl in FlatImp.exec if we want to shrink it in
@@ -1018,8 +1018,115 @@ Section Proofs.
         ecancel_done'.
     }
 
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+Ltac divisibleBy4_pre ::=
+  lazymatch goal with
+  | |- ?G => assert_fails (has_evar G)
+  end;
+  unfold divisibleBy4 in *;
+  lazymatch goal with
+  | |- _ mod 4 = 0 => idtac
+  | |- _ => fail "not a divisibleBy4 goal"
+  end;
+  repeat match goal with
+         | H: _ mod 4 = 0 |- _ => revert H
+         end;
+  clear;
+  repeat match goal with
+         | |- _ mod 4 = 0 -> _ => intro
+         end;
+  repeat (rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z || unfold word.wrap).
+
     (* jump back to caller *)
+    eapply runsToStep. {
+      eapply run_Jalr0; simpl;
+        try solve [sidecondition | solve_divisibleBy4].
+      - admit. (*   word.unsigned ?dest mod 4 = 0  *)
+      - rewrite map.get_put_diff by (clear; cbv; congruence).
+        rewrite map.get_put_same. reflexivity.
+      - wseplog_pre word_ok.
+        wcancel.
+        wcancel_step. {
+          match goal with
+          | |- ?LHS = ?RHS =>
+            match LHS with
+            | context [List.length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+              match RHS with
+              | context [List.length (compile_stmt_new ?epos2 ?pos2 s)] =>
+                replace (List.length (compile_stmt_new epos1 pos1 s))
+                  with (List.length (compile_stmt_new epos2 pos2 s))
+                    by apply compile_stmt_length_position_indep
+              end
+            end
+          end.
+          solve_word_eq word_ok.
+        }
+        ecancel_done'.
+    }
+
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog getMachine].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
+    (* computed postcondition satisfies required postcondition: *)
+    apply runsToDone.
+    cbn [getRegs getPc getNextPc getMem getLog getMachine].
+    do 4 eexists. repeat split.
+    + replace mid_log0 with middle_log1 by admit. (* TODO investigate! *)
+      eassumption.
+    + (* TODO chain of extends *)
+      admit.
+    + rewrite map.get_put_same. f_equal.
+
+(* TODO share with wseplog_pre *)
+Ltac simpl_addrs :=
+    repeat (
+        rewrite !List.app_length ||
+        simpl ||
+        rewrite !Nat2Z.inj_add ||
+        rewrite !Zlength_correct ||
+        rewrite !Nat2Z.inj_succ ||
+        rewrite <-! Z.add_1_r ||
+        autorewrite with rew_word_morphism);
+    unfold Register, MachineInt in *;
+    (* note: it's the user's responsability to ensure that left-to-right rewriting with all
+     nat and Z equations terminates, otherwise we'll loop infinitely here *)
+    repeat match goal with
+           | E: @eq ?T _ _ |- _ =>
+             lazymatch T with
+             | Z => idtac
+             | nat => idtac
+             end;
+             progress rewrite E
+           end.
+
+      simpl_addrs.
+      solve_word_eq word_ok.
+    + rewrite map.get_put_diff by (clear; cbv; congruence).
+      rewrite map.get_put_same.
+      (* TODO who saves the ra/what's the contract? *)
+
+
     (* TODO *)
+
+
 
   Abort.
 
