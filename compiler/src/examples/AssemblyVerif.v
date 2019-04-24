@@ -265,4 +265,4 @@ Section Verif.
 
 End Verif.
 
-Print Assumptions asm_prog_2_correct. (* just word_goal_1_TODO and fix_updated_mem *)
+(* Print Assumptions asm_prog_2_correct. just word_goal_1_TODO and fix_updated_mem *)

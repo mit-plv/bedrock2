@@ -166,7 +166,7 @@ Section Demos.
     Eval unfold bsearch, listsum, fibonacci in
       [bsearch; listsum 1024; fibonacci 6].
 
-  Print allProgs.
+  (*Print allProgs.*)
 
   Definition prog(name: string): Prog :=
     match find (fun '(n, _) => if string_dec n name then true else false) allProgs with
@@ -177,14 +177,14 @@ Section Demos.
 End Demos.
 
 (* let's print them again in AST form: *)
-Print allProgs.
+(* Print allProgs. *)
 
 Definition allProgsAsCStrings: list string :=
   Eval cbv in (map BasicCSyntax.c_func allProgs).
 
-Print allProgsAsCStrings.
+(* Print allProgsAsCStrings. *)
 
 Definition allProgsWithZNames :=
   Eval cbv in allProgs (p:=ZNamesSyntaxParams).
 
-Print allProgsWithZNames.
+(* Print allProgsWithZNames. *)

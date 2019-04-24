@@ -207,7 +207,7 @@ Section RegAlloc.
     intro s.
     destruct s eqn: E;
     match type of E with
-    | _ = ?r => let h := head r in idtac "| set ( case :=" h ")"
+    | _ = ?r => let h := head r in idtac (* "| set ( case :=" h ")" *)
     end.
   Abort.
 
