@@ -128,7 +128,7 @@ Proof.
   match type of H with
   | ?f m => set (Hsep := f)
   end.
-  refine (tailrec (HList.polymorphic_list.nil) ("i"::"out"::"key"::"nonce"::"countervalue"::"x0"::"x1"::"x2"::"x3"::"x4"::"x5"::"x6"::"x7"::"x8"::"x9"::"x10"::"x11"::"x12"::"x13"::"x14"::"x15"::nil)%list%string (fun l t m i out key nonce cval _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ => PrimitivePair.pair.mk (Hsep m) (fun T M I OUT KEY NONCE CVAL _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ => T = t /\ Hsep m)) lt _ _ _ _ _);
+  refine (tailrec (HList.polymorphic_list.nil) ("i"::"out"::"key"::"nonce"::"countervalue"::"x0"::"x1"::"x2"::"x3"::"x4"::"x5"::"x6"::"x7"::"x8"::"x9"::"x10"::"x11"::"x12"::"x13"::"x14"::"x15"::nil)%list%string (fun l t m i out key nonce cval _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ => PrimitivePair.pair.mk (Hsep m /\ word.unsigned i = 10 - Z.of_nat l /\ (l <= 10)%nat) (fun T M I OUT KEY NONCE CVAL _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ => T = t /\ OUT = out /\ KEY = key /\ NONCE = nonce /\ CVAL = cval /\ Hsep M)) lt _ _ _ _ _);
     cbn [reconstruct map.putmany_of_list HList.tuple.to_list
          HList.hlist.foralls HList.tuple.foralls
          HList.hlist.existss HList.tuple.existss
@@ -140,16 +140,28 @@ Proof.
 
   { repeat straightline. }
   { exact lt_wf. }
-  { exact (0%nat). }
-  { subst Hsep.
-    ecancel_assumption. }
+  { split; [| split].
+    { subst Hsep.
+      ecancel_assumption. }
+    { subst i.
+      rewrite word.unsigned_of_Z.
+      cbv [word.wrap].
+      rewrite Zmod_0_l.
+      match goal with
+      | [ |- _ = _ - Z.of_nat ?n ] =>
+        unify n (10%nat)
+      end.
+      reflexivity.
+    }
+    { blia. }
+  }
   { straightline.
     straightline.
     do 5 straightline.
     straightline.
     straightline.
     do 100 straightline.
-    2: solve [auto].
+    2: solve [intuition].
     straightline.
     straightline.
     straightline.
@@ -186,8 +198,18 @@ Proof.
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
-    Time do 10 straightline.
-
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
     Time straightline.
     Time straightline.
     Time straightline.
@@ -211,9 +233,9 @@ Proof.
         change goal
       end.
     cbv beta iota.
-    split; exact eq_refl.
+    split; refine eq_refl.
     }
-               
+
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
@@ -224,15 +246,99 @@ Proof.
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
+    Time straightline.
+    Time straightline.
+    Time straightline.
 
     letexists. split.
     2:split.
+    1: split.
+    2: split.
 
     all : repeat straightline.
     all : try typeclasses eauto with core.
 
-    subst v'.
-    revert dependent v.
-    (* GOAL: forall v : nat, (?Goal0 < v)%nat *)
+    {
+      lazymatch goal with
+      | [ H : word.unsigned br <> 0 |- _ ] =>
+        subst br;
+          rewrite word.unsigned_ltu in H;
+          lazymatch type of H with
+          | word.unsigned (if ?x <? ?y then _ else _) <> _ =>
+            destruct (Z.ltb_spec0 x y) as [Hv |];
+              rewrite word.unsigned_of_Z in H;
+              cbv in H;
+              [| congruence]
+          end
+      end.
+      subst x131.
+      subst v'.
+      match goal with
+      | [ |- word.unsigned ?w = _ ] =>
+        change w with (word.add x (word.of_Z 1))
+      end.
+      rewrite word.unsigned_add, word.unsigned_of_Z.
+      match goal with
+      | [ H : word.unsigned _ = 10 - _ |- _ ] =>
+        rewrite H in *
+      end.
+      rewrite word.unsigned_of_Z in Hv.
+      change (word.wrap 10) with 10 in Hv.
+      instantiate (1 := Nat.pred v).
+      rewrite Nat2Z.inj_pred; [| blia].
+      change (word.wrap 1) with 1.
+      cbv [word.wrap].
+      rewrite Z.mod_small; [blia |].
+      split; [blia |].
+      match goal with
+      | [ H : (_ <= _)%nat |- _ ] =>
+        let H' := fresh "H" in
+        pose proof (inj_le _ _ H) as H'; cbn in H'
+      end.
+      match goal with
+      | [ |- _ < 2^?w ] =>
+          let w' := eval cbv in w in
+          change w with w'
+      end.
+      blia.
+    }
+    { subst v'. blia. }
+    { subst v'.
+      lazymatch goal with
+      | [ H : word.unsigned br <> 0 |- _ ] =>
+        subst br;
+          rewrite word.unsigned_ltu in H;
+          lazymatch type of H with
+          | word.unsigned (if ?x <? ?y then _ else _) <> _ =>
+            destruct (Z.ltb_spec0 x y) as [Hv |];
+              rewrite word.unsigned_of_Z in H;
+              cbv in H;
+              [| congruence]
+          end
+      end.
+      match goal with
+      | [ H : word.unsigned _ = 10 - _ |- _ ] =>
+        rewrite H in *
+      end.
+      rewrite word.unsigned_of_Z in Hv.
+      change (word.wrap 10) with 10 in Hv.
+      apply lt_pred_n_n.
+      apply Nat2Z.inj_lt.
+      blia.
+    }
+  }
 
-Abort.
+  subst Hsep.
+  repeat straightline.
+  replace (scalar32 x47 r) with (scalar32 (word.add x47 (word.of_Z 0)) r) in H8.
+  2: {
+    f_equal.
+    1: {
+      intros.
+      rewrite H9.
+      reflexivity.
+    }
+    ring.
+  }
+  repeat straightline.
+Qed.
