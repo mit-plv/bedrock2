@@ -14,7 +14,7 @@ Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Machine.
 Require Import compiler.FlatToRiscvDef.
-Require Import compiler.FlatToRiscv.
+Require Import compiler.FlatToRiscvMetric.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MinimalMMIO.
 Require Import riscv.Platform.MetricMinimalMMIO.
@@ -282,7 +282,7 @@ Section MMIO1.
   Arguments LittleEndian.combine: simpl never. (* TODO can we put this next to its definition? *)
   Arguments mcomp_sat: simpl never.
 
-  Instance FlatToRiscv_params: FlatToRiscv.parameters := {
+  Instance FlatToRiscv_params: FlatToRiscvCommon.FlatToRiscv.parameters := {
     FlatToRiscv.def_params := compilation_params;
     FlatToRiscv.locals := locals;
     FlatToRiscv.mem := (@mem p);
@@ -300,7 +300,7 @@ Section MMIO1.
 
   Arguments LittleEndian.split: simpl never.
 
-  Instance FlatToRiscv_hyps: FlatToRiscv.assumptions.
+  Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
   Proof.
     constructor. all: try typeclasses eauto.
     - (* ext_guarantee preservable: *)

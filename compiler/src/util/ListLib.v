@@ -17,6 +17,14 @@ Section ListSet.
   Definition list_diff(A B: list E): list E :=
     fold_left (fun res b => remove eeq b res) B A.
 
+  Lemma length_list_union: forall (l1 l2: list E),
+      (length (list_union l1 l2) <= length l1 + length l2)%nat.
+  Proof.
+    induction l1; intros; simpl; [blia|].
+    destruct_one_match.
+    - specialize (IHl1 l2). blia.
+    - specialize (IHl1 (a :: l2)). simpl in *. blia.
+  Qed.
 End ListSet.
 
 

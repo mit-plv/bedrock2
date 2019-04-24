@@ -125,20 +125,25 @@ Module demo.
   Example employees : type :=
     Array 3 first_last.
 
-  Compute sizeof word.
-  Compute sizeof (char_array 20).
-  Compute sizeof first_last.
-  Compute sizeof employees.
+  Inductive inspect{T: Type}: T -> Prop := .
+  Local Notation "t : T" := (@inspect T t) (only printing, at level 200).
 
-  Compute path_lookup 0 (Sub 1 :: nil)%Z employees.
-  Compute path_lookup 0 (Sub 1 :: Field "last" :: nil)%Z employees.
-  Compute path_lookup 0 (Sub 1 :: Field "last" :: Sub 2 :: nil)%Z employees.
+  Goal inspect (sizeof word). cbv. Abort.
+  Goal inspect (sizeof (char_array 20)). cbv. Abort.
+  Goal inspect (sizeof first_last). cbv. Abort.
+  Goal inspect (sizeof employees). unfold employees. unfold first_last. simpl. Abort.
 
-  Compute fun p add mul base =>
-            @gen_access p add mul base employees (Sub (expr.literal 1) :: nil).
-  Compute fun p add mul base =>
-            @gen_access p add mul base employees (Sub (expr.literal 1) :: Field "last" :: nil).
-  Compute fun p add mul base =>
-            @gen_access p add mul base employees (Sub (expr.literal 1) :: Field "last" :: Sub (expr.literal 2) :: nil).
+  Goal inspect (path_lookup 0 (Sub 1 :: nil)%Z employees). cbv. Abort.
+  Goal inspect (path_lookup 0 (Sub 1 :: Field "last" :: nil)%Z employees). cbv. Abort.
+  Goal inspect (path_lookup 0 (Sub 1 :: Field "last" :: Sub 2 :: nil)%Z employees). cbv. Abort.
 
+  Goal forall p add mul base,
+      inspect (@gen_access p add mul base employees (Sub (expr.literal 1) :: nil)).
+    intros. cbv. Abort.
+  Goal forall p add mul base,
+      inspect (@gen_access p add mul base employees (Sub (expr.literal 1) :: Field "last" :: nil)).
+    intros. cbv. Abort.
+  Goal forall p add mul base,
+      inspect (@gen_access p add mul base employees (Sub (expr.literal 1) :: Field "last" :: Sub (expr.literal 2) :: nil)).
+    intros. cbv. Abort.
 End demo.

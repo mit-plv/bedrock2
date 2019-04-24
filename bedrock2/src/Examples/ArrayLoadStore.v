@@ -44,7 +44,7 @@ Local Instance spec_of_tf : spec_of "tf". refine (fun functions =>
     (sep (array ptsto (word.of_Z 1) buf bs) R) m ->
     word.unsigned len = Z.of_nat (List.length bs) ->
     WeakestPrecondition.call functions "tf" t m [buf; len; i; j]
-    (fun T M rets => 
+    (fun T M rets =>
        True)).
 (* word.unsigned i < word.unsigned len -> word.unsigned j < word.unsigned len ->
        rets = [word.of_Z (word.unsigned
@@ -54,10 +54,6 @@ Defined.
 From coqutil.Tactics Require Import letexists.
 
 Import SeparationLogic Lift1Prop.
-
-Local Instance mapok: coqutil.Map.Interface.map.ok Semantics.mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
-Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
-Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
 
   From coqutil.Tactics Require Import syntactic_unify.
   From coqutil.Macros Require Import symmetry.
@@ -82,11 +78,9 @@ Proof.
   seprewrite_in (symmetry! @array_cons) H2.
   seprewrite_in (@bytearray_index_merge) H4. {
     pose proof Properties.word.unsigned_range i.
-    Time change tt with tt in *.
-    rewrite length_firstn_inbounds;
-      (PreOmega.zify; rewrite Znat.Z2Nat.id; bomega).
+    rewrite length_firstn_inbounds; (PreOmega.zify; rewrite Znat.Z2Nat.id; bomega).
   }
-  
+
   letexists.
   split; [solve[repeat straightline]|].
   split; [|solve [repeat straightline]].
@@ -106,18 +100,18 @@ Proof.
       1: ecancel.
       pose proof Properties.word.unsigned_range i.
       pose proof Properties.word.unsigned_range j.
-      Time change tt with tt in *.
       rewrite List.app_length, length_cons, length_firstn_inbounds, length_skipn.
       all : PreOmega.zify.
-      1: blia.
+      1: bomega.
       1: (PreOmega.zify; rewrite ?Znat.Z2Nat.id; bomega).
-  } 
+  }
   1: subst v2.
   exact eq_refl.
   }
 
-  repeat straightline.
-  
+  repeat (straightline; [|..]).
+
+  exact I.
 Qed.
 
   (* [eseptract] solves goals of the form [state == needle * ?r] by

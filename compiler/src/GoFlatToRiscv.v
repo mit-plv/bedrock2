@@ -745,9 +745,13 @@ Ltac sidecondition :=
   | |- _ => reflexivity
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => assumption
-  | H: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
+  | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
     assert_fails (is_evar inst);
-    apply H; clear; eauto 10 using in_cons, in_or_app, in_eq
+    apply V;
+    repeat match goal with
+           | H: _ |- _ => clear H
+           end;
+    eauto 30 using in_cons, in_or_app, in_eq
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
     unfold Memory.load, Memory.load_Z in *;
     simpl_MetricRiscvMachine_mem;

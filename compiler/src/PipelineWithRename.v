@@ -33,14 +33,14 @@ Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
-
+Require Import compiler.RegAlloc.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
 Module Import Pipeline.
-  Definition varname := Register.
+  Definition varname := string.
 
   Class parameters := {
     FlatToRiscvDef_params :> FlatToRiscvDef.FlatToRiscvDef.parameters;
@@ -48,6 +48,7 @@ Module Import Pipeline.
 
     mem :> map.map word byte;
     locals :> map.map varname word;
+    Registers :> map.map Register word;
     funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
     trace := list (mem * actname * list word * (mem * list word));
     ExtSpec := trace -> mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
@@ -102,127 +103,52 @@ Section Pipeline1.
   Definition funname := string.
   Definition iset := if width =? 32 then RV32IM else RV64IM.
 
+  Axiom TODO: forall {T: Type}, T.
+
   Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
     FlattenExpr.varname_eq_dec := varname_eq_dec;
     FlattenExpr.actname_eq_dec := actname_eq_dec;
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
-    FlattenExpr.ext_spec_ok := ext_spec_ok;
+    FlattenExpr.ext_spec_ok := TODO;
   }.
 
   Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
 
-  (* only works if varname=Register *)
-  Definition ExprImp2Riscv(s: Syntax.cmd): list Instruction :=
-    FlatToRiscvDef.compile_stmt (ExprImp2FlatImp s).
+  Definition available_registers: list Register :=
+    Eval cbv in List.unfoldn Z.succ 29 3.
 
+  Context {src2imp : map.map varname Register}.
+  Context {src2imp_ops : map.ops src2imp}.
+
+  Definition ExprImp2Riscv(s: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)):
+    list Instruction :=
+    let flat := ExprImp2FlatImp s in
+    match rename_stmt string Register funname actname map.empty flat available_registers with
+    | Some flat' => FlatToRiscvDef.compile_stmt flat'
+    | None => nil
+    end.
+
+  Definition ExprImp2RenamedFlat(s: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)):
+    FlatImp.stmt :=
+    let flat := ExprImp2FlatImp s in
+    match rename_stmt string Register funname actname map.empty flat available_registers with
+    | Some flat' => flat'
+    | None => FlatImp.SSkip
+    end.
+
+(*
   Definition compile_functions(e: Semantics.env)(funnames: list funname): list Instruction :=
     FlatToRiscvDef.compile_functions (flatten_functions e funnames) funnames.
+*)
 
-  Definition compile_prog(e: Semantics.env)(s: Syntax.cmd)(funs: list funname): list Instruction :=
+  Definition compile_prog(e: @Semantics.env (FlattenExpr.mk_Semantics_params _))
+                         (s: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _))
+                         (funs: list funname): list Instruction :=
     let e' := flatten_functions e funs in
-    let s' := ExprImp2FlatImp s in
-    FlatToRiscvDef.compile_prog e' s' funs.
-
-  Definition enough_registers(s: Syntax.cmd): Prop :=
-    FlatToRiscvDef.valid_registers (ExprImp2FlatImp s).
-
-  (* simpler than debugging why blia/blia fails *)
-  Ltac ineq_step :=
-    first
-      [ eapply Z.le_trans; [eassumption|]
-      | eapply Z.le_trans; [|eassumption]
-      | eapply Z.lt_le_trans; [eassumption|]
-      | eapply Z.lt_le_trans; [|eassumption]
-      | eapply Z.le_lt_trans; [eassumption|]
-      | eapply Z.le_lt_trans; [|eassumption] ].
-
-  (* The following two size lemmas are nice to have, but not really needed here:
-     FlatToRiscv.compile_stmt_correct will apply them on its own when needed. *)
-
-  Lemma flatToRiscv_size: forall (s: FlatImp.stmt) (insts: list Instruction),
-      FlatToRiscvDef.compile_stmt s = insts ->
-      0 <= Zlength insts <= FlatImp.stmt_size s.
-  Proof.
-    intros. subst.
-    apply (EmitsValid.compile_stmt_size s).
-  Qed.
-
-  Lemma exprImp2Riscv_size: forall (s: Syntax.cmd) (insts: list Instruction),
-      ExprImp2Riscv s = insts ->
-      0 <= Zlength insts <= ExprImp.cmd_size s.
-  Proof.
-    intros.
-    unfold ExprImp2Riscv, ExprImp2FlatImp in *.
-    match goal with
-    | H: context [fst ?x] |- _ => destruct x eqn: E
-    end.
-    apply FlattenExpr.flattenStmt_size in E.
-    apply flatToRiscv_size in H.
-    split; [blia|].
-    destruct E as [_ E].
-    destruct H as [_ H].
-    simpl in *.
-    (* TODO why do lia and omega fail here? PARAMRECORDS? *)
-    Fail blia. Fail bomega.
-    eapply Z.le_trans; eassumption.
-  Qed.
-
-  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
-      ExprImp.cmd_size sH < 2 ^ 10 ->
-      enough_registers sH ->
-      ExprImp2Riscv sH = instsL ->
-      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      initialL.(getLog) = t ->
-      (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
-      ext_guarantee initialL ->
-      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
-      runsTo (mcomp_sat (run1 iset))
-             initialL
-             (fun finalL =>
-                  post finalL.(getLog)).
-  Proof.
-    intros. subst.
-    eapply runsTo_weaken. Unshelve.
-     - eapply FlatToRiscvMetric.compile_stmt_correct
-        with (postH := (fun t m l mc => post t)); try reflexivity.
-      + eapply FlatImp.exec.weaken.
-        * match goal with
-          | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ s _ t m _ _ eq_refl) as Q
-          end.
-          eapply Q.
-          eassumption.
-        * simpl. intros. simp. assumption.
-      + unfold FlatToRiscvDef.stmt_not_too_big.
-        unfold ExprImp2Riscv, ExprImp2FlatImp in *.
-        match goal with
-        | |- context [fst ?x] => destruct x eqn: E
-        end.
-        match goal with
-        | H: _ = (?a, ?b) |- context [fst ?x] => replace x with (a, b) by reflexivity
-        end.
-        unfold fst.
-        apply FlattenExpr.flattenStmt_size in E.
-        ineq_step.
-        destruct E as [_ E].
-        simpl in *.
-        (* TODO why do blia and blia fail here? PARAMRECORDS? *)
-        Fail blia. Fail blia.
-        exact E.
-      + unfold enough_registers, ExprImp2FlatImp, fst in *. assumption.
-      + assumption.
-      + match goal with
-        | H: context [ program _ ?insts ] |- context [ program _ ?insts' ] =>
-          change insts' with insts
-        end.
-        simpl in *.
-        seplog.
-      + assumption.
-      + assumption.
-     - simpl. intros. simp. assumption.
-  Qed.
+    let e'' := rename_functions string Register funname actname available_registers e' funs in
+    let s' := ExprImp2RenamedFlat s in
+    FlatToRiscvDef.compile_prog e'' s' funs.
 
 End Pipeline1.

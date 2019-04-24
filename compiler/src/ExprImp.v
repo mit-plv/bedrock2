@@ -13,7 +13,7 @@ Require Import riscv.Utility.ListLib.
 Require Import riscv.Platform.MetricLogging.
 Require Import compiler.Simp.
 
-Local Set Ltac Profiling.
+(*Local Set Ltac Profiling.*)
 
 Open Scope Z_scope.
 
@@ -572,4 +572,4 @@ Section ExprImp2.
 
 End ExprImp2.
 
-Goal True. idtac "End of ExprImp.v". Abort.
+(*Goal True. idtac "End of ExprImp.v". Abort.*)

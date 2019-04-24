@@ -335,7 +335,7 @@ Module MMIOUsage.
     Context {funname_env: forall T, map.map funname T}.
 
     Definition squarer_correct := @squarer_correct SpiEth.MMIOMacros.
-    Check squarer_correct.
+    (*Check squarer_correct.*)
   End WithParams.
 End MMIOUsage.
 
@@ -348,6 +348,6 @@ Module SyscallsUsage.
     Context {funname_env: forall T, map.map funname T}.
 
     Definition squarer_correct := @squarer_correct Syscalls.SyscallIOMacros.
-    Check squarer_correct.
+    (*Check squarer_correct.*)
   End WithParams.
 End SyscallsUsage.

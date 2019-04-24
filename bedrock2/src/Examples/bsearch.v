@@ -12,7 +12,7 @@ From coqutil Require Import Z.div_mod_to_equations.
 From coqutil.Tactics Require Import syntactic_unify.
 From coqutil.Tactics Require Import rdelta.
 
-Require Import bedrock2.TODO_absint.
+Require Import bedrock2.AbsintWordToZ.
 
 Strategy -1000 [word parameters]. (* TODO where should this go? *)
 
@@ -22,7 +22,7 @@ Module absint_test.
        | O => True
        | S n' => let x := word.add x x in goal x n'
        end.
-  Goal forall x X, 1 <= X < 2^60 -> unsigned.absint_eq (word.unsigned x) X -> goal x 7.
+  Goal forall x X, 1 <= X < 2^60 -> absint_eq (word.unsigned x) X -> goal x 7.
   Proof.
     cbv beta iota delta [goal].
     intros.
@@ -63,7 +63,8 @@ Local Notation "/_" := word.of_Z.
 Local Notation "\_" := word.unsigned.
 Local Open Scope Z_scope.
 
-  From coqutil Require Import Z.div_mod_to_equations.
+From coqutil Require Import Z.div_mod_to_equations.
+From bedrock2 Require Import Semantics BasicC64Semantics.
 
 Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory.
 Add Ring word_ring : word__monomorphic_ring_theory.
@@ -82,11 +83,6 @@ Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
 From coqutil.Tactics Require Import eabstract letexists rdelta.
 From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
-
-Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
-Local Instance wordok: coqutil.Word.Interface.word.ok word := coqutil.Word.Naive.ok _ _.
-Local Instance byteok: coqutil.Word.Interface.word.ok byte := coqutil.Word.Naive.ok _ _.
-
 
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
@@ -151,11 +147,11 @@ Proof.
           repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
           rewrite length_rep in *. (* WHY does lia need this? *)
           revert H4. clear. intros. Z.div_mod_to_equations. blia. }
-        rewrite length_skipn; blia. }
+        rewrite length_skipn; bomega. }
       SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
         destruct x; cbn [Datatypes.length] in *.
-        { rewrite Z.mul_0_r in length_rep. blia. }
+        { rewrite Z.mul_0_r in length_rep. bomega. }
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
         rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
@@ -173,7 +169,7 @@ Proof.
         rewrite ?length_rep.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
         rewrite List.firstn_length_le; cycle 1.
-        { assert (Datatypes.length x <> 0)%nat by blia.
+        { assert (Datatypes.length x <> 0)%nat by bomega.
           revert H13. clear. intros. Z.div_mod_to_equations; zify; rewrite Z2Nat.id by blia; blia. }
         rewrite Z2Nat.id by (clear; Z.div_mod_to_equations; blia).
         clear. Z.div_mod_to_equations. blia. }
@@ -182,14 +178,14 @@ Proof.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
         rewrite ?length_rep.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
-        assert (Datatypes.length x <> 0)%nat by blia.
+        assert (Datatypes.length x <> 0)%nat by bomega.
         rewrite List.firstn_length_le; cycle 1.
         { revert H12. clear. intros. Z.div_mod_to_equations; zify; rewrite Z2Nat.id by blia; blia. }
         revert H12. clear. zify. rewrite Z2Nat.id; (Z.div_mod_to_equations; blia). }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
         destruct x; cbn [Datatypes.length] in *.
-        { rewrite Z.mul_0_r in length_rep. blia. }
+        { rewrite Z.mul_0_r in length_rep. bomega. }
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
         rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
@@ -207,7 +203,7 @@ Proof.
   all: exact (word.of_Z 0).
 
   all:fail "remaining subgoals".
-Qed. (* Error: No such section variable or assumption: H6. *)
+Qed.
 (* Print Assumptions bsearch_ok. *)
 (* SortedListString.string_strict_order *)
 (* reconstruct_enforce *)

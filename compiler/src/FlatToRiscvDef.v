@@ -213,6 +213,7 @@ Section FlatToRiscv1.
      position independent code. *)
 
   Context {fun_pos_env: map.map funname Z}.
+  Context {env: map.map funname (list varname * list varname * stmt)}.
 
   Section WithEnv.
     Variable e: fun_pos_env.
@@ -297,41 +298,50 @@ Section FlatToRiscv1.
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 
-    Fixpoint compile_funs(pos: Z)(funs: list (funname * (list varname * list varname * stmt))):
-      list Instruction :=
-      match funs with
-      | nil => nil
-      | (fname, F) :: funs =>
-        let insts := compile_function pos F in
-        let size := 4 * Z.of_nat (length (insts)) in
-        insts ++ compile_funs (pos + size) funs
-      end.
+    Section WithImplEnv.
+      Variable (e_impl: env).
 
+      Fixpoint compile_funs(pos: Z)(funnames: list funname): list Instruction :=
+        match funnames with
+        | nil => nil
+        | fname :: rest =>
+          match map.get e_impl fname with
+          | Some F => let insts := compile_function pos F in
+                      let size := 4 * Z.of_nat (length (insts)) in
+                      insts ++ compile_funs (pos + size) rest
+          | None => nil
+          end
+        end.
+    End WithImplEnv.
   End WithEnv.
 
-  (* compiles all functions just to obtain their code size *)
-  Fixpoint build_fun_pos_env(pos: Z)(funs: list (funname * (list varname * list varname * stmt))):
-    fun_pos_env :=
-    match funs with
-    | nil => map.empty
-    | (fname, F) :: funs =>
-      let size := 4 * Z.of_nat (length (compile_function map.empty 42 F)) in
-      map.put (build_fun_pos_env (pos + size) funs)
-              fname pos
-    end.
+  Section WithImplEnv.
+    Variable (e_impl: env).
 
-  Definition compile_functions(funs: list (funname * (list varname * list varname * stmt))):
-    list Instruction :=
-    let e := build_fun_pos_env 0 funs in
-    compile_funs e 0 funs.
+    (* compiles all functions just to obtain their code size *)
+    Fixpoint build_fun_pos_env(pos: Z)(funnames: list funname): fun_pos_env :=
+      match funnames with
+      | nil => map.empty
+      | fname :: rest =>
+        match map.get e_impl fname with
+        | Some F => let size := 4 * Z.of_nat (length (compile_function map.empty 42 F)) in
+                    map.put (build_fun_pos_env (pos + size) rest) fname pos
+        | None => map.empty
+        end
+      end.
 
-  Definition compile_prog(s: stmt)(funs: list (funname * (list varname * list varname * stmt))):
-    list Instruction :=
-    let size1 := 4 * Z.of_nat (length (compile_stmt_new map.empty 42 s)) in
-    let e := build_fun_pos_env size1 funs in
-    let insts1 := compile_stmt_new e 0 s in
-    let insts2 := compile_funs e size1 funs in
-    insts1 ++ insts2.
+    Definition compile_functions(funnames: list funname): list Instruction :=
+      let e_pos := build_fun_pos_env 0 funnames in
+      compile_funs e_pos e_impl 0 funnames.
+
+    Definition compile_prog(s: stmt)(funs: list funname): list Instruction :=
+      let size1 := 4 * Z.of_nat (length (compile_stmt_new map.empty 42 s)) in
+      let e_pos := build_fun_pos_env size1 funs in
+      let insts1 := compile_stmt_new e_pos 0 s in
+      let insts2 := compile_funs e_pos e_impl size1 funs in
+      insts1 ++ insts2.
+
+  End WithImplEnv.
 
 
   (* original compile_stmt: *)

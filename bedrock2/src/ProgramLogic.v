@@ -129,6 +129,7 @@ Ltac straightline_cleanup :=
   end.
 
 Import WeakestPrecondition.
+Import coqutil.Map.Interface.
 
 Ltac straightline :=
   match goal with
@@ -169,6 +170,15 @@ Ltac straightline :=
     exact (conj (eq_refl values) eq_refl)
   | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
+  | |- map.get _ _ = Some ?e' =>
+    let e := rdelta e' in
+    is_evar e;
+    let M := lazymatch goal with |- @map.get _ _ ?M _ _ = _ => M end in
+    let __ := match M with @Semantics.locals _ => idtac end in
+    let k := lazymatch goal with |- map.get _ ?k = _ => k end in
+    once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
+          (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
+          unify e v; exact (eq_refl (Some v)))
   | |- @coqutil.Map.Interface.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
     let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
   | |- ?x = ?y =>

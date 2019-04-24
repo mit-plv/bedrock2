@@ -50,8 +50,6 @@ asm_prog_1 ++ [[
   Sw Register0 x2 output_ptr
 ]].
 
-Local Unset Universe Polymorphism. (* for Add Ring *)
-
 Section Verif.
 
   Definition actname := Empty_set. (* no external actions *)
@@ -267,4 +265,4 @@ Section Verif.
 
 End Verif.
 
-Print Assumptions asm_prog_2_correct. (* just word_goal_1_TODO and fix_updated_mem *)
+(* Print Assumptions asm_prog_2_correct. just word_goal_1_TODO and fix_updated_mem *)

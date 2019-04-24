@@ -1,5 +1,5 @@
 From Coq Require Import Strings.String Lists.List ZArith.BinInt.
-From bedrock2 Require Import BasicC64Semantics ProgramLogic.
+From bedrock2 Require Import BasicC32Semantics ProgramLogic.
 Require Import coqutil.Z.Lia.
 
 Require Import bedrock2.Examples.ARPResponder.
@@ -13,17 +13,11 @@ From bedrock2 Require Import Array Scalars Separation.
 From coqutil.Tactics Require Import letexists rdelta.
 Local Notation bytes := (array scalar8 (word.of_Z 1)).
 
-Set Printing Width 90.
 Ltac seplog_use_array_load1 H i :=
   let iNat := eval cbv in (Z.to_nat i) in
   unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
     [exact iNat|exact (word.of_Z 0)|blia|];
   change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
-
-Local Instance mapok: coqutil.Map.Interface.map.ok Semantics.mem :=
-  SortedListWord.ok (Naive.word 32 eq_refl) _.
-Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
-Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
 
 
 Local Instance spec_of_arp : spec_of "arp" := fun functions =>
@@ -46,7 +40,7 @@ Goal program_logic_goal_for_function! arp.
   lazymatch goal with H: _ m |- _ =>
     let iNat := eval cbv in (Z.to_nat i) in
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [instantiate (1 := iNat); blia|match goal with H : _ |- _ => instantiate (1 := word.of_Z 0) in H end];
+    [instantiate (1 := iNat); bomega|match goal with H : _ |- _ => instantiate (1 := word.of_Z 0) in H end];
     eapply load_one_of_sep;
     change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
     SeparationLogic.ecancel_assumption
@@ -68,7 +62,7 @@ Goal program_logic_goal_for_function! arp.
     let iNat := eval cbv in (Z.to_nat i) in
     pose i;
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [instantiate (1 := iNat); blia|match goal with H : _ |- _ => instantiate (1 := word.of_Z 0) in H end];
+    [instantiate (1 := iNat); bomega|match goal with H : _ |- _ => instantiate (1 := word.of_Z 0) in H end];
     eapply store_one_of_sep;
     change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
     [SeparationLogic.ecancel_assumption|]
@@ -82,6 +76,6 @@ Goal program_logic_goal_for_function! arp.
   straightline.
 
   unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H. {
-    rewrite length_firstn_inbounds by blia.
+    rewrite length_firstn_inbounds by bomega.
     trivial. }
 Abort.

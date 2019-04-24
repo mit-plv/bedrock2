@@ -5,7 +5,6 @@ Require Import riscv.Utility.ListLib.
 Require Import bedrock2.MetricLogging.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
-Require compiler.NoActionSyntaxParams.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
@@ -15,7 +14,7 @@ Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
 Require Import compiler.util.ListLib.
 
-Local Set Ltac Profiling.
+(*Local Set Ltac Profiling.*)
 
 Inductive bbinop: Type :=
 | BEq
@@ -855,4 +854,4 @@ Section FlatImp3.
 End FlatImp3.
 *)
 
-Goal True. idtac "End of FlatImp.v". Abort.
+(*Goal True. idtac "End of FlatImp.v". Abort.*)

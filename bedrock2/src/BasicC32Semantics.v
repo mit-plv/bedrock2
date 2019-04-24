@@ -16,3 +16,7 @@ Instance parameters : parameters :=
   funname_eqb := String.eqb;
   ext_spec := fun _ _ _ _ _ => False;
 |}.
+
+Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok (Naive.word 32 eq_refl) _.
+Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
+Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.

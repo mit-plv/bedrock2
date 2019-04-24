@@ -10,7 +10,7 @@ Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Machine.
 Require Import compiler.FlatToRiscvDef.
-Require Import compiler.FlatToRiscv.
+Require Import compiler.FlatToRiscvCommon.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MinimalMMIO. (* not really *)
 Require Import riscv.Utility.Words32Naive.

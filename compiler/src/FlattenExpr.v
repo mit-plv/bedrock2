@@ -29,6 +29,7 @@ Module Import FlattenExpr.
     ext_spec : trace ->
                mem -> actname -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
     NGstate: Type;
+    NG :> NameGen varname NGstate;
   }.
 
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
@@ -52,7 +53,6 @@ Module Import FlattenExpr.
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     funname_env_ok :> forall T, map.ok (funname_env T);
-    NG :> NameGen varname NGstate;
     ext_spec_ok: ext_spec.ok (mk_Semantics_params p);
   }.
   Arguments assumptions: clear implicits.
