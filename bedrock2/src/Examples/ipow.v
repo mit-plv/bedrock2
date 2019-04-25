@@ -67,11 +67,6 @@ Ltac t :=
   repeat match goal with H: absint_eq ?x ?x |- _ => clear H end;
   cbv [absint_eq] in *.
 
-
-Local Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
-Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
-Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
-
 Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
   repeat straightline.

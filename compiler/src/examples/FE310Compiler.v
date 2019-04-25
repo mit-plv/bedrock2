@@ -8,7 +8,7 @@ Require Import compiler.Pipeline.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.SortedList.
 Require coqutil.Map.SortedListString.
-Require Import riscv.Utility.Words32Naive.
+Require Import coqutil.Word.Naive riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
 Require Import coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Map.Z_keyed_SortedListMap.

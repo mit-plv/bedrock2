@@ -30,9 +30,9 @@ Definition gpio0_base := Ox"0x10012000". Definition gpio0_pastend := Ox"0x100130
 Definition uart0_base := Ox"0x10013000". Definition uart0_pastend := Ox"0x10014000".
 Definition uart0_rxdata := Ox"10013004". Definition uart0_txdata  := Ox"10013000".
 
-Local Instance parameters : parameters. refine (
-  let word := Word.Naive.word 32 eq_refl in
-  let byte := Word.Naive.word 8 eq_refl in
+Local Instance parameters : parameters :=
+  let word := Naive.word32 in
+  let byte := Naive.word8 in
   {|
   width := 32;
   syntax := syntax_parameters;
@@ -61,7 +61,7 @@ Local Instance parameters : parameters. refine (
     | _, _ =>
       False
     end%list%bool;
-  |}). Unshelve. reflexivity. Defined.
+  |}.
 
 
 
@@ -182,9 +182,9 @@ Ltac t :=
 
 (* TODO COQBUG? why does typeclass search not succeed here?
    It used to work with primitive projections on *)
-Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 32 eq_refl) (@rep 8).
+Local Instance mapok: map.ok mem := SortedListWord.ok Naive.word32 (@rep 8).
 
-Local Instance wordok: word.ok word := coqutil.Word.Naive.ok _ _.
+Local Instance wordok: word.ok word := Naive.word32_ok.
 
 Lemma swap_chars_over_uart_correct m :
   WeakestPrecondition.cmd (fun _ _ _ _ _ => False) swap_chars_over_uart nil m map.empty

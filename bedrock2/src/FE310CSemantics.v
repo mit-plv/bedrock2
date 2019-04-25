@@ -12,9 +12,9 @@ Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 Definition lan9250_readword : string := "lan9250_readword".
 
-Instance parameters : parameters. refine (
-  let word := Word.Naive.word 32 eq_refl in
-  let byte := Word.Naive.word 8 eq_refl in
+Instance parameters : parameters :=
+  let word := Naive.word32 in
+  let byte := Naive.word8 in
 
   {|
   width := 32;
@@ -47,8 +47,7 @@ Instance parameters : parameters. refine (
       /\ post m []
     |  _ => False
     end else False;
-|}). Unshelve. reflexivity.
-Defined.
+|}. 
 
 Global Instance ok trace m0 act args :
   Morphisms.Proper
@@ -63,3 +62,16 @@ Proof.
   destruct args as [|? [|? [|]]]; intuition idtac.
   all: eapply H; eauto.
 Qed.
+
+(* TODO why does typeclass search fail here? *)
+Instance mapok: Interface.map.ok mem := SortedListWord.ok Naive.word32 _.
+Instance wordok: word.ok Semantics.word := Naive.word32_ok.
+Instance byteok: word.ok Semantics.byte := Naive.word8_ok.
+Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (Properties.word.ring_morph (word := Semantics.word)),
+       constants [Properties.word_cst]).
+Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (Properties.word.ring_morph (word := Semantics.byte)),
+       constants [Properties.word_cst]).
