@@ -9,6 +9,14 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
 
+Definition main: cmd :=
+  let iot : varname := "iot" in
+  let r : varname := "r" in
+  bedrock_func_body:(
+    while (constr:(1)) {
+      unpack! r = iot(constr:(1234))
+    }
+  ).
 
 Definition iot :=
     let p_addr : varname := "p_addr" in
