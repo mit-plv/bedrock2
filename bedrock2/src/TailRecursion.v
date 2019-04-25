@@ -16,10 +16,7 @@ Section TailRecrsion.
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
 
   Definition reconstruct (variables:list varname) (values:tuple word (length variables)) : locals :=
-    match map.putmany_of_list variables (tuple.to_list values) map.empty with
-    | None => map.empty (* never happens by input types *)
-    | Some x => x
-    end.
+    map.putmany_of_tuple (tuple.of_list variables) values map.empty.
   Fixpoint gather (variables : list varname) (l : locals) : option (locals *  tuple word (length variables)) :=
     match variables with
     | nil => Some (l, tt)
@@ -33,13 +30,31 @@ Section TailRecrsion.
         end
       end
     end.
+
+  Lemma putmany_gather ks vs m me (H : gather ks m = Some (me, vs)) :
+    map.putmany_of_tuple (tuple.of_list ks) vs me = m.
+  Proof.
+    revert H; revert me; revert m; revert vs; induction ks; cbn [gather map.putmany_of_list]; intros.
+    { inversion H; subst. exact eq_refl. }
+    repeat match type of H with context[match ?x with _ => _ end] => destruct x eqn:? end;
+      repeat (match goal with H : _ |- _ => eapply IHks in H end); inversion H; subst; clear H.
+    cbn [map.putmany_of_tuple tuple.of_list length].
+    match goal with H : _ |- _ => rewrite H; clear H end.
+    assert (map.get m a = Some r -> put (remove m a) a r = m) by admit; auto.
+    all : fail "goals remaining".
+  Admitted.
+
   Definition enforce (variables : list varname) (values:tuple word (length variables)) (l:locals) : Prop :=
     match gather variables l with
     | None => False
     | Some (remaining, r) => values = r /\ remaining = map.empty
     end.
-  Lemma reconstruct_enforce : forall variables ll lm, enforce variables ll lm -> lm = reconstruct variables ll.
-  Admitted.
+  Lemma reconstruct_enforce variables ll lm (H : enforce variables ll lm) : lm = reconstruct variables ll.
+    progress cbv [enforce] in H.
+    repeat match type of H with context[match ?x with _ => _ end] => destruct x eqn:? end;
+      destruct H; subst.
+    symmetry. eapply putmany_gather. assumption.
+  Qed.
 
   Lemma hlist_forall_foralls: forall (argts : polymorphic_list.list Type) (P : hlist argts -> Prop), (forall x : hlist argts, P x) -> hlist.foralls P.
   Proof. induction argts; cbn; auto. Qed.
