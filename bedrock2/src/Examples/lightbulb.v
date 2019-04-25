@@ -117,7 +117,7 @@ Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
     (* comment on wormhole mentions < 0x400 for lan9250_readword. TODO check against manual *)
     WeakestPrecondition.call functions "recvEthernet" t m [p_addr]
       (fun t' m' rets =>
-         (* Success, we wrote 0+ bytes to the buffer *)
+       (* Success, we wrote 0+ bytes to the buffer *)
        (
          exists bytes_written:word, rets = [bytes_written]
          /\
@@ -203,10 +203,6 @@ Add Ring wring : (Properties.word.ring_theory (word := word))
 Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
 Proof.
   repeat straightline.
-
-
-  repeat straightline.
-
   cbn [args ext_spec FE310CSemantics.parameters].
   do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
   repeat straightline. split.
@@ -238,7 +234,11 @@ Proof.
                         (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) scratch * R) m /\
                         Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
                         len_words_loop = len_words)  (* precondition *)
-                    (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => True)) (* postcondition *)
+                                              (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => exists SCRATCH, LEN_WORDS = len_words /\
+                                                                                                                                        (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) SCRATCH * R) M /\
+                                                                                                                                        List.length SCRATCH = List.length scratch /\
+                                                                                                                                        LEN_WORDS = len_words
+                    )) (* postcondition *)
                     (fun n m : Z => m < n <= word.unsigned len_words) (* well_founded relation *)
                     _ _ _ _ _ _ _);
                     (* TODO wrap this into a tactic with the previous refine *)
@@ -259,13 +259,13 @@ Proof.
 
                                  SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H.
                                  { (* length of 1st n elem = n, cancel out, of_nat and to_nat cancel *)
-                                   Search List.firstn.
                                    rewrite -> List.length_firstn_inbounds.
                                    { rewrite -> Znat.Z2Nat.id.
                                      { eauto. }
                                      { apply Properties.word.unsigned_range. }}
-                                   (*  Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4))) <= Datatypes.length rx_packet *)
-                               subst c. Search Z.of_nat. admit. }
+                                   
+(*  Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4))) <= Datatypes.length rx_packet *)
+                                   subst c. Search Z.of_nat. admit. }
                                  ecancel_assumption. }
                                subst c. ring. }
 
@@ -276,46 +276,42 @@ Proof.
                         rewrite -> List.length_firstn_inbounds.
                         { 
                           rewrite -> Znat.Z2Nat.id. { reflexivity. }
-                                                    { apply Properties.word.unsigned_range. }}
-                        
-                  
-                  
-                        { repeat straightline. admit. }}}}
-                  {  repeat straightline.
-                     cbn [args ext_spec FE310CSemantics.parameters].
+                                                    { apply Properties.word.unsigned_range. }}                  
+                        {
+(* Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4))) <= Datatypes.length rx_packet *)
+                          admit. }}}}
+                  { repeat straightline.
+                    { cbn [args ext_spec FE310CSemantics.parameters].
                     do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
-                                         split; [cbv; clear; intuition congruence | intros].
+                    split; [cbv; clear; intuition congruence | intros].
                     repeat straightline.
                     eexists. split. { eapply Properties.map.split_empty_r. eauto. }
-
-                                    repeat straightline.
+                    repeat straightline.
 
                     (* store *)
                     apply Properties.word.if_nonzero in H3.
                     rewrite word.unsigned_ltu in H3.
                     rewrite Z.ltb_lt in H3.
-
-                    
                     rewrite <- (List.firstn_skipn 4 x) in H4.
-
                     SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H4.
-
                     { rewrite List.length_firstn_inbounds. { instantiate (1:= word.of_Z 4). eauto. }
-                                                           apply Znat.Nat2Z.inj_le.
+                      apply Znat.Nat2Z.inj_le.
                       repeat straightline.
-                      Search x.
-                      rewrite H5.
-                      Search x7. (* math, 4 <= 4*(Z+) *) admit. } 
+(* Z.of_nat 4 <= word.unsigned (word.mul (word.sub x7 x5) (word.of_Z 4)) *)
+                      admit. } 
                     eapply store_four_of_sep. { (* TODO Andres, reorder lemma hypos. *) seprewrite_in @scalar32_of_bytes H7. { (* word.ok byte *) admit. }
                                                                                { (* word.ok ?word320 *) admit. }
                                                                                2:{ ecancel_assumption. }
-                                                                               { repeat straightline. (* same as above, length and firstn cancel out *) rewrite -> List.firstn_length. (* H5 and H3 prove it *) admit. }}
+                                                                               { repeat straightline.
+                                                                                 rewrite -> List.length_firstn_inbounds.
+                                                                                 { reflexivity. }
+                                                                                 {
+(* 4 <= Datatypes.length x *)
+                                                                                   admit. }}}
                                               
-                                              { 
-                                                
-                                                do 6 straightline.
-                                                (* TODO straightline hangs here trying to prove TailRecursion.enforce *)    
-                      (* TODO more than 6 straightlines takes too long *)
+                                              { do 6 straightline.
+                                                (* TODO straightline hangs in TailRecursion.enforce *)
+                                                (* TODO more than 6 straightlines takes too long *)
                       
                       do 8 letexists. split. 
                       { repeat straightline. }
@@ -329,24 +325,73 @@ Proof.
                                                     (word.of_Z 4)) with (word.add x2 (word.mul c (word.of_Z 4))) in H7.
                                          { split. { repeat straightline. }
                                                   { split.
-                                                    { (* array *) admit. }
+                                                    {
+                                                      repeat straightline.
+                                                      subst c.
+                                                      replace (word.add x4 (word.mul (word.add x5 (word.of_Z 1)) (word.of_Z 4))) with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) by ring.
+                                                      ecancel_assumption. }
+                                                    
                                                     split.
-                                                    { Search c. (* arith? *) admit. }
+                                                    {
+(* Z.of_nat (Datatypes.length x17) = word.unsigned (word.mul (word.sub x7 c) (word.of_Z 4)) *)
+                                                      admit. }
                                                       { reflexivity. }}}
                                          repeat straightline.
-                                         subst c. (* math, true if x3 = x5 but don't have anything *) admit. }
+                                         subst c.
+(* math, true if x3 = x5 but don't have anything *)
+                                         admit. }
                                                 split.
-                                       { repeat straightline. subst v'. subst v4. subst c. (* arith, with H3 proving the unsigneds dont overflow. prove by converting to Zs *) admit. }
-                                         repeat straightline. }}}}}}
+                                       { repeat straightline.
+                                         subst v'. subst v4. subst c.
+(* word.unsigned x5 < word.unsigned (word.add x5 (word.of_Z 1)) <= word.unsigned x7
+   arith, with H3 proving the unsigneds dont overflow. prove by converting to Zs *)
+                                         admit. }
+                                       repeat straightline.
+                                       split.
+                                       {
+                                         subst x9.
+                                         unfold scalar32 in H8. unfold truncated_scalar in H8. unfold littleendian in H8. unfold ptsto_bytes.ptsto_bytes in H8.
+                                         subst a. subst c.
+                                         replace (word.add x4 (word.mul (word.add x5 (word.of_Z 1)) (word.of_Z 4))) with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) in H8 by ring.
+                                         SeparationLogic.seprewrite_in (@bytearray_index_merge) H8.
+                                         { reflexivity. }
+                                         { ecancel_assumption. }}
+                                 
+Search x16. Search x18.
+
+                                         (* TODO merge scalar into 4 byte array, merge back into array *)
+Search x. 
+subst SCRATCH. rewrite List.app_length. rewrite H9. subst x17. rewrite List.length_skipn.
+
+change (Datatypes.length
+    (HList.tuple.to_list
+       (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v5)))))) with (4%nat).
+(* prove len(x) >=4 *)
+
+  admit.
+                    }}}}}}
                   (* r = lenwords, TailRecursion postcondition? *)
+                    repeat straightline.
+                    split.
+                    { ecancel_assumption. }
+                    { split; reflexivity. }}
                   repeat straightline.
+                  
                   left. letexists. split.
-                  { (* x5 = bytes_written? *) admit. }
-                  letexists. split. { (* array *) admit. }
-                                    split. 2:{ repeat straightline. (* bytes_written != -1 *) admit. }
-                  { repeat straightline. (* bytes_written == |rx_packet| *) admit. }}}}}
-          repeat straightline.
-          right. split; reflexivity. }}}}
+                  { repeat straightline. exact eq_refl. }
+                  letexists. split.
+                  { subst c. replace (word.add p_addr (word.mul (word.of_Z 0) (word.of_Z 4))) with (p_addr) in H4 by ring. admit. }
+
+
+          split.
+                  {
+(* (array ptsto (word.of_Z 1) p_addr rx_packet' * array ptsto (word.of_Z 1) bytes_written rx_packet * R) m0 *)
+                    admit. }
+              
+(* word.unsigned bytes_written <> word.unsigned (word.of_Z (-1)) *)
+                    admit. }}}}
+                  repeat straightline.
+(* word.unsigned bytes_written = Z.of_nat (Datatypes.length rx_packet') *) right. split; reflexivity. }}}}
 Admitted.
 
 (* TODO into straightline? *)
