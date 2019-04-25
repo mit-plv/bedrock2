@@ -62,7 +62,7 @@ Definition recvEthernet :=
         word = (constr:(0));
         while (c < len_words) {
             io! word = lan9250_readword(constr:(0));
-            store(rx_packet + c * constr:(4), word);
+            store4(rx_packet + c * constr:(4), word);
             c = (c + constr:(1))
         };
         r = (len_words)
@@ -194,6 +194,12 @@ Proof.
 Qed.
 
 
+(* TODO add in. Used for goals involving word arithmetic *)
+Add Ring wring : (Properties.word.ring_theory (word := word))
+    (preprocess [autorewrite with rew_word_morphism],
+     morphism (Properties.word.ring_morph (word := word)),
+     constants [Properties.word_cst]).
+
 Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
 Proof.
   repeat straightline.
@@ -252,16 +258,31 @@ Proof.
                                  rewrite <- (List.firstn_skipn (Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4)))) _) in H.
 
                                  SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H.
-                                 { admit. }
-                                 ecancel_assumption. } (* math *) admit. }
+                                 { (* length of 1st n elem = n, cancel out, of_nat and to_nat cancel *)
+                                   Search List.firstn.
+                                   rewrite -> List.length_firstn_inbounds.
+                                   { rewrite -> Znat.Z2Nat.id.
+                                     { eauto. }
+                                     { apply Properties.word.unsigned_range. }}
+                                   (*  Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4))) <= Datatypes.length rx_packet *)
+                               subst c. Search Z.of_nat. admit. }
+                                 ecancel_assumption. }
+                               subst c. ring. }
 
 
                              split.
                       2:{ reflexivity. }
-                      { (* provable with lists and nats  *) admit. }}}
+                      {
+                        rewrite -> List.length_firstn_inbounds.
+                        { 
+                          rewrite -> Znat.Z2Nat.id. { reflexivity. }
+                                                    { apply Properties.word.unsigned_range. }}
+                        
                   
                   
-                  { repeat straightline. cbn [args ext_spec FE310CSemantics.parameters].
+                        { repeat straightline. admit. }}}}
+                  {  repeat straightline.
+                     cbn [args ext_spec FE310CSemantics.parameters].
                     do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
                                          split; [cbv; clear; intuition congruence | intros].
                     repeat straightline.
@@ -285,7 +306,10 @@ Proof.
                       Search x.
                       rewrite H5.
                       Search x7. (* math, 4 <= 4*(Z+) *) admit. } 
-                    eapply store_word_of_sep. { (* array? *) admit. }
+                    eapply store_four_of_sep. { (* TODO Andres, reorder lemma hypos. *) seprewrite_in @scalar32_of_bytes H7. { (* word.ok byte *) admit. }
+                                                                               { (* word.ok ?word320 *) admit. }
+                                                                               2:{ ecancel_assumption. }
+                                                                               { repeat straightline. (* same as above, length and firstn cancel out *) rewrite -> List.firstn_length. (* H5 and H3 prove it *) admit. }}
                                               
                                               { 
                                                 
@@ -305,14 +329,14 @@ Proof.
                                                     (word.of_Z 4)) with (word.add x2 (word.mul c (word.of_Z 4))) in H7.
                                          { split. { repeat straightline. }
                                                   { split.
-                                                    { ecancel_assumption. }
-                                                    { split. {
-                                                        subst c. (* math? *) admit. }
-                                                      { reflexivity. }}}}
+                                                    { (* array *) admit. }
+                                                    split.
+                                                    { Search c. (* arith? *) admit. }
+                                                      { reflexivity. }}}
                                          repeat straightline.
                                          subst c. (* math, true if x3 = x5 but don't have anything *) admit. }
                                                 split.
-                                       { repeat straightline. subst v'. subst v4. subst c. (* math, with H3 *) admit. }
+                                       { repeat straightline. subst v'. subst v4. subst c. (* arith, with H3 proving the unsigneds dont overflow. prove by converting to Zs *) admit. }
                                          repeat straightline. }}}}}}
                   (* r = lenwords, TailRecursion postcondition? *)
                   repeat straightline.
