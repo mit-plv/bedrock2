@@ -1064,6 +1064,74 @@ Section Proofs.
            end.
     subst.
 
+    (* load result values from stack *)
+    eapply runsTo_trans. {
+      eapply load_regs_correct with
+          (vars := binds) (values := retvs)
+          (offset := (- bytes_per_word * Z.of_nat (length args + length binds))%Z)
+          (p_sp := p_stacklimit + !bytes_per_word * !#(Datatypes.length remaining_stack) +
+                   !bytes_per_word * !FL);
+        simpl; cycle -2; try assumption.
+      - wseplog_pre word_ok.
+        wcancel.
+        wcancel_step. {
+          subst FL.
+          (* PARAMRECORDS *)
+          change (@Syntax.varname (mk_Syntax_params (@def_params p))) with Z in *.
+          replace (Datatypes.length binds) with (Datatypes.length retnames); cycle 1. {
+            repeat match goal with
+            | H: _ |- _ => let N := fresh in pose proof H as N;
+                                               apply map.putmany_of_list_sameLength in N;
+                                               symmetry in N;
+                                               ensure_new N
+            end.
+            repeat match goal with
+            | H: _ |- _ => let N := fresh in pose proof H as N;
+                                               apply map.getmany_of_list_length in N;
+                                               ensure_new N
+            end.
+            simpl_addrs.
+            reflexivity.
+          }
+          simpl_addrs.
+          solve_word_eq word_ok.
+        }
+        ecancel_done'.
+      - reflexivity.
+      - replace valid_FlatImp_var with valid_register by admit.
+        assumption.
+      - admit. (* NoDup *)
+      - admit. (* offset stuff *)
+      - solve_divisibleBy4.
+      - subst FL.
+        simpl_addrs.
+        rewrite map.get_put_same. reflexivity.
+      - repeat match goal with
+               | H: _ |- _ => let N := fresh in pose proof H as N;
+                                                  apply map.putmany_of_list_sameLength in N;
+                                                  symmetry in N;
+                                                  ensure_new N
+               end.
+        repeat match goal with
+               | H: _ |- _ => let N := fresh in pose proof H as N;
+                                                  apply map.getmany_of_list_length in N;
+                                                  ensure_new N
+               end.
+        simpl_addrs.
+        reflexivity.
+    }
+
+    simpl.
+    cbn [getRegs getPc getNextPc getMem getLog getMachine].
+    repeat match goal with
+           | H: (_ * _)%sep _ |- _ => clear H
+           end.
+    intros. simp.
+    repeat match goal with
+           | m: _ |- _ => destruct_RiscvMachine m
+           end.
+    subst.
+
     (* computed postcondition satisfies required postcondition: *)
     apply runsToDone.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
@@ -1074,11 +1142,15 @@ Section Proofs.
     evar (new_remaining_stack: list word).
     exists (new_remaining_stack ++ newvalues ++ [new_ra] ++ new_retvals ++ new_argvals).
     repeat split.
-    + replace mid_log0 with middle_log1 by admit. (* TODO investigate! *)
+    + replace middle_log3 with middle_log1 by admit. (* TODO investigate! *)
       eassumption.
     + (* TODO chain of extends *)
       admit.
-    + rewrite map.get_put_same. f_equal.
+    + match goal with
+      | H: map.only_differ ?m1 _ ?m2 |- map.get ?m2 _ = Some _ =>
+        replace m2 with m1 by admit (* TODO almost *)
+      end.
+      rewrite map.get_put_same. f_equal.
       simpl_addrs.
       solve_word_eq word_ok.
     + admit. (* TODO lengths of old/new stack contents *)
@@ -1123,13 +1195,28 @@ Section Proofs.
         simpl_addrs. reflexivity.
       }
       wcancel_step. {
-        simpl_addrs. reflexivity.
+        simpl_addrs. solve_word_eq word_ok.
       }
       subst new_remaining_stack.
       wcancel_step.
       instantiate (new_argvals := argvs). subst new_argvals.
       instantiate (new_retvals := retvs). subst new_retvals.
       wcancel_step. {
+        subst FL.
+        replace (Datatypes.length retnames) with (Datatypes.length binds); cycle 1. {
+          repeat match goal with
+                 | H: _ |- _ => let N := fresh in pose proof H as N;
+                                                    apply map.putmany_of_list_sameLength in N;
+                                                    ensure_new N
+                 end.
+          repeat match goal with
+                 | H: _ |- _ => let N := fresh in pose proof H as N;
+                                                    apply map.getmany_of_list_length in N;
+                                                    ensure_new N
+                 end.
+          simpl_addrs.
+          reflexivity.
+        }
         simpl_addrs.
         solve_word_eq word_ok.
       }
@@ -1206,14 +1293,8 @@ Section Proofs.
     + simpl_addrs.
       rewrite !length_load_regs.
       rewrite !length_save_regs.
-      (* the postcondition
-
-          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-
-        does not hold,
-        because we tried to claim that we're done too early:
-        We have not yet stepped through the code which loads the results from the stack, TODO! *)
-      admit.
+      simpl_addrs.
+      solve_word_eq word_ok.
     + match goal with
       | H: ext_guarantee {| getMetrics := initialL_metrics |} |- _ => clear H
       end.
