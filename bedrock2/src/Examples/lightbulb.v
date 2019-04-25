@@ -129,7 +129,7 @@ Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
        (
          exists bytes_written:word, rets = [bytes_written]
          /\
-         exists rx_packet', (array scalar8 (word.of_Z 1) p_addr rx_packet' * 
+         exists rx_packet', (array scalar8 (word.of_Z 1) p_addr rx_packet' *
                              array scalar8 (word.of_Z 1) bytes_written rx_packet *
                              R) m'
          /\
@@ -220,11 +220,11 @@ Proof.
         { split.
           { repeat straightline. do 2 eexists. split.
             { eapply Properties.map.split_empty_r. reflexivity. }
-            { cbn [args ext_spec FE310CSemantics.parameters]. split. 
+            { cbn [args ext_spec FE310CSemantics.parameters]. split.
               { repeat straightline. cbv. split. { discriminate. } trivial. }
               { repeat straightline. letexists. split.
                 { eapply Properties.map.split_empty_r. repeat straightline. }
-                { repeat straightline. 
+                { repeat straightline.
                   letexists; split; repeat straightline; split; [|repeat straightline; eauto].
                   repeat straightline.
 
@@ -232,7 +232,7 @@ Proof.
                   refine (TailRecursion.tailrec
                     (* types of ghost variables*) HList.polymorphic_list.nil
                     (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
-                    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
+                    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word =>
                         PrimitivePair.pair.mk (v = word.unsigned c /\
                         exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) )  scratch * R) m /\
                         Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
@@ -271,19 +271,19 @@ Require Import coqutil.Macros.symmetry.
   apply Znat.Nat2Z.inj_le.
   rewrite H8. revert H6. admit. }
 
-  eapply store_word_of_sep. { 
+  eapply store_word_of_sep. {
     revert H10. unfold scalar. unfold truncated_scalar. unfold littleendian. unfold ptsto_bytes.ptsto_bytes. admit. (* this needs to be proven to fill in H7, scratch *)}
-  { 
-  
+  {
+
   do 6 straightline.
   (* TODO more than 6 straightlines takes too long *)
     Import Markers.hide.
-    do 8 letexists. split. 
+    do 8 letexists. split.
     { repeat straightline. }
     { letexists. split.
     { split. { repeat straightline. }
-             { letexists. 
-               { repeat straightline. letexists. 
+             { letexists.
+               { repeat straightline. letexists.
                  { split. {
   replace (word.add
              (word.add x2 (word.mul x3 (word.of_Z 4)))
@@ -308,7 +308,7 @@ Admitted.
   refine (TailRecursion.tailrec
     (* types of ghost variables*) HList.polymorphic_list.nil
     (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
-    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
+    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word =>
         PrimitivePair.pair.mk (v = word.unsigned c /\
         exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) )  scratch * R) m /\
         Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
@@ -353,7 +353,7 @@ Admitted.
   refine (TailRecursion.tailrec
     (* types of ghost variables*) HList.polymorphic_list.nil
     (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
-    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
+    (fun v t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word =>
         PrimitivePair.pair.mk (v = word.unsigned c /\
         exists scratch R, (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) )  scratch * R) m /\
         Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
@@ -392,20 +392,20 @@ Require Import coqutil.Macros.symmetry.
   apply Znat.Nat2Z.inj_le.
   rewrite H8. revert H6. admit. }
 
-  eapply store_word_of_sep. { 
+  eapply store_word_of_sep. {
     revert H10. unfold scalar. unfold truncated_scalar. unfold littleendian. unfold ptsto_bytes.ptsto_bytes. admit. (* this needs to be proven to fill in H7, scratch *)}
-  { 
-  
+  {
+
   do 6 straightline.
   (* TODO more than 6 straightlines takes too long *)
 
     Import Markers.hide.
-    do 8 letexists. split. 
+    do 8 letexists. split.
     { repeat straightline. }
     { letexists. split.
     { split. { repeat straightline. }
-             { letexists. 
-               { repeat straightline. letexists. 
+             { letexists.
+               { repeat straightline. letexists.
                  { split. {
   replace (word.add
              (word.add x2 (word.mul x3 (word.of_Z 4)))
@@ -444,7 +444,7 @@ Proof.
   letexists; split; repeat straightline; split; [|repeat straightline; eauto].
   repeat straightline.
 
-  
+
   letexists; split; repeat straightline; [|repeat straightline; eauto].
   { letexists; split; repeat straightline; [|repeat straightline; eauto].
     { admit. }
