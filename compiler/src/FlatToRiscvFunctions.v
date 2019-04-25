@@ -195,14 +195,7 @@ Section Proofs.
       rewrite IH. reflexivity.
   Qed.
 
-  Ltac wseplog_pre OK :=
-    use_sep_assumption;
-    autounfold with unf_to_array;
-    unfold program, word_array;
-    repeat match goal with
-           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             rewrite (array_append_DEPRECATED PT SZ xs ys start)
-           end;
+  Ltac simpl_addrs :=
     repeat (
         rewrite !List.app_length ||
         simpl ||
@@ -223,6 +216,15 @@ Section Proofs.
              progress rewrite E
            end.
 
+  Ltac wseplog_pre OK :=
+    use_sep_assumption;
+    autounfold with unf_to_array;
+    unfold program, word_array;
+    repeat match goal with
+           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             rewrite (array_append_DEPRECATED PT SZ xs ys start)
+           end;
+    simpl_addrs.
 
   Set Printing Depth 100000.
 
@@ -303,7 +305,7 @@ Section Proofs.
   (* TODO make sure it's compatible with users of it *)
   Axiom compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
         action postH newPc insts (argvars resvars: list Register) initialMH R initialRegsH
-        initialMetricsH argvals mGive outcome p_sp p_ra,
+        initialMetricsH argvals mGive outcome p_sp,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
       map.extends initialL.(getRegs) initialRegsH ->
@@ -312,7 +314,6 @@ Section Proofs.
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
-      map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
       ext_guarantee initialL ->
       (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
       map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
@@ -329,7 +330,6 @@ Section Proofs.
                 exists (finalRegsH: locals) finalMetricsH,
                   map.extends finalL.(getRegs) finalRegsH /\
                   map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
-                  map.get finalL.(getRegs) RegisterNames.ra = Some p_ra /\
                   (* external calls can't modify the memory for now *)
                   postH finalL.(getLog) initialMH finalRegsH finalMetricsH /\
                   finalL.(getPc) = newPc /\
@@ -356,7 +356,7 @@ Section Proofs.
         valid_registers body /\
         List.In f funnames /\
         exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0) ->
-    forall (R: mem -> Prop) (initialL: RiscvMachineL) insts p_sp p_ra (old_stackvals: list word) pos,
+    forall (R: mem -> Prop) (initialL: RiscvMachineL) insts p_sp (old_stackvals: list word) pos,
     @compile_stmt_new def_params _ e_pos pos s = insts ->
     stmt_not_too_big s ->
     valid_registers s ->
@@ -365,7 +365,6 @@ Section Proofs.
     divisibleBy4 program_base ->
     map.extends initialL.(getRegs) initialRegsH ->
     map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
-    map.get initialL.(getRegs) RegisterNames.ra = Some p_ra ->
     (forall r, 0 < r < 32 -> exists v, map.get initialL.(getRegs) r = Some v) ->
     fits_stack (Z.of_nat (List.length old_stackvals)) e_impl_reduced s ->
     p_sp = word.add p_stacklimit
@@ -382,7 +381,6 @@ Section Proofs.
           postH finalL.(getLog) finalMH finalRegsH finalMetricsH /\
           map.extends finalL.(getRegs) finalRegsH /\
           map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
-          map.get finalL.(getRegs) RegisterNames.ra = Some p_ra /\
           List.length final_stackvals = List.length old_stackvals /\
           (R * eq finalMH *
            word_array p_stacklimit final_stackvals *
@@ -745,7 +743,7 @@ Section Proofs.
 
     (* execute function body *)
     eapply runsTo_trans. {
-      eapply IHexec with (funnames := (remove funname_eq_dec fname funnames)) (p_ra := p_ra);
+      eapply IHexec with (funnames := (remove funname_eq_dec fname funnames));
         simpl; try assumption.
       - eassumption.
       - (* Note: we'd have to shrink e_impl in FlatImp.exec if we want to shrink it in
@@ -763,7 +761,6 @@ Section Proofs.
         rewrite word.unsigned_sub. unfold word.wrap.
         divisibleBy4_pre.
         auto 25 with mod4_0_hints.
-      - (* map_solver with middle_regs and middle_regs0 *) admit.
       - (* map_solver with middle_regs and middle_regs0 *) admit.
       - (* map_solver with middle_regs and middle_regs0 *) admit.
       - (* map_solver with middle_regs and middle_regs0 *) admit.
@@ -1029,24 +1026,6 @@ Section Proofs.
            end.
     subst.
 
-Ltac divisibleBy4_pre ::=
-  lazymatch goal with
-  | |- ?G => assert_fails (has_evar G)
-  end;
-  unfold divisibleBy4 in *;
-  lazymatch goal with
-  | |- _ mod 4 = 0 => idtac
-  | |- _ => fail "not a divisibleBy4 goal"
-  end;
-  repeat match goal with
-         | H: _ mod 4 = 0 |- _ => revert H
-         end;
-  clear;
-  repeat match goal with
-         | |- _ mod 4 = 0 -> _ => intro
-         end;
-  repeat (rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z || unfold word.wrap).
-
     (* jump back to caller *)
     eapply runsToStep. {
       eapply run_Jalr0; simpl;
@@ -1088,44 +1067,165 @@ Ltac divisibleBy4_pre ::=
     (* computed postcondition satisfies required postcondition: *)
     apply runsToDone.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
-    do 4 eexists. repeat split.
+    do 3 eexists.
+    epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
+    evar (new_retvals: list word).
+    evar (new_argvals: list word).
+    evar (new_remaining_stack: list word).
+    exists (new_remaining_stack ++ newvalues ++ [new_ra] ++ new_retvals ++ new_argvals).
+    repeat split.
     + replace mid_log0 with middle_log1 by admit. (* TODO investigate! *)
       eassumption.
     + (* TODO chain of extends *)
       admit.
     + rewrite map.get_put_same. f_equal.
-
-(* TODO share with wseplog_pre *)
-Ltac simpl_addrs :=
-    repeat (
-        rewrite !List.app_length ||
-        simpl ||
-        rewrite !Nat2Z.inj_add ||
-        rewrite !Zlength_correct ||
-        rewrite !Nat2Z.inj_succ ||
-        rewrite <-! Z.add_1_r ||
-        autorewrite with rew_word_morphism);
-    unfold Register, MachineInt in *;
-    (* note: it's the user's responsability to ensure that left-to-right rewriting with all
-     nat and Z equations terminates, otherwise we'll loop infinitely here *)
-    repeat match goal with
-           | E: @eq ?T _ _ |- _ =>
-             lazymatch T with
-             | Z => idtac
-             | nat => idtac
-             end;
-             progress rewrite E
-           end.
-
       simpl_addrs.
       solve_word_eq word_ok.
-    + rewrite map.get_put_diff by (clear; cbv; congruence).
-      rewrite map.get_put_same.
-      (* TODO who saves the ra/what's the contract? *)
+    + admit. (* TODO lengths of old/new stack contents *)
+    + assert (Datatypes.length (modVars_as_list body) = Datatypes.length newvalues). {
+        eapply map.getmany_of_list_length. eassumption.
+      }
 
+      (* PARAMRECORDS *)
+      change Syntax.varname with Register in *.
+      repeat match goal with
+             | H: _ = List.length ?M |- _ =>
+               lazymatch M with
+               | @modVars_as_list ?params ?eqd ?s =>
+                 so fun hyporgoal => match hyporgoal with
+                                     | context [?M'] =>
+                                       lazymatch M' with
+                                       | @modVars_as_list ?params' ?eqd' ?s =>
+                                         assert_fails (constr_eq M M');
+                                           change M' with M in *;
+                                           idtac M' "--->" M
+                                       end
+                                     end
+               end
+             end.
 
-    (* TODO *)
+      wseplog_pre word_ok.
+      rewrite !@length_save_regs in *.
+      wcancel.
+      wcancel_step. {
+        replace (Datatypes.length remaining_stack) with (Datatypes.length x2) by congruence.
+        subst new_remaining_stack.
+        solve_word_eq word_ok.
+      }
+      wcancel_step. {
+        subst new_remaining_stack.
+        simpl_addrs. reflexivity.
+      }
+      {
+        subst new_ra. reflexivity.
+      }
+      wcancel_step. {
+        simpl_addrs. reflexivity.
+      }
+      wcancel_step. {
+        simpl_addrs. reflexivity.
+      }
+      subst new_remaining_stack.
+      wcancel_step.
+      instantiate (new_argvals := argvs). subst new_argvals.
+      instantiate (new_retvals := retvs). subst new_retvals.
+      wcancel_step. {
+        simpl_addrs.
+        solve_word_eq word_ok.
+      }
+      replace (Datatypes.length retvs) with (Datatypes.length retnames); cycle 1. {
+        eapply map.getmany_of_list_length. eassumption.
+      }
+      wcancel_step. {
+        simpl_addrs.
+        solve_word_eq word_ok.
+      }
+      pose proof functions_expose as P.
+      match goal with
+      | H: map.get e_impl_full _ = Some _ |- _ => specialize P with (2 := H)
+      end.
+      specialize P with (1 := GetPos).
+      specialize (P program_base funnames).
+      setoid_rewrite P. clear P. cbn [seps].
+      wcancel.
+      cancel_seps_at_indices 10%nat 0%nat. {
+        reflexivity.
+      }
+      unfold program, compile_function.
+      cbn [seps].
+      repeat match goal with
+             | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+               rewrite (array_append_DEPRECATED PT SZ xs ys start)
+             end.
+      simpl_addrs.
+      rewrite! length_save_regs.
+      rewrite! length_load_regs.
+      wcancel.
+      wcancel_step. {
+        simpl_addrs.
+        solve_word_eq word_ok.
+      }
+      repeat (wcancel_step; [
+        match goal with
+        | |- ?LHS = ?RHS =>
+          match LHS with
+          | context [List.length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
+            match RHS with
+            | context [List.length (compile_stmt_new ?epos2 ?pos2 s)] =>
+              replace (List.length (compile_stmt_new epos1 pos1 s))
+                with (List.length (compile_stmt_new epos2 pos2 s))
+                by apply compile_stmt_length_position_indep
+            end
+          end
+        end;
+        unfold fun_pos_env; (* <- PARAMRECORDS-related *)
+        simpl_addrs;
+        solve_word_eq word_ok
+              | ]).
+      cbn [seps].
+      match goal with
+      | |- iff1 ?LHS ?RHS => replace LHS with RHS; [ecancel_done'|]
+      end.
+      f_equal.
+      {
+        simpl_addrs.
+        solve_word_eq word_ok.
+      }
+      {
+        assert (forall e_pos pos s, compile_stmt_new e_pos pos s =
+                                    compile_stmt_new e_pos (word.wrap (ok := word_ok) pos) s) as
+            compile_stmt_new_wrap_pos. {
+          admit.
+        }
+        rewrite compile_stmt_new_wrap_pos. rewrite <- word.unsigned_of_Z.
+        f_equal.
+        autorewrite with rew_word_morphism.
+        f_equal.
+        ring.
+      }
+    + simpl_addrs.
+      rewrite !length_load_regs.
+      rewrite !length_save_regs.
+      (* the postcondition
 
+          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
+
+        does not hold,
+        because we tried to claim that we're done too early:
+        We have not yet stepped through the code which loads the results from the stack, TODO! *)
+      admit.
+    + match goal with
+      | H: ext_guarantee {| getMetrics := initialL_metrics |} |- _ => clear H
+      end.
+      match goal with
+      | H: ext_guarantee _ |- _ => move H at bottom
+      end.
+      eapply ext_guarantee_preservable.
+      * eassumption.
+      * simpl. (* TODO memory same domain *) admit.
+      * simpl. (* TODO log equality?? *) admit.
+
+    - (* SLoad *)
 
 
   Abort.
