@@ -276,12 +276,12 @@ Ltac reify_goal :=
     let LHS := reify LHS in
     let RHS := reify RHS in
     change (Lift1Prop.iff1 (Tree.to_sep LHS) (Tree.to_sep RHS));
-    apply Tree.iff1_to_sep_of_iff1_flatten
+    eapply Tree.iff1_to_sep_of_iff1_flatten
   | |- Lift1Prop.impl1 ?LHS ?RHS =>
     let LHS := reify LHS in
     let RHS := reify RHS in
     change (Lift1Prop.impl1 (Tree.to_sep LHS) (Tree.to_sep RHS));
-    apply Tree.impl1_to_sep_of_impl1_flatten
+    eapply Tree.impl1_to_sep_of_impl1_flatten
   end;
   cbn [Tree.flatten Tree.interp app].
 
