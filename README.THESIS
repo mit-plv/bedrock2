@@ -1,5 +1,0 @@
-
-# On coq, master branch
-coqide -Q /Users/a/Thesis-Workspace/bedrock2-new/bedrock2/bedrock2/src bedrock2 -Q /Users/a/Thesis-Workspace/bedrock2-new/bedrock2/deps/coqutil/src coqutil
-
-
