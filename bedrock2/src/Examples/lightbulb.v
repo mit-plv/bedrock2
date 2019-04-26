@@ -14,6 +14,53 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
 
+(* TODO: refactor *)
+Lemma word__unsigned_of_Z_nowrap x : 0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
+Proof.
+  intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
+Qed.
+Ltac seplog_use_array_load1 H i :=
+  let iNat := eval cbv in (Z.to_nat i) in
+  let H0 := fresh in pose proof H as H0;
+  unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H0;
+    [exact iNat|exact (word.of_Z 0)|blia|];
+  change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
+Ltac trans_ltu :=
+          match goal with
+          H : word.unsigned ?v <> 0 |- _ =>
+          let v := rdelta.rdelta v in
+          let __ := lazymatch v with if word.ltu _ _ then word.of_Z 1 else word.of_Z 0 => I end in
+          eapply Properties.word.if_nonzero in H; rewrite word.unsigned_ltu in H; eapply Z.ltb_lt in H end.
+Ltac straightline_if :=
+  lazymatch goal with
+  |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
+        let c := eval hnf in c in
+        lazymatch c with
+        | cmd.cond _ _ _ => letexists; split; [|split]
+        end
+  end.
+Lemma interact_nomem call action binds arges t m l post
+  args (Hargs : dexprs m l arges args)
+  (Hext : ext_spec t map.empty binds args (fun mReceive (rets : list word) =>
+    mReceive = map.empty /\
+    exists l0 : locals, map.putmany_of_list action rets l = Some l0 /\
+    post ((map.empty, binds, args, (map.empty, rets)) :: t) m l0))
+  : WeakestPrecondition.cmd call (cmd.interact action binds arges) t m l post.
+Proof.
+  repeat straightline.
+  exists args; split; [exact Hargs|].
+  exists m.
+  exists map.empty.
+  split; [eapply Properties.map.split_empty_r; exact eq_refl|].
+  eapply ok; [|eapply Hext]; intros ? ? [? [? []]]; subst.
+  eexists; split; [eassumption|].
+  Print WeakestPrecondition.cmd_body.
+  eexists; split; [eapply Properties.map.split_empty_r; exact eq_refl|].
+  assumption.
+Qed.
+
+
+
 Definition main: cmd :=
   let iot : varname := "iot" in
   let r : varname := "r" in
@@ -149,257 +196,112 @@ Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions =>
     WeakestPrecondition.call functions "lightbulb" t m [p_addr; len]
       (fun t' m' rets => exists v, rets = [v] /\ m' = m).
 
-Lemma word__unsigned_of_Z_nowrap x : 0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
-Proof.
-  intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
-Qed.
-
-Ltac seplog_use_array_load1 H i :=
-  let iNat := eval cbv in (Z.to_nat i) in
-  let H0 := fresh in pose proof H as H0;
-  unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H0;
-    [exact iNat|exact (word.of_Z 0)|blia|];
-  change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
 
 Lemma iot_ok : program_logic_goal_for_function! iot.
 Proof.
-  repeat straightline.
-
-  (* from Print Ltac straightline_call. *)
-  (* recvEthernet call *)
-  eapply WeakestPreconditionProperties.Proper_call; cycle -1;
-         [ eapply H | try eabstract solve [ Morphisms.solve_proper ].. ];
-         [ .. | intros ? ? ? ? ].
-  { ecancel_assumption. }
-  { Lia.lia. }
-  repeat straightline. destruct H3.
-    { repeat straightline. letexists. split.
-      { repeat straightline. }
-      { split.
-        { repeat straightline.
-          (* lightbulb call *)
-          eapply WeakestPreconditionProperties.Proper_call; cycle -1;
-           [ eapply H0 | try eabstract solve [ Morphisms.solve_proper ].. ];
-           [ .. | intros ? ? ? ? ].
-          { repeat straightline. ecancel_assumption. } (* separation logic *)
-          { repeat straightline. trivial. }
-          { repeat straightline. eauto. }}
-          repeat straightline. eauto. }}
-          repeat straightline.
-          (* cmd is an if statement *)
-          letexists; split; repeat straightline; split; [|repeat straightline; eauto].
-          repeat straightline.
-          eapply WeakestPreconditionProperties.Proper_call; cycle -1;
-           [ eapply H0 | try eabstract solve [ Morphisms.solve_proper ].. ];
-           [ .. | intros ? ? ? ? ].
-          { repeat straightline. ecancel_assumption. }
-          { repeat straightline. contradiction. }
-          { repeat straightline. eauto. }
+  repeat (straightline || straightline_call || ecancel_assumption).
+  { blia. }
+  match goal with H : or _ _ |- _ => destruct H end;
+  repeat (straightline || straightline_call || straightline_if || ecancel_assumption || eauto).
+  match goal with H : _ |- _ => case (H eq_refl) end.
 Qed.
+
+Ltac prove_ext_spec :=
+  lazymatch goal with
+  | |- ext_spec _ _ _ _ _ => split; [cbv; clear; firstorder congruence|]; split; [trivial|]
+  end.
 
 Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
 Proof.
-  repeat straightline.
-  cbn [args ext_spec FE310CSemantics.parameters].
-  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
-  repeat straightline. split.
-  { repeat straightline. cbv. split. (* for inequalities like Ox "0" <= word.unsigned (word.of_Z 124) < Ox "400" *)
-    { discriminate. } trivial. }
-  { repeat straightline. letexists. split.
-    { eapply Properties.map.split_empty_r. repeat straightline. }
-    { letexists. repeat straightline. split.
+  repeat (straightline || straightline_if || eapply interact_nomem || eauto 99 || prove_ext_spec).
+  refine (TailRecursion.tailrec
+    (* types of ghost variables *) (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
+    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
+    (fun v scratch R t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
+      PrimitivePair.pair.mk (v = word.unsigned c /\
+      (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) scratch * R) m /\
+      Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
+      len_words_loop = len_words)  (* precondition *)
+      (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => exists SCRATCH, LEN_WORDS = len_words /\
+        (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) SCRATCH * R) M /\
+        List.length SCRATCH = List.length scratch /\
+        LEN_WORDS = len_words)) (* postcondition *)
+    (fun n m : Z => m < n <= word.unsigned len_words) (* well_founded relation *)
+    _ _ _ _ _ _ _);
+  (* TODO wrap this into a tactic with the previous refine? *)
+  cbn [HList.hlist.foralls HList.tuple.foralls
+       HList.hlist.existss HList.tuple.existss
+       HList.hlist.apply  HList.tuple.apply
+       HList.hlist
+       List.repeat Datatypes.length
+       HList.polymorphic_list.repeat HList.polymorphic_list.length
+       PrimitivePair.pair._1 PrimitivePair.pair._2] in *;
+  repeat (straightline || straightline_if || eapply interact_nomem || eauto 99).
+  { exact (Z.gt_wf _). }
+  { repeat (refine (conj _ _)); eauto.
+    { replace (word.add p_addr (word.mul c (word.of_Z 4))) with p_addr by (subst c; ring).
+      rewrite <- (List.firstn_skipn (Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4)))) _) in H.
+      SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H; [|ecancel_assumption].
+      rewrite List.length_firstn_inbounds, Znat.Z2Nat.id; trivial.
+      { eapply Properties.word.unsigned_range. }
+      trans_ltu.
+      eapply Znat.Nat2Z.inj_le.
+      etransitivity; [|eassumption].
+      replace (word.sub len_words c) with len_words by (subst c; ring).
+      rewrite -> Znat.Z2Nat.id by (eapply Properties.word.unsigned_range).
+      (* TODO(cl-wood): this goal is false, I think there is a bug in the code *)
+      admit. }
+    {  rewrite -> List.length_firstn_inbounds.
+       2: admit. (* NOTE: probably same deal as previous admit *)
+       rewrite Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. } }
+    { prove_ext_spec.
+      repeat (straightline || straightline_if).
+      do 2 trans_ltu.
+      (* store *)
+      rewrite <- (List.firstn_skipn 4 x) in H4.
+      SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H4.
+      { rewrite List.length_firstn_inbounds.
+        { instantiate (1:= word.of_Z 4). eauto. }
+        apply Znat.Nat2Z.inj_le.
+        admit. } 
+      eapply store_four_of_sep.
+      { seprewrite_in @scalar32_of_bytes H7; [..|ecancel_assumption].
+        { exact _. }
+        { eapply List.length_firstn_inbounds. admit. } }
+      do 5 straightline.
+      (* TODO straightline hangs in TailRecursion.enforce *)
+      do 8 letexists. split. 
       { repeat straightline. }
-      { repeat straightline. letexists. split.
-        { repeat straightline. }
-        { split.
-          { repeat straightline. do 2 eexists. split.
-            { eapply Properties.map.split_empty_r. reflexivity. }
-            { cbn [args ext_spec FE310CSemantics.parameters]. split.
-              { repeat straightline. cbv. split. { discriminate. } trivial. }
-              { repeat straightline. letexists. split.
-                { eapply Properties.map.split_empty_r. repeat straightline. }
-                { repeat straightline.
-                  letexists; split; repeat straightline; split; [|repeat straightline; eauto].
-                  repeat straightline.
-
-                  (* while loop *)
-                  refine (TailRecursion.tailrec
-                    (* types of ghost variables *) (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
-                    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
-                    (fun v scratch R t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
-                        PrimitivePair.pair.mk (v = word.unsigned c /\
-                        (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) scratch * R) m /\
-                        Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
-                        len_words_loop = len_words)  (* precondition *)
-                                              (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => exists SCRATCH, LEN_WORDS = len_words /\
-                                                                                                                                        (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) SCRATCH * R) M /\
-                                                                                                                                        List.length SCRATCH = List.length scratch /\
-                                                                                                                                        LEN_WORDS = len_words
-                    )) (* postcondition *)
-                    (fun n m : Z => m < n <= word.unsigned len_words) (* well_founded relation *)
-                    _ _ _ _ _ _ _);
-                    (* TODO wrap this into a tactic with the previous refine *)
-                    cbn [HList.hlist.foralls HList.tuple.foralls
-                         HList.hlist.existss HList.tuple.existss
-                         HList.hlist.apply  HList.tuple.apply
-                         HList.hlist
-                         List.repeat Datatypes.length
-                         HList.polymorphic_list.repeat HList.polymorphic_list.length
-                         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
-                  { repeat straightline. }
-                  { exact (Z.gt_wf _). }
-                  { repeat straightline. split.
-                    { eauto. }
-                    { split. { replace (word.add p_addr (word.mul c (word.of_Z 4))) with p_addr. {
-                                 rewrite <- (List.firstn_skipn (Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4)))) _) in H.
-
-                                 SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H.
-                                 { (* length of 1st n elem = n, cancel out, of_nat and to_nat cancel *)
-                                   rewrite -> List.length_firstn_inbounds.
-                                   { rewrite -> Znat.Z2Nat.id.
-                                     { eauto. }
-                                     { apply Properties.word.unsigned_range. }}
-                                   
-(*  Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4))) <= Datatypes.length rx_packet *)
-                                   subst c. Search Z.of_nat. admit. }
-                                 ecancel_assumption. }
-                               subst c. ring. }
-
-
-                             split.
-                      2:{ reflexivity. }
-                      {
-                        rewrite -> List.length_firstn_inbounds.
-                        { 
-                          rewrite -> Znat.Z2Nat.id. { reflexivity. }
-                                                    { apply Properties.word.unsigned_range. }}                  
-                        {
-(* Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4))) <= Datatypes.length rx_packet *)
-                          admit. }}}}
-                  { repeat straightline.
-                    { cbn [args ext_spec FE310CSemantics.parameters].
-                    do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
-                    split; [cbv; clear; intuition congruence | intros].
-                    repeat straightline.
-                    eexists. split. { eapply Properties.map.split_empty_r. eauto. }
-                    repeat straightline.
-
-                    (* store *)
-                    apply Properties.word.if_nonzero in H3.
-                    rewrite word.unsigned_ltu in H3.
-                    rewrite Z.ltb_lt in H3.
-                    rewrite <- (List.firstn_skipn 4 x) in H4.
-                    SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H4.
-                    { rewrite List.length_firstn_inbounds. { instantiate (1:= word.of_Z 4). eauto. }
-                      apply Znat.Nat2Z.inj_le.
-                      repeat straightline.
-(* Z.of_nat 4 <= word.unsigned (word.mul (word.sub x7 x5) (word.of_Z 4)) *)
-                      admit. } 
-                    eapply store_four_of_sep. { (* TODO Andres, reorder lemma hypos. *) seprewrite_in @scalar32_of_bytes H7. { (* word.ok byte *) admit. }
-  { eapply List.length_firstn_inbounds. admit. }
-  { ecancel_assumption. } }
-                                              
-                                              { do 6 straightline.
-                                                (* TODO straightline hangs in TailRecursion.enforce *)
-                                                (* TODO more than 6 straightlines takes too long *)
-                      
-                      do 8 letexists. split. 
-                      { repeat straightline. }
-                      { letexists. 
-                        {  repeat straightline.
-                           letexists. 
-                                   { repeat straightline. letexists. 
-                                     { split. {
-                                         replace (word.add
-                                                    (word.add x2 (word.mul x3 (word.of_Z 4)))
-                                                    (word.of_Z 4)) with (word.add x2 (word.mul c (word.of_Z 4))) in H7.
-                                         { split. { repeat straightline. }
-                                                  { split.
-                                                    {
-                                                      repeat straightline.
-                                                      subst c.
-                                                      replace (word.add x4 (word.mul (word.add x5 (word.of_Z 1)) (word.of_Z 4))) with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) by ring.
-                                                      ecancel_assumption. }
-                                                    
-                                                    split.
-                                                    {
-(* Z.of_nat (Datatypes.length x17) = word.unsigned (word.mul (word.sub x7 c) (word.of_Z 4)) *)
-                                                      admit. }
-                                                      { reflexivity. }}}
-                                         repeat straightline.
-                                         subst c.
-(* math, true if x3 = x5 but don't have anything *)
-                                         admit. }
-                                                split.
-                                       { repeat straightline.
-                                         subst v'. subst v4. subst c.
-(* word.unsigned x5 < word.unsigned (word.add x5 (word.of_Z 1)) <= word.unsigned x7
-   arith, with H3 proving the unsigneds dont overflow. prove by converting to Zs *)
-                                         admit. }
-                                       repeat straightline.
-                                       split.
-                                       {
-                                         subst x9.
-                                         unfold scalar32 in H8. unfold truncated_scalar in H8. unfold littleendian in H8. unfold ptsto_bytes.ptsto_bytes in H8.
-                                         subst a. subst c.
-                                         replace (word.add x4 (word.mul (word.add x5 (word.of_Z 1)) (word.of_Z 4))) with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) in H8 by ring.
-                                         SeparationLogic.seprewrite_in (@bytearray_index_merge) H8.
-                                         { reflexivity. }
-                                         { ecancel_assumption. }}
-                                 
-Search x16. Search x18.
-
-                                         (* TODO merge scalar into 4 byte array, merge back into array *)
-Search x. 
-subst SCRATCH. rewrite List.app_length. rewrite H9. subst x17. rewrite List.length_skipn.
-
-change (Datatypes.length
-    (HList.tuple.to_list
-       (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v5)))))) with (4%nat).
-(* prove len(x) >=4 *)
-
-  admit.
-                    }}}}}}
-                  (* r = lenwords, TailRecursion postcondition? *)
-                    repeat straightline.
-                    split.
-                    { ecancel_assumption. }
-                    { split; reflexivity. }}
-                  repeat straightline.
-                  
-                  left. letexists. split.
-                  { repeat straightline. exact eq_refl. }
-                  letexists. split.
-                  { subst c. replace (word.add p_addr (word.mul (word.of_Z 0) (word.of_Z 4))) with (p_addr) in H4 by ring. admit. }
-
-
-          split.
-                  {
-(* (array ptsto (word.of_Z 1) p_addr rx_packet' * array ptsto (word.of_Z 1) bytes_written rx_packet * R) m0 *)
-                    admit. }
-              
-(* word.unsigned bytes_written <> word.unsigned (word.of_Z (-1)) *)
-                    admit. }}}}
-                  repeat straightline.
-(* word.unsigned bytes_written = Z.of_nat (Datatypes.length rx_packet') *) right. split; reflexivity. }}}}
+      do 3 letexists.
+      repeat split; repeat straightline; repeat split.
+      { replace (word.add x4 (word.mul c (word.of_Z 4)))
+          with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) by (subst c; ring).
+        ecancel_assumption. }
+      { (* Z.of_nat (Datatypes.length x17) = word.unsigned (word.mul (word.sub x7 c) (word.of_Z 4)) *) admit. }
+      { repeat match goal with |- context [?x] => is_var x; subst x end.
+        revert H2 H3. admit. }
+      { repeat match goal with |- context [?x] => is_var x; subst x end.
+        revert H2 H3. admit. }
+      { repeat match type of H8 with context [?x] => subst x end.
+        cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in H8.
+        replace (word.add x4 (word.mul (word.add x5 (word.of_Z 1)) (word.of_Z 4)))
+           with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) in H8 by ring.
+        SeparationLogic.seprewrite_in (@bytearray_index_merge) H8; [exact eq_refl|ecancel_assumption]. }
+      { subst SCRATCH. rewrite List.app_length. rewrite H9. subst x17. rewrite List.length_skipn.
+        change (Datatypes.length (HList.tuple.to_list (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v4)))))) with (4%nat).
+        (* prove len(x) >=4 *) admit. } }
+    { split.
+      { ecancel_assumption. }
+      { split; reflexivity. } }
+    left. letexists. split.
+  { repeat straightline. exact eq_refl. }
+  (* there is a bunch to do here *)
 Admitted.
-
-(* TODO into straightline? *)
-Ltac trans_ltu :=
-          match goal with
-          H : word.unsigned ?v <> 0 |- _ =>
-          let v := rdelta.rdelta v in
-          let __ := lazymatch v with if word.ltu (word.of_Z _) _ then word.of_Z 1 else word.of_Z 0 => I end in
-          eapply Properties.word.if_nonzero in H; rewrite word.unsigned_ltu in H; eapply Z.ltb_lt in H end.
         
 (* bsearch.v has examples to deal with arrays *)
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
 Proof.
-  repeat straightline.
-
-  (* if for early out *)
-  letexists; split; repeat straightline; split; [|repeat straightline; eauto].
-  repeat straightline.
+  repeat (eauto || straightline || straightline_if || eapply interact_nomem || prove_ext_spec).
 
   trans_ltu.
   rewrite word__unsigned_of_Z_nowrap in * by (change (2^width) with (2^32); blia).
@@ -408,45 +310,7 @@ Proof.
   seplog_use_array_load1 H 13.
   seplog_use_array_load1 H 23.
   seplog_use_array_load1 H 42.
-  repeat straightline.
-
-  (* if for early out *)
-  letexists; split; repeat straightline; split; [|repeat straightline; eauto].
-  repeat straightline.
-
-  (* if for early out *)
-  letexists; split; repeat straightline; split; [|repeat straightline; eauto].
-  repeat straightline.
-
-  (* the 1st MMIOREAD *)
-  cbn [args ext_spec FE310CSemantics.parameters].
-  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
-  split; [cbv; clear; intuition congruence | intros].
-  repeat straightline.
-  exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
-  repeat straightline.
-  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
-
-  cbn [args ext_spec FE310CSemantics.parameters].
-  split. { cbv; clear; intuition congruence. }
-  repeat straightline.
-  exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
-  repeat straightline.
-  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
-
-  cbn [args ext_spec FE310CSemantics.parameters].
-  split. { cbv; clear; intuition congruence. }
-  repeat straightline.
-  exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
-  repeat straightline.
-  do 2 eexists; split. { eapply Properties.map.split_empty_r. reflexivity. }
-
-  cbn [args ext_spec FE310CSemantics.parameters].
-  split. { cbv; clear; intuition congruence. }
-  repeat straightline.
-  exists m. split. { eapply Properties.map.split_empty_r. reflexivity. }
-  repeat straightline.
-  clear. eauto.
+  repeat (eauto || straightline || straightline_if || eapply interact_nomem || prove_ext_spec).
 Qed.
 
 (*
