@@ -66,9 +66,6 @@ Local Open Scope Z_scope.
 From coqutil Require Import Z.div_mod_to_equations.
 From bedrock2 Require Import Semantics BasicC64Semantics.
 
-Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory.
-Add Ring word_ring : word__monomorphic_ring_theory.
-
 Import HList List.
 Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
   forall left right target xs R t m,

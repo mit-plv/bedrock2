@@ -5,8 +5,8 @@ Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
 Require coqutil.Word.Naive.
 
 Instance parameters : parameters :=
-  let word := Word.Naive.word 64 eq_refl in
-  let byte := Word.Naive.word 8 eq_refl in
+  let word := Naive.word64 in
+  let byte := Naive.word8 in
   {|
   width := 64;
   syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
@@ -30,7 +30,14 @@ Proof.
   assumption.
 Qed.
 
-Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
-Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
-Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
- 
+Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok Naive.word64 _.
+Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := Naive.word64_ok.
+Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := Naive.word8_ok.
+Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (Properties.word.ring_morph (word := Semantics.word)),
+       constants [Properties.word_cst]).
+Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (Properties.word.ring_morph (word := Semantics.byte)),
+       constants [Properties.word_cst]).

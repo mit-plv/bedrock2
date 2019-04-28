@@ -30,9 +30,9 @@ Definition gpio0_base := Ox"0x10012000". Definition gpio0_pastend := Ox"0x100130
 Definition uart0_base := Ox"0x10013000". Definition uart0_pastend := Ox"0x10014000".
 Definition uart0_rxdata := Ox"10013004". Definition uart0_txdata  := Ox"10013000".
 
-Local Instance parameters : parameters. refine (
-  let word := Word.Naive.word 32 eq_refl in
-  let byte := Word.Naive.word 8 eq_refl in
+Local Instance parameters : parameters :=
+  let word := Naive.word32 in
+  let byte := Naive.word8 in
   {|
   width := 32;
   syntax := syntax_parameters;
@@ -61,7 +61,7 @@ Local Instance parameters : parameters. refine (
     | _, _ =>
       False
     end%list%bool;
-  |}). Unshelve. reflexivity. Defined.
+  |}.
 
 
 
@@ -156,6 +156,7 @@ From coqutil Require Import Z.div_mod_to_equations.
 
 Ltac t :=
   match goal with
+  | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eexists; split; [solve[repeat straightline]|]
   | |- map.split _ _ _ => eapply Properties.map.split_empty_r; reflexivity
   | H: map.of_list ?ks ?vs = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
   | H: map.putmany_of_list ?ks ?vs ?m0 = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
@@ -182,9 +183,9 @@ Ltac t :=
 
 (* TODO COQBUG? why does typeclass search not succeed here?
    It used to work with primitive projections on *)
-Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 32 eq_refl) (@rep 8).
+Local Instance mapok: map.ok mem := SortedListWord.ok Naive.word32 (@rep 8).
 
-Local Instance wordok: word.ok word := coqutil.Word.Naive.ok _ _.
+Local Instance wordok: word.ok word := Naive.word32_ok.
 
 Lemma swap_chars_over_uart_correct m :
   WeakestPrecondition.cmd (fun _ _ _ _ _ => False) swap_chars_over_uart nil m map.empty
@@ -207,7 +208,6 @@ Proof.
 
   _).
   (* SearchAbout I (* ANOMALY *) *)
-
   eexists _, _, (fun v t _ l => exists p, map.of_list [running; prev; one; dot] [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
   eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list [polling; rx] [v; rxv] l0 = Some l); repeat t.
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l); repeat t.
@@ -328,7 +328,7 @@ Proof.
                                             if Z.eq_dec (word.unsigned (word.and rxv (word.of_Z (2^31)))) 0
                                             then echo_server_spec t (Some rxv)
                                             else echo_server_spec t None); repeat t.
-  { match goal with |- if ?D then _ else _ => destruct D end; cbn [Z.eq_dec echo_server_spec args].
+  { match goal with |- if ?D then _ else _ => destruct D end; cbn [Z.eq_dec echo_server_spec ].
     all: try rewrite e, ?Bool.andb_true_r.
     all: repeat match goal with |- if _ then ?A else ?B => change A end.
     { split; auto. destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.

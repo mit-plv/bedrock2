@@ -62,6 +62,29 @@ Section Run.
 
   Ltac simulate' := repeat simulate'_step.
 
+  Definition run_Jalr0_spec :=
+    forall (rs1: Register) (oimm12: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop)
+           (dest: word),
+      verify (Jalr RegisterNames.zero rs1 oimm12) iset ->
+      (* [verify] only enforces [oimm20 mod 2 = 0] because there could be compressed
+         instructions, but we don't support them so we require divisibility by 4: *)
+      oimm12 mod 4 = 0 ->
+      (word.unsigned dest) mod 4 = 0 ->
+      (* valid_register almost follows from verify except for when the register is Register0 *)
+      valid_register rs1 ->
+      divisibleBy4 initialL.(getPc) ->
+      map.get initialL.(getRegs) rs1 = Some dest ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
+          initialL.(getMem) ->
+      mcomp_sat (run1 iset) initialL (fun finalL =>
+        finalL.(getRegs) = initialL.(getRegs) /\
+        finalL.(getLog) = initialL.(getLog) /\
+        (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
+            finalL.(getMem) /\
+        finalL.(getPc) = word.add dest (word.of_Z oimm12) /\
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+
   Definition run_Jal_spec :=
     forall (rd: Register) (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
       verify (Jal rd jimm20) iset ->
@@ -145,7 +168,7 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
   Ltac t :=
-    unfold run_Jal_spec, run_ImmReg_spec, run_Load_spec, run_Store_spec;
+    unfold run_Jalr0_spec, run_Jal_spec, run_ImmReg_spec, run_Load_spec, run_Store_spec;
     intros;
     match goal with
     | initialL: RiscvMachineL |- _ => destruct initialL as [ [regs pc npc m l] mc]
@@ -155,9 +178,42 @@ Section Run.
     simpl;
     repeat match goal with
            | |- _ /\ _ => split
-           | |- _ => reflexivity
+           | |- _ => solve [auto]
            | |- _ => ecancel_assumption
            end.
+
+  Lemma run_Jalr0: run_Jalr0_spec.
+  Proof.
+    repeat intro.
+    (* execution of Jalr clears lowest bit *)
+    assert (word.and (word.add dest (word.of_Z oimm12))
+                     (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =
+            word.add dest (word.of_Z oimm12)) as A. {
+      assert (word.unsigned (word.add dest (word.of_Z oimm12)) mod 4 = 0) as C by
+            solve_divisibleBy4.
+      generalize dependent (word.add dest (word.of_Z oimm12)). clear.
+      intros.
+      apply word.unsigned_inj.
+      rewrite word.unsigned_and, word.unsigned_xor, !word.unsigned_of_Z. unfold word.wrap.
+      assert (0 <= width) by (destruct width_cases as [E | E]; rewrite E; bomega).
+      replace (2 ^ width - 1) with (Z.ones width); cycle 1. {
+        rewrite Z.ones_equiv. reflexivity.
+      }
+      change 1 with (Z.ones 1).
+      transitivity (word.unsigned r mod (2 ^ width)); cycle 1. {
+        rewrite word.wrap_unsigned. reflexivity.
+      }
+      rewrite <-! Z.land_ones by assumption.
+      change 4 with (2 ^ 2) in C.
+      prove_Zeq_bitwise.Zbitwise.
+    }
+    assert (word.unsigned
+              (word.and (word.add dest (word.of_Z oimm12))
+                        (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1)))) mod 4 = 0) as B. {
+      rewrite A. solve_divisibleBy4.
+    }
+    t.
+  Qed.
 
   Lemma run_Jal: run_Jal_spec.
   Proof. t. Qed.

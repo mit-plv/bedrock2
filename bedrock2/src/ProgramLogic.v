@@ -153,6 +153,7 @@ Ltac straightline :=
     lazymatch c with
     | cmd.while _ _ => fail
     | cmd.cond _ _ _ => fail
+    | cmd.interact _ _ _ => fail
     | _ => unfold1_cmd_goal; cbv beta match delta [cmd_body]
     end
   | |- @list_map _ _ (@get _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]

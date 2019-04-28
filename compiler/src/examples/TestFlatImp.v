@@ -3,7 +3,7 @@ Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.FlatImp.
-Require Import riscv.Utility.Words32Naive.
+Require Import coqutil.Word.Naive riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
 Require Import coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Map.Z_keyed_SortedListMap.

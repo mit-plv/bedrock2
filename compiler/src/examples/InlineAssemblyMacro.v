@@ -13,7 +13,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MinimalMMIO. (* not really *)
-Require Import riscv.Utility.Words32Naive.
+Require Import coqutil.Word.Naive riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
 Require Import coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
