@@ -1,26 +1,72 @@
+Require Import Coq.Lists.List.
+Import ListNotations.
+Require bedrock2.Examples.Demos.
+Require Import coqutil.Decidable.
+Require Import compiler.ExprImp.
+Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
+Require Import compiler.Basic32Semantics.
+Require Import riscv.Utility.Monads.
+Require Import compiler.util.Common.
+Require Import coqutil.Decidable.
+Require        riscv.Utility.InstructionNotations.
+Require Import riscv.Platform.MinimalLogging.
+Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MetricLogging.
+Require Import riscv.Platform.MetricMinimal.
+Require Import riscv.Utility.Utility.
+Require Import riscv.Utility.Encode.
+Require Import coqutil.Map.SortedList.
+Require Import compiler.ZNameGen.
+Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
-Require Import bedrock2.Examples.Demos.
-Require Import bedrock2.Map.SeparationLogic.
-Require Import compiler.Simp.
-Require Import coqutil.Word.Interface.
-Require Import coqutil.Z.HexNotation.
-Require Import bedrock2.Syntax.
+Require Import bedrock2.Byte.
+Require bedrock2.Hexdump.
+Require Import compiler.RegAllocAnnotatedNotations.
 Require Import compiler.GoFlatToRiscv.
+Require Import compiler.Simp.
 
 Section FibCompiled.
 
-  Context {p: Pipeline.parameters}.
-  Context {h: Pipeline.assumptions}.
-  Context {names: Fibonacci.Names}.
+  Definition fib_ExprImp(n: Z): cmd := Eval cbv in
+        snd (snd (Demos.fibonacci n)).
 
-  Local Notation RiscvMachine := (MetricRiscvMachine Register Pipeline.actname).
+  Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
+    FlatToRiscvDef.FlatToRiscvDef.actname := Empty_set;
+    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ := Empty_set_rect _;
+    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := Empty_set_rect _;
+    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := Empty_set_rect _;
+  }.
+
+  Notation RiscvMachine := (MetricRiscvMachine Register Empty_set).
+
+  Existing Instance coqutil.Map.SortedListString.map.
+  Existing Instance coqutil.Map.SortedListString.ok.
+
+  Instance pipeline_params: Pipeline.parameters := {
+    Pipeline.ext_spec _ _ := Empty_set_rect _;
+    Pipeline.ext_guarantee _ := True;
+    Pipeline.M := OState RiscvMachine;
+    Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
+  }.
+  
+  Axiom TODO: forall {T: Type}, T.
+
+  Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params := {
+    Pipeline.actname_eq_dec := _;
+    Pipeline.varname_eq_dec := _ ;
+    Pipeline.mem_ok := _ ;
+    Pipeline.locals_ok := _ ;
+    Pipeline.funname_env_ok := _ ;
+    Pipeline.PR := MetricMinimalSatisfiesMetricPrimitives;
+    Pipeline.FlatToRiscv_hyps := TODO ;
+    Pipeline.ext_spec_ok := TODO;
+  }.
 
   (* just to make sure all typeclass instances are available: *)
   Definition mcomp_sat:
     Pipeline.M unit -> RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
-    GoFlatToRiscv.mcomp_sat.
+    @GoFlatToRiscv.mcomp_sat _ _ _ _ _ MetricMinimalMetricPrimitivesParams.
 
   Definition zeroedRiscvMachine: RiscvMachine := {|
     getMetrics := EmptyMetricLog;
@@ -32,9 +78,6 @@ Section FibCompiled.
       getLog := nil;
     |};
   |}.
-  
-  Definition fib_ExprImp(n: Z) :=
-    snd (snd (Demos.fibonacci n)).
 
   Definition insts(n: Z) := ExprImp2Riscv (fib_ExprImp n).
 
@@ -42,8 +85,6 @@ Section FibCompiled.
 
   Definition programmedMachine (n : Z) : RiscvMachine :=
     putProgram (imem n) (getPc zeroedRiscvMachine) zeroedRiscvMachine.
-
-  Definition ext_guarantee (n : Z) := (Pipeline.ext_guarantee (programmedMachine n)).
 
   Definition run1 : Pipeline.M unit := @run1 _ _ _ _ Pipeline.RVM _ iset.
 
@@ -83,15 +124,27 @@ Section FibCompiled.
     intros.
     eapply runsToNonDet.runsTo_weaken.
     - eapply Pipeline.exprImp2Riscv_correct with (sH := fib_ExprImp n) 
-        (mcH := bedrock2.MetricLogging.EmptyMetricLog) (mH := map.empty).
+        (mcH := bedrock2.MetricLogging.EmptyMetricLog).
       + simpl. blia.
-      + admit.
-      + reflexivity.
-      + simpl. rewrite word.unsigned_of_Z_0. reflexivity.
+      + cbv. repeat constructor.
       + reflexivity.
       + reflexivity.
-      + admit.
-      + admit.
+      + reflexivity.
+      + reflexivity.
+      + cbv [programmedMachine zeroedRiscvMachine getMem putProgram zeroedRiscvMachine
+                               getMem withPc withNextPc withMem].
+        unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].
+        1: apply map.split_empty_r; reflexivity.
+        apply store_program_empty.
+        cbv [fib_ExprImp ExprImp2Riscv FlatToRiscvDef.compile_stmt ExprImp2FlatImp flattenStmt flattenExpr].
+        simpl. cbn.
+        unfold FlatToRiscvDef.compile_lit, FlatToRiscvDef.compile_lit_12bit, FlatToRiscvDef.compile_lit_32bit,
+        FlatToRiscvDef.compile_lit_64bit.
+        match goal with
+        | |- context[dec(?P)] => destruct (dec(P)); try (exfalso; blia)
+        end.
+        simpl. blia.
+      + cbv [Pipeline.ext_guarantee pipeline_params]. exact I.
       + eapply ExprImp.weaken_exec; [eapply fib_program_logic|].
         * match goal with
           | |- _ < ?x => let r := eval cbv in x in change x with r
@@ -101,17 +154,26 @@ Section FibCompiled.
           match goal with
           | H: _ ?t ?m ?l ?mc |- _ ?t ?m ?l ?mc => apply H
           end.
-    - intros. simpl in *. simp.
-      eexists. repeat split.
-      + match goal with
+    - intros.
+      repeat match goal with
+               | H: (fun _ => _) _ |- _ => destruct H
+               | H: exists _, _ |- _ => destruct H
+               | H: _ /\ _ |- _ => destruct H
+               end.
+        eexists.
+        repeat split.
+       + match goal with
         | H: map.extends ?m1 _ |- map.get ?m1 _ = Some _ => unfold map.extends in H; apply H
         end.
         eassumption.
       + eassumption.
-      + repeat unfold_MetricLog. repeat simpl_MetricLog. simp. simpl in *.
+      + repeat unfold_MetricLog. repeat simpl_MetricLog. simpl in *.
         repeat rewrite Z.sub_0_r in *.
         repeat rewrite Z.add_0_l in *.
+        repeat match goal with
+               | H: _ /\ _ |- _ => destruct H
+               end.
         eapply Z.le_trans; [eassumption|assumption].
-  Admitted.
+  Qed.
 
 End FibCompiled.
