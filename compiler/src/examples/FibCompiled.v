@@ -6,11 +6,14 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.Simp.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Z.HexNotation.
+Require Import bedrock2.Syntax.
+Require Import compiler.GoFlatToRiscv.
 
 Section FibCompiled.
 
   Context {p: Pipeline.parameters}.
   Context {h: Pipeline.assumptions}.
+  Context {names: Fibonacci.Names}.
 
   Local Notation RiscvMachine := (MetricRiscvMachine Register Pipeline.actname).
 
@@ -29,13 +32,18 @@ Section FibCompiled.
       getLog := nil;
     |};
   |}.
+  
+  Definition fib_ExprImp(n: Z) :=
+    snd (snd (Demos.fibonacci n)).
 
-  Definition fib_ExprImp(n: Z): Syntax.cmd. Admitted.
+  Definition insts(n: Z) := ExprImp2Riscv (fib_ExprImp n).
 
-  Definition imem(n: Z) := List.map encode (ExprImp2Riscv (fib_ExprImp n)).
+  Definition imem(n: Z) := List.map encode (insts n).
 
   Definition programmedMachine (n : Z) : RiscvMachine :=
     putProgram (imem n) (getPc zeroedRiscvMachine) zeroedRiscvMachine.
+
+  Definition ext_guarantee (n : Z) := (Pipeline.ext_guarantee (programmedMachine n)).
 
   Definition run1 : Pipeline.M unit := @run1 _ _ _ _ Pipeline.RVM _ iset.
 
@@ -63,7 +71,7 @@ Section FibCompiled.
                           map.get l' regb = Some result).
 
   Lemma fib_demo: forall n,
-    0 <= n <= 50 ->
+    0 <= n <= 60 ->
     runsToNonDet.runsTo (mcomp_sat run1)
                         (programmedMachine n)
                         (fun (finalL: RiscvMachine) =>
@@ -76,14 +84,14 @@ Section FibCompiled.
     eapply runsToNonDet.runsTo_weaken.
     - eapply Pipeline.exprImp2Riscv_correct with (sH := fib_ExprImp n) 
         (mcH := bedrock2.MetricLogging.EmptyMetricLog) (mH := map.empty).
-      + admit.
+      + simpl. blia.
       + admit.
       + reflexivity.
       + simpl. rewrite word.unsigned_of_Z_0. reflexivity.
       + reflexivity.
       + reflexivity.
-      + admit. (* Should be solvable using seplog. *)
-      + admit. (* Can we get this from p? *)
+      + admit.
+      + admit.
       + eapply ExprImp.weaken_exec; [eapply fib_program_logic|].
         * match goal with
           | |- _ < ?x => let r := eval cbv in x in change x with r
