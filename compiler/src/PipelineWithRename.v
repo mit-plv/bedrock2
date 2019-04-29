@@ -144,11 +144,13 @@ Section Pipeline1.
 *)
 
   Definition compile_prog(e: @Semantics.env (FlattenExpr.mk_Semantics_params _))
-                         (s: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _))
-                         (funs: list funname): list Instruction :=
+             (init_code loop_body: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _))
+             (funs: list funname): list Instruction :=
     let e' := flatten_functions e funs in
     let e'' := rename_functions string Register funname actname available_registers e' funs in
-    let s' := ExprImp2RenamedFlat s in
-    FlatToRiscvDef.compile_prog e'' s' funs.
+    (* TODO the two below should share local variables and not rename independently *)
+    let init_code' := ExprImp2RenamedFlat init_code in
+    let loop_body' := ExprImp2RenamedFlat loop_body in
+    FlatToRiscvDef.compile_prog e'' init_code' loop_body' funs.
 
 End Pipeline1.

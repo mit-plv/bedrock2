@@ -79,7 +79,7 @@ Definition funnames: list string := List.map fst allFuns.
 Definition s: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.call (FlattenExpr.mk_Syntax_params _) [] "swap_swap" [expr.literal 100; expr.literal 108].
 
-Definition swap_asm: list Instruction := Eval cbv in compile_prog e s funnames.
+Definition swap_asm: list Instruction := Eval cbv in compile_prog e s cmd.skip funnames.
 
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.

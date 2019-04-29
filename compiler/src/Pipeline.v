@@ -123,7 +123,7 @@ Section Pipeline1.
   Definition compile_prog(e: Semantics.env)(s: Syntax.cmd)(funs: list funname): list Instruction :=
     let e' := flatten_functions e funs in
     let s' := ExprImp2FlatImp s in
-    FlatToRiscvDef.compile_prog e' s' funs.
+    FlatToRiscvDef.compile_prog e' s' FlatImp.SSkip funs.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_registers (ExprImp2FlatImp s).
