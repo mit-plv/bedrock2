@@ -113,7 +113,11 @@ Section Run.
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep finalL.(getMem) /\
+        (* it would be nicer and more uniform wrt to memory-modifying instructions
+           if we had this separation logic formula here instead of memory equality,
+           but that doesn't work with the abstract goodReadyState predicate in EventLoop.v
+        (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep finalL.(getMem) /\ *)
+        finalL.(getMem) = initialL.(getMem) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 

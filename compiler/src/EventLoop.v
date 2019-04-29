@@ -89,15 +89,8 @@ Section EventLoop.
           final.(getPc) = pc_end /\
           (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem))).
 
-  (* this unfortunately does not hold in our separation logic: *)
-  Axiom seplog_predicates_are_fully_descriptive: forall (R1 R2: mem -> Prop) (m1 m2: mem),
-      iff1 R1 R2 ->
-      R1 m1 ->
-      R2 m2 ->
-      m1 = m2.
-
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma eventLoop_sound_aux: forall (initialL: RiscvMachineL),
+  Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
       forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
                   runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
                      goodReadyState finalL /\ finalL.(getPc) = pc_start)).
@@ -118,11 +111,6 @@ Section EventLoop.
       subst.
       ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
       apply runsToDone. split; [|reflexivity].
-      replace mid_mem with state_mem; cycle 1. {
-        eapply seplog_predicates_are_fully_descriptive.
-        2,3: eassumption.
-        ecancel.
-      }
       eapply goodReadyState_ignores in H.
       simpl_MetricRiscvMachine_get_set.
       exact H.
@@ -137,7 +125,7 @@ Section EventLoop.
       goodReadyState state -> inv state.(getLog).
 
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
+  Lemma eventLoop_sound': forall (initialL: RiscvMachineL),
       initialL.(getPc) = pc_start ->
       goodReadyState initialL ->
       forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
@@ -153,7 +141,7 @@ Section EventLoop.
   Definition traceInvHolds(initialL: RiscvMachineL)(inv: trace -> Prop): Prop :=
     forall n, mcomp_sat (runN iset n) initialL (fun finalL => inv finalL.(getLog)).
 
-  Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
+  Lemma eventLoop_sound': forall (initialL: RiscvMachineL),
       initialL.(getPc) = pc_start ->
       goodReadyState initialL ->
       traceInvHolds initialL inv.
