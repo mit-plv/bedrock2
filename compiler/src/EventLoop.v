@@ -50,24 +50,16 @@ Section EventLoop.
   Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register Action)}.
   Context {PR: MetricPrimitives PRParams}.
 
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
+
   (* goodReadyState is the invariant which says that the machine is ready to execute
-     the next iteration of the infinite event loop. It should not say anything about
-     the pc, because it will be used both when the pc is at pc_start and when it is at
-     pc_end *)
+     the next iteration of the infinite event loop.
+     It will always be invoked with hard-coded pc and nextPc, so there's no need to
+     assert anything about pc and nextPc in goodReadyState. *)
   Variable goodReadyState: RiscvMachineL -> Prop.
-
-  (* the trace invariant we want to prove *)
-  Variable inv: trace -> Prop.
-
-  Hypothesis goodReadyState_implies_inv: forall (state: RiscvMachineL),
-      goodReadyState state -> inv state.(getLog).
-
-  Hypothesis goodReadyState_ignores_Pc: forall (state1 state2: RiscvMachineL),
-      state1.(getRegs) = state2.(getRegs) ->
-      state1.(getMem) = state2.(getMem) ->
-      state1.(getLog) = state2.(getLog) ->
-      goodReadyState state1 ->
-      goodReadyState state2.
 
   Variables pc_start pc_end: word.
   Hypothesis pc_start_aligned: (word.unsigned pc_start) mod 4 = 0.
@@ -81,42 +73,78 @@ Section EventLoop.
   (* initialization code: all the code before the loop body, loop body starts at pc_start *)
   Hypothesis init_correct: forall (initial: RiscvMachineL),
       runsTo (mcomp_sat (run1 iset)) initial (fun final =>
-          goodReadyState final /\ final.(getPc) = pc_start).
+          final.(getPc) = pc_start /\
+          final.(getNextPc) = word.add pc_start (word.of_Z 4) /\
+          goodReadyState (withPc pc_start (withNextPc (word.add pc_start (word.of_Z 4)) final))).
 
   (* loop body: between pc_start and pc_end *)
   Hypothesis body_correct: forall (initial: RiscvMachineL),
-      goodReadyState initial ->
-      initial.(getPc) = pc_start ->
+      getPc initial = pc_start ->
+      getNextPc initial = word.add pc_start (word.of_Z 4) ->
+      goodReadyState (withPc pc_start (withNextPc (word.add pc_start (word.of_Z 4)) initial)) ->
       runsTo (mcomp_sat (run1 iset)) initial (fun final =>
-          goodReadyState final /\
           final.(getPc) = pc_end /\
+          goodReadyState (withMetrics (addMetricLoads 1
+                                      (addMetricJumps 1
+                                      (addMetricInstructions 1 final.(getMetrics))))
+                         (withPc pc_start
+                         (withNextPc (word.add pc_start (word.of_Z 4))
+                                     final))) /\
           (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem))).
+
+  (* this unfortunately does not hold in our separation logic: *)
+  Axiom seplog_predicates_are_fully_descriptive: forall (R1 R2: mem -> Prop) (m1 m2: mem),
+      iff1 R1 R2 ->
+      R1 m1 ->
+      R2 m2 ->
+      m1 = m2.
 
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
   Lemma eventLoop_sound_aux: forall (initialL: RiscvMachineL),
       forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
-                  runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
-                     goodReadyState finalL /\ finalL.(getPc) = pc_start)).
+                  runsTo (mcomp_sat (run1 iset)) prefinalL (fun final =>
+                     final.(getPc) = pc_start /\
+                     final.(getNextPc) = word.add pc_start (word.of_Z 4) /\
+                     goodReadyState (withPc pc_start
+                                    (withNextPc (word.add pc_start (word.of_Z 4)) final)))).
   Proof.
     intros. eapply safe_forever; cycle 1.
-    - intros state (? & ?). eapply body_correct; assumption.
+    - intros state (? & ? & ?). eapply body_correct; assumption.
     - intros state (? & ? & R & ?).
       (* this is the loop verification code: *)
       eapply runsToStep. {
         eapply run_Jal0; try eassumption.
         - replace (getPc state) with (word.sub pc_start (word.of_Z jump)) by congruence.
           solve_divisibleBy4.
-        - unfold program, array. rewrite H0. ecancel_assumption.
+        - unfold program, array. rewrite H. ecancel_assumption.
       }
       simpl. intros. simp.
-      apply runsToDone. split.
-      + eapply goodReadyState_ignores_Pc; try eassumption; try congruence.
-        (* TODO Frame *) admit.
-      + rewrite H5. rewrite H0. rewrite pc_end_def. (* TODO ring *) admit.
+      destruct_RiscvMachine state.
+      destruct_RiscvMachine mid.
+      subst.
+      ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
+      apply runsToDone.
+      split; [reflexivity|].
+      split; [reflexivity|].
+      replace mid_mem with state_mem; cycle 1. {
+        eapply seplog_predicates_are_fully_descriptive.
+        2,3: eassumption.
+        ecancel.
+      }
+      replace mid_metrics with (addMetricLoads 1
+                               (addMetricJumps 1 (addMetricInstructions 1 state_metrics)))
+        by admit.
+      assumption.
     - eapply init_correct.
-    - intros state [ [_ ?] [_ [? _ ] ] ]. congruence.
+    - intros state C. simp. congruence.
     all: fail.
   Admitted.
+
+  (* the trace invariant we want to prove *)
+  Variable inv: trace -> Prop.
+
+  Hypothesis goodReadyState_implies_inv: forall (state: RiscvMachineL),
+      goodReadyState state -> inv state.(getLog).
 
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
   Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
