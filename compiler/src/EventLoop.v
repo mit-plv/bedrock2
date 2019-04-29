@@ -28,6 +28,10 @@ Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.runsToNonDet.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import compiler.ForeverSafe.
+Require Import compiler.RunInstruction.
+Require Import compiler.DivisibleBy4.
+Require Import compiler.Simp.
+
 
 Section EventLoop.
 
@@ -45,7 +49,6 @@ Section EventLoop.
   Context {RVM: RiscvProgram M word}.
   Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register Action)}.
   Context {PR: MetricPrimitives PRParams}.
-  Variable iset: InstructionSet.
 
   (* goodReadyState is the invariant which says that the machine is ready to execute
      the next iteration of the infinite event loop. It should not say anything about
@@ -68,33 +71,52 @@ Section EventLoop.
 
   Variables pc_start pc_end: word.
   Hypothesis pc_start_aligned: (word.unsigned pc_start) mod 4 = 0.
-  Hypothesis pc_end_aligned: (word.unsigned pc_end) mod 4 = 0.
+  Hypothesis start_ne_end: pc_start <> pc_end.
 
   Variable jump: Z.
-  Hypothesis jump_bound: - 2 ^ 11 <= jump < 2 ^ 11.
-  Hypothesis jump_def: word.of_Z jump = word.sub pc_start pc_end.
+  Hypothesis jump_bound: - 2 ^ 20 <= jump < 2 ^ 20.
+  Hypothesis jump_aligned: jump mod 4 = 0.
+  Hypothesis pc_end_def: pc_end = word.sub pc_start (word.of_Z jump).
 
+  (* initialization code: all the code before the loop body, loop body starts at pc_start *)
+  Hypothesis init_correct: forall (initial: RiscvMachineL),
+      runsTo (mcomp_sat (run1 iset)) initial (fun final =>
+          goodReadyState final /\ final.(getPc) = pc_start).
+
+  (* loop body: between pc_start and pc_end *)
   Hypothesis body_correct: forall (initial: RiscvMachineL),
       goodReadyState initial ->
       initial.(getPc) = pc_start ->
       runsTo (mcomp_sat (run1 iset)) initial (fun final =>
+          goodReadyState final /\
           final.(getPc) = pc_end /\
-          (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem)) /\
-          goodReadyState final).
+          (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem))).
 
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
-      initialL.(getPc) = pc_start ->
-      goodReadyState initialL ->
+  Lemma eventLoop_sound_aux: forall (initialL: RiscvMachineL),
       forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
-                  runsTo (mcomp_sat (run1 iset)) prefinalL goodReadyState).
+                  runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
+                     goodReadyState finalL /\ finalL.(getPc) = pc_start)).
   Proof.
-    intros initialL E G n. revert initialL E G. induction n; intros.
-    - simpl. apply go_done. apply runsToDone. assumption.
-    - simpl. eapply spec_Bind_unit.
-
-
-  Abort.
+    intros. eapply safe_forever; cycle 1.
+    - intros state (? & ?). eapply body_correct; assumption.
+    - intros state (? & ? & R & ?).
+      (* this is the loop verification code: *)
+      eapply runsToStep. {
+        eapply run_Jal0; try eassumption.
+        - replace (getPc state) with (word.sub pc_start (word.of_Z jump)) by congruence.
+          solve_divisibleBy4.
+        - unfold program, array. rewrite H0. ecancel_assumption.
+      }
+      simpl. intros. simp.
+      apply runsToDone. split.
+      + eapply goodReadyState_ignores_Pc; try eassumption; try congruence.
+        (* TODO Frame *) admit.
+      + rewrite H5. rewrite H0. rewrite pc_end_def. (* TODO ring *) admit.
+    - eapply init_correct.
+    - intros state [ [_ ?] [_ [? _ ] ] ]. congruence.
+    all: fail.
+  Admitted.
 
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
   Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
@@ -102,6 +124,11 @@ Section EventLoop.
       goodReadyState initialL ->
       forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
                   runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL => inv finalL.(getLog))).
+  Proof.
+    intros initialL E G n. revert initialL E G. induction n; intros.
+    - simpl. apply go_done. apply runsToDone. admit.
+    - simpl. eapply spec_Bind_unit.
+
   Abort.
 
   (* no matter for how many steps we run [initialL], [inv] always holds *)

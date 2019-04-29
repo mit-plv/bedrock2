@@ -6,6 +6,26 @@ Require Import coqutil.Z.bitblast.
 Local Open Scope Z_scope.
 Local Open Scope bool_scope.
 
+Lemma mod0_divisible_modulo: forall a m n,
+    0 < n ->
+    0 < m ->
+    Z.divide n m ->
+    a mod m = 0 ->
+    a mod n = 0.
+Proof.
+  intros.
+  unfold Z.divide in H1. destruct H1 as [z H1].
+  assert (z < 0 \/ z = 0 \/ 0 < z) as C by blia. destruct C as [C | [ C | C] ].
+  - exfalso. Lia.nia.
+  - exfalso. Lia.nia.
+  - rewrite Z.mul_comm in H1. subst m.
+    rewrite Z.rem_mul_r in H2 by blia.
+    assert (a mod n < 0 \/ a mod n = 0 \/ 0 < a mod n) as D by blia. destruct D as [D | [D | D ] ].
+    + exfalso. pose proof (Z.mod_pos_bound a n H). blia.
+    + assumption.
+    + pose proof (Z.mod_pos_bound (a / n) z C). exfalso. Lia.nia.
+Qed.
+
 Lemma mod_mod_remove_outer: forall a m n,
     0 < m < n ->
     n mod m = 0 ->
