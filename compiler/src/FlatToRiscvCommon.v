@@ -159,19 +159,6 @@ Ltac solve_stmt_not_too_big :=
     blia
   end.
 
-Ltac destruct_RiscvMachine m :=
-  let t := type of m in
-  let h := head_of_app t in
-  constr_eq h MetricRiscvMachine;
-  let r := fresh m "_regs" in
-  let p := fresh m "_pc" in
-  let n := fresh m "_npc" in
-  let me := fresh m "_mem" in
-  let l := fresh m "_log" in
-  let mc := fresh m "_metrics" in
-  destruct m as [ [r p n me l] mc ];
-  simpl in *.
-
 Ltac solve_valid_registers :=
   match goal with
   | |- valid_registers _ => solve [simpl; auto]
