@@ -136,7 +136,7 @@ Section Equiv.
       alignPc kpc ^+ $4 = alignPc (kpc ^+ $4).
   Proof.
   Admitted.
-  
+
   Definition KamiSt_to_RiscvMachine
              (k: KamiSt) (t: list (LogItem MMIOAction)): RiscvMachine :=
     {| getRegs := convertRegs (KamiProc.rf k);
@@ -929,6 +929,27 @@ Section Equiv.
     - (* "execNmZ" *) admit.
 
   Admitted.
+
+  (* equivalent of [mcomp_sat (run1 iset)] for Kami:
+     running one kami step satisfies the postcondition, no matter what non-deterministic
+     step was chosen *)
+  Definition kamiStep_sat(m1: KamiMachine)(post: KamiMachine * list Event -> Prop): Prop :=
+    forall m2 t, kamiStep m1 m2 t -> post (m2, t).
+
+(*
+  Definition kamiRunsTo: KamiMachine -> (KamiMachine -> Prop) -> Prop :=
+    runsToNonDet.runsTo kamiStep_sat.
+  Lemma test: forall (m': RiscvMachine),
+      runsTo
+(State -> (State -> Prop) -> Prop)
+runsToNonDet.runsTo
+*)
+
+  (* want to say, finally:
+     "all kami impl traces are a prefix of a trace which satisfies post"
+
+     so we need:
+     "all kami spec traces are a prefix of a trace which satisfies post" *)
 
   Lemma kamiMultiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),
