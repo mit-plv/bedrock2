@@ -27,12 +27,12 @@ Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Pro
   forall instr, In instr prog -> verify instr iset.
 
 Module Import FlatToRiscvDef.
+
   Class parameters := {
     (* the words implementations are not needed, but we need width,
        and EmitsValid needs width_cases *)
     W :> Utility.Words;
-    actname: Type;
-    compile_ext_call: list Register -> actname -> list Register -> list Instruction;
+    compile_ext_call: list Register -> String.string -> list Register -> list Instruction;
     compile_ext_call_length: forall binds f args,
         Zlength (compile_ext_call binds f args) <= 7;
     (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
@@ -46,7 +46,7 @@ Module Import FlatToRiscvDef.
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
     Syntax.varname := Register;
     Syntax.funname := String.string;
-    Syntax.actname := actname;
+    Syntax.actname := String.string;
   |}.
 
 End FlatToRiscvDef.

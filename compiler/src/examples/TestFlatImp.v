@@ -14,7 +14,7 @@ Definition func: Set := string.
 Instance myparams: Syntax.parameters := {|
   Syntax.varname := var;
   Syntax.funname := func;
-  Syntax.actname := Empty_set;
+  Syntax.actname := string;
 |}.
 
 Notation stmt := (@stmt myparams).

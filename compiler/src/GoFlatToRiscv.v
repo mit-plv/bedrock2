@@ -34,12 +34,12 @@ Section Go.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register Action).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register Action)}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
   Variable iset: InstructionSet.
 
@@ -770,15 +770,20 @@ Ltac sidecondition :=
   | |- _ => idtac
   end.
 
+(* eapply and rapply don't always work (they failed in compiler.MMIO), so we use refine below
+   Trick to test if right number of underscores:
+          let c := open_constr:(go_associativity _ _ _ _ _ _) in
+          let t := type of c in idtac t. *)
+
 Ltac simulate_step :=
   first (* lemmas packing multiple primitives need to go first: *)
-        [ eapply go_fetch_inst     ; [sidecondition..|]
+        [ refine (go_fetch_inst _ _ _ _ _ _);      [sidecondition..|]
         (* single-primitive lemmas: *)
         (* lemmas about Register0 need to go before lemmas about other Registers *)
-        | eapply go_getRegister0   ; [sidecondition..|]
-        | eapply go_setRegister0   ; [sidecondition..|]
-        | eapply go_getRegister    ; [sidecondition..|]
-        | eapply go_setRegister    ; [sidecondition..|]
+        | refine (go_getRegister0 _ _ _ _);        [sidecondition..|]
+        | refine (go_setRegister0 _ _ _ _ _);      [sidecondition..|]
+        | refine (go_getRegister _ _ _ _ _ _ _ _); [sidecondition..|]
+        | refine (go_setRegister _ _ _ _ _ _ _);   [sidecondition..|]
         (* Note: One might not want these, but a the separation logic version, or
            the version expressed in terms of compile_load/store, so they're commented out
         | eapply go_loadByte       ; [sidecondition..|]
@@ -790,12 +795,12 @@ Ltac simulate_step :=
         | eapply go_loadDouble     ; [sidecondition..|]
         | eapply go_storeDouble    ; [sidecondition..|]
         *)
-        | eapply go_getPC          ; [sidecondition..|]
-        | eapply go_setPC          ; [sidecondition..|]
-        | eapply go_step           ; [sidecondition..|]
+        | refine (go_getPC _ _ _ _);               [sidecondition..|]
+        | refine (go_setPC _ _ _ _ _);             [sidecondition..|]
+        | refine (go_step _ _ _);                  [sidecondition..|]
         (* monad law lemmas: *)
-        | eapply go_left_identity  ; [sidecondition..|]
-        | eapply go_right_identity ; [sidecondition..|]
-        | eapply go_associativity  ; [sidecondition..|] ].
+        | refine (go_left_identity _ _ _ _ _);     [sidecondition..|]
+        | refine (go_right_identity _ _ _ _);      [sidecondition..|]
+        | refine (go_associativity _ _ _ _ _ _);   [sidecondition..|] ].
 
 Ltac simulate := repeat simulate_step.

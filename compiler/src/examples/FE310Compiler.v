@@ -35,7 +35,7 @@ Unset Universe Minimization ToSet.
 
 Open Scope Z_scope.
 
-Notation RiscvMachine := (MetricRiscvMachine Register MMIOAction).
+Notation RiscvMachine := MetricRiscvMachine.
 
 Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.
@@ -49,7 +49,7 @@ Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_guarantee := FlatToRiscvCommon.FlatToRiscv.ext_guarantee;
   Pipeline.M := OStateND RiscvMachine;
   Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
-  Pipeline.RVM := IsMetricRiscvMachineL;
+  Pipeline.RVM := IsMetricRiscvMachine;
 }.
 
 Lemma undef_on_same_domain{K V: Type}{M: map.map K V}{keq: DecidableEq K}{Ok: map.ok M}
@@ -230,7 +230,7 @@ Lemma input_program_not_too_long:
   4 * Z.of_nat (Datatypes.length (compileFunc swap_chars_over_uart)) < 2 ^ width.
 Proof. reflexivity. Qed.
 
-Definition run1 : OStateND RiscvMachine unit := @run1 _ _ _ _ IsMetricRiscvMachineL _ RV32IM.
+Definition run1 : OStateND RiscvMachine unit := @run1 _ _ _ _ IsMetricRiscvMachine _ RV32IM.
 
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat run1)

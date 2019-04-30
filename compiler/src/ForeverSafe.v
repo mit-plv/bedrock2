@@ -21,12 +21,12 @@ Section ForeverSafe.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register Action).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register Action)}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
   Variable iset: InstructionSet.
 
@@ -117,7 +117,7 @@ Section ForeverSafe.
 
   (* below: some failed attempts to go from runsTo to trace prefixes *)
 
-  Local Notation trace := (list (LogItem Action)).
+  Local Notation trace := (list LogItem).
   Import Coq.Lists.List.
   Import ListNotations.
 

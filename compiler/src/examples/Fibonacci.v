@@ -55,20 +55,21 @@ Goal fib_H_res 20 4 = Some (word.of_Z  5). reflexivity. Qed.
 Goal fib_H_res 20 5 = Some (word.of_Z  8). reflexivity. Qed.
 Goal fib_H_res 20 6 = Some (word.of_Z 13). reflexivity. Qed.
 
-Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.FlatToRiscvDef.actname := Empty_set;
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ := Empty_set_rect _;
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := Empty_set_rect _;
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := Empty_set_rect _;
-}.
+Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters. refine ({|
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ _ := nil;
+|}).
+all: intros; simpl.
+- cbv. discriminate.
+- unfold FlatToRiscvDef.valid_instructions. intros. destruct H1.
+Defined.
 
-Notation RiscvMachine := (MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
+Notation RiscvMachine := MetricRiscvMachine.
 
 Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.
 
 Instance pipeline_params: Pipeline.parameters := {
-  Pipeline.ext_spec _ _ := Empty_set_rect _;
+  Pipeline.ext_spec _ _  _ _ _ := False;
   Pipeline.ext_guarantee _ := False;
   Pipeline.M := OState RiscvMachine;
   Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
@@ -77,7 +78,6 @@ Instance pipeline_params: Pipeline.parameters := {
 Axiom TODO: forall {T: Type}, T.
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params := {
-  Pipeline.actname_eq_dec := _;
   Pipeline.varname_eq_dec := _ ;
   Pipeline.mem_ok := _ ;
   Pipeline.locals_ok := _ ;
