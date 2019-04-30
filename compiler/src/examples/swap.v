@@ -37,7 +37,6 @@ Existing Instance DefaultRiscvState.
 Axiom TODO: forall {T: Type}, T.
 
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.FlatToRiscvDef.actname := string;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
     if string_dec fname "nop" then
       [[Addi Register0 Register0 0]]
@@ -47,7 +46,7 @@ Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := TODO;
 }.
 
-Notation RiscvMachine := (MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
+Notation RiscvMachine := MetricRiscvMachine.
 
 Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.

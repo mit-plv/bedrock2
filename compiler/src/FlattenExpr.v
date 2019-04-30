@@ -20,14 +20,13 @@ Open Scope Z_scope.
 Module Import FlattenExpr.
   Class parameters := {
     varname: Type;
-    actname: Type;
     W :> Words;
     locals :> map.map varname Utility.word;
     mem :> map.map Utility.word Utility.byte;
     funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
-    trace := list (mem * actname * list Utility.word * (mem * list Utility.word));
+    trace := list (mem * string * list Utility.word * (mem * list Utility.word));
     ext_spec : trace ->
-               mem -> actname -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
+               mem -> string -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
     NGstate: Type;
     NG :> NameGen varname NGstate;
   }.
@@ -35,7 +34,7 @@ Module Import FlattenExpr.
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
     Syntax.varname := varname;
     Syntax.funname := string;
-    Syntax.actname := actname;
+    Syntax.actname := string;
   |}.
 
   Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
@@ -49,7 +48,6 @@ Module Import FlattenExpr.
 
   Class assumptions{p: parameters} := {
     varname_eq_dec :> DecidableEq varname;
-    actname_eq_dec :> DecidableEq actname;
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     funname_env_ok :> forall T, map.ok (funname_env T);
@@ -61,6 +59,7 @@ Module Import FlattenExpr.
     Semantics.parameters_ok (mk_Semantics_params p) :=
   {
     Semantics.funname_eq_dec := string_dec;
+    Semantics.actname_eq_dec := string_dec;
     Semantics.word_ok := Utility.word_ok;
     Semantics.byte_ok := Utility.byte_ok;
     Semantics.mem_ok := mem_ok;

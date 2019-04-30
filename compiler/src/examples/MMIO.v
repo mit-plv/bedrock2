@@ -40,9 +40,7 @@ Open Scope ilist_scope.
 Definition varname: Type := Z.
 Definition funname: Type := string.
 
-Instance actname_eq_dec: DecidableEq MMIOAction.
-intros a b. destruct a; destruct b; (left + right); congruence.
-Defined.
+Instance actname_eq_dec: DecidableEq MMIOAction := string_dec.
 
 Definition compile_ext_call(results: list varname)(a: MMIOAction)(args: list varname):
   list Instruction :=
@@ -61,7 +59,7 @@ Lemma compile_ext_call_length: forall binds f args,
     Zlength (compile_ext_call binds f args) <= 1.
 Proof.
   intros. unfold compile_ext_call.
-  destruct f; destruct binds; try destruct binds;
+  destruct (isMMOutput f); destruct binds; try destruct binds;
   try destruct args; try destruct args; try destruct args;
   cbv; intros; discriminate.
 Qed.
@@ -76,7 +74,8 @@ Lemma compile_ext_call_emits_valid: forall iset binds a args,
     valid_instructions iset (compile_ext_call binds a args).
 Proof.
   intros.
-  destruct a; destruct args; try destruct args; try destruct args;
+  unfold compile_ext_call.
+  destruct (isMMOutput a); destruct args; try destruct args; try destruct args;
     destruct binds; try destruct binds;
     intros instr HIn; simpl in *; intuition idtac; try contradiction.
   - rewrite <- H1.
@@ -171,8 +170,10 @@ Section MMIO1.
         mGive = map.empty /\
         if isMMOutput action then
           exists val, argvals = [addr; val] /\ post map.empty nil
-        else
+        else if isMMInput action then
           argvals = [addr] /\ forall val, post map.empty [val]
+        else
+          False
       | nil => False
       end.
 
@@ -247,7 +248,6 @@ Section MMIO1.
   |}.
 
   Instance compilation_params: FlatToRiscvDef.parameters := {
-    FlatToRiscvDef.actname := MMIOAction;
     FlatToRiscvDef.compile_ext_call := compile_ext_call;
     FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
     FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
@@ -288,7 +288,7 @@ Section MMIO1.
     FlatToRiscv.mem := (@mem p);
     FlatToRiscv.funname_env := funname_env;
     FlatToRiscv.MM := OStateND_Monad _;
-    FlatToRiscv.RVM := IsMetricRiscvMachineL;
+    FlatToRiscv.RVM := IsMetricRiscvMachine;
     FlatToRiscv.PRParams := MetricMinimalMMIOPrimitivesParams;
     FlatToRiscv.ext_spec := ext_spec;
     FlatToRiscv.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
@@ -299,6 +299,11 @@ Section MMIO1.
   Ltac contrad := contradiction || discriminate || congruence.
 
   Arguments LittleEndian.split: simpl never.
+  Arguments isMMOutput: simpl never.
+  Arguments isMMInput: simpl never.
+
+  (* give it priority over FlatToRiscvCommon.FlatToRiscv.PRParams to make eapply work better *)
+  Existing Instance MetricMinimalMMIOPrimitivesParams.
 
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
   Proof.
@@ -315,8 +320,11 @@ Section MMIO1.
     - (* compile_ext_call_correct *)
       intros *. intros ? ? V_argvars V_resvars. intros.
       pose proof (compile_ext_call_emits_valid EmitsValid.iset _ action _ V_resvars V_argvars).
-      destruct initialL as [ [initialRegs initialPc initialNpc initialMem initialLog] initialMetrics].
-      destruct action; cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics] in *.
+      destruct_RiscvMachine initialL.
+      unfold FlatToRiscvDef.compile_ext_call, FlatToRiscvCommon.FlatToRiscv.def_params,
+             FlatToRiscv_params, compilation_params, compile_ext_call in *.
+      destruct (isMMOutput action) eqn: E;
+        cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics] in *.
       + (* MMOutput *)
         simpl in *|-.
         simp.
@@ -337,12 +345,62 @@ Section MMIO1.
           destruct_one_match_hyp; congruence.
         }
         cbn in *|-.
+        destruct resvars; cycle 1. {
+          match goal with
+          | HO: outcome _ _, H: _ |- _ => specialize (H _ _ HO); move H at bottom
+          end.
+          simp.
+          cbn in *. discriminate.
+        }
         simp.
         subst insts.
         eapply runsToNonDet.runsToStep; cycle 1.
         * intro mid.
           apply id.
-        * simulate_step.
+        *
+
+(* Trick to test if right number of underscores:
+          let c := open_constr:(go_associativity _ _ _ _ _ _) in
+          let t := type of c in idtac t.
+*)
+
+(* eapply and rapply don't always work (they failed in compiler.MMIO) *)
+Ltac simulate_step ::=
+  first
+  [ refine (go_fetch_inst _ _ _ _ _ _);      [ sidecondition.. | idtac ]
+  | refine (go_getRegister0 _ _ _ _);        [ sidecondition.. | idtac ]
+  | refine (go_setRegister0 _ _ _ _ _);      [ sidecondition.. | idtac ]
+  | refine (go_getRegister _ _ _ _ _ _ _ _); [ sidecondition.. | idtac ]
+  | refine (go_setRegister _ _ _ _ _ _ _);   [ sidecondition.. | idtac ]
+  | refine (go_getPC _ _ _ _);               [ sidecondition.. | idtac ]
+  | refine (go_setPC _ _ _ _ _);             [ sidecondition.. | idtac ]
+  | refine (go_step _ _ _);                  [ sidecondition.. | idtac ]
+  | refine (go_left_identity _ _ _ _ _);     [ sidecondition.. | idtac ]
+  | refine (go_right_identity _ _ _ _);      [ sidecondition.. | idtac ]
+  | refine (go_associativity _ _ _ _ _ _);   [ sidecondition.. | idtac ] ].
+
+(*
+simulate_step.
+
+rapply go_fetch_inst.
+
+ refine (go_fetch_inst _ _ _ _ _ _); [ sidecondition.. | idtac ].
+
+eapply go_fetch_inst.
+
+          Check (_: unique! PrimitivesParams (OStateND MetricRiscvMachine) MetricRiscvMachine).
+          Check MetricMinimalMMIOPrimitivesParams.
+Check @go_fetch_inst.
+          Check (_ : MetricPrimitives MetricMinimalMMIOPrimitivesParams).
+          1: typeclasses eauto.
+          1: pose (xx := _ : MetricPrimitives MetricMinimalMMIOPrimitivesParams).
+          1: typeclasses eauto.
+
+*)
+
+
+
+          simulate_step.
           simulate_step.
           simulate_step.
           simulate_step.
@@ -367,6 +425,8 @@ Section MMIO1.
               rewrite sextend_width_nop by reflexivity.
               rewrite Z.mod_small by apply word.unsigned_range.
               rewrite word.of_Z_unsigned.
+              unfold isMMOutput in E0. apply eqb_eq in E0. subst action. unfold MMOutput in *.
+              cbn in H0. replace x0 with initialL_regs in * by congruence.
               eassumption. }
               all: solve [MetricsToRiscv.solve_MetricLog]. }
 
@@ -386,6 +446,23 @@ Section MMIO1.
           destruct_one_match_hyp; congruence.
         }
         cbn in *|-.
+        destruct resvars. {
+          match goal with
+          | HO: forall _, outcome _ _, H: _ |- _ =>
+          specialize (H _ _ (HO (word.of_Z 0))); move H at bottom
+          end.
+          simp.
+          cbn in *. discriminate.
+        }
+        simp.
+        destruct resvars; cycle 1. {
+          match goal with
+          | HO: forall _, outcome _ _, H: _ |- _ =>
+          specialize (H _ _ (HO (word.of_Z 0))); move H at bottom
+          end.
+          simp.
+          cbn in *. discriminate.
+        }
         simp.
         subst insts.
         eapply runsToNonDet.runsToStep; cycle 1.
@@ -414,6 +491,8 @@ Section MMIO1.
               apply map.split_empty_r in H2. subst.
               apply map.split_empty_r in H9. subst.
               unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
+              unfold isMMInput in E1. apply eqb_eq in E1. subst action. unfold MMInput in *.
+              cbn in H0. apply eq_of_eq_Some in H0. subst x.
               replace (word.add r (word.of_Z 0)) with r; [eassumption|].
               simpl_word_exprs word_ok.
               reflexivity. }

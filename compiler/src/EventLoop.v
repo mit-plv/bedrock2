@@ -41,13 +41,13 @@ Section EventLoop.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register Action).
-  Local Notation trace := (list (LogItem Action)).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
+  Local Notation trace := (list LogItem).
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register Action)}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
   Add Ring wring : (word.ring_theory (word := word))

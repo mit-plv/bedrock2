@@ -34,7 +34,6 @@ Local Existing Instance DefaultRiscvState.
 Local Existing Instance coqutil.Map.SortedListString.map.
 Local Existing Instance coqutil.Map.SortedListString.ok.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.FlatToRiscvDef.actname := string;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
     if string_dec fname "nop" then
       [[Addi Register0 Register0 0]]
@@ -43,7 +42,7 @@ Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := TODO;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := TODO;
 }.
-Notation RiscvMachine := (MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
+Notation RiscvMachine := MetricRiscvMachine.
 Definition params : Pipeline.parameters. simple refine {|
   Pipeline.locals := _;
   Pipeline.Registers := _;

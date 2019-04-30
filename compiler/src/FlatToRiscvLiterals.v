@@ -23,7 +23,7 @@ Section FlatToRiscvLiterals.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register FlatToRiscvDef.actname).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
 
   Definition updateMetricsForLiteral v initialMetrics : MetricLog :=
     let cost :=

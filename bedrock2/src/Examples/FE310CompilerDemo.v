@@ -1,13 +1,13 @@
 From coqutil Require Import sanity.
 Local Unset Universe Minimization ToSet.
-Require Coq.Strings.String.
+Require Import Coq.Strings.String.
 Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.BinInt.
 Require Import bedrock2.Syntax.
 
-Definition MMIOAction: Type := bool.
-Notation MMInput := false (only parsing).
-Notation MMOutput := true (only parsing).
+Definition MMIOAction: Type := String.string.
+Notation MMInput := "MMInput"%string.
+Notation MMOutput := "MMOutput"%string.
 
 Local Instance syntax_parameters : Syntax.parameters := {|
   varname := Z;

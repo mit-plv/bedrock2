@@ -52,8 +52,6 @@ asm_prog_1 ++ [[
 
 Section Verif.
 
-  Definition actname := Empty_set. (* no external actions *)
-
   Context {W: Words}.
   Context {Registers: map.map Register word}.
   Context {Registers_ok: map.ok Registers}.
@@ -62,7 +60,7 @@ Section Verif.
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register actname)}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
   Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
@@ -120,7 +118,7 @@ Section Verif.
   Definition gallina_prog_1(v1 v2: word): word :=
     word.srs (word.add v1 v2) (word.of_Z 1).
 
-  Lemma asm_prog_1_correct: forall (initial: MetricRiscvMachine Register actname) newPc R (v1 v2: word),
+  Lemma asm_prog_1_correct: forall (initial: MetricRiscvMachine) newPc R (v1 v2: word),
       map.get initial.(getRegs) x1 = Some v1 ->
       map.get initial.(getRegs) x2 = Some v2 ->
       newPc = word.add initial.(getPc)
@@ -181,7 +179,7 @@ Section Verif.
 
   Axiom fix_updated_mem_TODO: False.
 
-  Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine Register actname) newPc
+  Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine) newPc
                                   (argvars resvars: list Register) R (v1 v2 dummy: w32),
       newPc = word.add initial.(getPc)
                        (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_2)))) ->

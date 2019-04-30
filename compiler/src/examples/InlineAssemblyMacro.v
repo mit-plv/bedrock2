@@ -25,9 +25,7 @@ Axiom TODO: False.
 
 Definition var: Set := Z.
 Definition func: Set := string.
-Inductive act: Set := Select. (* only one action (= "external call" = inline assembly snippet) *)
-
-Instance act_dec: DecidableEq act. left. destruct x; destruct y. reflexivity. Defined.
+Definition act: Set := string.
 
 Instance myparams: Syntax.parameters := {|
   Syntax.varname := var;
@@ -43,7 +41,7 @@ Inductive ext_spec: act -> list Empty_set -> list word32 ->
 | ext_select: forall i selector args,
     i = word.unsigned (word.sru selector (word.of_Z 2)) ->
     0 <= i < Zlength args ->
-    ext_spec Select nil (selector :: args)
+    ext_spec "Select"%string nil (selector :: args)
              (fun t' results =>
                 t' = nil /\
                 exists garbageWord,
@@ -105,12 +103,11 @@ Definition test: stmt :=
   (SSeq (SOp _a Syntax.bopname.mul _inp1 _inp2)
   (SSeq (SOp _b Syntax.bopname.add _inp1 _inp2)
   (SSeq (SOp _c Syntax.bopname.sub _inp1 _inp2)
-        (SInteract [_r; _garbage] Select [_s; _a; _b; _c]))))).
+        (SInteract [_r; _garbage] "Select"%string [_s; _a; _b; _c]))))).
 
 Local Set Refine Instance Mode.
 
 Instance compilation_params: FlatToRiscvDef.parameters := {|
-  FlatToRiscvDef.actname := act;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
 |}. all: case TODO. Defined.
 
