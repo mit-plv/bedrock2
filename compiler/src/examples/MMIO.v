@@ -357,50 +357,7 @@ Section MMIO1.
         eapply runsToNonDet.runsToStep; cycle 1.
         * intro mid.
           apply id.
-        *
-
-(* Trick to test if right number of underscores:
-          let c := open_constr:(go_associativity _ _ _ _ _ _) in
-          let t := type of c in idtac t.
-*)
-
-(* eapply and rapply don't always work (they failed in compiler.MMIO) *)
-Ltac simulate_step ::=
-  first
-  [ refine (go_fetch_inst _ _ _ _ _ _);      [ sidecondition.. | idtac ]
-  | refine (go_getRegister0 _ _ _ _);        [ sidecondition.. | idtac ]
-  | refine (go_setRegister0 _ _ _ _ _);      [ sidecondition.. | idtac ]
-  | refine (go_getRegister _ _ _ _ _ _ _ _); [ sidecondition.. | idtac ]
-  | refine (go_setRegister _ _ _ _ _ _ _);   [ sidecondition.. | idtac ]
-  | refine (go_getPC _ _ _ _);               [ sidecondition.. | idtac ]
-  | refine (go_setPC _ _ _ _ _);             [ sidecondition.. | idtac ]
-  | refine (go_step _ _ _);                  [ sidecondition.. | idtac ]
-  | refine (go_left_identity _ _ _ _ _);     [ sidecondition.. | idtac ]
-  | refine (go_right_identity _ _ _ _);      [ sidecondition.. | idtac ]
-  | refine (go_associativity _ _ _ _ _ _);   [ sidecondition.. | idtac ] ].
-
-(*
-simulate_step.
-
-rapply go_fetch_inst.
-
- refine (go_fetch_inst _ _ _ _ _ _); [ sidecondition.. | idtac ].
-
-eapply go_fetch_inst.
-
-          Check (_: unique! PrimitivesParams (OStateND MetricRiscvMachine) MetricRiscvMachine).
-          Check MetricMinimalMMIOPrimitivesParams.
-Check @go_fetch_inst.
-          Check (_ : MetricPrimitives MetricMinimalMMIOPrimitivesParams).
-          1: typeclasses eauto.
-          1: pose (xx := _ : MetricPrimitives MetricMinimalMMIOPrimitivesParams).
-          1: typeclasses eauto.
-
-*)
-
-
-
-          simulate_step.
+        * simulate_step.
           simulate_step.
           simulate_step.
           simulate_step.
