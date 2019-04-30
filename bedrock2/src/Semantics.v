@@ -25,9 +25,9 @@ Class parameters := {
 
   ExtSpec :=
     (* Given a trace of what happened so far,
-       the current memory, an action label and a list of function call arguments, *)
+       the given-away memory, an action label and a list of function call arguments, *)
     trace -> mem -> actname -> list word ->
-    (* and a postcondition on the new memory and function call results, *)
+    (* and a postcondition on the received memory and function call results, *)
     (mem -> list word -> Prop) ->
     (* tells if this postcondition will hold *)
     Prop;
