@@ -92,6 +92,7 @@ Definition recvEthernet :=
     let rx_packet : varname := "rx_packet" in
     let c : varname := "c" in
     let num_bytes : varname := "num_bytes" in
+    let num_words : varname := "num_words" in
     let rem : varname := "rem" in
     let word : varname := "word" in
     let lan9250_readword : varname := "lan9250_readword" in
@@ -107,14 +108,14 @@ Definition recvEthernet :=
 
         (* Read Status FIFO Port *)
         io! rx_status = lan9250_readword(constr:(Ox"40"));
-        num_bytes = (rx_status >> constr:(16) & ((constr:(1) << constr:(14)) - constr:(1)));
 
-        (* x % 4 == x & 3 *)
-        rem = (num_bytes & constr:(3));
-        require (rem == constr:(0)) else { num_bytes = (num_bytes + constr:(4) - rem) };
+        (* Pad num_bytes to next word *)
+        num_bytes = (rx_status >> constr:(16) & ((constr:(1) << constr:(14)) - constr:(1)));
+        num_words = (num_bytes + (constr:(4) - constr:(1)) >> constr:(2));
+        num_bytes = (num_words * constr:(4));
 
         (* num_bytes <= MAX_ETHERNET *)
-        require (num_bytes < constr:(1518 + 1)) else { r = (constr:(-1)) };
+        require (num_bytes < constr:(1520 + 1)) else { r = (constr:(-1)) };
 
         c = (constr:(0));
         word = (constr:(0));
@@ -127,7 +128,7 @@ Definition recvEthernet :=
     ))).
 
 Definition lightbulb :=
-    let rx_packet : varname := "rx_packet" in
+    let packet : varname := "packet" in
     let len : varname := "len" in
     let ethertype : varname := "ethertype" in
     let protocol : varname := "protocol" in
@@ -138,16 +139,16 @@ Definition lightbulb :=
     let MMIOWRITE : varname := "MMIOWRITE" in
     let r : varname := "r" in
 
-  ("lightbulb", ((rx_packet::len::nil), (r::nil), bedrock_func_body:(
+  ("lightbulb", ((packet::len::nil), (r::nil), bedrock_func_body:(
     require (constr:(42) < len) else { r = (constr:(-1)) };
 
-    ethertype = ((load1(rx_packet + constr:(12)) << constr:(8)) | (load1(rx_packet + constr:(13))));
+    ethertype = ((load1(packet + constr:(12)) << constr:(8)) | (load1(packet + constr:(13))));
     require (constr:(1536 - 1) < ethertype) else { r = (constr:(-1)) };
 
-    protocol = (load1(rx_packet + constr:(23)));
+    protocol = (load1(packet + constr:(23)));
     require (protocol == constr:(Ox"11")) else { r = (constr:(-1)) };
 
-    command = (load1(rx_packet + constr:(42))); (* TODO: MMIOWRITE one bit only *)
+    command = (load1(packet + constr:(42))); (* TODO: MMIOWRITE one bit only *)
 
     io! mmio_val = MMIOREAD(constr:(Ox"10012008"));
     output! MMIOWRITE(constr:(Ox"10012008"), mmio_val | constr:(1) << constr:(23));
@@ -164,14 +165,14 @@ Local Infix "*" := sep : type_scope.
 Instance spec_of_iot : spec_of "iot" := fun functions =>
   forall p_addr rx_packet R m t,
     (array scalar8 (word.of_Z 1) p_addr rx_packet * R) m ->
-    Z.of_nat (List.length rx_packet) = 1518 ->
+    Z.of_nat (List.length rx_packet) = 1520 ->
     WeakestPrecondition.call functions "iot" t m [p_addr]
       (fun t' m' rets => exists v, rets = [v]).
 
 Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
   forall p_addr (rx_packet:list byte) R m t,
     (array scalar8 (word.of_Z 1) p_addr rx_packet * R) m ->
-    Z.of_nat (List.length rx_packet) = 1518 ->
+    List.length rx_packet = 1520%nat ->
     (* comment on wormhole mentions < 0x400 for lan9250_readword. TODO check against manual *)
     WeakestPrecondition.call functions "recvEthernet" t m [p_addr]
       (fun t' m' rets =>
@@ -215,21 +216,19 @@ Ltac prove_ext_spec :=
 Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
 Proof.
   repeat (straightline || straightline_if || eapply interact_nomem || eauto 99 || prove_ext_spec).
-  {
   refine (TailRecursion.tailrec
     (* types of ghost variables *) (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
-    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"num_bytes";"rem";"word"]
-    (fun v scratch R t m info rx_unused rx_status rx_packet c num_bytes rem word =>
+    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"num_bytes";"num_words";"word"]
+    (fun v scratch R t m info rx_unused rx_status rx_packet c num_bytes num_words word =>
       PrimitivePair.pair.mk (v = word.unsigned c /\
       (array scalar8 (word.of_Z 1) (word.add rx_packet c) scratch * R) m /\
-      Z.of_nat (List.length scratch) = word.unsigned (word.sub num_bytes c) (* /\
-      loop = num_bytes *) )  (* precondition *)
-      (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C NUM_BYTES LEN_WORDS WORD => exists SCRATCH,
+      Z.of_nat (List.length scratch) = word.unsigned (word.sub num_bytes c)
+      (* word.unsigned c < word.unsigned num_bytes *) )  (* precondition of every loop *)
+      (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C NUM_BYTES NUM_WORDS WORD => exists SCRATCH,
         (array scalar8 (word.of_Z 1) (word.add rx_packet c) SCRATCH * R) M /\
         List.length SCRATCH = List.length scratch)) (* postcondition *)
     (fun n m : Z => m < n <= word.unsigned num_bytes) (* well_founded relation *)
     _ _ _ _ _ _ _);
-
   (* TODO wrap this into a tactic with the previous refine? *)
   cbn [HList.hlist.foralls HList.tuple.foralls
        HList.hlist.existss HList.tuple.existss
@@ -239,7 +238,6 @@ Proof.
        HList.polymorphic_list.repeat HList.polymorphic_list.length
        PrimitivePair.pair._1 PrimitivePair.pair._2] in *;
   repeat (straightline || straightline_if || eapply interact_nomem || eauto 99).
-
   { exact (Z.gt_wf _). }
   { repeat (refine (conj _ _)); eauto.
     { replace (word.add p_addr c) with p_addr by (subst c; ring).
@@ -252,31 +250,47 @@ Proof.
       rewrite -> Znat.Z2Nat.id.
       {
         rewrite -> H0. replace (word.sub num_bytes c) with num_bytes by (subst c; ring).
-        rewrite word.unsigned_of_Z in H3. 
-        (* H3.  word.unsigned num_bytes <= 1518 *) admit. }
-        
-      (* etransitivity; [|eassumption]. *)
+        rewrite word.unsigned_of_Z in H2. change (word.wrap 1521) with (1521) in H2.
+        Lia.lia. }
+
       replace (word.sub num_bytes c) with num_bytes by (subst c; ring).
       (* unsigned words should always be non-negative *)  eapply Properties.word.unsigned_range. }
     { replace (word.sub num_bytes c) with num_bytes by (subst c; ring).
       rewrite -> List.length_firstn_inbounds.
       { rewrite Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. }
       (* H0 and H3 solve: Z.to_nat (word.unsigned num_bytes) <= Datatypes.length rx_packet *)
-      admit. } }
-(*  rem = num_bytes admit.  } *)
-      
+      rewrite H0.
+      trans_ltu.
+      change (word.unsigned (word.of_Z 1521)) with (1521) in H2.
+      pose proof Properties.word.unsigned_range num_bytes.
+      PreOmega.zify.
+      Search Z.of_nat.
+      rewrite Znat.Z2Nat.id; Lia.lia. }}
+
+      (*
+      etransitivity; [|eassumption].
+      replace (word.sub len_words c) with len_words by (subst c; ring).
+      rewrite -> Znat.Z2Nat.id by (eapply Properties.word.unsigned_range).
+      (* TODO(cl-wood): this goal is false, I think there is a bug in the code *)
+      admit. }
+    {  rewrite -> List.length_firstn_inbounds.
+       2: admit. (* NOTE: probably same deal as previous admit *)
+       rewrite Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. } } *)
+
+    (* lan9250_readword *)
     { prove_ext_spec.
       repeat (straightline || straightline_if).
       do 2 trans_ltu.
+      
       (* store *)
-      rewrite <- (List.firstn_skipn 4 x) in H5.
-      SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H5.
+      rewrite <- (List.firstn_skipn 4 x) in H4.
+      SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H4.
       { rewrite List.length_firstn_inbounds.
         { instantiate (1:= word.of_Z 4). eauto. }
-        (* next 2 are: 4 <= Datatypes.length x. H6 *)
+        apply Znat.Nat2Z.inj_le.
         admit. } 
       eapply store_four_of_sep.
-      { seprewrite_in @scalar32_of_bytes H8; [..|ecancel_assumption].
+      { seprewrite_in @scalar32_of_bytes H7; [..|ecancel_assumption].
         { exact _. }
         { eapply List.length_firstn_inbounds. admit. } }
       do 5 straightline.
@@ -288,29 +302,18 @@ Proof.
       { replace (word.add x4 c)
           with (word.add (word.add x4 x5) (word.of_Z 4)) by (subst c; ring).
         ecancel_assumption. }
-      { (*  Z.of_nat (Datatypes.length x17) = word.unsigned (word.sub x6 c) *) admit. }
+      { (* Z.of_nat (Datatypes.length x17) = word.unsigned (word.mul (word.sub x7 c) (word.of_Z 4)) *) admit. }
       { repeat match goal with |- context [?x] => is_var x; subst x end.
         revert H2 H3. admit. }
       { repeat match goal with |- context [?x] => is_var x; subst x end.
         revert H2 H3. admit. }
-      {
-(* 
-        repeat match type of H8 with context [?x] => subst x end.
-        cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in H9.
-        replace (word.add x4 (word.add x5 (word.of_Z 1)))
-           with (word.add (word.add x4 x5) (word.of_Z 4)) in H9 by ring.
-        SeparationLogic.seprewrite_in (@bytearray_index_merge) H9; [exact eq_refl|ecancel_assumption]. } *)
-
-        
-        
-        admit. }}
-    admit. } admit.
-Admitted.
-
-(*
-      { subst SCRATCH. rewrite List.app_length. rewrite H10. subst x17. rewrite List.length_skipn.
-        (*
-        change (Datatypes.length (HList.tuple.to_list (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v4)))))) with (4%nat). *)
+      { repeat match type of H8 with context [?x] => subst x end.
+        cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in H8.
+        replace (word.add x4 (word.mul (word.add x5 (word.of_Z 1)) (word.of_Z 4)))
+           with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) in H8 by ring.
+        SeparationLogic.seprewrite_in (@bytearray_index_merge) H8; [exact eq_refl|ecancel_assumption]. }
+      { subst SCRATCH. rewrite List.app_length. rewrite H9. subst x17. rewrite List.length_skipn.
+        change (Datatypes.length (HList.tuple.to_list (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v4)))))) with (4%nat).
         (* prove len(x) >=4 *) admit. } }
     { split.
       { ecancel_assumption. }
@@ -318,7 +321,7 @@ Admitted.
     left. letexists. split.
   { repeat straightline. exact eq_refl. }
   (* there is a bunch to do here *)
-Admitted. *)
+Admitted.
         
 (* bsearch.v has examples to deal with arrays *)
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
