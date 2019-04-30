@@ -56,8 +56,11 @@ Instance mapops: RegAlloc.map.ops (SortedListString.map Z) :=
   {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
     {| value := ListLib.list_intersect (value s1) (value s2); _value_ok := TODO |} |}.
 
+(* stack grows from high addreses to low addresses, first stack word will be written to
+   (stack_pastend-4), next stack word to (stack_pastend-8) etc *)
+Definition stack_pastend: Z := 1024.
 Definition compile '(functions, initial, reactive) :=
-  compile_prog (p:=params) (RegAlloc.map.putmany_of_tuples map.empty functions) initial reactive (List.map fst functions).
+  compile_prog (p:=params) (RegAlloc.map.putmany_of_tuples map.empty functions) stack_pastend initial reactive (List.map fst functions).
 Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.

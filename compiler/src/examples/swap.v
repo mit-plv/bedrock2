@@ -86,8 +86,12 @@ Definition main: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
 Definition nop_loop_body: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.interact (FlattenExpr.mk_Syntax_params _) [] "nop" [].
 
+(* stack grows from high addreses to low addresses, first stack word will be written to
+   (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
+Definition stack_pastend: Z := 2048.
+
 Definition swap_asm: list Instruction :=
-  Eval cbv in compile_prog e main nop_loop_body funnames.
+  Eval cbv in compile_prog e stack_pastend main nop_loop_body funnames.
 
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.

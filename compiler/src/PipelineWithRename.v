@@ -139,7 +139,7 @@ Section Pipeline1.
     FlatToRiscvDef.compile_functions (flatten_functions e funnames) funnames.
 *)
 
-  Definition compile_prog(e: @Semantics.env (FlattenExpr.mk_Semantics_params _))
+  Definition compile_prog(e: @Semantics.env (FlattenExpr.mk_Semantics_params _)) (init_sp: Z)
              (init_code loop_body: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _))
              (funs: list funname): list Instruction :=
     let e' := flatten_functions e funs in
@@ -147,6 +147,7 @@ Section Pipeline1.
     (* TODO the two below should share local variables and not rename independently *)
     let init_code' := ExprImp2RenamedFlat init_code in
     let loop_body' := ExprImp2RenamedFlat loop_body in
+    FlatToRiscvDef.compile_lit RegisterNames.sp init_sp ++
     FlatToRiscvDef.compile_prog e'' init_code' loop_body' funs.
 
 End Pipeline1.
