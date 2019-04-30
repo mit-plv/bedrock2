@@ -21,12 +21,12 @@ Notation "a b" :=
   (only printing, right associativity, at level 3, format "a b")
   : hexdump_scope.
 Notation "a b c d xs" :=
-  (a%hexdump::b%hexdump::c%hexdump::d%hexdump::xs%hexdump)%list
-  (only printing, right associativity, at level 3, format "a b c d  xs")
+  (@cons byte a%hexdump (b%hexdump::c%hexdump::d%hexdump::xs%hexdump))%list
+  (only printing, right associativity, at level 3, format "a  b  c  d   xs")
   : hexdump_scope.
 Notation "x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 x16 x17 x18 x19 x20 x21 x22 x23 x24 x25 x26 x27 x28 x29 x30 x31 x32 xs" := 
-  (x1%hexdump::x2%hexdump::x3%hexdump::x4%hexdump::x5%hexdump::x6%hexdump::x7%hexdump::x8%hexdump::x9%hexdump::x10%hexdump::x11%hexdump::x12%hexdump::x13%hexdump::x14%hexdump::x15%hexdump::x16%hexdump::x17%hexdump::x18%hexdump::x19%hexdump::x20%hexdump::x21%hexdump::x22%hexdump::x23%hexdump::x24%hexdump::x25%hexdump::x26%hexdump::x27%hexdump::x28%hexdump::x29%hexdump::x30%hexdump::x31%hexdump::x32%hexdump::xs%hexdump)%list
-  (only printing, right associativity, at level 3, format "x1 x2 x3 x4  x5 x6 x7 x8  x9 x10 x11 x12  x13 x14 x15 x16  x17 x18 x19 x20  x21 x22 x23 x24  x25 x26 x27 x28  x29 x30 x31 x32 '//' xs")
+  (@cons byte x1%hexdump (x2%hexdump::x3%hexdump::x4%hexdump::x5%hexdump::x6%hexdump::x7%hexdump::x8%hexdump::x9%hexdump::x10%hexdump::x11%hexdump::x12%hexdump::x13%hexdump::x14%hexdump::x15%hexdump::x16%hexdump::x17%hexdump::x18%hexdump::x19%hexdump::x20%hexdump::x21%hexdump::x22%hexdump::x23%hexdump::x24%hexdump::x25%hexdump::x26%hexdump::x27%hexdump::x28%hexdump::x29%hexdump::x30%hexdump::x31%hexdump::x32%hexdump::xs%hexdump))%list
+  (only printing, right associativity, at level 3, format "x1  x2  x3  x4   x5  x6  x7  x8   x9  x10  x11  x12   x13  x14  x15  x16   x17  x18  x19  x20   x21  x22  x23  x24   x25  x26  x27  x28   x29  x30  x31  x32 '//' xs")
   : hexdump_scope.
 
 Undelimit Scope hexdump_scope.

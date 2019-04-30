@@ -64,18 +64,18 @@ Definition instrencode p : list byte :=
 
 Definition prog := (
   [swap; swap_swap],
-  @cmd.call flatparams [] "swap_swap" [expr.literal 100; expr.literal 108],
+  @cmd.call flatparams [] "swap_swap" [expr.literal (2^10); expr.literal (2^10+4)],
   @cmd.interact flatparams [] "nop" []).
 
 
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
-Set Printing Width 100.
+Local Open Scope hexdump_scope.
+Set Printing Width 108.
 Goal True.
   let r := eval cbv in (compile prog) in
   pose r as asm.
 
-  Local Open Scope hexdump_scope.
 
   let x := eval cbv in (instrencode asm) in
   idtac x.
