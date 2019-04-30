@@ -92,6 +92,23 @@ Section Equiv.
     intros k.
   Admitted.
 
+  (* pc *)
+  
+  Variable pad: nat.
+  Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat).
+
+  Definition alignPc (kpc: Word.word (2 + Z.to_nat instrMemSizeLg)%nat): word :=
+    eq_rec (2 + Z.to_nat instrMemSizeLg + pad)%nat
+           Word.word (Word.combine kpc $ (0)) nwidth Hpad.
+
+  (** joonwonc: well this is not true! 
+   * Need to know how riscv-coq ensures pc is correctly bound? *)
+  Lemma alignPc_next:
+    forall kpc,
+      alignPc kpc ^+ $4 = alignPc (kpc ^+ $4).
+  Proof.
+  Admitted.
+
   (* instruction and data memory *)
 
   Variable dataMemSize: nat.
@@ -124,19 +141,6 @@ Section Equiv.
                            keys in
     unchecked_store_byte_tuple_list dataMemStart values map.empty.
 
-  Variable pad: nat.
-  Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat).
-
-  Definition alignPc (kpc: Word.word (2 + Z.to_nat instrMemSizeLg)%nat): word :=
-    eq_rec (2 + Z.to_nat instrMemSizeLg + pad)%nat
-           Word.word (Word.combine kpc $ (0)) nwidth Hpad.
-
-  Lemma alignPc_next:
-    forall kpc,
-      alignPc kpc ^+ $4 = alignPc (kpc ^+ $4).
-  Proof.
-  Admitted.
-  
   Definition KamiSt_to_RiscvMachine
              (k: KamiSt) (t: list (LogItem MMIOAction)): RiscvMachine :=
     {| getRegs := convertRegs (KamiProc.rf k);
@@ -363,102 +367,17 @@ Section Equiv.
 
   Qed.
 
-  Lemma simulate_bw_step:
-    forall (m1 m2: KamiMachine) (t: list Event)
-           (m1': RiscvMachine) (pt: list (LogItem MMIOAction)),
-      fromKami_withLog m1 pt = Some m1' ->
-      kamiStep m1 m2 t ->
-      (* Either riscv-coq takes no steps, *)
-      fromKami_withLog m2 pt = Some m1' \/
-      (* or it takes a corresponding step. *)
-      exists t' m2',
-        traces_related t t' /\
-        fromKami_withLog m2 (t' ++ pt) = Some m2' /\
-        riscvStep m1' m2' t'.
-  Proof.
-  Admitted.
-
-  Section Lift.
-    Context {S1 S2 E1 E2: Type}.
-    Context (step1: S1 -> S1 -> list E1 -> Prop).
-    Context (step2: S2 -> S2 -> list E2 -> Prop).
-    Context (convert_state: S1 -> S2) (convert_event: E1 -> E2).
-    Hypothesis sim: forall s1 s1' t1,
-        step1 s1 s1' t1 ->
-        step2 (convert_state s1) (convert_state s1') (List.map convert_event t1).
-
-    Lemma lift_star_simulation: forall s1 s1' t1,
-        star step1 s1 s1' t1 ->
-        star step2 (convert_state s1) (convert_state s1') (List.map convert_event t1).
-    Proof.
-      induction 1; [apply star_refl|].
-      rewrite map_app.
-      eapply star_step.
-      - apply IHstar.
-      - eapply sim. assumption.
-    Qed.
-  End Lift.
-
-  Lemma simulate_bw_star: forall (m1 m2: KamiMachine) (t: list Event),
-      star kamiStep m1 m2 t ->
-      exists t' m1' m2',
-        traces_related t t' /\
-        fromKami_withLog m1 nil = Some m1' /\
-        fromKami_withLog m2 t' = Some m2' /\
-        star riscvStep m1' m2' t'.
-  Proof.
-    (* TODO
-       apply lift_star_simulation
-       doesn't work any more .
-       apply simulate_bw_step. *)
-  Admitted.
-
-  Definition kamiTraces(init: KamiMachine): list Event -> Prop :=
-    fun t => exists final, star kamiStep init final t.
-
-  Lemma connection: forall (m: KamiMachine) (m': RiscvMachine),
-      fromKami_withLog m nil = Some m' ->
-      subset (kamiTraces m) (riscvTraces m').
-  Proof.
-    intros m1 m1' A t H. unfold kamiTraces, riscvTraces in *.
-    destruct H as [m2 H].
-    apply simulate_bw_star in H. destruct H as (t' & m1'' & m2' & R1 & R2 & R3 & R4).
-    rewrite R2 in A. inversion A. clear A. subst m1''.
-    unfold elem_of.
-    eauto.
-  Qed.
-
-  (* assume this first converts the KamiSt from SpecProcessor to ImplProcessor state,
-     and also converts from Kami trace to common trace *)
-  Definition kamiImplTraces(init: KamiMachine): list Event -> Prop. Admitted.
-
-  Axiom kamiImplSoundness: forall (init: KamiMachine),
-      subset (kamiImplTraces init) (kamiTraces init).
-
-  Lemma subset_trans{A: Type}(s1 s2 s3: A -> Prop):
-    subset s1 s2 ->
-    subset s2 s3 ->
-    subset s1 s3.
-  Proof. unfold subset. auto. Qed.
-
-  Lemma subset_refl{A: Type}(s: A -> Prop): subset s s. Proof. unfold subset. auto. Qed.
-
-  Lemma impl_to_end_of_compiler
-        (init: KamiMachine)(init': RiscvMachine)(post: RiscvMachine -> Prop):
-      fromKami_withLog init nil = Some init' ->
-      runsTo init' post -> (* <-- proved by bedrock2 *)
-      subset (kamiImplTraces init) (prefixes (post_to_traces post)).
-  Proof.
-    intros E H.
-    eapply subset_trans; [apply kamiImplSoundness|].
-    eapply subset_trans; [|apply bridge; eassumption].
-    eapply subset_trans; [apply connection; eassumption|].
-    apply subset_refl.
-  Qed.
-
   (* TODO in bedrock2: differential memory in trace instead of whole memory ? *)
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
+
+  Lemma fetch_ok:
+    forall instrMem dataMem pc,
+      Memory.loadWord
+        (map.putmany (convertInstrMem instrMem) (convertDataMem dataMem))
+        (alignPc pc) <> None.
+  Proof.
+  Admitted.
 
   Lemma fetch_consistent:
     forall instrMem dataMem pc inst,
@@ -806,13 +725,7 @@ Section Equiv.
       inv_bind_apply H.
       inv_bind H1.
       inv_loadWord H1.
-      destruct H1;
-        [|destruct H1; clear -H1;
-          (** TODO @joonwonc: prove that [pc] is always in the instruction memory.
-           * Then [H1] implies False. It should be provable using the conversion
-           * from [KamiProc.st] to the corresponding riscv-coq state.
-           *)
-          admit].
+      destruct H1; [|exfalso; destruct H1; eapply fetch_ok; eauto].
       destruct H1 as (rinst & ? & ?).
       inv_bind_apply H4.
 
