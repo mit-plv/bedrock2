@@ -11,7 +11,7 @@ module testbench;
     wire [64:0] obtain_rq_get;
     wire rdy_obtain_rq_get;
     reg en_send_rs_put = 0;
-    reg [31:0] send_rs_put = 0;
+    reg [31:0] send_rs_put = 32'hxxxxxxxx;
     wire rdy_send_rs_put;
     mkTop mkTop(.CLK(clock),
                 .RST_N(~reset),
@@ -27,24 +27,24 @@ module testbench;
     wire mem_rq_iswrite = obtain_rq_get[32];
     wire [31:0] mem_rq_addr = obtain_rq_get[64:33];
 
-    always @(posedge clock) begin
+    always @(*) begin
       if (rdy_obtain_rq_get && rdy_send_rs_put
           && (mem_rq_addr >> 7) == 0 && !mem_rq_iswrite)
       begin
-          en_obtain_rq_get <= 1;
-          send_rs_put <= {rom[mem_rq_addr+3], rom[mem_rq_addr+2], rom[mem_rq_addr+1], rom[mem_rq_addr+0]};
-          en_send_rs_put <= 1;
+          en_obtain_rq_get = 1;
+          send_rs_put = {rom[mem_rq_addr+3], rom[mem_rq_addr+2], rom[mem_rq_addr+1], rom[mem_rq_addr+0]};
+          en_send_rs_put = 1;
       end else if (rdy_obtain_rq_get && rdy_send_rs_put
-          && (mem_rq_addr >> 10) == 1)
+          && (mem_rq_addr >> 9) == 1)
       begin
-          en_obtain_rq_get <= 1;
-          send_rs_put <= 32'hDEADBEEF;
-          en_send_rs_put <= 1;
+          en_obtain_rq_get = 1;
+          send_rs_put = 32'hDEADBEEF;
+          en_send_rs_put = 1;
       end else
       begin
-        en_obtain_rq_get <= 0;
-        en_send_rs_put <= 0;
-        send_rs_put <= 32'hxxxxxxxx;
+        en_obtain_rq_get = 0;
+        en_send_rs_put = 0;
+        send_rs_put = 32'hxxxxxxxx;
       end
     end
 

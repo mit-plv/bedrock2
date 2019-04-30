@@ -64,7 +64,7 @@ Definition instrencode p : list byte :=
 
 Definition prog := (
   [swap; swap_swap],
-  @cmd.call flatparams [] "swap_swap" [expr.literal (2^10); expr.literal (2^10+4)],
+  @cmd.call flatparams [] "swap_swap" [expr.literal (2^9); expr.literal (2^9+4)],
   @cmd.interact flatparams [] "nop" []).
 
 
@@ -73,7 +73,15 @@ Import bedrock2.Hexdump.
 Local Open Scope hexdump_scope.
 Set Printing Width 108.
 Goal True.
-  let r := eval cbv in (compile prog) in
+  let r := eval cbv in (([[
+                             Addi 2 0 (2^10-4);
+                             Lw 1 2 0;
+                             Lw 1 2 0;
+                             Lw 1 2 0;
+                             Lw 1 2 0;
+                             Lw 1 2 0;
+                             Sw 2 0 (2^10-4)
+                         ]] ++ compile prog)%list) in
   pose r as asm.
 
 
