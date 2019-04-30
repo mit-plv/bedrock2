@@ -140,19 +140,6 @@ Section Equiv.
                            keys in
     unchecked_store_byte_tuple_list dataMemStart values map.empty.
 
-  Variable pad: nat.
-  Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat).
-
-  Definition alignPc (kpc: Word.word (2 + Z.to_nat instrMemSizeLg)%nat): word :=
-    eq_rec (2 + Z.to_nat instrMemSizeLg + pad)%nat
-           Word.word (Word.combine kpc $ (0)) nwidth Hpad.
-
-  Lemma alignPc_next:
-    forall kpc,
-      alignPc kpc ^+ $4 = alignPc (kpc ^+ $4).
-  Proof.
-  Admitted.
-
   Definition KamiSt_to_RiscvMachine
              (k: KamiSt) (t: list LogItem): RiscvMachine :=
     {| getRegs := convertRegs (KamiProc.rf k);
