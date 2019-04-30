@@ -5,7 +5,7 @@ Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
 
-  Definition literal v (post : _ -> Prop) : Prop :=
+  Definition literal v (post : word -> Prop) : Prop :=
     dlet! v := word.of_Z v in post v.
   Definition get (l : locals) (x : varname) (post : word -> Prop) : Prop :=
     bind_ex_Some v <- map.get l x; post v.

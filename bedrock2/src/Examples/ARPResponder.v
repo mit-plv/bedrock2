@@ -94,6 +94,7 @@ Definition ethernet :=
     }
 ))).
 
+(*
 Require Import bedrock2.Bytedump bedrock2.Byte bedrock2.ToCString.
 Local Open Scope bytedump_scope.
 Goal True.
@@ -102,3 +103,4 @@ Goal True.
         (* c_code *)
   .
 Abort.
+*)

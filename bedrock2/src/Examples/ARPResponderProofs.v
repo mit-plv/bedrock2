@@ -1,5 +1,5 @@
 From Coq Require Import Strings.String Lists.List ZArith.BinInt.
-From bedrock2 Require Import BasicC64Semantics ProgramLogic.
+From bedrock2 Require Import BasicC32Semantics ProgramLogic.
 Require Import coqutil.Z.Lia.
 
 Require Import bedrock2.Examples.ARPResponder.
@@ -13,17 +13,11 @@ From bedrock2 Require Import Array Scalars Separation.
 From coqutil.Tactics Require Import letexists rdelta.
 Local Notation bytes := (array scalar8 (word.of_Z 1)).
 
-Set Printing Width 90.
 Ltac seplog_use_array_load1 H i :=
   let iNat := eval cbv in (Z.to_nat i) in
   unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
     [exact iNat|exact (word.of_Z 0)|blia|];
   change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
-
-Local Instance mapok: coqutil.Map.Interface.map.ok Semantics.mem :=
-  SortedListWord.ok (Naive.word 32 eq_refl) _.
-Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
-Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
 
 
 Local Instance spec_of_arp : spec_of "arp" := fun functions =>

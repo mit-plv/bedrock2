@@ -56,7 +56,7 @@ Module Z.
   Qed.
 End Z.
 
-Require Import bedrock2.TODO_absint coqutil.Z.Lia.
+Require Import bedrock2.AbsintWordToZ coqutil.Z.Lia.
 
 Ltac t :=
   repeat match goal with x := _ |- _ => subst x end;
@@ -64,13 +64,8 @@ Ltac t :=
   repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := rbounded (word.unsigned e) in idtac) end;
   repeat match goal with |- context [word.unsigned ?e] => progress (idtac; let H := unsigned.zify_expr e in try rewrite H) end;
   repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := unsigned.zify_expr e in try rewrite H in G) end;
-  repeat match goal with H: unsigned.absint_eq ?x ?x |- _ => clear H end;
-  cbv [unsigned.absint_eq] in *.
-
-
-Local Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok (Naive.word 64 eq_refl) _.
-Local Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := coqutil.Word.Naive.ok _ _.
-Local Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := coqutil.Word.Naive.ok _ _.
+  repeat match goal with H: absint_eq ?x ?x |- _ => clear H end;
+  cbv [absint_eq] in *.
 
 Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
@@ -121,12 +116,9 @@ Proof.
           rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } }
-      { (straightline || (split; trivial; [])).
-        (straightline || (split; trivial; [])).
-        (* straightline
-        Error: Anomaly "Universe Top.1137 undefined." Please report at http://coq.inria.fr/bugs/. *)
-        admit. } } (*
-        repeat (straightline || (split; trivial; [])). all: t.
+      { 
+        repeat (straightline || (split; trivial; [])).
+        all: t.
         { (* measure decreases *)
           set (word.unsigned x0) in *. (* WHY does blia need this? *)
           Z.div_mod_to_equations; blia. }
@@ -137,19 +129,15 @@ Proof.
           rewrite Heq at 2; clear Hbit Heq.
           (* rewriting with equivalence modulo ... *)
           rewrite !word.unsigned_mul, ?Z.mul_mod_idemp_l by discriminate.
+          cbv [word.wrap].
           rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
           rewrite ?Z.add_0_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } } }
-          *)
     { (* postcondition *) rewrite H, Z.pow_0_r, Z.mul_1_r, word.wrap_unsigned; auto. } }
 
-  (* Error: Anomaly "Universe Top.873 undefined." Please report at http://coq.inria.fr/bugs/.
   repeat straightline.
 
-  (* function postcontition *)
   repeat (split || letexists || t || trivial).
   setoid_rewrite H1; setoid_rewrite Z.mul_1_l; trivial.
 Defined.
-*)
-Admitted.

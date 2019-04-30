@@ -57,6 +57,16 @@ Section Go.
   Definition mcomp_sat(m: M unit)(initialL: RiscvMachineL)(post: RiscvMachineL -> Prop): Prop :=
     mcomp_sat m initialL (fun (_: unit) => post).
 
+  Lemma spec_Bind_unit: forall (initialL: RiscvMachineL)
+       (mid post: RiscvMachineL -> Prop) (m1: M unit) (m2 : M unit),
+      mcomp_sat m1 initialL mid ->
+      (forall middle, mid middle -> mcomp_sat m2 middle post) ->
+      mcomp_sat (Bind m1 (fun _ => m2)) initialL post.
+  Proof.
+    intros. eapply spec_Bind. eexists. split; [exact H|]. intros. simpl in *.
+    apply H0. assumption.
+  Qed.
+
   Ltac t lem :=
     intros;
     try (eapply spec_Bind_det; [|eassumption]); (* try because go_step doesn't need Bind *)

@@ -9,6 +9,9 @@ Local Open Scope Z_scope.
 Definition divisibleBy4{W: Words}(x: word): Prop := (word.unsigned x) mod 4 = 0.
 
 Ltac divisibleBy4_pre :=
+  lazymatch goal with
+  | |- ?G => assert_fails (has_evar G)
+  end;
   unfold divisibleBy4 in *;
   lazymatch goal with
   | |- _ mod 4 = 0 => idtac
@@ -21,7 +24,11 @@ Ltac divisibleBy4_pre :=
   repeat match goal with
          | |- _ mod 4 = 0 -> _ => intro
          end;
-  repeat (rewrite ?word.unsigned_add, ?word.unsigned_mul, ?word.unsigned_of_Z || unfold word.wrap).
+  repeat (rewrite ?word.unsigned_add,
+                  ?word.unsigned_sub,
+                  ?word.unsigned_mul,
+                  ?word.unsigned_of_Z
+          || unfold word.wrap).
 
 Ltac solve_divisibleBy4 := divisibleBy4_pre; solve_mod4_0.
 
