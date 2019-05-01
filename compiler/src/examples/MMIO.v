@@ -177,6 +177,26 @@ Section MMIO1.
       | nil => False
       end.
 
+  Axiom tupleToWord: forall {n: nat}, HList.tuple Utility.byte n -> Utility.word.
+
+  Instance riscv_ext_spec: ExtSpec (OStateND RiscvMachine) := {
+    run_mmio_load n addr :=
+      fun initial o =>
+        (o = None /\
+         forall post, ~ simple_ext_spec initial.(getLog) map.empty MMInput [addr] post) \/
+        (exists bytes, o = Some (bytes, initial) /\
+             (forall post, simple_ext_spec initial.(getLog) map.empty MMInput [addr] post ->
+                           post map.empty [tupleToWord bytes]));
+
+    run_mmio_store n addr v :=
+      fun initial o =>
+        (o = None /\ forall post,
+            ~ simple_ext_spec initial.(getLog) map.empty MMOutput [addr; tupleToWord v] post) \/
+        (o = Some (tt, initial) /\ (forall post,
+            simple_ext_spec initial.(getLog) map.empty MMOutput [addr; tupleToWord v] post ->
+            post map.empty []));
+  }.
+
   Section Real.
     Import FE310CompilerDemo.
     Definition real_ext_spec(t: trace)(mGive: mem)(action: MMIOAction)(args: list word)
@@ -305,6 +325,21 @@ Section MMIO1.
   (* give it priority over FlatToRiscvCommon.FlatToRiscv.PRParams to make eapply work better *)
   Existing Instance MetricMinimalMMIOPrimitivesParams.
 
+  Lemma computation_with_answer_satisfies_Bind_bw{S A B: Type}:
+    forall (m: OStateND S A) (f: A -> OStateND S B) (initial: S) mid post,
+      OStateNDOperations.computation_with_answer_satisfies m initial mid ->
+      (forall a s, mid a s -> OStateNDOperations.computation_with_answer_satisfies (f a) s post) ->
+      OStateNDOperations.computation_with_answer_satisfies (Bind m f) initial post.
+  Proof.
+    unfold OStateNDOperations.computation_with_answer_satisfies.
+    intros. simpl in *.
+    destruct H1.
+    - destruct H1. subst. specialize (H _ H1). destruct H as (? & ? & ? & ?). discriminate.
+    - destruct H1 as (? & ? & ? & ?). specialize (H _ H1).
+      destruct H as (? & ? & ? & ?). inversion H. clear H. subst.
+      specialize (H0 _ _ H3 _ H2). exact H0.
+  Qed.
+
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
   Proof.
     constructor. all: try typeclasses eauto.
@@ -366,11 +401,30 @@ Section MMIO1.
           simulate_step.
           unfold Utility.add, Utility.ZToReg, Utility.regToInt32, MachineWidth_XLEN.
           simpl_word_exprs word_ok.
-          apply spec_Bind.
+          apply spec_Bind. (* TODO define evars here *)
           refine (ex_intro _ (fun v m => m = {| getMachine := {| getLog := _ |} |}) _).
           split.
-          { apply spec_storeWord. simpl. right. simpl. split; [|reflexivity].
-            apply storeWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
+          { apply spec_storeWord. right. split.
+            - simpl. apply storeWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption.
+            - simpl. unfold liftL2.
+              unfold run_and_log_mmio_store.
+              match goal with
+              | |- _ _ _ ?Post => remember Post as post
+              end.
+              eapply computation_with_answer_satisfies_liftL0_bw.
+              refine (computation_with_answer_satisfies_Bind_bw _ _ _
+                                          (fun _ s => post tt {| getMachine := s; |}) _ _ _).
+              + simpl. unfold OStateNDOperations.computation_with_answer_satisfies.
+                intros o A. destruct A.
+                * simp. exfalso. apply (H7 (fun _ _ => True)). eauto.
+                * simp. do 2 eexists. split; [reflexivity|]. subst post.
+                  f_equal.
+                  reflexivity.
+              + intros.  subst.
+ unfold run_mmio_store, riscv_ext_spec.
+              (* TODO here's the interesting case *)
+              case TODO.
+          }
           { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone. simpl.
             specialize H17 with (1 := H8).
             eexists. simp.
