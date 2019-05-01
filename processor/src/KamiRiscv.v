@@ -92,7 +92,7 @@ Section Equiv.
   Admitted.
 
   (* pc *)
-  
+
   Variable pad: nat.
   Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat).
 
@@ -100,7 +100,7 @@ Section Equiv.
     eq_rec (2 + Z.to_nat instrMemSizeLg + pad)%nat
            Word.word (Word.combine kpc $ (0)) nwidth Hpad.
 
-  (** joonwonc: well this is not true! 
+  (** joonwonc: well this is not true!
    * Need to know how riscv-coq ensures pc is correctly bound? *)
   Lemma alignPc_next:
     forall kpc,
@@ -168,31 +168,20 @@ Section Equiv.
   Definition mmioStoreEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
     ((m, MMOutput, [addr; signedByteTupleToReg v]), (m, [])).
 
-  Instance MinimalMMIOPrimitivesParams:
-    PrimitivesParams M RiscvMachine :=
-    {| Primitives.mcomp_sat := @mcomp_sat;
+  (* These two specify what happens on loads and stores which are outside the memory, eg MMIO *)
+  (* TODO these will have to be more concrete *)
+  Context (nonmem_load: forall (n: nat) (addr: word), M (HList.tuple byte n)).
+  Context (nonmem_store: forall (n: nat) (addr: word) (v: HList.tuple byte n), M unit).
 
-       (* any value can be found in an uninitialized register *)
-       Primitives.is_initial_register_value x := True;
+  Instance MinimalMMIOPrimitivesParams: PrimitivesParams M RiscvMachine := {
+    Primitives.mcomp_sat := @mcomp_sat;
 
-       Primitives.nonmem_loadByte_sat initialL addr post :=
-         forall (v: w8), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 1 v) initialL);
-       Primitives.nonmem_loadHalf_sat initialL addr post :=
-         forall (v: w16), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 2 v) initialL);
-       Primitives.nonmem_loadWord_sat initialL addr post :=
-         forall (v: w32), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 4 v) initialL);
-       Primitives.nonmem_loadDouble_sat initialL addr post :=
-         forall (v: w64), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 8 v) initialL);
+    (* any value can be found in an uninitialized register *)
+    Primitives.is_initial_register_value x := True;
 
-       Primitives.nonmem_storeByte_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 1 v) initialL);
-       Primitives.nonmem_storeHalf_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 2 v) initialL);
-       Primitives.nonmem_storeWord_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 4 v) initialL);
-       Primitives.nonmem_storeDouble_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 8 v) initialL);
-    |}.
+    Primitives.nonmem_load := nonmem_load;
+    Primitives.nonmem_store := nonmem_store;
+  }.
 
   Context {Pr: Primitives MinimalMMIOPrimitivesParams}.
   Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
