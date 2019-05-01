@@ -177,6 +177,35 @@ Section MMIO1.
       | nil => False
       end.
 
+  Axiom tupleToWord: forall {n: nat}, HList.tuple Utility.byte n -> Utility.word.
+
+  Section HideInstance.
+  Instance riscv_ext_spec_based_on_simple_ext_spec: ExtSpec (OStateND RiscvMachine) := {
+    run_mmio_load n addr :=
+      fun initial o =>
+        (o = None /\
+         forall post, ~ simple_ext_spec initial.(getLog) map.empty MMInput [addr] post) \/
+        (exists bytes, o = Some (bytes, initial) /\
+             (forall post, simple_ext_spec initial.(getLog) map.empty MMInput [addr] post ->
+                           post map.empty [tupleToWord bytes]));
+
+    run_mmio_store n addr v :=
+      fun initial o =>
+        (o = None /\ forall post,
+            ~ simple_ext_spec initial.(getLog) map.empty MMOutput [addr; tupleToWord v] post) \/
+        (o = Some (tt, initial) /\ (forall post,
+            simple_ext_spec initial.(getLog) map.empty MMOutput [addr; tupleToWord v] post ->
+            post map.empty []));
+  }.
+  End HideInstance.
+
+  (* Simplest possible instance: accept mmio at any address.
+     TODO: start using simple_ext_spec or real_ext_spec again. *)
+  Instance riscv_ext_spec: ExtSpec (OStateND RiscvMachine) := {
+    run_mmio_load n addr := OStateNDOperations.arbitrary (HList.tuple byte n);
+    run_mmio_store n addr v := Return tt;
+  }.
+
   Section Real.
     Import FE310CompilerDemo.
     Definition real_ext_spec(t: trace)(mGive: mem)(action: MMIOAction)(args: list word)
@@ -305,6 +334,149 @@ Section MMIO1.
   (* give it priority over FlatToRiscvCommon.FlatToRiscv.PRParams to make eapply work better *)
   Existing Instance MetricMinimalMMIOPrimitivesParams.
 
+  Lemma computation_with_answer_satisfies_Bind_bw{S A B: Type}:
+    forall (m: OStateND S A) (f: A -> OStateND S B) (initial: S) mid post,
+      OStateNDOperations.computation_with_answer_satisfies m initial mid ->
+      (forall a s, mid a s -> OStateNDOperations.computation_with_answer_satisfies (f a) s post) ->
+      OStateNDOperations.computation_with_answer_satisfies (Bind m f) initial post.
+  Proof.
+    unfold OStateNDOperations.computation_with_answer_satisfies.
+    intros. simpl in *.
+    destruct H1.
+    - destruct H1. subst. specialize (H _ H1). destruct H as (? & ? & ? & ?). discriminate.
+    - destruct H1 as (? & ? & ? & ?). specialize (H _ H1).
+      destruct H as (? & ? & ? & ?). inversion H. clear H. subst.
+      specialize (H0 _ _ H3 _ H2). exact H0.
+  Qed.
+
+  Lemma computation_with_answer_satisfies_Return_bw{S A: Type}:
+    forall (a: A) (initial: S) (post: A -> S -> Prop),
+      post a initial ->
+      OStateNDOperations.computation_with_answer_satisfies (Return a) initial post.
+  Proof.
+    unfold OStateNDOperations.computation_with_answer_satisfies.
+    intros. simpl in *. subst. eauto.
+  Qed.
+
+  Lemma computation_with_answer_satisfies_get_bw{S: Type}:
+    forall (initial : S) (post : S -> S -> Prop),
+      post initial initial ->
+      OStateNDOperations.computation_with_answer_satisfies OStateNDOperations.get initial post.
+  Proof.
+    intros. unfold OStateNDOperations.computation_with_answer_satisfies, OStateNDOperations.get.
+    intros. subst. eauto.
+  Qed.
+
+  Lemma computation_with_answer_satisfies_put_bw{S: Type}:
+    forall (initial new : S) (post : unit -> S -> Prop),
+      post tt new ->
+      OStateNDOperations.computation_with_answer_satisfies (OStateNDOperations.put new) initial post.
+  Proof.
+    intros. unfold OStateNDOperations.computation_with_answer_satisfies, OStateNDOperations.put.
+    intros. subst. eauto.
+  Qed.
+
+  (*
+  Lemma go_liftL0: forall (upd: MetricLog -> MetricLog) (m: OStateND RiscvMachine unit)
+                          (initial: MetricRiscvMachine)
+      (f: unit -> OStateND MetricRiscvMachine unit) (mid: RiscvMachine -> Prop)
+      (post: MetricRiscvMachine -> Prop),
+      mcomp_sat m initial (fun middle: MetricRiscvMachine => mid middle.(getMachine)) ->
+      (forall middle, mid middle ->
+           mcomp_sat (f tt) {| getMachine := middle; getMetrics := upd initial.(getMetrics) |}
+                     post) ->
+      mcomp_sat (Bind (liftL0 upd m) f) initial post.
+  Proof.
+  *)
+
+  Lemma go_liftL0: forall (upd: MetricLog -> MetricLog) (m: OStateND RiscvMachine unit)
+                          (initial: MetricRiscvMachine)
+      (f: unit -> OStateND MetricRiscvMachine unit) (mid: unit -> RiscvMachine -> Prop)
+      (post: MetricRiscvMachine -> Prop),
+      Primitives.mcomp_sat (PrimitivesParams := MinimalMMIOPrimitivesParams)
+                           m initial.(getMachine) mid ->
+      (forall middle, mid tt middle ->
+           mcomp_sat (f tt) {| getMachine := middle; getMetrics := upd initial.(getMetrics) |}
+                     post) ->
+      mcomp_sat (Bind (liftL0 upd m) f) initial post.
+  Proof.
+    intros. unfold mcomp_sat, Primitives.mcomp_sat in *. simpl in *.
+    unfold OStateNDOperations.computation_with_answer_satisfies in *.
+    unfold liftL0. intros. destruct H1.
+    - simp. destruct H2.
+      + simp. discriminate.
+      + simp. specialize (H _ H3). simp. discriminate.
+    - simp. destruct o as [(? & ?) |].
+      + destruct x. destruct u. do 2 eexists; split; [reflexivity|].
+        destruct H2.
+        * simp. specialize (H _ H4). simp. specialize (H0 _ H2).
+          specialize (H0 _ H3). simp. assumption.
+        * simp. discriminate.
+      + destruct x. destruct H2.
+        * simp. specialize (H _ H4). simp. specialize (H0 _ H2).
+          specialize (H0 _ H3). simp. discriminate.
+        * simp. discriminate.
+  Qed.
+
+  Lemma go_storeWord_mmio: forall (initialL : MetricRiscvMachine) (addr : Utility.word)
+        (v : Utility.w32) (post : MetricRiscvMachine -> Prop) f,
+      Memory.store_bytes 4 initialL.(getMem) addr v = None ->
+      mcomp_sat (f tt) (updateMetrics (addMetricStores 1)
+                                      (withLogItem (mmioStoreEvent addr v) initialL)) post ->
+      mcomp_sat (Bind (storeWord Execute addr v) f) initialL post.
+  Proof.
+    (* TODO is there a more civilized way to prove this than just unfolding everything? *)
+    intros.
+    unfold storeWord, FlatToRiscvCommon.FlatToRiscv.RVM, FlatToRiscv_params, IsMetricRiscvMachine.
+    unfold mcomp_sat, storeWord, IsRiscvMachine, storeN in *.
+    simpl in *.
+    unfold OStateNDOperations.computation_with_answer_satisfies in *.
+    unfold liftL3, liftL0 in *.
+    unfold run_and_log_mmio_store, run_mmio_store, riscv_ext_spec, logEvent in *.
+    unfold OStateNDOperations.get, OStateNDOperations.put in *.
+    intros o A.
+    repeat match goal with
+           | |- _ => progress simp
+           | |- _ => progress simpl in *
+           | H: _ \/ _ |- _ => destruct H
+           | H: Some _ = None |- _ => discriminate H
+           | H: None = Some _ |- _ => discriminate H
+           end.
+    destruct_RiscvMachine initialL.
+    specialize (H0 _ H3).
+    exact H0.
+  Qed.
+
+  Lemma go_loadWord_mmio: forall (initialL : MetricRiscvMachine) (addr : Utility.word)
+                                 (post : MetricRiscvMachine -> Prop) f,
+      Memory.load_bytes 4 initialL.(getMem) addr = None ->
+      (forall  (v : Utility.w32),
+          mcomp_sat (f v) (updateMetrics (addMetricLoads 1)
+                                          (withLogItem (mmioLoadEvent addr v) initialL)) post) ->
+      mcomp_sat (Bind (loadWord Execute addr) f) initialL post.
+  Proof.
+    (* TODO is there a more civilized way to prove this than just unfolding everything? *)
+    intros.
+    unfold loadWord, FlatToRiscvCommon.FlatToRiscv.RVM, FlatToRiscv_params, IsMetricRiscvMachine.
+    unfold mcomp_sat, loadWord, IsRiscvMachine, loadN in *.
+    simpl in *.
+    unfold OStateNDOperations.computation_with_answer_satisfies in *.
+    unfold liftL2, liftL0 in *.
+    unfold run_and_log_mmio_load, run_mmio_load, riscv_ext_spec, logEvent in *.
+    unfold OStateNDOperations.get, OStateNDOperations.put, OStateNDOperations.arbitrary in *.
+    intros o A.
+    repeat match goal with
+           | |- _ => progress simp
+           | |- _ => progress simpl in *
+           | H: _ \/ _ |- _ => destruct H
+           | H: Some _ = None |- _ => discriminate H
+           | H: None = Some _ |- _ => discriminate H
+           end.
+    destruct_RiscvMachine initialL.
+    specialize (H0 _ _ H3).
+    exact H0.
+  Qed.
+
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
   Proof.
     constructor. all: try typeclasses eauto.
@@ -354,10 +526,8 @@ Section MMIO1.
         }
         simp.
         subst insts.
-        eapply runsToNonDet.runsToStep; cycle 1.
-        * intro mid.
-          apply id.
-        * simulate_step.
+        eapply runsToNonDet.runsToStep. {
+          simulate_step.
           simulate_step.
           simulate_step.
           simulate_step.
@@ -366,26 +536,28 @@ Section MMIO1.
           simulate_step.
           unfold Utility.add, Utility.ZToReg, Utility.regToInt32, MachineWidth_XLEN.
           simpl_word_exprs word_ok.
-          apply spec_Bind.
-          refine (ex_intro _ (fun v m => m = {| getMachine := {| getLog := _ |} |}) _).
-          split.
-          { apply spec_storeWord. simpl. right. simpl. split; [|reflexivity].
-            apply storeWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
-          { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone. simpl.
-            specialize H17 with (1 := H8).
-            eexists. simp.
-            repeat split; try eassumption.
-            { apply map.split_empty_r in H2. subst.
-              apply map.split_empty_r in H9. subst.
-              unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
-              rewrite LittleEndian.combine_split.
-              rewrite sextend_width_nop by reflexivity.
-              rewrite Z.mod_small by apply word.unsigned_range.
-              rewrite word.of_Z_unsigned.
-              unfold isMMOutput in E0. apply eqb_eq in E0. subst action. unfold MMOutput in *.
-              cbn in H0. replace x0 with initialL_regs in * by congruence.
-              eassumption. }
-              all: solve [MetricsToRiscv.solve_MetricLog]. }
+          eapply go_storeWord_mmio. {
+            simpl. apply storeWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption.
+          }
+          simpl_MetricRiscvMachine_get_set.
+          simulate_step.
+          instantiate (1 := @eq MetricRiscvMachine _). reflexivity.
+        }
+        intros. subst. simpl. apply runsToNonDet.runsToDone. simpl.
+        specialize H17 with (1 := H8).
+        eexists. simp. simpl_word_exprs word_ok.
+        repeat split; try eassumption.
+        { apply map.split_empty_r in H2. subst.
+          apply map.split_empty_r in H9. subst.
+          unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
+          rewrite LittleEndian.combine_split.
+          rewrite sextend_width_nop by reflexivity.
+          rewrite Z.mod_small by apply word.unsigned_range.
+          rewrite word.of_Z_unsigned.
+          unfold isMMOutput in E0. apply eqb_eq in E0. subst action. unfold MMOutput in *.
+          cbn in H0. replace x0 with initialL_regs in * by congruence.
+          eassumption. }
+        all: solve [MetricsToRiscv.solve_MetricLog].
 
       + (* MMInput *)
         simpl in *|-.
@@ -431,35 +603,35 @@ Section MMIO1.
           simulate_step.
           simulate_step.
           simulate_step.
+          unfold Utility.add, Utility.ZToReg, Utility.regToInt32, MachineWidth_XLEN.
           simpl_word_exprs word_ok.
-          apply spec_Bind.
-          refine (ex_intro _ (fun v m => m = {| getMachine := {| getLog := _ |} |}) _).
-          split.
-          { apply spec_loadWord. simpl. right. repeat split; try assumption.
-            apply loadWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption. }
-          { intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
-            simpl. eexists.
-            repeat split; try assumption.
-            { match goal with
-              | |- context [map.put _ _ ?resval] => specialize (H7 resval)
-              end.
-              specialize H17 with (1 := H7).
-              simp.
-              apply map.split_empty_r in H2. subst.
-              apply map.split_empty_r in H9. subst.
-              unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
-              unfold isMMInput in E1. apply eqb_eq in E1. subst action. unfold MMInput in *.
-              cbn in H0. apply eq_of_eq_Some in H0. subst x.
-              replace (word.add r (word.of_Z 0)) with r; [eassumption|].
-              simpl_word_exprs word_ok.
-              reflexivity. }
-            all: solve [MetricsToRiscv.solve_MetricLog]. }
+          eapply go_loadWord_mmio. {
+            apply loadWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption.
+          }
+          intros. subst. simulate. simpl. apply runsToNonDet.runsToDone.
+          simpl. eexists.
+          repeat split; try assumption.
+          { match goal with
+            | |- context [map.put _ _ ?resval] => specialize (H7 resval)
+            end.
+            specialize H17 with (1 := H7).
+            simp.
+            apply map.split_empty_r in H2. subst.
+            apply map.split_empty_r in H9. subst.
+            unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
+            unfold isMMInput in E1. apply eqb_eq in E1. subst action. unfold MMInput in *.
+            cbn in H0. apply eq_of_eq_Some in H0. subst x.
+            replace (word.add r (word.of_Z 0)) with r; [eassumption|].
+            simpl_word_exprs word_ok.
+            reflexivity. }
+          all: solve [MetricsToRiscv.solve_MetricLog].
   Qed.
 
 End MMIO1.
 
 Existing Instance Words32.
 Existing Instance mmio_semantics_params.
+Existing Instance riscv_ext_spec.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.
 Existing Instance assume_riscv_word_properties.

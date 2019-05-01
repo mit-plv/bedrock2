@@ -267,7 +267,8 @@ Section Equiv.
     assumption.
   Qed.
 
-  Hypothesis assume_no_MMIO: forall mach addr post, ~ nonmem_loadWord_sat mach addr post.
+  Hypothesis assume_no_MMIO: forall n mach addr post,
+      ~ mcomp_sat (nonmem_load n addr) mach post.
 
   Lemma simulate_step_fw: forall (initial: RiscvMachine)
                                  (post: RiscvMachine -> Prop),
