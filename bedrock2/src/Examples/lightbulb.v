@@ -93,8 +93,7 @@ Definition recvEthernet :=
     let c : varname := "c" in
     let num_bytes : varname := "num_bytes" in
     let num_words : varname := "num_words" in
-    let rem : varname := "rem" in
-    let word : varname := "word" in
+    let value : varname := "value" in
     let lan9250_readword : varname := "lan9250_readword" in
 
     let r : varname := "r" in
@@ -118,10 +117,10 @@ Definition recvEthernet :=
         require (num_bytes < constr:(1520 + 1)) else { r = (constr:(-1)) };
 
         c = (constr:(0));
-        word = (constr:(0));
+        value = (constr:(0));
         while (c < num_bytes) {
-            io! word = lan9250_readword(constr:(0));
-            store4(rx_packet + c, word);
+            io! value = lan9250_readword(constr:(0));
+            store4(rx_packet + c, value);
             c = (c + constr:(4))
         };
         r = (num_bytes)
@@ -218,13 +217,15 @@ Proof.
   repeat (straightline || straightline_if || eapply interact_nomem || eauto 99 || prove_ext_spec).
   refine (TailRecursion.tailrec
     (* types of ghost variables *) (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
-    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"num_bytes";"num_words";"word"]
-    (fun v scratch R t m info rx_unused rx_status rx_packet c num_bytes num_words word =>
+    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"num_bytes";"num_words";"value"]
+    (fun v scratch R t m info rx_unused rx_status rx_packet c num_bytes num_words value =>
       PrimitivePair.pair.mk (v = word.unsigned c /\
       (array scalar8 (word.of_Z 1) (word.add rx_packet c) scratch * R) m /\
-      Z.of_nat (List.length scratch) = word.unsigned (word.sub num_bytes c)
-      (* word.unsigned c < word.unsigned num_bytes *) )  (* precondition of every loop *)
-      (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C NUM_BYTES NUM_WORDS WORD => exists SCRATCH,
+      Z.of_nat (List.length scratch) = word.unsigned (word.sub num_bytes c) /\
+
+      (word.unsigned c < word.unsigned num_bytes + 4)
+      (* /\  word.unsigned c < num_bytes) *) )  (* precondition of every loop *)
+      (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C NUM_BYTES NUM_WORDS VALUE => exists SCRATCH,
         (array scalar8 (word.of_Z 1) (word.add rx_packet c) SCRATCH * R) M /\
         List.length SCRATCH = List.length scratch)) (* postcondition *)
     (fun n m : Z => m < n <= word.unsigned num_bytes) (* well_founded relation *)
@@ -258,14 +259,14 @@ Proof.
     { replace (word.sub num_bytes c) with num_bytes by (subst c; ring).
       rewrite -> List.length_firstn_inbounds.
       { rewrite Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. }
-      (* H0 and H3 solve: Z.to_nat (word.unsigned num_bytes) <= Datatypes.length rx_packet *)
       rewrite H0.
       trans_ltu.
       change (word.unsigned (word.of_Z 1521)) with (1521) in H2.
       pose proof Properties.word.unsigned_range num_bytes.
       PreOmega.zify.
-      Search Z.of_nat.
-      rewrite Znat.Z2Nat.id; Lia.lia. }}
+      rewrite Znat.Z2Nat.id; Lia.lia. }
+    {
+      pose proof Properties.word.unsigned_range num_bytes.  PreOmega.zify. Lia.lia. }}
 
       (*
       etransitivity; [|eassumption].
