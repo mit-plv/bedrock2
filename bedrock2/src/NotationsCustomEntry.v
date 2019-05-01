@@ -67,18 +67,30 @@ Notation "x" := x (in custom bedrock_else at level 0, x global).
 Notation "'if' e { c1 }" := (cond e c1 skip)
   (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0,
   format "'[v' 'if'  e  {  '/  ' c1 '/' } ']'").
+Notation "'if' '!' e { c1 }" := (cond e skip c1)
+  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0,
+      format "'[v' 'if'  '!' e   {  '/  ' c1 '/' } ']'").
 Notation "'if' e { c1 } 'else' c2" := (cond e c1 c2)
   (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
   format "'[v' 'if'  e  {  '/  ' c1 '/' }  'else'  c2 ']'").
+Notation "'if' '!' e { c1 } 'else' c2" := (cond e c2 c1)
+  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
+  format "'[v' 'if'  '!' e  {  '/  ' c1 '/' }  'else'  c2 ']'").
 
 Notation "c1 ; c2" := (seq c1%bedrock_nontail c2) (in custom bedrock_cmd at level 0, right associativity,
                                    format "'[v' c1 ; '/' c2 ']'").
 Notation "'if' e { c1 } 'else' c2" := (cond e c1 c2)
   (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
   format "'[v' 'if'  e  {  '/  ' c1 '/' }  'else'  c2 ']'").
+Notation "'if' '!' e { c1 } 'else' c2" := (cond e c2 c1)
+  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
+  format "'[v' 'if'  '!' e  {  '/  ' c1 '/' }  'else'  c2 ']'").
 Notation "'if' e { c }" := (cond e c skip)
   (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
   format "'[v' 'if'  e  {  '/  ' c '/' } ']'").
+Notation "'if' '!' e { c }" := (cond e skip c)
+  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
+  format "'[v' 'if'  '!' e  {  '/  ' c '/' } ']'").
 Notation "'while' e { c }" := (while e c%bedrock_nontail)
   (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
   format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
@@ -146,12 +158,21 @@ Definition require_is_not_available_inside_conditionals_and_loops := I.
 Notation "'require' e ; c2" := (cond e c2 skip)
   (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c2 at level 0,
   format "'[v' 'require'  e ; '//' c2 ']'") : bedrock_tail.
+Notation "'require' '!' e ; c2" := (cond e skip c2)
+  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c2 at level 0,
+  format "'[v' 'require' '!'  e ; '//' c2 ']'") : bedrock_tail.
 Notation "'require' e 'else' { c1 } ; c2" := (cond e c2 c1)
   (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
   format "'[v' 'require'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_tail.
+Notation "'require' '!' e 'else' { c1 } ; c2" := (cond e c1 c2)
+  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
+  format "'[v' 'require' '!'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_tail.
 Notation "'require' e 'else' { c1 } ; c2" := (require_is_not_available_inside_conditionals_and_loops)
   (only parsing, in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
   format "'[v' 'require'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_nontail.
+Notation "'require' '!' e 'else' { c1 } ; c2" := (require_is_not_available_inside_conditionals_and_loops)
+  (only parsing, in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
+  format "'[v' 'require' '!'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_nontail.
 Undelimit Scope bedrock_tail.
 Undelimit Scope bedrock_nontail.
 
@@ -186,6 +207,11 @@ Module test.
       }).
 
   epose bedrock_func_body:(
+      if ! (1<<(1+1)*(1+1) ^ (1+1+1)) {
+          require ! (1 ^ 1 == 1) else { constr:(_) }; constr:(_)
+      }).
+
+  epose bedrock_func_body:(
       if (1<<(1+1)*(1+1) ^ (1+1+1)) {
              constr:(_) } else {
           require (1 ^ 1) else { constr:(_) }; constr:(_)
@@ -205,7 +231,7 @@ Module test.
   )).
 
   assert_fails (epose bedrock_func_body:(
-    if (1) { require (1 ^ 1) else { constr:(_) }; constr:(_)  }
+    if (1) { require !(1 ^ 1) else { constr:(_) }; constr:(_)  }
     else { constr:(_) };
     constr:(_) = (constr:(_))
   )).
@@ -226,12 +252,12 @@ Module test.
 
   let lhs := open_constr:( bedrock_func_body:(
     require 1 else { store1(1,1) } ;
-    require 1 else { store2(1,1) } ;
+    require !1 else { store2(1,1) } ;
     store4(1,1)
   )) in
   let rhs := open_constr:( bedrock_func_body:(
     if 1 {
-      if 1 {
+      if !1 {
         store4(1,1)
       }
       else {
