@@ -340,14 +340,28 @@ rewrite H5. rewrite word.unsigned_sub.
           rewrite (word.unsigned_sub _ (word.of_Z 4)).
           unfold word.wrap. rewrite Z.mod_small.
           { exact eq_refl. }
-          { (* something similar to above with mods *)
+          {
+            (* something similar to above with mods
 
-       
+               Need to assert that x6 - x5 - 4 is nowrap, is there something like unsigned_sub_nowrap?
+               for the < 2 ^ width. *)
+            change (word.unsigned (word.of_Z 4)) with 4.
+            pose proof Properties.word.unsigned_range (word.sub x6 x5).
 
-            
+
+   
+             
             admit. }}
 
-        admit. }
+        apply Znat.Nat2Z.inj_le. rewrite H5. rewrite word.unsigned_sub.
+        unfold word.wrap. rewrite Z.mod_small. {
+          revert H6 H3. clear. Z.div_mod_to_equations.
+          Lia.lia. }
+
+         pose proof Properties.word.unsigned_range x6.
+        pose proof Properties.word.unsigned_range x5.
+        Lia.lia. }
+      
       {
         subst c. rewrite word.unsigned_add. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
         {
