@@ -44,6 +44,7 @@ Section Equiv.
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
     getMem := Memory.unchecked_store_bytes 4 map.empty f.(counter) NOP;
+    getXAddrs := addXAddrRange f.(counter) 1 nil;
     getLog := t;
   |}.
 
@@ -248,6 +249,7 @@ Section Equiv.
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
     getMem := Memory.unchecked_store_bytes 4 map.empty f.(counter) NOP;
+    getXAddrs := addXAddrRange f.(counter) 1 nil;
     getLog := nil;
   |}.
 
@@ -284,7 +286,7 @@ Section Equiv.
       post (from_Fake (fakeStep (to_Fake initial))).
   Proof.
     intros *. intros AllNOPs postOnlyLooksAtPc H.
-    destruct initial as [r pc npc m l].
+    destruct initial as [r pc npc m xa l].
     unfold to_Fake, fakeStep, from_Fake.
     simpl.
     unfold run1 in H.
@@ -296,7 +298,7 @@ Section Equiv.
     destruct Hrl as [A | [_ A]]; [|exfalso; eapply assume_no_MMIO; exact A].
     destruct_products.
     simpl in Al, AllNOPs. rewrite AllNOPs in Al. inversion Al. subst v. clear Al.
-    specialize Hrr with (1 := Ar). clear Ar.
+    specialize Hrr with (1 := Arr). clear Arr.
     apply spec_Bind in Hrr. destruct_products.
     unfold NOP in Hrrl.
     rewrite combine_split in Hrrl by apply (encode_range (IInstruction Nop)).
@@ -354,8 +356,9 @@ Section Equiv.
       left.
       exists NOP.
       repeat split. (* also invokes reflexivity *)
-      simpl.
-      apply loadWord_store_bytes_same. }
+      - simpl.
+        apply loadWord_store_bytes_same.
+      - intros. simpl. auto. }
     intros. destruct_products. subst.
     apply spec_Bind.
     det_step. split.

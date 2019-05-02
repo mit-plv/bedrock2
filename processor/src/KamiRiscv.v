@@ -112,6 +112,7 @@ Section Equiv.
 
   Variable dataMemSize: nat.
   Definition instrMemStart: kword instrMemSizeLg := Word.ZToWord _ 0.
+  Definition instrMemStart': word := Word.ZToWord _ 0.
   Definition dataMemStart: word := word.of_Z (Z.of_nat (4 * instrMemSize)).
 
   Definition word32_to_4bytes(w: kword 32): HList.tuple byte 4 :=
@@ -127,6 +128,9 @@ Section Equiv.
     | nil => m
     end.
 
+  (* set of executable addresses in the kami processor *)
+  Definition kamiXAddrs: XAddrs := addXAddrRange instrMemStart' instrMemSize nil.
+
   Definition convertInstrMem (instrMem: kword instrMemSizeLg -> kword 32): mem :=
     let keys := List.unfoldn (Word.wplus (Word.ZToWord (Z.to_nat instrMemSizeLg) 1))
                              instrMemSize instrMemStart in
@@ -139,23 +143,6 @@ Section Equiv.
                                                           (word.unsigned (dataMem key)))
                            keys in
     unchecked_store_byte_tuple_list dataMemStart values map.empty.
-
-  Definition KamiSt_to_RiscvMachine
-             (k: KamiSt) (t: list LogItem): RiscvMachine :=
-    {| getRegs := convertRegs (KamiProc.rf k);
-       getPc := alignPc (KamiProc.pc k);
-       getNextPc := word.add (alignPc (KamiProc.pc k)) (word.of_Z 4);
-       getMem := map.putmany (convertInstrMem (KamiProc.pgm k))
-                             (convertDataMem (KamiProc.mem k));
-       getLog := t;
-    |}.
-
-  Definition fromKami_withLog
-             (k: KamiMachine) (t: list LogItem): option RiscvMachine :=
-    match KamiProc.RegsToT k with
-    | Some r => Some (KamiSt_to_RiscvMachine r t)
-    | None => None
-    end.
 
   (** * The Observable Behavior: MMIO events *)
 
@@ -211,14 +198,16 @@ Section Equiv.
      "exists m' t', fromKami_withLog m t' = Some 2' /\ traces_related t t'"
      and require less unfolding/destructing *)
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
-  | relate_states: forall t t' m pc rf instrMem dataMem,
+  | relate_states: forall t t' m riscvXAddrs pc rf instrMem dataMem,
       traces_related t t' ->
       KamiProc.RegsToT m = Some (KamiProc.mk pc rf instrMem dataMem) ->
+      (forall addr, isXAddr addr riscvXAddrs -> isXAddr addr kamiXAddrs) ->
       states_related (m, t) {| getRegs := convertRegs rf;
                                getPc := alignPc pc;
                                getNextPc := word.add (alignPc pc) (word.of_Z 4);
                                getMem := map.putmany (convertInstrMem instrMem)
                                                      (convertDataMem dataMem);
+                               getXAddrs := riscvXAddrs;
                                getLog := t'; |}.
 
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
@@ -692,7 +681,7 @@ Section Equiv.
 
       (** Apply the Kami inversion lemma for the [execNm] rule. *)
       inversion H5; subst; clear H5 HAction.
-      inversion H0; subst; clear H0.
+      inversion H0; subst; clear H0. rename H10 into XAddrsSubset.
       destruct klbl as [annot defs calls]; simpl in *; subst.
       destruct annot; [|discriminate].
       inversion H7; subst; clear H7.
@@ -713,7 +702,7 @@ Section Equiv.
       inv_bind H1.
       inv_loadWord H1.
       destruct H1; [|exfalso; destruct H1; eapply fetch_ok; eauto].
-      destruct H1 as (rinst & ? & ?).
+      destruct H1 as (rinst & ? & IXA & ?). specialize (IXA eq_refl).
       inv_bind_apply H4.
 
       (** Invert Kami decode/execute *)
@@ -823,6 +812,7 @@ Section Equiv.
           rewrite kami_rv32NextPc_op_ok
             by (rewrite kami_getOpcode_ok; assumption).
           reflexivity.
+        - assumption.
       }
       all: admit.
 
@@ -872,35 +862,5 @@ runsToNonDet.runsTo
       runsTo init post ->
       exists final, post final. (* /\ traces_related t final.(getLog).*) (* and steps there? *)
   Admitted.
-
-  (* Alternative approach to proving something from which impl_to_end_of_compiler would follow
-     too, but without the intermediate lemmas. Can't see at the moment how this would work. *)
-  Lemma simulate_multistep: forall (init final: KamiMachine) (t: list Event),
-      star kamiStep init final t ->
-      forall (post: RiscvMachine -> Prop),
-      (forall m, post m -> exists t, traces_related t m.(getLog)) -> (* no malformed traces *)
-      forall (init': RiscvMachine),
-      fromKami_withLog init nil = Some init' ->
-      runsTo init' post ->
-      exists (rest : list Event) (final : RiscvMachine),
-        post final /\ traces_related (rest ++ t) final.(getLog).
-  Proof.
-    induction 1; intros post C init' E R.
-    - apply pick_from_runsTo in R. destruct R as (final & R).
-      specialize (C final R). destruct C as [t C].
-      exists t. exists final. rewrite app_nil_r. auto.
-    - inversion R.
-      + (* riscv-coq is done *)
-        edestruct C as [t D]; [eassumption|].
-        exists (firstn (length t - (length t2 + length t1)) t).
-        eexists; split; eauto.
-        replace (firstn (length t - (length t2 + length t1)) t ++ t2 ++ t1) with t by admit.
-        exact D.
-
-      (* what if the fake machine steps further than the riscv spec machine?
-         Then it's supposed to be silent (creating no events).
-         But where do we show that?
-         -> Problem: from_Fake should take in trace to add  *)
-  Abort.
 
 End Equiv.

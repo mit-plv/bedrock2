@@ -83,6 +83,7 @@ Section Run.
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
             finalL.(getMem) /\
+        finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add dest (word.of_Z oimm12) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
@@ -101,6 +102,7 @@ Section Run.
         finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep finalL.(getMem) /\
+        finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
@@ -118,6 +120,7 @@ Section Run.
            but that doesn't work with the abstract goodReadyState predicate in EventLoop.v
         (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep finalL.(getMem) /\ *)
         finalL.(getMem) = initialL.(getMem) /\
+        finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
@@ -136,6 +139,7 @@ Section Run.
         finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[Op rd rs imm]] * R)%sep finalL.(getMem) /\
+        finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
@@ -159,6 +163,7 @@ Section Run.
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
           finalL.(getMem) /\
+        finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
@@ -182,6 +187,7 @@ Section Run.
         (program initialL.(getPc) [[S rs1 rs2 ofs]] *
          ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
             finalL.(getMem) /\
+        finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 

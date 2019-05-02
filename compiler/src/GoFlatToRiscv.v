@@ -30,7 +30,6 @@ Section Go.
 
   Context {W: Words}.
   Context {Registers: map.map Register word}.
-  Context {Action: Type}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
@@ -72,7 +71,7 @@ Section Go.
     try (eapply spec_Bind_det; [|eassumption]); (* try because go_step doesn't need Bind *)
     apply lem;
     rewrite_match;
-    eauto.
+    eauto 10.
 
   Lemma go_getRegister: forall (initialL: RiscvMachineL) (x: Register) v post (f: word -> M unit),
       valid_register x ->
@@ -97,6 +96,9 @@ Section Go.
       mcomp_sat (Bind (setRegister Register0 v) f) initialL post.
   Proof. t spec_setRegister. Qed.
 
+  Axiom TODO_isXAddr: forall addr xAddrs, isXAddr addr xAddrs.
+  Local Hint Resolve TODO_isXAddr.
+
   Lemma go_loadByte: forall (initialL: RiscvMachineL) kind addr (v: w8) (f: w8 -> M unit) post,
       Memory.loadByte initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
@@ -120,6 +122,9 @@ Section Go.
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Machine.loadDouble kind addr) f) initialL post.
   Proof. t spec_loadDouble. Qed.
+
+  Axiom TODO_withXAddrs_NOP: forall xAddrs m, withXAddrs xAddrs m = m.
+  Local Hint Resolve TODO_withXAddrs_NOP.
 
   Lemma go_storeByte: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeByte initialL.(getMem) addr v = Some m' ->
