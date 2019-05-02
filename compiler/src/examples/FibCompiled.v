@@ -125,6 +125,32 @@ Section FibCompiled.
            Demos.Fibonacci.i
            Demos.Fibonacci.ZNames.Inst] in *.
 
+  Ltac known_var :=
+    match goal with
+    | H: map.get ?l ?a = Some ?v |- context[map.get ?l ?a] => rewrite H
+    end.
+
+  Ltac fib_step_precondition :=
+    match goal with
+    | |- map.get (map.put _ _ _) _ = Some _ =>
+      rewrite map.get_put_diff; [assumption|discriminate] || apply map.get_put_same
+    | |- _ => assumption || simpl; Lia.blia
+    end.
+
+  Ltac eval_var_solve :=
+    unfold eval_expr;
+    eval_fib_var_names;
+    repeat known_var;
+    reflexivity.
+
+  Ltac exec_set_solve :=
+    intros; destruct_hyp;
+    eapply @exec.set;
+    [
+      eval_var_solve |
+      repeat split; fib_step_precondition
+    ].
+
   Lemma fib_bounding_metrics_body: forall t m (l : locals) mc a b i n,
       map.get l Demos.Fibonacci.a = Some a ->
       map.get l Demos.Fibonacci.b = Some b ->
@@ -143,64 +169,26 @@ Section FibCompiled.
                                      map.get l' Demos.Fibonacci.b = Some b /\
                                      map.get l' Demos.Fibonacci.c = Some (word.add a b) /\
                                      map.get l' Demos.Fibonacci.i = Some i /\
-                                     instructionsH mc' = instructionsH mc + 5)).
-    - eapply @exec.set.
-      + unfold eval_expr. eval_fib_var_names.
-        rewrite H. rewrite H0. eauto.
-      + repeat split.
-        * rewrite map.get_put_diff; [assumption | discriminate].
-        * rewrite map.get_put_diff; [assumption | discriminate].
-        * apply map.get_put_same.
-        * rewrite map.get_put_diff; [assumption | discriminate].
-        * simpl. Lia.lia.
-    - intros.
-      eapply @exec.seq with (mid := (fun t' m' l' mc' =>
-                                       t' = t /\
-                                       map.get l' Demos.Fibonacci.a = Some b /\
-                                       map.get l' Demos.Fibonacci.b = Some b /\
-                                       map.get l' Demos.Fibonacci.c = Some (word.add a b) /\
-                                       map.get l' Demos.Fibonacci.i = Some i /\
-                                       instructionsH mc' = instructionsH mc + 7)).
-      + destruct_hyp.
-        eapply @exec.set.
-        * unfold eval_expr. eval_fib_var_names.
-          rewrite H4. eauto.
-        * repeat split.
-          -- assumption.
-          -- apply map.get_put_same.
-          -- rewrite map.get_put_diff; [assumption | discriminate].
-          -- rewrite map.get_put_diff; [assumption | discriminate].
-          -- rewrite map.get_put_diff; [assumption | discriminate].
-          -- simpl. Lia.lia.
-      + intros.
+                                     instructionsH mc' = instructionsH mc + 5));
+      [exec_set_solve|].
+    intros.
+    eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                     t' = t /\
+                                     map.get l' Demos.Fibonacci.a = Some b /\
+                                     map.get l' Demos.Fibonacci.b = Some b /\
+                                     map.get l' Demos.Fibonacci.c = Some (word.add a b) /\
+                                     map.get l' Demos.Fibonacci.i = Some i /\
+                                     instructionsH mc' = instructionsH mc + 7));
+      [exec_set_solve|].
+    intros.
         eapply @exec.seq with (mid := (fun t' m' l' mc' =>
                                          t' = t /\
                                          map.get l' Demos.Fibonacci.a = Some b /\
                                          map.get l' Demos.Fibonacci.b = Some (word.add a b) /\
                                          map.get l' Demos.Fibonacci.c = Some (word.add a b) /\
                                          map.get l' Demos.Fibonacci.i = Some i /\
-                                         instructionsH mc' = instructionsH mc + 9)).
-        * destruct_hyp.
-          eapply @exec.set.
-          -- unfold eval_expr. eval_fib_var_names.
-             rewrite H6. eauto.
-          -- repeat split.
-             ++ assumption.
-             ++ rewrite map.get_put_diff; [assumption | discriminate].
-             ++ apply map.get_put_same.
-             ++ rewrite map.get_put_diff; [assumption | discriminate].
-             ++ rewrite map.get_put_diff; [assumption | discriminate].
-             ++ simpl. Lia.lia.
-        * intros.
-          destruct_hyp.
-          eapply @exec.set.
-          -- unfold eval_expr. eval_fib_var_names.
-             rewrite H8. eauto.
-          -- repeat split.
-             ++ rewrite map.get_put_diff; [assumption | discriminate].
-             ++ rewrite map.get_put_diff; [assumption | discriminate].
-             ++ apply map.get_put_same.
-             ++ simpl. Lia.lia.
+                                         instructionsH mc' = instructionsH mc + 9));
+       exec_set_solve.
   Qed.
 
   Lemma fib_bounding_metrics_while: forall (n : nat) (iter : nat) t m (l : locals) mc a b,
@@ -215,13 +203,12 @@ Section FibCompiled.
     induction iter.
     - intros.
       eapply @exec.while_false.
-      + unfold eval_expr. eval_fib_var_names.
-        rewrite H3. eauto.
+      + eval_var_solve.
       + simpl. destruct_one_match.
         * rewrite Z.sub_0_r in E. pose proof Z.ltb_irrefl.
           specialize (H4 (Z.of_nat n mod 2 ^ 32)). rewrite H4 in E. discriminate.
         * auto.
-      + simpl. Lia.lia.
+      + simpl. Lia.blia.
     - intros.
       eapply @exec.while_true.
       + unfold eval_expr. eval_fib_var_names.
@@ -232,13 +219,13 @@ Section FibCompiled.
           { cbv. reflexivity. }
         * rewrite Z.mod_small in E; [| blia ].
           rewrite Z.mod_small in E; [| blia ].
-          assert (Z.of_nat n - Z.of_nat (S iter) < Z.of_nat n) by Lia.lia.
+          assert (Z.of_nat n - Z.of_nat (S iter) < Z.of_nat n) by Lia.blia.
           apply Z.ltb_lt in H4.
           rewrite H4 in E. discriminate.
       + eapply fib_bounding_metrics_body with (n := Z.of_nat n); eauto.
       + intros. destruct H4. destruct H5. destruct H6.
         eval_fib_var_names.
-        assert (iter <= n)%nat by Lia.lia.
+        assert (iter <= n)%nat by Lia.blia.
         assert (map.get l' 4 = Some (word.of_Z (Z.of_nat n - Z.of_nat iter))). {
           rewrite H6. f_equal.
           apply word.unsigned_inj.
@@ -251,7 +238,7 @@ Section FibCompiled.
         unfold_MetricLog. simpl in IHiter.
         eapply weaken_exec in IHiter.
         * eapply IHiter.
-        * intros. simpl in *. Lia.lia.
+        * intros. simpl in *. Lia.blia.
   Qed.
 
   Lemma fib_bounding_metrics: forall (n: nat) t m (l : locals) mc,
@@ -264,53 +251,34 @@ Section FibCompiled.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
                                      t' = t /\
                                      map.get l' Demos.Fibonacci.a = Some (word.of_Z 0) /\
-                                     instructionsH mc' = instructionsH mc + 9)).
-    - eapply @exec.set.
-      + unfold eval_expr. eauto.
-      + repeat split.
-        * apply map.get_put_same.
-        * simpl. Lia.lia.
-    - intros.
-      destruct H0. destruct H1.
-      eapply @exec.seq with (mid := (fun t' m' l' mc' =>
-                                       t' = t /\
-                                       map.get l' Demos.Fibonacci.a = Some (word.of_Z 0) /\
-                                       map.get l' Demos.Fibonacci.b = Some (word.of_Z 1) /\
-                                       instructionsH mc' = instructionsH mc + 18)).
-      + eapply @exec.set.
-        * unfold eval_expr. eauto.
-        * repeat split.
-          -- assumption.
-          -- rewrite map.get_put_diff; [assumption | discriminate].
-          -- apply map.get_put_same.
-          -- simpl. Lia.lia.
-      + intros.
-        destruct H3. destruct H4. destruct H5.
-        eapply @exec.seq with (mid := (fun t' m' l' mc' =>
-                                         t' = t /\
-                                         map.get l' Demos.Fibonacci.a = Some (word.of_Z 0) /\
-                                         map.get l' Demos.Fibonacci.b = Some (word.of_Z 1) /\
-                                         map.get l' Demos.Fibonacci.i = Some (word.of_Z 0) /\
-                                         instructionsH mc' = instructionsH mc + 27)).
-        * eapply @exec.set.
-          -- unfold eval_expr. eauto.
-          -- repeat split.
-             ++ assumption.
-             ++ rewrite map.get_put_diff; [assumption | discriminate].
-             ++ rewrite map.get_put_diff; [assumption | discriminate].
-             ++ apply map.get_put_same.
-             ++ simpl. Lia.lia.
-        * intros.
-          destruct H7. destruct H8. destruct H9. destruct H10.
-          assert (n <= n)%nat by auto.
-          pose proof fib_bounding_metrics_while as HWhile.
-          specialize HWhile with (iter := n) (n := n).
-          replace (Z.of_nat n - Z.of_nat n) with 0 in HWhile by Lia.lia.
-          specialize HWhile with (1 := H) (2 := H12) (3 := H8) (4 := H9) (5 := H10).
-          specialize (HWhile t'1 m'1 mc'1).
-          eapply weaken_exec in HWhile.
-          -- apply HWhile.
-          -- intros. simpl. Lia.lia.
+                                     instructionsH mc' = instructionsH mc + 9));
+      [exec_set_solve|].
+    intros. destruct_hyp.
+    eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                     t' = t /\
+                                     map.get l' Demos.Fibonacci.a = Some (word.of_Z 0) /\
+                                     map.get l' Demos.Fibonacci.b = Some (word.of_Z 1) /\
+                                     instructionsH mc' = instructionsH mc + 18));
+      [exec_set_solve|].
+    intros. destruct_hyp.
+    eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+                                     t' = t /\
+                                     map.get l' Demos.Fibonacci.a = Some (word.of_Z 0) /\
+                                     map.get l' Demos.Fibonacci.b = Some (word.of_Z 1) /\
+                                     map.get l' Demos.Fibonacci.i = Some (word.of_Z 0) /\
+                                     instructionsH mc' = instructionsH mc + 27));
+      [exec_set_solve|].
+    intros.
+    destruct_hyp.
+    pose proof fib_bounding_metrics_while as HWhile.
+    specialize HWhile with (iter := n) (n := n).
+    replace (Z.of_nat n - Z.of_nat n) with 0 in HWhile by Lia.blia.
+    specialize HWhile with (1 := H) (3 := H8) (4 := H9) (5 := H10).
+    specialize (HWhile t'1 m'1 mc'1).
+    eapply weaken_exec in HWhile.
+    - apply HWhile.
+    - apply le_n.
+    - intros. simpl. Lia.blia.
   Qed.
                                   
   Axiom fib_program_correct: forall n t m l mc,
