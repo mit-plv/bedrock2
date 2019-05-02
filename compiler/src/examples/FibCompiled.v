@@ -1,72 +1,67 @@
-Require Import Coq.Lists.List.
-Import ListNotations.
 Require bedrock2.Examples.Demos.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
 Require Import compiler.Basic32Semantics.
-Require Import riscv.Utility.Monads.
-Require Import compiler.util.Common.
-Require Import coqutil.Decidable.
-Require        riscv.Utility.InstructionNotations.
-Require Import riscv.Platform.MinimalLogging.
 Require Import bedrock2.MetricLogging.
-Require Import riscv.Platform.MetricLogging.
+Require Import riscv.Platform.MinimalLogging.
 Require Import riscv.Platform.MetricMinimal.
+Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
-Require Import bedrock2.Byte.
-Require bedrock2.Hexdump.
-Require Import compiler.RegAllocAnnotatedNotations.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.Simp.
 
 Section FibCompiled.
 
   Definition fib_ExprImp(n: Z): cmd := Eval cbv in
-        snd (snd (Demos.fibonacci n)).
+    snd (snd (Demos.fibonacci n)).
 
-  Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-    FlatToRiscvDef.FlatToRiscvDef.actname := Empty_set;
-    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ := Empty_set_rect _;
-    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := Empty_set_rect _;
-    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := Empty_set_rect _;
-  }.
 
-  Notation RiscvMachine := (MetricRiscvMachine Register Empty_set).
+  Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters.
+  Proof.
+    refine ({|
+               FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ _ := nil;
+             |}).
+    all: intros; simpl.
+    - cbv. discriminate.
+    - unfold FlatToRiscvDef.valid_instructions. intros. destruct H1.
+  Defined.
+
+  Notation RiscvMachine := MetricRiscvMachine.
 
   Existing Instance coqutil.Map.SortedListString.map.
   Existing Instance coqutil.Map.SortedListString.ok.
 
   Instance pipeline_params: Pipeline.parameters := {
-    Pipeline.ext_spec _ _ := Empty_set_rect _;
+    Pipeline.FlatToRiscvDef_params := flatToRiscvDef_params;
+    Pipeline.ext_spec _ _  _ _ _ := False;
     Pipeline.ext_guarantee _ := True;
     Pipeline.M := OState RiscvMachine;
     Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
   }.
-  
-  Axiom TODO: forall {T: Type}, T.
+
+  Set Refine Instance Mode.
 
   Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params := {
-    Pipeline.actname_eq_dec := _;
     Pipeline.varname_eq_dec := _ ;
     Pipeline.mem_ok := _ ;
     Pipeline.locals_ok := _ ;
     Pipeline.funname_env_ok := _ ;
     Pipeline.PR := MetricMinimalSatisfiesMetricPrimitives;
-    Pipeline.FlatToRiscv_hyps := TODO ;
-    Pipeline.ext_spec_ok := TODO;
   }.
-
-  (* just to make sure all typeclass instances are available: *)
-  Definition mcomp_sat:
-    Pipeline.M unit -> RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
-    @GoFlatToRiscv.mcomp_sat _ _ _ _ _ MetricMinimalMetricPrimitivesParams.
+  Proof.
+    - constructor; try typeclasses eauto.
+      + admit. (* This is doable.. *)
+      + simpl. apply MetricMinimalSatisfiesMetricPrimitives.
+      + admit. (* logs when the machine has no MMIO should always be the same..? *)
+      + admit.
+    - admit.
+  Admitted.
 
   Definition zeroedRiscvMachine: RiscvMachine := {|
     getMetrics := EmptyMetricLog;
@@ -337,17 +332,15 @@ Section FibCompiled.
                            map.get l' Demos.Fibonacci.b = Some result).
   Proof.
     intros.
-    pose proof fib_program_correct.
-    pose proof fib_bounding_metrics.
-    specialize H0 with (1 := H).
-    specialize H1 with (n := Z.to_nat n).
-    rewrite Z2Nat.id in H1; [|blia].
-    destruct H.
-    specialize H1 with (1 := H2).
     eapply intersect_exec.
-    + eapply H1.
-    + eapply H0.
-  Qed.    
+    + pose proof fib_bounding_metrics as Hbound.
+      specialize Hbound with (n := Z.to_nat n).
+      rewrite Z2Nat.id in Hbound; [|blia].
+      eapply Hbound. blia.
+    + eapply fib_program_correct. blia.
+  Qed.
+
+  Definition mcomp_sat := GoFlatToRiscv.mcomp_sat.
 
   Lemma fib_compiled: forall n,
     0 <= n <= 60 ->
@@ -360,9 +353,12 @@ Section FibCompiled.
                              finalL.(getMetrics).(instructions) <= n * 34 + 39).
   Proof.
     intros.
+    unfold mcomp_sat, run1.
     eapply runsToNonDet.runsTo_weaken.
-    - eapply Pipeline.exprImp2Riscv_correct with (sH := fib_ExprImp n) 
-        (mcH := bedrock2.MetricLogging.EmptyMetricLog).
+    - pose proof Pipeline.exprImp2Riscv_correct as Hp.
+      specialize Hp with (sH := fib_ExprImp n)
+                         (mcH := bedrock2.MetricLogging.EmptyMetricLog).
+      eapply Hp.
       + simpl. blia.
       + cbv. repeat constructor.
       + reflexivity.
