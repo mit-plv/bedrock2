@@ -205,39 +205,40 @@ Section FibCompiled.
       eapply @exec.while_false.
       + eval_var_solve.
       + simpl. destruct_one_match.
-        * rewrite Z.sub_0_r in E. pose proof Z.ltb_irrefl.
-          specialize (H4 (Z.of_nat n mod 2 ^ 32)). rewrite H4 in E. discriminate.
-        * auto.
+        * rewrite Z.sub_0_r in *. rewrite Z.ltb_irrefl in *. discriminate.
+        * reflexivity.
       + simpl. Lia.blia.
     - intros.
       eapply @exec.while_true.
-      + unfold eval_expr. eval_fib_var_names.
-        rewrite H3. eauto.
+      + eval_var_solve.
       + simpl. destruct_one_match.
-        * simpl. rewrite Zdiv.Zmod_1_l.
-          { discriminate. }
-          { cbv. reflexivity. }
-        * rewrite Z.mod_small in E; [| blia ].
-          rewrite Z.mod_small in E; [| blia ].
+        * simpl. rewrite Zdiv.Zmod_1_l; [discriminate | cbv; reflexivity].
+        * repeat match goal with
+                 | H: context[_ mod _] |- _ => rewrite Z.mod_small in H; [|blia]
+                 end.
           assert (Z.of_nat n - Z.of_nat (S iter) < Z.of_nat n) by Lia.blia.
-          apply Z.ltb_lt in H4.
-          rewrite H4 in E. discriminate.
+          rewrite <- Z.ltb_lt in *.
+          match goal with
+          | H1: _ = false, H2: _ = true |- _ => rewrite H1 in H2; discriminate
+          end.
       + eapply fib_bounding_metrics_body with (n := Z.of_nat n); eauto.
-      + intros. destruct H4. destruct H5. destruct H6.
+      + intros.
         eval_fib_var_names.
-        assert (iter <= n)%nat by Lia.blia.
-        assert (map.get l' 4 = Some (word.of_Z (Z.of_nat n - Z.of_nat iter))). {
-          rewrite H6. f_equal.
+        destruct_hyp.
+        eapply weaken_exec in IHiter.
+        * eapply IHiter.
+        * assumption.
+        * Lia.blia.
+        * eassumption.
+        * eassumption.
+        * match goal with
+          | H: ?x = _ |- ?x = _ => rewrite H
+          end.
+          f_equal.
           apply word.unsigned_inj.
           rewrite word.unsigned_add. rewrite !word.unsigned_of_Z.
           f_equal. unfold word.wrap. change (1 mod 2 ^ Semantics.width) with 1. simpl.
           rewrite Z.mod_small; blia.
-        }
-        specialize IHiter with (1 := H) (2 := H8) (3 := H4) (4 := H5) (5 := H9).
-        simpl in H7.
-        unfold_MetricLog. simpl in IHiter.
-        eapply weaken_exec in IHiter.
-        * eapply IHiter.
         * intros. simpl in *. Lia.blia.
   Qed.
 
@@ -277,7 +278,7 @@ Section FibCompiled.
     specialize (HWhile t'1 m'1 mc'1).
     eapply weaken_exec in HWhile.
     - apply HWhile.
-    - apply le_n.
+     - apply le_n.
     - intros. simpl. Lia.blia.
   Qed.
                                   
