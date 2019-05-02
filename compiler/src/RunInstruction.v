@@ -28,6 +28,7 @@ Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.InstructionCoercions. Local Open Scope ilist_scope.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.DivisibleBy4.
+Require Import compiler.ZLemmas.
 
 
 Section Run.
@@ -38,12 +39,12 @@ Section Run.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register Action).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgram M word}.
-  Context {PRParams: PrimitivesParams M (MetricRiscvMachine Register Action)}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
   Definition iset := if width =? 32 then RV32IM else RV64IM.
@@ -100,6 +101,23 @@ Section Run.
         finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep finalL.(getMem) /\
+        finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+
+  Definition run_Jal0_spec :=
+    forall (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
+      - 2^20 <= jimm20 < 2^20 ->
+      jimm20 mod 4 = 0 ->
+      divisibleBy4 initialL.(getPc) ->
+      (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep initialL.(getMem) ->
+      mcomp_sat (run1 iset) initialL (fun finalL =>
+        finalL.(getRegs) = initialL.(getRegs) /\
+        finalL.(getLog) = initialL.(getLog) /\
+        (* it would be nicer and more uniform wrt to memory-modifying instructions
+           if we had this separation logic formula here instead of memory equality,
+           but that doesn't work with the abstract goodReadyState predicate in EventLoop.v
+        (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep finalL.(getMem) /\ *)
+        finalL.(getMem) = initialL.(getMem) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
@@ -168,8 +186,7 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
   Ltac t :=
-    unfold run_Jalr0_spec, run_Jal_spec, run_ImmReg_spec, run_Load_spec, run_Store_spec;
-    intros;
+    repeat intro;
     match goal with
     | initialL: RiscvMachineL |- _ => destruct initialL as [ [regs pc npc m l] mc]
     end;
@@ -217,6 +234,19 @@ Section Run.
 
   Lemma run_Jal: run_Jal_spec.
   Proof. t. Qed.
+
+  Arguments Z.pow: simpl never.
+  Arguments Z.opp: simpl never.
+
+  Lemma run_Jal0: run_Jal0_spec.
+  Proof.
+    t.
+    unfold verify. cbn. unfold verify_UJ. cbn.
+    unfold opcode_JAL, Register0.
+    repeat split; try blia.
+    eapply mod0_divisible_modulo. 4: eassumption. 1,2: reflexivity.
+    exists 2. reflexivity.
+  Qed.
 
   Lemma run_Addi: run_ImmReg_spec Addi word.add.
   Proof. t. Qed.

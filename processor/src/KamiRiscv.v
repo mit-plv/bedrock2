@@ -12,7 +12,6 @@ Require Import coqutil.Tactics.Tactics.
 Require Import processor.KamiWord.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Primitives.
-Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Spec.Machine.
 Require riscv.Platform.Memory.
 Require Import riscv.Spec.PseudoInstructions.
@@ -24,6 +23,7 @@ Require Import riscv.Utility.Monads. Import MonadNotations.
 Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.MMIOTrace.
+Require Import riscv.Platform.RiscvMachine.
 
 Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl.
@@ -53,7 +53,6 @@ Section Equiv.
   Local Definition KamiMachine := KamiProc.hst.
   Local Definition KamiSt := @KamiProc.st instrMemSizeLg.
 
-  Local Notation RiscvMachine := (riscv.Platform.RiscvMachine.RiscvMachine Register MMIOAction).
   Context {Registers: map.map Register word}
           {mem: map.map word byte}
           (mcomp_sat:
@@ -92,6 +91,23 @@ Section Equiv.
     intros k.
   Admitted.
 
+  (* pc *)
+
+  Variable pad: nat.
+  Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat).
+
+  Definition alignPc (kpc: Word.word (2 + Z.to_nat instrMemSizeLg)%nat): word :=
+    eq_rec (2 + Z.to_nat instrMemSizeLg + pad)%nat
+           Word.word (Word.combine kpc $ (0)) nwidth Hpad.
+
+  (** joonwonc: well this is not true!
+   * Need to know how riscv-coq ensures pc is correctly bound? *)
+  Lemma alignPc_next:
+    forall kpc,
+      alignPc kpc ^+ $4 = alignPc (kpc ^+ $4).
+  Proof.
+  Admitted.
+
   (* instruction and data memory *)
 
   Variable dataMemSize: nat.
@@ -124,21 +140,8 @@ Section Equiv.
                            keys in
     unchecked_store_byte_tuple_list dataMemStart values map.empty.
 
-  Variable pad: nat.
-  Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat).
-
-  Definition alignPc (kpc: Word.word (2 + Z.to_nat instrMemSizeLg)%nat): word :=
-    eq_rec (2 + Z.to_nat instrMemSizeLg + pad)%nat
-           Word.word (Word.combine kpc $ (0)) nwidth Hpad.
-
-  Lemma alignPc_next:
-    forall kpc,
-      alignPc kpc ^+ $4 = alignPc (kpc ^+ $4).
-  Proof.
-  Admitted.
-  
   Definition KamiSt_to_RiscvMachine
-             (k: KamiSt) (t: list (LogItem MMIOAction)): RiscvMachine :=
+             (k: KamiSt) (t: list LogItem): RiscvMachine :=
     {| getRegs := convertRegs (KamiProc.rf k);
        getPc := alignPc (KamiProc.pc k);
        getNextPc := word.add (alignPc (KamiProc.pc k)) (word.of_Z 4);
@@ -148,7 +151,7 @@ Section Equiv.
     |}.
 
   Definition fromKami_withLog
-             (k: KamiMachine) (t: list (LogItem MMIOAction)): option RiscvMachine :=
+             (k: KamiMachine) (t: list LogItem): option RiscvMachine :=
     match KamiProc.RegsToT k with
     | Some r => Some (KamiSt_to_RiscvMachine r t)
     | None => None
@@ -159,38 +162,26 @@ Section Equiv.
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
     word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
 
-  Definition mmioLoadEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n):
-    LogItem MMIOAction := ((m, MMInput, [addr]), (m, [signedByteTupleToReg v])).
+  Definition mmioLoadEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
+    ((m, MMInput, [addr]), (m, [signedByteTupleToReg v])).
 
-  Definition mmioStoreEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n):
-    LogItem MMIOAction :=
+  Definition mmioStoreEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
     ((m, MMOutput, [addr; signedByteTupleToReg v]), (m, [])).
 
-  Instance MinimalMMIOPrimitivesParams:
-    PrimitivesParams M RiscvMachine :=
-    {| Primitives.mcomp_sat := @mcomp_sat;
+  (* These two specify what happens on loads and stores which are outside the memory, eg MMIO *)
+  (* TODO these will have to be more concrete *)
+  Context (nonmem_load: forall (n: nat) (addr: word), M (HList.tuple byte n)).
+  Context (nonmem_store: forall (n: nat) (addr: word) (v: HList.tuple byte n), M unit).
 
-       (* any value can be found in an uninitialized register *)
-       Primitives.is_initial_register_value x := True;
+  Instance MinimalMMIOPrimitivesParams: PrimitivesParams M RiscvMachine := {
+    Primitives.mcomp_sat := @mcomp_sat;
 
-       Primitives.nonmem_loadByte_sat initialL addr post :=
-         forall (v: w8), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 1 v) initialL);
-       Primitives.nonmem_loadHalf_sat initialL addr post :=
-         forall (v: w16), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 2 v) initialL);
-       Primitives.nonmem_loadWord_sat initialL addr post :=
-         forall (v: w32), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 4 v) initialL);
-       Primitives.nonmem_loadDouble_sat initialL addr post :=
-         forall (v: w64), post v (withLogItem (mmioLoadEvent initialL.(getMem) addr 8 v) initialL);
+    (* any value can be found in an uninitialized register *)
+    Primitives.is_initial_register_value x := True;
 
-       Primitives.nonmem_storeByte_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 1 v) initialL);
-       Primitives.nonmem_storeHalf_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 2 v) initialL);
-       Primitives.nonmem_storeWord_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 4 v) initialL);
-       Primitives.nonmem_storeDouble_sat initialL addr v post :=
-         post (withLogItem (mmioStoreEvent initialL.(getMem) addr 8 v) initialL);
-    |}.
+    Primitives.nonmem_load := nonmem_load;
+    Primitives.nonmem_store := nonmem_store;
+  }.
 
   Context {Pr: Primitives MinimalMMIOPrimitivesParams}.
   Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
@@ -201,13 +192,13 @@ Section Equiv.
   | MMOutputEvent(addr v: word).
 
   (* note: memory can't change *)
-  Inductive events_related: Event -> LogItem MMIOAction -> Prop :=
+  Inductive events_related: Event -> LogItem -> Prop :=
   | relate_MMInput: forall m addr v,
       events_related (MMInputEvent addr v) ((m, MMInput, [addr]), (m, [v]))
   | relate_MMOutput: forall m addr v,
       events_related (MMOutputEvent addr v) ((m, MMOutput, [addr; v]), (m, [])).
 
-  Inductive traces_related: list Event -> list (LogItem MMIOAction) -> Prop :=
+  Inductive traces_related: list Event -> list LogItem -> Prop :=
   | relate_nil:
       traces_related nil nil
   | relate_cons: forall e e' t t',
@@ -238,7 +229,7 @@ Section Equiv.
      and should at most contain one event,
      but we still want it to appear in the signature so that we can easily talk about prefixes,
      and to match Kami's step signature *)
-  Inductive riscvStep: RiscvMachine -> RiscvMachine -> list (LogItem MMIOAction) -> Prop :=
+  Inductive riscvStep: RiscvMachine -> RiscvMachine -> list LogItem -> Prop :=
   | mk_riscvStep: forall initialL finalL t post,
       mcomp_sat_unit (run1 iset) initialL post ->
       post finalL ->
@@ -363,102 +354,17 @@ Section Equiv.
 
   Qed.
 
-  Lemma simulate_bw_step:
-    forall (m1 m2: KamiMachine) (t: list Event)
-           (m1': RiscvMachine) (pt: list (LogItem MMIOAction)),
-      fromKami_withLog m1 pt = Some m1' ->
-      kamiStep m1 m2 t ->
-      (* Either riscv-coq takes no steps, *)
-      fromKami_withLog m2 pt = Some m1' \/
-      (* or it takes a corresponding step. *)
-      exists t' m2',
-        traces_related t t' /\
-        fromKami_withLog m2 (t' ++ pt) = Some m2' /\
-        riscvStep m1' m2' t'.
-  Proof.
-  Admitted.
-
-  Section Lift.
-    Context {S1 S2 E1 E2: Type}.
-    Context (step1: S1 -> S1 -> list E1 -> Prop).
-    Context (step2: S2 -> S2 -> list E2 -> Prop).
-    Context (convert_state: S1 -> S2) (convert_event: E1 -> E2).
-    Hypothesis sim: forall s1 s1' t1,
-        step1 s1 s1' t1 ->
-        step2 (convert_state s1) (convert_state s1') (List.map convert_event t1).
-
-    Lemma lift_star_simulation: forall s1 s1' t1,
-        star step1 s1 s1' t1 ->
-        star step2 (convert_state s1) (convert_state s1') (List.map convert_event t1).
-    Proof.
-      induction 1; [apply star_refl|].
-      rewrite map_app.
-      eapply star_step.
-      - apply IHstar.
-      - eapply sim. assumption.
-    Qed.
-  End Lift.
-
-  Lemma simulate_bw_star: forall (m1 m2: KamiMachine) (t: list Event),
-      star kamiStep m1 m2 t ->
-      exists t' m1' m2',
-        traces_related t t' /\
-        fromKami_withLog m1 nil = Some m1' /\
-        fromKami_withLog m2 t' = Some m2' /\
-        star riscvStep m1' m2' t'.
-  Proof.
-    (* TODO
-       apply lift_star_simulation
-       doesn't work any more .
-       apply simulate_bw_step. *)
-  Admitted.
-
-  Definition kamiTraces(init: KamiMachine): list Event -> Prop :=
-    fun t => exists final, star kamiStep init final t.
-
-  Lemma connection: forall (m: KamiMachine) (m': RiscvMachine),
-      fromKami_withLog m nil = Some m' ->
-      subset (kamiTraces m) (riscvTraces m').
-  Proof.
-    intros m1 m1' A t H. unfold kamiTraces, riscvTraces in *.
-    destruct H as [m2 H].
-    apply simulate_bw_star in H. destruct H as (t' & m1'' & m2' & R1 & R2 & R3 & R4).
-    rewrite R2 in A. inversion A. clear A. subst m1''.
-    unfold elem_of.
-    eauto.
-  Qed.
-
-  (* assume this first converts the KamiSt from SpecProcessor to ImplProcessor state,
-     and also converts from Kami trace to common trace *)
-  Definition kamiImplTraces(init: KamiMachine): list Event -> Prop. Admitted.
-
-  Axiom kamiImplSoundness: forall (init: KamiMachine),
-      subset (kamiImplTraces init) (kamiTraces init).
-
-  Lemma subset_trans{A: Type}(s1 s2 s3: A -> Prop):
-    subset s1 s2 ->
-    subset s2 s3 ->
-    subset s1 s3.
-  Proof. unfold subset. auto. Qed.
-
-  Lemma subset_refl{A: Type}(s: A -> Prop): subset s s. Proof. unfold subset. auto. Qed.
-
-  Lemma impl_to_end_of_compiler
-        (init: KamiMachine)(init': RiscvMachine)(post: RiscvMachine -> Prop):
-      fromKami_withLog init nil = Some init' ->
-      runsTo init' post -> (* <-- proved by bedrock2 *)
-      subset (kamiImplTraces init) (prefixes (post_to_traces post)).
-  Proof.
-    intros E H.
-    eapply subset_trans; [apply kamiImplSoundness|].
-    eapply subset_trans; [|apply bridge; eassumption].
-    eapply subset_trans; [apply connection; eassumption|].
-    apply subset_refl.
-  Qed.
-
   (* TODO in bedrock2: differential memory in trace instead of whole memory ? *)
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
+
+  Lemma fetch_ok:
+    forall instrMem dataMem pc,
+      Memory.loadWord
+        (map.putmany (convertInstrMem instrMem) (convertDataMem dataMem))
+        (alignPc pc) <> None.
+  Proof.
+  Admitted.
 
   Lemma fetch_consistent:
     forall instrMem dataMem pc inst,
@@ -553,7 +459,7 @@ Section Equiv.
   Qed.
 
   Ltac inv_bind H :=
-    apply (@spec_Bind _ _ _ _ _ _ _ _ Pr) in H;
+    apply (@spec_Bind _ _ _ _ _ _ _ Pr) in H;
     let mid := fresh "mid" in
     destruct H as (mid & ? & ?).
 
@@ -806,13 +712,7 @@ Section Equiv.
       inv_bind_apply H.
       inv_bind H1.
       inv_loadWord H1.
-      destruct H1;
-        [|destruct H1; clear -H1;
-          (** TODO @joonwonc: prove that [pc] is always in the instruction memory.
-           * Then [H1] implies False. It should be provable using the conversion
-           * from [KamiProc.st] to the corresponding riscv-coq state.
-           *)
-          admit].
+      destruct H1; [|exfalso; destruct H1; eapply fetch_ok; eauto].
       destruct H1 as (rinst & ? & ?).
       inv_bind_apply H4.
 
@@ -929,6 +829,27 @@ Section Equiv.
     - (* "execNmZ" *) admit.
 
   Admitted.
+
+  (* equivalent of [mcomp_sat (run1 iset)] for Kami:
+     running one kami step satisfies the postcondition, no matter what non-deterministic
+     step was chosen *)
+  Definition kamiStep_sat(m1: KamiMachine)(post: KamiMachine * list Event -> Prop): Prop :=
+    forall m2 t, kamiStep m1 m2 t -> post (m2, t).
+
+(*
+  Definition kamiRunsTo: KamiMachine -> (KamiMachine -> Prop) -> Prop :=
+    runsToNonDet.runsTo kamiStep_sat.
+  Lemma test: forall (m': RiscvMachine),
+      runsTo
+(State -> (State -> Prop) -> Prop)
+runsToNonDet.runsTo
+*)
+
+  (* want to say, finally:
+     "all kami impl traces are a prefix of a trace which satisfies post"
+
+     so we need:
+     "all kami spec traces are a prefix of a trace which satisfies post" *)
 
   Lemma kamiMultiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
                                (post: RiscvMachine -> Prop),

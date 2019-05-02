@@ -34,7 +34,7 @@ Section Proofs.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register FlatToRiscvDef.actname).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
 
   Ltac apply_post :=
     match goal with

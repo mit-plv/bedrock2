@@ -45,28 +45,26 @@ Module Import Pipeline.
 
   Class parameters := {
     FlatToRiscvDef_params :> FlatToRiscvDef.FlatToRiscvDef.parameters;
-    actname := FlatToRiscvDef.FlatToRiscvDef.actname;
 
     mem :> map.map word byte;
     locals :> map.map varname word;
     funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
-    trace := list (mem * actname * list word * (mem * list word));
-    ExtSpec := trace -> mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
+    trace := list (mem * String.string * list word * (mem * list word));
+    ExtSpec := trace -> mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
 
     NGstate: Type;
     NG :> NameGen varname NGstate;
 
-    ext_guarantee : MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname -> Prop;
+    ext_guarantee : MetricRiscvMachine -> Prop;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
+    PRParams :> PrimitivesParams M MetricRiscvMachine;
   }.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
     FlattenExpr.varname := varname;
-    FlattenExpr.actname := actname;
     FlattenExpr.W := _;
     FlattenExpr.locals := locals;
     FlattenExpr.mem := mem;
@@ -80,7 +78,6 @@ Module Import Pipeline.
   |}.
 
   Class assumptions{p: parameters} := {
-    actname_eq_dec :> DecidableEq actname;
     varname_eq_dec :> DecidableEq varname;
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
@@ -98,14 +95,13 @@ Section Pipeline1.
   Context {p: parameters}.
   Context {h: assumptions}.
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register _).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
 
   Definition funname := string.
   Definition iset := if width =? 32 then RV32IM else RV64IM.
 
   Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
     FlattenExpr.varname_eq_dec := varname_eq_dec;
-    FlattenExpr.actname_eq_dec := actname_eq_dec;
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
@@ -124,7 +120,7 @@ Section Pipeline1.
   Definition compile_prog(e: Semantics.env)(s: Syntax.cmd)(funs: list funname): list Instruction :=
     let e' := flatten_functions e funs in
     let s' := ExprImp2FlatImp s in
-    FlatToRiscvDef.compile_prog e' s' funs.
+    FlatToRiscvDef.compile_prog e' s' FlatImp.SSkip funs.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_registers (ExprImp2FlatImp s).

@@ -9,7 +9,6 @@ Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Primitives.
-Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Spec.Machine.
 Require riscv.Platform.Memory.
 Require Import riscv.Spec.PseudoInstructions.
@@ -21,16 +20,15 @@ Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.MMIOTrace.
+Require Import riscv.Platform.RiscvMachine.
 
 Local Open Scope Z_scope.
 
 Section Equiv.
 
   (* TODO not sure if we want to use ` or rather a parameter record *)
-  Context {M: Type -> Type}.
-  Context `{Pr: Primitives MMIOAction M}.
+  Context `{Pr: Primitives}.
   Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
-  Notation RiscvMachine := (riscv.Platform.RiscvMachine.RiscvMachine Register MMIOAction).
 
   Definition iset: InstructionSet := if width =? 32 then RV32IM else RV64IM.
 
@@ -41,7 +39,7 @@ Section Equiv.
     nextCounter: word;
   }.
 
-  Definition fromFake_withLog(f: FakeProcessor)(t: list (LogItem MMIOAction)): RiscvMachine := {|
+  Definition fromFake_withLog(f: FakeProcessor)(t: list LogItem): RiscvMachine := {|
     getRegs := map.empty;
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
@@ -55,7 +53,7 @@ Section Equiv.
   | MMOutputEvent(addr v: word).
 
   (* note: memory can't change *)
-  Inductive events_related: Event -> LogItem MMIOAction -> Prop :=
+  Inductive events_related: Event -> LogItem -> Prop :=
   | relate_MMInput: forall m addr v,
       events_related (MMInputEvent addr v) ((m, MMInput, [addr]), (m, [v]))
   | relate_MMOutput: forall m addr v,
@@ -64,7 +62,7 @@ Section Equiv.
   (* given a kami trace, assert that there exists list of memories s.t zipped together,
      we get bedrock2 trace ? *)
 
-  Inductive traces_related: list Event -> list (LogItem MMIOAction) -> Prop :=
+  Inductive traces_related: list Event -> list LogItem -> Prop :=
   | relate_nil:
       traces_related nil nil
   | relate_cons: forall e e' t t',
@@ -80,7 +78,7 @@ Section Equiv.
      and should at most contain one event,
      but we still want it to appear in the signature so that we can easily talk about prefixes,
      and to match Kami's step signature *)
-  Inductive riscvStep: RiscvMachine -> RiscvMachine -> list (LogItem MMIOAction) -> Prop :=
+  Inductive riscvStep: RiscvMachine -> RiscvMachine -> list LogItem -> Prop :=
   | mk_riscvStep: forall initialL finalL t post,
       mcomp_sat_unit (run1 iset) initialL post ->
       post finalL ->
@@ -269,7 +267,8 @@ Section Equiv.
     assumption.
   Qed.
 
-  Hypothesis assume_no_MMIO: forall mach addr post, ~ nonmem_loadWord_sat mach addr post.
+  Hypothesis assume_no_MMIO: forall n mach addr post,
+      ~ mcomp_sat (nonmem_load n addr) mach post.
 
   Lemma simulate_step_fw: forall (initial: RiscvMachine)
                                  (post: RiscvMachine -> Prop),

@@ -65,15 +65,15 @@ Module Import FlatToRiscv.
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
+    PRParams :> PrimitivesParams M MetricRiscvMachine;
 
-    ext_spec : list (mem * actname * list word * (mem * list word)) ->
-               mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
+    ext_spec : list (mem * String.string * list word * (mem * list word)) ->
+               mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
 
     (* An abstract predicate on the low-level state, which can be chosen by authors of
        extensions. The compiler will ensure that this guarantee holds before each external
        call. *)
-    ext_guarantee: MetricRiscvMachine Register actname -> Prop;
+    ext_guarantee: MetricRiscvMachine -> Prop;
   }.
 
   Instance Semantics_params{p: parameters}: Semantics.parameters := {|
@@ -89,13 +89,12 @@ Module Import FlatToRiscv.
     mem_ok :> map.ok mem;
     funname_env_ok :> forall T, map.ok (funname_env T);
 
-    actname_eq_dec :> DecidableEq actname;
     PR :> MetricPrimitives PRParams;
 
     (* For authors of extensions, a freely choosable ext_guarantee sounds too good to be true!
        And indeed, there are two restrictions:
        The first restriction is that ext_guarantee needs to be preservable for the compiler: *)
-    ext_guarantee_preservable: forall (m1 m2: MetricRiscvMachine Register actname),
+    ext_guarantee_preservable: forall (m1 m2: MetricRiscvMachine),
         ext_guarantee m1 ->
         map.same_domain m1.(getMem) m2.(getMem) ->
         m1.(getLog) = m2.(getLog) ->
@@ -103,7 +102,7 @@ Module Import FlatToRiscv.
 
     (* And the second restriction is part of the correctness requirement for compilation of
        external calls: Every compiled external call has to preserve ext_guarantee *)
-    compile_ext_call_correct: forall (initialL: MetricRiscvMachine Register actname) action postH newPc insts
+    compile_ext_call_correct: forall (initialL: MetricRiscvMachine) action postH newPc insts
         (argvars resvars: list Register) initialMH initialMetricsH R,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
@@ -159,19 +158,6 @@ Ltac solve_stmt_not_too_big :=
     blia
   end.
 
-Ltac destruct_RiscvMachine m :=
-  let t := type of m in
-  let h := head_of_app t in
-  constr_eq h MetricRiscvMachine;
-  let r := fresh m "_regs" in
-  let p := fresh m "_pc" in
-  let n := fresh m "_npc" in
-  let me := fresh m "_mem" in
-  let l := fresh m "_log" in
-  let mc := fresh m "_metrics" in
-  destruct m as [ [r p n me l] mc ];
-  simpl in *.
-
 Ltac solve_valid_registers :=
   match goal with
   | |- valid_registers _ => solve [simpl; auto]
@@ -200,7 +186,7 @@ Section FlatToRiscv1.
   Context {p: unique! FlatToRiscv.parameters}.
   Context {h: unique! FlatToRiscv.assumptions}.
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register actname).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],

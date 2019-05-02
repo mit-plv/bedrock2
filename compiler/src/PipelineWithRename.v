@@ -44,29 +44,27 @@ Module Import Pipeline.
 
   Class parameters := {
     FlatToRiscvDef_params :> FlatToRiscvDef.FlatToRiscvDef.parameters;
-    actname := FlatToRiscvDef.FlatToRiscvDef.actname;
 
     mem :> map.map word byte;
     locals :> map.map varname word;
     Registers :> map.map Register word;
     funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
-    trace := list (mem * actname * list word * (mem * list word));
-    ExtSpec := trace -> mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop;
+    trace := list (mem * string * list word * (mem * list word));
+    ExtSpec := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
 
     NGstate: Type;
     NG :> NameGen varname NGstate;
 
-    ext_guarantee : MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname -> Prop;
+    ext_guarantee : MetricRiscvMachine -> Prop;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M (MetricRiscvMachine Register actname);
+    PRParams :> PrimitivesParams M MetricRiscvMachine;
   }.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
     FlattenExpr.varname := varname;
-    FlattenExpr.actname := actname;
     FlattenExpr.W := _;
     FlattenExpr.locals := locals;
     FlattenExpr.mem := mem;
@@ -80,7 +78,6 @@ Module Import Pipeline.
   |}.
 
   Class assumptions{p: parameters} := {
-    actname_eq_dec :> DecidableEq actname;
     varname_eq_dec :> DecidableEq varname;
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
@@ -107,7 +104,6 @@ Section Pipeline1.
 
   Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
     FlattenExpr.varname_eq_dec := varname_eq_dec;
-    FlattenExpr.actname_eq_dec := actname_eq_dec;
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
@@ -125,7 +121,7 @@ Section Pipeline1.
   Definition ExprImp2Riscv(s: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)):
     list Instruction :=
     let flat := ExprImp2FlatImp s in
-    match rename_stmt string Register funname actname map.empty flat available_registers with
+    match rename_stmt string Register funname string map.empty flat available_registers with
     | Some flat' => FlatToRiscvDef.compile_stmt flat'
     | None => nil
     end.
@@ -133,7 +129,7 @@ Section Pipeline1.
   Definition ExprImp2RenamedFlat(s: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)):
     FlatImp.stmt :=
     let flat := ExprImp2FlatImp s in
-    match rename_stmt string Register funname actname map.empty flat available_registers with
+    match rename_stmt string Register funname string map.empty flat available_registers with
     | Some flat' => flat'
     | None => FlatImp.SSkip
     end.
@@ -143,12 +139,15 @@ Section Pipeline1.
     FlatToRiscvDef.compile_functions (flatten_functions e funnames) funnames.
 *)
 
-  Definition compile_prog(e: @Semantics.env (FlattenExpr.mk_Semantics_params _))
-                         (s: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _))
-                         (funs: list funname): list Instruction :=
+  Definition compile_prog(e: @Semantics.env (FlattenExpr.mk_Semantics_params _)) (init_sp: Z)
+             (init_code loop_body: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _))
+             (funs: list funname): list Instruction :=
     let e' := flatten_functions e funs in
-    let e'' := rename_functions string Register funname actname available_registers e' funs in
-    let s' := ExprImp2RenamedFlat s in
-    FlatToRiscvDef.compile_prog e'' s' funs.
+    let e'' := rename_functions string Register funname string available_registers e' funs in
+    (* TODO the two below should share local variables and not rename independently *)
+    let init_code' := ExprImp2RenamedFlat init_code in
+    let loop_body' := ExprImp2RenamedFlat loop_body in
+    FlatToRiscvDef.compile_lit RegisterNames.sp init_sp ++
+    FlatToRiscvDef.compile_prog e'' init_code' loop_body' funs.
 
 End Pipeline1.

@@ -27,12 +27,12 @@ Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Pro
   forall instr, In instr prog -> verify instr iset.
 
 Module Import FlatToRiscvDef.
+
   Class parameters := {
     (* the words implementations are not needed, but we need width,
        and EmitsValid needs width_cases *)
     W :> Utility.Words;
-    actname: Type;
-    compile_ext_call: list Register -> actname -> list Register -> list Instruction;
+    compile_ext_call: list Register -> String.string -> list Register -> list Instruction;
     compile_ext_call_length: forall binds f args,
         Zlength (compile_ext_call binds f args) <= 7;
     (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
@@ -46,7 +46,7 @@ Module Import FlatToRiscvDef.
   Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
     Syntax.varname := Register;
     Syntax.funname := String.string;
-    Syntax.actname := actname;
+    Syntax.actname := String.string;
   |}.
 
 End FlatToRiscvDef.
@@ -334,10 +334,20 @@ Section FlatToRiscv1.
       let e_pos := build_fun_pos_env 0 funnames in
       compile_funs e_pos e_impl 0 funnames.
 
-    Definition compile_prog(s: stmt)(funs: list funname): list Instruction :=
-      let size1 := 4 * Z.of_nat (length (compile_stmt_new map.empty 42 s)) in
+    (* The main function is always some initialization code followed by an infinite loop.
+       If no loop is desired, pass SSkip as loop_body, and this will guarantee that after
+       the init code (i.e. your full program) has run to completion, no further output
+       nor other undesired behavior is produced *)
+    Definition compile_main(e_pos: fun_pos_env)(mypos: Z)(init_code loop_body: stmt)
+      : list Instruction :=
+      let insts1 := compile_stmt_new e_pos mypos init_code in
+      let insts2 := compile_stmt_new e_pos (mypos + 4 * Z.of_nat (length insts1)) loop_body in
+      insts1 ++ insts2 ++ [[Jal Register0 (- 4 * Z.of_nat (length insts2))]].
+
+    Definition compile_prog(init loop_body: stmt)(funs: list funname): list Instruction :=
+      let size1 := 4 * Z.of_nat (length (compile_main map.empty 42 init loop_body)) in
       let e_pos := build_fun_pos_env size1 funs in
-      let insts1 := compile_stmt_new e_pos 0 s in
+      let insts1 := compile_main e_pos 0 init loop_body in
       let insts2 := compile_funs e_pos e_impl size1 funs in
       insts1 ++ insts2.
 

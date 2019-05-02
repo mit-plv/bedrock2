@@ -35,21 +35,24 @@ Unset Universe Minimization ToSet.
 
 Open Scope Z_scope.
 
-Notation RiscvMachine := (MetricRiscvMachine Register MMIOAction).
 
 Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.
 
 Instance mmio_params: MMIO.parameters := { (* everything is inferred automatically *) }.
 
-Existing Instance MetricMinimalMMIOPrimitivesParams. (* needed because it's in a section *)
+(* needed because different unfolding levels of implicit arguments *)
+Instance riscv_ext_spec': ExtSpec (OStateND RiscvMachine) := riscv_ext_spec.
+Instance MetricMinimalMMIOPrimitivesParams':
+  PrimitivesParams (OStateND MetricRiscvMachine) MetricRiscvMachine :=
+  MetricMinimalMMIOPrimitivesParams.
 
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_spec := FlatToRiscvCommon.FlatToRiscv.ext_spec;
   Pipeline.ext_guarantee := FlatToRiscvCommon.FlatToRiscv.ext_guarantee;
-  Pipeline.M := OStateND RiscvMachine;
+  Pipeline.M := OStateND MetricRiscvMachine;
   Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
-  Pipeline.RVM := IsMetricRiscvMachineL;
+  Pipeline.RVM := IsMetricRiscvMachine;
 }.
 
 Lemma undef_on_same_domain{K V: Type}{M: map.map K V}{keq: DecidableEq K}{Ok: map.ok M}
@@ -74,7 +77,8 @@ Qed.
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
 Proof.
-  constructor; try typeclasses eauto; try refine FlatToRiscv_hyps.
+  constructor; try typeclasses eauto; try refine FlatToRiscv_hyps;
+    try exact MinimalMMIOSatisfiesPrimitives.
   constructor; unfold ext_spec, pipeline_params; simpl.
   - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
   - unfold real_ext_spec. intros.
@@ -120,7 +124,7 @@ Module PrintAssembly.
   (* Eval vm_compute in compileFunc swap_chars_over_uart. *)
 End PrintAssembly.
 
-Definition zeroedRiscvMachine: RiscvMachine := {|
+Definition zeroedRiscvMachine: MetricRiscvMachine := {|
   getMetrics := EmptyMetricLog;
   getMachine := {|
     getRegs := map.empty;
@@ -134,7 +138,7 @@ Definition zeroedRiscvMachine: RiscvMachine := {|
 Definition imemStart: word := word.of_Z (Ox "20400000").
 Lemma imemStart_div4: word.unsigned imemStart mod 4 = 0. reflexivity. Qed.
 
-Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
+Definition initialRiscvMachine(imem: list MachineInt): MetricRiscvMachine :=
   putProgram imem imemStart zeroedRiscvMachine.
 
 Require bedrock2.WeakestPreconditionProperties.
@@ -151,13 +155,13 @@ Local Instance ext_spec_Proper :   forall
        Basics.impl) (ext_spec trace m act args).
 Admitted.
 
-Definition initialSwapMachine: RiscvMachine :=
+Definition initialSwapMachine: MetricRiscvMachine :=
   initialRiscvMachine (List.map encode (compileFunc swap_chars_over_uart)).
 
 (* just to make sure all typeclass instances are available: *)
 Definition mcomp_sat:
-  OStateND RiscvMachine unit -> RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
-  GoFlatToRiscv.mcomp_sat.
+  OStateND MetricRiscvMachine unit -> MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
+  GoFlatToRiscv.mcomp_sat (PRParams := MetricMinimalMMIOPrimitivesParams).
 
 Lemma Zlength_length: forall {A: Type} (l: list A),
     Z.of_nat (Datatypes.length l) = Zlength l.
@@ -230,12 +234,12 @@ Lemma input_program_not_too_long:
   4 * Z.of_nat (Datatypes.length (compileFunc swap_chars_over_uart)) < 2 ^ width.
 Proof. reflexivity. Qed.
 
-Definition run1 : OStateND RiscvMachine unit := @run1 _ _ _ _ IsMetricRiscvMachineL _ RV32IM.
+Definition run1 : OStateND MetricRiscvMachine unit := @run1 _ _ _ _ IsMetricRiscvMachine _ RV32IM.
 
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat run1)
                       initialSwapMachine
-                      (fun (finalL: RiscvMachine) =>  (fun _ => True) finalL.(getLog)).
+                      (fun (finalL: MetricRiscvMachine) =>  (fun _ => True) finalL.(getLog)).
 Proof.
   refine (@exprImp2Riscv_correctTrace pipeline_params _ swap_chars_over_uart map.empty
             bedrock2.MetricLogging.EmptyMetricLog nil _ _ (fun _ => True) _ _ _ _ _ _ _ _ _).

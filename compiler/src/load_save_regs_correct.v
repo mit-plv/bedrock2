@@ -24,7 +24,7 @@ Section Proofs.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register FlatToRiscvDef.actname).
+  Local Notation RiscvMachineL := MetricRiscvMachine.
 
   (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
   Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.

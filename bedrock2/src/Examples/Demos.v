@@ -13,7 +13,7 @@ Definition StringNamesSyntaxParams: Syntax.parameters :=
 Definition ZNamesSyntaxParams: Syntax.parameters := {|
   Syntax.varname := Z;
   Syntax.funname := string;
-  Syntax.actname := Empty_set;
+  Syntax.actname := string;
 |}.
 
 

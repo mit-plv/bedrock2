@@ -26,6 +26,7 @@ Require Import bedrock2.Examples.swap.
 
 Open Scope Z_scope.
 Open Scope string_scope.
+Open Scope ilist_scope.
 
 Definition var: Set := Z.
 Definition Reg: Set := Z.
@@ -36,13 +37,16 @@ Existing Instance DefaultRiscvState.
 Axiom TODO: forall {T: Type}, T.
 
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.FlatToRiscvDef.actname := string;
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ := TODO;
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
+    if string_dec fname "nop" then
+      [[Addi Register0 Register0 0]]
+    else
+      nil;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := TODO;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := TODO;
 }.
 
-Notation RiscvMachine := (MetricRiscvMachine Register FlatToRiscvDef.FlatToRiscvDef.actname).
+Notation RiscvMachine := MetricRiscvMachine.
 
 Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.
@@ -76,10 +80,18 @@ Definition e := RegAlloc.map.putmany_of_tuples map.empty allFuns.
 
 Definition funnames: list string := List.map fst allFuns.
 
-Definition s: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
+Definition main: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.call (FlattenExpr.mk_Syntax_params _) [] "swap_swap" [expr.literal 100; expr.literal 108].
 
-Definition swap_asm: list Instruction := Eval cbv in compile_prog e s funnames.
+Definition nop_loop_body: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
+  @cmd.interact (FlattenExpr.mk_Syntax_params _) [] "nop" [].
+
+(* stack grows from high addreses to low addresses, first stack word will be written to
+   (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
+Definition stack_pastend: Z := 2048.
+
+Definition swap_asm: list Instruction :=
+  Eval cbv in compile_prog e stack_pastend main nop_loop_body funnames.
 
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.
@@ -127,3 +139,17 @@ Module PrintAssembly.
 
   *)
 End PrintAssembly.
+
+Definition instructions_to_word8(insts: list Instruction): list Utility.byte :=
+  List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) insts.
+
+Definition swap_as_bytes: list byte :=
+  let word8s := instructions_to_word8 swap_asm in
+  List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
+
+Module PrintBytes.
+  Import bedrock2.Hexdump.
+  Local Open Scope hexdump_scope.
+  Set Printing Width 100.
+  Goal True. let x := eval cbv in swap_as_bytes in idtac x. Abort.
+End PrintBytes.
