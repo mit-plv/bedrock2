@@ -77,14 +77,11 @@ Local Open Scope hexdump_scope.
 Set Printing Width 108.
 Goal True.
   let r := eval cbv in (([[
-                             Addi 2 0 (2^10-4);
-                             Lw 1 2 0;
-                             Lw 1 2 0;
-                             Lw 1 2 0;
-                             Lw 1 2 0;
-                             Lw 1 2 0;
-                             Sw 2 0 (2^10-4)
-                         ]] ++ compile prog)%list) in
+                             Addi 7 0 (42);
+                             Sw 0 7 (2^9);
+                             Addi 7 0 (36);
+                             Sw 0 7 (2^9+4)
+                         ]] ++ compile prog)%list%Z) in
   pose r as asm.
 
 
