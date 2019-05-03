@@ -4,7 +4,7 @@
 
 module testbench; 
     reg clock=0, reset=1;
-    reg [7:0] ram [0:2047];
+    reg [7:0] ram [0:1023];
 
     reg en_obtain_rq_get = 0;
     wire [64:0] obtain_rq_get;
@@ -28,13 +28,13 @@ module testbench;
 
     always @(*) begin
       if (rdy_obtain_rq_get && rdy_send_rs_put
-          && (mem_rq_addr >> 12) == 0 && !mem_rq_iswrite)
+          && (mem_rq_addr >> 10) == 0 && !mem_rq_iswrite)
       begin
         en_obtain_rq_get = 1;
         en_send_rs_put = 1;
         send_rs_put = {ram[mem_rq_addr+3], ram[mem_rq_addr+2], ram[mem_rq_addr+1], ram[mem_rq_addr+0]};
       end else if (rdy_obtain_rq_get && rdy_send_rs_put
-          && (mem_rq_addr >> 12) == 0 && mem_rq_iswrite)
+          && (mem_rq_addr >> 10) == 0 && mem_rq_iswrite)
       begin
         en_obtain_rq_get = 1;
         en_send_rs_put = 1;
@@ -55,6 +55,6 @@ module testbench;
       $dumpfile("system.vcd");
       $dumpvars(1, clock, reset, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_obtain_rq_get, en_send_rs_put, send_rs_put, rdy_send_rs_put);
       #2 reset <= 0;
-      #10000 $finish();
+      #1000 $finish();
     end 
 endmodule
