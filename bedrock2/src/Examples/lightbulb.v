@@ -251,59 +251,52 @@ Proof.
       SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H; [|ecancel_assumption].
       rewrite List.length_firstn_inbounds, Znat.Z2Nat.id; trivial.
       { eapply Properties.word.unsigned_range. }
-      trans_ltu.
-      eapply Znat.Nat2Z.inj_le.
-      rewrite -> Znat.Z2Nat.id.
-      {
-        rewrite -> H0. replace (word.sub num_bytes c) with num_bytes by (subst c; ring).
+      trans_ltu. eapply Znat.Nat2Z.inj_le. rewrite -> Znat.Z2Nat.id.
+      { rewrite -> H0.
+        replace (word.sub num_bytes c) with num_bytes by (subst c; ring).
         rewrite word.unsigned_of_Z in H2. change (word.wrap 1521) with (1521) in H2.
         Lia.lia. }
-
       replace (word.sub num_bytes c) with num_bytes by (subst c; ring).
-      (* unsigned words should always be non-negative *)  eapply Properties.word.unsigned_range. }
+      eapply Properties.word.unsigned_range. }
     { replace (word.sub num_bytes c) with num_bytes by (subst c; ring).
       rewrite -> List.length_firstn_inbounds.
       { rewrite Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. }
-      rewrite H0.
-      trans_ltu.
+      rewrite H0. trans_ltu.
       change (word.unsigned (word.of_Z 1521)) with (1521) in H2.
       pose proof Properties.word.unsigned_range num_bytes.
       PreOmega.zify.
       rewrite Znat.Z2Nat.id; Lia.lia. }
-    { pose proof Properties.word.unsigned_range num_bytes.  PreOmega.zify.
+    { pose proof Properties.word.unsigned_range num_bytes. PreOmega.zify.
       subst c. subst num_bytes. clear.
-      { rewrite word.unsigned_mul. unfold word.wrap. rewrite (Z.mod_small _ (2^width)).
+      { rewrite word.unsigned_mul. unfold word.wrap.
+        rewrite (Z.mod_small _ (2^width)).
         { change (word.unsigned (word.of_Z 0) mod 4) with 0.
           change (word.unsigned (word.of_Z 4)) with 4.
           Z.div_mod_to_equations.
           Lia.lia. }
-
-        change (word.unsigned (word.of_Z 4)) with 4. subst num_words. rewrite Properties.word.unsigned_sru_nowrap.
+        change (word.unsigned (word.of_Z 4)) with 4. subst num_words.
+        rewrite Properties.word.unsigned_sru_nowrap.
         { rewrite Z.shiftr_div_pow2.
           { change (2 ^ word.unsigned (word.of_Z 2)) with 4.
-            pose proof Properties.word.unsigned_range (word.sub (word.add num_bytes0 (word.of_Z 4)) (word.of_Z 1)).
-
-            
-        Z.div_mod_to_equations.
-        Lia.lia. }
+            pose proof Properties.word.unsigned_range
+                 (word.sub (word.add num_bytes0 (word.of_Z 4)) (word.of_Z 1)).
+            Z.div_mod_to_equations.
+            (*  0 <= word.unsigned num_words * word.unsigned (word.of_Z 4)
+                < 2 ^ width *)
+            Lia.lia. }
           { cbv. congruence. }}
-exact eq_refl.
-      }}}
-
+        exact eq_refl. }}}
     (* lan9250_readword *)
-    { prove_ext_spec.
-      repeat (straightline || straightline_if).
-      
+    { prove_ext_spec. repeat (straightline || straightline_if).
       (* store *)
-      do 2 trans_ltu.
-      rewrite <- (List.firstn_skipn 4 x) in H4.
+      do 2 trans_ltu. rewrite <- (List.firstn_skipn 4 x) in H4.
       SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H4.
       { rewrite List.length_firstn_inbounds.
         { instantiate (1:= word.of_Z 4). eauto. }
-        (* H6 and H5 and H3 *)
         apply Znat.Nat2Z.inj_le. rewrite H5. rewrite word.unsigned_sub.
-        unfold word.wrap. rewrite Z.mod_small. {
-          revert H6 H3. clear. Z.div_mod_to_equations.
+        unfold word.wrap. rewrite Z.mod_small.
+        { revert H6 H3. clear. Z.div_mod_to_equations.
+          (* Z.of_nat 4 <= word.unsigned x6 - word.unsigned x5 *)
           Lia.lia. }
         pose proof Properties.word.unsigned_range x6.
         pose proof Properties.word.unsigned_range x5.
@@ -311,116 +304,113 @@ exact eq_refl.
       eapply store_four_of_sep.
       { seprewrite_in @scalar32_of_bytes H8; [..|ecancel_assumption].
         { exact _. }
-        { eapply List.length_firstn_inbounds.
- apply Znat.Nat2Z.inj_le.
-rewrite H5. rewrite word.unsigned_sub.
-        unfold word.wrap. rewrite Z.mod_small. {
-          revert H6 H3. clear. Z.div_mod_to_equations.
-          Lia.lia. }
-        pose proof Properties.word.unsigned_range x6.
-        pose proof Properties.word.unsigned_range x5.
-        Lia.lia. } }
+        { eapply List.length_firstn_inbounds. apply Znat.Nat2Z.inj_le. rewrite H5.
+          rewrite word.unsigned_sub. unfold word.wrap. rewrite Z.mod_small.
+          { revert H6 H3. clear. Z.div_mod_to_equations.
+            (* Z.of_nat 4 <= word.unsigned x6 - word.unsigned x5 *)
+            Lia.lia. }
+          pose proof Properties.word.unsigned_range x6.
+          pose proof Properties.word.unsigned_range x5.
+          (* 0 <= word.unsigned x6 - word.unsigned x5 < 2 ^ width *)
+          Lia.lia. }}
       do 5 straightline.
       (* TODO straightline hangs in TailRecursion.enforce *)
-      do 8 letexists. split. 
-      { repeat straightline. }
-      do 3 letexists.
+      do 8 letexists. split. { repeat straightline. } do 3 letexists.
       repeat split; repeat straightline; repeat split.
       { replace (word.add x4 c)
           with (word.add (word.add x4 x5) (word.of_Z 4)) by (subst c; ring).
         ecancel_assumption. }
-      { 
-        subst x17.
-        rewrite List.length_skipn.
-        rewrite Znat.Nat2Z.inj_sub.
-        {
-          rewrite H5.
-          subst c.
-          replace (word.sub x6 (word.add x5 (word.of_Z 4))) with (word.sub (word.sub x6 x5) (word.of_Z 4)) by ring.
+      { subst x17. rewrite List.length_skipn. rewrite Znat.Nat2Z.inj_sub.
+        { rewrite H5. subst c.
+          replace (word.sub x6 (word.add x5 (word.of_Z 4)))
+            with (word.sub (word.sub x6 x5) (word.of_Z 4)) by ring.
           rewrite (word.unsigned_sub _ (word.of_Z 4)).
           unfold word.wrap. rewrite Z.mod_small.
           { exact eq_refl. }
-          {
-            (* something similar to above with mods
-
-               Need to assert that x6 - x5 - 4 is nowrap, is there something like unsigned_sub_nowrap?
-               for the < 2 ^ width. *)
-            change (word.unsigned (word.of_Z 4)) with 4.
+          { change (word.unsigned (word.of_Z 4)) with 4.
             pose proof Properties.word.unsigned_range (word.sub x6 x5).
-
-
-   
-             
-            admit. }}
-
+            pose proof Properties.word.unsigned_range x5.
+            pose proof Properties.word.unsigned_range x6.
+            rewrite word.unsigned_sub. unfold word.wrap. rewrite Z.mod_small.
+            { revert H10 H9 H7 H6 H3 H2. clear.
+              Z.div_mod_to_equations. Lia.lia. }
+            { Z.div_mod_to_equations. Lia.lia. }}}
         apply Znat.Nat2Z.inj_le. rewrite H5. rewrite word.unsigned_sub.
-        unfold word.wrap. rewrite Z.mod_small. {
-          revert H6 H3. clear. Z.div_mod_to_equations.
+        unfold word.wrap. rewrite Z.mod_small.
+        { revert H6 H3. clear. Z.div_mod_to_equations.
+          (* Z.of_nat 4 <= word.unsigned x6 - word.unsigned x5 *)
           Lia.lia. }
-
-         pose proof Properties.word.unsigned_range x6.
+        pose proof Properties.word.unsigned_range x6.
         pose proof Properties.word.unsigned_range x5.
+        (* 0 <= word.unsigned x6 - word.unsigned x5 < 2 ^ width *)
         Lia.lia. }
-      
-      {
-        subst c. rewrite word.unsigned_add. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
-        {
-
-          revert H6. clear. change (word.unsigned (word.of_Z 4)) with 4.
-          Z.div_mod_to_equations. Lia.lia. } (* pose proofs, get everything to Zs, Z.div, Lia *)
-        admit. }
-      
-      { repeat match goal with |- context [?x] => is_var x; subst x end.
-        rewrite word.unsigned_add. unfold word.wrap.
-        rewrite Z.mod_small.
-        {
+      { subst c. rewrite word.unsigned_add. unfold word.wrap.
+        rewrite (Z.mod_small _ (2 ^ width)).
+        { revert H6. clear. change (word.unsigned (word.of_Z 4)) with 4.
+          Z.div_mod_to_equations.
+          (* (word.unsigned x5 + word.unsigned (word.of_Z 4)) mod 4
+            = word.unsigned x6 mod 4 *)
+          Lia.lia. }
+        (* pose proofs, get everything to Zs, Z.div, Lia *)
+        pose proof Properties.word.unsigned_range x5.
         change (word.unsigned (word.of_Z 4)) with 4.
-        Lia.lia. }
-        revert H2 H3. (* H3 H6 with pose proofs *) admit. }
+(*
+  0 <= word.unsigned x5 < 2 ^ width ->
+  word.unsigned x5 < word.unsigned x6 ->
+  word.unsigned x6 < word.unsigned (word.of_Z 1521) ->
+  0 <= word.unsigned x5 + 4 < 2 ^ width
+*)
+        Search x5.
+        revert H7 H3 H2. clear.
+        (* Z.div_mod_to_equations. Lia.lia. *)
+        admit. }
+      { repeat match goal with |- context [?x] => is_var x; subst x end.
+        rewrite word.unsigned_add. unfold word.wrap. rewrite Z.mod_small.
+        { change (word.unsigned (word.of_Z 4)) with 4. Lia.lia. }
+        revert H2 H3.
+        (* H3 H6 with pose proofs *)
+(* 0 <= word.unsigned x5 + word.unsigned (word.of_Z 4) < 2 ^ width *)
+        admit. }
       { subst v'. subst c.
+(* word.unsigned (word.add x5 (word.of_Z 4)) <= word.unsigned x6 *)
      admit. }
-      { letexists. split. {
-
-        subst x18. subst c.
-          
-        repeat match type of H7 with context [?x] => subst x end.
-        cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in H7.
-        replace (word.add x4 (word.add x5 (word.of_Z 4))) with
-                (word.add (word.add x4 x5) (word.of_Z 4)) in H7 by ring.
-
-        SeparationLogic.seprewrite_in (@bytearray_index_merge) H7.
-        { exact eq_refl. }
-        { ecancel_assumption. }}
+      { letexists. split.
+        { subst x18. subst c.
+          repeat match type of H7 with context [?x] => subst x end.
+          cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in H7.
+          replace (word.add x4 (word.add x5 (word.of_Z 4))) with
+                  (word.add (word.add x4 x5) (word.of_Z 4)) in H7 by ring.
+          SeparationLogic.seprewrite_in (@bytearray_index_merge) H7.
+          { exact eq_refl. } { ecancel_assumption. }}
         split.
-        { subst SCRATCH.  rewrite List.app_length.  rewrite H9.  subst x17. rewrite List.length_skipn.
+        { subst SCRATCH. rewrite List.app_length. rewrite H9. subst x17.
+          rewrite List.length_skipn.
           change (Datatypes.length (HList.tuple.to_list (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v4)))))) with (4%nat).
-
           assert (4 <= (Datatypes.length x))%nat. 2:Lia.lia.
           PreOmega.zify.
-          rewrite H5. 
-          rewrite word.unsigned_sub. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
-          { revert H6 H3. clear.  change (word.unsigned (word.of_Z 4)) with 4.
-            Z.div_mod_to_equations. Lia.lia. }
-
+          rewrite H5. rewrite word.unsigned_sub. unfold word.wrap.
+          rewrite (Z.mod_small _ (2 ^ width)).
+          { revert H6 H3. clear. change (word.unsigned (word.of_Z 4)) with 4.
+            Z.div_mod_to_equations.
+            (* 4 <= word.unsigned x24 - word.unsigned x5 *)
+            Lia.lia. }
           pose proof Properties.word.unsigned_range x24.
           pose proof Properties.word.unsigned_range x5.
+          (* 0 <= word.unsigned x24 - word.unsigned x5 < 2 ^ width *)
           Lia.lia. }
-        { reflexivity. } } }
-     
-    { 
-    left. letexists. split.
-    { repeat straightline. exact eq_refl. }
-    letexists. split. {
-      Search x4. subst bytes_written. subst c.
-      replace (word.add p_addr (word.of_Z 0)) with (p_addr) in H3 by ring.
-      replace (word.add p_addr (word.sub x4 (word.of_Z 0))) with (word.add p_addr x4) in H3 by ring.
-      replace (word.sub x4 (word.of_Z 0)) with (x4) in H3 by ring.
-      ecancel_assumption. }
-    subst bytes_written. subst rx_packet'. subst c.
-    rewrite H4.
-    replace (word.sub x4 (word.of_Z 0)) with (x4) by ring.
-    admit. 
-  (* there is a bunch to do here *)
+        { reflexivity. }}}
+    { left. letexists. split. { repeat straightline. exact eq_refl. }
+      letexists. split.
+      { subst bytes_written. subst c.
+        replace (word.add p_addr (word.of_Z 0)) with (p_addr) in H3 by ring.
+        replace (word.add p_addr (word.sub x4 (word.of_Z 0)))
+          with (word.add p_addr x4) in H3 by ring.
+        replace (word.sub x4 (word.of_Z 0)) with (x4) in H3 by ring.
+        ecancel_assumption. }
+      subst bytes_written. subst rx_packet'. subst c. rewrite H4.
+      replace (word.sub x4 (word.of_Z 0)) with (x4) by ring.
+(* word.unsigned x4 <= Datatypes.length (List.firstn x4 rx_packet) *)
+    admit.
 Admitted.
         
 (* bsearch.v has examples to deal with arrays *)
