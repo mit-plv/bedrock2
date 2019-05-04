@@ -405,8 +405,9 @@ Proof.
         trans_ltu. eapply Znat.Nat2Z.inj_le. rewrite -> Znat.Z2Nat.id.
         { rewrite word.unsigned_of_Z in H2. change (word.wrap 1521) with (1521) in H2. Lia.lia. }
         { eapply Properties.word.unsigned_range. }
-        }}
-Admitted.
+    }}
+    Grab Existential Variables. exact _.
+Qed.
         
 (* bsearch.v has examples to deal with arrays *)
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
