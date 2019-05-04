@@ -344,26 +344,21 @@ Proof.
       { subst c. rewrite word.unsigned_add. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
         { revert H6. clear. change (word.unsigned (word.of_Z 4)) with 4.
           Z.div_mod_to_equations. Lia.lia. }
-        
         pose proof Properties.word.unsigned_range x5.
+        pose proof Properties.word.unsigned_range x6.
         change (word.unsigned (word.of_Z 4)) with 4.
         change (word.unsigned (word.of_Z 1521)) with 1521 in *.
-        revert H7 H3 H2. clear.
-(*
-   0 <= word.unsigned x5 < 2 ^ width ->
-   word.unsigned x5 < word.unsigned x6 ->
-   word.unsigned x6 < 1521 ->
-   0 <= word.unsigned x5 + 4 < 2 ^ width
-*)
-        Z.div_mod_to_equations. try Lia.lia.
-        admit. }
+        revert H9 H7 H6 H3 H2. clear.
+        PreOmega.zify. Z.div_mod_to_equations. Lia.lia. }
       { repeat match goal with |- context [?x] => is_var x; subst x end.
         rewrite word.unsigned_add. unfold word.wrap. rewrite Z.mod_small.
         { change (word.unsigned (word.of_Z 4)) with 4. Lia.lia. }
-(* Same as above.
-
-0 <= word.unsigned x5 + word.unsigned (word.of_Z 4) < 2 ^ width *)
-        admit. }
+        pose proof Properties.word.unsigned_range x5.
+        pose proof Properties.word.unsigned_range x6.
+        change (word.unsigned (word.of_Z 4)) with 4.
+        change (word.unsigned (word.of_Z 1521)) with 1521 in *.
+        revert H9 H7 H6 H3 H2. clear.
+        PreOmega.zify. Z.div_mod_to_equations. Lia.lia. }
       { subst v'. subst c.
         rewrite word.unsigned_add. change (word.unsigned (word.of_Z 4)) with 4.
         unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
@@ -410,6 +405,7 @@ Proof.
         trans_ltu. eapply Znat.Nat2Z.inj_le. rewrite -> Znat.Z2Nat.id.
         { rewrite word.unsigned_of_Z in H2. change (word.wrap 1521) with (1521) in H2. Lia.lia. }
         { eapply Properties.word.unsigned_range. }
+        }}
 Admitted.
         
 (* bsearch.v has examples to deal with arrays *)
