@@ -337,43 +337,40 @@ Proof.
             { Z.div_mod_to_equations. Lia.lia. }}}
         apply Znat.Nat2Z.inj_le. rewrite H5. rewrite word.unsigned_sub.
         unfold word.wrap. rewrite Z.mod_small.
-        { revert H6 H3. clear. Z.div_mod_to_equations.
-          (* Z.of_nat 4 <= word.unsigned x6 - word.unsigned x5 *)
-          Lia.lia. }
+        { revert H6 H3. clear. Z.div_mod_to_equations. Lia.lia. }
         pose proof Properties.word.unsigned_range x6.
         pose proof Properties.word.unsigned_range x5.
-        (* 0 <= word.unsigned x6 - word.unsigned x5 < 2 ^ width *)
         Lia.lia. }
-      { subst c. rewrite word.unsigned_add. unfold word.wrap.
-        rewrite (Z.mod_small _ (2 ^ width)).
+      { subst c. rewrite word.unsigned_add. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
         { revert H6. clear. change (word.unsigned (word.of_Z 4)) with 4.
-          Z.div_mod_to_equations.
-          (* (word.unsigned x5 + word.unsigned (word.of_Z 4)) mod 4
-            = word.unsigned x6 mod 4 *)
-          Lia.lia. }
-        (* pose proofs, get everything to Zs, Z.div, Lia *)
+          Z.div_mod_to_equations. Lia.lia. }
+        
         pose proof Properties.word.unsigned_range x5.
         change (word.unsigned (word.of_Z 4)) with 4.
-(*
-  0 <= word.unsigned x5 < 2 ^ width ->
-  word.unsigned x5 < word.unsigned x6 ->
-  word.unsigned x6 < word.unsigned (word.of_Z 1521) ->
-  0 <= word.unsigned x5 + 4 < 2 ^ width
-*)
-        Search x5.
+        change (word.unsigned (word.of_Z 1521)) with 1521 in *.
         revert H7 H3 H2. clear.
-        (* Z.div_mod_to_equations. Lia.lia. *)
+(*
+   0 <= word.unsigned x5 < 2 ^ width ->
+   word.unsigned x5 < word.unsigned x6 ->
+   word.unsigned x6 < 1521 ->
+   0 <= word.unsigned x5 + 4 < 2 ^ width
+*)
+        Z.div_mod_to_equations. try Lia.lia.
         admit. }
       { repeat match goal with |- context [?x] => is_var x; subst x end.
         rewrite word.unsigned_add. unfold word.wrap. rewrite Z.mod_small.
         { change (word.unsigned (word.of_Z 4)) with 4. Lia.lia. }
-        revert H2 H3.
-        (* H3 H6 with pose proofs *)
-(* 0 <= word.unsigned x5 + word.unsigned (word.of_Z 4) < 2 ^ width *)
+        change (word.unsigned (word.of_Z 4)) with 4.
+        revert H2 H3. clear.
         admit. }
       { subst v'. subst c.
-(* word.unsigned (word.add x5 (word.of_Z 4)) <= word.unsigned x6 *)
-     admit. }
+        rewrite word.unsigned_add. change (word.unsigned (word.of_Z 4)) with 4.
+        unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
+        { revert H6 H3. clear. Z.div_mod_to_equations. Lia.lia. }
+        { pose proof Properties.word.unsigned_range x5.
+          pose proof Properties.word.unsigned_range x6.
+          change (word.unsigned (word.of_Z 1521)) with 1521 in *.
+          PreOmega.zify. Z.div_mod_to_equations. Lia.lia. }}
       { letexists. split.
         { subst x18. subst c.
           repeat match type of H7 with context [?x] => subst x end.
@@ -383,17 +380,13 @@ Proof.
           SeparationLogic.seprewrite_in (@bytearray_index_merge) H7.
           { exact eq_refl. } { ecancel_assumption. }}
         split.
-        { subst SCRATCH. rewrite List.app_length. rewrite H9. subst x17.
-          rewrite List.length_skipn.
+        { subst SCRATCH. rewrite List.app_length. rewrite H9. subst x17. rewrite List.length_skipn.
           change (Datatypes.length (HList.tuple.to_list (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v4)))))) with (4%nat).
           assert (4 <= (Datatypes.length x))%nat. 2:Lia.lia.
           PreOmega.zify.
-          rewrite H5. rewrite word.unsigned_sub. unfold word.wrap.
-          rewrite (Z.mod_small _ (2 ^ width)).
+          rewrite H5. rewrite word.unsigned_sub. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
           { revert H6 H3. clear. change (word.unsigned (word.of_Z 4)) with 4.
-            Z.div_mod_to_equations.
-            (* 4 <= word.unsigned x24 - word.unsigned x5 *)
-            Lia.lia. }
+            Z.div_mod_to_equations. Lia.lia. }
           pose proof Properties.word.unsigned_range x24.
           pose proof Properties.word.unsigned_range x5.
           (* 0 <= word.unsigned x24 - word.unsigned x5 < 2 ^ width *)
