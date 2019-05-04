@@ -360,8 +360,9 @@ Proof.
       { repeat match goal with |- context [?x] => is_var x; subst x end.
         rewrite word.unsigned_add. unfold word.wrap. rewrite Z.mod_small.
         { change (word.unsigned (word.of_Z 4)) with 4. Lia.lia. }
-        change (word.unsigned (word.of_Z 4)) with 4.
-        revert H2 H3. clear.
+(* Same as above.
+
+0 <= word.unsigned x5 + word.unsigned (word.of_Z 4) < 2 ^ width *)
         admit. }
       { subst v'. subst c.
         rewrite word.unsigned_add. change (word.unsigned (word.of_Z 4)) with 4.
@@ -389,7 +390,6 @@ Proof.
             Z.div_mod_to_equations. Lia.lia. }
           pose proof Properties.word.unsigned_range x24.
           pose proof Properties.word.unsigned_range x5.
-          (* 0 <= word.unsigned x24 - word.unsigned x5 < 2 ^ width *)
           Lia.lia. }
         { reflexivity. }}}
     { left. letexists. split. { repeat straightline. exact eq_refl. }
@@ -402,8 +402,14 @@ Proof.
         ecancel_assumption. }
       subst bytes_written. subst rx_packet'. subst c. rewrite H4.
       replace (word.sub x4 (word.of_Z 0)) with (x4) by ring.
-(* word.unsigned x4 <= Datatypes.length (List.firstn x4 rx_packet) *)
-    admit.
+      rewrite List.length_firstn_inbounds, Znat.Z2Nat.id; trivial.
+      { reflexivity. }
+      { pose proof Properties.word.unsigned_range x4. apply H5. }
+      { rewrite H0.
+        pose proof Properties.word.unsigned_range x4.
+        trans_ltu. eapply Znat.Nat2Z.inj_le. rewrite -> Znat.Z2Nat.id.
+        { rewrite word.unsigned_of_Z in H2. change (word.wrap 1521) with (1521) in H2. Lia.lia. }
+        { eapply Properties.word.unsigned_range. }
 Admitted.
         
 (* bsearch.v has examples to deal with arrays *)
