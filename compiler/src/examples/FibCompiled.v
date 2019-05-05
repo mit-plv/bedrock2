@@ -58,9 +58,9 @@ Section FibCompiled.
     - constructor; try typeclasses eauto.
       + admit. (* This is doable.. *)
       + simpl. apply MetricMinimalSatisfiesMetricPrimitives.
-      + admit. (* logs when the machine has no MMIO should always be the same..? *)
-      + admit.
-    - admit.
+      + constructor.
+      + intros. inversion H6. destruct H17.
+    - constructor; destruct 1.
   Admitted.
 
   Definition zeroedRiscvMachine: RiscvMachine := {|
@@ -283,7 +283,7 @@ Section FibCompiled.
   Qed.
                                   
   Axiom fib_program_correct: forall n t m l mc,
-      0<= n < BinInt.Z.pow_pos 2 32 ->
+      0 <= n <= 60 ->
       Semantics.exec map.empty (fib_ExprImp n) t m l mc (
                        fun t' m ' l' mc' =>
                          exists (result: Utility.word),
@@ -292,7 +292,7 @@ Section FibCompiled.
     
 
   Lemma fib_program_correct_bounded: forall n t m l mc,
-      0 <= n < BinInt.Z.pow_pos 2 32 ->
+      0 <= n <= 60 ->
       Semantics.exec map.empty (fib_ExprImp n) t m l mc (
                        fun t' m ' l' mc' =>
                          instructionsH mc' <= instructionsH mc + n * 34 + 39 /\
@@ -305,7 +305,7 @@ Section FibCompiled.
     + pose proof fib_bounding_metrics as Hbound.
       specialize Hbound with (n := Z.to_nat n).
       rewrite Z2Nat.id in Hbound; [|blia].
-      eapply Hbound. blia.
+      eapply Hbound. cbn. blia.
     + eapply fib_program_correct. blia.
   Qed.
 
@@ -322,7 +322,6 @@ Section FibCompiled.
                              finalL.(getMetrics).(instructions) <= n * 34 + 39).
   Proof.
     intros.
-    unfold mcomp_sat, run1.
     eapply runsToNonDet.runsTo_weaken.
     - pose proof Pipeline.exprImp2Riscv_correct as Hp.
       specialize Hp with (sH := fib_ExprImp n)
@@ -362,8 +361,8 @@ Section FibCompiled.
         eexists.
         repeat split.
        + match goal with
-        | H: map.extends ?m1 _ |- map.get ?m1 _ = Some _ => unfold map.extends in H; apply H
-        end.
+         | H: map.extends ?m1 _ |- map.get ?m1 _ = Some _ => unfold map.extends in H; apply H
+         end.
         eassumption.
       + eassumption.
       + repeat unfold_MetricLog. repeat simpl_MetricLog. simpl in *.
