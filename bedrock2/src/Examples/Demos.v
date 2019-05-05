@@ -100,6 +100,34 @@ Module Fibonacci.
 End Fibonacci.
 
 
+Module FibonacciServer.
+  Class Names{p : unique! Syntax.parameters} := {
+    a: varname;
+    b: varname;
+    c: varname;
+    i: varname;
+    n: varname;
+  }.
+  Module StringNames.
+    Instance Inst: @Names StringNamesSyntaxParams := {
+      a := "a";
+      b := "b";
+      c := "c";
+      i := "i";
+      n := "n";
+    }.
+  End StringNames.
+  Module ZNames.
+    Instance Inst: @Names ZNamesSyntaxParams := {
+      a := 1;
+      b := 2;
+      c := 3;
+      i := 4;
+      n := 5;
+    }.
+  End ZNames.
+End FibonacciServer.
+
 Section Demos.
 
   (* note: this coercion must have its own p, because varname depends on p, and the
@@ -159,6 +187,25 @@ Section Demos.
       i = i + 1
     }}
   ))).
+
+  Context {fibonacciServertNames: unique! FibonacciServer.Names}.
+  Import FibonacciServer.
+  Definition fibonacciServer(n_addr: Z): Prog := ("fibonacciserver", ([], [b], bedrock_func_body:(
+    n = *(uint32_t*) n_addr;;
+    a = 0;;
+    b = 1;;
+    i = 0;;
+    if (n < 48) {{
+      b = -1
+    }} else {{
+      while (i < n) {{
+        c = a + b;;
+        a = b;;
+        b = c;;
+        i = i + 1
+      }}
+    }}
+  ))).                                                                                   
 
   Definition dummy: Prog := ("dummy", ([], [], cmd.skip)).
 
