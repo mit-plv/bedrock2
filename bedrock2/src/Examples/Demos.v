@@ -196,14 +196,14 @@ Section Demos.
     b = 1;;
     i = 0;;
     if (n < 48) {{
-      b = -1
-    }} else {{
       while (i < n) {{
         c = a + b;;
         a = b;;
         b = c;;
         i = i + 1
       }}
+    }} else {{
+      b = -1
     }}
   ))).                                                                                   
 
