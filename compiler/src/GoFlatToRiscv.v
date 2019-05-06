@@ -704,22 +704,23 @@ Section Go.
 
 End Go.
 
-Hint Unfold
+Ltac simpl_MetricRiscvMachine_get_set :=
+  cbn [
      withMetrics
      updateMetrics
      getMachine
      getMetrics
-     liftGet
-     liftWith
      getRegs
      getPc
      getNextPc
      getMem
+     getXAddrs
      getLog
      withRegs
      withPc
      withNextPc
      withMem
+     withXAddrs
      withLog
      withLogItem
      withLogItems
@@ -727,21 +728,14 @@ Hint Unfold
      RiscvMachine.withPc
      RiscvMachine.withNextPc
      RiscvMachine.withMem
+     RiscvMachine.withXAddrs
      RiscvMachine.withLog
      RiscvMachine.withLogItem
      RiscvMachine.withLogItems
-  : unf_metric_machine.
-
-Ltac simpl_MetricRiscvMachine_get_set :=
-  repeat (autounfold with unf_metric_machine in *;
-  simpl RiscvMachine.getRegs in *;
-  simpl RiscvMachine.getPc in *;
-  simpl RiscvMachine.getNextPc in *;
-  simpl RiscvMachine.getMem in *;
-  simpl RiscvMachine.getLog in *).
+  ].
 
 Ltac simpl_MetricRiscvMachine_mem :=
-  unfold getPc, getMem, liftGet in *;
+  unfold getPc, getMem in *;
   simpl RiscvMachine.getPc in *;
   simpl RiscvMachine.getMem in *.
 

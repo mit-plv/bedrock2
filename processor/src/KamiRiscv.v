@@ -157,8 +157,8 @@ Section Equiv.
 
   (* These two specify what happens on loads and stores which are outside the memory, eg MMIO *)
   (* TODO these will have to be more concrete *)
-  Context (nonmem_load: forall (n: nat) (addr: word), M (HList.tuple byte n)).
-  Context (nonmem_store: forall (n: nat) (addr: word) (v: HList.tuple byte n), M unit).
+  Context (nonmem_load: forall (n: nat), SourceType -> word -> M (HList.tuple byte n)).
+  Context (nonmem_store: forall (n: nat), SourceType -> word -> HList.tuple byte n -> M unit).
 
   Instance MinimalMMIOPrimitivesParams: PrimitivesParams M RiscvMachine := {
     Primitives.mcomp_sat := @mcomp_sat;
@@ -701,8 +701,9 @@ Section Equiv.
       inv_bind_apply H.
       inv_bind H1.
       inv_loadWord H1.
+      destruct H1 as [IXA H1].
       destruct H1; [|exfalso; destruct H1; eapply fetch_ok; eauto].
-      destruct H1 as (rinst & ? & IXA & ?). specialize (IXA eq_refl).
+      destruct H1 as (rinst & ? & ?). specialize (IXA eq_refl).
       inv_bind_apply H4.
 
       (** Invert Kami decode/execute *)
