@@ -104,19 +104,20 @@ Section FlatToRiscvLiterals.
            end.
 
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R,
-      initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+      initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_stmt (FlatImp.SLit x v) in
-      let d := mul (ZToReg 4) (ZToReg (Zlength insts)) in
+      let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
+      addrsX initialL.(getPc) (List.length insts) initialL.(getXAddrs) ->
       valid_registers (FlatImp.SLit x v) ->
-      runsTo (withRegs (map.put initialL.(getRegs) x (ZToReg v))
+      runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
              (withMetrics (updateMetricsForLiteral v initialL.(getMetrics)) initialL))))
              post ->
       runsTo initialL post.
   Proof.
-    intros *. intros E1 insts d P V N. substs.
+    intros *. intros E1 insts d P X V N. substs.
     lazymatch goal with
     | H1: valid_registers ?s |- _ =>
       pose proof (compile_stmt_emits_valid iset_is_supported H1 eq_refl) as EV
@@ -129,16 +130,18 @@ Section FlatToRiscvLiterals.
       [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
     - unfold compile_lit_12bit in *.
       rewrite invert_update_metrics_for_literal_1 in N; [|assumption].
+      simpl in X. apply proj1 in X.
       run1det.
       simpl_word_exprs word_ok.
       match_apply_runsTo.
       erewrite signExtend_nop; eauto; blia.
     - unfold compile_lit_32bit in *.
       rewrite invert_update_metrics_for_literal_2 in N; [|assumption..].
+      simpl in X. destruct X as [? X]. destruct X as [? _].
       simpl in P.
       run1det. run1det.
       match_apply_runsTo.
-      simpl_MetricRiscvMachine_get_set. f_equal; [|solve_MetricLog].
+      f_equal; [|solve_MetricLog].
       f_equal.
       + rewrite map.put_put_same. f_equal.
         apply word.signed_inj.
@@ -184,16 +187,17 @@ Section FlatToRiscvLiterals.
       end.
       cbv [List.app program array] in P.
       simpl in *. (* if you don't remember enough values, this might take forever *)
-      autorewrite with rew_Zlength in N.
-      simpl in N.
-      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
-      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
-      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
-      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
-      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
-      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
-      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
-      run1det. simpl_MetricRiscvMachine_get_set. repeat unfold_MetricLog.
+      repeat match type of X with
+             | _ /\ _ => destruct X as [? X]
+             end.
+      run1det. repeat unfold_MetricLog.
+      run1det. repeat unfold_MetricLog.
+      run1det. repeat unfold_MetricLog.
+      run1det. repeat unfold_MetricLog.
+      run1det. repeat unfold_MetricLog.
+      run1det. repeat unfold_MetricLog.
+      run1det. repeat unfold_MetricLog.
+      run1det. repeat unfold_MetricLog.
       match_apply_runsTo.
       f_equal; [|simpl; solve_MetricLog].
       f_equal.

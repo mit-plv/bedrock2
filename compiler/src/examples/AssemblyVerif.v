@@ -24,6 +24,7 @@ Require Import compiler.SimplWordExpr.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.ptsto_bytes.
+Require Import compiler.Simp.
 
 
 Open Scope Z_scope.
@@ -124,23 +125,25 @@ Section Verif.
       newPc = word.add initial.(getPc)
                        (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_1)))) ->
       (program initial.(getPc) asm_prog_1 * R)%sep initial.(getMem) ->
+      addrsX initial.(getPc) (List.length asm_prog_1) initial.(getXAddrs) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
                 final.(getPc) = newPc /\
                 final.(getNextPc) = add newPc (word.of_Z 4) /\
                 (program initial.(getPc) asm_prog_1 * R)%sep final.(getMem) /\
+                (* Note: if we were doing stores, we'd need a weaker statement here *)
+                final.(getXAddrs) = initial.(getXAddrs) /\
                 map.get final.(getRegs) x2 = Some (gallina_prog_1 v1 v2)).
   Proof.
     intros.
     assert (valid_register x1). { unfold valid_register, x1. blia. }
     assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_1_encodable.
-    destruct initial as [ [initial_regs initial_pc initial_nextPc initial_mem initial_trace] initial_metrics].
+    destruct_RiscvMachine initial.
     unfold asm_prog_1 in *.
-    simpl in *.
+    simpl in *. simp.
     subst.
-    simpl.
     run1det.
     run1det.
     eapply runsToDone.
@@ -179,6 +182,10 @@ Section Verif.
 
   Axiom fix_updated_mem_TODO: False.
 
+  Arguments Z.add: simpl never.
+  Arguments Z.mul: simpl never.
+  Arguments Z.of_nat: simpl never.
+
   Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine) newPc
                                   (argvars resvars: list Register) R (v1 v2 dummy: w32),
       newPc = word.add initial.(getPc)
@@ -187,6 +194,7 @@ Section Verif.
        ptsto_bytes 4 (word.of_Z input_ptr) v1 *
        ptsto_bytes 4 (word.of_Z (input_ptr+4)) v2 *
        ptsto_bytes 4 (word.of_Z output_ptr) dummy * R)%sep initial.(getMem) ->
+      addrsX initial.(getPc) (List.length asm_prog_2) initial.(getXAddrs) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
@@ -199,9 +207,10 @@ Section Verif.
     assert (valid_register x1). { unfold valid_register, x1. blia. }
     assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_2_encodable.
-    destruct initial as [ [initial_regs initial_pc initial_nextPc initial_mem initial_trace] initial_metrics].
+    destruct_RiscvMachine initial.
     unfold asm_prog_2 in *.
     simpl in *.
+    rewrite List.app_length in *. simpl in *. simp. apply addrsX_add in H8. simp.
     unfold program in *.
     seprewrite_in @array_append H0. simpl in *.
     subst.
@@ -210,20 +219,16 @@ Section Verif.
     run1det.
     run1det.
     eapply runsTo_trans. {
-      eapply asm_prog_1_correct; simpl.
-      - rewrite map.get_put_diff by (unfold x1, x2; blia).
-        apply map.get_put_same.
-      - apply map.get_put_same.
-      - reflexivity.
-      - sidecondition.
-      - reflexivity.
+      eapply asm_prog_1_correct; simpl; try sidecondition.
+      rewrite map.get_put_diff by (unfold x1, x2; blia).
+      apply map.get_put_same.
     }
     simpl.
     intros middle (? & ? & ? & ?).
-    destruct middle as [ [middle_regs middle_pc middle_nextPc middle_mem middle_trace] middle_metrics].    simpl in *.
-    subst.
+    destruct_RiscvMachine middle. simpl in *.
+    subst. simp.
 
-    clear H6.
+    clear H10.
 
     (* TODO matching up addresses should work automatically *)
     replace (@word.add _ (@word W)
@@ -250,17 +255,32 @@ Section Verif.
       apply Zmult_mod_idemp_r.
     }
 
-    run1det.
-    simpl in *.
+    eapply runsTo_det_step. {
+      simulate'. {
+        use_sep_assumption.
+        cancel.
+        cancel_seps_at_indices 1%nat 0%nat. {
+          f_equal. rewrite word.unsigned_of_Z. unfold word.wrap.
+          replace (4 mod 2 ^ width) with 4; cycle 1. {
+            clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+          }
+          solve_word_eq word_ok.
+        }
+        ecancel_done'.
+      }
+      { sidecondition. }
+      simulate'. simpl. reflexivity.
+    }
+
     eapply runsToDone.
     simpl.
     repeat split.
-    - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
-    - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
+    - solve_word_eq word_ok.
+    - solve_word_eq word_ok.
     - (* TODO *) case fix_updated_mem_TODO.
     - assumption.
   Qed.
 
 End Verif.
 
-(* Print Assumptions asm_prog_2_correct. just word_goal_1_TODO and fix_updated_mem *)
+(* Print Assumptions asm_prog_2_correct. just fix_updated_mem_TODO *)

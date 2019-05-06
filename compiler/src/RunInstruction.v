@@ -78,6 +78,7 @@ Section Run.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
           initialL.(getMem) ->
+      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
@@ -98,6 +99,7 @@ Section Run.
       divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep initialL.(getMem) ->
+      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
         finalL.(getLog) = initialL.(getLog) /\
@@ -112,6 +114,7 @@ Section Run.
       jimm20 mod 4 = 0 ->
       divisibleBy4 initialL.(getPc) ->
       (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep initialL.(getMem) ->
+      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
@@ -135,6 +138,7 @@ Section Run.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
       (program initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
+      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
         finalL.(getLog) = initialL.(getLog) /\
@@ -157,6 +161,7 @@ Section Run.
       addr = word.add base (word.of_Z ofs) ->
       (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
         initialL.(getMem) ->
+      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
                   (word.of_Z (opt_sign_extender (LittleEndian.combine n v))) /\
@@ -181,13 +186,14 @@ Section Run.
       addr = word.add base (word.of_Z ofs) ->
       (program initialL.(getPc) [[S rs1 rs2 ofs]] * ptsto_bytes n addr v_old * R)%sep
         initialL.(getMem) ->
+      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[S rs1 rs2 ofs]] *
          ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
             finalL.(getMem) /\
-        finalL.(getXAddrs) = initialL.(getXAddrs) /\
+        finalL.(getXAddrs) = invalidateWrittenXAddrs n addr initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 

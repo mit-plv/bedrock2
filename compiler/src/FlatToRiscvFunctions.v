@@ -222,7 +222,7 @@ Section Proofs.
     unfold program, word_array;
     repeat match goal with
            | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             rewrite (array_append_DEPRECATED PT SZ xs ys start)
+             rewrite (array_append' PT SZ xs ys start)
            end;
     simpl_addrs.
 
@@ -1242,7 +1242,7 @@ Section Proofs.
       cbn [seps].
       repeat match goal with
              | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-               rewrite (array_append_DEPRECATED PT SZ xs ys start)
+               rewrite (array_append' PT SZ xs ys start)
              end.
       simpl_addrs.
       rewrite! length_save_regs.
