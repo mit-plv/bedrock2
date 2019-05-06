@@ -47,8 +47,6 @@ Section Run.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
-  Definition iset := if width =? 32 then RV32IM else RV64IM.
-
   Ltac simulate'_step :=
     first [ eapply go_loadByte_sep ; simpl; [sidecondition..|]
           | eapply go_storeByte_sep; simpl; [sidecondition..|intros]
@@ -66,54 +64,52 @@ Section Run.
   Definition run_Jalr0_spec :=
     forall (rs1: Register) (oimm12: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop)
            (dest: word),
-      verify (Jalr RegisterNames.zero rs1 oimm12) iset ->
-      (* [verify] only enforces [oimm20 mod 2 = 0] because there could be compressed
-         instructions, but we don't support them so we require divisibility by 4: *)
+      (* [verify] (and decode-encode-id) only enforces divisibility by 2 because there could be
+         compressed instructions, but we don't support them so we require divisibility by 4: *)
       oimm12 mod 4 = 0 ->
       (word.unsigned dest) mod 4 = 0 ->
-      (* valid_register almost follows from verify except for when the register is Register0 *)
+      (* valid_register almost follows from verify (or decode-encode-id) except for when
+         the register is Register0 *)
       valid_register rs1 ->
-      divisibleBy4 initialL.(getPc) ->
       map.get initialL.(getRegs) rs1 = Some dest ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
-          initialL.(getMem) ->
-      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
+      (program initialL.(getXAddrs) initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)
+        %sep initialL.(getMem) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
-            finalL.(getMem) /\
+        (program initialL.(getXAddrs) initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)
+          %sep finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add dest (word.of_Z oimm12) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
   Definition run_Jal_spec :=
     forall (rd: Register) (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (Jal rd jimm20) iset ->
-      (* [verify] only enforces [jimm20 mod 2 = 0] because there could be compressed
-         instructions, but we don't support them so we require divisibility by 4: *)
       jimm20 mod 4 = 0 ->
-      (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
-      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep initialL.(getMem) ->
-      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
+      (program initialL.(getXAddrs) initialL.(getPc) [[Jal rd jimm20]] * R)
+        %sep initialL.(getMem) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep finalL.(getMem) /\
+        (program initialL.(getXAddrs) initialL.(getPc) [[Jal rd jimm20]] * R)
+          %sep finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+
+  (* TOOD in the specs below we could remove divisibleBy4 and bounds because that's
+     enforced by program *)
 
   Definition run_Jal0_spec :=
     forall (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
       divisibleBy4 initialL.(getPc) ->
-      (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep initialL.(getMem) ->
+      (program initialL.(getXAddrs) initialL.(getPc) [[Jal Register0 jimm20]] * R)
+        %sep initialL.(getMem) ->
       isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
@@ -137,12 +133,12 @@ Section Run.
       divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
-      (program initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
+      (program initialL.(getXAddrs) initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
       isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[Op rd rs imm]] * R)%sep finalL.(getMem) /\
+        (program initialL.(getXAddrs) initialL.(getPc) [[Op rd rs imm]] * R)%sep finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
@@ -159,15 +155,15 @@ Section Run.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
-        initialL.(getMem) ->
+      (program initialL.(getXAddrs) initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)
+        %sep initialL.(getMem) ->
       isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
                   (word.of_Z (opt_sign_extender (LittleEndian.combine n v))) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
-          finalL.(getMem) /\
+        (program initialL.(getXAddrs)initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)
+          %sep finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
@@ -184,13 +180,13 @@ Section Run.
       map.get initialL.(getRegs) rs1 = Some base ->
       map.get initialL.(getRegs) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      (program initialL.(getPc) [[S rs1 rs2 ofs]] * ptsto_bytes n addr v_old * R)%sep
-        initialL.(getMem) ->
+      (program initialL.(getXAddrs) initialL.(getPc) [[S rs1 rs2 ofs]] *
+       ptsto_bytes n addr v_old * R)%sep initialL.(getMem) ->
       isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[S rs1 rs2 ofs]] *
+        (program finalL.(getXAddrs) initialL.(getPc) [[S rs1 rs2 ofs]] *
          ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
             finalL.(getMem) /\
         finalL.(getXAddrs) = invalidateWrittenXAddrs n addr initialL.(getXAddrs) /\
@@ -200,7 +196,7 @@ Section Run.
   Ltac t :=
     repeat intro;
     match goal with
-    | initialL: RiscvMachineL |- _ => destruct initialL as [ [regs pc npc m l] mc]
+    | initialL: RiscvMachineL |- _ => destruct_RiscvMachine initialL
     end;
     simpl in *; subst;
     simulate';
@@ -211,9 +207,14 @@ Section Run.
            | |- _ => ecancel_assumption
            end.
 
+  Axiom decode_encode_to_verify: forall {instr},
+      decode iset (encode instr) = instr -> verify instr iset.
+
   Lemma run_Jalr0: run_Jalr0_spec.
   Proof.
     repeat intro.
+    destruct (invert_ptsto_program1 H4) as (DE & ? & ?).
+    pose proof (decode_encode_to_verify DE).
     (* execution of Jalr clears lowest bit *)
     assert (word.and (word.add dest (word.of_Z oimm12))
                      (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =
@@ -245,20 +246,17 @@ Section Run.
   Qed.
 
   Lemma run_Jal: run_Jal_spec.
-  Proof. t. Qed.
+  Proof.
+    repeat intro.
+    destruct (invert_ptsto_program1 H2) as (DE & ? & ?).
+    t.
+  Qed.
 
   Arguments Z.pow: simpl never.
   Arguments Z.opp: simpl never.
 
   Lemma run_Jal0: run_Jal0_spec.
-  Proof.
-    t.
-    unfold verify. cbn. unfold verify_UJ. cbn.
-    unfold opcode_JAL, Register0.
-    repeat split; try blia.
-    eapply mod0_divisible_modulo. 4: eassumption. 1,2: reflexivity.
-    exists 2. reflexivity.
-  Qed.
+  Proof. t. Qed.
 
   Lemma run_Addi: run_ImmReg_spec Addi word.add.
   Proof. t. Qed.
@@ -297,16 +295,167 @@ Section Run.
     destruct width_cases as [E | E]; rewrite E in *; simpl in *; intuition congruence.
   Qed.
 
+  Lemma iff1_emp: forall P Q,
+      (P <-> Q) ->
+      iff1 (emp P) (emp Q).
+  Proof. unfold iff1, emp. clear. firstorder idtac. Qed.
+
+  Lemma removeXAddr_diff: forall a1 a2 xaddrs,
+      a1 <> a2 ->
+      isXAddr a1 xaddrs ->
+      isXAddr a1 (removeXAddr a2 xaddrs).
+  Proof.
+    unfold isXAddr, removeXAddr.
+    intros.
+    apply filter_In.
+    split; [assumption|].
+    rewrite word.eqb_ne by congruence.
+    reflexivity.
+  Qed.
+
+  Lemma removeXAddr_bw: forall a1 a2 xaddrs,
+      isXAddr a1 (removeXAddr a2 xaddrs) ->
+      isXAddr a1 xaddrs.
+  Proof.
+    unfold isXAddr, removeXAddr.
+    intros.
+    eapply filter_In.
+    eassumption.
+  Qed.
+
+  Lemma sep_ptsto_to_addr_neq: forall a1 v1 a2 v2 m R,
+      (ptsto a1 v1 * ptsto a2 v2 * R)%sep m ->
+      a1 <> a2.
+  Proof.
+    intros. intro E. subst a2. unfold ptsto in *.
+    destruct H as (? & ? & ? & (? & ? & ? & ? & ?) & ?).
+    subst.
+    destruct H0 as [? D].
+    unfold map.disjoint in D.
+    eapply D; apply map.get_put_same.
+  Qed.
+
+  Lemma mod4_cases: forall x,
+      x mod 4 = 0 \/ x mod 4 = 1 \/ x mod 4 = 2 \/ x mod 4 = 3.
+  Abort.
+
+  Lemma clear_lowest_two_bits_cases: forall a,
+      clear_lowest_two_bits a = a \/
+      clear_lowest_two_bits a = word.sub a (word.of_Z 1) \/
+      clear_lowest_two_bits a = word.sub a (word.of_Z 2) \/
+      clear_lowest_two_bits a = word.sub a (word.of_Z 3).
+  Proof.
+    intros. unfold clear_lowest_two_bits.
+  Admitted.
+
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
+
+  Lemma ptsto_instr_removeXAddr_disjoint: forall xaddrs addr pc instr v,
+   iff1 (ptsto_instr xaddrs                                            pc instr * ptsto addr v)
+        (ptsto_instr (removeXAddr (clear_lowest_two_bits addr) xaddrs) pc instr * ptsto addr v).
+  Proof.
+    intros. unfold ptsto_instr. intro m. split; intro A.
+    - destruct (invert_ptsto_instr A) as (DE & D & IXA).
+      assert (
+          addr <> pc /\
+          addr <> word.add pc (word.of_Z 1) /\
+          addr <> word.add (word.add pc (word.of_Z 1)) (word.of_Z 1) /\
+          addr <> word.add (word.add (word.add pc (word.of_Z 1)) (word.of_Z 1)) (word.of_Z 1)). {
+        unfold truncated_scalar, littleendian, ptsto_bytes in A. simpl in A.
+        repeat split; eapply sep_ptsto_to_addr_neq; ecancel_assumption.
+      }
+      use_sep_assumption.
+      cancel.
+      apply iff1_emp.
+      split; intros; [|assumption].
+      apply removeXAddr_diff; try assumption.
+      intro C.
+      subst pc.
+      destruct H as (B0 & B1 & B2 & B3).
+      destruct (clear_lowest_two_bits_cases addr) as [E | [E | [E | E] ] ];
+        rewrite E in *.
+      + apply B0. reflexivity.
+      + apply B1. solve_word_eq word_ok.
+      + apply B2. solve_word_eq word_ok.
+      + apply B3. solve_word_eq word_ok.
+    - destruct (invert_ptsto_instr A) as (DE & D & IXA).
+      use_sep_assumption.
+      cancel.
+      apply iff1_emp.
+      split; intros; [|assumption].
+      eapply removeXAddr_bw; try eassumption.
+  Qed.
+
+  Lemma ptsto_instr_invalidate_disjoint: forall pc instr n xaddrs addr v,
+      iff1 (ptsto_instr xaddrs                                  pc instr * ptsto_bytes n addr v)
+           (ptsto_instr (invalidateWrittenXAddrs n addr xaddrs) pc instr * ptsto_bytes n addr v).
+  Proof.
+    induction n; intros.
+    - simpl. reflexivity.
+    - destruct v as [v vs]. unfold ptsto_bytes in *. simpl in *.
+      specialize (IHn xaddrs (word.add addr (word.of_Z 1)) vs).
+      match goal with
+      | |- iff1 (?A * (?B * ?C))%sep _ => transitivity ((A * C) * B)%sep; [cancel|]
+      end.
+      rewrite IHn. clear IHn.
+      reify_goal.
+      cancel_seps_at_indices 1%nat 2%nat; [reflexivity|].
+      remember (invalidateWrittenXAddrs n (word.add addr (word.of_Z 1)) xaddrs) as xaddrs'.
+      simpl.
+      apply ptsto_instr_removeXAddr_disjoint.
+  Qed.
+
+  Arguments invalidateWrittenXAddrs: simpl never.
+
   Lemma run_Sb: run_Store_spec 1 Sb.
-  Proof. t. Qed.
+  Proof.
+    t.
+    use_sep_assumption.
+    reify_goal.
+    cancel_seps_at_indices 2%nat 3%nat; [reflexivity|].
+    cancel_emp_r.
+    simpl.
+    rewrite sep_comm.
+    apply ptsto_instr_invalidate_disjoint.
+  Qed.
 
   Lemma run_Sh: run_Store_spec 2 Sh.
-  Proof. t. Qed.
+  Proof.
+    t.
+    use_sep_assumption.
+    reify_goal.
+    cancel_seps_at_indices 2%nat 3%nat; [reflexivity|].
+    cancel_emp_r.
+    simpl.
+    rewrite sep_comm.
+    apply ptsto_instr_invalidate_disjoint.
+  Qed.
 
   Lemma run_Sw: run_Store_spec 4 Sw.
-  Proof. t. Qed.
+  Proof.
+    t.
+    use_sep_assumption.
+    reify_goal.
+    cancel_seps_at_indices 2%nat 3%nat; [reflexivity|].
+    cancel_emp_r.
+    simpl.
+    rewrite sep_comm.
+    apply ptsto_instr_invalidate_disjoint.
+  Qed.
 
   Lemma run_Sd: run_Store_spec 8 Sd.
-  Proof. t. Qed.
+  Proof.
+    t.
+    use_sep_assumption.
+    reify_goal.
+    cancel_seps_at_indices 2%nat 3%nat; [reflexivity|].
+    cancel_emp_r.
+    simpl.
+    rewrite sep_comm.
+    apply ptsto_instr_invalidate_disjoint.
+  Qed.
 
 End Run.

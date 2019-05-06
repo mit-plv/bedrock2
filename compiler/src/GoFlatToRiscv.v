@@ -16,11 +16,10 @@ Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Execute.
-Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.SeparationLogic.
-Require Import compiler.EmitsValid.
 Require Import compiler.SimplWordExpr.
+Require Import compiler.DivisibleBy4.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
@@ -41,7 +40,6 @@ Section Go.
   Context {RVM: RiscvProgram M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
-  Variable iset: InstructionSet.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -227,17 +225,49 @@ Section Go.
     - intros. simpl in *. apply spec_Return. eapply H. assumption.
   Qed.
 
-  Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
-    truncated_scalar Syntax.access_size.four addr (encode instr).
+  Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
 
-  Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
-    array ptsto_instr (word.of_Z 4) addr prog.
+  (* contains all the conditions needed to successfully execute instr *)
+  Definition ptsto_instr(xAddrs: XAddrs)(addr: word)(instr: Instruction): mem -> Prop :=
+    (truncated_scalar Syntax.access_size.four addr (encode instr) *
+     emp (decode iset (encode instr) = instr) *
+     emp ((word.unsigned addr) mod 4 = 0) *
+     emp (isXAddr addr xAddrs))%sep.
+
+  Definition program(xAddrs: XAddrs)(addr: word)(prog: list Instruction): mem -> Prop :=
+    array (ptsto_instr xAddrs) (word.of_Z 4) addr prog.
+
+  Lemma invert_ptsto_instr: forall {xAddrs addr instr R m},
+    (ptsto_instr xAddrs addr instr * R)%sep m ->
+     decode iset (encode instr) = instr /\
+     (word.unsigned addr) mod 4 = 0 /\
+     isXAddr addr xAddrs.
+  Proof.
+    intros.
+    unfold array, ptsto_instr in *.
+    match goal with
+    | H: (?T * ?P1 * ?P2 * ?P3 * R)%sep ?m |- _ =>
+      assert ((T * R * P1 * P2 * P3)%sep m) as A by ecancel_assumption; clear H
+    end.
+    do 3 (apply sep_emp_r in A; destruct A as [A ?]).
+    auto.
+  Qed.
+
+  Lemma invert_ptsto_program1: forall {xAddrs addr instr R m},
+    (program xAddrs addr [instr] * R)%sep m ->
+     decode iset (encode instr) = instr /\
+     (word.unsigned addr) mod 4 = 0 /\
+     isXAddr addr xAddrs.
+  Proof.
+    unfold program. intros. simpl in *. eapply invert_ptsto_instr.
+    ecancel_assumption.
+  Qed.
 
   (* mirrors the structure of program/addr so that unfolding behaves the same *)
-  Fixpoint addrsX(addr: word)(n: nat)(xAddrs: XAddrs): Prop :=
+  Fixpoint addrs_executable(addr: word)(n: nat)(xAddrs: XAddrs): Prop :=
     match n with
     | O => True
-    | S m => isXAddr addr xAddrs /\ addrsX (word.add addr (word.of_Z 4)) m xAddrs
+    | S m => isXAddr addr xAddrs /\ addrs_executable (word.add addr (word.of_Z 4)) m xAddrs
     end.
 
   Arguments Z.of_nat: simpl never.
@@ -245,17 +275,17 @@ Section Go.
   Arguments Z.add: simpl never.
 
   (* mirrors the structure of array_append *)
-  Lemma addrsX_add: forall n1 n2 start xAddrs,
-      addrsX start (n1 + n2) xAddrs ->
-      addrsX start n1 xAddrs /\
-      addrsX (word.add start (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat n1)))) n2 xAddrs.
+  Lemma addrs_executable_add: forall n1 n2 start xAddrs,
+      addrs_executable start (n1 + n2) xAddrs ->
+      addrs_executable start n1 xAddrs /\
+      addrs_executable (word.add start (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat n1)))) n2 xAddrs.
   Proof.
     induction n1; intros.
     - simpl in *. simpl_word_exprs word_ok. auto.
     - simpl. simpl in H. destruct H. specialize IHn1 with (1 := H0). destruct IHn1.
       repeat split; auto.
       match goal with
-      | A: addrsX ?a1 n2 xAddrs |- addrsX ?a2 n2 xAddrs => replace a2 with a1; [exact A|]
+      | A: addrs_executable ?a1 n2 xAddrs |- addrs_executable ?a2 n2 xAddrs => replace a2 with a1; [exact A|]
       end.
       replace (Z.of_nat (S n1)) with (1 + Z.of_nat n1) by blia.
       solve_word_eq word_ok.
@@ -488,9 +518,12 @@ Section Go.
     destruct width_cases as [E | E]; rewrite E in C;
     cbv in C; discriminate C.
 
-  Lemma store_program_empty: forall prog addr,
+  Lemma store_program_empty: forall prog addr xAddrs,
       4 * Z.of_nat (length prog) < 2 ^ width ->
-      program addr prog (unchecked_store_program addr prog map.empty).
+      addrs_executable addr (length prog) xAddrs ->
+      (word.unsigned addr) mod 4 = 0 ->
+      Forall (fun instr => decode iset (encode instr) = instr) prog ->
+      program xAddrs addr prog (unchecked_store_program addr prog map.empty).
   Proof.
     induction prog; intros.
     - cbv. auto.
@@ -498,8 +531,8 @@ Section Go.
       rewrite! unchecked_store_byte_list_cons.
       unfold ptsto_instr, truncated_scalar, littleendian, Memory.bytes_per, ptsto_bytes. simpl.
       match goal with
-      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?B)%sep ?m =>
-        assert ((A1 * (A2 * (A3 * (A4 * B))))%sep m); [|ecancel_assumption]
+      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?P1 * ?P2 * ?P3 * ?B)%sep ?m =>
+        assert ((A1 * (A2 * (A3 * (A4 * (P1 * (P2 * (P3 * B)))))))%sep m); [|ecancel_assumption]
       end.
       apply sep_on_undef_put. {
         rewrite !map.get_put_diff by word_neq_add.
@@ -538,10 +571,10 @@ Section Go.
         blia.
       }
       word_simpl.
-      apply IHprog.
-      change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-      (* LIAFAIL *)
-      clear -H. blia.
+      destruct H0. inversion H2. subst.
+      do 3 (apply sep_emp_l; split; [assumption|]).
+      apply IHprog; [|(assumption || solve_divisibleBy4)..].
+      change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H. blia.
   Qed.
 
   Lemma array_map: forall {T1 T2: Type} sz (f: T1 -> T2) elem (l: list T1) (addr: word),
@@ -555,9 +588,7 @@ Section Go.
 
   Lemma go_fetch_inst: forall {initialL : RiscvMachineL} {inst pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
-      isXAddr pc0 initialL.(getXAddrs) ->
-      (program pc0 [inst] * R)%sep initialL.(getMem) ->
-      verify inst iset ->
+      (program initialL.(getXAddrs) pc0 [inst] * R)%sep initialL.(getMem) ->
       mcomp_sat (Bind (execute inst) (fun _ => step))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
@@ -566,11 +597,16 @@ Section Go.
     unfold run1.
     apply go_getPC.
     unfold program, array, ptsto_instr in *.
+    match goal with
+    | H: (?T * ?P1 * ?P2 * ?P3 * emp True * R)%sep ?m |- _ =>
+      assert ((T * R * P1 * P2 * P3)%sep m) as A by ecancel_assumption; clear H
+    end.
+    do 3 (apply sep_emp_r in A; destruct A as [A ?]).
     eapply go_loadWord_Fetch.
-    - eassumption.
+    - assumption.
     - unfold Memory.loadWord.
       eapply load_bytes_of_sep.
-      unfold truncated_scalar, littleendian, Memory.bytes_per in H1.
+      unfold truncated_scalar, littleendian, Memory.bytes_per in A.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
       ecancel_assumption.
@@ -588,7 +624,8 @@ Section Go.
           bomega.
       }
       rewrite Z.mod_small; try assumption; try apply encode_range.
-      rewrite decode_encode; assumption.
+      replace (decode iset (encode inst)) with inst by congruence.
+      assumption.
   Qed.
 
   (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
@@ -804,13 +841,6 @@ Ltac sidecondition :=
   | |- _ => reflexivity
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => assumption
-  | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
-    assert_fails (is_evar inst);
-    apply V;
-    repeat match goal with
-           | H: _ |- _ => clear H
-           end;
-    eauto 30 using in_cons, in_or_app, in_eq
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
     unfold Memory.load, Memory.load_Z in *;
     simpl_MetricRiscvMachine_mem;
@@ -826,7 +856,7 @@ Ltac sidecondition :=
 
 Ltac simulate_step :=
   first (* lemmas packing multiple primitives need to go first: *)
-        [ refine (go_fetch_inst _ _ _ _ _ _ _);      [sidecondition..|]
+        [ refine (go_fetch_inst _ _ _ _);          [sidecondition..|]
         (* single-primitive lemmas: *)
         (* lemmas about Register0 need to go before lemmas about other Registers *)
         | refine (go_getRegister0 _ _ _ _);        [sidecondition..|]
