@@ -65,16 +65,28 @@ Section Proofs.
       | apply_post
       | idtac ].
 
+  Ltac solve_addrsX :=
+    match goal with
+    | A: addrsX ?a1 _ _ |- addrsX ?a2 _ _ =>
+      replace a2 with a1;
+      [exact A|solve [solve_word_eq (@word_ok (@W (@def_params p)))] ]
+    end.
+
   Ltac IH_sidecondition :=
     simpl_word_exprs (@word_ok (@W (@def_params p)));
     try solve
       [ reflexivity
       | auto
       | solve_stmt_not_too_big
+      | solve_addrsX
       | solve_word_eq (@word_ok (@W (@def_params p)))
       | simpl; solve_divisibleBy4
       | prove_ext_guarantee
       | pseplog ].
+
+  (* does not hold *)
+  Axiom TODO_invalidateWrittenXAddrs_eq: forall xaddrs n addr,
+      invalidateWrittenXAddrs n addr xaddrs = xaddrs.
 
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
@@ -86,14 +98,17 @@ Section Proofs.
     divisibleBy4 initialL.(getPc) ->
     initialL.(getRegs) = initialRegsH ->
     (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+    addrsX initialL.(getPc) (List.length insts) initialL.(getXAddrs) ->
     initialL.(getLog) = t ->
-    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
     ext_guarantee initialL ->
     runsTo initialL (fun finalL => exists finalMH finalMetricsH,
           postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
-          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          finalL.(getXAddrs) = initialL.(getXAddrs) /\ (* <-- TODO does not hold! *)
+          finalL.(getPc) = add initialL.(getPc)
+                             (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (length insts)))) /\
+          finalL.(getNextPc) = add finalL.(getPc) (word.of_Z 4) /\
           (finalL.(getMetrics) - initialL.(getMetrics) <=
            lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
           ext_guarantee finalL).
@@ -109,6 +124,7 @@ Section Proofs.
              end;
       simpl in *;
       subst;
+      simpl_addrsX;
       simp.
 
     - (* SInteract *)
@@ -139,14 +155,14 @@ Section Proofs.
       assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * R))%sep initialL_mem)
              as A by ecancel_assumption.
       pose proof (store_bytes_frame H2 A) as P.
-
       destruct P as (finalML & P1 & P2).
-      run1det. run1done.
+      run1det. run1done. apply TODO_invalidateWrittenXAddrs_eq.
 
     - (* SLit *)
       eapply compile_lit_correct_full.
       + sidecondition.
       + unfold compile_stmt. simpl. ecancel_assumption.
+      + sidecondition.
       + sidecondition.
       + simpl. run1done;
         remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
@@ -159,7 +175,7 @@ Section Proofs.
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
-        simpl in *; run1det; try solve [run1done].
+        simpl in *; simpl_addrsX; run1det; try solve [run1done].
       + simpl_MetricRiscvMachine_get_set.
         run1det. run1done;
       [match goal with
@@ -179,7 +195,7 @@ Section Proofs.
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
-          eapply IHexec; IH_sidecondition.
+          eapply IHexec; [ > IH_sidecondition .. ].
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
@@ -192,7 +208,7 @@ Section Proofs.
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
-          eapply IHexec; IH_sidecondition.
+          eapply IHexec; [ > IH_sidecondition .. ].
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
@@ -203,7 +219,7 @@ Section Proofs.
       on hyp[(stmt_not_too_big (SLoop body1 cond body2)); runsTo] do (fun H => rename H into IH12).
       eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + (* 1st application of IH: part 1 of loop body *)
-        eapply IH1; IH_sidecondition.
+        eapply IH1; [ > IH_sidecondition .. ].
       + simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
         destruct (@eval_bcond (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
         2: exfalso;
@@ -218,13 +234,43 @@ Section Proofs.
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
-              eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+              eapply IH2; [ > IH_sidecondition .. ]; simpl_MetricRiscvMachine_get_set; eassumption.
             - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
               (* jump back to beginning of loop: *)
               run1det.
               eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
               + (* 3rd application of IH: run the whole loop again *)
-                eapply IH12; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+                eapply IH12; [ > IH_sidecondition .. ].
+                2: {
+                  simpl.
+
+                  repeat   match goal with
+                             | H: ?T |- _ => lazymatch T with
+                                        | addrsX ?a1 ?n1 _ => fail
+                                        | _ => clear H
+                                             end
+                             end.
+simpl.
+
+
+   repeat match goal with
+          | |- addrsX _ (List.length (_ ++ _)) _  => rewrite List.app_length
+          | |- addrsX _ (List.length (_ :: _)) _  => split
+          | |- addrsX _ (S _) _  => split
+          | |- addrsX _ (_ + _) _  => apply addrsX_add_bw_TODO_implement_this
+          | |- _ /\ _  _ => split
+          end.
+
+
+  match goal with
+  | A:addrsX ?a1 ?n1 _
+    |- addrsX ?a2 ?n2 _ => replace a2 with a1; [replace n2 with n1; [exact A|]|]
+  end.
+
+
+                  Print Ltac solve_addrsX.
+
+; simpl_MetricRiscvMachine_get_set; eassumption.
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
@@ -238,10 +284,10 @@ Section Proofs.
     - (* SSeq *)
       rename IHexec into IH1, H2 into IH2.
       eapply runsTo_trans.
-      + eapply IH1; IH_sidecondition.
+      + eapply IH1; [ > IH_sidecondition .. ].
       + simpl. intros. destruct_RiscvMachine middle. simp. subst.
         eapply runsTo_trans.
-        * eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+        * eapply IH2; [ > IH_sidecondition .. ]; simpl_MetricRiscvMachine_get_set; eassumption.
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - (* SSkip *)

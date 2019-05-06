@@ -34,7 +34,7 @@ Module Import FlatToRiscvDef.
     W :> Utility.Words;
     compile_ext_call: list Register -> String.string -> list Register -> list Instruction;
     compile_ext_call_length: forall binds f args,
-        Zlength (compile_ext_call binds f args) <= 7;
+        Z.of_nat (length (compile_ext_call binds f args)) <= 7;
     (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
        be elsewhere *)
     compile_ext_call_emits_valid: forall iset binds a args,
@@ -366,18 +366,18 @@ Section FlatToRiscv1.
         let bThen' := compile_stmt bThen in
         let bElse' := compile_stmt bElse in
         (* only works if branch lengths are < 2^12 *)
-        [[compile_bcond_by_inverting cond ((Zlength bThen' + 2) * 4)]] ++
+        [[compile_bcond_by_inverting cond ((Z.of_nat (length bThen') + 2) * 4)]] ++
         bThen' ++
-        [[Jal Register0 ((Zlength bElse' + 1) * 4)]] ++
+        [[Jal Register0 ((Z.of_nat (length bElse') + 1) * 4)]] ++
         bElse'
     | SLoop body1 cond body2 =>
         let body1' := compile_stmt body1 in
         let body2' := compile_stmt body2 in
         (* only works if branch lengths are < 2^12 *)
         body1' ++
-        [[compile_bcond_by_inverting cond ((Zlength body2' + 2) * 4)]] ++
+        [[compile_bcond_by_inverting cond ((Z.of_nat (length body2') + 2) * 4)]] ++
         body2' ++
-        [[Jal Register0 (- (Zlength body1' + 1 + Zlength body2') * 4)]]
+        [[Jal Register0 (- (Z.of_nat (length body1') + 1 + Z.of_nat (length body2')) * 4)]]
     | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
     | SSkip => nil
     | SCall resvars action argvars => nil (* unsupported *)

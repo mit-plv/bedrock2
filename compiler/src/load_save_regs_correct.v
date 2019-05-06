@@ -38,6 +38,7 @@ Section Proofs.
       List.length oldvalues = List.length vars ->
       (program initial.(getPc) (save_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
+      addrsX initial.(getPc) (List.length vars) initial.(getXAddrs) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo initial (fun final =>
           final.(getRegs) = initial.(getRegs) /\
@@ -106,6 +107,7 @@ Section Proofs.
         rewrite word.ring_morph_add.
         rewrite word.add_assoc.
         ecancel.
+      + eapply TODO_addrsX_preserved. simpl. eassumption.
       + reflexivity.
   Qed.
 
@@ -124,6 +126,7 @@ Section Proofs.
       List.length values = List.length vars ->
       (program initial.(getPc) (load_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
+      addrsX initial.(getPc) (List.length vars) initial.(getXAddrs) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo initial (fun final =>
           map.only_differ initial.(getRegs) (PropSet.of_list vars) final.(getRegs) /\
@@ -163,7 +166,7 @@ Section Proofs.
       destruct_RiscvMachine mid.
       simp. subst.
       eapply runsToNonDet.runsTo_weaken.
-      + eapply IHvars; simpl; cycle -2; auto.
+      + eapply IHvars; simpl; cycle -3; auto.
         * use_sep_assumption.
           match goal with
           | |- iff1 ?LHS ?RHS =>
@@ -192,7 +195,7 @@ Section Proofs.
       + simpl. intros. simp.
         repeat split.
         * unfold map.only_differ, PropSet.elem_of, PropSet.of_list in *.
-          intros x. rename H6 into HO.
+          intros x. rename H7 into HO.
           specialize (HO x).
           destruct (Z.eqb_spec x a).
           -- subst x. left. constructor. reflexivity.
@@ -200,7 +203,7 @@ Section Proofs.
              ++ simpl. auto.
              ++ right. rewrite <- HO. rewrite map.get_put_diff; congruence.
         * unfold map.getmany_of_list in *. simpl. rewrite_match.
-          rename H6 into HO.
+          rename H7 into HO.
           specialize (HO a). destruct HO as [HO | HO].
           -- unfold PropSet.elem_of, PropSet.of_list in HO. contradiction.
           -- unfold Register, MachineInt in *. rewrite <- HO.

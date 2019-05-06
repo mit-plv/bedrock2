@@ -105,7 +105,8 @@ Module Import FlatToRiscv.
     compile_ext_call_correct: forall (initialL: MetricRiscvMachine) action postH newPc insts
         (argvars resvars: list Register) initialMH initialMetricsH R,
       insts = compile_ext_call resvars action argvars ->
-      newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
+      newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4)
+                                                  (word.of_Z (Z.of_nat (List.length insts)))) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
@@ -117,8 +118,9 @@ Module Import FlatToRiscv.
              (fun finalL => exists finalMetricsH,
                   (* external calls can't modify the memory for now *)
                   postH finalL.(getLog) initialMH finalL.(getRegs) finalMetricsH /\
+                  finalL.(getXAddrs) = initialL.(getXAddrs) /\
                   finalL.(getPc) = newPc /\
-                  finalL.(getNextPc) = add newPc (ZToReg 4) /\
+                  finalL.(getNextPc) = add newPc (word.of_Z 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
@@ -242,6 +244,11 @@ Section FlatToRiscv1.
 
   Ltac simulate'' := repeat simulate''_step.
 
+  (* TODO needs more preconditions *)
+  Axiom TODO_addrsX_preserved: forall n m addr1 addr2 xaddrs,
+      addrsX addr1 n xaddrs ->
+      addrsX addr1 n (invalidateWrittenXAddrs m addr2 xaddrs).
+
   Lemma go_load: forall sz x a (addr v: word) (initialL: RiscvMachineL) post f,
       valid_register x ->
       valid_register a ->
@@ -276,7 +283,9 @@ Section FlatToRiscv1.
       map.get initialL.(getRegs) x = Some v ->
       map.get initialL.(getRegs) a = Some addr ->
       Memory.store sz (getMem initialL) addr v = Some m' ->
-      mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
+      mcomp_sat (f tt)
+       (withXAddrs (invalidateWrittenXAddrs (@Memory.bytes_per width sz) addr initialL.(getXAddrs))
+       (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post.
   Proof.
     unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per;
@@ -342,12 +351,14 @@ Section FlatToRiscv1.
       addr = word.add base (word.of_Z ofs) ->
       (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
        ptsto_word addr v * R)%sep (getMem initialL) ->
+      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL
          (fun finalL : RiscvMachineL =>
             getRegs finalL = map.put (getRegs initialL) rd v /\
             getLog finalL = getLog initialL /\
             (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
              ptsto_word addr v * R)%sep (getMem finalL) /\
+            getXAddrs finalL = getXAddrs initialL /\
             getPc finalL = getNextPc initialL /\
             getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
   Proof.
@@ -355,7 +366,7 @@ Section FlatToRiscv1.
     eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_load Syntax.access_size.word); try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
-      rewrite H8.
+      rewrite H9.
       unfold id.
       f_equal.
       rewrite LittleEndian.combine_split.
@@ -378,12 +389,16 @@ Section FlatToRiscv1.
       addr = word.add base (word.of_Z ofs) ->
       (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
        ptsto_word addr v_old * R)%sep (getMem initialL) ->
+      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
            (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
             ptsto_word addr v_new * R)%sep (getMem finalL) /\
+           getXAddrs finalL = invalidateWrittenXAddrs
+                                (@Memory.bytes_per width Syntax.access_size.word)
+                                addr initialL.(getXAddrs) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
   Proof.
@@ -494,6 +509,15 @@ Section FlatToRiscv1.
 
 End FlatToRiscv1.
 
+Ltac simpl_addrsX :=
+  repeat match goal with
+         | H: addrsX _ (List.length (_ ++ _)) _ |- _ => rewrite List.app_length in H
+         | H: addrsX _ (List.length (_ :: _)) _ |- _ => destruct H
+         | H: addrsX _ (S _) _ |- _ => destruct H
+         | H: addrsX _ (_ + _) _ |- _ => apply addrsX_add in H
+         | H: _ /\ _ |- _ => destruct H
+         end.
+
 Ltac subst_load_bytes_for_eq :=
   match goal with
   | Load: bedrock2.Memory.load_bytes _ ?m _ = _, Sep: (_ * eq ?m * _)%sep _ |- _ =>
@@ -539,8 +563,8 @@ Ltac pseplog :=
            ring_simplify addr2 in H
          (* just unprotected seprewrite will instantiate evars in undesired ways *)
          | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-           seprewrite0 (array_append_DEPRECATED PT SZ xs ys start)
+           seprewrite0 (array_append' PT SZ xs ys start)
          | H: context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] |- _ =>
-           seprewrite0_in (array_append_DEPRECATED PT SZ xs ys start) H
+           seprewrite0_in (array_append' PT SZ xs ys start) H
          end;
   seplog.
