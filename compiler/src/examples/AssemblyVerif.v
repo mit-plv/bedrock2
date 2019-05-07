@@ -124,14 +124,13 @@ Section Verif.
       map.get initial.(getRegs) x2 = Some v2 ->
       newPc = word.add initial.(getPc)
                        (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_1)))) ->
-      (program initial.(getPc) asm_prog_1 * R)%sep initial.(getMem) ->
-      addrsX initial.(getPc) (List.length asm_prog_1) initial.(getXAddrs) ->
+      (program initial.(getXAddrs) initial.(getPc) asm_prog_1 * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
                 final.(getPc) = newPc /\
                 final.(getNextPc) = add newPc (word.of_Z 4) /\
-                (program initial.(getPc) asm_prog_1 * R)%sep final.(getMem) /\
+                (program initial.(getXAddrs) initial.(getPc) asm_prog_1 * R)%sep final.(getMem) /\
                 (* Note: if we were doing stores, we'd need a weaker statement here *)
                 final.(getXAddrs) = initial.(getXAddrs) /\
                 map.get final.(getRegs) x2 = Some (gallina_prog_1 v1 v2)).
@@ -190,17 +189,16 @@ Section Verif.
                                   (argvars resvars: list Register) R (v1 v2 dummy: w32),
       newPc = word.add initial.(getPc)
                        (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_2)))) ->
-      (program initial.(getPc) asm_prog_2 *
+      (program initial.(getXAddrs) initial.(getPc) asm_prog_2 *
        ptsto_bytes 4 (word.of_Z input_ptr) v1 *
        ptsto_bytes 4 (word.of_Z (input_ptr+4)) v2 *
        ptsto_bytes 4 (word.of_Z output_ptr) dummy * R)%sep initial.(getMem) ->
-      addrsX initial.(getPc) (List.length asm_prog_2) initial.(getXAddrs) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
                 final.(getPc) = newPc /\
                 final.(getNextPc) = add newPc (word.of_Z 4) /\
-                (program initial.(getPc) asm_prog_2 * R)%sep final.(getMem) /\
+                (program initial.(getXAddrs) initial.(getPc) asm_prog_2 * R)%sep final.(getMem) /\
                 map.get final.(getRegs) x2 = Some (gallina_prog_2 v1 v2)).
   Proof.
     intros.
@@ -210,7 +208,7 @@ Section Verif.
     destruct_RiscvMachine initial.
     unfold asm_prog_2 in *.
     simpl in *.
-    rewrite List.app_length in *. simpl in *. simp. apply addrsX_add in H8. simp.
+    rewrite List.app_length in *. simpl in *.
     unfold program in *.
     seprewrite_in @array_append H0. simpl in *.
     subst.
@@ -227,8 +225,6 @@ Section Verif.
     intros middle (? & ? & ? & ?).
     destruct_RiscvMachine middle. simpl in *.
     subst. simp.
-
-    clear H10.
 
     (* TODO matching up addresses should work automatically *)
     replace (@word.add _ (@word W)
@@ -255,23 +251,7 @@ Section Verif.
       apply Zmult_mod_idemp_r.
     }
 
-    eapply runsTo_det_step. {
-      simulate'. {
-        use_sep_assumption.
-        cancel.
-        cancel_seps_at_indices 1%nat 0%nat. {
-          f_equal. rewrite word.unsigned_of_Z. unfold word.wrap.
-          replace (4 mod 2 ^ width) with 4; cycle 1. {
-            clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
-          }
-          solve_word_eq word_ok.
-        }
-        ecancel_done'.
-      }
-      { sidecondition. }
-      simulate'. simpl. reflexivity.
-    }
-
+    run1det.
     eapply runsToDone.
     simpl.
     repeat split.

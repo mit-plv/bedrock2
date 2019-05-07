@@ -29,20 +29,19 @@ Section Proofs.
   (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
   Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
 
-  Lemma save_regs_correct: forall vars offset R (initial: RiscvMachineL) p_sp oldvalues newvalues,
+  Lemma save_regs_correct: forall vars offset (initial: RiscvMachineL) p_sp oldvalues newvalues R,
       Forall valid_register vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       divisibleBy4 initial.(getPc) ->
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length oldvalues = List.length vars ->
-      (program initial.(getPc) (save_regs vars offset) *
+      (program initial.(getXAddrs) initial.(getPc) (save_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
-      addrsX initial.(getPc) (List.length vars) initial.(getXAddrs) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo initial (fun final =>
           final.(getRegs) = initial.(getRegs) /\
-          (program initial.(getPc) (save_regs vars offset) *
+          (program final.(getXAddrs) initial.(getPc) (save_regs vars offset) *
            word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep
               final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (word.mul (word.of_Z 4)
@@ -74,7 +73,7 @@ Section Proofs.
       destruct_RiscvMachine mid.
       simp. subst.
       eapply runsToNonDet.runsTo_weaken; cycle 1; [|eapply IHvars]. {
-        simpl. intros. simp.
+        simpl. intros. simp. destruct_RiscvMachine final.
         repeat split; try solve [sidecondition].
         - (* TODO all of this should be one more powerful cancel tactic
              with matching of addresses using ring *)
@@ -86,6 +85,9 @@ Section Proofs.
           rewrite word.ring_morph_add.
           rewrite word.add_assoc.
           ecancel_step.
+          simpl.
+          reflexivity.
+          ecancel_done'.
           ecancel.
         - replace (Z.of_nat (S (List.length oldvalues)))
             with (1 + Z.of_nat (List.length oldvalues)) by blia.
@@ -107,7 +109,6 @@ Section Proofs.
         rewrite word.ring_morph_add.
         rewrite word.add_assoc.
         ecancel.
-      + eapply TODO_addrsX_preserved. simpl. eassumption.
       + reflexivity.
   Qed.
 
@@ -126,7 +127,6 @@ Section Proofs.
       List.length values = List.length vars ->
       (program initial.(getPc) (load_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
-      addrsX initial.(getPc) (List.length vars) initial.(getXAddrs) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo initial (fun final =>
           map.only_differ initial.(getRegs) (PropSet.of_list vars) final.(getRegs) /\

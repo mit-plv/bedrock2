@@ -75,9 +75,6 @@ Section EventLoop.
   Hypothesis jump_aligned: jump mod 4 = 0.
   Hypothesis pc_end_def: pc_end = word.sub pc_start (word.of_Z jump).
 
-  Hypothesis pc_end_executable: forall state,
-      goodReadyState state -> isXAddr pc_end state.(getXAddrs).
-
   (* initialization code: all the code before the loop body, loop body starts at pc_start *)
   Hypothesis init_correct: forall (initial: RiscvMachineL),
       runsTo (mcomp_sat (run1 iset)) initial (fun final =>
@@ -90,7 +87,8 @@ Section EventLoop.
       runsTo (mcomp_sat (run1 iset)) initial (fun final =>
           goodReadyState final /\
           final.(getPc) = pc_end /\
-          (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem))).
+          (exists R, (ptsto_instr final.(getXAddrs) pc_end (Jal Register0 jump) * R)
+                       %sep final.(getMem))).
 
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
   Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
@@ -107,8 +105,6 @@ Section EventLoop.
         - replace (getPc state) with (word.sub pc_start (word.of_Z jump)) by congruence.
           solve_divisibleBy4.
         - unfold program, array. rewrite H0. ecancel_assumption.
-        - replace state.(getPc) with pc_end by congruence.
-          eapply pc_end_executable. assumption.
       }
       simpl. intros. simp.
       destruct_RiscvMachine state.

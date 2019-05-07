@@ -107,8 +107,7 @@ Section FlatToRiscvLiterals.
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_stmt (FlatImp.SLit x v) in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
-      (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
-      addrsX initialL.(getPc) (List.length insts) initialL.(getXAddrs) ->
+      (program initialL.(getXAddrs) initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_registers (FlatImp.SLit x v) ->
       runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
              (withPc     (add initialL.(getPc) d)
@@ -117,7 +116,7 @@ Section FlatToRiscvLiterals.
              post ->
       runsTo initialL post.
   Proof.
-    intros *. intros E1 insts d P X V N. substs.
+    intros *. intros E1 insts d P V N. substs.
     lazymatch goal with
     | H1: valid_registers ?s |- _ =>
       pose proof (compile_stmt_emits_valid iset_is_supported H1 eq_refl) as EV
@@ -130,14 +129,12 @@ Section FlatToRiscvLiterals.
       [|destruct (dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31))].
     - unfold compile_lit_12bit in *.
       rewrite invert_update_metrics_for_literal_1 in N; [|assumption].
-      simpl in X. apply proj1 in X.
       run1det.
       simpl_word_exprs word_ok.
       match_apply_runsTo.
       erewrite signExtend_nop; eauto; blia.
     - unfold compile_lit_32bit in *.
       rewrite invert_update_metrics_for_literal_2 in N; [|assumption..].
-      simpl in X. destruct X as [? X]. destruct X as [? _].
       simpl in P.
       run1det. run1det.
       match_apply_runsTo.

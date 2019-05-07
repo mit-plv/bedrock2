@@ -109,7 +109,8 @@ Module Import FlatToRiscv.
                                                   (word.of_Z (Z.of_nat (List.length insts)))) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
-      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+      (program initialL.(getXAddrs) initialL.(getPc) insts * eq initialMH * R)
+        %sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       ext_guarantee initialL ->
       exec map.empty (SInteract resvars action argvars)
@@ -121,7 +122,8 @@ Module Import FlatToRiscv.
                   finalL.(getXAddrs) = initialL.(getXAddrs) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (word.of_Z 4) /\
-                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  (program initialL.(getXAddrs) initialL.(getPc) insts * eq initialMH * R)
+                    %sep finalL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
                   ext_guarantee finalL);
@@ -244,11 +246,6 @@ Section FlatToRiscv1.
 
   Ltac simulate'' := repeat simulate''_step.
 
-  (* TODO needs more preconditions *)
-  Axiom TODO_addrsX_preserved: forall n m addr1 addr2 xaddrs,
-      addrsX addr1 n xaddrs ->
-      addrsX addr1 n (invalidateWrittenXAddrs m addr2 xaddrs).
-
   Lemma go_load: forall sz x a (addr v: word) (initialL: RiscvMachineL) post f,
       valid_register x ->
       valid_register a ->
@@ -349,14 +346,15 @@ Section FlatToRiscv1.
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
+      (program initialL.(getXAddrs) initialL.(getPc)
+               [[compile_load Syntax.access_size.word rd rs ofs]] *
        ptsto_word addr v * R)%sep (getMem initialL) ->
-      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL
          (fun finalL : RiscvMachineL =>
             getRegs finalL = map.put (getRegs initialL) rd v /\
             getLog finalL = getLog initialL /\
-            (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
+            (program initialL.(getXAddrs) initialL.(getPc)
+                     [[compile_load Syntax.access_size.word rd rs ofs]] *
              ptsto_word addr v * R)%sep (getMem finalL) /\
             getXAddrs finalL = getXAddrs initialL /\
             getPc finalL = getNextPc initialL /\
@@ -366,7 +364,7 @@ Section FlatToRiscv1.
     eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_load Syntax.access_size.word); try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
-      rewrite H9.
+      rewrite H8.
       unfold id.
       f_equal.
       rewrite LittleEndian.combine_split.
@@ -387,14 +385,15 @@ Section FlatToRiscv1.
       map.get (getRegs initialL) rs1 = Some base ->
       map.get (getRegs initialL) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
+      (program initialL.(getXAddrs) initialL.(getPc)
+               [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
        ptsto_word addr v_old * R)%sep (getMem initialL) ->
-      isXAddr initialL.(getPc) initialL.(getXAddrs) ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
-           (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
+           (program finalL.(getXAddrs) initialL.(getPc)
+                    [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
             ptsto_word addr v_new * R)%sep (getMem finalL) /\
            getXAddrs finalL = invalidateWrittenXAddrs
                                 (@Memory.bytes_per width Syntax.access_size.word)
@@ -508,15 +507,6 @@ Section FlatToRiscv1.
   Qed.
 
 End FlatToRiscv1.
-
-Ltac simpl_addrsX :=
-  repeat match goal with
-         | H: addrsX _ (List.length (_ ++ _)) _ |- _ => rewrite List.app_length in H
-         | H: addrsX _ (List.length (_ :: _)) _ |- _ => destruct H
-         | H: addrsX _ (S _) _ |- _ => destruct H
-         | H: addrsX _ (_ + _) _ |- _ => apply addrsX_add in H
-         | H: _ /\ _ |- _ => destruct H
-         end.
 
 Ltac subst_load_bytes_for_eq :=
   match goal with
