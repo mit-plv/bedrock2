@@ -48,7 +48,7 @@ bedrock2: coqutil
 clean_bedrock2:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 clean
 
-compiler: riscv-coq bedrock2
+compiler: riscv-coq bedrock2 processor
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
 
 clean_compiler:
