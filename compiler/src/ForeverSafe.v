@@ -118,6 +118,106 @@ Section ForeverSafe.
   Import Coq.Lists.List.
   Import ListNotations.
 
+  (* monadic computations used for specifying the behavior of RiscvMachines should be "sane"
+     in the sense that we never step to the empty set (that's not absence of failure, since
+     failure is modeled as "steps to no set at all"), and that the trace of events is
+     append-only *)
+  Definition mcomp_sane{A: Type}(comp: M A): Prop :=
+    forall (st: RiscvMachineL) (post: A -> RiscvMachineL -> Prop),
+      Primitives.mcomp_sat comp st post ->
+      (exists a st', post a st') /\
+      (forall a st', post a st' -> exists diff, st'.(getLog) = diff ++ st.(getLog)).
+
+  Class PrimitivesSane := {
+    getRegister_sane: forall r, mcomp_sane (getRegister r);
+    setRegister_sane: forall r v, mcomp_sane (setRegister r v);
+    loadByte_sane: forall kind addr, mcomp_sane (loadByte kind addr);
+    loadHalf_sane: forall kind addr, mcomp_sane (loadHalf kind addr);
+    loadWord_sane: forall kind addr, mcomp_sane (loadWord kind addr);
+    loadDouble_sane: forall kind addr, mcomp_sane (loadDouble kind addr);
+    storeByte_sane: forall kind addr v, mcomp_sane (storeByte kind addr v);
+    storeHalf_sane: forall kind addr v, mcomp_sane (storeHalf kind addr v);
+    storeWord_sane: forall kind addr v, mcomp_sane (storeWord kind addr v);
+    storeDouble_sane: forall kind addr v, mcomp_sane (storeDouble kind addr v);
+    getPC_sane: mcomp_sane getPC;
+    setPC_sane: forall newPc, mcomp_sane (setPC newPc);
+    step_sane: mcomp_sane step;
+    raiseExceptionWithInfo_sane: forall A i1 i2 i3,
+        mcomp_sane (raiseExceptionWithInfo (A := A) i1 i2 i3);
+  }.
+
+  Context {PrSane: PrimitivesSane}.
+
+  Lemma Bind_sane: forall {A B: Type} (m: M A) (f: A -> M B),
+      mcomp_sane m ->
+      (forall a, mcomp_sane (f a)) ->
+      mcomp_sane (Bind m f).
+  Proof.
+    intros *.
+    intros S1 S2.
+    unfold mcomp_sane in *.
+    intros.
+    eapply (proj2 (spec_Bind _ _ _ _)) in H.
+    destruct H as (mid & C1 & C2).
+    specialize S1 with (1 := C1). destruct S1 as ((a & middle & S1a) & S1b).
+    specialize C2 with (1 := S1a).
+    specialize S1b with (1 := S1a). destruct S1b as (diff1 & S1b).
+    specialize S2 with (1 := C2). destruct S2 as ((b & final & S2a) & S2b).
+    split.
+    - eauto.
+    - intros.
+      specialize S2b with (1 := H). destruct S2b as (diff2 & S2b).
+      rewrite S1b in S2b.
+      rewrite List.app_assoc in S2b.
+      eexists. exact S2b.
+  Qed.
+
+  Lemma Return_sane: forall {A: Type} (a: A),
+      mcomp_sane (Return a).
+  Proof.
+    unfold mcomp_sane.
+    intros.
+    split.
+    - eapply spec_Return in H. eauto.
+    - assert (post = fun _ _ => True) by admit. subst post. intros.
+      (* counterexample! *)
+  Abort.
+
+  Lemma execute_sane: forall inst,
+      mcomp_sane (Execute.execute inst).
+  Proof.
+    intros.
+    destruct inst as [inst | inst | inst | inst | inst | inst | inst | inst | inst | inst];
+      simpl; try apply raiseExceptionWithInfo_sane;
+      destruct inst; simpl;
+    repeat first [ apply Bind_sane
+                 | apply getRegister_sane
+                 | apply setRegister_sane
+                 | apply loadByte_sane
+                 | apply loadHalf_sane
+                 | apply loadWord_sane
+                 | apply loadDouble_sane
+                 | apply storeByte_sane
+                 | apply storeHalf_sane
+                 | apply storeWord_sane
+                 | apply storeDouble_sane
+                 | apply getPC_sane
+                 | apply setPC_sane
+                 | apply step_sane
+                 | apply raiseExceptionWithInfo_sane
+                 | progress intros ].
+
+  Admitted.
+
+  Lemma run1_sane: mcomp_sane (run1 iset).
+  Proof.
+    unfold run1.
+    apply Bind_sane; [apply getPC_sane|intros].
+    apply Bind_sane; [apply loadWord_sane|intros].
+    apply Bind_sane; [apply execute_sane|intros].
+    apply step_sane.
+  Qed.
+
   (* does not hold if there are interactions which result in the empty set
      of outcomes ("overly friendly spec for compilers", not usually the case) *)
   Hypothesis run1_nonempty: forall initial final,
