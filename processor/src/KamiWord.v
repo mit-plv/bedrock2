@@ -8,7 +8,7 @@ Axiom TODO: False.
 Section WithWidth.
   Context {width : Z}.
   Context {width_nonneg : Z.lt 0 width}.
-  Definition sz: nat := Z.to_nat width.
+  Local Notation sz := (Z.to_nat width).
 
   Local Set Refine Instance Mode.
 
@@ -101,3 +101,6 @@ Section MkWords.
   |}.
 
 End MkWords.
+
+Definition kword (w: Z): Type := Kami.Lib.Word.word (Z.to_nat w).
+
