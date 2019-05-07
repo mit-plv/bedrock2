@@ -93,20 +93,8 @@ Section Equiv.
 
   (* pc *)
 
-  Variable pad: nat.
-  Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat).
-
-  Definition alignPc (kpc: Word.word (2 + Z.to_nat instrMemSizeLg)%nat): word :=
-    eq_rec (2 + Z.to_nat instrMemSizeLg + pad)%nat
-           Word.word (Word.combine kpc $ (0)) nwidth Hpad.
-
-  (** joonwonc: well this is not true!
-   * Need to know how riscv-coq ensures pc is correctly bound? *)
-  Lemma alignPc_next:
-    forall kpc,
-      alignPc kpc ^+ $4 = alignPc (kpc ^+ $4).
-  Proof.
-  Admitted.
+  (* Variable pad: nat. *)
+  (* Hypothesis (Hpad: (2 + (Z.to_nat instrMemSizeLg) + pad = nwidth)%nat). *)
 
   (* instruction and data memory *)
 
@@ -193,18 +181,29 @@ Section Equiv.
       traces_related t t' ->
       traces_related (e :: t) (e' :: t').
 
+  Definition toKamiPc (pc: Word.word (@sz width)):
+    Word.word (2 + @KamiProc.ninstrMemSizeLg instrMemSizeLg) :=
+    $(#pc).
+
+  Lemma toKamiPc_wplus_distr:
+    forall w1 w2,
+      toKamiPc w1 ^+ toKamiPc w2 = toKamiPc (w1 ^+ w2).
+  Proof.
+  Admitted.
+
   (* "exists m', states_related (m, t) m'"
      might be simpler to use than
      "exists m' t', fromKami_withLog m t' = Some 2' /\ traces_related t t'"
      and require less unfolding/destructing *)
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
-  | relate_states: forall t t' m riscvXAddrs pc rf instrMem dataMem,
+  | relate_states: forall t t' m riscvXAddrs kpc pc rf instrMem dataMem,
       traces_related t t' ->
-      KamiProc.RegsToT m = Some (KamiProc.mk pc rf instrMem dataMem) ->
+      KamiProc.RegsToT m = Some (KamiProc.mk kpc rf instrMem dataMem) ->
       (forall addr, isXAddr addr riscvXAddrs -> isXAddr addr kamiXAddrs) ->
+      kpc = toKamiPc pc ->
       states_related (m, t) {| getRegs := convertRegs rf;
-                               getPc := alignPc pc;
-                               getNextPc := word.add (alignPc pc) (word.of_Z 4);
+                               getPc := pc;
+                               getNextPc := word.add pc (word.of_Z 4);
                                getMem := map.putmany (convertInstrMem instrMem)
                                                      (convertDataMem dataMem);
                                getXAddrs := riscvXAddrs;
@@ -348,20 +347,17 @@ Section Equiv.
   | PHidden: forall P: Prop, P -> PHide P.
 
   Lemma fetch_ok:
-    forall instrMem dataMem pc,
-      Memory.loadWord
-        (map.putmany (convertInstrMem instrMem) (convertDataMem dataMem))
-        (alignPc pc) <> None.
-  Proof.
-  Admitted.
-
-  Lemma fetch_consistent:
-    forall instrMem dataMem pc inst,
-      Memory.loadWord
-        (map.putmany (convertInstrMem instrMem)
-                     (convertDataMem dataMem)) (alignPc pc) = Some inst ->
-      combine 4 inst =
-      wordToZ (instrMem (split2 _ _ pc)).
+    forall (instrMem: Word.word KamiProc.ninstrMemSizeLg -> Word.word nwidth)
+           (dataMem: Word.word nwidth -> Word.word nwidth)
+           (pc: Word.word sz),
+      isXAddr pc kamiXAddrs ->
+      exists (inst: HList.tuple byte 4),
+        Memory.loadWord
+          (map.putmany (convertInstrMem instrMem)
+                       (convertDataMem dataMem)) pc = Some inst /\
+        combine 4 inst =
+        wordToZ (instrMem
+                   (split2 2 KamiProc.ninstrMemSizeLg (toKamiPc pc))).
   Proof.
   Admitted.
 
@@ -681,7 +677,8 @@ Section Equiv.
 
       (** Apply the Kami inversion lemma for the [execNm] rule. *)
       inversion H5; subst; clear H5 HAction.
-      inversion H0; subst; clear H0. rename H10 into XAddrsSubset.
+      inversion H0; subst; clear H0.
+      rename H9 into XAddrsSubset.
       destruct klbl as [annot defs calls]; simpl in *; subst.
       destruct annot; [|discriminate].
       inversion H7; subst; clear H7.
@@ -701,10 +698,25 @@ Section Equiv.
       inv_bind_apply H.
       inv_bind H1.
       inv_loadWord H1.
-      destruct H1 as [IXA H1].
-      destruct H1; [|exfalso; destruct H1; eapply fetch_ok; eauto].
-      destruct H1 as (rinst & ? & ?). specialize (IXA eq_refl).
-      inv_bind_apply H4.
+
+      destruct H1 as [IXA H1]; specialize (IXA eq_refl).
+      apply XAddrsSubset in IXA.
+      apply fetch_ok with (instrMem:= instrMem) (dataMem:= dataMem) in IXA.
+      destruct IXA as (rinst & ? & ?).
+      destruct H1; [|exfalso; destruct H1;
+                     match type of H1 with
+                     | ?t1 = _ => match type of H4 with
+                                  | ?t2 = _ => change t1 with t2 in H1
+                                  end
+                     end; congruence].
+      destruct H1 as (rinst' & ? & ?).
+      match type of H1 with
+      | ?t1 = _ => match type of H4 with
+                   | ?t2 = _ => change t1 with t2 in H1
+                   end
+      end; rewrite H1 in H4.
+      inversion H4; subst; clear H4.
+      inv_bind_apply H7.
 
       (** Invert Kami decode/execute *)
       destruct H2
@@ -715,13 +727,8 @@ Section Equiv.
       (* Relation between the two raw instructions *)
       assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
                       4 rinst =
-              wordToZ kinst) as Hfetch.
-      { subst kinst.
-        eapply fetch_consistent.
-        eassumption.
-      }
-      simpl in H3, Hfetch. (* normalizes implicit arguments *)
-      rewrite Hfetch in *.
+              wordToZ kinst) as Hfetch by (subst kinst; assumption).
+      simpl in H3, Hfetch; rewrite Hfetch in H3.
 
       (** Invert riscv-coq decode/execute *)
       match type of H3 with
@@ -754,19 +761,19 @@ Section Equiv.
         destruct_one_match_hyp; [rename w into v1|admit (** TODO: prove it never fails to read
                                        * a register value once the register
                                        * is valid. *)].
-        inv_bind_apply H13.
-        inv_bind H12.
-        apply spec_getRegister with (post0:= mid3) in H12.
-        destruct H12; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
-        simpl in H12; destruct H12.
+        inv_bind_apply H14.
+        inv_bind H13.
+        apply spec_getRegister with (post0:= mid3) in H13.
+        destruct H13; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
+        simpl in H13; destruct H13.
         destruct_one_match_hyp; [rename w into v2|
                                  admit (** TODO: ditto, about valid register reads *)].
-        inv_bind_apply H15.
-        apply @spec_setRegister in H14; [|assumption..].
-        destruct H14; [|admit (** TODO @joonwonc: writing to `R0` *)].
-        simpl in H14; destruct H14.
         inv_bind_apply H16.
-        inv_step H7.
+        apply @spec_setRegister in H15; [|assumption..].
+        destruct H15; [|admit (** TODO @joonwonc: writing to `R0` *)].
+        simpl in H15; destruct H15.
+        inv_bind_apply H17.
+        inv_step H9.
 
         (** Construction *)
         eexists.
@@ -803,17 +810,16 @@ Section Equiv.
              apply convertRegs_put.
         }
 
-        rewrite alignPc_next.
-        constructor.
+        econstructor.
         - assumption.
-        - rewrite H0, H11.
-          do 2 f_equal.
-          (* next pc *)
-          subst npc.
-          rewrite kami_rv32NextPc_op_ok
-            by (rewrite kami_getOpcode_ok; assumption).
+        - rewrite H0, H12.
           reflexivity.
         - assumption.
+        - subst.
+          rewrite kami_rv32NextPc_op_ok
+            by (rewrite kami_getOpcode_ok; assumption).
+          rewrite <-toKamiPc_wplus_distr.
+          reflexivity.
       }
       all: admit.
 
