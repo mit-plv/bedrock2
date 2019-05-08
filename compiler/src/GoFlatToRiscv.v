@@ -52,6 +52,19 @@ Section Go.
     destruct H1. subst. assumption.
   Qed.
 
+  Lemma mcomp_sat_weaken_with_res: forall A initialL m (post1 post2: A -> RiscvMachineL -> Prop),
+      (forall a mach, post1 a mach -> post2 a mach) ->
+      mcomp_sat m initialL post1 ->
+      mcomp_sat m initialL post2.
+  Proof.
+    intros.
+    rewrite <- (@right_identity M MM A m).
+    eapply spec_Bind.
+    eexists. split.
+    - exact H0.
+    - intros. simpl in *. apply spec_Return. eapply H. assumption.
+  Qed.
+
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Definition mcomp_sat(m: M unit)(initialL: RiscvMachineL)(post: RiscvMachineL -> Prop): Prop :=
     mcomp_sat m initialL (fun (_: unit) => post).
@@ -205,12 +218,8 @@ Section Go.
       mcomp_sat m initialL post1 ->
       mcomp_sat m initialL post2.
   Proof.
-    intros.
-    rewrite <- (@right_identity M MM unit m).
-    eapply spec_Bind.
-    eexists. split.
-    - exact H0.
-    - intros. simpl in *. apply spec_Return. eapply H. assumption.
+    intros. eapply mcomp_sat_weaken_with_res; [|eassumption].
+    simpl. intros _. assumption.
   Qed.
 
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=

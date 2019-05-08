@@ -114,250 +114,156 @@ Section ForeverSafe.
       + simpl. intros. eapply IHn. assumption.
   Qed.
 
-
-  (* below: some failed attempts to go from runsTo to trace prefixes *)
-
   Local Notation trace := (list LogItem).
   Import Coq.Lists.List.
   Import ListNotations.
 
-  Lemma strengthen_safe1: forall (good_trace: trace -> Prop),
-      (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall st,
-        runsTo (mcomp_sat (run1 iset)) st safe1 ->
-        runsTo (mcomp_sat (run1 iset)) st (fun final => safe1 final /\
-                                           exists rest, good_trace (getLog st ++ rest)).
-  Proof.
-    intros ? safe2good st R. induction R.
-    - eapply runsToDone. split; [assumption|].
-      exists nil. rewrite List.app_nil_r. eapply safe2good. assumption.
-    - eapply runsToStep. 1: eassumption.
-      intros. eapply runsTo_weaken.
-      + eapply H1; eassumption.
-      + simpl.
-        intros final [ Pf [rest Gt] ].
-        split; [assumption|].
-        assert (exists diff, getLog mid = getLog initial ++ diff) as E by admit.
-        destruct E as [diff E]. rewrite E in Gt.
-        rewrite <- List.app_assoc in Gt.
-        exists (diff ++ rest).
-        exact Gt.
-    all: fail.
-  Abort.
+  (* monadic computations used for specifying the behavior of RiscvMachines should be "sane"
+     in the sense that we never step to the empty set (that's not absence of failure, since
+     failure is modeled as "steps to no set at all"), and that the trace of events is
+     append-only *)
+  Definition mcomp_sane{A: Type}(comp: M A): Prop :=
+    forall (st: RiscvMachineL) (post: A -> RiscvMachineL -> Prop),
+      Primitives.mcomp_sat comp st post ->
+      (exists a st', post a st') /\
+      (Primitives.mcomp_sat comp st (fun a st' =>
+         post a st' /\ exists diff, st'.(getLog) = diff ++ st.(getLog))).
 
-  Lemma strengthen_safe1: forall (good_trace: trace -> Prop),
-      (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall st,
-        runsTo (mcomp_sat (run1 iset)) st safe1 ->
-        runsTo (mcomp_sat (run1 iset)) st safe1 /\ exists rest, good_trace (getLog st ++ rest).
-  Proof.
-    intros ? safe2good st R. induction R.
-    - split.
-      + eapply runsToDone. assumption.
-      + exists nil. rewrite List.app_nil_r. eapply safe2good. assumption.
-    - (* too independent, we'd need "mid" given by runsTo also in rhs of /\ *)
-  Abort.
+  Class PrimitivesSane := {
+    getRegister_sane: forall r, mcomp_sane (getRegister r);
+    setRegister_sane: forall r v, mcomp_sane (setRegister r v);
+    loadByte_sane: forall kind addr, mcomp_sane (loadByte kind addr);
+    loadHalf_sane: forall kind addr, mcomp_sane (loadHalf kind addr);
+    loadWord_sane: forall kind addr, mcomp_sane (loadWord kind addr);
+    loadDouble_sane: forall kind addr, mcomp_sane (loadDouble kind addr);
+    storeByte_sane: forall kind addr v, mcomp_sane (storeByte kind addr v);
+    storeHalf_sane: forall kind addr v, mcomp_sane (storeHalf kind addr v);
+    storeWord_sane: forall kind addr v, mcomp_sane (storeWord kind addr v);
+    storeDouble_sane: forall kind addr v, mcomp_sane (storeDouble kind addr v);
+    getPC_sane: mcomp_sane getPC;
+    setPC_sane: forall newPc, mcomp_sane (setPC newPc);
+    step_sane: mcomp_sane step;
+    raiseExceptionWithInfo_sane: forall A i1 i2 i3,
+        mcomp_sane (raiseExceptionWithInfo (A := A) i1 i2 i3);
+  }.
 
-  Lemma extract_indep_post: forall st (ipost: Prop) (dpost: RiscvMachineL -> Prop),
-      (forall st, dpost st -> ipost) ->
-      runsTo (mcomp_sat (run1 iset)) st dpost ->
-      ipost.
+  Context {PrSane: PrimitivesSane}.
+
+  Lemma Return_sane: forall {A: Type} (a: A),
+      mcomp_sane (Return a).
   Proof.
-    induction 2.
+    unfold mcomp_sane.
+    intros. eapply spec_Return in H.
+    split.
     - eauto.
-    - eapply H2. 2: eassumption.
-      (* Core problem in nicening the final statement:
-         this does not hold if there are interactions which result in the empty set
-         of outcomes ("overly friendly spec for compilers", not usually the case) *)
-  Abort.
+    - eapply (proj1 (spec_Return _ _ _)).
+      split.
+      + assumption.
+      + exists nil. reflexivity.
+  Qed.
 
-  Lemma use_strengthen_safe1: forall (good_trace: trace -> Prop),
-      (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall st,
-        runsTo (mcomp_sat (run1 iset)) st safe1 ->
-        runsTo (mcomp_sat (run1 iset)) st (fun final => safe1 final /\
-                                           exists rest, good_trace (getLog st ++ rest)).
+  Lemma Bind_sane: forall {A B: Type} (m: M A) (f: A -> M B),
+      mcomp_sane m ->
+      (forall a, mcomp_sane (f a)) ->
+      mcomp_sane (Bind m f).
+  Proof.
+    intros *.
+    intros S1 S2.
+    unfold mcomp_sane in *.
+    intros.
+    eapply (proj2 (spec_Bind _ _ _ _)) in H.
+    destruct H as (mid & C1 & C2).
+    split.
+    - specialize S1 with (1 := C1). destruct S1 as ((a & middle & S1a) & S1b).
+      specialize C2 with (1 := S1a).
+      specialize S2 with (1 := C2). destruct S2 as ((b & final & S2a) & S2b).
+      eauto.
+    - eapply spec_Bind.
+      exists (fun a middle => mid a middle /\ exists diff1, getLog middle = diff1 ++ getLog st).
+      split.
+      + specialize S1 with (1 := C1). destruct S1 as ((a & middle & S1a) & S1b).
+        exact S1b.
+      + intros. destruct H as (HM & diff1 & E1).
+        specialize C2 with (1 := HM).
+        specialize S2 with (1 := C2). destruct S2 as ((b & final & S2a) & S2b).
+        eapply mcomp_sat_weaken_with_res; [|exact S2b].
+        simpl. intros. destruct H as (? & diff2 & E2). split; [assumption|].
+        rewrite E1 in E2.
+        rewrite List.app_assoc in E2.
+        eexists. exact E2.
+  Qed.
+
+  Lemma execute_sane: forall inst,
+      mcomp_sane (Execute.execute inst).
   Proof.
     intros.
-  Abort.
+    destruct inst as [inst | inst | inst | inst | inst | inst | inst | inst | inst | inst];
+      simpl; try apply raiseExceptionWithInfo_sane;
+      destruct inst; simpl; unfold when;
+    repeat first [ apply Bind_sane
+                 | apply Return_sane
+                 | apply getRegister_sane
+                 | apply setRegister_sane
+                 | apply loadByte_sane
+                 | apply loadHalf_sane
+                 | apply loadWord_sane
+                 | apply loadDouble_sane
+                 | apply storeByte_sane
+                 | apply storeHalf_sane
+                 | apply storeWord_sane
+                 | apply storeDouble_sane
+                 | apply getPC_sane
+                 | apply setPC_sane
+                 | apply step_sane
+                 | apply raiseExceptionWithInfo_sane
+                 | match goal with
+                   | |- context [if ?b then _ else _] => destruct b
+                   end
+                 | progress intros ].
+  Qed.
 
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma safe_forever_aux_prefix: forall (good_trace: trace -> Prop),
-      (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall (n: nat) (st: RiscvMachineL),
-      runsTo (mcomp_sat (run1 iset)) st safe1 -> (* <-- follows from "safe1 st" using runsToDone *)
-      mcomp_sat (runN n) st
-                (fun prefinalL => runsTo (mcomp_sat (run1 iset)) prefinalL safe1 /\
-                                  exists rest, good_trace (getLog st ++ rest)).
+  Lemma run1_sane: mcomp_sane (run1 iset).
   Proof.
-    induction n; intros.
-    - simpl. apply go_done. split.
-      + assumption.
-      + exists nil. rewrite List.app_nil_r. eauto.
-  Abort.
+    unfold run1.
+    apply Bind_sane; [apply getPC_sane|intros].
+    apply Bind_sane; [apply loadWord_sane|intros].
+    apply Bind_sane; [apply execute_sane|intros].
+    apply step_sane.
+  Qed.
 
   Lemma extend_runsTo_to_good_trace: forall (good_trace: trace -> Prop),
       (forall st, safe1 st -> good_trace st.(getLog)) ->
       forall (st : RiscvMachineL),
         runsTo (mcomp_sat (run1 iset)) st safe1 ->
-        exists rest : trace, good_trace (getLog st ++ rest).
+        exists rest : trace, good_trace (rest ++ getLog st).
   Proof.
     intros ? safe2good st R. induction R.
-    - exists nil. rewrite List.app_nil_r. eauto.
-    - (* does not hold if there are interactions which result in the empty set
-         of outcomes ("overly friendly spec for compilers", not usually the case) *)
-  Abort.
+    - exists nil. rewrite List.app_nil_l. eauto.
+    - rename P into safe1.
+      pose proof (run1_sane _ _ H) as N. destruct N as (_ & N).
+      pose proof (run1_sane _ _ N) as N'. destruct N' as ((_ & mid & (Hmid & diff1 & E1)) & _).
+      specialize (H1 _ Hmid exclusive run_1_2 run_2_1 safe2good).
+      destruct H1 as (diff2 & G).
+      rewrite E1 in G.
+      rewrite List.app_assoc in G.
+      eexists. exact G.
+  Qed.
 
-  Lemma trace_prefix_of_good: forall (good_trace: trace -> Prop),
+  (* forall n, after running for n steps, we've output a prefix of a good trace.
+     The precondition can either be trivially established using runsToDone if safe1 already
+     holds, or it can be established by some initialization code which runs before the main
+     event loop. *)
+  Lemma prefix_of_good_inv: forall (good_trace: trace -> Prop),
       (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall n st,
-        safe1 st ->
-        mcomp_sat (runN n) st
-                  (fun st' => exists rest, good_trace (st'.(getLog) ++ rest)).
+      forall (n: nat) (st: RiscvMachineL),
+      runsTo (mcomp_sat (run1 iset)) st safe1 ->
+      mcomp_sat (runN n) st (fun st' => exists rest : trace, good_trace (rest ++ getLog st')).
   Proof.
-    intros.
+    intros ? safe2good n st R.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply safe_forever. apply runsToDone. assumption.
+    - eapply safe_forever. assumption.
     - simpl. intros.
-  Abort.
-
-  Lemma trace_prefix_of_good: forall (good_trace: trace -> Prop),
-      (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall n st,
-        runsTo (mcomp_sat (run1 iset)) st safe1 ->
-        mcomp_sat (runN n) st
-                  (fun st' => exists rest, good_trace (st'.(getLog) ++ rest)).
-  Proof.
-    induction n; intros.
-    - simpl. apply go_done. exists nil. rewrite List.app_nil_r. eauto.
-  Abort.
-
-  Lemma trace_prefix_of_good: forall (good_trace: trace -> Prop),
-      (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall n st,
-        safe1 st ->
-        mcomp_sat (runN n) st
-                  (fun st' => exists rest, good_trace (st'.(getLog) ++ rest)).
-  Proof.
-    induction n; intros.
-    - simpl. apply go_done. exists nil. rewrite List.app_nil_r. eauto.
-    - simpl. eapply spec_Bind_unit.
-  Abort.
-
-(*
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state.
-     That is, "runs to a good state" is an invariant of the system *)
-  Lemma safe_forever_aux: forall (n m: nat) (initialL: RiscvMachineL),
-      (m < n)%nat ->
-      safe1 initialL \/ safe2 initialL ->
-      mcomp_sat (runN m) initialL
-                (fun prefinalL => runsTo (mcomp_sat (run1 iset)) prefinalL safe1).
-  Proof.
-
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state.
-     That is, "runs to a good state" is an invariant of the system *)
-  Lemma safe_forever_aux: forall (n m: nat) (initialL: RiscvMachineL),
-      (m < n)%nat ->
-      safe1 initialL \/ safe2 initialL ->
-      mcomp_sat (runN m) initialL
-                (fun prefinalL => runsTo (mcomp_sat (run1 iset)) prefinalL safe1).
-  Proof.
-
-
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma safe_forever_aux: forall (n m: nat) (initialL: RiscvMachineL),
-      (m < n)%nat ->
-      safe1 initialL \/ safe2 initialL ->
-      mcomp_sat (runN m) initialL
-                (fun prefinalL => runsTo (mcomp_sat (run1 iset)) prefinalL safe1).
-  Proof.
-    induction n; intros.
-    - exfalso. blia.
-    - simpl.
-      destruct H0.
-      + specialize (run_1_2 _ H0). revert run_1_2.
-        (* here, figure out how to do parallel runsTo and mcomp_sat (runN m)) *)
-
-        induction 1; rename P into safe2.
-        * exfalso. eapply exclusive; eauto.
-        * destruct m.
-          -- simpl. apply go_done. apply runsToDone. assumption.
-          -- simpl.
-             eapply spec_Bind_unit. 1: eassumption.
-             intros.
-             rename H3 into IH.
-             specialize (IH _ H4 exclusive).
-             specialize (H2 _ H4).
-             specialize (IH H2).
-             specialize (IH run_2_1).
-             specialize (IH IHn).
-
-
-
-             apply Lt.lt_S_n in H. specialize IHn with (1 := H).
-
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma safe_forever_aux: forall (n: nat) (initialL: RiscvMachineL),
-      (safe1 initialL ->
-       mcomp_sat (runN n) initialL
-                 (fun prefinalL => runsTo (mcomp_sat (run1 iset)) prefinalL safe1)) /\
-      (safe2 initialL ->
-       mcomp_sat (runN n) initialL
-                 (fun prefinalL => runsTo (mcomp_sat (run1 iset)) prefinalL safe2)).
-  Proof.
-    induction n; split; intros.
-    - simpl. apply go_done.
-      apply runsToDone. assumption.
-    - simpl. apply go_done.
-      apply runsToDone. assumption.
-    - simpl.
-      specialize (run_1_2 _ H). inversion run_1_2.
-      + exfalso. eapply exclusive; eauto.
-      + eapply spec_Bind_unit. 1: eassumption.
-        intros.
-        specialize (H1 _ H2).
-        specialize (IHn middle).
-
-
-
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma safe_forever_aux: forall (n: nat) (initialL: RiscvMachineL),
-      safe1 initialL \/ safe2 initialL ->
-      mcomp_sat (runN n) initialL
-                (fun prefinalL => runsTo (mcomp_sat (run1 iset)) prefinalL safe1).
-  Proof.
-    induction n; intros.
-    - simpl. apply go_done.
-      destruct H.
-      + apply runsToDone. assumption.
-      + apply run_2_1. assumption.
-    - simpl.
-      destruct H.
-      + specialize (run_1_2 _ H). inversion run_1_2.
-        * exfalso. eapply exclusive; eauto.
-        * eapply spec_Bind_unit. 1: eassumption.
-          intros.
-          specialize (H1 _ H2).
-          eapply IHn.
-
-      +
-          mcomp_sat_weaken
-
-      specialize (IHn _ H).
-
-      +
-
-
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma safe_forever: forall (n: nat) (initialL: RiscvMachineL),
-      safe1 initialL ->
-      mcomp_sat (runN n) initialL (fun prefinalL => runsTo (mcomp_sat (run1 iset)) prefinalL safe1).
-  Proof.
-    induction n; intros.
-    - simpl. apply go_done. apply runsToDone. assumption.
-    - simpl. eapply spec_Bind_unit.
-
-  Abort.
-*)
+      eapply extend_runsTo_to_good_trace; eassumption.
+  Qed.
 
 End ForeverSafe.

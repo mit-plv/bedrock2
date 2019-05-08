@@ -75,9 +75,11 @@ Section EventLoop.
   Hypothesis jump_aligned: jump mod 4 = 0.
   Hypothesis pc_end_def: pc_end = word.sub pc_start (word.of_Z jump).
 
+  Variable startState: RiscvMachineL.
+
   (* initialization code: all the code before the loop body, loop body starts at pc_start *)
-  Hypothesis init_correct: forall (initial: RiscvMachineL),
-      runsTo (mcomp_sat (run1 iset)) initial (fun final =>
+  Hypothesis init_correct:
+      runsTo (mcomp_sat (run1 iset)) startState (fun final =>
           goodReadyState final /\ final.(getPc) = pc_start).
 
   (* loop body: between pc_start and pc_end *)
@@ -89,11 +91,12 @@ Section EventLoop.
           final.(getPc) = pc_end /\
           (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem))).
 
+  Definition runsToGood_Invariant(prefinalL: RiscvMachineL): Prop :=
+    runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
+       goodReadyState finalL /\ finalL.(getPc) = pc_start).
+
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
-      forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
-                  runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
-                     goodReadyState finalL /\ finalL.(getPc) = pc_start)).
+  Lemma eventLoop_sound: forall n, mcomp_sat (runN iset n) startState runsToGood_Invariant.
   Proof.
     intros. eapply safe_forever; cycle 1.
     - intros state (? & ?). eapply body_correct; assumption.
