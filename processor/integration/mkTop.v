@@ -1,1 +1,1 @@
-../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/mkTop5.v
+../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/mkTop7.v

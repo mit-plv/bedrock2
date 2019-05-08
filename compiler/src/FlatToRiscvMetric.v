@@ -146,7 +146,7 @@ Section Proofs.
     - (* SLit *)
       eapply compile_lit_correct_full.
       + sidecondition.
-      + unfold compile_stmt. unfold getPc, getMem, liftGet in *. simpl. ecancel_assumption.
+      + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
       + simpl. run1done;
         remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;

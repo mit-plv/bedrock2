@@ -127,6 +127,7 @@ Definition zeroedRiscvMachine: RiscvMachine :=
     RiscvMachine.getPc := word.of_Z 0;
     RiscvMachine.getNextPc := word.of_Z 4;
     RiscvMachine.getMem := map.empty;
+    RiscvMachine.getXAddrs := nil;
     RiscvMachine.getLog := nil;
   |};
   getMetrics := MetricLogging.EmptyMetricLog;

@@ -131,6 +131,7 @@ Definition zeroedRiscvMachine: MetricRiscvMachine := {|
     getPc := word.of_Z 0;
     getNextPc := word.of_Z 4;
     getMem := map.empty;
+    getXAddrs := nil;
     getLog := nil;
   |};
 |}.

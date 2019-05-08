@@ -44,6 +44,7 @@ Section Equiv.
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
     getMem := Memory.unchecked_store_bytes 4 map.empty f.(counter) NOP;
+    getXAddrs := addXAddrRange f.(counter) 1 nil;
     getLog := t;
   |}.
 
@@ -248,6 +249,7 @@ Section Equiv.
     getPc := f.(counter);
     getNextPc := f.(nextCounter);
     getMem := Memory.unchecked_store_bytes 4 map.empty f.(counter) NOP;
+    getXAddrs := addXAddrRange f.(counter) 1 nil;
     getLog := nil;
   |}.
 
@@ -267,8 +269,8 @@ Section Equiv.
     assumption.
   Qed.
 
-  Hypothesis assume_no_MMIO: forall n mach addr post,
-      ~ mcomp_sat (nonmem_load n addr) mach post.
+  Hypothesis assume_no_MMIO: forall n kind mach addr post,
+      ~ mcomp_sat (nonmem_load n kind addr) mach post.
 
   Lemma simulate_step_fw: forall (initial: RiscvMachine)
                                  (post: RiscvMachine -> Prop),
@@ -284,7 +286,7 @@ Section Equiv.
       post (from_Fake (fakeStep (to_Fake initial))).
   Proof.
     intros *. intros AllNOPs postOnlyLooksAtPc H.
-    destruct initial as [r pc npc m l].
+    destruct initial as [r pc npc m xa l].
     unfold to_Fake, fakeStep, from_Fake.
     simpl.
     unfold run1 in H.
@@ -293,7 +295,7 @@ Section Equiv.
     specialize Hr with (1 := Hl). clear Hl.
     apply spec_Bind in Hr. destruct_products.
     apply spec_loadWord in Hrl.
-    destruct Hrl as [A | [_ A]]; [|exfalso; eapply assume_no_MMIO; exact A].
+    destruct Hrl as [IXA [A | [_ A]]]; [|exfalso; eapply assume_no_MMIO; exact A].
     destruct_products.
     simpl in Al, AllNOPs. rewrite AllNOPs in Al. inversion Al. subst v. clear Al.
     specialize Hrr with (1 := Ar). clear Ar.
@@ -350,12 +352,13 @@ Section Equiv.
     intros. destruct_products. subst.
     apply spec_Bind.
     det_step. split.
-    { apply spec_loadWord.
-      left.
-      exists NOP.
-      repeat split. (* also invokes reflexivity *)
-      simpl.
-      apply loadWord_store_bytes_same. }
+    { apply spec_loadWord. split.
+      - intros. simpl. auto.
+      - left.
+        exists NOP.
+        repeat split. (* also invokes reflexivity *)
+        simpl.
+        apply loadWord_store_bytes_same. }
     intros. destruct_products. subst.
     apply spec_Bind.
     det_step. split.

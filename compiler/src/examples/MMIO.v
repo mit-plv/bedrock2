@@ -181,7 +181,7 @@ Section MMIO1.
 
   Section HideInstance.
   Instance riscv_ext_spec_based_on_simple_ext_spec: ExtSpec (OStateND RiscvMachine) := {
-    run_mmio_load n addr :=
+    run_mmio_load n kind addr :=
       fun initial o =>
         (o = None /\
          forall post, ~ simple_ext_spec initial.(getLog) map.empty MMInput [addr] post) \/
@@ -189,7 +189,7 @@ Section MMIO1.
              (forall post, simple_ext_spec initial.(getLog) map.empty MMInput [addr] post ->
                            post map.empty [tupleToWord bytes]));
 
-    run_mmio_store n addr v :=
+    run_mmio_store n kind addr v :=
       fun initial o =>
         (o = None /\ forall post,
             ~ simple_ext_spec initial.(getLog) map.empty MMOutput [addr; tupleToWord v] post) \/
@@ -202,8 +202,8 @@ Section MMIO1.
   (* Simplest possible instance: accept mmio at any address.
      TODO: start using simple_ext_spec or real_ext_spec again. *)
   Instance riscv_ext_spec: ExtSpec (OStateND RiscvMachine) := {
-    run_mmio_load n addr := OStateNDOperations.arbitrary (HList.tuple byte n);
-    run_mmio_store n addr v := Return tt;
+    run_mmio_load n kind addr := OStateNDOperations.arbitrary (HList.tuple byte n);
+    run_mmio_store n kind addr v := Return tt;
   }.
 
   Section Real.

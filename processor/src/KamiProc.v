@@ -9,18 +9,14 @@ Local Open Scope Z_scope.
 
 Definition width: Z := 32.
 Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
-Definition nwidth := Z.to_nat width.
-
-Local Definition addrSize := nwidth.
+Local Notation nwidth := (Z.to_nat width).
 
 Definition isMMIO: IsMMIOT nwidth :=
   (fun _ addr => ($$false)%kami_expr).
 
 Section PerInstAddr.
-
   Context {instrMemSizeLg: Z}.
-
-  Local Definition ninstrMemSizeLg := Z.to_nat instrMemSizeLg.
+  Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
 
   Definition procInit: ProcInit ninstrMemSizeLg rv32DataBytes rv32RfIdx :=
     {| pcInit := getDefaultConst _;

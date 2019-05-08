@@ -9,6 +9,11 @@ Definition StringNames_params: bedrock2.StringNamesSyntax.parameters := {|
   StringNamesSyntax.actname := string
 |}.
 
+(* (name, (arguments, returnvalues, body)) *)
+Definition function : Type :=
+  let _ := StringNames_params in
+  (funname * (list varname * list varname * cmd)).
+
 Definition to_c_parameters : ToCString.parameters := {|
   syntax := (StringNamesSyntax.make StringNames_params);
   c_lit w := "(uintptr_t)" ++ DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL";
