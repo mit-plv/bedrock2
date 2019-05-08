@@ -310,7 +310,7 @@ Section FibCompiled.
                                   
   Axiom fib_program_correct: forall n t m l mc,
       0 <= n <= 60 ->
-      Semantics.exec map.empty (fib_ExprImp n) t m l mc (
+      Semantics.exec map.empty fib_ExprImp t m l mc (
                        fun t' m ' l' mc' =>
                          exists (result: Utility.word),
                            word.unsigned result = (fib (Z.to_nat n)) /\
@@ -319,9 +319,10 @@ Section FibCompiled.
 
   Lemma fib_program_correct_bounded: forall n t m l mc,
       0 <= n <= 60 ->
-      Semantics.exec map.empty (fib_ExprImp n) t m l mc (
+      load access_size.four m (word.of_Z n_addr) = Some (word.of_Z n) ->
+      Semantics.exec map.empty fib_ExprImp t m l mc (
                        fun t' m ' l' mc' =>
-                         instructionsH mc' <= instructionsH mc + n * 34 + 39 /\
+                         instructionsH mc' <= instructionsH mc + n * 34 + 62 /\
                          exists (result: Utility.word),
                            word.unsigned result = (fib (Z.to_nat n)) /\
                            map.get l' FibonacciServer.b = Some result).
@@ -331,54 +332,46 @@ Section FibCompiled.
     + pose proof fib_bounding_metrics as Hbound.
       specialize Hbound with (n := Z.to_nat n).
       rewrite Z2Nat.id in Hbound; [|blia].
-      eapply Hbound. cbn. blia.
+      eapply Hbound; [assumption|].
+      cbn. blia.
     + eapply fib_program_correct. blia.
   Qed.
 
   Definition run1 : Pipeline.M unit := @run1 _ _ _ _ Pipeline.RVM _ iset.
   Definition mcomp_sat := GoFlatToRiscv.mcomp_sat.
 
-  Lemma fib_compiled: forall n,
-    0 <= n <= 60 ->
-    runsToNonDet.runsTo (mcomp_sat run1)
-                        (programmedMachine n)
-                        (fun (finalL: RiscvMachine) =>
-                           exists (result: Utility.word),
-                             map.get finalL.(getRegs) FibonacciServer.b = Some result /\
-                             word.unsigned result = (fib (Z.to_nat n)) /\
-                             finalL.(getMetrics).(instructions) <= n * 34 + 39).
+  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) (m: map.map word byte) initialMem,
+      0 <= n <= 60 ->
+      word.unsigned (getPc initialMachine) mod 4 = 0 ->
+      getNextPc initialMachine = word.add (getPc initialMachine) (word.of_Z 4) ->
+      load access_size.four initialMem (word.of_Z n_addr) = Some (word.of_Z n) ->
+      getMetrics initialMachine = EmptyMetricLog ->
+      Separation.sep (program (getPc initialMachine) (ExprImp2Riscv fib_ExprImp)) (eq initialMem) (getMem initialMachine) ->
+      runsToNonDet.runsTo (mcomp_sat run1)
+                          initialMachine
+                          (fun (finalL: RiscvMachine) =>
+                             exists (result: Utility.word),
+                               map.get finalL.(getRegs) FibonacciServer.b = Some result /\
+                               word.unsigned result = (fib (Z.to_nat n)) /\
+                               finalL.(getMetrics).(instructions) <= n * 34 + 62).
   Proof.
     intros.
     eapply runsToNonDet.runsTo_weaken.
     - pose proof Pipeline.exprImp2Riscv_correct as Hp.
-      specialize Hp with (sH := fib_ExprImp n)
+      specialize Hp with (sH := fib_ExprImp)
                          (mcH := bedrock2.MetricLogging.EmptyMetricLog).
       eapply Hp.
       + simpl. blia.
       + cbv. repeat constructor.
       + reflexivity.
+      + assumption.
+      + assumption.
       + reflexivity.
-      + reflexivity.
-      + reflexivity.
-      + cbv [programmedMachine zeroedRiscvMachine getMem putProgram zeroedRiscvMachine
-                               getMem withPc withNextPc withMem].
-        unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].
-        1: apply map.split_empty_r; reflexivity.
-        apply store_program_empty.
-        cbv [fib_ExprImp ExprImp2Riscv FlatToRiscvDef.compile_stmt ExprImp2FlatImp flattenStmt flattenExpr].
-        simpl. cbn.
-        unfold FlatToRiscvDef.compile_lit, FlatToRiscvDef.compile_lit_12bit, FlatToRiscvDef.compile_lit_32bit,
-        FlatToRiscvDef.compile_lit_64bit.
-        match goal with
-        | |- context[dec(?P)] => destruct (dec(P)); try (exfalso; blia)
-        end.
-        simpl. blia.
+      + eassumption.
       + cbv [Pipeline.ext_guarantee pipeline_params]. exact I.
-      + eapply ExprImp.weaken_exec; [eapply fib_program_correct_bounded; cbn; blia|].
-        * intros.
-          match goal with
-          | H: _ ?t ?m ?l ?mc |- _ ?t ?m ?l ?mc => apply H
-          end.
+      + eapply ExprImp.weaken_exec.
+        * eapply fib_program_correct_bounded with (n := n); assumption.
+        * intros. eassumption.
     - intros.
       repeat match goal with
                | H: (fun _ => _) _ |- _ => destruct H
@@ -399,7 +392,10 @@ Section FibCompiled.
                | H: _ /\ _ |- _ => destruct H
                end.
         eapply Z.le_trans.
-        * eassumption.
+        * match goal with
+          | H: (getMetrics initialMachine) = ?m |- _ => rewrite H in *
+          end.
+          simpl in *. rewrite Z.sub_0_r in *. eassumption.
         * assumption.
   Qed.
 
