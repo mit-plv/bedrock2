@@ -29,7 +29,7 @@ Require Import compiler.RunInstruction.
 Require Import compiler.EventLoop.
 Require Import compiler.ForeverSafe.
 Require Import compiler.GoFlatToRiscv.
-
+Require Import compiler.Simp.
 
 Local Open Scope Z_scope.
 
@@ -128,7 +128,14 @@ Section Connect.
   Context (kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop).
   Context (states_related: KamiMachine * list Event -> MetricRiscvMachine -> Prop).
 
-  Variables init body: cmd.
+  Hypothesis kamiStep_sound:
+    forall (m0 m3 : KamiMachine) (m1'0 : MetricRiscvMachine) (t1 t2 : list Event)
+           (post : MetricRiscvMachine -> Prop),
+      kamiStep m0 m3 t1 ->
+      states_related (m0, t2) m1'0 ->
+      mcomp_sat (run1 RunInstruction.iset) m1'0 post ->
+      m0 = m3 /\ t1 = [] \/
+                 (exists m2' : MetricRiscvMachine, states_related (m3, t1 ++ t2) m2' /\ post m2').
 
   (* note: given-away and received memory has to be empty *)
   Inductive events_related: Event -> LogItem -> Prop :=
@@ -145,6 +152,42 @@ Section Connect.
       traces_related t t' ->
       traces_related (e :: t) (e' :: t').
 
+  Lemma hl_event_determines_ll_event: forall e' e1 e2,
+      events_related e1 e' ->
+      events_related e2 e' ->
+      e1 = e2.
+  Proof.
+    intros. inversion H; inversion H0; subst; simp; congruence.
+  Qed.
+
+  Lemma hl_trace_determines_ll_trace: forall {t' t1 t2},
+      traces_related t1 t' ->
+      traces_related t2 t' ->
+      t1 = t2.
+  Proof.
+    induction t'; intros.
+    - inversion H. inversion H0. reflexivity.
+    - inversion H. inversion H0. subst. f_equal.
+      + eapply hl_event_determines_ll_event; eassumption.
+      + eapply IHt'; eassumption.
+  Qed.
+
+  Lemma split_ll_trace: forall {t2' t1' t},
+      traces_related t (t2' ++ t1') ->
+      exists t1 t2, t = t2 ++ t1 /\ traces_related t1 t1' /\ traces_related t2 t2'.
+  Proof.
+    induction t2'; intros.
+    - exists t, nil. simpl in *. repeat constructor. assumption.
+    - simpl in H. simp. specialize IHt2' with (1 := H4).
+      destruct IHt2' as (t1 & t2 & E & R1 & R2). subst.
+      exists t1. exists (e :: t2). simpl. repeat constructor; assumption.
+  Qed.
+
+  (* should be just inversion *)
+  Hypothesis states_related_to_traces_related: forall m m' t,
+      states_related (m, t) m' -> traces_related t m'.(getLog).
+
+  Variables init body: cmd.
 
   (* will have to be extended with a program logic proof at the top and with the kami refinement
      proof to the pipelined processor at the bottom: *)
@@ -167,15 +210,18 @@ Section Connect.
     pose proof kamiMultiStep_sound as Q.
     specialize Q with (inv := ll_inv) (m1 := m1) (m2 := m2) (m1' := m1') (t := t) (t0 := t0).
     edestruct Q as (m2' & Rel & InvFinal).
-    - admit. (* kamiStep_sound *)
+    - eapply kamiStep_sound.
     - intros st HI. edestruct use_ll_inv as (U & _). 1: exact HI. exact U.
     - eassumption.
     - eassumption.
     - eapply establish_ll_inv. auto.
-    -
-
-
-  Abort.
-
+    - apply states_related_to_traces_related in Rel.
+      edestruct use_ll_inv as (_ & U). 1: exact InvFinal.
+      destruct U as (suffix & llTrace & Rel' & G).
+      apply split_ll_trace in Rel'.
+      destruct Rel' as (llTrace1 & llTrace2 & E & Rel1' & Rel2'). subst.
+      pose proof (hl_trace_determines_ll_trace Rel Rel1'). subst.
+      exists llTrace2. exact G.
+  Qed.
 
 End Connect.
