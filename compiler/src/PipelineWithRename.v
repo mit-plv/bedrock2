@@ -98,7 +98,6 @@ Section Pipeline1.
   Local Notation RiscvMachineL := (MetricRiscvMachine Register _).
 
   Definition funname := string.
-  Definition iset := if width =? 32 then RV32IM else RV64IM.
 
   Axiom TODO: forall {T: Type}, T.
 
