@@ -206,6 +206,20 @@ Section MMIO1.
     run_mmio_store n kind addr v := Return tt;
   }.
 
+  Instance riscv_ext_spec_sane: ExtSpecSane MinimalMMIOPrimitivesParams riscv_ext_spec.
+  Proof.
+    constructor; intros.
+    - unfold run_mmio_load, riscv_ext_spec. simpl.
+      apply arbitrary_sane. clear.
+      induction n.
+      + cbn. exact tt.
+      + cbn. constructor.
+        * exact (word.of_Z 42).
+        * exact IHn.
+    - unfold run_mmio_store, riscv_ext_spec. apply @Sane.Return_sane.
+      exact MinimalMMIO.MinimalMMIOSatisfies_mcomp_sat_spec.
+  Qed.
+
   Section Real.
     Import FE310CompilerDemo.
     Definition real_ext_spec(t: trace)(mGive: mem)(action: MMIOAction)(args: list word)
@@ -334,6 +348,8 @@ Section MMIO1.
   (* give it priority over FlatToRiscvCommon.FlatToRiscv.PRParams to make eapply work better *)
   Existing Instance MetricMinimalMMIOPrimitivesParams.
 
+  Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
+
   Lemma computation_with_answer_satisfies_Bind_bw{S A B: Type}:
     forall (m: OStateND S A) (f: A -> OStateND S B) (initial: S) mid post,
       OStateNDOperations.computation_with_answer_satisfies m initial mid ->
@@ -432,7 +448,7 @@ Section MMIO1.
     simpl in *.
     unfold OStateNDOperations.computation_with_answer_satisfies in *.
     unfold liftL3, liftL0 in *.
-    unfold run_and_log_mmio_store, run_mmio_store, riscv_ext_spec, logEvent in *.
+    unfold run_and_log_mmio_store, run_mmio_store, riscv_ext_spec, logEvent, update in *.
     unfold OStateNDOperations.get, OStateNDOperations.put in *.
     intros o A.
     repeat match goal with
@@ -462,7 +478,7 @@ Section MMIO1.
     simpl in *.
     unfold OStateNDOperations.computation_with_answer_satisfies in *.
     unfold liftL2, liftL0 in *.
-    unfold run_and_log_mmio_load, run_mmio_load, riscv_ext_spec, logEvent in *.
+    unfold run_and_log_mmio_load, run_mmio_load, riscv_ext_spec, logEvent, update in *.
     unfold OStateNDOperations.get, OStateNDOperations.put, OStateNDOperations.arbitrary in *.
     intros o A.
     repeat match goal with
@@ -479,7 +495,12 @@ Section MMIO1.
 
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
   Proof.
-    constructor. all: try typeclasses eauto.
+    constructor.
+    - typeclasses eauto.
+    - typeclasses eauto.
+    - typeclasses eauto.
+    - typeclasses eauto.
+    - exact MetricMinimalMMIOSatisfiesPrimitives.
     - (* ext_guarantee preservable: *)
       simpl. unfold map.same_domain, map.sub_domain, map.undef_on, map.agree_on in *.
       intros. destruct H0 as [A B].
@@ -632,6 +653,7 @@ End MMIO1.
 Existing Instance Words32.
 Existing Instance mmio_semantics_params.
 Existing Instance riscv_ext_spec.
+Existing Instance riscv_ext_spec_sane.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.
 Existing Instance assume_riscv_word_properties.

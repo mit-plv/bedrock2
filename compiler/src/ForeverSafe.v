@@ -11,13 +11,13 @@ Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Platform.Run.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.runsToNonDet.
+Require Import riscv.Proofs.MetricSane.
 
 
 Section ForeverSafe.
 
   Context {W: Words}.
   Context {Registers: map.map Register word}.
-  Context {Action: Type}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
@@ -118,119 +118,6 @@ Section ForeverSafe.
   Import Coq.Lists.List.
   Import ListNotations.
 
-  (* monadic computations used for specifying the behavior of RiscvMachines should be "sane"
-     in the sense that we never step to the empty set (that's not absence of failure, since
-     failure is modeled as "steps to no set at all"), and that the trace of events is
-     append-only *)
-  Definition mcomp_sane{A: Type}(comp: M A): Prop :=
-    forall (st: RiscvMachineL) (post: A -> RiscvMachineL -> Prop),
-      Primitives.mcomp_sat comp st post ->
-      (exists a st', post a st') /\
-      (Primitives.mcomp_sat comp st (fun a st' =>
-         post a st' /\ exists diff, st'.(getLog) = diff ++ st.(getLog))).
-
-  Class PrimitivesSane := {
-    getRegister_sane: forall r, mcomp_sane (getRegister r);
-    setRegister_sane: forall r v, mcomp_sane (setRegister r v);
-    loadByte_sane: forall kind addr, mcomp_sane (loadByte kind addr);
-    loadHalf_sane: forall kind addr, mcomp_sane (loadHalf kind addr);
-    loadWord_sane: forall kind addr, mcomp_sane (loadWord kind addr);
-    loadDouble_sane: forall kind addr, mcomp_sane (loadDouble kind addr);
-    storeByte_sane: forall kind addr v, mcomp_sane (storeByte kind addr v);
-    storeHalf_sane: forall kind addr v, mcomp_sane (storeHalf kind addr v);
-    storeWord_sane: forall kind addr v, mcomp_sane (storeWord kind addr v);
-    storeDouble_sane: forall kind addr v, mcomp_sane (storeDouble kind addr v);
-    getPC_sane: mcomp_sane getPC;
-    setPC_sane: forall newPc, mcomp_sane (setPC newPc);
-    step_sane: mcomp_sane step;
-    raiseExceptionWithInfo_sane: forall A i1 i2 i3,
-        mcomp_sane (raiseExceptionWithInfo (A := A) i1 i2 i3);
-  }.
-
-  Context {PrSane: PrimitivesSane}.
-
-  Lemma Return_sane: forall {A: Type} (a: A),
-      mcomp_sane (Return a).
-  Proof.
-    unfold mcomp_sane.
-    intros. eapply spec_Return in H.
-    split.
-    - eauto.
-    - eapply (proj1 (spec_Return _ _ _)).
-      split.
-      + assumption.
-      + exists nil. reflexivity.
-  Qed.
-
-  Lemma Bind_sane: forall {A B: Type} (m: M A) (f: A -> M B),
-      mcomp_sane m ->
-      (forall a, mcomp_sane (f a)) ->
-      mcomp_sane (Bind m f).
-  Proof.
-    intros *.
-    intros S1 S2.
-    unfold mcomp_sane in *.
-    intros.
-    eapply (proj2 (spec_Bind _ _ _ _)) in H.
-    destruct H as (mid & C1 & C2).
-    split.
-    - specialize S1 with (1 := C1). destruct S1 as ((a & middle & S1a) & S1b).
-      specialize C2 with (1 := S1a).
-      specialize S2 with (1 := C2). destruct S2 as ((b & final & S2a) & S2b).
-      eauto.
-    - eapply spec_Bind.
-      exists (fun a middle => mid a middle /\ exists diff1, getLog middle = diff1 ++ getLog st).
-      split.
-      + specialize S1 with (1 := C1). destruct S1 as ((a & middle & S1a) & S1b).
-        exact S1b.
-      + intros. destruct H as (HM & diff1 & E1).
-        specialize C2 with (1 := HM).
-        specialize S2 with (1 := C2). destruct S2 as ((b & final & S2a) & S2b).
-        eapply mcomp_sat_weaken_with_res; [|exact S2b].
-        simpl. intros. destruct H as (? & diff2 & E2). split; [assumption|].
-        rewrite E1 in E2.
-        rewrite List.app_assoc in E2.
-        eexists. exact E2.
-  Qed.
-
-  Lemma execute_sane: forall inst,
-      mcomp_sane (Execute.execute inst).
-  Proof.
-    intros.
-    destruct inst as [inst | inst | inst | inst | inst | inst | inst | inst | inst | inst];
-      simpl; try apply raiseExceptionWithInfo_sane;
-      destruct inst; simpl; unfold when;
-    repeat first [ apply Bind_sane
-                 | apply Return_sane
-                 | apply getRegister_sane
-                 | apply setRegister_sane
-                 | apply loadByte_sane
-                 | apply loadHalf_sane
-                 | apply loadWord_sane
-                 | apply loadDouble_sane
-                 | apply storeByte_sane
-                 | apply storeHalf_sane
-                 | apply storeWord_sane
-                 | apply storeDouble_sane
-                 | apply getPC_sane
-                 | apply setPC_sane
-                 | apply step_sane
-                 | apply raiseExceptionWithInfo_sane
-                 | match goal with
-                   | |- context [if ?b then _ else _] => destruct b
-                   end
-                 | progress intros ].
-  Qed.
-
-  Lemma run1_sane: mcomp_sane (run1 iset).
-  Proof.
-    unfold run1.
-    apply Bind_sane; [apply getPC_sane|intros].
-    apply Bind_sane; [apply loadWord_sane|intros].
-    apply Bind_sane; [apply execute_sane|intros].
-    apply step_sane.
-  Qed.
-
   Lemma extend_runsTo_to_good_trace: forall (good_trace: trace -> Prop),
       (forall st, safe1 st -> good_trace st.(getLog)) ->
       forall (st : RiscvMachineL),
@@ -240,8 +127,8 @@ Section ForeverSafe.
     intros ? safe2good st R. induction R.
     - exists nil. rewrite List.app_nil_l. eauto.
     - rename P into safe1.
-      pose proof (run1_sane _ _ H) as N. destruct N as (_ & N).
-      pose proof (run1_sane _ _ N) as N'. destruct N' as ((_ & mid & (Hmid & diff1 & E1)) & _).
+      pose proof (run1_sane _ _ _ H) as N. destruct N as (_ & N).
+      pose proof (run1_sane _ _ _ N) as N'. destruct N' as ((_ & mid & (Hmid & diff1 & E1)) & _).
       specialize (H1 _ Hmid exclusive run_1_2 run_2_1 safe2good).
       destruct H1 as (diff2 & G).
       rewrite E1 in G.

@@ -208,7 +208,7 @@ Section Equiv.
   | PHidden: forall P: Prop, P -> PHide P.
 
   Ltac inv_bind H :=
-    apply (@spec_Bind _ _ _ _ _ _ _ Pr) in H;
+    apply (proj2 (@spec_Bind _ _ _ _ MinimalMMIOPrimitivesParams mcomp_sat_ok _ _ _ _ _ _)) in H;
     let mid := fresh "mid" in
     destruct H as (mid & ? & ?).
 

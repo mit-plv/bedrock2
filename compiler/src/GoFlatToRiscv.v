@@ -24,6 +24,7 @@ Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
+Require Import riscv.Proofs.MetricSane.
 Require Import coqutil.Decidable.
 
 Section Go.
@@ -52,22 +53,18 @@ Section Go.
     destruct H1. subst. assumption.
   Qed.
 
-  Lemma mcomp_sat_weaken_with_res: forall A initialL m (post1 post2: A -> RiscvMachineL -> Prop),
-      (forall a mach, post1 a mach -> post2 a mach) ->
-      mcomp_sat m initialL post1 ->
-      mcomp_sat m initialL post2.
-  Proof.
-    intros.
-    rewrite <- (@right_identity M MM A m).
-    eapply spec_Bind.
-    eexists. split.
-    - exact H0.
-    - intros. simpl in *. apply spec_Return. eapply H. assumption.
-  Qed.
-
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Definition mcomp_sat(m: M unit)(initialL: RiscvMachineL)(post: RiscvMachineL -> Prop): Prop :=
     mcomp_sat m initialL (fun (_: unit) => post).
+
+  Lemma mcomp_sat_weaken: forall initialL m (post1 post2: RiscvMachineL -> Prop),
+      (forall mach, post1 mach -> post2 mach) ->
+      mcomp_sat m initialL post1 ->
+      mcomp_sat m initialL post2.
+  Proof.
+    intros. eapply mcomp_sat_weaken; [|eassumption].
+    simpl. intros _. assumption.
+  Qed.
 
   Lemma spec_Bind_unit: forall (initialL: RiscvMachineL)
        (mid post: RiscvMachineL -> Prop) (m1: M unit) (m2 : M unit),
@@ -178,15 +175,16 @@ Section Go.
   Qed.
 
   Lemma go_step: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
-      post (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))
-                       (withPc initialL.(getNextPc) (updateMetrics (addMetricInstructions 1) initialL))) ->
+      post (withPc initialL.(getNextPc)
+           (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))
+           (updateMetrics (addMetricInstructions 1) initialL))) ->
       mcomp_sat step initialL post.
   Proof. t spec_step. Qed.
 
   Lemma go_done: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
       post initialL ->
       mcomp_sat (Return tt) initialL post.
-  Proof. intros. apply (spec_Return (MetricPrimitives := PR)). exact H. Qed.
+  Proof. intros. apply spec_Return. exact H. Qed.
 
   Lemma go_left_identity{A: Type}: forall (initialL: RiscvMachineL) post a
          (f : A -> M unit),
@@ -211,15 +209,6 @@ Section Go.
       mcomp_sat (Bind (Bind m f) g) initialL post.
   Proof.
     intros. rewrite associativity. assumption.
-  Qed.
-
-  Lemma mcomp_sat_weaken: forall initialL m (post1 post2: RiscvMachineL -> Prop),
-      (forall mach, post1 mach -> post2 mach) ->
-      mcomp_sat m initialL post1 ->
-      mcomp_sat m initialL post2.
-  Proof.
-    intros. eapply mcomp_sat_weaken_with_res; [|eassumption].
-    simpl. intros _. assumption.
   Qed.
 
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
