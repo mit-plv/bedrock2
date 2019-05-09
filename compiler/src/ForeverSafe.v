@@ -1,3 +1,4 @@
+Require Import Coq.Lists.List.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Monads.
@@ -12,6 +13,7 @@ Require Import riscv.Platform.Run.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.runsToNonDet.
 Require Import riscv.Platform.MetricSane.
+Import ListNotations.
 
 
 Section ForeverSafe.
@@ -19,9 +21,9 @@ Section ForeverSafe.
   Context {W: Words}.
   Context {Registers: map.map Register word}.
   Context {mem: map.map word byte}.
-  Context {mem_ok: map.ok mem}.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
+  Local Notation trace := (list LogItem).
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
@@ -35,6 +37,25 @@ Section ForeverSafe.
     | O => Return tt
     | S m => Bind (run1 iset) (fun _ => runN m)
     end.
+
+  Lemma extend_runsTo_to_good_trace:
+    forall (safe: RiscvMachineL -> Prop) (good_trace: trace -> Prop),
+      (forall st, safe st -> good_trace st.(getLog)) ->
+      forall (st : RiscvMachineL),
+        runsTo (mcomp_sat (run1 iset)) st safe ->
+        exists rest : trace, good_trace (rest ++ getLog st).
+  Proof.
+    intros ? ? safe2good st R. induction R.
+    - exists nil. rewrite List.app_nil_l. eauto.
+    - rename P into safe1.
+      pose proof (run1_sane _ _ _ H) as N. destruct N as (_ & N).
+      pose proof (run1_sane _ _ _ N) as N'. destruct N' as ((_ & mid & (Hmid & diff1 & E1)) & _).
+      specialize (H1 _ Hmid safe2good).
+      destruct H1 as (diff2 & G).
+      rewrite E1 in G.
+      rewrite List.app_assoc in G.
+      eexists. exact G.
+  Qed.
 
   Variables safe1 safe2: RiscvMachineL -> Prop.
 
@@ -112,28 +133,6 @@ Section ForeverSafe.
     - simpl. eapply spec_Bind_unit.
       + eapply runsTo_safe1_inv. eassumption.
       + simpl. intros. eapply IHn. assumption.
-  Qed.
-
-  Local Notation trace := (list LogItem).
-  Import Coq.Lists.List.
-  Import ListNotations.
-
-  Lemma extend_runsTo_to_good_trace: forall (good_trace: trace -> Prop),
-      (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall (st : RiscvMachineL),
-        runsTo (mcomp_sat (run1 iset)) st safe1 ->
-        exists rest : trace, good_trace (rest ++ getLog st).
-  Proof.
-    intros ? safe2good st R. induction R.
-    - exists nil. rewrite List.app_nil_l. eauto.
-    - rename P into safe1.
-      pose proof (run1_sane _ _ _ H) as N. destruct N as (_ & N).
-      pose proof (run1_sane _ _ _ N) as N'. destruct N' as ((_ & mid & (Hmid & diff1 & E1)) & _).
-      specialize (H1 _ Hmid exclusive run_1_2 run_2_1 safe2good).
-      destruct H1 as (diff2 & G).
-      rewrite E1 in G.
-      rewrite List.app_assoc in G.
-      eexists. exact G.
   Qed.
 
   (* forall n, after running for n steps, we've output a prefix of a good trace.

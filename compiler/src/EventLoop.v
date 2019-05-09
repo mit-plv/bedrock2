@@ -127,39 +127,17 @@ Section EventLoop.
   Hypothesis goodReadyState_implies_inv: forall (state: RiscvMachineL),
       goodReadyState state -> inv state.(getLog).
 
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma eventLoop_sound': forall (initialL: RiscvMachineL),
-      initialL.(getPc) = pc_start ->
-      goodReadyState initialL ->
-      forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
-                  runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL => inv finalL.(getLog))).
+  Lemma eventLoop_sound_trace: forall n,
+    mcomp_sat (runN iset n) startState (fun finalL => exists rest, inv (rest ++ finalL.(getLog))).
   Proof.
-    intros initialL E G n. revert initialL E G. induction n; intros.
-    - simpl. apply go_done. apply runsToDone. admit.
-    - simpl. eapply spec_Bind_unit.
-
-  Abort.
-
-  (* no matter for how many steps we run [initialL], [inv] always holds *)
-  Definition traceInvHolds(initialL: RiscvMachineL)(inv: trace -> Prop): Prop :=
-    forall n, mcomp_sat (runN iset n) initialL (fun finalL => inv finalL.(getLog)).
-
-  Lemma eventLoop_sound': forall (initialL: RiscvMachineL),
-      initialL.(getPc) = pc_start ->
-      goodReadyState initialL ->
-      traceInvHolds initialL inv.
-  Proof.
-    unfold traceInvHolds. intros initialL E G n. revert initialL E G. induction n; intros.
-    - simpl. apply go_done. apply goodReadyState_implies_inv. assumption.
-    - simpl. eapply spec_Bind_unit.
-
-      (* induction needs to be on number of loop iterations, not on number of instructions *)
-
-      (* might hold if each iteration only appends one event, but not otherwise, because
-         in the middle of the loop body, traceInv will not hold, and there's no way we
-         can communicate with runsTo to know that it's "on its way" to become valid again,
-         this would require a "gurantee", or an application-specific ext_spec which makes
-         the riscv machine crash whenever the ext_spec is violated *)
-  Abort.
+    intros.
+    eapply mcomp_sat_weaken. 2: eapply eventLoop_sound.
+    unfold runsToGood_Invariant.
+    intros ? R.
+    eapply extend_runsTo_to_good_trace. 2: exact R.
+    intros ? (? & ?).
+    eapply goodReadyState_implies_inv.
+    assumption.
+  Qed.
 
 End EventLoop.
