@@ -11,7 +11,7 @@ Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Platform.Run.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.runsToNonDet.
-Require Import riscv.Proofs.MetricSane.
+Require Import riscv.Platform.MetricSane.
 
 
 Section ForeverSafe.

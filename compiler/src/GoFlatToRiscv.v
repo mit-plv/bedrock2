@@ -24,7 +24,7 @@ Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
-Require Import riscv.Proofs.MetricSane.
+Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
 
 Section Go.
