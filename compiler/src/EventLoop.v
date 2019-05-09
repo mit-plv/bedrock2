@@ -95,6 +95,33 @@ Section EventLoop.
     runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
        goodReadyState finalL /\ finalL.(getPc) = pc_start).
 
+  (* "runs to a good state" is an invariant of the transition system
+     (note that this does not depend on the definition of runN) *)
+  Lemma runsToGood_is_Invariant: forall (st: RiscvMachineL),
+      runsToGood_Invariant st -> mcomp_sat (run1 iset) st runsToGood_Invariant.
+  Proof.
+    eapply runsTo_safe1_inv; cycle 1.
+    - intros state (? & ?). eapply body_correct; assumption.
+    - intros state (? & ? & R & ?).
+      (* this is the loop verification code: *)
+      eapply runsToStep. {
+        eapply run_Jal0; try eassumption.
+        - replace (getPc state) with (word.sub pc_start (word.of_Z jump)) by congruence.
+          solve_divisibleBy4.
+        - unfold program, array. rewrite H0. ecancel_assumption.
+      }
+      simpl. intros. simp.
+      destruct_RiscvMachine state.
+      destruct_RiscvMachine mid.
+      subst.
+      ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
+      apply runsToDone. split; [|reflexivity].
+      eapply goodReadyState_ignores in H.
+      simpl_MetricRiscvMachine_get_set.
+      exact H.
+    - intros state C. simp. congruence.
+  Qed.
+
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
   Lemma eventLoop_sound: forall n, mcomp_sat (runN iset n) startState runsToGood_Invariant.
   Proof.

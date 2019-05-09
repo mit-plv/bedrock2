@@ -32,12 +32,6 @@ Section ForeverSafe.
   Context {PR: MetricPrimitives PRParams}.
   Variable iset: InstructionSet.
 
-  Fixpoint runN(n: nat): M unit :=
-    match n with
-    | O => Return tt
-    | S m => Bind (run1 iset) (fun _ => runN m)
-    end.
-
   Lemma extend_runsTo_to_good_trace:
     forall (safe: RiscvMachineL -> Prop) (good_trace: trace -> Prop),
       (forall st, safe st -> good_trace st.(getLog)) ->
@@ -118,6 +112,12 @@ Section ForeverSafe.
     - eapply mcomp_sat_weaken. 2: eassumption.
       intros. eapply H0. assumption.
   Qed.
+
+  Fixpoint runN(n: nat): M unit :=
+    match n with
+    | O => Return tt
+    | S m => Bind (run1 iset) (fun _ => runN m)
+    end.
 
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state.
      The precondition can either be trivially established using runsToDone if safe1 already

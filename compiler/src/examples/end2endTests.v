@@ -114,3 +114,68 @@ Section Test.
   Qed.
 
 End Test.
+
+
+Require Import bedrock2.Syntax bedrock2.Semantics.
+Require Import compiler.PipelineWithRename.
+
+Section Connect.
+
+  Context {p: PipelineWithRename.Pipeline.parameters}.
+  Context {h: PipelineWithRename.Pipeline.assumptions}.
+
+  Context (KamiMachine: Type).
+  Context (kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop).
+  Context (states_related: KamiMachine * list Event -> MetricRiscvMachine -> Prop).
+
+  Variables init body: cmd.
+
+  (* note: given-away and received memory has to be empty *)
+  Inductive events_related: Event -> LogItem -> Prop :=
+  | relate_MMInput: forall addr v,
+      events_related (MMInputEvent addr v) ((map.empty, MMInput, [addr]), (map.empty, [v]))
+  | relate_MMOutput: forall addr v,
+      events_related (MMOutputEvent addr v) ((map.empty, MMOutput, [addr; v]), (map.empty, [])).
+
+  Inductive traces_related: list Event -> list LogItem -> Prop :=
+  | relate_nil:
+      traces_related nil nil
+  | relate_cons: forall e e' t t',
+      events_related e e' ->
+      traces_related t t' ->
+      traces_related (e :: t) (e' :: t').
+
+
+  (* will have to be extended with a program logic proof at the top and with the kami refinement
+     proof to the pipelined processor at the bottom: *)
+  Lemma bedrock2Semantics_to_kamiSpecProcessor:
+    forall (goodTrace: list Event -> Prop) (m1 m2: KamiMachine) (t t0: list Event)
+           (m1': MetricRiscvMachine),
+      (* TODO many more hypotheses will be needed *)
+      states_related (m1, t0) m1' ->
+      star kamiStep m1 m2 t ->
+      exists suffix, goodTrace (suffix ++ t ++ t0).
+  Proof.
+    intros.
+
+    pose proof compile_prog_correct as P.
+    specialize P with (hl_inv := fun hlTrace =>
+                                   exists llTrace, traces_related llTrace hlTrace /\
+                                                   goodTrace llTrace).
+    destruct P as (ll_inv & establish_ll_inv & use_ll_inv).
+
+    pose proof kamiMultiStep_sound as Q.
+    specialize Q with (inv := ll_inv) (m1 := m1) (m2 := m2) (m1' := m1') (t := t) (t0 := t0).
+    edestruct Q as (m2' & Rel & InvFinal).
+    - admit. (* kamiStep_sound *)
+    - intros st HI. edestruct use_ll_inv as (U & _). 1: exact HI. exact U.
+    - eassumption.
+    - eassumption.
+    - eapply establish_ll_inv. auto.
+    -
+
+
+  Abort.
+
+
+End Connect.

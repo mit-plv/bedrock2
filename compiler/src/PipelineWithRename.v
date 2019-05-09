@@ -56,6 +56,8 @@ Module Import Pipeline.
     NGstate: Type;
     NG :> NameGen varname NGstate;
 
+    src2imp :> map.map varname Register;
+
     ext_guarantee : MetricRiscvMachine -> Prop;
     M: Type -> Type;
     MM :> Monad M;
@@ -82,6 +84,7 @@ Module Import Pipeline.
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
     funname_env_ok :> forall T, map.ok (funname_env T);
+    src2imp_ops :> map.ops src2imp;
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscvCommon.FlatToRiscv.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
@@ -94,8 +97,6 @@ Section Pipeline1.
 
   Context {p: parameters}.
   Context {h: assumptions}.
-
-  Local Notation RiscvMachineL := (MetricRiscvMachine Register _).
 
   Definition funname := string.
 
@@ -113,9 +114,6 @@ Section Pipeline1.
 
   Definition available_registers: list Register :=
     Eval cbv in List.unfoldn Z.succ 29 3.
-
-  Context {src2imp : map.map varname Register}.
-  Context {src2imp_ops : map.ops src2imp}.
 
   Definition ExprImp2Riscv(s: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)):
     list Instruction :=
@@ -148,5 +146,17 @@ Section Pipeline1.
     let loop_body' := ExprImp2RenamedFlat loop_body in
     FlatToRiscvDef.compile_lit RegisterNames.sp init_sp ++
     FlatToRiscvDef.compile_prog e'' init_code' loop_body' funs.
+
+  Lemma compile_prog_correct: forall (hl_inv: trace -> Prop),
+      (* there exists a low-level invariant which is somewhat complex and therefore not exposed *)
+      exists ll_inv: MetricRiscvMachine -> Prop,
+        (* how a client can establish ll_inv: *)
+        (forall st: MetricRiscvMachine,
+            True ->
+            ll_inv st) /\
+        (* how a client can use ll_inv: *)
+        (forall st: MetricRiscvMachine, ll_inv st -> mcomp_sat (run1 iset) st ll_inv /\
+                                                     exists suff, hl_inv (suff ++ st.(getLog))).
+  Admitted.
 
 End Pipeline1.
