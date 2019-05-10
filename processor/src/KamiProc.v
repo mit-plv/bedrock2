@@ -4,6 +4,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 
 Require Import Kami.
 Require Import Kami.Ex.SC Kami.Ex.IsaRv32 Kami.Ex.SCMMInl.
+Require Import Kami.Ex.ProcMemCorrect.
 
 Local Open Scope Z_scope.
 
@@ -21,16 +22,21 @@ Section PerInstAddr.
   Definition procInit: ProcInit ninstrMemSizeLg rv32DataBytes rv32RfIdx :=
     {| pcInit := getDefaultConst _;
        rfInit := getDefaultConst _ |}.
-  
-  Definition proc: Kami.Syntax.Modules :=
-    projT1 (@scmmInl
-              nwidth ninstrMemSizeLg
-              rv32InstBytes rv32DataBytes rv32RfIdx rv32GetOptype
-              rv32GetLdDst (rv32GetLdAddr _) rv32GetLdSrc (rv32CalcLdAddr _)
-              (rv32GetStAddr _) rv32GetStSrc (rv32CalcStAddr _) rv32GetStVSrc
-              rv32GetSrc1 rv32GetSrc2 rv32GetDst (rv32Exec _)
-              (rv32NextPc _) (rv32AlignAddr _)
-              isMMIO procInit).
+
+  Definition predictNextPc ty (ppc: fullType ty (SyntaxKind (Pc ninstrMemSizeLg))) :=
+    (#ppc + $4)%kami_expr.
+
+  Definition scmmInl :=
+    @scmmInl
+      nwidth ninstrMemSizeLg
+      rv32InstBytes rv32DataBytes rv32RfIdx rv32GetOptype
+      rv32GetLdDst (rv32GetLdAddr _) rv32GetLdSrc (rv32CalcLdAddr _)
+      (rv32GetStAddr _) rv32GetStSrc (rv32CalcStAddr _) rv32GetStVSrc
+      rv32GetSrc1 rv32GetSrc2 rv32GetDst (rv32Exec _)
+      (rv32NextPc _) (rv32AlignAddr _)
+      isMMIO procInit.
+
+  Definition proc: Kami.Syntax.Modules := projT1 scmmInl.
 
   Definition hst := Kami.Semantics.RegsT.
 
@@ -54,6 +60,23 @@ Section PerInstAddr.
                         pgm := pgmv;
                         mem := memv |}))
        else None)%mapping.
+
+  (** Refinement from [p4mm] to [proc] (as a spec) *)
+  
+  Definition p4mm: Kami.Syntax.Modules :=
+    p4mm 1 rv32GetOptype
+         rv32GetLdDst (rv32GetLdAddr _) rv32GetLdSrc (rv32CalcLdAddr _)
+         (rv32GetStAddr _) rv32GetStSrc (rv32CalcStAddr _) rv32GetStVSrc
+         rv32GetSrc1 rv32GetSrc2 rv32GetDst (rv32Exec _)
+         (rv32NextPc _) (rv32AlignAddr _)
+         predictNextPc isMMIO procInit.
+  
+  Theorem proc_correct: p4mm <<== proc.
+  Proof.
+    ketrans.
+    - apply p4mm_correct. (* [p4mm] refines [scmm] *)
+    - apply (projT2 scmmInl). (* [scmm] refines [projT1 scmmInl], the inlined module. *)
+  Qed.
 
 End PerInstAddr.
 
