@@ -152,8 +152,8 @@ Section Equiv.
   | star_refl: forall (x: S),
       star R x x nil
   | star_step: forall (x y z: S) (t1 t2: list E),
-      star R x y t1 ->
-      R y z t2 ->
+      R x y t1 ->
+      star R y z t2 ->
       star R x z (t2 ++ t1).
 
   (* temporal prefixes, new events are added in front of the head of the list *)
@@ -243,7 +243,7 @@ Section Equiv.
       states_related (m1, t0) m1' ->
       mcomp_sat_unit (run1 iset) m1' post ->
       (* Either Kami doesn't proceed or riscv-coq simulates. *)
-      (m1 = m2 \/
+      ((m1 = m2 /\ t = nil) \/
        exists m2', states_related (m2, t ++ t0) m2' /\ post m2').
   Proof.
     intros.
@@ -443,47 +443,60 @@ Section Equiv.
 
   Admitted.
 
-  (* equivalent of [mcomp_sat (run1 iset)] for Kami:
-     running one kami step satisfies the postcondition, no matter what non-deterministic
-     step was chosen *)
-  Definition kamiStep_sat(m1: KamiMachine)(post: KamiMachine * list Event -> Prop): Prop :=
-    forall m2 t, kamiStep m1 m2 t -> post (m2, t).
-
-(*
-  Definition kamiRunsTo: KamiMachine -> (KamiMachine -> Prop) -> Prop :=
-    runsToNonDet.runsTo kamiStep_sat.
-  Lemma test: forall (m': RiscvMachine),
-      runsTo
-(State -> (State -> Prop) -> Prop)
-runsToNonDet.runsTo
-*)
-
-  (* want to say, finally:
-     "all kami impl traces are a prefix of a trace which satisfies post"
-
-     so we need:
-     "all kami spec traces are a prefix of a trace which satisfies post" *)
-
-  Lemma kamiMultiStep_sound: forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t: list Event)
-                               (post: RiscvMachine -> Prop),
+  Lemma kamiMultiStep_sound: forall
+    (* inv could (and probably has to) be something like "runs to a safe state" *)
+    (inv: RiscvMachine -> Prop)
+    (* could be instantiated with compiler.ForeverSafe.runsTo_safe1_inv *)
+    (inv_preserved: forall st, inv st -> mcomp_sat_unit (run1 iset) st inv)
+    (m1 m2: KamiMachine) (t: list Event),
       star kamiStep m1 m2 t ->
-      states_related (m1, nil) m1' ->
-      runsTo m1' post ->
-      exists m2', states_related (m2, t) m2' /\ post m2'.
+      forall (m1': RiscvMachine) (t0: list Event),
+      states_related (m1, t0) m1' ->
+      inv m1' ->
+      exists m2', states_related (m2, t ++ t0) m2' /\ inv m2'.
   Proof.
-  Abort. (* doesn't hold because kami might step less or more than riscv *)
+    intros ? ?.
+    induction 1; intros.
+    - exists m1'. split; assumption.
+    - pose proof kamiStep_sound as P.
+      specialize P with (1 := H) (2 := H1).
+      edestruct P as [Q | Q]; clear P.
+      + eapply inv_preserved. assumption.
+      + destruct Q. subst. rewrite List.app_nil_r.
+        eapply IHstar; eassumption.
+      + destruct Q as (m2' & Rel & Inv).
+        rewrite <- List.app_assoc.
+        eapply IHstar; eassumption.
+  Qed.
 
-  Definition is_silence_invariant(post: RiscvMachine -> Prop): Prop :=
-    forall m: RiscvMachine,
-      post m ->
-      mcomp_sat_unit (run1 iset) m (fun m' => post m' /\ m'.(getLog) = m.(getLog)).
+  Definition KamiImplMachine: Type := RegsT.
 
-  (* note: only holds if the nondet machine never picks an arbitrary value of the empty set,
-     which is the case for all riscv machines, but not for a more abstract runsTo,
-     and also requires no memory-changing or invalid events *)
-  Lemma pick_from_runsTo: forall init post,
-      runsTo init post ->
-      exists final, post final. (* /\ traces_related t final.(getLog).*) (* and steps there? *)
-  Admitted.
+  Definition kamiImplMultistep: KamiImplMachine -> KamiImplMachine -> list LabelT -> Prop :=
+    Multistep (@p4mm instrMemSizeLg).
+
+  Inductive kamiTrace_related: list LabelT -> list Event -> Prop :=
+  | krelate_nil:
+      kamiTrace_related nil nil
+  | krelate_cons: forall lbl t2 t1' t2',
+      KamiLabelR lbl t1' ->
+      kamiTrace_related t2 t2' ->
+      kamiTrace_related (lbl :: t2) (t1' ++ t2').
+
+  Lemma riscv_to_kamiImplProcessor:
+    forall (goodTrace: list LabelT -> Prop) (mFinal: KamiImplMachine) t,
+      (* TODO more hypotheses will be needed *)
+      (* kamiImplMultistep m1 m2 t -> *)
+      Behavior (@p4mm instrMemSizeLg) mFinal t ->
+      exists suffix, goodTrace (suffix ++ t).
+  Proof.
+    intros.
+    pose proof (@proc_correct instrMemSizeLg) as P.
+    unfold traceRefines in P.
+    specialize P with (1 := H).
+    destruct P as (mFinal' & t' & B & E).
+    inversion B. subst.
+
+    (* TODO can we use kamiMultiStep_sound without a states_related relation? *)
+  Abort.
 
 End Equiv.

@@ -62,7 +62,7 @@ Section PerInstAddr.
        else None)%mapping.
 
   (** Refinement from [p4mm] to [proc] (as a spec) *)
-  
+
   Definition p4mm: Kami.Syntax.Modules :=
     p4mm 1 rv32GetOptype
          rv32GetLdDst (rv32GetLdAddr _) rv32GetLdSrc (rv32CalcLdAddr _)
@@ -70,7 +70,7 @@ Section PerInstAddr.
          rv32GetSrc1 rv32GetSrc2 rv32GetDst (rv32Exec _)
          (rv32NextPc _) (rv32AlignAddr _)
          predictNextPc isMMIO procInit.
-  
+
   Theorem proc_correct: p4mm <<== proc.
   Proof.
     ketrans.
@@ -79,4 +79,3 @@ Section PerInstAddr.
   Qed.
 
 End PerInstAddr.
-
