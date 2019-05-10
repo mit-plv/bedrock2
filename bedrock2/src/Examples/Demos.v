@@ -190,8 +190,8 @@ Section Demos.
 
   Context {fibonacciServertNames: unique! FibonacciServer.Names}.
   Import FibonacciServer.
-  Definition fibonacciServer(n_addr: Z): Prog := ("fibonacciserver", ([], [b], bedrock_func_body:(
-    n = *(uint32_t*) n_addr;;
+  Definition fibonacciServer (n_load_addr n_store_addr: Z): Prog := ("fibonacciserver", ([], [b], bedrock_func_body:(
+    n = *(uint32_t*) n_load_addr;;
     a = 0;;
     b = 1;;
     i = 0;;
@@ -204,7 +204,8 @@ Section Demos.
       }}
     }} else {{
       b = -1
-    }}
+    }};;
+    *(uint32_t*) n_store_addr = b
   ))).                                                                                   
 
   Definition dummy: Prog := ("dummy", ([], [], cmd.skip)).
