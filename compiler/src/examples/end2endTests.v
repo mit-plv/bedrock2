@@ -205,7 +205,7 @@ Section Connect.
     specialize P with (hl_inv := fun hlTrace =>
                                    exists llTrace, traces_related llTrace hlTrace /\
                                                    goodTrace llTrace).
-    destruct P as (ll_inv & establish_ll_inv & use_ll_inv).
+    edestruct P as (ll_inv & establish_ll_inv & use_ll_inv); [admit..|].
 
     pose proof kamiMultiStep_sound as Q.
     specialize Q with (inv := ll_inv) (m1 := m1) (m2 := m2) (m1' := m1') (t := t) (t0 := t0).
@@ -222,6 +222,6 @@ Section Connect.
       destruct Rel' as (llTrace1 & llTrace2 & E & Rel1' & Rel2'). subst.
       pose proof (hl_trace_determines_ll_trace Rel Rel1'). subst.
       exists llTrace2. exact G.
-  Qed.
+  Admitted.
 
 End Connect.

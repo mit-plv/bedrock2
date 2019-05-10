@@ -34,6 +34,10 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
 Require Import compiler.RegAlloc.
+Require Import compiler.EventLoop.
+Require Import bedrock2.MetricLogging.
+Require Import compiler.FlatToRiscvCommon.
+Require Import compiler.FlatToRiscvFunctions.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
@@ -136,8 +140,10 @@ Section Pipeline1.
     FlatToRiscvDef.compile_functions (flatten_functions e funnames) funnames.
 *)
 
-  Definition compile_prog(e: @Semantics.env (FlattenExpr.mk_Semantics_params _)) (init_sp: Z)
-             (init_code loop_body: @Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _))
+  Local Notation cmd := (@Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)).
+  Local Notation env := (@Semantics.env (FlattenExpr.mk_Semantics_params _)).
+
+  Definition compile_prog(e: env) (init_sp: Z) (init_code loop_body: cmd)
              (funs: list funname): list Instruction :=
     let e' := flatten_functions e funs in
     let e'' := rename_functions string Register funname string available_registers e' funs in
@@ -147,7 +153,21 @@ Section Pipeline1.
     FlatToRiscvDef.compile_lit RegisterNames.sp init_sp ++
     FlatToRiscvDef.compile_prog e'' init_code' loop_body' funs.
 
-  Lemma compile_prog_correct: forall (hl_inv: trace -> Prop),
+  Lemma compile_prog_correct
+      (* high-level trace invariant which holds at the beginning of each loop iteration,
+         but might not hold in the middle of the loop because more needs to be appended *)
+      (hl_inv: trace -> Prop)
+      (* high-level invariant on the all high-level state which holds at beginning of each
+         loop iteration: *)
+      (hl_ready: trace -> mem -> locals -> MetricLog -> Prop)
+      (hl_ready_implies_hl_inv: forall t m l mc, hl_ready t m l mc -> hl_inv t)
+      (e: env) (t0: trace) (m0: mem) (l0: locals) (mc0: MetricLog)
+      (init_code loop_body: cmd)
+      (funnames: list funname)
+      (exec_init: Semantics.exec e init_code t0 m0 l0 mc0 hl_ready)
+      (exec_body: forall t m l mc, hl_ready t m l mc ->
+                                   Semantics.exec e loop_body t m l mc hl_ready)
+    :
       (* there exists a low-level invariant which is somewhat complex and therefore not exposed *)
       exists ll_inv: MetricRiscvMachine -> Prop,
         (* how a client can establish ll_inv: *)
@@ -157,6 +177,25 @@ Section Pipeline1.
         (* how a client can use ll_inv: *)
         (forall st: MetricRiscvMachine, ll_inv st -> mcomp_sat (run1 iset) st ll_inv /\
                                                      exists suff, hl_inv (suff ++ st.(getLog))).
+  Proof.
+    intros.
+
+    assert (pc_start: word) by admit. (* start of loop body *)
+    assert (insts_init: list Instruction) by admit.
+    assert (insts_body: list Instruction) by admit.
+
+    set (ll_ready := fun (st: MetricRiscvMachine) =>
+      exists regsH memH metricsH R p_stacklimit p_sp stack_trash initial_pc program_base
+      e_pos e_impl,
+        hl_ready st.(getLog) memH regsH metricsH /\
+        map.get st.(getRegs) RegisterNames.sp = Some p_sp /\
+        (R * eq memH * @word_array FlatToRisvc_params p_stacklimit stack_trash *
+         program initial_pc insts_init * program pc_start insts_body *
+         @functions FlatToRisvc_params program_base e_pos e_impl funnames)%sep st.(getMem)).
+
+    pose proof (runsToGood_is_Invariant ll_ready) as P.
+    exists (runsToGood_Invariant ll_ready pc_start).
+
   Admitted.
 
 End Pipeline1.
