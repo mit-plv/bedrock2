@@ -46,11 +46,11 @@ Section Array.
         blia. }
   Qed.
 
-  Lemma array_append_DEPRECATED xs ys start:
+  Lemma array_append' xs ys start:
     iff1 (array start (xs ++ ys))
-         (array start xs * array (word.add start (word.mul size (word.of_Z (Zcomplements.Zlength xs)))) ys).
+         (array start xs * array (word.add start
+                                           (word.mul size (word.of_Z (Z.of_nat (length xs))))) ys).
   Proof.
-    rewrite Zcomplements.Zlength_correct.
     etransitivity; [eapply array_append|].
     repeat Morphisms.f_equiv.
     eapply word.unsigned_inj.
@@ -158,10 +158,10 @@ Section ByteArray.
     all : rewrite word.word_sub_add_l_same_l; trivial.
   Qed.
 
-  Lemma bytearray_append xs ys start : 
+  Lemma bytearray_append xs ys start :
     iff1 (array start (xs ++ ys))
          (array start xs * array (word.add start (word.of_Z (Z.of_nat (length xs)))) ys).
-  Proof. 
+  Proof.
     replace (Z.of_nat (length xs))
        with (Z.mul (word.unsigned (word.of_Z 1 : word)) (Z.of_nat (length xs)));
       auto using array_append; []; rewrite word.unsigned_of_Z_1; Omega.omega.
@@ -171,7 +171,7 @@ Section ByteArray.
         (H : word.unsigned i = (Z.of_nat (length xs)))
     : iff1 (array start xs * array (word.add start i) ys)
            (array start (xs ++ ys)).
-  Proof. 
+  Proof.
     pose proof word.of_Z_unsigned i as HH; rewrite H in HH.
     subst i; symmetry; apply bytearray_append.
   Qed.

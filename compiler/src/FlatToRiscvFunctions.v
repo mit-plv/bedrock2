@@ -200,7 +200,6 @@ Section Proofs.
         rewrite !List.app_length ||
         simpl ||
         rewrite !Nat2Z.inj_add ||
-        rewrite !Zlength_correct ||
         rewrite !Nat2Z.inj_succ ||
         rewrite <-! Z.add_1_r ||
         autorewrite with rew_word_morphism);
@@ -222,7 +221,7 @@ Section Proofs.
     unfold program, word_array;
     repeat match goal with
            | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             rewrite (array_append_DEPRECATED PT SZ xs ys start)
+             rewrite (array_append' PT SZ xs ys start)
            end;
     simpl_addrs.
 
@@ -307,7 +306,7 @@ Section Proofs.
         action postH newPc insts (argvars resvars: list Register) initialMH R initialRegsH
         initialMetricsH argvals mGive outcome p_sp,
       insts = compile_ext_call resvars action argvars ->
-      newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
+      newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
       map.extends initialL.(getRegs) initialRegsH ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
@@ -737,7 +736,6 @@ Section Proofs.
               rewrite !List.app_length ||
               simpl ||
               rewrite !Nat2Z.inj_add ||
-              rewrite !Zlength_correct ||
               rewrite !Nat2Z.inj_succ ||
               rewrite <-! Z.add_1_r).
           replace (List.length old_retvals) with (List.length retnames) by blia.
@@ -1260,7 +1258,7 @@ Section Proofs.
       cbn [seps].
       repeat match goal with
              | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-               rewrite (array_append_DEPRECATED PT SZ xs ys start)
+               rewrite (array_append' PT SZ xs ys start)
              end.
       simpl_addrs.
       rewrite! length_save_regs.

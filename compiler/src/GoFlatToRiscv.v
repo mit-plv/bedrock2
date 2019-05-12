@@ -16,16 +16,18 @@ Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Execute.
-Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.SeparationLogic.
-Require Import compiler.EmitsValid.
+Require Import compiler.SimplWordExpr.
+Require Import compiler.DivisibleBy4.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
+Require Import compiler.FlatToRiscvDef.
+
 
 Section Go.
 
@@ -41,7 +43,11 @@ Section Go.
   Context {RVM: RiscvProgram M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
-  Variable iset: InstructionSet.
+
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
 
   Lemma spec_Bind_det{A B: Type}: forall (initialL: RiscvMachineL)
        (post: B -> RiscvMachineL -> Prop) (m: M A) (f : A -> M B) (a: A) (mid: RiscvMachineL),
@@ -76,12 +82,15 @@ Section Go.
     apply H0. assumption.
   Qed.
 
+  Lemma ExecuteFetchP: forall addr xAddrs, Execute = Fetch -> isXAddr addr xAddrs.
+  Proof. intros. discriminate. Qed.
+
   Ltac t lem :=
     intros;
     try (eapply spec_Bind_det; [|eassumption]); (* try because go_step doesn't need Bind *)
     apply lem;
     rewrite_match;
-    eauto 10.
+    eauto 10 using ExecuteFetchP.
 
   Lemma go_getRegister: forall (initialL: RiscvMachineL) (x: Register) v post (f: word -> M unit),
       valid_register x ->
@@ -106,57 +115,62 @@ Section Go.
       mcomp_sat (Bind (setRegister Register0 v) f) initialL post.
   Proof. t spec_setRegister. Qed.
 
-  Axiom TODO_isXAddr: forall addr xAddrs, isXAddr addr xAddrs.
-  Local Hint Resolve TODO_isXAddr.
-
-  Lemma go_loadByte: forall (initialL: RiscvMachineL) kind addr (v: w8) (f: w8 -> M unit) post,
+  Lemma go_loadByte: forall (initialL: RiscvMachineL) addr (v: w8) (f: w8 -> M unit) post,
       Memory.loadByte initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
-      mcomp_sat (Bind (Machine.loadByte kind addr) f) initialL post.
+      mcomp_sat (Bind (Machine.loadByte Execute addr) f) initialL post.
   Proof. t spec_loadByte. Qed.
 
-  Lemma go_loadHalf: forall (initialL: RiscvMachineL) kind addr (v: w16) (f: w16 -> M unit) post,
+  Lemma go_loadHalf: forall (initialL: RiscvMachineL) addr (v: w16) (f: w16 -> M unit) post,
       Memory.loadHalf initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
-      mcomp_sat (Bind (Machine.loadHalf kind addr) f) initialL post.
+      mcomp_sat (Bind (Machine.loadHalf Execute addr) f) initialL post.
   Proof. t spec_loadHalf. Qed.
 
-  Lemma go_loadWord: forall (initialL: RiscvMachineL) kind addr (v: w32) (f: w32 -> M unit) post,
+  Lemma go_loadWord: forall (initialL: RiscvMachineL) addr (v: w32) (f: w32 -> M unit) post,
       Memory.loadWord initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
-      mcomp_sat (Bind (Machine.loadWord kind addr) f) initialL post.
+      mcomp_sat (Bind (Machine.loadWord Execute addr) f) initialL post.
   Proof. t spec_loadWord. Qed.
 
-  Lemma go_loadDouble: forall (initialL: RiscvMachineL) kind addr (v: w64) (f: w64 -> M unit) post,
+  Lemma go_loadWord_Fetch: forall (initialL: RiscvMachineL) addr (v: w32) (f: w32 -> M unit) post,
+      isXAddr addr initialL.(getXAddrs) ->
+      Memory.loadWord initialL.(getMem) addr = Some v ->
+      mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
+      mcomp_sat (Bind (Machine.loadWord Fetch addr) f) initialL post.
+  Proof. t spec_loadWord. Qed.
+
+  Lemma go_loadDouble: forall (initialL: RiscvMachineL) addr (v: w64) (f: w64 -> M unit) post,
       Memory.loadDouble initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
-      mcomp_sat (Bind (Machine.loadDouble kind addr) f) initialL post.
+      mcomp_sat (Bind (Machine.loadDouble Execute addr) f) initialL post.
   Proof. t spec_loadDouble. Qed.
-
-  Axiom TODO_withXAddrs_NOP: forall xAddrs m, withXAddrs xAddrs m = m.
-  Local Hint Resolve TODO_withXAddrs_NOP.
 
   Lemma go_storeByte: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeByte initialL.(getMem) addr v = Some m' ->
-        mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
+        mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 1 addr initialL.(getXAddrs))
+                         (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
         mcomp_sat (Bind (Machine.storeByte kind addr v) f) initialL post.
   Proof. t spec_storeByte. Qed.
 
   Lemma go_storeHalf: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeHalf initialL.(getMem) addr v = Some m' ->
-        mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
+        mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 2 addr initialL.(getXAddrs))
+                         (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
         mcomp_sat (Bind (Machine.storeHalf kind addr v) f) initialL post.
   Proof. t spec_storeHalf. Qed.
 
   Lemma go_storeWord: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeWord initialL.(getMem) addr v = Some m' ->
-        mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
+        mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 4 addr initialL.(getXAddrs))
+                         (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
         mcomp_sat (Bind (Machine.storeWord kind addr v) f) initialL post.
   Proof. t spec_storeWord. Qed.
 
   Lemma go_storeDouble: forall (initialL: RiscvMachineL) kind addr v m' post (f: unit -> M unit),
         Memory.storeDouble initialL.(getMem) addr v = Some m' ->
-        mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
+        mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 8 addr initialL.(getXAddrs))
+                         (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
         mcomp_sat (Bind (Machine.storeDouble kind addr v) f) initialL post.
   Proof. t spec_storeDouble. Qed.
 
@@ -211,11 +225,73 @@ Section Go.
     intros. rewrite associativity. assumption.
   Qed.
 
+  Axiom staticXAddrs: XAddrs.
+
+  Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
+
+  (* contains all the conditions needed to successfully execute instr *)
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
-    truncated_scalar Syntax.access_size.four addr (encode instr).
+    (truncated_scalar Syntax.access_size.four addr (encode instr) *
+     emp (decode iset (encode instr) = instr) *
+     emp ((word.unsigned addr) mod 4 = 0) *
+     emp (isXAddr addr staticXAddrs))%sep.
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
+
+  Lemma invert_ptsto_instr: forall {addr instr R m},
+    (ptsto_instr addr instr * R)%sep m ->
+     decode iset (encode instr) = instr /\
+     (word.unsigned addr) mod 4 = 0 /\
+     isXAddr addr staticXAddrs.
+  Proof.
+    intros.
+    unfold array, ptsto_instr in *.
+    match goal with
+    | H: (?T * ?P1 * ?P2 * ?P3 * R)%sep ?m |- _ =>
+      assert ((T * R * P1 * P2 * P3)%sep m) as A by ecancel_assumption; clear H
+    end.
+    do 3 (apply sep_emp_r in A; destruct A as [A ?]).
+    auto.
+  Qed.
+
+  Lemma invert_ptsto_program1: forall {addr instr R m},
+    (program addr [instr] * R)%sep m ->
+     decode iset (encode instr) = instr /\
+     (word.unsigned addr) mod 4 = 0 /\
+     isXAddr addr staticXAddrs.
+  Proof.
+    unfold program. intros. simpl in *. eapply invert_ptsto_instr.
+    ecancel_assumption.
+  Qed.
+
+  (* mirrors the structure of program/addr so that unfolding behaves the same *)
+  Fixpoint addrs_executable(addr: word)(n: nat)(xAddrs: XAddrs): Prop :=
+    match n with
+    | O => True
+    | S m => isXAddr addr xAddrs /\ addrs_executable (word.add addr (word.of_Z 4)) m xAddrs
+    end.
+
+  Arguments Z.of_nat: simpl never.
+  Arguments Z.mul: simpl never.
+  Arguments Z.add: simpl never.
+
+  (* mirrors the structure of array_append *)
+  Lemma addrs_executable_add: forall n1 n2 start xAddrs,
+      addrs_executable start (n1 + n2) xAddrs ->
+      addrs_executable start n1 xAddrs /\
+      addrs_executable (word.add start (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat n1)))) n2 xAddrs.
+  Proof.
+    induction n1; intros.
+    - simpl in *. simpl_word_exprs word_ok. auto.
+    - simpl. simpl in H. destruct H. specialize IHn1 with (1 := H0). destruct IHn1.
+      repeat split; auto.
+      match goal with
+      | A: addrs_executable ?a1 n2 xAddrs |- addrs_executable ?a2 n2 xAddrs => replace a2 with a1; [exact A|]
+      end.
+      replace (Z.of_nat (S n1)) with (1 + Z.of_nat n1) by blia.
+      solve_word_eq word_ok.
+  Qed.
 
   Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
     unchecked_store_byte_list addr (Z32s_to_bytes (List.map encode p)) m.
@@ -391,7 +467,7 @@ Section Go.
       length (flat_map f l) = (n * length l)%nat.
   Proof.
     induction l; intros.
-    - simpl. bomega.
+    - simpl. blia.
     - simpl. rewrite app_length. rewrite H. rewrite IHl; assumption || blia.
   Qed.
 
@@ -446,6 +522,9 @@ Section Go.
 
   Lemma store_program_empty: forall prog addr,
       4 * Z.of_nat (length prog) < 2 ^ width ->
+      addrs_executable addr (length prog) staticXAddrs ->
+      (word.unsigned addr) mod 4 = 0 ->
+      Forall (fun instr => decode iset (encode instr) = instr) prog ->
       program addr prog (unchecked_store_program addr prog map.empty).
   Proof.
     induction prog; intros.
@@ -454,8 +533,8 @@ Section Go.
       rewrite! unchecked_store_byte_list_cons.
       unfold ptsto_instr, truncated_scalar, littleendian, Memory.bytes_per, ptsto_bytes. simpl.
       match goal with
-      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?B)%sep ?m =>
-        assert ((A1 * (A2 * (A3 * (A4 * B))))%sep m); [|ecancel_assumption]
+      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?P1 * ?P2 * ?P3 * ?B)%sep ?m =>
+        assert ((A1 * (A2 * (A3 * (A4 * (P1 * (P2 * (P3 * B)))))))%sep m); [|ecancel_assumption]
       end.
       apply sep_on_undef_put. {
         rewrite !map.get_put_diff by word_neq_add.
@@ -494,10 +573,10 @@ Section Go.
         blia.
       }
       word_simpl.
-      apply IHprog.
-      change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-      (* LIAFAIL *)
-      clear -H. blia.
+      destruct H0. inversion H2. subst.
+      do 3 (apply sep_emp_l; split; [assumption|]).
+      apply IHprog; [|(assumption || solve_divisibleBy4)..].
+      change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H. blia.
   Qed.
 
   Lemma array_map: forall {T1 T2: Type} sz (f: T1 -> T2) elem (l: list T1) (addr: word),
@@ -509,10 +588,14 @@ Section Go.
     - simpl. apply iff1_sep_cancel. apply IHl.
   Qed.
 
-  Lemma go_fetch_inst: forall {initialL : RiscvMachineL} {inst pc0} {R: mem -> Prop} (post: RiscvMachineL -> Prop),
+  (* TODO doesn't hold, will have to be carried around as a hypothesis *)
+  Axiom staticXAddr_implies_dynamicXAddr: forall initialL,
+      isXAddr (getPc initialL) staticXAddrs ->
+      isXAddr (getPc initialL) (getXAddrs initialL).
+
+  Lemma go_fetch_inst: forall {initialL: RiscvMachineL} {inst pc0 R} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
       (program pc0 [inst] * R)%sep initialL.(getMem) ->
-      verify inst iset ->
       mcomp_sat (Bind (execute inst) (fun _ => step))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
@@ -521,10 +604,16 @@ Section Go.
     unfold run1.
     apply go_getPC.
     unfold program, array, ptsto_instr in *.
-    eapply go_loadWord.
+    match goal with
+    | H: (?T * ?P1 * ?P2 * ?P3 * emp True * R)%sep ?m |- _ =>
+      assert ((T * R * P1 * P2 * P3)%sep m) as A by ecancel_assumption; clear H
+    end.
+    do 3 (apply sep_emp_r in A; destruct A as [A ?]).
+    eapply go_loadWord_Fetch.
+    - eapply staticXAddr_implies_dynamicXAddr. assumption.
     - unfold Memory.loadWord.
       eapply load_bytes_of_sep.
-      unfold truncated_scalar, littleendian, Memory.bytes_per in H0.
+      unfold truncated_scalar, littleendian, Memory.bytes_per in A.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
       ecancel_assumption.
@@ -542,7 +631,8 @@ Section Go.
           bomega.
       }
       rewrite Z.mod_small; try assumption; try apply encode_range.
-      rewrite decode_encode; assumption.
+      replace (decode iset (encode inst)) with inst by congruence.
+      assumption.
   Qed.
 
   (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
@@ -550,11 +640,11 @@ Section Go.
 
 
   Lemma go_loadByte_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v : w8)
+    forall (initialL : RiscvMachineL) (addr : word) (v : w8)
            (f : w8 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
       (ptsto_bytes 1 addr v * R)%sep initialL.(getMem) ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
-      mcomp_sat (Bind (loadByte kind addr) f) initialL post.
+      mcomp_sat (Bind (loadByte Execute addr) f) initialL post.
   Proof.
     intros.
     eapply go_loadByte; [|eassumption].
@@ -562,13 +652,14 @@ Section Go.
   Qed.
 
   Lemma go_storeByte_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w8)
+    forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w8)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
       (ptsto_bytes 1 addr v_old * R)%sep initialL.(getMem) ->
       (forall m': mem,
           (ptsto_bytes 1 addr v_new * R)%sep m' ->
-          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
-      mcomp_sat (Bind (storeByte kind addr v_new) f) initialL post.
+          mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 1 addr initialL.(getXAddrs))
+                           (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
+      mcomp_sat (Bind (storeByte Execute addr v_new) f) initialL post.
   Proof.
     intros.
     pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
@@ -578,11 +669,11 @@ Section Go.
   Qed.
 
   Lemma go_loadHalf_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v : w16)
+    forall (initialL : RiscvMachineL) (addr : word) (v : w16)
            (f : w16 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
       (ptsto_bytes 2 addr v * R)%sep initialL.(getMem) ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
-      mcomp_sat (Bind (loadHalf kind addr) f) initialL post.
+      mcomp_sat (Bind (loadHalf Execute addr) f) initialL post.
   Proof.
     intros.
     eapply go_loadHalf; [|eassumption].
@@ -590,13 +681,14 @@ Section Go.
   Qed.
 
   Lemma go_storeHalf_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w16)
+    forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w16)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
       (ptsto_bytes 2 addr v_old * R)%sep initialL.(getMem) ->
       (forall m': mem,
           (ptsto_bytes 2 addr v_new * R)%sep m' ->
-          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
-      mcomp_sat (Bind (storeHalf kind addr v_new) f) initialL post.
+          mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 2 addr initialL.(getXAddrs))
+                           (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
+      mcomp_sat (Bind (storeHalf Execute addr v_new) f) initialL post.
   Proof.
     intros.
     pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
@@ -606,11 +698,11 @@ Section Go.
   Qed.
 
   Lemma go_loadWord_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v : w32)
+    forall (initialL : RiscvMachineL) (addr : word) (v : w32)
            (f : w32 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
       (ptsto_bytes 4 addr v * R)%sep initialL.(getMem) ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
-      mcomp_sat (Bind (loadWord kind addr) f) initialL post.
+      mcomp_sat (Bind (loadWord Execute addr) f) initialL post.
   Proof.
     intros.
     eapply go_loadWord; [|eassumption].
@@ -618,12 +710,13 @@ Section Go.
   Qed.
 
   Lemma go_storeWord_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
+    forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (m': mem) (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
       (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
       (ptsto_bytes 4 addr v_new * R)%sep m' ->
-      mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
-      mcomp_sat (Bind (storeWord kind addr v_new) f) initialL post.
+      mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 4 addr initialL.(getXAddrs))
+                       (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
+      mcomp_sat (Bind (storeWord Execute addr v_new) f) initialL post.
   Proof.
     intros.
     eapply go_storeWord; [|eassumption].
@@ -638,13 +731,14 @@ Section Go.
   Abort.
 
   Lemma go_storeWord_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
+    forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
       (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
       (let m' := Memory.unchecked_store_bytes 4 (getMem initialL) addr v_new in
           (ptsto_bytes 4 addr v_new * R)%sep m' ->
-          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
-      mcomp_sat (Bind (storeWord kind addr v_new) f) initialL post.
+          mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 4 addr initialL.(getXAddrs))
+                           (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
+      mcomp_sat (Bind (storeWord Execute addr v_new) f) initialL post.
   Proof.
     intros.
     pose proof (unchecked_store_bytes_of_sep (mem_ok := mem_ok)) as P.
@@ -657,13 +751,14 @@ Section Go.
   Qed.
 
   Lemma go_storeWord_sep_holds_but_results_in_evars_out_of_scope:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w32)
+    forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
       (ptsto_bytes 4 addr v_old * R)%sep initialL.(getMem) ->
       (forall m': mem,
           (ptsto_bytes 4 addr v_new * R)%sep m' ->
-          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
-      mcomp_sat (Bind (storeWord kind addr v_new) f) initialL post.
+          mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 4 addr initialL.(getXAddrs))
+                           (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
+      mcomp_sat (Bind (storeWord Execute addr v_new) f) initialL post.
   Proof.
     intros.
     pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
@@ -673,11 +768,11 @@ Section Go.
   Qed.
 
   Lemma go_loadDouble_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v : w64)
+    forall (initialL : RiscvMachineL) (addr : word) (v : w64)
            (f : w64 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
       (ptsto_bytes 8 addr v * R)%sep initialL.(getMem) ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
-      mcomp_sat (Bind (loadDouble kind addr) f) initialL post.
+      mcomp_sat (Bind (loadDouble Execute addr) f) initialL post.
   Proof.
     intros.
     eapply go_loadDouble; [|eassumption].
@@ -685,13 +780,14 @@ Section Go.
   Qed.
 
   Lemma go_storeDouble_sep:
-    forall (initialL : RiscvMachineL) (kind : SourceType) (addr : word) (v_old v_new : w64)
+    forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w64)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
       (ptsto_bytes 8 addr v_old * R)%sep initialL.(getMem) ->
       (forall m': mem,
           (ptsto_bytes 8 addr v_new * R)%sep m' ->
-          mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post) ->
-      mcomp_sat (Bind (storeDouble kind addr v_new) f) initialL post.
+          mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 8 addr initialL.(getXAddrs))
+                           (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
+      mcomp_sat (Bind (storeDouble Execute addr v_new) f) initialL post.
   Proof.
     intros.
     pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
@@ -752,6 +848,7 @@ Ltac sidecondition :=
   | |- _ => reflexivity
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => assumption
+  (* TODO eventually remove this case and dependency on FlatToRiscvDef *)
   | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
     assert_fails (is_evar inst);
     apply V;
@@ -774,7 +871,7 @@ Ltac sidecondition :=
 
 Ltac simulate_step :=
   first (* lemmas packing multiple primitives need to go first: *)
-        [ refine (go_fetch_inst _ _ _ _ _ _);      [sidecondition..|]
+        [ refine (go_fetch_inst _ _ _ _);          [sidecondition..|]
         (* single-primitive lemmas: *)
         (* lemmas about Register0 need to go before lemmas about other Registers *)
         | refine (go_getRegister0 _ _ _ _);        [sidecondition..|]

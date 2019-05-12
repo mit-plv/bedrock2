@@ -87,13 +87,14 @@ Section Proofs.
     initialL.(getRegs) = initialRegsH ->
     (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
-    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
+    initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
     ext_guarantee initialL ->
     runsTo initialL (fun finalL => exists finalMH finalMetricsH,
           postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
-          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
+          finalL.(getPc) = add initialL.(getPc)
+                             (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (length insts)))) /\
+          finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
           (finalL.(getMetrics) - initialL.(getMetrics) <=
            lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
           ext_guarantee finalL).
@@ -139,7 +140,6 @@ Section Proofs.
       assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * R))%sep initialL_mem)
              as A by ecancel_assumption.
       pose proof (store_bytes_frame H2 A) as P.
-
       destruct P as (finalML & P1 & P2).
       run1det. run1done.
 

@@ -73,7 +73,7 @@ Section Proofs.
       destruct_RiscvMachine mid.
       simp. subst.
       eapply runsToNonDet.runsTo_weaken; cycle 1; [|eapply IHvars]. {
-        simpl. intros. simp.
+        simpl. intros. simp. destruct_RiscvMachine final.
         repeat split; try solve [sidecondition].
         - (* TODO all of this should be one more powerful cancel tactic
              with matching of addresses using ring *)
@@ -85,7 +85,8 @@ Section Proofs.
           rewrite word.ring_morph_add.
           rewrite word.add_assoc.
           ecancel_step.
-          ecancel.
+          simpl.
+          reflexivity.
         - replace (Z.of_nat (S (List.length oldvalues)))
             with (1 + Z.of_nat (List.length oldvalues)) by blia.
           etransitivity; [eassumption|].

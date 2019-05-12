@@ -13,7 +13,6 @@ Require Import riscv.Spec.Execute.
 Require Import riscv.Platform.Run.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Utility.PowerFunc.
-Require Import riscv.Utility.ListLib.
 Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import Coq.Bool.Bool.
@@ -105,7 +104,8 @@ Module Import FlatToRiscv.
     compile_ext_call_correct: forall (initialL: MetricRiscvMachine) action postH newPc insts
         (argvars resvars: list Register) initialMH initialMetricsH R,
       insts = compile_ext_call resvars action argvars ->
-      newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4) (word.of_Z (Zlength insts))) ->
+      newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4)
+                                                  (word.of_Z (Z.of_nat (List.length insts)))) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
@@ -118,7 +118,7 @@ Module Import FlatToRiscv.
                   (* external calls can't modify the memory for now *)
                   postH finalL.(getLog) initialMH finalL.(getRegs) finalMetricsH /\
                   finalL.(getPc) = newPc /\
-                  finalL.(getNextPc) = add newPc (ZToReg 4) /\
+                  finalL.(getNextPc) = add newPc (word.of_Z 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
@@ -270,6 +270,8 @@ Section FlatToRiscv1.
           try eassumption].
   Qed.
 
+  Arguments invalidateWrittenXAddrs: simpl never.
+
   Lemma go_store: forall sz x a (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
       valid_register a ->
@@ -290,10 +292,12 @@ Section FlatToRiscv1.
       [set (nBytes := 4%nat) | set (nBytes := 8%nat)];
       replace (Z.to_nat ((width + 7) / 8)) with nBytes by (subst nBytes; rewrite E; reflexivity);
       subst nBytes;
-      intros; destruct sz; try solve [
+      intros; destruct sz;
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.store, Memory.store_Z in *;
-        simp; simulate''; simpl; simpl_word_exprs word_ok; eassumption].
+        simp; simulate''; simpl; simpl_word_exprs word_ok; try eassumption.
+    all: rewrite TODO_invalidateWrittenXAddrs_nop;
+      destruct_RiscvMachine initialL; simpl; assumption.
   Qed.
 
   Lemma run_compile_load: forall sz: Syntax.access_size,
@@ -340,13 +344,13 @@ Section FlatToRiscv1.
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
+      (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] *
        ptsto_word addr v * R)%sep (getMem initialL) ->
       mcomp_sat (run1 iset) initialL
          (fun finalL : RiscvMachineL =>
             getRegs finalL = map.put (getRegs initialL) rd v /\
             getLog finalL = getLog initialL /\
-            (program (getPc initialL) [[compile_load Syntax.access_size.word rd rs ofs]] *
+            (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] *
              ptsto_word addr v * R)%sep (getMem finalL) /\
             getPc finalL = getNextPc initialL /\
             getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
@@ -376,13 +380,13 @@ Section FlatToRiscv1.
       map.get (getRegs initialL) rs1 = Some base ->
       map.get (getRegs initialL) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
+      (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
        ptsto_word addr v_old * R)%sep (getMem initialL) ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
-           (program (getPc initialL) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
+           (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
             ptsto_word addr v_new * R)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
@@ -539,8 +543,8 @@ Ltac pseplog :=
            ring_simplify addr2 in H
          (* just unprotected seprewrite will instantiate evars in undesired ways *)
          | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-           seprewrite0 (array_append_DEPRECATED PT SZ xs ys start)
+           seprewrite0 (array_append' PT SZ xs ys start)
          | H: context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] |- _ =>
-           seprewrite0_in (array_append_DEPRECATED PT SZ xs ys start) H
+           seprewrite0_in (array_append' PT SZ xs ys start) H
          end;
   seplog.

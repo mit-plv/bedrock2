@@ -6,7 +6,6 @@ Require Import bedrock2.Semantics.
 Require Import riscv.Utility.Monads.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.FlatImp.
-Require Import riscv.Utility.ListLib.
 Require Import riscv.Spec.Decode.
 Require Import coqutil.sanity.
 Require Import riscv.Utility.MkMachineWidth.
@@ -56,7 +55,7 @@ Definition compile_ext_call(results: list varname)(a: MMIOAction)(args: list var
     end.
 
 Lemma compile_ext_call_length: forall binds f args,
-    Zlength (compile_ext_call binds f args) <= 1.
+    Z.of_nat (List.length (compile_ext_call binds f args)) <= 1.
 Proof.
   intros. unfold compile_ext_call.
   destruct (isMMOutput f); destruct binds; try destruct binds;
@@ -65,7 +64,7 @@ Proof.
 Qed.
 
 Lemma compile_ext_call_length': forall binds f args,
-    Zlength (compile_ext_call binds f args) <= 7.
+    Z.of_nat (List.length (compile_ext_call binds f args)) <= 7.
 Proof. intros. rewrite compile_ext_call_length. blia. Qed.
 
 Lemma compile_ext_call_emits_valid: forall iset binds a args,

@@ -130,7 +130,7 @@ Definition a_str: list word := str_to_words "RISCV".
 Definition b_str: list word := str_to_words "CRISP".
 
 Definition input: list word :=
-  (word.of_Z (Zlength a_str)) :: (word.of_Z (Zlength b_str)) :: a_str ++ b_str.
+  (word.of_Z (Z.of_nat (List.length a_str))) :: (word.of_Z (Z.of_nat (List.length b_str))) :: a_str ++ b_str.
 
 (*
 
