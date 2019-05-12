@@ -133,7 +133,8 @@ Section FibCompiled.
         match goal with
         | Heqr: ?l = _ + _ |- _ => cbv in Heqr; subst r
         end
-      end
+      end;
+      clear H0
     end.
 
   Lemma fib_width_limit: forall n,
