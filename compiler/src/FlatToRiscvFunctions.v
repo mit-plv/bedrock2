@@ -339,67 +339,85 @@ Section Proofs.
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
                   ext_guarantee finalL).
 
+  (* Ghost state used to describe low-level state introduced by the compiler.
+     Called "ghost constants" because after executing a piece of code emitted by
+     the compiler, these values should still be the same.
+     Note, though, that when focusing on a sub-statement (i.e. when invoking the IH)
+     the ghost constants will change: instructions are shoveled from insts into the frame,
+     the amount of available stack shrinks, the stack pointer decreases, and if we're
+     in a function call, the function being called is remove from funnames so that
+     it can't be recursively called again. *)
+  Record GhostConsts := {
+    p_sp: word;
+    num_stackwords: Z;
+    p_insts: word;
+    insts: list Instruction;
+    program_base: word;
+    e_pos: fun_pos_env;
+    e_impl: env;
+    funnames: list Syntax.funname;
+    frame: mem -> Prop;
+  }.
+
+  Definition goodMachine
+      (* high-level state ... *)
+      (t: list LogItem)(m: mem)(l: locals)(metrics: MetricLog)
+      (* ... plus ghost constants ... *)
+      (g: GhostConsts)
+      (* ... equals low-level state *)
+      (lo: MetricRiscvMachine): Prop :=
+    (* registers: *)
+    map.extends lo.(getRegs) l /\
+    map.get lo.(getRegs) RegisterNames.sp = Some g.(p_sp) /\
+    (* pc: *)
+    lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
+    (* memory: *)
+    (exists stack_trash,
+        Z.of_nat (List.length stack_trash) = g.(num_stackwords) /\
+        (g.(frame) * eq m *
+         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(num_stackwords))))
+                    stack_trash *
+         program g.(p_insts) g.(insts) *
+         functions g.(program_base) g.(e_pos) g.(e_impl) g.(funnames))%sep lo.(getMem)) /\
+    (* trace: *)
+    lo.(getLog) = t /\
+    (* misc: *)
+    ext_guarantee lo.
+
+  (* note: [e_impl_reduced] and [g.(funnames)] will shrink one function at a time each time
+     we enter a new function body, to make sure functions cannot call themselves, while
+     [e_impl] and [e_pos] remain the same throughout because that's mandated by
+     [FlatImp.exec] and [compile_stmt], respectively *)
+  Definition exists_good_reduced_e_impl(g: GhostConsts)(s: stmt): Prop :=
+    exists e_impl_reduced,
+      map.extends g.(e_impl) e_impl_reduced /\
+      fits_stack g.(num_stackwords) e_impl_reduced s /\
+      (forall f (argnames retnames: list Syntax.varname) (body: stmt),
+          map.get e_impl_reduced f = Some (argnames, retnames, body) ->
+          Forall valid_register argnames /\
+          Forall valid_register retnames /\
+          valid_registers body /\
+          List.In f g.(funnames) /\
+          exists pos, map.get g.(e_pos) f = Some pos /\ pos mod 4 = 0).
+
   Lemma compile_stmt_correct_new:
-    forall (program_base p_stacklimit: word),
-    forall e_impl_full (s: stmt) t initialMH initialRegsH initialMetricsH postH,
-    exec e_impl_full s t (initialMH: mem) initialRegsH initialMetricsH postH ->
-    (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
-       we enter a new function body, to make sure functions cannot call themselves, while
-       [e_impl_full] and [e_pos] remain the same throughout because that's mandated by
-       [FlatImp.exec] and [compile_stmt], respectively *)
-    forall e_pos e_impl_reduced funnames,
-    map.extends e_impl_full e_impl_reduced ->
-    (forall f (argnames retnames: list Syntax.varname) (body: stmt),
-        map.get e_impl_reduced f = Some (argnames, retnames, body) ->
-        Forall valid_register argnames /\
-        Forall valid_register retnames /\
-        valid_registers body /\
-        List.In f funnames /\
-        exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0) ->
-    forall (R: mem -> Prop) (initialL: RiscvMachineL) insts p_sp (old_stackvals: list word) pos,
-    @compile_stmt_new def_params _ e_pos pos s = insts ->
+    forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
+    exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
+    forall (g: GhostConsts) (initialL: RiscvMachineL) (pos: Z),
+    g.(e_impl) = e_impl_full ->
+    exists_good_reduced_e_impl g s ->
+    @compile_stmt_new def_params _ g.(e_pos) pos s = g.(insts) ->
     stmt_not_too_big s ->
     valid_registers s ->
-    initialL.(getPc) = word.add program_base (word.of_Z pos) ->
     pos mod 4 = 0 ->
-    divisibleBy4 program_base ->
-    map.extends initialL.(getRegs) initialRegsH ->
-    map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
     (forall r, 0 < r < 32 -> exists v, map.get initialL.(getRegs) r = Some v) ->
-    fits_stack (Z.of_nat (List.length old_stackvals)) e_impl_reduced s ->
-    p_sp = word.add p_stacklimit
-                    (word.of_Z (bytes_per_word * Z.of_nat (List.length old_stackvals))) ->
-    (R * eq initialMH *
-     word_array p_stacklimit old_stackvals *
-     program initialL.(getPc) insts *
-     functions program_base e_pos e_impl_full funnames)%sep initialL.(getMem) ->
-    initialL.(getLog) = t ->
-    initialL.(getNextPc) = add initialL.(getPc) (ZToReg 4) ->
-    ext_guarantee initialL ->
-    runsTo initialL (fun finalL => exists finalRegsH finalMH finalMetricsH
-                                          (final_stackvals: list word),
-          postH finalL.(getLog) finalMH finalRegsH finalMetricsH /\
-          map.extends finalL.(getRegs) finalRegsH /\
-          map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
-          List.length final_stackvals = List.length old_stackvals /\
-          (R * eq finalMH *
-           word_array p_stacklimit final_stackvals *
-           program initialL.(getPc) insts *
-           functions program_base e_pos e_impl_full funnames)%sep finalL.(getMem) /\
-          finalL.(getPc) = add initialL.(getPc) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
-          finalL.(getNextPc) = add finalL.(getPc) (ZToReg 4) /\
-          ext_guarantee finalL).
-(* TODO these constrains will have to be added:
-    Forall valid_FlatImp_var useargs ->
-    Forall valid_FlatImp_var useresults ->
-    Forall valid_FlatImp_var defargs ->
-    Forall valid_FlatImp_var defresults ->
-
-    (* note: use-site argument/result names are allowed to have duplicates, but definition-site
-       argument/result names aren't *)
-    NoDup defargs ->
-    NoDup defresults ->
- *)
+    initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
+    goodMachine initialTrace initialMH initialRegsH initialMetricsH g initialL ->
+    runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
+         postH finalTrace finalMH finalRegsH finalMetricsH /\
+         finalL.(getPc) = word.add initialL.(getPc)
+                                   (word.of_Z (4 * Z.of_nat (List.length g.(insts)))) /\
+         goodMachine finalTrace finalMH finalRegsH finalMetricsH g finalL).
   Proof.
     pose proof compile_stmt_emits_valid.
     induction 1; intros;
