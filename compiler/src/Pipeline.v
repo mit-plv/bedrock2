@@ -182,6 +182,7 @@ Section Pipeline1.
                   post finalL.(getLog) mH' lH' mcH' /\
                   map.extends finalL.(getRegs) lH' /\
                   (program initialL.(getPc) (ExprImp2Riscv sH) * eq mH')%sep (getMem finalL) /\
+                  getPc finalL = add (getPc initialL) (mul (ZToReg 4) (ZToReg (Zlength instsL))) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <= lowerMetrics (mcH' - mcH))%metricsL).
   Proof.
     intros. subst.
@@ -229,7 +230,9 @@ Section Pipeline1.
       + assumption.
     - simpl. intros. simp. do 3 eexists. do 3 (split; try eassumption).
       + seplog.
-      + solve_MetricLog.
+      + split.
+        * assumption.
+        * solve_MetricLog.
   Qed.
 
   Lemma exprImp2Riscv_correctTrace: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),

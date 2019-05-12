@@ -578,27 +578,30 @@ Section FibCompiled.
   Definition run1 : Pipeline.M unit := @run1 _ _ _ _ Pipeline.RVM _ iset.
   Definition mcomp_sat := GoFlatToRiscv.mcomp_sat.
 
-  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) (m: map.map word byte) initialMem R,
+  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) insts (m: map.map word byte) initialMem R,
       0 <= n <= 60 ->
       word.unsigned (getPc initialMachine) mod 4 = 0 ->
       getNextPc initialMachine = word.add (getPc initialMachine) (word.of_Z 4) ->
       load access_size.four initialMem (word.of_Z n_load_addr) = Some (word.of_Z n) ->
       (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R initialMem) ->
-      Separation.sep (program (getPc initialMachine) (ExprImp2Riscv fib_ExprImp)) (eq initialMem) (getMem initialMachine) ->
+      insts = (ExprImp2Riscv fib_ExprImp) ->
+      Separation.sep (program (getPc initialMachine) insts) (eq initialMem) (getMem initialMachine) ->
       runsToNonDet.runsTo (mcomp_sat run1) initialMachine
         (fun (finalL: RiscvMachine) => exists finalMem,
              Separation.sep (program (getPc initialMachine) (ExprImp2Riscv fib_ExprImp))
                             (eq finalMem)
                             (getMem finalL) /\
-             Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z (fib_bounded (Z.to_nat n)))) R finalMem /\
+             Separation.sep (ptsto_word (word.of_Z n_store_addr)(word.of_Z (fib_bounded (Z.to_nat n))))
+                            R finalMem /\
+             getPc finalL = add (getPc initialMachine) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
              finalL.(getMetrics).(instructions) - initialMachine.(getMetrics).(instructions) <= n * 34 + 72).
   Proof.
-    intros.
+    intros. subst.
     destruct H.
     eapply runsToNonDet.runsTo_weaken.
     - pose proof Pipeline.exprImp2Riscv_correct as Hp.
       specialize Hp with (sH := fib_ExprImp)
-                         (mcH := bedrock2.MetricLogging.EmptyMetricLog).
+                       (mcH := bedrock2.MetricLogging.EmptyMetricLog).
       eapply Hp.
       + simpl. blia.
       + cbv. repeat constructor.
@@ -620,6 +623,7 @@ Section FibCompiled.
       eexists.
       repeat split.
       + seplog.
+      + assumption.
       + assumption.
       + repeat unfold_MetricLog. repeat simpl_MetricLog. simpl in *.
         destruct_hyp.
