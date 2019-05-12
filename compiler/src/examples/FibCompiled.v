@@ -86,10 +86,10 @@ Section FibCompiled.
       fib (S (S n)) = fib n + fib (S n).
   Proof.
     induction n.
-    + reflexivity.
-    + simpl. destruct n.
-      * reflexivity.
-      * blia.
+    - reflexivity.
+    - simpl. destruct n.
+      + reflexivity.
+      + blia.
   Qed.
   
   Lemma fib_pos: forall n,
@@ -114,11 +114,11 @@ Section FibCompiled.
    induction 1.
    - apply Z.le_refl.
    - apply Z.le_trans with (fib m); [assumption|].
-   destruct m.
-   + simpl. blia.
-   + rewrite fib_invert.
-     pose proof (fib_pos m).
-     blia.
+     destruct m.
+     + simpl. blia.
+     + rewrite fib_invert.
+       pose proof (fib_pos m).
+       blia.
   Qed.
 
   Ltac fib_next :=
@@ -150,8 +150,8 @@ Section FibCompiled.
     assert (fib 47 < 2 ^ 32) by blia.
     intros.
     induction n.
-    + simpl. blia.
-    + pose proof (fib_inc (S n) 47%nat) as Hinc.
+    - simpl. blia.
+    - pose proof (fib_inc (S n) 47%nat) as Hinc.
       blia.
   Qed.
 
@@ -578,14 +578,12 @@ Section FibCompiled.
   Definition run1 : Pipeline.M unit := @run1 _ _ _ _ Pipeline.RVM _ iset.
   Definition mcomp_sat := GoFlatToRiscv.mcomp_sat.
 
-  (* Forall initial metrics *)
   Lemma fib_compiled: forall n (initialMachine: RiscvMachine) (m: map.map word byte) initialMem R,
       0 <= n <= 60 ->
       word.unsigned (getPc initialMachine) mod 4 = 0 ->
       getNextPc initialMachine = word.add (getPc initialMachine) (word.of_Z 4) ->
       load access_size.four initialMem (word.of_Z n_load_addr) = Some (word.of_Z n) ->
       (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R initialMem) ->
-      getMetrics initialMachine = EmptyMetricLog ->
       Separation.sep (program (getPc initialMachine) (ExprImp2Riscv fib_ExprImp)) (eq initialMem) (getMem initialMachine) ->
       runsToNonDet.runsTo (mcomp_sat run1) initialMachine
         (fun (finalL: RiscvMachine) => exists finalMem,
@@ -593,7 +591,7 @@ Section FibCompiled.
                             (eq finalMem)
                             (getMem finalL) /\
              Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z (fib_bounded (Z.to_nat n)))) R finalMem /\
-             finalL.(getMetrics).(instructions) <= n * 34 + 72).
+             finalL.(getMetrics).(instructions) - initialMachine.(getMetrics).(instructions) <= n * 34 + 72).
   Proof.
     intros.
     destruct H.
@@ -617,23 +615,17 @@ Section FibCompiled.
           -- rewrite Z2Nat.id; blia.
         * intros. eassumption.
     - intros.
-      do 3 destruct H7.
+      do 3 destruct H6.
       destruct_hyp.
       eexists.
       repeat split.
       + seplog.
       + assumption.
       + repeat unfold_MetricLog. repeat simpl_MetricLog. simpl in *.
-        match goal with
-        | H: (getMetrics initialMachine) = ?m |- _ => rewrite H in *
-        end.
-        unfold EmptyMetricLog in *. simpl in *.
         destruct_hyp.
-        repeat rewrite Z.sub_0_r in *.
-        repeat rewrite Z.add_0_l in *.
         eapply Z.le_trans.
         * eassumption.
-        * rewrite Z2Nat.id in *; assumption.
+        * rewrite Z2Nat.id in *; [|assumption]. blia.
   Qed.
 
   Print Assumptions fib_compiled.
