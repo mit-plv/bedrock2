@@ -78,7 +78,7 @@ Qed.
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
 Proof.
   constructor; try typeclasses eauto; try refine FlatToRiscv_hyps;
-    try exact MinimalMMIOSatisfiesPrimitives.
+    try exact MetricMinimalMMIOSatisfiesPrimitives.
   constructor; unfold ext_spec, pipeline_params; simpl.
   - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
   - unfold real_ext_spec. intros.

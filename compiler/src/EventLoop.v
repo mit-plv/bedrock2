@@ -75,9 +75,11 @@ Section EventLoop.
   Hypothesis jump_aligned: jump mod 4 = 0.
   Hypothesis pc_end_def: pc_end = word.sub pc_start (word.of_Z jump).
 
+  Variable startState: RiscvMachineL.
+
   (* initialization code: all the code before the loop body, loop body starts at pc_start *)
-  Hypothesis init_correct: forall (initial: RiscvMachineL),
-      runsTo (mcomp_sat (run1 iset)) initial (fun final =>
+  Hypothesis init_correct:
+      runsTo (mcomp_sat (run1 iset)) startState (fun final =>
           goodReadyState final /\ final.(getPc) = pc_start).
 
   (* loop body: between pc_start and pc_end *)
@@ -89,11 +91,39 @@ Section EventLoop.
           final.(getPc) = pc_end /\
           (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem))).
 
+  Definition runsToGood_Invariant(prefinalL: RiscvMachineL): Prop :=
+    runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
+       goodReadyState finalL /\ finalL.(getPc) = pc_start).
+
+  (* "runs to a good state" is an invariant of the transition system
+     (note that this does not depend on the definition of runN) *)
+  Lemma runsToGood_is_Invariant: forall (st: RiscvMachineL),
+      runsToGood_Invariant st -> mcomp_sat (run1 iset) st runsToGood_Invariant.
+  Proof.
+    eapply runsTo_safe1_inv; cycle 1.
+    - intros state (? & ?). eapply body_correct; assumption.
+    - intros state (? & ? & R & ?).
+      (* this is the loop verification code: *)
+      eapply runsToStep. {
+        eapply run_Jal0; try eassumption.
+        - replace (getPc state) with (word.sub pc_start (word.of_Z jump)) by congruence.
+          solve_divisibleBy4.
+        - unfold program, array. rewrite H0. ecancel_assumption.
+      }
+      simpl. intros. simp.
+      destruct_RiscvMachine state.
+      destruct_RiscvMachine mid.
+      subst.
+      ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
+      apply runsToDone. split; [|reflexivity].
+      eapply goodReadyState_ignores in H.
+      simpl_MetricRiscvMachine_get_set.
+      exact H.
+    - intros state C. simp. congruence.
+  Qed.
+
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma eventLoop_sound: forall (initialL: RiscvMachineL),
-      forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
-                  runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
-                     goodReadyState finalL /\ finalL.(getPc) = pc_start)).
+  Lemma eventLoop_sound: forall n, mcomp_sat (runN iset n) startState runsToGood_Invariant.
   Proof.
     intros. eapply safe_forever; cycle 1.
     - intros state (? & ?). eapply body_correct; assumption.
@@ -124,39 +154,17 @@ Section EventLoop.
   Hypothesis goodReadyState_implies_inv: forall (state: RiscvMachineL),
       goodReadyState state -> inv state.(getLog).
 
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma eventLoop_sound': forall (initialL: RiscvMachineL),
-      initialL.(getPc) = pc_start ->
-      goodReadyState initialL ->
-      forall n, mcomp_sat (runN iset n) initialL (fun prefinalL =>
-                  runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL => inv finalL.(getLog))).
+  Lemma eventLoop_sound_trace: forall n,
+    mcomp_sat (runN iset n) startState (fun finalL => exists rest, inv (rest ++ finalL.(getLog))).
   Proof.
-    intros initialL E G n. revert initialL E G. induction n; intros.
-    - simpl. apply go_done. apply runsToDone. admit.
-    - simpl. eapply spec_Bind_unit.
-
-  Abort.
-
-  (* no matter for how many steps we run [initialL], [inv] always holds *)
-  Definition traceInvHolds(initialL: RiscvMachineL)(inv: trace -> Prop): Prop :=
-    forall n, mcomp_sat (runN iset n) initialL (fun finalL => inv finalL.(getLog)).
-
-  Lemma eventLoop_sound': forall (initialL: RiscvMachineL),
-      initialL.(getPc) = pc_start ->
-      goodReadyState initialL ->
-      traceInvHolds initialL inv.
-  Proof.
-    unfold traceInvHolds. intros initialL E G n. revert initialL E G. induction n; intros.
-    - simpl. apply go_done. apply goodReadyState_implies_inv. assumption.
-    - simpl. eapply spec_Bind_unit.
-
-      (* induction needs to be on number of loop iterations, not on number of instructions *)
-
-      (* might hold if each iteration only appends one event, but not otherwise, because
-         in the middle of the loop body, traceInv will not hold, and there's no way we
-         can communicate with runsTo to know that it's "on its way" to become valid again,
-         this would require a "gurantee", or an application-specific ext_spec which makes
-         the riscv machine crash whenever the ext_spec is violated *)
-  Abort.
+    intros.
+    eapply mcomp_sat_weaken. 2: eapply eventLoop_sound.
+    unfold runsToGood_Invariant.
+    intros ? R.
+    eapply extend_runsTo_to_good_trace. 2: exact R.
+    intros ? (? & ?).
+    eapply goodReadyState_implies_inv.
+    assumption.
+  Qed.
 
 End EventLoop.
