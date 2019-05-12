@@ -104,7 +104,6 @@ Section Run.
     forall (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
-      divisibleBy4 initialL.(getPc) ->
       (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep initialL.(getMem) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
@@ -125,7 +124,6 @@ Section Run.
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
-      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
       (program initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
@@ -145,7 +143,6 @@ Section Run.
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
-      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
@@ -168,7 +165,6 @@ Section Run.
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rs1 ->
       valid_register rs2 ->
-      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs1 = Some base ->
       map.get initialL.(getRegs) rs2 = Some v_new ->
@@ -244,7 +240,11 @@ Section Run.
   Arguments Z.opp: simpl never.
 
   Lemma run_Jal0: run_Jal0_spec.
-  Proof. t. Qed.
+  Proof.
+    repeat intro.
+    destruct (invert_ptsto_program1 H1) as (DE & ? & ?).
+    t.
+  Qed.
 
   Lemma run_Addi: run_ImmReg_spec Addi word.add.
   Proof. t. Qed.

@@ -340,7 +340,6 @@ Section FlatToRiscv1.
       Encode.verify (compile_load Syntax.access_size.word rd rs ofs) iset ->
       valid_register rd ->
       valid_register rs ->
-      divisibleBy4 (getPc initialL) ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
@@ -359,7 +358,7 @@ Section FlatToRiscv1.
     eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_load Syntax.access_size.word); try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
-      rewrite H8.
+      rewrite H7.
       unfold id.
       f_equal.
       rewrite LittleEndian.combine_split.
@@ -375,7 +374,6 @@ Section FlatToRiscv1.
       Encode.verify (compile_store Syntax.access_size.word rs1 rs2 ofs) iset ->
       valid_register rs1 ->
       valid_register rs2 ->
-      divisibleBy4 (getPc initialL) ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs1 = Some base ->
       map.get (getRegs initialL) rs2 = Some v_new ->

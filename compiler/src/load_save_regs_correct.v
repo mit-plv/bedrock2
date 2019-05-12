@@ -9,7 +9,6 @@ Require Import compiler.Simp.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.DivisibleBy4.
 Require Import compiler.EmitsValid.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
@@ -32,7 +31,6 @@ Section Proofs.
   Lemma save_regs_correct: forall vars offset R (initial: RiscvMachineL) p_sp oldvalues newvalues,
       Forall valid_register vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
-      divisibleBy4 initial.(getPc) ->
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length oldvalues = List.length vars ->
@@ -102,7 +100,6 @@ Section Proofs.
           destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
         }
         bomega.
-      + simpl. solve_divisibleBy4.
       + simpl. pseplog.
         rewrite word.ring_morph_add.
         rewrite word.add_assoc.
@@ -120,7 +117,6 @@ Section Proofs.
       Forall valid_FlatImp_var vars ->
       NoDup vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
-      divisibleBy4 initial.(getPc) ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length values = List.length vars ->
       (program initial.(getPc) (load_regs vars offset) *
@@ -186,14 +182,13 @@ Section Proofs.
             destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
           }
           bomega.
-        * solve_divisibleBy4.
         * rewrite map.get_put_diff. 1: assumption.
           unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
         * blia.
       + simpl. intros. simp.
         repeat split.
         * unfold map.only_differ, PropSet.elem_of, PropSet.of_list in *.
-          intros x. rename H6 into HO.
+          intros x. rename H5 into HO.
           specialize (HO x).
           destruct (Z.eqb_spec x a).
           -- subst x. left. constructor. reflexivity.
@@ -201,7 +196,7 @@ Section Proofs.
              ++ simpl. auto.
              ++ right. rewrite <- HO. rewrite map.get_put_diff; congruence.
         * unfold map.getmany_of_list in *. simpl. rewrite_match.
-          rename H6 into HO.
+          rename H5 into HO.
           specialize (HO a). destruct HO as [HO | HO].
           -- unfold PropSet.elem_of, PropSet.of_list in HO. contradiction.
           -- unfold Register, MachineInt in *. rewrite <- HO.
