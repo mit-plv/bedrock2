@@ -79,24 +79,12 @@ Section FibCompiled.
       end
     end.
 
+  Definition fib_bounded (n: nat): Z :=
+    if (n <? 48)%nat then fib (n + 1) else -1.
+
   Existing Instance Fibonacci.ZNames.Inst.
 
   Local Notation instructionsH := (bedrock2.MetricLogging.instructions).
-
-  Lemma store_word_sep: forall k v (m: mem) m' v_old R,
-      Separation.sep (ptsto_word k v_old) R m ->
-      store access_size.word m k v = Some m' ->
-      Separation.sep (ptsto_word k v) R m'.
-  Proof.
-    intros.
-    pose proof unchecked_store_bytes_of_sep as Hstore.
-    specialize Hstore with (1 := H). especialize Hstore.
-    unfold ptsto_word.
-    cbv [store store_Z bedrock2.Memory.store_bytes] in *.
-    destruct_one_match_hyp; [|discriminate].
-    inversion H0.
-    eassumption.
-  Qed.
 
   Lemma load_word_sep: forall k (m: mem) v R,
       Separation.sep (ptsto_word k v) R m ->
@@ -201,15 +189,15 @@ Section FibCompiled.
            | H0: ?x = ?y, H1: ?y = ?z |- _ => rewrite H1 in H0
            end; assumption.
 
-  Lemma fib_correct_body: forall t m (l : locals) mc a b i n,
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
+  Lemma fib_correct_body: forall t m (l : locals) mc a b i n R,
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
       map.get l FibonacciServer.a = Some a ->
       map.get l FibonacciServer.b = Some b ->
       map.get l FibonacciServer.i = Some i ->
       map.get l FibonacciServer.n = Some n ->
       exec map.empty fib_while_body t m l mc (fun t' m' l' mc' =>
         t' = t /\
-        (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
         map.get l' FibonacciServer.a = Some b /\
         map.get l' FibonacciServer.b = Some (word.add a b) /\
         map.get l' FibonacciServer.i = Some (word.add i (word.of_Z 1)) /\
@@ -220,7 +208,7 @@ Section FibCompiled.
     cbv [fib_while_body].
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
       map.get l' FibonacciServer.a = Some a /\
       map.get l' FibonacciServer.b = Some b /\
       map.get l' FibonacciServer.c = Some (word.add a b) /\
@@ -230,8 +218,8 @@ Section FibCompiled.
       [exec_set_solve|].
     intros.
     eapply @exec.seq with (mid := (fun t' m' (l': locals) mc' =>
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
       t' = t /\
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
       map.get l' FibonacciServer.a = Some b /\
       map.get l' FibonacciServer.b = Some b /\
       map.get l' FibonacciServer.c = Some (word.add a b) /\
@@ -242,7 +230,7 @@ Section FibCompiled.
     intros.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
       map.get l' FibonacciServer.a = Some b /\
       map.get l' FibonacciServer.b = Some (word.add a b) /\
       map.get l' FibonacciServer.c = Some (word.add a b) /\
@@ -252,17 +240,17 @@ Section FibCompiled.
       exec_set_solve.
   Qed.
 
-  Lemma fib_correct_while: forall n (iter : nat) t m (l : locals) mc i,
+  Lemma fib_correct_while: forall n (iter : nat) t m (l : locals) mc i R,
       Z.of_nat n < 2 ^ 32 ->
       (iter <= n)%nat ->
       (i = n - iter)%nat ->
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
       map.get l FibonacciServer.a = Some (word.of_Z (fib i)) ->
       map.get l FibonacciServer.b = Some (word.of_Z (fib (S i))) ->
       map.get l FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) ->
       map.get l FibonacciServer.i = Some (word.of_Z (Z.of_nat i) : word) ->
       exec map.empty fib_while t m l mc (fun t' m' l' mc' =>
-        (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
         t' = t /\
         instructionsH mc' <= instructionsH mc + (Z.of_nat iter) * 34 + 12 /\
         map.get l' FibonacciServer.b = Some (word.of_Z (fib (n + 1)))).
@@ -293,7 +281,7 @@ Section FibCompiled.
         eval_fib_var_names.
         destruct_hyp.
         eapply weaken_exec.
-        * eapply IHiter; try (reflexivity || assumption).
+        * eapply IHiter; try (reflexivity || eassumption).
           -- blia.
           -- rewrite H9. f_equal. f_equal. f_equal. blia.
           -- rewrite H10. f_equal. replace (S i) with (n - iter)%nat by blia. rewrite H1.
@@ -307,15 +295,15 @@ Section FibCompiled.
           -- assumption.
   Admitted.
 
-  Lemma fib_if_true_correct: forall (n: nat) t m (l: locals) mc,
+  Lemma fib_if_true_correct: forall (n: nat) t m (l: locals) mc R,
       (n < 48)%nat ->
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
       map.get l FibonacciServer.a = Some (word.of_Z 0) ->
       map.get l FibonacciServer.b = Some (word.of_Z 1) ->
       map.get l FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) ->
       map.get l FibonacciServer.i = Some (word.of_Z 0)  ->
       exec map.empty fib_if t m l mc (fun t' m' l' mc' =>
-        (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
         t' = t /\
         instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 25 /\
         map.get l' FibonacciServer.b = Some (word.of_Z (fib (n + 1)))).
@@ -329,27 +317,28 @@ Section FibCompiled.
       repeat rewrite Z.mod_small in * by blia.
       exfalso. blia.
     - eapply weaken_exec.
-      + eapply fib_correct_while with (iter := n) (i := 0%nat); try eassumption.
+      + destruct_hyp.
+        eapply fib_correct_while with (iter := n) (i := 0%nat); try eassumption.
         * blia.
         * apply le_n.
-        * rewrite Nat.sub_diag. reflexivity. 
+        * rewrite Nat.sub_diag. reflexivity.
       + intros. cbv beta in *. destruct_hyp.
         repeat split; try assumption.
         unfold_MetricLog. simpl in *. blia.
   Qed.
 
-  Lemma fib_if_false_correct: forall (n: nat) t m (l: locals) mc,
+  Lemma fib_if_false_correct: forall (n: nat) t m (l: locals) mc R,
       Z.of_nat n < 2 ^ 32 ->
       (n >= 48)%nat ->
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) v) R m) ->
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
       map.get l FibonacciServer.a = Some (word.of_Z 0) ->
       map.get l FibonacciServer.b = Some (word.of_Z 1) ->
       map.get l FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) ->
       map.get l FibonacciServer.i = Some (word.of_Z 0)  ->
       exec map.empty fib_if t m l mc (fun t' m' l' mc' =>
-        (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) v) R m') /\
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
         t' = t /\
-        instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 52 /\
+        instructionsH mc' <= instructionsH mc + 22 /\
         map.get l' FibonacciServer.b = Some (word.of_Z (-1))).
   Proof.
     intros.
@@ -363,31 +352,27 @@ Section FibCompiled.
     + exec_set_solve.
   Qed.
     
-  Lemma fib_correct: forall (n: nat) t (m: mem) (l : locals) mc,
+  Lemma fib_correct: forall (n: nat) t (m: mem) (l : locals) mc R,
       load access_size.four m (word.of_Z n_load_addr) = Some (word.of_Z (Z.of_nat n)) ->
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
       Z.of_nat n < 2 ^ 32 ->
       exec map.empty fib_ExprImp t m l mc (fun t' m' l' mc' =>
         instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 72 /\
-        ((n < 48)%nat /\
-         (exists R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z (fib (n + 1)))) R m'))
-        \/
-        ((n >= 48)%nat /\
-         (exists R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z (fib (n + 1)))) R m'))).
+        Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z (fib_bounded n))) R m').
   Proof.
     intros *. intro Hload. intro HStore. intros.
     cbv [n_load_addr] in *.
     unfold fib_ExprImp.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
       map.get l' FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) /\
       instructionsH mc' = instructionsH mc + 10));
       [eapply @exec.set; [simpl in *; rewrite Hload; f_equal | repeat split; fib_step_precondition] |].
     intros. destruct_hyp.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
       map.get l' FibonacciServer.a = Some (word.of_Z 0) /\
       map.get l' FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) /\
       instructionsH mc' = instructionsH mc + 19));
@@ -395,7 +380,7 @@ Section FibCompiled.
     intros. destruct_hyp.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
       map.get l' FibonacciServer.a = Some (word.of_Z 0) /\
       map.get l' FibonacciServer.b = Some (word.of_Z 1) /\
       map.get l' FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) /\
@@ -404,7 +389,7 @@ Section FibCompiled.
     intros. destruct_hyp.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
       map.get l' FibonacciServer.a = Some (word.of_Z 0) /\
       map.get l' FibonacciServer.b = Some (word.of_Z 1) /\
       map.get l' FibonacciServer.i = Some (word.of_Z 0) /\
@@ -417,11 +402,12 @@ Section FibCompiled.
     pose proof Nat2Z.is_nonneg as Hpos.
     specialize Hpos with (n := n). *)
 
+    unfold fib_bounded.
     destruct (n <? 48)%nat eqn:Hlt.
     - rewrite Nat.ltb_lt in *.
       eapply @exec.seq with (mid := (fun t' m' l' mc' =>
         t' = t /\
-        (exists v R, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
         instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 62 /\
         map.get l' FibonacciServer.b = Some (word.of_Z (fib (n + 1))))).
         * eapply weaken_exec; [eapply fib_if_true_correct; eassumption|].
@@ -430,7 +416,7 @@ Section FibCompiled.
           -- propogate_eq.
           -- blia.
         * intros. destruct_hyp.
-          destruct H23. destruct H23.
+          destruct H23.
           eapply @exec.store.
           -- reflexivity.
           -- eval_var_solve.
@@ -449,80 +435,67 @@ Section FibCompiled.
                end
              end.
              discriminate.
-          -- left.
-             repeat split.
+          -- repeat split.
              ++ unfold_MetricLog. simpl in *. blia.
-             ++ assumption.
-             ++ eexists. eapply store_word_sep.
-                ** eapply H23.
-                ** cbv [store store_Z bedrock2.Memory.store_bytes]. unfold n_store_addr.
-                   destruct_one_match; [f_equal|].
-                   pose proof load_word_sep as Hsepload.
-                   specialize Hsepload with (1 := H23).
-                   cbv [store store_Z bedrock2.Memory.store_bytes].
-                   cbv [load load_Z n_store_addr] in Hsepload.
-                   match goal with
-                   | H0: ?x = ?v, H1: context[?y] |- _ =>
-                     match x with
-                     | bedrock2.Memory.load_bytes _ _ _ =>
-                       match y with
-                       | bedrock2.Memory.load_bytes _ _ _ => change y with x in H1; rewrite H0 in H1
-                       end
-                     end
-                   end.
-                   discriminate.
-    -
-  Qed.
-                                  
-  Axiom fib_program_correct: forall n t m l mc,
-      0 <= n <= 60 ->
-      Semantics.exec map.empty fib_ExprImp t m l mc (
-                       fun t' m ' l' mc' =>
-                         exists (result: Utility.word),
-                           word.unsigned result = (fib (Z.to_nat n)) /\
-                           map.get l' FibonacciServer.b = Some result).
-    
-
-  Lemma fib_program_correct_bounded: forall n t m l mc,
-      0 <= n <= 60 ->
-      load access_size.four m (word.of_Z n_load_addr) = Some (word.of_Z n) ->
-      Semantics.exec map.empty fib_ExprImp t m l mc (
-                       fun t' m ' l' mc' =>
-                         instructionsH mc' <= instructionsH mc + n * 34 + 62 /\
-                         exists (result: Utility.word),
-                           word.unsigned result = (fib (Z.to_nat n)) /\
-                           map.get l' FibonacciServer.b = Some result).
-  Proof.
-    intros.
-    eapply intersect_exec.
-    + pose proof fib_bounding_metrics as Hbound.
-      specialize Hbound with (n := Z.to_nat n).
-      rewrite Z2Nat.id in Hbound; [|blia].
-      eapply Hbound; [assumption|].
-      cbn. blia.
-    + eapply fib_program_correct. blia.
+             ++ eapply unchecked_store_bytes_of_sep. eapply H23.
+    - rewrite Nat.ltb_ge in *.
+      eapply @exec.seq with (mid := (fun t' m' l' mc' =>
+        t' = t /\
+        (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m') /\
+        instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 62 /\
+        map.get l' FibonacciServer.b = Some (word.of_Z (-1)))).
+        * eapply weaken_exec; [eapply fib_if_false_correct; eassumption|].
+          cbv beta. intros. destruct_hyp.
+          repeat split; try assumption.
+          -- propogate_eq.
+          -- blia.
+        * intros. destruct_hyp.
+          destruct H23.
+          eapply @exec.store.
+          -- reflexivity.
+          -- eval_var_solve.
+          -- pose proof load_word_sep as Hsepload.
+             specialize Hsepload with (1 := H23).
+             cbv [store store_Z bedrock2.Memory.store_bytes].
+             cbv [load load_Z n_store_addr] in Hsepload.
+             destruct_one_match; [reflexivity|].
+             match goal with
+             | H0: ?x = ?v, H1: context[?y] |- _ =>
+               match x with
+               | bedrock2.Memory.load_bytes _ _ _ =>
+                 match y with
+                 | bedrock2.Memory.load_bytes _ _ _ => change y with x in H1; rewrite H0 in H1
+                 end
+               end
+             end.
+             discriminate.
+          -- repeat split.
+             ++ unfold_MetricLog. simpl in *. blia.
+             ++ eapply unchecked_store_bytes_of_sep. eapply H23. 
   Qed.
 
   Definition run1 : Pipeline.M unit := @run1 _ _ _ _ Pipeline.RVM _ iset.
   Definition mcomp_sat := GoFlatToRiscv.mcomp_sat.
 
   (* Forall initial metrics *)
-  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) (m: map.map word byte) initialMem,
+  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) (m: map.map word byte) initialMem R,
       0 <= n <= 60 ->
       word.unsigned (getPc initialMachine) mod 4 = 0 ->
       getNextPc initialMachine = word.add (getPc initialMachine) (word.of_Z 4) ->
       load access_size.four initialMem (word.of_Z n_load_addr) = Some (word.of_Z n) ->
+      (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R initialMem) ->
       getMetrics initialMachine = EmptyMetricLog ->
       Separation.sep (program (getPc initialMachine) (ExprImp2Riscv fib_ExprImp)) (eq initialMem) (getMem initialMachine) ->
-      runsToNonDet.runsTo (mcomp_sat run1)
-                          initialMachine
-                          (fun (finalL: RiscvMachine) =>
-                             exists (result: Utility.word),
-                               map.get finalL.(getRegs) FibonacciServer.b = Some result /\
-                               word.unsigned result = (fib (Z.to_nat n)) /\
-                               finalL.(getMetrics).(instructions) <= n * 34 + 62).
+      runsToNonDet.runsTo (mcomp_sat run1) initialMachine
+        (fun (finalL: RiscvMachine) => exists finalMem,
+             Separation.sep (program (getPc initialMachine) (ExprImp2Riscv fib_ExprImp))
+                            (eq finalMem)
+                            (getMem finalL) /\
+             Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z (fib_bounded (Z.to_nat n)))) R finalMem /\
+             finalL.(getMetrics).(instructions) <= n * 34 + 72).
   Proof.
     intros.
+    destruct H.
     eapply runsToNonDet.runsTo_weaken.
     - pose proof Pipeline.exprImp2Riscv_correct as Hp.
       specialize Hp with (sH := fib_ExprImp)
@@ -537,33 +510,29 @@ Section FibCompiled.
       + eassumption.
       + cbv [Pipeline.ext_guarantee pipeline_params]. exact I.
       + eapply ExprImp.weaken_exec.
-        * eapply fib_program_correct_bounded with (n := n); assumption.
+        * eapply fib_correct with (n := Z.to_nat n).
+          -- rewrite Z2Nat.id; [|assumption]. assumption.
+          -- eassumption.
+          -- rewrite Z2Nat.id; blia.
         * intros. eassumption.
     - intros.
-      repeat match goal with
-               | H: (fun _ => _) _ |- _ => destruct H
-               | H: exists _, _ |- _ => destruct H
-               | H: _ /\ _ |- _ => destruct H
-               end.
-        eexists.
-        repeat split.
-       + match goal with
-         | H: map.extends ?m1 _ |- map.get ?m1 _ = Some _ => unfold map.extends in H; apply H
-         end.
-        eassumption.
-      + eassumption.
+      do 3 destruct H7.
+      destruct_hyp.
+      eexists.
+      repeat split.
+      + seplog.
+      + assumption.
       + repeat unfold_MetricLog. repeat simpl_MetricLog. simpl in *.
+        match goal with
+        | H: (getMetrics initialMachine) = ?m |- _ => rewrite H in *
+        end.
+        unfold EmptyMetricLog in *. simpl in *.
+        destruct_hyp.
         repeat rewrite Z.sub_0_r in *.
         repeat rewrite Z.add_0_l in *.
-        repeat match goal with
-               | H: _ /\ _ |- _ => destruct H
-               end.
         eapply Z.le_trans.
-        * match goal with
-          | H: (getMetrics initialMachine) = ?m |- _ => rewrite H in *
-          end.
-          simpl in *. rewrite Z.sub_0_r in *. eassumption.
-        * assumption.
+        * eassumption.
+        * rewrite Z2Nat.id in *; assumption.
   Qed.
 
   Print Assumptions fib_compiled.
