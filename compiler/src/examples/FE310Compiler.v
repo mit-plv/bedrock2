@@ -232,14 +232,6 @@ Definition run1 : OStateND MetricRiscvMachine unit := @run1 _ _ _ _ IsMetricRisc
 Axiom TODO_program_addrs_executable:
   addrs_executable imemStart (List.length (compileFunc swap_chars_over_uart)) staticXAddrs.
 
-(* TODO this could also be proven without computation, using EmitsValid *)
-Lemma decode_encode_swap_chars_over_uart:
-  Forall (fun instr => decode iset (encode instr) = instr)
-         (compileFunc swap_chars_over_uart).
-Proof.
-  repeat constructor.
-Qed.
-
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat run1)
                       initialSwapMachine
@@ -261,7 +253,12 @@ Proof.
     + apply input_program_not_too_long.
     + apply TODO_program_addrs_executable.
     + reflexivity.
-    + apply decode_encode_swap_chars_over_uart.
+    + unfold compileFunc, ExprImp2Riscv.
+      apply Forall_forall.
+      apply compile_stmt_emits_valid.
+      * constructor.
+      * repeat constructor.
+      * constructor.
   - cbv [Pipeline.ext_guarantee pipeline_params FlatToRiscvCommon.FlatToRiscv.ext_guarantee
          FlatToRiscv_params mmio_params].
     exact initialMachine_undef_on_MMIO_addresses.

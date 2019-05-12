@@ -199,14 +199,10 @@ Section Run.
            | |- _ => ecancel_assumption
            end.
 
-  Axiom decode_encode_to_verify: forall {instr},
-      decode iset (encode instr) = instr -> verify instr iset.
-
   Lemma run_Jalr0: run_Jalr0_spec.
   Proof.
     repeat intro.
     destruct (invert_ptsto_program1 H4) as (DE & ? & ?).
-    pose proof (decode_encode_to_verify DE).
     (* execution of Jalr clears lowest bit *)
     assert (word.and (word.add dest (word.of_Z oimm12))
                      (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =

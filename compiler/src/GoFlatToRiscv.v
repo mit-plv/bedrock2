@@ -24,6 +24,7 @@ Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
+Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatToRiscvDef.
@@ -232,7 +233,7 @@ Section Go.
   (* contains all the conditions needed to successfully execute instr *)
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
     (truncated_scalar Syntax.access_size.four addr (encode instr) *
-     emp (decode iset (encode instr) = instr) *
+     emp (verify instr iset) *
      emp ((word.unsigned addr) mod 4 = 0) *
      emp (isXAddr addr staticXAddrs))%sep.
 
@@ -241,7 +242,7 @@ Section Go.
 
   Lemma invert_ptsto_instr: forall {addr instr R m},
     (ptsto_instr addr instr * R)%sep m ->
-     decode iset (encode instr) = instr /\
+     verify instr iset /\
      (word.unsigned addr) mod 4 = 0 /\
      isXAddr addr staticXAddrs.
   Proof.
@@ -257,7 +258,7 @@ Section Go.
 
   Lemma invert_ptsto_program1: forall {addr instr R m},
     (program addr [instr] * R)%sep m ->
-     decode iset (encode instr) = instr /\
+     verify instr iset /\
      (word.unsigned addr) mod 4 = 0 /\
      isXAddr addr staticXAddrs.
   Proof.
@@ -524,7 +525,7 @@ Section Go.
       4 * Z.of_nat (length prog) < 2 ^ width ->
       addrs_executable addr (length prog) staticXAddrs ->
       (word.unsigned addr) mod 4 = 0 ->
-      Forall (fun instr => decode iset (encode instr) = instr) prog ->
+      Forall (fun instr => verify instr iset) prog ->
       program addr prog (unchecked_store_program addr prog map.empty).
   Proof.
     induction prog; intros.
@@ -631,8 +632,7 @@ Section Go.
           bomega.
       }
       rewrite Z.mod_small; try assumption; try apply encode_range.
-      replace (decode iset (encode inst)) with inst by congruence.
-      assumption.
+      rewrite decode_encode; assumption.
   Qed.
 
   (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
