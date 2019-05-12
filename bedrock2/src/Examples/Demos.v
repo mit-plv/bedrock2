@@ -195,7 +195,7 @@ Section Demos.
     a = 0;;
     b = 1;;
     i = 0;;
-    if (n < 48) {{
+    if (n < 47) {{
       while (i < n) {{
         c = a + b;;
         a = b;;

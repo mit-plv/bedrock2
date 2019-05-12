@@ -80,7 +80,80 @@ Section FibCompiled.
     end.
 
   Definition fib_bounded (n: nat): Z :=
-    if (n <? 48)%nat then fib (n + 1) else -1.
+    if (n <? 47)%nat then fib (n + 1) else -1.
+
+  Lemma fib_invert: forall n,
+      fib (S (S n)) = fib n + fib (S n).
+  Proof.
+    induction n.
+    + reflexivity.
+    + simpl. destruct n.
+      * reflexivity.
+      * blia.
+  Qed.
+  
+  Lemma fib_pos: forall n,
+      0 <= fib n.
+  Proof.
+    cut (forall N n, (n < N)%nat -> 0 <= fib n).
+    - eauto.
+    - induction N.
+      + intros. exfalso. apply Nat.nlt_0_r in H. exact H.
+      + intros.
+        destruct n; [simpl; blia|].
+        destruct n; [simpl; blia|].
+        rewrite fib_invert.
+        generalize (IHN n) (IHN (S n)).
+        blia.
+  Qed.
+
+  Lemma fib_inc: forall n m,
+      (n <= m)%nat ->
+      fib n <= fib m.
+  Proof.
+   induction 1.
+   - apply Z.le_refl.
+   - apply Z.le_trans with (fib m); [assumption|].
+   destruct m.
+   + simpl. blia.
+   + rewrite fib_invert.
+     pose proof (fib_pos m).
+     blia.
+  Qed.
+
+  Ltac fib_next :=
+    match goal with
+    | H0: fib ?n0 = ?r0, H1: fib ?n1 = ?r1 |- _ =>
+      let Ht := fresh "Ht" in
+      let H := fresh "H" in
+      assert (n1 = n0 + 1)%nat as Ht by reflexivity; clear Ht;
+      assert (fib (S n1) = fib n0 + fib n1) as H by (rewrite fib_invert; reflexivity);
+      rewrite H0 in H; rewrite H1 in H;
+      match goal with
+      | H: fib _ = ?x |- _ =>
+        let r := fresh "r" in
+        remember x as r;
+        match goal with
+        | Heqr: ?l = _ + _ |- _ => cbv in Heqr; subst r
+        end
+      end
+    end.
+
+  Lemma fib_width_limit: forall n,
+      (n < 48)%nat ->
+      fib n < 2 ^ 32.
+  Proof.
+    intros.
+    assert (fib 0 = 0) by reflexivity.
+    assert (fib 1 = 1) by reflexivity.
+    do 46 fib_next.
+    assert (fib 47 < 2 ^ 32) by blia.
+    intros.
+    induction n.
+    + simpl. blia.
+    + pose proof (fib_inc (S n) 47%nat) as Hinc.
+      blia.
+  Qed.
 
   Existing Instance Fibonacci.ZNames.Inst.
 
@@ -110,6 +183,20 @@ Section FibCompiled.
     rewrite (Naive._unsigned_in_range v).
     rewrite (Naive.of_Z_unsigned).
     reflexivity.
+  Qed.
+
+  Lemma word_add_of_Z: forall width a b c,
+      c < 2 ^ width ->
+      0 <= a ->
+      0 <= b ->
+      a + b = c ->
+      @word.add width _ (word.of_Z a) (word.of_Z b) = word.of_Z (c).
+  Proof.
+    intros.
+    simpl.
+    f_equal.
+    repeat (rewrite Z.mod_small; [|blia]).
+    assumption.
   Qed.
 
   Fixpoint get_if s :=
@@ -241,7 +328,7 @@ Section FibCompiled.
   Qed.
 
   Lemma fib_correct_while: forall n (iter : nat) t m (l : locals) mc i R,
-      Z.of_nat n < 2 ^ 32 ->
+      Z.of_nat n < 47 ->
       (iter <= n)%nat ->
       (i = n - iter)%nat ->
         (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
@@ -260,7 +347,9 @@ Section FibCompiled.
       eapply @exec.while_false.
       + eval_var_solve.
       + simpl. destruct_one_match.
-        * admit.
+        * rewrite H1 in E. rewrite Nat.sub_0_r in E.
+          rewrite Z.ltb_lt in E. apply Z.lt_irrefl in E.
+          exfalso. assumption.
         * reflexivity.
       + repeat split.
         * assumption.
@@ -285,18 +374,30 @@ Section FibCompiled.
           -- blia.
           -- rewrite H9. f_equal. f_equal. f_equal. blia.
           -- rewrite H10. f_equal. replace (S i) with (n - iter)%nat by blia. rewrite H1.
-             assert (n - iter > 0)%nat by blia. admit.
-          -- rewrite H11. f_equal. rewrite H1. admit.
+             assert (n - iter > 0)%nat by blia.
+             pose proof fib_invert as Hfib.
+             specialize Hfib with (n := (n - S iter)%nat).
+             apply word_add_of_Z; try apply fib_pos.
+             ++ change Semantics.width with 32.
+                apply fib_width_limit.
+                blia.
+             ++ replace (S (n - S iter))%nat with (n - iter)%nat in Hfib; [|blia].
+                symmetry. apply Hfib.
+          -- rewrite H11. f_equal. rewrite H1.
+             simpl. f_equal.
+             rewrite Z.mod_small; [|blia].
+             rewrite Z.mod_small; [|blia].
+             blia.
         * cbv beta. intros. destruct_hyp.
           repeat split.
           -- assumption.
           -- propogate_eq.
           -- unfold_MetricLog. simpl in *. blia.
           -- assumption.
-  Admitted.
+  Qed.
 
   Lemma fib_if_true_correct: forall (n: nat) t m (l: locals) mc R,
-      (n < 48)%nat ->
+      (n < 47)%nat ->
         (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
       map.get l FibonacciServer.a = Some (word.of_Z 0) ->
       map.get l FibonacciServer.b = Some (word.of_Z 1) ->
@@ -329,7 +430,7 @@ Section FibCompiled.
 
   Lemma fib_if_false_correct: forall (n: nat) t m (l: locals) mc R,
       Z.of_nat n < 2 ^ 32 ->
-      (n >= 48)%nat ->
+      (n >= 47)%nat ->
         (exists v, Separation.sep (ptsto_word (word.of_Z n_store_addr) (word.of_Z v)) R m) ->
       map.get l FibonacciServer.a = Some (word.of_Z 0) ->
       map.get l FibonacciServer.b = Some (word.of_Z 1) ->
@@ -403,7 +504,7 @@ Section FibCompiled.
     specialize Hpos with (n := n). *)
 
     unfold fib_bounded.
-    destruct (n <? 48)%nat eqn:Hlt.
+    destruct (n <? 47)%nat eqn:Hlt.
     - rewrite Nat.ltb_lt in *.
       eapply @exec.seq with (mid := (fun t' m' l' mc' =>
         t' = t /\
