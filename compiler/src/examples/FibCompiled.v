@@ -621,7 +621,7 @@ Section FibCompiled.
        ptsto_word (word.of_Z nl) (word.of_Z n))%sep initialMem ->
       runsToNonDet.runsTo (mcomp_sat run1) initialMachine
         (fun (finalL: RiscvMachine) => exists finalMem,
-           (program (getPc initialMachine) insts * eq finalMem * R)%sep initialMachine.(getMem) ->
+           (program (getPc initialMachine) insts * eq finalMem * R)%sep finalL.(getMem) /\
            (ptsto_word (word.of_Z ns) (word.of_Z (fib_bounded (Z.to_nat n))) *
             ptsto_word (word.of_Z nl) (word.of_Z n))%sep finalMem /\
            getPc finalL = add (getPc initialMachine) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
@@ -654,6 +654,7 @@ Section FibCompiled.
       rewrite Z2Nat.id in *; try assumption.
       eexists.
       repeat split.
+      + eassumption.
       + apply sep_comm. eassumption.
       + assumption.
       + assumption.
