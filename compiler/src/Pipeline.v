@@ -230,7 +230,7 @@ Section Pipeline1.
       + assumption.
       + assumption.
     - simpl. intros. simp. do 3 eexists. do 3 (split; try eassumption).
-      split; [assumption|].
+      split; [rewrite Zlength_correct; assumption|].
       split; [assumption|].
       solve_MetricLog.
   Qed.
