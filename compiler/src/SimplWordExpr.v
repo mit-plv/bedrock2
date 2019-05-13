@@ -79,11 +79,9 @@ Ltac simpl_word_exprs_step OK :=
     rewrite (@sextend_width_nop _ _ OK w v) in * by (reflexivity || congruence)
   end.
 
-Require Import riscv.Utility.ListLib.
-Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
-
 Ltac simpl_word_exprs OK :=
-  autorewrite with rew_Zlength in *;
+  repeat ( cbn [List.length] in * || rewrite List.app_length in * );
+  repeat rewrite ?Nat2Z.inj_succ, <-?Z.add_1_l, ?Nat2Z.inj_add, ?Nat2Z.inj_mul;
   simpl_Zcsts;
   lazymatch type of OK with
   | @word.ok ?width ?Inst => repeat simpl_word_exprs_step OK
@@ -99,5 +97,5 @@ Ltac solve_word_eq OK :=
   try reflexivity;
   clear;
   simpl;
-  repeat (autorewrite with rew_Zlength; simpl);
-  (ring || (simpl_word_exprs OK; try reflexivity)).
+  simpl_word_exprs OK;
+  (ring || (try reflexivity)).

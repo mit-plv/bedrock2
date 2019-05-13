@@ -24,6 +24,7 @@ Require Import compiler.SimplWordExpr.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.ptsto_bytes.
+Require Import compiler.Simp.
 
 
 Open Scope Z_scope.
@@ -136,11 +137,10 @@ Section Verif.
     assert (valid_register x1). { unfold valid_register, x1. blia. }
     assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_1_encodable.
-    destruct initial as [ [initial_regs initial_pc initial_nextPc initial_mem initial_trace] initial_metrics].
+    destruct_RiscvMachine initial.
     unfold asm_prog_1 in *.
-    simpl in *.
+    simpl in *. simp.
     subst.
-    simpl.
     run1det.
     run1det.
     eapply runsToDone.
@@ -179,6 +179,10 @@ Section Verif.
 
   Axiom fix_updated_mem_TODO: False.
 
+  Arguments Z.add: simpl never.
+  Arguments Z.mul: simpl never.
+  Arguments Z.of_nat: simpl never.
+
   Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine) newPc
                                   (argvars resvars: list Register) R (v1 v2 dummy: w32),
       newPc = word.add initial.(getPc)
@@ -199,7 +203,7 @@ Section Verif.
     assert (valid_register x1). { unfold valid_register, x1. blia. }
     assert (valid_register x2). { unfold valid_register, x2. blia. }
     pose proof asm_prog_2_encodable.
-    destruct initial as [ [initial_regs initial_pc initial_nextPc initial_mem initial_trace] initial_metrics].
+    destruct_RiscvMachine initial.
     unfold asm_prog_2 in *.
     simpl in *.
     unfold program in *.
@@ -210,20 +214,14 @@ Section Verif.
     run1det.
     run1det.
     eapply runsTo_trans. {
-      eapply asm_prog_1_correct; simpl.
-      - rewrite map.get_put_diff by (unfold x1, x2; blia).
-        apply map.get_put_same.
-      - apply map.get_put_same.
-      - reflexivity.
-      - sidecondition.
-      - reflexivity.
+      eapply asm_prog_1_correct; simpl; try sidecondition.
+      rewrite map.get_put_diff by (unfold x1, x2; blia).
+      apply map.get_put_same.
     }
     simpl.
     intros middle (? & ? & ? & ?).
-    destruct middle as [ [middle_regs middle_pc middle_nextPc middle_mem middle_trace] middle_metrics].    simpl in *.
-    subst.
-
-    clear H6.
+    destruct_RiscvMachine middle. simpl in *.
+    subst. simp.
 
     (* TODO matching up addresses should work automatically *)
     replace (@word.add _ (@word W)
@@ -251,16 +249,15 @@ Section Verif.
     }
 
     run1det.
-    simpl in *.
     eapply runsToDone.
     simpl.
     repeat split.
-    - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
-    - clear. rewrite List.app_length. simpl. rewrite word_goal_1_TODO. reflexivity.
+    - solve_word_eq word_ok.
+    - solve_word_eq word_ok.
     - (* TODO *) case fix_updated_mem_TODO.
     - assumption.
   Qed.
 
 End Verif.
 
-(* Print Assumptions asm_prog_2_correct. just word_goal_1_TODO and fix_updated_mem *)
+(* Print Assumptions asm_prog_2_correct. just fix_updated_mem_TODO *)

@@ -164,13 +164,6 @@ Definition mcomp_sat:
   OStateND MetricRiscvMachine unit -> MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
   GoFlatToRiscv.mcomp_sat (PRParams := MetricMinimalMMIOPrimitivesParams).
 
-Lemma Zlength_length: forall {A: Type} (l: list A),
-    Z.of_nat (Datatypes.length l) = Zlength l.
-Proof.
-  induction l; try reflexivity.
-  rewrite Zlength_cons. simpl. blia.
-Qed.
-
 Lemma undef_on_unchecked_store_byte_list:
   forall (l: list word8) (start: word32),
     map.undef_on (unchecked_store_byte_list start l map.empty)
@@ -205,8 +198,7 @@ Proof.
     cbv [isOTP isPRCI isGPIO0 isUART0] in *.
     split.
     + intro C. rewrite <- C in *. unfold imemStart in *. cbv in El2. intuition congruence.
-    + rewrite Zlength_length.
-      rewrite word.unsigned_sub.
+    + rewrite word.unsigned_sub.
       unfold imemStart. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Zminus_mod_idemp_l.
       match goal with
       | |- _ + ?L < ?M => let L' := eval cbv in L in change L with L';
@@ -237,6 +229,9 @@ Proof. reflexivity. Qed.
 
 Definition run1 : OStateND MetricRiscvMachine unit := @run1 _ _ _ _ IsMetricRiscvMachine _ RV32IM.
 
+Axiom TODO_program_addrs_executable:
+  addrs_executable imemStart (List.length (compileFunc swap_chars_over_uart)) staticXAddrs.
+
 Lemma end2endDemo:
   runsToNonDet.runsTo (mcomp_sat run1)
                       initialSwapMachine
@@ -255,7 +250,15 @@ Proof.
     unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].
     1: apply map.split_empty_r; reflexivity.
     apply store_program_empty.
-    apply input_program_not_too_long.
+    + apply input_program_not_too_long.
+    + apply TODO_program_addrs_executable.
+    + reflexivity.
+    + unfold compileFunc, ExprImp2Riscv.
+      apply Forall_forall.
+      apply compile_stmt_emits_valid.
+      * constructor.
+      * repeat constructor.
+      * constructor.
   - cbv [Pipeline.ext_guarantee pipeline_params FlatToRiscvCommon.FlatToRiscv.ext_guarantee
          FlatToRiscv_params mmio_params].
     exact initialMachine_undef_on_MMIO_addresses.

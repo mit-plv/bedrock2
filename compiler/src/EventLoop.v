@@ -106,9 +106,7 @@ Section EventLoop.
       (* this is the loop verification code: *)
       eapply runsToStep. {
         eapply run_Jal0; try eassumption.
-        - replace (getPc state) with (word.sub pc_start (word.of_Z jump)) by congruence.
-          solve_divisibleBy4.
-        - unfold program, array. rewrite H0. ecancel_assumption.
+        unfold program, array. rewrite H0. ecancel_assumption.
       }
       simpl. intros. simp.
       destruct_RiscvMachine state.
@@ -131,9 +129,7 @@ Section EventLoop.
       (* this is the loop verification code: *)
       eapply runsToStep. {
         eapply run_Jal0; try eassumption.
-        - replace (getPc state) with (word.sub pc_start (word.of_Z jump)) by congruence.
-          solve_divisibleBy4.
-        - unfold program, array. rewrite H0. ecancel_assumption.
+        unfold program, array. rewrite H0. ecancel_assumption.
       }
       simpl. intros. simp.
       destruct_RiscvMachine state.

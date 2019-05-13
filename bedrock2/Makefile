@@ -18,6 +18,7 @@ _CoqProject:
 	printf -- '$(DEPFLAGS_NL)' > _CoqProject
 
 all_coqmakefile: Makefile.coq.all $(VS)
+	rm -f .coqdeps.d
 	$(MAKE) -f Makefile.coq.all
 
 all: all_coqmakefile special/BytedumpTest.out

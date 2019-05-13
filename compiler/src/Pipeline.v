@@ -140,7 +140,7 @@ Section Pipeline1.
 
   Lemma flatToRiscv_size: forall (s: FlatImp.stmt) (insts: list Instruction),
       FlatToRiscvDef.compile_stmt s = insts ->
-      0 <= Zlength insts <= FlatImp.stmt_size s.
+      0 <= Z.of_nat (List.length insts) <= FlatImp.stmt_size s.
   Proof.
     intros. subst.
     apply (EmitsValid.compile_stmt_size s).
@@ -148,7 +148,7 @@ Section Pipeline1.
 
   Lemma exprImp2Riscv_size: forall (s: Syntax.cmd) (insts: list Instruction),
       ExprImp2Riscv s = insts ->
-      0 <= Zlength insts <= ExprImp.cmd_size s.
+      0 <= Z.of_nat (List.length insts) <= ExprImp.cmd_size s.
   Proof.
     intros.
     unfold ExprImp2Riscv, ExprImp2FlatImp in *.

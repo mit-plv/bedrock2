@@ -133,7 +133,7 @@ Section Connect.
            (post : MetricRiscvMachine -> Prop),
       kamiStep m0 m3 t1 ->
       states_related (m0, t2) m1'0 ->
-      mcomp_sat (run1 RunInstruction.iset) m1'0 post ->
+      mcomp_sat (run1 iset) m1'0 post ->
       m0 = m3 /\ t1 = [] \/
                  (exists m2' : MetricRiscvMachine, states_related (m3, t1 ++ t2) m2' /\ post m2').
 

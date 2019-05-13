@@ -13,7 +13,6 @@ Require Import riscv.Utility.Tactics.
 Require Import riscv.Utility.Utility.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvDef. Import FlatToRiscvDef.
-Require Import riscv.Utility.ListLib.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Utility.prove_Zeq_bitwise.
 
@@ -527,27 +526,20 @@ Section EmitsValid.
       intuition (try blia).
   Qed.
 
-  Hint Rewrite @Zlength_nil @Zlength_cons @Zlength_app: rew_Zlength.
-
   Lemma compile_lit_size: forall x v,
-      0 <= Zlength (compile_lit x v) <= 8.
+      0 <= Z.of_nat (length (compile_lit x v)) <= 8.
   Proof.
     intros. unfold compile_lit, compile_lit_64bit, compile_lit_32bit, compile_lit_12bit.
     repeat destruct_one_match; cbv; split; discriminate.
   Qed.
 
   Lemma compile_stmt_size: forall s,
-    0 <= Zlength (compile_stmt s) <= stmt_size s.
+    0 <= Z.of_nat (length (compile_stmt s)) <= stmt_size s.
   Proof.
     induction s; simpl; try apply compile_lit_size;
       try destruct op; try solve [destruct f]; simpl;
-      repeat (autorewrite with rew_Zlength || simpl in *); try blia.
-    pose proof (Zlength_nonneg (compile_ext_call binds a args)).
-    pose proof (compile_ext_call_length binds a args).
-    (* COQBUG *)
-    tryif blia
-    then idtac
-    else (idtac "compile_stmt_size: blia should not have failed!"; split; blia).
+      repeat (rewrite List.app_length || simpl in *); try blia.
+    pose proof (compile_ext_call_length binds a args). blia.
   Qed.
 
   Context {fun_pos_env: coqutil.Map.Interface.map.map Syntax.funname Z}.
@@ -587,7 +579,6 @@ Section EmitsValid.
            | H: In _ (_ ++ _) |- _ => apply in_app_iff in H
            | H: In _ (_ :: _) |- _ => apply in_inv in H
            | s: stmt |- _ => unique pose proof (compile_stmt_size s)
-           | H: context [Zlength ?l] |- _ => unique pose proof (Zlength_nonneg l)
            end;
     subst;
     repeat (so fun hyporgoal => match hyporgoal with

@@ -3,7 +3,6 @@ Require Import compiler.util.Common.
 Require Import riscv.Utility.Monads.
 Require Import coqutil.Map.SortedList.
 Require Import compiler.FlatImp.
-Require Import riscv.Utility.ListLib.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.PseudoInstructions.
@@ -40,12 +39,12 @@ Inductive ext_spec: act -> list Empty_set -> list word32 ->
                     (list Empty_set -> list word32 -> Prop) -> Prop :=
 | ext_select: forall i selector args,
     i = word.unsigned (word.sru selector (word.of_Z 2)) ->
-    0 <= i < Zlength args ->
+    0 <= i < Z.of_nat (length args) ->
     ext_spec "Select"%string nil (selector :: args)
              (fun t' results =>
                 t' = nil /\
                 exists garbageWord,
-                  results = [Znth args i (word.of_Z 0); garbageWord]).
+                  results = [nth (Z.to_nat i) args (word.of_Z 0); garbageWord]).
 
 (*
 Instance myFlatImpParams: FlatImp.parameters := {|
@@ -55,7 +54,7 @@ Instance myFlatImpParams: FlatImp.parameters := {|
 *)
 
 Definition map_with_index{A B: Type}(f: A -> Z -> B)(l: list A): list B :=
-  fst (List.fold_right (fun elem '(acc, i) => (f elem i :: acc, i-1)) (nil, Zlength l - 1) l).
+  fst (List.fold_right (fun elem '(acc, i) => (f elem i :: acc, i-1)) (nil, Z.of_nat (List.length l) - 1) l).
 
 
 (* later, we'll modify the compiler to receive the absolute position of the code
@@ -70,7 +69,7 @@ Definition compile_ext_call(results: list var)(a: act)(args: list var): list Ins
         Jalr Register0 helpervar 8
       ]] ++ concat
         (map_with_index
-           (fun argvar i => [[ Addi resvar argvar 0; J ((Zlength argvars - i) * 8 - 4) ]])
+           (fun argvar i => [[ Addi resvar argvar 0; J ((Z.of_nat (List.length argvars) - i) * 8 - 4) ]])
            argvars)
     | _, _ => [[ ]] (* invalid *)
     end

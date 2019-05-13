@@ -47,3 +47,26 @@ Definition spi_read : function :=
       }
     }
   ))).
+
+Require Import bedrock2.ProgramLogic.
+Require Import bedrock2.FE310CSemantics.
+Require Import coqutil.Word.Interface.
+Require Import Coq.Lists.List. Import ListNotations.
+Require Import bedrock2.ReversedListNotations bedrock2.TracePredicate. Import TracePredicateNotations.
+Require Import bedrock2.Examples.lightbulb_spec.
+Fail
+Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,
+  WeakestPrecondition.call functions "spi_write" t m [b] (fun T M RETS =>
+    M = m /\ Logic.or
+      ((exists err, word.unsigned err <> 0 /\ RETS = [err]) /\ (eq t +++ (spi_write_full^* )) T)
+      (RETS = [word.of_Z 0] /\ T = t ++ (*FIXME*)nil)).
+(* The term "spi_write_full" has type *)
+(*  "word 8 -> forall word : word 32, list (OP word) -> Prop" *)
+(* while it is expected to have type "list ?T -> Prop". *)
+
+(*
+Require Import coqutil.Map.Interface.
+Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
+Proof.
+  repeat straightline.
+ *)

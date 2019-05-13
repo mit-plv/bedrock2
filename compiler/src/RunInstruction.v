@@ -35,7 +35,6 @@ Section Run.
 
   Context {W: Words}.
   Context {Registers: map.map Register word}.
-  Context {Action: Type}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
@@ -46,8 +45,6 @@ Section Run.
   Context {RVM: RiscvProgram M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
-
-  Definition iset := if width =? 32 then RV32IM else RV64IM.
 
   Ltac simulate'_step :=
     first [ eapply go_loadByte_sep ; simpl; [sidecondition..|]
@@ -66,14 +63,13 @@ Section Run.
   Definition run_Jalr0_spec :=
     forall (rs1: Register) (oimm12: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop)
            (dest: word),
-      verify (Jalr RegisterNames.zero rs1 oimm12) iset ->
-      (* [verify] only enforces [oimm20 mod 2 = 0] because there could be compressed
-         instructions, but we don't support them so we require divisibility by 4: *)
+      (* [verify] (and decode-encode-id) only enforces divisibility by 2 because there could be
+         compressed instructions, but we don't support them so we require divisibility by 4: *)
       oimm12 mod 4 = 0 ->
       (word.unsigned dest) mod 4 = 0 ->
-      (* valid_register almost follows from verify except for when the register is Register0 *)
+      (* valid_register almost follows from verify (or decode-encode-id) except for when
+         the register is Register0 *)
       valid_register rs1 ->
-      divisibleBy4 initialL.(getPc) ->
       map.get initialL.(getRegs) rs1 = Some dest ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
@@ -89,13 +85,8 @@ Section Run.
 
   Definition run_Jal_spec :=
     forall (rd: Register) (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (Jal rd jimm20) iset ->
-      (* [verify] only enforces [jimm20 mod 2 = 0] because there could be compressed
-         instructions, but we don't support them so we require divisibility by 4: *)
       jimm20 mod 4 = 0 ->
-      (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
-      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep initialL.(getMem) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
@@ -106,11 +97,13 @@ Section Run.
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
 
+  (* TOOD in the specs below we could remove divisibleBy4 and bounds because that's
+     enforced by program *)
+
   Definition run_Jal0_spec :=
     forall (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
-      divisibleBy4 initialL.(getPc) ->
       (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep initialL.(getMem) ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
@@ -127,11 +120,8 @@ Section Run.
   Definition run_ImmReg_spec(Op: Register -> Register -> MachineInt -> Instruction)
                             (f: word -> word -> word): Prop :=
     forall (rd rs: Register) rs_val (imm: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (Op rd rs imm) iset ->
-      (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
-      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
       (program initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
@@ -147,11 +137,9 @@ Section Run.
              (opt_sign_extender: Z -> Z): Prop :=
     forall (base addr: word) (v: HList.tuple byte n) (rd rs: Register) (ofs: MachineInt)
            (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (L rd rs ofs) iset ->
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
-      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
@@ -170,11 +158,9 @@ Section Run.
   Definition run_Store_spec(n: nat)(S: Register -> Register -> MachineInt -> Instruction): Prop :=
     forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
            (ofs: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (S rs1 rs2 ofs) iset ->
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rs1 ->
       valid_register rs2 ->
-      divisibleBy4 initialL.(getPc) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs1 = Some base ->
       map.get initialL.(getRegs) rs2 = Some v_new ->
@@ -194,7 +180,7 @@ Section Run.
   Ltac t :=
     repeat intro;
     match goal with
-    | initialL: RiscvMachineL |- _ => destruct initialL as [ [regs pc npc m l] mc]
+    | initialL: RiscvMachineL |- _ => destruct_RiscvMachine initialL
     end;
     simpl in *; subst;
     simulate';
@@ -208,6 +194,7 @@ Section Run.
   Lemma run_Jalr0: run_Jalr0_spec.
   Proof.
     repeat intro.
+    destruct (invert_ptsto_program1 H4) as (DE & ? & ?).
     (* execution of Jalr clears lowest bit *)
     assert (word.and (word.add dest (word.of_Z oimm12))
                      (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =
@@ -239,19 +226,20 @@ Section Run.
   Qed.
 
   Lemma run_Jal: run_Jal_spec.
-  Proof. t. Qed.
+  Proof.
+    repeat intro.
+    destruct (invert_ptsto_program1 H2) as (DE & ? & ?).
+    t.
+  Qed.
 
   Arguments Z.pow: simpl never.
   Arguments Z.opp: simpl never.
 
   Lemma run_Jal0: run_Jal0_spec.
   Proof.
+    repeat intro.
+    destruct (invert_ptsto_program1 H1) as (DE & ? & ?).
     t.
-    unfold verify. cbn. unfold verify_UJ. cbn.
-    unfold opcode_JAL, Register0.
-    repeat split; try blia.
-    eapply mod0_divisible_modulo. 4: eassumption. 1,2: reflexivity.
-    exists 2. reflexivity.
   Qed.
 
   Lemma run_Addi: run_ImmReg_spec Addi word.add.
@@ -287,9 +275,56 @@ Section Run.
   Lemma run_Ld_unsigned: run_Load_spec 8 Ld id.
   Proof.
     t. rewrite sextend_width_nop; [reflexivity|]. unfold iset in *.
-    clear -H. destruct H as [_ H]. unfold verify_iset in *.
+    edestruct @invert_ptsto_instr as (DE & ? & ?); [exact mem_ok|ecancel_assumption|].
+    clear -DE. destruct DE as [_ H]. unfold verify_iset in *. unfold iset in *.
     destruct width_cases as [E | E]; rewrite E in *; simpl in *; intuition congruence.
   Qed.
+
+  Lemma iff1_emp: forall P Q,
+      (P <-> Q) ->
+      iff1 (emp P) (emp Q).
+  Proof. unfold iff1, emp. clear. firstorder idtac. Qed.
+
+  Lemma removeXAddr_diff: forall a1 a2 xaddrs,
+      a1 <> a2 ->
+      isXAddr a1 xaddrs ->
+      isXAddr a1 (removeXAddr a2 xaddrs).
+  Proof.
+    unfold isXAddr, removeXAddr.
+    intros.
+    apply filter_In.
+    split; [assumption|].
+    rewrite word.eqb_ne by congruence.
+    reflexivity.
+  Qed.
+
+  Lemma removeXAddr_bw: forall a1 a2 xaddrs,
+      isXAddr a1 (removeXAddr a2 xaddrs) ->
+      isXAddr a1 xaddrs.
+  Proof.
+    unfold isXAddr, removeXAddr.
+    intros.
+    eapply filter_In.
+    eassumption.
+  Qed.
+
+  Lemma sep_ptsto_to_addr_neq: forall a1 v1 a2 v2 m R,
+      (ptsto a1 v1 * ptsto a2 v2 * R)%sep m ->
+      a1 <> a2.
+  Proof.
+    intros. intro E. subst a2. unfold ptsto in *.
+    destruct H as (? & ? & ? & (? & ? & ? & ? & ?) & ?).
+    subst.
+    destruct H0 as [? D].
+    unfold map.disjoint in D.
+    eapply D; apply map.get_put_same.
+  Qed.
+
+  Arguments invalidateWrittenXAddrs: simpl never.
+
+  Axiom TODO_invalidateWrittenXAddrs_nop: forall n addr xAddrs,
+      invalidateWrittenXAddrs n addr xAddrs = xAddrs.
+  Local Hint Resolve TODO_invalidateWrittenXAddrs_nop.
 
   Lemma run_Sb: run_Store_spec 1 Sb.
   Proof. t. Qed.

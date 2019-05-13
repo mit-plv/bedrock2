@@ -9,7 +9,6 @@ Require Import compiler.util.Common.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
-Require Import riscv.Utility.ListLib.
 Require Import riscv.Platform.MetricLogging.
 Require Import compiler.Simp.
 
@@ -120,7 +119,6 @@ Section ExprImp1.
       repeat match goal with
       | e: expr |- _ => unique pose proof (expr_size_pos e)
       | es: list expr |- _ => unique pose proof (exprs_size_nonneg es)
-      | l: list _ |- _ => unique pose proof (Zlength_nonneg l)
       end;
       try blia.
     Qed.
