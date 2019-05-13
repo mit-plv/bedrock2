@@ -3,6 +3,8 @@ Require Import Coq.Lists.List. Import ListNotations.
 Section ListPred.
   Context {T: Type}.
 
+  Definition constraint (P : Prop): list T -> Prop := fun _ => P.
+
   Definition one(t: T): list T -> Prop := eq [t].
 
   Definition concat(P1 P2: list T -> Prop): list T -> Prop :=
@@ -31,6 +33,7 @@ End ListPred.
 
 Module ListPredNotations.
   Notation "P ^*" := (kleene P) (at level 50).
+  Notation "P ^+" := (concat P (kleene P)) (at level 50).
   Infix "+++" := concat (at level 60).
   Infix "|||" := choice (at level 70).
 End ListPredNotations.
