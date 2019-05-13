@@ -16,6 +16,7 @@ Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
+Require Import compiler.examples.MMIO.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.SeparationLogic.
@@ -41,6 +42,8 @@ Section FibCompiled.
   Existing Instance coqutil.Map.SortedListString.map.
   Existing Instance coqutil.Map.SortedListString.ok.
 
+  Context {word_properties: RiscvWordProperties.word.riscv_ok word}.
+      
   Instance pipeline_params: Pipeline.parameters := {
     Pipeline.FlatToRiscvDef_params := flatToRiscvDef_params;
     Pipeline.ext_spec _ _  _ _ _ := False;
@@ -60,12 +63,11 @@ Section FibCompiled.
   }.
   Proof.
     - constructor; try typeclasses eauto.
-      + admit. (* This is doable.. *)
       + simpl. apply MetricMinimalSatisfiesMetricPrimitives.
       + constructor.
       + intros. inversion H6. destruct H17.
     - constructor; destruct 1.
-  Admitted.
+  Qed.
 
   Fixpoint fib (n: nat): Z :=
     match n with
