@@ -64,7 +64,7 @@ Section Proofs.
       }
       destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {
-        eapply run_store_word; try solve [sidecondition].
+        eapply run_store_word; cycle -2; try solve [sidecondition].
       }
       simpl. intros.
       destruct_RiscvMachine initial.
@@ -153,7 +153,7 @@ Section Proofs.
       }
       destruct values as [|value values]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {
-        eapply run_load_word; try solve [sidecondition].
+        eapply run_load_word; cycle -2; try solve [sidecondition].
       }
       simpl. intros.
       destruct_RiscvMachine initial.

@@ -120,8 +120,6 @@ Section Run.
   Definition run_ImmReg_spec(Op: Register -> Register -> MachineInt -> Instruction)
                             (f: word -> word -> word): Prop :=
     forall (rd rs: Register) rs_val (imm: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (Op rd rs imm) iset ->
-      (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
@@ -139,7 +137,6 @@ Section Run.
              (opt_sign_extender: Z -> Z): Prop :=
     forall (base addr: word) (v: HList.tuple byte n) (rd rs: Register) (ofs: MachineInt)
            (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (L rd rs ofs) iset ->
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
@@ -161,7 +158,6 @@ Section Run.
   Definition run_Store_spec(n: nat)(S: Register -> Register -> MachineInt -> Instruction): Prop :=
     forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
            (ofs: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
-      verify (S rs1 rs2 ofs) iset ->
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rs1 ->
       valid_register rs2 ->
@@ -279,7 +275,8 @@ Section Run.
   Lemma run_Ld_unsigned: run_Load_spec 8 Ld id.
   Proof.
     t. rewrite sextend_width_nop; [reflexivity|]. unfold iset in *.
-    clear -H. destruct H as [_ H]. unfold verify_iset in *.
+    edestruct @invert_ptsto_instr as (DE & ? & ?); [exact mem_ok|ecancel_assumption|].
+    clear -DE. destruct DE as [_ H]. unfold verify_iset in *. unfold iset in *.
     destruct width_cases as [E | E]; rewrite E in *; simpl in *; intuition congruence.
   Qed.
 

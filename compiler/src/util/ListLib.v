@@ -27,6 +27,20 @@ Section ListSet.
   Qed.
 End ListSet.
 
+Lemma remove_In_ne{A: Type}{eqd: DecidableEq A}: forall (l: list A) (f1 f2: A),
+      In f1 l ->
+      f1 <> f2 ->
+      In f1 (remove eqd f2 l).
+Proof.
+  induction l; intros.
+  - inversion H.
+  - simpl in *. destruct H.
+    + subst a.
+      destruct (eqd f2 f1); try congruence. simpl. auto.
+    + destruct (eqd f2 a).
+      * subst a. eauto.
+      * simpl. eauto.
+Qed.
 
 Lemma firstn_skipn_reassemble: forall (T: Type) (l l1 l2: list T) (n: nat),
     List.firstn n l = l1 ->

@@ -337,7 +337,6 @@ Section FlatToRiscv1.
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_load_word: forall (base addr v : word) (rd rs : Register) (ofs : MachineInt)
                               (initialL : RiscvMachineL) (R : mem -> Prop),
-      Encode.verify (compile_load Syntax.access_size.word rd rs ofs) iset ->
       valid_register rd ->
       valid_register rs ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
@@ -356,9 +355,9 @@ Section FlatToRiscv1.
   Proof.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_load Syntax.access_size.word); try eassumption.
+    - eapply (run_compile_load Syntax.access_size.word); cycle -1; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
-      rewrite H7.
+      rewrite H6.
       unfold id.
       f_equal.
       rewrite LittleEndian.combine_split.
@@ -371,7 +370,6 @@ Section FlatToRiscv1.
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Register)
                                (ofs : MachineInt) (initialL : RiscvMachineL) (R : mem -> Prop),
-      Encode.verify (compile_store Syntax.access_size.word rs1 rs2 ofs) iset ->
       valid_register rs1 ->
       valid_register rs2 ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
@@ -391,7 +389,7 @@ Section FlatToRiscv1.
   Proof.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_store Syntax.access_size.word); try eassumption.
+    - eapply (run_compile_store Syntax.access_size.word); cycle -1; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
   Qed.
 
