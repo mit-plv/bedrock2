@@ -166,14 +166,14 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) post,
+  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) post R,
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       ExprImp2Riscv sH = instsL ->
       (word.unsigned initialL.(getPc)) mod 4 = 0 ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       initialL.(getLog) = t ->
-      (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
+      (program initialL.(getPc) instsL * eq mH * R)%sep initialL.(getMem) ->
       ext_guarantee initialL ->
       Semantics.exec.exec map.empty sH t mH map.empty mcH post ->
       runsTo (mcomp_sat (run1 iset))
@@ -181,8 +181,9 @@ Section Pipeline1.
              (fun finalL => exists mH' lH' mcH',
                   post finalL.(getLog) mH' lH' mcH' /\
                   map.extends finalL.(getRegs) lH' /\
-                  (program initialL.(getPc) (ExprImp2Riscv sH) * eq mH')%sep (getMem finalL) /\
+                  (program initialL.(getPc) (ExprImp2Riscv sH) * eq mH' * R)%sep (getMem finalL) /\
                   getPc finalL = add (getPc initialL) (mul (ZToReg 4) (ZToReg (Zlength instsL))) /\
+                  getNextPc finalL = add (getPc finalL) (ZToReg 4) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <= lowerMetrics (mcH' - mcH))%metricsL).
   Proof.
     intros. subst.
@@ -229,10 +230,9 @@ Section Pipeline1.
       + assumption.
       + assumption.
     - simpl. intros. simp. do 3 eexists. do 3 (split; try eassumption).
-      + seplog.
-      + split.
-        * assumption.
-        * solve_MetricLog.
+      split; [assumption|].
+      split; [assumption|].
+      solve_MetricLog.
   Qed.
 
   Lemma exprImp2Riscv_correctTrace: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
@@ -254,6 +254,7 @@ Section Pipeline1.
     intros.
     eapply runsTo_weaken.
     - eapply exprImp2Riscv_correct; try eassumption.
+      seplog.
     - intros. simpl in *. simp.
       assumption.
   Qed.
