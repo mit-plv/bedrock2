@@ -6,6 +6,7 @@ Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
 Require Import compiler.Basic32Semantics.
+Require Import compiler.Simp.
 Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MinimalLogging.
 Require Import riscv.Platform.MetricMinimal.
@@ -184,6 +185,18 @@ Section FibCompiled.
     rewrite (Naive._unsigned_in_range v).
     rewrite (Naive.of_Z_unsigned).
     reflexivity.
+  Qed.
+
+  Lemma sep_inline_eq: forall (A R: FlatToRiscv.mem -> Prop) m1,
+    (exists m2, (R * eq m2)%sep m1 /\ A m2) <->
+    (R * A)%sep m1.
+  Proof.
+    unfold iff, Separation.sep.
+    repeat match goal with
+           | |- _ => intros || simp || eassumption || reflexivity
+           | |- _ /\ _ => split
+           | |- exists _, _ => eexists
+           end.
   Qed.
 
   Lemma word_add_of_Z: forall width a b c,
@@ -613,25 +626,29 @@ Section FibCompiled.
   Definition run1 : Pipeline.M unit := @run1 _ _ _ _ Pipeline.RVM _ iset.
   Definition mcomp_sat := GoFlatToRiscv.mcomp_sat.
 
-  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) initialMem insts (m: map.map word byte) v nl ns R,
+  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) insts (m: map.map word byte) v nl ns R,
       0 <= n < 2 ^ 32 ->
       word.unsigned (getPc initialMachine) mod 4 = 0 ->
       getNextPc initialMachine = word.add (getPc initialMachine) (word.of_Z 4) ->
       insts = (ExprImp2Riscv (fib_ExprImp nl ns)) ->
-      (program (getPc initialMachine) insts * eq initialMem * R)%sep initialMachine.(getMem) ->
-      (ptsto_word (word.of_Z ns) (word.of_Z v) *
-       ptsto_word (word.of_Z nl) (word.of_Z n))%sep initialMem ->
+      (program (getPc initialMachine) insts * R *
+       (ptsto_word (word.of_Z ns) (word.of_Z v) *
+        ptsto_word (word.of_Z nl) (word.of_Z n)))%sep initialMachine.(getMem) ->
       runsToNonDet.runsTo (mcomp_sat run1) initialMachine
-        (fun (finalL: RiscvMachine) => exists finalMem,
-           (program (getPc initialMachine) insts * eq finalMem * R)%sep finalL.(getMem) /\
-           (ptsto_word (word.of_Z ns) (word.of_Z (fib_bounded (Z.to_nat n))) *
-            ptsto_word (word.of_Z nl) (word.of_Z n))%sep finalMem /\
+        (fun (finalL: RiscvMachine) =>
+           (program (getPc initialMachine) insts * R *
+            (ptsto_word (word.of_Z ns) (word.of_Z (fib_bounded (Z.to_nat n))) *
+             ptsto_word (word.of_Z nl) (word.of_Z n)))%sep finalL.(getMem) /\
            getPc finalL = add (getPc initialMachine) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
            getNextPc finalL = add (getPc finalL) (ZToReg 4) /\
            finalL.(getMetrics).(instructions) - initialMachine.(getMetrics).(instructions) <= n * 34 + 72).
   Proof.
     intros. subst.
     destruct H.
+
+    rewrite <- sep_inline_eq in H3.
+    destruct H3 as [initialMem Hsep]. destruct Hsep.
+
     eapply runsToNonDet.runsTo_weaken.
     - pose proof Pipeline.exprImp2Riscv_correct as Hp.
       specialize Hp with (sH := fib_ExprImp nl ns)
@@ -643,21 +660,21 @@ Section FibCompiled.
       + assumption.
       + assumption.
       + reflexivity.
-      + eassumption.
+      + instantiate (2 := initialMem). instantiate (1 := R). seplog.
       + cbv [Pipeline.ext_guarantee pipeline_params]. exact I.
       + eapply ExprImp.weaken_exec.
         * eapply fib_correct with (n := Z.to_nat n).
-          -- rewrite Z2Nat.id; [|assumption]. apply sep_comm. eassumption.
+          -- rewrite Z2Nat.id; [|assumption]. instantiate (1 := v). seplog.
           -- rewrite Z2Nat.id; assumption.
         * intros. eassumption.
     - intros.
       do 3 destruct H5.
       destruct_hyp.
       rewrite Z2Nat.id in *; try assumption.
-      eexists.
       repeat split.
-      + eassumption.
-      + apply sep_comm. eassumption.
+      + apply sep_inline_eq.
+        eexists.
+        split; [seplog|seplog].     
       + assumption.
       + assumption.
       + repeat unfold_MetricLog. repeat simpl_MetricLog. simpl in *.
