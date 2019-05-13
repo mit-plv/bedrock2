@@ -1,8 +1,8 @@
-Require Import bedrock2.ListPred.
+Require Import bedrock2.TracePredicate.
 Require Import Coq.ZArith.BinInt.
 Require Import coqutil.Word.Interface.
 Section LightbulbSpec.
-  Import ListPredNotations.
+  Import TracePredicateNotations.
   Let width := 32%Z.
   Context (byte : word 8%Z) (word : word width).
   
