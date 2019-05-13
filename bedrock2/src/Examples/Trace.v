@@ -5,7 +5,7 @@ Require Import coqutil.Word.Interface.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Z.HexNotation.
-Require Import bedrock2.ListPred. Import ListPredNotations.
+Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.Semantics.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsInConstr.
