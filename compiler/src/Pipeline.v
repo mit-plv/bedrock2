@@ -33,6 +33,7 @@ Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
+Require Import compiler.MetricsToRiscv.
 
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
@@ -162,33 +163,43 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
-  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
+  Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) post R,
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
       ExprImp2Riscv sH = instsL ->
       (word.unsigned initialL.(getPc)) mod 4 = 0 ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       initialL.(getLog) = t ->
-      (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
+      (program initialL.(getPc) instsL * eq mH * R)%sep initialL.(getMem) ->
       ext_guarantee initialL ->
-      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
+      Semantics.exec.exec map.empty sH t mH map.empty mcH post ->
       runsTo (mcomp_sat (run1 iset))
              initialL
-             (fun finalL =>
-                  post finalL.(getLog)).
+             (fun finalL => exists mH' lH' mcH',
+                  post finalL.(getLog) mH' lH' mcH' /\
+                  map.extends finalL.(getRegs) lH' /\
+                  (program initialL.(getPc) (ExprImp2Riscv sH) * eq mH' * R)%sep (getMem finalL) /\
+                  getPc finalL = add (getPc initialL) (mul (ZToReg 4) (ZToReg (Zlength instsL))) /\
+                  getNextPc finalL = add (getPc finalL) (ZToReg 4) /\
+                  (finalL.(getMetrics) - initialL.(getMetrics) <= lowerMetrics (mcH' - mcH))%metricsL).
   Proof.
     intros. subst.
     eapply runsTo_weaken. Unshelve.
-     - eapply FlatToRiscvMetric.compile_stmt_correct
-        with (postH := (fun t m l mc => post t)); try reflexivity.
+    - eapply FlatToRiscvMetric.compile_stmt_correct
+          with (postH := (fun t m l mc =>
+                            exists l' mc',
+                              post t m l' mc' /\
+                              map.extends l l' /\
+                              (mc - mcH <= mc' - mcH)%metricsH)
+               ); try reflexivity.
       + eapply FlatImp.exec.weaken.
         * match goal with
           | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ s _ t m _ _ eq_refl) as Q
+            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ _ _ _ _ _ _ eq_refl) as Q
           end.
           eapply Q.
           eassumption.
-        * simpl. intros. simp. assumption.
+        * simpl. intros. simp. do 2 eexists. do 2 (split; try eassumption).
       + unfold FlatToRiscvDef.stmt_not_too_big.
         unfold ExprImp2Riscv, ExprImp2FlatImp in *.
         match goal with
@@ -215,7 +226,34 @@ Section Pipeline1.
         seplog.
       + assumption.
       + assumption.
-     - simpl. intros. simp. assumption.
+    - simpl. intros. simp. do 3 eexists. do 3 (split; try eassumption).
+      split; [rewrite Zlength_correct; assumption|].
+      split; [assumption|].
+      solve_MetricLog.
+  Qed.
+
+  Lemma exprImp2Riscv_correctTrace: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
+      ExprImp.cmd_size sH < 2 ^ 10 ->
+      enough_registers sH ->
+      ExprImp2Riscv sH = instsL ->
+      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getLog) = t ->
+      (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
+
+      ext_guarantee initialL ->
+      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
+      runsTo (mcomp_sat (run1 iset))
+             initialL
+             (fun finalL =>
+                  post finalL.(getLog)).
+  Proof.
+    intros.
+    eapply runsTo_weaken.
+    - eapply exprImp2Riscv_correct; try eassumption.
+      seplog.
+    - intros. simpl in *. simp.
+      assumption.
   Qed.
 
 End Pipeline1.
