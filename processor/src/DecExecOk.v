@@ -15,6 +15,8 @@ Require Import Kami.Ex.IsaRv32.
 
 Require Import processor.KamiProc.
 
+Set Implicit Arguments.
+
 Local Open Scope Z_scope.
 
 Section DecExecOk.
@@ -53,69 +55,8 @@ Section DecExecOk.
     eapply map.map_ext.
     intros k.
   Admitted.
-
-  Lemma invert_Kami_execNm:
-    forall km1 kt1 kupd klbl,
-      KamiProc.RegsToT km1 = Some kt1 ->
-      Step kamiProc km1 kupd klbl ->
-      klbl.(annot) = Some (Some "execNm"%string) ->
-      exists kt2: KamiSt,
-        klbl.(calls) = FMap.M.empty _ /\
-        KamiProc.RegsToT (FMap.M.union kupd km1) = Some kt2 /\
-        exists curInst npc prf dst exec_val,
-          curInst = (KamiProc.pgm kt1) (split2 _ _ (KamiProc.pc kt1)) /\
-          npc = evalExpr (rv32NextPc
-                            _ _
-                            (KamiProc.rf kt1) (KamiProc.pc kt1)
-                            curInst) /\
-          prf = KamiProc.rf kt1 /\
-          dst = evalExpr (rv32GetDst _ curInst) /\
-          exec_val = evalExpr
-                       (rv32Exec
-                          _ _
-                          (KamiProc.rf kt1 (evalExpr (rv32GetSrc1 _ curInst)))
-                          (KamiProc.rf kt1 (evalExpr (rv32GetSrc2 _ curInst)))
-                          (KamiProc.pc kt1)
-                          curInst) /\
-          kt2 = {| KamiProc.pc := npc;
-                   KamiProc.rf :=
-                     evalExpr
-                       (UpdateVector
-                          (Var _ (SyntaxKind (Vector (Bit (Z.to_nat width))
-                                                     rv32RfIdx)) prf)
-                          (Var _ (SyntaxKind (Bit rv32RfIdx)) dst)
-                          (Var _ (SyntaxKind (Bit (Z.to_nat width))) exec_val));
-                   KamiProc.pgm := KamiProc.pgm kt1;
-                   KamiProc.mem := KamiProc.mem kt1 |}.
-  Proof.
-    intros.
-    kinvert; try (repeat
-                    match goal with
-                    | [H: annot ?klbl = Some _ |- _] => rewrite H in *
-                    | [H: (_ :: _)%struct = (_ :: _)%struct |- _] =>
-                      inversion H; subst; clear H
-                    end; discriminate).
-
-    Opaque evalExpr.
-    kinv_action_dest.
-    unfold KamiProc.RegsToT in *.
-    kregmap_red.
-    destruct x1; try discriminate.
-    destruct (FMap.M.find "mem"%string km1)
-      as [[[kind|] memv]|]; try discriminate.
-    destruct (decKind kind (Vector (Bit (Z.to_nat width)) (Z.to_nat width)));
-      try discriminate.
-    kregmap_red.
-    inversion_clear H.
-    eexists; split; [|split].
-    - assumption.
-    - reflexivity.
-    - do 5 eexists.
-      repeat (split; [reflexivity|]).
-      reflexivity.
-      Transparent evalExpr.
-
-  Qed.
+  
+  (** * Inversion for decoding *)
 
   Ltac lets_in_hyp_to_eqs :=
     repeat lazymatch goal with
@@ -363,5 +304,5 @@ Section DecExecOk.
     unfold evalConstT.
     f_equal.
   Admitted.
-
+  
 End DecExecOk.

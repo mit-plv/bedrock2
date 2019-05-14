@@ -5,6 +5,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Properties.
 
 (* In order to just use [word] as a typeclass [processor.KamiWord] should
  * be imported before importing [riscv.Utility.Utility]. *)
@@ -73,6 +74,7 @@ Section FetchOk.
     forall w1 w2,
       toKamiPc w1 ^+ toKamiPc w2 = toKamiPc (w1 ^+ w2).
   Proof.
+    unfold toKamiPc; intros.
   Admitted.
 
   Lemma fetch_ok:
@@ -88,6 +90,20 @@ Section FetchOk.
         wordToZ (instrMem
                    (split2 2 (Z.to_nat instrMemSizeLg) (toKamiPc pc))).
   Proof.
+    cbv [kamiXAddrs
+           instrMemStart'
+           Memory.loadWord Memory.load_bytes
+           (* map.getmany_of_tuple *)
+        ]; intros.
+
+    (* eexists; split. *)
+    (* - erewrite map.getmany_of_tuple_in_disjoint_putmany. *)
+    (*   + reflexivity. *)
+    (*   +  *)
+    (* erewrite map.get_putmany_left at 1. *)
+    (* unfold kamiXAddrs, instrMemStart'; intros. *)
+    
+    
   Admitted.
 
 End FetchOk.
