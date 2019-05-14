@@ -200,24 +200,21 @@ Section Connect.
       exists suffix, goodTrace (suffix ++ t ++ t0).
   Proof.
     intros.
-
-    pose proof compile_prog_correct as P.
+    pose proof pipeline_proofs as P.
     specialize P with (hl_inv := fun hlTrace =>
                                    exists llTrace, traces_related llTrace hlTrace /\
                                                    goodTrace llTrace).
-    edestruct P as (ll_inv & establish_ll_inv & use_ll_inv); [admit..|].
-
+    edestruct P as (Establish & Preserve & Use); clear P; [admit..|].
     pose proof kamiMultiStep_sound as Q.
-    specialize Q with (inv := ll_inv) (m1 := m1) (m2 := m2) (m1' := m1') (t := t) (t0 := t0).
+    specialize Q with (m1 := m1) (m2 := m2) (m1' := m1') (t := t) (t0 := t0).
     edestruct Q as (m2' & Rel & InvFinal).
     - eapply kamiStep_sound.
-    - intros st HI. edestruct use_ll_inv as (U & _). 1: exact HI. exact U.
+    - eapply Preserve.
     - eassumption.
     - eassumption.
-    - eapply establish_ll_inv. auto.
+    - eapply Establish. admit.
     - apply states_related_to_traces_related in Rel.
-      edestruct use_ll_inv as (_ & U). 1: exact InvFinal.
-      destruct U as (suffix & llTrace & Rel' & G).
+      edestruct Use as (suffix & llTrace & Rel' & G). 1: exact InvFinal.
       apply split_ll_trace in Rel'.
       destruct Rel' as (llTrace1 & llTrace2 & E & Rel1' & Rel2'). subst.
       pose proof (hl_trace_determines_ll_trace Rel Rel1'). subst.

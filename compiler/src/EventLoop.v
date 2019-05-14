@@ -37,7 +37,6 @@ Section EventLoop.
 
   Context {W: Words}.
   Context {Registers: map.map Register word}.
-  Context {Action: Type}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 

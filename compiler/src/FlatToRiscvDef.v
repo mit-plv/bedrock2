@@ -329,9 +329,14 @@ Section FlatToRiscv1.
         end
       end.
 
-    Definition compile_functions(funnames: list funname): list Instruction :=
+    Definition compile_functions(funnames: list funname): list Instruction * fun_pos_env :=
       let e_pos := build_fun_pos_env 0 funnames in
-      compile_funs e_pos e_impl 0 funnames.
+      (compile_funs e_pos e_impl 0 funnames, e_pos).
+
+    Definition compile_snippet: fun_pos_env -> Z -> stmt -> list Instruction := compile_stmt_new.
+
+    (* below: old version which composes loop before composing with earlier phases,
+       and already contains event-loop specific stuff which should not be here *)
 
     (* The main function is always some initialization code followed by an infinite loop.
        If no loop is desired, pass SSkip as loop_body, and this will guarantee that after
