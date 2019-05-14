@@ -174,35 +174,19 @@ Section Equiv.
     subset (riscvTraces init) (prefixes (post_to_traces post)).
   Admitted.
 
-  Definition KamiLabelR (klbl: Kami.Semantics.LabelT) (ev: list Event): Prop.
-  Proof.
-    refine (match FMap.M.find "mmioExec"%string klbl.(calls) with
-            | Some sv => _
-            | None => ev = nil
-            end).
-    destruct sv as [[argT retT] [argV retV]].
-    destruct (decKind argT (Struct (RqFromProc (Z.to_nat width) rv32DataBytes)));
-      [subst|exact False].
-    destruct (decKind retT (Struct (RsToProc rv32DataBytes)));
-      [subst|exact False].
+  Definition KamiSilent (klbl: Kami.Semantics.LabelT) : Prop :=
+    klbl.(calls) = FMap.M.empty _.
+  Definition KamiLabelR (klbl: Kami.Semantics.LabelT) (e : Event) : Prop :=
+    FMap.M.Map.M.remove "mmioExec"%string klbl.(calls) = FMap.M.empty _ /\
+    exists argV retV, FMap.M.find "mmioExec"%string klbl.(calls) = Some (existT SignT {|
+        arg := Struct (RqFromProc (Z.to_nat width) rv32DataBytes);
+        ret := Struct (RsToProc rv32DataBytes) |} (argV, retV)) /\
+      e = if argV (Fin.FS Fin.F1)
+          then MMOutputEvent (argV Fin.F1) (argV (Fin.FS (Fin.FS Fin.F1)))
+          else MMInputEvent (argV Fin.F1) (retV Fin.F1).
 
-    destruct (argV (Fin.FS Fin.F1)).
-    - (* MMIO-store *)
-      set (argV Fin.F1) as mmioAddr; simpl in mmioAddr.
-      set (argV (Fin.FS (Fin.FS Fin.F1))) as mmioVal; simpl in mmioVal.
-      exact (ev = [MMOutputEvent mmioAddr mmioVal]).
-    - (* MMIO-load *)
-      set (argV Fin.F1) as mmioAddr; simpl in mmioAddr.
-      set (retV Fin.F1) as mmioVal; simpl in mmioVal.
-      exact (ev = [MMInputEvent (argV Fin.F1) (retV Fin.F1)]).
-  Defined.
-
-  Definition kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop :=
-    fun km1 km2 tr =>
-      exists kupd klbl,
-        Step kamiProc km1 kupd klbl /\
-        km2 = FMap.M.union kupd km1  /\
-        KamiLabelR klbl tr.
+  Definition kamiStep (m1 : KamiMachine) (m2 : KamiMachine) (klbl : Kami.Semantics.LabelT) : Prop :=
+    exists kupd, Step kamiProc m1 kupd klbl /\ m2 = FMap.M.union kupd m1.
 
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
@@ -237,38 +221,38 @@ Section Equiv.
 
   (* TODO in bedrock2: differential memory in trace instead of whole memory ? *)
   Lemma kamiStep_sound:
-    forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t0 t: list Event)
-           (post: RiscvMachine -> Prop),
-      kamiStep m1 m2 t ->
+    forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t0: list Event)
+           (post: RiscvMachine -> Prop) klbl,
+      kamiStep m1 m2 klbl ->
       states_related (m1, t0) m1' ->
       mcomp_sat_unit (run1 iset) m1' post ->
       (* Either Kami doesn't proceed or riscv-coq simulates. *)
-      ((m1 = m2 /\ t = nil) \/
-       exists m2', states_related (m2, t ++ t0) m2' /\ post m2').
+      (KamiSilent klbl /\ m1 = m2) \/
+       (exists t, KamiLabelR klbl t /\ exists m2', states_related (m2, cons t t0) m2' /\ post m2').
   Proof.
     intros.
-    destruct H as [kupd [klbl [? [? ?]]]]; subst.
-    assert (PHide (Step kamiProc m1 kupd klbl)) by (constructor; assumption).
-    kinvert.
+    destruct H as [kupd [? ?]]; subst.
+    cbv [KamiSilent KamiLabelR].
+    destruct klbl as [annot defs calls].
+    assert (PHide (Step kamiProc m1 kupd {| annot := annot; defs := defs; calls := calls |})) by (constructor; assumption).
+    kinvert; cbn [Semantics.calls Semantics.annot Semantics.defs] in *; subst.
 
-    - (* [EmptyRule] step *)
-      red in H3; rewrite <-H8 in H3; FMap.mred.
-    - (* [EmptyMeth] step *)
-      red in H3; rewrite <-H8 in H3; FMap.mred.
+    - auto.
+    - auto.
     - (* "pgmInit" *)
       exfalso.
       inversion_clear H0.
       kinv_action_dest; kinv_red.
       unfold KamiProc.RegsToT in H6.
       kinv_regmap_red.
-      discriminate.
+      admit.
     - (* "pgmInitEnd" *)
       exfalso.
       inversion_clear H0.
       kinv_action_dest; kinv_red.
       unfold KamiProc.RegsToT in H6.
       kinv_regmap_red.
-      discriminate.
+      admit.
 
     - (* "execLd" *) admit.
     - (* "execLdZ" *) admit.
@@ -277,28 +261,35 @@ Section Equiv.
       right.
 
       (** Apply the Kami inversion lemma for the [execNm] rule. *)
-      inversion H5; subst; clear H5 HAction.
+      inversion H4; clear H4 HAction; subst.
       inversion H0; subst; clear H0.
-      rename H9 into XAddrsSubset.
-      destruct klbl as [annot defs calls]; simpl in *; subst.
+      rename H7 into XAddrsSubset.
       destruct annot; [|discriminate].
-      inversion H7; subst; clear H7.
+      inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
       eapply invert_Kami_execNm in H; eauto.
       unfold KamiProc.pc, KamiProc.rf, KamiProc.pgm, KamiProc.mem in H.
       destruct H as [km2 [? [? ?]]].
       simpl in H; subst.
-      inversion_clear H3.
+      inversion_clear H2.
 
       (** Invert a riscv-coq step. *)
       move H1 at bottom.
       red in H1; unfold run1 in H1.
 
-      inv_bind H1.
-      inv_getPC H.
-      inv_bind_apply H.
-      inv_bind H1.
-      inv_loadWord H1.
+      repeat match goal with
+             | H : ?x = ?x -> _ /\ _ |- _ => destruct H
+             | H : _ /\ _ |- _ => destruct H
+             | H : exists x, _  |- _ => destruct H
+             | H : _ |- _ => progress inv_bind H
+             | H : _ |- _ => progress inv_getPC H
+             | H : _ |- _ => progress inv_bind_apply H
+             | H : _ |- _ => progress inv_bind H
+             | H : _ |- _ => progress inv_loadWord H
+             | _ => subst
+             end.
+
+      (* STUCK HERE *)
 
       destruct H1 as [IXA H1]; specialize (IXA eq_refl).
       apply XAddrsSubset in IXA.
