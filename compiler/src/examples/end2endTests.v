@@ -187,7 +187,10 @@ Section Connect.
   Hypothesis states_related_to_traces_related: forall m m' t,
       states_related (m, t) m' -> traces_related t m'.(getLog).
 
-  Variables init body: cmd.
+  Context (prog: @Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters p)))
+          (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters p)))
+          (sat: ProgramSatisfiesSpec prog spec)
+          (ml: MemoryLayout).
 
   (* will have to be extended with a program logic proof at the top and with the kami refinement
      proof to the pipelined processor at the bottom: *)
@@ -200,10 +203,7 @@ Section Connect.
       exists suffix, goodTrace (suffix ++ t ++ t0).
   Proof.
     intros.
-    pose proof pipeline_proofs as P.
-    specialize P with (hl_inv := fun hlTrace =>
-                                   exists llTrace, traces_related llTrace hlTrace /\
-                                                   goodTrace llTrace).
+    pose proof (pipeline_proofs prog spec sat ml) as P.
     edestruct P as (Establish & Preserve & Use); clear P; [admit..|].
     pose proof kamiMultiStep_sound as Q.
     specialize Q with (m1 := m1) (m2 := m2) (m1' := m1') (t := t) (t0 := t0).
@@ -214,11 +214,15 @@ Section Connect.
     - eassumption.
     - eapply Establish. admit.
     - apply states_related_to_traces_related in Rel.
+      edestruct Use as (suffix & G). 1: exact InvFinal.
+
+    (* TODO ?
+    - apply states_related_to_traces_related in Rel.
       edestruct Use as (suffix & llTrace & Rel' & G). 1: exact InvFinal.
       apply split_ll_trace in Rel'.
       destruct Rel' as (llTrace1 & llTrace2 & E & Rel1' & Rel2'). subst.
       pose proof (hl_trace_determines_ll_trace Rel Rel1'). subst.
-      exists llTrace2. exact G.
+      exists llTrace2. exact G. *)
   Admitted.
 
 End Connect.

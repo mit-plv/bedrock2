@@ -78,20 +78,28 @@ Definition allFuns: list swap.bedrock_func := [swap; swap_swap].
 
 Definition e := RegAlloc.map.putmany_of_tuples map.empty allFuns.
 
-Definition funnames: list string := List.map fst allFuns.
-
 Definition main: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.call (FlattenExpr.mk_Syntax_params _) [] "swap_swap" [expr.literal 100; expr.literal 108].
 
 Definition nop_loop_body: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.interact (FlattenExpr.mk_Syntax_params _) [] "nop" [].
 
+Definition prog: @Program (FlattenExpr.mk_Semantics_params _).
+  (* TODO whyyy? *)
+  Fail refine (@Build_Program _ (List.map fst allFuns) e main nop_loop_body).
+  apply @Build_Program.
+  - exact (List.map fst allFuns).
+  - exact e.
+  - exact main.
+  - exact nop_loop_body.
+Defined.
+
 (* stack grows from high addreses to low addresses, first stack word will be written to
    (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
 Definition stack_pastend: Z := 2048.
 
 Definition swap_asm: list Instruction :=
-  Eval cbv in compile_prog e stack_pastend main nop_loop_body funnames.
+  Eval cbv in compile_prog stack_pastend prog.
 
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.

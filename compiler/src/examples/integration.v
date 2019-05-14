@@ -60,7 +60,13 @@ Instance mapops: RegAlloc.map.ops (SortedListString.map Z) :=
    (stack_pastend-4), next stack word to (stack_pastend-8) etc *)
 Definition stack_pastend: Z := 1024.
 Definition compile '(functions, initial, reactive) :=
-  compile_prog (p:=params) (RegAlloc.map.putmany_of_tuples map.empty functions) stack_pastend initial reactive (List.map fst functions).
+  compile_prog (p:=params) stack_pastend
+     (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
+                     (List.map fst functions)
+                     (RegAlloc.map.putmany_of_tuples map.empty functions)
+                     initial
+                     reactive).
+
 Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.

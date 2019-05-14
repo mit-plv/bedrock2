@@ -46,6 +46,7 @@ Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
+
 Section Params1.
   Context {p: Semantics.parameters}.
 
@@ -82,6 +83,25 @@ Section Params1.
        spec.(goodTrace) t ->
        Semantics.exec prog.(funimpls) prog.(loop_body) t m l mc
         (fun t' m' l' mc' => spec.(isReady) t' m' l' mc' /\ spec.(goodTrace) t');
+  }.
+
+  Record MemoryLayout: Type := {
+    code_start: Semantics.word;
+    code_pastend: Semantics.word;
+    heap_start: Semantics.word;
+    heap_pastend: Semantics.word;
+    stack_start: Semantics.word;
+    stack_pastend: Semantics.word;
+  }.
+
+  (* Could also just require disjointness but <= is simpler to state *)
+  Record MemoryLayoutOk(ml: MemoryLayout): Prop := {
+    code_start_aligned: (word.unsigned ml.(code_start)) mod 4 = 0;
+    code_pastend_ok: word.unsigned ml.(code_start) <= word.unsigned ml.(code_pastend);
+    heap_after_code: word.unsigned ml.(code_pastend) <= word.unsigned ml.(heap_start);
+    heap_pastend_ok: word.unsigned ml.(heap_start) <= word.unsigned ml.(heap_pastend);
+    stack_after_heap: word.unsigned ml.(heap_pastend) <= word.unsigned ml.(stack_start);
+    stack_pastend_ok: word.unsigned ml.(stack_start) <= word.unsigned ml.(stack_pastend);
   }.
 
 End Params1.
@@ -164,6 +184,8 @@ Section Pipeline1.
 
   Local Notation cmd := (@Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)).
   Local Notation env := (@Semantics.env (FlattenExpr.mk_Semantics_params _)).
+  Local Notation Program := (@Program (FlattenExpr.mk_Semantics_params _)).
+  Local Notation ProgramSpec := (@ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
   Definition functions2Riscv(e: env)(funs: list funname): list Instruction * fun_pos_env :=
     let e' := flatten_functions e funs in
@@ -282,17 +304,16 @@ Section Pipeline1.
     let main_size := List.length (FlatToRiscvDef.compile_main e_pos 42 init_code' loop_body') in
     FlatToRiscvDef.compile_main e_pos (- 4 * Z.of_nat main_size) init_code' loop_body'.
 
-  Definition compile_prog(e: env)(init_sp: Z)(init_code loop_body: cmd)(funs: list funname):
-    list Instruction :=
+  Definition compile_prog(init_sp: Z)(p: Program): list Instruction :=
     (* all positions in e_pos are relative to the position of the first function *)
-    let '(fun_insts, e_pos) := functions2Riscv e funs in
+    let '(fun_insts, e_pos) := functions2Riscv p.(funimpls) p.(funnames) in
     FlatToRiscvDef.compile_lit RegisterNames.sp init_sp ++
-    compile_main e_pos init_code loop_body ++
+    compile_main e_pos p.(init_code) p.(loop_body) ++
     fun_insts.
 
-  Definition putProgram(e: env)(funs: list funname)(init_code loop_body: cmd)(code_addr: word)
+  Definition putProgram(p: Program)(code_addr: word)
              (stack_pastend: word)(preInitial: MetricRiscvMachine): MetricRiscvMachine :=
-    let insts := compile_prog e (word.unsigned stack_pastend) init_code loop_body funs in
+    let insts := compile_prog (word.unsigned stack_pastend) p in
     MetricRiscvMachine.putProgram (List.map encode insts) code_addr preInitial.
 
   Add Ring wring : (word.ring_theory (word := word))
@@ -300,38 +321,30 @@ Section Pipeline1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Context
-      (* high-level trace invariant which holds at the beginning of each loop iteration,
-         but might not hold in the middle of the loop because more needs to be appended *)
-      (hl_inv: trace -> Prop)
-      (* high-level invariant on the all high-level state which holds at beginning of each
-         loop iteration: *)
-      (hl_ready: trace -> mem -> locals -> MetricLog -> Prop)
-      (hl_ready_implies_hl_inv: forall t m l mc, hl_ready t m l mc -> hl_inv t)
-      (e: env) (t0: trace) (m0: mem) (l0: locals) (mc0: MetricLog) (st0: MetricRiscvMachine)
-      (init_code loop_body: cmd)
-      (funnames: list funname)
-      (exec_init: Semantics.exec e init_code t0 m0 l0 mc0 hl_ready)
-      (exec_body: forall t m l mc, hl_ready t m l mc ->
-                                   Semantics.exec e loop_body t m l mc hl_ready)
-      (code_area_begin: word)
-      (code_area_begin_aligned: word.unsigned code_area_begin mod 4 = 0)
-      (stack_area_begin stack_area_pastend: word)
-      (insts_init: list Instruction)
-      (insts_body: list Instruction)
+  Context (prog: Program)
+          (spec: ProgramSpec)
+          (sat: ProgramSatisfiesSpec prog spec)
+          (ml: MemoryLayout).
+
+  Axiom insts_init: list Instruction.
+  Axiom insts_body: list Instruction.
+
+(*
       (* technical detail: "pc at beginning of loop" and "pc at end of loop" needs to be
          different so that we can have two disjoint states between which the system goes
          back and forth. If we had only one state, we could not prevent "runsTo" from
          always being runsToDone and not making progress, see compiler.ForeverSafe *)
-      (insts_body_nonempty: insts_body <> nil).
+      (insts_body_nonempty: insts_body <> nil)
+*)
 
   (* pc at beginning of loop *)
   Definition pc_start: word :=
-    word.add code_area_begin (word.of_Z (4 * Z.of_nat (List.length insts_init))).
+    word.add ml.(code_start) (word.of_Z (4 * Z.of_nat (List.length insts_init))).
 
   Definition ll_ready(st: MetricRiscvMachine): Prop :=
     exists regsH memH metricsH,
-      hl_ready st.(getLog) memH regsH metricsH /\
+      spec.(isReady) st.(getLog) memH regsH metricsH /\
+      spec.(goodTrace) st.(getLog) /\
       goodMachine st.
 
 (*
@@ -348,17 +361,17 @@ Section Pipeline1.
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_ready pc_start.
 
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
-      initial = (putProgram e funnames init_code loop_body code_area_begin stack_area_pastend
-                            preInitial) ->
+      initial = (putProgram prog ml.(code_start) ml.(stack_pastend) preInitial) ->
       ll_inv initial.
   Proof.
   Admitted.
 
-  Lemma ll_inv_is_invariant: forall st: MetricRiscvMachine,
+  Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
       ll_inv st -> mcomp_sat (run1 iset) st ll_inv.
   Proof.
+    intro st.
     eapply runsToGood_is_Invariant with
-        (startState := st0)
+        (startState := st) (* TODO should this be a "very-initial" state before executing init_code? *)
         (jump := - 4 * Z.of_nat (Datatypes.length insts_body))
         (pc_end := word.add pc_start (word.of_Z (4 * Z.of_nat (List.length insts_body)))).
     - intros. unfold ll_ready in *. simp. destruct_RiscvMachine state.
@@ -371,7 +384,7 @@ Section Pipeline1.
       | A: ?G |- ?G' => replace G' with G; [exact A|progress f_equal]
       end.
       f_equal. 2: admit. f_equal. all: admit.
-    - unfold pc_start. solve_divisibleBy4.
+    - unfold pc_start. admit.
     - admit.
     - admit.
     - solve_divisibleBy4.
@@ -391,7 +404,7 @@ Section Pipeline1.
       + unfold ll_ready in *. simp.
         eapply exprImp2Riscv_correct.
         1: reflexivity.
-        1: { eapply exec_body. eassumption. }
+        1: { eapply loop_body_correct0; eassumption. }
         all: admit.
       + simpl. intros. unfold ll_ready.
         (* TODO: guarantee from exprImp2Riscv_correct needs to be stronger *)
@@ -400,26 +413,24 @@ Section Pipeline1.
   Admitted.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,
-      ll_inv st -> exists suff, hl_inv (suff ++ st.(getLog)).
+      ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog)).
   Proof.
     unfold ll_inv, runsToGood_Invariant. intros.
     eapply extend_runsTo_to_good_trace. 2: eassumption.
     simpl. unfold ll_ready.
-    intros. simp.
-    eapply hl_ready_implies_hl_inv. eassumption.
+    intros. simp. eassumption.
   Qed.
 
   Lemma pipeline_proofs:
     (forall preInitial initial,
-        initial = (putProgram e funnames init_code loop_body code_area_begin stack_area_pastend
-                              preInitial) ->
+        initial = putProgram prog ml.(code_start) ml.(stack_pastend) preInitial ->
         ll_inv initial) /\
     (forall st, ll_inv st -> mcomp_sat (run1 iset) st ll_inv) /\
-    (forall st, ll_inv st -> exists suff, hl_inv (suff ++ st.(getLog))).
+    (forall st, ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
     split; [|split].
     - exact putProgram_establishes_ll_inv.
-    - exact ll_inv_is_invariant.
+    - apply ll_inv_is_invariant.
     - exact ll_inv_implies_prefix_of_good.
   Qed.
 
