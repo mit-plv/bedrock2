@@ -149,12 +149,15 @@ Section FibCompiled.
     assert (fib 0 = 0) by reflexivity.
     assert (fib 1 = 1) by reflexivity.
     do 46 fib_next.
-    assert (fib 47 < 2 ^ 32) by blia.
+    assert (fib 47 < 2 ^ 32) by (rewrite H2; reflexivity).
     intros.
     induction n.
-    - simpl. blia.
+    - simpl. reflexivity.
     - pose proof (fib_inc (S n) 47%nat) as Hinc.
-      blia.
+      apply Nat.lt_le_pred in H.
+      simpl in H.
+      specialize (Hinc H).
+      bomega.
   Qed.
 
   Existing Instance Fibonacci.ZNames.Inst.
