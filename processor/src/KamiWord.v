@@ -86,13 +86,15 @@ Section MkWords.
   Context {width : Z}.
   Context {width_cases : width = 32 \/ width = 64}.
 
-  Lemma boundW: 0 < width. blia. Qed.
+  Lemma boundW: 0 < width.
+  Proof.
+    case width_cases; intro E; rewrite E; reflexivity.
+  Defined.
   Instance wordW: word.word width := word width.
   Instance wordWok: word.ok wordW := ok width boundW.
 
-  Lemma bound8: 0 < 8. blia. Qed.
   Instance word8: word.word 8 := word 8.
-  Instance word8ok: word.ok word8 := ok 8 bound8.
+  Instance word8ok: word.ok word8 := ok 8 eq_refl.
 
   Instance WordsKami: Utility.Words := {|
     Utility.byte := word8;
@@ -103,4 +105,3 @@ Section MkWords.
 End MkWords.
 
 Definition kword (w: Z): Type := Kami.Lib.Word.word (Z.to_nat w).
-

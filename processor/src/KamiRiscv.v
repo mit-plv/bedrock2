@@ -12,6 +12,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import processor.KamiWord.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Primitives.
+Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Spec.Machine.
 Require riscv.Platform.Memory.
 Require Import riscv.Spec.PseudoInstructions.
@@ -24,6 +25,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.MMIOTrace.
 Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Platform.MetricRiscvMachine.
 
 Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl.
@@ -34,15 +36,18 @@ Require Import processor.FetchOk processor.DecExecOk.
 
 Local Open Scope Z_scope.
 
-Section Equiv.
+Instance KamiWordsInst: Utility.Words := @KamiWord.WordsKami width width_cases.
 
-  Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
+Section Equiv.
 
   (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {M: Type -> Type}.
   Context {Registers: map.map Register word}
-          {mem: map.map word byte}
-          (mcomp_sat:
+          {mem: map.map word byte}.
+
+  Notation RiscvMachine := (@MetricRiscvMachine KamiWordsInst Registers mem).
+
+  Context (mcomp_sat:
              forall A: Type,
                M A -> RiscvMachine -> (A -> RiscvMachine -> Prop) -> Prop)
           {mm: Monad M}
@@ -96,7 +101,7 @@ Section Equiv.
     Primitives.nonmem_store := nonmem_store;
   }.
 
-  Context {Pr: Primitives MinimalMMIOPrimitivesParams}.
+  Context {Pr: MetricPrimitives MinimalMMIOPrimitivesParams}.
   Context {RVS: riscv.Spec.Machine.RiscvMachine M word}.
 
   (* common event between riscv-coq and Kami *)
@@ -124,18 +129,20 @@ Section Equiv.
      "exists m' t', fromKami_withLog m t' = Some 2' /\ traces_related t t'"
      and require less unfolding/destructing *)
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
-  | relate_states: forall t t' m riscvXAddrs kpc pc rf instrMem dataMem,
+  | relate_states: forall t t' m riscvXAddrs kpc pc rf instrMem dataMem metrics,
       traces_related t t' ->
       KamiProc.RegsToT m = Some (kamiStMk kpc rf instrMem dataMem) ->
       (forall addr, isXAddr addr riscvXAddrs -> isXAddr addr kamiXAddrs) ->
       kpc = toKamiPc pc ->
-      states_related (m, t) {| getRegs := convertRegs rf;
+      states_related (m, t)
+           {| getMachine := {| getRegs := convertRegs rf;
                                getPc := pc;
                                getNextPc := word.add pc (word.of_Z 4);
                                getMem := map.putmany (convertInstrMem instrMem)
                                                      (convertDataMem dataMem);
                                getXAddrs := riscvXAddrs;
-                               getLog := t'; |}.
+                               getLog := t'; |};
+              getMetrics := metrics; |}.
 
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Definition mcomp_sat_unit(m: M unit)(initialL: RiscvMachine)(post: RiscvMachine -> Prop): Prop :=
@@ -280,7 +287,7 @@ Section Equiv.
       |kami_step_case_pgm_not_ready (* case "pgmInit" *)
       |kami_step_case_pgm_not_ready (* case "pgmInitEnd" *)
       |..].
-    
+
     - (* case "execLd" *) admit.
     - (* case "execLdZ" *) admit.
     - (* case "execSt" *) admit.
