@@ -160,7 +160,7 @@ Section Pipeline1.
   Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
 
   Definition available_registers: list Register :=
-    Eval cbv in List.unfoldn Z.succ 29 3.
+    Eval cbv in List.unfoldn Z.succ 50 3.
 
   Local Notation cmd := (@Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)).
   Local Notation env := (@Semantics.env (FlattenExpr.mk_Semantics_params _)).
