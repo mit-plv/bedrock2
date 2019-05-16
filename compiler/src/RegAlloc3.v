@@ -461,12 +461,10 @@ Section RegAlloc.
 
   Axiom TODO: False.
 
-  Local Set Refine Instance Mode.
-
-  Instance srcFlatImpParams: Semantics.parameters := {|
+  Instance srcFlatImpParams: Semantics.parameters. refine({|
     FlatImp.syntax_params := srcparams;
     FlatImp.locals := srcLocals;
-  |}.
+  |}).
   all: case TODO.
   Defined.
 
