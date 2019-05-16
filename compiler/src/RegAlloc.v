@@ -371,19 +371,17 @@ Section RegAlloc.
 
   Axiom TODO: False.
 
-  Local Set Refine Instance Mode.
-
-  Instance srcSemanticsParams: Semantics.parameters := {|
+  Instance srcSemanticsParams: Semantics.parameters. refine ({|
     Semantics.syntax := srcparams;
     Semantics.locals := srcLocals;
-  |}.
+  |}).
   all: case TODO.
   Defined.
 
-  Instance impSemanticsParams: Semantics.parameters := {|
+  Instance impSemanticsParams: Semantics.parameters. refine ({|
     Semantics.syntax := impparams;
     Semantics.locals := impLocals;
-  |}.
+  |}).
   all: case TODO.
   Defined.
 

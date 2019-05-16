@@ -10,9 +10,7 @@ Section WithWidth.
   Context {width_nonneg : Z.lt 0 width}.
   Local Notation sz := (Z.to_nat width).
 
-  Local Set Refine Instance Mode.
-
-  Instance word : word.word width := {|
+  Instance word : word.word width. refine ({|
     word.rep := Kami.Lib.Word.word sz;
     word.unsigned x := Z.of_N (wordToN x);
     word.signed := @wordToZ sz;
@@ -50,7 +48,7 @@ Section WithWidth.
 
     sextend oldwidth z := wrap ((unsigned z + 2^(oldwidth-1)) mod 2^oldwidth - 2^(oldwidth-1));
     *)
-  |}.
+  |}).
   all: case TODO. Defined.
 
   (*

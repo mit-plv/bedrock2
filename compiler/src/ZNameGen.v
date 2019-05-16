@@ -31,15 +31,13 @@ Proof.
       eapply Z.le_trans; eassumption.
 Qed.
 
-Local Set Refine Instance Mode.
-
 Unset Universe Minimization ToSet.
 
-Instance ZNameGen: NameGen Z Z := {
+Instance ZNameGen: NameGen Z Z. refine ({|
   freshNameGenState := fun l => listmaxZ l + 1;
   genFresh s := (s, s + 1);
   allFreshVars s := fun x => (s <= x)
-}.
+|}).
 - abstract (intros; repeat autounfold with unf_basic_set_defs unf_derived_set_defs;
             inversion H; subst; clear H; intuition omega).
 - abstract (intros; repeat autounfold with unf_basic_set_defs unf_derived_set_defs;

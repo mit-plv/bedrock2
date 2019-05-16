@@ -25,7 +25,7 @@ Require Import bedrock2.Examples.Demos.
 
 Section FibCompiled.
 
-  Definition fib_ExprImp nl ns: cmd := Eval cbv in 
+  Definition fib_ExprImp nl ns: cmd := Eval cbv in
     snd (snd (Demos.fibonacciServer nl ns)).
 
   Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters.
@@ -44,7 +44,7 @@ Section FibCompiled.
   Existing Instance coqutil.Map.SortedListString.ok.
 
   Context {word_properties: RiscvWordProperties.word.riscv_ok word}.
-      
+
   Instance pipeline_params: Pipeline.parameters := {
     Pipeline.FlatToRiscvDef_params := flatToRiscvDef_params;
     Pipeline.ext_spec _ _  _ _ _ := False;
@@ -53,15 +53,13 @@ Section FibCompiled.
     Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
   }.
 
-  Set Refine Instance Mode.
-
-  Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params := {
+  Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. refine ({|
     Pipeline.varname_eq_dec := _ ;
     Pipeline.mem_ok := _ ;
     Pipeline.locals_ok := _ ;
     Pipeline.funname_env_ok := _ ;
     Pipeline.PR := MetricMinimalSatisfiesMetricPrimitives;
-  }.
+  |}).
   Proof.
     - constructor; try typeclasses eauto.
       + simpl. apply MetricMinimalSatisfiesMetricPrimitives.
@@ -92,7 +90,7 @@ Section FibCompiled.
       + reflexivity.
       + blia.
   Qed.
-  
+
   Lemma fib_pos: forall n,
       0 <= fib n.
   Proof.
@@ -264,7 +262,7 @@ Section FibCompiled.
           assert (y = x) as Hp by assumption;
           rewrite Hp; clear Hp
         end
-      end 
+      end
     end.
 
   Ltac fib_step_precondition :=
@@ -469,7 +467,7 @@ Section FibCompiled.
       exfalso. blia.
     + exec_set_solve.
   Qed.
-    
+
   Lemma fib_correct: forall (n: nat) t (m: mem) (l : locals) mc v nl ns,
       (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
        ptsto_word (word.of_Z ns) (word.of_Z v))%sep m ->
@@ -677,7 +675,7 @@ Section FibCompiled.
       repeat split.
       + apply sep_inline_eq.
         eexists.
-        split; [seplog|seplog].     
+        split; [seplog|seplog].
       + assumption.
       + assumption.
       + repeat unfold_MetricLog. repeat simpl_MetricLog. simpl in *.

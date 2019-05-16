@@ -51,16 +51,13 @@ Notation RiscvMachine := MetricRiscvMachine.
 Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.
 
-Set Refine Instance Mode.
-Instance pipeline_params: Pipeline.parameters := {
+Instance pipeline_params : Pipeline.parameters. simple refine {|
   Pipeline.locals := _;
   Pipeline.Registers := _;
   Pipeline.ext_spec _ _ := TODO;
   Pipeline.ext_guarantee _ := False;
   Pipeline.PRParams := TODO;
-}.
-all: apply TODO.
-Defined.
+|}; unshelve (try exact _); apply TODO. Defined.
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
 

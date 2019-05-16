@@ -158,7 +158,6 @@ Module SpiEth.
         end;
     |}.
 
-    Local Set Refine Instance Mode.
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
     Local Definition var(x : @varname (@syntax semantics_params)):
@@ -168,7 +167,7 @@ Module SpiEth.
 
     Axiom TODO: False.
 
-    Instance MMIOMacros: IOMacros.Interface := {|
+    Instance MMIOMacros: IOMacros.Interface. refine ({|
       IOMacros.semantics_params := semantics_params;
 
       (* TODO these only read a byte rather than a word *)
@@ -188,7 +187,7 @@ Module SpiEth.
       IOMacros.write_word_trace := write_byte;
 
       IOMacros.is_reserved_addr := isMMIOAddr;
-    |}.
+    |}).
     - (* read_word_correct: *)
       intros.
       eapply exec.seq with
@@ -270,7 +269,6 @@ Module Syscalls.
         end;
     |}.
 
-    Local Set Refine Instance Mode.
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
     Local Definition var(x : @varname (@syntax semantics_params)):
@@ -280,7 +278,7 @@ Module Syscalls.
 
     Axiom TODO: False.
 
-    Instance SyscallIOMacros: IOMacros.Interface := {|
+    Instance SyscallIOMacros: IOMacros.Interface. refine ({|
       IOMacros.semantics_params := semantics_params;
 
       IOMacros.read_word_code(x tmp: varname) :=
@@ -296,7 +294,7 @@ Module Syscalls.
 
       (* this says "no reserved memory addresses", but probably there are (TODO) *)
       IOMacros.is_reserved_addr addr := False;
-    |}.
+    |}).
     - (* read_word_correct: *)
       intros.
       eapply exec.interact with (mid := fun newM resvals =>

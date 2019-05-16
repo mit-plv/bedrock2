@@ -104,11 +104,9 @@ Definition test: stmt :=
   (SSeq (SOp _c Syntax.bopname.sub _inp1 _inp2)
         (SInteract [_r; _garbage] "Select"%string [_s; _a; _b; _c]))))).
 
-Local Set Refine Instance Mode.
-
-Instance compilation_params: FlatToRiscvDef.parameters := {|
+Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
-|}. all: case TODO. Defined.
+|}). all: case TODO. Defined.
 
 Definition compiled: list Instruction := Eval cbv in compile_stmt test.
 
