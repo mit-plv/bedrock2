@@ -15,8 +15,6 @@ Currently, the only data type is word (32-bit or 64-bit), and the memory is an a
 ### Work-in-progress features
 
 The following features will be added soon:
-*    Input and output
-*    Functions
 *    Register allocation (spilling if more local variables are needed than registers are available)
 
 ### Non-features
