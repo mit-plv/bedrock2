@@ -68,31 +68,32 @@ Section Parametrized.
 
   Local Definition iaddrSizeZ: Z := Z.of_nat iaddrSize.
 
-  Lemma invert_Kami_execLd_by_memory:
+  Lemma invert_Kami_execLd_memory:
     forall km1 kt1 kupd klbl,
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execLd"%string) ->
-      let curInst := (pgm kt1) (split2 _ _ (pc kt1)) in
-      let ldAddr :=
-          evalExpr
-            (alignAddr
-               _ (evalExpr
-                    (calcLdAddr
-                       _ (evalExpr (getLdAddr _ curInst))
-                       (rf kt1 (evalExpr (getLdSrc _ curInst)))))) in
-      evalExpr (isMMIO _ ldAddr) = false ->
-      exists kt2,
-        klbl.(calls) = FMap.M.empty _ /\
-        pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
-        kt2 = {| pc := evalExpr (getNextPc _ (rf kt1) (pc kt1) curInst);
-                 rf :=
-                   fun w =>
-                     if weq w (evalExpr (getLdDst _ curInst))
-                     then mem kt1 ldAddr
-                     else rf kt1 w;
-                 pgm := pgm kt1;
-                 mem := mem kt1 |}.
+      exists curInst ldAddr,
+        curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
+        ldAddr =
+        evalExpr
+          (alignAddr
+             _ (evalExpr
+                  (calcLdAddr
+                     _ (evalExpr (getLdAddr _ curInst))
+                     (rf kt1 (evalExpr (getLdSrc _ curInst)))))) /\
+        (evalExpr (isMMIO _ ldAddr) = false ->
+         exists kt2,
+           klbl.(calls) = FMap.M.empty _ /\
+           pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
+           kt2 = {| pc := evalExpr (getNextPc _ (rf kt1) (pc kt1) curInst);
+                    rf :=
+                      fun w =>
+                        if weq w (evalExpr (getLdDst _ curInst))
+                        then mem kt1 ldAddr
+                        else rf kt1 w;
+                    pgm := pgm kt1;
+                    mem := mem kt1 |}).
   Proof.
     intros.
     kinvert; try (repeat
@@ -101,8 +102,8 @@ Section Parametrized.
                     | [H: (_ :: _)%struct = (_ :: _)%struct |- _] =>
                       inversion H; subst; clear H
                     end; discriminate).
+    do 2 eexists; repeat split.
     kinv_action_dest.
-
     - unfold pRegsToT in *.
       kregmap_red.
       destruct (FMap.M.find "mem"%string km1)
@@ -110,9 +111,8 @@ Section Parametrized.
       destruct (decKind kind _); try discriminate.
       kregmap_red.
       inversion H; subst; clear H.
-      subst curInst ldAddr.
       simpl in *.
-      clear -H2 Heqic.
+      clear -H3 Heqic.
       congruence.
     - kinv_red.
       unfold pRegsToT in *.

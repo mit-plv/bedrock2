@@ -185,38 +185,26 @@ Section Equiv.
     subset (riscvTraces init) (prefixes (post_to_traces post)).
   Admitted.
 
-  Definition KamiLabelR (klbl: Kami.Semantics.LabelT) (ev: list Event): Prop.
-  Proof.
-    refine (match FMap.M.find "mmioExec"%string klbl.(calls) with
-            | Some sv => _
-            | None => ev = nil
-            end).
-    destruct sv as [[argT retT] [argV retV]].
-    destruct (decKind argT (Struct (RqFromProc (Z.to_nat width) rv32DataBytes)));
-      [subst|exact False].
-    destruct (decKind retT (Struct (RsToProc rv32DataBytes)));
-      [subst|exact False].
+  Inductive KamiLabelR: Kami.Semantics.LabelT -> list Event -> Prop :=
+  | KamiSilent:
+      forall klbl,
+        klbl.(calls) = FMap.M.empty _ ->
+        KamiLabelR klbl nil
+  | KamiMMIO:
+      forall klbl argV retV e,
+        klbl.(calls) =
+        FMap.M.add
+          "mmioExec"%string
+          (existT SignT {| arg := Struct (RqFromProc (Z.to_nat width) rv32DataBytes);
+                           ret := Struct (RsToProc rv32DataBytes) |} (argV, retV))
+          (FMap.M.empty _) ->
+        e = (if argV (Fin.FS Fin.F1)
+             then MMOutputEvent (argV Fin.F1) (argV (Fin.FS (Fin.FS Fin.F1)))
+             else MMInputEvent (argV Fin.F1) (retV Fin.F1)) ->
+        KamiLabelR klbl [e].
 
-    destruct (argV (Fin.FS Fin.F1)).
-    - (* MMIO-store *)
-      set (argV Fin.F1) as mmioAddr; simpl in mmioAddr.
-      set (argV (Fin.FS (Fin.FS Fin.F1))) as mmioVal; simpl in mmioVal.
-      exact (ev = [MMOutputEvent mmioAddr mmioVal]).
-    - (* MMIO-load *)
-      set (argV Fin.F1) as mmioAddr; simpl in mmioAddr.
-      set (retV Fin.F1) as mmioVal; simpl in mmioVal.
-      exact (ev = [MMInputEvent (argV Fin.F1) (retV Fin.F1)]).
-  Defined.
-
-  Definition kamiStep: KamiMachine -> KamiMachine -> list Event -> Prop :=
-    fun km1 km2 tr =>
-      exists kupd klbl,
-        Step kamiProc km1 kupd klbl /\
-        km2 = FMap.M.union kupd km1  /\
-        KamiLabelR klbl tr.
-
-  Inductive PHide: Prop -> Prop :=
-  | PHidden: forall P: Prop, P -> PHide P.
+  Definition kamiStep (m1 : KamiMachine) (m2 : KamiMachine) (klbl : Kami.Semantics.LabelT) : Prop :=
+    exists kupd, Step kamiProc m1 kupd klbl /\ m2 = FMap.M.union kupd m1.
 
   Ltac inv_bind H :=
     apply (proj2 (@spec_Bind _ _ _ _ MinimalMMIOPrimitivesParams mcomp_sat_ok _ _ _ _ _ _)) in H;
@@ -247,10 +235,7 @@ Section Equiv.
     simpl in H.
 
   Ltac kami_step_case_empty :=
-    match goal with
-    | [H1: KamiLabelR ?klbl _, H2: _ = calls ?klbl |- _] =>
-      red in H1; rewrite <-H2 in H1; FMap.mred
-    end.
+    left; FMap.mred; fail.
 
   Ltac kami_step_case_pgm_not_ready :=
     exfalso;
@@ -263,19 +248,26 @@ Section Equiv.
       end;
     discriminate.
 
+  Inductive PHide: Prop -> Prop :=
+  | PHidden: forall P: Prop, P -> PHide P.
+
   (* TODO in bedrock2: differential memory in trace instead of whole memory ? *)
   Lemma kamiStep_sound:
-    forall (m1 m2: KamiMachine) (m1': RiscvMachine) (t0 t: list Event)
-           (post: RiscvMachine -> Prop),
-      kamiStep m1 m2 t ->
+    forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
+           (m1': RiscvMachine) (t0: list Event) (post: RiscvMachine -> Prop),
+      kamiStep m1 m2 klbl ->
       states_related (m1, t0) m1' ->
       mcomp_sat_unit (run1 iset) m1' post ->
-      (* Either Kami doesn't proceed or riscv-coq simulates. *)
-      ((m1 = m2 /\ t = nil) \/
-       exists m2', states_related (m2, t ++ t0) m2' /\ post m2').
+      (* Three cases for each Kami step:
+       * 1) it doesn't proceed (m1 = m2 /\ klbl.(calls) = FMap.M.empty _),
+       * 2) makes no external calls at all (KamiSilent), or
+       * 3) makes MMIO calls that riscv-coq can simulate (KamiMMIO). *)
+      (m1 = m2 /\ klbl.(calls) = FMap.M.empty _) \/
+      exists m2' t,
+        KamiLabelR klbl t /\ states_related (m2, t ++ t0) m2' /\ post m2'.
   Proof.
     intros.
-    destruct H as [kupd [klbl [? [? ?]]]]; subst.
+    destruct H as [kupd [? ?]]; subst.
     assert (PHide (Step kamiProc m1 kupd klbl)) by (constructor; assumption).
 
     (* Since the processor is inlined thus there are no defined methods,
@@ -287,7 +279,7 @@ Section Equiv.
       |kami_step_case_pgm_not_ready (* case "pgmInit" *)
       |kami_step_case_pgm_not_ready (* case "pgmInitEnd" *)
       |..].
-
+    
     - (* case "execLd" *) admit.
     - (* case "execLdZ" *) admit.
     - (* case "execSt" *) admit.
@@ -295,18 +287,18 @@ Section Equiv.
       right.
 
       (** Apply the Kami inversion lemma for the [execNm] rule. *)
-      inversion H5; subst; clear H5 HAction.
+      inversion H4; subst; clear H4 HAction.
       inversion H0; subst; clear H0.
-      rename H9 into XAddrsSubset.
+      rename H8 into XAddrsSubset.
       destruct klbl as [annot defs calls]; simpl in *; subst.
       destruct annot; [|discriminate].
-      inversion H7; subst; clear H7.
+      inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
       eapply invert_Kami_execNm in H; eauto.
-      unfold KamiProc.pc, KamiProc.rf, KamiProc.pgm, KamiProc.mem in H.
+      unfold kamiStMk, KamiProc.pc, KamiProc.rf, KamiProc.pgm, KamiProc.mem in H.
       destruct H as [km2 [? [? ?]]].
       simpl in H; subst.
-      inversion_clear H3.
+      (* inversion_clear H3. *)
 
       (** Invert a riscv-coq step. *)
       move H1 at bottom.
@@ -338,11 +330,10 @@ Section Equiv.
                    end
       end; rewrite H1 in H4.
       inversion H4; subst; clear H4.
-      inv_bind_apply H7.
+      inv_bind_apply H8.
 
       (** Invert Kami decode/execute *)
-      destruct H2
-        as (kinst & exec_val & ? & ? & ?).
+      destruct H2 as (kinst & exec_val & ? & ? & ?).
 
       (* Relation between the two raw instructions *)
       assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
@@ -396,8 +387,9 @@ Section Equiv.
         inv_step H10.
 
         (** Construction *)
-        eexists.
-        split; [|eassumption].
+        do 2 eexists.
+        split; [|split];
+          [eapply KamiSilent; reflexivity| |eassumption].
 
         remember (evalExpr (rv32GetDst type kinst)) as dst.
 
@@ -460,30 +452,56 @@ Section Equiv.
 
   Admitted.
 
-  Lemma kamiMultiStep_sound: forall
-    (* inv could (and probably has to) be something like "runs to a safe state" *)
-    (inv: RiscvMachine -> Prop)
-    (* could be instantiated with compiler.ForeverSafe.runsTo_safe1_inv *)
-    (inv_preserved: forall st, inv st -> mcomp_sat_unit (run1 iset) st inv)
-    (m1 m2: KamiMachine) (t: list Event),
-      star kamiStep m1 m2 t ->
-      forall (m1': RiscvMachine) (t0: list Event),
+  Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
+  | KamiSeqNil: KamiLabelSeqR nil nil
+  | KamiSeqCons:
+      forall klseq t,
+        KamiLabelSeqR klseq t ->
+        forall klbl nt,
+          KamiLabelR klbl nt ->
+          KamiLabelSeqR (klbl :: klseq) (nt ++ t).
+
+  Lemma kamiMultiStep_sound:
+    forall
+      (* inv could (and probably has to) be something like "runs to a safe state" *)
+      (inv: RiscvMachine -> Prop)
+      (* could be instantiated with compiler.ForeverSafe.runsTo_safe1_inv *)
+      (inv_preserved: forall st, inv st -> mcomp_sat_unit (run1 iset) st inv)
+      (m1 m2: KamiMachine) (klseq: Kami.Semantics.LabelSeqT)
+      (m1': RiscvMachine) (t0: list Event),
+      Multistep kamiProc m1 m2 klseq ->
       states_related (m1, t0) m1' ->
       inv m1' ->
-      exists m2', states_related (m2, t ++ t0) m2' /\ inv m2'.
+      exists m2' t,
+        KamiLabelSeqR klseq t /\
+        states_related (m2, t ++ t0) m2' /\ inv m2'.
   Proof.
     intros ? ?.
     induction 1; intros.
-    - exists m1'. split; assumption.
-    - pose proof kamiStep_sound as P.
-      specialize P with (1 := H) (2 := H1).
-      edestruct P as [Q | Q]; clear P.
-      + eapply inv_preserved. assumption.
-      + destruct Q. subst. rewrite List.app_nil_r.
-        eapply IHstar; eassumption.
-      + destruct Q as (m2' & Rel & Inv).
+    - exists m1', nil.
+      repeat split.
+      + constructor.
+      + subst; simpl; assumption.
+      + assumption.
+    - specialize (IHMultistep H0 H1).
+      destruct IHMultistep as (im2' & it & ? & ? & ?).
+      pose proof kamiStep_sound as P.
+      assert (kamiStep n (FMap.M.union u n) l) by (eexists; split; eauto).
+      assert (mcomp_sat_unit (run1 iset) im2' inv) by (eapply inv_preserved; assumption).
+      specialize P with (1 := H5) (2 := H3) (3 := H6).
+      destruct P as [[? ?]|].
+      + exists im2', it.
+        repeat split.
+        * change it with ([] ++ it).
+          eapply KamiSeqCons; eauto.
+          constructor; assumption.
+        * rewrite <-H7; assumption.
+        * assumption.
+      + destruct H7 as (m2' & t & ? & ? & ?).
+        exists m2', (t ++ it).
         rewrite <- List.app_assoc.
-        eapply IHstar; eassumption.
+        repeat split; [|assumption|assumption].
+        constructor; assumption.
   Qed.
 
   Definition KamiImplMachine: Type := RegsT.
