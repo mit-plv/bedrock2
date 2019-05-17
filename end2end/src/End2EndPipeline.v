@@ -138,20 +138,22 @@ Section Connect.
   (* will have to be extended with a program logic proof at the top and with the kami refinement
      proof to the pipelined processor at the bottom: *)
   Lemma bedrock2Semantics_to_kamiSpecProcessor:
-    forall (goodTrace: list Event -> Prop) (m1 m2: KamiMachine) (t t0: list Event)
+    forall (goodTrace: list Event -> Prop) (m1 m2: KamiMachine) klseq (t0: list Event)
            (m1': MetricRiscvMachine),
       (* TODO many more hypotheses will be needed *)
       states_related (m1, t0) m1' ->
-      star kamiStep m1 m2 t ->
-      exists suffix, goodTrace (suffix ++ t ++ t0).
+      Kami.Semantics.Multistep (KamiRiscv.kamiProc instrMemSizeLg) m1 m2 klseq ->
+      exists suffix t,
+        KamiLabelSeqR klseq t /\
+        goodTrace (suffix ++ t ++ t0).
   Proof.
     intros.
     pose proof (pipeline_proofs prog spec sat ml) as P.
     edestruct P as (Establish & Preserve & Use); clear P; [admit..|].
     pose proof @kamiMultiStep_sound as Q.
-    specialize Q with (M := M) (m1 := m1) (m2 := m2) (m1' := m1') (t := t) (t0 := t0)
+    specialize Q with (M := M) (m1 := m1) (m2 := m2) (m1' := m1') (klseq := klseq) (t0 := t0)
                       (instrMemSizeLg := instrMemSizeLg).
-    edestruct Q as (m2' & Rel & InvFinal).
+    edestruct Q as (m2' & t & SeqR & Rel & InvFinal).
     - eapply HinstrMemBound.
     - admit.
     - eapply Preserve.
