@@ -90,6 +90,149 @@ Definition prog := (
   @cmd.skip flatparams,
   @cmd.call flatparams [] "spi_write" []).
 
+Require Import compiler.RegAlloc.
+
+Goal compile prog = nil.
+  cbv [compile prog compile_prog functions2Riscv FlatToRiscvDef.compile_functions compile_main
+      FlatToRiscvDef.compile_main].
+
+  match goal with
+  | |- context [?T] =>
+    match T with
+    | RegAlloc.rename_functions ?a ?b ?c =>
+      assert (T = map.empty); [|admit];
+        let b' := eval cbv in b in change b with b'; simpl c
+
+    end
+  end.
+  cbv [RegAlloc.rename_functions].
+  match goal with
+  | |- map.put map.empty _ ?T = _ =>
+    assert (T = (nil, nil, FlatImp.SSkip)); [|admit]
+  end.
+
+  cbv [rename_function].
+
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    let r := eval cbv in T in change T with r; cbv iota beta
+  end.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    assert (T = None); [|admit]
+  end.
+  cbv [rename_fun].
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    let r := eval cbv in T in change T with r; cbv iota beta
+  end.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    let r := eval cbv in T in change T with r; cbv iota beta
+  end.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    assert (T = None); [|admit]
+  end.
+  cbv [rename_stmt].
+  match goal with
+  | |- context [?T] =>
+    match T with
+    | rename ?a ?b ?c =>
+      let T' := eval cbv in T in change T with T'
+    end
+  end.
+  cbv beta iota.
+  (* we can see that the checker fails *)
+
+
+Export bopname.
+
+Notation "a ; b" := (ASSeq a b) (only printing, right associativity,
+      at level 50, format "a ; '//' b") : regalloc_scope.
+Notation "a '($r' b ')' = c" := (ASLit a b c) (only printing,
+      at level 40, format "a '($r' b ')'  =  c") : regalloc_scope.
+Notation "a '($r' b ')' = c" := (ASSet a b c) (only printing,
+      at level 40, format "a '($r' b ')'  =  c") : regalloc_scope.
+Notation "a '($r' b ')' = op c d" := (ASOp a b op c d) (only printing,
+      at level 40, format "a '($r' b ')'  =  op  c  d") : regalloc_scope.
+Notation "'loop' a 'breakUnless' cond b" := (ASLoop a cond b)
+      (only printing, at level 50, a at level 40,
+       format "'loop' '[v ' '//' a '//' 'breakUnless'  cond '//' b ']'") : regalloc_scope.
+Notation "'skip'" := ASSkip (only printing) : regalloc_scope.
+
+Open Scope regalloc_scope.
+(*
+  idtac.
+
+
+  cbv [checker].
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    assert (T = None); [|admit]
+  end.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    assert (T = None); [|admit]
+  end.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    let T' := eval cbv in T in change T with T'
+  end.
+  cbv beta iota.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    assert (T = None); [|admit]
+  end.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    assert (T = None); [|admit]
+  end.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    assert (T = None); [|admit]
+  end.
+  unfold cond_checker.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    assert (T = None); [|admit]
+  end.
+  match goal with
+  | |- map.get ?M ?K = None => simpl M
+  end.
+
+  (* one side mapped "busy" to 4 while the other side mapped busy to 8 *)
+
+cbv.
+
+  match goal with
+  | |- (let '(a, b, c) := ?B in ?C) = None => idtac B
+  end.
+
+  let b := eval cbv delta [rename] in @rename in change @rename with b.
+  cbv beta.
+  cbv fix beta iota.
+  match goal with
+  | |- match ?T with _ => _ end = _ =>
+    let r := eval cbv in T in change T with r; cbv iota beta
+  end.
+
+
+  cbv.
+
+
+  simpl.
+
+
+  cbv.
+
+
+  cbv.
+
+  simpl.
+*)
+Abort.
+
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
 Local Open Scope hexdump_scope.

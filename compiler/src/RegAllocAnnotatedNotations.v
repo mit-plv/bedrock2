@@ -1,9 +1,8 @@
 Require Import bedrock2.Syntax.
-Require Import compiler.RegAlloc3.
+Require Import compiler.RegAlloc.
 
 Export bopname.
 
-(*
 Notation "a ; b" := (ASSeq _ _ _ a b) (only printing, right associativity,
       at level 50, format "a ; '//' b") : regalloc_scope.
 Notation "'$x' a '($r' b ')' = c" := (ASLit _ _ _ a b c) (only printing,
@@ -16,7 +15,7 @@ Notation "'loop' a 'breakUnless' '$x' cond b" := (ASLoop _ _ _ a cond b)
       (only printing, at level 50, a at level 40,
        format "'loop' '[v ' '//' a '//' 'breakUnless'  '$x' cond '//' b ']'") : regalloc_scope.
 Notation "'skip'" := (ASSkip _ _ _) (only printing) : regalloc_scope.
-*)
+
 
 (* TODO
        ASLoad(x: srcvar)(x': impvar)(a: srcvar)
