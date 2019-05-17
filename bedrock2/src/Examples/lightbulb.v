@@ -95,9 +95,9 @@ Definition recvEthernet :=
     let read : varname := "read" in
 
     ("recvEthernet", ((buf::nil), (num_bytes::nil), bedrock_func_body:(
-        io! read = lan9250_readword(constr:(Ox"7C")); (* RX_FIFO_INF *)
+        unpack! read = lan9250_readword(constr:(Ox"7C")); (* RX_FIFO_INF *)
         require (read & constr:((2^8-1)*2^16)) else { num_bytes = (constr:(-1)) }; (* nonempty *)
-        io! read = lan9250_readword(constr:(Ox"40")); (* RX_STATUS_FIFO_PORT *)
+        unpack! read = lan9250_readword(constr:(Ox"40")); (* RX_STATUS_FIFO_PORT *)
 
         num_bytes = (read >> constr:(16) & constr:(2^14-1));
         (* round up to next word *)
@@ -108,7 +108,7 @@ Definition recvEthernet :=
         require (num_bytes < constr:(1520 + 1)) else { num_bytes = (constr:(-1)) };
 
         i = (constr:(0)); while (i < num_bytes) {
-            io! read = lan9250_readword(constr:(0));
+            unpack! read = lan9250_readword(constr:(0));
             store4(buf + i, read);
             i = (i + constr:(4))
         }
@@ -154,6 +154,7 @@ Definition lightbulb :=
     r = (constr:(0))
   ))).
 
+(*
 Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
 
@@ -423,4 +424,6 @@ Qed.
 Compute BasicCSyntax.c_func (recvEthernet).
 Compute BasicCSyntax.c_func (lightbulb).
 Compute BasicCSyntax.c_func (iot).
+*)
+
 *)

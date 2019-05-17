@@ -21,6 +21,8 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
+Require Import bedrock2.Examples.SPI.
+Require Import bedrock2.Examples.LAN9250.
 Require Import bedrock2.Examples.lightbulb.
 
 Open Scope Z_scope.
@@ -76,51 +78,17 @@ Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
+(*
 Definition prog := (
-  [iot; lightbulb; recvEthernet],
+  [iot; lightbulb; recvEthernet; lan9250_readword; spi_write; spi_read],
   @cmd.skip flatparams,
   @cmd.call flatparams [] "iot" []).
+*)
 
-Definition dummy_iot :=
-let p_addr := "p_addr" in
-let bytesWritten := "bytesWritten" in
-let recvEthernet := "recvEthernet" in
-let lightbulb := "lightbulb" in
-let r := "r" in
-("iot", ([p_addr], [r], (@cmd.set (@syntax FE310CSemantics.parameters) r (lightbulb.literal (1234))))).
-
-Definition dummy_lightbulb :=
-let packet := "packet" in
-let len := "len" in
-let ethertype := "ethertype" in
-let protocol := "protocol" in
-let port := "port" in
-let mmio_val := "mmio_val" in
-let command := "command" in
-let MMIOREAD := "MMIOREAD" in
-let MMIOWRITE := "MMIOWRITE" in
-let r := "r" in
-("lightbulb",
-([packet; len], [r], (@cmd.set (@syntax FE310CSemantics.parameters) r (lightbulb.literal (321))))).
-
-Definition dummy_recvEthernet :=
-let info := "info" in
-let rxunused := "rx_unused" in
-let rx_status := "rx_status" in
-let rx_packet := "rx_packet" in
-let c := "c" in
-let len_bytes := "len_bytes" in
-let len_words := "len_words" in
-let word := "word" in
-let lan9250_readword := "lan9250_readword" in
-let r := "r" in
-("recvEthernet",
-([rx_packet], [r], (@cmd.set (@syntax FE310CSemantics.parameters) r (lightbulb.literal (432))))).
-
-Definition dummy_prog := (
-  [dummy_iot; dummy_lightbulb; recvEthernet],
+Definition prog := (
+  [spi_write],
   @cmd.skip flatparams,
-  @cmd.call flatparams [] "iot" []).
+  @cmd.call flatparams [] "spi_write" []).
 
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
@@ -133,6 +101,7 @@ Goal True.
   let r := eval vm_compute in (([[
                          ]] ++ compile prog)%list%Z) in
   pose r as asm.
+  Import bedrock2.NotationsCustomEntry.
 
   (* searching for "addi    x2, x2, -" shows where the functions begin, and the first
      thing they do is to save all used registers onto the stack, so we can look for the
