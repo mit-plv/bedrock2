@@ -12,12 +12,12 @@ Local Coercion name_of_func (f : function) := fst f.
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
-Definition lan9250_readword :=
+Definition lan9250_readword : function :=
   let addr : varname := "addr" in
   let ret : varname := "ret" in
   let err : varname := "err" in
   let SPI_CSMODE_ADDR := Ox"10024018" in
-  ("lan9250_readword", ((addr::nil), (ret::err::nil), bedrock_func_body:(
+  ("lan9250_readword", ((addr::nil), (ret::nil), bedrock_func_body:(
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
     ret = (ret | constr:(2));
     output! MMIOWRITE(SPI_CSMODE_ADDR, ret);
@@ -31,22 +31,28 @@ Definition lan9250_readword :=
     unpack! err = spi_write(err);                    require !err; (* read *)
     unpack! err = spi_write(err);                    require !err; (* read *)
 
-    unpack! ret, err = spi_read(err); require !err; (* write *)
-    unpack! ret, err = spi_read(err); require !err; (* write *)
-    unpack! ret, err = spi_read(err); require !err; (* write *)
-    unpack! ret, err = spi_read(err); require !err; (* write *)
+    unpack! ret, err = spi_read(); require !err; (* write *)
+    unpack! ret, err = spi_read(); require !err; (* write *)
+    unpack! ret, err = spi_read(); require !err; (* write *)
+    unpack! ret, err = spi_read(); require !err; (* write *)
 
     (* manually register-allocated, apologies for variable reuse *)
-    unpack! ret, err = spi_read(err);   require !err;
+    unpack! ret, err = spi_read();   require !err;
     (* ret = ret << 0 *)
-    unpack! addr, err = spi_read(err);  require !err;
+    unpack! addr, err = spi_read();  require !err;
     ret = (ret | (addr << constr:(8)));
-    unpack! addr, err = spi_read(err);  require !err;
+    unpack! addr, err = spi_read();  require !err;
     ret = (ret | (addr << constr:(16)));
-    unpack! addr, err = spi_read(err);  require !err;
+    unpack! addr, err = spi_read();  require !err;
     ret = (ret | (addr << constr:(24)));
 
     io! addr = MMIOREAD(SPI_CSMODE_ADDR);
     addr = (addr & constr:(Z.lnot 2));
     output! MMIOWRITE(SPI_CSMODE_ADDR, addr)
   ))).
+
+Instance spec_of_lan9250_readword : ProgramLogic.spec_of "lan9250_readword" :=
+  fun functions => forall t m addr,
+    (Ox"0" <= Word.Interface.word.unsigned addr < Ox"400") ->
+    WeakestPrecondition.call functions "lan9250_readword" t m [addr] (fun T M RETS =>
+      M = m /\ exists v, RETS = [v]).

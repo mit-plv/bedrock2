@@ -10,7 +10,6 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
 Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
-Definition lan9250_readword : string := "lan9250_readword".
 
 Instance parameters : parameters :=
   let word := Naive.word32 in
@@ -26,13 +25,6 @@ Instance parameters : parameters :=
   locals := SortedListString.map _;
   funname_env := SortedListString.map;
   ext_spec t m action args post :=
-    if string_dec action lan9250_readword then
-    match args with
-    | [addr] =>
-      ((Ox"0" <= word.unsigned addr < Ox"400"))
-      /\ forall v, post m [v]
-    | _ => False
-    end else
     if string_dec action MMIOREAD then
     match args with
     | [addr] =>

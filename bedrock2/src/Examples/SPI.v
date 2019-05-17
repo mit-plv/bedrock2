@@ -36,14 +36,15 @@ Definition spi_read : function :=
   let i : varname := "i" in
   let patience := -1 in
   let SPI_READ_ADDR := Ox"0x1002404c" in
-  ("spi_read", ((b::nil), (b::busy::nil), bedrock_func_body:(
+  ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
     b = (busy);
     i = (patience); while (i) { i = (i - constr:(1));
       io! busy = MMIOREAD(SPI_READ_ADDR);
       if !(busy >> constr:(31)) {
         b = (busy & constr:(Ox"ff"));
-        i = (i^i)
+        i = (i^i);
+        busy = (busy ^ busy)
       }
     }
   ))).

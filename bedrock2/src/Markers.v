@@ -16,15 +16,15 @@ End WithT.
 
 Module Notations.
   (* Declare Scope hide_markers. *) (* COMPAT(coq-v8.8) *)
-  Notation "x" := (intro x) (only printing, at level 0) : hide_markers.
-  Notation "x" := (split x) (only printing, at level 0) : hide_markers.
-  Notation "x" := (esplit x) (only printing, at level 0) : hide_markers.
-  Notation "x" := (econstructor x) (only printing, at level 0) : hide_markers.
-  Notation "x" := (exfalso x) (only printing, at level 0) : hide_markers.
+  Notation "x" := (intro x) (only printing, at level 3) : hide_markers.
+  Notation "x" := (split x) (only printing, at level 3) : hide_markers.
+  Notation "x" := (esplit x) (only printing, at level 3) : hide_markers.
+  Notation "x" := (econstructor x) (only printing, at level 3) : hide_markers.
+  Notation "x" := (exfalso x) (only printing, at level 3) : hide_markers.
 
-  Notation "x" := (unique x) (only printing, at level 0) : hide_markers.
-  Notation "x" := (left x) (only printing, at level 0) : hide_markers.
-  Notation "x" := (right x) (only printing, at level 0) : hide_markers.
+  Notation "x" := (unique x) (only printing, at level 3) : hide_markers.
+  Notation "x" := (left x) (only printing, at level 3) : hide_markers.
+  Notation "x" := (right x) (only printing, at level 3) : hide_markers.
 End Notations.
 
 Module hide.

@@ -120,6 +120,7 @@ Notation "x , y , .. , z" := (@cons varname x (@cons varname y .. (@cons varname
 (* COQBUG(9532) *)
 (* functions of up to 6 arguments *)
 Notation "f ( )" :=  (call nil f nil) (in custom bedrock_cmd at level 0, f global).
+Notation "f ()" :=  (call nil f nil) (in custom bedrock_cmd at level 0, f global).
 Notation "f ( x )" :=  (call nil f (@cons expr x nil)) (in custom bedrock_cmd at level 0, f global, x custom bedrock_expr).
 Notation "f ( x , y )" :=  (call nil f (@cons expr x (@cons expr y nil))) (in custom bedrock_cmd at level 0, f global, x custom bedrock_expr, y custom bedrock_expr).
 Notation "f ( x , y , z )" :=  (call nil f (@cons expr x (@cons expr y (@cons expr z (@nil expr))))) (in custom bedrock_cmd at level 0, f global, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr).
@@ -128,6 +129,7 @@ Notation "f ( x , y , z , a , b )" :=  (call nil f (@cons expr x (@cons expr y (
 Notation "f ( x , y , z , a , b , c )" :=  (call nil f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons expr b (@cons expr c (@nil expr)))))))) (in custom bedrock_cmd at level 0, f global, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr, c custom bedrock_expr).
 
 Notation "unpack! lhs = f ( )" :=  (call lhs f nil) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global).
+Notation "unpack! lhs = f ()" :=  (call lhs f nil) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global).
 Notation "unpack! lhs = f ( x )" :=  (call lhs f (@cons expr x nil)) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, x custom bedrock_expr).
 Notation "unpack! lhs = f ( x , y )" :=  (call lhs f (@cons expr x (@cons expr y nil))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, x custom bedrock_expr, y custom bedrock_expr).
 Notation "unpack! lhs = f ( x , y , z )" :=  (call lhs f (@cons expr x (@cons expr y (@cons expr z (@nil expr))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr).
