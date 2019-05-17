@@ -24,33 +24,33 @@ Local Notation "'bind_opt' x <- a ; f" :=
 Section Live.
 
   Context {p: unique! Syntax.parameters}.
-  Context {veq: DecidableEq varname}.
+  Context (veq: varname -> varname -> bool).
 
   Definition live_bcond(cond: bcond): list varname :=
     match cond with
-    | CondBinary _ x y => list_union [x] [y]
+    | CondBinary _ x y => list_union veq [x] [y]
     | CondNez x => [x]
     end.
 
   (* set of variables which is live before executing s *)
   Fixpoint live(s: stmt)(usedlater: list varname): list varname :=
     match s with
-    | SLoad _ x y  => list_union [y] (list_diff usedlater [x])
-    | SStore _ x y => list_union [x] [y]
-    | SLit x v     => list_diff usedlater [x]
-    | SOp x op y z => list_union [y] (list_union [z] (list_diff usedlater [x]))
-    | SSet x y     => list_union [y] (list_diff usedlater [x])
-    | SIf cond s1 s2   => list_union (live_bcond cond)
-                                     (list_union (live s1 usedlater) (live s2 usedlater))
+    | SLoad _ x y  => list_union veq [y] (list_diff veq usedlater [x])
+    | SStore _ x y => list_union veq [x] [y]
+    | SLit x v     => list_diff veq usedlater [x]
+    | SOp x op y z => list_union veq [y] (list_union veq [z] (list_diff veq usedlater [x]))
+    | SSet x y     => list_union veq [y] (list_diff veq usedlater [x])
+    | SIf cond s1 s2   => list_union veq (live_bcond cond)
+                                     (list_union veq (live s1 usedlater) (live s2 usedlater))
     | SLoop s1 cond s2 =>
       (* exponential: we recurse into subterm s1 twice *)
       let L1 := live s1 usedlater in
       let L2 := live s1 (live s2 L1) in
-      list_union (live_bcond cond) (list_union L1 L2)
+      list_union veq (live_bcond cond) (list_union veq L1 L2)
     | SSeq s1 s2       => live s1 (live s2 usedlater)
     | SSkip => usedlater
-    | SCall     argnames _ resnames => list_union argnames (list_diff usedlater resnames)
-    | SInteract argnames _ resnames => list_union argnames (list_diff usedlater resnames)
+    | SCall     argnames _ resnames => list_union veq argnames (list_diff veq usedlater resnames)
+    | SInteract argnames _ resnames => list_union veq argnames (list_diff veq usedlater resnames)
     end.
 
 End Live.
@@ -69,14 +69,14 @@ End map.
 
 Section RegAlloc.
 
-  Variable srcvar: Type.
-  Context {srcvar_eq_dec: DecidableEq srcvar}.
-  Variable impvar: Type.
-  Context {impvar_eq_dec: DecidableEq impvar}.
-  Variable func: Type.
-  Context {func_eq_dec: DecidableEq func}.
-  Variable act: Type.
-  Context {act_eq_dec: DecidableEq act}.
+  Context {srcvar: Type}.
+  Context (srcvar_eqb: srcvar -> srcvar -> bool).
+  Context {impvar: Type}.
+  Context (impvar_eqb: impvar -> impvar -> bool).
+  Context {func: Type}.
+  Context (func_eq_dec: func -> func -> bool).
+  Context {act: Type}.
+  Context (act_eq_dec: act -> act -> bool).
 
   Context {src2imp: map.map srcvar impvar}.
   Context {src2imp_ops: map.ops src2imp}.
@@ -294,7 +294,7 @@ Section RegAlloc.
         | None   => (* new interval starts *)
                     match map.getmany_of_list m usedlater with
                     | Some used_impvars =>
-                      let av := list_diff available_impvars used_impvars in
+                      let av := list_diff impvar_eqb available_impvars used_impvars in
                       match av with
                       | y :: _ => annotate_assignment s y
                       | nil => ASSkip (* error: ran out of vars *)
@@ -308,7 +308,7 @@ Section RegAlloc.
       let s2' := regalloc m s2 usedlater in
       ASIf cond s1' s2'
     | SSeq s1 s2 =>
-      let s1' := regalloc m s1 (live s2 usedlater) in
+      let s1' := regalloc m s1 (@live srcparams srcvar_eqb s2 usedlater) in
       let s2' := regalloc (update m s1') s2 usedlater in
       ASSeq s1' s2'
     | SLoop s1 cond s2 =>

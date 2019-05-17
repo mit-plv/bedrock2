@@ -1,7 +1,7 @@
 Require Import Coq.Classes.Morphisms.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation.
 Require Coq.Lists.List.
-Require Import coqutil.sanity coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.sanity coqutil.Tactics.destr coqutil.Map.Interface coqutil.Map.Properties.
 Import Map.Interface.map Map.Properties.map.
 
 Section SepProperties.
@@ -34,7 +34,8 @@ Section SepProperties.
     destruct H as (mk&mR&H&Hp&HR); eapply get_ptsto in Hp; subst.
     destruct (get_split k _ _ _ H) as [[]|[]]; congruence.
   Qed.
-  Lemma sep_get{keq: Decidable.DecidableEq key} k v m (H : get m k = Some v) :
+  Lemma sep_get(keq: key -> key -> bool){keq_spec: Decidable.EqDecider keq}
+        k v m (H : get m k = Some v) :
     sep (ptsto k v) (eq (map.remove m k)) m.
   Proof.
     unfold sep. exists (map.put map.empty k v).
@@ -42,12 +43,12 @@ Section SepProperties.
     - apply map_ext. intros.
       rewrite get_putmany_dec.
       rewrite get_remove_dec.
-      destruct (Decidable.dec (k = k0)).
+      destr (keq k k0).
       + subst. rewrite get_put_same. assumption.
       + rewrite get_put_diff by congruence. rewrite get_empty.
         destruct (get m k0); reflexivity.
     - unfold disjoint. intros.
-      destruct (Decidable.dec (k = k0)).
+      destr (keq k k0).
       + subst. rewrite get_remove_same in H1. discriminate.
       + rewrite get_put_diff in H0 by congruence. rewrite get_empty in H0. discriminate.
   Qed.
@@ -66,7 +67,8 @@ Section SepProperties.
       { rewrite get_put_diff, get_empty in Hget by trivial; inversion Hget. } }
   Qed.
 
-  Lemma sepeq_on_undef_put{keq: Decidable.DecidableEq key}: forall m addr b,
+  Lemma sepeq_on_undef_put(keq: key -> key -> bool){keq_spec: Decidable.EqDecider keq}:
+    forall m addr b,
       map.get m addr = None ->
       (sep (ptsto addr b) (eq m)) (map.put m addr b).
   Proof.
@@ -75,7 +77,7 @@ Section SepProperties.
     apply map.split_undef_put. assumption.
   Qed.
 
-  Lemma sep_on_undef_put{keq: Decidable.DecidableEq key}:
+  Lemma sep_on_undef_put(keq: key -> key -> bool){keq_spec: Decidable.EqDecider keq}:
     forall m addr b (R: _ -> Prop),
       map.get m addr = None ->
       R m ->

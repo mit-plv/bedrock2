@@ -77,12 +77,12 @@ Section FlatImpSize1.
     induction s; simpl; try blia.
   Qed.
 
-  Fixpoint modVars_as_list{veq: DecidableEq varname}(s: stmt): list varname :=
+  Fixpoint modVars_as_list(veq: varname -> varname -> bool)(s: stmt): list varname :=
     match s with
     | SSkip | SStore _ _ _ => []
     | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ => [x]
     | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 =>
-        list_union (modVars_as_list s1) (modVars_as_list s2)
+        list_union veq (modVars_as_list veq s1) (modVars_as_list veq s2)
     | SCall binds _ _ | SInteract binds _ _ => binds
     end.
 

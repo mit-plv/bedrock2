@@ -10,6 +10,9 @@ Require Import Coq.Lists.List.
 
 Class parameters := {
   syntax :> Syntax.parameters;
+  varname_eqb: varname -> varname -> bool;
+  funname_eqb: funname -> funname -> bool;
+  actname_eqb: actname -> actname -> bool;
 
   width : Z;
   word :> Word.Interface.word width;
@@ -18,8 +21,6 @@ Class parameters := {
   mem :> map.map word byte;
   locals :> map.map varname word;
   funname_env : forall T: Type, map.map funname T; (* abstract T for better reusability *)
-
-  funname_eqb : funname -> funname -> bool;
 
   trace := list ((mem * actname * list word) * (mem * list word));
 
@@ -36,7 +37,7 @@ Class parameters := {
 }.
 
 Module ext_spec.
-  Class ok{p: parameters} := {
+  Class ok{p: parameters}: Prop := {
     (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
     unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
                                             (post1 post2: mem -> list word -> Prop),
@@ -77,10 +78,10 @@ Module ext_spec.
 End ext_spec.
 Arguments ext_spec.ok: clear implicits.
 
-Class parameters_ok{p: parameters} := {
-  varname_eq_dec :> DecidableEq varname;
-  funname_eq_dec :> DecidableEq funname;
-  actname_eq_dec :> DecidableEq actname;
+Class parameters_ok{p: parameters}: Prop := {
+  varname_eqb_spec :> EqDecider varname_eqb;
+  funname_eqb_spec :> EqDecider funname_eqb;
+  actname_eqb_spec :> EqDecider actname_eqb;
   width_cases : width = 32 \/ width = 64;
   word_ok :> word.ok word;
   byte_ok :> word.ok byte;

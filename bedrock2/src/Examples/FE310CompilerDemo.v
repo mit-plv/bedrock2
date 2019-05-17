@@ -35,11 +35,13 @@ Local Instance parameters : parameters :=
   let byte := Naive.word8 in
   {|
   width := 32;
+  varname_eqb := Z.eqb;
+  funname_eqb := String.eqb;
+  actname_eqb := String.eqb;
   syntax := syntax_parameters;
   mem := SortedListWord.map _ _;
   locals := Z_keyed_SortedListMap.Zkeyed_map _;
   funname_env := SortedListString.map;
-  funname_eqb := String.eqb;
   ext_spec t mGive action args post :=
     mGive = Map.Interface.map.empty /\
     match action, List.map word.unsigned args with

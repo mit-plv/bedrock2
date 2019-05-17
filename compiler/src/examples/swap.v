@@ -61,14 +61,11 @@ Instance pipeline_params : Pipeline.parameters. simple refine {|
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
 
-Instance mapops: RegAlloc.map.ops (SortedListString.map Z).
-constructor.
-intros s1 s2.
-destruct s1.
-destruct s2.
-unshelve econstructor.
-- exact (ListLib.list_intersect value value0).
-- exact TODO.
+Instance mapops: RegAlloc.map.ops (SortedListString.map Z). refine (
+  {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
+    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |} |}).
+- exact String.eqb.
+- exact Z.eqb.
 Defined.
 
 Definition allFuns: list swap.bedrock_func := [swap; swap_swap].

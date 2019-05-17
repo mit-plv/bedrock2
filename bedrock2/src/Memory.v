@@ -78,7 +78,7 @@ Section Memory.
   Qed.
 
   Context {mem_ok: map.ok mem}.
-  Context {word_eq_dec: DecidableEq word}.
+  Context {word_ok: word.ok word}.
 
   Lemma store_preserves_domain: forall sz m a v m',
       store sz m a v = Some m' ->

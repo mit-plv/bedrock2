@@ -70,6 +70,12 @@ End Squarer.
 Module SpiEth.
 
   Inductive MMIOAction := MMInput | MMOutput.
+  Definition MMIOAction_eqb a b :=
+    match a, b with
+    | MMInput, MMInput => true
+    | MMOutput, MMOutput => true
+    | _, _ => false
+    end.
 
   Section WithMem.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
@@ -141,11 +147,13 @@ Module SpiEth.
 
     Instance semantics_params: Semantics.parameters := {|
       Semantics.syntax := syntax_params;
+      Semantics.varname_eqb := String.eqb;
+      Semantics.funname_eqb f1 f2 := Empty_set_rect (fun _ : Empty_set => bool) f1;
+      Semantics.actname_eqb := MMIOAction_eqb;
       Semantics.width := 32;
       Semantics.word := word;
       Semantics.byte := byte;
       Semantics.mem := mem;
-      Semantics.funname_eqb f1 f2 := Empty_set_rect (fun _ : Empty_set => bool) f1;
       Semantics.ext_spec t mGive action (argvals: list word) (post: (mem -> list word -> Prop)) :=
         match argvals with
         | addr :: _ =>
@@ -218,6 +226,7 @@ End SpiEth.
 Module Syscalls.
 
   Inductive SyscallAction := Syscall.
+  Definition SyscallAction_eqb(a b: SyscallAction): bool := true.
 
   (* Go models syscalls as
      func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)
@@ -256,11 +265,13 @@ Module Syscalls.
 
     Instance semantics_params: Semantics.parameters := {|
       Semantics.syntax := syntax_params;
+      Semantics.varname_eqb := String.eqb;
+      Semantics.funname_eqb f1 f2 := Empty_set_rect (fun _ : Empty_set => bool) f1;
+      Semantics.actname_eqb := SyscallAction_eqb;
       Semantics.width := 32;
       Semantics.word := word;
       Semantics.byte := byte;
       Semantics.mem := mem;
-      Semantics.funname_eqb f1 f2 := Empty_set_rect (fun _ : Empty_set => bool) f1;
       Semantics.ext_spec t m action (argvals: list word) (post: (mem -> list word -> Prop)) :=
         (* TODO needs to be more precise *)
         match argvals with

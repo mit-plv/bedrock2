@@ -54,7 +54,6 @@ Section FibCompiled.
   }.
 
   Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. refine ({|
-    Pipeline.varname_eq_dec := _ ;
     Pipeline.mem_ok := _ ;
     Pipeline.locals_ok := _ ;
     Pipeline.funname_env_ok := _ ;
@@ -363,7 +362,7 @@ Section FibCompiled.
       + eval_var_solve.
       + simpl. destruct_one_match.
         * rewrite H1 in E. rewrite Nat.sub_0_r in E.
-          rewrite Z.ltb_lt in E. apply Z.lt_irrefl in E.
+          apply Z.lt_irrefl in E.
           exfalso. assumption.
         * reflexivity.
       + repeat split.
@@ -378,8 +377,7 @@ Section FibCompiled.
         * repeat match goal with
                  | H: context[_ mod _] |- _ => rewrite Z.mod_small in H; [|blia]
                  end.
-          assert (i < n)%nat by blia.
-          apply Z.ltb_ge in E. blia.
+          blia.
       + eapply fib_correct_body with (nl := nl) (ns := ns); eauto.
       + intros.
         eval_fib_var_names.
@@ -429,7 +427,6 @@ Section FibCompiled.
     - eval_var_solve.
     - simpl.
       destruct_one_match; [discriminate|].
-      rewrite Z.ltb_ge in *.
       repeat rewrite Z.mod_small in * by blia.
       exfalso. blia.
     - eapply weaken_exec.
@@ -462,7 +459,6 @@ Section FibCompiled.
     + eval_var_solve.
     + simpl.
       destruct_one_match; [|reflexivity].
-      rewrite Z.ltb_lt in *.
       repeat rewrite Z.mod_small in * by blia.
       exfalso. blia.
     + exec_set_solve.

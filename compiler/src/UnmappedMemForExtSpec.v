@@ -14,18 +14,20 @@ Section WithParams.
 
   Definition p2: Semantics.parameters := {|
     Semantics.syntax := @syntax p1;
+    Semantics.varname_eqb := @varname_eqb p1;
+    Semantics.funname_eqb := @funname_eqb p1;
+    Semantics.actname_eqb := @actname_eqb p1;
     Semantics.width := @width p1;
     Semantics.word := @word p1;
     Semantics.byte := @byte p1;
     Semantics.mem := @mem p1;
     Semantics.locals := @locals p1;
     Semantics.funname_env := @funname_env p1;
-    Semantics.funname_eqb := @funname_eqb p1;
     Semantics.ext_spec t m a args post :=
       respects_unmapped m -> @ext_spec p1 t m a args post;
   |}.
 
-  Context {mem_ok: map.ok mem} {word_eq_dec: DecidableEq word}.
+  Context {mem_ok: map.ok mem} {word_ok: word.ok word}.
 
   Lemma store_preserves_respects_unmapped: forall sz m a v m',
       store sz m a v = Some m' ->

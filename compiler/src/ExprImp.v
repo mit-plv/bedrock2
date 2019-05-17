@@ -347,7 +347,7 @@ Section ExprImp2.
 
   Context {word_ok: word.ok word}. (* TODO which param record? *)
   Context {locals_ok: map.ok locals}.
-  Context {varname_dec: DecidableEq Syntax.varname}.
+  Context {varname_eqb_spec: EqDecider varname_eqb}.
 
   Ltac state_calc := map_solver locals_ok.
   Ltac set_solver := set_solver_generic (@Syntax.varname (@Semantics.syntax p)).

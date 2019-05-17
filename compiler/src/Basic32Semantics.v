@@ -17,12 +17,14 @@ Instance Basic32Syntax: bedrock2.Syntax.parameters := {|
 
 Instance Basic32Semantics: bedrock2.Semantics.parameters := {|
   Semantics.syntax := Basic32Syntax;
+  Semantics.varname_eqb := Z.eqb;
+  Semantics.funname_eqb := String.eqb;
+  Semantics.actname_eqb := String.eqb;
   Semantics.width := 32;
   Semantics.word := word32;
   Semantics.byte := word8;
   Semantics.locals := _;
   Semantics.funname_env := coqutil.Map.SortedListString.map;
-  Semantics.funname_eqb := String.eqb;
   Semantics.mem := Mem;
   Semantics.ext_spec _ _ _ _ _ := False;
 |}.

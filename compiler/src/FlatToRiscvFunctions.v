@@ -60,7 +60,7 @@ Section Proofs.
   (* measured in words, needs to be multiplied by 4 or 8 *)
   Definition framelength: list Register * list Register * stmt -> Z :=
     fun '(argvars, resvars, body) =>
-      let mod_vars := modVars_as_list body in
+      let mod_vars := modVars_as_list Z.eqb body in
       Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
 
   Lemma framesize_nonneg: forall argvars resvars body,
@@ -154,21 +154,19 @@ Section Proofs.
          end * (rec rest))%sep
       end.
 
-  Instance funname_eq_dec: DecidableEq Syntax.funname := string_dec.
-
   Lemma functions_expose: forall base rel_positions impls funnames f pos impl,
       map.get rel_positions f = Some pos ->
       map.get impls f = Some impl ->
       iff1 (functions base rel_positions impls funnames)
-           (functions base rel_positions impls (List.remove funname_eq_dec f funnames) *
+           (functions base rel_positions impls (ListLib.removeb String.eqb f funnames) *
             program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
   Proof.
   Admitted.
 
-  Lemma union_Forall: forall {T: Type} {teq: DecidableEq T} (P: T -> Prop) (l1 l2: list T),
+  Lemma union_Forall: forall {T: Type} (teqb: T -> T -> bool) (P: T -> Prop) (l1 l2: list T),
       Forall P l1 ->
       Forall P l2 ->
-      Forall P (ListLib.list_union l1 l2).
+      Forall P (ListLib.list_union teqb l1 l2).
   Proof.
     induction l1; intros; simpl; [assumption|].
     simp. destruct_one_match; eauto.
@@ -176,7 +174,7 @@ Section Proofs.
 
   Lemma modVars_as_list_valid_registers: forall (s: @stmt (mk_Syntax_params _)),
       valid_registers s ->
-      Forall valid_register (modVars_as_list s).
+      Forall valid_register (modVars_as_list Z.eqb s).
   Proof.
     induction s; intros; simpl in *; simp; eauto 10 using @union_Forall.
   Qed.
@@ -557,7 +555,7 @@ Section Proofs.
       assert (exists remaining_stack old_modvarvals old_ra old_retvals old_argvals,
                  old_stackvals = remaining_stack ++ old_modvarvals ++ [old_ra] ++
                                                  old_retvals ++ old_argvals /\
-                 List.length old_modvarvals = List.length (modVars_as_list body) /\
+                 List.length old_modvarvals = List.length (modVars_as_list Z.eqb body) /\
                  List.length old_retvals = List.length retnames /\
                  List.length old_argvals = List.length argnames) as TheSplit. {
         subst FL. unfold framelength in *.
@@ -720,15 +718,15 @@ Section Proofs.
     (* save vars modified by callee onto stack *)
     match goal with
     | |- context [ {| getRegs := ?l |} ] =>
-      pose proof (@getmany_of_list_exists _ _ _ l valid_register (modVars_as_list body)) as P
+      pose proof (@getmany_of_list_exists _ _ _ l valid_register (modVars_as_list Z.eqb body)) as P
     end.
     edestruct P as [newvalues P2]; clear P.
     { apply modVars_as_list_valid_registers. assumption. }
     {
       intros.
       rewrite !map.get_put_dec.
-      destruct_one_dec_eq; [eexists; reflexivity|].
-      destruct_one_dec_eq; [eexists; reflexivity|].
+      destruct_one_match; [eexists; reflexivity|].
+      destruct_one_match; [eexists; reflexivity|].
       eauto.
     }
     eapply runsTo_trans. {
@@ -745,11 +743,11 @@ Section Proofs.
         repeat match goal with
         | H: _ = List.length ?M |- _ =>
           lazymatch M with
-          | @modVars_as_list ?params ?eqd ?s =>
+          | @modVars_as_list ?EQ ?params ?eqd ?s =>
             so fun hyporgoal => match hyporgoal with
                                 | context [?M'] =>
                                   lazymatch M' with
-                                  | @modVars_as_list ?params' ?eqd' ?s =>
+                                  | @modVars_as_list ?EQ ?params' ?eqd' ?s =>
                                     assert_fails (constr_eq M M');
                                     change M' with M in *;
                                     idtac M' "--->" M
@@ -810,7 +808,7 @@ Section Proofs.
         p_sp := word.sub p_sp !(bytes_per_word * FL);
         e_pos := e_pos;
         program_base := program_base;
-        funnames := (remove funname_eq_dec fname funnames) |});
+        funnames := (ListLib.removeb String.eqb fname funnames) |});
         simpl; try assumption.
       1: reflexivity.
       1: {
@@ -822,6 +820,7 @@ Section Proofs.
           | H: map.extends e_impl_full _ |- _ => clear -H
           end.
           intro OK.
+          Require Import coqutil.Datatypes.String.
           map_solver OK.
         - move e_impl_reduced_props at bottom.
           intros *. intro G.
@@ -832,11 +831,11 @@ Section Proofs.
           }
           specialize e_impl_reduced_props with (1 := G'). simp.
           repeat split; eauto.
-          destruct (funname_eq_dec f fname).
+          destr (String.eqb f fname).
           + subst f.
             generalize (funname_env_ok (list Register * list Register * stmt)). clear -G.
             intro OK. exfalso. map_solver OK.
-          + apply remove_In_ne; assumption.
+          + eapply remove_In_ne; try typeclasses eauto; assumption.
       }
       1: reflexivity.
       4: reflexivity.
@@ -1010,13 +1009,14 @@ Section Proofs.
     (* load back the modified vars *)
     eapply runsTo_trans. {
       eapply load_regs_correct with
-          (vars := (modVars_as_list body)) (values := newvalues);
+          (vars := (modVars_as_list _ body)) (values := newvalues);
         simpl; cycle 3.
       - eassumption.
       - repeat match goal with
                | H: map.getmany_of_list _ _ = Some _ |- _ =>
                  unique eapply @map.getmany_of_list_length in copy of H
                end.
+        instantiate (1 := Z.eqb).
         blia.
       - subst FL.
         wseplog_pre word_ok.
@@ -1044,7 +1044,7 @@ Section Proofs.
     eapply runsToStep. {
       eapply run_load_word; cycle 2; try solve [sidecondition].
       - simpl.
-        assert (forall x, In x (modVars_as_list body) -> valid_FlatImp_var x) as F. {
+        assert (forall x, In x (modVars_as_list Z.eqb body) -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
           eapply Forall_impl.
           + apply TODO_valid_register_to_valid_FlatImp_var.
@@ -1094,7 +1094,7 @@ Section Proofs.
       eapply (run_Addi RegisterNames.sp RegisterNames.sp _
              (* otherwise it will pick the decreasing (with a - in front) *)
               (bytes_per_word *
-                  #(List.length argnames + List.length retnames + 1 + List.length (modVars_as_list body)))%Z);
+                  #(List.length argnames + List.length retnames + 1 + List.length (modVars_as_list _ body)))%Z);
         try solve [sidecondition | simpl; solve_divisibleBy4 ].
       - simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
@@ -1113,6 +1113,7 @@ Section Proofs.
         + exfalso. (* contradiction: sp cannot be in modVars of body *) admit.
         + etransitivity; [symmetry|]; eassumption.
       - simpl.
+        instantiate (2 := BinInt.Z.eqb).
         wseplog_pre word_ok.
         wcancel.
     }
@@ -1240,7 +1241,7 @@ Section Proofs.
       | H:   #(Datatypes.length ?new_remaining_stack) = _ |- _ =>
         exists (new_remaining_stack ++ newvalues ++ [new_ra] ++ retvs ++ argvs)
       end.
-      assert (Datatypes.length (modVars_as_list body) = Datatypes.length newvalues). {
+      assert (Datatypes.length (modVars_as_list Z.eqb body) = Datatypes.length newvalues). {
         eapply map.getmany_of_list_length. eassumption.
       }
       assert (Datatypes.length retnames = Datatypes.length retvs). {
@@ -1252,11 +1253,11 @@ Section Proofs.
       repeat match goal with
              | H: _ = List.length ?M |- _ =>
                lazymatch M with
-               | @modVars_as_list ?params ?eqd ?s =>
+               | @modVars_as_list ?EQ ?params ?eqd ?s =>
                  so fun hyporgoal => match hyporgoal with
                                      | context [?M'] =>
                                        lazymatch M' with
-                                       | @modVars_as_list ?params' ?eqd' ?s =>
+                                       | @modVars_as_list ?EQ ?params' ?eqd' ?s =>
                                          assert_fails (constr_eq M M');
                                            change M' with M in *;
                                            idtac M' "--->" M
@@ -1290,9 +1291,6 @@ Section Proofs.
       specialize (P program_base funnames).
       setoid_rewrite P. clear P. cbn [seps].
       wcancel.
-      cancel_seps_at_indices 10%nat 0%nat. {
-        reflexivity.
-      }
       unfold program, compile_function.
       cbn [seps].
       repeat match goal with

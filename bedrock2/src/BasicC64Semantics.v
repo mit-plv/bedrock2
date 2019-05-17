@@ -10,10 +10,12 @@ Instance parameters : parameters :=
   {|
   width := 64;
   syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
+  varname_eqb := String.eqb;
+  funname_eqb := String.eqb;
+  actname_eqb := String.eqb;
   mem := SortedListWord.map _ _;
   locals := SortedListString.map _;
   funname_env := SortedListString.map;
-  funname_eqb := String.eqb;
   ext_spec := fun _ _ _ _ _ => False;
 |}.
 
