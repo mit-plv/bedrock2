@@ -138,18 +138,6 @@ Goal True.
      thing they do is to save all used registers onto the stack, so we can look for the
      max there to see how many registers a function needs *)
 
-  (* - iot is fine
-     - lightbulb's max register is 36 --> need to save 5
-     - recvEthernets' max register is 41 --> need to save 10
-  *)
-
-
-  (* {| value := [("iot", 0); ("lightbulb", 112); ("recvEthernet", 132)]; _value_ok := eq_refl |} *)
-  Import bedrock2.NotationsCustomEntry.
-  Set Printing Width 120.
-  Eval cbv in prog.
-
-
   let x := eval cbv in (instrencode asm) in
   idtac x.
 Abort.

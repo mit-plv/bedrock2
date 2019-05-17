@@ -3,6 +3,7 @@ Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
 Require Import coqutil.Macros.symmetry.
+From coqutil Require Import Z.div_mod_to_equations.
 From coqutil Require Import Word.Interface Map.Interface.
 From coqutil.Tactics Require Import letexists eabstract.
 From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars.
@@ -86,41 +87,31 @@ Definition iot :=
   ))).
 
 Definition recvEthernet :=
-    let info : varname := "info" in
-    let rxunused : varname := "rx_unused" in
-    let rx_status : varname := "rx_status" in
-    let rx_packet : varname := "rx_packet" in
-    let c : varname := "c" in
-    let len_bytes : varname := "len_bytes" in
-    let len_words : varname := "len_words" in
-    let word : varname := "word" in
     let lan9250_readword : varname := "lan9250_readword" in
+    
+    let buf : varname := "buf" in
+    let num_bytes : varname := "num_bytes" in
+    let i : varname := "i" in
+    let read : varname := "read" in
 
-    let r : varname := "r" in
-    ("recvEthernet", ((rx_packet::nil), (r::nil), bedrock_func_body:(
-        (* len rx_packet is [(MAX_ETHERNET+3) / 4] *)
+    ("recvEthernet", ((buf::nil), (num_bytes::nil), bedrock_func_body:(
+        io! read = lan9250_readword(constr:(Ox"7C")); (* RX_FIFO_INF *)
+        require (read & constr:((2^8-1)*2^16)) else { num_bytes = (constr:(-1)) }; (* nonempty *)
+        io! read = lan9250_readword(constr:(Ox"40")); (* RX_STATUS_FIFO_PORT *)
 
-        (* Read RX_FIFO_INF *)
-        io! info = lan9250_readword(constr:(Ox"7C"));
-        rxunused = ((info >> constr:(16)) & ((constr:(1) << constr:(8)) - constr:(1)));
-        require (rxunused - constr:(0)) else { r = (constr:(-1)) };
+        num_bytes = (read >> constr:(16) & constr:(2^14-1));
+        (* round up to next word *)
+        num_bytes = ((num_bytes + constr:(4-1)) >> constr:(2));
+        num_bytes = (num_bytes + num_bytes);
+        num_bytes = (num_bytes + num_bytes);
 
-        (* Read Status FIFO Port *)
-        io! rx_status = lan9250_readword(constr:(Ox"40"));
-        len_bytes = (rx_status >> constr:(16) & ((constr:(1) << constr:(14)) - constr:(1)));
-        len_words = (len_bytes + (constr:(4) - constr:(1)) >> constr:(2));
+        require (num_bytes < constr:(1520 + 1)) else { num_bytes = (constr:(-1)) };
 
-        (* len_words <= MAX_ETHERNET *)
-        require (len_words < constr:(1518 + 1)) else { r = (constr:(-1)) };
-
-        c = (constr:(0));
-        word = (constr:(0));
-        while (c < len_words) {
-            io! word = lan9250_readword(constr:(0));
-            store4(rx_packet + c * constr:(4), word);
-            c = (c + constr:(1))
-        };
-        r = (len_words)
+        i = (constr:(0)); while (i < num_bytes) {
+            io! read = lan9250_readword(constr:(0));
+            store4(buf + i, read);
+            i = (i + constr:(4))
+        }
     ))).
 
 Definition lightbulb :=
@@ -136,21 +127,29 @@ Definition lightbulb :=
     let r : varname := "r" in
 
   ("lightbulb", ((packet::len::nil), (r::nil), bedrock_func_body:(
-    require (constr:(42) < len) else { r = (constr:(-1)) };
+    r = (constr:(42));
+    require (r < len) else { r = (constr:(-1)) };
 
     ethertype = ((load1(packet + constr:(12)) << constr:(8)) | (load1(packet + constr:(13))));
-    require (constr:(1536 - 1) < ethertype) else { r = (constr:(-1)) };
+    r = (constr:(1536 - 1));
+    require (r < ethertype) else { r = (constr:(-1)) };
 
-    protocol = (load1(packet + constr:(23)));
-    require (protocol == constr:(Ox"11")) else { r = (constr:(-1)) };
+    r = (constr:(23));
+    r = (packet + r);
+    protocol = (load1(r));
+    r = (constr:(Ox"11"));
+    require (protocol == r) else { r = (constr:(-1)) };
 
-    command = (load1(packet + constr:(42))); (* TODO: MMIOWRITE one bit only *)
+    r = (constr:(42));
+    r = (packet + r);
+    command = (load1(r)); (* TODO: MMIOWRITE one bit only *)
 
     io! mmio_val = MMIOREAD(constr:(Ox"10012008"));
-    output! MMIOWRITE(constr:(Ox"10012008"), mmio_val | constr:(1) << constr:(23));
+    output! MMIOWRITE(constr:(Ox"10012008"), mmio_val | constr:(2^23));
 
-    io! mmio_val = MMIOREAD(constr:(Ox"1001200c"));
-    output! MMIOWRITE(constr:(Ox"1001200c"), mmio_val | command << constr:(23));
+    r = (constr:(Ox"1001200c"));
+    io! mmio_val = MMIOREAD(r);
+    output! MMIOWRITE(r, mmio_val | command << constr:(23));
 
     r = (constr:(0))
   ))).
@@ -159,16 +158,16 @@ Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
 
 Instance spec_of_iot : spec_of "iot" := fun functions =>
-  forall p_addr rx_packet R m t,
-    (array scalar8 (word.of_Z 1) p_addr rx_packet * R) m ->
-    Z.of_nat (List.length rx_packet) = 1518 ->
+  forall p_addr buf R m t,
+    (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
+    Z.of_nat (List.length buf) = 1520 ->
     WeakestPrecondition.call functions "iot" t m [p_addr]
       (fun t' m' rets => exists v, rets = [v]).
 
 Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
-  forall p_addr (rx_packet:list byte) R m t,
-    (array scalar8 (word.of_Z 1) p_addr rx_packet * R) m ->
-    1518 <= Z.of_nat (List.length rx_packet) ->
+  forall p_addr (buf:list byte) R m t,
+    (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
+    List.length buf = 1520%nat ->
     (* comment on wormhole mentions < 0x400 for lan9250_readword. TODO check against manual *)
     WeakestPrecondition.call functions "recvEthernet" t m [p_addr]
       (fun t' m' rets =>
@@ -177,12 +176,11 @@ Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
          exists bytes_written:word, rets = [bytes_written]
          /\
          exists rx_packet', (array scalar8 (word.of_Z 1) p_addr rx_packet' *
-                             array scalar8 (word.of_Z 1) bytes_written rx_packet *
+                             array scalar8 (word.of_Z 1) (word.add p_addr bytes_written)
+                                                         (List.skipn (Z.to_nat (word.unsigned bytes_written)) buf) *
                              R) m'
          /\
-         word.unsigned bytes_written = Z.of_nat (List.length rx_packet')
-         /\
-         word.unsigned bytes_written <> word.unsigned (word.of_Z (-1))
+         word.unsigned bytes_written <= Z.of_nat (List.length rx_packet')
        )
        \/
        (* Fail, we return -1 and don't write anything *)
@@ -190,9 +188,9 @@ Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
       ).
 
 Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions =>
-  forall p_addr (rx_packet:list byte) (len:word) R m t,
-    (array scalar8 (word.of_Z 1) p_addr rx_packet * R) m ->
-    word.unsigned len = Z.of_nat (List.length rx_packet) ->
+  forall p_addr (buf:list byte) (len:word) R m t,
+    (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
+    word.unsigned len <= Z.of_nat (List.length buf) ->
     WeakestPrecondition.call functions "lightbulb" t m [p_addr; len]
       (fun t' m' rets => exists v, rets = [v] /\ m' = m).
 
@@ -216,17 +214,21 @@ Proof.
   repeat (straightline || straightline_if || eapply interact_nomem || eauto 99 || prove_ext_spec).
   refine (TailRecursion.tailrec
     (* types of ghost variables *) (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
-    (* program variables *) ["info";"rx_unused";"rx_status";"rx_packet";"c";"len_bytes";"len_words";"word"]
-    (fun v scratch R t m info rx_unused rx_status rx_packet c len_bytes len_words_loop word => 
-      PrimitivePair.pair.mk (v = word.unsigned c /\
-      (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) scratch * R) m /\
-      Z.of_nat (List.length scratch) = word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4) ) /\
-      len_words_loop = len_words)  (* precondition *)
-      (fun T M INFO RX_UNUSED RX_STATUS RX_PACKET C LEN_BYTES LEN_WORDS WORD => exists SCRATCH, LEN_WORDS = len_words /\
-        (array scalar8 (word.of_Z 1) (word.add rx_packet (word.mul c (word.of_Z 4)) ) SCRATCH * R) M /\
+    (* program variables *) ["buf";"num_bytes";"i";"read"]
+    (fun v scratch R t m buf num_bytes_loop i read =>
+      PrimitivePair.pair.mk (v = word.unsigned i /\
+      (array scalar8 (word.of_Z 1) (word.add buf i) scratch * R) m /\
+      Z.of_nat (List.length scratch) = word.unsigned (word.sub num_bytes i) /\
+
+      word.unsigned i mod 4 = word.unsigned num_bytes mod 4 /\
+      num_bytes_loop = num_bytes
+      (* (word.unsigned i < word.unsigned num_bytes + 4) *)
+      (* /\  word.unsigned i < num_bytes) *) )  (* precondition of every loop *)
+      (fun T M BUF NUM_BYTES I READ => exists SCRATCH,
+        (array scalar8 (word.of_Z 1) (word.add buf i) SCRATCH * R) M /\
         List.length SCRATCH = List.length scratch /\
-        LEN_WORDS = len_words)) (* postcondition *)
-    (fun n m : Z => m < n <= word.unsigned len_words) (* well_founded relation *)
+        NUM_BYTES = num_bytes)) (* postcondition *)
+    (fun n m : Z => m < n <= word.unsigned num_bytes) (* well_founded relation *)
     _ _ _ _ _ _ _);
   (* TODO wrap this into a tactic with the previous refine? *)
   cbn [HList.hlist.foralls HList.tuple.foralls
@@ -239,71 +241,175 @@ Proof.
   repeat (straightline || straightline_if || eapply interact_nomem || eauto 99).
   { exact (Z.gt_wf _). }
   { repeat (refine (conj _ _)); eauto.
-    { replace (word.add p_addr (word.mul c (word.of_Z 4))) with p_addr by (subst c; ring).
-      rewrite <- (List.firstn_skipn (Z.to_nat (word.unsigned (word.mul (word.sub len_words c) (word.of_Z 4)))) _) in H.
+    { replace (word.add p_addr i) with p_addr by (subst i; ring).
+      rewrite <- (List.firstn_skipn (Z.to_nat (word.unsigned (word.sub num_bytes i) ) )  _) in H.
       SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H; [|ecancel_assumption].
       rewrite List.length_firstn_inbounds, Znat.Z2Nat.id; trivial.
       { eapply Properties.word.unsigned_range. }
-      trans_ltu.
-      eapply Znat.Nat2Z.inj_le.
-      etransitivity; [|eassumption].
-      replace (word.sub len_words c) with len_words by (subst c; ring).
-      rewrite -> Znat.Z2Nat.id by (eapply Properties.word.unsigned_range).
-      (* TODO(cl-wood): this goal is false, I think there is a bug in the code *)
-      admit. }
-    {  rewrite -> List.length_firstn_inbounds.
-       2: admit. (* NOTE: probably same deal as previous admit *)
-       rewrite Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. } }
-    { prove_ext_spec.
-      repeat (straightline || straightline_if).
-      do 2 trans_ltu.
+      trans_ltu. eapply Znat.Nat2Z.inj_le. rewrite -> Znat.Z2Nat.id.
+      { rewrite -> H0.
+        replace (word.sub num_bytes i) with num_bytes by (subst i; ring).
+        rewrite word.unsigned_of_Z in H2. change (word.wrap 1521) with (1521) in H2.
+        Lia.lia. }
+      replace (word.sub num_bytes i) with num_bytes by (subst i; ring).
+      eapply Properties.word.unsigned_range. }
+    { replace (word.sub num_bytes i) with num_bytes by (subst i; ring).
+      rewrite -> List.length_firstn_inbounds.
+      { rewrite Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. }
+      rewrite H0. trans_ltu.
+      change (word.unsigned (word.of_Z 1521)) with (1521) in H2.
+      pose proof Properties.word.unsigned_range num_bytes.
+      PreOmega.zify.
+      rewrite Znat.Z2Nat.id; Lia.lia. }
+    { pose proof Properties.word.unsigned_range num_bytes. PreOmega.zify.
+      subst i. subst num_bytes. subst num_bytes2.
+      replace (word.add (word.add num_bytes1 num_bytes1) (word.add num_bytes1 num_bytes1)) with (word.mul num_bytes1 (word.of_Z 4)) in * by ring.
+      { rewrite word.unsigned_mul. unfold word.wrap.
+        rewrite (Z.mod_small _ (2^width)).
+        { change (word.unsigned (word.of_Z 0) mod 4) with 0.
+          change (word.unsigned (word.of_Z 4)) with 4.
+          Z.div_mod_to_equations.
+          Lia.lia. }
+        change (word.unsigned (word.of_Z 4)) with 4. subst num_bytes1.
+        rewrite Properties.word.unsigned_sru_nowrap.
+        { rewrite Z.shiftr_div_pow2.
+          { change (2 ^ word.unsigned (word.of_Z 2)) with 4.
+            pose proof Properties.word.unsigned_range (word.add num_bytes0 (word.of_Z 3)).
+            Z.div_mod_to_equations.
+            (*  0 <= word.unsigned num_words * word.unsigned (word.of_Z 4)
+                < 2 ^ width *)
+            Lia.lia. }
+          { cbv. congruence. }}
+        exact eq_refl. }}}
+    (* lan9250_readword *)
+    { prove_ext_spec. repeat (straightline || straightline_if).
       (* store *)
-      rewrite <- (List.firstn_skipn 4 x) in H4.
+      do 2 trans_ltu. rewrite <- (List.firstn_skipn 4 x) in H4.
       SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H4.
       { rewrite List.length_firstn_inbounds.
         { instantiate (1:= word.of_Z 4). eauto. }
-        apply Znat.Nat2Z.inj_le.
-        admit. } 
+        apply Znat.Nat2Z.inj_le. rewrite H5. rewrite word.unsigned_sub.
+        unfold word.wrap. rewrite Z.mod_small.
+        { revert H6 H3. clear. Z.div_mod_to_equations.
+          (* Z.of_nat 4 <= word.unsigned x6 - word.unsigned x5 *)
+          Lia.lia. }
+        pose proof Properties.word.unsigned_range x2.
+        pose proof Properties.word.unsigned_range x3.
+        Lia.lia. } 
       eapply store_four_of_sep.
-      { seprewrite_in @scalar32_of_bytes H7; [..|ecancel_assumption].
+      { seprewrite_in @scalar32_of_bytes H8; [..|ecancel_assumption].
         { exact _. }
-        { eapply List.length_firstn_inbounds. admit. } }
+        { eapply List.length_firstn_inbounds. apply Znat.Nat2Z.inj_le. rewrite H5.
+          rewrite word.unsigned_sub. unfold word.wrap. rewrite Z.mod_small.
+          { revert H6 H3. clear. Z.div_mod_to_equations.
+            (* Z.of_nat 4 <= word.unsigned x6 - word.unsigned x5 *)
+            Lia.lia. }
+          pose proof Properties.word.unsigned_range x2.
+          pose proof Properties.word.unsigned_range x3.
+          (* 0 <= word.unsigned x6 - word.unsigned x5 < 2 ^ width *)
+          Lia.lia. }}
       do 5 straightline.
       (* TODO straightline hangs in TailRecursion.enforce *)
-      do 8 letexists. split. 
-      { repeat straightline. }
-      do 3 letexists.
+      do 4 letexists. split. { repeat straightline. } do 3 letexists.
       repeat split; repeat straightline; repeat split.
-      { replace (word.add x4 (word.mul c (word.of_Z 4)))
-          with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) by (subst c; ring).
+      { replace (word.add x1 i)
+          with (word.add (word.add x1 x3) (word.of_Z 4)) by (subst i; ring).
         ecancel_assumption. }
-      { (* Z.of_nat (Datatypes.length x17) = word.unsigned (word.mul (word.sub x7 c) (word.of_Z 4)) *) admit. }
+      { subst x9. rewrite List.length_skipn. rewrite Znat.Nat2Z.inj_sub.
+        { rewrite H5. subst i.
+          replace (word.sub x2 (word.add x3 (word.of_Z 4)))
+            with (word.sub (word.sub x2 x3) (word.of_Z 4)) by ring.
+          rewrite (word.unsigned_sub _ (word.of_Z 4)).
+          unfold word.wrap. rewrite Z.mod_small.
+          { exact eq_refl. }
+          { change (word.unsigned (word.of_Z 4)) with 4.
+            pose proof Properties.word.unsigned_range (word.sub x2 x3).
+            pose proof Properties.word.unsigned_range x2.
+            pose proof Properties.word.unsigned_range x3.
+            rewrite word.unsigned_sub. unfold word.wrap. rewrite Z.mod_small.
+            { revert H10 H9 H7 H6 H3 H2. clear.
+              Z.div_mod_to_equations. Lia.lia. }
+            { Z.div_mod_to_equations. Lia.lia. }}}
+        apply Znat.Nat2Z.inj_le. rewrite H5. rewrite word.unsigned_sub.
+        unfold word.wrap. rewrite Z.mod_small.
+        { revert H6 H3. clear. Z.div_mod_to_equations. Lia.lia. }
+        pose proof Properties.word.unsigned_range x2.
+        pose proof Properties.word.unsigned_range x3.
+        Lia.lia. }
+      { subst i. rewrite word.unsigned_add. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
+        { revert H6. clear. change (word.unsigned (word.of_Z 4)) with 4.
+          Z.div_mod_to_equations. Lia.lia. }
+        pose proof Properties.word.unsigned_range x2.
+        pose proof Properties.word.unsigned_range x3.
+        change (word.unsigned (word.of_Z 4)) with 4.
+        change (word.unsigned (word.of_Z 1521)) with 1521 in *.
+        revert H9 H7 H6 H3 H2. clear.
+        PreOmega.zify. Z.div_mod_to_equations. Lia.lia. }
       { repeat match goal with |- context [?x] => is_var x; subst x end.
-        revert H2 H3. admit. }
-      { repeat match goal with |- context [?x] => is_var x; subst x end.
-        revert H2 H3. admit. }
-      { repeat match type of H8 with context [?x] => subst x end.
-        cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in H8.
-        replace (word.add x4 (word.mul (word.add x5 (word.of_Z 1)) (word.of_Z 4)))
-           with (word.add (word.add x4 (word.mul x5 (word.of_Z 4))) (word.of_Z 4)) in H8 by ring.
-        SeparationLogic.seprewrite_in (@bytearray_index_merge) H8; [exact eq_refl|ecancel_assumption]. }
-      { subst SCRATCH. rewrite List.app_length. rewrite H9. subst x17. rewrite List.length_skipn.
-        change (Datatypes.length (HList.tuple.to_list (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v4)))))) with (4%nat).
-        (* prove len(x) >=4 *) admit. } }
-    { split.
-      { ecancel_assumption. }
-      { split; reflexivity. } }
-    left. letexists. split.
-  { repeat straightline. exact eq_refl. }
-  (* there is a bunch to do here *)
-Admitted.
-        
-(* bsearch.v has examples to deal with arrays *)
+        rewrite word.unsigned_add. unfold word.wrap. rewrite Z.mod_small.
+        { change (word.unsigned (word.of_Z 4)) with 4. Lia.lia. }
+        pose proof Properties.word.unsigned_range x2.
+        pose proof Properties.word.unsigned_range x3.
+        change (word.unsigned (word.of_Z 4)) with 4.
+        change (word.unsigned (word.of_Z 1521)) with 1521 in *.
+        revert H9 H7 H6 H3 H2. clear.
+        PreOmega.zify. Z.div_mod_to_equations. Lia.lia. }
+      { subst v'. subst i.
+        rewrite word.unsigned_add. change (word.unsigned (word.of_Z 4)) with 4.
+        unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
+        { revert H6 H3. clear. Z.div_mod_to_equations. Lia.lia. }
+        { pose proof Properties.word.unsigned_range x2.
+          pose proof Properties.word.unsigned_range x3.
+          change (word.unsigned (word.of_Z 1521)) with 1521 in *.
+          PreOmega.zify. Z.div_mod_to_equations. Lia.lia. }}
+      { letexists. split.
+        { subst x10. subst i.
+          repeat match type of H7 with context [?x] => subst x end.
+          cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in H7.
+          replace (word.add x1 (word.add x3 (word.of_Z 4))) with
+                  (word.add (word.add x1 x3) (word.of_Z 4)) in H7 by ring.
+          SeparationLogic.seprewrite_in (@bytearray_index_merge) H7.
+          { exact eq_refl. } { ecancel_assumption. }}
+        split.
+        { subst SCRATCH. rewrite List.app_length. rewrite H9. subst x9. rewrite List.length_skipn.
+          change (Datatypes.length (HList.tuple.to_list (LittleEndian.split (bytes_per access_size.four) (word.unsigned (word.of_Z (word.unsigned v4)))))) with (4%nat).
+          assert (4 <= (Datatypes.length x))%nat. 2:Lia.lia.
+          PreOmega.zify.
+          rewrite H5. rewrite word.unsigned_sub. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
+          { revert H6 H3. clear. change (word.unsigned (word.of_Z 4)) with 4.
+            Z.div_mod_to_equations. Lia.lia. }
+          pose proof Properties.word.unsigned_range x12.
+          pose proof Properties.word.unsigned_range x3.
+          Lia.lia. }
+        { reflexivity. }}}
+    { left. letexists. split. { repeat straightline. exact eq_refl. }
+      letexists. split.
+      { subst bytes_written. subst i.
+        replace (word.add p_addr (word.of_Z 0)) with (p_addr) in H3 by ring.
+        replace (word.add p_addr (word.sub x0 (word.of_Z 0)))
+          with (word.add p_addr x0) in H3 by ring.
+        replace (word.sub x0 (word.of_Z 0)) with (x0) in H3 by ring.
+        ecancel_assumption. }
+      subst bytes_written. subst rx_packet'. subst i. rewrite H4.
+      replace (word.sub x0 (word.of_Z 0)) with (x0) by ring.
+      rewrite List.length_firstn_inbounds, Znat.Z2Nat.id; trivial.
+      { reflexivity. }
+      { pose proof Properties.word.unsigned_range x0. apply H5. }
+      { rewrite H0.
+        pose proof Properties.word.unsigned_range x0.
+        trans_ltu. eapply Znat.Nat2Z.inj_le. rewrite -> Znat.Z2Nat.id.
+        { rewrite word.unsigned_of_Z in H2. change (word.wrap 1521) with (1521) in H2. Lia.lia. }
+        { eapply Properties.word.unsigned_range. }
+    }}
+    Grab Existential Variables. exact _.
+Qed.
+
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
 Proof.
   repeat (eauto || straightline || straightline_if || eapply interact_nomem || prove_ext_spec).
 
   trans_ltu.
+  repeat match goal with x := _ |- _ => subst x end.
   rewrite word__unsigned_of_Z_nowrap in * by (change (2^width) with (2^32); blia).
 
   seplog_use_array_load1 H 12.
