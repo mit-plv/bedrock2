@@ -77,12 +77,14 @@ Module Import FlatToRiscv.
 
   Instance Semantics_params{p: parameters}: Semantics.parameters := {|
     Semantics.syntax := FlatToRiscvDef.mk_Syntax_params _;
-    Semantics.ext_spec := ext_spec;
+    Semantics.varname_eqb := Z.eqb;
     Semantics.funname_eqb := String.eqb;
+    Semantics.actname_eqb := String.eqb;
+    Semantics.ext_spec := ext_spec;
     Semantics.funname_env := funname_env;
   |}.
 
-  Class assumptions{p: parameters} := {
+  Class assumptions{p: parameters}: Prop := {
     word_riscv_ok :> word.riscv_ok (@word W);
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
@@ -218,7 +220,6 @@ Section FlatToRiscv1.
       apply Znumtheory.Zmod_divide in A; [|blia].
       unfold Z.divide in A.
       destruct A as [k A].
-      clear -Ry Rz A n.
       assert (k <> 0); Lia.nia.
   Qed.
 

@@ -39,7 +39,6 @@ Open Scope ilist_scope.
 Definition varname: Type := Z.
 Definition funname: Type := string.
 
-Instance actname_eq_dec: DecidableEq MMIOAction := string_dec.
 
 Definition compile_ext_call(results: list varname)(a: MMIOAction)(args: list varname):
   list Instruction :=
@@ -283,8 +282,10 @@ Section MMIO1.
 
   Instance mmio_semantics_params: Semantics.parameters := {|
     Semantics.syntax := mmio_syntax_params;
-    Semantics.width := 32;
+    Semantics.varname_eqb := Z.eqb;
     Semantics.funname_eqb := String.eqb;
+    Semantics.actname_eqb := String.eqb;
+    Semantics.width := 32;
     Semantics.ext_spec := real_ext_spec;
     Semantics.funname_env := funname_env;
   |}.

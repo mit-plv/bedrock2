@@ -65,6 +65,7 @@ Module Import Pipeline.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
     FlattenExpr.varname := varname;
+    FlattenExpr.varname_eqb := Z.eqb;
     FlattenExpr.W := _;
     FlattenExpr.locals := locals;
     FlattenExpr.mem := mem;
@@ -77,8 +78,7 @@ Module Import Pipeline.
     FlatToRiscvCommon.FlatToRiscv.ext_guarantee := ext_guarantee;
   |}.
 
-  Class assumptions{p: parameters} := {
-    varname_eq_dec :> DecidableEq varname;
+  Class assumptions{p: parameters}: Prop := {
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
     funname_env_ok :> forall T, map.ok (funname_env T);
@@ -101,7 +101,6 @@ Section Pipeline1.
   Definition iset := if width =? 32 then RV32IM else RV64IM.
 
   Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
-    FlattenExpr.varname_eq_dec := varname_eq_dec;
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;

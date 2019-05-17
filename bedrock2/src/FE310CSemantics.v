@@ -19,10 +19,12 @@ Instance parameters : parameters :=
   {|
   width := 32;
   syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
+  varname_eqb := String.eqb;
+  funname_eqb := String.eqb;
+  actname_eqb := String.eqb;
   mem := SortedListWord.map _ _;
   locals := SortedListString.map _;
   funname_env := SortedListString.map;
-  funname_eqb := String.eqb;
   ext_spec t m action args post :=
     if string_dec action lan9250_readword then
     match args with
@@ -35,7 +37,7 @@ Instance parameters : parameters :=
     match args with
     | [addr] =>
       ((Ox"10012000" <= word.unsigned addr < Ox"10013000") \/
-       (Ox"10024000" <= word.unsigned addr < Ox"10025000")  ) 
+       (Ox"10024000" <= word.unsigned addr < Ox"10025000")  )
       /\ forall v, post m [v]
     | _ => False
     end else
@@ -47,7 +49,7 @@ Instance parameters : parameters :=
       /\ post m []
     |  _ => False
     end else False;
-|}. 
+|}.
 
 Global Instance ok trace m0 act args :
   Morphisms.Proper

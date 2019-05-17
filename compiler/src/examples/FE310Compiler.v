@@ -55,7 +55,7 @@ Instance pipeline_params: Pipeline.parameters := {
   Pipeline.RVM := IsMetricRiscvMachine;
 }.
 
-Lemma undef_on_same_domain{K V: Type}{M: map.map K V}{keq: DecidableEq K}{Ok: map.ok M}
+Lemma undef_on_same_domain{K V: Type}{M: map.map K V}(keq: K -> K -> bool){keq_spec: EqDecider keq}{Ok: map.ok M}
       (m1 m2: M)(P: K -> Prop):
   map.undef_on m1 P ->
   map.same_domain m1 m2 ->
@@ -178,7 +178,7 @@ Proof.
   apply P; clear P; intuition idtac.
 Qed.
 
-Lemma map_undef_on_weaken{K V: Type}{keq: DecidableEq K}{M: map.map K V}{Ok: map.ok M}:
+Lemma map_undef_on_weaken{K V: Type}(keq: K -> K -> bool){keq_spec: EqDecider keq}{M: map.map K V}{Ok: map.ok M}:
   forall (P Q: PropSet.set K) (m: M),
     map.undef_on m Q ->
     PropSet.subset P Q ->
@@ -191,7 +191,7 @@ Lemma initialMachine_undef_on_MMIO_addresses: map.undef_on (getMem initialSwapMa
 Proof.
   cbv [getMem initialSwapMachine initialRiscvMachine putProgram].
   cbv [withPc withNextPc withMem getMem zeroedRiscvMachine].
-  eapply map_undef_on_weaken.
+  eapply map_undef_on_weaken with (keq := word.eqb); try typeclasses eauto.
   - apply undef_on_unchecked_store_byte_list.
   - unfold PropSet.subset, PropSet.elem_of.
     intros addr El. unfold isMMIOAddr in El. destruct El as [El1 El2].

@@ -20,16 +20,14 @@ Axiom TODO: False.
 
 Instance params: Semantics.parameters := {|
     Semantics.syntax := myparams;
+    Semantics.varname_eqb := Z.eqb;
+    Semantics.funname_eqb a b := false;
+    Semantics.actname_eqb a b := false;
     Semantics.word := word32;
     Semantics.locals := _;
     Semantics.funname_env := _;
-    Semantics.funname_eqb a b := false;
     Semantics.ext_spec _ _ _ _ _ := False;
 |}.
-
-Definition annoying_eq: DecidableEq
-  (list varname * list varname * cmd). Admitted.
-Existing Instance annoying_eq.
 
 (*
 given x, y, z

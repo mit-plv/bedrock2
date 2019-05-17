@@ -52,9 +52,12 @@ Definition params : Pipeline.parameters. simple refine {|
 |}; unshelve (try exact _); apply TODO. Defined.
 Definition flatparams := (FlattenExpr.mk_Syntax_params (@Pipeline.FlattenExpr_parameters params)).
 Instance pipeline_assumptions: @Pipeline.assumptions params. Admitted.
-Instance mapops: RegAlloc.map.ops (SortedListString.map Z) :=
+Instance mapops: RegAlloc.map.ops (SortedListString.map Z). refine (
   {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
-    {| value := ListLib.list_intersect (value s1) (value s2); _value_ok := TODO |} |}.
+    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |} |}).
+- exact String.eqb.
+- exact Z.eqb.
+Defined.
 
 (* stack grows from high addreses to low addresses, first stack word will be written to
    (stack_pastend-4), next stack word to (stack_pastend-8) etc *)

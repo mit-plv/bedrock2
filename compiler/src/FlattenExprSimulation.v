@@ -1,4 +1,5 @@
 Require Import coqutil.Map.Interface.
+Require Import coqutil.Tactics.Tactics.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlattenExpr.
 Require Import compiler.Simulation.
@@ -56,8 +57,11 @@ Section Sim.
       + case TODO_restrict_initial_state.
       + intro x.
         pose proof (NameGen.freshNameGenState_spec (ExprImp.allVars_cmd_as_list c1) x) as P.
+        assert (varname_eq_dec: forall a b: Syntax.varname, {a = b} + {a <> b}). {
+          intros. destr (Semantics.varname_eqb a b); auto.
+        }
         match type of P with
-        | List.In ?x ?l -> _ => destruct (List.in_dec FlattenExpr.varname_eq_dec x l) as
+        | List.In ?x ?l -> _ => destruct (List.in_dec varname_eq_dec x l) as
               [Iyes | Ino]
         end.
         * auto.

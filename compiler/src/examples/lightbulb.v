@@ -51,9 +51,12 @@ Definition params : Pipeline.parameters. simple refine {|
 |}; unshelve (try exact _); apply TODO. Defined.
 Definition flatparams := (FlattenExpr.mk_Syntax_params (@Pipeline.FlattenExpr_parameters params)).
 Instance pipeline_assumptions: @Pipeline.assumptions params. Admitted.
-Instance mapops: RegAlloc.map.ops (SortedListString.map Z) :=
+Instance mapops: RegAlloc.map.ops (SortedListString.map Z). refine (
   {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
-    {| value := ListLib.list_intersect (value s1) (value s2); _value_ok := TODO |} |}.
+    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |} |}).
+- exact String.eqb.
+- exact Z.eqb.
+Defined.
 
 (* stack grows from high addreses to low addresses, first stack word will be written to
    (stack_pastend-4), next stack word to (stack_pastend-8) etc *)
@@ -92,8 +95,11 @@ Goal compile prog = nil.
   cbv [iot lightbulb recvEthernet].
 
   match goal with
-  | |- context [RegAlloc.rename_function string Register funname string available_registers ?E ?N] =>
-    assert (RegAlloc.rename_function string Register funname string available_registers E N = (nil, nil, FlatImp.SSkip))
+  | |- context [?T] =>
+    lazymatch T with
+      RegAlloc.rename_function available_registers ?E ?N =>
+      assert (T = (nil, nil, FlatImp.SSkip))
+    end
   end.
   {
     unfold RegAlloc.rename_function.
@@ -103,18 +109,18 @@ Goal compile prog = nil.
     end.
     cbv iota beta.
     unfold RegAlloc.rename_fun.
-    simpl (RegAlloc.rename_binds string Register ["rx_packet"] available_registers).
+    progress simpl (RegAlloc.rename_binds ["rx_packet"] available_registers).
     cbv iota beta.
-    simpl (RegAlloc.rename_binds string Register ["r"]
+    progress simpl (RegAlloc.rename_binds ["r"]
         [4; 5; 6; 7; 8; 9; 10; 11; 12; 13; 14; 15; 16; 17; 18; 19; 20; 21; 22; 23; 24; 25; 26;
         27; 28; 29; 30; 31; 32; 33; 34; 35; 36; 37; 38; 39; 40; 41; 42; 43; 44; 45; 46; 47; 48;
         49; 50; 51; 52]).
     cbv iota beta.
     cbv [RegAlloc.rename_stmt].
     match goal with
-    | |- context [RegAlloc.rename string Register funname string ?A ?B ?C] =>
-      let r := eval cbv in (RegAlloc.rename string Register funname string A B C) in
-          change (RegAlloc.rename string Register funname string A B C) with r
+    | |- context [RegAlloc.rename ?A ?B ?C] =>
+      let r := eval cbv in (RegAlloc.rename A B C) in
+          change (RegAlloc.rename  A B C) with r
     end.
     Set Printing Depth 100000.
     cbv iota beta.
@@ -135,13 +141,7 @@ Goal compile prog = nil.
       subst test m3.
       unfold ListLib.list_intersect.
       simpl.
-      Set Printing Implicit.
-
-      (* culprit:
-@Pipeline.varname_eq_dec params pipeline_assumptions "a" "b"
-
-pipeline_assumptions is Admitted and lives in Type instead of Prop!
-       *)
+      (* intersect now works *)
 Abort.
 
 (*

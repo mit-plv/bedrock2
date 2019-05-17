@@ -171,9 +171,11 @@ Section FlatToRiscv1.
        Xori rd rd v0 ]].
 
   Definition compile_lit(rd: Register)(v: Z): list Instruction :=
-    if dec (-2^11 <= v < 2^11) then compile_lit_12bit rd v else
-    if dec (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31) then compile_lit_32bit rd v else
-    compile_lit_64bit rd v.
+    if ((-2^11 <=? v)%Z && (v <? 2^11)%Z)%bool then
+      compile_lit_12bit rd v
+    else if ((width =? 32)%Z || (- 2 ^ 31 <=? v)%Z && (v <? 2 ^ 31)%Z)%bool then
+      compile_lit_32bit rd v
+    else compile_lit_64bit rd v.
 
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting
@@ -281,7 +283,7 @@ Section FlatToRiscv1.
     Definition compile_function(mypos: Z):
       (list varname * list varname * stmt) -> list Instruction :=
       fun '(argvars, resvars, body) =>
-        let mod_vars := modVars_as_list body in
+        let mod_vars := modVars_as_list Z.eqb body in
         let framelength := Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
         let framesize := bytes_per_word * framelength in
         [[ Addi sp sp (-framesize) ]] ++

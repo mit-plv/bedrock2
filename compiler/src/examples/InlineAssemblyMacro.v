@@ -32,8 +32,6 @@ Instance myparams: Syntax.parameters := {|
   Syntax.actname := act;
 |}.
 
-Instance annoying: DecidableEq (list Syntax.varname * list Syntax.varname * stmt). Admitted.
-
 
 Inductive ext_spec: act -> list Empty_set -> list word32 ->
                     (list Empty_set -> list word32 -> Prop) -> Prop :=

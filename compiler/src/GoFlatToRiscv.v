@@ -419,7 +419,8 @@ Section Go.
       match goal with
       | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
       end.
-      apply sep_on_undef_put.
+      eapply sep_on_undef_put.
+      + exact word.eqb_spec.
       + apply putmany_of_footprint_None; try bomega.
         eapply H1.
         simpl. left. reflexivity.
@@ -437,7 +438,8 @@ Section Go.
     - simpl. unfold ptsto_bytes. destruct vs as [v vs].
       simpl.
       replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by blia.
-      apply sep_on_undef_put.
+      eapply sep_on_undef_put.
+      + exact word.eqb_spec.
       + apply putmany_of_footprint_None; try bomega.
         apply map.get_empty.
       + apply IHn. bomega.
@@ -537,7 +539,7 @@ Section Go.
       | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?P1 * ?P2 * ?P3 * ?B)%sep ?m =>
         assert ((A1 * (A2 * (A3 * (A4 * (P1 * (P2 * (P3 * B)))))))%sep m); [|ecancel_assumption]
       end.
-      apply sep_on_undef_put. {
+      eapply sep_on_undef_put; try exact word.eqb_spec. {
         rewrite !map.get_put_diff by word_neq_add.
         word_simpl.
         apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
@@ -546,7 +548,7 @@ Section Go.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
         blia.
       }
-      apply sep_on_undef_put. {
+      eapply sep_on_undef_put; try exact word.eqb_spec. {
         rewrite !map.get_put_diff by word_neq_add.
         remember (word.add addr (word.of_Z 1)) as addr'.
         word_simpl.
@@ -556,7 +558,7 @@ Section Go.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
         blia.
       }
-      apply sep_on_undef_put. {
+      eapply sep_on_undef_put; try exact word.eqb_spec. {
         rewrite !map.get_put_diff by word_neq_add.
         remember (word.add (word.add addr (word.of_Z 1)) (word.of_Z 1)) as addr'.
         word_simpl.
@@ -566,7 +568,7 @@ Section Go.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
         blia.
       }
-      apply sep_on_undef_put. {
+      eapply sep_on_undef_put; try exact word.eqb_spec. {
         apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.

@@ -8,7 +8,7 @@ Module word.
     Context {width: Z} {word: word.word width}.
 
     (* TODO maybe we can put more fundamental axioms here, and turn the axioms below into lemmas *)
-    Class riscv_ok := {
+    Class riscv_ok: Prop := {
       sru_ignores_hibits: forall y z,
           word.sru y (word.of_Z (word.unsigned z mod 2 ^ Z.log2 width)) = word.sru y z;
       slu_ignores_hibits: forall y z,

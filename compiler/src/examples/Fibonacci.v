@@ -78,7 +78,6 @@ Instance pipeline_params: Pipeline.parameters := {
 Axiom TODO: forall {T: Type}, T.
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params := {
-  Pipeline.varname_eq_dec := _ ;
   Pipeline.mem_ok := _ ;
   Pipeline.locals_ok := _ ;
   Pipeline.funname_env_ok := _ ;

@@ -124,6 +124,7 @@ Module Import Pipeline.
     NG :> NameGen varname NGstate;
 
     src2imp :> map.map varname Register;
+    src2imp_ops :> map.ops src2imp;
 
     ext_guarantee : MetricRiscvMachine -> Prop;
     M: Type -> Type;
@@ -134,6 +135,7 @@ Module Import Pipeline.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
     FlattenExpr.varname := varname;
+    FlattenExpr.varname_eqb := String.eqb;
     FlattenExpr.W := _;
     FlattenExpr.locals := locals;
     FlattenExpr.mem := mem;
@@ -146,12 +148,10 @@ Module Import Pipeline.
     FlatToRiscvCommon.FlatToRiscv.ext_guarantee := ext_guarantee;
   |}.
 
-  Class assumptions{p: parameters} := {
-    varname_eq_dec :> DecidableEq varname;
+  Class assumptions{p: parameters}: Prop := {
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
     funname_env_ok :> forall T, map.ok (funname_env T);
-    src2imp_ops :> map.ops src2imp;
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscvCommon.FlatToRiscv.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
@@ -170,7 +170,6 @@ Section Pipeline1.
   Axiom TODO: forall {T: Type}, T.
 
   Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
-    FlattenExpr.varname_eq_dec := varname_eq_dec;
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
@@ -189,12 +188,12 @@ Section Pipeline1.
 
   Definition functions2Riscv(e: env)(funs: list funname): list Instruction * fun_pos_env :=
     let e' := flatten_functions e funs in
-    let e'' := rename_functions string Register funname string available_registers e' funs in
+    let e'' := rename_functions available_registers e' funs in
     FlatToRiscvDef.compile_functions e'' funs.
 
   Definition ExprImp2RenamedFlat(s: cmd): FlatImp.stmt :=
     let flat := ExprImp2FlatImp s in
-    match rename_stmt string Register funname string map.empty flat available_registers with
+    match rename_stmt map.empty flat available_registers with
     | Some flat' => flat'
     | None => FlatImp.SSkip
     end.

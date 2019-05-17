@@ -12,6 +12,7 @@ Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import compiler.Simp.
+Require Import coqutil.Datatypes.String.
 
 Local Set Ltac Profiling.
 
@@ -20,6 +21,7 @@ Open Scope Z_scope.
 Module Import FlattenExpr.
   Class parameters := {
     varname: Type;
+    varname_eqb: varname -> varname -> bool;
     W :> Words;
     locals :> map.map varname Utility.word;
     mem :> map.map Utility.word Utility.byte;
@@ -39,15 +41,17 @@ Module Import FlattenExpr.
 
   Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
     Semantics.syntax := _;
+    Semantics.varname_eqb := varname_eqb;
+    Semantics.funname_eqb := String.eqb;
+    Semantics.actname_eqb := String.eqb;
     Semantics.word := Utility.word;
     Semantics.byte := Utility.byte;
     Semantics.funname_env := funname_env;
-    Semantics.funname_eqb := String.eqb;
     Semantics.ext_spec:= ext_spec;
   |}.
 
-  Class assumptions{p: parameters} := {
-    varname_eq_dec :> DecidableEq varname;
+  Class assumptions{p: parameters}: Prop := {
+    varname_eqb_spec :> EqDecider varname_eqb;
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     funname_env_ok :> forall T, map.ok (funname_env T);
@@ -55,11 +59,12 @@ Module Import FlattenExpr.
   }.
   Arguments assumptions: clear implicits.
 
+Search string BoolSpec.
   Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
-    Semantics.parameters_ok (mk_Semantics_params p) :=
-  {
-    Semantics.funname_eq_dec := string_dec;
-    Semantics.actname_eq_dec := string_dec;
+    Semantics.parameters_ok (mk_Semantics_params p) := {
+    Semantics.varname_eqb_spec := varname_eqb_spec;
+    Semantics.funname_eqb_spec := String.eqb_spec;
+    Semantics.actname_eqb_spec := String.eqb_spec;
     Semantics.word_ok := Utility.word_ok;
     Semantics.byte_ok := Utility.byte_ok;
     Semantics.mem_ok := mem_ok;
@@ -659,9 +664,9 @@ Section FlattenExpr1.
       negb (word.eqb (if b then word.of_Z 1 else word.of_Z 0) (word.of_Z 0)) = b.
   Proof.
     intro b. unfold negb.
-    destruct_one_match; destruct_one_match; try reflexivity.
-    - apply word.eqb_true in E. exfalso. apply one_ne_zero. assumption.
-    - apply word.eqb_false in E. congruence.
+    destruct_one_match; destruct_one_match_hyp; try reflexivity.
+    - exfalso. apply one_ne_zero. assumption.
+    - congruence.
   Qed.
 
   Ltac default_flattenBooleanExpr :=
@@ -934,8 +939,11 @@ Section FlattenExpr1.
       unfold disjoint.
       intro x.
       pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
+      assert (varname_eq_dec: forall a b: varname, {a = b} + {a <> b}). {
+        intros. destr (varname_eqb a b); auto.
+      }
       match type of P with
-      | In ?x ?l -> _ => destruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
+      | In ?x ?l -> _ => edestruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
       end.
       + auto.
       + left. clear -Ino.

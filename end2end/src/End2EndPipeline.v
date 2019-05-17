@@ -59,7 +59,8 @@ Section Connect.
           {PRParams : PrimitivesParams M MetricRiscvMachine }
           {NGstate : Type}
           {NG : NameGen string NGstate}
-          {src2imp : map.map string Register}.
+          {src2imp : map.map string Register}
+          {src2imp_ops : RegAlloc.map.ops src2imp}.
 
   Instance mmio_params: MMIO.parameters := {
     byte_ok := KamiWord.word8ok;
