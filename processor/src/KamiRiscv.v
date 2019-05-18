@@ -21,7 +21,6 @@ Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.Run.
 Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.Monads. Import MonadNotations.
-Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.MMIOTrace.
 Require Import riscv.Platform.RiscvMachine.
@@ -50,7 +49,7 @@ Section Equiv.
   Context (mcomp_sat:
              forall A: Type,
                M A -> RiscvMachine -> (A -> RiscvMachine -> Prop) -> Prop)
-          {mm: Monad M}
+          {MMonad: Monad M}
           {rvm: RiscvProgram M word}.
   Arguments mcomp_sat {A}.
 
@@ -109,12 +108,12 @@ Section Equiv.
   | MMInputEvent(addr v: word)
   | MMOutputEvent(addr v: word).
 
-  (* note: memory can't change *)
+  (* note: given-away and received memory has to be empty *)
   Inductive events_related: Event -> LogItem -> Prop :=
-  | relate_MMInput: forall m addr v,
-      events_related (MMInputEvent addr v) ((m, MMInput, [addr]), (m, [v]))
-  | relate_MMOutput: forall m addr v,
-      events_related (MMOutputEvent addr v) ((m, MMOutput, [addr; v]), (m, [])).
+  | relate_MMInput: forall addr v,
+      events_related (MMInputEvent addr v) ((map.empty, MMInput, [addr]), (map.empty, [v]))
+  | relate_MMOutput: forall addr v,
+      events_related (MMOutputEvent addr v) ((map.empty, MMOutput, [addr; v]), (map.empty, [])).
 
   Inductive traces_related: list Event -> list LogItem -> Prop :=
   | relate_nil:
@@ -124,10 +123,6 @@ Section Equiv.
       traces_related t t' ->
       traces_related (e :: t) (e' :: t').
 
-  (* "exists m', states_related (m, t) m'"
-     might be simpler to use than
-     "exists m' t', fromKami_withLog m t' = Some 2' /\ traces_related t t'"
-     and require less unfolding/destructing *)
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
   | relate_states: forall t t' m riscvXAddrs kpc pc rf instrMem dataMem metrics,
       traces_related t t' ->
@@ -148,42 +143,25 @@ Section Equiv.
   Definition mcomp_sat_unit(m: M unit)(initialL: RiscvMachine)(post: RiscvMachine -> Prop): Prop :=
     mcomp_sat m initialL (fun (_: unit) => post).
 
-  (* list is kind of redundant (already in RiscvMachine.(getLog)))
-     and should at most contain one event,
-     but we still want it to appear in the signature so that we can easily talk about prefixes,
-     and to match Kami's step signature *)
-  Inductive riscvStep: RiscvMachine -> RiscvMachine -> list LogItem -> Prop :=
-  | mk_riscvStep: forall initialL finalL t post,
-      mcomp_sat_unit (run1 iset) initialL post ->
-      post finalL ->
-      finalL.(getLog) = t ++ initialL.(getLog) ->
-      riscvStep initialL finalL t.
+  Lemma events_related_unique: forall e' e1 e2,
+      events_related e1 e' ->
+      events_related e2 e' ->
+      e1 = e2.
+  Proof.
+    intros. inversion H; inversion H0; subst; congruence.
+  Qed.
 
-  Inductive star{S E: Type}(R: S -> S -> list E -> Prop): S -> S -> list E -> Prop :=
-  | star_refl: forall (x: S),
-      star R x x nil
-  | star_step: forall (x y z: S) (t1 t2: list E),
-      R x y t1 ->
-      star R y z t2 ->
-      star R x z (t2 ++ t1).
-
-  (* temporal prefixes, new events are added in front of the head of the list *)
-  Definition prefixes{E: Type}(traces: list E -> Prop): list E -> Prop :=
-    fun prefix => exists rest, traces (rest ++ prefix).
-
-  Definition riscvTraces(initial: RiscvMachine): list Event -> Prop :=
-    fun t => exists final t', star riscvStep initial final t' /\ traces_related t t'.
-
-  Definition post_to_traces(post: RiscvMachine -> Prop): list Event -> Prop :=
-    fun t => exists final, post final /\ traces_related t final.(getLog).
-
-  Definition runsTo: RiscvMachine -> (RiscvMachine -> Prop) -> Prop :=
-    runsTo (mcomp_sat_unit (run1 iset)).
-
-  Lemma bridge(init: RiscvMachine)(post: RiscvMachine -> Prop):
-    runsTo init post ->
-    subset (riscvTraces init) (prefixes (post_to_traces post)).
-  Admitted.
+  Lemma traces_related_unique: forall {t' t1 t2},
+      traces_related t1 t' ->
+      traces_related t2 t' ->
+      t1 = t2.
+  Proof.
+    induction t'; intros.
+    - inversion H. inversion H0. reflexivity.
+    - inversion H. inversion H0. subst. f_equal.
+      + eapply events_related_unique; eassumption.
+      + eapply IHt'; eassumption.
+  Qed.
 
   Inductive KamiLabelR: Kami.Semantics.LabelT -> list Event -> Prop :=
   | KamiSilent:
@@ -251,7 +229,6 @@ Section Equiv.
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
 
-  (* TODO in bedrock2: differential memory in trace instead of whole memory ? *)
   Lemma kamiStep_sound:
     forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
            (m1': RiscvMachine) (t0: list Event) (post: RiscvMachine -> Prop),
@@ -279,7 +256,7 @@ Section Equiv.
       |kami_step_case_pgm_not_ready (* case "pgmInit" *)
       |kami_step_case_pgm_not_ready (* case "pgmInitEnd" *)
       |..].
-    
+
     - (* case "execLd" *) admit.
     - (* case "execLdZ" *) admit.
     - (* case "execSt" *) admit.
@@ -506,32 +483,150 @@ Section Equiv.
 
   Definition KamiImplMachine: Type := RegsT.
 
-  Definition kamiImplMultistep: KamiImplMachine -> KamiImplMachine -> list LabelT -> Prop :=
-    Multistep (@p4mm instrMemSizeLg).
+  (* When running the processor on an FPGA, this memory module will be implemented in some
+     trusted Verilog code, and will forward requests either to a DRAM or to a source
+     from which the program to run can be loaded at startup.
+     This source could be a connection to a host computer, an SD card, a ROM, ...
+     In any case, we model this in Kami as a huge register file.
+     Therefore, a faithful Verilog implementation will have to make sure that all in-range
+     addresses behave like memory, including the ones from which the program is loaded.
+     One possible implementation would be this:
+     For each address which is designated as a "program load address", also have DRAM for it,
+     as well as an extra "initialized bit", which is set to false initially.
+     Whenever such an address is loaded, if the initialized bit is set, the value from the
+     DRAM is returned, otherwise the value from the program source is loaded, stored into
+     DRAM, and the bit is set to 1.
+     Whenever such an address is stored, the initialized bit is set, and the value is stored
+     into DRAM.
+     For the proofs, we model this component as a huge register file where the addresses
+     designated as "program load adddresses" are initialized to [prog], and the other
+     addresses are initialized to zero.
+     We'll use the convention that "program load addresses" are from 0 to 4*2^instrMemSizeLg,
+     and that the data memory goes from 4*2^instrMemSizeLg to dataMemSize
+     because then we don't have to pass the base program load address to this definition,
+     and to serve load/store requests in the Kami model, we can just ignore the upper bits
+     and use the lower bits to index into the Vector.
+ *)
+  Definition mm_without_MMIO(prog: kword instrMemSizeLg -> kword 32): Modules.
+  (* pseudo-Kami-code:
+     MODULE {
+        Register "mem" : Vector (Data dataBytes) addrSize <- "prog padded with zeroes"
+        with Method myMemOp ...
+     } *)
+  Admitted. (* TODO @joonwonc proof structure *)
 
-  Inductive kamiTrace_related: list LabelT -> list Event -> Prop :=
-  | krelate_nil:
-      kamiTrace_related nil nil
-  | krelate_cons: forall lbl t2 t1' t2',
-      KamiLabelR lbl t1' ->
-      kamiTrace_related t2 t2' ->
-      kamiTrace_related (lbl :: t2) (t1' ++ t2').
+  Definition mm(prog: kword instrMemSizeLg -> kword 32): Modules.
+  (* pseudo-Kami-code:
+  MODULE {
+    Method "memOp" (a : Struct RqFromProc): Struct RsToProc :=
+      LET addr <- #a!RqFromProc@."addr";
 
-  Lemma riscv_to_kamiImplProcessor:
-    forall (goodTrace: list LabelT -> Prop) (mFinal: KamiImplMachine) t,
-      (* TODO more hypotheses will be needed *)
-      (* kamiImplMultistep m1 m2 t -> *)
-      Behavior (@p4mm instrMemSizeLg) mFinal t ->
-      exists suffix, goodTrace (suffix ++ t).
+      If (isMMIO _ addr) then (** mmio *)
+        Call rs <- mmioExec(#a);
+        Ret #rs
+      else
+        forward the request to mm_without_MMIO
+   }. *)
+  Admitted. (* TODO @joonwonc proof structure *)
+
+  Definition p4mm(prog: kword instrMemSizeLg -> kword 32): Modules.
+    refine (ProcMemCorrect.p4stf
+        _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+        ++ mm prog)%kami.
+  Admitted. (* TODO @joonwonc proof structure *)
+
+  Lemma splitKamiSpecProcStepsIntoProgramLoadAndExec: forall mFinal t,
+      Multistep kamiProc (initRegs (getRegInits kamiProc)) mFinal t ->
+      exists mStart,
+        Multistep kamiProc (initRegs (getRegInits kamiProc)) mStart nil /\
+        Multistep kamiProc mStart mFinal t.
+  Proof.
+    (* TODO @joonwonc proof structure
+       This lemma can also look totally different or be inlined, anything is fine as long as
+       riscv_to_kamiImplProcessor works *)
+  Admitted.
+
+  Definition someInitialRegs: Registers :=
+    map.putmany_of_tuple (HList.tuple.unfoldn Z.succ 31 1)
+                         (HList.tuple.unfoldn Datatypes.id 31 (word.of_Z 42))
+                         map.empty.
+
+  Lemma equivalentLabelSeq_preserves_KamiLabelSeqR: forall t1 t2 t,
+      equivalentLabelSeq (liftToMap1 (idElementwise (A:={x : SignatureT & SignT x}))) t1 t2 ->
+      KamiLabelSeqR t2 t ->
+      KamiLabelSeqR t1 t.
+  Proof.
+    (* TODO @joonwonc proof structure
+       No need to prove it if it's annoying to do so but please check if you think it's true *)
+  Admitted.
+
+  Lemma riscv_to_kamiImplProcessor: forall (traceProp: list Event -> Prop)
+      (* --- hypotheses which will be proven by the compiler --- *)
+      (RvInv: RiscvMachine -> Prop)
+      (prg: kword instrMemSizeLg -> kword 32)
+      (establishRvInv: forall (m0RV: RiscvMachine) (otherMem: mem),
+          m0RV.(getMem) = map.putmany otherMem (convertInstrMem prg) -> (* rhs overrides lhs *)
+          m0RV.(getPc) = word.of_Z 0 ->
+          (forall reg, 0 < reg < 32 -> map.get m0RV.(getRegs) reg <> None) ->
+          m0RV.(getLog) = nil ->
+          RvInv m0RV)
+      (preserveRvInv: forall (m: RiscvMachine), RvInv m -> mcomp_sat_unit (run1 iset) m RvInv)
+      (useRvInv: forall (m: RiscvMachine), RvInv m -> exists t, traces_related t m.(getLog) /\
+                                                                traceProp t),
+      (* --- final end to end theorem will start here --- *)
+      forall (t: LabelSeqT) (mFinal: KamiImplMachine),
+      Behavior (p4mm prg) mFinal t ->
+      (* --- conclusion ---
+         The trace produced by the kami implementation can be mapped to an MMIO trace
+         (this guarantees that the only external behavior of the kami implementation is MMIO)
+         and moreover, this MMIO trace satisfies some desirable property. *)
+      exists (t': list Event), KamiLabelSeqR t t' /\ traceProp t'.
   Proof.
     intros.
     pose proof (@proc_correct instrMemSizeLg) as P.
     unfold traceRefines in P.
+    replace KamiProc.p4mm with (p4mm prg) in P by case TODO. (* TODO @joonwonc proof structure *)
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).
     inversion B. subst.
-
-    (* TODO can we use kamiMultiStep_sound without a states_related relation? *)
-  Abort.
+    pose proof kamiMultiStep_sound as P.
+    specialize P with (1 := preserveRvInv).
+    unfold kamiProc in P.
+    apply splitKamiSpecProcStepsIntoProgramLoadAndExec in HMultistepBeh.
+    destruct HMultistepBeh as (mStart & MSInit & MSRun).
+    specialize P with (1 := MSRun).
+    specialize P with (t0 := nil).
+    setoid_rewrite List.app_nil_r in P.
+    set (otherMem := map.empty: mem). (* <-- TODO adapt *)
+    specialize (P {| getMachine := {| (* TODO will need to be the actual value corresponding
+                                         to Kami in order for the proof to work *)
+                                      getRegs := someInitialRegs;
+                                      getPc := word.of_Z 0;
+                                      getNextPc := word.of_Z 4;
+                                      getMem := map.putmany otherMem (convertInstrMem prg);
+                                      getXAddrs := nil; (* <-- TODO adapt *)
+                                      getLog := nil; (* <-- intended to be nil *) |};
+                     getMetrics := MetricLogging.EmptyMetricLog; |}).
+    destruct P as (mF & t'' & R & Rel & Inv).
+    - (* TODO @joonwonc proof structure
+         prove that program initialization (MSInit) on the kami spec processor
+         worked correctly according to this states_related predicate in the goal *)
+      case TODO.
+    - eapply establishRvInv; simpl.
+      + reflexivity.
+      + reflexivity.
+      + (* TODO @joonwonc proof structure *)
+        (* will not be someInitialRegs but what Kami computed *)
+        case TODO.
+      + reflexivity.
+    - specialize (useRvInv _ Inv).
+      inversion Rel. subst. clear Rel. simpl in useRvInv.
+      destruct useRvInv as (t''' & R' & p).
+      eexists. split; [|exact p].
+      eapply equivalentLabelSeq_preserves_KamiLabelSeqR.
+      1: eassumption.
+      pose proof (traces_related_unique R' H2). subst t'''.
+      assumption.
+  Qed.
 
 End Equiv.

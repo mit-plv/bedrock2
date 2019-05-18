@@ -82,26 +82,6 @@ Section Connect.
   Definition kamiStep := kamiStep instrMemSizeLg.
   Definition states_related := @states_related Pipeline.Registers mem instrMemSizeLg dataMemSize.
 
-  Lemma hl_event_determines_ll_event: forall e' e1 e2,
-      events_related e1 e' ->
-      events_related e2 e' ->
-      e1 = e2.
-  Proof.
-    intros. inversion H; inversion H0; subst; simp; congruence.
-  Qed.
-
-  Lemma hl_trace_determines_ll_trace: forall {t' t1 t2},
-      traces_related t1 t' ->
-      traces_related t2 t' ->
-      t1 = t2.
-  Proof.
-    induction t'; intros.
-    - inversion H. inversion H0. reflexivity.
-    - inversion H. inversion H0. subst. f_equal.
-      + eapply hl_event_determines_ll_event; eassumption.
-      + eapply IHt'; eassumption.
-  Qed.
-
   Lemma split_ll_trace: forall {t2' t1' t},
       traces_related t (t2' ++ t1') ->
       exists t1 t2, t = t2 ++ t1 /\ traces_related t1 t1' /\ traces_related t2 t2'.
@@ -169,7 +149,7 @@ Section Connect.
       edestruct Use as (suffix & llTrace & Rel' & G). 1: exact InvFinal.
       apply split_ll_trace in Rel'.
       destruct Rel' as (llTrace1 & llTrace2 & E & Rel1' & Rel2'). subst.
-      pose proof (hl_trace_determines_ll_trace Rel Rel1'). subst.
+      pose proof (traces_related_unique Rel Rel1'). subst.
       exists llTrace2. exact G. *)
   Admitted.
 
