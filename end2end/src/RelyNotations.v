@@ -60,7 +60,7 @@ Goal forall t, (IN[addr100] v st (v = value42) ;; ForeverSilent) t.
 Abort.
 
 (* Read as "This program first makes a load request at addr100, and if you answer this request
-   with a small enough value, it will output its square, and then not output anything more *)
+   with a small enough value, it will output its square, and then not output anything more" *)
 Goal forall t, (IN[addr100] v st (word.unsigned v < 2 ^ 16);;
                 OUT[addr100] r st (word.unsigned r = word.unsigned v * word.unsigned v);;
                 ForeverSilent) t.
