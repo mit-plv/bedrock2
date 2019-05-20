@@ -47,7 +47,9 @@ Notation RiscvMachine := MetricRiscvMachine.
 
 Instance mapops: RegAlloc.map.ops (SortedListString.map Z). refine (
   {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
-    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |} |}).
+    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |};
+     RegAlloc.map.default_value := 666;
+  |}).
 - exact String.eqb.
 - exact Z.eqb.
 Defined.
@@ -78,160 +80,10 @@ Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
-(*
 Definition prog := (
   [iot; lightbulb; recvEthernet; lan9250_readword; spi_write; spi_read],
   @cmd.skip flatparams,
   @cmd.call flatparams [] "iot" []).
-*)
-
-Definition prog := (
-  [spi_write],
-  @cmd.skip flatparams,
-  @cmd.call flatparams [] "spi_write" []).
-
-Require Import compiler.RegAlloc.
-
-Goal compile prog = nil.
-  cbv [compile prog compile_prog functions2Riscv FlatToRiscvDef.compile_functions compile_main
-      FlatToRiscvDef.compile_main].
-
-  match goal with
-  | |- context [?T] =>
-    match T with
-    | RegAlloc.rename_functions ?a ?b ?c =>
-      assert (T = map.empty); [|admit];
-        let b' := eval cbv in b in change b with b'; simpl c
-
-    end
-  end.
-  cbv [RegAlloc.rename_functions].
-  match goal with
-  | |- map.put map.empty _ ?T = _ =>
-    assert (T = (nil, nil, FlatImp.SSkip)); [|admit]
-  end.
-
-  cbv [rename_function].
-
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    let r := eval cbv in T in change T with r; cbv iota beta
-  end.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    assert (T = None); [|admit]
-  end.
-  cbv [rename_fun].
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    let r := eval cbv in T in change T with r; cbv iota beta
-  end.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    let r := eval cbv in T in change T with r; cbv iota beta
-  end.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    assert (T = None); [|admit]
-  end.
-  cbv [rename_stmt].
-  match goal with
-  | |- context [?T] =>
-    match T with
-    | rename ?a ?b ?c =>
-      let T' := eval cbv in T in change T with T'
-    end
-  end.
-  cbv beta iota.
-  (* we can see that the checker fails *)
-
-
-Export bopname.
-
-Notation "a ; b" := (ASSeq a b) (only printing, right associativity,
-      at level 50, format "a ; '//' b") : regalloc_scope.
-Notation "a '($r' b ')' = c" := (ASLit a b c) (only printing,
-      at level 40, format "a '($r' b ')'  =  c") : regalloc_scope.
-Notation "a '($r' b ')' = c" := (ASSet a b c) (only printing,
-      at level 40, format "a '($r' b ')'  =  c") : regalloc_scope.
-Notation "a '($r' b ')' = op c d" := (ASOp a b op c d) (only printing,
-      at level 40, format "a '($r' b ')'  =  op  c  d") : regalloc_scope.
-Notation "'loop' a 'breakUnless' cond b" := (ASLoop a cond b)
-      (only printing, at level 50, a at level 40,
-       format "'loop' '[v ' '//' a '//' 'breakUnless'  cond '//' b ']'") : regalloc_scope.
-Notation "'skip'" := ASSkip (only printing) : regalloc_scope.
-
-Open Scope regalloc_scope.
-(*
-  idtac.
-
-
-  cbv [checker].
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    assert (T = None); [|admit]
-  end.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    assert (T = None); [|admit]
-  end.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    let T' := eval cbv in T in change T with T'
-  end.
-  cbv beta iota.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    assert (T = None); [|admit]
-  end.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    assert (T = None); [|admit]
-  end.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    assert (T = None); [|admit]
-  end.
-  unfold cond_checker.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    assert (T = None); [|admit]
-  end.
-  match goal with
-  | |- map.get ?M ?K = None => simpl M
-  end.
-
-  (* one side mapped "busy" to 4 while the other side mapped busy to 8 *)
-
-cbv.
-
-  match goal with
-  | |- (let '(a, b, c) := ?B in ?C) = None => idtac B
-  end.
-
-  let b := eval cbv delta [rename] in @rename in change @rename with b.
-  cbv beta.
-  cbv fix beta iota.
-  match goal with
-  | |- match ?T with _ => _ end = _ =>
-    let r := eval cbv in T in change T with r; cbv iota beta
-  end.
-
-
-  cbv.
-
-
-  simpl.
-
-
-  cbv.
-
-
-  cbv.
-
-  simpl.
-*)
-Abort.
 
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
@@ -244,6 +96,7 @@ Goal True.
   let r := eval vm_compute in (([[
                          ]] ++ compile prog)%list%Z) in
   pose r as asm.
+  Compute (List.length asm).
   Import bedrock2.NotationsCustomEntry.
 
   (* searching for "addi    x2, x2, -" shows where the functions begin, and the first

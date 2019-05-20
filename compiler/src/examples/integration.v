@@ -54,7 +54,9 @@ Definition flatparams := (FlattenExpr.mk_Syntax_params (@Pipeline.FlattenExpr_pa
 Instance pipeline_assumptions: @Pipeline.assumptions params. Admitted.
 Instance mapops: RegAlloc.map.ops (SortedListString.map Z). refine (
   {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
-    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |} |}).
+    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |};
+     RegAlloc.map.default_value := 666;
+  |}).
 - exact String.eqb.
 - exact Z.eqb.
 Defined.

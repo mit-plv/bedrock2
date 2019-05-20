@@ -3,18 +3,18 @@ Require Import compiler.RegAlloc.
 
 Export bopname.
 
-Notation "a ; b" := (ASSeq _ _ _ a b) (only printing, right associativity,
+Notation "a ; b" := (ASSeq a b) (only printing, right associativity,
       at level 50, format "a ; '//' b") : regalloc_scope.
-Notation "'$x' a '($r' b ')' = c" := (ASLit _ _ _ a b c) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  c") : regalloc_scope.
-Notation "'$x' a '($r' b ')' = '$x' c" := (ASSet _ _ _ a b c) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  '$x' c") : regalloc_scope.
-Notation "'$x' a '($r' b ')' = op '$x' c '$x' d" := (ASOp _ _ _ a b op c d) (only printing,
-      at level 40, format "'$x' a '($r' b ')'  =  op  '$x' c  '$x' d") : regalloc_scope.
-Notation "'loop' a 'breakUnless' '$x' cond b" := (ASLoop _ _ _ a cond b)
+Notation "a '($r' b ')' = c" := (ASLit a b c) (only printing,
+      at level 40, format "a '($r' b ')'  =  c") : regalloc_scope.
+Notation "a '($r' b ')' = c" := (ASSet a b c) (only printing,
+      at level 40, format "a '($r' b ')'  =  c") : regalloc_scope.
+Notation "a '($r' b ')' = op c d" := (ASOp a b op c d) (only printing,
+      at level 40, format "a '($r' b ')'  =  op  c  d") : regalloc_scope.
+Notation "'loop' a 'breakUnless' cond b" := (ASLoop a cond b)
       (only printing, at level 50, a at level 40,
-       format "'loop' '[v ' '//' a '//' 'breakUnless'  '$x' cond '//' b ']'") : regalloc_scope.
-Notation "'skip'" := (ASSkip _ _ _) (only printing) : regalloc_scope.
+       format "'loop' '[v ' '//' a '//' 'breakUnless'  cond '//' b ']'") : regalloc_scope.
+Notation "'skip'" := ASSkip (only printing) : regalloc_scope.
 
 
 (* TODO

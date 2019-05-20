@@ -58,6 +58,7 @@ End Live.
 Module map.
   Class ops{K V: Type}(M: map.map K V) := {
     intersect: M -> M -> M; (* set intersection when interpreting maps as sets of tuples *)
+    default_value: V;
   }.
   Definition putmany_of_tuples{K V: Type}{M: map.map K V}(m: M): list (K * V) -> M :=
     fix rec l :=
@@ -220,19 +221,25 @@ Section RegAlloc.
     | _ => ASSkip (* not an assignment *)
     end.
 
-  Fixpoint rename_binds(binds: list srcvar)(available: list impvar):
-    option (list (srcvar * impvar) * list impvar) :=
+  Definition rename_assignment_lhs(m: src2imp)(x: srcvar)(a: list impvar):
+    src2imp * impvar * list impvar :=
+    match map.get m x with
+    | Some y => (m, y, a)
+    | None   => match a with
+                | y :: rest => (map.put m x y, y, rest)
+                | nil => (* error: ran out of registers *)
+                  let y := map.default_value in (map.put m x y, y, a)
+                end
+    end.
+
+  Fixpoint rename_binds(m: src2imp)(binds: list srcvar)(a: list impvar):
+    (src2imp * list (srcvar * impvar) * list impvar) :=
     match binds with
-    | nil => Some (nil, available)
+    | nil => (m, nil, a)
     | x :: binds =>
-      match available with
-      | x' :: available =>
-        match rename_binds binds available with
-        | Some (b, av) => Some ((x, x') :: b, av)
-        | None => None
-        end
-      | nil => None
-      end
+      let '(m, y, a) := rename_assignment_lhs m x a in
+      let '(m, res, a) := rename_binds m binds a in
+      (m, (x, y) :: res, a)
     end.
 
   (* the simplest dumbest possible "register allocator" *)
@@ -244,13 +251,7 @@ Section RegAlloc.
     : src2imp * astmt * list impvar :=
     match s with
     | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
-        match map.get m x with
-        | Some y => (m, annotate_assignment s y, a)
-        | None   => match a with
-                    | y :: rest => (map.put m x y, annotate_assignment s y, rest)
-                    | nil => (m, ASSkip, nil) (* error: ran out of registers *)
-                    end
-        end
+        let '(m, y, a) := rename_assignment_lhs m x a in (m, annotate_assignment s y, a)
     | SStore sz x y => (m, ASStore sz x y, a)
     | SIf cond s1 s2 =>
       let '(m', s1', a') := rename m s1 a in
@@ -265,15 +266,11 @@ Section RegAlloc.
       let '(m'', s2', a'') := rename m' s2 a' in
       (m'', ASLoop s1' cond s2', a'')
     | SCall binds f args =>
-      match rename_binds binds a with
-      | Some (tuples, a) => (map.putmany_of_tuples m tuples, ASCall tuples f args, a)
-      | None => (m, ASSkip, a)
-      end
+      let '(m, tuples, a) := rename_binds m binds a in
+      (map.putmany_of_tuples m tuples, ASCall tuples f args, a)
     | SInteract binds f args =>
-      match rename_binds binds a with
-      | Some (tuples, a) => (map.putmany_of_tuples m tuples, ASInteract tuples f args, a)
-      | None => (m, ASSkip, a)
-      end
+      let '(m, tuples, a) := rename_binds m binds a in
+      (map.putmany_of_tuples m tuples, ASInteract tuples f args, a)
     | SSkip => (m, ASSkip, a)
     end.
 
@@ -337,17 +334,10 @@ Section RegAlloc.
   Definition rename_fun(F: list srcvar * list srcvar * stmt):
     option (list impvar * list impvar * stmt') :=
     let '(argnames, retnames, body) := F in
-    match rename_binds argnames available_impvars with
-    | Some (argtuples, av) =>
-      match rename_binds retnames av with
-      | Some (rettuples, av) =>
-        let m := map.putmany_of_tuples (map.putmany_of_tuples map.empty argtuples) rettuples in
-        match rename_stmt m body av with
-        | Some body' => Some (List.map snd argtuples, List.map snd rettuples, body')
-        | None => None
-        end
-      | None => None
-      end
+    let '(m, argtuples, av) := rename_binds map.empty argnames available_impvars in
+    let '(m, rettuples, av) := rename_binds m retnames av in
+    match rename_stmt m body av with
+    | Some body' => Some (List.map snd argtuples, List.map snd rettuples, body')
     | None => None
     end.
 
