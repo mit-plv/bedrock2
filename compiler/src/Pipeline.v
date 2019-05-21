@@ -3,6 +3,7 @@ Require Import Coq.ZArith.ZArith.
 Export ListNotations.
 Require Export coqutil.Decidable.
 Require        compiler.ExprImp.
+Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
 Require        compiler.FlatToRiscvMetric.

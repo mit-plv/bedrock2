@@ -1,6 +1,7 @@
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import bedrock2.MetricLogging.
+Require Import compiler.FlattenExprDef.
 Require Import compiler.FlattenExpr.
 Require Import compiler.Simulation.
 Require Import compiler.Simp.

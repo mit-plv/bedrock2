@@ -3,6 +3,7 @@ Require Import Coq.ZArith.ZArith.
 Export ListNotations.
 Require Export coqutil.Decidable.
 Require        compiler.ExprImp.
+Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
 Require        compiler.FlatToRiscvMetric.
@@ -181,7 +182,7 @@ Section Pipeline1.
   Definition available_registers: list Register :=
     Eval cbv in List.unfoldn Z.succ 29 3.
 
-  Local Notation cmd := (@Syntax.cmd (FlattenExpr.FlattenExpr.mk_Syntax_params _)).
+  Local Notation cmd := (@Syntax.cmd (FlattenExprDef.FlattenExpr.mk_Syntax_params _)).
   Local Notation env := (@Semantics.env (FlattenExpr.mk_Semantics_params _)).
   Local Notation Program := (@Program (FlattenExpr.mk_Semantics_params _)).
   Local Notation ProgramSpec := (@ProgramSpec (FlattenExpr.mk_Semantics_params _)).
