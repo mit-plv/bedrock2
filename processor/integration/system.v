@@ -82,8 +82,8 @@ module system; reg clk=0; reg [7:0] led = 8'hff;
   wire [31:0] ram_read;
   wire [64:0] obtain_rq_get;
   wire rdy_obtain_rq_get;
-  wire en_obtain_rq_get = (rdy_obtain_rq_get && ((mem_rq_addr >> (2+LGSZW)) == 0));
-  wire [31:0] send_rs_put = (en_send_rs_put && ((mem_rq_addr >> (2+LGSZW)) == 0) ? ram_read : 32'hxxxxxxxx);
+  wire en_obtain_rq_get = rdy_obtain_rq_get;
+  wire [31:0] send_rs_put = en_send_rs_put ? ram_read : 32'hxxxxxxxx;
   wire rdy_send_rs_put;
   wire en_send_rs_put;
   wire [31:0] mem_rq_data = obtain_rq_get[31:0];
@@ -109,7 +109,12 @@ module system; reg clk=0; reg [7:0] led = 8'hff;
     .write(mem_rq_data)
   );
 
-  always @(posedge clk) begin led <= ((en_obtain_rq_get && mem_rq_iswrite) ? mem_rq_data : led); end
+  always @(posedge clk) begin
+    if (en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c) begin
+      // led <= mem_rq_data[23:16];
+      led <= mem_rq_data[7:0];
+    end
+  end
 
 `ifndef SYNTHESIS
   always #1 clk = !clk;

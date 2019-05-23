@@ -76,10 +76,14 @@ Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
+Definition i : @varname flatparams := "i".
+Require Import coqutil.Z.HexNotation.
 Definition prog := (
   [swap; swap_swap],
   @cmd.call flatparams [] "swap_swap" [expr.literal (2^9); expr.literal (2^9+4)],
-  @cmd.interact flatparams [] "nop" []).
+  cmd.seq (cmd.set i (expr.load access_size.word (expr.literal (2^9))))
+  (cmd.seq (cmd.store access_size.word (expr.literal (Ox"1001200c")) (expr.var i))
+  (cmd.store access_size.word (expr.literal (2^9)) (expr.op bopname.add (expr.var i) (expr.literal 1))))).
 
 
 Import riscv.Utility.InstructionNotations.
