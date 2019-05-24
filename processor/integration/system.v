@@ -72,12 +72,22 @@ module ram #(
   end
 endmodule
 
+module system(
 `ifdef SYNTHESIS
-module system(input wire clk, output reg [7:0] led = 8'hff);
-`else
-module system; reg clk=0; reg [7:0] led = 8'hff;
+  input wire clk,
 `endif
-	reg resetn = 1'b0; always @(posedge clk) begin resetn <= 1'b1; end
+  output reg [7:0] led = 8'hff,
+  output reg spi_clk = 0,
+  output reg spi_cs = 0,
+  output wire spi_mosi,
+  input wire spi_miso
+);
+
+`ifndef synthesis
+  reg clk=0;
+`endif
+
+  reg resetn = 1'b0; always @(posedge clk) begin resetn <= 1'b1; end
 
   parameter integer LGSZW = 8;
   wire [31:0] ram_read;
@@ -90,6 +100,7 @@ module system; reg clk=0; reg [7:0] led = 8'hff;
   wire [31:0] mem_rq_data = obtain_rq_get[31:0];
   wire mem_rq_iswrite = obtain_rq_get[32];
   wire [31:0] mem_rq_addr = obtain_rq_get[64:33];
+  wire rq_addr_is_bram = ((mem_rq_addr >> (2+LGSZW)) == 0);
   mkTop mkTop(.CLK(clk),
               .RST_N(resetn),
               .EN_obtain_rq_get(en_obtain_rq_get),
@@ -103,7 +114,7 @@ module system; reg clk=0; reg [7:0] led = 8'hff;
   ram #(.LGSZW(LGSZW)) ram (
     .clk(clk),
     .addr(mem_rq_addr[LGSZW-1+2:0]),
-    .write_enable(rdy_obtain_rq_get && mem_rq_iswrite && ((mem_rq_addr >> (2+LGSZW)) == 0)),
+    .write_enable(rdy_obtain_rq_get && mem_rq_iswrite && rq_addr_is_bram),
     .rq_en(en_obtain_rq_get),
     .rs_en(en_send_rs_put),
     .read(ram_read),
@@ -116,12 +127,32 @@ module system; reg clk=0; reg [7:0] led = 8'hff;
     end
   end
 
+  wire spi_tx_en = en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c;
+  reg [3:0] spi_tx_remaining = 0;
+  reg [7:0] spi_tx_buf = {1'bx, 7'hxx};
+  reg [7:0] spi_rx_buf = 8'hxx;
+  assign spi_mosi = spi_tx_buf[7];
+  wire spi_tx_rdy = (spi_clk == 0 && spi_tx_remaining == 0);
+  always @(posedge clk) begin
+    if (spi_tx_rdy && spi_tx_en) begin
+      spi_tx_buf <= mem_rq_data[7:0];
+      spi_tx_remaining <= 8;
+    end else if (spi_tx_remaining && !spi_clk) begin
+      spi_clk <= 1;
+      spi_rx_buf = {spi_rx_buf[6:0], spi_mosi};
+    end else if (spi_clk) begin
+      spi_clk <= 0;
+      spi_tx_buf <= {spi_tx_buf[6:0], 1'bx};
+      spi_tx_remaining <= spi_tx_remaining - 1;
+    end
+  end
+
 `ifndef SYNTHESIS
   always #1 clk = !clk;
   initial begin
     $dumpfile("system.vcd");
-    $dumpvars(1, led, clk, resetn,
-      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, en_send_rs_put, send_rs_put);
+    $dumpvars(1, led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
+      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, en_send_rs_put, send_rs_put, spi_tx_buf, spi_rx_buf);
     #1000 $finish();
   end
 `endif
