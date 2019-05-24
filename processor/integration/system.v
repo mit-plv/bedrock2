@@ -59,60 +59,102 @@ module ram #(
   end
 
   always @(posedge clk) begin
-    read_[0] <= byte0[addr_[0]];
-    read_[1] <= byte1[addr_[1]];
-    read_[2] <= byte2[addr_[2]];
-    read_[3] <= byte3[addr_[3]];
-    if (write_enable) byte0[addr_[0]] <= write_[0];
-    if (write_enable) byte1[addr_[1]] <= write_[1];
-    if (write_enable) byte2[addr_[2]] <= write_[2];
-    if (write_enable) byte3[addr_[3]] <= write_[3];
     rs_en <= rq_en;
     rs_align <= rq_align;
+    if (rq_en && !write_enable) begin
+      read_[0] <= byte0[addr_[0]];
+      read_[1] <= byte1[addr_[1]];
+      read_[2] <= byte2[addr_[2]];
+      read_[3] <= byte3[addr_[3]];
+    end else if (rq_en && write_enable) begin
+      byte0[addr_[0]] <= write_[0];
+      byte1[addr_[1]] <= write_[1];
+      byte2[addr_[2]] <= write_[2];
+      byte3[addr_[3]] <= write_[3];
+    end
   end
 endmodule
 
+module system(
 `ifdef SYNTHESIS
-module system(input wire clk, output reg [7:0] led = 8'hff);
-`else
-module system; reg clk=0; reg [7:0] led = 8'hff;
+  input wire clk,
 `endif
-	reg resetn = 1'b0; always @(posedge clk) begin resetn <= 1'b1; end
+  output reg [7:0] led = 8'hff
+);
+  reg spi_clk = 0;
+  reg spi_cs = 0;
+  wire spi_mosi;
+  wire spi_miso;
+
+`ifndef SYNTHESIS
+  reg clk=0;
+`endif
+
+  reg resetn = 1'b0; always @(posedge clk) begin resetn <= 1'b1; end
 
   parameter integer LGSZW = 8;
   wire [31:0] ram_read;
   wire [64:0] obtain_rq_get;
   wire rdy_obtain_rq_get;
   wire en_obtain_rq_get = rdy_obtain_rq_get;
-  wire [31:0] send_rs_put = en_send_rs_put ? ram_read : 32'hxxxxxxxx;
   wire rdy_send_rs_put;
-  wire en_send_rs_put;
   wire [31:0] mem_rq_data = obtain_rq_get[31:0];
   wire mem_rq_iswrite = obtain_rq_get[32];
   wire [31:0] mem_rq_addr = obtain_rq_get[64:33];
+  wire rq_addr_is_bram = ((mem_rq_addr >> (2+LGSZW)) == 0);
+  wire ram_rs_en, instant_rs_en;
+  wire [31:0] instant_rs;
   mkTop mkTop(.CLK(clk),
               .RST_N(resetn),
               .EN_obtain_rq_get(en_obtain_rq_get),
               .obtain_rq_get(obtain_rq_get),
               .RDY_obtain_rq_get(rdy_obtain_rq_get),
 
-              .send_rs_put(send_rs_put),
-              .EN_send_rs_put(en_send_rs_put),
+              .send_rs_put(ram_rs_en ? ram_read
+                           : instant_rs_en ? instant_rs 
+	                   : 32'hxxxxxxxx),
+              .EN_send_rs_put(ram_rs_en || instant_rs_en),
               .RDY_send_rs_put(rdy_send_rs_put)
             );
   ram #(.LGSZW(LGSZW)) ram (
     .clk(clk),
     .addr(mem_rq_addr[LGSZW-1+2:0]),
-    .write_enable(rdy_obtain_rq_get && mem_rq_iswrite && ((mem_rq_addr >> (2+LGSZW)) == 0)),
-    .rq_en(en_obtain_rq_get),
-    .rs_en(en_send_rs_put),
+    .write_enable(mem_rq_iswrite),
+    .rq_en(en_obtain_rq_get && rdy_obtain_rq_get && rq_addr_is_bram),
+    .rs_en(ram_rs_en),
     .read(ram_read),
     .write(mem_rq_data)
   );
 
+  assign instant_rs_en = en_obtain_rq_get && (mem_rq_addr == 32'h1001200c || mem_rq_addr == 32'h10024048 || mem_rq_addr == 32'h1002404c);
+  assign instant_rs =
+	  (!instant_rs_en) ? 32'hxxxxxxxx
+	  : (mem_rq_addr == 32'h1001200c && !mem_rq_iswrite) ? {8'h00, led, 16'h0000}
+	  : (mem_rq_addr == 32'h10024048 && !mem_rq_iswrite) ? {(!spi_tx_rdy), 31'h0}
+	  : (mem_rq_addr == 32'h1002404c && !mem_rq_iswrite) ? {(!spi_tx_rdy), 23'h0, spi_rx_buf}
+	  : 32'hxxxxxxxx;
   always @(posedge clk) begin
     if (en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c) begin
       led <= mem_rq_data[23:16];
+    end
+  end
+  wire spi_tx_en = en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c;
+  reg [3:0] spi_tx_remaining = 0;
+  reg [7:0] spi_tx_buf;
+  reg [7:0] spi_rx_buf;
+  assign spi_mosi = spi_tx_buf[7];
+  wire spi_tx_rdy = (spi_clk == 0 && spi_tx_remaining == 0);
+  always @(posedge clk) begin
+    if (spi_tx_rdy && spi_tx_en) begin
+      spi_tx_buf <= mem_rq_data[7:0];
+      spi_tx_remaining <= 8;
+    end else if (spi_tx_remaining && !spi_clk) begin
+      spi_clk <= 1;
+      spi_rx_buf = {spi_rx_buf[6:0], spi_mosi};
+    end else if (spi_clk) begin
+      spi_clk <= 0;
+      spi_tx_buf <= {spi_tx_buf[6:0], 1'bx};
+      spi_tx_remaining <= spi_tx_remaining - 1;
     end
   end
 
@@ -120,8 +162,8 @@ module system; reg clk=0; reg [7:0] led = 8'hff;
   always #1 clk = !clk;
   initial begin
     $dumpfile("system.vcd");
-    $dumpvars(1, led, clk, resetn,
-      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, en_send_rs_put, send_rs_put);
+    $dumpvars(1, led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
+      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, ram_rs_en, instant_rs_en, ram_read, spi_tx_buf, spi_rx_buf);
     #1000 $finish();
   end
 `endif

@@ -6,6 +6,7 @@ Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_s
 Local Existing Instance BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
+Local Coercion name_of_func (f : function) := fst f.
 
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
@@ -47,6 +48,15 @@ Definition spi_read : function :=
         busy = (busy ^ busy)
       }
     }
+  ))).
+
+Definition spi_xchg : function :=
+  let b : varname := "b" in
+  let busy : varname := "busy" in
+  ("spi_xchg", (b::nil, b::busy::nil, bedrock_func_body:(
+    unpack! busy = spi_write(b);
+    require !busy;
+    unpack! b, busy = spi_read(b)
   ))).
 
 Require Import bedrock2.ProgramLogic.
