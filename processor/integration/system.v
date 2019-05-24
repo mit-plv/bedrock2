@@ -111,8 +111,7 @@ module system; reg clk=0; reg [7:0] led = 8'hff;
 
   always @(posedge clk) begin
     if (en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c) begin
-      // led <= mem_rq_data[23:16];
-      led <= mem_rq_data[7:0];
+      led <= mem_rq_data[23:16];
     end
   end
 

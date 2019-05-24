@@ -81,9 +81,9 @@ Require Import coqutil.Z.HexNotation.
 Definition prog := (
   [swap; swap_swap],
   @cmd.call flatparams [] "swap_swap" [expr.literal (2^9); expr.literal (2^9+4)],
-  cmd.seq (cmd.set i (expr.load access_size.word (expr.literal (2^9))))
+  cmd.seq (cmd.set i (expr.load access_size.word (expr.literal (2^9-2))))
   (cmd.seq (cmd.store access_size.word (expr.literal (Ox"1001200c")) (expr.var i))
-  (cmd.store access_size.word (expr.literal (2^9)) (expr.op bopname.add (expr.var i) (expr.literal 1))))).
+  (cmd.store access_size.word (expr.literal (2^9-2)) (expr.op bopname.add (expr.var i) (expr.literal 1))))).
 
 
 Import riscv.Utility.InstructionNotations.
@@ -92,6 +92,7 @@ Local Open Scope hexdump_scope.
 Set Printing Width 108.
 Goal True.
   let r := eval cbv in (([[
+                             Sw 0 0 (2^9-4);
                              Addi 7 0 (42);
                              Sw 0 7 (2^9);
                              Addi 7 0 (36);
