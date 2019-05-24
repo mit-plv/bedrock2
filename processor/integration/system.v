@@ -35,15 +35,16 @@ module ram #(
   wire [LGSZW-1:0] addr_ [4];
   reg [7:0] write_ [4]; // wire
   reg [7:0] read_ [4];
+  wire [3*32-1:0] write_write_write = {write, write, write};
 
   generate genvar i; for (i=0; i<4; i=i+1) begin
     assign addr_[i] = addr[LGSZW+1:2]+(rq_align>i);
     always @(*) begin
       case (rq_align)
-        2'h0: write_[i] = write[8*(i-2'h0)+7:8*(i-2'h0)];
-        2'h1: write_[i] = write[8*(i-2'h1)+7:8*(i-2'h1)];
-        2'h2: write_[i] = write[8*(i-2'h2)+7:8*(i-2'h2)];
-        2'h3: write_[i] = write[8*(i-2'h3)+7:8*(i-2'h3)];
+        2'h0: write_[i] = write_write_write[32+8*(i-2'h0)+7:32+8*(i-2'h0)];
+        2'h1: write_[i] = write_write_write[32+8*(i-2'h1)+7:32+8*(i-2'h1)];
+        2'h2: write_[i] = write_write_write[32+8*(i-2'h2)+7:32+8*(i-2'h2)];
+        2'h3: write_[i] = write_write_write[32+8*(i-2'h3)+7:32+8*(i-2'h3)];
       endcase
     end
   end endgenerate
