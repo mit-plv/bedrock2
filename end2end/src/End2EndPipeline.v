@@ -112,7 +112,10 @@ Section Connect.
   Context (prog: @Program strname_sem)
           (spec: @ProgramSpec strname_sem)
           (sat: ProgramSatisfiesSpec prog spec)
-          (ml: MemoryLayout).
+          (ml: MemoryLayout)
+          (memInit: Kami.Ex.SC.MemInit
+                      (Z.to_nat width)
+                      Kami.Ex.IsaRv32.rv32DataBytes).
 
   Hypothesis (HinstrMemBound: instrMemSizeLg <= width - 2).
 
@@ -123,7 +126,8 @@ Section Connect.
            (m1': MetricRiscvMachine),
       (* TODO many more hypotheses will be needed *)
       states_related (m1, t0) m1' ->
-      Kami.Semantics.Multistep (KamiRiscv.kamiProc instrMemSizeLg) m1 m2 klseq ->
+      Kami.Semantics.Multistep
+        (KamiRiscv.kamiProc instrMemSizeLg memInit) m1 m2 klseq ->
       exists suffix t,
         KamiLabelSeqR klseq t /\
         goodTrace (suffix ++ t ++ t0).

@@ -76,6 +76,12 @@ Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
+Definition instrencodeB p : list byte :=
+  let word8s := List.flat_map
+                  (fun inst => List.rev
+                                 (HList.tuple.to_list (LittleEndian.split 4 (encode inst)))) p in
+  List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
+
 Definition i : @varname flatparams := "i".
 Require Import coqutil.Z.HexNotation.
 Definition prog := (
@@ -100,7 +106,6 @@ Goal True.
                          ]] ++ compile prog)%list%Z) in
   pose r as asm.
 
-
-  let x := eval cbv in (instrencode asm) in
+  let x := eval cbv in (instrencodeB asm) in
   idtac x.
 Abort.

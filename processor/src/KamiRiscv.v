@@ -58,7 +58,9 @@ Section Equiv.
   Variables (instrMemSizeLg: Z) (dataMemSize: nat).
   Hypothesis (HinstrMemBound: instrMemSizeLg <= width - 2).
 
-  Local Definition kamiProc := @KamiProc.proc instrMemSizeLg.
+  Variable (memInit: MemInit (Z.to_nat width) rv32DataBytes).
+
+  Local Definition kamiProc := @KamiProc.proc instrMemSizeLg memInit.
   Local Definition KamiMachine := KamiProc.hst.
   Local Definition KamiSt := @KamiProc.st instrMemSizeLg.
   Local Notation kamiXAddrs := (kamiXAddrs instrMemSizeLg).
@@ -130,6 +132,7 @@ Section Equiv.
       KamiProc.RegsToT m = Some (kamiStMk kpc rf instrMem dataMem) ->
       (forall addr, isXAddr addr riscvXAddrs -> isXAddr addr kamiXAddrs) ->
       kpc = toKamiPc pc ->
+
       states_related
         (m, t) {| getMachine := {| RiscvMachine.getRegs := convertRegs rf;
                                    RiscvMachine.getPc := pc;
@@ -275,9 +278,8 @@ Section Equiv.
       inversion H2; subst; clear H2.
       eapply invert_Kami_execNm in H; eauto.
       unfold kamiStMk, KamiProc.pc, KamiProc.rf, KamiProc.pgm, KamiProc.mem in H.
-      destruct H as [km2 [? [? ?]]].
+      destruct H as [? [km2 [? ?]]].
       simpl in H; subst.
-      (* inversion_clear H3. *)
 
       (** Invert a riscv-coq step. *)
       move H1 at bottom.
@@ -586,9 +588,10 @@ Section Equiv.
       exists (t': list Event), KamiLabelSeqR t t' /\ traceProp t'.
   Proof.
     intros.
-    pose proof (@proc_correct instrMemSizeLg) as P.
+    pose proof (@proc_correct instrMemSizeLg memInit) as P.
     unfold traceRefines in P.
-    replace KamiProc.p4mm with (p4mm prg) in P by case TODO. (* TODO @joonwonc proof structure *)
+    replace (@KamiProc.p4mm instrMemSizeLg memInit)
+      with (p4mm prg) in P by case TODO. (* TODO @joonwonc proof structure *)
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).
     inversion B. subst.
