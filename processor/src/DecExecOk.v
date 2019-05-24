@@ -264,7 +264,7 @@ Section DecExecOk.
   Qed.
 
   (** TODO @joonwonc: ditto [invert_decode_Add]; better to have a tactic. *)
-  Lemma kami_rv32Exec_Add_ok:
+  Lemma kami_rv32DoExec_Add_ok:
     forall v1 v2 pc kinst,
       wordToZ
         (evalExpr
@@ -276,11 +276,11 @@ Section DecExecOk.
       wordToZ
         (evalExpr (getFunct3E (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
       funct3_ADD ->
-      evalExpr (rv32Exec (Z.to_nat instrMemSizeLg) type v1 v2 pc kinst) =
+      evalExpr (rv32DoExec (Z.to_nat instrMemSizeLg) type v1 v2 pc kinst) =
       v1 ^+ v2.
   Proof.
     intros.
-    unfold rv32Exec.
+    unfold rv32DoExec.
     unfold evalExpr; fold evalExpr.
     do 5 (destruct (isEq _ _); [rewrite e in H; discriminate|clear n]).
     do 3 (destruct (isEq _ _); [|exfalso; elim n; apply wordToZ_inj; assumption]).
