@@ -35,7 +35,7 @@ Local Existing Instance DefaultRiscvState.
 Local Existing Instance coqutil.Map.SortedListString.map.
 Local Existing Instance coqutil.Map.SortedListString.ok.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call retnames fname argnames :=
     if string_dec fname "nop" then [[Addi Register0 Register0 0]]
     else if string_dec fname "MMIOREAD" then 
            match retnames, argnames with
@@ -88,21 +88,24 @@ Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
+Require Import coqutil.Z.HexNotation.
 Definition prog := (
   [spi_xchg; spi_write; spi_read],
   @cmd.skip flatparams,
-  (@cmd.call flatparams ["x"; "x"] "spi_xchg" [expr.literal 63])).
+  cmd.seq
+    (@cmd.call flatparams ["x"; "x"] "spi_xchg" [expr.literal 63])
+    (@cmd.interact flatparams [] "MMIOWRITE" [expr.literal (Ox"1001200c"); expr.var ("x":@varname flatparams)])
+                  ).
 
-Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
 Local Open Scope hexdump_scope.
 Set Printing Width 108.
 
 
 Goal True.
-  let r := eval vm_compute in (([[Beq 0 0 0
-                         ]] ++ compile prog)%list%Z) in
+  let r := eval vm_compute in (([[ ]] ++ compile prog)%list%Z) in
   pose r as asm.
+  Import riscv.Utility.InstructionNotations.
   Import bedrock2.NotationsCustomEntry.
 
   (* searching for "addi    x2, x2, -" shows where the functions begin, and the first

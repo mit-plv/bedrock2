@@ -135,10 +135,10 @@ module system(
 	  : 32'hxxxxxxxx;
   always @(posedge clk) begin
     if (en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c) begin
-      led <= mem_rq_data[23:16];
+      led <= mem_rq_data[7:0];
     end
   end
-  wire spi_tx_en = en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c;
+  wire spi_tx_en = en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h10024048;
   reg [3:0] spi_tx_remaining = 0;
   reg [7:0] spi_tx_buf;
   reg [7:0] spi_rx_buf;
@@ -164,7 +164,7 @@ module system(
     $dumpfile("system.vcd");
     $dumpvars(1, led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
       rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, ram_rs_en, instant_rs_en, ram_read, spi_tx_buf, spi_rx_buf, mkTop.proc_m8_pc);
-    #1000 $finish();
+    #1200 $finish();
   end
 `endif
 endmodule
