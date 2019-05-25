@@ -23,6 +23,7 @@ Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import bedrock2.Examples.swap.
+Require Import bedrock2.Examples.SPI.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -35,13 +36,22 @@ Local Existing Instance coqutil.Map.SortedListString.map.
 Local Existing Instance coqutil.Map.SortedListString.ok.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
-    if string_dec fname "nop" then
-      [[Addi Register0 Register0 0]]
-    else
-      nil;
+    if string_dec fname "nop" then [[Addi Register0 Register0 0]]
+    else if string_dec fname "MMIOREAD" then 
+           match retnames, argnames with
+           | [res], [addr] => [[ Lw res addr 0 ]]
+           | _, _ => nil
+           end
+    else if string_dec fname "MMIOWRITE" then 
+           match retnames, argnames with
+           | [], [addr; val] => [[ Sw addr val 0 ]]
+           | _, _ => nil
+           end
+    else  nil;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := TODO;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := TODO;
 }.
+
 Notation RiscvMachine := MetricRiscvMachine.
 Definition params : Pipeline.parameters. simple refine {|
   Pipeline.locals := _;
@@ -79,12 +89,11 @@ Definition instrencode p : list byte :=
 Definition i : @varname flatparams := "i".
 Require Import coqutil.Z.HexNotation.
 Definition prog := (
-  [swap; swap_swap],
+  [swap; swap_swap], (* TODO: spi_read here *)
   @cmd.call flatparams [] "swap_swap" [expr.literal (2^9); expr.literal (2^9+4)],
   cmd.seq (cmd.set i (expr.load access_size.word (expr.literal (2^9-2))))
   (cmd.seq (cmd.store access_size.word (expr.literal (Ox"1001200c")) (expr.var i))
   (cmd.store access_size.word (expr.literal (2^9-2)) (expr.op bopname.add (expr.var i) (expr.literal 1))))).
-
 
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
