@@ -163,7 +163,7 @@ module system(
   initial begin
     $dumpfile("system.vcd");
     $dumpvars(1, led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
-      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, ram_rs_en, instant_rs_en, ram_read, spi_tx_buf, spi_rx_buf);
+      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, ram_rs_en, instant_rs_en, ram_read, spi_tx_buf, spi_rx_buf, mkTop.proc_m8_pc);
     #1000 $finish();
   end
 `endif

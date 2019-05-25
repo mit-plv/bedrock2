@@ -100,7 +100,7 @@ Set Printing Width 108.
 
 
 Goal True.
-  let r := eval vm_compute in (([[
+  let r := eval vm_compute in (([[Beq 0 0 0
                          ]] ++ compile prog)%list%Z) in
   pose r as asm.
   Import bedrock2.NotationsCustomEntry.
