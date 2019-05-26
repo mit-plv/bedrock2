@@ -1,7 +1,11 @@
 Require Import riscv.Utility.runsToNonDet.
 
-(* This generic infinite loop can be used by any language whose semantics do not support infinite
-   loops. So it can be used for ExprImp and FlatImp, but not for riscv. *)
+(* This generic infinite loop can be used by any language.
+   However, the final simulation in this file, execEventLoopSim, does not provide an invariant,
+   and the composition of init, body and looping is done generically, but this should be done
+   separately by each language/phase so that it can control eg how to share local variables,
+   reuse renamer/register allocator state etc
+ *)
 Section InfLoop.
   Context {State: Type}
           (innerExec: State -> (State -> Prop) -> Prop).
@@ -16,7 +20,6 @@ Require Import compiler.Simulation.
 
 Section LiftSimulation.
   Context {State1 State2: Type}
-          {Code1 Code2: Type}
           (innerExec1: State1 -> (State1 -> Prop) -> Prop)
           (innerExec2: State2 -> (State2 -> Prop) -> Prop)
           (innerRelated: State1 -> State2 -> Prop)
