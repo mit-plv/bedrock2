@@ -26,7 +26,7 @@ Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Spec.MetricPrimitives.
 Require Import compiler.RunInstruction.
-Require Import compiler.EventLoop.
+Require Import compiler.RiscvEventLoop.
 Require Import compiler.ForeverSafe.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.Simp.
@@ -112,7 +112,7 @@ Section Connect.
   Context (prog: @Program strname_sem)
           (spec: @ProgramSpec strname_sem)
           (sat: ProgramSatisfiesSpec prog spec)
-          (ml: MemoryLayout)
+          (ml: MemoryLayout Semantics.width)
           (memInit: Kami.Ex.SC.MemInit
                       (Z.to_nat width)
                       Kami.Ex.IsaRv32.rv32DataBytes).

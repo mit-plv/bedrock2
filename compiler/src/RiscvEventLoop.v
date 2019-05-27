@@ -61,9 +61,11 @@ Section EventLoop.
   Variable goodReadyState: RiscvMachineL -> Prop.
 
   Hypothesis goodReadyState_ignores:
-    forall (state: RiscvMachineL) newPc newNextPc newMetrics,
+    forall (state: RiscvMachineL) newPc newMetrics,
       goodReadyState state ->
-      goodReadyState (withPc newPc (withNextPc newNextPc (withMetrics newMetrics state))).
+      goodReadyState (withPc newPc
+                     (withNextPc (word.add newPc (word.of_Z 4))
+                     (withMetrics newMetrics state))).
 
   Variables pc_start pc_end: word.
   Hypothesis pc_start_aligned: (word.unsigned pc_start) mod 4 = 0.
@@ -114,7 +116,6 @@ Section EventLoop.
       ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
       apply runsToDone. split; [|reflexivity].
       eapply goodReadyState_ignores in H.
-      simpl_MetricRiscvMachine_get_set.
       exact H.
     - intros state C. simp. congruence.
   Qed.
@@ -137,20 +138,19 @@ Section EventLoop.
       ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
       apply runsToDone. split; [|reflexivity].
       eapply goodReadyState_ignores in H.
-      simpl_MetricRiscvMachine_get_set.
       exact H.
     - eapply init_correct.
     - intros state C. simp. congruence.
   Qed.
 
   (* the trace invariant we want to prove *)
-  Variable inv: trace -> Prop.
+  Variable goodTrace: trace -> Prop.
 
-  Hypothesis goodReadyState_implies_inv: forall (state: RiscvMachineL),
-      goodReadyState state -> inv state.(getLog).
+  Hypothesis goodReadyState_implies_goodTrace: forall (state: RiscvMachineL),
+      goodReadyState state -> goodTrace state.(getLog).
 
   Lemma eventLoop_sound_trace: forall n,
-    mcomp_sat (runN iset n) startState (fun finalL => exists rest, inv (rest ++ finalL.(getLog))).
+    mcomp_sat (runN iset n) startState (fun finalL => exists rest, goodTrace (rest ++ finalL.(getLog))).
   Proof.
     intros.
     eapply mcomp_sat_weaken. 2: eapply eventLoop_sound.
@@ -158,8 +158,25 @@ Section EventLoop.
     intros ? R.
     eapply extend_runsTo_to_good_trace. 2: exact R.
     intros ? (? & ?).
-    eapply goodReadyState_implies_inv.
+    eapply goodReadyState_implies_goodTrace.
     assumption.
+  Qed.
+
+  Record InvariantProps: Prop := {
+    establish_inv: runsToGood_Invariant startState;
+    preserve_inv: forall st,
+        runsToGood_Invariant st -> mcomp_sat (run1 iset) st runsToGood_Invariant;
+    use_inv: forall st, runsToGood_Invariant st -> exists rest, goodTrace (rest ++ getLog st)
+  }.
+
+  Lemma invariantProps: InvariantProps.
+  Proof.
+    constructor.
+    - unfold runsToGood_Invariant. exact init_correct.
+    - exact runsToGood_is_Invariant.
+    - eapply extend_runsTo_to_good_trace.
+      intros st (? & ?).
+      eapply goodReadyState_implies_goodTrace. assumption.
   Qed.
 
 End EventLoop.

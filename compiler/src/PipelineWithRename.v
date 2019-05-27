@@ -35,7 +35,7 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
 Require Import compiler.RegAlloc.
-Require Import compiler.EventLoop.
+Require Import compiler.RiscvEventLoop.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
@@ -43,34 +43,12 @@ Require Import compiler.DivisibleBy4.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.ForeverSafe.
 Require Export compiler.ExprImpSpec.
+Require Export compiler.MemoryLayout.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
-Section Params1.
-  Context {p: Semantics.parameters}.
-
-  Record MemoryLayout: Type := {
-    code_start: Semantics.word;
-    code_pastend: Semantics.word;
-    heap_start: Semantics.word;
-    heap_pastend: Semantics.word;
-    stack_start: Semantics.word;
-    stack_pastend: Semantics.word;
-  }.
-
-  (* Could also just require disjointness but <= is simpler to state *)
-  Record MemoryLayoutOk(ml: MemoryLayout): Prop := {
-    code_start_aligned: (word.unsigned ml.(code_start)) mod 4 = 0;
-    code_pastend_ok: word.unsigned ml.(code_start) <= word.unsigned ml.(code_pastend);
-    heap_after_code: word.unsigned ml.(code_pastend) <= word.unsigned ml.(heap_start);
-    heap_pastend_ok: word.unsigned ml.(heap_start) <= word.unsigned ml.(heap_pastend);
-    stack_after_heap: word.unsigned ml.(heap_pastend) <= word.unsigned ml.(stack_start);
-    stack_pastend_ok: word.unsigned ml.(stack_start) <= word.unsigned ml.(stack_pastend);
-  }.
-
-End Params1.
 
 Module Import Pipeline.
   Definition varname := string.
@@ -289,7 +267,7 @@ Section Pipeline1.
   Context (prog: Program)
           (spec: ProgramSpec)
           (sat: ProgramSatisfiesSpec prog spec)
-          (ml: MemoryLayout).
+          (ml: MemoryLayout Semantics.width).
 
   Axiom insts_init: list Instruction.
   Axiom insts_body: list Instruction.
