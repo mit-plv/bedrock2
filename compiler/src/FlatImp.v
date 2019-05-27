@@ -513,7 +513,11 @@ Module exec.
           edestruct H15 as (? & ? & ?); [eassumption|].
           simp.
           equalities.
-          pose proof (map_split_det H6 H9). subst.
+          match goal with
+          | A: map.split _ ?m1 ?m2, B: map.split _ ?m1 ?m2 |- _ =>
+            pose proof (map_split_det A B)
+          end.
+          subst.
           eauto 10.
 
       - (* SCall *)

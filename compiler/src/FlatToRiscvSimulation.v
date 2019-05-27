@@ -79,7 +79,6 @@ Section Sim.
     destruct s1 as [[[[[e c] t] m] l] mc].
     destruct_RiscvMachine s2.
     simp.
-    rename x into g.
     eapply runsTo_weaken.
     - eapply compile_stmt_correct_new; simpl.
       + eassumption.
@@ -100,9 +99,8 @@ Section Sim.
     - simpl. intros. simp.
       eexists; split; [|eassumption].
       simpl.
-      eapply TODO_preserve_regs_initialized in H6.
       do 2 eexists.
-      repeat (split; [solve [eassumption|reflexivity]|]).
+      repeat (split; try eapply TODO_preserve_regs_initialized; [solve [eassumption|reflexivity]|]).
       (* we'd have to prove that goodMachine still holds with a GhostConsts where
          insts = nil, but that's not what we'll later need to compose it in an
          event loop, so this statement is probably not the statement we want. *)

@@ -186,9 +186,12 @@ Section Proofs.
           unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
         * blia.
       + simpl. intros. simp.
+        match goal with
+        | H: map.only_differ _ _ _ |- _ => rename H into HO
+        end.
         repeat split.
         * unfold map.only_differ, PropSet.elem_of, PropSet.of_list in *.
-          intros x. rename H5 into HO.
+          intros x.
           specialize (HO x).
           destruct (Z.eqb_spec x a).
           -- subst x. left. constructor. reflexivity.
@@ -196,7 +199,6 @@ Section Proofs.
              ++ simpl. auto.
              ++ right. rewrite <- HO. rewrite map.get_put_diff; congruence.
         * unfold map.getmany_of_list in *. simpl. rewrite_match.
-          rename H5 into HO.
           specialize (HO a). destruct HO as [HO | HO].
           -- unfold PropSet.elem_of, PropSet.of_list in HO. contradiction.
           -- unfold Register, MachineInt in *. rewrite <- HO.

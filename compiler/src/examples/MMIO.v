@@ -419,18 +419,29 @@ Section MMIO1.
     intros. unfold mcomp_sat, Primitives.mcomp_sat in *. simpl in *.
     unfold OStateNDOperations.computation_with_answer_satisfies in *.
     unfold liftL0. intros. destruct H1.
-    - simp. destruct H2.
+    - simp.
+      match goal with
+      | H: _ \/ _ |- _ => destruct H
+      end.
       + simp. discriminate.
-      + simp. specialize (H _ H3). simp. discriminate.
+      + simp. edestruct H. 1: eassumption. simp. discriminate.
     - simp. destruct o as [(? & ?) |].
-      + destruct x. destruct u. do 2 eexists; split; [reflexivity|].
-        destruct H2.
-        * simp. specialize (H _ H4). simp. specialize (H0 _ H2).
-          specialize (H0 _ H3). simp. assumption.
+      + destruct s'. destruct u. do 2 eexists; split; [reflexivity|].
+        match goal with
+        | H: _ \/ _ |- _ => destruct H
+        end.
+        * simp. destruct b.
+          edestruct H. 1: eassumption. simp.
+          edestruct H0; try eassumption. simp.
+          assumption.
         * simp. discriminate.
-      + destruct x. destruct H2.
-        * simp. specialize (H _ H4). simp. specialize (H0 _ H2).
-          specialize (H0 _ H3). simp. discriminate.
+      + destruct s'.
+        match goal with
+        | H: _ \/ _ |- _ => destruct H
+        end.
+        * simp. destruct b.
+          edestruct H. 1: eassumption. simp.
+          edestruct H0; try eassumption. simp. discriminate.
         * simp. discriminate.
   Qed.
 
@@ -459,8 +470,7 @@ Section MMIO1.
            | H: None = Some _ |- _ => discriminate H
            end.
     destruct_RiscvMachine initialL.
-    specialize (H0 _ H3).
-    exact H0.
+    edestruct H0. 1: eassumption. simp. eauto.
   Qed.
 
   Lemma go_loadWord_mmio: forall (initialL : MetricRiscvMachine) (addr : Utility.word)
@@ -489,8 +499,7 @@ Section MMIO1.
            | H: None = Some _ |- _ => discriminate H
            end.
     destruct_RiscvMachine initialL.
-    specialize (H0 _ _ H3).
-    exact H0.
+    eauto.
   Qed.
 
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
@@ -565,18 +574,21 @@ Section MMIO1.
           instantiate (1 := @eq MetricRiscvMachine _). reflexivity.
         }
         intros. subst. simpl. apply runsToNonDet.runsToDone. simpl.
-        specialize H17 with (1 := H8).
+        match goal with
+        | Hoc: outcome _ _, H: _ |- _ => specialize H with (1 := Hoc)
+        end.
         eexists. simp. simpl_word_exprs word_ok.
         repeat split; try eassumption.
-        { apply map.split_empty_r in H2. subst.
-          apply map.split_empty_r in H9. subst.
+        { do 2 match goal with
+          | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
+          end.
           unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
           rewrite LittleEndian.combine_split.
           rewrite sextend_width_nop by reflexivity.
           rewrite Z.mod_small by apply word.unsigned_range.
           rewrite word.of_Z_unsigned.
           unfold isMMOutput in E0. apply eqb_eq in E0. subst action. unfold MMOutput in *.
-          cbn in H0. replace x0 with initialL_regs in * by congruence.
+          cbn in *. replace l' with initialL_regs in * by congruence.
           eassumption. }
         all: solve [MetricsToRiscv.solve_MetricLog].
 
@@ -633,15 +645,17 @@ Section MMIO1.
           simpl. eexists.
           repeat split; try assumption.
           { match goal with
-            | |- context [map.put _ _ ?resval] => specialize (H7 resval)
+            | H: forall val, outcome _ [val], G: _ |- context [map.put _ _ ?resval] =>
+              specialize (H resval);
+              specialize G with (1 := H)
             end.
-            specialize H17 with (1 := H7).
             simp.
-            apply map.split_empty_r in H2. subst.
-            apply map.split_empty_r in H9. subst.
+            do 2 match goal with
+                 | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
+                 end.
             unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
             unfold isMMInput in E1. apply eqb_eq in E1. subst action. unfold MMInput in *.
-            cbn in H0. apply eq_of_eq_Some in H0. subst x.
+            cbn in *. simp.
             replace (word.add r (word.of_Z 0)) with r; [eassumption|].
             simpl_word_exprs word_ok.
             reflexivity. }

@@ -358,7 +358,7 @@ Section FlatToRiscv1.
     eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_load Syntax.access_size.word); cycle -1; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
-      rewrite H6.
+      etransitivity. 1: eassumption.
       unfold id.
       f_equal.
       rewrite LittleEndian.combine_split.

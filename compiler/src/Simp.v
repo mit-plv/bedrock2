@@ -31,26 +31,33 @@ Ltac unprotect_equalities :=
 
 Ltac invert_hyp H := protect_equalities; inversion H; clear H; subst; unprotect_equalities.
 
+Ltac has_several_constructors T :=
+  assert_succeeds (
+    let dummy := fresh "dummy" in assert T as dummy;
+    [|destruct dummy; [ idtac | idtac | .. ] ]).
+
 Ltac unique_inversion :=
   match goal with
   | H: ?P |- _ =>
     (let h := head_of_app P in is_ind h);
-    match constr:(Set) with
-    | _ => let dummy := constr:(_: P) in idtac;
-           fail 1 (* don't destruct typeclass instances *)
-    | _ => idtac
-    end;
+    protect_equalities;
     lazymatch P with
     | ?LHS = ?RHS =>
       (* don't simpl if user didn't simpl *)
       let h1 := head_of_app LHS in is_constructor h1;
-      let h2 := head_of_app RHS in is_constructor h2
-    | _ => idtac
+      let h2 := head_of_app RHS in is_constructor h2;
+      inversion H; clear H
+    | _ * _  => destruct H
+    | _ /\ _ => let Hl := fresh H "l" in let Hr := fresh H "r" in destruct H as [Hl Hr]
+    | exists y, _ => let yf := fresh y in destruct H as [yf H]
+    | _ => (* By default, we don't want to destruct types with only one constructor
+              (in particular, Class and Record are simpler if not destructed).
+              The exceptions (ie types with only one constructor which we still want to
+              destruct) are treated above). *)
+           has_several_constructors P;
+           inversion H; clear H
     end;
-    protect_equalities;
-    inversion H;
     [> (* require exactly one goal *)
-     clear H;
      match goal with
      | H': ?P' |- _ => unify P P'; fail 1 (* inversion didn't do anything except simplifying *)
      | |- _ => idtac

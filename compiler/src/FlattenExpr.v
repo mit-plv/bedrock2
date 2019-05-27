@@ -592,7 +592,7 @@ Section FlattenExpr1.
       + eapply flattenBooleanExpr_correct_with_modVars; try eassumption. maps.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_true.
-        * rewrite H2. f_equal.
+        * etransitivity. 1: eassumption. f_equal.
           rewrite word.eqb_ne; [reflexivity|].
           apply unsigned_ne.
           rewrite word.unsigned_of_Z.
@@ -609,7 +609,7 @@ Section FlattenExpr1.
       + eapply flattenBooleanExpr_correct_with_modVars; try eassumption. maps.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_false.
-        * rewrite H2. f_equal.
+        * etransitivity. 1: eassumption. f_equal.
           rewrite word.eqb_eq; [reflexivity|].
           apply word.unsigned_inj.
           rewrite word.unsigned_of_Z.
@@ -625,7 +625,7 @@ Section FlattenExpr1.
       eapply seq_with_modVars.
       + eapply IHexec; try reflexivity; try eassumption. maps.
       + simpl. intros. simp.
-        rename l into lH, l' into lL', x into lH'.
+        rename l into lH, l' into lL'.
         (* NOTE how the new high-level locals (lH') are not only constrained by mid and
            by "map.extends lL' lH'" but also by the additional
            "map.only_differ lH (ExprImp.modVars c1) lH'".
@@ -652,7 +652,11 @@ Section FlattenExpr1.
       + maps.
       + congruence.
       + repeat eexists; repeat (split || eassumption || solve_MetricLog); maps.
-      + exfalso. rewrite word.eqb_eq in H2. 1: simpl in *; congruence.
+      + exfalso.
+        match goal with
+        | H: context [word.eqb _ _] |- _ => rewrite word.eqb_eq in H
+        end.
+        1: simpl in *; congruence.
         apply word.unsigned_inj. rewrite word.unsigned_of_Z. assumption.
       + exfalso. exact H2. (* instantiates mid2 to (fun _ _ _ => False) *)
 
@@ -671,18 +675,24 @@ Section FlattenExpr1.
         | intros; simpl in *; simp .. ].
       + maps.
       + congruence.
-      + exfalso. rewrite word.eqb_ne in H4. 1: simpl in *; congruence.
+      + exfalso.
+        match goal with
+        | H: context [word.eqb _ _] |- _ => rewrite word.eqb_ne in H
+        end.
+        1: simpl in *; congruence.
         apply unsigned_ne. rewrite word.unsigned_of_Z. assumption.
       + (* This weakening step is how we link the knowledge about the bound for the loop body
            and for the expression into a bound for both *)
         eapply FlatImp.exec.weaken.
         * eapply IHexec; try eassumption; try reflexivity; maps.
         * intros. simpl in *. simp. repeat eexists; repeat (split || eassumption || solve_MetricLog).
-      + simpl in *. simp.
-        specialize H3 with (1 := H5).
+      + simpl in *. simp. rename H3 into IH3.
+        match goal with
+        | H: _ |- _ => specialize IH3 with (1 := H)
+        end.
         eapply FlatImp.exec.weaken.
-        * eapply H3; try reflexivity. (* <-- also an IH *)
-          { clear H3 IHexec. rewrite E. rewrite E0. reflexivity. }
+        * eapply IH3; try reflexivity.
+          { clear IH3 IHexec. rewrite E. rewrite E0. reflexivity. }
           1,3: solve [maps].
           pose proof (ExprImp.modVars_subset_allVars c). maps.
         * simpl. intros. simp.
@@ -708,9 +718,9 @@ Section FlattenExpr1.
         simple eapply ex_intro.
         simple apply conj; [exact R1|].
         simple eapply ex_intro.
-        simple apply conj; [exact H11|].
+        simple apply conj; [eassumption|].
         eapply ex_intro. eapply ex_intro.
-        simple apply conj; [exact H12|].
+        simple apply conj; [eassumption|].
         simple apply conj; [exact R2|].
         split; [simple eapply map.only_differ_putmany; eassumption|].
         solve_MetricLog.

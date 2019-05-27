@@ -541,7 +541,7 @@ Section Proofs.
       end.
       rewrite GetPos in *.
 
-      rename x into old_stackvals.
+      rename stack_trash into old_stackvals.
 
       set (FL := framelength (argnames, retnames, body)) in *.
       (* We have enough stack space for this call: *)
@@ -978,7 +978,7 @@ Section Proofs.
     | H: forall _, _ |- _ =>
       specialize H with (1 := HO);
       move H at bottom;
-      destruct H as (retvs & finalRegsH & ? & ? & ?)
+      destruct H as (retvs & finalRegsH' & ? & ? & ?)
     end.
 
     (* save results onto stack *)
