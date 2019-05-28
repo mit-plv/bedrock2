@@ -2,7 +2,7 @@ Require Import coqutil.Map.Interface.
 Require Import riscv.Utility.runsToNonDet.
 Require Import bedrock2.Semantics.
 Require Import bedrock2.MetricLogging.
-Require Import compiler.ExprImpSpec.
+Require Import compiler.ProgramSpec.
 
 
 Inductive EventLoopState := Init | Ready | Done.
@@ -30,9 +30,9 @@ Section EventLoop.
   Definition exec: State -> (State -> Prop) -> Prop :=
     runsToNonDet.runsTo stm_step.
 
-  Variable prog: Program.
+  Variable prog: Program Syntax.cmd.
   Variable spec: ProgramSpec.
-  Hypothesis sat: ProgramSatisfiesSpec prog spec.
+  Hypothesis sat: ProgramSatisfiesSpec prog Semantics.exec spec.
 
   Definition hl_inv(s: State): Prop :=
     runsToNonDet.runsTo stm_step s (fun '(elState', e', init_code', loop_body', t', m', l', mc') =>

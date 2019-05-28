@@ -108,10 +108,11 @@ Section Connect.
      Z names Semantics.params lingering around *)
   Notation strname_sem := (FlattenExpr.mk_Semantics_params
                              (@Pipeline.FlattenExpr_parameters pipeline_params)).
-
-  Context (prog: @Program strname_sem)
+  Notation cmd := (@cmd ((FlattenExpr.mk_Syntax_params
+                            (@Pipeline.FlattenExpr_parameters pipeline_params)))).
+  Context (prog: @Program strname_sem cmd)
           (spec: @ProgramSpec strname_sem)
-          (sat: ProgramSatisfiesSpec prog spec)
+          (sat: @ProgramSatisfiesSpec strname_sem cmd prog (@Semantics.exec strname_sem) spec)
           (ml: MemoryLayout Semantics.width)
           (memInit: Kami.Ex.SC.MemInit
                       (Z.to_nat width)

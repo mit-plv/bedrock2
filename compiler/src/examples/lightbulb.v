@@ -71,6 +71,7 @@ Definition stack_pastend: Z := 1024.
 Definition compile '(functions, initial, reactive) :=
   compile_prog (p:=params) stack_pastend
      (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
+                     _
                      (List.map fst functions)
                      (RegAlloc.map.putmany_of_tuples map.empty functions)
                      initial

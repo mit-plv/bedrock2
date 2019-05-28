@@ -42,7 +42,7 @@ Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.ForeverSafe.
-Require Export compiler.ExprImpSpec.
+Require Export compiler.ProgramSpec.
 Require Export compiler.MemoryLayout.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
@@ -247,14 +247,14 @@ Section Pipeline1.
     let main_size := List.length (FlatToRiscvDef.compile_main e_pos 42 init_code' loop_body') in
     FlatToRiscvDef.compile_main e_pos (- 4 * Z.of_nat main_size) init_code' loop_body'.
 
-  Definition compile_prog(init_sp: Z)(p: Program): list Instruction :=
+  Definition compile_prog(init_sp: Z)(p: Program cmd): list Instruction :=
     (* all positions in e_pos are relative to the position of the first function *)
     let '(fun_insts, e_pos) := functions2Riscv p.(funimpls) p.(funnames) in
     FlatToRiscvDef.compile_lit RegisterNames.sp init_sp ++
     compile_main e_pos p.(init_code) p.(loop_body) ++
     fun_insts.
 
-  Definition putProgram(p: Program)(code_addr: word)
+  Definition putProgram(p: Program cmd)(code_addr: word)
              (stack_pastend: word)(preInitial: MetricRiscvMachine): MetricRiscvMachine :=
     let insts := compile_prog (word.unsigned stack_pastend) p in
     MetricRiscvMachine.putProgram (List.map encode insts) code_addr preInitial.
@@ -264,9 +264,9 @@ Section Pipeline1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Context (prog: Program)
+  Context (prog: Program cmd)
           (spec: ProgramSpec)
-          (sat: ProgramSatisfiesSpec prog spec)
+          (sat: ProgramSatisfiesSpec prog Semantics.exec spec)
           (ml: MemoryLayout Semantics.width).
 
   Axiom insts_init: list Instruction.
@@ -343,11 +343,13 @@ Section Pipeline1.
         all: admit.
     - (* use compiler correctness for loop_body *)
       intros.
+      unfold ll_ready in *. simp.
       eapply runsTo_weaken.
-      + unfold ll_ready in *. simp.
-        eapply exprImp2Riscv_correct.
+      + eapply exprImp2Riscv_correct.
         1: reflexivity.
-        1: { eapply loop_body_correct; eassumption. }
+        1: { pose proof @loop_body_correct as P.
+             specialize (P _ cmd prog Semantics.exec spec sat).
+             eapply P; eassumption. }
         all: admit.
       + simpl. intros. unfold ll_ready.
         (* TODO: guarantee from exprImp2Riscv_correct needs to be stronger *)

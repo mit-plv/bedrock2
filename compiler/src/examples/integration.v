@@ -37,12 +37,12 @@ Local Existing Instance coqutil.Map.SortedListString.ok.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
     if string_dec fname "nop" then [[Addi Register0 Register0 0]]
-    else if string_dec fname "MMIOREAD" then 
+    else if string_dec fname "MMIOREAD" then
            match retnames, argnames with
            | [res], [addr] => [[ Lw res addr 0 ]]
            | _, _ => nil
            end
-    else if string_dec fname "MMIOWRITE" then 
+    else if string_dec fname "MMIOWRITE" then
            match retnames, argnames with
            | [], [addr; val] => [[ Sw addr val 0 ]]
            | _, _ => nil
@@ -77,6 +77,7 @@ Definition stack_pastend: Z := 1024.
 Definition compile '(functions, initial, reactive) :=
   compile_prog (p:=params) stack_pastend
      (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
+                     _
                      (List.map fst functions)
                      (RegAlloc.map.putmany_of_tuples map.empty functions)
                      initial

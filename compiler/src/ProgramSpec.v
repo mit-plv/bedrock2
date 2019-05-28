@@ -8,14 +8,15 @@ Require compiler.ExprImp.
 
 Section Params1.
   Context {p: Semantics.parameters}.
+  Variable Code: Type.
 
   Set Implicit Arguments.
 
   Record Program: Type := {
-    funnames: list String.string;
-    funimpls: Semantics.env;
-    init_code: Syntax.cmd;
-    loop_body: Syntax.cmd;
+    funnames: list Syntax.varname;
+    funimpls: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code);
+    init_code: Code;
+    loop_body: Code;
   }.
 
   Record ProgramSpec: Type := {
@@ -33,16 +34,23 @@ Section Params1.
       Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
       array ptsto (word.of_Z 1) start anybytes m.
 
-  Record ProgramSatisfiesSpec(prog: Program)(spec: ProgramSpec): Prop := {
+  Record ProgramSatisfiesSpec
+         (prog: Program)
+         (exec: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code) ->
+                Code -> Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog ->
+                (Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog -> Prop) ->
+                Prop)
+         (spec: ProgramSpec): Prop :=
+  {
     init_code_correct: forall m0 l0 mc0,
       mem_available spec.(datamem_start) spec.(datamem_pastend) m0 ->
-      Semantics.exec prog.(funimpls) prog.(init_code) nil m0 l0 mc0
+      exec prog.(funimpls) prog.(init_code) nil m0 l0 mc0
         (fun t' m' l' mc' => spec.(isReady) t' m' l' mc' /\ spec.(goodTrace) t');
 
     loop_body_correct: forall t m l mc,
        spec.(isReady) t m l mc ->
        spec.(goodTrace) t ->
-       Semantics.exec prog.(funimpls) prog.(loop_body) t m l mc
+       exec prog.(funimpls) prog.(loop_body) t m l mc
         (fun t' m' l' mc' => spec.(isReady) t' m' l' mc' /\ spec.(goodTrace) t');
   }.
 

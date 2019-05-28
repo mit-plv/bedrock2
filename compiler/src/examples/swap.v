@@ -80,7 +80,8 @@ Definition main: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
 Definition nop_loop_body: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.interact (FlattenExpr.mk_Syntax_params _) [] "nop" [].
 
-Definition prog: @Program (FlattenExpr.mk_Semantics_params _).
+Definition prog: @Program (FlattenExpr.mk_Semantics_params _)
+                          (@cmd.cmd (FlattenExpr.mk_Syntax_params _)).
   (* TODO whyyy? *)
   Fail refine (@Build_Program _ (List.map fst allFuns) e main nop_loop_body).
   apply @Build_Program.
