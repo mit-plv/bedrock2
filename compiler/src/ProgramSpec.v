@@ -13,7 +13,7 @@ Section Params1.
   Set Implicit Arguments.
 
   Record Program: Type := {
-    funnames: list Syntax.varname;
+    funnames: list Syntax.funname;
     funimpls: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code);
     init_code: Code;
     loop_body: Code;
