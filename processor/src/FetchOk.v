@@ -31,11 +31,7 @@ Section FetchOk.
   Variable instrMemSizeLg: Z.
   Hypothesis (HinstrMemBound: instrMemSizeLg <= width - 2).
   Definition instrMemSize: nat := Z.to_nat (Z.pow 2 instrMemSizeLg).
-  Definition instrMemStart: kword instrMemSizeLg := Word.ZToWord _ 0.
-  Definition instrMemStart': word := Word.ZToWord _ 0.
-
-  Variable dataMemSize: nat.
-  Definition dataMemStart: word := word.of_Z (Z.of_nat (4 * instrMemSize)).
+  Definition dataMemSize: nat := Z.to_nat (Z.pow 2 width).
 
   Definition word32_to_4bytes (w: kword 32): HList.tuple byte 4 :=
     LittleEndian.split 4 (word.unsigned w).
@@ -51,20 +47,22 @@ Section FetchOk.
     end.
 
   (* set of executable addresses in the kami processor *)
-  Definition kamiXAddrs: XAddrs := addXAddrRange instrMemStart' instrMemSize nil.
+  Definition kamiXAddrs: XAddrs := addXAddrRange (wzero _) instrMemSize nil.
 
   Definition convertInstrMem (instrMem: kword instrMemSizeLg -> kword 32): mem :=
     let keys := List.unfoldn (Word.wplus (Word.ZToWord (Z.to_nat instrMemSizeLg) 1))
-                             instrMemSize instrMemStart in
+                             instrMemSize (wzero _) in
     let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
-    @unchecked_store_byte_tuple_list 4 (word.of_Z 0) values map.empty.
-
-  Definition convertDataMem(dataMem: kword width -> kword width): mem :=
-    let keys := List.unfoldn (word.add (word.of_Z (width / 8))) dataMemSize dataMemStart in
-    let values := List.map (fun key => LittleEndian.split (Z.to_nat (width / 8))
-                                                          (word.unsigned (dataMem key)))
-                           keys in
-    unchecked_store_byte_tuple_list dataMemStart values map.empty.
+    @unchecked_store_byte_tuple_list 4 (wzero _) values map.empty.
+  
+  Definition convertDataMem (dataMem: kword width -> kword width): mem :=
+    let keys := List.unfoldn (word.add (word.of_Z (width / 8)))
+                             dataMemSize (wzero _) in
+    let values := List.map
+                    (fun key => LittleEndian.split (Z.to_nat (width / 8))
+                                                   (word.unsigned (dataMem key)))
+                    keys in
+    unchecked_store_byte_tuple_list (wzero _) values map.empty.
 
   Definition toKamiPc (pc: kword width):
     Word.word (2 + Z.to_nat instrMemSizeLg) :=
@@ -77,33 +75,32 @@ Section FetchOk.
     unfold toKamiPc; intros.
   Admitted.
 
+  Definition RiscvXAddrsConsistent (riscvXAddrs: XAddrs) :=
+    forall addr,
+      isXAddr addr riscvXAddrs -> isXAddr addr kamiXAddrs.
+
+  Definition RiscvXAddrsSafe
+             (instrMem: kword instrMemSizeLg -> kword width)
+             (dataMem: kword width -> kword width)
+             (riscvXAddrs: XAddrs) :=
+    forall addr,
+      isXAddr addr riscvXAddrs ->
+      dataMem addr =
+      instrMem (split2 2 _ (toKamiPc addr)).
+
   Lemma fetch_ok:
     forall (instrMem: kword instrMemSizeLg -> kword width)
            (dataMem: kword width -> kword width)
+           (riscvXAddrs: XAddrs)
+           (Hxc: RiscvXAddrsConsistent riscvXAddrs)
+           (Hxs: RiscvXAddrsSafe instrMem dataMem riscvXAddrs)
            (pc: kword width),
-      isXAddr pc kamiXAddrs ->
+      isXAddr pc riscvXAddrs ->
       exists (inst: HList.tuple byte 4),
-        Memory.loadWord
-          (map.putmany (convertInstrMem instrMem)
-                       (convertDataMem dataMem)) pc = Some inst /\
+        Memory.loadWord (convertDataMem dataMem) pc = Some inst /\
         combine 4 inst =
-        wordToZ (instrMem
-                   (split2 2 (Z.to_nat instrMemSizeLg) (toKamiPc pc))).
+        wordToZ (instrMem (split2 2 _ (toKamiPc pc))).
   Proof.
-    cbv [kamiXAddrs
-           instrMemStart'
-           Memory.loadWord Memory.load_bytes
-           (* map.getmany_of_tuple *)
-        ]; intros.
-
-    (* eexists; split. *)
-    (* - erewrite map.getmany_of_tuple_in_disjoint_putmany. *)
-    (*   + reflexivity. *)
-    (*   +  *)
-    (* erewrite map.get_putmany_left at 1. *)
-    (* unfold kamiXAddrs, instrMemStart'; intros. *)
-    
-    
   Admitted.
 
 End FetchOk.

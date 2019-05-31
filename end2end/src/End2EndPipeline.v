@@ -80,7 +80,7 @@ Section Connect.
   Context (instrMemSizeLg: Z) (dataMemSize: nat).
 
   Definition kamiStep := kamiStep instrMemSizeLg.
-  Definition states_related := @states_related Pipeline.Registers mem instrMemSizeLg dataMemSize.
+  Definition states_related := @states_related Pipeline.Registers mem instrMemSizeLg.
 
   Lemma split_ll_trace: forall {t2' t1' t},
       traces_related t (t2' ++ t1') ->
@@ -118,7 +118,9 @@ Section Connect.
                       (Z.to_nat width)
                       Kami.Ex.IsaRv32.rv32DataBytes).
 
-  Hypothesis (HinstrMemBound: instrMemSizeLg <= width - 2).
+  Hypotheses
+    (HinstrMemBound: instrMemSizeLg <= width - 2)
+    (Hinit: KamiProc.PgmInitNotMMIO (BinInt.Z.to_nat instrMemSizeLg) KamiProc.rv32MMIO).
 
   (* will have to be extended with a program logic proof at the top and with the kami refinement
      proof to the pipelined processor at the bottom: *)
@@ -142,6 +144,7 @@ Section Connect.
     edestruct Q as (m2' & t & SeqR & Rel & InvFinal).
     - eapply HinstrMemBound.
     - admit.
+    - assumption.
     - eapply Preserve.
     - eassumption.
     - eassumption.

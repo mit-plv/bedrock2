@@ -30,6 +30,7 @@ Section Parametrized.
   Record pst :=
     mk { pc: word (2 + iaddrSize);
          rf: word rfIdx -> word (dataBytes * BitsPerByte);
+         pinit: bool;
          pgm: word iaddrSize -> word (instBytes * BitsPerByte);
          mem: word addrSize -> word (dataBytes * BitsPerByte)
        }.
@@ -37,9 +38,11 @@ Section Parametrized.
   Definition pRegsToT (r: Kami.Semantics.RegsT): option pst :=
     (mlet pcv: (Pc iaddrSize) <- r |> "pc" <| None;
        mlet rfv: (Vector (Data dataBytes) rfIdx) <- r |> "rf" <| None;
+       mlet pinitv: Bool <- r |> "pinit" <| None;
        mlet pgmv: (Vector (Data instBytes) iaddrSize) <- r |> "pgm" <| None;
        mlet memv: (Vector (Data dataBytes) addrSize) <- r |> "mem" <| None;
-       (Some {| pc := pcv; rf := rfv; pgm := pgmv; mem := memv |}))%mapping.
+       (Some {| pc := pcv; rf := rfv;
+                pinit := pinitv; pgm := pgmv; mem := memv |}))%mapping.
 
   (** * Inverting Kami rules for instruction executions *)
 
@@ -54,11 +57,67 @@ Section Parametrized.
              inversion H; subst; clear H
            end; discriminate).
 
+  Definition PgmInitNotMMIO :=
+    forall iaddr: word iaddrSize,
+      evalExpr
+        (isMMIO
+           _ (evalExpr
+                ((_zeroExtend_ #iaddr) << $$(natToWord 2 2))%kami_expr)) = false.
+
+  Lemma invert_Kami_pgmInit:
+    forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl,
+      pRegsToT km1 = Some kt1 ->
+      Step pproc km1 kupd klbl ->
+      klbl.(annot) = Some (Some "pgmInit"%string) ->
+      pinit kt1 = false /\
+      klbl.(calls) = FMap.M.empty _ /\
+      exists kt2,
+        pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
+        pc kt2 = pc kt1 /\ rf kt2 = rf kt1 /\
+        pinit kt2 = false /\ mem kt2 = mem kt1.
+  Proof.
+    intros.
+    kinvert_more.
+    kinv_action_dest.
+    1: {
+      exfalso.
+      clear -Hi Heqic.
+      specialize (Hi x0); simpl in Hi.
+      congruence.
+    }
+
+    kinv_red.
+    unfold pRegsToT in *.
+    repeat
+      (match goal with
+       | [H: match (FMap.M.find ?key ?m) with
+             | Some _ => _
+             | None => _
+             end = Some _ |- _] =>
+         let Hkv := fresh "H" in
+         let k := fresh "k" in
+         let v := fresh "v" in
+         destruct (FMap.M.find key m) as [[[k|] v]|] eqn:Hkv; try discriminate
+       | [H: match (decKind ?k1 ?k2) with
+             | left _ => _
+             | right _ => _
+             end = Some _ |- _] =>
+         destruct (decKind k1 k2); try discriminate
+       end; kregmap_red).
+    
+    inversion H; subst; clear H.
+    simpl in *.
+    split; [reflexivity|].
+    repeat esplit.
+    assumption.
+  Qed.
+
   Lemma invert_Kami_execLd_memory:
     forall km1 kt1 kupd klbl,
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execLd"%string) ->
+      pinit kt1 = true /\
       exists curInst ldAddr,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         ldAddr = evalExpr
@@ -75,12 +134,12 @@ Section Parametrized.
                         if weq w (evalExpr (getLdDst _ curInst))
                         then mem kt1 ldAddr
                         else rf kt1 w;
+                    pinit := true;
                     pgm := pgm kt1;
                     mem := mem kt1 |}).
   Proof.
     intros.
     kinvert_more.
-    do 2 eexists; repeat split.
     kinv_action_dest.
     - unfold pRegsToT in *.
       kregmap_red.
@@ -89,7 +148,9 @@ Section Parametrized.
       kregmap_red.
       inversion H; subst; clear H.
       simpl in *.
-      exfalso; clear -H3 Heqic; congruence.
+      split; [reflexivity|].
+      do 2 eexists; repeat split; intros.
+      exfalso; clear -H Heqic; congruence.
     - kinv_red.
       unfold pRegsToT in *.
       kregmap_red.
@@ -103,6 +164,7 @@ Section Parametrized.
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execLd"%string) ->
+      pinit kt1 = true /\
       exists curInst ldAddr,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         ldAddr = evalExpr
@@ -127,12 +189,12 @@ Section Parametrized.
                         if weq w (evalExpr (getLdDst _ curInst))
                         then mmioLdRs Fin.F1
                         else rf kt1 w;
+                    pinit := true;
                     pgm := pgm kt1;
                     mem := mem kt1 |}).
   Proof.
     intros.
     kinvert_more.
-    do 2 eexists; repeat split.
     kinv_action_dest.
     - unfold pRegsToT in *.
       kregmap_red.
@@ -149,7 +211,9 @@ Section Parametrized.
       unfold pRegsToT in *.
       kregmap_red.
       inversion H; subst; clear H; simpl in *.
-      exfalso; clear -H3 Heqic; congruence.
+      split; [reflexivity|].
+      do 2 eexists; repeat split; intros.
+      exfalso; clear -H Heqic; congruence.
   Qed.
 
   Lemma invert_Kami_execLdZ:
@@ -157,6 +221,7 @@ Section Parametrized.
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execLdZ"%string) ->
+      pinit kt1 = true /\
       klbl.(calls) = FMap.M.empty _ /\
       exists kt2,
         pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
@@ -164,6 +229,7 @@ Section Parametrized.
           curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
           kt2 = {| pc := evalExpr (getNextPc _ (rf kt1) (pc kt1) curInst);
                    rf := rf kt1;
+                   pinit := true;
                    pgm := pgm kt1;
                    mem := mem kt1 |}.
   Proof.
@@ -185,6 +251,7 @@ Section Parametrized.
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execSt"%string) ->
+      pinit kt1 = true /\
       exists curInst stAddr stVal,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         stAddr = evalExpr
@@ -198,6 +265,7 @@ Section Parametrized.
            pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
            kt2 = {| pc := evalExpr (getNextPc _ (rf kt1) (pc kt1) curInst);
                     rf := rf kt1;
+                    pinit := true;
                     pgm := pgm kt1;
                     mem :=
                       fun w =>
@@ -205,7 +273,6 @@ Section Parametrized.
   Proof.
     intros.
     kinvert_more.
-    do 3 eexists; repeat split.
     kinv_action_dest.
     - unfold pRegsToT in *.
       kregmap_red.
@@ -214,7 +281,9 @@ Section Parametrized.
       kregmap_red.
       inversion H; subst; clear H.
       simpl in *.
-      exfalso; clear -H3 Heqic; congruence.
+      split; [reflexivity|].
+      do 3 eexists; repeat split; intros.
+      exfalso; clear -H Heqic; congruence.
     - kinv_red.
       unfold pRegsToT in *.
       kregmap_red.
@@ -228,6 +297,7 @@ Section Parametrized.
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execSt"%string) ->
+      pinit kt1 = true /\
       exists curInst stAddr stVal,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         stAddr = evalExpr
@@ -250,12 +320,12 @@ Section Parametrized.
            pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
            kt2 = {| pc := evalExpr (getNextPc _ (rf kt1) (pc kt1) curInst);
                     rf := rf kt1;
+                    pinit := true;
                     pgm := pgm kt1;
                     mem := mem kt1 |}).
   Proof.
     intros.
     kinvert_more.
-    do 3 eexists; repeat split.
     kinv_action_dest.
     - unfold pRegsToT in *.
       kregmap_red.
@@ -273,7 +343,9 @@ Section Parametrized.
       unfold pRegsToT in *.
       kregmap_red.
       inversion H; subst; clear H; simpl in *.
-      exfalso; clear -H3 Heqic; congruence.
+      split; [reflexivity|].
+      do 3 eexists; repeat split; intros.
+      exfalso; clear -H Heqic; congruence.
   Qed.
 
   Lemma invert_Kami_execNm:
@@ -281,6 +353,7 @@ Section Parametrized.
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execNm"%string) ->
+      pinit kt1 = true /\
       klbl.(calls) = FMap.M.empty _ /\
       exists kt2,
         pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
@@ -298,6 +371,7 @@ Section Parametrized.
                      fun w =>
                        if weq w (evalExpr (getDst type curInst))
                        then execVal else rf kt1 w;
+                   pinit := true;
                    pgm := pgm kt1;
                    mem := mem kt1 |}.
   Proof.
