@@ -1,7 +1,7 @@
 system.vcd: system.vvp program0.hex program1.hex program2.hex program3.hex
 	vvp system.vvp
 system.vvp: system.v mkTop.v
-	iverilog -y ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/ -y. system.v -o system.vvp
+	iverilog -y ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/ -y. -o system.vvp system.v
 clean:
 	rm -f system.vvp system.vcd program0.hex program1.hex program2.hex program3.hex system.json system.out.config system.bit system.svf
 program.hex: ../../compiler/src/examples/integration.v
