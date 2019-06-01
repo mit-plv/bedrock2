@@ -6,4 +6,4 @@
 	url = https://github.com/mit-plv/coqutil.git
 [submodule "deps/kami"]
 	path = deps/kami
-	url = https://github.com/mit-plv/kami.git
+        url = https://github.com/mattam82/kami.git
