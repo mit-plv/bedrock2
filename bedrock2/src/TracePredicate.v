@@ -30,6 +30,13 @@ Section ListPred.
   Definition existsl{A: Type}(P: A -> list T -> Prop): list T -> Prop :=
     fun l => exists a, P a l.
 
+  Lemma kleene_app P xs (Hxs : kleene P xs) ys (Hys : kleene P ys)
+    : kleene P (xs ++ ys).
+  Proof.
+    revert dependent xs; induction Hys; eauto; intros;
+      rewrite ?List.app_nil_r, ?List.app_assoc;
+      try constructor; eauto.
+  Qed.
 End ListPred.
 
 Module TracePredicateNotations.

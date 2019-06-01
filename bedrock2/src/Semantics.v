@@ -45,28 +45,12 @@ Module ext_spec.
         ext_spec t2 mGive2 a args post2 ->
         map.same_domain mGive1 mGive2;
 
-    (* This one is less useful because it doesn't allow for "built-in weakining" in
-       ext_specs: Each ext_spec has to require that its post is tight,
-       i.e. it not only has to require
-       "forall mReceive resvals, possible mReceive resvals -> post my_mReceive my_resvals"
-       but also the opposite direction, which is cumbersome.
-
-       The trace of events which happened so far & the given-away memory & the action name &
-       the arguments uniquely determine the set of possible outcomes of the external call.
-       That is, the external call CAN be non-deterministic, but ext_spec must return the
-       tightest possible set of outcomes.
-    unique_post: forall t mGive a args (post1 post2: mem -> list word -> Prop),
-        ext_spec t mGive a args post1 ->
-        ext_spec t mGive a args post2 ->
-        forall mReceive resvals, post1 mReceive resvals <-> post2 mReceive resvals;
-    *)
-
-    (* Should hold, but not needed at the moment
-    weaken: forall t mGive a args (post1 post2: mem -> list word -> Prop),
-        ext_spec t mGive a args post1 ->
-        (forall mReceive resvals, post1 mReceive resvals -> post2 mReceive resvals) ->
-        ext_spec t mGive a args post2;
-     *)
+    weaken :> forall t mGive act args,
+        Morphisms.Proper
+          (Morphisms.respectful
+             (Morphisms.pointwise_relation Interface.map.rep
+               (Morphisms.pointwise_relation (list word) Basics.impl)) Basics.impl)
+          (ext_spec t mGive act args);
 
     intersect: forall t mGive a args
                       (post1 post2: mem -> list word -> Prop),

@@ -111,7 +111,7 @@ Section TailRecrsion.
       eauto 9. }
     { pose proof fun t m => hlist.foralls_forall (Hpost t m); clear Hpost; eauto. }
   Qed.
-
+  
   Lemma tailrec_localsmap
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (spec:_->_->_->_->(Prop*(_->_->_-> Prop))) lt
@@ -148,6 +148,101 @@ Section TailRecrsion.
     { eauto. }
   Qed.
 
+  Definition with_bottom {T} R (x y : option T) :=
+    match x, y with
+    | None, Some _ => True
+    | Some x, Some y => R x y
+    | _, _ => False
+    end.
+  Lemma well_founded_with_bottom {T} R (H : @well_founded T R) : well_founded (with_bottom R).
+  Proof.
+    intros [x|]; cycle 1.
+    { constructor; intros [] HX; cbv [with_bottom] in HX; contradiction. }
+    pattern x. revert x. eapply (@well_founded_ind _ _ H). intros.
+    constructor. intros [y|] pf; eauto.
+    constructor. intros [] [].
+  Qed.
+    
+
+  (* TODO: move (this is not tailrecursion) *)
+  Lemma atleastonce_localsmap
+    {e c t} {m : mem} {l} {post : _->_->_-> Prop}
+    {measure : Type} (invariant:_->_->_->_->Prop) lt
+    (Hwf : well_founded lt)
+    (Henter : exists br, expr m l e (eq br) /\ (word.unsigned br = 0%Z -> False \/ post t m l))
+    (v0 : measure) (Hpre : invariant v0 t m l)
+    (Hbody : forall v t m l, invariant v t m l ->
+       cmd call c t m l (fun t m l =>
+         exists br, expr m l e (eq br) /\
+         (word.unsigned br <> 0 -> exists v', invariant v' t m l /\ lt v' v) /\
+         (word.unsigned br =  0 -> post t m l)))
+    : cmd call (cmd.while e c) t m l post.
+  Proof.
+    eexists (option measure), (with_bottom lt), (fun ov t m l =>
+      exists br, expr m l e (eq br) /\
+      ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l) /\
+      (word.unsigned br =  0 -> ov = None /\ post t m l))).
+    split; auto using well_founded_with_bottom; []. split.
+    { destruct Henter as [br [He Henter]].
+      destruct (BinInt.Z.eq_dec (word.unsigned br) 0).
+      { exists None, br; split; trivial.
+        destruct Henter; try contradiction; eauto.
+        split; intros; try contradiction; split; eauto. }
+      { exists (Some v0), br.
+        split; trivial; []; split; try contradiction.
+        exists v0; split; trivial. } }
+    intros vi ti mi li (br&Ebr&Hcontinue&Hexit).
+    eexists; split; [eassumption|]; split.
+    { intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
+      eapply Proper_cmd; [| |eapply Hbody; eassumption]; [eapply Proper_call|].
+      intros t' m' l' (br'&Ebr'&Hinv'&Hpost').
+      destruct (BinInt.Z.eq_dec (word.unsigned br') 0).
+      { exists None; split; try constructor.
+        exists br'; split; trivial; [].
+        split; intros; try contradiction.
+        split; eauto. }
+      { destruct (Hinv' ltac:(trivial)) as (v'&inv'&ltv'v).
+        exists (Some v'); split; trivial. (* NOTE: this [trivial] simpl-reduces [with_bottom] *)
+        exists br'; split; trivial.
+        split; intros; try contradiction.
+        eexists; split; eauto. } }
+    eapply Hexit.
+  Qed.
+
+  Lemma atleastonce
+    {e c t l} {m : mem}
+    (variables : list varname)
+    {localstuple : tuple word (length variables)}
+    {Pl : enforce variables localstuple l}
+    {measure : Type} (invariant:_->_->_->ufunc word (length variables) Prop)
+    lt (Hwf : well_founded lt)
+    {post : _->_->_-> Prop}
+    (Henter : exists br, expr m l e (eq br) /\ (word.unsigned br = 0%Z -> False \/ post t m l))
+    (v0 : measure) (Hpre : tuple.apply (invariant v0 t m) localstuple)
+    (Hbody : forall v t m, tuple.foralls (fun localstuple =>
+      tuple.apply (invariant v t m) localstuple ->
+       cmd call c t m (reconstruct variables localstuple) (fun t m l =>
+         exists br, expr m l e (eq br) /\
+         (word.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' t m) localstuple /\ lt v' v)))))) /\
+         (word.unsigned br =  0 -> post t m l))))
+    : cmd call (cmd.while e c) t m l post.
+  Proof.
+    eapply (atleastonce_localsmap (fun v t m l => exists localstuple, Logic.and (enforce variables localstuple l) (tuple.apply (invariant v t m) localstuple))); eauto.
+    intros vi ti mi li (?&X&Y).
+    specialize (Hbody vi ti mi).
+    eapply hlist.foralls_forall in Hbody.
+    specialize (Hbody Y).
+    rewrite <-(reconstruct_enforce _ _ _ X) in Hbody.
+    eapply Proper_cmd; [eapply Proper_call| |eapply Hbody].
+    intros t' m' l' (?&?&HH&?).
+    eexists; split; eauto.
+    split; intros; eauto.
+    specialize (HH ltac:(eauto)).
+    eapply hlist.existss_exists in HH; destruct HH as (?&?&?&?&?).
+    eexists; split; eauto.
+  Qed.
+    
+    
   Context {mem_ok : map.ok mem}.
   Local Infix "*" := Separation.sep.
   Local Infix "*" := Separation.sep : type_scope.

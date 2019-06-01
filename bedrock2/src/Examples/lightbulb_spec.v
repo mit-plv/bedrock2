@@ -1,5 +1,5 @@
 Require Import bedrock2.TracePredicate.
-Require Import Coq.ZArith.BinInt.
+Require Import Coq.ZArith.BinInt coqutil.Z.HexNotation.
 Require Import coqutil.Word.Interface.
 Section LightbulbSpec.
   Import TracePredicateNotations.
@@ -25,7 +25,7 @@ Section LightbulbSpec.
   
   (** F310 SPI *)
   Definition SPI_RX_FIFO_ADDR : word. Admitted.
-  Definition SPI_TX_FIFO_ADDR : word. Admitted.
+  Definition SPI_TX_FIFO_ADDR : word := word.of_Z (Ox"10024048").
   Definition SPI_CSMODE_ADDR : word. Admitted.
   Definition SPI_CSMODE_AUTO : word. Admitted.
   Definition SPI_CSMODE_HOLD : word. Admitted.
@@ -38,13 +38,13 @@ Section LightbulbSpec.
     spi_read_empty^* +++ spi_read_success b.
   
   Definition spi_write_full l :=
-    exists v, one (ld SPI_TX_FIFO_ADDR v) l /\ Z.testbit (word.unsigned v) 31 = true.
+    exists v, one (ld SPI_TX_FIFO_ADDR v) l /\ Z.shiftr (word.unsigned v) 31 <> 0%Z.
   Definition spi_write_ready l :=
-    exists v, one (ld SPI_TX_FIFO_ADDR v) l /\ Z.testbit (word.unsigned v) 31 = false.
-  Definition spi_write_enqueue (b : byte) l :=
-    exists v, one (st SPI_RX_FIFO_ADDR v) l /\ word.unsigned (word.and v (word.of_Z (2^8-1))) = word.unsigned b.
+    exists v, one (ld SPI_TX_FIFO_ADDR v) l /\ Z.shiftr (word.unsigned v) 31 = 0%Z.
+  Definition spi_write_enqueue (b : byte) :=
+    one (st SPI_TX_FIFO_ADDR (word.of_Z (word.unsigned b))).
   Definition spi_write b :=
-    spi_write_full^* +++ spi_write_ready^+ +++ spi_write_enqueue b.
+    spi_write_full^* +++ (spi_write_ready +++ spi_write_enqueue b).
   
   Definition spi_begin := one (st SPI_CSMODE_ADDR SPI_CSMODE_HOLD).
   Definition spi_xchg tx rx :=

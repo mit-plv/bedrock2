@@ -219,4 +219,26 @@ Section WeakestPrecondition.
     { eapply sound_args in H; t. }
   Qed.
 
+  (** Ad-hoc lemmas here? *)
+
+  Import bedrock2.Syntax bedrock2.Semantics bedrock2.WeakestPrecondition coqutil.Word.Interface.
+  Context {p_ok : Semantics.parameters_ok p}.
+  Lemma interact_nomem call action binds arges t m l post
+        args (Hargs : dexprs m l arges args)
+        (Hext : ext_spec t map.empty binds args (fun mReceive (rets : list Semantics.word) =>
+           mReceive = map.empty /\
+           exists l0 : locals, map.putmany_of_list action rets l = Some l0 /\
+           post (cons (map.empty, binds, args, (map.empty, rets)) t) m l0))
+    : WeakestPrecondition.cmd call (cmd.interact action binds arges) t m l post.
+  Proof.
+    exists args; split; [exact Hargs|].
+    exists m.
+    exists map.empty.
+    split; [eapply Properties.map.split_empty_r; exact eq_refl|].
+    eapply ext_spec.weaken; [|eapply Hext]; intros ? ? [? [? []]]. subst a; subst.
+    eexists; split; [eassumption|].
+    Print WeakestPrecondition.cmd_body.
+    eexists; split; [eapply Properties.map.split_empty_r; exact eq_refl|].
+    assumption.
+Qed.
 End WeakestPrecondition.
