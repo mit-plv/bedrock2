@@ -132,7 +132,7 @@ Section Pipeline1.
 
   Definition functions2Riscv(e: env)(funs: list funname): list Instruction * fun_pos_env :=
     let e' := flatten_functions e funs in
-    let e'' := rename_functions available_registers e' funs in
+    let e'' := rename_functions String.eqb Z.eqb String.eqb String.eqb available_registers ext_spec e' funs in
     FlatToRiscvDef.compile_functions e'' funs.
 
   Definition ExprImp2RenamedFlat(s: cmd): FlatImp.stmt :=

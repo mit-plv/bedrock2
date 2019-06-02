@@ -11,6 +11,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.TestLemmas.
 Require Import bedrock2.Syntax.
 Require Import compiler.util.ListLib.
+Require Import compiler.Simp.
 
 
 Local Notation "'bind_opt' x <- a ; f" :=
@@ -75,11 +76,15 @@ Section RegAlloc.
   Context {impvar: Type}.
   Context (impvar_eqb: impvar -> impvar -> bool).
   Context {func: Type}.
-  Context (func_eq_dec: func -> func -> bool).
+  Context (func_eqb: func -> func -> bool).
   Context {act: Type}.
-  Context (act_eq_dec: act -> act -> bool).
+  Context (act_eqb: act -> act -> bool).
+
+  Context {srcvar_eq_dec : EqDecider srcvar_eqb}.
+  Context {impvar_eq_dec : EqDecider impvar_eqb}.
 
   Context {src2imp: map.map srcvar impvar}.
+  Context {src2impOk: map.ok src2imp}.
   Context {src2imp_ops: map.ops src2imp}.
 
   Instance srcparams: Syntax.parameters := {|
@@ -357,22 +362,30 @@ Section RegAlloc.
   Context {W: Utility.Words} {mem: map.map word byte}.
   Context {srcLocals: map.map srcvar word}.
   Context {impLocals: map.map impvar word}.
+  Context {srcLocalsOk: map.ok srcLocals}.
+  Context {impLocalsOk: map.ok impLocals}.
   Context {funname_env: forall T: Type, map.map func T}.
-
-  Axiom TODO: False.
+  Context (ext_spec:  list (mem * actname * list word * (mem * list word)) ->
+                      mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop).
 
   Instance srcSemanticsParams: Semantics.parameters. refine ({|
     Semantics.syntax := srcparams;
+    Semantics.varname_eqb := srcvar_eqb;
+    Semantics.funname_eqb := func_eqb;
+    Semantics.actname_eqb := act_eqb;
     Semantics.locals := srcLocals;
+    Semantics.ext_spec := ext_spec;
   |}).
-  all: case TODO.
   Defined.
 
   Instance impSemanticsParams: Semantics.parameters. refine ({|
     Semantics.syntax := impparams;
+    Semantics.varname_eqb := impvar_eqb;
+    Semantics.funname_eqb := func_eqb;
+    Semantics.actname_eqb := act_eqb;
     Semantics.locals := impLocals;
+    Semantics.ext_spec := ext_spec;
   |}).
-  all: case TODO.
   Defined.
 
   Definition rename_function(e: @FlatImp.env srcSemanticsParams)(f: funname):
@@ -400,22 +413,24 @@ Section RegAlloc.
         map.get st x = Some w ->
         map.get st' x' = Some w.
 
-  (*
+(*
   Lemma states_compat_put: forall st1 st1' v x x' r,
-      ~ x \in (range r) ->
+      map.get r x = None ->
       states_compat st1 r st1' ->
-      states_compat (map.put st1 x v) (map.put r x' x) (map.put st1' x' v).
+      states_compat (map.put st1 x v) (map.put r x x') (map.put st1' x' v).
   Proof.
     unfold states_compat.
     intros.
-    rewrite get_put.
-    do 2 match goal with
-    | H: get (put _ _ _) _ = _ |- _ => rewrite get_put in H
+    rewrite (map.get_put_dec (key_eqb := impvar_eqb)).
+    do 2 lazymatch goal with
+    | H: map.get (map.put _ _ _) _ = _ |- _ => rewrite map.get_put_dec in H
     end.
-    destruct_one_match; clear E.
-    - subst.
-      replace x0 with x in H2 by congruence.
-      destruct_one_match_hyp; [assumption|contradiction].
+    destruct_one_match.
+    - subst x'0.
+      destruct_one_match_hyp; [assumption|].
+      specialize H0 with (1 := H1) (2 := H2).
+
+
     - destruct_one_match_hyp.
       + subst.
         apply get_in_range in H1.
@@ -552,18 +567,103 @@ Section RegAlloc.
   Hint Resolve precond_weakens : checker_hints.
    *)
 
-  Lemma checker_correct: forall e e' t m lH lL mc post s r annotated s',
-(*
-      (forall f argnames retnames body, map.get e f = Some (argnames, retnames, body) ->
-                                        map.get e' f = Some (?, ?, regalloc ?)*)
+  Lemma getmany_of_list_states_compat: forall srcnames impnames r lH lL argvals,
+      map.getmany_of_list lH srcnames = Some argvals ->
+      map.getmany_of_list r srcnames = Some impnames ->
+      states_compat lH r lL ->
+      map.getmany_of_list lL impnames = Some argvals.
+  Proof.
+    induction srcnames; intros;
+      destruct argvals as [|argval argvals];
+      destruct impnames as [|impname impnames];
+      try reflexivity;
+      try discriminate;
+      unfold map.getmany_of_list, List.option_all in *; simpl in *;
+        repeat (destruct_one_match_hyp; try discriminate).
+    simp.
+    replace (map.get lL impname) with (Some argval); cycle 1. {
+      symmetry. unfold states_compat in *; eauto.
+    }
+    erewrite IHsrcnames; eauto.
+  Qed.
+
+  Lemma putmany_of_list_states_compat: forall binds resvals lL lH l' r,
+      map.putmany_of_list (map fst binds) resvals lH = Some l' ->
+      states_compat lH r lL ->
+      exists lL',
+        map.putmany_of_list (map snd binds) resvals lL = Some lL' /\
+        states_compat l' (map.putmany_of_tuples r binds) lL'.
+  Proof.
+    induction binds; intros.
+    - simpl in H. simp. simpl. eauto.
+    - simpl in *. simp.
+      specialize IHbinds with (1 := H).
+      destruct a as [sv iv].
+      rename l' into lH'.
+      apply map.putmany_of_list_sameLength in H.
+      rewrite map_length in H. rewrite <- (map_length snd) in H.
+      eapply map.sameLength_putmany_of_list in H.
+      destruct H as (lL' & H).
+      exists lL'. split; [exact H|].
+
+  Admitted.
+  (*edestruct IHbinds as (lL' & P & C); cycle 1.
+      + eexists. split; eauto.
+        unfold map.putmany_of_tuples in C.
+*)
+
+  Lemma checker_correct: forall e e' s t m lH mc post,
+      (forall f argnames retnames body,
+          map.get e f = Some (argnames, retnames, body) ->
+          exists args body' annotated binds,
+            map.get e' f = Some (map snd args, map snd binds, body') /\
+            argnames = map fst args /\
+            retnames = map fst binds /\
+            erase annotated = body /\
+            checker (map.putmany_of_tuples map.empty args) annotated = Some body') ->
       @exec srcSemanticsParams e s t m lH mc post ->
+      forall lL r annotated s',
       erase annotated = s ->
       checker r annotated = Some s' ->
       states_compat lH (precond r annotated) lL ->
       @exec impSemanticsParams e' s' t m lL mc (fun t' m' lL' mc' =>
         exists lH', states_compat lH' (update r annotated) lL' /\
                     post t' m' lH' mc').
-  Proof. Abort. (*
+  Proof.
+    induction 2; intros;
+      match goal with
+      | H: erase ?s = _ |- _ =>
+        destruct s;
+        inversion H;
+        subst;
+        clear H
+      end;
+      subst;
+      match goal with
+      | H: checker _ ?x = _ |- _ => pose proof H as C; remember x as AS in C
+      end;
+      simpl in *;
+      simp.
+
+    - (* SInteract *)
+      econstructor; eauto.
+      + eauto using getmany_of_list_states_compat.
+      + intros *. intro HO.
+        match goal with
+        | H: _ |- _ => specialize H with (1 := HO)
+        end.
+        simp.
+        pose proof putmany_of_list_states_compat as P.
+        specialize P with (1 := H3l) (2 := H6). destruct P as (lL' & P & Co). eauto 10.
+
+    - (* SCall *)
+      specialize H with (1 := H0). simp.
+      specialize IHexec with (1 := eq_refl) (2 := Hrrrr).
+      pose proof putmany_of_list_states_compat as P.
+      specialize P with (1 := H2).
+      edestruct P as (st0' & Put & Co); cycle 1.
+
+(*
     induction n; intros; [
       match goal with
       | H: eval 0 _ _ _ = Some _ |- _ => solve [inversion H]
@@ -838,5 +938,6 @@ Section RegAlloc.
     - eauto.
   Abort.
   *)
+  Abort.
 
 End RegAlloc.
