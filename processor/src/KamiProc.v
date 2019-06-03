@@ -11,6 +11,12 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+Lemma wnot_idempotent:
+  forall {sz} (w: word sz),
+    wnot (wnot w) = w.
+Proof.
+Admitted.
+
 Section Parametrized.
   Variables addrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat.
 
@@ -109,17 +115,29 @@ Section Parametrized.
     assumption.
   Qed.
 
+  Definition KamiPgmInitFull
+             (pgm: word iaddrSize -> word (instBytes * BitsPerByte))
+             (mem: word addrSize -> word (dataBytes * BitsPerByte)) :=
+    forall iaddr,
+      pgm iaddr =
+      evalExpr (alignInst type (mem (evalExpr (alignAddr type iaddr)))).
+
   Lemma invert_Kami_pgmInitEnd:
-    forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl,
+    forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl
+           (Hinv: scmm_inv rfIdx fetch km1),
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "pgmInitEnd"%string) ->
       pinit kt1 = false /\
       klbl.(calls) = FMap.M.empty _ /\
-      exists kt2,
-        pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
-        pc kt2 = pc kt1 /\ rf kt2 = rf kt1 /\
-        pinit kt2 = true /\ mem kt2 = mem kt1.
+      exists pgmFull,
+        KamiPgmInitFull pgmFull (mem kt1) /\
+        pRegsToT (FMap.M.union kupd km1) =
+        Some {| pc := pc kt1;
+                rf := rf kt1;
+                pinit := true;
+                pgm := pgmFull;
+                mem := mem kt1 |}.
   Proof.
     intros.
     kinvert_more.
@@ -131,6 +149,7 @@ Section Parametrized.
       congruence.
     }
 
+    inversion_clear Hinv.
     kinv_red.
     unfold pRegsToT in *.
     repeat
@@ -152,9 +171,33 @@ Section Parametrized.
     
     inversion H; subst; clear H.
     simpl in *.
-    split; [reflexivity|].
-    repeat esplit.
-    assumption.
+    repeat split; [assumption|].
+    eexists; split; [|reflexivity].
+
+    clear -e H18.
+    red; intros.
+    destruct (weq iaddr pinitOfsv); [subst; reflexivity|].
+    apply (H18 eq_refl).
+
+    clear -e n.
+    assert (pinitOfsv = wones _).
+    { rewrite <-wnot_idempotent with (w:= pinitOfsv).
+      rewrite e.
+      apply wnot_zero.
+    }
+    subst.
+    
+    apply lt_wlt.
+    rewrite wones_pow2_minus_one.
+    pose proof (wordToNat_bound iaddr).
+    pose proof (NatLib.pow2_zero iaddrSize).
+    assert (#iaddr = NatLib.pow2 iaddrSize - 1 \/
+            #iaddr < NatLib.pow2 iaddrSize - 1)%nat by omega.
+    destruct H1; [|assumption].
+    assert (natToWord iaddrSize (#iaddr) =
+            natToWord iaddrSize (NatLib.pow2 iaddrSize - 1)) by congruence.
+    rewrite natToWord_wordToNat, <-wones_natToWord in H2; subst.
+    exfalso; auto.
   Qed.
   
   Lemma invert_Kami_execLd_memory:

@@ -222,6 +222,70 @@ Section Equiv.
                           (rv32Fetch (Z.to_nat width) (Z.to_nat instrMemSizeLg))
                           rv32MMIO).
 
+  Lemma kamiStep_sound_case_pgmInit:
+    forall km1 t0 rm1 post kupd cs
+           (Hkinv: scmm_inv
+                     rv32RfIdx
+                     (rv32Fetch (BinInt.Z.to_nat width)
+                                (BinInt.Z.to_nat instrMemSizeLg)) km1),
+      states_related (km1, t0) rm1 ->
+      mcomp_sat_unit (run1 iset) rm1 post ->
+      Step kamiProc km1 kupd
+           {| annot := Some (Some "pgmInit"%string);
+              defs := FMap.M.empty _;
+              calls := cs |} ->
+      states_related (FMap.M.union kupd km1, t0) rm1 /\
+      cs = FMap.M.empty _.
+  Proof.
+    intros.
+    inversion H; subst; clear H.
+    eapply invert_Kami_pgmInit in H1; eauto.
+    unfold kamiStMk in H1; simpl in H1.
+    destruct H1 as (? & ? & km2 & ? & ? & ? & ? & ?); subst.
+    clear H7.
+    destruct km2 as [pc2 rf2 pinit2 pgm2 mem2]; simpl in *; subst.
+    split; [|reflexivity].
+    econstructor; eauto.
+    intros; discriminate.
+  Qed.
+
+  (** TODO @joonwonc: make two definitions consistent. *)
+  Lemma kamiPgmInitFull_RiscvXAddrsSafe:
+    forall pgmFull dataMem,
+      KamiPgmInitFull (rv32Fetch (Pos.to_nat 32) (BinInt.Z.to_nat instrMemSizeLg))
+                      pgmFull dataMem ->
+      RiscvXAddrsSafe instrMemSizeLg pgmFull dataMem kamiXAddrs.
+  Proof.
+  Admitted.
+
+  Lemma kamiStep_sound_case_pgmInitEnd:
+    forall km1 t0 rm1 post kupd cs
+           (Hkinv: scmm_inv
+                     rv32RfIdx
+                     (rv32Fetch (BinInt.Z.to_nat width)
+                                (BinInt.Z.to_nat instrMemSizeLg)) km1),
+      states_related (km1, t0) rm1 ->
+      mcomp_sat_unit (run1 iset) rm1 post ->
+      Step kamiProc km1 kupd
+           {| annot := Some (Some "pgmInitEnd"%string);
+              defs := FMap.M.empty _;
+              calls := cs |} ->
+      states_related (FMap.M.union kupd km1, t0) rm1 /\
+      cs = FMap.M.empty _.
+  Proof.
+    intros.
+    inversion H; subst; clear H.
+    eapply invert_Kami_pgmInitEnd in H1; eauto.
+    unfold kamiStMk in H1; simpl in H1.
+    destruct H1 as (? & ? & pgmFull & ? & ?); subst.
+    clear H7.
+    specialize (H6 eq_refl); subst.
+    split; [|reflexivity].
+    econstructor; eauto.
+    intros _.
+    apply kamiPgmInitFull_RiscvXAddrsSafe; auto.
+  Qed.
+  
   Lemma kamiStep_sound:
     forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
            (m1': RiscvMachine) (t0: list Event) (post: RiscvMachine -> Prop)
@@ -252,43 +316,20 @@ Section Equiv.
     - (* case "pgmInit" *)
       left.
       inversion H3; subst; clear H3 HAction.
-
       destruct klbl as [annot defs calls]; simpl in *; subst.
       destruct annot; [|discriminate].
       inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
-      inversion H0; subst; clear H0.
-      eapply invert_Kami_pgmInit in H; eauto.
-      unfold kamiStMk in H; simpl in H.
-      destruct H as (? & ? & km2 & ? & ? & ? & ? & ?); subst.
-      clear H7.
-
-      destruct km2 as [pc2 rf2 pinit2 pgm2 mem2]; simpl in *; subst.
-      split; [|reflexivity].
-      econstructor; eauto.
-      intros; discriminate.
+      eauto using kamiStep_sound_case_pgmInit.
       
     - (* case "pgmInitEnd" *)
       left.
       inversion H4; subst; clear H4 HAction.
-
       destruct klbl as [annot defs calls]; simpl in *; subst.
       destruct annot; [|discriminate].
       inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
-      inversion H0; subst; clear H0.
-      eapply invert_Kami_pgmInitEnd in H; eauto.
-      unfold kamiStMk in H; simpl in H.
-      destruct H as (? & ? & km2 & ? & ? & ? & ? & ?); subst.
-      clear H7.
-      specialize (H6 eq_refl); subst.
-
-      destruct km2 as [pc2 rf2 pinit2 pgm2 mem2]; simpl in *; subst.
-      split; [|reflexivity].
-      econstructor; eauto.
-      intros _.
-
-      admit.
+      eauto using kamiStep_sound_case_pgmInitEnd.
       
     - (* case "execLd" *) admit.
     - (* case "execLdZ" *) admit.
