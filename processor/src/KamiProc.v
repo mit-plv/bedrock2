@@ -11,27 +11,6 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-(** TODO: move to [SemFacts.v] in Kami *)
-
-Lemma kami_reachable_init:
-  forall m, reachable (initRegs (getRegInits m)) m.
-Proof.
-  intros; repeat econstructor.
-Qed.
-  
-Lemma kami_reachable_multistep:
-  forall m o n ll,
-    reachable o m ->
-    Multistep m o n ll ->
-    reachable n m.
-Proof.
-  intros.
-  inversion_clear H.
-  inversion_clear H1.
-  do 2 econstructor.
-  eapply SemFacts.multistep_app_inv; eassumption.
-Qed.
-
 Section Parametrized.
   Variables addrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat.
 
@@ -467,9 +446,14 @@ Section PerInstAddr.
   Context {instrMemSizeLg: Z}.
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
 
+  Local Definition pcInitVal: ConstT (Pc ninstrMemSizeLg) :=
+    ConstBit $0.
+
+  Local Definition rfInitVal: ConstT (Vector (Data rv32DataBytes) rv32RfIdx) :=
+    ConstVector (replicate (ConstBit $0) _).
+
   Definition procInit: ProcInit ninstrMemSizeLg rv32DataBytes rv32RfIdx :=
-    {| pcInit := getDefaultConst _;
-       rfInit := getDefaultConst _ |}.
+    {| pcInit := pcInitVal; rfInit := rfInitVal |}.
   Variable (memInit: MemInit nwidth rv32DataBytes).
 
   Definition predictNextPc ty (ppc: fullType ty (SyntaxKind (Pc ninstrMemSizeLg))) :=
