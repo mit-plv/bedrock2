@@ -120,13 +120,17 @@ Section Connect.
 
   Hypotheses
     (HinstrMemBound: instrMemSizeLg <= width - 2)
-    (Hinit: KamiProc.PgmInitNotMMIO (BinInt.Z.to_nat instrMemSizeLg) KamiProc.rv32MMIO).
+    (Hinit: KamiProc.PgmInitNotMMIO
+              (Kami.Ex.IsaRv32.rv32Fetch (Z.to_nat width) (Z.to_nat instrMemSizeLg))
+              KamiProc.rv32MMIO).
 
   (* will have to be extended with a program logic proof at the top and with the kami refinement
      proof to the pipelined processor at the bottom: *)
   Lemma bedrock2Semantics_to_kamiSpecProcessor:
     forall (goodTrace: list Event -> Prop) (m1 m2: KamiMachine) klseq (t0: list Event)
-           (m1': MetricRiscvMachine),
+           (m1': MetricRiscvMachine)
+           (Hkreach: Semantics.reachable
+                       m1 (KamiRiscv.kamiProc instrMemSizeLg memInit)),
       (* TODO many more hypotheses will be needed *)
       states_related (m1, t0) m1' ->
       Kami.Semantics.Multistep
@@ -146,6 +150,7 @@ Section Connect.
     - admit.
     - assumption.
     - eapply Preserve.
+    - eassumption.
     - eassumption.
     - eassumption.
     - eapply Establish. admit.

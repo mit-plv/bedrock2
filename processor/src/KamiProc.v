@@ -3,17 +3,39 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 
 Require Import Kami.
-Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.IsaRv32 Kami.Ex.SCMMInl.
+Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.IsaRv32.
+Require Import Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 Require Import Kami.Ex.ProcMemCorrect.
 
 Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+(** TODO: move to [SemFacts.v] in Kami *)
+
+Lemma kami_reachable_init:
+  forall m, reachable (initRegs (getRegInits m)) m.
+Proof.
+  intros; repeat econstructor.
+Qed.
+  
+Lemma kami_reachable_multistep:
+  forall m o n ll,
+    reachable o m ->
+    Multistep m o n ll ->
+    reachable n m.
+Proof.
+  intros.
+  inversion_clear H.
+  inversion_clear H1.
+  do 2 econstructor.
+  eapply SemFacts.multistep_app_inv; eassumption.
+Qed.
+
 Section Parametrized.
   Variables addrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat.
 
-  Variables (fetch: AbsFetch instBytes dataBytes)
+  Variables (fetch: AbsFetch addrSize iaddrSize instBytes dataBytes)
             (dec: AbsDec addrSize instBytes dataBytes rfIdx)
             (exec: AbsExec iaddrSize instBytes dataBytes rfIdx)
             (ammio: AbsMMIO addrSize).
@@ -58,11 +80,7 @@ Section Parametrized.
            end; discriminate).
 
   Definition PgmInitNotMMIO :=
-    forall iaddr: word iaddrSize,
-      evalExpr
-        (isMMIO
-           _ (evalExpr
-                ((_zeroExtend_ #iaddr) << $$(natToWord 2 2))%kami_expr)) = false.
+    Kami.Ex.SCMMInv.PgmInitNotMMIO fetch ammio.
 
   Lemma invert_Kami_pgmInit:
     forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl,
@@ -112,6 +130,54 @@ Section Parametrized.
     assumption.
   Qed.
 
+  Lemma invert_Kami_pgmInitEnd:
+    forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl,
+      pRegsToT km1 = Some kt1 ->
+      Step pproc km1 kupd klbl ->
+      klbl.(annot) = Some (Some "pgmInitEnd"%string) ->
+      pinit kt1 = false /\
+      klbl.(calls) = FMap.M.empty _ /\
+      exists kt2,
+        pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
+        pc kt2 = pc kt1 /\ rf kt2 = rf kt1 /\
+        pinit kt2 = true /\ mem kt2 = mem kt1.
+  Proof.
+    intros.
+    kinvert_more.
+    kinv_action_dest.
+    1: {
+      exfalso.
+      clear -Hi Heqic.
+      specialize (Hi x0); simpl in Hi.
+      congruence.
+    }
+
+    kinv_red.
+    unfold pRegsToT in *.
+    repeat
+      (match goal with
+       | [H: match (FMap.M.find ?key ?m) with
+             | Some _ => _
+             | None => _
+             end = Some _ |- _] =>
+         let Hkv := fresh "H" in
+         let k := fresh "k" in
+         let v := fresh "v" in
+         destruct (FMap.M.find key m) as [[[k|] v]|] eqn:Hkv; try discriminate
+       | [H: match (decKind ?k1 ?k2) with
+             | left _ => _
+             | right _ => _
+             end = Some _ |- _] =>
+         destruct (decKind k1 k2); try discriminate
+       end; kregmap_red).
+    
+    inversion H; subst; clear H.
+    simpl in *.
+    split; [reflexivity|].
+    repeat esplit.
+    assumption.
+  Qed.
+  
   Lemma invert_Kami_execLd_memory:
     forall km1 kt1 kupd klbl,
       pRegsToT km1 = Some kt1 ->
@@ -410,7 +476,7 @@ Section PerInstAddr.
     (#ppc + $4)%kami_expr.
 
   Definition procInl :=
-    pprocInl rv32Fetch (rv32Dec _) (rv32Exec _) rv32MMIO procInit memInit.
+    pprocInl (rv32Fetch _ _) (rv32Dec _) (rv32Exec _) rv32MMIO procInit memInit.
   Definition proc: Kami.Syntax.Modules := projT1 procInl.
 
   Definition hst := Kami.Semantics.RegsT.
@@ -425,7 +491,7 @@ Section PerInstAddr.
   (** Refinement from [p4mm] to [proc] (as a spec) *)
 
   Definition p4mm: Kami.Syntax.Modules :=
-    p4mm 1 rv32Fetch (rv32Dec _) (rv32Exec _) rv32MMIO
+    p4mm 1 (rv32Fetch _ _) (rv32Dec _) (rv32Exec _) rv32MMIO
          predictNextPc procInit memInit.
 
   Theorem proc_correct: p4mm <<== proc.
