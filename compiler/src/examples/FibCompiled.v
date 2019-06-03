@@ -64,7 +64,9 @@ Section FibCompiled.
       + simpl. apply MetricMinimalSatisfiesMetricPrimitives.
       + constructor.
       + intros. inversion H6. destruct H17.
-    - constructor; destruct 1.
+    - constructor; try solve [destruct 1].
+      intros ? ? ? ? ? ? ? ?.
+      destruct H0.
   Qed.
 
   Fixpoint fib (n: nat): Z :=
