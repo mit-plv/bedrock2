@@ -127,7 +127,7 @@ Section Equiv.
       forall t t' m riscvXAddrs kpc pc rf pinit instrMem dataMem metrics,
         traces_related t t' ->
         KamiProc.RegsToT m = Some (kamiStMk kpc rf pinit instrMem dataMem) ->
-        (pinit = true -> RiscvXAddrsConsistent instrMemSizeLg riscvXAddrs) ->
+        (pinit = false -> riscvXAddrs = kamiXAddrs) ->
         (pinit = true -> RiscvXAddrsSafe instrMemSizeLg instrMem dataMem riscvXAddrs) ->
         kpc = toKamiPc pc ->
         states_related
@@ -261,11 +261,12 @@ Section Equiv.
       eapply invert_Kami_pgmInit in H; eauto.
       unfold kamiStMk in H; simpl in H.
       destruct H as (? & ? & km2 & ? & ? & ? & ? & ?); subst.
-      clear H6 H7.
+      clear H7.
 
       destruct km2 as [pc2 rf2 pinit2 pgm2 mem2]; simpl in *; subst.
       split; [|reflexivity].
-      econstructor; eauto; try (intros; discriminate).
+      econstructor; eauto.
+      intros; discriminate.
       
     - (* case "pgmInitEnd" *)
       left.
@@ -279,16 +280,15 @@ Section Equiv.
       eapply invert_Kami_pgmInitEnd in H; eauto.
       unfold kamiStMk in H; simpl in H.
       destruct H as (? & ? & km2 & ? & ? & ? & ? & ?); subst.
-      clear H6 H7.
+      clear H7.
+      specialize (H6 eq_refl); subst.
 
       destruct km2 as [pc2 rf2 pinit2 pgm2 mem2]; simpl in *; subst.
-
       split; [|reflexivity].
-      econstructor; eauto; try (intros; discriminate).
-      + intros _.
-        admit.
-      + intros _.
-        admit.
+      econstructor; eauto.
+      intros _.
+
+      admit.
       
     - (* case "execLd" *) admit.
     - (* case "execLdZ" *) admit.
@@ -307,7 +307,7 @@ Section Equiv.
       unfold kamiStMk, KamiProc.pc, KamiProc.rf, KamiProc.pgm, KamiProc.mem in H.
       destruct H as [? [? [km2 [? ?]]]].
       simpl in H, H0; subst.
-      specialize (H6 eq_refl); rename H6 into Hxc.
+      clear H6.
       specialize (H7 eq_refl); rename H7 into Hxs.
 
       (** Invert a riscv-coq step. *)
@@ -451,7 +451,7 @@ Section Equiv.
         - assumption.
         - unfold RegsToT; rewrite H2, H9.
           subst dst; reflexivity.
-        - intros; assumption.
+        - intros; discriminate.
         - intros; assumption.
         - subst.
           rewrite kami_rv32NextPc_op_ok; auto;

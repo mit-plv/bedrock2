@@ -75,10 +75,6 @@ Section FetchOk.
     unfold toKamiPc; intros.
   Admitted.
 
-  Definition RiscvXAddrsConsistent (riscvXAddrs: XAddrs) :=
-    forall addr,
-      isXAddr addr riscvXAddrs -> isXAddr addr kamiXAddrs.
-
   Definition RiscvXAddrsSafe
              (instrMem: kword instrMemSizeLg -> kword width)
              (dataMem: kword width -> kword width)
@@ -92,7 +88,6 @@ Section FetchOk.
     forall (instrMem: kword instrMemSizeLg -> kword width)
            (dataMem: kword width -> kword width)
            (riscvXAddrs: XAddrs)
-           (Hxc: RiscvXAddrsConsistent riscvXAddrs)
            (Hxs: RiscvXAddrsSafe instrMem dataMem riscvXAddrs)
            (pc: kword width),
       isXAddr pc riscvXAddrs ->
