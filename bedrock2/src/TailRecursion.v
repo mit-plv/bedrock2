@@ -208,6 +208,110 @@ Section TailRecrsion.
         eexists; split; eauto. } }
     eapply Hexit.
   Qed.
+  
+  Lemma tailrec_earlyout_localsmap
+    {e c t} {m : mem} {l} {post : _->_->_-> Prop}
+    {measure : Type} (spec:_->_->_->_->(Prop*(_->_->_-> Prop))) lt
+    (Hwf : well_founded lt)
+    (v0 : measure) (P0 := (spec v0 t m l).(1)) (Hpre : P0)
+    (Q0 := (spec v0 t m l).(2))
+    (Hbody : forall v t m l,
+      let S := spec v t m l in let (P, Q) := S in
+      P ->
+      exists br, expr m l e (eq br) /\
+      (word.unsigned br <> 0%Z -> cmd call c t m l
+        (fun t' m' l' =>
+          (exists br, expr m' l' e (eq br) /\ word.unsigned br = 0 /\ Q t' m' l') \/
+          exists v', let S' := spec v' t' m' l' in let '(P', Q') := S' in
+          P' /\
+          lt v' v /\
+          forall T M L, Q' T M L -> Q T M L)) /\
+      (word.unsigned br = 0%Z -> Q t m l))
+    (Hpost : forall t m l, Q0 t m l -> post t m l)
+    : cmd call (cmd.while e c) t m l post.
+  Proof.
+    eexists (option measure), (with_bottom lt), (fun v t m l =>
+      match v with
+      | None => exists br, expr m l e (eq br) /\ word.unsigned br = 0 /\ Q0 t m l
+      | Some v =>
+          let S := spec v t m l in let '(P, Q) := S in
+          P /\ forall T M L, Q T M L -> Q0 T M L
+      end).
+    split; auto using well_founded_with_bottom; []; cbv [Markers.split] in *.
+    split.
+    { exists (Some v0); eauto. }
+    intros [vi|] ti mi li inv_i; [destruct inv_i as (?&Qi)|destruct inv_i as (br&Hebr&Hbr0&HQ)].
+    { destruct (Hbody _ _ _ _ ltac:(eassumption)) as (br&?&X); exists br; split; [assumption|].
+      destruct X as (Htrue&Hfalse). split; intros Hbr;
+        [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; eauto.
+      eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
+      { eapply Proper_call; firstorder idtac. }
+      intros tj mj lj [(br'&Hbr'&Hz&HQ)|(vj&dP&?&dQ)];
+          [exists None | exists (Some vj)]; cbn [with_bottom]; eauto 9. }
+    repeat esplit || eauto || intros; contradiction.
+  Qed.
+
+  Lemma tailrec_earlyout
+    {e c t localsmap} {m : mem}
+    (ghosttypes : polymorphic_list.list Type)
+    (variables : list varname)
+    {l0 : tuple word (length variables)}
+    {Pl : enforce variables l0 localsmap}
+    {post : _->_->_-> Prop}
+    {measure : Type} (spec:_->HList.arrows ghosttypes (_->_->ufunc word (length variables) (Prop*(_->_->ufunc word (length variables) Prop)))) lt
+    (Hwf : well_founded lt)
+    (v0 : measure)
+    : hlist.foralls (fun (g0 : hlist ghosttypes) => forall
+    (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(1))
+    (Hbody : forall v, hlist.foralls (fun g => forall t m, tuple.foralls (fun l =>
+      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : Semantics.locals =>
+      match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
+      S_.(1) ->
+      Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
+      (word.unsigned br <> 0%Z -> cmd call c t m localsmap
+        (fun t' m' localsmap' =>
+          Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
+          Markers.unique (Markers.left (exists br, expr m' localsmap' e (eq br) /\ Markers.right ( word.unsigned br = 0 /\ tuple.apply (S_.(2) t' m') l') ) ) \/
+          Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
+          match tuple.apply (hlist.apply (spec v') g' t' m') l' with S' =>
+          S'.(1) /\ Markers.right (
+            lt v' v /\
+            forall T M, hlist.foralls (fun L => tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L)) end))))))))) /\
+      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
+    (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m, hlist.foralls (fun l =>  tuple.apply (Q0 t m) l -> post t m (reconstruct variables l))end)
+    , cmd call (cmd.while e c) t m localsmap post ).
+  Proof.
+    eapply hlist_forall_foralls; intros g0 **.
+    eexists (option measure), (with_bottom lt), (fun vi ti mi localsmapi =>
+      exists li, localsmapi = reconstruct variables li /\
+      match vi with None => exists br, expr mi localsmapi e (eq br) /\ word.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) ti mi) li | Some vi =>
+      exists gi, match tuple.apply (hlist.apply (spec vi) gi ti mi) li with S_ =>
+      S_.(1) /\ forall T M L, tuple.apply (S_.(2) T M) L ->
+        tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) T M) L end end).
+    cbv [Markers.unique Markers.split Markers.left Markers.right] in *.
+    split; eauto using well_founded_with_bottom.
+    split. { exists (Some v0), l0. split. 1: eapply reconstruct_enforce; eassumption. exists g0; split; eauto. }
+    intros [vi|] ti mi lmapi.
+    2: { intros (ld&Hd&br&Hbr&Hz&Hdone).
+      eexists; split; eauto.
+      split; intros; try contradiction.
+      subst; eapply (hlist.foralls_forall (Hpost ti mi) _ Hdone). }
+    intros (?&?&gi&?&Qi); subst.
+    destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi) _ ltac:(eassumption)) as (br&?&X).
+    exists br; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
+      [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
+    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
+      { eapply Proper_call; firstorder idtac. }
+      intros tj mj lmapj Hlj; eapply hlist.existss_exists in Hlj.
+      destruct Hlj as (lj&Elj&HE); eapply reconstruct_enforce in Elj; subst lmapj.
+      destruct HE as [(br'&Hevalr'&Hz'&Hdone)|HE].
+      { exists None; cbn. eauto 9. }
+      { eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&HR).
+        pose proof fun T M => hlist.foralls_forall (HR T M); clear HR.
+        eexists (Some _); eauto 9. } }
+    { pose proof fun t m => hlist.foralls_forall (Hpost t m); clear Hpost; eauto. }
+  Qed.
+
 
   Lemma atleastonce
     {e c t l} {m : mem}

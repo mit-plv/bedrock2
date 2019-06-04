@@ -8,6 +8,8 @@ Section ListPred.
 
   Definition one(t: T): list T -> Prop := eq [t].
 
+  Definition any : list T -> Prop := fun _ => True.
+
   Definition concat(P1 P2: list T -> Prop): list T -> Prop :=
     fun l => exists l1 l2, l = l1 ;++ l2 /\ P1 l1 /\ P2 l2.
 
@@ -29,6 +31,9 @@ Section ListPred.
 
   Definition existsl{A: Type}(P: A -> list T -> Prop): list T -> Prop :=
     fun l => exists a, P a l.
+
+  Lemma concat_app (P Q : list T->Prop) x y (HP : P x) (HQ : Q y) : concat P Q (y ++ x).
+  Proof. cbv [concat]; eauto. Qed.
 
   Lemma kleene_app P xs (Hxs : kleene P xs) ys (Hys : kleene P ys)
     : kleene P (xs ++ ys).
