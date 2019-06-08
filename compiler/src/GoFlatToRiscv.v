@@ -270,7 +270,8 @@ Section Go.
       remember ((word.unsigned a1 - word.unsigned a2) / 2 ^ width) as k.
       pose proof (word.unsigned_range a1).
       pose proof (word.unsigned_range a2).
-      assert (k < 0 \/ k = 0 \/ 0 < k) as D by bomega. destruct D as [D | [D | D]]; try Lia.nia.
+      assert (k < 0 \/ k = 0 \/ 0 < k) as D by bomega.
+      destruct D as [D | [D | D]]; cycle 1; [|Lia.nia..].
       rewrite D in C.
       rewrite Z.mul_0_r in C.
       bomega.
@@ -427,6 +428,7 @@ Section Go.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+        cbv [width] in *. (* UNIVERSES *)
         blia.
       }
       apply sep_on_undef_put. {
@@ -437,6 +439,7 @@ Section Go.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+        cbv [width] in *. (* UNIVERSES *)
         blia.
       }
       apply sep_on_undef_put. {
@@ -447,6 +450,7 @@ Section Go.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+        cbv [width] in *. (* UNIVERSES *)
         blia.
       }
       apply sep_on_undef_put. {
@@ -454,11 +458,13 @@ Section Go.
         erewrite length_flat_map by (intro; simpl; reflexivity).
         rewrite map_length.
         change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+        cbv [width] in *. (* UNIVERSES *)
         blia.
       }
       word_simpl.
       apply IHprog.
       change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
+      cbv [width] in *. (* UNIVERSES *)
       (* LIAFAIL *)
       clear -H. blia.
   Qed.
