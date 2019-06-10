@@ -140,6 +140,71 @@ Section DecExecOk.
     intros. auto.
   Qed.
 
+  Lemma invert_decode_Lw:
+    forall inst (rd rs1: Register) (oimm12: Utility.Utility.MachineInt),
+      decode RV32IM inst = IInstruction (Decode.Lw rd rs1 oimm12) ->
+      bitSlice inst 0 7 = opcode_LOAD /\
+      bitSlice inst 7 12 = rd /\
+      bitSlice inst 12 15 = funct3_LW /\
+      bitSlice inst 15 20 = rs1 /\
+      bitSlice inst 20 32 = oimm12.
+  Proof.
+    intros *.
+    cbv beta delta [decode].
+    lets_in_hyp_to_eqs.
+    subst
+      resultI
+      resultM
+      resultA
+      resultF
+      resultI64
+      resultM64
+      resultA64
+      resultF64
+      resultCSR.
+    repeat match type of H with
+    | context C [if ?a then ?b else ?c] =>
+      ((let P := context C [ b ] in change P in H) ||
+       (let P := context C [ c ] in change P in H))
+    end.
+    subst results.
+    destruct (isValidI decodeI) eqn: VI;
+    destruct (isValidM decodeM) eqn: VM;
+    destruct (isValidCSR decodeCSR) eqn: VCSR.
+    all: try (clear; simpl; discriminate).
+    simpl.
+    intro E.
+    injection E. clear E.
+    subst decodeI.
+    intro E.
+    repeat match type of E with
+    | (if ?a then ?b else ?c) = ?d => destruct a; [discriminate E|]
+    end.
+    match type of E with
+    | (if ?a then ?b else ?c) = ?d => destruct a eqn: G; cycle 1
+    end.
+    { (* more invalid cases *)
+      repeat match type of E with
+             | (if ?a then ?b else ?c) = ?d => destruct a; [discriminate E|]
+             end.
+      discriminate E.
+    }
+    (* the only valid case remains *)
+    subst rd0 rs0 oimm0.
+    invert_decode_if_true G.
+    assert (bitSlice inst 0 7 = opcode_LOAD) as R1 by congruence; revert R1.
+    assert (bitSlice inst 12 15 = funct3_LW) as R2 by congruence; revert R2.
+    injection E.
+    clear.
+    (* if we automate this further, we might be able to infer the conclusion with a tactic
+       rather than having to state it manually *)
+    intros.
+    erewrite signExtend_nop in H.
+    - auto.
+    - admit.
+    - admit.
+  Admitted.
+
   Lemma kami_split_bitSlice_consistent_1:
     forall (i: nat) kinst,
       wordToZ (split1 i (32 - i) kinst) =
@@ -303,6 +368,17 @@ Section DecExecOk.
     unfold evalBinBit.
     unfold evalConstT.
     f_equal.
+  Admitted.
+
+  Lemma kami_rv32NextPc_load_ok:
+    forall rf pc kinst,
+      wordToZ
+        (evalExpr
+           (getOpcodeE (Var type (SyntaxKind (Data rv32InstBytes)) kinst))) =
+      opcode_LOAD ->
+      evalExpr (rv32NextPc (Z.to_nat instrMemSizeLg) type rf pc kinst) =
+      pc ^+ $4.
+  Proof.
   Admitted.
   
 End DecExecOk.
