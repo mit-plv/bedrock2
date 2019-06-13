@@ -249,9 +249,9 @@ Proof.
     { replace (word.add p_addr i) with p_addr by (subst i; ring).
       rewrite <- (List.firstn_skipn (Z.to_nat (word.unsigned (word.sub num_bytes i) ) )  _) in H.
       SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H; [|ecancel_assumption].
-      rewrite List.length_firstn_inbounds, Znat.Z2Nat.id; trivial.
+      rewrite List.length_firstn_inbounds, ?Znat.Z2Nat.id; trivial.
       { eapply Properties.word.unsigned_range. }
-      trans_ltu. eapply Znat.Nat2Z.inj_le. rewrite -> Znat.Z2Nat.id.
+      trans_ltu. eapply Znat.Nat2Z.inj_le. rewrite -> ?Znat.Z2Nat.id.
       { rewrite -> H0.
         replace (word.sub num_bytes i) with num_bytes by (subst i; ring).
         rewrite word.unsigned_of_Z in H2. change (word.wrap 1521) with (1521) in H2.
@@ -260,12 +260,12 @@ Proof.
       eapply Properties.word.unsigned_range. }
     { replace (word.sub num_bytes i) with num_bytes by (subst i; ring).
       rewrite -> List.length_firstn_inbounds.
-      { rewrite Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. }
+      { rewrite ?Znat.Z2Nat.id; trivial; eapply Properties.word.unsigned_range. }
       rewrite H0. trans_ltu.
       change (word.unsigned (word.of_Z 1521)) with (1521) in H2.
       pose proof Properties.word.unsigned_range num_bytes.
       PreOmega.zify.
-      rewrite Znat.Z2Nat.id; Lia.lia. }
+      rewrite ?Znat.Z2Nat.id; Lia.lia. }
     { pose proof Properties.word.unsigned_range num_bytes. PreOmega.zify.
       subst i. subst num_bytes. subst num_bytes2.
       replace (word.add (word.add num_bytes1 num_bytes1) (word.add num_bytes1 num_bytes1)) with (word.mul num_bytes1 (word.of_Z 4)) in * by ring.

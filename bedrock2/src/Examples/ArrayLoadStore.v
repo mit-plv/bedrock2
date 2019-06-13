@@ -78,7 +78,7 @@ Proof.
   seprewrite_in (symmetry! @array_cons) H2.
   seprewrite_in (@bytearray_index_merge) H4. {
     pose proof Properties.word.unsigned_range i.
-    rewrite length_firstn_inbounds; (PreOmega.zify; rewrite Znat.Z2Nat.id; bomega).
+    rewrite length_firstn_inbounds; (PreOmega.zify; rewrite ?Znat.Z2Nat.id; bomega).
   }
 
   letexists.
