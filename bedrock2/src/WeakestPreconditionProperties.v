@@ -179,22 +179,19 @@ Section WeakestPrecondition.
              | _ => progress cbv [dlet.dlet WeakestPrecondition.dexpr WeakestPrecondition.dexprs WeakestPrecondition.store] in *
              end; eauto.
 
-  Lemma expr_sound m l e mc post (H : WeakestPrecondition.expr m l e post)
-    : exists v mc', Semantics.eval_expr m l e mc = Some (v, mc') /\ post v.
+  Lemma expr_sound m l e post (H : WeakestPrecondition.expr m l e post)
+    : exists v, Semantics.eval_expr m l e = Some v /\ post v.
   Proof.
     ind_on Syntax.expr; t.
-    { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
-    { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
+    { eapply IHe in H; eauto. destruct H. destruct H. setoid_rewrite H. eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
   Qed.
     
-  Lemma sound_args : forall m l args mc P,
+  Lemma sound_args : forall m l args P,
       WeakestPrecondition.list_map (WeakestPrecondition.expr m l) args P ->
-      exists x mc',
-        Semantics.evaluate_call_args_log m l args mc = Some (x, mc') /\ P x.
+      exists x, List.option_all (List.map (Semantics.eval_expr m l) args) = Some x /\ P x.
   Proof.
     induction args; cbn; repeat (subst; t).
-    unfold Semantics.eval_expr in *.
     eapply expr_sound in H; t; rewrite H.
     eapply IHargs in H0; t; rewrite H0.
     eauto.
@@ -204,7 +201,7 @@ Section WeakestPrecondition.
   Lemma sound_nil c t m l mc post
         (H:WeakestPrecondition.cmd (fun _ _ _ _ _ => False) c t m l post)
     : Semantics.exec map.empty c t m l mc (fun t' m' l' mc' => post t' m' l').
-  Proof.
+   Proof.
     ind_on Syntax.cmd; repeat (t; try match reverse goal with H : WeakestPrecondition.expr _ _ _ _ |- _ => eapply expr_sound in H end).
     { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
       { econstructor; t. }
