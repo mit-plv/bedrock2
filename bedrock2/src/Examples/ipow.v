@@ -71,9 +71,9 @@ Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
   repeat straightline.
 
-  refine (TailRecursion.tailrec
+  refine ((TailRecursion.tailrec
     (* types of ghost variables*) HList.polymorphic_list.nil
-    (* program variables *) ["e";"ret";"x"]
+    (* program variables *) (["e";"ret";"x"] : list varname))
     (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e) (* precondition *)
     (fun   T M E RET X => T = t /\ M = m /\ (* postcondition *)
         word.unsigned RET = word.unsigned ret * word.unsigned x ^ word.unsigned e mod 2^width))
@@ -103,7 +103,7 @@ Proof.
           Z.div_mod_to_equations; blia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
-          erewrite Z.land_1_r in *; change (2^1) with 2 in *.
+          change (1+1) with 2 in *.
           eapply Z.mod2_nonzero in Hbit.
           epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
           rewrite Heq at 2; clear Hbit Heq.
@@ -124,7 +124,7 @@ Proof.
           Z.div_mod_to_equations; blia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
-          rewrite Z.land_1_r in *; change (2^1) with 2 in *.
+          change (1+1) with 2 in *.
           epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
           rewrite Heq at 2; clear Hbit Heq.
           (* rewriting with equivalence modulo ... *)

@@ -49,6 +49,8 @@ Ltac requireZcstExpr e :=
   | Z.ones ?x => requireZcstExpr x
   | Z.opp ?x => requireZcstExpr x
   | Z.lnot ?x => requireZcstExpr x
+  | Z.log2 ?x => requireZcstExpr x
+  | Z.log2_up ?x => requireZcstExpr x
   | Z.add ?x ?y => requireZcstExpr x; requireZcstExpr y
   | Z.sub ?x ?y => requireZcstExpr x; requireZcstExpr y
   | Z.mul ?x ?y => requireZcstExpr x; requireZcstExpr y
@@ -178,6 +180,26 @@ Module unsigned.
       absint_lemma! (Properties.word.unsigned_divu_nowrap x y).
     Definition absint_modu (x y : word.rep) ux Hx uy Hy Hnz  : word.unsigned _ =~> _ :=
       absint_lemma! (Properties.word.unsigned_modu_nowrap x y).
+
+    Lemma absint_mask_r x y ux (Hx : word.unsigned x = ux) uy (Hy : word.unsigned y = uy) (Huy : uy = Z.ones (Z.log2 uy+1)):
+       word.unsigned (word.and x y) =~> Z.modulo ux (uy+1).
+    Proof.
+      etransitivity; [eapply absint_and; eauto|].
+      rewrite Huy.
+      rewrite Z.land_ones, Z.ones_equiv; repeat (eapply f_equal2 || blia).
+      enough (Z.log2 0 <= Z.log2 uy) by (change (Z.log2 0) with 0 in *; blia).
+      eapply Z.log2_le_mono; subst uy; eapply word.unsigned_range.
+    Qed.
+    Lemma absint_mask_l y x uy (Hy : word.unsigned y = uy) ux (Hx : word.unsigned x = ux) (Huy : uy = Z.ones (Z.log2 uy+1)):
+       word.unsigned (word.and y x) =~> Z.modulo ux (uy+1).
+    Proof.
+      etransitivity; [eapply absint_and; eauto|].
+      rewrite Z.land_comm.
+      rewrite Huy.
+      rewrite Z.land_ones, Z.ones_equiv; repeat (eapply f_equal2 || blia).
+      enough (Z.log2 0 <= Z.log2 uy) by (change (Z.log2 0) with 0 in *; blia).
+      eapply Z.log2_le_mono; subst uy; eapply word.unsigned_range.
+    Qed.
   End WithWord.
 
   Ltac named_pose_asfresh_or_id x n :=
@@ -193,6 +215,14 @@ Module unsigned.
       | word.of_Z ?a =>
         let Ba := rbounded a in
         named_pose_proof (absint_of_Z a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)) : @absint_eq Z (@word.unsigned _ word_parameters e) a)
+      | word.and ?a ?b =>
+        let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
+        let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
+        named_pose_proof (absint_mask_r a b Ra Ha Rb Hb eq_refl : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.modulo Ra (Rb+1)))
+      | word.and ?a ?b =>
+        let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
+        let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
+        named_pose_proof (absint_mask_l a b Ra Ha Rb Hb eq_refl : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.modulo Rb (Ra+1)))
       | ?op ?a ?b =>
         let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
         let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
@@ -250,3 +280,74 @@ Module unsigned.
       end
     end.
 End unsigned.
+
+Require coqutil.Word.Naive.
+Module absint_test.
+  Import Word.Naive.
+  Fixpoint goal (x : word32) (n : nat) : Prop
+    := match n with
+       | O => True
+       | S n' => let x := word.add x x in goal x n'
+       end.
+  Goal forall x X, 1 <= X < 2^60 -> absint_eq (word.unsigned x) X -> goal x 7.
+  Proof.
+    cbv beta iota delta [goal].
+    intros.
+
+    let e := match goal with x := _ |- _ => x end in
+    let e := constr:(word.ndn (word.xor (word.or (word.and (word.sub (word.mul (word.slu (word.sru e (word.of_Z 16)) (word.of_Z 3)) x) x) x) x) x) x) in
+    let H := unsigned.zify_expr e in
+    idtac H.
+    
+
+   clear.
+   assert (x3 : word32) by exact (word.of_Z 0).
+  let e :=
+    constr:(
+word.unsigned
+  (word.add
+     (word.add
+        (word.sru
+           (word.add
+              (word.and (word.sru x3 (word.of_Z 16)) (word.of_Z 16383))
+              (word.of_Z 3)) (word.of_Z 2))
+        (word.sru
+           (word.add
+              (word.and (word.sru x3 (word.of_Z 16)) (word.of_Z 16383))
+              (word.of_Z 3)) (word.of_Z 2)))
+     (word.add
+        (word.sru
+           (word.add
+              (word.and (word.sru x3 (word.of_Z 16)) (word.of_Z 16383))
+              (word.of_Z 3)) (word.of_Z 2))
+        (word.sru
+           (word.add
+              (word.and (word.sru x3 (word.of_Z 16)) (word.of_Z 16383))
+              (word.of_Z 3)) (word.of_Z 2))))) in
+     let H := unsigned.zify_expr e in
+     idtac H;
+     repeat match goal with H:?x =~> ?x |- _ => clear H end.
+
+    exact I.
+  Qed.
+
+
+  Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
+  Proof.
+    intros.
+
+    set (a := x+y).
+    set (b := y+x).
+    set (c := a*b+7).
+
+    let e := constr:(a + y mod 2 * (b*(x*y/4)) + c) in
+    let H := rbounded e in
+    cbn in *.
+
+    let e := constr:(a*c + b) in
+    let H := rbounded e in
+    idtac H;
+    cbn in *.
+    exact I.
+  Qed.
+End absint_test.

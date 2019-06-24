@@ -82,7 +82,13 @@ Proof.
   constructor; unfold ext_spec, pipeline_params; simpl.
   - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
   - unfold real_ext_spec. intros.
-    destruct H; destruct H0. subst.
+    cbv [Morphisms.Proper Morphisms.respectful Basics.impl Morphisms.pointwise_relation]; intros.
+    destruct H0; destruct H0. subst.
+    split; [reflexivity|].
+    repeat (destruct_one_match_hyp; try contradiction).
+    all: intuition eauto.
+  - unfold real_ext_spec. intros.
+    destruct H0; destruct H0.
     split; [reflexivity|].
     repeat (destruct_one_match_hyp; try contradiction).
     all: intuition eauto.

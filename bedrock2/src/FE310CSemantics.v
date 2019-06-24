@@ -43,19 +43,21 @@ Instance parameters : parameters :=
     end else False;
 |}.
 
-Global Instance ok trace m0 act args :
-  Morphisms.Proper
-    (Morphisms.respectful
-       (Morphisms.pointwise_relation Interface.map.rep
-          (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
-       Basics.impl) (Semantics.ext_spec trace m0 act args).
+Global Instance ok : Semantics.parameters_ok parameters.
 Proof.
-  cbv [ext_spec parameters].
-  cbv [Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl] in *;
-  repeat match goal with |- context [string_dec ?a ?b] => destruct (string_dec a b) end;
-  destruct args as [|? [|? [|]]]; intuition idtac.
-  all: eapply H; eauto.
-Qed.
+  split; cbv [funname_env locals mem parameters]; try exact _. 
+  { cbv; auto. }
+  { eapply SortedListString.ok. }
+  { intros; eapply SortedListString.ok. }
+  split.
+  { admit. }
+  { cbv [ext_spec parameters]; intros.
+    cbv [Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl] in *;
+      repeat match goal with |- context [string_dec ?a ?b] => destruct (string_dec a b) end;
+      destruct args as [|? [|? [|]]]; intuition idtac.
+    all: eapply H; eauto. }
+  { admit. }
+Admitted.
 
 (* TODO why does typeclass search fail here? *)
 Instance mapok: Interface.map.ok mem := SortedListWord.ok Naive.word32 _.

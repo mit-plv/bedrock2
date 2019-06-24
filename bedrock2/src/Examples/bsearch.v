@@ -13,47 +13,7 @@ From coqutil.Tactics Require Import syntactic_unify.
 From coqutil.Tactics Require Import rdelta.
 
 Require Import bedrock2.AbsintWordToZ.
-
 Strategy -1000 [word parameters]. (* TODO where should this go? *)
-
-Module absint_test.
-  Fixpoint goal (x : word) (n : nat) : Prop
-    := match n with
-       | O => True
-       | S n' => let x := word.add x x in goal x n'
-       end.
-  Goal forall x X, 1 <= X < 2^60 -> absint_eq (word.unsigned x) X -> goal x 7.
-  Proof.
-    cbv beta iota delta [goal].
-    intros.
-
-    let e := match goal with x := _ |- _ => x end in
-    let e := constr:(word.ndn (word.xor (word.or (word.and (word.sub (word.mul (word.slu (word.sru e (word.of_Z 16)) (word.of_Z 3)) x) x) x) x) x) x) in
-    let H := unsigned.zify_expr e in
-    idtac H.
-    exact I.
-  Qed.
-
-
-  Goal forall x y, 0 <= x < 5 -> 10 <= y < 20 -> True.
-  Proof.
-    intros.
-
-    set (a := x+y).
-    set (b := y+x).
-    set (c := a*b+7).
-
-    let e := constr:(a + y mod 2 * (b*(x*y/4)) + c) in
-    let H := rbounded e in
-    cbn in *.
-
-    let e := constr:(a*c + b) in
-    let H := rbounded e in
-    idtac H;
-    cbn in *.
-    exact I.
-  Qed.
-End absint_test.
 
 Local Infix "^+" := word.add  (at level 50, left associativity).
 Local Infix "^-" := word.sub  (at level 50, left associativity).
