@@ -113,6 +113,7 @@ Definition lightbulb :=
     let port : varname := "port" in
     let mmio_val : varname := "mmio_val" in
     let command : varname := "command" in
+    let Oxff : varname := "Oxff" in
     let MMIOREAD : varname := "MMIOREAD" in
     let MMIOWRITE : varname := "MMIOWRITE" in
     let r : varname := "r" in
@@ -121,19 +122,20 @@ Definition lightbulb :=
     r = (constr:(42));
     require (r < len) else { r = (constr:(-1)) };
 
-    ethertype = ((load1(packet + constr:(12)) << constr:(8)) | (load1(packet + constr:(13))));
+    Oxff = (constr:(Ox"ff"));
+    ethertype = ((((load1(packet + constr:(12)))&Oxff) << constr:(8)) | ((load1(packet + constr:(13)))&Oxff));
     r = (constr:(1536 - 1));
     require (r < ethertype) else { r = (constr:(-1)) };
 
     r = (constr:(23));
     r = (packet + r);
-    protocol = (load1(r));
+    protocol = ((load1(r))&Oxff);
     r = (constr:(Ox"11"));
     require (protocol == r) else { r = (constr:(-1)) };
 
     r = (constr:(42));
     r = (packet + r);
-    command = (load1(r));
+    command = ((load1(r))&Oxff);
     command = (command&constr:(1));
 
     (* pin output enable -- TODO do this in init
@@ -214,11 +216,6 @@ Instance spec_of_iot : spec_of "iot" := fun functions =>
 Require Import bedrock2.AbsintWordToZ.
 Import WeakestPreconditionProperties.
 
-Lemma align_trace_cons {T} x xs cont t (H : xs = cont ++ t) : @cons T x xs = (cons x cont) ++ t.
-Proof. intros. cbn. congruence. Qed.
-Lemma align_trace_app {T} x xs cont t (H : xs = cont ++ t) : @app T x xs = (app x cont) ++ t.
-Proof. intros. cbn. subst. rewrite List.app_assoc; trivial. Qed.
-
 Lemma iot_ok : program_logic_goal_for_function! iot.
 Proof.
   repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end
@@ -246,6 +243,20 @@ Local Ltac zify_unsigned :=
   end;
   repeat match goal with H:absint_eq ?x ?x |- _ => clear H end;
   repeat match goal with H:?A |- _ => clear H; match goal with G:A |- _ => idtac end end.
+
+Lemma byte_mask_byte (b : Semantics.byte) : word.and (word.of_Z (word.unsigned b)) (word.of_Z 255) = word.of_Z (word.unsigned b) :> Semantics.word.
+Proof.
+  eapply word.unsigned_inj; rewrite word.unsigned_and_nowrap.
+  rewrite !word.unsigned_of_Z.
+  pose proof word.unsigned_range b.
+  cbv [word.wrap].
+  rewrite <-!(Z.land_ones _ width) by (cbv; congruence).
+  rewrite <-word.wrap_unsigned at 2.
+  change (Z.land 255 (Z.ones width)) with (Z.ones 8).
+  change (Z.ones width) with (Z.ones 32).
+  rewrite <-Z.land_ones by blia.
+  Z.bitwise. Btauto.btauto.
+Qed.
 
 Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
 Proof.
@@ -290,7 +301,9 @@ Proof.
       let __ := lazymatch v with if word.eqb _ _ then word.of_Z 1 else word.of_Z 0 => I end in
       eapply Word.Properties.word.if_zero in H; eapply word.eqb_false in H
   end;
-  repeat match goal with x := word.of_Z _ |- _ => subst x end.
+  repeat match goal with x := _ |- _ => subst x end;
+  repeat match goal with H : _ |- _ => rewrite !byte_mask_byte in H end.
+  all : repeat straightline.
 
   1: {
     left.
@@ -299,8 +312,8 @@ Proof.
     1: blia.
     cbv [gpio_set one existsl concat].
     eexists _, ([_]), ([_]); repeat split; repeat f_equal.
-    subst command.
     eapply word.unsigned_inj.
+    rewrite ?byte_mask_byte.
     rewrite ?word.unsigned_and_nowrap.
     change (word.unsigned (word.of_Z 1)) with (Z.ones 1).
     rewrite Z.land_ones, Z.bit0_mod by blia.
@@ -308,7 +321,7 @@ Proof.
     cbv [word.wrap]; change width with 32 in *.
     rewrite 2(Z.mod_small _ (2^32)); try exact eq_refl.
     1: match goal with |- 0 <= word.unsigned ?x < _ => pose proof word.unsigned_range x end; blia.
-    1: clear; Z.div_mod_to_equations; blia. }
+    clear; Z.div_mod_to_equations; blia. }
 
   (* parse failures *)
   all : right; repeat split; eauto; try solve[intros HX; inversion HX]; intros (?&?&?&?&?).
@@ -596,18 +609,20 @@ Proof.
   exact _.
 Defined.
 
-(*
-Definition x := (iot_ok , lightbulb_ok , recvEthernet_ok , lan9250_readword_ok , spi_read_ok , spi_write_ok).
-Print Assumptions x.
-Axioms:, SortedListString.string_strict_order, TailRecursion.putmany_gather, parameters_ok FE310CSemantics.parameters, SortedList.TODO
-*)
+Lemma link_lightbulb : spec_of_iot (iot::recvEthernet::lightbulb::lan9250_readword::SPI.spi_xchg::SPI.spi_read::SPI.spi_write::nil).
+Proof.
+  eapply iot_ok;
+  (eapply recvEthernet_ok || eapply lightbulb_ok);
+      eapply lan9250_readword_ok; eapply spi_xchg_ok;
+      (eapply spi_write_ok || eapply spi_read_ok).
+Qed.
+(* Print Assumptions link_lightbulb. *)
+(* parameters_ok FE310CSemantics.parameters, SortedList.TODO, TailRecursion.putmany_gather, SortedListString.string_strict_order *)
 
-(*
 From bedrock2 Require Import ToCString Byte Bytedump.
 Local Open Scope bytedump_scope.
+Set Printing Width 999999.
 Goal True.
-(* FIXME: name clashes between this file and lan9250_spec *)
-  let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters [iot; lightbulb; recvEthernet; lan9250_readword; spi_read; spi_write])) in
-  idtac (* c_code *).
+  let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters [lan9250_init; lan9250_wait_for_boot; iot; lightbulb; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
+  idtac c_code.
 Abort.
-*)

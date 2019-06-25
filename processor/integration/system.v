@@ -78,21 +78,23 @@ endmodule
 module system(
 `ifdef SYNTHESIS
   input wire clk,
+  input wire spi_miso,
 `endif
-  output reg [7:0] led = 8'hff
+  output reg [7:0] led = 8'hff,
+  output reg spi_clk = 0,
+  output wire spi_mosi,
+  output reg spi_csn = 1,
+  output reg lightbulb = 0
 );
-  reg spi_clk = 0;
-  reg spi_cs = 0;
-  wire spi_mosi;
-  wire spi_miso;
 
 `ifndef SYNTHESIS
   reg clk=0;
+  wire spi_miso; assign spi_miso = spi_mosi;
 `endif
 
   reg resetn = 1'b0; always @(posedge clk) begin resetn <= 1'b1; end
 
-  parameter integer LGSZW = 8;
+  parameter integer LGSZW = 12;
   wire [31:0] ram_read;
   wire [64:0] obtain_rq_get;
   wire rdy_obtain_rq_get;
@@ -126,19 +128,15 @@ module system(
     .write(mem_rq_data)
   );
 
-  assign instant_rs_en = en_obtain_rq_get && (mem_rq_addr == 32'h1001200c || mem_rq_addr == 32'h10024048 || mem_rq_addr == 32'h1002404c);
+  assign instant_rs_en = en_obtain_rq_get && (mem_rq_addr == 32'h10012008 || mem_rq_addr == 32'h1001200c || mem_rq_addr == 32'h10024018 || mem_rq_addr == 32'h10024048 || mem_rq_addr == 32'h1002404c || mem_rq_addr == 32'h10012038);
   assign instant_rs =
 	  (!instant_rs_en) ? 32'hxxxxxxxx
 	  : (mem_rq_addr == 32'h1001200c && !mem_rq_iswrite) ? {8'h00, led, 16'h0000}
 	  : (mem_rq_addr == 32'h10024048 && !mem_rq_iswrite) ? {(!spi_tx_rdy), 31'h0}
 	  : (mem_rq_addr == 32'h1002404c && !mem_rq_iswrite) ? {(!spi_tx_rdy), 23'h0, spi_rx_buf}
+    : mem_rq_addr == 32'h10012038 ? 0
 	  : 32'hxxxxxxxx;
-  always @(posedge clk) begin
-    if (en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c) begin
-      led <= mem_rq_data[23:16];
-    end
-  end
-  wire spi_tx_en = en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c;
+  wire spi_tx_en = en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h10024048;
   reg [3:0] spi_tx_remaining = 0;
   reg [7:0] spi_tx_buf;
   reg [7:0] spi_rx_buf;
@@ -150,11 +148,28 @@ module system(
       spi_tx_remaining <= 8;
     end else if (spi_tx_remaining && !spi_clk) begin
       spi_clk <= 1;
-      spi_rx_buf = {spi_rx_buf[6:0], spi_mosi};
+      spi_rx_buf = {spi_rx_buf[6:0], spi_miso};
     end else if (spi_clk) begin
       spi_clk <= 0;
       spi_tx_buf <= {spi_tx_buf[6:0], 1'bx};
       spi_tx_remaining <= spi_tx_remaining - 1;
+    end
+  end
+  wire spi_setcs_en = en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h10024018;
+  always @(posedge clk) begin
+    if (spi_setcs_en) begin
+        spi_csn <= !mem_rq_data[1];
+    end
+  end
+
+  reg [5:0] cnt = 0;
+  always @(posedge clk) begin
+    led[6] <= 0;
+    led [5:0] <= ~cnt;
+    if (en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c) begin
+      lightbulb <= mem_rq_data[23];
+      led[7] <= !mem_rq_data[23];
+      cnt <= cnt + 1;
     end
   end
 
@@ -162,9 +177,36 @@ module system(
   always #1 clk = !clk;
   initial begin
     $dumpfile("system.vcd");
-    $dumpvars(1, led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
-      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, ram_rs_en, instant_rs_en, ram_read, spi_tx_buf, spi_rx_buf);
-    #1000 $finish();
+    $dumpvars(1, mkTop.proc_m12_lastPc,
+    led, spi_clk, spi_csn, spi_mosi, spi_miso, clk, resetn,
+      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_addr, mem_rq_data, mem_rq_iswrite, ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put, spi_tx_buf, spi_rx_buf, spi_tx_rdy,
+
+       mkTop.CAN_FIRE_RL_proc_m12_reqLd,
+       mkTop.CAN_FIRE_RL_proc_m12_reqSt,
+       mkTop.CAN_FIRE_RL_proc_m12_wbNm,
+       mkTop.CAN_FIRE_RL_proc_m12_wbNmZ,
+       mkTop.WILL_FIRE_RL_proc_m10_decodeLd,
+       mkTop.WILL_FIRE_RL_proc_m10_decodeNm,
+       mkTop.WILL_FIRE_RL_proc_m10_decodeSt,
+       mkTop.WILL_FIRE_RL_proc_m11_execBypass,
+       mkTop.WILL_FIRE_RL_proc_m11_execNm,
+       mkTop.WILL_FIRE_RL_proc_m12_repLd,
+       mkTop.WILL_FIRE_RL_proc_m12_repLdZ,
+       mkTop.WILL_FIRE_RL_proc_m12_repSt,
+       mkTop.WILL_FIRE_RL_proc_m12_reqLd,
+       mkTop.WILL_FIRE_RL_proc_m12_reqSt,
+       mkTop.WILL_FIRE_RL_proc_m12_wbNm,
+       mkTop.WILL_FIRE_RL_proc_m12_wbNmZ,
+       mkTop.WILL_FIRE_RL_proc_m12_wrongEpoch,
+       mkTop.WILL_FIRE_RL_proc_m9_instFetchRq,
+       mkTop.WILL_FIRE_RL_proc_m9_instFetchRs,
+       mkTop.WILL_FIRE_RL_proc_m9_modifyPc,
+       mkTop.WILL_FIRE_RL_proc_m9_pgmInitRq,
+       mkTop.WILL_FIRE_RL_proc_m9_pgmInitRqEnd,
+       mkTop.WILL_FIRE_RL_proc_m9_pgmInitRs,
+       mkTop.WILL_FIRE_RL_proc_m9_pgmInitRsEnd
+);
+    #90000 $finish();
   end
 `endif
 endmodule
