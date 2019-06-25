@@ -36,10 +36,18 @@ Local Existing Instance coqutil.Map.SortedListString.map.
 Local Existing Instance coqutil.Map.SortedListString.ok.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
-    if string_dec fname "nop" then
-      [[Addi Register0 Register0 0]]
-    else
-      nil;
+    if string_dec fname "nop" then [[Addi Register0 Register0 0]]
+    else if string_dec fname "MMIOREAD" then
+           match retnames, argnames with
+           | [res], [addr] => [[ Lw res addr 0 ]]
+           | _, _ => nil
+           end
+    else if string_dec fname "MMIOWRITE" then
+           match retnames, argnames with
+           | [], [addr; val] => [[ Sw addr val 0 ]]
+           | _, _ => nil
+           end
+    else  nil;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := TODO;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := TODO;
 }.
@@ -81,10 +89,13 @@ Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
+Require Import coqutil.Z.HexNotation.
+
 Definition prog := (
-  [iot; lightbulb; recvEthernet; lan9250_readword; spi_write; spi_read],
+  (* [iot; lightbulb; recvEthernet; lan9250_readword; spi_write; spi_read], *)
+  [lan9250_readword; spi_write; spi_read],
   @cmd.skip flatparams,
-  @cmd.call flatparams [] "iot" []).
+  @cmd.call flatparams [] "lan950_readword" [expr.literal (Ox"64")]).
 
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
@@ -93,11 +104,9 @@ Set Printing Width 108.
 
 
 Goal True.
-  Time
-  let r := eval vm_compute in (([[
+  let r := eval cbv in (([[
                          ]] ++ compile prog)%list%Z) in
   pose r as asm.
-  Compute (List.length asm).
   Import bedrock2.NotationsCustomEntry.
 
   (* searching for "addi    x2, x2, -" shows where the functions begin, and the first
