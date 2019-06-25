@@ -126,7 +126,7 @@ module system(
     .write(mem_rq_data)
   );
 
-  assign instant_rs_en = en_obtain_rq_get && (mem_rq_addr == 32'h1001200c || mem_rq_addr == 32'h10024048 || mem_rq_addr == 32'h1002404c);
+  assign instant_rs_en = en_obtain_rq_get && (mem_rq_addr == 32'h1001200c || mem_rq_addr == 32'h10024018 || mem_rq_addr == 32'h10024048 || mem_rq_addr == 32'h1002404c);
   assign instant_rs =
 	  (!instant_rs_en) ? 32'hxxxxxxxx
 	  : (mem_rq_addr == 32'h1001200c && !mem_rq_iswrite) ? {8'h00, led, 16'h0000}
@@ -162,7 +162,7 @@ module system(
   always #1 clk = !clk;
   initial begin
     $dumpfile("system.vcd");
-    $dumpvars(1, led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
+    $dumpvars(1, mkTop.proc_m8_pc, led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
       rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, ram_rs_en, instant_rs_en, ram_read, spi_tx_buf, spi_rx_buf);
     #1000 $finish();
   end

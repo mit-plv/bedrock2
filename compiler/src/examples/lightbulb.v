@@ -95,7 +95,9 @@ Definition prog := (
   (* [iot; lightbulb; recvEthernet; lan9250_readword; spi_write; spi_read], *)
   [lan9250_readword; spi_write; spi_read],
   @cmd.skip flatparams,
-  @cmd.call flatparams [] "lan950_readword" [expr.literal (Ox"64")]).
+  (* @cmd.call flatparams ["_"; "_"] "lan950_readword" [expr.literal (Ox"64")] *)
+  @cmd.call flatparams ["_"] "spi_write" [expr.literal (Ox"5a")]
+).
 
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
