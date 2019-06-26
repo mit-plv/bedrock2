@@ -96,7 +96,7 @@ Definition prog := (
   [lan9250_readword; spi_write; spi_read],
   @cmd.skip flatparams,
   (* @cmd.call flatparams ["_"; "_"] "lan950_readword" [expr.literal (Ox"64")] *)
-  @cmd.call flatparams ["_"] "spi_write" [expr.literal (Ox"5a")]
+  @cmd.call flatparams ["_"] "spi_write" [expr.literal (Ox"a5")]
 ).
 
 Import riscv.Utility.InstructionNotations.
@@ -107,6 +107,8 @@ Set Printing Width 108.
 
 Goal True.
   let r := eval cbv in (([[
+  Lw 0 0 0;
+  Sw 0 0 0
                          ]] ++ compile prog)%list%Z) in
   pose r as asm.
   Import bedrock2.NotationsCustomEntry.

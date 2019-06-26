@@ -20,7 +20,7 @@ program2.hex: program.hex
 program3.hex: program.hex
 	< $< tr ' ' '\n' | grep . | awk 'NR % 4 == 0' > $@
 
-system.json: system.v mkTop.v ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/FIFO2.v
+system.json: system.v mkTop.v ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/FIFO2.v ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/SizedFIFO.v ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/BRAM1.v ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/mkBramInst.v ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/RegFileLoad.v
 	yosys -p "synth_ecp5 -json system.json" $^
 system.out.config: system.json
 	nextpnr-ecp5 --json system.json --textcfg system.out.config --um5g-85k --package CABGA381 --lpf ecp5evn.lpf --freq 50

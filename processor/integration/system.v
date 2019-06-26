@@ -92,7 +92,7 @@ module system(
 
   reg resetn = 1'b0; always @(posedge clk) begin resetn <= 1'b1; end
 
-  parameter integer LGSZW = 8;
+  parameter integer LGSZW = 10;
   wire [31:0] ram_read;
   wire [64:0] obtain_rq_get;
   wire rdy_obtain_rq_get;
@@ -134,6 +134,7 @@ module system(
 	  : (mem_rq_addr == 32'h1002404c && !mem_rq_iswrite) ? {(!spi_tx_rdy), 23'h0, spi_rx_buf}
 	  : 32'hxxxxxxxx;
   always @(posedge clk) begin
+    $display(clk);
     if (en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h1001200c) begin
       led <= mem_rq_data[23:16];
     end
@@ -162,9 +163,36 @@ module system(
   always #1 clk = !clk;
   initial begin
     $dumpfile("system.vcd");
-    $dumpvars(1, mkTop.proc_m8_pc, led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
+    $dumpvars(1, mkTop.proc_m9_pinit, mkTop.proc_m9_pc,
+
+    mkTop.CAN_FIRE_RL_proc_m12_reqLd,
+    mkTop.CAN_FIRE_RL_proc_m12_reqSt,
+    mkTop.CAN_FIRE_RL_proc_m12_wbNm,
+    mkTop.CAN_FIRE_RL_proc_m12_wbNmZ,
+    mkTop.WILL_FIRE_RL_proc_m10_decodeLd,
+    mkTop.WILL_FIRE_RL_proc_m10_decodeNm,
+    mkTop.WILL_FIRE_RL_proc_m10_decodeSt,
+    mkTop.WILL_FIRE_RL_proc_m11_execBypass,
+    mkTop.WILL_FIRE_RL_proc_m11_execNm,
+    mkTop.WILL_FIRE_RL_proc_m12_repLd,
+    mkTop.WILL_FIRE_RL_proc_m12_repSt,
+    mkTop.WILL_FIRE_RL_proc_m12_reqLd,
+    mkTop.WILL_FIRE_RL_proc_m12_reqLdZ,
+    mkTop.WILL_FIRE_RL_proc_m12_reqSt,
+    mkTop.WILL_FIRE_RL_proc_m12_wbNm,
+    mkTop.WILL_FIRE_RL_proc_m12_wbNmZ,
+    mkTop.WILL_FIRE_RL_proc_m12_wrongEpoch,
+    mkTop.WILL_FIRE_RL_proc_m9_instFetchRq,
+    mkTop.WILL_FIRE_RL_proc_m9_instFetchRs,
+    mkTop.WILL_FIRE_RL_proc_m9_modifyPc,
+    mkTop.WILL_FIRE_RL_proc_m9_pgmInitAck,
+    mkTop.WILL_FIRE_RL_proc_m9_pgmInitAckEnd,
+    mkTop.WILL_FIRE_RL_proc_m9_pgmInitRq,
+    mkTop.WILL_FIRE_RL_proc_m9_pgmInitRqEnd,
+    mkTop.WILL_FIRE_RL_proc_m9_pgmInitRs,
+    led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
       rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_iswrite, mem_rq_addr, mem_rq_data, rdy_send_rs_put, ram_rs_en, instant_rs_en, ram_read, spi_tx_buf, spi_rx_buf);
-    #1000 $finish();
+    #10000 $finish();
   end
 `endif
 endmodule
