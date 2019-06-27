@@ -35,7 +35,7 @@ Local Existing Instance DefaultRiscvState.
 Local Existing Instance coqutil.Map.SortedListString.map.
 Local Existing Instance coqutil.Map.SortedListString.ok.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call retnames fname argnames :=
     if string_dec fname "nop" then [[Addi Register0 Register0 0]]
     else if string_dec fname "MMIOREAD" then
            match retnames, argnames with
@@ -71,6 +71,7 @@ Definition params : Pipeline.parameters. simple refine {|
   Pipeline.src2imp_ops := mapops;
 |}; unshelve (try exact _); apply TODO. Defined.
 Definition flatparams := (FlattenExpr.mk_Syntax_params (@Pipeline.FlattenExpr_parameters params)).
+Definition b : @varname flatparams := "b".
 Instance pipeline_assumptions: @Pipeline.assumptions params. Admitted.
 
 (* stack grows from high addreses to low addresses, first stack word will be written to
@@ -90,13 +91,14 @@ Definition instrencode p : list byte :=
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
 Require Import coqutil.Z.HexNotation.
-
 Definition prog := (
   (* [iot; lightbulb; recvEthernet; lan9250_readword; spi_write; spi_read], *)
-  [lan9250_readword; spi_write; spi_read],
+  (* [lan9250_readword; spi_write; spi_read], *)
+  @nil BasicCSyntax.function,
   @cmd.skip flatparams,
   (* @cmd.call flatparams ["_"; "_"] "lan950_readword" [expr.literal (Ox"64")] *)
-  @cmd.call flatparams ["_"] "spi_write" [expr.literal (Ox"a5")]
+  @cmd.seq flatparams (cmd.set b (expr.literal 42))
+  (snd (snd spi_write))
 ).
 
 Import riscv.Utility.InstructionNotations.
@@ -107,11 +109,10 @@ Set Printing Width 108.
 
 Goal True.
   let r := eval cbv in (([[
-  Lw 0 0 0;
-  Sw 0 0 0
                          ]] ++ compile prog)%list%Z) in
   pose r as asm.
   Import bedrock2.NotationsCustomEntry.
+  pose prog as p; cbv in p.
 
   (* searching for "addi    x2, x2, -" shows where the functions begin, and the first
      thing they do is to save all used registers onto the stack, so we can look for the

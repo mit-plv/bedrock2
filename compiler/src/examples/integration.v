@@ -34,7 +34,7 @@ Local Existing Instance DefaultRiscvState.
 Local Existing Instance coqutil.Map.SortedListString.map.
 Local Existing Instance coqutil.Map.SortedListString.ok.
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call retnames fname argnames :=
     if string_dec fname "nop" then [[Addi Register0 Register0 0]]
     else if string_dec fname "MMIOREAD" then
            match retnames, argnames with
@@ -51,6 +51,7 @@ Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := TODO;
 }.
 Notation RiscvMachine := MetricRiscvMachine.
+
 
 Instance mapops: RegAlloc.map.ops (SortedListString.map Z). refine (
   {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
