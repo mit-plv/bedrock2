@@ -596,11 +596,15 @@ Proof.
   exact _.
 Defined.
 
-(*
-Definition x := (iot_ok , lightbulb_ok , recvEthernet_ok , lan9250_readword_ok , spi_read_ok , spi_write_ok).
-Print Assumptions x.
-Axioms:, SortedListString.string_strict_order, TailRecursion.putmany_gather, parameters_ok FE310CSemantics.parameters, SortedList.TODO
-*)
+Lemma link_lightbulb : spec_of_iot (iot::recvEthernet::lightbulb::lan9250_readword::SPI.spi_xchg::SPI.spi_read::SPI.spi_write::nil).
+Proof.
+  eapply iot_ok;
+  (eapply recvEthernet_ok || eapply lightbulb_ok);
+      eapply lan9250_readword_ok; eapply spi_xchg_ok;
+      (eapply spi_write_ok || eapply spi_read_ok).
+Qed.
+(* Print Assumptions link_lightbulb. *)
+(* parameters_ok FE310CSemantics.parameters, SortedList.TODO, TailRecursion.putmany_gather, SortedListString.string_strict_order *)
 
 (*
 From bedrock2 Require Import ToCString Byte Bytedump.

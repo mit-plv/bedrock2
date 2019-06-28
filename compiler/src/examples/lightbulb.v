@@ -93,9 +93,9 @@ Definition instrencode p : list byte :=
 Require Import coqutil.Z.HexNotation.
 Definition prog := (
   (* [iot; lightbulb; recvEthernet; lan9250_readword; spi_write; spi_read], *)
-  [lan9250_readword; spi_write; spi_read],
+  [lan9250_readword; spi_xchg; spi_write; spi_read],
   @cmd.skip flatparams,
-  @cmd.call flatparams ["a"; "b"] "lan950_readword" [expr.literal (Ox"64")]
+  @cmd.call flatparams ["a"; "b"] "lan9250_readword" [expr.literal (Ox"64")]
   (* @cmd.call flatparams ["_"] "spi_write" [expr.literal (Ox"a5")] *)
 ).
 
