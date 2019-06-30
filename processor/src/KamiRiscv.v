@@ -406,41 +406,35 @@ Section Equiv.
 
       inv_riscv.
       apply spec_Return in H15.
-      inv_riscv; [|admit].
 
-      apply @spec_setRegister in H18; [|assumption].
-      destruct H18; [|admit (** TODO @joonwonc: writing to `R0` *)].
-      simpl in H18; destruct H18.
+      inv_bind_apply H15.
+      inv_bind H17.
+      inv_loadWord H17.
+      destruct H17.
+      destruct H19; [admit|]. (* Let's go to the MMIO case. *)
+      destruct H19.
 
-      inv_riscv.
-      inv_step H11.
+      Fail (unfold nonmem_load in H20).
 
-      subst kt2.
-      match goal with
-      | [H: context[signExtend 32 ?t] |- _] =>
-        replace (signExtend 32 t) with t in * by admit
-      end.
-      
       (** Construction *)
 
-      do 2 eexists.
-      repeat split; [| |eassumption].
-      + eapply KamiMMIO; reflexivity.
-      + rewrite H8.
-        econstructor; eauto.
-        * (** TODO: due to a wrong [translate] [t'] is not updated.. *)
-          (* econstructor; [|eassumption]. *)
-          (* econstructor. *)
-          admit.
-        * unfold getNextPc, rv32Exec.
-          rewrite kami_rv32NextPc_load_ok; auto;
-            [|rewrite kami_getOpcode_ok
-                with (instrMemSizeLg:= instrMemSizeLg); assumption].
-          unfold kamiStMk; simpl.
-          admit.
-        * subst rd.
-          erewrite convertRegs_put by eassumption.
-          admit.
+      (* do 2 eexists. *)
+      (* repeat split; [| |eassumption]. *)
+      (* + eapply KamiMMIO; reflexivity. *)
+      (* + rewrite H8. *)
+      (*   econstructor; eauto. *)
+      (*   * admit. *)
+      (*   * unfold getNextPc, rv32Exec. *)
+      (*     rewrite kami_rv32NextPc_load_ok; auto; *)
+      (*       [|rewrite kami_getOpcode_ok *)
+      (*           with (instrMemSizeLg:= instrMemSizeLg); assumption]. *)
+      (*     unfold kamiStMk; simpl. *)
+      (*     admit. *)
+      (*   * subst rd. *)
+      (*     erewrite convertRegs_put by eassumption. *)
+      (*     admit. *)
+
+      admit.
 
     - clear H3; specialize (H8 eq_refl).
       
