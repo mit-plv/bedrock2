@@ -42,6 +42,78 @@ Definition lan9250_readword : function :=
     output! MMIOWRITE(SPI_CSMODE_ADDR, addr)
   ))).
 
+Definition lan9250_writeword : function :=
+  let addr : varname := "addr" in
+  let data : varname := "data" in
+  let Oxff : varname := "Oxff" in
+  let eight : varname := "eight" in
+  let ret : varname := "ret" in
+  let err : varname := "err" in
+  let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
+  ("lan9250_writeword", ((addr::data::nil), (err::nil), bedrock_func_body:(
+    SPI_CSMODE_ADDR = (constr:(Ox"10024018"));
+    io! ret = MMIOREAD(SPI_CSMODE_ADDR);
+    ret = (ret | constr:(2));
+    output! MMIOWRITE(SPI_CSMODE_ADDR, ret);
+
+    (* manually register-allocated, apologies for variable reuse *)
+    Oxff = (constr:(Ox"ff"));
+    eight = (constr:(8));
+    unpack! ret, err = spi_xchg(constr:(Ox"02")); require !err; (* FASTREAD *)
+    unpack! ret, err = spi_xchg(addr >> eight);   require !err;
+    unpack! ret, err = spi_xchg(addr & Oxff);     require !err;
+
+    unpack! ret, err = spi_xchg(data & Oxff);     require !err; (* write *)
+    data = (data >> eight);
+    unpack! ret, err = spi_xchg(data & Oxff);     require !err; (* write *)
+    data = (data >> eight);
+    unpack! ret, err = spi_xchg(data & Oxff);     require !err; (* write *)
+    data = (data >> eight);
+    unpack! ret, err = spi_xchg(data);     require !err; (* write *)
+
+    io! addr = MMIOREAD(SPI_CSMODE_ADDR);
+    addr = (addr & constr:(Z.lnot 2));
+    output! MMIOWRITE(SPI_CSMODE_ADDR, addr)
+  ))).
+
+Definition MAC_CSR_DATA : Z := Ox"0A8".
+Definition MAC_CSR_CMD : Z := Ox"0A4".
+Definition BYTE_TEST : Z := Ox"64".
+
+Definition lan9250_mac_write : function :=
+  let addr : varname := "addr" in
+  let data : varname := "data" in
+  let err : varname := "err" in
+  ("lan9250_mac_write", ((addr::data::nil), (err::nil), bedrock_func_body:(
+    unpack! err = lan9250_writeword(MAC_CSR_DATA, data);
+    require !err;
+	  unpack! err = lan9250_writeword(MAC_CSR_CMD, constr:(Z.shiftl 1 31)|addr);
+    require !err;
+	  unpack! data, err = lan9250_readword(BYTE_TEST)
+	  (* while (lan9250_readword(0xA4) >> 31) { } // Wait until BUSY (= MAX_CSR_CMD >> 31) goes low *)
+  ))).
+
+Definition HW_CFG : Z := Ox"074".
+
+Definition lan9250_init : function :=
+  let hw_cfg : varname := "hw_cfg" in
+  let patience : varname := "patience" in
+  let err : varname := "err" in
+  ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
+	  (* while (lan9250_readword(0x64) != 0x87654321) {} *)
+	  unpack! hw_cfg, err = lan9250_readword(HW_CFG);
+    require !err;
+    hw_cfg = (hw_cfg | constr:(Z.shiftl 1 20)); (* mustbeone *)
+    hw_cfg = (hw_cfg & constr:(Z.lnot (Z.shiftl 1 21))); (* mustbezero *)
+    unpack! err = lan9250_writeword(HW_CFG, hw_cfg);
+    require !err;
+
+    (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)
+  	unpack! err = lan9250_mac_write(constr:(1), constr:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
+    require !err;
+	  unpack! err = lan9250_writeword(constr:(Ox"070"), constr:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
+  ))).
+
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface.

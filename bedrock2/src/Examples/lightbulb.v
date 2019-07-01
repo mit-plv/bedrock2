@@ -214,11 +214,6 @@ Instance spec_of_iot : spec_of "iot" := fun functions =>
 Require Import bedrock2.AbsintWordToZ.
 Import WeakestPreconditionProperties.
 
-Lemma align_trace_cons {T} x xs cont t (H : xs = cont ++ t) : @cons T x xs = (cons x cont) ++ t.
-Proof. intros. cbn. congruence. Qed.
-Lemma align_trace_app {T} x xs cont t (H : xs = cont ++ t) : @app T x xs = (app x cont) ++ t.
-Proof. intros. cbn. subst. rewrite List.app_assoc; trivial. Qed.
-
 Lemma iot_ok : program_logic_goal_for_function! iot.
 Proof.
   repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end

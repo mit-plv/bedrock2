@@ -129,3 +129,8 @@ Section LightbulbSpec.
     lightbulb_init +++ lightbulb_step^*.
   *)
 End LightbulbSpec.
+
+Lemma align_trace_cons {T} x xs cont t (H : xs = app cont t) : @cons T x xs = app (cons x cont) t.
+Proof. intros. cbn. congruence. Qed.
+Lemma align_trace_app {T} x xs cont t (H : xs = app cont t) : @app T x xs = app (app x cont) t.
+Proof. intros. cbn. subst. rewrite List.app_assoc; trivial. Qed.
