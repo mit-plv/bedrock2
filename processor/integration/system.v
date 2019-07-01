@@ -82,7 +82,7 @@ module system(
   output reg [7:0] led = 8'hff
 );
   reg spi_clk = 0;
-  reg spi_cs = 0;
+  reg spi_cs = 1;
   wire spi_mosi;
   wire spi_miso;
 
@@ -157,6 +157,12 @@ module system(
       spi_tx_remaining <= spi_tx_remaining - 1;
     end
   end
+  wire spi_setcs_en = en_obtain_rq_get && mem_rq_iswrite && mem_rq_addr == 32'h10024018;
+  always @(posedge clk) begin
+    if (spi_setcs_en) begin
+        spi_cs <= !mem_rq_data[1];
+    end
+  end
 `ifndef SYNTHESIS
   always #1 clk = !clk;
   initial begin
@@ -164,7 +170,7 @@ module system(
     $dumpvars(1, mkTop.proc_m8_pc,
     led, spi_clk, spi_cs, spi_mosi, spi_miso, clk, resetn,
       rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_addr, mem_rq_data, mem_rq_iswrite, ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put, spi_tx_buf, spi_rx_buf, spi_tx_rdy);
-    #4000 $finish();
+    #10000 $finish();
   end
 `endif
 endmodule
