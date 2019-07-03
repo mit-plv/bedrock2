@@ -92,7 +92,7 @@ Definition instrencode p : list byte :=
 
 Require Import coqutil.Z.HexNotation.
 Definition prog := (
-  [lan9250_init; lan9250_mac_write;
+  [lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
   iot; lightbulb; recvEthernet;  lan9250_writeword; lan9250_readword;
   spi_xchg; spi_write; spi_read],
   cmd.seq (@cmd.store flatparams access_size.word (expr.literal (Ox"10012038")) (expr.literal (Z.shiftl (Ox"f") 2)))
@@ -109,6 +109,11 @@ Set Printing Width 108.
 
 
 Goal True.
+  pose (let '(functions, initial, reactive) := prog in
+    SortedList.value (snd (functions2Riscv (p:=params) (RegAlloc.map.putmany_of_tuples map.empty functions) (List.map fst functions)))) as symbols.
+  cbv in symbols.
+
+
   let r := eval cbv in (([[
                          ]] ++ compile prog)%list%Z) in
   pose r as asm.

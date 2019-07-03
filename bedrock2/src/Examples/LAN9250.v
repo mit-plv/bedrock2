@@ -95,12 +95,25 @@ Definition lan9250_mac_write : function :=
 
 Definition HW_CFG : Z := Ox"074".
 
+Definition lan9250_wait_for_boot : function :=
+  let err : varname := "err" in
+  let i : varname := "i" in
+  let byteorder : varname := "byteorder" in
+  ("lan9250_wait_for_boot", (nil, (err::nil), bedrock_func_body:(
+  err = (constr:(0));
+  byteorder = (constr:(0));
+  i = (lightbulb_spec.patience); while (i) { i = (i - constr:(1));
+	  unpack! err, byteorder = lan9250_readword(constr:(Ox"64"));
+    if err { i = (i^i) };
+    if (byteorder == constr:(Ox"87654321")) { i = (i^i) }
+  }
+  ))).
+
 Definition lan9250_init : function :=
   let hw_cfg : varname := "hw_cfg" in
-  let patience : varname := "patience" in
   let err : varname := "err" in
   ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
-	  (* while (lan9250_readword(0x64) != 0x87654321) {} *)
+	  lan9250_wait_for_boot();
 	  unpack! hw_cfg, err = lan9250_readword(HW_CFG);
     require !err;
     hw_cfg = (hw_cfg | constr:(Z.shiftl 1 20)); (* mustbeone *)

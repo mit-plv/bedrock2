@@ -601,12 +601,10 @@ Qed.
 (* Print Assumptions link_lightbulb. *)
 (* parameters_ok FE310CSemantics.parameters, SortedList.TODO, TailRecursion.putmany_gather, SortedListString.string_strict_order *)
 
-(*
 From bedrock2 Require Import ToCString Byte Bytedump.
 Local Open Scope bytedump_scope.
+Set Printing Width 999999.
 Goal True.
-(* FIXME: name clashes between this file and lan9250_spec *)
-  let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters [iot; lightbulb; recvEthernet; lan9250_readword; spi_read; spi_write])) in
-  idtac (* c_code *).
+  let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters [lan9250_init; lan9250_wait_for_boot; iot; lightbulb; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
+  idtac c_code.
 Abort.
-*)
