@@ -371,7 +371,6 @@ Proof.
     | |- ?x = ?x => exact (eq_refl x)
     | _ => progress trans_ltu
     | _ => progress zify_unsigned
-    | _ => progress PreOmega.zify
     | _ => progress rewrite ?Znat.Z2Nat.id by blia
     | H: _ |- _ => progress (rewrite ?Znat.Z2Nat.id in H by blia)
     | _ => rewrite List.length_firstn_inbounds by (PreOmega.zify; rewrite ?Znat.Z2Nat.id by blia; blia)
