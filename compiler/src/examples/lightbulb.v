@@ -95,8 +95,9 @@ Definition prog := (
   [lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
   iot; lightbulb; recvEthernet;  lan9250_writeword; lan9250_readword;
   spi_xchg; spi_write; spi_read],
-  cmd.seq (@cmd.store flatparams access_size.word (expr.literal (Ox"10012038")) (expr.literal (Z.shiftl (Ox"f") 2)))
-  (@cmd.call flatparams ["_"] "lan9250_init" []),
+  cmd.seq (@cmd.store flatparams access_size.word (expr.literal (Ox"10012038")) (expr.literal (Z.shiftl (Ox"f") 2))) (
+  cmd.seq (@cmd.store flatparams access_size.word (expr.literal (Ox"10012008")) (expr.literal (Z.shiftl 1 23)))
+  (@cmd.call flatparams ["_"] "lan9250_init" [])),
   @cmd.call flatparams ["_"] "iot" [expr.literal (Ox"80000000")]
   (* (@cmd.call flatparams ["a"; "b"] "lan9250_readword" [expr.literal (Ox"64")]) *)
   (* @cmd.call flatparams ["_"] "spi_write" [expr.literal (Ox"a5")] *)
