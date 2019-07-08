@@ -63,7 +63,7 @@ Section LightbulbSpec.
   
   (** LAN9250 *)
   Definition LAN9250_FASTREAD : byte := word.of_Z (Ox"b").
-  (* TODO: byte order? *)
+
   Definition lan9250_fastread4 (a v : word) t := 
     exists a0 a1 v0 v1 v2 v3, (
     spi_begin +++
@@ -75,6 +75,23 @@ Section LightbulbSpec.
     spi_xchg_mute v1 +++
     spi_xchg_mute v2 +++
     spi_xchg_mute v3 +++
+    spi_end) t /\
+    word.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
+    word.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
+    word.unsigned v = LittleEndian.combine 4 ltac:(repeat split; [exact v0|exact v1|exact v2|exact v3]).
+
+  Definition LAN9250_WRITE : byte := word.of_Z (Ox"2").
+
+  Definition lan9250_write4 (a v : word) t := 
+    exists a0 a1 v0 v1 v2 v3, (
+    spi_begin +++
+    spi_xchg_deaf LAN9250_WRITE +++
+    spi_xchg_deaf a1 +++
+    spi_xchg_deaf a0 +++
+    spi_xchg_deaf v0 +++
+    spi_xchg_deaf v1 +++
+    spi_xchg_deaf v2 +++
+    spi_xchg_deaf v3 +++
     spi_end) t /\
     word.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     word.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\

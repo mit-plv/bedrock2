@@ -165,6 +165,149 @@ Proof.
   eapply concat_app; eauto.
 Qed.
 
+Instance spec_of_lan9250_writeword : ProgramLogic.spec_of "lan9250_writeword" := fun functions =>
+  forall t m a v,
+    (Ox"0" <= Word.Interface.word.unsigned a < Ox"400") ->
+  (((WeakestPrecondition.call functions "lan9250_writeword"))) t m [a; v]
+    (fun T M RETS =>
+    M = m /\
+    exists err, RETS = [err] /\
+    exists iol, T = iol ++ t /\
+    exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
+      (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
+      (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ _ a v ioh)).
+
+Require Import bedrock2.AbsintWordToZ.
+Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Z.Lia.
+
+Ltac evl := (* COQBUG(has_variable) *)
+  repeat match goal with
+    | |- context G[string_dec ?x ?y] =>
+        let e := eval cbv in (string_dec x y) in
+        let goal := context G [e] in
+        change goal
+    | |- context G[Ox ?x] =>
+        let x := rdelta x in
+        let e := eval cbv in (Ox x) in
+        let goal := context G [e] in
+        change goal
+    | |- context G[word.unsigned ?x] =>
+        let x := rdelta x in
+        let x := lazymatch x with word.of_Z ?x => x end in
+        let x := rdelta x in
+        let x := match x with Ox ?x => x | _ => x end in
+        let x := rdelta x in
+        requireZcst x;
+        let x := eval cbv in x in
+        let goal := context G [x] in
+        change goal
+    | |- context G [app nil ?xs] =>
+      let goal := context G [ xs ] in
+      change goal
+  end.
+
+Ltac trace_alignment :=
+  repeat (eapply lightbulb_spec.align_trace_app
+    || eapply lightbulb_spec.align_trace_cons
+    || exact (eq_refl (app nil _))).
+
+Ltac mmio_trace_abstraction :=
+  repeat match goal with
+  | |- mmio_trace_abstraction_relation _ _ => cbv [mmio_trace_abstraction_relation]
+  | |- Forall2 mmio_event_abstraction_relation _ _ =>
+      eassumption || eapply Forall2_app || eapply Forall2_nil || eapply Forall2_cons
+  | |- mmio_event_abstraction_relation _ _ =>
+      (left + right); eexists _, _; split; exact eq_refl
+  end.
+
+Local Ltac slv := solve [ trivial | eauto 2 using TracePredicate__any_app_more | assumption | blia | trace_alignment | mmio_trace_abstraction ].
+
+Ltac t :=
+  match goal with
+  | _ => slv
+  | _ => progress evl
+
+  | H :  _ /\ _ \/ ?Y /\ _, G : not ?X |- _ =>
+      constr_eq X Y; let Z := fresh in destruct H as [|[Z ?]]; [|case (G Z)]
+  | H :  not ?Y /\ _ \/ _ /\ _, G : ?X |- _ =>
+      constr_eq X Y; let Z := fresh in destruct H as [[Z ?]|]; [case (Z G)|]
+  | |- exists x, _ /\ _ => eexists; split; [repeat f_equal; slv|]
+  | |- ?A /\ _ \/ ?B /\ _ =>
+      match goal with
+      | H: A |- _ => left  | H: not B |- _ => left
+      | H: B |- _ => right | H: not A |- _ => right
+      end
+
+  | |- _ /\ _ => split; [repeat t|]
+
+  | _ => straightline
+  | _ => straightline_call; [  solve[repeat t].. | ]
+  | _ => split_if; [  solve[repeat t].. | ]
+  | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eapply WeakestPreconditionProperties.interact_nomem; [  solve[repeat t].. | ]
+  | |- Semantics.ext_spec _ _ _ _ _ => progress cbn [parameters Semantics.ext_spec]
+  end.
+
+From coqutil Require Import Z.div_mod_to_equations.
+Require Import bedrock2.AbsintWordToZ.
+Import Word.Properties.
+
+Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
+Proof.
+  repeat t.
+  straightline_call.
+  1: {
+    match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
+    revert H7.
+    evl.
+    intros.
+    Z.div_mod_to_equations. blia.
+  }
+  repeat t.
+  straightline_call.
+  1: {
+    match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
+    revert H7.
+    evl.
+    intros.
+    Z.div_mod_to_equations. blia.
+  }
+  repeat t.
+  straightline_call.
+  1: {
+    match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
+    Z.div_mod_to_equations. blia.
+  }
+  repeat t.
+  straightline_call.
+  1: {
+    match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
+    Z.div_mod_to_equations. blia.
+  }
+  repeat t.
+  straightline_call.
+  1: {
+    match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
+    Z.div_mod_to_equations. blia.
+  }
+  repeat t.
+  straightline_call.
+  1: {
+    subst data.
+    subst data1.
+    subst data0.
+    match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
+    pose proof word.unsigned_range v.
+    change (2^Semantics.width) with (2^32) in *.
+    Z.div_mod_to_equations. blia.
+  }
+  repeat t.
+
+  (* aligning regex and mmiotrace, not sure how to do it in a principled way *)
+
+Abort.
+
+
 From coqutil Require Import Z.div_mod_to_equations.
 Lemma lan9250_readword_ok : program_logic_goal_for_function! lan9250_readword.
 Proof.
