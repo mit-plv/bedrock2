@@ -237,7 +237,7 @@ Section FlatToRiscv1.
           bElse'
       | SLoop body1 cond body2 =>
           let body1' := compile_stmt mypos body1 in
-          let body2' := compile_stmt (mypos + Z.of_nat (length body1') + 4) body2 in
+          let body2' := compile_stmt (mypos + (Z.of_nat (length body1') + 1) * 4) body2 in
           (* only works if branch lengths are < 2^12 *)
           body1' ++
           [[compile_bcond_by_inverting cond ((Z.of_nat (length body2') + 2) * 4)]] ++
