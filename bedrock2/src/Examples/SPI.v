@@ -1,7 +1,7 @@
 Require Import bedrock2.Syntax bedrock2.StringNamesSyntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 
-Import BinInt String List.ListNotations.
+Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
 Local Existing Instance BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : expr := expr.literal z.
