@@ -25,7 +25,7 @@ Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.ptsto_bytes.
 Require Import compiler.Simp.
-
+Import Utility Decode.
 
 Open Scope Z_scope.
 Open Scope ilist_scope.

@@ -46,6 +46,8 @@ Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
 
+Import Utility.
+
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
 

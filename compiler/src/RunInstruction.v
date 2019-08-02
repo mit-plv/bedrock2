@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.BinInt.
+From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -29,7 +29,7 @@ Require Import riscv.Utility.InstructionCoercions. Local Open Scope ilist_scope.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.ZLemmas.
-
+Import Utility.
 
 Section Run.
 

@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.BinInt.
+From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -28,7 +28,7 @@ Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatToRiscvDef.
-
+Import Utility.
 
 Section Go.
 

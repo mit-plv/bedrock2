@@ -22,6 +22,7 @@ Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Examples.Demos.
+Import Utility.
 
 Section FibCompiled.
 
