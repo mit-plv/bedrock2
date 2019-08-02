@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.BinInt.
+From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
@@ -31,7 +31,7 @@ Require Import compiler.ForeverSafe.
 Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.Simp.
-
+Import Utility.
 
 Section EventLoop.
 

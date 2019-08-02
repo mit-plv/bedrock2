@@ -12,7 +12,7 @@ Require Import compiler.GoFlatToRiscv.
 Require Import compiler.EmitsValid.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
-
+Import Utility.
 
 Section Proofs.
   Context {p: FlatToRiscv.parameters}.

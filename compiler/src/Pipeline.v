@@ -35,7 +35,7 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
 Require Import compiler.MetricsToRiscv.
-
+Import Utility.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 

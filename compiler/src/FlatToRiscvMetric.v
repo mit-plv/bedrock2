@@ -22,6 +22,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import compiler.FlatToRiscvLiterals.
+Import Utility.
 
 Open Scope ilist_scope.
 

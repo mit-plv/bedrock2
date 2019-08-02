@@ -44,6 +44,7 @@ Require Import compiler.SimplWordExpr.
 Require Import compiler.ForeverSafe.
 Require Export compiler.ProgramSpec.
 Require Export compiler.MemoryLayout.
+Import Utility.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 

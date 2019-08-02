@@ -11,6 +11,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Platform.MetricLogging.
 Require Import compiler.Simp.
+Import Semantics.
 
 (*Local Set Ltac Profiling.*)
 

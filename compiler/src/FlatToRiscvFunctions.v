@@ -20,7 +20,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import compiler.load_save_regs_correct.
-
+Import Utility MetricLogging.
 
 Section Proofs.
   Context {p: FlatToRiscv.parameters}.
@@ -1156,7 +1156,7 @@ Section Proofs.
     eapply runsTo_trans. {
       eapply load_regs_correct with
           (vars := binds) (values := retvs)
-          (offset := (- bytes_per_word * Z.of_nat (length args + length binds))%Z)
+          (offset := (- bytes_per_word * Z.of_nat (List.length args + List.length binds))%Z)
           (p_sp0 := p_sp);
         simpl; cycle -2; try assumption.
       - wseplog_pre word_ok.
