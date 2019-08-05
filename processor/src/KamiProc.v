@@ -22,7 +22,7 @@ Section Parametrized.
 
   Variables (fetch: AbsFetch addrSize iaddrSize instBytes dataBytes)
             (dec: AbsDec addrSize instBytes dataBytes rfIdx)
-            (exec: AbsExec iaddrSize instBytes dataBytes rfIdx)
+            (exec: AbsExec addrSize iaddrSize instBytes dataBytes rfIdx)
             (ammio: AbsMMIO addrSize).
 
   Variable (procInit: ProcInit iaddrSize dataBytes rfIdx)
@@ -174,10 +174,10 @@ Section Parametrized.
     repeat split; [assumption|].
     eexists; split; [|reflexivity].
 
-    clear -e H18.
+    clear -e H19.
     red; intros.
     destruct (weq iaddr pinitOfsv); [subst; reflexivity|].
-    apply (H18 eq_refl).
+    apply H19; [reflexivity|].
 
     clear -e n.
     assert (pinitOfsv = wones _).
@@ -199,7 +199,7 @@ Section Parametrized.
     rewrite natToWord_wordToNat, <-wones_natToWord in H2; subst.
     exfalso; auto.
   Qed.
-  
+
   Lemma invert_Kami_execLd:
     forall km1 kt1 kupd klbl,
       pRegsToT km1 = Some kt1 ->
@@ -209,9 +209,11 @@ Section Parametrized.
       exists curInst ldAddr,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         ldAddr = evalExpr
-                   (calcLdAddr
-                      _ (evalExpr (getLdAddr _ curInst))
-                      (rf kt1 (evalExpr (getLdSrc _ curInst)))) /\
+                   (alignLdAddr
+                      _ (evalExpr
+                           (calcLdAddr
+                              _ (evalExpr (getLdAddr _ curInst))
+                              (rf kt1 (evalExpr (getLdSrc _ curInst)))))) /\
         (evalExpr (isMMIO _ ldAddr) = true ->
          exists kt2 mmioLdRq mmioLdRs,
            klbl.(calls) =
@@ -228,7 +230,15 @@ Section Parametrized.
                     rf :=
                       fun w =>
                         if weq w (evalExpr (getLdDst _ curInst))
-                        then mmioLdRs Fin.F1
+                        then
+                          evalExpr
+                            (calcLdVal
+                               _ (evalExpr
+                                    (calcLdAddr
+                                       _ (evalExpr (getLdAddr _ curInst))
+                                       (rf kt1 (evalExpr (getLdSrc _ curInst)))))
+                               (mmioLdRs Fin.F1)
+                               (evalExpr (getLdType type curInst)))
                         else rf kt1 w;
                     pinit := true;
                     pgm := pgm kt1;
@@ -241,7 +251,15 @@ Section Parametrized.
                     rf :=
                       fun w =>
                         if weq w (evalExpr (getLdDst _ curInst))
-                        then mem kt1 ldAddr
+                        then
+                          evalExpr
+                            (calcLdVal
+                               _ (evalExpr
+                                    (calcLdAddr
+                                       _ (evalExpr (getLdAddr _ curInst))
+                                       (rf kt1 (evalExpr (getLdSrc _ curInst)))))
+                               (mem kt1 ldAddr)
+                               (evalExpr (getLdType type curInst)))
                         else rf kt1 w;
                     pinit := true;
                     pgm := pgm kt1;
@@ -263,6 +281,7 @@ Section Parametrized.
       + reflexivity.
       + exfalso; clear -H Heqic; congruence.
       + exfalso; clear -H Heqic; congruence.
+        
     - kinv_red.
       unfold pRegsToT in *.
       kregmap_red.
@@ -283,9 +302,15 @@ Section Parametrized.
       exists curInst ldAddr,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         ldAddr = evalExpr
-                   (calcLdAddr
-                      _ (evalExpr (getLdAddr _ curInst))
-                      (rf kt1 (evalExpr (getLdSrc _ curInst)))) /\
+                   (alignLdAddr
+                      _ (evalExpr
+                           (calcLdAddr
+                              _ (evalExpr (getLdAddr _ curInst))
+                              (rf kt1 (evalExpr (getLdSrc _ curInst)))))) /\
+        (* ldAddr = evalExpr *)
+        (*            (calcLdAddr *)
+        (*               _ (evalExpr (getLdAddr _ curInst)) *)
+        (*               (rf kt1 (evalExpr (getLdSrc _ curInst)))) /\ *)
         (evalExpr (isMMIO _ ldAddr) = true ->
          exists kt2 mmioLdRq mmioLdRs,
            klbl.(calls) =
@@ -477,7 +502,8 @@ Section PerInstAddr.
     (#ppc + $4)%kami_expr.
 
   Definition procInl :=
-    pprocInl (rv32Fetch _ _) (rv32Dec _) (rv32Exec _) rv32MMIO procInit memInit.
+    pprocInl (rv32Fetch _ _) (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
+             rv32MMIO procInit memInit.
   Definition proc: Kami.Syntax.Modules := projT1 procInl.
 
   Definition hst := Kami.Semantics.RegsT.
@@ -492,8 +518,8 @@ Section PerInstAddr.
   (** Refinement from [p4mm] to [proc] (as a spec) *)
 
   Definition p4mm: Kami.Syntax.Modules :=
-    p4mm 1 (rv32Fetch _ _) (rv32Dec _) (rv32Exec _) rv32MMIO
-         predictNextPc procInit memInit.
+    p4mm (rv32Fetch _ _) (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
+         rv32MMIO predictNextPc procInit memInit.
 
   Theorem proc_correct: p4mm <<== proc.
   Proof.

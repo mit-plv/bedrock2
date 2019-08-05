@@ -729,7 +729,7 @@ Section Equiv.
 
   Definition p4mm(prog: kword instrMemSizeLg -> kword 32): Modules.
     refine (ProcMemCorrect.p4stf
-              _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+              _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
               ++ mm prog)%kami.
   Admitted. (* TODO @joonwonc proof structure *)
 
