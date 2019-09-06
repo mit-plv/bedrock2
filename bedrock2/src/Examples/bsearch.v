@@ -19,8 +19,9 @@ Local Infix "^+" := word.add  (at level 50, left associativity).
 Local Infix "^-" := word.sub  (at level 50, left associativity).
 Local Infix "^<<" := word.slu  (at level 37, left associativity).
 Local Infix "^>>" := word.sru  (at level 37, left associativity).
-Local Notation "/_" := word.of_Z.
-Local Notation "\_" := word.unsigned.
+Local Notation "/_" := word.of_Z.      (* smaller angle: squeeze a Z into a word *)
+Local Notation "\_" := word.unsigned.  (* supposed to be a denotation bracket;
+                                          or bigger angle: let a word fly into the large Z space *)
 Local Open Scope Z_scope.
 
 From coqutil Require Import Z.div_mod_to_equations.
@@ -70,11 +71,14 @@ Proof.
     2: solve [auto]. (* exiting loop *)
     (* loop body *)
     rename H2 into length_rep. subst br. subst v0.
+
+    Import Markers.hide. idtac.
+
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
-    { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
+    { rewrite ?Properties.word.word_sub_add_l_same_l. rewrite ?Properties.word.word_sub_add_l_same_r.
       repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in progress (* COQBUG(9652) *) rewrite H end.
-      rewrite length_rep in *. (* WHY is this necessary for blia? *)
+      (* rewrite length_rep in *. (* WHY is this necessary for blia? *) *)
       Z.div_mod_to_equations. blia. }
     { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
       repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in progress (* COQBUG(9652) *) rewrite H end.
@@ -85,17 +89,69 @@ Proof.
       { SeparationLogic.ecancel_assumption. }
       { subst v1. subst x7.
         clear H1 x8 H5 v0.
-        rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-        unshelve erewrite (_ : _ ^- _ = x2 ^- x1 ^- (/_ 8 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3)); [ring|].
+
+(* does one simplification step *)
+Ltac wsimp e parentIsWord simplifier :=
+  first
+  [ (* try to simplify child expression *)
+    lazymatch e with
+    | @word.add _ _ ?a ?b => first [ wsimp a true simplifier | wsimp b true simplifier ]
+    | @word.mul _ _ ?a ?b => first [ wsimp a true simplifier | wsimp b true simplifier ]
+    | @word.sub _ _ ?a ?b => first [ wsimp a true simplifier | wsimp b true simplifier ]
+    | @word.opp _ _ ?a    =>         wsimp a true simplifier
+    | ?f ?a               => first [ wsimp f false simplifier | wsimp a false simplifier ]
+    end
+  | (* If we're here, no child expression could be simplified. *)
+    lazymatch parentIsWord with false => idtac end;
+    lazymatch e with
+    | @word.add _ _ _ _ => idtac
+    | @word.mul _ _ _ _ => idtac
+    | @word.sub _ _ _ _ => idtac
+    | @word.opp _ _ _   => idtac
+    end;
+    progress (simplifier e)
+  ].
+
+Ltac wsimp_goal :=
+  repeat match goal with
+         | |- ?G =>  wsimp G false ltac:(fun e => ring_simplify e)
+         end.
+
+Ltac wsimp_hyps :=
+  repeat match goal with
+         | H: ?P |- _ => wsimp P false ltac:(fun e => ring_simplify e in H)
+         end.
+
+Ltac wsimp_star := wsimp_goal; wsimp_hyps.
+
+Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
+
+        wsimp_star.
+
+        replace (x2 ^- x1 ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8) with
+            (x2 ^- x1 ^- (/_ 8 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3)); [|wsimp_star; ring].
         rewrite word.unsigned_sub.
-        repeat (rewrite ?length_rep || match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end).
-        pose proof Properties.word.unsigned_range (x2 ^- x1) as HH; rewrite length_rep in HH, H4.
+
+        (* push/pull mod??
+        TODO delete it in compiler, update submodule
+        TODO: can we use "ring_simplify [HH GG] (a - b + c)" to throw in additional equations? *)
+
+        match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H; idtac H e end.
+        match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H; idtac H e end.
+        match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H; idtac H e end.
+
+        rewrite ?length_rep.
+
+        pose proof Properties.word.unsigned_range (x2 ^- x1) as HH.
+        rewrite length_rep in HH, H4.
         cbv [word.wrap].
-        rewrite Z.mod_small; cycle 1. { clear -HH H4. PreOmega.zify. Z.div_mod_to_equations. blia. }
+        rewrite Z.mod_small; cycle 1. { clear -HH H4. Z.div_mod_to_equations. blia. }
         rewrite length_skipn.
         rewrite Z.div_mul by discriminate.
-        (* Z and nat ... *)
-        PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia. }
+        clear -H4.
+        lia2.
+      }
+
       { subst v'. subst v. subst x7.
         set (\_ (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1) / \_ (/_ 8)) as X.
         assert (X < Z.of_nat (Datatypes.length x)). {
