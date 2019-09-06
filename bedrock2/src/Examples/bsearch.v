@@ -126,6 +126,9 @@ Ltac wsimp_star := wsimp_goal; wsimp_hyps.
 
 Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
 
+        rewrite length_skipn.
+        clear -length_rep H4.
+
         wsimp_star.
 
         replace (x2 ^- x1 ^- (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- /_ 8) with
@@ -136,19 +139,13 @@ Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia
         TODO delete it in compiler, update submodule
         TODO: can we use "ring_simplify [HH GG] (a - b + c)" to throw in additional equations? *)
 
-        match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H; idtac H e end.
-        match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H; idtac H e end.
-        match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H; idtac H e end.
+        repeat match goal with
+               | |- context[word.unsigned ?e] =>
+                 let H := unsigned.zify_expr e in progress (* COQBUG(9652) *) rewrite H
+               end.
 
-        rewrite ?length_rep.
-
-        pose proof Properties.word.unsigned_range (x2 ^- x1) as HH.
-        rewrite length_rep in HH, H4.
         cbv [word.wrap].
-        rewrite Z.mod_small; cycle 1. { clear -HH H4. Z.div_mod_to_equations. blia. }
-        rewrite length_skipn.
-        rewrite Z.div_mul by discriminate.
-        clear -H4.
+        rewrite Z.mod_small by lia2.
         lia2.
       }
 
