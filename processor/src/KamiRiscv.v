@@ -57,6 +57,8 @@ Section Equiv.
 
   Variable (instrMemSizeLg: Z).
   Hypothesis (HinstrMemBound: instrMemSizeLg <= width - 2).
+  Hypothesis (HbtbAddr: BinInt.Z.to_nat instrMemSizeLg =
+                        (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat).
 
   Variable (memInit: MemInit (Z.to_nat width) rv32DataBytes).
 
@@ -101,9 +103,8 @@ Section Equiv.
 
   Context {Pr: MetricPrimitives MinimalMMIOPrimitivesParams}.
 
-  (** NOTE: we have no idea how to deal with [translate] 
-   * if [RVS] is parametrized, so let's just use the default instance for now.
-   *)
+  (** NOTE: we have no idea how to deal with [translate] when [RVS] is 
+   * parametrized, so let's just use the default instance for now. *)
   (* Context {RVS: riscv.Spec.Machine.RiscvMachine M word}. *)
 
   (* common event between riscv-coq and Kami *)
@@ -729,7 +730,7 @@ Section Equiv.
 
   Definition p4mm(prog: kword instrMemSizeLg -> kword 32): Modules.
     refine (ProcMemCorrect.p4stf
-              _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+              _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
               ++ mm prog)%kami.
   Admitted. (* TODO @joonwonc proof structure *)
 
@@ -786,9 +787,9 @@ Section Equiv.
       exists (t': list Event), KamiLabelSeqR t t' /\ traceProp t'.
   Proof.
     intros.
-    pose proof (@proc_correct instrMemSizeLg memInit) as P.
+    pose proof (@proc_correct instrMemSizeLg HbtbAddr memInit) as P.
     unfold traceRefines in P.
-    replace (@KamiProc.p4mm instrMemSizeLg memInit)
+    replace (@KamiProc.p4mm instrMemSizeLg HbtbAddr memInit)
       with (p4mm prg) in P by case TODO. (* TODO @joonwonc proof structure *)
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).

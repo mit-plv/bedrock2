@@ -181,10 +181,6 @@ module system(
     led, spi_clk, spi_csn, spi_mosi, spi_miso, clk, resetn,
       rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_addr, mem_rq_data, mem_rq_iswrite, ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put, spi_tx_buf, spi_rx_buf, spi_tx_rdy,
 
-       mkTop.CAN_FIRE_RL_proc_m12_reqLd,
-       mkTop.CAN_FIRE_RL_proc_m12_reqSt,
-       mkTop.CAN_FIRE_RL_proc_m12_wbNm,
-       mkTop.CAN_FIRE_RL_proc_m12_wbNmZ,
        mkTop.WILL_FIRE_RL_proc_m10_decodeLd,
        mkTop.WILL_FIRE_RL_proc_m10_decodeNm,
        mkTop.WILL_FIRE_RL_proc_m10_decodeSt,
@@ -200,6 +196,7 @@ module system(
        mkTop.WILL_FIRE_RL_proc_m12_wrongEpoch,
        mkTop.WILL_FIRE_RL_proc_m9_instFetchRq,
        mkTop.WILL_FIRE_RL_proc_m9_instFetchRs,
+       mkTop.WILL_FIRE_RL_proc_m9_instFetchRsIgnore,
        mkTop.WILL_FIRE_RL_proc_m9_modifyPc,
        mkTop.WILL_FIRE_RL_proc_m9_pgmInitRq,
        mkTop.WILL_FIRE_RL_proc_m9_pgmInitRqEnd,

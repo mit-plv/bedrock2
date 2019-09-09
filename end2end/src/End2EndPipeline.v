@@ -78,6 +78,8 @@ Section Connect.
   Definition KamiMachine: Type := KamiRiscv.KamiMachine.
 
   Context (instrMemSizeLg: Z) (dataMemSize: nat).
+  Hypothesis (HbtbAddr: BinInt.Z.to_nat instrMemSizeLg =
+                        (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat).
 
   Definition kamiStep := kamiStep instrMemSizeLg.
   Definition states_related := @states_related Pipeline.Registers mem instrMemSizeLg.
@@ -147,6 +149,7 @@ Section Connect.
                       (instrMemSizeLg := instrMemSizeLg).
     edestruct Q as (m2' & t & SeqR & Rel & InvFinal).
     - eapply HinstrMemBound.
+    - assumption.
     - admit.
     - assumption.
     - eapply Preserve.

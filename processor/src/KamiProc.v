@@ -487,6 +487,7 @@ Instance rv32MMIO: AbsMMIO nwidth :=
 Section PerInstAddr.
   Context {instrMemSizeLg: Z}.
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
+  Hypothesis (HbtbAddr: (ninstrMemSizeLg = 3 + (ninstrMemSizeLg - 3))%nat).
 
   Local Definition pcInitVal: ConstT (Pc ninstrMemSizeLg) :=
     ConstBit $0.
@@ -497,9 +498,6 @@ Section PerInstAddr.
   Definition procInit: ProcInit ninstrMemSizeLg rv32DataBytes rv32RfIdx :=
     {| pcInit := pcInitVal; rfInit := rfInitVal |}.
   Variable (memInit: MemInit nwidth rv32DataBytes).
-
-  Definition predictNextPc ty (ppc: fullType ty (SyntaxKind (Pc ninstrMemSizeLg))) :=
-    (#ppc + $4)%kami_expr.
 
   Definition procInl :=
     pprocInl (rv32Fetch _ _) (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
@@ -517,9 +515,21 @@ Section PerInstAddr.
 
   (** Refinement from [p4mm] to [proc] (as a spec) *)
 
+  Definition getBTBIndex ty
+             (pc: fullType ty (SyntaxKind (Bit ninstrMemSizeLg))): (Bit 3) @ ty :=
+    let rpc := eq_rect _ (fun sz => fullType ty (SyntaxKind (Bit sz))) pc _ HbtbAddr in
+    (UniBit (Trunc 3 _) #rpc)%kami_expr.
+
+  Definition getBTBTag ty
+             (pc: fullType ty (SyntaxKind (Bit ninstrMemSizeLg))):
+    (Bit (ninstrMemSizeLg - 3)) @ ty :=
+    let rpc := eq_rect _ (fun sz => fullType ty (SyntaxKind (Bit sz))) pc _ HbtbAddr in
+    (UniBit (TruncLsb 3 _) #rpc)%kami_expr.
+
   Definition p4mm: Kami.Syntax.Modules :=
     p4mm (rv32Fetch _ _) (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
-         rv32MMIO predictNextPc procInit memInit.
+         rv32MMIO getBTBIndex getBTBTag
+         procInit memInit.
 
   Theorem proc_correct: p4mm <<== proc.
   Proof.
