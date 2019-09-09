@@ -59,6 +59,19 @@ Proof.
   ring.
 Qed.
 
+Lemma computable_bounds{lo v hi: Z}(H: andb (Z.leb lo v) (Z.ltb v hi) = true): lo <= v < hi.
+Proof.
+  apply Bool.andb_true_iff in H. destruct H as [H1 H2].
+  apply Z.leb_le in H1.
+  apply Z.ltb_lt in H2.
+  auto.
+Qed.
+
+Lemma computable_le{lo v: Z}(H: Z.leb lo v = true): lo <= v.
+Proof. apply Z.leb_le. assumption. Qed.
+
+Lemma computable_lt{lo v: Z}(H: Z.ltb lo v = true): lo < v.
+Proof. apply Z.ltb_lt. assumption. Qed.
 
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
@@ -107,6 +120,123 @@ Proof.
       { SeparationLogic.ecancel_assumption. }
       { subst v1. subst x7.
         clear H1 x8 H5 v0.
+
+Ltac count_summands e :=
+  lazymatch e with
+  | Z.add ?a ?b => let m := count_summands a in
+                   let n := count_summands b in
+                   let r := eval cbv in (m + n) in r
+  | Z.sub ?a ?b => let m := count_summands a in
+                   let n := count_summands b in
+                   let r := eval cbv in (m + n) in r
+  | _ => Z.one
+  end.
+
+(*
+let a := constr:((1 - 3) + (3 + 2 + 8)) in
+let n := count_summands a in idtac n.
+*)
+
+Ltac rhs_fewer_summands E :=
+   match type of E with
+   | ?a mod ?x = ?b mod ?x =>
+     let m := count_summands a in
+     let n := count_summands b in
+     let b := eval cbv in (Z.ltb n m) in
+     lazymatch b with
+     | true => idtac
+     | false => fail "lhs has" m "summands, rhs has" n
+     end
+   end.
+
+
+        rewrite length_skipn.
+        clear -length_rep H4.
+
+        Hint Rewrite
+       word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
+       using solve[reflexivity || trivial]
+  : word_laws.
+
+        autorewrite with word_laws in *. cbv [word.wrap] in *.
+        rewrite Z.shiftr_div_pow2 by (apply computable_le; reflexivity).
+        rewrite Z.shiftl_mul_pow2 by (apply computable_le; reflexivity).
+
+Import coqutil.Z.PushPullMod.Z.
+Ltac mod_free t ::=
+  lazymatch t with
+  | Z.modulo ?a ?b => fail "contains" a "mod" b
+  | Z.add ?a ?b => mod_free a; mod_free b
+  | Z.sub ?a ?b => mod_free a; mod_free b
+  | Z.mul ?a ?b => mod_free a; mod_free b
+  | _ => idtac
+  end.
+
+
+
+        Z.push_pull_mod.
+
+        repeat match goal with
+                 (* if COQBUG https://github.com/coq/coq/issues/7672 was fixed, no context
+                    match would be needed here *)
+               | |- context[?a mod ?m] => rewrite (Z.mod_small a m) by
+                     (apply computable_bounds; reflexivity)
+               end.
+
+        repeat match goal with
+               | |- context[?x mod _] => progress ring_simplify x
+               end.
+
+        repeat match goal with
+        | E: ?lhs mod ?m = ?rhs |- context[?e mod ?m] =>
+          let F := named_pose_proof (mix_eq_into_mod E e) in
+          match type of F with
+          | _ = ?R mod m => ring_simplify R in F
+          end;
+          rhs_fewer_summands F;
+          rewrite F;
+          clear F;
+          (* removing the modulo, so let's remember its bounds: *)
+          let B := named_pose_proof (Z.mod_pos_bound lhs m eq_refl) in
+          rewrite E in B
+        end.
+
+        Z.push_pull_mod.
+
+        (* here... first do it manually *)
+
+
+        (* not a good reason for rewriting
+        match goal with
+        | H: ?a mod ?m = ?b |- context[?a mod ?m] =>
+          Z.mod_free b;
+            rewrite H
+        end.
+        *)
+
+        (* better reason: *)
+        rewrite (mix_eq_into_mod length_rep). (* wrong place *)
+        repeat match goal with
+               | |- context[?x mod _] => progress ring_simplify x
+               end.
+        (* TODO confirm that it was good by doing count_summands before/after *)
+
+        Z.push_pull_mod.
+
+        repeat match goal with
+               | |- context[?x mod _] => progress ring_simplify x
+               end.
+
+
+Search Z.shiftl Z.mul.
+
+        rewrite word.unsigned_slu by reflexivity.
+        rewrite word.unsigned_sru by reflexivity.
+
+2: reflexivity.
+2: cbv.
+
+(*-------------------------*)
 
 (* does one simplification step *)
 Ltac wsimp e parentIsWord simplifier :=
