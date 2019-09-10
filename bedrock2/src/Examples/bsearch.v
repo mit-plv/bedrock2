@@ -73,6 +73,40 @@ Proof. apply Z.leb_le. assumption. Qed.
 Lemma computable_lt{lo v: Z}(H: Z.ltb lo v = true): lo < v.
 Proof. apply Z.ltb_lt. assumption. Qed.
 
+Ltac count_summands e :=
+  lazymatch e with
+  | Z.add ?a ?b => let m := count_summands a in
+                   let n := count_summands b in
+                   let r := eval cbv in (m + n) in r
+  | Z.sub ?a ?b => let m := count_summands a in
+                   let n := count_summands b in
+                   let r := eval cbv in (m + n) in r
+  | _ => Z.one
+  end.
+
+Goal False.
+  let a := constr:((1 - 3) + (3 + 2 + 8)) in
+  let n := count_summands a in set (x := n).
+Abort.
+
+Ltac rhs_fewer_summands E :=
+   match type of E with
+   | ?a mod ?x = ?b mod ?x =>
+     let m := count_summands a in
+     let n := count_summands b in
+     let b := eval cbv in (Z.ltb n m) in
+     lazymatch b with
+     | true => idtac
+     | false => fail "lhs has" m "summands, rhs has" n
+     end
+   end.
+
+Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
+
+Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
+       using solve[reflexivity || trivial]
+  : word_laws.
+
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -102,9 +136,6 @@ Proof.
     2: solve [auto]. (* exiting loop *)
     (* loop body *)
     rename H2 into length_rep. subst br. subst v0.
-
-    Import Markers.hide. idtac.
-
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
     { rewrite ?Properties.word.word_sub_add_l_same_l. rewrite ?Properties.word.word_sub_add_l_same_r.
@@ -121,59 +152,12 @@ Proof.
       { subst v1. subst x7.
         clear H1 x8 H5 v0.
 
-Ltac count_summands e :=
-  lazymatch e with
-  | Z.add ?a ?b => let m := count_summands a in
-                   let n := count_summands b in
-                   let r := eval cbv in (m + n) in r
-  | Z.sub ?a ?b => let m := count_summands a in
-                   let n := count_summands b in
-                   let r := eval cbv in (m + n) in r
-  | _ => Z.one
-  end.
-
-(*
-let a := constr:((1 - 3) + (3 + 2 + 8)) in
-let n := count_summands a in idtac n.
-*)
-
-Ltac rhs_fewer_summands E :=
-   match type of E with
-   | ?a mod ?x = ?b mod ?x =>
-     let m := count_summands a in
-     let n := count_summands b in
-     let b := eval cbv in (Z.ltb n m) in
-     lazymatch b with
-     | true => idtac
-     | false => fail "lhs has" m "summands, rhs has" n
-     end
-   end.
-
-Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
-
         rewrite length_skipn.
         clear -length_rep H4.
-
-        Hint Rewrite
-       word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
-       using solve[reflexivity || trivial]
-  : word_laws.
 
         autorewrite with word_laws in *. cbv [word.wrap] in *.
         rewrite Z.shiftr_div_pow2 by (apply computable_le; reflexivity).
         rewrite Z.shiftl_mul_pow2 by (apply computable_le; reflexivity).
-
-Import coqutil.Z.PushPullMod.Z.
-Ltac mod_free t ::=
-  lazymatch t with
-  | Z.modulo ?a ?b => fail "contains" a "mod" b
-  | Z.add ?a ?b => mod_free a; mod_free b
-  | Z.sub ?a ?b => mod_free a; mod_free b
-  | Z.mul ?a ?b => mod_free a; mod_free b
-  | _ => idtac
-  end.
-
-
 
         Z.push_pull_mod.
 
@@ -211,9 +195,7 @@ Ltac mod_free t ::=
                      first [apply computable_bounds; reflexivity | assumption | lia2]
                end.
 
-        Set Ltac Profiling.
-        Time lia2.
-        Show Ltac Profile.
+        lia2.
       }
 
       { subst v'. subst v. subst x7.
