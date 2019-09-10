@@ -38,6 +38,10 @@ Ltac named_pose_asfresh pf x :=
   let __ := match constr:(Set) with _ => pose pf as H end in
   H.
 
+Ltac named_pose_asfresh_or_id x n :=
+  let y := match constr:(Set) with _ => named_pose_asfresh x n | _ => x end in
+  y.
+
 Ltac requireZcst z :=
   lazymatch Coq.setoid_ring.InitialRing.isZcst z with
   | true => idtac
@@ -180,6 +184,15 @@ Module unsigned.
       absint_lemma! (Properties.word.unsigned_divu_nowrap x y).
     Definition absint_modu (x y : word.rep) ux Hx uy Hy Hnz  : word.unsigned _ =~> _ :=
       absint_lemma! (Properties.word.unsigned_modu_nowrap x y).
+    (* TODO use it *)
+    Lemma absint_opp (x : word.rep) (ux: Z) (Hx: word.unsigned x = ux) (Hnz: ux <> 0):
+      word.unsigned (word.opp x) =~> 2^width - ux.
+    Proof.
+      rewrite word.unsigned_opp. cbv [word.wrap].
+      rewrite Z_mod_nz_opp_full.
+      - rewrite Z.mod_small; [rewrite Hx; reflexivity|]. apply word.unsigned_range.
+      - rewrite Z.mod_small; [rewrite Hx; apply Hnz|]. apply word.unsigned_range.
+    Qed.
 
     Lemma absint_mask_r x y ux (Hx : word.unsigned x = ux) uy (Hy : word.unsigned y = uy) (Huy : uy = Z.ones (Z.log2 uy+1)):
        word.unsigned (word.and x y) =~> Z.modulo ux (uy+1).
@@ -202,10 +215,6 @@ Module unsigned.
     Qed.
   End WithWord.
 
-  Ltac named_pose_asfresh_or_id x n :=
-    let y := match constr:(Set) with _ => named_pose_asfresh x n | _ => x end in
-    y.
-  
   Ltac zify_expr e :=
     let re := rdelta e in
     lazymatch type of e with
@@ -235,7 +244,7 @@ Module unsigned.
           named_pose_proof constr:(absint_xor a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.lxor Ra Rb))
         | word.ndn =>
           named_pose_proof constr:(absint_ndn a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.ldiff Ra Rb))
-  
+
         | word.add =>
           let Re := named_pose_asfresh_or_id constr:(Ra+Rb) e in
           let Be := rbounded Re in
@@ -254,7 +263,7 @@ Module unsigned.
           let Hbounds := match type of Be with ?x0 <= ?x < ?x1 =>
                            constr:(@boundscheck x0 x x1 Be 0 (2^width) (@eq_refl bool true)) end in
           named_pose_proof constr:(absint_mul a b Ra Ha Rb Hb Hbounds : @absint_eq Z (@word.unsigned _ word_parameters e) Re)
-  
+
         | word.sru =>
           let Re := named_pose_asfresh_or_id constr:((Ra / 2^Rb)) e in
           let Bb := rbounded Rb in
@@ -298,7 +307,7 @@ Module absint_test.
     let e := constr:(word.ndn (word.xor (word.or (word.and (word.sub (word.mul (word.slu (word.sru e (word.of_Z 16)) (word.of_Z 3)) x) x) x) x) x) x) in
     let H := unsigned.zify_expr e in
     idtac H.
-    
+
 
    clear.
    assert (x3 : word32) by exact (word.of_Z 0).
