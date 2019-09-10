@@ -31,6 +31,7 @@ Makefile.coq.all: force _CoqProject
 special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin all_coqmakefile
 	coqc -q $(DEPFLAGS) $< > special/BytedumpTest.out.tmp0
 	head -c $$(($$(wc -c < special/BytedumpTest.out.tmp0 | xargs) - 1)) special/BytedumpTest.out.tmp0 > special/BytedumpTest.out.tmp
+	rm special/BytedumpTest.out.tmp0
 	hexdump < /dev/null && \
 		hexdump -C special/BytedumpTest.golden.bin > special/BytedumpTest.golden.hex && \
 		hexdump -C special/BytedumpTest.out.tmp > special/BytedumpTest.out.hex && \
