@@ -101,11 +101,39 @@ Ltac rhs_fewer_summands E :=
      end
    end.
 
+(* If we have "(... + a ... - b ...) mod m" and an equation "E: a - b = somethingSimpler",
+   this tactic will replace "a - b" by "somethingSimpler", even though "a - b" does not
+   appear as such. In a sense, it does rewriting where the matching is not syntactic, but
+   according to the "ring" tactic on Z.
+   And note that "a - b" is just an example lhs, it can be any ring expression over Z. *)
+Ltac mix_eq_into_mod :=
+  match goal with
+  | E: ?lhs mod ?m = ?rhs |- context[?e mod ?m] =>
+    let F := named_pose_proof (mix_eq_into_mod E e) in
+    match type of F with
+    | _ = ?R mod m => ring_simplify R in F
+    end;
+    rhs_fewer_summands F;
+    rewrite F;
+    clear F;
+    (* removing the modulo, so let's remember its bounds: *)
+    let B := named_pose_proof (Z.mod_pos_bound lhs m eq_refl) in
+    rewrite E in B
+  end.
+
 Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
+
+Ltac simpl_list_length_exprs := rewrite length_skipn. (* TODO improve *)
 
 Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
        using solve[reflexivity || trivial]
   : word_laws.
+
+Ltac wordOps_to_ZModArith :=
+  repeat first
+         [ progress (autorewrite with word_laws in *; cbv [word.wrap] in *)
+         | rewrite Z.shiftr_div_pow2 by (apply computable_le; reflexivity)
+         | rewrite Z.shiftl_mul_pow2 by (apply computable_le; reflexivity) ].
 
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
@@ -151,51 +179,31 @@ Proof.
       { SeparationLogic.ecancel_assumption. }
       { subst v1. subst x7.
         clear H1 x8 H5 v0.
-
-        rewrite length_skipn.
         clear -length_rep H4.
 
-        autorewrite with word_laws in *. cbv [word.wrap] in *.
-        rewrite Z.shiftr_div_pow2 by (apply computable_le; reflexivity).
-        rewrite Z.shiftl_mul_pow2 by (apply computable_le; reflexivity).
+        simpl_list_length_exprs.
 
-        Z.push_pull_mod.
+        wordOps_to_ZModArith.
 
         repeat match goal with
-                 (* if COQBUG https://github.com/coq/coq/issues/7672 was fixed, no context
-                    match would be needed here *)
+               | |- _ => progress Z.push_pull_mod
                | |- context[?a mod ?m] => rewrite (Z.mod_small a m) by
-                     (apply computable_bounds; reflexivity)
+                     first [apply computable_bounds; reflexivity | assumption]
+               | |- _ => mix_eq_into_mod
                end.
 
-        repeat match goal with
-               | |- context[?x mod _] => progress ring_simplify x
-               end.
 
         repeat match goal with
-        | E: ?lhs mod ?m = ?rhs |- context[?e mod ?m] =>
-          let F := named_pose_proof (mix_eq_into_mod E e) in
-          match type of F with
-          | _ = ?R mod m => ring_simplify R in F
-          end;
-          rhs_fewer_summands F;
-          rewrite F;
-          clear F;
-          (* removing the modulo, so let's remember its bounds: *)
-          let B := named_pose_proof (Z.mod_pos_bound lhs m eq_refl) in
-          rewrite E in B
+        | |- context[?a mod ?m] =>
+          lazymatch a with
+          | context[_ mod _] => fail
+          | _ => rewrite (Z.mod_small a m) by
+                first [apply computable_bounds; reflexivity | assumption | lia2]
+          end
         end.
 
-        Z.push_pull_mod.
-
-        repeat match goal with
-                 (* if COQBUG https://github.com/coq/coq/issues/7672 was fixed, no context
-                    match would be needed here *)
-               | |- context[?a mod ?m] => rewrite (Z.mod_small a m) by
-                     first [apply computable_bounds; reflexivity | assumption | lia2]
-               end.
-
         lia2.
+
       }
 
       { subst v'. subst v. subst x7.
