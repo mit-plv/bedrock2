@@ -9,7 +9,7 @@ Definition bsearch := @Demos.bsearch _ Demos.BinarySearch.StringNames.Inst.
 From coqutil Require Import Datatypes.List Word.Interface Map.Interface. (* coercions word and rep *)
 From bedrock2 Require Import Semantics BasicC64Semantics.
 
-From coqutil Require Import Z.div_mod_to_equations.
+From coqutil Require Import Z.div_mod_to_equations Z.div_to_equations.
 From coqutil.Tactics Require Import syntactic_unify.
 From coqutil.Tactics Require Import rdelta.
 
@@ -130,6 +130,8 @@ Ltac lia3 :=
   | |- _ => lia2
   end.
 
+Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_to_equations; blia.
+
 Ltac cleanup_for_ZModArith :=
   repeat match goal with
          | a := _ |- _ => subst a
@@ -222,18 +224,7 @@ Proof.
         cleanup_for_ZModArith.
         simpl_list_length_exprs.
         wordOps_to_ZModArith.
-        ZModArith_step ltac:(lia3).
-        clear H1.
-        ZModArith_step ltac:(lia3).
-        ZModArith_step ltac:(lia3).
-        ZModArith_step ltac:(lia3).
-        ZModArith_step ltac:(lia3).
-        ZModArith_step ltac:(lia3).
-        ZModArith_step ltac:(lia3).
-        ZModArith_step ltac:(lia3).
-        ZModArith_step ltac:(lia3).
-        clear H0.
-        ZModArith_step ltac:(lia3).
+        repeat ZModArith_step ltac:(lia4).
       }
 
       { subst v'. subst v. subst x7.
