@@ -30,6 +30,7 @@ Require Import compiler.RiscvEventLoop.
 Require Import compiler.ForeverSafe.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.Simp.
+Require Import processor.KamiWord.
 Require Import processor.KamiRiscv.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import compiler.PipelineWithRename.
@@ -39,7 +40,7 @@ Require Import compiler.FlatToRiscvDef.
 Local Open Scope Z_scope.
 
 
-Instance FlatToRiscvDef_params: FlatToRiscvDef.parameters := {
+Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters := {
   FlatToRiscvDef.W := KamiWordsInst;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
   FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
@@ -48,15 +49,12 @@ Instance FlatToRiscvDef_params: FlatToRiscvDef.parameters := {
 
 Section Connect.
 
-  Context {M: Type -> Type} {MM: Monad M}.
   Context {Registers: map.map Register Utility.word}
           {Registers_ok: map.ok Registers}
           {mem: map.map Utility.word Utility.byte}
           {mem_ok: map.ok mem}
           {stringname_env : forall T : Type, map.map string T}
           {stringname_env_ok: forall T, map.ok (stringname_env T)}
-          {RVM: RiscvProgram M Utility.word}
-          {PRParams : PrimitivesParams M MetricRiscvMachine }
           {NGstate : Type}
           {NG : NameGen string NGstate}
           {src2imp : map.map string Register}
@@ -67,10 +65,16 @@ Section Connect.
     word_ok := @KamiWord.wordWok _ (or_introl eq_refl);
   }.
 
+  Existing Instance MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams.
+
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {
-    FlatToRiscvDef_params := FlatToRiscvDef_params;
-    ext_spec := real_ext_spec;
-    ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
+    Pipeline.FlatToRiscvDef_params := FlatToRiscvDefParams;
+    Pipeline.ext_spec := real_ext_spec;
+    Pipeline.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
+    Pipeline.M := (OStateND (@MetricRiscvMachine KamiWordsInst _ mem));
+    Pipeline.PRParams := @MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams
+                             _ _ _ (@riscv_ext_spec mmio_params);
+    Pipeline.RVM := @MetricMinimalMMIO.IsMetricRiscvMachine _ _ _ riscv_ext_spec;
   }.
 
   Context {h: @PipelineWithRename.Pipeline.assumptions pipeline_params}.
@@ -126,6 +130,48 @@ Section Connect.
               (Kami.Ex.IsaRv32.rv32Fetch (Z.to_nat width) (Z.to_nat instrMemSizeLg))
               KamiProc.rv32MMIO).
 
+  Definition p4mm(prg: kword instrMemSizeLg -> kword 32): Kami.Syntax.Modules.
+    unshelve refine (processor.KamiRiscv.p4mm _ _ _ _ _ _ _ _ prg).
+  Admitted.
+
+  (* end to end, but still generic over the program
+     TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
+  Lemma end2end:
+    forall (goodTrace: list Event -> Prop)
+           (prg : kword instrMemSizeLg -> kword 32),
+    (* TODO more hypotheses will be needed *)
+    forall (t: Kami.Semantics.LabelSeqT) (mFinal: KamiImplMachine),
+      (* IF the 4-stage pipelined processor steps to some final state mFinal, producing trace t,*)
+      Kami.Semantics.Behavior (p4mm prg) mFinal t ->
+      (* THEN the trace produced by the kami implementation can be mapped to an MMIO trace
+         (this guarantees that the only external behavior of the kami implementation is MMIO)
+         and moreover, this MMIO trace satisfies "not yet bad", as in, there exists at
+         least one way to complete it to a good trace *)
+      exists (t': list Event), KamiLabelSeqR t t' /\
+                               exists (suffix: list Event), goodTrace (suffix ++ t').
+  Proof.
+    intros.
+    (* stack of proofs, bottom-up: *)
+
+    (* 1) Kami pipelined processor to riscv-coq *)
+    pose proof (@riscv_to_kamiImplProcessor
+                  (OStateND (@MetricRiscvMachine KamiWordsInst
+                                                 (@Pipeline.Registers pipeline_params) mem))
+                  Registers
+                  mem
+                  (@Primitives.mcomp_sat _ _ _ _)
+                  _
+                  (@MetricMinimalMMIO.IsMetricRiscvMachine _ _ _ riscv_ext_spec)
+                  instrMemSizeLg HinstrMemBound HbtbAddr
+               ) as P1.
+
+    (* 2) riscv-coq to bedrock2 semantics *)
+
+    (* 3) bedrock2 semantics to bedrock2 program logic *)
+
+  Admitted.
+
+
   (* will have to be extended with a program logic proof at the top and with the kami refinement
      proof to the pipelined processor at the bottom: *)
   Lemma bedrock2Semantics_to_kamiSpecProcessor:
@@ -145,8 +191,9 @@ Section Connect.
     pose proof (pipeline_proofs prog spec sat ml) as P.
     edestruct P as (Establish & Preserve & Use); clear P; [admit..|].
     pose proof @kamiMultiStep_sound as Q.
-    specialize Q with (M := M) (m1 := m1) (m2 := m2) (m1' := m1') (klseq := klseq) (t0 := t0)
-                      (instrMemSizeLg := instrMemSizeLg).
+    specialize Q with
+        (M := OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem)) (m1 := m1) (m2 := m2) (m1' := m1') (klseq := klseq) (t0 := t0)
+        (instrMemSizeLg := instrMemSizeLg).
     edestruct Q as (m2' & t & SeqR & Rel & InvFinal).
     - eapply HinstrMemBound.
     - assumption.
