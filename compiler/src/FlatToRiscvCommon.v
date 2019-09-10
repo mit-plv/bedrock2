@@ -39,7 +39,6 @@ Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
-Require Import compiler.PushPullMod.
 Require Import coqutil.Z.bitblast.
 Require Import riscv.Utility.prove_Zeq_bitwise.
 Require Import compiler.RunInstruction.
