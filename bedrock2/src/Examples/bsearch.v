@@ -178,6 +178,20 @@ Ltac wordOps_to_ZModArith :=
          | rewrite Z.shiftr_div_pow2 by (apply computable_le; reflexivity)
          | rewrite Z.shiftl_mul_pow2 by (apply computable_le; reflexivity) ].
 
+Ltac unsigned_sidecond :=
+  lazymatch goal with
+  | |- @eq Z _ _ => idtac
+  | |- _ < _ => idtac
+  | |- _ <= _ => idtac
+  | |- _ <= _ < _ => idtac
+  | |- _ => fail "this tactic does not solve this kind of goal"
+  end;
+  cleanup_for_ZModArith;
+  simpl_list_length_exprs;
+  wordOps_to_ZModArith;
+  repeat ZModArith_step ltac:(lia4).
+
+
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -209,10 +223,7 @@ Proof.
     rename H2 into length_rep. subst br. subst v0.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
-    { rewrite ?Properties.word.word_sub_add_l_same_l. rewrite ?Properties.word.word_sub_add_l_same_r.
-      repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in progress (* COQBUG(9652) *) rewrite H end.
-      (* rewrite length_rep in *. (* WHY is this necessary for blia? *) *)
-      Z.div_mod_to_equations. blia. }
+    { unsigned_sidecond. }
     { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
       repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in progress (* COQBUG(9652) *) rewrite H end.
       Z.div_mod_to_equations. blia. }
@@ -220,13 +231,7 @@ Proof.
     { repeat letexists. split; [repeat straightline|].
       repeat letexists; repeat split; repeat straightline.
       { SeparationLogic.ecancel_assumption. }
-      {
-        cleanup_for_ZModArith.
-        simpl_list_length_exprs.
-        wordOps_to_ZModArith.
-        repeat ZModArith_step ltac:(lia4).
-      }
-
+      { unsigned_sidecond. }
       { subst v'. subst v. subst x7.
         set (\_ (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1) / \_ (/_ 8)) as X.
         assert (X < Z.of_nat (Datatypes.length x)). {
@@ -237,11 +242,7 @@ Proof.
           revert H4. clear. intros. Z.div_mod_to_equations. blia. }
         rewrite length_skipn; bomega. }
       SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-        destruct x; cbn [Datatypes.length] in *.
-        { rewrite Z.mul_0_r in length_rep. bomega. }
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
-        rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
+      { unsigned_sidecond. }
       { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
         repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
         rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
