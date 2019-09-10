@@ -123,6 +123,34 @@ Ltac mix_eq_into_mod :=
 
 Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
 
+Ltac lia3 :=
+  idtac; (* for evaluation order when passing lia3 as an arg to other tactics *)
+  lazymatch goal with
+  | |- context[_ mod _] => fail "mod found, applying lia could be too expensive"
+  | |- _ => lia2
+  end.
+
+Ltac ZModArith_step lia_tac :=
+  match goal with
+  (* TODO delete this first line because it's already on the last line,
+     it's just here to demo how "robust" the heuristics are which decide when
+     it's safe to try lia *)
+  | |- _ => solve [lia_tac]
+  | |- _ => progress Z.push_pull_mod
+  | |- context[?a mod ?m] =>
+    (* Note: invoking lia here for Z.mod_small can be extremely expensive.
+       We alleviate this by only doing it for terms which don't contain a
+       mod themselves, thus getting a more bottom-up than top-down traversal,
+       and apparently much less expensive lia goals *)
+    lazymatch a with
+    | context[_ mod _] => fail
+    | _ => rewrite (Z.mod_small a m) by
+          first [apply computable_bounds; reflexivity | assumption | lia_tac]
+    end
+  | |- _ => mix_eq_into_mod
+  | |- _ => solve [lia_tac]
+  end.
+
 Ltac simpl_list_length_exprs := rewrite length_skipn. (* TODO improve *)
 
 Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
@@ -182,28 +210,8 @@ Proof.
         clear -length_rep H4.
 
         simpl_list_length_exprs.
-
         wordOps_to_ZModArith.
-
-        repeat match goal with
-               | |- _ => progress Z.push_pull_mod
-               | |- context[?a mod ?m] => rewrite (Z.mod_small a m) by
-                     first [apply computable_bounds; reflexivity | assumption]
-               | |- _ => mix_eq_into_mod
-               end.
-
-
-        repeat match goal with
-        | |- context[?a mod ?m] =>
-          lazymatch a with
-          | context[_ mod _] => fail
-          | _ => rewrite (Z.mod_small a m) by
-                first [apply computable_bounds; reflexivity | assumption | lia2]
-          end
-        end.
-
-        lia2.
-
+        repeat ZModArith_step ltac:(lia3).
       }
 
       { subst v'. subst v. subst x7.
