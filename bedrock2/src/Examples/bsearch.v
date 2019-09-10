@@ -132,17 +132,64 @@ Ltac lia3 :=
 
 Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_to_equations; blia.
 
+Module Z.
+  Lemma mod_mul_l: forall (a b: Z), (b * a) mod b = 0.
+  Proof.
+    intros. assert (b = 0 \/ b <> 0) as C by blia. destruct C as [C | C].
+    - subst. apply Zmod_0_r.
+    - rewrite Z.mul_comm. apply Z.mod_mul. assumption.
+  Qed.
+  Lemma mod_mul_r: forall (a b: Z), (a * b) mod b = 0.
+  Proof.
+    intros. rewrite Z.mul_comm. apply mod_mul_l.
+  Qed.
+End Z.
+
+Ltac Zsimp e parentIsZ simplifier :=
+  first
+  [ (* try to simplify child expression *)
+    lazymatch e with
+    | Z.add ?a ?b => first [ Zsimp a true simplifier | Zsimp b true simplifier ]
+    | Z.mul ?a ?b => first [ Zsimp a true simplifier | Zsimp b true simplifier ]
+    | Z.sub ?a ?b => first [ Zsimp a true simplifier | Zsimp b true simplifier ]
+    | Z.opp ?a    =>         Zsimp a true simplifier
+    | ?f ?a               => first [ Zsimp f false simplifier | Zsimp a false simplifier ]
+    end
+  | (* If we're here, no child expression could be simplified. *)
+    lazymatch parentIsZ with false => idtac end;
+    lazymatch e with
+    | Z.add _ _ => idtac
+    | Z.mul _ _ => idtac
+    | Z.sub _ _ => idtac
+    | Z.opp _   => idtac
+    end;
+    progress (simplifier e)
+  ].
+
+Ltac Zsimp_goal :=
+  repeat match goal with
+         | |- ?G => Zsimp G false ltac:(fun e => ring_simplify e)
+         end.
+
+Ltac is_lia P :=
+  lazymatch P with
+  | @eq Z _ _ => idtac
+  | not (@eq Z _ _) => idtac
+  | (_ < _)%Z => idtac
+  | (_ <= _)%Z => idtac
+  | (_ <= _ < _)%Z => idtac
+  | @eq nat _ _ => idtac
+  | not (@eq nat _ _) => idtac
+  | (_ < _)%nat => idtac
+  | (_ <= _)%nat => idtac
+  | (_ <= _ < _)%nat => idtac
+  | _ => fail "The term" P "is not LIA"
+  end.
+
 Ltac cleanup_for_ZModArith :=
   repeat match goal with
          | a := _ |- _ => subst a
-         | H: ?T |- _ => lazymatch T with
-                         | _ < _ => fail
-                         | _ <= _ => fail
-                         | _ <= _ < _ => fail
-                         | @eq Z _ _ => fail
-                         | not (@eq Z _ _) => fail
-                         | _ => clear H
-                         end
+         | H: ?T |- _ => tryif is_lia T then fail else clear H
          end.
 
 Ltac ZModArith_step lia_tac :=
@@ -151,22 +198,21 @@ Ltac ZModArith_step lia_tac :=
      it's just here to demo how "robust" the heuristics are which decide when
      it's safe to try lia *)
   | |- _ => solve [lia_tac]
+  | |- _ => exact eq_refl
   | |- _ => progress Z.push_pull_mod
   | |- context[?a mod ?m] =>
-    (* Note: invoking lia here for Z.mod_small can be extremely expensive.
-       We alleviate this by only doing it for terms which don't contain a
-       mod themselves, thus getting a more bottom-up than top-down traversal,
-       and apparently much less expensive lia goals *)
-    lazymatch a with
-    | context[_ mod _] => fail
-    | _ => rewrite (Z.mod_small a m) by
-          first [apply computable_bounds; reflexivity | assumption | lia_tac]
-    end
+    rewrite (Z.mod_small a m) by
+        first [apply computable_bounds; reflexivity | assumption | lia_tac]
   | |- _ => mix_eq_into_mod
+  | |- _ => progress Zsimp_goal
+  | |- _ => apply Z.mod_mul_l
+  | |- _ => apply Z.mod_mul_r
   | |- _ => solve [lia_tac]
   end.
 
-Ltac simpl_list_length_exprs := rewrite ?length_skipn. (* TODO improve *)
+(* TODO improve *)
+Ltac simpl_list_length_exprs :=
+  rewrite ?List.length_skipn, ?List.firstn_length.
 
 Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
        using solve[reflexivity || trivial]
@@ -180,11 +226,7 @@ Ltac wordOps_to_ZModArith :=
 
 Ltac unsigned_sidecond :=
   lazymatch goal with
-  | |- @eq Z _ _ => idtac
-  | |- _ < _ => idtac
-  | |- _ <= _ => idtac
-  | |- _ <= _ < _ => idtac
-  | |- _ => fail "this tactic does not solve this kind of goal"
+  | |- ?G => tryif is_lia G then idtac else fail "this tactic does not solve this kind of goal"
   end;
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
@@ -224,63 +266,28 @@ Proof.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
     { unsigned_sidecond. }
-    { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-      repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in progress (* COQBUG(9652) *) rewrite H end.
-      Z.div_mod_to_equations. blia. }
+    { unsigned_sidecond. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
       repeat letexists; repeat split; repeat straightline.
       { SeparationLogic.ecancel_assumption. }
       { unsigned_sidecond. }
-      { subst v'. subst v. subst x7.
-        set (\_ (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1) / \_ (/_ 8)) as X.
-        assert (X < Z.of_nat (Datatypes.length x)). {
-          eapply Z.div_lt_upper_bound; [exact eq_refl|].
-          rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-          repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
-          rewrite length_rep in *. (* WHY does lia need this? *)
-          revert H4. clear. intros. Z.div_mod_to_equations. blia. }
-        rewrite length_skipn; bomega. }
+      { unsigned_sidecond. }
       SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { unsigned_sidecond. }
-      { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
-        rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
-      { exact eq_refl. }
+      { unsigned_sidecond. }
+      { unsigned_sidecond. }
       { SeparationLogic.ecancel_assumption. } }
     (* second branch of the if, very similar goals... *)
     { repeat letexists. split. 1: solve [repeat straightline].
       repeat letexists; repeat split; repeat straightline.
       { SeparationLogic.ecancel_assumption. }
-      { subst v1. subst x7.
-        rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
-        rewrite ?length_rep.
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
-        rewrite List.firstn_length_le; cycle 1.
-        { assert (Datatypes.length x <> 0)%nat by bomega.
-          revert H13. clear. intros. Z.div_mod_to_equations; zify; rewrite ?Z2Nat.id by blia; blia. }
-        rewrite Z2Nat.id by (clear; Z.div_mod_to_equations; blia).
-        clear. Z.div_mod_to_equations. blia. }
-      { subst v. subst v'. subst x7.
-        rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
-        rewrite ?length_rep.
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in try rewrite H end.
-        assert (Datatypes.length x <> 0)%nat by bomega.
-        rewrite List.firstn_length_le; cycle 1.
-        { revert H12. clear. intros. Z.div_mod_to_equations; zify; rewrite ?Z2Nat.id by blia; blia. }
-        revert H12. clear. zify. rewrite ?Z2Nat.id; (Z.div_mod_to_equations; blia). }
+      { unsigned_sidecond. }
+      { unsigned_sidecond. }
       subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-        destruct x; cbn [Datatypes.length] in *.
-        { rewrite Z.mul_0_r in length_rep. bomega. }
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
-        rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
-      { rewrite ?Properties.word.word_sub_add_l_same_l, ?Properties.word.word_sub_add_l_same_r.
-        repeat match goal with |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H end.
-        rewrite length_rep.  clear. Z.div_mod_to_equations. blia. }
-      { exact eq_refl. }
+      { unsigned_sidecond. }
+      { unsigned_sidecond. }
+      { unsigned_sidecond. }
       { SeparationLogic.ecancel_assumption. } } }
   repeat straightline.
   repeat apply conj; auto; []. (* postcondition *)
