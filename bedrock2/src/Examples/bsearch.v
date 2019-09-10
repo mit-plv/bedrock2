@@ -118,7 +118,7 @@ Ltac mix_eq_into_mod :=
     clear F;
     (* removing the modulo, so let's remember its bounds: *)
     let B := named_pose_proof (Z.mod_pos_bound lhs m eq_refl) in
-    rewrite E in B
+    rewrite E in B (* TODO prevent duplicate *)
   end.
 
 Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
@@ -129,6 +129,19 @@ Ltac lia3 :=
   | |- context[_ mod _] => fail "mod found, applying lia could be too expensive"
   | |- _ => lia2
   end.
+
+Ltac cleanup_for_ZModArith :=
+  repeat match goal with
+         | a := _ |- _ => subst a
+         | H: ?T |- _ => lazymatch T with
+                         | _ < _ => fail
+                         | _ <= _ => fail
+                         | _ <= _ < _ => fail
+                         | @eq Z _ _ => fail
+                         | not (@eq Z _ _) => fail
+                         | _ => clear H
+                         end
+         end.
 
 Ltac ZModArith_step lia_tac :=
   match goal with
@@ -151,7 +164,7 @@ Ltac ZModArith_step lia_tac :=
   | |- _ => solve [lia_tac]
   end.
 
-Ltac simpl_list_length_exprs := rewrite length_skipn. (* TODO improve *)
+Ltac simpl_list_length_exprs := rewrite ?length_skipn. (* TODO improve *)
 
 Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
        using solve[reflexivity || trivial]
@@ -205,13 +218,22 @@ Proof.
     { repeat letexists. split; [repeat straightline|].
       repeat letexists; repeat split; repeat straightline.
       { SeparationLogic.ecancel_assumption. }
-      { subst v1. subst x7.
-        clear H1 x8 H5 v0.
-        clear -length_rep H4.
-
+      {
+        cleanup_for_ZModArith.
         simpl_list_length_exprs.
         wordOps_to_ZModArith.
-        repeat ZModArith_step ltac:(lia3).
+        ZModArith_step ltac:(lia3).
+        clear H1.
+        ZModArith_step ltac:(lia3).
+        ZModArith_step ltac:(lia3).
+        ZModArith_step ltac:(lia3).
+        ZModArith_step ltac:(lia3).
+        ZModArith_step ltac:(lia3).
+        ZModArith_step ltac:(lia3).
+        ZModArith_step ltac:(lia3).
+        ZModArith_step ltac:(lia3).
+        clear H0.
+        ZModArith_step ltac:(lia3).
       }
 
       { subst v'. subst v. subst x7.
