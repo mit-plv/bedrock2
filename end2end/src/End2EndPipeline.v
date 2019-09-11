@@ -39,6 +39,46 @@ Require Import compiler.FlatToRiscvDef.
 
 Local Open Scope Z_scope.
 
+Ltac specialize_first_num P Q :=
+  first [ specialize P with (1 := Q)
+        | specialize P with (2 := Q)
+        | specialize P with (3 := Q)
+        | specialize P with (4 := Q)
+        | specialize P with (5 := Q)
+        | specialize P with (6 := Q)
+        | specialize P with (7 := Q)
+        | specialize P with (8 := Q)
+        | specialize P with (9 := Q)
+        | fail 1 "no match found for" Q "within the first few hypotheses of" P ].
+
+Ltac specialize_first_ident P a :=
+  match type of P with
+  | forall                                           (x: _), _ => specialize P with (x := a)
+  | forall                                         _ (x: _), _ => specialize P with (x := a)
+  | forall                                       _ _ (x: _), _ => specialize P with (x := a)
+  | forall                                     _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                                   _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                                 _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                               _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                             _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                           _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                         _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                       _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                     _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                   _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall                 _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall               _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall             _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall           _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall         _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall       _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall     _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | forall _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
+  | _ => fail 1 "no match found for" a "within the first few arguments of" P
+  end.
+
+Ltac specialize_first P Q := specialize_first_num P Q || specialize_first_ident P Q.
 
 Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters := {
   FlatToRiscvDef.W := KamiWordsInst;
@@ -65,19 +105,27 @@ Section Connect.
     word_ok := @KamiWord.wordWok _ (or_introl eq_refl);
   }.
 
-  Existing Instance MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams.
+  Instance PRParams: PrimitivesParams (OStateND MetricRiscvMachine) MetricRiscvMachine :=
+    @MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams _ _ _ (@riscv_ext_spec mmio_params).
 
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {
     Pipeline.FlatToRiscvDef_params := FlatToRiscvDefParams;
     Pipeline.ext_spec := real_ext_spec;
     Pipeline.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
     Pipeline.M := (OStateND (@MetricRiscvMachine KamiWordsInst _ mem));
-    Pipeline.PRParams := @MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams
-                             _ _ _ (@riscv_ext_spec mmio_params);
     Pipeline.RVM := @MetricMinimalMMIO.IsMetricRiscvMachine _ _ _ riscv_ext_spec;
   }.
 
-  Context {h: @PipelineWithRename.Pipeline.assumptions pipeline_params}.
+  Context {FlatToRiscvHyps : FlatToRiscvCommon.FlatToRiscv.assumptions}.
+  Context {Ext_spec_ok : ext_spec.ok FlatToRiscvCommon.FlatToRiscv.Semantics_params}.
+
+  Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
+
+  Instance pipeline_assumptions: @PipelineWithRename.Pipeline.assumptions pipeline_params.
+    refine ({|
+      Pipeline.PR := MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives;
+    |}).
+  Defined.
 
   Definition KamiMachine: Type := KamiRiscv.KamiMachine.
 
@@ -119,30 +167,64 @@ Section Connect.
   Context (prog: @Program strname_sem cmd)
           (spec: @ProgramSpec strname_sem)
           (sat: @ProgramSatisfiesSpec strname_sem cmd prog (@Semantics.exec strname_sem) spec)
-          (ml: MemoryLayout Semantics.width)
+          (ml: MemoryLayout 32)
+          (mlOk: MemoryLayoutOk ml)
           (memInit: Kami.Ex.SC.MemInit
                       (Z.to_nat width)
-                      Kami.Ex.IsaRv32.rv32DataBytes).
+                      Kami.Ex.IsaRv32.rv32DataBytes)
+          (HinstrMemBound: instrMemSizeLg <= width - 2).
 
-  Hypotheses
-    (HinstrMemBound: instrMemSizeLg <= width - 2)
-    (Hinit: KamiProc.PgmInitNotMMIO
-              (Kami.Ex.IsaRv32.rv32Fetch (Z.to_nat width) (Z.to_nat instrMemSizeLg))
-              KamiProc.rv32MMIO).
+  Hypothesis instrMemSizeLg_agrees_with_ml:
+    word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
 
-  Definition p4mm(prg: kword instrMemSizeLg -> kword 32): Kami.Syntax.Modules.
-    unshelve refine (processor.KamiRiscv.p4mm _ _ _ _ _ _ _ _ prg).
+  Lemma HpgmInit: KamiProc.PgmInitNotMMIO
+                    (Kami.Ex.IsaRv32.rv32Fetch (Z.to_nat width) (Z.to_nat instrMemSizeLg))
+                    KamiProc.rv32MMIO.
+  Proof.
+    unfold KamiProc.PgmInitNotMMIO, SCMMInv.PgmInitNotMMIO.
+    destruct mlOk. (* TODO should follow from mlOk (and other hypotheses, maybe) *)
   Admitted.
+
+  (* only holds at the beginning/end of each loop iteration,
+     will be transformed into "exists suffix, ..." form later *)
+  Definition goodTrace(t: list Event): Prop :=
+    exists bedrockTrace, traces_related t bedrockTrace /\ spec.(goodTrace) bedrockTrace.
+
+  (* compiles the section var "prog : Program cmd" from bedrock2 down to a kami instruction mem *)
+  Definition compile_to_kami: kword instrMemSizeLg -> kword 32.
+  Admitted.
+
+  (* TODO can we do with fewer explicit implicit arguments? *)
+  Definition p4mm: Kami.Syntax.Modules := @KamiRiscv.p4mm
+   (OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
+   Registers mem
+   (@Primitives.mcomp_sat KamiWordsInst
+      (OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
+      (@MetricRiscvMachine KamiWordsInst Registers mem) PRParams)
+   (OStateND_Monad (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
+   (@MetricMinimalMMIO.IsMetricRiscvMachine (@Words32 mmio_params) (@MMIO.mem mmio_params)
+      (@MMIO.locals mmio_params) (@riscv_ext_spec mmio_params)) instrMemSizeLg HinstrMemBound
+   HbtbAddr
+   memInit
+   (@nonmem_load KamiWordsInst
+      (OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
+      (@MetricRiscvMachine KamiWordsInst Registers mem) PRParams)
+   (@nonmem_store KamiWordsInst
+      (OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
+      (@MetricRiscvMachine KamiWordsInst Registers mem) PRParams)
+   (@MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives (@Words32 mmio_params)
+      (@MMIO.mem mmio_params) (@MMIO.locals mmio_params) (@riscv_ext_spec mmio_params)
+      (@riscv_ext_spec_sane mmio_params))
+   HpgmInit
+   compile_to_kami.
 
   (* end to end, but still generic over the program
      TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
   Lemma end2end:
-    forall (goodTrace: list Event -> Prop)
-           (prg : kword instrMemSizeLg -> kword 32),
     (* TODO more hypotheses will be needed *)
     forall (t: Kami.Semantics.LabelSeqT) (mFinal: KamiImplMachine),
       (* IF the 4-stage pipelined processor steps to some final state mFinal, producing trace t,*)
-      Kami.Semantics.Behavior (p4mm prg) mFinal t ->
+      Kami.Semantics.Behavior p4mm mFinal t ->
       (* THEN the trace produced by the kami implementation can be mapped to an MMIO trace
          (this guarantees that the only external behavior of the kami implementation is MMIO)
          and moreover, this MMIO trace satisfies "not yet bad", as in, there exists at
@@ -150,24 +232,29 @@ Section Connect.
       exists (t': list Event), KamiLabelSeqR t t' /\
                                exists (suffix: list Event), goodTrace (suffix ++ t').
   Proof.
-    intros.
+    intros *. intros B.
+
+    set (traceProp := fun (t: list Event) =>
+                        exists (suffix: list Event), goodTrace (suffix ++ t)).
+    change (exists t' : list Event,
+               KamiLabelSeqR t t' /\ traceProp t').
+
     (* stack of proofs, bottom-up: *)
 
     (* 1) Kami pipelined processor to riscv-coq *)
-    pose proof (@riscv_to_kamiImplProcessor
-                  (OStateND (@MetricRiscvMachine KamiWordsInst
-                                                 (@Pipeline.Registers pipeline_params) mem))
-                  Registers
-                  mem
-                  (@Primitives.mcomp_sat _ _ _ _)
-                  _
-                  (@MetricMinimalMMIO.IsMetricRiscvMachine _ _ _ riscv_ext_spec)
-                  instrMemSizeLg HinstrMemBound HbtbAddr
-               ) as P1.
+    pose proof @riscv_to_kamiImplProcessor as P1.
+    specialize_first P1 traceProp.
+    specialize_first P1 (ll_inv (h := pipeline_assumptions) spec ml).
+    specialize_first P1 B.
+    (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
+    pose proof (pipeline_proofs prog spec sat ml) as P2.
 
     (* 3) bedrock2 semantics to bedrock2 program logic *)
+    (* TODO Isn't this only for code without function calls? *)
+    pose proof WeakestPreconditionProperties.sound_nil as P3.
+    (* -> pose axiom of what I'd expect *)
 
   Admitted.
 
@@ -198,7 +285,7 @@ Section Connect.
     - eapply HinstrMemBound.
     - assumption.
     - admit.
-    - assumption.
+    - exact HpgmInit.
     - eapply Preserve.
     - eassumption.
     - eassumption.
