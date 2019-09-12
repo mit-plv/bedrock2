@@ -286,8 +286,8 @@ Section Pipeline1.
     word.add ml.(code_start) (word.of_Z (4 * Z.of_nat (List.length insts_init))).
 
   Definition ll_ready(st: MetricRiscvMachine): Prop :=
-    exists regsH memH metricsH,
-      spec.(isReady) st.(getLog) memH regsH metricsH /\
+    exists regsH memH,
+      spec.(isReady) st.(getLog) memH regsH /\
       spec.(goodTrace) st.(getLog) /\
       goodMachine st.
 

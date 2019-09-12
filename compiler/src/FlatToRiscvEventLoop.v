@@ -50,7 +50,7 @@ Section Loop.
 
   Definition goodReadyStateL: MetricRiscvMachine -> Prop :=
     fun finalL => exists tH mH lH mcH g,
-        spec.(isReady) tH mH lH mcH /\
+        spec.(isReady) tH mH lH /\
         spec.(goodTrace) tH /\
         goodMachine tH mH lH mcH g finalL.
 

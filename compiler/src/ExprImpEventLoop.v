@@ -41,7 +41,7 @@ Section EventLoop.
          init_code' = prog.(init_code) /\
          loop_body' = prog.(loop_body) /\
          spec.(goodTrace) t' /\
-         spec.(isReady) t' m' l' mc').
+         spec.(isReady) t' m' l').
 
   Lemma stm_step_preserves_hl_inv: forall s,
       hl_inv s -> stm_step s hl_inv.

@@ -80,6 +80,38 @@ Ltac specialize_first_ident P a :=
 
 Ltac specialize_first P Q := specialize_first_num P Q || specialize_first_ident P Q.
 
+
+
+Axiom TODO: False.
+
+Definition funspecs_satisfy_funimpls: Prop. case TODO. Defined.
+
+Require Import Coq.Classes.Morphisms.
+Lemma program_logic_sound
+      {p : Semantics.parameters}
+      {Proper_ext_spec : forall trace m act args,
+          Proper ((pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> Basics.impl)
+                 (Semantics.ext_spec trace m act args)}:
+  forall (funspecs: Syntax.funname ->
+                    (Semantics.trace -> mem -> list word ->
+                     (Semantics.trace -> mem -> list word -> Prop) -> Prop))
+         (s: funspecs_satisfy_funimpls)
+         (funimpls: Semantics.env)
+         (c: cmd) (t: Semantics.trace) (m: mem) (l: locals) (mc: MetricLogging.MetricLog)
+         (post : Semantics.trace -> mem -> locals -> Prop),
+    WeakestPrecondition.cmd funspecs c t m l post ->
+    Semantics.exec funimpls c t m l mc (fun t' m' l' mc' => post t' m' l').
+Proof.
+  intros.
+  assert (funimpls = map.empty) as E by case TODO. rewrite E.
+  eapply WeakestPreconditionProperties.sound_nil.
+  match goal with
+  | _: WeakestPrecondition.cmd ?F' _ _ _ _ _ |- WeakestPrecondition.cmd ?F _ _ _ _ _ =>
+    replace F with F' by case TODO
+  end.
+  assumption.
+Qed.
+
 Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters := {
   FlatToRiscvDef.W := KamiWordsInst;
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
@@ -166,7 +198,6 @@ Section Connect.
                             (@Pipeline.FlattenExpr_parameters pipeline_params)))).
   Context (prog: @Program strname_sem cmd)
           (spec: @ProgramSpec strname_sem)
-          (sat: @ProgramSatisfiesSpec strname_sem cmd prog (@Semantics.exec strname_sem) spec)
           (ml: MemoryLayout 32)
           (mlOk: MemoryLayoutOk ml)
           (memInit: Kami.Ex.SC.MemInit
@@ -185,9 +216,10 @@ Section Connect.
     destruct mlOk. (* TODO should follow from mlOk (and other hypotheses, maybe) *)
   Admitted.
 
-  (* only holds at the beginning/end of each loop iteration,
+  (* goodTrace in terms of "exchange format" (list Event).
+     Only holds at the beginning/end of each loop iteration,
      will be transformed into "exists suffix, ..." form later *)
-  Definition goodTrace(t: list Event): Prop :=
+  Definition goodTraceE(t: list Event): Prop :=
     exists bedrockTrace, traces_related t bedrockTrace /\ spec.(goodTrace) bedrockTrace.
 
   (* compiles the section var "prog : Program cmd" from bedrock2 down to a kami instruction mem *)
@@ -218,10 +250,23 @@ Section Connect.
    HpgmInit
    compile_to_kami.
 
+  Definition kamiMemToBedrockMem(km: SC.MemInit (Z.to_nat width) IsaRv32.rv32DataBytes): mem.
+    case TODO.
+  Defined.
+
+  Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t').
+
   (* end to end, but still generic over the program
      TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
   Lemma end2end:
-    (* TODO more hypotheses will be needed *)
+    forall funspecs,
+      (forall m l, WeakestPrecondition.cmd (p := strname_sem) funspecs prog.(init_code) [] m l
+                   bedrock2Inv) ->
+      (forall t m l,
+          bedrock2Inv t m l ->
+          WeakestPrecondition.cmd (p := strname_sem)
+                                  funspecs prog.(loop_body) t m l bedrock2Inv) ->
+    (* TODO more hypotheses might be needed *)
     forall (t: Kami.Semantics.LabelSeqT) (mFinal: KamiImplMachine),
       (* IF the 4-stage pipelined processor steps to some final state mFinal, producing trace t,*)
       Kami.Semantics.Behavior p4mm mFinal t ->
@@ -230,12 +275,12 @@ Section Connect.
          and moreover, this MMIO trace satisfies "not yet bad", as in, there exists at
          least one way to complete it to a good trace *)
       exists (t': list Event), KamiLabelSeqR t t' /\
-                               exists (suffix: list Event), goodTrace (suffix ++ t').
+                               exists (suffix: list Event), goodTraceE (suffix ++ t').
   Proof.
-    intros *. intros B.
+    intros *. intros Establish Preserve. intros *. intros B.
 
     set (traceProp := fun (t: list Event) =>
-                        exists (suffix: list Event), goodTrace (suffix ++ t)).
+                        exists (suffix: list Event), goodTraceE (suffix ++ t)).
     change (exists t' : list Event,
                KamiLabelSeqR t t' /\ traceProp t').
 
@@ -249,58 +294,53 @@ Section Connect.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
-    pose proof (pipeline_proofs prog spec sat ml) as P2.
+    pose proof @pipeline_proofs as P2.
+    specialize_first P2 prog.
+    specialize_first P2 spec.
+    specialize_first P2 ml.
+    edestruct P2 as [ P2establish [P2preserve P2use] ]. {
+      (* 3) bedrock2 semantics to bedrock2 program logic *)
+      constructor.
+      - intros.
+        pose proof (@program_logic_sound strname_sem) as P3init.
+        specialize_first Establish (kamiMemToBedrockMem memInit).
+        assert (initialLocals: @locals strname_sem) by case TODO. (* obtain from kami *)
+        specialize_first Establish initialLocals.
+        specialize_first P3init Establish.
+        replace m0 with (kamiMemToBedrockMem memInit) by case TODO.
+        replace l0 with initialLocals by case TODO.
+        eapply P3init. 1,2: case TODO.
+      - intros.
+        pose proof (@program_logic_sound strname_sem) as P3loop.
+        eapply P3loop.
+        3: eapply Preserve.
+        3: split; assumption.
+        1,2: case TODO.
+    }
 
-    (* 3) bedrock2 semantics to bedrock2 program logic *)
-    (* TODO Isn't this only for code without function calls? *)
-    pose proof WeakestPreconditionProperties.sound_nil as P3.
-    (* -> pose axiom of what I'd expect *)
+    eapply P1.
+    - (* establish *)
+      intros.
+      eapply P2establish.
+      case TODO.
+    - (* preserve *)
+      intros.
+      eapply P2preserve. assumption.
+    - (* use *)
+      intros *. intro Inv.
+      subst traceProp. simpl.
+      specialize_first P2use Inv.
+      destruct P2use as [suff Good].
+      unfold goodTrace.
+      (* given the bedrock2 trace "suff ++ getLog m", produce exchange format trace *)
+      case TODO.
 
-  Admitted.
-
-
-  (* will have to be extended with a program logic proof at the top and with the kami refinement
-     proof to the pipelined processor at the bottom: *)
-  Lemma bedrock2Semantics_to_kamiSpecProcessor:
-    forall (goodTrace: list Event -> Prop) (m1 m2: KamiMachine) klseq (t0: list Event)
-           (m1': MetricRiscvMachine)
-           (Hkreach: Semantics.reachable
-                       m1 (KamiRiscv.kamiProc instrMemSizeLg memInit)),
-      (* TODO many more hypotheses will be needed *)
-      states_related (m1, t0) m1' ->
-      Kami.Semantics.Multistep
-        (KamiRiscv.kamiProc instrMemSizeLg memInit) m1 m2 klseq ->
-      exists suffix t,
-        KamiLabelSeqR klseq t /\
-        goodTrace (suffix ++ t ++ t0).
-  Proof.
-    intros.
-    pose proof (pipeline_proofs prog spec sat ml) as P.
-    edestruct P as (Establish & Preserve & Use); clear P; [admit..|].
-    pose proof @kamiMultiStep_sound as Q.
-    specialize Q with
-        (M := OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem)) (m1 := m1) (m2 := m2) (m1' := m1') (klseq := klseq) (t0 := t0)
-        (instrMemSizeLg := instrMemSizeLg).
-    edestruct Q as (m2' & t & SeqR & Rel & InvFinal).
-    - eapply HinstrMemBound.
-    - assumption.
-    - admit.
-    - exact HpgmInit.
-    - eapply Preserve.
-    - eassumption.
-    - eassumption.
-    - eassumption.
-    - eapply Establish. admit.
-    - apply states_related_to_traces_related in Rel.
-      edestruct Use as (suffix & G). 1: exact InvFinal.
-
-    (* TODO ?
-    - apply states_related_to_traces_related in Rel.
-      edestruct Use as (suffix & llTrace & Rel' & G). 1: exact InvFinal.
-      apply split_ll_trace in Rel'.
-      destruct Rel' as (llTrace1 & llTrace2 & E & Rel1' & Rel2'). subst.
-      pose proof (traces_related_unique Rel Rel1'). subst.
-      exists llTrace2. exact G. *)
-  Admitted.
+    Grab Existential Variables. assumption.
+  Qed.
 
 End Connect.
+
+(*
+About end2end.
+Print Assumptions end2end.
+*)
