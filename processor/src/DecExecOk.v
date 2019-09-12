@@ -19,6 +19,28 @@ Set Implicit Arguments.
 
 Local Open Scope Z_scope.
 
+Lemma kami_split_bitSlice_consistent_1:
+  forall (i: nat) kinst,
+    wordToZ (split1 i (32 - i) kinst) =
+    bitSlice (wordToZ kinst) 0 (Z.of_nat i).
+Proof.
+Admitted.
+
+Lemma kami_split_bitSlice_consistent_2:
+  forall (i j: nat) kinst,
+    wordToZ (split2 i j kinst) =
+    bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
+Proof.
+Admitted.
+
+Lemma kami_split_bitSlice_consistent_3:
+  forall (i j: nat) kinst,
+    wordToZ
+      (split2 i j (split1 (i + j) (32 - (i + j)) kinst)) =
+    bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
+Proof.
+Admitted.
+
 Section DecExecOk.
 
   Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
@@ -203,28 +225,6 @@ Section DecExecOk.
     - auto.
     - admit.
     - admit.
-  Admitted.
-
-  Lemma kami_split_bitSlice_consistent_1:
-    forall (i: nat) kinst,
-      wordToZ (split1 i (32 - i) kinst) =
-      bitSlice (wordToZ kinst) 0 (Z.of_nat i).
-  Proof.
-  Admitted.
-
-  Lemma kami_split_bitSlice_consistent_2:
-    forall (i j: nat) kinst,
-      wordToZ (split2 i j kinst) =
-      bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
-  Proof.
-  Admitted.
-
-  Lemma kami_split_bitSlice_consistent_3:
-    forall (i j: nat) kinst,
-      wordToZ
-        (split2 i j (split1 (i + j) (32 - (i + j)) kinst)) =
-      bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
-  Proof.
   Admitted.
 
   Lemma kami_getOpcode_ok:

@@ -263,6 +263,29 @@ Section Equiv.
   Ltac kami_step_case_empty :=
     left; FMap.mred; fail.
 
+  Ltac eval_decode H :=
+    unfold decode in H;
+    repeat
+      match goal with
+      | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite Hbs in H
+      end;
+    cbv [iset supportsM supportsA supportsF
+              andb Z.eqb Pos.eqb
+              opcode_LOAD opcode_OP opcode_SYSTEM opcode_MISC_MEM opcode_OP_IMM
+              opcode_AUIPC opcode_STORE
+              funct3_LW funct3_LH funct3_LB funct3_ADD
+              funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU
+              funct3_DIV funct3_DIVU funct3_REM funct3_REMU
+              funct7_ADD funct7_MUL
+              isValidI isValidM
+              bitwidth isValidCSR
+        ] in H;
+    repeat rewrite app_nil_r in H;
+    cbv [Datatypes.length
+           Pos.of_succ_nat
+           Z.gtb Z.compare Pos.compare Pos.compare_cont
+           Z.of_nat nth] in H.
+
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
 
@@ -356,12 +379,12 @@ Section Equiv.
     intros.
     inversion H; subst; clear H.
     eapply invert_Kami_execLd in H1; eauto.
-    destruct H1 as (? & kinst & ldAddr & ? & ? & ? & ?).
+    destruct H1 as (? & kinst & ldAddr & ? & ? & ? & ? & ?).
     simpl in H; subst pinit.
 
     destruct (evalExpr (isMMIO type ldAddr)) eqn:Hmmio.
-    - specialize (H3 eq_refl); clear H8.
-      destruct H3 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
+    - specialize (H8 eq_refl); clear H9.
+      destruct H8 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
       simpl in H; subst cs.
 
       (** Invert a riscv-coq step. *)
@@ -373,32 +396,21 @@ Section Equiv.
               wordToZ kinst) as Hfetch by (subst kinst; assumption).
       simpl in H0, Hfetch; rewrite Hfetch in H0.
 
-      (** Invert riscv-coq decode/execute *)
-      match type of H0 with
-      | context [decode ?i ?al] =>
-        destruct (decode i al) eqn:Hdec;
-          [(* IInstruction *)
-          |(* MInstruction *) admit
-          |(** TODO @samuelgruetter: remove the other cases except I and M --
-            * execution with [iset] (= RV32IM) cannot have such cases.
-            *)
-          admit..]
-      end.
-      (** TODO @samuelgruetter: here the instruction should be [Lw _ _ _] *)
-      destruct iInstruction.
-      4-40: admit.
-      1-2: admit.
+      (** Evaluate [decode]. *)
+      (** TODO @joonwonc: should derive below facts from
+          [invert_Kami_execLd]. *)
+      assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) by admit.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H16.
+      assert (bitSlice (wordToZ kinst) 12 15 = funct3_LW) by admit.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H17.
+      eval_decode H0.
 
-      apply invert_decode_Lw in Hdec.
-      destruct Hdec as [Hopc [Hrd [Hf3 [Hrs1 Himm12]]]].
-
-      simpl in H0.
-
+      (** Invert the body of [execute]. *)
+      cbv [Execute.execute ExecuteI.execute] in H0.
       inv_riscv.
 
       apply spec_getRegister with (post0:= mid2) in H0.
-      destruct H0; [|admit (** TODO @joonwonc: prove the value of `R0` is
-                            * always zero in Kami steps. *)].
+      destruct H0; [|admit (** when [rs1] is [Register0] .. *)].
       simpl in H0; destruct H0.
       destruct_one_match_hyp;
         [rename w into v1|admit (** TODO: prove it never fails to read
@@ -406,38 +418,10 @@ Section Equiv.
                                  * is valid. *)].
 
       inv_riscv.
-      apply spec_Return in H15.
-
-      inv_bind_apply H15.
-      inv_bind H17.
-      inv_loadWord H17.
-      destruct H17.
-      destruct H19; [admit|]. (* Let's go to the MMIO case. *)
-      destruct H19.
-
-      Fail (unfold nonmem_load in H20).
-
-      (** Construction *)
-
-      (* do 2 eexists. *)
-      (* repeat split; [| |eassumption]. *)
-      (* + eapply KamiMMIO; reflexivity. *)
-      (* + rewrite H8. *)
-      (*   econstructor; eauto. *)
-      (*   * admit. *)
-      (*   * unfold getNextPc, rv32Exec. *)
-      (*     rewrite kami_rv32NextPc_load_ok; auto; *)
-      (*       [|rewrite kami_getOpcode_ok *)
-      (*           with (instrMemSizeLg:= instrMemSizeLg); assumption]. *)
-      (*     unfold kamiStMk; simpl. *)
-      (*     admit. *)
-      (*   * subst rd. *)
-      (*     erewrite convertRegs_put by eassumption. *)
-      (*     admit. *)
 
       admit.
 
-    - clear H3; specialize (H8 eq_refl).
+    - admit.
       
   Admitted.
   
@@ -526,102 +510,77 @@ Section Equiv.
               wordToZ kinst) as Hfetch by (subst kinst; assumption).
       simpl in H0, Hfetch; rewrite Hfetch in H0.
 
-      (** Invert riscv-coq decode/execute *)
-      match type of H0 with
-      | context [decode ?i ?al] =>
-        destruct (decode i al) eqn:Hdec;
-          [(* IInstruction *)
-          |(* MInstruction *) admit
-          |(** TODO @samuelgruetter: remove the other cases except I and M --
-            * execution with [iset] (= RV32IM) cannot have such cases.
-            *)
-          admit..]
-      end.
-      destruct iInstruction.
-      21: { (* Case of Add *)
-        apply invert_decode_Add in Hdec.
-        destruct Hdec as [Hopc [Hrd [Hf3 [Hrs1 [Hrs2 Hf7]]]]].
 
-        simpl in H0.
-        (** TODO @samuelgruetter: using [Hdec] we should be able to derive
-         * the relation among [inst], [rd], [rs1], and [rs2],
-         * e.g., [bitSlice inst _ _ = rs1].
-         *)
+      (** Evaluate [decode]. *)
+      assert (bitSlice (wordToZ kinst) 0 7 = opcode_OP) by admit.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H11.
+      assert (bitSlice (wordToZ kinst) 12 15 = funct3_ADD) by admit.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H12.
+      assert (bitSlice (wordToZ kinst) 25 32 = funct7_ADD) by admit.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H13.
+      eval_decode H0.
 
-        inv_bind H0.
-        apply spec_getRegister with (post0:= mid2) in H0.
-        destruct H0; [|admit (** TODO @joonwonc: prove the value of `R0` is
-                              * always zero in Kami steps. *)].
-        simpl in H0; destruct H0.
-        destruct_one_match_hyp;
-          [rename w into v1|admit (** TODO: prove it never fails to read
-                                   * a register value once the register
-                                   * is valid. *)].
-        inv_bind_apply H12.
-        inv_bind H11.
-        apply spec_getRegister with (post0:= mid3) in H11.
-        destruct H11; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
-        simpl in H11; destruct H11.
-        destruct_one_match_hyp; [rename w into v2|
-                                 admit (** TODO: ditto, about valid register reads *)].
-        inv_bind_apply H14.
-        apply @spec_setRegister in H13; [|assumption..].
-        destruct H13; [|admit (** TODO @joonwonc: writing to `R0` *)].
-        simpl in H13; destruct H13.
-        inv_bind_apply H15.
-        inv_step H1.
+      simpl in H0.
+      inv_bind H0.
+      apply spec_getRegister with (post0:= mid2) in H0.
+      destruct H0; [|admit (** TODO @joonwonc: prove the value of `R0` is
+                            * always zero in Kami steps. *)].
+      simpl in H0; destruct H0.
+      destruct_one_match_hyp;
+        [rename w into v1|admit (** TODO: prove it never fails to read
+                                 * a register value once the register
+                                 * is valid. *)].
+      inv_bind_apply H15.
+      inv_bind H14.
+      apply spec_getRegister with (post0:= mid3) in H14.
+      destruct H14; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
+      simpl in H14; destruct H14.
+      destruct_one_match_hyp;
+        [rename w into v2|
+         admit (** TODO: ditto, about valid register reads *)].
+      inv_bind_apply H17.
+      apply @spec_setRegister in H16; [|assumption..].
+      destruct H16; [|admit (** TODO @joonwonc: writing to `R0` *)].
+      simpl in H16; destruct H16.
+      inv_bind_apply H18.
+      inv_step H1.
 
-        (** Construction *)
-        unfold doExec, getNextPc, rv32Exec in *.
-        do 2 eexists.
-        split; [|split];
-          [eapply KamiSilent; reflexivity| |eassumption].
-        remember (evalExpr (rv32GetDst type kinst)) as dst.
+      (** Construction *)
+      unfold doExec, getNextPc, rv32Exec in *.
+      do 2 eexists.
+      split; [|split];
+        [eapply KamiSilent; reflexivity| |eassumption].
+      remember (evalExpr (rv32GetDst type kinst)) as dst.
 
-        econstructor.
-        - assumption.
-        - unfold RegsToT; rewrite H2, H10.
-          subst dst; reflexivity.
-        - intros; discriminate.
-        - intros; assumption.
-        - subst.
-          rewrite kami_rv32NextPc_op_ok; auto;
-            [|rewrite kami_getOpcode_ok
-                with (instrMemSizeLg:= instrMemSizeLg); assumption].
-          rewrite <-toKamiPc_wplus_distr; auto.
-        - subst exec_val.
-          replace rd with (Word.wordToZ dst) in *
-            by (subst dst rd;
-                apply kami_rv32GetDst_ok
-                  with (instrMemSizeLg:= instrMemSizeLg); assumption).
-          replace rs1
-            with (Word.wordToZ (evalExpr (rv32GetSrc1 type kinst))) in *
-            by (subst rs1;
-                apply kami_rv32GetSrc1_ok
-                  with (instrMemSizeLg:= instrMemSizeLg); assumption).
-          replace rs2
-            with (Word.wordToZ (evalExpr (rv32GetSrc2 type kinst))) in *
-            by (subst rs2;
-                apply kami_rv32GetSrc2_ok
-                  with (instrMemSizeLg:= instrMemSizeLg); assumption).
-          erewrite <-convertRegs_get
-            with (instrMemSizeLg:= instrMemSizeLg) (v:= v1) by auto.
-          erewrite <-convertRegs_get
-            with (instrMemSizeLg:= instrMemSizeLg) (v:= v2) by auto.
-          rewrite kami_rv32DoExec_Add_ok;
-            [|rewrite kami_getOpcode_ok
-                with (instrMemSizeLg:= instrMemSizeLg); assumption
-             |rewrite kami_getFunct7_ok
-                with (instrMemSizeLg:= instrMemSizeLg); assumption
-             |rewrite kami_getFunct3_ok
-                with (instrMemSizeLg:= instrMemSizeLg); assumption].
-          rewrite convertRegs_put
-            with (instrMemSizeLg:= instrMemSizeLg) by assumption.
-          subst dst.
-          reflexivity.
+      econstructor.
+      { assumption. }
+      { unfold RegsToT; rewrite H2, H10.
+        subst dst; reflexivity.
       }
-      all: admit.
-
+      { intros; discriminate. }
+      { intros; assumption. }
+      { subst.
+        rewrite kami_rv32NextPc_op_ok; auto.
+        { rewrite <-toKamiPc_wplus_distr; auto. }
+        { rewrite kami_getOpcode_ok; assumption. }
+      }
+      { subst exec_val.
+        rewrite <-kami_rv32GetDst_ok by assumption.
+        rewrite <-kami_rv32GetSrc1_ok in E by assumption.
+        rewrite <-kami_rv32GetSrc2_ok in E0 by assumption.
+        rewrite convertRegs_put
+          with (instrMemSizeLg:= instrMemSizeLg) by assumption.
+        erewrite <-convertRegs_get
+          with (instrMemSizeLg:= instrMemSizeLg) (v:= v1) by auto.
+        erewrite <-convertRegs_get
+          with (instrMemSizeLg:= instrMemSizeLg) (v:= v2) by auto.
+        erewrite kami_rv32DoExec_Add_ok;
+          [|rewrite kami_getOpcode_ok; assumption
+           |rewrite kami_getFunct7_ok; assumption
+           |rewrite kami_getFunct3_ok; assumption].
+        reflexivity.
+      }
+      
     - (* case "execNmZ" *) admit.
 
   Admitted.

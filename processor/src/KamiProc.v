@@ -214,6 +214,7 @@ Section Parametrized.
                            (calcLdAddr
                               _ (evalExpr (getLdAddr _ curInst))
                               (rf kt1 (evalExpr (getLdSrc _ curInst)))))) /\
+        evalExpr (getLdDst _ curInst) <> $0 /\
         (evalExpr (isMMIO _ ldAddr) = true ->
          exists kt2 mmioLdRq mmioLdRs,
            klbl.(calls) =
@@ -276,6 +277,8 @@ Section Parametrized.
       inversion H; subst; clear H.
       simpl in *.
       repeat esplit.
+      + intro Hx; rewrite Hx in H9.
+        rewrite (rewrite_weq eq_refl) in H9; discriminate.
       + FMap.mred; eassumption.
       + reflexivity.
       + reflexivity.
@@ -289,6 +292,7 @@ Section Parametrized.
       split; [reflexivity|].
       do 2 eexists.
       repeat split.
+      + assumption.
       + intros; exfalso; clear -H Heqic; congruence.
       + intros; repeat esplit; assumption.
   Qed.
@@ -307,10 +311,7 @@ Section Parametrized.
                            (calcLdAddr
                               _ (evalExpr (getLdAddr _ curInst))
                               (rf kt1 (evalExpr (getLdSrc _ curInst)))))) /\
-        (* ldAddr = evalExpr *)
-        (*            (calcLdAddr *)
-        (*               _ (evalExpr (getLdAddr _ curInst)) *)
-        (*               (rf kt1 (evalExpr (getLdSrc _ curInst)))) /\ *)
+        evalExpr (getLdDst _ curInst) = $0 /\
         (evalExpr (isMMIO _ ldAddr) = true ->
          exists kt2 mmioLdRq mmioLdRs,
            klbl.(calls) =
@@ -349,6 +350,7 @@ Section Parametrized.
       inversion H; subst; clear H.
       simpl in *.
       repeat esplit.
+      + destruct (weq _ _) in H9; [assumption|discriminate].
       + FMap.mred; eassumption.
       + reflexivity.
       + reflexivity.
@@ -360,6 +362,7 @@ Section Parametrized.
       split; [reflexivity|].
       do 2 eexists.
       repeat split.
+      + assumption.
       + intros; exfalso; clear -H Heqic; congruence.
       + intros; repeat esplit; assumption.
   Qed.
