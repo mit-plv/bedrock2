@@ -93,8 +93,8 @@ Lemma program_logic_sound
           Proper ((pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> Basics.impl)
                  (Semantics.ext_spec trace m act args)}:
   forall (funspecs: Syntax.funname ->
-                    (Semantics.trace -> mem -> list word ->
-                     (Semantics.trace -> mem -> list word -> Prop) -> Prop))
+                    (Semantics.trace -> mem -> list Semantics.word ->
+                     (Semantics.trace -> mem -> list Semantics.word -> Prop) -> Prop))
          (s: funspecs_satisfy_funimpls)
          (funimpls: Semantics.env)
          (c: cmd) (t: Semantics.trace) (m: mem) (l: locals) (mc: MetricLogging.MetricLog)
