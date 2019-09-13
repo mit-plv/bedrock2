@@ -112,16 +112,16 @@ Section Pipeline1.
 
   Definition funname := string.
 
-  Axiom TODO: forall {T: Type}, T.
+  Axiom TODO: False.
 
   Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
-    FlattenExpr.ext_spec_ok := TODO;
+    FlattenExpr.ext_spec_ok := match TODO with end;
   }.
 
-  Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. Admitted.
+  Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. case TODO. Defined.
 
   Definition available_registers: list Register :=
     Eval cbv in List.unfoldn Z.succ 29 3.
@@ -154,7 +154,7 @@ Section Pipeline1.
       FlatToRiscvFunctions.goodMachine t mH l mc g st.
 *)
 
-  Definition goodMachine: MetricRiscvMachine -> Prop. Admitted.
+  Definition goodMachine: MetricRiscvMachine -> Prop. case TODO. Defined.
 
   Lemma exprImp2Riscv_correct: forall (e: env) (sH: cmd) lH mH mcH t program_base e_pos pos
                                       (initialL: MetricRiscvMachine) post instsL,
@@ -167,7 +167,21 @@ Section Pipeline1.
           finalL.(getPc) = word.add initialL.(getPc)
                                    (word.of_Z (4 * Z.of_nat (List.length instsL))) /\
           goodMachine finalL).
-  Admitted.
+  Proof.
+    intros. subst.
+    pose proof @runsTo_weaken.
+    pose proof FlatToRiscvMetric.compile_stmt_correct as P.
+    set (postH := (fun t m l mc =>
+                     exists l' mc',
+                       post t m l' mc' /\
+                       map.extends l l' /\
+                       (mc - mcH <= mc' - mcH)%metricsH)
+        ).
+    pose proof FlatToRiscvFunctions.compile_stmt_correct_new.
+    pose proof FlatImp.exec.weaken.
+    pose proof FlattenExpr.flattenStmt_correct.
+    case TODO.
+  Qed.
 
 (*
   Lemma exprImp2Riscv_correct: forall (e: env) (sH: cmd) lH mH mcH t instsL
@@ -327,21 +341,21 @@ Section Pipeline1.
       match goal with
       | A: ?G |- ?G' => replace G' with G; [exact A|progress f_equal]
       end.
-      f_equal. 2: admit. f_equal. all: admit.
-    - unfold pc_start. admit.
-    - admit.
-    - admit.
+      f_equal. 2: case TODO. f_equal. all: case TODO.
+    - unfold pc_start. case TODO.
+    - case TODO.
+    - case TODO.
     - solve_divisibleBy4.
     - solve_word_eq word_ok.
     - (* use compiler correctness for init_code *)
       eapply runsTo_weaken.
       + eapply exprImp2Riscv_correct; try exact exec_init; try reflexivity.
         (* establish goodMachine & other sideconditions of exprImp2Riscv_correct *)
-        all: admit.
+        all: case TODO.
       + simpl. intros. unfold ll_ready. simp.
-        repeat eexists. 1: { Fail exact H0. admit. }
+        repeat eexists. 1: { Fail exact H0. case TODO. }
         (* TODO: guarantee from exprImp2Riscv_correct needs to be stronger *)
-        all: admit.
+        all: case TODO.
     - (* use compiler correctness for loop_body *)
       intros.
       unfold ll_ready in *. simp.
@@ -351,12 +365,14 @@ Section Pipeline1.
         1: { pose proof @loop_body_correct as P.
              specialize (P _ cmd prog Semantics.exec spec sat).
              eapply P; eassumption. }
-        all: admit.
+        all: case TODO.
       + simpl. intros. unfold ll_ready.
         (* TODO: guarantee from exprImp2Riscv_correct needs to be stronger *)
-        admit.
-    all: fail.
-  Admitted.
+        case TODO.
+    Unshelve.
+    all: (exact 0 || exact (word.of_Z 0) || assumption || solve[constructor] || idtac).
+    all: case TODO.
+  Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,
       ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog)).

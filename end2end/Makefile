@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: clean force all
+.PHONY: clean force all all0 admitsCount
 
 DEPS_DIR ?= ../deps
 
@@ -16,7 +16,7 @@ _CoqProject:
 SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src
 ALL_VS := $(shell find $(SRCDIR) -type f -name '*.v')
 
-all: Makefile.coq.all $(ALL_VS)
+all0: Makefile.coq.all $(ALL_VS)
 	$(MAKE) -f Makefile.coq.all
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = end2end $(COQMF_ARGS)
@@ -30,3 +30,15 @@ clean:: Makefile.coq.all
 	$(MAKE) -f Makefile.coq.all clean
 	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
 	rm -f Makefile.coq.all Makefile.coq.all.conf _CoqProject
+
+admits.txt: all0
+	printf -- 'Require Import end2end.End2EndPipeline. Print Assumptions end2end.End2EndPipeline.end2end.\n' | $(COQBIN)coqtop $(DEPFLAGS) > admits.txt
+
+admits1perLine.txt: admits.txt
+	grep admits.txt -e '^[^ ]* : ' -e 'used in' | grep -v '^[^ ]*TODO : False' | sed -e 's/:.*//g' > admits1perLine.txt
+
+admitsCount: admits1perLine.txt
+	@printf -- 'Number of admits: '
+	@cat admits1perLine.txt | wc -l
+
+all: all0 admitsCount

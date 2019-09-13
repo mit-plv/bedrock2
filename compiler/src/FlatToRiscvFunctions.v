@@ -22,6 +22,8 @@ Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import compiler.load_save_regs_correct.
 Import Utility MetricLogging.
 
+Axiom TODO: False.
+
 Section Proofs.
   Context {p: FlatToRiscv.parameters}.
   Context {h: FlatToRiscv.assumptions}.
@@ -947,16 +949,16 @@ Section Proofs.
           f_equal. simpl_addrs. solve_word_eq word_ok.
       }
       {
-        admit. (* TODO log unchanged --> strengthen all used lemmas *)
+        case TODO. (* TODO log unchanged --> strengthen all used lemmas *)
       }
       {
         eapply ext_guarantee_preservable.
         + eassumption.
         + cbn.
           (* TODO will need stronger prove_ext_guarantee, derive same_domain from sep *)
-          admit.
+          case TODO.
         + cbn.  (* log equality? *)
-          admit.
+          case TODO.
       }
     }
 
@@ -1022,7 +1024,7 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
-      - replace valid_FlatImp_var with valid_register by admit.
+      - replace valid_FlatImp_var with valid_register by case TODO.
         apply modVars_as_list_valid_registers.
         assumption.
       - apply TODO_no_dups.
@@ -1110,7 +1112,7 @@ Section Proofs.
         | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
           specialize (D RegisterNames.sp); destruct D as [A | A]
         end.
-        + exfalso. (* contradiction: sp cannot be in modVars of body *) admit.
+        + exfalso. (* contradiction: sp cannot be in modVars of body *) case TODO.
         + etransitivity; [symmetry|]; eassumption.
       - simpl.
         instantiate (2 := BinInt.Z.eqb).
@@ -1133,8 +1135,8 @@ Section Proofs.
     eapply runsToStep. {
       eapply run_Jalr0 with (rs1 := RegisterNames.ra); simpl;
         try solve [sidecondition | solve_divisibleBy4].
-      - admit. (*   ?oimm12 mod 4 = 0 *)
-      - admit. (*   word.unsigned ?dest mod 4 = 0  *)
+      - case TODO. (*   ?oimm12 mod 4 = 0 *)
+      - case TODO. (*   word.unsigned ?dest mod 4 = 0  *)
       - rewrite map.get_put_diff by (clear; cbv; congruence).
         rewrite map.get_put_same. reflexivity.
       - wseplog_pre word_ok.
@@ -1185,7 +1187,7 @@ Section Proofs.
         }
         ecancel_done'.
       - reflexivity.
-      - replace valid_FlatImp_var with valid_register by admit.
+      - replace valid_FlatImp_var with valid_register by case TODO.
         assumption.
       - apply TODO_no_dups.
       - apply TODO_offset_in_range.
@@ -1223,15 +1225,15 @@ Section Proofs.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
     do 4 eexists.
     repeat split.
-    + replace middle_log3 with middle_log1 by admit. (* TODO investigate! *)
+    + replace middle_log3 with middle_log1 by case TODO. (* TODO investigate! *)
       eassumption.
     + simpl_addrs. rewrite length_load_regs. rewrite length_save_regs. simpl_addrs.
       solve_word_eq word_ok.
     + (* TODO chain of extends *)
-      admit.
+      case TODO.
     + match goal with
       | H: map.only_differ ?m1 _ ?m2 |- map.get ?m2 _ = Some _ =>
-        replace m2 with m1 by admit (* TODO almost *)
+        replace m2 with m1 by case TODO (* TODO almost *)
       end.
       rewrite map.get_put_same. f_equal. subst FL.
       simpl_addrs.
@@ -1335,12 +1337,156 @@ Section Proofs.
       end.
       eapply ext_guarantee_preservable.
       * eassumption.
-      * simpl. (* TODO memory same domain *) admit.
-      * simpl. (* TODO log equality?? *) admit.
+      * simpl. (* TODO memory same domain *) case TODO.
+      * simpl. (* TODO log equality?? *) case TODO.
 
     - (* SLoad *)
+      case TODO.
+      (*
+      unfold Memory.load, Memory.load_Z in *. simp. subst_load_bytes_for_eq.
+      run1det. run1done.
+      *)
 
+    - (* SStore *)
+      case TODO.
+      (*
+      simpl_MetricRiscvMachine_get_set.
+      assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * R))%sep initialL_mem)
+             as A by ecancel_assumption.
+      pose proof (store_bytes_frame H2 A) as P.
+      destruct P as (finalML & P1 & P2).
+      run1det. run1done.
+      *)
 
-  Admitted.
+    - (* SLit *)
+      case TODO.
+      (*
+      eapply compile_lit_correct_full.
+      + sidecondition.
+      + unfold compile_stmt. simpl. ecancel_assumption.
+      + sidecondition.
+      + simpl. run1done;
+        remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
+        symmetry in HeqfinalMetrics;
+        pose proof update_metrics_for_literal_bounded as Hlit;
+        specialize Hlit with (1 := HeqfinalMetrics);
+        solve_MetricLog.
+       *)
+
+    - (* SOp *)
+      case TODO.
+      (*
+      match goal with
+      | o: Syntax.bopname.bopname |- _ => destruct o
+      end;
+        simpl in *; run1det; try solve [run1done].
+      + simpl_MetricRiscvMachine_get_set.
+        run1det. run1done;
+      [match goal with
+      | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
+      end | solve_MetricLog..].
+      rewrite reduce_eq_to_sub_and_lt.
+      symmetry. apply map.put_put_same.
+      *)
+
+    - (* SSet *)
+      case TODO.
+      (*
+      run1det. run1done.
+      *)
+
+    - (* SIf/Then *)
+      case TODO.
+      (*
+      (* execute branch instruction, which will not jump *)
+      eapply runsTo_det_step; simpl in *; subst.
+      + simulate'. simpl_MetricRiscvMachine_get_set.
+        destruct cond; [destruct op | ];
+          simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
+      + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+        * (* use IH for then-branch *)
+          eapply IHexec; IH_sidecondition.
+        * (* jump over else-branch *)
+          simpl. intros. destruct_RiscvMachine middle. simp. subst.
+          run1det. run1done.
+       *)
+
+    - (* SIf/Else *)
+      case TODO.
+      (*
+      (* execute branch instruction, which will jump over then-branch *)
+      eapply runsTo_det_step; simpl in *; subst.
+      + simulate'.
+        destruct cond; [destruct op | ];
+          simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
+      + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+        * (* use IH for else-branch *)
+          eapply IHexec; IH_sidecondition.
+        * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
+             computed post satisfies required post *)
+          simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
+          *)
+
+    - (* SLoop/again *)
+      case TODO.
+      (*
+      on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
+      on hyp[(stmt_not_too_big body2); runsTo] do (fun H => rename H into IH2).
+      on hyp[(stmt_not_too_big (SLoop body1 cond body2)); runsTo] do (fun H => rename H into IH12).
+      eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+      + (* 1st application of IH: part 1 of loop body *)
+        eapply IH1; IH_sidecondition.
+      + simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
+        destruct (@eval_bcond (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
+        2: exfalso;
+           match goal with
+           | H: context [_ <> None] |- _ => solve [eapply H; eauto]
+           end.
+        destruct condB.
+        * (* true: iterate again *)
+          eapply runsTo_det_step; simpl in *; subst.
+          { simulate'.
+            destruct cond; [destruct op | ];
+              simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
+          { eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+            - (* 2nd application of IH: part 2 of loop body *)
+              eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+            - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
+              (* jump back to beginning of loop: *)
+              run1det.
+              eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+              + (* 3rd application of IH: run the whole loop again *)
+                eapply IH12; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+              + (* at end of loop, just prove that computed post satisfies required post *)
+                simpl. intros. destruct_RiscvMachine middle. simp. subst.
+                run1done. }
+        * (* false: done, jump over body2 *)
+          eapply runsTo_det_step; simpl in *; subst.
+          { simulate'.
+            destruct cond; [destruct op | ];
+              simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
+          { simpl in *. run1done. }
+          *)
+
+    - (* SSeq *)
+      case TODO.
+      (*
+      rename IHexec into IH1, H2 into IH2.
+      eapply runsTo_trans.
+      + eapply IH1; IH_sidecondition.
+      + simpl. intros. destruct_RiscvMachine middle. simp. subst.
+        eapply runsTo_trans.
+        * eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+        * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
+        *)
+
+    - (* SSkip *)
+      case TODO.
+      (*
+      run1done.
+      *)
+
+    Grab Existential Variables. repeat constructor.
+  Qed. (* <-- takes a while *)
 
 End Proofs.

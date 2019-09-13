@@ -289,12 +289,12 @@ Section Connect.
     (* 1) Kami pipelined processor to riscv-coq *)
     pose proof @riscv_to_kamiImplProcessor as P1.
     specialize_first P1 traceProp.
-    specialize_first P1 (ll_inv (h := pipeline_assumptions) spec ml).
+    specialize_first P1 (ll_inv spec ml).
     specialize_first P1 B.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
-    pose proof @pipeline_proofs as P2.
+    pose proof pipeline_proofs as P2.
     specialize_first P2 prog.
     specialize_first P2 spec.
     specialize_first P2 ml.
