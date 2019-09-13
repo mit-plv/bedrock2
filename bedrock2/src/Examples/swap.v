@@ -21,7 +21,7 @@ Definition swap_swap := let a := "a" in let b := "b" in
 ))).
 
 Require bedrock2.WeakestPrecondition.
-Require Import bedrock2.Semantics bedrock2.BasicC64Semantics.
+Require Import bedrock2.Semantics bedrock2.BasicC32Semantics.
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
 Require bedrock2.WeakestPreconditionProperties.
