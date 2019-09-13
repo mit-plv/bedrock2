@@ -16,7 +16,8 @@ Require Export riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
 Require Export riscv.Platform.MetricRiscvMachine.
 Require Import coqutil.Z.Lia.
-Require Export compiler.NameGen.
+Require Import compiler.NameGen.
+Require Import compiler.StringNameGen.
 Require Export compiler.util.Common.
 Require Export coqutil.Decidable.
 Require Export riscv.Utility.Encode.
@@ -65,9 +66,6 @@ Module Import Pipeline.
     ExtSpec := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
 
-    NGstate: Type;
-    NG :> NameGen varname NGstate;
-
     src2imp :> map.map varname Register;
     src2imp_ops :> map.ops src2imp;
 
@@ -85,7 +83,7 @@ Module Import Pipeline.
     FlattenExpr.locals := locals;
     FlattenExpr.mem := mem;
     FlattenExpr.ext_spec := ext_spec;
-    FlattenExpr.NGstate := NGstate;
+    FlattenExpr.NGstate := string;
   }.
 
   Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.FlatToRiscv.parameters := {|

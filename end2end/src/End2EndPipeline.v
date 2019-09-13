@@ -36,6 +36,7 @@ Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import compiler.PipelineWithRename.
 Require Import compiler.examples.MMIO.
 Require Import compiler.FlatToRiscvDef.
+Require Import coqutil.Tactics.rdelta.
 
 Local Open Scope Z_scope.
 
@@ -127,8 +128,6 @@ Section Connect.
           {mem_ok: map.ok mem}
           {stringname_env : forall T : Type, map.map string T}
           {stringname_env_ok: forall T, map.ok (stringname_env T)}
-          {NGstate : Type}
-          {NG : NameGen string NGstate}
           {src2imp : map.map string Register}
           {src2imp_ops : RegAlloc.map.ops src2imp}.
 
@@ -148,22 +147,27 @@ Section Connect.
     Pipeline.RVM := @MetricMinimalMMIO.IsMetricRiscvMachine _ _ _ riscv_ext_spec;
   }.
 
-  Context {FlatToRiscvHyps : FlatToRiscvCommon.FlatToRiscv.assumptions}.
-  Context {Ext_spec_ok : ext_spec.ok FlatToRiscvCommon.FlatToRiscv.Semantics_params}.
-
   Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
 
   Instance pipeline_assumptions: @PipelineWithRename.Pipeline.assumptions pipeline_params.
     refine ({|
       Pipeline.PR := MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives;
+      Pipeline.FlatToRiscv_hyps := MMIO.FlatToRiscv_hyps;
+      (* wait until we know if ext_spec will be in monad style or postcond style *)
+      Pipeline.ext_spec_ok := match TODO with end;
     |}).
   Defined.
 
   Definition KamiMachine: Type := KamiRiscv.KamiMachine.
 
   Context (instrMemSizeLg: Z) (dataMemSize: nat).
-  Hypothesis (HbtbAddr: BinInt.Z.to_nat instrMemSizeLg =
-                        (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat).
+  Hypothesis instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30.
+
+  Lemma HbtbAddr: BinInt.Z.to_nat instrMemSizeLg = (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat.
+  Proof. PreOmega.zify; rewrite ?Z2Nat.id in *; blia. Qed.
+
+  Lemma HinstrMemBound: instrMemSizeLg <= 30.
+  Proof. exact (proj2 instrMemSizeLg_bounds). Qed.
 
   Definition kamiStep := kamiStep instrMemSizeLg.
   Definition states_related := @states_related Pipeline.Registers mem instrMemSizeLg.
@@ -202,8 +206,7 @@ Section Connect.
           (mlOk: MemoryLayoutOk ml)
           (memInit: Kami.Ex.SC.MemInit
                       (Z.to_nat width)
-                      Kami.Ex.IsaRv32.rv32DataBytes)
-          (HinstrMemBound: instrMemSizeLg <= width - 2).
+                      Kami.Ex.IsaRv32.rv32DataBytes).
 
   Hypothesis instrMemSizeLg_agrees_with_ml:
     word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
