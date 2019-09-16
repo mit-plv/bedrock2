@@ -211,14 +211,6 @@ Section Connect.
   Hypothesis instrMemSizeLg_agrees_with_ml:
     word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
 
-  Lemma HpgmInit: KamiProc.PgmInitNotMMIO
-                    (Kami.Ex.IsaRv32.rv32Fetch (Z.to_nat width) (Z.to_nat instrMemSizeLg))
-                    KamiProc.rv32MMIO.
-  Proof.
-    unfold KamiProc.PgmInitNotMMIO, SCMMInv.PgmInitNotMMIO.
-    destruct mlOk. (* TODO should follow from mlOk (and other hypotheses, maybe) *)
-  Admitted.
-
   (* goodTrace in terms of "exchange format" (list Event).
      Only holds at the beginning/end of each loop iteration,
      will be transformed into "exists suffix, ..." form later *)
@@ -230,28 +222,9 @@ Section Connect.
   Admitted.
 
   (* TODO can we do with fewer explicit implicit arguments? *)
-  Definition p4mm: Kami.Syntax.Modules := @KamiRiscv.p4mm
-   (OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
-   Registers mem
-   (@Primitives.mcomp_sat KamiWordsInst
-      (OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
-      (@MetricRiscvMachine KamiWordsInst Registers mem) PRParams)
-   (OStateND_Monad (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
-   (@MetricMinimalMMIO.IsMetricRiscvMachine (@Words32 mmio_params) (@MMIO.mem mmio_params)
-      (@MMIO.locals mmio_params) (@riscv_ext_spec mmio_params)) instrMemSizeLg HinstrMemBound
-   HbtbAddr
-   memInit
-   (@nonmem_load KamiWordsInst
-      (OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
-      (@MetricRiscvMachine KamiWordsInst Registers mem) PRParams)
-   (@nonmem_store KamiWordsInst
-      (OStateND (@MetricRiscvMachine KamiWordsInst (@Pipeline.Registers pipeline_params) mem))
-      (@MetricRiscvMachine KamiWordsInst Registers mem) PRParams)
-   (@MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives (@Words32 mmio_params)
-      (@MMIO.mem mmio_params) (@MMIO.locals mmio_params) (@riscv_ext_spec mmio_params)
-      (@riscv_ext_spec_sane mmio_params))
-   HpgmInit
-   compile_to_kami.
+  Definition p4mm: Kami.Syntax.Modules :=
+    @KamiRiscv.p4mm instrMemSizeLg (proj1 instrMemSizeLg_bounds)
+                    (proj2 instrMemSizeLg_bounds).
 
   Definition kamiMemToBedrockMem(km: SC.MemInit (Z.to_nat width) IsaRv32.rv32DataBytes): mem.
     case TODO.
@@ -322,6 +295,11 @@ Section Connect.
     }
 
     eapply P1.
+    - apply (@MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives
+               (@Words32 mmio_params)
+               (@MMIO.mem mmio_params) (@MMIO.locals mmio_params)
+               (@riscv_ext_spec mmio_params)
+               (@riscv_ext_spec_sane mmio_params)).
     - (* establish *)
       intros.
       eapply P2establish.
@@ -338,7 +316,10 @@ Section Connect.
       (* given the bedrock2 trace "suff ++ getLog m", produce exchange format trace *)
       case TODO.
 
-    Grab Existential Variables. assumption.
+      Grab Existential Variables.
+      1: exact m0RV.
+      1: exact compile_to_kami.
+      
   Qed.
 
 End Connect.

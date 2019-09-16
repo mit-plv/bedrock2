@@ -2,6 +2,8 @@ Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 
+Require Import coqutil.Z.Lia.
+
 Require Import Kami.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.IsaRv32.
 Require Import Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
@@ -487,10 +489,16 @@ Local Notation nwidth := (Z.to_nat width).
 Instance rv32MMIO: AbsMMIO nwidth :=
   {| isMMIO := cheat _ |}.
 
+Lemma pgm_init_not_mmio:
+  forall ninstrMemSizeLg,
+    Kami.Ex.SCMMInv.PgmInitNotMMIO (rv32Fetch nwidth ninstrMemSizeLg) rv32MMIO.
+Proof.
+Admitted.
+
 Section PerInstAddr.
   Context {instrMemSizeLg: Z}.
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
-  Hypothesis (HbtbAddr: (ninstrMemSizeLg = 3 + (ninstrMemSizeLg - 3))%nat).
+  Hypothesis (Hiaddr: 3 <= instrMemSizeLg <= 30).
 
   Local Definition pcInitVal: ConstT (Pc ninstrMemSizeLg) :=
     ConstBit $0.
@@ -518,15 +526,23 @@ Section PerInstAddr.
 
   (** Refinement from [p4mm] to [proc] (as a spec) *)
 
+  Lemma instrMemSizeLg_btb_valid:
+    Z.to_nat instrMemSizeLg = (3 + (Z.to_nat instrMemSizeLg - 3))%nat.
+  Proof.
+    PreOmega.zify; rewrite ?Z2Nat.id in *; blia.
+  Qed.
+
   Definition getBTBIndex ty
              (pc: fullType ty (SyntaxKind (Bit ninstrMemSizeLg))): (Bit 3) @ ty :=
-    let rpc := eq_rect _ (fun sz => fullType ty (SyntaxKind (Bit sz))) pc _ HbtbAddr in
+    let rpc := eq_rect _ (fun sz => fullType ty (SyntaxKind (Bit sz)))
+                       pc _ instrMemSizeLg_btb_valid in
     (UniBit (Trunc 3 _) #rpc)%kami_expr.
 
   Definition getBTBTag ty
              (pc: fullType ty (SyntaxKind (Bit ninstrMemSizeLg))):
     (Bit (ninstrMemSizeLg - 3)) @ ty :=
-    let rpc := eq_rect _ (fun sz => fullType ty (SyntaxKind (Bit sz))) pc _ HbtbAddr in
+    let rpc := eq_rect _ (fun sz => fullType ty (SyntaxKind (Bit sz)))
+                       pc _ instrMemSizeLg_btb_valid in
     (UniBit (TruncLsb 3 _) #rpc)%kami_expr.
 
   Definition p4mm: Kami.Syntax.Modules :=
