@@ -35,6 +35,18 @@ Require Import processor.FetchOk processor.DecExecOk.
 
 Local Open Scope Z_scope.
 
+Lemma bitSlice_range_ex:
+  forall z n m,
+    0 <= n <= m ->
+    0 <= bitSlice z n m < 2 ^ (m - n).
+Proof.
+  intros.
+  rewrite bitSlice_alt by blia.
+  unfold bitSlice'.
+  apply Z.mod_pos_bound.
+  apply Z.pow_pos_nonneg; blia.
+Qed.
+
 Instance KamiWordsInst: Utility.Words := @KamiWord.WordsKami width width_cases.
 
 Section Equiv.
@@ -56,11 +68,13 @@ Section Equiv.
   (** * Processor, software machine, and states *)
 
   Variable (instrMemSizeLg: Z).
-  Hypothesis (HinstrMemBound: instrMemSizeLg <= width - 2).
-  Hypothesis (HbtbAddr: BinInt.Z.to_nat instrMemSizeLg =
-                        (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat).
+  Hypotheses (Hinstr1: 3 <= instrMemSizeLg)
+             (Hinstr2: instrMemSizeLg <= width - 2).
 
-  Variable (memInit: MemInit (Z.to_nat width) rv32DataBytes).
+  Variable (prg: kword instrMemSizeLg -> kword 32).
+  Definition memInit: MemInit (Z.to_nat width) 4%nat.
+    case TODO. (* TODO @joonwonc: define using [prg] *)
+  Defined.
 
   Local Definition kamiProc := @KamiProc.proc instrMemSizeLg memInit.
   Local Definition KamiMachine := KamiProc.hst.
@@ -272,8 +286,10 @@ Section Equiv.
     cbv [iset supportsM supportsA supportsF
               andb Z.eqb Pos.eqb
               opcode_LOAD opcode_OP opcode_SYSTEM opcode_MISC_MEM opcode_OP_IMM
-              opcode_AUIPC opcode_STORE
-              funct3_LW funct3_LH funct3_LB funct3_ADD
+              opcode_LUI opcode_AUIPC opcode_STORE opcode_BRANCH opcode_JALR
+              opcode_JAL
+              funct3_LW funct3_LH funct3_LB funct3_LBU funct3_LHU
+              funct3_ADD
               funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU
               funct3_DIV funct3_DIVU funct3_REM funct3_REMU
               funct7_ADD funct7_MUL
@@ -289,16 +305,12 @@ Section Equiv.
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
 
-  Hypothesis (HpgmInit: PgmInitNotMMIO
-                          (rv32Fetch (Z.to_nat width) (Z.to_nat instrMemSizeLg))
-                          rv32MMIO).
-
   Lemma kamiStep_sound_case_pgmInit:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv
                      rv32RfIdx
-                     (rv32Fetch (BinInt.Z.to_nat width)
-                                (BinInt.Z.to_nat instrMemSizeLg)) km1),
+                     (rv32Fetch (Z.to_nat width)
+                                (Z.to_nat instrMemSizeLg)) km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -310,7 +322,8 @@ Section Equiv.
   Proof.
     intros.
     inversion H; subst; clear H.
-    eapply invert_Kami_pgmInit in H1; eauto.
+    eapply invert_Kami_pgmInit in H1; eauto;
+      [|apply pgm_init_not_mmio].
     unfold kamiStMk in H1; simpl in H1.
     destruct H1 as (? & ? & km2 & ? & ? & ? & ? & ?); subst.
     clear H7.
@@ -323,7 +336,7 @@ Section Equiv.
   (** TODO @joonwonc: make two definitions consistent. *)
   Lemma kamiPgmInitFull_RiscvXAddrsSafe:
     forall pgmFull dataMem,
-      KamiPgmInitFull (rv32Fetch (Pos.to_nat 32) (BinInt.Z.to_nat instrMemSizeLg))
+      KamiPgmInitFull (rv32Fetch (Pos.to_nat 32) (Z.to_nat instrMemSizeLg))
                       pgmFull dataMem ->
       RiscvXAddrsSafe instrMemSizeLg pgmFull dataMem kamiXAddrs.
   Proof.
@@ -333,8 +346,8 @@ Section Equiv.
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv
                      rv32RfIdx
-                     (rv32Fetch (BinInt.Z.to_nat width)
-                                (BinInt.Z.to_nat instrMemSizeLg)) km1),
+                     (rv32Fetch (Z.to_nat width)
+                                (Z.to_nat instrMemSizeLg)) km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -346,7 +359,8 @@ Section Equiv.
   Proof.
     intros.
     inversion H; subst; clear H.
-    eapply invert_Kami_pgmInitEnd in H1; eauto.
+    eapply invert_Kami_pgmInitEnd in H1; eauto;
+      [|apply pgm_init_not_mmio].
     unfold kamiStMk in H1; simpl in H1.
     destruct H1 as (? & ? & pgmFull & ? & ?); subst.
     clear H7.
@@ -361,8 +375,8 @@ Section Equiv.
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv
                      rv32RfIdx
-                     (rv32Fetch (BinInt.Z.to_nat width)
-                                (BinInt.Z.to_nat instrMemSizeLg)) km1),
+                     (rv32Fetch (Z.to_nat width)
+                                (Z.to_nat instrMemSizeLg)) km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -387,39 +401,76 @@ Section Equiv.
       destruct H8 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
       simpl in H; subst cs.
 
-      (** Invert a riscv-coq step. *)
+      (* invert a riscv-coq step. *)
+      inv_mcomp_sat.
+
+      repeat
+        match goal with
+        | [H: _ /\ _ |- _] => destruct H
+        (* | [H: Fetch = Fetch -> isXAddr _ _ |- _] => *)
+        (*   specialize (H eq_refl); eapply fetch_ok in H; eauto; *)
+        (*     let rinst := fresh "rinst" in *)
+        (*     destruct H as (rinst & ? & ?) *)
+        (* | [H: _ \/ (Memory.loadWord _ _ = None /\ _) |- _] => destruct H; [|exfalso] *)
+        (* | [H: exists _, _ /\ _ |- _] => *)
+        (*   let rinst := fresh "rinst" in destruct H as (rinst & ? & ?) *)
+        (* | [H1: Memory.loadWord _ _ = _, H2: Memory.loadWord _ _ = _ |- _] => *)
+        (*   match type of H1 with *)
+        (*   | ?t1 = _ => match type of H2 with *)
+        (*                | ?t2 = _ => change t1 with t2 in H1 *)
+        (*                end *)
+        (*   end; rewrite H1 in H2; try discriminate *)
+        (* | [H: Some ?v = Some _ |- _] => inversion H; subst v; clear H *)
+        end.
+
+      inv_riscv_fetch.
+
       inv_riscv.
 
-      (** Relation between the two raw instructions *)
+      (* relation between the two raw instructions *)
       assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
                       4 rinst =
               wordToZ kinst) as Hfetch by (subst kinst; assumption).
       simpl in H0, Hfetch; rewrite Hfetch in H0.
 
-      (** Evaluate [decode]. *)
+      (* evaluate [decode] *)
       (** TODO @joonwonc: should derive below facts from
           [invert_Kami_execLd]. *)
       assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) by admit.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H16.
-      assert (bitSlice (wordToZ kinst) 12 15 = funct3_LW) by admit.
-      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H17.
-      eval_decode H0.
 
-      (** Invert the body of [execute]. *)
-      cbv [Execute.execute ExecuteI.execute] in H0.
-      inv_riscv.
+      pose proof (bitSlice_range_ex (wordToZ kinst) 12 15 ltac:(abstract blia)).
+      change (2 ^ (15 - 12)) with 8 in H17.
+      assert (let z := bitSlice (wordToZ kinst) 12 15 in
+              z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
+              z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
+      clear H17.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H18.
+      destruct H18 as [|[|[|[|[|[|[|]]]]]]].
+      4, 7, 8: eval_decode H0; case TODO.
 
-      apply spec_getRegister with (post0:= mid2) in H0.
-      destruct H0; [|admit (** when [rs1] is [Register0] .. *)].
-      simpl in H0; destruct H0.
-      destruct_one_match_hyp;
-        [rename w into v1|admit (** TODO: prove it never fails to read
-                                 * a register value once the register
-                                 * is valid. *)].
+      + (** LB: load-byte *)
+        eval_decode H0.
 
-      inv_riscv.
+        (* invert the body of [execute] *)
+        cbv [Execute.execute ExecuteI.execute] in H0.
+        inv_riscv.
 
-      admit.
+        apply spec_getRegister with (post0:= mid2) in H0.
+        destruct H0; [|admit (** when [rs1] is [Register0] .. *)].
+        simpl in H0; destruct H0.
+        destruct_one_match_hyp;
+          [rename w into v1|admit (** TODO: prove it never fails to read
+                                   * a register value once the register
+                                   * is valid. *)].
+
+        inv_riscv.
+        admit.
+
+      + (** LH: load-half *) admit.
+      + (** LW: load-word *) admit.
+      + (** LHU: load-half-unsigned *) admit.
+      + (** LBU: load-byte-unsigned *) admit.
 
     - admit.
       
@@ -442,7 +493,7 @@ Section Equiv.
     intros.
     destruct H as [kupd [? ?]]; subst.
     assert (PHide (Step kamiProc m1 kupd klbl)) by (constructor; assumption).
-    apply scmm_inv_ok in Hkreach; [|reflexivity|assumption].
+    apply scmm_inv_ok in Hkreach; [|reflexivity|apply pgm_init_not_mmio].
 
     (* Since the processor is inlined thus there are no defined methods,
      * the step cases generated by [kinvert] are by rules.
@@ -664,44 +715,18 @@ Section Equiv.
      because then we don't have to pass the base program load address to this definition,
      and to serve load/store requests in the Kami model, we can just ignore the upper bits
      and use the lower bits to index into the Vector.
- *)
-  Definition mm_without_MMIO(prog: kword instrMemSizeLg -> kword 32): Modules.
-  (* pseudo-Kami-code:
-     MODULE {
-        Register "mem" : Vector (Data dataBytes) addrSize <- "prog padded with zeroes"
-        with Method myMemOp ...
-     } *)
-  Admitted. (* TODO @joonwonc proof structure *)
+   *)
 
-  Definition mm(prog: kword instrMemSizeLg -> kword 32): Modules.
-  (* pseudo-Kami-code:
-  MODULE {
-    Method "memOp" (a : Struct RqFromProc): Struct RsToProc :=
-      LET addr <- #a!RqFromProc@."addr";
+  Definition mm: Modules := Kami.Ex.SC.mm memInit rv32MMIO.
+  Definition p4mm: Modules := p4mm (conj Hinstr1 Hinstr2) memInit.
 
-      If (isMMIO _ addr) then (** mmio *)
-        Call rs <- mmioExec(#a);
-        Ret #rs
-      else
-        forward the request to mm_without_MMIO
-   }. *)
-  Admitted. (* TODO @joonwonc proof structure *)
-
-  Definition p4mm(prog: kword instrMemSizeLg -> kword 32): Modules.
-    refine (ProcMemCorrect.p4stf
-              _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-              ++ mm prog)%kami.
-  Admitted. (* TODO @joonwonc proof structure *)
-
-  Lemma splitKamiSpecProcStepsIntoProgramLoadAndExec: forall mFinal t,
+  Lemma splitKamiSpecProcStepsIntoProgramLoadAndExec:
+    forall mFinal t,
       Multistep kamiProc (initRegs (getRegInits kamiProc)) mFinal t ->
       exists mStart,
         Multistep kamiProc (initRegs (getRegInits kamiProc)) mStart nil /\
         Multistep kamiProc mStart mFinal t.
   Proof.
-    (* TODO @joonwonc proof structure
-       This lemma can also look totally different or be inlined, anything is fine as long as
-       riscv_to_kamiImplProcessor works *)
   Admitted.
 
   Definition someInitialRegs: Registers :=
@@ -709,20 +734,38 @@ Section Equiv.
                          (HList.tuple.unfoldn Datatypes.id 31 (word.of_Z 42))
                          map.empty.
 
-  Lemma equivalentLabelSeq_preserves_KamiLabelSeqR: forall t1 t2 t,
-      equivalentLabelSeq (liftToMap1 (idElementwise (A:={x : SignatureT & SignT x}))) t1 t2 ->
-      KamiLabelSeqR t2 t ->
-      KamiLabelSeqR t1 t.
+  Lemma equivalentLabel_preserves_KamiLabelR:
+    forall l1 l2,
+      equivalentLabel (liftToMap1 (@idElementwise _)) l1 l2 ->
+      forall l,
+        KamiLabelR l2 l -> KamiLabelR l1 l.
   Proof.
-    (* TODO @joonwonc proof structure
-       No need to prove it if it's annoying to do so but please check if you think it's true *)
-  Admitted.
+    intros.
+    destruct l1 as [ann1 ds1 cs1], l2 as [ann2 ds2 cs2].
+    destruct H as [? [? ?]]; simpl in *.
+    rewrite SemFacts.liftToMap1_idElementwise_id in H, H1; subst.
+    inversion_clear H0; subst.
+    - apply KamiSilent; assumption.
+    - eapply KamiMMIO; eauto.
+  Qed.
+
+  Lemma equivalentLabelSeq_preserves_KamiLabelSeqR:
+    forall t1 t2,
+      equivalentLabelSeq (liftToMap1 (@idElementwise _)) t1 t2 ->
+      forall t,
+        KamiLabelSeqR t2 t ->
+        KamiLabelSeqR t1 t.
+  Proof.
+    induction 1; intros; [assumption|].
+    inversion_clear H1.
+    constructor; auto.
+    eapply equivalentLabel_preserves_KamiLabelR; eauto.
+  Qed.
 
   Lemma riscv_to_kamiImplProcessor:
     forall (traceProp: list Event -> Prop)
            (* --- hypotheses which will be proven by the compiler --- *)
            (RvInv: RiscvMachine -> Prop)
-           (prg: kword instrMemSizeLg -> kword 32)
            (establishRvInv:
               forall (m0RV: RiscvMachine) (otherMem: mem),
                 m0RV.(getMem) = map.putmany otherMem (convertInstrMem _ prg) -> (* rhs overrides lhs *)
@@ -738,7 +781,7 @@ Section Equiv.
                                      traceProp t),
     (* --- final end to end theorem will start here --- *)
     forall (t: LabelSeqT) (mFinal: KamiImplMachine),
-      Behavior (p4mm prg) mFinal t ->
+      Behavior p4mm mFinal t ->
       (* --- conclusion ---
          The trace produced by the kami implementation can be mapped to an MMIO trace
          (this guarantees that the only external behavior of the kami implementation is MMIO)
@@ -746,10 +789,8 @@ Section Equiv.
       exists (t': list Event), KamiLabelSeqR t t' /\ traceProp t'.
   Proof.
     intros.
-    pose proof (@proc_correct instrMemSizeLg HbtbAddr memInit) as P.
+    pose proof (@proc_correct instrMemSizeLg (conj Hinstr1 Hinstr2) memInit) as P.
     unfold traceRefines in P.
-    replace (@KamiProc.p4mm instrMemSizeLg HbtbAddr memInit)
-      with (p4mm prg) in P by case TODO. (* TODO @joonwonc proof structure *)
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).
     inversion B. subst.
