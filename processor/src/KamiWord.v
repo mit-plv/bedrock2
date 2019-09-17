@@ -10,11 +10,16 @@ Section WithWidth.
   Context {width_nonneg : Z.lt 0 width}.
   Local Notation sz := (Z.to_nat width).
 
-  Instance word : word.word width. refine ({|
-    word.rep := Kami.Lib.Word.word sz;
-    word.unsigned x := Z.of_N (wordToN x);
-    word.signed := @wordToZ sz;
-    of_Z := ZToWord sz;
+  Definition kword: Type := Kami.Lib.Word.word sz.
+  Definition kunsigned(x: kword): Z := Z.of_N (wordToN x).
+  Definition ksigned: kword -> Z := @wordToZ sz.
+  Definition kofZ: Z -> kword := ZToWord sz.
+
+  Instance word : word.word width := {
+    rep := kword;
+    unsigned := kunsigned;
+    signed := ksigned;
+    of_Z := kofZ;
 
     add := @wplus sz;
     sub := @wminus sz;
@@ -25,31 +30,30 @@ Section WithWidth.
     xor := @wxor sz;
     not := @wnot sz;
 
-    (* "x and not y"
-    ndn := wrap (Z.ldiff (unsigned x) (unsigned y));
+    (* "x and not y" *)
+    ndn x y := kofZ (Z.ldiff (kunsigned x) (kunsigned y));
 
-    mul x y := wrap (Z.mul (unsigned x) (unsigned y));
-    mulhss x y := wrap (Z.mul (signed x) (signed y) / 2^width);
-    mulhsu x y := wrap (Z.mul (signed x) (unsigned y) / 2^width);
-    mulhuu x y := wrap (Z.mul (unsigned x) (unsigned y) / 2^width);
+    mul x y := kofZ (Z.mul (kunsigned x) (kunsigned y));
+    mulhss x y := kofZ (Z.mul (ksigned x) (ksigned y) / 2^width);
+    mulhsu x y := kofZ (Z.mul (ksigned x) (kunsigned y) / 2^width);
+    mulhuu x y := kofZ (Z.mul (kunsigned x) (kunsigned y) / 2^width);
 
-    divu x y := wrap (Z.div (unsigned x) (unsigned y));
-    divs x y := wrap (Z.quot (signed x) (signed y));
-    modu x y := wrap (Z.modulo (unsigned x) (unsigned y));
-    mods x y := wrap (Z.rem (signed x) (signed y));
+    divu x y := kofZ (Z.div (kunsigned x) (kunsigned y));
+    divs x y := kofZ (Z.quot (ksigned x) (ksigned y));
+    modu x y := kofZ (Z.modulo (kunsigned x) (kunsigned y));
+    mods x y := kofZ (Z.rem (ksigned x) (ksigned y));
 
-    slu x y := wrap (Z.shiftl (unsigned x) (unsigned y));
-    sru x y := wrap (Z.shiftr (unsigned x) (unsigned y));
-    srs x y := wrap (Z.shiftr (signed x) (unsigned y));
+    slu x y := kofZ (Z.shiftl (kunsigned x) (kunsigned y));
+    sru x y := kofZ (Z.shiftr (kunsigned x) (kunsigned y));
+    srs x y := kofZ (Z.shiftr (ksigned x) (kunsigned y));
 
-    eqb x y := Z.eqb (unsigned x) (unsigned y);
-    ltu x y := Z.ltb (unsigned x) (unsigned y);
-    lts x y := Z.ltb (signed x) (signed y);
+    eqb x y := Z.eqb (kunsigned x) (kunsigned y);
+    ltu x y := Z.ltb (kunsigned x) (kunsigned y);
+    lts x y := Z.ltb (ksigned x) (ksigned y);
 
-    sextend oldwidth z := wrap ((unsigned z + 2^(oldwidth-1)) mod 2^oldwidth - 2^(oldwidth-1));
-    *)
-  |}).
-  all: case TODO. Defined.
+    sextend oldwidth z := kofZ ((kunsigned z + 2^(oldwidth-1)) mod 2^oldwidth - 2^(oldwidth-1));
+
+  }.
 
   (*
   Lemma eq_unsigned {x y : rep} : unsigned x = unsigned y -> x = y.
@@ -73,6 +77,7 @@ Section WithWidth.
 End WithWidth.
 Arguments word : clear implicits.
 Arguments ok : clear implicits.
+Arguments kword : clear implicits.
 
 Existing Instance word.
 Existing Instance ok.
@@ -101,5 +106,3 @@ Section MkWords.
   |}.
 
 End MkWords.
-
-Definition kword (w: Z): Type := Kami.Lib.Word.word (Z.to_nat w).
