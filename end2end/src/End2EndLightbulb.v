@@ -141,7 +141,7 @@ Lemma link_lightbulb_withCorrectWordInstance:
                     (lan9250_recv_packet_too_long _ _ ioh /\ word.unsigned v <> 0) \/
                     ((any +++ spi_timeout Semantics.word) ioh /\ word.unsigned v <> 0))))).
 Proof.
-  replace semantics with FE310CSemantics.parameters. (* silently fails *) Undo.
+  (* replace semantics with FE310CSemantics.parameters. silently fails *)
   Fail pattern semantics.
   pose proof link_lightbulb as P. unfold spec_of_iot in P.
   (* TODO andres why is there no separation logic assertion in the postcondition? *)

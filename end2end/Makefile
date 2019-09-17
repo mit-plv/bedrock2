@@ -30,9 +30,10 @@ clean:: Makefile.coq.all
 	$(MAKE) -f Makefile.coq.all clean
 	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
 	rm -f Makefile.coq.all Makefile.coq.all.conf _CoqProject
+	rm -f admits.txt PrintAdmits.vo admits1perLine.txt
 
-admits.txt: all0
-	printf -- 'Require Import end2end.End2EndPipeline. Print Assumptions end2end.End2EndPipeline.end2end.\n' | $(COQBIN)coqtop $(DEPFLAGS) > admits.txt
+admits.txt: all0 PrintAdmits.v
+	$(COQBIN)coqc $(DEPFLAGS) PrintAdmits.v > admits.txt
 
 admits1perLine.txt: admits.txt
 	grep admits.txt -e '^[^ ]* : ' -e 'used in' | grep -v '^[^ ]*TODO : False' | sed -e 's/:.*//g' > admits1perLine.txt
