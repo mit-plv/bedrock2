@@ -460,7 +460,7 @@ Section Equiv.
         destruct H0; [|admit (** when [rs1] is [Register0] .. *)].
         simpl in H0; destruct H0.
         destruct_one_match_hyp;
-          [rename w into v1|admit (** TODO: prove it never fails to read
+          [rename k into v1|case TODO (** TODO: prove it never fails to read
                                    * a register value once the register
                                    * is valid. *)].
 
@@ -578,7 +578,7 @@ Section Equiv.
                             * always zero in Kami steps. *)].
       simpl in H0; destruct H0.
       destruct_one_match_hyp;
-        [rename w into v1|admit (** TODO: prove it never fails to read
+        [rename k into v1|case TODO (** TODO: prove it never fails to read
                                  * a register value once the register
                                  * is valid. *)].
       inv_bind_apply H15.
@@ -587,8 +587,8 @@ Section Equiv.
       destruct H14; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
       simpl in H14; destruct H14.
       destruct_one_match_hyp;
-        [rename w into v2|
-         admit (** TODO: ditto, about valid register reads *)].
+        [rename k into v2|
+         case TODO (** TODO: ditto, about valid register reads *)].
       inv_bind_apply H17.
       apply @spec_setRegister in H16; [|assumption..].
       destruct H16; [|admit (** TODO @joonwonc: writing to `R0` *)].
