@@ -160,7 +160,7 @@ Section Connect.
 
   Definition KamiMachine: Type := KamiRiscv.KamiMachine.
 
-  Context (instrMemSizeLg: Z) (dataMemSize: nat).
+  Context (instrMemSizeLg: Z).
   Hypothesis instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30.
 
   Lemma HbtbAddr: BinInt.Z.to_nat instrMemSizeLg = (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat.
@@ -319,7 +319,7 @@ Section Connect.
       Grab Existential Variables.
       1: exact m0RV.
       1: exact compile_to_kami.
-      
+
   Qed.
 
 End Connect.
