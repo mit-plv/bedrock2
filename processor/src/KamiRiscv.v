@@ -117,7 +117,7 @@ Section Equiv.
 
   Context {Pr: MetricPrimitives MinimalMMIOPrimitivesParams}.
 
-  (** NOTE: we have no idea how to deal with [translate] when [RVS] is 
+  (** NOTE: we have no idea how to deal with [translate] when [RVS] is
    * parametrized, so let's just use the default instance for now. *)
   (* Context {RVS: riscv.Spec.Machine.RiscvMachine M word}. *)
 
@@ -240,7 +240,7 @@ Section Equiv.
 
       | [H: Primitives.mcomp_sat (_ <- _; _) _ _ |- _] => inv_bind H
       | [H: _ _ _ |- _] => progress (inv_bind_apply H)
-                                    
+
       | [H: Primitives.mcomp_sat getPC _ _ |- _] => inv_getPC H
       | [H: Primitives.mcomp_sat (loadWord _ _) _ _ |- _] => inv_loadWord H
       end.
@@ -436,7 +436,7 @@ Section Equiv.
       (* evaluate [decode] *)
       (** TODO @joonwonc: should derive below facts from
           [invert_Kami_execLd]. *)
-      assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) by admit.
+      assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) by case TODO.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H16.
 
       pose proof (bitSlice_range_ex (wordToZ kinst) 12 15 ltac:(abstract blia)).
@@ -457,7 +457,7 @@ Section Equiv.
         inv_riscv.
 
         apply spec_getRegister with (post0:= mid2) in H0.
-        destruct H0; [|admit (** when [rs1] is [Register0] .. *)].
+        destruct H0; [|case TODO (** when [rs1] is [Register0] .. *)].
         simpl in H0; destruct H0.
         destruct_one_match_hyp;
           [rename k into v1|case TODO (** TODO: prove it never fails to read
@@ -465,17 +465,17 @@ Section Equiv.
                                    * is valid. *)].
 
         inv_riscv.
-        admit.
+        case TODO.
 
-      + (** LH: load-half *) admit.
-      + (** LW: load-word *) admit.
-      + (** LHU: load-half-unsigned *) admit.
-      + (** LBU: load-byte-unsigned *) admit.
+      + (** LH: load-half *) case TODO.
+      + (** LW: load-word *) case TODO.
+      + (** LHU: load-half-unsigned *) case TODO.
+      + (** LBU: load-byte-unsigned *) case TODO.
 
-    - admit.
-      
-  Admitted.
-  
+    - case TODO.
+
+  Qed.
+
   Lemma kamiStep_sound:
     forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
            (m1': RiscvMachine) (t0: list Event) (post: RiscvMachine -> Prop)
@@ -511,7 +511,7 @@ Section Equiv.
       inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
       eauto using kamiStep_sound_case_pgmInit.
-      
+
     - (* case "pgmInitEnd" *)
       left.
       inversion H4; subst; clear H4 HAction.
@@ -520,7 +520,7 @@ Section Equiv.
       inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
       eauto using kamiStep_sound_case_pgmInitEnd.
-      
+
     - (* case "execLd" *)
       right.
       inversion H3; subst; clear H3 HAction.
@@ -529,9 +529,9 @@ Section Equiv.
       inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
       eauto using kamiStep_sound_case_execLd.
-      
-    - (* case "execLdZ" *) admit.
-    - (* case "execSt" *) admit.
+
+    - (* case "execLdZ" *) case TODO.
+    - (* case "execSt" *) case TODO.
     - (* case "execNm" *)
       right.
 
@@ -551,7 +551,7 @@ Section Equiv.
 
       (** Invert a riscv-coq step. *)
       inv_riscv.
-      
+
       (** Invert Kami decode/execute *)
       destruct H3 as (kinst & exec_val & ? & ? & ?).
 
@@ -563,18 +563,18 @@ Section Equiv.
 
 
       (** Evaluate [decode]. *)
-      assert (bitSlice (wordToZ kinst) 0 7 = opcode_OP) by admit.
+      assert (bitSlice (wordToZ kinst) 0 7 = opcode_OP) by case TODO.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H11.
-      assert (bitSlice (wordToZ kinst) 12 15 = funct3_ADD) by admit.
+      assert (bitSlice (wordToZ kinst) 12 15 = funct3_ADD) by case TODO.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H12.
-      assert (bitSlice (wordToZ kinst) 25 32 = funct7_ADD) by admit.
+      assert (bitSlice (wordToZ kinst) 25 32 = funct7_ADD) by case TODO.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H13.
       eval_decode H0.
 
       simpl in H0.
       inv_bind H0.
       apply spec_getRegister with (post0:= mid2) in H0.
-      destruct H0; [|admit (** TODO @joonwonc: prove the value of `R0` is
+      destruct H0; [|case TODO (** TODO @joonwonc: prove the value of `R0` is
                             * always zero in Kami steps. *)].
       simpl in H0; destruct H0.
       destruct_one_match_hyp;
@@ -584,14 +584,14 @@ Section Equiv.
       inv_bind_apply H15.
       inv_bind H14.
       apply spec_getRegister with (post0:= mid3) in H14.
-      destruct H14; [|admit (** TODO @joonwonc: ditto, about `R0` *)].
+      destruct H14; [|case TODO (** TODO @joonwonc: ditto, about `R0` *)].
       simpl in H14; destruct H14.
       destruct_one_match_hyp;
         [rename k into v2|
          case TODO (** TODO: ditto, about valid register reads *)].
       inv_bind_apply H17.
       apply @spec_setRegister in H16; [|assumption..].
-      destruct H16; [|admit (** TODO @joonwonc: writing to `R0` *)].
+      destruct H16; [|case TODO (** TODO @joonwonc: writing to `R0` *)].
       simpl in H16; destruct H16.
       inv_bind_apply H18.
       inv_step H1.
@@ -631,10 +631,10 @@ Section Equiv.
            |rewrite kami_getFunct3_ok; assumption].
         reflexivity.
       }
-      
-    - (* case "execNmZ" *) admit.
 
-  Admitted.
+    - (* case "execNmZ" *) case TODO.
+
+  Qed.
 
   Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
   | KamiSeqNil: KamiLabelSeqR nil nil
