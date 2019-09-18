@@ -126,6 +126,7 @@ Section Pipeline1.
 
   Local Notation cmd := (@Syntax.cmd (FlattenExprDef.FlattenExpr.mk_Syntax_params _)).
   Local Notation env := (@Semantics.env (FlattenExpr.mk_Semantics_params _)).
+  Local Notation localsH := (@Semantics.locals (FlattenExpr.mk_Semantics_params _)).
   Local Notation Program := (@Program (FlattenExpr.mk_Semantics_params _)).
   Local Notation ProgramSpec := (@ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
@@ -145,28 +146,37 @@ Section Pipeline1.
     let flat := ExprImp2RenamedFlat s in
     FlatToRiscvDef.compile_snippet e_pos mypos flat.
 
-(*
-  Definition goodMachine(e: env)(mH: mem)(st: MetricRiscvMachine): Prop :=
-    exists t l mc g,
-      functions2Riscv e funs = (g.(insts)
-      FlatToRiscvFunctions.goodMachine t mH l mc g st.
-*)
+  Definition goodMachine(e: env)(t: Semantics.trace)
+             (mH: Semantics.mem)
+             (lH: localsH)
+             (mcH: MetricLog)
+             (st: MetricRiscvMachine): Prop :=
+    exists funnames g posenv lL,
+      (* TODO should we relate low-level (regalloc'ed) and high-level locals? *)
+      functions2Riscv e funnames = (g.(insts), posenv) /\
+      FlatToRiscvFunctions.goodMachine t mH lL mcH g st.
 
-  Definition goodMachine: MetricRiscvMachine -> Prop. case TODO. Defined.
+  Definition goodMachine': MetricRiscvMachine -> Prop. case TODO. Defined.
 
   Lemma exprImp2Riscv_correct: forall (e: env) (sH: cmd) lH mH mcH t program_base e_pos pos
                                       (initialL: MetricRiscvMachine) post instsL,
       snippet2Riscv e_pos pos sH = instsL ->
       Semantics.exec.exec e sH t mH lH mcH post ->
       initialL.(getPc) = word.add program_base (word.of_Z pos) ->
-      goodMachine initialL ->
+      goodMachine e t mH lH mcH initialL ->
       runsTo initialL (fun finalL => exists t' mH' lH' mcH',
           post t' mH' lH' mcH' /\
           finalL.(getPc) = word.add initialL.(getPc)
                                    (word.of_Z (4 * Z.of_nat (List.length instsL))) /\
-          goodMachine finalL).
+          goodMachine e t' mH' lH' mcH' finalL).
   Proof.
     intros. subst.
+
+
+
+(* compile_post: hlpost -> llpost *)
+
+
     pose proof @runsTo_weaken.
     pose proof FlatToRiscvMetric.compile_stmt_correct as P.
     set (postH := (fun t m l mc =>
@@ -301,7 +311,7 @@ Section Pipeline1.
     exists regsH memH,
       spec.(isReady) st.(getLog) memH regsH /\
       spec.(goodTrace) st.(getLog) /\
-      goodMachine st.
+      goodMachine' st.
 
 (*
   Definition ll_ready(st: MetricRiscvMachine): Prop :=

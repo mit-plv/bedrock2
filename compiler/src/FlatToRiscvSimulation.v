@@ -1,6 +1,6 @@
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.Simulation.
+Require Import compiler.ParamSimulation.
 Require Import compiler.Simp.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
@@ -29,20 +29,31 @@ Require Import bedrock2.MetricLogging.
 Section Sim.
   Context {p: FlatToRiscv.parameters}.
 
-  Definition State1: Type :=
-    FlatImp.env * FlatImp.stmt * Semantics.trace * Semantics.mem * FlatToRiscv.locals * MetricLog.
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
 
-  Definition exec1: State1 -> (State1 -> Prop) -> Prop :=
-    fun '(e, c, t, m, l, mc) post =>
-      FlatImp.exec e c t m l mc (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
+  Definition Params1: Type := FlatImp.env * FlatImp.stmt.
+  Definition State1: Type := bool * Semantics.trace * Semantics.mem * FlatToRiscv.locals.
 
+  Definition exec1: Params1 -> State1 -> (State1 -> Prop) -> Prop :=
+    fun '(e, c) '(done, t, m, l) post =>
+      done = false /\
+      forall mc, FlatImp.exec e c t m l mc (fun t' m' l' mc' =>
+                                              post (true, t', m', l')).
+
+  Definition Params2: Type := GhostConsts.
   Definition State2: Type := MetricRiscvMachine.
 
-  Definition exec2: State2 -> (State2 -> Prop) -> Prop := FlatToRiscvCommon.runsTo.
+  Definition exec2: Params2 -> State2 -> (State2 -> Prop) -> Prop :=
+    fun _ => FlatToRiscvCommon.runsTo.
 
-  Definition related: State1 -> State2 -> Prop :=
-    fun '(e, c, t, m, l, mc) st =>
-      exists (g: GhostConsts) (pos: Z),
+  Definition goodMachine t m l g st := exists mc, goodMachine t m l mc g st.
+
+  Definition related: Params1 -> Params2 -> State1 -> State2 -> Prop :=
+    fun '(e, c) g '(done, t, m, l) st =>
+      exists (pos: Z),
         e = g.(e_impl) /\
         fits_stack g.(num_stackwords) g.(e_impl) c /\
         (forall f argnames retnames body,
@@ -53,20 +64,15 @@ Section Sim.
             stmt_not_too_big body /\
             In f g.(funnames) /\
             (exists pos : Z, map.get g.(e_pos) f = Some pos /\ pos mod 4 = 0)) /\
-
-        (* TODO it might make sense to put these into a precondition of existence of simulation
-           because they are completely static, but then we'd need to put the quantification over
-           states outside of the definition of simulation, which doesn't work well with the
-           existential inside compose_relation *)
         stmt_not_too_big c /\
         valid_registers c /\
-
         compile_stmt_new g.(e_pos) pos c = g.(insts) /\
         pos mod 4 = 0 /\
         regs_initialized st.(getRegs) /\
-        st.(getPc)  = word.add g.(program_base) (word.of_Z pos) /\
+        st.(getPc)  = word.add g.(program_base) (word.of_Z
+           (pos + if done then 4 * Z.of_nat (length g.(insts)) else 0)) /\
         g.(p_insts) = word.add g.(program_base) (word.of_Z pos) /\
-        goodMachine t m l mc g st.
+        goodMachine t m l g st.
 
   (* will probably have to be part of the invariant in compile_stmt_correct_new *)
   Axiom TODO_preserve_regs_initialized: forall regs1 regs2,
@@ -76,12 +82,18 @@ Section Sim.
   Proof.
     unfold simulation, exec1, exec2, related, State1, State2.
     intros.
-    destruct s1 as [[[[[e c] t] m] l] mc].
+    destruct p1 as (e & c).
+    destruct s1 as (((done & t) & m) & l).
+    rename p2 into g.
+    unfold goodMachine in *. (* TODO inline *)
     destruct_RiscvMachine s2.
     simp.
     eapply runsTo_weaken.
     - eapply compile_stmt_correct_new; simpl.
-      + eassumption.
+      + lazymatch goal with
+        | H: forall (_: MetricLog), _ |- _ =>
+          apply (H (mkMetricLog 0 0 0 0))
+        end.
       + reflexivity.
       + unfold exists_good_reduced_e_impl. exists g.(e_impl).
         split. {
@@ -93,17 +105,25 @@ Section Sim.
       + assumption.
       + assumption.
       + assumption.
-      + reflexivity.
+      + ring_simplify (pos + 0). reflexivity.
       + assumption.
       + assumption.
     - simpl. intros. simp.
       eexists; split; [|eassumption].
-      simpl.
-      do 2 eexists.
-      repeat (split; try eapply TODO_preserve_regs_initialized; [solve [eassumption|reflexivity]|]).
-      (* we'd have to prove that goodMachine still holds with a GhostConsts where
-         insts = nil, but that's not what we'll later need to compose it in an
-         event loop, so this statement is probably not the statement we want. *)
-  Abort.
+      cbv beta iota.
+      eexists.
+      repeat match goal with
+             | |- _ /\ _ => split
+             | _ => eapply TODO_preserve_regs_initialized; (eassumption||reflexivity)
+             | _ => eassumption
+             | _ => reflexivity
+             end.
+      2: eexists; eassumption.
+      (* TODO make word automation from bsearch work here *)
+      match goal with
+      | H: getPc _ = _ |- getPc _ = _ => rewrite H
+      end.
+      solve_word_eq word_ok. (* TODO make sure solve_word complains if no ring found *)
+  Qed.
 
 End Sim.
