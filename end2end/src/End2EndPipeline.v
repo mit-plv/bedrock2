@@ -202,11 +202,9 @@ Section Connect.
                             (@Pipeline.FlattenExpr_parameters pipeline_params)))).
   Context (prog: @Program strname_sem cmd)
           (spec: @ProgramSpec strname_sem)
+          (otherMemInit: mem)
           (ml: MemoryLayout 32)
-          (mlOk: MemoryLayoutOk ml)
-          (memInit: Kami.Ex.SC.MemInit
-                      (Z.to_nat width)
-                      Kami.Ex.IsaRv32.rv32DataBytes).
+          (mlOk: MemoryLayoutOk ml).
 
   Hypothesis instrMemSizeLg_agrees_with_ml:
     word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
@@ -221,10 +219,14 @@ Section Connect.
   Definition compile_to_kami: kword instrMemSizeLg -> kword 32.
   Admitted.
 
+  Definition kamiMemInit :=
+    memInit instrMemSizeLg compile_to_kami otherMemInit.
+
   (* TODO can we do with fewer explicit implicit arguments? *)
   Definition p4mm: Kami.Syntax.Modules :=
-    @KamiRiscv.p4mm instrMemSizeLg (proj1 instrMemSizeLg_bounds)
-                    (proj2 instrMemSizeLg_bounds).
+    KamiRiscv.p4mm instrMemSizeLg (proj1 instrMemSizeLg_bounds)
+                   (proj2 instrMemSizeLg_bounds)
+                   compile_to_kami otherMemInit.
 
   Definition kamiMemToBedrockMem(km: SC.MemInit (Z.to_nat width) IsaRv32.rv32DataBytes): mem.
     case TODO.
@@ -279,11 +281,11 @@ Section Connect.
       constructor.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3init.
-        specialize_first Establish (kamiMemToBedrockMem memInit).
+        specialize_first Establish (kamiMemToBedrockMem kamiMemInit).
         assert (initialLocals: @locals strname_sem) by case TODO. (* obtain from kami *)
         specialize_first Establish initialLocals.
         specialize_first P3init Establish.
-        replace m0 with (kamiMemToBedrockMem memInit) by case TODO.
+        replace m0 with (kamiMemToBedrockMem kamiMemInit) by case TODO.
         replace l0 with initialLocals by case TODO.
         eapply P3init. 1,2: case TODO.
       - intros.
@@ -318,7 +320,6 @@ Section Connect.
 
       Grab Existential Variables.
       1: exact m0RV.
-      1: exact compile_to_kami.
 
   Qed.
 

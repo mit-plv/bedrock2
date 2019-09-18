@@ -210,6 +210,7 @@ Section Parametrized.
       pinit kt1 = true /\
       exists curInst ldAddr,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
+        evalExpr (getOptype _ curInst) = opLd /\
         ldAddr = evalExpr
                    (alignLdAddr
                       _ (evalExpr
@@ -279,6 +280,7 @@ Section Parametrized.
       inversion H; subst; clear H.
       simpl in *.
       repeat esplit.
+      + destruct (weq _ WO~0~0); [assumption|discriminate].
       + intro Hx; rewrite Hx in H9.
         rewrite (rewrite_weq eq_refl) in H9; discriminate.
       + FMap.mred; eassumption.
@@ -294,6 +296,7 @@ Section Parametrized.
       split; [reflexivity|].
       do 2 eexists.
       repeat split.
+      + assumption.
       + assumption.
       + intros; exfalso; clear -H Heqic; congruence.
       + intros; repeat esplit; assumption.

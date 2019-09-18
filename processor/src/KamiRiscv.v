@@ -71,9 +71,12 @@ Section Equiv.
   Hypotheses (Hinstr1: 3 <= instrMemSizeLg)
              (Hinstr2: instrMemSizeLg <= width - 2).
 
-  Variable (prg: kword instrMemSizeLg -> kword 32).
+  Variables (prg: kword instrMemSizeLg -> kword 32)
+            (otherMemInit: mem).
   Definition memInit: MemInit (Z.to_nat width) 4%nat.
-    case TODO. (* TODO @joonwonc: define using [prg] *)
+    pose prg.
+    pose otherMemInit.
+    case TODO. (* TODO @joonwonc: define using [prg] and [otherMemInit] *)
   Defined.
 
   Local Definition kamiProc := @KamiProc.proc instrMemSizeLg memInit.
@@ -143,18 +146,20 @@ Section Equiv.
 
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
   | relate_states:
-      forall t t' m riscvXAddrs kpc rf rrf pc pinit instrMem dataMem metrics,
+      forall t t' m riscvXAddrs kpc krf rrf rpc nrpc pinit instrMem kdataMem rdataMem metrics,
         traces_related t t' ->
-        KamiProc.RegsToT m = Some (kamiStMk kpc rf pinit instrMem dataMem) ->
+        KamiProc.RegsToT m = Some (kamiStMk kpc krf pinit instrMem kdataMem) ->
         (pinit = false -> riscvXAddrs = kamiXAddrs) ->
-        (pinit = true -> RiscvXAddrsSafe instrMemSizeLg instrMem dataMem riscvXAddrs) ->
-        kpc = toKamiPc pc ->
-        rrf = convertRegs rf ->
+        (pinit = true -> RiscvXAddrsSafe instrMemSizeLg instrMem kdataMem riscvXAddrs) ->
+        kpc = toKamiPc rpc ->
+        nrpc = word.add rpc (word.of_Z 4) ->
+        rrf = convertRegs krf ->
+        rdataMem = convertDataMem kdataMem ->
         states_related
           (m, t) {| getMachine := {| RiscvMachine.getRegs := rrf;
-                                     RiscvMachine.getPc := pc;
-                                     RiscvMachine.getNextPc := word.add pc (word.of_Z 4);
-                                     RiscvMachine.getMem := convertDataMem dataMem;
+                                     RiscvMachine.getPc := rpc;
+                                     RiscvMachine.getNextPc := nrpc;
+                                     RiscvMachine.getMem := rdataMem;
                                      RiscvMachine.getXAddrs := riscvXAddrs;
                                      RiscvMachine.getLog := t'; |};
                     getMetrics := metrics; |}.
@@ -393,38 +398,15 @@ Section Equiv.
     intros.
     inversion H; subst; clear H.
     eapply invert_Kami_execLd in H1; eauto.
-    destruct H1 as (? & kinst & ldAddr & ? & ? & ? & ? & ?).
+    destruct H1 as (? & kinst & ldAddr & ? & ? & ? & ? & ? & ?).
     simpl in H; subst pinit.
 
     destruct (evalExpr (isMMIO type ldAddr)) eqn:Hmmio.
-    - specialize (H8 eq_refl); clear H9.
-      destruct H8 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
+    - specialize (H9 eq_refl); clear H10.
+      destruct H9 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
       simpl in H; subst cs.
 
       (* invert a riscv-coq step. *)
-      inv_mcomp_sat.
-
-      repeat
-        match goal with
-        | [H: _ /\ _ |- _] => destruct H
-        (* | [H: Fetch = Fetch -> isXAddr _ _ |- _] => *)
-        (*   specialize (H eq_refl); eapply fetch_ok in H; eauto; *)
-        (*     let rinst := fresh "rinst" in *)
-        (*     destruct H as (rinst & ? & ?) *)
-        (* | [H: _ \/ (Memory.loadWord _ _ = None /\ _) |- _] => destruct H; [|exfalso] *)
-        (* | [H: exists _, _ /\ _ |- _] => *)
-        (*   let rinst := fresh "rinst" in destruct H as (rinst & ? & ?) *)
-        (* | [H1: Memory.loadWord _ _ = _, H2: Memory.loadWord _ _ = _ |- _] => *)
-        (*   match type of H1 with *)
-        (*   | ?t1 = _ => match type of H2 with *)
-        (*                | ?t2 = _ => change t1 with t2 in H1 *)
-        (*                end *)
-        (*   end; rewrite H1 in H2; try discriminate *)
-        (* | [H: Some ?v = Some _ |- _] => inversion H; subst v; clear H *)
-        end.
-
-      inv_riscv_fetch.
-
       inv_riscv.
 
       (* relation between the two raw instructions *)
@@ -434,20 +416,27 @@ Section Equiv.
       simpl in H0, Hfetch; rewrite Hfetch in H0.
 
       (* evaluate [decode] *)
-      (** TODO @joonwonc: should derive below facts from
-          [invert_Kami_execLd]. *)
-      assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) by case TODO.
-      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H16.
+      assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD).
+      { move H2 at bottom.
+        unfold getOptype, rv32Dec, rv32GetOptype in H2.
+        unfold evalExpr in H2; fold evalExpr in H2.
+        destruct (isEq _ _ _) in H2;
+          [|destruct (isEq _ _ _) in H2; discriminate].
+        apply (f_equal (@wordToZ _)) in e.
+        rewrite kami_getOpcode_ok in e.
+        assumption.
+      }
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H17.
 
       pose proof (bitSlice_range_ex (wordToZ kinst) 12 15 ltac:(abstract blia)).
-      change (2 ^ (15 - 12)) with 8 in H17.
+      change (2 ^ (15 - 12)) with 8 in H18.
       assert (let z := bitSlice (wordToZ kinst) 12 15 in
               z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
               z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
-      clear H17.
-      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H18.
-      destruct H18 as [|[|[|[|[|[|[|]]]]]]].
-      4, 7, 8: eval_decode H0; case TODO.
+      clear H18.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H19.
+      destruct H19 as [|[|[|[|[|[|[|]]]]]]].
+      4, 7, 8: case TODO. (** TODO: [InvalidInstruction] *)
 
       + (** LB: load-byte *)
         eval_decode H0.
@@ -615,6 +604,7 @@ Section Equiv.
         { rewrite <-toKamiPc_wplus_distr; auto. }
         { rewrite kami_getOpcode_ok; assumption. }
       }
+      { reflexivity. }
       { subst exec_val.
         rewrite <-kami_rv32GetDst_ok by assumption.
         rewrite <-kami_rv32GetSrc1_ok in E by assumption.
@@ -631,6 +621,7 @@ Section Equiv.
            |rewrite kami_getFunct3_ok; assumption].
         reflexivity.
       }
+      { reflexivity. }
 
     - (* case "execNmZ" *) case TODO.
 
@@ -720,19 +711,23 @@ Section Equiv.
   Definition mm: Modules := Kami.Ex.SC.mm memInit rv32MMIO.
   Definition p4mm: Modules := p4mm (conj Hinstr1 Hinstr2) memInit.
 
-  Lemma splitKamiSpecProcStepsIntoProgramLoadAndExec:
-    forall mFinal t,
-      Multistep kamiProc (initRegs (getRegInits kamiProc)) mFinal t ->
-      exists mStart,
-        Multistep kamiProc (initRegs (getRegInits kamiProc)) mStart nil /\
-        Multistep kamiProc mStart mFinal t.
+  Lemma states_related_init:
+    states_related (initRegs (getRegInits (@proc instrMemSizeLg memInit)), [])
+                   {| getMachine :=
+                        {| (* TODO will need to be the actual value corresponding
+                             to Kami in order for the proof to work *)
+                          RiscvMachine.getRegs :=
+                            convertRegs (Kami.Semantics.evalConstT KamiProc.rfInitVal);
+                          RiscvMachine.getPc := word.of_Z 0;
+                          RiscvMachine.getNextPc := word.of_Z 4;
+                          RiscvMachine.getMem :=
+                            map.putmany otherMemInit (convertInstrMem _ prg);
+                          RiscvMachine.getXAddrs := nil; (* <-- TODO adapt *)
+                          RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
+                      getMetrics := MetricLogging.EmptyMetricLog; |}.
   Proof.
-  Admitted.
-
-  Definition someInitialRegs: Registers :=
-    map.putmany_of_tuple (HList.tuple.unfoldn Z.succ 31 1)
-                         (HList.tuple.unfoldn Datatypes.id 31 (word.of_Z 42))
-                         map.empty.
+    case TODO.
+  Qed.
 
   Lemma equivalentLabel_preserves_KamiLabelR:
     forall l1 l2,
@@ -767,8 +762,8 @@ Section Equiv.
            (* --- hypotheses which will be proven by the compiler --- *)
            (RvInv: RiscvMachine -> Prop)
            (establishRvInv:
-              forall (m0RV: RiscvMachine) (otherMem: mem),
-                m0RV.(getMem) = map.putmany otherMem (convertInstrMem _ prg) -> (* rhs overrides lhs *)
+              forall (m0RV: RiscvMachine),
+                m0RV.(getMem) = map.putmany otherMemInit (convertInstrMem _ prg) -> (* rhs overrides lhs *)
                 m0RV.(getPc) = word.of_Z 0 ->
                 (forall reg, 0 < reg < 32 -> map.get m0RV.(getRegs) reg <> None) ->
                 m0RV.(getLog) = nil ->
@@ -793,40 +788,21 @@ Section Equiv.
     unfold traceRefines in P.
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).
-    inversion B. subst.
+    inversion_clear B.
     pose proof kamiMultiStep_sound as P.
     specialize P with (1 := preserveRvInv).
     unfold kamiProc in P.
-    apply splitKamiSpecProcStepsIntoProgramLoadAndExec in HMultistepBeh.
-    destruct HMultistepBeh as (mStart & MSInit & MSRun).
-    inversion_clear MSInit; subst.
+
     specialize P with (1 := Kami.SemFacts.reachable_init _).
-    specialize P with (1 := MSRun).
+    specialize P with (1 := HMultistepBeh).
     specialize P with (t0 := nil).
-    setoid_rewrite List.app_nil_r in P.
-    set (otherMem := map.empty: mem). (* <-- TODO adapt *)
-    specialize (P {| getMachine :=
-                       {| (* TODO will need to be the actual value corresponding
-                             to Kami in order for the proof to work *)
-                         RiscvMachine.getRegs := someInitialRegs;
-                         RiscvMachine.getPc := word.of_Z 0;
-                         RiscvMachine.getNextPc := word.of_Z 4;
-                         RiscvMachine.getMem := map.putmany otherMem
-                                                            (convertInstrMem _ prg);
-                         RiscvMachine.getXAddrs := nil; (* <-- TODO adapt *)
-                         RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
-                     getMetrics := MetricLogging.EmptyMetricLog; |}).
+    specialize (P _ states_related_init).
     destruct P as (mF & t'' & R & Rel & Inv).
-    - (* TODO @joonwonc proof structure
-         prove that program initialization (MSInit) on the kami spec processor
-         worked correctly according to this states_related predicate in the goal *)
-      case TODO.
-    - eapply establishRvInv; simpl.
+    - eapply establishRvInv.
       + reflexivity.
       + reflexivity.
-      + (* TODO @joonwonc proof structure *)
-        (* will not be someInitialRegs but what Kami computed *)
-        case TODO.
+      + unfold getMachine, getRegs; intros.
+        eapply convertRegs_valid; [eassumption|blia].
       + reflexivity.
     - specialize (useRvInv _ Inv).
       inversion Rel. subst. clear Rel.
@@ -836,6 +812,7 @@ Section Equiv.
       eapply equivalentLabelSeq_preserves_KamiLabelSeqR.
       1: eassumption.
       pose proof (traces_related_unique R' H2). subst t'''.
+      rewrite app_nil_r.
       assumption.
   Qed.
 
