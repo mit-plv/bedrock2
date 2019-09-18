@@ -108,9 +108,6 @@ Proof.
   constructor.
 Admitted.
 
-(* Definition memInit: SC.MemInit (BinIntDef.Z.to_nat Semantics.width) IsaRv32.rv32DataBytes. *)
-(* Admitted. *)
-
 Lemma instrMemSizeLg_agrees_with_ml:
   word.sub (code_pastend ml) (code_start ml) = word.of_Z instrMemSizeLg.
 Admitted.
@@ -183,22 +180,19 @@ Ltac destr :=
          | A: _ /\ _ |- _ => destruct A as [? ?]
          end.
 
-(* @joonwonc NOTE:
- * 1) [otherMemInit] is a part of initial memory that is orthogonal to the program space.
- *    It may have to be declared even in the highest end-to-end theorem statement.
- * 2) I have no idea how to instantiate [src2imp] and [src2imp_ops] in this highest level.
- *    Please feel free to replace them.
- *)
-Variable (otherMemInit: @SortedListWord.map 32 word word_ok byte).
-Context {src2imp : map.map string Decode.Register}.
-Context {src2imp_ops : RegAlloc.map.ops src2imp}.
+(* TODO why do we need to write this? *)
+Instance src2imp : map.map string Decode.Register := SortedListString.map Z.
 
-Definition p4mm: Kami.Syntax.Modules :=
+(* [otherMemInit] is the part of the initial memory that is orthogonal to the program space.
+   TODO can the type of this be kami-memory rather than bedrock2-memory, so that the
+   final theorem contains as few bedrock2 concepts as possible? *)
+Definition p4mm(otherMemInit: Semantics.mem): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg instrMemSizeLg_bounds
        prog spec otherMemInit ml mlOk instrMemSizeLg_agrees_with_ml.
 
-Lemma end2end_lightbulb: forall (t: Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
-    Semantics.Behavior p4mm mFinal t ->
+Lemma end2end_lightbulb: forall (otherMemInit: bedrock2.Semantics.mem)
+                                (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
+    Semantics.Behavior (p4mm otherMemInit) mFinal t ->
     exists t': list KamiRiscv.Event,
       KamiRiscv.KamiLabelSeqR t t' /\
       (exists (suffix : list KamiRiscv.Event) (bedrockTrace : list RiscvMachine.LogItem),
@@ -214,6 +208,7 @@ Proof.
   specialize_first Q spec.
   specialize_first Q mlOk.
   specialize_first Q instrMemSizeLg_bounds.
+  intro otherMemInit.
   specialize_first Q otherMemInit.
   specialize_first Q funspecs.
 
