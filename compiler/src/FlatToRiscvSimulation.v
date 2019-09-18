@@ -29,9 +29,9 @@ Require Import bedrock2.MetricLogging.
 Section Sim.
   Context {p: FlatToRiscv.parameters}.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
   Definition State1: Type := FlatImp.env * FlatImp.stmt *
