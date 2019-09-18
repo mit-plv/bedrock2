@@ -1,6 +1,6 @@
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.ParamSimulation.
+Require Import compiler.Simulation.
 Require Import compiler.Simp.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
@@ -34,26 +34,24 @@ Section Sim.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Definition Params1: Type := FlatImp.env * FlatImp.stmt.
-  Definition State1: Type := bool * Semantics.trace * Semantics.mem * FlatToRiscv.locals.
+  Definition State1: Type := FlatImp.env * FlatImp.stmt *
+                             bool * Semantics.trace * Semantics.mem * FlatToRiscv.locals.
 
-  Definition exec1: Params1 -> State1 -> (State1 -> Prop) -> Prop :=
-    fun '(e, c) '(done, t, m, l) post =>
+  Definition exec1: State1 -> (State1 -> Prop) -> Prop :=
+    fun '(e, c, done, t, m, l) post =>
       done = false /\
       forall mc, FlatImp.exec e c t m l mc (fun t' m' l' mc' =>
-                                              post (true, t', m', l')).
+                                              post (e, c, true, t', m', l')).
 
-  Definition Params2: Type := GhostConsts.
   Definition State2: Type := MetricRiscvMachine.
 
-  Definition exec2: Params2 -> State2 -> (State2 -> Prop) -> Prop :=
-    fun _ => FlatToRiscvCommon.runsTo.
+  Definition exec2: State2 -> (State2 -> Prop) -> Prop := FlatToRiscvCommon.runsTo.
 
   Definition goodMachine t m l g st := exists mc, goodMachine t m l mc g st.
 
-  Definition related: Params1 -> Params2 -> State1 -> State2 -> Prop :=
-    fun '(e, c) g '(done, t, m, l) st =>
-      exists (pos: Z),
+  Definition related: State1 -> State2 -> Prop :=
+    fun '(e, c, done, t, m, l) st =>
+      exists (g: GhostConsts) (pos: Z),
         e = g.(e_impl) /\
         fits_stack g.(num_stackwords) g.(e_impl) c /\
         (forall f argnames retnames body,
@@ -82,9 +80,7 @@ Section Sim.
   Proof.
     unfold simulation, exec1, exec2, related, State1, State2.
     intros.
-    destruct p1 as (e & c).
-    destruct s1 as (((done & t) & m) & l).
-    rename p2 into g.
+    destruct s1 as (((((e & c) & done) & t) & m) & l).
     unfold goodMachine in *. (* TODO inline *)
     destruct_RiscvMachine s2.
     simp.
@@ -111,7 +107,7 @@ Section Sim.
     - simpl. intros. simp.
       eexists; split; [|eassumption].
       cbv beta iota.
-      eexists.
+      do 2 eexists.
       repeat match goal with
              | |- _ /\ _ => split
              | _ => eapply TODO_preserve_regs_initialized; (eassumption||reflexivity)
