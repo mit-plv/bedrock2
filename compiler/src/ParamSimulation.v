@@ -4,27 +4,23 @@ Simulations usually talk about single executions:
 Our simulations, however, talk about all executions at once and about single states:
 "All states in the low-level outcome set have a corresponding state in the high-level outcome set".
 
-This one is like Simulation.v, but Params can hold state which doesn't change during execution,
+This one is like Simulation.v, but Params can hold state which doesn't change during execution
 and can be shared between "exec" and "related".
-
-TODO: Can we define and prove this one by reusing Simulation.v?
-      (not of practical interest, just an interesting question)
 *)
+
+Require compiler.Simulation.
 
 Definition simulation{Params1 Params2 State1 State2: Type}
            (exec1: Params1 -> State1 -> (State1 -> Prop) -> Prop)
            (exec2: Params2 -> State2 -> (State2 -> Prop) -> Prop)
            (related: Params1 -> Params2 -> State1 -> State2 -> Prop): Prop :=
-  forall p1 p2 s1 s2 post1,
-    related p1 p2 s1 s2 ->
-    exec1 p1 s1 post1 ->
-    exec2 p2 s2 (fun s2' => exists s1', related p1 p2 s1' s2' /\ post1 s1').
+  forall p1 p2, Simulation.simulation (exec1 p1) (exec2 p2) (related p1 p2).
 
 Definition compile_inv{Params1 State1 Params2 State2: Type}
            (related: Params1 -> Params2 -> State1 -> State2 -> Prop)
            (inv: Params1 -> State1 -> Prop)
            (p1: Params1)(p2: Params2): State2 -> Prop :=
-  fun s2 => exists s1, related p1 p2 s1 s2 /\ inv p1 s1.
+  Simulation.compile_inv (related p1 p2) (inv p1).
 
 Lemma compile_inv_is_inv{Params1 State1 Params2 State2: Type}
       (exec1: Params1 -> State1 -> (State1 -> Prop) -> Prop)
@@ -37,36 +33,19 @@ Lemma compile_inv_is_inv{Params1 State1 Params2 State2: Type}
   forall s2, (compile_inv related inv1 p1 p2) s2 -> exec2 p2 s2 (compile_inv related inv1 p1 p2).
 Proof.
   unfold compile_inv, simulation in *.
-  intros s2 (s1 & R & I1).
-  eapply Sim.
-  - exact R.
-  - eapply inv1_is_inv. exact I1.
+  eapply Simulation.compile_inv_is_inv.
+  - eapply Sim.
+  - eapply inv1_is_inv.
 Qed.
 
 Definition compose_relation{Params1 Params2 Params3 State1 State2 State3: Type}
            (R12: Params1 -> Params2 -> State1 -> State2 -> Prop)
            (R23: Params2 -> Params3 -> State2 -> State3 -> Prop):
   Params1 -> Params3 -> State1 -> State3 -> Prop :=
-  fun p1 p3 s1 s3 => exists p2 s2, R12 p1 p2 s1 s2 /\ R23 p2 p3 s2 s3.
-
-(*
-Definition compose_relation{State1 State2 State3: Type}
-           (R12: State1 -> State2 -> Prop)(R23: State2 -> State3 -> Prop):
-  State1 -> State3 -> Prop :=
-  fun s1 s3 => exists s2, R12 s1 s2 /\ R23 s2 s3.
-*)
+  fun p1 p3 s1 s3 => exists p2, (Simulation.compose_relation (R12 p1 p2) (R23 p2 p3)) s1 s3.
 
 Definition weakening{Params State: Type}(exec: Params -> State -> (State -> Prop) -> Prop): Prop :=
-  forall (post1 post2: State -> Prop),
-    (forall s, post1 s -> post2 s) ->
-    forall p s, exec p s post1 -> exec p s post2.
-
-(*
-Definition weakening{State: Type}(exec: State -> (State -> Prop) -> Prop): Prop :=
-  forall (post1 post2: State -> Prop),
-    (forall s, post1 s -> post2 s) ->
-    forall s, exec s post1 -> exec s post2.
-*)
+  forall p, Simulation.weakening (exec p).
 
 Lemma compose_simulation{Params1 Params2 Params3 State1 State2 State3: Type}
       (exec1: Params1 -> State1 -> (State1 -> Prop) -> Prop)
@@ -79,12 +58,22 @@ Lemma compose_simulation{Params1 Params2 Params3 State1 State2 State3: Type}
       (S23: simulation exec2 exec3 R23):
   simulation exec1 exec3 (compose_relation R12 R23).
 Proof.
-  unfold simulation, compose_relation in *.
-  intros p1 p3 s1 s3 post1 (p2 & s2 & HR12 & HR23) E1.
-  specialize S12 with (1 := HR12) (2 := E1).
-  specialize S23 with (1 := HR23) (2 := S12).
-  cbv beta in S23.
-  eapply W3. 2: exact S23.
-  cbv beta. intros s3' (s2' & HR23' & s1' & HR12' & P1).
-  eauto 10.
+  unfold simulation, compose_relation, weakening in *.
+  intros p1 p3.
+  pose proof @Simulation.compose_simulation as P.
+  specialize P with (exec1 := (exec1 p1)).
+  specialize P with (exec3 := (exec3 p3)).
+  specialize P with (1 := (W3 p3)).
+  unfold Simulation.compose_relation in *.
+
+  unfold Simulation.simulation.
+  intros s1 s3 post1 (p2 & s2 & HR12 & HR23) E1.
+  specialize P with (1 := (S12 p1 p2)).
+  specialize P with (1 := (S23 p2 p3)).
+  unfold Simulation.simulation in P.
+  specialize P with (2 := E1).
+  eapply W3; cycle 1.
+  - eapply P. eexists. split; eassumption.
+  - cbv beta. intros s3' A.
+    firstorder idtac.
 Qed.
