@@ -12,6 +12,7 @@ Require Import coqutil.Map.TestLemmas.
 Require Import bedrock2.Syntax.
 Require Import compiler.util.ListLib.
 Require Import compiler.Simp.
+Require Import compiler.Simulation.
 
 
 Local Notation "'bind_opt' x <- a ; f" :=
@@ -21,6 +22,7 @@ Local Notation "'bind_opt' x <- a ; f" :=
    end)
   (right associativity, at level 70, x pattern).
 
+Axiom TODO_sam: False.
 
 Section Live.
 
@@ -757,8 +759,73 @@ Section RegAlloc.
       rewrite El. all: typeclasses eauto with core checker_hints.
     - clear Case_SCall.
       discriminate.
+   *)
+  Admitted.
+
+  Definition State1: Type :=
+    @FlatImp.env srcSemanticsParams *
+    @FlatImp.stmt (@Semantics.syntax srcSemanticsParams) *
+    Semantics.trace *
+    Semantics.mem *
+    @Semantics.locals srcSemanticsParams *
+    MetricLogging.MetricLog.
+
+  Definition exec1: State1 -> (State1 -> Prop) -> Prop :=
+    fun '(e, c, t, m, l, mc) post =>
+      FlatImp.exec e c t m l mc (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
+
+  Definition State2: Type :=
+    @FlatImp.env impSemanticsParams *
+    @FlatImp.stmt (@Semantics.syntax impSemanticsParams) *
+    Semantics.trace *
+    Semantics.mem *
+    @Semantics.locals impSemanticsParams *
+    MetricLogging.MetricLog.
+
+  Definition exec2: State2 -> (State2 -> Prop) -> Prop :=
+    fun '(e, c, t, m, l, mc) post =>
+      FlatImp.exec e c t m l mc (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
+
+  (* code1  <----erase----  annotated  ----checker---->  code2 *)
+  Definition code_related code1 m code2 := exists annotated,
+      erase annotated = code1 /\ checker m annotated = Some code2.
+
+  Definition related: State1 -> State2 -> Prop :=
+    fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
+      (forall f argnames retnames body1,
+          map.get e1 f = Some (argnames, retnames, body1) ->
+          exists args body2 binds,
+            map.get e2 f = Some (map snd args, map snd binds, body2) /\
+            argnames = map fst args /\
+            retnames = map fst binds /\
+            code_related body1 (map.putmany_of_tuples map.empty args) body2) /\
+      t1 = t2 /\
+      m1 = m2 /\
+      mc1 = mc2 /\
+      code_related c1 map.empty c2.
+  (* TODO could/should also relate l1 and l2 *)
+
+  Lemma checkerSim: simulation exec1 exec2 related.
+  Proof.
+    unfold simulation.
+    intros *. intros R Ex1.
+    unfold exec1, exec2, related in *.
+    destruct s1 as (((((e1 & c1) & t1) & m1) & l1) & mc1).
+    destruct s2 as (((((e2 & c2) & t2) & m2) & l2) & mc2).
+    destruct R as (F & ? & ? & ? & (annotated & Er & Ch)).
+    subst t2 m2 mc2. rename t1 into t, m1 into m, mc1 into mc.
+    eapply exec.weaken.
+    - eapply checker_correct. 2,3,4: eassumption.
+      + case TODO_sam.
+      + assert (precond map.empty annotated = map.empty) as E by case TODO_sam.
+        rewrite E. unfold states_compat. intros. rewrite map.get_empty in H. discriminate.
+    - simpl. intros.
+      destruct H as (lH' & Sc & P).
+      exists (e1, c1, t', m', lH', mc').
+      unfold code_related. eauto 10.
   Qed.
 
+  (*
   Lemma regalloc_respects_afterlife: forall s m l r,
       (* TODO say something about r *)
       subset l (union (range m) (certainly_written s)) ->
@@ -938,6 +1005,5 @@ Section RegAlloc.
     - eauto.
   Abort.
   *)
-  Abort.
 
 End RegAlloc.
