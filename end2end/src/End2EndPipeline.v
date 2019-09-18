@@ -69,7 +69,7 @@ Section Connect.
 
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {
     FlatToRiscvDef_params := FlatToRiscvDef_params;
-    ext_spec := real_ext_spec;
+    ext_spec := bedrock2_interact;
     ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
   }.
 
