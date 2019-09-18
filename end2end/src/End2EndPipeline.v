@@ -136,16 +136,17 @@ Section Connect.
     word_ok := @KamiWord.wordWok _ (or_introl eq_refl);
   }.
 
-  Instance PRParams: PrimitivesParams (OStateND MetricRiscvMachine) MetricRiscvMachine :=
-    @MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams _ _ _ (@riscv_ext_spec mmio_params).
+  (* TODO why is this needed to make the Check below pass? *)
+  Instance processor_mmio': MinimalMMIO.ExtSpec := @processor_mmio mmio_params.
+  Check (_ : PrimitivesParams (MinimalMMIO.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
+                              MetricRiscvMachine).
 
-  Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {
-    Pipeline.FlatToRiscvDef_params := FlatToRiscvDefParams;
-    Pipeline.ext_spec := real_ext_spec;
+  Instance pipeline_params: PipelineWithRename.Pipeline.parameters. refine ({|
+    Pipeline.FlatToRiscvDef_params := compilation_params;
+    Pipeline.ext_spec := bedrock2_interact;
     Pipeline.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
-    Pipeline.M := (OStateND (@MetricRiscvMachine KamiWordsInst _ mem));
-    Pipeline.RVM := @MetricMinimalMMIO.IsMetricRiscvMachine _ _ _ riscv_ext_spec;
-  }.
+  |}).
+  Defined.
 
   Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
 
@@ -267,6 +268,7 @@ Section Connect.
     specialize_first P1 traceProp.
     specialize_first P1 (ll_inv spec ml).
     specialize_first P1 B.
+    specialize_first P1 compile_to_kami.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
@@ -296,17 +298,15 @@ Section Connect.
 
     eapply P1.
     - apply (@MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives
-               (@Words32 mmio_params)
-               (@MMIO.mem mmio_params) (@MMIO.locals mmio_params)
-               (@riscv_ext_spec mmio_params)
-               (@riscv_ext_spec_sane mmio_params)).
+                (@Words32 mmio_params)
+                (@MMIO.mem mmio_params) (@MMIO.locals mmio_params)).
     - (* establish *)
       intros.
       eapply P2establish.
       case TODO.
     - (* preserve *)
       intros.
-      eapply P2preserve. assumption.
+      refine (P2preserve _ _). assumption.
     - (* use *)
       intros *. intro Inv.
       subst traceProp. simpl.
@@ -318,8 +318,6 @@ Section Connect.
 
       Grab Existential Variables.
       1: exact m0RV.
-      1: exact compile_to_kami.
-
   Qed.
 
 End Connect.

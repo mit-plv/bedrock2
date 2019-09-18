@@ -42,17 +42,16 @@ Existing Instance coqutil.Map.SortedListString.ok.
 Instance mmio_params: MMIO.parameters := { (* everything is inferred automatically *) }.
 
 (* needed because different unfolding levels of implicit arguments *)
-Instance riscv_ext_spec': ExtSpec (OStateND RiscvMachine) := riscv_ext_spec.
+Instance riscv_ext_spec': ExtSpec := processor_mmio.
 Instance MetricMinimalMMIOPrimitivesParams':
-  PrimitivesParams (OStateND MetricRiscvMachine) MetricRiscvMachine :=
+  PrimitivesParams (free action result) MetricRiscvMachine :=
   MetricMinimalMMIOPrimitivesParams.
 
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_spec := FlatToRiscvCommon.FlatToRiscv.ext_spec;
   Pipeline.ext_guarantee := FlatToRiscvCommon.FlatToRiscv.ext_guarantee;
-  Pipeline.M := OStateND MetricRiscvMachine;
   Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
-  Pipeline.RVM := IsMetricRiscvMachine;
+  Pipeline.RVM := MetricMinimalMMIO.IsRiscvMachine;
 }.
 
 Lemma undef_on_same_domain{K V: Type}{M: map.map K V}(keq: K -> K -> bool){keq_spec: EqDecider keq}{Ok: map.ok M}
@@ -81,17 +80,27 @@ Proof.
     try exact MetricMinimalMMIOSatisfiesPrimitives.
   constructor; unfold ext_spec, pipeline_params; simpl.
   - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
-  - unfold real_ext_spec. intros.
+  - unfold bedrock2_interact. intros.
     cbv [Morphisms.Proper Morphisms.respectful Basics.impl Morphisms.pointwise_relation]; intros.
     destruct H0; destruct H0. subst.
     split; [reflexivity|].
     repeat (destruct_one_match_hyp; try contradiction).
-    all: intuition eauto.
-  - unfold real_ext_spec. intros.
+    all: subst.
+    { destruct H1 as (?&?&?&?&?); subst.
+      eexists _, _; split; [|split]; eauto. }
+    { destruct H1 as (?&?&?&?); subst.
+      eexists  _; split; [|split]; eauto. }
+  - unfold bedrock2_interact. intros.
     destruct H0; destruct H0.
     split; [reflexivity|].
     repeat (destruct_one_match_hyp; try contradiction).
-    all: intuition eauto.
+    all: subst.
+    { destruct H1 as (?&?&?&?&?); subst.
+      destruct H as (?&?&?&?&?&?); subst.
+      eexists _, _; split; [|split]; eauto. }
+    { destruct H1 as (?&?&?&?); subst.
+      destruct H as (?&?&?&?&?); subst.
+      eexists  _; split; [|split]; eauto. }
 Qed.
 
 Definition compileFunc: cmd -> list Instruction := ExprImp2Riscv.
@@ -167,7 +176,7 @@ Definition initialSwapMachine: MetricRiscvMachine :=
 
 (* just to make sure all typeclass instances are available: *)
 Definition mcomp_sat:
-  OStateND MetricRiscvMachine unit -> MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
+  free action result unit -> MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
   GoFlatToRiscv.mcomp_sat (PRParams := MetricMinimalMMIOPrimitivesParams).
 
 Lemma undef_on_unchecked_store_byte_list:
@@ -220,54 +229,3 @@ Proof.
       rewrite Z.mod_small; blia.
 Qed.
 
-Lemma input_program_correct:
-  exec map.empty swap_chars_over_uart [] map.empty map.empty
-       bedrock2.MetricLogging.EmptyMetricLog (fun t m l mc => True).
-Proof.
-  eapply bedrock2.WeakestPreconditionProperties.sound_nil.
-  eapply bedrock2.Examples.FE310CompilerDemo.swap_chars_over_uart_correct.
-Qed.
-Print Assumptions input_program_correct. (* some axioms *)
-
-Lemma input_program_not_too_long:
-  4 * Z.of_nat (Datatypes.length (compileFunc swap_chars_over_uart)) < 2 ^ width.
-Proof. reflexivity. Qed.
-
-Definition run1 : OStateND MetricRiscvMachine unit := @run1 _ _ _ _ IsMetricRiscvMachine _ RV32IM.
-
-Axiom TODO_program_addrs_executable:
-  addrs_executable imemStart (List.length (compileFunc swap_chars_over_uart)) staticXAddrs.
-
-Lemma end2endDemo:
-  runsToNonDet.runsTo (mcomp_sat run1)
-                      initialSwapMachine
-                      (fun (finalL: MetricRiscvMachine) =>  (fun _ => True) finalL.(getLog)).
-Proof.
-  refine (@exprImp2Riscv_correctTrace pipeline_params _ swap_chars_over_uart map.empty
-            bedrock2.MetricLogging.EmptyMetricLog nil _ _ (fun _ => True) _ _ _ _ _ _ _ _ _).
-  - reflexivity.
-  - cbv. repeat constructor.
-  - reflexivity.
-  - exact imemStart_div4.
-  - reflexivity.
-  - reflexivity.
-  - cbv [initialSwapMachine initialRiscvMachine getMem putProgram zeroedRiscvMachine
-         getMem withPc withNextPc withMem].
-    unfold Separation.sep. do 2 eexists; split; [ | split; [|reflexivity] ].
-    1: apply map.split_empty_r; reflexivity.
-    apply store_program_empty.
-    + apply input_program_not_too_long.
-    + apply TODO_program_addrs_executable.
-    + reflexivity.
-    + unfold compileFunc, ExprImp2Riscv.
-      apply Forall_forall.
-      apply compile_stmt_emits_valid.
-      * constructor.
-      * repeat constructor.
-      * constructor.
-  - cbv [Pipeline.ext_guarantee pipeline_params FlatToRiscvCommon.FlatToRiscv.ext_guarantee
-         FlatToRiscv_params mmio_params].
-    exact initialMachine_undef_on_MMIO_addresses.
-  - apply input_program_correct.
-Qed.
-Print Assumptions end2endDemo. (* many axioms *)

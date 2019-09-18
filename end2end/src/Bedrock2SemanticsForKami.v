@@ -30,7 +30,7 @@ Instance semantics: Semantics.parameters. refine ({|
   funname_env := SortedListString.map;
   ext_spec := _;
 |}).
-unshelve refine (@MMIO.real_ext_spec {| MMIO.funname_env := SortedListString.map |}).
+unshelve refine (@MMIO.bedrock2_interact {| MMIO.funname_env := SortedListString.map |}).
 eapply SortedListString.ok.
 Defined.
 
