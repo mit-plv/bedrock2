@@ -61,6 +61,13 @@ Section DecExecOk.
     let keys := HList.tuple.map (@wordToZ 5) kkeys in
     map.putmany_of_tuple keys values map.empty.
 
+  Lemma convertRegs_valid:
+    forall rf z,
+      0 <= z < 32 ->
+      map.get (convertRegs rf) z <> None.
+  Proof.
+  Admitted.
+
   Lemma convertRegs_get:
     forall rf r v,
       map.get (convertRegs rf) (Word.wordToZ r) = Some v ->

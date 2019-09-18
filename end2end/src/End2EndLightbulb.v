@@ -108,8 +108,8 @@ Proof.
   constructor.
 Admitted.
 
-Definition memInit: SC.MemInit (BinIntDef.Z.to_nat Semantics.width) IsaRv32.rv32DataBytes.
-Admitted.
+(* Definition memInit: SC.MemInit (BinIntDef.Z.to_nat Semantics.width) IsaRv32.rv32DataBytes. *)
+(* Admitted. *)
 
 Lemma instrMemSizeLg_agrees_with_ml:
   word.sub (code_pastend ml) (code_start ml) = word.of_Z instrMemSizeLg.
@@ -183,8 +183,22 @@ Ltac destr :=
          | A: _ /\ _ |- _ => destruct A as [? ?]
          end.
 
+(* @joonwonc NOTE:
+ * 1) [otherMemInit] is a part of initial memory that is orthogonal to the program space.
+ *    It may have to be declared even in the highest end-to-end theorem statement.
+ * 2) I have no idea how to instantiate [src2imp] and [src2imp_ops] in this highest level.
+ *    Please feel free to replace them.
+ *)
+Variable (otherMemInit: @SortedListWord.map 32 word word_ok byte).
+Context {src2imp : map.map string Decode.Register}.
+Context {src2imp_ops : RegAlloc.map.ops src2imp}.
+
+Definition p4mm: Kami.Syntax.Modules :=
+  p4mm instrMemSizeLg instrMemSizeLg_bounds
+       prog spec otherMemInit ml mlOk instrMemSizeLg_agrees_with_ml.
+
 Lemma end2end_lightbulb: forall (t: Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
-    Semantics.Behavior (p4mm instrMemSizeLg instrMemSizeLg_bounds) mFinal t ->
+    Semantics.Behavior p4mm mFinal t ->
     exists t': list KamiRiscv.Event,
       KamiRiscv.KamiLabelSeqR t t' /\
       (exists (suffix : list KamiRiscv.Event) (bedrockTrace : list RiscvMachine.LogItem),
@@ -199,7 +213,8 @@ Proof.
   specialize_first Q instrMemSizeLg_agrees_with_ml.
   specialize_first Q spec.
   specialize_first Q mlOk.
-  specialize_first Q memInit.
+  specialize_first Q instrMemSizeLg_bounds.
+  specialize_first Q otherMemInit.
   specialize_first Q funspecs.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
