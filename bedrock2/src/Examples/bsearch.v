@@ -130,7 +130,7 @@ Ltac lia3 :=
   | |- _ => lia2
   end.
 
-Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_to_equations; blia.
+Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
 
 Module Z.
   Lemma mod_mul_l: forall (a b: Z), (b * a) mod b = 0.
