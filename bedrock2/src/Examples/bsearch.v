@@ -135,7 +135,7 @@ Ltac cond_hyps_factor :=
            | [ H : ?x -> _, H' : ?x -> _ |- _ ] =>
                 pose proof (fun u : x => conj (H u) (H' u)); clear H H' end.
 
-Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; cond_hyps_factor; blia.
+Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_to_equations; cond_hyps_factor; blia.
 
 Module Z.
   Lemma mod_mul_l: forall (a b: Z), (b * a) mod b = 0.
