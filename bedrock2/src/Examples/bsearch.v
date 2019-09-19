@@ -233,6 +233,7 @@ Ltac unsigned_sidecond :=
   wordOps_to_ZModArith;
   repeat ZModArith_step ltac:(lia4).
 
+Set Ltac Profiling.
 
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
@@ -306,3 +307,5 @@ Qed.
 (* SortedListMap *)
 
 Local Set Simplex.
+
+Goal False. idtac "End of binary search profiling.". Abort.
