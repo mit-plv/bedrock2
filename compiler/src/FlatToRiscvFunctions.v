@@ -361,7 +361,7 @@ Section Proofs.
 
   Definition goodMachine
       (* high-level state ... *)
-      (t: list LogItem)(m: mem)(l: locals)(metrics: MetricLog)
+      (t: list LogItem)(m: mem)(l: locals)
       (* ... plus ghost constants ... *)
       (g: GhostConsts)
       (* ... equals low-level state *)
@@ -472,12 +472,12 @@ Section Proofs.
     regs_initialized initialL.(getRegs) ->
     initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
     g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
-    goodMachine initialTrace initialMH initialRegsH initialMetricsH g initialL ->
+    goodMachine initialTrace initialMH initialRegsH g initialL ->
     runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
          postH finalTrace finalMH finalRegsH finalMetricsH /\
          finalL.(getPc) = word.add initialL.(getPc)
                                    (word.of_Z (4 * Z.of_nat (List.length g.(insts)))) /\
-         goodMachine finalTrace finalMH finalRegsH finalMetricsH g finalL).
+         goodMachine finalTrace finalMH finalRegsH g finalL).
   Proof.
     induction 1; intros; unfold goodMachine in *;
       destruct g as [p_sp num_stackwords p_insts insts program_base

@@ -76,13 +76,6 @@ Section EventLoop.
   Hypothesis jump_aligned: jump mod 4 = 0.
   Hypothesis pc_end_def: pc_end = word.sub pc_start (word.of_Z jump).
 
-  Variable startState: RiscvMachineL.
-
-  (* initialization code: all the code before the loop body, loop body starts at pc_start *)
-  Hypothesis init_correct:
-      runsTo (mcomp_sat (run1 iset)) startState (fun final =>
-          goodReadyState final /\ final.(getPc) = pc_start).
-
   (* loop body: between pc_start and pc_end *)
   Hypothesis body_correct: forall (initial: RiscvMachineL),
       goodReadyState initial ->
@@ -119,6 +112,13 @@ Section EventLoop.
       exact H.
     - intros state C. simp. congruence.
   Qed.
+
+  Variable startState: RiscvMachineL.
+
+  (* initialization code: all the code before the loop body, loop body starts at pc_start *)
+  Hypothesis init_correct:
+      runsTo (mcomp_sat (run1 iset)) startState (fun final =>
+          goodReadyState final /\ final.(getPc) = pc_start).
 
   (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
   Lemma eventLoop_sound: forall n, mcomp_sat (runN iset n) startState runsToGood_Invariant.

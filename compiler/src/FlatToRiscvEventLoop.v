@@ -49,10 +49,10 @@ Section Loop.
   Hypothesis ml_ok: MemoryLayoutOk ml.
 
   Definition goodReadyStateL: MetricRiscvMachine -> Prop :=
-    fun finalL => exists tH mH lH mcH g,
+    fun finalL => exists tH mH lH g,
         spec.(isReady) tH mH lH /\
         spec.(goodTrace) tH /\
-        goodMachine tH mH lH mcH g finalL.
+        goodMachine tH mH lH g finalL.
 
   Hypothesis ext_guarantee_ignores: forall newPc newMetrics st,
       FlatToRiscv.ext_guarantee st ->
@@ -63,9 +63,9 @@ Section Loop.
   Hypothesis spec_and_layout_agree:
     spec.(datamem_start) = ml.(heap_start) /\ spec.(datamem_pastend) = ml.(heap_pastend).
 
-  Lemma goodMachine_ignores: forall newPc newMetrics t m l mc g st,
-      goodMachine t m l mc g st ->
-      goodMachine t m l mc g (withPc newPc
+  Lemma goodMachine_ignores: forall newPc newMetrics t m l g st,
+      goodMachine t m l g st ->
+      goodMachine t m l g (withPc newPc
                              (withNextPc (word.add newPc (word.of_Z 4))
                              (withMetrics newMetrics st))).
   Proof.
@@ -110,6 +110,22 @@ Section Loop.
     - case TODO. (* make sure insts is non-empty, short enough, in particular < 2^width/4 long *)
     - case TODO. (* somehow from stmt_not_too_big *)
     - solve_divisibleBy4.
+    - (* correctness for loop body code *)
+      intros. unfold goodReadyStateL in *. simp.
+      eapply runsToNonDet.runsTo_weaken.
+      + eapply compile_stmt_correct_new.
+        * eapply sat.(loop_body_correct); eassumption.
+        * case TODO.
+        * case TODO.
+        * case TODO.
+        * case TODO.
+        * case TODO.
+        * case TODO.
+        * case TODO.
+        * case TODO.
+        * case TODO.
+        * case TODO.
+      + case TODO.
     - (* correctness for init code *)
       unfold sat_memlayout, sep in *. simp.
       eapply runsToNonDet.runsTo_weaken.
@@ -152,22 +168,6 @@ Section Loop.
       + simpl. intros. simp. unfold goodReadyStateL, loop_start_pc.
         destruct_RiscvMachine startState. subst.
         eauto 10.
-    - (* correctness for loop body code *)
-      intros. unfold goodReadyStateL in *. simp.
-      eapply runsToNonDet.runsTo_weaken.
-      + eapply compile_stmt_correct_new.
-        * eapply sat.(loop_body_correct); eassumption.
-        * case TODO.
-        * case TODO.
-        * case TODO.
-        * case TODO.
-        * case TODO.
-        * case TODO.
-        * case TODO.
-        * case TODO.
-        * case TODO.
-        * case TODO.
-      + case TODO.
     - intros. unfold goodReadyStateL, goodMachine in *.
       destruct_RiscvMachine state. simp. assumption.
 

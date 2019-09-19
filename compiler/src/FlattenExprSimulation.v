@@ -12,37 +12,49 @@ Section Sim.
 
   Context {p: FlattenExpr.parameters}.
 
-  Definition State1: Type :=
-    Semantics.env * Syntax.cmd * Semantics.trace * Semantics.mem * Semantics.locals * MetricLog.
-
-  Definition exec1: State1 -> (State1 -> Prop) -> Prop :=
-    fun '(e, c, t, m, l, mc) post =>
-      Semantics.exec e c t m l mc (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
-
-  Definition State2: Type :=
-    FlatImp.env * FlatImp.stmt * Semantics.trace * Semantics.mem * Semantics.locals * MetricLog.
-
-  Definition exec2: State2 -> (State2 -> Prop) -> Prop :=
-    fun '(e, c, t, m, l, mc) post =>
-      FlatImp.exec e c t m l mc (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
-
-  Definition related: State1 -> State2 -> Prop :=
-    fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
+  Definition related_without_functions: ExprImp.SimState -> FlatImp.SimState -> Prop :=
+    fun '(e1, c1, done1, t1, m1, l1) '(e2, c2, done2, t2, m2, l2) =>
       e1 = map.empty /\ e2 = map.empty (* TODO allow non-empty function environments *) /\
       ExprImp2FlatImp c1 = c2 /\
+      done1 = done2 /\
       t1 = t2 /\
       m1 = m2 /\
       map.extends l2 l1 /\
-      map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))) /\
-      (mc2 <= mc1)%metricsH.
+      map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
 
-  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}: simulation exec1 exec2 related.
+  Definition related: ExprImp.SimState -> FlatImp.SimState -> Prop :=
+    fun '(e1, c1, done1, t1, m1, l1) '(e2, c2, done2, t2, m2, l2) =>
+      (forall f argvars resvars body1,
+          map.get e1 f = Some (argvars, resvars, body1) ->
+          map.get e2 f = Some (argvars, resvars, ExprImp2FlatImp body1)) /\
+      ExprImp2FlatImp c1 = c2 /\
+      done1 = done2 /\
+      t1 = t2 /\
+      m1 = m2 /\
+      map.extends l2 l1 /\
+      map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
+
+  Axiom TODO_sam: False.
+
+  Lemma relate_related{hyps: FlattenExpr.assumptions p}: forall s1 s2,
+      related_without_functions s1 s2 <-> related s1 s2.
   Proof.
-    unfold simulation, exec1, exec2, related.
+    intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
+    split; intro H; unfold related_without_functions, related in *.
+    - intuition idtac. subst. rewrite @map.get_empty in H6.
+      + discriminate.
+      + refine (FlattenExpr.funname_env_ok _).
+    - case TODO_sam. (* clearly doesn't hold *)
+  Qed.
+
+  Lemma flattenExprSim_without_functions{hyps: FlattenExpr.assumptions p}:
+    simulation ExprImp.SimExec FlatImp.SimExec related_without_functions.
+  Proof.
+    unfold simulation, related_without_functions, ExprImp.SimExec, FlatImp.SimExec.
+    intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
     intros.
-    destruct s1 as [[[[[e1 c1] t1] m1] l1] mc1].
-    destruct s2 as [[[[[e2 c2] t2] m2] l2] mc2].
     simp.
+    split; [reflexivity|intros].
     unfold ExprImp2FlatImp.
     match goal with
     | |- context [ fst ?x ] => destruct x as [s ngs] eqn: E
@@ -70,7 +82,7 @@ Section Sim.
     eapply FlatImp.exec.weaken.
     - eapply @flattenStmt_correct_aux.
       + typeclasses eauto.
-      + eassumption.
+      + apply H0r.
       + reflexivity.
       + exact E.
       + assumption.
@@ -79,11 +91,20 @@ Section Sim.
     - simpl. intros. simp.
       eexists. split; [|eassumption]. simpl. rewrite E. simpl.
       repeat (split; [solve [auto]|]).
-      split.
-      + pose proof (ExprImp.modVars_subset_allVars c1).
-        simpl in *. (* PARAMRECORDS *)
-        Solver.map_solver FlattenExpr.locals_ok.
-      + solve_MetricLog.
+      pose proof (ExprImp.modVars_subset_allVars c1).
+      simpl in *. (* PARAMRECORDS *)
+      Solver.map_solver FlattenExpr.locals_ok.
+    Grab Existential Variables. constructor; exact BinInt.Z.one.
+  Qed.
+
+  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}:
+    simulation ExprImp.SimExec FlatImp.SimExec related.
+  Proof.
+    pose proof flattenExprSim_without_functions as P.
+    unfold simulation in *.
+    pose proof relate_related as Q.
+    intros.
+    case TODO_sam.
   Qed.
 
 (*

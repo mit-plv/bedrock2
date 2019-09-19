@@ -35,7 +35,10 @@ Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
+Require Import compiler.FlattenExprSimulation.
 Require Import compiler.RegAlloc.
+Require Import compiler.FlatToRiscvSimulation.
+Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
@@ -66,7 +69,7 @@ Module Import Pipeline.
     ExtSpec := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
 
-    src2imp :> map.map varname Register;
+    src2imp :> map.map string Z;
     src2imp_ops :> map.ops src2imp;
 
     ext_guarantee : MetricRiscvMachine -> Prop;
@@ -95,6 +98,8 @@ Module Import Pipeline.
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
     funname_env_ok :> forall T, map.ok (funname_env T);
+    src2imp_ok :> map.ok src2imp;
+    Registers_ok :> map.ok Registers;
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscvCommon.FlatToRiscv.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
@@ -149,117 +154,51 @@ Section Pipeline1.
   Definition goodMachine(e: env)(t: Semantics.trace)
              (mH: Semantics.mem)
              (lH: localsH)
-             (mcH: MetricLog)
              (st: MetricRiscvMachine): Prop :=
     exists funnames g posenv lL,
       (* TODO should we relate low-level (regalloc'ed) and high-level locals? *)
       functions2Riscv e funnames = (g.(insts), posenv) /\
-      FlatToRiscvFunctions.goodMachine t mH lL mcH g st.
+      FlatToRiscvFunctions.goodMachine t mH lL g st.
 
   Definition goodMachine': MetricRiscvMachine -> Prop. case TODO. Defined.
 
-  Lemma exprImp2Riscv_correct: forall (e: env) (sH: cmd) lH mH mcH t program_base e_pos pos
-                                      (initialL: MetricRiscvMachine) post instsL,
-      snippet2Riscv e_pos pos sH = instsL ->
-      Semantics.exec.exec e sH t mH lH mcH post ->
-      initialL.(getPc) = word.add program_base (word.of_Z pos) ->
-      goodMachine e t mH lH mcH initialL ->
-      runsTo initialL (fun finalL => exists t' mH' lH' mcH',
-          post t' mH' lH' mcH' /\
-          finalL.(getPc) = word.add initialL.(getPc)
-                                   (word.of_Z (4 * Z.of_nat (List.length instsL))) /\
-          goodMachine e t' mH' lH' mcH' finalL).
-  Proof.
-    intros. subst.
+  Definition regAllocSim := RegAlloc.checkerSim String.eqb Z.eqb String.eqb String.eqb
+                                                available_registers 777 (@ext_spec p).
 
+  Definition related :=
+    (compose_relation FlattenExprSimulation.related
+    (compose_relation (RegAlloc.related eqb Z.eqb eqb eqb ext_spec)
+                      FlatToRiscvSimulation.related)).
 
+  Definition pipelineSim: simulation ExprImp.SimExec runsTo related :=
+    (compose_sim FlattenExprSimulation.flattenExprSim
+    (compose_sim regAllocSim
+                 FlatToRiscvSimulation.flatToRiscvSim)).
 
-(* compile_post: hlpost -> llpost *)
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
 
+  Context (prog: Program cmd)
+          (spec: ProgramSpec)
+          (sat: ProgramSatisfiesSpec prog Semantics.exec spec)
+          (ml: MemoryLayout Semantics.width).
 
-    pose proof @runsTo_weaken.
-    pose proof FlatToRiscvMetric.compile_stmt_correct as P.
-    set (postH := (fun t m l mc =>
-                     exists l' mc',
-                       post t m l' mc' /\
-                       map.extends l l' /\
-                       (mc - mcH <= mc' - mcH)%metricsH)
-        ).
-    pose proof FlatToRiscvFunctions.compile_stmt_correct_new.
-    pose proof FlatImp.exec.weaken.
-    pose proof FlattenExpr.flattenStmt_correct.
-    case TODO.
-  Qed.
+  Definition hl_inv: @ExprImp.SimState (FlattenExpr.mk_Semantics_params _) -> Prop :=
+    fun '(e, c, done, t, m, l) => spec.(isReady) t m l /\ spec.(goodTrace) t.
 
-(*
-  Lemma exprImp2Riscv_correct: forall (e: env) (sH: cmd) lH mH mcH t instsL
-                                      (initialL: MetricRiscvMachine) post R,
-      @ExprImp.cmd_size (FlattenExpr.mk_Semantics_params _) sH < 2 ^ 10 ->
-      ExprImp2Riscv sH = instsL ->
-      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      initialL.(getLog) = t ->
-      (program initialL.(getPc) instsL * eq mH * R)%sep initialL.(getMem) ->
-      ext_guarantee initialL ->
-      Semantics.exec.exec e sH t mH lH mcH post ->
-      runsToNonDet.runsTo (mcomp_sat (run1 iset))
-             initialL
-             (fun finalL => exists mH' lH' mcH',
-                  post finalL.(getLog) mH' lH' mcH' /\
-                  map.extends finalL.(getRegs) lH' /\
-                  (program initialL.(getPc) (ExprImp2Riscv sH) * eq mH' * R)%sep (getMem finalL) /\
-                  getPc finalL = add (getPc initialL) (mul (ZToReg 4) (ZToReg (Zlength instsL))) /\
-                  getNextPc finalL = add (getPc finalL) (ZToReg 4)).
-  Proof.
-    intros. subst.
-    eapply runsTo_weaken. Unshelve.
-    - eapply FlatToRiscvMetric.compile_stmt_correct
-          with (postH := (fun t m l mc =>
-                            exists l' mc',
-                              post t m l' mc' /\
-                              map.extends l l' /\
-                              (mc - mcH <= mc' - mcH)%metricsH)
-               ); try reflexivity.
-      + eapply FlatImp.exec.weaken.
-        * match goal with
-          | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ _ _ _ _ _ _ eq_refl) as Q
-          end.
-          eapply Q.
-          eassumption.
-        * simpl. intros. simp. do 2 eexists. do 2 (split; try eassumption).
-      + unfold FlatToRiscvDef.stmt_not_too_big.
-        unfold ExprImp2Riscv, ExprImp2FlatImp in *.
-        match goal with
-        | |- context [fst ?x] => destruct x eqn: E
-        end.
-        match goal with
-        | H: _ = (?a, ?b) |- context [fst ?x] => replace x with (a, b) by reflexivity
-        end.
-        unfold fst.
-        apply FlattenExpr.flattenStmt_size in E.
-        ineq_step.
-        destruct E as [_ E].
-        simpl in *.
-        (* TODO why do blia and blia fail here? PARAMRECORDS? *)
-        Fail blia. Fail blia.
-        exact E.
-      + unfold enough_registers, ExprImp2FlatImp, fst in *. assumption.
-      + assumption.
-      + match goal with
-        | H: context [ program _ ?insts ] |- context [ program _ ?insts' ] =>
-          change insts' with insts
-        end.
-        simpl in *.
-        seplog.
-      + assumption.
-      + assumption.
-    - simpl. intros. simp. do 3 eexists. do 3 (split; try eassumption).
-      split; [assumption|].
-      split; [assumption|].
-      solve_MetricLog.
-  Qed.
-*)
+  Definition ll_ready: MetricRiscvMachine -> Prop :=
+    compile_inv related hl_inv.
+
+  Axiom insts_init: list Instruction.
+  Axiom insts_body: list Instruction.
+
+  (* pc at beginning of loop *)
+  Definition pc_start: word :=
+    word.add ml.(code_start) (word.of_Z (4 * Z.of_nat (List.length insts_init))).
+
+  Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_ready pc_start.
 
   (* uses relative jumps for function calls and expects that the compiled functions will be
      put right after the code returned by this compilation function *)
@@ -282,19 +221,6 @@ Section Pipeline1.
     let insts := compile_prog (word.unsigned stack_pastend) p in
     MetricRiscvMachine.putProgram (List.map encode insts) code_addr preInitial.
 
-  Add Ring wring : (word.ring_theory (word := word))
-      (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
-       constants [word_cst]).
-
-  Context (prog: Program cmd)
-          (spec: ProgramSpec)
-          (sat: ProgramSatisfiesSpec prog Semantics.exec spec)
-          (ml: MemoryLayout Semantics.width).
-
-  Axiom insts_init: list Instruction.
-  Axiom insts_body: list Instruction.
-
 (*
       (* technical detail: "pc at beginning of loop" and "pc at end of loop" needs to be
          different so that we can have two disjoint states between which the system goes
@@ -302,29 +228,6 @@ Section Pipeline1.
          always being runsToDone and not making progress, see compiler.ForeverSafe *)
       (insts_body_nonempty: insts_body <> nil)
 *)
-
-  (* pc at beginning of loop *)
-  Definition pc_start: word :=
-    word.add ml.(code_start) (word.of_Z (4 * Z.of_nat (List.length insts_init))).
-
-  Definition ll_ready(st: MetricRiscvMachine): Prop :=
-    exists regsH memH,
-      spec.(isReady) st.(getLog) memH regsH /\
-      spec.(goodTrace) st.(getLog) /\
-      goodMachine' st.
-
-(*
-  Definition ll_ready(st: MetricRiscvMachine): Prop :=
-      exists regsH memH metricsH R p_stacklimit p_sp stack_trash initial_pc program_base
-      e_pos e_impl,
-        hl_ready st.(getLog) memH regsH metricsH /\
-        map.get st.(getRegs) RegisterNames.sp = Some p_sp /\
-        (R * eq memH * @word_array FlatToRisvc_params p_stacklimit stack_trash *
-         program initial_pc insts_init * program pc_start insts_body *
-         @functions FlatToRisvc_params program_base e_pos e_impl funnames)%sep st.(getMem).
-*)
-
-  Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_ready pc_start.
 
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
       initial = (putProgram prog ml.(code_start) ml.(stack_pastend) preInitial) ->
@@ -337,49 +240,54 @@ Section Pipeline1.
   Proof.
     intro st.
     eapply runsToGood_is_Invariant with
-        (startState := st) (* TODO should this be a "very-initial" state before executing init_code? *)
         (jump := - 4 * Z.of_nat (Datatypes.length insts_body))
         (pc_end := word.add pc_start (word.of_Z (4 * Z.of_nat (List.length insts_body)))).
-    - intros. unfold ll_ready in *. simp. destruct_RiscvMachine state.
+    - (* Show that ll_ready ignores pc, nextPc, and metrics *)
+      intros.
+      unfold ll_ready, compile_inv, related, compose_relation, FlatToRiscvSimulation.related in *.
+      simp. destruct_RiscvMachine state.
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
+             | |- _ => progress cbv beta iota
              | |- _ => eassumption
+             | |- _ => reflexivity
              end.
-      match goal with
-      | A: ?G |- ?G' => replace G' with G; [exact A|progress f_equal]
-      end.
-      f_equal. 2: case TODO. f_equal. all: case TODO.
+      + simpl.
+        (* not the case: it only accepts pc at beginning or end of instructions,
+           how to communicate this? *)
+        case TODO.
+      + case TODO.
     - unfold pc_start. case TODO.
     - case TODO.
     - case TODO.
     - solve_divisibleBy4.
     - solve_word_eq word_ok.
-    - (* use compiler correctness for init_code *)
-      eapply runsTo_weaken.
-      + eapply exprImp2Riscv_correct; try exact exec_init; try reflexivity.
-        (* establish goodMachine & other sideconditions of exprImp2Riscv_correct *)
-        all: case TODO.
-      + simpl. intros. unfold ll_ready. simp.
-        repeat eexists. 1: { Fail exact H0. case TODO. }
-        (* TODO: guarantee from exprImp2Riscv_correct needs to be stronger *)
-        all: case TODO.
     - (* use compiler correctness for loop_body *)
       intros.
-      unfold ll_ready in *. simp.
+      unfold ll_ready, compile_inv in *. simp.
       eapply runsTo_weaken.
-      + eapply exprImp2Riscv_correct.
-        1: reflexivity.
-        1: { pose proof @loop_body_correct as P.
-             specialize (P _ cmd prog Semantics.exec spec sat).
-             eapply P; eassumption. }
-        all: case TODO.
-      + simpl. intros. unfold ll_ready.
-        (* TODO: guarantee from exprImp2Riscv_correct needs to be stronger *)
+      + pose proof pipelineSim as P.
+        unfold simulation in P.
+        specialize P with (post1 := hl_inv).
+        eapply P. 1: eassumption.
+        clear P.
+        unfold ExprImp.SimExec, hl_inv in *. simp.
+        split. 1: case TODO. (* doesn't hold, how to deal with the `done` flag? *)
+        intros.
+        pose proof @loop_body_correct as P.
+        specialize (P _ cmd prog Semantics.exec spec sat).
+        match goal with
+        | |- Semantics.exec.exec ?e ?c ?t ?m ?l ?mc ?post =>
+          replace e with (funimpls prog) by case TODO;
+          replace c with (loop_body prog) by case TODO
+        end.
+        eapply P; eassumption.
+      + cbv beta. intros. split. 1: eassumption.
+        unfold related in *. simp.
+        (* TODO: is the guarantee from pipelineSim strong enough to prove what's needed
+           for runsToGood_is_Invariant? *)
         case TODO.
-    Unshelve.
-    all: (exact 0 || exact (word.of_Z 0) || assumption || solve[constructor] || idtac).
-    all: case TODO.
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,
@@ -387,7 +295,9 @@ Section Pipeline1.
   Proof.
     unfold ll_inv, runsToGood_Invariant. intros.
     eapply extend_runsTo_to_good_trace. 2: eassumption.
-    simpl. unfold ll_ready.
+    simpl. unfold ll_ready, compile_inv, related, hl_inv,
+           compose_relation, FlattenExprSimulation.related,
+           RegAlloc.related, FlatToRiscvSimulation.related, FlatToRiscvFunctions.goodMachine.
     intros. simp. eassumption.
   Qed.
 

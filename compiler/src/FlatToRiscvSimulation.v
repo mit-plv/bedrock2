@@ -34,22 +34,7 @@ Section Sim.
        morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
-  Definition State1: Type := FlatImp.env * FlatImp.stmt *
-                             bool * Semantics.trace * Semantics.mem * FlatToRiscv.locals.
-
-  Definition exec1: State1 -> (State1 -> Prop) -> Prop :=
-    fun '(e, c, done, t, m, l) post =>
-      done = false /\
-      forall mc, FlatImp.exec e c t m l mc (fun t' m' l' mc' =>
-                                              post (e, c, true, t', m', l')).
-
-  Definition State2: Type := MetricRiscvMachine.
-
-  Definition exec2: State2 -> (State2 -> Prop) -> Prop := FlatToRiscvCommon.runsTo.
-
-  Definition goodMachine t m l g st := exists mc, goodMachine t m l mc g st.
-
-  Definition related: State1 -> State2 -> Prop :=
+  Definition related: FlatImp.SimState -> MetricRiscvMachine -> Prop :=
     fun '(e, c, done, t, m, l) st =>
       exists (g: GhostConsts) (pos: Z),
         e = g.(e_impl) /\
@@ -76,12 +61,11 @@ Section Sim.
   Axiom TODO_preserve_regs_initialized: forall regs1 regs2,
       regs_initialized regs1 -> regs_initialized regs2.
 
-  Lemma flatToRiscvSim{hyps: @FlatToRiscv.assumptions p}: simulation exec1 exec2 related.
+  Lemma flatToRiscvSim{hyps: @FlatToRiscv.assumptions p}: simulation FlatImp.SimExec FlatToRiscvCommon.runsTo related.
   Proof.
-    unfold simulation, exec1, exec2, related, State1, State2.
+    unfold simulation, FlatImp.SimExec, related, FlatImp.SimState.
     intros.
     destruct s1 as (((((e & c) & done) & t) & m) & l).
-    unfold goodMachine in *. (* TODO inline *)
     destruct_RiscvMachine s2.
     simp.
     eapply runsTo_weaken.
@@ -114,7 +98,6 @@ Section Sim.
              | _ => eassumption
              | _ => reflexivity
              end.
-      2: eexists; eassumption.
       (* TODO make word automation from bsearch work here *)
       match goal with
       | H: getPc _ = _ |- getPc _ = _ => rewrite H

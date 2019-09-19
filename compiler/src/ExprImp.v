@@ -32,6 +32,13 @@ Section ExprImp1.
   Notation func := (@Syntax.funname (@Semantics.syntax p)) (only parsing).
   Notation vars := (var -> Prop).
 
+  Definition SimState: Type := env * cmd * bool * trace * mem * locals.
+  Definition SimExec: SimState -> (SimState -> Prop) -> Prop :=
+    fun '(e, c, done, t, m, l) post =>
+      done = false /\
+      forall mc, exec e c t m l mc (fun t' m' l' mc' =>
+                                      post (e, c, true, t', m', l')).
+
   (*Hypothesis actname_empty: Syntax.actname = Empty_set.*)
   Local Notation actname := Syntax.actname.
 

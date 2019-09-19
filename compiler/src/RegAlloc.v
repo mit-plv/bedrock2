@@ -762,38 +762,12 @@ Section RegAlloc.
    *)
   Admitted.
 
-  Definition State1: Type :=
-    @FlatImp.env srcSemanticsParams *
-    @FlatImp.stmt (@Semantics.syntax srcSemanticsParams) *
-    bool *
-    Semantics.trace *
-    Semantics.mem *
-    @Semantics.locals srcSemanticsParams.
-
-  Definition exec1: State1 -> (State1 -> Prop) -> Prop :=
-    fun '(e, c, done, t, m, l) post =>
-      done = false /\
-      forall mc, FlatImp.exec e c t m l mc (fun t' m' l' mc' => post (e, c, true, t', m', l')).
-
-  Definition State2: Type :=
-    @FlatImp.env impSemanticsParams *
-    @FlatImp.stmt (@Semantics.syntax impSemanticsParams) *
-    bool *
-    Semantics.trace *
-    Semantics.mem *
-    @Semantics.locals impSemanticsParams.
-
-  Definition exec2: State2 -> (State2 -> Prop) -> Prop :=
-    fun '(e, c, done, t, m, l) post =>
-      done = false /\
-      forall mc, FlatImp.exec e c t m l mc (fun t' m' l' mc' =>
-                                              post (e, c, true, t', m', l')).
-
   (* code1  <----erase----  annotated  ----checker---->  code2 *)
   Definition code_related code1 m code2 := exists annotated,
       erase annotated = code1 /\ checker m annotated = Some code2.
 
-  Definition related: State1 -> State2 -> Prop :=
+  Definition related: @FlatImp.SimState srcSemanticsParams ->
+                      @FlatImp.SimState impSemanticsParams -> Prop :=
     fun '(e1, c1, done1, t1, m1, l1) '(e2, c2, done2, t2, m2, l2) =>
       done1 = done2 /\
       (forall f argnames retnames body1,
@@ -808,11 +782,12 @@ Section RegAlloc.
       code_related c1 map.empty c2.
   (* TODO could/should also relate l1 and l2 *)
 
-  Lemma checkerSim: simulation exec1 exec2 related.
+  Lemma checkerSim: simulation (@FlatImp.SimExec srcSemanticsParams)
+                               (@FlatImp.SimExec impSemanticsParams) related.
   Proof.
     unfold simulation.
     intros *. intros R Ex1.
-    unfold exec1, exec2, related in *.
+    unfold FlatImp.SimExec, related in *.
     destruct s1 as (((((e1 & c1) & done1) & t1) & m1) & l1).
     destruct s2 as (((((e2 & c2) & done2) & t2) & m2) & l2).
     destruct R as (F & ? & ? & ? & (annotated & Er & Ch)).

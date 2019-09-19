@@ -152,11 +152,27 @@ Section Connect.
 
   Instance pipeline_assumptions: @PipelineWithRename.Pipeline.assumptions pipeline_params.
     refine ({|
-      Pipeline.PR := MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives;
-      Pipeline.FlatToRiscv_hyps := MMIO.FlatToRiscv_hyps;
+      Pipeline.PR := _ ; (*MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives;*)
+      Pipeline.FlatToRiscv_hyps := _; (*MMIO.FlatToRiscv_hyps*)
+      Pipeline.src2imp_ok := _;
+      Pipeline.Registers_ok := _;
       (* wait until we know if ext_spec will be in monad style or postcond style *)
       Pipeline.ext_spec_ok := match TODO with end;
     |}).
+  - case TODO.
+  - refine (_ MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
+    match goal with
+    | |- _ ?A -> _ ?B => assert (A = B)
+    end.
+    {
+      unfold MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams, Pipeline.PRParams.
+      unfold pipeline_params.
+      unfold   MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams.
+      reflexivity.
+    }
+    rewrite H.
+    exact id.
+  - case TODO.
   Defined.
 
   Definition KamiMachine: Type := KamiRiscv.KamiMachine.

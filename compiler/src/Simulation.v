@@ -70,3 +70,30 @@ Proof.
   simpl. intros s3' (s2' & HR23' & s1' & HR12' & P1).
   eauto.
 Qed.
+
+(* a version of simulation composition which does not require weakening for exec3,
+   at the expense of requiring prop and functional extensionality *)
+Require Import Coq.Logic.PropExtensionality.
+Require Import Coq.Logic.FunctionalExtensionality.
+Lemma compose_sim{State1 State2 State3: Type}
+      {exec1: State1 -> (State1 -> Prop) -> Prop}
+      {exec2: State2 -> (State2 -> Prop) -> Prop}
+      {exec3: State3 -> (State3 -> Prop) -> Prop}
+      {R12: State1 -> State2 -> Prop}
+      {R23: State2 -> State3 -> Prop}
+      (S12: simulation exec1 exec2 R12)
+      (S23: simulation exec2 exec3 R23):
+  simulation exec1 exec3 (compose_relation R12 R23).
+Proof.
+  unfold simulation, compose_relation in *.
+  intros s1 s3 post1 (s2 & HR12 & HR23) E1.
+  specialize S12 with (1 := HR12) (2 := E1).
+  specialize S23 with (1 := HR23) (2 := S12).
+  simpl in S23.
+  match goal with
+  | H: exec3 s3 ?P |- exec3 s3 ?Q => replace Q with P; [exact H|]
+  end.
+  extensionality s2'.
+  apply propositional_extensionality.
+  firstorder idtac.
+Qed.
