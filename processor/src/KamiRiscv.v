@@ -25,6 +25,8 @@ Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Utility.MMIOTrace.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
+Require Import riscv.Platform.MinimalMMIO.
+Require Import riscv.Platform.MetricMinimalMMIO.
 
 Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
@@ -50,20 +52,14 @@ Qed.
 Instance KamiWordsInst: Utility.Words := @KamiWord.WordsKami width width_cases.
 
 Section Equiv.
-
   (* TODO not sure if we want to use ` or rather a parameter record *)
-  Context {M: Type -> Type}.
   Context {Registers: map.map Register word}
-          {mem: map.map word byte}.
+          {mem: map.map word byte}
+          {mmio_semantics : ExtSpec}.
+  Local Notation M := (free action result).
 
   Notation RiscvMachine := (@MetricRiscvMachine KamiWordsInst Registers mem).
-
-  Context (mcomp_sat:
-             forall A: Type,
-               M A -> RiscvMachine -> (A -> RiscvMachine -> Prop) -> Prop)
-          {MMonad: Monad M}
-          {rvm: RiscvProgram M word}.
-  Arguments mcomp_sat {A}.
+  Local Existing Instance MetricMinimalMMIO.IsRiscvMachine.
 
   (** * Processor, software machine, and states *)
 
@@ -109,7 +105,7 @@ Section Equiv.
   Context (nonmem_store: forall (n: nat), SourceType -> word -> HList.tuple byte n -> M unit).
 
   Instance MinimalMMIOPrimitivesParams: PrimitivesParams M RiscvMachine := {
-    Primitives.mcomp_sat := @mcomp_sat;
+    Primitives.mcomp_sat := @mcomp_sat _ _ _ _;
 
     (* any value can be found in an uninitialized register *)
     Primitives.is_initial_register_value x := True;
@@ -208,76 +204,6 @@ Section Equiv.
 
   Definition kamiStep (m1 : KamiMachine) (m2 : KamiMachine) (klbl : Kami.Semantics.LabelT) : Prop :=
     exists kupd, Step kamiProc m1 kupd klbl /\ m2 = FMap.M.union kupd m1.
-
-  Ltac inv_bind H :=
-    apply (proj2 (@spec_Bind _ _ _ _ MinimalMMIOPrimitivesParams mcomp_sat_ok _ _ _ _ _ _)) in H;
-    let mid := fresh "mid" in
-    destruct H as (mid & ? & ?).
-
-  Ltac inv_getPC H :=
-    match type of H with
-    | _ _ _ ?mid =>
-      apply spec_getPC with (post0:= mid) in H; simpl in H
-    end.
-
-  Ltac inv_bind_apply H :=
-    match type of H with
-    | ?mid _ _ =>
-      repeat
-        match goal with
-        | [H0: forall _ _, mid _ _ -> _ |- _] => specialize (H0 _ _ H)
-        end
-    end.
-
-  Ltac inv_loadWord H :=
-    apply @spec_loadWord in H; [|assumption..]; simpl in H.
-
-  Ltac inv_step H :=
-    apply @spec_step in H; [|assumption..];
-    unfold withNextPc, RiscvMachine.getNextPc, withRegs in H;
-    simpl in H.
-
-  Ltac inv_mcomp_sat :=
-    repeat
-      match goal with
-      | [H: mcomp_sat_unit _ _ _ |- _] => move H at bottom; red in H; unfold run1 in H
-      | [H: mcomp_sat (_ <- _; _) _ _ |- _] => inv_bind H
-
-      | [H: Primitives.mcomp_sat (_ <- _; _) _ _ |- _] => inv_bind H
-      | [H: _ _ _ |- _] => progress (inv_bind_apply H)
-
-      | [H: Primitives.mcomp_sat getPC _ _ |- _] => inv_getPC H
-      | [H: Primitives.mcomp_sat (loadWord _ _) _ _ |- _] => inv_loadWord H
-      end.
-
-  Ltac inv_riscv_fetch :=
-    repeat
-      match goal with
-      | [H: _ /\ _ |- _] => destruct H
-      | [H: Fetch = Fetch -> isXAddr _ _ |- _] =>
-        specialize (H eq_refl); eapply fetch_ok in H; eauto;
-        let rinst := fresh "rinst" in
-        destruct H as (rinst & ? & ?)
-      | [H: _ \/ (Memory.loadWord _ _ = None /\ _) |- _] => destruct H; [|exfalso]
-      | [H: exists _, _ /\ _ |- _] =>
-        let rinst := fresh "rinst" in destruct H as (rinst & ? & ?)
-      | [H1: Memory.loadWord _ _ = _, H2: Memory.loadWord _ _ = _ |- _] =>
-        match type of H1 with
-        | ?t1 = _ => match type of H2 with
-                     | ?t2 = _ => change t1 with t2 in H1
-                     end
-        end; rewrite H1 in H2; try discriminate
-      | [H: Some ?v = Some _ |- _] => inversion H; subst v; clear H
-      end.
-
-  Ltac inv_riscv :=
-    repeat
-      (inv_mcomp_sat;
-       repeat
-         (** TODO: add cases for decode and execute *)
-         match goal with
-         | _ => inv_riscv_fetch
-         end).
 
   Ltac kami_step_case_empty :=
     left; FMap.mred; fail.
@@ -406,17 +332,61 @@ Section Equiv.
       destruct H9 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
       simpl in H; subst cs.
 
-      (* invert a riscv-coq step. *)
-      inv_riscv.
+      (** invert a riscv-coq step *)
+      rename H0 into HR; move HR at bottom.
+      cbv [mcomp_sat_unit
+             mcomp_sat
+             MinimalMMIOPrimitivesParams
+             MetricMinimalMMIOPrimitivesParams] in HR.
+      simpl interp at 1 in HR.
+      repeat
+        (unfold interp_action at 1 in HR;
+         cbn [fst snd] in HR;
+         unfold MinimalMMIO.interp_action at 1 in HR).
+      simpl in HR.
+
+      (* invert fetch *)
+      cbv [load] in HR; simpl in HR.
+      destruct HR as [HXaddr HR].
+      specialize (HXaddr eq_refl); eapply fetch_ok in HXaddr; eauto.
+      destruct HXaddr as (rinst & ? & ?).
+      (* rewrite H in HR. <-- I want this :P *)
+      match type of HR with
+        match ?X with _ => _ end =>
+        destruct X as [rinst0|] eqn:Hrinst
+      end.
+      2: {
+        exfalso.
+        unfold Memory.loadWord in H.
+        match goal with
+        | [H1: Memory.load_bytes _ _ _ = _, H2: Memory.load_bytes _ _ _ = _ |- _] =>
+          match type of H1 with
+          | ?t1 = _ => match type of H2 with
+                       | ?t2 = _ => change t1 with t2 in H1
+                       end
+          end; rewrite H1 in H2; try discriminate
+        end.
+      }
 
       (* relation between the two raw instructions *)
+      unfold Memory.loadWord in H.
+      match goal with
+      | [H1: Memory.load_bytes _ _ _ = _, H2: Memory.load_bytes _ _ _ = _ |- _] =>
+        match type of H1 with
+        | ?t1 = _ => match type of H2 with
+                     | ?t2 = _ => change t1 with t2 in H1
+                     end
+        end; rewrite H1 in H2
+      end.
+      (* inversion_clear H ..? *)
+      inversion H; subst rinst0; clear H.
       assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
                       4 rinst =
               wordToZ kinst) as Hfetch by (subst kinst; assumption).
-      simpl in H0, Hfetch; rewrite Hfetch in H0.
+      simpl in HR, Hfetch; rewrite Hfetch in HR.
 
       (* evaluate [decode] *)
-      assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD).
+      assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) as Hkopc.
       { move H2 at bottom.
         unfold getOptype, rv32Dec, rv32GetOptype in H2.
         unfold evalExpr in H2; fold evalExpr in H2.
@@ -426,34 +396,26 @@ Section Equiv.
         rewrite kami_getOpcode_ok in e.
         assumption.
       }
-      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H17.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in Hkopc.
 
-      pose proof (bitSlice_range_ex (wordToZ kinst) 12 15 ltac:(abstract blia)).
-      change (2 ^ (15 - 12)) with 8 in H18.
+      pose proof (bitSlice_range_ex
+                    (wordToZ kinst) 12 15 ltac:(abstract blia))
+        as Hf3.
+      change (2 ^ (15 - 12)) with 8 in Hf3.
       assert (let z := bitSlice (wordToZ kinst) 12 15 in
               z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
               z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
-      clear H18.
-      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H19.
-      destruct H19 as [|[|[|[|[|[|[|]]]]]]].
+      clear Hf3.
+      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H.
+      destruct H as [|[|[|[|[|[|[|]]]]]]].
       4, 7, 8: case TODO. (** TODO: [InvalidInstruction] *)
 
       + (** LB: load-byte *)
-        eval_decode H0.
+        eval_decode HR.
 
         (* invert the body of [execute] *)
-        cbv [Execute.execute ExecuteI.execute] in H0.
-        inv_riscv.
+        
 
-        apply spec_getRegister with (post0:= mid2) in H0.
-        destruct H0; [|case TODO (** when [rs1] is [Register0] .. *)].
-        simpl in H0; destruct H0.
-        destruct_one_match_hyp;
-          [rename k into v1|case TODO (** TODO: prove it never fails to read
-                                   * a register value once the register
-                                   * is valid. *)].
-
-        inv_riscv.
         case TODO.
 
       + (** LH: load-half *) case TODO.
@@ -517,7 +479,7 @@ Section Equiv.
       destruct annot; [|discriminate].
       inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
-      eauto using kamiStep_sound_case_execLd.
+      case TODO.
 
     - (* case "execLdZ" *) case TODO.
     - (* case "execSt" *) case TODO.
@@ -538,52 +500,125 @@ Section Equiv.
       clear H6.
       specialize (H7 eq_refl); rename H7 into Hxs.
 
-      (** Invert a riscv-coq step. *)
-      inv_riscv.
+      rename H1 into HR; move HR at bottom.
+      cbv [mcomp_sat_unit
+             mcomp_sat
+             MinimalMMIOPrimitivesParams
+             MetricMinimalMMIOPrimitivesParams] in HR.
+      simpl interp at 1 in HR.
+      repeat
+        (unfold interp_action at 1 in HR;
+         cbn [fst snd] in HR;
+         unfold MinimalMMIO.interp_action at 1 in HR).
+      simpl in HR.
+
+      (* invert fetch *)
+      cbv [load] in HR; simpl in HR.
+      destruct HR as [HXaddr HR].
+      specialize (HXaddr eq_refl); eapply fetch_ok in HXaddr; eauto.
+      destruct HXaddr as (rinst & ? & ?).
+      (* rewrite H in HR. <-- I want this :P *)
+      match type of HR with
+        match ?X with _ => _ end =>
+        destruct X as [rinst0|] eqn:Hrinst
+      end.
+      2: {
+        exfalso.
+        unfold Memory.loadWord in H.
+        match goal with
+        | [H1: Memory.load_bytes _ _ _ = _, H2: Memory.load_bytes _ _ _ = _ |- _] =>
+          match type of H1 with
+          | ?t1 = _ => match type of H2 with
+                       | ?t2 = _ => change t1 with t2 in H1
+                       end
+          end; rewrite H1 in H2; try discriminate
+        end.
+      }
+
+      unfold Memory.loadWord in H.
+      match goal with
+      | [H1: Memory.load_bytes _ _ _ = _, H2: Memory.load_bytes _ _ _ = _ |- _] =>
+        match type of H1 with
+        | ?t1 = _ => match type of H2 with
+                     | ?t2 = _ => change t1 with t2 in H1
+                     end
+        end; rewrite H1 in H2
+      end.
+      (* inversion_clear H ..? *)
+      inversion H; subst rinst0; clear H.
 
       (** Invert Kami decode/execute *)
       destruct H3 as (kinst & exec_val & ? & ? & ?).
 
-      (** Relation between the two raw instructions *)
       assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
                       4 rinst =
               wordToZ kinst) as Hfetch by (subst kinst; assumption).
-      simpl in H0, Hfetch; rewrite Hfetch in H0.
+      simpl in HR, Hfetch; rewrite Hfetch in HR.
 
-
-      (** Evaluate [decode]. *)
-      assert (bitSlice (wordToZ kinst) 0 7 = opcode_OP) by case TODO.
+      (* evaluate [decode]. *)
+      assert (bitSlice (wordToZ kinst) 0 7 = opcode_OP) as H11 by case TODO.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H11.
-      assert (bitSlice (wordToZ kinst) 12 15 = funct3_ADD) by case TODO.
+      assert (bitSlice (wordToZ kinst) 12 15 = funct3_ADD) as H12 by case TODO.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H12.
-      assert (bitSlice (wordToZ kinst) 25 32 = funct7_ADD) by case TODO.
+      assert (bitSlice (wordToZ kinst) 25 32 = funct7_ADD) as H13 by case TODO.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H13.
-      eval_decode H0.
+      eval_decode HR.
 
-      simpl in H0.
-      inv_bind H0.
-      apply spec_getRegister with (post0:= mid2) in H0.
-      destruct H0; [|case TODO (** TODO @joonwonc: prove the value of `R0` is
-                            * always zero in Kami steps. *)].
-      simpl in H0; destruct H0.
-      destruct_one_match_hyp;
-        [rename k into v1|case TODO (** TODO: prove it never fails to read
-                                 * a register value once the register
-                                 * is valid. *)].
-      inv_bind_apply H15.
-      inv_bind H14.
-      apply spec_getRegister with (post0:= mid3) in H14.
-      destruct H14; [|case TODO (** TODO @joonwonc: ditto, about `R0` *)].
-      simpl in H14; destruct H14.
-      destruct_one_match_hyp;
-        [rename k into v2|
-         case TODO (** TODO: ditto, about valid register reads *)].
-      inv_bind_apply H17.
-      apply @spec_setRegister in H16; [|assumption..].
-      destruct H16; [|case TODO (** TODO @joonwonc: writing to `R0` *)].
-      simpl in H16; destruct H16.
-      inv_bind_apply H18.
-      inv_step H1.
+      (* invert the body of [execute] *)
+      simpl in HR.
+      unfold interp_action at 1 in HR.
+      unfold MinimalMMIO.interp_action at 1 in HR.
+      cbn [fst snd] in HR.
+      match type of HR with
+        match ?X with _ => _ end =>
+        destruct X; [(** TODO @joonwonc: prove the value of `R0` is
+                      * always zero in Kami steps. *) case TODO|]
+      end.
+      destruct HR as [? HR].
+      
+      simpl in HR.
+      match type of HR with
+        match ?X with _ => _ end => destruct X eqn:?; [|exfalso]
+      end.
+      2: {
+        eapply convertRegs_valid, Heqo; [eassumption|].
+        change 32 with (2^5).
+        eapply bitSlice_range_ex; blia.
+      }
+
+      unfold interp_action at 1 in HR.
+      unfold MinimalMMIO.interp_action at 1 in HR.
+      cbn [fst snd] in HR.
+      match type of HR with
+        match ?X with _ => _ end =>
+        destruct X; [(** TODO @joonwonc: ditto, about `R0` *) case TODO|]
+      end.
+      destruct HR as [? HR].
+      
+      simpl in HR.
+      match type of HR with
+        match ?X with _ => _ end => destruct X eqn:?; [|exfalso]
+      end.
+      2: {
+        eapply convertRegs_valid, Heqo0; [eassumption|].
+        change 32 with (2^5).
+        eapply bitSlice_range_ex; blia.
+      }
+
+      unfold interp_action at 1 in HR.
+      unfold MinimalMMIO.interp_action at 1 in HR.
+      cbn [fst snd] in HR.
+      match type of HR with
+        match ?X with _ => _ end =>
+        destruct X; [(** TODO @joonwonc: writing to `R0` *) case TODO|]
+      end.
+      destruct HR as [? HR].
+
+      simpl in HR.
+      unfold interp_action at 1 in HR.
+      unfold MinimalMMIO.interp_action at 1 in HR.
+      cbn [fst snd] in HR.
+      simpl in HR.
 
       (** Construction *)
       unfold doExec, getNextPc, rv32Exec in *.
@@ -594,8 +629,8 @@ Section Equiv.
 
       econstructor.
       { assumption. }
-      { unfold RegsToT; rewrite H2, H10.
-        subst dst; reflexivity.
+      { unfold RegsToT; rewrite H2.
+        subst km2 dst; reflexivity.
       }
       { intros; discriminate. }
       { intros; assumption. }
@@ -607,14 +642,14 @@ Section Equiv.
       { reflexivity. }
       { subst exec_val.
         rewrite <-kami_rv32GetDst_ok by assumption.
-        rewrite <-kami_rv32GetSrc1_ok in E by assumption.
-        rewrite <-kami_rv32GetSrc2_ok in E0 by assumption.
+        rewrite <-kami_rv32GetSrc1_ok in Heqo by assumption.
+        rewrite <-kami_rv32GetSrc2_ok in Heqo0 by assumption.
         rewrite convertRegs_put
           with (instrMemSizeLg:= instrMemSizeLg) by assumption.
         erewrite <-convertRegs_get
-          with (instrMemSizeLg:= instrMemSizeLg) (v:= v1) by auto.
+          with (instrMemSizeLg:= instrMemSizeLg) (v:= k) by auto.
         erewrite <-convertRegs_get
-          with (instrMemSizeLg:= instrMemSizeLg) (v:= v2) by auto.
+          with (instrMemSizeLg:= instrMemSizeLg) (v:= k0) by auto.
         erewrite kami_rv32DoExec_Add_ok;
           [|rewrite kami_getOpcode_ok; assumption
            |rewrite kami_getFunct7_ok; assumption
