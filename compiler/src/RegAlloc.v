@@ -459,12 +459,20 @@ Section RegAlloc.
     unfold states_compat. eauto.
   Qed.
   *)
+
+  Axiom intersect_spec: forall m1 m2 k v,
+      map.get (map.intersect m1 m2) k = Some v <-> map.get m1 k = Some v /\ map.get m2 k = Some v.
+
   Axiom extends_intersect_map_l: forall r1 r2, map.extends r1 (map.intersect r1 r2).
   Axiom extends_intersect_map_r: forall r1 r2, map.extends r2 (map.intersect r1 r2).
   Axiom extends_intersect_split: forall m1 m2 m,
       map.extends m1 m ->
       map.extends m2 m ->
       map.extends (map.intersect m1 m2) m.
+  Axiom intersect_map_assoc: forall m1 m2 m3,
+      map.intersect (map.intersect m1 m2) m3 = map.intersect m1 (map.intersect m2 m3).
+  Axiom intersect_map_comm: forall m1 m2,
+      map.intersect m1 m2 = map.intersect m2 m1.
 
   Lemma extends_intersect_map_l': forall m m1 m2,
       map.extends m m1 ->
@@ -636,6 +644,207 @@ Section RegAlloc.
       + apply extends_intersect_map_l'. apply extends_intersect_map_l.
       + apply extends_intersect_map_l'. apply extends_intersect_map_r.
   Qed.
+
+  Lemma intersect_absorb_r: forall m1 m2,
+      map.extends m2 m1 ->
+      map.intersect m1 m2 = m1.
+  Proof.
+    intros.
+    apply map_extend_to_eq.
+    - apply extends_intersect_split.
+      + apply extends_refl.
+      + assumption.
+    - apply extends_intersect_map_l.
+  Qed.
+
+  Lemma update_comm: forall s1 s2 m,
+      update (update m s1) s2 = update (update m s2) s1.
+  Proof.
+    induction s1; induction s2; intros; simpl.
+    (* clearly doesn't hold *)
+  Abort.
+
+  Lemma put_intersect: forall m1 m2 k v,
+      map.put (map.intersect m1 m2) k v = map.intersect (map.put m1 k v) (map.put m2 k v).
+  Admitted.
+
+  Lemma update_intersect: forall s m1 m2,
+      update (map.intersect m1 m2) s = map.intersect (update m1 s) (update m2 s).
+  Proof.
+    induction s; intros; simpl; eauto using put_intersect.
+    - rewrite IHs1.
+      rewrite IHs2.
+      rewrite? intersect_map_assoc.
+      case TODO_sam.
+    - unfold loop_inv.
+      rewrite IHs1.
+      rewrite IHs1.
+      rewrite IHs1.
+      rewrite IHs1.
+      rewrite IHs2.
+      rewrite IHs1.
+      rewrite? intersect_map_assoc.
+      forget (update (update (update m2 s1) s2) s1) as M1.
+      forget (update (update (update m1 s1) s2) s1) as M2.
+      forget (update m1 s1) as M3.
+      forget (update m2 s1) as M4.
+      case TODO_sam.
+    - rewrite IHs1.
+      rewrite IHs2.
+      reflexivity.
+    - case TODO_sam.
+    - case TODO_sam.
+  Qed.
+
+  Lemma update_idemp: forall s m,
+      update (update m s) s = update m s.
+  Proof.
+    intros.
+    pose proof (update_intersect s (update m s) m).
+    (* doesn't seem to help like this *)
+  Abort.
+(*
+  Lemma intersect_update: forall s1 s2 m,
+      map.intersect (update m s1) (update m s2) =
+  *)
+
+  Lemma update_intersect_update: forall s m1 m2,
+      update (map.intersect m1 (update m2 s)) s = update m2 s.
+  Proof.
+    induction s; intros; simpl.
+    (* doesn't hold for kvpair which is in m2 but not in m2 *)
+  Abort.
+
+  Lemma update_intersect_update: forall s1 s2 m,
+      update (map.intersect (update m s1) (update m s2)) s2 = update m s2.
+  Proof.
+    induction s1; induction s2; intros; simpl.
+    (* doesn't hold if x<>x0 and both of them are in m and the values also differ:
+       the puts inside the intersect will make two disagreeing versions of m,
+       so the intersect will be smaller by two keys, but we only put back one *)
+  Abort.
+
+  Lemma intersect_comm_update: forall s1 s2 m,
+      map.intersect (update (update m s2) s1)
+                    (update (update m s1) s2)
+      = map.intersect (update m s1) (update m s2).
+  Proof.
+    induction s1; induction s2; intros; simpl.
+    (* doesn't hold if x <> x0 (different keys) *)
+  Abort.
+
+  Lemma intersect_comm_update_extends: forall s1 s2 m,
+      map.extends (map.intersect (update (update m s2) s1)
+                                 (update (update m s1) s2))
+                  (map.intersect (update m s1) (update m s2)).
+  Proof.
+    assert (forall m x x' x0 x'0,
+               map.extends (map.intersect (map.put (map.put m x0 x'0) x x')
+                                          (map.put (map.put m x x') x0 x'0))
+                           (map.intersect (map.put m x x') (map.put m x0 x'0))) as A. {
+      intros.
+      destruct (srcvar_eq_dec x x0).
+      - subst x0. rewrite !map.put_put_same. apply extends_refl.
+      - unfold map.extends.
+        intros.
+        rewrite intersect_spec in *.
+        map_solver src2impOk.
+    }
+    induction s1; induction s2; intros; simpl in *;
+      try solve [
+            unfold map.extends; intros;
+            rewrite ?intersect_spec in *;
+            map_solver src2impOk].
+    {
+            unfold map.extends in *; intros;
+              rewrite ?intersect_spec in *.
+            repeat match goal with
+                   | H: _ |- _ => setoid_rewrite intersect_spec in H
+                   end.
+
+            map_solver src2impOk.
+  Admitted. (* TODO not sure! *)
+
+  Lemma update_121: forall s1 s2 m,
+      update (update (update m s1) s2) s1 = update (update m s2) s1.
+  Proof.
+    induction s2; intros; simpl in *.
+  Abort.
+
+  Lemma update_121: forall s1 s2 m,
+      update (update (update m s1) s2) s1 = update (update m s2) s1.
+  Proof.
+    assert (forall (m: src2imp) x x' x0 x'0,
+      map.put (map.put (map.put m x x') x0 x'0) x x' = map.put (map.put m x0 x'0) x x') as A. {
+      intros.
+      apply map.map_ext; intros; map_solver src2impOk.
+    }
+    induction s2; induction s1; intros; simpl in *; try eapply A;
+      try solve [apply map.map_ext; intros; map_solver src2impOk].
+    - rewrite put_intersect.
+      rewrite update_intersect.
+      rewrite update_intersect.
+      rewrite IHs1_1.
+      rewrite IHs1_2.
+      (* cross terms again *)
+  Abort.
+
+  Lemma update_121: forall s1 s2 m,
+      update (update (update m s1) s2) s1 = update (update m s2) s1.
+  Proof.
+    assert (forall (m: src2imp) x x' x0 x'0,
+      map.put (map.put (map.put m x x') x0 x'0) x x' = map.put (map.put m x0 x'0) x x') as A. {
+      intros.
+      apply map.map_ext; intros; map_solver src2impOk.
+    }
+    induction s1; induction s2; intros; simpl in *; try eapply A;
+      try solve [apply map.map_ext; intros; map_solver src2impOk].
+    - rename s2_1 into s1. rename s2_2 into s2.
+      do 2 rewrite put_intersect.
+      rewrite IHs2_1.
+      rewrite IHs2_2.
+      reflexivity.
+    - unfold loop_inv.
+
+  Admitted.
+
+  Lemma update_idemp: forall s m,
+      update (update m s) s = update m s.
+  Proof.
+    intros.
+    pose proof (update_121 s ASSkip m) as P. simpl in P. exact P.
+  Qed.
+
+  Lemma update_idemp': forall s m,
+      update (update m s) s = update m s.
+  Proof.
+    induction s; intros; simpl in *;
+      try reflexivity;
+      try (apply map.put_put_same).
+    - rewrite update_intersect.
+      rewrite update_intersect.
+      rewrite IHs1.
+      rewrite IHs2.
+      replace (map.intersect (map.intersect (update m s1) (update (update m s2) s1))
+                             (map.intersect (update (update m s1) s2) (update m s2)))
+         with (map.intersect (map.intersect (update m s1) (update m s2))
+                             (map.intersect (update (update m s2) s1)
+                                            (update (update m s1) s2))); cycle 1. {
+        apply map_extend_to_eq; unfold map.extends; repeat setoid_rewrite intersect_spec;
+        intros; map_solver src2impOk.
+      }
+      apply intersect_absorb_r.
+      apply intersect_comm_update_extends.
+    - unfold loop_inv.
+      repeat (rewrite update_intersect || rewrite IHs1 || rewrite IHs2).
+      (* might be reducible to the Seq case *)
+      admit.
+    - enough (update (update (update (update m s1) s2) s1) s2 =
+              update (update (update m s1) s2) s2). {
+        rewrite IHs2 in H. exact H.
+      }
+      f_equal.
+  Abort.
 
   (* this direction would be needed to get full idempotence of loop_inv *)
   Lemma loop_inv_extends: forall r s1 s2,
