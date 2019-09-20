@@ -72,7 +72,7 @@ Defined.
 
 Definition allFuns: list swap.bedrock_func := [swap; swap_swap].
 
-Definition e := RegAlloc.map.putmany_of_tuples map.empty allFuns.
+Definition e := RegAlloc.map.putmany_of_pairs map.empty allFuns.
 
 Definition main: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.call (FlattenExpr.mk_Syntax_params _) [] "swap_swap" [expr.literal 100; expr.literal 108].

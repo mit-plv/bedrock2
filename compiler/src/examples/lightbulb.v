@@ -82,7 +82,7 @@ Definition compile '(functions, initial, reactive) :=
      (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
                      _
                      (List.map fst functions)
-                     (RegAlloc.map.putmany_of_tuples map.empty functions)
+                     (RegAlloc.map.putmany_of_pairs map.empty functions)
                      initial
                      reactive).
 
@@ -112,7 +112,7 @@ Set Printing Width 108.
 
 Goal True.
   pose (let '(functions, initial, reactive) := prog in
-    SortedList.value (snd (functions2Riscv (p:=params) (RegAlloc.map.putmany_of_tuples map.empty functions) (List.map fst functions)))) as symbols.
+    SortedList.value (snd (functions2Riscv (p:=params) (RegAlloc.map.putmany_of_pairs map.empty functions) (List.map fst functions)))) as symbols.
   cbv in symbols.
 
 

@@ -81,7 +81,7 @@ Definition compile '(functions, initial, reactive) :=
      (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
                      _
                      (List.map fst functions)
-                     (RegAlloc.map.putmany_of_tuples map.empty functions)
+                     (RegAlloc.map.putmany_of_pairs map.empty functions)
                      initial
                      reactive).
 

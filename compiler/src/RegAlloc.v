@@ -63,12 +63,23 @@ Module map.
     intersect: M -> M -> M; (* set intersection when interpreting maps as sets of tuples *)
     default_value: V;
   }.
-  Definition putmany_of_tuples{K V: Type}{M: map.map K V}(m: M): list (K * V) -> M :=
+  Definition putmany_of_pairs{K V: Type}{M: map.map K V}(m: M): list (K * V) -> M :=
     fix rec l :=
     match l with
     | nil => m
     | (k, v) :: rest => map.put (rec rest) k v
     end.
+
+  Lemma putmany_of_pairs_extends{K V: Type}{M: map.map K V}{ok: map.ok M}
+        {key_eqb: K -> K -> bool}{key_eq_dec: EqDecider key_eqb}:
+    forall (pairs: list (K * V)) (m1 m2: M),
+    map.extends m1 m2 ->
+    map.extends (putmany_of_pairs m1 pairs) (putmany_of_pairs m2 pairs).
+  Proof.
+    induction pairs; intros.
+    - simpl. assumption.
+    - simpl. destruct a as [k v]. apply map.put_extends. eapply IHpairs. assumption.
+  Qed.
 End map.
 
 Section RegAlloc.
@@ -131,7 +142,7 @@ Section RegAlloc.
       | ASLoop s1 cond s2 => rec (loop_inv rec m s1 s2) s1
       | ASSeq s1 s2 => rec (rec m s1) s2
       | ASSkip => m
-      | ASInteract binds _ _ | ASCall binds _ _ => map.putmany_of_tuples m binds
+      | ASInteract binds _ _ | ASCall binds _ _ => map.putmany_of_pairs m binds
       end.
 
   Definition cond_checker(s2i: src2imp)(cond: @bcond srcparams): option (@bcond impparams) :=
@@ -274,10 +285,10 @@ Section RegAlloc.
       (m'', ASLoop s1' cond s2', a'')
     | SCall binds f args =>
       let '(m, tuples, a) := rename_binds m binds a in
-      (map.putmany_of_tuples m tuples, ASCall tuples f args, a)
+      (map.putmany_of_pairs m tuples, ASCall tuples f args, a)
     | SInteract binds f args =>
       let '(m, tuples, a) := rename_binds m binds a in
-      (map.putmany_of_tuples m tuples, ASInteract tuples f args, a)
+      (map.putmany_of_pairs m tuples, ASInteract tuples f args, a)
     | SSkip => (m, ASSkip, a)
     end.
 
@@ -447,7 +458,46 @@ Section RegAlloc.
   Proof.
     unfold states_compat. eauto.
   Qed.
+  *)
+  Axiom extends_intersect_map_l: forall r1 r2, map.extends r1 (map.intersect r1 r2).
+  Axiom extends_intersect_map_r: forall r1 r2, map.extends r2 (map.intersect r1 r2).
+  Axiom extends_intersect_split: forall m1 m2 m,
+      map.extends m1 m ->
+      map.extends m2 m ->
+      map.extends (map.intersect m1 m2) m.
 
+  Lemma extends_intersect_map_l': forall m m1 m2,
+      map.extends m m1 ->
+      map.extends m (map.intersect m1 m2).
+  Proof.
+    intros.
+    eapply extends_trans.
+    1: eassumption.
+    eapply extends_intersect_map_l.
+  Qed.
+
+  Lemma extends_intersect_map_r': forall m m1 m2,
+      map.extends m m2 ->
+      map.extends m (map.intersect m1 m2).
+  Proof.
+    intros.
+    eapply extends_trans.
+    1: eassumption.
+    eapply extends_intersect_map_r.
+  Qed.
+
+  Lemma extends_intersect_map_lr: forall m11 m12 m21 m22,
+      map.extends m11 m21 ->
+      map.extends m12 m22 ->
+      map.extends (map.intersect m11 m12) (map.intersect m21 m22).
+  Proof.
+    intros.
+    eapply extends_intersect_split.
+    - eapply extends_intersect_map_l'. assumption.
+    - eapply extends_intersect_map_r'. assumption.
+  Qed.
+
+  (*
   Hint Resolve
        states_compat_put
        not_in_range_of_remove_by_value
@@ -456,13 +506,15 @@ Section RegAlloc.
        extends_intersect_map_l
        extends_intersect_map_r
     : checker_hints.
+    *)
 
   Lemma loop_inv_init: forall r s1 s2,
-      extends r (loop_inv mappings r s1 s2).
+      map.extends r (loop_inv update r s1 s2).
   Proof.
-    intros. unfold loop_inv. eauto with checker_hints.
+    intros. unfold loop_inv. apply extends_intersect_map_l.
   Qed.
 
+(*
   (* depends on unproven mappings_intersect_map mappings_mappings_extends_mappings *)
   Lemma loop_inv_step: forall r s1 s2,
       let Inv := loop_inv mappings r s1 s2 in
@@ -498,32 +550,115 @@ Section RegAlloc.
   Proof using.
     intros. subst Inv. unfold loop_inv.
   Admitted.
+*)
 
   Lemma extends_loop_inv: forall r s1 s2,
-      let Inv := loop_inv mappings r s1 s2 in
-      extends Inv (loop_inv mappings Inv s1 s2).
+      let Inv := loop_inv update r s1 s2 in
+      map.extends Inv (loop_inv update Inv s1 s2).
   Proof.
-    intros.
-    subst Inv. unfold loop_inv.
-    apply extends_intersect_map_lr.
-    - apply extends_intersect_map_l.
-    - apply mappings_monotone. apply mappings_monotone.
-      apply extends_intersect_map_l.
+    intros. apply loop_inv_init.
   Qed.
 
-  Lemma bw_extends_loop_inv: forall r s1 s2,
-      let Inv := loop_inv mappings r s1 s2 in
-      bw_extends Inv (loop_inv mappings Inv s1 s2).
-  Proof using.
-  Admitted.
+  Lemma update_monotone: forall s {m1 m2},
+      map.extends m1 m2 ->
+      map.extends (update m1 s) (update m2 s).
+  Proof.
+    induction s; intros; simpl in *; unfold loop_inv in *.
+    - map_solver src2impOk.
+    - map_solver src2impOk.
+    - map_solver src2impOk.
+    - map_solver src2impOk.
+    - map_solver src2impOk.
+    - specialize (IHs1 _ _ H).
+      specialize (IHs2 _ _ H).
+      forget (update m1 s1) as a11.
+      forget (update m1 s2) as a12.
+      forget (update m2 s1) as a21.
+      forget (update m2 s2) as a22.
+      apply extends_intersect_map_lr; assumption.
+    - pose proof (IHs1 _ _ H) as IHs1'.
+      pose proof (IHs2 _ _ IHs1') as IHs2'.
+      forget (update m1 s1) as a11.
+      forget (update m1 s2) as a12.
+      forget (update m2 s1) as a21.
+      forget (update m2 s2) as a22.
+      forget (update a11 s2) as a112.
+      forget (update a21 s2) as a212.
+      apply IHs1.
+      apply extends_intersect_map_lr; assumption.
+    - specialize (IHs1 _ _ H).
+      apply (IHs2 _ _ IHs1).
+    - map_solver src2impOk.
+    - apply map.putmany_of_pairs_extends. assumption.
+    - apply map.putmany_of_pairs_extends. assumption.
+  Qed.
+
+  Lemma map_extend_to_eq: forall {m1 m2: src2imp},
+      map.extends m1 m2 ->
+      map.extends m2 m1 ->
+      m1 = m2.
+  Proof.
+    intros.
+    unfold map.extends in *.
+    apply map.map_ext.
+    intros.
+    destruct (map.get m2 k) eqn: E2.
+    - map_solver src2impOk.
+    - destruct (map.get m1 k) eqn: E1. 2: reflexivity. map_solver src2impOk.
+  Qed.
+
+  Lemma intersect_no_effect0: forall {r m1 m2},
+      map.extends m1 m2 ->
+      map.intersect (map.intersect r m1) m2 = map.intersect r m2.
+  Proof.
+    intros.
+    apply map_extend_to_eq.
+    - apply extends_intersect_split.
+      + apply extends_intersect_map_lr.
+        * apply extends_refl.
+        * assumption.
+      + apply extends_intersect_map_r.
+    - apply extends_intersect_map_lr.
+      + apply extends_intersect_map_l.
+      + apply extends_refl.
+  Qed.
+
+  Lemma intersect_no_effect: forall {r m1 m2},
+      map.extends m1 m2 ->
+      map.intersect (map.intersect r m2) m1 = map.intersect r m2.
+  Proof.
+    intros.
+    apply map_extend_to_eq.
+    - apply extends_intersect_split.
+      + apply extends_refl.
+      + apply extends_intersect_map_r'. assumption.
+    - apply extends_intersect_split.
+      + apply extends_intersect_map_l'. apply extends_intersect_map_l.
+      + apply extends_intersect_map_l'. apply extends_intersect_map_r.
+  Qed.
 
   (* this direction would be needed to get full idempotence of loop_inv *)
   Lemma loop_inv_extends: forall r s1 s2,
-      let Inv := loop_inv mappings r s1 s2 in
-      extends (loop_inv mappings Inv s1 s2) Inv.
+      let Inv := loop_inv update r s1 s2 in
+      map.extends (loop_inv update Inv s1 s2) Inv.
   Proof.
     intros. subst Inv.
     unfold loop_inv.
+    pose proof (extends_intersect_map_l r (update (update r s1) s2)) as A.
+    epose proof (update_monotone s2 (update_monotone s1 A)) as B.
+    epose proof (intersect_no_effect0 B) as C.
+
+    (* Problem: the smaller (and therefore significant) set is the more complicated one *)
+    rewrite C.
+
+    apply extends_intersect_split.
+    - apply extends_intersect_map_l.
+    - apply extends_intersect_map_r'.
+      apply update_monotone.
+      apply update_monotone.
+      (* NOPE *)
+  Abort.
+ (*
     change (mappings (mappings r s1) s2) with (mappings r (ASSeq s1 s2)).
     change (mappings (mappings (intersect_map r (mappings r (ASSeq s1 s2))) s1) s2)
       with (mappings (intersect_map r (mappings r (ASSeq s1 s2))) (ASSeq s1 s2)).
@@ -594,7 +729,7 @@ Section RegAlloc.
       states_compat lH r lL ->
       exists lL',
         map.putmany_of_list (map snd binds) resvals lL = Some lL' /\
-        states_compat l' (map.putmany_of_tuples r binds) lL'.
+        states_compat l' (map.putmany_of_pairs r binds) lL'.
   Proof.
     induction binds; intros.
     - simpl in H. simp. simpl. eauto.
@@ -622,7 +757,7 @@ Section RegAlloc.
             argnames = map fst args /\
             retnames = map fst binds /\
             erase annotated = body /\
-            checker (map.putmany_of_tuples map.empty args) annotated = Some body') ->
+            checker (map.putmany_of_pairs map.empty args) annotated = Some body') ->
       @exec srcSemanticsParams e s t m lH mc post ->
       forall lL r annotated s',
       erase annotated = s ->
@@ -776,7 +911,7 @@ Section RegAlloc.
             map.get e2 f = Some (map snd args, map snd binds, body2) /\
             argnames = map fst args /\
             retnames = map fst binds /\
-            code_related body1 (map.putmany_of_tuples map.empty args) body2) /\
+            code_related body1 (map.putmany_of_pairs map.empty args) body2) /\
       t1 = t2 /\
       m1 = m2 /\
       code_related c1 map.empty c2.
