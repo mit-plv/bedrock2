@@ -129,6 +129,163 @@ Section RegAlloc.
   Local Notation stmt  := (@FlatImp.stmt srcparams). (* input type *)
   Local Notation stmt' := (@FlatImp.stmt impparams). (* output type *)
 
+(*
+  Inductive Update :=
+  | Nop
+  | Add(x: srcvar)(y: impvar)
+  | Remove(x: srcvar)
+  | Seq(u1 u2: Update)
+  | Par(u1 u2: Update).
+
+  Fixpoint apply(u: Update): src2imp -> src2imp :=
+    match u with
+    | Nop => id
+    | Add x y => fun m => map.put m x y
+    | Remove x => fun m => map.remove m x
+    | Seq u1 u2 => fun m => apply u2 (apply u1 m)
+    | Par u1 u2 => fun m => map.intersect (apply u1 m) (apply u2 m)
+    end.
+
+  Lemma apply_idemp: forall u m,
+      apply u (apply u m) = apply u m.
+  Proof.
+    induction u; intros; simpl.
+    - reflexivity.
+    - apply map.put_put_same.
+    - apply map.map_ext; intros; map_solver src2impOk.
+    - (* same problem as before.
+         we need to turn updates into a canonical form before applying it! *)
+  Abort.
+*)
+
+  (*
+  Inductive Update :=
+  | Add(x: srcvar)(y: impvar)
+  | Remove(x: srcvar).
+  *)
+
+  Inductive Update :=
+  | Add(y: impvar)
+  | Remove.
+
+  (* Third case: In "option Update", "None" means unchanged. *)
+
+  Context {Updates: map.map srcvar Update}.
+
+  Definition iter{A: Type}(f: srcvar -> Update -> A -> A)(a: A)(m: Updates): A.
+  Admitted.
+
+(*
+  Lemma iter_iter: forall {A: Type} a f m1 m2,
+      iter (iter a f m1) f m2 = iter a f m.
+*)
+
+  Definition combine(m1 m2: Updates)(f: srcvar -> option Update -> option Update -> option Update):
+    Updates. Admitted.
+
+  (* should be symmetric *)
+  Definition Par1(x: srcvar)(u1: option Update)(u2: option Update): option Update :=
+    match u1, u2 with
+    | Some (Add y1), Some (Add y2) => if impvar_eqb y1 y2 then
+                                        Some (Add y1)
+                                      else
+                                        Some Remove
+    | Some (Add y1), Some Remove => Some Remove
+    | Some (Add y1), None => None
+    | Some Remove, _ => Some Remove
+    | None, Some (Add y2) => None
+    | None, Some Remove => Some Remove
+    | None, None => None
+    end.
+
+  Lemma Par1_comm: forall x u1 u2,
+      Par1 x u1 u2 = Par1 x u2 u1.
+  Proof.
+    intros. destruct u1 as [[? |]|]; destruct u2 as [[? |]|]; try reflexivity.
+    simpl.
+    destruct (impvar_eq_dec y y0); destruct (impvar_eq_dec y0 y); congruence.
+  Qed.
+
+  Definition Par(us1 us2: Updates): Updates := combine us1 us2 Par1.
+  Definition Seq: Updates -> Updates -> Updates := map.putmany.
+
+  Definition updates: astmt -> Updates :=
+    fix rec s :=
+      match s with
+      | ASLoad _ x x' _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
+           map.put map.empty x (Add x')
+      | ASStore _ _ _ => map.empty
+      | ASIf cond s1 s2 => Par (rec s1) (rec s2)
+      | ASLoop s1 cond s2 =>
+        let r1 := rec s1 in
+        let r2 := rec s2 in
+        Par r1 (Seq r1 (Seq r2 r1))
+      | ASSeq s1 s2 => map.putmany (rec s1) (rec s2)
+      | ASSkip => map.empty
+      | ASInteract binds _ _ | ASCall binds _ _ =>
+           (map.putmany_of_pairs map.empty (List.map (fun '(x, y) => (x, Add y)) binds))
+      end.
+
+  Definition map_values{K V1 V2: Type}{M1: map.map K V1}{M2: map.map K V2}(f: V1 -> option V2):
+    M1 -> M2. Admitted.
+
+  Lemma map_values_map_values{K V1 V2 V3: Type}{M1: map.map K V1}{M2: map.map K V2}
+        {M3: map.map K V3}(f1: V1 -> option V2)(f2: V2 -> option V3)(m1: M1):
+    map_values f2 (map_values f1 m1) = map_values (fun v1 => match f1 v1 with
+                                                             | Some v2 => f2 v2
+                                                             | None => None
+                                                             end)
+                                                  m1.
+  Admitted.
+
+  Lemma map_values_putmany{K V: Type}{M: map.map K V}: forall f m1 m2,
+      map_values f (map.putmany m1 m2) = map.putmany (map_values f m1) (map_values f m2).
+  Proof.
+    (* doesn't hold:
+       if m1[k] = keptValue and m2[k] = droppedValue
+       lhs has no k
+       rhs has k->keptValue *)
+  Abort.
+
+(*
+  Definition apply(us: Updates)(m: src2imp): src2imp :=
+    map_values (fun u => match u with
+                         | Add y => Some y
+                         | Remove => None
+                         end)
+               (map.putmany (map_values (fun y => Some (Add y)) m) us).
+
+  Lemma apply_idemp: forall us m,
+      apply us (apply us m) = apply us m.
+  Proof.
+    intros. unfold apply.
+    rewrite map_values_map_values.
+    f_equal.
+    f_equal.
+*)
+
+  Definition apply1(x: srcvar)(u: Update)(m: src2imp): src2imp :=
+    match u with
+    | Add y => map.put m x y
+    | Remove => map.remove m x
+    end.
+
+  Definition apply(us: Updates)(m: src2imp): src2imp :=
+    iter apply1 m us.
+  
+  Lemma apply_idemp: forall us m,
+      apply us (apply us m) = apply us m.
+  Proof.
+    intros. unfold apply.
+  Abort.
+    
+  (* not symmetric
+  Definition Seq1(x: srcvar)(u1: option Update)(u2: option Update): option Update :=
+    match u2 with
+    | Some u => u
+    | None => match u1 with
+    not needed *)
+
   Definition loop_inv(update: src2imp -> astmt -> src2imp)(m: src2imp)(s1 s2: astmt): src2imp :=
     map.intersect m (update (update m s1) s2).
 
