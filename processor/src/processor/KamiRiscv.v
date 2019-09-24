@@ -56,10 +56,11 @@ Section Equiv.
   Context {Registers: map.map Register word}
           {mem: map.map word byte}
           {mmio_semantics : ExtSpec}.
-  Local Notation M := (free action result).
 
-  Notation RiscvMachine := (@MetricRiscvMachine KamiWordsInst Registers mem).
+  Local Notation M := (free action result).
+  Local Notation RiscvMachine := (@MetricRiscvMachine KamiWordsInst Registers mem).
   Local Existing Instance MetricMinimalMMIO.IsRiscvMachine.
+  Local Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
 
   (** * Processor, software machine, and states *)
 
@@ -98,23 +99,6 @@ Section Equiv.
 
   Definition mmioStoreEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
     ((m, MMOutput, [addr; signedByteTupleToReg v]), (m, [])).
-
-  (* These two specify what happens on loads and stores which are outside the memory, eg MMIO *)
-  (* TODO these will have to be more concrete *)
-  Context (nonmem_load: forall (n: nat), SourceType -> word -> M (HList.tuple byte n)).
-  Context (nonmem_store: forall (n: nat), SourceType -> word -> HList.tuple byte n -> M unit).
-
-  Instance MinimalMMIOPrimitivesParams: PrimitivesParams M RiscvMachine := {
-    Primitives.mcomp_sat := @mcomp_sat _ _ _ _;
-
-    (* any value can be found in an uninitialized register *)
-    Primitives.is_initial_register_value x := True;
-
-    Primitives.nonmem_load := nonmem_load;
-    Primitives.nonmem_store := nonmem_store;
-  }.
-
-  Context {Pr: MetricPrimitives MinimalMMIOPrimitivesParams}.
 
   (** NOTE: we have no idea how to deal with [translate] when [RVS] is
    * parametrized, so let's just use the default instance for now. *)
