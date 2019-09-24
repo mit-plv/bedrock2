@@ -5,28 +5,22 @@ default_target: all
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q ./src/processor processor\n
-DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
-
-_CoqProject:
-	printf -- '$(DEPFLAGS_NL)' > _CoqProject
-
-REL_PATH_OF_THIS_MAKEFILE:=$(lastword $(MAKEFILE_LIST))
-ABS_ROOT_DIR:=$(abspath $(dir $(REL_PATH_OF_THIS_MAKEFILE)))
-# use cygpath -m because Coq on Windows cannot handle cygwin paths
-ABS_ROOT_DIR:=$(shell cygpath -m '$(ABS_ROOT_DIR)' 2>/dev/null || echo '$(ABS_ROOT_DIR)')
-
-DEPS_DIR ?= $(ABS_ROOT_DIR)/../deps
+DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n
+CURFLAGS_NL=-Q ./src/processor processor\n
 
 EXTERNAL_DEPENDENCIES?=
 
+# If we get our dependencies externally, then we should not bind the local versions of things
 ifneq ($(EXTERNAL_DEPENDENCIES),1)
-# N.B. We should be using ; instead of : iff we are on Windows AND the ocaml we are using was NOT compiled with cygwin...
-# We will instead wait until someone complains that make is not working on Windows and then have them figure out a way to detect this case
-# Note that Windows users can always manually set COQPATH, so always using : does not make it impossible to build on Windows, just a bit of a pain.
-COQPATH?=$(DEPS_DIR)/coqutil/src:$(DEPS_DIR)/riscv-coq/src:$(DEPS_DIR)/kami
-export COQPATH
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)$(DEPFLAGS_NL)
+else
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)
 endif
+
+ALLDEPFLAGS=$(subst \n, ,$(ALLDEPFLAGS_NL))
+
+_CoqProject:
+	printf -- '$(ALLDEPFLAGS_NL)' > _CoqProject
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
