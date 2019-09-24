@@ -24,11 +24,6 @@ endif
 EXTERNAL_DEPENDENCIES?=
 
 ifneq ($(EXTERNAL_DEPENDENCIES),1)
-# N.B. We should be using ; instead of : iff we are on Windows AND the ocaml we are using was NOT compiled with cygwin...
-# We will instead wait until someone complains that make is not working on Windows and then have them figure out a way to detect this case
-# Note that Windows users can always manually set COQPATH, so always using : does not make it impossible to build on Windows, just a bit of a pain.
-COQPATH?=$(DEPS_DIR)/coqutil/src:$(DEPS_DIR)/riscv-coq/src:$(DEPS_DIR)/kami
-export COQPATH
 
 bedrock2: coqutil
 riscv-coq: coqutil

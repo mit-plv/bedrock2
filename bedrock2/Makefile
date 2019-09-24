@@ -8,11 +8,25 @@ SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2
 
 VS:=$(shell find $(SRCDIR) -type f -name '*.v')
 
-DEPS_DIR ?= ../deps
-
 # Note: make does not interpret "\n", and this is intended
 DEPFLAGS_NL=-Q src/bedrock2 bedrock2\n
 DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
+
+
+REL_PATH_OF_THIS_MAKEFILE:=$(lastword $(MAKEFILE_LIST))
+ABS_ROOT_DIR:=$(abspath $(dir $(REL_PATH_OF_THIS_MAKEFILE)))
+# use cygpath -m because Coq on Windows cannot handle cygwin paths
+ABS_ROOT_DIR:=$(shell cygpath -m '$(ABS_ROOT_DIR)' 2>/dev/null || echo '$(ABS_ROOT_DIR)')
+
+DEPS_DIR ?= $(ABS_ROOT_DIR)/../deps
+
+EXTERNAL_DEPENDENCIES?=
+
+ifneq ($(EXTERNAL_DEPENDENCIES),1)
+COQPATH?=$(DEPS_DIR)/coqutil/src
+export COQPATH
+endif
+
 
 _CoqProject:
 	printf -- '$(DEPFLAGS_NL)' > _CoqProject
