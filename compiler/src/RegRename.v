@@ -15,6 +15,13 @@ Require Import compiler.Simp.
 Require Import compiler.Simulation.
 
 
+Local Notation "'bind_opt' x <- a ; f" :=
+  (match a with
+   | Some x => f
+   | None => None
+   end)
+  (right associativity, at level 70, x pattern).
+
 Axiom TODO_sam: False.
 
 Module map.
@@ -70,100 +77,101 @@ Section RegAlloc.
   Local Notation stmt' := (@FlatImp.stmt impparams). (* output type *)
 
   Variable available_impvars: list impvar.
-  Variable dummy_impvar: impvar.
 
   Definition rename_assignment_lhs(m: src2imp)(x: srcvar)(a: list impvar):
-    src2imp * impvar * list impvar :=
+    option (src2imp * impvar * list impvar) :=
     match map.get m x with
-    | Some y => (m, y, a)
+    | Some y => Some (m, y, a)
     | None   => match a with
-                | y :: rest => (map.put m x y, y, rest)
-                | nil => (* error: ran out of registers *)
-                  let y := dummy_impvar in (map.put m x y, y, a)
+                | y :: rest => Some (map.put m x y, y, rest)
+                | nil => None
                 end
     end.
 
-  Definition rename_assignment_rhs(m: src2imp)(s: stmt)(y: impvar): stmt' :=
-    let transl := fun x => match map.get m x with
-                        | Some z => z
-                        | None => dummy_impvar
-                        end in
+  Definition rename_assignment_rhs(m: src2imp)(s: stmt)(y: impvar): option stmt' :=
     match s with
-    | SLoad sz x a => SLoad sz y (transl a)
-    | SLit x v => SLit y v
-    | SOp x op a b => SOp y op (transl a) (transl b)
-    | SSet x a => SSet y (transl a)
-    | _ => SSkip (* not an assignment *)
+    | SLoad sz x a => bind_opt a' <- map.get m a; Some (SLoad sz y a')
+    | SLit x v => Some (SLit y v)
+    | SOp x op a b => bind_opt a' <- map.get m a; bind_opt b' <- map.get m b;
+                      Some (SOp y op a' b')
+    | SSet x a => bind_opt a' <- map.get m a; Some (SSet y a')
+    | _ => None
     end.
 
   Fixpoint rename_binds(m: src2imp)(binds: list srcvar)(a: list impvar):
-    (src2imp * list (srcvar * impvar) * list impvar) :=
+    option (src2imp * list (srcvar * impvar) * list impvar) :=
     match binds with
-    | nil => (m, nil, a)
+    | nil => Some (m, nil, a)
     | x :: binds =>
-      let '(m, y, a) := rename_assignment_lhs m x a in
-      let '(m, res, a) := rename_binds m binds a in
-      (m, (x, y) :: res, a)
+      bind_opt (m, y, a) <- rename_assignment_lhs m x a;
+      bind_opt (m, res, a) <- rename_binds m binds a;
+      Some (m, (x, y) :: res, a)
     end.
 
-  Definition rename_cond(m: src2imp)(cond: @bcond srcparams): @bcond impparams :=
-    let transl := fun x => match map.get m x with
-                        | Some z => z
-                        | None => dummy_impvar
-                        end in
+  Definition rename_cond(m: src2imp)(cond: @bcond srcparams): option (@bcond impparams) :=
     match cond with
-    | CondBinary op x y => CondBinary op (transl x) (transl y)
-    | CondNez x => CondNez (transl x)
+    | CondBinary op x y => bind_opt x' <- map.get m x;
+                           bind_opt y' <- map.get m y;
+                           Some (CondBinary op x' y')
+    | CondNez x => bind_opt x' <- map.get m x; Some (CondNez x')
     end.
 
-  (* the simplest dumbest possible "register allocator" *)
+  (* The simplest dumbest possible "register allocator": Just renames, according to
+     a global mapping m being constructed as we go.
+     Returns None if not enough registers. *)
   Fixpoint rename
            (m: src2imp)              (* current mapping, growing *)
            (s: stmt)                 (* current sub-statement *)
            (a: list impvar)          (* available registers, shrinking *)
            {struct s}
-    : src2imp * stmt' * list impvar :=
-    let transl := fun x => match map.get m x with
-                        | Some z => z
-                        | None => dummy_impvar
-                        end in
+    : option (src2imp * stmt' * list impvar) :=
     match s with
     | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
-        let '(m, y, a) := rename_assignment_lhs m x a in (m, rename_assignment_rhs m s y, a)
-    | SStore sz x y => (m, SStore sz (transl x) (transl y), a)
+      bind_opt (m', y, a) <- rename_assignment_lhs m x a;
+      bind_opt s' <- rename_assignment_rhs m s y;
+      Some (m', s', a)
+    | SStore sz x y =>
+      bind_opt x' <- map.get m x;
+      bind_opt y' <- map.get m y;
+      Some (m, SStore sz x' y', a)
     | SIf cond s1 s2 =>
-      let '(m', s1', a') := rename m s1 a in
-      let '(m'', s2', a'') := rename m' s2 a' in
-      let cond' := rename_cond m cond in
-      (m'', SIf cond' s1' s2', a'')
+      bind_opt (m', s1', a') <- rename m s1 a;
+      bind_opt (m'', s2', a'') <- rename m' s2 a';
+      bind_opt cond' <- rename_cond m cond;
+      Some (m'', SIf cond' s1' s2', a'')
     | SSeq s1 s2 =>
-      let '(m', s1', a') := rename m s1 a in
-      let '(m'', s2', a'') := rename m' s2 a' in
-      (m'', SSeq s1' s2', a'')
+      bind_opt (m', s1', a') <- rename m s1 a;
+      bind_opt (m'', s2', a'') <- rename m' s2 a';
+      Some (m'', SSeq s1' s2', a'')
     | SLoop s1 cond s2 =>
-      let '(m', s1', a') := rename m s1 a in
-      let cond' := rename_cond m' cond in
-      let '(m'', s2', a'') := rename m' s2 a' in
-      (m'', SLoop s1' cond' s2', a'')
+      bind_opt (m', s1', a') <- rename m s1 a;
+      bind_opt cond' <- rename_cond m' cond;
+      bind_opt (m'', s2', a'') <- rename m' s2 a';
+      Some (m'', SLoop s1' cond' s2', a'')
     | SCall binds f args =>
-      let '(m, tuples, a) := rename_binds m binds a in
-      (map.putmany_of_pairs m tuples, SCall (List.map snd tuples) f (List.map transl args), a)
+      bind_opt (m, tuples, a) <- rename_binds m binds a;
+      bind_opt args' <- map.getmany_of_list m args;
+      Some (map.putmany_of_pairs m tuples, SCall (List.map snd tuples) f args', a)
     | SInteract binds f args =>
-      let '(m, tuples, a) := rename_binds m binds a in
-      (map.putmany_of_pairs m tuples, SInteract (List.map snd tuples) f (List.map transl args), a)
-    | SSkip => (m, SSkip, a)
+      bind_opt (m, tuples, a) <- rename_binds m binds a;
+      bind_opt args' <- map.getmany_of_list m args;
+      Some (map.putmany_of_pairs m tuples, SInteract (List.map snd tuples) f args', a)
+    | SSkip => Some (m, SSkip, a)
     end.
 
   Definition rename_stmt(m: src2imp)(s: stmt)(av: list impvar): stmt' :=
-    let '(_, s', _) := rename m s av in s'.
+    match rename m s av with
+    | Some (_, s', _) => s'
+    | None => SSkip
+    end.
 
   Definition rename_fun(F: list srcvar * list srcvar * stmt):
-    (list impvar * list impvar * stmt') :=
+    option (list impvar * list impvar * stmt') :=
     let '(argnames, retnames, body) := F in
-    let '(m, argtuples, av) := rename_binds map.empty argnames available_impvars in
-    let '(m, rettuples, av) := rename_binds m retnames av in
-    let body' := rename_stmt m body av in
-    (List.map snd argtuples, List.map snd rettuples, body').
+    bind_opt (m, argtuples, av) <- rename_binds map.empty argnames available_impvars;
+    bind_opt (m, rettuples, av) <- rename_binds m retnames av;
+    bind_opt (_, body', _) <- rename m body av;
+    Some (List.map snd argtuples, List.map snd rettuples, body').
 
   Context {W: Utility.Words} {mem: map.map word byte}.
   Context {srcLocals: map.map srcvar word}.
@@ -197,7 +205,10 @@ Section RegAlloc.
   Definition rename_function(e: @FlatImp.env srcSemanticsParams)(f: funname):
     (list impvar * list impvar * stmt') :=
     match map.get e f with
-    | Some F => rename_fun F
+    | Some F => match rename_fun F with
+                | Some res => res
+                | None => (nil, nil, FlatImp.SSkip)
+                end
     | None => (nil, nil, FlatImp.SSkip)
     end.
 
@@ -235,7 +246,109 @@ Section RegAlloc.
     erewrite IHsrcnames; eauto.
   Qed.
 
+  Ltac head e :=
+    match e with
+    | ?a _ => head a
+    | _ => e
+    end.
+
+  Definition envs_related(e1: @env srcSemanticsParams)
+                         (e2: @env impSemanticsParams): Prop :=
+    forall f impl1,
+      map.get e1 f = Some impl1 ->
+      exists impl2,
+        rename_fun impl1 = Some impl2.
+
+  Lemma rename_assignment_lhs_get{r x av r' i av'}:
+    rename_assignment_lhs r x av = Some (r', i, av') ->
+    map.get r' x = Some i.
+  Proof.
+    intros.
+    unfold rename_assignment_lhs in *.
+    destruct_one_match_hyp; try congruence.
+    destruct_one_match_hyp; try congruence.
+    simp.
+    apply map.get_put_same.
+  Qed.
+
+  Lemma state_compat_put: forall lH lL r x av r' y av' v,
+      rename_assignment_lhs r x av = Some (r', y, av') ->
+      states_compat lH r lL ->
+      states_compat (map.put lH x v) r' (map.put lL y v).
+  Proof.
+    unfold rename_assignment_lhs, states_compat. intros.
+    destruct (map.get r x); simp.
+    - specialize H0 with (1 := H1).
+      do 2 rewrite map.get_put_dec.
+      (* needs injectivity of r *)
+  Abort.
+
+  Lemma checker_correct: forall eH eL,
+      envs_related eH eL ->
+      forall sH t m lH mc post,
+      @exec srcSemanticsParams eH sH t m lH mc post ->
+      forall lL r r' av av' sL,
+      rename r sH av = Some (r', sL, av') ->
+      states_compat lH r lL ->
+      @exec impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
+        exists lH', states_compat lH' r' lL' /\
+                    post t' m' lH' mc').
+  Proof.
+    (*
+    intros.
+    destruct H0 eqn: E;
+    match type of E with
+    | _ = ?r => let h := head r in idtac "- (*" h "*)"
+    end.
+    *)
+    induction 2; intros; simpl in *; simp.
+
+    - (* @exec.interact *)
+      case TODO_sam.
+    - (* @exec.call *)
+      case TODO_sam.
+    - (* @exec.load *)
+      case TODO_sam.
+    - (* @exec.store *)
+      case TODO_sam.
+    - (* @exec.lit *)
+      case TODO_sam.
+    - (* @exec.op *)
+      rename l into lH.
+      pose proof (rename_assignment_lhs_get E) as P.
+      unfold states_compat in *|-.
+      econstructor.
+      + erewrite <- H4; cycle 1; eassumption.
+      + erewrite <- H4; cycle 1; eassumption.
+      + exists (map.put lH x (Semantics.interp_binop op y' z')).
+        split.
+        * intros. case TODO_sam.
+        * case TODO_sam.
+    - (* @exec.set *)
+      case TODO_sam.
+    - (* @exec.if_true *)
+      case TODO_sam.
+    - (* @exec.if_false *)
+      case TODO_sam.
+    - (* @exec.loop *)
+      case TODO_sam.
+    - (* @exec.seq *)
+      rename IHexec into IH1, H2 into IH2.
+      econstructor.
+      1: eapply IH1; eassumption.
+      cbv beta.
+      intros. simp.
+      eapply IH2; eassumption.
+    - (* @exec.skip *)
+      case TODO_sam.
+  Qed.
+
+
+
 (*
+unfold states_compat, rename_assignment_lhs in *;
+
+
   Lemma states_compat_put: forall lH lL v x y r,
       map.get r x = None ->
       states_compat lH r lL ->
@@ -274,6 +387,7 @@ Section RegAlloc.
       destruct H as (lL' & H).
       exists lL'. split; [exact H|].
   Abort.
+
 
 
 End RegAlloc.
