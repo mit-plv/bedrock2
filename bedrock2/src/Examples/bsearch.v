@@ -130,7 +130,12 @@ Ltac lia3 :=
   | |- _ => lia2
   end.
 
-Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_to_equations; blia.
+Ltac cond_hyps_factor :=
+    repeat match goal with
+           | [ H : ?x -> _, H' : ?x -> _ |- _ ] =>
+                pose proof (fun u : x => conj (H u) (H' u)); clear H H' end.
+
+Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_to_equations; cond_hyps_factor; blia.
 
 Module Z.
   Lemma mod_mul_l: forall (a b: Z), (b * a) mod b = 0.
@@ -233,6 +238,7 @@ Ltac unsigned_sidecond :=
   wordOps_to_ZModArith;
   repeat ZModArith_step ltac:(lia4).
 
+Set Ltac Profiling.
 
 Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
@@ -306,3 +312,5 @@ Qed.
 (* SortedListMap *)
 
 Local Set Simplex.
+
+Goal False. idtac "End of binary search profiling.". Abort.
