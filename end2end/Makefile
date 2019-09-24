@@ -5,7 +5,7 @@ default_target: all
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src coqutil\n-Q $(DEPS_DIR)/riscv-coq/src riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n-Q ../processor/src processor\n-Q ../bedrock2/src bedrock2\n-Q ../compiler/src compiler\n-Q ./src end2end\n
+DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src coqutil\n-Q $(DEPS_DIR)/riscv-coq/src riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n-Q ../processor/src/processor processor\n-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../compiler/src/compiler compiler\n-Q ./src/end2end end2end\n
 DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 
 _CoqProject:
@@ -13,7 +13,7 @@ _CoqProject:
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
-SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src
+SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/end2end
 ALL_VS := $(shell find $(SRCDIR) -type f -name '*.v')
 
 all0: Makefile.coq.all $(ALL_VS)

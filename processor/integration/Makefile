@@ -4,13 +4,13 @@ system.vvp: system.v mkTop.v
 	iverilog -y ../../deps/kami/Kami/Ext/BluespecFrontEnd/verilog/ -y. -o system.vvp system.v
 clean:
 	rm -f system.vvp system.vcd program0.hex program1.hex program2.hex program3.hex system.json system.out.config system.bit system.svf
-program.hex: ../../compiler/src/examples/lightbulb.v
+program.hex: ../../compiler/src/compiler/examples/lightbulb.v
 	( cd ../../compiler && coqc -q \
-		-Q ../bedrock2/src bedrock2 \
+		-Q ../bedrock2/src/bedrock2 bedrock2 \
 		-Q ../deps/coqutil/src coqutil \
 		-Q ../deps/riscv-coq/src riscv \
-		-Q lib lib -Q src compiler  \
-		../compiler/src/examples/lightbulb.v ) > program.hex
+		-Q lib lib -Q src/compiler compiler  \
+		../compiler/src/compiler/examples/lightbulb.v ) > program.hex
 program0.hex: program.hex
 	< $< tr ' ' '\n' | grep . | awk 'NR % 4 == 1' > $@
 program1.hex: program.hex

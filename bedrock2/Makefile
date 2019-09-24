@@ -4,14 +4,14 @@ default_target: all
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
-SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src
+SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2
 
 VS:=$(shell find $(SRCDIR) -type f -name '*.v')
 
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q src bedrock2\n-Q $(DEPS_DIR)/coqutil/src coqutil\n
+DEPFLAGS_NL=-Q src/bedrock2 bedrock2\n-Q $(DEPS_DIR)/coqutil/src coqutil\n
 DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 
 _CoqProject:
