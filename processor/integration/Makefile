@@ -7,8 +7,8 @@ clean:
 program.hex: ../../compiler/src/compiler/examples/lightbulb.v
 	( cd ../../compiler && coqc -q \
 		-Q ../bedrock2/src/bedrock2 bedrock2 \
-		-Q ../deps/coqutil/src coqutil \
-		-Q ../deps/riscv-coq/src riscv \
+		-Q ../deps/coqutil/src/coqutil coqutil \
+		-Q ../deps/riscv-coq/src/riscv riscv \
 		-Q lib lib -Q src/compiler compiler  \
 		../compiler/src/compiler/examples/lightbulb.v ) > program.hex
 program0.hex: program.hex

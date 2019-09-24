@@ -11,7 +11,7 @@ VS:=$(shell find $(SRCDIR) -type f -name '*.v')
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q src/bedrock2 bedrock2\n-Q $(DEPS_DIR)/coqutil/src coqutil\n
+DEPFLAGS_NL=-Q src/bedrock2 bedrock2\n-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
 DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
 
 _CoqProject:
