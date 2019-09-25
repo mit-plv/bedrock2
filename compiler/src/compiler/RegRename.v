@@ -42,6 +42,21 @@ Module map.
       k1 <> k2 -> map.get m k1 = Some v1 -> map.get m k2 = Some v2 -> v1 <> v2.
   *)
 
+  Lemma injective_put{K V: Type}{M: map.map K V}{ok: map.ok M}
+        {key_eqb: K -> K -> bool}{key_eq_dec: EqDecider key_eqb}:
+    forall (m: M) k v,
+      (forall k, map.get m k <> Some v) ->
+      map.injective m ->
+      map.injective (map.put m k v).
+  Proof.
+    unfold map.injective.
+    intros.
+    rewrite map.get_put_dec in H1.
+    rewrite map.get_put_dec in H2.
+    do 2 destruct_one_match_hyp; try congruence.
+    eauto.
+  Qed.
+
   Definition not_in_range{K V: Type}{M: map.map K V}(m: M)(l: list V): Prop :=
     List.Forall (fun v => forall k, map.get m k <> Some v) l.
 
@@ -445,6 +460,60 @@ Section RegAlloc.
         * eauto using in_or_app.
   Qed.
 
+  Ltac auto_specialize :=
+    repeat match goal with
+           | H: ?P -> _, H': _ |- _ => match type of P with
+                                       | Prop => specialize (H H')
+                                       end
+           end.
+
+  Ltac apply_in_hyps t :=
+    repeat match goal with
+           | H: _ |- _ => apply t in H
+           end.
+
+  (* a list of useful properties of rename, all proved in one induction *)
+  Lemma rename_props: forall sH r1 r2 sL av1 av2,
+      map.injective r1 ->
+      map.not_in_range r1 av1 ->
+      NoDup av1 ->
+      rename r1 sH av1 = Some (r2, sL, av2) ->
+      map.injective r2 /\
+      map.extends r2 r1 /\
+      exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
+  Proof.
+    pose proof (map.not_in_range_put (ok := src2impOk)).
+    induction sH; simpl in *;
+      unfold rename_assignment_lhs, map.extends, map.not_in_range in *; intros; simp;
+        try solve [
+              try (destruct_one_match_hyp; simp);
+              (split; [ (try eapply map.injective_put); eassumption
+                      | split;
+                        [ intros; rewrite ?map.get_put_diff by congruence
+                        |  first [ refine (ex_intro _ nil (conj eq_refl _))
+                                 | refine (ex_intro _ [_] (conj eq_refl _)) ]];
+                        eauto ])].
+
+    - (* SIf *)
+      specialize IHsH1 with (4 := E). auto_specialize. simp.
+      apply_in_hyps @invert_NoDup_app.
+      apply_in_hyps @invert_Forall_app.
+      simp.
+      specialize IHsH2 with (4 := E0). auto_specialize. simp.
+      split; [assumption|].
+      split; [eauto|].
+      refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
+      rewrite <- List.app_assoc. reflexivity.
+    - (* SLoop *)
+      case TODO_sam.
+    - (* SSeq *)
+      case TODO_sam.
+    - (* SCall *)
+      case TODO_sam.
+    - (* SInteract *)
+      case TODO_sam.
+  Qed.
+
   Lemma rename_extends_and_shrinks: forall sH r1 r2 sL av1 av2,
       map.not_in_range r1 av1 ->
       NoDup av1 ->
@@ -488,6 +557,7 @@ Section RegAlloc.
       forall lL r r' av av' sL,
       map.injective r ->
       map.not_in_range r av ->
+      NoDup av ->
       rename r sH av = Some (r', sL, av') ->
       states_compat lH r lL ->
       @exec impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
@@ -524,12 +594,18 @@ Section RegAlloc.
       + eapply exec.weaken.
         * eapply IHexec; eauto.
         * cbv beta. intros. simp. eexists; split; eauto.
-          eapply states_compat_extends; [|eassumption].
-          edestruct rename_extends_and_shrinks; cycle -1.
-          { simp. eassumption. }
-          all: case TODO_sam.
+          edestruct rename_extends_and_shrinks. 3: exact E. all: try assumption. simp.
+          apply invert_NoDup_app in H4. simp.
+          edestruct rename_extends_and_shrinks. 3: exact E0. all: try assumption. simp.
+          eapply states_compat_extends; cycle 1; eassumption.
     - (* @exec.if_false *)
-      case TODO_sam.
+      eapply @exec.if_false.
+      + eauto using eval_bcond_compat.
+      + edestruct rename_extends_and_shrinks. 3: exact E. all: try assumption. simp.
+        apply invert_NoDup_app in H4. simp.
+        edestruct rename_extends_and_shrinks. 3: exact E0. all: try assumption. simp.
+        eapply IHexec. 4: eassumption. all: try eassumption.
+        all: case TODO_sam.
     - (* @exec.loop *)
       case TODO_sam.
     - (* @exec.seq *)
