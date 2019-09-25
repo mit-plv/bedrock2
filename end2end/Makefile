@@ -5,11 +5,22 @@ default_target: all
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n-Q ../processor/src/processor processor\n-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../compiler/src/compiler compiler\n-Q ./src/end2end end2end\n
-DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
+DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n-Q ../processor/src/processor processor\n-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../compiler/src/compiler compiler\n
+CURFLAGS_NL=-Q ./src/end2end end2end\n
+
+EXTERNAL_DEPENDENCIES?=
+
+# If we get our dependencies externally, then we should not bind the local versions of things
+ifneq ($(EXTERNAL_DEPENDENCIES),1)
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)$(DEPFLAGS_NL)
+else
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)
+endif
+
+ALLDEPFLAGS=$(subst \n, ,$(ALLDEPFLAGS_NL))
 
 _CoqProject:
-	printf -- '$(DEPFLAGS_NL)' > _CoqProject
+	printf -- '$(ALLDEPFLAGS_NL)' > _CoqProject
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
@@ -33,7 +44,7 @@ clean:: Makefile.coq.all
 	rm -f admits.txt PrintAdmits.vo admits1perLine.txt
 
 admits.txt: all0 PrintAdmits.v
-	$(COQBIN)coqc $(DEPFLAGS) PrintAdmits.v > admits.txt
+	$(COQBIN)coqc $(ALLDEPFLAGS) PrintAdmits.v > admits.txt
 
 admits1perLine.txt: admits.txt
 	grep admits.txt -e '^[^ ]* : ' -e 'used in' | grep -v '^[^ ]*TODO : False' | sed -e 's/:.*//g' > admits1perLine.txt

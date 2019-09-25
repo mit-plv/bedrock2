@@ -4,7 +4,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 
 Require Import coqutil.Z.Lia.
 
-Require Import Kami.
+Require Import Kami.Kami.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.IsaRv32.
 Require Import Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 Require Import Kami.Ex.ProcMemCorrect.
@@ -126,7 +126,7 @@ Section Parametrized.
              end = Some _ |- _] =>
          destruct (decKind k1 k2); try discriminate
        end; kregmap_red).
-    
+
     inversion H; subst; clear H.
     simpl in *.
     split; [reflexivity|].
@@ -187,7 +187,7 @@ Section Parametrized.
              end = Some _ |- _] =>
          destruct (decKind k1 k2); try discriminate
        end; kregmap_red).
-    
+
     inversion H; subst; clear H.
     simpl in *.
     repeat split; [assumption|].
@@ -205,7 +205,7 @@ Section Parametrized.
       apply wnot_zero.
     }
     subst.
-    
+
     apply lt_wlt.
     rewrite wones_pow2_minus_one.
     pose proof (wordToNat_bound iaddr).
@@ -305,7 +305,7 @@ Section Parametrized.
       + reflexivity.
       + exfalso; clear -H Heqic; congruence.
       + exfalso; clear -H Heqic; congruence.
-        
+
     - kinv_red.
       unfold pRegsToT in *.
       kregmap_red.

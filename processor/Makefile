@@ -5,11 +5,22 @@ default_target: all
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n-Q ./src/processor processor\n
-DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
+DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n
+CURFLAGS_NL=-Q ./src/processor processor\n
+
+EXTERNAL_DEPENDENCIES?=
+
+# If we get our dependencies externally, then we should not bind the local versions of things
+ifneq ($(EXTERNAL_DEPENDENCIES),1)
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)$(DEPFLAGS_NL)
+else
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)
+endif
+
+ALLDEPFLAGS=$(subst \n, ,$(ALLDEPFLAGS_NL))
 
 _CoqProject:
-	printf -- '$(DEPFLAGS_NL)' > _CoqProject
+	printf -- '$(ALLDEPFLAGS_NL)' > _CoqProject
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
