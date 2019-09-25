@@ -487,88 +487,101 @@ Section RegAlloc.
            | H: _ |- _ => unique eapply t in copy of H
            end.
 
-  (* a list of useful properties of rename_binds, all proved in one induction *)
-  Lemma rename_binds_props: forall bH r1 r2 bL av1 av2,
+  Lemma rename_assignment_lhs_props: forall {x r1 r2 y av1 av2},
+      rename_assignment_lhs r1 x av1 = Some (r2, y, av2) ->
       map.injective r1 ->
       map.not_in_range r1 av1 ->
       NoDup av1 ->
-      rename_binds r1 bH av1 = Some (r2, bL, av2) ->
       map.injective r2 /\
       map.extends r2 r1 /\
       exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
   Proof.
     pose proof (map.not_in_range_put (ok := src2impOk)).
+    intros.
+    unfold rename_assignment_lhs, map.extends, map.not_in_range in *; intros; simp;
+      try solve [
+            try (destruct_one_match_hyp; simp);
+            (split; [ (try eapply map.injective_put); eassumption
+                    | split;
+                      [ intros; rewrite ?map.get_put_diff by congruence
+                      |  first [ refine (ex_intro _ nil (conj eq_refl _))
+                               | refine (ex_intro _ [_] (conj eq_refl _)) ]];
+                      eauto ])].
+  Qed.
+
+  (* a list of useful properties of rename_binds, all proved in one induction *)
+  Lemma rename_binds_props: forall {bH r1 r2 bL av1 av2},
+      rename_binds r1 bH av1 = Some (r2, bL, av2) ->
+      map.injective r1 ->
+      map.not_in_range r1 av1 ->
+      NoDup av1 ->
+      map.injective r2 /\
+      map.extends r2 r1 /\
+      exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
+  Proof.
     induction bH; intros; simpl in *; simp.
     - split; [assumption|].
       split; [apply extends_refl|].
       exists nil.
       split; [reflexivity|].
       assumption.
-    - specialize IHbH with (4 := E0).
-      unfold rename_assignment_lhs, map.extends, map.not_in_range in *; intros; simp.
-      destruct_one_match_hyp; simp.
-      + auto_specialize. simp.
-        eauto.
-      + edestruct IHbH; eauto.
-        * eapply map.injective_put; assumption.
-        * simp.
-          split; [assumption|].
-          split.
-          { intros. eapply H2l.
-            rewrite ?map.get_put_diff by congruence.
-            assumption. }
-          { refine (ex_intro _ (_ :: _) (conj _ _)).
-            2: eassumption. rewrite List.app_comm_cons. reflexivity. }
+    - specialize IHbH with (1 := E0).
+      destruct (rename_assignment_lhs_props E); try assumption. simp.
+      apply_in_hyps @invert_NoDup_app. simp.
+      edestruct IHbH; eauto. simp.
+      split; [assumption|].
+      split.
+      + intros. eapply extends_trans; eassumption.
+      + refine (ex_intro _ (_ ++ _) (conj _ _)).
+        2: eassumption. rewrite <- List.app_assoc. reflexivity.
   Qed.
 
   (* a list of useful properties of rename, all proved in one induction *)
-  Lemma rename_props: forall sH r1 r2 sL av1 av2,
+  Lemma rename_props: forall {sH r1 r2 sL av1 av2},
+      rename r1 sH av1 = Some (r2, sL, av2) ->
       map.injective r1 ->
       map.not_in_range r1 av1 ->
       NoDup av1 ->
-      rename r1 sH av1 = Some (r2, sL, av2) ->
       map.injective r2 /\
       map.extends r2 r1 /\
       exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
   Proof.
-    pose proof (map.not_in_range_put (ok := src2impOk)).
-    induction sH; simpl in *;
-      unfold rename_assignment_lhs, map.extends, map.not_in_range in *; intros; simp;
-        try solve [
-              try (destruct_one_match_hyp; simp);
-              (split; [ (try eapply map.injective_put); eassumption
-                      | split;
-                        [ intros; rewrite ?map.get_put_diff by congruence
-                        |  first [ refine (ex_intro _ nil (conj eq_refl _))
-                                 | refine (ex_intro _ [_] (conj eq_refl _)) ]];
-                        eauto ])].
+    induction sH; simpl in *; intros; simp; eauto using rename_assignment_lhs_props;
+      unfold map.extends;
+      try solve [
+            (split; [ (try eapply map.injective_put); eassumption
+                    | split;
+                      [ intros; rewrite ?map.get_put_diff by congruence
+                      |  first [ refine (ex_intro _ nil (conj eq_refl _))
+                               | refine (ex_intro _ [_] (conj eq_refl _)) ]];
+                      eauto ])].
 
     - (* SIf *)
-      specialize IHsH1 with (4 := E). auto_specialize. simp.
+      specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
       apply_in_hyps @invert_Forall_app.
       simp.
-      specialize IHsH2 with (4 := E0). auto_specialize. simp.
+      specialize IHsH2 with (1 := E0). auto_specialize. simp.
       split; [assumption|].
       split; [eauto|].
       refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
       rewrite <- List.app_assoc. reflexivity.
     - (* SLoop *)
-      specialize IHsH1 with (4 := E). auto_specialize. simp.
+      specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
       apply_in_hyps @invert_Forall_app.
       simp.
-      specialize IHsH2 with (4 := E1). auto_specialize. simp.
+      specialize IHsH2 with (1 := E1). auto_specialize. simp.
       split; [assumption|].
       split; [eauto|].
       refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
       rewrite <- List.app_assoc. reflexivity.
     - (* SSeq *)
-      specialize IHsH1 with (4 := E). auto_specialize. simp.
+      specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
       apply_in_hyps @invert_Forall_app.
       simp.
-      specialize IHsH2 with (4 := E0). auto_specialize. simp.
+      specialize IHsH2 with (1 := E0). auto_specialize. simp.
       split; [assumption|].
       split; [eauto|].
       refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
@@ -578,6 +591,25 @@ Section RegAlloc.
     - (* SInteract *)
       apply rename_binds_props in E0; assumption.
   Qed.
+
+  Lemma rename_assignment_lhs_idemp: forall r1 x av1 r2 y av2,
+      rename_assignment_lhs r1 x av1 = Some (r2, y, av2) ->
+      rename_assignment_lhs r2 x av2 = Some (r2, y, av2).
+  Proof.
+    unfold rename_assignment_lhs in *.
+    intros.
+    destruct_one_match_hyp; simp.
+    - rewrite_match. reflexivity.
+    - rewrite map.get_put_same. reflexivity.
+  Qed.
+
+  Lemma rename_idemp: forall sH r1 av1 r2 sL av2,
+      rename r1 sH av1 = Some (r2, sL, av2) ->
+      rename r2 sH av2 = Some (r2, sL, av2).
+  Proof.
+    intros.
+    (* TODO add to _props *)
+  Abort.
 
   Lemma rename_correct: forall eH eL,
       envs_related eH eL ->
@@ -623,22 +655,22 @@ Section RegAlloc.
       + eapply exec.weaken.
         * eapply IHexec; eauto.
         * cbv beta. intros. simp. eexists; split; eauto.
-          edestruct rename_props. 4: exact E. all: try assumption. simp.
+          destruct (rename_props E); try assumption. simp.
           apply_in_hyps @invert_NoDup_app. simp.
-          edestruct rename_props. 4: exact E0. all: try assumption. simp.
+          destruct (rename_props E0); try assumption. simp.
           eapply states_compat_extends; cycle 1; eassumption.
     - (* @exec.if_false *)
       eapply @exec.if_false.
       + eauto using eval_bcond_compat.
-      + edestruct rename_props. 4: exact E. all: try assumption. simp.
+      + destruct (rename_props E); try assumption. simp.
         apply_in_hyps @invert_NoDup_app. simp.
-        edestruct rename_props. 4: exact E0. all: try assumption. simp.
+        destruct (rename_props E0); try assumption. simp.
         eapply IHexec. 4: eassumption. all: try eassumption.
         eapply states_compat_extends; cycle 1; eassumption.
     - (* @exec.loop *)
-      edestruct rename_props. 4: exact E. all: try assumption. simp.
+      destruct (rename_props E); try assumption. simp.
       apply_in_hyps @invert_NoDup_app. simp.
-      edestruct rename_props. 4: exact E1. all: try assumption. simp.
+      destruct (rename_props E1); try assumption. simp.
       apply_in_hyps @invert_NoDup_app. simp.
       rename IHexec into IH1.
       rename H4 into IH2.
@@ -684,9 +716,9 @@ Section RegAlloc.
       + cbv beta. intros. simp.
         eapply IH12; try eassumption.
     - (* @exec.seq *)
-      edestruct rename_props. 4: exact E. all: try assumption. simp.
+      destruct (rename_props E); try assumption. simp.
       apply_in_hyps @invert_NoDup_app. simp.
-      edestruct rename_props. 4: exact E0. all: try assumption. simp.
+      destruct (rename_props E0); try assumption. simp.
       rename IHexec into IH1, H2 into IH2.
       specialize IH1 with (4 := E).
       specialize IH2 with (5 := E0).
