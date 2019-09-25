@@ -11,11 +11,22 @@ VS:=$(shell find $(SRCDIR) -type f -name '*.v')
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q src/bedrock2 bedrock2\n-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
-DEPFLAGS=$(subst \n, ,$(DEPFLAGS_NL))
+DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
+CURFLAGS_NL=-Q src/bedrock2 bedrock2\n
+
+EXTERNAL_DEPENDENCIES?=
+
+# If we get our dependencies externally, then we should not bind the local versions of things
+ifneq ($(EXTERNAL_DEPENDENCIES),1)
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)$(DEPFLAGS_NL)
+else
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)
+endif
+
+ALLDEPFLAGS=$(subst \n, ,$(ALLDEPFLAGS_NL))
 
 _CoqProject:
-	printf -- '$(DEPFLAGS_NL)' > _CoqProject
+	printf -- '$(ALLDEPFLAGS_NL)' > _CoqProject
 
 all_coqmakefile: Makefile.coq.all $(VS)
 	rm -f .coqdeps.d
@@ -29,7 +40,7 @@ Makefile.coq.all: force _CoqProject
 	$(COQ_MAKEFILE) $(VS) -o Makefile.coq.all
 
 special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin all_coqmakefile
-	coqc -q $(DEPFLAGS) $< > special/BytedumpTest.out.tmp0
+	coqc -q $(ALLDEPFLAGS) $< > special/BytedumpTest.out.tmp0
 	head -c $$(($$(wc -c < special/BytedumpTest.out.tmp0 | xargs) - 1)) special/BytedumpTest.out.tmp0 > special/BytedumpTest.out.tmp
 	rm special/BytedumpTest.out.tmp0
 	hexdump < /dev/null && \

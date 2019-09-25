@@ -4,7 +4,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 
 Require Import coqutil.Z.Lia.
 
-Require Import Kami.
+Require Import Kami.Kami.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.IsaRv32.
 Require Import Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 Require Import Kami.Ex.ProcMemCorrect.
@@ -56,6 +56,23 @@ Section Parametrized.
   (** * Inverting Kami rules for instruction executions *)
 
   Local Definition iaddrSizeZ: Z := Z.of_nat iaddrSize.
+
+  Lemma pRegsToT_init:
+    pRegsToT (initRegs (getRegInits pproc)) =
+    Some {| pc := evalConstT (pcInit procInit);
+            rf := evalConstT (rfInit procInit);
+            pinit := false;
+            pgm := evalVec (mapVec (@evalConstT _)
+                                   (replicate (ConstBit (wzero _)) iaddrSize));
+            mem := evalConstT memInit |}.
+  Proof.
+    simpl; unfold pRegsToT.
+    Opaque decKind.
+    simpl.
+    kregmap_red.
+    Transparent decKind.
+    reflexivity.
+  Qed.
 
   Ltac kinvert_more :=
     kinvert;
@@ -109,7 +126,7 @@ Section Parametrized.
              end = Some _ |- _] =>
          destruct (decKind k1 k2); try discriminate
        end; kregmap_red).
-    
+
     inversion H; subst; clear H.
     simpl in *.
     split; [reflexivity|].
@@ -170,7 +187,7 @@ Section Parametrized.
              end = Some _ |- _] =>
          destruct (decKind k1 k2); try discriminate
        end; kregmap_red).
-    
+
     inversion H; subst; clear H.
     simpl in *.
     repeat split; [assumption|].
@@ -188,7 +205,7 @@ Section Parametrized.
       apply wnot_zero.
     }
     subst.
-    
+
     apply lt_wlt.
     rewrite wones_pow2_minus_one.
     pose proof (wordToNat_bound iaddr).
@@ -288,7 +305,7 @@ Section Parametrized.
       + reflexivity.
       + exfalso; clear -H Heqic; congruence.
       + exfalso; clear -H Heqic; congruence.
-        
+
     - kinv_red.
       unfold pRegsToT in *.
       kregmap_red.
@@ -519,7 +536,8 @@ Section PerInstAddr.
   Definition proc: Kami.Syntax.Modules := projT1 procInl.
 
   Definition hst := Kami.Semantics.RegsT.
-
+  Definition KamiMachine := hst.
+  
   (** Abstract hardware state *)
   Definition st :=
     @pst nwidth ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx.
@@ -561,3 +579,5 @@ Section PerInstAddr.
   Qed.
 
 End PerInstAddr.
+
+

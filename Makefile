@@ -21,6 +21,22 @@ COQC := $(ABS_ROOT_DIR)/coqc-try-mangle-names.sh
 export COQC
 endif
 
+EXTERNAL_DEPENDENCIES?=
+
+ifneq ($(EXTERNAL_DEPENDENCIES),1)
+
+bedrock2: coqutil
+riscv-coq: coqutil
+kami: riscv-coq
+compiler: riscv-coq
+processor: riscv-coq kami
+end2end: compiler bedrock2 processor
+all: bedrock2 compiler processor end2end
+clean: clean_coqutil clean_riscv-coq clean_kami
+
+endif
+
+
 clean_manglenames:
 	find . -type f -name '*.manglenames' -delete
 
@@ -30,42 +46,42 @@ coqutil:
 clean_coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil clean
 
-kami: riscv-coq
+kami:
 	$(MAKE) -C $(DEPS_DIR)/kami
 
 clean_kami:
 	$(MAKE) -C $(DEPS_DIR)/kami clean
 
-riscv-coq: coqutil
+riscv-coq:
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq all
 
 clean_riscv-coq:
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq clean
 
-bedrock2: coqutil
+bedrock2:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2
 
 clean_bedrock2:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 clean
 
-compiler: riscv-coq bedrock2
+compiler: bedrock2
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
 
 clean_compiler:
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler clean
 
-processor: riscv-coq kami
+processor:
 	$(MAKE) -C $(ABS_ROOT_DIR)/processor
 
 clean_processor:
 	$(MAKE) -C $(ABS_ROOT_DIR)/processor clean
 
-end2end: riscv-coq kami compiler bedrock2 processor
+end2end: compiler bedrock2 processor
 	$(MAKE) -C $(ABS_ROOT_DIR)/end2end
 
 clean_end2end:
 	$(MAKE) -C $(ABS_ROOT_DIR)/end2end clean
 
-all: coqutil riscv-coq bedrock2 compiler processor end2end
+all: bedrock2 compiler processor end2end
 
-clean: clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end
+clean: clean_bedrock2 clean_compiler clean_processor clean_end2end

@@ -122,6 +122,17 @@ Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters := {
 
 Section Connect.
 
+  Context (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
+                               (Z.to_nat KamiProc.width)).
+
+  Context (instrMemSizeLg: Z).
+  Hypothesis instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30.
+
+  Definition p4mm: Kami.Syntax.Modules :=
+    KamiRiscv.p4mm instrMemSizeLg (proj1 instrMemSizeLg_bounds)
+                   (proj2 instrMemSizeLg_bounds)
+                   memInit.
+
   Context {Registers: map.map Register Utility.word}
           {Registers_ok: map.ok Registers}
           {mem: map.map Utility.word Utility.byte}
@@ -177,11 +188,6 @@ Section Connect.
   - case TODO.
   Defined.
 
-  Definition KamiMachine: Type := KamiRiscv.KamiMachine.
-
-  Context (instrMemSizeLg: Z).
-  Hypothesis instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30.
-
   Lemma HbtbAddr: BinInt.Z.to_nat instrMemSizeLg = (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat.
   Proof. PreOmega.zify; rewrite ?Z2Nat.id in *; blia. Qed.
 
@@ -221,9 +227,9 @@ Section Connect.
                             (@Pipeline.FlattenExpr_parameters pipeline_params)))).
   Context (prog: @Program strname_sem cmd)
           (spec: @ProgramSpec strname_sem)
-          (otherMemInit: mem)
           (ml: MemoryLayout 32)
           (mlOk: MemoryLayoutOk ml).
+
 
   Hypothesis instrMemSizeLg_agrees_with_ml:
     word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
@@ -234,22 +240,8 @@ Section Connect.
   Definition goodTraceE(t: list Event): Prop :=
     exists bedrockTrace, traces_related t bedrockTrace /\ spec.(goodTrace) bedrockTrace.
 
-  (* compiles the section var "prog : Program cmd" from bedrock2 down to a kami instruction mem *)
-  Definition compile_to_kami: kword instrMemSizeLg -> kword 32.
-  Admitted.
-
-  Definition kamiMemInit :=
-    memInit instrMemSizeLg compile_to_kami otherMemInit.
-
-  (* TODO can we do with fewer explicit implicit arguments? *)
-  Definition p4mm: Kami.Syntax.Modules :=
-    KamiRiscv.p4mm instrMemSizeLg (proj1 instrMemSizeLg_bounds)
-                   (proj2 instrMemSizeLg_bounds)
-                   compile_to_kami otherMemInit.
-
-  Definition kamiMemToBedrockMem(km: SC.MemInit (Z.to_nat width) IsaRv32.rv32DataBytes): mem.
-    case TODO.
-  Defined.
+  Definition kamiMemToBedrockMem(km: SC.MemInit (Z.to_nat width) IsaRv32.rv32DataBytes): mem :=
+    FetchOk.convertDataMem (Semantics.evalConstT km).
 
   Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t').
 
@@ -300,11 +292,11 @@ Section Connect.
       constructor.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3init.
-        specialize_first Establish (kamiMemToBedrockMem kamiMemInit).
+        specialize_first Establish (kamiMemToBedrockMem (kamiMemInit memInit)).
         assert (initialLocals: @locals strname_sem) by case TODO. (* obtain from kami *)
         specialize_first Establish initialLocals.
         specialize_first P3init Establish.
-        replace m0 with (kamiMemToBedrockMem kamiMemInit) by case TODO.
+        replace m0 with (kamiMemToBedrockMem (kamiMemInit memInit)) by case TODO.
         replace l0 with initialLocals by case TODO.
         eapply P3init. 1,2: case TODO.
       - intros.
