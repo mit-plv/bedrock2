@@ -109,7 +109,7 @@ Section FlatImp1.
   Section WithEnv.
     Variable (e: env).
 
-    Definition eval_bbinop(st: locals)(op: bbinop)(x y: word): bool :=
+    Definition eval_bbinop(op: bbinop)(x y: word): bool :=
       match op with
       | BEq  => word.eqb x y
       | BNe  => negb (word.eqb x y)
@@ -124,7 +124,7 @@ Section FlatImp1.
       | CondBinary op x y =>
           'Some mx <- map.get st x;
           'Some my <- map.get st y;
-          Some (eval_bbinop st op mx my)
+          Some (eval_bbinop op mx my)
       | CondNez x =>
           'Some mx <- map.get st x;
           Some (negb (word.eqb mx (word.of_Z 0)))

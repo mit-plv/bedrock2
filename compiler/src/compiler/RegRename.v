@@ -32,6 +32,34 @@ Module map.
     | (k, v) :: rest => map.put (rec rest) k v
     end.
 
+  Definition injective{K V: Type}{M: map.map K V}(m: M): Prop :=
+    forall k1 k2 v,
+      map.get m k1 = v -> map.get m k2 = v -> k1 = k2.
+
+  (* Alternative:
+  Definition injective{K V: Type}{M: map.map K V}(m: M): Prop :=
+    forall k1 k2 v1 v2,
+      k1 <> k2 -> map.get m k1 = Some v1 -> map.get m k2 = Some v2 -> v1 <> v2.
+  *)
+
+  Definition not_in_range{K V: Type}{M: map.map K V}(m: M)(l: list V): Prop :=
+    List.Forall (fun v => forall k, map.get m k <> Some v) l.
+
+  Lemma not_in_range_put{K V: Type}{M: map.map K V}{ok: map.ok M}
+        {key_eqb: K -> K -> bool}{key_eq_dec: EqDecider key_eqb}:
+    forall (m: M)(l: list V)(x: K)(y: V),
+      ~ In y l ->
+      not_in_range m l ->
+      not_in_range (map.put m x y) l.
+  Proof.
+    intros. unfold not_in_range in *. apply Forall_forall. intros.
+    eapply Forall_forall in H0. 2: eassumption.
+    rewrite map.get_put_dec.
+    destruct_one_match.
+    - subst. intro C. simp. contradiction.
+    - eapply H0.
+  Qed.
+
   Lemma putmany_of_pairs_extends{K V: Type}{M: map.map K V}{ok: map.ok M}
         {key_eqb: K -> K -> bool}{key_eq_dec: EqDecider key_eqb}:
     forall (pairs: list (K * V)) (m1 m2: M),
@@ -220,10 +248,29 @@ Section RegAlloc.
       | nil => map.empty
       end.
 
+  (* Should lH and m have the same domain?
+     - lH could have fewer vars in domain because we didn't pass through one branch of the if
+     - lH cannot have more vars in its domain because that would mean we don't know where to store
+       the value in the target program
+     So, (dom lH) subsetOf (dom m) *)
   Definition states_compat(lH: srcLocals)(m: src2imp)(lL: impLocals) :=
+    forall (x: srcvar) (v: word),
+      map.get lH x = Some v ->
+      exists y, map.get m x = Some y /\ map.get lL y = Some v.
+
+  Definition states_compat'(lH: srcLocals)(m: src2imp)(lL: impLocals) :=
     forall (x: srcvar) (y: impvar),
       map.get m x = Some y ->
       map.get lH x = map.get lL y.
+
+  (* slightly stronger: *)
+  Definition states_compat''(lH: srcLocals)(m: src2imp)(lL: impLocals) :=
+    (forall (x: srcvar) (v: word),
+        map.get lH x = Some v ->
+        exists y, map.get m x = Some y) /\
+    (forall (x: srcvar) (y: impvar),
+        map.get m x = Some y ->
+        map.get lH x = map.get lL y).
 
   Lemma getmany_of_list_states_compat: forall srcnames impnames r lH lL argvals,
       map.getmany_of_list lH srcnames = Some argvals ->
@@ -241,7 +288,7 @@ Section RegAlloc.
     simp.
     replace (map.get lL impname) with (Some argval); cycle 1. {
       rewrite <- E1.
-      unfold states_compat in *; eauto.
+      unfold states_compat in *. firstorder congruence.
     }
     erewrite IHsrcnames; eauto.
   Qed.
@@ -271,23 +318,176 @@ Section RegAlloc.
     apply map.get_put_same.
   Qed.
 
-  Lemma state_compat_put: forall lH lL r x av r' y av' v,
+  Lemma states_compat_put: forall lH lL r x av r' y av' v,
+      map.injective r ->
+      map.not_in_range r av ->
       rename_assignment_lhs r x av = Some (r', y, av') ->
       states_compat lH r lL ->
       states_compat (map.put lH x v) r' (map.put lL y v).
   Proof.
-    unfold rename_assignment_lhs, states_compat. intros.
-    destruct (map.get r x); simp.
-    - specialize H0 with (1 := H1).
-      do 2 rewrite map.get_put_dec.
-      (* needs injectivity of r *)
-  Abort.
+    unfold rename_assignment_lhs, states_compat.
+    intros.
+    setoid_rewrite map.get_put_dec.
+    destruct_one_match_hyp; simp.
+    - rewrite map.get_put_dec in H3.
+      destruct_one_match_hyp; subst; simp.
+      + eexists. split; [eassumption|].
+        destruct_one_match; congruence.
+      + specialize H2 with (1 := H3). simp.
+        eexists. split; [eassumption|].
+        destruct_one_match; try congruence.
+        subst.
+        unfold map.injective in H.
+        specialize H with (1 := E) (2 := H2l). congruence.
+    - rewrite map.get_put_dec in H3.
+      setoid_rewrite map.get_put_dec.
+      unfold map.not_in_range in *. simp.
+      destruct_one_match; subst; simp.
+      + eexists. split; [reflexivity|].
+        destruct_one_match; subst; simp; congruence.
+      + specialize H2 with (1 := H3). simp.
+        eexists. split; [eassumption|].
+        destruct_one_match; try congruence.
+  Qed.
+
+  Lemma states_compat_put': forall lH lL r x av r' y av' v,
+      map.injective r ->
+      map.not_in_range r av ->
+      rename_assignment_lhs r x av = Some (r', y, av') ->
+      states_compat' lH r lL ->
+      states_compat' (map.put lH x v) r' (map.put lL y v).
+  Proof.
+    unfold rename_assignment_lhs, states_compat'. intros.
+    do 2 rewrite map.get_put_dec.
+    destruct_one_match_hyp; simp.
+    - specialize H2 with (1 := H3).
+      do 2 destruct_one_match; subst; try congruence.
+      unfold map.injective in H.
+      specialize H with (1 := E) (2 := H3). congruence.
+    - rewrite map.get_put_dec in H3.
+      unfold map.not_in_range in *. simp.
+      do 2 destruct_one_match; subst; try congruence. eauto.
+  Qed.
+
+  Lemma eval_bcond_compat: forall (lH : srcLocals) r (lL: impLocals) condH condL b,
+      rename_cond r condH = Some condL ->
+      states_compat lH r lL ->
+      @eval_bcond srcSemanticsParams lH condH = Some b ->
+      @eval_bcond impSemanticsParams lL condL = Some b.
+  Proof.
+    intros.
+    unfold rename_cond, eval_bcond in *.
+    destruct_one_match_hyp; simp;
+      repeat match goal with
+             | C: states_compat _ _ _, D: _ |- _ => unique pose proof (C _ _ D)
+             end;
+      simp;
+      simpl in *. (* PARAMRECORDS *)
+    - (* TODO such simplification patterns should be automated *)
+      rewrite E2 in Hl. rewrite E1 in H1l. simp.
+      rewrite H1r. rewrite Hr.
+      reflexivity.
+    - rewrite E0 in Hl. simp.
+      rewrite Hr.
+      reflexivity.
+  Qed.
+
+  Lemma eval_bcond_compat': forall (lH : srcLocals) r (lL: impLocals) condH condL b,
+      rename_cond r condH = Some condL ->
+      states_compat' lH r lL ->
+      @eval_bcond srcSemanticsParams lH condH = Some b ->
+      @eval_bcond impSemanticsParams lL condL = Some b.
+  Proof.
+    intros.
+    unfold rename_cond, eval_bcond in *.
+    destruct_one_match_hyp; simp;
+      repeat match goal with
+             | C: states_compat' _ _ _, D: _ |- _ => unique pose proof (C _ _ D)
+             end;
+      simpl in *. (* PARAMRECORDS *)
+    - rewrite <- H1. rewrite E. (* <-- TODO such simplification patterns should be automated *)
+      rewrite <- H. rewrite E0.
+      reflexivity.
+    - rewrite <- H. rewrite E.
+      reflexivity.
+  Qed.
+
+  Lemma states_compat_extends: forall lL lH r1 r2,
+      map.extends r2 r1 ->
+      states_compat lH r1 lL ->
+      states_compat lH r2 lL.
+  Proof.
+    unfold map.extends, states_compat. intros.
+    specialize H0 with (1 := H1). simp.
+    eauto.
+  Qed.
+
+  (* TODO is this really in no library? *)
+  Lemma invert_Forall_app: forall {T: Type} (l1 l2: list T) (P: T -> Prop),
+      Forall P (l1 ++ l2) ->
+      Forall P l1 /\ Forall P l2.
+  Proof.
+    induction l1; intros; simpl in *; simp; eauto.
+    specialize (IHl1 _ _ H3). simp.
+    repeat constructor; eauto.
+  Qed.
+
+  Lemma invert_NoDup_app: forall {T: Type} (l1 l2: list T),
+      NoDup (l1 ++ l2) ->
+      NoDup l1 /\ NoDup l2 /\ forall x, In x l1 -> In x l2 -> False.
+  Proof.
+    induction l1; intros; simpl in *; simp.
+    - repeat constructor; auto.
+    - specialize IHl1 with (1 := H3). simp. repeat constructor; try assumption.
+      + eauto using in_or_app.
+      + intros. destruct H.
+        * subst. apply H2. auto using in_or_app.
+        * eauto using in_or_app.
+  Qed.
+
+  Lemma rename_extends_and_shrinks: forall sH r1 r2 sL av1 av2,
+      map.not_in_range r1 av1 ->
+      NoDup av1 ->
+      rename r1 sH av1 = Some (r2, sL, av2) ->
+      map.extends r2 r1 /\ exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
+  Proof.
+    pose proof (map.not_in_range_put (ok := src2impOk)).
+    induction sH; simpl in *;
+      unfold rename_assignment_lhs, map.extends, map.not_in_range in *; intros; simp;
+        try solve [
+              try (destruct_one_match_hyp; simp);
+              (split;
+               [ intros; rewrite ?map.get_put_diff by congruence
+               |  first [ refine (ex_intro _ nil (conj eq_refl _))
+                        | refine (ex_intro _ [_] (conj eq_refl _)) ]];
+               eauto)].
+
+    - (* SIf *)
+      specialize IHsH1 with (3 := E). specialize IHsH1 with (1 := H0) (2 := H1). simp.
+      apply invert_NoDup_app in H1.
+      apply invert_Forall_app in H0. simp.
+      specialize IHsH2 with (3 := E0).
+      destruct IHsH2; simp; try assumption.
+      split; eauto.
+      refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
+      rewrite <- List.app_assoc. reflexivity.
+    - (* SLoop *)
+      case TODO_sam.
+    - (* SSeq *)
+      case TODO_sam.
+    - (* SCall *)
+      case TODO_sam.
+    - (* SInteract *)
+      case TODO_sam.
+  Qed.
 
   Lemma checker_correct: forall eH eL,
       envs_related eH eL ->
       forall sH t m lH mc post,
       @exec srcSemanticsParams eH sH t m lH mc post ->
       forall lL r r' av av' sL,
+      map.injective r ->
+      map.not_in_range r av ->
       rename r sH av = Some (r', sL, av') ->
       states_compat lH r lL ->
       @exec impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
@@ -301,33 +501,33 @@ Section RegAlloc.
     | _ = ?r => let h := head r in idtac "- (*" h "*)"
     end.
     *)
-    induction 2; intros; simpl in *; simp.
+    induction 2; intros; simpl in *; simp;
+      repeat match goal with
+             | H: rename_assignment_lhs _ _ _ = _ |- _ =>
+               unique pose proof (rename_assignment_lhs_get H)
+             | C: states_compat _ _ _, D: _ |- _ => unique pose proof (C _ _ D)
+             end;
+      simp;
+      try solve [
+            econstructor; cycle -1; [solve [eauto using states_compat_put]|..];
+            simpl in *; (* PARAMRECORDS *)
+            eauto;
+            congruence].
 
     - (* @exec.interact *)
       case TODO_sam.
     - (* @exec.call *)
       case TODO_sam.
-    - (* @exec.load *)
-      case TODO_sam.
-    - (* @exec.store *)
-      case TODO_sam.
-    - (* @exec.lit *)
-      case TODO_sam.
-    - (* @exec.op *)
-      rename l into lH.
-      pose proof (rename_assignment_lhs_get E) as P.
-      unfold states_compat in *|-.
-      econstructor.
-      + erewrite <- H4; cycle 1; eassumption.
-      + erewrite <- H4; cycle 1; eassumption.
-      + exists (map.put lH x (Semantics.interp_binop op y' z')).
-        split.
-        * intros. case TODO_sam.
-        * case TODO_sam.
-    - (* @exec.set *)
-      case TODO_sam.
     - (* @exec.if_true *)
-      case TODO_sam.
+      eapply @exec.if_true.
+      + eauto using eval_bcond_compat.
+      + eapply exec.weaken.
+        * eapply IHexec; eauto.
+        * cbv beta. intros. simp. eexists; split; eauto.
+          eapply states_compat_extends; [|eassumption].
+          edestruct rename_extends_and_shrinks; cycle -1.
+          { simp. eassumption. }
+          all: case TODO_sam.
     - (* @exec.if_false *)
       case TODO_sam.
     - (* @exec.loop *)
@@ -338,16 +538,12 @@ Section RegAlloc.
       1: eapply IH1; eassumption.
       cbv beta.
       intros. simp.
-      eapply IH2; eassumption.
-    - (* @exec.skip *)
-      case TODO_sam.
-  Qed.
-
-
+      eapply IH2; try eassumption.
+      all: case TODO_sam.
+  all: fail.
+  Admitted.
 
 (*
-unfold states_compat, rename_assignment_lhs in *;
-
 
   Lemma states_compat_put: forall lH lL v x y r,
       map.get r x = None ->
@@ -387,7 +583,5 @@ unfold states_compat, rename_assignment_lhs in *;
       destruct H as (lL' & H).
       exists lL'. split; [exact H|].
   Abort.
-
-
 
 End RegAlloc.
