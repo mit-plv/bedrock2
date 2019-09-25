@@ -239,14 +239,14 @@ Section Equiv.
     intros; discriminate.
   Qed.
 
-  (** TODO @joonwonc: make two definitions consistent. *)
   Lemma kamiPgmInitFull_RiscvXAddrsSafe:
     forall pgmFull dataMem,
       KamiPgmInitFull (rv32Fetch (Pos.to_nat 32) (Z.to_nat instrMemSizeLg))
                       pgmFull dataMem ->
       RiscvXAddrsSafe instrMemSizeLg pgmFull dataMem kamiXAddrs.
   Proof.
-  Admitted.
+    case TODO. (** TODO @joonwonc: make two definitions consistent. *)
+  Qed.
 
   Lemma kamiStep_sound_case_pgmInitEnd:
     forall km1 t0 rm1 post kupd cs
@@ -390,8 +390,6 @@ Section Equiv.
         eval_decode HR.
 
         (* invert the body of [execute] *)
-        
-
         case TODO.
 
       + (** LH: load-half *) case TODO.
@@ -725,18 +723,19 @@ Section Equiv.
   Lemma states_related_init:
     states_related (initRegs (getRegInits (@proc instrMemSizeLg kamiMemInit)), [])
                    {| getMachine :=
-                        {| (* TODO will need to be the actual value corresponding
-                             to Kami in order for the proof to work *)
-                          RiscvMachine.getRegs :=
-                            convertRegs (Kami.Semantics.evalConstT KamiProc.rfInitVal);
-                          RiscvMachine.getPc := word.of_Z 0;
-                          RiscvMachine.getNextPc := word.of_Z 4;
-                          RiscvMachine.getMem := convertDataMem (evalConstT kamiMemInit);
-                          RiscvMachine.getXAddrs := nil; (* <-- TODO adapt *)
-                          RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
+                        {| RiscvMachine.getRegs :=
+                             convertRegs (Kami.Semantics.evalConstT KamiProc.rfInitVal);
+                           RiscvMachine.getPc := word.of_Z 0;
+                           RiscvMachine.getNextPc := word.of_Z 4;
+                           RiscvMachine.getMem := convertDataMem (evalConstT kamiMemInit);
+                           RiscvMachine.getXAddrs := kamiXAddrs;
+                           RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
                       getMetrics := MetricLogging.EmptyMetricLog; |}.
   Proof.
-    case TODO.
+    econstructor; try reflexivity.
+    - constructor.
+    - apply pRegsToT_init.
+    - intros; discriminate.
   Qed.
 
   Lemma equivalentLabel_preserves_KamiLabelR:

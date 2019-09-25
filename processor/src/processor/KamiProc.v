@@ -57,6 +57,23 @@ Section Parametrized.
 
   Local Definition iaddrSizeZ: Z := Z.of_nat iaddrSize.
 
+  Lemma pRegsToT_init:
+    pRegsToT (initRegs (getRegInits pproc)) =
+    Some {| pc := evalConstT (pcInit procInit);
+            rf := evalConstT (rfInit procInit);
+            pinit := false;
+            pgm := evalVec (mapVec (@evalConstT _)
+                                   (replicate (ConstBit (wzero _)) iaddrSize));
+            mem := evalConstT memInit |}.
+  Proof.
+    simpl; unfold pRegsToT.
+    Opaque decKind.
+    simpl.
+    kregmap_red.
+    Transparent decKind.
+    reflexivity.
+  Qed.
+
   Ltac kinvert_more :=
     kinvert;
     try (repeat
