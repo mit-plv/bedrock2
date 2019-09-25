@@ -32,7 +32,7 @@ Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 Require Import Kami.Ex.IsaRv32.
 
-Require Import processor.KamiProc.
+Require Export processor.KamiProc.
 Require Import processor.FetchOk processor.DecExecOk.
 
 Local Open Scope Z_scope.
@@ -68,24 +68,15 @@ Section Equiv.
   Hypotheses (Hinstr1: 3 <= instrMemSizeLg)
              (Hinstr2: instrMemSizeLg <= width - 2).
 
-  Variables (prg: kword instrMemSizeLg -> kword 32)
-            (otherMemInit: mem).
-  Definition memInit: MemInit (Z.to_nat width) 4%nat.
-    pose prg.
-    pose otherMemInit.
-    case TODO. (* TODO @joonwonc: define using [prg] and [otherMemInit] *)
-  Defined.
-
-  Local Definition kamiProc := @KamiProc.proc instrMemSizeLg memInit.
-  Local Definition KamiMachine := KamiProc.hst.
-  Local Definition KamiSt := @KamiProc.st instrMemSizeLg.
+  Variable (memInit: Vec (ConstT (Data rv32DataBytes)) (Z.to_nat width)).
+  Definition kamiMemInit := ConstVector memInit.
+  Local Definition kamiProc := @KamiProc.proc instrMemSizeLg kamiMemInit.
+  Local Definition kamiStMk := @KamiProc.mk (Z.to_nat width)
+                                            (Z.to_nat instrMemSizeLg)
+                                            rv32InstBytes rv32DataBytes rv32RfIdx.
   Local Notation kamiXAddrs := (kamiXAddrs instrMemSizeLg).
   Local Notation toKamiPc := (toKamiPc instrMemSizeLg).
   Local Notation convertDataMem := (@convertDataMem mem).
-  Local Definition kamiStMk :=
-    @KamiProc.mk (Z.to_nat width)
-                 (Z.to_nat instrMemSizeLg)
-                 rv32InstBytes rv32DataBytes rv32RfIdx.
 
   Definition iset: InstructionSet := RV32IM.
 
@@ -335,6 +326,7 @@ Section Equiv.
       specialize (HXaddr eq_refl); eapply fetch_ok in HXaddr; eauto.
       destruct HXaddr as (rinst & ? & ?).
       (* rewrite H in HR. <-- I want this :P *)
+      
       match type of HR with
         match ?X with _ => _ end =>
         destruct X as [rinst0|] eqn:Hrinst
@@ -727,11 +719,11 @@ Section Equiv.
      and use the lower bits to index into the Vector.
    *)
 
-  Definition mm: Modules := Kami.Ex.SC.mm memInit rv32MMIO.
-  Definition p4mm: Modules := p4mm (conj Hinstr1 Hinstr2) memInit.
+  Definition mm: Modules := Kami.Ex.SC.mm kamiMemInit rv32MMIO.
+  Definition p4mm: Modules := p4mm (conj Hinstr1 Hinstr2) kamiMemInit.
 
   Lemma states_related_init:
-    states_related (initRegs (getRegInits (@proc instrMemSizeLg memInit)), [])
+    states_related (initRegs (getRegInits (@proc instrMemSizeLg kamiMemInit)), [])
                    {| getMachine :=
                         {| (* TODO will need to be the actual value corresponding
                              to Kami in order for the proof to work *)
@@ -739,8 +731,7 @@ Section Equiv.
                             convertRegs (Kami.Semantics.evalConstT KamiProc.rfInitVal);
                           RiscvMachine.getPc := word.of_Z 0;
                           RiscvMachine.getNextPc := word.of_Z 4;
-                          RiscvMachine.getMem :=
-                            map.putmany otherMemInit (convertInstrMem _ prg);
+                          RiscvMachine.getMem := convertDataMem (evalConstT kamiMemInit);
                           RiscvMachine.getXAddrs := nil; (* <-- TODO adapt *)
                           RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
                       getMetrics := MetricLogging.EmptyMetricLog; |}.
@@ -782,7 +773,7 @@ Section Equiv.
            (RvInv: RiscvMachine -> Prop)
            (establishRvInv:
               forall (m0RV: RiscvMachine),
-                m0RV.(getMem) = map.putmany otherMemInit (convertInstrMem _ prg) -> (* rhs overrides lhs *)
+                m0RV.(getMem) = convertDataMem (evalConstT kamiMemInit) ->
                 m0RV.(getPc) = word.of_Z 0 ->
                 (forall reg, 0 < reg < 32 -> map.get m0RV.(getRegs) reg <> None) ->
                 m0RV.(getLog) = nil ->
@@ -803,7 +794,7 @@ Section Equiv.
       exists (t': list Event), KamiLabelSeqR t t' /\ traceProp t'.
   Proof.
     intros.
-    pose proof (@proc_correct instrMemSizeLg (conj Hinstr1 Hinstr2) memInit) as P.
+    pose proof (@proc_correct instrMemSizeLg (conj Hinstr1 Hinstr2) kamiMemInit) as P.
     unfold traceRefines in P.
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).

@@ -519,7 +519,8 @@ Section PerInstAddr.
   Definition proc: Kami.Syntax.Modules := projT1 procInl.
 
   Definition hst := Kami.Semantics.RegsT.
-
+  Definition KamiMachine := hst.
+  
   (** Abstract hardware state *)
   Definition st :=
     @pst nwidth ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx.
@@ -561,3 +562,5 @@ Section PerInstAddr.
   Qed.
 
 End PerInstAddr.
+
+

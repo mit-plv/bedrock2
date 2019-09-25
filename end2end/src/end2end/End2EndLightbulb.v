@@ -183,16 +183,15 @@ Ltac destr :=
 (* TODO why do we need to write this? *)
 Instance src2imp : map.map string Decode.Register := SortedListString.map Z.
 
-(* [otherMemInit] is the part of the initial memory that is orthogonal to the program space.
-   TODO can the type of this be kami-memory rather than bedrock2-memory, so that the
-   final theorem contains as few bedrock2 concepts as possible? *)
-Definition p4mm(otherMemInit: Semantics.mem): Kami.Syntax.Modules :=
-  p4mm instrMemSizeLg instrMemSizeLg_bounds
-       prog spec otherMemInit ml mlOk instrMemSizeLg_agrees_with_ml.
+Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
+                                     (Z.to_nat KamiProc.width)): Kami.Syntax.Modules :=
+  p4mm memInit instrMemSizeLg instrMemSizeLg_bounds.
 
-Lemma end2end_lightbulb: forall (otherMemInit: bedrock2.Semantics.mem)
-                                (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
-    Semantics.Behavior (p4mm otherMemInit) mFinal t ->
+Lemma end2end_lightbulb:
+  forall (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
+                              (Z.to_nat KamiProc.width))
+         (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
+    Semantics.Behavior (p4mm memInit) mFinal t ->
     exists t': list KamiRiscv.Event,
       KamiRiscv.KamiLabelSeqR t t' /\
       (exists (suffix : list KamiRiscv.Event) (bedrockTrace : list RiscvMachine.LogItem),
@@ -204,12 +203,13 @@ Proof.
   pose proof @end2end as Q.
   specialize_first Q mapops.
   specialize_first Q prog.
-  specialize_first Q instrMemSizeLg_agrees_with_ml.
+  (* specialize_first Q instrMemSizeLg_agrees_with_ml. *)
   specialize_first Q spec.
-  specialize_first Q mlOk.
+  specialize_first Q ml.
+  (* specialize_first Q mlOk. *)
   specialize_first Q instrMemSizeLg_bounds.
-  intro otherMemInit.
-  specialize_first Q otherMemInit.
+  intro memInit.
+  specialize_first Q memInit.
   specialize_first Q funspecs.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
