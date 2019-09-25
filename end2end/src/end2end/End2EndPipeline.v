@@ -138,8 +138,10 @@ Section Connect.
 
   (* TODO why is this needed to make the Check below pass? *)
   Instance processor_mmio': MinimalMMIO.ExtSpec := @processor_mmio mmio_params.
-  Check (_ : PrimitivesParams (MinimalMMIO.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
+  Goal True.
+  epose (_ : PrimitivesParams (MinimalMMIO.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
                               MetricRiscvMachine).
+  Abort.
 
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters. refine ({|
     Pipeline.FlatToRiscvDef_params := compilation_params;
@@ -314,9 +316,6 @@ Section Connect.
     }
 
     eapply P1.
-    - apply (@MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives
-                (@Words32 mmio_params)
-                (@MMIO.mem mmio_params) (@MMIO.locals mmio_params)).
     - (* establish *)
       intros.
       eapply P2establish.
