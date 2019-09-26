@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.simpl_rewrite.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Macros.unique.
@@ -309,12 +310,6 @@ Section RegAlloc.
     erewrite IHsrcnames; eauto.
   Qed.
 
-  Ltac head e :=
-    match e with
-    | ?a _ => head a
-    | _ => e
-    end.
-
   Definition envs_related(e1: @env srcSemanticsParams)
                          (e2: @env impSemanticsParams): Prop :=
     forall f impl1,
@@ -385,6 +380,10 @@ Section RegAlloc.
       do 2 destruct_one_match; subst; try congruence. eauto.
   Qed.
 
+  Ltac srew_sidec := first [rewrite map.get_put_same; reflexivity | eauto].
+  Ltac srew_h := simpl_rewrite_in_hyps ltac:(fun _ => srew_sidec).
+  Ltac srew_g := simpl_rewrite_in_goal ltac:(fun _ => srew_sidec).
+
   Lemma eval_bcond_compat: forall (lH : srcLocals) r (lL: impLocals) condH condL b,
       rename_cond r condH = Some condL ->
       states_compat lH r lL ->
@@ -398,14 +397,8 @@ Section RegAlloc.
              | C: states_compat _ _ _, D: _ |- _ => unique pose proof (C _ _ D)
              end;
       simp;
-      simpl in *. (* PARAMRECORDS *)
-    - (* TODO such simplification patterns should be automated *)
-      rewrite E2 in Hl. rewrite E1 in H1l. simp.
-      rewrite H1r. rewrite Hr.
-      reflexivity.
-    - rewrite E0 in Hl. simp.
-      rewrite Hr.
-      reflexivity.
+      simpl in *; (* PARAMRECORDS *)
+      srew_h; simp; srew_g; reflexivity.
   Qed.
 
   Lemma eval_bcond_compat_None: forall (lH : srcLocals) r (lL: impLocals) condH condL,
@@ -434,12 +427,8 @@ Section RegAlloc.
       repeat match goal with
              | C: states_compat' _ _ _, D: _ |- _ => unique pose proof (C _ _ D)
              end;
-      simpl in *. (* PARAMRECORDS *)
-    - rewrite <- H1. rewrite E. (* <-- TODO such simplification patterns should be automated *)
-      rewrite <- H. rewrite E0.
-      reflexivity.
-    - rewrite <- H. rewrite E.
-      reflexivity.
+      simpl in *; (* PARAMRECORDS *)
+      srew_h; simp; srew_g; reflexivity.
   Qed.
 
   Lemma states_compat_extends: forall lL lH r1 r2,
@@ -487,44 +476,6 @@ Section RegAlloc.
            | H: _ |- _ => unique eapply t in copy of H
            end.
 
-  Ltac test_on_introd test :=
-    lazymatch goal with
-    | |- forall x, _ => let x' := fresh x in
-                        intro x';
-                        test_on_introd ltac:(test);
-                        revert x'
-    | |- _ => test tt
-    end.
-
-  Ltac conclusion_satisfies H test :=
-    let P := type of H in
-    let N := fresh in
-    (assert P as N by (test_on_introd ltac:(test); exact H));
-    clear N.
-
-  (* succeeds iff the current goal is an equation whose left-hand side does not start with a
-     constructor, and whose right-hand side does start with a constructor, which means that
-     rewriting with this equation will be a simplification *)
-  Ltac reveals_constructor :=
-    lazymatch goal with
-    | |- ?lhs = ?rhs =>
-      let hR := head rhs in
-      (tryif is_constructor hR then idtac else fail "rhs is not a constructor");
-      let hL := head lhs in
-      (tryif is_constructor hL then fail "lhs is a constructor too" else idtac)
-    | |- ?G => fail "The goal is not an equation, but" G
-    end.
-
-  Ltac simpl_rewrite sidecondition_solver :=
-    repeat match goal with
-           | A: ?P |- _ =>
-             lazymatch type of P with Prop => idtac end;
-             conclusion_satisfies A ltac:(fun _ => reveals_constructor);
-             erewrite A by (sidecondition_solver tt)
-           end.
-
-  Ltac srew := simpl_rewrite ltac:(fun _ => first [rewrite map.get_put_same; reflexivity | eauto]).
-
   Lemma rename_assignment_lhs_props: forall {x r1 r2 y av1 av2},
       rename_assignment_lhs r1 x av1 = Some (r2, y, av2) ->
       map.injective r1 ->
@@ -542,7 +493,7 @@ Section RegAlloc.
       (split; [ (try eapply map.injective_put); eassumption
               | split;
                 [ intros; rewrite ?map.get_put_diff by congruence
-                | split; [ intros; rewrite ?map.get_put_same; srew
+                | split; [ intros; rewrite ?map.get_put_same; srew_g
                          | first [ refine (ex_intro _ nil (conj eq_refl _))
                                  | refine (ex_intro _ [_] (conj eq_refl _)) ]]];
                 eauto ]).
@@ -601,7 +552,7 @@ Section RegAlloc.
                     end;
              eauto;
              []);
-        try solve [intros; unfold map.extends in *; srew; reflexivity].
+        try solve [intros; unfold map.extends in *; srew_g; reflexivity].
 
     - (* SStore remainder *)
       unfold map.extends;
@@ -613,7 +564,7 @@ Section RegAlloc.
                         |  first [ refine (ex_intro _ nil (conj eq_refl _))
                                  | refine (ex_intro _ [_] (conj eq_refl _)) ]]];
                       eauto]).
-      srew. reflexivity.
+      srew_g. reflexivity.
     - (* SIf *)
       specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
