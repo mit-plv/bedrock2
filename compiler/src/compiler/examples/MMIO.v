@@ -209,101 +209,6 @@ Section MMIO1.
   Definition ext_guarantee mach :=
     forall addr, isMMIOAddr addr -> Memory.load_bytes 4 (getMem mach) addr = None.
 
-  Lemma execute_mmio_load
-    addr_reg (Haddr_reg : valid_register addr_reg)
-    res_reg (Hres_reg : valid_register res_reg)
-    (mach : MetricRiscvMachine) (Hguarantee : ext_guarantee mach)
-    addr (Haddr : map.get mach.(getRegs) addr_reg = Some addr)
-    (HisMMIO : isMMIOAddr addr)
-    instr (Hcompile :compile_ext_call [res_reg] MMInput [addr_reg] = [instr])
-    : interp (Execute.execute instr) mach (fun _ m => exists v,
-      m = 
-      withRegs (map.put mach.(getRegs) res_reg (word.of_Z (LittleEndian.combine 4 v))) (
-      withLogItem (mmioLoadEvent addr v)
-      (updateMetrics (addMetricLoads 1) (mach)))).
-  Proof.
-    inversion Hcompile; clear dependent instr.
-    cbn.
-
-    destruct (Z.eq_dec addr_reg Register0).
-    { subst addr_reg. inversion Haddr_reg. cbv [Register0] in *; Omega.omega. }
-    split; trivial.
-
-    change (@map.get Register (@word p) (@locals p) (@getRegs Words32 (@locals p) (@mem p) mach) addr_reg) with (@map.get Register (@Utility.word Words32) (@locals p) (@getRegs Words32 (@locals p) (@mem p) mach) addr_reg).
-    rewrite Haddr.
-    rewrite add_0_r.
-
-    cbv [load].
-    split; [inversion 1|].
-
-    change (@Memory.load_bytes (@Utility.byte Words32) (@Utility.width Words32) (@Utility.word Words32) (@mem p) 4 (@getMem Words32 (@locals p) (@mem p) mach) addr)
-    with (@Memory.load_bytes (@Utility.byte Words32) (@Utility.width Words32) (@Utility.word Words32) (@mem p) 4 (@getMem Words32 (@locals p) (@mem p) mach) addr).
-    rewrite (Hguarantee addr HisMMIO).
-
-    cbv [mmio_load processor_mmio id].
-    destruct (Z.eq_dec res_reg Register0); try (subst; cbv [valid_register Register0] in * ; exfalso; clear -Hres_reg; Omega.omega).
-
-    split; trivial.
-    intros.
-    split; trivial.
-    eexists.
-
-    rewrite sextend_width_nop by trivial.
-    destruct mach as [ [] ?]; exact eq_refl.
-  Qed.
-
-  Lemma execute_mmio_store
-    addr_reg (Haddr_reg : valid_register addr_reg)
-    val_reg (Hval_reg : valid_register val_reg)
-    instr (Hcompile :compile_ext_call [] MMOutput [addr_reg;val_reg] = [instr])
-    (mach : MetricRiscvMachine) (Hguarantee : ext_guarantee mach)
-    addr (Haddr : map.get mach.(getRegs) addr_reg = Some addr)
-    val (Hval : map.get mach.(getRegs) val_reg = Some val)
-    (HisMMIO : isMMIOAddr addr)
-    : interp (Execute.execute instr) mach (fun _ m =>
-      let vv := LittleEndian.split 4 (word.unsigned val) in
-      m = withLogItem (mmioStoreEvent addr vv)
-          (updateMetrics (addMetricStores 1) (withXAddrs (invalidateWrittenXAddrs 4 addr mach.(getXAddrs)) mach))).
-  Proof.
-    cbn in Hcompile.
-    inversion Hcompile; clear dependent instr.
-    cbn.
-
-    destruct (Z.eq_dec val_reg Register0).
-    { subst val_reg. inversion Hval_reg. cbv [Register0] in *; Omega.omega. }
-
-    destruct (Z.eq_dec addr_reg Register0).
-    { subst addr_reg. inversion Haddr_reg. cbv [Register0] in *; Omega.omega. }
-
-    split; trivial.
-
-    change (@map.get Register (@word p) (@locals p) (@getRegs Words32 (@locals p) (@mem p) mach) addr_reg) with (@map.get Register (@Utility.word Words32) (@locals p) (@getRegs Words32 (@locals p) (@mem p) mach) addr_reg).
-    rewrite Haddr.
-    rewrite add_0_r.
-
-    cbv [store].
-    split; trivial.
-
-    change (@map.get Register (@word p) (@locals p) (@getRegs Words32 (@locals p) (@mem p) mach) val_reg) with (@map.get Register (@Utility.word Words32) (@locals p) (@getRegs Words32 (@locals p) (@mem p) mach) val_reg).
-    rewrite Hval.
-
-    cbv [Memory.store_bytes].
-
-    set (mach1 := (RiscvMachine.withXAddrs (invalidateWrittenXAddrs 4 addr (getXAddrs mach)) mach)).
-    change (@Memory.load_bytes (@Utility.byte Words32) (@Utility.width Words32) (@Utility.word Words32) (@mem p) 4 (@getMem Words32 (@locals p) (@mem p) mach1) addr)
-    with (@Memory.load_bytes (@Utility.byte Words32) (@Utility.width Words32) (@Utility.word Words32) (@mem p) 4 (@getMem Words32 (@locals p) (@mem p) mach1) addr).
-    rewrite (Hguarantee addr HisMMIO).
-
-    cbv [mmio_store processor_mmio id].
-
-    split; trivial.
-
-    destruct mach as [ [] ?]; exact eq_refl.
-  Qed.
-
-
-
-
   Lemma load4bytes_in_MMIO_is_None: forall (m: mem) (addr: word),
       map.undef_on m isMMIOAddr ->
       isMMIOAddr addr ->
@@ -342,26 +247,30 @@ Section MMIO1.
   (* give it priority over FlatToRiscvCommon.FlatToRiscv.PRParams to make eapply work better *)
   Existing Instance MetricMinimalMMIOPrimitivesParams.
   Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
+  Local Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
 
-  Lemma go_storeWord_mmio: forall (initialL : MetricRiscvMachine) (addr : Utility.word)
-        (v : Utility.w32) (post : MetricRiscvMachine -> Prop) f,
-      Memory.store_bytes 4 initialL.(getMem) addr v = None ->
-      mcomp_sat (f tt) (updateMetrics (addMetricStores 1)
-                                      (withLogItem (mmioStoreEvent addr v) initialL)) post ->
-      mcomp_sat (Bind (Machine.storeWord Execute addr v) f) initialL post.
-  Proof.
-  Admitted.
+  Ltac fwd :=
+    match goal with
+    |- free.interp interp_action ?p ?s ?post =>
+      let p' := eval hnf in p in
+      change (free.interp interp_action p' s post);
+      rewrite free.interp_act;
+      cbn [interp_action MinimalMMIO.interp_action snd fst];
+        simpl_MetricRiscvMachine_get_set
+    | |- load ?n ?ctx ?a ?s ?k =>
+        let g' := eval cbv beta delta [load] in (load n ctx a s k) in
+        change g';
+        simpl_MetricRiscvMachine_get_set
+    | _ => progress cbn [free.bind]
+    | |- store ?n ?ctx ?a ?v ?s ?k =>
+        let g' := eval cbv beta delta [store] in (store n ctx a v s k) in
+        change g';
+        simpl_MetricRiscvMachine_get_set
+    | _ => progress cbn [free.bind]
+    | _ => rewrite free.interp_ret
+    end.
 
-  Lemma go_loadWord_mmio: forall (initialL : MetricRiscvMachine) (addr : Utility.word)
-                                 (post : MetricRiscvMachine -> Prop) f,
-      Memory.load_bytes 4 initialL.(getMem) addr = None ->
-      (forall  (v : Utility.w32),
-          mcomp_sat (f v) (updateMetrics (addMetricLoads 1)
-                                          (withLogItem (mmioLoadEvent addr v) initialL)) post) ->
-      mcomp_sat (Bind (Machine.loadWord Execute addr) f) initialL post.
-  Proof.
-  Admitted.
-
+  Axiom XAddrs_admitted : False.
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
   Proof.
     constructor.
@@ -369,7 +278,7 @@ Section MMIO1.
     - typeclasses eauto.
     - typeclasses eauto.
     - typeclasses eauto.
-    - exact MetricMinimalMMIOSatisfiesPrimitives.
+    - eapply MetricMinimalMMIOSatisfiesPrimitives; cbn; intuition eauto.
     - (* ext_guarantee preservable: *)
       simpl. unfold map.same_domain, map.sub_domain, map.undef_on, map.agree_on in *.
       intros. destruct H0 as [A B].
@@ -417,35 +326,72 @@ Section MMIO1.
         }
         simp.
         subst insts.
-        eapply runsToNonDet.runsToStep. {
-          simulate_step.
-          simulate_step.
-          simulate_step.
-          eapply go_storeWord_mmio. {
-            simpl. apply storeWord_in_MMIO_is_None; simpl_word_exprs word_ok; assumption.
-          }
-          simpl_MetricRiscvMachine_get_set.
-          refine (go_step _ _ _); [ sidecondition.. | idtac ].
-          instantiate (1 := @eq MetricRiscvMachine _). reflexivity.
-        }
-        intros. subst. simpl. apply runsToNonDet.runsToDone. simpl.
+
+        eapply runsToNonDet.runsToStep_cps.
+        cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams].
+
+        repeat fwd.
+
+        split. 1:case XAddrs_admitted.
+        erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
+        { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
+          cbn [array bytes_per] in *.
+          ecancel_assumption. }
+
+        repeat fwd.
+
+        rewrite LittleEndian.combine_split.
+        rewrite Z.mod_small by (eapply EncodeBound.encode_range).
+        rewrite DecodeEncode.decode_encode by (eapply H5; left; trivial).
+
+        repeat fwd.
+
+        destruct (Z.eq_dec r Register0); cbv [Register0 valid_register] in *; try ((* WHY *) exfalso; Lia.lia).
+        split; trivial.
+
+        unshelve erewrite (_ : _ = Some _); [ | eassumption | ].
+
+        repeat fwd.
+
+        destruct (Z.eq_dec r0 Register0); cbv [Register0 valid_register] in *; try ((* WHY *) exfalso; Lia.lia).
+        split; trivial.
+
+        unshelve erewrite (_ : _ = Some _); [ | eassumption | ].
+
+        repeat fwd.
+
+        cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
+
+        unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
+
+        cbv [mmio_store processor_mmio].
+        split; trivial.
+
+        repeat fwd.
+
+        eapply runsToNonDet.runsToDone.
+        simpl_MetricRiscvMachine_get_set.
+
         match goal with
         | Hoc: outcome _ _, H: _ |- _ => specialize H with (1 := Hoc)
         end.
         eexists. simp. simpl_word_exprs word_ok.
-        repeat split; try eassumption.
-        { do 2 match goal with
-          | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
-          end.
-          unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
-          rewrite LittleEndian.combine_split.
-          rewrite sextend_width_nop by reflexivity.
-          rewrite Z.mod_small by apply word.unsigned_range.
-          rewrite word.of_Z_unsigned.
-          unfold isMMOutput in E0. apply eqb_eq in E0. subst action. unfold MMOutput in *.
-          cbn in *. replace l' with initialL_regs in * by congruence.
-          eassumption. }
-        all: solve [MetricsToRiscv.solve_MetricLog].
+        do 2 match goal with
+        | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
+        end.
+        unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
+        setoid_rewrite LittleEndian.combine_split.
+        rewrite sextend_width_nop by reflexivity.
+        rewrite Z.mod_small by apply word.unsigned_range.
+        rewrite word.of_Z_unsigned.
+        unfold isMMOutput in E0. apply eqb_eq in E0. subst action. unfold MMOutput in *.
+        cbn in *. replace l' with initialL_regs in * by congruence.
+        split; eauto.
+        split; eauto.
+        split; eauto.
+        split; eauto.
+        split; eauto.
+        cbv [id]; repeat split; MetricsToRiscv.solve_MetricLog.
 
       + (* MMInput *)
         simpl in *|-.
@@ -483,39 +429,69 @@ Section MMIO1.
         }
         simp.
         subst insts.
-        eapply runsToNonDet.runsToStep; cycle 1.
-        * intro mid.
-          apply id.
-        * simulate_step.
-          cbn.
-          simulate_step.
-          eapply go_loadWord_mmio. {
-            apply loadWord_in_MMIO_is_None; simpl_word_exprs word_ok; try assumption.
-          }
-          intros. subst.
-          cbn.
-          simulate_step.
-          simulate_step.
-          apply runsToNonDet.runsToDone.
-          simpl. eexists.
-          repeat split; try assumption.
-          { match goal with
-            | H: forall val, outcome _ [val], G: _ |- context [map.put _ _ ?resval] =>
-              specialize (H resval);
-              specialize G with (1 := H)
-            end.
-            simp.
-            do 2 match goal with
-                 | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
-                 end.
-            unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
-            unfold isMMInput in E1. apply eqb_eq in E1. subst action. unfold MMInput in *.
-            cbn in *. simp.
-            replace (word.add addr (word.of_Z 0)) with addr; [eassumption|].
-            simpl_word_exprs word_ok.
-            reflexivity. }
-          all: try solve [MetricsToRiscv.solve_MetricLog].
-          all : simpl_word_exprs word_ok; trivial.
+        eapply runsToNonDet.runsToStep_cps.
+        cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams].
+
+        repeat fwd.
+
+        split. 1:case XAddrs_admitted.
+        erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
+        { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
+          cbn [array bytes_per] in *.
+          ecancel_assumption. }
+
+        repeat fwd.
+
+        rewrite LittleEndian.combine_split.
+        rewrite Z.mod_small by (eapply EncodeBound.encode_range).
+        rewrite DecodeEncode.decode_encode by (eapply H5; left; trivial).
+
+        repeat fwd.
+
+        destruct (Z.eq_dec r Register0); cbv [Register0 valid_register] in *; try ((* WHY *) exfalso; Lia.lia).
+        split; trivial.
+
+        unshelve erewrite (_ : _ = Some _); [ | eassumption | ].
+
+        repeat fwd.
+
+        split; try discriminate.
+        cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
+        unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
+
+        cbv [mmio_store processor_mmio].
+        split; trivial; intros.
+
+        repeat fwd.
+
+        destruct (Z.eq_dec r0 Register0); cbv [Register0 valid_register] in *; try ((* WHY *) exfalso; Lia.lia).
+        split; trivial.
+
+        repeat fwd.
+
+        eapply runsToNonDet.runsToDone.
+        simpl_MetricRiscvMachine_get_set.
+
+        eexists.
+        match goal with
+        | H: forall val, outcome _ [val], G: _ |- context [map.put _ _ ?resval] =>
+        specialize (H resval);
+        specialize G with (1 := H)
+        end.
+        simp.
+        do 2 match goal with
+             | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
+             end.
+        unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
+        unfold isMMInput in E1. apply eqb_eq in E1. subst action. unfold MMInput in *.
+        cbn in *. simp.
+        split; eauto.
+        split. { simpl_word_exprs word_ok; trivial. }
+        split. { simpl_word_exprs word_ok; trivial. }
+        split; eauto.
+        repeat split; eauto; cbv [id]; try solve [MetricsToRiscv.solve_MetricLog].
+  Unshelve.
+  eapply HList.tuple.unfoldn; intros; eapply (word.of_Z 0).
   Qed.
 
 End MMIO1.
