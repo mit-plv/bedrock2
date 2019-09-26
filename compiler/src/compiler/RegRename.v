@@ -310,6 +310,24 @@ Section RegAlloc.
     erewrite IHsrcnames; eauto.
   Qed.
 
+  Lemma putmany_of_list_states_compat: forall srcnames impnames r lH lH' lL vals,
+      map.putmany_of_list srcnames vals lH = Some lH' ->
+      map.getmany_of_list r srcnames = Some impnames ->
+      states_compat lH r lL ->
+      exists lL', map.putmany_of_list impnames vals lL = Some lL' /\
+                  states_compat lH' r lL'.
+  Proof.
+    induction srcnames; intros; simpl in *; simp.
+    - exists lL. unfold map.getmany_of_list in H0. simpl in H0. simp.
+      simpl. auto.
+    - unfold map.getmany_of_list in H0. simpl in H0. simp.
+      specialize IHsrcnames with (1 := H) (2 := E0).
+      case TODO_sam. (*
+      edestruct IHsrcnames; cycle 1.
+      + eexists. case TODO_sam.
+      + case TODO_sam.*)
+  Qed.
+
   Definition envs_related(e1: @env srcSemanticsParams)
                          (e2: @env impSemanticsParams): Prop :=
     forall f impl1,
@@ -507,11 +525,13 @@ Section RegAlloc.
       NoDup av1 ->
       map.injective r2 /\
       map.extends r2 r1 /\
+      (forall r3 av3, map.extends r3 r2 -> rename_binds r3 bH av3 = Some (r3, bL, av3)) /\
       exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
   Proof.
     induction bH; intros; simpl in *; simp.
     - split; [assumption|].
       split; [apply extends_refl|].
+      split; [intros; reflexivity|].
       exists nil.
       split; [reflexivity|].
       assumption.
@@ -520,8 +540,11 @@ Section RegAlloc.
       apply_in_hyps @invert_NoDup_app. simp.
       edestruct IHbH; eauto. simp.
       split; [assumption|].
-      split.
+      split; [|split].
       + intros. eapply extends_trans; eassumption.
+      + apply_in_hyps @rename_assignment_lhs_props. simp.
+        unfold map.extends in *.
+        intros. srew_g. reflexivity.
       + refine (ex_intro _ (_ ++ _) (conj _ _)).
         2: eassumption. rewrite <- List.app_assoc. reflexivity.
   Qed.
@@ -572,13 +595,12 @@ Section RegAlloc.
       simp.
       specialize IHsH2 with (1 := E0). auto_specialize. simp.
       split; [assumption|].
+      pose proof (rename_cond_props E1).
       unfold map.extends in *.
       split; [eauto|].
-      (* we need more than rename idempotence: rename montonicity! *)
-      split.
-      + case TODO_sam.
-      + refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
-        rewrite <- List.app_assoc. reflexivity.
+      split; [intros; srew_g; reflexivity|].
+      refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
+      rewrite <- List.app_assoc. reflexivity.
     - (* SLoop *)
       specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
@@ -588,7 +610,9 @@ Section RegAlloc.
       split; [assumption|].
       unfold map.extends in *.
       split; [eauto|].
-      split; [case TODO_sam|].
+      pose proof (rename_cond_props E0).
+      unfold map.extends in *.
+      split; [intros; srew_g; reflexivity|].
       refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
       rewrite <- List.app_assoc. reflexivity.
     - (* SSeq *)
@@ -600,18 +624,18 @@ Section RegAlloc.
       split; [assumption|].
       unfold map.extends in *.
       split; [eauto|].
-      split; [case TODO_sam|].
+      split; [intros; srew_g; reflexivity|].
       refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
       rewrite <- List.app_assoc. reflexivity.
     - (* SSkip *)
       repeat split; unfold map.extends in *; eauto.
       exists nil. simpl. auto.
     - (* SCall *)
-      apply rename_binds_props in E0; simp; repeat split; try assumption.
-      all: case TODO_sam.
+      apply_in_hyps @rename_binds_props. simp; repeat split; eauto.
+      intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
     - (* SInteract *)
-      apply rename_binds_props in E0; simp; repeat split; try assumption.
-      all: case TODO_sam.
+      apply_in_hyps @rename_binds_props. simp; repeat split; eauto.
+      intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
   Qed.
 
   Lemma rename_correct: forall eH eL,
@@ -649,7 +673,11 @@ Section RegAlloc.
             congruence].
 
     - (* @exec.interact *)
-      case TODO_sam.
+      eapply @exec.interact; try eassumption.
+      + eapply getmany_of_list_states_compat; eassumption.
+      + intros. specialize (H3 _ _ H7). simp. eauto 10.
+        case TODO_sam.
+
     - (* @exec.call *)
       case TODO_sam.
     - (* @exec.if_true *)
