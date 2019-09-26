@@ -173,18 +173,8 @@ Section Connect.
       Pipeline.ext_spec_ok := match TODO with end;
     |}).
   - case TODO.
-  - refine (_ MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
-    match goal with
-    | |- _ ?A -> _ ?B => assert (A = B)
-    end.
-    {
-      unfold MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams, Pipeline.PRParams.
-      unfold pipeline_params.
-      unfold   MetricMinimalMMIO.MetricMinimalMMIOPrimitivesParams.
-      reflexivity.
-    }
-    rewrite H.
-    exact id.
+  - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives _ _ _ _).
+    1,2,3,4: case TODO.
   - case TODO.
   Defined.
 

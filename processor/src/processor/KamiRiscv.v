@@ -313,7 +313,7 @@ Section Equiv.
              mcomp_sat
              MinimalMMIOPrimitivesParams
              MetricMinimalMMIOPrimitivesParams] in HR.
-      simpl interp at 1 in HR.
+      simpl free.interp at 1 in HR.
       repeat
         (unfold interp_action at 1 in HR;
          cbn [fst snd] in HR;
@@ -479,7 +479,7 @@ Section Equiv.
              mcomp_sat
              MinimalMMIOPrimitivesParams
              MetricMinimalMMIOPrimitivesParams] in HR.
-      simpl interp at 1 in HR.
+      simpl free.interp at 1 in HR.
       repeat
         (unfold interp_action at 1 in HR;
          cbn [fst snd] in HR;
@@ -537,6 +537,10 @@ Section Equiv.
       assert (bitSlice (wordToZ kinst) 25 32 = funct7_ADD) as H13 by case TODO.
       cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H13.
       eval_decode HR.
+
+      match type of HR with ?a ?x ?y ?z ?b ?c ?d ?e =>
+      change z with interp_action in HR
+      end.
 
       (* invert the body of [execute] *)
       simpl in HR.

@@ -74,11 +74,15 @@ Proof.
   congruence.
 Qed.
 
+Axiom shelved_evar_from_other_admit : False.
+Axiom ext_spec_conditions_for_mcomp_sat : False.
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
 Proof.
-  constructor; try typeclasses eauto; try refine FlatToRiscv_hyps;
-    try exact MetricMinimalMMIOSatisfiesPrimitives.
-  constructor; unfold ext_spec, pipeline_params; simpl.
+  constructor; try typeclasses eauto.
+  1: eapply MetricMinimalMMIOSatisfiesPrimitives.
+  2: eapply FlatToRiscv_hyps.
+  7: constructor; unfold ext_spec, pipeline_params; simpl.
+  1,2,3,4,5,6: case ext_spec_conditions_for_mcomp_sat.
   - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
   - unfold bedrock2_interact. intros.
     cbv [Morphisms.Proper Morphisms.respectful Basics.impl Morphisms.pointwise_relation]; intros.
@@ -101,6 +105,8 @@ Proof.
     { destruct H1 as (?&?&?&?); subst.
       destruct H as (?&?&?&?&?); subst.
       eexists  _; split; [|split]; eauto. }
+    Unshelve.
+    all : case shelved_evar_from_other_admit.
 Qed.
 
 Definition compileFunc: cmd -> list Instruction := ExprImp2Riscv.
