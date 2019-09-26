@@ -487,6 +487,44 @@ Section RegAlloc.
            | H: _ |- _ => unique eapply t in copy of H
            end.
 
+  Ltac test_on_introd test :=
+    lazymatch goal with
+    | |- forall x, _ => let x' := fresh x in
+                        intro x';
+                        test_on_introd ltac:(test);
+                        revert x'
+    | |- _ => test tt
+    end.
+
+  Ltac conclusion_satisfies H test :=
+    let P := type of H in
+    let N := fresh in
+    (assert P as N by (test_on_introd ltac:(test); exact H));
+    clear N.
+
+  (* succeeds iff the current goal is an equation whose left-hand side does not start with a
+     constructor, and whose right-hand side does start with a constructor, which means that
+     rewriting with this equation will be a simplification *)
+  Ltac reveals_constructor :=
+    lazymatch goal with
+    | |- ?lhs = ?rhs =>
+      let hR := head rhs in
+      (tryif is_constructor hR then idtac else fail "rhs is not a constructor");
+      let hL := head lhs in
+      (tryif is_constructor hL then fail "lhs is a constructor too" else idtac)
+    | |- ?G => fail "The goal is not an equation, but" G
+    end.
+
+  Ltac simpl_rewrite sidecondition_solver :=
+    repeat match goal with
+           | A: ?P |- _ =>
+             lazymatch type of P with Prop => idtac end;
+             conclusion_satisfies A ltac:(fun _ => reveals_constructor);
+             erewrite A by (sidecondition_solver tt)
+           end.
+
+  Ltac srew := simpl_rewrite ltac:(fun _ => first [rewrite map.get_put_same; reflexivity | eauto]).
+
   Lemma rename_assignment_lhs_props: forall {x r1 r2 y av1 av2},
       rename_assignment_lhs r1 x av1 = Some (r2, y, av2) ->
       map.injective r1 ->
@@ -494,7 +532,7 @@ Section RegAlloc.
       NoDup av1 ->
       map.injective r2 /\
       map.extends r2 r1 /\
-      rename_assignment_lhs r2 x av2 = Some (r2, y, av2) /\
+      (forall r3 av3, map.extends r3 r2 -> rename_assignment_lhs r3 x av3 = Some (r3, y, av3)) /\
       exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
   Proof.
     pose proof (map.not_in_range_put (ok := src2impOk)).
@@ -504,7 +542,7 @@ Section RegAlloc.
       (split; [ (try eapply map.injective_put); eassumption
               | split;
                 [ intros; rewrite ?map.get_put_diff by congruence
-                | split; [ rewrite ?map.get_put_same; rewrite_match
+                | split; [ intros; rewrite ?map.get_put_same; srew
                          | first [ refine (ex_intro _ nil (conj eq_refl _))
                                  | refine (ex_intro _ [_] (conj eq_refl _)) ]]];
                 eauto ]).
@@ -537,6 +575,14 @@ Section RegAlloc.
         2: eassumption. rewrite <- List.app_assoc. reflexivity.
   Qed.
 
+  Lemma rename_cond_props: forall {r1 cond cond'},
+      rename_cond r1 cond = Some cond' ->
+      (forall r3, map.extends r3 r1 -> rename_cond r3 cond = Some cond').
+  Proof.
+    unfold rename_cond, map.extends. intros.
+    destruct_one_match; simp; repeat erewrite H0 by eassumption; reflexivity.
+  Qed.
+
   (* a list of useful properties of rename, all proved in one induction *)
   Lemma rename_props: forall {sH r1 r2 sL av1 av2},
       rename r1 sH av1 = Some (r2, sL, av2) ->
@@ -545,8 +591,8 @@ Section RegAlloc.
       NoDup av1 ->
       map.injective r2 /\
       map.extends r2 r1 /\
-      rename r2 sH av2 = Some (r2, sL, av2) /\
-      exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
+      (forall r3 av3, map.extends r3 r2 -> rename r3 sH av3 = Some (r3, sL, av3)) /\
+      (exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2).
   Proof.
     induction sH; simpl in *; intros; simp;
       apply_in_hyps @rename_assignment_lhs_props; simp;
@@ -555,16 +601,7 @@ Section RegAlloc.
                     end;
              eauto;
              []);
-        try solve [
-              match goal with
-              | H: map.extends _ _ |- _ =>
-                unfold map.extends in H;
-                repeat match goal with
-                       | H': map.get _ _ = Some _ |- _ => unique pose proof (H _ _ H')
-                       end
-              end;
-              rewrite_match;
-              reflexivity].
+        try solve [intros; unfold map.extends in *; srew; reflexivity].
 
     - (* SStore remainder *)
       unfold map.extends;
@@ -576,8 +613,7 @@ Section RegAlloc.
                         |  first [ refine (ex_intro _ nil (conj eq_refl _))
                                  | refine (ex_intro _ [_] (conj eq_refl _)) ]]];
                       eauto]).
-      rewrite_match.
-      reflexivity.
+      srew. reflexivity.
     - (* SIf *)
       specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
@@ -626,25 +662,6 @@ Section RegAlloc.
       apply rename_binds_props in E0; simp; repeat split; try assumption.
       all: case TODO_sam.
   Qed.
-
-  Lemma rename_assignment_lhs_idemp: forall r1 x av1 r2 y av2,
-      rename_assignment_lhs r1 x av1 = Some (r2, y, av2) ->
-      rename_assignment_lhs r2 x av2 = Some (r2, y, av2).
-  Proof.
-    unfold rename_assignment_lhs in *.
-    intros.
-    destruct_one_match_hyp; simp.
-    - rewrite_match. reflexivity.
-    - rewrite map.get_put_same. reflexivity.
-  Qed.
-
-  Lemma rename_idemp: forall sH r1 av1 r2 sL av2,
-      rename r1 sH av1 = Some (r2, sL, av2) ->
-      rename r2 sH av2 = Some (r2, sL, av2).
-  Proof.
-    intros.
-    (* TODO add to _props *)
-  Abort.
 
   Lemma rename_correct: forall eH eL,
       envs_related eH eL ->
@@ -703,7 +720,6 @@ Section RegAlloc.
         apply_in_hyps @invert_NoDup_app. simp.
         eapply IHexec. 4: eassumption. all: try eassumption.
         eapply states_compat_extends; cycle 1; try eassumption.
-        eapply extends_trans; eassumption.
     - (* @exec.loop *)
       destruct (rename_props E); try assumption. simp.
       apply_in_hyps @invert_NoDup_app. simp.
@@ -718,8 +734,10 @@ Section RegAlloc.
       specialize (IH1 lL). auto_specialize.
       assert (rename r' (SLoop body1 cond body2) av' = Some (r', (SLoop s b s0), av')) as R. {
         simpl.
-        (* "rename idempotence" not enough *)
-        case TODO_sam.
+        rewrite H12rl by assumption.
+        rewrite (rename_cond_props E0) by eassumption.
+        rewrite H13rl by apply extends_refl.
+        reflexivity.
       }
       simpl in R.
       specialize IH12 with (5 := R). clear R.
