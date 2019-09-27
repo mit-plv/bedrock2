@@ -292,7 +292,7 @@ Section Equiv.
     let post := match type of HR with mcomp_sat ?u ?s ?p => p end in
     (let uc := fresh "uc" in set ucode as uc in HR; hnf in uc; subst uc);
     let ucode := match type of HR with mcomp_sat ?u ?s ?p => u end in
-    change (free.interp interp_action ucode state post) in HR;
+    change (mcomp_sat ucode state post) in HR;
     try (
       let a := match ucode with free.act ?a ?k => a end in
       let k := match ucode with free.act ?a ?k => k end in
@@ -406,7 +406,9 @@ Section Equiv.
       assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
                       4 rinst =
               wordToZ kinst) as Hfetch by (subst kinst; assumption).
-      simpl in H0, Hfetch; rewrite Hfetch in H0.
+
+      t.
+      setoid_rewrite Hfetch in H0.
       
       (* evaluate [decode] *)
       assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) as Hkopc.
@@ -419,7 +421,6 @@ Section Equiv.
         rewrite kami_getOpcode_ok in e.
         assumption.
       }
-      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in Hkopc.
 
       pose proof (bitSlice_range_ex
                     (wordToZ kinst) 12 15 ltac:(abstract blia))
@@ -429,14 +430,14 @@ Section Equiv.
               z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
               z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
       clear Hf3.
-      cbv [Init.Nat.mul Init.Nat.add rv32InstBytes BitsPerByte] in H.
       destruct H as [|[|[|[|[|[|[|]]]]]]].
       4, 7, 8: case TODO. (** TODO: [InvalidInstruction] *)
 
       + (** LB: load-byte *)
         eval_decode H0.
 
-        (* invert the body of [execute] *)
+        mcomp_step_in H0.
+
         case TODO.
 
       + (** LH: load-half *) case TODO.
