@@ -347,16 +347,16 @@ Section MMIO1.
         repeat fwd.
 
         destruct (Z.eq_dec r Register0); cbv [Register0 valid_register] in *; try ((* WHY *) exfalso; Lia.lia).
-        split; trivial.
 
-        unshelve erewrite (_ : _ = Some _); [ | eassumption | ].
+        unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
 
         repeat fwd.
 
-        destruct (Z.eq_dec r0 Register0); cbv [Register0 valid_register] in *; try ((* WHY *) exfalso; Lia.lia).
-        split; trivial.
+        cbv [Register0 valid_register] in *.
+        destruct (Z.eq_dec r0 0); try ((* WHY *) exfalso; Lia.lia).
 
-        unshelve erewrite (_ : _ = Some _); [ | eassumption | ].
+        unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
+        destruct (Z.eq_dec r 0); try Lia.lia.
 
         repeat fwd.
 
@@ -448,10 +448,10 @@ Section MMIO1.
 
         repeat fwd.
 
-        destruct (Z.eq_dec r Register0); cbv [Register0 valid_register] in *; try ((* WHY *) exfalso; Lia.lia).
-        split; trivial.
+        cbv [Register0 valid_register] in *.
+        destruct (Z.eq_dec r 0); try ((* WHY *) exfalso; Lia.lia).
 
-        unshelve erewrite (_ : _ = Some _); [ | eassumption | ].
+        unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
 
         repeat fwd.
 
@@ -464,8 +464,8 @@ Section MMIO1.
 
         repeat fwd.
 
-        destruct (Z.eq_dec r0 Register0); cbv [Register0 valid_register] in *; try ((* WHY *) exfalso; Lia.lia).
-        split; trivial.
+        cbv [Register0 valid_register] in *.
+        destruct (Z.eq_dec r0 0); try ((* WHY *) exfalso; Lia.lia).
 
         repeat fwd.
 

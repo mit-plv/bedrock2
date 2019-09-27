@@ -287,15 +287,15 @@ Section Equiv.
   Qed.
 
   Ltac mcomp_step_in HR :=
+    progress (
     let ucode := match type of HR with mcomp_sat ?u ?s ?p => u end in
     let state := match type of HR with mcomp_sat ?u ?s ?p => s end in
     let post := match type of HR with mcomp_sat ?u ?s ?p => p end in
     (let uc := fresh "uc" in set ucode as uc in HR; hnf in uc; subst uc);
     let ucode := match type of HR with mcomp_sat ?u ?s ?p => u end in
     change (mcomp_sat ucode state post) in HR;
-    try (
-      let a := match ucode with free.act ?a ?k => a end in
-      let k := match ucode with free.act ?a ?k => k end in
+    match ucode with
+    | free.act ?a ?k =>
       let pf := constr:(HR : free.interp interp_action ucode state post) in
       (let HRR := fresh in pose proof pf as HRR; clear HR; rename HRR into HR);
       remember k as kV;
@@ -314,16 +314,23 @@ Section Equiv.
         ]
       in (interp_action a state (fun x state' => mcomp_sat (kV x) state' post)) in
       change TR in HR;
-      subst kV).
+      subst kV
+    | free.ret ?v => change (post v state) in HR
+    | _ => idtac
+    end).
 
   (* kitchen sink goal simplification? *)
   Ltac t  :=
     match goal with
+    | H: let x := ?v in @?C x |- _ =>
+        let x := fresh x in pose v as x;
+        let C := eval cbv beta in (C x) in
+        change C in H
     | H: mcomp_sat _ _ _ |- _ => mcomp_step_in H
     | H: exists _, _ |- _ => destruct H
     | H: _ /\ _ |- _ => destruct H
     | H: _ |- _ => progress
-                     cbv [load store] in H;
+                     cbv beta delta [load store] in H;
                    cbn beta iota delta [
                          load store
                               fst snd
@@ -335,7 +342,7 @@ Section Equiv.
          G: context     [@Memory.load_bytes ?A ?B ?C ?D ?E ?F ?G]
       |- _ =>
       let HH := context CTX [@Memory.load_bytes A B C D E F G] in
-      change HH in H
+      progress change HH in H
     end.
   
   Lemma kamiStep_sound_case_execLd:
@@ -407,7 +414,7 @@ Section Equiv.
                       4 rinst =
               wordToZ kinst) as Hfetch by (subst kinst; assumption).
 
-      t.
+      repeat t.
       setoid_rewrite Hfetch in H0.
       
       (* evaluate [decode] *)
@@ -436,8 +443,9 @@ Section Equiv.
       + (** LB: load-byte *)
         eval_decode H0.
 
-        mcomp_step_in H0.
+        repeat t.
 
+        (* mmio/non-mmio branch *)
         case TODO.
 
       + (** LH: load-half *) case TODO.
@@ -550,61 +558,18 @@ Section Equiv.
       eval_decode H6.
 
       (* invert the body of [execute] *)
-      rename H6 into HR.
-      simpl in HR.
-      unfold interp_action at 1 in HR.
-      unfold MinimalMMIO.interp_action at 1 in HR.
-      cbn [fst snd] in HR.
-      match type of HR with
-        match ?X with _ => _ end =>
-        destruct X; [(** TODO @joonwonc: prove the value of `R0` is
-                      * always zero in Kami steps. *) case TODO|]
-      end.
-      destruct HR as [? HR].
-      
-      simpl in HR.
-      match type of HR with
-        match ?X with _ => _ end => destruct X eqn:?; [|exfalso]
-      end.
-      2: {
-        eapply convertRegs_valid, Heqo; [eassumption|].
-        change 32 with (2^5).
-        eapply bitSlice_range_ex; blia.
-      }
+      repeat t.
 
-      unfold interp_action at 1 in HR.
-      unfold MinimalMMIO.interp_action at 1 in HR.
-      cbn [fst snd] in HR.
-      match type of HR with
-        match ?X with _ => _ end =>
-        destruct X; [(** TODO @joonwonc: ditto, about `R0` *) case TODO|]
-      end.
-      destruct HR as [? HR].
-      
-      simpl in HR.
-      match type of HR with
-        match ?X with _ => _ end => destruct X eqn:?; [|exfalso]
-      end.
-      2: {
-        eapply convertRegs_valid, Heqo0; [eassumption|].
-        change 32 with (2^5).
-        eapply bitSlice_range_ex; blia.
-      }
+      (* resolve interaction with "register" 0 *)
 
-      unfold interp_action at 1 in HR.
-      unfold MinimalMMIO.interp_action at 1 in HR.
-      cbn [fst snd] in HR.
-      match type of HR with
-        match ?X with _ => _ end =>
-        destruct X; [(** TODO @joonwonc: writing to `R0` *) case TODO|]
-      end.
-      destruct HR as [? HR].
+      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO|].
+      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO|].
+      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO|].
 
-      simpl in HR.
-      unfold interp_action at 1 in HR.
-      unfold MinimalMMIO.interp_action at 1 in HR.
-      cbn [fst snd] in HR.
-      simpl in HR.
+      move v at top.
+      destruct (map.get _ _) eqn:? in *; [|case TODO].
+      move v0 at top.
+      destruct (map.get _ _) eqn:? in *; [|case TODO].
 
       (** Construction *)
       unfold doExec, getNextPc, rv32Exec in *.
@@ -622,22 +587,21 @@ Section Equiv.
       { intros; assumption. }
       { subst.
         rewrite kami_rv32NextPc_op_ok; auto.
-        { rewrite <-toKamiPc_wplus_distr; auto.
-          case TODO. (** TODO @joonwonc: evaluate [toKamiPc] *)
+        { case TODO. (** TODO @joonwonc: evaluate [toKamiPc] *)
         }
         { rewrite kami_getOpcode_ok; assumption. }
       }
       { reflexivity. }
-      { subst x0.
+      { subst x0. subst regs.
         rewrite <-kami_rv32GetDst_ok by assumption.
         rewrite <-kami_rv32GetSrc1_ok in Heqo by assumption.
         rewrite <-kami_rv32GetSrc2_ok in Heqo0 by assumption.
         rewrite convertRegs_put
           with (instrMemSizeLg:= instrMemSizeLg) by assumption.
         erewrite <-convertRegs_get
-          with (instrMemSizeLg:= instrMemSizeLg) (v:= k) by auto.
+          with (instrMemSizeLg:= instrMemSizeLg) by eauto.
         erewrite <-convertRegs_get
-          with (instrMemSizeLg:= instrMemSizeLg) (v:= k0) by auto.
+          with (instrMemSizeLg:= instrMemSizeLg) by eauto.
         erewrite kami_rv32DoExec_Add_ok;
           [|rewrite kami_getOpcode_ok; assumption
            |rewrite kami_getFunct7_ok; assumption
