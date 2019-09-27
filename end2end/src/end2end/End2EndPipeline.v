@@ -199,7 +199,9 @@ Section Connect.
   Qed.
 
   Lemma states_related_to_traces_related: forall m m' t,
-      states_related (m, t) m' -> traces_related t m'.(getLog).
+      states_related (proj1 instrMemSizeLg_bounds)
+                     (proj2 instrMemSizeLg_bounds)
+                     (m, t) m' -> traces_related t m'.(getLog).
   Proof. intros. inversion H. simpl. assumption. Qed.
 
   (* for debugging f_equal *)

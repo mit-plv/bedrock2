@@ -3,6 +3,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
+Require Import Kami.Syntax Kami.Semantics.
 Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
@@ -29,7 +30,7 @@ Section FetchOk.
    * the instructions is [0 -- 4 * 2^(instrMemSizeLg)].
    *)
   Variable instrMemSizeLg: Z.
-  Hypothesis (HinstrMemBound: instrMemSizeLg <= width - 2).
+  Hypothesis (HinstrMemBound: 3 <= instrMemSizeLg <= width - 2).
   Definition instrMemSize: nat := Z.to_nat (Z.pow 2 instrMemSizeLg).
   Definition dataMemSize: nat := Z.to_nat (Z.pow 2 width).
 
@@ -64,16 +65,80 @@ Section FetchOk.
                     keys in
     unchecked_store_byte_tuple_list (wzero _) values map.empty.
 
+  Lemma instrMemSizeLg_bound_split:
+    (Z.to_nat width = (2 + Z.to_nat instrMemSizeLg)
+                      + (Z.to_nat width - (2 + Z.to_nat instrMemSizeLg)))%nat.
+  Proof.
+    change 2%nat with (Z.to_nat 2).
+    rewrite <-Z2Nat.inj_add by blia.
+    rewrite <-Z2Nat.inj_sub by blia.
+    rewrite <-Z2Nat.inj_add by blia.
+    f_equal; blia.
+  Qed.
+                                              
   Definition toKamiPc (pc: kword width):
-    Word.word (2 + Z.to_nat instrMemSizeLg) :=
-    $(#pc).
+    Word.word (2 + Z.to_nat instrMemSizeLg).
+    unfold kword in pc.
+    rewrite instrMemSizeLg_bound_split in pc.
+    exact (split1 _ _ pc).
+  Defined.
 
   Lemma toKamiPc_wplus_distr:
     forall w1 w2,
       toKamiPc w1 ^+ toKamiPc w2 = toKamiPc (w1 ^+ w2).
   Proof.
     unfold toKamiPc; intros.
-  Admitted.
+    case TODO.
+  Qed.
+
+  Lemma kamiXAddrs_In_prop:
+    forall addr,
+      In addr kamiXAddrs ->
+      exists saddr: Word.word 30, addr = Word.combine WO~0~0 saddr.
+  Proof.
+    unfold kamiXAddrs; intros.
+    assert (exists saddr: Word.word 30,
+               wzero (BinInt.Z.to_nat width) = Word.combine WO~0~0 saddr).
+    { exists (wzero _); reflexivity. }
+
+    generalize dependent (wzero (BinInt.Z.to_nat width)).
+    induction instrMemSize; simpl; intros; [exfalso; auto|].
+    destruct H; [subst; assumption|].
+    eapply IHn; [eassumption|].
+    destruct H0 as [iaddr ?]; subst.
+
+    eexists.
+    match goal with
+    | |- _ ^+ ?w = _ => replace w with (Word.combine WO~0~0 (natToWord 30 1))
+    end.
+    - simpl.
+      unfold Pos.to_nat; simpl.
+      do 2 rewrite <-wplus_WS_0'.
+      reflexivity.
+    - reflexivity.    
+  Qed.
+
+  Lemma kamiXAddrs_toKamiPc_aligned:
+    forall addr,
+      In addr kamiXAddrs ->
+      exists iaddr, toKamiPc addr = Word.combine WO~0~0 iaddr.
+  Proof.
+    intros.
+    apply kamiXAddrs_In_prop in H.
+    destruct H as [saddr ?]; subst.
+
+    unfold toKamiPc.
+    case TODO.
+    
+  Qed.
+
+  Lemma rv32AlignAddr_toKamiPc_consistent:
+    forall addr iaddr,
+      toKamiPc addr = Word.combine WO~0~0 iaddr ->
+      addr = evalExpr (IsaRv32.rv32AlignAddr 32%nat (Z.to_nat instrMemSizeLg) type iaddr).
+  Proof.
+    case TODO.
+  Qed.
 
   Definition RiscvXAddrsSafe
              (instrMem: kword instrMemSizeLg -> kword width)
@@ -96,6 +161,7 @@ Section FetchOk.
         combine 4 inst =
         wordToZ (instrMem (split2 2 _ (toKamiPc pc))).
   Proof.
-  Admitted.
+    case TODO.
+  Qed.
 
 End FetchOk.
