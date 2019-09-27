@@ -289,6 +289,25 @@ Section RegAlloc.
         map.get m x = Some y ->
         map.get lH x = map.get lL y).
 
+  Lemma states_compat_put_raw: forall lH lL r x y v,
+      map.injective r ->
+      map.get r x = Some y ->
+      states_compat lH r lL ->
+      states_compat (map.put lH x v) r (map.put lL y v).
+  Proof.
+    unfold states_compat. intros.
+    rewrite map.get_put_dec in H2.
+    destruct_one_match_hyp.
+    - subst x0. simp. exists y. rewrite map.get_put_same. auto.
+    - unfold map.injective in *.
+      specialize H1 with (1 := H2). simp.
+      eexists. split; [eassumption|].
+      rewrite map.get_put_dec.
+      destruct_one_match.
+      + subst. specialize H with (1 := H1l) (2 := H0). congruence.
+      + assumption.
+  Qed.
+
   Lemma getmany_of_list_states_compat: forall srcnames impnames r lH lL argvals,
       map.getmany_of_list lH srcnames = Some argvals ->
       map.getmany_of_list r srcnames = Some impnames ->
@@ -310,22 +329,22 @@ Section RegAlloc.
     erewrite IHsrcnames; eauto.
   Qed.
 
-  Lemma putmany_of_list_states_compat: forall srcnames impnames r lH lH' lL vals,
+  Lemma putmany_of_list_states_compat: forall r: src2imp,
+      map.injective r ->
+      forall srcnames impnames lH lH' lL vals,
       map.putmany_of_list srcnames vals lH = Some lH' ->
       map.getmany_of_list r srcnames = Some impnames ->
       states_compat lH r lL ->
       exists lL', map.putmany_of_list impnames vals lL = Some lL' /\
                   states_compat lH' r lL'.
   Proof.
+    intros r Inj.
     induction srcnames; intros; simpl in *; simp.
     - exists lL. unfold map.getmany_of_list in H0. simpl in H0. simp.
       simpl. auto.
     - unfold map.getmany_of_list in H0. simpl in H0. simp.
-      specialize IHsrcnames with (1 := H) (2 := E0).
-      case TODO_sam. (*
-      edestruct IHsrcnames; cycle 1.
-      + eexists. case TODO_sam.
-      + case TODO_sam.*)
+      specialize IHsrcnames with (1 := H) (2 := E0) (lL := (map.put lL i r0)).
+      edestruct IHsrcnames; eauto using states_compat_put_raw.
   Qed.
 
   Definition envs_related(e1: @env srcSemanticsParams)
@@ -333,7 +352,8 @@ Section RegAlloc.
     forall f impl1,
       map.get e1 f = Some impl1 ->
       exists impl2,
-        rename_fun impl1 = Some impl2.
+        rename_fun impl1 = Some impl2 /\
+        map.get e2 f = Some impl2.
 
   Lemma rename_assignment_lhs_get{r x av r' i av'}:
     rename_assignment_lhs r x av = Some (r', i, av') ->
@@ -502,7 +522,8 @@ Section RegAlloc.
       map.injective r2 /\
       map.extends r2 r1 /\
       (forall r3 av3, map.extends r3 r2 -> rename_assignment_lhs r3 x av3 = Some (r3, y, av3)) /\
-      exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
+      (exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2) /\
+      map.get r2 x = Some y.
   Proof.
     pose proof (map.not_in_range_put (ok := src2impOk)).
     intros.
@@ -512,8 +533,9 @@ Section RegAlloc.
               | split;
                 [ intros; rewrite ?map.get_put_diff by congruence
                 | split; [ intros; rewrite ?map.get_put_same; srew_g
-                         | first [ refine (ex_intro _ nil (conj eq_refl _))
-                                 | refine (ex_intro _ [_] (conj eq_refl _)) ]]];
+                         | split; [ first [ refine (ex_intro _ nil (conj eq_refl _))
+                                          | refine (ex_intro _ [_] (conj eq_refl _)) ]
+                                  | rewrite ?map.get_put_same; eauto ]]];
                 eauto ]).
   Qed.
 
@@ -526,12 +548,14 @@ Section RegAlloc.
       map.injective r2 /\
       map.extends r2 r1 /\
       (forall r3 av3, map.extends r3 r2 -> rename_binds r3 bH av3 = Some (r3, bL, av3)) /\
-      exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2.
+      (exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2) /\
+      map.getmany_of_list r2 bH = Some bL.
   Proof.
     induction bH; intros; simpl in *; simp.
     - split; [assumption|].
       split; [apply extends_refl|].
       split; [intros; reflexivity|].
+      split; [|reflexivity].
       exists nil.
       split; [reflexivity|].
       assumption.
@@ -540,13 +564,13 @@ Section RegAlloc.
       apply_in_hyps @invert_NoDup_app. simp.
       edestruct IHbH; eauto. simp.
       split; [assumption|].
-      split; [|split].
+      unfold map.extends in *.
+      split; [|split;[|split]].
       + intros. eapply extends_trans; eassumption.
-      + apply_in_hyps @rename_assignment_lhs_props. simp.
-        unfold map.extends in *.
-        intros. srew_g. reflexivity.
+      + intros. srew_g. reflexivity.
       + refine (ex_intro _ (_ ++ _) (conj _ _)).
         2: eassumption. rewrite <- List.app_assoc. reflexivity.
+      + unfold map.getmany_of_list in *. simpl. srew_g. reflexivity.
   Qed.
 
   Lemma rename_cond_props: forall {r1 cond cond'},
@@ -673,13 +697,49 @@ Section RegAlloc.
             congruence].
 
     - (* @exec.interact *)
+      apply_in_hyps @rename_binds_props. simp.
+      rename l into lH.
       eapply @exec.interact; try eassumption.
       + eapply getmany_of_list_states_compat; eassumption.
-      + intros. specialize (H3 _ _ H7). simp. eauto 10.
-        case TODO_sam.
-
+      + intros. specialize (H3 _ _ H7). simp.
+        pose proof putmany_of_list_states_compat as P.
+        specialize P with (1 := E0_uacl).
+        pose proof states_compat_extends as Q.
+        specialize Q with (1 := E0_uacrl) (2 := H8).
+        specialize P with (3 := Q); clear Q.
+        specialize P with (1 := H3l).
+        specialize P with (1 := E0_uacrrrr).
+        simp.
+        eauto 10.
     - (* @exec.call *)
+      rename l into lH.
+      unfold envs_related in *.
+      edestruct H as [p R]; [eassumption|].
+      destruct p as [[params' rets'] body'].
+      unfold rename_fun in R.
+      simp.
+      apply_in_hyps @rename_binds_props.
+      apply @rename_binds_props in E1; cycle 1. 1,2,3: case TODO_sam.
+      apply @rename_binds_props in E2; cycle 1. 1,2,3: case TODO_sam.
+      edestruct (map.sameLength_putmany_of_list params' argvs map.empty) as [lLF' ?]. {
+        rewrite <- (map.putmany_of_list_sameLength _ _ _ _ H2).
+        symmetry.
+        case TODO_sam.
+        (*
+        eapply map.getmany_of_list_length.
+        eassumption.
+        *)
+      }
+      (*
+      eapply @exec.call.
+      + eassumption.
+      + eapply getmany_of_list_states_compat; eassumption.
+      + case TODO_sam.
+      + case TODO_sam.
+      + case TODO_sam.
+      *)
       case TODO_sam.
+
     - (* @exec.if_true *)
       eapply @exec.if_true.
       + eauto using eval_bcond_compat.
