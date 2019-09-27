@@ -237,7 +237,6 @@ Section WeakestPrecondition.
     split; [eapply Properties.map.split_empty_r; exact eq_refl|].
     eapply ext_spec.weaken; [|eapply Hext]; intros ? ? [? [? []]]. subst a; subst.
     eexists; split; [eassumption|].
-    Print WeakestPrecondition.cmd_body.
     eexists; split; [eapply Properties.map.split_empty_r; exact eq_refl|].
     assumption.
 Qed.

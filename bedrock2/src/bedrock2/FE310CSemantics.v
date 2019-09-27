@@ -43,6 +43,7 @@ Instance parameters : parameters :=
     end else False;
 |}.
 
+Axiom differential_memory_log_crap : False.
 Global Instance ok : Semantics.parameters_ok parameters.
 Proof.
   split; cbv [funname_env locals mem parameters]; try exact _. 
@@ -50,14 +51,13 @@ Proof.
   { eapply SortedListString.ok. }
   { intros; eapply SortedListString.ok. }
   split.
-  { admit. }
-  { cbv [ext_spec parameters]; intros.
+  { case differential_memory_log_crap. }
+  1,2:
+    cbv [ext_spec parameters]; intros;
     cbv [Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl] in *;
       repeat match goal with |- context [string_dec ?a ?b] => destruct (string_dec a b) end;
-      destruct args as [|? [|? [|]]]; intuition idtac.
-    all: eapply H; eauto. }
-  { admit. }
-Admitted.
+      destruct args as [|? [|? [|]]]; intuition eauto.
+Qed.
 
 (* TODO why does typeclass search fail here? *)
 Instance mapok: Interface.map.ok mem := SortedListWord.ok Naive.word32 _.
