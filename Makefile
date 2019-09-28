@@ -28,7 +28,7 @@ ifneq ($(EXTERNAL_DEPENDENCIES),1)
 bedrock2: coqutil
 riscv-coq: coqutil
 kami: riscv-coq
-compiler: riscv-coq
+compiler: riscv-coq bedrock2
 processor: riscv-coq kami
 end2end: compiler bedrock2 processor
 all: bedrock2 compiler processor end2end
@@ -64,7 +64,7 @@ bedrock2:
 clean_bedrock2:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 clean
 
-compiler: bedrock2
+compiler:
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
 
 clean_compiler:
@@ -76,7 +76,7 @@ processor:
 clean_processor:
 	$(MAKE) -C $(ABS_ROOT_DIR)/processor clean
 
-end2end: compiler bedrock2 processor
+end2end:
 	$(MAKE) -C $(ABS_ROOT_DIR)/end2end
 
 clean_end2end:
