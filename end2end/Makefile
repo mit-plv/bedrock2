@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: clean force all all0 admitsCount
+.PHONY: clean force all all0 admitsCount install
 
 DEPS_DIR ?= ../deps
 
@@ -42,6 +42,9 @@ clean:: Makefile.coq.all
 	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
 	rm -f Makefile.coq.all Makefile.coq.all.conf _CoqProject
 	rm -f admits.txt PrintAdmits.vo admits1perLine.txt
+
+install::
+	$(MAKE) -f Makefile.coq.all install
 
 admits.txt: all0 PrintAdmits.v
 	$(COQBIN)coqc $(ALLDEPFLAGS) PrintAdmits.v > admits.txt

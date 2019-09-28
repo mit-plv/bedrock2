@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: clean force all
+.PHONY: clean force all install
 
 DEPS_DIR ?= ../deps
 
@@ -49,3 +49,6 @@ clean:: Makefile.coq.all
 	$(MAKE) -f Makefile.coq.all clean
 	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
 	rm -f Makefile.coq.all Makefile.coq.all.conf _CoqProject src/compiler/examples/swap_bytes_over_uart.elf src/compiler/examples/swap_bytes_over_uart.bin src/compiler/examples/swap_bytes_over_uart.hex
+
+install::
+	$(MAKE) -f Makefile.coq.all install

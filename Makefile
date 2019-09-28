@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all coqutil riscv-coq bedrock2 compiler kami processor end2end clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames
+.PHONY: update_all clone_all coqutil riscv-coq bedrock2 compiler kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_bedrock2 install_compiler install_processor install_end2end install
 
 clone_all:
 	git submodule update --init --recursive
@@ -64,11 +64,17 @@ bedrock2:
 clean_bedrock2:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 clean
 
+install_bedrock2:
+	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 install
+
 compiler: bedrock2
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
 
 clean_compiler:
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler clean
+
+install_compiler:
+	$(MAKE) -C $(ABS_ROOT_DIR)/compiler install
 
 processor:
 	$(MAKE) -C $(ABS_ROOT_DIR)/processor
@@ -76,12 +82,20 @@ processor:
 clean_processor:
 	$(MAKE) -C $(ABS_ROOT_DIR)/processor clean
 
+install_processor:
+	$(MAKE) -C $(ABS_ROOT_DIR)/processor install
+
 end2end: compiler bedrock2 processor
 	$(MAKE) -C $(ABS_ROOT_DIR)/end2end
 
 clean_end2end:
 	$(MAKE) -C $(ABS_ROOT_DIR)/end2end clean
 
+install_end2end:
+	$(MAKE) -C $(ABS_ROOT_DIR)/end2end install
+
 all: bedrock2 compiler processor end2end
 
 clean: clean_bedrock2 clean_compiler clean_processor clean_end2end
+
+install: install_bedrock2 install_compiler install_processor install_end2end
