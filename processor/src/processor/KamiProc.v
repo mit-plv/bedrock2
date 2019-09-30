@@ -510,8 +510,11 @@ Instance rv32MMIO: AbsMMIO nwidth :=
   {| isMMIO := cheat _ |}.
 
 Lemma pgm_init_not_mmio:
-  forall ninstrMemSizeLg,
-    Kami.Ex.SCMMInv.PgmInitNotMMIO (rv32Fetch nwidth ninstrMemSizeLg) rv32MMIO.
+  forall ninstrMemSizeLg
+         (Haddr: nwidth = (2 + ninstrMemSizeLg
+                           + (nwidth - (2 + ninstrMemSizeLg)))%nat),
+    Kami.Ex.SCMMInv.PgmInitNotMMIO
+      (rv32Fetch nwidth ninstrMemSizeLg Haddr) rv32MMIO.
 Proof.
 Admitted.
 
@@ -519,6 +522,16 @@ Section PerInstAddr.
   Context {instrMemSizeLg: Z}.
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
   Hypothesis (Hiaddr: 3 <= instrMemSizeLg <= 30).
+
+  Lemma width_inst_valid:
+    nwidth = (2 + ninstrMemSizeLg + (nwidth - (2 + ninstrMemSizeLg)))%nat.
+  Proof.
+    change 2%nat with (Z.to_nat 2).
+    rewrite <-Z2Nat.inj_add by blia.
+    rewrite <-Z2Nat.inj_sub by blia.
+    rewrite <-Z2Nat.inj_add by (unfold width; blia).
+    f_equal; blia.
+  Qed.
 
   Local Definition pcInitVal: ConstT (Pc ninstrMemSizeLg) :=
     ConstBit $0.
@@ -531,7 +544,8 @@ Section PerInstAddr.
   Variable (memInit: MemInit nwidth rv32DataBytes).
 
   Definition procInl :=
-    pprocInl (rv32Fetch _ _) (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
+    pprocInl (rv32Fetch _ _ width_inst_valid)
+             (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
              rv32MMIO procInit memInit.
   Definition proc: Kami.Syntax.Modules := projT1 procInl.
 
@@ -567,7 +581,8 @@ Section PerInstAddr.
     (UniBit (TruncLsb 3 _) #rpc)%kami_expr.
 
   Definition p4mm: Kami.Syntax.Modules :=
-    p4mm (rv32Fetch _ _) (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
+    p4mm (rv32Fetch _ _ width_inst_valid)
+         (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
          rv32MMIO getBTBIndex getBTBTag
          procInit memInit.
 
@@ -579,5 +594,3 @@ Section PerInstAddr.
   Qed.
 
 End PerInstAddr.
-
-

@@ -71,13 +71,18 @@ Section Equiv.
 
   Variable (memInit: Vec (ConstT (Data rv32DataBytes)) (Z.to_nat width)).
   Definition kamiMemInit := ConstVector memInit.
-  Local Definition kamiProc := @KamiProc.proc instrMemSizeLg kamiMemInit.
+  Local Definition kamiProc :=
+    @KamiProc.proc instrMemSizeLg Hinstr kamiMemInit.
   Local Definition kamiStMk := @KamiProc.mk (Z.to_nat width)
                                             (Z.to_nat instrMemSizeLg)
                                             rv32InstBytes rv32DataBytes rv32RfIdx.
   Local Notation kamiXAddrs := (kamiXAddrs instrMemSizeLg).
-  Local Notation toKamiPc := (toKamiPc instrMemSizeLg).
+  Local Notation toKamiPc := (toKamiPc instrMemSizeLg Hinstr).
   Local Notation convertDataMem := (@convertDataMem mem).
+  Local Notation rv32Fetch :=
+    (rv32Fetch (Z.to_nat width)
+               (Z.to_nat instrMemSizeLg)
+               (width_inst_valid Hinstr)).
 
   Definition iset: InstructionSet := RV32IM.
 
@@ -123,7 +128,7 @@ Section Equiv.
         KamiProc.RegsToT m = Some (kamiStMk kpc krf pinit instrMem kdataMem) ->
         (pinit = false -> riscvXAddrs = kamiXAddrs) ->
         (pinit = true -> RiscvXAddrsSafe instrMemSizeLg Hinstr instrMem kdataMem riscvXAddrs) ->
-        kpc = toKamiPc Hinstr rpc ->
+        kpc = toKamiPc rpc ->
         nrpc = word.add rpc (word.of_Z 4) ->
         rrf = convertRegs krf ->
         rdataMem = convertDataMem kdataMem ->
@@ -214,10 +219,7 @@ Section Equiv.
 
   Lemma kamiStep_sound_case_pgmInit:
     forall km1 t0 rm1 post kupd cs
-           (Hkinv: scmm_inv
-                     rv32RfIdx
-                     (rv32Fetch (Z.to_nat width)
-                                (Z.to_nat instrMemSizeLg)) km1),
+           (Hkinv: scmm_inv rv32RfIdx rv32Fetch km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -242,27 +244,19 @@ Section Equiv.
 
   Lemma kamiPgmInitFull_RiscvXAddrsSafe:
     forall pgmFull dataMem,
-      KamiPgmInitFull (rv32Fetch (Pos.to_nat 32) (Z.to_nat instrMemSizeLg))
-                      pgmFull dataMem ->
+      KamiPgmInitFull rv32Fetch pgmFull dataMem ->
       RiscvXAddrsSafe instrMemSizeLg Hinstr pgmFull dataMem kamiXAddrs.
   Proof.
     unfold KamiPgmInitFull, RiscvXAddrsSafe, isXAddr; intros.
     rewrite H.
     cbv [alignInst rv32Fetch rv32AlignInst]; unfold evalExpr; fold evalExpr.
-
-    pose proof (kamiXAddrs_toKamiPc_aligned instrMemSizeLg Hinstr _ H0).
-    destruct H1 as [iaddr ?]; rewrite H1.
-    rewrite split2_combine.
-    apply rv32AlignAddr_toKamiPc_consistent in H1; subst.
-    reflexivity.
+    f_equal.
+    apply rv32AlignAddr_toKamiPc_consistent; auto.
   Qed.
 
   Lemma kamiStep_sound_case_pgmInitEnd:
     forall km1 t0 rm1 post kupd cs
-           (Hkinv: scmm_inv
-                     rv32RfIdx
-                     (rv32Fetch (Z.to_nat width)
-                                (Z.to_nat instrMemSizeLg)) km1),
+           (Hkinv: scmm_inv rv32RfIdx rv32Fetch km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -347,10 +341,7 @@ Section Equiv.
   
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
-           (Hkinv: scmm_inv
-                     rv32RfIdx
-                     (rv32Fetch (Z.to_nat width)
-                                (Z.to_nat instrMemSizeLg)) km1),
+           (Hkinv: scmm_inv rv32RfIdx rv32Fetch km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -377,7 +368,7 @@ Section Equiv.
 
       (** invert a riscv-coq step *)
       repeat t.
-      
+
       specialize (H eq_refl); eapply fetch_ok in H; eauto.
       destruct H as (rinst & ? & ?).
       (* rewrite H in HR. <-- I want this :P *)
@@ -544,7 +535,7 @@ Section Equiv.
       rewrite H1  in *.
       repeat t.
       setoid_rewrite H7 in H6.
-      remember ((instrMem (split2 2 (Z.to_nat instrMemSizeLg) (toKamiPc Hinstr rpc)))) as kinst.
+      remember ((instrMem (split2 2 (Z.to_nat instrMemSizeLg) (toKamiPc rpc)))) as kinst.
       subst x.
 
       (* evaluate [decode] *)
@@ -699,7 +690,7 @@ Section Equiv.
   Definition p4mm: Modules := p4mm Hinstr kamiMemInit.
 
   Lemma states_related_init:
-    states_related (initRegs (getRegInits (@proc instrMemSizeLg kamiMemInit)), [])
+    states_related (initRegs (getRegInits (@proc instrMemSizeLg Hinstr kamiMemInit)), [])
                    {| getMachine :=
                         {| RiscvMachine.getRegs :=
                              convertRegs (Kami.Semantics.evalConstT KamiProc.rfInitVal);
@@ -777,7 +768,7 @@ Section Equiv.
       exists (t': list Event), KamiLabelSeqR t t' /\ traceProp t'.
   Proof.
     intros.
-    pose proof (@proc_correct instrMemSizeLg (conj Hinstr1 Hinstr2) kamiMemInit) as P.
+    pose proof (@proc_correct instrMemSizeLg Hinstr kamiMemInit) as P.
     unfold traceRefines in P.
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).
