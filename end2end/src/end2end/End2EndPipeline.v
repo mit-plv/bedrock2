@@ -270,7 +270,7 @@ Section Connect.
     (* 1) Kami pipelined processor to riscv-coq *)
     pose proof @riscv_to_kamiImplProcessor as P1.
     specialize_first P1 traceProp.
-    specialize_first P1 (ll_inv spec ml).
+    specialize_first P1 (ll_inv prog spec ml).
     specialize_first P1 B.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
@@ -298,6 +298,9 @@ Section Connect.
         3: split; assumption.
         1,2: case TODO.
     }
+    { case TODO. }
+    { case TODO. }
+    { case TODO. }
 
     eapply P1.
     - (* establish *)

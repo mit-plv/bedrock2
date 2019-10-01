@@ -60,16 +60,17 @@ Section EventLoop.
      pc_end *)
   Variable goodReadyState: RiscvMachineL -> Prop.
 
-  Hypothesis goodReadyState_ignores:
-    forall (state: RiscvMachineL) newPc newMetrics,
-      goodReadyState state ->
-      goodReadyState (withPc newPc
-                     (withNextPc (word.add newPc (word.of_Z 4))
-                     (withMetrics newMetrics state))).
-
   Variables pc_start pc_end: word.
   Hypothesis pc_start_aligned: (word.unsigned pc_start) mod 4 = 0.
   Hypothesis start_ne_end: pc_start <> pc_end.
+
+  Hypothesis goodReadyState_ignores:
+    forall (state: RiscvMachineL) newMetrics,
+      goodReadyState state ->
+      state.(getPc) = pc_end ->
+      goodReadyState (withPc pc_start
+                     (withNextPc (word.add pc_start (word.of_Z 4))
+                     (withMetrics newMetrics state))).
 
   Variable jump: Z.
   Hypothesis jump_bound: - 2 ^ 20 <= jump < 2 ^ 20.
@@ -109,7 +110,8 @@ Section EventLoop.
       ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
       apply runsToDone. split; [|reflexivity].
       eapply goodReadyState_ignores in H.
-      exact H.
+      + apply H.
+      + reflexivity.
     - intros state C. simp. congruence.
   Qed.
 
@@ -138,7 +140,8 @@ Section EventLoop.
       ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
       apply runsToDone. split; [|reflexivity].
       eapply goodReadyState_ignores in H.
-      exact H.
+      + apply H.
+      + reflexivity.
     - eapply init_correct.
     - intros state C. simp. congruence.
   Qed.

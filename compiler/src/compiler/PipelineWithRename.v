@@ -135,11 +135,6 @@ Section Pipeline1.
   Local Notation Program := (@Program (FlattenExpr.mk_Semantics_params _)).
   Local Notation ProgramSpec := (@ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
-  Definition functions2Riscv(e: env)(funs: list funname): list Instruction * fun_pos_env :=
-    let e' := flatten_functions e funs in
-    let e'' := rename_functions String.eqb Z.eqb String.eqb String.eqb available_registers ext_spec e' funs in
-    FlatToRiscvDef.compile_functions e'' funs.
-
   Definition ExprImp2RenamedFlat(s: cmd): FlatImp.stmt :=
     let flat := ExprImp2FlatImp s in
     match rename_stmt map.empty flat available_registers with
@@ -151,101 +146,193 @@ Section Pipeline1.
     let flat := ExprImp2RenamedFlat s in
     FlatToRiscvDef.compile_snippet e_pos mypos flat.
 
-  Definition goodMachine(e: env)(t: Semantics.trace)
-             (mH: Semantics.mem)
-             (lH: localsH)
-             (st: MetricRiscvMachine): Prop :=
-    exists funnames g posenv lL,
-      (* TODO should we relate low-level (regalloc'ed) and high-level locals? *)
-      functions2Riscv e funnames = (g.(insts), posenv) /\
-      FlatToRiscvFunctions.goodMachine t mH lL g st.
-
-  Definition goodMachine': MetricRiscvMachine -> Prop. case TODO. Defined.
-
   Definition regAllocSim := RegAlloc.checkerSim String.eqb Z.eqb String.eqb String.eqb
                                                 available_registers 777 (@ext_spec p).
 
-  Definition related :=
+  Context (prog: Program cmd)
+          (spec: ProgramSpec)
+          (sat: ProgramSatisfiesSpec prog Semantics.exec spec)
+          (ml: MemoryLayout Semantics.width)
+          (mlOk: MemoryLayoutOk ml).
+
+  (* TODO reduce duplication between FlatToRiscvDef *)
+
+  (* All code as renamed FlatImp, layed out like it will be layed out in riscv: *)
+  (* 1)    set up stack ptr: not in FlatImp *)
+  (* 2) *) Let init_code' := ExprImp2RenamedFlat prog.(init_code).
+  (* 3) *) Let loop_body' := ExprImp2RenamedFlat prog.(loop_body).
+  (* 4)    jump back to loop body: not in FlatImp *)
+  (* 5) *) Let functions' := let e' := flatten_functions prog.(funimpls) prog.(funnames) in
+                             rename_functions String.eqb Z.eqb String.eqb String.eqb
+                                              available_registers ext_spec
+                                              e' prog.(funnames).
+
+  (* we make this one a Definition because it's useful for debugging *)
+  Definition function_positions: fun_pos_env :=
+    FlatToRiscvDef.build_fun_pos_env functions' 0 prog.(funnames).
+
+  Let main_size := List.length (FlatToRiscvDef.compile_main
+                                  function_positions 42 init_code' loop_body').
+
+  (* All code as riscv machine code, layed out from low to high addresses: *)
+  (* 1) *) Let init_sp_insts := let init_sp := word.unsigned ml.(stack_pastend) in
+                                FlatToRiscvDef.compile_lit RegisterNames.sp init_sp.
+  (* 2) *) Let init_insts := let main_pos := - 4 * Z.of_nat main_size in
+                       FlatToRiscvDef.compile_stmt_new function_positions main_pos init_code'.
+           Let loop_pos := let main_pos := - 4 * Z.of_nat main_size in
+                           main_pos + 4 * Z.of_nat (Datatypes.length init_insts).
+  (* 3) *) Let loop_insts := FlatToRiscvDef.compile_stmt_new
+                function_positions loop_pos loop_body'.
+  (* 4) *) Let backjump_insts := [IInstruction
+                             (Jal Register0 (-4 * Z.of_nat (Datatypes.length loop_insts)))].
+  (* 5) *) Let fun_insts := FlatToRiscvDef.compile_funs
+                               function_positions functions' 0 prog.(funnames).
+
+  Definition compile_prog: list Instruction :=
+    init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts ++ fun_insts.
+
+  Lemma main_size_correct:
+    main_size = (Datatypes.length init_insts + Datatypes.length loop_insts)%nat.
+  Proof.
+    unfold main_size, init_insts, loop_insts, FlatToRiscvDef.compile_main.
+    rewrite !app_length. simpl.
+    repeat match goal with
+    | |- ?L = ?R =>
+      match L with
+      | context[?LL] =>
+        match LL with
+        | Datatypes.length (FlatToRiscvDef.compile_stmt_new e_pos ?pos1 ?C) =>
+          match R with
+          | context[?RR] =>
+            match RR with
+            | Datatypes.length (FlatToRiscvDef.compile_stmt_new e_pos ?pos2 C) =>
+              progress replace LL with RR by refine (compile_stmt_length_position_indep _ _ _ _ _)
+            end
+          end
+        end
+      end
+    end.
+    match goal with
+    | |- _ = (?A + ?B)%nat => remember A as a; remember B as b
+    end.
+    case TODO. (* Here's a BUG! *)
+  Qed.
+
+  Definition putProgram(preInitial: MetricRiscvMachine): MetricRiscvMachine :=
+    MetricRiscvMachine.putProgram (List.map encode compile_prog) ml.(code_start) preInitial.
+
+  (* pc at beginning of loop *)
+  Definition pc_start: word := word.add ml.(code_start)
+    (word.of_Z (4 * Z.of_nat (List.length init_sp_insts + List.length init_insts))).
+
+  Definition loopBodyGhostConsts: GhostConsts.
+  refine ({|
+    FlatToRiscvFunctions.p_sp := ml.(stack_pastend);
+    FlatToRiscvFunctions.num_stackwords :=
+      word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / FlatToRiscvDef.bytes_per_word;
+    FlatToRiscvFunctions.p_insts := pc_start;
+    FlatToRiscvFunctions.insts := loop_insts;
+    (* function positions in e_pos are relative to program_base *)
+    FlatToRiscvFunctions.program_base := word.add ml.(code_start)
+      (word.of_Z (4 * Z.of_nat (List.length init_sp_insts +
+                                List.length init_insts +
+                                List.length loop_insts +
+                                List.length backjump_insts)));
+    FlatToRiscvFunctions.e_pos := function_positions;
+    FlatToRiscvFunctions.e_impl := functions';
+    FlatToRiscvFunctions.funnames := prog.(funnames);
+    FlatToRiscvFunctions.frame := match TODO with end;
+  |}).
+  Defined.
+
+  Definition loopBody_related :=
     (compose_relation FlattenExprSimulation.related
     (compose_relation (RegAlloc.related eqb Z.eqb eqb eqb ext_spec)
-                      FlatToRiscvSimulation.related)).
+                      (FlatToRiscvSimulation.related loopBodyGhostConsts loop_pos))).
 
-  Definition pipelineSim: simulation ExprImp.SimExec runsTo related :=
+  Definition loopBodySim: simulation ExprImp.SimExec runsTo loopBody_related :=
     (compose_sim FlattenExprSimulation.flattenExprSim
     (compose_sim regAllocSim
-                 FlatToRiscvSimulation.flatToRiscvSim)).
+                 (FlatToRiscvSimulation.flatToRiscvSim loopBodyGhostConsts loop_pos))).
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Context (prog: Program cmd)
-          (spec: ProgramSpec)
-          (sat: ProgramSatisfiesSpec prog Semantics.exec spec)
-          (ml: MemoryLayout Semantics.width).
-
   Definition hl_inv: @ExprImp.SimState (FlattenExpr.mk_Semantics_params _) -> Prop :=
     fun '(e, c, done, t, m, l) => spec.(isReady) t m l /\ spec.(goodTrace) t.
 
   Definition ll_ready: MetricRiscvMachine -> Prop :=
-    compile_inv related hl_inv.
-
-  Axiom insts_init: list Instruction.
-  Axiom insts_body: list Instruction.
-
-  (* pc at beginning of loop *)
-  Definition pc_start: word :=
-    word.add ml.(code_start) (word.of_Z (4 * Z.of_nat (List.length insts_init))).
+    compile_inv loopBody_related hl_inv.
 
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_ready pc_start.
 
-  (* uses relative jumps for function calls and expects that the compiled functions will be
-     put right after the code returned by this compilation function *)
-  Definition compile_main(e_pos: fun_pos_env)(init_code loop_body: cmd): list Instruction :=
-    (* TODO the two below should share local variables and not rename independently *)
-    let init_code' := ExprImp2RenamedFlat init_code in
-    let loop_body' := ExprImp2RenamedFlat loop_body in
-    let main_size := List.length (FlatToRiscvDef.compile_main e_pos 42 init_code' loop_body') in
-    FlatToRiscvDef.compile_main e_pos (- 4 * Z.of_nat main_size) init_code' loop_body'.
+  Lemma putProgram_establishes_ll_inv: forall preInitial initial,
+      initial = putProgram preInitial ->
+      ll_inv initial.
+  Proof.
+  Admitted.
 
-  Definition compile_prog(init_sp: Z)(p: Program cmd): list Instruction :=
-    (* all positions in e_pos are relative to the position of the first function *)
-    let '(fun_insts, e_pos) := functions2Riscv p.(funimpls) p.(funnames) in
-    FlatToRiscvDef.compile_lit RegisterNames.sp init_sp ++
-    compile_main e_pos p.(init_code) p.(loop_body) ++
-    fun_insts.
-
-  Definition putProgram(p: Program cmd)(code_addr: word)
-             (stack_pastend: word)(preInitial: MetricRiscvMachine): MetricRiscvMachine :=
-    let insts := compile_prog (word.unsigned stack_pastend) p in
-    MetricRiscvMachine.putProgram (List.map encode insts) code_addr preInitial.
-
-(*
+  Context
       (* technical detail: "pc at beginning of loop" and "pc at end of loop" needs to be
          different so that we can have two disjoint states between which the system goes
          back and forth. If we had only one state, we could not prevent "runsTo" from
          always being runsToDone and not making progress, see compiler.ForeverSafe *)
-      (insts_body_nonempty: insts_body <> nil)
-*)
-
-  Lemma putProgram_establishes_ll_inv: forall preInitial initial,
-      initial = (putProgram prog ml.(code_start) ml.(stack_pastend) preInitial) ->
-      ll_inv initial.
-  Proof.
-  Admitted.
+      (loop_insts_nonempty: 0 < Z.of_nat (List.length loop_insts))
+      (loop_insts_not_too_big: 4 * Z.of_nat (List.length loop_insts) < 2 ^ width).
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
       ll_inv st -> mcomp_sat (run1 iset) st ll_inv.
   Proof.
     intro st.
     eapply runsToGood_is_Invariant with
-        (jump := - 4 * Z.of_nat (Datatypes.length insts_body))
-        (pc_end := word.add pc_start (word.of_Z (4 * Z.of_nat (List.length insts_body)))).
-    - (* Show that ll_ready ignores pc, nextPc, and metrics *)
+        (jump := - 4 * Z.of_nat (List.length loop_insts))
+        (pc_end := word.add pc_start (word.of_Z (4 * Z.of_nat (List.length loop_insts)))).
+    - unfold pc_start. destruct mlOk. solve_divisibleBy4.
+    - intro C.
+      assert (word.of_Z (4 * Z.of_nat (Datatypes.length loop_insts)) = word.of_Z 0) as D. {
+        transitivity (word.sub pc_start pc_start).
+        - rewrite C at 1. simpl. (* PARAMRECORDS *) ring.
+        - simpl. (* PARAMRECORDS *) ring.
+      }
+      apply (f_equal word.unsigned) in D.
+      unshelve erewrite @word.unsigned_of_Z in D. 1: exact word_ok. (* PARAMRECORDS? *)
+      unshelve erewrite word.unsigned_of_Z_0 in D. 1: exact word_ok. (* PARAMRECORDS? *)
+      unfold word.wrap in D.
+      rewrite Z.mod_small in D by (simpl (* PARAMRECORDS *); blia).
+      destruct loop_insts.
+      + cbv in loop_insts_nonempty. discriminate.
+      + simpl in D. blia.
+    - (* Show that ll_ready (almost) ignores pc, nextPc, and metrics *)
       intros.
-      unfold ll_ready, compile_inv, related, compose_relation, FlatToRiscvSimulation.related in *.
-      simp. destruct_RiscvMachine state.
+      unfold ll_ready, compile_inv, loopBody_related, compose_relation,
+        FlatToRiscvSimulation.related in *.
+      simp.
+      match goal with
+      | Ha: @getPc _ _ _ _ = _,
+        Hb: @getPc _ _ _ _ = ?Q |- _ =>
+        match type of Ha with
+        | ?P = _ => replace P with Q in Ha;
+                      rename Ha into A; move A at bottom
+        end
+      end.
+      destruct b; cycle 1. {
+        exfalso.
+        unfold pc_start, program_base, loopBodyGhostConsts, FlatToRiscvFunctions.goodMachine in *.
+        match type of A with
+        | ?L = ?R => assert (word.sub L R = word.of_Z 0) as B by (rewrite A; ring)
+        end.
+        unfold loop_pos, main_size in B.
+        simpl in B. (* PARAMRECORDS *)
+        rewrite !Nat2Z.inj_add in B. change BinInt.Z.of_nat with Z.of_nat in *.
+        match type of B with
+        | ?L = _ => ring_simplify L in B
+        end.
+
+        case TODO. (*  contradictory? *)
+      }
+      destruct_RiscvMachine state.
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -253,13 +340,15 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + simpl.
+      + simpl. subst state_pc. unfold pc_start, loop_pos.
+        rewrite main_size_correct.
+        solve_word_eq word_ok.
+        (* TODO check all offsets *)
+
         (* not the case: it only accepts pc at beginning or end of instructions,
            how to communicate this? *)
         case TODO.
       + case TODO.
-    - unfold pc_start. case TODO.
-    - case TODO.
     - case TODO.
     - solve_divisibleBy4.
     - solve_word_eq word_ok.
@@ -267,7 +356,7 @@ Section Pipeline1.
       intros.
       unfold ll_ready, compile_inv in *. simp.
       eapply runsTo_weaken.
-      + pose proof pipelineSim as P.
+      + pose proof loopBodySim as P.
         unfold simulation in P.
         specialize P with (post1 := hl_inv).
         eapply P. 1: eassumption.
@@ -295,7 +384,7 @@ Section Pipeline1.
   Proof.
     unfold ll_inv, runsToGood_Invariant. intros.
     eapply extend_runsTo_to_good_trace. 2: eassumption.
-    simpl. unfold ll_ready, compile_inv, related, hl_inv,
+    simpl. unfold ll_ready, compile_inv, loopBody_related, hl_inv,
            compose_relation, FlattenExprSimulation.related,
            RegAlloc.related, FlatToRiscvSimulation.related, FlatToRiscvFunctions.goodMachine.
     intros. simp. eassumption.
@@ -303,7 +392,7 @@ Section Pipeline1.
 
   Lemma pipeline_proofs:
     (forall preInitial initial,
-        initial = putProgram prog ml.(code_start) ml.(stack_pastend) preInitial ->
+        initial = putProgram preInitial ->
         ll_inv initial) /\
     (forall st, ll_inv st -> mcomp_sat (run1 iset) st ll_inv) /\
     (forall st, ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).

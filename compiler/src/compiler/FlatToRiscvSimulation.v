@@ -34,9 +34,17 @@ Section Sim.
        morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
-  Definition related: FlatImp.SimState -> MetricRiscvMachine -> Prop :=
+  (* The GhostConsts tell us how to look at the low-level state in order to
+     establish the relationship to the high-level state.
+     Before we can use "related", we will have to provide GhostConsts.
+     In other relations, we might also need to provide more "how to look at"
+     parameters which say things about the interpretation of the high-level
+     and/or low-level state.
+     Since we have to provide GhostConsts from outside, we can also make sure
+     that they match with "how to look at" parameters from the other phases.
+     The argument "pos" is the position of the code relative to program_base. *)
+  Definition related(g: GhostConsts)(pos: Z): FlatImp.SimState -> MetricRiscvMachine -> Prop :=
     fun '(e, c, done, t, m, l) st =>
-      exists (g: GhostConsts) (pos: Z),
         e = g.(e_impl) /\
         fits_stack g.(num_stackwords) g.(e_impl) c /\
         (forall f argnames retnames body,
@@ -61,7 +69,8 @@ Section Sim.
   Axiom TODO_preserve_regs_initialized: forall regs1 regs2,
       regs_initialized regs1 -> regs_initialized regs2.
 
-  Lemma flatToRiscvSim{hyps: @FlatToRiscv.assumptions p}: simulation FlatImp.SimExec FlatToRiscvCommon.runsTo related.
+  Lemma flatToRiscvSim{hyps: @FlatToRiscv.assumptions p}: forall (g: GhostConsts) (pos: Z),
+      simulation FlatImp.SimExec FlatToRiscvCommon.runsTo (related g pos).
   Proof.
     unfold simulation, FlatImp.SimExec, related, FlatImp.SimState.
     intros.
@@ -91,7 +100,6 @@ Section Sim.
     - simpl. intros. simp.
       eexists; split; [|eassumption].
       cbv beta iota.
-      do 2 eexists.
       repeat match goal with
              | |- _ /\ _ => split
              | _ => eapply TODO_preserve_regs_initialized; (eassumption||reflexivity)

@@ -76,14 +76,20 @@ Instance pipeline_assumptions: @Pipeline.assumptions params. Admitted.
 (* stack grows from high addreses to low addresses, first stack word will be written to
    (stack_pastend-4), next stack word to (stack_pastend-8) etc *)
 Definition stack_pastend: Z := 1024.
+
+Definition ml: MemoryLayout Semantics.width.
+  refine {| MemoryLayout.stack_pastend := word.of_Z stack_pastend; |}.
+  all: apply TODO.
+Defined.
+
 Definition compile '(functions, initial, reactive) :=
-  compile_prog (p:=params) stack_pastend
+  compile_prog (p:=params)
      (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
                      _
                      (List.map fst functions)
                      (RegAlloc.map.putmany_of_pairs map.empty functions)
                      initial
-                     reactive).
+                     reactive) ml.
 
 Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
@@ -118,5 +124,5 @@ Goal True.
      max there to see how many registers a function needs *)
 
   let x := eval cbv in (instrencode asm) in
-  idtac x.
+  idtac (* x *).
 Abort.

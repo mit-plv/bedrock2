@@ -77,14 +77,11 @@ Instance pipeline_assumptions: @Pipeline.assumptions params. Admitted.
 (* stack grows from high addreses to low addresses, first stack word will be written to
    (stack_pastend-4), next stack word to (stack_pastend-8) etc *)
 Definition stack_pastend: Z := 1024*16.
-Definition compile '(functions, initial, reactive) :=
-  compile_prog (p:=params) stack_pastend
-     (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
-                     _
-                     (List.map fst functions)
-                     (RegAlloc.map.putmany_of_pairs map.empty functions)
-                     initial
-                     reactive).
+
+Definition ml: MemoryLayout Semantics.width.
+  refine {| MemoryLayout.stack_pastend := word.of_Z 2048; |}.
+  all: apply TODO.
+Defined.
 
 Definition instrencode p : list byte :=
   let word8s := List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
@@ -104,6 +101,17 @@ Definition prog := (
   (* @cmd.call flatparams ["_"] "spi_write" [expr.literal (Ox"a5")] *)
 ).
 
+Definition prog_for_compiler :=
+  let '(functions, initial, reactive) := prog in
+     (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
+                     _
+                     (List.map fst functions)
+                     (RegAlloc.map.putmany_of_pairs map.empty functions)
+                     initial
+                     reactive).
+
+Definition compiled := compile_prog (p:=params) prog_for_compiler ml.
+
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.Hexdump.
 Local Open Scope hexdump_scope.
@@ -111,13 +119,11 @@ Set Printing Width 108.
 
 
 Goal True.
-  pose (let '(functions, initial, reactive) := prog in
-    SortedList.value (snd (functions2Riscv (p:=params) (RegAlloc.map.putmany_of_pairs map.empty functions) (List.map fst functions)))) as symbols.
+  pose (SortedList.value (function_positions (p := params) prog_for_compiler)) as symbols.
   cbv in symbols.
 
-
   let r := eval cbv in (([[
-                         ]] ++ compile prog)%list%Z) in
+                         ]] ++ compiled)%list%Z) in
   pose r as asm.
   Import bedrock2.NotationsCustomEntry.
 
@@ -126,5 +132,5 @@ Goal True.
      max there to see how many registers a function needs *)
 
   let x := eval cbv in (instrencode asm) in
-  idtac x.
+  idtac (* x *).
 Abort.

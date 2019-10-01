@@ -5,8 +5,8 @@ Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.PipelineWithRename.
-Require Import riscv.Utility.Words64Naive.
-Require Import riscv.Utility.DefaultMemImpl64.
+Require Import riscv.Utility.Words32Naive.
+Require Import riscv.Utility.DefaultMemImpl32.
 Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
@@ -95,13 +95,35 @@ Defined.
    (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
 Definition stack_pastend: Z := 2048.
 
+Definition ml: MemoryLayout Semantics.width.
+  refine {| MemoryLayout.stack_pastend := word.of_Z 2048; |}.
+  all: apply TODO.
+Defined.
+
+
+Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
+    f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2.
+Proof. intros. congruence. Qed.
+
+Lemma f_equal3: forall {A B C: Type} {f1 f2: A -> B -> C} {a1 a2: A} {b1 b2: B},
+    f1 = f2 -> a1 = a2 -> b1 = b2 -> f1 a1 b1 = f2 a2 b2.
+Proof. intros. congruence. Qed.
+
+Lemma f_equal3_dep: forall {A B C: Type} {f1 f2: A -> B -> C} {a1 a2: A} {b1 b2: B},
+    f1 = f2 -> a1 = a2 -> b1 = b2 -> f1 a1 b1 = f2 a2 b2.
+Proof. intros. congruence. Qed.
+
 Definition swap_asm: list Instruction :=
-  Eval cbv in compile_prog stack_pastend prog.
+  Eval cbv in compile_prog prog ml.
 
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.
-  Goal True. let r := eval unfold swap_asm in swap_asm in idtac r. Abort.
-  (* Annotated:
+  Goal True. let r := eval unfold swap_asm in swap_asm in idtac (* r *). Abort.
+  (* Annotated (was 64bit, now we print for 32bit):
+
+  set_sp:
+     lui     x2, -4096
+     xori    x2, x2, -2048
 
   main:
      addi    x3, x0, 100   // load literals
@@ -156,5 +178,5 @@ Module PrintBytes.
   Import bedrock2.Hexdump.
   Local Open Scope hexdump_scope.
   Set Printing Width 100.
-  Goal True. let x := eval cbv in swap_as_bytes in idtac x. Abort.
+  Goal True. let x := eval cbv in swap_as_bytes in idtac (* x *). Abort.
 End PrintBytes.
