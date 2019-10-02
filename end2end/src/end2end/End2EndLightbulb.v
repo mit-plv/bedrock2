@@ -130,7 +130,9 @@ Lemma link_lightbulb_withCorrectWordInstance:
     WeakestPrecondition.call
       [iot; recvEthernet; lightbulb; LAN9250.lan9250_readword; SPI.spi_xchg; SPI.spi_read;
          SPI.spi_write] "iot" t m [p_addr]
-      (fun (t' : Semantics.trace) (_ : Semantics.mem) (rets : list Semantics.word) =>
+      (fun (t' : Semantics.trace) (m' : Semantics.mem) (rets : list Semantics.word) =>
+      (exists buf, Separation.sep (Array.array Separation.ptsto (word.of_Z 1) p_addr buf) R m' /\
+      Z.of_nat (length buf) = 1520) /\
          exists v : Semantics.word,
            rets = [v] /\
            (exists iol,
@@ -151,7 +153,6 @@ Proof.
   (* replace semantics with FE310CSemantics.parameters. silently fails *)
   Fail pattern semantics.
   pose proof link_lightbulb as P. unfold spec_of_iot in P.
-  (* TODO andres why is there no separation logic assertion in the postcondition? *)
   Fail apply P.
   case TODO.
 Qed.
@@ -280,8 +281,8 @@ Proof.
     subst.
     eexists. split; [reflexivity|].
     split.
-    + case TODO. (* iot should preserve what it requires as a precondition *)
-    + destruct H2 as [ C | [C | [C | [C | C ] ] ] ];
+    + eauto.
+    + destruct H3 as [ C | [C | [C | [C | C ] ] ] ];
         destr; eexists (ioh0 ++ ioh)%list; (split;
         [ eapply relate_concat; assumption
         | apply goodHlTrace_addOne;

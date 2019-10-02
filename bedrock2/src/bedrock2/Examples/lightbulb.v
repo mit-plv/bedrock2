@@ -204,6 +204,8 @@ Instance spec_of_iot : spec_of "iot" := fun functions =>
     Z.of_nat (length buf) = 1520 ->
     WeakestPrecondition.call functions "iot" t m [p_addr]
       (fun t' m' rets => exists v, rets = [v] /\
+      (exists buf, (bytes p_addr buf * R) m' /\
+      Z.of_nat (length buf) = 1520) /\
       exists iol, t' = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ (
         (exists packet cmd, (lan9250_recv _ _ packet +++ gpio_set _ 23 cmd) ioh /\ lightbulb_packet_rep cmd packet /\ word.unsigned v = 0) \/
@@ -221,6 +223,7 @@ Proof.
   repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end
         || straightline || straightline_call || split_if || ecancel_assumption || eauto || blia).
   all : eexists; split; [solve[eauto]|].
+  all : split; [shelve|].
   all : eexists; split.
   all: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
   all : eexists; split.
@@ -229,6 +232,12 @@ Proof.
   { subst v. rewrite word.unsigned_xor_nowrap, H10 in H4. case (H4 eq_refl). }
   { subst v. rewrite word.unsigned_xor_nowrap, H9 in H4. inversion H4. }
   { subst v. rewrite word.unsigned_xor_nowrap, H9 in H4. inversion H4. }
+
+  Unshelve.
+  all : eexists; split; [ eauto | ].
+  all : try seprewrite_in @bytearray_index_merge H6; eauto.
+  all : try rewrite List.app_length.
+  all : try Lia.lia.
 Qed.
 
 Local Ltac prove_ext_spec :=
