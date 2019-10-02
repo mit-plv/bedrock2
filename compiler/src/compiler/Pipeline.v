@@ -27,7 +27,6 @@ Require Import riscv.Utility.MkMachineWidth.
 Require Export riscv.Proofs.DecodeEncode.
 Require Export riscv.Proofs.EncodeBound.
 Require Export compiler.EmitsValid.
-Require Export compiler.RegAlloc3.
 Require coqutil.Map.SortedList.
 Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.

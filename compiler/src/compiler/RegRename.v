@@ -701,9 +701,7 @@ Section RegAlloc.
       simp. simpl. eauto.
   Qed.
 
-  Hypothesis available_impvars_NoDup: NoDup available_impvars.
-
-  Lemma rename_correct: forall eH eL,
+  Lemma rename_correct(available_impvars_NoDup: NoDup available_impvars): forall eH eL,
       envs_related eH eL ->
       forall sH t m lH mc post,
       @exec srcSemanticsParams eH sH t m lH mc post ->
@@ -882,6 +880,53 @@ Section RegAlloc.
         eapply IH2; try eassumption.
   Qed.
 
+  Definition related: @FlatImp.SimState srcSemanticsParams ->
+                      @FlatImp.SimState impSemanticsParams -> Prop :=
+    fun '(e1, c1, done1, t1, m1, l1) '(e2, c2, done2, t2, m2, l2) =>
+      done1 = done2 /\
+      envs_related e1 e2 /\
+      t1 = t2 /\
+      m1 = m2 /\
+      (done1 = false -> l1 = map.empty /\ l2 = map.empty) /\
+      exists av' r', rename map.empty c1 available_impvars = Some (r', c2, av').
+      (* TODO could/should also relate l1 and l2 *)
+
+  Lemma renameSim(available_impvars_NoDup: NoDup available_impvars):
+    simulation (@FlatImp.SimExec srcSemanticsParams)
+               (@FlatImp.SimExec impSemanticsParams) related.
+  Proof.
+    unfold simulation.
+    intros *. intros R Ex1.
+    unfold FlatImp.SimExec, related in *.
+    destruct s1 as (((((e1 & c1) & done1) & t1) & m1) & l1).
+    destruct s2 as (((((e2 & c2) & done2) & t2) & m2) & l2).
+    simp.
+    split; [reflexivity|intros].
+    pose proof Rrrrrr as A.
+    apply @rename_props in A;
+      [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
+    specialize (Rrrrrl eq_refl).
+    simp.
+    apply_in_hyps @invert_NoDup_app. simp.
+    eapply exec.weaken.
+    - eapply rename_correct.
+      1: subst; eassumption.
+      1: eassumption.
+      1: eapply Ex1r.
+      4: {
+        eapply Arrl. eapply extends_refl.
+      }
+      1: eassumption.
+      1: eassumption.
+      1: eassumption.
+      unfold states_compat. intros *. intro A.
+      erewrite map.get_empty in A. discriminate.
+    - simpl. intros. simp.
+      eexists; split; [|eassumption].
+      simpl.
+      repeat split; try discriminate; eauto.
+  Qed.
+
 End RegAlloc.
 
-(* Print Assumptions rename_correct. *)
+(* Print Assumptions renameSim. *)

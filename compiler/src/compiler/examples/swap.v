@@ -61,18 +61,9 @@ Instance pipeline_params : Pipeline.parameters. simple refine {|
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
 
-Instance mapops: RegAlloc.map.ops (SortedListString.map Z). refine (
-  {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
-    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |};
-     RegAlloc.map.default_value := 666;
-  |}).
-- exact String.eqb.
-- exact Z.eqb.
-Defined.
-
 Definition allFuns: list swap.bedrock_func := [swap; swap_swap].
 
-Definition e := RegAlloc.map.putmany_of_pairs map.empty allFuns.
+Definition e := RegRename.map.putmany_of_pairs map.empty allFuns.
 
 Definition main: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.call (FlattenExpr.mk_Syntax_params _) [] "swap_swap" [expr.literal 100; expr.literal 108].

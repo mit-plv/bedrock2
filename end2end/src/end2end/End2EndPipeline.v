@@ -145,8 +145,7 @@ Section Connect.
           {mem_ok: map.ok mem}
           {stringname_env : forall T : Type, map.map string T}
           {stringname_env_ok: forall T, map.ok (stringname_env T)}
-          {src2imp : map.map string Register}
-          {src2imp_ops : RegAlloc.map.ops src2imp}.
+          {src2imp : map.map string Register}.
 
   Instance mmio_params: MMIO.parameters := {
     byte_ok := KamiWord.word8ok;

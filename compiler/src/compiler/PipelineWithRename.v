@@ -28,7 +28,6 @@ Require Import riscv.Utility.MkMachineWidth.
 Require Export riscv.Proofs.DecodeEncode.
 Require Export riscv.Proofs.EncodeBound.
 Require Export compiler.EmitsValid.
-Require Export compiler.RegAlloc3.
 Require coqutil.Map.SortedList.
 Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.
@@ -36,7 +35,7 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
 Require Import compiler.FlattenExprSimulation.
-Require Import compiler.RegAlloc.
+Require Import compiler.RegRename.
 Require Import compiler.FlatToRiscvSimulation.
 Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
@@ -70,7 +69,6 @@ Module Import Pipeline.
     ext_spec : ExtSpec;
 
     src2imp :> map.map string Z;
-    src2imp_ops :> map.ops src2imp;
 
     ext_guarantee : MetricRiscvMachine -> Prop;
     M: Type -> Type;
@@ -136,18 +134,14 @@ Section Pipeline1.
   Local Notation ProgramSpec := (@ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
   Definition ExprImp2RenamedFlat(s: cmd): FlatImp.stmt :=
-    let flat := ExprImp2FlatImp s in
-    match rename_stmt map.empty flat available_registers with
-    | Some flat' => flat'
-    | None => FlatImp.SSkip
-    end.
+    let flat := ExprImp2FlatImp s in rename_stmt map.empty flat available_registers.
 
   Definition snippet2Riscv(e_pos: fun_pos_env)(mypos: Z)(s: cmd): list Instruction :=
     let flat := ExprImp2RenamedFlat s in
     FlatToRiscvDef.compile_snippet e_pos mypos flat.
 
-  Definition regAllocSim := RegAlloc.checkerSim String.eqb Z.eqb String.eqb String.eqb
-                                                available_registers 777 (@ext_spec p).
+  Definition regAllocSim := renameSim String.eqb Z.eqb String.eqb String.eqb
+                                      available_registers (@ext_spec p).
 
   Context (prog: Program cmd)
           (spec: ProgramSpec)
@@ -247,13 +241,17 @@ Section Pipeline1.
 
   Definition loopBody_related :=
     (compose_relation FlattenExprSimulation.related
-    (compose_relation (RegAlloc.related eqb Z.eqb eqb eqb ext_spec)
+    (compose_relation (RegRename.related eqb Z.eqb eqb eqb available_registers ext_spec)
                       (FlatToRiscvSimulation.related loopBodyGhostConsts loop_pos))).
 
-  Definition loopBodySim: simulation ExprImp.SimExec runsTo loopBody_related :=
-    (compose_sim FlattenExprSimulation.flattenExprSim
-    (compose_sim regAllocSim
-                 (FlatToRiscvSimulation.flatToRiscvSim loopBodyGhostConsts loop_pos))).
+  Lemma loopBodySim: simulation ExprImp.SimExec runsTo loopBody_related.
+  Proof.
+    refine (compose_sim FlattenExprSimulation.flattenExprSim
+           (compose_sim _
+                        (FlatToRiscvSimulation.flatToRiscvSim loopBodyGhostConsts loop_pos))).
+    eapply renameSim.
+    all: case TODO.
+  Qed.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -386,7 +384,7 @@ Section Pipeline1.
     eapply extend_runsTo_to_good_trace. 2: eassumption.
     simpl. unfold ll_ready, compile_inv, loopBody_related, hl_inv,
            compose_relation, FlattenExprSimulation.related,
-           RegAlloc.related, FlatToRiscvSimulation.related, FlatToRiscvFunctions.goodMachine.
+           RegRename.related, FlatToRiscvSimulation.related, FlatToRiscvFunctions.goodMachine.
     intros. simp. eassumption.
   Qed.
 
