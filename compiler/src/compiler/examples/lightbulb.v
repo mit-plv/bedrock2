@@ -53,22 +53,12 @@ Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
 }.
 Notation RiscvMachine := MetricRiscvMachine.
 
-Instance mapops: RegAlloc.map.ops (SortedListString.map Z). refine (
-  {| RegAlloc.map.intersect (s1 s2 : SortedListString.map Z) :=
-    {| value := ListLib.list_intersect (fun '(k,v) '(k',v') => andb (_ k k') (_ v v')) (value s1) (value s2); _value_ok := TODO |};
-     RegAlloc.map.default_value := 666;
-  |}).
-- exact String.eqb.
-- exact Z.eqb.
-Defined.
-
 Definition params : Pipeline.parameters. simple refine {|
   Pipeline.locals := _;
   Pipeline.Registers := _;
   Pipeline.ext_spec _ _ := TODO;
   Pipeline.ext_guarantee _ := False;
   Pipeline.PRParams := TODO;
-  Pipeline.src2imp_ops := mapops;
 |}; unshelve (try exact _); apply TODO. Defined.
 Definition flatparams := (FlattenExpr.mk_Syntax_params (@Pipeline.FlattenExpr_parameters params)).
 Definition b : @varname flatparams := "b".
@@ -106,7 +96,7 @@ Definition prog_for_compiler :=
      (@Build_Program (FlattenExpr.mk_Semantics_params (@Pipeline.FlattenExpr_parameters params))
                      _
                      (List.map fst functions)
-                     (RegAlloc.map.putmany_of_pairs map.empty functions)
+                     (RegRename.map.putmany_of_pairs map.empty functions)
                      initial
                      reactive).
 
