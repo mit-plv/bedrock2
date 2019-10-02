@@ -506,8 +506,8 @@ Definition width: Z := 32.
 Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
 Local Notation nwidth := (Z.to_nat width).
 
-Instance rv32MMIO: AbsMMIO nwidth :=
-  {| isMMIO := cheat _ |}.
+Instance rv32MMIO: AbsMMIO nwidth. 
+Admitted.
 
 Lemma pgm_init_not_mmio:
   forall ninstrMemSizeLg
