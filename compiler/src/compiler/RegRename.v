@@ -673,6 +673,34 @@ Section RegAlloc.
       intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
   Qed.
 
+  Lemma states_compat_putmany_of_list: forall srcvars lH lH' lL r impvars av r' av' values,
+      map.injective r ->
+      map.not_in_range r av ->
+      NoDup av ->
+      rename_binds r srcvars av = Some (r', impvars, av') ->
+      states_compat lH r lL ->
+      map.putmany_of_list srcvars values lH = Some lH' ->
+      exists lL',
+        map.putmany_of_list impvars values lL = Some lL' /\
+        states_compat lH' r' lL'.
+  Proof.
+    induction srcvars; intros; simpl in *.
+    - simp. eexists. simpl. eauto.
+    - simp.
+      apply_in_hyps @rename_assignment_lhs_props. simp.
+      apply_in_hyps @invert_NoDup_app. simp.
+      edestruct IHsrcvars as [lL' ?].
+      4: eassumption.
+      5: eassumption.
+      all: try eassumption.
+      1: {
+        eapply states_compat_put.
+        3: eassumption.
+        all: eassumption.
+      }
+      simp. simpl. eauto.
+  Qed.
+
   Hypothesis available_impvars_NoDup: NoDup available_impvars.
 
   Lemma rename_correct: forall eH eL,
@@ -732,10 +760,12 @@ Section RegAlloc.
       unfold rename_fun in R.
       simp.
       apply_in_hyps @rename_binds_props.
+      pose proof E1 as E1'.
       apply @rename_binds_props in E1;
         [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
       simp.
       apply_in_hyps @invert_NoDup_app. simp.
+      pose proof E2 as E2'.
       apply @rename_binds_props in E2; [|assumption..].
       simp.
       apply_in_hyps @invert_NoDup_app. simp.
@@ -754,29 +784,20 @@ Section RegAlloc.
       + eauto.
       + cbv beta. intros. simp.
         specialize H4 with (1 := H11r). move H4 at bottom. simp.
-
-        (* need something like: putmany into empty slots preserves states_compat,
-           ie turn states_compat_put into states_compat_putmany *)
-
-        (*
-        edestruct putmany_of_list_states_compat as [lL' ?].
-        4: exact H9.
+        edestruct states_compat_putmany_of_list as [ lL' [? ?] ].
+        5: exact H9.
+        5: eassumption.
         1: assumption.
-
-        edestruct putmany_of_list_states_compat as [lL' ?].
-        1: exact E0_uacl.
-        1: exact H4rl.
-        1: exact E0_uacrrrr.
-
-
+        3: exact E0.
+        1: assumption.
+        1: assumption.
         do 2 eexists. split; [|split].
         * eapply getmany_of_list_states_compat.
           3: eassumption.
           1: eassumption.
           eapply map.getmany_of_list_extends; eassumption.
-         *)
-        case TODO_sam.
-
+        * eassumption.
+        * eauto.
     - (* @exec.if_true *)
       eapply @exec.if_true.
       + eauto using eval_bcond_compat.
@@ -862,3 +883,5 @@ Section RegAlloc.
   Qed.
 
 End RegAlloc.
+
+(* Print Assumptions rename_correct. *)
