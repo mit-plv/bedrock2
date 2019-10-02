@@ -10,6 +10,8 @@ Require Import compiler.ProgramSpec.
 Require Import compiler.MemoryLayout.
 Require Import end2end.End2EndPipeline.
 Require Import end2end.Bedrock2SemanticsForKami.
+Require        riscv.Utility.InstructionNotations.
+Require        bedrock2.Hexdump.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -54,7 +56,17 @@ Definition funspecs: funname ->
    (Semantics.trace -> Semantics.mem -> list Semantics.word -> Prop) -> Prop
   := WeakestPrecondition.call funimplsList.
 
-Definition buffer_addr: Z. Admitted.
+(* TODO adjust these numbers *)
+Definition ml: MemoryLayout Semantics.width := {|
+  MemoryLayout.code_start    := word.of_Z 0;
+  MemoryLayout.code_pastend  := word.of_Z 2048;
+  MemoryLayout.heap_start    := word.of_Z 2048;
+  MemoryLayout.heap_pastend  := word.of_Z 4096;
+  MemoryLayout.stack_start   := word.of_Z 4096;
+  MemoryLayout.stack_pastend := word.of_Z 8192;
+|}.
+
+Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
 (* TODO is it ok to overwrite a register with "res"? *)
 Definition loopbody := @cmd.call Semantics.syntax ["res"] "iot" [expr.literal buffer_addr].
@@ -100,8 +112,6 @@ Definition spec: ProgramSpec := {|
     (Separation.sep (Array.array Scalars.scalar8 (word.of_Z 1) (word.of_Z buffer_addr) buf) R) m /\
     Z.of_nat (Datatypes.length buf) = 1520;
 |}.
-
-Definition ml: MemoryLayout 32. Admitted.
 
 Lemma mlOk: MemoryLayoutOk ml.
 Proof.
@@ -186,6 +196,44 @@ Instance src2imp : map.map string Decode.Register := SortedListString.map Z.
 Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
                                      (Z.to_nat KamiProc.width)): Kami.Syntax.Modules :=
   p4mm memInit instrMemSizeLg instrMemSizeLg_bounds.
+
+Instance pipeline_params: PipelineWithRename.Pipeline.parameters.
+unshelve refine pipeline_params.
+- exact (@Semantics.mem semantics).
+- exact (@Semantics.funname_env semantics).
+- refine (@Semantics.mem_ok _ _).
+- refine (@Semantics.funname_env_ok _ _).
+Defined.
+
+Definition lightbulb_insts_unevaluated: list Decode.Instruction :=
+  @PipelineWithRename.compile_prog pipeline_params prog ml.
+
+(* Before running this command, it might be a good idea to do
+   "Print Assumptions lightbulb_insts_unevaluated."
+   and to check if there are any axioms which could block the computation. *)
+(* TODO: These instructions will have to be fed to putProgram to get them into
+   the bedrock2 memory, and we will have to make sure that the Kami processor
+   contains the corresponding instructions too. *)
+Definition lightbulb_insts: list Decode.Instruction := Eval cbv in lightbulb_insts_unevaluated.
+
+Module PrintProgram.
+  Import riscv.Utility.InstructionNotations.
+  Import bedrock2.NotationsCustomEntry.
+  Import bedrock2.Hexdump.
+  Local Open Scope hexdump_scope.
+  Set Printing Width 108.
+
+  Goal True.
+    pose (SortedList.value (PipelineWithRename.function_positions prog)) as symbols.
+    cbv in symbols.
+
+    pose lightbulb_insts as p.
+    unfold lightbulb_insts in p.
+
+    let x := eval cbv in (instrencode lightbulb_insts) in idtac (* x *).
+  Abort.
+  Unset Printing Width.
+End PrintProgram.
 
 Lemma end2end_lightbulb:
   forall (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))

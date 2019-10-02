@@ -37,6 +37,7 @@ Require Import compiler.PipelineWithRename.
 Require Import compiler.examples.MMIO.
 Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
+Require Import bedrock2.Byte.
 
 Local Open Scope Z_scope.
 
@@ -119,6 +120,11 @@ Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters := {
   FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
   FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
 }.
+
+Definition instrencode(p: list Instruction): list Byte.byte :=
+  let word8s := List.flat_map
+                  (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
+  List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
 Section Connect.
 
