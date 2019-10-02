@@ -17,7 +17,8 @@ Lemma wnot_idempotent:
   forall {sz} (w: word sz),
     wnot (wnot w) = w.
 Proof.
-Admitted.
+  induction w; cbn; rewrite ?IHw, ?negb_involutive; eauto.
+Qed.
 
 Section Parametrized.
   Variables addrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat.
