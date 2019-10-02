@@ -36,7 +36,7 @@ Module map.
 
   Definition injective{K V: Type}{M: map.map K V}(m: M): Prop :=
     forall k1 k2 v,
-      map.get m k1 = v -> map.get m k2 = v -> k1 = k2.
+      map.get m k1 = Some v -> map.get m k2 = Some v -> k1 = k2.
 
   (* Alternative:
   Definition injective{K V: Type}{M: map.map K V}(m: M): Prop :=
@@ -61,6 +61,17 @@ Module map.
 
   Definition not_in_range{K V: Type}{M: map.map K V}(m: M)(l: list V): Prop :=
     List.Forall (fun v => forall k, map.get m k <> Some v) l.
+
+  Lemma empty_injective{K V: Type}{M: map.map K V}{ok: map.ok M}:
+      map.injective map.empty.
+  Proof. unfold injective. intros. rewrite map.get_empty in H. discriminate. Qed.
+
+  Lemma not_in_range_empty{K V: Type}{M: map.map K V}{ok: map.ok M}: forall (l: list V),
+      map.not_in_range map.empty l.
+  Proof.
+    unfold not_in_range. induction l; intros; constructor; intros;
+    rewrite ?map.get_empty; [congruence|auto].
+  Qed.
 
   Lemma not_in_range_put{K V: Type}{M: map.map K V}{ok: map.ok M}
         {key_eqb: K -> K -> bool}{key_eq_dec: EqDecider key_eqb}:
@@ -662,6 +673,8 @@ Section RegAlloc.
       intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
   Qed.
 
+  Hypothesis available_impvars_NoDup: NoDup available_impvars.
+
   Lemma rename_correct: forall eH eL,
       envs_related eH eL ->
       forall sH t m lH mc post,
@@ -719,26 +732,50 @@ Section RegAlloc.
       unfold rename_fun in R.
       simp.
       apply_in_hyps @rename_binds_props.
-      apply @rename_binds_props in E1; cycle 1. 1,2,3: case TODO_sam.
-      apply @rename_binds_props in E2; cycle 1. 1,2,3: case TODO_sam.
-      edestruct (map.sameLength_putmany_of_list params' argvs map.empty) as [lLF' ?]. {
-        rewrite <- (map.putmany_of_list_sameLength _ _ _ _ H2).
-        symmetry.
-        case TODO_sam.
-        (*
-        eapply map.getmany_of_list_length.
-        eassumption.
-        *)
+      apply @rename_binds_props in E1;
+        [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
+      simp.
+      apply_in_hyps @invert_NoDup_app. simp.
+      apply @rename_binds_props in E2; [|assumption..].
+      simp.
+      apply_in_hyps @invert_NoDup_app. simp.
+      apply_in_hyps @rename_props. simp.
+      edestruct putmany_of_list_states_compat as [ lLF' [? ?] ].
+      2: exact H2.
+      1: exact E2l.
+      1: eapply map.getmany_of_list_extends; cycle 1; eassumption.
+      { instantiate (1 := map.empty).
+        unfold states_compat. intros *. intro A. rewrite map.get_empty in A. discriminate A.
       }
-      (*
       eapply @exec.call.
       + eassumption.
       + eapply getmany_of_list_states_compat; eassumption.
-      + case TODO_sam.
-      + case TODO_sam.
-      + case TODO_sam.
-      *)
-      case TODO_sam.
+      + eassumption.
+      + eauto.
+      + cbv beta. intros. simp.
+        specialize H4 with (1 := H11r). move H4 at bottom. simp.
+
+        (* need something like: putmany into empty slots preserves states_compat,
+           ie turn states_compat_put into states_compat_putmany *)
+
+        (*
+        edestruct putmany_of_list_states_compat as [lL' ?].
+        4: exact H9.
+        1: assumption.
+
+        edestruct putmany_of_list_states_compat as [lL' ?].
+        1: exact E0_uacl.
+        1: exact H4rl.
+        1: exact E0_uacrrrr.
+
+
+        do 2 eexists. split; [|split].
+        * eapply getmany_of_list_states_compat.
+          3: eassumption.
+          1: eassumption.
+          eapply map.getmany_of_list_extends; eassumption.
+         *)
+        case TODO_sam.
 
     - (* @exec.if_true *)
       eapply @exec.if_true.
