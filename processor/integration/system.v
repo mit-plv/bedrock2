@@ -177,31 +177,9 @@ module system(
   always #1 clk = !clk;
   initial begin
     $dumpfile("system.vcd");
-    $dumpvars(1, mkTop.proc_m12_lastPc,
+    $dumpvars(1,
     led, spi_clk, spi_csn, spi_mosi, spi_miso, clk, resetn,
-      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_addr, mem_rq_data, mem_rq_iswrite, ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put, spi_tx_buf, spi_rx_buf, spi_tx_rdy,
-
-       mkTop.WILL_FIRE_RL_proc_m10_decodeLd,
-       mkTop.WILL_FIRE_RL_proc_m10_decodeNm,
-       mkTop.WILL_FIRE_RL_proc_m10_decodeSt,
-       mkTop.WILL_FIRE_RL_proc_m11_execBypass,
-       mkTop.WILL_FIRE_RL_proc_m11_execNm,
-       mkTop.WILL_FIRE_RL_proc_m12_repLd,
-       mkTop.WILL_FIRE_RL_proc_m12_repLdZ,
-       mkTop.WILL_FIRE_RL_proc_m12_repSt,
-       mkTop.WILL_FIRE_RL_proc_m12_reqLd,
-       mkTop.WILL_FIRE_RL_proc_m12_reqSt,
-       mkTop.WILL_FIRE_RL_proc_m12_wbNm,
-       mkTop.WILL_FIRE_RL_proc_m12_wbNmZ,
-       mkTop.WILL_FIRE_RL_proc_m12_wrongEpoch,
-       mkTop.WILL_FIRE_RL_proc_m9_instFetchRq,
-       mkTop.WILL_FIRE_RL_proc_m9_instFetchRs,
-       mkTop.WILL_FIRE_RL_proc_m9_instFetchRsIgnore,
-       mkTop.WILL_FIRE_RL_proc_m9_modifyPc,
-       mkTop.WILL_FIRE_RL_proc_m9_pgmInitRq,
-       mkTop.WILL_FIRE_RL_proc_m9_pgmInitRqEnd,
-       mkTop.WILL_FIRE_RL_proc_m9_pgmInitRs,
-       mkTop.WILL_FIRE_RL_proc_m9_pgmInitRsEnd
+      rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_addr, mem_rq_data, mem_rq_iswrite, ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put, spi_tx_buf, spi_rx_buf, spi_tx_rdy
 );
     #90000 $finish();
   end

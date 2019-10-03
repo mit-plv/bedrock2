@@ -69,7 +69,7 @@ Instance pipeline_assumptions: @Pipeline.assumptions params. Admitted.
 Definition stack_pastend: Z := 1024*16.
 
 Definition ml: MemoryLayout Semantics.width.
-  refine {| MemoryLayout.stack_pastend := word.of_Z 2048; |}.
+  refine {| MemoryLayout.stack_pastend := word.of_Z stack_pastend; |}.
   all: apply TODO.
 Defined.
 
@@ -122,5 +122,7 @@ Goal True.
      max there to see how many registers a function needs *)
 
   let x := eval cbv in (instrencode asm) in
-  idtac (* x *).
+  idtac x.
 Abort.
+
+Unset Printing Width.

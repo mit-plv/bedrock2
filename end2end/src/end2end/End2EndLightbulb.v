@@ -49,11 +49,11 @@ Definition funspecs: funname ->
 (* TODO adjust these numbers *)
 Definition ml: MemoryLayout Semantics.width := {|
   MemoryLayout.code_start    := word.of_Z 0;
-  MemoryLayout.code_pastend  := word.of_Z 2048;
-  MemoryLayout.heap_start    := word.of_Z 2048;
-  MemoryLayout.heap_pastend  := word.of_Z 4096;
-  MemoryLayout.stack_start   := word.of_Z 4096;
-  MemoryLayout.stack_pastend := word.of_Z 8192;
+  MemoryLayout.code_pastend  := word.of_Z (4*2^10);
+  MemoryLayout.heap_start    := word.of_Z (4*2^10);
+  MemoryLayout.heap_pastend  := word.of_Z (8*2^10);
+  MemoryLayout.stack_start   := word.of_Z (16*2^10);
+  MemoryLayout.stack_pastend := word.of_Z (16*2^10);
 |}.
 
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
