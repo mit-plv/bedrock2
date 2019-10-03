@@ -37,7 +37,8 @@ all: all_coqmakefile special/BytedumpTest.out
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
 Makefile.coq.all: force _CoqProject
-	$(COQ_MAKEFILE) $(VS) -o Makefile.coq.all
+	@echo "Generating Makefile.coq.all"
+	@$(COQ_MAKEFILE) $(VS) -o Makefile.coq.all
 
 special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin all_coqmakefile
 	coqc -q $(ALLDEPFLAGS) $< > special/BytedumpTest.out.tmp0

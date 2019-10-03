@@ -34,7 +34,8 @@ all: Makefile.coq.all $(ALL_VS)
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
 Makefile.coq.all: force _CoqProject
-	$(COQ_MAKEFILE) $(ALL_VS) -o Makefile.coq.all
+	@echo "Generating Makefile.coq.all"
+	@$(COQ_MAKEFILE) $(ALL_VS) -o Makefile.coq.all
 
 src/compiler/examples/swap_bytes_over_uart.hex: src/compiler/examples/swap_bytes_over_uart_hexdump.v _CoqProject src/compiler/examples/FE310Compiler.vo
 	coqc -q $(shell cat _CoqProject) $< > $@
