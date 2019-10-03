@@ -22,7 +22,7 @@ Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import compiler.load_save_regs_correct.
 Import Utility MetricLogging.
 
-Axiom TODO: False.
+Axiom TODO_sam: False.
 
 Section Proofs.
   Context {p: FlatToRiscv.parameters}.
@@ -162,8 +162,7 @@ Section Proofs.
       iff1 (functions base rel_positions impls funnames)
            (functions base rel_positions impls (ListLib.removeb String.eqb f funnames) *
             program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
-  Proof.
-  Admitted.
+  Proof. case TODO_sam. Qed.
 
   Lemma union_Forall: forall {T: Type} (teqb: T -> T -> bool) (P: T -> Prop) (l1 l2: list T),
       Forall P l1 ->
@@ -303,7 +302,7 @@ Section Proofs.
     try solve [ecancel_done'].
 
   (* TODO make sure it's compatible with users of it *)
-  Axiom compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
+  Lemma compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
         action postH newPc insts (argvars resvars: list Register) initialMH R initialRegsH
         initialMetricsH argvals mGive outcome p_sp,
       insts = compile_ext_call resvars action argvars ->
@@ -338,6 +337,7 @@ Section Proofs.
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
                   ext_guarantee finalL).
+  Proof. case TODO_sam. Qed.
 
   (* Ghost state used to describe low-level state introduced by the compiler.
      Called "ghost constants" because after executing a piece of code emitted by
@@ -412,15 +412,15 @@ Section Proofs.
 
   Open Scope word_scope.
 
-  Axiom TODO_offset_in_range: forall (offset: Z) (vars: list Register),
+  Axiom TODO_sam_offset_in_range: forall (offset: Z) (vars: list Register),
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * #(List.length vars).
 
   (* doesn't hold, only the other direction holds *)
-  Axiom TODO_valid_register_to_valid_FlatImp_var: forall x,
+  Axiom TODO_sam_valid_register_to_valid_FlatImp_var: forall x,
       valid_register x ->
       valid_FlatImp_var x.
 
-  Axiom TODO_no_dups: forall vars: list Register, NoDup vars.
+  Axiom TODO_sam_no_dups: forall vars: list Register, NoDup vars.
 
   Definition regs_initialized(regs: locals): Prop :=
     forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
@@ -621,7 +621,7 @@ Section Proofs.
         eapply save_regs_correct with (vars := args)
                 (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl;
           try solve [sidecondition].
-        - apply TODO_offset_in_range.
+        - apply TODO_sam_offset_in_range.
         - eapply map.getmany_of_list_extends; eassumption.
         - instantiate (1 := old_argvals). unfold Register, MachineInt in *. blia.
         - wseplog_pre word_ok. wcancel.
@@ -761,7 +761,7 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       }
-      1: apply TODO_offset_in_range.
+      1: apply TODO_sam_offset_in_range.
     }
 
     simpl.
@@ -787,10 +787,10 @@ Section Proofs.
         wcancel.
       - reflexivity.
       - eapply Forall_impl.
-        + apply TODO_valid_register_to_valid_FlatImp_var.
+        + apply TODO_sam_valid_register_to_valid_FlatImp_var.
         + assumption.
-      - apply TODO_no_dups.
-      - apply TODO_offset_in_range.
+      - apply TODO_sam_no_dups.
+      - apply TODO_sam_offset_in_range.
     }
 
     simpl.
@@ -926,7 +926,7 @@ Section Proofs.
         assert (forall x, In x argnames -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
           eapply Forall_impl.
-          + apply TODO_valid_register_to_valid_FlatImp_var.
+          + apply TODO_sam_valid_register_to_valid_FlatImp_var.
           + assumption.
         }
         revert F.
@@ -949,16 +949,16 @@ Section Proofs.
           f_equal. simpl_addrs. solve_word_eq word_ok.
       }
       {
-        case TODO. (* TODO log unchanged --> strengthen all used lemmas *)
+        case TODO_sam. (* TODO log unchanged --> strengthen all used lemmas *)
       }
       {
         eapply ext_guarantee_preservable.
         + eassumption.
         + cbn.
           (* TODO will need stronger prove_ext_guarantee, derive same_domain from sep *)
-          case TODO.
+          case TODO_sam.
         + cbn.  (* log equality? *)
-          case TODO.
+          case TODO_sam.
       }
     }
 
@@ -994,7 +994,7 @@ Section Proofs.
         wcancel.
       - reflexivity.
       - assumption.
-      - apply TODO_offset_in_range.
+      - apply TODO_sam_offset_in_range.
     }
 
     simpl.
@@ -1024,11 +1024,11 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
-      - replace valid_FlatImp_var with valid_register by case TODO.
+      - replace valid_FlatImp_var with valid_register by case TODO_sam.
         apply modVars_as_list_valid_registers.
         assumption.
-      - apply TODO_no_dups.
-      - apply TODO_offset_in_range.
+      - apply TODO_sam_no_dups.
+      - apply TODO_sam_offset_in_range.
     }
 
     simpl.
@@ -1049,7 +1049,7 @@ Section Proofs.
         assert (forall x, In x (modVars_as_list Z.eqb body) -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
           eapply Forall_impl.
-          + apply TODO_valid_register_to_valid_FlatImp_var.
+          + apply TODO_sam_valid_register_to_valid_FlatImp_var.
           + eapply modVars_as_list_valid_registers. assumption.
         }
         revert F.
@@ -1112,7 +1112,7 @@ Section Proofs.
         | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
           specialize (D RegisterNames.sp); destruct D as [A | A]
         end.
-        + exfalso. (* contradiction: sp cannot be in modVars of body *) case TODO.
+        + exfalso. (* contradiction: sp cannot be in modVars of body *) case TODO_sam.
         + etransitivity; [symmetry|]; eassumption.
       - simpl.
         instantiate (2 := BinInt.Z.eqb).
@@ -1135,8 +1135,8 @@ Section Proofs.
     eapply runsToStep. {
       eapply run_Jalr0 with (rs1 := RegisterNames.ra); simpl;
         try solve [sidecondition | solve_divisibleBy4].
-      - case TODO. (*   ?oimm12 mod 4 = 0 *)
-      - case TODO. (*   word.unsigned ?dest mod 4 = 0  *)
+      - case TODO_sam. (*   ?oimm12 mod 4 = 0 *)
+      - case TODO_sam. (*   word.unsigned ?dest mod 4 = 0  *)
       - rewrite map.get_put_diff by (clear; cbv; congruence).
         rewrite map.get_put_same. reflexivity.
       - wseplog_pre word_ok.
@@ -1187,10 +1187,10 @@ Section Proofs.
         }
         ecancel_done'.
       - reflexivity.
-      - replace valid_FlatImp_var with valid_register by case TODO.
+      - replace valid_FlatImp_var with valid_register by case TODO_sam.
         assumption.
-      - apply TODO_no_dups.
-      - apply TODO_offset_in_range.
+      - apply TODO_sam_no_dups.
+      - apply TODO_sam_offset_in_range.
       - subst FL.
         simpl_addrs.
         rewrite map.get_put_same. f_equal. solve_word_eq word_ok.
@@ -1225,15 +1225,15 @@ Section Proofs.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
     do 4 eexists.
     repeat split.
-    + replace middle_log3 with middle_log1 by case TODO. (* TODO investigate! *)
+    + replace middle_log3 with middle_log1 by case TODO_sam. (* TODO investigate! *)
       eassumption.
     + simpl_addrs. rewrite length_load_regs. rewrite length_save_regs. simpl_addrs.
       solve_word_eq word_ok.
     + (* TODO chain of extends *)
-      case TODO.
+      case TODO_sam.
     + match goal with
       | H: map.only_differ ?m1 _ ?m2 |- map.get ?m2 _ = Some _ =>
-        replace m2 with m1 by case TODO (* TODO almost *)
+        replace m2 with m1 by case TODO_sam (* TODO almost *)
       end.
       rewrite map.get_put_same. f_equal. subst FL.
       simpl_addrs.
@@ -1337,18 +1337,18 @@ Section Proofs.
       end.
       eapply ext_guarantee_preservable.
       * eassumption.
-      * simpl. (* TODO memory same domain *) case TODO.
-      * simpl. (* TODO log equality?? *) case TODO.
+      * simpl. (* TODO memory same domain *) case TODO_sam.
+      * simpl. (* TODO log equality?? *) case TODO_sam.
 
     - (* SLoad *)
-      case TODO.
+      case TODO_sam.
       (*
       unfold Memory.load, Memory.load_Z in *. simp. subst_load_bytes_for_eq.
       run1det. run1done.
       *)
 
     - (* SStore *)
-      case TODO.
+      case TODO_sam.
       (*
       simpl_MetricRiscvMachine_get_set.
       assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * R))%sep initialL_mem)
@@ -1359,7 +1359,7 @@ Section Proofs.
       *)
 
     - (* SLit *)
-      case TODO.
+      case TODO_sam.
       (*
       eapply compile_lit_correct_full.
       + sidecondition.
@@ -1374,7 +1374,7 @@ Section Proofs.
        *)
 
     - (* SOp *)
-      case TODO.
+      case TODO_sam.
       (*
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
@@ -1390,13 +1390,13 @@ Section Proofs.
       *)
 
     - (* SSet *)
-      case TODO.
+      case TODO_sam.
       (*
       run1det. run1done.
       *)
 
     - (* SIf/Then *)
-      case TODO.
+      case TODO_sam.
       (*
       (* execute branch instruction, which will not jump *)
       eapply runsTo_det_step; simpl in *; subst.
@@ -1412,7 +1412,7 @@ Section Proofs.
        *)
 
     - (* SIf/Else *)
-      case TODO.
+      case TODO_sam.
       (*
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsTo_det_step; simpl in *; subst.
@@ -1428,7 +1428,7 @@ Section Proofs.
           *)
 
     - (* SLoop/again *)
-      case TODO.
+      case TODO_sam.
       (*
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
       on hyp[(stmt_not_too_big body2); runsTo] do (fun H => rename H into IH2).
@@ -1469,7 +1469,7 @@ Section Proofs.
           *)
 
     - (* SSeq *)
-      case TODO.
+      case TODO_sam.
       (*
       rename IHexec into IH1, H2 into IH2.
       eapply runsTo_trans.
@@ -1481,7 +1481,7 @@ Section Proofs.
         *)
 
     - (* SSkip *)
-      case TODO.
+      case TODO_sam.
       (*
       run1done.
       *)

@@ -226,7 +226,9 @@ Section Go.
     intros. rewrite associativity. assumption.
   Qed.
 
-  Axiom staticXAddrs: XAddrs.
+  Axiom TODO_sam: False.
+
+  Definition staticXAddrs: XAddrs. case TODO_sam. Defined.
 
   Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
 
@@ -592,9 +594,10 @@ Section Go.
   Qed.
 
   (* TODO doesn't hold, will have to be carried around as a hypothesis *)
-  Axiom staticXAddr_implies_dynamicXAddr: forall initialL,
+  Lemma staticXAddr_implies_dynamicXAddr: forall initialL,
       isXAddr (getPc initialL) staticXAddrs ->
       isXAddr (getPc initialL) (getXAddrs initialL).
+  Proof. case TODO_sam. Qed.
 
   Lemma go_fetch_inst: forall {initialL: RiscvMachineL} {inst pc0 R} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->

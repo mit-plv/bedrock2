@@ -16,8 +16,6 @@ Require        bedrock2.Hexdump.
 Open Scope Z_scope.
 Open Scope string_scope.
 
-Axiom TODO: False.
-
 Definition instrMemSizeLg: Z := 10. (* TODO is this enough? *)
 Lemma instrMemSizeLg_bounds : 3 <= instrMemSizeLg <= 30. Proof. cbv. intuition discriminate. Qed.
 Definition dataMemSize: Z := 4096.
@@ -68,10 +66,12 @@ Definition prog := {|
   loop_body := @cmd.call Semantics.syntax ["res"] "iot" [expr.literal buffer_addr];
 |}.
 
+Axiom TODO_andres: False.
+
 Definition lightbulb_packet_rep: bool -> list Semantics.byte -> Prop.
   intros command bytes.
   refine (lightbulb_packet_rep command (_ bytes)).
-  case TODO.
+  case TODO_andres.
 Defined.
 
 Definition traceOfOneInteraction: list (lightbulb_spec.OP Semantics.word) -> Prop :=
@@ -89,13 +89,13 @@ Definition goodHlTrace: list (lightbulb_spec.OP Semantics.word) -> Prop :=
 Definition relate_lightbulb_trace_to_bedrock(ioh: list (lightbulb_spec.OP Semantics.word))
                                             (iol : Semantics.trace): Prop.
   refine (SPI.mmio_trace_abstraction_relation (_ ioh) (_ iol)).
-  all: case TODO.
+  all: case TODO_andres.
   (* this should not be needed any more once lightbulb proofs are for generic word *)
 Defined.
 
 Definition spec: ProgramSpec := {|
-  datamem_start := match TODO with end;
-  datamem_pastend := match TODO with end;
+  datamem_start := ml.(heap_start);
+  datamem_pastend := ml.(heap_pastend);
   goodTrace iol := exists ioh, relate_lightbulb_trace_to_bedrock ioh iol /\
                                goodHlTrace ioh;
   isReady t m l := exists buf R,
@@ -105,12 +105,8 @@ Definition spec: ProgramSpec := {|
 
 Lemma mlOk: MemoryLayoutOk ml.
 Proof.
-  constructor.
-Admitted.
-
-Lemma instrMemSizeLg_agrees_with_ml:
-  word.sub (code_pastend ml) (code_start ml) = word.of_Z instrMemSizeLg.
-Admitted.
+  constructor; try reflexivity; try (cbv; discriminate).
+Qed.
 
 Lemma link_lightbulb_withCorrectWordInstance:
   forall (p_addr : Semantics.word) (buf : list Semantics.byte) (R : Semantics.mem -> Prop)
@@ -144,25 +140,23 @@ Proof.
   Fail pattern semantics.
   pose proof link_lightbulb as P. unfold spec_of_iot in P.
   Fail apply P.
-  case TODO.
+  case TODO_andres.
 Qed.
 
 Lemma weaken_call: forall funs fname t m args (post1 post2: _ -> _ -> _ -> Prop),
     WeakestPrecondition.call funs fname t m args post1 ->
     (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
     WeakestPrecondition.call funs fname t m args post2.
-Proof.
-  intros.
-Admitted.
+Proof. case TODO_andres. Qed.
 
 Lemma relate_concat: forall ioh1 ioh2 iol1 iol2,
     relate_lightbulb_trace_to_bedrock ioh1 iol1 ->
     relate_lightbulb_trace_to_bedrock ioh2 iol2 ->
     relate_lightbulb_trace_to_bedrock (ioh2 ++ ioh1) (iol2 ++ iol1)%list.
-Admitted.
+Proof. case TODO_andres. Qed.
 
 Lemma relate_nil: relate_lightbulb_trace_to_bedrock [] [].
-Admitted.
+Proof. case TODO_andres. Qed.
 
 Lemma goodHlTrace_addOne: forall iohNew ioh,
     traceOfOneInteraction iohNew ->
@@ -226,6 +220,8 @@ Module PrintProgram.
   Unset Printing Width.
 End PrintProgram.
 
+Axiom TODO_sam_and_joonwon: False.
+
 Lemma end2end_lightbulb:
   forall (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
                               (Z.to_nat KamiProc.width))
@@ -241,7 +237,6 @@ Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
   specialize_first Q prog.
-  (* specialize_first Q instrMemSizeLg_agrees_with_ml. *)
   specialize_first Q spec.
   specialize_first Q ml.
   (* specialize_first Q mlOk. *)
@@ -281,7 +276,7 @@ Proof.
     intros.
     unfold init_code, prog.
     hnf. split.
-    + case TODO. (* how can we relate m to Kami's mem and constrain it? *)
+    + case TODO_sam_and_joonwon. (* how can we relate m to Kami's mem and constrain it? *)
     + exists []. split.
       * apply relate_nil.
       * unfold goodHlTrace. apply kleene_empty.

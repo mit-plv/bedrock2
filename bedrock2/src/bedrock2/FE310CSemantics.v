@@ -43,15 +43,15 @@ Instance parameters : parameters :=
     end else False;
 |}.
 
-Axiom differential_memory_log_crap : False.
+Axiom TODO_andres_differential_memory_log : False.
 Global Instance ok : Semantics.parameters_ok parameters.
 Proof.
-  split; cbv [funname_env locals mem parameters]; try exact _. 
+  split; cbv [funname_env locals mem parameters]; try exact _.
   { cbv; auto. }
   { eapply SortedListString.ok. }
   { intros; eapply SortedListString.ok. }
   split.
-  { case differential_memory_log_crap. }
+  { case TODO_andres_differential_memory_log. }
   1,2:
     cbv [ext_spec parameters]; intros;
     cbv [Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl] in *;

@@ -50,11 +50,7 @@ install::
 admits.txt: all0 PrintAdmits.v
 	$(COQBIN)coqc $(ALLDEPFLAGS) PrintAdmits.v > admits.txt
 
-admits1perLine.txt: admits.txt
-	grep admits.txt -e '^[^ ]* : ' -e 'used in' | grep -v '^[^ ]*TODO : False' | sed -e 's/:.*//g' > admits1perLine.txt
-
-admitsCount: admits1perLine.txt
-	@printf -- 'Number of admits: '
-	@cat admits1perLine.txt | wc -l
+admitsCount: count_admits.py admits.txt
+	python count_admits.py admits.txt
 
 all: all0 admitsCount

@@ -465,6 +465,8 @@ Module exec.
              end;
       simp.
 
+    Axiom TODO_sam: False.
+
     Lemma map_split_diff: forall {m m1 m2 m3 m4: mem},
         map.same_domain m2 m4 ->
         map.split m m1 m2 ->
@@ -474,7 +476,9 @@ Module exec.
       intros. split.
       - apply map.map_ext.
         intro k.
-    Admitted.
+        case TODO_sam.
+      - case TODO_sam.
+    Qed.
 
     Lemma map_split_det: forall {m m' m1 m2: mem},
         map.split m  m1 m2 ->

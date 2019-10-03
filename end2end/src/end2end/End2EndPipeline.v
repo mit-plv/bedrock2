@@ -84,9 +84,11 @@ Ltac specialize_first P Q := specialize_first_num P Q || specialize_first_ident 
 
 
 
-Axiom TODO: False.
+Axiom TODO_sam: False.
+Axiom TODO_andres: False.
+Axiom TODO_joonwon: False.
 
-Definition funspecs_satisfy_funimpls: Prop. case TODO. Defined.
+Definition funspecs_satisfy_funimpls: Prop. case TODO_andres. Defined.
 
 Require Import Coq.Classes.Morphisms.
 Lemma program_logic_sound
@@ -105,11 +107,11 @@ Lemma program_logic_sound
     Semantics.exec funimpls c t m l mc (fun t' m' l' mc' => post t' m' l').
 Proof.
   intros.
-  assert (funimpls = map.empty) as E by case TODO. rewrite E.
+  assert (funimpls = map.empty) as E by case TODO_andres. rewrite E.
   eapply WeakestPreconditionProperties.sound_nil.
   match goal with
   | _: WeakestPrecondition.cmd ?F' _ _ _ _ _ |- WeakestPrecondition.cmd ?F _ _ _ _ _ =>
-    replace F with F' by case TODO
+    replace F with F' by case TODO_andres
   end.
   assumption.
 Qed.
@@ -175,12 +177,12 @@ Section Connect.
       Pipeline.src2imp_ok := _;
       Pipeline.Registers_ok := _;
       (* wait until we know if ext_spec will be in monad style or postcond style *)
-      Pipeline.ext_spec_ok := match TODO with end;
+      Pipeline.ext_spec_ok := match TODO_sam with end;
     |}).
-  - case TODO.
+  - case TODO_sam.
   - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives _ _ _ _).
-    1,2,3,4: case TODO.
-  - case TODO.
+    1,2,3,4: case TODO_sam.
+  - case TODO_sam.
   Defined.
 
   Lemma HbtbAddr: BinInt.Z.to_nat instrMemSizeLg = (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat.
@@ -290,28 +292,28 @@ Section Connect.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3init.
         specialize_first Establish (kamiMemToBedrockMem (kamiMemInit memInit)).
-        assert (initialLocals: @locals strname_sem) by case TODO. (* obtain from kami *)
+        assert (initialLocals: @locals strname_sem) by case TODO_joonwon. (* obtain from kami *)
         specialize_first Establish initialLocals.
         specialize_first P3init Establish.
-        replace m0 with (kamiMemToBedrockMem (kamiMemInit memInit)) by case TODO.
-        replace l0 with initialLocals by case TODO.
-        eapply P3init. 1,2: case TODO.
+        replace m0 with (kamiMemToBedrockMem (kamiMemInit memInit)) by case TODO_joonwon.
+        replace l0 with initialLocals by case TODO_joonwon.
+        eapply P3init. 1,2: case TODO_joonwon.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3loop.
         eapply P3loop.
         3: eapply Preserve.
         3: split; assumption.
-        1,2: case TODO.
+        1,2: case TODO_sam.
     }
-    { case TODO. }
-    { case TODO. }
-    { case TODO. }
+    { case TODO_sam. }
+    { case TODO_sam. }
+    { case TODO_sam. }
 
     eapply P1.
     - (* establish *)
       intros.
       eapply P2establish.
-      case TODO.
+      case TODO_sam.
     - (* preserve *)
       intros.
       refine (P2preserve _ _). assumption.
@@ -322,7 +324,7 @@ Section Connect.
       destruct P2use as [suff Good].
       unfold goodTrace.
       (* given the bedrock2 trace "suff ++ getLog m", produce exchange format trace *)
-      case TODO.
+      case TODO_sam.
 
       Grab Existential Variables.
       1: exact m0RV.

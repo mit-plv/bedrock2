@@ -1,6 +1,8 @@
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
 Require Import Coq.Classes.Morphisms BinIntDef.
 Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Interface. Import map.
+Require Import coqutil.Map.Properties.
+Require Import coqutil.Tactics.destr.
 From bedrock2 Require Import Map.Separation Map.SeparationLogic.
 From bedrock2 Require Import Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
@@ -31,7 +33,7 @@ Section TailRecrsion.
       end
     end.
 
-  Lemma putmany_gather ks vs m me (H : gather ks m = Some (me, vs)) :
+  Lemma putmany_gather{params_ok : Semantics.parameters_ok p} ks vs m me (H : gather ks m = Some (me, vs)) :
     map.putmany_of_tuple (tuple.of_list ks) vs me = m.
   Proof.
     revert H; revert me; revert m; revert vs; induction ks; cbn [gather map.putmany_of_list]; intros.
@@ -40,16 +42,24 @@ Section TailRecrsion.
       repeat (match goal with H : _ |- _ => eapply IHks in H end); inversion H; subst; clear H.
     cbn [map.putmany_of_tuple tuple.of_list length].
     match goal with H : _ |- _ => rewrite H; clear H end.
-    assert (map.get m a = Some r -> put (remove m a) a r = m) by admit; auto.
-    all : fail "goals remaining".
-  Admitted.
+    assert (map.get m a = Some r -> put (remove m a) a r = m). {
+      clear -params_ok.
+      intro A.
+      apply map_ext.
+      intro k.
+      erewrite map.get_put_dec.
+      destr (varname_eqb a k); try congruence.
+      rewrite map.get_remove_diff; congruence.
+    }
+    auto.
+  Qed.
 
   Definition enforce (variables : list varname) (values:tuple word (length variables)) (l:locals) : Prop :=
     match gather variables l with
     | None => False
     | Some (remaining, r) => values = r /\ remaining = map.empty
     end.
-  Lemma reconstruct_enforce variables ll lm (H : enforce variables ll lm) : lm = reconstruct variables ll.
+  Lemma reconstruct_enforce{params_ok : Semantics.parameters_ok p} variables ll lm (H : enforce variables ll lm) : lm = reconstruct variables ll.
     progress cbv [enforce] in H.
     repeat match type of H with context[match ?x with _ => _ end] => destruct x eqn:? end;
       destruct H; subst.
@@ -61,6 +71,7 @@ Section TailRecrsion.
 
   Import pair.
   Lemma tailrec
+    {params_ok : Semantics.parameters_ok p}
     {e c t localsmap} {m : mem}
     (ghosttypes : polymorphic_list.list Type)
     (variables : list varname)
@@ -111,7 +122,7 @@ Section TailRecrsion.
       eauto 9. }
     { pose proof fun t m => hlist.foralls_forall (Hpost t m); clear Hpost; eauto. }
   Qed.
-  
+
   Lemma tailrec_localsmap
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (spec:_->_->_->_->(Prop*(_->_->_-> Prop))) lt
@@ -162,7 +173,7 @@ Section TailRecrsion.
     constructor. intros [y|] pf; eauto.
     constructor. intros [] [].
   Qed.
-    
+
 
   (* TODO: move (this is not tailrecursion) *)
   Lemma atleastonce_localsmap
@@ -208,7 +219,7 @@ Section TailRecrsion.
         eexists; split; eauto. } }
     eapply Hexit.
   Qed.
-  
+
   Lemma tailrec_earlyout_localsmap
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (spec:_->_->_->_->(Prop*(_->_->_-> Prop))) lt
@@ -252,6 +263,7 @@ Section TailRecrsion.
   Qed.
 
   Lemma tailrec_earlyout
+    {params_ok : Semantics.parameters_ok p}
     {e c t localsmap} {m : mem}
     (ghosttypes : polymorphic_list.list Type)
     (variables : list varname)
@@ -314,6 +326,7 @@ Section TailRecrsion.
 
 
   Lemma atleastonce
+    {params_ok : Semantics.parameters_ok p}
     {e c t l} {m : mem}
     (variables : list varname)
     {localstuple : tuple word (length variables)}
@@ -345,8 +358,8 @@ Section TailRecrsion.
     eapply hlist.existss_exists in HH; destruct HH as (?&?&?&?&?).
     eexists; split; eauto.
   Qed.
-    
-    
+
+
   Context {mem_ok : map.ok mem}.
   Local Infix "*" := Separation.sep.
   Local Infix "*" := Separation.sep : type_scope.

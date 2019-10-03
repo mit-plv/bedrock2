@@ -63,7 +63,7 @@ Section FetchOk.
   Definition word32_to_4bytes (w: kword 32): HList.tuple byte 4 :=
     LittleEndian.split 4 (word.unsigned w).
 
-  (* TODO this structure might not be very proof friendly, 
+  (* TODO this structure might not be very proof friendly,
    * use Memory.unchecked_store_byte_list instead *)
   Fixpoint unchecked_store_byte_tuple_list{n: nat}(a: word)(l: list (HList.tuple byte n))(m: mem): mem :=
     match l with
@@ -82,7 +82,7 @@ Section FetchOk.
                              instrMemSize (wzero _) in
     let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
     @unchecked_store_byte_tuple_list 4 (wzero _) values map.empty.
-  
+
   Definition convertDataMem (dataMem: kword width -> kword width): mem :=
     let keys := List.unfoldn (word.add (word.of_Z (width / 8)))
                              dataMemSize (wzero _) in
@@ -146,8 +146,8 @@ Section FetchOk.
     rewrite <-eq_rect_wplus.
 
     f_equal.
-    case TODO.
-    
+    case TODO_joonwon.
+
   Qed.
 
   Lemma rv32AlignAddr_toKamiPc_consistent:
@@ -164,7 +164,7 @@ Section FetchOk.
     unfold eq_rect_r; rewrite evalExpr_bit_eq_rect.
     cbv [evalExpr evalBinBit evalUniBit].
     cbv [evalConstT].
-    
+
     apply kamiXAddrs_In_prop in H.
     destruct H as [saddr ?].
     rewrite H at 1.
@@ -200,7 +200,7 @@ Section FetchOk.
         combine 4 inst =
         wordToZ (instrMem (split2 2 _ (toKamiPc pc))).
   Proof.
-    case TODO.
+    case TODO_joonwon.
   Qed.
 
 End FetchOk.

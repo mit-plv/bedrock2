@@ -3,7 +3,7 @@ Require Import coqutil.sanity coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.Utility.
 
-Axiom TODO: False.
+Axiom TODO_andres: False.
 
 Section WithWidth.
   Context {width : Z}.
@@ -55,25 +55,12 @@ Section WithWidth.
 
   }.
 
-  (*
-  Lemma eq_unsigned {x y : rep} : unsigned x = unsigned y -> x = y.
-  Proof.
-    cbv [value]; destruct x as [x px], y as [y py]; cbn.
-    intro; subst y.
-    apply f_equal, Eqdep_dec.UIP_dec. eapply Z.eq_dec.
+  Instance ok : word.ok word.
+  Proof using width_nonneg.
+    case TODO_andres.
+    (* is there a smart way to lift the proofs from coqutil.Word to KamiWord,
+       exploiting the regular structure of the definitions based on kofZ/kunsigned/ksigned ? *)
   Qed.
-
-  Lemma of_Z_unsigned x : wrap (unsigned x) = x.
-  Proof. eapply eq_unsigned; destruct x; cbn; assumption.  Qed.
-
-  Lemma signed_of_Z z : signed (wrap z) = wrap_value (z + 2 ^ (width - 1)) - 2 ^ (width - 1).
-  Proof.
-    cbv [unsigned signed wrap wrap_value swrap_value].
-    rewrite Zdiv.Zplus_mod_idemp_l; auto.
-  Qed.
-  *)
-  Instance ok : word.ok word. Admitted.
-  (* Proof. split; eauto using of_Z_unsigned, signed_of_Z. Qed. *)
 End WithWidth.
 Arguments word : clear implicits.
 Arguments ok : clear implicits.

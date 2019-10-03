@@ -113,16 +113,16 @@ Section Pipeline1.
 
   Definition funname := string.
 
-  Axiom TODO: False.
+  Axiom TODO_sam: False.
 
   Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
-    FlattenExpr.ext_spec_ok := match TODO with end;
+    FlattenExpr.ext_spec_ok := match TODO_sam with end;
   }.
 
-  Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. case TODO. Defined.
+  Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. case TODO_sam. Defined.
 
   Definition available_registers: list Register :=
     Eval cbv in List.unfoldn Z.succ 29 3.
@@ -209,7 +209,7 @@ Section Pipeline1.
     match goal with
     | |- _ = (?A + ?B)%nat => remember A as a; remember B as b
     end.
-    case TODO. (* Here's a BUG! *)
+    case TODO_sam. (* Here's a BUG! *)
   Qed.
 
   Definition putProgram(preInitial: MetricRiscvMachine): MetricRiscvMachine :=
@@ -235,7 +235,7 @@ Section Pipeline1.
     FlatToRiscvFunctions.e_pos := function_positions;
     FlatToRiscvFunctions.e_impl := functions';
     FlatToRiscvFunctions.funnames := prog.(funnames);
-    FlatToRiscvFunctions.frame := match TODO with end;
+    FlatToRiscvFunctions.frame := match TODO_sam with end;
   |}).
   Defined.
 
@@ -250,7 +250,7 @@ Section Pipeline1.
            (compose_sim _
                         (FlatToRiscvSimulation.flatToRiscvSim loopBodyGhostConsts loop_pos))).
     eapply renameSim.
-    all: case TODO.
+    all: case TODO_sam.
   Qed.
 
   Add Ring wring : (word.ring_theory (word := word))
@@ -269,8 +269,7 @@ Section Pipeline1.
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
       initial = putProgram preInitial ->
       ll_inv initial.
-  Proof.
-  Admitted.
+  Proof. case TODO_sam. Qed.
 
   Context
       (* technical detail: "pc at beginning of loop" and "pc at end of loop" needs to be
@@ -328,7 +327,7 @@ Section Pipeline1.
         | ?L = _ => ring_simplify L in B
         end.
 
-        case TODO. (*  contradictory? *)
+        case TODO_sam. (*  contradictory? *)
       }
       destruct_RiscvMachine state.
       repeat match goal with
@@ -345,9 +344,9 @@ Section Pipeline1.
 
         (* not the case: it only accepts pc at beginning or end of instructions,
            how to communicate this? *)
-        case TODO.
-      + case TODO.
-    - case TODO.
+        case TODO_sam.
+      + case TODO_sam.
+    - case TODO_sam.
     - solve_divisibleBy4.
     - solve_word_eq word_ok.
     - (* use compiler correctness for loop_body *)
@@ -360,21 +359,21 @@ Section Pipeline1.
         eapply P. 1: eassumption.
         clear P.
         unfold ExprImp.SimExec, hl_inv in *. simp.
-        split. 1: case TODO. (* doesn't hold, how to deal with the `done` flag? *)
+        split. 1: case TODO_sam. (* doesn't hold, how to deal with the `done` flag? *)
         intros.
         pose proof @loop_body_correct as P.
         specialize (P _ cmd prog Semantics.exec spec sat).
         match goal with
         | |- Semantics.exec.exec ?e ?c ?t ?m ?l ?mc ?post =>
-          replace e with (funimpls prog) by case TODO;
-          replace c with (loop_body prog) by case TODO
+          replace e with (funimpls prog) by case TODO_sam;
+          replace c with (loop_body prog) by case TODO_sam
         end.
         eapply P; eassumption.
       + cbv beta. intros. split. 1: eassumption.
         unfold related in *. simp.
         (* TODO: is the guarantee from pipelineSim strong enough to prove what's needed
            for runsToGood_is_Invariant? *)
-        case TODO.
+        case TODO_sam.
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,

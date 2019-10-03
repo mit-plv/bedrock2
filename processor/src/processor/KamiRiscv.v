@@ -51,6 +51,8 @@ Qed.
 
 Instance KamiWordsInst: Utility.Words := @KamiWord.WordsKami width width_cases.
 
+Axiom TODO_joonwon: False.
+
 Section Equiv.
   (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {Registers: map.map Register word}
@@ -338,7 +340,7 @@ Section Equiv.
       let HH := context CTX [@Memory.load_bytes A B C D E F G] in
       progress change HH in H
     end.
-  
+
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv rv32RfIdx rv32Fetch km1),
@@ -407,7 +409,7 @@ Section Equiv.
 
       repeat t.
       setoid_rewrite Hfetch in H0.
-      
+
       (* evaluate [decode] *)
       assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) as Hkopc.
       { move H2 at bottom.
@@ -429,7 +431,7 @@ Section Equiv.
               z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
       clear Hf3.
       destruct H as [|[|[|[|[|[|[|]]]]]]].
-      4, 7, 8: case TODO. (** TODO: [InvalidInstruction] *)
+      4, 7, 8: case TODO_joonwon. (** TODO: [InvalidInstruction] *)
 
       + (** LB: load-byte *)
         eval_decode H0.
@@ -437,14 +439,14 @@ Section Equiv.
         repeat t.
 
         (* mmio/non-mmio branch *)
-        case TODO.
+        case TODO_joonwon.
 
-      + (** LH: load-half *) case TODO.
-      + (** LW: load-word *) case TODO.
-      + (** LHU: load-half-unsigned *) case TODO.
-      + (** LBU: load-byte-unsigned *) case TODO.
+      + (** LH: load-half *) case TODO_joonwon.
+      + (** LW: load-word *) case TODO_joonwon.
+      + (** LHU: load-half-unsigned *) case TODO_joonwon.
+      + (** LBU: load-byte-unsigned *) case TODO_joonwon.
 
-    - case TODO.
+    - case TODO_joonwon.
 
   Qed.
 
@@ -503,10 +505,10 @@ Section Equiv.
       destruct annot; [|discriminate].
       inversion H6; subst; clear H6.
       inversion H2; subst; clear H2.
-      case TODO.
+      case TODO_joonwon.
 
-    - (* case "execLdZ" *) case TODO.
-    - (* case "execSt" *) case TODO.
+    - (* case "execLdZ" *) case TODO_joonwon.
+    - (* case "execSt" *) case TODO_joonwon.
     - (* case "execNm" *)
       right.
 
@@ -540,11 +542,11 @@ Section Equiv.
 
       (* evaluate [decode] *)
       assert (bitSlice (wordToZ (sz:= BinInt.Z.to_nat width) kinst) 0 7 = opcode_OP)
-        as Hbs1 by case TODO.
+        as Hbs1 by case TODO_joonwon.
       assert (bitSlice (wordToZ (sz:= BinInt.Z.to_nat width) kinst) 12 15 = funct3_ADD)
-        as Hbs2 by case TODO.
+        as Hbs2 by case TODO_joonwon.
       assert (bitSlice (wordToZ (sz:= BinInt.Z.to_nat width) kinst) 25 32 = funct7_ADD)
-        as Hbs3 by case TODO.
+        as Hbs3 by case TODO_joonwon.
 
       eval_decode H6.
 
@@ -553,14 +555,14 @@ Section Equiv.
 
       (* resolve interaction with "register" 0 *)
 
-      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO|].
-      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO|].
-      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO|].
+      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
 
       move v at top.
-      destruct (map.get _ _) eqn:? in *; [|case TODO].
+      destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
       move v0 at top.
-      destruct (map.get _ _) eqn:? in *; [|case TODO].
+      destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
 
       (** Construction *)
       unfold doExec, getNextPc, rv32Exec in *.
@@ -578,7 +580,7 @@ Section Equiv.
       { intros; assumption. }
       { subst.
         rewrite kami_rv32NextPc_op_ok; auto.
-        { case TODO. (** TODO @joonwonc: evaluate [toKamiPc] *)
+        { case TODO_joonwon. (** TODO @joonwonc: evaluate [toKamiPc] *)
         }
         { rewrite kami_getOpcode_ok; assumption. }
       }
@@ -587,12 +589,9 @@ Section Equiv.
         rewrite <-kami_rv32GetDst_ok by assumption.
         rewrite <-kami_rv32GetSrc1_ok in Heqo by assumption.
         rewrite <-kami_rv32GetSrc2_ok in Heqo0 by assumption.
-        rewrite convertRegs_put
-          with (instrMemSizeLg:= instrMemSizeLg) by assumption.
-        erewrite <-convertRegs_get
-          with (instrMemSizeLg:= instrMemSizeLg) by eauto.
-        erewrite <-convertRegs_get
-          with (instrMemSizeLg:= instrMemSizeLg) by eauto.
+        rewrite convertRegs_put by assumption.
+        erewrite <-convertRegs_get by eauto.
+        erewrite <-convertRegs_get by eauto.
         erewrite kami_rv32DoExec_Add_ok;
           [|rewrite kami_getOpcode_ok; assumption
            |rewrite kami_getFunct7_ok; assumption
@@ -601,7 +600,7 @@ Section Equiv.
       }
       { reflexivity. }
 
-    - (* case "execNmZ" *) case TODO.
+    - (* case "execNmZ" *) case TODO_joonwon.
 
   Qed.
 
@@ -707,7 +706,7 @@ Section Equiv.
       | |- _ = Some (kamiStMk ?ipc _ _ _ _) =>
         replace ipc
           with (evalConstT (pcInit (procInit (instrMemSizeLg:= instrMemSizeLg))))
-          by case TODO
+          by case TODO_joonwon
       end.
       apply pRegsToT_init.
     - intros; discriminate.
@@ -786,7 +785,7 @@ Section Equiv.
       + reflexivity.
       + reflexivity.
       + unfold getMachine, getRegs; intros.
-        eapply convertRegs_valid; [eassumption|blia].
+        eapply convertRegs_valid; blia.
       + reflexivity.
     - specialize (useRvInv _ Inv).
       inversion Rel. subst. clear Rel.

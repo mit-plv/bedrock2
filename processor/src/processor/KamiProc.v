@@ -507,8 +507,11 @@ Definition width: Z := 32.
 Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
 Local Notation nwidth := (Z.to_nat width).
 
-Instance rv32MMIO: AbsMMIO nwidth. 
-Admitted.
+Axiom TODO_joonwon: False.
+
+Instance rv32MMIO: AbsMMIO nwidth.
+  case TODO_joonwon.
+Defined.
 
 Lemma pgm_init_not_mmio:
   forall ninstrMemSizeLg
@@ -517,7 +520,8 @@ Lemma pgm_init_not_mmio:
     Kami.Ex.SCMMInv.PgmInitNotMMIO
       (rv32Fetch nwidth ninstrMemSizeLg Haddr) rv32MMIO.
 Proof.
-Admitted.
+  case TODO_joonwon.
+Qed.
 
 Section PerInstAddr.
   Context {instrMemSizeLg: Z}.
@@ -552,7 +556,7 @@ Section PerInstAddr.
 
   Definition hst := Kami.Semantics.RegsT.
   Definition KamiMachine := hst.
-  
+
   (** Abstract hardware state *)
   Definition st :=
     @pst nwidth ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx.

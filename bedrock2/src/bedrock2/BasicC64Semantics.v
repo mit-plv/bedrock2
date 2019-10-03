@@ -32,6 +32,7 @@ Proof.
   assumption.
 Qed.
 
+Instance localsok: coqutil.Map.Interface.map.ok locals := SortedListString.ok _.
 Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok Naive.word64 _.
 Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := Naive.word64_ok.
 Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := Naive.word8_ok.
@@ -43,3 +44,12 @@ Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (Properties.word.ring_morph (word := Semantics.byte)),
        constants [Properties.word_cst]).
+
+Axiom TODO_sam: False.
+
+Instance parameters_ok : parameters_ok parameters.
+  constructor; intros; try typeclasses eauto.
+  - cbv. right. reflexivity.
+  - unfold funname_env, parameters. exact (SortedListString.ok _).
+  - case TODO_sam.
+Qed.

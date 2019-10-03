@@ -19,27 +19,26 @@ Set Implicit Arguments.
 
 Local Open Scope Z_scope.
 
+Axiom TODO_joonwon: False.
+
 Lemma kami_split_bitSlice_consistent_1:
   forall (i: nat) kinst,
     wordToZ (split1 i (32 - i) kinst) =
     bitSlice (wordToZ kinst) 0 (Z.of_nat i).
-Proof.
-Admitted.
+Proof. case TODO_joonwon. Qed.
 
 Lemma kami_split_bitSlice_consistent_2:
   forall (i j: nat) kinst,
     wordToZ (split2 i j kinst) =
     bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
-Proof.
-Admitted.
+Proof. case TODO_joonwon. Qed.
 
 Lemma kami_split_bitSlice_consistent_3:
   forall (i j: nat) kinst,
     wordToZ
       (split2 i j (split1 (i + j) (32 - (i + j)) kinst)) =
     bitSlice (wordToZ kinst) (Z.of_nat i) (Z.of_nat (i + j)).
-Proof.
-Admitted.
+Proof. case TODO_joonwon. Qed.
 
 Section DecExecOk.
 
@@ -65,26 +64,20 @@ Section DecExecOk.
     forall rf z,
       0 <= z < 32 ->
       map.get (convertRegs rf) z <> None.
-  Proof.
-  Admitted.
+  Proof. case TODO_joonwon. Qed.
 
   Lemma convertRegs_get:
     forall rf r v,
       map.get (convertRegs rf) (Word.wordToZ r) = Some v ->
       v = rf r.
-  Proof.
-  Admitted.
+  Proof. case TODO_joonwon. Qed.
 
   Lemma convertRegs_put:
     forall rf r v,
       convertRegs (fun w => if weq w r then v else rf w) =
       map.put (convertRegs rf) (Word.wordToZ r) v.
-  Proof.
-    intros.
-    eapply map.map_ext.
-    intros k.
-  Admitted.
-  
+  Proof. case TODO_joonwon. Qed.
+
   (** * Inversion for decoding *)
 
   Ltac lets_in_hyp_to_eqs :=
@@ -230,9 +223,10 @@ Section DecExecOk.
     intros.
     erewrite signExtend_nop in H.
     - auto.
-    - admit.
-    - admit.
-  Admitted.
+    - case TODO_joonwon.
+    - case TODO_joonwon.
+    Unshelve. case TODO_joonwon.
+  Qed.
 
   Lemma kami_getOpcode_ok:
     forall kinst,
@@ -375,7 +369,8 @@ Section DecExecOk.
     unfold evalBinBit.
     unfold evalConstT.
     f_equal.
-  Admitted.
+    case TODO_joonwon.
+  Qed.
 
   Lemma kami_rv32NextPc_load_ok:
     forall rf pc kinst,
@@ -386,6 +381,7 @@ Section DecExecOk.
       evalExpr (rv32NextPc (Z.to_nat instrMemSizeLg) type rf pc kinst) =
       pc ^+ $4.
   Proof.
-  Admitted.
-  
+    case TODO_joonwon.
+  Qed.
+
 End DecExecOk.
