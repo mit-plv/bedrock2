@@ -242,14 +242,15 @@ Section Connect.
   Definition kamiMemToBedrockMem(km: SC.MemInit (Z.to_nat width) IsaRv32.rv32DataBytes): mem :=
     FetchOk.convertDataMem (Semantics.evalConstT km).
 
-  Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t').
+  Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t'
+                                             /\ l' = map.empty).
 
   (* end to end, but still generic over the program
      TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
   Lemma end2end:
     forall funspecs,
-      (forall m l, WeakestPrecondition.cmd (p := strname_sem) funspecs prog.(init_code) [] m l
-                   bedrock2Inv) ->
+      (forall m, WeakestPrecondition.cmd (p := strname_sem) funspecs prog.(init_code)
+                                         [] m map.empty bedrock2Inv) ->
       (forall t m l,
           bedrock2Inv t m l ->
           WeakestPrecondition.cmd (p := strname_sem)
@@ -292,17 +293,14 @@ Section Connect.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3init.
         specialize_first Establish (kamiMemToBedrockMem (kamiMemInit memInit)).
-        assert (initialLocals: @locals strname_sem) by case TODO_joonwon. (* obtain from kami *)
-        specialize_first Establish initialLocals.
         specialize_first P3init Establish.
         replace m0 with (kamiMemToBedrockMem (kamiMemInit memInit)) by case TODO_joonwon.
-        replace l0 with initialLocals by case TODO_joonwon.
         eapply P3init. 1,2: case TODO_joonwon.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3loop.
         eapply P3loop.
         3: eapply Preserve.
-        3: split; assumption.
+        3: split; auto.
         1,2: case TODO_sam.
     }
     { case TODO_sam. }

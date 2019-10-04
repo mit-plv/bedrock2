@@ -186,30 +186,27 @@ Section Pipeline1.
     init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts ++ fun_insts.
 
   Lemma main_size_correct:
-    main_size = (Datatypes.length init_insts + Datatypes.length loop_insts)%nat.
+    main_size = (Datatypes.length init_insts + Datatypes.length loop_insts + 1)%nat.
   Proof.
     unfold main_size, init_insts, loop_insts, FlatToRiscvDef.compile_main.
     rewrite !app_length. simpl.
-    repeat match goal with
+    repeat lazymatch goal with
     | |- ?L = ?R =>
       match L with
       | context[?LL] =>
-        match LL with
-        | Datatypes.length (FlatToRiscvDef.compile_stmt_new e_pos ?pos1 ?C) =>
+        lazymatch LL with
+        | Datatypes.length (FlatToRiscvDef.compile_stmt_new _ ?pos1 ?C) =>
           match R with
           | context[?RR] =>
-            match RR with
-            | Datatypes.length (FlatToRiscvDef.compile_stmt_new e_pos ?pos2 C) =>
+            lazymatch RR with
+            | Datatypes.length (FlatToRiscvDef.compile_stmt_new _ ?pos2 C) =>
               progress replace LL with RR by refine (compile_stmt_length_position_indep _ _ _ _ _)
             end
           end
         end
       end
     end.
-    match goal with
-    | |- _ = (?A + ?B)%nat => remember A as a; remember B as b
-    end.
-    case TODO_sam. (* Here's a BUG! *)
+    blia.
   Qed.
 
   Definition putProgram(preInitial: MetricRiscvMachine): MetricRiscvMachine :=
@@ -259,7 +256,10 @@ Section Pipeline1.
        constants [word_cst]).
 
   Definition hl_inv: @ExprImp.SimState (FlattenExpr.mk_Semantics_params _) -> Prop :=
-    fun '(e, c, done, t, m, l) => spec.(isReady) t m l /\ spec.(goodTrace) t.
+    fun '(e, c, done, t, m, l) => spec.(isReady) t m l /\ spec.(goodTrace) t /\
+                                  (* Restriction: no locals can be shared between loop iterations,
+                                     and all locals have to be unset at the end of the loop *)
+                                  l = map.empty.
 
   Definition ll_ready: MetricRiscvMachine -> Prop :=
     compile_inv loopBody_related hl_inv.
@@ -314,7 +314,7 @@ Section Pipeline1.
                       rename Ha into A; move A at bottom
         end
       end.
-      destruct b; cycle 1. {
+      destruct b eqn: Heqb; cycle 1. {
         exfalso.
         unfold pc_start, program_base, loopBodyGhostConsts, FlatToRiscvFunctions.goodMachine in *.
         match type of A with
@@ -326,10 +326,37 @@ Section Pipeline1.
         match type of B with
         | ?L = _ => ring_simplify L in B
         end.
-
-        case TODO_sam. (*  contradictory? *)
+        pose proof main_size_correct as P.
+        unfold main_size in P.
+        simpl in B, P. (* PARAMRECORDS *)
+        rewrite P in B.
+        rewrite !Nat2Z.inj_add in B. change BinInt.Z.of_nat with Z.of_nat in *.
+        match type of B with
+        | ?L = _ => ring_simplify L in B
+        end.
+        case TODO_sam. (*  contradictory *)
       }
-      destruct_RiscvMachine state.
+      destruct s1 as [ [ [ [ [ e1 c1 ] done1 ] t1 ] m1 ] l1 ].
+      assert (l1 = map.empty). {
+        unfold hl_inv in *. simp. reflexivity.
+      }
+      subst.
+      destruct s2 as [ [ [ [ [ e2 c2 ] done2 ] t2 ] m2 ] l2 ].
+      assert (l2 = map.empty). {
+        unfold FlattenExprSimulation.related in *. simp. reflexivity.
+      }
+      subst.
+      apply RegRename.related_redo in Hlrl.
+      pose proof (FlattenExprSimulation.related_change_done false _ _ _ _ _ _ _ _ _ _ _ _ Hll).
+      clear Hll.
+      let r := fresh m "_regs" in
+      let p := fresh m "_pc" in
+      let n := fresh m "_npc" in
+      let me := fresh m "_mem" in
+      let x := fresh m "_xaddrs" in
+      let l := fresh m "_log" in
+      let mc := fresh m "_metrics" in
+      destruct state as [ [r p n me x l] mc ].
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -337,15 +364,27 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + simpl. subst state_pc. unfold pc_start, loop_pos.
+      + simpl. unfold pc_start, loop_pos.
         rewrite main_size_correct.
         solve_word_eq word_ok.
-        (* TODO check all offsets *)
-
-        (* not the case: it only accepts pc at beginning or end of instructions,
-           how to communicate this? *)
-        case TODO_sam.
-      + case TODO_sam.
+      + unfold goodMachine in *. simpl in *. simp.
+        repeat match goal with
+               | |- exists _, _  => eexists
+               | |- _ /\ _ => split
+               | |- _ => progress cbv beta iota
+               | |- _ => eassumption
+               | |- _ => reflexivity
+               end.
+        * intro x. intros v H. rewrite map.get_empty in H. discriminate.
+        * match goal with
+          | H: ext_guarantee _ |- _ => move H at bottom; rename H into EG
+          end.
+          pose proof FlatToRiscv.ext_guarantee_preservable as P.
+          eapply P; clear P; simpl.
+          1: exact EG.
+          all: simpl.
+          2: reflexivity.
+          apply map.same_domain_refl.
     - case TODO_sam.
     - solve_divisibleBy4.
     - solve_word_eq word_ok.
@@ -368,7 +407,7 @@ Section Pipeline1.
           replace e with (funimpls prog) by case TODO_sam;
           replace c with (loop_body prog) by case TODO_sam
         end.
-        eapply P; eassumption.
+        eapply P; try eassumption.
       + cbv beta. intros. split. 1: eassumption.
         unfold related in *. simp.
         (* TODO: is the guarantee from pipelineSim strong enough to prove what's needed

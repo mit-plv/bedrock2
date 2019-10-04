@@ -891,6 +891,13 @@ Section RegAlloc.
       exists av' r', rename map.empty c1 available_impvars = Some (r', c2, av').
       (* TODO could/should also relate l1 and l2 *)
 
+  Lemma related_redo: forall e1 c1 done1 t1 m1 l1 e2 c2 done2 t2 m2 l2,
+      related (e1, c1, done1, t1, m1, l1       ) (e2, c2, done2, t2, m2, l2       ) ->
+      related (e1, c1, false, t1, m1, map.empty) (e2, c2, false, t2, m2, map.empty).
+  Proof.
+    intros. unfold related in *. simp. eauto 10.
+  Qed.
+
   Lemma renameSim(available_impvars_NoDup: NoDup available_impvars):
     simulation (@FlatImp.SimExec srcSemanticsParams)
                (@FlatImp.SimExec impSemanticsParams) related.

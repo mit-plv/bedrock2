@@ -42,16 +42,16 @@ Section Params1.
                 Prop)
          (spec: ProgramSpec): Prop :=
   {
-    init_code_correct: forall m0 l0 mc0,
+    init_code_correct: forall m0 mc0,
       mem_available spec.(datamem_start) spec.(datamem_pastend) m0 ->
-      exec prog.(funimpls) prog.(init_code) nil m0 l0 mc0
-        (fun t' m' l' mc' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t');
+      exec prog.(funimpls) prog.(init_code) nil m0 map.empty mc0
+        (fun t' m' l' mc' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t' /\ l' = map.empty);
 
-    loop_body_correct: forall t m l mc,
-       spec.(isReady) t m l ->
+    loop_body_correct: forall t m mc,
+       spec.(isReady) t m map.empty ->
        spec.(goodTrace) t ->
-       exec prog.(funimpls) prog.(loop_body) t m l mc
-        (fun t' m' l' mc' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t');
+       exec prog.(funimpls) prog.(loop_body) t m map.empty mc
+        (fun t' m' l' mc' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t' /\ l' = map.empty);
   }.
 
 End Params1.

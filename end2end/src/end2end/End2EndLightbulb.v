@@ -56,14 +56,13 @@ Definition ml: MemoryLayout Semantics.width := {|
 
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
-(* TODO is it ok to overwrite a register with "res"? *)
-Definition loopbody := @cmd.call Semantics.syntax ["res"] "iot" [expr.literal buffer_addr].
-
 Definition prog := {|
   funnames := funnamesList;
   funimpls := funimplsMap;
   init_code := @cmd.skip Semantics.syntax;
-  loop_body := @cmd.call Semantics.syntax ["res"] "iot" [expr.literal buffer_addr];
+  loop_body := @cmd.seq Semantics.syntax
+     (@cmd.call Semantics.syntax ["res"] "iot" [expr.literal buffer_addr])
+     (@cmd.unset Semantics.syntax "res");
 |}.
 
 Axiom TODO_andres: False.
@@ -250,7 +249,7 @@ Proof.
   - (* preserve invariant *)
     intros.
     (* TODO make Simp.simp work here *)
-    destruct H as [ [ buf [R [Sep L] ] ] [ioh [Rel G] ] ].
+    destruct H as [ [ buf [R [Sep L] ] ] [ [ioh [Rel G] ] ? ] ]. subst l.
     pose proof link_lightbulb_withCorrectWordInstance as P.
     unfold spec_of_iot in *.
     specialize_first P Sep.
@@ -266,7 +265,7 @@ Proof.
     eexists. split; [reflexivity|].
     split.
     + eauto.
-    + destruct H3 as [ C | [C | [C | [C | C ] ] ] ];
+    + destruct H3 as [ C | [C | [C | [C | C ] ] ] ]; (split; [|reflexivity]);
         destr; eexists (ioh0 ++ ioh)%list; (split;
         [ eapply relate_concat; assumption
         | apply goodHlTrace_addOne;
@@ -275,11 +274,12 @@ Proof.
   - (* establish invariant *)
     intros.
     unfold init_code, prog.
-    hnf. split.
+    hnf. split; [|split].
     + case TODO_sam_and_joonwon. (* how can we relate m to Kami's mem and constrain it? *)
     + exists []. split.
       * apply relate_nil.
       * unfold goodHlTrace. apply kleene_empty.
+    + reflexivity.
   Unshelve.
   all: typeclasses eauto.
 Qed. (* takes more than 30s *)

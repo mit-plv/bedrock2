@@ -31,20 +31,31 @@ Section Sim.
       done1 = done2 /\
       t1 = t2 /\
       m1 = m2 /\
-      map.extends l2 l1 /\
+      (* TODO flattenExpr has to unset all vars at the end of the compiled stmt *)
+      l1 = l2 /\
+      (* map.extends l2 l1 /\ *)
       map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
 
   Axiom TODO_sam: False.
+
+  Lemma related_change_done: forall done3 e1 c1 done1 t1 m1 l1 e2 c2 done2 t2 m2 l2,
+      related (e1, c1, done1, t1, m1, l1) (e2, c2, done2, t2, m2, l2) ->
+      related (e1, c1, done3, t1, m1, l1) (e2, c2, done3, t2, m2, l2).
+  Proof.
+    intros. unfold related in *. simp. auto 10.
+  Qed.
 
   Lemma relate_related{hyps: FlattenExpr.assumptions p}: forall s1 s2,
       related_without_functions s1 s2 <-> related s1 s2.
   Proof.
     intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
     split; intro H; unfold related_without_functions, related in *.
-    - intuition idtac. subst. rewrite @map.get_empty in H6.
-      + discriminate.
-      + refine (FlattenExpr.funname_env_ok _).
-    - case TODO_sam. (* clearly doesn't hold *)
+    - intuition idtac.
+      + subst. rewrite @map.get_empty in H6.
+        * discriminate.
+        * refine (FlattenExpr.funname_env_ok _).
+      + case TODO_sam. (* clearly doesn't hold, extends does not imply equality *)
+    - simp. case TODO_sam. (* clearly doesn't hold *)
   Qed.
 
   Lemma flattenExprSim_without_functions{hyps: FlattenExpr.assumptions p}:
