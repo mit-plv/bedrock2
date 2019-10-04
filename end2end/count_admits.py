@@ -2,6 +2,7 @@ import sys
 import os
 import re
 from operator import itemgetter
+from shutil import copyfile
 
 #KindAxiom = 0
 #KindUsedIn = 1
@@ -41,7 +42,21 @@ def main():
 
     if not os.path.isfile(filepath):
         print("File path {} does not exist. Exiting...".format(filepath))
-        sys.exit()
+        sys.exit(1)
+
+    if len(sys.argv) > 2:
+        archivepath = sys.argv[2]
+        if not os.path.isdir(archivepath):
+            print("Archive path {} is not a directory. Exiting...".format(filepath))
+            sys.exit(2)
+        name1, ext1 = os.path.splitext(os.path.basename(filepath))
+        maxN = 0
+        for existingName in os.listdir(archivepath):
+            name2, ext2 = os.path.splitext(existingName)
+            n = int('0' + ''.join([c for c in name2 if c.isdigit()]))
+            if n > maxN:
+                maxN = n
+        copyfile(filepath, archivepath + "/" + name1 + str(maxN + 1) + ext1)
 
     is_first = True
 
