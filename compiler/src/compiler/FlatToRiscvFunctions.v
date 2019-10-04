@@ -152,17 +152,73 @@ Section Proofs.
          | Some pos, Some impl =>
            program (word.add base (word.of_Z pos))
                    (compile_function rel_positions pos impl)
-         | _, _ => emp True
+         | _, _ => emp False
          end * (rec rest))%sep
       end.
+
+  Lemma removeb_not_In{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
+    forall (l : list A) (a: A), ~ In a l -> removeb aeqb a l = l.
+  Proof.
+    induction l; intros; simpl; try reflexivity.
+    destr (aeqb a0 a); simpl in *; subst.
+    + exfalso. auto.
+    + f_equal. eauto.
+  Qed.
+
+  Lemma In_removeb_In{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
+    forall (a1 a2: A) (l: list A), In a1 (removeb aeqb a2 l) -> In a1 l.
+  Proof.
+    induction l; intros; simpl in *; try contradiction.
+    destr (aeqb a2 a); simpl in *; intuition idtac.
+  Qed.
+
+  Lemma In_removeb_diff{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
+    forall (a1 a2: A) (l: list A), a1 <> a2 -> In a1 l -> In a1 (removeb aeqb a2 l).
+  Proof.
+    induction l; intros; simpl in *; try contradiction.
+    destr (aeqb a2 a); simpl in *; subst; intuition congruence.
+  Qed.
+
+  Lemma NoDup_removeb{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
+    forall (a: A) (l: list A),
+      NoDup l ->
+      NoDup (removeb aeqb a l).
+  Proof.
+    induction l; intros; simpl in *; try assumption.
+    destr (aeqb a a0); simpl in *; simp; auto.
+    constructor; auto. intro C. apply H2. eapply In_removeb_In. eassumption.
+  Qed.
+
+  Ltac cancel_emps_at_indices i j :=
+    lazymatch goal with
+    | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
+      simple refine (cancel_emps_at_indices i j LHS RHS _ _ eq_refl eq_refl _ _);
+      cbn [firstn skipn app hd tl]
+    end.
 
   Lemma functions_expose: forall base rel_positions impls funnames f pos impl,
       map.get rel_positions f = Some pos ->
       map.get impls f = Some impl ->
+      List.In f funnames ->
+      List.NoDup funnames ->
       iff1 (functions base rel_positions impls funnames)
            (functions base rel_positions impls (ListLib.removeb String.eqb f funnames) *
             program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
-  Proof. case TODO_sam. Qed.
+  Proof.
+    intros base rel_positions impls.
+    induction funnames; intros.
+    - contradiction.
+    - simpl in *. simp. destr (f =? a)%string.
+      + subst a. simpl. rewrite_match. simp.
+        rewrite removeb_not_In by assumption.
+        ecancel.
+      + assert (In f funnames) by intuition congruence.
+        unfold negb. simpl.
+        destruct (map.get rel_positions a) as [pos'|];
+          destruct (map.get impls a) as [impl'|].
+        1: { cancel. eapply IHfunnames; assumption. }
+        all: clear; unfold iff1, sep, emp; intros; split; intros; simp; contradiction.
+  Qed.
 
   Lemma union_Forall: forall {T: Type} (teqb: T -> T -> bool) (P: T -> Prop) (l1 l2: list T),
       Forall P l1 ->
@@ -472,6 +528,7 @@ Section Proofs.
     regs_initialized initialL.(getRegs) ->
     initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
     g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
+    NoDup g.(funnames) ->
     goodMachine initialTrace initialMH initialRegsH g initialL ->
     runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
          postH finalTrace finalMH finalRegsH finalMetricsH /\
@@ -666,6 +723,7 @@ Section Proofs.
     end.
     specialize P with (1 := GetPos).
     specialize (P program_base funnames).
+    auto_specialize.
     match goal with
     | H: (_ * _)%sep _ |- _ => seprewrite_in P H; clear P
     end.
@@ -841,6 +899,7 @@ Section Proofs.
       }
       1: reflexivity.
       4: reflexivity.
+      4: eapply NoDup_removeb; eassumption.
       4: repeat split.
       6: {
         eexists. split; cycle 1.
@@ -1291,6 +1350,7 @@ Section Proofs.
       end.
       specialize P with (1 := GetPos).
       specialize (P program_base funnames).
+      auto_specialize.
       setoid_rewrite P. clear P. cbn [seps].
       wcancel.
       unfold program, compile_function.

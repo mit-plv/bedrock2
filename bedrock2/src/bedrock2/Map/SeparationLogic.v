@@ -187,6 +187,17 @@ Section SepProperties.
     exact (reflexivity _).
   Qed.
 
+  Lemma cancel_emps_at_indices i j xs ys P Q
+        (Hi : nth i xs = emp P)
+        (Hj : nth j ys = emp Q)
+        (HPQ : P <-> Q)
+        (Hrest : iff1 (seps (remove_nth i xs)) (seps (remove_nth j ys)))
+    : iff1 (seps xs) (seps ys).
+  Proof.
+    rewrite <-(seps_nth_to_head i xs), <-(seps_nth_to_head j ys), Hi, Hj, Hrest.
+    unfold iff1 in *. intro m. do 2 rewrite sep_emp_l. intuition idtac.
+  Qed.
+
   (* iff1 instead of eq as a hyp would be a more general lemma, but eq is more convenient to use *)
   Lemma cancel_seps_at_indices i j xs ys
         (Hij : nth i xs = nth j ys)

@@ -248,9 +248,10 @@ Section Pipeline1.
   Proof.
     refine (compose_sim FlattenExprSimulation.flattenExprSim
            (compose_sim _
-                        (FlatToRiscvSimulation.flatToRiscvSim loopBodyGhostConsts loop_pos))).
-    eapply renameSim.
-    all: case TODO_sam.
+                        (FlatToRiscvSimulation.flatToRiscvSim loopBodyGhostConsts loop_pos _))).
+    1: eapply renameSim; try typeclasses eauto.
+    - repeat constructor; simpl; blia.
+    - eapply (funnames_NoDup sat).
   Qed.
 
   Add Ring wring : (word.ring_theory (word := word))

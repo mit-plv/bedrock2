@@ -3,6 +3,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Map.Interface.
+Require Import coqutil.Tactics.forward.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.Examples.lightbulb bedrock2.Examples.lightbulb_spec.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
@@ -29,21 +30,6 @@ Definition funimplsList: list (string * FunctionImpl).
   end.
 Defined.
 
-Definition funnamesList: list string := Eval cbv in List.map fst funimplsList.
-Definition funimplsListWithoutNames: list FunctionImpl := Eval cbv in List.map snd funimplsList.
-
-Definition funimplsMap: Semantics.env.
-  let o := eval cbv in (@map.of_list _ _ Semantics.env funnamesList funimplsListWithoutNames) in
-  lazymatch o with
-  | Some ?m => exact m
-  end.
-Defined.
-
-Definition funspecs: funname ->
-   Semantics.trace -> Semantics.mem -> list Semantics.word ->
-   (Semantics.trace -> Semantics.mem -> list Semantics.word -> Prop) -> Prop
-  := WeakestPrecondition.call funimplsList.
-
 (* TODO adjust these numbers *)
 Definition ml: MemoryLayout Semantics.width := {|
   MemoryLayout.code_start    := word.of_Z 0;
@@ -56,14 +42,10 @@ Definition ml: MemoryLayout Semantics.width := {|
 
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
-Definition prog := {|
-  funnames := funnamesList;
-  funimpls := funimplsMap;
-  init_code := @cmd.skip Semantics.syntax;
-  loop_body := @cmd.seq Semantics.syntax
+Definition  init_code := @cmd.skip Semantics.syntax.
+Definition loop_body := @cmd.seq Semantics.syntax
      (@cmd.call Semantics.syntax ["res"] "iot" [expr.literal buffer_addr])
-     (@cmd.unset Semantics.syntax "res");
-|}.
+     (@cmd.unset Semantics.syntax "res").
 
 Axiom TODO_andres: False.
 
@@ -189,6 +171,17 @@ unshelve refine pipeline_params.
 - refine (@Semantics.funname_env_ok _ _).
 Defined.
 
+Definition prog :=
+  @prog
+    (Z_keyed_SortedListMap.Zkeyed_map (@Utility.word KamiRiscv.KamiWordsInst))
+    (Z_keyed_SortedListMap.Zkeyed_map_ok (@Utility.word KamiRiscv.KamiWordsInst))
+    (@Semantics.mem semantics)
+    (@Semantics.mem_ok semantics ok)
+    (@Semantics.funname_env semantics)
+    (@Semantics.funname_env_ok semantics ok)
+    src2imp
+    init_code loop_body funimplsList.
+
 Definition lightbulb_insts_unevaluated: list Decode.Instruction :=
   @PipelineWithRename.compile_prog pipeline_params prog ml.
 
@@ -235,17 +228,18 @@ Lemma end2end_lightbulb:
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
-  specialize_first Q prog.
+  specialize_first Q init_code.
+  specialize_first Q loop_body.
+  specialize_first Q funimplsList.
   specialize_first Q spec.
   specialize_first Q ml.
-  (* specialize_first Q mlOk. *)
+  specialize_first Q mlOk.
   specialize_first Q instrMemSizeLg_bounds.
   intro memInit.
   specialize_first Q memInit.
-  specialize_first Q funspecs.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
-  eapply Q; clear Q; cycle 1.
+  eapply Q; clear Q; cycle 2.
   - (* preserve invariant *)
     intros.
     (* TODO make Simp.simp work here *)
@@ -254,7 +248,7 @@ Proof.
     unfold spec_of_iot in *.
     specialize_first P Sep.
     specialize_first P L.
-    cbv [loop_body funspecs funimplsList prog
+    cbv [loop_body funimplsList prog
          WeakestPrecondition.cmd WeakestPrecondition.cmd_body].
     eexists. split; [reflexivity|].
     eapply weaken_call; [eapply P|clear P].
@@ -271,6 +265,7 @@ Proof.
         | apply goodHlTrace_addOne;
           [unfold traceOfOneInteraction, choice; eauto 10
           | exact G]]).
+  - cbv. repeat constructor; cbv; intros; intuition congruence.
   - (* establish invariant *)
     intros.
     unfold init_code, prog.

@@ -46,26 +46,26 @@ Axiom TODO_sam: False.
 Axiom TODO_andres: False.
 Axiom TODO_joonwon: False.
 
-Definition funspecs_satisfy_funimpls: Prop. case TODO_andres. Defined.
+Module map.
+  Definition of_pairs{K V: Type}{M: map.map K V}(pairs: list (K * V)): M :=
+    RegRename.map.putmany_of_pairs map.empty pairs.
+End map.
 
 Require Import Coq.Classes.Morphisms.
+
 Lemma program_logic_sound
       {p : Semantics.parameters}
       {Proper_ext_spec : forall trace m act args,
           Proper ((pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> Basics.impl)
                  (Semantics.ext_spec trace m act args)}:
-  forall (funspecs: Syntax.funname ->
-                    (Semantics.trace -> mem -> list Semantics.word ->
-                     (Semantics.trace -> mem -> list Semantics.word -> Prop) -> Prop))
-         (s: funspecs_satisfy_funimpls)
-         (funimpls: Semantics.env)
+  forall (funimplsList: list (Syntax.funname * (list Syntax.varname * list Syntax.varname * cmd)))
          (c: cmd) (t: Semantics.trace) (m: mem) (l: locals) (mc: MetricLogging.MetricLog)
          (post : Semantics.trace -> mem -> locals -> Prop),
-    WeakestPrecondition.cmd funspecs c t m l post ->
-    Semantics.exec funimpls c t m l mc (fun t' m' l' mc' => post t' m' l').
+    WeakestPrecondition.cmd (WeakestPrecondition.call funimplsList) c t m l post ->
+    Semantics.exec (map.of_pairs funimplsList) c t m l mc (fun t' m' l' mc' => post t' m' l').
 Proof.
   intros.
-  assert (funimpls = map.empty) as E by case TODO_andres. rewrite E.
+  assert (map.of_pairs funimplsList = map.empty) as E by case TODO_andres. rewrite E.
   eapply WeakestPreconditionProperties.sound_nil.
   match goal with
   | _: WeakestPrecondition.cmd ?F' _ _ _ _ _ |- WeakestPrecondition.cmd ?F _ _ _ _ _ =>
@@ -182,14 +182,16 @@ Section Connect.
                              (@Pipeline.FlattenExpr_parameters pipeline_params)).
   Notation cmd := (@cmd ((FlattenExpr.mk_Syntax_params
                             (@Pipeline.FlattenExpr_parameters pipeline_params)))).
-  Context (prog: @Program strname_sem cmd)
+  Context (init_code loop_body: cmd)
           (spec: @ProgramSpec strname_sem)
           (ml: MemoryLayout 32)
-          (mlOk: MemoryLayoutOk ml).
-
+          (mlOk: MemoryLayoutOk ml)
+          (funimplsList: list (string * (list string * list string * cmd))).
 
   Hypothesis instrMemSizeLg_agrees_with_ml:
     word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
+
+  Hypothesis funimplsList_NoDup: NoDup (List.map fst funimplsList).
 
   (* goodTrace in terms of "exchange format" (list Event).
      Only holds at the beginning/end of each loop iteration,
@@ -203,16 +205,28 @@ Section Connect.
   Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t'
                                              /\ l' = map.empty).
 
+  Definition prog: Program (p := strname_sem) cmd.
+    refine {|
+      ProgramSpec.funnames := _;
+      ProgramSpec.funimpls := _;
+      ProgramSpec.init_code := init_code;
+      ProgramSpec.loop_body := loop_body;
+    |}.
+    - exact (List.map fst funimplsList).
+    - exact (map.of_pairs funimplsList).
+  Defined.
+
+  Let funspecs := WeakestPrecondition.call (p := strname_sem) funimplsList.
+
   (* end to end, but still generic over the program
      TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
   Lemma end2end:
-    forall funspecs,
-      (forall m, WeakestPrecondition.cmd (p := strname_sem) funspecs prog.(init_code)
+      (forall m, WeakestPrecondition.cmd (p := strname_sem) funspecs init_code
                                          [] m map.empty bedrock2Inv) ->
       (forall t m l,
           bedrock2Inv t m l ->
           WeakestPrecondition.cmd (p := strname_sem)
-                                  funspecs prog.(loop_body) t m l bedrock2Inv) ->
+                                  funspecs loop_body t m l bedrock2Inv) ->
     (* TODO more hypotheses might be needed *)
     forall (t: Kami.Semantics.LabelSeqT) (mFinal: KamiImplMachine),
       (* IF the 4-stage pipelined processor steps to some final state mFinal, producing trace t,*)
@@ -245,23 +259,26 @@ Section Connect.
     specialize_first P2 prog.
     specialize_first P2 spec.
     specialize_first P2 ml.
+    specialize_first P2 mlOk.
     edestruct P2 as [ P2establish [P2preserve P2use] ]. {
       (* 3) bedrock2 semantics to bedrock2 program logic *)
       constructor.
+      - eapply funimplsList_NoDup.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3init.
         specialize_first Establish (kamiMemToBedrockMem (kamiMemInit memInit)).
         specialize_first P3init Establish.
         replace m0 with (kamiMemToBedrockMem (kamiMemInit memInit)) by case TODO_joonwon.
-        eapply P3init. 1,2: case TODO_joonwon.
+        eapply P3init. case TODO_andres.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3loop.
-        eapply P3loop.
-        3: eapply Preserve.
-        3: split; auto.
-        1,2: case TODO_sam.
+        eapply P3loop; clear P3loop.
+        1: match goal with
+           | |- context[Proper] => case TODO_andres
+           end.
+        eapply Preserve.
+        split; auto.
     }
-    { case TODO_sam. }
     { case TODO_sam. }
     { case TODO_sam. }
 
