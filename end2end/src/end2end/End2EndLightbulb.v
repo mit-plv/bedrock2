@@ -9,7 +9,7 @@ Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import compiler.ProgramSpec.
 Require Import compiler.MemoryLayout.
 Require Import end2end.End2EndPipeline.
-Require Import end2end.Bedrock2SemanticsForKami.
+Require Import end2end.Bedrock2SemanticsForKami. (* TODO why is the ok instance in that file not needed? *)
 Require        riscv.Utility.InstructionNotations.
 Require        bedrock2.Hexdump.
 

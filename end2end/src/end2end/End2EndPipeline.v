@@ -41,48 +41,6 @@ Require Import bedrock2.Byte.
 
 Local Open Scope Z_scope.
 
-Ltac specialize_first_num P Q :=
-  first [ specialize P with (1 := Q)
-        | specialize P with (2 := Q)
-        | specialize P with (3 := Q)
-        | specialize P with (4 := Q)
-        | specialize P with (5 := Q)
-        | specialize P with (6 := Q)
-        | specialize P with (7 := Q)
-        | specialize P with (8 := Q)
-        | specialize P with (9 := Q)
-        | fail 1 "no match found for" Q "within the first few hypotheses of" P ].
-
-Ltac specialize_first_ident P a :=
-  match type of P with
-  | forall                                           (x: _), _ => specialize P with (x := a)
-  | forall                                         _ (x: _), _ => specialize P with (x := a)
-  | forall                                       _ _ (x: _), _ => specialize P with (x := a)
-  | forall                                     _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                                   _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                                 _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                               _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                             _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                           _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                         _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                       _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                     _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                   _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall                 _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall               _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall             _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall           _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall         _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall       _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall     _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | forall _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (x: _), _ => specialize P with (x := a)
-  | _ => fail 1 "no match found for" a "within the first few arguments of" P
-  end.
-
-Ltac specialize_first P Q := specialize_first_num P Q || specialize_first_ident P Q.
-
-
 
 Axiom TODO_sam: False.
 Axiom TODO_andres: False.

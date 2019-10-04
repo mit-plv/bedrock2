@@ -513,18 +513,6 @@ Section RegAlloc.
         * eauto using in_or_app.
   Qed.
 
-  Ltac auto_specialize :=
-    repeat match goal with
-           | H: ?P -> _, H': _ |- _ => match type of P with
-                                       | Prop => specialize (H H')
-                                       end
-           end.
-
-  Ltac apply_in_hyps t :=
-    repeat match goal with
-           | H: _ |- _ => unique eapply t in copy of H
-           end.
-
   Lemma rename_assignment_lhs_props: forall {x r1 r2 y av1 av2},
       rename_assignment_lhs r1 x av1 = Some (r2, y, av2) ->
       map.injective r1 ->
