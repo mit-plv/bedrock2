@@ -216,6 +216,9 @@ Section Pipeline1.
   Definition pc_start: word := word.add ml.(code_start)
     (word.of_Z (4 * Z.of_nat (List.length init_sp_insts + List.length init_insts))).
 
+  Definition TODO_frame: mem -> Prop. case TODO_sam. Qed.
+  (* don't unfold and count many times *)
+
   Definition loopBodyGhostConsts: GhostConsts.
   refine ({|
     FlatToRiscvFunctions.p_sp := ml.(stack_pastend);
@@ -232,7 +235,7 @@ Section Pipeline1.
     FlatToRiscvFunctions.e_pos := function_positions;
     FlatToRiscvFunctions.e_impl := functions';
     FlatToRiscvFunctions.funnames := prog.(funnames);
-    FlatToRiscvFunctions.frame := match TODO_sam with end;
+    FlatToRiscvFunctions.frame := TODO_frame;
   |}).
   Defined.
 
