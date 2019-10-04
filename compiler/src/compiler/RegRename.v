@@ -703,13 +703,6 @@ Section RegAlloc.
         exists lH', states_compat lH' r' lL' /\
                     post t' m' lH' mc').
   Proof.
-    (*
-    intros.
-    destruct H0 eqn: E;
-    match type of E with
-    | _ = ?r => let h := head r in idtac "- (*" h "*)"
-    end.
-    *)
     induction 2; intros; simpl in *; simp;
       repeat match goal with
              | H: rename_assignment_lhs _ _ _ = _ |- _ =>

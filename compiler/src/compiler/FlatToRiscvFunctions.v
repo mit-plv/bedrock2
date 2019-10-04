@@ -1401,22 +1401,131 @@ Section Proofs.
       * simpl. (* TODO log equality?? *) case TODO_sam.
 
     - (* SLoad *)
-      case TODO_sam.
-      (*
-      unfold Memory.load, Memory.load_Z in *. simp. subst_load_bytes_for_eq.
+      progress unfold Memory.load, Memory.load_Z in *. simp.
+
+Ltac subst_load_bytes_for_eq ::=
+      lazymatch goal with
+      | Load: Memory.load_bytes _ ?m _ = _ |- _ =>
+        let P := fresh "P" in
+        epose proof (@subst_load_bytes_for_eq _ _ _ _ _ _ _ _ _ Load) as P;
+        let Q := fresh "Q" in
+        edestruct P as [Q ?]; clear P; [ecancel_assumption|]
+      end.
+
+Lemma extends_get: forall {l1 l2: locals} {k v},
+    map.get l1 k = Some v ->
+    map.extends l2 l1 ->
+    map.get l2 k = Some v.
+Proof. unfold map.extends. intros. eauto. Qed.
+
+Require Import compiler.eqexact.
+Require Import compiler.RiscvWordProperties.
+
+  Ltac apply_post :=
+    match goal with
+    | H: ?post _ _ _ |- ?post _ _ _ =>
+      eqexact H; f_equal; symmetry;
+      (apply word.sru_ignores_hibits ||
+       apply word.slu_ignores_hibits ||
+       apply word.srs_ignores_hibits ||
+       apply word.mulhuu_simpl ||
+       apply word.divu0_simpl ||
+       apply word.modu0_simpl)
+    end.
+
+  Ltac run1done :=
+    apply runsToDone;
+    simpl_MetricRiscvMachine_get_set;
+    simpl in *;
+    repeat match goal with
+    | |- exists (_: _), _ => eexists
+    end;
+    repeat split;
+    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    match goal with
+    | |- _ => solve [eauto]
+    | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
+    | |- exists _, _ = _ /\ (_ * _)%sep _ => eexists; split; [reflexivity|solve[pseplog]]
+    | |- _ => prove_ext_guarantee
+    | |- _ => apply_post
+    | |- _ => solve [map_solver (@locals_ok p h)]
+    | |- _ => idtac
+    end.
+
+(*
+  Ltac run1done :=
+    apply runsToDone;
+    simpl_MetricRiscvMachine_get_set;
+    simpl in *;
+    repeat match goal with
+    | |- exists (_: _), _ => eexists
+    end;
+    repeat split;
+    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    first
+      [ solve [eauto]
+      | solve_word_eq (@word_ok (@W (@def_params p)))
+      | solve [pseplog]
+      | prove_ext_guarantee
+      | apply_post
+      | solve [map_solver (@locals_ok p h)]
+      | idtac ].
+*)
+
+Ltac sidecondition ::=
+  simpl; simpl_MetricRiscvMachine_get_set;
+  match goal with
+  (* these branches are allowed to instantiate evars in a controlled manner: *)
+  | H: map.get _ _ = Some _ |- _ => exact H
+  | |- map.get _ _ = Some _ =>
+    simpl;
+    match goal with
+    | |- map.get (map.put _ ?x _) ?y = Some _ =>
+      constr_eq x y; apply map.get_put_same
+    end
+  | |- sep ?P ?Q ?m => simpl in *; simpl_MetricRiscvMachine_get_set; solve [seplog]
+  | |- _ => reflexivity
+  | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
+    eapply (extends_get A E)
+  (* but we don't have a general "eassumption" branch, only "assumption": *)
+  | |- _ => assumption
+  (* TODO eventually remove this case and dependency on FlatToRiscvDef *)
+  | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
+    assert_fails (is_evar inst);
+    apply V;
+    repeat match goal with
+           | H: _ |- _ => clear H
+           end;
+    eauto 30 using in_cons, in_or_app, in_eq
+  | |- Memory.load ?sz ?m ?addr = Some ?v =>
+    unfold Memory.load, Memory.load_Z in *;
+    simpl_MetricRiscvMachine_mem;
+    erewrite ptsto_bytes.load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
+  | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
+  | |- _ => solve [map_solver (@locals_ok p h)]
+  | |- _ => idtac
+  end.
+
+
+      subst_load_bytes_for_eq.
+      assert (x <> RegisterNames.sp). {
+        apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
+        unfold valid_FlatImp_var, RegisterNames.sp in *.
+        blia.
+      }
       run1det. run1done.
-      *)
 
     - (* SStore *)
-      case TODO_sam.
-      (*
       simpl_MetricRiscvMachine_get_set.
-      assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * R))%sep initialL_mem)
-             as A by ecancel_assumption.
-      pose proof (store_bytes_frame H2 A) as P.
+      unfold Memory.store, Memory.store_Z in *.
+      change Memory.store_bytes with Platform.Memory.store_bytes in *.
+      match goal with
+      | H: Platform.Memory.store_bytes _ _ _ _ = _ |- _ =>
+        unshelve epose proof (@store_bytes_frame _ _ _ _ _ _ _ _ _ H _) as P; cycle 2
+      end.
+      1: ecancel_assumption.
       destruct P as (finalML & P1 & P2).
       run1det. run1done.
-      *)
 
     - (* SLit *)
       case TODO_sam.
