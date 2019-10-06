@@ -137,7 +137,7 @@ Example mmio_adder: cmd :=
 Definition mmio_adder_bytes: list byte := Eval vm_compute in main mmio_adder.
 
 
-Require Import bedrock2.Examples.FE310CompilerDemo.
+Require Import bedrock2Examples.FE310CompilerDemo.
 Time Definition swap_demo_byte: list byte := Eval vm_compute in main swap_chars_over_uart.
 
 Module PrintAssembly.

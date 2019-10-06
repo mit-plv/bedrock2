@@ -21,7 +21,7 @@ Require Import compiler.examples.MMIO.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.SeparationLogic.
-Require Import bedrock2.Examples.Demos.
+Require Import bedrock2Examples.Demos.
 Import Utility.
 
 Section FibCompiled.

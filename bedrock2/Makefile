@@ -1,18 +1,20 @@
 default_target: all
 
-.PHONY: clean force all all_coqmakefile install
+.PHONY: clean force all noex ex install
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
 SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2
+EXDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2Examples
 
-VS:=$(shell find $(SRCDIR) -type f -name '*.v')
+VS_NOEX:=$(shell find $(SRCDIR) -type f -name '*.v')
+VS_EX:=$(shell find $(EXDIR) -type f -name '*.v')
 
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
 DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
-CURFLAGS_NL=-Q src/bedrock2 bedrock2\n
+CURFLAGS_NL=-Q src/bedrock2 bedrock2\n-Q src/bedrock2Examples bedrock2Examples\n
 
 EXTERNAL_DEPENDENCIES?=
 
@@ -28,19 +30,27 @@ ALLDEPFLAGS=$(subst \n, ,$(ALLDEPFLAGS_NL))
 _CoqProject:
 	printf -- '$(ALLDEPFLAGS_NL)' > _CoqProject
 
-all_coqmakefile: Makefile.coq.all $(VS)
+noex: Makefile.coq.noex $(VS_NOEX)
 	rm -f .coqdeps.d
-	$(MAKE) -f Makefile.coq.all
+	$(MAKE) -f Makefile.coq.noex
 
-all: all_coqmakefile special/BytedumpTest.out
+ex: Makefile.coq.ex $(VS_EX) noex
+	rm -f .coqdeps.d
+	$(MAKE) -f Makefile.coq.ex
+
+all: noex ex special/BytedumpTest.out
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
-Makefile.coq.all: force _CoqProject
-	@echo "Generating Makefile.coq.all"
-	@$(COQ_MAKEFILE) $(VS) -o Makefile.coq.all
+Makefile.coq.noex: force _CoqProject
+	@echo "Generating Makefile.coq.noex"
+	@$(COQ_MAKEFILE) $(VS_NOEX) -o Makefile.coq.noex
 
-special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin all_coqmakefile
+Makefile.coq.ex: force _CoqProject
+	@echo "Generating Makefile.coq.ex"
+	@$(COQ_MAKEFILE) $(VS_EX) -o Makefile.coq.ex
+
+special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin noex
 	coqc -q $(ALLDEPFLAGS) $< > special/BytedumpTest.out.tmp0
 	head -c $$(($$(wc -c < special/BytedumpTest.out.tmp0 | xargs) - 1)) special/BytedumpTest.out.tmp0 > special/BytedumpTest.out.tmp
 	rm special/BytedumpTest.out.tmp0
@@ -54,10 +64,11 @@ special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin
 
 force:
 
-clean:: Makefile.coq.all
-	$(MAKE) -f Makefile.coq.all clean
+clean:: Makefile.coq.noex Makefile.coq.ex
+	$(MAKE) -f Makefile.coq.noex clean
+	$(MAKE) -f Makefile.coq.ex clean
 	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
-	rm -f Makefile.coq.all Makefile.coq.all.conf _CoqProject special/BytedumpTest.out
+	rm -f Makefile.coq.noex Makefile.coq.noex.conf Makefile.coq.ex Makefile.coq.ex.conf _CoqProject special/BytedumpTest.out
 
 install::
-	$(MAKE) -f Makefile.coq.all install
+	$(MAKE) -f Makefile.coq.noex install

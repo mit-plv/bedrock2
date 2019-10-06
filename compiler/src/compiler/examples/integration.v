@@ -1,6 +1,6 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
-Require bedrock2.Examples.Demos.
+Require bedrock2Examples.Demos.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
@@ -22,7 +22,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
-Require Import bedrock2.Examples.swap.
+Require Import bedrock2Examples.swap.
 
 Open Scope Z_scope.
 Open Scope string_scope.

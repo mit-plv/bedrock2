@@ -2,7 +2,7 @@ From Coq Require Import Strings.String Lists.List ZArith.BinInt.
 From bedrock2 Require Import BasicC32Semantics ProgramLogic.
 Require Import coqutil.Z.Lia.
 
-Require Import bedrock2.Examples.ARPResponder.
+Require Import bedrock2Examples.ARPResponder.
 
 Import Datatypes List ListNotations.
 Local Open Scope string_scope. Local Open Scope list_scope. Local Open Scope Z_scope.

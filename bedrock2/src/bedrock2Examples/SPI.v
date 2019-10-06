@@ -11,7 +11,7 @@ Local Coercion name_of_func (f : function) := fst f.
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
-Require bedrock2.Examples.lightbulb_spec.
+Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
 Definition spi_write : function :=

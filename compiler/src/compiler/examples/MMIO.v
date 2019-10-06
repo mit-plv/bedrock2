@@ -30,7 +30,7 @@ Require Import coqutil.Z.HexNotation.
 Require Import compiler.Simp.
 Require Import compiler.util.Learning.
 Require Import compiler.SimplWordExpr.
-Require bedrock2.Examples.FE310CompilerDemo.
+Require bedrock2Examples.FE310CompilerDemo.
 Import ListNotations.
 
 

@@ -3,7 +3,7 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.PushPullMod.
 From bedrock2 Require Import NotationsInConstr ProgramLogic Map.Separation Array Scalars TailRecursion.
 
-Require bedrock2.Examples.Demos.
+Require bedrock2Examples.Demos.
 Definition bsearch := @Demos.bsearch _ Demos.BinarySearch.StringNames.Inst.
 
 From coqutil Require Import Datatypes.List Word.Interface Map.Interface. (* coercions word and rep *)

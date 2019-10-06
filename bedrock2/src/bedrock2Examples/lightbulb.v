@@ -3,8 +3,8 @@ Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
 Require Import coqutil.Macros.symmetry.
-Require Import bedrock2.Examples.SPI.
-Require Import bedrock2.Examples.LAN9250.
+Require Import bedrock2Examples.SPI.
+Require Import bedrock2Examples.LAN9250.
 From coqutil Require Import Z.div_mod_to_equations.
 From coqutil Require Import Word.Interface Map.Interface.
 From coqutil.Tactics Require Import letexists eabstract.

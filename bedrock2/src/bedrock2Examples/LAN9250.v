@@ -1,6 +1,6 @@
 Require Import bedrock2.Syntax bedrock2.StringNamesSyntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
-Require Import bedrock2.Examples.SPI.
+Require Import bedrock2Examples.SPI.
 
 Import BinInt String List.ListNotations.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
@@ -132,7 +132,7 @@ Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
-Require bedrock2.Examples.lightbulb_spec.
+Require bedrock2Examples.lightbulb_spec.
 
 Import coqutil.Map.Interface.
 

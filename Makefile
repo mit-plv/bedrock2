@@ -31,8 +31,6 @@ kami: riscv-coq
 compiler: riscv-coq bedrock2
 processor: riscv-coq kami
 end2end: compiler bedrock2 processor
-all: bedrock2 compiler processor end2end
-clean: clean_coqutil clean_riscv-coq clean_kami
 
 endif
 
