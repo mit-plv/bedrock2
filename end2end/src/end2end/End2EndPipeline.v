@@ -74,12 +74,12 @@ Proof.
   assumption.
 Qed.
 
-Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.W := KamiWordsInst;
-  FlatToRiscvDef.compile_ext_call := compile_ext_call;
-  FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
-  FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
-}.
+Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters :=
+  { FlatToRiscvDef.W := @KamiWord.WordsKami KamiProc.width KamiProc.width_cases;
+    FlatToRiscvDef.compile_ext_call := compile_ext_call;
+    FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
+    FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
+  }.
 
 Definition instrencode(p: list Instruction): list Byte.byte :=
   let word8s := List.flat_map
@@ -164,9 +164,7 @@ Section Connect.
   Qed.
 
   Lemma states_related_to_traces_related: forall m m' t,
-      states_related (proj1 instrMemSizeLg_bounds)
-                     (proj2 instrMemSizeLg_bounds)
-                     (m, t) m' -> traces_related t m'.(getLog).
+      states_related (m, t) m' -> traces_related t m'.(getLog).
   Proof. intros. inversion H. simpl. assumption. Qed.
 
   (* for debugging f_equal *)
@@ -199,8 +197,8 @@ Section Connect.
   Definition goodTraceE(t: list Event): Prop :=
     exists bedrockTrace, traces_related t bedrockTrace /\ spec.(goodTrace) bedrockTrace.
 
-  Definition kamiMemToBedrockMem(km: SC.MemInit (Z.to_nat width) IsaRv32.rv32DataBytes): mem :=
-    FetchOk.convertDataMem (Semantics.evalConstT km).
+  (* Definition kamiMemToBedrockMem: mem := *)
+  (*   projT1 (riscvMemInit memInit). *)
 
   Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t'
                                              /\ l' = map.empty).
@@ -266,9 +264,9 @@ Section Connect.
       - eapply funimplsList_NoDup.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3init.
-        specialize_first Establish (kamiMemToBedrockMem (kamiMemInit memInit)).
+        specialize_first Establish (projT1 (riscvMemInit memInit)).
         specialize_first P3init Establish.
-        replace m0 with (kamiMemToBedrockMem (kamiMemInit memInit)) by case TODO_joonwon.
+        replace m0 with (projT1 (riscvMemInit memInit)) by case TODO_joonwon.
         eapply P3init. case TODO_andres.
       - intros.
         pose proof (@program_logic_sound strname_sem) as P3loop.

@@ -49,18 +49,18 @@ Proof.
   apply Z.pow_pos_nonneg; blia.
 Qed.
 
-Instance KamiWordsInst: Utility.Words := @KamiWord.WordsKami width width_cases.
-
 Axiom TODO_joonwon: False.
 
 Section Equiv.
+  Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
+
   (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {Registers: map.map Register word}
           {mem: map.map word byte}
           {mmio_semantics : ExtSpec}.
 
   Local Notation M := (free action result).
-  Local Notation RiscvMachine := (@MetricRiscvMachine KamiWordsInst Registers mem).
+  Local Notation RiscvMachine := MetricRiscvMachine.
   Local Existing Instance MetricMinimalMMIO.IsRiscvMachine.
   Local Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
 
@@ -79,8 +79,6 @@ Section Equiv.
                                             (Z.to_nat instrMemSizeLg)
                                             rv32InstBytes rv32DataBytes rv32RfIdx.
   Local Notation kamiXAddrs := (kamiXAddrs instrMemSizeLg).
-  Local Notation toKamiPc := (toKamiPc instrMemSizeLg Hinstr).
-  Local Notation convertDataMem := (@convertDataMem mem).
   Local Notation rv32Fetch :=
     (rv32Fetch (Z.to_nat width)
                (Z.to_nat instrMemSizeLg)
@@ -98,10 +96,6 @@ Section Equiv.
 
   Definition mmioStoreEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
     ((m, MMOutput, [addr; signedByteTupleToReg v]), (m, [])).
-
-  (** NOTE: we have no idea how to deal with [translate] when [RVS] is
-   * parametrized, so let's just use the default instance for now. *)
-  (* Context {RVS: riscv.Spec.Machine.RiscvMachine M word}. *)
 
   (* common event between riscv-coq and Kami *)
   Inductive Event: Type :=
@@ -129,11 +123,12 @@ Section Equiv.
         traces_related t t' ->
         KamiProc.RegsToT m = Some (kamiStMk kpc krf pinit instrMem kdataMem) ->
         (pinit = false -> riscvXAddrs = kamiXAddrs) ->
-        (pinit = true -> RiscvXAddrsSafe instrMemSizeLg Hinstr instrMem kdataMem riscvXAddrs) ->
-        kpc = toKamiPc rpc ->
+        (pinit = true -> RiscvXAddrsSafe instrMemSizeLg (* Hinstr *) instrMem kdataMem riscvXAddrs) ->
+        pc_related _ kpc rpc ->
         nrpc = word.add rpc (word.of_Z 4) ->
-        rrf = convertRegs krf ->
-        rdataMem = convertDataMem kdataMem ->
+        regs_related krf rrf ->
+
+        mem_related kdataMem rdataMem ->
         states_related
           (m, t) {| getMachine := {| RiscvMachine.getRegs := rrf;
                                      RiscvMachine.getPc := rpc;
@@ -247,13 +242,13 @@ Section Equiv.
   Lemma kamiPgmInitFull_RiscvXAddrsSafe:
     forall pgmFull dataMem,
       KamiPgmInitFull rv32Fetch pgmFull dataMem ->
-      RiscvXAddrsSafe instrMemSizeLg Hinstr pgmFull dataMem kamiXAddrs.
+      RiscvXAddrsSafe instrMemSizeLg (* Hinstr *) pgmFull dataMem kamiXAddrs.
   Proof.
     unfold KamiPgmInitFull, RiscvXAddrsSafe, isXAddr; intros.
     rewrite H.
     cbv [alignInst rv32Fetch rv32AlignInst]; unfold evalExpr; fold evalExpr.
     f_equal.
-    apply rv32AlignAddr_toKamiPc_consistent; auto.
+    apply rv32AlignAddr_consistent; auto.
   Qed.
 
   Lemma kamiStep_sound_case_pgmInitEnd:
@@ -361,59 +356,32 @@ Section Equiv.
     inversion H; subst; clear H.
     eapply invert_Kami_execLd in H1; eauto.
     destruct H1 as (? & kinst & ldAddr & ? & ? & ? & ? & ? & ?).
+    change (rv32InstBytes * BitsPerByte)%nat with (Z.to_nat width) in kinst.
     simpl in H; subst pinit.
 
     destruct (evalExpr (isMMIO type ldAddr)) eqn:Hmmio.
-    - specialize (H9 eq_refl); clear H10.
-      destruct H9 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
+    - repeat match goal with
+             | [H: true = true -> _ |- _] => specialize (H eq_refl)
+             | [H: true = false -> _ |- _] => clear H
+             end.
+      destruct H11 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
       simpl in H; subst cs.
 
-      (** invert a riscv-coq step *)
-      repeat t.
+      (** Invert a riscv-coq step *)
 
-      specialize (H eq_refl); eapply fetch_ok in H; eauto.
+      (* -- fetch *)
+      repeat t.
+      specialize (H eq_refl).
+      eapply fetch_ok in H; [|eassumption..].
       destruct H as (rinst & ? & ?).
-      (* rewrite H in HR. <-- I want this :P *)
-      match type of H0 with
-        match ?X with _ => _ end =>
-        destruct X as [rinst0|] eqn:Hrinst
-      end.
-      2: {
-        exfalso.
-        unfold Memory.loadWord in H.
-        match goal with
-        | [H1: Memory.load_bytes _ _ _ = _, H2: Memory.load_bytes _ _ _ = _ |- _] =>
-          match type of H1 with
-          | ?t1 = _ => match type of H2 with
-                       | ?t2 = _ => change t1 with t2 in H1
-                       end
-          end; rewrite H1 in H2; try discriminate
-        end.
-      }
-
-      (* relation between the two raw instructions *)
-      unfold Memory.loadWord in H.
-      match goal with
-      | [H1: Memory.load_bytes _ _ _ = _, H2: Memory.load_bytes _ _ _ = _ |- _] =>
-        match type of H1 with
-        | ?t1 = _ => match type of H2 with
-                     | ?t2 = _ => change t1 with t2 in H1
-                     end
-        end; rewrite H1 in H2
-      end.
-      (* inversion_clear H ..? *)
-      inversion H; subst rinst0; clear H.
-      assert (combine (byte:= @byte_Inst _ (@MachineWidth_XLEN W))
-                      4 rinst =
-              wordToZ kinst) as Hfetch by (subst kinst; assumption).
-
+      rewrite H in H0.
+      setoid_rewrite <-H1 in H15.
       repeat t.
-      setoid_rewrite Hfetch in H0.
+      setoid_rewrite H15 in H0.
 
-      (* evaluate [decode] *)
+      (* -- decode *)
       assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) as Hkopc.
-      { move H2 at bottom.
-        unfold getOptype, rv32Dec, rv32GetOptype in H2.
+      { unfold getOptype, rv32Dec, rv32GetOptype in H2.
         unfold evalExpr in H2; fold evalExpr in H2.
         destruct (isEq _ _ _) in H2;
           [|destruct (isEq _ _ _) in H2; discriminate].
@@ -430,7 +398,7 @@ Section Equiv.
               z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
               z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
       clear Hf3.
-      destruct H as [|[|[|[|[|[|[|]]]]]]].
+      destruct H16 as [|[|[|[|[|[|[|]]]]]]].
       4, 7, 8: case TODO_joonwon. (** TODO: [InvalidInstruction] *)
 
       + (** LB: load-byte *)
@@ -521,24 +489,36 @@ Section Equiv.
       inversion H2; subst; clear H2.
       inversion H0; subst; clear H0.
       eapply invert_Kami_execNm in H; eauto.
-      unfold kamiStMk, KamiProc.pc, KamiProc.rf, KamiProc.pgm, KamiProc.mem in H.
-      destruct H as [? [? [km2 [? ?]]]].
-      simpl in H, H0; subst.
-      clear H6.
-      specialize (H7 eq_refl); rename H7 into Hxs.
+      cbv [kamiStMk KamiProc.pc KamiProc.rf KamiProc.pgm KamiProc.mem] in H.
+      destruct H as (? & ? & km2 & ? & ?).
+      destruct H3 as (kinst & execVal & ? & ? & ?).
+      change (rv32InstBytes * BitsPerByte)%nat with (Z.to_nat width) in kinst.
+      simpl in H, H0; subst pinit calls.
+      repeat match goal with
+             | [H: true = true -> _ |- _] => specialize (H eq_refl)
+             | [H: true = false -> _ |- _] => clear H
+             end.
+      rename H7 into Hxs.
 
-      (** Invert Kami decode/execute *)
-      repeat t.
+      (** Invert a riscv-coq step *)
 
-      specialize (H1 eq_refl); eapply fetch_ok in H1; eauto.
-      destruct H1 as (rinst & ? & ?).
-      cbv [Memory.loadWord] in *.
+      (* -- fetch *)
       repeat t.
-      rewrite H1  in *.
+      specialize (H eq_refl).
+      eapply fetch_ok in H; [|eassumption..].
+      destruct H as (rinst & ? & ?).
+      rewrite H in H0.
+      setoid_rewrite <-H3 in H1.
       repeat t.
-      setoid_rewrite H7 in H6.
-      remember ((instrMem (split2 2 (Z.to_nat instrMemSizeLg) (toKamiPc rpc)))) as kinst.
-      subst x.
+      setoid_rewrite H1 in H0.
+      
+      (* cbv [Memory.loadWord] in *. *)
+      (* repeat t. *)
+      (* rewrite H1  in *. *)
+      (* repeat t. *)
+      (* setoid_rewrite H7 in H6. *)
+      (* remember ((instrMem (split2 2 (Z.to_nat instrMemSizeLg) (toKamiPc rpc)))) as kinst. *)
+      (* subst x. *)
 
       (* evaluate [decode] *)
       assert (bitSlice (wordToZ (sz:= BinInt.Z.to_nat width) kinst) 0 7 = opcode_OP)
@@ -548,13 +528,12 @@ Section Equiv.
       assert (bitSlice (wordToZ (sz:= BinInt.Z.to_nat width) kinst) 25 32 = funct7_ADD)
         as Hbs3 by case TODO_joonwon.
 
-      eval_decode H6.
+      eval_decode H0.
 
       (* invert the body of [execute] *)
       repeat t.
 
       (* resolve interaction with "register" 0 *)
-
       destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
       destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
       destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
@@ -565,10 +544,9 @@ Section Equiv.
       destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
 
       (** Construction *)
-      unfold doExec, getNextPc, rv32Exec in *.
+      cbv [doExec getNextPc rv32Exec] in *.
       do 2 eexists.
-      split; [|split];
-        [eapply KamiSilent; reflexivity| |eassumption].
+      split; [|split]; [eapply KamiSilent; reflexivity| |eassumption].
       remember (evalExpr (rv32GetDst type kinst)) as dst.
 
       econstructor.
@@ -580,25 +558,27 @@ Section Equiv.
       { intros; assumption. }
       { subst.
         rewrite kami_rv32NextPc_op_ok; auto.
-        { case TODO_joonwon. (** TODO @joonwonc: evaluate [toKamiPc] *)
+        { simpl.
+          case TODO_joonwon. (* need a [pc_related] preservation lemma *)
         }
         { rewrite kami_getOpcode_ok; assumption. }
       }
       { reflexivity. }
-      { subst x0. subst regs.
+      { subst execVal regs.
         rewrite <-kami_rv32GetDst_ok by assumption.
         rewrite <-kami_rv32GetSrc1_ok in Heqo by assumption.
         rewrite <-kami_rv32GetSrc2_ok in Heqo0 by assumption.
-        rewrite convertRegs_put by assumption.
-        erewrite <-convertRegs_get by eauto.
-        erewrite <-convertRegs_get by eauto.
-        erewrite kami_rv32DoExec_Add_ok;
-          [|rewrite kami_getOpcode_ok; assumption
-           |rewrite kami_getFunct7_ok; assumption
-           |rewrite kami_getFunct3_ok; assumption].
-        reflexivity.
+        case TODO_joonwon. (* need a [regs_related] update consistency *)
+        (* rewrite convertRegs_put by assumption. *)
+        (* erewrite <-convertRegs_get by eauto. *)
+        (* erewrite <-convertRegs_get by eauto. *)
+        (* erewrite kami_rv32DoExec_Add_ok; *)
+        (*   [|rewrite kami_getOpcode_ok; assumption *)
+        (*    |rewrite kami_getFunct7_ok; assumption *)
+        (*    |rewrite kami_getFunct3_ok; assumption]. *)
+        (* reflexivity. *)
       }
-      { reflexivity. }
+      { assumption. }
 
     - (* case "execNmZ" *) case TODO_joonwon.
 
@@ -688,28 +668,39 @@ Section Equiv.
   Definition mm: Modules := Kami.Ex.SC.mm kamiMemInit rv32MMIO.
   Definition p4mm: Modules := p4mm Hinstr kamiMemInit.
 
+  Local Notation procInit := (procInit (instrMemSizeLg:= instrMemSizeLg)).
+  
+  Definition riscvRegsInit:
+    {rrfi: Registers & regs_related (evalConstT (rfInit procInit)) rrfi}.
+  Proof.
+    case TODO_joonwon.
+  Defined.
+
+  Definition riscvMemInit:
+    {rmemi: mem & mem_related (evalConstT kamiMemInit) rmemi}.
+  Proof.
+    case TODO_joonwon.
+  Defined.
+
   Lemma states_related_init:
-    states_related (initRegs (getRegInits (@proc instrMemSizeLg Hinstr kamiMemInit)), [])
-                   {| getMachine :=
-                        {| RiscvMachine.getRegs :=
-                             convertRegs (Kami.Semantics.evalConstT KamiProc.rfInitVal);
-                           RiscvMachine.getPc := word.of_Z 0;
-                           RiscvMachine.getNextPc := word.of_Z 4;
-                           RiscvMachine.getMem := convertDataMem (evalConstT kamiMemInit);
-                           RiscvMachine.getXAddrs := kamiXAddrs;
-                           RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
-                      getMetrics := MetricLogging.EmptyMetricLog; |}.
+    states_related
+      (initRegs (getRegInits (@proc instrMemSizeLg Hinstr kamiMemInit)), [])
+      {| getMachine :=
+           {| RiscvMachine.getRegs := projT1 riscvRegsInit;
+              RiscvMachine.getPc := word.of_Z 0;
+              RiscvMachine.getNextPc := word.of_Z 4;
+              RiscvMachine.getMem := projT1 riscvMemInit;
+              RiscvMachine.getXAddrs := kamiXAddrs;
+              RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
+         getMetrics := MetricLogging.EmptyMetricLog; |}.
   Proof.
     econstructor; try reflexivity.
-    - constructor.
-    - match goal with
-      | |- _ = Some (kamiStMk ?ipc _ _ _ _) =>
-        replace ipc
-          with (evalConstT (pcInit (procInit (instrMemSizeLg:= instrMemSizeLg))))
-          by case TODO_joonwon
-      end.
-      apply pRegsToT_init.
+    2: eapply pRegsToT_init.
+    - econstructor.
     - intros; discriminate.
+    - apply wordToNat_wzero.
+    - apply (projT2 riscvRegsInit).
+    - apply (projT2 riscvMemInit).
   Qed.
 
   Lemma equivalentLabel_preserves_KamiLabelR:
@@ -746,7 +737,7 @@ Section Equiv.
            (RvInv: RiscvMachine -> Prop)
            (establishRvInv:
               forall (m0RV: RiscvMachine),
-                m0RV.(getMem) = convertDataMem (evalConstT kamiMemInit) ->
+                m0RV.(getMem) = projT1 riscvMemInit ->
                 m0RV.(getPc) = word.of_Z 0 ->
                 (forall reg, 0 < reg < 32 -> map.get m0RV.(getRegs) reg <> None) ->
                 m0RV.(getLog) = nil ->
@@ -784,8 +775,8 @@ Section Equiv.
     - eapply establishRvInv.
       + reflexivity.
       + reflexivity.
-      + unfold getMachine, getRegs; intros.
-        eapply convertRegs_valid; blia.
+      + simpl.
+        case TODO_joonwon.
       + reflexivity.
     - specialize (useRvInv _ Inv).
       inversion Rel. subst. clear Rel.

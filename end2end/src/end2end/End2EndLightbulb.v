@@ -173,8 +173,10 @@ Defined.
 
 Definition prog :=
   @prog
-    (Z_keyed_SortedListMap.Zkeyed_map (@Utility.word KamiRiscv.KamiWordsInst))
-    (Z_keyed_SortedListMap.Zkeyed_map_ok (@Utility.word KamiRiscv.KamiWordsInst))
+    (Z_keyed_SortedListMap.Zkeyed_map
+       (@Utility.word (@KamiWord.WordsKami KamiProc.width KamiProc.width_cases)))
+    (Z_keyed_SortedListMap.Zkeyed_map_ok
+       (@Utility.word (@KamiWord.WordsKami KamiProc.width KamiProc.width_cases)))
     (@Semantics.mem semantics)
     (@Semantics.mem_ok semantics ok)
     (@Semantics.funname_env semantics)

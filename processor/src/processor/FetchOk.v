@@ -46,7 +46,7 @@ Qed.
 
 Section FetchOk.
 
-  Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
+  Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
   Context {mem: map.map word byte}.
 
   (* [instrMemSizeLg] is the log number of instructions in the instruction cache.
@@ -60,40 +60,23 @@ Section FetchOk.
   Definition instrMemSize: nat := Z.to_nat (Z.pow 2 instrMemSizeLg).
   Definition dataMemSize: nat := Z.to_nat (Z.pow 2 width).
 
-  Definition word32_to_4bytes (w: kword 32): HList.tuple byte 4 :=
-    LittleEndian.split 4 (word.unsigned w).
+  Definition pc_related (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
+             (rpc: kword width): Prop :=
+    #kpc = #rpc.
 
-  (* TODO this structure might not be very proof friendly,
-   * use Memory.unchecked_store_byte_list instead *)
-  Fixpoint unchecked_store_byte_tuple_list{n: nat}(a: word)(l: list (HList.tuple byte n))(m: mem): mem :=
-    match l with
-    | w :: rest =>
-      let m' := unchecked_store_byte_tuple_list (word.add a (word.of_Z (Z.of_nat n))) rest m in
-      Memory.unchecked_store_bytes n m' a w
-    | nil => m
-    end.
+  Definition AddrAligned (addr: kword width) :=
+    split1 2 _ addr = WO~0~0.
+
+  Definition mem_related (kmem: kword width -> kword width)
+             (rmem: mem): Prop :=
+    forall addr val,
+      AddrAligned addr ->
+      Memory.load_bytes 4 rmem addr = Some val /\
+      combine 4 val = wordToZ (kmem addr).
 
   (* set of executable addresses in the kami processor *)
   Definition kamiXAddrs: XAddrs :=
     addXAddrRange (wzero _) instrMemSize nil.
-
-  Definition convertInstrMem (instrMem: kword instrMemSizeLg -> kword 32): mem :=
-    let keys := List.unfoldn (Word.wplus (Word.ZToWord ninstrMemSizeLg 1))
-                             instrMemSize (wzero _) in
-    let values := List.map (fun key => word32_to_4bytes (instrMem key)) keys in
-    @unchecked_store_byte_tuple_list 4 (wzero _) values map.empty.
-
-  Definition convertDataMem (dataMem: kword width -> kword width): mem :=
-    let keys := List.unfoldn (word.add (word.of_Z (width / 8)))
-                             dataMemSize (wzero _) in
-    let values := List.map
-                    (fun key => LittleEndian.split (Z.to_nat (width / 8))
-                                                   (word.unsigned (dataMem key)))
-                    keys in
-    unchecked_store_byte_tuple_list (wzero _) values map.empty.
-
-  Definition toKamiPc (pc: kword width): Word.word (2 + ninstrMemSizeLg) :=
-    split1 _ _ (eq_rec nwidth Word.word pc _ (width_inst_valid HinstrMemBound)).
 
   Lemma kamiXAddrs_In_prop:
     forall addr,
@@ -142,7 +125,7 @@ Section FetchOk.
       rewrite (width_inst_valid HinstrMemBound).
       reflexivity.
     }
-    cbv [word.add word W WordsKami wordW KamiWord.word].
+    cbv [word.add word WordsKami wordW KamiWord.word].
     rewrite <-eq_rect_wplus.
 
     f_equal.
@@ -150,14 +133,24 @@ Section FetchOk.
 
   Qed.
 
-  Lemma rv32AlignAddr_toKamiPc_consistent:
-    forall addr,
-      In addr kamiXAddrs ->
-      addr = evalExpr
-               (IsaRv32.rv32AlignAddr
-                  32%nat (Z.to_nat instrMemSizeLg)
-                  (width_inst_valid HinstrMemBound)
-                  type (split2 2 (Z.to_nat instrMemSizeLg) (toKamiPc addr))).
+  Definition RiscvXAddrsSafe
+             (kmemi: kword instrMemSizeLg -> kword width)
+             (kmemd: kword width -> kword width)
+             (xaddrs: XAddrs) :=
+    forall kpc rpc,
+      isXAddr rpc xaddrs ->
+      pc_related kpc rpc ->
+      kmemd rpc = kmemi (split2 2 _ kpc).
+
+  Lemma rv32AlignAddr_consistent:
+    forall rpc kpc,
+      In rpc kamiXAddrs ->
+      pc_related kpc rpc ->
+      rpc = evalExpr
+              (IsaRv32.rv32AlignAddr
+                 32%nat (Z.to_nat instrMemSizeLg)
+                 (width_inst_valid HinstrMemBound)
+                 type (split2 2 (Z.to_nat instrMemSizeLg) kpc)).
   Proof.
     intros.
     cbv [IsaRv32.rv32AlignAddr].
@@ -171,34 +164,25 @@ Section FetchOk.
     repeat f_equal.
 
     subst.
-    unfold toKamiPc.
-    unfold eq_rec.
-    rewrite eq_rect_2.
-    rewrite split1_combine.
-    rewrite split2_combine.
-    reflexivity.
+    red in H0.
+    rewrite wordToNat_eq_rect in H0.
+    case TODO_joonwon.
   Qed.
 
-  Definition RiscvXAddrsSafe
-             (instrMem: kword instrMemSizeLg -> kword width)
-             (dataMem: kword width -> kword width)
-             (riscvXAddrs: XAddrs) :=
-    forall addr,
-      isXAddr addr riscvXAddrs ->
-      dataMem addr =
-      instrMem (split2 2 _ (toKamiPc addr)).
-
   Lemma fetch_ok:
-    forall (instrMem: kword instrMemSizeLg -> kword width)
-           (dataMem: kword width -> kword width)
-           (riscvXAddrs: XAddrs)
-           (Hxs: RiscvXAddrsSafe instrMem dataMem riscvXAddrs)
-           (pc: kword width),
-      isXAddr pc riscvXAddrs ->
-      exists (inst: HList.tuple byte 4),
-        Memory.loadWord (convertDataMem dataMem) pc = Some inst /\
-        combine 4 inst =
-        wordToZ (instrMem (split2 2 _ (toKamiPc pc))).
+    forall (kmemi: kword instrMemSizeLg -> kword width)
+           (kmemd: kword width -> kword width)
+           (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
+           (xaddrs: XAddrs)
+           (Hxs: RiscvXAddrsSafe kmemi kmemd xaddrs)
+           (rmemd: mem)
+           (rpc: kword width),
+      isXAddr rpc xaddrs ->
+      pc_related kpc rpc ->
+      mem_related kmemd rmemd ->
+      exists (rinst: HList.tuple byte 4),
+        Memory.load_bytes 4 rmemd rpc = Some rinst /\
+        combine 4 rinst = wordToZ (kmemi (split2 2 _ kpc)).
   Proof.
     case TODO_joonwon.
   Qed.

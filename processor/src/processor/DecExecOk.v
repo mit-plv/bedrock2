@@ -54,29 +54,27 @@ Section DecExecOk.
 
   Context {Registers: map.map Register word}.
 
-  Definition convertRegs (rf: kword 5 -> kword width): Registers :=
-    let kkeys := HList.tuple.unfoldn (wplus (natToWord 5 1)) 31 (natToWord 5 1) in
-    let values := HList.tuple.map rf kkeys in
-    let keys := HList.tuple.map (@wordToZ 5) kkeys in
-    map.putmany_of_tuple keys values map.empty.
+  Definition regs_related (krf: kword 5 -> kword width)
+             (rrf: Registers): Prop :=
+    forall z, 0 < z < 32 -> map.get rrf z = Some (krf (ZToWord _ z)).
 
-  Lemma convertRegs_valid:
-    forall rf z,
-      0 <= z < 32 ->
-      map.get (convertRegs rf) z <> None.
-  Proof. case TODO_joonwon. Qed.
+  (* Lemma convertRegs_valid: *)
+  (*   forall rf z, *)
+  (*     0 <= z < 32 -> *)
+  (*     map.get (convertRegs rf) z <> None. *)
+  (* Proof. case TODO_joonwon. Qed. *)
 
-  Lemma convertRegs_get:
-    forall rf r v,
-      map.get (convertRegs rf) (Word.wordToZ r) = Some v ->
-      v = rf r.
-  Proof. case TODO_joonwon. Qed.
+  (* Lemma convertRegs_get: *)
+  (*   forall rf r v, *)
+  (*     map.get (convertRegs rf) (Word.wordToZ r) = Some v -> *)
+  (*     v = rf r. *)
+  (* Proof. case TODO_joonwon. Qed. *)
 
-  Lemma convertRegs_put:
-    forall rf r v,
-      convertRegs (fun w => if weq w r then v else rf w) =
-      map.put (convertRegs rf) (Word.wordToZ r) v.
-  Proof. case TODO_joonwon. Qed.
+  (* Lemma convertRegs_put: *)
+  (*   forall rf r v, *)
+  (*     convertRegs (fun w => if weq w r then v else rf w) = *)
+  (*     map.put (convertRegs rf) (Word.wordToZ r) v. *)
+  (* Proof. case TODO_joonwon. Qed. *)
 
   (** * Inversion for decoding *)
 
