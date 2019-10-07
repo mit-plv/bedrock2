@@ -683,7 +683,8 @@ Section FibCompiled.
         * eassumption.
         * blia.
   Qed.
-
+  (*
   Print Assumptions fib_compiled.
+  *)
 
 End FibCompiled.

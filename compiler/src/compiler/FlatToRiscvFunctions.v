@@ -1,3 +1,4 @@
+Require Import coqutil.Tactics.rdelta.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
@@ -18,8 +19,11 @@ Require Import compiler.FlatImp.
 Require Import compiler.RunInstruction.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
+Require Import compiler.FlatToRiscvLiterals.
 Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import compiler.load_save_regs_correct.
+Require Import compiler.eqexact.
+Require Import compiler.RiscvWordProperties.
 Import Utility MetricLogging.
 
 Axiom TODO_sam: False.
@@ -252,13 +256,14 @@ Section Proofs.
   Qed.
 
   Ltac simpl_addrs :=
-    repeat (
-        rewrite !List.app_length ||
-        simpl ||
-        rewrite !Nat2Z.inj_add ||
-        rewrite !Nat2Z.inj_succ ||
-        rewrite <-! Z.add_1_r ||
-        autorewrite with rew_word_morphism);
+    repeat match goal with
+           | |- context [length (?x ++ ?y)] => progress prewrite (length (x ++ y)) app_length
+           | |- _ => progress simpl
+           | |- context [Z.of_nat (?x + ?y)] => progress prewrite (Z.of_nat (x + y)) Nat2Z.inj_add
+           | |- context [Z.of_nat (S ?x)] => progress prewrite (Z.of_nat (S x)) Nat2Z.inj_succ
+           | |- _ => progress unfold Z.succ
+           | |- _ => progress autorewrite with rew_word_morphism
+           end;
     unfold Register, MachineInt in *;
     (* note: it's the user's responsability to ensure that left-to-right rewriting with all
      nat and Z equations terminates, otherwise we'll loop infinitely here *)
@@ -339,8 +344,6 @@ Section Proofs.
     | S ?m => pick_nat m
     end.
 
-  Require Import coqutil.Tactics.rdelta.
-
   Ltac wcancel_step :=
     let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
     let jy := index_and_element_of RHS in
@@ -414,6 +417,9 @@ Section Proofs.
     funnames: list Syntax.funname;
     frame: mem -> Prop;
   }.
+
+  Ltac simpl_g_get :=
+    cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl funnames frame] in *.
 
   Definition goodMachine
       (* high-level state ... *)
@@ -514,6 +520,37 @@ Section Proofs.
     unfold regs_initialized. intros. specialize (H _ H0).
     rewrite map.get_put_dec. destruct_one_match; subst; eauto.
   Qed.
+
+  Ltac run1done :=
+    apply runsToDone;
+    simpl_MetricRiscvMachine_get_set;
+    simpl in *;
+    repeat match goal with
+    | |- exists (_: _), _ => eexists
+    end;
+    repeat split;
+    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    match goal with
+    | |- _ => solve [eauto]
+    | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
+    | |- exists _, _ = _ /\ (_ * _)%sep _ => eexists; split; [reflexivity|solve[pseplog]]
+    | |- _ => prove_ext_guarantee
+    | |- _ => solve [map_solver (@locals_ok p h)]
+    | |- _ => idtac
+    end.
+
+  Ltac sidecondition_hook ::= try solve [map_solver (@locals_ok p h)].
+
+  Ltac safe_sidecond :=
+    match goal with
+    | |- ?L = _ => is_evar L; reflexivity
+    | |- _ = ?R => is_evar R; reflexivity
+    | |- ?G => assert_fails (has_evar G);
+               first [ prove_ext_guarantee
+                     | solve_stmt_not_too_big
+                     | reflexivity
+                     | assumption ]
+    end.
 
   Lemma compile_stmt_correct_new:
     forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
@@ -932,54 +969,7 @@ Section Proofs.
       }
       { simpl_addrs. solve_word_eq word_ok. }
       { move H1 at bottom. move H13 at bottom.
-        Set Nested Proofs Allowed.
-
-  Lemma putmany_of_list_find_index: forall keys vals (m1 m2: locals) k v,
-      map.putmany_of_list keys vals m1 = Some m2 ->
-      map.get m2 k = Some v ->
-      (exists n, nth_error keys n = Some k /\ nth_error vals n = Some v) \/
-      (map.get m1 k = Some v).
-  Proof.
-    induction keys; intros.
-    - simpl in H. simp. eauto.
-    - simpl in H. simp. specialize IHkeys with (1 := H) (2 := H0).
-      destruct IHkeys as [IH | IH].
-      + destruct IH as (n & IH).
-        left. exists (S n). simpl. exact IH.
-      + rewrite map.get_put_dec in IH. destruct_one_match_hyp.
-        * subst. left. exists O. simpl. auto.
-        * right. assumption.
-  Qed.
-
-  Lemma getmany_of_list_get: forall keys n (m: locals) vals k v,
-      map.getmany_of_list m keys = Some vals ->
-      nth_error keys n = Some k ->
-      nth_error vals n = Some v ->
-      map.get m k = Some v.
-  Proof.
-    induction keys; intros.
-    - apply nth_error_nil_Some in H0. contradiction.
-    - unfold map.getmany_of_list in *. simpl in *. simp.
-      destruct n.
-      + simpl in *. simp. assumption.
-      + simpl in *. eauto.
-  Qed.
-
-  Lemma extends_putmany_of_list_empty: forall argnames argvals (lL lH: locals),
-      map.putmany_of_list argnames argvals map.empty = Some lH ->
-      map.getmany_of_list lL argnames = Some argvals ->
-      map.extends lL lH.
-  Proof.
-    unfold map.extends. intros.
-    pose proof putmany_of_list_find_index as P.
-    specialize P with (1 := H) (2 := H1). destruct P as [P | P]; cycle 1. {
-      rewrite map.get_empty in P. discriminate.
-    }
-    destruct P as (n & P1 & P2).
-    eapply getmany_of_list_get; eassumption.
-  Qed.
-
-  eapply extends_putmany_of_list_empty; eassumption.
+        eapply map.extends_putmany_of_list_empty; eassumption.
       }
       {
         assert (forall x, In x argnames -> valid_FlatImp_var x) as F. {
@@ -1402,111 +1392,6 @@ Section Proofs.
 
     - (* SLoad *)
       progress unfold Memory.load, Memory.load_Z in *. simp.
-
-Ltac subst_load_bytes_for_eq ::=
-      lazymatch goal with
-      | Load: Memory.load_bytes _ ?m _ = _ |- _ =>
-        let P := fresh "P" in
-        epose proof (@subst_load_bytes_for_eq _ _ _ _ _ _ _ _ _ Load) as P;
-        let Q := fresh "Q" in
-        edestruct P as [Q ?]; clear P; [ecancel_assumption|]
-      end.
-
-Lemma extends_get: forall {l1 l2: locals} {k v},
-    map.get l1 k = Some v ->
-    map.extends l2 l1 ->
-    map.get l2 k = Some v.
-Proof. unfold map.extends. intros. eauto. Qed.
-
-Require Import compiler.eqexact.
-Require Import compiler.RiscvWordProperties.
-
-  Ltac apply_post :=
-    match goal with
-    | H: ?post _ _ _ |- ?post _ _ _ =>
-      eqexact H; f_equal; symmetry;
-      (apply word.sru_ignores_hibits ||
-       apply word.slu_ignores_hibits ||
-       apply word.srs_ignores_hibits ||
-       apply word.mulhuu_simpl ||
-       apply word.divu0_simpl ||
-       apply word.modu0_simpl)
-    end.
-
-  Ltac run1done :=
-    apply runsToDone;
-    simpl_MetricRiscvMachine_get_set;
-    simpl in *;
-    repeat match goal with
-    | |- exists (_: _), _ => eexists
-    end;
-    repeat split;
-    simpl_word_exprs (@word_ok (@W (@def_params p)));
-    match goal with
-    | |- _ => solve [eauto]
-    | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
-    | |- exists _, _ = _ /\ (_ * _)%sep _ => eexists; split; [reflexivity|solve[pseplog]]
-    | |- _ => prove_ext_guarantee
-    | |- _ => apply_post
-    | |- _ => solve [map_solver (@locals_ok p h)]
-    | |- _ => idtac
-    end.
-
-(*
-  Ltac run1done :=
-    apply runsToDone;
-    simpl_MetricRiscvMachine_get_set;
-    simpl in *;
-    repeat match goal with
-    | |- exists (_: _), _ => eexists
-    end;
-    repeat split;
-    simpl_word_exprs (@word_ok (@W (@def_params p)));
-    first
-      [ solve [eauto]
-      | solve_word_eq (@word_ok (@W (@def_params p)))
-      | solve [pseplog]
-      | prove_ext_guarantee
-      | apply_post
-      | solve [map_solver (@locals_ok p h)]
-      | idtac ].
-*)
-
-Ltac sidecondition ::=
-  simpl; simpl_MetricRiscvMachine_get_set;
-  match goal with
-  (* these branches are allowed to instantiate evars in a controlled manner: *)
-  | H: map.get _ _ = Some _ |- _ => exact H
-  | |- map.get _ _ = Some _ =>
-    simpl;
-    match goal with
-    | |- map.get (map.put _ ?x _) ?y = Some _ =>
-      constr_eq x y; apply map.get_put_same
-    end
-  | |- sep ?P ?Q ?m => simpl in *; simpl_MetricRiscvMachine_get_set; solve [seplog]
-  | |- _ => reflexivity
-  | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
-    eapply (extends_get A E)
-  (* but we don't have a general "eassumption" branch, only "assumption": *)
-  | |- _ => assumption
-  (* TODO eventually remove this case and dependency on FlatToRiscvDef *)
-  | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
-    assert_fails (is_evar inst);
-    apply V;
-    repeat match goal with
-           | H: _ |- _ => clear H
-           end;
-    eauto 30 using in_cons, in_or_app, in_eq
-  | |- Memory.load ?sz ?m ?addr = Some ?v =>
-    unfold Memory.load, Memory.load_Z in *;
-    simpl_MetricRiscvMachine_mem;
-    erewrite ptsto_bytes.load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
-  | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
-  | |- _ => solve [map_solver (@locals_ok p h)]
-  | |- _ => idtac
-  end.
-
-
       subst_load_bytes_for_eq.
       assert (x <> RegisterNames.sp). {
         apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
@@ -1526,8 +1411,6 @@ Ltac sidecondition ::=
       1: ecancel_assumption.
       destruct P as (finalML & P1 & P2).
       run1det. run1done.
-
-Require Import compiler.FlatToRiscvLiterals.
 
     - (* SLit *)
       eapply compile_lit_correct_full.
@@ -1573,35 +1456,6 @@ Require Import compiler.FlatToRiscvLiterals.
       }
       run1det. run1done.
 
-(*
-  Ltac IH_sidecondition :=
-    simpl_word_exprs (@word_ok (@W (@def_params p)));
-    try solve
-      [ reflexivity
-      | auto
-      | solve_stmt_not_too_big
-      | solve_word_eq (@word_ok (@W (@def_params p)))
-      | simpl; solve_divisibleBy4
-      | prove_ext_guarantee
-      | pseplog ].
-*)
-
-  Ltac simpl_g_get :=
-    cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl funnames frame] in *.
-
-
-(* What "split" really should be: does not unfold definitions to discover more
-   conjunctions, but does split multiple conjunctions *)
-Ltac ssplit :=
-  repeat match goal with
-         | |- _ /\ _ => split
-         end.
-
-(* needed because of https://github.com/coq/coq/issues/10848 *)
-Ltac prewrite lhs lem :=
-  pattern lhs;
-  eapply eq_rect; [|symmetry; eapply lem].
-
     - (* SIf/Then *)
       (* execute branch instruction, which will not jump *)
       eapply runsTo_det_step; simpl in *; subst.
@@ -1611,46 +1465,6 @@ Ltac prewrite lhs lem :=
       + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
           unfold exists_good_reduced_e_impl in *. simp.
-
-  Ltac simpl_addrs ::=
-    repeat match goal with
-           | |- context [length (?x ++ ?y)] => progress prewrite (length (x ++ y)) app_length
-           | |- _ => progress simpl
-           | |- context [Z.of_nat (?x + ?y)] => progress prewrite (Z.of_nat (x + y)) Nat2Z.inj_add
-           | |- context [Z.of_nat (S ?x)] => progress prewrite (Z.of_nat (S x)) Nat2Z.inj_succ
-           | |- _ => progress unfold Z.succ
-           | |- _ => progress autorewrite with rew_word_morphism
-           end;
-    unfold Register, MachineInt in *;
-    (* note: it's the user's responsability to ensure that left-to-right rewriting with all
-     nat and Z equations terminates, otherwise we'll loop infinitely here *)
-    repeat match goal with
-           | E: @eq ?T _ _ |- _ =>
-             lazymatch T with
-             | Z => idtac
-             | nat => idtac
-             end;
-             progress rewrite E
-           end.
-
-  Ltac rep f :=
-    match goal with
-    | |- _ => progress (f tt); rep f
-    | |- _ => idtac
-    end.
-
-  Ltac safe_sidecond :=
-    match goal with
-    | |- ?L = _ => is_evar L; reflexivity
-    | |- _ = ?R => is_evar R; reflexivity
-    | |- ?G => assert_fails (has_evar G);
-               first [ prove_ext_guarantee
-                     | solve_stmt_not_too_big
-                     | reflexivity
-                     | assumption ]
-    end.
-
-
           eapply IHexec with (g := {| p_sp := _; |}) (pos := (pos + 4)%Z);
             simpl_MetricRiscvMachine_get_set;
             simpl_g_get;
@@ -1660,26 +1474,11 @@ Ltac prewrite lhs lem :=
                    | |- exists _, _ => eexists
                    end;
             try safe_sidecond; cycle -1.
-
-           {
-    wseplog_pre word_ok.
-    wcancel.
-          }
-           all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
+          { wseplog_pre word_ok. wcancel. }
+          all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
 
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
-
-Ltac simulate'_step ::=
-  match goal with
-  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_load _ _ _ _)) _) _ _ =>
-       eapply go_load; [ sidecondition.. | idtac ]
-  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_store _ _ _ _)) _) _ _ =>
-       eapply go_store; [ sidecondition.. | idtac ]
-  | |- _ => simulate_step
-  | |- _ => simpl_modu4_0
-  end.
-
   eapply runsTo_det_step.
   {
     simulate'.

@@ -497,10 +497,13 @@ Section FlatToRiscv1.
 End FlatToRiscv1.
 
 Ltac subst_load_bytes_for_eq :=
-  match goal with
-  | Load: bedrock2.Memory.load_bytes _ ?m _ = _, Sep: (_ * eq ?m * _)%sep _ |- _ =>
+  lazymatch goal with
+  | Load: ?LB _ _ _ _ _ ?m _ = _ |- _ =>
+    unify LB @Memory.load_bytes;
+    let P := fresh "P" in
+    epose proof (@subst_load_bytes_for_eq _ _ _ _ _ _ _ _ _ Load) as P;
     let Q := fresh "Q" in
-    destruct (subst_load_bytes_for_eq Load Sep) as [Q ?]
+    edestruct P as [Q ?]; clear P; [ecancel_assumption|]
   end.
 
 Ltac prove_ext_guarantee :=
@@ -510,11 +513,16 @@ Ltac prove_ext_guarantee :=
           eapply store_bytes_preserves_footprint; eassumption ].
 
 Ltac simulate'_step :=
-  first (* lemmas introduced only in this file: *)
-    [ eapply go_load  ; [sidecondition..|]
-    | eapply go_store ; [sidecondition..|]
-    | simulate_step
-    | simpl_modu4_0 ].
+  match goal with
+  (* lemmas introduced only in this file: *)
+  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_load _ _ _ _)) _) _ _ =>
+       eapply go_load; [ sidecondition.. | idtac ]
+  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_store _ _ _ _)) _) _ _ =>
+       eapply go_store; [ sidecondition.. | idtac ]
+  (* simulate_step from GoFlatToRiscv: *)
+  | |- _ => simulate_step
+  | |- _ => simpl_modu4_0
+  end.
 
 Ltac simulate' := repeat simulate'_step.
 

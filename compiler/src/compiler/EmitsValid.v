@@ -20,39 +20,6 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Lemma nth_error_nil_Some: forall {A} i (a: A), nth_error nil i = Some a -> False.
-Proof.
-  intros. destruct i; simpl in *; discriminate.
-Qed.
-
-Lemma nth_error_single_Some: forall A (a1 a2: A) i,
-    nth_error (a1 :: nil) i = Some a2 ->
-    i = O /\ a1 = a2.
-Proof.
-  intros. destruct i; inversion H; auto. simpl in *.
-  exfalso. eapply nth_error_nil_Some. eassumption.
-Qed.
-
-Lemma nth_error_cons_Some: forall A (a1 a2: A) (l: list A) i,
-    nth_error (a1 :: l) i = Some a2 ->
-    i = O /\ a1 = a2 \/ exists j, i = S j /\ nth_error l j = Some a2.
-Proof.
-  intros. destruct i; simpl in *.
-  - inversion H. auto.
-  - eauto.
-Qed.
-
-Lemma nth_error_app_Some: forall A (a: A) (l1 l2: list A) i,
-    nth_error (l1 ++ l2) i = Some a ->
-    nth_error l1 i = Some a \/ nth_error l2 (i - length l1) = Some a.
-Proof.
-  intros.
-  assert (i < length l1 \/ length l1 <= i)%nat as C by blia.
-  destruct C as [C | C].
-  - left. rewrite nth_error_app1 in H; assumption.
-  - right. rewrite nth_error_app2 in H; assumption.
-Qed.
-
 Hint Unfold
   funct12_EBREAK
   funct12_ECALL

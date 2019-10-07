@@ -838,6 +838,8 @@ Ltac simpl_MetricRiscvMachine_mem :=
   simpl RiscvMachine.getPc in *;
   simpl RiscvMachine.getMem in *.
 
+Ltac sidecondition_hook := idtac.
+
 Ltac sidecondition :=
   simpl; simpl_MetricRiscvMachine_get_set;
   match goal with
@@ -851,6 +853,8 @@ Ltac sidecondition :=
     end
   | |- sep ?P ?Q ?m => simpl in *; simpl_MetricRiscvMachine_get_set; solve [seplog]
   | |- _ => reflexivity
+  | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
+    eapply (map.extends_get A E)
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => assumption
   (* TODO eventually remove this case and dependency on FlatToRiscvDef *)
@@ -866,7 +870,7 @@ Ltac sidecondition :=
     simpl_MetricRiscvMachine_mem;
     erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
   | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
-  | |- _ => idtac
+  | |- _ => sidecondition_hook
   end.
 
 (* eapply and rapply don't always work (they failed in compiler.MMIO), so we use refine below
@@ -883,7 +887,7 @@ Ltac simulate_step :=
         | refine (go_setRegister0 _ _ _ _ _);      [sidecondition..|]
         | refine (go_getRegister _ _ _ _ _ _ _ _); [sidecondition..|]
         | refine (go_setRegister _ _ _ _ _ _ _);   [sidecondition..|]
-        (* Note: One might not want these, but a the separation logic version, or
+        (* Note: One might not want these, but the separation logic version, or
            the version expressed in terms of compile_load/store, so they're commented out
         | eapply go_loadByte       ; [sidecondition..|]
         | eapply go_storeByte      ; [sidecondition..|]
