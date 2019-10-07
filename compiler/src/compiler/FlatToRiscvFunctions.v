@@ -401,7 +401,7 @@ Section Proofs.
      Note, though, that when focusing on a sub-statement (i.e. when invoking the IH)
      the ghost constants will change: instructions are shoveled from insts into the frame,
      the amount of available stack shrinks, the stack pointer decreases, and if we're
-     in a function call, the function being called is remove from funnames so that
+     in a function call, the function being called is removed from funnames so that
      it can't be recursively called again. *)
   Record GhostConsts := {
     p_sp: word;
@@ -1527,46 +1527,82 @@ Ltac sidecondition ::=
       destruct P as (finalML & P1 & P2).
       run1det. run1done.
 
+Require Import compiler.FlatToRiscvLiterals.
+
     - (* SLit *)
-      case TODO_sam.
-      (*
       eapply compile_lit_correct_full.
       + sidecondition.
       + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
-      + simpl. run1done;
-        remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
-        symmetry in HeqfinalMetrics;
-        pose proof update_metrics_for_literal_bounded as Hlit;
-        specialize Hlit with (1 := HeqfinalMetrics);
-        solve_MetricLog.
-       *)
+      + simpl.
+        assert (x <> RegisterNames.sp). {
+          apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
+          unfold valid_FlatImp_var, RegisterNames.sp in *.
+          blia.
+        }
+        run1done.
 
     - (* SOp *)
-      case TODO_sam.
-      (*
+      assert (x <> RegisterNames.sp). {
+        apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
+        unfold valid_FlatImp_var, RegisterNames.sp in *.
+        blia.
+      }
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
-        simpl in *; run1det; try solve [run1done].
-      + simpl_MetricRiscvMachine_get_set.
-        run1det. run1done;
-      [match goal with
-      | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
-      end | solve_MetricLog..].
+      simpl in *; run1det;
+      rewrite ?word.sru_ignores_hibits,
+              ?word.slu_ignores_hibits,
+              ?word.srs_ignores_hibits,
+              ?word.mulhuu_simpl,
+              ?word.divu0_simpl,
+              ?word.modu0_simpl;
+      try solve [run1done].
+      (* bopname.eq requires two instructions *)
+      run1det. run1done.
       rewrite reduce_eq_to_sub_and_lt.
-      symmetry. apply map.put_put_same.
-      *)
+      rewrite map.put_put_same.
+      map_solver locals_ok.
 
     - (* SSet *)
-      case TODO_sam.
-      (*
+      assert (x <> RegisterNames.sp). {
+        apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
+        unfold valid_FlatImp_var, RegisterNames.sp in *.
+        blia.
+      }
       run1det. run1done.
-      *)
+
+(*
+  Ltac IH_sidecondition :=
+    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    try solve
+      [ reflexivity
+      | auto
+      | solve_stmt_not_too_big
+      | solve_word_eq (@word_ok (@W (@def_params p)))
+      | simpl; solve_divisibleBy4
+      | prove_ext_guarantee
+      | pseplog ].
+*)
+
+  Ltac simpl_g_get :=
+    cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl funnames frame] in *.
+
+
+(* What "split" really should be: does not unfold definitions to discover more
+   conjunctions, but does split multiple conjunctions *)
+Ltac ssplit :=
+  repeat match goal with
+         | |- _ /\ _ => split
+         end.
+
+(* needed because of https://github.com/coq/coq/issues/10848 *)
+Ltac prewrite lhs lem :=
+  pattern lhs;
+  eapply eq_rect; [|symmetry; eapply lem].
 
     - (* SIf/Then *)
-      case TODO_sam.
-      (*
       (* execute branch instruction, which will not jump *)
       eapply runsTo_det_step; simpl in *; subst.
       + simulate'. simpl_MetricRiscvMachine_get_set.
@@ -1574,9 +1610,88 @@ Ltac sidecondition ::=
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
-          eapply IHexec; IH_sidecondition.
+          unfold exists_good_reduced_e_impl in *. simp.
+
+  Ltac simpl_addrs ::=
+    repeat match goal with
+           | |- context [length (?x ++ ?y)] => progress prewrite (length (x ++ y)) app_length
+           | |- _ => progress simpl
+           | |- context [Z.of_nat (?x + ?y)] => progress prewrite (Z.of_nat (x + y)) Nat2Z.inj_add
+           | |- context [Z.of_nat (S ?x)] => progress prewrite (Z.of_nat (S x)) Nat2Z.inj_succ
+           | |- _ => progress unfold Z.succ
+           | |- _ => progress autorewrite with rew_word_morphism
+           end;
+    unfold Register, MachineInt in *;
+    (* note: it's the user's responsability to ensure that left-to-right rewriting with all
+     nat and Z equations terminates, otherwise we'll loop infinitely here *)
+    repeat match goal with
+           | E: @eq ?T _ _ |- _ =>
+             lazymatch T with
+             | Z => idtac
+             | nat => idtac
+             end;
+             progress rewrite E
+           end.
+
+  Ltac rep f :=
+    match goal with
+    | |- _ => progress (f tt); rep f
+    | |- _ => idtac
+    end.
+
+  Ltac safe_sidecond :=
+    match goal with
+    | |- ?L = _ => is_evar L; reflexivity
+    | |- _ = ?R => is_evar R; reflexivity
+    | |- ?G => assert_fails (has_evar G);
+               first [ prove_ext_guarantee
+                     | solve_stmt_not_too_big
+                     | reflexivity
+                     | assumption ]
+    end.
+
+
+          eapply IHexec with (g := {| p_sp := _; |}) (pos := (pos + 4)%Z);
+            simpl_MetricRiscvMachine_get_set;
+            simpl_g_get;
+            simpl_word_exprs (@word_ok (@W (@def_params p)));
+            repeat match goal with
+                   | |- _ /\ _ => split
+                   | |- exists _, _ => eexists
+                   end;
+            try safe_sidecond; cycle -1.
+
+           {
+    wseplog_pre word_ok.
+    wcancel.
+          }
+           all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
+
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
+
+Ltac simulate'_step ::=
+  match goal with
+  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_load _ _ _ _)) _) _ _ =>
+       eapply go_load; [ sidecondition.. | idtac ]
+  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_store _ _ _ _)) _) _ _ =>
+       eapply go_store; [ sidecondition.. | idtac ]
+  | |- _ => simulate_step
+  | |- _ => simpl_modu4_0
+  end.
+
+  eapply runsTo_det_step.
+  {
+    simulate'.
+    { wseplog_pre word_ok.
+      wcancel.
+    }
+    (* TODO needs hook for "sidecondition" *)
+    case TODO_sam.
+  }
+    case TODO_sam.
+
+       (*
           run1det. run1done.
        *)
 
@@ -1655,7 +1770,7 @@ Ltac sidecondition ::=
       run1done.
       *)
 
-    Grab Existential Variables. repeat constructor.
+    Grab Existential Variables. all: repeat (exact Z0 || assumption || constructor).
   Qed. (* <-- takes a while *)
 
 End Proofs.
