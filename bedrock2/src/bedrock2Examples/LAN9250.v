@@ -103,7 +103,7 @@ Definition lan9250_wait_for_boot : function :=
   err = (constr:(0));
   byteorder = (constr:(0));
   i = (lightbulb_spec.patience); while (i) { i = (i - constr:(1));
-	  unpack! err, byteorder = lan9250_readword(constr:(Ox"64"));
+	  unpack! byteorder, err = lan9250_readword(constr:(Ox"64"));
     if err { i = (i^i) };
     if (byteorder == constr:(Ox"87654321")) { i = (i^i) }
   }

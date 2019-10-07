@@ -48,27 +48,17 @@ Local Ltac split_if :=
         end
   end.
 
-
-Definition main: cmd :=
-  let iot : varname := "iot" in
-  let r : varname := "r" in
-  bedrock_func_body:(
-    while (constr:(1)) {
-      unpack! r = iot(constr:(1234))
-    }
-  ).
-
-Definition iot :=
+Definition lightbulb_loop :=
     let p_addr : varname := "p_addr" in
     let bytesWritten : varname := "bytesWritten" in
     let recvEthernet : varname := "recvEthernet" in
-    let lightbulb : varname := "lightbulb" in
+    let lightbulb_handle : varname := "lightbulb_handle" in
     let err : varname := "err" in
 
-  ("iot", ((p_addr::nil), (err::nil), bedrock_func_body:(
+  ("lightbulb_loop", ((p_addr::nil), (err::nil), bedrock_func_body:(
     unpack! bytesWritten, err = recvEthernet(p_addr);
     if !err { (* success, packet *)
-      unpack! err = lightbulb(p_addr, bytesWritten);
+      unpack! err = lightbulb_handle(p_addr, bytesWritten);
       err = (constr:(0)) (* bad packet continue anyway *)
     } else if !(err ^ constr:(1)) { (* success, no packet *)
       err = (constr:(0))
@@ -105,7 +95,7 @@ Definition recvEthernet :=
         }
     ))).
 
-Definition lightbulb :=
+Definition lightbulb_handle :=
     let packet : varname := "packet" in
     let len : varname := "len" in
     let ethertype : varname := "ethertype" in
@@ -118,7 +108,7 @@ Definition lightbulb :=
     let MMIOWRITE : varname := "MMIOWRITE" in
     let r : varname := "r" in
 
-  ("lightbulb", ((packet::len::nil), (r::nil), bedrock_func_body:(
+  ("lightbulb_handle", ((packet::len::nil), (r::nil), bedrock_func_body:(
     r = (constr:(42));
     require (r < len) else { r = (constr:(-1)) };
 
@@ -149,6 +139,16 @@ Definition lightbulb :=
     output! MMIOWRITE(r, mmio_val | command << constr:(23));
 
     r = (constr:(0))
+  ))).
+
+Definition lightbulb_init :=
+    let err : varname := "err" in
+    let MMIOWRITE : varname := "MMIOWRITE" in
+
+  ("lightbulb_init", (@nil varname, (err::nil), bedrock_func_body:(
+    output! MMIOWRITE(constr:(Ox"10012038"), constr:((Z.shiftl (Ox"f") 2)));
+    output! MMIOWRITE(constr:(Ox"10012008"), constr:((Z.shiftl 1 23)));
+    unpack! err = lan9250_init()
   ))).
 
 Import Datatypes List.
@@ -186,11 +186,11 @@ Definition lightbulb_packet_rep cmd (buf : list byte) :=
   idx 23%nat buf = word.of_Z (Ox"11") /\
   cmd = Z.testbit (word.unsigned (List.hd (word.of_Z 0) (List.skipn 42 buf))) 0.
 
-Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions =>
+Instance spec_of_lightbulb : spec_of "lightbulb_handle" := fun functions =>
   forall p_addr (buf:list byte) (len:word) R m t,
     (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
     word.unsigned len = Z.of_nat (List.length buf) ->
-    WeakestPrecondition.call functions "lightbulb" t m [p_addr; len]
+    WeakestPrecondition.call functions "lightbulb_handle" t m [p_addr; len]
       (fun t' m' rets => exists v, rets = [v] /\ m' = m /\ 
       exists iol, t' = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
@@ -198,11 +198,11 @@ Instance spec_of_lightbulb : spec_of "lightbulb" := fun functions =>
         (not (exists cmd, lightbulb_packet_rep cmd buf) /\ ioh = nil /\ word.unsigned v <> 0)
       ).
 
-Instance spec_of_iot : spec_of "iot" := fun functions =>
+Instance spec_of_lightbulb_loop : spec_of "lightbulb_loop" := fun functions =>
   forall p_addr buf R m t,
     (bytes p_addr buf * R) m ->
     Z.of_nat (length buf) = 1520 ->
-    WeakestPrecondition.call functions "iot" t m [p_addr]
+    WeakestPrecondition.call functions "lightbulb_loop" t m [p_addr]
       (fun t' m' rets => exists v, rets = [v] /\
       (exists buf, (bytes p_addr buf * R) m' /\
       Z.of_nat (length buf) = 1520) /\
@@ -215,10 +215,22 @@ Instance spec_of_iot : spec_of "iot" := fun functions =>
         ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned v <> 0)
       )).
 
+Instance spec_of_lightbulb_init : spec_of "lightbulb_init" := fun functions =>
+  forall m t,
+    WeakestPrecondition.call functions "lightbulb_init" t m nil
+      (fun t' m' rets => exists err, rets = [err] /\ m' = m /\
+        exists iol, t' = iol ++ t /\
+        exists ioh, mmio_trace_abstraction_relation ioh iol /\ (
+        (lightbulb_boot_success _ _ ioh /\ word.unsigned err = 0) \/
+        (lan9250_boot_timeout  _ _ ioh /\ word.unsigned err <> 0) \/
+        ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned err <> 0)
+      )).
+
+
 Require Import bedrock2.AbsintWordToZ.
 Import WeakestPreconditionProperties.
 
-Lemma iot_ok : program_logic_goal_for_function! iot.
+Lemma lightbulb_loop_ok : program_logic_goal_for_function! lightbulb_loop.
 Proof.
   repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end
         || straightline || straightline_call || split_if || ecancel_assumption || eauto || blia).
@@ -267,7 +279,7 @@ Proof.
   Z.bitwise. Btauto.btauto.
 Qed.
 
-Lemma lightbulb_ok : program_logic_goal_for_function! lightbulb.
+Lemma lightbulb_handle_ok : program_logic_goal_for_function! lightbulb_handle.
 Proof.
   repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
   all : subst r; try subst r0; change (word.unsigned (word.of_Z 42)) with 42 in *.
@@ -617,19 +629,31 @@ Proof.
   exact _.
 Defined.
 
-Lemma link_lightbulb : spec_of_iot (iot::recvEthernet::lightbulb::lan9250_readword::SPI.spi_xchg::SPI.spi_read::SPI.spi_write::nil).
+Import SPI.
+
+Definition function_impls :=
+  [lightbulb_init; lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
+  lightbulb_loop; lightbulb_handle; recvEthernet;  lan9250_writeword; lan9250_readword;
+  spi_xchg; spi_write; spi_read].
+
+Lemma link_lightbulb_loop : spec_of_lightbulb_loop function_impls.
 Proof.
-  eapply iot_ok;
-  (eapply recvEthernet_ok || eapply lightbulb_ok);
+  eapply lightbulb_loop_ok;
+  (eapply recvEthernet_ok || eapply lightbulb_handle_ok);
       eapply lan9250_readword_ok; eapply spi_xchg_ok;
       (eapply spi_write_ok || eapply spi_read_ok).
 Qed.
+Lemma link_lightbulb_init : spec_of_lightbulb_init function_impls.
+Proof.
+Admitted.
+
+
 (* Print Assumptions link_lightbulb. *)
 (* parameters_ok FE310CSemantics.parameters, SortedList.TODO, TailRecursion.putmany_gather, SortedListString.string_strict_order *)
 
 From bedrock2 Require Import ToCString.
 Goal True.
-  let c_code := eval cbv in ((* of_string *) (@c_module BasicCSyntax.to_c_parameters [lan9250_init; lan9250_wait_for_boot; iot; lightbulb; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
+  let c_code := eval cbv in ((* of_string *) (@c_module BasicCSyntax.to_c_parameters function_impls)) in
   pose c_code.
 Abort.
 
@@ -638,7 +662,7 @@ From bedrock2 Require Import ToCString Byte Bytedump.
 Local Open Scope bytedump_scope.
 Set Printing Width 999999.
 Goal True.
-  let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters [lan9250_init; lan9250_wait_for_boot; iot; lightbulb; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
+  let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters [lan9250_init; lan9250_wait_for_boot; lightbulb_loop; lightbulb_handle; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
   idtac c_code.
 Abort.
 *)

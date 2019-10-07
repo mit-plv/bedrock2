@@ -133,7 +133,8 @@ Section LightbulbSpec.
   Definition packet_turn_on_light (bs : list byte) : Prop. Admitted.
   Definition packet_turn_off_light (bs : list byte) : Prop. Admitted.
 
-  Definition lightbulb_init : list OP -> Prop. Admitted.
+  Definition lightbulb_boot_success : list OP -> Prop. Admitted.
+  Definition lan9250_boot_timeout : list OP -> Prop. Admitted.
   
   (*
   Definition lightbulb_step :=

@@ -19,16 +19,7 @@ Open Scope string_scope.
 
 Definition instrMemSizeLg: Z := 10. (* TODO is this enough? *)
 Lemma instrMemSizeLg_bounds : 3 <= instrMemSizeLg <= 30. Proof. cbv. intuition discriminate. Qed.
-Definition dataMemSize: Z := 4096.
-
-Definition FunctionImpl: Type :=
-  (list string * list string * @cmd (StringNamesSyntax.make BasicCSyntax.StringNames_params)).
-
-Definition funimplsList: list (string * FunctionImpl).
-  match type of link_lightbulb with
-  | spec_of_iot ?L => exact L
-  end.
-Defined.
+Definition dataMemSize: Z := (16-4)*2^10.
 
 (* TODO adjust these numbers *)
 Definition ml: MemoryLayout Semantics.width := {|
@@ -42,10 +33,14 @@ Definition ml: MemoryLayout Semantics.width := {|
 
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
-Definition  init_code := @cmd.skip Semantics.syntax.
-Definition loop_body := @cmd.seq Semantics.syntax
-     (@cmd.call Semantics.syntax ["res"] "iot" [expr.literal buffer_addr])
-     (@cmd.unset Semantics.syntax "res").
+Definition init_code :=
+  @cmd.seq Semantics.syntax (
+  @cmd.call Semantics.syntax ["err"] "lightbulb_init" [])
+  (@cmd.unset Semantics.syntax "err").
+Definition loop_body :=
+  @cmd.seq Semantics.syntax (
+  @cmd.call Semantics.syntax ["err"] "lightbulb_loop" [expr.literal buffer_addr]
+  )(@cmd.unset Semantics.syntax "err").
 
 Axiom TODO_andres: False.
 
@@ -65,7 +60,7 @@ Definition traceOfOneInteraction: list (lightbulb_spec.OP Semantics.word) -> Pro
   (any +++ (lightbulb_spec.spi_timeout _)).
 
 Definition goodHlTrace: list (lightbulb_spec.OP Semantics.word) -> Prop :=
-  traceOfOneInteraction ^*.
+  lightbulb_boot_success _ _ +++ traceOfOneInteraction ^*.
 
 Definition relate_lightbulb_trace_to_bedrock(ioh: list (lightbulb_spec.OP Semantics.word))
                                             (iol : Semantics.trace): Prop.
@@ -95,8 +90,10 @@ Lemma link_lightbulb_withCorrectWordInstance:
     Separation.sep (Array.array Separation.ptsto (word.of_Z 1) p_addr buf) R m ->
     Z.of_nat (Datatypes.length buf) = 1520 ->
     WeakestPrecondition.call
-      [iot; recvEthernet; lightbulb; LAN9250.lan9250_readword; SPI.spi_xchg; SPI.spi_read;
-         SPI.spi_write] "iot" t m [p_addr]
+      [lightbulb_init; LAN9250.lan9250_init; LAN9250.lan9250_wait_for_boot;
+  LAN9250.lan9250_mac_write; lightbulb_loop; lightbulb_handle; recvEthernet;
+  LAN9250.lan9250_writeword; LAN9250.lan9250_readword; SPI.spi_xchg;
+  SPI.spi_write; SPI.spi_read] "lightbulb_loop" t m [p_addr]
       (fun (t' : Semantics.trace) (m' : Semantics.mem) (rets : list Semantics.word) =>
       (exists buf, Separation.sep (Array.array Separation.ptsto (word.of_Z 1) p_addr buf) R m' /\
       Z.of_nat (length buf) = 1520) /\
@@ -119,7 +116,7 @@ Lemma link_lightbulb_withCorrectWordInstance:
 Proof.
   (* replace semantics with FE310CSemantics.parameters. silently fails *)
   Fail pattern semantics.
-  pose proof link_lightbulb as P. unfold spec_of_iot in P.
+  pose proof link_lightbulb_loop as P. unfold spec_of_lightbulb_loop in P.
   Fail apply P.
   case TODO_andres.
 Qed.
@@ -144,10 +141,7 @@ Lemma goodHlTrace_addOne: forall iohNew ioh,
     goodHlTrace ioh ->
     goodHlTrace (iohNew ++ ioh).
 Proof.
-  intros. unfold goodHlTrace. apply kleene_app.
-  - change iohNew with ([] ++ iohNew)%list.
-    apply kleene_step. 1: assumption. apply kleene_empty.
-  - assumption.
+  case TODO_andres.
 Qed.
 
 Ltac destr :=
@@ -182,7 +176,7 @@ Definition prog :=
     (@Semantics.funname_env semantics)
     (@Semantics.funname_env_ok semantics ok)
     src2imp
-    init_code loop_body funimplsList.
+    init_code loop_body function_impls.
 
 Definition lightbulb_insts_unevaluated: list Decode.Instruction :=
   @PipelineWithRename.compile_prog pipeline_params prog ml.
@@ -232,7 +226,7 @@ Proof.
   pose proof @end2end as Q.
   specialize_first Q init_code.
   specialize_first Q loop_body.
-  specialize_first Q funimplsList.
+  specialize_first Q function_impls.
   specialize_first Q spec.
   specialize_first Q ml.
   specialize_first Q mlOk.
@@ -247,10 +241,10 @@ Proof.
     (* TODO make Simp.simp work here *)
     destruct H as [ [ buf [R [Sep L] ] ] [ [ioh [Rel G] ] ? ] ]. subst l.
     pose proof link_lightbulb_withCorrectWordInstance as P.
-    unfold spec_of_iot in *.
+    unfold spec_of_lightbulb in *.
     specialize_first P Sep.
     specialize_first P L.
-    cbv [loop_body funimplsList prog
+    cbv [loop_body function_impls prog
          WeakestPrecondition.cmd WeakestPrecondition.cmd_body].
     eexists. split; [reflexivity|].
     eapply weaken_call; [eapply P|clear P].
@@ -271,11 +265,42 @@ Proof.
   - (* establish invariant *)
     intros.
     unfold init_code, prog.
+
+    repeat ProgramLogic.straightline.
+    subst args.
+
+    eapply WeakestPreconditionProperties.Proper_call.
+    2: {
+      assert (link_lightbulb_init :
+forall (m : Semantics.mem) (t : Semantics.trace),
+    WeakestPrecondition.call function_impls "lightbulb_init" t m []
+      (fun (t' : Semantics.trace) (m' : Semantics.mem)
+         (rets : list Semantics.word) =>
+       exists err : Semantics.word,
+         rets = [err] /\
+         m' = m /\
+         (exists
+            iol : list
+                    (Semantics.mem * actname * list Semantics.word *
+                     (Semantics.mem * list Semantics.word)),
+            t' = (iol ++ t)%list /\
+            (exists ioh : list (OP Semantics.word),
+               relate_lightbulb_trace_to_bedrock ioh iol /\
+               (lightbulb_boot_success Semantics.byte Semantics.word ioh /\
+                word.unsigned err = 0 \/
+                lan9250_boot_timeout Semantics.byte Semantics.word ioh /\
+                word.unsigned err <> 0 \/
+                (any +++ spi_timeout Semantics.word) ioh /\
+                word.unsigned err <> 0)))))
+  by case TODO_andres.
+      eapply link_lightbulb_init. }
+    intros ? ? ? ?.
+
+    repeat ProgramLogic.straightline.
+
     hnf. split; [|split].
     + case TODO_sam_and_joonwon. (* how can we relate m to Kami's mem and constrain it? *)
-    + exists []. split.
-      * apply relate_nil.
-      * unfold goodHlTrace. apply kleene_empty.
+    + revert H3. case TODO_andres.
     + reflexivity.
   Unshelve.
   all: typeclasses eauto.
