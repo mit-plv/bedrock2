@@ -71,6 +71,7 @@ Section Sim.
 
   Lemma flatToRiscvSim{hyps: @FlatToRiscv.assumptions p}: forall (g: GhostConsts) (pos: Z),
       NoDup g.(funnames) ->
+      word.unsigned g.(program_base) mod 4 = 0 ->
       simulation FlatImp.SimExec FlatToRiscvCommon.runsTo (related g pos).
   Proof.
     unfold simulation, FlatImp.SimExec, related, FlatImp.SimState.
@@ -91,6 +92,7 @@ Section Sim.
         }
         split; assumption.
       + eassumption.
+      + assumption.
       + assumption.
       + assumption.
       + assumption.

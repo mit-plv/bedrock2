@@ -248,10 +248,11 @@ Section Pipeline1.
   Proof.
     refine (compose_sim FlattenExprSimulation.flattenExprSim
            (compose_sim _
-                        (FlatToRiscvSimulation.flatToRiscvSim loopBodyGhostConsts loop_pos _))).
+                        (FlatToRiscvSimulation.flatToRiscvSim loopBodyGhostConsts loop_pos _ _))).
     1: eapply renameSim; try typeclasses eauto.
     - repeat constructor; simpl; blia.
     - eapply (funnames_NoDup sat).
+    - simpl. destruct mlOk. solve_divisibleBy4.
   Qed.
 
   Add Ring wring : (word.ring_theory (word := word))

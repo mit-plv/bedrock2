@@ -533,13 +533,16 @@ Section Proofs.
     match goal with
     | |- _ => solve [eauto]
     | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
-    | |- exists _, _ = _ /\ (_ * _)%sep _ => eexists; split; [reflexivity|solve[pseplog]]
+    | |- exists _, _ = _ /\ (_ * _)%sep _ =>
+      eexists; split; cycle 1; [ wseplog_pre (@word_ok (@W (@def_params p))); wcancel | blia ]
     | |- _ => prove_ext_guarantee
     | |- _ => solve [map_solver (@locals_ok p h)]
     | |- _ => idtac
     end.
 
-  Ltac sidecondition_hook ::= try solve [map_solver (@locals_ok p h)].
+  Ltac sidecondition_hook ::=
+    try solve [ map_solver (@locals_ok p h)
+              | wseplog_pre (@word_ok (@W (@def_params p))); wcancel ].
 
   Ltac safe_sidecond :=
     match goal with
@@ -562,6 +565,7 @@ Section Proofs.
     stmt_not_too_big s ->
     valid_registers s ->
     pos mod 4 = 0 ->
+    (word.unsigned g.(program_base)) mod 4 = 0 ->
     regs_initialized initialL.(getRegs) ->
     initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
     g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
@@ -717,8 +721,7 @@ Section Proofs.
           try solve [sidecondition].
         - apply TODO_sam_offset_in_range.
         - eapply map.getmany_of_list_extends; eassumption.
-        - instantiate (1 := old_argvals). unfold Register, MachineInt in *. blia.
-        - wseplog_pre word_ok. wcancel.
+        - unfold Register, MachineInt in *. blia.
       }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
@@ -771,12 +774,9 @@ Section Proofs.
     eapply runsToStep. {
       eapply run_Addi with (rd := RegisterNames.sp) (rs := RegisterNames.sp);
         try solve [sidecondition | simpl; solve_divisibleBy4 ].
-      - simpl.
+        simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         eassumption.
-      - simpl.
-        wseplog_pre word_ok.
-        wcancel.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
@@ -792,14 +792,10 @@ Section Proofs.
     (* save ra on stack *)
     eapply runsToStep. {
       eapply run_store_word with (rs1 := RegisterNames.sp) (rs2 := RegisterNames.ra);
-        try solve [sidecondition | simpl; solve_divisibleBy4]. {
+        try solve [sidecondition | simpl; solve_divisibleBy4].
         simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         rewrite map.get_put_same. reflexivity.
-      }
-      simpl.
-      wseplog_pre word_ok.
-      wcancel.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
@@ -1093,7 +1089,8 @@ Section Proofs.
 
     (* load back the return address *)
     eapply runsToStep. {
-      eapply run_load_word; cycle 2; try solve [sidecondition].
+      eapply run_load_word; cycle 2.
+      - simpl. solve [sidecondition].
       - simpl.
         assert (forall x, In x (modVars_as_list Z.eqb body) -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
@@ -1121,6 +1118,7 @@ Section Proofs.
           specialize (F _ A). unfold valid_FlatImp_var, RegisterNames.sp in F.
           blia.
         + etransitivity; [symmetry|]; eassumption.
+      - reflexivity.
       - simpl.
         subst FL.
         wseplog_pre word_ok.
@@ -1188,8 +1186,6 @@ Section Proofs.
       - case TODO_sam. (*   word.unsigned ?dest mod 4 = 0  *)
       - rewrite map.get_put_diff by (clear; cbv; congruence).
         rewrite map.get_put_same. reflexivity.
-      - wseplog_pre word_ok.
-        wcancel.
     }
 
     simpl.
@@ -1479,24 +1475,9 @@ Section Proofs.
 
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
-  eapply runsTo_det_step.
-  {
-    simulate'.
-    { wseplog_pre word_ok.
-      wcancel.
-    }
-    (* TODO needs hook for "sidecondition" *)
-    case TODO_sam.
-  }
-    case TODO_sam.
-
-       (*
           run1det. run1done.
-       *)
 
     - (* SIf/Else *)
-      case TODO_sam.
-      (*
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsTo_det_step; simpl in *; subst.
       + simulate'.
@@ -1504,13 +1485,25 @@ Section Proofs.
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
-          eapply IHexec; IH_sidecondition.
+          unfold exists_good_reduced_e_impl in *. simp.
+          eapply IHexec with (g := {| p_sp := _; |});
+            simpl_MetricRiscvMachine_get_set;
+            simpl_g_get;
+            simpl_word_exprs (@word_ok (@W (@def_params p)));
+            repeat match goal with
+                   | |- _ /\ _ => split
+                   | |- exists _, _ => eexists
+                   end;
+            try safe_sidecond; cycle -1.
+          { wseplog_pre word_ok. wcancel.
+            cancel_seps_at_indices 4%nat 1%nat. { f_equal. solve_word_eq word_ok. }
+            wcancel. }
+          all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
-          *)
 
-    - (* SLoop/again *)
+    - (* SLoop *)
       case TODO_sam.
       (*
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
