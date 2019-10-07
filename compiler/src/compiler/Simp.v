@@ -34,7 +34,7 @@ Ltac invert_hyp H := protect_equalities; inversion H; clear H; subst; unprotect_
 Ltac has_several_constructors T :=
   assert_succeeds (
     let dummy := fresh "dummy" in assert T as dummy;
-    [|destruct dummy; [ idtac | idtac | .. ] ]).
+    [|case dummy; [ idtac | idtac | .. ] ]).
 
 Ltac unique_inversion :=
   match goal with
