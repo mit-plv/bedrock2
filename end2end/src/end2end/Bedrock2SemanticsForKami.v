@@ -4,7 +4,7 @@ Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListSt
 Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
 Require Import coqutil.Z.HexNotation.
 Require Import processor.KamiWord.
-Require Import compiler.examples.MMIO.
+Require Import compilerExamples.MMIO.
 
 Import String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.

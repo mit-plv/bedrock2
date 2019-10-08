@@ -27,7 +27,7 @@ Require Import compiler.ZNameGen.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
-Require Import compiler.examples.MMIO.
+Require Import compilerExamples.MMIO.
 Require Import coqutil.Z.HexNotation.
 Require Import compiler.GoFlatToRiscv.
 

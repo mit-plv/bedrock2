@@ -5,7 +5,7 @@ default_target: all
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n-Q ../processor/src/processor processor\n-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../bedrock2/src/bedrock2Examples bedrock2Examples\n-Q ../compiler/src/compiler compiler\n
+DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n-R $(DEPS_DIR)/kami/Kami/ Kami\n-Q ../processor/src/processor processor\n-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../bedrock2/src/bedrock2Examples bedrock2Examples\n-Q ../compiler/src/compiler compiler\n-Q ../compiler/src/compilerExamples compilerExamples\n
 CURFLAGS_NL=-Q ./src/end2end end2end\n
 
 EXTERNAL_DEPENDENCIES?=

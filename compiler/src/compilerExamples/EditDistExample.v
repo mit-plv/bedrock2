@@ -9,7 +9,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MinimalLogging.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
-Require Import compiler.examples.Fibonacci.
+Require Import compilerExamples.Fibonacci.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 Require Import compiler.NameGen.

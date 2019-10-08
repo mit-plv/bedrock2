@@ -34,7 +34,7 @@ Require Import processor.KamiWord.
 Require Import processor.KamiRiscv.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import compiler.PipelineWithRename.
-Require Import compiler.examples.MMIO.
+Require Import compilerExamples.MMIO.
 Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
 Require Import bedrock2.Byte.

@@ -1,12 +1,12 @@
 default_target: all
 
-.PHONY: clean force all install
+.PHONY: clean force all noex ex install
 
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
 DEPFLAGS_NL=-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../bedrock2/src/bedrock2Examples bedrock2Examples\n-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n
-CURFLAGS_NL=-Q ./src/compiler compiler\n
+CURFLAGS_NL=-Q ./src/compiler compiler\n-Q ./src/compilerExamples compilerExamples\n
 
 EXTERNAL_DEPENDENCIES?=
 
@@ -25,17 +25,30 @@ _CoqProject:
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
 SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/compiler
+EXDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/compilerExamples
 
-ALL_VS := $(shell find $(SRCDIR) -type f -name '*.v')
+VS_NOEX := $(shell find $(SRCDIR) -type f -name '*.v')
+VS_EX := $(shell find $(EXDIR) -type f -name '*.v')
 
-all: Makefile.coq.all $(ALL_VS)
-	$(MAKE) -f Makefile.coq.all
+noex: Makefile.coq.noex $(VS_NOEX)
+	rm -f .coqdeps.d
+	$(MAKE) -f Makefile.coq.noex
+
+ex: Makefile.coq.ex $(VS_EX) noex
+	rm -f .coqdeps.d
+	$(MAKE) -f Makefile.coq.ex
+
+all: noex ex
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
-Makefile.coq.all: force _CoqProject
-	@echo "Generating Makefile.coq.all"
-	@$(COQ_MAKEFILE) $(ALL_VS) -o Makefile.coq.all
+Makefile.coq.noex: force _CoqProject
+	@echo "Generating Makefile.coq.noex"
+	@$(COQ_MAKEFILE) $(VS_NOEX) -o Makefile.coq.noex
+
+Makefile.coq.ex: force _CoqProject
+	@echo "Generating Makefile.coq.ex"
+	@$(COQ_MAKEFILE) $(VS_EX) -o Makefile.coq.ex
 
 src/compiler/examples/swap_bytes_over_uart.hex: src/compiler/examples/swap_bytes_over_uart_hexdump.v _CoqProject src/compiler/examples/FE310Compiler.vo
 	coqc -q $(shell cat _CoqProject) $< > $@
@@ -46,10 +59,11 @@ src/compiler/examples/swap_bytes_over_uart.elf: src/compiler/examples/swap_bytes
 
 force:
 
-clean:: Makefile.coq.all
-	$(MAKE) -f Makefile.coq.all clean
+clean:: Makefile.coq.noex Makefile.coq.ex
+	$(MAKE) -f Makefile.coq.noex clean
+	$(MAKE) -f Makefile.coq.ex clean
 	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
-	rm -f Makefile.coq.all Makefile.coq.all.conf _CoqProject src/compiler/examples/swap_bytes_over_uart.elf src/compiler/examples/swap_bytes_over_uart.bin src/compiler/examples/swap_bytes_over_uart.hex
+	rm -f Makefile.coq.noex Makefile.coq.noex.conf Makefile.coq.ex Makefile.coq.ex.conf _CoqProject src/compiler/examples/swap_bytes_over_uart.elf src/compiler/examples/swap_bytes_over_uart.bin src/compiler/examples/swap_bytes_over_uart.hex
 
 install::
-	$(MAKE) -f Makefile.coq.all install
+	$(MAKE) -f Makefile.coq.noex install

@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all coqutil riscv-coq bedrock2 compiler kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_bedrock2 install_compiler install_processor install_end2end install
+.PHONY: update_all clone_all coqutil riscv-coq bedrock2_noex bedrock2_ex compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_bedrock2 install_compiler install_processor install_end2end install
 
 clone_all:
 	git submodule update --init --recursive
@@ -25,12 +25,12 @@ EXTERNAL_DEPENDENCIES?=
 
 ifneq ($(EXTERNAL_DEPENDENCIES),1)
 
-bedrock2: coqutil
+bedrock2_noex: coqutil
 riscv-coq: coqutil
 kami: riscv-coq
-compiler: riscv-coq bedrock2
+compiler_noex: riscv-coq bedrock2_noex
 processor: riscv-coq kami
-end2end: compiler bedrock2 processor
+end2end: compiler_ex bedrock2_ex processor
 
 endif
 
@@ -56,7 +56,10 @@ riscv-coq:
 clean_riscv-coq:
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq clean
 
-bedrock2:
+bedrock2_noex:
+	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 noex
+
+bedrock2_ex: bedrock2_noex
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2
 
 clean_bedrock2:
@@ -65,7 +68,10 @@ clean_bedrock2:
 install_bedrock2:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 install
 
-compiler:
+compiler_noex:
+	$(MAKE) -C $(ABS_ROOT_DIR)/compiler noex
+
+compiler_ex: compiler_noex
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
 
 clean_compiler:

@@ -151,15 +151,15 @@ Module PrintBytes.
   Import bedrock2.Hexdump.
   Local Open Scope hexdump_scope.
   Set Printing Width 100.
-  (* Save this to compiler/src/compiler/examples/Fibonacci.hex *)
+  (* Save this to compiler/src/compilerExamples/Fibonacci.hex *)
   Goal True. let x := eval cbv in fib6_as_bytes in idtac x. Abort.
   (* Then:
-  xxd -r -p < compiler/src/compiler/examples/Fibonacci.hex > compiler/src/compiler/examples/Fibonacci.bin
-  riscv64-linux-gnu-ld --section-start=.data=0x20400000 --strip-all --format=binary --oformat=elf32-littleriscv compiler/src/compiler/examples/Fibonacci.bin -o compiler/src/compiler/examples/Fibonacci.elf
-  riscv64-linux-gnu-objdump -D compiler/src/compiler/examples/Fibonacci.elf
-  qemu-system-riscv32 -nographic -gdb tcp::1234 -machine sifive_e -S -kernel compiler/src/compiler/examples/Fibonacci.elf &
-  riscv32-linux-gnu-gdb compiler/src/compiler/examples/Fibonacci.elf -ex 'set height unlimited' -ex 'set confirm off' -ex 'target remote localhost:1234' -ex 'disp/i $pc' -ex "break *0x$(riscv64-linux-gnu-objdump -D compiler/src/compiler/examples/Fibonacci.elf | grep unimp | tail -1 | cut -d: -f1)" -ex c -ex 'info registers' -ex 'quit'
-  #shorter: riscv32-linux-gnu-gdb compiler/src/compiler/examples/Fibonacci.elf -ex 'target remote localhost:1234' -ex 'disp/i $pc'
+  xxd -r -p < compiler/src/compilerExamples/Fibonacci.hex > compiler/src/compilerExamples/Fibonacci.bin
+  riscv64-linux-gnu-ld --section-start=.data=0x20400000 --strip-all --format=binary --oformat=elf32-littleriscv compiler/src/compilerExamples/Fibonacci.bin -o compiler/src/compilerExamples/Fibonacci.elf
+  riscv64-linux-gnu-objdump -D compiler/src/compilerExamples/Fibonacci.elf
+  qemu-system-riscv32 -nographic -gdb tcp::1234 -machine sifive_e -S -kernel compiler/src/compilerExamples/Fibonacci.elf &
+  riscv32-linux-gnu-gdb compiler/src/compilerExamples/Fibonacci.elf -ex 'set height unlimited' -ex 'set confirm off' -ex 'target remote localhost:1234' -ex 'disp/i $pc' -ex "break *0x$(riscv64-linux-gnu-objdump -D compiler/src/compilerExamples/Fibonacci.elf | grep unimp | tail -1 | cut -d: -f1)" -ex c -ex 'info registers' -ex 'quit'
+  #shorter: riscv32-linux-gnu-gdb compiler/src/compilerExamples/Fibonacci.elf -ex 'target remote localhost:1234' -ex 'disp/i $pc'
 
   output:
   Breakpoint 1, 0x20400174 in ?? ()
