@@ -1503,17 +1503,32 @@ Section Proofs.
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
+Require Import compiler.on_hyp_containing.
+
     - (* SLoop *)
-      case TODO_sam.
-      (*
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
       on hyp[(stmt_not_too_big body2); runsTo] do (fun H => rename H into IH2).
       on hyp[(stmt_not_too_big (SLoop body1 cond body2)); runsTo] do (fun H => rename H into IH12).
       eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + (* 1st application of IH: part 1 of loop body *)
-        eapply IH1; IH_sidecondition.
-      + simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
-        destruct (@eval_bcond (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
+          unfold exists_good_reduced_e_impl in *. simp.
+          eapply IH1 with (g := {| p_sp := _; |});
+            simpl_MetricRiscvMachine_get_set;
+            simpl_g_get;
+            simpl_word_exprs (@word_ok (@W (@def_params p)));
+            repeat match goal with
+                   | |- _ /\ _ => split
+                   | |- exists _, _ => eexists
+                   end;
+            try safe_sidecond; cycle -1.
+          { wseplog_pre word_ok. wcancel. }
+          all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
+      + simpl in *. simpl. intros. destruct_RiscvMachine middle.
+        match goal with
+        | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
+        end.
+        simp. subst.
+        destruct (@eval_bcond (@Semantics_params p) lH' cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
            | H: context [_ <> None] |- _ => solve [eapply H; eauto]
@@ -1526,13 +1541,64 @@ Section Proofs.
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
-              eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+              unfold exists_good_reduced_e_impl in *. simp.
+              eapply IH2 with (g := {| p_sp := _; |});
+                simpl_MetricRiscvMachine_get_set;
+                simpl_g_get;
+                simpl_word_exprs (@word_ok (@W (@def_params p)));
+                repeat match goal with
+                       | |- _ /\ _ => split
+                       | |- exists _, _ => eexists
+                       end;
+                try safe_sidecond; cycle -1.
+              { wseplog_pre word_ok. wcancel.
+                cancel_seps_at_indices 2%nat 1%nat. { f_equal. solve_word_eq word_ok. }
+                wcancel. }
+              all: try eassumption;
+                   try solve_divisibleBy4;
+                   try congruence;
+                   try solve [solve_word_eq word_ok].
+              match goal with
+              | H: regs_initialized _ |- _ => move H at bottom
+              end.
+              case TODO_sam. (* TODO add regs_initialized to goodMachine *)
             - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
               (* jump back to beginning of loop: *)
               run1det.
               eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
               + (* 3rd application of IH: run the whole loop again *)
-                eapply IH12; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+                unfold exists_good_reduced_e_impl in *. simp.
+                eapply IH12 with (g := {| p_sp := _; |});
+                  simpl_MetricRiscvMachine_get_set;
+                  simpl_g_get;
+                  simpl_word_exprs (@word_ok (@W (@def_params p)));
+                  repeat match goal with
+                         | |- _ /\ _ => split
+                         | |- exists _, _ => eexists
+                         end;
+                  try safe_sidecond; cycle -1.
+                {
+
+  Ltac wseplog_pre OK ::=
+    use_sep_assumption;
+    autounfold with unf_to_array;
+    unfold program, word_array;
+    repeat match goal with
+           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             rewrite (array_append' PT SZ xs ys start)
+           | |- context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+             rewrite (array_cons PT SZ x xs start)
+           end;
+    simpl_addrs.
+
+                  wseplog_pre word_ok. wcancel. }
+                all: try eassumption;
+                  try solve_divisibleBy4;
+                  try congruence;
+                  try (constructor; congruence);
+                  try solve [solve_word_eq word_ok].
+              case TODO_sam. (* TODO add regs_initialized to goodMachine *)
+
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
@@ -1542,25 +1608,51 @@ Section Proofs.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { simpl in *. run1done. }
-          *)
 
     - (* SSeq *)
-      case TODO_sam.
-      (*
-      rename IHexec into IH1, H2 into IH2.
+      on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).
+      on hyp[(stmt_not_too_big s2); runsTo] do (fun H => rename H into IH2).
       eapply runsTo_trans.
-      + eapply IH1; IH_sidecondition.
+      + unfold exists_good_reduced_e_impl in *. simp.
+        eapply IH1 with (g := {| p_sp := _; |});
+          simpl_MetricRiscvMachine_get_set;
+          simpl_g_get;
+          simpl_word_exprs (@word_ok (@W (@def_params p)));
+          repeat match goal with
+                 | |- _ /\ _ => split
+                 | |- exists _, _ => eexists
+                 end;
+          try safe_sidecond; cycle -1.
+        { wseplog_pre word_ok. wcancel. }
+        all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
       + simpl. intros. destruct_RiscvMachine middle. simp. subst.
         eapply runsTo_trans.
-        * eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+        * unfold exists_good_reduced_e_impl in *. simp.
+          eapply IH2 with (g := {| p_sp := _; |});
+            simpl_MetricRiscvMachine_get_set;
+            simpl_g_get;
+            simpl_word_exprs (@word_ok (@W (@def_params p)));
+            repeat match goal with
+                   | |- _ /\ _ => split
+                   | |- exists _, _ => eexists
+                   end;
+            try safe_sidecond; cycle -1.
+          { wseplog_pre word_ok. wcancel.
+            cancel_seps_at_indices 1%nat 1%nat. {
+              f_equal. solve_word_eq word_ok.
+            }
+            wcancel.
+          }
+          all: try eassumption;
+            try solve_divisibleBy4;
+            try congruence;
+            try (constructor; congruence);
+            try solve [solve_word_eq word_ok].
+          case TODO_sam. (* TODO add regs_initialized to goodMachine *)
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
-        *)
 
     - (* SSkip *)
-      case TODO_sam.
-      (*
       run1done.
-      *)
 
     Grab Existential Variables. all: repeat (exact Z0 || assumption || constructor).
   Qed. (* <-- takes a while *)
