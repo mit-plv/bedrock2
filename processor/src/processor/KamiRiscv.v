@@ -243,11 +243,15 @@ Section Equiv.
       KamiPgmInitFull rv32Fetch pgmFull dataMem ->
       RiscvXAddrsSafe instrMemSizeLg (* Hinstr *) pgmFull dataMem kamiXAddrs.
   Proof.
-    unfold KamiPgmInitFull, RiscvXAddrsSafe, isXAddr; intros.
-    rewrite H.
-    cbv [alignInst rv32Fetch rv32AlignInst]; unfold evalExpr; fold evalExpr.
-    f_equal.
-    apply rv32AlignAddr_consistent; auto.
+    unfold KamiPgmInitFull; intros.
+    red; intros.
+    split.
+    - eapply kamiXAddrs_In_AddrAligned; eassumption.
+    - intros.
+      rewrite H.
+      cbv [alignInst rv32Fetch rv32AlignInst]; unfold evalExpr; fold evalExpr.
+      f_equal.
+      apply eq_sym, rv32AlignAddr_consistent; auto.
   Qed.
 
   Lemma kamiStep_sound_case_pgmInitEnd:
