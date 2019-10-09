@@ -71,7 +71,7 @@ install_bedrock2:
 compiler_noex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler noex
 
-compiler_ex: compiler_noex
+compiler_ex: compiler_noex bedrock2_ex
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
 
 clean_compiler:
