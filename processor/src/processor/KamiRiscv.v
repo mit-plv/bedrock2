@@ -22,7 +22,6 @@ Require Import riscv.Platform.Run.
 Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.Monads. Import MonadNotations.
 Require Import coqutil.Datatypes.PropSet.
-Require Import riscv.Utility.MMIOTrace.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Platform.MinimalMMIO.
@@ -92,10 +91,10 @@ Section Equiv.
     word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
 
   Definition mmioLoadEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
-    ((m, MMInput, [addr]), (m, [signedByteTupleToReg v])).
+    ((m, "MMIOREAD"%string, [addr]), (m, [signedByteTupleToReg v])).
 
   Definition mmioStoreEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
-    ((m, MMOutput, [addr; signedByteTupleToReg v]), (m, [])).
+    ((m, "MMIOWRITE"%string, [addr; signedByteTupleToReg v]), (m, [])).
 
   (* common event between riscv-coq and Kami *)
   Inductive Event: Type :=
@@ -105,9 +104,9 @@ Section Equiv.
   (* note: given-away and received memory has to be empty *)
   Inductive events_related: Event -> LogItem -> Prop :=
   | relate_MMInput: forall addr v,
-      events_related (MMInputEvent addr v) ((map.empty, MMInput, [addr]), (map.empty, [v]))
+      events_related (MMInputEvent addr v) ((map.empty, "MMIOREAD"%string, [addr]), (map.empty, [v]))
   | relate_MMOutput: forall addr v,
-      events_related (MMOutputEvent addr v) ((map.empty, MMOutput, [addr; v]), (map.empty, [])).
+      events_related (MMOutputEvent addr v) ((map.empty, "MMIOWRITE"%string, [addr; v]), (map.empty, [])).
 
   Inductive traces_related: list Event -> list LogItem -> Prop :=
   | relate_nil:

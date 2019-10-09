@@ -39,9 +39,9 @@ Open Scope ilist_scope.
 Definition varname: Type := Z.
 Definition funname: Type := string.
 
-Definition compile_ext_call(results: list varname)(a: MMIOAction)(args: list varname):
+Definition compile_ext_call(results: list varname) a (args: list varname):
   list Instruction :=
-  if isMMOutput a then
+  if String.eqb "MMIOWRITE" a then
     match results, args with
     | [], [addr; val] => [[ Sw addr val 0 ]]
     | _, _ => [[]] (* invalid, excluded by ext_spec *)
@@ -56,7 +56,7 @@ Lemma compile_ext_call_length: forall binds f args,
     Z.of_nat (List.length (compile_ext_call binds f args)) <= 1.
 Proof.
   intros. unfold compile_ext_call.
-  destruct (isMMOutput f); destruct binds; try destruct binds;
+  destruct (String.eqb _ _); destruct binds; try destruct binds;
   try destruct args; try destruct args; try destruct args;
   cbv; intros; discriminate.
 Qed.
@@ -72,9 +72,9 @@ Lemma compile_ext_call_emits_valid: forall iset binds a args,
 Proof.
   intros.
   unfold compile_ext_call.
-  destruct (isMMOutput a); destruct args; try destruct args; try destruct args;
+  destruct (String.eqb _ _); destruct args; try destruct args; try destruct args;
     destruct binds; try destruct binds;
-    intros instr HIn; simpl in *; intuition idtac; try contradiction.
+    intros instr HIn; cbn -[String.eqb] in *; intuition idtac; try contradiction.
   - rewrite <- H1.
     simp_step.
     simp_step.
@@ -98,7 +98,7 @@ Qed.
 Instance mmio_syntax_params: Syntax.parameters := {|
   Syntax.varname := varname;
   Syntax.funname := funname;
-  Syntax.actname := MMIOAction;
+  Syntax.actname := String.string;
 |}.
 
 Module Import MMIO.
@@ -138,12 +138,12 @@ Section MMIO1.
     mmio_store n ctxid a v m t post := isMMIOAddr a /\ post m;
   |}.
 
-  Local Notation bedrock2_trace := (list (mem * MMIOAction * list word * (mem * list word))).
-  Definition bedrock2_interact (t : bedrock2_trace) (mGive : mem) (a : MMIOAction) (args: list word) (post:mem -> list word -> Prop) :=
+  Local Notation bedrock2_trace := (list (mem * String.string * list word * (mem * list word))).
+  Definition bedrock2_interact (t : bedrock2_trace) (mGive : mem) a (args: list word) (post:mem -> list word -> Prop) :=
     mGive = map.empty /\
-    if isMMOutput a
+    if String.eqb "MMIOWRITE" a
     then exists addr val, args = [addr; val] /\ isMMIOAddr addr /\ post map.empty nil
-    else if isMMInput a
+    else if String.eqb "MMIOREAD" a
     then exists addr, args = [addr] /\ isMMIOAddr addr /\ forall val, post map.empty [val]
     else False.
 
@@ -242,8 +242,7 @@ Section MMIO1.
   Arguments LittleEndian.combine: simpl never. (* TODO can we put this next to its definition? *)
   Arguments mcomp_sat: simpl never.
   Arguments LittleEndian.split: simpl never.
-  Arguments isMMOutput: simpl never.
-  Arguments isMMInput: simpl never.
+  Local Arguments String.eqb: simpl never.
   (* give it priority over FlatToRiscvCommon.FlatToRiscv.PRParams to make eapply work better *)
   Existing Instance MetricMinimalMMIOPrimitivesParams.
   Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
@@ -294,7 +293,7 @@ Section MMIO1.
       destruct_RiscvMachine initialL.
       unfold FlatToRiscvDef.compile_ext_call, FlatToRiscvCommon.FlatToRiscv.def_params,
              FlatToRiscv_params, compilation_params, compile_ext_call in *.
-      destruct (isMMOutput action) eqn: E;
+      destruct (String.eqb _ action) eqn: E;
         cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics] in *.
       + (* MMOutput *)
         simpl in *|-.
@@ -379,12 +378,12 @@ Section MMIO1.
         do 2 match goal with
         | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
         end.
-        unfold mmioStoreEvent, signedByteTupleToReg, MMOutput in *.
+        unfold mmioStoreEvent, signedByteTupleToReg in *.
         setoid_rewrite LittleEndian.combine_split.
         rewrite sextend_width_nop by reflexivity.
         rewrite Z.mod_small by apply word.unsigned_range.
         rewrite word.of_Z_unsigned.
-        unfold isMMOutput in E0. apply eqb_eq in E0. subst action. unfold MMOutput in *.
+        apply eqb_eq in E0. subst action.
         cbn in *. replace l' with initialL_regs in * by congruence.
         split; eauto.
         split; eauto.
@@ -482,8 +481,8 @@ Section MMIO1.
         do 2 match goal with
              | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
              end.
-        unfold mmioLoadEvent, signedByteTupleToReg, MMInput in *.
-        unfold isMMInput in E1. apply eqb_eq in E1. subst action. unfold MMInput in *.
+        unfold mmioLoadEvent, signedByteTupleToReg.
+        apply eqb_eq in E1. subst action.
         cbn in *. simp.
         split; eauto.
         split. { simpl_word_exprs word_ok; trivial. }
