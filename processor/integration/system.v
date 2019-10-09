@@ -177,7 +177,7 @@ module system(
   always #1 clk = !clk;
   initial begin
     $dumpfile("system.vcd");
-    $dumpvars(1, led, spi_clk, spi_csn, spi_mosi, spi_miso, clk, resetn, rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_addr, mem_rq_data, mem_rq_iswrite, ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put, spi_tx_buf, spi_rx_buf, spi_tx_rdy);
+    $dumpvars(1, mkTop.proc_m13_lastPc, mkTop.proc_m13_stall, mkTop.WILL_FIRE_RL_proc_m12_execNm, mkTop.WILL_FIRE_RL_proc_m10_modifyPc, mkTop.WILL_FIRE_RL_proc_m12_execBypass, led, spi_clk, spi_csn, spi_mosi, spi_miso, clk, resetn, rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_addr, mem_rq_data, mem_rq_iswrite, ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put, spi_tx_buf, spi_rx_buf, spi_tx_rdy);
     #90000 $finish();
   end
 `endif

@@ -127,9 +127,9 @@ Definition main(c: cmd): list byte :=
 Example a: varname := 1.
 Example b: varname := 2.
 Example mmio_adder: cmd :=
-  (cmd.seq (cmd.interact [a] MMInput [expr.literal magicMMIOAddrLit])
-  (cmd.seq (cmd.interact [b] MMInput [expr.literal magicMMIOAddrLit])
-           (cmd.interact [] MMOutput [expr.literal magicMMIOAddrLit;
+  (cmd.seq (cmd.interact [a] "MMIOREAD"%string [expr.literal magicMMIOAddrLit])
+  (cmd.seq (cmd.interact [b] "MMIOREAD"%string [expr.literal magicMMIOAddrLit])
+           (cmd.interact [] "MMIOWRITE"%string [expr.literal magicMMIOAddrLit;
                                         expr.op bopname.add (expr.var a) (expr.var b)]))).
 
 (* Eval vm_compute in compileFunc mmio_adder. *)

@@ -21,7 +21,6 @@ Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.Monads. Import MonadNotations.
 Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.PropSet.
-Require Import riscv.Utility.MMIOTrace.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Spec.MetricPrimitives.
