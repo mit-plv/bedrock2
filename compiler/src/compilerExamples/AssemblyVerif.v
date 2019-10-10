@@ -212,7 +212,21 @@ Section Verif.
     simpl.
 
     run1det.
-    run1det.
+    eapply runsTo_det_step. {
+      simulate'.
+      {
+
+        use_sep_assumption.
+        cancel.
+
+Print Ltac        ecancel_step.
+        try (solve [ repeat ecancel_step; cbn[seps]; exact (RelationClasses.reflexivity _) ]).
+
+Print Ltac seplog.
+solve [seplog].
+Print Ltac sidecondition. simulate'_step.
+
+Print Ltac    run1det.
     eapply runsTo_trans. {
       eapply asm_prog_1_correct; simpl; try sidecondition.
       rewrite map.get_put_diff by (unfold x1, x2; blia).
