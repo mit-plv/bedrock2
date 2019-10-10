@@ -317,7 +317,7 @@ Ltac find_syntactic_unify_deltavar xs y :=
   end.
 
 Ltac find_constr_eq xs y :=
-  multimatch xs with
+  match xs with
   | cons ?x _ => constr:(ltac:(constr_eq x y; exact 0%nat))
   | cons _ ?xs => let i := find_constr_eq xs y in constr:(S i)
   end.
@@ -350,24 +350,24 @@ Ltac cancel_seps_at_indices i j :=
     cbn [firstn skipn app hd tl]
   end.
 
-Ltac cancel_step :=
+Ltac cancel_step := once (
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-      let jy := index_and_element_of RHS in
+      let jy := index_and_element_of RHS in (* <-- multi-success! *)
       let j := lazymatch jy with (?i, _) => i end in
       let y := lazymatch jy with (_, ?y) => y end in
       assert_fails (has_evar y); (* <-- different from ecancel_step *)
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
       let i := find_constr_eq LHS y in (* <-- different from ecancel_step *)
-      cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|].
+      cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|]).
 
 Ltac ecancel_step :=
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-      let jy := index_and_element_of RHS in
+      let jy := index_and_element_of RHS in (* <-- multi-success! *)
       let j := lazymatch jy with (?i, _) => i end in
       let y := lazymatch jy with (_, ?y) => y end in
       assert_fails (idtac; let y := rdelta_var y in is_evar y);
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-      let i := find_syntactic_unify_deltavar LHS y in
+      let i := find_syntactic_unify_deltavar LHS y in (* <-- multi-success! *)
       cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|].
 
 Ltac ecancel_done :=
