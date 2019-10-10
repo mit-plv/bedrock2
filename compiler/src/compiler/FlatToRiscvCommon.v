@@ -15,6 +15,7 @@ Require Import riscv.Platform.Memory.
 Require Import riscv.Utility.PowerFunc.
 Require Import coqutil.Decidable.
 Require Import Coq.Program.Tactics.
+Require Import coqutil.Tactics.rewr.
 Require Import Coq.Bool.Bool.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Primitives.

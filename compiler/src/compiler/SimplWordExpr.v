@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.BitOps.
 Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Z.Lia.
 
 
@@ -57,34 +58,42 @@ Ltac simpl_Zcsts :=
            let r := eval cbv in (Z.of_nat x) in change (Z.of_nat x) with r in *
          end.
 
-Ltac simpl_word_exprs_step OK :=
-  so fun hyporgoal => match hyporgoal with
-  (* If "rewrite (add_0_l (word_ok := OK))" encounters a term of the form
-     "(word.add ?v otherstuff)", it will instantiate ?v to "word.of_Z 0" and replace
-     "(word.add ?v otherstuff)" by "otherstuff". Explicit matching prevents this from happening. *)
-  | context[ @word.add ?wi ?wo (word.of_Z 0) ?x ] => rewrite (@add_0_l wi wo OK x) in *
-
-  (* similar problems for the other lemmas: *)
-  | context[ @word.add ?wi ?wo ?x (word.of_Z 0) ] => rewrite (@add_0_r wi wo OK x) in *
-  | context[ @word.mul ?wi ?wo (word.of_Z 0) ?x ] => rewrite (@mul_0_l wi wo OK x) in *
-  | context[ @word.mul ?wi ?wo ?x (word.of_Z 0) ] => rewrite (@mul_0_r wi wo OK x) in *
-  | context[ @word.mul ?wi ?wo (word.of_Z 1) ?x ] => rewrite (@mul_1_l wi wo OK x) in *
-  | context[ @word.mul ?wi ?wo ?x (word.of_Z 1) ] => rewrite (@mul_1_r wi wo OK x) in *
-
-   (* If "rewrite (sextend_width_nop (word_ok := OK))" encounters a term of the form
-      "(word.of_Z ?v)", it will instantiate ?v to "(BitOps.sextend ?w0 ?v0)" and replace
-      "(word.of_Z ?v)" by the RHS of the lemma, i.e. again "(word.of_Z ?Goal11)", so
-      no useful progress is made. This explicit matching prevents this from happening. *)
-  | context[word.of_Z (BitOps.signExtend ?w ?v)] =>
-    rewrite (@sextend_width_nop _ _ OK w v) in * by (reflexivity || congruence)
+Ltac simpl_word_exprs_getEq OK t :=
+  match t with
+  | context[ @word.add ?wi ?wo (word.of_Z 0) ?x ] => constr:(@add_0_l wi wo OK x)
+  | context[ @word.add ?wi ?wo ?x (word.of_Z 0) ] => constr:(@add_0_r wi wo OK x)
+  | context[ @word.mul ?wi ?wo (word.of_Z 0) ?x ] => constr:(@mul_0_l wi wo OK x)
+  | context[ @word.mul ?wi ?wo ?x (word.of_Z 0) ] => constr:(@mul_0_r wi wo OK x)
+  | context[ @word.mul ?wi ?wo (word.of_Z 1) ?x ] => constr:(@mul_1_l wi wo OK x)
+  | context[ @word.mul ?wi ?wo ?x (word.of_Z 1) ] => constr:(@mul_1_r wi wo OK x)
+  | context[ word.of_Z (BitOps.signExtend ?w ?v)] => constr:(@sextend_width_nop _ _ OK w v)
   end.
 
+Hint Rewrite
+     Nat2Z.inj_succ
+     Nat2Z.inj_add
+     Nat2Z.inj_mul
+     List.app_length
+  : rew_simpl_Z_nat.
+
+Hint Unfold
+     Z.succ
+  : unf_simpl_Z_nat.
+
+Ltac simpl_Z_nat_step :=
+  autorewrite with rew_simpl_Z_nat in * ||
+  autounfold with unf_simpl_Z_nat in * ||
+  autorewrite with rew_word_morphism ||
+  cbn [List.length] in * ||
+  simpl_Zcsts.
+
+Ltac simpl_Z_nat := repeat simpl_Z_nat_step.
+
 Ltac simpl_word_exprs OK :=
-  repeat ( cbn [List.length] in * || rewrite List.app_length in * );
-  repeat rewrite ?Nat2Z.inj_succ, <-?Z.add_1_l, ?Nat2Z.inj_add, ?Nat2Z.inj_mul;
-  simpl_Zcsts;
+  simpl_Z_nat;
   lazymatch type of OK with
-  | @word.ok ?width ?Inst => repeat simpl_word_exprs_step OK
+  | @word.ok ?width ?Inst =>
+    rewr (simpl_word_exprs_getEq OK) in * by (reflexivity || congruence)
   | _ => fail 10000 "wordok is not of type word.ok"
   end.
 

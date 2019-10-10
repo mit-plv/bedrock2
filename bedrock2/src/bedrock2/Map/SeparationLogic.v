@@ -431,6 +431,10 @@ Ltac seprewrite0_in Hrw H :=
   let lemma_lhs := lazymatch type of Hrw with @Lift1Prop.iff1 _ ?lhs _ => lhs end in
   let Psep := lazymatch type of H with ?P _ => P end in
   let mem := lazymatch type of Psep with ?mem -> _ => mem end in
+  lazymatch mem with
+  | @map.rep _ _ _ => idtac
+  | _ => fail "hypothesis must be of form 'P m'"
+  end;
   let pf := fresh in
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
@@ -466,6 +470,10 @@ Ltac seprewrite0 Hrw :=
   let lemma_lhs := lazymatch type of Hrw with @Lift1Prop.iff1 _ ?lhs _ => lhs end in
   let Psep := lazymatch goal with |- ?P _ => P end in
   let mem := lazymatch type of Psep with ?mem -> _ => mem end in
+  lazymatch mem with
+  | @map.rep _ _ _ => idtac
+  | _ => fail "goal must be of form 'P m'"
+  end;
   let pf := fresh in
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
@@ -490,3 +498,14 @@ Ltac seprewrite_by Hrw tac :=
          [solve [tac].. | ]
   | _ => seprewrite0 Hrw
   end.
+
+(* a convenient way to turn iff1 into eq, so that it can be used with our own equality-based
+   (rather than Morphism-based) rewriters. *)
+Require Import Coq.Logic.PropExtensionality.
+Require Import Coq.Logic.FunctionalExtensionality.
+Lemma iff1ToEq{T: Type}{P Q: T -> Prop}(H: iff1 P Q): P = Q.
+Proof.
+  unfold iff1 in *. extensionality x.
+  eapply propositional_extensionality.
+  eapply H.
+Qed.
