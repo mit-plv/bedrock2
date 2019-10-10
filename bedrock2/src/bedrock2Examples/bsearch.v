@@ -171,21 +171,6 @@ Ltac Zsimp_goal :=
          | |- ?G => Zsimp G false ltac:(fun e => ring_simplify e)
          end.
 
-Ltac is_lia P :=
-  lazymatch P with
-  | @eq Z _ _ => idtac
-  | not (@eq Z _ _) => idtac
-  | (_ < _)%Z => idtac
-  | (_ <= _)%Z => idtac
-  | (_ <= _ < _)%Z => idtac
-  | @eq nat _ _ => idtac
-  | not (@eq nat _ _) => idtac
-  | (_ < _)%nat => idtac
-  | (_ <= _)%nat => idtac
-  | (_ <= _ < _)%nat => idtac
-  | _ => fail "The term" P "is not LIA"
-  end.
-
 Ltac cleanup_for_ZModArith :=
   repeat match goal with
          | a := _ |- _ => subst a

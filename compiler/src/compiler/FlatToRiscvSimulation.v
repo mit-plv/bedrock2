@@ -86,11 +86,12 @@ Section Sim.
           apply (H (mkMetricLog 0 0 0 0))
         end.
       + reflexivity.
-      + unfold exists_good_reduced_e_impl. exists g.(e_impl).
+      + unfold good_reduced_e_impl.
         split. {
-          clear. intros k v H. assumption.
+          clear. intros k v ?. eassumption.
         }
-        split; assumption.
+        assumption.
+      + eassumption.
       + eassumption.
       + assumption.
       + assumption.

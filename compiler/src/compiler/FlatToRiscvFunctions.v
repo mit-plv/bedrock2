@@ -1,4 +1,5 @@
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.rewr.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
@@ -24,6 +25,8 @@ Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import compiler.load_save_regs_correct.
 Require Import compiler.eqexact.
 Require Import compiler.RiscvWordProperties.
+Require Import compiler.on_hyp_containing.
+Require Import coqutil.Word.DebugWordEq.
 Import Utility MetricLogging.
 
 Axiom TODO_sam: False.
@@ -138,7 +141,7 @@ Section Proofs.
 
      low stack addresses *)
 
-  Instance fun_pos_env: map.map Syntax.funname Z := _.
+  Notation fun_pos_env := (@funname_env p Z).
 
   (* Note: This definition would not be usable in the same way if we wanted to support
      recursive functions, because separation logic would prevent us from mentioning
@@ -256,34 +259,37 @@ Section Proofs.
   Qed.
 
   Ltac simpl_addrs :=
-    repeat match goal with
-           | |- context [length (?x ++ ?y)] => progress prewrite (length (x ++ y)) app_length
-           | |- _ => progress simpl
-           | |- context [Z.of_nat (?x + ?y)] => progress prewrite (Z.of_nat (x + y)) Nat2Z.inj_add
-           | |- context [Z.of_nat (S ?x)] => progress prewrite (Z.of_nat (S x)) Nat2Z.inj_succ
-           | |- _ => progress unfold Z.succ
-           | |- _ => progress autorewrite with rew_word_morphism
-           end;
+    simpl_Z_nat;
     unfold Register, MachineInt in *;
     (* note: it's the user's responsability to ensure that left-to-right rewriting with all
      nat and Z equations terminates, otherwise we'll loop infinitely here *)
     repeat match goal with
-           | E: @eq ?T _ _ |- _ =>
+           | E: @eq ?T ?LHS _ |- _ =>
              lazymatch T with
              | Z => idtac
              | nat => idtac
              end;
-             progress rewrite E
+             progress prewrite LHS E
            end.
 
   Ltac wseplog_pre OK :=
     use_sep_assumption;
     autounfold with unf_to_array;
     unfold program, word_array;
-    repeat match goal with
-           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             rewrite (array_append' PT SZ xs ys start)
-           end;
+    (* Note that "rewr" only works with equalities, not with iff1, so we use
+       iff1ToEq to turn iff1 into eq (requires functional and propositionl extensionality).
+       Alternatively, we could use standard rewrite (which might instantiate too many evars),
+       or we could make a "seprewrite" which works on "seps [...] [...]" by replacing the
+       i-th clause on any side with the rhs of the provided iff1, or we could make a
+       seprewrite which first puts the clause to be replaced as the left-most, and then
+       eapplies a "Proper_sep_iff1: Proper (iff1 ==> iff1 ==> iff1) sep", but that would
+       change the order of the clauses. *)
+    rewr (fun t => match t with
+           | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             constr:(iff1ToEq (array_append' PT SZ xs ys start))
+           | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+             constr:(iff1ToEq (array_cons PT SZ x xs start))
+           end) in |-*;
     simpl_addrs.
 
   Set Printing Depth 100000.
@@ -298,67 +304,58 @@ Section Proofs.
       repeat (simpl; rewrite ?List.app_length); erewrite ?IHs1; erewrite ?IHs2; try reflexivity.
   Qed.
 
-  Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
-      f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2.
-  Proof. intros. congruence. Qed.
-
-  (* deliberately leaves word and Z goals open if it fails to solve them, so that the
-     user can inspect them and solve them manually or tweak things to make them solvable
-     automatically *)
-  Ltac sepclause_part_eq OK :=
-    lazymatch type of OK with
-    | word.ok ?WORD =>
-      lazymatch goal with
-      | |- @eq ?T ?x ?y =>
-        tryif first [is_evar x | is_evar y | constr_eq x y] then (
-          reflexivity
-        ) else (
-          tryif (unify T (@word.rep _ WORD)) then (
-            try solve [simpl_addrs; autorewrite with rew_word_morphism; solve_word_eq OK]
-          ) else (
-            tryif (unify T Z) then (
-              try solve [bomega]
-            ) else (
-              lazymatch x with
-              | ?x1 ?x2 => lazymatch y with
-                           | ?y1 ?y2 => refine (f_equal2 _ _); sepclause_part_eq OK
-                           | _ => fail "" x "is an application while" y "is not"
-                           end
-              | _ => lazymatch y with
-                     | ?y1 ?y2 => fail "" x "is not an application while" y "is"
-                     | _ => tryif constr_eq x y then idtac else fail "" x "does not match" y
-                     end
-              end
-            )
-          )
-        )
-      end
-    | _ => fail 1000 "OK does not have the right type"
+  Ltac tag P ::=
+    let __ := lazymatch type of P with
+              | @map.rep _ _ _ -> Prop => idtac
+              | _ => fail 10000 P "is not a sep clause"
+              end in
+    lazymatch P with
+    | array ptsto_instr _ _ (compile_stmt_new _ _ ?Code) => Code
+    | ptsto_instr _ ?Instr => Instr
+    | array ptsto_word _ _ ?Words => Words
+    | functions _ _ _ ?FunNames => FunNames
+    | _ => fail "no recognizable tag"
     end.
 
-  Ltac sepclause_eq := sepclause_part_eq (@word_ok (@W (@def_params p))).
-
-  Ltac pick_nat n :=
-    multimatch n with
-    | S ?m => constr:(m)
-    | S ?m => pick_nat m
+  Ltac addr P ::=
+    let __ := lazymatch type of P with
+              | @map.rep _ _ _ -> Prop => idtac
+              | _ => fail 10000 P "is not a sep clause"
+              end in
+    lazymatch P with
+    | array _ _ ?A _ => A
+    | ptsto_instr ?A _ => A
+    | ptsto_word ?A _ => A
+    | _ => fail "no recognizable address"
     end.
 
-  Ltac wcancel_step :=
-    let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
-    let jy := index_and_element_of RHS in
-    let j := lazymatch jy with (?i, _) => i end in
-    let y := lazymatch jy with (_, ?y) => y end in
-    assert_fails (idtac; let y := rdelta_var y in is_evar y);
-    let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
-    let l := eval cbv [List.length] in (List.length LHS) in
-    let i := pick_nat l in
-    cancel_seps_at_indices i j; [sepclause_eq|].
-
-  Ltac wcancel :=
-    cancel;
-    repeat (wcancel_step; let n := numgoals in guard n <= 1);
-    try solve [ecancel_done'].
+  Ltac safe_sidecond :=
+    match goal with
+    (* proving these equalties with eq_refl will make other goals harder to prove,
+       so we prefer to leave these open, so that they will become instantiated,
+       and we can do interesting work here
+    | |- ?L = _ => is_evar L; reflexivity
+    | |- _ = ?R => is_evar R; reflexivity
+      However, for some equalities, it's ok to prove them with eq_refl:
+    *)
+    | |- @eq ?T _ _ => first [ unify T (list Instruction) | unify T (@env (@Semantics_params p)) ];
+                       reflexivity
+    | H: fits_stack _ _ ?Code |- fits_stack _ _ ?Code => exact H
+    | H: map.get ?R RegisterNames.sp = Some _ |- map.get ?R RegisterNames.sp = Some _ => exact H
+    | |- ?G => assert_fails (has_evar G);
+               solve [ prove_ext_guarantee
+                     | simpl_addrs; solve_word_eq (@word_ok (@W (@def_params p)))
+                     | solve_stmt_not_too_big
+                     | reflexivity
+                     | assumption
+                     | solve_divisibleBy4 ]
+    | |- _ => solve [wseplog_pre word_ok; wcancel] (* TODO probably not safe as-is *)
+    | |- ?G => is_lia G; assert_fails (has_evar G);
+               (* not sure why this line is needed, lia should be able to deal with (x := _) hyps,
+                  maybe it changes some implicit args or universes? *)
+               repeat match goal with x := _ |- _ => subst x end;
+               blia
+    end.
 
   (* TODO make sure it's compatible with users of it *)
   Lemma compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
@@ -446,22 +443,21 @@ Section Proofs.
     (* misc: *)
     ext_guarantee lo.
 
-  (* note: [e_impl_reduced] and [g.(funnames)] will shrink one function at a time each time
+  (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
      [FlatImp.exec] and [compile_stmt], respectively *)
-  Definition exists_good_reduced_e_impl(g: GhostConsts)(s: stmt): Prop :=
-    exists e_impl_reduced,
-      map.extends g.(e_impl) e_impl_reduced /\
-      fits_stack g.(num_stackwords) e_impl_reduced s /\
+  Definition good_reduced_e_impl(e_impl_reduced e_impl: env)
+    (num_stackwords: Z)(funnames: list Syntax.funname)(e_pos: fun_pos_env): Prop :=
+      map.extends e_impl e_impl_reduced /\
       (forall f (argnames retnames: list Syntax.varname) (body: stmt),
           map.get e_impl_reduced f = Some (argnames, retnames, body) ->
           Forall valid_register argnames /\
           Forall valid_register retnames /\
           valid_registers body /\
           stmt_not_too_big body /\
-          List.In f g.(funnames) /\
-          exists pos, map.get g.(e_pos) f = Some pos /\ pos mod 4 = 0).
+          List.In f funnames /\
+          exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0).
 
   Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
@@ -540,27 +536,67 @@ Section Proofs.
     | |- _ => idtac
     end.
 
+  Ltac after_IH :=
+    simpl_MetricRiscvMachine_get_set;
+    simpl_g_get;
+    rewrite ?@length_save_regs, ?@length_load_regs in *;
+    unfold Register, MachineInt in *;
+    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    repeat match goal with
+           | |- _ /\ _ => split
+           | |- exists _, _ => eexists
+           end.
+
   Ltac sidecondition_hook ::=
     try solve [ map_solver (@locals_ok p h)
               | wseplog_pre (@word_ok (@W (@def_params p))); wcancel ].
 
-  Ltac safe_sidecond :=
-    match goal with
-    | |- ?L = _ => is_evar L; reflexivity
-    | |- _ = ?R => is_evar R; reflexivity
-    | |- ?G => assert_fails (has_evar G);
-               first [ prove_ext_guarantee
-                     | solve_stmt_not_too_big
-                     | reflexivity
-                     | assumption ]
-    end.
+  Lemma split_from_right{A: Type}: forall (l: list A) (len: nat),
+      (len <= length l)%nat ->
+      exists lL lR, l = lL ++ lR /\ length lL = (length l - len)%nat /\ length lR = len.
+  Proof.
+    intros.
+    exists (List.firstn (List.length l - len)%nat l).
+    exists (List.skipn (List.length l - len)%nat l).
+    ssplit.
+    - eapply ListLib.firstn_skipn_reassemble; reflexivity.
+    - rewrite List.length_firstn_inbounds; blia.
+    - rewrite List.length_skipn; blia.
+  Qed.
+
+  Ltac split_from_right nameOrig nameL nameR len :=
+    let nL := fresh in let nR := fresh in
+    destruct (split_from_right nameOrig len) as [ nL [ nR [ ? [ ? ? ] ] ] ];
+    [ blia | ];
+    subst nameOrig;
+    rename nL into nameL, nR into nameR.
+
+  Lemma map_extends_remove: forall (m1 m2: funname_env (list Z * list Z * stmt)) k,
+      map.extends m1 m2 ->
+      map.extends m1 (map.remove m2 k).
+  Proof.
+    generalize (funname_env_ok (list Z * list Z * stmt)).
+    simpl in *.
+    unfold Register, MachineInt in *.
+    intro OK.
+    map_solver OK.
+  Qed.
+
+  Lemma map_get_Some_remove: forall (m: funname_env (list Z * list Z * stmt)) k1 k2 v,
+      map.get (map.remove m k1) k2 = Some v ->
+      map.get m k2 = Some v.
+  Proof.
+    generalize (funname_env_ok (list Z * list Z * stmt)).
+    intro OK. intros. map_solver OK.
+  Qed.
 
   Lemma compile_stmt_correct_new:
     forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
-    forall (g: GhostConsts) (initialL: RiscvMachineL) (pos: Z),
+    forall (g: GhostConsts) (initialL: RiscvMachineL) (pos: Z) (e_impl_reduced: env),
     g.(e_impl) = e_impl_full ->
-    exists_good_reduced_e_impl g s ->
+    good_reduced_e_impl e_impl_reduced g.(e_impl) g.(num_stackwords) g.(funnames) g.(e_pos) ->
+    fits_stack g.(num_stackwords) e_impl_reduced s ->
     @compile_stmt_new def_params _ g.(e_pos) pos s = g.(insts) ->
     stmt_not_too_big s ->
     valid_registers s ->
@@ -617,7 +653,7 @@ Section Proofs.
     - (* SCall *)
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
       lazymatch goal with
-      | H: exists_good_reduced_e_impl _ _ |- _ => destruct H as (e_impl_reduced & ? & ? & ?)
+      | H: good_reduced_e_impl _ _ _  _ _ |- _ => destruct H as (? & ?)
       end.
       simpl in *.
       simp.
@@ -632,7 +668,6 @@ Section Proofs.
                 etransitivity; [symmetry|]; eassumption);
         inversion F; subst; clear F
       end.
-      unfold fun_pos_env in *.
       match goal with
       | H: map.get e_impl_reduced fname = Some _, G: _ |- _ =>
           pose proof G as e_impl_reduced_props;
@@ -649,6 +684,7 @@ Section Proofs.
         match goal with
         | H: fits_stack _ _ _ |- _ => apply fits_stack_nonneg in H; clear -H
         end.
+        unfold framelength in *. subst FL. simpl in *.
         blia.
       }
 
@@ -660,43 +696,16 @@ Section Proofs.
                  List.length old_argvals = List.length argnames) as TheSplit. {
         subst FL. unfold framelength in *.
         clear -enough_stack_space.
-
-        refine (ex_intro _ (List.firstn _ old_stackvals) _).
-        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
-        refine (ex_intro _ (List.nth _ old_stackvals (word.of_Z 0)) _).
-        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
-        refine (ex_intro _ (List.firstn _ (List.skipn _ old_stackvals)) _).
-
-        repeat split.
-        1: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
-        1: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
-        1: rewrite List.skipn_skipn.
-        1: eapply ListLib.firstn_skipn_reassemble.
-        1: eapply ListLib.firstn_skipn_nth.
-        2: rewrite List.skipn_skipn.
-        2: eapply ListLib.firstn_skipn_reassemble; [reflexivity|].
-        2: rewrite List.skipn_skipn.
-        2: rewrite List.firstn_all.
-        2: reflexivity.
-        2: rewrite List.length_firstn_inbounds.
-        2: reflexivity.
-        3: rewrite List.length_firstn_inbounds.
-        3: reflexivity.
-        4: rewrite List.length_firstn_inbounds.
-        4: rewrite List.length_skipn.
-        4: lazymatch goal with
-           | |- ?LHS = ?RHS =>
-             match LHS with
-             | context C [ ?x ] =>
-               is_evar x;
-               let LHS' := context C [ 0%nat ] in
-               assert (LHS' - RHS = x)%nat
-             end
-           end.
-        4: reflexivity.
-
-        all: rewrite ?List.length_skipn.
-        all: try blia.
+        rename old_stackvals into ToSplit.
+        split_from_right ToSplit ToSplit old_argvals (List.length argnames).
+        split_from_right ToSplit ToSplit old_retvals (List.length retnames).
+        split_from_right ToSplit ToSplit old_ras 1%nat.
+        split_from_right ToSplit ToSplit old_modvarvals
+                         (Datatypes.length (modVars_as_list Z.eqb body)).
+        destruct old_ras as [|old_ra rest]; try discriminate.
+        destruct rest; try discriminate.
+        repeat econstructor;
+          [ do 3 rewrite <- List.app_assoc; reflexivity | blia.. ].
       }
       destruct TheSplit as (remaining_stack & old_modvarvals & old_ra & old_retvals & old_argvals
                                 & ? & ? &  ? & ?).
@@ -716,11 +725,14 @@ Section Proofs.
 
       (* put arguments on stack *)
       eapply runsTo_trans. {
-        eapply save_regs_correct with (vars := args)
-                (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl;
-          try solve [sidecondition].
+        eapply save_regs_correct with (vars := args) (p_sp0 := p_sp)
+                (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl; cycle -2.
+        - wseplog_pre word_ok. wcancel.
+        - sidecondition.
+        - sidecondition.
         - apply TODO_sam_offset_in_range.
         - eapply map.getmany_of_list_extends; eassumption.
+        - sidecondition.
         - unfold Register, MachineInt in *. blia.
       }
 
@@ -829,29 +841,7 @@ Section Proofs.
       4: eapply modVars_as_list_valid_registers; eassumption.
       1: eassumption.
       2: reflexivity.
-      1: { (* PARAMRECORDS *)
-
-        change Syntax.varname with Register in *.
-
-        repeat match goal with
-        | H: _ = List.length ?M |- _ =>
-          lazymatch M with
-          | @modVars_as_list ?EQ ?params ?eqd ?s =>
-            so fun hyporgoal => match hyporgoal with
-                                | context [?M'] =>
-                                  lazymatch M' with
-                                  | @modVars_as_list ?EQ ?params' ?eqd' ?s =>
-                                    assert_fails (constr_eq M M');
-                                    change M' with M in *;
-                                    idtac M' "--->" M
-                                  end
-                                end
-          end
-        end.
-
-        wseplog_pre word_ok.
-        wcancel.
-      }
+      1: { wseplog_pre word_ok. wcancel. }
       1: apply TODO_sam_offset_in_range.
     }
 
@@ -897,76 +887,39 @@ Section Proofs.
 
     (* execute function body *)
     eapply runsTo_trans. {
+      unfold good_reduced_e_impl in *. simp.
       eapply IHexec with (g := {|
         p_sp := word.sub p_sp !(bytes_per_word * FL);
         e_pos := e_pos;
         program_base := program_base;
         funnames := (ListLib.removeb String.eqb fname funnames) |});
-        simpl; try assumption.
-      1: reflexivity.
-      1: {
-        unfold exists_good_reduced_e_impl. simpl. eexists.
-        split; [|split].
-        2: eassumption.
-        - generalize (funname_env_ok (list Register * list Register * stmt)).
-          match goal with
-          | H: map.extends e_impl_full _ |- _ => clear -H
-          end.
-          intro OK.
-          Require Import coqutil.Datatypes.String.
-          map_solver OK.
-        - move e_impl_reduced_props at bottom.
+      after_IH;
+      subst FL. (* <-- TODO needed? *)
+      all: try safe_sidecond.
+      all: try safe_sidecond.
+      { eapply map_extends_remove; eassumption. }
+      {   move e_impl_reduced_props at bottom.
           intros *. intro G.
           assert (map.get e_impl_reduced f = Some (argnames0, retnames0, body0)) as G'. {
-            generalize (funname_env_ok (list Register * list Register * stmt)). clear -G.
-            intro OK.
-            map_solver OK.
+            eapply map_get_Some_remove; eassumption.
           }
           specialize e_impl_reduced_props with (1 := G'). simp.
           repeat split; eauto.
           destr (String.eqb f fname).
           + subst f.
-            generalize (funname_env_ok (list Register * list Register * stmt)). clear -G.
+            simpl in *. unfold Register, MachineInt in *.
+            generalize (funname_env_ok (list Z * list Z * stmt)). clear -G.
             intro OK. exfalso. map_solver OK.
           + eapply remove_In_ne; try typeclasses eauto; assumption.
       }
-      1: reflexivity.
-      4: reflexivity.
-      4: eapply NoDup_removeb; eassumption.
-      4: repeat split.
-      6: {
-        eexists. split; cycle 1.
-        - subst FL. unfold fun_pos_env in *.
-          rewrite !@length_load_regs in *.
-          wseplog_pre word_ok.
-          wcancel.
-          cbn [seps].
-          match goal with
-          | |- iff1 ?LHS ?RHS =>
-            match LHS with
-            | context [array ptsto_instr ?SZ ?ADDR (compile_stmt_new ?EPOS ?POS body)] =>
-              match RHS with
-              | context [array ptsto_instr ?SZ' ?ADDR' (compile_stmt_new ?EPOS' ?POS' body)] =>
-                replace (array ptsto_instr SZ ADDR (compile_stmt_new EPOS POS body)) with
-                        (array ptsto_instr SZ' ADDR' (compile_stmt_new EPOS' POS' body));
-                  [ecancel|]
-              end
-            end
-          end.
-          f_equal. solve_word_eq word_ok.
-        - subst FL. simpl_addrs. blia.
-      }
-      1: solve_divisibleBy4.
       {
         eapply preserve_regs_initialized_after_load_regs; cycle 1; try eassumption.
         eapply preserve_regs_initialized_after_put.
         eapply preserve_regs_initialized_after_put.
         assumption.
       }
-      { simpl_addrs. solve_word_eq word_ok. }
-      { move H1 at bottom. move H13 at bottom.
-        eapply map.extends_putmany_of_list_empty; eassumption.
-      }
+      { eapply NoDup_removeb; eassumption. }
+      { eapply map.extends_putmany_of_list_empty; eassumption. }
       {
         assert (forall x, In x argnames -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
@@ -975,7 +928,6 @@ Section Proofs.
           + assumption.
         }
         revert F.
-        subst FL.
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
                                | map.only_differ _ _ middle_regs0 => revert H
@@ -1161,10 +1113,6 @@ Section Proofs.
         end.
         + exfalso. (* contradiction: sp cannot be in modVars of body *) case TODO_sam.
         + etransitivity; [symmetry|]; eassumption.
-      - simpl.
-        instantiate (2 := BinInt.Z.eqb).
-        wseplog_pre word_ok.
-        wcancel.
     }
 
     simpl.
@@ -1208,11 +1156,8 @@ Section Proofs.
         simpl; cycle -2; try assumption.
       - wseplog_pre word_ok.
         wcancel.
-        wcancel_step. {
-          subst FL.
-          (* PARAMRECORDS *)
-          change (@Syntax.varname (mk_Syntax_params (@def_params p))) with Z in *.
-          replace (Datatypes.length binds) with (Datatypes.length retnames); cycle 1. {
+        subst FL.
+        replace (Datatypes.length binds) with (Datatypes.length retnames); cycle 1. {
             repeat match goal with
             | H: _ |- _ => let N := fresh in pose proof H as N;
                                                apply map.putmany_of_list_sameLength in N;
@@ -1226,11 +1171,10 @@ Section Proofs.
             end.
             simpl_addrs.
             reflexivity.
-          }
-          simpl_addrs.
-          solve_word_eq word_ok.
         }
-        ecancel_done'.
+        simpl_addrs.
+        cbn [seps].
+        wcancel.
       - reflexivity.
       - replace valid_FlatImp_var with valid_register by case TODO_sam.
         assumption.
@@ -1294,42 +1238,15 @@ Section Proofs.
       assert (Datatypes.length retnames = Datatypes.length retvs). {
         eapply map.getmany_of_list_length. eassumption.
       }
-
+      assert (Datatypes.length retvs = Datatypes.length binds). {
+        symmetry. eapply map.getmany_of_list_length. eassumption.
+      }
       (* PARAMRECORDS *)
       change Syntax.varname with Register in *.
-      repeat match goal with
-             | H: _ = List.length ?M |- _ =>
-               lazymatch M with
-               | @modVars_as_list ?EQ ?params ?eqd ?s =>
-                 so fun hyporgoal => match hyporgoal with
-                                     | context [?M'] =>
-                                       lazymatch M' with
-                                       | @modVars_as_list ?EQ ?params' ?eqd' ?s =>
-                                         assert_fails (constr_eq M M');
-                                           change M' with M in *;
-                                           idtac M' "--->" M
-                                       end
-                                     end
-               end
-             end.
-
-      split. {
-        simpl_addrs. subst FL. simpl_addrs. ring.
-      }
-      subst FL.
+      subst FL new_ra. simpl_addrs.
+      split. { ring. (* faster than lia *) }
       wseplog_pre word_ok.
       rewrite !@length_save_regs in *.
-      wcancel.
-      wcancel_step. {
-        subst new_ra. reflexivity.
-      }
-      wcancel_step. {
-        subst new_ra.
-        simpl_addrs.
-        replace (Datatypes.length retvs) with (Datatypes.length binds).
-        - solve_word_eq word_ok.
-        - eapply map.getmany_of_list_length. eassumption.
-      }
       pose proof functions_expose as P.
       match goal with
       | H: map.get e_impl_full _ = Some _ |- _ => specialize P with (2 := H)
@@ -1337,44 +1254,24 @@ Section Proofs.
       specialize P with (1 := GetPos).
       specialize (P program_base funnames).
       auto_specialize.
-      setoid_rewrite P. clear P. cbn [seps].
-      wcancel.
+      apply iff1ToEq in P.
+      rewrite P. clear P.
       unfold program, compile_function.
-      cbn [seps].
+      rewr (fun t => match t with
+           | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+             constr:(iff1ToEq (array_append' PT SZ xs ys start))
+           | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+             constr:(iff1ToEq (array_cons PT SZ x xs start))
+           end) in |-*.
+      (* PARAMRECORDS *)
+      change (@Syntax.varname (mk_Syntax_params (@def_params p))) with Z in *.
       repeat match goal with
-             | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-               rewrite (array_append' PT SZ xs ys start)
+             | |- context [@array ?Wi ?Wo ?V ?M ?T ?E ?SZ ?A nil] =>
+               change (@array Wi Wo V M T E SZ A nil) with (emp True)
              end.
+      rewrite! length_save_regs. rewrite! length_load_regs. (* <- needs to be before simpl_addrs *)
       simpl_addrs.
-      rewrite! length_save_regs.
-      rewrite! length_load_regs.
       wcancel.
-      repeat (wcancel_step; [
-        match goal with
-        | |- ?LHS = ?RHS =>
-          match LHS with
-          | context [List.length (compile_stmt_new ?epos1 ?pos1 ?s)] =>
-            match RHS with
-            | context [List.length (compile_stmt_new ?epos2 ?pos2 s)] =>
-              replace (List.length (compile_stmt_new epos1 pos1 s))
-                with (List.length (compile_stmt_new epos2 pos2 s))
-                by apply compile_stmt_length_position_indep
-            end
-          end
-        end;
-        unfold fun_pos_env; (* <- PARAMRECORDS-related *)
-        simpl_addrs;
-        solve_word_eq word_ok
-              | ]).
-      cbn [seps].
-      match goal with
-      | |- iff1 ?LHS ?RHS => replace LHS with RHS; [ecancel_done'|]
-      end.
-      f_equal.
-      {
-        simpl_addrs.
-        solve_word_eq word_ok.
-      }
     + match goal with
       | H: ext_guarantee {| getMetrics := initialL_metrics |} |- _ => clear H
       end.
@@ -1394,7 +1291,7 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
-      run1det. run1done.
+      run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
@@ -1460,19 +1357,11 @@ Section Proofs.
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
-          unfold exists_good_reduced_e_impl in *. simp.
           eapply IHexec with (g := {| p_sp := _; |}) (pos := (pos + 4)%Z);
-            simpl_MetricRiscvMachine_get_set;
-            simpl_g_get;
-            simpl_word_exprs (@word_ok (@W (@def_params p)));
-            repeat match goal with
-                   | |- _ /\ _ => split
-                   | |- exists _, _ => eexists
-                   end;
-            try safe_sidecond; cycle -1.
-          { wseplog_pre word_ok. wcancel. }
-          all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
-
+            after_IH;
+            try safe_sidecond.
+          all: try safe_sidecond.
+          all: try safe_sidecond.
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
@@ -1485,25 +1374,13 @@ Section Proofs.
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
-          unfold exists_good_reduced_e_impl in *. simp.
           eapply IHexec with (g := {| p_sp := _; |});
-            simpl_MetricRiscvMachine_get_set;
-            simpl_g_get;
-            simpl_word_exprs (@word_ok (@W (@def_params p)));
-            repeat match goal with
-                   | |- _ /\ _ => split
-                   | |- exists _, _ => eexists
-                   end;
-            try safe_sidecond; cycle -1.
-          { wseplog_pre word_ok. wcancel.
-            cancel_seps_at_indices 4%nat 1%nat. { f_equal. solve_word_eq word_ok. }
-            wcancel. }
-          all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
+            after_IH;
+            try safe_sidecond.
+            all: try safe_sidecond.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
-
-Require Import compiler.on_hyp_containing.
 
     - (* SLoop *)
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
@@ -1511,18 +1388,10 @@ Require Import compiler.on_hyp_containing.
       on hyp[(stmt_not_too_big (SLoop body1 cond body2)); runsTo] do (fun H => rename H into IH12).
       eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + (* 1st application of IH: part 1 of loop body *)
-          unfold exists_good_reduced_e_impl in *. simp.
           eapply IH1 with (g := {| p_sp := _; |});
-            simpl_MetricRiscvMachine_get_set;
-            simpl_g_get;
-            simpl_word_exprs (@word_ok (@W (@def_params p)));
-            repeat match goal with
-                   | |- _ /\ _ => split
-                   | |- exists _, _ => eexists
-                   end;
-            try safe_sidecond; cycle -1.
-          { wseplog_pre word_ok. wcancel. }
-          all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
+            after_IH;
+            try safe_sidecond.
+          all: try safe_sidecond.
       + simpl in *. simpl. intros. destruct_RiscvMachine middle.
         match goal with
         | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
@@ -1541,23 +1410,13 @@ Require Import compiler.on_hyp_containing.
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
-              unfold exists_good_reduced_e_impl in *. simp.
               eapply IH2 with (g := {| p_sp := _; |});
-                simpl_MetricRiscvMachine_get_set;
-                simpl_g_get;
-                simpl_word_exprs (@word_ok (@W (@def_params p)));
-                repeat match goal with
-                       | |- _ /\ _ => split
-                       | |- exists _, _ => eexists
-                       end;
-                try safe_sidecond; cycle -1.
-              { wseplog_pre word_ok. wcancel.
-                cancel_seps_at_indices 2%nat 1%nat. { f_equal. solve_word_eq word_ok. }
-                wcancel. }
-              all: try eassumption;
-                   try solve_divisibleBy4;
-                   try congruence;
-                   try solve [solve_word_eq word_ok].
+                after_IH;
+                try safe_sidecond.
+              all: try safe_sidecond.
+              1: eassumption.
+              all: try safe_sidecond.
+              all: try safe_sidecond.
               match goal with
               | H: regs_initialized _ |- _ => move H at bottom
               end.
@@ -1567,38 +1426,18 @@ Require Import compiler.on_hyp_containing.
               run1det.
               eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
               + (* 3rd application of IH: run the whole loop again *)
-                unfold exists_good_reduced_e_impl in *. simp.
                 eapply IH12 with (g := {| p_sp := _; |});
-                  simpl_MetricRiscvMachine_get_set;
-                  simpl_g_get;
-                  simpl_word_exprs (@word_ok (@W (@def_params p)));
-                  repeat match goal with
-                         | |- _ /\ _ => split
-                         | |- exists _, _ => eexists
-                         end;
-                  try safe_sidecond; cycle -1.
-                {
-
-  Ltac wseplog_pre OK ::=
-    use_sep_assumption;
-    autounfold with unf_to_array;
-    unfold program, word_array;
-    repeat match goal with
-           | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             rewrite (array_append' PT SZ xs ys start)
-           | |- context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
-             rewrite (array_cons PT SZ x xs start)
-           end;
-    simpl_addrs.
-
-                  wseplog_pre word_ok. wcancel. }
-                all: try eassumption;
-                  try solve_divisibleBy4;
-                  try congruence;
-                  try (constructor; congruence);
-                  try solve [solve_word_eq word_ok].
-              case TODO_sam. (* TODO add regs_initialized to goodMachine *)
-
+                  after_IH.
+                all: try safe_sidecond.
+                1: eassumption.
+                9: {
+                  wseplog_pre word_ok.
+                  wcancel. simpl. (* TODO add array-nil to rewrite steps *)
+                  wcancel.
+                }
+                all: try safe_sidecond.
+                1: constructor; congruence.
+                case TODO_sam. (* TODO add regs_initialized to goodMachine *)
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
@@ -1607,54 +1446,33 @@ Require Import compiler.on_hyp_containing.
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { simpl in *. run1done. }
+          { simpl in *. run1done. cbn. wcancel. }
 
     - (* SSeq *)
       on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).
       on hyp[(stmt_not_too_big s2); runsTo] do (fun H => rename H into IH2).
       eapply runsTo_trans.
-      + unfold exists_good_reduced_e_impl in *. simp.
-        eapply IH1 with (g := {| p_sp := _; |});
-          simpl_MetricRiscvMachine_get_set;
-          simpl_g_get;
-          simpl_word_exprs (@word_ok (@W (@def_params p)));
-          repeat match goal with
-                 | |- _ /\ _ => split
-                 | |- exists _, _ => eexists
-                 end;
-          try safe_sidecond; cycle -1.
-        { wseplog_pre word_ok. wcancel. }
-        all: try eassumption; try solve_divisibleBy4; try solve [solve_word_eq word_ok].
+      + eapply IH1 with (g := {| p_sp := _; |});
+          after_IH;
+          try safe_sidecond.
+        all: try safe_sidecond.
       + simpl. intros. destruct_RiscvMachine middle. simp. subst.
         eapply runsTo_trans.
-        * unfold exists_good_reduced_e_impl in *. simp.
-          eapply IH2 with (g := {| p_sp := _; |});
-            simpl_MetricRiscvMachine_get_set;
-            simpl_g_get;
-            simpl_word_exprs (@word_ok (@W (@def_params p)));
-            repeat match goal with
-                   | |- _ /\ _ => split
-                   | |- exists _, _ => eexists
-                   end;
-            try safe_sidecond; cycle -1.
-          { wseplog_pre word_ok. wcancel.
-            cancel_seps_at_indices 1%nat 1%nat. {
-              f_equal. solve_word_eq word_ok.
-            }
-            wcancel.
-          }
-          all: try eassumption;
-            try solve_divisibleBy4;
-            try congruence;
-            try (constructor; congruence);
-            try solve [solve_word_eq word_ok].
+        * eapply IH2 with (g := {| p_sp := _; |});
+            after_IH;
+            try safe_sidecond.
+          1: eassumption.
+          all: try safe_sidecond.
+          all: try safe_sidecond.
           case TODO_sam. (* TODO add regs_initialized to goodMachine *)
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - (* SSkip *)
       run1done.
 
-    Grab Existential Variables. all: repeat (exact Z0 || assumption || constructor).
+    Grab Existential Variables.
+    all: try (unfold env; simpl; eapply funname_env_ok).
+    all: repeat (exact Z0 || assumption || constructor).
   Qed. (* <-- takes a while *)
 
 End Proofs.

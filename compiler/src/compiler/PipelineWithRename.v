@@ -6,7 +6,6 @@ Require        compiler.ExprImp.
 Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
-Require        compiler.FlatToRiscvMetric.
 Require Export riscv.Spec.Decode.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
@@ -135,6 +134,8 @@ Section Pipeline1.
 
   Definition ExprImp2RenamedFlat(s: cmd): FlatImp.stmt :=
     let flat := ExprImp2FlatImp s in rename_stmt map.empty flat available_registers.
+
+  Notation fun_pos_env := (@funname_env p Z).
 
   Definition snippet2Riscv(e_pos: fun_pos_env)(mypos: Z)(s: cmd): list Instruction :=
     let flat := ExprImp2RenamedFlat s in
