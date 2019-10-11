@@ -329,6 +329,10 @@ Section Proofs.
     | _ => fail "no recognizable address"
     end.
 
+  Ltac wcancel_instantiated := wcancel (@word_ok (@W (@def_params p))).
+  (* shadows original wcancel: *)
+  Ltac wcancel := wcancel_instantiated.
+
   Ltac safe_sidecond :=
     match goal with
     (* proving these equalties with eq_refl will make other goals harder to prove,
@@ -349,7 +353,7 @@ Section Proofs.
                      | reflexivity
                      | assumption
                      | solve_divisibleBy4 ]
-    | |- _ => solve [wseplog_pre word_ok; wcancel] (* TODO probably not safe as-is *)
+    | |- _ => solve [wseplog_pre word_ok; wcancel ] (* TODO probably not safe as-is *)
     | |- ?G => is_lia G; assert_fails (has_evar G);
                (* not sure why this line is needed, lia should be able to deal with (x := _) hyps,
                   maybe it changes some implicit args or universes? *)

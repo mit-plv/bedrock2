@@ -183,6 +183,21 @@ Section Verif.
   Arguments Z.mul: simpl never.
   Arguments Z.of_nat: simpl never.
 
+  Ltac addr P ::=
+    let __ := lazymatch type of P with
+              | @map.rep _ _ _ -> Prop => idtac
+              | _ => fail 10000 P "is not a sep clause"
+              end in
+    lazymatch P with
+    | ptsto ?A _ => A
+    | ptsto_bytes _ ?A _ => A
+    | array _ _ ?A _ => A
+    | ptsto_instr ?A _ => A
+    | _ => fail "no recognizable address"
+    end.
+
+  Ltac seplog ::= solve [use_sep_assumption; wcancel (@word_ok W)].
+
   Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine) newPc
                                   (argvars resvars: list Register) R (v1 v2 dummy: w32),
       newPc = word.add initial.(getPc)
@@ -210,23 +225,8 @@ Section Verif.
     seprewrite_in @array_append H0. simpl in *.
     subst.
     simpl.
-
     run1det.
-    eapply runsTo_det_step. {
-      simulate'.
-      {
-
-        use_sep_assumption.
-        cancel.
-
-Print Ltac        ecancel_step.
-        try (solve [ repeat ecancel_step; cbn[seps]; exact (RelationClasses.reflexivity _) ]).
-
-Print Ltac seplog.
-solve [seplog].
-Print Ltac sidecondition. simulate'_step.
-
-Print Ltac    run1det.
+    run1det.
     eapply runsTo_trans. {
       eapply asm_prog_1_correct; simpl; try sidecondition.
       rewrite map.get_put_diff by (unfold x1, x2; blia).
@@ -274,4 +274,4 @@ Print Ltac    run1det.
 
 End Verif.
 
-(* Print Assumptions asm_prog_2_correct. just fix_updated_mem_TODO *)
+(* Print Assumptions asm_prog_2_correct. *)

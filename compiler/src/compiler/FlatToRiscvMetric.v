@@ -37,21 +37,15 @@ Section Proofs.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
-  Ltac apply_post :=
-    match goal with
-    | H: ?post _ _ _ |- ?post _ _ _ =>
-      eqexact H; f_equal; symmetry;
-      (apply word.sru_ignores_hibits ||
-       apply word.slu_ignores_hibits ||
-       apply word.srs_ignores_hibits ||
-       apply word.mulhuu_simpl ||
-       apply word.divu0_simpl ||
-       apply word.modu0_simpl)
-    end.
-
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
+    rewrite ?word.sru_ignores_hibits,
+            ?word.slu_ignores_hibits,
+            ?word.srs_ignores_hibits,
+            ?word.mulhuu_simpl,
+            ?word.divu0_simpl,
+            ?word.modu0_simpl;
     simpl in *;
     eexists; (* finalMH *)
     eexists; (* finalMetricsH *)
@@ -63,7 +57,6 @@ Section Proofs.
       | solve_word_eq (@word_ok (@W (@def_params p)))
       | solve [pseplog]
       | prove_ext_guarantee
-      | apply_post
       | idtac ].
 
   Ltac IH_sidecondition :=
@@ -161,8 +154,8 @@ Section Proofs.
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
         simpl in *; run1det; try solve [run1done].
-      + simpl_MetricRiscvMachine_get_set.
-        run1det. run1done;
+      simpl_MetricRiscvMachine_get_set.
+      run1det. run1done;
       [match goal with
       | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
       end | solve_MetricLog..].
