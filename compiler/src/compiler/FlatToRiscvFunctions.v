@@ -1222,7 +1222,55 @@ Section Proofs.
       eassumption.
     + simpl_addrs. rewrite length_load_regs. rewrite length_save_regs. simpl_addrs.
       solve_word_eq word_ok.
-    + (* TODO chain of extends *)
+    + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
+             middle_regs into lL.
+
+      (*
+
+         Summary of what happened in FlatImp:
+
+         Acion (in order):
+         ------------------------------
+         put (argnames, argvals) from outer locals into new empty map
+         execute function body
+         take (retnames, retvals) out of map and put into outer locals
+
+
+
+         Summary of what happened in riscv:              Original low-level locals: lL
+
+         Action (in order):               Correctness lemma:      New low-level locals:
+         -------------------------------  ---------------------   ---------------------
+         put arguments on stack           save_regs_correct
+         jump to function                 run_Jal
+         decrease sp                      run_Addi
+         save ra on stack                 run_store_word
+         save vars modified by callee     save_regs_correct
+         load argvars from stack          load_regs_correct       middle_regs0
+         execute function body            IHexec                  middle_regs1
+         save results onto stack          save_regs_correct
+         load back the modified vars      load_regs_correct       middle_regs2
+         load back the return address     run_load_word
+         increase sp                      run_Addi
+         jump back to caller              run_Jalr0
+         load result values from stack    load_regs_correct       middle_regs3
+       *)
+
+      (* TODO this should be in the IH *)
+      assert (map.only_differ middle_regs0 (PropSet.of_list (modVars_as_list Z.eqb body))
+                              middle_regs1) by admit.
+
+      (* TODO do we have to save argvars (names chosen by callee) on the stack, ie
+         treat them the same as of modVars of function body?? *)
+
+      (* TODO how to explain map.getmany_of_list and map.putmany_of_list to map_solver? *)
+
+      (*
+      try match goal with
+      | x: ?T |- _ => unify T (@map.rep _ _ (@locals p)); idtac x; fail
+      end.
+      *)
+
       case TODO_sam.
     + match goal with
       | H: map.only_differ ?m1 _ ?m2 |- map.get ?m2 _ = Some _ =>
