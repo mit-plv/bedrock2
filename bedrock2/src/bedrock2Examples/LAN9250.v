@@ -302,10 +302,69 @@ Proof.
     Z.div_mod_to_equations. blia.
   }
   repeat t.
+  Import lightbulb_spec.
+
+  do 6 letexists.
+  cbv [spi_begin spi_xchg_deaf spi_end one].
+  Local Arguments st {_}.
+  Local Arguments ld {_}.
+  Local Arguments spi_xchg {_ _}.
 
   (* aligning regex and mmiotrace, not sure how to do it in a principled way *)
 
-Abort.
+  cbv [concat existsl].
+
+  all : repeat match goal with
+    | |- _ /\ _ => split
+    | |- exists _, _ => eexists
+    | |- ?e = _ => (let e := rdelta e in is_evar e); try subst e; reflexivity
+    | |- _ = ?e => (let e := rdelta e in is_evar e); try subst e; reflexivity
+  end.
+
+  all : repeat match goal with
+    |-  context[?e] => is_evar e; set e
+        end.
+
+  all:
+  repeat match goal with |- context[@cons ?T ?x ?y] =>
+      match y with
+      | [] => fail 1
+      | _=> change (@cons T x y) with (@app T (@cons T x nil) y) end end.
+
+  1: rewrite !app_assoc.
+  1: repeat f_equal.
+
+  all : repeat match goal with
+    |-  context[?e] => (let v := rdelta e in is_evar v); subst e
+        end.
+  all : trivial.
+  all : eauto.
+
+  all : try (rewrite word.unsigned_of_Z; eapply Z.mod_small).
+  all : rewrite ?word.unsigned_and_nowrap, ?word.unsigned_sru_nowrap, ?word.unsigned_of_Z by (cbv; congruence).
+  1,2:admit.
+
+  repeat match goal with x := _ |- _ => subst x end.
+  cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
+  repeat rewrite ?word.unsigned_of_Z, word.unsigned_sru_nowrap by exact eq_refl.
+
+  try erewrite ?word.unsigned_of_Z.
+  cbv [word.wrap].
+  change Semantics.width with 32.
+  repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
+  rewrite ?Z.shiftl_mul_pow2 by (clear; Lia.lia).
+
+  change 255 with (Z.ones 8).
+  rewrite !Z.land_ones by Omega.omega.
+  repeat rewrite Z.mod_mod by (clear; cbv; congruence).
+  rewrite <-!Z.land_ones by Omega.omega.
+  rewrite <-!Z.shiftl_mul_pow2 by Omega.omega.
+  change (@Semantics.width parameters) with 32.
+  set (@word.unsigned 32 _ v) as X.
+  Hint Rewrite bitblast.Z.shiftr_spec' bitblast.Z.shiftl_spec' : bitwise.
+  Z.bitwise.
+
+Admitted.
 
 
 From coqutil Require Import Z.div_mod_to_equations.
