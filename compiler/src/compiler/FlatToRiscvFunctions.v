@@ -1272,13 +1272,26 @@ Section Proofs.
       *)
 
       case TODO_sam.
-    + match goal with
-      | H: map.only_differ ?m1 _ ?m2 |- map.get ?m2 _ = Some _ =>
-        replace m2 with m1 by case TODO_sam (* TODO almost *)
+    + subst FL.
+      assert (Forall valid_FlatImp_var binds) as A. {
+        eapply Forall_impl; [|eassumption].
+        apply TODO_sam_valid_register_to_valid_FlatImp_var.
+      }
+      match goal with
+      | H: map.only_differ (map.put (map.put _ _ _) _ ?v) _ ?m2 |- map.get ?m2 _ = Some ?v' =>
+        rename H into D; clear -D h A;
+        replace v with v' in D by solve_word_eq word_ok
       end.
-      rewrite map.get_put_same. f_equal. subst FL.
-      simpl_addrs.
-      solve_word_eq word_ok.
+      assert (~ PropSet.elem_of RegisterNames.sp (PropSet.of_list binds)). {
+        clear -A. cbv -[List.In].
+        intro C.
+        eapply Forall_forall in A. 2: exact C.
+        cbv in A. intuition congruence.
+      }
+      (* TODO map_solver should work directly here *)
+      preprocess_impl locals_ok true.
+      change Z with Register in *.
+      map_solver locals_ok.
     + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
       match goal with
       | H:   #(Datatypes.length ?new_remaining_stack) = _ |- _ =>
