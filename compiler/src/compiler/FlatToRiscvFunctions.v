@@ -1252,8 +1252,8 @@ Section Proofs.
        *)
 
       (* TODO this should be in the IH *)
-      assert (map.only_differ middle_regs0 (PropSet.of_list (modVars_as_list Z.eqb body))
-                              middle_regs1) by admit.
+      try assert (map.only_differ middle_regs0 (PropSet.of_list (modVars_as_list Z.eqb body))
+                                  middle_regs1) by fail.
 
       (* TODO do we have to save argvars (names chosen by callee) on the stack, ie
          treat them the same as of modVars of function body?? *)
