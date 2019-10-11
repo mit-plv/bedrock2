@@ -950,16 +950,12 @@ Section Proofs.
           f_equal. simpl_addrs. solve_word_eq word_ok.
       }
       {
-        case TODO_sam. (* TODO log unchanged --> strengthen all used lemmas *)
-      }
-      {
         eapply ext_guarantee_preservable.
         + eassumption.
         + cbn.
           (* TODO will need stronger prove_ext_guarantee, derive same_domain from sep *)
           case TODO_sam.
-        + cbn.  (* log equality? *)
-          case TODO_sam.
+        + cbn. reflexivity.
       }
     }
 
@@ -1218,8 +1214,7 @@ Section Proofs.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
     do 4 eexists.
     repeat split.
-    + replace middle_log3 with middle_log1 by case TODO_sam. (* TODO investigate! *)
-      eassumption.
+    + eassumption.
     + simpl_addrs. rewrite length_load_regs. rewrite length_save_regs. simpl_addrs.
       solve_word_eq word_ok.
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
@@ -1346,7 +1341,7 @@ Section Proofs.
       eapply ext_guarantee_preservable.
       * eassumption.
       * simpl. (* TODO memory same domain *) case TODO_sam.
-      * simpl. (* TODO log equality?? *) case TODO_sam.
+      * simpl. reflexivity.
 
     - (* SLoad *)
       progress unfold Memory.load, Memory.load_Z in *. simp.

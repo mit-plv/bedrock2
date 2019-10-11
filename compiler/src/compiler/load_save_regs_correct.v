@@ -40,11 +40,11 @@ Section Proofs.
       runsTo initial (fun final =>
           final.(getRegs) = initial.(getRegs) /\
           (program initial.(getPc) (save_regs vars offset) *
-           word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep
-              final.(getMem) /\
+           word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (word.mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
-          final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
+          final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
+          final.(getLog) = initial.(getLog)).
   Proof.
     unfold map.getmany_of_list.
     induction vars; intros.
@@ -130,7 +130,8 @@ Section Proofs.
               final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
-          final.(getNextPc) = word.add final.(getPc) (word.of_Z 4)).
+          final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
+          final.(getLog) = initial.(getLog)).
   Proof.
     induction vars; intros.
     - simpl in *. simp. destruct values; simpl in *; [|discriminate].
