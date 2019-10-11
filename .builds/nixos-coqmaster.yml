@@ -3,6 +3,7 @@ repositories:
   nixpkgs: https://nixos.org/channels/nixpkgs-unstable
 packages:
   - nixpkgs.gnumake
+  - nixpkgs.pkgs.python35
 sources:
   - https://git.sr.ht/~andres/bedrock2
 tasks:
