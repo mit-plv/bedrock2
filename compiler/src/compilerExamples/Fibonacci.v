@@ -36,8 +36,9 @@ Definition fib_ExprImp(n: Z): cmd := Eval cbv in
   snd (snd (Demos.fibonacci n)).
 
 (* This is what the bare AST looks like. For a more readable version with notations, see
-   bedrock2/Demos.v *)
+   bedrock2/Demos.v
 Print fib_ExprImp.
+*)
 
 Definition fib_H_res(fuel: nat)(n: Z): option word :=
   match (eval_cmd map.empty fuel map.empty map.empty (fib_ExprImp n)) with
@@ -240,7 +241,7 @@ Proof. cbv. reflexivity. Qed.
 
 Lemma enough_registers_for_fib6: enough_registers (fib_ExprImp 6).
 Proof.
-  cbv. auto 20.
+  cbv. intuition congruence.
 Qed.
 
 (* 2nd method: Prove it without running it on low level, but using the

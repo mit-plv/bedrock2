@@ -84,7 +84,7 @@ Section FlatToRiscvLiterals.
       let insts := compile_stmt (FlatImp.SLit x v) in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
-      valid_registers (FlatImp.SLit x v) ->
+      valid_FlatImp_vars (FlatImp.SLit x v) ->
       runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
@@ -94,7 +94,7 @@ Section FlatToRiscvLiterals.
   Proof.
     intros *. intros E1 insts d P V N. substs.
     lazymatch goal with
-    | H1: valid_registers ?s |- _ =>
+    | H1: valid_FlatImp_vars ?s |- _ =>
       pose proof (compile_stmt_emits_valid iset_is_supported H1 eq_refl) as EV
     end.
     simpl in *.

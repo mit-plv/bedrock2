@@ -655,7 +655,7 @@ Section FibCompiled.
                          (mcH := bedrock2.MetricLogging.EmptyMetricLog).
       eapply Hp.
       + simpl. blia.
-      + cbv. repeat constructor.
+      + cbv. intuition congruence.
       + reflexivity.
       + assumption.
       + assumption.

@@ -513,7 +513,7 @@ Section EmitsValid.
 
   Axiom compile_stmt_new_emits_valid: forall s e pos,
       supported_iset iset ->
-      valid_registers s ->
+      valid_FlatImp_vars s ->
       stmt_not_too_big s ->
       valid_instructions iset (compile_stmt_new e pos s).
 
@@ -521,25 +521,26 @@ Section EmitsValid.
       supported_iset iset ->
       Forall valid_register argnames ->
       Forall valid_register resnames ->
-      valid_registers body ->
+      valid_FlatImp_vars body ->
       stmt_not_too_big body ->
       valid_instructions iset (compile_function e pos (argnames, resnames, body)).
 
   Lemma compile_stmt_emits_valid: forall s,
       supported_iset iset ->
-      valid_registers s ->
+      valid_FlatImp_vars s ->
       stmt_not_too_big s ->
       valid_instructions iset (compile_stmt s).
   Proof.
     assert (- 2 ^ 11 <= 0 < 2 ^ 11) by blia.
     induction s; intros; simpl in *; intuition (
-      auto using compile_load_emits_valid,
+      eauto 10 using valid_FlatImp_var_implies_valid_register, Forall_impl,
+                 compile_load_emits_valid,
                  compile_store_emits_valid,
                  compile_lit_emits_valid,
                  compile_op_emits_valid,
                  compile_ext_call_emits_valid
     );
-    unfold valid_instructions, valid_register, Register0, stmt_not_too_big in *;
+    unfold valid_instructions, valid_FlatImp_var, Register0, stmt_not_too_big in *;
     intros; simpl in *;
     repeat match goal with
            | H: _ \/ _ |- _ => destruct H
@@ -553,9 +554,15 @@ Section EmitsValid.
               let r := eval cbv in (2 ^ a)%Z in change (2 ^ a)%Z with r in *
             end);
     try solve
-        [ apply compile_bcond_by_inverting_emits_valid; [assumption | blia' | apply times4mod2 ]
+        [ apply compile_bcond_by_inverting_emits_valid;
+          [ auto using valid_FlatImp_var_implies_valid_register,
+                       valid_FlatImp_vars_bcond_implies_valid_registers_bcond
+          | blia'
+          | apply times4mod2 ]
         | match goal with
-          | H: _ |- _ => solve [apply H; (blia || auto)]
+          | H: _ |- _ => solve [apply H;
+                                (blia || auto using valid_FlatImp_var_implies_valid_register,
+                                     valid_FlatImp_vars_bcond_implies_valid_registers_bcond)]
           end
         | unfold verify in *;
           destruct iset;

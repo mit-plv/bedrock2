@@ -76,7 +76,7 @@ Section Proofs.
     forall R (initialL: RiscvMachineL) insts,
     @compile_stmt def_params s = insts ->
     stmt_not_too_big s ->
-    valid_registers s ->
+    valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->
     initialL.(getRegs) = initialRegsH ->
     (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
@@ -96,7 +96,7 @@ Section Proofs.
     pose proof compile_stmt_emits_valid.
     induction 1; intros;
       lazymatch goal with
-      | H1: valid_registers ?s, H2: stmt_not_too_big ?s |- _ =>
+      | H1: valid_FlatImp_vars ?s, H2: stmt_not_too_big ?s |- _ =>
         pose proof (compile_stmt_emits_valid iset_is_supported H1 H2)
       end;
       repeat match goal with
@@ -110,7 +110,7 @@ Section Proofs.
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with (postH := post) (action0 := action)
                                              (argvars0 := argvars) (resvars0 := resvars);
-          simpl; reflexivity || eassumption || ecancel_assumption || idtac.
+          try sidecondition.
         eapply @exec.interact; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL.
         simpl_MetricRiscvMachine_get_set. simpl in *.

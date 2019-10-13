@@ -119,7 +119,7 @@ Section Pipeline1.
     FlatToRiscvDef.compile_prog e' s' FlatImp.SSkip funs.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
-    FlatToRiscvDef.valid_registers (ExprImp2FlatImp s).
+    FlatToRiscvDef.valid_FlatImp_vars (ExprImp2FlatImp s).
 
   (* simpler than debugging why blia/blia fails *)
   Ltac ineq_step :=

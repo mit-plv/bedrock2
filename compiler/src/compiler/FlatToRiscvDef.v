@@ -69,19 +69,39 @@ Section FlatToRiscv1.
     | CondNez x => valid_register x
     end.
 
-  Fixpoint valid_registers(s: stmt): Prop :=
+  (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
+  Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
+
+  Lemma valid_FlatImp_var_implies_valid_register: forall (x: Register),
+      valid_FlatImp_var x -> valid_register x.
+  Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
+
+  Definition valid_FlatImp_vars_bcond (cond: bcond) : Prop :=
+    match cond with
+    | CondBinary _ x y => valid_FlatImp_var x /\ valid_FlatImp_var y
+    | CondNez x => valid_FlatImp_var x
+    end.
+
+  Lemma valid_FlatImp_vars_bcond_implies_valid_registers_bcond: forall b,
+      valid_FlatImp_vars_bcond b -> valid_registers_bcond b.
+  Proof.
+    intros b H. destruct b; simpl in *;
+                  intuition auto using valid_FlatImp_var_implies_valid_register.
+  Qed.
+
+  Fixpoint valid_FlatImp_vars(s: stmt): Prop :=
     match s with
-    | SLoad _ x a => valid_register x /\ valid_register a
-    | SStore _ a x => valid_register a /\ valid_register x
-    | SLit x _ => valid_register x
-    | SOp x _ y z => valid_register x /\ valid_register y /\ valid_register z
-    | SSet x y => valid_register x /\ valid_register y
-    | SIf c s1 s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
-    | SLoop s1 c s2 => valid_registers_bcond c /\ valid_registers s1 /\ valid_registers s2
-    | SSeq s1 s2 => valid_registers s1 /\ valid_registers s2
+    | SLoad _ x a => valid_FlatImp_var x /\ valid_FlatImp_var a
+    | SStore _ a x => valid_FlatImp_var a /\ valid_FlatImp_var x
+    | SLit x _ => valid_FlatImp_var x
+    | SOp x _ y z => valid_FlatImp_var x /\ valid_FlatImp_var y /\ valid_FlatImp_var z
+    | SSet x y => valid_FlatImp_var x /\ valid_FlatImp_var y
+    | SIf c s1 s2 => valid_FlatImp_vars_bcond c /\ valid_FlatImp_vars s1 /\ valid_FlatImp_vars s2
+    | SLoop s1 c s2 => valid_FlatImp_vars_bcond c /\ valid_FlatImp_vars s1 /\ valid_FlatImp_vars s2
+    | SSeq s1 s2 => valid_FlatImp_vars s1 /\ valid_FlatImp_vars s2
     | SSkip => True
-    | SCall binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
-    | SInteract binds _ args => Forall valid_register binds /\ Forall valid_register args (* untested *)
+    | SCall binds _ args => Forall valid_FlatImp_var binds /\ Forall valid_FlatImp_var args
+    | SInteract binds _ args => Forall valid_FlatImp_var binds /\ Forall valid_FlatImp_var args
     end.
 
 

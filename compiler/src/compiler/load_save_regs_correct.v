@@ -25,9 +25,6 @@ Section Proofs.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
-  (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
-  Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
-
   Lemma save_regs_correct: forall vars offset R (initial: RiscvMachineL) p_sp oldvalues newvalues,
       Forall valid_register vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->

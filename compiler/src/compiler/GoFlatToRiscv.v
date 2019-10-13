@@ -856,7 +856,12 @@ Ltac sidecondition :=
   | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
     eapply (map.extends_get A E)
   (* but we don't have a general "eassumption" branch, only "assumption": *)
-  | |- _ => assumption
+  | |- _ => solve [auto using valid_FlatImp_var_implies_valid_register,
+                              valid_FlatImp_vars_bcond_implies_valid_registers_bcond]
+  | |- ?G => assert_fails (has_evar G);
+             solve [eauto using valid_FlatImp_var_implies_valid_register,
+                                valid_FlatImp_vars_bcond_implies_valid_registers_bcond,
+                                Forall_impl]
   (* TODO eventually remove this case and dependency on FlatToRiscvDef *)
   | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
     assert_fails (is_evar inst);

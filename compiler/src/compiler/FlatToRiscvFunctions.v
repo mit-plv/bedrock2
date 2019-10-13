@@ -236,9 +236,9 @@ Section Proofs.
     simp. destruct_one_match; eauto.
   Qed.
 
-  Lemma modVars_as_list_valid_registers: forall (s: @stmt (mk_Syntax_params _)),
-      valid_registers s ->
-      Forall valid_register (modVars_as_list Z.eqb s).
+  Lemma modVars_as_list_valid_FlatImp_var: forall (s: @stmt (mk_Syntax_params _)),
+      valid_FlatImp_vars s ->
+      Forall valid_FlatImp_var (modVars_as_list Z.eqb s).
   Proof.
     induction s; intros; simpl in *; simp; eauto 10 using @union_Forall.
   Qed.
@@ -368,8 +368,8 @@ Section Proofs.
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
       map.extends initialL.(getRegs) initialRegsH ->
-      Forall valid_register argvars ->
-      Forall valid_register resvars ->
+      Forall valid_FlatImp_var argvars ->
+      Forall valid_FlatImp_var resvars ->
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
@@ -456,9 +456,11 @@ Section Proofs.
       map.extends e_impl e_impl_reduced /\
       (forall f (argnames retnames: list Syntax.varname) (body: stmt),
           map.get e_impl_reduced f = Some (argnames, retnames, body) ->
-          Forall valid_register argnames /\
-          Forall valid_register retnames /\
-          valid_registers body /\
+          Forall valid_FlatImp_var argnames /\
+          Forall valid_FlatImp_var retnames /\
+          valid_FlatImp_vars body /\
+          NoDup argnames /\
+          NoDup retnames /\
           stmt_not_too_big body /\
           List.In f funnames /\
           exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0).
@@ -594,6 +596,69 @@ Section Proofs.
     intro OK. intros. map_solver OK.
   Qed.
 
+  Lemma length_NoDup_removeb{A: Type}{aeqb: A -> A -> bool}{aeqb_sepc: EqDecider aeqb}:
+    forall (s: list A) (a: A),
+      In a s ->
+      NoDup s ->
+      Datatypes.length (removeb aeqb a s) = pred (Datatypes.length s).
+  Proof.
+    induction s; intros.
+    - simpl in H. contradiction.
+    - simpl in *. simp. destr (aeqb a0 a).
+      + simpl. subst. rewrite removeb_not_In by assumption. reflexivity.
+      + simpl. destruct H; [congruence|].
+        rewrite IHs by assumption.
+        destruct s.
+        * simpl in *. contradiction.
+        * reflexivity.
+  Qed.
+
+  Lemma pigeonhole{A: Type}{aeqb: A -> A -> bool}{aeqb_sepc: EqDecider aeqb}: forall (l s: list A),
+      (* no pigeonhole contains more than one pigeon: *)
+      NoDup l ->
+      (* all elements in l are of "type" s (which is bounded by its finite length) *)
+      (forall a, In a l -> In a s) ->
+      (* "type" s is a set (to make induction simpler) *)
+      NoDup s ->
+      (* the number of pigeons is bounded: *)
+      (List.length l <= List.length s)%nat.
+  Proof.
+    induction l; intros.
+    - simpl. blia.
+    - simpl. simp.
+      specialize (IHl (removeb aeqb a s)).
+      repeat match type of IHl with
+             | ?P -> ?Q => let H := fresh in assert P as H; [clear IHl|specialize (IHl H); clear H]
+             end.
+      + assumption.
+      + intros.
+        destr (aeqb a a0).
+        * subst. contradiction.
+        * apply In_removeb_diff; try congruence.
+          eapply H0. simpl. auto.
+      + apply NoDup_removeb. assumption.
+      + specialize (H0 a (or_introl eq_refl)).
+        rewrite length_NoDup_removeb in IHl by assumption.
+        destruct s; [simpl in *; contradiction|].
+        simpl in *. blia.
+  Qed.
+
+  Lemma NoDup_valid_FlatImp_vars_bound_length: forall xs,
+      NoDup xs ->
+      Forall valid_FlatImp_var xs ->
+      (Datatypes.length xs <= 29)%nat.
+  Proof.
+    intros.
+    apply (pigeonhole xs (List.unfoldn Z.succ 29 3) H).
+    - intros.
+      eapply (proj1 (Forall_forall valid_FlatImp_var xs)) in H0.
+      2: eassumption.
+      unfold valid_FlatImp_var in *.
+      cbv. blia.
+    - cbv. repeat apply NoDup_cons; cbv; try blia.
+      apply NoDup_nil.
+  Qed.
+
   Lemma compile_stmt_correct_new:
     forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
@@ -603,7 +668,7 @@ Section Proofs.
     fits_stack g.(num_stackwords) e_impl_reduced s ->
     @compile_stmt_new def_params _ g.(e_pos) pos s = g.(insts) ->
     stmt_not_too_big s ->
-    valid_registers s ->
+    valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
     (word.unsigned g.(program_base)) mod 4 = 0 ->
     regs_initialized initialL.(getRegs) ->
@@ -632,7 +697,7 @@ Section Proofs.
             (postH := fun t' m' l' mc' => post t' m (* <- not m' because unchanged *) l' mc')
             (action := action) (argvars := argvars) (resvars := resvars);
           simpl; reflexivity || eassumption || ecancel_assumption || idtac.
-        * eapply map.getmany_of_list_extends; eassumption.
+        * eapply map.getmany_of_list_extends; try eassumption.
         * intros resvals HO ?. subst mGive.
           match goal with
           | H: forall _, _ |- _ =>
@@ -675,10 +740,12 @@ Section Proofs.
       match goal with
       | H: map.get e_impl_reduced fname = Some _, G: _ |- _ =>
           pose proof G as e_impl_reduced_props;
-          specialize G with (1 := H);
-          destruct G as [? [? [? [? [? [funpos [GetPos ?] ] ] ] ] ] ]
+          specialize G with (1 := H)
       end.
-      rewrite GetPos in *.
+      simp.
+      match goal with
+      | H: map.get e_pos _ = Some _ |- _ => rename H into GetPos
+      end.
 
       rename stack_trash into old_stackvals.
 
@@ -734,7 +801,19 @@ Section Proofs.
         - wseplog_pre word_ok. wcancel.
         - sidecondition.
         - sidecondition.
-        - apply TODO_sam_offset_in_range.
+        - pose proof (NoDup_valid_FlatImp_vars_bound_length argnames) as A.
+          auto_specialize.
+          change (2 ^ 11) with 2048.
+          assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B. {
+            clear. unfold bytes_per_word, Memory.bytes_per.
+            destruct width_cases.
+            + rewrite H. cbv. auto.
+            + rewrite H. cbv. auto.
+          }
+          replace (Datatypes.length argnames) with (Datatypes.length args) in A by blia.
+          clear -A B.
+          destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
+          blia.
         - eapply map.getmany_of_list_extends; eassumption.
         - sidecondition.
         - unfold Register, MachineInt in *. blia.
@@ -830,7 +909,9 @@ Section Proofs.
       pose proof (@getmany_of_list_exists _ _ _ l valid_register (modVars_as_list Z.eqb body)) as P
     end.
     edestruct P as [newvalues P2]; clear P.
-    { apply modVars_as_list_valid_registers. assumption. }
+    { eapply Forall_impl; cycle 1.
+      - eapply modVars_as_list_valid_FlatImp_var. assumption.
+      - apply valid_FlatImp_var_implies_valid_register. }
     {
       intros.
       rewrite !map.get_put_dec.
@@ -842,7 +923,10 @@ Section Proofs.
       eapply save_regs_correct; simpl; cycle 2.
       2: rewrite map.get_put_same; reflexivity.
       1: exact P2.
-      4: eapply modVars_as_list_valid_registers; eassumption.
+      4: {
+        eapply Forall_impl; cycle 1.
+        - eapply modVars_as_list_valid_FlatImp_var. assumption.
+        - apply valid_FlatImp_var_implies_valid_register. }
       1: eassumption.
       2: reflexivity.
       1: { wseplog_pre word_ok. wcancel. }
@@ -871,10 +955,8 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
-      - eapply Forall_impl.
-        + apply TODO_sam_valid_register_to_valid_FlatImp_var.
-        + assumption.
-      - apply TODO_sam_no_dups.
+      - assumption.
+      - assumption.
       - apply TODO_sam_offset_in_range.
     }
 
@@ -927,9 +1009,7 @@ Section Proofs.
       {
         assert (forall x, In x argnames -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
-          eapply Forall_impl.
-          + apply TODO_sam_valid_register_to_valid_FlatImp_var.
-          + assumption.
+          assumption.
         }
         revert F.
         repeat match goal with
@@ -990,7 +1070,9 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
-      - assumption.
+      - eapply Forall_impl; cycle 1.
+        + eassumption.
+        + apply valid_FlatImp_var_implies_valid_register.
       - apply TODO_sam_offset_in_range.
     }
 
@@ -1021,10 +1103,9 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
-      - replace valid_FlatImp_var with valid_register by case TODO_sam.
-        apply modVars_as_list_valid_registers.
-        assumption.
-      - apply TODO_sam_no_dups.
+      - (* TODO Forall valid_FlatImp_var (modVars_as_list Z.eqb body) *)
+        case TODO_sam.
+      - apply TODO_sam_no_dups. (* NoDup of modVars_as_list *)
       - apply TODO_sam_offset_in_range.
     }
 
@@ -1048,7 +1129,7 @@ Section Proofs.
           eapply Forall_forall.
           eapply Forall_impl.
           + apply TODO_sam_valid_register_to_valid_FlatImp_var.
-          + eapply modVars_as_list_valid_registers. assumption.
+          + case TODO_sam.
         }
         revert F.
         subst FL.
@@ -1176,9 +1257,7 @@ Section Proofs.
         cbn [seps].
         wcancel.
       - reflexivity.
-      - replace valid_FlatImp_var with valid_register by case TODO_sam.
-        assumption.
-      - apply TODO_sam_no_dups.
+      - case TODO_sam. (* NoDup binds *)
       - apply TODO_sam_offset_in_range.
       - subst FL.
         simpl_addrs.
@@ -1269,8 +1348,7 @@ Section Proofs.
       case TODO_sam.
     + subst FL.
       assert (Forall valid_FlatImp_var binds) as A. {
-        eapply Forall_impl; [|eassumption].
-        apply TODO_sam_valid_register_to_valid_FlatImp_var.
+        assumption.
       }
       match goal with
       | H: map.only_differ (map.put (map.put _ _ _) _ ?v) _ ?m2 |- map.get ?m2 _ = Some ?v' =>

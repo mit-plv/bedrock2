@@ -162,11 +162,6 @@ Ltac solve_stmt_not_too_big :=
     blia
   end.
 
-Ltac solve_valid_registers :=
-  match goal with
-  | |- valid_registers _ => solve [simpl; auto]
-  end.
-
 Ltac simpl_bools :=
   repeat match goal with
          | H : ?x = false |- _ =>

@@ -40,11 +40,11 @@ Module BinarySearch.
   End StringNames.
   Module ZNames.
     Instance Inst: @Names ZNamesSyntaxParams := {
-      left := 1;
-      right := 2;
-      target := 3;
-      mid := 4;
-      tmp := 5;
+      left := 3;
+      right := 4;
+      target := 5;
+      mid := 6;
+      tmp := 7;
     }.
   End ZNames.
 End BinarySearch.
@@ -66,10 +66,10 @@ Module ListSum.
   End StringNames.
   Module ZNames.
     Instance Inst: @Names ZNamesSyntaxParams := {
-      n := 1;
-      i := 2;
-      sumreg := 3;
-      a := 4;
+      n := 3;
+      i := 4;
+      sumreg := 5;
+      a := 6;
     }.
   End ZNames.
 End ListSum.
@@ -91,10 +91,10 @@ Module Fibonacci.
   End StringNames.
   Module ZNames.
     Instance Inst: @Names ZNamesSyntaxParams := {
-      a := 1;
-      b := 2;
-      c := 3;
-      i := 4;
+      a := 3;
+      b := 4;
+      c := 5;
+      i := 6;
     }.
   End ZNames.
 End Fibonacci.
@@ -119,11 +119,11 @@ Module FibonacciServer.
   End StringNames.
   Module ZNames.
     Instance Inst: @Names ZNamesSyntaxParams := {
-      a := 1;
-      b := 2;
-      c := 3;
-      i := 4;
-      n := 5;
+      a := 3;
+      b := 4;
+      c := 5;
+      i := 6;
+      n := 7;
     }.
   End ZNames.
 End FibonacciServer.
@@ -206,7 +206,7 @@ Section Demos.
       b = -1
     }};;
     *(uint32_t*) n_store_addr = b
-  ))).                                                                                   
+  ))).
 
   Definition dummy: Prog := ("dummy", ([], [], cmd.skip)).
 
