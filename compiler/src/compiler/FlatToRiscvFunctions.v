@@ -476,16 +476,6 @@ Section Proofs.
 
   Open Scope word_scope.
 
-  Axiom TODO_sam_offset_in_range: forall (offset: Z) (vars: list Register),
-      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * #(List.length vars).
-
-  (* doesn't hold, only the other direction holds *)
-  Axiom TODO_sam_valid_register_to_valid_FlatImp_var: forall x,
-      valid_register x ->
-      valid_FlatImp_var x.
-
-  Axiom TODO_sam_no_dups: forall vars: list Register, NoDup vars.
-
   Definition regs_initialized(regs: locals): Prop :=
     forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
 
@@ -613,6 +603,12 @@ Section Proofs.
         * reflexivity.
   Qed.
 
+  (* TODO move to coqutil *)
+  Ltac specialize_hyp H :=
+    repeat match type of H with
+           | ?P -> ?Q => let F := fresh in assert P as F; [clear H|specialize (H F); clear F]
+           end.
+
   Lemma pigeonhole{A: Type}{aeqb: A -> A -> bool}{aeqb_sepc: EqDecider aeqb}: forall (l s: list A),
       (* no pigeonhole contains more than one pigeon: *)
       NoDup l ->
@@ -627,9 +623,7 @@ Section Proofs.
     - simpl. blia.
     - simpl. simp.
       specialize (IHl (removeb aeqb a s)).
-      repeat match type of IHl with
-             | ?P -> ?Q => let H := fresh in assert P as H; [clear IHl|specialize (IHl H); clear H]
-             end.
+      specialize_hyp IHl.
       + assumption.
       + intros.
         destr (aeqb a a0).
@@ -657,6 +651,29 @@ Section Proofs.
       cbv. blia.
     - cbv. repeat apply NoDup_cons; cbv; try blia.
       apply NoDup_nil.
+  Qed.
+
+  (* Note: l1 can have duplicates, because it's going to be inserted into l2 one by one *)
+  Lemma list_union_preserves_NoDup{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
+    forall (l1 l2: list A),
+      NoDup l2 -> NoDup (list_union aeqb l1 l2).
+  Proof.
+    induction l1; intros.
+    - simpl. assumption.
+    - simpl.
+      eapply IHl1.
+      destr (find (aeqb a) l2). 1: assumption.
+      constructor. 2: assumption.
+      intro C.
+      eapply find_none in E. 2: exact C.
+      destr (aeqb a a); [discriminate|contradiction].
+  Qed.
+
+  Lemma NoDup_modVars_as_list: forall s,
+      NoDup (modVars_as_list Z.eqb s).
+  Proof.
+    induction s; simpl; repeat constructor; try (intro C; exact C);
+      try (eapply list_union_preserves_NoDup; eassumption || constructor).
   Qed.
 
   Lemma compile_stmt_correct_new:
@@ -930,7 +947,20 @@ Section Proofs.
       1: eassumption.
       2: reflexivity.
       1: { wseplog_pre word_ok. wcancel. }
-      1: apply TODO_sam_offset_in_range.
+      pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A.
+      specialize_hyp A.
+      - apply NoDup_modVars_as_list.
+      - apply modVars_as_list_valid_FlatImp_var. assumption.
+      - change (2 ^ 11) with 2048.
+        assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B. {
+          clear. unfold bytes_per_word, Memory.bytes_per.
+          destruct width_cases.
+          + rewrite H. cbv. auto.
+          + rewrite H. cbv. auto.
+        }
+        clear -A B.
+        destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
+          blia.
     }
 
     simpl.
@@ -957,7 +987,28 @@ Section Proofs.
       - reflexivity.
       - assumption.
       - assumption.
-      - apply TODO_sam_offset_in_range.
+      - pose proof (NoDup_valid_FlatImp_vars_bound_length retnames) as A.
+        pose proof (NoDup_valid_FlatImp_vars_bound_length argnames) as A'.
+        auto_specialize.
+        change (2 ^ 11) with 2048.
+        assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B. {
+          clear. unfold bytes_per_word, Memory.bytes_per.
+          destruct width_cases.
+          + rewrite H. cbv. auto.
+          + rewrite H. cbv. auto.
+        }
+        pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A''.
+        specialize_hyp A''.
+        + apply NoDup_modVars_as_list.
+        + apply modVars_as_list_valid_FlatImp_var. assumption.
+        + clear -A A' A'' B.
+          change BinIntDef.Z.eqb with Z.eqb.
+          unfold Register, MachineInt in *.
+          match type of A'' with
+          | (?x <= _)%nat => forget x as L
+          end.
+          destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
+            blia.
     }
 
     simpl.
@@ -1073,7 +1124,27 @@ Section Proofs.
       - eapply Forall_impl; cycle 1.
         + eassumption.
         + apply valid_FlatImp_var_implies_valid_register.
-      - apply TODO_sam_offset_in_range.
+      - pose proof (NoDup_valid_FlatImp_vars_bound_length retnames) as A.
+        auto_specialize.
+        change (2 ^ 11) with 2048.
+        assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B. {
+          clear. unfold bytes_per_word, Memory.bytes_per.
+          destruct width_cases.
+          + rewrite H. cbv. auto.
+          + rewrite H. cbv. auto.
+        }
+        pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A''.
+        specialize_hyp A''.
+        + apply NoDup_modVars_as_list.
+        + apply modVars_as_list_valid_FlatImp_var. assumption.
+        + clear -A A'' B.
+          change BinIntDef.Z.eqb with Z.eqb.
+          unfold Register, MachineInt in *.
+          match type of A'' with
+          | (?x <= _)%nat => forget x as L
+          end.
+          destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
+            blia.
     }
 
     simpl.
@@ -1103,10 +1174,22 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
-      - (* TODO Forall valid_FlatImp_var (modVars_as_list Z.eqb body) *)
-        case TODO_sam.
-      - apply TODO_sam_no_dups. (* NoDup of modVars_as_list *)
-      - apply TODO_sam_offset_in_range.
+      - apply modVars_as_list_valid_FlatImp_var. assumption.
+      - apply NoDup_modVars_as_list.
+      - pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A.
+        specialize_hyp A.
+        + apply NoDup_modVars_as_list.
+        + apply modVars_as_list_valid_FlatImp_var. assumption.
+        + change (2 ^ 11) with 2048.
+          assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B. {
+            clear. unfold bytes_per_word, Memory.bytes_per.
+            destruct width_cases.
+            - rewrite H. cbv. auto.
+            - rewrite H. cbv. auto.
+          }
+          clear -A B.
+          destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
+            blia.
     }
 
     simpl.
@@ -1127,9 +1210,7 @@ Section Proofs.
       - simpl.
         assert (forall x, In x (modVars_as_list Z.eqb body) -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
-          eapply Forall_impl.
-          + apply TODO_sam_valid_register_to_valid_FlatImp_var.
-          + case TODO_sam.
+          apply modVars_as_list_valid_FlatImp_var. assumption.
         }
         revert F.
         subst FL.
@@ -1258,7 +1339,31 @@ Section Proofs.
         wcancel.
       - reflexivity.
       - case TODO_sam. (* NoDup binds *)
-      - apply TODO_sam_offset_in_range.
+      - pose proof (NoDup_valid_FlatImp_vars_bound_length argnames) as A.
+        pose proof (NoDup_valid_FlatImp_vars_bound_length retnames) as A'.
+        auto_specialize.
+        change (2 ^ 11) with 2048.
+        assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B. {
+          clear. unfold bytes_per_word, Memory.bytes_per.
+          destruct width_cases.
+          + rewrite H. cbv. auto.
+          + rewrite H. cbv. auto.
+        }
+        replace (Datatypes.length argnames) with (Datatypes.length args) in A by blia.
+        match goal with
+        | H: map.getmany_of_list _ retnames = Some _ |- _ =>
+          rename H into G; move G at bottom
+        end.
+        apply map.getmany_of_list_length in G.
+        match goal with
+        | H: map.putmany_of_list _ retvs _ = Some _ |- _ =>
+          rename H into G'; move G' at bottom
+        end.
+        apply map.putmany_of_list_sameLength in G'.
+        replace (Datatypes.length retnames) with (Datatypes.length binds) in A' by blia.
+        clear -A A' B.
+        destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
+          blia.
       - subst FL.
         simpl_addrs.
         rewrite map.get_put_same. f_equal. solve_word_eq word_ok.
