@@ -30,6 +30,7 @@ Require Import coqutil.Z.HexNotation.
 Require Import compiler.Simp.
 Require Import compiler.util.Learning.
 Require Import compiler.SimplWordExpr.
+Require Import riscv.Platform.FE310ExtSpec.
 Require bedrock2Examples.FE310CompilerDemo.
 Import ListNotations.
 
@@ -119,24 +120,11 @@ End MMIO.
 Section MMIO1.
   Context {p: unique! MMIO.parameters}.
 
-  (* Using the memory layout of FE310-G000 *)
-  Definition isOTP  (addr: word): Prop := Ox"00020000" <= word.unsigned addr < Ox"00022000".
-  Definition isPRCI (addr: word): Prop := Ox"10008000" <= word.unsigned addr < Ox"10010000".
-  Definition isGPIO0(addr: word): Prop := Ox"10012000" <= word.unsigned addr < Ox"10013000".
-  Definition isUART0(addr: word): Prop := Ox"10013000" <= word.unsigned addr < Ox"10014000".
-  Definition isMMIOAddr(addr: word): Prop :=
-    word.unsigned addr mod 4 = 0 /\ (isOTP addr \/ isPRCI addr \/ isGPIO0 addr \/ isUART0 addr).
-
   Local Instance Words32: Utility.Words := {
     Utility.byte := byte;
     Utility.word := word;
     Utility.width_cases := or_introl eq_refl;
   }.
-
-  Local Instance processor_mmio : ExtSpec := {|
-    mmio_load n ctxid a m t post := isMMIOAddr a /\ forall v, post m v;
-    mmio_store n ctxid a v m t post := isMMIOAddr a /\ post m;
-  |}.
 
   Local Notation bedrock2_trace := (list (mem * String.string * list word * (mem * list word))).
   Definition bedrock2_interact (t : bedrock2_trace) (mGive : mem) a (args: list word) (post:mem -> list word -> Prop) :=
@@ -163,6 +151,8 @@ Section MMIO1.
     FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
   |}.
 
+  Local Existing Instance processor_mmio.
+
   Instance FlatToRiscv_params: FlatToRiscvCommon.FlatToRiscv.parameters := {
     FlatToRiscv.def_params := compilation_params;
     FlatToRiscv.locals := locals;
@@ -174,7 +164,7 @@ Section MMIO1.
     FlatToRiscv.ext_spec := ext_spec;
     FlatToRiscv.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
   }.
-
+  
   Section CompilationTest.
     Definition magicMMIOAddrLit: Z := Ox"10024000".
     Variable addr: varname.

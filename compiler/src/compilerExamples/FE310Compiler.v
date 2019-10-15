@@ -28,6 +28,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import compilerExamples.MMIO.
+Require Import riscv.Platform.FE310ExtSpec.
 Require Import coqutil.Z.HexNotation.
 Require Import compiler.GoFlatToRiscv.
 

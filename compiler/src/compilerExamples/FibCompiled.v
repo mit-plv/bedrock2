@@ -17,7 +17,6 @@ Require Import coqutil.Map.SortedList.
 Require Import compiler.ZNameGen.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
-Require Import compilerExamples.MMIO.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.SeparationLogic.

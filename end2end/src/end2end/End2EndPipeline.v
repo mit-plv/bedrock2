@@ -34,6 +34,7 @@ Require Import processor.KamiRiscv.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import compiler.PipelineWithRename.
 Require Import compilerExamples.MMIO.
+Require Import riscv.Platform.FE310ExtSpec.
 Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
 Require Import bedrock2.Byte.
@@ -112,7 +113,6 @@ Section Connect.
   }.
 
   (* TODO why is this needed to make the Check below pass? *)
-  Instance processor_mmio': MinimalMMIO.ExtSpec := @processor_mmio mmio_params.
   Goal True.
   epose (_ : PrimitivesParams (MinimalMMIO.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
                               MetricRiscvMachine).
