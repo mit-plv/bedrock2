@@ -67,21 +67,13 @@ Section Proofs.
       destruct_RiscvMachine initial.
       destruct_RiscvMachine mid.
       simp. subst.
-      eapply runsToNonDet.runsTo_weaken; cycle 1; [|eapply IHvars]. {
+      eapply runsToNonDet.runsTo_weaken; cycle 1;
+        [|eapply IHvars with (p_sp := p_sp) (offset := (offset + bytes_per_word))
+                             (newvalues := l)]. {
         simpl. intros. simp. destruct_RiscvMachine final.
         repeat split; try solve [sidecondition].
-        - (* TODO all of this should be one more powerful cancel tactic
-             with matching of addresses using ring *)
-          use_sep_assumption.
-          cancel.
-          unfold program.
-          symmetry.
-          cancel_seps_at_indices 1%nat 0%nat; [reflexivity|].
-          rewrite word.ring_morph_add.
-          rewrite word.add_assoc.
-          ecancel_step.
-          simpl.
-          reflexivity.
+        - use_sep_assumption.
+          wcancel word_ok.
         - replace (Z.of_nat (S (List.length oldvalues)))
             with (1 + Z.of_nat (List.length oldvalues)) by blia.
           etransitivity; [eassumption|].

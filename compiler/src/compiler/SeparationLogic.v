@@ -1,8 +1,8 @@
 Require Export Coq.Lists.List. Export ListNotations.
 Require Export Coq.ZArith.BinInt. Open Scope Z_scope.
 Require Export coqutil.Word.Interface coqutil.Word.Properties.
-Require Export coqutil.Map.Interface.
-Require Import coqutil.Tactics.rdelta.
+Require Export coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Tactics.rdelta coqutil.Tactics.destr.
 Require Export coqutil.Z.Lia.
 Require Export bedrock2.Lift1Prop.
 Require Export bedrock2.Map.Separation.
@@ -142,3 +142,57 @@ Ltac cancel_by_tag :=
   let tagL := tag x in
   constr_eq tagL tagR;
   cancel_seps_at_indices i j.
+
+Section Unique.
+  Context {key value} {map : map.map key value} {ok : map.ok map}.
+
+  Definition unique_footprint(P: map -> Prop): Prop :=
+    forall m1 m2, P m1 -> P m2 -> map.same_domain m1 m2.
+
+  Lemma same_domain_split: forall m1 m2 m1l m1r m2l m2r,
+      map.same_domain m1l m2l ->
+      map.same_domain m1r m2r ->
+      map.split m1 m1l m1r ->
+      map.split m2 m2l m2r ->
+      map.same_domain m1 m2.
+  Proof.
+    unfold map.same_domain, map.sub_domain, map.split.
+    intros. destruct H, H0, H1, H2. subst.
+    split.
+    - intros.
+      rewrite map.get_putmany_dec in H1.
+      destr (map.get m1r k).
+      + inversion H1. subst v1.
+        specialize (H0 _ _ E). destruct H0 as [v2 G].
+        exists v2. apply map.get_putmany_right. assumption.
+      + specialize (H _ _ H1). destruct H as [v2 G].
+        exists v2. rewrite map.get_putmany_left. 1: assumption.
+        destr (map.get m2r k); [exfalso | reflexivity].
+        specialize (H4 _ _ E0). destruct H4 as [v2' G'].
+        congruence.
+    - intros.
+      rewrite map.get_putmany_dec in H1.
+      destr (map.get m2r k).
+      + inversion H1. subst v1.
+        specialize (H4 _ _ E). destruct H4 as [v2 G].
+        exists v2. apply map.get_putmany_right. assumption.
+      + specialize (H3 _ _ H1). destruct H3 as [v2 G].
+        exists v2. rewrite map.get_putmany_left. 1: assumption.
+        destr (map.get m1r k); [exfalso | reflexivity].
+        specialize (H0 _ _ E0). destruct H0 as [v2' G'].
+        congruence.
+  Qed.
+
+  Lemma unique_footprint_sep(P Q: map -> Prop):
+    unique_footprint P ->
+    unique_footprint Q ->
+    unique_footprint (P * Q)%sep.
+  Proof.
+    unfold unique_footprint. intros.
+    unfold sep in *.
+    destruct H1 as [m1P [m1Q [? [? ?] ] ] ].
+    destruct H2 as [m2P [m2Q [? [? ?] ] ] ].
+    eapply same_domain_split; cycle 2; eauto.
+  Qed.
+
+End Unique.

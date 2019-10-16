@@ -27,6 +27,8 @@ Require Import compiler.eqexact.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.on_hyp_containing.
 Require Import coqutil.Word.DebugWordEq.
+Require Import compiler.MemoryLayout.
+
 Import Utility MetricLogging.
 
 Axiom TODO_sam: False.
@@ -422,6 +424,42 @@ Section Proofs.
   Ltac simpl_g_get :=
     cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl funnames frame] in *.
 
+  Axiom ml: MemoryLayout Semantics.width.
+  Axiom mlOk: MemoryLayoutOk ml.
+
+  Definition is_code(a: word): Prop :=
+    word.unsigned ml.(code_start) <= word.unsigned a < word.unsigned ml.(code_pastend).
+
+  Definition is_heap(a: word): Prop :=
+    word.unsigned ml.(heap_start) <= word.unsigned a < word.unsigned ml.(heap_pastend).
+
+  Definition is_stack(a: word): Prop :=
+    word.unsigned ml.(stack_start) <= word.unsigned a < word.unsigned ml.(stack_pastend).
+
+  Definition is_compiler_managed := PropSet.union is_code (PropSet.union is_heap is_stack).
+
+  Definition footprint_in(P: mem -> Prop)(s: word -> Prop) :=
+    forall m a v, P m -> map.get m a = Some v -> s a.
+
+  Axiom ext_guarantee_preservable_OLD: forall (m1 m2: RiscvMachineL),
+      ext_guarantee m1 ->
+      map.only_differ m1.(getMem) (fun a => is_heap a \/ is_stack a) m2.(getMem) ->
+      ext_guarantee m2.
+
+  Axiom ext_frame: mem -> Prop.
+
+  Axiom ext_guarantee_preservable: forall (m1 m2: RiscvMachineL) (C1 C2: mem -> Prop),
+      (* memory differences are only allowed on heap and stack: *)
+      (ext_frame * C1)%sep m1.(getMem) ->
+      (ext_frame * C2)%sep m2.(getMem) ->
+      footprint_in C1 is_compiler_managed ->
+      footprint_in C2 is_compiler_managed ->
+      (* trace differences are not allowed at all: *)
+      m1.(getLog) = m2.(getLog) ->
+      (* (differences in any other field of the machine are allowed) *)
+      ext_guarantee m1 ->
+      ext_guarantee m2.
+
   Definition goodMachine
       (* high-level state ... *)
       (t: list LogItem)(m: mem)(l: locals)
@@ -437,15 +475,28 @@ Section Proofs.
     (* memory: *)
     (exists stack_trash,
         Z.of_nat (List.length stack_trash) = g.(num_stackwords) /\
-        (g.(frame) * eq m *
+        (ext_frame * g.(frame) * eq m *
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(num_stackwords))))
                     stack_trash *
          program g.(p_insts) g.(insts) *
          functions g.(program_base) g.(e_pos) g.(e_impl) g.(funnames))%sep lo.(getMem)) /\
+    footprint_in g.(frame) is_compiler_managed /\
     (* trace: *)
     lo.(getLog) = t /\
     (* misc: *)
     ext_guarantee lo.
+
+  Definition good_e_impl(e_impl: env)(funnames: list Syntax.funname)(e_pos: fun_pos_env) :=
+    forall f (argnames retnames: list Syntax.varname) (body: stmt),
+      map.get e_impl f = Some (argnames, retnames, body) ->
+      Forall valid_FlatImp_var argnames /\
+      Forall valid_FlatImp_var retnames /\
+      valid_FlatImp_vars body /\
+      NoDup argnames /\
+      NoDup retnames /\
+      stmt_not_too_big body /\
+      List.In f funnames /\
+      exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0.
 
   (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
@@ -454,16 +505,7 @@ Section Proofs.
   Definition good_reduced_e_impl(e_impl_reduced e_impl: env)
     (num_stackwords: Z)(funnames: list Syntax.funname)(e_pos: fun_pos_env): Prop :=
       map.extends e_impl e_impl_reduced /\
-      (forall f (argnames retnames: list Syntax.varname) (body: stmt),
-          map.get e_impl_reduced f = Some (argnames, retnames, body) ->
-          Forall valid_FlatImp_var argnames /\
-          Forall valid_FlatImp_var retnames /\
-          valid_FlatImp_vars body /\
-          NoDup argnames /\
-          NoDup retnames /\
-          stmt_not_too_big body /\
-          List.In f funnames /\
-          exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0).
+      good_e_impl e_impl_reduced funnames e_pos.
 
   Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
@@ -676,6 +718,56 @@ Section Proofs.
       try (eapply list_union_preserves_NoDup; eassumption || constructor).
   Qed.
 
+  Lemma footprint_in_subset: forall (P: mem -> Prop) (s1 s2: word -> Prop),
+    footprint_in P s1 ->
+    PropSet.subset s1 s2 ->
+    footprint_in P s2.
+  Proof.
+    unfold footprint_in, PropSet.subset, PropSet.elem_of.
+    intros. eauto.
+  Qed.
+
+  Lemma footprint_star_in: forall (P1 P2: mem -> Prop) (s1 s2: word -> Prop),
+      footprint_in P1 s1 ->
+      footprint_in P2 s2 ->
+      footprint_in (P1 * P2)%sep (PropSet.union s1 s2).
+  Proof.
+    unfold footprint_in, PropSet.union, PropSet.elem_of, sep, map.split.
+    intros. simp.
+    rewrite map.get_putmany_dec in H2.
+    destruct_one_match_hyp; simp; eauto.
+  Qed.
+
+  Definition unique(P: mem -> Prop) := exists m, iff1 P (eq m).
+
+  Lemma update_only_differ_UNUSED: forall C C' P m m' s,
+      (C' * P)%sep m' ->
+      (C * P)%sep m ->
+      unique P ->
+      footprint_in C s ->
+      footprint_in C' s ->
+      map.only_differ m s m'.
+  Proof.
+    intros *. intros S' S U F F'. unfold sep in *.
+    destruct S as (ml & mr & Hm & Hml & Hmr).
+    destruct S' as (ml' & mr' & Hm' & Hml' & Hmr').
+    unfold footprint_in, map.only_differ, PropSet.elem_of, unique, iff1, map.split in *.
+    specialize F with (1 := Hml).
+    specialize F' with (1 := Hml').
+    destruct U as (mP & U).
+    pose proof (proj1 (U mr) Hmr). subst mP.
+    specialize (U mr'). apply proj1 in U. specialize (U Hmr'). subst mr'.
+    destruct Hm as (? & D). destruct Hm' as (? & D'). subst.
+    intro a.
+    destr (map.get ml a).
+    - left. eapply F. eassumption.
+    - destr (map.get ml' a).
+      + left. eapply F'. eassumption.
+      + destr (map.get mr a).
+        * do 2 erewrite map.get_putmany_right by eassumption. auto.
+        * do 2 rewrite map.get_putmany_left by assumption. rewrite E. rewrite E0. auto.
+  Qed.
+
   Lemma compile_stmt_correct_new:
     forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
@@ -733,7 +825,7 @@ Section Proofs.
           repeat split; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst.
-        do 4 eexists. repeat split; try eassumption. eexists. split; [reflexivity|].
+        do 4 eexists. ssplit; try (eassumption || reflexivity). eexists. split; [reflexivity|].
         ecancel_assumption.
 
     - (* SCall *)
@@ -741,6 +833,7 @@ Section Proofs.
       lazymatch goal with
       | H: good_reduced_e_impl _ _ _  _ _ |- _ => destruct H as (? & ?)
       end.
+      unfold good_e_impl in *.
       simpl in *.
       simp.
       lazymatch goal with
@@ -837,9 +930,6 @@ Section Proofs.
       }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
-           end.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -861,7 +951,7 @@ Section Proofs.
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -893,7 +983,7 @@ Section Proofs.
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -912,7 +1002,7 @@ Section Proofs.
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -966,7 +1056,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1014,7 +1104,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1024,7 +1114,7 @@ Section Proofs.
 
     (* execute function body *)
     eapply runsTo_trans. {
-      unfold good_reduced_e_impl in *. simp.
+      unfold good_reduced_e_impl, good_e_impl in *. simp.
       eapply IHexec with (g := {|
         p_sp := word.sub p_sp !(bytes_per_word * FL);
         e_pos := e_pos;
@@ -1081,19 +1171,30 @@ Section Proofs.
           f_equal. simpl_addrs. solve_word_eq word_ok.
       }
       {
-        eapply ext_guarantee_preservable.
-        + eassumption.
-        + cbn.
-          (* TODO will need stronger prove_ext_guarantee, derive same_domain from sep *)
-          case TODO_sam.
-        + cbn. reflexivity.
+        (* the stuff which we shoveled into the frame is compiler managed:
+        eapply footprint_in_subset.
+        - repeat match goal with
+                 | |- footprint_in (_ * _)%sep _ => eapply footprint_star_in
+                 end.
+        -  *)
+        case TODO_sam.
+      }
+      {
+        eapply ext_guarantee_preservable. 6: eassumption.
+        all: cbn.
+        1: use_sep_assumption; wcancel.
+        1: use_sep_assumption; wcancel.
+        3: reflexivity.
+        (* to footprint of everything except ext_frame is compiler managed *)
+        { case TODO_sam. (* for initial mem *) }
+        { case TODO_sam. (* for final mem *) }
       }
     }
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1150,7 +1251,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1195,7 +1296,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1244,7 +1345,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1280,7 +1381,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1301,7 +1402,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1385,7 +1486,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
     repeat match goal with
-           | H: (_ * _)%sep _ |- _ => clear H
+           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
            end.
     intros. simp.
     repeat match goal with
@@ -1515,16 +1616,22 @@ Section Proofs.
       rewrite! length_save_regs. rewrite! length_load_regs. (* <- needs to be before simpl_addrs *)
       simpl_addrs.
       wcancel.
-    + match goal with
-      | H: ext_guarantee {| getMetrics := initialL_metrics |} |- _ => clear H
-      end.
-      match goal with
-      | H: ext_guarantee _ |- _ => move H at bottom
+    + assumption.
+    + repeat match goal with
+      | H: ext_guarantee ?M |- _ => lazymatch M with
+                                    | context[middle_log0] => move H at bottom
+                                    | _ => clear H
+                                    end
       end.
       eapply ext_guarantee_preservable.
-      * eassumption.
-      * simpl. (* TODO memory same domain *) case TODO_sam.
-      * simpl. reflexivity.
+      all: cbn.
+      6: eassumption.
+      5: reflexivity.
+      all: cbn.
+      * case TODO_sam. (* need seplog about middle_mem2 *)
+      * use_sep_assumption. wcancel.
+      * case TODO_sam. (* is_compiler_managed *)
+      * case TODO_sam. (* is_compiler_managed *)
 
     - (* SLoad *)
       progress unfold Memory.load, Memory.load_Z in *. simp.
@@ -1605,6 +1712,10 @@ Section Proofs.
             try safe_sidecond.
           all: try safe_sidecond.
           all: try safe_sidecond.
+
+Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler_managed.
+          apply TODO_sam_footprint_in.
+
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
@@ -1621,6 +1732,7 @@ Section Proofs.
             after_IH;
             try safe_sidecond.
             all: try safe_sidecond.
+            apply TODO_sam_footprint_in.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
@@ -1635,6 +1747,7 @@ Section Proofs.
             after_IH;
             try safe_sidecond.
           all: try safe_sidecond.
+          apply TODO_sam_footprint_in.
       + simpl in *. simpl. intros. destruct_RiscvMachine middle.
         match goal with
         | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
@@ -1660,6 +1773,7 @@ Section Proofs.
               1: eassumption.
               all: try safe_sidecond.
               all: try safe_sidecond.
+              2: apply TODO_sam_footprint_in.
               match goal with
               | H: regs_initialized _ |- _ => move H at bottom
               end.
@@ -1699,6 +1813,7 @@ Section Proofs.
           after_IH;
           try safe_sidecond.
         all: try safe_sidecond.
+        apply TODO_sam_footprint_in.
       + simpl. intros. destruct_RiscvMachine middle. simp. subst.
         eapply runsTo_trans.
         * eapply IH2 with (g := {| p_sp := _; |});
@@ -1707,6 +1822,7 @@ Section Proofs.
           1: eassumption.
           all: try safe_sidecond.
           all: try safe_sidecond.
+          2: apply TODO_sam_footprint_in.
           case TODO_sam. (* TODO add regs_initialized to goodMachine *)
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 

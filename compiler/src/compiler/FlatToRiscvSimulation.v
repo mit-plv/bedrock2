@@ -47,17 +47,7 @@ Section Sim.
     fun '(e, c, done, t, m, l) st =>
         e = g.(e_impl) /\
         fits_stack g.(num_stackwords) g.(e_impl) c /\
-        (* TODO factor out this forall *)
-        (forall f (argnames retnames: list Syntax.varname) (body: stmt),
-            map.get g.(e_impl) f = Some (argnames, retnames, body) ->
-            Forall valid_FlatImp_var argnames /\
-            Forall valid_FlatImp_var retnames /\
-            valid_FlatImp_vars body /\
-            NoDup argnames /\
-            NoDup retnames /\
-            stmt_not_too_big body /\
-            In f g.(funnames) /\
-            (exists pos : Z, map.get g.(e_pos) f = Some pos /\ pos mod 4 = 0)) /\
+        good_e_impl g.(e_impl) g.(funnames) g.(e_pos) /\
         stmt_not_too_big c /\
         valid_FlatImp_vars c /\
         compile_stmt_new g.(e_pos) pos c = g.(insts) /\
