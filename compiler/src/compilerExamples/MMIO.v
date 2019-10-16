@@ -130,9 +130,15 @@ Section MMIO1.
   Definition bedrock2_interact (t : bedrock2_trace) (mGive : mem) a (args: list word) (post:mem -> list word -> Prop) :=
     mGive = map.empty /\
     if String.eqb "MMIOWRITE" a
-    then exists addr val, args = [addr; val] /\ isMMIOAddr addr /\ post map.empty nil
+    then
+      exists addr val,
+        args = [addr; val] /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0 /\
+        post map.empty nil
     else if String.eqb "MMIOREAD" a
-    then exists addr, args = [addr] /\ isMMIOAddr addr /\ forall val, post map.empty [val]
+    then
+      exists addr,
+        args = [addr] /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0 /\
+        forall val, post map.empty [val]
     else False.
 
   Instance mmio_semantics_params: Semantics.parameters := {|
@@ -150,8 +156,6 @@ Section MMIO1.
     FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
     FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
   |}.
-
-  Local Existing Instance processor_mmio.
 
   Instance FlatToRiscv_params: FlatToRiscvCommon.FlatToRiscv.parameters := {
     FlatToRiscv.def_params := compilation_params;
@@ -222,7 +226,6 @@ Section MMIO1.
     unfold Memory.storeWord. intros. unfold Memory.store_bytes.
     rewrite load4bytes_in_MMIO_is_None; auto.
   Qed.
-
 
   Instance assume_riscv_word_properties: RiscvWordProperties.word.riscv_ok word. Admitted.
 
@@ -353,8 +356,9 @@ Section MMIO1.
 
         unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
 
-        cbv [mmio_store processor_mmio].
-        split; trivial.
+        cbv [mmio_store FE310_mmio].
+        split; [trivial|].
+        split; [red; auto|].
 
         repeat fwd.
 
@@ -448,8 +452,10 @@ Section MMIO1.
         cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
         unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
 
-        cbv [mmio_store processor_mmio].
-        split; trivial; intros.
+        cbv [mmio_load FE310_mmio].
+        split; [trivial|].
+        split; [red; auto|].
+        intros.
 
         repeat fwd.
 
@@ -487,7 +493,6 @@ End MMIO1.
 
 Existing Instance Words32.
 Existing Instance mmio_semantics_params.
-Existing Instance processor_mmio.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.
 Existing Instance assume_riscv_word_properties.

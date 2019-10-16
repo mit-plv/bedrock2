@@ -43,7 +43,6 @@ Existing Instance coqutil.Map.SortedListString.ok.
 Instance mmio_params: MMIO.parameters := { (* everything is inferred automatically *) }.
 
 (* needed because different unfolding levels of implicit arguments *)
-Instance riscv_ext_spec': ExtSpec := processor_mmio.
 Instance MetricMinimalMMIOPrimitivesParams':
   PrimitivesParams (free action result) MetricRiscvMachine :=
   MetricMinimalMMIOPrimitivesParams.
@@ -91,21 +90,21 @@ Proof.
     split; [reflexivity|].
     repeat (destruct_one_match_hyp; try contradiction).
     all: subst.
+    { destruct H1 as (?&?&?&?&?&?); subst.
+      eexists _, _; split; [|split; [|split] ]; eauto. }
     { destruct H1 as (?&?&?&?&?); subst.
-      eexists _, _; split; [|split]; eauto. }
-    { destruct H1 as (?&?&?&?); subst.
-      eexists  _; split; [|split]; eauto. }
+      eexists  _; split; [|split; [|split] ]; eauto. }
   - unfold bedrock2_interact. intros.
     destruct H0; destruct H0.
     split; [reflexivity|].
     repeat (destruct_one_match_hyp; try contradiction).
     all: subst.
+    { destruct H1 as (?&?&?&?&?&?); subst.
+      destruct H as (?&?&?&?&?&?&?); subst.
+      eexists _, _; split; [|split; [|split] ]; eauto. }
     { destruct H1 as (?&?&?&?&?); subst.
       destruct H as (?&?&?&?&?&?); subst.
-      eexists _, _; split; [|split]; eauto. }
-    { destruct H1 as (?&?&?&?); subst.
-      destruct H as (?&?&?&?&?); subst.
-      eexists  _; split; [|split]; eauto. }
+      eexists  _; split; [|split; [|split] ]; eauto. }
     Unshelve.
     all : case shelved_evar_from_other_admit.
 Qed.

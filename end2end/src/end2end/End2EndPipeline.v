@@ -112,7 +112,6 @@ Section Connect.
     word_ok := @KamiWord.wordWok _ (or_introl eq_refl);
   }.
 
-  (* TODO why is this needed to make the Check below pass? *)
   Goal True.
   epose (_ : PrimitivesParams (MinimalMMIO.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
                               MetricRiscvMachine).
