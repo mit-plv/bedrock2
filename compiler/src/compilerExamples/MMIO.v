@@ -30,6 +30,7 @@ Require Import coqutil.Z.HexNotation.
 Require Import compiler.Simp.
 Require Import compiler.util.Learning.
 Require Import compiler.SimplWordExpr.
+Require Import riscv.Platform.FE310ExtSpec.
 Require bedrock2Examples.FE310CompilerDemo.
 Import ListNotations.
 
@@ -119,32 +120,25 @@ End MMIO.
 Section MMIO1.
   Context {p: unique! MMIO.parameters}.
 
-  (* Using the memory layout of FE310-G000 *)
-  Definition isOTP  (addr: word): Prop := Ox"00020000" <= word.unsigned addr < Ox"00022000".
-  Definition isPRCI (addr: word): Prop := Ox"10008000" <= word.unsigned addr < Ox"10010000".
-  Definition isGPIO0(addr: word): Prop := Ox"10012000" <= word.unsigned addr < Ox"10013000".
-  Definition isUART0(addr: word): Prop := Ox"10013000" <= word.unsigned addr < Ox"10014000".
-  Definition isMMIOAddr(addr: word): Prop :=
-    word.unsigned addr mod 4 = 0 /\ (isOTP addr \/ isPRCI addr \/ isGPIO0 addr \/ isUART0 addr).
-
   Local Instance Words32: Utility.Words := {
     Utility.byte := byte;
     Utility.word := word;
     Utility.width_cases := or_introl eq_refl;
   }.
 
-  Local Instance processor_mmio : ExtSpec := {|
-    mmio_load n ctxid a m t post := isMMIOAddr a /\ forall v, post m v;
-    mmio_store n ctxid a v m t post := isMMIOAddr a /\ post m;
-  |}.
-
   Local Notation bedrock2_trace := (list (mem * String.string * list word * (mem * list word))).
   Definition bedrock2_interact (t : bedrock2_trace) (mGive : mem) a (args: list word) (post:mem -> list word -> Prop) :=
     mGive = map.empty /\
     if String.eqb "MMIOWRITE" a
-    then exists addr val, args = [addr; val] /\ isMMIOAddr addr /\ post map.empty nil
+    then
+      exists addr val,
+        args = [addr; val] /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0 /\
+        post map.empty nil
     else if String.eqb "MMIOREAD" a
-    then exists addr, args = [addr] /\ isMMIOAddr addr /\ forall val, post map.empty [val]
+    then
+      exists addr,
+        args = [addr] /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0 /\
+        forall val, post map.empty [val]
     else False.
 
   Instance mmio_semantics_params: Semantics.parameters := {|
@@ -174,7 +168,7 @@ Section MMIO1.
     FlatToRiscv.ext_spec := ext_spec;
     FlatToRiscv.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
   }.
-
+  
   Section CompilationTest.
     Definition magicMMIOAddrLit: Z := Ox"10024000".
     Variable addr: varname.
@@ -232,7 +226,6 @@ Section MMIO1.
     unfold Memory.storeWord. intros. unfold Memory.store_bytes.
     rewrite load4bytes_in_MMIO_is_None; auto.
   Qed.
-
 
   Instance assume_riscv_word_properties: RiscvWordProperties.word.riscv_ok word. Admitted.
 
@@ -363,8 +356,9 @@ Section MMIO1.
 
         unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
 
-        cbv [mmio_store processor_mmio].
-        split; trivial.
+        cbv [mmio_store FE310_mmio].
+        split; [trivial|].
+        split; [red; auto|].
 
         repeat fwd.
 
@@ -458,8 +452,10 @@ Section MMIO1.
         cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
         unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
 
-        cbv [mmio_store processor_mmio].
-        split; trivial; intros.
+        cbv [mmio_load FE310_mmio].
+        split; [trivial|].
+        split; [red; auto|].
+        intros.
 
         repeat fwd.
 
@@ -497,7 +493,6 @@ End MMIO1.
 
 Existing Instance Words32.
 Existing Instance mmio_semantics_params.
-Existing Instance processor_mmio.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.
 Existing Instance assume_riscv_word_properties.
