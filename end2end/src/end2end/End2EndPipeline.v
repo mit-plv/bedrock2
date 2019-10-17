@@ -46,11 +46,6 @@ Axiom TODO_sam: False.
 Axiom TODO_andres: False.
 Axiom TODO_joonwon: False.
 
-Module map.
-  Definition of_pairs{K V: Type}{M: map.map K V}(pairs: list (K * V)): M :=
-    RegRename.map.putmany_of_pairs map.empty pairs.
-End map.
-
 Require Import Coq.Classes.Morphisms.
 
 Lemma program_logic_sound
@@ -62,10 +57,10 @@ Lemma program_logic_sound
          (c: cmd) (t: Semantics.trace) (m: mem) (l: locals) (mc: MetricLogging.MetricLog)
          (post : Semantics.trace -> mem -> locals -> Prop),
     WeakestPrecondition.cmd (WeakestPrecondition.call funimplsList) c t m l post ->
-    Semantics.exec (map.of_pairs funimplsList) c t m l mc (fun t' m' l' mc' => post t' m' l').
+    Semantics.exec (map.of_list funimplsList) c t m l mc (fun t' m' l' mc' => post t' m' l').
 Proof.
   intros.
-  assert (map.of_pairs funimplsList = map.empty) as E by case TODO_andres. rewrite E.
+  assert (map.of_list funimplsList = map.empty) as E by case TODO_andres. rewrite E.
   eapply WeakestPreconditionProperties.sound_nil.
   match goal with
   | _: WeakestPrecondition.cmd ?F' _ _ _ _ _ |- WeakestPrecondition.cmd ?F _ _ _ _ _ =>
@@ -209,7 +204,7 @@ Section Connect.
       ProgramSpec.loop_body := loop_body;
     |}.
     - exact (List.map fst funimplsList).
-    - exact (map.of_pairs funimplsList).
+    - exact (map.of_list funimplsList).
   Defined.
 
   Let funspecs := WeakestPrecondition.call (p := strname_sem) funimplsList.

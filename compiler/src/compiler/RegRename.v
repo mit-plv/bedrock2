@@ -343,10 +343,10 @@ Section RegAlloc.
   Lemma putmany_of_list_states_compat: forall r: src2imp,
       map.injective r ->
       forall srcnames impnames lH lH' lL vals,
-      map.putmany_of_list srcnames vals lH = Some lH' ->
+      map.putmany_of_list_zip srcnames vals lH = Some lH' ->
       map.getmany_of_list r srcnames = Some impnames ->
       states_compat lH r lL ->
-      exists lL', map.putmany_of_list impnames vals lL = Some lL' /\
+      exists lL', map.putmany_of_list_zip impnames vals lL = Some lL' /\
                   states_compat lH' r lL'.
   Proof.
     intros r Inj.
@@ -667,9 +667,9 @@ Section RegAlloc.
       NoDup av ->
       rename_binds r srcvars av = Some (r', impvars, av') ->
       states_compat lH r lL ->
-      map.putmany_of_list srcvars values lH = Some lH' ->
+      map.putmany_of_list_zip srcvars values lH = Some lH' ->
       exists lL',
-        map.putmany_of_list impvars values lL = Some lL' /\
+        map.putmany_of_list_zip impvars values lL = Some lL' /\
         states_compat lH' r' lL'.
   Proof.
     induction srcvars; intros; simpl in *.

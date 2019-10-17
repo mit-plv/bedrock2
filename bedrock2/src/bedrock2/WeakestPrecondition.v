@@ -85,13 +85,13 @@ Section WeakestPrecondition.
       | cmd.call binds fname arges =>
         bind_ex args <- dexprs m l arges;
         call fname t m args (fun t m rets =>
-          bind_ex_Some l <- map.putmany_of_list binds rets l;
+          bind_ex_Some l <- map.putmany_of_list_zip binds rets l;
           post t m l)
       | cmd.interact binds action arges =>
         bind_ex args <- dexprs m l arges;
         exists mKeep mGive, map.split m mKeep mGive /\
         ext_spec t mGive action args (fun mReceive rets =>
-          bind_ex_Some l <- map.putmany_of_list binds rets l;
+          bind_ex_Some l <- map.putmany_of_list_zip binds rets l;
           exists m, map.split m mKeep mReceive /\
           post (cons ((mGive, action, args), (mReceive, rets)) t) m l)
       end.
@@ -99,7 +99,7 @@ Section WeakestPrecondition.
   End WithFunctions.
 
   Definition func call '(innames, outnames, c) (t : trace) (m : mem) (args : list word) (post : trace -> mem -> list word -> Prop) :=
-      bind_ex_Some l <- map.of_list innames args;
+      bind_ex_Some l <- map.of_list_zip innames args;
       cmd call c t m l (fun t m l =>
         list_map (get l) outnames (fun rets =>
         post t m rets)).
