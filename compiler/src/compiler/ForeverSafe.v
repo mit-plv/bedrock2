@@ -36,15 +36,18 @@ Section ForeverSafe.
     forall (safe: RiscvMachineL -> Prop) (good_trace: trace -> Prop),
       (forall st, safe st -> good_trace st.(getLog)) ->
       forall (st : RiscvMachineL),
+        valid_machine st ->
         runsTo (mcomp_sat (run1 iset)) st safe ->
         exists rest : trace, good_trace (rest ++ getLog st).
   Proof.
-    intros ? ? safe2good st R. induction R.
+    intros ? ? safe2good st V R. induction R.
     - exists nil. rewrite List.app_nil_l. eauto.
     - rename P into safe1.
-      pose proof (run1_sane _ _ _ H) as N. destruct N as (_ & N).
-      pose proof (run1_sane _ _ _ N) as N'. destruct N' as ((_ & mid & (Hmid & diff1 & E1)) & _).
-      specialize (H1 _ Hmid safe2good).
+      pose proof (run1_sane _ _ _ V H) as N. destruct N as (_ & N).
+      pose proof (run1_sane _ _ _ V N) as N'. cbv beta in *.
+      destruct N' as ((_ & mid & A) & _).
+      destruct A as (((Hmid & (diff1 & E1)) & Vmid) & _).
+      specialize (H1 _ Hmid safe2good Vmid).
       destruct H1 as (diff2 & G).
       rewrite E1 in G.
       rewrite List.app_assoc in G.
@@ -133,23 +136,6 @@ Section ForeverSafe.
     - simpl. eapply spec_Bind_unit.
       + eapply runsTo_safe1_inv. eassumption.
       + simpl. intros. eapply IHn. assumption.
-  Qed.
-
-  (* forall n, after running for n steps, we've output a prefix of a good trace.
-     The precondition can either be trivially established using runsToDone if safe1 already
-     holds, or it can be established by some initialization code which runs before the main
-     event loop. *)
-  Lemma prefix_of_good_inv: forall (good_trace: trace -> Prop),
-      (forall st, safe1 st -> good_trace st.(getLog)) ->
-      forall (n: nat) (st: RiscvMachineL),
-      runsTo (mcomp_sat (run1 iset)) st safe1 ->
-      mcomp_sat (runN n) st (fun st' => exists rest : trace, good_trace (rest ++ getLog st')).
-  Proof.
-    intros ? safe2good n st R.
-    eapply mcomp_sat_weaken; cycle 1.
-    - eapply safe_forever. assumption.
-    - simpl. intros.
-      eapply extend_runsTo_to_good_trace; eassumption.
   Qed.
 
 End ForeverSafe.

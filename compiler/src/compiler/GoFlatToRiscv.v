@@ -28,6 +28,7 @@ Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatToRiscvDef.
+Require Import riscv.Utility.runsToNonDet.
 Import Utility.
 
 Section Go.
@@ -71,6 +72,45 @@ Section Go.
   Proof.
     intros. eapply mcomp_sat_weaken; [|eassumption].
     simpl. intros _. assumption.
+  Qed.
+
+  Lemma runsTo_sane: forall iset (P: RiscvMachineL -> Prop) mach,
+      runsTo (mcomp_sat (run1 iset)) mach P ->
+      valid_machine mach ->
+      runsTo (mcomp_sat (run1 iset)) mach (fun mach' =>
+        (P mach' /\ exists diff, mach'.(getLog) = diff ++ mach.(getLog)) /\ valid_machine mach').
+  Proof.
+    induction 1; intros.
+    - eapply runsToDone. ssplit; try assumption. exists nil. reflexivity.
+    - pose proof run1_sane as A.
+      unfold mcomp_sane in A.
+      specialize A with (1 := H2) (2 := H).
+      apply proj2 in A.
+      eapply runsToStep. 1: exact A.
+      cbv beta.
+      intros. destruct H3 as ((? & (diff & ?)) & ?). eapply runsTo_weaken.
+      + eapply H1; eassumption.
+      + cbv beta. intros. destruct H6 as ((? & (diff' & ?)) & ?).
+        ssplit; try eassumption.
+        rewrite H7. rewrite H4. rewrite app_assoc. eexists. reflexivity.
+  Qed.
+
+  (* a nicer version of runsTo_weaken which gives you two more hypotheses while proving P -> Q *)
+  Lemma runsTo_get_sane: forall iset (P Q: RiscvMachineL -> Prop) mach,
+      valid_machine mach ->
+      runsTo (mcomp_sat (run1 iset)) mach P ->
+      (forall mach': RiscvMachineL,
+          (exists diff, mach'.(getLog) = diff ++ mach.(getLog)) ->
+          valid_machine mach' ->
+          P mach' ->
+          Q mach') ->
+      runsTo (mcomp_sat (run1 iset)) mach Q.
+  Proof.
+    intros.
+    eapply runsTo_weaken.
+    - eapply runsTo_sane; eassumption.
+    - cbv beta. intros. destruct H2 as ((? & ?) & ?).
+      eapply H1; assumption.
   Qed.
 
   Lemma spec_Bind_unit: forall (initialL: RiscvMachineL)

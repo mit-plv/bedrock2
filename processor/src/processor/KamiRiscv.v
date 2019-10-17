@@ -56,7 +56,7 @@ Section Equiv.
   (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {Registers: map.map Register word}
           {mem: map.map word byte}
-          {mmio_semantics : ExtSpec}.
+          {mmio_semantics : MMIOSpec}.
 
   Local Notation M := (free action result).
   Local Notation RiscvMachine := MetricRiscvMachine.
@@ -514,7 +514,7 @@ Section Equiv.
       setoid_rewrite <-H3 in H1.
       repeat t.
       setoid_rewrite H1 in H0.
-      
+
       (* cbv [Memory.loadWord] in *. *)
       (* repeat t. *)
       (* rewrite H1  in *. *)
@@ -672,7 +672,7 @@ Section Equiv.
   Definition p4mm: Modules := p4mm Hinstr kamiMemInit.
 
   Local Notation procInit := (procInit (instrMemSizeLg:= instrMemSizeLg)).
-  
+
   Definition riscvRegsInit:
     {rrfi: Registers & regs_related (evalConstT (rfInit procInit)) rrfi}.
   Proof.
