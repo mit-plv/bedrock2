@@ -1,5 +1,6 @@
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.rewr.
+Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
@@ -436,7 +437,7 @@ Section Proofs.
   Definition is_stack(a: word): Prop :=
     word.unsigned ml.(stack_start) <= word.unsigned a < word.unsigned ml.(stack_pastend).
 
-  Definition is_compiler_managed := PropSet.union is_code (PropSet.union is_heap is_stack).
+  Definition is_compiler_managed := union is_code (union is_heap is_stack).
 
   Definition footprint_in(P: mem -> Prop)(s: word -> Prop) :=
     forall m a v, P m -> map.get m a = Some v -> s a.
@@ -535,14 +536,14 @@ Section Proofs.
 
   Lemma preserve_regs_initialized_after_load_regs: forall regs1 regs2 vars vals,
     regs_initialized regs1 ->
-    map.only_differ regs1 (PropSet.of_list vars) regs2 ->
+    map.only_differ regs1 (of_list vars) regs2 ->
     map.getmany_of_list regs2 vars = Some vals ->
     regs_initialized regs2.
   Proof.
     intros. intros r B.
     specialize (H r B).
     specialize (H0 r). destruct H0 as [A | A].
-    - unfold PropSet.elem_of, PropSet.of_list in A.
+    - unfold elem_of, of_list in A.
       eapply getmany_of_list_exists_elem; eassumption.
     - rewrite <- A. exact H.
   Qed.
@@ -720,23 +721,139 @@ Section Proofs.
 
   Lemma footprint_in_subset: forall (P: mem -> Prop) (s1 s2: word -> Prop),
     footprint_in P s1 ->
-    PropSet.subset s1 s2 ->
+    subset s1 s2 ->
     footprint_in P s2.
   Proof.
-    unfold footprint_in, PropSet.subset, PropSet.elem_of.
+    unfold footprint_in, subset, elem_of.
     intros. eauto.
   Qed.
 
   Lemma footprint_star_in: forall (P1 P2: mem -> Prop) (s1 s2: word -> Prop),
       footprint_in P1 s1 ->
       footprint_in P2 s2 ->
-      footprint_in (P1 * P2)%sep (PropSet.union s1 s2).
+      footprint_in (P1 * P2)%sep (union s1 s2).
   Proof.
-    unfold footprint_in, PropSet.union, PropSet.elem_of, sep, map.split.
+    unfold footprint_in, union, elem_of, sep, map.split.
     intros. simp.
     rewrite map.get_putmany_dec in H2.
     destruct_one_match_hyp; simp; eauto.
   Qed.
+
+  Definition range_OLD(start: word)(count: nat): word -> Prop :=
+    of_list (HList.tuple.to_list (bedrock2.Memory.footprint start count)).
+
+  Fixpoint range(start: word)(count: nat): word -> Prop :=
+    match count with
+    | O => empty_set
+    | S n => union (singleton_set start) (range (word.add start (word.of_Z 1)) n)
+    end.
+
+  Lemma range_add_impl: forall n m a start,
+      range start (n + m) a <-> union (range start n)
+                                             (range (word.add start (word.of_Z (Z.of_nat n))) m) a.
+  Proof.
+    split; revert n m a start; induction n; intros.
+    - simpl. change (Z.of_nat 0) with 0%Z. rewrite add_0_r. right. assumption.
+    - rewrite Nat.add_succ_l in *. simpl in *.
+      destruct H.
+      + cbv [elem_of singleton_set] in H. subst a.
+        left. left. reflexivity.
+      + specialize IHn with (1 := H).
+        clear H.
+        replace (start + !#(S n)) with (start + !1 + !#n) by solve_word_eq word_ok.
+        unfold union, elem_of in *. tauto.
+    - change (Z.of_nat 0) with 0%Z in *. rewrite add_0_r in H.
+      simpl. unfold union, elem_of in *. destruct H; [exfalso|assumption].
+      contradiction H.
+    - simpl in *. unfold union, elem_of in *.
+      apply or_assoc in H.
+      destruct H; [solve [auto]|].
+      right.
+      eapply IHn.
+      replace (start + !#(S n)) with (start + !1 + !#n) in H by solve_word_eq word_ok.
+      exact H.
+  Qed.
+
+  Lemma range_add: forall n m start,
+      range start (n + m) = union (range start n)
+                                          (range (word.add start (word.of_Z (Z.of_nat n))) m).
+  Proof.
+    intros. eapply iff1ToEq. unfold iff1. intro a. eapply range_add_impl.
+  Qed.
+
+  (* if P allows different footprints, we return the union of all possible footprints *)
+  Definition footprint(P: mem -> Prop): word -> Prop :=
+    fun a => exists m v, P m /\ map.get m a = Some v.
+
+  Lemma footprint_emp: forall (P: Prop),
+      footprint (emp P) = empty_set.
+  Proof.
+    unfold footprint, emp, empty_set.
+    intros.
+    eapply iff1ToEq. unfold iff1. intros. split; intros.
+    - simp. rewrite map.get_empty in Hr. discriminate.
+    - contradiction.
+  Qed.
+
+  Lemma range_0_empty: forall start,
+      range start 0 = empty_set.
+  Proof.
+    intros. reflexivity.
+  Qed.
+
+  Lemma footprint_star: forall (P1 P2: mem -> Prop),
+      footprint (P1 * P2)%sep = union (footprint P1) (footprint P2).
+  Proof.
+    unfold footprint, union, elem_of, sep, map.split.
+    intros. eapply iff1ToEq. intro a. split; intros; simp.
+    - rewrite map.get_putmany_dec in Hr.
+      destruct_one_match_hyp; simp; eauto.
+    - (* does not hold, because if an address is in the union, we only know
+         that one predicate holds, but for star, we need both predicates to
+         hold on some memory.
+         Therefore, we don't use equality (or <->) between sets, but only
+         subsets. *)
+  Abort.
+
+(*
+  Lemma footprint_array: forall (A: Type) elem size (xs: list A) start,
+    (forall a x, subset (footprint (elem a x)) = range a (Z.to_nat (word.unsigned size))) ->
+    footprint (array elem size start xs) =
+    (range start (Z.to_nat (word.unsigned size) * List.length xs)).
+  Proof.
+    induction xs; intros.
+    - simpl in *. rewrite Nat.mul_0_r. rewrite footprint_emp. rewrite range_0_empty.
+      reflexivity.
+    - simpl. in *.
+      unfold sep, map.split in H. simp.
+      specialize IHxs with (1 := Hrr).
+      rewrite map.get_putmany_dec in H0.
+      destr (map.get mq a0).
+      + replace r with v in * by congruence. clear r H0.
+        specialize IHxs with (1 := E).
+        rewrite Nat.mul_succ_r.
+
+  Lemma footprint_array: forall (A: Type) elem size (xs: list A) start,
+    footprint_in (array elem size start xs)
+                 (range start (Z.to_nat (word.unsigned size) * List.length xs)).
+  Proof.
+    unfold footprint_in, of_list, bedrock2.Memory.footprint.
+    induction xs; intros.
+    - exfalso. simpl in *. unfold emp in *. simp. rewrite map.get_empty in H0. discriminate.
+    - simpl in *.
+      unfold sep, map.split in H. simp.
+      specialize IHxs with (1 := Hrr).
+      rewrite map.get_putmany_dec in H0.
+      destr (map.get mq a0).
+      + replace r with v in * by congruence. clear r H0.
+        specialize IHxs with (1 := E).
+        rewrite Nat.mul_succ_r.
+
+ simpl. rewrite Nat.mul_0_r. simpl. Search (_ * 0)%nat.
+
+  Lemma footprint_ptsto_word: forall
+      footprint_in (ptsto_word a v) (fun p => bedrock2.Memory.footprint
+*)
 
   Definition unique(P: mem -> Prop) := exists m, iff1 P (eq m).
 
@@ -751,7 +868,7 @@ Section Proofs.
     intros *. intros S' S U F F'. unfold sep in *.
     destruct S as (ml & mr & Hm & Hml & Hmr).
     destruct S' as (ml' & mr' & Hm' & Hml' & Hmr').
-    unfold footprint_in, map.only_differ, PropSet.elem_of, unique, iff1, map.split in *.
+    unfold footprint_in, map.only_differ, elem_of, unique, iff1, map.split in *.
     specialize F with (1 := Hml).
     specialize F' with (1 := Hml').
     destruct U as (mP & U).
@@ -1162,7 +1279,7 @@ Section Proofs.
                end.
         intros HO F.
         unfold map.only_differ in HO.
-        unfold PropSet.elem_of, PropSet.of_list in HO.
+        unfold elem_of, of_list in HO.
         specialize (HO RegisterNames.sp).
         destruct HO as [HO | HO].
         - specialize (F _ HO). unfold valid_FlatImp_var, RegisterNames.sp in F. exfalso. blia.
@@ -1329,7 +1446,7 @@ Section Proofs.
         | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
           specialize (D RegisterNames.sp); destruct D as [A | A]
         end.
-        + exfalso. unfold PropSet.elem_of, PropSet.of_list in A.
+        + exfalso. unfold elem_of, of_list in A.
           specialize (F _ A). unfold valid_FlatImp_var, RegisterNames.sp in F.
           blia.
         + etransitivity; [symmetry|]; eassumption.
@@ -1537,7 +1654,7 @@ Section Proofs.
        *)
 
       (* TODO this should be in the IH *)
-      try assert (map.only_differ middle_regs0 (PropSet.of_list (modVars_as_list Z.eqb body))
+      try assert (map.only_differ middle_regs0 (of_list (modVars_as_list Z.eqb body))
                                   middle_regs1) by fail.
 
       (* TODO do we have to save argvars (names chosen by callee) on the stack, ie
@@ -1561,7 +1678,7 @@ Section Proofs.
         rename H into D; clear -D h A;
         replace v with v' in D by solve_word_eq word_ok
       end.
-      assert (~ PropSet.elem_of RegisterNames.sp (PropSet.of_list binds)). {
+      assert (~ elem_of RegisterNames.sp (of_list binds)). {
         clear -A. cbv -[List.In].
         intro C.
         eapply Forall_forall in A. 2: exact C.
