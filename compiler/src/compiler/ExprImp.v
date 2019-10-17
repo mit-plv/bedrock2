@@ -77,10 +77,10 @@ Section ExprImp1.
         | cmd.call binds fname args =>
           'Some (params, rets, fbody) <- map.get e fname;
           'Some argvs <- List.option_all (List.map (eval_expr_old m st) args);
-          'Some st0 <- map.putmany_of_list params argvs map.empty;
+          'Some st0 <- map.putmany_of_list_zip params argvs map.empty;
           'Some (st1, m') <- eval_cmd f st0 m fbody;
           'Some retvs <- map.getmany_of_list st1 rets;
-          'Some st' <- map.putmany_of_list binds retvs st;
+          'Some st' <- map.putmany_of_list_zip binds retvs st;
           Some (st', m')
         | cmd.interact _ _ _ => None (* unsupported *)
         end
@@ -193,10 +193,10 @@ Section ExprImp1.
       exists params rets fbody argvs st0 st1 m' retvs st',
         map.get e fname = Some (params, rets, fbody) /\
         List.option_all (List.map (eval_expr_old m1 st) args) = Some argvs /\
-        map.putmany_of_list params argvs map.empty = Some st0 /\
+        map.putmany_of_list_zip params argvs map.empty = Some st0 /\
         eval_cmd f st0 m1 fbody = Some (st1, m') /\
         map.getmany_of_list st1 rets = Some retvs /\
-        map.putmany_of_list binds retvs st = Some st' /\
+        map.putmany_of_list_zip binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. eauto 16. Qed.
 

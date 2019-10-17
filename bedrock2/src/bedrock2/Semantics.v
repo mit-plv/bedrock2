@@ -231,11 +231,11 @@ Module exec. Section WithEnv.
       t m l mc post
       params rets fbody (_ : map.get e fname = Some (params, rets, fbody))
       args mc' (_ : evaluate_call_args_log m l arges mc = Some (args, mc'))
-      lf (_ : map.putmany_of_list params args map.empty = Some lf)
+      lf (_ : map.of_list_zip params args = Some lf)
       mid (_ : exec fbody t m lf mc' mid)
       (_ : forall t' m' st1 mc'', mid t' m' st1 mc'' ->
           exists retvs, map.getmany_of_list st1 rets = Some retvs /\
-          exists l', map.putmany_of_list binds retvs l = Some l' /\
+          exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
           post t' m' l' mc'')
     : exec (cmd.call binds fname arges) t m l mc post
   | interact binds action arges
@@ -244,7 +244,7 @@ Module exec. Section WithEnv.
       args mc' (_ :  evaluate_call_args_log m l arges mc = Some (args, mc'))
       mid (_ : ext_spec t mGive action args mid)
       (_ : forall mReceive resvals, mid mReceive resvals ->
-          exists l', map.putmany_of_list binds resvals l = Some l' /\
+          exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
           exists m', map.split m' mKeep mReceive /\
                      post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
                        (addMetricInstructions 1

@@ -171,10 +171,10 @@ Section FlatImp1.
         | SCall binds fname args =>
           'Some (params, rets, fbody) <- map.get e fname;
           'Some argvs <- map.getmany_of_list st args;
-          'Some st0 <- map.putmany_of_list params argvs map.empty;
+          'Some st0 <- map.putmany_of_list_zip params argvs map.empty;
           'Some (st1, m') <- eval_stmt f st0 m fbody;
           'Some retvs <- map.getmany_of_list st1 rets;
-          'Some st' <- map.putmany_of_list binds retvs st;
+          'Some st' <- map.putmany_of_list_zip binds retvs st;
           Some (st', m')
         | SInteract binds fname args =>
           None (* the deterministic semantics do not support external calls *)
@@ -260,10 +260,10 @@ Section FlatImp1.
       exists params rets fbody argvs st0 st1 m' retvs st',
         map.get e fname = Some (params, rets, fbody) /\
         map.getmany_of_list st args = Some argvs /\
-        map.putmany_of_list params argvs map.empty = Some st0 /\
+        map.putmany_of_list_zip params argvs map.empty = Some st0 /\
         eval_stmt f st0 m1 fbody = Some (st1, m') /\
         map.getmany_of_list st1 rets = Some retvs /\
-        map.putmany_of_list binds retvs st = Some st' /\
+        map.putmany_of_list_zip binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. eauto 16. Qed.
 
@@ -326,7 +326,7 @@ Module exec.
         ext_spec t mGive action argvals outcome ->
         (forall mReceive resvals,
             outcome mReceive resvals ->
-            exists l', map.putmany_of_list resvars resvals l = Some l' /\
+            exists l', map.putmany_of_list_zip resvars resvals l = Some l' /\
                        exists m', map.split m' mKeep mReceive /\
                                   post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
                                        (addMetricInstructions 1
@@ -336,13 +336,13 @@ Module exec.
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
-        map.putmany_of_list params argvs map.empty = Some st0 ->
+        map.putmany_of_list_zip params argvs map.empty = Some st0 ->
         exec fbody t m st0 mc outcome ->
         (forall t' m' mc' st1,
             outcome t' m' st1 mc' ->
             exists retvs l',
               map.getmany_of_list st1 rets = Some retvs /\
-              map.putmany_of_list binds retvs l = Some l' /\
+              map.putmany_of_list_zip binds retvs l = Some l' /\
               post t' m' l' mc') ->
         exec (SCall binds fname args) t m l mc post
     | load: forall t m l mc sz x a v addr post,

@@ -383,7 +383,7 @@ Section Proofs.
           outcome map.empty resvals ->
           mGive = map.empty ->
           exists (finalRegsH: locals) finalMetricsH,
-            map.putmany_of_list resvars resvals initialRegsH = Some finalRegsH /\
+            map.putmany_of_list_zip resvars resvals initialRegsH = Some finalRegsH /\
             postH ((map.empty, action, argvals, (map.empty, resvals)) :: initialL.(getLog))
                   initialMH finalRegsH finalMetricsH) ->
       runsTo initialL
@@ -814,7 +814,7 @@ Section Proofs.
             move H at bottom;
             destruct H as (finalRegsH & ? & finalMH & ? & ?)
           end.
-          edestruct (map.putmany_of_list_extends_exists (ok := locals_ok))
+          edestruct (map.putmany_of_list_zip_extends_exists (ok := locals_ok))
             as (finalRegsL & ? & ?); [eassumption..|].
           do 2 match goal with
           | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H
@@ -896,7 +896,7 @@ Section Proofs.
          be terminating *)
       match goal with
       | H: _ |- _ => let N := fresh in pose proof H as N;
-                     apply map.putmany_of_list_sameLength in N;
+                     apply map.putmany_of_list_zip_sameLength in N;
                      symmetry in N
       end.
       match goal with
@@ -1423,7 +1423,7 @@ Section Proofs.
         replace (Datatypes.length binds) with (Datatypes.length retnames); cycle 1. {
             repeat match goal with
             | H: _ |- _ => let N := fresh in pose proof H as N;
-                                               apply map.putmany_of_list_sameLength in N;
+                                               apply map.putmany_of_list_zip_sameLength in N;
                                                symmetry in N;
                                                ensure_new N
             end.
@@ -1457,10 +1457,10 @@ Section Proofs.
         end.
         apply map.getmany_of_list_length in G.
         match goal with
-        | H: map.putmany_of_list _ retvs _ = Some _ |- _ =>
+        | H: map.putmany_of_list_zip _ retvs _ = Some _ |- _ =>
           rename H into G'; move G' at bottom
         end.
-        apply map.putmany_of_list_sameLength in G'.
+        apply map.putmany_of_list_zip_sameLength in G'.
         replace (Datatypes.length retnames) with (Datatypes.length binds) in A' by blia.
         clear -A A' B.
         destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
@@ -1470,7 +1470,7 @@ Section Proofs.
         rewrite map.get_put_same. f_equal. solve_word_eq word_ok.
       - repeat match goal with
                | H: _ |- _ => let N := fresh in pose proof H as N;
-                                                  apply map.putmany_of_list_sameLength in N;
+                                                  apply map.putmany_of_list_zip_sameLength in N;
                                                   symmetry in N;
                                                   ensure_new N
                end.
@@ -1543,7 +1543,7 @@ Section Proofs.
       (* TODO do we have to save argvars (names chosen by callee) on the stack, ie
          treat them the same as of modVars of function body?? *)
 
-      (* TODO how to explain map.getmany_of_list and map.putmany_of_list to map_solver? *)
+      (* TODO how to explain map.getmany_of_list and map.putmany_of_list_zip to map_solver? *)
 
       (*
       try match goal with

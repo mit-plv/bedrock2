@@ -160,11 +160,11 @@ Ltac t :=
   match goal with
   | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eexists; split; [solve[repeat straightline]|]
   | |- map.split _ _ _ => eapply Properties.map.split_empty_r; reflexivity
-  | H: map.of_list ?ks ?vs = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
-  | H: map.putmany_of_list ?ks ?vs ?m0 = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
+  | H: map.of_list_zip ?ks ?vs = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
+  | H: map.putmany_of_list_zip ?ks ?vs ?m0 = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
   | _ => straightline
-  | |- map.of_list _ _ = Some _ => exact eq_refl
-  | |- map.putmany_of_list _ _ _ = Some _ => exact eq_refl
+  | |- map.of_list_zip _ _ = Some _ => exact eq_refl
+  | |- map.putmany_of_list_zip _ _ _ = Some _ => exact eq_refl
   | |- exists _, _ => eexists
   | |- _ /\ _ => split
   | |- well_founded _ => eapply word.well_founded_lt_unsigned
@@ -210,9 +210,9 @@ Proof.
 
   _).
   (* SearchAbout I (* ANOMALY *) *)
-  eexists _, _, (fun v t _ l => exists p, map.of_list [running; prev; one; dot] [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
-  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list [polling; rx] [v; rxv] l0 = Some l); repeat t.
-  eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l); repeat t.
+  eexists _, _, (fun v t _ l => exists p, map.of_list_zip [running; prev; one; dot] [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
+  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip [polling; rx] [v; rxv] l0 = Some l); repeat t.
+  eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip [polling; tx] [v; txv] l0 = Some l); repeat t.
   eexists; split; repeat t.
 Defined.
 
@@ -324,9 +324,9 @@ Proof.
   _).
   (* SearchAbout I (* ANOMALY *) *)
 
-  eexists _, _, (fun v t _ l => map.of_list [running; one] [v; word.of_Z(1)] = Some l /\ echo_server_spec t None ); repeat t.
+  eexists _, _, (fun v t _ l => map.of_list_zip [running; one] [v; word.of_Z(1)] = Some l /\ echo_server_spec t None ); repeat t.
   { repeat split. admit. (* hfrosccfg*) }
-  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list [polling; rx] [v; rxv] l0 = Some l /\
+  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip [polling; rx] [v; rxv] l0 = Some l /\
                                             if Z.eq_dec (word.unsigned (word.and rxv (word.of_Z (2^31)))) 0
                                             then echo_server_spec t (Some rxv)
                                             else echo_server_spec t None); repeat t.
@@ -341,7 +341,7 @@ Proof.
   eexists; split; repeat t.
   { destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
     exfalso; revert H1 e; clear. subst b v3. admit. }
-  eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list [polling; tx] [v; txv] l0 = Some l /\
+  eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip [polling; tx] [v; txv] l0 = Some l /\
                                             if Z.eq_dec (word.unsigned (word.and txv (word.of_Z (2^31)))) 0
                                             then echo_server_spec ((m, MMInput, [word.of_Z (uart0_base + Ox"000")], (m, [txv]))::t) None
                                             else echo_server_spec t (Some x)); repeat t.

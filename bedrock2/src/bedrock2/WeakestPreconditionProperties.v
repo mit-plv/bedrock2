@@ -227,7 +227,7 @@ Section WeakestPrecondition.
         args (Hargs : dexprs m l arges args)
         (Hext : ext_spec t map.empty binds args (fun mReceive (rets : list Semantics.word) =>
            mReceive = map.empty /\
-           exists l0 : locals, map.putmany_of_list action rets l = Some l0 /\
+           exists l0 : locals, map.putmany_of_list_zip action rets l = Some l0 /\
            post (cons (map.empty, binds, args, (map.empty, rets)) t) m l0))
     : WeakestPrecondition.cmd call (cmd.interact action binds arges) t m l post.
   Proof.

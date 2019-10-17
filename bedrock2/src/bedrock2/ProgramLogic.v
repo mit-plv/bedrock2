@@ -201,9 +201,9 @@ Ltac straightline :=
     try subst ev; refine (@Scalars.load_four_of_sep _ word byte _ _ _ mem _ _ _ _ _ _); ecancel_assumption
   | |- bedrock2.Memory.load Syntax.access_size.word ?m ?a = Some ?ev =>
     try subst ev; refine (@Scalars.load_word_of_sep _ _ _ _ _ _ _ _ _ _ _ _); ecancel_assumption
-  | |- exists l', Interface.map.of_list ?ks ?vs = Some l' /\ _ =>
+  | |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ =>
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
-  | |- exists l', Interface.map.putmany_of_list ?ks ?vs ?l = Some l' /\ _ =>
+  | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ =>
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
   | |- exists x, ?P /\ ?Q =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
