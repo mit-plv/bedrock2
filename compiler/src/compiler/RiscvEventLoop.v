@@ -152,19 +152,6 @@ Section EventLoop.
   Hypothesis goodReadyState_implies_goodTrace: forall (state: RiscvMachineL),
       goodReadyState state -> goodTrace state.(getLog).
 
-  Lemma eventLoop_sound_trace: forall n,
-    mcomp_sat (runN iset n) startState (fun finalL => exists rest, goodTrace (rest ++ finalL.(getLog))).
-  Proof.
-    intros.
-    eapply mcomp_sat_weaken. 2: eapply eventLoop_sound.
-    unfold runsToGood_Invariant.
-    intros ? R.
-    eapply extend_runsTo_to_good_trace. 2: exact R.
-    intros ? (? & ?).
-    eapply goodReadyState_implies_goodTrace.
-    assumption.
-  Qed.
-
   Record InvariantProps: Prop := {
     establish_inv: runsToGood_Invariant startState;
     preserve_inv: forall st,
@@ -177,9 +164,9 @@ Section EventLoop.
     constructor.
     - unfold runsToGood_Invariant. exact init_correct.
     - exact runsToGood_is_Invariant.
-    - eapply extend_runsTo_to_good_trace.
-      intros st (? & ?).
-      eapply goodReadyState_implies_goodTrace. assumption.
-  Qed.
+    - intros. eapply extend_runsTo_to_good_trace. 3: exact H.
+      + intros st' (? & ?).
+        eapply goodReadyState_implies_goodTrace. assumption.
+  Abort.
 
 End EventLoop.

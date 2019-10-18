@@ -168,7 +168,7 @@ Section MMIO1.
     FlatToRiscv.ext_spec := ext_spec;
     FlatToRiscv.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
   }.
-  
+
   Section CompilationTest.
     Definition magicMMIOAddrLit: Z := Ox"10024000".
     Variable addr: varname.
@@ -356,7 +356,7 @@ Section MMIO1.
 
         unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
 
-        cbv [mmio_store FE310_mmio].
+        cbv [MinimalMMIO.nonmem_store FE310_mmio].
         split; [trivial|].
         split; [red; auto|].
 
@@ -452,7 +452,7 @@ Section MMIO1.
         cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
         unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
 
-        cbv [mmio_load FE310_mmio].
+        cbv [MinimalMMIO.nonmem_load FE310_mmio].
         split; [trivial|].
         split; [red; auto|].
         intros.
@@ -485,8 +485,6 @@ Section MMIO1.
         split. { simpl_word_exprs word_ok; trivial. }
         split; eauto.
         repeat split; eauto; cbv [id]; try solve [MetricsToRiscv.solve_MetricLog].
-  Unshelve.
-  eapply HList.tuple.unfoldn; intros; eapply (word.of_Z 0).
   Qed.
 
 End MMIO1.

@@ -115,7 +115,7 @@ Section Connect.
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters. refine ({|
     Pipeline.FlatToRiscvDef_params := compilation_params;
     Pipeline.ext_spec := bedrock2_interact;
-    Pipeline.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
+    Pipeline.ext_guarantee mach := map.undef_on mach.(getMem) MinimalMMIO.isMMIOAddr;
   |}).
   Defined.
 
@@ -131,8 +131,7 @@ Section Connect.
       Pipeline.ext_spec_ok := match TODO_sam with end;
     |}).
   - case TODO_sam.
-  - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives _ _ _ _).
-    1,2,3,4: case TODO_sam.
+  - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
   - case TODO_sam.
   Defined.
 

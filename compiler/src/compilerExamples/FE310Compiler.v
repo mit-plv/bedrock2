@@ -79,10 +79,10 @@ Axiom ext_spec_conditions_for_mcomp_sat : False.
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
 Proof.
   constructor; try typeclasses eauto.
-  1: eapply MetricMinimalMMIOSatisfiesPrimitives.
+  1: eapply MetricMinimalMMIOSatisfiesPrimitives. 1: simpl.
   2: eapply FlatToRiscv_hyps.
-  7: constructor; unfold ext_spec, pipeline_params; simpl.
-  1,2,3,4,5,6: case ext_spec_conditions_for_mcomp_sat.
+  3: constructor; unfold ext_spec, pipeline_params; simpl.
+  1,2: case ext_spec_conditions_for_mcomp_sat.
   - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
   - unfold bedrock2_interact. intros.
     cbv [Morphisms.Proper Morphisms.respectful Basics.impl Morphisms.pointwise_relation]; intros.
@@ -215,17 +215,17 @@ Proof.
   eapply map_undef_on_weaken with (keq := word.eqb); try typeclasses eauto.
   - apply undef_on_unchecked_store_byte_list.
   - unfold PropSet.subset, PropSet.elem_of.
-    intros addr El. unfold isMMIOAddr in El. destruct El as [El1 El2].
+    intros addr El. unfold isMMIOAddr, FE310_mmio in El.
     cbv [isOTP isPRCI isGPIO0 isUART0] in *.
     split.
-    + intro C. rewrite <- C in *. unfold imemStart in *. cbv in El2. intuition congruence.
+    + intro C. rewrite <- C in *. unfold imemStart in *. cbv in El. intuition congruence.
     + rewrite word.unsigned_sub.
       unfold imemStart. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Zminus_mod_idemp_l.
       match goal with
       | |- _ + ?L < ?M => let L' := eval cbv in L in change L with L';
                           let M' := eval cbv in M in change M with M'
       end.
-      match type of El2 with
+      match type of El with
       | _ <= ?a < _ \/ _ => remember a as addr'
       end.
       match goal with
@@ -234,4 +234,3 @@ Proof.
       hex_csts_to_dec.
       rewrite Z.mod_small; blia.
 Qed.
-

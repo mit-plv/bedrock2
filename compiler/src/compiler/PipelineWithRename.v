@@ -425,7 +425,7 @@ Section Pipeline1.
       ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog)).
   Proof.
     unfold ll_inv, runsToGood_Invariant. intros.
-    eapply extend_runsTo_to_good_trace. 2: eassumption.
+    eapply extend_runsTo_to_good_trace. 2: case TODO_sam. 2: eassumption.
     simpl. unfold ll_ready, compile_inv, loopBody_related, hl_inv,
            compose_relation, FlattenExprSimulation.related,
            RegRename.related, FlatToRiscvSimulation.related, FlatToRiscvFunctions.goodMachine.
