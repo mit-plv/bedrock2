@@ -394,6 +394,19 @@ Section FlatToRiscv1.
     apply runsToDone. assumption.
   Qed.
 
+  Lemma runsTo_det_step_with_valid_machine: forall initialL midL (P : RiscvMachineL -> Prop),
+      valid_machine initialL ->
+      mcomp_sat (Run.run1 iset) initialL (eq midL) ->
+      (valid_machine midL -> runsTo midL P) ->
+      runsTo initialL P.
+  Proof.
+    intros.
+    eapply runsToStep with (midset := fun m' => m' = midL /\ valid_machine m').
+    - eapply run1_get_sane; try eassumption.
+      intros. subst. auto.
+    - intros ? (? & ?). subst. eapply H1. assumption.
+  Qed.
+
   Lemma disjoint_putmany_preserves_store_bytes: forall n a vs (m1 m1' mq: mem),
       store_bytes n m1 a vs = Some m1' ->
       map.disjoint m1 mq ->
@@ -482,6 +495,45 @@ Section FlatToRiscv1.
 
 End FlatToRiscv1.
 
+(* if we have valid_machine for the current machine, and need to prove a
+   runsTo with valid_machine in the postcondition, this tactic can
+   replace the valid_machine in the postcondition by True *)
+Ltac get_run1valid_for_free :=
+  let R := fresh "R" in
+  evar (R: MetricRiscvMachine -> Prop);
+  eapply runsTo_get_sane with (P := R);
+  [ (* valid_machine *)
+    assumption
+  | (* the simpler runsTo goal, left open *)
+    idtac
+  | (* the impliciation, needs to replace valid_machine by True *)
+    let mach' := fresh "mach'" in
+    let D := fresh "D" in
+    let Pm := fresh "Pm" in
+    intros mach' D V Pm;
+    match goal with
+    | H: valid_machine mach' |- context C[valid_machine mach'] =>
+      let G := context C[True] in
+      let P := eval pattern mach' in G in
+      lazymatch P with
+      | ?F _ => instantiate (R := F)
+      end
+    end;
+    subst R;
+    clear -V Pm;
+    cbv beta in *;
+    simp;
+    eauto 20
+  ];
+  subst R.
+
+Ltac solve_valid_machine wordOk :=
+  match goal with
+  | H: valid_machine {| getMetrics := ?M |} |- valid_machine {| getMetrics := ?M |} =>
+    eqexact H; f_equal; f_equal
+  end;
+  solve_word_eq wordOk.
+
 Ltac subst_load_bytes_for_eq :=
   lazymatch goal with
   | Load: ?LB _ _ _ _ _ ?m _ = _ |- _ =>
@@ -507,15 +559,16 @@ Ltac simulate'_step :=
 Ltac simulate' := repeat simulate'_step.
 
 Ltac run1det :=
-  eapply runsTo_det_step;
-  [ simulate';
+  eapply runsTo_det_step_with_valid_machine;
+  [ assumption
+  | simulate';
     match goal with
     | |- ?mid = ?RHS =>
       (* simpl RHS because mid will be instantiated to it and turn up again in the next step *)
       is_evar mid; simpl; reflexivity
     | |- _ => fail 10000 "simulate' did not go through completely"
     end
-  | ].
+ | intros ].
 
 (* seplog which knows that "program" is an array and how to deal with cons and append in
      that array, and how to make addresses match *)

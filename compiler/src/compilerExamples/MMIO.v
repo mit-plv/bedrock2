@@ -166,7 +166,6 @@ Section MMIO1.
     FlatToRiscv.RVM := MetricMinimalMMIO.IsRiscvMachine;
     FlatToRiscv.PRParams := MetricMinimalMMIOPrimitivesParams;
     FlatToRiscv.ext_spec := ext_spec;
-    FlatToRiscv.ext_guarantee mach := map.undef_on mach.(getMem) isMMIOAddr;
   }.
 
   Section CompilationTest.
@@ -199,9 +198,6 @@ Section MMIO1.
 
   (* TODO: move *)
   Local Existing Instance MetricMinimalMMIO.IsRiscvMachine.
-
-  Definition ext_guarantee mach :=
-    forall addr, isMMIOAddr addr -> Memory.load_bytes 4 (getMem mach) addr = None.
 
   Lemma load4bytes_in_MMIO_is_None: forall (m: mem) (addr: word),
       map.undef_on m isMMIOAddr ->
@@ -271,15 +267,6 @@ Section MMIO1.
     - typeclasses eauto.
     - typeclasses eauto.
     - eapply MetricMinimalMMIOSatisfiesPrimitives; cbn; intuition eauto.
-    - (* ext_guarantee preservable: *)
-      simpl. unfold map.same_domain, map.sub_domain, map.undef_on, map.agree_on in *.
-      intros. destruct H0 as [A B].
-      specialize H with (1 := H2).
-      rewrite map.get_empty in *.
-      match goal with
-      | |- ?X = None => destruct X eqn: E; [exfalso|reflexivity]
-      end.
-      edestruct B; [eassumption|]. rewrite H in H0. discriminate.
     - (* compile_ext_call_correct *)
       intros *. intros ? ? V_argvars V_resvars. intros.
       pose proof (compile_ext_call_emits_valid EmitsValid.iset _ action _ V_resvars V_argvars).

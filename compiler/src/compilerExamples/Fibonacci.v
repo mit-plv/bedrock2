@@ -70,7 +70,6 @@ Existing Instance coqutil.Map.SortedListString.ok.
 
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_spec _ _  _ _ _ := False;
-  Pipeline.ext_guarantee _ := False;
   Pipeline.M := OState RiscvMachine;
   Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
 }.

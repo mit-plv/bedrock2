@@ -56,7 +56,6 @@ Module Import Pipeline.
     NGstate: Type;
     NG :> NameGen varname NGstate;
 
-    ext_guarantee : MetricRiscvMachine -> Prop;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
@@ -75,7 +74,6 @@ Module Import Pipeline.
 
   Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.FlatToRiscv.parameters := {|
     FlatToRiscvCommon.FlatToRiscv.ext_spec := ext_spec;
-    FlatToRiscvCommon.FlatToRiscv.ext_guarantee := ext_guarantee;
   |}.
 
   Class assumptions{p: parameters}: Prop := {
@@ -170,7 +168,7 @@ Section Pipeline1.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       initialL.(getLog) = t ->
       (program initialL.(getPc) instsL * eq mH * R)%sep initialL.(getMem) ->
-      ext_guarantee initialL ->
+      valid_machine initialL ->
       Semantics.exec.exec map.empty sH t mH map.empty mcH post ->
       runsTo (mcomp_sat (run1 iset))
              initialL
@@ -239,8 +237,7 @@ Section Pipeline1.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       initialL.(getLog) = t ->
       (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
-
-      ext_guarantee initialL ->
+      valid_machine initialL ->
       Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
       runsTo (mcomp_sat (run1 iset))
              initialL

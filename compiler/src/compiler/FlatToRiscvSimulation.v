@@ -58,10 +58,6 @@ Section Sim.
         g.(p_insts) = word.add g.(program_base) (word.of_Z pos) /\
         goodMachine t m l g st.
 
-  (* will probably have to be part of the invariant in compile_stmt_correct_new *)
-  Axiom TODO_preserve_regs_initialized: forall regs1 regs2,
-      regs_initialized regs1 -> regs_initialized regs2.
-
   Lemma flatToRiscvSim{hyps: @FlatToRiscv.assumptions p}: forall (g: GhostConsts) (pos: Z),
       NoDup g.(funnames) ->
       word.unsigned g.(program_base) mod 4 = 0 ->
@@ -100,10 +96,12 @@ Section Sim.
       cbv beta iota.
       repeat match goal with
              | |- _ /\ _ => split
-             | _ => eapply TODO_preserve_regs_initialized; (eassumption||reflexivity)
              | _ => eassumption
              | _ => reflexivity
              end.
+      { (* TODO remove regs_initialized from compile_stmt_correct_new because
+           it's already in goodMachine *)
+        unfold goodMachine in *. simp. assumption. }
       (* TODO make word automation from bsearch work here *)
       match goal with
       | H: getPc _ = _ |- getPc _ = _ => rewrite H

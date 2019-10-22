@@ -56,7 +56,6 @@ Definition params : Pipeline.parameters. simple refine {|
   Pipeline.locals := _;
   Pipeline.Registers := _;
   Pipeline.ext_spec _ _ := TODO;
-  Pipeline.ext_guarantee _ := False;
   Pipeline.PRParams := TODO;
 |}; unshelve (try exact _); apply TODO. Defined.
 Definition flatparams := (FlattenExpr.mk_Syntax_params (@Pipeline.FlattenExpr_parameters params)).

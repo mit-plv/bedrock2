@@ -52,7 +52,7 @@ Section FlatToRiscvLiterals.
 
   Ltac match_apply_runsTo :=
     match goal with
-    | R: runsTo ?m ?post |- runsToNonDet.runsTo _ ?m' ?post =>
+    | R: runsTo ?m ?post |- runsTo ?m' ?post =>
       replace m' with m; [exact R|]
     end.
 
@@ -85,6 +85,7 @@ Section FlatToRiscvLiterals.
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_FlatImp_vars (FlatImp.SLit x v) ->
+      Primitives.valid_machine initialL ->
       runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
@@ -92,7 +93,7 @@ Section FlatToRiscvLiterals.
              post ->
       runsTo initialL post.
   Proof.
-    intros *. intros E1 insts d P V N. substs.
+    intros *. intros E1 insts d P V Vm N. substs.
     lazymatch goal with
     | H1: valid_FlatImp_vars ?s |- _ =>
       pose proof (compile_stmt_emits_valid iset_is_supported H1 eq_refl) as EV

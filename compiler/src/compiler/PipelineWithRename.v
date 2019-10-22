@@ -69,7 +69,6 @@ Module Import Pipeline.
 
     src2imp :> map.map string Z;
 
-    ext_guarantee : MetricRiscvMachine -> Prop;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
@@ -88,7 +87,6 @@ Module Import Pipeline.
 
   Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.FlatToRiscv.parameters := {|
     FlatToRiscvCommon.FlatToRiscv.ext_spec := ext_spec;
-    FlatToRiscvCommon.FlatToRiscv.ext_guarantee := ext_guarantee;
   |}.
 
   Class assumptions{p: parameters}: Prop := {
@@ -381,16 +379,8 @@ Section Pipeline1.
                | |- _ => eassumption
                | |- _ => reflexivity
                end.
-        * intro x. intros v H. rewrite map.get_empty in H. discriminate.
-        * match goal with
-          | H: ext_guarantee _ |- _ => move H at bottom; rename H into EG
-          end.
-          pose proof FlatToRiscv.ext_guarantee_preservable as P.
-          eapply P; clear P; simpl.
-          1: exact EG.
-          all: simpl.
-          2: reflexivity.
-          apply map.same_domain_refl.
+        2: case TODO_sam. (* show that backjump preserves valid_machine *)
+        intro x. intros v H. rewrite map.get_empty in H. discriminate.
     - case TODO_sam.
     - solve_divisibleBy4.
     - solve_word_eq word_ok.

@@ -56,7 +56,7 @@ Section Proofs.
       | solve_MetricLog
       | solve_word_eq (@word_ok (@W (@def_params p)))
       | solve [pseplog]
-      | prove_ext_guarantee
+      | solve [solve_valid_machine (@word_ok (@W (@def_params p)))]
       | idtac ].
 
   Ltac IH_sidecondition :=
@@ -67,7 +67,7 @@ Section Proofs.
       | solve_stmt_not_too_big
       | solve_word_eq (@word_ok (@W (@def_params p)))
       | simpl; solve_divisibleBy4
-      | prove_ext_guarantee
+      | solve_valid_machine (@word_ok (@W (@def_params p)))
       | pseplog ].
 
   Lemma compile_stmt_correct:
@@ -82,7 +82,7 @@ Section Proofs.
     (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
-    ext_guarantee initialL ->
+    valid_machine initialL ->
     runsTo initialL (fun finalL => exists finalMH finalMetricsH,
           postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
           (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
@@ -91,7 +91,7 @@ Section Proofs.
           finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
           (finalL.(getMetrics) - initialL.(getMetrics) <=
            lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
-          ext_guarantee finalL).
+          valid_machine finalL).
   Proof.
     pose proof compile_stmt_emits_valid.
     induction 1; intros;
@@ -138,10 +138,12 @@ Section Proofs.
       run1det. run1done.
 
     - (* SLit *)
+      get_run1valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
       + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
+      + assumption.
       + simpl. run1done;
         remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
         symmetry in HeqfinalMetrics;
@@ -153,7 +155,14 @@ Section Proofs.
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
-        simpl in *; run1det; try solve [run1done].
+      simpl in *; run1det;
+      rewrite ?word.sru_ignores_hibits,
+              ?word.slu_ignores_hibits,
+              ?word.srs_ignores_hibits,
+              ?word.mulhuu_simpl,
+              ?word.divu0_simpl,
+              ?word.modu0_simpl in *;
+      try solve [run1done].
       simpl_MetricRiscvMachine_get_set.
       run1det. run1done;
       [match goal with
@@ -167,11 +176,12 @@ Section Proofs.
 
     - (* SIf/Then *)
       (* execute branch instruction, which will not jump *)
-      eapply runsTo_det_step; simpl in *; subst.
+      eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
+      + assumption.
       + simulate'. simpl_MetricRiscvMachine_get_set.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+      + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
           eapply IHexec; IH_sidecondition.
         * (* jump over else-branch *)
@@ -180,11 +190,12 @@ Section Proofs.
 
     - (* SIf/Else *)
       (* execute branch instruction, which will jump over then-branch *)
-      eapply runsTo_det_step; simpl in *; subst.
+      eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
+      + assumption.
       + simulate'.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+      + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
           eapply IHexec; IH_sidecondition.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
@@ -206,11 +217,12 @@ Section Proofs.
            end.
         destruct condB.
         * (* true: iterate again *)
-          eapply runsTo_det_step; simpl in *; subst.
+          eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
+          { assumption. }
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+          { intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
               eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
             - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
@@ -223,11 +235,12 @@ Section Proofs.
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
         * (* false: done, jump over body2 *)
-          eapply runsTo_det_step; simpl in *; subst.
+          eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
+          { assumption. }
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { simpl in *. run1done. }
+          { intro V. simpl in *. run1done. }
 
     - (* SSeq *)
       rename IHexec into IH1, H2 into IH2.

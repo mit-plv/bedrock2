@@ -49,7 +49,6 @@ Instance MetricMinimalMMIOPrimitivesParams':
 
 Instance pipeline_params: Pipeline.parameters := {
   Pipeline.ext_spec := FlatToRiscvCommon.FlatToRiscv.ext_spec;
-  Pipeline.ext_guarantee := FlatToRiscvCommon.FlatToRiscv.ext_guarantee;
   Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
   Pipeline.RVM := MetricMinimalMMIO.IsRiscvMachine;
 }.

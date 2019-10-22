@@ -115,7 +115,6 @@ Section Connect.
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters. refine ({|
     Pipeline.FlatToRiscvDef_params := compilation_params;
     Pipeline.ext_spec := bedrock2_interact;
-    Pipeline.ext_guarantee mach := map.undef_on mach.(getMem) MinimalMMIO.isMMIOAddr;
   |}).
   Defined.
 

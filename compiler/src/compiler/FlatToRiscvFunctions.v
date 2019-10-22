@@ -354,7 +354,8 @@ Section Proofs.
                      | solve_stmt_not_too_big
                      | reflexivity
                      | assumption
-                     | solve_divisibleBy4 ]
+                     | solve_divisibleBy4
+                     | solve_valid_machine (@word_ok (@W (@def_params p))) ]
     | |- _ => solve [wseplog_pre word_ok; wcancel ] (* TODO probably not safe as-is *)
     | |- ?G => is_lia G; assert_fails (has_evar G);
                (* not sure why this line is needed, lia should be able to deal with (x := _) hyps,
@@ -362,6 +363,19 @@ Section Proofs.
                repeat match goal with x := _ |- _ => subst x end;
                blia
     end.
+
+  Definition regs_initialized(regs: locals): Prop :=
+    forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
+
+  Lemma regs_initialized_put: forall l x v,
+      regs_initialized l ->
+      regs_initialized (map.put l x v).
+  Proof.
+    unfold regs_initialized in *.
+    intros.
+    rewrite map.get_put_dec.
+    destruct_one_match; eauto.
+  Qed.
 
   (* TODO make sure it's compatible with users of it *)
   Lemma compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
@@ -375,6 +389,7 @@ Section Proofs.
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
+      regs_initialized initialL.(getRegs) ->
       valid_machine initialL ->
       (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
       map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
@@ -398,6 +413,7 @@ Section Proofs.
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
+                  regs_initialized finalL.(getRegs) /\
                   valid_machine finalL).
   Proof. case TODO_sam. Qed.
 
@@ -424,9 +440,6 @@ Section Proofs.
   Ltac simpl_g_get :=
     cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl funnames frame] in *.
 
-  Axiom ml: MemoryLayout Semantics.width.
-  Axiom mlOk: MemoryLayoutOk ml.
-
   Definition goodMachine
       (* high-level state ... *)
       (t: list LogItem)(m: mem)(l: locals)
@@ -437,6 +450,7 @@ Section Proofs.
     (* registers: *)
     map.extends lo.(getRegs) l /\
     map.get lo.(getRegs) RegisterNames.sp = Some g.(p_sp) /\
+    regs_initialized lo.(getRegs) /\
     (* pc: *)
     lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
     (* memory: *)
@@ -483,9 +497,6 @@ Section Proofs.
   Delimit Scope word_scope with word.
 
   Open Scope word_scope.
-
-  Definition regs_initialized(regs: locals): Prop :=
-    forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
 
   Lemma getmany_of_list_exists_elem: forall (m: locals) ks k vs,
       In k ks ->
@@ -536,6 +547,8 @@ Section Proofs.
     | |- exists _, _ = _ /\ (_ * _)%sep _ =>
       eexists; split; cycle 1; [ wseplog_pre (@word_ok (@W (@def_params p))); wcancel | blia ]
     | |- _ => solve [map_solver (@locals_ok p h)]
+    | |- _ => solve [solve_valid_machine (@word_ok (@W (@def_params p)))]
+    | |- _ => solve [eauto using regs_initialized_put]
     | |- _ => idtac
     end.
 
@@ -1089,11 +1102,9 @@ Section Proofs.
           f_equal. simpl_addrs. solve_word_eq word_ok.
       }
       {
-        match goal with
-        | H: valid_machine {| getMetrics := ?M |} |- valid_machine {| getMetrics := ?M |} =>
-          eqexact H; f_equal; f_equal
-        end.
-        all: solve_word_eq word_ok.
+        (* TODO map.only_differ between middle_regs and middle_regs0 is not sufficient to
+           conclude regs_initialized middle_regs -> regs_initialized middle_regs0. *)
+        case TODO_sam.
       }
     }
 
@@ -1276,6 +1287,7 @@ Section Proofs.
                                | assumptions => fail
                                | map.only_differ middle_regs1 _ middle_regs2 => fail
                                | map.get middle_regs1 RegisterNames.sp = Some _ => fail
+                               | valid_FlatImp_vars body => fail
                                | _ => clear H
                                end
                end.
@@ -1283,7 +1295,16 @@ Section Proofs.
         | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
           specialize (D RegisterNames.sp); destruct D as [A | A]
         end.
-        + exfalso. (* contradiction: sp cannot be in modVars of body *) case TODO_sam.
+        + exfalso.
+          apply_in_hyps modVars_as_list_valid_FlatImp_var.
+          unfold elem_of, of_list in *.
+          match goal with
+          | H: Forall ?P ?L |- _ =>
+            eapply (proj1 (Forall_forall P L)) in H; [rename H into B|eassumption]
+          end.
+          clear -B.
+          unfold valid_FlatImp_var, RegisterNames.sp in *.
+          blia.
         + etransitivity; [symmetry|]; eassumption.
     }
 
@@ -1480,6 +1501,7 @@ Section Proofs.
       preprocess_impl locals_ok true.
       change Z with Register in *.
       map_solver locals_ok.
+    + case TODO_sam. (* regs_initialized *)
     + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
       match goal with
       | H:   #(Datatypes.length ?new_remaining_stack) = _ |- _ =>
@@ -1527,31 +1549,6 @@ Section Proofs.
       wcancel.
     + assumption.
 
-  Set Nested Proofs Allowed.
-
-  Lemma runsTo_det_step_with_valid_machine: forall initialL midL (P : RiscvMachineL -> Prop),
-      valid_machine initialL ->
-      mcomp_sat (Run.run1 iset) initialL (eq midL) ->
-      (valid_machine midL -> runsTo midL P) ->
-      runsTo initialL P.
-  Proof.
-    intros.
-    eapply runsToStep with (midset := fun m' => m' = midL /\ valid_machine m').
-    - eapply run1_get_sane; try eassumption.
-      intros. subst. auto.
-    - intros ? (? & ?). subst. eapply H1. assumption.
-  Qed.
-
-Ltac run1det ::=
-  eapply runsTo_det_step_with_valid_machine;
-  [ assumption
-  | simulate';
-      match goal with
-      | |- ?mid = ?RHS => is_evar mid; simpl; reflexivity
-      | |- _ => fail 10000 "simulate' did not go through completely"
-      end
-   | intros  ].
-
     - (* SLoad *)
       progress unfold Memory.load, Memory.load_Z in *. simp.
       subst_load_bytes_for_eq.
@@ -1573,44 +1570,13 @@ Ltac run1det ::=
       destruct P as (finalML & P1 & P2).
       run1det. run1done.
 
-(* if we have valid_machine for the current machine, and need to prove a
-   runsTo with valid_machine in the postcondition, this tactic can
-   replace the valid_machine in the postcondition by True *)
-Ltac get_run1valid_for_free :=
-  let R := fresh "R" in
-  evar (R: MetricRiscvMachine -> Prop);
-  eapply runsTo_get_sane with (P := R);
-  [ (* valid_machine *)
-    assumption
-  | (* the simpler runsTo goal, left open *)
-    idtac
-  | (* the impliciation, needs to replace valid_machine by True *)
-    let mach' := fresh "mach'" in
-    let D := fresh "D" in
-    let Pm := fresh "Pm" in
-    intros mach' D V Pm;
-    match goal with
-    | H: valid_machine mach' |- context C[valid_machine mach'] =>
-      let G := context C[True] in
-      let P := eval pattern mach' in G in
-      lazymatch P with
-      | ?F _ => instantiate (R := F)
-      end
-    end;
-    subst R;
-    clear -V Pm;
-    cbv beta in *;
-    simp;
-    eauto 20
-  ];
-  subst R.
-
     - (* SLit *)
       get_run1valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
       + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
+      + assumption.
       + simpl.
         assert (x <> RegisterNames.sp). {
           unfold valid_FlatImp_var, RegisterNames.sp in *.
@@ -1662,32 +1628,6 @@ Ltac get_run1valid_for_free :=
           all: try safe_sidecond.
           all: try safe_sidecond.
 
-  Ltac solve_valid_machine :=
-    match goal with
-    | H: valid_machine {| getMetrics := ?M |} |- valid_machine {| getMetrics := ?M |} =>
-      eqexact H; f_equal; f_equal
-    end;
-    solve_word_eq (@word_ok (@W (@def_params p))).
-
-  Ltac run1done ::=
-    apply runsToDone;
-    simpl_MetricRiscvMachine_get_set;
-    simpl in *;
-    repeat match goal with
-    | |- exists (_: _), _ => eexists
-    end;
-    repeat split;
-    simpl_word_exprs (@word_ok (@W (@def_params p)));
-    match goal with
-    | |- _ => solve [eauto]
-    | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
-    | |- exists _, _ = _ /\ (_ * _)%sep _ =>
-      eexists; split; cycle 1; [ wseplog_pre (@word_ok (@W (@def_params p))); wcancel | blia ]
-    | |- _ => solve [map_solver (@locals_ok p h)]
-    | |- _ => solve [solve_valid_machine]
-    | |- _ => idtac
-    end.
-
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
@@ -1705,7 +1645,6 @@ Ltac get_run1valid_for_free :=
             after_IH;
             try safe_sidecond.
             all: try safe_sidecond.
-            solve_valid_machine.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
@@ -1746,11 +1685,6 @@ Ltac get_run1valid_for_free :=
               1: eassumption.
               all: try safe_sidecond.
               all: try safe_sidecond.
-              2: solve_valid_machine.
-              match goal with
-              | H: regs_initialized _ |- _ => move H at bottom
-              end.
-              case TODO_sam. (* TODO add regs_initialized to goodMachine *)
             - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
               (* jump back to beginning of loop: *)
               run1det.
@@ -1767,8 +1701,6 @@ Ltac get_run1valid_for_free :=
                 }
                 all: try safe_sidecond.
                 1: constructor; congruence.
-                2: solve_valid_machine.
-                case TODO_sam. (* TODO add regs_initialized to goodMachine *)
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
@@ -1796,8 +1728,6 @@ Ltac get_run1valid_for_free :=
           1: eassumption.
           all: try safe_sidecond.
           all: try safe_sidecond.
-          2: solve_valid_machine.
-          case TODO_sam. (* TODO add regs_initialized to goodMachine *)
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - (* SSkip *)

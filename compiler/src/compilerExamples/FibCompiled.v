@@ -48,7 +48,6 @@ Section FibCompiled.
   Instance pipeline_params: Pipeline.parameters := {
     Pipeline.FlatToRiscvDef_params := flatToRiscvDef_params;
     Pipeline.ext_spec _ _  _ _ _ := False;
-    Pipeline.ext_guarantee _ := True;
     Pipeline.M := OState RiscvMachine;
     Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
   }.
@@ -62,7 +61,6 @@ Section FibCompiled.
   Proof.
     - constructor; try typeclasses eauto.
       + simpl. apply MetricMinimalSatisfiesMetricPrimitives.
-      + constructor.
       + intros. inversion H6. destruct H17.
     - constructor; try solve [destruct 1].
       intros ? ? ? ? ? ? ? ?.
@@ -660,7 +658,7 @@ Section FibCompiled.
       + assumption.
       + reflexivity.
       + instantiate (2 := initialMem). instantiate (1 := R). seplog.
-      + cbv [Pipeline.ext_guarantee pipeline_params]. exact I.
+      + constructor.
       + eapply ExprImp.weaken_exec.
         * eapply fib_correct with (n := Z.to_nat n).
           -- rewrite Z2Nat.id; [|assumption]. instantiate (1 := v). seplog.
