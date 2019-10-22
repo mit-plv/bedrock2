@@ -48,27 +48,6 @@ Axiom TODO_joonwon: False.
 
 Require Import Coq.Classes.Morphisms.
 
-Lemma program_logic_sound
-      {p : Semantics.parameters}
-      {Proper_ext_spec : forall trace m act args,
-          Proper ((pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> Basics.impl)
-                 (Semantics.ext_spec trace m act args)}:
-  forall (funimplsList: list (Syntax.funname * (list Syntax.varname * list Syntax.varname * cmd)))
-         (c: cmd) (t: Semantics.trace) (m: mem) (l: locals) (mc: MetricLogging.MetricLog)
-         (post : Semantics.trace -> mem -> locals -> Prop),
-    WeakestPrecondition.cmd (WeakestPrecondition.call funimplsList) c t m l post ->
-    Semantics.exec (map.of_list funimplsList) c t m l mc (fun t' m' l' mc' => post t' m' l').
-Proof.
-  intros.
-  assert (map.of_list funimplsList = map.empty) as E by case TODO_andres. rewrite E.
-  eapply WeakestPreconditionProperties.sound_nil.
-  match goal with
-  | _: WeakestPrecondition.cmd ?F' _ _ _ _ _ |- WeakestPrecondition.cmd ?F _ _ _ _ _ =>
-    replace F with F' by case TODO_andres
-  end.
-  assumption.
-Qed.
-
 Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters :=
   { FlatToRiscvDef.W := @KamiWord.WordsKami KamiProc.width KamiProc.width_cases;
     FlatToRiscvDef.compile_ext_call := compile_ext_call;
@@ -255,19 +234,13 @@ Section Connect.
       constructor.
       - eapply funimplsList_NoDup.
       - intros.
-        pose proof (@program_logic_sound strname_sem) as P3init.
-        specialize_first Establish (projT1 (riscvMemInit memInit)).
-        specialize_first P3init Establish.
         replace m0 with (projT1 (riscvMemInit memInit)) by case TODO_joonwon.
-        eapply P3init. case TODO_andres.
+        refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
+          eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
       - intros.
-        pose proof (@program_logic_sound strname_sem) as P3loop.
-        eapply P3loop; clear P3loop.
-        1: match goal with
-           | |- context[Proper] => case TODO_andres
-           end.
-        eapply Preserve.
-        split; auto.
+        refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
+          eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+        eapply Preserve; split; auto.
     }
     { case TODO_sam. }
     { case TODO_sam. }

@@ -40,7 +40,7 @@ Section WeakestPrecondition.
       cbn in *; intuition (try typeclasses eauto with core).
   Qed.
 
-  Context {Proper_ext_spec : forall trace m act args, Proper ((pointwise_relation _ (pointwise_relation _ Basics.impl)) ==> Basics.impl) (Semantics.ext_spec trace m act args)}.
+  Context {p_ok : Semantics.parameters_ok p}.
   Global Instance Proper_cmd :
     Proper (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ (pointwise_relation _ Basics.impl))) ==> Basics.impl)))) ==>
@@ -97,7 +97,9 @@ Section WeakestPrecondition.
       { destruct H2 as (mKeep & mGive & ? & ?).
         exists mKeep. exists mGive.
         split; [assumption|].
-        eapply Proper_ext_spec; [|solve[eassumption]]; firstorder eauto. } }
+        Locate weaken.
+        eapply Semantics.ext_spec.weaken; [|solve[eassumption]].
+        intros ? ? (?&?&?&?&?); eauto 10. } }
   Qed.
 
   Global Instance Proper_func :
@@ -199,11 +201,32 @@ Section WeakestPrecondition.
     eapply IHargs in H0; t; rewrite H0.
     eauto.
   Qed.
+
+  Lemma sound_getmany l a P :
+    WeakestPrecondition.list_map (WeakestPrecondition.get l) a P
+    -> exists vs, map.getmany_of_list l a = Some vs /\ P vs.
+  Proof.
+    cbv [map.getmany_of_list] in *.
+    revert P l; induction a; cbn; repeat (subst; t).
+    cbv [WeakestPrecondition.get] in H; t.
+    epose proof (IHa _ l _); clear IHa; t.
+    rewrite H. erewrite H1. eexists; split; eauto. exact H2.
+    Unshelve.
+    eapply Proper_list_map; try exact H0.
+    all : cbv [respectful pointwise_relation Basics.impl WeakestPrecondition.get]; intros; cbv beta; t.
+  Qed.
   
+  Local Notation semantics_call := (fun e n t m args post =>
+    exists params rets fbody, map.get e n = Some (params, rets, fbody) /\
+    exists lf, map.putmany_of_list_zip params args map.empty = Some lf /\
+    forall mc', Semantics.exec e fbody t m lf mc' (fun t' m' st1 mc'' =>
+      exists retvs, map.getmany_of_list st1 rets = Some retvs /\
+      post t' m' retvs)).
+
   Local Hint Constructors Semantics.exec.
-  Lemma sound_nil c t m l mc post
-        (H:WeakestPrecondition.cmd (fun _ _ _ _ _ => False) c t m l post)
-    : Semantics.exec map.empty c t m l mc (fun t' m' l' mc' => post t' m' l').
+  Lemma sound_cmd' e c t m l mc post
+        (H:WeakestPrecondition.cmd (semantics_call e) c t m l post)
+    : Semantics.exec e c t m l mc (fun t' m' l' mc' => post t' m' l').
   Proof.
     ind_on Syntax.cmd; repeat (t; try match reverse goal with H : WeakestPrecondition.expr _ _ _ _ |- _ => eapply expr_sound in H end).
     { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
@@ -217,12 +240,59 @@ Section WeakestPrecondition.
         { eapply Semantics.exec.while_false; t. }
         { eapply Semantics.exec.while_true; t. t. } } }
     { eapply sound_args in H; t. }
+    { eapply sound_args in H; t. }
+  Qed.
+
+
+  Section WithE.
+    Context fs E (HE: List.Forall (fun '(k, v) => map.get E k = Some v) fs).
+    Import coqutil.Tactics.Tactics.
+    Lemma sound_call' n t m args post
+      (H : WeakestPrecondition.call fs n t m args post)
+      : semantics_call E n t m args post.
+    Proof.
+      revert H; revert post args m t n; induction HE; intros.
+      { contradiction H. }
+      destruct x as [n' ((X&Y)&Z)]; t.
+      destruct (Semantics.funname_eqb_spec n' n); t.
+      eexists X, Y, Z; split; [assumption|].
+      eexists; eauto.
+      eexists; eauto.
+      intros.
+      eapply sound_cmd'.
+      eapply Proper_cmd; try eapply H0.
+      all : cbv [respectful pointwise_relation Basics.impl]; intros; cbv beta.
+      1: eapply IHf, Proper_call; eauto.
+      2: eassumption.
+      eauto using sound_getmany.
+    Qed.
+
+    Lemma sound_cmd'' c t m l mc post
+      (H : WeakestPrecondition.cmd (WeakestPrecondition.call fs) c t m l post)
+      : Semantics.exec E c t m l mc (fun t' m' l' mc' => post t' m' l').
+    Proof.
+      eapply Proper_cmd in H; [ .. | reflexivity ].
+      1: apply sound_cmd'; exact H.
+      cbv [respectful pointwise_relation Basics.impl]; intros; cbv beta.
+      eapply sound_call', Proper_call, H1.
+      cbv [respectful pointwise_relation Basics.impl]; eauto.
+    Qed.
+  End WithE.
+
+  Lemma sound_cmd fs c t m l mc post
+    (Hnd : List.NoDup (List.map fst fs))
+    (H : WeakestPrecondition.cmd (WeakestPrecondition.call fs) c t m l post)
+    : Semantics.exec (map.of_list fs) c t m l mc (fun t' m' l' mc' => post t' m' l').
+  Proof.
+    eapply sound_cmd'';
+      try eapply Properties.map.all_gets_from_map_of_NoDup_list; eauto.
+    Unshelve.
+    eapply p_ok.
   Qed.
 
   (** Ad-hoc lemmas here? *)
 
   Import bedrock2.Syntax bedrock2.Semantics bedrock2.WeakestPrecondition coqutil.Word.Interface.
-  Context {p_ok : Semantics.parameters_ok p}.
   Lemma interact_nomem call action binds arges t m l post
         args (Hargs : dexprs m l arges args)
         (Hext : ext_spec t map.empty binds args (fun mReceive (rets : list Semantics.word) =>
