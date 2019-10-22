@@ -10,7 +10,7 @@ From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 Section TailRecrsion.
   Context
     {p : unique! Semantics.parameters}
-    {p_ok :  forall (trace : list (mem * actname * list word * (mem * list word))) (m0 : mem) (act : actname) (args : list word),  Proper (pointwise_relation mem (pointwise_relation (list word) Basics.impl) ==> Basics.impl) (ext_spec trace m0 act args) }
+    {p_ok : Semantics.parameters_ok p}
     {functions : list (funname * (list varname * list varname * Syntax.cmd))}.
   Let call := WeakestPrecondition.call functions.
 
