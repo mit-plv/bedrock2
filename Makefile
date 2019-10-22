@@ -98,7 +98,7 @@ clean_end2end:
 install_end2end:
 	$(MAKE) -C $(ABS_ROOT_DIR)/end2end install
 
-all: bedrock2 compiler processor end2end
+all: bedrock2_ex compiler_ex processor end2end
 
 clean: clean_bedrock2 clean_compiler clean_processor clean_end2end
 
