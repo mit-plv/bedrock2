@@ -350,8 +350,7 @@ Section Proofs.
     | H: fits_stack _ _ ?Code |- fits_stack _ _ ?Code => exact H
     | H: map.get ?R RegisterNames.sp = Some _ |- map.get ?R RegisterNames.sp = Some _ => exact H
     | |- ?G => assert_fails (has_evar G);
-               solve [ prove_ext_guarantee
-                     | simpl_addrs; solve_word_eq (@word_ok (@W (@def_params p)))
+               solve [ simpl_addrs; solve_word_eq (@word_ok (@W (@def_params p)))
                      | solve_stmt_not_too_big
                      | reflexivity
                      | assumption
@@ -376,7 +375,7 @@ Section Proofs.
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
-      ext_guarantee initialL ->
+      valid_machine initialL ->
       (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
       map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
       ext_spec initialL.(getLog) mGive action argvals outcome ->
@@ -399,7 +398,7 @@ Section Proofs.
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
-                  ext_guarantee finalL).
+                  valid_machine finalL).
   Proof. case TODO_sam. Qed.
 
   (* Ghost state used to describe low-level state introduced by the compiler.
@@ -428,39 +427,6 @@ Section Proofs.
   Axiom ml: MemoryLayout Semantics.width.
   Axiom mlOk: MemoryLayoutOk ml.
 
-  Definition is_code(a: word): Prop :=
-    word.unsigned ml.(code_start) <= word.unsigned a < word.unsigned ml.(code_pastend).
-
-  Definition is_heap(a: word): Prop :=
-    word.unsigned ml.(heap_start) <= word.unsigned a < word.unsigned ml.(heap_pastend).
-
-  Definition is_stack(a: word): Prop :=
-    word.unsigned ml.(stack_start) <= word.unsigned a < word.unsigned ml.(stack_pastend).
-
-  Definition is_compiler_managed := union is_code (union is_heap is_stack).
-
-  Definition footprint_in(P: mem -> Prop)(s: word -> Prop) :=
-    forall m a v, P m -> map.get m a = Some v -> s a.
-
-  Axiom ext_guarantee_preservable_OLD: forall (m1 m2: RiscvMachineL),
-      ext_guarantee m1 ->
-      map.only_differ m1.(getMem) (fun a => is_heap a \/ is_stack a) m2.(getMem) ->
-      ext_guarantee m2.
-
-  Axiom ext_frame: mem -> Prop.
-
-  Axiom ext_guarantee_preservable: forall (m1 m2: RiscvMachineL) (C1 C2: mem -> Prop),
-      (* memory differences are only allowed on heap and stack: *)
-      (ext_frame * C1)%sep m1.(getMem) ->
-      (ext_frame * C2)%sep m2.(getMem) ->
-      footprint_in C1 is_compiler_managed ->
-      footprint_in C2 is_compiler_managed ->
-      (* trace differences are not allowed at all: *)
-      m1.(getLog) = m2.(getLog) ->
-      (* (differences in any other field of the machine are allowed) *)
-      ext_guarantee m1 ->
-      ext_guarantee m2.
-
   Definition goodMachine
       (* high-level state ... *)
       (t: list LogItem)(m: mem)(l: locals)
@@ -476,16 +442,15 @@ Section Proofs.
     (* memory: *)
     (exists stack_trash,
         Z.of_nat (List.length stack_trash) = g.(num_stackwords) /\
-        (ext_frame * g.(frame) * eq m *
+        (g.(frame) * eq m *
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(num_stackwords))))
                     stack_trash *
          program g.(p_insts) g.(insts) *
          functions g.(program_base) g.(e_pos) g.(e_impl) g.(funnames))%sep lo.(getMem)) /\
-    footprint_in g.(frame) is_compiler_managed /\
     (* trace: *)
     lo.(getLog) = t /\
     (* misc: *)
-    ext_guarantee lo.
+    valid_machine lo.
 
   Definition good_e_impl(e_impl: env)(funnames: list Syntax.funname)(e_pos: fun_pos_env) :=
     forall f (argnames retnames: list Syntax.varname) (body: stmt),
@@ -570,7 +535,6 @@ Section Proofs.
     | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
     | |- exists _, _ = _ /\ (_ * _)%sep _ =>
       eexists; split; cycle 1; [ wseplog_pre (@word_ok (@W (@def_params p))); wcancel | blia ]
-    | |- _ => prove_ext_guarantee
     | |- _ => solve [map_solver (@locals_ok p h)]
     | |- _ => idtac
     end.
@@ -719,172 +683,6 @@ Section Proofs.
       try (eapply list_union_preserves_NoDup; eassumption || constructor).
   Qed.
 
-  Lemma footprint_in_subset: forall (P: mem -> Prop) (s1 s2: word -> Prop),
-    footprint_in P s1 ->
-    subset s1 s2 ->
-    footprint_in P s2.
-  Proof.
-    unfold footprint_in, subset, elem_of.
-    intros. eauto.
-  Qed.
-
-  Lemma footprint_star_in: forall (P1 P2: mem -> Prop) (s1 s2: word -> Prop),
-      footprint_in P1 s1 ->
-      footprint_in P2 s2 ->
-      footprint_in (P1 * P2)%sep (union s1 s2).
-  Proof.
-    unfold footprint_in, union, elem_of, sep, map.split.
-    intros. simp.
-    rewrite map.get_putmany_dec in H2.
-    destruct_one_match_hyp; simp; eauto.
-  Qed.
-
-  Definition range_OLD(start: word)(count: nat): word -> Prop :=
-    of_list (HList.tuple.to_list (bedrock2.Memory.footprint start count)).
-
-  Fixpoint range(start: word)(count: nat): word -> Prop :=
-    match count with
-    | O => empty_set
-    | S n => union (singleton_set start) (range (word.add start (word.of_Z 1)) n)
-    end.
-
-  Lemma range_add_impl: forall n m a start,
-      range start (n + m) a <-> union (range start n)
-                                             (range (word.add start (word.of_Z (Z.of_nat n))) m) a.
-  Proof.
-    split; revert n m a start; induction n; intros.
-    - simpl. change (Z.of_nat 0) with 0%Z. rewrite add_0_r. right. assumption.
-    - rewrite Nat.add_succ_l in *. simpl in *.
-      destruct H.
-      + cbv [elem_of singleton_set] in H. subst a.
-        left. left. reflexivity.
-      + specialize IHn with (1 := H).
-        clear H.
-        replace (start + !#(S n)) with (start + !1 + !#n) by solve_word_eq word_ok.
-        unfold union, elem_of in *. tauto.
-    - change (Z.of_nat 0) with 0%Z in *. rewrite add_0_r in H.
-      simpl. unfold union, elem_of in *. destruct H; [exfalso|assumption].
-      contradiction H.
-    - simpl in *. unfold union, elem_of in *.
-      apply or_assoc in H.
-      destruct H; [solve [auto]|].
-      right.
-      eapply IHn.
-      replace (start + !#(S n)) with (start + !1 + !#n) in H by solve_word_eq word_ok.
-      exact H.
-  Qed.
-
-  Lemma range_add: forall n m start,
-      range start (n + m) = union (range start n)
-                                          (range (word.add start (word.of_Z (Z.of_nat n))) m).
-  Proof.
-    intros. eapply iff1ToEq. unfold iff1. intro a. eapply range_add_impl.
-  Qed.
-
-  (* if P allows different footprints, we return the union of all possible footprints *)
-  Definition footprint(P: mem -> Prop): word -> Prop :=
-    fun a => exists m v, P m /\ map.get m a = Some v.
-
-  Lemma footprint_emp: forall (P: Prop),
-      footprint (emp P) = empty_set.
-  Proof.
-    unfold footprint, emp, empty_set.
-    intros.
-    eapply iff1ToEq. unfold iff1. intros. split; intros.
-    - simp. rewrite map.get_empty in Hr. discriminate.
-    - contradiction.
-  Qed.
-
-  Lemma range_0_empty: forall start,
-      range start 0 = empty_set.
-  Proof.
-    intros. reflexivity.
-  Qed.
-
-  Lemma footprint_star: forall (P1 P2: mem -> Prop),
-      footprint (P1 * P2)%sep = union (footprint P1) (footprint P2).
-  Proof.
-    unfold footprint, union, elem_of, sep, map.split.
-    intros. eapply iff1ToEq. intro a. split; intros; simp.
-    - rewrite map.get_putmany_dec in Hr.
-      destruct_one_match_hyp; simp; eauto.
-    - (* does not hold, because if an address is in the union, we only know
-         that one predicate holds, but for star, we need both predicates to
-         hold on some memory.
-         Therefore, we don't use equality (or <->) between sets, but only
-         subsets. *)
-  Abort.
-
-(*
-  Lemma footprint_array: forall (A: Type) elem size (xs: list A) start,
-    (forall a x, subset (footprint (elem a x)) = range a (Z.to_nat (word.unsigned size))) ->
-    footprint (array elem size start xs) =
-    (range start (Z.to_nat (word.unsigned size) * List.length xs)).
-  Proof.
-    induction xs; intros.
-    - simpl in *. rewrite Nat.mul_0_r. rewrite footprint_emp. rewrite range_0_empty.
-      reflexivity.
-    - simpl. in *.
-      unfold sep, map.split in H. simp.
-      specialize IHxs with (1 := Hrr).
-      rewrite map.get_putmany_dec in H0.
-      destr (map.get mq a0).
-      + replace r with v in * by congruence. clear r H0.
-        specialize IHxs with (1 := E).
-        rewrite Nat.mul_succ_r.
-
-  Lemma footprint_array: forall (A: Type) elem size (xs: list A) start,
-    footprint_in (array elem size start xs)
-                 (range start (Z.to_nat (word.unsigned size) * List.length xs)).
-  Proof.
-    unfold footprint_in, of_list, bedrock2.Memory.footprint.
-    induction xs; intros.
-    - exfalso. simpl in *. unfold emp in *. simp. rewrite map.get_empty in H0. discriminate.
-    - simpl in *.
-      unfold sep, map.split in H. simp.
-      specialize IHxs with (1 := Hrr).
-      rewrite map.get_putmany_dec in H0.
-      destr (map.get mq a0).
-      + replace r with v in * by congruence. clear r H0.
-        specialize IHxs with (1 := E).
-        rewrite Nat.mul_succ_r.
-
- simpl. rewrite Nat.mul_0_r. simpl. Search (_ * 0)%nat.
-
-  Lemma footprint_ptsto_word: forall
-      footprint_in (ptsto_word a v) (fun p => bedrock2.Memory.footprint
-*)
-
-  Definition unique(P: mem -> Prop) := exists m, iff1 P (eq m).
-
-  Lemma update_only_differ_UNUSED: forall C C' P m m' s,
-      (C' * P)%sep m' ->
-      (C * P)%sep m ->
-      unique P ->
-      footprint_in C s ->
-      footprint_in C' s ->
-      map.only_differ m s m'.
-  Proof.
-    intros *. intros S' S U F F'. unfold sep in *.
-    destruct S as (ml & mr & Hm & Hml & Hmr).
-    destruct S' as (ml' & mr' & Hm' & Hml' & Hmr').
-    unfold footprint_in, map.only_differ, elem_of, unique, iff1, map.split in *.
-    specialize F with (1 := Hml).
-    specialize F' with (1 := Hml').
-    destruct U as (mP & U).
-    pose proof (proj1 (U mr) Hmr). subst mP.
-    specialize (U mr'). apply proj1 in U. specialize (U Hmr'). subst mr'.
-    destruct Hm as (? & D). destruct Hm' as (? & D'). subst.
-    intro a.
-    destr (map.get ml a).
-    - left. eapply F. eassumption.
-    - destr (map.get ml' a).
-      + left. eapply F'. eassumption.
-      + destr (map.get mr a).
-        * do 2 erewrite map.get_putmany_right by eassumption. auto.
-        * do 2 rewrite map.get_putmany_left by assumption. rewrite E. rewrite E0. auto.
-  Qed.
-
   Lemma compile_stmt_correct_new:
     forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
@@ -1024,8 +822,9 @@ Section Proofs.
       (* put arguments on stack *)
       eapply runsTo_trans. {
         eapply save_regs_correct with (vars := args) (p_sp0 := p_sp)
-                (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl; cycle -2.
+                (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl; cycle -3.
         - wseplog_pre word_ok. wcancel.
+        - sidecondition.
         - sidecondition.
         - sidecondition.
         - pose proof (NoDup_valid_FlatImp_vars_bound_length argnames) as A.
@@ -1147,6 +946,7 @@ Section Proofs.
       eapply save_regs_correct; simpl; cycle 2.
       2: rewrite map.get_put_same; reflexivity.
       1: exact P2.
+      4: assumption.
       4: {
         eapply Forall_impl; cycle 1.
         - eapply modVars_as_list_valid_FlatImp_var. assumption.
@@ -1192,6 +992,7 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
+      - assumption.
       - assumption.
       - assumption.
       - pose proof (NoDup_valid_FlatImp_vars_bound_length retnames) as A.
@@ -1288,23 +1089,11 @@ Section Proofs.
           f_equal. simpl_addrs. solve_word_eq word_ok.
       }
       {
-        (* the stuff which we shoveled into the frame is compiler managed:
-        eapply footprint_in_subset.
-        - repeat match goal with
-                 | |- footprint_in (_ * _)%sep _ => eapply footprint_star_in
-                 end.
-        -  *)
-        case TODO_sam.
-      }
-      {
-        eapply ext_guarantee_preservable. 6: eassumption.
-        all: cbn.
-        1: use_sep_assumption; wcancel.
-        1: use_sep_assumption; wcancel.
-        3: reflexivity.
-        (* to footprint of everything except ext_frame is compiler managed *)
-        { case TODO_sam. (* for initial mem *) }
-        { case TODO_sam. (* for final mem *) }
+        match goal with
+        | H: valid_machine {| getMetrics := ?M |} |- valid_machine {| getMetrics := ?M |} =>
+          eqexact H; f_equal; f_equal
+        end.
+        all: solve_word_eq word_ok.
       }
     }
 
@@ -1339,6 +1128,7 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
+      - assumption.
       - eapply Forall_impl; cycle 1.
         + eassumption.
         + apply valid_FlatImp_var_implies_valid_register.
@@ -1392,6 +1182,7 @@ Section Proofs.
         wseplog_pre word_ok.
         wcancel.
       - reflexivity.
+      - assumption.
       - apply modVars_as_list_valid_FlatImp_var. assumption.
       - apply NoDup_modVars_as_list.
       - pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A.
@@ -1455,6 +1246,7 @@ Section Proofs.
         subst FL.
         wseplog_pre word_ok.
         wcancel.
+      - assumption.
       - assumption.
       - assumption.
     }
@@ -1533,7 +1325,7 @@ Section Proofs.
           (vars := binds) (values := retvs)
           (offset := (- bytes_per_word * Z.of_nat (List.length args + List.length binds))%Z)
           (p_sp0 := p_sp);
-        simpl; cycle -2; try assumption.
+        simpl; cycle -3; try assumption.
       - wseplog_pre word_ok.
         wcancel.
         subst FL.
@@ -1734,27 +1526,36 @@ Section Proofs.
       simpl_addrs.
       wcancel.
     + assumption.
-    + repeat match goal with
-      | H: ext_guarantee ?M |- _ => lazymatch M with
-                                    | context[middle_log0] => move H at bottom
-                                    | _ => clear H
-                                    end
-      end.
-      eapply ext_guarantee_preservable.
-      all: cbn.
-      6: eassumption.
-      5: reflexivity.
-      all: cbn.
-      * case TODO_sam. (* need seplog about middle_mem2 *)
-      * use_sep_assumption. wcancel.
-      * case TODO_sam. (* is_compiler_managed *)
-      * case TODO_sam. (* is_compiler_managed *)
+
+  Set Nested Proofs Allowed.
+
+  Lemma runsTo_det_step_with_valid_machine: forall initialL midL (P : RiscvMachineL -> Prop),
+      valid_machine initialL ->
+      mcomp_sat (Run.run1 iset) initialL (eq midL) ->
+      (valid_machine midL -> runsTo midL P) ->
+      runsTo initialL P.
+  Proof.
+    intros.
+    eapply runsToStep with (midset := fun m' => m' = midL /\ valid_machine m').
+    - eapply run1_get_sane; try eassumption.
+      intros. subst. auto.
+    - intros ? (? & ?). subst. eapply H1. assumption.
+  Qed.
+
+Ltac run1det ::=
+  eapply runsTo_det_step_with_valid_machine;
+  [ assumption
+  | simulate';
+      match goal with
+      | |- ?mid = ?RHS => is_evar mid; simpl; reflexivity
+      | |- _ => fail 10000 "simulate' did not go through completely"
+      end
+   | intros  ].
 
     - (* SLoad *)
       progress unfold Memory.load, Memory.load_Z in *. simp.
       subst_load_bytes_for_eq.
       assert (x <> RegisterNames.sp). {
-        apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
@@ -1772,14 +1573,46 @@ Section Proofs.
       destruct P as (finalML & P1 & P2).
       run1det. run1done.
 
+(* if we have valid_machine for the current machine, and need to prove a
+   runsTo with valid_machine in the postcondition, this tactic can
+   replace the valid_machine in the postcondition by True *)
+Ltac get_run1valid_for_free :=
+  let R := fresh "R" in
+  evar (R: MetricRiscvMachine -> Prop);
+  eapply runsTo_get_sane with (P := R);
+  [ (* valid_machine *)
+    assumption
+  | (* the simpler runsTo goal, left open *)
+    idtac
+  | (* the impliciation, needs to replace valid_machine by True *)
+    let mach' := fresh "mach'" in
+    let D := fresh "D" in
+    let Pm := fresh "Pm" in
+    intros mach' D V Pm;
+    match goal with
+    | H: valid_machine mach' |- context C[valid_machine mach'] =>
+      let G := context C[True] in
+      let P := eval pattern mach' in G in
+      lazymatch P with
+      | ?F _ => instantiate (R := F)
+      end
+    end;
+    subst R;
+    clear -V Pm;
+    cbv beta in *;
+    simp;
+    eauto 20
+  ];
+  subst R.
+
     - (* SLit *)
+      get_run1valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
       + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
       + simpl.
         assert (x <> RegisterNames.sp). {
-          apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
         }
@@ -1787,7 +1620,6 @@ Section Proofs.
 
     - (* SOp *)
       assert (x <> RegisterNames.sp). {
-        apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
@@ -1800,7 +1632,7 @@ Section Proofs.
               ?word.srs_ignores_hibits,
               ?word.mulhuu_simpl,
               ?word.divu0_simpl,
-              ?word.modu0_simpl;
+              ?word.modu0_simpl in *;
       try solve [run1done].
       (* bopname.eq requires two instructions *)
       run1det. run1done.
@@ -1810,7 +1642,6 @@ Section Proofs.
 
     - (* SSet *)
       assert (x <> RegisterNames.sp). {
-        apply_in_hyps TODO_sam_valid_register_to_valid_FlatImp_var.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
@@ -1818,11 +1649,12 @@ Section Proofs.
 
     - (* SIf/Then *)
       (* execute branch instruction, which will not jump *)
-      eapply runsTo_det_step; simpl in *; subst.
+      eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
+      + assumption.
       + simulate'. simpl_MetricRiscvMachine_get_set.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+      + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
           eapply IHexec with (g := {| p_sp := _; |}) (pos := (pos + 4)%Z);
             after_IH;
@@ -1830,8 +1662,31 @@ Section Proofs.
           all: try safe_sidecond.
           all: try safe_sidecond.
 
-Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler_managed.
-          apply TODO_sam_footprint_in.
+  Ltac solve_valid_machine :=
+    match goal with
+    | H: valid_machine {| getMetrics := ?M |} |- valid_machine {| getMetrics := ?M |} =>
+      eqexact H; f_equal; f_equal
+    end;
+    solve_word_eq (@word_ok (@W (@def_params p))).
+
+  Ltac run1done ::=
+    apply runsToDone;
+    simpl_MetricRiscvMachine_get_set;
+    simpl in *;
+    repeat match goal with
+    | |- exists (_: _), _ => eexists
+    end;
+    repeat split;
+    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    match goal with
+    | |- _ => solve [eauto]
+    | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
+    | |- exists _, _ = _ /\ (_ * _)%sep _ =>
+      eexists; split; cycle 1; [ wseplog_pre (@word_ok (@W (@def_params p))); wcancel | blia ]
+    | |- _ => solve [map_solver (@locals_ok p h)]
+    | |- _ => solve [solve_valid_machine]
+    | |- _ => idtac
+    end.
 
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
@@ -1839,17 +1694,18 @@ Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler
 
     - (* SIf/Else *)
       (* execute branch instruction, which will jump over then-branch *)
-      eapply runsTo_det_step; simpl in *; subst.
+      eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
+      + assumption.
       + simulate'.
         destruct cond; [destruct op | ];
           simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+      + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
           eapply IHexec with (g := {| p_sp := _; |});
             after_IH;
             try safe_sidecond.
             all: try safe_sidecond.
-            apply TODO_sam_footprint_in.
+            solve_valid_machine.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
@@ -1864,7 +1720,6 @@ Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler
             after_IH;
             try safe_sidecond.
           all: try safe_sidecond.
-          apply TODO_sam_footprint_in.
       + simpl in *. simpl. intros. destruct_RiscvMachine middle.
         match goal with
         | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
@@ -1877,11 +1732,12 @@ Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler
            end.
         destruct condB.
         * (* true: iterate again *)
-          eapply runsTo_det_step; simpl in *; subst.
+          eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
+          { assumption. }
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+          { intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
               eapply IH2 with (g := {| p_sp := _; |});
                 after_IH;
@@ -1890,7 +1746,7 @@ Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler
               1: eassumption.
               all: try safe_sidecond.
               all: try safe_sidecond.
-              2: apply TODO_sam_footprint_in.
+              2: solve_valid_machine.
               match goal with
               | H: regs_initialized _ |- _ => move H at bottom
               end.
@@ -1911,16 +1767,18 @@ Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler
                 }
                 all: try safe_sidecond.
                 1: constructor; congruence.
+                2: solve_valid_machine.
                 case TODO_sam. (* TODO add regs_initialized to goodMachine *)
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
         * (* false: done, jump over body2 *)
-          eapply runsTo_det_step; simpl in *; subst.
+          eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
+          { assumption. }
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { simpl in *. run1done. cbn. wcancel. }
+          { intro V. simpl in *. run1done. cbn. wcancel. }
 
     - (* SSeq *)
       on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).
@@ -1930,7 +1788,6 @@ Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler
           after_IH;
           try safe_sidecond.
         all: try safe_sidecond.
-        apply TODO_sam_footprint_in.
       + simpl. intros. destruct_RiscvMachine middle. simp. subst.
         eapply runsTo_trans.
         * eapply IH2 with (g := {| p_sp := _; |});
@@ -1939,7 +1796,7 @@ Axiom TODO_sam_footprint_in: forall (P: mem -> Prop), footprint_in P is_compiler
           1: eassumption.
           all: try safe_sidecond.
           all: try safe_sidecond.
-          2: apply TODO_sam_footprint_in.
+          2: solve_valid_machine.
           case TODO_sam. (* TODO add regs_initialized to goodMachine *)
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 

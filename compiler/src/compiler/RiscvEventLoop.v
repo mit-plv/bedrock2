@@ -81,14 +81,16 @@ Section EventLoop.
   Hypothesis body_correct: forall (initial: RiscvMachineL),
       goodReadyState initial ->
       initial.(getPc) = pc_start ->
+      valid_machine initial ->
       runsTo (mcomp_sat (run1 iset)) initial (fun final =>
           goodReadyState final /\
           final.(getPc) = pc_end /\
-          (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem))).
+          (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem)) /\
+          valid_machine final).
 
   Definition runsToGood_Invariant(prefinalL: RiscvMachineL): Prop :=
     runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
-       goodReadyState finalL /\ finalL.(getPc) = pc_start).
+       goodReadyState finalL /\ finalL.(getPc) = pc_start /\ valid_machine finalL).
 
   (* "runs to a good state" is an invariant of the transition system
      (note that this does not depend on the definition of runN) *)
@@ -96,8 +98,8 @@ Section EventLoop.
       runsToGood_Invariant st -> mcomp_sat (run1 iset) st runsToGood_Invariant.
   Proof.
     eapply runsTo_safe1_inv; cycle 1.
-    - intros state (? & ?). eapply body_correct; assumption.
-    - intros state (? & ? & R & ?).
+    - intros state (? & ? & ?). eapply body_correct; assumption.
+    - intros state (? & ? & (R & ?) & ?).
       (* this is the loop verification code: *)
       eapply runsToStep. {
         eapply run_Jal0; try eassumption.
@@ -107,8 +109,10 @@ Section EventLoop.
       destruct_RiscvMachine state.
       destruct_RiscvMachine mid.
       subst.
-      ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
-      apply runsToDone. split; [|reflexivity].
+      apply runsToDone.
+      ssplit; try assumption; cbn;
+        ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump));
+        try reflexivity.
       eapply goodReadyState_ignores in H.
       + apply H.
       + reflexivity.
@@ -120,53 +124,6 @@ Section EventLoop.
   (* initialization code: all the code before the loop body, loop body starts at pc_start *)
   Hypothesis init_correct:
       runsTo (mcomp_sat (run1 iset)) startState (fun final =>
-          goodReadyState final /\ final.(getPc) = pc_start).
-
-  (* forall n, after running for n steps, we're only "a runsTo away" from a good state *)
-  Lemma eventLoop_sound: forall n, mcomp_sat (runN iset n) startState runsToGood_Invariant.
-  Proof.
-    intros. eapply safe_forever; cycle 1.
-    - intros state (? & ?). eapply body_correct; assumption.
-    - intros state (? & ? & R & ?).
-      (* this is the loop verification code: *)
-      eapply runsToStep. {
-        eapply run_Jal0; try eassumption.
-        unfold program, array. rewrite H0. ecancel_assumption.
-      }
-      simpl. intros. simp.
-      destruct_RiscvMachine state.
-      destruct_RiscvMachine mid.
-      subst.
-      ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump)).
-      apply runsToDone. split; [|reflexivity].
-      eapply goodReadyState_ignores in H.
-      + apply H.
-      + reflexivity.
-    - eapply init_correct.
-    - intros state C. simp. congruence.
-  Qed.
-
-  (* the trace invariant we want to prove *)
-  Variable goodTrace: trace -> Prop.
-
-  Hypothesis goodReadyState_implies_goodTrace: forall (state: RiscvMachineL),
-      goodReadyState state -> goodTrace state.(getLog).
-
-  Record InvariantProps: Prop := {
-    establish_inv: runsToGood_Invariant startState;
-    preserve_inv: forall st,
-        runsToGood_Invariant st -> mcomp_sat (run1 iset) st runsToGood_Invariant;
-    use_inv: forall st, runsToGood_Invariant st -> exists rest, goodTrace (rest ++ getLog st)
-  }.
-
-  Lemma invariantProps: InvariantProps.
-  Proof.
-    constructor.
-    - unfold runsToGood_Invariant. exact init_correct.
-    - exact runsToGood_is_Invariant.
-    - intros. eapply extend_runsTo_to_good_trace. 3: exact H.
-      + intros st' (? & ?).
-        eapply goodReadyState_implies_goodTrace. assumption.
-  Abort.
+          goodReadyState final /\ final.(getPc) = pc_start /\ valid_machine final).
 
 End EventLoop.

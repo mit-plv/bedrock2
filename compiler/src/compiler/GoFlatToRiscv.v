@@ -74,6 +74,27 @@ Section Go.
     simpl. intros _. assumption.
   Qed.
 
+  (* nicer version of mcomp_sat_weaken which gives you two more hypotheses while proving P -> Q *)
+  Lemma run1_get_sane: forall iset (P Q: RiscvMachineL -> Prop) mach,
+      valid_machine mach ->
+      mcomp_sat (run1 iset) mach P ->
+      (forall mach': RiscvMachineL,
+          (exists diff, mach'.(getLog) = diff ++ mach.(getLog)) ->
+          valid_machine mach' ->
+          P mach' ->
+          Q mach') ->
+      mcomp_sat (run1 iset) mach Q.
+  Proof.
+    intros.
+    pose proof run1_sane as A.
+    unfold mcomp_sane in A.
+    specialize A with (1 := H) (2 := H0).
+    apply proj2 in A.
+    eapply mcomp_sat_weaken. 2: exact A. cbv beta.
+    intros. destruct H2 as ((? & (diff & ?)) & ?).
+    eapply H1; eauto.
+  Qed.
+
   Lemma runsTo_sane: forall iset (P: RiscvMachineL -> Prop) mach,
       runsTo (mcomp_sat (run1 iset)) mach P ->
       valid_machine mach ->

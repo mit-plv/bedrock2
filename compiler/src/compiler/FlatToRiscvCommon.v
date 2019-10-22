@@ -70,11 +70,6 @@ Module Import FlatToRiscv.
 
     ext_spec : list (mem * String.string * list word * (mem * list word)) ->
                mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
-
-    (* An abstract predicate on the low-level state, which can be chosen by authors of
-       extensions. The compiler will ensure that this guarantee holds before each external
-       call. *)
-    ext_guarantee: MetricRiscvMachine -> Prop;
   }.
 
   Instance Semantics_params{p: parameters}: Semantics.parameters := {|
@@ -94,15 +89,6 @@ Module Import FlatToRiscv.
 
     PR :> MetricPrimitives PRParams;
 
-    (* For authors of extensions, a freely choosable ext_guarantee sounds too good to be true!
-       And indeed, there are two restrictions:
-       The first restriction is that ext_guarantee needs to be preservable for the compiler: *)
-    ext_guarantee_preservable: forall (m1 m2: MetricRiscvMachine),
-        ext_guarantee m1 ->
-        map.same_domain m1.(getMem) m2.(getMem) ->
-        m1.(getLog) = m2.(getLog) ->
-        ext_guarantee m2;
-
     (* And the second restriction is part of the correctness requirement for compilation of
        external calls: Every compiled external call has to preserve ext_guarantee *)
     compile_ext_call_correct: forall (initialL: MetricRiscvMachine) action postH newPc insts
@@ -114,7 +100,7 @@ Module Import FlatToRiscv.
       Forall valid_register resvars ->
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      ext_guarantee initialL ->
+      valid_machine initialL ->
       exec map.empty (SInteract resvars action argvars)
            initialL.(getLog) initialMH initialL.(getRegs) initialMetricsH postH ->
       runsTo (mcomp_sat (run1 iset)) initialL
@@ -126,7 +112,7 @@ Module Import FlatToRiscv.
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
-                  ext_guarantee finalL);
+                  valid_machine finalL);
   }.
 
 End FlatToRiscv.
@@ -342,6 +328,7 @@ Section FlatToRiscv1.
       addr = word.add base (word.of_Z ofs) ->
       (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] *
        ptsto_word addr v * R)%sep (getMem initialL) ->
+      valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
          (fun finalL : RiscvMachineL =>
             getRegs finalL = map.put (getRegs initialL) rd v /\
@@ -349,11 +336,12 @@ Section FlatToRiscv1.
             (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] *
              ptsto_word addr v * R)%sep (getMem finalL) /\
             getPc finalL = getNextPc initialL /\
-            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
+            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
+            valid_machine finalL).
   Proof.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_load Syntax.access_size.word); cycle -1; try eassumption.
+    - eapply (run_compile_load Syntax.access_size.word); cycle -2; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
       etransitivity. 1: eassumption.
       unfold id.
@@ -376,6 +364,7 @@ Section FlatToRiscv1.
       addr = word.add base (word.of_Z ofs) ->
       (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
        ptsto_word addr v_old * R)%sep (getMem initialL) ->
+      valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
@@ -383,11 +372,12 @@ Section FlatToRiscv1.
            (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
             ptsto_word addr v_new * R)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
-           getNextPc finalL = word.add (getPc finalL) (word.of_Z 4)).
+           getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
+           valid_machine finalL).
   Proof.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_store Syntax.access_size.word); cycle -1; try eassumption.
+    - eapply (run_compile_store Syntax.access_size.word); cycle -2; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
   Qed.
 
@@ -501,12 +491,6 @@ Ltac subst_load_bytes_for_eq :=
     let Q := fresh "Q" in
     edestruct P as [Q ?]; clear P; [ecancel_assumption|]
   end.
-
-Ltac prove_ext_guarantee :=
-  eapply ext_guarantee_preservable; [eassumption | simpl | reflexivity ];
-  (* eauto using the lemmas below doesn't work, why? *)
-  first [ eapply map.same_domain_refl |
-          eapply store_bytes_preserves_footprint; eassumption ].
 
 Ltac simulate'_step :=
   match goal with

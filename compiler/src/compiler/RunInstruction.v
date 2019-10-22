@@ -27,9 +27,11 @@ Require Import coqutil.Decidable.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.InstructionCoercions. Local Open Scope ilist_scope.
 Require Import compiler.SimplWordExpr.
+Require Import compiler.Simp.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.ZLemmas.
 Import Utility.
+
 
 Section Run.
 
@@ -74,6 +76,7 @@ Section Run.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
           initialL.(getMem) ->
+      valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
@@ -81,7 +84,8 @@ Section Run.
             finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add dest (word.of_Z oimm12) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        valid_machine finalL).
 
   Definition run_Jal_spec :=
     forall (rd: Register) (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
@@ -89,13 +93,15 @@ Section Run.
       valid_register rd ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep initialL.(getMem) ->
+      valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        valid_machine finalL).
 
   (* TOOD in the specs below we could remove divisibleBy4 and bounds because that's
      enforced by program *)
@@ -105,6 +111,7 @@ Section Run.
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
       (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep initialL.(getMem) ->
+      valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
@@ -115,7 +122,8 @@ Section Run.
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        valid_machine finalL).
 
   Definition run_ImmReg_spec(Op: Register -> Register -> MachineInt -> Instruction)
                             (f: word -> word -> word): Prop :=
@@ -125,13 +133,15 @@ Section Run.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
       (program initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
+      valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[Op rd rs imm]] * R)%sep finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        valid_machine finalL).
 
   Definition run_Load_spec(n: nat)(L: Register -> Register -> MachineInt -> Instruction)
              (opt_sign_extender: Z -> Z): Prop :=
@@ -145,6 +155,7 @@ Section Run.
       addr = word.add base (word.of_Z ofs) ->
       (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
         initialL.(getMem) ->
+      valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
                   (word.of_Z (opt_sign_extender (LittleEndian.combine n v))) /\
@@ -153,7 +164,8 @@ Section Run.
           finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        valid_machine finalL).
 
   Definition run_Store_spec(n: nat)(S: Register -> Register -> MachineInt -> Instruction): Prop :=
     forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
@@ -167,6 +179,7 @@ Section Run.
       addr = word.add base (word.of_Z ofs) ->
       (program initialL.(getPc) [[S rs1 rs2 ofs]] * ptsto_bytes n addr v_old * R)%sep
         initialL.(getMem) ->
+      valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
@@ -175,10 +188,39 @@ Section Run.
             finalL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4)).
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        valid_machine finalL).
 
-  Ltac t :=
-    repeat intro;
+  Ltac get_run1_valid_for_free :=
+    let R := fresh "R" in
+    evar (R: MetricRiscvMachine -> Prop);
+    eapply run1_get_sane with (P := R);
+    [ (* valid_machine *)
+      assumption
+    | (* the simpler run1 goal, left open *)
+      idtac
+    | (* the impliciation, needs to replace valid_machine by True *)
+      let mach' := fresh "mach'" in
+      let D := fresh "D" in
+      let Pm := fresh "Pm" in
+      intros mach' D V Pm;
+      match goal with
+      | H: valid_machine mach' |- context C[valid_machine mach'] =>
+        let G := context C[True] in
+        let P := eval pattern mach' in G in
+        lazymatch P with
+        | ?F _ => instantiate (R := F)
+        end
+      end;
+      subst R;
+      clear -V Pm;
+      cbv beta in *;
+      simp;
+      eauto 20
+    ];
+    subst R.
+
+  Ltac t0 :=
     match goal with
     | initialL: RiscvMachineL |- _ => destruct_RiscvMachine initialL
     end;
@@ -191,9 +233,12 @@ Section Run.
            | |- _ => ecancel_assumption
            end.
 
+  Ltac t := repeat intro; get_run1_valid_for_free; t0.
+
   Lemma run_Jalr0: run_Jalr0_spec.
   Proof.
     repeat intro.
+    get_run1_valid_for_free.
     destruct (invert_ptsto_program1 H4) as (DE & ? & ?).
     (* execution of Jalr clears lowest bit *)
     assert (word.and (word.add dest (word.of_Z oimm12))
@@ -222,14 +267,15 @@ Section Run.
                         (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1)))) mod 4 = 0) as B. {
       rewrite A. solve_divisibleBy4.
     }
-    t.
+    t0.
   Qed.
 
   Lemma run_Jal: run_Jal_spec.
   Proof.
     repeat intro.
+    get_run1_valid_for_free.
     destruct (invert_ptsto_program1 H2) as (DE & ? & ?).
-    t.
+    t0.
   Qed.
 
   Arguments Z.pow: simpl never.
@@ -238,8 +284,9 @@ Section Run.
   Lemma run_Jal0: run_Jal0_spec.
   Proof.
     repeat intro.
+    get_run1_valid_for_free.
     destruct (invert_ptsto_program1 H1) as (DE & ? & ?).
-    t.
+    t0.
   Qed.
 
   Lemma run_Addi: run_ImmReg_spec Addi word.add.

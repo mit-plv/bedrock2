@@ -34,6 +34,7 @@ Section Proofs.
       (program initial.(getPc) (save_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+      valid_machine initial ->
       runsTo initial (fun final =>
           final.(getRegs) = initial.(getRegs) /\
           (program initial.(getPc) (save_regs vars offset) *
@@ -41,7 +42,8 @@ Section Proofs.
           final.(getPc) = word.add initial.(getPc) (word.mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
-          final.(getLog) = initial.(getLog)).
+          final.(getLog) = initial.(getLog) /\
+          valid_machine final).
   Proof.
     unfold map.getmany_of_list.
     induction vars; intros.
@@ -111,6 +113,7 @@ Section Proofs.
       (program initial.(getPc) (load_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+      valid_machine initial ->
       runsTo initial (fun final =>
           map.only_differ initial.(getRegs) (PropSet.of_list vars) final.(getRegs) /\
           map.getmany_of_list final.(getRegs) vars = Some values /\
@@ -120,7 +123,8 @@ Section Proofs.
           final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
-          final.(getLog) = initial.(getLog)).
+          final.(getLog) = initial.(getLog) /\
+          valid_machine final).
   Proof.
     induction vars; intros.
     - simpl in *. simp. destruct values; simpl in *; [|discriminate].
@@ -150,7 +154,7 @@ Section Proofs.
       destruct_RiscvMachine mid.
       simp. subst.
       eapply runsToNonDet.runsTo_weaken.
-      + eapply IHvars; simpl; cycle -2; auto.
+      + eapply IHvars; simpl; cycle -3; auto.
         * use_sep_assumption.
           match goal with
           | |- iff1 ?LHS ?RHS =>
@@ -209,6 +213,7 @@ Section Proofs.
           rewrite Znat.Nat2Z.inj_succ. rewrite <- Z.add_1_r.
           replace (List.length values) with (List.length vars) by congruence.
           solve_word_eq word_ok.
+        * assumption.
         * assumption.
   Qed.
 
