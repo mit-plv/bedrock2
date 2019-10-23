@@ -25,8 +25,14 @@ Local Instance spec_of_arp : spec_of "arp" := fun functions =>
     (sep (array scalar8 (word.of_Z 1) ethbuf packet) R) m ->
     word.unsigned len = Z.of_nat (length packet) ->
   WeakestPrecondition.call functions "arp" t m [ethbuf; len] (fun T M rets => True).
+
+Section WithParameters.
+  Context {p : FE310CSemantics.parameters.parameters}.
+
 Goal program_logic_goal_for_function! arp.
   repeat straightline.
+  eexists; split; repeat straightline.
+  1: exact eq_refl.
   letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.
   eapply Properties.word.if_nonzero in H1.
   rewrite word.unsigned_ltu, word.unsigned_of_Z in H1. cbv [word.wrap] in H1.
@@ -73,9 +79,10 @@ Goal program_logic_goal_for_function! arp.
   straightline.
   straightline.
   straightline.
-  straightline.
 
   unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H. {
     rewrite length_firstn_inbounds by bomega.
     trivial. }
 Abort.
+
+End WithParameters.

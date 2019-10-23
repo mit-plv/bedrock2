@@ -28,42 +28,46 @@ Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 
-Local Infix "*" := sep. Local Infix "*" := sep : type_scope.
-Instance spec_of_swap : spec_of "swap" := fun functions =>
-  forall a_addr a b_addr b m R t,
-    (scalar a_addr a * (scalar b_addr b * R)) m ->
-    WeakestPrecondition.call functions
-      "swap" t m [a_addr; b_addr]
-      (fun t' m' rets => t=t'/\ (scalar a_addr b * (scalar b_addr a * R)) m' /\ rets = nil).
+Section WithParameters.
+  Context {p : FE310CSemantics.parameters}.
 
-Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
-  forall a_addr a b_addr b m R t,
-    (scalar a_addr a * (scalar b_addr b * R)) m ->
-    WeakestPrecondition.call functions
-      "swap_swap" t m [a_addr; b_addr]
-      (fun t' m' rets => t=t' /\ (scalar a_addr a * (scalar b_addr b * R)) m' /\ rets = nil).
-
-Require Import bedrock2.string2ident.
-
-Lemma swap_ok : program_logic_goal_for_function! swap.
-Proof.
-  repeat straightline; []; eauto.
-Defined.
-
-Lemma swap_swap_ok : program_logic_goal_for_function! swap_swap.
-Proof.
-  repeat (straightline || (straightline_call; [solve[SeparationLogic.ecancel_assumption]|])); []; eauto.
-Defined.
-
-Lemma link_swap_swap_swap_swap : spec_of_swap_swap (swap_swap::swap::nil).
-Proof. auto using swap_swap_ok, swap_ok. Qed.
-
-(* Print Assumptions link_swap_swap_swap_swap. *)
-(* SortedList.* SortedListString.* *)
-
-From bedrock2 Require Import ToCString Byte Bytedump.
-Local Open Scope bytedump_scope.
-Goal True.
-  let c_code := eval cbv in (of_string (@c_module to_c_parameters (swap_swap::swap::nil))) in
-  idtac c_code.
-Abort.
+  Local Infix "*" := sep. Local Infix "*" := sep : type_scope.
+  Instance spec_of_swap : spec_of "swap" := fun functions =>
+    forall a_addr a b_addr b m R t,
+      (scalar a_addr a * (scalar b_addr b * R)) m ->
+      WeakestPrecondition.call (p:=@semantics_parameters p) functions
+        "swap" t m [a_addr; b_addr]
+        (fun t' m' rets => t=t'/\ (scalar a_addr b * (scalar b_addr a * R)) m' /\ rets = nil).
+  
+  Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
+    forall a_addr a b_addr b m R t,
+      (scalar a_addr a * (scalar b_addr b * R)) m ->
+      WeakestPrecondition.call (p:=@semantics_parameters p) functions
+        "swap_swap" t m [a_addr; b_addr]
+        (fun t' m' rets => t=t' /\ (scalar a_addr a * (scalar b_addr b * R)) m' /\ rets = nil).
+  
+  Require Import bedrock2.string2ident.
+  
+  Lemma swap_ok : program_logic_goal_for_function! swap.
+  Proof.
+    repeat straightline; []; eauto.
+  Defined.
+  
+  Lemma swap_swap_ok : program_logic_goal_for_function! swap_swap.
+  Proof.
+    repeat (straightline || (straightline_call; [solve[SeparationLogic.ecancel_assumption]|])); []; eauto.
+  Defined.
+  
+  Lemma link_swap_swap_swap_swap : spec_of_swap_swap (swap_swap::swap::nil).
+  Proof. auto using swap_swap_ok, swap_ok. Qed.
+  
+  (* Print Assumptions link_swap_swap_swap_swap. *)
+  (* SortedList.* SortedListString.* *)
+  
+  From bedrock2 Require Import ToCString Byte Bytedump.
+  Local Open Scope bytedump_scope.
+  Goal True.
+    let c_code := eval cbv in (of_string (@c_module to_c_parameters (swap_swap::swap::nil))) in
+    idtac c_code.
+  Abort.
+End WithParameters.

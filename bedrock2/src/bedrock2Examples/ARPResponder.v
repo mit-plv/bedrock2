@@ -2,12 +2,14 @@ Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics.
 
-Import Syntax BinInt String List.ListNotations.
-Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Coercion literal (z : Z) : expr := expr.literal z.
-Local Coercion var (x : String.string) : expr := expr.var x.
-Local Definition bedrock_func : Type := funname * (list varname * list varname * cmd).
-Local Coercion name_of_func (f : bedrock_func) := fst f.
+Section WithParameters.
+  Context {p : FE310CSemantics.parameters}.
+  Import Syntax BinInt String List.ListNotations ZArith.
+  Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+  Local Coercion literal (z : Z) : expr := expr.literal z.
+  Local Coercion var (x : String.string) : expr := expr.var x.
+  Local Definition bedrock_func : Type := BasicCSyntax.function.
+  Local Coercion name_of_func (f : BasicCSyntax.function) : funname := fst f.
 
 Definition arp : bedrock_func := 
     let ethbuf : varname := "ethbuf" in
@@ -79,7 +81,9 @@ Definition ipv4 : bedrock_func :=
     /*skip*/
 ))).
 
-Definition ethernet := 
+Definition ethernet : bedrock_func := 
+    let ipv4 : varname := "ipv4" in
+    let arp : varname := "arp" in
     let buf : varname := "buf" in
     let len : varname := "len" in
     let ethertype : varname := "ethertype" in
@@ -104,3 +108,4 @@ Goal True.
   .
 Abort.
 *)
+End WithParameters.
