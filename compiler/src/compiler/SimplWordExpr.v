@@ -83,10 +83,17 @@ Hint Unfold
      Z.succ
   : unf_simpl_Z_nat.
 
+Ltac simpl_Z_nat_getEq t :=
+  match t with
+  | context[ Z.of_nat (S ?n) ] => constr:(Nat2Z.inj_succ n)
+  | context[ Z.of_nat (?n + ?m) ] => constr:(Nat2Z.inj_add n m)
+  | context[ Z.of_nat (?n * ?m) ] => constr:(Nat2Z.inj_mul n m)
+  | context[ length (?l1 ++ ?l2) ] => constr:(List.app_length l1 l2)
+  end.
+
 Ltac simpl_Z_nat_step :=
-  autorewrite with rew_simpl_Z_nat in * ||
+  rewr simpl_Z_nat_getEq in * ||
   autounfold with unf_simpl_Z_nat in * ||
-  autorewrite with rew_word_morphism ||
   cbn [List.length] in * ||
   simpl_Zcsts.
 
