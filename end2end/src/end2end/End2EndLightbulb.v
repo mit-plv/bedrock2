@@ -42,12 +42,13 @@ Definition loop_body :=
   @cmd.call Semantics.syntax ["err"] "lightbulb_loop" [expr.literal buffer_addr]
   )(@cmd.unset Semantics.syntax "err").
 
+Local Instance parameters : FE310CSemantics.parameters := ltac:(esplit; exact _).
 Axiom TODO_andres: False.
 
 Definition lightbulb_packet_rep: bool -> list Semantics.byte -> Prop.
   intros command bytes.
   refine (lightbulb_packet_rep command (_ bytes)).
-  case TODO_andres.
+  all : eapply id.
 Defined.
 
 Definition traceOfOneInteraction: list (lightbulb_spec.OP Semantics.word) -> Prop :=
@@ -65,7 +66,7 @@ Definition goodHlTrace: list (lightbulb_spec.OP Semantics.word) -> Prop :=
 Definition relate_lightbulb_trace_to_bedrock(ioh: list (lightbulb_spec.OP Semantics.word))
                                             (iol : Semantics.trace): Prop.
   refine (SPI.mmio_trace_abstraction_relation (_ ioh) (_ iol)).
-  all: case TODO_andres.
+  all: eapply id.
   (* this should not be needed any more once lightbulb proofs are for generic word *)
 Defined.
 
