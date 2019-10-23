@@ -44,15 +44,18 @@ End Lemmas.
 
 Ltac simpl_Zcsts :=
   repeat so fun hyporgoal => match hyporgoal with
-         | context [?op ?a ?b] =>
+         | context [Z.add ?a ?b] =>
            match isZcst a with true => idtac end;
            match isZcst b with true => idtac end;
-           match op with
-           | Z.add => idtac
-           | Z.sub => idtac
-           | Z.mul => idtac
-           end;
-           let r := eval cbv in (op a b) in change (op a b) with r in *
+           let r := eval cbv in (Z.add a b) in change (Z.add a b) with r in *
+         | context [Z.sub ?a ?b] =>
+           match isZcst a with true => idtac end;
+           match isZcst b with true => idtac end;
+           let r := eval cbv in (Z.sub a b) in change (Z.sub a b) with r in *
+         | context [Z.mul ?a ?b] =>
+           match isZcst a with true => idtac end;
+           match isZcst b with true => idtac end;
+           let r := eval cbv in (Z.mul a b) in change (Z.mul a b) with r in *
          | context [Z.of_nat ?x] =>
            match isnatcst x with true => idtac end;
            let r := eval cbv in (Z.of_nat x) in change (Z.of_nat x) with r in *
