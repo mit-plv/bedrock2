@@ -33,11 +33,13 @@ Ltac invert_hyp H := protect_equalities; inversion H; clear H; subst; unprotect_
 
 (* succeeds iff the type of H is an inductive with several constructors *)
 Ltac has_several_constructors H :=
-  assert_succeeds (
-    clear -H;
-    let T := type of H in
-    let dummy := fresh "dummy" in assert T as dummy;
-    [|case dummy; [ idtac | idtac | .. ] ]).
+  let T := type of H in
+  let F := fresh in
+  (* note: we do the "clear -H" on the goal "False -> True", so the goal does not contain
+     any additional variables that must be kept, which would make "clear" and "case" slow *)
+  let r := constr:(ltac:(clear -H; intro F; case H; [ case F | case F | case F .. ])
+                   : False -> True) in
+  idtac.
 
 (* Given a hypothesis H, returns the induction principle for it *)
 Ltac get_ind_principle H :=
