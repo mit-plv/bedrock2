@@ -31,8 +31,11 @@ Ltac unprotect_equalities :=
 
 Ltac invert_hyp H := protect_equalities; inversion H; clear H; subst; unprotect_equalities.
 
-Ltac has_several_constructors T :=
+(* succeeds iff the type of H is an inductive with several constructors *)
+Ltac has_several_constructors H :=
   assert_succeeds (
+    clear -H;
+    let T := type of H in
     let dummy := fresh "dummy" in assert T as dummy;
     [|case dummy; [ idtac | idtac | .. ] ]).
 
@@ -94,7 +97,7 @@ Ltac unique_inversion :=
               (in particular, Class and Record are simpler if not destructed).
               The exceptions (ie types with only one constructor which we still want to
               destruct) are treated above). *)
-           has_several_constructors P;
+           has_several_constructors H;
            tryif all_indices_of_hyp_are_var H then (
                (* idtac "no need to invert" P; *)
                fail "will definitely get more than one subgoal"
