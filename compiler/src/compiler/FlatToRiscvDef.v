@@ -303,7 +303,7 @@ Section FlatToRiscv1.
     Definition compile_function(mypos: Z):
       (list varname * list varname * stmt) -> list Instruction :=
       fun '(argvars, resvars, body) =>
-        let mod_vars := modVars_as_list Z.eqb body in
+        let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
         let framelength := Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
         let framesize := bytes_per_word * framelength in
         [[ Addi sp sp (-framesize) ]] ++
