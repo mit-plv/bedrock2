@@ -34,8 +34,6 @@ Import Utility MetricLogging.
 
 Axiom TODO_sam: False.
 
-Set Ltac Profiling.
-
 Section Proofs.
   Context {p: FlatToRiscv.parameters}.
   Context {h: FlatToRiscv.assumptions}.
