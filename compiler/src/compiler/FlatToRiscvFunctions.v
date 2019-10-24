@@ -72,7 +72,7 @@ Section Proofs.
   (* measured in words, needs to be multiplied by 4 or 8 *)
   Definition framelength: list Register * list Register * stmt -> Z :=
     fun '(argvars, resvars, body) =>
-      let mod_vars := modVars_as_list Z.eqb body in
+      let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
       Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
 
   Lemma framesize_nonneg: forall argvars resvars body,
@@ -230,15 +230,6 @@ Section Proofs.
         all: clear; unfold iff1, sep, emp; intros; split; intros; simp; contradiction.
   Qed.
 
-  Lemma union_Forall: forall {T: Type} (teqb: T -> T -> bool) (P: T -> Prop) (l1 l2: list T),
-      Forall P l1 ->
-      Forall P l2 ->
-      Forall P (ListLib.list_union teqb l1 l2).
-  Proof.
-    induction l1; intros; simpl; [assumption|].
-    simp. destruct_one_match; eauto.
-  Qed.
-
   Lemma modVars_as_list_valid_FlatImp_var: forall (s: @stmt (mk_Syntax_params _)),
       valid_FlatImp_vars s ->
       Forall valid_FlatImp_var (modVars_as_list Z.eqb s).
@@ -292,6 +283,8 @@ Section Proofs.
              constr:(iff1ToEq (array_append' PT SZ xs ys start))
            | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
              constr:(iff1ToEq (array_cons PT SZ x xs start))
+           | context [ array ?PT ?SZ ?start nil ] =>
+             constr:(iff1ToEq (array_nil PT SZ start))
            end) in |-*;
     simpl_addrs.
 
@@ -403,13 +396,14 @@ Section Proofs.
                   initialMH finalRegsH finalMetricsH) ->
       runsTo initialL
              (fun finalL =>
-                exists (finalRegsH: locals) finalMetricsH,
+                exists (finalRegsH: locals) (rvs: list word) finalMetricsH,
                   map.extends finalL.(getRegs) finalRegsH /\
+                  map.putmany_of_list_zip resvars rvs initialL.(getRegs) = Some finalL.(getRegs) /\
                   map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
                   (* external calls can't modify the memory for now *)
                   postH finalL.(getLog) initialMH finalRegsH finalMetricsH /\
                   finalL.(getPc) = newPc /\
-                  finalL.(getNextPc) = add newPc (ZToReg 4) /\
+                  finalL.(getNextPc) = add newPc (word.of_Z 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
@@ -681,12 +675,26 @@ Section Proofs.
     induction l1; intros.
     - simpl. assumption.
     - simpl.
-      eapply IHl1.
-      destr (find (aeqb a) l2). 1: assumption.
-      constructor. 2: assumption.
-      intro C.
-      eapply find_none in E. 2: exact C.
-      destr (aeqb a a); [discriminate|contradiction].
+      destr (find (aeqb a) (list_union aeqb l1 l2)).
+      + eauto.
+      + constructor. 2: eauto.
+        intro C.
+        eapply find_none in E. 2: exact C.
+        destr (aeqb a a); [discriminate|contradiction].
+  Qed.
+
+  Lemma In_list_union_l{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
+    forall (l1 l2: list A) (x: A),
+      In x l1 ->
+      In x (list_union aeqb l1 l2).
+  Proof.
+    induction l1; intros.
+    - simpl in H. contradiction.
+    - simpl in *. destruct H.
+      + subst. destruct_one_match.
+        * eapply find_some in E. simp. destr (aeqb x a); congruence.
+        * simpl. auto.
+      + destruct_one_match; simpl; eauto.
   Qed.
 
   Lemma NoDup_modVars_as_list: forall s,
@@ -708,7 +716,6 @@ Section Proofs.
     valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
     (word.unsigned g.(program_base)) mod 4 = 0 ->
-    regs_initialized initialL.(getRegs) ->
     initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
     g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
     NoDup g.(funnames) ->
@@ -717,6 +724,9 @@ Section Proofs.
          postH finalTrace finalMH finalRegsH finalMetricsH /\
          finalL.(getPc) = word.add initialL.(getPc)
                                    (word.of_Z (4 * Z.of_nat (List.length g.(insts)))) /\
+         map.only_differ initialL.(getRegs)
+                         (of_list (modVars_as_list Z.eqb s))
+                         finalL.(getRegs) /\
          goodMachine finalTrace finalMH finalRegsH g finalL).
   Proof.
     induction 1; intros; unfold goodMachine in *;
@@ -753,8 +763,18 @@ Section Proofs.
           repeat split; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst.
-        do 4 eexists. ssplit; try (eassumption || reflexivity). eexists. split; [reflexivity|].
-        ecancel_assumption.
+        do 4 eexists. ssplit; try (eassumption || reflexivity).
+        * match goal with
+          | H: map.putmany_of_list_zip _ _ _ = Some _ |- _ => rename H into P; clear -P h
+          end.
+          apply map.only_differ_putmany in P.
+          unfold map.only_differ in *.
+          intro x. specialize (P x).
+          destruct P; auto.
+          left. unfold PropSet.elem_of, PropSet.of_list in *.
+          apply In_list_union_l. assumption.
+        * eexists. split; [reflexivity|].
+          ecancel_assumption.
 
     - (* SCall *)
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
@@ -800,7 +820,8 @@ Section Proofs.
       assert (exists remaining_stack old_modvarvals old_ra old_retvals old_argvals,
                  old_stackvals = remaining_stack ++ old_modvarvals ++ [old_ra] ++
                                                  old_retvals ++ old_argvals /\
-                 List.length old_modvarvals = List.length (modVars_as_list Z.eqb body) /\
+                 List.length old_modvarvals =
+                    List.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) /\
                  List.length old_retvals = List.length retnames /\
                  List.length old_argvals = List.length argnames) as TheSplit. {
         subst FL. unfold framelength in *.
@@ -810,7 +831,7 @@ Section Proofs.
         split_from_right ToSplit ToSplit old_retvals (List.length retnames).
         split_from_right ToSplit ToSplit old_ras 1%nat.
         split_from_right ToSplit ToSplit old_modvarvals
-                         (Datatypes.length (modVars_as_list Z.eqb body)).
+                (Datatypes.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)).
         destruct old_ras as [|old_ra rest]; try discriminate.
         destruct rest; try discriminate.
         repeat econstructor;
@@ -942,11 +963,13 @@ Section Proofs.
     (* save vars modified by callee onto stack *)
     match goal with
     | |- context [ {| getRegs := ?l |} ] =>
-      pose proof (@getmany_of_list_exists _ _ _ l valid_register (modVars_as_list Z.eqb body)) as P
+      pose proof (@getmany_of_list_exists _ _ _ l valid_register (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as P
     end.
     edestruct P as [newvalues P2]; clear P.
     { eapply Forall_impl; cycle 1.
-      - eapply modVars_as_list_valid_FlatImp_var. assumption.
+      - eapply union_Forall.
+        * eapply modVars_as_list_valid_FlatImp_var. assumption.
+        * assumption.
       - apply valid_FlatImp_var_implies_valid_register. }
     {
       intros.
@@ -962,15 +985,19 @@ Section Proofs.
       4: assumption.
       4: {
         eapply Forall_impl; cycle 1.
-        - eapply modVars_as_list_valid_FlatImp_var. assumption.
+        - eapply union_Forall.
+          * eapply modVars_as_list_valid_FlatImp_var. assumption.
+          * assumption.
         - apply valid_FlatImp_var_implies_valid_register. }
       1: eassumption.
       2: reflexivity.
       1: { wseplog_pre word_ok. wcancel. }
-      pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A.
+      pose proof (NoDup_valid_FlatImp_vars_bound_length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as A.
       specialize_hyp A.
-      - apply NoDup_modVars_as_list.
-      - apply modVars_as_list_valid_FlatImp_var. assumption.
+      - eapply list_union_preserves_NoDup. assumption.
+      - apply union_Forall.
+        * apply modVars_as_list_valid_FlatImp_var. assumption.
+        * assumption.
       - change (2 ^ 11) with 2048.
         assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B. {
           clear. unfold bytes_per_word, Memory.bytes_per.
@@ -1018,10 +1045,12 @@ Section Proofs.
           + rewrite H. cbv. auto.
           + rewrite H. cbv. auto.
         }
-        pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A''.
+        pose proof (NoDup_valid_FlatImp_vars_bound_length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as A''.
         specialize_hyp A''.
-        + apply NoDup_modVars_as_list.
-        + apply modVars_as_list_valid_FlatImp_var. assumption.
+        + apply list_union_preserves_NoDup. assumption.
+        + apply union_Forall.
+          * apply modVars_as_list_valid_FlatImp_var. assumption.
+          * assumption.
         + clear -A A' A'' B.
           change BinIntDef.Z.eqb with Z.eqb.
           unfold Register, MachineInt in *.
@@ -1070,20 +1099,16 @@ Section Proofs.
             intro OK. exfalso. map_solver OK.
           + eapply remove_In_ne; try typeclasses eauto; assumption.
       }
-      {
-        eapply preserve_regs_initialized_after_load_regs; cycle 1; try eassumption.
-        eapply preserve_regs_initialized_after_put.
-        eapply preserve_regs_initialized_after_put.
-        assumption.
-      }
       { eapply NoDup_removeb; eassumption. }
-      { eapply map.extends_putmany_of_list_empty; eassumption. }
+      { eapply map.extends_putmany_of_list_empty. 1: eassumption.
+        case TODO_sam. }
       {
         assert (forall x, In x argnames -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
           assumption.
         }
         revert F.
+        case TODO_sam. (*
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
                                | map.only_differ _ _ middle_regs0 => revert H
@@ -1100,6 +1125,12 @@ Section Proofs.
         - rewrite <- HO.
           rewrite map.get_put_same.
           f_equal. simpl_addrs. solve_word_eq word_ok.
+          *)
+      }
+      { eapply preserve_regs_initialized_after_load_regs; cycle 1; try eassumption.
+        eapply preserve_regs_initialized_after_put.
+        eapply preserve_regs_initialized_after_put.
+        assumption.
       }
       {
         (* TODO map.only_differ between middle_regs and middle_regs0 is not sufficient to
@@ -1152,7 +1183,7 @@ Section Proofs.
           + rewrite H. cbv. auto.
           + rewrite H. cbv. auto.
         }
-        pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A''.
+        pose proof (NoDup_valid_FlatImp_vars_bound_length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as A''.
         specialize_hyp A''.
         + apply NoDup_modVars_as_list.
         + apply modVars_as_list_valid_FlatImp_var. assumption.
@@ -1196,7 +1227,7 @@ Section Proofs.
       - assumption.
       - apply modVars_as_list_valid_FlatImp_var. assumption.
       - apply NoDup_modVars_as_list.
-      - pose proof (NoDup_valid_FlatImp_vars_bound_length (modVars_as_list Z.eqb body)) as A.
+      - pose proof (NoDup_valid_FlatImp_vars_bound_length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as A.
         specialize_hyp A.
         + apply NoDup_modVars_as_list.
         + apply modVars_as_list_valid_FlatImp_var. assumption.
@@ -1228,7 +1259,7 @@ Section Proofs.
       eapply run_load_word; cycle 2.
       - simpl. solve [sidecondition].
       - simpl.
-        assert (forall x, In x (modVars_as_list Z.eqb body) -> valid_FlatImp_var x) as F. {
+        assert (forall x, In x (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
           apply modVars_as_list_valid_FlatImp_var. assumption.
         }
@@ -1467,7 +1498,7 @@ Section Proofs.
        *)
 
       (* TODO this should be in the IH *)
-      try assert (map.only_differ middle_regs0 (of_list (modVars_as_list Z.eqb body))
+      try assert (map.only_differ middle_regs0 (of_list (list_union Z.eqb (modVars_as_list Z.eqb body) argnames))
                                   middle_regs1) by fail.
 
       (* TODO do we have to save argvars (names chosen by callee) on the stack, ie
@@ -1507,7 +1538,7 @@ Section Proofs.
       | H:   #(Datatypes.length ?new_remaining_stack) = _ |- _ =>
         exists (new_remaining_stack ++ newvalues ++ [new_ra] ++ retvs ++ argvs)
       end.
-      assert (Datatypes.length (modVars_as_list Z.eqb body) = Datatypes.length newvalues). {
+      assert (Datatypes.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) = Datatypes.length newvalues). {
         eapply map.getmany_of_list_length. eassumption.
       }
       assert (Datatypes.length retnames = Datatypes.length retvs). {
@@ -1696,7 +1727,7 @@ Section Proofs.
                 1: eassumption.
                 9: {
                   wseplog_pre word_ok.
-                  wcancel. simpl. (* TODO add array-nil to rewrite steps *)
+                  wcancel. simpl. heeere (* TODO add array-nil to rewrite steps *)
                   wcancel.
                 }
                 all: try safe_sidecond.

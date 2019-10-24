@@ -19,6 +19,10 @@ Section Array.
     iff1 (array start (x :: xs)) (sep (element start x) (array (word.add start size) xs)).
   Proof. reflexivity. Qed.
 
+  Lemma array_nil start:
+    iff1 (array start nil) (emp True).
+  Proof. reflexivity. Qed.
+
   Lemma array_append xs ys start:
     iff1 (array start (xs ++ ys))
          (array start xs * array (word.add start (word.of_Z (word.unsigned size * Z.of_nat (length xs)))) ys).
