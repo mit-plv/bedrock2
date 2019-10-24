@@ -115,8 +115,7 @@ Section Proofs.
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       valid_machine initial ->
       runsTo initial (fun final =>
-          map.only_differ initial.(getRegs) (PropSet.of_list vars) final.(getRegs) /\
-          map.getmany_of_list final.(getRegs) vars = Some values /\
+          map.putmany_of_list_zip vars values initial.(getRegs) = Some final.(getRegs) /\
           (program initial.(getPc) (load_regs vars offset) *
            word_array (word.add p_sp (word.of_Z offset)) values * R)%sep
               final.(getMem) /\
@@ -129,7 +128,6 @@ Section Proofs.
     induction vars; intros.
     - simpl in *. simp. destruct values; simpl in *; [|discriminate].
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
-      unfold map.only_differ. auto.
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       assert (valid_register a). {
@@ -180,23 +178,8 @@ Section Proofs.
           unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
         * blia.
       + simpl. intros. simp.
-        match goal with
-        | H: map.only_differ _ _ _ |- _ => rename H into HO
-        end.
         repeat split.
-        * unfold map.only_differ, PropSet.elem_of, PropSet.of_list in *.
-          intros x.
-          specialize (HO x).
-          destruct (Z.eqb_spec x a).
-          -- subst x. left. constructor. reflexivity.
-          -- destruct HO as [HO | HO].
-             ++ simpl. auto.
-             ++ right. rewrite <- HO. rewrite map.get_put_diff; congruence.
-        * unfold map.getmany_of_list in *. simpl. rewrite_match.
-          specialize (HO a). destruct HO as [HO | HO].
-          -- unfold PropSet.elem_of, PropSet.of_list in HO. contradiction.
-          -- unfold Register, MachineInt in *. rewrite <- HO.
-             rewrite map.get_put_same. reflexivity.
+        * assumption.
         * pseplog.
           match goal with
           | |- iff1 ?LHS ?RHS =>
