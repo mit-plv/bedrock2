@@ -7,26 +7,125 @@ Require Import coqutil.Z.Lia.
 Section ListSet.
   Context {E: Type}.
   Context (eeq: E -> E -> bool).
+  Context {eeq_spec: EqDecider eeq}.
 
   Definition removeb(e: E)(l: list E): list E := filter (fun e' => negb (eeq e e')) l.
 
   Definition list_union(A B: list E): list E :=
-    fold_left (fun res a => if find (eeq a) res then res else a :: res) A B.
+    fold_right (fun a res => if find (eeq a) res then res else a :: res) B A.
 
   Definition list_intersect(A B: list E): list E :=
-    fold_left (fun res a => if find (eeq a) B then a :: res else res) A nil.
+    fold_right (fun a res => if find (eeq a) B then a :: res else res) nil A.
 
   Definition list_diff(A B: list E): list E :=
     fold_left (fun res b => removeb b res) B A.
 
+  Lemma length_list_union_nil_r: forall (l: list E),
+      length (list_union l []) <= length l.
+  Proof.
+    induction l.
+    - simpl. reflexivity.
+    - simpl. destruct_one_match; simpl; blia.
+  Qed.
+
+  Lemma find_list_union_r_cons_None_Some: forall (l1 l2: list E) a a0 e,
+      find (eeq a) (list_union l1 (a0 :: l2)) = None ->
+      find (eeq a) (list_union l1 l2) = Some e ->
+      False.
+  Proof.
+    induction l1; intros.
+    - simpl in *. destr (eeq a a0); congruence.
+    - simpl in *.
+      destr (find (eeq a) (list_union l1 (a1 :: l2))).
+      + destr (find (eeq a) (list_union l1 l2)).
+        * eauto.
+        * simpl in *. destr (eeq a0 a); [|eauto].
+          subst. congruence.
+      + simpl in *. destr (eeq a0 a); [discriminate|].
+        destr (find (eeq a) (list_union l1 l2)); [eauto|].
+        simpl in *.
+        destr (eeq a0 a); [congruence|].
+        eauto.
+  Qed.
+
+  Lemma find_list_union_r_cons_Some_None: forall (l1 l2: list E) a a0 e,
+      find (eeq a) (list_union l1 (a0 :: l2)) = Some e ->
+      find (eeq a) (list_union l1 l2) = None ->
+      a = a0 /\ a = e.
+  Proof.
+    induction l1; intros.
+    - simpl in *. destruct_one_match_hyp.
+      + split; congruence.
+      + congruence.
+    - simpl in *.
+      destr (find (eeq a) (list_union l1 (a1 :: l2))).
+      + destr (find (eeq a) (list_union l1 l2)).
+        * eauto.
+        * simpl in *. destr (eeq a0 a); [discriminate|].
+          eauto.
+      + simpl in *. destr (eeq a0 a).
+        * subst. replace e with a in * by congruence. clear e H.
+          destr (find (eeq a) (list_union l1 l2)); [exfalso; congruence|].
+          simpl in H0.
+          destr (eeq a a); exfalso; congruence.
+        * destr (find (eeq a) (list_union l1 l2)); eauto.
+          simpl in H0.
+          destr (eeq a0 a); try congruence. eauto.
+  Qed.
+
+  Lemma length_list_union_cons_r: forall (l1 l2: list E) (a: E),
+      length (list_union l1 (a :: l2)) <= S (length (list_union l1 l2)).
+  Proof.
+    induction l1; intros.
+    - simpl. reflexivity.
+    - simpl. destr (find (eeq a) (list_union l1 l2)).
+      + destr (find (eeq a) (list_union l1 (a0 :: l2))).
+        * eapply IHl1.
+        * exfalso. eapply find_list_union_r_cons_None_Some; eassumption.
+      + simpl in *.
+        destr (find (eeq a) (list_union l1 (a0 :: l2))).
+        * pose proof find_list_union_r_cons_Some_None as P.
+          specialize P with (1 := E1) (2 := E0). destruct P. subst.
+          specialize (IHl1 l2 e). blia.
+        * simpl. apply le_n_S. eapply IHl1.
+  Qed.
+
   Lemma length_list_union: forall (l1 l2: list E),
       (length (list_union l1 l2) <= length l1 + length l2)%nat.
   Proof.
-    induction l1; intros; simpl; [blia|].
-    destruct_one_match.
-    - specialize (IHl1 l2). blia.
-    - specialize (IHl1 (a :: l2)). simpl in *. blia.
+    induction l2.
+    - pose proof (length_list_union_nil_r l1). blia.
+    - pose proof (length_list_union_cons_r l1 l2 a). simpl. blia.
   Qed.
+
+  Lemma list_union_empty_l: forall l,
+      list_union nil l = l.
+  Proof.
+    intros. reflexivity.
+  Qed.
+
+  Lemma list_union_empty_r: forall l,
+      NoDup l ->
+      list_union l nil = l.
+  Proof.
+    induction l; intros.
+    - reflexivity.
+    - simpl. inversion H. subst.
+      rewrite IHl by assumption.
+      destr (find (eeq a) l); [exfalso|reflexivity].
+      apply find_some in E0. destruct E0.
+      destr (eeq a e); congruence.
+  Qed.
+
+  Lemma union_Forall: forall (P: E -> Prop) (l1 l2: list E),
+      Forall P l1 ->
+      Forall P l2 ->
+      Forall P (list_union l1 l2).
+  Proof.
+    induction l1; intros; simpl; [assumption|].
+    inversion H. subst. clear H. destruct_one_match; eauto.
+  Qed.
+
 End ListSet.
 
 Lemma remove_In_ne{A: Type}(aeqb: A -> A -> bool){aeqb_spec: EqDecider aeqb}:
