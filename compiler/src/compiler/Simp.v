@@ -39,7 +39,7 @@ Ltac has_several_constructors T :=
 (* Given a hypothesis H, returns the induction principle for it *)
 Ltac get_ind_principle H :=
   let T := type of H in
-  let r := constr:(ltac:(induction H; intros; exact I) : T -> True) in
+  let r := constr:(ltac:(clear -H; induction H; intros; exact I) : T -> True) in
   head_of_app r.
 
 (* Checks if all indices of term t are vars.
