@@ -370,6 +370,29 @@ Section Proofs.
     destruct_one_match; eauto.
   Qed.
 
+  Lemma preserve_regs_initialized_after_put: forall regs var val,
+    regs_initialized regs ->
+    regs_initialized (map.put regs var val).
+  Proof.
+    unfold regs_initialized. intros. specialize (H _ H0).
+    rewrite map.get_put_dec. destruct_one_match; subst; eauto.
+  Qed.
+
+  Lemma preserve_regs_initialized_after_putmany_of_list_zip: forall vars vals (regs regs': locals),
+      regs_initialized regs ->
+      map.putmany_of_list_zip vars vals regs = Some regs' ->
+      regs_initialized regs'.
+  Proof.
+    induction vars; intros.
+    - simpl in H0. destruct vals; try discriminate.
+      replace regs' with regs in * by congruence. assumption.
+    - simpl in H0.
+      destruct vals; try discriminate.
+      eapply IHvars. 2: eassumption.
+      eapply preserve_regs_initialized_after_put.
+      eassumption.
+  Qed.
+
   (* TODO make sure it's compatible with users of it *)
   Lemma compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
         action postH newPc insts (argvars resvars: list Register) initialMH R initialRegsH
@@ -504,28 +527,6 @@ Section Proofs.
       + unfold map.getmany_of_list in H0. simpl in H0. simp. eauto.
   Qed.
 
-  Lemma preserve_regs_initialized_after_load_regs: forall regs1 regs2 vars vals,
-    regs_initialized regs1 ->
-    map.only_differ regs1 (of_list vars) regs2 ->
-    map.getmany_of_list regs2 vars = Some vals ->
-    regs_initialized regs2.
-  Proof.
-    intros. intros r B.
-    specialize (H r B).
-    specialize (H0 r). destruct H0 as [A | A].
-    - unfold elem_of, of_list in A.
-      eapply getmany_of_list_exists_elem; eassumption.
-    - rewrite <- A. exact H.
-  Qed.
-
-  Lemma preserve_regs_initialized_after_put: forall regs var val,
-    regs_initialized regs ->
-    regs_initialized (map.put regs var val).
-  Proof.
-    unfold regs_initialized. intros. specialize (H _ H0).
-    rewrite map.get_put_dec. destruct_one_match; subst; eauto.
-  Qed.
-
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
@@ -580,6 +581,26 @@ Section Proofs.
     [ blia | ];
     subst nameOrig;
     rename nL into nameL, nR into nameR.
+
+    Lemma putmany_of_list_zip_get_oldval: forall keys values (m1 m2: locals) k v,
+        map.putmany_of_list_zip keys values m1 = Some m2 ->
+        ~ In k keys ->
+        map.get m1 k = Some v ->
+        map.get m2 k = Some v.
+    Proof.
+      induction keys; intros.
+      - simpl in H. destruct values; try discriminate.
+        replace m2 with m1 in * by congruence. assumption.
+      - simpl in H.
+        destruct values; try discriminate.
+        simpl in H0.
+        eapply IHkeys.
+        + eassumption.
+        + intro C. apply H0. auto.
+        + rewrite map.get_put_dec. destruct_one_match.
+          * exfalso. apply H0. auto.
+          * assumption.
+    Qed.
 
   Lemma map_extends_remove: forall (m1 m2: funname_env (list Z * list Z * stmt)) k,
       map.extends m1 m2 ->
@@ -1100,42 +1121,33 @@ Section Proofs.
           + eapply remove_In_ne; try typeclasses eauto; assumption.
       }
       { eapply NoDup_removeb; eassumption. }
-      { eapply map.extends_putmany_of_list_empty. 1: eassumption.
-        case TODO_sam. }
+      { eapply map.putmany_of_list_zip_extends; [eassumption..|].
+        clear -h. unfold map.extends. intros. rewrite map.get_empty in H. discriminate H. }
       {
         assert (forall x, In x argnames -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
           assumption.
         }
         revert F.
-        case TODO_sam. (*
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
-                               | map.only_differ _ _ middle_regs0 => revert H
+                               | map.putmany_of_list_zip _ _ _ = Some middle_regs0 => revert H
                                | assumptions => fail
                                | _ => clear H
                                end
                end.
-        intros HO F.
-        unfold map.only_differ in HO.
-        unfold elem_of, of_list in HO.
-        specialize (HO RegisterNames.sp).
-        destruct HO as [HO | HO].
-        - specialize (F _ HO). unfold valid_FlatImp_var, RegisterNames.sp in F. exfalso. blia.
-        - rewrite <- HO.
-          rewrite map.get_put_same.
-          f_equal. simpl_addrs. solve_word_eq word_ok.
-          *)
+        intros PM F.
+
+        eapply putmany_of_list_zip_get_oldval. 1: exact PM.
+        - intro C. specialize (F _ C).
+          unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
+        - rewrite map.get_put_same. f_equal. simpl_addrs. solve_word_eq word_ok.
       }
-      { eapply preserve_regs_initialized_after_load_regs; cycle 1; try eassumption.
+      {
+        eapply preserve_regs_initialized_after_putmany_of_list_zip; cycle 1; try eassumption.
         eapply preserve_regs_initialized_after_put.
         eapply preserve_regs_initialized_after_put.
         assumption.
-      }
-      {
-        (* TODO map.only_differ between middle_regs and middle_regs0 is not sufficient to
-           conclude regs_initialized middle_regs -> regs_initialized middle_regs0. *)
-        case TODO_sam.
       }
     }
 
@@ -1185,8 +1197,10 @@ Section Proofs.
         }
         pose proof (NoDup_valid_FlatImp_vars_bound_length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as A''.
         specialize_hyp A''.
-        + apply NoDup_modVars_as_list.
-        + apply modVars_as_list_valid_FlatImp_var. assumption.
+        + apply list_union_preserves_NoDup. assumption.
+        + apply union_Forall.
+          * apply modVars_as_list_valid_FlatImp_var. assumption.
+          * assumption.
         + clear -A A'' B.
           change BinIntDef.Z.eqb with Z.eqb.
           unfold Register, MachineInt in *.
@@ -1211,7 +1225,7 @@ Section Proofs.
     (* load back the modified vars *)
     eapply runsTo_trans. {
       eapply load_regs_correct with
-          (vars := (modVars_as_list _ body)) (values := newvalues);
+          (vars := (list_union Z.eqb (modVars_as_list _ body) argnames)) (values := newvalues);
         simpl; cycle 3.
       - eassumption.
       - repeat match goal with
@@ -1225,12 +1239,16 @@ Section Proofs.
         wcancel.
       - reflexivity.
       - assumption.
-      - apply modVars_as_list_valid_FlatImp_var. assumption.
-      - apply NoDup_modVars_as_list.
+      - apply union_Forall.
+        + apply modVars_as_list_valid_FlatImp_var. assumption.
+        + assumption.
+      - apply list_union_preserves_NoDup. assumption.
       - pose proof (NoDup_valid_FlatImp_vars_bound_length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as A.
         specialize_hyp A.
-        + apply NoDup_modVars_as_list.
-        + apply modVars_as_list_valid_FlatImp_var. assumption.
+        + apply list_union_preserves_NoDup. assumption.
+        + apply union_Forall.
+          * apply modVars_as_list_valid_FlatImp_var. assumption.
+          * assumption.
         + change (2 ^ 11) with 2048.
           assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B. {
             clear. unfold bytes_per_word, Memory.bytes_per.
@@ -1261,28 +1279,24 @@ Section Proofs.
       - simpl.
         assert (forall x, In x (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) -> valid_FlatImp_var x) as F. {
           eapply Forall_forall.
-          apply modVars_as_list_valid_FlatImp_var. assumption.
+          apply union_Forall.
+          - apply modVars_as_list_valid_FlatImp_var. assumption.
+          - assumption.
         }
         revert F.
         subst FL.
-
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
                                | assumptions => fail
-                               | map.only_differ middle_regs1 _ middle_regs2 => revert H
+                               | map.putmany_of_list_zip _ _ _ = Some middle_regs2 => revert H
                                | map.get middle_regs1 RegisterNames.sp = Some _ => revert H
                                | _ => clear H
                                end
                end.
-        intros G HO F.
-        match goal with
-        | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
-          specialize (D RegisterNames.sp); destruct D as [A | A]
-        end.
-        + exfalso. unfold elem_of, of_list in A.
-          specialize (F _ A). unfold valid_FlatImp_var, RegisterNames.sp in F.
-          blia.
-        + etransitivity; [symmetry|]; eassumption.
+        intros G PM F.
+        eapply putmany_of_list_zip_get_oldval. 3: exact G. 1: exact PM.
+        intro C. specialize (F _ C).
+        unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
       - reflexivity.
       - simpl.
         subst FL.
@@ -1306,22 +1320,49 @@ Section Proofs.
 
     (* increase sp *)
     eapply runsToStep. {
-      eapply (run_Addi RegisterNames.sp RegisterNames.sp _
-             (* otherwise it will pick the decreasing (with a - in front) *)
-              (bytes_per_word *
-                  #(List.length argnames + List.length retnames + 1 + List.length (modVars_as_list _ body)))%Z);
-        try solve [sidecondition | simpl; solve_divisibleBy4 ].
+      eapply (run_Addi RegisterNames.sp RegisterNames.sp); try safe_sidecond.
+
+Ltac sepclause_eq OK ::=
+  match goal with
+  | |- ?G => assert_fails (has_evar G);
+             wclause_unify OK
+  | |- ?lhs = ?rhs => let tagL := tag lhs in
+                      let tagR := tag rhs in
+                      constr_eq tagL tagR;
+                      wclause_unify OK
+  | |- ?lhs = ?rhs => let addrL := addr lhs in
+                      let addrR := addr rhs in
+                      assert_fails (has_evar addrL);
+                      assert_fails (has_evar addrR);
+                      replace addrL with addrR by solve_word_eq OK;
+                      (reflexivity || fail 10000 lhs "and" rhs "have the same address"
+                      "according to addr, but can't be matched")
+  end.
+
       - simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
                                | assumptions => fail
-                               | map.only_differ middle_regs1 _ middle_regs2 => fail
-                               | map.get middle_regs1 RegisterNames.sp = Some _ => fail
-                               | valid_FlatImp_vars body => fail
+                               | map.putmany_of_list_zip _ _ _ = Some middle_regs2 => revert H
+                               | map.get middle_regs1 RegisterNames.sp = Some _ => revert H
+                               | valid_FlatImp_vars body => revert H
+                               | Forall valid_FlatImp_var argnames => revert H
                                | _ => clear H
                                end
                end.
+        intros F1 F2 G PM.
+        eapply putmany_of_list_zip_get_oldval. 1: exact PM. 2: exact G.
+        intro C.
+
+        (*        Search In list_union. *)
+        case TODO_sam.
+
+        (*
+        unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
+
+
+
         match goal with
         | D: map.only_differ middle_regs1 _ middle_regs2 |- _ =>
           specialize (D RegisterNames.sp); destruct D as [A | A]
@@ -1337,6 +1378,7 @@ Section Proofs.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
         + etransitivity; [symmetry|]; eassumption.
+        *)
     }
 
     simpl.
@@ -1352,8 +1394,7 @@ Section Proofs.
 
     (* jump back to caller *)
     eapply runsToStep. {
-      eapply run_Jalr0 with (rs1 := RegisterNames.ra); simpl;
-        try solve [sidecondition | solve_divisibleBy4].
+      eapply run_Jalr0 with (rs1 := RegisterNames.ra); simpl; try safe_sidecond.
       - case TODO_sam. (*   ?oimm12 mod 4 = 0 *)
       - case TODO_sam. (*   word.unsigned ?dest mod 4 = 0  *)
       - rewrite map.get_put_diff by (clear; cbv; congruence).
@@ -1463,6 +1504,7 @@ Section Proofs.
     + eassumption.
     + simpl_addrs. rewrite length_load_regs. rewrite length_save_regs. simpl_addrs.
       solve_word_eq word_ok.
+    + case TODO_sam. (* the new map.only_differ *)
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
              middle_regs into lL.
 
@@ -1470,7 +1512,7 @@ Section Proofs.
 
          Summary of what happened in FlatImp:
 
-         Acion (in order):
+         Action (in order):
          ------------------------------
          put (argnames, argvals) from outer locals into new empty map
          execute function body
@@ -1518,21 +1560,21 @@ Section Proofs.
         assumption.
       }
       match goal with
-      | H: map.only_differ (map.put (map.put _ _ _) _ ?v) _ ?m2 |- map.get ?m2 _ = Some ?v' =>
+      | H: map.putmany_of_list_zip _ _  (map.put (map.put _ _ _) _ ?v) = Some ?m2 |-
+        map.get ?m2 _ = Some ?v' =>
         rename H into D; clear -D h A;
-        replace v with v' in D by solve_word_eq word_ok
+        replace v with v' in D by (unfold Register, MachineInt; solve_word_eq word_ok)
       end.
-      assert (~ elem_of RegisterNames.sp (of_list binds)). {
-        clear -A. cbv -[List.In].
-        intro C.
+      eapply putmany_of_list_zip_get_oldval.
+      * exact D.
+      * intro C.
         eapply Forall_forall in A. 2: exact C.
         cbv in A. intuition congruence.
-      }
-      (* TODO map_solver should work directly here *)
-      preprocess_impl locals_ok true.
-      change Z with Register in *.
-      map_solver locals_ok.
-    + case TODO_sam. (* regs_initialized *)
+      * rewrite map.get_put_same. reflexivity.
+    + eapply preserve_regs_initialized_after_putmany_of_list_zip; cycle 1; try eassumption.
+      eapply preserve_regs_initialized_after_put.
+      eapply preserve_regs_initialized_after_put.
+      eapply preserve_regs_initialized_after_putmany_of_list_zip; cycle 1; try eassumption.
     + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
       match goal with
       | H:   #(Datatypes.length ?new_remaining_stack) = _ |- _ =>
@@ -1545,7 +1587,7 @@ Section Proofs.
         eapply map.getmany_of_list_length. eassumption.
       }
       assert (Datatypes.length retvs = Datatypes.length binds). {
-        symmetry. eapply map.getmany_of_list_length. eassumption.
+        symmetry. eapply map.putmany_of_list_zip_sameLength. eassumption.
       }
       (* PARAMRECORDS *)
       change Syntax.varname with Register in *.
@@ -1588,6 +1630,13 @@ Section Proofs.
         blia.
       }
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
+      (* TODO why does map_solver not solve this? *)
+      unfold map.only_differ, of_list, elem_of.
+      clear -h.
+      intros.
+      destr (Z.eqb x0 x).
+      + subst. left. simpl. auto.
+      + right. rewrite map.get_put_diff by assumption. reflexivity.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
@@ -1614,12 +1663,20 @@ Section Proofs.
           blia.
         }
         run1done.
+        (* TODO why does map_solver not solve this? *)
+        unfold map.only_differ, of_list, elem_of.
+        clear -h.
+        intros.
+        destr (Z.eqb x0 x).
+        * subst. left. simpl. auto.
+        * right. rewrite map.get_put_diff by assumption. reflexivity.
 
     - (* SOp *)
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
+      fail "code below seems to run forever".
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
