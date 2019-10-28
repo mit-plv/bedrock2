@@ -166,6 +166,32 @@ Section Proofs.
          end * (rec rest))%sep
       end.
 
+  Lemma In_list_union_spec{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
+    forall (l1 l2 : list A) (x: A),
+      In x (list_union aeqb l1 l2) <-> In x l1 \/ In x l2.
+  Proof.
+    induction l1; intros.
+    - simpl. split; intuition idtac.
+    - simpl. destruct_one_match; simpl; split; intros.
+      + apply or_assoc. right. eapply IHl1. assumption.
+      + destruct H as [ [ H | H ] | H ].
+        * subst. eapply find_some in E. destruct E.
+          destr (aeqb x a0); try discriminate. subst a0. assumption.
+        * eapply IHl1. left. assumption.
+        * eapply IHl1. right. assumption.
+      + apply or_assoc. destruct H; [left|right]; auto. eapply IHl1. assumption.
+      + apply or_assoc in H. destruct H; [left|right]; auto. eapply IHl1. assumption.
+  Qed.
+
+  Lemma of_list_list_union{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
+    forall (l1 l2: list A), of_list (list_union aeqb l1 l2) = union (of_list l1) (of_list l2).
+  Proof.
+    intros.
+    eapply iff1ToEq.
+    unfold of_list, union, elem_of, iff1.
+    apply In_list_union_spec.
+  Qed.
+
   Lemma removeb_not_In{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
     forall (l : list A) (a: A), ~ In a l -> removeb aeqb a l = l.
   Proof.
@@ -541,7 +567,7 @@ Section Proofs.
     | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
     | |- exists _, _ = _ /\ (_ * _)%sep _ =>
       eexists; split; cycle 1; [ wseplog_pre (@word_ok (@W (@def_params p))); wcancel | blia ]
-    | |- _ => solve [map_solver (@locals_ok p h)]
+    | |- _ => solve [rewrite ?of_list_list_union in *; map_solver (@locals_ok p h)]
     | |- _ => solve [solve_valid_machine (@word_ok (@W (@def_params p)))]
     | |- _ => solve [eauto using regs_initialized_put]
     | |- _ => idtac
@@ -1630,13 +1656,6 @@ Ltac sepclause_eq OK ::=
         blia.
       }
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
-      (* TODO why does map_solver not solve this? *)
-      unfold map.only_differ, of_list, elem_of.
-      clear -h.
-      intros.
-      destr (Z.eqb x0 x).
-      + subst. left. simpl. auto.
-      + right. rewrite map.get_put_diff by assumption. reflexivity.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
@@ -1663,20 +1682,12 @@ Ltac sepclause_eq OK ::=
           blia.
         }
         run1done.
-        (* TODO why does map_solver not solve this? *)
-        unfold map.only_differ, of_list, elem_of.
-        clear -h.
-        intros.
-        destr (Z.eqb x0 x).
-        * subst. left. simpl. auto.
-        * right. rewrite map.get_put_diff by assumption. reflexivity.
 
     - (* SOp *)
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
-      fail "code below seems to run forever".
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
@@ -1686,8 +1697,8 @@ Ltac sepclause_eq OK ::=
               ?word.srs_ignores_hibits,
               ?word.mulhuu_simpl,
               ?word.divu0_simpl,
-              ?word.modu0_simpl in *;
-      try solve [run1done].
+              ?word.modu0_simpl in *.
+      all: try solve [run1done].
       (* bopname.eq requires two instructions *)
       run1det. run1done.
       rewrite reduce_eq_to_sub_and_lt.
@@ -1715,7 +1726,6 @@ Ltac sepclause_eq OK ::=
             try safe_sidecond.
           all: try safe_sidecond.
           all: try safe_sidecond.
-
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
@@ -1782,13 +1792,9 @@ Ltac sepclause_eq OK ::=
                   after_IH.
                 all: try safe_sidecond.
                 1: eassumption.
-                9: {
-                  wseplog_pre word_ok.
-                  wcancel. simpl. heeere (* TODO add array-nil to rewrite steps *)
-                  wcancel.
-                }
                 all: try safe_sidecond.
                 1: constructor; congruence.
+                all: try safe_sidecond.
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
@@ -1798,7 +1804,7 @@ Ltac sepclause_eq OK ::=
           { simulate'.
             destruct cond; [destruct op | ];
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { intro V. simpl in *. run1done. cbn. wcancel. }
+          { intro V. simpl in *. run1done. }
 
     - (* SSeq *)
       on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).

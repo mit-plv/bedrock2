@@ -86,7 +86,6 @@ Section Sim.
       + assumption.
       + assumption.
       + assumption.
-      + assumption.
       + ring_simplify (pos + 0). reflexivity.
       + assumption.
       + assumption.
