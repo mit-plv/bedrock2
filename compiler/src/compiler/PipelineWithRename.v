@@ -379,8 +379,9 @@ Section Pipeline1.
                | |- _ => eassumption
                | |- _ => reflexivity
                end.
-        2: case TODO_sam. (* show that backjump preserves valid_machine *)
-        intro x. intros v H. rewrite map.get_empty in H. discriminate.
+        * intro x. intros v H. rewrite map.get_empty in H. discriminate.
+        * intro x. intros v H. rewrite map.get_empty in H. discriminate.
+        * case TODO_sam. (* show that backjump preserves valid_machine *)
     - case TODO_sam.
     - solve_divisibleBy4.
     - solve_word_eq word_ok.
