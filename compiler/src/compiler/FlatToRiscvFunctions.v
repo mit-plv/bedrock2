@@ -29,6 +29,7 @@ Require Import compiler.RiscvWordProperties.
 Require Import compiler.on_hyp_containing.
 Require Import coqutil.Word.DebugWordEq.
 Require Import compiler.MemoryLayout.
+Require Import coqutil.Map.TestLemmas.
 
 Import Utility MetricLogging.
 
@@ -1524,7 +1525,6 @@ Section Proofs.
              end.
       clear IHexec.
       (* TODO map_solver should work here, but it's too slow *)
-      Require Import coqutil.Map.TestLemmas.
 
       unfold map.only_differ.
       intros x.
