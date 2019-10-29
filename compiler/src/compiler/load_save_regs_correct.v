@@ -106,7 +106,6 @@ Section Proofs.
 
   Lemma load_regs_correct: forall p_sp vars offset R (initial: RiscvMachineL) values,
       Forall valid_FlatImp_var vars ->
-      NoDup vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length values = List.length vars ->

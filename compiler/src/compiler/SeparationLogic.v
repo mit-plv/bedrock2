@@ -102,7 +102,8 @@ Ltac sepclause_eq OK :=
                       assert_fails (has_evar addrL);
                       assert_fails (has_evar addrR);
                       replace addrL with addrR by solve_word_eq OK;
-                      reflexivity
+                      (reflexivity || fail 10000 lhs "and" rhs "have the same address"
+                      "according to addr, but can't be matched")
   end.
 
 Ltac pick_nat n :=
