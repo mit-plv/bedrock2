@@ -245,6 +245,7 @@ Section Equiv.
   Proof.
     unfold KamiPgmInitFull; intros.
     red; intros.
+    unfold isXAddr4 in H0. destruct H0 as (? & ? & ? & ?).
     split.
     - eapply kamiXAddrs_In_AddrAligned; eassumption.
     - intros.

@@ -1,6 +1,7 @@
 From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Z.div_mod_to_equations.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -28,6 +29,7 @@ Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatToRiscvDef.
+Require Import compiler.Simp.
 Require Import riscv.Utility.runsToNonDet.
 Import Utility.
 
@@ -144,7 +146,7 @@ Section Go.
     apply H0. assumption.
   Qed.
 
-  Lemma ExecuteFetchP: forall addr xAddrs, Execute = Fetch -> isXAddr addr xAddrs.
+  Lemma ExecuteFetchP: forall addr xAddrs, Execute = Fetch -> isXAddr4 addr xAddrs.
   Proof. intros. discriminate. Qed.
 
   Ltac t lem :=
@@ -196,7 +198,7 @@ Section Go.
   Proof. t spec_loadWord. Qed.
 
   Lemma go_loadWord_Fetch: forall (initialL: RiscvMachineL) addr (v: w32) (f: w32 -> M unit) post,
-      isXAddr addr initialL.(getXAddrs) ->
+      isXAddr4 addr initialL.(getXAddrs) ->
       Memory.loadWord initialL.(getMem) addr = Some v ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (Machine.loadWord Fetch addr) f) initialL post.
@@ -289,16 +291,14 @@ Section Go.
 
   Axiom TODO_sam: False.
 
-  Definition staticXAddrs: XAddrs. case TODO_sam. Defined.
-
   Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
 
-  (* contains all the conditions needed to successfully execute instr *)
+  (* contains all the conditions needed to successfully execute instr, except
+     that addr needs to be in the set of executable addresses, which is dealt with elsewhere *)
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
     (truncated_scalar Syntax.access_size.four addr (encode instr) *
      emp (verify instr iset) *
-     emp ((word.unsigned addr) mod 4 = 0) *
-     emp (isXAddr addr staticXAddrs))%sep.
+     emp ((word.unsigned addr) mod 4 = 0))%sep.
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
@@ -306,56 +306,30 @@ Section Go.
   Lemma invert_ptsto_instr: forall {addr instr R m},
     (ptsto_instr addr instr * R)%sep m ->
      verify instr iset /\
-     (word.unsigned addr) mod 4 = 0 /\
-     isXAddr addr staticXAddrs.
+     (word.unsigned addr) mod 4 = 0.
   Proof.
     intros.
     unfold array, ptsto_instr in *.
     match goal with
-    | H: (?T * ?P1 * ?P2 * ?P3 * R)%sep ?m |- _ =>
-      assert ((T * R * P1 * P2 * P3)%sep m) as A by ecancel_assumption; clear H
+    | H: (?T * ?P1 * ?P2 * R)%sep ?m |- _ =>
+      assert ((T * R * P1 * P2)%sep m) as A by ecancel_assumption; clear H
     end.
-    do 3 (apply sep_emp_r in A; destruct A as [A ?]).
+    do 2 (apply sep_emp_r in A; destruct A as [A ?]).
     auto.
   Qed.
 
   Lemma invert_ptsto_program1: forall {addr instr R m},
     (program addr [instr] * R)%sep m ->
      verify instr iset /\
-     (word.unsigned addr) mod 4 = 0 /\
-     isXAddr addr staticXAddrs.
+     (word.unsigned addr) mod 4 = 0.
   Proof.
     unfold program. intros. simpl in *. eapply invert_ptsto_instr.
     ecancel_assumption.
   Qed.
 
-  (* mirrors the structure of program/addr so that unfolding behaves the same *)
-  Fixpoint addrs_executable(addr: word)(n: nat)(xAddrs: XAddrs): Prop :=
-    match n with
-    | O => True
-    | S m => isXAddr addr xAddrs /\ addrs_executable (word.add addr (word.of_Z 4)) m xAddrs
-    end.
-
   Arguments Z.of_nat: simpl never.
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
-
-  (* mirrors the structure of array_append *)
-  Lemma addrs_executable_add: forall n1 n2 start xAddrs,
-      addrs_executable start (n1 + n2) xAddrs ->
-      addrs_executable start n1 xAddrs /\
-      addrs_executable (word.add start (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat n1)))) n2 xAddrs.
-  Proof.
-    induction n1; intros.
-    - simpl in *. simpl_word_exprs word_ok. auto.
-    - simpl. simpl in H. destruct H. specialize IHn1 with (1 := H0). destruct IHn1.
-      repeat split; auto.
-      match goal with
-      | A: addrs_executable ?a1 n2 xAddrs |- addrs_executable ?a2 n2 xAddrs => replace a2 with a1; [exact A|]
-      end.
-      replace (Z.of_nat (S n1)) with (1 + Z.of_nat n1) by blia.
-      solve_word_eq word_ok.
-  Qed.
 
   Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
     unchecked_store_byte_list addr (Z32s_to_bytes (List.map encode p)) m.
@@ -588,7 +562,6 @@ Section Go.
 
   Lemma store_program_empty: forall prog addr,
       4 * Z.of_nat (length prog) < 2 ^ width ->
-      addrs_executable addr (length prog) staticXAddrs ->
       (word.unsigned addr) mod 4 = 0 ->
       Forall (fun instr => verify instr iset) prog ->
       program addr prog (unchecked_store_program addr prog map.empty).
@@ -599,8 +572,8 @@ Section Go.
       rewrite! unchecked_store_byte_list_cons.
       unfold ptsto_instr, truncated_scalar, littleendian, Memory.bytes_per, ptsto_bytes. simpl.
       match goal with
-      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?P1 * ?P2 * ?P3 * ?B)%sep ?m =>
-        assert ((A1 * (A2 * (A3 * (A4 * (P1 * (P2 * (P3 * B)))))))%sep m); [|ecancel_assumption]
+      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?P1 * ?P2 * ?B)%sep ?m =>
+        assert ((A1 * (A2 * (A3 * (A4 * (P1 * (P2 * B))))))%sep m); [|ecancel_assumption]
       end.
       eapply sep_on_undef_put; try exact word.eqb_spec. {
         rewrite !map.get_put_diff by word_neq_add.
@@ -639,10 +612,19 @@ Section Go.
         blia.
       }
       word_simpl.
-      destruct H0. inversion H2. subst.
-      do 3 (apply sep_emp_l; split; [assumption|]).
-      apply IHprog; [|(assumption || solve_divisibleBy4)..].
-      change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H. blia.
+      destruct H0. inversion H1. subst.
+      apply sep_emp_l; split; [assumption|].
+      apply sep_emp_l; split; [reflexivity|].
+      apply IHprog.
+      + change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H. blia.
+      + clear. rewrite word.unsigned_add. rewrite word.unsigned_of_Z.
+        unfold word.wrap.
+        pose proof (word.unsigned_range addr).
+        forget (word.unsigned addr) as a.
+        rewrite Zplus_mod_idemp_r.
+        Z.div_mod_to_equations.
+        destruct width_cases as [E | E]; rewrite E in *; blia.
+      + assumption.
   Qed.
 
   Lemma array_map: forall {T1 T2: Type} sz (f: T1 -> T2) elem (l: list T1) (addr: word),
@@ -654,14 +636,32 @@ Section Go.
     - simpl. apply iff1_sep_cancel. apply IHl.
   Qed.
 
-  (* TODO doesn't hold, will have to be carried around as a hypothesis *)
-  Lemma staticXAddr_implies_dynamicXAddr: forall initialL,
-      isXAddr (getPc initialL) staticXAddrs ->
-      isXAddr (getPc initialL) (getXAddrs initialL).
-  Proof. case TODO_sam. Qed.
+  Lemma ptsto_subset_to_isXAddr1: forall a v xAddrs,
+      subset (footpr (ptsto a v)) (of_list xAddrs) ->
+      isXAddr1 a xAddrs.
+  Proof.
+    unfold subset, footpr, footprint_underapprox, ptsto, elem_of, of_list, isXAddr1.
+    intros.
+    eapply H.
+    intros.
+    subst.
+    eexists.
+    apply map.get_put_same.
+  Qed.
 
-  Lemma go_fetch_inst: forall {initialL: RiscvMachineL} {inst pc0 R} (post: RiscvMachineL -> Prop),
+  Lemma ptsto_instr_subset_to_isXAddr4: forall a i xAddrs,
+      subset (footpr (ptsto_instr a i)) (of_list xAddrs) ->
+      isXAddr4 a xAddrs.
+  Proof.
+    unfold isXAddr4, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes, array. simpl.
+    intros.
+    ssplit; eapply ptsto_subset_to_isXAddr1;
+      (eapply shrink_footpr_subset; [eassumption|wcancel word_ok]).
+  Qed.
+
+  Lemma go_fetch_inst_NEW: forall {initialL: RiscvMachineL} {inst pc0 R} (post: RiscvMachineL -> Prop),
       pc0 = initialL.(getPc) ->
+      subset (footpr (program pc0 [inst])) (of_list initialL.(getXAddrs)) ->
       (program pc0 [inst] * R)%sep initialL.(getMem) ->
       mcomp_sat (Bind (execute inst) (fun _ => step))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
@@ -670,14 +670,16 @@ Section Go.
     intros. subst.
     unfold run1.
     apply go_getPC.
-    unfold program, array, ptsto_instr in *.
+    unfold program in *.
+    unfold array, ptsto_instr in H1.
     match goal with
-    | H: (?T * ?P1 * ?P2 * ?P3 * emp True * R)%sep ?m |- _ =>
-      assert ((T * R * P1 * P2 * P3)%sep m) as A by ecancel_assumption; clear H
+    | H: (?T * ?P1 * ?P2 * emp True * R)%sep ?m |- _ =>
+      assert ((T * R * P1 * P2)%sep m) as A by ecancel_assumption; clear H
     end.
-    do 3 (apply sep_emp_r in A; destruct A as [A ?]).
+    do 2 (apply sep_emp_r in A; destruct A as [A ?]).
     eapply go_loadWord_Fetch.
-    - eapply staticXAddr_implies_dynamicXAddr. assumption.
+    - eapply ptsto_instr_subset_to_isXAddr4.
+      eapply shrink_footpr_subset. 1: eassumption. simpl. ecancel.
     - unfold Memory.loadWord.
       eapply load_bytes_of_sep.
       unfold truncated_scalar, littleendian, Memory.bytes_per in A.
@@ -701,6 +703,18 @@ Section Go.
       rewrite decode_encode; assumption.
   Qed.
 
+  Lemma go_fetch_inst: forall {initialL: RiscvMachineL} {inst pc0 R} (post: RiscvMachineL -> Prop),
+      pc0 = initialL.(getPc) ->
+      (program pc0 [inst] * R)%sep initialL.(getMem) ->
+      mcomp_sat (Bind (execute inst) (fun _ => step))
+                (updateMetrics (addMetricLoads 1) initialL) post ->
+      mcomp_sat (run1 iset) initialL post.
+  Proof.
+    intros. eapply go_fetch_inst_NEW; try eassumption.
+    case TODO_sam.
+  Qed.
+
+
   (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
      Memory.load/storeXxx *)
 
@@ -715,6 +729,56 @@ Section Go.
     intros.
     eapply go_loadByte; [|eassumption].
     eapply load_bytes_of_sep. eassumption.
+  Qed.
+
+  Lemma preserve_subset_of_xAddrs: forall m Rexec n (R: mem -> Prop) (xAddrs: list word) addr v,
+      subset (footpr Rexec) (of_list xAddrs) ->
+      (ptsto_bytes n addr v * R * Rexec)%sep m ->
+      subset (footpr Rexec) (of_list (invalidateWrittenXAddrs n addr xAddrs)).
+  Proof.
+    induction n; intros.
+    - simpl. assumption.
+    - destruct v as [v vs]. unfold ptsto_bytes in *. simpl in *.
+      assert (exists R',
+                 (array ptsto (word.of_Z 1) (word.add addr (word.of_Z 1)) (HList.tuple.to_list vs)
+                  * R' * Rexec)%sep m) as F by (eexists; ecancel_assumption).
+      destruct F as [R' F].
+      specialize IHn with (2 := F).
+      change removeXAddr with (@ListLib.removeb word word.eqb).
+      rewrite ListLib.of_list_removeb.
+      2: apply word.eqb_spec. (* TODO why is this not automatic? *)
+      unfold subset.
+      intros x Hx.
+      destr (word.eqb x addr).
+      + subst. exfalso. clear F IHn.
+        unfold sep, map.split in H0.
+        simp.
+        unfold elem_of, footpr, footprint_underapprox in Hx.
+        specialize (Hx _ H0rr).
+        destruct Hx as [w Hx].
+        rename H0rlrlrl into B.
+        unfold ptsto in B.
+        subst.
+        unfold map.disjoint in *.
+        eapply H0lr. 2: exact Hx.
+        rewrite map.get_putmany_left; cycle 1. {
+          destr (map.get mq0 addr); [exfalso|reflexivity].
+          eapply H0rllr. 2: exact E.
+          rewrite map.get_putmany_left; cycle 1. {
+            destr (map.get mq1 addr); [exfalso|reflexivity].
+            eapply H0rlrllr. 2: exact E0.
+            rewrite map.get_put_same. reflexivity.
+          }
+          rewrite map.get_put_same. reflexivity.
+        }
+        rewrite map.get_putmany_left; cycle 1. {
+          destr (map.get mq1 addr); [exfalso|reflexivity].
+          eapply H0rlrllr. 2: exact E.
+          rewrite map.get_put_same. reflexivity.
+        }
+        rewrite map.get_put_same. reflexivity.
+      + unfold diff, elem_of, singleton_set. split; [|congruence].
+        eapply IHn; assumption.
   Qed.
 
   Lemma go_storeByte_sep:
@@ -732,6 +796,30 @@ Section Go.
     specialize P with (1 := H) (2 := H0).
     destruct P as (m' & P & Q).
     eapply go_storeByte; eassumption.
+  Qed.
+
+  Lemma go_storeByte_sep_NEW:
+    forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w8)
+           (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R Rexec: mem -> Prop),
+      subset (footpr Rexec) (of_list (initialL.(getXAddrs))) ->
+      (ptsto_bytes 1 addr v_old * R * Rexec)%sep initialL.(getMem) ->
+      (forall m': mem,
+          subset (footpr Rexec) (of_list (invalidateWrittenXAddrs 1 addr initialL.(getXAddrs))) ->
+          (ptsto_bytes 1 addr v_new * R * Rexec)%sep m' ->
+          mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 1 addr initialL.(getXAddrs))
+                           (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
+      mcomp_sat (Bind (storeByte Execute addr v_new) f) initialL post.
+  Proof.
+    intros.
+    pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
+    edestruct P as [m' [P1 P2]]; cycle 2.
+    - eapply go_storeByte.
+      + exact P1.
+      + exact P2.
+    - ecancel_assumption.
+    - cbv beta. intros m' Hm'.
+      eapply H1. 2: ecancel_assumption.
+      eapply preserve_subset_of_xAddrs; eassumption.
   Qed.
 
   Lemma go_loadHalf_sep:

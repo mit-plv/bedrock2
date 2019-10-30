@@ -191,6 +191,33 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         valid_machine finalL).
 
+  Definition run_Store_spec_NEW(n: nat)(S: Register -> Register -> MachineInt -> Instruction): Prop :=
+    forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
+           (ofs: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+      (* valid_register almost follows from verify except for when the register is Register0 *)
+      valid_register rs1 ->
+      valid_register rs2 ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      map.get initialL.(getRegs) rs1 = Some base ->
+      map.get initialL.(getRegs) rs2 = Some v_new ->
+      addr = word.add base (word.of_Z ofs) ->
+      subset (footpr (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
+             (of_list (initialL.(getXAddrs))) ->
+      (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec * ptsto_bytes n addr v_old * R)%sep
+        initialL.(getMem) ->
+      valid_machine initialL ->
+      mcomp_sat (run1 iset) initialL (fun finalL =>
+        finalL.(getRegs) = initialL.(getRegs) /\
+        finalL.(getLog) = initialL.(getLog) /\
+        subset (footpr (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
+               (of_list (finalL.(getXAddrs))) /\
+        (program initialL.(getPc) [[S rs1 rs2 ofs]] *
+         ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
+            finalL.(getMem) /\
+        finalL.(getPc) = initialL.(getNextPc) /\
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        valid_machine finalL).
+
   Ltac get_run1_valid_for_free :=
     let R := fresh "R" in
     evar (R: MetricRiscvMachine -> Prop);
@@ -239,7 +266,7 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H4) as (DE & ? & ?).
+    destruct (invert_ptsto_program1 H4) as (DE & ?).
     (* execution of Jalr clears lowest bit *)
     assert (word.and (word.add dest (word.of_Z oimm12))
                      (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =
@@ -274,7 +301,7 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H2) as (DE & ? & ?).
+    destruct (invert_ptsto_program1 H2) as (DE & ?).
     t0.
   Qed.
 
@@ -285,7 +312,7 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H1) as (DE & ? & ?).
+    destruct (invert_ptsto_program1 H1) as (DE & ?).
     t0.
   Qed.
 
@@ -322,7 +349,7 @@ Section Run.
   Lemma run_Ld_unsigned: run_Load_spec 8 Ld id.
   Proof.
     t. rewrite sextend_width_nop; [reflexivity|]. unfold iset in *.
-    edestruct @invert_ptsto_instr as (DE & ? & ?); [exact mem_ok|ecancel_assumption|].
+    edestruct @invert_ptsto_instr as (DE & ?); [exact mem_ok|ecancel_assumption|].
     clear -DE. destruct DE as [_ H]. unfold verify_iset in *. unfold iset in *.
     destruct width_cases as [E | E]; rewrite E in *; simpl in *; intuition congruence.
   Qed.
@@ -334,10 +361,10 @@ Section Run.
 
   Lemma removeXAddr_diff: forall a1 a2 xaddrs,
       a1 <> a2 ->
-      isXAddr a1 xaddrs ->
-      isXAddr a1 (removeXAddr a2 xaddrs).
+      isXAddr1 a1 xaddrs ->
+      isXAddr1 a1 (removeXAddr a2 xaddrs).
   Proof.
-    unfold isXAddr, removeXAddr.
+    unfold isXAddr1, removeXAddr.
     intros.
     apply filter_In.
     split; [assumption|].
@@ -346,10 +373,10 @@ Section Run.
   Qed.
 
   Lemma removeXAddr_bw: forall a1 a2 xaddrs,
-      isXAddr a1 (removeXAddr a2 xaddrs) ->
-      isXAddr a1 xaddrs.
+      isXAddr1 a1 (removeXAddr a2 xaddrs) ->
+      isXAddr1 a1 xaddrs.
   Proof.
-    unfold isXAddr, removeXAddr.
+    unfold isXAddr1, removeXAddr.
     intros.
     eapply filter_In.
     eassumption.

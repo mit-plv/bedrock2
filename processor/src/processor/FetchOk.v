@@ -143,7 +143,7 @@ Section FetchOk.
              (kmemd: kword width -> kword width)
              (xaddrs: XAddrs) :=
     forall rpc,
-      isXAddr rpc xaddrs ->
+      isXAddr4 rpc xaddrs ->
       AddrAligned rpc /\
       (forall kpc, pc_related kpc rpc ->
                    kmemd rpc = kmemi (split2 2 _ kpc)).
@@ -189,7 +189,7 @@ Section FetchOk.
            (Hxs: RiscvXAddrsSafe kmemi kmemd xaddrs)
            (rmemd: mem)
            (rpc: kword width),
-      isXAddr rpc xaddrs ->
+      isXAddr4 rpc xaddrs ->
       pc_related kpc rpc ->
       mem_related kmemd rmemd ->
       exists (rinst: HList.tuple byte 4),

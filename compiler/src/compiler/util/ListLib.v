@@ -1,6 +1,9 @@
 Require Import Coq.Lists.List.
 Import ListNotations.
+Require Import Coq.Logic.PropExtensionality.
+Require Import Coq.Logic.FunctionalExtensionality.
 Require Import coqutil.Decidable.
+Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Z.Lia.
 
@@ -124,6 +127,23 @@ Section ListSet.
   Proof.
     induction l1; intros; simpl; [assumption|].
     inversion H. subst. clear H. destruct_one_match; eauto.
+  Qed.
+
+  Lemma of_list_removeb: forall x A,
+      of_list (removeb x A) = diff (of_list A) (singleton_set x).
+  Proof.
+    unfold of_list, diff, singleton_set, elem_of. intros.
+    extensionality e. apply propositional_extensionality. split.
+    - induction A; intros.
+      + simpl in *. contradiction.
+      + simpl in *. destr (eeq x a).
+        * subst. simpl in *. intuition idtac.
+        * simpl in *. intuition congruence.
+    - induction A; intros.
+      + simpl in *. intuition idtac.
+      + simpl in *. destr (eeq x a).
+        * subst. simpl in *. intuition idtac.
+        * simpl in *. intuition congruence.
   Qed.
 
 End ListSet.
