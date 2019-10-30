@@ -1810,6 +1810,7 @@ Section Proofs.
         end.
         unfold map.extends in Ex. specialize Ex with (1 := G). congruence.
       }
+      (* now E0 tells us that x is not in the callee-saved modvars*)
       lazymatch goal with
       | H: map.only_differ middle_regs0 _ middle_regs1 |- _ =>
         move H at bottom; rename H into OD
@@ -1838,25 +1839,34 @@ Section Proofs.
       destruct P'' as [lA [P'' ?]].
       subst.
       rewrite map.get_putmany_dec in OD |- *.
-
-(*      destr (map.get lA x). {*)
-
-        (* too late, distinction whether x is in caller-saved registers or not
-           shold be made earlier *)
-
-
-      (* TODO do we have to save argvars (names chosen by callee) on the stack, ie
-         treat them the same as of modVars of function body?? *)
-
-      (* TODO how to explain map.getmany_of_list and map.putmany_of_list_zip to map_solver? *)
-
-      (*
-      try match goal with
-      | x: ?T |- _ => unify T (@map.rep _ _ (@locals p)); idtac x; fail
+      clear Q.
+      destr (map.get lA x). {
+        pose proof (map.putmany_of_list_zip_find_index _ _ _ _ _ _ P'' E1) as Q.
+        destruct Q as [ [ n [A B] ] | C ]; cycle 1. {
+          rewrite map.get_empty in C. discriminate.
+        }
+        assert (In x (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as I2. {
+          eapply In_list_union_spec.
+          eauto using nth_error_In.
+        }
+        apply In_nth_error in I2. destruct I2 as [i I2].
+        pose proof (map.putmany_of_list_zip_empty_find_value _ _ _ _ _ P' I2) as C.
+        destruct C as [vi C].
+        epose proof (map.putmany_of_list_zip_get_newval _ _ _ _ _ _ _ P' _ I2) as F.
+        specialize (F C).
+        clear -F E0. congruence.
+      }
+      rewrite map.get_put_diff; cycle 1. {
+        clear -V. unfold valid_FlatImp_var, RegisterNames.sp in *. blia.
+      }
+      rewrite map.get_put_diff; cycle 1. {
+        clear -V. unfold valid_FlatImp_var, RegisterNames.ra in *. blia.
+      }
+      match goal with
+      | H: map.extends lL lH |- _ => clear -H G h
       end.
-      *)
+      map_solver locals_ok.
 
-      case TODO_sam.
     + match goal with
       | H: map.putmany_of_list_zip _ _ _ = Some finalRegsH' |- _ =>
         move H at bottom; rename H into P
