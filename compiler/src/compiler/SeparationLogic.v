@@ -9,7 +9,9 @@ Require Export bedrock2.Lift1Prop.
 Require Export bedrock2.Map.Separation.
 Require Export bedrock2.Map.SeparationLogic.
 Require Export bedrock2.Array.
+Require Export bedrock2.ptsto_bytes.
 Require Export compiler.SimplWordExpr.
+Require Export riscv.Utility.Utility.
 
 Infix "*" := sep : sep_scope.
 
@@ -59,6 +61,22 @@ Ltac wclause_unify OK :=
   | _ => fail 1000 "OK does not have the right type"
   end.
 
+
+Section ptstos.
+  Context {W: Words}.
+  Context {mem : map.map word byte}.
+
+  Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width Syntax.access_size.word).
+
+  Definition ptsto_word(addr w: word): mem -> Prop :=
+    ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
+                (LittleEndian.split _ (word.unsigned w)).
+
+  Definition word_array: word -> list word -> mem -> Prop :=
+    array ptsto_word (word.of_Z bytes_per_word).
+
+End ptstos.
+
 (* This can be overridden by the user.
    The idea of a "tag" is that it's a subterm of a sepclause which is so unique that if
    the same tag appears both on the left and on the right of an iff1, we're sure that
@@ -85,7 +103,10 @@ Ltac addr P :=
             end in
   lazymatch P with
   | ptsto ?A _ => A
+  | ptsto_bytes _ ?A _ => A
+  | ptsto_word ?A _ => A
   | array _ _ ?A _ => A
+  | word_array ?A _ => A
   | _ => fail "no recognizable address"
   end.
 

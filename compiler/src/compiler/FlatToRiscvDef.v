@@ -16,6 +16,7 @@ Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.RegisterNames.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Map.Interface.
+Require Import compiler.SeparationLogic.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -213,8 +214,6 @@ Section FlatToRiscv1.
     | CondNez x =>
         Beq x Register0 amt
     end.
-
-  Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width access_size.word).
 
   Fixpoint save_regs(regs: list Register)(offset: Z): list Instruction :=
     match regs with

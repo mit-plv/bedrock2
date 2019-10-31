@@ -74,6 +74,8 @@ Section Run.
       valid_register rs1 ->
       map.get initialL.(getRegs) rs1 = Some dest ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      subset (footpr (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]]))
+             (of_list (initialL.(getXAddrs))) ->
       (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
           initialL.(getMem) ->
       valid_machine initialL ->
@@ -92,6 +94,8 @@ Section Run.
       jimm20 mod 4 = 0 ->
       valid_register rd ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      subset (footpr (program initialL.(getPc) [[Jal rd jimm20]]))
+             (of_list (initialL.(getXAddrs))) ->
       (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
@@ -110,6 +114,8 @@ Section Run.
     forall (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
+      subset (footpr (program initialL.(getPc) [[Jal Register0 jimm20]]))
+             (of_list (initialL.(getXAddrs))) ->
       (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
@@ -132,6 +138,8 @@ Section Run.
       valid_register rs ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
+      subset (footpr (program initialL.(getPc) [[Op rd rs imm]]))
+             (of_list (initialL.(getXAddrs))) ->
       (program initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
@@ -153,6 +161,8 @@ Section Run.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
+      subset (footpr (program initialL.(getPc) [[L rd rs ofs]]))
+             (of_list (initialL.(getXAddrs))) ->
       (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
         initialL.(getMem) ->
       valid_machine initialL ->
@@ -168,30 +178,6 @@ Section Run.
         valid_machine finalL).
 
   Definition run_Store_spec(n: nat)(S: Register -> Register -> MachineInt -> Instruction): Prop :=
-    forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
-           (ofs: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
-      (* valid_register almost follows from verify except for when the register is Register0 *)
-      valid_register rs1 ->
-      valid_register rs2 ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      map.get initialL.(getRegs) rs1 = Some base ->
-      map.get initialL.(getRegs) rs2 = Some v_new ->
-      addr = word.add base (word.of_Z ofs) ->
-      (program initialL.(getPc) [[S rs1 rs2 ofs]] * ptsto_bytes n addr v_old * R)%sep
-        initialL.(getMem) ->
-      valid_machine initialL ->
-      mcomp_sat (run1 iset) initialL (fun finalL =>
-        finalL.(getRegs) = initialL.(getRegs) /\
-        finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[S rs1 rs2 ofs]] *
-         ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
-            finalL.(getMem) /\
-        finalL.(getXAddrs) = initialL.(getXAddrs) /\
-        finalL.(getPc) = initialL.(getNextPc) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
-        valid_machine finalL).
-
-  Definition run_Store_spec_NEW(n: nat)(S: Register -> Register -> MachineInt -> Instruction): Prop :=
     forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Register)
            (ofs: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       (* valid_register almost follows from verify except for when the register is Register0 *)
@@ -211,7 +197,7 @@ Section Run.
         finalL.(getLog) = initialL.(getLog) /\
         subset (footpr (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
                (of_list (finalL.(getXAddrs))) /\
-        (program initialL.(getPc) [[S rs1 rs2 ofs]] *
+        (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec *
          ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
             finalL.(getMem) /\
         finalL.(getPc) = initialL.(getNextPc) /\
@@ -266,7 +252,7 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H4) as (DE & ?).
+    destruct (invert_ptsto_program1 H5) as (DE & ?).
     (* execution of Jalr clears lowest bit *)
     assert (word.and (word.add dest (word.of_Z oimm12))
                      (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =
@@ -301,7 +287,7 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H2) as (DE & ?).
+    destruct (invert_ptsto_program1 H3) as (DE & ?).
     t0.
   Qed.
 
@@ -312,7 +298,7 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H1) as (DE & ?).
+    destruct (invert_ptsto_program1 H2) as (DE & ?).
     t0.
   Qed.
 
@@ -395,10 +381,6 @@ Section Run.
   Qed.
 
   Arguments invalidateWrittenXAddrs: simpl never.
-
-  Axiom TODO_invalidateWrittenXAddrs_nop: forall n addr xAddrs,
-      invalidateWrittenXAddrs n addr xAddrs = xAddrs.
-  Local Hint Resolve TODO_invalidateWrittenXAddrs_nop.
 
   Lemma run_Sb: run_Store_spec 1 Sb.
   Proof. t. Qed.

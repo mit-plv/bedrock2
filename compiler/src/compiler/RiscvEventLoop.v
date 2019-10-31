@@ -82,15 +82,23 @@ Section EventLoop.
       goodReadyState initial ->
       initial.(getPc) = pc_start ->
       valid_machine initial ->
+      subset (footpr (ptsto_instr pc_end (Jal Register0 jump)))
+             (of_list initial.(getXAddrs)) ->
       runsTo (mcomp_sat (run1 iset)) initial (fun final =>
           goodReadyState final /\
           final.(getPc) = pc_end /\
           (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep final.(getMem)) /\
-          valid_machine final).
+          valid_machine final /\
+          subset (footpr (ptsto_instr pc_end (Jal Register0 jump)))
+                 (of_list final.(getXAddrs))).
 
   Definition runsToGood_Invariant(prefinalL: RiscvMachineL): Prop :=
     runsTo (mcomp_sat (run1 iset)) prefinalL (fun finalL =>
-       goodReadyState finalL /\ finalL.(getPc) = pc_start /\ valid_machine finalL).
+       goodReadyState finalL /\
+       finalL.(getPc) = pc_start /\
+       valid_machine finalL /\
+       subset (footpr (ptsto_instr pc_end (Jal Register0 jump)))
+              (of_list finalL.(getXAddrs))).
 
   (* "runs to a good state" is an invariant of the transition system
      (note that this does not depend on the definition of runN) *)
@@ -98,12 +106,14 @@ Section EventLoop.
       runsToGood_Invariant st -> mcomp_sat (run1 iset) st runsToGood_Invariant.
   Proof.
     eapply runsTo_safe1_inv; cycle 1.
-    - intros state (? & ? & ?). eapply body_correct; assumption.
-    - intros state (? & ? & (R & ?) & ?).
+    - intros state (? & ? & ? & ?). eapply body_correct; assumption.
+    - intros state (? & ? & (R & ?) & ? & ?).
       (* this is the loop verification code: *)
       eapply runsToStep. {
         eapply run_Jal0; try eassumption.
-        unfold program, array. rewrite H0. ecancel_assumption.
+        - rewrite H0. unfold program, array.
+          eapply shrink_footpr_subset; [ eassumption | solve [ ecancel ] ].
+        - unfold program, array. rewrite H0. ecancel_assumption.
       }
       simpl. intros. simp.
       destruct_RiscvMachine state.
@@ -118,12 +128,5 @@ Section EventLoop.
       + reflexivity.
     - intros state C. simp. congruence.
   Qed.
-
-  Variable startState: RiscvMachineL.
-
-  (* initialization code: all the code before the loop body, loop body starts at pc_start *)
-  Hypothesis init_correct:
-      runsTo (mcomp_sat (run1 iset)) startState (fun final =>
-          goodReadyState final /\ final.(getPc) = pc_start /\ valid_machine final).
 
 End EventLoop.

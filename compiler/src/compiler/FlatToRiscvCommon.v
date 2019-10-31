@@ -89,8 +89,6 @@ Module Import FlatToRiscv.
 
     PR :> MetricPrimitives PRParams;
 
-    (* And the second restriction is part of the correctness requirement for compilation of
-       external calls: Every compiled external call has to preserve ext_guarantee *)
     compile_ext_call_correct: forall (initialL: MetricRiscvMachine) action postH newPc insts
         (argvars resvars: list Register) initialMH initialMetricsH R,
       insts = compile_ext_call resvars action argvars ->
@@ -98,6 +96,7 @@ Module Import FlatToRiscv.
                                                   (word.of_Z (Z.of_nat (List.length insts)))) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
+      subset (footpr (program initialL.(getPc) insts)) (of_list initialL.(getXAddrs)) ->
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       valid_machine initialL ->
@@ -107,6 +106,7 @@ Module Import FlatToRiscv.
              (fun finalL => exists finalMetricsH,
                   (* external calls can't modify the memory for now *)
                   postH finalL.(getLog) initialMH finalL.(getRegs) finalMetricsH /\
+                  finalL.(getXAddrs) = initialL.(getXAddrs) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (word.of_Z 4) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
@@ -262,7 +262,9 @@ Section FlatToRiscv1.
       map.get initialL.(getRegs) x = Some v ->
       map.get initialL.(getRegs) a = Some addr ->
       Memory.store sz (getMem initialL) addr v = Some m' ->
-      mcomp_sat (f tt) (withMem m' (updateMetrics (addMetricStores 1) initialL)) post ->
+      mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs (@Memory.bytes_per width sz) addr
+                                                            (getXAddrs initialL))
+                       (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post.
   Proof.
     unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per;
@@ -280,8 +282,6 @@ Section FlatToRiscv1.
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.store, Memory.store_Z in *;
         simp; simulate''; simpl; simpl_word_exprs word_ok; try eassumption.
-    all: rewrite TODO_invalidateWrittenXAddrs_nop;
-      destruct_RiscvMachine initialL; simpl; assumption.
   Qed.
 
   Lemma run_compile_load: forall sz: Syntax.access_size,
@@ -310,13 +310,6 @@ Section FlatToRiscv1.
       + refine run_Sd.
   Qed.
 
-  Definition ptsto_word(addr w: word): mem -> Prop :=
-    ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
-                (LittleEndian.split _ (word.unsigned w)).
-
-  Definition word_array: word -> list word -> mem -> Prop :=
-    array ptsto_word (word.of_Z bytes_per_word).
-
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_load_word: forall (base addr v : word) (rd rs : Register) (ofs : MachineInt)
@@ -326,6 +319,8 @@ Section FlatToRiscv1.
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
+      subset (footpr (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]]))
+             (of_list initialL.(getXAddrs)) ->
       (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] *
        ptsto_word addr v * R)%sep (getMem initialL) ->
       valid_machine initialL ->
@@ -333,6 +328,7 @@ Section FlatToRiscv1.
          (fun finalL : RiscvMachineL =>
             getRegs finalL = map.put (getRegs initialL) rd v /\
             getLog finalL = getLog initialL /\
+            getXAddrs finalL = getXAddrs initialL /\
             (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] *
              ptsto_word addr v * R)%sep (getMem finalL) /\
             getPc finalL = getNextPc initialL /\
@@ -355,22 +351,28 @@ Section FlatToRiscv1.
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Register)
-                               (ofs : MachineInt) (initialL : RiscvMachineL) (R : mem -> Prop),
+              (ofs : MachineInt) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rs1 ->
       valid_register rs2 ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs1 = Some base ->
       map.get (getRegs initialL) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
-       ptsto_word addr v_old * R)%sep (getMem initialL) ->
+      subset (footpr ((program initialL.(getPc)
+                          [[compile_store Syntax.access_size.word rs1 rs2 ofs]]) * Rexec)%sep)
+             (of_list initialL.(getXAddrs)) ->
+      (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
+       * ptsto_word addr v_old * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
-           (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] *
-            ptsto_word addr v_new * R)%sep (getMem finalL) /\
+           subset (footpr (program initialL.(getPc)
+                              [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep)
+             (of_list finalL.(getXAddrs)) /\
+           (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
+            * ptsto_word addr v_new * R)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
            valid_machine finalL).

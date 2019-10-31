@@ -83,6 +83,7 @@ Section FlatToRiscvLiterals.
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_stmt (FlatImp.SLit x v) in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
+      subset (footpr (program initialL.(getPc) insts)) (of_list initialL.(getXAddrs)) ->
       (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
       valid_FlatImp_vars (FlatImp.SLit x v) ->
       Primitives.valid_machine initialL ->
@@ -93,7 +94,7 @@ Section FlatToRiscvLiterals.
              post ->
       runsTo initialL post.
   Proof.
-    intros *. intros E1 insts d P V Vm N. substs.
+    intros *. intros E1 insts d F P V Vm N. substs.
     lazymatch goal with
     | H1: valid_FlatImp_vars ?s |- _ =>
       pose proof (compile_stmt_emits_valid iset_is_supported H1 eq_refl) as EV

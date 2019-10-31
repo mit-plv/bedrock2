@@ -25,19 +25,24 @@ Section Proofs.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
-  Lemma save_regs_correct: forall vars offset R (initial: RiscvMachineL) p_sp oldvalues newvalues,
+  Lemma save_regs_correct: forall vars offset R Rexec (initial: RiscvMachineL) p_sp oldvalues
+                                  newvalues,
       Forall valid_register vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length oldvalues = List.length vars ->
-      (program initial.(getPc) (save_regs vars offset) *
+      subset (footpr (program initial.(getPc) (save_regs vars offset) * Rexec)%sep)
+             (of_list (initial.(getXAddrs))) ->
+      (program initial.(getPc) (save_regs vars offset) * Rexec *
        word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       valid_machine initial ->
       runsTo initial (fun final =>
           final.(getRegs) = initial.(getRegs) /\
-          (program initial.(getPc) (save_regs vars offset) *
+          subset (footpr (program initial.(getPc) (save_regs vars offset) * Rexec)%sep)
+                 (of_list (final.(getXAddrs))) /\
+          (program initial.(getPc) (save_regs vars offset) * Rexec *
            word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (word.mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
@@ -63,7 +68,9 @@ Section Proofs.
       }
       destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {
-        eapply run_store_word; cycle -2; try solve [sidecondition].
+        eapply run_store_word with (Rexec0 := (program (word.add (getPc initial) (word.of_Z 4))
+            (save_regs vars (offset + bytes_per_word)) * Rexec)%sep); cycle -3;
+          try solve [sidecondition].
       }
       simpl. intros.
       destruct_RiscvMachine initial.
@@ -71,11 +78,9 @@ Section Proofs.
       simp. subst.
       eapply runsToNonDet.runsTo_weaken; cycle 1;
         [|eapply IHvars with (p_sp := p_sp) (offset := (offset + bytes_per_word))
-                             (newvalues := l)]. {
+             (newvalues := l) (R := (ptsto_word (word.add p_sp (word.of_Z offset)) r * R)%sep)]. {
         simpl. intros. simp. destruct_RiscvMachine final.
         repeat split; try solve [sidecondition].
-        - use_sep_assumption.
-          wcancel word_ok.
         - replace (Z.of_nat (S (List.length oldvalues)))
             with (1 + Z.of_nat (List.length oldvalues)) by blia.
           etransitivity; [eassumption|].
@@ -91,10 +96,8 @@ Section Proofs.
           destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
         }
         bomega.
-      + simpl. pseplog.
-        rewrite word.ring_morph_add.
-        rewrite word.add_assoc.
-        ecancel.
+      + simpl in *. eapply shrink_footpr_subset. 1: eassumption. wcancel word_ok.
+      + simpl. use_sep_assumption. wcancel word_ok.
       + reflexivity.
   Qed.
 
@@ -109,6 +112,8 @@ Section Proofs.
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length values = List.length vars ->
+      subset (footpr (program initial.(getPc) (load_regs vars offset)))
+             (of_list initial.(getXAddrs)) ->
       (program initial.(getPc) (load_regs vars offset) *
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
@@ -122,6 +127,7 @@ Section Proofs.
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
           final.(getLog) = initial.(getLog) /\
+          final.(getXAddrs) = initial.(getXAddrs) /\
           valid_machine final).
   Proof.
     induction vars; intros.
@@ -144,7 +150,7 @@ Section Proofs.
       }
       destruct values as [|value values]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {
-        eapply run_load_word; cycle -2; try solve [sidecondition].
+        eapply run_load_word; cycle -3; try solve [sidecondition]; sidecondition.
       }
       simpl. intros.
       destruct_RiscvMachine initial.
@@ -176,6 +182,7 @@ Section Proofs.
         * rewrite map.get_put_diff. 1: assumption.
           unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
         * blia.
+        * eapply shrink_footpr_subset. 1: eassumption. wcancel word_ok.
       + simpl. intros. simp.
         repeat split.
         * assumption.

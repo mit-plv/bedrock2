@@ -73,19 +73,22 @@ Section Proofs.
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
     FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
-    forall R (initialL: RiscvMachineL) insts,
+    forall R Rexec (initialL: RiscvMachineL) insts,
     @compile_stmt def_params s = insts ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->
     initialL.(getRegs) = initialRegsH ->
-    (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+    subset (footpr (program initialL.(getPc) insts * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
+    (program initialL.(getPc) insts * Rexec * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
     valid_machine initialL ->
     runsTo initialL (fun finalL => exists finalMH finalMetricsH,
           postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
-          (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
+          subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+                 (of_list finalL.(getXAddrs)) /\
+          (program initialL.(getPc) insts * Rexec * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc)
                              (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (length insts)))) /\
           finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
@@ -109,13 +112,14 @@ Section Proofs.
     - (* SInteract *)
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with (postH := post) (action0 := action)
-                                             (argvars0 := argvars) (resvars0 := resvars);
+                            (initialMH := m) (argvars0 := argvars) (resvars0 := resvars);
           try sidecondition.
         eapply @exec.interact; try eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL.
         simpl_MetricRiscvMachine_get_set. simpl in *.
         destruct_products. subst. exists m. exists finalMetricsH.
         repeat (split; try eassumption).
+        ecancel_assumption.
 
     - (* SCall *)
       lazymatch goal with
@@ -131,11 +135,15 @@ Section Proofs.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
-      assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * R))%sep initialL_mem)
-             as A by ecancel_assumption.
+      assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * Rexec * R))%sep
+        initialL_mem) as A by ecancel_assumption.
       pose proof (store_bytes_frame H2 A) as P.
       destruct P as (finalML & P1 & P2).
       run1det. run1done.
+      eapply preserve_subset_of_xAddrs. 1: assumption.
+
+      (* TODO don't use go_store, but something more similar to store_regs_correct,
+         with a better way of splitting "eq mH" *)
 
     - (* SLit *)
       get_run1valid_for_free.
