@@ -3,15 +3,19 @@ Require Export Coq.ZArith.BinInt. Open Scope Z_scope.
 Require Export coqutil.Word.Interface coqutil.Word.Properties.
 Require Export coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.destr.
+Require Import coqutil.Tactics.rewr coqutil.Tactics.Tactics.
 Require Export coqutil.Z.Lia.
 Require Export coqutil.Datatypes.PropSet.
 Require Export bedrock2.Lift1Prop.
 Require Export bedrock2.Map.Separation.
 Require Export bedrock2.Map.SeparationLogic.
 Require Export bedrock2.Array.
+Require Export bedrock2.Scalars.
 Require Export bedrock2.ptsto_bytes.
 Require Export compiler.SimplWordExpr.
 Require Export riscv.Utility.Utility.
+Require Import riscv.Utility.Encode.
+Require Import riscv.Spec.Decode.
 
 Infix "*" := sep : sep_scope.
 
@@ -64,7 +68,7 @@ Ltac wclause_unify OK :=
 
 Section ptstos.
   Context {W: Words}.
-  Context {mem : map.map word byte}.
+  Context {mem : map.map word byte} {mem_ok: map.ok mem}.
 
   Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width Syntax.access_size.word).
 
@@ -74,6 +78,42 @@ Section ptstos.
 
   Definition word_array: word -> list word -> mem -> Prop :=
     array ptsto_word (word.of_Z bytes_per_word).
+
+  Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
+
+  (* contains all the conditions needed to successfully execute instr, except
+     that addr needs to be in the set of executable addresses, which is dealt with elsewhere *)
+  Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
+    (truncated_scalar Syntax.access_size.four addr (encode instr) *
+     emp (verify instr iset) *
+     emp ((word.unsigned addr) mod 4 = 0))%sep.
+
+  Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
+    array ptsto_instr (word.of_Z 4) addr prog.
+
+  Lemma invert_ptsto_instr: forall {addr instr R m},
+    (ptsto_instr addr instr * R)%sep m ->
+     verify instr iset /\
+     (word.unsigned addr) mod 4 = 0.
+  Proof.
+    intros.
+    unfold array, ptsto_instr in *.
+    lazymatch goal with
+    | H: (?T * ?P1 * ?P2 * R)%sep ?m |- _ =>
+      assert ((T * R * P1 * P2)%sep m) as A by ecancel_assumption; clear H
+    end.
+    do 2 (apply sep_emp_r in A; destruct A as [A ?]).
+    auto.
+  Qed.
+
+  Lemma invert_ptsto_program1: forall {addr instr R m},
+    (program addr [instr] * R)%sep m ->
+     verify instr iset /\
+     (word.unsigned addr) mod 4 = 0.
+  Proof.
+    unfold program. intros. simpl in *. eapply invert_ptsto_instr.
+    ecancel_assumption.
+  Qed.
 
 End ptstos.
 
@@ -145,8 +185,17 @@ Ltac wcancel_step OK := once (
   let i := pick_nat l in (* <-- multi-success! *)
   cancel_seps_at_indices i j; [sepclause_eq OK|]).
 
-Ltac wcancel OK :=
+Ltac word_rep_to_word_ok R :=
+  lazymatch constr:(@eq R (word.of_Z 0)) with
+  | @eq _ (@word.of_Z _ ?Inst _) => constr:(_: word.ok Inst)
+  end.
+
+Ltac wcancel :=
   cancel;
+  let OK := lazymatch goal with
+            | |- @iff1 (@map.rep (@word.rep ?W ?WordInst) ?V ?M) _ _ =>
+              constr:(_: word.ok WordInst)
+            end in
   repeat wcancel_step OK;
   try solve [ecancel_done'].
 
@@ -165,6 +214,48 @@ Ltac cancel_by_tag :=
   let tagL := tag x in
   constr_eq tagL tagR;
   cancel_seps_at_indices i j.
+
+Ltac simpl_addrs :=
+  simpl_Z_nat;
+  unfold Register, MachineInt in *;
+  (* note: it's the user's responsability to ensure that left-to-right rewriting with all
+   nat and Z equations terminates, otherwise we'll loop infinitely here *)
+  repeat match goal with
+         | E: @eq ?T ?LHS _ |- _ =>
+           lazymatch T with
+           | Z => idtac
+           | nat => idtac
+           end;
+           progress prewrite LHS E
+         end.
+
+Ltac wseplog_pre :=
+  repeat (autounfold with unf_to_array);
+  (* Note that "rewr" only works with equalities, not with iff1, so we use
+     iff1ToEq to turn iff1 into eq (requires functional and propositionl extensionality).
+     Alternatively, we could use standard rewrite (which might instantiate too many evars),
+     or we could make a "seprewrite" which works on "seps [...] [...]" by replacing the
+     i-th clause on any side with the rhs of the provided iff1, or we could make a
+     seprewrite which first puts the clause to be replaced as the left-most, and then
+     eapplies a "Proper_sep_iff1: Proper (iff1 ==> iff1 ==> iff1) sep", but that would
+     change the order of the clauses. *)
+  rewr (fun t => match t with
+         | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+           constr:(iff1ToEq (array_append' PT SZ xs ys start))
+         | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+           constr:(iff1ToEq (array_cons PT SZ x xs start))
+         | context [ array ?PT ?SZ ?start nil ] =>
+           constr:(iff1ToEq (array_nil PT SZ start))
+         end) in |-*.
+
+Ltac wwcancel :=
+  wseplog_pre;
+  simpl_addrs;
+  wcancel.
+
+Ltac wcancel_assumption := use_sep_assumption; wwcancel.
+
+Hint Unfold program word_array: unf_to_array.
 
 Section Footprint.
   Context {key value} {map : map.map key value} {ok : map.ok map}.
@@ -268,6 +359,14 @@ Section Footprint.
       subset (footpr (sep P Q)) A -> subset (footpr Q) A.
   Proof.
     unfold subset. eauto using in_footpr_sep_r.
+  Qed.
+
+  Lemma rearrange_footpr_subset(P Q: map -> Prop) (A: key -> Prop)
+      (H1: subset (footpr P) A)
+      (H2: iff1 P Q):
+      subset (footpr Q) A.
+  Proof.
+    intros. apply iff1ToEq in H2. subst P. assumption.
   Qed.
 
   Lemma shrink_footpr_subset(P Q R: map -> Prop) (A: key -> Prop)

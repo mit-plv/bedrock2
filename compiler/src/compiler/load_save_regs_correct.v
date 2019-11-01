@@ -96,8 +96,8 @@ Section Proofs.
           destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
         }
         bomega.
-      + simpl in *. eapply shrink_footpr_subset. 1: eassumption. wcancel word_ok.
-      + simpl. use_sep_assumption. wcancel word_ok.
+      + simpl in *. eapply shrink_footpr_subset. 1: eassumption. wcancel.
+      + simpl. use_sep_assumption. wcancel.
       + reflexivity.
   Qed.
 
@@ -182,22 +182,11 @@ Section Proofs.
         * rewrite map.get_put_diff. 1: assumption.
           unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
         * blia.
-        * eapply shrink_footpr_subset. 1: eassumption. wcancel word_ok.
+        * eapply shrink_footpr_subset. 1: eassumption. wcancel.
       + simpl. intros. simp.
         repeat split.
         * assumption.
-        * pseplog.
-          match goal with
-          | |- iff1 ?LHS ?RHS =>
-            match LHS with
-            | context [word_array ?i] =>
-              match RHS with
-              | context [word_array ?i'] =>
-                replace i with i' by solve_word_eq word_ok
-              end
-            end
-          end.
-          ecancel.
+        * wcancel_assumption.
         * etransitivity; [eassumption|].
           rewrite Znat.Nat2Z.inj_succ. rewrite <- Z.add_1_r.
           replace (List.length values) with (List.length vars) by congruence.

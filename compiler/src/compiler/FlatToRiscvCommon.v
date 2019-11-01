@@ -571,21 +571,3 @@ Ltac run1det :=
     | |- _ => fail 10000 "simulate' did not go through completely"
     end
  | intros ].
-
-(* seplog which knows that "program" is an array and how to deal with cons and append in
-     that array, and how to make addresses match *)
-Ltac pseplog :=
-  unfold program in *;
-  repeat match goal with
-         | H: _ ?m |- _ ?m => progress (simpl in * (* does array_cons *))
-         | H: context [array _ _ ?addr1 ?content] |- context [array _ _ ?addr2 ?content] =>
-           progress replace addr1 with addr2 in H by ring;
-           ring_simplify addr2;
-           ring_simplify addr2 in H
-         (* just unprotected seprewrite will instantiate evars in undesired ways *)
-         | |- context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-           seprewrite0 (array_append' PT SZ xs ys start)
-         | H: context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] |- _ =>
-           seprewrite0_in (array_append' PT SZ xs ys start) H
-         end;
-  seplog.

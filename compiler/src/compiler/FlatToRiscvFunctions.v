@@ -279,45 +279,7 @@ Section Proofs.
       rewrite IH. reflexivity.
   Qed.
 
-  Ltac simpl_addrs :=
-    simpl_Z_nat;
-    unfold Register, MachineInt in *;
-    (* note: it's the user's responsability to ensure that left-to-right rewriting with all
-     nat and Z equations terminates, otherwise we'll loop infinitely here *)
-    repeat match goal with
-           | E: @eq ?T ?LHS _ |- _ =>
-             lazymatch T with
-             | Z => idtac
-             | nat => idtac
-             end;
-             progress prewrite LHS E
-           end.
-
-  Ltac wseplog_pre OK :=
-    use_sep_assumption;
-    autounfold with unf_to_array;
-    unfold program, word_array;
-    (* Note that "rewr" only works with equalities, not with iff1, so we use
-       iff1ToEq to turn iff1 into eq (requires functional and propositionl extensionality).
-       Alternatively, we could use standard rewrite (which might instantiate too many evars),
-       or we could make a "seprewrite" which works on "seps [...] [...]" by replacing the
-       i-th clause on any side with the rhs of the provided iff1, or we could make a
-       seprewrite which first puts the clause to be replaced as the left-most, and then
-       eapplies a "Proper_sep_iff1: Proper (iff1 ==> iff1 ==> iff1) sep", but that would
-       change the order of the clauses. *)
-    rewr (fun t => match t with
-           | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             constr:(iff1ToEq (array_append' PT SZ xs ys start))
-           | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
-             constr:(iff1ToEq (array_cons PT SZ x xs start))
-           | context [ array ?PT ?SZ ?start nil ] =>
-             constr:(iff1ToEq (array_nil PT SZ start))
-           end) in |-*;
-    simpl_addrs.
-
   Set Printing Depth 100000.
-
-  Hint Unfold program word_array: unf_to_array.
 
   Lemma compile_stmt_length_position_indep: forall e_pos1 e_pos2 s pos1 pos2,
       List.length (compile_stmt_new e_pos1 pos1 s) =
@@ -352,10 +314,6 @@ Section Proofs.
     | _ => fail "no recognizable address"
     end.
 
-  Ltac wcancel_instantiated := wcancel (@word_ok (@W (@def_params p))).
-  (* shadows original wcancel: *)
-  Ltac wcancel := wcancel_instantiated.
-
   Ltac safe_sidecond :=
     match goal with
     (* proving these equalties with eq_refl will make other goals harder to prove,
@@ -376,7 +334,9 @@ Section Proofs.
                      | assumption
                      | solve_divisibleBy4
                      | solve_valid_machine (@word_ok (@W (@def_params p))) ]
-    | |- _ => solve [wseplog_pre word_ok; wcancel ] (* TODO probably not safe as-is *)
+    | H: subset (footpr _) _ |- subset (footpr _) _ =>
+      eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
+    | |- _ => solve [wcancel_assumption]
     | |- ?G => is_lia G; assert_fails (has_evar G);
                (* not sure why this line is needed, lia should be able to deal with (x := _) hyps,
                   maybe it changes some implicit args or universes? *)
@@ -422,13 +382,15 @@ Section Proofs.
 
   (* TODO make sure it's compatible with users of it *)
   Lemma compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
-        action postH newPc insts (argvars resvars: list Register) initialMH R initialRegsH
+        action postH newPc insts (argvars resvars: list Register) initialMH R Rexec initialRegsH
         initialMetricsH argvals mGive outcome p_sp,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
       map.extends initialL.(getRegs) initialRegsH ->
       Forall valid_FlatImp_var argvars ->
       Forall valid_FlatImp_var resvars ->
+      subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+             (of_list initialL.(getXAddrs)) ->
       (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
@@ -455,6 +417,8 @@ Section Proofs.
                   postH finalL.(getLog) initialMH finalRegsH finalMetricsH /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (word.of_Z 4) /\
+                  subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+                         (of_list finalL.(getXAddrs)) /\
                   (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
@@ -480,11 +444,13 @@ Section Proofs.
     e_pos: fun_pos_env;
     e_impl: env;
     funnames: list Syntax.funname;
-    frame: mem -> Prop;
+    dframe: mem -> Prop; (* data frame *)
+    xframe: mem -> Prop; (* executable frame *)
   }.
 
   Ltac simpl_g_get :=
-    cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl funnames frame] in *.
+    cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl funnames
+         dframe xframe] in *.
 
   Definition goodMachine
       (* high-level state ... *)
@@ -501,9 +467,13 @@ Section Proofs.
     (* pc: *)
     lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
     (* memory: *)
+    subset (footpr (g.(xframe) *
+                    program g.(p_insts) g.(insts) *
+                    functions g.(program_base) g.(e_pos) g.(e_impl) g.(funnames))%sep)
+           (of_list lo.(getXAddrs)) /\
     (exists stack_trash,
         Z.of_nat (List.length stack_trash) = g.(num_stackwords) /\
-        (g.(frame) * eq m *
+        (g.(dframe) * g.(xframe) * eq m *
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(num_stackwords))))
                     stack_trash *
          program g.(p_insts) g.(insts) *
@@ -582,7 +552,7 @@ Section Proofs.
     | |- _ => solve [eauto]
     | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
     | |- exists _, _ = _ /\ (_ * _)%sep _ =>
-      eexists; split; cycle 1; [ wseplog_pre (@word_ok (@W (@def_params p))); wcancel | blia ]
+      eexists; split; cycle 1; [ wcancel_assumption | blia ]
     | |- _ => solve [rewrite ?of_list_list_union in *;
                      (* Don't do that, because it will consider all Zs as variables
                         and slow everything down
@@ -606,7 +576,7 @@ Section Proofs.
 
   Ltac sidecondition_hook ::=
     try solve [ map_solver (@locals_ok p h)
-              | wseplog_pre (@word_ok (@W (@def_params p))); wcancel ].
+              | wcancel_assumption ].
 
   Lemma split_from_right{A: Type}: forall (l: list A) (len: nat),
       (len <= length l)%nat ->
@@ -791,6 +761,7 @@ Section Proofs.
             (postH := fun t' m' l' mc' => post t' m (* <- not m' because unchanged *) l' mc')
             (action := action) (argvars := argvars) (resvars := resvars);
           simpl; reflexivity || eassumption || ecancel_assumption || idtac.
+        * eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
         * eapply map.getmany_of_list_extends; try eassumption.
         * intros resvals HO ?. subst mGive.
           match goal with
@@ -820,6 +791,7 @@ Section Proofs.
           destruct P; auto.
           left. unfold PropSet.union, PropSet.elem_of, PropSet.of_list in *.
           left. apply In_list_union_l. assumption.
+        * eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
         * eexists. split; [reflexivity|].
           ecancel_assumption.
 
@@ -903,8 +875,9 @@ Section Proofs.
       (* put arguments on stack *)
       eapply runsTo_trans. {
         eapply save_regs_correct with (vars := args) (p_sp0 := p_sp)
-                (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl; cycle -3.
-        - wseplog_pre word_ok. wcancel.
+                (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl; cycle -4.
+        - eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
+        - wcancel_assumption.
         - sidecondition.
         - sidecondition.
         - sidecondition.
@@ -939,9 +912,8 @@ Section Proofs.
     (* jump to function *)
     eapply runsToStep. {
       eapply run_Jal; simpl; try solve [sidecondition]; cycle 2.
-      - rewrite !@length_save_regs in *.
-        wseplog_pre word_ok.
-        wcancel.
+      - rewrite !@length_save_regs in *. eapply shrink_footpr_subset; [ eassumption | wwcancel ].
+      - rewrite !@length_save_regs in *. wcancel_assumption.
       - solve_divisibleBy4.
       - assumption.
     }
@@ -964,18 +936,25 @@ Section Proofs.
     specialize (P program_base funnames).
     auto_specialize.
     match goal with
-    | H: (_ * _)%sep _ |- _ => seprewrite_in P H; clear P
+    | H: (_ * _)%sep _ |- _ => seprewrite_in P H
     end.
+    apply iff1ToEq in P.
+    match goal with
+    | H: subset _ _ |- _ => rewrite P in H; idtac H
+    end.
+    clear P.
 
     simpl in *.
 
     (* decrease sp *)
     eapply runsToStep. {
       eapply run_Addi with (rd := RegisterNames.sp) (rs := RegisterNames.sp);
-        try solve [sidecondition | simpl; solve_divisibleBy4 ].
-        simpl.
-        rewrite map.get_put_diff by (clear; cbv; congruence).
+        try solve [safe_sidecond | simpl; solve_divisibleBy4 ].
+      all: simpl.
+      - rewrite map.get_put_diff by (clear; cbv; congruence).
         eassumption.
+      - rewrite ?length_save_regs in *.
+        eapply shrink_footpr_subset; [ eassumption | wwcancel ].
     }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
@@ -992,9 +971,18 @@ Section Proofs.
     eapply runsToStep. {
       eapply run_store_word with (rs1 := RegisterNames.sp) (rs2 := RegisterNames.ra);
         try solve [sidecondition | simpl; solve_divisibleBy4].
+        all: simpl.
+      2: {
+        rewrite ?length_save_regs in *.
+        eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
+      }
+      1: {
         simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         rewrite map.get_put_same. reflexivity.
+      }
+      rewrite ?length_save_regs in *.
+      wcancel_assumption.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
@@ -1029,6 +1017,7 @@ Section Proofs.
       eapply save_regs_correct; simpl; cycle 2.
       2: rewrite map.get_put_same; reflexivity.
       1: exact P2.
+      2: { eapply rearrange_footpr_subset; [ eassumption | wwcancel ]. }
       4: assumption.
       4: {
         eapply Forall_impl; cycle 1.
@@ -1038,7 +1027,7 @@ Section Proofs.
         - apply valid_FlatImp_var_implies_valid_register. }
       1: eassumption.
       2: reflexivity.
-      1: { wseplog_pre word_ok. wcancel. }
+      1: wcancel_assumption.
       pose proof (NoDup_valid_FlatImp_vars_bound_length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as A.
       specialize_hyp A.
       - eapply list_union_preserves_NoDup. assumption.
@@ -1075,9 +1064,8 @@ Section Proofs.
         simpl; cycle 2.
       - rewrite map.get_put_same. reflexivity.
       - assumption.
-      - rewrite !@length_save_regs in *.
-        wseplog_pre word_ok.
-        wcancel.
+      - rewrite !@length_save_regs in *. eapply shrink_footpr_subset; [ eassumption | wwcancel ].
+      - rewrite !@length_save_regs in *. wcancel_assumption.
       - reflexivity.
       - assumption.
       - assumption.
@@ -1215,9 +1203,8 @@ Section Proofs.
       - eapply map.getmany_of_list_extends; try eassumption.
       - eassumption.
       - instantiate (1 := old_retvals). unfold Register, MachineInt in *. blia.
-      - subst FL.
-        wseplog_pre word_ok.
-        wcancel.
+      - eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
+      - subst FL. wcancel_assumption.
       - reflexivity.
       - assumption.
       - eapply Forall_impl; cycle 1.
@@ -1271,9 +1258,8 @@ Section Proofs.
                end.
         instantiate (1 := Z.eqb).
         blia.
-      - subst FL.
-        wseplog_pre word_ok.
-        wcancel.
+      - eapply shrink_footpr_subset; [ eassumption | wwcancel ].
+      - subst FL. wcancel_assumption.
       - reflexivity.
       - assumption.
       - apply union_Forall.
@@ -1334,10 +1320,9 @@ Section Proofs.
         intro C. specialize (F _ C).
         unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
       - reflexivity.
+      - simpl. eapply shrink_footpr_subset; [ eassumption | wwcancel ].
       - simpl.
-        subst FL.
-        wseplog_pre word_ok.
-        wcancel.
+        subst FL. wcancel_assumption.
       - assumption.
       - assumption.
       - assumption.
@@ -1356,8 +1341,8 @@ Section Proofs.
 
     (* increase sp *)
     eapply runsToStep. {
-      eapply (run_Addi RegisterNames.sp RegisterNames.sp); try safe_sidecond.
-      - simpl.
+     eapply (run_Addi RegisterNames.sp RegisterNames.sp); try safe_sidecond.
+     - simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
@@ -1388,6 +1373,7 @@ Section Proofs.
           clear -B.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
+    - simpl. eapply shrink_footpr_subset; [ eassumption | solve [wwcancel] ].
     }
 
     simpl.
@@ -1409,7 +1395,8 @@ Section Proofs.
         rewrite map.get_put_same. reflexivity.
       }
       1: reflexivity.
-      solve_divisibleBy4.
+      1: solve_divisibleBy4.
+      (* TODO: safe_sidecond should also solve these, even though it needs shrink_footpr_subset *)
     }
 
     simpl.
@@ -1430,8 +1417,7 @@ Section Proofs.
           (offset := (- bytes_per_word * Z.of_nat (List.length args + List.length binds))%Z)
           (p_sp0 := p_sp);
         simpl; cycle -3; try assumption.
-      - wseplog_pre word_ok.
-        wcancel.
+      - wcancel_assumption.
         subst FL.
         replace (Datatypes.length binds) with (Datatypes.length retnames); cycle 1. {
             repeat match goal with
@@ -1917,6 +1903,7 @@ Section Proofs.
       change Syntax.varname with Register in *.
       subst FL new_ra. simpl_addrs.
       split. { ring. (* faster than lia *) }
+      use_sep_assumption.
       wseplog_pre word_ok.
       rewrite !@length_save_regs in *.
       pose proof functions_expose as P.

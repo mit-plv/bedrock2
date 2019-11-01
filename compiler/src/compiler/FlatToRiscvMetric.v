@@ -55,7 +55,8 @@ Section Proofs.
       [ solve [eauto]
       | solve_MetricLog
       | solve_word_eq (@word_ok (@W (@def_params p)))
-      | solve [pseplog]
+      | solve [wcancel_assumption]
+      | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
       | solve [solve_valid_machine (@word_ok (@W (@def_params p)))]
       | idtac ].
 
@@ -68,7 +69,8 @@ Section Proofs.
       | solve_word_eq (@word_ok (@W (@def_params p)))
       | simpl; solve_divisibleBy4
       | solve_valid_machine (@word_ok (@W (@def_params p)))
-      | pseplog ].
+      | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
+      | wcancel_assumption ].
 
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
@@ -139,15 +141,17 @@ Section Proofs.
         initialL_mem) as A by ecancel_assumption.
       pose proof (store_bytes_frame H2 A) as P.
       destruct P as (finalML & P1 & P2).
+      move H2 at bottom.
+      unfold Memory.store, Memory.store_Z, Memory.store_bytes in H2. simp.
+      subst_load_bytes_for_eq.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
-
-      (* TODO don't use go_store, but something more similar to store_regs_correct,
-         with a better way of splitting "eq mH" *)
+      ecancel_assumption.
 
     - (* SLit *)
       get_run1valid_for_free.
       eapply compile_lit_correct_full.
+      + sidecondition.
       + sidecondition.
       + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
@@ -232,13 +236,15 @@ Section Proofs.
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
-              eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+              eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set;
+                try eassumption; IH_sidecondition.
             - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
               (* jump back to beginning of loop: *)
               run1det.
               eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
               + (* 3rd application of IH: run the whole loop again *)
-                eapply IH12; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+                eapply IH12; IH_sidecondition; simpl_MetricRiscvMachine_get_set;
+                  try eassumption; IH_sidecondition.
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
                 run1done. }
@@ -256,7 +262,8 @@ Section Proofs.
       + eapply IH1; IH_sidecondition.
       + simpl. intros. destruct_RiscvMachine middle. simp. subst.
         eapply runsTo_trans.
-        * eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set; eassumption.
+        * eapply IH2; IH_sidecondition; simpl_MetricRiscvMachine_get_set;
+            try eassumption; IH_sidecondition.
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - (* SSkip *)

@@ -18,7 +18,6 @@ Require Import riscv.Spec.Execute.
 Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.SeparationLogic.
-Require Import compiler.EmitsValid.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
@@ -79,7 +78,7 @@ Section Run.
       (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
           initialL.(getMem) ->
       valid_machine initialL ->
-      mcomp_sat (run1 iset) initialL (fun finalL =>
+      mcomp_sat (run1 iset) initialL (fun (finalL: RiscvMachineL) =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
         (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep

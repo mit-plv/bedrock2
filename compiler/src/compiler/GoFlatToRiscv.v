@@ -291,42 +291,6 @@ Section Go.
 
   Axiom TODO_sam: False.
 
-  Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
-
-  (* contains all the conditions needed to successfully execute instr, except
-     that addr needs to be in the set of executable addresses, which is dealt with elsewhere *)
-  Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
-    (truncated_scalar Syntax.access_size.four addr (encode instr) *
-     emp (verify instr iset) *
-     emp ((word.unsigned addr) mod 4 = 0))%sep.
-
-  Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
-    array ptsto_instr (word.of_Z 4) addr prog.
-
-  Lemma invert_ptsto_instr: forall {addr instr R m},
-    (ptsto_instr addr instr * R)%sep m ->
-     verify instr iset /\
-     (word.unsigned addr) mod 4 = 0.
-  Proof.
-    intros.
-    unfold array, ptsto_instr in *.
-    match goal with
-    | H: (?T * ?P1 * ?P2 * R)%sep ?m |- _ =>
-      assert ((T * R * P1 * P2)%sep m) as A by ecancel_assumption; clear H
-    end.
-    do 2 (apply sep_emp_r in A; destruct A as [A ?]).
-    auto.
-  Qed.
-
-  Lemma invert_ptsto_program1: forall {addr instr R m},
-    (program addr [instr] * R)%sep m ->
-     verify instr iset /\
-     (word.unsigned addr) mod 4 = 0.
-  Proof.
-    unfold program. intros. simpl in *. eapply invert_ptsto_instr.
-    ecancel_assumption.
-  Qed.
-
   Arguments Z.of_nat: simpl never.
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
@@ -656,7 +620,7 @@ Section Go.
     unfold isXAddr4, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes, array. simpl.
     intros.
     ssplit; eapply ptsto_subset_to_isXAddr1;
-      (eapply shrink_footpr_subset; [eassumption|wcancel word_ok]).
+      (eapply shrink_footpr_subset; [eassumption|wcancel]).
   Qed.
 
   Lemma go_fetch_inst: forall {initialL: RiscvMachineL} {inst pc0 R} (post: RiscvMachineL -> Prop),
@@ -985,11 +949,6 @@ Ltac simpl_MetricRiscvMachine_mem :=
 
 Ltac sidecondition_hook := idtac.
 
-Ltac word_rep_to_word_ok R :=
-  lazymatch constr:(@eq R (word.of_Z 0)) with
-  | @eq _ (@word.of_Z _ ?Inst _) => constr:(_: word.ok Inst)
-  end.
-
 Ltac sidecondition :=
   simpl; simpl_MetricRiscvMachine_get_set;
   match goal with
@@ -1003,9 +962,8 @@ Ltac sidecondition :=
     end
   | |- @sep ?K ?V ?M ?P ?Q ?m => simpl in *;
                                  simpl_MetricRiscvMachine_get_set;
-                                 let OK := word_rep_to_word_ok K in
                                  use_sep_assumption;
-                                 wcancel OK
+                                 wcancel
   | H: subset (footpr _) _ |- subset (footpr ?F) _ =>
     tryif is_evar F then
       eassumption
