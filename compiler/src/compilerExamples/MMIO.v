@@ -258,12 +258,10 @@ Section MMIO1.
     | _ => rewrite free.interp_ret
     end.
 
-  Axiom TODO_make_sure_this_one_shows_UPPPPPPP: False.
-
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
   Proof.
     constructor.
-    - case TODO_make_sure_this_one_shows_UPPPPPPP. (*typeclasses eauto.*)
+    - typeclasses eauto.
     - typeclasses eauto.
     - typeclasses eauto.
     - typeclasses eauto.
