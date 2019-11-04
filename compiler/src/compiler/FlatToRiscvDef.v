@@ -5,7 +5,6 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
 Require Import riscv.Spec.Machine.
-Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import coqutil.Z.Lia.
@@ -17,6 +16,7 @@ Require Import riscv.Utility.RegisterNames.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Map.Interface.
 Require Import compiler.SeparationLogic.
+Require Import riscv.Spec.Decode.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
