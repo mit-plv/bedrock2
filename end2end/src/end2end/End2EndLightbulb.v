@@ -152,6 +152,7 @@ Ltac destr :=
 
 (* TODO why do we need to write this? *)
 Instance src2imp : map.map string Decode.Register := SortedListString.map Z.
+Instance src2impOk : map.ok src2imp := SortedListString.ok _.
 
 Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
                                      (Z.to_nat KamiProc.width)): Kami.Syntax.Modules :=
@@ -224,6 +225,7 @@ Lemma end2end_lightbulb:
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
+  specialize_first Q src2impOk.
   specialize_first Q init_code.
   specialize_first Q loop_body.
   specialize_first Q function_impls.

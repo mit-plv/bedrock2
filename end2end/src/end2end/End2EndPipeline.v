@@ -79,7 +79,8 @@ Section Connect.
           {mem_ok: map.ok mem}
           {stringname_env : forall T : Type, map.map string T}
           {stringname_env_ok: forall T, map.ok (stringname_env T)}
-          {src2imp : map.map string Register}.
+          {src2imp : map.map string Register}
+          {src2impOk : map.ok src2imp}.
 
   Instance mmio_params: MMIO.parameters := {
     byte_ok := KamiWord.word8ok;
@@ -108,9 +109,8 @@ Section Connect.
       (* wait until we know if ext_spec will be in monad style or postcond style *)
       Pipeline.ext_spec_ok := match TODO_sam with end;
     |}).
-  - case TODO_sam.
   - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
-  - case TODO_sam.
+  - refine (@MMIO.FlatToRiscv_hyps _).
   Defined.
 
   Lemma HbtbAddr: BinInt.Z.to_nat instrMemSizeLg = (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat.
