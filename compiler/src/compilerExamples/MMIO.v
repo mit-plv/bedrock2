@@ -203,7 +203,13 @@ Section MMIO1.
       map.undef_on m isMMIOAddr ->
       isMMIOAddr addr ->
       Memory.load_bytes 4 m addr = None.
-  Admitted.
+  Proof.
+    intros. unfold Memory.load_bytes, map.undef_on, map.agree_on, map.getmany_of_tuple in *.
+    simpl.
+    rewrite H by assumption.
+    rewrite map.get_empty.
+    reflexivity.
+  Qed.
 
   Lemma loadWord_in_MMIO_is_None: forall (m: mem) (addr: word),
       map.undef_on m isMMIOAddr ->
