@@ -66,29 +66,9 @@ Section Verif.
 
   Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
 
-  Ltac word_cst w :=
-    match w with
-    | word.of_Z ?x => let b := isZcst x in
-                      match b with
-                      | true => x
-                      | _ => constr:(NotConstant)
-                      end
-    | _ => constr:(NotConstant)
-    end.
-
-  Definition word_ring_morph := word.ring_morph (word := word).
-  Definition word_ring_theory := word.ring_theory (word := word).
-
-  Hint Rewrite
-    word_ring_morph.(morph_add)
-    word_ring_morph.(morph_sub)
-    word_ring_morph.(morph_mul)
-    word_ring_morph.(morph_opp)
-  : rew_word_morphism.
-
-  Add Ring wring : word_ring_theory
+  Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism word_ring_morph,
+       morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
   Ltac simulate'_step :=
@@ -119,18 +99,21 @@ Section Verif.
   Definition gallina_prog_1(v1 v2: word): word :=
     word.srs (word.add v1 v2) (word.of_Z 1).
 
-  Lemma asm_prog_1_correct: forall (initial: MetricRiscvMachine) newPc R (v1 v2: word),
+  Lemma asm_prog_1_correct: forall (initial: MetricRiscvMachine) newPc R Rexec (v1 v2: word),
       map.get initial.(getRegs) x1 = Some v1 ->
       map.get initial.(getRegs) x2 = Some v2 ->
-      newPc = word.add initial.(getPc)
-                       (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_1)))) ->
-      (program initial.(getPc) asm_prog_1 * R)%sep initial.(getMem) ->
+      newPc = word.add initial.(getPc) (word.of_Z (4 * (Z.of_nat (List.length asm_prog_1)))) ->
+      subset (footpr (program initial.(getPc) asm_prog_1 * Rexec)%sep)
+             (of_list initial.(getXAddrs)) ->
+      (program initial.(getPc) asm_prog_1 * Rexec * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
                 final.(getPc) = newPc /\
                 final.(getNextPc) = add newPc (word.of_Z 4) /\
-                (program initial.(getPc) asm_prog_1 * R)%sep final.(getMem) /\
+                subset (footpr (program initial.(getPc) asm_prog_1 * Rexec)%sep)
+                       (of_list final.(getXAddrs)) /\
+                (program initial.(getPc) asm_prog_1 * Rexec * R)%sep final.(getMem) /\
                 map.get final.(getRegs) x2 = Some (gallina_prog_1 v1 v2)).
   Proof.
     intros.
@@ -164,45 +147,19 @@ Section Verif.
 
   Arguments LittleEndian.combine: simpl never.
 
-  Lemma word_goal_1_TODO: forall initial_pc : word,
-      word.add
-        (word.add (word.add (word.add initial_pc (word.of_Z 4)) (word.of_Z 4))
-                  (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (Datatypes.length asm_prog_1)))))
-        (word.of_Z 4) =
-      word.add initial_pc
-               (word.mul (word.of_Z 4)
-                         (word.of_Z
-                            (Z.pos (Pos.succ
-                                      (Pos.of_succ_nat (Datatypes.length asm_prog_1 + 1)))))).
-  Proof using .
-  Admitted.
-
   Axiom fix_updated_mem_TODO: False.
+  Axiom fix_footpr_TODO: False.
 
   Arguments Z.add: simpl never.
   Arguments Z.mul: simpl never.
   Arguments Z.of_nat: simpl never.
 
-  Ltac addr P ::=
-    let __ := lazymatch type of P with
-              | @map.rep _ _ _ -> Prop => idtac
-              | _ => fail 10000 P "is not a sep clause"
-              end in
-    lazymatch P with
-    | ptsto ?A _ => A
-    | ptsto_bytes _ ?A _ => A
-    | array _ _ ?A _ => A
-    | ptsto_instr ?A _ => A
-    | _ => fail "no recognizable address"
-    end.
-
-  Ltac seplog ::= solve [use_sep_assumption; wcancel (@word_ok W)].
-
   Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine) newPc
-                                  (argvars resvars: list Register) R (v1 v2 dummy: w32),
-      newPc = word.add initial.(getPc)
-                       (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length asm_prog_2)))) ->
-      (program initial.(getPc) asm_prog_2 *
+                                  (argvars resvars: list Register) R Rexec (v1 v2 dummy: w32),
+      newPc = word.add initial.(getPc) (word.of_Z (4 * Z.of_nat (List.length asm_prog_2))) ->
+      subset (footpr (program initial.(getPc) asm_prog_2 * Rexec)%sep)
+             (of_list initial.(getXAddrs)) ->
+      (program initial.(getPc) asm_prog_2 * Rexec *
        ptsto_bytes 4 (word.of_Z input_ptr) v1 *
        ptsto_bytes 4 (word.of_Z (input_ptr+4)) v2 *
        ptsto_bytes 4 (word.of_Z output_ptr) dummy * R)%sep initial.(getMem) ->
@@ -211,7 +168,9 @@ Section Verif.
              (fun final =>
                 final.(getPc) = newPc /\
                 final.(getNextPc) = add newPc (word.of_Z 4) /\
-                (program initial.(getPc) asm_prog_2 * R)%sep final.(getMem) /\
+                subset (footpr (program initial.(getPc) asm_prog_2 * Rexec)%sep)
+                       (of_list final.(getXAddrs)) /\
+                (program initial.(getPc) asm_prog_2 * Rexec * R)%sep final.(getMem) /\
                 map.get final.(getRegs) x2 = Some (gallina_prog_2 v1 v2)).
   Proof.
     intros.
@@ -222,18 +181,65 @@ Section Verif.
     unfold asm_prog_2 in *.
     simpl in *.
     unfold program in *.
-    seprewrite_in @array_append H0. simpl in *.
     subst.
     simpl.
     run1det.
     run1det.
+
+(* TODO integrate changes into GoFlatToRiscv *)
+Ltac sidecondition ::=
+  simpl; simpl_MetricRiscvMachine_get_set;
+  match goal with
+  (* these branches are allowed to instantiate evars in a controlled manner: *)
+  | H: map.get _ _ = Some _ |- _ => exact H
+  | |- map.get _ _ = Some _ =>
+    simpl;
+    match goal with
+    | |- map.get (map.put _ ?x _) ?y = Some _ =>
+      constr_eq x y; apply map.get_put_same
+    end
+  | |- @sep ?K ?V ?M ?P ?Q ?m => simpl in *;
+                                 simpl_MetricRiscvMachine_get_set;
+                                 wcancel_assumption
+  | H: subset (footpr _) _ |- subset (footpr ?F) _ =>
+    tryif is_evar F then
+      eassumption
+    else
+      (simpl in H |- *; eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ])
+  | |- _ => reflexivity
+  | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
+    eapply (map.extends_get A E)
+  (* but we don't have a general "eassumption" branch, only "assumption": *)
+  | |- _ => solve [auto using valid_FlatImp_var_implies_valid_register,
+                              valid_FlatImp_vars_bcond_implies_valid_registers_bcond]
+  | |- ?G => assert_fails (has_evar G);
+             solve [eauto using valid_FlatImp_var_implies_valid_register,
+                                valid_FlatImp_vars_bcond_implies_valid_registers_bcond,
+                                Forall_impl]
+  (* TODO eventually remove this case and dependency on FlatToRiscvDef *)
+  | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
+    assert_fails (is_evar inst);
+    apply V;
+    repeat match goal with
+           | H: _ |- _ => clear H
+           end;
+    eauto 30 using in_cons, in_or_app, in_eq
+  | |- Memory.load ?sz ?m ?addr = Some ?v =>
+    unfold Memory.load, Memory.load_Z in *;
+    simpl_MetricRiscvMachine_mem;
+    erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
+  | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
+  | |- _ => sidecondition_hook
+  end.
+
+
     eapply runsTo_trans. {
       eapply asm_prog_1_correct; simpl; try sidecondition.
       rewrite map.get_put_diff by (unfold x1, x2; blia).
       apply map.get_put_same.
     }
     simpl.
-    intros middle (? & ? & ? & ?).
+    intros middle (? & ? & ? & ? & ?).
     destruct_RiscvMachine middle. simpl in *.
     subst. simp.
 
@@ -268,6 +274,7 @@ Section Verif.
     repeat split.
     - solve_word_eq word_ok.
     - solve_word_eq word_ok.
+    - (* TODO *) case fix_footpr_TODO.
     - (* TODO *) case fix_updated_mem_TODO.
     - assumption.
   Qed.

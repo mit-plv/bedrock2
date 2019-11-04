@@ -61,10 +61,10 @@ Section FibCompiled.
   Proof.
     - constructor; try typeclasses eauto.
       + simpl. apply MetricMinimalSatisfiesMetricPrimitives.
-      + intros. inversion H6. destruct H17.
+      + intros. simp. contradiction.
     - constructor; try solve [destruct 1].
       intros ? ? ? ? ? ? ? ?.
-      destruct H0.
+      contradiction.
   Qed.
 
   Fixpoint fib (n: nat): Z :=
@@ -573,7 +573,7 @@ Section FibCompiled.
                   | LittleEndian.split _ _ => specialize HStore with (bs := x)
                   end
                 end.
-                seplog.
+                wcancel_assumption.
     - rewrite Nat.ltb_ge in *.
       eapply @exec.seq with (mid := (fun t' m' l' mc' =>
         t' = t /\
@@ -617,17 +617,19 @@ Section FibCompiled.
                   | LittleEndian.split _ _ => specialize HStore with (bs := x)
                   end
                 end.
-                seplog.
+                wcancel_assumption.
   Qed.
 
   Definition run1 : Pipeline.M unit := @run1 _ _ _ _ Pipeline.RVM _ iset.
   Definition mcomp_sat := GoFlatToRiscv.mcomp_sat.
 
-  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) insts (m: map.map word byte) v nl ns R,
+  Lemma fib_compiled: forall n (initialMachine: RiscvMachine) insts v nl ns R,
       0 <= n < 2 ^ 32 ->
       word.unsigned (getPc initialMachine) mod 4 = 0 ->
       getNextPc initialMachine = word.add (getPc initialMachine) (word.of_Z 4) ->
       insts = (ExprImp2Riscv (fib_ExprImp nl ns)) ->
+      subset (footpr (program (getPc initialMachine) insts))
+             (of_list initialMachine.(getXAddrs)) ->
       (program (getPc initialMachine) insts * R *
        (ptsto_word (word.of_Z ns) (word.of_Z v) *
         ptsto_word (word.of_Z nl) (word.of_Z n)))%sep initialMachine.(getMem) ->
@@ -643,8 +645,8 @@ Section FibCompiled.
     intros. subst.
     destruct H.
 
-    rewrite <- sep_inline_eq in H3.
-    destruct H3 as [initialMem Hsep]. destruct Hsep.
+    rewrite <- sep_inline_eq in H4.
+    destruct H4 as [initialMem Hsep]. destruct Hsep.
 
     eapply runsToNonDet.runsTo_weaken.
     - pose proof Pipeline.exprImp2Riscv_correct as Hp.
@@ -657,21 +659,24 @@ Section FibCompiled.
       + assumption.
       + assumption.
       + reflexivity.
+      + assumption.
       + instantiate (2 := initialMem). instantiate (1 := R). seplog.
       + constructor.
       + eapply ExprImp.weaken_exec.
         * eapply fib_correct with (n := Z.to_nat n).
-          -- rewrite Z2Nat.id; [|assumption]. instantiate (1 := v). seplog.
+          -- rewrite Z2Nat.id; [|assumption]. instantiate (1 := v). wcancel_assumption.
           -- rewrite Z2Nat.id; assumption.
         * intros. eassumption.
     - intros.
-      do 3 destruct H5.
+      do 3 destruct H6.
       destruct_hyp.
       rewrite Z2Nat.id in *; try assumption.
       repeat split.
       + apply sep_inline_eq.
         eexists.
-        split; [seplog|seplog].
+        split.
+        * seplog.
+        * wcancel_assumption.
       + assumption.
       + assumption.
       + repeat unfold_MetricLog. repeat simpl_MetricLog. simpl in *.

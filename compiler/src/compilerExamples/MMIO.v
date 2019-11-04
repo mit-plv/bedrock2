@@ -258,11 +258,12 @@ Section MMIO1.
     | _ => rewrite free.interp_ret
     end.
 
-  Axiom XAddrs_admitted : False.
+  Axiom TODO_make_sure_this_one_shows_UPPPPPPP: False.
+
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.FlatToRiscv.assumptions.
   Proof.
     constructor.
-    - typeclasses eauto.
+    - case TODO_make_sure_this_one_shows_UPPPPPPP. (*typeclasses eauto.*)
     - typeclasses eauto.
     - typeclasses eauto.
     - typeclasses eauto.
@@ -278,21 +279,21 @@ Section MMIO1.
       + (* MMOutput *)
         simpl in *|-.
         simp.
-        cbv [ext_spec FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec bedrock2_interact] in H16.
+        cbv [ext_spec FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec bedrock2_interact] in H17.
         simpl in *|-.
 
-        destruct H16 as [? H16]; subst mGive.
+        destruct H17 as [? H17]; subst mGive.
         repeat match goal with
                | l: list _ |- _ => destruct l;
                                      try (exfalso; (contrad || (cheap_saturate; contrad))); []
                end.
         simp.
         destruct argvars. {
-          exfalso. rename H10 into A. clear -A. cbn in *.
+          exfalso. rename H11 into A. clear -A. cbn in *.
           destruct_one_match_hyp; congruence.
         }
         destruct argvars; cycle 1. {
-          exfalso. rename H10 into A. clear -A. cbn in *. simp.
+          exfalso. rename H11 into A. clear -A. cbn in *. simp.
           destruct_one_match_hyp; congruence.
         }
         cbn in *|-.
@@ -311,7 +312,11 @@ Section MMIO1.
 
         repeat fwd.
 
-        split. 1:case XAddrs_admitted.
+        split. {
+          intros _.
+          eapply ptsto_instr_subset_to_isXAddr4.
+          eapply shrink_footpr_subset. 1: eassumption. wwcancel.
+        }
         erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
         { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
           cbn [array bytes_per] in *.
@@ -321,7 +326,7 @@ Section MMIO1.
 
         rewrite LittleEndian.combine_split.
         rewrite Z.mod_small by (eapply EncodeBound.encode_range).
-        rewrite DecodeEncode.decode_encode by (eapply H5; left; trivial).
+        rewrite DecodeEncode.decode_encode by (eapply H6; left; trivial).
 
         repeat fwd.
 
@@ -365,8 +370,15 @@ Section MMIO1.
         rewrite Z.mod_small by apply word.unsigned_range.
         rewrite word.of_Z_unsigned.
         apply eqb_eq in E0. subst action.
-        cbn in *. replace l' with initialL_regs in * by congruence.
+        cbn -[invalidateWrittenXAddrs] in *. replace l' with initialL_regs in * by congruence.
         split; eauto.
+        split. {
+          (* TODO this does not hold!
+             Even if external calls are not allowed to change the memory at the moment,
+             their MMIO writes could still change XAddrs if an MMIO address happened to
+             be in XAddrs *)
+          case TODO_sam.
+        }
         split; eauto.
         split; eauto.
         split; eauto.
@@ -376,17 +388,17 @@ Section MMIO1.
       + (* MMInput *)
         simpl in *|-.
         simp.
-        cbv [ext_spec FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec bedrock2_interact] in H16.
+        cbv [ext_spec FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec bedrock2_interact] in H17.
         simpl in *|-.
 
-        destruct H16 as [? H16]; subst mGive.
+        destruct H17 as [? H17]; subst mGive.
         repeat match goal with
                | l: list _ |- _ => destruct l;
                                      try (exfalso; (contrad || (cheap_saturate; contrad))); []
                end.
         simp.
         destruct argvars; cycle 1. {
-          exfalso. rename H10 into A. clear -A. cbn in *. simp.
+          exfalso. rename H11 into A. clear -A. cbn in *. simp.
           destruct_one_match_hyp; congruence.
         }
         cbn in *|-.
@@ -414,7 +426,11 @@ Section MMIO1.
 
         repeat fwd.
 
-        split. 1:case XAddrs_admitted.
+        split. {
+          intros _.
+          eapply ptsto_instr_subset_to_isXAddr4.
+          eapply shrink_footpr_subset. 1: eassumption. wwcancel.
+        }
         erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
         { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
           cbn [array bytes_per] in *.
@@ -424,7 +440,7 @@ Section MMIO1.
 
         rewrite LittleEndian.combine_split.
         rewrite Z.mod_small by (eapply EncodeBound.encode_range).
-        rewrite DecodeEncode.decode_encode by (eapply H5; left; trivial).
+        rewrite DecodeEncode.decode_encode by (eapply H6; left; trivial).
 
         repeat fwd.
 
@@ -468,6 +484,7 @@ Section MMIO1.
         apply eqb_eq in E1. subst action.
         cbn in *. simp.
         split; eauto.
+        split. { simpl_word_exprs word_ok; trivial. }
         split. { simpl_word_exprs word_ok; trivial. }
         split. { simpl_word_exprs word_ok; trivial. }
         split; eauto.
