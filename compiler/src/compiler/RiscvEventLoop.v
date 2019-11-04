@@ -111,7 +111,7 @@ Section EventLoop.
       eapply runsToStep. {
         eapply run_Jal0; try eassumption.
         - rewrite H0. unfold program, array.
-          eapply shrink_footpr_subset; [ eassumption | solve [ ecancel ] ].
+          eapply rearrange_footpr_subset; [ eassumption | solve [ ecancel ] ].
         - unfold program, array. rewrite H0. ecancel_assumption.
       }
       simpl. intros. simp.

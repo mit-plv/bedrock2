@@ -107,22 +107,20 @@ Section Proofs.
     induction vars; intros; simpl; rewrite? IHvars; reflexivity.
   Qed.
 
-  Lemma load_regs_correct: forall p_sp vars offset R (initial: RiscvMachineL) values,
+  Lemma load_regs_correct: forall p_sp vars offset R Rexec (initial: RiscvMachineL) values,
       Forall valid_FlatImp_var vars ->
       - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length values = List.length vars ->
-      subset (footpr (program initial.(getPc) (load_regs vars offset)))
+      subset (footpr (program initial.(getPc) (load_regs vars offset) * Rexec)%sep)
              (of_list initial.(getXAddrs)) ->
-      (program initial.(getPc) (load_regs vars offset) *
+      (program initial.(getPc) (load_regs vars offset) * Rexec *
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       valid_machine initial ->
       runsTo initial (fun final =>
           map.putmany_of_list_zip vars values initial.(getRegs) = Some final.(getRegs) /\
-          (program initial.(getPc) (load_regs vars offset) *
-           word_array (word.add p_sp (word.of_Z offset)) values * R)%sep
-              final.(getMem) /\
+          final.(getMem) = initial.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
@@ -184,15 +182,11 @@ Section Proofs.
         * blia.
         * eapply shrink_footpr_subset. 1: eassumption. wcancel.
       + simpl. intros. simp.
-        repeat split.
-        * assumption.
-        * wcancel_assumption.
-        * etransitivity; [eassumption|].
-          rewrite Znat.Nat2Z.inj_succ. rewrite <- Z.add_1_r.
-          replace (List.length values) with (List.length vars) by congruence.
-          solve_word_eq word_ok.
-        * assumption.
-        * assumption.
+        ssplit; try first [assumption|reflexivity].
+        etransitivity; [eassumption|].
+        rewrite Znat.Nat2Z.inj_succ. rewrite <- Z.add_1_r.
+        replace (List.length values) with (List.length vars) by congruence.
+        solve_word_eq word_ok.
   Qed.
 
   Lemma length_load_regs: forall vars offset,

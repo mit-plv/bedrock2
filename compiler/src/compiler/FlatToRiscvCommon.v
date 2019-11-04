@@ -90,14 +90,15 @@ Module Import FlatToRiscv.
     PR :> MetricPrimitives PRParams;
 
     compile_ext_call_correct: forall (initialL: MetricRiscvMachine) action postH newPc insts
-        (argvars resvars: list Register) initialMH initialMetricsH R,
+        (argvars resvars: list Register) initialMH initialMetricsH R Rexec,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4)
                                                   (word.of_Z (Z.of_nat (List.length insts)))) ->
       Forall valid_register argvars ->
       Forall valid_register resvars ->
-      subset (footpr (program initialL.(getPc) insts)) (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
+      subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+             (of_list initialL.(getXAddrs)) ->
+      (program initialL.(getPc) insts * Rexec * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       valid_machine initialL ->
       exec map.empty (SInteract resvars action argvars)
@@ -109,7 +110,7 @@ Module Import FlatToRiscv.
                   finalL.(getXAddrs) = initialL.(getXAddrs) /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (word.of_Z 4) /\
-                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  finalL.(getMem) = initialL.(getMem) /\
                   (finalL.(getMetrics) - initialL.(getMetrics) <=
                    lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
                   valid_machine finalL);
@@ -313,15 +314,16 @@ Section FlatToRiscv1.
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_load_word: forall (base addr v : word) (rd rs : Register) (ofs : MachineInt)
-                              (initialL : RiscvMachineL) (R : mem -> Prop),
+                              (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rd ->
       valid_register rs ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]]))
+      subset (footpr (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]]
+                      * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] *
+      (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] * Rexec *
        ptsto_word addr v * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
@@ -329,8 +331,7 @@ Section FlatToRiscv1.
             getRegs finalL = map.put (getRegs initialL) rd v /\
             getLog finalL = getLog initialL /\
             getXAddrs finalL = getXAddrs initialL /\
-            (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] *
-             ptsto_word addr v * R)%sep (getMem finalL) /\
+            getMem finalL = getMem initialL /\
             getPc finalL = getNextPc initialL /\
             getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
             valid_machine finalL).

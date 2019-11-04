@@ -623,10 +623,10 @@ Section Go.
       (eapply shrink_footpr_subset; [eassumption|wcancel]).
   Qed.
 
-  Lemma go_fetch_inst: forall {initialL: RiscvMachineL} {inst pc0 R} (post: RiscvMachineL -> Prop),
+  Lemma go_fetch_inst{initialL: RiscvMachineL} {inst pc0 R Rexec} (post: RiscvMachineL -> Prop):
       pc0 = initialL.(getPc) ->
-      subset (footpr (program pc0 [inst])) (of_list initialL.(getXAddrs)) ->
-      (program pc0 [inst] * R)%sep initialL.(getMem) ->
+      subset (footpr (program pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
+      (program pc0 [inst] * Rexec * R)%sep initialL.(getMem) ->
       mcomp_sat (Bind (execute inst) (fun _ => step))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
@@ -637,8 +637,8 @@ Section Go.
     unfold program in *.
     unfold array, ptsto_instr in H1.
     match goal with
-    | H: (?T * ?P1 * ?P2 * emp True * R)%sep ?m |- _ =>
-      assert ((T * R * P1 * P2)%sep m) as A by ecancel_assumption; clear H
+    | H: (?T * ?P1 * ?P2 * emp True * Rexec * R)%sep ?m |- _ =>
+      assert ((T * R * Rexec * P1 * P2)%sep m) as A by ecancel_assumption; clear H
     end.
     do 2 (apply sep_emp_r in A; destruct A as [A ?]).
     eapply go_loadWord_Fetch.
@@ -968,7 +968,7 @@ Ltac sidecondition :=
     tryif is_evar F then
       eassumption
     else
-      (simpl in H |- *; eapply shrink_footpr_subset; [ eassumption | solve [ecancel] ])
+      (simpl in H |- *; eapply rearrange_footpr_subset; [ exact H | solve [wcancel] ])
   | |- _ => reflexivity
   | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
     eapply (map.extends_get A E)

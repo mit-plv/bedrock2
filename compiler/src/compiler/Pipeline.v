@@ -167,6 +167,7 @@ Section Pipeline1.
       (word.unsigned initialL.(getPc)) mod 4 = 0 ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       initialL.(getLog) = t ->
+      subset (footpr (program initialL.(getPc) instsL)) (of_list initialL.(getXAddrs)) ->
       (program initialL.(getPc) instsL * eq mH * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       Semantics.exec.exec map.empty sH t mH map.empty mcH post ->
@@ -175,6 +176,8 @@ Section Pipeline1.
              (fun finalL => exists mH' lH' mcH',
                   post finalL.(getLog) mH' lH' mcH' /\
                   map.extends finalL.(getRegs) lH' /\
+                  subset (footpr (program initialL.(getPc) instsL))
+                         (of_list initialL.(getXAddrs)) /\
                   (program initialL.(getPc) (ExprImp2Riscv sH) * eq mH' * R)%sep (getMem finalL) /\
                   getPc finalL = add (getPc initialL) (mul (ZToReg 4) (ZToReg (Zlength instsL))) /\
                   getNextPc finalL = add (getPc finalL) (ZToReg 4) /\
@@ -215,6 +218,7 @@ Section Pipeline1.
         exact E.
       + unfold enough_registers, ExprImp2FlatImp, fst in *. assumption.
       + assumption.
+      + eapply rearrange_footpr_subset. 1: eassumption. solve [ wwcancel ].
       + match goal with
         | H: context [ program _ ?insts ] |- context [ program _ ?insts' ] =>
           change insts' with insts
@@ -223,33 +227,11 @@ Section Pipeline1.
         seplog.
       + assumption.
       + assumption.
-    - simpl. intros. simp. do 3 eexists. do 3 (split; try eassumption).
-      split; [rewrite Zlength_correct; assumption|].
-      split; [assumption|].
-      solve_MetricLog.
-  Qed.
-
-  Lemma exprImp2Riscv_correctTrace: forall sH mH mcH t instsL (initialL: RiscvMachineL) (post: trace -> Prop),
-      ExprImp.cmd_size sH < 2 ^ 10 ->
-      enough_registers sH ->
-      ExprImp2Riscv sH = instsL ->
-      (word.unsigned initialL.(getPc)) mod 4 = 0 ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      initialL.(getLog) = t ->
-      (program initialL.(getPc) instsL * eq mH)%sep initialL.(getMem) ->
-      valid_machine initialL ->
-      Semantics.exec.exec map.empty sH t mH map.empty mcH (fun t' m' l' mc' => post t') ->
-      runsTo (mcomp_sat (run1 iset))
-             initialL
-             (fun finalL =>
-                  post finalL.(getLog)).
-  Proof.
-    intros.
-    eapply runsTo_weaken.
-    - eapply exprImp2Riscv_correct; try eassumption.
-      seplog.
-    - intros. simpl in *. simp.
-      assumption.
+    - simpl. intros. simp. do 3 eexists.
+      ssplit; try eassumption.
+      + seplog.
+      + rewrite Zlength_correct; assumption.
+      + solve_MetricLog.
   Qed.
 
 End Pipeline1.

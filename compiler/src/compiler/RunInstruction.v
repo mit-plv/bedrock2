@@ -62,7 +62,7 @@ Section Run.
   Ltac simulate' := repeat simulate'_step.
 
   Definition run_Jalr0_spec :=
-    forall (rs1: Register) (oimm12: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop)
+    forall (rs1: Register) (oimm12: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
            (dest: word),
       (* [verify] (and decode-encode-id) only enforces divisibility by 2 because there could be
          compressed instructions, but we don't support them so we require divisibility by 4: *)
@@ -73,34 +73,33 @@ Section Run.
       valid_register rs1 ->
       map.get initialL.(getRegs) rs1 = Some dest ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      subset (footpr (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]]))
+      subset (footpr (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
+      (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec * R)%sep
           initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun (finalL: RiscvMachineL) =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * R)%sep
-            finalL.(getMem) /\
+        finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add dest (word.of_Z oimm12) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         valid_machine finalL).
 
   Definition run_Jal_spec :=
-    forall (rd: Register) (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
+    forall (rd: Register) (jimm20: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       jimm20 mod 4 = 0 ->
       valid_register rd ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      subset (footpr (program initialL.(getPc) [[Jal rd jimm20]]))
+      subset (footpr (program initialL.(getPc) [[Jal rd jimm20]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep initialL.(getMem) ->
+      (program initialL.(getPc) [[Jal rd jimm20]] * Rexec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[Jal rd jimm20]] * R)%sep finalL.(getMem) /\
+        finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
@@ -110,20 +109,16 @@ Section Run.
      enforced by program *)
 
   Definition run_Jal0_spec :=
-    forall (jimm20: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
+    forall (jimm20: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
-      subset (footpr (program initialL.(getPc) [[Jal Register0 jimm20]]))
+      subset (footpr (program initialL.(getPc) [[Jal Register0 jimm20]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep initialL.(getMem) ->
+      (program initialL.(getPc) [[Jal Register0 jimm20]] * Rexec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (* it would be nicer and more uniform wrt to memory-modifying instructions
-           if we had this separation logic formula here instead of memory equality,
-           but that doesn't work with the abstract goodReadyState predicate in EventLoop.v
-        (program initialL.(getPc) [[Jal Register0 jimm20]] * R)%sep finalL.(getMem) /\ *)
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
@@ -132,19 +127,19 @@ Section Run.
 
   Definition run_ImmReg_spec(Op: Register -> Register -> MachineInt -> Instruction)
                             (f: word -> word -> word): Prop :=
-    forall (rd rs: Register) rs_val (imm: MachineInt) (initialL: RiscvMachineL) (R: mem -> Prop),
+    forall (rd rs: Register) rs_val imm (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       valid_register rd ->
       valid_register rs ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
-      subset (footpr (program initialL.(getPc) [[Op rd rs imm]]))
+      subset (footpr (program initialL.(getPc) [[Op rd rs imm]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[Op rd rs imm]] * R)%sep initialL.(getMem) ->
+      (program initialL.(getPc) [[Op rd rs imm]] * Rexec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[Op rd rs imm]] * R)%sep finalL.(getMem) /\
+        finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
@@ -153,24 +148,23 @@ Section Run.
   Definition run_Load_spec(n: nat)(L: Register -> Register -> MachineInt -> Instruction)
              (opt_sign_extender: Z -> Z): Prop :=
     forall (base addr: word) (v: HList.tuple byte n) (rd rs: Register) (ofs: MachineInt)
-           (initialL: RiscvMachineL) (R: mem -> Prop),
+           (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program initialL.(getPc) [[L rd rs ofs]]))
+      subset (footpr (program initialL.(getPc) [[L rd rs ofs]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
+      (program initialL.(getPc) [[L rd rs ofs]] * Rexec * ptsto_bytes n addr v * R)%sep
         initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
                   (word.of_Z (opt_sign_extender (LittleEndian.combine n v))) /\
         finalL.(getLog) = initialL.(getLog) /\
-        (program initialL.(getPc) [[L rd rs ofs]] * ptsto_bytes n addr v * R)%sep
-          finalL.(getMem) /\
+        finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
@@ -251,7 +245,11 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H5) as (DE & ?).
+    match goal with
+    | H: (?P * ?Q * ?R)%sep ?m |- _ =>
+      assert ((P * (Q * R))%sep m) as A by ecancel_assumption
+    end.
+    destruct (invert_ptsto_program1 A) as (DE & ?). clear A.
     (* execution of Jalr clears lowest bit *)
     assert (word.and (word.add dest (word.of_Z oimm12))
                      (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =
@@ -286,7 +284,11 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H3) as (DE & ?).
+    match goal with
+    | H: (?P * ?Q * ?R)%sep ?m |- _ =>
+      assert ((P * (Q * R))%sep m) as A by ecancel_assumption
+    end.
+    destruct (invert_ptsto_program1 A) as (DE & ?).
     t0.
   Qed.
 
@@ -297,7 +299,11 @@ Section Run.
   Proof.
     repeat intro.
     get_run1_valid_for_free.
-    destruct (invert_ptsto_program1 H2) as (DE & ?).
+    match goal with
+    | H: (?P * ?Q * ?R)%sep ?m |- _ =>
+      assert ((P * (Q * R))%sep m) as A by ecancel_assumption
+    end.
+    destruct (invert_ptsto_program1 A) as (DE & ?).
     t0.
   Qed.
 

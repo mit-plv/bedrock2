@@ -121,7 +121,6 @@ Section Proofs.
         simpl_MetricRiscvMachine_get_set. simpl in *.
         destruct_products. subst. exists m. exists finalMetricsH.
         repeat (split; try eassumption).
-        ecancel_assumption.
 
     - (* SCall *)
       lazymatch goal with

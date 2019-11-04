@@ -222,7 +222,7 @@ Section Pipeline1.
   refine ({|
     FlatToRiscvFunctions.p_sp := ml.(stack_pastend);
     FlatToRiscvFunctions.num_stackwords :=
-      word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / FlatToRiscvDef.bytes_per_word;
+      word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / bytes_per_word;
     FlatToRiscvFunctions.p_insts := pc_start;
     FlatToRiscvFunctions.insts := loop_insts;
     (* function positions in e_pos are relative to program_base *)
@@ -234,7 +234,8 @@ Section Pipeline1.
     FlatToRiscvFunctions.e_pos := function_positions;
     FlatToRiscvFunctions.e_impl := functions';
     FlatToRiscvFunctions.funnames := prog.(funnames);
-    FlatToRiscvFunctions.frame := TODO_frame;
+    FlatToRiscvFunctions.dframe := TODO_frame;
+    FlatToRiscvFunctions.xframe := TODO_frame;
   |}).
   Defined.
 
@@ -268,7 +269,10 @@ Section Pipeline1.
   Definition ll_ready: MetricRiscvMachine -> Prop :=
     compile_inv loopBody_related hl_inv.
 
-  Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_ready pc_start.
+  Definition ll_inv: MetricRiscvMachine -> Prop :=
+    runsToGood_Invariant ll_ready pc_start
+                         (word.add pc_start (word.of_Z (4 * Z.of_nat (List.length loop_insts))))
+                         (- 4 * Z.of_nat (List.length loop_insts)).
 
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
       initial = putProgram preInitial ->

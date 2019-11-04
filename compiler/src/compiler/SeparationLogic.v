@@ -145,6 +145,7 @@ Ltac addr P :=
   | ptsto ?A _ => A
   | ptsto_bytes _ ?A _ => A
   | ptsto_word ?A _ => A
+  | ptsto_instr ?A _ => A
   | array _ _ ?A _ => A
   | word_array ?A _ => A
   | _ => fail "no recognizable address"

@@ -549,7 +549,6 @@ Section Proofs.
     ssplit;
     simpl_word_exprs (@word_ok (@W (@def_params p)));
     match goal with
-    | |- _ => solve [eauto]
     | |- _ => solve_word_eq (@word_ok (@W (@def_params p)))
     | |- exists _, _ = _ /\ (_ * _)%sep _ =>
       eexists; split; cycle 1; [ wcancel_assumption | blia ]
@@ -559,7 +558,9 @@ Section Proofs.
                         change Z with Register in *; *)
                      map_solver (@locals_ok p h)]
     | |- _ => solve [solve_valid_machine (@word_ok (@W (@def_params p)))]
-    | |- _ => solve [eauto using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]
+    | |- _ => solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]
+    | H: subset (footpr _) _ |- subset (footpr _) _ =>
+      eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
     | |- _ => idtac
     end.
 
@@ -720,6 +721,35 @@ Section Proofs.
     induction s; simpl; repeat constructor; try (intro C; exact C);
       try (eapply list_union_preserves_NoDup; eassumption || constructor).
   Qed.
+
+  Ltac clear_old_sep_hyps :=
+    repeat match goal with
+           | H1: (_ * _)%sep ?m1, H2: (_ * _)%sep ?m2 |- _ => clear H1
+           end.
+
+  Ltac wseplog_pre ::=
+  repeat (autounfold with unf_to_array);
+  (* Note that "rewr" only works with equalities, not with iff1, so we use
+     iff1ToEq to turn iff1 into eq (requires functional and propositionl extensionality).
+     Alternatively, we could use standard rewrite (which might instantiate too many evars),
+     or we could make a "seprewrite" which works on "seps [...] [...]" by replacing the
+     i-th clause on any side with the rhs of the provided iff1, or we could make a
+     seprewrite which first puts the clause to be replaced as the left-most, and then
+     eapplies a "Proper_sep_iff1: Proper (iff1 ==> iff1 ==> iff1) sep", but that would
+     change the order of the clauses. *)
+  rewr (fun t => match t with
+         | context [ Datatypes.length (save_regs ?vars ?offset) ] =>
+           constr:(length_save_regs vars offset)
+         | context [ Datatypes.length (load_regs ?vars ?offset) ] =>
+           constr:(length_load_regs vars offset)
+         (* TODO how to not duplicate lines below? *)
+         | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+           constr:(iff1ToEq (array_append' PT SZ xs ys start))
+         | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+           constr:(iff1ToEq (array_cons PT SZ x xs start))
+         | context [ array ?PT ?SZ ?start nil ] =>
+           constr:(iff1ToEq (array_nil PT SZ start))
+         end) in |-*.
 
   Lemma compile_stmt_correct_new:
     forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
@@ -912,16 +942,14 @@ Section Proofs.
     (* jump to function *)
     eapply runsToStep. {
       eapply run_Jal; simpl; try solve [sidecondition]; cycle 2.
-      - rewrite !@length_save_regs in *. eapply shrink_footpr_subset; [ eassumption | wwcancel ].
-      - rewrite !@length_save_regs in *. wcancel_assumption.
+      - eapply rearrange_footpr_subset; [eassumption|wwcancel].
+      - wcancel_assumption.
       - solve_divisibleBy4.
       - assumption.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -950,17 +978,13 @@ Section Proofs.
     eapply runsToStep. {
       eapply run_Addi with (rd := RegisterNames.sp) (rs := RegisterNames.sp);
         try solve [safe_sidecond | simpl; solve_divisibleBy4 ].
-      all: simpl.
-      - rewrite map.get_put_diff by (clear; cbv; congruence).
-        eassumption.
-      - rewrite ?length_save_regs in *.
-        eapply shrink_footpr_subset; [ eassumption | wwcancel ].
+      simpl.
+      rewrite map.get_put_diff by (clear; cbv; congruence).
+      eassumption.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -973,7 +997,6 @@ Section Proofs.
         try solve [sidecondition | simpl; solve_divisibleBy4].
         all: simpl.
       2: {
-        rewrite ?length_save_regs in *.
         eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
       }
       1: {
@@ -981,14 +1004,11 @@ Section Proofs.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         rewrite map.get_put_same. reflexivity.
       }
-      rewrite ?length_save_regs in *.
       wcancel_assumption.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1048,9 +1068,7 @@ Section Proofs.
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1064,8 +1082,8 @@ Section Proofs.
         simpl; cycle 2.
       - rewrite map.get_put_same. reflexivity.
       - assumption.
-      - rewrite !@length_save_regs in *. eapply shrink_footpr_subset; [ eassumption | wwcancel ].
-      - rewrite !@length_save_regs in *. wcancel_assumption.
+      - eapply rearrange_footpr_subset; [eassumption|wwcancel].
+      - wcancel_assumption.
       - reflexivity.
       - assumption.
       - assumption.
@@ -1097,9 +1115,7 @@ Section Proofs.
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1178,9 +1194,7 @@ Section Proofs.
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1237,9 +1251,7 @@ Section Proofs.
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1258,7 +1270,7 @@ Section Proofs.
                end.
         instantiate (1 := Z.eqb).
         blia.
-      - eapply shrink_footpr_subset; [ eassumption | wwcancel ].
+      - eapply rearrange_footpr_subset; [eassumption|wwcancel].
       - subst FL. wcancel_assumption.
       - reflexivity.
       - assumption.
@@ -1285,9 +1297,7 @@ Section Proofs.
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1320,7 +1330,7 @@ Section Proofs.
         intro C. specialize (F _ C).
         unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
       - reflexivity.
-      - simpl. eapply shrink_footpr_subset; [ eassumption | wwcancel ].
+      - simpl. eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
       - simpl.
         subst FL. wcancel_assumption.
       - assumption.
@@ -1330,9 +1340,7 @@ Section Proofs.
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1373,14 +1381,11 @@ Section Proofs.
           clear -B.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
-    - simpl. eapply shrink_footpr_subset; [ eassumption | solve [wwcancel] ].
     }
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1401,9 +1406,7 @@ Section Proofs.
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1416,7 +1419,8 @@ Section Proofs.
           (vars := binds) (values := retvs)
           (offset := (- bytes_per_word * Z.of_nat (List.length args + List.length binds))%Z)
           (p_sp0 := p_sp);
-        simpl; cycle -3; try assumption.
+        simpl; cycle -4; try assumption.
+      - safe_sidecond.
       - wcancel_assumption.
         subst FL.
         replace (Datatypes.length binds) with (Datatypes.length retnames); cycle 1. {
@@ -1483,9 +1487,7 @@ Section Proofs.
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
-    repeat match goal with
-           | H: (_ * _)%sep ?m |- _ => assert_fails (constr_eq m initialL_mem); clear H
-           end.
+    clear_old_sep_hyps.
     intros. simp.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
@@ -1885,6 +1887,19 @@ Section Proofs.
       eapply preserve_regs_initialized_after_put.
       eapply preserve_regs_initialized_after_putmany_of_list_zip; cycle 1; try eassumption.
     + reflexivity.
+    + simpl.
+      eapply rearrange_footpr_subset; [ eassumption | ].
+      pose proof functions_expose as P.
+      match goal with
+      | H: map.get e_impl_full _ = Some _ |- _ => specialize P with (2 := H)
+      end.
+      specialize P with (1 := GetPos).
+      specialize (P program_base funnames).
+      auto_specialize.
+      apply iff1ToEq in P.
+      rewrite P. clear P.
+      simpl.
+      wwcancel.
     + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
       match goal with
       | H:   #(Datatypes.length ?new_remaining_stack) = _ |- _ =>
@@ -1904,8 +1919,7 @@ Section Proofs.
       subst FL new_ra. simpl_addrs.
       split. { ring. (* faster than lia *) }
       use_sep_assumption.
-      wseplog_pre word_ok.
-      rewrite !@length_save_regs in *.
+      wseplog_pre.
       pose proof functions_expose as P.
       match goal with
       | H: map.get e_impl_full _ = Some _ |- _ => specialize P with (2 := H)
@@ -1953,12 +1967,20 @@ Section Proofs.
       end.
       1: ecancel_assumption.
       destruct P as (finalML & P1 & P2).
+      match goal with
+      | H: _ = Some m' |- _ => move H at bottom; rename H into A
+      end.
+      unfold Platform.Memory.store_bytes, Memory.store_Z, Memory.store_bytes in A. simp.
+      subst_load_bytes_for_eq.
       run1det. run1done.
+      eapply preserve_subset_of_xAddrs. 1: assumption.
+      ecancel_assumption.
 
     - (* SLit *)
       get_run1valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
+      + safe_sidecond.
       + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
       + assumption.

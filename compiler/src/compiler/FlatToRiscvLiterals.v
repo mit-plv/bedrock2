@@ -79,12 +79,13 @@ Section FlatToRiscvLiterals.
     intros. destruct b1; destruct b2; constructor; auto.
   Qed.
 
-  Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R,
+  Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_stmt (FlatImp.SLit x v) in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
-      subset (footpr (program initialL.(getPc) insts)) (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) insts * R)%sep initialL.(getMem) ->
+      subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+             (of_list initialL.(getXAddrs)) ->
+      (program initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
       valid_FlatImp_vars (FlatImp.SLit x v) ->
       Primitives.valid_machine initialL ->
       runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
