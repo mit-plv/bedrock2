@@ -30,6 +30,7 @@ Require Import coqutil.Z.HexNotation.
 Require Import compiler.Simp.
 Require Import compiler.util.Learning.
 Require Import compiler.SimplWordExpr.
+Require Import compiler.RiscvWordProperties.
 Require Import riscv.Platform.FE310ExtSpec.
 Require bedrock2Examples.FE310CompilerDemo.
 Import ListNotations.
@@ -108,6 +109,7 @@ Module Import MMIO.
     byte_ok :> word.ok byte;
     word :> Word.Interface.word 32;
     word_ok :> word.ok word;
+    word_riscv_ok :> word.riscv_ok word;
     mem :> map.map word byte;
     mem_ok :> map.ok mem;
     locals :> map.map varname word;
@@ -228,8 +230,6 @@ Section MMIO1.
     unfold Memory.storeWord. intros. unfold Memory.store_bytes.
     rewrite load4bytes_in_MMIO_is_None; auto.
   Qed.
-
-  Instance assume_riscv_word_properties: RiscvWordProperties.word.riscv_ok word. Admitted.
 
   Ltac contrad := contradiction || discriminate || congruence.
 
@@ -501,5 +501,4 @@ Existing Instance Words32.
 Existing Instance mmio_semantics_params.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.
-Existing Instance assume_riscv_word_properties.
 Existing Instance FlatToRiscv_hyps.

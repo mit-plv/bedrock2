@@ -40,6 +40,9 @@ Open Scope Z_scope.
 Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.
 
+(* TODO at the moment we only have it for Kami Word, not yet for Naive Word *)
+Instance assume_riscv_word_properties: RiscvWordProperties.word.riscv_ok word. Admitted.
+
 Instance mmio_params: MMIO.parameters := { (* everything is inferred automatically *) }.
 
 (* needed because different unfolding levels of implicit arguments *)

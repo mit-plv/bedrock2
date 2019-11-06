@@ -4,6 +4,8 @@ Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListSt
 Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
 Require Import coqutil.Z.HexNotation.
 Require Import processor.KamiWord.
+Require Import compiler.RiscvWordProperties.
+Require Import end2end.KamiRiscvWordProperties.
 Require Import compilerExamples.MMIO.
 
 Import String List.ListNotations.
@@ -18,6 +20,10 @@ Instance byte: word.word 8 := KamiWord.word 8.
 Instance word_ok: word.ok word := KamiWord.ok 32 eq_refl.
 Instance byte_ok: word.ok byte := KamiWord.ok 8 eq_refl.
 
+Instance word_riscv_ok: word.riscv_ok word.
+refine (@kami_word_riscv_ok 5 _ _).
+all: cbv; congruence.
+Qed.
 
 Instance semantics: Semantics.parameters. refine ({|
   width := 32;

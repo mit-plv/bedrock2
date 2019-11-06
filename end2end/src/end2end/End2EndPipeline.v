@@ -38,6 +38,7 @@ Require Import riscv.Platform.FE310ExtSpec.
 Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
 Require Import bedrock2.Byte.
+Require Import end2end.KamiRiscvWordProperties.
 
 Local Open Scope Z_scope.
 
@@ -59,6 +60,11 @@ Definition instrencode(p: list Instruction): list Byte.byte :=
   let word8s := List.flat_map
                   (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
   List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
+
+Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.
+refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
+all: cbv; congruence.
+Qed.
 
 Section Connect.
 

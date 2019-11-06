@@ -3,6 +3,9 @@ Require Import coqutil.sanity coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.Utility.
 
+Local Open Scope bool_scope.
+Local Open Scope Z_scope.
+
 Axiom TODO_andres: False.
 
 Section WithWidth.
@@ -14,6 +17,20 @@ Section WithWidth.
   Definition kunsigned(x: kword): Z := Z.of_N (wordToN x).
   Definition ksigned: kword -> Z := @wordToZ sz.
   Definition kofZ: Z -> kword := ZToWord sz.
+
+  Definition riscvZdivu(x y: Z): Z :=
+    if y =? 0 then 2 ^ width - 1 else Z.div x y.
+
+  Definition riscvZdivs(x y: Z): Z :=
+    if (x =? - 2 ^ (width - 1)) && (y =? - 1) then x
+    else if y =? 0 then - 1 else Z.quot x y.
+
+  Definition riscvZmodu(x y: Z): Z :=
+    if y =? 0 then x else Z.modulo x y.
+
+  Definition riscvZmods(x y: Z): Z :=
+    if (x =? - 2 ^ (width - 1)) && (y =? - 1) then 0
+    else if y =? 0 then x else Z.rem x y.
 
   Instance word : word.word width := {
     rep := kword;
@@ -38,14 +55,15 @@ Section WithWidth.
     mulhsu x y := kofZ (Z.mul (ksigned x) (kunsigned y) / 2^width);
     mulhuu x y := kofZ (Z.mul (kunsigned x) (kunsigned y) / 2^width);
 
-    divu x y := kofZ (Z.div (kunsigned x) (kunsigned y));
-    divs x y := kofZ (Z.quot (ksigned x) (ksigned y));
-    modu x y := kofZ (Z.modulo (kunsigned x) (kunsigned y));
-    mods x y := kofZ (Z.rem (ksigned x) (ksigned y));
+    divu x y := kofZ (riscvZdivu (kunsigned x) (kunsigned y));
+    divs x y := kofZ (riscvZdivs (ksigned x) (ksigned y));
+    modu x y := kofZ (riscvZmodu (kunsigned x) (kunsigned y));
+    mods x y := kofZ (riscvZmods (ksigned x) (ksigned y));
 
-    slu x y := kofZ (Z.shiftl (kunsigned x) (kunsigned y));
-    sru x y := kofZ (Z.shiftr (kunsigned x) (kunsigned y));
-    srs x y := kofZ (Z.shiftr (ksigned x) (kunsigned y));
+    (* shifts only look at the lowest 5-6 bits of the shift amount *)
+    slu x y := kofZ (Z.shiftl (kunsigned x) (kunsigned y mod width));
+    sru x y := kofZ (Z.shiftr (kunsigned x) (kunsigned y mod width));
+    srs x y := kofZ (Z.shiftr (ksigned x) (kunsigned y mod width));
 
     eqb x y := Z.eqb (kunsigned x) (kunsigned y);
     ltu x y := Z.ltb (kunsigned x) (kunsigned y);

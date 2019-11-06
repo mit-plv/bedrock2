@@ -305,5 +305,6 @@ forall (m : Semantics.mem) (t : Semantics.trace),
     + revert H3. case TODO_andres.
     + reflexivity.
   Unshelve.
-  all: typeclasses eauto.
+  all: try typeclasses eauto.
+  all: try (intros; apply (SortedListString.ok _)).
 Qed. (* takes more than 30s *)
