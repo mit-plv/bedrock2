@@ -307,4 +307,4 @@ forall (m : Semantics.mem) (t : Semantics.trace),
   Unshelve.
   all: try typeclasses eauto.
   all: try (intros; apply (SortedListString.ok _)).
-Qed. (* takes more than 30s *)
+Time Qed. (* takes more than 150s *)
