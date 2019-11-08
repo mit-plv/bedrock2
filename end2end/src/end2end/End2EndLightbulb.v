@@ -118,7 +118,6 @@ Proof.
   (* replace semantics with FE310CSemantics.parameters. silently fails *)
   Fail pattern semantics.
   pose proof link_lightbulb_loop as P. unfold spec_of_lightbulb_loop in P.
-  Fail apply P.
   case TODO_andres.
 Qed.
 
