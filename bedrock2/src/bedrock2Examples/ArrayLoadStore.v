@@ -2,6 +2,21 @@ Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Z.Lia.
+  
+  From bedrock2 Require Import BasicC64Semantics ProgramLogic.
+  From bedrock2 Require Import Array Scalars Separation.
+  From coqutil Require Import Word.Interface Map.Interface.
+
+  From coqutil.Tactics Require Import letexists.
+
+    From coqutil.Tactics Require Import syntactic_unify.
+    From coqutil.Macros Require Import symmetry.
+  
+    From coqutil.Tactics Require Import syntactic_unify.
+    From coqutil.Macros Require Import symmetry.
+    Require Import coqutil.Datatypes.List.
+    Require Import Coq.micromega.Lia.
+  
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -26,10 +41,6 @@ Section WithParameters.
       r = (load1(buf + j))
     ))).
   
-  From bedrock2 Require Import BasicC64Semantics ProgramLogic.
-  From bedrock2 Require Import Array Scalars Separation.
-  From coqutil Require Import Word.Interface Map.Interface.
-  
     Local Infix "*" := sep : type_scope.
     Local Infix "*" := sep.
     Local Notation "a [ i ]" := (List.hd _ (List.skipn i a)) (at level 10, left associativity, format "a [ i ]").
@@ -39,8 +50,6 @@ Section WithParameters.
     (* Local Notation word_to_nat x := (Z.to_nat (word.unsigned x)). *)
     Local Infix "+" := word.add.
     Local Infix "+" := word.add.
-    From coqutil.Tactics Require Import syntactic_unify.
-    From coqutil.Macros Require Import symmetry.
   
   Local Instance spec_of_tf : spec_of "tf". refine (fun functions =>
     forall t m buf len bs i j R,
@@ -54,14 +63,7 @@ Section WithParameters.
                 ((bs[:word_to_nat i]++ word.of_Z 0 :: List.tl (bs[word_to_nat i:]))[word_to_nat j]))] *)
   Defined.
   
-  From coqutil.Tactics Require Import letexists.
-  
   Import SeparationLogic Lift1Prop.
-  
-    From coqutil.Tactics Require Import syntactic_unify.
-    From coqutil.Macros Require Import symmetry.
-    Require Import coqutil.Datatypes.List.
-    Require Import Coq.micromega.Lia.
   
   Goal program_logic_goal_for_function! tf.
   Proof.
