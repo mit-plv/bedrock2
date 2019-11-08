@@ -465,32 +465,6 @@ Module exec.
              end;
       simp.
 
-    Axiom TODO_sam: False.
-
-    Lemma map_split_diff: forall {m m1 m2 m3 m4: mem},
-        map.same_domain m2 m4 ->
-        map.split m m1 m2 ->
-        map.split m m3 m4 ->
-        m1 = m3 /\ m2 = m4.
-    Proof.
-      intros. split.
-      - apply map.map_ext.
-        intro k.
-        case TODO_sam.
-      - case TODO_sam.
-    Qed.
-
-    Lemma map_split_det: forall {m m' m1 m2: mem},
-        map.split m  m1 m2 ->
-        map.split m' m1 m2 ->
-        m = m'.
-    Proof.
-      unfold map.split.
-      intros *. intros [? ?] [? ?].
-      subst.
-      reflexivity.
-    Qed.
-
     Lemma intersect: forall t l m mc s post1,
         exec s t m l mc post1 ->
         forall post2,
@@ -507,7 +481,7 @@ Module exec.
       - (* SInteract *)
         pose proof ext_spec.unique_mGive_footprint as P.
         specialize P with (1 := H1) (2 := H14).
-        destruct (map_split_diff P H H7). subst mKeep0 mGive0.
+        destruct (map.split_diff P H H7). subst mKeep0 mGive0.
         eapply @interact.
         + eassumption.
         + eassumption.
@@ -519,7 +493,7 @@ Module exec.
           equalities.
           match goal with
           | A: map.split _ ?m1 ?m2, B: map.split _ ?m1 ?m2 |- _ =>
-            pose proof (map_split_det A B)
+            pose proof (map.split_det A B)
           end.
           subst.
           eauto 10.
