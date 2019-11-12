@@ -136,7 +136,7 @@ Section FetchOk.
       AddrAligned addr ->
       exists val,
         Memory.load_bytes 4 rmem addr = Some val /\
-        combine 4 val = wordToZ (kmem addr).
+        combine 4 val = kunsigned (kmem addr).
 
   Definition RiscvXAddrsSafe
              (kmemi: kword instrMemSizeLg -> kword width)
@@ -194,7 +194,7 @@ Section FetchOk.
       mem_related kmemd rmemd ->
       exists (rinst: HList.tuple byte 4),
         Memory.load_bytes 4 rmemd rpc = Some rinst /\
-        combine 4 rinst = wordToZ (kmemi (split2 2 _ kpc)).
+        combine 4 rinst = kunsigned (kmemi (split2 2 _ kpc)).
   Proof.
     intros.
     specialize (Hxs _ H); destruct Hxs.

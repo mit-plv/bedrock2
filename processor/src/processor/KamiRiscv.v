@@ -185,11 +185,11 @@ Section Equiv.
   Ltac kami_step_case_empty :=
     left; FMap.mred; fail.
 
-  Ltac eval_decode H :=
-    unfold decode in H;
-    repeat
+  Ltac eval_decode_in H :=
+    cbv beta iota delta [decode] in H;
+    progress repeat
       match goal with
-      | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite Hbs in H
+      | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite !Hbs in H; clear Hbs
       end;
     cbv [iset supportsM supportsA supportsF
               andb Z.eqb Pos.eqb
@@ -329,9 +329,34 @@ Section Equiv.
                    cbn beta iota delta [
                          load store
                               fst snd
-                              getMetrics getMachine
                               translate
-                              getRegs getPc getNextPc getMem getXAddrs getLog
+     withMetrics
+     updateMetrics
+     getMachine
+     getMetrics
+     getRegs
+     getPc
+     getNextPc
+     getMem
+     getXAddrs
+     getLog
+     withRegs
+     withPc
+     withNextPc
+     withMem
+     withXAddrs
+     withLog
+     withLogItem
+     withLogItems
+     RiscvMachine.withRegs
+     RiscvMachine.withPc
+     RiscvMachine.withNextPc
+     RiscvMachine.withMem
+     RiscvMachine.withXAddrs
+     RiscvMachine.withLog
+     RiscvMachine.withLogItem
+     RiscvMachine.withLogItems
+
                        ] in H
     | H: context CTX [@Memory.load_bytes ?a ?b ?c ?d ?e ?f ?g],
          G: context     [@Memory.load_bytes ?A ?B ?C ?D ?E ?F ?G]
@@ -384,21 +409,23 @@ Section Equiv.
       setoid_rewrite H15 in H0.
 
       (* -- decode *)
-      assert (bitSlice (wordToZ kinst) 0 7 = opcode_LOAD) as Hkopc.
+      assert (bitSlice (kunsigned kinst) 0 7 = opcode_LOAD) as Hkopc.
       { unfold getOptype, rv32Dec, rv32GetOptype in H2.
         unfold evalExpr in H2; fold evalExpr in H2.
         destruct (isEq _ _ _) in H2;
           [|destruct (isEq _ _ _) in H2; discriminate].
-        apply (f_equal (@wordToZ _)) in e.
-        rewrite kami_getOpcode_ok in e.
+        revert e; intros e.
+        cbn [evalExpr getOpcodeE evalUniBit] in e.
+        apply (f_equal (fun x => Z.of_N (wordToN x))) in e.
+        rewrite unsigned_split1_as_bitSlice in e.
         assumption.
       }
 
       pose proof (bitSlice_range_ex
-                    (wordToZ kinst) 12 15 ltac:(abstract blia))
+                    (kunsigned kinst) 12 15 ltac:(abstract blia))
         as Hf3.
       change (2 ^ (15 - 12)) with 8 in Hf3.
-      assert (let z := bitSlice (wordToZ kinst) 12 15 in
+      assert (let z := bitSlice (kunsigned kinst) 12 15 in
               z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
               z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
       clear Hf3.
@@ -406,7 +433,7 @@ Section Equiv.
       4, 7, 8: case TODO_joonwon. (** TODO: [InvalidInstruction] *)
 
       + (** LB: load-byte *)
-        eval_decode H0.
+        eval_decode_in H0.
 
         repeat t.
 
@@ -421,6 +448,8 @@ Section Equiv.
     - case TODO_joonwon.
 
   Qed.
+
+  Axiom TODO_kamiStep_instruction : False.
 
   Lemma kamiStep_sound:
     forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
@@ -516,31 +545,102 @@ Section Equiv.
       repeat t.
       setoid_rewrite H1 in H0.
 
-      (* cbv [Memory.loadWord] in *. *)
-      (* repeat t. *)
-      (* rewrite H1  in *. *)
-      (* repeat t. *)
-      (* setoid_rewrite H7 in H6. *)
-      (* remember ((instrMem (split2 2 (Z.to_nat instrMemSizeLg) (toKamiPc rpc)))) as kinst. *)
-      (* subst x. *)
 
-      (* evaluate [decode] *)
-      assert (bitSlice (wordToZ (sz:= BinInt.Z.to_nat width) kinst) 0 7 = opcode_OP)
-        as Hbs1 by case TODO_joonwon.
-      assert (bitSlice (wordToZ (sz:= BinInt.Z.to_nat width) kinst) 12 15 = funct3_ADD)
-        as Hbs2 by case TODO_joonwon.
-      assert (bitSlice (wordToZ (sz:= BinInt.Z.to_nat width) kinst) 25 32 = funct7_ADD)
-        as Hbs3 by case TODO_joonwon.
+      (** Begin symbolic evaluation of kami code *)
 
-      eval_decode H0.
+      cbn [evalExpr evalUniBool evalBinBit evalConstT getDefaultConst isEq
+           getNextPc doExec rv32NextPc rv32Exec rv32DoExec
+           getFunct3E getFunct7E getOffsetUE getOpcodeE getOffsetShamtE getOffsetIE getRdE
+           getSrc1 getSrc2 getDst rv32Dec rv32GetSrc1 rv32GetSrc2 rv32GetDst
+           BitsPerByte
+           Nat.add Nat.sub
+           ] in *.
 
-      (* invert the body of [execute] *)
+      (* COQBUG(rewrite pattern matching on if/match is broken due to "hidden branch types") *)
+      repeat match goal with
+      | H : context G [if ?x then ?a else ?b] |- _ =>
+          let e := context G [@bool_rect (fun _ => _) a b x] in
+          change e in H
+      | H : context G [if ?x then ?a else ?b] |- _ =>
+          let e := context G [@sumbool_rect _ _ (fun _ => _) (fun _ => a) (fun _ => b) x] in
+          change e in H
+      end.
+
+      rewrite !sumbool_rect_bool_weq in H11.
+      rewrite !sumbool_rect_bool_weq in H9.
+      rewrite <-!unsigned_eqb in H11.
+      rewrite <-!unsigned_eqb in H9.
+
+      progress
+      repeat match goal with H: context G [Z.of_N (@wordToN ?n ?x)] |- _ =>
+      let nn := eval cbv in (Z.of_nat n) in
+      let e := context G [@kunsigned nn x] in
+      change e in H
+      end.
+ 
+      progress
+      repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
+      let e := context G [x] in
+      change e in H
+      end.
+
+      cbv [bool_rect] in *.
+
+      (* Evaluation almost done, separate out cases of Kami execution *)
+      progress
+      repeat match goal with
+      | H : context G [if Z.eqb ?x ?y then ?a else ?b] |- _ =>
+          destruct (Z.eqb_spec x y) in *
+      | H: ?x = ?a,
+        G: ?x = ?b |- _ =>
+        let aa := eval cbv delta [a] in a in
+        let bb := eval cbv delta [b] in b in
+        let t := isZcst aa in constr_eq t true;
+        let t := isZcst bb in constr_eq t true;
+        assert_fails (constr_eq aa bb);
+        exfalso; remember x; clear -H G;
+        cbv in H; cbv in G; rewrite H in G; inversion G
+      | H: ?x = ?a,
+        G: ?x <> ?b |- _ =>
+        let aa := eval cbv delta [a] in a in
+        let bb := eval cbv delta [b] in b in
+        let t := isZcst aa in constr_eq t true;
+        let t := isZcst bb in constr_eq t true;
+        assert_fails (constr_eq aa bb);
+        clear G
+      end.
+
+      24: { (** Add case *)
+
+      (* More symbolic evaluation... *)
+      (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
+      all: cbv [kunsigned evalUniBit] in *.
+      all:
+        repeat match goal with
+        | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
+        | H : context G [ Z.of_nat ?n ] |- _ =>
+          let nn := eval cbv in (Z.of_nat n) in
+          let e := context G [nn] in
+          change e in H
+        | H : context G [ Z.add ?x ?y ] |- _ =>
+            let t := isZcst x in constr_eq t true;
+            let t := isZcst y in constr_eq t true;
+            let z := eval cbv in (Z.add x y) in
+            let e := context G [z] in
+            change e in H
+        | H : context G [ Z.of_N (wordToN ?x) ] |- _ =>
+            let e := context G [kunsigned x] in
+            change e in H
+        end.
+
+      (* forward through riscv-coq... *)
+      eval_decode_in H0.
       repeat t.
 
       (* resolve interaction with "register" 0 *)
-      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice (wordToZ kinst) _ _)) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
 
       move v at top.
       destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
@@ -548,44 +648,27 @@ Section Equiv.
       destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
 
       (** Construction *)
-      cbv [doExec getNextPc rv32Exec] in *.
       do 2 eexists.
       split; [|split]; [eapply KamiSilent; reflexivity| |eassumption].
-      remember (evalExpr (rv32GetDst type kinst)) as dst.
 
       econstructor.
       { assumption. }
-      { unfold RegsToT; rewrite H2.
-        subst km2 dst; reflexivity.
-      }
+      { unfold RegsToT; rewrite H2. subst km2; reflexivity. }
       { intros; discriminate. }
       { intros; assumption. }
       { subst.
-        rewrite kami_rv32NextPc_op_ok; auto.
-        { simpl.
-          case TODO_joonwon. (* need a [pc_related] preservation lemma *)
-        }
-        { rewrite kami_getOpcode_ok; assumption. }
-      }
+        cbv [RiscvMachine.withRegs RiscvMachine.getNextPc].
+        match goal with H : pc_related _ _ _ |- _ => revert H end.
+        cbv [word.add KamiWord.word].
+        case TODO_joonwon. (* need a [pc_related] preservation lemma *) }
       { reflexivity. }
       { subst execVal regs.
-        rewrite <-kami_rv32GetDst_ok by assumption.
-        rewrite <-kami_rv32GetSrc1_ok in Heqo by assumption.
-        rewrite <-kami_rv32GetSrc2_ok in Heqo0 by assumption.
-        case TODO_joonwon. (* need a [regs_related] update consistency *)
-        (* rewrite convertRegs_put by assumption. *)
-        (* erewrite <-convertRegs_get by eauto. *)
-        (* erewrite <-convertRegs_get by eauto. *)
-        (* erewrite kami_rv32DoExec_Add_ok; *)
-        (*   [|rewrite kami_getOpcode_ok; assumption *)
-        (*    |rewrite kami_getFunct7_ok; assumption *)
-        (*    |rewrite kami_getFunct3_ok; assumption]. *)
-        (* reflexivity. *)
-      }
+        case TODO_joonwon. (* need a [regs_related] update consistency *) }
       { assumption. }
+    }
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39: case TODO_kamiStep_instruction.
 
     - (* case "execNmZ" *) case TODO_joonwon.
-
   Qed.
 
   Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
