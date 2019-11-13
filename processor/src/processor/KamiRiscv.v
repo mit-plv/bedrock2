@@ -365,6 +365,32 @@ Section Equiv.
       progress change HH in H
     end.
 
+  Context (Registers_ok : map.ok Registers).
+
+  Lemma regs_related_put krf rrf  kv rv  kk rk
+   (Hrf : regs_related krf rrf)
+   (Hk : Z.of_N (wordToN kk) = rk)
+   (Hv : kv = rv)
+   : regs_related (fun w : Word.word rv32RfIdx => if weq w kk then kv else krf w) (map.put rrf rk rv).
+  Proof.
+    rewrite <-Hv.
+    cbv [regs_related].
+    intros i Hi.
+    setoid_rewrite sumbool_rect_weq.
+    erewrite Properties.map.get_put_dec, Z.eqb_sym.
+    rewrite <- unsigned_eqb.
+    rewrite unsigned_wordToZ, Z.mod_small by (cbn; blia).
+    setoid_rewrite Hk.
+    destruct (i =? rk); eauto.
+  Qed.
+
+  Lemma pc_related_plus4 kpc rpc :
+    pc_related instrMemSizeLg kpc rpc ->
+    pc_related instrMemSizeLg
+    (kpc ^+ ZToWord (S (S (BinInt.Z.to_nat instrMemSizeLg))) 4)
+    (word.add rpc (word.of_Z 4)).
+  Proof. case TODO_joonwon. Qed.
+
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv rv32RfIdx rv32Fetch km1),
@@ -551,7 +577,7 @@ Section Equiv.
       cbn [evalExpr evalUniBool evalBinBit evalConstT getDefaultConst isEq
            getNextPc doExec rv32NextPc rv32Exec rv32DoExec
            getFunct3E getFunct7E getOffsetUE getOpcodeE getOffsetShamtE getOffsetIE getRdE
-           getSrc1 getSrc2 getDst rv32Dec rv32GetSrc1 rv32GetSrc2 rv32GetDst
+           getSrc1 getSrc2 getDst rv32Dec rv32GetSrc1 rv32GetSrc2 rv32GetDst getRs1E getRs2E
            BitsPerByte
            Nat.add Nat.sub
            ] in *.
@@ -566,10 +592,9 @@ Section Equiv.
           change e in H
       end.
 
-      rewrite !sumbool_rect_bool_weq in H11.
-      rewrite !sumbool_rect_bool_weq in H9.
-      rewrite <-!unsigned_eqb in H11.
-      rewrite <-!unsigned_eqb in H9.
+      repeat match goal with H : _ |- _ =>
+          progress repeat rewrite ?sumbool_rect_bool_weq, <-?unsigned_eqb in H
+      end.
 
       progress
       repeat match goal with H: context G [Z.of_N (@wordToN ?n ?x)] |- _ =>
@@ -656,14 +681,19 @@ Section Equiv.
       { unfold RegsToT; rewrite H2. subst km2; reflexivity. }
       { intros; discriminate. }
       { intros; assumption. }
-      { subst.
-        cbv [RiscvMachine.withRegs RiscvMachine.getNextPc].
-        match goal with H : pc_related _ _ _ |- _ => revert H end.
-        cbv [word.add KamiWord.word].
-        case TODO_joonwon. (* need a [pc_related] preservation lemma *) }
+      { eauto using pc_related_plus4. }
       { reflexivity. }
-      { subst execVal regs.
-        case TODO_joonwon. (* need a [regs_related] update consistency *) }
+      { eapply regs_related_put; trivial.
+        1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
+        subst execVal.
+        unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end).
+        1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia.
+        unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end).
+        1:enough (0 <= bitSlice (kunsigned kinst) 20 25 < 32) by blia; eapply bitSlice_range_ex; blia.
+        eapply f_equal2; eapply f_equal;
+        eapply unsigned_inj;
+        rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small;
+        cbn; trivial; eapply bitSlice_range_ex; blia. }
       { assumption. }
     }
     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39: case TODO_kamiStep_instruction.
