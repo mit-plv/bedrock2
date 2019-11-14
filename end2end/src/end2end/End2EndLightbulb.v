@@ -121,20 +121,20 @@ Proof.
   case TODO_andres.
 Qed.
 
-Lemma weaken_call: forall funs fname t m args (post1 post2: _ -> _ -> _ -> Prop),
-    WeakestPrecondition.call funs fname t m args post1 ->
-    (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
-    WeakestPrecondition.call funs fname t m args post2.
-Proof. case TODO_andres. Qed.
-
 Lemma relate_concat: forall ioh1 ioh2 iol1 iol2,
     relate_lightbulb_trace_to_bedrock ioh1 iol1 ->
     relate_lightbulb_trace_to_bedrock ioh2 iol2 ->
     relate_lightbulb_trace_to_bedrock (ioh2 ++ ioh1) (iol2 ++ iol1)%list.
-Proof. case TODO_andres. Qed.
+Proof.
+  cbv [relate_lightbulb_trace_to_bedrock SPI.mmio_trace_abstraction_relation id].
+  eauto using Forall2_app.
+Qed.
 
 Lemma relate_nil: relate_lightbulb_trace_to_bedrock [] [].
-Proof. case TODO_andres. Qed.
+Proof.
+  cbv [relate_lightbulb_trace_to_bedrock SPI.mmio_trace_abstraction_relation id].
+  eauto using Forall2_nil.
+Qed.
 
 Lemma goodHlTrace_addOne: forall iohNew ioh,
     traceOfOneInteraction iohNew ->
@@ -249,9 +249,8 @@ Proof.
     cbv [loop_body function_impls prog
          WeakestPrecondition.cmd WeakestPrecondition.cmd_body].
     eexists. split; [reflexivity|].
-    eapply weaken_call; [eapply P|clear P].
-    cbv beta.
-    intros.
+    eapply WeakestPreconditionProperties.Proper_call; [clear P|eapply P].
+    intros ? ? ? ?.
     destr.
     subst.
     eexists. split; [reflexivity|].
