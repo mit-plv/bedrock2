@@ -251,6 +251,7 @@ Section Connect.
     { case TODO_sam. }
 
     eapply P1.
+    - case TODO_sam.
     - (* establish *)
       intros.
       eapply P2establish.
