@@ -112,11 +112,19 @@ Section Connect.
       Pipeline.FlatToRiscv_hyps := _; (*MMIO.FlatToRiscv_hyps*)
       Pipeline.src2imp_ok := _;
       Pipeline.Registers_ok := _;
-      (* wait until we know if ext_spec will be in monad style or postcond style *)
-      Pipeline.ext_spec_ok := match TODO_sam with end;
     |}).
   - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
   - refine (@MMIO.FlatToRiscv_hyps _).
+  - constructor; simpl; intros.
+    + unfold bedrock2_interact in *. simp. apply map.same_domain_refl.
+    + unfold Proper, pointwise_relation, respectful, Basics.impl.
+      intros P Q PQ H.
+      unfold bedrock2_interact in *.
+      simp. split; [reflexivity|].
+      destruct_one_match; [|destruct_one_match]; simp; subst; eauto 10.
+    + unfold bedrock2_interact in *.
+      simp. split; [reflexivity|].
+      destruct_one_match; [|destruct_one_match]; simp; subst; eauto 10.
   Defined.
 
   Lemma HbtbAddr: BinInt.Z.to_nat instrMemSizeLg = (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat.
@@ -192,6 +200,9 @@ Section Connect.
 
   Let funspecs := WeakestPrecondition.call (p := strname_sem) funimplsList.
 
+  Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
+      spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
+
   (* end to end, but still generic over the program
      TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
   Lemma end2end:
@@ -251,10 +262,11 @@ Section Connect.
     { case TODO_sam. }
 
     eapply P1.
-    - case TODO_sam.
+    - assumption.
     - (* establish *)
       intros.
       eapply P2establish.
+      set (blocked_on := processor.FetchOk.mem_related).
       case TODO_sam.
     - (* preserve *)
       intros.
@@ -264,9 +276,11 @@ Section Connect.
       subst traceProp. simpl.
       specialize_first P2use Inv.
       destruct P2use as [suff Good].
-      unfold goodTrace.
-      (* given the bedrock2 trace "suff ++ getLog m", produce exchange format trace *)
-      case TODO_sam.
+      unfold goodTraceE.
+      pose proof (goodTrace_implies_related_to_Events _ Good) as G.
+      destruct G as [t' R].
+      pose proof (split_ll_trace R). simp.
+      eauto 10.
 
       Grab Existential Variables.
       1: exact m0RV.

@@ -7,6 +7,7 @@ Require Import coqutil.Tactics.forward.
 Require Import bedrock2.Syntax.
 Require Import bedrock2Examples.lightbulb bedrock2Examples.lightbulb_spec.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
+Require Import compiler.Simp.
 Require Import compiler.ProgramSpec.
 Require Import compiler.MemoryLayout.
 Require Import end2end.End2EndPipeline.
@@ -215,6 +216,23 @@ End PrintProgram.
 
 Axiom TODO_sam_and_joonwon: False.
 
+Lemma iohi_to_iolo: forall ioh (iomid: list RiscvMachine.LogItem),
+    Forall2 SPI.mmio_event_abstraction_relation ioh iomid ->
+    exists iolo : list KamiRiscv.Event, KamiRiscv.traces_related iolo iomid.
+Proof.
+  induction ioh; intros.
+  - simp. exists nil. constructor.
+  - destruct iomid; try solve [inversion H].
+    simp.
+    specialize IHioh with (1 := H5). simp.
+
+    (* not how it will work, need concatenation
+    eexists. constructor. 2: eassumption.
+    unfold SPI.mmio_event_abstraction_relation in *.
+     *)
+    case TODO_sam.
+Qed.
+
 Lemma end2end_lightbulb:
   forall (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
                               (Z.to_nat KamiProc.width))
@@ -241,7 +259,7 @@ Proof.
   specialize_first Q memInit.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
-  eapply Q; clear Q; cycle 2.
+  eapply Q; clear Q; cycle 3.
   - (* preserve invariant *)
     intros.
     (* TODO make Simp.simp work here *)
@@ -267,6 +285,11 @@ Proof.
           [unfold traceOfOneInteraction, choice; eauto 10
           | exact G]]).
   - cbv. repeat constructor; cbv; intros; intuition congruence.
+  - intros. clear memInit. simp.
+    unfold relate_lightbulb_trace_to_bedrock, SPI.mmio_trace_abstraction_relation in *.
+    unfold id in *.
+    eauto using iohi_to_iolo.
+
   - (* establish invariant *)
     intros.
     unfold init_code, prog.
