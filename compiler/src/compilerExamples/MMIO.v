@@ -143,16 +143,6 @@ Section MMIO1.
         forall val, post map.empty [val]
     else False.
 
-  Instance mmio_semantics_params: Semantics.parameters := {|
-    Semantics.syntax := mmio_syntax_params;
-    Semantics.varname_eqb := Z.eqb;
-    Semantics.funname_eqb := String.eqb;
-    Semantics.actname_eqb := String.eqb;
-    Semantics.width := 32;
-    Semantics.ext_spec := bedrock2_interact;
-    Semantics.funname_env := funname_env;
-  |}.
-
   Instance compilation_params: FlatToRiscvDef.parameters := {|
     FlatToRiscvDef.compile_ext_call := compile_ext_call;
     FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
@@ -167,7 +157,7 @@ Section MMIO1.
     FlatToRiscv.MM := free.Monad_free;
     FlatToRiscv.RVM := MetricMinimalMMIO.IsRiscvMachine;
     FlatToRiscv.PRParams := MetricMinimalMMIOPrimitivesParams;
-    FlatToRiscv.ext_spec := ext_spec;
+    FlatToRiscv.ext_spec := bedrock2_interact;
   }.
 
   Section CompilationTest.
@@ -498,7 +488,6 @@ Section MMIO1.
 End MMIO1.
 
 Existing Instance Words32.
-Existing Instance mmio_semantics_params.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.
 Existing Instance FlatToRiscv_hyps.
