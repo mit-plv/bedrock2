@@ -187,7 +187,7 @@ Section Equiv.
 
   Ltac eval_decode_in H :=
     cbv beta iota delta [decode] in H;
-    progress repeat
+    repeat
       match goal with
       | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite !Hbs in H; clear Hbs
       end;
@@ -697,8 +697,122 @@ Section Equiv.
         rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small;
         cbn; trivial; eapply bitSlice_range_ex; blia. }
       { assumption. }
-    }
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39: case TODO_kamiStep_instruction.
+      }
+
+      33: { (** sub case *)
+
+      (* More symbolic evaluation... *)
+      (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
+      all: cbv [kunsigned evalUniBit] in *.
+      all:
+        repeat match goal with
+        | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
+        | H : context G [ Z.of_nat ?n ] |- _ =>
+          let nn := eval cbv in (Z.of_nat n) in
+          let e := context G [nn] in
+          change e in H
+        | H : context G [ Z.add ?x ?y ] |- _ =>
+            let t := isZcst x in constr_eq t true;
+            let t := isZcst y in constr_eq t true;
+            let z := eval cbv in (Z.add x y) in
+            let e := context G [z] in
+            change e in H
+        | H : context G [ Z.of_N (wordToN ?x) ] |- _ =>
+            let e := context G [kunsigned x] in
+            change e in H
+        end.
+
+      (* forward through riscv-coq... *)
+      eval_decode_in H0.
+      repeat t.
+
+      (* resolve interaction with "register" 0 *)
+      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
+
+      move v at top.
+      destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
+      move v0 at top.
+      destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
+
+      (** Construction *)
+      do 2 eexists.
+      split; [|split]; [eapply KamiSilent; reflexivity| |eassumption].
+
+      econstructor.
+      { assumption. }
+      { unfold RegsToT; rewrite H2. subst km2; reflexivity. }
+      { intros; discriminate. }
+      { intros; assumption. }
+      { eauto using pc_related_plus4. }
+      { reflexivity. }
+      { eapply regs_related_put; trivial.
+        1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
+        subst execVal.
+        unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end).
+        1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia.
+        unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end).
+        1:enough (0 <= bitSlice (kunsigned kinst) 20 25 < 32) by blia; eapply bitSlice_range_ex; blia.
+        eapply f_equal2; eapply f_equal;
+        eapply unsigned_inj;
+        rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small;
+        cbn; trivial; eapply bitSlice_range_ex; blia. }
+      { assumption. }
+      }
+
+      38: { (* unknown opcode *)
+
+      (* More symbolic evaluation... *)
+      (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
+      all: cbv [kunsigned evalUniBit] in *.
+      all:
+        repeat match goal with
+        | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
+        | H : context G [ Z.of_nat ?n ] |- _ =>
+          let nn := eval cbv in (Z.of_nat n) in
+          let e := context G [nn] in
+          change e in H
+        | H : context G [ Z.add ?x ?y ] |- _ =>
+            let t := isZcst x in constr_eq t true;
+            let t := isZcst y in constr_eq t true;
+            let z := eval cbv in (Z.add x y) in
+            let e := context G [z] in
+            change e in H
+        | H : context G [ Z.of_N (wordToN ?x) ] |- _ =>
+            let e := context G [kunsigned x] in
+            change e in H
+        end.
+
+      (* forward through riscv-coq... *)
+       eapply Z.eqb_neq in n.
+       eapply Z.eqb_neq in n0.
+       eapply Z.eqb_neq in n1.
+       eapply Z.eqb_neq in n2.
+       eapply Z.eqb_neq in n3.
+       eapply Z.eqb_neq in n4.
+       eapply Z.eqb_neq in n5.
+       remember (decode _ _) as instr in *.
+       cbv beta iota delta [decode] in Heqinstr.
+       repeat match goal with
+       | H : ?A = let x := ?v in @?C x |- _ =>
+           let x := fresh x in pose v as x;
+           let C := eval cbv beta in (C x) in
+           change (A = C) in H;
+           pose proof (eq_refl : x = v); clearbody x
+       end.
+       subst opcode.
+       progress
+       repeat match goal with
+       | H : _ = false, G : _ |- _ => rewrite !H in G
+       end.
+
+       (* the hypotheses describe an unknown non-memory opcode *)
+       (* what instruction decoding caused [execNm] to fire? *)
+       (* where is the corresponding hypothesis? *)
+       case TODO_joonwon.
+      }
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37: case TODO_kamiStep_instruction.
 
     - (* case "execNmZ" *) case TODO_joonwon.
   Qed.
