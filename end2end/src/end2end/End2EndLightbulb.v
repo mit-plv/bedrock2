@@ -141,7 +141,11 @@ Lemma goodHlTrace_addOne: forall iohNew ioh,
     goodHlTrace ioh ->
     goodHlTrace (iohNew ++ ioh).
 Proof.
-  case TODO_andres.
+  cbv [goodHlTrace].
+  intros ? ? ? (?&?&?&?&?); subst.
+  rewrite app_assoc.
+  eapply concat_app, kleene_app; eauto.
+  rewrite <-app_nil_l; eauto using kleene_step, kleene_empty.
 Qed.
 
 Ltac destr :=
