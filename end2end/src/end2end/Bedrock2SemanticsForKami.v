@@ -20,37 +20,24 @@ Instance byte: word.word 8 := KamiWord.word 8.
 Instance word_ok: word.ok word := KamiWord.ok 32 eq_refl.
 Instance byte_ok: word.ok byte := KamiWord.ok 8 eq_refl.
 
+Local Existing Instance SortedListString.ok.
+
 Instance word_riscv_ok: word.riscv_ok word.
 refine (@kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
-Instance semantics: Semantics.parameters. refine ({|
-  width := 32;
-  syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
-  varname_eqb := String.eqb;
-  funname_eqb := String.eqb;
-  actname_eqb := String.eqb;
-  mem := SortedListWord.map _ _;
-  locals := SortedListString.map _;
-  funname_env := SortedListString.map;
-  ext_spec := _;
-|}).
-unshelve refine (@MMIO.bedrock2_interact {| MMIO.funname_env := SortedListString.map |}).
-eapply SortedListString.ok.
-Defined.
+Instance FE310CSemanticsParameters : FE310CSemantics.parameters.parameters := {|
+  FE310CSemantics.parameters.word := word;
+  FE310CSemantics.parameters.byte := byte;
+  FE310CSemantics.parameters.mem := SortedListWord.map _ _;
+  (* FIXME: we shouldn't need the next line *) 
+  FE310CSemantics.parameters.mem_ok := SortedListWord.ok _ _;
+|}.
 
-Instance ok : Semantics.parameters_ok semantics.
-Proof.
-  split; cbv [funname_env locals mem semantics]; try exact _.
-  { cbv; auto. }
-  { eapply SortedListString.ok. }
-  { intros; eapply SortedListString.ok. }
-  (* case TODO. abstracting over TODO leads to untypable term! *)
-Admitted.
-
-(* TODO why does typeclass search fail here? *)
-Instance mapok: Interface.map.ok mem := SortedListWord.ok word _.
+Goal True.
+  pose (_: Semantics.parameters).
+Abort.
 
 Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
       (preprocess [autorewrite with rew_word_morphism],

@@ -39,6 +39,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
 Require Import bedrock2.Byte.
 Require Import end2end.KamiRiscvWordProperties.
+Require Import bedrock2.WeakestPreconditionProperties.
 
 Local Open Scope Z_scope.
 
@@ -98,11 +99,10 @@ Section Connect.
                               MetricRiscvMachine).
   Abort.
 
-  Instance pipeline_params: PipelineWithRename.Pipeline.parameters. refine ({|
+  Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {|
     Pipeline.FlatToRiscvDef_params := compilation_params;
-    Pipeline.ext_spec := bedrock2_interact;
-  |}).
-  Defined.
+    Pipeline.ext_spec := FE310CSemantics.ext_spec;
+  |}.
 
   Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
 
@@ -115,16 +115,9 @@ Section Connect.
     |}).
   - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
   - refine (@MMIO.FlatToRiscv_hyps _).
-  - constructor; simpl; intros.
-    + unfold bedrock2_interact in *. simp. apply map.same_domain_refl.
-    + unfold Proper, pointwise_relation, respectful, Basics.impl.
-      intros P Q PQ H.
-      unfold bedrock2_interact in *.
-      simp. split; [reflexivity|].
-      destruct_one_match; [|destruct_one_match]; simp; subst; eauto 10.
-    + unfold bedrock2_interact in *.
-      simp. split; [reflexivity|].
-      destruct_one_match; [|destruct_one_match]; simp; subst; eauto 10.
+  - pose proof FE310CSemantics.ext_spec_ok.
+    cbv [FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec Pipeline.FlatToRisvc_params Pipeline.ext_spec pipeline_params].
+    abstract (destruct H; split; eauto).
   Defined.
 
   Lemma HbtbAddr: BinInt.Z.to_nat instrMemSizeLg = (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat.

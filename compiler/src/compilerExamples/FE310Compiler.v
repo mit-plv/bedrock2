@@ -76,39 +76,17 @@ Proof.
   congruence.
 Qed.
 
-Axiom shelved_evar_from_other_admit : False.
-Axiom ext_spec_conditions_for_mcomp_sat : False.
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params.
 Proof.
-  constructor; try typeclasses eauto.
-  1: eapply MetricMinimalMMIOSatisfiesPrimitives. 1: simpl.
-  2: eapply FlatToRiscv_hyps.
-  3: constructor; unfold ext_spec, pipeline_params; simpl.
-  1,2: case ext_spec_conditions_for_mcomp_sat.
-  - intros *. intros [? _] [? _]. subst. apply map.same_domain_refl.
-  - unfold bedrock2_interact. intros.
-    cbv [Morphisms.Proper Morphisms.respectful Basics.impl Morphisms.pointwise_relation]; intros.
-    destruct H0; destruct H0. subst.
-    split; [reflexivity|].
-    repeat (destruct_one_match_hyp; try contradiction).
-    all: subst.
-    { destruct H1 as (?&?&?&?&?&?); subst.
-      eexists _, _; split; [|split; [|split] ]; eauto. }
-    { destruct H1 as (?&?&?&?&?); subst.
-      eexists  _; split; [|split; [|split] ]; eauto. }
-  - unfold bedrock2_interact. intros.
-    destruct H0; destruct H0.
-    split; [reflexivity|].
-    repeat (destruct_one_match_hyp; try contradiction).
-    all: subst.
-    { destruct H1 as (?&?&?&?&?&?); subst.
-      destruct H as (?&?&?&?&?&?&?); subst.
-      eexists _, _; split; [|split; [|split] ]; eauto. }
-    { destruct H1 as (?&?&?&?&?); subst.
-      destruct H as (?&?&?&?&?&?); subst.
-      eexists  _; split; [|split; [|split] ]; eauto. }
-    Unshelve.
-    all : case shelved_evar_from_other_admit.
+  esplit; try exact _.
+  { exact MetricMinimalMMIOSatisfiesPrimitives. }
+  { exact FlatToRiscv_hyps. }
+  cbv [FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec Pipeline.FlatToRisvc_params Pipeline.ext_spec pipeline_params FlatToRiscv_params].
+
+  pose proof FE310CSemantics.ext_spec_ok as H.
+  cbv [FE310CSemantics.semantics_parameters] in H.
+  destruct H. split.
+  all : intuition eauto.
 Qed.
 
 Definition compileFunc: cmd -> list Instruction := ExprImp2Riscv.

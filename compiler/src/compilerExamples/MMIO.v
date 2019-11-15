@@ -32,9 +32,8 @@ Require Import compiler.util.Learning.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.RiscvWordProperties.
 Require Import riscv.Platform.FE310ExtSpec.
-Require bedrock2Examples.FE310CompilerDemo.
+Require bedrock2.FE310CSemantics.
 Import ListNotations.
-
 
 Open Scope ilist_scope.
 
@@ -128,20 +127,13 @@ Section MMIO1.
     Utility.width_cases := or_introl eq_refl;
   }.
 
-  Local Notation bedrock2_trace := (list (mem * String.string * list word * (mem * list word))).
-  Definition bedrock2_interact (t : bedrock2_trace) (mGive : mem) a (args: list word) (post:mem -> list word -> Prop) :=
-    mGive = map.empty /\
-    if String.eqb "MMIOWRITE" a
-    then
-      exists addr val,
-        args = [addr; val] /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0 /\
-        post map.empty nil
-    else if String.eqb "MMIOREAD" a
-    then
-      exists addr,
-        args = [addr] /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0 /\
-        forall val, post map.empty [val]
-    else False.
+  Instance semantics_params : FE310CSemantics.parameters := {|
+    FE310CSemantics.parameters.word := word;
+    FE310CSemantics.parameters.word_ok := _;
+    FE310CSemantics.parameters.byte := byte;
+    FE310CSemantics.parameters.byte_ok := _;
+    FE310CSemantics.parameters.mem := mem;
+    FE310CSemantics.parameters.mem_ok := _ |}.
 
   Instance compilation_params: FlatToRiscvDef.parameters := {|
     FlatToRiscvDef.compile_ext_call := compile_ext_call;
@@ -157,7 +149,7 @@ Section MMIO1.
     FlatToRiscv.MM := free.Monad_free;
     FlatToRiscv.RVM := MetricMinimalMMIO.IsRiscvMachine;
     FlatToRiscv.PRParams := MetricMinimalMMIOPrimitivesParams;
-    FlatToRiscv.ext_spec := bedrock2_interact;
+    FlatToRiscv.ext_spec := FE310CSemantics.ext_spec;
   }.
 
   Section CompilationTest.
@@ -273,10 +265,11 @@ Section MMIO1.
       + (* MMOutput *)
         simpl in *|-.
         simp.
-        cbv [ext_spec FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec bedrock2_interact] in H17.
+        cbv [ext_spec FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec FE310CSemantics.ext_spec] in H17.
         simpl in *|-.
 
-        destruct H17 as [? H17]; subst mGive.
+        rewrite E in *.
+        destruct H17 as (?&?&?&(?&?&?)&?). subst mGive argvals.
         repeat match goal with
                | l: list _ |- _ => destruct l;
                                      try (exfalso; (contrad || (cheap_saturate; contrad))); []
@@ -291,13 +284,11 @@ Section MMIO1.
           destruct_one_match_hyp; congruence.
         }
         cbn in *|-.
-        destruct resvars; cycle 1. {
-          match goal with
-          | HO: outcome _ _, H: _ |- _ => specialize (H _ _ HO); move H at bottom
-          end.
-          simp.
-          cbn in *. discriminate.
-        }
+        match goal with
+        | HO: outcome _ _, H: _ |- _ => specialize (H _ _ HO); move H at bottom
+        end.
+        simp.
+        cbn in *.
         simp.
         subst insts.
 
@@ -351,9 +342,6 @@ Section MMIO1.
         eapply runsToNonDet.runsToDone.
         simpl_MetricRiscvMachine_get_set.
 
-        match goal with
-        | Hoc: outcome _ _, H: _ |- _ => specialize H with (1 := Hoc)
-        end.
         eexists. simp. simpl_word_exprs word_ok.
         do 2 match goal with
         | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
@@ -363,8 +351,8 @@ Section MMIO1.
         rewrite sextend_width_nop by reflexivity.
         rewrite Z.mod_small by apply word.unsigned_range.
         rewrite word.of_Z_unsigned.
-        apply eqb_eq in E0. subst action.
-        cbn -[invalidateWrittenXAddrs] in *. replace l' with initialL_regs in * by congruence.
+        apply eqb_eq in E. subst action.
+        cbn -[invalidateWrittenXAddrs] in *.
         split; eauto.
         split. {
           (* TODO this does not hold!
@@ -382,10 +370,12 @@ Section MMIO1.
       + (* MMInput *)
         simpl in *|-.
         simp.
-        cbv [ext_spec FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec bedrock2_interact] in H17.
+        cbv [ext_spec FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec FE310CSemantics.ext_spec] in H17.
         simpl in *|-.
 
-        destruct H17 as [? H17]; subst mGive.
+        rewrite E in *.
+        destruct ("MMIOREAD" =? action)%string eqn:EE in H17; try contradiction.
+        destruct H17 as (?&?&(?&?&?)&?). subst mGive argvals.
         repeat match goal with
                | l: list _ |- _ => destruct l;
                                      try (exfalso; (contrad || (cheap_saturate; contrad))); []
@@ -396,24 +386,8 @@ Section MMIO1.
           destruct_one_match_hyp; congruence.
         }
         cbn in *|-.
-        destruct resvars. {
-          match goal with
-          | HO: forall _, outcome _ _, H: _ |- _ =>
-          specialize (H _ _ (HO (word.of_Z 0))); move H at bottom
-          end.
-          simp.
-          cbn in *. discriminate.
-        }
         simp.
-        destruct resvars; cycle 1. {
-          match goal with
-          | HO: forall _, outcome _ _, H: _ |- _ =>
-          specialize (H _ _ (HO (word.of_Z 0))); move H at bottom
-          end.
-          simp.
-          cbn in *. discriminate.
-        }
-        simp.
+        cbn in *.
         subst insts.
         eapply runsToNonDet.runsToStep_cps.
         cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams].
@@ -445,9 +419,12 @@ Section MMIO1.
 
         repeat fwd.
 
+        destruct (Z.eq_dec r0 0); try Lia.lia.
+
         split; try discriminate.
         cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
         unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
+
 
         cbv [MinimalMMIO.nonmem_load FE310_mmio].
         split; [trivial|].
@@ -463,20 +440,18 @@ Section MMIO1.
 
         eapply runsToNonDet.runsToDone.
         simpl_MetricRiscvMachine_get_set.
+        destruct (Z.eq_dec r 0); try contradiction.
 
         eexists.
-        match goal with
-        | H: forall val, outcome _ [val], G: _ |- context [map.put _ _ ?resval] =>
-        specialize (H resval);
-        specialize G with (1 := H)
-        end.
+        unfold mmioLoadEvent, signedByteTupleToReg.
+        epose proof (H18 _ (cons _ nil) (H12 _)) as H; clear H18; rename H into H18.
         simp.
         do 2 match goal with
              | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H; subst
              end.
-        unfold mmioLoadEvent, signedByteTupleToReg.
-        apply eqb_eq in E1. subst action.
+        apply eqb_eq in EE. subst action.
         cbn in *. simp.
+        split. 1:eapply H18rr.
         split; eauto.
         split. { simpl_word_exprs word_ok; trivial. }
         split. { simpl_word_exprs word_ok; trivial. }
@@ -488,6 +463,7 @@ Section MMIO1.
 End MMIO1.
 
 Existing Instance Words32.
+Existing Instance semantics_params.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.
 Existing Instance FlatToRiscv_hyps.

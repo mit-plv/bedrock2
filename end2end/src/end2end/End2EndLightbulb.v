@@ -86,42 +86,6 @@ Proof.
   constructor; try reflexivity; try (cbv; discriminate).
 Qed.
 
-Lemma link_lightbulb_withCorrectWordInstance:
-  forall (p_addr : Semantics.word) (buf : list Semantics.byte) (R : Semantics.mem -> Prop)
-         (m : Semantics.mem) (t : Semantics.trace),
-    Separation.sep (Array.array Separation.ptsto (word.of_Z 1) p_addr buf) R m ->
-    Z.of_nat (Datatypes.length buf) = 1520 ->
-    WeakestPrecondition.call
-      [lightbulb_init; LAN9250.lan9250_init; LAN9250.lan9250_wait_for_boot;
-  LAN9250.lan9250_mac_write; lightbulb_loop; lightbulb_handle; recvEthernet;
-  LAN9250.lan9250_writeword; LAN9250.lan9250_readword; SPI.spi_xchg;
-  SPI.spi_write; SPI.spi_read] "lightbulb_loop" t m [p_addr]
-      (fun (t' : Semantics.trace) (m' : Semantics.mem) (rets : list Semantics.word) =>
-      (exists buf, Separation.sep (Array.array Separation.ptsto (word.of_Z 1) p_addr buf) R m' /\
-      Z.of_nat (length buf) = 1520) /\
-         exists v : Semantics.word,
-           rets = [v] /\
-           (exists iol,
-               t' = (iol ++ t)%list /\
-               (exists ioh,
-                   relate_lightbulb_trace_to_bedrock ioh iol /\
-                   ((exists packet (cmd : bool),
-                        (lan9250_recv _ _ packet +++ gpio_set Semantics.word 23 cmd) ioh /\
-                        lightbulb_packet_rep cmd packet /\ word.unsigned v = 0) \/
-                    (exists packet : list Semantics.byte,
-                        lan9250_recv _ _ packet ioh /\
-                        ~ (exists cmd : bool, lightbulb_packet_rep cmd packet) /\
-                        word.unsigned v = 0) \/
-                    (lan9250_recv_no_packet _ _ ioh /\ word.unsigned v = 0) \/
-                    (lan9250_recv_packet_too_long _ _ ioh /\ word.unsigned v <> 0) \/
-                    ((any +++ spi_timeout Semantics.word) ioh /\ word.unsigned v <> 0))))).
-Proof.
-  (* replace semantics with FE310CSemantics.parameters. silently fails *)
-  Fail pattern semantics.
-  pose proof link_lightbulb_loop as P. unfold spec_of_lightbulb_loop in P.
-  case TODO_andres.
-Qed.
-
 Lemma relate_concat: forall ioh1 ioh2 iol1 iol2,
     relate_lightbulb_trace_to_bedrock ioh1 iol1 ->
     relate_lightbulb_trace_to_bedrock ioh2 iol2 ->
@@ -163,26 +127,26 @@ Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32D
                                      (Z.to_nat KamiProc.width)): Kami.Syntax.Modules :=
   p4mm memInit instrMemSizeLg instrMemSizeLg_bounds.
 
+From coqutil Require Import Z_keyed_SortedListMap.
+
+Local Existing Instance SortedListString.map.
+Local Existing Instance SortedListString.ok.
+
 Instance pipeline_params: PipelineWithRename.Pipeline.parameters.
-unshelve refine pipeline_params.
-- exact (@Semantics.mem semantics).
-- exact (@Semantics.funname_env semantics).
-- refine (@Semantics.mem_ok _ _).
-- refine (@Semantics.funname_env_ok _ _).
+eapply @End2EndPipeline.pipeline_params; try exact _.
 Defined.
 
-Definition prog :=
-  @prog
-    (Z_keyed_SortedListMap.Zkeyed_map
-       (@Utility.word (@KamiWord.WordsKami KamiProc.width KamiProc.width_cases)))
-    (Z_keyed_SortedListMap.Zkeyed_map_ok
-       (@Utility.word (@KamiWord.WordsKami KamiProc.width KamiProc.width_cases)))
-    (@Semantics.mem semantics)
-    (@Semantics.mem_ok semantics ok)
-    (@Semantics.funname_env semantics)
-    (@Semantics.funname_env_ok semantics ok)
-    src2imp
-    init_code loop_body function_impls.
+Instance semantics_parameters_ok : Semantics.parameters_ok
+  (FlattenExprDef.FlattenExpr.mk_Semantics_params
+     PipelineWithRename.Pipeline.FlattenExpr_parameters).
+Proof.
+  eapply @FlattenExprDef.FlattenExpr.mk_Semantics_params_ok.
+  eapply @PipelineWithRename.FlattenExpr_hyps.
+  eapply @pipeline_assumptions; try exact _.
+Qed.
+
+Definition prog : @Program (FlattenExprDef.FlattenExpr.mk_Semantics_params _) _ :=
+  prog init_code loop_body function_impls.
 
 Definition lightbulb_insts_unevaluated: list Decode.Instruction :=
   @PipelineWithRename.compile_prog pipeline_params prog ml.
@@ -264,13 +228,11 @@ Proof.
     intros.
     (* TODO make Simp.simp work here *)
     destruct H as [ [ buf [R [Sep L] ] ] [ [ioh [Rel G] ] ? ] ]. subst l.
-    pose proof link_lightbulb_withCorrectWordInstance as P.
-    unfold spec_of_lightbulb in *.
+    eexists. split; [reflexivity|].
+    pose proof link_lightbulb_loop as P.
+    cbv [spec_of_lightbulb_loop] in P.
     specialize_first P Sep.
     specialize_first P L.
-    cbv [loop_body function_impls prog
-         WeakestPrecondition.cmd WeakestPrecondition.cmd_body].
-    eexists. split; [reflexivity|].
     eapply WeakestPreconditionProperties.Proper_call; [clear P|eapply P].
     intros ? ? ? ?.
     destr.
@@ -298,39 +260,11 @@ Proof.
     subst args.
 
     eapply WeakestPreconditionProperties.Proper_call.
-    2: {
-      assert (link_lightbulb_init :
-forall (m : Semantics.mem) (t : Semantics.trace),
-    WeakestPrecondition.call function_impls "lightbulb_init" t m []
-      (fun (t' : Semantics.trace) (m' : Semantics.mem)
-         (rets : list Semantics.word) =>
-       exists err : Semantics.word,
-         rets = [err] /\
-         m' = m /\
-         (exists
-            iol : list
-                    (Semantics.mem * actname * list Semantics.word *
-                     (Semantics.mem * list Semantics.word)),
-            t' = (iol ++ t)%list /\
-            (exists ioh : list (OP Semantics.word),
-               relate_lightbulb_trace_to_bedrock ioh iol /\
-               (lightbulb_boot_success Semantics.byte Semantics.word ioh /\
-                word.unsigned err = 0 \/
-                lan9250_boot_timeout Semantics.byte Semantics.word ioh /\
-                word.unsigned err <> 0 \/
-                (any +++ spi_timeout Semantics.word) ioh /\
-                word.unsigned err <> 0)))))
-  by case TODO_andres.
-      eapply link_lightbulb_init. }
+    2: exact (link_lightbulb_init _ _).
     intros ? ? ? ?.
-
     repeat ProgramLogic.straightline.
-
     hnf. split; [|split].
     + case TODO_sam_and_joonwon. (* how can we relate m to Kami's mem and constrain it? *)
     + revert H3. case TODO_andres.
     + reflexivity.
-  Unshelve.
-  all: try typeclasses eauto.
-  all: try (intros; apply (SortedListString.ok _)).
 Time Qed. (* takes more than 150s *)

@@ -159,7 +159,7 @@ Section WithParameters.
       exact eq_refl. }
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
-    split.
+    letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { case TODO_andres_mmioaddr. }
     repeat straightline. split; trivial.
     letexists. split.
@@ -224,7 +224,7 @@ Section WithParameters.
     1:contradiction.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
-    split.
+    letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { case TODO_andres_mmioaddr. }
     repeat straightline. split; trivial.
     repeat straightline.
@@ -304,7 +304,7 @@ Section WithParameters.
       eexists nil; split; trivial.
       eexists nil; split; try split; solve [constructor]. }
     { eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
-      split.
+      letexists; split; [exact eq_refl|]; split; [split; trivial|].
       { case TODO_andres_mmioaddr. }
       repeat ((split; trivial; []) || straightline || split_if).
       { repeat letexists.
@@ -325,7 +325,7 @@ Section WithParameters.
             refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
             eexists; split.
             { exact eq_refl. }
-            { subst v1.
+            { subst v0.
               rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
               rewrite word.unsigned_of_Z in H; exact H. } }
           { cbn [Datatypes.length]; subst i.
@@ -348,7 +348,7 @@ Section WithParameters.
           refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
           eexists; split.
           { exact eq_refl. }
-          { subst v1.
+          { subst v0.
             rewrite Properties.word.unsigned_sru_nowrap, word.unsigned_of_Z in H
              by (rewrite word.unsigned_of_Z ; exact eq_refl); exact H. } }
         { cbn [Datatypes.length]; subst i.
@@ -387,7 +387,7 @@ Section WithParameters.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
           change Semantics.width with 32.
           change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-          Lia.lia. }
+          clear. Z.div_mod_to_equations. Lia.lia. }
         { (* copy-paste from above, trace manipulation *)
           eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
           eexists. split.
@@ -415,14 +415,14 @@ Section WithParameters.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
           change Semantics.width with 32.
           change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-          Lia.lia. }
+          clear.  Z.div_mod_to_equations. Lia.lia. }
         { right; split.
           { subst busy. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
           split; eauto.
           eexists; split; cbv [one]; trivial.
           split.
-          { subst v1. rewrite Properties.word.unsigned_sru_nowrap in H
+          { subst v0. rewrite Properties.word.unsigned_sru_nowrap in H
              by (rewrite word.unsigned_of_Z; exact eq_refl);
              rewrite word.unsigned_of_Z in H; exact H. }
           subst b.

@@ -302,8 +302,17 @@ Section WithParameters.
     seplog_use_array_load1 H 23.
     seplog_use_array_load1 H 42.
     unshelve (repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec)).
-    1,2:shelve.
-    1,2: case TODO_andres_mmioaddr.
+
+    1: shelve.
+    1: letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    1: case TODO_andres_mmioaddr.
+    1: repeat straightline; split; trivial.
+    1: repeat straightline; eapply interact_nomem; repeat straightline.
+    1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    1: case TODO_andres_mmioaddr.
+    1: repeat straightline; split; trivial.
+
+    1: repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
   
     all : eexists; split; [solve[eauto]|].
     all : split; [solve[eauto]|].

@@ -258,7 +258,16 @@ Section WithParameters.
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
     repeat t.
-    1,2:case TODO_andres_mmioaddr.
+    letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    1:case TODO_andres_mmioaddr.
+    repeat straightline; split; trivial.
+    repeat straightline.
+    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    1:case TODO_andres_mmioaddr.
+    repeat straightline; split; trivial.
+    repeat straightline.
+
     straightline_call.
     1: {
       match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
@@ -337,9 +346,7 @@ Section WithParameters.
     t.
     t.
     t.
-    t.
-    t.
-    t.
+    letexists; split; [exact eq_refl|]; split; [split; trivial|].
     1:case TODO_andres_mmioaddr.
     t.
     t.
@@ -352,8 +359,7 @@ Section WithParameters.
     t.
     t.
     t.
-    t.
-    t.
+    letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     1:case TODO_andres_mmioaddr.
     repeat t.
 
@@ -453,7 +459,11 @@ Section WithParameters.
           unshelve erewrite (_ : string_dec x y = right _); [ | exact eq_refl | ]
       | _ => straightline_cleanup
       | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eapply WeakestPreconditionProperties.interact_nomem
-      | |- Semantics.ext_spec _ _ _ _ _ => progress cbn [Semantics.ext_spec semantics_parameters]
+      | |- Semantics.ext_spec _ _ _ _ _ =>
+    letexists; split; [exact eq_refl|]; split; [split; trivial|]
+      | |- Semantics.ext_spec _ _ _ _ _ =>
+    letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|]
+
       | H: ?x = 0 |-  _ => rewrite H
       | |- ?F ?a ?b ?c =>
           match F with WeakestPrecondition.get => idtac end;
@@ -463,10 +473,11 @@ Section WithParameters.
       | _ => straightline_call
       | _ => split_if
     end.
-    all : try match goal with |- Logic.or _ _ => case TODO_andres_mmioaddr end.
     all: try (eexists _, _; split; trivial).
     all: try (exact eq_refl).
     all: auto.
+    all : try match goal with |- isMMIOAddr _ => case TODO_andres_mmioaddr end.
+    all : try match goal with |- word.unsigned _ mod 4 = 0 => case TODO_andres_mmioaddr end.
   
     all : try (
       repeat match goal with x := _ ++ _ |- _ => subst x end;
