@@ -1,5 +1,6 @@
 Require Import bedrock2.Syntax bedrock2.StringNamesSyntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import coqutil.Z.div_mod_to_equations.
 
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
@@ -79,31 +80,31 @@ Section WithParameters.
       (exists a v, h = lightbulb_spec.st _ a v /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
       (exists a v, h = lightbulb_spec.ld _ a v /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
   Definition mmio_trace_abstraction_relation := List.Forall2 mmio_event_abstraction_relation.
-  
+
   Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,
     word.unsigned b < 2 ^ 8 ->
     WeakestPrecondition.call functions "spi_write" t m [b] (fun T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
         (word.unsigned err = 0 /\ lightbulb_spec.spi_write parameters.byte parameters.word (word.of_Z (word.unsigned b)) ioh)).
-  
+
   Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m,
     WeakestPrecondition.call functions "spi_read" t m [] (fun T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b:parameters.byte) (err : parameters.word), RETS = [word.of_Z (word.unsigned b); err] /\ Logic.or
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_read Semantics.byte parameters.word b ioh)).
-  
+
   Lemma nonzero_because_high_bit_set x (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
   Proof.
     rewrite Properties.word.unsigned_sru_nowrap in H.
-    2: { rewrite word.unsigned_of_Z; exact eq_refl. } 
+    2: { rewrite word.unsigned_of_Z; exact eq_refl. }
     intro HX.
     rewrite HX in H.
     rewrite word.unsigned_of_Z in H.
     exact (H eq_refl).
   Qed.
-  
+
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.word)),
@@ -112,16 +113,16 @@ Section WithParameters.
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.byte)),
          constants [Properties.word_cst]).
-  
+
   Axiom TODO_andres_mmioaddr : False.
-  
+
   Import coqutil.Tactics.letexists.
   Import TailRecursion.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.
     repeat straightline.
     rename H into Hb.
-  
+
     (* WHY do theese parentheses matter? *)
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
        b = B /\
@@ -260,7 +261,7 @@ Section WithParameters.
     Unshelve.
     all : intros; exact True.
   Qed.
-  
+
   Local Ltac split_if :=
     lazymatch goal with
       |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
@@ -269,7 +270,7 @@ Section WithParameters.
           | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
           end
     end.
-  
+
   Lemma spi_read_ok : program_logic_goal_for_function! spi_read.
     repeat straightline.
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
@@ -320,7 +321,7 @@ Section WithParameters.
           eexists. split.
           { econstructor; try eassumption; right; eauto. }
           split.
-          { 
+          {
             refine (kleene_app _ (cons _ nil) _ x3 _); eauto.
             refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
             eexists; split.
@@ -438,14 +439,14 @@ Section WithParameters.
     Unshelve.
     intros. exact True. (* WHY do we have this shelved predicate here? *)
   Qed.
-  
+
   Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall t m b_out,
     word.unsigned b_out < 2 ^ 8 ->
     WeakestPrecondition.call functions "spi_xchg" t m [b_out] (fun T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:Semantics.byte) (err : Semantics.word), RETS = [word.of_Z (word.unsigned b_in); err] /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg Semantics.byte Semantics.word (word.of_Z (word.unsigned b_out)) b_in ioh)).
-  
+
   Lemma spi_xchg_ok : program_logic_goal_for_function! spi_xchg.
   Proof.
     repeat (
@@ -459,15 +460,15 @@ Section WithParameters.
       | H :  not ?Y /\ _ \/ _ /\ _, G : ?X |- _ =>
           constr_eq X Y; let Z := fresh in destruct H as [[Z ?]|]; [case (Z G)|]
     end ||
-  
+
     straightline || straightline_call || split_if || refine (conj _ _) || eauto).
-  
+
   { eexists. split.
     { exact eq_refl. }
     eexists. split.
     { eauto. }
     eexists. eexists. split.
-    { repeat f_equal. 
+    { repeat f_equal.
       instantiate (1 := (word.of_Z (word.unsigned b_out) : Semantics.byte)).
       (* automatable: multi-word bitwise *)
       change (255) with (Z.ones 8).
@@ -481,7 +482,7 @@ Section WithParameters.
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.
       rewrite app_nil_r; trivial. }
-  
+
       { destruct H10; intuition eauto.
         { eexists. split.
           { subst a0. subst a.
@@ -504,10 +505,10 @@ Section WithParameters.
             { subst v. eauto. }
             right. split; eauto.
             cbv [lightbulb_spec.spi_xchg].
-  
+
   assert (Trace__concat_app : forall T (P Q:list T->Prop) x y, P x -> Q y -> (P +++ Q) (y ++ x)). {
     cbv [concat]; eauto. }
-  
+
     eauto using Trace__concat_app. }
   Qed.
 End WithParameters.
