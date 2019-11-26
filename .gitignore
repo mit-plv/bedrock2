@@ -1,6 +1,7 @@
 *~
 *.vo
 *.vos
+*.vok
 *.glob
 *.aux
 *.vcd
