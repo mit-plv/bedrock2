@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all coqutil riscv-coq bedrock2_noex bedrock2_ex compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_bedrock2 install_compiler install_processor install_end2end install
+.PHONY: update_all clone_all coqutil riscv-coq bedrock2_noex bedrock2_ex compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_coqutil install_kami install_riscv-coq install_bedrock2 install_compiler install_processor install_end2end install
 
 clone_all:
 	git submodule update --init --recursive
@@ -32,6 +32,8 @@ compiler_noex: riscv-coq bedrock2_noex
 processor: riscv-coq kami
 end2end: compiler_ex bedrock2_ex processor
 
+install: install_coqutil install_riscv-coq install_kami
+
 endif
 
 
@@ -44,17 +46,28 @@ coqutil:
 clean_coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil clean
 
+install_coqutil:
+	$(MAKE) -C $(DEPS_DIR)/coqutil install
+
 kami:
 	$(MAKE) -C $(DEPS_DIR)/kami
 
 clean_kami:
 	$(MAKE) -C $(DEPS_DIR)/kami clean
 
+# TODO: Remove -f $(DEPS_DIR)/kami/Makefile.coq.all once the kami submodule is bumped
+install_kami:
+	$(MAKE) -C $(DEPS_DIR)/kami -f $(DEPS_DIR)/kami/Makefile.coq.all install
+
 riscv-coq:
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq all
 
 clean_riscv-coq:
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq clean
+
+# TODO: Remove -f $(DEPS_DIR)/riscv-coq/Makefile.coq.all once the riscv-coq submodule is bumped
+install_riscv-coq:
+	$(MAKE) -C $(DEPS_DIR)/riscv-coq -f $(DEPS_DIR)/riscv-coq/Makefile.coq.all install
 
 bedrock2_noex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 noex
