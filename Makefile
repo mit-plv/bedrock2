@@ -55,9 +55,8 @@ kami:
 clean_kami:
 	$(MAKE) -C $(DEPS_DIR)/kami clean
 
-# TODO: Remove -f $(DEPS_DIR)/kami/Makefile.coq.all once the kami submodule is bumped
 install_kami:
-	$(MAKE) -C $(DEPS_DIR)/kami -f $(DEPS_DIR)/kami/Makefile.coq.all install
+	$(MAKE) -C $(DEPS_DIR)/kami install
 
 riscv-coq:
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq all
@@ -65,9 +64,8 @@ riscv-coq:
 clean_riscv-coq:
 	$(MAKE) -C $(DEPS_DIR)/riscv-coq clean
 
-# TODO: Remove -f $(DEPS_DIR)/riscv-coq/Makefile.coq.all once the riscv-coq submodule is bumped
 install_riscv-coq:
-	$(MAKE) -C $(DEPS_DIR)/riscv-coq -f $(DEPS_DIR)/riscv-coq/Makefile.coq.all install
+	$(MAKE) -C $(DEPS_DIR)/riscv-coq install
 
 bedrock2_noex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 noex
