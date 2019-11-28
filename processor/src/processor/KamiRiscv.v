@@ -26,6 +26,7 @@ Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Platform.MinimalMMIO.
 Require Import riscv.Platform.MetricMinimalMMIO.
+Require Import riscv.Platform.FE310ExtSpec.
 
 Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
@@ -55,8 +56,7 @@ Section Equiv.
 
   (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {Registers: map.map Register word}
-          {mem: map.map word byte}
-          {mmio_semantics : MMIOSpec}.
+          {mem: map.map word byte}.
 
   Local Notation M := (free action result).
   Local Notation RiscvMachine := MetricRiscvMachine.
@@ -70,10 +70,10 @@ Section Equiv.
              (Hinstr2: instrMemSizeLg <= width - 2).
   Local Notation Hinstr := (conj Hinstr1 Hinstr2).
 
-  Variable (memInit: Vec (ConstT (Data rv32DataBytes)) (Z.to_nat width)).
+  Variable (memInit: Vec (ConstT (Bit BitsPerByte)) (Z.to_nat width)).
   Definition kamiMemInit := ConstVector memInit.
   Local Definition kamiProc :=
-    @KamiProc.proc instrMemSizeLg Hinstr kamiMemInit.
+    @KamiProc.proc instrMemSizeLg Hinstr kamiMemInit kami_FE310_AbsMMIO.
   Local Definition kamiStMk := @KamiProc.mk (Z.to_nat width)
                                             (Z.to_nat instrMemSizeLg)
                                             rv32InstBytes rv32DataBytes rv32RfIdx.
@@ -212,6 +212,18 @@ Section Equiv.
 
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
+
+  Lemma pgm_init_not_mmio:
+    Kami.Ex.SCMMInv.PgmInitNotMMIO rv32Fetch kami_FE310_AbsMMIO.
+  Proof.
+    red; intros.
+    cbv [isMMIO kami_FE310_AbsMMIO].
+    unfold evalExpr; fold evalExpr.
+    cbv [evalBinBool evalUniBool evalBinBitBool].
+    apply Bool.andb_false_intro2.
+    repeat apply Bool.orb_false_intro.
+    all: case TODO_joonwon.
+  Qed.
 
   Lemma kamiStep_sound_case_pgmInit:
     forall km1 t0 rm1 post kupd cs
@@ -367,25 +379,6 @@ Section Equiv.
 
   Context (Registers_ok : map.ok Registers).
 
-  Lemma regs_related_put krf rrf  kv rv  kk rk
-   (Hrf : regs_related krf rrf)
-   (Hk : Z.of_N (wordToN kk) = rk)
-   (Hv : kv = rv)
-   : regs_related (fun w : Word.word rv32RfIdx => if weq w kk then kv else krf w) (map.put rrf rk rv).
-  Proof.
-    rewrite <-Hv.
-    cbv [regs_related].
-    intros i Hi.
-    setoid_rewrite sumbool_rect_weq.
-    erewrite Properties.map.get_put_dec, Z.eqb_sym.
-    rewrite <- unsigned_eqb.
-    rewrite unsigned_wordToZ, Z.mod_small; cycle 1.
-    { change (2 ^ Z.of_nat (BinInt.Z.to_nat 5)) with 32.
-      blia. }
-    setoid_rewrite Hk.
-    destruct (i =? rk); eauto.
-  Qed.
-
   Lemma pc_related_plus4 kpc rpc :
     pc_related instrMemSizeLg kpc rpc ->
     pc_related instrMemSizeLg
@@ -417,15 +410,15 @@ Section Equiv.
     simpl in H; subst pinit.
 
     destruct (evalExpr (isMMIO type ldAddr)) eqn:Hmmio.
-    - repeat match goal with
+    - (** MMIO load case *)
+      repeat match goal with
              | [H: true = true -> _ |- _] => specialize (H eq_refl)
              | [H: true = false -> _ |- _] => clear H
              end.
       destruct H11 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
       simpl in H; subst cs.
 
-      (** Invert a riscv-coq step *)
-
+      (* Invert a riscv-coq step *)
       (* -- fetch *)
       repeat t.
       specialize (H eq_refl).
@@ -458,14 +451,12 @@ Section Equiv.
               z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
       clear Hf3.
       destruct H16 as [|[|[|[|[|[|[|]]]]]]].
-      4, 7, 8: case TODO_joonwon. (** TODO: [InvalidInstruction] *)
+      (* -- get rid of [InvalidInstruction] cases *)
+      4, 7, 8: eval_decode_in H0; exfalso; auto; fail.
 
       + (** LB: load-byte *)
         eval_decode_in H0.
-
         repeat t.
-
-        (* mmio/non-mmio branch *)
         case TODO_joonwon.
 
       + (** LH: load-half *) case TODO_joonwon.
@@ -688,14 +679,16 @@ Section Equiv.
       { eapply regs_related_put; trivial.
         1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
         subst execVal.
-        unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end).
-        1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia.
-        unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end).
-        1:enough (0 <= bitSlice (kunsigned kinst) 20 25 < 32) by blia; eapply bitSlice_range_ex; blia.
-        eapply f_equal2; eapply f_equal;
-        eapply unsigned_inj;
-        rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small;
-        cbn; trivial; eapply bitSlice_range_ex; blia. }
+        (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
+        (* 1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia. *)
+        (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
+        (* 1:enough (0 <= bitSlice (kunsigned kinst) 20 25 < 32) by blia; eapply bitSlice_range_ex; blia. *)
+        (* eapply f_equal2; eapply f_equal; *)
+        (* eapply unsigned_inj; *)
+        (* rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small; *)
+        (* cbn; trivial; eapply bitSlice_range_ex; blia. *)
+        case TODO_joonwon.
+      }
       { assumption. }
       }
 
@@ -750,14 +743,16 @@ Section Equiv.
       { eapply regs_related_put; trivial.
         1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
         subst execVal.
-        unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end).
-        1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia.
-        unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end).
-        1:enough (0 <= bitSlice (kunsigned kinst) 20 25 < 32) by blia; eapply bitSlice_range_ex; blia.
-        eapply f_equal2; eapply f_equal;
-        eapply unsigned_inj;
-        rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small;
-        cbn; trivial; eapply bitSlice_range_ex; blia. }
+        (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
+        (* 1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia. *)
+        (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
+        (* 1:enough (0 <= bitSlice (kunsigned kinst) 20 25 < 32) by blia; eapply bitSlice_range_ex; blia. *)
+        (* eapply f_equal2; eapply f_equal; *)
+        (* eapply unsigned_inj; *)
+        (* rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small; *)
+        (* cbn; trivial; eapply bitSlice_range_ex; blia. *)
+        case TODO_joonwon.
+      }
       { assumption. }
       }
 
@@ -898,8 +893,8 @@ Section Equiv.
      and use the lower bits to index into the Vector.
    *)
 
-  Definition mm: Modules := Kami.Ex.SC.mm kamiMemInit rv32MMIO.
-  Definition p4mm: Modules := p4mm Hinstr kamiMemInit.
+  Definition mm: Modules := Kami.Ex.SC.mm rv32DataBytes kamiMemInit kami_FE310_AbsMMIO.
+  Definition p4mm: Modules := p4mm Hinstr kamiMemInit kami_FE310_AbsMMIO.
 
   Local Notation procInit := (procInit (instrMemSizeLg:= instrMemSizeLg)).
 
@@ -917,7 +912,7 @@ Section Equiv.
 
   Lemma states_related_init:
     states_related
-      (initRegs (getRegInits (@proc instrMemSizeLg Hinstr kamiMemInit)), [])
+      (initRegs (getRegInits (@proc instrMemSizeLg Hinstr kamiMemInit kami_FE310_AbsMMIO)), [])
       {| getMachine :=
            {| RiscvMachine.getRegs := projT1 riscvRegsInit;
               RiscvMachine.getPc := word.of_Z 0;

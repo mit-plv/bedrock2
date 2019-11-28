@@ -20,6 +20,8 @@ Require Import processor.KamiProc.
 
 Local Open Scope Z_scope.
 
+Axiom TODO_joonwon: False.
+
 Lemma evalExpr_bit_eq_rect:
   forall n1 n2 (Hn: n1 = n2) e,
     evalExpr (eq_rect n1 (fun sz => Expr type (SyntaxKind (Bit sz))) e n2 Hn) =
@@ -130,23 +132,21 @@ Section FetchOk.
     apply wordToNat_inj; assumption.
   Qed.
 
-  Definition mem_related (kmem: kword width -> kword width)
+  Definition mem_related (kmem: kword width -> kword 8)
              (rmem: mem): Prop :=
-    forall addr,
-      AddrAligned addr ->
-      exists val,
-        Memory.load_bytes 4 rmem addr = Some val /\
-        combine 4 val = kunsigned (kmem addr).
+    forall addr: kword width,
+      map.get rmem addr = Some (kmem addr).
 
   Definition RiscvXAddrsSafe
              (kmemi: kword instrMemSizeLg -> kword width)
-             (kmemd: kword width -> kword width)
+             (kmemd: kword width -> kword 8)
              (xaddrs: XAddrs) :=
     forall rpc,
       isXAddr4 rpc xaddrs ->
       AddrAligned rpc /\
       (forall kpc, pc_related kpc rpc ->
-                   kmemd rpc = kmemi (split2 2 _ kpc)).
+                   Kami.Ex.SC.combineBytes 4%nat rpc kmemd =
+                   kmemi (split2 2 _ kpc)).
 
   Lemma rv32AlignAddr_consistent:
     forall rpc kpc,
@@ -183,7 +183,7 @@ Section FetchOk.
 
   Lemma fetch_ok:
     forall (kmemi: kword instrMemSizeLg -> kword width)
-           (kmemd: kword width -> kword width)
+           (kmemd: kword width -> kword 8)
            (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
            (xaddrs: XAddrs)
            (Hxs: RiscvXAddrsSafe kmemi kmemd xaddrs)
@@ -199,11 +199,13 @@ Section FetchOk.
     intros.
     specialize (Hxs _ H); destruct Hxs.
     specialize (H3 _ H0).
-    specialize (H1 _ H2).
-    destruct H1 as (rinst & ? & ?).
-    exists rinst.
-    split; [assumption|].
-    congruence.
+
+    pose proof (H1 rpc) as Hrinst0.
+    pose proof (H1 (rpc ^+ $1)) as Hrinst1.
+    pose proof (H1 (rpc ^+ $2)) as Hrinst2.
+    pose proof (H1 (rpc ^+ $3)) as Hrinst3.
+    
+    case TODO_joonwon.
   Qed.
 
 End FetchOk.

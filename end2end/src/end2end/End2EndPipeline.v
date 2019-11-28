@@ -69,7 +69,7 @@ Qed.
 
 Section Connect.
 
-  Context (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
+  Context (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                (Z.to_nat KamiProc.width)).
 
   Context (instrMemSizeLg: Z).

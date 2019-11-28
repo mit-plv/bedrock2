@@ -123,7 +123,7 @@ Ltac destr :=
 Instance src2imp : map.map string Decode.Register := SortedListString.map Z.
 Instance src2impOk : map.ok src2imp := SortedListString.ok _.
 
-Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
+Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                      (Z.to_nat KamiProc.width)): Kami.Syntax.Modules :=
   p4mm memInit instrMemSizeLg instrMemSizeLg_bounds.
 
@@ -198,7 +198,7 @@ Proof.
 Qed.
 
 Lemma end2end_lightbulb:
-  forall (memInit: Syntax.Vec (Syntax.ConstT (MemTypes.Data IsaRv32.rv32DataBytes))
+  forall (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                               (Z.to_nat KamiProc.width))
          (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
     Semantics.Behavior (p4mm memInit) mFinal t ->

@@ -29,7 +29,7 @@ Section Parametrized.
             (ammio: AbsMMIO addrSize).
 
   Variable (procInit: ProcInit iaddrSize dataBytes rfIdx)
-           (memInit: MemInit addrSize dataBytes).
+           (memInit: MemInit addrSize).
 
   Definition pprocInl := scmmInl fetch dec exec ammio procInit memInit.
   Definition pproc := projT1 pprocInl.
@@ -42,7 +42,7 @@ Section Parametrized.
          rf: word rfIdx -> word (dataBytes * BitsPerByte);
          pinit: bool;
          pgm: word iaddrSize -> word (instBytes * BitsPerByte);
-         mem: word addrSize -> word (dataBytes * BitsPerByte)
+         mem: word addrSize -> word BitsPerByte
        }.
 
   Definition pRegsToT (r: Kami.Semantics.RegsT): option pst :=
@@ -50,9 +50,26 @@ Section Parametrized.
        mlet rfv: (Vector (Data dataBytes) rfIdx) <- r |> "rf" <| None;
        mlet pinitv: Bool <- r |> "pinit" <| None;
        mlet pgmv: (Vector (Data instBytes) iaddrSize) <- r |> "pgm" <| None;
-       mlet memv: (Vector (Data dataBytes) addrSize) <- r |> "mem" <| None;
+       mlet memv: (Vector (Bit BitsPerByte) addrSize) <- r |> "mem" <| None;
        (Some {| pc := pcv; rf := rfv;
                 pinit := pinitv; pgm := pgmv; mem := memv |}))%mapping.
+
+  (** * Deriving facts from [scmm_inv] *)
+
+  Lemma scmm_inv_derive_rf_zero:
+    forall st,
+      scmm_inv rfIdx fetch st ->
+      forall pcv rfv pinitv pgmv memv,
+        pRegsToT st = Some (mk pcv rfv pinitv pgmv memv) ->
+        forall idx, idx = $0 -> rfv idx = $0.
+  Proof.
+    intros; subst.
+    inversion_clear H.
+    unfold pRegsToT in H0.
+    kregmap_red.
+    inversion H0; subst; clear H0.
+    assumption.
+  Qed.
 
   (** * Inverting Kami rules for instruction executions *)
 
@@ -105,6 +122,7 @@ Section Parametrized.
     1: {
       exfalso.
       clear -Hi Heqic.
+      unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
       specialize (Hi x0); simpl in Hi.
       congruence.
     }
@@ -137,10 +155,10 @@ Section Parametrized.
 
   Definition KamiPgmInitFull
              (pgm: word iaddrSize -> word (instBytes * BitsPerByte))
-             (mem: word addrSize -> word (dataBytes * BitsPerByte)) :=
+             (mem: word addrSize -> word BitsPerByte) :=
     forall iaddr,
       pgm iaddr =
-      evalExpr (alignInst type (mem (evalExpr (alignAddr type iaddr)))).
+      evalExpr (alignInst type (combineBytes dataBytes (evalExpr (alignAddr type iaddr)) mem)).
 
   Lemma invert_Kami_pgmInitEnd:
     forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl
@@ -165,6 +183,7 @@ Section Parametrized.
     1: {
       exfalso.
       clear -Hi Heqic.
+      unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
       specialize (Hi x0); simpl in Hi.
       congruence.
     }
@@ -196,7 +215,8 @@ Section Parametrized.
 
     clear -e H19.
     red; intros.
-    destruct (weq iaddr pinitOfsv); [subst; reflexivity|].
+    destruct (weq iaddr pinitOfsv);
+      [subst; rewrite memLoadBytes_combineBytes; reflexivity|].
     apply H19; [reflexivity|].
 
     clear -e n.
@@ -230,11 +250,9 @@ Section Parametrized.
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         evalExpr (getOptype _ curInst) = opLd /\
         ldAddr = evalExpr
-                   (alignLdAddr
-                      _ (evalExpr
-                           (calcLdAddr
-                              _ (evalExpr (getLdAddr _ curInst))
-                              (rf kt1 (evalExpr (getLdSrc _ curInst)))))) /\
+                   (calcLdAddr
+                      _ (evalExpr (getLdAddr _ curInst))
+                      (rf kt1 (evalExpr (getLdSrc _ curInst)))) /\
         evalExpr (getLdDst _ curInst) <> $0 /\
         (evalExpr (isMMIO _ ldAddr) = true ->
          exists kt2 mmioLdRq mmioLdRs,
@@ -280,7 +298,7 @@ Section Parametrized.
                                     (calcLdAddr
                                        _ (evalExpr (getLdAddr _ curInst))
                                        (rf kt1 (evalExpr (getLdSrc _ curInst)))))
-                               (mem kt1 ldAddr)
+                               (combineBytes dataBytes ldAddr (mem kt1))
                                (evalExpr (getLdType type curInst)))
                         else rf kt1 w;
                     pinit := true;
@@ -304,8 +322,12 @@ Section Parametrized.
       + FMap.mred; eassumption.
       + reflexivity.
       + reflexivity.
-      + exfalso; clear -H Heqic; congruence.
-      + exfalso; clear -H Heqic; congruence.
+      + exfalso; clear -H Heqic.
+        unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
+        congruence.
+      + exfalso; clear -H Heqic.
+        unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
+        congruence.
 
     - kinv_red.
       unfold pRegsToT in *.
@@ -316,8 +338,11 @@ Section Parametrized.
       repeat split.
       + assumption.
       + assumption.
-      + intros; exfalso; clear -H Heqic; congruence.
-      + intros; repeat esplit; assumption.
+      + intros; exfalso; clear -H Heqic.
+        unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
+        congruence.
+      + intros; repeat esplit; try assumption.
+        rewrite memLoadBytes_combineBytes; reflexivity.
   Qed.
 
   Lemma invert_Kami_execLdZ:
@@ -329,11 +354,9 @@ Section Parametrized.
       exists curInst ldAddr,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         ldAddr = evalExpr
-                   (alignLdAddr
-                      _ (evalExpr
-                           (calcLdAddr
-                              _ (evalExpr (getLdAddr _ curInst))
-                              (rf kt1 (evalExpr (getLdSrc _ curInst)))))) /\
+                   (calcLdAddr
+                      _ (evalExpr (getLdAddr _ curInst))
+                      (rf kt1 (evalExpr (getLdSrc _ curInst)))) /\
         evalExpr (getLdDst _ curInst) = $0 /\
         (evalExpr (isMMIO _ ldAddr) = true ->
          exists kt2 mmioLdRq mmioLdRs,
@@ -377,7 +400,9 @@ Section Parametrized.
       + FMap.mred; eassumption.
       + reflexivity.
       + reflexivity.
-      + exfalso; clear -H Heqic; congruence.
+      + exfalso; clear -H Heqic.
+        unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
+        congruence.
     - kinv_red.
       unfold pRegsToT in *.
       kregmap_red.
@@ -386,7 +411,9 @@ Section Parametrized.
       do 2 eexists.
       repeat split.
       + assumption.
-      + intros; exfalso; clear -H Heqic; congruence.
+      + intros; exfalso; clear -H Heqic.
+        unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
+        congruence.
       + intros; repeat esplit; assumption.
   Qed.
 
@@ -429,9 +456,8 @@ Section Parametrized.
                     rf := rf kt1;
                     pinit := true;
                     pgm := pgm kt1;
-                    mem :=
-                      fun w =>
-                        if weq w stAddr then stVal else mem kt1 w |}).
+                    mem := updateBytes dataBytes stAddr stVal (mem kt1)
+                 |}).
   Proof.
     intros.
     kinvert_more.
@@ -448,8 +474,12 @@ Section Parametrized.
       + reflexivity.
       + reflexivity.
       + reflexivity.
-      + exfalso; clear -H Heqic; congruence.
-      + exfalso; clear -H Heqic; congruence.
+      + exfalso; clear -H Heqic.
+        unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
+        congruence.
+      + exfalso; clear -H Heqic.
+        unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
+        congruence.
     - kinv_red.
       unfold pRegsToT in *.
       kregmap_red.
@@ -457,8 +487,11 @@ Section Parametrized.
       repeat split.
       do 3 eexists.
       repeat split.
-      + intros; exfalso; clear -H Heqic; congruence.
-      + intros; repeat esplit; assumption.
+      + intros; exfalso; clear -H Heqic.
+        unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
+        congruence.
+      + intros; repeat esplit; try assumption.
+        rewrite memStoreBytes_updateBytes; reflexivity.
   Qed.
 
   Lemma invert_Kami_execNm:
@@ -507,22 +540,6 @@ Definition width: Z := 32.
 Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
 Local Notation nwidth := (Z.to_nat width).
 
-Axiom TODO_joonwon: False.
-
-Instance rv32MMIO: AbsMMIO nwidth.
-  case TODO_joonwon.
-Defined.
-
-Lemma pgm_init_not_mmio:
-  forall ninstrMemSizeLg
-         (Haddr: nwidth = (2 + ninstrMemSizeLg
-                           + (nwidth - (2 + ninstrMemSizeLg)))%nat),
-    Kami.Ex.SCMMInv.PgmInitNotMMIO
-      (rv32Fetch nwidth ninstrMemSizeLg Haddr) rv32MMIO.
-Proof.
-  case TODO_joonwon.
-Qed.
-
 Section PerInstAddr.
   Context {instrMemSizeLg: Z}.
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
@@ -546,11 +563,12 @@ Section PerInstAddr.
 
   Definition procInit: ProcInit ninstrMemSizeLg rv32DataBytes rv32RfIdx :=
     {| pcInit := pcInitVal; rfInit := rfInitVal |}.
-  Variable (memInit: MemInit nwidth rv32DataBytes).
+  Variables (memInit: MemInit nwidth)
+            (rv32MMIO: AbsMMIO nwidth).
 
   Definition procInl :=
     pprocInl (rv32Fetch _ _ width_inst_valid)
-             (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
+             (rv32Dec _) (rv32Exec _ _)
              rv32MMIO procInit memInit.
   Definition proc: Kami.Syntax.Modules := projT1 procInl.
 
@@ -587,7 +605,7 @@ Section PerInstAddr.
 
   Definition p4mm: Kami.Syntax.Modules :=
     p4mm (rv32Fetch _ _ width_inst_valid)
-         (rv32Dec _) (rv32Exec _ _ eq_refl eq_refl)
+         (rv32Dec _) (rv32Exec _ _)
          rv32MMIO getBTBIndex getBTBTag
          procInit memInit.
 
@@ -599,3 +617,19 @@ Section PerInstAddr.
   Qed.
 
 End PerInstAddr.
+
+Require Import coqutil.Z.HexNotation.
+
+(* NOTE: this definition should be consistent to the one in
+ * [riscv-coq/src/riscv/Platform/FE310ExtSpec.v]. *)
+Definition Kx n := ZToWord nwidth (Ox n).
+Instance kami_FE310_AbsMMIO: AbsMMIO (Z.to_nat width) :=
+  {| isMMIO :=
+       fun _ addr =>
+         ((UniBit (Trunc 2 30) # (addr) == $$(WO~0~0))
+            && (($$(Kx"00020000") <= #addr) && (#addr <= $$(Kx"00022000"))
+                || ($$(Kx"10008000") <= #addr) && (#addr <= $$(Kx"10010000"))
+                || ($$(Kx"10012000") <= #addr) && (#addr <= $$(Kx"10013000"))
+                || ($$(Kx"10013000") <= #addr) && (#addr <= $$(Kx"10014000"))))%kami_expr
+  |}.
+
