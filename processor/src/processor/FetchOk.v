@@ -1,4 +1,4 @@
-Require Import String.
+Require Import String BinInt.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -20,7 +20,62 @@ Require Import processor.KamiProc.
 
 Local Open Scope Z_scope.
 
-Axiom TODO_joonwon: False.
+Lemma Z_pow_add_lor:
+  forall n m p: Z,
+    0 <= n < 2 ^ p -> 0 <= m -> 0 <= p ->
+    (n + 2 ^ p * m)%Z = Z.lor n (2 ^ p * m).
+Proof.
+  intros.
+  apply eq_sym, or_to_plus.
+  rewrite Z.mul_comm, <-Z.shiftl_mul_pow2 by assumption.
+  replace n with (Z.land n (Z.ones p)).
+  - bitblast.Z.bitblast.
+    rewrite Z.testbit_neg_r with (n:= l) by blia.
+    apply Bool.andb_false_r.
+  - destruct (Z.eq_dec n 0); [subst; apply Z.land_0_l|].
+    assert (0 < n) by blia.
+    rewrite Z.land_ones_low; [reflexivity|blia|].
+    apply Z.log2_lt_pow2; blia.
+Qed.
+
+Lemma Z_of_wordToN_combine_alt:
+  forall sz1 (w1: Word.word sz1) sz2 (w2: Word.word sz2),
+    Z.of_N (wordToN (Word.combine w1 w2)) =
+    Z.lor (Z.of_N (wordToN w1)) (Z.shiftl (Z.of_N (wordToN w2)) (Z.of_N (N.of_nat sz1))).
+Proof.
+  intros.
+  rewrite wordToN_combine, N2Z.inj_add, N2Z.inj_mul.
+  assert (0 <= Z.of_N (wordToN w1) < 2 ^ (Z.of_N (N.of_nat sz1))).
+  { split; [apply N2Z.is_nonneg|].
+    clear.
+    induction w1; [simpl; blia|].
+    unfold wordToN; fold wordToN.
+    destruct b.
+    { rewrite N2Z.inj_succ, N2Z.inj_mul, Nnat.Nat2N.inj_succ.
+      rewrite N2Z.inj_succ.
+      rewrite Z.pow_succ_r by blia; blia.
+    }
+    { rewrite N2Z.inj_mul, Nnat.Nat2N.inj_succ.
+      rewrite N2Z.inj_succ.
+      rewrite Z.pow_succ_r by blia; blia.
+    }
+  }
+  assert (0 <= Z.of_N (wordToN w2)) by blia.
+  assert (0 <= Z.of_N (N.of_nat sz1)) by blia.
+
+  replace (Z.of_N (NatLib.Npow2 sz1)) with (Z.pow 2 (Z.of_N (N.of_nat sz1))).
+  - generalize dependent (Z.of_N (wordToN w1)).
+    generalize dependent (Z.of_N (wordToN w2)).
+    generalize dependent (Z.of_N (N.of_nat sz1)).
+    intros p ? z1 ? z2 ?.
+    rewrite Z.shiftl_mul_pow2 by assumption.
+    rewrite Z.mul_comm with (n:= z1).
+    apply Z_pow_add_lor; assumption.
+  - clear; induction sz1; [reflexivity|].
+    rewrite Nnat.Nat2N.inj_succ, N2Z.inj_succ.
+    unfold NatLib.Npow2; fold NatLib.Npow2.
+    rewrite Z.pow_succ_r by blia; blia.
+Qed.
 
 Lemma evalExpr_bit_eq_rect:
   forall n1 n2 (Hn: n1 = n2) e,
@@ -30,6 +85,30 @@ Proof.
   intros; subst.
   do 2 rewrite <-(Eqdep_dec.eq_rect_eq_dec eq_nat_dec).
   reflexivity.
+Qed.
+
+Lemma Z_lor_of_N:
+  forall n m,
+    Z.lor (Z.of_N n) (Z.of_N m) = Z.of_N (N.lor n m).
+Proof.
+  intros.
+  cbv [Z.lor N.lor].
+  destruct n, m; reflexivity.
+Qed.
+
+Lemma Z_shiftl_of_N:
+  forall n sh,
+    Z.shiftl (Z.of_N n) (Z.of_N sh) = Z.of_N (N.shiftl n sh).
+Proof.
+  intros.
+  destruct n; [simpl; apply Z.shiftl_0_l|].
+  simpl.
+  cbv [Z.shiftl Pos.shiftl].
+  destruct sh; simpl; [reflexivity|].
+  revert p.
+  induction p0; intros; auto.
+  - simpl; do 2 rewrite IHp0; reflexivity.
+  - simpl; do 2 rewrite IHp0; reflexivity.
 Qed.
 
 Lemma ZToWord_zero:
@@ -181,6 +260,44 @@ Section FetchOk.
     reflexivity.
   Qed.
 
+  Lemma getmany_of_tuple_combineBytes_consistent:
+    forall kmem rmem rpc,
+      mem_related kmem rmem ->
+      exists rinst : HList.tuple byte 4,
+        map.getmany_of_tuple rmem (Memory.footprint rpc 4) = Some rinst /\
+        combine 4 rinst = kunsigned (width:= 32) (SC.combineBytes 4 rpc kmem).
+  Proof.
+    intros.
+    cbv [Memory.footprint HList.tuple.unfoldn].
+    eexists; split.
+    - instantiate (1:= {| PrimitivePair.pair._1 := _;
+                          PrimitivePair.pair._2 := _ |}).
+      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H|].
+      cbv [PrimitivePair.pair._2].
+      instantiate (1:= {| PrimitivePair.pair._1 := _;
+                          PrimitivePair.pair._2 := _ |}).
+      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H|].
+      cbv [PrimitivePair.pair._2].
+      instantiate (1:= {| PrimitivePair.pair._1 := _;
+                          PrimitivePair.pair._2 := _ |}).
+      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H|].
+      cbv [PrimitivePair.pair._2].
+      instantiate (1:= {| PrimitivePair.pair._1 := _;
+                          PrimitivePair.pair._2 := _ |}).
+      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H|].
+      cbv [PrimitivePair.pair._2].
+      reflexivity.
+
+    - cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2
+                   word.unsigned byte WordsKami word8 KamiWord.word kunsigned
+                   SC.combineBytes].
+      rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 24%nat).
+      rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 16%nat).
+      rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 8%nat).
+      rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 0%nat).
+      reflexivity.
+  Qed.
+
   Lemma fetch_ok:
     forall (kmemi: kword instrMemSizeLg -> kword width)
            (kmemd: kword width -> kword 8)
@@ -199,13 +316,9 @@ Section FetchOk.
     intros.
     specialize (Hxs _ H); destruct Hxs.
     specialize (H3 _ H0).
-
-    pose proof (H1 rpc) as Hrinst0.
-    pose proof (H1 (rpc ^+ $1)) as Hrinst1.
-    pose proof (H1 (rpc ^+ $2)) as Hrinst2.
-    pose proof (H1 (rpc ^+ $3)) as Hrinst3.
-    
-    case TODO_joonwon.
+    rewrite <-H3.
+    eapply getmany_of_tuple_combineBytes_consistent.
+    assumption.
   Qed.
 
 End FetchOk.
