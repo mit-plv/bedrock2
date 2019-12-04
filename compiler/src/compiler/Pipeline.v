@@ -72,8 +72,8 @@ Module Import Pipeline.
     FlattenExpr.NGstate := NGstate;
   }.
 
-  Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.FlatToRiscv.parameters := {|
-    FlatToRiscvCommon.FlatToRiscv.ext_spec := ext_spec;
+  Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.parameters := {|
+    FlatToRiscvCommon.ext_spec := ext_spec;
   |}.
 
   Class assumptions{p: parameters}: Prop := {
@@ -81,7 +81,7 @@ Module Import Pipeline.
     locals_ok :> map.ok locals;
     funname_env_ok :> forall T, map.ok (funname_env T);
     PR :> MetricPrimitives PRParams;
-    FlatToRiscv_hyps :> FlatToRiscvCommon.FlatToRiscv.assumptions;
+    FlatToRiscv_hyps :> FlatToRiscvCommon.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
   }.
 
@@ -160,6 +160,9 @@ Section Pipeline1.
     eapply Z.le_trans; eassumption.
   Qed.
 
+  Hypothesis no_ext_calls: forall t mGive action argvals outcome,
+      ext_spec t mGive action argvals outcome -> False.
+
   Lemma exprImp2Riscv_correct: forall sH mH mcH t instsL (initialL: RiscvMachineL) post R,
       ExprImp.cmd_size sH < 2 ^ 10 ->
       enough_registers sH ->
@@ -192,6 +195,7 @@ Section Pipeline1.
                               map.extends l l' /\
                               (mc - mcH <= mc' - mcH)%metricsH)
                ); try reflexivity.
+      + assumption.
       + eapply FlatImp.exec.weaken.
         * match goal with
           | |- _ ?env ?s ?t ?m ?l ?mc ?post =>

@@ -26,6 +26,13 @@ Set Implicit Arguments.
 Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Prop :=
   forall instr, In instr prog -> verify instr iset.
 
+(* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
+Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
+
+Lemma valid_FlatImp_var_implies_valid_register: forall (x: Register),
+    valid_FlatImp_var x -> valid_register x.
+Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
+
 Module Import FlatToRiscvDef.
 
   Class parameters := {
@@ -38,8 +45,8 @@ Module Import FlatToRiscvDef.
     (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
        be elsewhere *)
     compile_ext_call_emits_valid: forall iset binds a args,
-      Forall valid_register binds ->
-      Forall valid_register args ->
+      Forall valid_FlatImp_var binds ->
+      Forall valid_FlatImp_var args ->
       valid_instructions iset (compile_ext_call binds a args)
   }.
 
@@ -69,13 +76,6 @@ Section FlatToRiscv1.
     | CondBinary _ x y => valid_register x /\ valid_register y
     | CondNez x => valid_register x
     end.
-
-  (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
-  Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
-
-  Lemma valid_FlatImp_var_implies_valid_register: forall (x: Register),
-      valid_FlatImp_var x -> valid_register x.
-  Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
 
   Definition valid_FlatImp_vars_bcond (cond: bcond) : Prop :=
     match cond with

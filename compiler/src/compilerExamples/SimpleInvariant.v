@@ -20,7 +20,6 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvLiterals.
 Require Import riscv.Utility.InstructionCoercions.
-Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Spec.Machine.
@@ -35,8 +34,8 @@ Ltac specialize_hyp H :=
          end.
 
 Section Proofs.
-  Context {p: FlatToRiscv.parameters}.
-  Context {h: FlatToRiscv.assumptions}.
+  Context {p: FlatToRiscvCommon.parameters}.
+  Context {h: FlatToRiscvCommon.assumptions}.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -102,8 +101,8 @@ Require compilerExamples.MMIO.
 Require Import riscv.Platform.FE310ExtSpec.
 
 Section PrintExamples.
-  Context {p: FlatToRiscv.parameters}.
-  Context {h: FlatToRiscv.assumptions}.
+  Context {p: FlatToRiscvCommon.parameters}.
+  Context {h: FlatToRiscvCommon.assumptions}.
 
   Import MonadNotations.
   Import HexNotation.
@@ -127,6 +126,12 @@ Section PrintExamples.
     unfold isOTP, isPRCI, isGPIO0, isUART0 in *.
 
     set (test := (isMMIOAddr (word.of_Z (Ox "00020004")))).
+  Abort.
+
+  Goal False.
+    set (executeI := riscv.Spec.ExecuteI.execute).
+    unfold ExecuteI.execute in *.
+
   Abort.
 
 End PrintExamples.

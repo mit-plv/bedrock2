@@ -27,7 +27,7 @@ Require Import bedrock2.MetricLogging.
 
 
 Section Sim.
-  Context {p: FlatToRiscv.parameters}.
+  Context {p: FlatToRiscvCommon.parameters}.
 
   Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -58,7 +58,7 @@ Section Sim.
         g.(p_insts) = word.add g.(program_base) (word.of_Z pos) /\
         goodMachine t m l g st.
 
-  Lemma flatToRiscvSim{hyps: @FlatToRiscv.assumptions p}: forall (g: GhostConsts) (pos: Z),
+  Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}: forall (g: GhostConsts) (pos: Z),
       NoDup g.(funnames) ->
       word.unsigned g.(program_base) mod 4 = 0 ->
       simulation FlatImp.SimExec FlatToRiscvCommon.runsTo (related g pos).

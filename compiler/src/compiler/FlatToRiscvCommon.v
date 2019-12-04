@@ -53,26 +53,28 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Module Import FlatToRiscv.
-  Export FlatToRiscvDef.FlatToRiscvDef.
+Export FlatToRiscvDef.FlatToRiscvDef.
 
-  Class parameters := {
-    def_params :> FlatToRiscvDef.parameters;
+Class parameters := {
+  def_params :> FlatToRiscvDef.parameters;
 
-    locals :> map.map Register word;
-    mem :> map.map word byte;
-    funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
+  locals :> map.map Register word;
+  mem :> map.map word byte;
+  funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
 
-    M: Type -> Type;
-    MM :> Monad M;
-    RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M MetricRiscvMachine;
+  M: Type -> Type;
+  MM :> Monad M;
+  RVM :> RiscvProgram M word;
+  PRParams :> PrimitivesParams M MetricRiscvMachine;
 
-    ext_spec : list (mem * String.string * list word * (mem * list word)) ->
-               mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
-  }.
+  ext_spec : list (mem * String.string * list word * (mem * list word)) ->
+             mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
+}.
 
-  Instance Semantics_params{p: parameters}: Semantics.parameters := {|
+Section WithParameters.
+  Context {p: parameters}.
+
+  Instance Semantics_params: Semantics.parameters := {|
     Semantics.syntax := FlatToRiscvDef.mk_Syntax_params _;
     Semantics.varname_eqb := Z.eqb;
     Semantics.funname_eqb := String.eqb;
@@ -81,7 +83,51 @@ Module Import FlatToRiscv.
     Semantics.funname_env := funname_env;
   |}.
 
-  Class assumptions{p: parameters}: Prop := {
+  Definition regs_initialized(regs: locals): Prop :=
+    forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
+
+  Section WithLocalsOk.
+    Context {locals_ok: map.ok locals}.
+
+    Lemma regs_initialized_put: forall l x v,
+        regs_initialized l ->
+        regs_initialized (map.put l x v).
+    Proof.
+      unfold regs_initialized in *.
+      intros.
+      rewrite map.get_put_dec.
+      destruct_one_match; eauto.
+    Qed.
+
+    Lemma preserve_regs_initialized_after_put: forall regs var val,
+        regs_initialized regs ->
+        regs_initialized (map.put regs var val).
+    Proof.
+      unfold regs_initialized. intros. specialize (H _ H0).
+      rewrite map.get_put_dec. destruct_one_match; subst; eauto.
+    Qed.
+
+    Lemma preserve_regs_initialized_after_putmany_of_list_zip: forall vars vals (regs regs': locals),
+        regs_initialized regs ->
+        map.putmany_of_list_zip vars vals regs = Some regs' ->
+        regs_initialized regs'.
+    Proof.
+      induction vars; intros.
+      - simpl in H0. destruct vals; try discriminate.
+        replace regs' with regs in * by congruence. assumption.
+      - simpl in H0.
+        destruct vals; try discriminate.
+        eapply IHvars. 2: eassumption.
+        eapply preserve_regs_initialized_after_put.
+        eassumption.
+    Qed.
+
+  End WithLocalsOk.
+
+  Definition runsTo: MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
+    runsTo (mcomp_sat (run1 iset)).
+
+  Class assumptions: Prop := {
     word_riscv_ok :> word.riscv_ok (@word W);
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
@@ -89,34 +135,54 @@ Module Import FlatToRiscv.
 
     PR :> MetricPrimitives PRParams;
 
-    compile_ext_call_correct: forall (initialL: MetricRiscvMachine) action postH newPc insts
-        (argvars resvars: list Register) initialMH initialMetricsH R Rexec,
+    compile_ext_call_correct: forall (initialL: MetricRiscvMachine)
+        action postH newPc insts (argvars resvars: list Register) initialMH R Rexec initialRegsH
+        argvals mGive outcome p_sp,
       insts = compile_ext_call resvars action argvars ->
-      newPc = word.add initialL.(getPc) (word.mul (word.of_Z 4)
-                                                  (word.of_Z (Z.of_nat (List.length insts)))) ->
-      Forall valid_register argvars ->
-      Forall valid_register resvars ->
+      newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
+      map.extends initialL.(getRegs) initialRegsH ->
+      Forall valid_FlatImp_var argvars ->
+      Forall valid_FlatImp_var resvars ->
       subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) insts * Rexec * eq initialMH * R)%sep initialL.(getMem) ->
+      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
+      (forall x v, map.get initialRegsH x = Some v -> valid_FlatImp_var x) ->
+      regs_initialized initialL.(getRegs) ->
       valid_machine initialL ->
-      exec map.empty (SInteract resvars action argvars)
-           initialL.(getLog) initialMH initialL.(getRegs) initialMetricsH postH ->
-      runsTo (mcomp_sat (run1 iset)) initialL
-             (fun finalL => exists finalMetricsH,
+      (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
+      map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
+      ext_spec initialL.(getLog) mGive action argvals outcome ->
+      (forall (resvals : list word),
+          outcome map.empty resvals ->
+          mGive = map.empty ->
+          exists (finalRegsH: locals) finalMetricsH,
+            map.putmany_of_list_zip resvars resvals initialRegsH = Some finalRegsH /\
+            postH ((map.empty, action, argvals, (map.empty, resvals)) :: initialL.(getLog))
+                  initialMH finalRegsH finalMetricsH) ->
+      runsTo initialL
+             (fun finalL =>
+                exists (finalRegsH: locals) (rvs: list word)
+                       (finalMetricsH : bedrock2.MetricLogging.MetricLog),
+                  map.extends finalL.(getRegs) finalRegsH /\
+                  map.putmany_of_list_zip resvars rvs initialL.(getRegs) = Some finalL.(getRegs) /\
+                  map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
                   (* external calls can't modify the memory for now *)
-                  postH finalL.(getLog) initialMH finalL.(getRegs) finalMetricsH /\
-                  finalL.(getXAddrs) = initialL.(getXAddrs) /\
+                  postH finalL.(getLog) initialMH finalRegsH finalMetricsH /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (word.of_Z 4) /\
-                  finalL.(getMem) = initialL.(getMem) /\
-                  (finalL.(getMetrics) - initialL.(getMetrics) <=
-                   lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
+                  subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+                         (of_list finalL.(getXAddrs)) /\
+                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  (forall x v, map.get finalRegsH x = Some v -> valid_FlatImp_var x) /\
+                  regs_initialized finalL.(getRegs) /\
                   valid_machine finalL);
   }.
 
-End FlatToRiscv.
+End WithParameters.
+
+Existing Instance Semantics_params.
 
 Arguments Z.mul: simpl never.
 Arguments Z.add: simpl never.
@@ -169,8 +235,8 @@ Ltac simpl_bools :=
 
 
 Section FlatToRiscv1.
-  Context {p: unique! FlatToRiscv.parameters}.
-  Context {h: unique! FlatToRiscv.assumptions}.
+  Context {p: unique! parameters}.
+  Context {h: unique! assumptions}.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
@@ -383,9 +449,6 @@ Section FlatToRiscv1.
     - eapply (run_compile_store Syntax.access_size.word); cycle -2; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
   Qed.
-
-  Definition runsTo: RiscvMachineL -> (RiscvMachineL -> Prop) -> Prop :=
-    runsTo (mcomp_sat (run1 iset)).
 
   Lemma one_step: forall initialL P,
       mcomp_sat (run1 iset) initialL P ->

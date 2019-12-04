@@ -22,7 +22,6 @@ Require Import compiler.RunInstruction.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvLiterals.
-Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import compiler.load_save_regs_correct.
 Require Import compiler.eqexact.
 Require Import compiler.RiscvWordProperties.
@@ -33,11 +32,9 @@ Require Import coqutil.Map.TestLemmas.
 
 Import Utility MetricLogging.
 
-Axiom TODO_sam: False.
-
 Section Proofs.
-  Context {p: FlatToRiscv.parameters}.
-  Context {h: FlatToRiscv.assumptions}.
+  Context {p: FlatToRiscvCommon.parameters}.
+  Context {h: FlatToRiscvCommon.assumptions}.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -343,89 +340,6 @@ Section Proofs.
                repeat match goal with x := _ |- _ => subst x end;
                blia
     end.
-
-  Definition regs_initialized(regs: locals): Prop :=
-    forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
-
-  Lemma regs_initialized_put: forall l x v,
-      regs_initialized l ->
-      regs_initialized (map.put l x v).
-  Proof.
-    unfold regs_initialized in *.
-    intros.
-    rewrite map.get_put_dec.
-    destruct_one_match; eauto.
-  Qed.
-
-  Lemma preserve_regs_initialized_after_put: forall regs var val,
-    regs_initialized regs ->
-    regs_initialized (map.put regs var val).
-  Proof.
-    unfold regs_initialized. intros. specialize (H _ H0).
-    rewrite map.get_put_dec. destruct_one_match; subst; eauto.
-  Qed.
-
-  Lemma preserve_regs_initialized_after_putmany_of_list_zip: forall vars vals (regs regs': locals),
-      regs_initialized regs ->
-      map.putmany_of_list_zip vars vals regs = Some regs' ->
-      regs_initialized regs'.
-  Proof.
-    induction vars; intros.
-    - simpl in H0. destruct vals; try discriminate.
-      replace regs' with regs in * by congruence. assumption.
-    - simpl in H0.
-      destruct vals; try discriminate.
-      eapply IHvars. 2: eassumption.
-      eapply preserve_regs_initialized_after_put.
-      eassumption.
-  Qed.
-
-  (* TODO make sure it's compatible with users of it *)
-  Lemma compile_ext_call_correct_new: forall (initialL: RiscvMachineL)
-        action postH newPc insts (argvars resvars: list Register) initialMH R Rexec initialRegsH
-        initialMetricsH argvals mGive outcome p_sp,
-      insts = compile_ext_call resvars action argvars ->
-      newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
-      map.extends initialL.(getRegs) initialRegsH ->
-      Forall valid_FlatImp_var argvars ->
-      Forall valid_FlatImp_var resvars ->
-      subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
-             (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
-      (forall x v, map.get initialRegsH x = Some v -> valid_FlatImp_var x) ->
-      regs_initialized initialL.(getRegs) ->
-      valid_machine initialL ->
-      (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
-      map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
-      ext_spec initialL.(getLog) mGive action argvals outcome ->
-      (forall (resvals : list word),
-          outcome map.empty resvals ->
-          mGive = map.empty ->
-          exists (finalRegsH: locals) finalMetricsH,
-            map.putmany_of_list_zip resvars resvals initialRegsH = Some finalRegsH /\
-            postH ((map.empty, action, argvals, (map.empty, resvals)) :: initialL.(getLog))
-                  initialMH finalRegsH finalMetricsH) ->
-      runsTo initialL
-             (fun finalL =>
-                exists (finalRegsH: locals) (rvs: list word) finalMetricsH,
-                  map.extends finalL.(getRegs) finalRegsH /\
-                  map.putmany_of_list_zip resvars rvs initialL.(getRegs) = Some finalL.(getRegs) /\
-                  map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
-                  (* external calls can't modify the memory for now *)
-                  postH finalL.(getLog) initialMH finalRegsH finalMetricsH /\
-                  finalL.(getPc) = newPc /\
-                  finalL.(getNextPc) = add newPc (word.of_Z 4) /\
-                  subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
-                         (of_list finalL.(getXAddrs)) /\
-                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
-                  (finalL.(getMetrics) - initialL.(getMetrics) <=
-                   lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
-                  (forall x v, map.get finalRegsH x = Some v -> valid_FlatImp_var x) /\
-                  regs_initialized finalL.(getRegs) /\
-                  valid_machine finalL).
-  Proof. case TODO_sam. Qed.
 
   (* Ghost state used to describe low-level state introduced by the compiler.
      Called "ghost constants" because after executing a piece of code emitted by
@@ -787,9 +701,9 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct_new/SInteract".
       eapply runsTo_weaken.
-      + eapply compile_ext_call_correct_new with
+      + eapply compile_ext_call_correct with
             (postH := fun t' m' l' mc' => post t' m (* <- not m' because unchanged *) l' mc')
-            (action := action) (argvars := argvars) (resvars := resvars);
+            (action0 := action) (argvars0 := argvars) (resvars0 := resvars);
           simpl; reflexivity || eassumption || ecancel_assumption || idtac.
         * eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
         * eapply map.getmany_of_list_extends; try eassumption.

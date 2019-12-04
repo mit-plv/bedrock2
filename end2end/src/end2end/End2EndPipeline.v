@@ -116,7 +116,7 @@ Section Connect.
   - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
   - refine (@MMIO.FlatToRiscv_hyps _).
   - pose proof FE310CSemantics.ext_spec_ok.
-    cbv [FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec Pipeline.FlatToRisvc_params Pipeline.ext_spec pipeline_params].
+    cbv [FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec Pipeline.FlatToRisvc_params Pipeline.ext_spec pipeline_params].
     abstract (destruct H; split; eauto).
   Defined.
 

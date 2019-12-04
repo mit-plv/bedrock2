@@ -51,7 +51,7 @@ Instance MetricMinimalMMIOPrimitivesParams':
   MetricMinimalMMIOPrimitivesParams.
 
 Instance pipeline_params: Pipeline.parameters := {
-  Pipeline.ext_spec := FlatToRiscvCommon.FlatToRiscv.ext_spec;
+  Pipeline.ext_spec := FlatToRiscvCommon.ext_spec;
   Pipeline.PRParams := MetricMinimalMMIOPrimitivesParams;
   Pipeline.RVM := MetricMinimalMMIO.IsRiscvMachine;
 }.
@@ -81,7 +81,7 @@ Proof.
   esplit; try exact _.
   { exact MetricMinimalMMIOSatisfiesPrimitives. }
   { exact FlatToRiscv_hyps. }
-  cbv [FlatToRiscvCommon.FlatToRiscv.Semantics_params FlatToRiscvCommon.FlatToRiscv.ext_spec Pipeline.FlatToRisvc_params Pipeline.ext_spec pipeline_params FlatToRiscv_params].
+  cbv [FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec Pipeline.FlatToRisvc_params Pipeline.ext_spec pipeline_params FlatToRiscv_params].
 
   pose proof FE310CSemantics.ext_spec_ok as H.
   cbv [FE310CSemantics.semantics_parameters] in H.

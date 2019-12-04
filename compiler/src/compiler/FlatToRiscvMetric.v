@@ -20,15 +20,14 @@ Require Import compiler.FlatImp.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
-Import compiler.FlatToRiscvCommon.FlatToRiscv.
 Require Import compiler.FlatToRiscvLiterals.
 Import Utility.
 
 Open Scope ilist_scope.
 
 Section Proofs.
-  Context {p: FlatToRiscv.parameters}.
-  Context {h: FlatToRiscv.assumptions}.
+  Context {p: FlatToRiscvCommon.parameters}.
+  Context {h: FlatToRiscvCommon.assumptions}.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -72,6 +71,9 @@ Section Proofs.
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
       | wcancel_assumption ].
 
+  Hypothesis no_ext_calls: forall t mGive action argvals outcome,
+      ext_spec t mGive action argvals outcome -> False.
+
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
     FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
@@ -112,15 +114,7 @@ Section Proofs.
       simp.
 
     - (* SInteract *)
-      eapply runsTo_weaken.
-      + eapply compile_ext_call_correct with (postH := post) (action0 := action)
-                            (initialMH := m) (argvars0 := argvars) (resvars0 := resvars);
-          try sidecondition.
-        eapply @exec.interact; try eassumption.
-      + simpl. intros finalL A. destruct_RiscvMachine finalL.
-        simpl_MetricRiscvMachine_get_set. simpl in *.
-        destruct_products. subst. exists m. exists finalMetricsH.
-        repeat (split; try eassumption).
+      exfalso. eapply no_ext_calls. eassumption.
 
     - (* SCall *)
       lazymatch goal with

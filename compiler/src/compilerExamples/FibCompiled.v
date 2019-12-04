@@ -187,7 +187,7 @@ Section FibCompiled.
     reflexivity.
   Qed.
 
-  Lemma sep_inline_eq: forall (A R: FlatToRiscv.mem -> Prop) m1,
+  Lemma sep_inline_eq: forall (A R: FlatToRiscvCommon.mem -> Prop) m1,
     (exists m2, (R * eq m2)%sep m1 /\ A m2) <->
     (R * A)%sep m1.
   Proof.
@@ -318,14 +318,15 @@ Section FibCompiled.
       instructionsH mc' = instructionsH mc + 5));
       [exec_set_solve|].
     intros.
+
     eapply @exec.seq with (mid := (fun t' m' (l': locals) mc' =>
       t' = t /\
       R m' /\
-      map.get l' FibonacciServer.a = Some b /\
-      map.get l' FibonacciServer.b = Some b /\
-      map.get l' FibonacciServer.c = Some (word.add a b) /\
-      map.get l' FibonacciServer.i = Some i /\
-      map.get l' FibonacciServer.n = Some n /\
+      map.get l' (@FibonacciServer.a Basic32Syntax _) = Some b /\
+      map.get l' (@FibonacciServer.b Basic32Syntax _)  = Some b /\
+      map.get l' (@FibonacciServer.c Basic32Syntax _)  = Some (word.add a b) /\
+      map.get l' (@FibonacciServer.i Basic32Syntax _)  = Some i /\
+      map.get l' (@FibonacciServer.n Basic32Syntax _)  = Some n /\
       instructionsH mc' = instructionsH mc + 7));
       [exec_set_solve|].
     intros.
@@ -368,7 +369,9 @@ Section FibCompiled.
       + repeat split.
         * assumption.
         * simpl. Lia.blia.
-        * replace n with i by blia. rewrite H4. repeat f_equal. rewrite Nat.add_1_r. reflexivity.
+        * replace n with i by blia.
+          rewrite Nat.add_1_r.
+          etransitivity; [ eassumption | reflexivity ].
     - intros.
       eapply @exec.while_true.
       + eval_var_solve.
@@ -385,8 +388,10 @@ Section FibCompiled.
         eapply weaken_exec.
         * eapply IHiter with (nl := nl) (ns := ns); try (reflexivity || eassumption).
           -- blia.
-          -- rewrite H9. f_equal. f_equal. f_equal. blia.
-          -- rewrite H10. f_equal. replace (S i) with (n - iter)%nat by blia. rewrite H1.
+          -- etransitivity; [eassumption|].
+             f_equal. f_equal. f_equal. blia.
+          -- etransitivity; [eassumption|].
+             f_equal. replace (S i) with (n - iter)%nat by blia. rewrite H1.
              assert (n - iter > 0)%nat by blia.
              pose proof fib_invert as Hfib.
              specialize Hfib with (n := (n - S iter)%nat).
@@ -396,7 +401,8 @@ Section FibCompiled.
                 blia.
              ++ replace (S (n - S iter))%nat with (n - iter)%nat in Hfib; [|blia].
                 symmetry. apply Hfib.
-          -- rewrite H11. f_equal. rewrite H1.
+          -- etransitivity; [eassumption|].
+             f_equal. rewrite H1.
              simpl. f_equal.
              rewrite Z.mod_small; [|blia].
              rewrite Z.mod_small; [|blia].
@@ -653,6 +659,7 @@ Section FibCompiled.
       specialize Hp with (sH := fib_ExprImp nl ns)
                          (mcH := bedrock2.MetricLogging.EmptyMetricLog).
       eapply Hp.
+      + clear. intros. exact H.
       + simpl. blia.
       + cbv. intuition congruence.
       + reflexivity.

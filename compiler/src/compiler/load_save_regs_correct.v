@@ -15,8 +15,8 @@ Require Import compiler.FlatToRiscvCommon.
 Import Utility.
 
 Section Proofs.
-  Context {p: FlatToRiscv.parameters}.
-  Context {h: FlatToRiscv.assumptions}.
+  Context {p: FlatToRiscvCommon.parameters}.
+  Context {h: FlatToRiscvCommon.assumptions}.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],

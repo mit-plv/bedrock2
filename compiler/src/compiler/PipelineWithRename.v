@@ -85,8 +85,8 @@ Module Import Pipeline.
     FlattenExpr.NGstate := string;
   }.
 
-  Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.FlatToRiscv.parameters := {|
-    FlatToRiscvCommon.FlatToRiscv.ext_spec := ext_spec;
+  Instance FlatToRisvc_params{p: parameters}: FlatToRiscvCommon.parameters := {|
+    FlatToRiscvCommon.ext_spec := ext_spec;
   |}.
 
   Class assumptions{p: parameters}: Prop := {
@@ -96,7 +96,7 @@ Module Import Pipeline.
     src2imp_ok :> map.ok src2imp;
     Registers_ok :> map.ok Registers;
     PR :> MetricPrimitives PRParams;
-    FlatToRiscv_hyps :> FlatToRiscvCommon.FlatToRiscv.assumptions;
+    FlatToRiscv_hyps :> FlatToRiscvCommon.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok _;
   }.
 
