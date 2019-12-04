@@ -809,7 +809,107 @@ Section Equiv.
       }
     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37: case TODO_kamiStep_instruction.
 
-    - (* case "execNmZ" *) case TODO_joonwon.
+    - (* case "execNmZ" *)
+      repeat match goal with
+      | H : (_ :: _ = _ :: _)%struct |- _ =>
+        inversion H; clear H
+      | H : SemAction _ _ _ _ _ |- _ =>
+        apply inversionSemAction in H
+      | H : Rle (Some _) = match ?x with Some _ => Rle _ | None => Meth _ end |- _ => destruct x; [|discriminate]
+      | H : Rle _ = Rle _ |- _ => inversion H; clear H
+      | H : exists _, _ |- _ => destruct H
+      | H : _ /\ _ |- _ => destruct H
+      | H : ?a = ?b :> option string |- _ =>
+          first [ subst a | subst b]
+      | H : ?a = ?b :> string |- _ =>
+          first [ subst a | subst b]
+      | H : ?a = ?b :> Action _ |- _ =>
+          first [ subst a | subst b]
+      end.
+
+      cbn [evalExpr evalUniBool evalBinBit evalConstT getDefaultConst isEq Data
+           getNextPc doExec rv32NextPc rv32Exec rv32DoExec
+           getFunct3E getFunct7E getOffsetUE getOpcodeE getOffsetShamtE getOffsetIE getRdE
+           getSrc1 getSrc2 getDst rv32Dec rv32GetSrc1 rv32GetSrc2 rv32GetDst getRs1E getRs2E getRs1ValueE getRs2ValueE getOffsetSBE
+           BitsPerByte
+           Nat.add Nat.sub
+           ] in *.
+
+      (* COQBUG(rewrite pattern matching on if/match is broken due to "hidden branch types") *)
+      repeat match goal with
+      | H : context G [if ?x then ?a else ?b] |- _ =>
+          let e := context G [@bool_rect (fun _ => _) a b x] in
+          change e in H
+      | H : context G [if ?x then ?a else ?b] |- _ =>
+          let e := context G [@sumbool_rect _ _ (fun _ => _) (fun _ => a) (fun _ => b) x] in
+          change e in H
+      end.
+
+      repeat match goal with H : _ |- _ =>
+          progress repeat rewrite ?sumbool_rect_bool_weq, <-?unsigned_eqb in H
+      end.
+
+      progress
+      repeat match goal with H: context G [Z.of_N (@wordToN ?n ?x)] |- _ =>
+      let nn := eval cbv in (Z.of_nat n) in
+      let e := context G [@kunsigned nn x] in
+      change e in H
+      end.
+ 
+      progress
+      repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
+      let e := context G [x] in
+      change e in H
+      end.
+
+      cbv [bool_rect] in *.
+
+      progress
+      repeat match goal with
+      | H : context G [if Z.eqb ?x ?y then ?a else ?b] |- _ =>
+          destruct (Z.eqb_spec x y) in *
+      | H: ?x = ?a,
+        G: ?x = ?b |- _ =>
+        let aa := eval cbv delta [a] in a in
+        let bb := eval cbv delta [b] in b in
+        let t := isZcst aa in constr_eq t true;
+        let t := isZcst bb in constr_eq t true;
+        assert_fails (constr_eq aa bb);
+        exfalso; remember x; clear -H G;
+        cbv in H; cbv in G; rewrite H in G; inversion G
+      | H: ?x = ?a,
+        G: ?x <> ?b |- _ =>
+        let aa := eval cbv delta [a] in a in
+        let bb := eval cbv delta [b] in b in
+        let t := isZcst aa in constr_eq t true;
+        let t := isZcst bb in constr_eq t true;
+        assert_fails (constr_eq aa bb);
+        clear G
+      end.
+
+      (* More symbolic evaluation... *)
+      (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
+      all: cbv [kunsigned evalUniBit] in *.
+      all:
+        repeat match goal with
+        | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
+        | H : context G [ Z.of_nat ?n ] |- _ =>
+          let nn := eval cbv in (Z.of_nat n) in
+          let e := context G [nn] in
+          change e in H
+        | H : context G [ Z.add ?x ?y ] |- _ =>
+            let t := isZcst x in constr_eq t true;
+            let t := isZcst y in constr_eq t true;
+            let z := eval cbv in (Z.add x y) in
+            let e := context G [z] in
+            change e in H
+        | H : context G [ Z.of_N (wordToN ?x) ] |- _ =>
+            let e := context G [kunsigned x] in
+            change e in H
+        end.
+
+      all : case TODO_kamiStep_instruction.
+
   Qed.
 
   Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
