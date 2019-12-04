@@ -214,11 +214,12 @@ Ltac straightline :=
   | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
-  | |- Markers.unique (Markers.left _) =>
+  | |- Markers.unique (Markers.left ?G) =>
+    change G;
     unshelve (idtac; repeat match goal with
                      | |- Markers.split (?P /\ Markers.right ?Q) =>
                        split; [eabstract (repeat straightline) | change Q]
-                     | _ => letexists
+                     | |- exists _, _ => letexists
                      end); []
   | |- Markers.split ?G => change G; split
   | |- True => exact I

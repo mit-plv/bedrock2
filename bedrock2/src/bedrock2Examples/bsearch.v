@@ -205,7 +205,7 @@ Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigne
 
 Ltac wordOps_to_ZModArith :=
   repeat first
-         [ progress (autorewrite with word_laws in *; cbv [word.wrap] in *)
+         [ progress (autorewrite with word_laws in *; cbv [word.wrap] in * )
          | rewrite Z.shiftr_div_pow2 by (apply computable_le; reflexivity)
          | rewrite Z.shiftl_mul_pow2 by (apply computable_le; reflexivity) ].
 
@@ -254,22 +254,30 @@ Proof.
     { unsigned_sidecond. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
-      repeat letexists; repeat split; repeat straightline.
+      1:split.
+      2:split.
       { SeparationLogic.ecancel_assumption. }
       { unsigned_sidecond. }
       { unsigned_sidecond. }
-      SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
+      split; repeat straightline.
+      2:split; repeat straightline.
+      2: SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { unsigned_sidecond. }
       { unsigned_sidecond. }
       { unsigned_sidecond. }
+      { trivial. }
       { SeparationLogic.ecancel_assumption. } }
     (* second branch of the if, very similar goals... *)
-    { repeat letexists. split. 1: solve [repeat straightline].
-      repeat letexists; repeat split; repeat straightline.
+    { repeat letexists. split.
+      1:split.
+      2:split.
       { SeparationLogic.ecancel_assumption. }
       { unsigned_sidecond. }
       { unsigned_sidecond. }
-      subst x8. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
+      split.
+      { unsigned_sidecond. }
+      repeat straightline; split; trivial.
+      subst x5. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { unsigned_sidecond. }
       { unsigned_sidecond. }
       { unsigned_sidecond. }
@@ -289,5 +297,3 @@ Qed.
 (* SortedListString.string_strict_order *)
 (* reconstruct_enforce *)
 (* SortedListMap *)
-
-Local Set Simplex.

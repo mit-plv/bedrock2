@@ -104,8 +104,8 @@ Definition lan9250_wait_for_boot : function :=
   byteorder = (constr:(0));
   i = (lightbulb_spec.patience); while (i) { i = (i - constr:(1));
 	  unpack! byteorder, err = lan9250_readword(constr:(Ox"64"));
-    if err { i = (i^i) };
-    if (byteorder == constr:(Ox"87654321")) { i = (i^i) }
+    if err { i = (i^i) }
+    else if (byteorder == constr:(Ox"87654321")) { i = (i^i) }
   }
   ))).
 
@@ -436,7 +436,103 @@ Section WithParameters.
     (* bitwise Z *)
   
   Admitted.
-  
+
+  Global Instance spec_of_lan9250_mac_write : ProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
+    forall t m a v,
+      (0 <= Word.Interface.word.unsigned a < 2^31) ->
+    (((WeakestPrecondition.call functions "lan9250_mac_write"))) t m [a; v]
+      (fun T M RETS =>
+      M = m /\
+      exists err, RETS = [err] /\
+      exists iol, T = iol ++ t /\
+      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
+        (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
+        (word.unsigned err = 0 /\  exists x,
+          (lan9250_write4 _ _ (word.of_Z 168) v +++
+          lan9250_write4 _ _ (word.of_Z 164) (word.or (word.of_Z (2^31)) a) +++
+          lan9250_fastread4 _ _ (word.of_Z 100) x) ioh )).
+
+  Lemma lan9250_mac_write_ok : program_logic_goal_for_function! lan9250_mac_write.
+  Proof.
+    repeat match goal with
+      | _ => straightline
+      | _ => straightline_call
+      | _ => split_if
+      | _ => rewrite word.unsigned_of_Z
+      | |- context G [word.wrap ?a] =>
+          requireZcst a;
+          let t := eval cbv in (word.wrap a) in
+          let g := context G [t] in
+          change g
+      | |- context G [Ox ?a] =>
+          let t := eval cbv in (Ox a) in
+          let g := context G [t] in
+          change g
+      | |- _ <= _ < _ => blia
+      | |- _ /\ _ => split
+    end.
+
+    all : repeat t.
+
+    intuition idtac; repeat t.
+
+    eexists.
+    rewrite app_nil_r.
+    eauto using concat_app.
+  Qed.
+
+  Global Instance spec_of_lan9250_wait_for_boot : ProgramLogic.spec_of "lan9250_wait_for_boot" := fun functions =>
+    forall t m,
+    (((WeakestPrecondition.call functions "lan9250_wait_for_boot"))) t m []
+      (fun T M RETS =>
+      M = m /\
+      exists err, RETS = [err] /\
+      exists iol, T = iol ++ t /\
+      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
+        (word.unsigned err <> 0 /\ False)
+        (word.unsigned err = 0 /\  False)).
+
+  Lemma lan9250_wait_for_boot_ok : program_logic_goal_for_function! lan9250_wait_for_boot.
+  Proof.
+    repeat straightline.
+    Import TailRecursion.
+    refine ((atleastonce ["err"; "i"; "byteorder"] (fun v T M ERR I BUSY =>
+       v = word.unsigned I /\
+       word.unsigned I <> 0 /\
+       M = m /\
+       exists tl, T = tl++t /\
+       exists th, mmio_trace_abstraction_relation th tl /\
+       lightbulb_spec.spi_read_empty _ ^* th /\
+       Z.of_nat (length th) + word.unsigned I = patience
+            ))
+            _ _ _ _ _ _ _);
+      cbn [reconstruct map.putmany_of_list HList.tuple.to_list
+           HList.hlist.foralls HList.tuple.foralls
+           HList.hlist.existss HList.tuple.existss
+           HList.hlist.apply  HList.tuple.apply
+           HList.hlist
+           List.repeat Datatypes.length
+           HList.polymorphic_list.repeat HList.polymorphic_list.length
+           PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
+    { exact (Z.lt_wf 0). }
+    { exfalso. subst i. rewrite word.unsigned_of_Z in H0; inversion H0. }
+    { admit. }
+    { straightline_call.
+      { rewrite word.unsigned_of_Z.
+        repeat match goal with
+        | |- context G [word.wrap ?a] =>
+            requireZcst a;
+            let t := eval cbv in (word.wrap a) in
+            let g := context G [t] in
+            change g
+        | |- context G [Ox ?a] =>
+            let t := eval cbv in (Ox a) in
+            let g := context G [t] in
+            change g
+        end.
+        clear; blia. }
+      repeat straightline.
+  Admitted.
   
   From coqutil Require Import Z.div_mod_to_equations.
   Lemma lan9250_readword_ok : program_logic_goal_for_function! lan9250_readword.

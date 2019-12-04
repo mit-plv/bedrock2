@@ -166,9 +166,8 @@ Section WithParameters.
     letexists. split.
     { repeat straightline. exact eq_refl. }
     (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
-    all: repeat (straightline).
-    { do 3 letexists; repeat straightline.
-      eexists; split.
+    all: repeat straightline.
+    { eexists; split.
       { repeat (split; trivial; []). subst t0.
         eexists (_ ;++ cons _ nil); split; [exact eq_refl|].
         eexists; split.
@@ -218,8 +217,7 @@ Section WithParameters.
           ring_simplify in HA; subst.
           ring_simplify.
           rewrite word.unsigned_of_Z; reflexivity. } } }
-    { do 3 letexists; repeat straightline.
-      subst i.
+    { subst i.
       rewrite Properties.word.unsigned_xor_nowrap in *; rewrite Z.lxor_nilpotent in *; contradiction. }
     (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
     1:contradiction.
@@ -308,10 +306,7 @@ Section WithParameters.
       letexists; split; [exact eq_refl|]; split; [split; trivial|].
       { case TODO_andres_mmioaddr. }
       repeat ((split; trivial; []) || straightline || split_if).
-      { repeat letexists.
-        split.
-        { repeat straightline. }
-        repeat ((split; trivial; []) || straightline || split_if).
+      { 
         letexists. split; split.
         { subst v'; exact eq_refl. }
         { split; trivial.
@@ -361,8 +356,6 @@ Section WithParameters.
             match goal with H : _ |- _ => rewrite H; ring end. }
           ring_simplify in HA; subst. rewrite Properties.word.unsigned_of_Z_1; Lia.lia. } }
       { repeat straightline.
-        repeat letexists; split.
-        { repeat straightline. }
         repeat letexists; split.
         1: split.
         { repeat straightline. }
