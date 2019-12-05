@@ -16,13 +16,32 @@ Section ListPred.
   Definition choice(P1 P2: list T -> Prop): list T -> Prop :=
     fun l => P1 l \/ P2 l.
 
-  Inductive kleene(P: list T -> Prop): list T -> Prop :=
-  | kleene_empty:
-      kleene P nil
-  | kleene_step: forall l1 l2,
-      P l1 ->
-      kleene P l2 ->
-      kleene P (l1 ;++ l2).
+  Section WithP.
+    Context (P : list T -> Prop).
+
+    Inductive kleene: list T -> Prop :=
+      | kleene_empty:
+          kleene nil
+      | kleene_step: forall l1 l2,
+          P l1 ->
+          kleene l2 ->
+          kleene (l1 ;++ l2).
+
+    Fixpoint multiple (n:nat) : list T -> Prop :=
+      match n with
+      | O => eq nil
+      | S n => concat P (multiple n)
+      end.
+
+    Lemma kleene_multiple n xs
+      (H : multiple n xs) : kleene xs.
+    Proof.
+      revert dependent xs; induction n; intros.
+      { cbn in H; subst; constructor. }
+      destruct H as (?&?&?&?&?); subst.
+      constructor; eauto.
+    Qed.
+  End WithP.
 
   (* more powerful than regex: *)
 

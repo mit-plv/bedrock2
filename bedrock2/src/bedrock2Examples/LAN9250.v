@@ -106,6 +106,7 @@ Definition lan9250_wait_for_boot : function :=
 	  unpack! byteorder, err = lan9250_readword(constr:(Ox"64"));
     if err { i = (i^i) }
     else if (byteorder == constr:(Ox"87654321")) { i = (i^i) }
+    else { err = (constr:(-1)) }
   }
   ))).
 
@@ -113,7 +114,8 @@ Definition lan9250_init : function :=
   let hw_cfg : varname := "hw_cfg" in
   let err : varname := "err" in
   ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
-	  lan9250_wait_for_boot();
+	  unpack! err = lan9250_wait_for_boot();
+    require !err;
 	  unpack! hw_cfg, err = lan9250_readword(HW_CFG);
     require !err;
     hw_cfg = (hw_cfg | constr:(Z.shiftl 1 20)); (* mustbeone *)
@@ -135,6 +137,8 @@ Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require bedrock2Examples.lightbulb_spec.
 
 Import coqutil.Map.Interface.
+Import lightbulb_spec.
+Import TailRecursion.
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -148,26 +152,7 @@ Section WithParameters.
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_fastread4 _ _ a ret ioh)).
-  
-  From coqutil Require Import letexists.
-  Local Ltac split_if :=
-    lazymatch goal with
-      |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
-      let c := eval hnf in c in
-          lazymatch c with
-          | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
-          end
-    end.
-  
-  Lemma TracePredicate__any_app_more : forall {T} P (x y : list T), (any +++ P) x -> (any +++ P) (x ++ y).
-  Proof.
-    intros.
-    cbv [any] in *.
-    destruct H as (?&?&?&?&?); subst.
-    rewrite <-app_assoc.
-    eapply concat_app; eauto.
-  Qed.
-  
+
   Global Instance spec_of_lan9250_writeword : ProgramLogic.spec_of "lan9250_writeword" := fun functions =>
     forall t m a v,
       (Ox"0" <= Word.Interface.word.unsigned a < Ox"400") ->
@@ -179,6 +164,88 @@ Section WithParameters.
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ _ a v ioh)).
+  
+  Import lightbulb_spec.
+  Definition lan9250_mac_write_trace a v ioh := exists x,
+     (lan9250_write4 _ _ (word.of_Z 168) v +++
+     lan9250_write4 _ _ (word.of_Z 164) (word.or (word.of_Z (2^31)) a) +++
+     lan9250_fastread4 _ _ (word.of_Z 100) x) ioh.
+
+  Global Instance spec_of_lan9250_mac_write : ProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
+    forall t m a v,
+      (0 <= Word.Interface.word.unsigned a < 2^31) ->
+    (((WeakestPrecondition.call functions "lan9250_mac_write"))) t m [a; v]
+      (fun T M RETS =>
+      M = m /\
+      exists err, RETS = [err] /\
+      exists iol, T = iol ++ t /\
+      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
+        (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
+        (word.unsigned err = 0 /\  lan9250_mac_write_trace a v ioh )).
+
+  Definition lan9250_boot_attempt :=
+    (fun attempt => exists v, lan9250_fastread4 parameters.byte Semantics.word (word.of_Z (Ox"64")) v attempt /\ word.unsigned v <> Ox"87654321").
+  Definition lan9250_boot_timeout := 
+    multiple lan9250_boot_attempt (Z.to_nat patience).
+  Definition lan9250_wait_for_boot_trace := 
+    lan9250_boot_attempt ^* +++
+    lan9250_fastread4 _ _ (word.of_Z (Ox"64")) (word.of_Z (Ox"87654321")).
+
+  Definition lan9250_init_trace ioh := exists cfg0,
+    let cfg' := word.or cfg0 (word.of_Z 1048576) in
+    let cfg := word.and cfg' (word.of_Z (-2097153)) in
+    (lan9250_wait_for_boot_trace  +++
+    lan9250_fastread4 _ _ (word.of_Z HW_CFG) cfg0 +++
+    lan9250_write4 parameters.byte Semantics.word (word.of_Z HW_CFG) cfg +++
+    lan9250_mac_write_trace (word.of_Z 1) (word.of_Z (Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2))))) +++
+    lan9250_write4 _ _  (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
+
+  Global Instance spec_of_lan9250_wait_for_boot : ProgramLogic.spec_of "lan9250_wait_for_boot" := fun functions =>
+    forall t m,
+    (((WeakestPrecondition.call functions "lan9250_wait_for_boot"))) t m []
+      (fun T M RETS =>
+      M = m /\
+      exists err, RETS = [err] /\
+      exists iol, T = iol ++ t /\
+      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
+        (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh \/
+        (word.unsigned err <> 0 /\ lan9250_boot_timeout ioh))
+        (word.unsigned err = 0 /\ lan9250_wait_for_boot_trace ioh)).
+  
+  Global Instance spec_of_lan9250_init : ProgramLogic.spec_of "lan9250_init" := fun functions =>
+    forall t m,
+    (((WeakestPrecondition.call functions "lan9250_init"))) t m []
+      (fun T M RETS =>
+      M = m /\
+      exists err, RETS = [err] /\
+      exists iol, T = iol ++ t /\
+      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
+        (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh \/
+        (word.unsigned err <> 0 /\ lan9250_boot_timeout ioh))
+        (word.unsigned err = 0 /\ lan9250_init_trace ioh)).
+
+  From coqutil Require Import letexists.
+  Local Ltac split_if :=
+    lazymatch goal with
+      |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
+      let c := eval hnf in c in
+          lazymatch c with
+          | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
+          end
+    end.
+
+  Lemma  multiple_expand_right : forall T P n xs,
+        @multiple T P (S n) xs <-> concat (multiple P n) P xs.
+  Admitted.
+  
+  Lemma TracePredicate__any_app_more : forall {T} P (x y : list T), (any +++ P) x -> (any +++ P) (x ++ y).
+  Proof.
+    intros.
+    cbv [any] in *.
+    destruct H as (?&?&?&?&?); subst.
+    rewrite <-app_assoc.
+    eapply concat_app; eauto.
+  Qed.
   
   Require Import bedrock2.AbsintWordToZ.
   Require Import coqutil.Tactics.rdelta.
@@ -254,6 +321,38 @@ Section WithParameters.
   From coqutil Require Import Z.div_mod_to_equations.
   Require Import bedrock2.AbsintWordToZ.
   Import Word.Properties.
+
+  Lemma lan9250_init_ok : program_logic_goal_for_function! lan9250_init.
+  Proof.
+    repeat t.
+    split_if; repeat t.
+    { rewrite ?app_nil_r; intuition idtac. }
+    straightline_call.
+    { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
+    repeat t.
+    split_if; repeat t.
+    { rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more. }
+    straightline_call.
+    { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
+    repeat t.
+    split_if; repeat t.
+    { rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more. }
+    straightline_call.
+    { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
+    repeat t.
+    split_if; repeat t.
+    { rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more. }
+    straightline_call.
+    { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
+    repeat t.
+    rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more.
+
+    right.
+    split; trivial.
+    cbv [lan9250_init_trace].
+    eexists.
+    repeat eapply concat_app; eauto.
+  Qed.
   
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
@@ -363,7 +462,6 @@ Section WithParameters.
     1:case TODO_andres_mmioaddr.
     repeat t.
 
-    Import lightbulb_spec.
     do 6 letexists.
     cbv [spi_begin spi_xchg_deaf spi_end one].
     Local Arguments st {_}.
@@ -437,21 +535,6 @@ Section WithParameters.
   
   Admitted.
 
-  Global Instance spec_of_lan9250_mac_write : ProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
-    forall t m a v,
-      (0 <= Word.Interface.word.unsigned a < 2^31) ->
-    (((WeakestPrecondition.call functions "lan9250_mac_write"))) t m [a; v]
-      (fun T M RETS =>
-      M = m /\
-      exists err, RETS = [err] /\
-      exists iol, T = iol ++ t /\
-      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
-        (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\  exists x,
-          (lan9250_write4 _ _ (word.of_Z 168) v +++
-          lan9250_write4 _ _ (word.of_Z 164) (word.or (word.of_Z (2^31)) a) +++
-          lan9250_fastread4 _ _ (word.of_Z 100) x) ioh )).
-
   Lemma lan9250_mac_write_ok : program_logic_goal_for_function! lan9250_mac_write.
   Proof.
     repeat match goal with
@@ -481,29 +564,17 @@ Section WithParameters.
     eauto using concat_app.
   Qed.
 
-  Global Instance spec_of_lan9250_wait_for_boot : ProgramLogic.spec_of "lan9250_wait_for_boot" := fun functions =>
-    forall t m,
-    (((WeakestPrecondition.call functions "lan9250_wait_for_boot"))) t m []
-      (fun T M RETS =>
-      M = m /\
-      exists err, RETS = [err] /\
-      exists iol, T = iol ++ t /\
-      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
-        (word.unsigned err <> 0 /\ False)
-        (word.unsigned err = 0 /\  False)).
-
   Lemma lan9250_wait_for_boot_ok : program_logic_goal_for_function! lan9250_wait_for_boot.
   Proof.
     repeat straightline.
-    Import TailRecursion.
     refine ((atleastonce ["err"; "i"; "byteorder"] (fun v T M ERR I BUSY =>
        v = word.unsigned I /\
        word.unsigned I <> 0 /\
        M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
-       lightbulb_spec.spi_read_empty _ ^* th /\
-       Z.of_nat (length th) + word.unsigned I = patience
+       exists n, (multiple lan9250_boot_attempt n) th /\
+       Z.of_nat n + word.unsigned I = patience
             ))
             _ _ _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
@@ -516,7 +587,10 @@ Section WithParameters.
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
     { exact (Z.lt_wf 0). }
     { exfalso. subst i. rewrite word.unsigned_of_Z in H0; inversion H0. }
-    { admit. }
+    { subst i; repeat t.
+      { rewrite word.unsigned_of_Z. intro X. inversion X. }
+      exists O; cbn; split; trivial.
+      rewrite word.unsigned_of_Z. exact eq_refl. }
     { straightline_call.
       { rewrite word.unsigned_of_Z.
         repeat match goal with
@@ -532,7 +606,82 @@ Section WithParameters.
         end.
         clear; blia. }
       repeat straightline.
-  Admitted.
+      split_if.
+      { 
+        repeat (t; []); split.
+        { intro X. exfalso. eapply X. subst i. rewrite word.unsigned_xor.
+          rewrite Z.lxor_nilpotent. exact eq_refl. }
+        repeat t; eauto using TracePredicate__any_app_more.
+      }
+      repeat straightline.
+      split_if; repeat t.
+      { exfalso. eapply H9. subst i. rewrite word.unsigned_xor.
+        rewrite Z.lxor_nilpotent. exact eq_refl. }
+      { right.
+        split; trivial.
+        cbv [lan9250_wait_for_boot_trace].
+        rewrite app_nil_r.
+        eapply concat_app; eauto using kleene_multiple.
+        destruct (word.eqb_spec x5 (word.of_Z 2271560481)); subst.
+        2: { subst v0. rewrite word.unsigned_of_Z in H3; case (H3 eq_refl). }
+        eassumption. }
+      { eexists. split.
+        1: split; [exact eq_refl|].
+        2: {
+          pose proof word.unsigned_range i.
+          pose proof word.unsigned_range x0.
+          subst v. subst i.
+          rewrite word.unsigned_sub, word.unsigned_of_Z.
+          change (word.wrap 1) with 1.
+          change Semantics.width with 32 in *.
+          cbv [word.wrap]; rewrite Z.mod_small; blia. }
+        repeat t.
+        rewrite app_nil_r.
+        eexists (S _).
+        split.
+        { eapply multiple_expand_right, concat_app; eauto.
+          destruct (word.eqb_spec x5 (word.of_Z 2271560481)); subst.
+          { subst v0. rewrite word.unsigned_of_Z in H3. inversion H3. }
+          eexists. split; eauto.
+          intro X.
+          eapply H10.
+          eapply word.unsigned_inj; rewrite word.unsigned_of_Z.
+          setoid_rewrite X.
+          exact eq_refl. }
+        rewrite <-H6.
+        rewrite Znat.Nat2Z.inj_succ.
+        subst i.
+        rewrite word.unsigned_sub, word.unsigned_of_Z.
+        pose proof word.unsigned_range x0.
+        change (word.wrap 1) with 1.
+        change Semantics.width with 32 in *.
+        cbv [word.wrap]; rewrite Z.mod_small; try blia. }
+      { left. right.
+        split. { intro X. subst err. rewrite word.unsigned_of_Z in X. inversion X. }
+        rewrite app_nil_r.
+        cbv [lan9250_boot_timeout].
+        rewrite <-H6.
+        replace (word.unsigned x0) with 1; cycle 1.
+        { subst i.
+          pose proof word.unsigned_range x0.
+          rewrite word.unsigned_sub, word.unsigned_of_Z in H9.
+          change (word.wrap 1) with 1 in H9.
+          change Semantics.width with 32 in *.
+          cbv [word.wrap] in H9; rewrite Z.mod_small in H9; try blia. }
+        rewrite Z.add_1_r.
+        rewrite Znat.Z2Nat.inj_succ by (clear; blia).
+        rewrite Znat.Nat2Z.id.
+
+        eapply multiple_expand_right, concat_app; eauto.
+        eexists; split; eauto.
+        destruct (word.eqb_spec x5 (word.of_Z 2271560481)); subst.
+        { subst v0. rewrite word.unsigned_of_Z in H3. inversion H3. }
+        intro X.
+        eapply H10.
+        eapply word.unsigned_inj; rewrite word.unsigned_of_Z.
+        setoid_rewrite X.
+        exact eq_refl. } }
+  Qed.
   
   From coqutil Require Import Z.div_mod_to_equations.
   Lemma lan9250_readword_ok : program_logic_goal_for_function! lan9250_readword.
