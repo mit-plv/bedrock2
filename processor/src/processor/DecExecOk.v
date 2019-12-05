@@ -69,7 +69,7 @@ Section DecExecOk.
 
   Context {Registers: map.map Register word}
           (Registers_ok : map.ok Registers).
-  
+
   Definition regs_related (krf: kword 5 -> kword width)
              (rrf: Registers): Prop :=
     forall w, w <> $0 -> map.get rrf (Z.of_N (wordToN w)) = Some (krf w).

@@ -37,6 +37,20 @@ Require Import processor.FetchOk processor.DecExecOk.
 
 Local Open Scope Z_scope.
 
+Lemma Npow2_le:
+  forall n m,
+    (n <= m)%nat -> (NatLib.Npow2 n <= NatLib.Npow2 m)%N.
+Proof.
+  induction m; simpl; intros.
+  - assert (n = 0)%nat by blia.
+    subst; simpl; blia.
+  - assert (n = S m \/ n <= m)%nat by blia.
+    destruct H0.
+    + subst; reflexivity.
+    + specialize (IHm H0).
+      destruct (NatLib.Npow2 m); blia.
+Qed.
+
 Lemma bitSlice_range_ex:
   forall z n m,
     0 <= n <= m ->
@@ -116,6 +130,12 @@ Section Equiv.
       traces_related t t' ->
       traces_related (e :: t) (e' :: t').
 
+  Definition pc_related_when_valid (xaddrs: XAddrs)
+             (kpc : Word.word (2 + Z.to_nat instrMemSizeLg))
+             (rpc : kword width) :=
+    AddrAligned rpc /\
+    (isXAddr4 rpc xaddrs -> pc_related _ kpc rpc).
+
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
   | relate_states:
       forall t t' m riscvXAddrs kpc krf rrf rpc nrpc pinit instrMem kdataMem rdataMem metrics,
@@ -123,7 +143,7 @@ Section Equiv.
         KamiProc.RegsToT m = Some (kamiStMk kpc krf pinit instrMem kdataMem) ->
         (pinit = false -> riscvXAddrs = kamiXAddrs) ->
         (pinit = true -> RiscvXAddrsSafe instrMemSizeLg (* Hinstr *) instrMem kdataMem riscvXAddrs) ->
-        pc_related _ kpc rpc ->
+        pc_related_when_valid riscvXAddrs kpc rpc ->
         nrpc = word.add rpc (word.of_Z 4) ->
         regs_related krf rrf ->
 
@@ -253,18 +273,16 @@ Section Equiv.
   Lemma kamiPgmInitFull_RiscvXAddrsSafe:
     forall pgmFull dataMem,
       KamiPgmInitFull rv32Fetch pgmFull dataMem ->
-      RiscvXAddrsSafe instrMemSizeLg (* Hinstr *) pgmFull dataMem kamiXAddrs.
+      RiscvXAddrsSafe instrMemSizeLg pgmFull dataMem kamiXAddrs.
   Proof.
     unfold KamiPgmInitFull; intros.
     red; intros.
-    unfold isXAddr4 in H0. destruct H0 as (? & ? & ? & ?).
-    split.
-    - eapply kamiXAddrs_In_AddrAligned; eassumption.
-    - intros.
-      rewrite H.
-      cbv [alignInst rv32Fetch rv32AlignInst]; unfold evalExpr; fold evalExpr.
-      f_equal.
-      apply eq_sym, rv32AlignAddr_consistent; auto.
+    split; [assumption|].
+    intros.
+    rewrite H.
+    cbv [alignInst rv32Fetch rv32AlignInst]; unfold evalExpr; fold evalExpr.
+    f_equal.
+    apply eq_sym, rv32AlignAddr_consistent; auto.
   Qed.
 
   Lemma kamiStep_sound_case_pgmInitEnd:
@@ -379,12 +397,70 @@ Section Equiv.
 
   Context (Registers_ok : map.ok Registers).
 
-  Lemma pc_related_plus4 kpc rpc :
-    pc_related instrMemSizeLg kpc rpc ->
-    pc_related instrMemSizeLg
-    (kpc ^+ ZToWord (S (S (BinInt.Z.to_nat instrMemSizeLg))) 4)
-    (word.add rpc (word.of_Z 4)).
-  Proof. case TODO_joonwon. Qed.
+  Lemma AddrAligned_plus4:
+    forall rpc,
+      AddrAligned rpc ->
+      AddrAligned (word.add rpc (word.of_Z 4)).
+  Proof.
+    case TODO_joonwon.
+  Qed.
+
+  Lemma in_kamiXAddrs_aligned_plus4_bound:
+    forall pc,
+      isXAddr4 pc kamiXAddrs ->
+      AddrAligned pc ->
+      (wordToN pc + 4 < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
+  Proof.
+    case TODO_joonwon.
+  Qed.
+
+  Lemma pc_related_plus4:
+    forall xaddrs,
+      (forall a, isXAddr4 a xaddrs -> isXAddr4 a kamiXAddrs) ->
+      forall kpc rpc,
+        isXAddr4 rpc xaddrs ->
+        pc_related_when_valid xaddrs kpc rpc ->
+        pc_related_when_valid
+          xaddrs (kpc ^+ ZToWord (S (S (BinInt.Z.to_nat instrMemSizeLg))) 4)
+          (word.add rpc (word.of_Z 4)).
+  Proof.
+    cbv [pc_related_when_valid]; intros.
+    destruct H1.
+    split; [apply AddrAligned_plus4; assumption|].
+    intros.
+    specialize (H2 H0).
+    apply H in H0.
+    red in H2; red.
+    cbv [word.add word WordsKami wordW KamiWord.word wplus].
+    cbv [wordBin].
+
+    match goal with |- context [(_ + ?t)%N] => replace t with 4%N end.
+    2: {
+      apply N2Z.inj.
+      rewrite unsigned_wordToZ.
+      apply eq_sym, Z.mod_small.
+      do 2 rewrite Nat2Z.inj_succ.
+      split; [blia|].
+      simpl; rewrite Z2Nat.id by blia.
+      do 2 (rewrite Z.pow_succ_r by blia).
+      assert (1 < 2 ^ instrMemSizeLg) by (apply Z.pow_gt_1; blia).
+      blia.
+    }
+    
+    rewrite wordToN_NToWord_2
+      by (rewrite H2; eapply in_kamiXAddrs_aligned_plus4_bound; eauto).
+    rewrite wordToN_NToWord_2.
+    2: {
+      eapply N.lt_le_trans.
+      { eapply in_kamiXAddrs_aligned_plus4_bound; eauto. }
+      { apply Npow2_le.
+        change 2%nat with (Z.to_nat 2).
+        rewrite <-Z2Nat.inj_add by blia.
+        apply Z2Nat.inj_le; blia.
+      }
+    }
+    rewrite H2; reflexivity.
+  Qed.
 
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
@@ -422,12 +498,13 @@ Section Equiv.
       (* -- fetch *)
       repeat t.
       specialize (H eq_refl).
+      destruct H8; specialize (H15 H).
       eapply fetch_ok in H; [|eassumption..].
       destruct H as (rinst & ? & ?).
       rewrite H in H0.
-      setoid_rewrite <-H1 in H15.
+      setoid_rewrite <-H1 in H16.
       repeat t.
-      setoid_rewrite H15 in H0.
+      setoid_rewrite H16 in H0.
 
       (* -- decode *)
       assert (bitSlice (kunsigned kinst) 0 7 = opcode_LOAD) as Hkopc.
@@ -450,7 +527,7 @@ Section Equiv.
               z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
               z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
       clear Hf3.
-      destruct H16 as [|[|[|[|[|[|[|]]]]]]].
+      destruct H17 as [|[|[|[|[|[|[|]]]]]]].
       (* -- get rid of [InvalidInstruction] cases *)
       4, 7, 8: eval_decode_in H0; exfalso; auto; fail.
 
@@ -557,12 +634,13 @@ Section Equiv.
       (* -- fetch *)
       repeat t.
       specialize (H eq_refl).
+      destruct H8; specialize (H6 H).
       eapply fetch_ok in H; [|eassumption..].
       destruct H as (rinst & ? & ?).
       rewrite H in H0.
-      setoid_rewrite <-H3 in H1.
+      setoid_rewrite <-H3 in H7.
       repeat t.
-      setoid_rewrite H1 in H0.
+      setoid_rewrite H7 in H0.
 
 
       (** Begin symbolic evaluation of kami code *)
@@ -674,7 +752,12 @@ Section Equiv.
       { unfold RegsToT; rewrite H2. subst km2; reflexivity. }
       { intros; discriminate. }
       { intros; assumption. }
-      { eauto using pc_related_plus4. }
+      { cbv [RiscvMachine.getNextPc]; split.
+        { apply AddrAligned_plus4; assumption. }
+        { (* intros; eapply pc_related_plus4. *)
+          case TODO_joonwon.
+        }
+      }
       { reflexivity. }
       { eapply regs_related_put; trivial.
         1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
@@ -738,7 +821,12 @@ Section Equiv.
       { unfold RegsToT; rewrite H2. subst km2; reflexivity. }
       { intros; discriminate. }
       { intros; assumption. }
-      { eauto using pc_related_plus4. }
+      { cbv [RiscvMachine.getNextPc]; split.
+        { apply AddrAligned_plus4; assumption. }
+        { (* intros; eapply pc_related_plus4. *)
+          case TODO_joonwon.
+        }
+      }
       { reflexivity. }
       { eapply regs_related_put; trivial.
         1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
@@ -1026,7 +1114,8 @@ Section Equiv.
     2: eapply pRegsToT_init.
     - econstructor.
     - intros; discriminate.
-    - apply wordToNat_wzero.
+    - split; [reflexivity|].
+      intros; apply wordToN_wzero.
     - apply (projT2 riscvRegsInit).
     - apply (projT2 riscvMemInit).
   Qed.
