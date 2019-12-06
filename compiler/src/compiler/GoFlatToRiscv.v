@@ -696,9 +696,8 @@ Section Go.
                   * R' * Rexec)%sep m) as F by (eexists; ecancel_assumption).
       destruct F as [R' F].
       specialize IHn with (2 := F).
-      change removeXAddr with (@ListLib.removeb word word.eqb).
-      rewrite ListLib.of_list_removeb.
-      2: apply word.eqb_spec. (* TODO why is this not automatic? *)
+      change removeXAddr with (@List.removeb word word.eqb _).
+      rewrite ListSet.of_list_removeb.
       unfold subset.
       intros x Hx.
       destr (word.eqb x addr).

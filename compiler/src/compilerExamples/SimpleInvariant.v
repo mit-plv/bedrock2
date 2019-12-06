@@ -6,7 +6,6 @@ Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.util.Common.
-Require Import compiler.util.ListLib.
 Require Import compiler.Simp.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.

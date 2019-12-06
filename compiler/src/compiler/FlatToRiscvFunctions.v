@@ -9,7 +9,8 @@ Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.util.Common.
-Require Import compiler.util.ListLib.
+Require Import coqutil.Datatypes.ListSet.
+Require Import coqutil.Datatypes.List.
 Require Import compiler.Simp.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
@@ -164,65 +165,6 @@ Section Proofs.
          end * (rec rest))%sep
       end.
 
-  Lemma In_list_union_spec{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
-    forall (l1 l2 : list A) (x: A),
-      In x (list_union aeqb l1 l2) <-> In x l1 \/ In x l2.
-  Proof.
-    induction l1; intros.
-    - simpl. split; intuition idtac.
-    - simpl. destruct_one_match; simpl; split; intros.
-      + apply or_assoc. right. eapply IHl1. assumption.
-      + destruct H as [ [ H | H ] | H ].
-        * subst. eapply find_some in E. destruct E.
-          destr (aeqb x a0); try discriminate. subst a0. assumption.
-        * eapply IHl1. left. assumption.
-        * eapply IHl1. right. assumption.
-      + apply or_assoc. destruct H; [left|right]; auto. eapply IHl1. assumption.
-      + apply or_assoc in H. destruct H; [left|right]; auto. eapply IHl1. assumption.
-  Qed.
-
-  Lemma of_list_list_union{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
-    forall (l1 l2: list A), of_list (list_union aeqb l1 l2) = union (of_list l1) (of_list l2).
-  Proof.
-    intros.
-    eapply iff1ToEq.
-    unfold of_list, union, elem_of, iff1.
-    apply In_list_union_spec.
-  Qed.
-
-  Lemma removeb_not_In{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
-    forall (l : list A) (a: A), ~ In a l -> removeb aeqb a l = l.
-  Proof.
-    induction l; intros; simpl; try reflexivity.
-    destr (aeqb a0 a); simpl in *; subst.
-    + exfalso. auto.
-    + f_equal. eauto.
-  Qed.
-
-  Lemma In_removeb_In{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
-    forall (a1 a2: A) (l: list A), In a1 (removeb aeqb a2 l) -> In a1 l.
-  Proof.
-    induction l; intros; simpl in *; try contradiction.
-    destr (aeqb a2 a); simpl in *; intuition idtac.
-  Qed.
-
-  Lemma In_removeb_diff{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
-    forall (a1 a2: A) (l: list A), a1 <> a2 -> In a1 l -> In a1 (removeb aeqb a2 l).
-  Proof.
-    induction l; intros; simpl in *; try contradiction.
-    destr (aeqb a2 a); simpl in *; subst; intuition congruence.
-  Qed.
-
-  Lemma NoDup_removeb{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
-    forall (a: A) (l: list A),
-      NoDup l ->
-      NoDup (removeb aeqb a l).
-  Proof.
-    induction l; intros; simpl in *; try assumption.
-    destr (aeqb a a0); simpl in *; simp; auto.
-    constructor; auto. intro C. apply H2. eapply In_removeb_In. eassumption.
-  Qed.
-
   Ltac cancel_emps_at_indices i j :=
     lazymatch goal with
     | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
@@ -236,7 +178,7 @@ Section Proofs.
       List.In f funnames ->
       List.NoDup funnames ->
       iff1 (functions base rel_positions impls funnames)
-           (functions base rel_positions impls (ListLib.removeb String.eqb f funnames) *
+           (functions base rel_positions impls (List.removeb String.eqb f funnames) *
             program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
   Proof.
     intros base rel_positions impls.
@@ -259,21 +201,6 @@ Section Proofs.
       Forall valid_FlatImp_var (modVars_as_list Z.eqb s).
   Proof.
     induction s; intros; simpl in *; simp; eauto 10 using @union_Forall.
-  Qed.
-
-  Lemma getmany_of_list_exists{K V: Type}{M: map.map K V}:
-    forall (m: M) (P: K -> Prop) (ks: list K),
-      Forall P ks ->
-      (forall k, P k -> exists v, map.get m k = Some v) ->
-      exists vs, map.getmany_of_list m ks = Some vs.
-  Proof.
-    induction ks; intros.
-    - exists nil. reflexivity.
-    - inversion H. subst. clear H.
-      edestruct IHks as [vs IH]; [assumption..|].
-      edestruct H0 as [v ?]; [eassumption|].
-      exists (v :: vs). cbn. rewrite H. unfold map.getmany_of_list in IH.
-      rewrite IH. reflexivity.
   Qed.
 
   Set Printing Depth 100000.
@@ -429,18 +356,6 @@ Section Proofs.
 
   Open Scope word_scope.
 
-  Lemma getmany_of_list_exists_elem: forall (m: locals) ks k vs,
-      In k ks ->
-      map.getmany_of_list m ks = Some vs ->
-      exists v, map.get m k = Some v.
-  Proof.
-    induction ks; intros.
-    - cbv in H. contradiction.
-    - destruct H as [A | A].
-      + subst a. unfold map.getmany_of_list in H0. simpl in H0. simp. eauto.
-      + unfold map.getmany_of_list in H0. simpl in H0. simp. eauto.
-  Qed.
-
   Lemma preserve_valid_FlatImp_var_domain_put: forall y z (l: locals),
       valid_FlatImp_var y ->
       (forall x v, map.get l x = Some v -> valid_FlatImp_var x) ->
@@ -501,7 +416,7 @@ Section Proofs.
     exists (List.firstn (List.length l - len)%nat l).
     exists (List.skipn (List.length l - len)%nat l).
     ssplit.
-    - eapply ListLib.firstn_skipn_reassemble; reflexivity.
+    - eapply List.firstn_skipn_reassemble; reflexivity.
     - rewrite List.length_firstn_inbounds; blia.
     - rewrite List.length_skipn; blia.
   Qed.
@@ -531,29 +446,6 @@ Section Proofs.
     generalize (funname_env_ok (list Z * list Z * stmt)).
     intro OK. intros. map_solver OK.
   Qed.
-
-  Lemma length_NoDup_removeb{A: Type}{aeqb: A -> A -> bool}{aeqb_sepc: EqDecider aeqb}:
-    forall (s: list A) (a: A),
-      In a s ->
-      NoDup s ->
-      Datatypes.length (removeb aeqb a s) = pred (Datatypes.length s).
-  Proof.
-    induction s; intros.
-    - simpl in H. contradiction.
-    - simpl in *. simp. destr (aeqb a0 a).
-      + simpl. subst. rewrite removeb_not_In by assumption. reflexivity.
-      + simpl. destruct H; [congruence|].
-        rewrite IHs by assumption.
-        destruct s.
-        * simpl in *. contradiction.
-        * reflexivity.
-  Qed.
-
-  (* TODO move to coqutil *)
-  Ltac specialize_hyp H :=
-    repeat match type of H with
-           | ?P -> ?Q => let F := fresh in assert P as F; [clear H|specialize (H F); clear F]
-           end.
 
   Lemma pigeonhole{A: Type}{aeqb: A -> A -> bool}{aeqb_sepc: EqDecider aeqb}: forall (l s: list A),
       (* no pigeonhole contains more than one pigeon: *)
@@ -597,36 +489,6 @@ Section Proofs.
       cbv. blia.
     - cbv. repeat apply NoDup_cons; cbv; try blia.
       apply NoDup_nil.
-  Qed.
-
-  (* Note: l1 can have duplicates, because it's going to be inserted into l2 one by one *)
-  Lemma list_union_preserves_NoDup{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
-    forall (l1 l2: list A),
-      NoDup l2 -> NoDup (list_union aeqb l1 l2).
-  Proof.
-    induction l1; intros.
-    - simpl. assumption.
-    - simpl.
-      destr (find (aeqb a) (list_union aeqb l1 l2)).
-      + eauto.
-      + constructor. 2: eauto.
-        intro C.
-        eapply find_none in E. 2: exact C.
-        destr (aeqb a a); [discriminate|contradiction].
-  Qed.
-
-  Lemma In_list_union_l{A : Type}{aeqb : A -> A -> bool}{aeqb_dec: EqDecider aeqb}:
-    forall (l1 l2: list A) (x: A),
-      In x l1 ->
-      In x (list_union aeqb l1 l2).
-  Proof.
-    induction l1; intros.
-    - simpl in H. contradiction.
-    - simpl in *. destruct H.
-      + subst. destruct_one_match.
-        * eapply find_some in E. simp. destr (aeqb x a); congruence.
-        * simpl. auto.
-      + destruct_one_match; simpl; eauto.
   Qed.
 
   Lemma NoDup_modVars_as_list: forall s,
@@ -882,7 +744,7 @@ Section Proofs.
     end.
     apply iff1ToEq in P.
     match goal with
-    | H: subset _ _ |- _ => rewrite P in H; idtac H
+    | H: subset _ _ |- _ => rewrite P in H
     end.
     clear P.
 
@@ -932,7 +794,7 @@ Section Proofs.
     (* save vars modified by callee onto stack *)
     match goal with
     | |- context [ {| getRegs := ?l |} ] =>
-      pose proof (@getmany_of_list_exists _ _ _ l valid_register (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as P
+      pose proof (@map.getmany_of_list_exists _ _ _ l valid_register (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)) as P
     end.
     edestruct P as [newvalues P2]; clear P.
     { eapply Forall_impl; cycle 1.
@@ -1043,7 +905,7 @@ Section Proofs.
         p_sp := word.sub p_sp !(bytes_per_word * FL);
         e_pos := e_pos;
         program_base := program_base;
-        funnames := (ListLib.removeb String.eqb fname funnames) |});
+        funnames := (List.removeb String.eqb fname funnames) |});
       after_IH;
       subst FL. (* <-- TODO needed? *)
       all: try safe_sidecond.
@@ -1061,7 +923,7 @@ Section Proofs.
             simpl in *. unfold Register, MachineInt in *.
             generalize (funname_env_ok (list Z * list Z * stmt)). clear -G.
             intro OK. exfalso. map_solver OK.
-          + eapply remove_In_ne; try typeclasses eauto; assumption.
+          + eapply remove_In_ne; assumption.
       }
       { eapply NoDup_removeb; eassumption. }
       { eapply map.putmany_of_list_zip_extends; [eassumption..|].

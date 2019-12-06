@@ -11,7 +11,7 @@ Require Import bedrock2.Syntax.
 Require Import coqutil.Z.Lia.
 Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
-Require Import compiler.util.ListLib.
+Require Import coqutil.Datatypes.ListSet.
 
 (*Local Set Ltac Profiling.*)
 

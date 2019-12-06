@@ -32,6 +32,7 @@ Require Import compiler.util.Learning.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.RiscvWordProperties.
 Require Import riscv.Platform.FE310ExtSpec.
+Require Import coqutil.Z.div_mod_to_equations.
 Require bedrock2.FE310CSemantics.
 Import ListNotations.
 
@@ -120,6 +121,11 @@ End MMIO.
 
 Section MMIO1.
   Context {p: unique! MMIO.parameters}.
+
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
 
   Local Instance Words32: Utility.Words := {
     Utility.byte := byte;
@@ -246,6 +252,40 @@ Section MMIO1.
     | _ => rewrite free.interp_ret
     end.
 
+  Lemma disjoint_MMIO_goal: forall (x y: word),
+      isMMIOAddr x ->
+      ~ isMMIOAddr y ->
+      word.unsigned x mod 4 = 0 ->
+      word.add (word.add (word.add x (word.of_Z 1)) (word.of_Z 1)) (word.of_Z 1) <> y /\
+      word.add (word.add x (word.of_Z 1)) (word.of_Z 1) <> y /\
+      word.add x (word.of_Z 1) <> y /\
+      x <> y.
+  Proof.
+    intros.
+    unfold isMMIOAddr, FE310_mmio, isOTP,isPRCI, isGPIO0, isUART0 in *.
+    unfold Ox in *. simpl in *.
+    ssplit.
+    all: intro C.
+    1: replace x with (word.sub y (word.of_Z 3)) in * by (subst y; solve_word_eq word_ok).
+    2: replace x with (word.sub y (word.of_Z 2)) in * by (subst y; solve_word_eq word_ok).
+    3: replace x with (word.sub y (word.of_Z 1)) in * by (subst y; solve_word_eq word_ok).
+    4: replace x with y in * by assumption.
+    all: clear C;
+      rewrite ?word.unsigned_sub, ?word.unsigned_of_Z in H, H1;
+      unfold word.wrap in *;
+      pose proof (word.unsigned_range y);
+      forget (word.unsigned y) as Y; clear x y p;
+      let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *;
+      Z.div_mod_to_equations;
+      (* COQBUG (performance) https://github.com/coq/coq/issues/10743,
+         workaround by @thery *)
+      repeat match goal with
+             | [ H : ?x -> _, H' : ?x -> _ |- _ ] =>
+               pose proof (fun u : x => conj (H u) (H' u)); clear H H'
+             end.
+    all: time blia. (* 62 seconds and a lot of memory *)
+  Time Qed. (* 134.439 seconds *)
+
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.assumptions.
   Proof.
     constructor.
@@ -368,13 +408,45 @@ Section MMIO1.
         split; [subst; eauto|].
         split; [subst; eauto|].
         split. {
-          (* TODO this does not hold!
-             Even if external calls are not allowed to change the memory at the moment,
-             their MMIO writes could still change XAddrs if an MMIO address happened to
-             be in XAddrs *)
-          case TODO_sam.
+          lazymatch goal with
+          | H: map.undef_on initialL_mem ?A |- _ =>
+            rename H into U; change (map.undef_on initialL_mem isMMIOAddr) in U; move U at bottom
+          end.
+          lazymatch goal with
+          | H: disjoint (of_list initialL_xaddrs) ?A |- _ =>
+            rename H into D; change (disjoint (of_list initialL_xaddrs) isMMIOAddr) in D;
+            move D at bottom
+          end.
+          lazymatch goal with
+          | H: FE310CSemantics.isMMIOAddr x |- _ =>
+            rename H into M0; change (isMMIOAddr x) in M0; move M0 at bottom
+          end.
+          lazymatch goal with
+          | H: word.unsigned x mod 4 = 0 |- _ => rename H into D4; move D4 at bottom
+          end.
+          assert (forall {T: Type} (a b c: set T), subset a b -> subset b c -> subset a c)
+            as subset_trans. {
+            clear. unfold subset, PropSet.elem_of. intros. firstorder idtac.
+          }
+          eapply subset_trans. 1: eassumption.
+          clear -D4 M0 D.
+          unfold invalidateWrittenXAddrs.
+          change removeXAddr with (@List.removeb word word.eqb _).
+          rewrite ?ListSet.of_list_removeb.
+          unfold map.undef_on, map.agree_on, disjoint in *.
+          unfold subset, diff, singleton_set, of_list, PropSet.elem_of in *.
+          intros y HIn.
+          specialize (D y). destruct D; [contradiction|].
+          rewrite ?and_assoc.
+          split; [exact HIn|clear HIn].
+          eapply disjoint_MMIO_goal; assumption.
         }
-        eauto.
+        ssplit; eauto.
+        unfold invalidateWrittenXAddrs.
+        change removeXAddr with (@List.removeb word word.eqb _).
+        rewrite ?ListSet.of_list_removeb.
+        repeat apply disjoint_diff_l.
+        assumption.
 
       + (* MMInput *)
         simpl in *|-.
@@ -517,7 +589,7 @@ Section MMIO1.
           2: eassumption.
           typeclasses eauto.
         }
-        assumption.
+        eauto.
   Time Qed. (* takes more than 3min! *)
 
 End MMIO1.

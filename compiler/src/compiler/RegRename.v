@@ -12,7 +12,7 @@ Require Import coqutil.Map.Solver.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.TestLemmas.
 Require Import bedrock2.Syntax.
-Require Import compiler.util.ListLib.
+Require Import coqutil.Datatypes.ListSet.
 Require Import compiler.Simp.
 Require Import compiler.Simulation.
 

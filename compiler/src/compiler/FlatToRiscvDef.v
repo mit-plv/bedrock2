@@ -10,7 +10,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import coqutil.Z.Lia.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Utility.Utility.
-Require Import compiler.util.ListLib.
+Require Import coqutil.Datatypes.ListSet.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.RegisterNames.
 Require Import bedrock2.Syntax.
