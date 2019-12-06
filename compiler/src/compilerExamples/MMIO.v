@@ -403,7 +403,7 @@ Section MMIO1.
         exists finalRegsH. exists []. eexists.
         simp. simpl_word_exprs word_ok.
         unfold mmioStoreEvent, signedByteTupleToReg in *.
-        setoid_rewrite LittleEndian.combine_split.
+        Timeout 300 setoid_rewrite LittleEndian.combine_split.
         rewrite sextend_width_nop by reflexivity.
         rewrite Z.mod_small by apply word.unsigned_range.
         rewrite word.of_Z_unsigned.
