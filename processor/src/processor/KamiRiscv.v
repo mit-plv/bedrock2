@@ -547,6 +547,89 @@ Section Equiv.
 
   Axiom TODO_kamiStep_instruction : False.
 
+  Ltac kinvert_pre :=
+    repeat
+      match goal with
+      | [H: PHide (Step _ _ _ _) |- _] => inversion H; subst; clear H
+      | [H: SemAction _ _ _ _ _ |- _] => clear H
+      | [H: (_ :: _)%struct = (_ :: _)%struct |- _] => inversion H; subst; clear H
+      | [H: context [annot ?klbl] |- _] =>
+        let annot := fresh "annot" in
+        let defs := fresh "defs" in
+        let calls := fresh "calls" in
+        destruct klbl as [annot defs calls];
+        cbn [Semantics.annot Semantics.defs Semantics.calls] in *; subst;
+        destruct annot; [|discriminate]
+      | [H: Rle _ = Rle _ |- _] => inversion H; subst; clear H
+      end.
+  
+  Ltac kinvert_more :=
+    kinvert;
+    try (repeat
+           match goal with
+           | [H: Semantics.annot ?klbl = Some _ |- _] => rewrite H in *
+           | [H: (_ :: _)%struct = (_ :: _)%struct |- _] =>
+             inversion H; subst; clear H
+           end; discriminate).
+
+  Ltac invertActionRep_nosimpl :=
+    repeat
+      match goal with
+      | H:(_ :: _)%struct = (_ :: _)%struct |- _ => CommonTactics.inv H
+      | H:SemAction _ _ _ _ _ |- _ =>
+        apply inversionSemAction in H; CommonTactics.dest(* ; try subst *)
+      | H:if ?c then SemAction _ _ _ _ _ /\ _ /\ _ /\ _ else SemAction _ _ _ _ _ /\ _ /\ _ /\ _
+        |- _ =>
+        repeat autounfold with MethDefs;
+        match goal with
+        | H:if ?c
+            then SemAction _ _ _ _ _ /\ _ /\ _ /\ _
+            else SemAction _ _ _ _ _ /\ _ /\ _ /\ _
+          |- _ =>
+          let ic := fresh "ic" in
+          remember c as ic; destruct ic; CommonTactics.dest; subst
+        end
+      end.
+
+  Ltac kinv_action_dest_nosimpl :=
+    kinv_red; invertActionRep_nosimpl.
+
+  Ltac block_subst vn :=
+    match goal with
+    | [H: vn = ?v |- _] =>
+      assert (PHide (vn = v)) by (constructor; assumption); clear H
+    end.
+
+  Ltac red_regmap :=
+    try match goal with
+        | [H: scmm_inv _ _ _ |- _] => inversion H
+        end;
+    cbv [RegsToT pRegsToT] in *;
+    kregmap_red; kinv_red.
+
+  Ltac red_trivial_conds :=
+    repeat
+      match goal with
+      | [H: evalExpr (Var type (SyntaxKind Bool) ?b) = _ |- _] => simpl in H; subst b
+      end.
+
+  Ltac cleanup_trivial :=
+    cbv [Semantics.annot Semantics.defs Semantics.calls] in *;
+    repeat
+      match goal with
+      | [H: FMap.M.empty _ = FMap.M.empty _ |- _] => clear H
+      | [H: true = false -> _ |- _] => clear H
+      | [H: false = true -> _ |- _] => clear H
+      | [H: Some _ = Some _ |- _] => inversion H; subst; clear H
+      | [H: {| pc := _ |} = kamiStMk _ _ _ _ _ |- _] => inversion H; subst; clear H
+      | [H: true = true -> _ |- _] => specialize (H eq_refl)
+      end.
+
+  Ltac unblock_subst vn :=
+    match goal with
+    | [H: PHide (vn = _) |- _] => inversion_clear H
+    end.
+
   Lemma kamiStep_sound:
     forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
            (m1': RiscvMachine) (t0: list Event) (post: RiscvMachine -> Prop)
@@ -575,73 +658,46 @@ Section Equiv.
     - kami_step_case_empty.
 
     - (* case "pgmInit" *)
-      left.
-      inversion H3; subst; clear H3 HAction.
-      destruct klbl as [annot defs calls].
-      cbn [Semantics.annot Semantics.defs Semantics.calls] in *; subst.
-      destruct annot; [|discriminate].
-      inversion H6; subst; clear H6.
-      inversion H2; subst; clear H2.
-      eapply kamiStep_sound_case_pgmInit; eauto.
+      kinvert_pre.
+      left; eapply kamiStep_sound_case_pgmInit; eauto.
 
     - (* case "pgmInitEnd" *)
-      left.
-      inversion H4; subst; clear H4 HAction.
-      destruct klbl as [annot defs calls].
-      cbn [Semantics.annot Semantics.defs Semantics.calls] in *; subst.
-      destruct annot; [|discriminate].
-      inversion H6; subst; clear H6.
-      inversion H2; subst; clear H2.
-      eapply kamiStep_sound_case_pgmInitEnd; eauto.
+      kinvert_pre.
+      left; eapply kamiStep_sound_case_pgmInitEnd; eauto.
 
     - (* case "execLd" *)
+      kinvert_pre.
       right.
-      inversion H3; subst; clear H3 HAction.
-      destruct klbl as [annot defs calls].
-      cbn [Semantics.annot Semantics.defs Semantics.calls] in *; subst.
-      destruct annot; [|discriminate].
-      inversion H6; subst; clear H6.
-      inversion H2; subst; clear H2.
       case TODO_joonwon.
 
     - (* case "execLdZ" *) case TODO_joonwon.
     - (* case "execSt" *) case TODO_joonwon.
     - (* case "execNm" *)
       right.
+      match goal with
+      | [H: states_related _ _ |- _] => inversion H; subst; clear H
+      end.
 
-      (** Apply the Kami inversion lemma for the [execNm] rule. *)
-      inversion H4; subst; clear H4 HAction.
-      destruct klbl as [annot defs calls].
-      cbn [Semantics.annot Semantics.defs Semantics.calls] in *; subst.
-      destruct annot; [|discriminate].
-      inversion H6; subst; clear H6.
-      inversion H2; subst; clear H2.
-      inversion H0; subst; clear H0.
-      eapply invert_Kami_execNm in H; eauto.
-      cbv [kamiStMk KamiProc.pc KamiProc.rf KamiProc.pgm KamiProc.mem] in H.
-      destruct H as (? & ? & km2 & ? & ?).
-      destruct H3 as (kinst & execVal & ? & ? & ?).
-      change (rv32InstBytes * BitsPerByte)%nat with (Z.to_nat width) in kinst.
-      simpl in H, H0; subst pinit calls.
-      repeat match goal with
-             | [H: true = true -> _ |- _] => specialize (H eq_refl)
-             | [H: true = false -> _ |- _] => clear H
-             end.
-      rename H7 into Hxs.
+      kinvert_pre.
+      kinvert_more.
+      kinv_action_dest_nosimpl.
+      block_subst kupd.
+      red_regmap.
+      red_trivial_conds.
+      cleanup_trivial.
+      unblock_subst kupd.
 
       (** Invert a riscv-coq step *)
 
       (* -- fetch *)
       repeat t.
-      specialize (H eq_refl).
-      destruct H8; specialize (H6 H).
-      eapply fetch_ok in H; [|eassumption..].
-      destruct H as (rinst & ? & ?).
-      rewrite H in H0.
-      setoid_rewrite <-H3 in H7.
+      specialize (H1 eq_refl).
+      destruct H11; specialize (H8 H1).
+      eapply fetch_ok in H1; [|eassumption..].
+      destruct H1 as (rinst & ? & ?).
+      rewrite H1 in H5.
       repeat t.
-      setoid_rewrite H7 in H0.
-
+      setoid_rewrite H9 in H5.
 
       (** Begin symbolic evaluation of kami code *)
 
@@ -730,13 +786,18 @@ Section Equiv.
         end.
 
       (* forward through riscv-coq... *)
-      eval_decode_in H0.
+      repeat
+        match goal with
+        | [H: context [Z.of_N (@wordToN ?sz _)] |- _] =>
+          progress change sz with 32%nat in H
+        end.
+      eval_decode_in H5.
       repeat t.
 
       (* resolve interaction with "register" 0 *)
-      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
 
       move v at top.
       destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
@@ -747,9 +808,10 @@ Section Equiv.
       do 2 eexists.
       split; [|split]; [eapply KamiSilent; reflexivity| |eassumption].
 
+      subst kupd.
       econstructor.
       { assumption. }
-      { unfold RegsToT; rewrite H2. subst km2; reflexivity. }
+      { cbv [RegsToT pRegsToT]; kregmap_red; reflexivity. }
       { intros; discriminate. }
       { intros; assumption. }
       { cbv [RiscvMachine.getNextPc]; split.
@@ -761,7 +823,6 @@ Section Equiv.
       { reflexivity. }
       { eapply regs_related_put; trivial.
         1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
-        subst execVal.
         (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
         (* 1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia. *)
         (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
@@ -799,13 +860,18 @@ Section Equiv.
         end.
 
       (* forward through riscv-coq... *)
-      eval_decode_in H0.
+      repeat
+        match goal with
+        | [H: context [Z.of_N (@wordToN ?sz _)] |- _] =>
+          progress change sz with 32%nat in H
+        end.
+      eval_decode_in H5.
       repeat t.
 
       (* resolve interaction with "register" 0 *)
-      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice (kunsigned kinst) _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
+      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
 
       move v at top.
       destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
@@ -816,9 +882,10 @@ Section Equiv.
       do 2 eexists.
       split; [|split]; [eapply KamiSilent; reflexivity| |eassumption].
 
+      subst kupd.
       econstructor.
       { assumption. }
-      { unfold RegsToT; rewrite H2. subst km2; reflexivity. }
+      { cbv [RegsToT pRegsToT]; kregmap_red; reflexivity. }
       { intros; discriminate. }
       { intros; assumption. }
       { cbv [RiscvMachine.getNextPc]; split.
@@ -830,7 +897,6 @@ Section Equiv.
       { reflexivity. }
       { eapply regs_related_put; trivial.
         1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
-        subst execVal.
         (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
         (* 1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia. *)
         (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
@@ -885,6 +951,11 @@ Section Equiv.
            pose proof (eq_refl : x = v); clearbody x
        end.
        subst opcode.
+       repeat
+         match goal with
+         | [H: context [Z.of_N (@wordToN ?sz _)] |- _] =>
+           progress change sz with 32%nat in H
+         end.
        progress
        repeat match goal with
        | H : _ = false, G : _ |- _ => rewrite !H in G
@@ -898,22 +969,33 @@ Section Equiv.
     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37: case TODO_kamiStep_instruction.
 
     - (* case "execNmZ" *)
-      repeat match goal with
-      | H : (_ :: _ = _ :: _)%struct |- _ =>
-        inversion H; clear H
-      | H : SemAction _ _ _ _ _ |- _ =>
-        apply inversionSemAction in H
-      | H : Rle (Some _) = match ?x with Some _ => Rle _ | None => Meth _ end |- _ => destruct x; [|discriminate]
-      | H : Rle _ = Rle _ |- _ => inversion H; clear H
-      | H : exists _, _ |- _ => destruct H
-      | H : _ /\ _ |- _ => destruct H
-      | H : ?a = ?b :> option string |- _ =>
-          first [ subst a | subst b]
-      | H : ?a = ?b :> string |- _ =>
-          first [ subst a | subst b]
-      | H : ?a = ?b :> Action _ |- _ =>
-          first [ subst a | subst b]
+      right.
+      match goal with
+      | [H: states_related _ _ |- _] => inversion H; subst; clear H
       end.
+
+      kinvert_pre.
+      kinvert_more.
+      kinv_action_dest_nosimpl.
+      block_subst kupd.
+      red_regmap.
+      red_trivial_conds.
+      cleanup_trivial.
+      unblock_subst kupd.
+
+      (** Invert a riscv-coq step *)
+
+      (* -- fetch *)
+      repeat t.
+      specialize (H1 eq_refl).
+      destruct H11; specialize (H8 H1).
+      eapply fetch_ok in H1; [|eassumption..].
+      destruct H1 as (rinst & ? & ?).
+      rewrite H1 in H5.
+      repeat t.
+      setoid_rewrite H9 in H5.
+
+      (** Begin symbolic evaluation of kami code *)
 
       cbn [evalExpr evalUniBool evalBinBit evalConstT getDefaultConst isEq Data
            getNextPc doExec rv32NextPc rv32Exec rv32DoExec
