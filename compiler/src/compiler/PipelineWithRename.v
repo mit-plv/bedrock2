@@ -90,6 +90,7 @@ Module Import Pipeline.
   |}.
 
   Class assumptions{p: parameters}: Prop := {
+    word_riscv_ok :> RiscvWordProperties.word.riscv_ok word;
     mem_ok :> map.ok mem;
     locals_ok :> map.ok locals;
     funname_env_ok :> forall T, map.ok (funname_env T);
@@ -97,7 +98,7 @@ Module Import Pipeline.
     Registers_ok :> map.ok Registers;
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscvCommon.assumptions;
-    ext_spec_ok :> Semantics.ext_spec.ok _;
+    ext_spec_ok :> Semantics.ext_spec.ok (FlattenExpr.mk_Semantics_params FlattenExpr_parameters);
   }.
 
 End Pipeline.
@@ -116,10 +117,8 @@ Section Pipeline1.
     FlattenExpr.locals_ok := locals_ok;
     FlattenExpr.mem_ok := mem_ok;
     FlattenExpr.funname_env_ok := funname_env_ok;
-    FlattenExpr.ext_spec_ok := match TODO_sam with end;
+    FlattenExpr.ext_spec_ok := ext_spec_ok;
   }.
-
-  Instance word_riscv_ok: RiscvWordProperties.word.riscv_ok word. case TODO_sam. Defined.
 
   Definition available_registers: list Register :=
     Eval cbv in List.unfoldn Z.succ 29 3.
