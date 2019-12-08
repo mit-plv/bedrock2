@@ -332,20 +332,8 @@ Section Pipeline1.
     destruct_RiscvMachine preInitial.
     (* first, run init_sp_code: *)
     pose proof FlatToRiscvLiterals.compile_lit_correct_full as P.
-
-    (*
+    cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
     specialize P with (x := RegisterNames.sp) (v := init_sp).
-    *)
-    (* Error: Anomaly "File "tactics/tactics.ml", line 2960, characters 18-24: Assertion failed."
-       Please report at http://coq.inria.fr/bugs/.
-     *)
-
-    (* workaround: *)
-    match goal with
-    | |- _ _ ?m ?post => specialize (P m post)
-    end.
-    specialize (P RegisterNames.sp init_sp).
-
     unfold runsTo in P. eapply P; clear P.
     { simpl. reflexivity. }
     { simpl. case TODO_sam. (* subset footpr XAddrs *) }
