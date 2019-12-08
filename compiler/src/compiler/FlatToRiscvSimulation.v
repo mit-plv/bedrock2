@@ -42,8 +42,9 @@ Section Sim.
      Since we have to provide GhostConsts from outside, we can also make sure
      that they match with "how to look at" parameters from the other phases.
      The argument "pos" is the position of the code relative to program_base. *)
-  Definition related(g: GhostConsts)(pos: Z): FlatImp.SimState -> MetricRiscvMachine -> Prop :=
-    fun '(e, c, done, t, m, l) st =>
+  Definition related(g: GhostConsts)(pos: Z)(done: bool):
+    FlatImp.SimState -> MetricRiscvMachine -> Prop :=
+    fun '(e, c, t, m, l, mc) st =>
         e = g.(e_impl) /\
         fits_stack g.(num_stackwords) g.(e_impl) c /\
         good_e_impl g.(e_impl) g.(funnames) g.(e_pos) /\
@@ -64,15 +65,12 @@ Section Sim.
   Proof.
     unfold simulation, FlatImp.SimExec, related, FlatImp.SimState.
     intros.
-    destruct s1 as (((((e & c) & done) & t) & m) & l).
+    destruct s1 as (((((e & c) & t) & m) & l) & mc).
     destruct_RiscvMachine s2.
     simp.
     eapply runsTo_weaken.
     - eapply compile_stmt_correct_new; simpl.
-      + lazymatch goal with
-        | H: forall (_: MetricLog), _ |- _ =>
-          apply (H (mkMetricLog 0 0 0 0))
-        end.
+      + eassumption.
       + reflexivity.
       + unfold good_reduced_e_impl.
         split. {

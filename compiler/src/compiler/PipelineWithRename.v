@@ -279,18 +279,15 @@ Section Pipeline1.
        constants [word_cst]).
 
   Definition hl_inv: @ExprImp.SimState (FlattenExpr.mk_Semantics_params _) -> Prop :=
-    fun '(e, c, done, t, m, l) => spec.(isReady) t m l /\ spec.(goodTrace) t /\
-                                  (* Restriction: no locals can be shared between loop iterations,
-                                     and all locals have to be unset at the end of the loop *)
-                                  l = map.empty.
+    fun '(e, c, t, m, l, mc) => spec.(isReady) t m l /\ spec.(goodTrace) t /\
+                                (* Restriction: no locals can be shared between loop iterations,
+                                   and all locals have to be unset at the end of the loop *)
+                                l = map.empty.
 
-  Definition ll_ready: MetricRiscvMachine -> Prop :=
-    compile_inv (related loopBodyGhostConsts loop_pos) hl_inv.
+  Definition ll_good(done: bool): MetricRiscvMachine -> Prop :=
+    compile_inv (related loopBodyGhostConsts loop_pos done) hl_inv.
 
-  Definition ll_inv: MetricRiscvMachine -> Prop :=
-    runsToGood_Invariant ll_ready pc_start
-                         (word.add pc_start (word.of_Z (4 * Z.of_nat (List.length loop_insts))))
-                         (- 4 * Z.of_nat (List.length loop_insts)).
+  Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good.
 
   Definition defined_on_ml(m: mem): Prop.
   Proof using ml.
@@ -345,7 +342,7 @@ Section Pipeline1.
     pose proof (sim initCodeGhostConsts main_pos eq_refl eq_refl) as P.
     unfold simulation, runsTo in P.
     pose proof (extract_datamem _ H0) as Q. destruct Q as [dmem Q].
-    specialize (P (prog.(funimpls), prog.(init_code), false, nil, dmem, map.empty)).
+    specialize (P (prog.(funimpls), prog.(init_code), nil, dmem, map.empty, mkMetricLog 0 0 0 0)).
     eapply runsTo_weaken.
     - eapply P; clear P.
       + (* prove that the initial state (putProgram preInitial) is related ot the high-level
@@ -362,7 +359,7 @@ Section Pipeline1.
         unfold goodMachine.
         ssplit; try reflexivity.
         { unfold envs_related. case TODO_sam. }
-        { intros. split; reflexivity. }
+        { intros. ssplit; reflexivity. }
         { case TODO_sam. (* rename succeeds *) }
         { case TODO_sam. (* fits_stack *) }
         { unfold good_e_impl.
@@ -396,31 +393,32 @@ Section Pipeline1.
       + (* prove correctness of ExprImp init code: *)
         pose proof sat.(init_code_correct) as P.
         unfold ExprImp.SimExec.
-        split; [reflexivity|].
         intros.
-        specialize (P dmem mc).
+        specialize (P dmem (mkMetricLog 0 0 0 0)).
         specialize_hyp P. {
           apply defined_on_ml_to_mem_available.
           replace dmem with preInitial_mem by case TODO_sam. (* does not hold *)
           assumption.
         }
         change (
-            Semantics.exec.exec (funimpls prog) (init_code prog) [] dmem map.empty mc
-              (fun (t' : Semantics.trace) (m' : Semantics.mem) (l' : localsH) (_ : MetricLog) =>
-                 (fun '(e', c', done', t', m', l') =>
+          Semantics.exec.exec (funimpls prog) (init_code prog) [] dmem map.empty
+                              (mkMetricLog 0 0 0 0)
+              (fun (t' : Semantics.trace) (m' : Semantics.mem) (l' : localsH) (mc' : MetricLog) =>
+                 (fun '(e', c', t', m', l', mc') =>
                     isReady spec t' m' l' /\ goodTrace spec t' /\ l' = map.empty)
-                 (funimpls prog, init_code prog, true, t', m', l'))) in P.
+                 (funimpls prog, init_code prog, t', m', l', mc'))) in P.
         exact P.
     - intros.
       simpl in H.
-      destruct H as [ [ [ [ [ [ e c ] b ] t ] mH ] lH] [ A [ B [ C D ] ] ] ].
+      destruct H as [ [ [ [ [ [ e c ] t ] mH ] lH ] mcH ] [ A [ B [ C D ] ] ] ].
       subst lH.
-      unfold ll_ready.
+      unfold ll_good.
       case TODO_sam.
       (* goal is rhs of runsToGood_Invariant from RiscvEventLoop, can we express this in
          simulation-compatible style? *)
     Unshelve.
     all: intros; try exact True.
+    all: try exact (mkMetricLog 0 0 0 0).
   Qed.
 
   Context
@@ -437,8 +435,8 @@ Section Pipeline1.
     intro st.
     eapply runsToGood_is_Invariant with
         (jump := - 4 * Z.of_nat (List.length loop_insts))
+        (pc_start := pc_start)
         (pc_end := word.add pc_start (word.of_Z (4 * Z.of_nat (List.length loop_insts)))).
-    - unfold pc_start. destruct mlOk. solve_divisibleBy4.
     - intro C.
       assert (word.of_Z (4 * Z.of_nat (Datatypes.length loop_insts)) = word.of_Z 0) as D. {
         transitivity (word.sub pc_start pc_start).
@@ -453,22 +451,90 @@ Section Pipeline1.
       destruct loop_insts.
       + cbv in loop_insts_nonempty. discriminate.
       + simpl in D. blia.
-    - (* Show that ll_ready (almost) ignores pc, nextPc, and metrics *)
-      intros.
-      unfold ll_ready, compile_inv, related, compose_relation,
+    - intros.
+      unfold ll_good, compile_inv, related, compose_relation,
         FlatToRiscvSimulation.related in *.
       simp.
-      match goal with
-      | Ha: @getPc _ _ _ _ = _,
-        Hb: @getPc _ _ _ _ = ?Q |- _ =>
-        match type of Ha with
-        | ?P = _ => replace P with Q in Ha;
-                      rename Ha into A; move A at bottom
-        end
-      end.
-      destruct b eqn: Heqb; cycle 1. {
-        exfalso.
-        unfold pc_start, program_base, loopBodyGhostConsts, FlatToRiscvFunctions.goodMachine in *.
+      etransitivity. 1: eassumption.
+      destruct done.
+      + simpl.
+        unfold pc_start, program_base, loop_pos, main_pos.
+        simpl.
+        rewrite main_size_correct.
+        solve_word_eq word_ok.
+      + simpl.
+        unfold pc_start, program_base, loop_pos, main_pos.
+        simpl.
+        rewrite main_size_correct.
+        solve_word_eq word_ok.
+    - (* Show that ll_ready (almost) ignores pc, nextPc, and metrics *)
+      intros.
+      unfold ll_good, compile_inv in *.
+      unfold ll_good, compile_inv, related, compose_relation,
+        FlatToRiscvSimulation.related in *.
+      simp.
+      destruct s1 as [ [ [ [ [ e1 c1 ] t1 ] m1 ] l1 ] mc1 ].
+      assert (l1 = map.empty). {
+        unfold hl_inv in *. simp. reflexivity.
+      }
+      subst.
+      destruct s2 as [ [ [ [ [ e2 c2 ] t2 ] m2 ] l2 ] mc2 ].
+      assert (l2 = map.empty). {
+        unfold FlattenExprSimulation.related in *. simp. reflexivity.
+      }
+      subst.
+      (* destruct_RiscvMachine state. TODO remove "simpl in *" from that? *)
+      let r := fresh m "_regs" in
+      let p := fresh m "_pc" in
+      let n := fresh m "_npc" in
+      let me := fresh m "_mem" in
+      let x := fresh m "_xaddrs" in
+      let l := fresh m "_log" in
+      let mc := fresh m "_metrics" in
+      destruct state as [ [r p n me x l] mc ].
+      eexists. split; [|eassumption].
+      refine (ex_intro _ (_, _, _, _, _, _) _). split; [eassumption|].
+      refine (ex_intro _ (_, _, _, _, _, _) _).
+      repeat match goal with
+             | |- exists _, _  => eexists
+             | |- _ /\ _ => split
+             | |- _ => progress cbv beta iota
+             | |- _ => eassumption
+             | |- _ => reflexivity
+             end.
+      + move Hlrl at bottom.
+        unfold RegRename.related in *. simp.
+        ssplit. all: try eassumption || reflexivity.
+        * intros. ssplit.
+          { reflexivity. }
+          { reflexivity. }
+          { try reflexivity.
+            (* fails with
+
+Unable to unify "?Goal8@{t2:=t; m2:=r0; t:=t; r0:=r0}" with
+ "?Goal7@{t2:=t; m2:=r0; t:=t; r0:=r0}".
+
+even though it's behind a "try" *)
+
+        eauto 10.
+      + move Hll at bottom.
+        unfold FlattenExprSimulation.related in *. exact Hll. eassumption.
+      + simpl. unfold pc_start, program_base, loop_pos, main_pos.
+        rewrite main_size_correct.
+        solve_word_eq word_ok.
+      + unfold goodMachine in *. simpl in *. simp.
+        repeat match goal with
+               | |- exists _, _  => eexists
+               | |- _ /\ _ => split
+               | |- _ => progress cbv beta iota
+               | |- _ => eassumption
+               | |- _ => reflexivity
+               end.
+        * intro x. intros v H. rewrite map.get_empty in H. discriminate.
+        * intro x. intros v H. rewrite map.get_empty in H. discriminate.
+        * case TODO_sam. (* show that backjump preserves valid_machine *)
+
+, loopBodyGhostConsts, FlatToRiscvFunctions.goodMachine in *.
         match type of A with
         | ?L = ?R => assert (word.sub L R = word.of_Z 0) as B by (rewrite A; ring)
         end.
