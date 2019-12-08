@@ -55,22 +55,23 @@ Section EventLoop.
 
   (* goodReadyState is the invariant which says that the machine is ready to execute
      the next iteration of the infinite event loop.
-     It also gets the expected value of the PC, and has to check getPc and getNextPc. *)
-  Variable goodReadyState: word -> RiscvMachineL -> Prop.
-
-  Hypothesis goodReadyState_checks_PC: forall pc m,
-      goodReadyState pc m -> m.(getPc) = pc.
+     It also gets a `done` boolean which says whether the PC is supposed to be at the
+     beginning or at the end of the loop body, and should check for that *)
+  Variable goodReadyState: bool -> RiscvMachineL -> Prop.
 
   Variables pc_start pc_end: word.
   Hypothesis pc_start_aligned: (word.unsigned pc_start) mod 4 = 0.
   Hypothesis start_ne_end: pc_start <> pc_end.
 
+  Hypothesis goodReadyState_checks_PC: forall done m,
+      goodReadyState done m -> m.(getPc) = if done then pc_end else pc_start.
+
   Hypothesis goodReadyState_preserved_by_jump_back:
     forall (state: RiscvMachineL) newMetrics,
-      goodReadyState pc_end state ->
-      goodReadyState pc_start (withPc pc_start
-                              (withNextPc (word.add pc_start (word.of_Z 4))
-                              (withMetrics newMetrics state))).
+      goodReadyState true state ->
+      goodReadyState false (withPc pc_start
+                           (withNextPc (word.add pc_start (word.of_Z 4))
+                           (withMetrics newMetrics state))).
 
   Hypothesis goodReadyState_implies_valid_machine: forall pc m,
       goodReadyState pc m -> valid_machine m.
@@ -81,18 +82,18 @@ Section EventLoop.
   Hypothesis pc_end_def: pc_end = word.sub pc_start (word.of_Z jump).
 
   Hypothesis goodReadyState_implies_jump_back_instr: forall m,
-      goodReadyState pc_end m ->
+      goodReadyState true m ->
       (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep m.(getMem)) /\
       subset (footpr (ptsto_instr pc_end (Jal Register0 jump)))
              (of_list m.(getXAddrs)).
 
   (* loop body: between pc_start and pc_end *)
   Hypothesis body_correct: forall (initial: RiscvMachineL),
-      goodReadyState pc_start initial ->
-      runsTo (mcomp_sat (run1 iset)) initial (goodReadyState pc_end).
+      goodReadyState false initial ->
+      runsTo (mcomp_sat (run1 iset)) initial (goodReadyState true).
 
   Definition runsToGood_Invariant(m: RiscvMachineL): Prop :=
-    runsTo (mcomp_sat (run1 iset)) m (goodReadyState pc_start).
+    runsTo (mcomp_sat (run1 iset)) m (goodReadyState false).
 
   (* "runs to a good state" is an invariant of the transition system
      (note that this does not depend on the definition of runN) *)
@@ -109,8 +110,10 @@ Section EventLoop.
         specialize (goodReadyState_checks_PC _ _ H). subst pc_end.
         eapply run_Jal0; try eauto.
         - unfold program, array.
-          eapply rearrange_footpr_subset; [ eauto | solve [ ecancel ] ].
-        - unfold program, array. ecancel_assumption.
+          eapply rearrange_footpr_subset; [ eassumption | ].
+          rewrite goodReadyState_checks_PC.
+          solve [ ecancel ].
+        - unfold program, array. rewrite goodReadyState_checks_PC. ecancel_assumption.
       }
       simpl. intros. simp.
       destruct_RiscvMachine state.

@@ -861,23 +861,15 @@ Section RegAlloc.
         eapply IH2; try eassumption.
   Qed.
 
-  Definition related: @FlatImp.SimState srcSemanticsParams ->
-                      @FlatImp.SimState impSemanticsParams -> Prop :=
-    fun '(e1, c1, done1, t1, m1, l1) '(e2, c2, done2, t2, m2, l2) =>
-      done1 = done2 /\
+  Definition related(done: bool): @FlatImp.SimState srcSemanticsParams ->
+                                  @FlatImp.SimState impSemanticsParams -> Prop :=
+    fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       envs_related e1 e2 /\
       t1 = t2 /\
       m1 = m2 /\
-      (done1 = false -> l1 = map.empty /\ l2 = map.empty) /\
+      (done = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2) /\
       exists av' r', rename map.empty c1 available_impvars = Some (r', c2, av').
       (* TODO could/should also relate l1 and l2 *)
-
-  Lemma related_redo: forall e1 c1 done1 t1 m1 l1 e2 c2 done2 t2 m2 l2,
-      related (e1, c1, done1, t1, m1, l1       ) (e2, c2, done2, t2, m2, l2       ) ->
-      related (e1, c1, false, t1, m1, map.empty) (e2, c2, false, t2, m2, map.empty).
-  Proof.
-    intros. unfold related in *. simp. eauto 10.
-  Qed.
 
   Lemma renameSim(available_impvars_NoDup: NoDup available_impvars):
     simulation (@FlatImp.SimExec srcSemanticsParams)
@@ -886,21 +878,20 @@ Section RegAlloc.
     unfold simulation.
     intros *. intros R Ex1.
     unfold FlatImp.SimExec, related in *.
-    destruct s1 as (((((e1 & c1) & done1) & t1) & m1) & l1).
-    destruct s2 as (((((e2 & c2) & done2) & t2) & m2) & l2).
+    destruct s1 as (((((e1 & c1) & t1) & m1) & l1) & mc1).
+    destruct s2 as (((((e2 & c2) & t2) & m2) & l2) & mc2).
     simp.
-    split; [reflexivity|intros].
-    pose proof Rrrrrr as A.
+    pose proof Rrrrr as A.
     apply @rename_props in A;
       [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
-    specialize (Rrrrrl eq_refl).
+    specialize (Rrrrl eq_refl).
     simp.
     apply_in_hyps @invert_NoDup_app. simp.
     eapply exec.weaken.
     - eapply rename_correct.
       1: subst; eassumption.
       1: eassumption.
-      1: eapply Ex1r.
+      1: eassumption.
       4: {
         eapply Arrl. eapply extends_refl.
       }

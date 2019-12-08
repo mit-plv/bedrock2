@@ -12,23 +12,21 @@ Section Sim.
 
   Context {p: FlattenExpr.parameters}.
 
-  Definition related_without_functions: ExprImp.SimState -> FlatImp.SimState -> Prop :=
-    fun '(e1, c1, done1, t1, m1, l1) '(e2, c2, done2, t2, m2, l2) =>
+  Definition related_without_functions(done: bool): ExprImp.SimState -> FlatImp.SimState -> Prop :=
+    fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       e1 = map.empty /\ e2 = map.empty (* TODO allow non-empty function environments *) /\
       ExprImp2FlatImp c1 = c2 /\
-      done1 = done2 /\
       t1 = t2 /\
       m1 = m2 /\
       map.extends l2 l1 /\
       map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
 
-  Definition related: ExprImp.SimState -> FlatImp.SimState -> Prop :=
-    fun '(e1, c1, done1, t1, m1, l1) '(e2, c2, done2, t2, m2, l2) =>
+  Definition related(done: bool): ExprImp.SimState -> FlatImp.SimState -> Prop :=
+    fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       (forall f argvars resvars body1,
           map.get e1 f = Some (argvars, resvars, body1) ->
           map.get e2 f = Some (argvars, resvars, ExprImp2FlatImp body1)) /\
       ExprImp2FlatImp c1 = c2 /\
-      done1 = done2 /\
       t1 = t2 /\
       m1 = m2 /\
       (* TODO flattenExpr has to unset all vars at the end of the compiled stmt *)
@@ -38,20 +36,13 @@ Section Sim.
 
   Axiom TODO_sam: False.
 
-  Lemma related_change_done: forall done3 e1 c1 done1 t1 m1 l1 e2 c2 done2 t2 m2 l2,
-      related (e1, c1, done1, t1, m1, l1) (e2, c2, done2, t2, m2, l2) ->
-      related (e1, c1, done3, t1, m1, l1) (e2, c2, done3, t2, m2, l2).
+  Lemma relate_related{hyps: FlattenExpr.assumptions p}: forall done s1 s2,
+      related_without_functions done s1 s2 <-> related done s1 s2.
   Proof.
-    intros. unfold related in *. simp. auto 10.
-  Qed.
-
-  Lemma relate_related{hyps: FlattenExpr.assumptions p}: forall s1 s2,
-      related_without_functions s1 s2 <-> related s1 s2.
-  Proof.
-    intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
+    intros done (((((e1 & c1) & t1) & m1) & l1) & mc1) (((((e2 & c2) & t2) & m2) & l2) & mc2).
     split; intro H; unfold related_without_functions, related in *.
     - intuition idtac.
-      + subst. rewrite @map.get_empty in H6.
+      + subst. rewrite @map.get_empty in H5.
         * discriminate.
         * refine (FlattenExpr.funname_env_ok _).
       + case TODO_sam. (* clearly doesn't hold, extends does not imply equality *)
@@ -65,7 +56,6 @@ Section Sim.
     intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
     intros.
     simp.
-    split; [reflexivity|intros].
     unfold ExprImp2FlatImp.
     match goal with
     | |- context [ fst ?x ] => destruct x as [s ngs] eqn: E
@@ -93,7 +83,7 @@ Section Sim.
     eapply FlatImp.exec.weaken.
     - eapply @flattenStmt_correct_aux.
       + typeclasses eauto.
-      + apply H0r.
+      + eassumption.
       + reflexivity.
       + exact E.
       + assumption.
@@ -105,7 +95,6 @@ Section Sim.
       pose proof (ExprImp.modVars_subset_allVars c1).
       simpl in *. (* PARAMRECORDS *)
       Solver.map_solver FlattenExpr.locals_ok.
-    Grab Existential Variables. constructor; exact BinInt.Z.one.
   Qed.
 
   Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}:
