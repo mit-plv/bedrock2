@@ -224,11 +224,7 @@ Section Equiv.
               isValidI isValidM
               bitwidth isValidCSR
         ] in H;
-    repeat rewrite app_nil_r in H;
-    cbv [Datatypes.length
-           Pos.of_succ_nat
-           Z.gtb Z.compare Pos.compare Pos.compare_cont
-           Z.of_nat nth] in H.
+    repeat rewrite app_nil_r in H.
 
   Inductive PHide: Prop -> Prop :=
   | PHidden: forall P: Prop, P -> PHide P.
@@ -344,6 +340,14 @@ Section Equiv.
     | _ => idtac
     end).
 
+  Ltac destruct_if_by_contradiction :=
+    let c := match goal with
+    | H : context [if ?c then _ else _] |- _ => c
+    | H := context [if ?c then _ else _] |- _ => c
+    | |- if ?c then _ else _ => c
+    end in
+    destruct c; try (exfalso; contradiction); [].
+
   (* kitchen sink goal simplification? *)
   Ltac t  :=
     match goal with
@@ -354,6 +358,7 @@ Section Equiv.
     | H: mcomp_sat _ _ _ |- _ => mcomp_step_in H
     | H: exists _, _ |- _ => destruct H
     | H: _ /\ _ |- _ => destruct H
+    | _ => destruct_if_by_contradiction
     | H: _ |- _ => progress
                      cbv beta delta [load store] in H;
                    cbn beta iota delta [
@@ -395,6 +400,12 @@ Section Equiv.
       progress change HH in H
     end.
 
+  Ltac prove_KamiLabelR :=
+    split; [|split];
+        [eapply KamiSilent; reflexivity
+    |
+    |eassumption].
+
   Context (Registers_ok : map.ok Registers).
 
   Lemma AddrAligned_plus4:
@@ -404,6 +415,25 @@ Section Equiv.
   Proof.
     case TODO_joonwon.
   Qed.
+
+  Ltac prove_states_related :=
+    econstructor;
+    [ solve [trivial]
+    | clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
+    | clear; intro; discriminate
+    | solve [trivial]
+    | cbv [RiscvMachine.getNextPc]; split;
+    [ apply AddrAligned_plus4; assumption
+    | (* intros; eapply pc_related_plus4. *) case TODO_joonwon ]
+    | solve [trivial]
+    | eapply regs_related_put;
+        [ solve [trivial] | solve [trivial] | | ];
+            erewrite ?regs_related_get,
+            ?unsigned_split2_split1_as_bitSlice
+            by eauto;
+            trivial
+    | solve [trivial]
+        ].
 
   Lemma in_kamiXAddrs_aligned_plus4_bound:
     forall pc,
@@ -762,12 +792,11 @@ Section Equiv.
         clear G
       end.
 
-      24: { (** Add case *)
 
       (* More symbolic evaluation... *)
       (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
-      all: cbv [kunsigned evalUniBit] in *.
-      all:
+      24(*add*),34(*sub*):
+        cbv [kunsigned evalUniBit] in *;
         repeat match goal with
         | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
         | H : context G [ Z.of_nat ?n ] |- _ =>
@@ -783,128 +812,23 @@ Section Equiv.
         | H : context G [ Z.of_N (wordToN ?x) ] |- _ =>
             let e := context G [kunsigned x] in
             change e in H
-        end.
+        | H : negb ?x = true |- _ => eapply Bool.negb_true_iff in H
 
-      (* forward through riscv-coq... *)
-      repeat
-        match goal with
-        | [H: context [Z.of_N (@wordToN ?sz _)] |- _] =>
-          progress change sz with 32%nat in H
-        end.
-      eval_decode_in H5.
-      repeat t.
-
-      (* resolve interaction with "register" 0;
-       * we already know the destination register is not zero,
-       * from the inversion result.
-       *)
-      match goal with
-      | [regs := if ?c then _ else _ |- _] => destruct c
-      end.
-      1: {
-        exfalso; clear -e H14.
-        simpl in *.
-        apply Bool.negb_true_iff in H14.
-        apply Z.eqb_neq in H14; auto.
-      }
-      
-      (** Construction *)
-      do 2 eexists.
-      split; [|split]; [eapply KamiSilent; reflexivity| |eassumption].
-
-      subst kupd.
-      econstructor.
-      { assumption. }
-      { cbv [RegsToT pRegsToT]; kregmap_red; reflexivity. }
-      { intros; discriminate. }
-      { intros; assumption. }
-      { cbv [RiscvMachine.getNextPc]; split.
-        { apply AddrAligned_plus4; assumption. }
-        { (* intros; eapply pc_related_plus4. *)
-          case TODO_joonwon.
-        }
-      }
-      { reflexivity. }
-      { eapply regs_related_put; trivial.
-        1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
-        do 2 (erewrite regs_related_get; eauto).
-        do 2 rewrite unsigned_split2_split1_as_bitSlice.
-        reflexivity.
-      }
-      { assumption. }
-      }
-
-      33: { (** sub case *)
-
-      (* More symbolic evaluation... *)
-      (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
-      all: cbv [kunsigned evalUniBit] in *.
-      all:
+        | H : Z.eqb _ _ = true |- _ => eapply Z.eqb_eq in H
+        | H : Z.eqb _ _ = false |- _ => eapply Z.eqb_neq in H
+        
+        end;
         repeat match goal with
-        | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
-        | H : context G [ Z.of_nat ?n ] |- _ =>
-          let nn := eval cbv in (Z.of_nat n) in
-          let e := context G [nn] in
-          change e in H
-        | H : context G [ Z.add ?x ?y ] |- _ =>
-            let t := isZcst x in constr_eq t true;
-            let t := isZcst y in constr_eq t true;
-            let z := eval cbv in (Z.add x y) in
-            let e := context G [z] in
-            change e in H
-        | H : context G [ Z.of_N (wordToN ?x) ] |- _ =>
-            let e := context G [kunsigned x] in
-            change e in H
-        end.
-
-      (* forward through riscv-coq... *)
-      repeat
-        match goal with
         | [H: context [Z.of_N (@wordToN ?sz _)] |- _] =>
-          progress change sz with 32%nat in H
-        end.
-      eval_decode_in H5.
-      repeat t.
+            progress change sz with 32%nat in H
+        end;
+        lazymatch goal with
+        | H : context [decode _ _ ] |- _ => eval_decode_in H end;
 
-      (* resolve interaction with "register" 0;
-       * we already know the destination register is not zero,
-       * from the inversion result.
-       *)
-      match goal with
-      | [regs := if ?c then _ else _ |- _] => destruct c
-      end.
-      1: {
-        exfalso; clear -e H14.
-        simpl in *.
-        apply Bool.negb_true_iff in H14.
-        apply Z.eqb_neq in H14; auto.
-      }
-
-      (** Construction *)
-      do 2 eexists.
-      split; [|split]; [eapply KamiSilent; reflexivity| |eassumption].
-
-      subst kupd.
-      econstructor.
-      { assumption. }
-      { cbv [RegsToT pRegsToT]; kregmap_red; reflexivity. }
-      { intros; discriminate. }
-      { intros; assumption. }
-      { cbv [RiscvMachine.getNextPc]; split.
-        { apply AddrAligned_plus4; assumption. }
-        { (* intros; eapply pc_related_plus4. *)
-          case TODO_joonwon.
-        }
-      }
-      { reflexivity. }
-      { eapply regs_related_put; trivial.
-        1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
-        do 2 (erewrite regs_related_get; eauto).
-        do 2 rewrite unsigned_split2_split1_as_bitSlice.
-        reflexivity.
-      }
-      { assumption. }
-      }
+        repeat t;
+        do 2 eexists;
+        prove_KamiLabelR;
+        prove_states_related.
 
       38: { (* unknown opcode *)
 
