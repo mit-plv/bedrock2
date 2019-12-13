@@ -75,7 +75,7 @@ Section DecExecOk.
     forall w, w <> $0 -> map.get rrf (Z.of_N (wordToN w)) = Some (krf w).
 
   Lemma regs_related_get:
-    forall krf (Hkrf0: forall idx, idx = $0 -> krf idx = $0) rrf,
+    forall krf (Hkrf0: krf $0 = $0) rrf,
       regs_related krf rrf ->
       forall w z,
         Z.of_N (wordToN w) = z ->
@@ -89,10 +89,12 @@ Section DecExecOk.
   Proof.
     intros.
     destruct (Z.eq_dec _ _).
-    - subst; rewrite Hkrf0; auto.
+    - subst; destruct (weq w $0); subst; [assumption|].
+      exfalso.
       rewrite <-N2Z.inj_0 in e.
       apply N2Z.inj in e.
-      apply wordToN_inj; assumption.
+      rewrite <-wordToN_wzero with (sz:= 5%nat) in e.
+      apply wordToN_inj in e; auto.
     - subst; rewrite H; [reflexivity|].
       intro; subst; auto.
   Qed.

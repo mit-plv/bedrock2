@@ -794,16 +794,20 @@ Section Equiv.
       eval_decode_in H5.
       repeat t.
 
-      (* resolve interaction with "register" 0 *)
-      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
-
-      move v at top.
-      destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
-      move v0 at top.
-      destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
-
+      (* resolve interaction with "register" 0;
+       * we already know the destination register is not zero,
+       * from the inversion result.
+       *)
+      match goal with
+      | [regs := if ?c then _ else _ |- _] => destruct c
+      end.
+      1: {
+        exfalso; clear -e H14.
+        simpl in *.
+        apply Bool.negb_true_iff in H14.
+        apply Z.eqb_neq in H14; auto.
+      }
+      
       (** Construction *)
       do 2 eexists.
       split; [|split]; [eapply KamiSilent; reflexivity| |eassumption].
@@ -823,15 +827,9 @@ Section Equiv.
       { reflexivity. }
       { eapply regs_related_put; trivial.
         1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
-        (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
-        (* 1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia. *)
-        (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
-        (* 1:enough (0 <= bitSlice (kunsigned kinst) 20 25 < 32) by blia; eapply bitSlice_range_ex; blia. *)
-        (* eapply f_equal2; eapply f_equal; *)
-        (* eapply unsigned_inj; *)
-        (* rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small; *)
-        (* cbn; trivial; eapply bitSlice_range_ex; blia. *)
-        case TODO_joonwon.
+        do 2 (erewrite regs_related_get; eauto).
+        do 2 rewrite unsigned_split2_split1_as_bitSlice.
+        reflexivity.
       }
       { assumption. }
       }
@@ -868,15 +866,19 @@ Section Equiv.
       eval_decode_in H5.
       repeat t.
 
-      (* resolve interaction with "register" 0 *)
-      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
-      destruct (Z.eq_dec (bitSlice _ _ _) _) in *; [case TODO_joonwon|].
-
-      move v at top.
-      destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
-      move v0 at top.
-      destruct (map.get _ _) eqn:? in *; [|case TODO_joonwon].
+      (* resolve interaction with "register" 0;
+       * we already know the destination register is not zero,
+       * from the inversion result.
+       *)
+      match goal with
+      | [regs := if ?c then _ else _ |- _] => destruct c
+      end.
+      1: {
+        exfalso; clear -e H14.
+        simpl in *.
+        apply Bool.negb_true_iff in H14.
+        apply Z.eqb_neq in H14; auto.
+      }
 
       (** Construction *)
       do 2 eexists.
@@ -897,15 +899,9 @@ Section Equiv.
       { reflexivity. }
       { eapply regs_related_put; trivial.
         1:eapply unsigned_split2_split1_as_bitSlice; exact eq_refl.
-        (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo  in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
-        (* 1:enough (0 <= bitSlice (kunsigned kinst) 15 20 < 32) by blia; eapply bitSlice_range_ex; blia. *)
-        (* unshelve (let EE := fresh in epose proof (H10 _ _) as EE; setoid_rewrite Heqo0 in EE; eapply Some_inv in EE; match type of EE with ?x = _ => subst x end). *)
-        (* 1:enough (0 <= bitSlice (kunsigned kinst) 20 25 < 32) by blia; eapply bitSlice_range_ex; blia. *)
-        (* eapply f_equal2; eapply f_equal; *)
-        (* eapply unsigned_inj; *)
-        (* rewrite unsigned_split2_split1_as_bitSlice, unsigned_wordToZ, Z.mod_small; *)
-        (* cbn; trivial; eapply bitSlice_range_ex; blia. *)
-        case TODO_joonwon.
+        do 2 (erewrite regs_related_get; eauto).
+        do 2 rewrite unsigned_split2_split1_as_bitSlice.
+        reflexivity.
       }
       { assumption. }
       }
