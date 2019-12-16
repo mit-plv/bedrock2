@@ -348,13 +348,75 @@ Section Equiv.
     end in
     destruct c; try (exfalso; contradiction); [].
 
+From coqutil Require Import rdelta.
+
+Ltac zcstP x :=
+  let x := rdelta x in
+  let t := isZcst x in
+  constr_eq t true.
+Ltac natcstP x :=
+  let x := rdelta x in
+  let t := isnatcst x in
+  constr_eq t true.
+Ltac boolcstP x :=
+  let x := rdelta x in
+  first [constr_eq x true | constr_eq x false].
+
+Ltac eval2 op arg1P arg2P :=
+  repeat match goal with
+  | H : context G [op ?x ?y] |- _ =>
+      arg1P x; arg2P y;
+      let z := eval cbv in (op x y) in
+      let e := context G [z] in
+      change e in H
+  | H := context G [op ?x ?y] |- _ =>
+      arg1P x; arg2P y;
+      let z := eval cbv in (op x y) in
+      let e := context G [z] in
+      change e in (value of H)
+  | |- context G [op ?x ?y] =>
+      arg1P x; arg2P y;
+      let z := eval cbv in (op x y) in
+      let e := context G [z] in
+      change e
+  end.
+
+Ltac open_decode :=
+  let H := lazymatch goal with H : context [decode _ _ ] |- _ => H end in
+  let a := lazymatch type of H with context [decode ?a _ ] => a end in
+  let b := lazymatch type of H with context [decode _ ?b ] => b end in
+  let dec := fresh "dec" in
+  let Hdec := fresh "Hdec" in
+  remember (decode a b) as dec eqn:Hdec in H;
+  cbv beta iota delta [decode] in Hdec;
+  let H := Hdec in
+  repeat
+  match goal with
+  | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite !Hbs in H
+  end.
+
   (* kitchen sink goal simplification? *)
   Ltac t  :=
     match goal with
+    | H : ?LHS = let x := ?v in ?C |- _ =>
+        change (let x := v in LHS = C) in H
+    | H := let x := ?v in @?C x |- _ =>
+        let x := fresh x in pose v as x;
+        let C := eval cbv beta in (C x) in
+        change C in (value of H)
     | H: let x := ?v in @?C x |- _ =>
         let x := fresh x in pose v as x;
         let C := eval cbv beta in (C x) in
         change C in H
+    | |- let x := _ in _ => intro
+    | x := ?y |- _ => first [is_var y|is_const y|is_ind y|is_constructor y]; subst x
+    | H : context G [ Z.of_nat ?n ] |- _ =>
+        natcstP n;
+        let nn := eval cbv in (Z.of_nat n) in
+        let e := context G [nn] in
+        change e in H
+    | _ => progress eval2 Z.add zcstP zcstP
+    | _ => progress eval2 Z.eqb zcstP zcstP
     | H: mcomp_sat _ _ _ |- _ => mcomp_step_in H
     | H: exists _, _ |- _ => destruct H
     | H: _ /\ _ |- _ => destruct H
@@ -786,42 +848,97 @@ Section Equiv.
 
       (* More symbolic evaluation... *)
       (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
-      24(*add*),34(*sub*):
+
+      Ltac nonmem_case_decode :=
         cbv [kunsigned evalUniBit] in *;
         repeat match goal with
         | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
-        | H : context G [ Z.of_nat ?n ] |- _ =>
-          let nn := eval cbv in (Z.of_nat n) in
-          let e := context G [nn] in
-          change e in H
-        | H : context G [ Z.add ?x ?y ] |- _ =>
-            let t := isZcst x in constr_eq t true;
-            let t := isZcst y in constr_eq t true;
-            let z := eval cbv in (Z.add x y) in
-            let e := context G [z] in
-            change e in H
-        | H : context G [ Z.of_N (wordToN ?x) ] |- _ =>
-            let e := context G [kunsigned x] in
-            change e in H
-        | H : negb ?x = true |- _ => eapply Bool.negb_true_iff in H
-
-        | H : Z.eqb _ _ = true |- _ => eapply Z.eqb_eq in H
-        | H : Z.eqb _ _ = false |- _ => eapply Z.eqb_neq in H
-        
         end;
+
+(*
+        epose (kinstr := BinInt.Z.of_N (wordToN (instrMem (split2 2 (Z.to_nat instrMemSizeLg) kpc)))); move kinstr at top;
         repeat match goal with
+        | H : context G[BinInt.Z.of_N (wordToN (instrMem (split2 _ (Z.to_nat instrMemSizeLg) kpc)))] |- _ =>
+            let e := context G[kinstr] in
+            change e in H
+        end.
+        let v := eval cbv [kinstr] in kinstr in
+        pose proof (eq_refl : kinstr = v);
+        clearbody kinstr.
+
+*)
+        repeat match goal with
+        | _ => t
         | [H: context [Z.of_N (@wordToN ?sz _)] |- _] =>
             progress change sz with 32%nat in H
-        end;
-        lazymatch goal with
-        | H : context [decode _ _ ] |- _ => eval_decode_in H end;
+        | H : negb ?x = true |- _ => eapply Bool.negb_true_iff in H
+        | H : Z.eqb _ _ = true |- _ => eapply Z.eqb_eq in H
+        | H : Z.eqb _ _ = false |- _ => eapply Z.eqb_neq in H
 
-        repeat t;
-        do 2 eexists;
-        prove_KamiLabelR;
-        prove_states_related.
+      | _ => open_decode
+      | H : context G [andb false _] |- _ =>
+          let e := context G [false] in
+          change e in H
+      | H := context G [andb false _] |- _ =>
+          let e := context G [false] in
+          change e in (value of H)
+      | |- context G [andb false _] =>
+          let e := context G [false] in
+          change e
+      | H : context G [andb true ?x] |- _ =>
+          let e := context G [x] in
+          change e in H
+      | H := context G [andb true ?x] |- _ =>
+          let e := context G [x] in
+          change e in (value of H)
+      | |- context G [andb true ?x] =>
+          let e := context G [x] in
+          change e
 
-      38: { (* unknown opcode *)
+      | _ => progress cbn [iset bitwidth supportsM supportsA supportsF isValidA isValidF isValidI isValidM isValidCSR isValidF64 isValidA64 isValidM64 isValidI64] in *
+
+      | H : Z |- _ => clear H
+      | H : list Instruction |- _ => clear H
+      end.
+
+    Ltac nonmem_case_exec results dec Hdec instrMem kpc :=
+      hnf in results;
+      let e := open_constr:(@cons Instruction _ nil) in
+      unify results e;
+      change e in (value of results);
+      subst results;
+      match type of Hdec with
+      | dec = ?RHS =>
+          let v := eval hnf in RHS in
+          change (dec = v) in Hdec;
+          assert_succeeds (repeat match goal with x := _ |- _ => subst x end; set (BinInt.Z.of_N
+          (@wordToN 32 (instrMem (split2 2 (Z.to_nat instrMemSizeLg) kpc)))) as kinst in *; match type of Hdec with _ = ?A => idtac A ":" end);
+          subst dec
+      end;
+      repeat t.
+
+    Ltac binop_case_construct :=
+      do 2 eexists;
+      prove_KamiLabelR;
+      prove_states_related.
+
+      24: nonmem_case_decode.
+      24: nonmem_case_exec results dec Hdec instrMem kpc.
+      24: binop_case_construct.
+
+      28: nonmem_case_decode.
+      28: nonmem_case_exec results dec Hdec instrMem kpc.
+      28: binop_case_construct.
+
+      Set Ltac Profiling.
+      32: nonmem_case_decode.
+      32: nonmem_case_exec results dec Hdec instrMem kpc.
+      32: binop_case_construct.
+
+      Show Ltac Profile CutOff 0.
+      Unset Ltac Profiling.
+
+      37: { (* unknown opcode *)
 
       (* More symbolic evaluation... *)
       (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
