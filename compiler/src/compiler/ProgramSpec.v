@@ -44,6 +44,10 @@ Section Params1.
   {
     funnames_NoDup: NoDup prog.(funnames);
 
+    (* TODO we should have an iterable map *)
+    funnames_matches_dom: forall f,
+        map.get prog.(funimpls) f <> None <-> List.In f prog.(funnames);
+
     init_code_correct: forall m0 mc0,
       mem_available spec.(datamem_start) spec.(datamem_pastend) m0 ->
       exec prog.(funimpls) prog.(init_code) nil m0 map.empty mc0

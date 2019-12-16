@@ -52,6 +52,49 @@ Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
+(* TODO express flatten_functions in terms of this, or add map_values, or get_dom to the
+   map interface *)
+Section MapKeys.
+  Context {K V1 V2: Type} {M1: map.map K V1} {M2: map.map K V2}.
+
+  Definition map_values(f: V1 -> V2)(m1: M1): list K -> M2 :=
+    fix rec keys :=
+      match keys with
+      | nil => map.empty
+      | k :: ks =>
+        match map.get m1 k with
+        | Some v1 => map.put (rec ks) k (f v1)
+        | None => map.empty
+        end
+      end.
+
+  Context (keqb: K -> K -> bool) {keqb_spec: EqDecider keqb}
+          {OK1: map.ok M1} {OK2: map.ok M2}.
+
+  Lemma get_map_values: forall (f: V1 -> V2) (keys: list K) (m1: M1) (k: K) (v1: V1),
+      (forall x, In x keys -> map.get m1 x <> None) ->
+      In k keys ->
+      map.get m1 k = Some v1 ->
+      map.get (map_values f m1 keys) k = Some (f v1).
+  Proof.
+    induction keys; intros.
+    - simpl in *. contradiction.
+    - simpl in *.
+      destruct H0.
+      + subst.
+        destr (map.get m1 k).
+        * rewrite map.get_put_same. congruence.
+        * exfalso. eapply H. 2: exact E. auto.
+      + destr (map.get m1 a).
+        * rewrite map.get_put_dec.
+          destr (keqb a k).
+          { subst. congruence. }
+          { eauto. }
+        * exfalso. unfold not in H. eauto.
+  Qed.
+
+End MapKeys.
+
 
 Module Import Pipeline.
   Definition varname := string.
@@ -146,6 +189,44 @@ Section Pipeline1.
           (sat: ProgramSatisfiesSpec prog Semantics.exec spec)
           (ml: MemoryLayout Semantics.width)
           (mlOk: MemoryLayoutOk ml).
+
+  Lemma get_flatten_functions: forall fname argvars resvars body,
+      map.get prog.(funimpls) fname = Some (argvars, resvars, body) ->
+      map.get (flatten_functions (funimpls prog) (funnames prog)) fname =
+      Some (argvars, resvars, ExprImp2FlatImp body).
+  Proof.
+    destruct prog. destruct sat as [_ M0 _ _]. cbn in *. clear sat.
+    assert (M: forall f, In f funnames -> map.get funimpls f <> None). {
+      intros. eapply M0. assumption.
+    }
+    intros.
+    assert (G: In fname funnames). {
+      intros. eapply M0. congruence.
+    }
+    clear M0.
+    generalize dependent funimpls.
+    clear prog spec init_code loop_body ml mlOk.
+    revert funnames fname argvars resvars body G.
+    induction funnames; intros.
+    - simpl in *. contradiction.
+    - simpl in *.
+      destruct G.
+      + subst.
+        rewrite map.get_put_same. unfold flatten_function.
+        simpl in *. (* PARAMRECORDS *)
+        rewrite H.
+        reflexivity.
+      + destr (map.get funimpls a).
+        * rewrite map.get_put_dec.
+          destruct_one_match.
+          { subst.
+            unfold flatten_function.
+            simpl in *. (* PARAMRECORDS *)
+            rewrite H.
+            reflexivity. }
+          { eauto. }
+        * exfalso. unfold not in M0. eauto.
+  Qed.
 
   (* TODO reduce duplication between FlatToRiscvDef *)
 
@@ -312,7 +393,11 @@ Section Pipeline1.
     case TODO_sam.
   Qed.
 
-  Definition TODO_we_can_put_more_suff_here_if_we_want: Prop. case TODO_sam. Qed.
+  Lemma weird: False.
+  Proof.
+    Fail destruct prog. (* Error: functions' is already used. *)
+    (* TODO report COQBUG, or already reported? *)
+  Abort.
 
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
       initial = putProgram preInitial ->
@@ -353,7 +438,7 @@ Section Pipeline1.
                compiler.RegRename.related.
         refine (ex_intro _ (flatten_functions prog.(funimpls) prog.(funnames), _, _, _, _, _) _).
         ssplit; try reflexivity.
-        { intros. case TODO_sam. (* flatten_functions_correct *) }
+        { intros. eapply get_flatten_functions. assumption. }
         { unfold map.undef_on, map.agree_on. intros. reflexivity. }
         refine (ex_intro _ (functions', _, _, _, _, _) _).
         unfold goodMachine.

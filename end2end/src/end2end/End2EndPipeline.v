@@ -242,6 +242,20 @@ Section Connect.
       (* 3) bedrock2 semantics to bedrock2 program logic *)
       constructor.
       - eapply funimplsList_NoDup.
+      - simpl. clear.
+        induction funimplsList; split; intros.
+        + simpl in H. rewrite map.get_empty in H. contradiction.
+        + simpl in H. contradiction.
+        + simpl in *. destruct a as [k v]. simpl in *.
+          rewrite map.get_put_dec in H.
+          destruct_one_match_hyp; [left|right]. 1: assumption.
+          eapply IHl. assumption.
+        + simpl in *. destruct a as [k v]. simpl in *.
+          destruct H.
+          * subst. rewrite map.get_put_same. congruence.
+          * rewrite map.get_put_dec.
+            destruct_one_match. 1: congruence.
+            eapply IHl. assumption.
       - intros.
         replace m0 with (projT1 (riscvMemInit memInit)) by case TODO_joonwon.
         refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
