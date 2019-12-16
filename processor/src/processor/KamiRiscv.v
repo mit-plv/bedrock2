@@ -529,7 +529,7 @@ Ltac open_decode :=
       assert (1 < 2 ^ instrMemSizeLg) by (apply Z.pow_gt_1; blia).
       blia.
     }
-    
+
     rewrite wordToN_NToWord_2
       by (rewrite H2; eapply in_kamiXAddrs_aligned_plus4_bound; eauto).
     rewrite wordToN_NToWord_2.
@@ -645,7 +645,7 @@ Ltac open_decode :=
         destruct annot; [|discriminate]
       | [H: Rle _ = Rle _ |- _] => inversion H; subst; clear H
       end.
-  
+
   Ltac kinvert_more :=
     kinvert;
     try (repeat
@@ -812,7 +812,7 @@ Ltac open_decode :=
       let e := context G [@kunsigned nn x] in
       change e in H
       end.
- 
+
       progress
       repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
       let e := context G [x] in
@@ -994,7 +994,8 @@ Ltac open_decode :=
        (* where is the corresponding hypothesis? *)
        case TODO_joonwon.
       }
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37: case TODO_kamiStep_instruction.
+
+      all: case TODO_kamiStep_instruction.
 
     - (* case "execNmZ" *)
       right.
@@ -1053,7 +1054,7 @@ Ltac open_decode :=
       let e := context G [@kunsigned nn x] in
       change e in H
       end.
- 
+
       progress
       repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
       let e := context G [x] in
