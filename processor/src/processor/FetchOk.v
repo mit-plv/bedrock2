@@ -132,6 +132,32 @@ Proof.
       apply NatLib.zero_lt_pow2.
 Qed.
 
+Lemma combine_wplus_wzero:
+  forall sz1 (wb: Word.word sz1) sz2 (w1 w2: Word.word sz2),
+    Word.combine wb w1 ^+ Word.combine (wzero sz1) w2 =
+    Word.combine wb (w1 ^+ w2).
+Proof.
+  induction wb; intros; [reflexivity|].
+  simpl; rewrite <-wplus_WS_0.
+  rewrite IHwb; reflexivity.
+Qed.
+
+Lemma split1_wplus_silent:
+  forall sz1 sz2 (w1 w2: Word.word (sz1 + sz2)),
+    split1 sz1 sz2 w2 = wzero _ ->
+    split1 sz1 sz2 (w1 ^+ w2) = split1 sz1 sz2 w1.
+Proof.
+  intros.
+  pose proof (word_combinable _ _ w1).
+  destruct H0 as [w11 [w12 ?]].
+  pose proof (word_combinable _ _ w2).
+  destruct H1 as [w21 [w22 ?]].
+  subst; rewrite split1_combine in H; subst.
+  rewrite combine_wplus_wzero.
+  do 2 rewrite split1_combine.
+  reflexivity.
+Qed.
+
 Section FetchOk.
 
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
@@ -168,28 +194,21 @@ Section FetchOk.
     | S n' => alignedXAddrs base n' ++ alignedXAddrsRange base n'
     end.
 
-  (* Lemma makeAlignedXAddrs_AddrAligned: *)
-  (*   forall base n x, *)
-  (*     In x (makeAlignedXAddrs base n) -> *)
-  (*     AddrAligned x. *)
-  (* Proof. *)
-  (*   induction n; intros; [exfalso; auto|]. *)
-  (*   destruct H. *)
-  (*   - subst; reflexivity. *)
-  (*   - auto. *)
-  (* Qed. *)
-
   (* set of executable addresses in the kami processor *)
   Definition kamiXAddrs: XAddrs :=
-    (* addXAddrRange (wzero _) instrMemSize nil. *)
     alignedXAddrsRange (wzero _) instrMemSize.
 
-  (* Corollary kamiXAddrs_In_AddrAligned: *)
-  (*   forall addr, In addr kamiXAddrs -> AddrAligned addr. *)
-  (* Proof. *)
-  (*   intros. *)
-  (*   eapply makeAlignedXAddrs_AddrAligned; eassumption. *)
-  (* Qed. *)
+  Lemma AddrAligned_plus4:
+    forall rpc,
+      AddrAligned rpc ->
+      AddrAligned (word.add rpc (word.of_Z 4)).
+  Proof.
+    cbv [AddrAligned word.add word WordsKami wordW KamiWord.word].
+    intros.
+    rewrite <-H.
+    apply split1_wplus_silent.
+    reflexivity.
+  Qed.
 
   Lemma pc_related_preserves_AddrAligned:
     forall kpc rpc,

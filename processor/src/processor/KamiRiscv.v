@@ -408,14 +408,6 @@ Section Equiv.
 
   Context (Registers_ok : map.ok Registers).
 
-  Lemma AddrAligned_plus4:
-    forall rpc,
-      AddrAligned rpc ->
-      AddrAligned (word.add rpc (word.of_Z 4)).
-  Proof.
-    case TODO_joonwon.
-  Qed.
-
   Ltac prove_states_related :=
     econstructor;
     [ solve [trivial]
@@ -437,8 +429,7 @@ Section Equiv.
 
   Lemma in_kamiXAddrs_aligned_plus4_bound:
     forall pc,
-      isXAddr4 pc kamiXAddrs ->
-      AddrAligned pc ->
+      isXAddr4 (word.add pc (word.of_Z 4)) kamiXAddrs ->
       (wordToN pc + 4 < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
   Proof.
     case TODO_joonwon.
