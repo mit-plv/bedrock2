@@ -190,6 +190,9 @@ Section Pipeline1.
           (ml: MemoryLayout Semantics.width)
           (mlOk: MemoryLayoutOk ml).
 
+  Hypothesis heap_start_agree: spec.(datamem_start) = ml.(heap_start).
+  Hypothesis heap_pastend_agree: spec.(datamem_pastend) = ml.(heap_pastend).
+
   Lemma get_flatten_functions: forall fname argvars resvars body,
       map.get prog.(funimpls) fname = Some (argvars, resvars, body) ->
       map.get (flatten_functions (funimpls prog) (funnames prog)) fname =
@@ -205,7 +208,7 @@ Section Pipeline1.
     }
     clear M0.
     generalize dependent funimpls.
-    clear prog spec init_code loop_body ml mlOk.
+    clear heap_start_agree heap_pastend_agree prog spec init_code loop_body ml mlOk.
     revert funnames fname argvars resvars body G.
     induction funnames; intros.
     - simpl in *. contradiction.
@@ -226,6 +229,44 @@ Section Pipeline1.
             reflexivity. }
           { eauto. }
         * exfalso. unfold not in M0. eauto.
+  Qed.
+
+  Lemma get_rename_functions: forall flatfuns f impl names,
+      In f names ->
+      (forall fn, In fn names -> map.get flatfuns fn <> None) ->
+      map.get flatfuns f = Some impl ->
+      exists impl',
+        rename_fun available_registers impl = Some impl' /\
+        map.get (rename_functions eqb Z.eqb eqb eqb available_registers ext_spec
+                                  flatfuns names) f = Some impl'.
+  Proof.
+    clear heap_start_agree heap_pastend_agree prog spec sat ml mlOk.
+    induction names; intros.
+    - simpl in H. contradiction.
+    - simpl in *.
+      destruct H.
+      + subst.
+        rewrite map.get_put_same. eexists. split. 2: reflexivity.
+        unfold rename_function.
+        simpl in *. (* PARAMRECORDS *)
+        rewrite H1.
+        unfold Register, MachineInt.
+        destruct_one_match. 1: reflexivity.
+        case TODO_sam. (* how to deal with failures during compilation? *)
+      + destr (map.get flatfuns a).
+        * rewrite map.get_put_dec.
+          destruct_one_match.
+          { subst.
+            unfold rename_function.
+            simpl in *. (* PARAMRECORDS *)
+            rewrite H1.
+            destruct_one_match.
+            - eauto.
+            - unfold Register, MachineInt. rewrite E0.
+              case TODO_sam. (* how to deal with failures during compilation? *)
+          }
+          { eauto. }
+        * exfalso. unfold not in H0. eauto.
   Qed.
 
   (* TODO reduce duplication between FlatToRiscvDef *)
@@ -370,38 +411,14 @@ Section Pipeline1.
 
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good.
 
-  Definition defined_on_ml(m: mem): Prop.
-  Proof using ml.
-    (* define once we see where it's proved *)
-    case TODO_sam.
-  Qed.
-
-  Lemma defined_on_ml_to_mem_available: forall m,
-      defined_on_ml m ->
-      mem_available (datamem_start spec) (datamem_pastend spec) m.
-  Proof using. case TODO_sam. Qed.
-
-  Definition dom_is_range(m: mem)(start: word)(pastend: word): Prop.
-  Proof using .
-    case TODO_sam.
-  Qed.
-
-  Lemma extract_datamem: forall (m: mem),
-      defined_on_ml m ->
-      exists dmem, dom_is_range dmem ml.(heap_start) ml.(heap_pastend).
-  Proof.
-    case TODO_sam.
-  Qed.
-
-  Lemma weird: False.
-  Proof.
-    Fail destruct prog. (* Error: functions' is already used. *)
-    (* TODO report COQBUG, or already reported? *)
-  Abort.
+  Definition layout: mem -> Prop :=
+    (mem_available  ml.(code_start)  ml.(code_pastend) *
+     mem_available  ml.(heap_start)  ml.(heap_pastend) *
+     mem_available ml.(stack_start) ml.(stack_pastend))%sep.
 
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
       initial = putProgram preInitial ->
-      defined_on_ml preInitial.(getMem) ->
+      layout preInitial.(getMem) ->
       (* the registers must have some (unspecified) value, ie reading a register must not
          be undefined behavior: *)
       regs_initialized preInitial.(getRegs) ->
@@ -416,17 +433,21 @@ Section Pipeline1.
     pose proof FlatToRiscvLiterals.compile_lit_correct_full as P.
     cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
     specialize P with (x := RegisterNames.sp) (v := init_sp).
-    unfold runsTo in P. eapply P; clear P.
-    { simpl. reflexivity. }
-    { simpl. case TODO_sam. (* subset footpr XAddrs *) }
-    { simpl. case TODO_sam. }
+    unfold runsTo in P. eapply P; clear P; simpl.
+    { reflexivity. }
+    { case TODO_sam. (* subset footpr XAddrs *) }
+    { case TODO_sam. }
     { case TODO_sam. }
     { unfold valid_machine. case TODO_sam. }
     (* then, run init_code (using compiler simulation and correctness of init_code) *)
     simpl.
     pose proof (sim initCodeGhostConsts main_pos eq_refl eq_refl) as P.
     unfold simulation, runsTo in P.
-    pose proof (extract_datamem _ H0) as Q. destruct Q as [dmem Q].
+    rename H0 into Q. unfold layout in Q.
+    unfold sep, map.split in Q.
+    destruct Q as [ cdmem [ smem [ [ ? ? ] [ Q ? ] ] ] ].
+    destruct Q as [ cmem  [ dmem [ [ ? ? ] [ ? ? ] ] ] ].
+    subst.
     specialize (P (prog.(funimpls), prog.(init_code), nil, dmem, map.empty, mkMetricLog 0 0 0 0)).
     eapply runsTo_weaken.
     - eapply P; clear P.
@@ -443,7 +464,13 @@ Section Pipeline1.
         refine (ex_intro _ (functions', _, _, _, _, _) _).
         unfold goodMachine.
         ssplit; try reflexivity.
-        { unfold envs_related. case TODO_sam. }
+        { unfold envs_related.
+          intros f [ [argnames resnames] body1 ] G.
+          unfold functions'.
+          eapply get_rename_functions.
+          - case TODO_sam.
+          - case TODO_sam.
+          - exact G. }
         { intros. ssplit; reflexivity. }
         { case TODO_sam. (* rename succeeds *) }
         { case TODO_sam. (* fits_stack *) }
@@ -473,7 +500,6 @@ Section Pipeline1.
         { simpl. solve_word_eq word_ok. }
         { simpl. case TODO_sam. (* subset footpr xaddrs *) }
         { simpl. case TODO_sam. (* separation logic descrption of initial memory *) }
-        { simpl. assumption. }
         { case TODO_sam. (* valid_machine *) }
       + (* prove correctness of ExprImp init code: *)
         pose proof sat.(init_code_correct) as P.
@@ -481,8 +507,7 @@ Section Pipeline1.
         intros.
         specialize (P dmem (mkMetricLog 0 0 0 0)).
         specialize_hyp P. {
-          apply defined_on_ml_to_mem_available.
-          replace dmem with preInitial_mem by case TODO_sam. (* does not hold *)
+          rewrite heap_start_agree, heap_pastend_agree.
           assumption.
         }
         change (

@@ -165,6 +165,8 @@ Section Connect.
 
   Hypothesis instrMemSizeLg_agrees_with_ml:
     word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
+  Hypothesis heap_start_agree: spec.(datamem_start) = ml.(heap_start).
+  Hypothesis heap_pastend_agree: spec.(datamem_pastend) = ml.(heap_pastend).
 
   Hypothesis funimplsList_NoDup: NoDup (List.map fst funimplsList).
 
@@ -265,6 +267,8 @@ Section Connect.
           eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
         eapply Preserve; split; auto.
     }
+    { assumption. }
+    { assumption. }
     { case TODO_sam. }
     { case TODO_sam. }
 

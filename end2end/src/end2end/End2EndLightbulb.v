@@ -223,7 +223,7 @@ Proof.
   specialize_first Q memInit.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
-  eapply Q; clear Q; cycle 3.
+  eapply Q; clear Q; [reflexivity|reflexivity|..]; cycle 3.
   - (* preserve invariant *)
     intros.
     (* TODO make Simp.simp work here *)
