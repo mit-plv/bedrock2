@@ -211,18 +211,17 @@ Section Equiv.
       match goal with
       | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite !Hbs in H; clear Hbs
       end;
-    cbv [iset supportsM supportsA supportsF
-              andb Z.eqb Pos.eqb
-              opcode_LOAD opcode_OP opcode_SYSTEM opcode_MISC_MEM opcode_OP_IMM
-              opcode_LUI opcode_AUIPC opcode_STORE opcode_BRANCH opcode_JALR
-              opcode_JAL
-              funct3_LW funct3_LH funct3_LB funct3_LBU funct3_LHU
-              funct3_ADD
-              funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU
-              funct3_DIV funct3_DIVU funct3_REM funct3_REMU
-              funct7_ADD funct7_MUL
-              isValidI isValidM
-              bitwidth isValidCSR
+    cbv [
+    iset
+    andb 
+
+    Z.gtb Z.eqb Pos.eqb
+    BinInt.Z.of_nat Pos.of_succ_nat
+    BinInt.Z.compare Pos.compare Pos.compare_cont
+    Datatypes.length nth
+
+    (* grep Definition ./deps/riscv-coq/src/riscv/Spec/Decode.v | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; echo *)
+        bitwidth decode FPRegister funct12_EBREAK funct12_ECALL funct12_MRET funct12_SRET funct12_URET funct12_WFI funct2_FMADD_S funct3_ADD funct3_ADDI funct3_ADDIW funct3_ADDW funct3_AMOD funct3_AMOW funct3_AND funct3_ANDI funct3_BEQ funct3_BGE funct3_BGEU funct3_BLT funct3_BLTU funct3_BNE funct3_CSRRC funct3_CSRRCI funct3_CSRRS funct3_CSRRSI funct3_CSRRW funct3_CSRRWI funct3_DIV funct3_DIVU funct3_DIVUW funct3_DIVW funct3_FCLASS_S funct3_FENCE funct3_FENCE_I funct3_FEQ_S funct3_FLE_S funct3_FLT_S funct3_FLW funct3_FMAX_S funct3_FMIN_S funct3_FMV_X_W funct3_FSGNJN_S funct3_FSGNJ_S funct3_FSGNJX_S funct3_FSW funct3_LB funct3_LBU funct3_LD funct3_LH funct3_LHU funct3_LW funct3_LWU funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU funct3_MULW funct3_OR funct3_ORI funct3_PRIV funct3_REM funct3_REMU funct3_REMUW funct3_REMW funct3_SB funct3_SD funct3_SH funct3_SLL funct3_SLLI funct3_SLLIW funct3_SLLW funct3_SLT funct3_SLTI funct3_SLTIU funct3_SLTU funct3_SRA funct3_SRAI funct3_SRAIW funct3_SRAW funct3_SRL funct3_SRLI funct3_SRLIW funct3_SRLW funct3_SUB funct3_SUBW funct3_SW funct3_XOR funct3_XORI funct5_AMOADD funct5_AMOAND funct5_AMOMAX funct5_AMOMAXU funct5_AMOMIN funct5_AMOMINU funct5_AMOOR funct5_AMOSWAP funct5_AMOXOR funct5_LR funct5_SC funct6_SLLI funct6_SRAI funct6_SRLI funct7_ADD funct7_ADDW funct7_AND funct7_DIV funct7_DIVU funct7_DIVUW funct7_DIVW funct7_FADD_S funct7_FCLASS_S funct7_FCVT_S_W funct7_FCVT_W_S funct7_FDIV_S funct7_FEQ_S funct7_FMIN_S funct7_FMUL_S funct7_FMV_W_X funct7_FMV_X_W funct7_FSGNJ_S funct7_FSQRT_S funct7_FSUB_S funct7_MUL funct7_MULH funct7_MULHSU funct7_MULHU funct7_MULW funct7_OR funct7_REM funct7_REMU funct7_REMUW funct7_REMW funct7_SFENCE_VMA funct7_SLL funct7_SLLIW funct7_SLLW funct7_SLT funct7_SLTU funct7_SRA funct7_SRAIW funct7_SRAW funct7_SRL funct7_SRLIW funct7_SRLW funct7_SUB funct7_SUBW funct7_XOR isValidA isValidA64 isValidCSR isValidF isValidF64 isValidI isValidI64 isValidM isValidM64 Opcode opcode_AMO opcode_AUIPC opcode_BRANCH opcode_JAL opcode_JALR opcode_LOAD opcode_LOAD_FP opcode_LUI opcode_MADD opcode_MISC_MEM opcode_MSUB opcode_NMADD opcode_NMSUB opcode_OP opcode_OP_32 opcode_OP_FP opcode_OP_IMM opcode_OP_IMM_32 opcode_STORE opcode_STORE_FP opcode_SYSTEM Register RoundMode rs2_FCVT_L_S rs2_FCVT_LU_S rs2_FCVT_W_S rs2_FCVT_WU_S supportsA supportsF supportsM
         ] in H;
     repeat rewrite app_nil_r in H.
 
@@ -529,7 +528,7 @@ Ltac open_decode :=
       assert (1 < 2 ^ instrMemSizeLg) by (apply Z.pow_gt_1; blia).
       blia.
     }
-
+    
     rewrite wordToN_NToWord_2
       by (rewrite H2; eapply in_kamiXAddrs_aligned_plus4_bound; eauto).
     rewrite wordToN_NToWord_2.
@@ -645,7 +644,7 @@ Ltac open_decode :=
         destruct annot; [|discriminate]
       | [H: Rle _ = Rle _ |- _] => inversion H; subst; clear H
       end.
-
+  
   Ltac kinvert_more :=
     kinvert;
     try (repeat
@@ -812,7 +811,7 @@ Ltac open_decode :=
       let e := context G [@kunsigned nn x] in
       change e in H
       end.
-
+ 
       progress
       repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
       let e := context G [x] in
@@ -821,6 +820,10 @@ Ltac open_decode :=
 
       cbv [bool_rect] in *.
 
+      set (kinst := instrMem (@evalUniBit (S (S (BinInt.Z.to_nat instrMemSizeLg))) (BinInt.Z.to_nat instrMemSizeLg) (TruncLsb 2 (BinInt.Z.to_nat instrMemSizeLg)) kpc)) in *;
+      progress cbn [evalUniBit] in kinst.
+
+  Timeout 300
       (* Evaluation almost done, separate out cases of Kami execution *)
       progress
       repeat match goal with
@@ -845,157 +848,141 @@ Ltac open_decode :=
         clear G
       end.
 
+  all: try timeout 10 time (
 
-      (* More symbolic evaluation... *)
-      (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
+  
 
-      Ltac nonmem_case_decode :=
-        cbv [kunsigned evalUniBit] in *;
-        repeat match goal with
-        | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
-        end;
-
-(*
-        epose (kinstr := BinInt.Z.of_N (wordToN (instrMem (split2 2 (Z.to_nat instrMemSizeLg) kpc)))); move kinstr at top;
-        repeat match goal with
-        | H : context G[BinInt.Z.of_N (wordToN (instrMem (split2 _ (Z.to_nat instrMemSizeLg) kpc)))] |- _ =>
-            let e := context G[kinstr] in
-            change e in H
-        end.
-        let v := eval cbv [kinstr] in kinstr in
-        pose proof (eq_refl : kinstr = v);
-        clearbody kinstr.
-
-*)
-        repeat match goal with
-        | _ => t
-        | [H: context [Z.of_N (@wordToN ?sz _)] |- _] =>
-            progress change sz with 32%nat in H
-        | H : negb ?x = true |- _ => eapply Bool.negb_true_iff in H
-        | H : Z.eqb _ _ = true |- _ => eapply Z.eqb_eq in H
-        | H : Z.eqb _ _ = false |- _ => eapply Z.eqb_neq in H
-
-      | _ => open_decode
-      | H : context G [andb false _] |- _ =>
-          let e := context G [false] in
-          change e in H
-      | H := context G [andb false _] |- _ =>
-          let e := context G [false] in
-          change e in (value of H)
-      | |- context G [andb false _] =>
-          let e := context G [false] in
-          change e
-      | H : context G [andb true ?x] |- _ =>
-          let e := context G [x] in
-          change e in H
-      | H := context G [andb true ?x] |- _ =>
-          let e := context G [x] in
-          change e in (value of H)
-      | |- context G [andb true ?x] =>
-          let e := context G [x] in
-          change e
-
-      | _ => progress cbn [iset bitwidth supportsM supportsA supportsF isValidA isValidF isValidI isValidM isValidCSR isValidF64 isValidA64 isValidM64 isValidI64] in *
-
-      | H : Z |- _ => clear H
-      | H : list Instruction |- _ => clear H
-      end.
-
-    Ltac nonmem_case_exec results dec Hdec instrMem kpc :=
-      hnf in results;
-      let e := open_constr:(@cons Instruction _ nil) in
-      unify results e;
-      change e in (value of results);
-      subst results;
-      match type of Hdec with
-      | dec = ?RHS =>
-          let v := eval hnf in RHS in
-          change (dec = v) in Hdec;
-          assert_succeeds (repeat match goal with x := _ |- _ => subst x end; set (BinInt.Z.of_N
-          (@wordToN 32 (instrMem (split2 2 (Z.to_nat instrMemSizeLg) kpc)))) as kinst in *; match type of Hdec with _ = ?A => idtac A ":" end);
-          subst dec
-      end;
-      repeat t.
-
-    Ltac binop_case_construct :=
-      do 2 eexists;
-      prove_KamiLabelR;
-      prove_states_related.
-
-      24: nonmem_case_decode.
-      24: nonmem_case_exec results dec Hdec instrMem kpc.
-      24: binop_case_construct.
-
-      28: nonmem_case_decode.
-      28: nonmem_case_exec results dec Hdec instrMem kpc.
-      28: binop_case_construct.
-
-      Set Ltac Profiling.
-      32: nonmem_case_decode.
-      32: nonmem_case_exec results dec Hdec instrMem kpc.
-      32: binop_case_construct.
-
-      Show Ltac Profile CutOff 0.
-      Unset Ltac Profiling.
-
-      37: { (* unknown opcode *)
-
-      (* More symbolic evaluation... *)
-      (* TODO maybe we can do this earlier, but kami interpreter has bare proofs inside its definition, so maybe not *)
-      all: cbv [kunsigned evalUniBit] in *.
-      all:
-        repeat match goal with
-        | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
-        | H : context G [ Z.of_nat ?n ] |- _ =>
+    cbv [kunsigned evalUniBit] in *;
+    repeat match goal with
+      | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
+    end;
+    repeat match goal with
+      | H : context [ Z.of_nat ?n ] |- _ =>
+          natcstP n;
           let nn := eval cbv in (Z.of_nat n) in
-          let e := context G [nn] in
-          change e in H
-        | H : context G [ Z.add ?x ?y ] |- _ =>
-            let t := isZcst x in constr_eq t true;
-            let t := isZcst y in constr_eq t true;
-            let z := eval cbv in (Z.add x y) in
-            let e := context G [z] in
-            change e in H
-        | H : context G [ Z.of_N (wordToN ?x) ] |- _ =>
-            let e := context G [kunsigned x] in
-            change e in H
-        end.
+          change (Z.of_nat n) with nn in H
+    end;
+    repeat match goal with
+      | H : context [ Z.add ?x ?y ] |- _ =>
+          let t := isZcst x in constr_eq t true;
+          let t := isZcst y in constr_eq t true;
+          let z := eval cbv in (Z.add x y) in
+          change (Z.add x y) with z in H
+    end;
+    repeat match goal with
+      | H : context [ Z.of_N (@wordToN ?w ?x) ] |- _ =>
+          change (Z.of_N (@wordToN w x)) with (@kunsigned 32 x) in H
+    end;
+    repeat match goal with
+      | H : context [(?instrMem (split2 2 (Z.to_nat instrMemSizeLg) ?kpc))] |- _ => progress change (instrMem (split2 2 (Z.to_nat instrMemSizeLg) kpc)) with kinst in H
+    end;
 
-      (* forward through riscv-coq... *)
-       eapply Z.eqb_neq in n.
-       eapply Z.eqb_neq in n0.
-       eapply Z.eqb_neq in n1.
-       eapply Z.eqb_neq in n2.
-       eapply Z.eqb_neq in n3.
-       eapply Z.eqb_neq in n4.
-       eapply Z.eqb_neq in n5.
-       remember (decode _ _) as instr in *.
-       cbv beta iota delta [decode] in Heqinstr.
-       repeat match goal with
-       | H : ?A = let x := ?v in @?C x |- _ =>
-           let x := fresh x in pose v as x;
-           let C := eval cbv beta in (C x) in
-           change (A = C) in H;
-           pose proof (eq_refl : x = v); clearbody x
-       end.
-       subst opcode.
-       repeat
-         match goal with
-         | [H: context [Z.of_N (@wordToN ?sz _)] |- _] =>
-           progress change sz with 32%nat in H
-         end.
-       progress
-       repeat match goal with
-       | H : _ = false, G : _ |- _ => rewrite !H in G
-       end.
+    let dec := fresh "dec" in
+    let Hdec := fresh "Hdec" in
+    match goal with
+      H : context[decode ?a ?b] |- _ =>
+          remember (decode a b) as dec eqn:Hdec in H
+    end;
+    cbv beta iota delta [decode] in Hdec;
+    repeat
+    match goal with
+    | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite !Hbs in Hdec
+    end;
 
-       (* the hypotheses describe an unknown non-memory opcode *)
-       (* what instruction decoding caused [execNm] to fire? *)
-       (* where is the corresponding hypothesis? *)
-       case TODO_joonwon.
-      }
+    repeat match goal with _ => progress
+    cbn iota beta delta [
+    iset
+    andb 
 
-      all: case TODO_kamiStep_instruction.
+    Z.gtb Z.eqb Pos.eqb
+    BinInt.Z.of_nat Pos.of_succ_nat
+    BinInt.Z.compare Pos.compare Pos.compare_cont
+    Datatypes.length nth
+
+    (* grep Definition ./deps/riscv-coq/src/riscv/Spec/Decode.v | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; echo *)
+    bitwidth decode FPRegister funct12_EBREAK funct12_ECALL funct12_MRET funct12_SRET funct12_URET funct12_WFI funct2_FMADD_S funct3_ADD funct3_ADDI funct3_ADDIW funct3_ADDW funct3_AMOD funct3_AMOW funct3_AND funct3_ANDI funct3_BEQ funct3_BGE funct3_BGEU funct3_BLT funct3_BLTU funct3_BNE funct3_CSRRC funct3_CSRRCI funct3_CSRRS funct3_CSRRSI funct3_CSRRW funct3_CSRRWI funct3_DIV funct3_DIVU funct3_DIVUW funct3_DIVW funct3_FCLASS_S funct3_FENCE funct3_FENCE_I funct3_FEQ_S funct3_FLE_S funct3_FLT_S funct3_FLW funct3_FMAX_S funct3_FMIN_S funct3_FMV_X_W funct3_FSGNJN_S funct3_FSGNJ_S funct3_FSGNJX_S funct3_FSW funct3_LB funct3_LBU funct3_LD funct3_LH funct3_LHU funct3_LW funct3_LWU funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU funct3_MULW funct3_OR funct3_ORI funct3_PRIV funct3_REM funct3_REMU funct3_REMUW funct3_REMW funct3_SB funct3_SD funct3_SH funct3_SLL funct3_SLLI funct3_SLLIW funct3_SLLW funct3_SLT funct3_SLTI funct3_SLTIU funct3_SLTU funct3_SRA funct3_SRAI funct3_SRAIW funct3_SRAW funct3_SRL funct3_SRLI funct3_SRLIW funct3_SRLW funct3_SUB funct3_SUBW funct3_SW funct3_XOR funct3_XORI funct5_AMOADD funct5_AMOAND funct5_AMOMAX funct5_AMOMAXU funct5_AMOMIN funct5_AMOMINU funct5_AMOOR funct5_AMOSWAP funct5_AMOXOR funct5_LR funct5_SC funct6_SLLI funct6_SRAI funct6_SRLI funct7_ADD funct7_ADDW funct7_AND funct7_DIV funct7_DIVU funct7_DIVUW funct7_DIVW funct7_FADD_S funct7_FCLASS_S funct7_FCVT_S_W funct7_FCVT_W_S funct7_FDIV_S funct7_FEQ_S funct7_FMIN_S funct7_FMUL_S funct7_FMV_W_X funct7_FMV_X_W funct7_FSGNJ_S funct7_FSQRT_S funct7_FSUB_S funct7_MUL funct7_MULH funct7_MULHSU funct7_MULHU funct7_MULW funct7_OR funct7_REM funct7_REMU funct7_REMUW funct7_REMW funct7_SFENCE_VMA funct7_SLL funct7_SLLIW funct7_SLLW funct7_SLT funct7_SLTU funct7_SRA funct7_SRAIW funct7_SRAW funct7_SRL funct7_SRLIW funct7_SRLW funct7_SUB funct7_SUBW funct7_XOR isValidA isValidA64 isValidCSR isValidF isValidF64 isValidI isValidI64 isValidM isValidM64 Opcode opcode_AMO opcode_AUIPC opcode_BRANCH opcode_JAL opcode_JALR opcode_LOAD opcode_LOAD_FP opcode_LUI opcode_MADD opcode_MISC_MEM opcode_MSUB opcode_NMADD opcode_NMSUB opcode_OP opcode_OP_32 opcode_OP_FP opcode_OP_IMM opcode_OP_IMM_32 opcode_STORE opcode_STORE_FP opcode_SYSTEM Register RoundMode rs2_FCVT_L_S rs2_FCVT_LU_S rs2_FCVT_W_S rs2_FCVT_WU_S supportsA supportsF supportsM
+
+    ] in *
+    | x := @nil _ |- _ => subst x
+    | _ => t
+    end;
+
+    repeat match goal with
+    | H : ?x <> ?A |- _ =>
+        match goal with
+        | y := x |- _ =>
+            match goal with
+              _out := context[y =? A] |- _ =>
+                  let RR := fresh "RR" in
+                  destruct (Z.eqb_spec y A) as [RR|_] in *;
+                      [ case (H RR) | ]
+            end end end).
+
+            all : try timeout 1 time
+    try match type of Hdec with ?dec = ?RHS =>
+    let RHS := eval cbn in RHS in
+    change (dec = RHS) in Hdec; subst dec
+    end.
+
+    (*
+  all :
+    try subst decodeI; try subst decodeM;
+    match goal with
+    H : context[Execute.execute ?e] |- ?G =>
+        set G as GOAL; set e as INSTR; revert INSTR
+    end.
+    *)
+
+  (* 20: kami SLLI decoding ignores funct6, ok because that's the only funct3=SLLI instruction *)
+  (* 21: kami interprets SRAI as SRLI because decoding ignores funct6 *)
+  (* 22: kami interprets SRAI as SRLI because decoding ignores funct6 *)
+  (* 33: funct7=ADD, funct3<>ADD. kami decodes using funct7 only. this is may be a problem because iset=RV32IM but Kami ignores M instructions other than multiply. *)
+  (* 36: funct7=SUB, funct3<>SUB, like 33 *)
+  (* 38: funct7=MUL, funct3<>MUL, like 33 *)
+  (* 39: opcode=OP but funct7 not ADD, SUB, or MUL *)
+  (* 40: opcode is not non-memory (either memory or invalid, but which? How do we know we don't treat memory instructions as invalid instructions? *)
+
+
+  (* currently [mcomp_step_in] mishandles conditionals in riscv-coq code and runs out of time/memory, skipping them for now... *)
+
+      (* 13: jalr can trap *)
+  10,11,12,14,15,16,17,18,19,23,24,25,26,27,28,29,30,31,32,34,35,37:
+    repeat match goal with
+        | H : False |- _ => case H
+        | H : Z |- _ => clear H
+        | H : list Instruction |- _ => clear H
+        | _ => t
+      end;
+      
+      eexists _, _;
+      try (
+      prove_KamiLabelR;
+      repeat match goal with
+      | H : negb ?x = true |- _ => eapply Bool.negb_true_iff in H
+      | H : Z.eqb _ _ = true |- _ => eapply Z.eqb_eq in H
+      | H : Z.eqb _ _ = false |- _ => eapply Z.eqb_neq in H
+      end;
+      subst regs;
+      try (case (Z.eq_dec rd Register0) as [X|_];
+          [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]);
+    econstructor;
+    [ solve [trivial]
+    | clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
+    | clear; intro; discriminate
+    | solve [trivial]
+    | cbv [RiscvMachine.getNextPc]; split;
+    [ apply AddrAligned_plus4; assumption
+    | (* intros; eapply pc_related_plus4. *) case TODO_joonwon ]
+    | solve [trivial]
+    | try (eapply regs_related_put;
+        [ solve [trivial] | solve [trivial] | | ];
+            erewrite ?regs_related_get,
+            ?unsigned_split2_split1_as_bitSlice
+            by eauto;
+            trivial)
+    | solve [trivial]
+        ]).
+    all: case TODO_kamiStep_instruction.
 
     - (* case "execNmZ" *)
       right.
@@ -1054,7 +1041,7 @@ Ltac open_decode :=
       let e := context G [@kunsigned nn x] in
       change e in H
       end.
-
+ 
       progress
       repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
       let e := context G [x] in
@@ -1109,7 +1096,10 @@ Ltac open_decode :=
 
       all : case TODO_kamiStep_instruction.
 
-  Qed.
+    Unshelve.
+    all : case TODO_kamiStep_instruction.
+    
+  (*A lot of*) Time Qed.
 
   Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
   | KamiSeqNil: KamiLabelSeqR nil nil
