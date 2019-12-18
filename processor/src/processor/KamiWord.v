@@ -50,7 +50,7 @@ Section WithWidth.
     (* "x and not y" *)
     ndn x y := kofZ (Z.ldiff (kunsigned x) (kunsigned y));
 
-    mul x y := kofZ (Z.mul (kunsigned x) (kunsigned y));
+    mul := @wmult sz;
     mulhss x y := kofZ (Z.mul (ksigned x) (ksigned y) / 2^width);
     mulhsu x y := kofZ (Z.mul (ksigned x) (kunsigned y) / 2^width);
     mulhuu x y := kofZ (Z.mul (kunsigned x) (kunsigned y) / 2^width);
