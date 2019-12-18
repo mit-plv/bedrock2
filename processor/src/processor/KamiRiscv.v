@@ -783,12 +783,12 @@ Ltac open_decode :=
 
       (** Begin symbolic evaluation of kami code *)
 
-      cbn [evalExpr evalUniBool evalBinBit evalConstT getDefaultConst isEq
-           getNextPc doExec rv32NextPc rv32Exec rv32DoExec
-           getFunct3E getFunct7E getOffsetUE getOpcodeE getOffsetShamtE getOffsetIE getRdE
-           getSrc1 getSrc2 getDst rv32Dec rv32GetSrc1 rv32GetSrc2 rv32GetDst getRs1E getRs2E
+      cbn [evalExpr evalUniBool evalBinBit evalConstT getDefaultConst isEq Data
            BitsPerByte
            Nat.add Nat.sub
+
+      (* grep -oP 'Definition \w+' ~/plv/bedrock2/deps/kami/Kami/Ex/{IsaRv32.v,SC.v} | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; printf '\n' *)
+           AlignAddrT AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignAddr rv32AlignInst rv32CalcLdAddr rv32CalcLdVal rv32CalcStAddr rv32DataBytes rv32DoExec rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32NextPc rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT
            ] in *.
 
       (* COQBUG(rewrite pattern matching on if/match is broken due to "hidden branch types") *)
@@ -848,12 +848,13 @@ Ltac open_decode :=
         clear G
       end.
 
-  all: try timeout 10 time (
-
-  
-
-    cbv [kunsigned evalUniBit] in *;
+  all: match goal with _ => idtac end; time (
+    cbv [evalUniBit] in *; (* TODO: reveals proofs... *)
+    cbv [kunsigned] in *;
     repeat match goal with
+      (* [evalUniBit] contains transports across opaque proofs, not sure what do -- but these goals are probably provable, unlike the ones below... *)
+      H : context[eq_rec]
+      |- _ => case TODO_joonwon
       | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
     end;
     repeat match goal with
@@ -916,62 +917,101 @@ Ltac open_decode :=
                   let RR := fresh "RR" in
                   destruct (Z.eqb_spec y A) as [RR|_] in *;
                       [ case (H RR) | ]
-            end end end).
+    end end end).
 
-            all : try timeout 1 time
-    try match type of Hdec with ?dec = ?RHS =>
-    let RHS := eval cbn in RHS in
-    change (dec = RHS) in Hdec; subst dec
+    (** known ISA compatibility/decoding issues... *)
+    all : try match goal with
+    (* kami confuses SRLI and SRAI because it ignores funct3 *)
+    H: bitSlice (kunsigned ?kinst) 12 15 = funct3_SRLI
+        |- _ => case TODO_joonwon |
+    H: bitSlice (kunsigned ?kinst) 12 15 = funct3_SRAI
+        |- _ => case TODO_joonwon |
+    (* : kami decodes ausing funct7 only. this is may be a problem because iset=RV32IM but Kami ignores M instructions other than multiply. *)
+    e : bitSlice (kunsigned ?kinst) 0 7 = opcode_OP,
+    n5 : bitSlice (kunsigned ?kinst) 25 32 <> funct7_ADD,
+    n6 : bitSlice (kunsigned ?kinst) 25 32 <> funct7_SUB,
+    n7 : bitSlice (kunsigned ?kinst) 25 32 <> funct7_MUL
+        |- _ => case TODO_joonwon |
+    H: bitSlice (kunsigned ?kinst) 25 32 = funct7_ADD,
+    G: bitSlice (kunsigned ?kinst) 12 15 <> funct3_ADD
+        |- _ => case TODO_joonwon |
+    H: bitSlice (kunsigned ?kinst) 25 32 = funct7_MUL,
+    G: bitSlice (kunsigned ?kinst) 12 15 <> funct3_MUL
+        |- _ => case TODO_joonwon |
+    H: bitSlice (kunsigned ?kinst) 25 32 = funct7_SUB,
+    G: bitSlice (kunsigned ?kinst) 12 15 <> funct3_SUB
+        |- _ => case TODO_joonwon |
+    (* why do we have opcode_LOAD/STORE in execNm? *)
+    H: bitSlice (kunsigned ?kinst) 0 7 = opcode_LOAD
+        |- _ => case TODO_joonwon |
+    H: bitSlice (kunsigned ?kinst) 0 7 = opcode_STORE
+        |- _ => case TODO_joonwon|
+    (* kami supports fewer instructions than riscv-coq *)
+    n : bitSlice (kunsigned ?kinst) 0 7 <> opcode_BRANCH,
+    n0 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_LUI,
+    n1 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_AUIPC,
+    n2 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_JAL,
+    n3 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_JALR,
+    n4 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_OP_IMM,
+    n5 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_OP,
+    n6 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_LOAD,
+    n7 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_STORE
+        |- _ => case TODO_joonwon
     end.
 
-    (*
-  all :
-    try subst decodeI; try subst decodeM;
-    match goal with
-    H : context[Execute.execute ?e] |- ?G =>
-        set G as GOAL; set e as INSTR; revert INSTR
-    end.
-    *)
+    (* kami SLLI decoding relies on illegal instructions being undefined behavior and has dont-care logic *)
+    6: destruct ((funct6 =? funct6_SLLI) && shamtHiTest)%bool eqn:? in *; [|subst dec; repeat t;contradiction].
 
-  (* 20: kami SLLI decoding ignores funct6, ok because that's the only funct3=SLLI instruction *)
-  (* 21: kami interprets SRAI as SRLI because decoding ignores funct6 *)
-  (* 22: kami interprets SRAI as SRLI because decoding ignores funct6 *)
-  (* 33: funct7=ADD, funct3<>ADD. kami decodes using funct7 only. this is may be a problem because iset=RV32IM but Kami ignores M instructions other than multiply. *)
-  (* 36: funct7=SUB, funct3<>SUB, like 33 *)
-  (* 38: funct7=MUL, funct3<>MUL, like 33 *)
-  (* 39: opcode=OP but funct7 not ADD, SUB, or MUL *)
-  (* 40: opcode is not non-memory (either memory or invalid, but which? How do we know we don't treat memory instructions as invalid instructions? *)
+    (** decoding done *)
+    all: subst dec; mcomp_step_in H5;
+      repeat match goal with
+      | H : False |- _ => case H
+      | H : Z |- _ => clear H
+      | H : list Instruction |- _ => clear H
+      | H : Instruction |- _ => clear H
+      end.
 
 
-  (* currently [mcomp_step_in] mishandles conditionals in riscv-coq code and runs out of time/memory, skipping them for now... *)
+    (** known proof automation issues *)
+      all : t.
+      all : t.
+      all : t.
+      all : t.
+      1: destruct (reg_eqb v v0); 
+        cbn [free.bind when negb] in H5.
+      3,4: destruct (signed_less_than v v0);
+        cbn [free.bind when negb] in H5;
+      [ destruct (@reg_eqb _ (@MachineWidth_XLEN _)
+      (remu (@Utility.add (@word (@WordsKami width width_cases))
+      _ rpc (ZToReg sbimm12)) (ZToReg 4)) (ZToReg 0))|];
+          cbn [free.bind when negb] in H5.
+      1,8 : destruct (@reg_eqb _ (@MachineWidth_XLEN _)
+      (remu (@Utility.add (@word (@WordsKami width width_cases))
+      _ rpc (ZToReg sbimm12)) (ZToReg 4)) (ZToReg 0));
+      cbn [free.bind when negb] in H5.
 
-      (* 13: jalr can trap *)
-  10,11,12,14,15,16,17,18,19,23,24,25,26,27,28,29,30,31,32,34,35,37:
-    repeat match goal with
-        | H : False |- _ => case H
-        | H : Z |- _ => clear H
-        | H : list Instruction |- _ => clear H
-        | _ => t
-      end;
+    all : repeat t.
+    all : try match goal with H : False |- _ => case H end.
+    all : eexists _, _.
+    all : prove_KamiLabelR.
       
-      eexists _, _;
-      try (
-      prove_KamiLabelR;
+    all:
       repeat match goal with
       | H : negb ?x = true |- _ => eapply Bool.negb_true_iff in H
       | H : Z.eqb _ _ = true |- _ => eapply Z.eqb_eq in H
       | H : Z.eqb _ _ = false |- _ => eapply Z.eqb_neq in H
       end;
-      subst regs;
       try (case (Z.eq_dec rd Register0) as [X|_];
-          [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]);
-    econstructor;
+          [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]).
+    all : try subst regs; try subst kupd.
+
+    all: econstructor;
     [ solve [trivial]
     | clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
     | clear; intro; discriminate
     | solve [trivial]
     | cbv [RiscvMachine.getNextPc]; split;
-    [ apply AddrAligned_plus4; assumption
+    [ try (apply AddrAligned_plus4; assumption)
     | (* intros; eapply pc_related_plus4. *) case TODO_joonwon ]
     | solve [trivial]
     | try (eapply regs_related_put;
@@ -981,7 +1021,34 @@ Ltac open_decode :=
             by eauto;
             trivial)
     | solve [trivial]
-        ]).
+        ].
+
+    all :
+    try match goal with
+    |- ?f ?x ?y = ?g ?a ?b
+        => let X := fresh "arg1" in
+        set (X := x); change a with X;
+        clearbody X
+    end;
+    try match goal with
+    |- ?f ?x ?y = ?g ?a ?b
+        => let X := fresh "arg1" in
+        set (X := y); change b with X;
+        clearbody X
+    end.
+
+    all : try match goal with
+    |- regs_related
+      (fun w : Word.word rv32RfIdx =>
+      if weq w (ZToWord rv32RfIdx 0) then wzero 32 else ?krf w) ?rrf
+      => revert H13; case TODO_joonwon
+      end.
+
+    all : try match goal with
+    |-  AddrAligned (Utility.add ?rpc (ZToReg ?sbimm12))
+    => case TODO_joonwon
+    end.
+
     all: case TODO_kamiStep_instruction.
 
     - (* case "execNmZ" *)
