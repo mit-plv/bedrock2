@@ -52,6 +52,80 @@ Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
+Module List.
+  Lemma nth_error_option_all{T: Type}: forall {l1: list (option T)} {l2: list T} (i: nat),
+    List.option_all l1 = Some l2 ->
+    (i < List.length l1)%nat ->
+    exists v, nth_error l2 i = Some v.
+  Proof.
+    induction l1; intros.
+    - simpl in *. exfalso. inversion H0.
+    - simpl in *. simp.
+      destruct i as [|j].
+      + simpl. eauto.
+      + simpl. assert (j < List.length l1)%nat as D by blia. eauto.
+  Qed.
+
+  Lemma In_option_all{T: Type}: forall {l1: list (option T)} {l2: list T} {v1o: option T},
+    List.option_all l1 = Some l2 ->
+    List.In v1o l1 ->
+    exists v1, v1o = Some v1 /\ List.In v1 l2.
+  Proof.
+    induction l1; intros.
+    - simpl in *. contradiction.
+    - simpl in *. simp. destruct H0.
+      + subst. simpl. eauto.
+      + simpl. firstorder idtac.
+  Qed.
+
+  (* same as nodup from standard library but using BoolSpec instead of sumbool *)
+  Definition dedup{A: Type}(aeqb: A -> A -> bool){aeqb_spec: EqDecider aeqb}: list A -> list A :=
+    fix rec l :=
+      match l with
+      | [] => []
+      | x :: xs => if List.find (aeqb x) xs then rec xs else x :: rec xs
+      end.
+
+  Lemma dedup_preserves_In{A: Type}(aeqb: A -> A -> bool){aeqb_spec: EqDecider aeqb}(l: list A) a:
+    In a l <-> In a (dedup aeqb l).
+  Proof.
+    induction l.
+    - simpl. firstorder idtac.
+    - simpl. split; intro H.
+      + destruct H.
+        * subst. destruct_one_match.
+          { apply find_some in E. destruct E as [E1 E2].
+            destr (aeqb a a0). 2: discriminate. subst a0. firstorder idtac. }
+          { simpl. auto. }
+        * destruct_one_match.
+          { apply find_some in E. destruct E as [E1 E2].
+            destr (aeqb a0 a1). 2: discriminate. subst a0. firstorder idtac. }
+          { simpl. firstorder idtac. }
+      + destruct_one_match_hyp.
+        * apply find_some in E. destruct E as [E1 E2].
+          destr (aeqb a0 a1). 2: discriminate. subst a0. firstorder idtac.
+        * simpl in H. destruct H.
+          { subst. auto. }
+          { firstorder idtac. }
+  Qed.
+
+  Lemma NoDup_dedup{A: Type}(aeqb: A -> A -> bool){aeqb_spec: EqDecider aeqb}: forall (l: list A),
+      NoDup (dedup aeqb l).
+  Proof.
+    induction l.
+    - simpl. constructor.
+    - simpl. destruct_one_match.
+      + assumption.
+      + constructor. 2: assumption.
+        intro C.
+        apply dedup_preserves_In in C.
+        pose proof (find_none _ _ E _ C).
+        destr (aeqb a a); congruence.
+  Qed.
+
+End List.
+
+
 (* TODO express flatten_functions in terms of this, or add map_values, or get_dom to the
    map interface *)
 Section MapKeys.
@@ -172,14 +246,10 @@ Section Pipeline1.
   Local Notation Program := (@Program (FlattenExpr.mk_Semantics_params _)).
   Local Notation ProgramSpec := (@ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
-  Definition ExprImp2RenamedFlat(s: cmd): FlatImp.stmt :=
+  Definition ExprImp2RenamedFlat(s: cmd): option FlatImp.stmt :=
     let flat := ExprImp2FlatImp s in rename_stmt map.empty flat available_registers.
 
   Notation fun_pos_env := (@funname_env p Z).
-
-  Definition snippet2Riscv(e_pos: fun_pos_env)(mypos: Z)(s: cmd): list Instruction :=
-    let flat := ExprImp2RenamedFlat s in
-    FlatToRiscvDef.compile_snippet e_pos mypos flat.
 
   Definition regAllocSim := renameSim String.eqb Z.eqb String.eqb String.eqb
                                       available_registers (@ext_spec p).
@@ -231,55 +301,34 @@ Section Pipeline1.
         * exfalso. unfold not in M0. eauto.
   Qed.
 
-  Lemma get_rename_functions: forall flatfuns f impl names,
-      In f names ->
-      (forall fn, In fn names -> map.get flatfuns fn <> None) ->
-      map.get flatfuns f = Some impl ->
-      exists impl',
-        rename_fun available_registers impl = Some impl' /\
-        map.get (rename_functions eqb Z.eqb eqb eqb available_registers ext_spec
-                                  flatfuns names) f = Some impl'.
-  Proof.
-    clear heap_start_agree heap_pastend_agree prog spec sat ml mlOk.
-    induction names; intros.
-    - simpl in H. contradiction.
-    - simpl in *.
-      destruct H.
-      + subst.
-        rewrite map.get_put_same. eexists. split. 2: reflexivity.
-        unfold rename_function.
-        simpl in *. (* PARAMRECORDS *)
-        rewrite H1.
-        unfold Register, MachineInt.
-        destruct_one_match. 1: reflexivity.
-        case TODO_sam. (* how to deal with failures during compilation? *)
-      + destr (map.get flatfuns a).
-        * rewrite map.get_put_dec.
-          destruct_one_match.
-          { subst.
-            unfold rename_function.
-            simpl in *. (* PARAMRECORDS *)
-            rewrite H1.
-            destruct_one_match.
-            - eauto.
-            - unfold Register, MachineInt. rewrite E0.
-              case TODO_sam. (* how to deal with failures during compilation? *)
-          }
-          { eauto. }
-        * exfalso. unfold not in H0. eauto.
-  Qed.
-
   (* TODO reduce duplication between FlatToRiscvDef *)
 
   (* All code as renamed FlatImp, layed out like it will be layed out in riscv: *)
   (* 1)    set up stack ptr: not in FlatImp *)
-  (* 2) *) Let init_code' := ExprImp2RenamedFlat prog.(init_code).
-  (* 3) *) Let loop_body' := ExprImp2RenamedFlat prog.(loop_body).
+  (* 2) *) Let oinit_code' := ExprImp2RenamedFlat prog.(init_code).
+  (* 3) *) Let oloop_body' := ExprImp2RenamedFlat prog.(loop_body).
   (* 4)    jump back to loop body: not in FlatImp *)
-  (* 5) *) Let functions' := let e' := flatten_functions prog.(funimpls) prog.(funnames) in
+  (* 5) *) Let ofunctions' := let e' := flatten_functions prog.(funimpls) prog.(funnames) in
                              rename_functions String.eqb Z.eqb String.eqb String.eqb
                                               available_registers ext_spec
                                               e' prog.(funnames).
+
+  (* TODO move/option-ize *)
+  (* All code as renamed FlatImp, layed out like it will be layed out in riscv: *)
+  (* 1)    set up stack ptr: not in FlatImp *)
+  (* 2) *) Let init_code' := match oinit_code' with
+                              | Some x => x
+                              | None => FlatImp.SSkip
+                              end.
+  (* 3) *) Let loop_body' := match oloop_body' with
+                             | Some x => x
+                             | None => FlatImp.SSkip
+                             end.
+  (* 4)    jump back to loop body: not in FlatImp *)
+  (* 5) *) Let functions' := match ofunctions' with
+                             | Some x => x
+                             | None => map.empty
+                             end.
 
   (* we make this one a Definition because it's useful for debugging *)
   Definition function_positions: fun_pos_env :=
@@ -466,11 +515,18 @@ Section Pipeline1.
         ssplit; try reflexivity.
         { unfold envs_related.
           intros f [ [argnames resnames] body1 ] G.
-          unfold functions'.
-          eapply get_rename_functions.
-          - case TODO_sam.
-          - case TODO_sam.
-          - exact G. }
+          unfold functions', ofunctions', rename_functions.
+          destruct_one_match.
+          2: case TODO_sam. (* make sure we have hyp saying compilation succeeded *)
+          eapply map.get_map_all_values in E.
+          6: exact G.
+          1: {
+            eexists. split.
+            (* TODO map.get_map_all_values should ensure E is Some *)
+            all: case TODO_sam.
+          }
+          all: case TODO_sam.
+        }
         { intros. ssplit; reflexivity. }
         { case TODO_sam. (* rename succeeds *) }
         { case TODO_sam. (* fits_stack *) }
@@ -529,6 +585,10 @@ Section Pipeline1.
     Unshelve.
     all: intros; try exact True.
     all: try exact (mkMetricLog 0 0 0 0).
+    all: try exact true.
+    all: repeat apply pair.
+    all: try apply nil.
+    all: try apply FlatImp.SSkip.
   Qed.
 
   Context

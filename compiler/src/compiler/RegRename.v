@@ -17,23 +17,14 @@ Require Import compiler.Simp.
 Require Import compiler.Simulation.
 
 
-Local Notation "'bind_opt' x <- a ; f" :=
+Notation "'bind_opt' x <- a ; f" :=
   (match a with
    | Some x => f
    | None => None
    end)
   (right associativity, at level 70, x pattern).
 
-Axiom TODO_sam: False.
-
 Module map.
-  Definition putmany_of_pairs{K V: Type}{M: map.map K V}(m: M): list (K * V) -> M :=
-    fix rec l :=
-    match l with
-    | nil => m
-    | (k, v) :: rest => map.put (rec rest) k v
-    end.
-
   Definition injective{K V: Type}{M: map.map K V}(m: M): Prop :=
     forall k1 k2 v,
       map.get m k1 = Some v -> map.get m k2 = Some v -> k1 = k2.
@@ -88,16 +79,52 @@ Module map.
     - eapply H0.
   Qed.
 
-  Lemma putmany_of_pairs_extends{K V: Type}{M: map.map K V}{ok: map.ok M}
-        {key_eqb: K -> K -> bool}{key_eq_dec: EqDecider key_eqb}:
-    forall (pairs: list (K * V)) (m1 m2: M),
-    map.extends m1 m2 ->
-    map.extends (putmany_of_pairs m1 pairs) (putmany_of_pairs m2 pairs).
+  Definition map_all_values_V0{K V1 V2: Type}{M1: map.map K V1}{M2: map.map K V2}
+             (f: V1 -> option V2)(m1: M1)(keys: list K): option M2 :=
+    bind_opt values2 <- List.option_all
+                           (List.map (fun k => bind_opt v1 <- map.get m1 k; f v1) keys);
+    map.of_list_zip keys values2.
+
+  Definition map_all_values{K V1 V2: Type}{M1: map.map K V1}{M2: map.map K V2}
+             (f: V1 -> option V2)(m1: M1): list K -> option M2 :=
+    fix rec keys :=
+      match keys with
+      | nil => Some map.empty
+      | k :: ks =>
+        match map.get m1 k with
+        | Some v1 => match f v1 with
+                     | Some v2 => match rec ks with
+                                  | Some res => Some (map.put res k v2)
+                                  | None => None
+                                  end
+                     | None => None
+                     end
+        | None => None
+        end
+      end.
+
+  Lemma get_map_all_values{K V1 V2: Type}{M1: map.map K V1}{M2: map.map K V2}
+        (keqb: K -> K -> bool) {keqb_spec: EqDecider keqb}
+        {OK1: map.ok M1} {OK2: map.ok M2} (f: V1 -> option V2):
+    forall (keys: list K) (m1: M1) (m2: M2) (k: K) (v1: V1),
+      map_all_values f m1 keys = Some m2 ->
+      In k keys ->
+      map.get m1 k = Some v1 ->
+      map.get m2 k = f v1.
   Proof.
-    induction pairs; intros.
-    - simpl. assumption.
-    - simpl. destruct a as [k v]. apply map.put_extends. eapply IHpairs. assumption.
+    induction keys; intros.
+    - simpl in *. contradiction.
+    - simpl in *.
+      destruct H0.
+      + subst. rewrite H1 in H. simp.
+        rewrite map.get_put_same. reflexivity.
+      + simp.
+        rewrite map.get_put_dec.
+        * destr (keqb a k).
+          { subst. congruence. }
+          { eauto. }
   Qed.
+
 End map.
 
 Section RegAlloc.
@@ -215,11 +242,8 @@ Section RegAlloc.
     | SSkip => Some (m, SSkip, a)
     end.
 
-  Definition rename_stmt(m: src2imp)(s: stmt)(av: list impvar): stmt' :=
-    match rename m s av with
-    | Some (_, s', _) => s'
-    | None => SSkip
-    end.
+  Definition rename_stmt(m: src2imp)(s: stmt)(av: list impvar): option stmt' :=
+    bind_opt (_, s', _) <- rename m s av; Some s'.
 
   Definition rename_fun(F: list srcvar * list srcvar * stmt):
     option (list impvar * list impvar * stmt') :=
@@ -258,23 +282,8 @@ Section RegAlloc.
   |}).
   Defined.
 
-  Definition rename_function(e: @FlatImp.env srcSemanticsParams)(f: funname):
-    (list impvar * list impvar * stmt') :=
-    match map.get e f with
-    | Some F => match rename_fun F with
-                | Some res => res
-                | None => (nil, nil, FlatImp.SSkip)
-                end
-    | None => (nil, nil, FlatImp.SSkip)
-    end.
-
-  Definition rename_functions(e: @FlatImp.env srcSemanticsParams):
-    list funname -> @FlatImp.env impSemanticsParams :=
-    fix rec funs :=
-      match funs with
-      | f :: rest => map.put (rec rest) f (rename_function e f)
-      | nil => map.empty
-      end.
+  Definition rename_functions(e: @FlatImp.env srcSemanticsParams)(funs: list funname):
+    option (@FlatImp.env impSemanticsParams) := map.map_all_values rename_fun e funs.
 
   (* Should lH and m have the same domain?
      - lH could have fewer vars in domain because we didn't pass through one branch of the if
