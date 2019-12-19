@@ -70,8 +70,8 @@ Definition main: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
 Definition nop_loop_body: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
   @cmd.interact (FlattenExpr.mk_Syntax_params _) [] "nop" [].
 
-Definition prog: @Program (FlattenExpr.mk_Semantics_params _)
-                          (@cmd.cmd (FlattenExpr.mk_Syntax_params _)).
+Definition prog: @Program (FlattenExpr.mk_Syntax_params _)
+                          (@cmd.cmd (FlattenExpr.mk_Syntax_params _)) _.
   (* TODO whyyy? *)
   Fail refine (@Build_Program _ (List.map fst allFuns) e main nop_loop_body).
   apply @Build_Program.
@@ -103,8 +103,12 @@ Lemma f_equal3_dep: forall {A B C: Type} {f1 f2: A -> B -> C} {a1 a2: A} {b1 b2:
     f1 = f2 -> a1 = a2 -> b1 = b2 -> f1 a1 b1 = f2 a2 b2.
 Proof. intros. congruence. Qed.
 
-Definition swap_asm: list Instruction :=
-  Eval cbv in compile_prog prog ml.
+Definition swap_asm: list Instruction.
+  let r := eval cbv in (compile 2048 prog) in set (res := r).
+  match goal with
+  | res := Some ?x |- _ => exact x
+  end.
+Defined.
 
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.

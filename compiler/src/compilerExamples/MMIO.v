@@ -180,7 +180,7 @@ Section MMIO1.
                    (SSeq (SOp s Syntax.bopname.mul i i)
                          (SStore Syntax.access_size.four addr s)))).
 
-    Definition compiled: list Instruction := Eval cbv in compile_stmt squarer.
+    Definition compiled: list Instruction := Eval cbv in compile_stmt map.empty 0 squarer.
     Goal True.
       let c := eval cbv in compiled in pose c.
     Abort.

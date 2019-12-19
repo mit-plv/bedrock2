@@ -500,22 +500,24 @@ Section EmitsValid.
     repeat destruct_one_match; cbv; split; discriminate.
   Qed.
 
+  (*
   Lemma compile_stmt_size: forall s,
     0 <= Z.of_nat (length (compile_stmt s)) <= stmt_size s.
   Proof.
     induction s; simpl; try apply compile_lit_size;
       try destruct op; try solve [destruct f]; simpl;
-      repeat (rewrite List.app_length || simpl in *); try blia.
+      repeat (rewrite List.app_length || simpl in * ); try blia.
     pose proof (compile_ext_call_length binds a args). blia.
   Qed.
+  *)
 
   Context {fun_pos_env: coqutil.Map.Interface.map.map Syntax.funname Z}.
 
-  Axiom compile_stmt_new_emits_valid: forall s e pos,
+  Axiom compile_stmt_emits_valid: forall s e pos,
       supported_iset iset ->
       valid_FlatImp_vars s ->
       stmt_not_too_big s ->
-      valid_instructions iset (compile_stmt_new e pos s).
+      valid_instructions iset (compile_stmt e pos s).
 
   Axiom compile_function_emits_valid: forall e pos argnames resnames body,
       supported_iset iset ->
@@ -525,6 +527,7 @@ Section EmitsValid.
       stmt_not_too_big body ->
       valid_instructions iset (compile_function e pos (argnames, resnames, body)).
 
+  (*
   Lemma compile_stmt_emits_valid: forall s,
       supported_iset iset ->
       valid_FlatImp_vars s ->
@@ -574,5 +577,6 @@ Section EmitsValid.
                  end;
           blia' ].
   Qed.
+  *)
 
 End EmitsValid.

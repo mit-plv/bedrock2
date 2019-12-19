@@ -17,6 +17,7 @@ Require Import bedrock2.Syntax.
 Require Import coqutil.Map.Interface.
 Require Import compiler.SeparationLogic.
 Require Import riscv.Spec.Decode.
+Require Import compiler.ProgramSpec.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -238,7 +239,7 @@ Section FlatToRiscv1.
   Section WithEnv.
     Variable e: fun_pos_env.
 
-    Definition compile_stmt_new: Z -> stmt -> list Instruction :=
+    Definition compile_stmt: Z -> stmt -> list Instruction :=
       fix compile_stmt(mypos: Z)(s: stmt) :=
       match s with
       | SLoad  sz x y => [[compile_load  sz x y 0]]
@@ -310,7 +311,7 @@ Section FlatToRiscv1.
                          (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
         save_regs mod_vars 0 ++
         load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
-        compile_stmt_new (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) body ++
+        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) body ++
         save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
         load_regs mod_vars 0 ++
         [[ compile_load access_size.word ra sp
@@ -349,64 +350,40 @@ Section FlatToRiscv1.
         | None => map.empty
         end
       end.
+  End WithImplEnv.
 
-    Definition compile_functions(funnames: list funname): list Instruction * fun_pos_env :=
-      let e_pos := build_fun_pos_env 0 funnames in
-      (compile_funs e_pos e_impl 0 funnames, e_pos).
+  Section WithProgram.
+    Variable (prog: Program stmt).
 
-    Definition compile_snippet: fun_pos_env -> Z -> stmt -> list Instruction := compile_stmt_new.
-
-    (* below: old version which composes loop before composing with earlier phases,
-       and already contains event-loop specific stuff which should not be here *)
+    (* we make this one a Definition because it's useful for debugging *)
+    Definition function_positions: fun_pos_env :=
+      build_fun_pos_env prog.(funimpls) 0 prog.(funnames).
 
     (* The main function is always some initialization code followed by an infinite loop.
        If no loop is desired, pass SSkip as loop_body, and this will guarantee that after
        the init code (i.e. your full program) has run to completion, no further output
        nor other undesired behavior is produced *)
-    Definition compile_main(e_pos: fun_pos_env)(mypos: Z)(init_code loop_body: stmt)
-      : list Instruction :=
-      let insts1 := compile_stmt_new e_pos mypos init_code in
-      let insts2 := compile_stmt_new e_pos (mypos + 4 * Z.of_nat (length insts1)) loop_body in
+    Definition compile_main(e_pos: fun_pos_env)(mypos: Z): list Instruction :=
+      let insts1 := compile_stmt e_pos mypos prog.(init_code) in
+      let insts2 := compile_stmt e_pos (mypos + 4 * Z.of_nat (length insts1)) prog.(loop_body) in
       insts1 ++ insts2 ++ [[Jal Register0 (- 4 * Z.of_nat (length insts2))]].
 
-    Definition compile_prog(init loop_body: stmt)(funs: list funname): list Instruction :=
-      let size1 := 4 * Z.of_nat (length (compile_main map.empty 42 init loop_body)) in
-      let e_pos := build_fun_pos_env size1 funs in
-      let insts1 := compile_main e_pos 0 init loop_body in
-      let insts2 := compile_funs e_pos e_impl size1 funs in
-      insts1 ++ insts2.
+    Definition main_size := List.length (compile_main function_positions 42).
 
-  End WithImplEnv.
+    Variable (init_sp: Z).
 
+    (* All code as riscv machine code, layed out from low to high addresses: *)
+    (*1*)Definition init_sp_insts := compile_lit RegisterNames.sp init_sp.
+         Definition main_pos := - 4 * Z.of_nat main_size.
+    (*2*)Definition init_insts := compile_stmt function_positions main_pos prog.(init_code).
+         Definition loop_pos := main_pos + 4 * Z.of_nat (Datatypes.length init_insts).
+    (*3*)Definition loop_insts := compile_stmt function_positions loop_pos prog.(loop_body).
+    (*4*)Definition backjump_insts := [[(Jal Register0 (-4*Z.of_nat (List.length loop_insts)))]].
+    (*5*)Definition fun_insts := compile_funs function_positions prog.(funimpls) 0 prog.(funnames).
 
-  (* original compile_stmt: *)
-  Fixpoint compile_stmt(s: stmt): list Instruction :=
-    match s with
-    | SLoad  sz x y => [[compile_load  sz x y 0]]
-    | SStore sz x y => [[compile_store sz x y 0]]
-    | SLit x v => compile_lit x v
-    | SOp x op y z => compile_op x op y z
-    | SSet x y => [[Add x Register0 y]]
-    | SIf cond bThen bElse =>
-        let bThen' := compile_stmt bThen in
-        let bElse' := compile_stmt bElse in
-        (* only works if branch lengths are < 2^12 *)
-        [[compile_bcond_by_inverting cond ((Z.of_nat (length bThen') + 2) * 4)]] ++
-        bThen' ++
-        [[Jal Register0 ((Z.of_nat (length bElse') + 1) * 4)]] ++
-        bElse'
-    | SLoop body1 cond body2 =>
-        let body1' := compile_stmt body1 in
-        let body2' := compile_stmt body2 in
-        (* only works if branch lengths are < 2^12 *)
-        body1' ++
-        [[compile_bcond_by_inverting cond ((Z.of_nat (length body2') + 2) * 4)]] ++
-        body2' ++
-        [[Jal Register0 (- (Z.of_nat (length body1') + 1 + Z.of_nat (length body2')) * 4)]]
-    | SSeq s1 s2 => compile_stmt s1 ++ compile_stmt s2
-    | SSkip => nil
-    | SCall resvars action argvars => nil (* unsupported *)
-    | SInteract resvars action argvars => compile_ext_call resvars action argvars
-    end.
+    Definition compile_prog: list Instruction :=
+      init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts ++ fun_insts.
+
+  End WithProgram.
 
 End FlatToRiscv1.

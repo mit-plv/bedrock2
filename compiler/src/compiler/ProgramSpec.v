@@ -5,19 +5,28 @@ Require Import bedrock2.MetricLogging.
 Require Import compiler.SeparationLogic.
 Require compiler.ExprImp.
 
+Section Params0.
+  Context {p: Syntax.parameters}
+          (Code: Type)
+          {env: map.map Syntax.funname (list Syntax.varname * list Syntax.varname * Code)}.
+
+  Set Implicit Arguments.
+
+  Record Program : Type := {
+    funnames: list Syntax.funname;
+    funimpls: env;
+    init_code: Code;
+    loop_body: Code;
+  }.
+End Params0.
+
+Arguments Program {_} _ {_}.
 
 Section Params1.
   Context {p: Semantics.parameters}.
   Variable Code: Type.
 
   Set Implicit Arguments.
-
-  Record Program: Type := {
-    funnames: list Syntax.funname;
-    funimpls: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code);
-    init_code: Code;
-    loop_body: Code;
-  }.
 
   Record ProgramSpec: Type := {
     datamem_start: Semantics.word;
@@ -35,7 +44,7 @@ Section Params1.
       array ptsto (word.of_Z 1) start anybytes m.
 
   Record ProgramSatisfiesSpec
-         (prog: Program)
+         (prog: Program Code)
          (exec: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code) ->
                 Code -> Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog ->
                 (Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog -> Prop) ->

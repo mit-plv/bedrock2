@@ -34,6 +34,7 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
 Require Import compiler.MetricsToRiscv.
+Require Import compiler.ProgramSpec.
 Import Utility.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
@@ -109,12 +110,22 @@ Section Pipeline1.
 
   (* only works if varname=Register *)
   Definition ExprImp2Riscv(s: Syntax.cmd): list Instruction :=
-    FlatToRiscvDef.compile_stmt (ExprImp2FlatImp s).
+    FlatToRiscvDef.compile_stmt map.empty 0 (ExprImp2FlatImp s).
+
+  Definition compile_riscv_prog e_impl (init loop_body: FlatImp.stmt)(funs: list funname): list Instruction :=
+    let prog := {|
+          funnames := funs; funimpls := e_impl; init_code := init; loop_body := loop_body
+    |} in
+    let size1 := 4 * Z.of_nat (List.length (FlatToRiscvDef.compile_main prog map.empty 42)) in
+    let e_pos := FlatToRiscvDef.build_fun_pos_env e_impl size1 funs in
+    let insts1 := FlatToRiscvDef.compile_main prog e_pos 0 in
+    let insts2 := FlatToRiscvDef.compile_funs e_pos e_impl size1 funs in
+    insts1 ++ insts2.
 
   Definition compile_prog(e: Semantics.env)(s: Syntax.cmd)(funs: list funname): list Instruction :=
     let e' := flatten_functions e funs in
     let s' := ExprImp2FlatImp s in
-    FlatToRiscvDef.compile_prog e' s' FlatImp.SSkip funs.
+    compile_riscv_prog e' s' FlatImp.SSkip funs.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
     FlatToRiscvDef.valid_FlatImp_vars (ExprImp2FlatImp s).
@@ -128,37 +139,6 @@ Section Pipeline1.
       | eapply Z.lt_le_trans; [|eassumption]
       | eapply Z.le_lt_trans; [eassumption|]
       | eapply Z.le_lt_trans; [|eassumption] ].
-
-  (* The following two size lemmas are nice to have, but not really needed here:
-     FlatToRiscv.compile_stmt_correct will apply them on its own when needed. *)
-
-  Lemma flatToRiscv_size: forall (s: FlatImp.stmt) (insts: list Instruction),
-      FlatToRiscvDef.compile_stmt s = insts ->
-      0 <= Z.of_nat (List.length insts) <= FlatImp.stmt_size s.
-  Proof.
-    intros. subst.
-    apply (EmitsValid.compile_stmt_size s).
-  Qed.
-
-  Lemma exprImp2Riscv_size: forall (s: Syntax.cmd) (insts: list Instruction),
-      ExprImp2Riscv s = insts ->
-      0 <= Z.of_nat (List.length insts) <= ExprImp.cmd_size s.
-  Proof.
-    intros.
-    unfold ExprImp2Riscv, ExprImp2FlatImp in *.
-    match goal with
-    | H: context [fst ?x] |- _ => destruct x eqn: E
-    end.
-    apply FlattenExpr.flattenStmt_size in E.
-    apply flatToRiscv_size in H.
-    split; [blia|].
-    destruct E as [_ E].
-    destruct H as [_ H].
-    simpl in *.
-    (* TODO why do lia and omega fail here? PARAMRECORDS? *)
-    Fail blia. Fail bomega.
-    eapply Z.le_trans; eassumption.
-  Qed.
 
   Hypothesis no_ext_calls: forall t mGive action argvals outcome,
       ext_spec t mGive action argvals outcome -> False.

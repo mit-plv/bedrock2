@@ -145,11 +145,11 @@ Proof.
   eapply @pipeline_assumptions; try exact _.
 Qed.
 
-Definition prog : @Program (FlattenExprDef.FlattenExpr.mk_Semantics_params _) _ :=
+Definition prog : @Program (FlattenExprDef.FlattenExpr.mk_Syntax_params _) _ _ :=
   prog init_code loop_body function_impls.
 
-Definition lightbulb_insts_unevaluated: list Decode.Instruction :=
-  @PipelineWithRename.compile_prog pipeline_params prog ml.
+Definition lightbulb_insts_unevaluated: option (list Decode.Instruction) :=
+  @PipelineWithRename.compile pipeline_params (word.unsigned ml.(stack_pastend)) prog.
 
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
@@ -157,7 +157,12 @@ Definition lightbulb_insts_unevaluated: list Decode.Instruction :=
 (* TODO: These instructions will have to be fed to putProgram to get them into
    the bedrock2 memory, and we will have to make sure that the Kami processor
    contains the corresponding instructions too. *)
-Definition lightbulb_insts: list Decode.Instruction := Eval cbv in lightbulb_insts_unevaluated.
+Definition lightbulb_insts: list Decode.Instruction.
+  let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
+  match goal with
+  | res := Some ?x |- _ => exact x
+  end.
+Defined.
 
 Module PrintProgram.
   Import riscv.Utility.InstructionNotations.
@@ -166,8 +171,15 @@ Module PrintProgram.
   Local Open Scope hexdump_scope.
   Set Printing Width 108.
 
+  Definition function_positions :=
+    let flat := PipelineWithRename.flattenPhase prog in
+    match PipelineWithRename.renamePhase flat with
+    | Some ren => FlatToRiscvDef.function_positions ren
+    | None => map.empty
+    end.
+
   Goal True.
-    pose (SortedList.value (PipelineWithRename.function_positions prog)) as symbols.
+    pose (SortedList.value function_positions) as symbols.
     cbv in symbols.
 
     pose lightbulb_insts as p.
@@ -211,7 +223,6 @@ Lemma end2end_lightbulb:
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
-  specialize_first Q src2impOk.
   specialize_first Q init_code.
   specialize_first Q loop_body.
   specialize_first Q function_impls.

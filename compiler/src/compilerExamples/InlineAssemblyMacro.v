@@ -106,6 +106,9 @@ Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
   FlatToRiscvDef.compile_ext_call := compile_ext_call;
 |}). all: case TODO. Defined.
 
-Definition compiled: list Instruction := Eval cbv in compile_stmt test.
+Definition compiled0: list Instruction.
+  refine (@compile_stmt compilation_params _ map.empty 0 test).
+  case TODO.
+Defined.
 
-Print compiled.
+Goal False. Proof. let r := eval cbv in compiled0 in set (compiled := r). Abort.

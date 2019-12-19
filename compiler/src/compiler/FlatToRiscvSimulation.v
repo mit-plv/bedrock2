@@ -50,7 +50,7 @@ Section Sim.
         good_e_impl g.(e_impl) g.(funnames) g.(e_pos) /\
         stmt_not_too_big c /\
         valid_FlatImp_vars c /\
-        compile_stmt_new g.(e_pos) pos c = g.(insts) /\
+        compile_stmt g.(e_pos) pos c = g.(insts) /\
         pos mod 4 = 0 /\
         regs_initialized st.(getRegs) /\
         st.(getPc)  = word.add g.(program_base) (word.of_Z
@@ -69,7 +69,7 @@ Section Sim.
     destruct_RiscvMachine s2.
     simp.
     eapply runsTo_weaken.
-    - eapply compile_stmt_correct_new; simpl.
+    - eapply compile_stmt_correct; simpl.
       + eassumption.
       + reflexivity.
       + unfold good_reduced_e_impl.

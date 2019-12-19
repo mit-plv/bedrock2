@@ -206,8 +206,8 @@ Section Proofs.
   Set Printing Depth 100000.
 
   Lemma compile_stmt_length_position_indep: forall e_pos1 e_pos2 s pos1 pos2,
-      List.length (compile_stmt_new e_pos1 pos1 s) =
-      List.length (compile_stmt_new e_pos2 pos2 s).
+      List.length (compile_stmt e_pos1 pos1 s) =
+      List.length (compile_stmt e_pos2 pos2 s).
   Proof.
     induction s; intros; simpl; try reflexivity;
       repeat (simpl; rewrite ?List.app_length); erewrite ?IHs1; erewrite ?IHs2; try reflexivity.
@@ -219,7 +219,7 @@ Section Proofs.
               | _ => fail 10000 P "is not a sep clause"
               end in
     lazymatch P with
-    | array ptsto_instr _ _ (compile_stmt_new _ _ ?Code) => Code
+    | array ptsto_instr _ _ (compile_stmt _ _ ?Code) => Code
     | ptsto_instr _ ?Instr => Instr
     | array ptsto_word _ _ ?Words => Words
     | functions _ _ _ ?FunNames => FunNames
@@ -527,14 +527,14 @@ Section Proofs.
            constr:(iff1ToEq (array_nil PT SZ start))
          end) in |-*.
 
-  Lemma compile_stmt_correct_new:
+  Lemma compile_stmt_correct:
     forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
     forall (g: GhostConsts) (initialL: RiscvMachineL) (pos: Z) (e_impl_reduced: env),
     g.(e_impl) = e_impl_full ->
     good_reduced_e_impl e_impl_reduced g.(e_impl) g.(num_stackwords) g.(funnames) g.(e_pos) ->
     fits_stack g.(num_stackwords) e_impl_reduced s ->
-    @compile_stmt_new def_params _ g.(e_pos) pos s = g.(insts) ->
+    @compile_stmt def_params _ g.(e_pos) pos s = g.(insts) ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
@@ -561,7 +561,7 @@ Section Proofs.
       all: subst.
       all: simp.
 
-    - idtac "Case compile_stmt_correct_new/SInteract".
+    - idtac "Case compile_stmt_correct/SInteract".
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with
             (postH := fun t' m' l' mc' => post t' m (* <- not m' because unchanged *) l' mc')
@@ -601,7 +601,7 @@ Section Proofs.
         * eexists. split; [reflexivity|].
           ecancel_assumption.
 
-    - idtac "Case compile_stmt_correct_new/SCall".
+    - idtac "Case compile_stmt_correct/SCall".
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
       lazymatch goal with
       | H: good_reduced_e_impl _ _ _  _ _ |- _ => destruct H as (? & ?)
@@ -1724,7 +1724,7 @@ Section Proofs.
     + reflexivity.
     + assumption.
 
-    - idtac "Case compile_stmt_correct_new/SLoad".
+    - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. simp.
       subst_load_bytes_for_eq.
       assert (x <> RegisterNames.sp). {
@@ -1733,7 +1733,7 @@ Section Proofs.
       }
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
 
-    - idtac "Case compile_stmt_correct_new/SStore".
+    - idtac "Case compile_stmt_correct/SStore".
       simpl_MetricRiscvMachine_get_set.
       unfold Memory.store, Memory.store_Z in *.
       change Memory.store_bytes with Platform.Memory.store_bytes in *.
@@ -1752,7 +1752,7 @@ Section Proofs.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
 
-    - idtac "Case compile_stmt_correct_new/SLit".
+    - idtac "Case compile_stmt_correct/SLit".
       get_run1valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
@@ -1767,7 +1767,7 @@ Section Proofs.
         }
         run1done.
 
-    - idtac "Case compile_stmt_correct_new/SOp".
+    - idtac "Case compile_stmt_correct/SOp".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
@@ -1789,14 +1789,14 @@ Section Proofs.
       rewrite map.put_put_same.
       map_solver locals_ok.
 
-    - idtac "Case compile_stmt_correct_new/SSet".
+    - idtac "Case compile_stmt_correct/SSet".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
       run1det. run1done.
 
-    - idtac "Case compile_stmt_correct_new/SIf/Then".
+    - idtac "Case compile_stmt_correct/SIf/Then".
       (* execute branch instruction, which will not jump *)
       eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
       + assumption.
@@ -1814,7 +1814,7 @@ Section Proofs.
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
 
-    - idtac "Case compile_stmt_correct_new/SIf/Else".
+    - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
       + assumption.
@@ -1831,7 +1831,7 @@ Section Proofs.
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
-    - idtac "Case compile_stmt_correct_new/SLoop".
+    - idtac "Case compile_stmt_correct/SLoop".
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
       on hyp[(stmt_not_too_big body2); runsTo] do (fun H => rename H into IH2).
       on hyp[(stmt_not_too_big (SLoop body1 cond body2)); runsTo] do (fun H => rename H into IH12).
@@ -1890,7 +1890,7 @@ Section Proofs.
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { intro V. simpl in *. run1done. }
 
-    - idtac "Case compile_stmt_correct_new/SSeq".
+    - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).
       on hyp[(stmt_not_too_big s2); runsTo] do (fun H => rename H into IH2).
       eapply runsTo_trans.
@@ -1908,7 +1908,7 @@ Section Proofs.
           all: try safe_sidecond.
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
-    - idtac "Case compile_stmt_correct_new/SSkip".
+    - idtac "Case compile_stmt_correct/SSkip".
       run1done.
 
     Grab Existential Variables.

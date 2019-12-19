@@ -81,12 +81,12 @@ Section FlatToRiscvLiterals.
 
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
-      let insts := compile_stmt (FlatImp.SLit x v) in
+      let insts := compile_lit x v in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
       subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
       (program initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
-      valid_FlatImp_vars (FlatImp.SLit x v) ->
+      valid_FlatImp_var x ->
       Primitives.valid_machine initialL ->
       runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
              (withPc     (add initialL.(getPc) d)
@@ -95,14 +95,12 @@ Section FlatToRiscvLiterals.
              post ->
       runsTo initialL post.
   Proof.
-    intros *. intros E1 insts d F P V Vm N. substs.
-    lazymatch goal with
-    | H1: valid_FlatImp_vars ?s |- _ =>
-      pose proof (compile_stmt_emits_valid iset_is_supported H1 eq_refl) as EV
-    end.
+    intros *. intros E1 insts d F P V Vm N.
+    apply valid_FlatImp_var_implies_valid_register in V.
+    pose proof (compile_lit_emits_valid v SeparationLogic.iset V) as EV.
     simpl in *.
     destruct_RiscvMachine initialL.
-    subst.
+    subst d insts. subst.
     unfold compile_lit, updateMetricsForLiteral in *.
     destruct_one_match_hyp; [|destruct_one_match_hyp]; post_destr typeclass_instances.
     - unfold compile_lit_12bit in *.

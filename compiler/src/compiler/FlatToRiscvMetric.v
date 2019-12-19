@@ -77,8 +77,8 @@ Section Proofs.
   Lemma compile_stmt_correct:
     forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
     FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
-    forall R Rexec (initialL: RiscvMachineL) insts,
-    @compile_stmt def_params s = insts ->
+    forall R Rexec (initialL: RiscvMachineL) insts pos,
+    @compile_stmt def_params _ map.empty pos s = insts ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->
@@ -102,10 +102,6 @@ Section Proofs.
   Proof.
     pose proof compile_stmt_emits_valid.
     induction 1; intros;
-      lazymatch goal with
-      | H1: valid_FlatImp_vars ?s, H2: stmt_not_too_big ?s |- _ =>
-        pose proof (compile_stmt_emits_valid iset_is_supported H1 H2)
-      end;
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
              end;
@@ -236,7 +232,7 @@ Section Proofs.
               run1det.
               eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
               + (* 3rd application of IH: run the whole loop again *)
-                eapply IH12; IH_sidecondition; simpl_MetricRiscvMachine_get_set;
+                eapply IH12 with (pos := pos); IH_sidecondition; simpl_MetricRiscvMachine_get_set;
                   try eassumption; IH_sidecondition.
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.

@@ -110,7 +110,6 @@ Section Connect.
     refine ({|
       Pipeline.PR := _ ; (*MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives;*)
       Pipeline.FlatToRiscv_hyps := _; (*MMIO.FlatToRiscv_hyps*)
-      Pipeline.src2imp_ok := _;
       Pipeline.Registers_ok := _;
     |}).
   - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
@@ -182,7 +181,7 @@ Section Connect.
   Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t'
                                              /\ l' = map.empty).
 
-  Definition prog: Program (p := strname_sem) cmd.
+  Definition prog: Program (p := (FlattenExpr.mk_Syntax_params _)) cmd.
     refine {|
       ProgramSpec.funnames := _;
       ProgramSpec.funimpls := _;
@@ -230,7 +229,7 @@ Section Connect.
     (* 1) Kami pipelined processor to riscv-coq *)
     pose proof @riscv_to_kamiImplProcessor as P1.
     specialize_first P1 traceProp.
-    specialize_first P1 (ll_inv prog spec ml).
+    specialize_first P1 (ll_inv spec ml).
     specialize_first P1 B.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
@@ -269,8 +268,6 @@ Section Connect.
     }
     { assumption. }
     { assumption. }
-    { case TODO_sam. }
-    { case TODO_sam. }
 
     eapply P1.
     - assumption.
