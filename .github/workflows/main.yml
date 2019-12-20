@@ -18,4 +18,4 @@ jobs:
     - run: git fetch origin dev:master
     - run: git log dev --oneline --max-count=10
     - run: git log master --oneline --max-count=10
-    - run: echo "Note: nothing has been pushed yet by this workflow"
+    - run: echo "Note nothing has been pushed yet by this workflow"
