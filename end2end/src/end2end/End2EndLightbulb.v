@@ -149,7 +149,7 @@ Definition prog : @Program (FlattenExprDef.FlattenExpr.mk_Syntax_params _) _ _ :
   prog init_code loop_body function_impls.
 
 Definition lightbulb_insts_unevaluated: option (list Decode.Instruction) :=
-  @PipelineWithRename.compile pipeline_params (word.unsigned ml.(stack_pastend)) prog.
+  @PipelineWithRename.compile pipeline_params ml prog.
 
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
@@ -172,9 +172,12 @@ Module PrintProgram.
   Set Printing Width 108.
 
   Definition function_positions :=
-    let flat := PipelineWithRename.flattenPhase prog in
-    match PipelineWithRename.renamePhase flat with
-    | Some ren => FlatToRiscvDef.function_positions ren
+    match PipelineWithRename.flattenPhase prog with
+    | Some flat =>
+      match PipelineWithRename.renamePhase flat with
+      | Some ren => FlatToRiscvDef.function_positions ren
+      | None => map.empty
+      end
     | None => map.empty
     end.
 
