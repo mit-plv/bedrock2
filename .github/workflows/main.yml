@@ -8,13 +8,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - run: echo "$GITHUB_EVENT_PATH"
+    - run: cat "$GITHUB_EVENT_PATH"
     - uses: actions/checkout@v2
-    - name: Run a one-line script
-      run: echo Hello, world!
-    - name: Run some git commands
-      run: |
-        git branch -a
-        git status
-        git show HEAD --stat
-        echo "$GITHUB_EVENT_PATH"
-        cat "$GITHUB_EVENT_PATH"
+    - run: git status
+    - run: git fetch origin master
+    - run: git log dev --oneline --max-count=10
+    - run: git log master --oneline --max-count=10
+    - run: git fetch origin dev:master
+    - run: git log dev --oneline --max-count=10
+    - run: git log master --oneline --max-count=10
+    - run: echo "Note: nothing has been pushed yet by this workflow"
