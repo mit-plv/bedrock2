@@ -13,13 +13,13 @@ jobs:
     - uses: actions/checkout@v2
     - run: git status
     - run: git branch -a
-    - run: git fetch origin master
+    - run: git fetch --unshallow origin master
     - run: git branch -a
-    - run: git fetch --no-tags --prune --unshallow
+    - run: git checkout -t remotes/origin/master
     - run: git branch -a
     - run: git log --oneline --max-count=10 dev
     - run: git log --oneline --max-count=10 master
-    - run: git fetch origin dev:master
-    - run: git log dev --oneline --max-count=10
-    - run: git log master --oneline --max-count=10
+    - run: git merge dev --ff-only
+    - run: git log --oneline --max-count=10 dev
+    - run: git log --oneline --max-count=10 master
     - run: echo "Note nothing has been pushed yet by this workflow"
