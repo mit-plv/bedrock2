@@ -12,7 +12,7 @@ jobs:
     - run: cat "$GITHUB_EVENT_PATH"
     - uses: actions/checkout@v2
     - run: git status
-    - run: git fetch origin master
+    - run: git fetch --no-tags --prune --unshallow
     - run: git log dev --oneline --max-count=10
     - run: git log master --oneline --max-count=10
     - run: git fetch origin dev:master
