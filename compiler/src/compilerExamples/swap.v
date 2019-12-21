@@ -85,11 +85,14 @@ Defined.
    (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
 Definition stack_pastend: Z := 2048.
 
-Definition ml: MemoryLayout Semantics.width.
-  refine {| MemoryLayout.stack_pastend := word.of_Z 2048; |}.
-  all: apply TODO.
-Defined.
-
+Definition ml: MemoryLayout Semantics.width := {|
+  MemoryLayout.code_start    := word.of_Z 0;
+  MemoryLayout.code_pastend  := word.of_Z (4*2^10);
+  MemoryLayout.heap_start    := word.of_Z (4*2^10);
+  MemoryLayout.heap_pastend  := word.of_Z (8*2^10);
+  MemoryLayout.stack_start   := word.of_Z (16*2^10);
+  MemoryLayout.stack_pastend := word.of_Z (16*2^10);
+|}.
 
 Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
     f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2.
@@ -104,7 +107,7 @@ Lemma f_equal3_dep: forall {A B C: Type} {f1 f2: A -> B -> C} {a1 a2: A} {b1 b2:
 Proof. intros. congruence. Qed.
 
 Definition swap_asm: list Instruction.
-  let r := eval cbv in (compile 2048 prog) in set (res := r).
+  let r := eval cbv in (compile ml prog) in set (res := r).
   match goal with
   | res := Some ?x |- _ => exact x
   end.

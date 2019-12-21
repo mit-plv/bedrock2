@@ -255,7 +255,7 @@ Section Pipeline1.
   Local Notation renamed_env :=
     (@funname_env p (list Z * list Z * @FlatImp.stmt (@impparams Z string string))).
 
-  Definition flattenPhase(prog: ExprImpProgram): FlatImpProgram :=
+  Definition flattenPhase(prog: ExprImpProgram): option FlatImpProgram := Some
     {| funnames := prog.(funnames);
        funimpls := flatten_functions prog.(funimpls) prog.(funnames);
        init_code := ExprImp2FlatImp prog.(init_code);
@@ -269,13 +269,36 @@ Section Pipeline1.
     bind_opt loop_body' <- rename_stmt map.empty prog.(loop_body) available_registers;
     Some (@Build_Program _ _ renamed_env prog.(funnames) funimpls' init_code' loop_body').
 
-  Definition riscvPhase(init_sp: Z)(prog: RenamedProgram): list Instruction :=
-    FlatToRiscvDef.compile_prog prog init_sp.
+  (* Note: we could also track code size from the source program all the way to the target
+     program, and a lot of infrastructure is already there, will do once/if we want to get
+     a total compiler *)
+  Definition riscvPhase(ml: MemoryLayout Semantics.width)(prog: RenamedProgram):
+    option (list Instruction) :=
+    let i1 := FlatToRiscvDef.init_sp_insts (word.unsigned ml.(stack_pastend)) in
+    let i2 := FlatToRiscvDef.init_insts prog in
+    let i3 := FlatToRiscvDef.loop_insts prog in
+    let i4 := FlatToRiscvDef.backjump_insts prog in
+    let i5 := FlatToRiscvDef.fun_insts prog in
+    (* technical detail: "pc at beginning of loop" and "pc at end of loop" needs to be
+       different so that we can have two disjoint states between which the system goes
+       back and forth. If we had only one state, we could not prevent "runsTo" from
+       always being runsToDone and not making progress, see compiler.ForeverSafe *)
+    if (List.length i3 =? 0)%nat then None else
+    let i := i1 ++ i2 ++ i3 ++ i4 ++ i5 in
+    let maxSize := word.unsigned ml.(code_pastend) - word.unsigned ml.(code_start) in
+    if 4 * Z.of_nat (List.length i) <=? maxSize then Some i else None.
 
-  Definition compile(init_sp: Z)(prog: ExprImpProgram): option (list Instruction) :=
-    let flat := flattenPhase prog in
-    bind_opt ren <- renamePhase flat;
-    Some (riscvPhase init_sp ren).
+  Definition composePhases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
+    match phase1 a with
+    | Some b => phase2 b
+    | None => None
+    end.
+
+  Definition compile(ml: MemoryLayout Semantics.width):
+    ExprImpProgram -> option (list Instruction) :=
+    (composePhases flattenPhase
+    (composePhases renamePhase
+                   (riscvPhase ml))).
 
   Local Notation cmd := (@Syntax.cmd (FlattenExprDef.FlattenExpr.mk_Syntax_params _)).
   Local Notation env := (@Semantics.env (FlattenExpr.mk_Semantics_params _)).
@@ -338,7 +361,7 @@ Section Pipeline1.
 
   Definition putProgram(prog: ExprImpProgram)(preInitial: MetricRiscvMachine):
     option MetricRiscvMachine :=
-    bind_opt insts <- (compile init_sp prog);
+    bind_opt insts <- (compile ml prog);
     Some (MetricRiscvMachine.putProgram (List.map encode insts) ml.(code_start) preInitial).
 
   Let num_stackwords :=
@@ -480,9 +503,9 @@ Section Pipeline1.
     unfold putProgram, MetricRiscvMachine.putProgram, RiscvMachine.putProgram.
     unfold ll_inv, runsToGood_Invariant.
     destruct_RiscvMachine preInitial.
-    unfold putProgram, compile, renamePhase, flattenPhase in *. simp. simpl in *.
+    unfold putProgram, compile, composePhases, renamePhase, flattenPhase in *. simp. simpl in *.
     match goal with
-    | |- context [riscvPhase init_sp ?R] => set (ren := R : RenamedProgram)
+    | _: riscvPhase ml ?R = Some _ |- _ => set (ren := R : RenamedProgram)
     end.
     exists ren.
     split.
@@ -542,7 +565,7 @@ Section Pipeline1.
         { reflexivity. }
         { intros. ssplit; reflexivity. }
         { unfold rename_stmt in E2. simp.
-          do 2 eexists. exact E. }
+          do 2 eexists. exact E0. }
         { reflexivity. }
         { case TODO_sam. (* fits_stack *) }
         { unfold good_e_impl.

@@ -1,17 +1,25 @@
-name: CI
+name: test1
 
 on: [push]
 
 jobs:
-  build:
+  updateBranch:
 
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
-    - name: Run a one-line script
-      run: echo Hello, world!
-    - name: Run a multi-line script
-      run: |
-        echo Add other actions to build,
-        echo test, and deploy your project.
+    - run: echo "$GITHUB_EVENT_PATH"
+    - run: cat "$GITHUB_EVENT_PATH"
+    - uses: actions/checkout@v2
+    - run: git status
+    - run: git branch -a
+    - run: git fetch --unshallow origin master
+    - run: git branch -a
+    - run: git checkout -t remotes/origin/master
+    - run: git branch -a
+    - run: git log --oneline --max-count=10 dev
+    - run: git log --oneline --max-count=10 master
+    - run: git merge dev --ff-only
+    - run: git log --oneline --max-count=10 dev
+    - run: git log --oneline --max-count=10 master
+    - run: echo "Note nothing has been pushed yet by this workflow"
