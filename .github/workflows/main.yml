@@ -1,6 +1,6 @@
 name: test1
 
-on: [push]
+on: [check_run]
 
 jobs:
   updateBranch:
