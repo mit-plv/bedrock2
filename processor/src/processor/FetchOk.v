@@ -171,8 +171,9 @@ Section FetchOk.
   Hypothesis (HinstrMemBound: 3 <= instrMemSizeLg <= width - 2).
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
   Local Notation nwidth := (Z.to_nat width).
-  Definition instrMemSize: nat := Z.to_nat (Z.pow 2 instrMemSizeLg).
-  Definition dataMemSize: nat := Z.to_nat (Z.pow 2 width).
+
+  Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
+  (* Definition dataMemSize: nat := Z.to_nat (Z.pow 2 width). *)
 
   Definition pc_related (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
              (rpc: kword width): Prop :=
@@ -181,22 +182,33 @@ Section FetchOk.
   Definition AddrAligned (addr: kword width) :=
     split1 2 (nwidth - 2) addr = WO~0~0.
 
-  Definition alignedXAddr (base: kword (width - 2)) (n: nat): word :=
-    Word.combine WO~0~0 (base ^+ natToWord (nwidth - 2)%nat n).
-
-  Definition alignedXAddrs (base: kword (width - 2)) (n: nat): XAddrs :=
-    [alignedXAddr base n; alignedXAddr base n ^+ $1;
-       alignedXAddr base n ^+ $2; alignedXAddr base n ^+ $3].
-
-  Fixpoint alignedXAddrsRange (base: kword (width - 2)) (n: nat): XAddrs :=
+  Fixpoint alignedXAddrsRange (base: nat) (n: nat): XAddrs :=
     match n with
     | O => nil
-    | S n' => alignedXAddrs base n' ++ alignedXAddrsRange base n'
+    | S n' => $(base + n') :: alignedXAddrsRange base n'
     end.
 
+  Lemma alignedXAddrsRange_bound:
+    forall base n a,
+      In a (alignedXAddrsRange base n) ->
+      (wordToN a < N.of_nat (base + n))%N.
+  Proof.
+    induction n; [simpl; intros; exfalso; auto|].
+    unfold alignedXAddrsRange; fold alignedXAddrsRange.
+    intros; destruct H.
+    - subst.
+      apply N.le_lt_trans with (m:= N.of_nat (base + n)); [|blia].
+      rewrite wordToN_nat.
+      apply N.compare_ge_iff.
+      rewrite <-Nnat.Nat2N.inj_compare.
+      apply Nat.compare_ge_iff.
+      apply wordToNat_natToWord_le.
+    - etransitivity; [eauto|blia].
+  Qed.
+  
   (* set of executable addresses in the kami processor *)
   Definition kamiXAddrs: XAddrs :=
-    alignedXAddrsRange (wzero _) instrMemSize.
+    alignedXAddrsRange 0 instrMemSize.
 
   Lemma AddrAligned_plus4:
     forall rpc,
@@ -208,6 +220,21 @@ Section FetchOk.
     rewrite <-H.
     apply split1_wplus_silent.
     reflexivity.
+  Qed.
+
+  Lemma kamiXAddrs_isXAddr4_bound:
+    forall a,
+      isXAddr4 a kamiXAddrs ->
+      (wordToN a < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
+  Proof.
+    intros.
+    cbv [isXAddr4 isXAddr1]; intros.
+    destruct H as [? _].
+    apply alignedXAddrsRange_bound in H.
+    simpl in H.
+    unfold instrMemSize in H.
+    rewrite <-NatLib.pow2_N in H.
+    assumption.
   Qed.
 
   Lemma pc_related_preserves_AddrAligned:

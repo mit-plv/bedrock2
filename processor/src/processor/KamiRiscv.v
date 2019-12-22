@@ -527,14 +527,6 @@ Ltac open_decode :=
       blia.
   Qed.
 
-  Lemma kamiXAddrs_isXAddr4_bound:
-    forall a,
-      isXAddr4 a kamiXAddrs ->
-      (wordToN a < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
-  Proof.
-    case TODO_joonwon.
-  Qed.
-
   Lemma pc_related_plus4:
     forall xaddrs,
       (forall a, isXAddr4 a xaddrs -> isXAddr4 a kamiXAddrs) ->
@@ -563,11 +555,25 @@ Ltac open_decode :=
     assert (wordToN rpc + 4 < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
     { rewrite <-wordToN_ZToWord_four with (sz:= Z.to_nat width) by (simpl; blia).
       rewrite <-wordToN_wplus_distr.
-      { apply kamiXAddrs_isXAddr4_bound, H; assumption. }
+      { apply kamiXAddrs_isXAddr4_bound.
+        apply H; assumption.
+      }
       { rewrite wordToN_ZToWord_four by (simpl; blia).
         rewrite <-H2.
         pose proof (wordToN_bound kpc).
-        case TODO_joonwon.
+        eapply N.lt_le_trans.
+        { eapply N.add_lt_mono; [eassumption|].
+          instantiate (1:= NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg)).
+          change 4%N with (NatLib.Npow2 2).
+          apply Npow2_lt.
+          apply Z2Nat.inj_le in Hinstr1; [|blia..].
+          simpl; simpl in Hinstr1; blia.
+        }
+        { rewrite <-NatLib.Npow2_S.
+          apply Npow2_le.
+          apply Z2Nat.inj_lt in Hinstr2; [|blia..].
+          simpl; simpl in Hinstr2; blia.
+        }
       }
     } 
 
