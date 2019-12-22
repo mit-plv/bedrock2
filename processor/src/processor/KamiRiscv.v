@@ -37,6 +37,22 @@ Require Import processor.FetchOk processor.DecExecOk.
 
 Local Open Scope Z_scope.
 
+Lemma Npow2_lt:
+  forall n m,
+    (n < m)%nat -> (NatLib.Npow2 n < NatLib.Npow2 m)%N.
+Proof.
+  induction m; simpl; intros.
+  - blia.
+  - assert (n = m \/ n < m)%nat by blia.
+    destruct H0.
+    + subst.
+      destruct (NatLib.Npow2 m) eqn:Hp.
+      * exfalso; eapply NatLib.Npow2_not_zero; eauto.
+      * blia.
+    + specialize (IHm H0).
+      destruct (NatLib.Npow2 m); blia.
+Qed.
+
 Lemma Npow2_le:
   forall n m,
     (n <= m)%nat -> (NatLib.Npow2 n <= NatLib.Npow2 m)%N.
@@ -64,6 +80,15 @@ Proof.
 Qed.
 
 Axiom TODO_joonwon: False.
+
+Lemma wordToN_wplus_distr:
+  forall sz (w1 w2: Word.word sz),
+    (wordToN w1 + wordToN w2 < NatLib.Npow2 sz)%N ->
+    wordToN (w1 ^+ w2) = (wordToN w1 + wordToN w2)%N.
+Proof.
+  cbv [wplus wordBin]; intros.
+  apply wordToN_NToWord_2; assumption.
+Qed.
 
 Section Equiv.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
@@ -488,10 +513,24 @@ Ltac open_decode :=
     | solve [trivial]
         ].
 
-  Lemma in_kamiXAddrs_aligned_plus4_bound:
-    forall pc,
-      isXAddr4 (word.add pc (word.of_Z 4)) kamiXAddrs ->
-      (wordToN pc + 4 < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
+  Local Lemma wordToN_ZToWord_four:
+    forall sz, (3 <= sz)%nat -> wordToN (ZToWord sz 4) = 4%N.
+  Proof.
+    intros.
+    apply N2Z.inj.
+    rewrite unsigned_wordToZ.
+    rewrite Z.mod_small.
+    - reflexivity.
+    - apply inj_le in H; simpl in H.
+      split; [blia|].
+      eapply Z.lt_le_trans; [|eapply Z.pow_le_mono_r with (b:= 3); blia].
+      blia.
+  Qed.
+
+  Lemma kamiXAddrs_isXAddr4_bound:
+    forall a,
+      isXAddr4 a kamiXAddrs ->
+      (wordToN a < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
   Proof.
     case TODO_joonwon.
   Qed.
@@ -513,35 +552,44 @@ Ltac open_decode :=
     specialize (H2 H0).
     apply H in H0.
     red in H2; red.
-    cbv [word.add word WordsKami wordW KamiWord.word wplus].
-    cbv [wordBin].
+    cbv [word.add word WordsKami wordW KamiWord.word] in H3.
+    cbv [word.add word WordsKami wordW KamiWord.word].
 
-    match goal with |- context [(_ + ?t)%N] => replace t with 4%N end.
-    2: {
-      apply N2Z.inj.
-      rewrite unsigned_wordToZ.
-      apply eq_sym, Z.mod_small.
-      do 2 rewrite Nat2Z.inj_succ.
-      split; [blia|].
-      simpl; rewrite Z2Nat.id by blia.
-      do 2 (rewrite Z.pow_succ_r by blia).
-      assert (1 < 2 ^ instrMemSizeLg) by (apply Z.pow_gt_1; blia).
-      blia.
-    }
-    
-    rewrite wordToN_NToWord_2
-      by (rewrite H2; eapply in_kamiXAddrs_aligned_plus4_bound; eauto).
-    rewrite wordToN_NToWord_2.
-    2: {
-      eapply N.lt_le_trans.
-      { eapply in_kamiXAddrs_aligned_plus4_bound; eauto. }
-      { apply Npow2_le.
-        change 2%nat with (Z.to_nat 2).
-        rewrite <-Z2Nat.inj_add by blia.
-        apply Z2Nat.inj_le; blia.
+    assert (instrMemSizeLg = width - 2 \/ instrMemSizeLg < width - 2) by blia.
+    destruct H4; [subst; apply wordToN_inj in H2; subst; reflexivity|].
+    clear Hinstr2.
+    rename H4 into Hinstr2.
+      
+    assert (wordToN rpc + 4 < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
+    { rewrite <-wordToN_ZToWord_four with (sz:= Z.to_nat width) by (simpl; blia).
+      rewrite <-wordToN_wplus_distr.
+      { apply kamiXAddrs_isXAddr4_bound, H; assumption. }
+      { rewrite wordToN_ZToWord_four by (simpl; blia).
+        rewrite <-H2.
+        pose proof (wordToN_bound kpc).
+        case TODO_joonwon.
       }
+    } 
+
+    rewrite wordToN_wplus_distr.
+    2: {
+      rewrite H2.
+      rewrite wordToN_ZToWord_four
+        by (apply Z2Nat.inj_le in Hinstr1; simpl in Hinstr1; blia).
+      assumption.
     }
-    rewrite H2; reflexivity.
+    rewrite wordToN_ZToWord_four
+      by (apply Z2Nat.inj_le in Hinstr1; simpl in Hinstr1; blia).
+    cbv [word.of_Z kofZ].
+    rewrite wordToN_wplus_distr.
+    2: {
+      rewrite wordToN_ZToWord_four by (simpl; blia).
+      eapply N.lt_le_trans; [eassumption|].
+      apply Npow2_le.
+      apply Z2Nat.inj_lt in Hinstr2; simpl in Hinstr2; simpl; blia.
+    }
+    rewrite wordToN_ZToWord_four by (simpl; blia).
+    congruence.
   Qed.
 
   Lemma kamiStep_sound_case_execLd:
