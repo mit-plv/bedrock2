@@ -1035,6 +1035,8 @@ Ltac open_decode :=
       end.
 
     (** known proof automation issues *)
+    (* TODO: we should not blast cases of riscv-coq when hypotheses tell us
+     * which case kami took *)
     Ltac x := match goal with
       | H5 : context G [let x := ?y in @?z x] |- _ =>
           let x' := fresh x in
@@ -1116,6 +1118,42 @@ Ltac open_decode :=
     | |-  AddrAligned _     => case TODO_joonwon
     | |-  isXAddr4 _ _ -> pc_related _ _ _ => case TODO_joonwon
     end.
+
+    all : eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
+
+    all: rewrite <-?ZToWord_Z_of_N.
+    all : change (ZToWord 32) with (@word.of_Z 32 (@word (@WordsKami width width_cases))).
+    all : rewrite ?word.unsigned_of_Z.
+
+    1: { (* lui *)
+      clear.
+      match goal with
+      | |- context[@word.unsigned ?a ?b ?x] =>
+      change (@word.unsigned a b x) with (Z.of_N (wordToN x))
+      end.
+      rewrite wordToN_combine.
+      change (wordToN (ZToWord 12 0) ) with 0%N.
+      rewrite N.add_0_l.
+      cbv [word.wrap].
+      cbv [imm20].
+      rewrite N2Z.inj_mul.
+      change (Z.of_N (NatLib.Npow2 12)) with (2^12)%Z.
+      rewrite unsigned_split2_as_bitSlice.
+      t.
+      change ((Z.of_nat 12)) with 12%Z.
+      rewrite Z.shiftl_mul_pow2 by blia.
+      cbv [kunsigned].
+      change (12 + 20)%nat with 32%nat.
+      change (Z.to_nat 32) with 32%nat.
+      set (x := bitSlice (Z.of_N (@wordToN 32 kinst)) 12 32).
+      change Utility.width with 32.
+      cbv [signExtend].
+      change (2 ^ (32 - 1)) with (2^31).
+      rewrite Zminus_mod_idemp_l.
+      replace (x * 2 ^ 12 + 2 ^ 31 - 2 ^ 31) with (x * 2 ^ 12) by blia.
+      rewrite Z.mod_small; try ring.
+      pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32.
+      blia. }
 
     all: case TODO_kamiStep_instruction.
 
