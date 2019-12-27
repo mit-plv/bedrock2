@@ -903,13 +903,13 @@ Ltac open_decode :=
       end.
 
   all: match goal with _ => idtac end; time (
-    cbv [evalUniBit] in *; (* TODO: reveals proofs... *)
+    repeat match goal with
+          | H: _ |- _ => rewrite !(match TODO_andres with end : forall a b x, evalUniBit (SignExtendTrunc a b) x = ZToWord b (wordToZ x)) in H
+          | H: _ |- _ => rewrite !(match TODO_andres with end : forall a b x, evalUniBit (ZeroExtendTrunc a b) x = NToWord b (wordToN x)) in H
+      end;
+    cbv [evalUniBit] in *; (* would reveal proofs if not rewritten above *)
     cbv [kunsigned] in *;
     repeat match goal with
-      (* [evalUniBit] contains transports across opaque proofs, not sure what do -- but these goals are probably provable, unlike the ones below... *)
-      | H : context[eq_rec] |- _ => case TODO_joonwon
-      | H : context[eq_rect] |- _ => case TODO_joonwon
-      | H : context[eq_rec_r] |- _ => case TODO_joonwon
       | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
     end;
     repeat match goal with
@@ -1035,25 +1035,26 @@ Ltac open_decode :=
       end.
 
     (** known proof automation issues *)
-      all : t.
-      all : t.
-      all : t.
-      all : t.
-      1: destruct (reg_eqb v v0); 
-        cbn [free.bind when negb] in H5.
-      3,4: destruct (signed_less_than v v0);
-        cbn [free.bind when negb] in H5;
-      [ destruct (@reg_eqb _ (@MachineWidth_XLEN _)
-      (remu (@Utility.add (@word (@WordsKami width width_cases))
-      _ rpc (ZToReg sbimm12)) (ZToReg 4)) (ZToReg 0))|];
-          cbn [free.bind when negb] in H5.
-      1,8 : destruct (@reg_eqb _ (@MachineWidth_XLEN _)
-      (remu (@Utility.add (@word (@WordsKami width width_cases))
-      _ rpc (ZToReg sbimm12)) (ZToReg 4)) (ZToReg 0));
-      cbn [free.bind when negb] in H5.
-
-    all : repeat t.
-    all : try match goal with H : False |- _ => case H end.
+    Ltac x := match goal with
+      | H5 : context G [let x := ?y in @?z x] |- _ =>
+          let x' := fresh x in
+          pose y as x';
+          let zy := eval cbv beta in (z x') in
+          let h' := context G [zy] in
+          change h' in H5
+      | _ => progress cbn iota beta delta [when free.bind] in *
+      | H5 : mcomp_sat _ _ _ |- _ =>
+          match type of H5 with
+          | context G [when ?b _] =>
+              destr b
+          | context G [if ?b then _ else _] =>
+              destr b
+          end
+    | H:False |- _ => case H
+    | _ => t
+      end.
+    
+    all : repeat (x || t).
     all : eexists _, _.
     all : prove_KamiLabelR.
       
@@ -1074,7 +1075,7 @@ Ltac open_decode :=
     | solve [trivial]
     | cbv [RiscvMachine.getNextPc]; split;
     [ try (apply AddrAligned_plus4; assumption)
-    | (* intros; eapply pc_related_plus4. *) case TODO_joonwon ]
+    | (* intros; eapply pc_related_plus4. *) ]
     | solve [trivial]
     | try (eapply regs_related_put;
         [ solve [trivial] | solve [trivial] | | ];
@@ -1106,9 +1107,14 @@ Ltac open_decode :=
       => revert H13; case TODO_joonwon
       end.
 
+    all : cbn [AddrAligned getNextPc RiscvMachine.withNextPc RiscvMachine.withRegs evalBinBitBool].
+    all : try subst val.
+    all : try (eapply f_equal2; trivial; []).
+    all : cbv [ZToReg MachineWidth_XLEN].
+
     all : try match goal with
-    |-  AddrAligned (Utility.add ?rpc (ZToReg ?sbimm12))
-    => case TODO_joonwon
+    | |-  AddrAligned _     => case TODO_joonwon
+    | |-  isXAddr4 _ _ -> pc_related _ _ _ => case TODO_joonwon
     end.
 
     all: case TODO_kamiStep_instruction.
