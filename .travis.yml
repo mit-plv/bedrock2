@@ -16,8 +16,8 @@ matrix:
 
 before_install:
   - if [ ! -z "$PPA" ]; then sudo add-apt-repository "$PPA" -y; fi
-  - sudo apt-get update -q
-  - sudo apt-get install $COQ_PACKAGE -y
+  - travis_retry ./etc/ci/sudo-apt-get-update.sh -q
+  - travis_retry sudo apt-get install $COQ_PACKAGE -y --allow-unauthenticated
 
 # script: TIMED=1 TRY_MANGLE_NAMES=1 make -j2 && ./manglenames-stats.sh
 
