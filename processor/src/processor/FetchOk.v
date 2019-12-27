@@ -178,6 +178,17 @@ Section FetchOk.
   Definition pc_related (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
              (rpc: kword width): Prop :=
     wordToN kpc = wordToN rpc.
+  (* From Sam:
+     - this should be changed to compare pc values modulo the width of kami pc
+     - riscv-pc values outside kami range have to be "temporarily allowed"
+       (just before the failure of riscv, they're allowed): This allows us to
+       deal with kami pc overflow as follows: when the overflow happens, the
+       kami pc will wrap, and the riscv pc will not wrap. The riscv pc will now
+       point to an address which is not in XAddrs, but nothing bad happens at
+       the end of this step, the badness only happens in the next step, in the
+       riscv execution, when the Fetch finds that riscvPc is outside of XAddrs,
+       which gives you False in a hypothesis *)
+
 
   Definition AddrAligned (addr: kword width) :=
     split1 2 (nwidth - 2) addr = WO~0~0.

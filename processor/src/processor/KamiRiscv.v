@@ -1102,6 +1102,11 @@ Ltac open_decode :=
         clearbody X
     end.
 
+    all : cbn [AddrAligned getNextPc RiscvMachine.withNextPc RiscvMachine.withRegs evalBinBitBool].
+    all : try subst val.
+
+    50, 51: (* JAL, good place to debug pc_related *) case TODO_joonwon.
+
     all : try match goal with
     |- regs_related
       (fun w : Word.word rv32RfIdx =>
@@ -1109,8 +1114,6 @@ Ltac open_decode :=
       => revert H13; case TODO_joonwon
       end.
 
-    all : cbn [AddrAligned getNextPc RiscvMachine.withNextPc RiscvMachine.withRegs evalBinBitBool].
-    all : try subst val.
     all : try (eapply f_equal2; trivial; []).
     all : cbv [ZToReg MachineWidth_XLEN].
 
