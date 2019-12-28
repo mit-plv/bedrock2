@@ -1155,6 +1155,37 @@ Ltac open_decode :=
       pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32.
       blia. }
 
+    1: { (* auipc *)
+      cbv [pc_related] in H8.
+      setoid_rewrite H8.
+      clear.
+      eapply f_equal.
+      rewrite wplus_comm; eapply f_equal2.
+      2:change (word.of_Z (@word.unsigned 32 (@word (@WordsKami width width_cases)) rpc) = rpc).
+      2:eapply word.of_Z_unsigned.
+      subst oimm20.
+      rewrite (match TODO_andres with end :
+        forall sz word x, @word.of_Z sz word (signExtend sz x) = @word.of_Z sz word x).
+      eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
+      match goal with
+      | |- context[@word.unsigned ?a ?b ?x] =>
+      change (@word.unsigned a b x) with (Z.of_N (wordToN x))
+      end.
+      rewrite Z_of_wordToN_combine_alt.
+      change (Z.of_N (wordToN (ZToWord 12 0))) with 0%Z.
+      rewrite Z.lor_0_l.
+      rewrite unsigned_split2_as_bitSlice.
+      t.
+      change (Z.of_nat 12) with 12.
+      change (Z.of_N (N.of_nat 12)) with 12.
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; symmetry; eapply Z.mod_small.
+      pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32 ltac:(blia).
+      rewrite Z.shiftl_mul_pow2 by blia.
+      change Utility.width with 32.
+      change (12 + 20)%nat with 32%nat.
+      change (2^32) with (2^(32-12) * 2^12).
+      blia. }
+
     all: case TODO_kamiStep_instruction.
 
     - (* case "execNmZ" *)
