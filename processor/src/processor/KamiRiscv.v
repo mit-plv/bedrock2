@@ -1186,6 +1186,83 @@ Ltac open_decode :=
       change (2^32) with (2^(32-12) * 2^12).
       blia. }
 
+    3: { (* addi *)
+      subst imm12.
+      clear.
+      rewrite (match TODO_andres with end :
+        forall sz x, @wordToZ sz x = signExtend (Z.of_nat sz) (Z.of_N (wordToN x))).
+      rewrite unsigned_split2_as_bitSlice.
+      change (Z.of_nat 20 + Z.of_nat 12) with 32.
+      cbv [kunsigned].
+      change (Z.of_nat 20) with 20.
+      change (Z.of_nat 12) with 12.
+      cbv [word.unsigned word WordsKami wordW KamiWord.word kunsigned].
+      rewrite unsigned_wordToZ.
+      trivial.
+    }
+
+    5: {
+      subst imm12.
+      clear.
+      rewrite (match TODO_andres with end :
+        forall sz x, @wordToZ sz x = signExtend (Z.of_nat sz) (Z.of_N (wordToN x))).
+      rewrite unsigned_split2_as_bitSlice.
+      change (Z.of_nat 20 + Z.of_nat 12) with 32.
+      cbv [kunsigned].
+      change (Z.of_nat 20) with 20.
+      change (Z.of_nat 12) with 12.
+      cbv [word.unsigned word WordsKami wordW KamiWord.word kunsigned].
+      rewrite unsigned_wordToZ.
+      trivial.
+    }
+
+    5: {
+      subst imm12.
+      clear.
+      rewrite (match TODO_andres with end :
+        forall sz x, @wordToZ sz x = signExtend (Z.of_nat sz) (Z.of_N (wordToN x))).
+      rewrite unsigned_split2_as_bitSlice.
+      change (Z.of_nat 20 + Z.of_nat 12) with 32.
+      cbv [kunsigned].
+      change (Z.of_nat 20) with 20.
+      change (Z.of_nat 12) with 12.
+      cbv [word.unsigned word WordsKami wordW KamiWord.word kunsigned].
+      rewrite unsigned_wordToZ.
+      trivial.
+    }
+
+    5: {
+      subst imm12.
+      clear.
+      rewrite (match TODO_andres with end :
+        forall sz x, @wordToZ sz x = signExtend (Z.of_nat sz) (Z.of_N (wordToN x))).
+      rewrite unsigned_split2_as_bitSlice.
+      change (Z.of_nat 20 + Z.of_nat 12) with 32.
+      cbv [kunsigned].
+      change (Z.of_nat 20) with 20.
+      change (Z.of_nat 12) with 12.
+      cbv [word.unsigned word WordsKami wordW KamiWord.word kunsigned].
+      rewrite unsigned_wordToZ.
+      trivial.
+    }
+
+    5: (* sll, difficult *)
+      subst shamt6;  cbv [sll word.slu word WordsKami wordW KamiWord.word kunsigned]. 
+    (*
+word.unsigned (wlshift arg1 #(split2 20 5 (split1 (20 + 5) 7 kinst))) =
+word.unsigned
+  (kofZ
+     (BinInt.Z.shiftl (BinInt.Z.of_N (wordToN arg1))
+        (BinInt.Z.of_N
+           (wordToN
+              (word.of_Z
+                 (machineIntToShamt
+                    (bitSlice (BinInt.Z.of_N (wordToN kinst)) 20 26))))
+         mod width)))
+         *)
+
+    (* all other cases have conditionals *)
+
     all: case TODO_kamiStep_instruction.
 
     - (* case "execNmZ" *)
