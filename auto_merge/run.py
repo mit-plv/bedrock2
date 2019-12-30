@@ -27,13 +27,15 @@ def create_session(github_token):
     sess.hooks["response"].append(raise_for_status)
     return sess
 
+def jprint(d):
+    print(json.dumps(d, indent=4, sort_keys=True))
 
 if __name__ == "__main__":
     print("run.py launched!")
 
     event_path = os.environ["GITHUB_EVENT_PATH"]
     event_data = json.load(open(event_path))
-    print(event_data)
+    jprint(event_data)
 
     check_run = event_data["check_run"]
     name = check_run["name"]
@@ -52,4 +54,4 @@ if __name__ == "__main__":
 
     checks_data = sess.get("/repos/mit-plv/bedrock2/commits/18bf9eb1993d04b6a7f8919373c8beeb30f4a35c/check-runs").json()
 
-    print(checks_data)
+    jprint(checks_data)
