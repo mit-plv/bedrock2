@@ -37,17 +37,6 @@ if __name__ == "__main__":
     event_data = json.load(open(event_path))
     jprint(event_data)
 
-    check_run = event_data["check_run"]
-    name = check_run["name"]
-
-    if check_run["status"] != "completed":
-        print(f"*** Check run {name} has not completed")
-        sys.exit(78)
-
-    if check_run["conclusion"] != "success":
-        print(f"*** Check run {name} has not succeeded")
-        sys.exit(1)
-
     github_token = os.environ["GITHUB_TOKEN"]
 
     sess = create_session(github_token)
@@ -55,3 +44,17 @@ if __name__ == "__main__":
     checks_data = sess.get("/repos/mit-plv/bedrock2/commits/18bf9eb1993d04b6a7f8919373c8beeb30f4a35c/check-runs").json()
 
     jprint(checks_data)
+
+    if "check_run" in event_data:
+        check_run = event_data["check_run"]
+        name = check_run["name"]
+
+        if check_run["status"] != "completed":
+            print(f"*** Check run {name} has not completed")
+            sys.exit(78)
+
+        if check_run["conclusion"] != "success":
+            print(f"*** Check run {name} has not succeeded")
+            sys.exit(1)
+    else:
+        print("no 'check_run' key")
