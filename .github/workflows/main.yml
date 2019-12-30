@@ -1,25 +1,9 @@
-name: test1
+workflow "merge if CI succeeds" {
+  resolves = ["auto-merge"]
+  on       = "check_run"
+}
 
-on: [check_run]
-
-jobs:
-  updateBranch:
-
-    runs-on: ubuntu-latest
-
-    steps:
-    - run: echo "$GITHUB_EVENT_PATH"
-    - run: cat "$GITHUB_EVENT_PATH"
-    - uses: actions/checkout@v2
-    - run: git status
-    - run: git branch -a
-    - run: git fetch --unshallow origin master
-    - run: git branch -a
-    - run: git checkout -t remotes/origin/master
-    - run: git branch -a
-    - run: git log --oneline --max-count=10 dev
-    - run: git log --oneline --max-count=10 master
-    - run: git merge dev --ff-only
-    - run: git log --oneline --max-count=10 dev
-    - run: git log --oneline --max-count=10 master
-    - run: echo "Note nothing has been pushed yet by this workflow"
+action "auto-merge" {
+  uses    = "./auto_merge"
+  secrets = ["GITHUB_TOKEN"]
+}
