@@ -9,3 +9,4 @@ jobs:
       uses: actions/checkout@v2
     - run: echo "Hello wooooorld!"
     - uses: ./auto_merge/
+    - run: echo "This step runs after the python script"

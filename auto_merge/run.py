@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     sess = create_session(github_token)
 
-    checks_data = sess.get("/repos/mit-plv/bedrock2/commits/18bf9eb1993d04b6a7f8919373c8beeb30f4a35c/check-runs").json()
+    checks_data = sess.get("https://api.github.com/repos/mit-plv/bedrock2/commits/18bf9eb1993d04b6a7f8919373c8beeb30f4a35c/check-runs").json()
 
     jprint(checks_data)
 
