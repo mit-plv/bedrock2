@@ -6,16 +6,17 @@ import os
 import requests
 
 
-def create_session(github_token):
+def create_session(github_token=None):
     sess = requests.Session()
     sess.headers = {
         "Accept": "; ".join([
             "application/vnd.github.v3+json",
             "application/vnd.github.antiope-preview+json",
         ]),
-        "Authorization": f"token {github_token}",
         "User-Agent": f"GitHub Actions script in {__file__}"
     }
+    if github_token:
+        sess.headers["Authorization"] = f"token {github_token}"
 
     def raise_for_status(resp, *args, **kwargs):
         try:
@@ -37,7 +38,7 @@ if __name__ == "__main__":
     event_data = json.load(open(event_path))
     jprint(event_data)
 
-    github_token = os.environ["GITHUB_TOKEN"]
+    github_token = os.environ.get("GITHUB_TOKEN")
 
     sess = create_session(github_token)
 
