@@ -1249,8 +1249,27 @@ word.unsigned
                     (bitSlice (BinInt.Z.of_N (wordToN kinst)) 20 26))))
          mod width)))
          *)
+    all : clear H5.
 
-    (* all other cases have conditionals *)
+    3: { (* slti *)
+      clear H0 H2 H3 H4.
+      match goal with |- context[wlt_dec ?w _] =>  change w with v end.
+      refine (f_equal (fun b:bool => word.unsigned (if b then _ else _)) _).
+      cbv [signed_less_than word.lts word WordsKami wordW KamiWord.word ksigned].
+      rewrite (match TODO_andres with end : forall x y, (if wlt_dec x y then true else false)
+        = Z.ltb (wordToZ x) (wordToZ y)); repeat f_equal.
+      subst imm12.
+      eapply f_equal.
+      (* wordToZ (split2 20 12 kinst) = signExtend 12 (bitSlice (kunsigned kinst) 20 32) *)
+      case TODO_kamiStep_instruction.
+    }
+    3: { (* sltiu *)
+      clear H0 H2 H3 H4.
+      match goal with |- context[wlt_dec ?w _] =>  change w with v end.
+      refine (f_equal (fun b:bool => word.unsigned (if b then _ else _)) _).
+      cbv [ltu word.ltu word WordsKami wordW KamiWord.word ksigned].
+      case TODO_joonwon (*sign-extend imm12, but use unsigned comparision*).
+    }
 
     all: case TODO_kamiStep_instruction.
 
