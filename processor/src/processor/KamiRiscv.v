@@ -238,7 +238,7 @@ Section Equiv.
       end;
     cbv [
     iset
-    andb 
+    andb
 
     Z.gtb Z.eqb Pos.eqb
     BinInt.Z.of_nat Pos.of_succ_nat
@@ -551,7 +551,7 @@ Ltac open_decode :=
     destruct H4; [subst; apply wordToN_inj in H2; subst; reflexivity|].
     clear Hinstr2.
     rename H4 into Hinstr2.
-      
+
     assert (wordToN rpc + 4 < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
     { rewrite <-wordToN_ZToWord_four with (sz:= Z.to_nat width) by (simpl; blia).
       rewrite <-wordToN_wplus_distr.
@@ -575,7 +575,7 @@ Ltac open_decode :=
           simpl; simpl in Hinstr2; blia.
         }
       }
-    } 
+    }
 
     rewrite wordToN_wplus_distr.
     2: {
@@ -698,7 +698,7 @@ Ltac open_decode :=
         destruct annot; [|discriminate]
       | [H: Rle _ = Rle _ |- _] => inversion H; subst; clear H
       end.
-  
+
   Ltac kinvert_more :=
     kinvert;
     try (repeat
@@ -865,7 +865,7 @@ Ltac open_decode :=
       let e := context G [@kunsigned nn x] in
       change e in H
       end.
- 
+
       progress
       repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
       let e := context G [x] in
@@ -948,7 +948,7 @@ Ltac open_decode :=
     repeat match goal with _ => progress
     cbn iota beta delta [
     iset
-    andb 
+    andb
 
     Z.gtb Z.eqb Pos.eqb
     BinInt.Z.of_nat Pos.of_succ_nat
@@ -1055,11 +1055,11 @@ Ltac open_decode :=
     | H:False |- _ => case H
     | _ => t
       end.
-    
+
     all : repeat (x || t).
     all : eexists _, _.
     all : prove_KamiLabelR.
-      
+
     all:
       repeat match goal with
       | H : negb ?x = true |- _ => eapply Bool.negb_true_iff in H
@@ -1153,6 +1153,9 @@ Ltac open_decode :=
       replace (x * 2 ^ 12 + 2 ^ 31 - 2 ^ 31) with (x * 2 ^ 12) by blia.
       rewrite Z.mod_small; try ring.
       pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32.
+      (* TODO remove once we advance to Coq 8.10 *)
+      let t := (fun x => let r := eval cbv in x in change x with r in * ) in
+      t (2 ^ (32 - 12)); t (2 ^ 32); t (2 ^ 12).
       blia. }
 
     1: { (* auipc *)
@@ -1247,7 +1250,7 @@ Ltac open_decode :=
     }
 
     5: (* sll, difficult *)
-      subst shamt6;  cbv [sll word.slu word WordsKami wordW KamiWord.word kunsigned]. 
+      subst shamt6;  cbv [sll word.slu word WordsKami wordW KamiWord.word kunsigned].
     (*
 word.unsigned (wlshift arg1 #(split2 20 5 (split1 (20 + 5) 7 kinst))) =
 word.unsigned
@@ -1322,7 +1325,7 @@ word.unsigned
       let e := context G [@kunsigned nn x] in
       change e in H
       end.
- 
+
       progress
       repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
       let e := context G [x] in
@@ -1379,7 +1382,7 @@ word.unsigned
 
     Unshelve.
     all : case TODO_kamiStep_instruction.
-    
+
   (*A lot of*) Time Qed.
 
   Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
