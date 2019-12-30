@@ -1,0 +1,5 @@
+name: 'auto-merge python script'
+description: 'wip'
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

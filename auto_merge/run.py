@@ -50,6 +50,6 @@ if __name__ == "__main__":
 
     sess = create_session(github_token)
 
-    checks_data = sess.get("/repos/mit-plv/bedrock2/commits/dev/check-runs").json()
+    checks_data = sess.get("/repos/mit-plv/bedrock2/commits/18bf9eb1993d04b6a7f8919373c8beeb30f4a35c/check-runs").json()
 
     print(checks_data)

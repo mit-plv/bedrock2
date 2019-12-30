@@ -1,9 +1,11 @@
-workflow "merge if CI succeeds" {
-  resolves = ["auto-merge"]
-  on       = "check_run"
-}
+on: [push]
 
-action "auto-merge" {
-  uses    = "./auto_merge"
-  secrets = ["GITHUB_TOKEN"]
-}
+jobs:
+  updateBranch:
+    runs-on: ubuntu-latest
+    name: WIP
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - run echo "Hello wooooorld!"
+    - uses: ./auto_merge/
