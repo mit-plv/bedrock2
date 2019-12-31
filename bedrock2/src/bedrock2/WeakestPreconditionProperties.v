@@ -89,7 +89,11 @@ Section WeakestPrecondition.
     { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
         eapply Proper_expr; eauto. }
-      { eapply H; eauto; firstorder eauto. } }
+      { eapply H. 2: eauto.
+        (* COQBUG (performance), measured in Coq 8.9:
+           "firstorder eauto" works, but takes ~100s and increases memory usage by 1.8GB.
+           On the other hand, the line below takes just 5ms *)
+        cbv beta; intros ? ? ? (?&?&?); eauto. } }
     { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl].
         { eapply Proper_expr; eauto. }
@@ -189,7 +193,7 @@ Section WeakestPrecondition.
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
   Qed.
-    
+
   Lemma sound_args : forall m l args mc P,
       WeakestPrecondition.list_map (WeakestPrecondition.expr m l) args P ->
       exists x mc',
@@ -215,7 +219,7 @@ Section WeakestPrecondition.
     eapply Proper_list_map; try exact H0.
     all : cbv [respectful pointwise_relation Basics.impl WeakestPrecondition.get]; intros; cbv beta; t.
   Qed.
-  
+
   Local Notation semantics_call := (fun e n t m args post =>
     exists params rets fbody, map.get e n = Some (params, rets, fbody) /\
     exists lf, map.putmany_of_list_zip params args map.empty = Some lf /\
