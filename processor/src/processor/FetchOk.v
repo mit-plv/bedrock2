@@ -173,8 +173,18 @@ Section FetchOk.
   Local Notation nwidth := (Z.to_nat width).
 
   Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
-  (* Definition dataMemSize: nat := Z.to_nat (Z.pow 2 width). *)
 
+  (* NOTE @joonwonc: The [pc_related] definition below is incorrect when the
+   * Kami pc overflows but the riscv-coq pc does not. This overflow issue is
+   * not handled at [pc_related] but at [states_related] in KamiRiscv.v, by
+   * using the notion of executable addresses.
+   *
+   * Each step (a single instruction execution) of riscv-coq checks whether the
+   * current pc is in the set of executable addresses. Thus, the overflow issue
+   * can be resolved by setting executable addresses as same as the range of
+   * Kami pc. See [pc_related_when_valid] and [states_related] in KamiRiscv.v 
+   * for detailed definitions.
+   *)
   Definition pc_related (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
              (rpc: kword width): Prop :=
     wordToN kpc = wordToN rpc.

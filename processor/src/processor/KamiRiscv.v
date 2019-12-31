@@ -494,25 +494,6 @@ Ltac open_decode :=
 
   Context (Registers_ok : map.ok Registers).
 
-  Ltac prove_states_related :=
-    econstructor;
-    [ solve [trivial]
-    | clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
-    | clear; intro; discriminate
-    | solve [trivial]
-    | cbv [RiscvMachine.getNextPc]; split;
-    [ apply AddrAligned_plus4; assumption
-    | (* intros; eapply pc_related_plus4. *) case TODO_joonwon ]
-    | solve [trivial]
-    | eapply regs_related_put;
-        [ solve [trivial] | solve [trivial] | | ];
-            erewrite ?regs_related_get,
-            ?unsigned_split2_split1_as_bitSlice
-            by eauto;
-            trivial
-    | solve [trivial]
-        ].
-
   Local Lemma wordToN_ZToWord_four:
     forall sz, (3 <= sz)%nat -> wordToN (ZToWord sz 4) = 4%N.
   Proof.
@@ -528,8 +509,9 @@ Ltac open_decode :=
   Qed.
 
   Lemma pc_related_plus4:
-    forall xaddrs,
-      (forall a, isXAddr4 a xaddrs -> isXAddr4 a kamiXAddrs) ->
+    forall instrMem kdataMem xaddrs,
+      (* (forall a, isXAddr4 a xaddrs -> isXAddr4 a kamiXAddrs) -> *)
+      RiscvXAddrsSafe instrMemSizeLg instrMem kdataMem xaddrs ->
       forall kpc rpc,
         isXAddr4 rpc xaddrs ->
         pc_related_when_valid xaddrs kpc rpc ->
@@ -597,6 +579,25 @@ Ltac open_decode :=
     rewrite wordToN_ZToWord_four by (simpl; blia).
     congruence.
   Qed.
+
+  Ltac prove_states_related :=
+    econstructor;
+    [ solve [trivial]
+    | clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
+    | clear; intro; discriminate
+    | solve [trivial]
+    | cbv [RiscvMachine.getNextPc]; split;
+      [ try (apply AddrAligned_plus4; assumption)
+      | try (intros; eapply pc_related_plus4; try eassumption; red; auto; fail)]
+    | solve [trivial]
+    | try (eapply regs_related_put;
+           [ solve [trivial] | solve [trivial] | | ];
+           erewrite ?regs_related_get,
+           ?unsigned_split2_split1_as_bitSlice
+             by eauto;
+           trivial)
+    | solve [trivial]
+    ].
 
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
@@ -829,6 +830,7 @@ Ltac open_decode :=
       repeat t.
       specialize (H1 eq_refl).
       destruct H11; specialize (H8 H1).
+      pose proof H1 as Hxaddr.
       eapply fetch_ok in H1; [|eassumption..].
       destruct H1 as (rinst & ? & ?).
       rewrite H1 in H5.
@@ -1070,23 +1072,7 @@ Ltac open_decode :=
           [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]).
     all : try subst regs; try subst kupd.
 
-    all: econstructor;
-    [ solve [trivial]
-    | clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
-    | clear; intro; discriminate
-    | solve [trivial]
-    | cbv [RiscvMachine.getNextPc]; split;
-    [ try (apply AddrAligned_plus4; assumption)
-    | (* intros; eapply pc_related_plus4. *) ]
-    | solve [trivial]
-    | try (eapply regs_related_put;
-        [ solve [trivial] | solve [trivial] | | ];
-            erewrite ?regs_related_get,
-            ?unsigned_split2_split1_as_bitSlice
-            by eauto;
-            trivial)
-    | solve [trivial]
-        ].
+    all: prove_states_related.
 
     all :
     try match goal with
