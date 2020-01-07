@@ -5,7 +5,6 @@ dist: trusty
 branches:
   only:
   - master
-  - dev
 
 matrix:
   fast_finish: true

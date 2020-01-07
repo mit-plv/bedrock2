@@ -11,11 +11,11 @@ jobs:
         fetch-depth: 0
     - run: pwd
     - run: echo "Hello wooooorld!"
-    - uses: ./auto_merge/
+    - uses: samuelgruetter/check-ci-success
       with:
         repo_owner: 'mit-plv'
         repo_name: 'bedrock2'
-        branch_name: 'dev'
+        branch_name: 'master'
         check_name: 'Travis CI - Branch'
     - run: echo "This step runs after the python script"
     - run: git fetch origin master
