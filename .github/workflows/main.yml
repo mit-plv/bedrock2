@@ -21,3 +21,4 @@ jobs:
     - run: git log --oneline --max-count=10
     - run: git merge --ff-only remotes/origin/master
     - run: git log --oneline --max-count=10
+    - run: git push
