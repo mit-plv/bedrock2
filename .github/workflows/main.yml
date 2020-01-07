@@ -10,7 +10,6 @@ jobs:
         ref: 'tested'
         fetch-depth: 0
     - run: pwd
-    - run: echo "Hello wooooorld!"
     - uses: samuelgruetter/check-ci-success@master
       with:
         repo_owner: 'mit-plv'
