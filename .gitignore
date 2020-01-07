@@ -11,7 +11,7 @@
 .nia.cache
 .coqdeps.d
 Makefile.coq.*
-.Makefile.coq.*
+.Makefile*.coq.*
 \#*\#
 
 /bedrock2/special/BytedumpTest.out

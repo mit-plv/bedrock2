@@ -1,12 +1,24 @@
-on: [check_run]
+on: [push]
 
 jobs:
   updateBranch:
     runs-on: ubuntu-latest
     name: WIP
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
+    - uses: actions/checkout@v2
+      with:
+        ref: 'tested'
+        fetch-depth: 0
+    - run: pwd
     - run: echo "Hello wooooorld!"
     - uses: ./auto_merge/
+      with:
+        repo_owner: 'mit-plv'
+        repo_name: 'bedrock2'
+        branch_name: 'dev'
+        check_name: 'Travis CI - Branch'
     - run: echo "This step runs after the python script"
+    - run: git fetch origin master
+    - run: git log --oneline --max-count=10
+    - run: git merge --ff-only remotes/origin/master
+    - run: git log --oneline --max-count=10

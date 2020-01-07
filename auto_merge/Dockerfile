@@ -9,5 +9,5 @@ LABEL "com.github.actions.color"="green"
 
 RUN pip3 install requests
 
-COPY run.py /
-ENTRYPOINT ["python3", "/run.py"]
+COPY check_ci_success.py /
+ENTRYPOINT ["python3", "/check_ci_success.py"]

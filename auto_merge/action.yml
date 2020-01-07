@@ -1,5 +1,23 @@
 name: 'auto-merge python script'
 description: 'wip'
+inputs:
+    repo_owner:
+        description: 'user or organization under which the repo is'
+        required: true
+    repo_name:
+        description: 'name of the repo'
+        required: true
+    branch_name:
+        description: 'name of the branch to check'
+        required: true
+    check_name:
+        description: 'name of the check run to look for, eg "Travis CI - Branch"'
+        required: true
 runs:
   using: 'docker'
   image: 'Dockerfile'
+  args:
+    - ${{ inputs.repo_owner }}
+    - ${{ inputs.repo_name }}
+    - ${{ inputs.branch_name }}
+    - ${{ inputs.check_name }}
