@@ -90,7 +90,7 @@ Definition ml: MemoryLayout Semantics.width := {|
   MemoryLayout.code_pastend  := word.of_Z (4*2^10);
   MemoryLayout.heap_start    := word.of_Z (4*2^10);
   MemoryLayout.heap_pastend  := word.of_Z (8*2^10);
-  MemoryLayout.stack_start   := word.of_Z (16*2^10);
+  MemoryLayout.stack_start   := word.of_Z (8*2^10);
   MemoryLayout.stack_pastend := word.of_Z (16*2^10);
 |}.
 

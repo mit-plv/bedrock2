@@ -110,18 +110,19 @@ Module map.
       map_all_values f m1 keys = Some m2 ->
       In k keys ->
       map.get m1 k = Some v1 ->
-      map.get m2 k = f v1.
+      exists v2, f v1 = Some v2 /\ map.get m2 k = Some v2.
   Proof.
     induction keys; intros.
     - simpl in *. contradiction.
     - simpl in *.
       destruct H0.
       + subst. rewrite H1 in H. simp.
-        rewrite map.get_put_same. reflexivity.
+        rewrite map.get_put_same. eauto.
       + simp.
         rewrite map.get_put_dec.
         * destr (keqb a k).
-          { subst. congruence. }
+          { (* Automation? clear keqb keqb_spec OK1 OK2 IHkeys. firstorder congruence. (* <- fails *) *)
+            subst. eexists. split; [|reflexivity]. congruence. }
           { eauto. }
   Qed.
 

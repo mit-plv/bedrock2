@@ -48,6 +48,7 @@ Require Export compiler.ProgramSpec.
 Require Export compiler.MemoryLayout.
 Require Import FunctionalExtensionality.
 Require Import coqutil.Tactics.autoforward.
+Require Import compiler.FitsStack.
 Import Utility.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
@@ -275,6 +276,9 @@ Section Pipeline1.
      a total compiler *)
   Definition riscvPhase(ml: MemoryLayout Semantics.width)(prog: RenamedProgram):
     option (list Instruction) :=
+    bind_opt stack_needed <- stack_usage prog;
+    let num_stackwords := word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / bytes_per_word in
+    if Z.ltb num_stackwords stack_needed then None (* not enough stack *) else
     let i1 := FlatToRiscvDef.init_sp_insts (word.unsigned ml.(stack_pastend)) in
     let i2 := FlatToRiscvDef.init_insts prog in
     let i3 := FlatToRiscvDef.loop_insts prog in
@@ -356,6 +360,15 @@ Section Pipeline1.
             reflexivity. }
           { eauto. }
         * exfalso. unfold not in M0. eauto.
+  Qed.
+
+  Lemma get_flatten_functions_Some_In: forall names impls argnames resnames body f,
+      map.get (flatten_functions impls names) f = Some (argnames, resnames, body) ->
+      In f names.
+  Proof.
+    induction names; intros.
+    - simpl in *. rewrite map.get_empty in H. discriminate.
+    - simpl in *. rewrite map.get_put_dec in H. destruct_one_match_hyp; eauto.
   Qed.
 
   Let init_sp := word.unsigned ml.(stack_pastend).
@@ -528,7 +541,7 @@ Section Pipeline1.
       | |- _ < 4 * Z.of_nat ?L < _ => remember L as l
       end.
       simpl in *. (* PARAMRECORDS *)
-      rewrite <- Heql in E4.
+      rewrite <- Heql in E5.
       blia.
     }
     (* first, run init_sp_code: *)
@@ -574,14 +587,14 @@ Section Pipeline1.
           intros f [ [argnames resnames] body1 ] G.
           unfold initCodeGhostConsts, ren. cbn [e_impl funimpls].
           unfold rename_functions in E1.
-          eapply map.get_map_all_values in E1.
-          6: exact G.
-          1: {
-            eexists. split.
-            (* TODO map.get_map_all_values should ensure E is Some *)
-            all: case TODO_sam.
-          }
-          all: case TODO_sam.
+          eapply map.get_map_all_values.
+          4: exact E1.
+          - eapply String.eqb_spec.
+          - typeclasses eauto.
+          - (* PARAMRECORDS *)
+            unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto.
+          - eauto using get_flatten_functions_Some_In.
+          - assumption.
         }
         { reflexivity. }
         { reflexivity. }
@@ -589,7 +602,16 @@ Section Pipeline1.
         { unfold rename_stmt in E2. simp.
           do 2 eexists. exact E0. }
         { reflexivity. }
-        { case TODO_sam. (* fits_stack *) }
+        { simpl. unfold riscvPhase in *. simpl in *. simp.
+          edestruct stack_usage_correct as [P _]. 1: eassumption.
+          simpl in P.
+          eapply fits_stack_monotone. 1: exact P.
+          subst num_stackwords.
+          repeat match goal with
+                 | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
+                 end.
+          assumption.
+        }
         { unfold good_e_impl.
           intros.
           case TODO_sam. }
