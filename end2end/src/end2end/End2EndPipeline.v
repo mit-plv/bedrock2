@@ -45,7 +45,6 @@ Local Open Scope Z_scope.
 
 
 Axiom TODO_sam: False.
-Axiom TODO_andres: False.
 Axiom TODO_joonwon: False.
 
 Require Import Coq.Classes.Morphisms.

@@ -52,6 +52,11 @@ Definition lightbulb_packet_rep: bool -> list Semantics.byte -> Prop.
   all : eapply id.
 Defined.
 
+Definition traceOfBoot (t : list (lightbulb_spec.OP Semantics.word)) : Prop :=
+  lightbulb_boot_success FE310CSemantics.parameters.byte FE310CSemantics.parameters.word t
+  \/  lan9250_boot_timeout FE310CSemantics.parameters.byte FE310CSemantics.parameters.word t
+  \/ (any +++ spi_timeout Semantics.word) t.
+
 Definition traceOfOneInteraction: list (lightbulb_spec.OP Semantics.word) -> Prop :=
   (fun t => exists packet cmd, (lan9250_recv _ _ packet +++ gpio_set _ 23 cmd) t /\
                                lightbulb_packet_rep cmd packet) |||
@@ -62,7 +67,7 @@ Definition traceOfOneInteraction: list (lightbulb_spec.OP Semantics.word) -> Pro
   (any +++ (lightbulb_spec.spi_timeout _)).
 
 Definition goodHlTrace: list (lightbulb_spec.OP Semantics.word) -> Prop :=
-  lightbulb_boot_success _ _ +++ traceOfOneInteraction ^*.
+  traceOfBoot +++ traceOfOneInteraction ^*.
 
 Definition relate_lightbulb_trace_to_bedrock(ioh: list (lightbulb_spec.OP Semantics.word))
                                             (iol : Semantics.trace): Prop.
@@ -279,6 +284,13 @@ Proof.
     repeat ProgramLogic.straightline.
     hnf. split; [|split].
     + case TODO_sam_and_joonwon. (* how can we relate m to Kami's mem and constrain it? *)
-    + revert H3. case TODO_andres.
+    + subst a.
+      Time rewrite app_nil_r. (* 1.7s*)
+      eexists _; split; [eassumption|].
+      rename x1 into TRACE.
+      cbv [relate_lightbulb_trace_to_bedrock goodHlTrace id].
+      assert (traceOfBoot TRACE) by
+        (cbv [traceOfBoot]; destruct H3 as [[]|[[]|[]]]; eauto); clear H3.
+      revert H; case TODO_andres.
     + reflexivity.
 Time Qed. (* takes more than 150s *)

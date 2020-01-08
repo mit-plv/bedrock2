@@ -145,18 +145,6 @@ Definition initialRiscvMachine(imem: list MachineInt): MetricRiscvMachine :=
 
 Require bedrock2.WeakestPreconditionProperties.
 
-Local Instance ext_spec_Proper :   forall
-    (trace : list
-               (mem * actname * list Semantics.word *
-                (mem * list Semantics.word))) (m : mem)
-    (act : actname) (args : list Semantics.word),
-  Morphisms.Proper
-    (Morphisms.respectful
-       (Morphisms.pointwise_relation mem
-          (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
-       Basics.impl) (ext_spec trace m act args).
-Admitted.
-
 Definition initialSwapMachine: MetricRiscvMachine :=
   initialRiscvMachine (List.map encode (compileFunc swap_chars_over_uart)).
 
