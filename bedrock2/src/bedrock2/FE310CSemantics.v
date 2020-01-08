@@ -70,9 +70,22 @@ Section WithParameters.
   |}.
 
   Global Instance ext_spec_ok : ext_spec.ok _.
-  Admitted.
+  Proof.
+    split;
+    cbv [ext_spec Semantics.ext_spec semantics_parameters
+    Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl
+    ];
+    intros.
+    all :
+    repeat match goal with
+      | H : context[(?x =? ?y)%string] |- _ =>
+          destruct (x =? y)%string in *
+      | H: exists _, _ |- _ => destruct H
+      | H: _ /\ _ |- _ => destruct H
+      | H: False |- _ => destruct H
+    end; subst; eauto 8 using Properties.map.same_domain_refl.
+  Qed.
   
-  Axiom TODO_andres_differential_memory_log : False.
   Global Instance ok : Semantics.parameters_ok semantics_parameters.
   Proof.
     split; cbv [funname_env locals mem semantics_parameters]; try exact _.
