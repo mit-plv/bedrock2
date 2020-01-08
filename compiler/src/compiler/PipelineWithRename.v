@@ -47,6 +47,7 @@ Require Import compiler.ForeverSafe.
 Require Export compiler.ProgramSpec.
 Require Export compiler.MemoryLayout.
 Require Import FunctionalExtensionality.
+Require Import coqutil.Tactics.autoforward.
 Import Utility.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
@@ -454,6 +455,9 @@ Section Pipeline1.
 
   End Riscv.
 
+  (* all "related" relations are parametrized (we don't hide parames behind existentials),
+     but at the very end, we have ll_inv, where we do use existentials, because the "API"
+     for ll_inv is just establish/preserve/use *)
   Definition ll_inv(m: MetricRiscvMachine): Prop :=
     exists renamed_prog,
       (* technical detail: "pc at beginning of loop" and "pc at end of loop" needs to be
@@ -497,6 +501,7 @@ Section Pipeline1.
          be undefined behavior: *)
       regs_initialized preInitial.(getRegs) ->
       preInitial.(getLog) = [] ->
+      valid_machine initial -> (* or valid_machine preInitial and putProgram_preserves_sane condition? *)
       ll_inv initial.
   Proof.
     intros.
@@ -508,20 +513,37 @@ Section Pipeline1.
     | _: riscvPhase ml ?R = Some _ |- _ => set (ren := R : RenamedProgram)
     end.
     exists ren.
-    split.
-    1: case TODO_sam.
+    split. {
+      unfold riscvPhase in E. simp.
+      (* TODO starting from here, this should be solved completely automatically *)
+      repeat match goal with
+             | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
+             end.
+      rewrite ?app_length in *.
+      subst ren.
+      pose proof (word.unsigned_range (code_pastend ml)).
+      pose proof (word.unsigned_range (code_start ml)).
+      rewrite ?Nat2Z.inj_add in *.
+      match goal with
+      | |- _ < 4 * Z.of_nat ?L < _ => remember L as l
+      end.
+      simpl in *. (* PARAMRECORDS *)
+      rewrite <- Heql in E4.
+      blia.
+    }
     (* first, run init_sp_code: *)
-    pose proof FlatToRiscvLiterals.compile_lit_correct_full as P.
+    pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
     cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
     specialize P with (x := RegisterNames.sp) (v := init_sp).
     unfold runsTo in P. eapply P; clear P; simpl.
     { reflexivity. }
+    2: {
+      case TODO_sam. (* store program establisheds "program"/instruction memory related *)
+    }
     { case TODO_sam. (* subset footpr XAddrs *) }
-    { case TODO_sam. }
-    { case TODO_sam. }
-    { unfold valid_machine. case TODO_sam. }
+    { cbv. auto. }
+    { assumption. }
     (* then, run init_code (using compiler simulation and correctness of init_code) *)
-    simpl.
     pose proof
          (sim ren (initCodeGhostConsts ren) (FlatToRiscvDef.main_pos ren) eq_refl eq_refl) as P.
     unfold simulation, runsTo in P.
@@ -801,6 +823,7 @@ Section Pipeline1.
     - intros.
       eapply putProgram_establishes_ll_inv.
       + eassumption.
+      + case TODO_sam.
       + case TODO_sam.
       + case TODO_sam.
       + case TODO_sam.

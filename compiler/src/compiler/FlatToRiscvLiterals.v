@@ -79,14 +79,14 @@ Section FlatToRiscvLiterals.
     intros. destruct b1; destruct b2; constructor; auto.
   Qed.
 
-  Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,
+  Lemma compile_lit_correct_full_raw: forall (initialL: RiscvMachineL) post x v R Rexec,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_lit x v in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
       subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
       (program initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
-      valid_FlatImp_var x ->
+      Primitives.valid_register x ->
       Primitives.valid_machine initialL ->
       runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
              (withPc     (add initialL.(getPc) d)
@@ -96,7 +96,6 @@ Section FlatToRiscvLiterals.
       runsTo initialL post.
   Proof.
     intros *. intros E1 insts d F P V Vm N.
-    apply valid_FlatImp_var_implies_valid_register in V.
     pose proof (compile_lit_emits_valid v SeparationLogic.iset V) as EV.
     simpl in *.
     destruct_RiscvMachine initialL.
@@ -202,5 +201,22 @@ Section FlatToRiscvLiterals.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
   Qed.
+
+  Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,
+      initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
+      let insts := compile_lit x v in
+      let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
+      subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+             (of_list initialL.(getXAddrs)) ->
+      (program initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
+      valid_FlatImp_var x ->
+      Primitives.valid_machine initialL ->
+      runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
+             (withPc     (add initialL.(getPc) d)
+             (withNextPc (add initialL.(getNextPc) d)
+             (withMetrics (updateMetricsForLiteral v initialL.(getMetrics)) initialL))))
+             post ->
+      runsTo initialL post.
+  Proof. eauto using compile_lit_correct_full_raw, valid_FlatImp_var_implies_valid_register. Qed.
 
 End FlatToRiscvLiterals.
