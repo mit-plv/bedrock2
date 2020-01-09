@@ -246,6 +246,12 @@ Section Pipeline1.
   Definition available_registers: list Register :=
     Eval cbv in List.unfoldn Z.succ 29 3.
 
+  Lemma NoDup_available_registers: NoDup available_registers.
+  Proof. cbv. repeat constructor; cbv; intros; intuition congruence. Qed.
+
+  Lemma valid_FlatImp_vars_available_registers: Forall FlatToRiscvDef.valid_FlatImp_var available_registers.
+  Proof. repeat constructor; cbv; intros; discriminate. Qed.
+
   Local Notation ExprImpProgram :=
     (@Program (FlattenExpr.mk_Syntax_params _) (@Syntax.cmd (FlattenExpr.mk_Syntax_params _)) _).
   Local Notation FlatImpProgram :=
@@ -507,6 +513,44 @@ Section Pipeline1.
      mem_available  ml.(heap_start)  ml.(heap_pastend) *
      mem_available ml.(stack_start) ml.(stack_pastend))%sep.
 
+  Lemma rename_fun_valid: forall argnames retnames body impl',
+      rename_fun available_registers (argnames, retnames, body) = Some impl' ->
+      FlatImp.stmt_size body < 2 ^ 10 ->
+      FlatToRiscvDef.valid_FlatImp_fun impl'.
+  Proof.
+    unfold rename_fun, FlatToRiscvDef.valid_FlatImp_fun.
+    intros.
+    simp.
+    eapply rename_binds_props in E; cycle 1.
+    - exact String.eqb_spec.
+    - typeclasses eauto.
+    - eapply map.empty_injective.
+    - eapply map.not_in_range_empty.
+    - apply NoDup_available_registers.
+    - simp.
+      pose proof @map.getmany_of_list_in_map as P.
+      specialize P with (2 := Errrr).
+      ssplit.
+      + eapply Forall_impl. 2: {
+          eapply P. typeclasses eauto.
+        }
+        simpl.
+        intros. simp.
+        rename Errrlrr into A.
+        specialize A with (1 := H).
+        destruct A as [A | A].
+        * pose proof valid_FlatImp_vars_available_registers as V.
+          eapply (proj1 (Forall_forall _ _) V).
+          replace available_registers with (used ++ l) by assumption.
+          apply in_or_app. left. assumption.
+        * rewrite map.get_empty in A. discriminate A.
+      + case TODO_sam.
+      + case TODO_sam.
+      + case TODO_sam.
+      + case TODO_sam.
+      + case TODO_sam.
+  Qed.
+
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
       putProgram srcprog preInitial = Some initial ->
       layout preInitial.(getMem) ->
@@ -614,7 +658,12 @@ Section Pipeline1.
         }
         { unfold good_e_impl.
           intros.
-          case TODO_sam. }
+          simpl in H|-*.
+          ssplit.
+          - assert_succeeds (eapply rename_fun_valid). case TODO_sam.
+          - case TODO_sam.
+          - case TODO_sam.
+        }
         { unfold FlatToRiscvDef.stmt_not_too_big. case TODO_sam. }
         { case TODO_sam. }
         { reflexivity. }

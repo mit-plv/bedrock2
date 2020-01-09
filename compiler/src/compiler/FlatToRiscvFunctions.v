@@ -325,14 +325,9 @@ Section Proofs.
     valid_machine lo.
 
   Definition good_e_impl(e_impl: env)(funnames: list Syntax.funname)(e_pos: fun_pos_env) :=
-    forall f (argnames retnames: list Syntax.varname) (body: stmt),
-      map.get e_impl f = Some (argnames, retnames, body) ->
-      Forall valid_FlatImp_var argnames /\
-      Forall valid_FlatImp_var retnames /\
-      valid_FlatImp_vars body /\
-      NoDup argnames /\
-      NoDup retnames /\
-      stmt_not_too_big body /\
+    forall f (fun_impl: list Syntax.varname * list Syntax.varname * stmt),
+      map.get e_impl f = Some fun_impl ->
+      valid_FlatImp_fun fun_impl /\
       List.In f funnames /\
       exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0.
 
@@ -606,7 +601,7 @@ Section Proofs.
       lazymatch goal with
       | H: good_reduced_e_impl _ _ _  _ _ |- _ => destruct H as (? & ?)
       end.
-      unfold good_e_impl in *.
+      unfold good_e_impl, valid_FlatImp_fun in *.
       simpl in *.
       simp.
       lazymatch goal with
@@ -623,7 +618,8 @@ Section Proofs.
       match goal with
       | H: map.get e_impl_reduced fname = Some _, G: _ |- _ =>
           pose proof G as e_impl_reduced_props;
-          specialize G with (1 := H)
+          specialize G with (1 := H);
+          simpl in G
       end.
       simp.
       match goal with
@@ -900,7 +896,7 @@ Section Proofs.
 
     (* execute function body *)
     eapply runsTo_trans. {
-      unfold good_reduced_e_impl, good_e_impl in *. simp.
+      unfold good_reduced_e_impl, good_e_impl, valid_FlatImp_fun in *. simp.
       eapply IHexec with (g := {|
         p_sp := word.sub p_sp !(bytes_per_word * FL);
         e_pos := e_pos;
@@ -913,7 +909,7 @@ Section Proofs.
       { eapply map_extends_remove; eassumption. }
       {   move e_impl_reduced_props at bottom.
           intros *. intro G.
-          assert (map.get e_impl_reduced f = Some (argnames0, retnames0, body0)) as G'. {
+          assert (map.get e_impl_reduced f = Some fun_impl) as G'. {
             eapply map_get_Some_remove; eassumption.
           }
           specialize e_impl_reduced_props with (1 := G'). simp.

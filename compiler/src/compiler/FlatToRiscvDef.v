@@ -72,39 +72,26 @@ Section FlatToRiscv1.
      unless we start using multi-instruction jumps. *)
   Definition stmt_not_too_big(s: stmt): Prop := stmt_size s < 2 ^ 10.
 
-  Definition valid_registers_bcond (cond: bcond) : Prop :=
-    match cond with
-    | CondBinary _ x y => valid_register x /\ valid_register y
-    | CondNez x => valid_register x
-    end.
-
-  Definition valid_FlatImp_vars_bcond (cond: bcond) : Prop :=
-    match cond with
-    | CondBinary _ x y => valid_FlatImp_var x /\ valid_FlatImp_var y
-    | CondNez x => valid_FlatImp_var x
-    end.
+  Definition valid_registers_bcond: bcond -> Prop := ForallVars_bcond valid_register.
+  Definition valid_FlatImp_vars_bcond: bcond -> Prop := ForallVars_bcond valid_FlatImp_var.
 
   Lemma valid_FlatImp_vars_bcond_implies_valid_registers_bcond: forall b,
       valid_FlatImp_vars_bcond b -> valid_registers_bcond b.
   Proof.
-    intros b H. destruct b; simpl in *;
-                  intuition auto using valid_FlatImp_var_implies_valid_register.
+    unfold valid_FlatImp_vars_bcond, valid_registers_bcond.
+    intros. eauto using ForallVars_bcond_impl, valid_FlatImp_var_implies_valid_register.
   Qed.
 
-  Fixpoint valid_FlatImp_vars(s: stmt): Prop :=
-    match s with
-    | SLoad _ x a => valid_FlatImp_var x /\ valid_FlatImp_var a
-    | SStore _ a x => valid_FlatImp_var a /\ valid_FlatImp_var x
-    | SLit x _ => valid_FlatImp_var x
-    | SOp x _ y z => valid_FlatImp_var x /\ valid_FlatImp_var y /\ valid_FlatImp_var z
-    | SSet x y => valid_FlatImp_var x /\ valid_FlatImp_var y
-    | SIf c s1 s2 => valid_FlatImp_vars_bcond c /\ valid_FlatImp_vars s1 /\ valid_FlatImp_vars s2
-    | SLoop s1 c s2 => valid_FlatImp_vars_bcond c /\ valid_FlatImp_vars s1 /\ valid_FlatImp_vars s2
-    | SSeq s1 s2 => valid_FlatImp_vars s1 /\ valid_FlatImp_vars s2
-    | SSkip => True
-    | SCall binds _ args => Forall valid_FlatImp_var binds /\ Forall valid_FlatImp_var args
-    | SInteract binds _ args => Forall valid_FlatImp_var binds /\ Forall valid_FlatImp_var args
-    end.
+  Definition valid_FlatImp_vars: stmt -> Prop := ForallVars_stmt valid_FlatImp_var.
+
+  Definition valid_FlatImp_fun: list varname * list varname * stmt -> Prop :=
+    fun '(argnames, retnames, body) =>
+      Forall valid_FlatImp_var argnames /\
+      Forall valid_FlatImp_var retnames /\
+      valid_FlatImp_vars body /\
+      NoDup argnames /\
+      NoDup retnames /\
+      stmt_not_too_big body.
 
 
   (* Part 2: compilation *)

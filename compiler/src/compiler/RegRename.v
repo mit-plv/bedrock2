@@ -25,6 +25,15 @@ Notation "'bind_opt' x <- a ; f" :=
   (right associativity, at level 70, x pattern).
 
 Module map.
+
+  Lemma getmany_of_list_in_map{K V: Type}{M: map.map K V}{ok: map.ok M}:
+    forall (m: M) ks vs,
+      map.getmany_of_list m ks = Some vs ->
+      Forall (fun v => exists k, map.get m k = Some v) vs.
+  Proof.
+    induction ks; intros; unfold map.getmany_of_list, List.option_all in H; simpl in *; simp; constructor; eauto.
+  Qed.
+
   Definition injective{K V: Type}{M: map.map K V}(m: M): Prop :=
     forall k1 k2 v,
       map.get m k1 = Some v -> map.get m k2 = Some v -> k1 = k2.
@@ -531,7 +540,9 @@ Section RegAlloc.
       map.injective r2 /\
       map.extends r2 r1 /\
       (forall r3 av3, map.extends r3 r2 -> rename_assignment_lhs r3 x av3 = Some (r3, y, av3)) /\
-      (exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2) /\
+      (exists used, av1 = used ++ av2 /\
+                    map.not_in_range r2 av2 /\
+                    forall x y, map.get r2 x = Some y -> List.In y used \/ map.get r1 x = Some y) /\
       map.get r2 x = Some y.
   Proof.
     pose proof (map.not_in_range_put (ok := src2impOk)).
@@ -546,6 +557,10 @@ Section RegAlloc.
                                           | refine (ex_intro _ [_] (conj eq_refl _)) ]
                                   | rewrite ?map.get_put_same; eauto ]]];
                 eauto ]).
+    split; eauto.
+    simpl.
+    intros.
+    rewrite map.get_put_dec in H0. destruct_one_match_hyp; try assert (y = y0) by congruence; auto.
   Qed.
 
   (* a list of useful properties of rename_binds, all proved in one induction *)
@@ -557,7 +572,9 @@ Section RegAlloc.
       map.injective r2 /\
       map.extends r2 r1 /\
       (forall r3 av3, map.extends r3 r2 -> rename_binds r3 bH av3 = Some (r3, bL, av3)) /\
-      (exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2) /\
+      (exists used, av1 = used ++ av2 /\
+                    map.not_in_range r2 av2 /\
+                    forall x y, map.get r2 x = Some y -> List.In y used \/ map.get r1 x = Some y) /\
       map.getmany_of_list r2 bH = Some bL.
   Proof.
     induction bH; intros; simpl in *; simp.
@@ -567,27 +584,40 @@ Section RegAlloc.
       split; [|reflexivity].
       exists nil.
       split; [reflexivity|].
-      assumption.
+      eauto.
     - specialize IHbH with (1 := E0).
       destruct (rename_assignment_lhs_props E); try assumption. simp.
       apply_in_hyps @invert_NoDup_app. simp.
       edestruct IHbH; eauto. simp.
       split; [assumption|].
       unfold map.extends in *.
-      split; [|split;[|split]].
+      ssplit.
       + intros. eapply extends_trans; eassumption.
       + intros. srew_g. reflexivity.
-      + refine (ex_intro _ (_ ++ _) (conj _ _)).
-        2: eassumption. rewrite <- List.app_assoc. reflexivity.
+      + refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))).
+        2: eassumption.
+        1: rewrite <- List.app_assoc; reflexivity.
+        intros x y A.
+        match goal with
+        | H: _ |- _ => specialize H with (1 := A); rename H into D
+        end.
+        destruct D as [D | D].
+        * rewrite in_app_iff. intuition idtac.
+        * match goal with
+          | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
+          end.
+          rewrite in_app_iff. intuition idtac.
       + unfold map.getmany_of_list in *. simpl. srew_g. reflexivity.
   Qed.
 
   Lemma rename_cond_props: forall {r1 cond cond'},
       rename_cond r1 cond = Some cond' ->
-      (forall r3, map.extends r3 r1 -> rename_cond r3 cond = Some cond').
+      (forall r3, map.extends r3 r1 -> rename_cond r3 cond = Some cond') /\
+      ForallVars_bcond (fun y => exists x : srcvar, map.get r1 x = Some y) cond'.
   Proof.
-    unfold rename_cond, map.extends. intros.
-    destruct_one_match; simp; repeat erewrite H0 by eassumption; reflexivity.
+    unfold rename_cond, ForallVars_bcond, map.extends. split.
+    - intros. destruct_one_match; simp; repeat erewrite H0 by eassumption; reflexivity.
+    - destruct_one_match_hyp; simp; eauto.
   Qed.
 
   (* a list of useful properties of rename, all proved in one induction *)
@@ -599,17 +629,18 @@ Section RegAlloc.
       map.injective r2 /\
       map.extends r2 r1 /\
       (forall r3 av3, map.extends r3 r2 -> rename r3 sH av3 = Some (r3, sL, av3)) /\
-      (exists used, av1 = used ++ av2 /\ map.not_in_range r2 av2).
+      (exists used, av1 = used ++ av2 /\
+                    map.not_in_range r2 av2 /\
+                    forall x y, map.get r2 x = Some y -> List.In y used \/ map.get r1 x = Some y) /\
+      ForallVars_stmt (fun y => exists x, map.get r2 x = Some y) sL.
   Proof.
     induction sH; simpl in *; intros; simp;
       apply_in_hyps @rename_assignment_lhs_props; simp;
         try (repeat match goal with
                     | |- _ /\ _ => split
                     end;
-             eauto;
-             []);
-        try solve [intros; unfold map.extends in *; srew_g; reflexivity].
-
+             simpl; eauto;
+             solve [intros; unfold map.extends in *; srew_g; reflexivity]).
     - (* SStore remainder *)
       unfold map.extends;
             (split; [ (try eapply map.injective_put); eassumption
@@ -618,9 +649,14 @@ Section RegAlloc.
                       | split;
                         [ intros; rewrite ?map.get_put_diff by congruence
                         |  first [ refine (ex_intro _ nil (conj eq_refl _))
-                                 | refine (ex_intro _ [_] (conj eq_refl _)) ]]];
+                                 | refine (ex_intro _ [_] (conj eq_refl _)) | idtac ]]];
                       eauto]).
-      srew_g. reflexivity.
+      1: srew_g; reflexivity.
+      simpl. ssplit; eauto 10.
+      refine (ex_intro _ nil (conj eq_refl _)). eauto.
+    - (* SOp *)
+      ssplit; simpl; eauto 10.
+      intros; unfold map.extends in *; srew_g; reflexivity.
     - (* SIf *)
       specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
@@ -628,12 +664,30 @@ Section RegAlloc.
       simp.
       specialize IHsH2 with (1 := E0). auto_specialize. simp.
       split; [assumption|].
-      pose proof (rename_cond_props E1).
+      pose proof (rename_cond_props E1) as P. destruct P.
       unfold map.extends in *.
       split; [eauto|].
       split; [intros; srew_g; reflexivity|].
-      refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
-      rewrite <- List.app_assoc. reflexivity.
+      split. 2: {
+        simpl. ssplit.
+        + eapply ForallVars_bcond_impl. 2: eassumption.
+          simpl. intros. simp. eauto.
+        + eapply ForallVars_stmt_impl. 2: eassumption.
+          simpl. intros. simp. eauto.
+        + eauto.
+      }
+      refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))). 2: assumption.
+      1: rewrite <- List.app_assoc; reflexivity.
+      intros x y A.
+      match goal with
+      | H: _ |- _ => specialize H with (1 := A); rename H into D
+      end.
+      destruct D as [D | D].
+      + rewrite in_app_iff. intuition idtac.
+      + match goal with
+        | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
+        end.
+        rewrite in_app_iff. intuition idtac.
     - (* SLoop *)
       specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
@@ -643,11 +697,28 @@ Section RegAlloc.
       split; [assumption|].
       unfold map.extends in *.
       split; [eauto|].
-      pose proof (rename_cond_props E0).
+      pose proof (rename_cond_props E0) as P. destruct P.
       unfold map.extends in *.
-      split; [intros; srew_g; reflexivity|].
-      refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
-      rewrite <- List.app_assoc. reflexivity.
+      ssplit.
+      + intros; srew_g; reflexivity.
+      + refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))). 2: assumption.
+        1: rewrite <- List.app_assoc; reflexivity.
+        intros x y A.
+        match goal with
+        | H: _ |- _ => specialize H with (1 := A); rename H into D
+        end.
+        destruct D as [D | D].
+        * rewrite in_app_iff. intuition idtac.
+        * match goal with
+          | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
+          end.
+          rewrite in_app_iff. intuition idtac.
+      + simpl. ssplit.
+        * eapply ForallVars_bcond_impl. 2: eassumption.
+          simpl. intros. simp. eauto.
+        * eapply ForallVars_stmt_impl. 2: eassumption.
+          simpl. intros. simp. eauto.
+        * eauto.
     - (* SSeq *)
       specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
@@ -658,17 +729,38 @@ Section RegAlloc.
       unfold map.extends in *.
       split; [eauto|].
       split; [intros; srew_g; reflexivity|].
-      refine (ex_intro _ (_ ++ _) (conj _ _)). 2: assumption.
-      rewrite <- List.app_assoc. reflexivity.
+      split.
+      + refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))). 2: assumption.
+        1: rewrite <- List.app_assoc; reflexivity.
+        intros x y A.
+        match goal with
+        | H: _ |- _ => specialize H with (1 := A); rename H into D
+        end.
+        destruct D as [D | D].
+        * rewrite in_app_iff. intuition idtac.
+        * match goal with
+          | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
+          end.
+          rewrite in_app_iff. intuition idtac.
+      + simpl. split.
+        * eapply ForallVars_stmt_impl. 2: eassumption.
+          simpl. intros. simp. eauto.
+        * eauto.
     - (* SSkip *)
       repeat split; unfold map.extends in *; eauto.
       exists nil. simpl. auto.
     - (* SCall *)
-      apply_in_hyps @rename_binds_props. simp; repeat split; eauto.
-      intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
+      apply_in_hyps @rename_binds_props. simp; ssplit; eauto.
+      + intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
+      + simpl. split.
+        * eapply map.getmany_of_list_in_map. eassumption.
+        * eapply map.getmany_of_list_in_map. eapply map.getmany_of_list_extends; eassumption.
     - (* SInteract *)
-      apply_in_hyps @rename_binds_props. simp; repeat split; eauto.
-      intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
+      apply_in_hyps @rename_binds_props. simp; ssplit; eauto.
+      + intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
+      + simpl. split.
+        * eapply map.getmany_of_list_in_map. eassumption.
+        * eapply map.getmany_of_list_in_map. eapply map.getmany_of_list_extends; eassumption.
   Qed.
 
   Lemma states_compat_putmany_of_list: forall srcvars lH lH' lL r impvars av r' av' values,
@@ -821,7 +913,7 @@ Section RegAlloc.
       assert (rename r' (SLoop body1 cond body2) av' = Some (r', (SLoop s b s0), av')) as R. {
         simpl.
         rewrite H12rl by assumption.
-        rewrite (rename_cond_props E0) by eassumption.
+        rewrite (proj1 (rename_cond_props E0)) by eassumption.
         rewrite H13rl by apply extends_refl.
         reflexivity.
       }

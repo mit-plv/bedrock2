@@ -86,6 +86,42 @@ Section FlatImpSize1.
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
     end.
 
+  Definition ForallVars_bcond(P: varname -> Prop)(cond: bcond) : Prop :=
+    match cond with
+    | CondBinary _ x y => P x /\ P y
+    | CondNez x => P x
+    end.
+
+  Definition ForallVars_stmt(P: varname -> Prop): stmt -> Prop :=
+    fix rec s :=
+      match s with
+      | SLoad _ x a => P x /\ P a
+      | SStore _ a x => P a /\ P x
+      | SLit x _ => P x
+      | SOp x _ y z => P x /\ P y /\ P z
+      | SSet x y => P x /\ P y
+      | SIf c s1 s2 => ForallVars_bcond P c /\ rec s1 /\ rec s2
+      | SLoop s1 c s2 => ForallVars_bcond P c /\ rec s1 /\ rec s2
+      | SSeq s1 s2 => rec s1 /\ rec s2
+      | SSkip => True
+      | SCall binds _ args => Forall P binds /\ Forall P args
+      | SInteract binds _ args => Forall P binds /\ Forall P args
+      end.
+
+  Lemma ForallVars_bcond_impl: forall (P Q: varname -> Prop),
+      (forall x, P x -> Q x) ->
+      forall s, ForallVars_bcond P s -> ForallVars_bcond Q s.
+  Proof.
+    intros. destruct s; simpl in *; intuition eauto.
+  Qed.
+
+  Lemma ForallVars_stmt_impl: forall (P Q: varname -> Prop),
+      (forall x, P x -> Q x) ->
+      forall s, ForallVars_stmt P s -> ForallVars_stmt Q s.
+  Proof.
+    induction s; intros; simpl in *; intuition eauto using ForallVars_bcond_impl, Forall_impl.
+  Qed.
+
 End FlatImpSize1.
 
 Local Notation "' x <- a ; f" :=

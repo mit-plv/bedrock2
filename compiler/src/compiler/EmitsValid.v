@@ -437,7 +437,7 @@ Section EmitsValid.
       amt mod 2 = 0 ->
       verify (compile_bcond_by_inverting cond amt) iset.
   Proof.
-    unfold valid_registers_bcond, valid_register.
+    unfold valid_registers_bcond, ForallVars_bcond, valid_register.
     intros.
     simpl in *.
     destruct cond; [destruct op|]; simpl;
