@@ -161,7 +161,11 @@ Section WithParameters.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    { case TODO_andres_mmioaddr. }
+    {
+      cbv [isMMIOAddr addr].
+      rewrite ?word.unsigned_of_Z.
+      cbv -[Z.lt Z.gt Z.ge Z.le]; clear.
+      case TODO_andres_mmioaddr. }
     repeat straightline. split; trivial.
     letexists. split.
     { repeat straightline. exact eq_refl. }
