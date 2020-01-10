@@ -308,6 +308,13 @@ Section ExprImp1.
     intros. induction s; simpl in *; set_solver.
   Qed.
 
+  Definition valid_fun: list varname * list varname * cmd -> Prop :=
+    fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
+    (* TODO later maybe also check size of body *)
+
+  Definition valid_funs(e: env): Prop :=
+    forall f F, map.get e f = Some F -> valid_fun F.
+
 End ExprImp1.
 
 

@@ -242,6 +242,7 @@ Section Connect.
       (* 3) bedrock2 semantics to bedrock2 program logic *)
       constructor.
       - eapply funimplsList_NoDup.
+      - unfold ExprImp.valid_funs, ExprImp.valid_fun. case TODO_sam.
       - simpl. clear.
         induction funimplsList; split; intros.
         + simpl in H. rewrite map.get_empty in H. contradiction.

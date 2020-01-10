@@ -323,7 +323,7 @@ Section Pipeline1.
   Context (srcprog: Program cmd)
           (spec: ProgramSpec)
           (sat: @ProgramSatisfiesSpec (FlattenExpr.mk_Semantics_params _) _
-                                      srcprog Semantics.exec spec)
+                                      srcprog Semantics.exec ExprImp.valid_funs spec)
           (ml: MemoryLayout Semantics.width)
           (mlOk: MemoryLayoutOk ml).
 
@@ -335,7 +335,7 @@ Section Pipeline1.
       map.get (flatten_functions (funimpls srcprog) (funnames srcprog)) fname =
       Some (argvars, resvars, ExprImp2FlatImp body).
   Proof.
-    destruct srcprog. destruct sat as [_ M0 _ _]. cbn in *. clear sat.
+    destruct srcprog. destruct sat as [_ _ M0 _ _]. cbn in *. clear sat.
     assert (M: forall f, In f funnames -> map.get funimpls f <> None). {
       intros. eapply M0. assumption.
     }
@@ -515,6 +515,8 @@ Section Pipeline1.
 
   Lemma rename_fun_valid: forall argnames retnames body impl',
       rename_fun available_registers (argnames, retnames, body) = Some impl' ->
+      NoDup argnames ->
+      NoDup retnames ->
       FlatImp.stmt_size body < 2 ^ 10 ->
       FlatToRiscvDef.valid_FlatImp_fun impl'.
   Proof.
@@ -522,33 +524,106 @@ Section Pipeline1.
     intros.
     simp.
     eapply rename_binds_props in E; cycle 1.
-    - exact String.eqb_spec.
-    - typeclasses eauto.
-    - eapply map.empty_injective.
-    - eapply map.not_in_range_empty.
-    - apply NoDup_available_registers.
-    - simp.
-      pose proof @map.getmany_of_list_in_map as P.
-      specialize P with (2 := Errrr).
-      ssplit.
-      + eapply Forall_impl. 2: {
-          eapply P. typeclasses eauto.
-        }
-        simpl.
-        intros. simp.
-        rename Errrlrr into A.
-        specialize A with (1 := H).
-        destruct A as [A | A].
+    { exact String.eqb_spec. }
+    { typeclasses eauto. }
+    { eapply map.empty_injective. }
+    { eapply map.not_in_range_empty. }
+    { apply NoDup_available_registers. }
+    simp.
+    eapply rename_binds_props in E0; cycle 1.
+    { exact String.eqb_spec. }
+    { typeclasses eauto. }
+    { assumption. }
+    { assumption. }
+    { pose proof NoDup_available_registers as P.
+      replace available_registers with (used ++ l) in P by assumption.
+      apply invert_NoDup_app in P. tauto. }
+    simp.
+    pose proof E1 as E1'.
+    eapply rename_props in E1; cycle 1.
+    { exact String.eqb_spec. }
+    { typeclasses eauto. }
+    { assumption. }
+    { assumption. }
+    { pose proof NoDup_available_registers as P.
+      replace available_registers with (used ++ used0 ++ l1) in P by assumption.
+      apply invert_NoDup_app in P. simp. apply invert_NoDup_app in Prl. simp. assumption. }
+    simp.
+    ssplit.
+    - eapply Forall_impl. 2: {
+        eapply map.getmany_of_list_in_map. eassumption.
+      }
+      simpl.
+      intros. simp.
+      match goal with
+      | X: _ |- _ => specialize X with (1 := H); rename X into A
+      end.
+      destruct A as [A | A].
+      + pose proof valid_FlatImp_vars_available_registers as V.
+        eapply (proj1 (Forall_forall _ _) V).
+        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
+        rewrite ?in_app_iff. auto.
+      + rewrite map.get_empty in A. discriminate A.
+    - eapply Forall_impl. 2: {
+        eapply map.getmany_of_list_in_map. eassumption.
+      }
+      simpl.
+      intros. simp.
+      match goal with
+      | X: _ |- _ => specialize X with (1 := H); rename X into A
+      end.
+      destruct A as [A | A].
+      + pose proof valid_FlatImp_vars_available_registers as V.
+        eapply (proj1 (Forall_forall _ _) V).
+        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
+        rewrite ?in_app_iff. auto.
+      + match goal with
+        | X: _ |- _ => specialize X with (1 := A); rename X into B
+        end.
+        destruct B as [B | B].
         * pose proof valid_FlatImp_vars_available_registers as V.
           eapply (proj1 (Forall_forall _ _) V).
-          replace available_registers with (used ++ l) by assumption.
-          apply in_or_app. left. assumption.
-        * rewrite map.get_empty in A. discriminate A.
-      + case TODO_sam.
-      + case TODO_sam.
-      + case TODO_sam.
-      + case TODO_sam.
-      + case TODO_sam.
+          replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
+          rewrite ?in_app_iff. auto.
+        * rewrite map.get_empty in B. discriminate B.
+    - eapply FlatImp.ForallVars_stmt_impl; [|eassumption].
+      simpl. intros. simp.
+      match goal with
+      | X: _ |- _ => specialize X with (1 := H); rename X into A
+      end.
+      destruct A as [A | A].
+      + pose proof valid_FlatImp_vars_available_registers as V.
+        eapply (proj1 (Forall_forall _ _) V).
+        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
+        rewrite ?in_app_iff. auto.
+      + match goal with
+        | X: _ |- _ => specialize X with (1 := A); rename X into B
+        end.
+        destruct B as [B | B].
+        * pose proof valid_FlatImp_vars_available_registers as V.
+          eapply (proj1 (Forall_forall _ _) V).
+          replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
+          rewrite ?in_app_iff. auto.
+        * match goal with
+          | X: _ |- _ => specialize X with (1 := B); rename X into C
+          end.
+          destruct C as [C | C].
+          -- pose proof valid_FlatImp_vars_available_registers as V.
+             eapply (proj1 (Forall_forall _ _) V).
+             replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
+             rewrite ?in_app_iff. auto.
+          -- rewrite map.get_empty in C. discriminate C.
+    - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
+    - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
+    - unfold FlatToRiscvDef.stmt_not_too_big.
+      pose proof (rename_preserves_stmt_size _ _ _ _ _ _ E1') as M.
+      Fail rewrite <- M. (* PARAMRECORDS *)
+      clear -H2 M.
+      match goal with
+      | _: _ = ?x |- ?x' < _ => change x' with x
+      end.
+      rewrite <- M.
+      assumption.
   Qed.
 
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
@@ -660,7 +735,24 @@ Section Pipeline1.
           intros.
           simpl in H|-*.
           ssplit.
-          - assert_succeeds (eapply rename_fun_valid). case TODO_sam.
+          - eapply rename_fun_valid.
+            + unfold rename_functions in E1.
+              eapply map.get_map_all_values in E1.
+              * simp.
+                assert (Some v2 = Some fun_impl) as P. {
+                  etransitivity.
+                  - symmetry. exact E1r.
+                  - exact H.
+                }
+                rewrite P in E1l. exact E1l.
+              * exact String.eqb_spec.
+              * simpl. typeclasses eauto.
+              * typeclasses eauto.
+              * case TODO_sam. (* need precondition of map.get_map_all_values to prove its precondition?? *)
+              * case TODO_sam.
+            + case TODO_sam.
+            + case TODO_sam.
+            + case TODO_sam.
           - case TODO_sam.
           - case TODO_sam.
         }
@@ -859,6 +951,7 @@ Section Pipeline1.
       | |- ?G => let T := type of sat in replace G with T; [exact sat|]
       end.
       simpl.
+      apply f_equal2; try reflexivity.
       apply f_equal2; try reflexivity.
       apply f_equal2; try reflexivity.
       (* TODO *)

@@ -49,9 +49,12 @@ Section Params1.
                 Code -> Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog ->
                 (Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog -> Prop) ->
                 Prop)
+         (valid_funs: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code) -> Prop)
          (spec: ProgramSpec): Prop :=
   {
     funnames_NoDup: NoDup prog.(funnames);
+
+    funs_valid: valid_funs prog.(funimpls);
 
     (* TODO we should have an iterable map *)
     funnames_matches_dom: forall f,

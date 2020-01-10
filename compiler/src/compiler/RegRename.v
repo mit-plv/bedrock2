@@ -38,6 +38,40 @@ Module map.
     forall k1 k2 v,
       map.get m k1 = Some v -> map.get m k2 = Some v -> k1 = k2.
 
+  Lemma getmany_of_list_injective_NoDup{K V: Type}{M: map.map K V}: forall m ks vs,
+      map.injective m ->
+      NoDup ks ->
+      map.getmany_of_list m ks = Some vs ->
+      NoDup vs.
+  Proof.
+    intros.
+    rewrite NoDup_nth_error in *.
+    intros.
+    destr (nth_error vs i); cycle 1. {
+      exfalso. apply (proj2 (nth_error_Some vs i) H2 E).
+    }
+    assert (R: j < length vs). {
+      apply (proj1 (nth_error_Some vs j)). congruence.
+    }
+    pose proof (map.getmany_of_list_length _ _ _ H1) as P.
+    destr (nth_error ks i); cycle 1. {
+      exfalso. apply (proj2 (nth_error_Some ks i)).
+      - Lia.blia.
+      - assumption.
+    }
+    pose proof (map.getmany_of_list_get _ _ _ _ _ _ H1 E0 E) as Q.
+    destr (nth_error ks j); cycle 1. {
+      apply (proj1 (nth_error_None ks j)) in E1. Lia.blia.
+    }
+    symmetry in H3.
+    pose proof (map.getmany_of_list_get _ _ _ _ _ _ H1 E1 H3) as T.
+    unfold map.injective in H.
+    specialize (H _ _ _ Q T). subst k0.
+    eapply H0.
+    - Lia.blia.
+    - congruence.
+  Qed.
+
   (* Alternative:
   Definition injective{K V: Type}{M: map.map K V}(m: M): Prop :=
     forall k1 k2 v1 v2,
@@ -789,6 +823,16 @@ Section RegAlloc.
         all: eassumption.
       }
       simp. simpl. eauto.
+  Qed.
+
+  Lemma rename_preserves_stmt_size: forall sH r av r' sL av',
+      rename r sH av = Some (r', sL, av') ->
+      stmt_size sH = stmt_size sL.
+  Proof.
+    induction sH; intros; simpl in *; simp; simpl;
+      erewrite ?IHsH1 by eassumption;
+      erewrite ?IHsH2 by eassumption;
+      try reflexivity.
   Qed.
 
   Lemma rename_correct(available_impvars_NoDup: NoDup available_impvars): forall eH eL,
