@@ -263,9 +263,10 @@ Section Pipeline1.
   Local Notation renamed_env :=
     (@funname_env p (list Z * list Z * @FlatImp.stmt (@impparams Z string string))).
 
-  Definition flattenPhase(prog: ExprImpProgram): option FlatImpProgram := Some
+  Definition flattenPhase(prog: ExprImpProgram): option FlatImpProgram :=
+    bind_opt funimpls' <- flatten_functions prog.(funimpls) prog.(funnames); Some
     {| funnames := prog.(funnames);
-       funimpls := flatten_functions prog.(funimpls) prog.(funnames);
+       funimpls := funimpls';
        init_code := ExprImp2FlatImp prog.(init_code);
        loop_body := ExprImp2FlatImp prog.(loop_body); |}.
 
@@ -330,51 +331,20 @@ Section Pipeline1.
   Hypothesis heap_start_agree: spec.(datamem_start) = ml.(heap_start).
   Hypothesis heap_pastend_agree: spec.(datamem_pastend) = ml.(heap_pastend).
 
-  Lemma get_flatten_functions: forall fname argvars resvars body,
+  Lemma get_flatten_functions: forall fname argvars resvars body flattened,
       map.get srcprog.(funimpls) fname = Some (argvars, resvars, body) ->
-      map.get (flatten_functions (funimpls srcprog) (funnames srcprog)) fname =
-      Some (argvars, resvars, ExprImp2FlatImp body).
+      flatten_functions (funimpls srcprog) (funnames srcprog) = Some flattened ->
+      map.get flattened fname = Some (argvars, resvars, ExprImp2FlatImp body).
   Proof.
+    unfold flatten_functions.
     destruct srcprog. destruct sat as [_ _ M0 _ _]. cbn in *. clear sat.
-    assert (M: forall f, In f funnames -> map.get funimpls f <> None). {
-      intros. eapply M0. assumption.
-    }
     intros.
-    assert (G: In fname funnames). {
-      intros. eapply M0. congruence.
+    unshelve epose proof (map.get_map_all_values _ _ _ _ _ _ _ H0 _ H) as P. {
+      apply M0. congruence.
     }
-    clear M0.
-    generalize dependent funimpls.
-    clear heap_start_agree heap_pastend_agree srcprog spec init_code loop_body ml mlOk.
-    revert funnames fname argvars resvars body G.
-    induction funnames; intros.
-    - simpl in *. contradiction.
-    - simpl in *.
-      destruct G.
-      + subst.
-        rewrite map.get_put_same. unfold flatten_function.
-        simpl in *. (* PARAMRECORDS *)
-        rewrite H.
-        reflexivity.
-      + destr (map.get funimpls a).
-        * rewrite map.get_put_dec.
-          destruct_one_match.
-          { subst.
-            unfold flatten_function.
-            simpl in *. (* PARAMRECORDS *)
-            rewrite H.
-            reflexivity. }
-          { eauto. }
-        * exfalso. unfold not in M0. eauto.
-  Qed.
-
-  Lemma get_flatten_functions_Some_In: forall names impls argnames resnames body f,
-      map.get (flatten_functions impls names) f = Some (argnames, resnames, body) ->
-      In f names.
-  Proof.
-    induction names; intros.
-    - simpl in *. rewrite map.get_empty in H. discriminate.
-    - simpl in *. rewrite map.get_put_dec in H. destruct_one_match_hyp; eauto.
+    unfold flatten_function in P.
+    simp.
+    assumption.
   Qed.
 
   Let init_sp := word.unsigned ml.(stack_pastend).
@@ -660,7 +630,7 @@ Section Pipeline1.
       | |- _ < 4 * Z.of_nat ?L < _ => remember L as l
       end.
       simpl in *. (* PARAMRECORDS *)
-      rewrite <- Heql in E5.
+      rewrite <- Heql in E6.
       blia.
     }
     (* first, run init_sp_code: *)
@@ -694,10 +664,9 @@ Section Pipeline1.
         unfold compiler.FlatToRiscvSimulation.related,
                compiler.FlattenExprSimulation.related,
                compiler.RegRename.related.
-        refine (ex_intro _
-           (flatten_functions srcprog.(funimpls) srcprog.(funnames), _, _, _, _, _) _).
+        refine (ex_intro _ (_, _, _, _, _, _) _).
         ssplit; try reflexivity.
-        { intros. eapply get_flatten_functions. assumption. }
+        { intros. eapply get_flatten_functions; eassumption. }
         { unfold map.undef_on, map.agree_on. intros. reflexivity. }
         refine (ex_intro _ (_, _, _, _, _, _) _).
         unfold goodMachine.
@@ -705,21 +674,21 @@ Section Pipeline1.
         { unfold envs_related.
           intros f [ [argnames resnames] body1 ] G.
           unfold initCodeGhostConsts, ren. cbn [e_impl funimpls].
-          unfold rename_functions in E1.
+          unfold rename_functions in E2.
           eapply map.get_map_all_values.
-          4: exact E1.
+          5: exact G. 3: exact E2.
           - eapply String.eqb_spec.
-          - typeclasses eauto.
           - (* PARAMRECORDS *)
             unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto.
-          - eauto using get_flatten_functions_Some_In.
-          - assumption.
+          - unshelve eapply (proj1 (map.map_all_values_get _ _ G E5)).
+            (* PARAMRECORDS *)
+            unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto.
         }
         { reflexivity. }
         { reflexivity. }
         { intros. ssplit; reflexivity. }
-        { unfold rename_stmt in E2. simp.
-          do 2 eexists. exact E0. }
+        { unfold rename_stmt in E3. simp.
+          do 2 eexists. eassumption. }
         { reflexivity. }
         { simpl. unfold riscvPhase in *. simpl in *. simp.
           edestruct stack_usage_correct as [P _]. 1: eassumption.
@@ -734,26 +703,23 @@ Section Pipeline1.
         { unfold good_e_impl.
           intros.
           simpl in H|-*.
+          unfold rename_functions in E2.
+          eapply (map.map_all_values_get _ _ H) in E2.
+          simp. destruct v1 as [ [argnames' retnames'] body' ].
+          unfold flatten_functions in E5.
+          unshelve epose proof (map.map_all_values_get _ _ E2rl E5) as P.
+          { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
+          unfold flatten_function in P.
+          simp.
+          pose proof (funs_valid sat) as V.
+          unfold ExprImp.valid_funs in V.
+          specialize V with (1 := Prl).
+          unfold ExprImp.valid_fun in V.
+          destruct V.
           ssplit.
-          - eapply rename_fun_valid.
-            + unfold rename_functions in E1.
-              eapply map.get_map_all_values in E1.
-              * simp.
-                assert (Some v2 = Some fun_impl) as P. {
-                  etransitivity.
-                  - symmetry. exact E1r.
-                  - exact H.
-                }
-                rewrite P in E1l. exact E1l.
-              * exact String.eqb_spec.
-              * simpl. typeclasses eauto.
-              * typeclasses eauto.
-              * case TODO_sam. (* need precondition of map.get_map_all_values to prove its precondition?? *)
-              * case TODO_sam.
-            + case TODO_sam.
-            + case TODO_sam.
-            + case TODO_sam.
-          - case TODO_sam.
+          - eapply rename_fun_valid; try eassumption.
+            case TODO_sam. (* where should we check stmt_size? *)
+          - assumption.
           - case TODO_sam.
         }
         { unfold FlatToRiscvDef.stmt_not_too_big. case TODO_sam. }
@@ -818,6 +784,7 @@ Section Pipeline1.
     all: repeat apply pair.
     all: try apply nil.
     all: try apply FlatImp.SSkip.
+
   Qed.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),

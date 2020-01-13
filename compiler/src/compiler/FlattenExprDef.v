@@ -187,18 +187,11 @@ Section FlattenExpr1.
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
-  Definition flatten_function(e: bedrock2.Semantics.env)(f: funname):
-    (list varname * list varname * FlatImp.stmt) :=
-    match map.get e f with
-    | Some (argnames, retnames, body) => (argnames, retnames, ExprImp2FlatImp body)
-    | None => (nil, nil, FlatImp.SSkip)
-    end.
+  Definition flatten_function: list varname * list varname * Syntax.cmd ->
+                               option (list varname * list varname * FlatImp.stmt) :=
+    fun '(argnames, retnames, body) => Some (argnames, retnames, ExprImp2FlatImp body).
 
-  Definition flatten_functions(e: bedrock2.Semantics.env): list funname -> FlatImp.env :=
-    fix rec funs :=
-      match funs with
-      | f :: rest => map.put (rec rest) f (flatten_function e f)
-      | nil => map.empty
-      end.
+  Definition flatten_functions: bedrock2.Semantics.env -> list funname -> option FlatImp.env :=
+    map.map_all_values flatten_function.
 
 End FlattenExpr1.

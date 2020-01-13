@@ -123,7 +123,10 @@ Section Pipeline1.
     insts1 ++ insts2.
 
   Definition compile_prog(e: Semantics.env)(s: Syntax.cmd)(funs: list funname): list Instruction :=
-    let e' := flatten_functions e funs in
+    let e' := match flatten_functions e funs with
+              | Some e' => e'
+              | None => map.empty
+              end in
     let s' := ExprImp2FlatImp s in
     compile_riscv_prog e' s' FlatImp.SSkip funs.
 
