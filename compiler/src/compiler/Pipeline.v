@@ -110,7 +110,7 @@ Section Pipeline1.
 
   (* only works if varname=Register *)
   Definition ExprImp2Riscv(s: Syntax.cmd): list Instruction :=
-    FlatToRiscvDef.compile_stmt map.empty 0 (ExprImp2FlatImp s).
+    FlatToRiscvDef.compile_stmt map.empty 0 (ExprImp2FlatImp0 s).
 
   Definition compile_riscv_prog e_impl (init loop_body: FlatImp.stmt)(funs: list funname): list Instruction :=
     let prog := {|
@@ -127,11 +127,11 @@ Section Pipeline1.
               | Some e' => e'
               | None => map.empty
               end in
-    let s' := ExprImp2FlatImp s in
+    let s' := ExprImp2FlatImp0 s in
     compile_riscv_prog e' s' FlatImp.SSkip funs.
 
   Definition enough_registers(s: Syntax.cmd): Prop :=
-    FlatToRiscvDef.valid_FlatImp_vars (ExprImp2FlatImp s).
+    FlatToRiscvDef.valid_FlatImp_vars (ExprImp2FlatImp0 s).
 
   (* simpler than debugging why blia/blia fails *)
   Ltac ineq_step :=
@@ -182,13 +182,13 @@ Section Pipeline1.
       + eapply FlatImp.exec.weaken.
         * match goal with
           | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct _ _ _ _ _ _ _ _ _ eq_refl) as Q
+            epose proof (@FlattenExpr.flattenStmt_correct0 _ _ _ _ _ _ _ _ _ eq_refl) as Q
           end.
           eapply Q.
           eassumption.
         * simpl. intros. simp. do 2 eexists. do 2 (split; try eassumption).
       + unfold FlatToRiscvDef.stmt_not_too_big.
-        unfold ExprImp2Riscv, ExprImp2FlatImp in *.
+        unfold ExprImp2Riscv, ExprImp2FlatImp0 in *.
         match goal with
         | |- context [fst ?x] => destruct x eqn: E
         end.

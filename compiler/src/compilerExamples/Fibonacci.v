@@ -94,7 +94,7 @@ Definition fib_riscv0(n: Z): list Instruction :=
 
 Module PrintFlatImp.
   Import FlatImp bopname.
-  Eval vm_compute in (ExprImp2FlatImp (fib_ExprImp 6)).
+  Eval vm_compute in (ExprImp2FlatImp0 (fib_ExprImp 6)).
 End PrintFlatImp.
 
 Time Definition fib6_riscv := Eval vm_compute in fib_riscv0 6.

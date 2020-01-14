@@ -264,11 +264,13 @@ Section Pipeline1.
     (@funname_env p (list Z * list Z * @FlatImp.stmt (@impparams Z string string))).
 
   Definition flattenPhase(prog: ExprImpProgram): option FlatImpProgram :=
-    bind_opt funimpls' <- flatten_functions (2^10) prog.(funimpls) prog.(funnames); Some
-    {| funnames := prog.(funnames);
-       funimpls := funimpls';
-       init_code := ExprImp2FlatImp prog.(init_code);
-       loop_body := ExprImp2FlatImp prog.(loop_body); |}.
+    bind_opt funimpls' <- flatten_functions (2^10) prog.(funimpls) prog.(funnames);
+    bind_opt init' <- ExprImp2FlatImp (2^10) prog.(init_code);
+    bind_opt loop' <- ExprImp2FlatImp (2^10) prog.(loop_body);
+    Some {| funnames := prog.(funnames);
+            funimpls := funimpls';
+            init_code := init';
+            loop_body := loop' |}.
 
   Definition renamePhase(prog: FlatImpProgram): option RenamedProgram :=
     bind_opt funimpls' <- rename_functions String.eqb Z.eqb String.eqb String.eqb
@@ -334,7 +336,8 @@ Section Pipeline1.
   Lemma get_flatten_functions: forall fname argvars resvars body flattened,
       map.get srcprog.(funimpls) fname = Some (argvars, resvars, body) ->
       flatten_functions (2^10) (funimpls srcprog) (funnames srcprog) = Some flattened ->
-      map.get flattened fname = Some (argvars, resvars, ExprImp2FlatImp body).
+      exists body', map.get flattened fname = Some (argvars, resvars, body') /\
+                    ExprImp2FlatImp (2^10) body = Some body'.
   Proof.
     unfold flatten_functions.
     destruct srcprog. destruct sat as [_ _ M0 _ _]. cbn in *. clear sat.
@@ -343,8 +346,7 @@ Section Pipeline1.
       apply M0. congruence.
     }
     unfold flatten_function in P.
-    simp.
-    assumption.
+    simp. eauto.
   Qed.
 
   Let init_sp := word.unsigned ml.(stack_pastend).
@@ -364,7 +366,7 @@ Section Pipeline1.
                                 l = map.empty.
 
   Definition related(g: GhostConsts)(relative_code_pos: Z) :=
-    (compose_relation FlattenExprSimulation.related
+    (compose_relation (FlattenExprSimulation.related (2^10))
     (compose_relation (RegRename.related eqb Z.eqb eqb eqb available_registers ext_spec)
                       (FlatToRiscvSimulation.related g relative_code_pos))).
 
@@ -463,7 +465,7 @@ Section Pipeline1.
     simulation ExprImp.SimExec runsTo (related g relative_code_pos).
   Proof.
     intros E1 E2.
-    refine (compose_sim FlattenExprSimulation.flattenExprSim
+    refine (compose_sim (FlattenExprSimulation.flattenExprSim (2^10))
            (compose_sim _
                         (FlatToRiscvSimulation.flatToRiscvSim g relative_code_pos _ _))).
     1: eapply renameSim; try typeclasses eauto.
@@ -652,7 +654,7 @@ Section Pipeline1.
       | |- _ < 4 * Z.of_nat ?L < _ => remember L as l
       end.
       simpl in *. (* PARAMRECORDS *)
-      rewrite <- Heql in E6.
+      rewrite <- Heql in *.
       blia.
     }
     (* first, run init_sp_code: *)
@@ -689,6 +691,7 @@ Section Pipeline1.
         refine (ex_intro _ (_, _, _, _, _, _) _).
         ssplit; try reflexivity.
         { intros. eapply get_flatten_functions; eassumption. }
+        { eassumption. }
         { unfold map.undef_on, map.agree_on. intros. reflexivity. }
         refine (ex_intro _ (_, _, _, _, _, _) _).
         unfold goodMachine.
@@ -740,6 +743,8 @@ Section Pipeline1.
           destruct V.
           ssplit.
           - eapply rename_fun_valid; try eassumption.
+            unfold ExprImp2FlatImp in *.
+            simp.
             repeat match goal with
                    | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
                    end.
@@ -756,8 +761,8 @@ Section Pipeline1.
               end.
               destruct p0 as [ [args res] body ].
               pose proof get_flatten_functions as P.
-              specialize P with (1 := E1) (2 := E5).
-              unshelve epose proof (map.get_map_all_values _ _ _ _ _ _ _ RenameEq A P) as P'.
+              specialize P with (1 := E1) (2 := E5). simp.
+              unshelve epose proof (map.get_map_all_values _ _ _ _ _ _ _ RenameEq A Pl0) as P'.
               { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
               simp.
               (* PARAMRECORDS *)
@@ -770,8 +775,42 @@ Section Pipeline1.
             + reflexivity.
         }
         { unfold FlatToRiscvDef.stmt_not_too_big.
-          case TODO_sam. }
-        { case TODO_sam. }
+          match goal with
+          | H: rename_stmt _ _ _ = Some s |- _ => unfold rename_stmt in H; simp
+          end.
+          match goal with
+          | H: rename _ _ _ = Some (_, s, _) |- _ => apply rename_preserves_stmt_size in H; rename H into B
+          end.
+          (* PARAMRECORDS *)
+          match goal with
+          | |- ?x < _ => replace x with (FlatImp.stmt_size s1)
+          end.
+          unfold ExprImp2FlatImp in *.
+          simp.
+          repeat match goal with
+                 | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
+                 end.
+          assumption.
+        }
+        { unfold rename_stmt in E3. simp. eapply rename_props in E0; cycle 1.
+          { exact String.eqb_spec. }
+          { typeclasses eauto. }
+          { apply map.empty_injective. }
+          { eapply map.not_in_range_empty. }
+          { eapply NoDup_available_registers. }
+          simp.
+          unfold FlatToRiscvDef.valid_FlatImp_vars.
+          eapply FlatImp.ForallVars_stmt_impl; [|eassumption].
+          simpl. intros. simp.
+          match goal with
+          | X: _ |- _ => specialize X with (1 := H); rename X into A
+          end.
+          destruct A as [A | A].
+          + pose proof valid_FlatImp_vars_available_registers as V.
+            eapply (proj1 (Forall_forall _ _) V).
+            replace available_registers with (used ++ l0) by assumption.
+            rewrite ?in_app_iff. auto.
+          + rewrite map.get_empty in A. discriminate A. }
         { reflexivity. }
         { unfold FlatToRiscvDef.main_pos. solve_divisibleBy4. }
         { simpl. eapply regs_initialized_put in H1. exact H1. }

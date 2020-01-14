@@ -15,18 +15,20 @@ Section Sim.
   Definition related_without_functions(done: bool): ExprImp.SimState -> FlatImp.SimState -> Prop :=
     fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       e1 = map.empty /\ e2 = map.empty (* TODO allow non-empty function environments *) /\
-      ExprImp2FlatImp c1 = c2 /\
+      ExprImp2FlatImp0 c1 = c2 /\
       t1 = t2 /\
       m1 = m2 /\
       map.extends l2 l1 /\
       map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
 
-  Definition related(done: bool): ExprImp.SimState -> FlatImp.SimState -> Prop :=
+  Definition related(max_size: BinInt.Z)(done: bool): ExprImp.SimState -> FlatImp.SimState -> Prop :=
     fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       (forall f argvars resvars body1,
           map.get e1 f = Some (argvars, resvars, body1) ->
-          map.get e2 f = Some (argvars, resvars, ExprImp2FlatImp body1)) /\
-      ExprImp2FlatImp c1 = c2 /\
+          exists body2,
+            map.get e2 f = Some (argvars, resvars, body2) /\
+            ExprImp2FlatImp max_size body1 = Some body2) /\
+      ExprImp2FlatImp max_size c1 = Some c2 /\
       t1 = t2 /\
       m1 = m2 /\
       (* TODO flattenExpr has to unset all vars at the end of the compiled stmt *)
@@ -36,8 +38,8 @@ Section Sim.
 
   Axiom TODO_sam: False.
 
-  Lemma relate_related{hyps: FlattenExpr.assumptions p}: forall done s1 s2,
-      related_without_functions done s1 s2 <-> related done s1 s2.
+  Lemma relate_related{hyps: FlattenExpr.assumptions p}(max_size: BinInt.Z): forall done s1 s2,
+      related_without_functions done s1 s2 <-> related max_size done s1 s2.
   Proof.
     intros done (((((e1 & c1) & t1) & m1) & l1) & mc1) (((((e2 & c2) & t2) & m2) & l2) & mc2).
     split; intro H; unfold related_without_functions, related in *.
@@ -45,6 +47,7 @@ Section Sim.
       + subst. rewrite @map.get_empty in H5.
         * discriminate.
         * refine (FlattenExpr.funname_env_ok _).
+      + unfold ExprImp2FlatImp. rewrite H1. case TODO_sam. (* doesn't hold (size check) *)
       + case TODO_sam. (* clearly doesn't hold, extends does not imply equality *)
     - simp. case TODO_sam. (* clearly doesn't hold *)
   Qed.
@@ -56,7 +59,7 @@ Section Sim.
     intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
     intros.
     simp.
-    unfold ExprImp2FlatImp.
+    unfold ExprImp2FlatImp0.
     match goal with
     | |- context [ fst ?x ] => destruct x as [s ngs] eqn: E
     end.
@@ -97,8 +100,8 @@ Section Sim.
       Solver.map_solver FlattenExpr.locals_ok.
   Qed.
 
-  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}:
-    simulation ExprImp.SimExec FlatImp.SimExec related.
+  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}(max_size: BinInt.Z):
+    simulation ExprImp.SimExec FlatImp.SimExec (related max_size).
   Proof.
     pose proof flattenExprSim_without_functions as P.
     unfold simulation in *.

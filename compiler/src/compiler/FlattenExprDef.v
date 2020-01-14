@@ -184,16 +184,27 @@ Section FlattenExpr1.
     | Syntax.cmd.interact binds a args => flattenInteract ngs binds a args
     end.
 
-  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt :=
+  Definition ExprImp2FlatImp0(s: Syntax.cmd): FlatImp.stmt :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
-  Definition flatten_function(max_size: Z):
-    list varname * list varname * Syntax.cmd -> option (list varname * list varname * FlatImp.stmt) :=
-    fun '(argnames, retnames, body) =>
-      let body' := ExprImp2FlatImp body in
-      if FlatImp.stmt_size body' <? max_size then Some (argnames, retnames, body') else None.
+  Section WithMaxSize.
+    Context (max_size: Z).
 
-  Definition flatten_functions(max_size: Z): bedrock2.Semantics.env -> list funname -> option FlatImp.env :=
-    map.map_all_values (flatten_function max_size).
+    Definition ExprImp2FlatImp(s: Syntax.cmd): option FlatImp.stmt :=
+      let res := ExprImp2FlatImp0 s in
+      if FlatImp.stmt_size res <? max_size then Some res else None.
+
+    Definition flatten_function:
+      list varname * list varname * Syntax.cmd -> option (list varname * list varname * FlatImp.stmt) :=
+      fun '(argnames, retnames, body) =>
+        match ExprImp2FlatImp body with
+        | Some body' => Some (argnames, retnames, body')
+        | None => None
+        end.
+
+    Definition flatten_functions: bedrock2.Semantics.env -> list funname -> option FlatImp.env :=
+      map.map_all_values flatten_function.
+
+  End WithMaxSize.
 
 End FlattenExpr1.

@@ -739,8 +739,8 @@ Section FlattenExpr1.
   Qed.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
-  Lemma flattenStmt_correct: forall sH sL lL t m mc post,
-      ExprImp2FlatImp sH = sL ->
+  Lemma flattenStmt_correct0: forall sH sL lL t m mc post,
+      ExprImp2FlatImp0 sH = sL ->
       Semantics.exec map.empty sH t m map.empty mc post ->
       FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
@@ -748,7 +748,7 @@ Section FlattenExpr1.
         (mcL' - mc <= mcH' - mc)%metricsH).
   Proof.
     intros.
-    unfold ExprImp2FlatImp in *.
+    unfold ExprImp2FlatImp0 in *.
     match goal with
     | H: fst ?x = _ |- _ => destruct x as [sL' ngs'] eqn: E
     end.
@@ -771,6 +771,19 @@ Section FlattenExpr1.
         apply P.
         apply H.
     - simpl. intros. simp. eauto.
+  Qed.
+
+  Lemma flattenStmt_correct: forall sH sL sz lL t m mc post,
+      ExprImp2FlatImp sz sH = Some sL ->
+      Semantics.exec map.empty sH t m map.empty mc post ->
+      FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
+        post t' m' lH' mcH' /\
+        map.extends lL' lH' /\
+        (mcL' - mc <= mcH' - mc)%metricsH).
+  Proof.
+    unfold ExprImp2FlatImp.
+    intros. eapply flattenStmt_correct0. 2: eassumption.
+    destruct_one_match_hyp; congruence.
   Qed.
 
 End FlattenExpr1.
