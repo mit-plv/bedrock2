@@ -62,7 +62,9 @@ Section FlatImpSize1.
     | SLoop body1 cond body2 => (rec body1) + 1 + (rec body2) + 1
     | SSeq s1 s2 => (rec s1) + (rec s2)
     | SSkip => 0
-    | SCall binds f args => 1000 (* TODO not sure how much register saving will cost etc *)
+    (* TODO only works because all registers are callee-saved.
+       And we still need to account for the code emitted by compile_function somewhere. *)
+    | SCall binds f args => Z.of_nat (List.length args) + 1 + Z.of_nat (List.length binds)
     | SInteract binds f args => 7 (* TODO don't hardcode a magic number *)
     end.
 

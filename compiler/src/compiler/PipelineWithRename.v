@@ -264,7 +264,7 @@ Section Pipeline1.
     (@funname_env p (list Z * list Z * @FlatImp.stmt (@impparams Z string string))).
 
   Definition flattenPhase(prog: ExprImpProgram): option FlatImpProgram :=
-    bind_opt funimpls' <- flatten_functions prog.(funimpls) prog.(funnames); Some
+    bind_opt funimpls' <- flatten_functions (2^10) prog.(funimpls) prog.(funnames); Some
     {| funnames := prog.(funnames);
        funimpls := funimpls';
        init_code := ExprImp2FlatImp prog.(init_code);
@@ -333,7 +333,7 @@ Section Pipeline1.
 
   Lemma get_flatten_functions: forall fname argvars resvars body flattened,
       map.get srcprog.(funimpls) fname = Some (argvars, resvars, body) ->
-      flatten_functions (funimpls srcprog) (funnames srcprog) = Some flattened ->
+      flatten_functions (2^10) (funimpls srcprog) (funnames srcprog) = Some flattened ->
       map.get flattened fname = Some (argvars, resvars, ExprImp2FlatImp body).
   Proof.
     unfold flatten_functions.
@@ -596,6 +596,28 @@ Section Pipeline1.
       assumption.
   Qed.
 
+  Lemma get_build_fun_pos_env: forall fnames r f pos0,
+      In f fnames ->
+      (forall f, In f fnames -> map.get r f <> None) ->
+      pos0 mod 4 = 0 ->
+      exists pos1, map.get (FlatToRiscvDef.build_fun_pos_env r pos0 fnames) f = Some pos1 /\ pos1 mod 4 = 0.
+  Proof.
+    induction fnames; intros.
+    - simpl in *. contradiction.
+    - simpl in *.
+      pose proof (H0 a (or_introl eq_refl)) as P.
+      destr (map.get r a). 2: contradiction. clear P.
+      destruct H.
+      + subst f. rewrite map.get_put_same. eauto.
+      + rewrite map.get_put_dec.
+        destruct_one_match.
+        * subst. eauto.
+        * eapply IHfnames.
+          -- eassumption.
+          -- intros. eapply H0. right. assumption.
+          -- solve_divisibleBy4.
+  Qed.
+
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
       putProgram srcprog preInitial = Some initial ->
       layout preInitial.(getMem) ->
@@ -703,7 +725,7 @@ Section Pipeline1.
         { unfold good_e_impl.
           intros.
           simpl in H|-*.
-          unfold rename_functions in E2.
+          unfold rename_functions in E2. pose proof E2 as RenameEq.
           eapply (map.map_all_values_get _ _ H) in E2.
           simp. destruct v1 as [ [argnames' retnames'] body' ].
           unfold flatten_functions in E5.
@@ -718,11 +740,37 @@ Section Pipeline1.
           destruct V.
           ssplit.
           - eapply rename_fun_valid; try eassumption.
-            case TODO_sam. (* where should we check stmt_size? *)
+            repeat match goal with
+                   | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
+                   end.
+            assumption.
           - assumption.
-          - case TODO_sam.
+          - unfold FlatToRiscvDef.function_positions.
+            simpl.
+            eapply get_build_fun_pos_env.
+            + assumption.
+            + intros f' A C.
+              apply (proj2 (sat.(funnames_matches_dom) f') A).
+              match goal with
+              | |- ?x = None => destr x; [exfalso|reflexivity]
+              end.
+              destruct p0 as [ [args res] body ].
+              pose proof get_flatten_functions as P.
+              specialize P with (1 := E1) (2 := E5).
+              unshelve epose proof (map.get_map_all_values _ _ _ _ _ _ _ RenameEq A P) as P'.
+              { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
+              simp.
+              (* PARAMRECORDS *)
+              match type of C with
+              | ?x = None => match type of P'r with
+                             | ?y = Some _ => change x with y in C
+                             end
+              end.
+              congruence.
+            + reflexivity.
         }
-        { unfold FlatToRiscvDef.stmt_not_too_big. case TODO_sam. }
+        { unfold FlatToRiscvDef.stmt_not_too_big.
+          case TODO_sam. }
         { case TODO_sam. }
         { reflexivity. }
         { unfold FlatToRiscvDef.main_pos. solve_divisibleBy4. }

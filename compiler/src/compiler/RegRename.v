@@ -778,6 +778,15 @@ Section RegAlloc.
       simp. simpl. eauto.
   Qed.
 
+  Lemma rename_binds_preserves_length: forall vars vars' r r' av av',
+      rename_binds r vars av = Some (r', vars', av') ->
+      List.length vars' = List.length vars.
+  Proof.
+    induction vars; intros.
+    - simpl in *. simp. reflexivity.
+    - simpl in *. simp. simpl. f_equal. eauto.
+  Qed.
+
   Lemma rename_preserves_stmt_size: forall sH r av r' sL av',
       rename r sH av = Some (r', sL, av') ->
       stmt_size sH = stmt_size sL.
@@ -786,6 +795,9 @@ Section RegAlloc.
       erewrite ?IHsH1 by eassumption;
       erewrite ?IHsH2 by eassumption;
       try reflexivity.
+    eapply rename_binds_preserves_length in E0.
+    eapply map.getmany_of_list_length in E.
+    congruence.
   Qed.
 
   Lemma rename_correct(available_impvars_NoDup: NoDup available_impvars): forall eH eL,

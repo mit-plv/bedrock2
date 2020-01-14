@@ -107,7 +107,7 @@ Section ExprImp1.
       | cmd.while cond body => expr_size cond + cmd_size body + 2
       | cmd.seq s1 s2 => cmd_size s1 + cmd_size s2
       | cmd.skip | cmd.unset _ => 0
-      | cmd.call binds f args => exprs_size args + 1000 (* TODO *)
+      | cmd.call binds f args => exprs_size args + Z.of_nat (List.length args) + 1 + Z.of_nat (List.length binds)
       | cmd.interact _ _ exprs => exprs_size exprs
                                   + 7 (* randomly chosen max allowed number of instructions
                                          one interaction can be compiled to, TODO parametrize

@@ -71,6 +71,16 @@ Section FlattenExpr1.
     bomega.
   Qed.
 
+  Lemma flattenExprs_resVarsLength: forall es s resVars ngs ngs',
+    flattenExprs ngs es = (s, resVars, ngs') ->
+    List.length resVars = List.length es.
+  Proof.
+    induction es; intros; simpl in *; simp; simpl; try bomega.
+    specialize IHes with (1 := E0).
+    f_equal.
+    assumption.
+  Qed.
+
   Lemma flattenCall_size: forall f args binds ngs ngs' s,
       flattenCall ngs binds f args = (s, ngs') ->
       0 < FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.call binds f args).
@@ -79,7 +89,9 @@ Section FlattenExpr1.
     destruct_one_match_hyp.
     destruct_one_match_hyp.
     simp. simpl.
+    pose proof E as E'.
     apply flattenExprs_size in E.
+    apply flattenExprs_resVarsLength in E'.
     bomega.
   Qed.
 
