@@ -138,7 +138,7 @@ Section WithWidth.
       1: pose proof @wordToZ_size (pred sz).
       1: rewrite PeanoNat.Nat.succ_pred in H0.
       1: specialize (H0 x).
-      1,2,3:case TODO_andres. }
+      all:case TODO_andres. }
     19: {
       specialize (weqb_true_iff x y); case (weqb x y); intros [].
       { specialize (H eq_refl); subst; rewrite Z.eqb_refl; trivial. }
