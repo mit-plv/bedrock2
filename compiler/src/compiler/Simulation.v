@@ -5,6 +5,10 @@ Our simulations, however, talk about all executions at once and about single sta
 "All states in the low-level outcome set have a corresponding state in the high-level outcome set".
 *)
 
+Definition compile_inv{State1 State2: Type}
+           (related: State1 -> State2 -> Prop)(inv: State1 -> Prop): State2 -> Prop :=
+  fun s2 => exists s1, related s1 s2 /\ inv s1.
+
 (* "related" takes a "done" flag which tells whether we're comparing the states before or
    after executing the code *)
 Definition simulation{State1 State2: Type}
@@ -14,11 +18,7 @@ Definition simulation{State1 State2: Type}
   forall s1 s2 post1,
     related false s1 s2 ->
     exec1 s1 post1 ->
-    exec2 s2 (fun s2' => exists s1', related true s1' s2' /\ post1 s1').
-
-Definition compile_inv{State1 State2: Type}
-           (related: State1 -> State2 -> Prop)(inv: State1 -> Prop): State2 -> Prop :=
-  fun s2 => exists s1, related s1 s2 /\ inv s1.
+    exec2 s2 (compile_inv (related true) post1).
 
 (* More readable if inlined.
    Note: only meaningful if exec is guaranteed to make progress.
@@ -63,7 +63,7 @@ Lemma compose_simulation{State1 State2 State3: Type}
       (S23: simulation exec2 exec3 R23):
   simulation exec1 exec3 (compose_relation R12 R23).
 Proof.
-  unfold simulation, compose_relation in *.
+  unfold simulation, compile_inv, compose_relation in *.
   intros s1 s3 post1 (s2 & HR12 & HR23) E1.
   specialize S12 with (1 := HR12) (2 := E1).
   specialize S23 with (1 := HR23) (2 := S12).

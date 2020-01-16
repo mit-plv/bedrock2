@@ -43,12 +43,25 @@ Section Params1.
       Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
       array ptsto (word.of_Z 1) start anybytes m.
 
+  Definition SimState := (Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code) *
+                          Code *
+                          Semantics.trace *
+                          Semantics.mem *
+                          Semantics.locals *
+                          MetricLog)%type.
+
+  Definition hl_inv(funenv: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code))
+                   (code: Code)
+                   (spec: ProgramSpec): SimState -> Prop :=
+    fun '(e, c, t, m, l, mc) => e = funenv /\ c = code /\
+                                spec.(isReady) t m l /\ spec.(goodTrace) t /\
+                                (* Restriction: no locals can be shared between loop iterations,
+                                   and all locals have to be unset at the end of the loop *)
+                                l = map.empty.
+
   Record ProgramSatisfiesSpec
          (prog: Program Code)
-         (exec: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code) ->
-                Code -> Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog ->
-                (Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog -> Prop) ->
-                Prop)
+         (exec: SimState -> (SimState -> Prop) -> Prop)
          (valid_funs: Semantics.funname_env (list Syntax.varname * list Syntax.varname * Code) -> Prop)
          (spec: ProgramSpec): Prop :=
   {
@@ -62,14 +75,12 @@ Section Params1.
 
     init_code_correct: forall m0 mc0,
       mem_available spec.(datamem_start) spec.(datamem_pastend) m0 ->
-      exec prog.(funimpls) prog.(init_code) nil m0 map.empty mc0
-        (fun t' m' l' mc' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t' /\ l' = map.empty);
+      exec (prog.(funimpls), prog.(init_code), nil, m0, map.empty, mc0)
+           (hl_inv prog.(funimpls) prog.(init_code) spec);
 
-    loop_body_correct: forall t m mc,
-       spec.(isReady) t m map.empty ->
-       spec.(goodTrace) t ->
-       exec prog.(funimpls) prog.(loop_body) t m map.empty mc
-        (fun t' m' l' mc' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t' /\ l' = map.empty);
+    loop_body_correct: forall s,
+      hl_inv prog.(funimpls) prog.(loop_body) spec s ->
+      exec s (hl_inv prog.(funimpls) prog.(loop_body) spec);
   }.
 
 End Params1.

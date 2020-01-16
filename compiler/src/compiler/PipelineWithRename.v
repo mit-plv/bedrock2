@@ -326,7 +326,7 @@ Section Pipeline1.
   Context (srcprog: Program cmd)
           (spec: ProgramSpec)
           (sat: @ProgramSatisfiesSpec (FlattenExpr.mk_Semantics_params _) _
-                                      srcprog Semantics.exec ExprImp.valid_funs spec)
+                                      srcprog ExprImp.SimExec ExprImp.valid_funs spec)
           (ml: MemoryLayout Semantics.width)
           (mlOk: MemoryLayoutOk ml).
 
@@ -358,12 +358,6 @@ Section Pipeline1.
 
   Let num_stackwords :=
     word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / bytes_per_word.
-
-  Definition hl_inv: @ExprImp.SimState (FlattenExpr.mk_Semantics_params _) -> Prop :=
-    fun '(e, c, t, m, l, mc) => spec.(isReady) t m l /\ spec.(goodTrace) t /\
-                                (* Restriction: no locals can be shared between loop iterations,
-                                   and all locals have to be unset at the end of the loop *)
-                                l = map.empty.
 
   Definition related(g: GhostConsts)(relative_code_pos: Z) :=
     (compose_relation (FlattenExprSimulation.related (2^10))
@@ -414,9 +408,6 @@ Section Pipeline1.
       TODO_frame
       TODO_frame.
 
-    Definition ll_good(done: bool): MetricRiscvMachine -> Prop :=
-      compile_inv (related loopBodyGhostConsts (FlatToRiscvDef.loop_pos prog) done) hl_inv.
-
     Lemma main_size_correct:
       FlatToRiscvDef.main_size prog = (Datatypes.length (FlatToRiscvDef.init_insts prog) +
                                        Datatypes.length (FlatToRiscvDef.loop_insts prog) + 1)%nat.
@@ -446,17 +437,22 @@ Section Pipeline1.
 
   End Riscv.
 
+  Definition ll_good(sprog: ExprImpProgram)(rprog: RenamedProgram)(done: bool):
+    MetricRiscvMachine -> Prop :=
+    compile_inv (related (loopBodyGhostConsts rprog) (FlatToRiscvDef.loop_pos rprog) done)
+                (@hl_inv (FlattenExpr.mk_Semantics_params _) _ sprog.(funimpls) sprog.(loop_body) spec).
+
   (* all "related" relations are parametrized (we don't hide parames behind existentials),
      but at the very end, we have ll_inv, where we do use existentials, because the "API"
      for ll_inv is just establish/preserve/use *)
   Definition ll_inv(m: MetricRiscvMachine): Prop :=
-    exists renamed_prog,
+    exists source_prog renamed_prog,
       (* technical detail: "pc at beginning of loop" and "pc at end of loop" needs to be
          different so that we can have two disjoint states between which the system goes
          back and forth. If we had only one state, we could not prevent "runsTo" from
          always being runsToDone and not making progress, see compiler.ForeverSafe *)
       0 < 4 * Z.of_nat (List.length (FlatToRiscvDef.loop_insts renamed_prog)) < 2 ^ width /\
-      runsToGood_Invariant (ll_good renamed_prog) m.
+      runsToGood_Invariant (ll_good source_prog renamed_prog) m.
 
   Lemma sim(renamed_prog: RenamedProgram)(g: GhostConsts)
         (relative_code_pos: Z):
@@ -620,6 +616,15 @@ Section Pipeline1.
           -- solve_divisibleBy4.
   Qed.
 
+  Lemma init_code_to_loop_body_transition: forall ren m,
+      compile_inv (related (initCodeGhostConsts ren) (FlatToRiscvDef.main_pos ren) true)
+           (@hl_inv (FlattenExpr.mk_Semantics_params _) _ (funimpls srcprog) (init_code srcprog) spec) m ->
+      compile_inv (related (loopBodyGhostConsts ren) (FlatToRiscvDef.loop_pos ren) false)
+           (@hl_inv (FlattenExpr.mk_Semantics_params _) _ (funimpls srcprog) (loop_body srcprog) spec) m.
+  Proof.
+    case TODO_sam.
+  Qed.
+
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
       putProgram srcprog preInitial = Some initial ->
       layout preInitial.(getMem) ->
@@ -638,7 +643,7 @@ Section Pipeline1.
     match goal with
     | _: riscvPhase ml ?R = Some _ |- _ => set (ren := R : RenamedProgram)
     end.
-    exists ren.
+    exists srcprog, ren.
     split. {
       unfold riscvPhase in E. simp.
       (* TODO starting from here, this should be solved completely automatically *)
@@ -839,31 +844,12 @@ Section Pipeline1.
         { reflexivity. }
         { case TODO_sam. (* valid_machine *) }
       + (* prove correctness of ExprImp init code: *)
-        pose proof sat.(init_code_correct) as P.
-        unfold ExprImp.SimExec.
-        intros.
-        specialize (P dmem (mkMetricLog 0 0 0 0)).
-        specialize_hyp P. {
-          rewrite heap_start_agree, heap_pastend_agree.
-          assumption.
-        }
-        change (
-          @Semantics.exec.exec (FlattenExpr.mk_Semantics_params (@FlattenExpr_parameters p))
-                               (funimpls srcprog) (init_code srcprog) [] dmem map.empty
-                              (mkMetricLog 0 0 0 0)
-              (fun (t' : Semantics.trace) (m' : Semantics.mem) (l' : localsH) (mc' : MetricLog) =>
-                 (fun '(e', c', t', m', l', mc') =>
-                    isReady spec t' m' l' /\ goodTrace spec t' /\ l' = map.empty)
-                 (funimpls srcprog, init_code srcprog, t', m', l', mc'))) in P.
-        exact P.
-    - intros.
-      simpl in H.
-      destruct H as [ [ [ [ [ [ e c ] t ] mH ] lH ] mcH ] [ A [ B [ C D ] ] ] ].
-      subst lH.
+        eapply sat.(init_code_correct).
+        rewrite heap_start_agree, heap_pastend_agree.
+        assumption.
+    - simpl. clear P.
       unfold ll_good.
-      case TODO_sam.
-      (* goal is rhs of runsToGood_Invariant from RiscvEventLoop, can we express this in
-         simulation-compatible style? *)
+      eapply init_code_to_loop_body_transition.
     Unshelve.
     all: intros; try exact True.
     all: try exact (mkMetricLog 0 0 0 0).
@@ -871,14 +857,13 @@ Section Pipeline1.
     all: repeat apply pair.
     all: try apply nil.
     all: try apply FlatImp.SSkip.
-
   Qed.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
       ll_inv st -> mcomp_sat (run1 iset) st ll_inv.
   Proof.
-    intro st. unfold ll_inv. intros [ ren [? ?] ].
-    eapply mcomp_sat_weaken with (post1 := runsToGood_Invariant (ll_good ren)). {
+    intro st. unfold ll_inv. intros [ src [ ren [? ?] ] ].
+    eapply mcomp_sat_weaken with (post1 := runsToGood_Invariant (ll_good src ren)). {
       intros. eauto.
     }
     eapply runsToGood_is_Invariant with
@@ -989,18 +974,22 @@ Section Pipeline1.
       + case TODO_sam.
     - (* use compiler correctness for loop_body *)
       intros.
-      unfold ll_good, compile_inv in *. simp.
       pose proof (sim ren (loopBodyGhostConsts ren) (FlatToRiscvDef.loop_pos ren)) as P.
-      unfold simulation, runsTo in P.
-      eapply P.
+      unfold simulation, ExprImp.SimExec, runsTo in P.
+      unfold ll_good in H1|-*. unfold compile_inv in H1. simp.
+      eapply P; clear P.
       { case TODO_sam. (* funnames equal *) }
       { reflexivity. }
       { eassumption. }
-      clear P.
-      unfold ExprImp.SimExec, hl_inv in *. simp.
       pose proof @loop_body_correct as P.
-      specialize P with (2 := H1rl).
-      eapply P; try eassumption.
+      simpl.
+      destruct s1 as (((((e & c) & t) & m) & l) & mc).
+      specialize (P (FlattenExpr.mk_Semantics_params _)).
+      specialize P with (exec := ExprImp.SimExec).
+      unfold ExprImp.SimExec in P.
+      specialize P with (2 := H1r).
+      cbn -[hl_inv] in *.
+      eapply P; clear P.
       match goal with
       | |- ?G => let T := type of sat in replace G with T; [exact sat|]
       end.
@@ -1008,12 +997,8 @@ Section Pipeline1.
       apply f_equal2; try reflexivity.
       apply f_equal2; try reflexivity.
       apply f_equal2; try reflexivity.
-      (* TODO *)
-      repeat let x := fresh in extensionality x.
-      replace r1 with H by case TODO_sam.
-      replace c with H1 by case TODO_sam.
-      replace m with H5 by case TODO_sam.
-      reflexivity.
+      apply f_equal2; try reflexivity.
+      case TODO_sam. (* src from existential vs srcprog from Context *)
     - assumption.
     Unshelve.
     all: try (intros; exact True).

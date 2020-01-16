@@ -238,7 +238,7 @@ Section Connect.
     specialize_first P2 spec.
     specialize_first P2 ml.
     specialize_first P2 mlOk.
-    edestruct P2 as [ P2establish [P2preserve P2use] ]. {
+    destruct P2 as [ P2establish [P2preserve P2use] ]. {
       (* 3) bedrock2 semantics to bedrock2 program logic *)
       constructor.
       - eapply funimplsList_NoDup.
@@ -259,12 +259,17 @@ Section Connect.
             eapply IHl. assumption.
       - intros.
         replace m0 with (projT1 (riscvMemInit memInit)) by case TODO_joonwon.
-        refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
-          eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+        unfold ExprImp.SimExec, hl_inv, bedrock2Inv in *. eapply ExprImp.weaken_exec.
+        + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
+            eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+        + simpl. clear. intros. intuition idtac.
       - intros.
-        refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
-          eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
-        eapply Preserve; split; auto.
+        destruct s as (((((e & c) & t0) & m) & l) & mc).
+        unfold ExprImp.SimExec, hl_inv, bedrock2Inv in *. simp.
+        eapply ExprImp.weaken_exec.
+        + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
+            eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+        + simpl. clear. intuition idtac.
     }
     { assumption. }
     { assumption. }
