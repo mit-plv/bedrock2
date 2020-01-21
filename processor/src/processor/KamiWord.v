@@ -7,6 +7,7 @@ Local Open Scope bool_scope.
 Local Open Scope Z_scope.
 
 Axiom TODO_andres: False.
+Axiom TODO_joonwon: False.
 
 Section WithWidth.
   Context {width : Z}.
@@ -32,7 +33,7 @@ Section WithWidth.
     if (x =? - 2 ^ (width - 1)) && (y =? - 1) then 0
     else if y =? 0 then x else Z.rem x y.
 
-  Instance word : word.word width := {
+  Instance word : word.word width := {|
     rep := kword;
     unsigned := kunsigned;
     signed := ksigned;
@@ -61,23 +62,100 @@ Section WithWidth.
     mods x y := kofZ (riscvZmods (ksigned x) (ksigned y));
 
     (* shifts only look at the lowest 5-6 bits of the shift amount *)
-    slu x y := kofZ (Z.shiftl (kunsigned x) (kunsigned y mod width));
-    sru x y := kofZ (Z.shiftr (kunsigned x) (kunsigned y mod width));
-    srs x y := kofZ (Z.shiftr (ksigned x) (kunsigned y mod width));
+    slu x y := wlshift x (Z.to_nat ((kunsigned y) mod width));
+    sru x y := wrshift x (Z.to_nat ((kunsigned y) mod width));
+    srs x y := wrshifta x (Z.to_nat ((kunsigned y) mod width));
 
-    eqb x y := Z.eqb (kunsigned x) (kunsigned y);
-    ltu x y := Z.ltb (kunsigned x) (kunsigned y);
-    lts x y := Z.ltb (ksigned x) (ksigned y);
+    eqb := @weqb sz;
+    ltu x y := if wlt_dec x y then true else false;
+    lts x y := if wslt_dec x y then true else false;
 
     sextend oldwidth z := kofZ ((kunsigned z + 2^(oldwidth-1)) mod 2^oldwidth - 2^(oldwidth-1));
 
-  }.
+  |}.
+
+
+  (* TODO: move to word lemmas *)
+  Lemma wordToN_split2 a b w :
+    wordToN (@split2 a b w) = BinNat.N.div (wordToN w) (NatLib.Npow2 a).
+  Proof.
+    pose proof wordToNat_split2 a b w as HH.
+    eapply Nnat.Nat2N.inj_iff in HH.
+    rewrite wordToN_nat, HH; f_equal; clear HH.
+    rewrite wordToN_nat, NatLib.pow2_N.
+    generalize (#w); intro.
+    generalize (NatLib.pow2 a); intro.
+    pose proof Zdiv.div_Zdiv n n0 (match TODO_andres with end).
+    pose proof Znat.N2Z.inj_div (BinNat.N.of_nat n) (BinNat.N.of_nat n0).
+    rewrite Znat.nat_N_Z in *.
+    Lia.lia.
+  Qed.
+
+  Lemma wmsb_split2 a b w x y (H:b <> 0%nat)
+    : wmsb (split2 a b w) x = wmsb w y.
+  Proof.
+    intros.
+    rewrite <-(combine_split a b w) at 2.
+    erewrite wmsb_combine by trivial.
+    reflexivity.
+  Qed.
+
+  Lemma wordToZ_split2 a b w (H:b <> 0%nat) 
+    : wordToZ (@split2 a b w) = Z.div (wordToZ w) (2^Z.of_nat a).
+  Proof.
+    rewrite 2wordToZ_wordToN.
+    rewrite wordToN_split2.
+    erewrite wmsb_split2; [instantiate (1:=false)|trivial].
+    case (wmsb w).
+    all: rewrite ?Znat.N2Z.inj_div.
+    all: rewrite ?(match TODO_andres with end : forall x, Z.of_N (NatLib.Npow2 x) = Z.pow 2 (Z.of_nat x)).
+    2: setoid_rewrite Z.add_0_r; trivial.
+    rewrite ?Znat.Nat2Z.inj_add, ?Z.pow_add_r by Lia.lia.
+    rewrite Z.mul_comm.
+    symmetry.
+    rewrite <-Z.add_opp_r, Zopp_mult_distr_l.
+    rewrite Zdiv.Z_div_plus.
+    1: Lia.lia.
+    eapply Z.lt_gt.
+    eapply Z.pow_pos_nonneg; Lia.lia.
+  Qed.
 
   Instance ok : word.ok word.
   Proof using width_nonneg.
-    case TODO_andres.
-    (* is there a smart way to lift the proofs from coqutil.Word to KamiWord,
-       exploiting the regular structure of the definitions based on kofZ/kunsigned/ksigned ? *)
+    split; trivial.
+    all : cbv [rep unsigned signed of_Z add sub opp or and xor not
+      ndn mul mulhss mulhsu mulhuu divu divs modu mods slu sru srs
+      eqb ltu lts sextend word wrap
+      kword kunsigned ksigned kofZ ];
+    intros.
+    1,2: case TODO_joonwon. (* bbv 9ec036507dbd592425576423f2a42256732a74d5 *)
+    { rewrite ZToWord_Z_of_N, NToWord_wordToN; solve[trivial]. }
+
+    19: {
+      cbv [wrshifta eq_rec_r eq_rec].
+      rewrite Z.mod_small, wordToZ_split2, wordToZ_eq_rect, sext_wordToZ, Znat.Z2Nat.id, Z.shiftr_div_pow2; try Lia.lia.
+      1: cbv [swrap]; rewrite Z.mod_small; try Lia.lia.
+      1: pose proof @wordToZ_size (pred sz).
+      1: rewrite PeanoNat.Nat.succ_pred in H0.
+      1: specialize (H0 x).
+      all:case TODO_andres. }
+    19: {
+      specialize (weqb_true_iff x y); case (weqb x y); intros [].
+      { specialize (H eq_refl); subst; rewrite Z.eqb_refl; trivial. }
+      { case (weq x y); try solve [intuition congruence]; intros HH.
+        case (Z.eqb_spec (Z.of_N (wordToN x)) (Z.of_N (wordToN y))) as [X|X]; trivial.
+        eapply Znat.N2Z.inj_iff in X.
+        eapply wordToN_inj in X.
+        contradiction. } }
+    19: {
+      case (wlt_dec x y) as [H|H]; cbv [wlt] in H;
+      case (Z.ltb_spec (Z.of_N (wordToN x)) (Z.of_N (wordToN y)));
+          trivial; Lia.lia. }
+    19: {
+      case (wslt_dec x y) as [H|H]; cbv [wslt] in H;
+      case (Z.ltb_spec (wordToZ x) (wordToZ y)) as [G|G];
+          trivial; Lia.lia. }
+    all : case TODO_andres.
   Qed.
 End WithWidth.
 Arguments word : clear implicits.
