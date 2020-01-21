@@ -26,69 +26,24 @@ Section KamiRiscvWord.
 
     - pose proof (word.unsigned_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
-      unfold word.unsigned in *. cbn in *.
-      remember (kunsigned y) as a. remember (kunsigned z) as b. clear Heqa Heqb y z.
-      change kunsigned with (@word.unsigned _ (KamiWord.word (2 ^ log2width))).
-      change kofZ with (@word.of_Z _ (KamiWord.word (2 ^ log2width))) at 2.
-      rewrite word.unsigned_of_Z. unfold word.wrap.
-      rewrite Z.log2_pow2 by assumption.
-      rewrite mod_mod_remove_inner.
-      + rewrite Z.mod_mod. 1: reflexivity.
-        apply Z.pow_nonzero. 1: congruence. assumption.
-      + split; [assumption|].
-        apply Z.pow_gt_lin_r; blia.
-      + apply Z.mod_divide.
-        * apply Z.pow_nonzero. 1: congruence. assumption.
-        * unfold Z.divide.
-          exists (2 ^ (2 ^ log2width - log2width)).
-          rewrite <- Z.pow_add_r.
-          { f_equal. blia. }
-          { pose proof (Z.pow_gt_lin_r 2 log2width). blia. }
-          { blia. }
+      rewrite Z.log2_pow2 by trivial.
+      f_equal.
+      f_equal.
+      case TODO_andres.
 
     - pose proof (word.unsigned_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
-      unfold word.unsigned in *. cbn in *.
-      remember (kunsigned y) as a. remember (kunsigned z) as b. clear Heqa Heqb y z.
-      change kunsigned with (@word.unsigned _ (KamiWord.word (2 ^ log2width))).
-      change kofZ with (@word.of_Z _ (KamiWord.word (2 ^ log2width))) at 2.
-      rewrite word.unsigned_of_Z. unfold word.wrap.
-      rewrite Z.log2_pow2 by assumption.
-      rewrite mod_mod_remove_inner.
-      + rewrite Z.mod_mod. 1: reflexivity.
-        apply Z.pow_nonzero. 1: congruence. assumption.
-      + split; [assumption|].
-        apply Z.pow_gt_lin_r; blia.
-      + apply Z.mod_divide.
-        * apply Z.pow_nonzero. 1: congruence. assumption.
-        * unfold Z.divide.
-          exists (2 ^ (2 ^ log2width - log2width)).
-          rewrite <- Z.pow_add_r.
-          { f_equal. blia. }
-          { pose proof (Z.pow_gt_lin_r 2 log2width). blia. }
-          { blia. }
+      rewrite Z.log2_pow2 by trivial.
+      f_equal.
+      f_equal.
+      case TODO_andres.
 
     - pose proof (word.signed_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
-      unfold word.signed, word.unsigned in *. cbn in *.
-      remember (ksigned y) as a. remember (kunsigned z) as b. clear Heqa Heqb y z.
-      change kunsigned with (@word.unsigned _ (KamiWord.word (2 ^ log2width))).
-      change kofZ with (@word.of_Z _ (KamiWord.word (2 ^ log2width))) at 2.
-      rewrite word.unsigned_of_Z. unfold word.wrap.
-      rewrite Z.log2_pow2 by assumption.
-      rewrite mod_mod_remove_inner.
-      + rewrite Z.mod_mod. 1: reflexivity.
-        apply Z.pow_nonzero. 1: congruence. assumption.
-      + split; [assumption|].
-        apply Z.pow_gt_lin_r; blia.
-      + apply Z.mod_divide.
-        * apply Z.pow_nonzero. 1: congruence. assumption.
-        * unfold Z.divide.
-          exists (2 ^ (2 ^ log2width - log2width)).
-          rewrite <- Z.pow_add_r.
-          { f_equal. blia. }
-          { pose proof (Z.pow_gt_lin_r 2 log2width). blia. }
-          { blia. }
+      rewrite Z.log2_pow2 by trivial.
+      f_equal.
+      f_equal.
+      case TODO_andres.
 
     - change kofZ with (@word.of_Z _ (KamiWord.word (2 ^ log2width))).
       apply word.of_Z_inj_mod.
@@ -106,9 +61,12 @@ Section KamiRiscvWord.
       }
       reflexivity.
 
-    - unfold word.eqb.
+      - case TODO_andres.
+      - case TODO_andres.
+  (*
+    - unfold Word.weqb.
       match goal with
-      | |- context [ _ =? ?zero ] => replace zero with 0; cycle 1
+      | |- context [Word. _ =? ?zero ] => replace zero with 0; cycle 1
       end. {
         unfold word.of_Z, kunsigned. cbn.
         rewrite Word.wordToN_wzero'.
@@ -129,6 +87,8 @@ Section KamiRiscvWord.
       destr (kunsigned z =? 0). 2: reflexivity.
       rewrite <- (word.of_Z_unsigned y) at 1.
       reflexivity.
+      *)
+
   Qed.
 
 End KamiRiscvWord.

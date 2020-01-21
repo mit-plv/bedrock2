@@ -1259,7 +1259,6 @@ word.unsigned
       rewrite (match TODO_andres with end : forall x y, (if wlt_dec x y then true else false)
         = Z.ltb (wordToZ x) (wordToZ y)); repeat f_equal.
       subst imm12.
-      eapply f_equal.
       (* wordToZ (split2 20 12 kinst) = signExtend 12 (bitSlice (kunsigned kinst) 20 32) *)
       case TODO_kamiStep_instruction.
     }
