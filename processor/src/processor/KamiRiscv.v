@@ -3,7 +3,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
-Require Import riscv.Spec.Decode.
+Require Import Kami.Ex.IsaRv32 riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Word.Properties.
@@ -30,7 +30,6 @@ Require Import riscv.Platform.FE310ExtSpec.
 
 Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
-Require Import Kami.Ex.IsaRv32.
 
 Require Export processor.KamiProc.
 Require Import processor.FetchOk processor.DecExecOk.
@@ -869,8 +868,16 @@ Ltac open_decode :=
       end.
 
       progress
-      repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
-      let e := context G [x] in
+      repeat match goal with H: context G [kunsigned (@natToWord ?n ?x)] |- _ =>
+      let xx := eval cbv in (Z.of_nat x) in
+      let e := context G [xx] in
+      change e in H
+      end.
+
+      progress
+      repeat match goal with H: context G [kunsigned (@WS ?b ?n ?t)] |- _ =>
+      let xx := eval cbv in (kunsigned (width:= Z.of_nat (S n)) (WS b t)) in
+      let e := context G [xx] in
       change e in H
       end.
 
@@ -887,8 +894,8 @@ Ltac open_decode :=
           destruct (Z.eqb_spec x y) in *
       | H: ?x = ?a,
         G: ?x = ?b |- _ =>
-        let aa := eval cbv delta [a] in a in
-        let bb := eval cbv delta [b] in b in
+        let aa := eval cbv (* delta [a] *) in a in
+        let bb := eval cbv (* delta [b] *) in b in
         let t := isZcst aa in constr_eq t true;
         let t := isZcst bb in constr_eq t true;
         assert_fails (constr_eq aa bb);
@@ -896,15 +903,23 @@ Ltac open_decode :=
         cbv in H; cbv in G; rewrite H in G; inversion G
       | H: ?x = ?a,
         G: ?x <> ?b |- _ =>
-        let aa := eval cbv delta [a] in a in
-        let bb := eval cbv delta [b] in b in
+        let aa := eval cbv (* delta [a] *) in a in
+        let bb := eval cbv (* delta [b] *) in b in
         let t := isZcst aa in constr_eq t true;
         let t := isZcst bb in constr_eq t true;
         assert_fails (constr_eq aa bb);
         clear G
       end.
 
-  all: match goal with _ => idtac end; time (
+  (* [exfalso] load/store operations, since [execNm] does not deal with them.
+   * This removes 2 subgoals. *)
+  all: try match goal with
+           | H: context [kunsigned opLd] |- _ => discriminate
+           | H: context [kunsigned opSt] |- _ => discriminate
+           end.
+
+  all:
+    (* match goal with _ => idtac end; time ( *)
     repeat match goal with
           | H: _ |- _ => rewrite !(match TODO_andres with end : forall a b x, evalUniBit (SignExtendTrunc a b) x = ZToWord b (wordToZ x)) in H
           | H: _ |- _ => rewrite !(match TODO_andres with end : forall a b x, evalUniBit (ZeroExtendTrunc a b) x = NToWord b (wordToN x)) in H
@@ -913,7 +928,9 @@ Ltac open_decode :=
     cbv [kunsigned] in *;
     repeat match goal with
       | H: _ |- _ => progress rewrite ?unsigned_split2_split1_as_bitSlice, ?unsigned_split1_as_bitSlice, ?unsigned_split2_as_bitSlice in H
-    end;
+           end.
+
+  all:
     repeat match goal with
       | H : context [ Z.of_nat ?n ] |- _ =>
           natcstP n;
@@ -933,8 +950,9 @@ Ltac open_decode :=
     end;
     repeat match goal with
       | H : context [(?instrMem (split2 2 (Z.to_nat instrMemSizeLg) ?kpc))] |- _ => progress change (instrMem (split2 2 (Z.to_nat instrMemSizeLg) kpc)) with kinst in H
-    end;
+    end.
 
+  all:
     let dec := fresh "dec" in
     let Hdec := fresh "Hdec" in
     match goal with
@@ -945,8 +963,9 @@ Ltac open_decode :=
     repeat
     match goal with
     | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite !Hbs in Hdec
-    end;
+    end.
 
+  all: time (
     repeat match goal with _ => progress
     cbn iota beta delta [
     iset
@@ -963,8 +982,9 @@ Ltac open_decode :=
     ] in *
     | x := @nil _ |- _ => subst x
     | _ => t
-    end;
+    end).
 
+  all:
     repeat match goal with
     | H : ?x <> ?A |- _ =>
         match goal with
@@ -974,55 +994,40 @@ Ltac open_decode :=
                   let RR := fresh "RR" in
                   destruct (Z.eqb_spec y A) as [RR|_] in *;
                       [ case (H RR) | ]
-    end end end).
+    end end end.
 
     (** known ISA compatibility/decoding issues... *)
     all : try match goal with
-    (* kami confuses SRLI and SRAI because it ignores funct3 *)
-    H: bitSlice (kunsigned ?kinst) 12 15 = funct3_SRLI
-        |- _ => case TODO_joonwon |
-    H: bitSlice (kunsigned ?kinst) 12 15 = funct3_SRAI
-        |- _ => case TODO_joonwon |
-    (* : kami decodes ausing funct7 only. this is may be a problem because iset=RV32IM but Kami ignores M instructions other than multiply. *)
-    e : bitSlice (kunsigned ?kinst) 0 7 = opcode_OP,
-    n5 : bitSlice (kunsigned ?kinst) 25 32 <> funct7_ADD,
-    n6 : bitSlice (kunsigned ?kinst) 25 32 <> funct7_SUB,
-    n7 : bitSlice (kunsigned ?kinst) 25 32 <> funct7_MUL
-        |- _ => case TODO_joonwon |
-    H: bitSlice (kunsigned ?kinst) 25 32 = funct7_ADD,
-    G: bitSlice (kunsigned ?kinst) 12 15 <> funct3_ADD
-        |- _ => case TODO_joonwon |
-    H: bitSlice (kunsigned ?kinst) 25 32 = funct7_MUL,
-    G: bitSlice (kunsigned ?kinst) 12 15 <> funct3_MUL
-        |- _ => case TODO_joonwon |
-    H: bitSlice (kunsigned ?kinst) 25 32 = funct7_SUB,
-    G: bitSlice (kunsigned ?kinst) 12 15 <> funct3_SUB
-        |- _ => case TODO_joonwon |
-    (* why do we have opcode_LOAD/STORE in execNm? *)
-    H: bitSlice (kunsigned ?kinst) 0 7 = opcode_LOAD
-        |- _ => case TODO_joonwon |
-    H: bitSlice (kunsigned ?kinst) 0 7 = opcode_STORE
-        |- _ => case TODO_joonwon|
     (* kami supports fewer instructions than riscv-coq *)
-    n : bitSlice (kunsigned ?kinst) 0 7 <> opcode_BRANCH,
-    n0 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_LUI,
-    n1 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_AUIPC,
-    n2 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_JAL,
-    n3 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_JALR,
-    n4 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_OP_IMM,
-    n5 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_OP,
-    n6 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_LOAD,
-    n7 : bitSlice (kunsigned ?kinst) 0 7 <> opcode_STORE
+    n : bitSlice (kunsigned ?kinst) 0 7 <> 99, (* opcode_BRANCH *)
+    n0 : bitSlice (kunsigned ?kinst) 0 7 <> 55, (* opcode_LUI *)
+    n1 : bitSlice (kunsigned ?kinst) 0 7 <> 23, (* opcode_AUIPC *)
+    n2 : bitSlice (kunsigned ?kinst) 0 7 <> 111, (* opcode_JAL *)
+    n3 : bitSlice (kunsigned ?kinst) 0 7 <> 103, (* opcode_JALR *)
+    n4 : bitSlice (kunsigned ?kinst) 0 7 <> 19, (* opcode_OP_IMM *)
+    n5 : bitSlice (kunsigned ?kinst) 0 7 <> 51, (* opcode_OP *)
+    n6 : bitSlice (kunsigned ?kinst) 0 7 <> 3, (* opcode_LOAD *)
+    n7 : bitSlice (kunsigned ?kinst) 0 7 <> 35 (* opcode_STORE *)
         |- _ => case TODO_joonwon
     end.
+
+  (* There are some cases at this point where the riscv-coq decode couldn't decode
+   * the instruction due to insufficient information from Kami.
+   * For now we let such cases admitted; but later we need to fix Kami to deal with 
+   * them (@joonwonc TODO). *)
+    all: try match goal with
+             | [decodeI := if (_ =? _) then _ else _ |- _] => case TODO_joonwon
+             | [decodeI := if ((_ =? _) && _)%bool then _ else _ |- _] => case TODO_joonwon
+             end.
 
     all : try match goal with
       shamtHi := bitSlice (kunsigned _) 25 26,
       shamtHiTest := ((?shamtHi =? 0) || false)%bool,
-          decodeI := if ((?funct6 =? funct6_SLLI) && ?shamtHiTest)%bool
+          decodeI := if ((?funct6 =? 0) && ?shamtHiTest)%bool
           then Slli ?rd ?rs1 ?shamt6
           else InvalidI |- _ =>
-              destruct ((funct6 =? funct6_SLLI) && shamtHiTest)%bool eqn:? in *; [|subst dec; repeat t;contradiction]
+             destruct ((funct6 =? 0) && shamtHiTest)%bool eqn:? in *;
+                       [|subst dec; repeat t;contradiction]
     end.
 
     (* kami SLLI decoding relies on illegal instructions being undefined behavior and has dont-care logic *)
@@ -1091,7 +1096,7 @@ Ltac open_decode :=
     all : try match goal with
     |- regs_related
       (fun w : Word.word rv32RfIdx =>
-      if weq w (ZToWord rv32RfIdx 0) then wzero 32 else ?krf w) ?rrf
+      if weq w (natToWord rv32RfIdx 0) then wzero 32 else ?krf w) ?rrf
       => revert H13; case TODO_joonwon
       end.
 
@@ -1101,7 +1106,7 @@ Ltac open_decode :=
     all : cbv [ZToReg MachineWidth_XLEN].
 
     all : try match goal with
-    | |-  AddrAligned _     => case TODO_joonwon
+    | |-  AddrAligned _ => case TODO_joonwon
     | |-  isXAddr4 _ _ -> pc_related _ _ _ => case TODO_joonwon
     end.
 
@@ -1235,8 +1240,8 @@ Ltac open_decode :=
       trivial.
     }
 
-    5: (* sll, difficult *)
-      subst shamt6;  cbv [sll word.slu word WordsKami wordW KamiWord.word kunsigned].
+    (* 5: (* sll, difficult *) *)
+    (* subst shamt6;  cbv [sll word.slu word WordsKami wordW KamiWord.word kunsigned]. *)
     (*
 word.unsigned (wlshift arg1 #(split2 20 5 (split1 (20 + 5) 7 kinst))) =
 word.unsigned
@@ -1248,7 +1253,7 @@ word.unsigned
                  (machineIntToShamt
                     (bitSlice (BinInt.Z.of_N (wordToN kinst)) 20 26))))
          mod width)))
-         *)
+     *)
     all : clear H5.
 
     3: { (* slti *)
@@ -1332,8 +1337,16 @@ word.unsigned
       end.
 
       progress
-      repeat match goal with H: context G [kunsigned (@ZToWord ?n ?x)] |- _ =>
-      let e := context G [x] in
+      repeat match goal with H: context G [kunsigned (@natToWord ?n ?x)] |- _ =>
+      let xx := eval cbv in (Z.of_nat x) in
+      let e := context G [xx] in
+      change e in H
+      end.
+
+      progress
+      repeat match goal with H: context G [kunsigned (@WS ?b ?n ?t)] |- _ =>
+      let xx := eval cbv in (kunsigned (width:= Z.of_nat (S n)) (WS b t)) in
+      let e := context G [xx] in
       change e in H
       end.
 
@@ -1345,8 +1358,8 @@ word.unsigned
           destruct (Z.eqb_spec x y) in *
       | H: ?x = ?a,
         G: ?x = ?b |- _ =>
-        let aa := eval cbv delta [a] in a in
-        let bb := eval cbv delta [b] in b in
+        let aa := eval cbv (* delta [a] *) in a in
+        let bb := eval cbv (* delta [b] *) in b in
         let t := isZcst aa in constr_eq t true;
         let t := isZcst bb in constr_eq t true;
         assert_fails (constr_eq aa bb);
@@ -1354,8 +1367,8 @@ word.unsigned
         cbv in H; cbv in G; rewrite H in G; inversion G
       | H: ?x = ?a,
         G: ?x <> ?b |- _ =>
-        let aa := eval cbv delta [a] in a in
-        let bb := eval cbv delta [b] in b in
+        let aa := eval cbv (* delta [a] *) in a in
+        let bb := eval cbv (* delta [b] *) in b in
         let t := isZcst aa in constr_eq t true;
         let t := isZcst bb in constr_eq t true;
         assert_fails (constr_eq aa bb);

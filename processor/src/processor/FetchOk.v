@@ -316,7 +316,6 @@ Section FetchOk.
     apply wordToN_inj.
     rewrite wordToN_eq_rect.
     do 2 rewrite wordToN_combine.
-    do 2 rewrite ZToWord_zero.
     do 2 rewrite wordToN_wzero.
     rewrite N.mul_0_r, N.add_0_r, N.add_0_l.
 
