@@ -264,7 +264,7 @@ Section Pipeline1.
     (@funname_env p (list Z * list Z * @FlatImp.stmt (@impparams Z string string))).
 
   Definition flattenPhase(prog: ExprImpProgram): option FlatImpProgram :=
-    bind_opt funimpls' <- flatten_functions (2^10) prog.(funimpls) prog.(funnames);
+    bind_opt funimpls' <- flatten_functions (2^10) prog.(funimpls);
     bind_opt init' <- ExprImp2FlatImp (2^10) prog.(init_code);
     bind_opt loop' <- ExprImp2FlatImp (2^10) prog.(loop_body);
     Some {| funnames := prog.(funnames);
@@ -274,8 +274,7 @@ Section Pipeline1.
 
   Definition renamePhase(prog: FlatImpProgram): option RenamedProgram :=
     bind_opt funimpls' <- rename_functions String.eqb Z.eqb String.eqb String.eqb
-                                           available_registers ext_spec
-                                           prog.(funimpls) prog.(funnames);
+                                           available_registers ext_spec prog.(funimpls);
     bind_opt init_code' <- rename_stmt map.empty prog.(init_code) available_registers;
     bind_opt loop_body' <- rename_stmt map.empty prog.(loop_body) available_registers;
     Some (@Build_Program _ _ renamed_env prog.(funnames) funimpls' init_code' loop_body').
@@ -335,16 +334,14 @@ Section Pipeline1.
 
   Lemma get_flatten_functions: forall fname argvars resvars body flattened,
       map.get srcprog.(funimpls) fname = Some (argvars, resvars, body) ->
-      flatten_functions (2^10) (funimpls srcprog) (funnames srcprog) = Some flattened ->
+      flatten_functions (2^10) (funimpls srcprog) = Some flattened ->
       exists body', map.get flattened fname = Some (argvars, resvars, body') /\
                     ExprImp2FlatImp (2^10) body = Some body'.
   Proof.
     unfold flatten_functions.
     destruct srcprog. destruct sat as [_ _ M0 _ _]. cbn in *. clear sat.
     intros.
-    unshelve epose proof (map.get_map_all_values _ _ _ _ _ _ _ H0 _ H) as P. {
-      apply M0. congruence.
-    }
+    pose proof (map.map_all_values_fw _ _ _ _ H0 _ _ H) as P.
     unfold flatten_function in P.
     simp. eauto.
   Qed.
@@ -622,7 +619,13 @@ Section Pipeline1.
       compile_inv (related (loopBodyGhostConsts ren) (FlatToRiscvDef.loop_pos ren) false)
            (@hl_inv (FlattenExpr.mk_Semantics_params _) _ (funimpls srcprog) (loop_body srcprog) spec) m.
   Proof.
+    intros.
+    unfold hl_inv, compile_inv in *.
+    destruct H as ((((((e & c) & t) & me) & l) & mc) & R). simp.
+    refine (ex_intro _ (_, _, _, _, _, _) _); ssplit; try reflexivity; try eassumption.
+    unfold related in *.
     case TODO_sam.
+    Unshelve. assumption.
   Qed.
 
   Lemma putProgram_establishes_ll_inv: forall preInitial initial,
@@ -705,13 +708,12 @@ Section Pipeline1.
           intros f [ [argnames resnames] body1 ] G.
           unfold initCodeGhostConsts, ren. cbn [e_impl funimpls].
           unfold rename_functions in E2.
-          eapply map.get_map_all_values.
-          5: exact G. 3: exact E2.
+          eapply map.map_all_values_fw.
+          5: exact G. 4: exact E2.
           - eapply String.eqb_spec.
           - (* PARAMRECORDS *)
             unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto.
-          - unshelve eapply (proj1 (map.map_all_values_get _ _ G E5)).
-            (* PARAMRECORDS *)
+          - (* PARAMRECORDS *)
             unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto.
         }
         { reflexivity. }
@@ -733,17 +735,21 @@ Section Pipeline1.
         { unfold good_e_impl.
           intros.
           simpl in H|-*.
-          unfold rename_functions in E2. pose proof E2 as RenameEq.
-          eapply (map.map_all_values_get _ _ H) in E2.
+          rename E2 into RenameEq.
+          unfold rename_functions in RenameEq.
+          unshelve epose proof (map.map_all_values_bw _ _ _ _ RenameEq _ _ H).
+          { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
           simp. destruct v1 as [ [argnames' retnames'] body' ].
           unfold flatten_functions in E5.
-          unshelve epose proof (map.map_all_values_get _ _ E2rl E5) as P.
+          rename E5 into FlattenEq.
+          unshelve epose proof (map.map_all_values_bw _ _ _ _ FlattenEq _ _ H2r) as P.
+          { (* PARAMRECORDS *) unfold env, FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
           { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
           unfold flatten_function in P.
           simp.
           pose proof (funs_valid sat) as V.
           unfold ExprImp.valid_funs in V.
-          specialize V with (1 := Prl).
+          specialize V with (1 := Pr).
           unfold ExprImp.valid_fun in V.
           destruct V.
           ssplit.
@@ -754,11 +760,11 @@ Section Pipeline1.
                    | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
                    end.
             assumption.
-          - assumption.
+          - case TODO_sam. (* remove "In funnames" condition *)
           - unfold FlatToRiscvDef.function_positions.
             simpl.
             eapply get_build_fun_pos_env.
-            + assumption.
+            + case TODO_sam. (* remove "In funnames" condition *)
             + intros f' A C.
               apply (proj2 (sat.(funnames_matches_dom) f') A).
               match goal with
@@ -766,8 +772,9 @@ Section Pipeline1.
               end.
               destruct p0 as [ [args res] body ].
               pose proof get_flatten_functions as P.
-              specialize P with (1 := E1) (2 := E5). simp.
-              unshelve epose proof (map.get_map_all_values _ _ _ _ _ _ _ RenameEq A Pl0) as P'.
+              specialize P with (1 := E1) (2 := FlattenEq). simp.
+              unshelve epose proof (map.map_all_values_fw _ _ _ _ RenameEq _ _ Pl) as P'.
+              { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
               { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
               simp.
               (* PARAMRECORDS *)

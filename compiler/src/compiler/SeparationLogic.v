@@ -2,7 +2,7 @@ Require Export Coq.Lists.List. Export ListNotations.
 Require Export Coq.ZArith.BinInt. Open Scope Z_scope.
 Require Export coqutil.Word.Interface coqutil.Word.Properties.
 Require Export coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Tactics.rdelta coqutil.Tactics.destr.
+Require Import coqutil.Tactics.rdelta coqutil.Tactics.destr coqutil.Decidable.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.Tactics.
 Require Export coqutil.Z.Lia.
 Require Export coqutil.Datatypes.PropSet.
@@ -260,6 +260,7 @@ Hint Unfold program word_array: unf_to_array.
 
 Section Footprint.
   Context {key value} {map : map.map key value} {ok : map.ok map}.
+  Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
 
   (* if P allows different footprints, we return the intersection of all possible footprints *)
   Definition footprint_underapprox(P: map -> Prop): key -> Prop :=

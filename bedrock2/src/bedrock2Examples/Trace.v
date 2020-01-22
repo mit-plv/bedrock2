@@ -1,8 +1,8 @@
 Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import coqutil.Word.Interface.
-Require Import coqutil.Map.Interface.
+Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Z.HexNotation.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
@@ -79,6 +79,7 @@ Module SpiEth.
 
   Section WithMem.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
+    Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
 
     Definition Event: Type := (mem * MMIOAction * list word) * (mem * list word).
 
@@ -208,7 +209,7 @@ Module SpiEth.
       eapply exec.seq.
       { (* proving that MMIO ext_spec is satisfied *)
         eapply exec.interact with (mKeep := m) (mGive := map.empty).
-        - apply Map.Properties.map.split_empty_r. reflexivity.
+        - apply map.split_empty_r. reflexivity.
         - simpl. reflexivity.
         - simpl. repeat split.
           + unfold isMMIOAddr. auto.
@@ -234,6 +235,7 @@ Module Syscalls.
 
   Section WithMem.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
+    Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
 
     Definition Event: Type := (mem * SyscallAction * list word) * (mem * list word).
 
@@ -311,7 +313,7 @@ Module Syscalls.
       eapply exec.interact with (mid := fun newM resvals =>
          newM = map.empty /\ exists v ignored1 ignored2, resvals = [v; ignored1; ignored2])
          (mKeep := m) (mGive := map.empty).
-      + apply Map.Properties.map.split_empty_r. reflexivity.
+      + apply map.split_empty_r. reflexivity.
       + simpl. reflexivity.
       + simpl. eauto.
       + intros.
@@ -321,8 +323,8 @@ Module Syscalls.
         eexists. repeat split.
         exists m.
         repeat split.
-        * apply Map.Properties.map.split_empty_r. reflexivity.
-        * apply Map.Properties.map.disjoint_empty_r.
+        * apply map.split_empty_r. reflexivity.
+        * apply map.disjoint_empty_r.
         * do 2 eexists. repeat split.
           { (* TODO direction doesn't match *)
             case TODO. }
@@ -340,6 +342,7 @@ Module MMIOUsage.
   Section WithParams.
     Existing Instance SpiEth.syntax_params.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
+    Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
     Context {locals: map.map varname word}.
     Context {funname_env: forall T, map.map funname T}.
 
@@ -353,6 +356,7 @@ Module SyscallsUsage.
   Section WithParams.
     Existing Instance Syscalls.syntax_params.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
+    Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
     Context {locals: map.map varname word}.
     Context {funname_env: forall T, map.map funname T}.
 

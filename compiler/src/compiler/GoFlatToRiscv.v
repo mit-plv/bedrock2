@@ -421,7 +421,6 @@ Section Go.
       | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
       end.
       eapply sep_on_undef_put.
-      + exact word.eqb_spec.
       + apply putmany_of_footprint_None; try bomega.
         eapply H1.
         simpl. left. reflexivity.
@@ -440,7 +439,6 @@ Section Go.
       simpl.
       replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by blia.
       eapply sep_on_undef_put.
-      + exact word.eqb_spec.
       + apply putmany_of_footprint_None; try bomega.
         apply map.get_empty.
       + apply IHn. bomega.

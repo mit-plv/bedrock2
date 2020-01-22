@@ -123,7 +123,7 @@ Section Pipeline1.
     insts1 ++ insts2.
 
   Definition compile_prog(e: Semantics.env)(s: Syntax.cmd)(funs: list funname): list Instruction :=
-    let e' := match flatten_functions (2^10) e funs with
+    let e' := match flatten_functions (2^10) e with
               | Some e' => e'
               | None => map.empty
               end in

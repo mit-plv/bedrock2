@@ -202,7 +202,7 @@ Section FlattenExpr1.
         | None => None
         end.
 
-    Definition flatten_functions: bedrock2.Semantics.env -> list funname -> option FlatImp.env :=
+    Definition flatten_functions: bedrock2.Semantics.env -> option FlatImp.env :=
       map.map_all_values flatten_function.
 
   End WithMaxSize.

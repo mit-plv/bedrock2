@@ -1,11 +1,13 @@
 Require Import Coq.Classes.Morphisms.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation.
 Require Coq.Lists.List.
-Require Import coqutil.sanity coqutil.Tactics.destr coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.sanity coqutil.Decidable coqutil.Tactics.destr.
+Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Import Map.Interface.map Map.Properties.map.
 
 Section SepProperties.
   Context {key value} {map : map key value} {ok : ok map}.
+  Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
   Local Infix "*" := sep.
 
   Global Instance Proper_sep_iff1 : Proper (iff1 ==> iff1 ==> iff1) sep. firstorder idtac. Qed.
@@ -34,8 +36,7 @@ Section SepProperties.
     destruct H as (mk&mR&H&Hp&HR); eapply get_ptsto in Hp; subst.
     destruct (get_split k _ _ _ H) as [[]|[]]; congruence.
   Qed.
-  Lemma sep_get(keq: key -> key -> bool){keq_spec: Decidable.EqDecider keq}
-        k v m (H : get m k = Some v) :
+  Lemma sep_get k v m (H : get m k = Some v) :
     sep (ptsto k v) (eq (map.remove m k)) m.
   Proof.
     unfold sep. exists (map.put map.empty k v).
@@ -43,17 +44,16 @@ Section SepProperties.
     - apply map_ext. intros.
       rewrite get_putmany_dec.
       rewrite get_remove_dec.
-      destr (keq k k0).
+      destr (key_eqb k k0).
       + subst. rewrite get_put_same. assumption.
       + rewrite get_put_diff by congruence. rewrite get_empty.
         destruct (get m k0); reflexivity.
     - unfold disjoint. intros.
-      destr (keq k k0).
+      destr (key_eqb k k0).
       + subst. rewrite get_remove_same in H1. discriminate.
       + rewrite get_put_diff in H0 by congruence. rewrite get_empty in H0. discriminate.
   Qed.
-  Lemma sep_put (key_eq_dec : forall k1 k2 : key, k1 = k2 \/ k1 <> k2)
-        k v m v_old R (H : sep (ptsto k v_old) R m) : sep (ptsto k v) R (put m k v).
+  Lemma sep_put k v m v_old R (H : sep (ptsto k v_old) R m) : sep (ptsto k v) R (put m k v).
   Proof.
     eapply sep_comm in H; eapply sep_comm.
     destruct H as (mR&mk&[Heq Hd]&HR&Hp); cbv [ptsto] in Hp; subst mk; subst m.
@@ -67,8 +67,7 @@ Section SepProperties.
       { rewrite get_put_diff, get_empty in Hget by trivial; inversion Hget. } }
   Qed.
 
-  Lemma sepeq_on_undef_put(keq: key -> key -> bool){keq_spec: Decidable.EqDecider keq}:
-    forall m addr b,
+  Lemma sepeq_on_undef_put: forall m addr b,
       map.get m addr = None ->
       (sep (ptsto addr b) (eq m)) (map.put m addr b).
   Proof.
@@ -77,8 +76,7 @@ Section SepProperties.
     apply map.split_undef_put. assumption.
   Qed.
 
-  Lemma sep_on_undef_put(keq: key -> key -> bool){keq_spec: Decidable.EqDecider keq}:
-    forall m addr b (R: _ -> Prop),
+  Lemma sep_on_undef_put: forall m addr b (R: _ -> Prop),
       map.get m addr = None ->
       R m ->
       (sep (ptsto addr b) R) (map.put m addr b).
@@ -252,6 +250,7 @@ Module Tree.
 
   Section WithMap.
     Context {key value} {map : map key value} {ok : ok map}.
+    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
 
     Definition to_sep: Tree (map -> Prop) -> map -> Prop := interp id sep.
 

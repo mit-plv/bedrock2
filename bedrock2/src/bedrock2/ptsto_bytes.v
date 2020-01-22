@@ -183,7 +183,7 @@ Section Scalars.
     intros [oldb0 oldbs] [b0 bs] m R a Hsep.
     cbn in *.
     apply sep_assoc.
-    eapply sep_put. 1: exact Properties.word.eq_or_neq.
+    eapply sep_put.
     apply sep_assoc in Hsep.
     match goal with
     | IH: _ |- _ => unshelve epose proof (IH oldbs bs m _ (word.add a (word.of_Z 1)) _)

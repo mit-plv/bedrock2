@@ -279,8 +279,8 @@ Section RegAlloc.
   |}).
   Defined.
 
-  Definition rename_functions(e: @FlatImp.env srcSemanticsParams)(funs: list funname):
-    option (@FlatImp.env impSemanticsParams) := map.map_all_values rename_fun e funs.
+  Definition rename_functions: @FlatImp.env srcSemanticsParams -> option (@FlatImp.env impSemanticsParams) :=
+    map.map_all_values rename_fun.
 
   (* Should lH and m have the same domain?
      - lH could have fewer vars in domain because we didn't pass through one branch of the if
