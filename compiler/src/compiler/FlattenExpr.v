@@ -340,13 +340,13 @@ Section FlattenExpr1.
 
   Goal True. idtac "FlattenExpr: Entering slow lemmas section". Abort.
 
-  Lemma flattenExpr_correct_aux : forall e oResVar ngs1 ngs2 resVar s initialH initialL initialM initialMcH initialMcL finalMcH res t,
+  Lemma flattenExpr_correct_aux : forall e fenv oResVar ngs1 ngs2 resVar s initialH initialL initialM initialMcH initialMcL finalMcH res t,
     flattenExpr ngs1 oResVar e = (s, resVar, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e initialMcH = Some (res, finalMcH) ->
-    FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
+    FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res /\
       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
@@ -380,19 +380,19 @@ Section FlattenExpr1.
   Qed.
   Goal True. idtac "FlattenExpr: flattenExpr_correct_aux done". Abort.
 
-  Lemma flattenExpr_correct_with_modVars : forall e oResVar ngs1 ngs2 resVar s t m lH lL initialMcH initialMcL finalMcH res,
+  Lemma flattenExpr_correct_with_modVars : forall e fenv oResVar ngs1 ngs2 resVar s t m lH lL initialMcH initialMcL finalMcH res,
     flattenExpr ngs1 oResVar e = (s, resVar, ngs2) ->
     map.extends lL lH ->
     map.undef_on lH (allFreshVars ngs1) ->
     disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) m lH e initialMcH = Some (res, finalMcH) ->
-    FlatImp.exec map.empty s t m lL initialMcL (fun t' m' lL' finalMcL =>
+    FlatImp.exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
       map.only_differ lL (FlatImp.modVars s) lL' /\
       t' = t /\ m' = m /\ map.get lL' resVar = Some res /\
       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     intros *. intros F Ex U D Ev.
-    epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ _ _ _ _ F Ex U D Ev) as P.
+    epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ F Ex U D Ev) as P.
     eapply FlatImp.exec.intersect; cycle 1.
     - exact P.
     - (* PARAMRECORDS why can't this just be "eapply FlatImp.modVarsSound" ? *)
@@ -400,14 +400,14 @@ Section FlattenExpr1.
       exact P.
   Qed.
 
-  Lemma flattenExprs_correct: forall es ngs1 ngs2 resVars s t m lH lL initialMcH initialMcL finalMcH resVals,
+  Lemma flattenExprs_correct: forall es fenv ngs1 ngs2 resVars s t m lH lL initialMcH initialMcL finalMcH resVals,
     flattenExprs ngs1 es = (s, resVars, ngs2) ->
     map.extends lL lH ->
     map.undef_on lH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_exprs es) (allFreshVars ngs1) ->
     evaluate_call_args_log m lH es initialMcH = Some (resVals, finalMcH) ->
     (* List.option_all (List.map (@eval_expr (mk_Semantics_params p) m lH) es) = Some resVals -> *)
-    FlatImp.exec map.empty s t m lL initialMcL (fun t' m' lL' finalMcL =>
+    FlatImp.exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
       t' = t /\ m' = m /\
       map.getmany_of_list lL' resVars = Some resVals /\
       map.only_differ lL (FlatImp.modVars s) lL' /\
@@ -485,13 +485,13 @@ Section FlattenExpr1.
     | intros; simpl in *; simp; repeat rewrite_match; t_safe ].
 
   Lemma flattenBooleanExpr_correct_aux :
-    forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
+    forall e fenv ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_expr e) (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e initialMcH = Some (res, finalMcH) ->
-    FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
+    FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\
       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
@@ -522,13 +522,13 @@ Section FlattenExpr1.
   Goal True. idtac "FlattenExpr: flattenBooleanExpr_correct_aux done". Abort.
 
   Lemma flattenBooleanExpr_correct_with_modVars:
-    forall e ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
+    forall e fenv ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_expr e) (allFreshVars ngs1) ->
     @eval_expr (mk_Semantics_params p) initialM initialH e initialMcH = Some (res, finalMcH) ->
-    FlatImp.exec map.empty s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
+    FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       (t' = t /\ finalM = initialM /\
        FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
        (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH) /\
@@ -541,15 +541,17 @@ Section FlattenExpr1.
       eapply flattenBooleanExpr_correct_aux; eassumption.
   Qed.
 
-  Lemma flattenStmt_correct_aux: forall e sH t m mcH lH post,
-      Semantics.exec e sH t m lH mcH post ->
-      e = map.empty ->
+  Lemma flattenStmt_correct_aux: forall max_size eH eL,
+      flatten_functions max_size eH = Some eL ->
+      forall eH0 sH t m mcH lH post,
+      Semantics.exec eH0 sH t m lH mcH post ->
+      eH0 = eH ->
       forall ngs ngs' sL lL mcL,
       flattenStmt ngs sH = (sL, ngs') ->
       map.extends lL lH ->
       map.undef_on lH (allFreshVars ngs) ->
       disjoint (ExprImp.allVars_cmd sH) (allFreshVars ngs) ->
-      FlatImp.exec map.empty sL t m lL mcL (fun t' m' lL' mcL' => exists lH' mcH',
+      FlatImp.exec eL sL t m lL mcL (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\ (* <-- put first so that eassumption will instantiate lH' correctly *)
         map.extends lL' lH' /\
         (* this one is a property purely about ExprImp (it's the conclusion of
@@ -563,7 +565,7 @@ Section FlattenExpr1.
         map.only_differ lH (ExprImp.modVars sH) lH' /\
         (mcL' - mcL <= mcH' - mcH)%metricsH).
   Proof.
-    induction 1; intros; simpl in *; subst; simp.
+    induction 2; intros; simpl in *; subst; simp.
 
     - (* exec.skip *)
       eapply @FlatImp.exec.skip.
@@ -574,7 +576,7 @@ Section FlattenExpr1.
       + eapply @flattenExpr_correct_with_modVars; try eassumption. maps.
       + simpl. intros. simp.
         repeat eexists; repeat split.
-        * eapply H0.
+        * eassumption.
         * pose proof flattenExpr_uses_Some_resVar as P.
           specialize P with (1 := E). subst.
           maps.
@@ -643,17 +645,17 @@ Section FlattenExpr1.
            "map.only_differ lH (ExprImp.modVars c1) lH'".
            This additional constraint is not related to the flattening at all, but we still
            have to carry it in the conclusion of the statement in order to get it here *)
-
+        rename H2 into IHexec2.
         (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
            requires us to do one more weakening step here than otherwise needed: *)
         eapply @FlatImp.exec.weaken.
-        * eapply H1 (* <-- that's an IH too *); try reflexivity; try eassumption.
+        * eapply IHexec2; try reflexivity; try eassumption.
           { pose proof (ExprImp.modVars_subset_allVars c1).
             (* note: here we need the high-level map.only_differ we were carrying around *)
             (* Fail (solve [clear H9; maps]). *)
             solve [maps]. }
           { maps. }
-        * clear IHexec H1.
+        * clear IHexec IHexec2.
           simpl. intros. simp.
           repeat eexists; repeat (split || eassumption || solve_MetricLog); maps.
 
@@ -670,7 +672,7 @@ Section FlattenExpr1.
         end.
         1: simpl in *; congruence.
         apply word.unsigned_inj. rewrite word.unsigned_of_Z. assumption.
-      + exfalso. exact H2. (* instantiates mid2 to (fun _ _ _ => False) *)
+      + exfalso. exact H3. (* instantiates mid2 to (fun _ _ _ => False) *)
 
     - (* while_true *)
       (* We instantiate mid2 here to quanitfy the bound over both the loop body
@@ -698,7 +700,7 @@ Section FlattenExpr1.
         eapply FlatImp.exec.weaken.
         * eapply IHexec; try eassumption; try reflexivity; maps.
         * intros. simpl in *. simp. repeat eexists; repeat (split || eassumption || solve_MetricLog).
-      + simpl in *. simp. rename H3 into IH3.
+      + simpl in *. simp. rename H4 into IH3.
         match goal with
         | H: _ |- _ => specialize IH3 with (1 := H)
         end.
@@ -711,9 +713,66 @@ Section FlattenExpr1.
           repeat eexists; repeat (split || eassumption || solve_MetricLog). maps.
 
     - (* call *)
-      match goal with
-      | E: map.get map.empty _ = Some _ |- _ => rewrite map.get_empty in E; discriminate E
-      end.
+      unfold flattenCall in *. simp.
+      eapply @FlatImp.exec.seq.
+      + eapply flattenExprs_correct. 1: eassumption. 4: eassumption. all: try eassumption. maps.
+      + simpl in *. intros. simp.
+        rename l into lH, l' into lL'. rename l0 into argValNames.
+        unfold flatten_functions in H.
+        unshelve epose proof (map.map_all_values_fw _ _ _ _ H _ _ H0); eauto using (@funname_env_ok p).
+        simp.
+        unfold flatten_function, ExprImp2FlatImp in *.
+        destruct v2 as [[params' rets'] fbody'].
+        simp.
+        eapply @FlatImp.exec.call.
+        1,2,3: eassumption.
+        * unfold ExprImp2FlatImp0 in *.
+          match goal with
+          | |- context [fst ?x] => destruct x as [fbody' ngs0] eqn: EF
+          end.
+          eapply (IHexec eq_refl).
+          -- eassumption.
+          -- clear -hyps. maps.
+          -- Axiom TODO_sam: False. case TODO_sam.
+             (* BUG: When ExprImp2FlatImp0 is used in flatten_function,
+                it should also avoid the arg and ret names, otherwise if an argument is never used
+                but returned, it might be overwritten. *)
+
+Set Nested Proofs Allowed.
+
+  Lemma freshNameGenState_disjoint: forall (sH: cmd),
+    disjoint (ExprImp.allVars_cmd sH)
+             (allFreshVars (@freshNameGenState _ (@NGstate p) (@NG p) (ExprImp.allVars_cmd_as_list sH))).
+  Proof.
+    unfold disjoint. intros.
+    pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
+    assert (varname_eq_dec: forall a b: varname, {a = b} + {a <> b}). {
+      intros. destr (varname_eqb a b); auto.
+    }
+    match type of P with
+    | In ?x ?l -> _ => edestruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
+    end.
+    + auto.
+    + left. clear -Ino.
+      intro. apply Ino.
+      epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
+      apply P.
+      apply H.
+  Qed.
+
+          -- eapply freshNameGenState_disjoint.
+        * cbv beta. intros. simp.
+          edestruct H4 as [resvals ?]. 1: eassumption. simp.
+          pose proof (map.putmany_of_list_zip_extends_exists binds resvals) as R.
+          assert (map.extends lL' lH) as A by maps.
+          edestruct R as [lL'' ?]; [eassumption..|]. simp.
+          do 2 eexists. ssplit.
+          -- eapply map.getmany_of_list_extends; eassumption.
+             (* Automation: Why does "eauto using map.getmany_of_list_extends." not work? *)
+          -- eassumption.
+          -- do 2 eexists. ssplit; try eassumption.
+             ++ simple eapply map.only_differ_putmany; eassumption.
+             ++ solve_MetricLog.
 
     - (* interact *)
       unfold flattenInteract in *. simp.
@@ -722,7 +781,7 @@ Section FlattenExpr1.
       + simpl in *. intros. simp.
         rename l into lH, l' into lL'. rename l0 into argValNames.
         eapply @FlatImp.exec.interact; [eassumption..|].
-        intros. edestruct H2 as (lH' & P & Q). 1: eassumption.
+        intros. edestruct H3 as (lH' & P & Q). 1: eassumption.
         pose proof (map.putmany_of_list_zip_extends_exists binds resvals) as R.
         assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
         destruct R as (lL'' & R1 & R2).
@@ -739,10 +798,11 @@ Section FlattenExpr1.
   Qed.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
-  Lemma flattenStmt_correct0: forall sH sL lL t m mc post,
+  Lemma flattenStmt_correct0: forall max_size eH eL sH sL lL t m mc post,
+      flatten_functions max_size eH = Some eL ->
       ExprImp2FlatImp0 sH = sL ->
-      Semantics.exec map.empty sH t m map.empty mc post ->
-      FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
+      Semantics.exec eH sH t m map.empty mc post ->
+      FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
         map.extends lL' lH' /\
         (mcL' - mc <= mcH' - mc)%metricsH).
@@ -755,34 +815,21 @@ Section FlattenExpr1.
     simpl in *. subst sL'.
     eapply @FlatImp.exec.weaken.
     - eapply flattenStmt_correct_aux; try solve [eassumption | reflexivity | maps].
-      unfold disjoint.
-      intro x.
-      pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
-      assert (varname_eq_dec: forall a b: varname, {a = b} + {a <> b}). {
-        intros. destr (varname_eqb a b); auto.
-      }
-      match type of P with
-      | In ?x ?l -> _ => edestruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
-      end.
-      + auto.
-      + left. clear -Ino.
-        intro. apply Ino.
-        epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
-        apply P.
-        apply H.
+      eapply freshNameGenState_disjoint.
     - simpl. intros. simp. eauto.
   Qed.
 
-  Lemma flattenStmt_correct: forall sH sL sz lL t m mc post,
+  Lemma flattenStmt_correct: forall max_size eH eL sH sL sz lL t m mc post,
+      flatten_functions max_size eH = Some eL ->
       ExprImp2FlatImp sz sH = Some sL ->
-      Semantics.exec map.empty sH t m map.empty mc post ->
-      FlatImp.exec map.empty sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
+      Semantics.exec eH sH t m map.empty mc post ->
+      FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
         map.extends lL' lH' /\
         (mcL' - mc <= mcH' - mc)%metricsH).
   Proof.
     unfold ExprImp2FlatImp.
-    intros. eapply flattenStmt_correct0. 2: eassumption.
+    intros. eapply flattenStmt_correct0; try eassumption.
     destruct_one_match_hyp; congruence.
   Qed.
 

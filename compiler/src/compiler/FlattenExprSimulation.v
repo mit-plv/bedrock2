@@ -23,11 +23,7 @@ Section Sim.
 
   Definition related(max_size: BinInt.Z)(done: bool): ExprImp.SimState -> FlatImp.SimState -> Prop :=
     fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
-      (forall f argvars resvars body1,
-          map.get e1 f = Some (argvars, resvars, body1) ->
-          exists body2,
-            map.get e2 f = Some (argvars, resvars, body2) /\
-            ExprImp2FlatImp max_size body1 = Some body2) /\
+      flatten_functions max_size e1 = Some e2 /\
       ExprImp2FlatImp max_size c1 = Some c2 /\
       t1 = t2 /\
       m1 = m2 /\
@@ -38,15 +34,29 @@ Section Sim.
 
   Axiom TODO_sam: False.
 
+  Lemma flatten_functions_empty{hyps: FlattenExpr.assumptions p}:
+    forall max_size, flatten_functions max_size map.empty = Some map.empty.
+  Proof.
+    intros.
+    unfold flatten_functions, Properties.map.map_all_values.
+    match goal with
+    | |- _ _ _ ?E = _ => remember E as m
+    end.
+    revert Heqm.
+    unshelve eapply map.fold_spec. 2: reflexivity. 1: eapply Semantics.funname_env_ok.
+    intros. exfalso. eapply (f_equal (fun m => map.get m k)) in Heqm.
+    unshelve erewrite map.get_put_same in Heqm. 1: eapply Semantics.funname_env_ok.
+    unshelve erewrite map.get_empty in Heqm. 1: eapply Semantics.funname_env_ok.
+    discriminate.
+  Qed.
+
   Lemma relate_related{hyps: FlattenExpr.assumptions p}(max_size: BinInt.Z): forall done s1 s2,
       related_without_functions done s1 s2 <-> related max_size done s1 s2.
   Proof.
     intros done (((((e1 & c1) & t1) & m1) & l1) & mc1) (((((e2 & c2) & t2) & m2) & l2) & mc2).
     split; intro H; unfold related_without_functions, related in *.
     - intuition idtac.
-      + subst. rewrite @map.get_empty in H5.
-        * discriminate.
-        * refine (FlattenExpr.funname_env_ok _).
+      + subst. apply flatten_functions_empty.
       + unfold ExprImp2FlatImp. rewrite H1. case TODO_sam. (* doesn't hold (size check) *)
       + case TODO_sam. (* clearly doesn't hold, extends does not imply equality *)
     - simp. case TODO_sam. (* clearly doesn't hold *)
@@ -66,26 +76,11 @@ Section Sim.
     simpl.
     assert (PropSet.disjoint (ExprImp.allVars_cmd c1)
                              (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))))
-      as D. {
-      intro x.
-      pose proof (NameGen.freshNameGenState_spec (ExprImp.allVars_cmd_as_list c1) x) as P.
-      assert (varname_eq_dec: forall a b: Syntax.varname, {a = b} + {a <> b}). {
-        intros. destr (Semantics.varname_eqb a b); auto.
-      }
-      match type of P with
-      | List.In ?x ?l -> _ => destruct (List.in_dec varname_eq_dec x l) as
-            [Iyes | Ino]
-      end.
-      * auto.
-      * left. clear -Ino.
-        intro. apply Ino.
-        epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
-        apply P.
-        apply H.
-    }
+      as D by eapply freshNameGenState_disjoint.
     eapply FlatImp.exec.weaken.
-    - eapply @flattenStmt_correct_aux.
+    - eapply @flattenStmt_correct_aux with (eH := map.empty) (max_size := BinNums.Z0).
       + typeclasses eauto.
+      + eapply flatten_functions_empty.
       + eassumption.
       + reflexivity.
       + exact E.

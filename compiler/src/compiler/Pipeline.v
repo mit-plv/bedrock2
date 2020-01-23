@@ -35,6 +35,7 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
 Require Import compiler.MetricsToRiscv.
 Require Import compiler.ProgramSpec.
+Require Import compiler.FlattenExprSimulation.
 Import Utility.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
@@ -182,10 +183,10 @@ Section Pipeline1.
       + eapply FlatImp.exec.weaken.
         * match goal with
           | |- _ ?env ?s ?t ?m ?l ?mc ?post =>
-            epose proof (@FlattenExpr.flattenStmt_correct0 _ _ _ _ _ _ _ _ _ eq_refl) as Q
+            unshelve epose proof (@FlattenExpr.flattenStmt_correct0 _ _ 0 _ env _ _ l _ _ _ _ _ eq_refl H8) as Q
           end.
-          eapply Q.
-          eassumption.
+          -- unshelve eapply @flatten_functions_empty. typeclasses eauto.
+          -- eapply Q.
         * simpl. intros. simp. do 2 eexists. do 2 (split; try eassumption).
       + unfold FlatToRiscvDef.stmt_not_too_big.
         unfold ExprImp2Riscv, ExprImp2FlatImp0 in *.

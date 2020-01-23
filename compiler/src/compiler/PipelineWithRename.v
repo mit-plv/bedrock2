@@ -698,7 +698,7 @@ Section Pipeline1.
                compiler.RegRename.related.
         refine (ex_intro _ (_, _, _, _, _, _) _).
         ssplit; try reflexivity.
-        { intros. eapply get_flatten_functions; eassumption. }
+        { eassumption. }
         { eassumption. }
         { unfold map.undef_on, map.agree_on. intros. reflexivity. }
         refine (ex_intro _ (_, _, _, _, _, _) _).
