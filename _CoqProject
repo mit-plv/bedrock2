@@ -1,0 +1,2 @@
+-R src Rupicola
+src/Examples/capitalize_3rd/capitalize_3rd.v
