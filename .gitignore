@@ -2,6 +2,7 @@ CoqMakefile.conf
 Makefile.coq
 Makefile.coq.conf
 *.vo
+*.v~
 *.d
 *.glob
 *.aux
