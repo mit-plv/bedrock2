@@ -336,13 +336,13 @@ Section Pipeline1.
       map.get srcprog.(funimpls) fname = Some (argvars, resvars, body) ->
       flatten_functions (2^10) (funimpls srcprog) = Some flattened ->
       exists body', map.get flattened fname = Some (argvars, resvars, body') /\
-                    ExprImp2FlatImp (2^10) body = Some body'.
+                    flatten_function (2^10) (argvars, resvars, body) = Some (argvars, resvars, body').
   Proof.
     unfold flatten_functions.
-    destruct srcprog. destruct sat as [_ _ M0 _ _]. cbn in *. clear sat.
+    destruct srcprog. destruct sat as [_ _ M0 _ _]. cbn -[flatten_function] in *. clear sat.
     intros.
     pose proof (map.map_all_values_fw _ _ _ _ H0 _ _ H) as P.
-    unfold flatten_function in P.
+    unfold flatten_function in *.
     simp. eauto.
   Qed.
 

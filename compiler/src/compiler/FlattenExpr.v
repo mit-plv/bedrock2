@@ -541,6 +541,49 @@ Section FlattenExpr1.
       eapply flattenBooleanExpr_correct_aux; eassumption.
   Qed.
 
+  Lemma freshNameGenState_disjoint: forall (sH: cmd),
+    disjoint (ExprImp.allVars_cmd sH)
+             (allFreshVars (@freshNameGenState _ (@NGstate p) (@NG p) (ExprImp.allVars_cmd_as_list sH))).
+  Proof.
+    unfold disjoint. intros.
+    pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
+    assert (varname_eq_dec: forall a b: varname, {a = b} + {a <> b}). {
+      intros. destr (varname_eqb a b); auto.
+    }
+    match type of P with
+    | In ?x ?l -> _ => edestruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
+    end.
+    + auto.
+    + left. clear -Ino.
+      intro. apply Ino.
+      epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
+      apply P.
+      apply H.
+  Qed.
+
+  Lemma freshNameGenState_disjoint_fbody: forall (fbody: cmd) (params rets: list varname),
+    disjoint (ExprImp.allVars_cmd fbody)
+             (allFreshVars (@freshNameGenState _ (@NGstate p) (@NG p)
+                  (ListSet.list_union varname_eqb (ExprImp.allVars_cmd_as_list fbody)
+                                                  (ListSet.list_union varname_eqb params rets)))).
+  Proof.
+    unfold disjoint. intros.
+    epose proof (freshNameGenState_spec _ x) as P.
+    assert (varname_eq_dec: forall a b: varname, {a = b} + {a <> b}). {
+      intros. destr (varname_eqb a b); auto.
+    }
+    match type of P with
+    | In ?x ?l -> _ => edestruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
+    end.
+    + right. apply P. assumption.
+    + left. clear -Ino hyps.
+      intro. apply Ino.
+      unshelve eapply ListSet.In_list_union_spec. left.
+      epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
+      apply P.
+      apply H.
+  Qed.
+
   Lemma flattenStmt_correct_aux: forall max_size eH eL,
       flatten_functions max_size eH = Some eL ->
       forall eH0 sH t m mcH lH post,
@@ -733,34 +776,19 @@ Section FlattenExpr1.
           eapply (IHexec eq_refl).
           -- eassumption.
           -- clear -hyps. maps.
-          -- Axiom TODO_sam: False. case TODO_sam.
-             (* BUG: When ExprImp2FlatImp0 is used in flatten_function,
-                it should also avoid the arg and ret names, otherwise if an argument is never used
-                but returned, it might be overwritten. *)
-
-Set Nested Proofs Allowed.
-
-  Lemma freshNameGenState_disjoint: forall (sH: cmd),
-    disjoint (ExprImp.allVars_cmd sH)
-             (allFreshVars (@freshNameGenState _ (@NGstate p) (@NG p) (ExprImp.allVars_cmd_as_list sH))).
-  Proof.
-    unfold disjoint. intros.
-    pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
-    assert (varname_eq_dec: forall a b: varname, {a = b} + {a <> b}). {
-      intros. destr (varname_eqb a b); auto.
-    }
-    match type of P with
-    | In ?x ?l -> _ => edestruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
-    end.
-    + auto.
-    + left. clear -Ino.
-      intro. apply Ino.
-      epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
-      apply P.
-      apply H.
-  Qed.
-
-          -- eapply freshNameGenState_disjoint.
+          -- unfold map.undef_on, map.agree_on.
+             intros. rewrite map.get_empty.
+             destr (map.get lf k); [exfalso|reflexivity].
+             eapply freshNameGenState_spec. 2: eassumption.
+             pose proof H2 as G.
+             unfold map.of_list_zip in G.
+             eapply map.putmany_of_list_zip_find_index in G. 2: eassumption.
+             rewrite map.get_empty in G. destruct G as [G | G]; [|discriminate G]. simp.
+             apply ListSet.In_list_union_spec. right.
+             apply ListSet.In_list_union_spec.
+             left.
+             eapply nth_error_In. eassumption.
+          -- eapply freshNameGenState_disjoint_fbody.
         * cbv beta. intros. simp.
           edestruct H4 as [resvals ?]. 1: eassumption. simp.
           pose proof (map.putmany_of_list_zip_extends_exists binds resvals) as R.

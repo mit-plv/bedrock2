@@ -197,10 +197,10 @@ Section FlattenExpr1.
     Definition flatten_function:
       list varname * list varname * Syntax.cmd -> option (list varname * list varname * FlatImp.stmt) :=
       fun '(argnames, retnames, body) =>
-        match ExprImp2FlatImp body with
-        | Some body' => Some (argnames, retnames, body')
-        | None => None
-        end.
+        let avoid := ListSet.list_union varname_eqb (ExprImp.allVars_cmd_as_list body)
+                                                    (ListSet.list_union varname_eqb argnames retnames) in
+        let body' := fst (flattenStmt (freshNameGenState avoid) body) in
+        if FlatImp.stmt_size body' <? max_size then Some (argnames, retnames, body') else None.
 
     Definition flatten_functions: bedrock2.Semantics.env -> option FlatImp.env :=
       map.map_all_values flatten_function.
