@@ -49,6 +49,24 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma mod_pow2_mod4: forall x p,
+    2 <= p ->
+    (x mod 2 ^ p) mod 4 = x mod 4.
+Proof.
+  intros.
+  rewrite <- Znumtheory.Zmod_div_mod.
+  - reflexivity.
+  - reflexivity.
+  - apply Z.pow_pos_nonneg; blia.
+  - unfold Z.divide.
+    exists (2 ^ p / 2 ^ 2).
+    rewrite <- Z.pow_sub_r by blia.
+    change 4 with (2 ^ 2).
+    rewrite <- Z.pow_add_r by blia.
+    f_equal.
+    blia.
+Qed.
+
 Lemma mod4_0_mod_pow2: forall (x p: Z),
     x mod 4 = 0 ->
     (x mod 2 ^ p) mod 4 = 0.
@@ -62,17 +80,7 @@ Proof.
     replace x with (x / 4 * 2 * 2) by blia.
     rewrite Z.mod_mul by blia.
     reflexivity.
-  - rewrite <- Znumtheory.Zmod_div_mod.
-    + assumption.
-    + reflexivity.
-    + apply Z.pow_pos_nonneg; blia.
-    + unfold Z.divide.
-      exists (2 ^ p / 2 ^ 2).
-      rewrite <- Z.pow_sub_r by blia.
-      change 4 with (2 ^ 2).
-      rewrite <- Z.pow_add_r by blia.
-      f_equal.
-      blia.
+  - rewrite mod_pow2_mod4; assumption.
 Qed.
 
 Lemma mod4_0_4: 4 mod 4 = 0. Proof. reflexivity. Qed.

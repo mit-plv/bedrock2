@@ -584,8 +584,13 @@ Section Go.
         pose proof (word.unsigned_range addr).
         forget (word.unsigned addr) as a.
         rewrite Zplus_mod_idemp_r.
+        (* COQBUG(performance regression) https://github.com/coq/coq/issues/11436.
+           In Coq 8.9 and 8.10, the following was fast:
         Z.div_mod_to_equations.
-        destruct width_cases as [E | E]; rewrite E in *; blia.
+        destruct width_cases as [E | E]; rewrite E in *; blia. *)
+        destruct width_cases as [E | E]; rewrite E in *; rewrite mod4_0.mod_pow2_mod4.
+        2,4: cbv; intros; discriminate.
+        all: clear; Z.div_mod_to_equations; blia.
       + assumption.
   Qed.
 
