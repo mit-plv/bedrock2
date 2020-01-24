@@ -1,2 +1,4 @@
 -R src Rupicola
+-Q bedrock2/bedrock2/src/bedrock2 bedrock2
+-Q bedrock2/deps/coqutil/src/coqutil coqutil
 src/Examples/capitalize_3rd/capitalize_3rd.v
