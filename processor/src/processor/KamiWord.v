@@ -2,6 +2,7 @@ Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt coqutil.Z.Lia.
 Require Import coqutil.sanity coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.Utility.
+From coqutil Require Import destr div_mod_to_equations.
 
 Local Open Scope bool_scope.
 Local Open Scope Z_scope.
@@ -30,8 +31,7 @@ Section WithWidth.
     if y =? 0 then x else Z.modulo x y.
 
   Definition riscvZmods(x y: Z): Z :=
-    if (x =? - 2 ^ (width - 1)) && (y =? - 1) then 0
-    else if y =? 0 then x else Z.rem x y.
+    if y =? 0 then x else Z.rem x y.
 
   Instance word : word.word width := {|
     rep := kword;
@@ -122,15 +122,20 @@ Section WithWidth.
 
   Instance ok : word.ok word.
   Proof using width_nonneg.
+    assert (AA: (0 < sz)%nat). { eapply (Znat.Z2Nat.inj_lt 0); blia. }
+    assert (BB: Z.of_nat sz = width). { rewrite Znat.Z2Nat.id; blia. }
     split; trivial.
     all : cbv [rep unsigned signed of_Z add sub opp or and xor not
       ndn mul mulhss mulhsu mulhuu divu divs modu mods slu sru srs
       eqb ltu lts sextend word wrap
       kword kunsigned ksigned kofZ ];
     intros.
-    1,2: case TODO_joonwon. (* bbv 9ec036507dbd592425576423f2a42256732a74d5 *)
+    { pose proof @uwordToZ_ZToWord_full (Z.to_nat width) ltac:(blia).
+      replace (Z.of_nat sz) with width in * by blia.
+      match goal with H : _ |- _ => eapply H end. }
+    { rewrite wordToZ_ZToWord_full; try blia. cbv [swrap].
+      replace (Z.of_nat sz) with width in * by blia; trivial. }
     { rewrite ZToWord_Z_of_N, NToWord_wordToN; solve[trivial]. }
-
     19: {
       cbv [wrshifta eq_rec_r eq_rec].
       rewrite Z.mod_small, wordToZ_split2, wordToZ_eq_rect, sext_wordToZ, Znat.Z2Nat.id, Z.shiftr_div_pow2; try Lia.lia.
@@ -155,7 +160,89 @@ Section WithWidth.
       case (wslt_dec x y) as [H|H]; cbv [wslt] in H;
       case (Z.ltb_spec (wordToZ x) (wordToZ y)) as [G|G];
           trivial; Lia.lia. }
-    all : case TODO_andres.
+
+    { cbv [wplus wordBin].
+      rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_add, NatLib.Z_of_N_Npow2.
+      2: case TODO_andres.
+      f_equal; f_equal; blia. }
+
+    { case TODO_andres. }
+    { case TODO_andres. }
+    { case TODO_andres. }
+    { case TODO_andres. }
+    { case TODO_andres. }
+    { case TODO_andres. }
+    { case TODO_andres. }
+    { cbv [wmult wordBin].
+      rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_mul, NatLib.Z_of_N_Npow2.
+      2: case TODO_andres.
+      f_equal; f_equal; blia. }
+
+    { rewrite wordToZ_ZToWord_full by blia; 
+      cbv [swrap];  repeat (blia || f_equal). }
+    { rewrite wordToZ_ZToWord_full by blia; 
+      cbv [swrap];  repeat (blia || f_equal). }
+    { repeat setoid_rewrite uwordToZ_ZToWord_full; try blia.
+      cbv [swrap];  repeat (blia || f_equal). }
+    { repeat setoid_rewrite uwordToZ_ZToWord_full; try blia.
+      f_equal.
+      2: repeat (blia || f_equal).
+      (* f_equal. (* WHY (COQBUG?) does this add hyps to the goal *) *)
+      cbv [riscvZdivu]; destr (Z.of_N (wordToN y) =? 0); blia. }
+    { rewrite wordToZ_ZToWord_full by blia.
+      cbv [swrap]; f_equal.
+      2 : repeat (blia || f_equal).
+      cbv [swrap]; f_equal.
+      2 : repeat (blia || f_equal).
+      cbv [riscvZdivs].
+      destr ((wordToZ x =? - 2 ^ (width - 1))); cbn [andb].
+      { destr (wordToZ y =? -1); try blia.
+        destr (wordToZ y =?  0); try blia.
+        f_equal; f_equal; blia. }
+      { destr (wordToZ y =?  0); try blia.
+        f_equal; f_equal; blia. } }
+    { repeat setoid_rewrite uwordToZ_ZToWord_full; try blia.
+      f_equal.
+      2: repeat (blia || f_equal).
+      cbv [riscvZmodu].
+      destr (Z.of_N (wordToN y) =? 0); blia. }
+    { rewrite wordToZ_ZToWord_full by blia.
+      cbv [swrap]; f_equal.
+      2 : repeat (blia || f_equal).
+      cbv [swrap]; f_equal.
+      2 : repeat (blia || f_equal).
+      cbv [riscvZmods].
+      destr (wordToZ y =? 0); try blia.
+      f_equal; f_equal; blia. }
+    { rewrite wlshift_mul_Zpow2 by (Z.div_mod_to_equations; blia).
+      cbv [wmult wordBin].
+      rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_mul, NatLib.Z_of_N_Npow2.
+      2: case TODO_andres.
+      repeat setoid_rewrite uwordToZ_ZToWord_full; try blia.
+      rewrite Zdiv.Zmult_mod_idemp_r.
+      rewrite Z.shiftl_mul_pow2 by blia.
+      f_equal. 2: { f_equal; blia. }
+      f_equal.
+      f_equal.
+      apply Z.mod_small; blia. }
+    { cbv [wrshift].
+      rewrite wordToN_split2.
+      cbv [eq_rec_r eq_rec].
+      rewrite wordToN_nat, wordToNat_eq_rect, <-wordToN_nat, wordToN_combine, wordToN_wzero.
+      PreOmega.zify.
+      rewrite !NatLib.Z_of_N_Npow2.
+      rewrite Z.shiftr_div_pow2 by blia.
+      replace (Z.of_N (wordToN x) + 2 ^ Z.of_nat sz * 0)
+        with (Z.of_N (wordToN x)) by blia.
+      rewrite Z.mod_small by blia.
+      rewrite Z.mod_small.
+      2: {
+        pose proof uwordToZ_bound x; cbv [uwordToZ] in *.
+        replace (Z.of_nat sz) with width in * by blia.
+        revert H0. case TODO_andres. }
+      f_equal.
+      f_equal.
+      rewrite Znat.Z2Nat.id; blia. }
   Qed.
 End WithWidth.
 Arguments word : clear implicits.
