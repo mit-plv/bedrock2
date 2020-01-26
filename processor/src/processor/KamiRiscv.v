@@ -219,7 +219,7 @@ Section Equiv.
                            ret := Struct (RsToProc rv32DataBytes) |} (argV, retV))
           (FMap.M.empty _) ->
         e = (if argV (Fin.FS Fin.F1)
-             then MMOutputEvent (argV Fin.F1) (argV (Fin.FS (Fin.FS Fin.F1)))
+             then MMOutputEvent (argV Fin.F1) (argV (Fin.FS (Fin.FS (Fin.FS Fin.F1))))
              else MMInputEvent (argV Fin.F1) (retV Fin.F1)) ->
         KamiLabelR klbl [e].
 
@@ -1240,32 +1240,30 @@ Ltac open_decode :=
       trivial.
     }
 
-    (* 5: (* sll, difficult *) *)
-    (* subst shamt6;  cbv [sll word.slu word WordsKami wordW KamiWord.word kunsigned]. *)
-    (*
-word.unsigned (wlshift arg1 #(split2 20 5 (split1 (20 + 5) 7 kinst))) =
-word.unsigned
-  (kofZ
-     (BinInt.Z.shiftl (BinInt.Z.of_N (wordToN arg1))
-        (BinInt.Z.of_N
-           (wordToN
-              (word.of_Z
-                 (machineIntToShamt
-                    (bitSlice (BinInt.Z.of_N (wordToN kinst)) 20 26))))
-         mod width)))
-     *)
+(*     5: (* sll, difficult *) *)
+(*     subst shamt6;  cbv [sll word.slu word WordsKami wordW KamiWord.word kunsigned]. *)
+    
+(* word.unsigned (wlshift arg1 #(split2 20 5 (split1 (20 + 5) 7 kinst))) = *)
+(* word.unsigned *)
+(*   (kofZ *)
+(*      (BinInt.Z.shiftl (BinInt.Z.of_N (wordToN arg1)) *)
+(*         (BinInt.Z.of_N *)
+(*            (wordToN *)
+(*               (word.of_Z *)
+(*                  (machineIntToShamt *)
+(*                     (bitSlice (BinInt.Z.of_N (wordToN kinst)) 20 26)))) *)
+(*          mod width))) *)
     all : clear H5.
 
     3: { (* slti *)
       clear H0 H2 H3 H4.
-      match goal with |- context[wlt_dec ?w _] =>  change w with v end.
+      match goal with |- context[wslt_dec ?w _] =>  change w with v end.
       refine (f_equal (fun b:bool => word.unsigned (if b then _ else _)) _).
       cbv [signed_less_than word.lts word WordsKami wordW KamiWord.word ksigned].
-      rewrite (match TODO_andres with end : forall x y, (if wlt_dec x y then true else false)
+      rewrite (match TODO_andres with end : forall x y, (if wslt_dec x y then true else false)
         = Z.ltb (wordToZ x) (wordToZ y)); repeat f_equal.
       subst imm12.
       eapply f_equal.
-      (* wordToZ (split2 20 12 kinst) = signExtend 12 (bitSlice (kunsigned kinst) 20 32) *)
       case TODO_kamiStep_instruction.
     }
     3: { (* sltiu *)
@@ -1273,7 +1271,7 @@ word.unsigned
       match goal with |- context[wlt_dec ?w _] =>  change w with v end.
       refine (f_equal (fun b:bool => word.unsigned (if b then _ else _)) _).
       cbv [ltu word.ltu word WordsKami wordW KamiWord.word ksigned].
-      case TODO_joonwon (*sign-extend imm12, but use unsigned comparision*).
+      case TODO_kamiStep_instruction.
     }
 
     all: case TODO_kamiStep_instruction.
@@ -1484,7 +1482,9 @@ word.unsigned
      and use the lower bits to index into the Vector.
    *)
 
-  Definition mm: Modules := Kami.Ex.SC.mm rv32DataBytes kamiMemInit kami_FE310_AbsMMIO.
+  Definition mm: Modules := Kami.Ex.SC.mm
+                              (existT _ rv32DataBytes eq_refl)
+                              kamiMemInit kami_FE310_AbsMMIO.
   Definition p4mm: Modules := p4mm Hinstr kamiMemInit kami_FE310_AbsMMIO.
 
   Local Notation procInit := (procInit (instrMemSizeLg:= instrMemSizeLg)).

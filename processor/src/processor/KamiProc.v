@@ -21,7 +21,8 @@ Proof.
 Qed.
 
 Section Parametrized.
-  Variables addrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat.
+  Variables (addrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat)
+            (Hdb: {pdb & dataBytes = S pdb}).
 
   Variables (fetch: AbsFetch addrSize iaddrSize instBytes dataBytes)
             (dec: AbsDec addrSize instBytes dataBytes rfIdx)
@@ -31,7 +32,7 @@ Section Parametrized.
   Variable (procInit: ProcInit iaddrSize dataBytes rfIdx)
            (memInit: MemInit addrSize).
 
-  Definition pprocInl := scmmInl fetch dec exec ammio procInit memInit.
+  Definition pprocInl := scmmInl Hdb fetch dec exec ammio procInit memInit.
   Definition pproc := projT1 pprocInl.
 
   (** The auxiliary hardware state; this is for manipulating hardware state
@@ -423,12 +424,13 @@ Section Parametrized.
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "execSt"%string) ->
       pinit kt1 = true /\
-      exists curInst stAddr stVal,
+      exists curInst stAddr stByteEn stVal,
         curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
         stAddr = evalExpr
                    (calcStAddr
                       _ (evalExpr (getStAddr _ curInst))
                       (rf kt1 (evalExpr (getStSrc _ curInst)))) /\
+        stByteEn = evalExpr (calcStByteEn _ curInst) /\
         stVal = rf kt1 (evalExpr (getStVSrc _ curInst)) /\
         (evalExpr (isMMIO _ stAddr) = true ->
          exists kt2 mmioStRq mmioStRs,
@@ -441,7 +443,8 @@ Section Parametrized.
              (FMap.M.empty _) /\
            mmioStRq Fin.F1 = stAddr /\
            mmioStRq (Fin.FS Fin.F1) = true /\
-           mmioStRq (Fin.FS (Fin.FS Fin.F1)) = stVal /\
+           mmioStRq (Fin.FS (Fin.FS Fin.F1)) = stByteEn /\
+           mmioStRq (Fin.FS (Fin.FS (Fin.FS Fin.F1))) = stVal /\
            pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
            kt2 = {| pc := evalExpr (getNextPc _ (rf kt1) (pc kt1) curInst);
                     rf := rf kt1;
@@ -456,7 +459,10 @@ Section Parametrized.
                     rf := rf kt1;
                     pinit := true;
                     pgm := pgm kt1;
-                    mem := updateBytes dataBytes stAddr stVal (mem kt1)
+                    mem := updateBytes dataBytes stAddr stVal
+                                       (eq_rect _ (fun n => Fin.t n -> bool)
+                                                stByteEn _ (projT2 Hdb))
+                                       (mem kt1)
                  |}).
   Proof.
     intros.
@@ -474,6 +480,7 @@ Section Parametrized.
       + reflexivity.
       + reflexivity.
       + reflexivity.
+      + reflexivity.
       + exfalso; clear -H Heqic.
         unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
         congruence.
@@ -485,13 +492,17 @@ Section Parametrized.
       kregmap_red.
       inversion H; subst; clear H; simpl in *.
       repeat split.
-      do 3 eexists.
+      do 4 eexists.
       repeat split.
       + intros; exfalso; clear -H Heqic.
         unfold ilist.ilist_to_fun_m in Heqic; simpl in Heqic.
         congruence.
       + intros; repeat esplit; try assumption.
-        rewrite memStoreBytes_updateBytes; reflexivity.
+        f_equal.
+        cbv [ilist.ilist_to_fun_m]; simpl.
+        destruct Hdb as [pdb ?]; subst dataBytes.
+        setoid_rewrite memStoreBytes_updateBytes.
+        reflexivity.
   Qed.
 
   Lemma invert_Kami_execNm:
@@ -567,7 +578,7 @@ Section PerInstAddr.
             (rv32MMIO: AbsMMIO nwidth).
 
   Definition procInl :=
-    pprocInl (rv32Fetch _ _ width_inst_valid)
+    pprocInl (existT _ _ eq_refl) (rv32Fetch _ _ width_inst_valid)
              (rv32Dec _) (rv32Exec _ _)
              rv32MMIO procInit memInit.
   Definition proc: Kami.Syntax.Modules := projT1 procInl.
@@ -604,7 +615,8 @@ Section PerInstAddr.
     (UniBit (TruncLsb 3 _) #rpc)%kami_expr.
 
   Definition p4mm: Kami.Syntax.Modules :=
-    p4mm (rv32Fetch _ _ width_inst_valid)
+    p4mm (existT _ _ eq_refl)
+         (rv32Fetch _ _ width_inst_valid)
          (rv32Dec _) (rv32Exec _ _)
          rv32MMIO getBTBIndex getBTBTag
          procInit memInit.
