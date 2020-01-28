@@ -34,7 +34,6 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Simp.
 Require Import compiler.MetricsToRiscv.
-Require Import compiler.ProgramSpec.
 Require Import compiler.FlattenExprSimulation.
 Import Utility.
 
@@ -92,6 +91,7 @@ End Pipeline.
 
 Section Pipeline1.
 
+  Open Scope ilist_scope.
   Context {p: parameters}.
   Context {h: assumptions}.
 
@@ -113,13 +113,15 @@ Section Pipeline1.
   Definition ExprImp2Riscv(s: Syntax.cmd): list Instruction :=
     FlatToRiscvDef.compile_stmt map.empty 0 (ExprImp2FlatImp0 s).
 
+  Definition compile_main e_pos init_code loop_body (mypos: Z): list Instruction :=
+    let insts1 := FlatToRiscvDef.compile_stmt e_pos mypos init_code in
+    let insts2 := FlatToRiscvDef.compile_stmt e_pos (mypos + 4 * Z.of_nat (List.length insts1)) loop_body in
+    insts1 ++ insts2 ++ [[Jal Register0 (- 4 * Z.of_nat (List.length insts2))]].
+
   Definition compile_riscv_prog e_impl (init loop_body: FlatImp.stmt)(funs: list funname): list Instruction :=
-    let prog := {|
-          funnames := funs; funimpls := e_impl; init_code := init; loop_body := loop_body
-    |} in
-    let size1 := 4 * Z.of_nat (List.length (FlatToRiscvDef.compile_main prog map.empty 42)) in
-    let e_pos := FlatToRiscvDef.build_fun_pos_env e_impl size1 funs in
-    let insts1 := FlatToRiscvDef.compile_main prog e_pos 0 in
+    let size1 := 4 * Z.of_nat (List.length (compile_main map.empty init loop_body 42)) in
+    let e_pos := FlatToRiscvDef.build_fun_pos_env size1 e_impl in
+    let insts1 := compile_main e_pos init loop_body 0 in
     let insts2 := FlatToRiscvDef.compile_funs e_pos e_impl size1 funs in
     insts1 ++ insts2.
 

@@ -23,6 +23,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import bedrock2.MetricLogging.
+Require Import riscv.Utility.InstructionCoercions.
 
 
 Section Sim.
@@ -33,59 +34,88 @@ Section Sim.
        morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
-  (* The GhostConsts tell us how to look at the low-level state in order to
-     establish the relationship to the high-level state.
-     Before we can use "related", we will have to provide GhostConsts.
-     In other relations, we might also need to provide more "how to look at"
-     parameters which say things about the interpretation of the high-level
-     and/or low-level state.
-     Since we have to provide GhostConsts from outside, we can also make sure
-     that they match with "how to look at" parameters from the other phases.
-     The argument "pos" is the position of the code relative to program_base. *)
-  Definition related(g: GhostConsts)(pos: Z)(done: bool):
+  Context (f_entry_rel_pos: Z)
+          (f_entry_name: string)
+          (p_call: word)
+          (Rdata Rexec: mem -> Prop)
+          (code_start stack_start stack_pastend: word).
+
+  Local Open Scope ilist_scope.
+
+  Definition ghostConsts(prog: env): GhostConsts := {|
+    p_sp := stack_pastend;
+    num_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
+    p_insts := p_call;
+    insts := [[Jal RegisterNames.ra (f_entry_rel_pos - word.unsigned (word.sub p_call code_start))]];
+    program_base := code_start;
+    e_pos := FlatToRiscvDef.function_positions prog;
+    e_impl := prog;
+    funnames := map.fold (fun acc fname fimpl => cons fname acc) nil prog;
+    dframe := Rdata;
+    xframe := Rexec;
+  |}.
+
+  Definition related(done: bool):
     FlatImp.SimState -> MetricRiscvMachine -> Prop :=
     fun '(e, c, t, m, l, mc) st =>
-        e = g.(e_impl) /\
-        fits_stack g.(num_stackwords) g.(e_impl) c /\
-        good_e_impl g.(e_impl) g.(funnames) g.(e_pos) /\
-        stmt_not_too_big c /\
-        valid_FlatImp_vars c /\
-        compile_stmt g.(e_pos) pos c = g.(insts) /\
-        pos mod 4 = 0 /\
+        c = SCall nil f_entry_name nil /\
+        (word.unsigned p_call) mod 4 = 0 /\
+        (word.unsigned code_start) mod 4 = 0 /\
+        map.get (function_positions e) f_entry_name = Some f_entry_rel_pos /\
+        fits_stack (ghostConsts e).(num_stackwords) e c /\
+        good_e_impl e (ghostConsts e).(funnames) (ghostConsts e).(e_pos) /\
         regs_initialized st.(getRegs) /\
-        st.(getPc)  = word.add g.(program_base) (word.of_Z
-           (pos + if done then 4 * Z.of_nat (length g.(insts)) else 0)) /\
-        g.(p_insts) = word.add g.(program_base) (word.of_Z pos) /\
-        goodMachine t m l g st.
+        st.(getPc) = word.add p_call (word.of_Z (if done then 4 else 0)) /\
+        goodMachine t m l (ghostConsts e) st.
 
-  Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}: forall (g: GhostConsts) (pos: Z),
-      NoDup g.(funnames) ->
-      word.unsigned g.(program_base) mod 4 = 0 ->
-      simulation FlatImp.SimExec FlatToRiscvCommon.runsTo (related g pos).
+  Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
+      simulation FlatImp.SimExec FlatToRiscvCommon.runsTo related.
   Proof.
     unfold simulation, FlatImp.SimExec, related, FlatImp.SimState.
     intros.
     destruct s1 as (((((e & c) & t) & m) & l) & mc).
     destruct_RiscvMachine s2.
     simp.
+    match goal with
+    | A: map.get e f_entry_name = Some ?r1, B: map.get e f_entry_name = Some ?r2 |- _ =>
+      pose proof (eq_trans (eq_sym A) B); clear B
+    end.
+    simp.
     eapply runsTo_weaken.
-    - eapply compile_stmt_correct; simpl.
-      + eassumption.
+    - eapply compile_stmt_correct with (g := ghostConsts e)
+                                       (pos := word.unsigned (word.sub p_call code_start)); simpl.
+      + eapply exec.call; cycle -1; try eassumption.
+        Fail eassumption. (* TODO why?? *)
+        match goal with
+        | H: _ |- _ => exact H
+        end.
       + reflexivity.
       + unfold good_reduced_e_impl.
         split. {
           clear. intros k v ?. eassumption.
         }
         assumption.
-      + eassumption.
-      + eassumption.
+      + eauto using fits_stack_call.
+      + simpl. change (4 * BinIntDef.Z.of_nat 0) with 0. rewrite Z.add_0_r.
+        rewrite_match. reflexivity.
+      + unfold stmt_not_too_big. simpl. cbv. reflexivity.
+      + simpl. auto using Forall_nil.
+      + solve_divisibleBy4.
       + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
-      + ring_simplify (pos + 0). reflexivity.
-      + assumption.
-      + assumption.
+      + rewrite word.of_Z_unsigned. ring.
+      + rewrite word.of_Z_unsigned. ring.
+      + clear - hyps.
+        eapply proj1 with (B := forall k, In k (map.fold
+          (fun (acc : list string) (fname : string) (_ : list Register * list Register * stmt) => fname :: acc)
+          [] e) -> map.get e k <> None).
+        eapply map.fold_spec.
+        * split; [constructor|]. intros. simpl in *. contradiction.
+        (* TODO define map.keys, map.keys_NoDup *)
+        * intros. simp. split.
+          -- constructor. 2: assumption. intro C. specialize (H0r _ C). contradiction.
+          -- intros. rewrite map.get_put_dec.
+             destruct_one_match. 1: congruence.
+             simpl in *. destruct H0. 1: congruence. eauto.
       + assumption.
     - simpl. intros. simp.
       eexists; split; [|eassumption].
@@ -95,14 +125,15 @@ Section Sim.
              | _ => eassumption
              | _ => reflexivity
              end.
-      { (* TODO remove regs_initialized from compile_stmt_correct_new because
+      + unfold goodMachine in *. simp. eauto using fits_stack_call.
+      + (* TODO remove regs_initialized from compile_stmt_correct_new because
            it's already in goodMachine *)
-        unfold goodMachine in *. simp. assumption. }
-      (* TODO make word automation from bsearch work here *)
-      match goal with
-      | H: getPc _ = _ |- getPc _ = _ => rewrite H
-      end.
-      solve_word_eq word_ok. (* TODO make sure solve_word complains if no ring found *)
+        unfold goodMachine in *. simp. assumption.
+      + (* TODO make word automation from bsearch work here *)
+        match goal with
+        | H: getPc _ = _ |- getPc _ = _ => rewrite H
+        end.
+        solve_word_eq word_ok. (* TODO make sure solve_word complains if no ring found *)
   Qed.
 
 End Sim.

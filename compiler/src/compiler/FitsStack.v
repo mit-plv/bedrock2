@@ -4,7 +4,6 @@ Require Import coqutil.Z.Lia.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
-Require Import compiler.ProgramSpec.
 Require Import compiler.Simp.
 
 Local Open Scope Z_scope.
@@ -38,14 +37,27 @@ Section FitsStack.
     | S env_size => stack_usage_impl (stack_usage_rec env_size)
     end.
 
-  (* returns the number of stack words needed to execute prog,
-     None if a function not in funimpls is called or a function is recursive *)
-  Definition stack_usage(prog: Program stmt): option Z :=
-    match stack_usage_rec (S (length prog.(funnames))) prog.(funimpls) prog.(init_code),
-          stack_usage_rec (S (length prog.(funnames))) prog.(funimpls) prog.(loop_body) with
-    | Some u1, Some u2 => Some (Z.max u1 u2)
-    | _, _ => None
-    end.
+  Definition count_funs: env -> nat := map.fold (fun acc _ _ => S acc) O.
+
+  (* returns the number of stack words needed to execute f_entrypoint (which must have no args
+     and no return values), None if a function not in funimpls is called or a function is recursive *)
+  Definition stack_usage_of_fun(funimpls: env)(f_entrypoint: Syntax.funname): option Z :=
+    stack_usage_rec (S (count_funs funimpls)) funimpls (SCall nil f_entrypoint nil).
+
+  Definition stack_usage(funimpls: env): option Z :=
+    map.fold (fun res fname '(argnames, retnames, body) =>
+                match res with
+                | Some res => match argnames, retnames with
+                              | nil, nil => match stack_usage_of_fun funimpls fname with
+                                            | Some res' => Some (Z.max res res')
+                                            | None => None
+                                            end
+                              | _, _ => Some res
+                              end
+                | None => None
+                end)
+             (Some 0)
+             funimpls.
 
   Lemma fits_stack_monotone: forall e z1 s,
       fits_stack z1 e s -> forall z2, z1 <= z2 -> fits_stack z2 e s.
@@ -67,15 +79,6 @@ Section FitsStack.
       econstructor. 1: eassumption.
       eapply IHn. Fail rewrite E0. (* PARAMRECORDS *) etransitivity. 1: exact E0.
       f_equal. unfold framelength. blia.
-  Qed.
-
-  Lemma stack_usage_correct: forall (prog: Program stmt) (z: Z),
-      stack_usage prog = Some z ->
-      fits_stack z prog.(funimpls) prog.(init_code) /\
-      fits_stack z prog.(funimpls) prog.(loop_body).
-  Proof.
-    intros. unfold stack_usage in *. simp.
-    eauto 10 using stack_usage_rec_correct, fits_stack_monotone, Z.le_max_l, Z.le_max_r.
   Qed.
 
 End FitsStack.
