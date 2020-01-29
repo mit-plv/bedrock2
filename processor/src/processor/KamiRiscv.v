@@ -870,7 +870,7 @@ Section Equiv.
                | [H: (kunsigned opLd =? _) = true |- _] => exfalso; clear -H; discriminate
                | [H: (kunsigned opSt =? _) = true |- _] => exfalso; clear -H; discriminate
                end.
-    
+
       all:
         repeat match goal with
                | H: _ |- _ => rewrite !(match TODO_andres with end : forall a b x, evalUniBit (SignExtendTrunc a b) x = ZToWord b (wordToZ x)) in H
@@ -934,34 +934,30 @@ Section Equiv.
            end).
 
       all:
+        try subst opcode; try subst funct3; try subst funct6; try subst funct7;
+        try subst shamtHi; try subst shamtHiTest.
+      all: try cbn in decodeI.
+      all:
+        cbv [funct12_EBREAK funct12_ECALL funct12_MRET funct12_SRET funct12_URET funct12_WFI funct2_FMADD_S funct3_ADD funct3_ADDI funct3_ADDIW funct3_ADDW funct3_AMOD funct3_AMOW funct3_AND funct3_ANDI funct3_BEQ funct3_BGE funct3_BGEU funct3_BLT funct3_BLTU funct3_BNE funct3_CSRRC funct3_CSRRCI funct3_CSRRS funct3_CSRRSI funct3_CSRRW funct3_CSRRWI funct3_DIV funct3_DIVU funct3_DIVUW funct3_DIVW funct3_FCLASS_S funct3_FENCE funct3_FENCE_I funct3_FEQ_S funct3_FLE_S funct3_FLT_S funct3_FLW funct3_FMAX_S funct3_FMIN_S funct3_FMV_X_W funct3_FSGNJN_S funct3_FSGNJ_S funct3_FSGNJX_S funct3_FSW funct3_LB funct3_LBU funct3_LD funct3_LH funct3_LHU funct3_LW funct3_LWU funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU funct3_MULW funct3_OR funct3_ORI funct3_PRIV funct3_REM funct3_REMU funct3_REMUW funct3_REMW funct3_SB funct3_SD funct3_SH funct3_SLL funct3_SLLI funct3_SLLIW funct3_SLLW funct3_SLT funct3_SLTI funct3_SLTIU funct3_SLTU funct3_SRA funct3_SRAI funct3_SRAIW funct3_SRAW funct3_SRL funct3_SRLI funct3_SRLIW funct3_SRLW funct3_SUB funct3_SUBW funct3_SW funct3_XOR funct3_XORI funct5_AMOADD funct5_AMOAND funct5_AMOMAX funct5_AMOMAXU funct5_AMOMIN funct5_AMOMINU funct5_AMOOR funct5_AMOSWAP funct5_AMOXOR funct5_LR funct5_SC funct6_SLLI funct6_SRAI funct6_SRLI funct7_ADD funct7_ADDW funct7_AND funct7_DIV funct7_DIVU funct7_DIVUW funct7_DIVW funct7_FADD_S funct7_FCLASS_S funct7_FCVT_S_W funct7_FCVT_W_S funct7_FDIV_S funct7_FEQ_S funct7_FMIN_S funct7_FMUL_S funct7_FMV_W_X funct7_FMV_X_W funct7_FSGNJ_S funct7_FSQRT_S funct7_FSUB_S funct7_MUL funct7_MULH funct7_MULHSU funct7_MULHU funct7_MULW funct7_OR funct7_REM funct7_REMU funct7_REMUW funct7_REMW funct7_SFENCE_VMA funct7_SLL funct7_SLLIW funct7_SLLW funct7_SLT funct7_SLTU funct7_SRA funct7_SRAIW funct7_SRAW funct7_SRL funct7_SRLIW funct7_SRLW funct7_SUB funct7_SUBW funct7_XOR isValidA isValidA64 isValidCSR isValidF isValidF64 isValidI isValidI64 isValidM isValidM64 Opcode opcode_AMO opcode_AUIPC opcode_BRANCH opcode_JAL opcode_JALR opcode_LOAD opcode_LOAD_FP opcode_LUI opcode_MADD opcode_MISC_MEM opcode_MSUB opcode_NMADD opcode_NMSUB opcode_OP opcode_OP_32 opcode_OP_FP opcode_OP_IMM opcode_OP_IMM_32 opcode_STORE opcode_STORE_FP opcode_SYSTEM Register RoundMode rs2_FCVT_L_S rs2_FCVT_LU_S rs2_FCVT_W_S rs2_FCVT_WU_S supportsA supportsF supportsM] in *;
         repeat match goal with
-               | [H : ?x <> ?A |- _] =>
-                 match goal with
-                 | [y := x |- _] =>
-                   match goal with
-                   | [_out := context[y =? A] |- _] =>
-                     let RR := fresh "RR" in
-                     destruct (Z.eqb_spec y A) as [RR|_] in *; [ case (H RR) | ]
-                   end end end.
+               | [v := context [Z.eqb ?x ?y], H: ?x <> ?y |- _] =>
+                 destruct (Z.eqb_spec x y) in *; [exfalso; auto; fail|cbn in v]
+               end.
 
-      (** known ISA compatibility/decoding issues... *)
-      all : try match goal with
-                | [(* kami supports fewer instructions than riscv-coq *)
-                   n : bitSlice (kunsigned ?kinst) 0 7 <> 99, (* opcode_BRANCH *)
-                   n0 : bitSlice (kunsigned ?kinst) 0 7 <> 55, (* opcode_LUI *)
-                   n1 : bitSlice (kunsigned ?kinst) 0 7 <> 23, (* opcode_AUIPC *)
-                   n2 : bitSlice (kunsigned ?kinst) 0 7 <> 111, (* opcode_JAL *)
-                   n3 : bitSlice (kunsigned ?kinst) 0 7 <> 103, (* opcode_JALR *)
-                   n4 : bitSlice (kunsigned ?kinst) 0 7 <> 19, (* opcode_OP_IMM *)
-                   n5 : bitSlice (kunsigned ?kinst) 0 7 <> 51, (* opcode_OP *)
-                   n6 : bitSlice (kunsigned ?kinst) 0 7 <> 3, (* opcode_LOAD *)
-                   n7 : bitSlice (kunsigned ?kinst) 0 7 <> 35 (* opcode_STORE *)
-                   |- _] => case TODO_joonwon
-                end.
+      all: try cbn in decodeI.
+      40: (subst decodeI decodeM resultI resultM results;
+           repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
+      43: (subst decodeI decodeM resultI resultM results;
+           repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
 
-      (* Currently there are some cases where the riscv-coq decode couldn't decode
-       * the instruction due to insufficient information from Kami.
-       * For now we let such cases admitted; sooner we will fix them (@joonwonc TODO). *)
+      (* Currently there are TWO cases where the riscv-coq decoder does not 
+       * fully reduce due to insufficient information from Kami:
+       * 1) Kami only deals with MUL in RV32M.
+       * 2) Kami does not support FENCE/FENCE.I
+       *   - riscv-coq handles these fence instructions as NOP.
+       *   - FENCE.I no longer belongs to RV32I.
+       *   - Kami may handle FENCE as NOP, too.
+       * For now we let such cases admitted -- @joonwonc TODO. *)
       all: try match goal with
                | [decodeI := (if _ then _ else _): InstructionI |- _] => case TODO_joonwon
                end.
