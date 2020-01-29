@@ -6,3 +6,4 @@ Makefile.coq.conf
 *.d
 *.glob
 *.aux
+*.cache
