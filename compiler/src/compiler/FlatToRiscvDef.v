@@ -17,7 +17,6 @@ Require Import bedrock2.Syntax.
 Require Import coqutil.Map.Interface.
 Require Import compiler.SeparationLogic.
 Require Import riscv.Spec.Decode.
-Require Import compiler.ProgramSpec.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -323,54 +322,16 @@ Section FlatToRiscv1.
     End WithImplEnv.
   End WithEnv.
 
-  Section WithImplEnv.
-    Variable (e_impl: env).
+  (* compiles all functions just to obtain their code size *)
+  Definition build_fun_pos_env(pos: Z)(e_impl: env): fun_pos_env :=
+    snd (map.fold
+           (fun '(pos, acc) fname fimpl =>
+              let size := 4 * Z.of_nat (length (compile_function map.empty 42 fimpl)) in
+              (pos + size, map.put acc fname pos))
+           (0, map.empty)
+           e_impl).
 
-    (* compiles all functions just to obtain their code size *)
-    Fixpoint build_fun_pos_env(pos: Z)(funnames: list funname): fun_pos_env :=
-      match funnames with
-      | nil => map.empty
-      | fname :: rest =>
-        match map.get e_impl fname with
-        | Some F => let size := 4 * Z.of_nat (length (compile_function map.empty 42 F)) in
-                    map.put (build_fun_pos_env (pos + size) rest) fname pos
-        | None => map.empty
-        end
-      end.
-  End WithImplEnv.
-
-  Section WithProgram.
-    Variable (prog: Program stmt).
-
-    (* we make this one a Definition because it's useful for debugging *)
-    Definition function_positions: fun_pos_env :=
-      build_fun_pos_env prog.(funimpls) 0 prog.(funnames).
-
-    (* The main function is always some initialization code followed by an infinite loop.
-       If no loop is desired, pass SSkip as loop_body, and this will guarantee that after
-       the init code (i.e. your full program) has run to completion, no further output
-       nor other undesired behavior is produced *)
-    Definition compile_main(e_pos: fun_pos_env)(mypos: Z): list Instruction :=
-      let insts1 := compile_stmt e_pos mypos prog.(init_code) in
-      let insts2 := compile_stmt e_pos (mypos + 4 * Z.of_nat (length insts1)) prog.(loop_body) in
-      insts1 ++ insts2 ++ [[Jal Register0 (- 4 * Z.of_nat (length insts2))]].
-
-    Definition main_size := List.length (compile_main function_positions 42).
-
-    Variable (init_sp: Z).
-
-    (* All code as riscv machine code, layed out from low to high addresses: *)
-    (*1*)Definition init_sp_insts := compile_lit RegisterNames.sp init_sp.
-         Definition main_pos := - 4 * Z.of_nat main_size.
-    (*2*)Definition init_insts := compile_stmt function_positions main_pos prog.(init_code).
-         Definition loop_pos := main_pos + 4 * Z.of_nat (Datatypes.length init_insts).
-    (*3*)Definition loop_insts := compile_stmt function_positions loop_pos prog.(loop_body).
-    (*4*)Definition backjump_insts := [[(Jal Register0 (-4*Z.of_nat (List.length loop_insts)))]].
-    (*5*)Definition fun_insts := compile_funs function_positions prog.(funimpls) 0 prog.(funnames).
-
-    Definition compile_prog: list Instruction :=
-      init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts ++ fun_insts.
-
-  End WithProgram.
+  (* we make this one a Definition because it's useful for debugging *)
+  Definition function_positions: env -> fun_pos_env := build_fun_pos_env 0.
 
 End FlatToRiscv1.

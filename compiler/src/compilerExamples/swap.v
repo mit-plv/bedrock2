@@ -60,26 +60,9 @@ Instance pipeline_params : Pipeline.parameters. simple refine {|
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
 
-Definition allFuns: list swap.bedrock_func := [swap; swap_swap].
+Definition allFuns: list swap.bedrock_func := [swap; swap_swap; main].
 
 Definition e := map.putmany_of_list allFuns map.empty.
-
-Definition main: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
-  @cmd.call (FlattenExpr.mk_Syntax_params _) [] "swap_swap" [expr.literal 100; expr.literal 108].
-
-Definition nop_loop_body: @cmd.cmd (FlattenExpr.mk_Syntax_params _) :=
-  @cmd.interact (FlattenExpr.mk_Syntax_params _) [] "nop" [].
-
-Definition prog: @Program (FlattenExpr.mk_Syntax_params _)
-                          (@cmd.cmd (FlattenExpr.mk_Syntax_params _)) _.
-  (* TODO whyyy? *)
-  Fail refine (@Build_Program _ (List.map fst allFuns) e main nop_loop_body).
-  apply @Build_Program.
-  - exact (List.map fst allFuns).
-  - exact e.
-  - exact main.
-  - exact nop_loop_body.
-Defined.
 
 (* stack grows from high addreses to low addresses, first stack word will be written to
    (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
@@ -107,9 +90,9 @@ Lemma f_equal3_dep: forall {A B C: Type} {f1 f2: A -> B -> C} {a1 a2: A} {b1 b2:
 Proof. intros. congruence. Qed.
 
 Definition swap_asm: list Instruction.
-  let r := eval cbv in (compile ml prog) in set (res := r).
+  let r := eval cbv in (compile ml e) in set (res := r).
   match goal with
-  | res := Some ?x |- _ => exact x
+  | res := Some (?x, _) |- _ => exact x
   end.
 Defined.
 
