@@ -123,24 +123,23 @@ Section Proofs.
 
   Local Existing Instance BasicC64Semantics.parameters.
   Local Existing Instance BasicC64Semantics.parameters_ok.
-  Local Notation String := (Gallina.String (char:=Semantics.byte)).
   Local Notation len := Gallina.len (only parsing).
   Local Notation chars := Gallina.chars (only parsing).
 
-  Definition rep
-             (addr : Semantics.word) (s : String) :
+  Definition String
+             (addr : Semantics.word) (s : Gallina.String) :
     map.rep (map:=Semantics.mem) -> Prop :=
     sep
       (emp (Z.of_nat (len s) < 2^Semantics.width))
       (sep
-         (truncated_scalar access_size.word addr (Z.of_nat (len s)))
+         (scalar addr (word.of_Z (Z.of_nat (len s))))
          (array ptsto
                 (word.of_Z charsize)
                 (word.add addr (word.of_Z wordsize))
                 (chars s))).
 
   Definition loop_invariant
-             (s : String) tr locals s_ptr R
+             (s : Gallina.String) tr locals s_ptr R
              (m : nat) (tr' : Semantics.trace)
              (mem' : Semantics.mem) (locals' : Semantics.locals)
     : Prop :=
@@ -155,7 +154,7 @@ Section Proofs.
               locals' "i"
               (fun _i =>
                  let i := Z.to_nat (word.unsigned _i) in
-                 let partial : String :=
+                 let partial : Gallina.String :=
                      {|len := len s;
                        chars :=
                          (List.firstn i (map toupper_body (chars s))
@@ -167,12 +166,12 @@ Section Proofs.
                       (word.add
                          (word.add s_ptr (word.of_Z wordsize))
                          (word.mul (word.of_Z charsize) _i))
-                 /\ sep (rep s_ptr partial) R mem')).
+                 /\ sep (String s_ptr partial) R mem')).
 
   (* extracts the separation-logic condition for a single element of the
        string's char array *)
   Lemma char_array_lookup_sep addr s R mem n naddr :
-    sep (rep addr s) R mem ->
+    sep (String addr s) R mem ->
     len s = length (chars s) ->
     (n < len s)%nat ->
     naddr = word.add (word.add addr (word.of_Z wordsize))
@@ -192,14 +191,13 @@ Section Proofs.
                         (word.of_Z charsize))
                      (List.skipn (S n) (chars s))))
            (sep R
-                (truncated_scalar access_size.word addr
-                                  (Z.of_nat (len s)))))
+                (scalar addr (word.of_Z (Z.of_nat (len s))))))
         mem.
   Proof.
     intros; subst naddr.
     match goal with
-      H : sep (rep _ _) _ _ |- _ =>
-      cbv [rep] in H;
+      H : sep (String _ _) _ _ |- _ =>
+      cbv [String] in H;
         apply sep_assoc, sep_emp_l in H; destruct H as [_ H];
           simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H)
     end.
@@ -232,9 +230,10 @@ Section Proofs.
     end.
 
   (* TODO: try to use ProgramLogic *)
-  Lemma capitalize_String_correct (addr : Semantics.word) (s : String) :
+  Lemma capitalize_String_correct
+        (addr : Semantics.word) (s : Gallina.String) :
     forall tr mem R,
-      sep (rep addr s) R mem ->
+      sep (String addr s) R mem ->
       len s = length (chars s) ->
       let functions := (capitalize_String :: functions') in
       let caps :=
@@ -246,9 +245,9 @@ Section Proofs.
            tr = tr' /\
            length rets = 1%nat /\
            ( (* either we failed and string is untouched, or... *)
-             (success = 0 /\ sep (rep addr s) R mem') \/
+             (success = 0 /\ sep (String addr s) R mem') \/
              (* we succeeded and string is correctly uppercase *)
-             (success = 1 /\ sep (rep addr caps) R mem'))).
+             (success = 1 /\ sep (String addr caps) R mem'))).
   Proof.
     cbv zeta. intros.
 
@@ -272,7 +271,7 @@ Section Proofs.
     { eexists; split; [ reflexivity | ].
       cbv [WeakestPrecondition.load Memory.load].
       match goal with
-      | H : sep (rep _ _) _ _ |- _ =>
+      | H : sep (String _ _) _ _ |- _ =>
         let E := fresh in
         apply sep_assoc, sep_emp_l in H; destruct H as [E H];
           apply sep_assoc, load_Z_of_sep in H; rewrite H
@@ -314,10 +313,10 @@ Section Proofs.
       assumption. }
     intros.
 
-    (* extract the length-bounds clause of [rep] and simplify; helps [lia] *)
+    (* extract the length-bounds clause of [String] and simplify; helps [lia] *)
     match goal with
-      H : sep (rep _ _) _ _ |- _ =>
-      cbv [rep] in H;
+      H : sep (String _ _) _ _ |- _ =>
+      cbv [String] in H;
         apply sep_assoc, sep_emp_l in H; destruct H as [H ?]
     end.
 
@@ -349,7 +348,7 @@ Section Proofs.
       match goal with |- ?x <= ?y < ?z =>
                       change (x <= y < 2 ^ Semantics.width)
       end.
-      lia. }
+      apply word.unsigned_range. }
 
     (* prove continue/break case depending on value of loop condition *)
     match goal with |- context [if ?x then _ else _] => destr x end;
@@ -358,6 +357,8 @@ Section Proofs.
       intros.
 
       (* first, simplify the hypothesis that says i < len *)
+      repeat match goal with H : _ |- _ =>
+                             rewrite word.of_Z_unsigned in H end.
       let H :=
           match goal with
             H : word.ltu _ (word.of_Z (Z.of_nat (len _))) = true |- _ =>
@@ -507,8 +508,8 @@ Section Proofs.
         { subst; autorewrite with push_unsigned.
           cbv [word.wrap]. Z.mod_equality. }
 
-        (* correct partial string is represented *)
-        cbv [rep]; cbn [Gallina.len Gallina.chars].
+        (* correct partial string is Stringresented *)
+        cbv [String]; cbn [Gallina.len Gallina.chars].
         apply sep_assoc, sep_emp_l. split; [ assumption | ].
         rewrite Nat.add_1_r.
         apply sep_comm, sep_assoc, sep_comm.
@@ -596,6 +597,8 @@ Section Proofs.
       intros.
 
       (* first, simplify the hypothesis that says i >= len *)
+      repeat match goal with H : _ |- _ =>
+                             rewrite word.of_Z_unsigned in H end.
       let H :=
           match goal with
             H : word.ltu _ (word.of_Z (Z.of_nat (len _))) = false |- _ =>
@@ -611,7 +614,7 @@ Section Proofs.
 
       (* use i >= len to remove firstn/skipn from loop invariant *)
       match goal with
-      | H : sep (rep _ _) _ _ |- _ =>
+      | H : sep (String _ _) _ _ |- _ =>
         rewrite firstn_all2, skipn_all2, app_nil_r in H
           by (autorewrite with push_length; lia)
       end.
