@@ -836,8 +836,10 @@ Section Equiv.
       set (kinst := instrMem (@evalUniBit (S (S (BinInt.Z.to_nat instrMemSizeLg))) (BinInt.Z.to_nat instrMemSizeLg) (TruncLsb 2 (BinInt.Z.to_nat instrMemSizeLg)) kpc)) in *.
       progress cbn [evalUniBit] in kinst.
 
+      (* Some output to keep the Travis build alive *)
+      idtac "kamiStep_sound: Evaluation almost done, separate out cases of Kami execution".
       Timeout
-        300 (* Evaluation almost done, separate out cases of Kami execution *)
+        300
         (progress
          repeat match goal with
                 | [H : context G [if Z.eqb ?x ?y then ?a else ?b] |- _] =>
@@ -917,7 +919,8 @@ Section Equiv.
           | [Hbs: bitSlice _ _ _ = _ |- _] => rewrite !Hbs in Hdec
           end.
 
-      all: (** Heads-up: this is very slow, taking ~4 minutes *)
+      1: idtac "kamiStep_sound: The next step is very slow, taking ~4 minutes".
+      Time all:
         repeat
           (match goal with
            | _ => progress cbn iota beta delta
@@ -950,7 +953,7 @@ Section Equiv.
       43: (subst decodeI decodeM resultI resultM results;
            repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
 
-      (* Currently there are TWO cases where the riscv-coq decoder does not 
+      (* Currently there are TWO cases where the riscv-coq decoder does not
        * fully reduce due to insufficient information from Kami:
        * 1) Kami only deals with MUL in RV32M.
        * 2) Kami does not support FENCE/FENCE.I
@@ -1170,7 +1173,7 @@ Section Equiv.
 
 (*     5: (* sll, difficult *) *)
 (*     subst shamt6;  cbv [sll word.slu word WordsKami wordW KamiWord.word kunsigned]. *)
-    
+
 (* word.unsigned (wlshift arg1 #(split2 20 5 (split1 (20 + 5) 7 kinst))) = *)
 (* word.unsigned *)
 (*   (kofZ *)
@@ -1327,6 +1330,7 @@ Section Equiv.
 
     Unshelve.
     all : case TODO_kamiStep_instruction.
+    all: idtac "kamiStep_sound: starting the Qed...".
 
   (*A lot of*) Time Qed.
 
