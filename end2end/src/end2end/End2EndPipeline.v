@@ -40,6 +40,8 @@ Require Import coqutil.Tactics.rdelta.
 Require Import bedrock2.Byte.
 Require Import end2end.KamiRiscvWordProperties.
 Require Import bedrock2.WeakestPreconditionProperties.
+Require Import compiler.CompilerInvariant.
+Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
@@ -114,7 +116,7 @@ Section Connect.
   - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
   - refine (@MMIO.FlatToRiscv_hyps _).
   - pose proof FE310CSemantics.ext_spec_ok.
-    cbv [FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec Pipeline.FlatToRisvc_params Pipeline.ext_spec pipeline_params].
+    cbv [FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec Pipeline.ext_spec pipeline_params].
     abstract (destruct H; split; eauto).
   Defined.
 
@@ -153,10 +155,11 @@ Section Connect.
      Z names Semantics.params lingering around *)
   Notation strname_sem := (FlattenExpr.mk_Semantics_params
                              (@Pipeline.FlattenExpr_parameters pipeline_params)).
+  Notation strname_syntax := (FlattenExpr.mk_Syntax_params
+                             (@Pipeline.FlattenExpr_parameters pipeline_params)).
   Notation cmd := (@cmd ((FlattenExpr.mk_Syntax_params
                             (@Pipeline.FlattenExpr_parameters pipeline_params)))).
-  Context (init_code loop_body: cmd)
-          (spec: @ProgramSpec strname_sem)
+  Context (spec: @ProgramSpec strname_sem)
           (ml: MemoryLayout 32)
           (mlOk: MemoryLayoutOk ml)
           (funimplsList: list (string * (list string * list string * cmd))).
@@ -180,17 +183,6 @@ Section Connect.
   Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t'
                                              /\ l' = map.empty).
 
-  Definition prog: Program (p := (FlattenExpr.mk_Syntax_params _)) cmd.
-    refine {|
-      ProgramSpec.funnames := _;
-      ProgramSpec.funimpls := _;
-      ProgramSpec.init_code := init_code;
-      ProgramSpec.loop_body := loop_body;
-    |}.
-    - exact (List.map fst funimplsList).
-    - exact (map.of_list funimplsList).
-  Defined.
-
   Let funspecs := WeakestPrecondition.call (p := strname_sem) funimplsList.
 
   Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
@@ -199,12 +191,13 @@ Section Connect.
   (* end to end, but still generic over the program
      TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
   Lemma end2end:
-      (forall m, WeakestPrecondition.cmd (p := strname_sem) funspecs init_code
+      (forall m, WeakestPrecondition.cmd (p := strname_sem) funspecs
+                                         (@cmd.call strname_syntax nil "init"%string nil)
                                          [] m map.empty bedrock2Inv) ->
       (forall t m l,
           bedrock2Inv t m l ->
-          WeakestPrecondition.cmd (p := strname_sem)
-                                  funspecs loop_body t m l bedrock2Inv) ->
+          WeakestPrecondition.cmd (p := strname_sem) funspecs
+                                  (@cmd.call strname_syntax nil "loop"%string nil) t m l bedrock2Inv) ->
     (* TODO more hypotheses might be needed *)
     forall (t: Kami.Semantics.LabelSeqT) (mFinal: KamiImplMachine),
       (* IF the 4-stage pipelined processor steps to some final state mFinal, producing trace t,*)
@@ -228,21 +221,21 @@ Section Connect.
     (* 1) Kami pipelined processor to riscv-coq *)
     pose proof @riscv_to_kamiImplProcessor as P1.
     specialize_first P1 traceProp.
-    specialize_first P1 (ll_inv spec ml).
+    specialize_first P1 (ll_inv ml spec).
     specialize_first P1 B.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
     pose proof pipeline_proofs as P2.
-    specialize_first P2 prog.
+    specialize_first P2 (map.of_list funimplsList).
     specialize_first P2 spec.
     specialize_first P2 ml.
     specialize_first P2 mlOk.
     destruct P2 as [ P2establish [P2preserve P2use] ]. {
       (* 3) bedrock2 semantics to bedrock2 program logic *)
       constructor.
-      - eapply funimplsList_NoDup.
       - unfold ExprImp.valid_funs, ExprImp.valid_fun. case TODO_sam.
+      (*
       - simpl. clear.
         induction funimplsList; split; intros.
         + simpl in H. rewrite map.get_empty in H. contradiction.
@@ -257,22 +250,35 @@ Section Connect.
           * rewrite map.get_put_dec.
             destruct_one_match. 1: congruence.
             eapply IHl. assumption.
-      - intros.
+      *)
+      - match goal with
+        | |- exists (_: ?T), _ => assert (init_code: T) by case TODO_sam
+        end.
+        exists init_code.
+        split. 1: case TODO_sam.
+        intros.
         replace m0 with (projT1 (riscvMemInit memInit)) by case TODO_joonwon.
         unfold ExprImp.SimExec, hl_inv, bedrock2Inv in *. eapply ExprImp.weaken_exec.
         + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
             eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
-        + simpl. clear. intros. intuition idtac.
-      - intros.
+          move Establish at bottom.
+          specialize (Establish (projT1 (riscvMemInit memInit))).
+          case TODO_sam.
+        + simpl. clear. intros. (* intuition idtac. *) case TODO_sam.
+      - match goal with
+        | |- exists (_: ?T), _ => assert (loop_body: T) by case TODO_sam
+        end.
+        exists loop_body.
+        split. 1: case TODO_sam.
+        intros.
         destruct s as (((((e & c) & t0) & m) & l) & mc).
         unfold ExprImp.SimExec, hl_inv, bedrock2Inv in *. simp.
         eapply ExprImp.weaken_exec.
         + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
             eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
-        + simpl. clear. intuition idtac.
+          case TODO_sam.
+        + simpl. clear. case TODO_sam. (* intuition idtac. *)
     }
-    { assumption. }
-    { assumption. }
 
     eapply P1.
     - assumption.
@@ -297,6 +303,7 @@ Section Connect.
 
       Grab Existential Variables.
       1: exact m0RV.
+      all: try intros; exact True.
   Qed.
 
 End Connect.

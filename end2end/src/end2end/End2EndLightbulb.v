@@ -8,7 +8,7 @@ Require Import bedrock2.Syntax.
 Require Import bedrock2Examples.lightbulb bedrock2Examples.lightbulb_spec.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import compiler.Simp.
-Require Import compiler.ProgramSpec.
+Require Import compiler.ExprImpEventLoopSpec.
 Require Import compiler.MemoryLayout.
 Require Import end2end.End2EndPipeline.
 Require Import end2end.Bedrock2SemanticsForKami. (* TODO why is the ok instance in that file not needed? *)
@@ -33,15 +33,6 @@ Definition ml: MemoryLayout Semantics.width := {|
 |}.
 
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
-
-Definition init_code :=
-  @cmd.seq Semantics.syntax (
-  @cmd.call Semantics.syntax ["err"] "lightbulb_init" [])
-  (@cmd.unset Semantics.syntax "err").
-Definition loop_body :=
-  @cmd.seq Semantics.syntax (
-  @cmd.call Semantics.syntax ["err"] "lightbulb_loop" [expr.literal buffer_addr]
-  )(@cmd.unset Semantics.syntax "err").
 
 Local Instance parameters : FE310CSemantics.parameters := ltac:(esplit; exact _).
 Axiom TODO_andres: False.
@@ -150,10 +141,21 @@ Proof.
   eapply @pipeline_assumptions; try exact _.
 Qed.
 
-Definition prog : @Program (FlattenExprDef.FlattenExpr.mk_Syntax_params _) _ _ :=
-  prog init_code loop_body function_impls.
+Open Scope string_scope.
 
-Definition lightbulb_insts_unevaluated: option (list Decode.Instruction) :=
+Definition init :=
+  ("init", ([]: list string, []: list string,
+           (@cmd.call (FlattenExprDef.FlattenExpr.mk_Syntax_params _) ["err"] "lightbulb_init" []))).
+
+Definition loop :=
+  ("loop", ([]: list string, []: list string,
+           (@cmd.call (FlattenExprDef.FlattenExpr.mk_Syntax_params _) ["err"] "lightbulb_loop"
+                      [expr.literal buffer_addr]))).
+
+Definition funimplsList := init :: loop :: (@lightbulb.function_impls parameters).
+Definition prog := map.of_list funimplsList.
+
+Definition lightbulb_insts_unevaluated: option (list Decode.Instruction * Semantics.funname_env Z) :=
   @PipelineWithRename.compile pipeline_params ml prog.
 
 (* Before running this command, it might be a good idea to do
@@ -165,7 +167,14 @@ Definition lightbulb_insts_unevaluated: option (list Decode.Instruction) :=
 Definition lightbulb_insts: list Decode.Instruction.
   let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
   match goal with
-  | res := Some ?x |- _ => exact x
+  | res := Some (?x, _) |- _ => exact x
+  end.
+Defined.
+
+Definition function_positions: Semantics.funname_env Z.
+  let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
+  match goal with
+  | res := Some (_, ?x) |- _ => exact x
   end.
 Defined.
 
@@ -175,16 +184,6 @@ Module PrintProgram.
   Import bedrock2.Hexdump.
   Local Open Scope hexdump_scope.
   Set Printing Width 108.
-
-  Definition function_positions :=
-    match PipelineWithRename.flattenPhase prog with
-    | Some flat =>
-      match PipelineWithRename.renamePhase flat with
-      | Some ren => FlatToRiscvDef.function_positions ren
-      | None => map.empty
-      end
-    | None => map.empty
-    end.
 
   Goal True.
     pose (SortedList.value function_positions) as symbols.
@@ -231,8 +230,6 @@ Lemma end2end_lightbulb:
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
-  specialize_first Q init_code.
-  specialize_first Q loop_body.
   specialize_first Q function_impls.
   specialize_first Q spec.
   specialize_first Q ml.
@@ -242,7 +239,7 @@ Proof.
   specialize_first Q memInit.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
-  eapply Q; clear Q; [reflexivity|reflexivity|..]; cycle 3.
+  eapply Q; clear Q; cycle 3.
   - (* preserve invariant *)
     intros.
     (* TODO make Simp.simp work here *)
@@ -252,6 +249,8 @@ Proof.
     cbv [spec_of_lightbulb_loop] in P.
     specialize_first P Sep.
     specialize_first P L.
+    case TODO_sam.
+    (*
     eapply WeakestPreconditionProperties.Proper_call; [clear P|eapply P].
     intros ? ? ? ?.
     destr.
@@ -265,6 +264,7 @@ Proof.
         | apply goodHlTrace_addOne;
           [unfold traceOfOneInteraction, choice; eauto 10
           | exact G]]).
+    *)
   - cbv. repeat constructor; cbv; intros; intuition congruence.
   - intros. clear memInit. simp.
     unfold relate_lightbulb_trace_to_bedrock, SPI.mmio_trace_abstraction_relation in *.
@@ -273,14 +273,18 @@ Proof.
 
   - (* establish invariant *)
     intros.
-    unfold init_code, prog.
 
     repeat ProgramLogic.straightline.
     subst args.
 
     eapply WeakestPreconditionProperties.Proper_call.
-    2: exact (link_lightbulb_init _ _).
+    2: {
+      pose proof link_lightbulb_init.
+      case TODO_sam.
+    }
     intros ? ? ? ?.
+    case TODO_sam.
+    (*
     repeat ProgramLogic.straightline.
     hnf. split; [|split].
     + case TODO_sam_and_joonwon. (* how can we relate m to Kami's mem and constrain it? *)
@@ -293,4 +297,7 @@ Proof.
         (cbv [traceOfBoot]; destruct H3 as [[]|[[]|[]]]; eauto); clear H3.
       revert H; case TODO_andres.
     + reflexivity.
+    *)
+    Unshelve.
+    all: try intros; exact True.
 Time Qed. (* takes more than 150s *)
