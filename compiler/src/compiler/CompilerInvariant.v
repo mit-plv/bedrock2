@@ -193,7 +193,7 @@ Section Pipeline1.
 
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
-  Definition ll_good(prog: source_env)(f_entry_rel_pos: Z)(f_entry_name: string)(p_call: word)
+  Definition ll_good(prog: source_env)(f_entry_rel_pos: Z)(f_entry_name: string)(p_call: Semantics.word)
              (Rdata Rexec: mem -> Prop)(done: bool): MetricRiscvMachine -> Prop :=
     compile_inv (related ml f_entry_rel_pos f_entry_name p_call Rdata Rexec done)
                 (@hl_inv (FlattenExpr.mk_Semantics_params _) prog
@@ -203,12 +203,13 @@ Section Pipeline1.
      but at the very end, we have ll_inv, where we do use existentials, because the "API"
      for ll_inv is just establish/preserve/use *)
   Definition ll_inv(m: MetricRiscvMachine): Prop :=
-    exists (prog: source_env)(f_entry_rel_pos: Z)(f_entry_name: string)(p_call: word)(Rdata Rexec: mem -> Prop),
+    exists (prog: source_env)(f_entry_rel_pos: Z)(f_entry_name: string)(p_call: Semantics.word)
+           (Rdata Rexec: mem -> Prop),
       runsToGood_Invariant (ll_good prog f_entry_rel_pos f_entry_name p_call Rdata Rexec) m.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
   Definition layout: mem -> Prop :=
@@ -428,7 +429,7 @@ Section Pipeline1.
     subst.
     specialize P with
         (s1 := (srcprog, (@Syntax.cmd.call (FlattenExpr.mk_Syntax_params _) nil "init"%string nil), nil,
-                dmem, map.empty, mkMetricLog 0 0 0 0)).
+                dmem, map.empty, bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
     eapply runsTo_weaken.
     - eapply P; clear P.
       + (* prove that the initial state (putProgram preInitial) is related ot the high-level
@@ -606,7 +607,7 @@ Section Pipeline1.
       (* eapply init_code_to_loop_body_transition. *) case TODO_sam.
     Unshelve.
     all: intros; try exact True.
-    all: try exact (mkMetricLog 0 0 0 0).
+    all: try exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
     all: try exact true.
     all: repeat apply pair.
     all: try apply nil.
@@ -614,7 +615,7 @@ Section Pipeline1.
   Qed.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
-      ll_inv st -> mcomp_sat (run1 iset) st ll_inv.
+      ll_inv st -> GoFlatToRiscv.mcomp_sat (run1 iset) st ll_inv.
   Proof.
     intro st. unfold ll_inv. intros [ src [ ren [? ?] ] ].
     pose proof mlOk as o.
@@ -777,7 +778,7 @@ Section Pipeline1.
     (forall preInitial initial,
         putProgram srcprog preInitial = Some initial ->
         ll_inv initial) /\
-    (forall st, ll_inv st -> mcomp_sat (run1 iset) st ll_inv) /\
+    (forall st, ll_inv st -> GoFlatToRiscv.mcomp_sat (run1 iset) st ll_inv) /\
     (forall st, ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
     split; [|split].
