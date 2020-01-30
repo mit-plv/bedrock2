@@ -3,3 +3,5 @@
 -Q bedrock2/deps/coqutil/src/coqutil coqutil
 src/Examples/CapitalizeThird/CapitalizeThird.v
 src/Examples/CapitalizeThird/Properties.v
+src/Examples/Swap/Swap.v
+src/Examples/Swap/Properties.v
