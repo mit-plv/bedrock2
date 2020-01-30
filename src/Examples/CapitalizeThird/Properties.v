@@ -14,6 +14,7 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Z.PushPullMod.
+Require Import coqutil.Tactics.Tactics.
 Require Import Rupicola.Examples.CapitalizeThird.CapitalizeThird.
 Require bedrock2.WeakestPrecondition.
 Require bedrock2.Semantics.
@@ -26,8 +27,8 @@ Hint Rewrite word.unsigned_add word.unsigned_mul word.unsigned_of_Z
      word.unsigned_of_Z_1 using lia : push_unsigned.
 Hint Rewrite @firstn_length @skipn_length @map_length @app_length
   : push_length.
-Hint Rewrite @skipn_app @skipn_O @List.skipn_skipn : push_skipn.
-Hint Rewrite @firstn_app @firstn_O @firstn_firstn : push_firstn.
+Hint Rewrite @skipn_app @skipn_O @skipn_cons @List.skipn_skipn : push_skipn.
+Hint Rewrite @firstn_app @firstn_O @firstn_cons @firstn_firstn : push_firstn.
 
 Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
@@ -101,7 +102,80 @@ Section Generalizable.
     rewrite word.of_Z_unsigned; reflexivity.
   Qed.
 
+  Lemma In_hd {A} (d : A) (xs : list A) :
+    (0 < length xs)%nat -> In (hd d xs) xs.
+  Proof.
+    destruct xs; cbn [length hd In]; [ lia | tauto ].
+  Qed.
+
+  Lemma In_hd_skipn {A} (d : A) (xs : list A) :
+    forall n,
+    (0 < length (skipn n xs))%nat -> In (hd d (skipn n xs)) xs.
+  Proof.
+    induction xs; destruct n; cbn [length hd In skipn];
+      try lia; try tauto.
+    intros. right. apply IHxs; auto.
+  Qed.
+
+  Lemma nth_hd_skipn {A} (d : A) (xs : list A) :
+    forall n, nth n xs d = hd d (List.skipn n xs).
+  Proof.
+    induction xs; destruct n; cbn [hd nth List.skipn];
+      try lia; auto.
+  Qed.
+
+  Lemma nth_default_hd_skipn {A} (d : A) (xs : list A) :
+    forall n, nth_default d xs n = hd d (List.skipn n xs).
+  Proof.
+    intros. rewrite nth_default_eq. apply nth_hd_skipn.
+  Qed.
+
+  Lemma skipn_firstn_same {A} n (l : list A) :
+    List.skipn n (firstn n l) = nil.
+  Proof.
+    apply skipn_all2. autorewrite with push_length; lia.
+  Qed.
+
+  Lemma sub_succ_l x : (S x - x)%nat = 1%nat.
+  Proof. lia. Qed.
 End Generalizable.
+
+Ltac natsimplify :=
+  repeat match goal with
+         | _ => rewrite Nat.sub_diag
+         | _ => rewrite Nat.add_0_l
+         | _ => rewrite Nat.add_0_r
+         | _ => rewrite Nat.add_1_l
+         | _ => rewrite Nat.add_1_r
+         | _ => rewrite sub_succ_l
+         | _ => rewrite Nat.min_l by lia
+         | _ => rewrite Nat.min_r by lia
+         end.
+
+Ltac push_length :=
+  try (clear; autorewrite with push_length; lia);
+  autorewrite with push_length; lia.
+
+Hint Rewrite @skipn_firstn_same @skipn_all2 using solve [push_length]
+  : push_skipn_slow.
+
+Hint Rewrite @hd_app_l @hd_firstn using solve [push_length] : push_hd_slow.
+Hint Rewrite @app_nil_l @app_nil_r : push_app.
+
+Ltac push_list_fast :=
+  autorewrite with push_app push_skipn push_firstn push_length.
+
+Ltac push_list_slow :=
+  autorewrite with push_skipn_slow push_hd_slow.
+
+Ltac listsimplify :=
+  repeat match goal with
+         | _ => progress cbn [List.hd List.tl]
+         | _ => progress push_list_fast
+         | _ => progress natsimplify
+         | _ => progress push_list_slow
+         | _ => erewrite hd_skipn_map by push_length
+         end.
 
 Section Proofs.
   Context (functions' : list bedrock_func)
@@ -321,8 +395,7 @@ Section Proofs.
     end.
 
     repeat match goal with
-           | H : _ /\ _ |- _ => destruct H
-           | H : exists _, _ |- _ => destruct H
+           | _ => progress destruct_products
            | H : WeakestPrecondition.get _ _ _ |- _ =>
              destruct H
            end.
@@ -399,9 +472,7 @@ Section Proofs.
       (* now, call toupper on loaded character *)
       eapply Proper_call; [ repeat intro | solve [apply toupper_correct] ].
       cbv beta in *.
-      repeat match goal with
-             | H : _ /\ _ |- _ => destruct H
-             end.
+      destruct_products.
       subst. (* toupper guarantees trace/memory are unchanged *)
       (* assign returned character to "x" *)
       eexists; split; [reflexivity | ].
@@ -508,12 +579,16 @@ Section Proofs.
         { subst; autorewrite with push_unsigned.
           cbv [word.wrap]. Z.mod_equality. }
 
-        (* correct partial string is Stringresented *)
+        (* correct partial string is represented *)
         cbv [String]; cbn [Gallina.len Gallina.chars].
         apply sep_assoc, sep_emp_l. split; [ assumption | ].
         rewrite Nat.add_1_r.
         apply sep_comm, sep_assoc, sep_comm.
-        simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H6).
+        match goal with
+          H : sep _ _ ?m |- sep _ _ ?m =>
+          simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H);
+            clear H
+        end.
 
         (* reverse order of element and firstn to match
              array_index_nat_inbounds *)
@@ -553,6 +628,7 @@ Section Proofs.
           replace xr with xl
         end.
 
+        (* TODO: sepearate lemma? *)
         (* simplify the conversions on the selected element *)
         match goal with
           |- context [word.of_Z (word.unsigned (byte_to_word ?b))] =>
@@ -560,38 +636,13 @@ Section Proofs.
             by (clear; pose proof (word.unsigned_range b); cbv [byte_to_word]; rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small, word.of_Z_unsigned by (cbn in *; lia); reflexivity)
         end.
 
+        push_list_fast.
         (* separate out each of the 3 clauses *)
-        apply Proper_sep_iff1; [ | apply Proper_sep_iff1 ].
-        all:autorewrite with push_skipn push_firstn push_length.
-        1:rewrite !firstn_skipn_comm.
-        2:rewrite !skipn_firstn_comm.
-
-        (* TODO: somewhat fragile list-manipulation hell *)
-        all:
-          repeat match goal with
-                 | _ => progress autorewrite with push_skipn
-                                                  push_firstn
-                                                  push_length
-                 | _ => rewrite app_nil_l
-                 | _ => rewrite hd_app_l
-                     by (autorewrite with push_length; lia)
-                 | _ => rewrite (hd_skipn_map _ (word.of_Z 0))
-                     by (autorewrite with push_length; lia)
-                 | |- context [List.skipn ?n (List.firstn ?n ?l)] =>
-                   rewrite (@skipn_all2 _ n (List.firstn n l))
-                     by (clear; autorewrite with push_length; lia)
-                 | _ => rewrite skipn_all2
-                     by (clear; autorewrite with push_length; lia)
-                 | _ => rewrite hd_firstn by lia
-                 | _ => rewrite Nat.sub_diag
-                 | _ => rewrite Nat.add_0_l
-                 | _ => rewrite Nat.min_l by lia
-                 | |- Lift1Prop.iff1
-                        (array _ _ _ (List.skipn ?nl ?ls))
-                        (array _ _ _ (List.skipn ?nr ?ls)) =>
-                   replace nl with nr by lia; reflexivity
-                 | _ => reflexivity
-                 end. } }
+        apply Proper_sep_iff1; [ | apply Proper_sep_iff1 ];
+          [ rewrite !firstn_skipn_comm by push_length
+          | rewrite !skipn_firstn_comm by push_length
+          | ].
+        all:listsimplify; reflexivity. } }
     { (* break case : prove that postcondition holds given loop is done and
            invariant holds *)
       intros.
@@ -633,4 +684,193 @@ Section Proofs.
       (* the last "partial" string is the correct final result *)
       assumption. }
   Qed.
+
+  Definition String_ptr
+             (addr : Semantics.word) (s : Gallina.String)
+    : map.rep (map:=Semantics.mem) -> Prop :=
+    Lift1Prop.ex1
+      (fun ptr =>
+         sep (scalar addr ptr) (String ptr s)).
+
+  Lemma capitalize_3rd_length {char toupper} (inp : list Gallina.String) :
+    (3 <= length inp)%nat ->
+    length (Gallina.capitalize_3rd (char:=char) (toupper:=toupper) inp)
+    = length inp.
+  Proof.
+    cbv [Gallina.capitalize_3rd]; intros.
+    autorewrite with push_length; cbn [length].
+    autorewrite with push_length.
+    lia.
+  Qed.
+
+  (* input to capitalize_3rd is an array of string *pointers* *)
+  Lemma capitalize_3rd_correct
+        (inp : Semantics.word)
+        (strings : list Gallina.String) :
+    forall tr mem R,
+      (* pointers in [inp] point to Strings in [strings] *)
+      sep (array String_ptr (word.of_Z wordsize) inp strings) R mem ->
+      (* strings are correctly formatted *)
+      Forall (fun s => len s = length (chars s)) strings ->
+      (* there are at least 3 strings *)
+      (3 <= length strings)%nat ->
+      let functions :=
+          (capitalize_3rd :: capitalize_String :: functions') in
+      let caps :=
+          Gallina.capitalize_3rd (toupper:=toupper_body) strings in
+      WeakestPrecondition.call
+        functions capitalize_3rd tr mem [inp]
+        (fun tr' mem' rets =>
+           let success := word.unsigned (hd (word.of_Z 0) rets) in
+           tr = tr' /\
+           length rets = 1%nat /\
+           ( (* either we failed and strings are untouched, or... *)
+             (success = 0 /\
+              sep (array String_ptr (word.of_Z wordsize) inp strings)
+                  R mem') \/
+             (* we succeeded and 3rd string is correctly uppercase *)
+             (success = 1 /\
+              sep (array String_ptr (word.of_Z wordsize) inp caps)
+                  R mem'))).
+  Proof.
+    cbv zeta. intros.
+
+    (* finding the function to call *)
+    cbn [WeakestPrecondition.call].
+    cbn [WeakestPrecondition.call_body
+           capitalize_3rd name_of_func fst].
+    match goal with |- if Semantics.funname_eqb ?x ?x then _ else _ =>
+                    destr (Semantics.funname_eqb x x) end;
+      [ | congruence ].
+
+    (* load arguments as initial local variables *)
+    cbn [WeakestPrecondition.func].
+    eexists; split; [ reflexivity | ].
+
+    (* beginning of function body *)
+    cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body].
+
+    (* manipulate separation-logic precondition to pull out the
+         pointer at index 2 *)
+    match goal with
+    | H : sep (array String_ptr _ _ _) _ _ |- _ =>
+      eapply Proper_sep_iff1 in H; [ | | reflexivity ]
+    end.
+    2: {
+      rewrite array_index_nat_inbounds
+        with (n:=2%nat) (default:=Gallina.dummy) by lia.
+      (* pull out clause related to selected element *)
+      rewrite sep_comm with (q:=sep (String_ptr _ _) _).
+      rewrite !sep_assoc with (p:=String_ptr _ _).
+      unfold String_ptr; rewrite sep_ex1_l; fold String_ptr.
+      reflexivity. }
+    match goal with
+    | H : sep (Lift1Prop.ex1 _) _ _ |- _ =>
+      apply sep_ex1_l in H;
+        cbv [Lift1Prop.ex1] in H; destruct H
+    end.
+
+    (* load( inp + (2 * wordsize) ) *)
+    eexists; split.
+    { eexists; split; [ rewrite map.get_put_same; reflexivity | ].
+
+      eexists; split; [ | reflexivity ].
+      { eapply load_word_of_sep.
+        match goal with
+          H : sep _ _ _ |- _ =>
+          simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H)
+        end.
+        rewrite !sep_assoc with (p:=scalar _ _).
+        rewrite !sep_comm with (p:=scalar _ _).
+        apply iff1_sep_cancel.
+        cbn [Semantics.interp_binop].
+        rewrite word.unsigned_of_Z, wordsize_eq.
+        reflexivity. } }
+
+    (* call capitalize_String *)
+    eapply Proper_call.
+    2:{
+      apply capitalize_String_correct.
+      { (* identify string that matches argument *)
+        match goal with
+          H : sep _ _ _ |- _ =>
+          simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H);
+            clear H
+        end.
+        rewrite !sep_comm with (q:=String _ _).
+        rewrite !sep_assoc with (p:=String _ _).
+        rewrite !sep_comm with (p:=String _ _).
+        reflexivity. }
+      { (* prove string is well-formatted *)
+        match goal with
+          H : Forall _ _ |- _ =>
+          rewrite Forall_forall in H; apply H
+        end.
+        apply In_hd_skipn.
+        autorewrite with push_length; lia. } }
+
+    repeat intro.
+    cbv zeta in *.
+    destruct_products.
+    subst.
+    match goal with
+      | H : length ?x = 1%nat |- _ =>
+        destruct x as [|? x]; [cbn [length] in H; congruence|];
+          destruct x as [|? x]; [|cbn [length] in H; congruence]
+    end.
+    eexists; split; [ reflexivity | ].
+    eexists; split;
+      [ rewrite ?map.get_put_diff, map.get_put_same by congruence;
+        reflexivity | ].
+
+    (* prove postcondition *)
+    repeat (split; [ reflexivity | ]).
+    cbn [hd] in *.
+    match goal with H : (?x = ?l /\ _) \/ (?x = ?r /\ _)|-
+                    (?x = ?l /\ _) \/ (?x = ?r /\ _) =>
+                    destruct H as [[? ?]|[? ?]]; [left|right];
+                      (split; [ congruence | ])
+    end.
+    { (* success = 0; input unchanged *)
+      eapply Proper_sep_iff1; [ | reflexivity | ].
+      { rewrite array_index_nat_inbounds
+          with (n:=2%nat) (default:=Gallina.dummy) (xs:=strings) by lia.
+        rewrite sep_comm with (q:=sep (String_ptr _ _) _).
+        rewrite !sep_assoc with (p:=String_ptr _ _).
+        reflexivity. }
+
+      unfold String_ptr. apply sep_assoc, sep_ex1_l. fold String_ptr.
+      eexists.
+
+      match goal with
+        H : sep _ _ ?m |- sep _ _ ?m =>
+        simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H);
+          clear H
+      end.
+      ecancel. }
+    { (* success = 1; input changed *)
+      eapply Proper_sep_iff1; [ | reflexivity | ].
+      { rewrite array_index_nat_inbounds
+          with (n:=2%nat) (default:=Gallina.dummy)
+          by (rewrite capitalize_3rd_length; lia).
+        rewrite sep_comm with (q:=sep (String_ptr _ _) _).
+        rewrite !sep_assoc with (p:=String_ptr _ _).
+        reflexivity. }
+
+      unfold String_ptr. apply sep_assoc, sep_ex1_l. fold String_ptr.
+      eexists.
+
+      cbv [Gallina.capitalize_3rd].
+
+      listsimplify.
+
+      rewrite nth_default_hd_skipn.
+      match goal with
+        H : sep _ _ ?m |- sep _ _ ?m =>
+        simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H);
+          clear H
+      end.
+      cancel.
+      apply sep_comm. }
+    Qed.
 End Proofs.

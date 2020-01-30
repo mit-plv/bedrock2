@@ -45,10 +45,10 @@ Module Bedrock2.
   Definition capitalize_3rd : bedrock_func :=
     let inp : varname := "inp" in
     let ret : varname := "ret" in
-    let loc : Z := 2 * wordsize in
+    let offset : Z := 2 * wordsize in
     ("capitalize_3rd",
      ([inp], [ret], bedrock_func_body:(
-       unpack! ret = capitalize_String(load((inp + loc)))))).
+       unpack! ret = capitalize_String(load( (inp + offset) ))))).
 End Bedrock2.
 
 (* Gallina code *)
