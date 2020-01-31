@@ -36,7 +36,6 @@ Require Import compilerExamples.MMIO.
 Require Import riscv.Platform.FE310ExtSpec.
 Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
-Require Import bedrock2.Byte.
 Require Import end2end.KamiRiscvWordProperties.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import compiler.CompilerInvariant.

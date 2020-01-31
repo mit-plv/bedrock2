@@ -21,7 +21,6 @@ Require Import coqutil.Map.SortedList.
 Require Import compiler.StringNameGen.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
-Require Import bedrock2.Byte.
 Require bedrock2.Hexdump.
 Require Import bedrock2Examples.swap.
 
@@ -148,12 +147,7 @@ Module PrintAssembly.
   *)
 End PrintAssembly.
 
-Definition instructions_to_word8(insts: list Instruction): list Utility.byte :=
-  List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) insts.
-
-Definition swap_as_bytes: list byte :=
-  let word8s := instructions_to_word8 swap_asm in
-  List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
+Definition swap_as_bytes: list Byte.byte := instrencode swap_asm.
 
 Module PrintBytes.
   Import bedrock2.Hexdump.

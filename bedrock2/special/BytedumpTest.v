@@ -1,10 +1,8 @@
 Require Import Coq.ZArith.BinInt Coq.Lists.List. Import Z.
-Require Import bedrock2.Byte bedrock2.Bytedump.
+Require Import bedrock2.Bytedump.
 Local Open Scope bytedump_scope.
 Goal False.
-  let cc := constr:(map (fun xx => Byte.of_Z (of_nat xx)) (seq 0 256)) in
-  let cc := eval cbv in cc in
-  idtac cc.
+  let cc := eval cbv in allBytes in idtac cc.
 Abort.
 
 (* expected output: *)
