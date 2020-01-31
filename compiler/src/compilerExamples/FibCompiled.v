@@ -1,11 +1,10 @@
+Require Import Coq.Arith.Arith.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.ptsto_bytes.
 Require Import coqutil.Decidable.
 Require Import coqutil.Word.Properties.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
-Require Import compiler.Pipeline.
-Require Import compiler.Basic32Semantics.
 Require Import compiler.Simp.
 Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MinimalLogging.
@@ -28,44 +27,7 @@ Section FibCompiled.
   Definition fib_ExprImp nl ns: cmd := Eval cbv in
     snd (snd (Demos.fibonacciServer nl ns)).
 
-  Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters.
-  Proof.
-    refine ({|
-               FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ _ := nil;
-             |}).
-    all: intros; simpl.
-    - cbv. discriminate.
-    - unfold FlatToRiscvDef.valid_instructions. intros. destruct H1.
-  Defined.
-
   Notation RiscvMachine := MetricRiscvMachine.
-
-  Existing Instance coqutil.Map.SortedListString.map.
-  Existing Instance coqutil.Map.SortedListString.ok.
-
-  Context {word_properties: RiscvWordProperties.word.riscv_ok word}.
-
-  Instance pipeline_params: Pipeline.parameters := {
-    Pipeline.FlatToRiscvDef_params := flatToRiscvDef_params;
-    Pipeline.ext_spec _ _  _ _ _ := False;
-    Pipeline.M := OState RiscvMachine;
-    Pipeline.PRParams := MetricMinimalMetricPrimitivesParams;
-  }.
-
-  Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. refine ({|
-    Pipeline.mem_ok := _ ;
-    Pipeline.locals_ok := _ ;
-    Pipeline.funname_env_ok := _ ;
-    Pipeline.PR := MetricMinimalSatisfiesMetricPrimitives;
-  |}).
-  Proof.
-    - constructor; try typeclasses eauto.
-      + simpl. apply MetricMinimalSatisfiesMetricPrimitives.
-      + intros. simp. contradiction.
-    - constructor; try solve [destruct 1].
-      intros ? ? ? ? ? ? ? ?.
-      contradiction.
-  Qed.
 
   Fixpoint fib (n: nat): Z :=
     match n with
@@ -157,10 +119,9 @@ Section FibCompiled.
       bomega.
   Qed.
 
-  Existing Instance Fibonacci.ZNames.Inst.
-
   Local Notation instructionsH := (bedrock2.MetricLogging.instructions).
 
+  (*
   Lemma load_word_sep: forall k (m: mem) v R,
       ((ptsto_word k v) * R)%sep m ->
       load access_size.four m k = Some v.
@@ -212,6 +173,7 @@ Section FibCompiled.
     repeat (rewrite Z.mod_small; [|blia]).
     assumption.
   Qed.
+*)
 
   Fixpoint get_if s :=
     match s with
@@ -242,6 +204,7 @@ Section FibCompiled.
            | H : _ /\ _ |- _ => destruct H
            end.
 
+(*
   Ltac eval_fib_var_names :=
     cbv [FibonacciServer.a
            FibonacciServer.b
@@ -695,5 +658,6 @@ Section FibCompiled.
   (*
   Print Assumptions fib_compiled.
   *)
+*)
 
 End FibCompiled.

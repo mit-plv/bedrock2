@@ -1,5 +1,5 @@
 Require Import coqutil.Z.Lia.
-Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
+Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
 Require Import coqutil.Macros.symmetry.
@@ -51,14 +51,14 @@ Section WithParameters.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
   Local Coercion name_of_func (f : BasicCSyntax.function) := fst f.
-  
+
   Definition lightbulb_loop :=
-      let p_addr : varname := "p_addr" in
-      let bytesWritten : varname := "bytesWritten" in
-      let recvEthernet : varname := "recvEthernet" in
-      let lightbulb_handle : varname := "lightbulb_handle" in
-      let err : varname := "err" in
-  
+      let p_addr : String.string := "p_addr" in
+      let bytesWritten : String.string := "bytesWritten" in
+      let recvEthernet : String.string := "recvEthernet" in
+      let lightbulb_handle : String.string := "lightbulb_handle" in
+      let err : String.string := "err" in
+
     ("lightbulb_loop", ((p_addr::nil), (err::nil), bedrock_func_body:(
       unpack! bytesWritten, err = recvEthernet(p_addr);
       if !err { (* success, packet *)
@@ -68,14 +68,14 @@ Section WithParameters.
         err = (constr:(0))
       }
     ))).
-  
+
   Definition recvEthernet :=
-      let buf : varname := "buf" in
-      let num_bytes : varname := "num_bytes" in
-      let i : varname := "i" in
-      let err : varname := "err" in
-      let read : varname := "read" in
-  
+      let buf : String.string := "buf" in
+      let num_bytes : String.string := "num_bytes" in
+      let i : String.string := "i" in
+      let err : String.string := "err" in
+      let read : String.string := "read" in
+
       ("recvEthernet", ((buf::nil), (num_bytes::err::nil), bedrock_func_body:(
           num_bytes = (constr:(0));
           unpack! read, err = lan9250_readword(constr:(Ox"7C")); (* RX_FIFO_INF *)
@@ -83,87 +83,87 @@ Section WithParameters.
           require (read & constr:((2^8-1)*2^16)) else { err = (constr:(1)) }; (* nonempty *)
           unpack! read, err = lan9250_readword(constr:(Ox"40")); (* RX_STATUS_FIFO_PORT *)
           require !err else { err = (constr:(-1)) };
-  
+
           num_bytes = (read >> constr:(16) & constr:(2^14-1));
           (* round up to next word *)
           num_bytes = ((num_bytes + constr:(4-1)) >> constr:(2));
           num_bytes = (num_bytes + num_bytes);
           num_bytes = (num_bytes + num_bytes);
-  
+
           require (num_bytes < constr:(1520 + 1)) else { err = (constr:(2)) };
-  
+
           i = (constr:(0)); while (i < num_bytes) {
               unpack! read, err = lan9250_readword(constr:(0));
               if err { err = (constr:(-1)); i = (num_bytes) }
               else { store4(buf + i, read); i = (i + constr:(4)) }
           }
       ))).
-  
+
   Definition lightbulb_handle :=
-      let packet : varname := "packet" in
-      let len : varname := "len" in
-      let ethertype : varname := "ethertype" in
-      let protocol : varname := "protocol" in
-      let port : varname := "port" in
-      let mmio_val : varname := "mmio_val" in
-      let command : varname := "command" in
-      let Oxff : varname := "Oxff" in
-      let MMIOREAD : varname := "MMIOREAD" in
-      let MMIOWRITE : varname := "MMIOWRITE" in
-      let r : varname := "r" in
-  
+      let packet : String.string := "packet" in
+      let len : String.string := "len" in
+      let ethertype : String.string := "ethertype" in
+      let protocol : String.string := "protocol" in
+      let port : String.string := "port" in
+      let mmio_val : String.string := "mmio_val" in
+      let command : String.string := "command" in
+      let Oxff : String.string := "Oxff" in
+      let MMIOREAD : String.string := "MMIOREAD" in
+      let MMIOWRITE : String.string := "MMIOWRITE" in
+      let r : String.string := "r" in
+
     ("lightbulb_handle", ((packet::len::nil), (r::nil), bedrock_func_body:(
       r = (constr:(42));
       require (r < len) else { r = (constr:(-1)) };
-  
+
       Oxff = (constr:(Ox"ff"));
       ethertype = ((((load1(packet + constr:(12)))&Oxff) << constr:(8)) | ((load1(packet + constr:(13)))&Oxff));
       r = (constr:(1536 - 1));
       require (r < ethertype) else { r = (constr:(-1)) };
-  
+
       r = (constr:(23));
       r = (packet + r);
       protocol = ((load1(r))&Oxff);
       r = (constr:(Ox"11"));
       require (protocol == r) else { r = (constr:(-1)) };
-  
+
       r = (constr:(42));
       r = (packet + r);
       command = ((load1(r))&Oxff);
       command = (command&constr:(1));
-  
+
       (* pin output enable -- TODO do this in init
       io! mmio_val = MMIOREAD(constr:(Ox"10012008"));
       output! MMIOWRITE(constr:(Ox"10012008"), mmio_val | constr:(2^23));
       *)
-  
+
       r = (constr:(Ox"1001200c"));
       io! mmio_val = MMIOREAD(r);
       mmio_val = (mmio_val & constr:(Z.clearbit (2^32-1) 23));
       output! MMIOWRITE(r, mmio_val | command << constr:(23));
-  
+
       r = (constr:(0))
     ))).
-  
+
   Definition lightbulb_init :=
-      let err : varname := "err" in
-      let MMIOWRITE : varname := "MMIOWRITE" in
-  
-    ("lightbulb_init", (@nil varname, (err::nil), bedrock_func_body:(
+      let err : String.string := "err" in
+      let MMIOWRITE : String.string := "MMIOWRITE" in
+
+    ("lightbulb_init", (@nil String.string, (err::nil), bedrock_func_body:(
       output! MMIOWRITE(constr:(Ox"10012038"), constr:((Z.shiftl (Ox"f") 2)));
       output! MMIOWRITE(constr:(Ox"10012008"), constr:((Z.shiftl 1 23)));
       unpack! err = lan9250_init()
     ))).
-  
+
   Import Datatypes List.
   Local Notation bytes := (array scalar8 (word.of_Z 1)).
   Local Infix "*" := (sep).
   Local Infix "*" := (sep) : type_scope.
-  
+
   Import TracePredicate. Import TracePredicateNotations.
   Import Word.Properties.
   Import lightbulb_spec.
-  
+
   Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
     forall p_addr (buf:list byte) R m t,
       (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
@@ -182,26 +182,26 @@ Section WithParameters.
              word.unsigned err = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh
             ))
         ).
-  
+
   Definition lightbulb_packet_rep cmd (buf : list byte) :=
     let idx i buf := word.of_Z (word.unsigned (List.hd (word.of_Z 0) (List.skipn i buf))) in
     42 < Z.of_nat (length buf) /\
     1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
     idx 23%nat buf = word.of_Z (Ox"11") /\
     cmd = Z.testbit (word.unsigned (List.hd (word.of_Z 0) (List.skipn 42 buf))) 0.
-  
+
   Instance spec_of_lightbulb : spec_of "lightbulb_handle" := fun functions =>
     forall p_addr (buf:list byte) (len:word) R m t,
       (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
       word.unsigned len = Z.of_nat (List.length buf) ->
       WeakestPrecondition.call functions "lightbulb_handle" t m [p_addr; len]
-        (fun t' m' rets => exists v, rets = [v] /\ m' = m /\ 
+        (fun t' m' rets => exists v, rets = [v] /\ m' = m /\
         exists iol, t' = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
           (exists cmd, lightbulb_packet_rep cmd buf /\ gpio_set _ 23 cmd ioh /\ word.unsigned v = 0)
           (not (exists cmd, lightbulb_packet_rep cmd buf) /\ ioh = nil /\ word.unsigned v <> 0)
         ).
-  
+
   Instance spec_of_lightbulb_loop : spec_of "lightbulb_loop" := fun functions =>
     forall p_addr buf R m t,
       (bytes p_addr buf * R) m ->
@@ -218,7 +218,7 @@ Section WithParameters.
           (lan9250_recv_packet_too_long _ _ ioh /\ word.unsigned v <> 0) \/
           ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned v <> 0)
         )).
-  
+
   Instance spec_of_lightbulb_init : spec_of "lightbulb_init" := fun functions =>
     forall m t,
       WeakestPrecondition.call functions "lightbulb_init" t m nil
@@ -229,11 +229,11 @@ Section WithParameters.
           (lan9250_boot_timeout  _ _ ioh /\ word.unsigned err <> 0) \/
           ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned err <> 0)
         )).
-  
-  
+
+
   Require Import bedrock2.AbsintWordToZ.
   Import WeakestPreconditionProperties.
-  
+
   Lemma lightbulb_loop_ok : program_logic_goal_for_function! lightbulb_loop.
   Proof.
     repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end
@@ -248,19 +248,19 @@ Section WithParameters.
     { subst v. rewrite word.unsigned_xor_nowrap, H10, word.unsigned_of_Z in H4. case (H4 eq_refl). }
     { subst v. rewrite word.unsigned_xor_nowrap, H9, word.unsigned_of_Z in H4. inversion H4. }
     { subst v. rewrite word.unsigned_xor_nowrap, H9, word.unsigned_of_Z in H4. inversion H4. }
-  
+
     Unshelve.
     all : eexists; split; [ eauto | ].
     all : try seprewrite_in @bytearray_index_merge H6; eauto.
     all : try rewrite List.app_length.
     all : try Lia.lia.
   Qed.
-  
+
   Local Ltac prove_ext_spec :=
     lazymatch goal with
     | |- ext_spec _ _ _ _ _ => split; [shelve|]; split; [trivial|]
     end.
-  
+
   Local Ltac zify_unsigned :=
     repeat match goal with
     | |- context[word.unsigned ?e] => let H := unsigned.zify_expr e in rewrite H; pose proof H
@@ -268,7 +268,7 @@ Section WithParameters.
     end;
     repeat match goal with H:absint_eq ?x ?x |- _ => clear H end;
     repeat match goal with H:?A |- _ => clear H; match goal with G:A |- _ => idtac end end.
-  
+
   Lemma byte_mask_byte (b : Semantics.byte) : word.and (word.of_Z (word.unsigned b)) (word.of_Z 255) = word.of_Z (word.unsigned b) :> Semantics.word.
   Proof.
     eapply word.unsigned_inj; rewrite word.unsigned_and_nowrap.
@@ -282,28 +282,27 @@ Section WithParameters.
     rewrite <-Z.land_ones by blia.
     Z.bitwise. Btauto.btauto.
   Qed.
-  
+
   Lemma lightbulb_handle_ok : program_logic_goal_for_function! lightbulb_handle.
   Proof.
     repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
     all : subst r; try subst r0; replace (word.unsigned (word.of_Z 42)) with 42 in *.
     2,4: rewrite word.unsigned_of_Z; exact eq_refl.
-  
+
     2: { eexists; split; [solve[eauto]|].
       split; [solve[eauto]|].
       eexists nil; split; eauto.
       eexists nil; split; cbv [mmio_trace_abstraction_relation]; eauto using List.Forall2_refl.
-      right; repeat split; eauto. 
+      right; repeat split; eauto.
       { intros (?&?&?). blia. }
       intros HX; rewrite ?word.unsigned_of_Z in HX; inversion HX. }
-  
+
     seplog_use_array_load1 H 12.
     seplog_use_array_load1 H 13.
     seplog_use_array_load1 H 23.
     seplog_use_array_load1 H 42.
     unshelve (repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec)).
 
-    1: shelve.
     1: letexists; split; [exact eq_refl|]; split; [split; trivial|].
     1: case TODO_andres_mmioaddr.
     1: repeat straightline; split; trivial.
@@ -313,20 +312,20 @@ Section WithParameters.
     1: repeat straightline; split; trivial.
 
     1: repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
-  
+
     all : eexists; split; [solve[eauto]|].
     all : split; [solve[eauto]|].
     all : eexists; split.
     all: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _))).
     all : eexists; split.
-  
+
     all : repeat (eapply List.Forall2_cons || eapply List.Forall2_refl).
-    all : 
+    all :
     try match goal with
     |- mmio_event_abstraction_relation _ _ =>
         (left+right); eexists _, _; split; exact eq_refl
-    end. 
-  
+    end.
+
     all : repeat trans_ltu;
     repeat match goal with
     | H : word.unsigned ?v <> 0 |- _ =>
@@ -341,7 +340,7 @@ Section WithParameters.
     repeat match goal with x := _ |- _ => subst x end;
     repeat match goal with H : _ |- _ => rewrite !byte_mask_byte in H end.
     all : repeat straightline.
-  
+
     1: {
       left.
       eexists; repeat split.
@@ -361,14 +360,14 @@ Section WithParameters.
       rewrite 2(Z.mod_small _ (2^32)); try exact eq_refl.
       1: match goal with |- 0 <= word.unsigned ?x < _ => pose proof word.unsigned_range x end; blia.
       clear; Z.div_mod_to_equations; blia. }
-  
+
     (* parse failures *)
     all : right; repeat split; eauto.
     2,4: rewrite word.unsigned_of_Z; intro X; inversion X.
     all : intros (?&?&?&?&?).
     { rewrite H10 in H3. apply H3. exact eq_refl. }
     { rewrite word.unsigned_of_Z in H2; contradiction. }
-  
+
     Unshelve.
     all : intros; exact True.
   Qed.
@@ -381,16 +380,16 @@ Section WithParameters.
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.byte)),
          constants [Properties.word_cst]).
-  
+
   Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
   Proof.
     straightline.
     rename H into Hcall; clear H0 H1. rename H2 into H. rename H3 into H0.
     repeat (straightline || split_if || straightline_call || eauto 99 || prove_ext_spec).
     1, 3: rewrite word.unsigned_of_Z; cbv - [Z.le Z.lt]; clear; blia.
-  
+
     3: {
-  
+
     refine (TailRecursion.tailrec_earlyout
       (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
       ["buf";"num_bytes";"i";"read";"err"]
@@ -441,11 +440,11 @@ Section WithParameters.
       | _ => progress rewrite ?Z.sub_0_r
       end; repeat straightline.
       { repeat match goal with x:= _ |- context[?x]  => subst x end. clear. Z.div_mod_to_equations. blia. }
-  
+
       { straightline_call; repeat straightline.
         { rewrite word.unsigned_of_Z. cbv; clear. intuition congruence. }
         split_if; do 6 straightline.
-  
+
         (* SPI timeout, break loop *)
         { straightline.
           straightline.
@@ -465,7 +464,7 @@ Section WithParameters.
           right; split.
           { subst err. rewrite word.unsigned_of_Z. exact eq_refl. }
           intuition eauto. }
-          
+
         (* store *)
         do 4 straightline.
         trans_ltu.
@@ -486,7 +485,7 @@ Section WithParameters.
         eapply store_four_of_sep.
         { match goal with H8:_|-_ => seprewrite_in @scalar32_of_bytes H8; [..|ecancel_assumption]; try exact _; [] end.
           eapply List.length_firstn_inbounds; Z.div_mod_to_equations; blia. }
-  
+
         (* after store *)
         do 5 straightline.
         (* TODO straightline hangs in TailRecursion.enforce *)
@@ -531,7 +530,7 @@ Section WithParameters.
           replace (word.unsigned (word.of_Z 4)) with 4 by (rewrite word.unsigned_of_Z; exact eq_refl).
           unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width));
             change (2^width) with (2^32) in *; Z.div_mod_to_equations; blia. }
-  
+
         { letexists; repeat split.
           { repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
             cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
@@ -555,7 +554,7 @@ Section WithParameters.
           1: replace (word.unsigned x10) with (word.unsigned x10 mod 2^(Z.of_nat (bytes_per (width:=32) access_size.four)*8)).
           1:rewrite <-LittleEndian.combine_split; f_equal.
           eapply Properties.word.wrap_unsigned. } }
-  
+
       { split; eauto. eexists; split; eauto. split; eauto. exists nil; split; eauto.
         eexists; split; [constructor|].
         left. split; eauto.
@@ -574,7 +573,7 @@ Section WithParameters.
       repeat straightline.
       repeat letexists. split. { repeat straightline. }
       eexists _, _. split. { exact eq_refl. }
-  
+
       repeat straightline.
       subst i.
       match goal with H: _ |- _ =>
@@ -632,7 +631,7 @@ Section WithParameters.
           enough (Z.to_nat (word.unsigned num_bytes) <= length buf)%nat by blia.
           PreOmega.zify. rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range; blia. }
         right. right. split; eauto using TracePredicate__any_app_more. } }
-  
+
     all: repeat letexists; split; repeat straightline;
       eexists _, _; split; [ exact eq_refl | ].
     all: eexists; split;
@@ -645,7 +644,7 @@ Section WithParameters.
       split; [intro HX; rewrite word.unsigned_of_Z in HX; inversion HX|].
     all : repeat ((eexists; split; [solve[eauto]|]) || (split; [solve[eauto]|])).
     all : rewrite !word.unsigned_of_Z.
-  
+
     (* two cases of SPI timeout *)
     { left; split; [exact eq_refl|] || right.
       left; split; [exact eq_refl|] || right.
@@ -671,14 +670,14 @@ Section WithParameters.
       split; [exact eq_refl|].
       eexists; split; intuition eauto. }
   Defined.
-  
+
   Import SPI.
-  
+
   Definition function_impls :=
     [lightbulb_init; lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
     lightbulb_loop; lightbulb_handle; recvEthernet;  lan9250_writeword; lan9250_readword;
     spi_xchg; spi_write; spi_read].
-  
+
   Lemma link_lightbulb_loop : spec_of_lightbulb_loop function_impls.
   Proof.
     eapply lightbulb_loop_ok;
@@ -689,17 +688,17 @@ Section WithParameters.
   Lemma link_lightbulb_init : spec_of_lightbulb_init function_impls.
   Proof.
   Admitted.
-  
-  
+
+
   (* Print Assumptions link_lightbulb. *)
   (* parameters_ok FE310CSemantics.parameters, SortedList.TODO, TailRecursion.putmany_gather, SortedListString.string_strict_order *)
-  
+
   From bedrock2 Require Import ToCString.
   Goal True.
     let c_code := eval cbv in ((* of_string *) (@c_module BasicCSyntax.to_c_parameters function_impls)) in
     pose c_code.
   Abort.
-  
+
   (*
   From bedrock2 Require Import ToCString Byte Bytedump.
   Local Open Scope bytedump_scope.

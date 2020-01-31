@@ -69,7 +69,7 @@ Section Proofs.
       (modvarvals ++ [ra_val] ++ retvals ++ argvals).
 
   (* measured in words, needs to be multiplied by 4 or 8 *)
-  Definition framelength: list Register * list Register * stmt -> Z :=
+  Definition framelength: list Z * list Z * stmt Z -> Z :=
     fun '(argvars, resvars, body) =>
       let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
       Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
@@ -84,7 +84,7 @@ Section Proofs.
   (* Note:
      - This predicate cannot be proved for recursive functions
      - Measured in words, needs to be multiplied by 4 or 8 *)
-  Inductive fits_stack: Z -> env -> stmt -> Prop :=
+  Inductive fits_stack: Z -> env -> stmt Z -> Prop :=
   | fits_stack_load: forall n e sz x y,
       0 <= n ->
       fits_stack n e (SLoad sz x y)
@@ -152,7 +152,7 @@ Section Proofs.
      To avoid this double mentioning, we will remove the function being called from the
      list of functions before entering the body of the function. *)
   Definition functions(base: word)(rel_positions: fun_pos_env)(impls: env):
-    list Syntax.funname -> mem -> Prop :=
+    list String.string -> mem -> Prop :=
     fix rec funnames :=
       match funnames with
       | nil => emp True
@@ -196,7 +196,7 @@ Section Proofs.
         all: clear; unfold iff1, sep, emp; intros; split; intros; simp; contradiction.
   Qed.
 
-  Lemma modVars_as_list_valid_FlatImp_var: forall (s: @stmt (mk_Syntax_params _)),
+  Lemma modVars_as_list_valid_FlatImp_var: forall (s: stmt Z),
       valid_FlatImp_vars s ->
       Forall valid_FlatImp_var (modVars_as_list Z.eqb s).
   Proof.
@@ -284,7 +284,7 @@ Section Proofs.
     program_base: word;
     e_pos: fun_pos_env;
     e_impl: env;
-    funnames: list Syntax.funname;
+    funnames: list String.string;
     dframe: mem -> Prop; (* data frame *)
     xframe: mem -> Prop; (* executable frame *)
   }.
@@ -324,8 +324,8 @@ Section Proofs.
     (* misc: *)
     valid_machine lo.
 
-  Definition good_e_impl(e_impl: env)(funnames: list Syntax.funname)(e_pos: fun_pos_env) :=
-    forall f (fun_impl: list Syntax.varname * list Syntax.varname * stmt),
+  Definition good_e_impl(e_impl: env)(funnames: list String.string)(e_pos: fun_pos_env) :=
+    forall f (fun_impl: list Z * list Z * stmt Z),
       map.get e_impl f = Some fun_impl ->
       valid_FlatImp_fun fun_impl /\
       List.In f funnames /\
@@ -336,10 +336,11 @@ Section Proofs.
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
      [FlatImp.exec] and [compile_stmt], respectively *)
   Definition good_reduced_e_impl(e_impl_reduced e_impl: env)
-    (num_stackwords: Z)(funnames: list Syntax.funname)(e_pos: fun_pos_env): Prop :=
+    (num_stackwords: Z)(funnames: list String.string)(e_pos: fun_pos_env): Prop :=
       map.extends e_impl e_impl_reduced /\
       good_e_impl e_impl_reduced funnames e_pos.
 
+  Declare Scope word_scope.
   Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
   Infix "+" := word.add : word_scope.
@@ -423,22 +424,22 @@ Section Proofs.
     subst nameOrig;
     rename nL into nameL, nR into nameR.
 
-  Lemma map_extends_remove: forall (m1 m2: funname_env (list Z * list Z * stmt)) k,
+  Lemma map_extends_remove: forall (m1 m2: funname_env (list Z * list Z * stmt Z)) k,
       map.extends m1 m2 ->
       map.extends m1 (map.remove m2 k).
   Proof.
-    generalize (funname_env_ok (list Z * list Z * stmt)).
+    generalize (funname_env_ok (list Z * list Z * stmt Z)).
     simpl in *.
     unfold Register, MachineInt in *.
     intro OK.
     map_solver OK.
   Qed.
 
-  Lemma map_get_Some_remove: forall (m: funname_env (list Z * list Z * stmt)) k1 k2 v,
+  Lemma map_get_Some_remove: forall (m: funname_env (list Z * list Z * stmt Z)) k1 k2 v,
       map.get (map.remove m k1) k2 = Some v ->
       map.get m k2 = Some v.
   Proof.
-    generalize (funname_env_ok (list Z * list Z * stmt)).
+    generalize (funname_env_ok (list Z * list Z * stmt Z)).
     intro OK. intros. map_solver OK.
   Qed.
 
@@ -523,7 +524,7 @@ Section Proofs.
          end) in |-*.
 
   Lemma compile_stmt_correct:
-    forall e_impl_full (s: stmt) initialTrace initialMH initialRegsH initialMetricsH postH,
+    forall e_impl_full (s: stmt Z) initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
     forall (g: GhostConsts) (initialL: RiscvMachineL) (pos: Z) (e_impl_reduced: env),
     g.(e_impl) = e_impl_full ->
@@ -555,6 +556,7 @@ Section Proofs.
                   end.
       all: subst.
       all: simp.
+      all: unfold Register, MachineInt in *.
 
     - idtac "Case compile_stmt_correct/SInteract".
       eapply runsTo_weaken.
@@ -692,10 +694,8 @@ Section Proofs.
             + rewrite H. cbv. auto.
             + rewrite H. cbv. auto.
           }
-          replace (Datatypes.length argnames) with (Datatypes.length args) in A by blia.
-          clear -A B.
-          destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
-          blia.
+          replace (Datatypes.length argnames) with (Datatypes.length args) in A;
+            unfold Register, MachineInt in *; blia.
         - eapply map.getmany_of_list_extends; eassumption.
         - sidecondition.
         - unfold Register, MachineInt in *. blia.
@@ -833,9 +833,7 @@ Section Proofs.
           + rewrite H. cbv. auto.
           + rewrite H. cbv. auto.
         }
-        clear -A B.
-        destruct B as [B | B]; rewrite B; (* <-- TODO once we're on 8.10 delete this line *)
-          blia.
+        clear -A B. unfold Register, MachineInt in *. blia.
     }
 
     simpl.
@@ -917,7 +915,7 @@ Section Proofs.
           destr (String.eqb f fname).
           + subst f.
             simpl in *. unfold Register, MachineInt in *.
-            generalize (funname_env_ok (list Z * list Z * stmt)). clear -G.
+            generalize (funname_env_ok (list Z * list Z * stmt Z)). clear -G.
             intro OK. exfalso. map_solver OK.
           + eapply remove_In_ne; assumption.
       }
@@ -1041,6 +1039,7 @@ Section Proofs.
                  unique eapply @map.getmany_of_list_length in copy of H
                end.
         instantiate (1 := Z.eqb).
+        unfold Register, MachineInt in *.
         blia.
       - eapply rearrange_footpr_subset; [eassumption|wwcancel].
       - subst FL. wcancel_assumption.
@@ -1224,6 +1223,7 @@ Section Proofs.
           + rewrite H. cbv. auto.
           + rewrite H. cbv. auto.
         }
+        unfold Register, MachineInt in *.
         replace (Datatypes.length argnames) with (Datatypes.length args) in A by blia.
         match goal with
         | H: map.getmany_of_list _ retnames = Some _ |- _ =>
@@ -1420,7 +1420,7 @@ Section Proofs.
       * (* if not in modvars (HNI'): *)
         destr (Z.eqb x RegisterNames.sp).
         { subst.
-          replace (map.get middle_regs RegisterNames.sp) with (Some p_sp) by assumption.
+          transitivity (Some p_sp). 1: assumption.
           symmetry.
           eapply map.putmany_of_list_zip_get_oldval; try eassumption.
           rewrite map.get_put_same.
@@ -1440,6 +1440,7 @@ Section Proofs.
             apply In_list_union_spec. right. exact A.
           }
           do 2 rewrite map.get_put_diff in A by assumption.
+          unfold Register, MachineInt in *.
           rewrite A. clear A.
           (* 0 to 1 *)
           lazymatch goal with
@@ -1529,6 +1530,7 @@ Section Proofs.
       end.
       apply map.putmany_of_list_zip_to_putmany in Q.
       destruct Q as [lBR' [Q ?]].
+      unfold Register, MachineInt in *.
       rewrite P in Q. replace lBR' with lBR in * by congruence.
       subst.
       unfold map.extends.
@@ -1687,7 +1689,7 @@ Section Proofs.
         symmetry. eapply map.putmany_of_list_zip_sameLength. eassumption.
       }
       (* PARAMRECORDS *)
-      change Syntax.varname with Register in *.
+      change Z with Register in *.
       subst FL new_ra. simpl_addrs.
       split. { ring. (* faster than lia *) }
       use_sep_assumption.
@@ -1709,7 +1711,6 @@ Section Proofs.
              constr:(iff1ToEq (array_cons PT SZ x xs start))
            end) in |-*.
       (* PARAMRECORDS *)
-      change (@Syntax.varname (mk_Syntax_params (@def_params p))) with Z in *.
       repeat match goal with
              | |- context [@array ?Wi ?Wo ?V ?M ?T ?E ?SZ ?A nil] =>
                change (@array Wi Wo V M T E SZ A nil) with (emp True)
@@ -1727,7 +1728,7 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
-      run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
+      run1det. clear H0. (* <-- TODO this should not be needed *) unfold Register, MachineInt in *. run1done.
 
     - idtac "Case compile_stmt_correct/SStore".
       simpl_MetricRiscvMachine_get_set.
@@ -1761,6 +1762,7 @@ Section Proofs.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
         }
+        unfold Register, MachineInt in *.
         run1done.
 
     - idtac "Case compile_stmt_correct/SOp".
@@ -1778,9 +1780,9 @@ Section Proofs.
               ?word.mulhuu_simpl,
               ?word.divu0_simpl,
               ?word.modu0_simpl in *.
-      all: try solve [run1done].
+      all: try solve [unfold Register, MachineInt in *; run1done].
       (* bopname.eq requires two instructions *)
-      run1det. run1done.
+      run1det. unfold Register, MachineInt in *. run1done.
       rewrite reduce_eq_to_sub_and_lt.
       rewrite map.put_put_same.
       map_solver locals_ok.
@@ -1790,7 +1792,7 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
-      run1det. run1done.
+      run1det. unfold Register, MachineInt in *. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Then".
       (* execute branch instruction, which will not jump *)
@@ -1842,7 +1844,7 @@ Section Proofs.
         | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
         end.
         simp. subst.
-        destruct (@eval_bcond (@Semantics_params p) lH' cond) as [condB|] eqn: E.
+        destruct (@eval_bcond Z (@Semantics_params p) lH' cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
            | H: context [_ <> None] |- _ => solve [eapply H; eauto]

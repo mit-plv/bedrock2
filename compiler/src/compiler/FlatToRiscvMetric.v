@@ -1,4 +1,3 @@
-Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
@@ -75,7 +74,7 @@ Section Proofs.
       ext_spec t mGive action argvals outcome -> False.
 
   Lemma compile_stmt_correct:
-    forall (s: stmt) t initialMH initialRegsH postH initialMetricsH,
+    forall (s: stmt Z) t initialMH initialRegsH postH initialMetricsH,
     FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
     forall R Rexec (initialL: RiscvMachineL) insts pos,
     @compile_stmt def_params _ map.empty pos s = insts ->
@@ -211,7 +210,7 @@ Section Proofs.
       + (* 1st application of IH: part 1 of loop body *)
         eapply IH1; IH_sidecondition.
       + simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
-        destruct (@eval_bcond (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
+        destruct (@eval_bcond Z (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
            | H: context [_ <> None] |- _ => solve [eapply H; eauto]

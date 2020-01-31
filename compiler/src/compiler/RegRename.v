@@ -126,35 +126,13 @@ End map.
 
 Section RegAlloc.
 
-  Context {srcvar: Type}.
-  Context (srcvar_eqb: srcvar -> srcvar -> bool).
-  Context {impvar: Type}.
-  Context (impvar_eqb: impvar -> impvar -> bool).
-  Context {func: Type}.
-  Context (func_eqb: func -> func -> bool).
-  Context {act: Type}.
-  Context (act_eqb: act -> act -> bool).
-
-  Context {srcvar_eq_dec : EqDecider srcvar_eqb}.
-  Context {impvar_eq_dec : EqDecider impvar_eqb}.
-
-  Context {src2imp: map.map srcvar impvar}.
+  Context {src2imp: map.map String.string Z}.
   Context {src2impOk: map.ok src2imp}.
 
-  Instance srcparams: Syntax.parameters := {|
-    Syntax.varname := srcvar;
-    Syntax.funname := func;
-    Syntax.actname := act;
-  |}.
-
-  Instance impparams: Syntax.parameters := {|
-    Syntax.varname := impvar;
-    Syntax.funname := func;
-    Syntax.actname := act;
-  |}.
-
-  Local Notation stmt  := (@FlatImp.stmt srcparams). (* input type *)
-  Local Notation stmt' := (@FlatImp.stmt impparams). (* output type *)
+  Local Notation srcvar := String.string (only parsing).
+  Local Notation impvar := Z (only parsing).
+  Local Notation stmt  := (@FlatImp.stmt srcvar). (* input type *)
+  Local Notation stmt' := (@FlatImp.stmt impvar). (* output type *)
 
   Variable available_impvars: list impvar.
 
@@ -188,7 +166,7 @@ Section RegAlloc.
       Some (m, y :: res, a)
     end.
 
-  Definition rename_cond(m: src2imp)(cond: @bcond srcparams): option (@bcond impparams) :=
+  Definition rename_cond(m: src2imp)(cond: @bcond srcvar): option (@bcond impvar) :=
     match cond with
     | CondBinary op x y => bind_opt x' <- map.get m x;
                            bind_opt y' <- map.get m y;
@@ -255,31 +233,26 @@ Section RegAlloc.
   Context {impLocals: map.map impvar word}.
   Context {srcLocalsOk: map.ok srcLocals}.
   Context {impLocalsOk: map.ok impLocals}.
-  Context {funname_env: forall T: Type, map.map func T}.
-  Context (ext_spec:  list (mem * actname * list word * (mem * list word)) ->
-                      mem -> actname -> list word -> (mem -> list word -> Prop) -> Prop).
+  Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)}.
+  Context {impEnv: map.map String.string (list impvar * list impvar * stmt')}.
+  Context (ext_spec:  list (mem * String.string * list word * (mem * list word)) ->
+                      mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop).
 
-  Instance srcSemanticsParams: Semantics.parameters. refine ({|
-    Semantics.syntax := srcparams;
-    Semantics.varname_eqb := srcvar_eqb;
-    Semantics.funname_eqb := func_eqb;
-    Semantics.actname_eqb := act_eqb;
-    Semantics.locals := srcLocals;
-    Semantics.ext_spec := ext_spec;
+  Instance srcSemanticsParams: FlatImp.parameters srcvar. refine ({|
+    FlatImp.varname_eqb := String.eqb;
+    FlatImp.locals := srcLocals;
+    FlatImp.ext_spec := ext_spec;
   |}).
   Defined.
 
-  Instance impSemanticsParams: Semantics.parameters. refine ({|
-    Semantics.syntax := impparams;
-    Semantics.varname_eqb := impvar_eqb;
-    Semantics.funname_eqb := func_eqb;
-    Semantics.actname_eqb := act_eqb;
-    Semantics.locals := impLocals;
-    Semantics.ext_spec := ext_spec;
+  Instance impSemanticsParams: FlatImp.parameters impvar. refine ({|
+    FlatImp.varname_eqb := Z.eqb;
+    FlatImp.locals := impLocals;
+    FlatImp.ext_spec := ext_spec;
   |}).
   Defined.
 
-  Definition rename_functions: @FlatImp.env srcSemanticsParams -> option (@FlatImp.env impSemanticsParams) :=
+  Definition rename_functions: srcEnv -> option impEnv :=
     map.map_all_values rename_fun.
 
   (* Should lH and m have the same domain?
@@ -360,12 +333,10 @@ Section RegAlloc.
     - exists lL. unfold map.getmany_of_list in H0. simpl in H0. simp.
       simpl. auto.
     - unfold map.getmany_of_list in H0. simpl in H0. simp.
-      specialize IHsrcnames with (1 := H) (2 := E0) (lL := (map.put lL i r0)).
       edestruct IHsrcnames; eauto using states_compat_put_raw.
   Qed.
 
-  Definition envs_related(e1: @env srcSemanticsParams)
-                         (e2: @env impSemanticsParams): Prop :=
+  Definition envs_related(e1: srcEnv)(e2: impEnv): Prop :=
     forall f impl1,
       map.get e1 f = Some impl1 ->
       exists impl2,
@@ -442,8 +413,8 @@ Section RegAlloc.
   Lemma eval_bcond_compat: forall (lH : srcLocals) r (lL: impLocals) condH condL b,
       rename_cond r condH = Some condL ->
       states_compat lH r lL ->
-      @eval_bcond srcSemanticsParams lH condH = Some b ->
-      @eval_bcond impSemanticsParams lL condL = Some b.
+      @eval_bcond _ srcSemanticsParams lH condH = Some b ->
+      @eval_bcond _ impSemanticsParams lL condL = Some b.
   Proof.
     intros.
     unfold rename_cond, eval_bcond in *.
@@ -459,8 +430,8 @@ Section RegAlloc.
   Lemma eval_bcond_compat_None: forall (lH : srcLocals) r (lL: impLocals) condH condL,
       rename_cond r condH = Some condL ->
       states_compat lH r lL ->
-      @eval_bcond srcSemanticsParams lH condH <> None ->
-      @eval_bcond impSemanticsParams lL condL <> None.
+      @eval_bcond _ srcSemanticsParams lH condH <> None ->
+      @eval_bcond _ impSemanticsParams lL condL <> None.
   Proof.
     intros.
     match goal with
@@ -473,8 +444,8 @@ Section RegAlloc.
   Lemma eval_bcond_compat': forall (lH : srcLocals) r (lL: impLocals) condH condL b,
       rename_cond r condH = Some condL ->
       states_compat' lH r lL ->
-      @eval_bcond srcSemanticsParams lH condH = Some b ->
-      @eval_bcond impSemanticsParams lL condL = Some b.
+      @eval_bcond _ srcSemanticsParams lH condH = Some b ->
+      @eval_bcond _ impSemanticsParams lL condL = Some b.
   Proof.
     intros.
     unfold rename_cond, eval_bcond in *.
@@ -803,14 +774,14 @@ Section RegAlloc.
   Lemma rename_correct(available_impvars_NoDup: NoDup available_impvars): forall eH eL,
       envs_related eH eL ->
       forall sH t m lH mc post,
-      @exec srcSemanticsParams eH sH t m lH mc post ->
+      @exec _ srcSemanticsParams eH sH t m lH mc post ->
       forall lL r r' av av' sL,
       map.injective r ->
       map.not_in_range r av ->
       NoDup av ->
       rename r sH av = Some (r', sL, av') ->
       states_compat lH r lL ->
-      @exec impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
+      @exec _ impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
         exists lH', states_compat lH' r' lL' /\
                     post t' m' lH' mc').
   Proof.
@@ -972,8 +943,8 @@ Section RegAlloc.
         eapply IH2; try eassumption.
   Qed.
 
-  Definition related(done: bool): @FlatImp.SimState srcSemanticsParams ->
-                                  @FlatImp.SimState impSemanticsParams -> Prop :=
+  Definition related(done: bool): @FlatImp.SimState _ srcSemanticsParams ->
+                                  @FlatImp.SimState _ impSemanticsParams -> Prop :=
     fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       envs_related e1 e2 /\
       t1 = t2 /\
@@ -983,8 +954,8 @@ Section RegAlloc.
       (* TODO could/should also relate l1 and l2 *)
 
   Lemma renameSim(available_impvars_NoDup: NoDup available_impvars):
-    simulation (@FlatImp.SimExec srcSemanticsParams)
-               (@FlatImp.SimExec impSemanticsParams) related.
+    simulation (@FlatImp.SimExec _ srcSemanticsParams)
+               (@FlatImp.SimExec _ impSemanticsParams) related.
   Proof.
     unfold simulation.
     intros *. intros R Ex1.

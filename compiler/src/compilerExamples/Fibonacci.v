@@ -1,11 +1,10 @@
+(*
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require bedrock2Examples.Demos.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
-Require Import compiler.Pipeline.
-Require Import compiler.Basic32Semantics.
 Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
@@ -340,3 +339,4 @@ Admitted.
 
 Print Assumptions fib6_L_res_is_13_by_proving_it.
  *)
+*)

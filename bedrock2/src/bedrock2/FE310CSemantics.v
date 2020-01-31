@@ -43,7 +43,7 @@ Section WithParameters.
   Definition ext_spec (t : bedrock2_trace) (mGive : parameters.mem) a (args: list parameters.word) (post:parameters.mem -> list parameters.word -> Prop) :=
     if String.eqb "MMIOWRITE" a
     then
-      exists addr val, 
+      exists addr val,
         args = [addr; val] /\
         (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\
         post Interface.map.empty nil
@@ -57,15 +57,11 @@ Section WithParameters.
 
   Global Instance semantics_parameters  : Semantics.parameters :=
     {|
-    syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
     Semantics.word := parameters.word;
     Semantics.byte := parameters.byte;
-    varname_eqb := String.eqb;
-    funname_eqb := String.eqb;
-    actname_eqb := String.eqb;
     mem := parameters.mem;
     locals := SortedListString.map _;
-    funname_env := SortedListString.map;
+    env := SortedListString.map _;
     Semantics.ext_spec := ext_spec;
   |}.
 
@@ -85,15 +81,15 @@ Section WithParameters.
       | H: False |- _ => destruct H
     end; subst; eauto 8 using Properties.map.same_domain_refl.
   Qed.
-  
+
   Global Instance ok : Semantics.parameters_ok semantics_parameters.
   Proof.
-    split; cbv [funname_env locals mem semantics_parameters]; try exact _.
+    split; cbv [env locals mem semantics_parameters]; try exact _.
     { cbv; auto. }
     { exact (SortedListString.ok _). }
-    { exact SortedListString.ok. }
+    { exact (SortedListString.ok _). }
   Qed.
-  
+
   (* COPY-PASTE these *)
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
         (preprocess [autorewrite with rew_word_morphism],

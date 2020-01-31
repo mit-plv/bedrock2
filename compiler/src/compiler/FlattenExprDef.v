@@ -18,57 +18,70 @@ Open Scope Z_scope.
 
 Module Import FlattenExpr.
   Class parameters := {
-    varname: Type;
-    varname_eqb: varname -> varname -> bool;
     W :> Words;
-    locals :> map.map varname Utility.word;
+    locals :> map.map String.string Utility.word;
     mem :> map.map Utility.word Utility.byte;
-    funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
+    ExprImp_env :> map.map string (list string * list string * cmd);
+    FlatImp_env :> map.map string (list string * list string * FlatImp.stmt string);
     trace := list (mem * string * list Utility.word * (mem * list Utility.word));
     ext_spec : trace ->
                mem -> string -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
     NGstate: Type;
-    NG :> NameGen varname NGstate;
+    NG :> NameGen String.string NGstate;
   }.
 
-  Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
-    Syntax.varname := varname;
-    Syntax.funname := string;
-    Syntax.actname := string;
-  |}.
-
   Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
-    Semantics.syntax := _;
-    Semantics.varname_eqb := varname_eqb;
-    Semantics.funname_eqb := String.eqb;
-    Semantics.actname_eqb := String.eqb;
     Semantics.word := Utility.word;
     Semantics.byte := Utility.byte;
-    Semantics.funname_env := funname_env;
+    Semantics.env := ExprImp_env;
     Semantics.ext_spec:= ext_spec;
   |}.
 
+  Instance mk_FlatImp_params(p: parameters): FlatImp.parameters string := {
+    FlatImp.varname_eqb := String.eqb;
+    FlatImp.ext_spec := ext_spec;
+  }.
+
   Class assumptions{p: parameters}: Prop := {
-    varname_eqb_spec :> EqDecider varname_eqb;
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
-    funname_env_ok :> forall T, map.ok (funname_env T);
-    ext_spec_ok: ext_spec.ok (mk_Semantics_params p);
+    ExprImp_env_ok :> map.ok ExprImp_env;
+    FlatImp_env_ok :> map.ok FlatImp_env;
+    ext_spec_ok: FlatImp.ext_spec.ok _ _;
   }.
   Arguments assumptions: clear implicits.
 
+  Instance mk_ExprImp_ext_spec_ok(p: parameters)(hyps: assumptions p): ext_spec.ok (mk_Semantics_params p).
+  Proof.
+    destruct hyps. destruct ext_spec_ok0.
+    constructor.
+    all: intros; eauto.
+    eapply intersect; eassumption.
+  Qed.
+
   Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
     Semantics.parameters_ok (mk_Semantics_params p) := {
-    Semantics.varname_eqb_spec := varname_eqb_spec;
-    Semantics.funname_eqb_spec := String.eqb_spec;
-    Semantics.actname_eqb_spec := String.eqb_spec;
+    Semantics.locals_ok := locals_ok;
     Semantics.word_ok := Utility.word_ok;
     Semantics.byte_ok := Utility.byte_ok;
     Semantics.mem_ok := mem_ok;
-    Semantics.funname_env_ok := funname_env_ok;
+    Semantics.env_ok := ExprImp_env_ok;
     Semantics.width_cases := Utility.width_cases;
-    Semantics.ext_spec_ok := ext_spec_ok;
+    Semantics.ext_spec_ok := _
   }.
+
+  Instance mk_FlatImp_params_ok{p: parameters}(hyps: @assumptions p):
+    FlatImp.parameters_ok string (mk_FlatImp_params p) := {
+    FlatImp.varname_eq_spec := String.eqb_spec;
+    FlatImp.width_cases := width_cases;
+    FlatImp.word_ok := word_ok;
+    FlatImp.byte_ok := byte_ok;
+    FlatImp.mem_ok := mem_ok;
+    FlatImp.locals_ok := locals_ok;
+    FlatImp.env_ok := FlatImp_env_ok;
+    FlatImp.ext_spec_ok := ext_spec_ok;
+  }.
+
 End FlattenExpr.
 
 Section FlattenExpr1.
@@ -76,9 +89,9 @@ Section FlattenExpr1.
   Context {p : unique! parameters}.
 
   Ltac set_solver :=
-    set_solver_generic (@varname p).
+    set_solver_generic (@String.string p).
 
-  Definition genFresh_if_needed(resVar: option varname)(ngs: NGstate): (varname * NGstate) :=
+  Definition genFresh_if_needed(resVar: option String.string)(ngs: NGstate): (String.string * NGstate) :=
     match resVar with
     | Some r => (r, ngs)
     | None => genFresh ngs
@@ -87,8 +100,8 @@ Section FlattenExpr1.
   (* returns stmt and var into which result is saved, and new fresh name generator state.
      If resVar is not None, the result will be stored there, otherwise a fresh var will
      be generated for the result if needed (not needed if e already is a var) *)
-  Fixpoint flattenExpr(ngs: NGstate)(resVar: option varname)(e: Syntax.expr):
-    (FlatImp.stmt * varname * NGstate) :=
+  Fixpoint flattenExpr(ngs: NGstate)(resVar: option String.string)(e: Syntax.expr):
+    (FlatImp.stmt String.string * String.string * NGstate) :=
     match e with
     | Syntax.expr.literal n =>
         let '(x, ngs') := genFresh_if_needed resVar ngs in
@@ -101,18 +114,18 @@ Section FlattenExpr1.
     | Syntax.expr.load sz e =>
         let '(s1, r1, ngs') := flattenExpr ngs None e in
         let '(x, ngs'') := genFresh_if_needed resVar ngs' in
-        (FlatImp.SSeq s1 (@FlatImp.SLoad (mk_Syntax_params p) sz x r1), x, ngs'')
+        (FlatImp.SSeq s1 (FlatImp.SLoad sz x r1), x, ngs'')
     | Syntax.expr.op op e1 e2 =>
         let '(s1, r1, ngs') := flattenExpr ngs None e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' None e2 in
         let '(x, ngs''') := genFresh_if_needed resVar ngs'' in
         (FlatImp.SSeq s1
           (FlatImp.SSeq s2
-            (@FlatImp.SOp (mk_Syntax_params p) x op r1 r2)), x, ngs''')
+            (FlatImp.SOp x op r1 r2)), x, ngs''')
     end.
 
   Definition flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr):
-    (FlatImp.stmt * FlatImp.bcond * NGstate) :=
+    (FlatImp.stmt string * FlatImp.bcond string * NGstate) :=
     let default := (* always correct, but in some cases we can do better *)
         (let '(stmt, x, ngs') := flattenExpr ngs None e in (stmt, FlatImp.CondNez x, ngs')) in
     match e with
@@ -135,7 +148,7 @@ Section FlattenExpr1.
      returned list, but we want to first invoke flattenExpr and then flattenExprs, which is
      the opposite order of what fold_right does. *)
   Fixpoint flattenExprs(ngs1: NGstate)(es: list Syntax.expr):
-    (FlatImp.stmt * list varname * NGstate) :=
+    (FlatImp.stmt string * list String.string * NGstate) :=
     match es with
     | nil => (FlatImp.SSkip, nil, ngs1)
     | e :: rest => let '(ci, vi, ngs2) := flattenExpr ngs1 None e in
@@ -144,20 +157,20 @@ Section FlattenExpr1.
     end.
 
   (* TODO this is only useful if we also flatten the bodies of all functions *)
-  Definition flattenCall(ngs: NGstate)(binds: list varname)(f: Syntax.funname)
+  Definition flattenCall(ngs: NGstate)(binds: list String.string)(f: String.string)
              (args: list Syntax.expr):
-    FlatImp.stmt * NGstate :=
+    FlatImp.stmt string * NGstate :=
     let '(compute_args, argvars, ngs) := flattenExprs ngs args in
     (FlatImp.SSeq compute_args (FlatImp.SCall binds f argvars), ngs).
 
-  Definition flattenInteract(ngs: NGstate)(binds: list varname)(a: actname)
+  Definition flattenInteract(ngs: NGstate)(binds: list String.string)(a: String.string)
              (args: list Syntax.expr):
-    FlatImp.stmt * NGstate :=
+    FlatImp.stmt string * NGstate :=
     let '(compute_args, argvars, ngs) := flattenExprs ngs args in
     (FlatImp.SSeq compute_args (FlatImp.SInteract binds a argvars), ngs).
 
   (* returns statement and new fresh name generator state *)
-  Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt * NGstate) :=
+  Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt string * NGstate) :=
     match s with
     | Syntax.cmd.store sz a v =>
         let '(sa, ra, ngs') := flattenExpr ngs None a in
@@ -184,25 +197,25 @@ Section FlattenExpr1.
     | Syntax.cmd.interact binds a args => flattenInteract ngs binds a args
     end.
 
-  Definition ExprImp2FlatImp0(s: Syntax.cmd): FlatImp.stmt :=
+  Definition ExprImp2FlatImp0(s: Syntax.cmd): FlatImp.stmt string :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
   Section WithMaxSize.
     Context (max_size: Z).
 
-    Definition ExprImp2FlatImp(s: Syntax.cmd): option FlatImp.stmt :=
+    Definition ExprImp2FlatImp(s: Syntax.cmd): option (FlatImp.stmt string) :=
       let res := ExprImp2FlatImp0 s in
       if FlatImp.stmt_size res <? max_size then Some res else None.
 
     Definition flatten_function:
-      list varname * list varname * Syntax.cmd -> option (list varname * list varname * FlatImp.stmt) :=
+      list String.string * list String.string * Syntax.cmd -> option (list String.string * list String.string * FlatImp.stmt string) :=
       fun '(argnames, retnames, body) =>
-        let avoid := ListSet.list_union varname_eqb (ExprImp.allVars_cmd_as_list body)
-                                                    (ListSet.list_union varname_eqb argnames retnames) in
+        let avoid := ListSet.list_union String.eqb (ExprImp.allVars_cmd_as_list body)
+                                                    (ListSet.list_union String.eqb argnames retnames) in
         let body' := fst (flattenStmt (freshNameGenState avoid) body) in
         if FlatImp.stmt_size body' <? max_size then Some (argnames, retnames, body') else None.
 
-    Definition flatten_functions: bedrock2.Semantics.env -> option FlatImp.env :=
+    Definition flatten_functions: ExprImp_env -> option FlatImp_env :=
       map.map_all_values flatten_function.
 
   End WithMaxSize.

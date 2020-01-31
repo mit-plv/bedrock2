@@ -12,7 +12,7 @@ Section Sim.
 
   Context {p: FlattenExpr.parameters}.
 
-  Definition related_without_functions(done: bool): ExprImp.SimState -> FlatImp.SimState -> Prop :=
+  Definition related_without_functions(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
     fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       e1 = map.empty /\ e2 = map.empty (* TODO allow non-empty function environments *) /\
       ExprImp2FlatImp0 c1 = c2 /\
@@ -21,7 +21,7 @@ Section Sim.
       map.extends l2 l1 /\
       map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
 
-  Definition related(max_size: BinInt.Z)(done: bool): ExprImp.SimState -> FlatImp.SimState -> Prop :=
+  Definition related(max_size: BinInt.Z)(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
     fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       flatten_functions max_size e1 = Some e2 /\
       ExprImp2FlatImp max_size c1 = Some c2 /\
@@ -43,10 +43,10 @@ Section Sim.
     | |- _ _ _ ?E = _ => remember E as m
     end.
     revert Heqm.
-    unshelve eapply map.fold_spec. 2: reflexivity. 1: eapply Semantics.funname_env_ok.
+    eapply map.fold_spec. 1: intros; reflexivity.
     intros. exfalso. eapply (f_equal (fun m => map.get m k)) in Heqm.
-    unshelve erewrite map.get_put_same in Heqm. 1: eapply Semantics.funname_env_ok.
-    unshelve erewrite map.get_empty in Heqm. 1: eapply Semantics.funname_env_ok.
+    unshelve erewrite map.get_put_same in Heqm.
+    unshelve erewrite map.get_empty in Heqm.
     discriminate.
   Qed.
 
@@ -63,7 +63,7 @@ Section Sim.
   Qed.
 
   Lemma flattenExprSim_without_functions{hyps: FlattenExpr.assumptions p}:
-    simulation ExprImp.SimExec FlatImp.SimExec related_without_functions.
+    simulation ExprImp.SimExec (FlatImp.SimExec String.string) related_without_functions.
   Proof.
     unfold simulation, related_without_functions, ExprImp.SimExec, FlatImp.SimExec.
     intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
@@ -96,7 +96,7 @@ Section Sim.
   Qed.
 
   Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}(max_size: BinInt.Z):
-    simulation ExprImp.SimExec FlatImp.SimExec (related max_size).
+    simulation ExprImp.SimExec (FlatImp.SimExec String.string) (related max_size).
   Proof.
     pose proof flattenExprSim_without_functions as P.
     unfold simulation in *.

@@ -5,7 +5,6 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
 Require Import riscv.Spec.Machine.
-Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
@@ -58,7 +57,7 @@ Export FlatToRiscvDef.FlatToRiscvDef.
 Class parameters := {
   def_params :> FlatToRiscvDef.parameters;
 
-  locals :> map.map Register word;
+  locals :> map.map Z word;
   mem :> map.map word byte;
   funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
 
@@ -74,13 +73,9 @@ Class parameters := {
 Section WithParameters.
   Context {p: parameters}.
 
-  Instance Semantics_params: Semantics.parameters := {|
-    Semantics.syntax := FlatToRiscvDef.mk_Syntax_params _;
-    Semantics.varname_eqb := Z.eqb;
-    Semantics.funname_eqb := String.eqb;
-    Semantics.actname_eqb := String.eqb;
-    Semantics.ext_spec := ext_spec;
-    Semantics.funname_env := funname_env;
+  Instance Semantics_params: FlatImp.parameters Z := {|
+    FlatImp.varname_eqb := Z.eqb;
+    FlatImp.ext_spec := ext_spec;
   |}.
 
   Definition regs_initialized(regs: locals): Prop :=
@@ -136,7 +131,7 @@ Section WithParameters.
     PR :> MetricPrimitives PRParams;
 
     compile_ext_call_correct: forall (initialL: MetricRiscvMachine)
-        action postH newPc insts (argvars resvars: list Register) initialMH R Rexec initialRegsH
+        action postH newPc insts (argvars resvars: list Z) initialMH R Rexec initialRegsH
         argvals mGive outcome p_sp,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
@@ -204,9 +199,7 @@ Ltac solve_stmt_not_too_big :=
     change (2 ^ 9)%Z with 512%Z in *;
     simpl stmt_size in H;
     repeat match goal with
-           | s: stmt |- @stmt_size ?params _ < _ =>
-             (* PARAMRECORDS *)
-             unique pose proof (@stmt_size_nonneg params s)
+           | s: stmt ?varname |- _ => unique pose proof (stmt_size_nonneg s)
            end;
     match goal with
     | |- ?SZ _ _ < _ => (* COQBUG https://github.com/coq/coq/issues/9268 *)
@@ -293,7 +286,7 @@ Section FlatToRiscv1.
 
   Ltac simulate'' := repeat simulate''_step.
 
-  Lemma go_load: forall sz x a (addr v: word) (initialL: RiscvMachineL) post f,
+  Lemma go_load: forall sz (x a: Z) (addr v: word) (initialL: RiscvMachineL) post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) a = Some addr ->
@@ -323,7 +316,7 @@ Section FlatToRiscv1.
 
   Arguments invalidateWrittenXAddrs: simpl never.
 
-  Lemma go_store: forall sz x a (addr v: word) (initialL: RiscvMachineL) m' post f,
+  Lemma go_store: forall sz (x a: Z) (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) x = Some v ->
@@ -379,7 +372,7 @@ Section FlatToRiscv1.
 
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
-  Lemma run_load_word: forall (base addr v : word) (rd rs : Register) (ofs : MachineInt)
+  Lemma run_load_word: forall (base addr v : word) (rd rs : Z) (ofs : MachineInt)
                               (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rd ->
       valid_register rs ->
@@ -417,7 +410,7 @@ Section FlatToRiscv1.
 
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
-  Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Register)
+  Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Z)
               (ofs : MachineInt) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rs1 ->
       valid_register rs2 ->

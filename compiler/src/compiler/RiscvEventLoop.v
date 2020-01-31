@@ -35,7 +35,7 @@ Import Utility.
 Section EventLoop.
 
   Context {W: Words}.
-  Context {Registers: map.map Register word}.
+  Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 

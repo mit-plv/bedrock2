@@ -9,25 +9,20 @@ Require Export bedrock2.Memory.
 Require Import Coq.Lists.List.
 
 Class parameters := {
-  syntax :> Syntax.parameters;
-  varname_eqb: varname -> varname -> bool;
-  funname_eqb: funname -> funname -> bool;
-  actname_eqb: actname -> actname -> bool;
-
   width : Z;
   word :> Word.Interface.word width;
   byte :> Word.Interface.word 8%Z;
 
   mem :> map.map word byte;
-  locals :> map.map varname word;
-  funname_env : forall T: Type, map.map funname T; (* abstract T for better reusability *)
+  locals :> map.map String.string word;
+  env :> map.map String.string (list String.string * list String.string * cmd);
 
-  trace := list ((mem * actname * list word) * (mem * list word));
+  trace := list ((mem * String.string * list word) * (mem * list word));
 
   ExtSpec :=
     (* Given a trace of what happened so far,
        the given-away memory, an action label and a list of function call arguments, *)
-    trace -> mem -> actname -> list word ->
+    trace -> mem -> String.string -> list word ->
     (* and a postcondition on the received memory and function call results, *)
     (mem -> list word -> Prop) ->
     (* tells if this postcondition will hold *)
@@ -63,21 +58,15 @@ End ext_spec.
 Arguments ext_spec.ok: clear implicits.
 
 Class parameters_ok{p: parameters}: Prop := {
-  varname_eqb_spec :> EqDecider varname_eqb;
-  funname_eqb_spec :> EqDecider funname_eqb;
-  actname_eqb_spec :> EqDecider actname_eqb;
   width_cases : width = 32 \/ width = 64;
   word_ok :> word.ok word;
   byte_ok :> word.ok byte;
   mem_ok :> map.ok mem;
   locals_ok :> map.ok locals;
-  funname_env_ok : forall T: Type, map.ok (funname_env T);
+  env_ok :> map.ok env;
   ext_spec_ok :> ext_spec.ok p;
 }.
 Arguments parameters_ok: clear implicits.
-
-Instance env{p: parameters}: map.map funname (list varname * list varname * cmd) :=
-  funname_env _.
 
 Section binops.
   Context {width : Z} {word : Word.Interface.word width}.
@@ -85,10 +74,6 @@ Section binops.
     match bop with
     | bopname.add => word.add
     | bopname.sub => word.sub
-    | bopname.mul => word.mul
-    | bopname.mulhuu => word.mulhuu
-    | bopname.divu => word.divu
-    | bopname.remu => word.modu
     | bopname.and => word.and
     | bopname.or => word.or
     | bopname.xor => word.xor

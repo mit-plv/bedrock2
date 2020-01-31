@@ -11,15 +11,15 @@ Section TailRecrsion.
   Context
     {p : unique! Semantics.parameters}
     {p_ok : Semantics.parameters_ok p}
-    {functions : list (funname * (list varname * list varname * Syntax.cmd))}.
+    {functions : list (String.string * (list String.string * list String.string * Syntax.cmd))}.
   Let call := WeakestPrecondition.call functions.
 
   Local Notation "A /\ B" := (Markers.split (A /\ B)).
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
 
-  Definition reconstruct (variables:list varname) (values:tuple word (length variables)) : locals :=
+  Definition reconstruct (variables:list String.string) (values:tuple word (length variables)) : locals :=
     map.putmany_of_tuple (tuple.of_list variables) values map.empty.
-  Fixpoint gather (variables : list varname) (l : locals) : option (locals *  tuple word (length variables)) :=
+  Fixpoint gather (variables : list String.string) (l : locals) : option (locals *  tuple word (length variables)) :=
     match variables with
     | nil => Some (l, tt)
     | cons x xs' =>
@@ -48,13 +48,13 @@ Section TailRecrsion.
       apply map_ext.
       intro k.
       erewrite map.get_put_dec.
-      destr (varname_eqb a k); try congruence.
+      destr (String.eqb a k); try congruence.
       rewrite map.get_remove_diff; congruence.
     }
     auto.
   Qed.
 
-  Definition enforce (variables : list varname) (values:tuple word (length variables)) (l:locals) : Prop :=
+  Definition enforce (variables : list String.string) (values:tuple word (length variables)) (l:locals) : Prop :=
     match gather variables l with
     | None => False
     | Some (remaining, r) => values = r /\ remaining = map.empty
@@ -74,7 +74,7 @@ Section TailRecrsion.
     {params_ok : Semantics.parameters_ok p}
     {e c t localsmap} {m : mem}
     (ghosttypes : polymorphic_list.list Type)
-    (variables : list varname)
+    (variables : list String.string)
     {l0 : tuple word (length variables)}
     {Pl : enforce variables l0 localsmap}
     {post : _->_->_-> Prop}
@@ -266,7 +266,7 @@ Section TailRecrsion.
     {params_ok : Semantics.parameters_ok p}
     {e c t localsmap} {m : mem}
     (ghosttypes : polymorphic_list.list Type)
-    (variables : list varname)
+    (variables : list String.string)
     {l0 : tuple word (length variables)}
     {Pl : enforce variables l0 localsmap}
     {post : _->_->_-> Prop}
@@ -328,7 +328,7 @@ Section TailRecrsion.
   Lemma atleastonce
     {params_ok : Semantics.parameters_ok p}
     {e c t l} {m : mem}
-    (variables : list varname)
+    (variables : list String.string)
     {localstuple : tuple word (length variables)}
     {Pl : enforce variables localstuple l}
     {measure : Type} (invariant:_->_->_->ufunc word (length variables) Prop)

@@ -5,14 +5,12 @@ Require Import Coq.ZArith.BinIntDef.
 Require Import Coq.Strings.String.
 
 Class parameters := {
-  syntax :> Syntax.parameters;
-  varname_eqb : varname -> varname -> bool;
-  rename_away_from : varname -> list varname -> varname;
+  rename_away_from : String.string -> list String.string -> String.string;
   c_lit : Z -> String.string;
   c_bop : string -> bopname -> string -> string;
-  c_var : varname -> String.string;
-  c_fun : funname -> String.string;
-  c_act : list varname -> actname -> list String.string -> string;
+  c_var : String.string -> String.string;
+  c_fun : String.string -> String.string;
+  c_act : list String.string -> String.string -> list String.string -> string;
 }.
 
 Section ToCString.
@@ -86,20 +84,20 @@ Section ToCString.
       indent ++ c_act binds action (List.map c_expr es)
     end.
 
-  Definition fmt_c_decl (rett : string) (args : list varname) (name : funname) (retptrs : list varname) : string :=
+  Definition fmt_c_decl (rett : string) (args : list String.string) (name : String.string) (retptrs : list String.string) : string :=
     (rett ++ " " ++ c_fun name ++ "(" ++ concat ", " (
                     List.map (fun a => "uintptr_t "++c_var a) args ++
                     List.map (fun r => "uintptr_t* "++c_var r) retptrs) ++
                   ")").
 
-  Definition c_decl (f : funname * (list varname * list varname * cmd)) :=
+  Definition c_decl (f : String.string * (list String.string * list String.string * cmd)) :=
     let '(name, (args, rets, body)) := f in
     match rets with
     | nil => fmt_c_decl "void" args name nil
     | cons _ _ => fmt_c_decl "uintptr_t" args name (List.removelast rets)
     end ++ ";".
 
-  Fixpoint rename_outs (outs : list varname) (used : list varname) : list (varname*varname) * list varname :=
+  Fixpoint rename_outs (outs : list String.string) (used : list String.string) : list (String.string*String.string) * list String.string :=
     match outs with
     | cons o outs' =>
       let rec := rename_outs outs' used in
@@ -110,7 +108,7 @@ Section ToCString.
     end.
 
   Definition c_func '(name, (args, rets, body)) :=
-    let decl_retvar_retrenames : string * option varname * list (varname * varname) :=
+    let decl_retvar_retrenames : string * option String.string * list (String.string * String.string) :=
     match rets with
     | nil => (fmt_c_decl "void" args name nil, None, nil)
     | cons r0 _ =>
@@ -122,9 +120,9 @@ Section ToCString.
     let decl := fst (fst decl_retvar_retrenames) in
     let retvar := snd (fst decl_retvar_retrenames) in
     let retrenames := snd decl_retvar_retrenames in
-    let localvars : list varname := List_uniq varname_eqb (
+    let localvars : list String.string := List_uniq String.eqb (
         let allvars := (List.app (match retvar with None => nil | Some v => cons v nil end) (cmd.vars body)) in
-        (List_minus varname_eqb allvars args)) in
+        (List_minus String.eqb allvars args)) in
     decl ++ " {" ++ LF ++
       let indent := "  " in
       (match localvars with nil => "" | _ => indent ++ "uintptr_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
@@ -133,7 +131,7 @@ Section ToCString.
       indent ++ "return" ++ (match retvar with None => "" | Some rv => " "++c_var rv end) ++ ";" ++ LF ++
       "}" ++ LF.
 
-  Definition c_module (fs : list (funname * (list varname * list varname * cmd))) :=
+  Definition c_module (fs : list (String.string * (list String.string * list String.string * cmd))) :=
     match fs with
     | nil => "#error ""c_module nil"" "
     | cons main fs =>

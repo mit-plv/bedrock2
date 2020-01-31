@@ -168,8 +168,7 @@ Section Pipeline1.
   End Riscv.
 *)
 
-  Local Notation source_env :=
-    (@funname_env _ (list string * list string * (@Syntax.cmd (FlattenExpr.mk_Syntax_params _)))).
+  Local Notation source_env := (@Pipeline.string_keyed_map p (list string * list string * Syntax.cmd)).
 
   (* All riscv machine code, layed out from low to high addresses:
      - init_sp_insts: initializes stack pointer
@@ -197,7 +196,7 @@ Section Pipeline1.
              (Rdata Rexec: mem -> Prop)(done: bool): MetricRiscvMachine -> Prop :=
     compile_inv (related ml f_entry_rel_pos f_entry_name p_call Rdata Rexec done)
                 (@hl_inv (FlattenExpr.mk_Semantics_params _) prog
-                         (@Syntax.cmd.call (FlattenExpr.mk_Syntax_params _) nil f_entry_name nil) spec).
+                         (Syntax.cmd.call nil f_entry_name nil) spec).
 
   (* all "related" relations are parametrized (we don't hide parames behind existentials),
      but at the very end, we have ll_inv, where we do use existentials, because the "API"
@@ -228,15 +227,11 @@ Section Pipeline1.
     intros.
     simp.
     eapply rename_binds_props in E; cycle 1.
-    { exact String.eqb_spec. }
-    { typeclasses eauto. }
     { eapply map.empty_injective. }
     { eapply map.not_in_range_empty. }
     { apply NoDup_available_registers. }
     simp.
     eapply rename_binds_props in E0; cycle 1.
-    { exact String.eqb_spec. }
-    { typeclasses eauto. }
     { assumption. }
     { assumption. }
     { pose proof NoDup_available_registers as P.
@@ -245,8 +240,6 @@ Section Pipeline1.
     simp.
     pose proof E1 as E1'.
     eapply rename_props in E1; cycle 1.
-    { exact String.eqb_spec. }
-    { typeclasses eauto. }
     { assumption. }
     { assumption. }
     { pose proof NoDup_available_registers as P.
@@ -321,11 +314,6 @@ Section Pipeline1.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
     - unfold FlatToRiscvDef.stmt_not_too_big.
       pose proof (rename_preserves_stmt_size _ _ _ _ _ _ E1') as M.
-      Fail rewrite <- M. (* PARAMRECORDS *)
-      clear -H2 M.
-      match goal with
-      | _: _ = ?x |- ?x' < _ => change x' with x
-      end.
       rewrite <- M.
       assumption.
   Qed.
@@ -428,7 +416,7 @@ Section Pipeline1.
     destruct Q as [ cmem  [ dmem [ [ ? ? ] [ ? ? ] ] ] ].
     subst.
     specialize P with
-        (s1 := (srcprog, (@Syntax.cmd.call (FlattenExpr.mk_Syntax_params _) nil "init"%string nil), nil,
+        (s1 := (srcprog, (Syntax.cmd.call nil "init"%string nil), nil,
                 dmem, map.empty, bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
     eapply runsTo_weaken.
     - eapply P; clear P.
@@ -451,10 +439,8 @@ Section Pipeline1.
           eapply map.map_all_values_fw.
           5: exact G. 4: exact E4.
           - eapply String.eqb_spec.
-          - (* PARAMRECORDS *)
-            unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto.
-          - (* PARAMRECORDS *)
-            unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto.
+          - typeclasses eauto.
+          - typeclasses eauto.
         }
         { reflexivity. }
         { reflexivity. }
@@ -483,13 +469,12 @@ Section Pipeline1.
           rename E4 into RenameEq.
           unfold rename_functions in RenameEq.
           unshelve epose proof (map.map_all_values_bw _ _ _ _ RenameEq _ _ H).
-          { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
           simp. destruct v1 as [ [argnames' retnames'] body' ].
           unfold flatten_functions in E3.
           rename E3 into FlattenEq.
           unshelve epose proof (map.map_all_values_bw _ _ _ _ FlattenEq _ _ H2r) as P.
-          { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
-          { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
+          { (* PARAMRECORDS *) unfold FlattenExpr.ExprImp_env. simpl. typeclasses eauto. }
+          { (* PARAMRECORDS *) unfold FlattenExpr.FlatImp_env. simpl. typeclasses eauto. }
           unfold flatten_function in P.
           simp.
           pose proof (funs_valid sat) as V.

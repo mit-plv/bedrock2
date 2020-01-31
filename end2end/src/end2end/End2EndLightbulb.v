@@ -145,17 +145,16 @@ Open Scope string_scope.
 
 Definition init :=
   ("init", ([]: list string, []: list string,
-           (@cmd.call (FlattenExprDef.FlattenExpr.mk_Syntax_params _) ["err"] "lightbulb_init" []))).
+           (cmd.call ["err"] "lightbulb_init" []))).
 
 Definition loop :=
   ("loop", ([]: list string, []: list string,
-           (@cmd.call (FlattenExprDef.FlattenExpr.mk_Syntax_params _) ["err"] "lightbulb_loop"
-                      [expr.literal buffer_addr]))).
+           (cmd.call ["err"] "lightbulb_loop" [expr.literal buffer_addr]))).
 
-Definition funimplsList := init :: loop :: (@lightbulb.function_impls parameters).
+Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
-Definition lightbulb_insts_unevaluated: option (list Decode.Instruction * Semantics.funname_env Z) :=
+Definition lightbulb_insts_unevaluated: option (list Decode.Instruction * FlatToRiscvCommon.funname_env Z) :=
   @PipelineWithRename.compile pipeline_params ml prog.
 
 (* Before running this command, it might be a good idea to do
@@ -171,7 +170,7 @@ Definition lightbulb_insts: list Decode.Instruction.
   end.
 Defined.
 
-Definition function_positions: Semantics.funname_env Z.
+Definition function_positions: FlatToRiscvCommon.funname_env Z.
   let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
   match goal with
   | res := Some (_, ?x) |- _ => exact x

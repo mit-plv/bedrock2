@@ -25,8 +25,7 @@ Section FlattenExpr1.
 
   Context {p : unique! parameters} {hyps: assumptions p}.
 
-  Ltac set_solver :=
-    set_solver_generic (@varname p).
+  Ltac set_solver := set_solver_generic String.string.
 
   Arguments Z.add : simpl never.
   Arguments Z.mul : simpl never.
@@ -334,7 +333,7 @@ Section FlattenExpr1.
     intros *. intros E1 E2. eapply @FlatImp.exec.seq.
     - eapply FlatImp.exec.intersect.
       + exact E1.
-      + eapply FlatImp.modVarsSound. exact E1.
+      + eapply FlatImp.modVarsSound. 1: typeclasses eauto. exact E1.
     - simpl. intros. simp. eauto.
   Qed.
 
@@ -432,7 +431,7 @@ Section FlattenExpr1.
       eapply @FlatImp.exec.weaken.
       + eapply IHes; try eassumption; maps.
       + intros. simpl in *. simp. cbn. unfold map.getmany_of_list in *.
-        replace (map.get l'0 v) with (Some r).
+        replace (map.get l'0 s1) with (Some r).
         * rewrite_match. repeat (split || auto); try solve_MetricLog. maps.
         * unfold ExprImp.allVars_exprs in D.
           eapply flattenExpr_valid_resVar in E1; maps.
@@ -485,7 +484,7 @@ Section FlattenExpr1.
     | intros; simpl in *; simp; repeat rewrite_match; t_safe ].
 
   Lemma flattenBooleanExpr_correct_aux :
-    forall e fenv ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
+    forall e fenv ngs1 ngs2 resCond (s: FlatImp.stmt string) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
@@ -522,7 +521,7 @@ Section FlattenExpr1.
   Goal True. idtac "FlattenExpr: flattenBooleanExpr_correct_aux done". Abort.
 
   Lemma flattenBooleanExpr_correct_with_modVars:
-    forall e fenv ngs1 ngs2 resCond (s: FlatImp.stmt) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
+    forall e fenv ngs1 ngs2 resCond (s: FlatImp.stmt string) (initialH initialL: locals) initialM t initialMcH initialMcL finalMcH res,
     flattenExprAsBoolExpr ngs1 e = (s, resCond, ngs2) ->
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
@@ -547,11 +546,8 @@ Section FlattenExpr1.
   Proof.
     unfold disjoint. intros.
     pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
-    assert (varname_eq_dec: forall a b: varname, {a = b} + {a <> b}). {
-      intros. destr (varname_eqb a b); auto.
-    }
     match type of P with
-    | In ?x ?l -> _ => edestruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
+    | In ?x ?l -> _ => edestruct (in_dec String.string_dec x l) as [Iyes | Ino]
     end.
     + auto.
     + left. clear -Ino.
@@ -561,19 +557,16 @@ Section FlattenExpr1.
       apply H.
   Qed.
 
-  Lemma freshNameGenState_disjoint_fbody: forall (fbody: cmd) (params rets: list varname),
+  Lemma freshNameGenState_disjoint_fbody: forall (fbody: cmd) (params rets: list String.string),
     disjoint (ExprImp.allVars_cmd fbody)
              (allFreshVars (@freshNameGenState _ (@NGstate p) (@NG p)
-                  (ListSet.list_union varname_eqb (ExprImp.allVars_cmd_as_list fbody)
-                                                  (ListSet.list_union varname_eqb params rets)))).
+                  (ListSet.list_union String.eqb (ExprImp.allVars_cmd_as_list fbody)
+                                                  (ListSet.list_union String.eqb params rets)))).
   Proof.
     unfold disjoint. intros.
     epose proof (freshNameGenState_spec _ x) as P.
-    assert (varname_eq_dec: forall a b: varname, {a = b} + {a <> b}). {
-      intros. destr (varname_eqb a b); auto.
-    }
     match type of P with
-    | In ?x ?l -> _ => edestruct (in_dec varname_eq_dec x l) as [Iyes | Ino]
+    | In ?x ?l -> _ => edestruct (in_dec String.string_dec x l) as [Iyes | Ino]
     end.
     + right. apply P. assumption.
     + left. clear -Ino hyps.
@@ -726,7 +719,7 @@ Section FlattenExpr1.
       eapply @FlatImp.exec.loop with (mid2 := (fun t' m' lL' mcL' => exists lH' mcH',
         mid t' m' lH' mcH' /\
         map.extends lL' lH' /\
-        map.only_differ l (@ExprImp.modVars (mk_Semantics_params p) c) lH' /\
+        map.only_differ l (ExprImp.modVars c) lH' /\
         (mcL' - mcL <= mcH' - mc)%metricsH));
         [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
         | intros; simpl in *; simp .. ].
@@ -762,7 +755,7 @@ Section FlattenExpr1.
       + simpl in *. intros. simp.
         rename l into lH, l' into lL'. rename l0 into argValNames.
         unfold flatten_functions in H.
-        unshelve epose proof (map.map_all_values_fw _ _ _ _ H _ _ H0); eauto using (@funname_env_ok p).
+        unshelve epose proof (map.map_all_values_fw _ _ _ _ H _ _ H0).
         simp.
         unfold flatten_function, ExprImp2FlatImp in *.
         destruct v2 as [[params' rets'] fbody'].

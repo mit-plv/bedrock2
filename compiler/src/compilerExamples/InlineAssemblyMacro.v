@@ -26,12 +26,6 @@ Definition var: Set := Z.
 Definition func: Set := string.
 Definition act: Set := string.
 
-Instance myparams: Syntax.parameters := {|
-  Syntax.varname := var;
-  Syntax.funname := func;
-  Syntax.actname := act;
-|}.
-
 
 Inductive ext_spec: act -> list Empty_set -> list word32 ->
                     (list Empty_set -> list word32 -> Prop) -> Prop :=
@@ -78,26 +72,26 @@ Definition compile_ext_call(results: list var)(a: act)(args: list var): list Ins
 def test(addr, inp1, inp2):
     s = *addr // might take a long time to load
     // precompute possible operations while waiting for s
-    a = inp1 * inp2
+    a = inp1 | inp2
     b = inp1 + inp2
     c = inp1 - inp2
     (r, garbage) = select(s, a, b, c)
     return r
  *)
 
-Definition _addr: Syntax.varname := 1.
-Definition _inp1: Syntax.varname := 2.
-Definition _inp2: Syntax.varname := 3.
-Definition _a: Syntax.varname := 4.
-Definition _b: Syntax.varname := 5.
-Definition _c: Syntax.varname := 6.
-Definition _r: Syntax.varname := 7.
-Definition _garbage: Syntax.varname := 31.
-Definition _s: Syntax.varname := 9.
+Definition _addr: var := 1.
+Definition _inp1: var := 2.
+Definition _inp2: var := 3.
+Definition _a: var := 4.
+Definition _b: var := 5.
+Definition _c: var := 6.
+Definition _r: var := 7.
+Definition _garbage: var := 31.
+Definition _s: var := 9.
 
-Definition test: stmt :=
+Definition test: stmt var :=
   (SSeq (SLoad Syntax.access_size.four _s _addr)
-  (SSeq (SOp _a Syntax.bopname.mul _inp1 _inp2)
+  (SSeq (SOp _a Syntax.bopname.or _inp1 _inp2)
   (SSeq (SOp _b Syntax.bopname.add _inp1 _inp2)
   (SSeq (SOp _c Syntax.bopname.sub _inp1 _inp2)
         (SInteract [_r; _garbage] "Select"%string [_s; _a; _b; _c]))))).

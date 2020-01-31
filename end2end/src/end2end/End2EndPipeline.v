@@ -3,7 +3,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Logic.FunctionalExtensionality.
-Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Word.LittleEndian.
@@ -155,10 +154,6 @@ Section Connect.
      Z names Semantics.params lingering around *)
   Notation strname_sem := (FlattenExpr.mk_Semantics_params
                              (@Pipeline.FlattenExpr_parameters pipeline_params)).
-  Notation strname_syntax := (FlattenExpr.mk_Syntax_params
-                             (@Pipeline.FlattenExpr_parameters pipeline_params)).
-  Notation cmd := (@cmd ((FlattenExpr.mk_Syntax_params
-                            (@Pipeline.FlattenExpr_parameters pipeline_params)))).
   Context (spec: @ProgramSpec strname_sem)
           (ml: MemoryLayout 32)
           (mlOk: MemoryLayoutOk ml)
@@ -192,12 +187,12 @@ Section Connect.
      TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
   Lemma end2end:
       (forall m, WeakestPrecondition.cmd (p := strname_sem) funspecs
-                                         (@cmd.call strname_syntax nil "init"%string nil)
+                                         (cmd.call nil "init"%string nil)
                                          [] m map.empty bedrock2Inv) ->
       (forall t m l,
           bedrock2Inv t m l ->
           WeakestPrecondition.cmd (p := strname_sem) funspecs
-                                  (@cmd.call strname_syntax nil "loop"%string nil) t m l bedrock2Inv) ->
+                                  (cmd.call nil "loop"%string nil) t m l bedrock2Inv) ->
     (* TODO more hypotheses might be needed *)
     forall (t: Kami.Semantics.LabelSeqT) (mFinal: KamiImplMachine),
       (* IF the 4-stage pipelined processor steps to some final state mFinal, producing trace t,*)

@@ -86,7 +86,6 @@ Fixpoint path_lookup (o : Z) (p : path Z) (s : type)
   end.
 
 Section syntax.
-  Context {p : unique! parameters}.
   Variable bop_add : bopname.
   Variable bop_mul : bopname.
 
@@ -137,13 +136,13 @@ Module demo.
   Goal inspect (path_lookup 0 (Sub 1 :: Field "last" :: nil)%Z employees). cbv. Abort.
   Goal inspect (path_lookup 0 (Sub 1 :: Field "last" :: Sub 2 :: nil)%Z employees). cbv. Abort.
 
-  Goal forall p add mul base,
-      inspect (@gen_access p add mul base employees (Sub (expr.literal 1) :: nil)).
+  Goal forall add mul base,
+      inspect (@gen_access add mul base employees (Sub (expr.literal 1) :: nil)).
     intros. cbv. Abort.
-  Goal forall p add mul base,
-      inspect (@gen_access p add mul base employees (Sub (expr.literal 1) :: Field "last" :: nil)).
+  Goal forall add mul base,
+      inspect (@gen_access add mul base employees (Sub (expr.literal 1) :: Field "last" :: nil)).
     intros. cbv. Abort.
-  Goal forall p add mul base,
-      inspect (@gen_access p add mul base employees (Sub (expr.literal 1) :: Field "last" :: Sub (expr.literal 2) :: nil)).
+  Goal forall add mul base,
+      inspect (@gen_access add mul base employees (Sub (expr.literal 1) :: Field "last" :: Sub (expr.literal 2) :: nil)).
     intros. cbv. Abort.
 End demo.

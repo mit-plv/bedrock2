@@ -9,16 +9,6 @@ Definition MMIOAction: Type := String.string.
 Notation MMInput := "MMInput"%string.
 Notation MMOutput := "MMOutput"%string.
 
-Local Instance syntax_parameters : Syntax.parameters := {|
-  varname := Z;
-  funname := String.string;
-  actname := MMIOAction;
-|}.
-
-
-
-
-
 From coqutil.Map Require SortedListWord SortedListString Z_keyed_SortedListMap Empty_set_keyed_map.
 From coqutil Require Import Word.Interface Word.Naive Z.HexNotation String.
 Require Import bedrock2.Semantics.
@@ -35,13 +25,9 @@ Local Instance parameters : parameters :=
   let byte := Naive.word8 in
   {|
   width := 32;
-  varname_eqb := Z.eqb;
-  funname_eqb := String.eqb;
-  actname_eqb := String.eqb;
-  syntax := syntax_parameters;
   mem := SortedListWord.map _ _;
-  locals := Z_keyed_SortedListMap.Zkeyed_map _;
-  funname_env := SortedListString.map;
+  locals := SortedListString.map _;
+  env := SortedListString.map _;
   ext_spec t mGive action args post :=
     mGive = Map.Interface.map.empty /\
     match action, List.map word.unsigned args with
@@ -69,21 +55,20 @@ Local Instance parameters : parameters :=
 
 
 Require Import bedrock2.NotationsCustomEntry.
-(* both variable names and literals are Z in this file, disambiguate... *)
-Local Coercion var {p} (x : @varname p) : expr := expr.var x. (* COQBUG(4593) *)
+Local Coercion var (x : String.string) : expr := expr.var x. (* COQBUG(4593) *)
 Local Coercion literal (x : Z) : expr := expr.literal x.
 
 Definition swap_chars_over_uart: cmd :=
-  let prev : varname := 1%Z in
-  let rx : varname := 2%Z in
-  let tx : varname := 3%Z in
-  let running : varname := 4%Z in
+  let prev : String.string := "prev"%string in
+  let rx : String.string := "rx"%string in
+  let tx : String.string := "tx"%string in
+  let running : String.string := "running"%string in
 
-  let bit31 : varname := 5%Z in
-  let one : varname := 6%Z in
-  let dot : varname := 7%Z in
-  let uart_tx : varname := 8%Z in
-  let polling : varname := 9%Z in
+  let bit31 : String.string := "bit31"%string in
+  let one : String.string := "one"%string in
+  let dot : String.string := "dot"%string in
+  let uart_tx : String.string := "uart_tx"%string in
+  let polling : String.string := "polling"%string in
 
   let MMIOREAD  := MMInput in (* COQBUG(9514) ... *)
   let MMIOWRITE := MMOutput in
@@ -197,16 +182,16 @@ Proof.
 
 
   refine (
-  let prev : varname := 1%Z in
-  let rx : varname := 2%Z in
-  let tx : varname := 3%Z in
-  let running : varname := 4%Z in
+  let prev : String.string := "prev"%string in
+  let rx : String.string := "rx"%string in
+  let tx : String.string := "tx"%string in
+  let running : String.string := "running"%string in
 
-  let bit31 : varname := 5%Z in
-  let one : varname := 6%Z in
-  let dot : varname := 7%Z in
-  let uart_tx : varname := 8%Z in
-  let polling : varname := 9%Z in
+  let bit31 : String.string := "bit31"%string in
+  let one : String.string := "one"%string in
+  let dot : String.string := "dot"%string in
+  let uart_tx : String.string := "uart_tx"%string in
+  let polling : String.string := "polling"%string in
 
   _).
   (* SearchAbout I (* ANOMALY *) *)
@@ -257,15 +242,15 @@ Fixpoint echo_server_spec (t : trace) (output_to_explain : option word) : Prop :
   end%bool%list.
 
 Definition echo_server: cmd :=
-  let rx : varname := 2%Z in
-  let tx : varname := 3%Z in
-  let running : varname := 4%Z in
+  let rx : String.string := "rx"%string in
+  let tx : String.string := "tx"%string in
+  let running : String.string := "running"%string in
 
-  let bit31 : varname := 5%Z in
-  let one : varname := 6%Z in
-  let dot : varname := 7%Z in
-  let uart_tx : varname := 8%Z in
-  let polling : varname := 9%Z in
+  let bit31 : String.string := "bit31"%string in
+  let one : String.string := "one"%string in
+  let dot : String.string := "dot"%string in
+  let uart_tx : String.string := "uart_tx"%string in
+  let polling : String.string := "polling"%string in
 
   let MMIOREAD  := MMInput in (* COQBUG(9514) ... *)
   let MMIOWRITE := MMOutput in
@@ -310,16 +295,16 @@ Proof.
   repeat t.
 
   refine (
-  let prev : varname := 1%Z in
-  let rx : varname := 2%Z in
-  let tx : varname := 3%Z in
-  let running : varname := 4%Z in
+  let prev : String.string := "prev"%string in
+  let rx : String.string := "rx"%string in
+  let tx : String.string := "tx"%string in
+  let running : String.string := "running"%string in
 
-  let bit31 : varname := 5%Z in
-  let one : varname := 6%Z in
-  let dot : varname := 7%Z in
-  let uart_tx : varname := 8%Z in
-  let polling : varname := 9%Z in
+  let bit31 : String.string := "bit31"%string in
+  let one : String.string := "one"%string in
+  let dot : String.string := "dot"%string in
+  let uart_tx : String.string := "uart_tx"%string in
+  let polling : String.string := "polling"%string in
 
   _).
   (* SearchAbout I (* ANOMALY *) *)

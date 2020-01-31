@@ -2,20 +2,18 @@ Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 
 Require Import Coq.Lists.List.
 
-Module expr. Section expr. Import Syntax.expr.
-  Context {p : unique! Syntax.parameters}.
-  Fixpoint vars (e : expr) : list varname :=
+Module expr. Import Syntax.expr.
+  Fixpoint vars (e : expr) : list String.string :=
     match e with
     | literal v => nil
     | var x => cons x nil
     | load _ ea => vars ea
     | op _ e1 e2 => List.app (vars e1) (vars e2)
     end.
-End expr. End expr.
+End expr.
 
-Module cmd. Section cmd. Import Syntax.cmd.
-  Context {p : unique! Syntax.parameters}.
-  Fixpoint vars (c: cmd) : list varname := 
+Module cmd. Import Syntax.cmd.
+  Fixpoint vars (c: cmd) : list String.string :=
     match c with
     | skip => nil
     | set x e => x::expr.vars e
@@ -26,4 +24,4 @@ Module cmd. Section cmd. Import Syntax.cmd.
     | while e c => expr.vars e ++ vars c
     | call binds _ args | interact binds _ args => binds ++ (List.flat_map expr.vars args)
     end.
-End cmd. End cmd.
+End cmd.

@@ -6,7 +6,6 @@ Require        compiler.ExprImp.
 Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
-Require Export riscv.Spec.Decode.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
 Require Export riscv.Platform.Minimal.
@@ -173,15 +172,13 @@ End MapKeys.
 
 
 Module Import Pipeline.
-  Definition varname := string.
 
   Class parameters := {
     FlatToRiscvDef_params :> FlatToRiscvDef.FlatToRiscvDef.parameters;
 
     mem :> map.map word byte;
-    locals :> map.map varname word;
-    Registers :> map.map Register word;
-    funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
+    Registers :> map.map Z word;
+    string_keyed_map :> forall T: Type, map.map string T; (* abstract T for better reusability *)
     trace := list (mem * string * list word * (mem * list word));
     ExtSpec := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
@@ -198,10 +195,8 @@ Module Import Pipeline.
   }.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
-    FlattenExpr.varname := varname;
-    FlattenExpr.varname_eqb := String.eqb;
     FlattenExpr.W := _;
-    FlattenExpr.locals := locals;
+    FlattenExpr.locals := _;
     FlattenExpr.mem := mem;
     FlattenExpr.ext_spec := ext_spec;
     FlattenExpr.NGstate := string;
@@ -214,9 +209,7 @@ Module Import Pipeline.
   Class assumptions{p: parameters}: Prop := {
     word_riscv_ok :> RiscvWordProperties.word.riscv_ok word;
     mem_ok :> map.ok mem;
-    locals_ok :> map.ok locals;
-    funname_env_ok :> forall T, map.ok (funname_env T);
-    (* src2imp_ok :> map.ok src2imp; *)
+    string_keyed_map_ok :> forall T, map.ok (string_keyed_map T);
     Registers_ok :> map.ok Registers;
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscvCommon.assumptions;
@@ -231,18 +224,28 @@ Section Pipeline1.
   Context {p: parameters}.
   Context {h: assumptions}.
 
-  Definition funname := string.
-
   Axiom TODO_sam: False.
 
-  Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters := {
-    FlattenExpr.locals_ok := locals_ok;
-    FlattenExpr.mem_ok := mem_ok;
-    FlattenExpr.funname_env_ok := funname_env_ok;
-    FlattenExpr.ext_spec_ok := ext_spec_ok;
-  }.
+  Instance mk_FlatImp_ext_spec_ok:
+    FlatImp.ext_spec.ok  string (FlattenExpr.mk_FlatImp_params FlattenExpr_parameters).
+  Proof.
+    destruct h. destruct ext_spec_ok0.
+    constructor.
+    all: intros; eauto.
+    eapply intersect; eassumption.
+  Qed.
 
-  Definition available_registers: list Register :=
+  Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters.
+  Proof.
+    constructor.
+    - apply (string_keyed_map_ok (p := p) (@word (@FlattenExpr.W (@FlattenExpr_parameters p)))).
+    - exact (@mem_ok p h).
+    - apply (string_keyed_map_ok (p := p) (list string * list string * Syntax.cmd.cmd)).
+    - apply (string_keyed_map_ok (p := p) (list string * list string * FlatImp.stmt string)).
+    - apply mk_FlatImp_ext_spec_ok.
+  Qed.
+
+  Definition available_registers: list Z :=
     Eval cbv in List.unfoldn Z.succ 29 3.
 
   Lemma NoDup_available_registers: NoDup available_registers.
@@ -251,24 +254,20 @@ Section Pipeline1.
   Lemma valid_FlatImp_vars_available_registers: Forall FlatToRiscvDef.valid_FlatImp_var available_registers.
   Proof. repeat constructor; cbv; intros; discriminate. Qed.
 
-  Local Notation source_env :=
-    (@funname_env p (list string * list string * (@Syntax.cmd (FlattenExpr.mk_Syntax_params _)))).
-  Local Notation flat_env :=
-    (@funname_env p (list string * list string * (@FlatImp.stmt (FlattenExpr.mk_Syntax_params _)))).
-  Local Notation renamed_env :=
-    (@funname_env p (list Z * list Z * @FlatImp.stmt (@impparams Z string string))).
+  Local Notation source_env := (@string_keyed_map p (list string * list string * Syntax.cmd)).
+  Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
+  Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
   Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
-    rename_functions String.eqb Z.eqb String.eqb String.eqb
-                     available_registers ext_spec prog.
+    rename_functions available_registers prog.
 
   (* Note: we could also track code size from the source program all the way to the target
      program, and a lot of infrastructure is already there, will do once/if we want to get
      a total compiler.
      Returns the fun_pos_env so that users know where to jump to call the compiled functions. *)
   Definition riscvPhase(ml: MemoryLayout Semantics.width)(prog: renamed_env):
-    option (list Instruction * funname_env Z) :=
+    option (list Decode.Instruction * funname_env Z) :=
     bind_opt stack_needed <- stack_usage prog;
     let num_stackwords := word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / bytes_per_word in
     if Z.ltb num_stackwords stack_needed then None (* not enough stack *) else
@@ -286,14 +285,10 @@ Section Pipeline1.
     end.
 
   Definition compile(ml: MemoryLayout Semantics.width):
-    source_env -> option (list Instruction * funname_env Z) :=
+    source_env -> option (list Decode.Instruction * funname_env Z) :=
     (composePhases flattenPhase
     (composePhases renamePhase
                    (riscvPhase ml))).
-
-  Local Notation cmd := (@Syntax.cmd (FlattenExprDef.FlattenExpr.mk_Syntax_params _)).
-  Local Notation env := (@Semantics.env (FlattenExpr.mk_Semantics_params _)).
-  Local Notation localsH := (@Semantics.locals (FlattenExpr.mk_Semantics_params _)).
 
   Context (ml: MemoryLayout Semantics.width)
           (mlOk: MemoryLayoutOk ml).
@@ -305,13 +300,12 @@ Section Pipeline1.
 
   Definition related :=
     (compose_relation (FlattenExprSimulation.related (2^10))
-    (compose_relation (RegRename.related eqb Z.eqb eqb eqb available_registers ext_spec)
+    (compose_relation (RegRename.related available_registers ext_spec)
                       (FlatToRiscvSimulation.related f_entry_rel_pos f_entry_name p_call Rdata Rexec
                                                      ml.(code_start) ml.(stack_start) ml.(stack_pastend)))).
 
   Definition flattenSim := FlattenExprSimulation.flattenExprSim (2^10).
-  Definition regAllocSim := renameSim String.eqb Z.eqb String.eqb String.eqb
-                                      available_registers (@ext_spec p) NoDup_available_registers.
+  Definition regAllocSim := renameSim available_registers (@ext_spec p) NoDup_available_registers.
   Definition flatToRiscvSim := FlatToRiscvSimulation.flatToRiscvSim
                                  f_entry_rel_pos f_entry_name p_call Rdata Rexec
                                  ml.(code_start) ml.(stack_start) ml.(stack_pastend).

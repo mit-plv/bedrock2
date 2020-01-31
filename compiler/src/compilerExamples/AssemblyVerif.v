@@ -6,7 +6,6 @@ Require Import riscv.Utility.Monads.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Spec.Machine.
-Require Import riscv.Spec.Decode.
 Require Import Coq.ZArith.ZArith.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Platform.Memory.

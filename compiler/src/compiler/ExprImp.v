@@ -28,8 +28,8 @@ Section ExprImp1.
 
   Context {p : unique! Semantics.parameters}.
 
-  Notation var := (@Syntax.varname (@Semantics.syntax p)) (only parsing).
-  Notation func := (@Syntax.funname (@Semantics.syntax p)) (only parsing).
+  Notation var := String.string (only parsing).
+  Notation func := String.string (only parsing).
   Notation vars := (var -> Prop).
 
   Definition SimState: Type := env * cmd * trace * mem * locals * bedrock2.MetricLogging.MetricLog.
@@ -37,10 +37,10 @@ Section ExprImp1.
     fun '(e, c, t, m, l, mc) post => exec e c t m l mc
                                           (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
 
-  (*Hypothesis actname_empty: Syntax.actname = Empty_set.*)
-  Local Notation actname := Syntax.actname.
+  (*Hypothesis String.string_empty: String.string = Empty_set.*)
+  Local Notation varname := String.string.
 
-  Ltac set_solver := set_solver_generic (@Syntax.varname (@Semantics.syntax p)).
+  Ltac set_solver := set_solver_generic String.string.
   Context {word_ok: word.ok word}. (* TODO which param record? *)
 
   Section WithEnv.
@@ -308,7 +308,7 @@ Section ExprImp1.
     intros. induction s; simpl in *; set_solver.
   Qed.
 
-  Definition valid_fun: list varname * list varname * cmd -> Prop :=
+  Definition valid_fun: list String.string * list String.string * cmd -> Prop :=
     fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
     (* TODO later maybe also check size of body *)
 
@@ -352,19 +352,18 @@ Section ExprImp2.
   Context {p : unique! Semantics.parameters}.
   Context {ok : Semantics.parameters_ok p}.
 
-  Notation var := (@Syntax.varname (@Semantics.syntax p)) (only parsing).
-  Notation func := (@Syntax.funname (@Semantics.syntax p)) (only parsing).
+  Notation var := String.string (only parsing).
+  Notation func := String.string (only parsing).
   Notation vars := (var -> Prop).
 
-  (*Hypothesis actname_empty: Syntax.actname = Empty_set.*)
-  Local Notation actname := Syntax.actname.
+  (*Hypothesis String.string_empty: String.string = Empty_set.*)
+  Local Notation varname := String.string.
 
   Context {word_ok: word.ok word}. (* TODO which param record? *)
   Context {locals_ok: map.ok locals}.
-  Context {varname_eqb_spec: EqDecider varname_eqb}.
 
   Ltac state_calc := map_solver locals_ok.
-  Ltac set_solver := set_solver_generic (@Syntax.varname (@Semantics.syntax p)).
+  Ltac set_solver := set_solver_generic String.string.
 
   Lemma modVarsSound_fixpointsemantics: forall (e: env) fuel s initialS initialM finalS finalM,
     eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->

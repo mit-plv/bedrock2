@@ -6,11 +6,11 @@ Require Import bedrock2.TailRecursion.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
 Require bedrock2.string2ident.
 
-Definition spec_of {p:parameters} (procname:Syntax.funname) := list (Syntax.funname * (list Syntax.varname * list Syntax.varname * Syntax.cmd.cmd)) -> Prop.
+Definition spec_of (procname:String.string) := list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)) -> Prop.
 Existing Class spec_of.
 
 Section bindcmd.
-  Context {p : Syntax.parameters} {T : Type}.
+  Context {T : Type}.
   Fixpoint bindcmd (c : Syntax.cmd) (k : Syntax.cmd -> T) {struct c} : T :=
     match c with
     | cmd.cond e c1 c2 => bindcmd c1 (fun c1 => bindcmd c2 (fun c2 => let c := cmd.cond e c1 c2 in k c))
@@ -20,17 +20,14 @@ Section bindcmd.
     end.
 End bindcmd.
 
-Section callees.
-  Context {p : Syntax.parameters}.
-  (* TODO: use a deduplicating set instead of a list *)
-  Fixpoint callees (c : Syntax.cmd) : list funname :=
-    match c with
-    | cmd.cond _ c1 c2 | cmd.seq c1 c2 => callees c1 ++ callees c2
-    | cmd.while _ c => callees c
-    | cmd.call _ f _ => cons f nil
-    | _ => nil
-    end.
-End callees.
+(* TODO: use a deduplicating set instead of a list *)
+Fixpoint callees (c : Syntax.cmd) : list String.string :=
+  match c with
+  | cmd.cond _ c1 c2 | cmd.seq c1 c2 => callees c1 ++ callees c2
+  | cmd.while _ c => callees c
+  | cmd.call _ f _ => cons f nil
+  | _ => nil
+  end.
 
 Ltac assuming_correctness_of_in callees functions P :=
   lazymatch callees with
@@ -39,7 +36,7 @@ Ltac assuming_correctness_of_in callees functions P :=
     let f_spec := lazymatch constr:(_:spec_of f) with ?x => x end in
     constr:(f_spec functions -> ltac:(let t := assuming_correctness_of_in callees functions P in exact t))
   end.
-Local Notation function_t := ((funname * (list varname * list varname * Syntax.cmd.cmd))%type).
+Local Notation function_t := ((String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type).
 Local Notation functions_t := (list function_t).
 
 Ltac program_logic_goal_for_function proc :=
@@ -50,7 +47,7 @@ Ltac program_logic_goal_for_function proc :=
   constr:(forall functions : functions_t, ltac:(
     let s := assuming_correctness_of_in callees functions (spec (cons proc functions)) in
     exact s)).
-Definition program_logic_goal_for {_:parameters} (_ : function_t) (P : Prop) := P.
+Definition program_logic_goal_for (_ : function_t) (P : Prop) := P.
 
 Notation "program_logic_goal_for_function! proc" := (program_logic_goal_for proc ltac:(
    let x := program_logic_goal_for_function proc in exact x))

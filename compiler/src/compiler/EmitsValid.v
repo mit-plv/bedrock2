@@ -511,7 +511,7 @@ Section EmitsValid.
   Qed.
   *)
 
-  Context {fun_pos_env: coqutil.Map.Interface.map.map Syntax.funname Z}.
+  Context {fun_pos_env: coqutil.Map.Interface.map.map String.string Z}.
 
   Axiom compile_stmt_emits_valid: forall s e pos,
       supported_iset iset ->

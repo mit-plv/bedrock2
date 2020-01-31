@@ -24,7 +24,7 @@ Inductive bbinop: Type :=
 | BGeu.
 
 Section Syntax.
-  Context {pp : unique! Syntax.parameters}.
+  Context {varname: Type}.
 
   Inductive bcond: Type :=
     | CondBinary (op: bbinop) (x y: varname)
@@ -41,15 +41,8 @@ Section Syntax.
     | SLoop(body1: stmt)(cond: bcond)(body2: stmt): stmt
     | SSeq(s1 s2: stmt): stmt
     | SSkip: stmt
-    | SCall(binds: list varname)(f: funname)(args: list varname)
-    | SInteract(binds: list varname)(a: actname)(args: list varname).
-
-End Syntax.
-
-
-Section FlatImpSize1.
-
-  Context {p: unique! Syntax.parameters}.
+    | SCall(binds: list varname)(f: String.string)(args: list varname)
+    | SInteract(binds: list varname)(a: String.string)(args: list varname).
 
   Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
     match s with
@@ -124,7 +117,10 @@ Section FlatImpSize1.
     induction s; intros; simpl in *; intuition eauto using ForallVars_bcond_impl, Forall_impl.
   Qed.
 
-End FlatImpSize1.
+End Syntax.
+
+Arguments bcond: clear implicits.
+Arguments stmt: clear implicits.
 
 Local Notation "' x <- a ; f" :=
   (match (a: option _) with
@@ -136,13 +132,71 @@ Local Notation "' x <- a ; f" :=
 
 Local Open Scope Z_scope.
 
-(* shadows Semantics.env, which maps funnames to cmd (non-flattened) with a new instance
-   which maps funnames to stmt (flattened) *)
-Instance env{p: Semantics.parameters}: map.map funname (list varname * list varname * stmt) :=
-  funname_env _.
+Class parameters(varname: Type) := {
+  varname_eqb: varname -> varname -> bool;
+  width : Z;
+  word :> Word.Interface.word width;
+  byte :> Word.Interface.word 8%Z;
+
+  mem :> map.map word byte;
+  locals :> map.map varname word;
+  env :> map.map String.string (list varname * list varname * stmt varname);
+
+  trace := list ((mem * String.string * list word) * (mem * list word));
+
+  ExtSpec :=
+    (* Given a trace of what happened so far,
+       the given-away memory, an action label and a list of function call arguments, *)
+    trace -> mem -> String.string -> list word ->
+    (* and a postcondition on the received memory and function call results, *)
+    (mem -> list word -> Prop) ->
+    (* tells if this postcondition will hold *)
+    Prop;
+
+  ext_spec: ExtSpec;
+}.
+
+Module ext_spec.
+  Class ok(varname: Type){p: parameters varname}: Prop := {
+    (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
+    unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
+                                            (post1 post2: mem -> list word -> Prop),
+        ext_spec t1 mGive1 a args post1 ->
+        ext_spec t2 mGive2 a args post2 ->
+        map.same_domain mGive1 mGive2;
+
+    weaken :> forall t mGive act args,
+        Morphisms.Proper
+          (Morphisms.respectful
+             (Morphisms.pointwise_relation Interface.map.rep
+               (Morphisms.pointwise_relation (list word) Basics.impl)) Basics.impl)
+          (ext_spec t mGive act args);
+
+    intersect: forall t mGive a args
+                      (post1 post2: mem -> list word -> Prop),
+        ext_spec t mGive a args post1 ->
+        ext_spec t mGive a args post2 ->
+        ext_spec t mGive a args (fun mReceive resvals =>
+                                   post1 mReceive resvals /\ post2 mReceive resvals);
+  }.
+End ext_spec.
+Arguments ext_spec.ok: clear implicits.
+
+Class parameters_ok(varname: Type){p: parameters varname}: Prop := {
+  varname_eq_spec :> EqDecider varname_eqb;
+  width_cases : width = 32 \/ width = 64;
+  word_ok :> word.ok word;
+  byte_ok :> word.ok byte;
+  mem_ok :> map.ok mem;
+  locals_ok :> map.ok locals;
+  env_ok :> map.ok env;
+  ext_spec_ok :> ext_spec.ok _ _;
+}.
+Arguments parameters_ok: clear implicits.
 
 Section FlatImp1.
-  Context {pp : unique! Semantics.parameters}.
+  Context {varname: Type}.
+  Context {pp : unique! (parameters varname)}.
 
   Section WithEnv.
     Variable (e: env).
@@ -157,7 +211,7 @@ Section FlatImp1.
       | BGeu => negb (word.ltu x y)
       end.
 
-    Definition eval_bcond(st: locals)(cond: bcond): option bool :=
+    Definition eval_bcond(st: locals)(cond: bcond varname): option bool :=
       match cond with
       | CondBinary op x y =>
           'Some mx <- map.get st x;
@@ -170,7 +224,7 @@ Section FlatImp1.
 
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
-    Fixpoint eval_stmt(f: nat)(st: locals)(m: mem)(s: stmt):
+    Fixpoint eval_stmt(f: nat)(st: locals)(m: mem)(s: stmt varname):
       option (locals * mem) :=
       match f with
       | O => None (* out of fuel *)
@@ -313,7 +367,7 @@ Section FlatImp1.
   End WithEnv.
 
   (* returns the set of modified vars *)
-  Fixpoint modVars(s: stmt): set varname :=
+  Fixpoint modVars(s: stmt varname): set varname :=
     match s with
     | SLoad sz x y => singleton_set x
     | SStore sz x y => empty_set
@@ -331,7 +385,7 @@ Section FlatImp1.
     | SInteract binds funcname args => of_list binds
     end.
 
-  Definition accessedVarsBcond(cond: bcond): set varname :=
+  Definition accessedVarsBcond(cond: bcond varname): set varname :=
     match cond with
     | CondBinary _ x y =>
         union (singleton_set x) (singleton_set y)
@@ -343,8 +397,9 @@ End FlatImp1.
 
 Module exec.
   Section FlatImpExec.
-    Context {pp : unique! Semantics.parameters}.
-    Context {ok : Semantics.parameters_ok pp}.
+    Context {varname: Type}.
+    Context {pp : unique! parameters varname}.
+    Context {ok : parameters_ok varname pp}.
     Variable (e: env).
 
     Local Notation metrics := MetricLog.
@@ -354,7 +409,7 @@ Module exec.
 
     (* alternative semantics which allow non-determinism *)
     Inductive exec:
-      stmt ->
+      stmt varname ->
       trace -> mem -> locals -> metrics ->
       (trace -> mem -> locals -> metrics -> Prop)
     -> Prop :=
@@ -606,10 +661,11 @@ Ltac invert_eval_stmt :=
 
 
 Section FlatImp2.
-  Context {pp : unique! Semantics.parameters}.
-  Context {ok : Semantics.parameters_ok pp}.
+  Context (varname: Type).
+  Context {pp : unique! parameters varname}.
+  Context {ok : parameters_ok varname pp}.
 
-  Definition SimState: Type := env * stmt * trace * mem * locals * MetricLog.
+  Definition SimState: Type := env * stmt varname * trace * mem * locals * MetricLog.
   Definition SimExec: SimState -> (SimState -> Prop) -> Prop :=
     fun '(e, c, t, m, l, mc) post =>
       exec e c t m l mc (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
@@ -659,7 +715,7 @@ Section FlatImp2.
           simpl in IH';
           ensure_new IH'
       end;
-      try solve [map_solver locals_ok|refine (map.only_differ_putmany _ _ _ _ _); eassumption].
+      try solve [map_solver locals_ok |refine (map.only_differ_putmany _ _ _ _ _); eassumption].
   Qed.
 
   Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM (initialMc: MetricLog) post,
@@ -722,7 +778,7 @@ Module Import FlatImpSemanticsEquiv.
     noActionParams :> NoActionSyntaxParams.parameters;
 
     varname_eq_dec :> DecidableEq varname;
-    funcname_eq_dec:> DecidableEq funname;
+    funcname_eq_dec:> DecidableEq varname;
   }.
 
   Instance to_FlatImp_params(p: parameters): FlatImp.parameters := {|
@@ -753,7 +809,7 @@ Section FlatImp3.
            | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
              replace v2 with v1 in * by congruence;
              clear H2
-           (* | |- _ => eapply @ExInteract  not possible because actname=Empty_set *)
+           (* | |- _ => eapply @ExInteract  not possible because varname=Empty_set *)
            | |- _ => eapply @ExCall
            | |- _ => eapply @ExLoad
            | |- _ => eapply @ExStore

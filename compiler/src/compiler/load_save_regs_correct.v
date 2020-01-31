@@ -1,6 +1,5 @@
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.Tactics.
-Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.

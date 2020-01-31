@@ -3,20 +3,24 @@ Require Import bedrock2.BasicCSyntax bedrock2.NotationsInConstr.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : Syntax.expr := Syntax.expr.literal z.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
+
+(* Originally, this file used to implement exponentiation in terms of multiplication by
+   following the binary representation of the exponent.
+   Now that we don't support multiplication any more, this file implements multiplication
+   in terms of addition following the binary representation of the rhs of the multiplication. *)
 
 Definition ipow :=
   let x := "x" in
   let e := "e" in
   let ret := "ret" in
-  ("ipow", ([x;e], ([ret]:list varname), bedrock_func_body:(
-  ret = 1;;
+  ("ipow", ([x;e], ([ret]:list String.string), bedrock_func_body:(
+  ret = 0;;
   while (e) {{
-    if (e .& 1) {{ ret = ret * x }};;
+    if (e .& 1) {{ ret = ret + x }};;
     e = e >> 1;;
-    x = x * x
+    x = x + x
   }}
 ))).
 
@@ -28,7 +32,7 @@ Instance spec_of_ipow : spec_of "ipow" := fun functions =>
     WeakestPrecondition.call functions
       "ipow" t m [x; e]
       (fun t' m' rets => t=t'/\ m=m' /\ exists v, rets = [v] /\ (
-        word.unsigned v = word.unsigned x ^ word.unsigned e mod 2^width)).
+        word.unsigned v = word.unsigned x * word.unsigned e mod 2^width)).
 
 
 Module Z.
@@ -73,10 +77,10 @@ Proof.
 
   refine ((TailRecursion.tailrec
     (* types of ghost variables*) HList.polymorphic_list.nil
-    (* program variables *) (["e";"ret";"x"] : list varname))
+    (* program variables *) (["e";"ret";"x"] : list String.string))
     (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e) (* precondition *)
     (fun   T M E RET X => T = t /\ M = m /\ (* postcondition *)
-        word.unsigned RET = word.unsigned ret * word.unsigned x ^ word.unsigned e mod 2^width))
+        word.unsigned RET = (word.unsigned ret + word.unsigned x * word.unsigned e) mod 2^width))
     (fun n m => 0 <= n < m) (* well_founded relation *)
     _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine *)
@@ -106,17 +110,17 @@ Proof.
           change (1+1) with 2 in *.
           eapply Z.mod2_nonzero in Hbit.
           epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
-          rewrite Heq at 2; clear Hbit Heq.
+          rewrite Heq at 2. clear Hbit Heq.
           (* rewriting with equivalence modulo ... *)
-          rewrite !word.unsigned_mul.
+          rewrite !word.unsigned_add.
           unfold word.wrap.
-          rewrite ?Z.mul_mod_idemp_l by discriminate.
-          rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
-          rewrite ?Z.pow_add_r by (pose proof word.unsigned_range x0; Z.div_mod_to_equations; blia).
-          rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
-          rewrite Z.mul_mod_idemp_r by discriminate.
+          change (2 ^ 1) with 2.
+          do 2 rewrite <- Z.add_mod_idemp_r by discriminate.
+          rewrite Z.mul_mod_idemp_l by discriminate.
+          rewrite <- Z.add_mod by discriminate.
+          rewrite Z.add_mod_idemp_r by discriminate.
           f_equal; ring. } }
-      { 
+      {
         repeat (straightline || (split; trivial; [])).
         all: t.
         { (* measure decreases *)
@@ -127,17 +131,16 @@ Proof.
           change (1+1) with 2 in *.
           epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
           rewrite Heq at 2; clear Hbit Heq.
-          (* rewriting with equivalence modulo ... *)
-          rewrite !word.unsigned_mul, ?Z.mul_mod_idemp_l by discriminate.
+          rewrite word.unsigned_add.
           cbv [word.wrap].
-          rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
-          rewrite ?Z.add_0_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
-          rewrite Z.mul_mod_idemp_r by discriminate.
+          change (2 ^ 1) with 2.
+          rewrite <- Z.add_mod_idemp_r by discriminate.
+          rewrite Z.mul_mod_idemp_l by discriminate.
+          rewrite Z.add_mod_idemp_r by discriminate.
           f_equal; ring. } } }
-    { (* postcondition *) rewrite H, Z.pow_0_r, Z.mul_1_r, word.wrap_unsigned; auto. } }
+    { (* postcondition *) rewrite H, Z.mul_0_r, Z.add_0_r, word.wrap_unsigned; auto. } }
 
   repeat straightline.
 
   repeat (split || letexists || t || trivial).
-  setoid_rewrite H1; setoid_rewrite Z.mul_1_l; trivial.
 Defined.

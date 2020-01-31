@@ -15,6 +15,8 @@ Inductive MMIO :=
 
 Notation ForeverSilent := (eq nil).
 
+Declare Scope trace_scope.
+
 Notation "'OUT' [ a ]  'const' c ;; P" :=
   (fun t => exists t', t = [MMOutput a c] ;++ t' /\ P t')
     (at level 11, c at level 0, P at level 11, left associativity) : trace_scope.

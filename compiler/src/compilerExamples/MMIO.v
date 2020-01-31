@@ -38,10 +38,7 @@ Import ListNotations.
 
 Open Scope ilist_scope.
 
-Definition varname: Type := Z.
-Definition funname: Type := string.
-
-Definition compile_ext_call(results: list varname) a (args: list varname):
+Definition compile_ext_call(results: list Z) a (args: list Z):
   list Instruction :=
   if String.eqb "MMIOWRITE" a then
     match results, args with
@@ -97,12 +94,6 @@ Proof.
     repeat split; (blia || assumption).
 Qed.
 
-Instance mmio_syntax_params: Syntax.parameters := {|
-  Syntax.varname := varname;
-  Syntax.funname := funname;
-  Syntax.actname := String.string;
-|}.
-
 Module Import MMIO.
   Class parameters := {
     byte :> Word.Interface.word 8;
@@ -112,9 +103,9 @@ Module Import MMIO.
     word_riscv_ok :> word.riscv_ok word;
     mem :> map.map word byte;
     mem_ok :> map.ok mem;
-    locals :> map.map varname word;
+    locals :> map.map Z word;
     locals_ok :> map.ok locals;
-    funname_env: forall T, map.map funname T;
+    funname_env :> forall T, map.map String.string T;
     funname_env_ok :> forall T, map.ok (funname_env T);
   }.
 End MMIO.
@@ -148,39 +139,39 @@ Section MMIO1.
   |}.
 
   Instance FlatToRiscv_params: FlatToRiscvCommon.parameters := {
-    FlatToRiscv.def_params := compilation_params;
-    FlatToRiscv.locals := locals;
-    FlatToRiscv.mem := (@mem p);
-    FlatToRiscv.funname_env := funname_env;
-    FlatToRiscv.MM := free.Monad_free;
-    FlatToRiscv.RVM := MetricMinimalMMIO.IsRiscvMachine;
-    FlatToRiscv.PRParams := MetricMinimalMMIOPrimitivesParams;
-    FlatToRiscv.ext_spec := FE310CSemantics.ext_spec;
+    FlatToRiscvCommon.def_params := compilation_params;
+    FlatToRiscvCommon.locals := locals;
+    FlatToRiscvCommon.mem := (@mem p);
+    FlatToRiscvCommon.funname_env := funname_env;
+    FlatToRiscvCommon.MM := free.Monad_free;
+    FlatToRiscvCommon.RVM := MetricMinimalMMIO.IsRiscvMachine;
+    FlatToRiscvCommon.PRParams := MetricMinimalMMIOPrimitivesParams;
+    FlatToRiscvCommon.ext_spec := FE310CSemantics.ext_spec;
   }.
 
   Section CompilationTest.
     Definition magicMMIOAddrLit: Z := Ox"10024000".
-    Variable addr: varname.
-    Variable i: varname.
-    Variable s: varname.
+    Variable addr: Z.
+    Variable i: Z.
+    Variable s: Z.
 
     (*
     addr = magicMMIOAddr;
     loop {
       i = input addr;
       stay in loop only if i is non-zero;
-      s = i * i;
+      s = i _ i;
       output addr s;
     }
     *)
-    Definition squarer: stmt :=
+    Definition doubler: stmt Z :=
       (SSeq (SLit addr magicMMIOAddrLit)
             (SLoop (SLoad Syntax.access_size.four i addr)
                    (CondNez i)
-                   (SSeq (SOp s Syntax.bopname.mul i i)
+                   (SSeq (SOp s Syntax.bopname.add i i)
                          (SStore Syntax.access_size.four addr s)))).
 
-    Definition compiled: list Instruction := Eval cbv in compile_stmt map.empty 0 squarer.
+    Definition compiled: list Instruction := Eval cbv in compile_stmt map.empty 0 doubler.
     Goal True.
       let c := eval cbv in compiled in pose c.
     Abort.
@@ -374,17 +365,17 @@ Section MMIO1.
         }
         repeat fwd.
 
-        destruct (Z.eq_dec r 0); cbv [Register0 valid_FlatImp_var] in *; try ((* WHY *) exfalso; blia).
+        destruct (Z.eq_dec z 0); cbv [Register0 valid_FlatImp_var] in *; try ((* WHY *) exfalso; blia).
 
         unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
 
         repeat fwd.
 
         cbv [Register0 valid_register] in *.
-        destruct (Z.eq_dec r0 0); try ((* WHY *) exfalso; blia).
+        destruct (Z.eq_dec z0 0); try ((* WHY *) exfalso; blia).
 
         unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
-        destruct (Z.eq_dec r 0); try blia.
+        destruct (Z.eq_dec z 0); try blia.
 
         repeat fwd.
 
@@ -537,13 +528,13 @@ Section MMIO1.
         repeat fwd.
 
         cbv [Register0 valid_FlatImp_var] in *.
-        destruct (Z.eq_dec r 0); try ((* WHY *) exfalso; blia).
+        destruct (Z.eq_dec z 0); try ((* WHY *) exfalso; blia).
 
         unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
 
         repeat fwd.
 
-        destruct (Z.eq_dec r0 0). {
+        destruct (Z.eq_dec z0 0). {
           exfalso. inversion V_resvars. blia.
         }
         split; try discriminate.
@@ -558,13 +549,13 @@ Section MMIO1.
         repeat fwd.
 
         cbv [Register0 valid_register] in *.
-        destruct (Z.eq_dec r0 0); try ((* WHY *) exfalso; blia).
+        destruct (Z.eq_dec z0 0); try ((* WHY *) exfalso; blia).
 
         repeat fwd.
 
         eapply runsToNonDet.runsToDone.
         simpl_MetricRiscvMachine_get_set.
-        destruct (Z.eq_dec r 0); try contradiction.
+        destruct (Z.eq_dec z 0); try contradiction.
 
         unfold mmioLoadEvent, signedByteTupleToReg.
         match goal with

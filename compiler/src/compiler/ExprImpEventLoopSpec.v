@@ -34,7 +34,7 @@ Section Params1.
                                    and all locals have to be unset at the end of the loop *)
                                 l = map.empty.
 
-  Record ProgramSatisfiesSpec(init_f loop_f: Syntax.funname)
+  Record ProgramSatisfiesSpec(init_f loop_f: String.string)
          (e: Semantics.env)
          (spec: ProgramSpec): Prop :=
   {

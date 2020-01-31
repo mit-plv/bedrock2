@@ -9,13 +9,9 @@ Instance parameters : parameters :=
   let byte := Naive.word8 in
   {|
   width := 32;
-  syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
-  varname_eqb := String.eqb;
-  funname_eqb := String.eqb;
-  actname_eqb := String.eqb;
   mem := SortedListWord.map _ _;
   locals := SortedListString.map _;
-  funname_env := SortedListString.map;
+  env := SortedListString.map _;
   ext_spec := fun _ _ _ _ _ => False;
 |}.
 

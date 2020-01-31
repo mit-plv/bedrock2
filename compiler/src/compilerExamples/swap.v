@@ -5,6 +5,7 @@ Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.PipelineWithRename.
+Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
 Require Import riscv.Utility.Monads.
@@ -52,7 +53,7 @@ Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.
 
 Instance pipeline_params : Pipeline.parameters. simple refine {|
-  Pipeline.locals := _;
+  Pipeline.string_keyed_map := _;
   Pipeline.Registers := _;
   Pipeline.ext_spec _ _ := TODO;
   Pipeline.PRParams := TODO;

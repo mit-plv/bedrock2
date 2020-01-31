@@ -11,7 +11,7 @@ Local Open Scope Z_scope.
 Section FitsStack.
   Context {p: FlatToRiscvCommon.parameters}.
 
-  Definition stack_usage_impl(outer_rec: env -> stmt -> option Z)(e: env): stmt -> option Z :=
+  Definition stack_usage_impl(outer_rec: env -> stmt Z -> option Z)(e: env): stmt Z -> option Z :=
     fix inner_rec s :=
       match s with
       | SLoad _ _ _ | SStore _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _ | SSkip | SInteract _ _ _ => Some 0
@@ -31,7 +31,7 @@ Section FitsStack.
         end
     end.
 
-  Fixpoint stack_usage_rec(env_size_S: nat): env -> stmt -> option Z :=
+  Fixpoint stack_usage_rec(env_size_S: nat): env -> stmt Z -> option Z :=
     match env_size_S with
     | O => fun _ _ => None
     | S env_size => stack_usage_impl (stack_usage_rec env_size)
@@ -41,7 +41,7 @@ Section FitsStack.
 
   (* returns the number of stack words needed to execute f_entrypoint (which must have no args
      and no return values), None if a function not in funimpls is called or a function is recursive *)
-  Definition stack_usage_of_fun(funimpls: env)(f_entrypoint: Syntax.funname): option Z :=
+  Definition stack_usage_of_fun(funimpls: env)(f_entrypoint: String.string): option Z :=
     stack_usage_rec (S (count_funs funimpls)) funimpls (SCall nil f_entrypoint nil).
 
   Definition stack_usage(funimpls: env): option Z :=

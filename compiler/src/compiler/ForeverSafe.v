@@ -1,6 +1,5 @@
 Require Import Coq.Lists.List.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Machine.
@@ -19,7 +18,7 @@ Import ListNotations.
 Section ForeverSafe.
 
   Context {W: Words}.
-  Context {Registers: map.map Register word}.
+  Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
@@ -30,7 +29,7 @@ Section ForeverSafe.
   Context {RVM: RiscvProgram M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
-  Variable iset: InstructionSet.
+  Variable iset: Decode.InstructionSet.
 
   Lemma extend_runsTo_to_good_trace:
     forall (safe: RiscvMachineL -> Prop) (good_trace: trace -> Prop),

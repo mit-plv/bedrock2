@@ -36,9 +36,9 @@ Section Proofs.
   Context {p: FlatToRiscvCommon.parameters}.
   Context {h: FlatToRiscvCommon.assumptions}.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
   Notation RiscvMachine := MetricRiscvMachine.

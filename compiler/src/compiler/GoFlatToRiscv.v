@@ -7,7 +7,6 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.Utility.
-Require Import riscv.Spec.Decode.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Platform.RiscvMachine.
@@ -36,7 +35,7 @@ Import Utility.
 Section Go.
 
   Context {W: Words}.
-  Context {Registers: map.map Register word}.
+  Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
@@ -156,7 +155,7 @@ Section Go.
     rewrite_match;
     eauto 10 using ExecuteFetchP.
 
-  Lemma go_getRegister: forall (initialL: RiscvMachineL) (x: Register) v post (f: word -> M unit),
+  Lemma go_getRegister: forall (initialL: RiscvMachineL) (x: Z) v post (f: word -> M unit),
       valid_register x ->
       map.get initialL.(getRegs) x = Some v ->
       mcomp_sat (f v) initialL post ->
@@ -295,7 +294,7 @@ Section Go.
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.
 
-  Definition unchecked_store_program(addr: word)(p: list Instruction)(m: mem): mem :=
+  Definition unchecked_store_program(addr: word)(p: list Decode.Instruction)(m: mem): mem :=
     unchecked_store_byte_list addr (Z32s_to_bytes (List.map encode p)) m.
 
   Lemma putmany_of_footprint_None: forall n (vs: HList.tuple byte n) (addr: word) (z: Z) (m: mem),

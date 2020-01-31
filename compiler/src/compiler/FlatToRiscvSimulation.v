@@ -56,7 +56,7 @@ Section Sim.
   |}.
 
   Definition related(done: bool):
-    FlatImp.SimState -> MetricRiscvMachine -> Prop :=
+    FlatImp.SimState Z -> MetricRiscvMachine -> Prop :=
     fun '(e, c, t, m, l, mc) st =>
         c = SCall nil f_entry_name nil /\
         (word.unsigned p_call) mod 4 = 0 /\
@@ -69,7 +69,7 @@ Section Sim.
         goodMachine t m l (ghostConsts e) st.
 
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
-      simulation FlatImp.SimExec FlatToRiscvCommon.runsTo related.
+      simulation (FlatImp.SimExec Z) FlatToRiscvCommon.runsTo related.
   Proof.
     unfold simulation, FlatImp.SimExec, related, FlatImp.SimState.
     intros.
@@ -106,7 +106,7 @@ Section Sim.
       + rewrite word.of_Z_unsigned. ring.
       + clear - hyps.
         eapply proj1 with (B := forall k, In k (map.fold
-          (fun (acc : list string) (fname : string) (_ : list Register * list Register * stmt) => fname :: acc)
+          (fun (acc : list string) (fname : string) (_ : list Z * list Z * stmt Z) => fname :: acc)
           [] e) -> map.get e k <> None).
         eapply map.fold_spec.
         * split; [constructor|]. intros. simpl in *. contradiction.
@@ -133,7 +133,7 @@ Section Sim.
         match goal with
         | H: getPc _ = _ |- getPc _ = _ => rewrite H
         end.
-        solve_word_eq word_ok. (* TODO make sure solve_word complains if no ring found *)
+        solve_word_eq Utility.word_ok. (* TODO make sure solve_word complains if no ring found *)
   Qed.
 
 End Sim.

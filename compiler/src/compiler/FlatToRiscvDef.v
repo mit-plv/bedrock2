@@ -27,9 +27,9 @@ Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Pro
   forall instr, In instr prog -> verify instr iset.
 
 (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
-Definition valid_FlatImp_var(x: Register): Prop := 3 <= x < 32.
+Definition valid_FlatImp_var(x: Z): Prop := 3 <= x < 32.
 
-Lemma valid_FlatImp_var_implies_valid_register: forall (x: Register),
+Lemma valid_FlatImp_var_implies_valid_register: forall (x: Z),
     valid_FlatImp_var x -> valid_register x.
 Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
 
@@ -39,7 +39,7 @@ Module Import FlatToRiscvDef.
     (* the words implementations are not needed, but we need width,
        and EmitsValid needs width_cases *)
     W :> Utility.Words;
-    compile_ext_call: list Register -> String.string -> list Register -> list Instruction;
+    compile_ext_call: list Z -> String.string -> list Z -> list Instruction;
     compile_ext_call_length: forall binds f args,
         Z.of_nat (length (compile_ext_call binds f args)) <= 7;
     (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
@@ -49,12 +49,6 @@ Module Import FlatToRiscvDef.
       Forall valid_FlatImp_var args ->
       valid_instructions iset (compile_ext_call binds a args)
   }.
-
-  Instance mk_Syntax_params(p: parameters): Syntax.parameters := {|
-    Syntax.varname := Register;
-    Syntax.funname := String.string;
-    Syntax.actname := String.string;
-  |}.
 
 End FlatToRiscvDef.
 
@@ -69,10 +63,10 @@ Section FlatToRiscv1.
      11 encode the jump length as a multiple of 2, so jump lengths have to
      be < 2^12 bytes, i.e. < 2^10 instructions, so this bound is tight,
      unless we start using multi-instruction jumps. *)
-  Definition stmt_not_too_big(s: stmt): Prop := stmt_size s < 2 ^ 10.
+  Definition stmt_not_too_big(s: stmt Z): Prop := stmt_size s < 2 ^ 10.
 
-  Definition valid_registers_bcond: bcond -> Prop := ForallVars_bcond valid_register.
-  Definition valid_FlatImp_vars_bcond: bcond -> Prop := ForallVars_bcond valid_FlatImp_var.
+  Definition valid_registers_bcond: bcond Z -> Prop := ForallVars_bcond valid_register.
+  Definition valid_FlatImp_vars_bcond: bcond Z -> Prop := ForallVars_bcond valid_FlatImp_var.
 
   Lemma valid_FlatImp_vars_bcond_implies_valid_registers_bcond: forall b,
       valid_FlatImp_vars_bcond b -> valid_registers_bcond b.
@@ -81,9 +75,9 @@ Section FlatToRiscv1.
     intros. eauto using ForallVars_bcond_impl, valid_FlatImp_var_implies_valid_register.
   Qed.
 
-  Definition valid_FlatImp_vars: stmt -> Prop := ForallVars_stmt valid_FlatImp_var.
+  Definition valid_FlatImp_vars: stmt Z -> Prop := ForallVars_stmt valid_FlatImp_var.
 
-  Definition valid_FlatImp_fun: list varname * list varname * stmt -> Prop :=
+  Definition valid_FlatImp_fun: list Z * list Z * stmt Z -> Prop :=
     fun '(argnames, retnames, body) =>
       Forall valid_FlatImp_var argnames /\
       Forall valid_FlatImp_var retnames /\
@@ -103,7 +97,7 @@ Section FlatToRiscv1.
      We can't just always choose Lwu, because Lwu is not available on 32-bit machines. *)
 
   Definition compile_load(sz: access_size):
-    Register -> Register -> Z -> Instruction :=
+    Z -> Z -> Z -> Instruction :=
     match sz with
     | access_size.one => Lbu
     | access_size.two => Lhu
@@ -112,7 +106,7 @@ Section FlatToRiscv1.
     end.
 
   Definition compile_store(sz: access_size):
-    Register -> Register -> Z -> Instruction :=
+    Z -> Z -> Z -> Instruction :=
     match sz with
     | access_size.one => Sb
     | access_size.two => Sh
@@ -120,14 +114,10 @@ Section FlatToRiscv1.
     | access_size.word => if width =? 32 then Sw else Sd
     end.
 
-  Definition compile_op(rd: Register)(op: Syntax.bopname)(rs1 rs2: Register): list Instruction :=
+  Definition compile_op(rd: Z)(op: Syntax.bopname)(rs1 rs2: Z): list Instruction :=
     match op with
     | Syntax.bopname.add => [[Add rd rs1 rs2]]
     | Syntax.bopname.sub => [[Sub rd rs1 rs2]]
-    | Syntax.bopname.mul => [[Mul rd rs1 rs2]]
-    | Syntax.bopname.mulhuu => [[Mulhu rd rs1 rs2]]
-    | Syntax.bopname.divu => [[Divu rd rs1 rs2]]
-    | Syntax.bopname.remu => [[Remu rd rs1 rs2]]
     | Syntax.bopname.and => [[And rd rs1 rs2]]
     | Syntax.bopname.or  => [[Or  rd rs1 rs2]]
     | Syntax.bopname.xor => [[Xor rd rs1 rs2]]
@@ -139,7 +129,7 @@ Section FlatToRiscv1.
     | Syntax.bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
     end.
 
-  Definition compile_lit_12bit(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit_12bit(rd: Z)(v: Z): list Instruction :=
     [[ Addi rd Register0 (signExtend 12 v) ]].
 
   (* On a 64bit machine, loading a constant -2^31 <= v < 2^31 is not always possible with
@@ -160,12 +150,12 @@ Section FlatToRiscv1.
      Lui+Addi pairs for all desired values in the range -2^31 <= v < 2^31
  *)
 
-  Definition compile_lit_32bit(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit_32bit(rd: Z)(v: Z): list Instruction :=
     let lo := signExtend 12 v in
     let hi := Z.lxor (signExtend 32 v) lo in
     [[ Lui rd hi ; Xori rd rd lo ]].
 
-  Definition compile_lit_64bit(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit_64bit(rd: Z)(v: Z): list Instruction :=
     let v0 := bitSlice v  0 11 in
     let v1 := bitSlice v 11 22 in
     let v2 := bitSlice v 22 32 in
@@ -178,7 +168,7 @@ Section FlatToRiscv1.
        Slli rd rd 11 ;
        Xori rd rd v0 ]].
 
-  Definition compile_lit(rd: Register)(v: Z): list Instruction :=
+  Definition compile_lit(rd: Z)(v: Z): list Instruction :=
     if ((-2^11 <=? v)%Z && (v <? 2^11)%Z)%bool then
       compile_lit_12bit rd v
     else if ((width =? 32)%Z || (- 2 ^ 31 <=? v)%Z && (v <? 2 ^ 31)%Z)%bool then
@@ -187,7 +177,7 @@ Section FlatToRiscv1.
 
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting
-             (cond: bcond) (amt: Z) : Instruction:=
+             (cond: bcond Z) (amt: Z) : Instruction:=
     match cond with
     | CondBinary op x y =>
         match op with
@@ -202,14 +192,14 @@ Section FlatToRiscv1.
         Beq x Register0 amt
     end.
 
-  Fixpoint save_regs(regs: list Register)(offset: Z): list Instruction :=
+  Fixpoint save_regs(regs: list Z)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
     | r :: regs => compile_store access_size.word sp r offset
                    :: (save_regs regs (offset + bytes_per_word))
     end.
 
-  Fixpoint load_regs(regs: list Register)(offset: Z): list Instruction :=
+  Fixpoint load_regs(regs: list Z)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
     | r :: regs => compile_load access_size.word r sp offset
@@ -219,14 +209,14 @@ Section FlatToRiscv1.
   (* All positions are relative to the beginning of the progam, so we get completely
      position independent code. *)
 
-  Context {fun_pos_env: map.map funname Z}.
-  Context {env: map.map funname (list varname * list varname * stmt)}.
+  Context {fun_pos_env: map.map String.string Z}.
+  Context {env: map.map String.string (list Z * list Z * stmt Z)}.
 
   Section WithEnv.
     Variable e: fun_pos_env.
 
-    Definition compile_stmt: Z -> stmt -> list Instruction :=
-      fix compile_stmt(mypos: Z)(s: stmt) :=
+    Definition compile_stmt: Z -> stmt Z -> list Instruction :=
+      fix compile_stmt(mypos: Z)(s: stmt Z) :=
       match s with
       | SLoad  sz x y => [[compile_load  sz x y 0]]
       | SStore sz x y => [[compile_store sz x y 0]]
@@ -287,7 +277,7 @@ Section FlatToRiscv1.
      Stack grows towards low addresses.
     *)
     Definition compile_function(mypos: Z):
-      (list varname * list varname * stmt) -> list Instruction :=
+      (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>
         let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
         let framelength := Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
@@ -308,7 +298,7 @@ Section FlatToRiscv1.
     Section WithImplEnv.
       Variable (e_impl: env).
 
-      Fixpoint compile_funs(pos: Z)(funnames: list funname): list Instruction :=
+      Fixpoint compile_funs(pos: Z)(funnames: list String.string): list Instruction :=
         match funnames with
         | nil => nil
         | fname :: rest =>

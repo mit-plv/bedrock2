@@ -30,7 +30,6 @@ Section WithParameters.
   Context {p : FE310CSemantics.parameters.parameters}.
 
 Goal program_logic_goal_for_function! arp.
-  repeat straightline.
   eexists; split; repeat straightline.
   1: exact eq_refl.
   letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.

@@ -8,7 +8,15 @@ Section WeakestPrecondition.
 
   Ltac ind_on X :=
     intros;
-    repeat match goal with x : ?T |- _ => first [ constr_eq T X; move x at top | revert x ] end;
+    (* Note: "before p" means actually "after p" when reading from top to bottom, because,
+       as the manual points out, "before" and "after" are with respect to the direction of
+       the move, and we're moving hypotheses upwards here.
+       We need to make sure not to revert/clear p, because the other lemmas depend on it.
+       If we still reverted/cleared p, we'd get errors like
+       "Error: Proper_load depends on the variable p which is not declared in the context."
+       when trying to use Proper_load, or, due to COQBUG https://github.com/coq/coq/issues/11487,
+       we'd get a typechecking failure at Qed time. *)
+    repeat match goal with x : ?T |- _ => first [ constr_eq T X; move x before p | revert x ] end;
     match goal with x : X |- _ => induction x end;
     intros.
 
@@ -145,10 +153,10 @@ Section WeakestPrecondition.
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl)))))))) WeakestPrecondition.call.
   Proof.
-    cbv [Proper respectful pointwise_relation Basics.impl]; ind_on (list (Syntax.funname * (list Syntax.varname * list Syntax.varname * Syntax.cmd.cmd)));
+    cbv [Proper respectful pointwise_relation Basics.impl]; ind_on (list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)));
       cbn in *; intuition (try typeclasses eauto with core).
     destruct a.
-    destruct (Semantics.funname_eqb f a1); eauto.
+    destruct (String.eqb s a1); eauto.
     eapply Proper_func;
       cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func];
       eauto.
@@ -249,7 +257,7 @@ Section WeakestPrecondition.
 
 
   Section WithE.
-    Context fs E (HE: List.Forall (fun '(k, v) => map.get E k = Some v) fs).
+    Context fs (E: Semantics.env) (HE: List.Forall (fun '(k, v) => map.get E k = Some v) fs).
     Import coqutil.Tactics.Tactics.
     Lemma sound_call' n t m args post
       (H : WeakestPrecondition.call fs n t m args post)
@@ -258,7 +266,7 @@ Section WeakestPrecondition.
       revert H; revert post args m t n; induction HE; intros.
       { contradiction H. }
       destruct x as [n' ((X&Y)&Z)]; t.
-      destruct (Semantics.funname_eqb_spec n' n); t.
+      destr (String.eqb n' n); t.
       eexists X, Y, Z; split; [assumption|].
       eexists; eauto.
       eexists; eauto.
@@ -290,8 +298,6 @@ Section WeakestPrecondition.
   Proof.
     eapply sound_cmd'';
       try eapply Properties.map.all_gets_from_map_of_NoDup_list; eauto.
-    Unshelve.
-    eapply p_ok.
   Qed.
 
   (** Ad-hoc lemmas here? *)

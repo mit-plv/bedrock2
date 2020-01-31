@@ -7,7 +7,7 @@ Section WeakestPrecondition.
 
   Definition literal v (post : word -> Prop) : Prop :=
     dlet! v := word.of_Z v in post v.
-  Definition get (l : locals) (x : varname) (post : word -> Prop) : Prop :=
+  Definition get (l : locals) (x : String.string) (post : word -> Prop) : Prop :=
     bind_ex_Some v <- map.get l x; post v.
   Definition load s m a (post : _ -> Prop) : Prop :=
     bind_ex_Some v <- load s m a; post v.
@@ -47,7 +47,7 @@ Section WeakestPrecondition.
   End WithF.
 
   Section WithFunctions.
-    Context (call : funname -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
+    Context (call : String.string -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
     Definition dexpr m l e v := expr m l e (eq v).
     Definition dexprs m l es vs := list_map (expr m l) es (eq vs).
     Definition cmd_body (rec:_->_->_->_->_->Prop) (c : cmd) (t : trace) (m : mem) (l : locals)
@@ -104,13 +104,13 @@ Section WeakestPrecondition.
         list_map (get l) outnames (fun rets =>
         post t m rets)).
 
-  Definition call_body rec (functions : list (funname * (list varname * list varname * cmd.cmd)))
-                (fname : funname) (t : trace) (m : mem) (args : list word)
+  Definition call_body rec (functions : list (String.string * (list String.string * list String.string * cmd.cmd)))
+                (fname : String.string) (t : trace) (m : mem) (args : list word)
                 (post : trace -> mem -> list word -> Prop) : Prop :=
     match functions with
     | nil => False
     | cons (f, decl) functions =>
-      if funname_eqb f fname
+      if String.eqb f fname
       then func (rec functions) decl t m args post
       else rec functions fname t m args post
     end.

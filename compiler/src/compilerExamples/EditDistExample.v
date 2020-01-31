@@ -1,3 +1,4 @@
+(*
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.ExprImp.
 Require Import compiler.util.Common.
@@ -202,3 +203,4 @@ Definition editdist_L_trace(fuel: nat): Log :=
 Eval vm_compute in (editdist_L_trace 200).
 
  *)
+*)

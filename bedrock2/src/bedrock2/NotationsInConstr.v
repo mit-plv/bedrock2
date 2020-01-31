@@ -1,9 +1,10 @@
 Require Import Coq.ZArith.BinIntDef.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 
-
+Declare Scope bedrock_var.
 Delimit Scope bedrock_var with bedrock_var.
 
+Declare Scope bedrock_expr.
 Delimit Scope bedrock_expr with bedrock_expr.
 Bind Scope bedrock_expr with expr.
 Notation "(uintptr_t) v 'ULL'" := (expr.literal v)
@@ -18,6 +19,7 @@ Notation "*(uint32_t*) e" := (expr.load access_size.four e%bedrock_expr)
 Notation "*(uintptr_t*) e" := (expr.load access_size.word e%bedrock_expr)
   (at level 10, no associativity) : bedrock_expr.
 
+Declare Scope bedrock_cmd.
 Delimit Scope bedrock_cmd with bedrock_cmd.
 Bind Scope bedrock_cmd with cmd.
 Notation "'/*skip*/'" := cmd.skip
@@ -43,6 +45,7 @@ Notation "'if' ( e ) { { c } }" := (cmd.cond e%bedrock_expr c%bedrock_cmd cmd.sk
 Notation "'while' ( e ) { { c } }" := (cmd.while e%bedrock_expr c%bedrock_cmd)
  (at level 76, no associativity, c at level 76, format "'[v' 'while'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_cmd.
 
+Declare Scope bedrock_func_body.
 Delimit Scope bedrock_func_body with bedrock_func_body.
 Notation "'require' ( e ) 'else' { { ce } } c" := (cmd.cond e%bedrock_expr c%bedrock_func_body%bedrock_cmd ce%bedrock_cmd)
  (at level 76, right associativity, ce at level 76, c at level 76, format "'[v' 'require'  ( e )  'else'  { { '/  '  ce '/' } } '//' c ']'") : bedrock_func_body.
@@ -55,8 +58,7 @@ Notation "'if' ( e ) { { c1 } } 'else' { { c2 } }" := (cmd.cond e%bedrock_expr c
 Notation "'if' ( e ) { { c } }" := (cmd.cond e%bedrock_expr c%bedrock_func_body cmd.skip)
  (at level 76, no associativity, c at level 76, format "'[v' 'if'  ( e )  { {  '/  ' c '/' } } ']'") : bedrock_func_body.
 
-Notation "bedrock_func_body: x" :=
-  ((x: @cmd _)%bedrock_func_body) (at level 10).
+Notation "bedrock_func_body: x" := ((x: cmd)%bedrock_func_body) (at level 10).
 Undelimit Scope bedrock_func_body.
 
 
@@ -68,12 +70,6 @@ Notation "e1 << e2" := (expr.op bopname.slu e1%bedrock_expr e2%bedrock_expr)
   (at level 32, left associativity) : bedrock_expr.
 
 Notation "e1 .& e2" := (expr.op bopname.and e1%bedrock_expr e2%bedrock_expr)
-  (at level 40, left associativity) : bedrock_expr.
-(* same level:   *    *)
-
-(* FIXME: intermediate level for  %  /  *)
-
-Notation "e1 * e2" := (expr.op bopname.mul e1%bedrock_expr e2%bedrock_expr)
   (at level 40, left associativity) : bedrock_expr.
 
 Notation "e1 + e2" := (expr.op bopname.add e1%bedrock_expr e2%bedrock_expr)

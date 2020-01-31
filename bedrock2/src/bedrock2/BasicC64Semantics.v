@@ -9,13 +9,9 @@ Instance parameters : parameters :=
   let byte := Naive.word8 in
   {|
   width := 64;
-  syntax := StringNamesSyntax.make BasicCSyntax.StringNames_params;
-  varname_eqb := String.eqb;
-  funname_eqb := String.eqb;
-  actname_eqb := String.eqb;
   mem := SortedListWord.map _ _;
   locals := SortedListString.map _;
-  funname_env := SortedListString.map;
+  env := SortedListString.map _;
   ext_spec := fun _ _ _ _ _ => False;
 |}.
 
@@ -50,6 +46,6 @@ Axiom TODO_sam: False.
 Instance parameters_ok : parameters_ok parameters.
   constructor; intros; try typeclasses eauto.
   - cbv. right. reflexivity.
-  - unfold funname_env, parameters. exact (SortedListString.ok _).
+  - unfold env, parameters. exact (SortedListString.ok _).
   - case TODO_sam.
 Qed.

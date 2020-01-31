@@ -18,7 +18,7 @@ Section chacha20.
   Notation "a ^= b" := (subst! a for x in (x = (x .^ b)))%bedrock_cmd (at level 75) : bedrock_cmd.
   Notation "a += b" := (subst! a for x in (x = (x + b)))%bedrock_cmd (at level 75) : bedrock_cmd.
 
-  Definition QUARTERROUND (a b c d : varname) : cmd :=
+  Definition QUARTERROUND (a b c d : String.string) : cmd :=
     a += b;; d ^= a;; d <<<= 16;;
     c += d;; b ^= c;; b <<<= 12;;
     a += b;; d ^= a;; d <<<= 8;;
@@ -31,7 +31,7 @@ Section chacha20.
   Let x8  := "x8". Let x9  := "x9". Let x10 := "x10". Let x11 := "x11".
   Let x12 := "x12". Let x13 := "x13". Let x14 := "x14". Let x15 := "x15".
   Definition xorout o x : cmd := *(uint32_t*)((out+literal(4*o))%bedrock_expr) = *(uint32_t*)((out+literal(4*o))) .^ x.
-  Definition chacha20_block := ((out::key::nonce::countervalue::nil), @nil varname, bedrock_func_body:(
+  Definition chacha20_block := ((out::key::nonce::countervalue::nil), @nil String.string, bedrock_func_body:(
     x0 = Ox"61707865";;          x1 = Ox"3320646e";;          x2 = Ox"79622d32";;            x3 = Ox"6b206574";;
     x4 = *(uint32_t*) key;;      x5 = *(uint32_t*) (key+4);;  x6 = *(uint32_t*) (key+8);;    x7 = *(uint32_t*) (key+12);;
     x8 = *(uint32_t*) (key+16);; x9 = *(uint32_t*) (key+20);; x10 = *(uint32_t*) (key+24);;  x11 = *(uint32_t*) (key+28);;

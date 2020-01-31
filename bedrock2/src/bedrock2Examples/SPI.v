@@ -1,10 +1,9 @@
-Require Import bedrock2.Syntax bedrock2.StringNamesSyntax bedrock2.BasicCSyntax.
+Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
 
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
-Local Existing Instance BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
 Local Coercion name_of_func (f : function) := fst f.
@@ -16,9 +15,9 @@ Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
 Definition spi_write : function :=
-  let b : varname := "b" in
-  let busy : varname := "busy" in
-  let i : varname := "i" in
+  let b : String.string := "b" in
+  let busy : String.string := "busy" in
+  let i : String.string := "i" in
   let SPI_WRITE_ADDR := Ox"10024048" in
   ("spi_write", ((b::nil), (busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
@@ -35,9 +34,9 @@ Definition spi_write : function :=
   ))).
 
 Definition spi_read : function :=
-  let b : varname := "b" in
-  let busy : varname := "busy" in
-  let i : varname := "i" in
+  let b : String.string := "b" in
+  let busy : String.string := "busy" in
+  let i : String.string := "i" in
   let SPI_READ_ADDR := Ox"1002404c" in
   ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
@@ -53,8 +52,8 @@ Definition spi_read : function :=
   ))).
 
 Definition spi_xchg : function :=
-  let b : varname := "b" in
-  let busy : varname := "busy" in
+  let b : String.string := "b" in
+  let busy : String.string := "busy" in
   ("spi_xchg", (b::nil, b::busy::nil, bedrock_func_body:(
     unpack! busy = spi_write(b);
     require !busy;
@@ -310,7 +309,7 @@ Section WithParameters.
       letexists; split; [exact eq_refl|]; split; [split; trivial|].
       { case TODO_andres_mmioaddr. }
       repeat ((split; trivial; []) || straightline || split_if).
-      { 
+      {
         letexists. split; split.
         { subst v'; exact eq_refl. }
         { split; trivial.
@@ -433,8 +432,6 @@ Section WithParameters.
                 rewrite ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
                 change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
           trivial. } } }
-    Unshelve.
-    intros. exact True. (* WHY do we have this shelved predicate here? *)
   Qed.
 
   Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall t m b_out,

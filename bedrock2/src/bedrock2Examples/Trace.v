@@ -20,8 +20,8 @@ Module IOMacros.
     (* macros to be inlined to read or write a word
        TODO it's not so nice that we need to foresee the number of temp vars
        each implementation might need *)
-    read_word_code(x tmp: varname): cmd;
-    write_word_code(x tmp: varname): cmd;
+    read_word_code(x tmp: String.string): cmd;
+    write_word_code(x tmp: String.string): cmd;
 
     (* means "this trace does nothing else than reading the given word", could require
        several events if we're polling until a word is available *)
@@ -69,19 +69,14 @@ End Squarer.
 
 Module SpiEth.
 
-  Inductive MMIOAction := MMInput | MMOutput.
-  Definition MMIOAction_eqb a b :=
-    match a, b with
-    | MMInput, MMInput => true
-    | MMOutput, MMOutput => true
-    | _, _ => false
-    end.
+  Definition MMInput := "MMInput"%string.
+  Definition MMOutput := "MMOutput"%string.
 
   Section WithMem.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
     Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
 
-    Definition Event: Type := (mem * MMIOAction * list word) * (mem * list word).
+    Definition Event: Type := (mem * String.string * list word) * (mem * list word).
 
     Definition msb_set(x: word): Prop :=
       word.and x (word.slu (word.of_Z 1) (word.of_Z 31)) <> word.of_Z 0.
@@ -136,21 +131,10 @@ Module SpiEth.
         write_byte b rest ->
         write_byte b (((m, MMInput, [word.of_Z spi_tx_fifo]), (m, [x])) :: rest).
 
-
-    Instance syntax_params: Syntax.parameters := {|
-      Syntax.varname := string;
-      Syntax.funname := Empty_set;
-      Syntax.actname := MMIOAction;
-    |}.
-
-    Context {locals: map.map varname word}.
-    Context {funname_env: forall T, map.map funname T}.
+    Context {locals: map.map String.string word}.
+    Context {funname_env: forall T, map.map String.string T}.
 
     Instance semantics_params: Semantics.parameters := {|
-      Semantics.syntax := syntax_params;
-      Semantics.varname_eqb := String.eqb;
-      Semantics.funname_eqb f1 f2 := Empty_set_rect (fun _ : Empty_set => bool) f1;
-      Semantics.actname_eqb := MMIOAction_eqb;
       Semantics.width := 32;
       Semantics.word := word;
       Semantics.byte := byte;
@@ -159,18 +143,18 @@ Module SpiEth.
         match argvals with
         | addr :: _ =>
           isMMIOAddr addr /\
-          match action with
-          | MMInput => argvals = [addr] /\ forall val, post map.empty [val]
-          | MMOutput => exists val, argvals = [addr; val] /\ post map.empty nil
-          end
+          if String.eqb action MMInput then
+            argvals = [addr] /\ forall val, post map.empty [val]
+          else if String.eqb action MMOutput then
+                 exists val, argvals = [addr; val] /\ post map.empty nil
+          else False
         | nil => False
         end;
     |}.
 
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
-(*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
-    Local Definition var(x : @varname (@syntax semantics_params)):
-      @expr.expr (@syntax semantics_params) := Syntax.expr.var x.
+(*  Local Coercion var(x: String.string): Syntax.expr := Syntax.expr.var x.*)
+    Local Definition var(x : String.string): expr.expr := expr.var x.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
 
@@ -180,11 +164,11 @@ Module SpiEth.
       IOMacros.semantics_params := semantics_params;
 
       (* TODO these only read a byte rather than a word *)
-      IOMacros.read_word_code(x _: varname) := bedrock_func_body:(
+      IOMacros.read_word_code(x _: String.string) := bedrock_func_body:(
         x = -1 ;;
         while (var x .& (1 << 31)) {{ cmd.interact [x] MMInput [literal spi_rx] }}
       );
-      IOMacros.write_word_code(x tmp: varname) := bedrock_func_body:(
+      IOMacros.write_word_code(x tmp: String.string) := bedrock_func_body:(
         cmd.interact [tmp] MMInput [literal spi_tx_fifo] ;;
         while (var tmp .& (1 << 31)) {{ (* high order bit set means fifo is full *)
           cmd.interact [tmp] MMInput [literal spi_tx_fifo]
@@ -226,8 +210,7 @@ End SpiEth.
 
 Module Syscalls.
 
-  Inductive SyscallAction := Syscall.
-  Definition SyscallAction_eqb(a b: SyscallAction): bool := true.
+  Definition SyscallAction := String.string.
 
   (* Go models syscalls as
      func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)
@@ -245,31 +228,20 @@ Module Syscalls.
     (* TODO what if the syscall changes the memory? Do we see the whole memory? *)
     Inductive read_word: word -> list Event -> Prop :=
     | read_word_go: forall m x ret2 err,
-        read_word x [((m, Syscall, [word.of_Z magicValue; word.of_Z magicValue;
-                                      word.of_Z magicValue; word.of_Z magicValue]),
+        read_word x [((m, "Syscall"%string, [word.of_Z magicValue; word.of_Z magicValue;
+                                            word.of_Z magicValue; word.of_Z magicValue]),
                       (m, [x; ret2; err]))].
 
     Inductive write_word: word -> list Event -> Prop :=
     | write_word_go: forall m x ret1 ret2 err,
-        write_word x [((m, Syscall, [x; word.of_Z magicValue;
-                                       word.of_Z magicValue; word.of_Z magicValue]),
+        write_word x [((m, "Syscall"%string, [x; word.of_Z magicValue;
+                                             word.of_Z magicValue; word.of_Z magicValue]),
                        (m, [ret1; ret2; err]))].
 
-
-    Instance syntax_params: Syntax.parameters := {|
-      Syntax.varname := string;
-      Syntax.funname := Empty_set;
-      Syntax.actname := SyscallAction;
-    |}.
-
-    Context {locals: map.map varname word}.
-    Context {funname_env: forall T, map.map funname T}.
+    Context {locals: map.map String.string word}.
+    Context {funname_env: forall T, map.map String.string T}.
 
     Instance semantics_params: Semantics.parameters := {|
-      Semantics.syntax := syntax_params;
-      Semantics.varname_eqb := String.eqb;
-      Semantics.funname_eqb f1 f2 := Empty_set_rect (fun _ : Empty_set => bool) f1;
-      Semantics.actname_eqb := SyscallAction_eqb;
       Semantics.width := 32;
       Semantics.word := word;
       Semantics.byte := byte;
@@ -283,9 +255,8 @@ Module Syscalls.
     |}.
 
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
-(*  Local Coercion var(x: varname): Syntax.expr := Syntax.expr.var x.*)
-    Local Definition var(x : @varname (@syntax semantics_params)):
-      @expr.expr (@syntax semantics_params) := Syntax.expr.var x.
+(*  Local Coercion var(x: String.string): Syntax.expr := Syntax.expr.var x.*)
+    Local Definition var(x : String.string): expr.expr := expr.var x.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
 
@@ -294,13 +265,13 @@ Module Syscalls.
     Instance SyscallIOMacros: IOMacros.Interface. refine ({|
       IOMacros.semantics_params := semantics_params;
 
-      IOMacros.read_word_code(x tmp: varname) :=
-        cmd.interact [x; tmp; tmp] Syscall [literal magicValue; literal magicValue;
-                                              literal magicValue; literal magicValue];
+      IOMacros.read_word_code(x tmp: String.string) :=
+        cmd.interact [x; tmp; tmp] "Syscall"%string [literal magicValue; literal magicValue;
+                                                     literal magicValue; literal magicValue];
 
-      IOMacros.write_word_code(x tmp: varname) :=
-        cmd.interact [tmp; tmp; tmp] Syscall [var x; literal magicValue;
-                                                literal magicValue; literal magicValue];
+      IOMacros.write_word_code(x tmp: String.string) :=
+        cmd.interact [tmp; tmp; tmp] "Syscall"%string [var x; literal magicValue;
+                                                       literal magicValue; literal magicValue];
 
       IOMacros.read_word_trace := read_word;
       IOMacros.write_word_trace := write_word;
@@ -340,11 +311,10 @@ End Syscalls.
 
 Module MMIOUsage.
   Section WithParams.
-    Existing Instance SpiEth.syntax_params.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
     Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
-    Context {locals: map.map varname word}.
-    Context {funname_env: forall T, map.map funname T}.
+    Context {locals: map.map String.string word}.
+    Context {funname_env: forall T, map.map String.string T}.
 
     Definition squarer_correct := @squarer_correct SpiEth.MMIOMacros.
     (*Check squarer_correct.*)
@@ -354,11 +324,10 @@ End MMIOUsage.
 
 Module SyscallsUsage.
   Section WithParams.
-    Existing Instance Syscalls.syntax_params.
     Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
     Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
-    Context {locals: map.map varname word}.
-    Context {funname_env: forall T, map.map funname T}.
+    Context {locals: map.map String.string word}.
+    Context {funname_env: forall T, map.map String.string T}.
 
     Definition squarer_correct := @squarer_correct Syscalls.SyscallIOMacros.
     (*Check squarer_correct.*)

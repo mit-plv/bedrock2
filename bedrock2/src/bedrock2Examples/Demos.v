@@ -7,30 +7,20 @@ Require Import coqutil.sanity.
 Import BinInt String.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition StringNamesSyntaxParams: Syntax.parameters :=
-  StringNamesSyntax.make BasicCSyntax.StringNames_params.
-
-Definition ZNamesSyntaxParams: Syntax.parameters := {|
-  Syntax.varname := Z;
-  Syntax.funname := string;
-  Syntax.actname := string;
-|}.
-
-
 (* Boilerplate to get variable names.
    The names are in separate modules to allow the same variable name to be used in several
    programs defined in the same file. *)
 
 Module BinarySearch.
-  Class Names{p : unique! Syntax.parameters} := {
-    left : varname;
-    right : varname;
-    target : varname;
-    mid : varname;
-    tmp : varname;
+  Class Names := {
+    left : String.string;
+    right : String.string;
+    target : String.string;
+    mid : String.string;
+    tmp : String.string;
   }.
   Module StringNames.
-    Instance Inst: @Names StringNamesSyntaxParams := {
+    Instance Inst: Names := {
       left := "left";
       right := "right";
       target := "target";
@@ -38,78 +28,53 @@ Module BinarySearch.
       tmp := "tmp";
     }.
   End StringNames.
-  Module ZNames.
-    Instance Inst: @Names ZNamesSyntaxParams := {
-      left := 3;
-      right := 4;
-      target := 5;
-      mid := 6;
-      tmp := 7;
-    }.
-  End ZNames.
 End BinarySearch.
 
 Module ListSum.
-  Class Names{p : unique! Syntax.parameters} := {
-    n: varname;
-    i: varname;
-    sumreg: varname;
-    a: varname;
+  Class Names := {
+    n: String.string;
+    i: String.string;
+    sumreg: String.string;
+    a: String.string;
   }.
   Module StringNames.
-    Instance Inst: @Names StringNamesSyntaxParams := {
+    Instance Inst: Names := {
       n := "n";
       i := "i";
       sumreg := "sumreg";
       a := "a";
     }.
   End StringNames.
-  Module ZNames.
-    Instance Inst: @Names ZNamesSyntaxParams := {
-      n := 3;
-      i := 4;
-      sumreg := 5;
-      a := 6;
-    }.
-  End ZNames.
 End ListSum.
 
 Module Fibonacci.
-  Class Names{p : unique! Syntax.parameters} := {
-    a: varname;
-    b: varname;
-    c: varname;
-    i: varname;
+  Class Names := {
+    a: String.string;
+    b: String.string;
+    c: String.string;
+    i: String.string;
   }.
   Module StringNames.
-    Instance Inst: @Names StringNamesSyntaxParams := {
+    Instance Inst: Names := {
       a := "a";
       b := "b";
       c := "c";
       i := "i";
     }.
   End StringNames.
-  Module ZNames.
-    Instance Inst: @Names ZNamesSyntaxParams := {
-      a := 3;
-      b := 4;
-      c := 5;
-      i := 6;
-    }.
-  End ZNames.
 End Fibonacci.
 
 
 Module FibonacciServer.
-  Class Names{p : unique! Syntax.parameters} := {
-    a: varname;
-    b: varname;
-    c: varname;
-    i: varname;
-    n: varname;
+  Class Names := {
+    a: String.string;
+    b: String.string;
+    c: String.string;
+    i: String.string;
+    n: String.string;
   }.
   Module StringNames.
-    Instance Inst: @Names StringNamesSyntaxParams := {
+    Instance Inst: Names := {
       a := "a";
       b := "b";
       c := "c";
@@ -117,35 +82,16 @@ Module FibonacciServer.
       n := "n";
     }.
   End StringNames.
-  Module ZNames.
-    Instance Inst: @Names ZNamesSyntaxParams := {
-      a := 3;
-      b := 4;
-      c := 5;
-      i := 6;
-      n := 7;
-    }.
-  End ZNames.
 End FibonacciServer.
 
 Section Demos.
 
-  (* note: this coercion must have its own p, because varname depends on p, and the
-     coercion only kicks in if p can be chosen freely *)
-  Local Coercion var{p : unique! Syntax.parameters}(x : @varname p): @expr.expr p :=
-    @expr.var p x.
-
-  Context {p : unique! Syntax.parameters}.
-
-  (* note: this coercion must use the section's p, because its argument z does not
-     allow Coq to infer p *)
+  Local Coercion var(x : String.string): expr.expr := expr.var x.
   Local Coercion literal (z : Z) : expr := expr.literal z.
 
-  Definition Prog: Type := string * (list varname * list varname * cmd).
+  Definition Prog: Type := string * (list String.string * list String.string * cmd).
 
   Import bedrock2.NotationsInConstr.
-
-  Context {bsearchNames: unique! BinarySearch.Names}.
   Import BinarySearch.
   Definition bsearch: Prog := ("bsearch", ([left; right; target], [left], bedrock_func_body:(
     while (right - left) {{
@@ -159,7 +105,6 @@ Section Demos.
     }}
   ))).
 
-  Context {listsumNames: unique! ListSum.Names}.
   Import ListSum.
   (* input_base is an address fixed at compile time *)
   Definition listsum(input_base: Z): Prog := ("listsum", ([], [sumreg], bedrock_func_body:(
@@ -167,13 +112,12 @@ Section Demos.
     n = *(uint32_t*) input_base;;
     i = 0;;
     while (i < n) {{
-      a = *(uint32_t*) ((input_base + 4)%Z + (4 * i));;
+      a = *(uint32_t*) ((input_base + 4)%Z + (i << 2));;
       sumreg = sumreg + a;;
       i = i + 1
     }}
   ))).
 
-  Context {fibonacciNames: unique! Fibonacci.Names}.
   Import Fibonacci.
   (* input_base is an address fixed at compile time *)
   Definition fibonacci(n: Z): Prog := ("fibonacci", ([], [b], bedrock_func_body:(
@@ -188,7 +132,6 @@ Section Demos.
     }}
   ))).
 
-  Context {fibonacciServertNames: unique! FibonacciServer.Names}.
   Import FibonacciServer.
   Definition fibonacciServer (n_load_addr n_store_addr: Z): Prog := ("fibonacciserver", ([], [b], bedrock_func_body:(
     n = *(uint32_t*) n_load_addr;;
@@ -232,7 +175,7 @@ Definition allProgsAsCStrings: list string :=
 
 (* Print allProgsAsCStrings. *)
 
-Definition allProgsWithZNames :=
-  Eval cbv in allProgs (p:=ZNamesSyntaxParams).
+Definition allProgsE :=
+  Eval cbv in allProgs.
 
-(* Print allProgsWithZNames. *)
+(* Print allProgsE. *)

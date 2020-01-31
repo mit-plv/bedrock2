@@ -1,4 +1,4 @@
-Require Import bedrock2.Syntax bedrock2.StringNamesSyntax.
+Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics.
 
@@ -9,12 +9,12 @@ Section WithParameters.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
   Local Definition bedrock_func : Type := BasicCSyntax.function.
-  Local Coercion name_of_func (f : BasicCSyntax.function) : funname := fst f.
+  Local Coercion name_of_func (f : BasicCSyntax.function) : String.string := fst f.
 
-Definition arp : bedrock_func := 
-    let ethbuf : varname := "ethbuf" in
-    let buf : varname := "buf" in
-    let len : varname := "len" in
+Definition arp : bedrock_func :=
+    let ethbuf : String.string := "ethbuf" in
+    let buf : String.string := "buf" in
+    let len : String.string := "len" in
   ("arp", ([ethbuf; len], [], bedrock_func_body:(
     require ( constr:(14+27) < len ) else { /*skip*/ };
     require ( (load1(ethbuf+constr:(14+0))== constr:(0))
@@ -74,20 +74,20 @@ Definition arp : bedrock_func :=
     /*skip*/
 ))).
 
-Definition ipv4 : bedrock_func := 
-    let buf : varname := "buf" in
-    let len : varname := "len" in
+Definition ipv4 : bedrock_func :=
+    let buf : String.string := "buf" in
+    let len : String.string := "len" in
   ("ipv4", ([buf; len], [], bedrock_func_body:(
     /*skip*/
 ))).
 
-Definition ethernet : bedrock_func := 
-    let ipv4 : varname := "ipv4" in
-    let arp : varname := "arp" in
-    let buf : varname := "buf" in
-    let len : varname := "len" in
-    let ethertype : varname := "ethertype" in
-  ("ethernet", ((buf::len::nil), @nil varname, bedrock_func_body:(
+Definition ethernet : bedrock_func :=
+    let ipv4 : String.string := "ipv4" in
+    let arp : String.string := "arp" in
+    let buf : String.string := "buf" in
+    let len : String.string := "len" in
+    let ethertype : String.string := "ethertype" in
+  ("ethernet", ((buf::len::nil), @nil String.string, bedrock_func_body:(
     require (constr:(14) < len) else { /*skip*/ } ;
     ethertype = ((load1(buf + constr:(12)) << constr:(8)) | (load1(buf + constr:(13))));
     require (constr:(Ox"600"-1) < ethertype) else { /*skip*/ };

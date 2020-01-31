@@ -1,10 +1,9 @@
-Require Import bedrock2.Syntax bedrock2.StringNamesSyntax bedrock2.BasicCSyntax.
+Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2Examples.SPI.
 
 Import BinInt String List.ListNotations.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
-Local Existing Instance BasicCSyntax.StringNames_params.
 Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
 Local Coercion name_of_func (f : function) := fst f.
@@ -13,9 +12,9 @@ Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
 Definition lan9250_readword : function :=
-  let addr : varname := "addr" in
-  let ret : varname := "ret" in
-  let err : varname := "err" in
+  let addr : String.string := "addr" in
+  let ret : String.string := "ret" in
+  let err : String.string := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
   ("lan9250_readword", ((addr::nil), (ret::err::nil), bedrock_func_body:(
     SPI_CSMODE_ADDR = (constr:(Ox"10024018"));
@@ -43,12 +42,12 @@ Definition lan9250_readword : function :=
   ))).
 
 Definition lan9250_writeword : function :=
-  let addr : varname := "addr" in
-  let data : varname := "data" in
-  let Oxff : varname := "Oxff" in
-  let eight : varname := "eight" in
-  let ret : varname := "ret" in
-  let err : varname := "err" in
+  let addr : String.string := "addr" in
+  let data : String.string := "data" in
+  let Oxff : String.string := "Oxff" in
+  let eight : String.string := "eight" in
+  let ret : String.string := "ret" in
+  let err : String.string := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
   ("lan9250_writeword", ((addr::data::nil), (err::nil), bedrock_func_body:(
     SPI_CSMODE_ADDR = (constr:(Ox"10024018"));
@@ -81,13 +80,13 @@ Definition MAC_CSR_CMD : Z := Ox"0A4".
 Definition BYTE_TEST : Z := Ox"64".
 
 Definition lan9250_mac_write : function :=
-  let addr : varname := "addr" in
-  let data : varname := "data" in
-  let err : varname := "err" in
+  let addr : String.string := "addr" in
+  let data : String.string := "data" in
+  let err : String.string := "err" in
   ("lan9250_mac_write", ((addr::data::nil), (err::nil), bedrock_func_body:(
     unpack! err = lan9250_writeword(MAC_CSR_DATA, data);
     require !err;
-	  unpack! err = lan9250_writeword(MAC_CSR_CMD, constr:(Z.shiftl 1 31)|addr);
+unpack! err = lan9250_writeword(MAC_CSR_CMD, constr:(Z.shiftl 1 31)|addr);
     require !err;
 	  unpack! data, err = lan9250_readword(BYTE_TEST)
 	  (* while (lan9250_readword(0xA4) >> 31) { } // Wait until BUSY (= MAX_CSR_CMD >> 31) goes low *)
@@ -96,9 +95,9 @@ Definition lan9250_mac_write : function :=
 Definition HW_CFG : Z := Ox"074".
 
 Definition lan9250_wait_for_boot : function :=
-  let err : varname := "err" in
-  let i : varname := "i" in
-  let byteorder : varname := "byteorder" in
+  let err : String.string := "err" in
+  let i : String.string := "i" in
+  let byteorder : String.string := "byteorder" in
   ("lan9250_wait_for_boot", (nil, (err::nil), bedrock_func_body:(
   err = (constr:(0));
   byteorder = (constr:(0));
@@ -111,8 +110,8 @@ Definition lan9250_wait_for_boot : function :=
   ))).
 
 Definition lan9250_init : function :=
-  let hw_cfg : varname := "hw_cfg" in
-  let err : varname := "err" in
+  let hw_cfg : String.string := "hw_cfg" in
+  let err : String.string := "err" in
   ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
 	  unpack! err = lan9250_wait_for_boot();
     require !err;
@@ -124,7 +123,7 @@ Definition lan9250_init : function :=
     require !err;
 
     (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)
-  	unpack! err = lan9250_mac_write(constr:(1), constr:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
+        unpack! err = lan9250_mac_write(constr:(1), constr:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
     require !err;
 	  unpack! err = lan9250_writeword(constr:(Ox"070"), constr:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
   ))).
@@ -164,7 +163,7 @@ Section WithParameters.
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ _ a v ioh)).
-  
+
   Import lightbulb_spec.
   Definition lan9250_mac_write_trace a v ioh := exists x,
      (lan9250_write4 _ _ (word.of_Z 168) v +++
@@ -185,9 +184,9 @@ Section WithParameters.
 
   Definition lan9250_boot_attempt :=
     (fun attempt => exists v, lan9250_fastread4 parameters.byte Semantics.word (word.of_Z (Ox"64")) v attempt /\ word.unsigned v <> Ox"87654321").
-  Definition lan9250_boot_timeout := 
+  Definition lan9250_boot_timeout :=
     multiple lan9250_boot_attempt (Z.to_nat patience).
-  Definition lan9250_wait_for_boot_trace := 
+  Definition lan9250_wait_for_boot_trace :=
     lan9250_boot_attempt ^* +++
     lan9250_fastread4 _ _ (word.of_Z (Ox"64")) (word.of_Z (Ox"87654321")).
 
@@ -211,7 +210,7 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh \/
         (word.unsigned err <> 0 /\ lan9250_boot_timeout ioh))
         (word.unsigned err = 0 /\ lan9250_wait_for_boot_trace ioh)).
-  
+
   Global Instance spec_of_lan9250_init : ProgramLogic.spec_of "lan9250_init" := fun functions =>
     forall t m,
     (((WeakestPrecondition.call functions "lan9250_init"))) t m []
@@ -237,7 +236,7 @@ Section WithParameters.
   Lemma  multiple_expand_right : forall T P n xs,
         @multiple T P (S n) xs <-> concat (multiple P n) P xs.
   Admitted.
-  
+
   Lemma TracePredicate__any_app_more : forall {T} P (x y : list T), (any +++ P) x -> (any +++ P) (x ++ y).
   Proof.
     intros.
@@ -246,11 +245,11 @@ Section WithParameters.
     rewrite <-app_assoc.
     eapply concat_app; eauto.
   Qed.
-  
+
   Require Import bedrock2.AbsintWordToZ.
   Require Import coqutil.Tactics.rdelta.
   Require Import coqutil.Z.Lia.
-  
+
   Ltac evl := (* COQBUG(has_variable) *)
     repeat match goal with
       | |- context G[string_dec ?x ?y] =>
@@ -276,12 +275,12 @@ Section WithParameters.
         let goal := context G [ xs ] in
         change goal
     end.
-  
+
   Ltac trace_alignment :=
     repeat (eapply lightbulb_spec.align_trace_app
       || eapply lightbulb_spec.align_trace_cons
       || exact (eq_refl (app nil _))).
-  
+
   Ltac mmio_trace_abstraction :=
     repeat match goal with
     | |- mmio_trace_abstraction_relation _ _ => cbv [mmio_trace_abstraction_relation]
@@ -290,14 +289,14 @@ Section WithParameters.
     | |- mmio_event_abstraction_relation _ _ =>
         (left + right); eexists _, _; split; exact eq_refl
     end.
-  
+
   Local Ltac slv := solve [ trivial | eauto 2 using TracePredicate__any_app_more | assumption | blia | trace_alignment | mmio_trace_abstraction ].
-  
+
   Ltac t :=
     match goal with
     | _ => slv
     | _ => progress evl
-  
+
     | H :  _ /\ _ \/ ?Y /\ _, G : not ?X |- _ =>
         constr_eq X Y; let Z := fresh in destruct H as [|[Z ?]]; [|case (G Z)]
     | H :  not ?Y /\ _ \/ _ /\ _, G : ?X |- _ =>
@@ -308,16 +307,16 @@ Section WithParameters.
         | H: A |- _ => left  | H: not B |- _ => left
         | H: B |- _ => right | H: not A |- _ => right
         end
-  
+
     | |- _ /\ _ => split; [repeat t|]
-  
+
     | _ => straightline
     | _ => straightline_call; [  solve[repeat t].. | ]
     | _ => split_if; [  solve[repeat t].. | ]
     | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eapply WeakestPreconditionProperties.interact_nomem; [  solve[repeat t].. | ]
     | |- Semantics.ext_spec _ _ _ _ _ => progress cbn [semantics_parameters Semantics.ext_spec]
     end.
-  
+
   From coqutil Require Import Z.div_mod_to_equations.
   Require Import bedrock2.AbsintWordToZ.
   Import Word.Properties.
@@ -342,7 +341,7 @@ Section WithParameters.
     repeat t.
     split_if; repeat t.
     { rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more. }
-    straightline_call.
+          straightline_call.
     { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
     rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more.
@@ -353,7 +352,7 @@ Section WithParameters.
     eexists.
     repeat eapply concat_app; eauto.
   Qed.
-  
+
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
     repeat t.
@@ -419,7 +418,7 @@ Section WithParameters.
       change Semantics.width with 32 in *.
       Z.div_mod_to_equations. blia.
     }
-    
+
     t.
     t.
     t.
@@ -467,37 +466,37 @@ Section WithParameters.
     Local Arguments st {_}.
     Local Arguments ld {_}.
     Local Arguments spi_xchg {_ _}.
-  
+
     (* aligning regex and mmiotrace, not sure how to do it in a principled way *)
-  
+
     cbv [concat existsl].
-  
+
     all : repeat match goal with
       | |- _ /\ _ => split
       | |- exists _, _ => eexists
       | |- ?e = _ => (let e := rdelta e in is_evar e); try subst e; reflexivity
       | |- _ = ?e => (let e := rdelta e in is_evar e); try subst e; reflexivity
     end.
-  
+
     all : repeat match goal with
       |-  context[?e] => is_evar e; set e
           end.
-  
+
     all:
     repeat match goal with |- context[@cons ?T ?x ?y] =>
         match y with
         | [] => fail 1
         | _=> change (@cons T x y) with (@app T (@cons T x nil) y) end end.
-  
+
     1: rewrite !app_assoc.
     1: repeat f_equal.
-  
+
     all : repeat match goal with
       |-  context[?e] => (let v := rdelta e in is_evar v); subst e
           end.
     all : trivial.
     all : eauto.
-  
+
     all : try (rewrite word.unsigned_of_Z; eapply Z.mod_small).
 
     all : change 32 with Semantics.width in *.
@@ -510,19 +509,19 @@ Section WithParameters.
     all : let y := eval cbv in (Ox "400") in change (Ox "400") with y in *.
     3,4,5: clear -H7 H36; Z.div_mod_to_equations; blia.
     1,2:admit.
-  
+
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
     all : change 32 with Semantics.width in *.
     repeat rewrite ?word.unsigned_of_Z, word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
     all : change Semantics.width with 32 in *.
-  
+
     try erewrite ?word.unsigned_of_Z.
     cbv [word.wrap].
     change Semantics.width with 32.
     repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
     rewrite ?Z.shiftl_mul_pow2 by (clear; Lia.lia).
-  
+
     change 255 with (Z.ones 8).
     rewrite !Z.land_ones by Omega.omega.
     repeat rewrite Z.mod_mod by (clear; cbv; congruence).
@@ -532,7 +531,7 @@ Section WithParameters.
     set (@word.unsigned _ _ v) as X.
 
     (* bitwise Z *)
-  
+
   Admitted.
 
   Lemma lan9250_mac_write_ok : program_logic_goal_for_function! lan9250_mac_write.
@@ -607,7 +606,7 @@ Section WithParameters.
         clear; blia. }
       repeat straightline.
       split_if.
-      { 
+      {
         repeat (t; []); split.
         { intro X. exfalso. eapply X. subst i. rewrite word.unsigned_xor.
           rewrite Z.lxor_nilpotent. exact eq_refl. }
@@ -682,12 +681,12 @@ Section WithParameters.
         setoid_rewrite X.
         exact eq_refl. } }
   Qed.
-  
+
   From coqutil Require Import Z.div_mod_to_equations.
   Lemma lan9250_readword_ok : program_logic_goal_for_function! lan9250_readword.
   Proof.
     Time repeat straightline.
-  
+
     repeat match goal with
       | H :  _ /\ _ \/ ?Y /\ _, G : not ?X |- _ =>
           constr_eq X Y; let Z := fresh in destruct H as [|[Z ?]]; [|case (G Z)]
@@ -723,7 +722,7 @@ Section WithParameters.
     all: auto.
     all : try match goal with |- isMMIOAddr _ => case TODO_andres_mmioaddr end.
     all : try match goal with |- word.unsigned _ mod 4 = 0 => case TODO_andres_mmioaddr end.
-  
+
     all : try (
       repeat match goal with x := _ ++ _ |- _ => subst x end;
       eexists; split;
@@ -735,16 +734,16 @@ Section WithParameters.
         end;
       rewrite !app_assoc;
       repeat eapply (fun A => f_equal2 (@List.app A)); eauto |]).
-  
+
     all : try (
       eexists; split; [
       repeat (eassumption || eapply Forall2_app || eapply Forall2_nil || eapply Forall2_cons) |]).
     all : try ((left + right); eexists _, _; split; exact eq_refl).
-  
-  
+
+
     all : try (left; split; [eassumption|]).
     all : repeat rewrite <-app_assoc.
-  
+
     all : eauto using TracePredicate__any_app_more.
     { rewrite ?word.unsigned_of_Z; exact eq_refl. }
     { rewrite Properties.word.unsigned_sru_nowrap; cycle 1.
@@ -759,11 +758,11 @@ Section WithParameters.
       change 255 with (Z.ones 8).
       rewrite Z.land_ones;
       Z.div_mod_to_equations; blia. }
-  
+
     right.
     eexists; eauto.
     eexists _, _,  _, _, _, _.
-  
+
     cbv [
     lightbulb_spec.lan9250_fastread4
     lightbulb_spec.spi_begin
@@ -774,7 +773,7 @@ Section WithParameters.
     one
     existsl
     ].
-  
+
     cbv [concat].
     repeat match goal with
       | |- _ /\ _ => eexists
@@ -782,7 +781,7 @@ Section WithParameters.
       | |- ?e = _ => is_evar e; exact eq_refl
       | |- _ = ?e => is_evar e; exact eq_refl
     end.
-  
+
     1 : rewrite <-app_assoc.
     1 : change 32 with Semantics.width; cbv [SPI_CSMODE_HOLD] ; rewrite word.unsigned_of_Z; exact eq_refl.
     all : rewrite word.unsigned_of_Z in H12; try eassumption.
@@ -811,7 +810,7 @@ Section WithParameters.
     change (Z.shiftl 0 8) with 0 in *; rewrite Z.lor_0_r.
     rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by Lia.lia.
     repeat f_equal.
-  
+
     (* little-endian word conversion, automatable (bitwise Z and word) *)
     all : try rewrite word.unsigned_slu by (rewrite ?word.unsigned_of_Z; exact eq_refl).
     all : rewrite ?word.unsigned_of_Z.
@@ -826,7 +825,7 @@ Section WithParameters.
     all : clear.
     all : rewrite ?Z.shiftl_mul_pow2 by Lia.lia.
     all : try (Z.div_mod_to_equations; Lia.lia).
-  
+
     Unshelve. all: intros; exact True.
   Qed.
 End WithParameters.
