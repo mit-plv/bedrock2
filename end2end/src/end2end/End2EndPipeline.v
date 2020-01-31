@@ -57,11 +57,6 @@ Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters :=
     FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
   }.
 
-Definition instrencode(p: list Instruction): list Byte.byte :=
-  let word8s := List.flat_map
-                  (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
-  List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
-
 Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.
 refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.

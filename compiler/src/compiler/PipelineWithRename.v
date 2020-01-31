@@ -37,6 +37,7 @@ Require Import compiler.RegRename.
 Require Import compiler.FlatToRiscvSimulation.
 Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
+Require Import bedrock2.Byte.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
@@ -312,5 +313,10 @@ Section Pipeline1.
 
   Lemma sim: simulation ExprImp.SimExec runsTo related.
   Proof. exact (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)). Qed.
+
+  Definition instrencode(p: list Decode.Instruction): list Byte.byte :=
+    let word8s := List.flat_map
+                    (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
+    List.map (fun w => Byte.of_Z (word.unsigned w)) word8s.
 
 End Pipeline1.

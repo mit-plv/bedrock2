@@ -5,6 +5,7 @@ Require Import coqutil.Word.Interface.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.forward.
 Require Import bedrock2.Syntax.
+Require Import compiler.PipelineWithRename.
 Require Import bedrock2Examples.lightbulb bedrock2Examples.lightbulb_spec.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import compiler.Simp.
