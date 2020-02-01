@@ -21,7 +21,7 @@ Proof.
 Qed.
 
 Section Parametrized.
-  Variables (addrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat)
+  Variables (addrSize maddrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat)
             (Hdb: {pdb & dataBytes = S pdb}).
 
   Variables (fetch: AbsFetch addrSize iaddrSize instBytes dataBytes)
@@ -30,7 +30,7 @@ Section Parametrized.
             (ammio: AbsMMIO addrSize).
 
   Variable (procInit: ProcInit iaddrSize dataBytes rfIdx)
-           (memInit: MemInit addrSize).
+           (memInit: MemInit maddrSize).
 
   Definition pprocInl := scmmInl Hdb fetch dec exec ammio procInit memInit.
   Definition pproc := projT1 pprocInl.
@@ -43,7 +43,7 @@ Section Parametrized.
          rf: word rfIdx -> word (dataBytes * BitsPerByte);
          pinit: bool;
          pgm: word iaddrSize -> word (instBytes * BitsPerByte);
-         mem: word addrSize -> word BitsPerByte
+         mem: word maddrSize -> word BitsPerByte
        }.
 
   Definition pRegsToT (r: Kami.Semantics.RegsT): option pst :=
@@ -51,7 +51,7 @@ Section Parametrized.
        mlet rfv: (Vector (Data dataBytes) rfIdx) <- r |> "rf" <| None;
        mlet pinitv: Bool <- r |> "pinit" <| None;
        mlet pgmv: (Vector (Data instBytes) iaddrSize) <- r |> "pgm" <| None;
-       mlet memv: (Vector (Bit BitsPerByte) addrSize) <- r |> "mem" <| None;
+       mlet memv: (Vector (Bit BitsPerByte) maddrSize) <- r |> "mem" <| None;
        (Some {| pc := pcv; rf := rfv;
                 pinit := pinitv; pgm := pgmv; mem := memv |}))%mapping.
 
@@ -59,7 +59,7 @@ Section Parametrized.
 
   Lemma scmm_inv_derive_rf_zero:
     forall st,
-      scmm_inv rfIdx fetch st ->
+      scmm_inv maddrSize rfIdx fetch st ->
       forall pcv rfv pinitv pgmv memv,
         pRegsToT st = Some (mk pcv rfv pinitv pgmv memv) ->
         forall idx, idx = $0 -> rfv idx = $0.
@@ -156,14 +156,14 @@ Section Parametrized.
 
   Definition KamiPgmInitFull
              (pgm: word iaddrSize -> word (instBytes * BitsPerByte))
-             (mem: word addrSize -> word BitsPerByte) :=
+             (mem: word maddrSize -> word BitsPerByte) :=
     forall iaddr,
       pgm iaddr =
       evalExpr (alignInst type (combineBytes dataBytes (evalExpr (alignAddr type iaddr)) mem)).
 
   Lemma invert_Kami_pgmInitEnd:
     forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl
-           (Hinv: scmm_inv rfIdx fetch km1),
+           (Hinv: scmm_inv maddrSize rfIdx fetch km1),
       pRegsToT km1 = Some kt1 ->
       Step pproc km1 kupd klbl ->
       klbl.(annot) = Some (Some "pgmInitEnd"%string) ->
@@ -505,46 +505,6 @@ Section Parametrized.
         reflexivity.
   Qed.
 
-  Lemma invert_Kami_execNm:
-    forall km1 kt1 kupd klbl,
-      pRegsToT km1 = Some kt1 ->
-      Step pproc km1 kupd klbl ->
-      klbl.(annot) = Some (Some "execNm"%string) ->
-      pinit kt1 = true /\
-      klbl.(calls) = FMap.M.empty _ /\
-      exists kt2,
-        pRegsToT (FMap.M.union kupd km1) = Some kt2 /\
-        exists curInst execVal,
-          curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
-          execVal = evalExpr
-                      (doExec
-                         _
-                         (rf kt1 (evalExpr (getSrc1 _ curInst)))
-                         (rf kt1 (evalExpr (getSrc2 _ curInst)))
-                         (pc kt1)
-                         curInst) /\
-          kt2 = {| pc := evalExpr (getNextPc _ (rf kt1) (pc kt1) curInst);
-                   rf :=
-                     fun w =>
-                       if weq w (evalExpr (getDst type curInst))
-                       then execVal else rf kt1 w;
-                   pinit := true;
-                   pgm := pgm kt1;
-                   mem := mem kt1 |}.
-  Proof.
-    intros.
-    kinvert_more.
-    kinv_action_dest.
-    unfold pRegsToT in *.
-    kregmap_red.
-    destruct (FMap.M.find "mem"%string km1) as [[[memk|] memv]|]; try discriminate.
-    destruct (decKind memk _); try discriminate.
-    kregmap_red.
-    inversion H; subst; clear H.
-    repeat esplit.
-    assumption.
-  Qed.
-
 End Parametrized.
 
 Definition width: Z := 32.
@@ -552,9 +512,11 @@ Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
 Local Notation nwidth := (Z.to_nat width).
 
 Section PerInstAddr.
-  Context {instrMemSizeLg: Z}.
-  Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
+  Context {instrMemSizeLg memSizeLg: Z}.
   Hypothesis (Hiaddr: 3 <= instrMemSizeLg <= 30).
+
+  Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
+  Local Notation nmemSizeLg := (Z.to_nat memSizeLg).
 
   Lemma width_inst_valid:
     nwidth = (2 + ninstrMemSizeLg + (nwidth - (2 + ninstrMemSizeLg)))%nat.
@@ -574,7 +536,7 @@ Section PerInstAddr.
 
   Definition procInit: ProcInit ninstrMemSizeLg rv32DataBytes rv32RfIdx :=
     {| pcInit := pcInitVal; rfInit := rfInitVal |}.
-  Variables (memInit: MemInit nwidth)
+  Variables (memInit: MemInit nmemSizeLg)
             (rv32MMIO: AbsMMIO nwidth).
 
   Definition procInl :=
@@ -588,10 +550,10 @@ Section PerInstAddr.
 
   (** Abstract hardware state *)
   Definition st :=
-    @pst nwidth ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx.
+    @pst nmemSizeLg ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx.
 
   Definition RegsToT (r: hst): option st :=
-    pRegsToT nwidth ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx r.
+    pRegsToT nmemSizeLg ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx r.
 
   (** Refinement from [p4mm] to [proc] (as a spec) *)
 

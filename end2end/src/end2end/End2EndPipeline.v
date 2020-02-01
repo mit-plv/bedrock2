@@ -63,14 +63,14 @@ Qed.
 
 Section Connect.
 
+  Context (instrMemSizeLg memSizeLg: Z).
   Context (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
-                               (Z.to_nat KamiProc.width)).
+                               (Z.to_nat memSizeLg)).
 
-  Context (instrMemSizeLg: Z).
   Hypothesis instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30.
 
   Definition p4mm: Kami.Syntax.Modules :=
-    KamiRiscv.p4mm instrMemSizeLg (proj1 instrMemSizeLg_bounds)
+    KamiRiscv.p4mm instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds)
                    (proj2 instrMemSizeLg_bounds)
                    memInit.
 
@@ -120,7 +120,7 @@ Section Connect.
   Proof. exact (proj2 instrMemSizeLg_bounds). Qed.
 
   Definition kamiStep := kamiStep instrMemSizeLg.
-  Definition states_related := @states_related Pipeline.Registers mem instrMemSizeLg.
+  Definition states_related := @states_related Pipeline.Registers mem instrMemSizeLg memSizeLg.
 
   Lemma split_ll_trace: forall {t2' t1' t},
       traces_related t (t2' ++ t1') ->

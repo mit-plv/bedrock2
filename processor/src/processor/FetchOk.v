@@ -167,9 +167,10 @@ Section FetchOk.
    * If the instruction base address is just 0, then the address range for
    * the instructions is [0 -- 4 * 2^(instrMemSizeLg)].
    *)
-  Variable instrMemSizeLg: Z.
+  Variables instrMemSizeLg memSizeLg: Z.
   Hypothesis (HinstrMemBound: 3 <= instrMemSizeLg <= width - 2).
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
+  Local Notation nmemSizeLg := (Z.to_nat memSizeLg).
   Local Notation nwidth := (Z.to_nat width).
 
   Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
@@ -279,14 +280,14 @@ Section FetchOk.
     apply wordToN_inj; assumption.
   Qed.
 
-  Definition mem_related (kmem: kword width -> kword 8)
+  Definition mem_related (kmem: kword memSizeLg -> kword 8)
              (rmem: mem): Prop :=
     forall addr: kword width,
-      map.get rmem addr = Some (kmem addr).
+      map.get rmem addr = Some (kmem (evalZeroExtendTrunc _ addr)).
 
   Definition RiscvXAddrsSafe
              (kmemi: kword instrMemSizeLg -> kword width)
-             (kmemd: kword width -> kword 8)
+             (kmemd: kword memSizeLg -> kword 8)
              (xaddrs: XAddrs) :=
     forall rpc,
       isXAddr4 rpc xaddrs ->
@@ -368,7 +369,7 @@ Section FetchOk.
 
   Lemma fetch_ok:
     forall (kmemi: kword instrMemSizeLg -> kword width)
-           (kmemd: kword width -> kword 8)
+           (kmemd: kword memSizeLg -> kword 8)
            (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
            (xaddrs: XAddrs)
            (Hxs: RiscvXAddrsSafe kmemi kmemd xaddrs)

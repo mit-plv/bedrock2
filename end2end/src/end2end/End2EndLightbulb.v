@@ -120,9 +120,9 @@ Ltac destr :=
 Instance src2imp : map.map string Decode.Register := SortedListString.map Z.
 Instance src2impOk : map.ok src2imp := SortedListString.ok _.
 
-Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
-                                     (Z.to_nat KamiProc.width)): Kami.Syntax.Modules :=
-  p4mm memInit instrMemSizeLg instrMemSizeLg_bounds.
+Definition p4mm memSizeLg (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
+                                               (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
+  p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
 
 From coqutil Require Import Z_keyed_SortedListMap.
 
@@ -220,7 +220,7 @@ Lemma end2end_lightbulb:
   forall (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                               (Z.to_nat KamiProc.width))
          (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
-    Semantics.Behavior (p4mm memInit) mFinal t ->
+    Semantics.Behavior (p4mm _ memInit) mFinal t ->
     exists t': list KamiRiscv.Event,
       KamiRiscv.KamiLabelSeqR t t' /\
       (exists (suffix : list KamiRiscv.Event) (bedrockTrace : list RiscvMachine.LogItem),

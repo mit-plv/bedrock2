@@ -104,16 +104,16 @@ Section Equiv.
 
   (** * Processor, software machine, and states *)
 
-  Variable (instrMemSizeLg: Z).
+  Variable (instrMemSizeLg memSizeLg: Z).
   Hypotheses (Hinstr1: 3 <= instrMemSizeLg)
              (Hinstr2: instrMemSizeLg <= width - 2).
   Local Notation Hinstr := (conj Hinstr1 Hinstr2).
 
-  Variable (memInit: Vec (ConstT (Bit BitsPerByte)) (Z.to_nat width)).
+  Variable (memInit: Vec (ConstT (Bit BitsPerByte)) (Z.to_nat memSizeLg)).
   Definition kamiMemInit := ConstVector memInit.
   Local Definition kamiProc :=
-    @KamiProc.proc instrMemSizeLg Hinstr kamiMemInit kami_FE310_AbsMMIO.
-  Local Definition kamiStMk := @KamiProc.mk (Z.to_nat width)
+    @KamiProc.proc instrMemSizeLg memSizeLg Hinstr kamiMemInit kami_FE310_AbsMMIO.
+  Local Definition kamiStMk := @KamiProc.mk (Z.to_nat memSizeLg)
                                             (Z.to_nat instrMemSizeLg)
                                             rv32InstBytes rv32DataBytes rv32RfIdx.
   Local Notation kamiXAddrs := (kamiXAddrs instrMemSizeLg).
@@ -167,12 +167,11 @@ Section Equiv.
         traces_related t t' ->
         KamiProc.RegsToT m = Some (kamiStMk kpc krf pinit instrMem kdataMem) ->
         (pinit = false -> riscvXAddrs = kamiXAddrs) ->
-        (pinit = true -> RiscvXAddrsSafe instrMemSizeLg (* Hinstr *) instrMem kdataMem riscvXAddrs) ->
+        (pinit = true -> RiscvXAddrsSafe instrMemSizeLg memSizeLg instrMem kdataMem riscvXAddrs) ->
         pc_related_when_valid riscvXAddrs kpc rpc ->
         nrpc = word.add rpc (word.of_Z 4) ->
         regs_related krf rrf ->
-
-        mem_related kdataMem rdataMem ->
+        mem_related _ kdataMem rdataMem ->
         states_related
           (m, t) {| getMachine := {| RiscvMachine.getRegs := rrf;
                                      RiscvMachine.getPc := rpc;
@@ -224,7 +223,7 @@ Section Equiv.
              else MMInputEvent (argV Fin.F1) (retV Fin.F1)) ->
         KamiLabelR klbl [e].
 
-  Definition kamiStep (m1 : KamiMachine) (m2 : KamiMachine) (klbl : Kami.Semantics.LabelT) : Prop :=
+  Definition kamiStep (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT): Prop :=
     exists kupd, Step kamiProc m1 kupd klbl /\ m2 = FMap.M.union kupd m1.
 
   Ltac kami_step_case_empty :=
@@ -257,7 +256,7 @@ Section Equiv.
 
   Lemma kamiStep_sound_case_pgmInit:
     forall km1 t0 rm1 post kupd cs
-           (Hkinv: scmm_inv rv32RfIdx rv32Fetch km1),
+           (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -283,7 +282,7 @@ Section Equiv.
   Lemma kamiPgmInitFull_RiscvXAddrsSafe:
     forall pgmFull dataMem,
       KamiPgmInitFull rv32Fetch pgmFull dataMem ->
-      RiscvXAddrsSafe instrMemSizeLg pgmFull dataMem kamiXAddrs.
+      RiscvXAddrsSafe instrMemSizeLg memSizeLg pgmFull dataMem kamiXAddrs.
   Proof.
     unfold KamiPgmInitFull; intros.
     red; intros.
@@ -297,7 +296,7 @@ Section Equiv.
 
   Lemma kamiStep_sound_case_pgmInitEnd:
     forall km1 t0 rm1 post kupd cs
-           (Hkinv: scmm_inv rv32RfIdx rv32Fetch km1),
+           (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -467,7 +466,7 @@ Section Equiv.
   Lemma pc_related_plus4:
     forall instrMem kdataMem xaddrs,
       (* (forall a, isXAddr4 a xaddrs -> isXAddr4 a kamiXAddrs) -> *)
-      RiscvXAddrsSafe instrMemSizeLg instrMem kdataMem xaddrs ->
+      RiscvXAddrsSafe instrMemSizeLg memSizeLg instrMem kdataMem xaddrs ->
       forall kpc rpc,
         isXAddr4 rpc xaddrs ->
         pc_related_when_valid xaddrs kpc rpc ->
@@ -557,7 +556,7 @@ Section Equiv.
 
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
-           (Hkinv: scmm_inv rv32RfIdx rv32Fetch km1),
+           (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
       states_related (km1, t0) rm1 ->
       mcomp_sat_unit (run1 iset) rm1 post ->
       Step kamiProc km1 kupd
@@ -695,7 +694,7 @@ Section Equiv.
 
   Ltac red_regmap :=
     try match goal with
-        | [H: scmm_inv _ _ _ |- _] => inversion H
+        | [H: scmm_inv _ _ _ _ |- _] => inversion H
         end;
     cbv [RegsToT pRegsToT] in *;
     kregmap_red; kinv_red.
@@ -948,22 +947,15 @@ Section Equiv.
                end.
 
       all: try cbn in decodeI.
+
+      (* 42: fence instructions. Can draw [False] since [rd <> 0] in [execNm]. *)
+      42: case TODO_joonwon.
+      (* 41: mul/div instructions. Should be able to draw [False] *)
+      41: case TODO_joonwon.
+      (* 40: cases that require additional simplification 
+       * to draw [False] by [mcomp_step_in]. *)
       40: (subst decodeI decodeM resultI resultM results;
            repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
-      43: (subst decodeI decodeM resultI resultM results;
-           repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
-
-      (* Currently there are TWO cases where the riscv-coq decoder does not
-       * fully reduce due to insufficient information from Kami:
-       * 1) Kami only deals with MUL in RV32M.
-       * 2) Kami does not support FENCE/FENCE.I
-       *   - riscv-coq handles these fence instructions as NOP.
-       *   - FENCE.I no longer belongs to RV32I.
-       *   - Kami may handle FENCE as NOP, too.
-       * For now we let such cases admitted -- @joonwonc TODO. *)
-      all: try match goal with
-               | [decodeI := (if _ then _ else _): InstructionI |- _] => case TODO_joonwon
-               end.
 
       (** decoding done *)
       all: subst dec; mcomp_step_in H5;
@@ -1429,14 +1421,14 @@ Section Equiv.
   Defined.
 
   Definition riscvMemInit:
-    {rmemi: mem & mem_related (evalConstT kamiMemInit) rmemi}.
+    {rmemi: mem & mem_related _ (evalConstT kamiMemInit) rmemi}.
   Proof.
     case TODO_joonwon.
   Defined.
 
   Lemma states_related_init:
     states_related
-      (initRegs (getRegInits (@proc instrMemSizeLg Hinstr kamiMemInit kami_FE310_AbsMMIO)), [])
+      (initRegs (getRegInits (proc Hinstr kamiMemInit kami_FE310_AbsMMIO)), [])
       {| getMachine :=
            {| RiscvMachine.getRegs := projT1 riscvRegsInit;
               RiscvMachine.getPc := word.of_Z 0;
@@ -1511,7 +1503,7 @@ Section Equiv.
       exists (t': list Event), KamiLabelSeqR t t' /\ traceProp t'.
   Proof.
     intros.
-    pose proof (@proc_correct instrMemSizeLg Hinstr kamiMemInit) as P.
+    pose proof (@proc_correct instrMemSizeLg memSizeLg Hinstr kamiMemInit) as P.
     unfold traceRefines in P.
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).
