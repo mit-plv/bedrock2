@@ -242,9 +242,9 @@ Proof.
   eapply Q; clear Q; cycle 3.
   - (* preserve invariant *)
     intros.
+    unfold hl_inv, goodTrace, isReady in *. specialize (H (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
     (* TODO make Simp.simp work here *)
     destruct H as [ [ buf [R [Sep L] ] ] [ [ioh [Rel G] ] ? ] ]. subst l.
-    eexists. split; [reflexivity|].
     pose proof link_lightbulb_loop as P.
     cbv [spec_of_lightbulb_loop] in P.
     specialize_first P Sep.
