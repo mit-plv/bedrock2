@@ -169,8 +169,7 @@ Section Connect.
   (* Definition kamiMemToBedrockMem: mem := *)
   (*   projT1 (riscvMemInit memInit). *)
 
-  Definition bedrock2Inv := (fun t' m' l' => spec.(isReady) t' m' l' /\ spec.(goodTrace) t'
-                                             /\ l' = map.empty).
+  Definition bedrock2Inv := (fun t m l => forall mc, hl_inv spec t m l mc).
 
   Let funspecs := WeakestPrecondition.call (p := strname_sem) funimplsList.
 
@@ -240,33 +239,16 @@ Section Connect.
             destruct_one_match. 1: congruence.
             eapply IHl. assumption.
       *)
-      - match goal with
-        | |- exists (_: ?T), _ => assert (init_code: T) by case TODO_sam
-        end.
-        exists init_code.
-        split. 1: case TODO_sam.
-        intros.
-        replace m0 with (projT1 (riscvMemInit memInit)) by case TODO_joonwon.
-        unfold ExprImp.SimExec, hl_inv, bedrock2Inv in *. eapply ExprImp.weaken_exec.
-        + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
-            eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
-          move Establish at bottom.
-          specialize (Establish (projT1 (riscvMemInit memInit))).
-          case TODO_sam.
-        + simpl. clear. intros. (* intuition idtac. *) case TODO_sam.
-      - match goal with
-        | |- exists (_: ?T), _ => assert (loop_body: T) by case TODO_sam
-        end.
-        exists loop_body.
-        split. 1: case TODO_sam.
-        intros.
-        destruct s as (((((e & c) & t0) & m) & l) & mc).
-        unfold ExprImp.SimExec, hl_inv, bedrock2Inv in *. simp.
+      - intros.
         eapply ExprImp.weaken_exec.
         + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
             eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
-          case TODO_sam.
-        + simpl. clear. case TODO_sam. (* intuition idtac. *)
+        + simpl. clear. intros. unfold bedrock2Inv in *. eauto.
+      - intros. unfold bedrock2Inv in *.
+        eapply ExprImp.weaken_exec.
+        + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
+            eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+        + simpl. clear. intros. eauto.
     }
 
     eapply P1.

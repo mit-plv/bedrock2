@@ -453,7 +453,7 @@ Section Pipeline1.
       (ml: MemoryLayout Semantics.width)
       (mlOk: MemoryLayoutOk ml)
       (f_entry_name : string)
-      (p_call: word) (instr_call: word)
+      (p_call: word)
       (Rdata Rexec : mem -> Prop)
       (functions: source_env)
       (instrs: list Instruction)

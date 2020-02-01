@@ -25,14 +25,9 @@ Section Params1.
       Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
       array ptsto (word.of_Z 1) start anybytes m.
 
-  Definition hl_inv(funenv: Semantics.env)
-                   (code: Syntax.cmd)
-                   (spec: ProgramSpec): ExprImp.SimState -> Prop :=
-    fun '(e, c, t, m, l, mc) => e = funenv /\ c = code /\
-                                spec.(isReady) t m l /\ spec.(goodTrace) t /\
-                                (* Restriction: no locals can be shared between loop iterations,
-                                   and all locals have to be unset at the end of the loop *)
-                                l = map.empty.
+  Definition hl_inv(spec: ProgramSpec)(t: Semantics.trace)(m: Semantics.mem)(l: Semantics.locals)(mc: MetricLog)
+    : Prop := (* Restriction: no locals can be shared between loop iterations *)
+    spec.(isReady) t m l /\ spec.(goodTrace) t /\ l = map.empty.
 
   Record ProgramSatisfiesSpec(init_f loop_f: String.string)
          (e: Semantics.env)
@@ -40,18 +35,13 @@ Section Params1.
   {
     funs_valid: ExprImp.valid_funs e;
 
-    init_code_correct: exists init_code,
-        map.get e init_f = Some (nil, nil, init_code) /\
-        forall m0 mc0,
-          mem_available spec.(datamem_start) spec.(datamem_pastend) m0 ->
-          ExprImp.SimExec (e, init_code, nil, m0, map.empty, mc0)
-                          (hl_inv e init_code spec);
+    init_code_correct: forall m0 mc0,
+        mem_available spec.(datamem_start) spec.(datamem_pastend) m0 ->
+        Semantics.exec e (Syntax.cmd.call nil init_f nil) nil m0 map.empty mc0 (hl_inv spec);
 
-    loop_body_correct: exists loop_body,
-        map.get e loop_f = Some (nil, nil, loop_body) /\
-        forall s,
-          hl_inv e loop_body spec s ->
-          ExprImp.SimExec s (hl_inv e loop_body spec);
+    loop_body_correct: forall t m l mc,
+        hl_inv spec t m l mc ->
+        Semantics.exec e (Syntax.cmd.call nil loop_f nil) t m l mc (hl_inv spec);
   }.
 
 End Params1.
