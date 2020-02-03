@@ -124,6 +124,20 @@ Definition p4mm memSizeLg (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTyp
                                                (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
 
+Definition kami_mem_contains_words_from (ws: list word)
+           {memSizeLg} (from: Word.word memSizeLg)
+           (mem: Word.word memSizeLg -> Word.word 8): Prop :=
+  forall w n,
+    nth_error ws n = Some w ->
+    w = SC.combineBytes 4 (Word.wplus from (Word.natToWord _ (4 * n))) mem.
+
+Definition kami_memInit_contains_prog {memSizeLg}
+           (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
+                                (Z.to_nat memSizeLg))
+           (prog: list word): Prop :=
+  kami_mem_contains_words_from
+    prog (Word.wzero _) (Semantics.evalConstT (Syntax.ConstVector memInit)).
+
 From coqutil Require Import Z_keyed_SortedListMap.
 
 Local Existing Instance SortedListString.map.
