@@ -67,7 +67,7 @@ Module Bedrock2.
          }}
        }};
        (* FIXME: negation? *)
-       found = ((pairs == pairs_end) ^ constr:(0))))).
+       found = ((pairs == pairs_end) ^ constr:(1))))).
 End Bedrock2.
 
 Module Gallina.
