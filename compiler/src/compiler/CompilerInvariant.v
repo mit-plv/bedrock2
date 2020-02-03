@@ -64,6 +64,20 @@ Local Notation "' x <- a ; f" :=
    end)
   (right associativity, at level 70, x pattern).
 
+(* TODO move *)
+Ltac destr_RiscvMachine state :=
+  let r := fresh state "_regs" in
+  let p := fresh state "_pc" in
+  let n := fresh state "_npc" in
+  let me := fresh state "_mem" in
+  let x := fresh state "_xaddrs" in
+  let l := fresh state "_log" in
+  let mc := fresh state "_metrics" in
+  destruct state as [ [r p n me x l] mc ];
+  unfold getRegs, getMachine, getPc, getNextPc, getMem, getLog, withPc, RiscvMachine.withPc, withNextPc,
+         RiscvMachine.withNextPc,
+         withMetrics in *.
+
 Section Pipeline1.
 
   Context {p: Pipeline.parameters}.
@@ -176,7 +190,7 @@ Section Pipeline1.
      - loop_insts: calls loop function
      - backjump_insts: jumps back to calling loop function
      - fun_insts: code of compiled functions *)
-  Definition compile_prog(prog: source_env): option (list Instruction) :=
+  Definition compile_prog(prog: source_env): option (list Instruction * funname_env Z) :=
     'Some (fun_insts, positions) <- @compile p ml prog;
     let init_sp_insts := FlatToRiscvDef.compile_lit RegisterNames.sp init_sp in
     'Some init_pos <- map.get positions "init"%string;
@@ -184,11 +198,7 @@ Section Pipeline1.
     let init_insts := [[Jal RegisterNames.ra (3 * 4 + init_pos)]] in
     let loop_insts := [[Jal RegisterNames.ra (2 * 4 + loop_pos)]] in
     let backjump_insts := [[Jal Register0 (-4*Z.of_nat (List.length loop_insts))]] in
-    Some (init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts ++ fun_insts).
-
-  Definition putProgram(prog: source_env)(preInitial: MetricRiscvMachine): option MetricRiscvMachine :=
-    'Some insts <- compile_prog prog;
-    Some (MetricRiscvMachine.putProgram (List.map encode insts) ml.(code_start) preInitial).
+    Some (init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts ++ fun_insts, positions).
 
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
@@ -199,8 +209,8 @@ Section Pipeline1.
   Axiom Rexec: mem -> Prop. (* maybe (emp True) will be fine *)
 
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
-    exists (prog: source_env) (instrs: list Instruction),
-      compile_prog prog = Some instrs /\
+    exists (prog: source_env) (instrs: list Instruction) (positions: funname_env Z),
+      compile_prog prog = Some (instrs, positions) /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
       exists mH lH mcH,
         hl_inv spec mach.(getLog) mH lH mcH /\
@@ -258,13 +268,13 @@ Section Pipeline1.
   Qed.
   *)
 
-  Lemma compile_prog_to_compile: forall prog instrs,
-      compile_prog prog = Some instrs ->
-      exists before main positions,
+  Lemma compile_prog_to_compile: forall prog instrs positions,
+      compile_prog prog = Some (instrs, positions) ->
+      exists before main,
         compile ml prog = Some (main, positions) /\
         instrs = before ++ main.
   Proof.
-    intros. unfold compile_prog in *. simp. do 3 eexists.
+    intros. unfold compile_prog in *. simp. do 2 eexists.
     split; [reflexivity|].
     match goal with
     | |- ?A ++ ?i1 :: ?i2 :: ?i3 :: ?B = ?R => change (A ++ [i1; i2; i3] ++ B = R)
@@ -278,296 +288,86 @@ Section Pipeline1.
       nth_error bytes i = Some b ->
       map.get m (word.add a (word.of_Z (Z.of_nat i))) = Some (word.of_Z (Z.of_N (Byte.to_N b))).
 
-  Lemma establish_ll_inv: forall (srcprog: source_env)
-                                 (sat: ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec)
-                                 (initial: MetricRiscvMachine) instrs,
-      compile_prog srcprog = Some instrs ->
-      mem_contains_bytes initial.(getMem) ml.(code_start) (instrencode instrs) ->
-      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
-      regs_initialized initial.(getRegs) ->
-      map.get initial.(getRegs) RegisterNames.sp = Some ml.(stack_pastend) ->
-      valid_machine initial ->
+  Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
+    exists (srcprog: source_env) (instrs: list Instruction) (positions: funname_env Z),
+      ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
+      compile_prog srcprog = Some (instrs, positions) /\
+      mem_contains_bytes initial.(getMem) ml.(code_start) (instrencode instrs) /\
+      mem_available spec.(datamem_start) spec.(datamem_pastend) initial.(getMem) /\
+      initial.(getPc) = ml.(code_start) /\
+      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) /\
+      regs_initialized initial.(getRegs) /\
+      initial.(getLog) = nil /\
+      valid_machine initial.
+
+  Lemma establish_ll_inv: forall (initial: MetricRiscvMachine),
+      initial_conditions initial ->
       ll_inv initial.
   Proof.
-    intros.
+    unfold initial_conditions.
+    intros. simp.
     unfold ll_inv, runsToGood_Invariant.
     destruct_RiscvMachine initial.
-(*
-    exists instrs, ml.(code_start)
-    exists Rdata, Rexec.
-    lazymatch goal with
-    | _: riscvPhase ml ?R = Some _ |- _ => set (ren := R)
-    end.
     (* first, run init_sp_code: *)
     pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
     cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
     specialize P with (x := RegisterNames.sp) (v := init_sp).
     unfold runsTo in P. eapply P; clear P; simpl.
-    { reflexivity. }
+    { assumption. }
     2: {
       case TODO_sam. (* store program establisheds "program"/instruction memory related *)
     }
     { case TODO_sam. (* subset footpr XAddrs *) }
     { cbv. auto. }
     { assumption. }
-    (* then, run init_code (using compiler simulation and correctness of init_code) *)
-    pose proof (sim ml init_fun_pos "init"%string
-                    (word.add ml.(code_start) (word.of_Z (4 * Z.of_nat
-                            (List.length (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp)))))
-                    Rdata Rexec) as P.
-    unfold simulation, runsTo in P.
-    rename H0 into Q. unfold layout in Q.
-    unfold sep, map.split in Q.
-    destruct Q as [ cdmem [ smem [ [ ? ? ] [ Q ? ] ] ] ].
-    destruct Q as [ cmem  [ dmem [ [ ? ? ] [ ? ? ] ] ] ].
-    subst.
-*)
-    case TODO_sam.
-  Qed.
-
-  Lemma putProgram_establishes_ll_inv: forall srcprog
-      (sat: ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec)
-      preInitial initial,
-      putProgram srcprog preInitial = Some initial ->
-      layout preInitial.(getMem) ->
-      (* the registers must have some (unspecified) value, ie reading a register must not
-         be undefined behavior: *)
-      regs_initialized preInitial.(getRegs) ->
-      preInitial.(getLog) = [] ->
-      valid_machine initial -> (* or valid_machine preInitial and putProgram_preserves_sane condition? *)
-      ll_inv initial.
-  Proof.
-    intros.
-    unfold putProgram, MetricRiscvMachine.putProgram, RiscvMachine.putProgram.
-    unfold ll_inv, runsToGood_Invariant.
-    destruct_RiscvMachine preInitial.
-    unfold putProgram, compile_prog, compile, composePhases, renamePhase, flattenPhase in *. simp. simpl in *.
-    case TODO_sam.
-  Qed.
-(*
-    exists srcprog.
     match goal with
-    | _: map.get _ "init"%string = Some ?pos |- _ => rename pos into init_fun_pos
+    | H: context[ProgramSatisfiesSpec] |- _ => rename H into sat
     end.
+    pose proof sat.
+    destruct sat.
     match goal with
-    | _: map.get _ "loop"%string = Some ?pos |- _ => rename pos into loop_fun_pos
+    | H: _ |- _ => pose proof H; apply compile_prog_to_compile in H;
+                     destruct H as [ before [ finstrs [ ? ? ] ] ]
     end.
-    exists init_fun_pos, "init"%string.
-    exists (word.add ml.(code_start) (word.of_Z (4 * Z.of_nat
-                            (List.length (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp))))).
-    assert (Rdata: mem -> Prop) by case TODO_sam. (* will probably need to go outside existential *)
-    assert (Rexec: mem -> Prop) by case TODO_sam. (* will probably need to go outside existential *)
-    exists Rdata, Rexec.
-    lazymatch goal with
-    | _: riscvPhase ml ?R = Some _ |- _ => set (ren := R)
-    end.
-    (* first, run init_sp_code: *)
-    pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
-    cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
-    specialize P with (x := RegisterNames.sp) (v := init_sp).
-    unfold runsTo in P. eapply P; clear P; simpl.
-    { reflexivity. }
-    2: {
-      case TODO_sam. (* store program establisheds "program"/instruction memory related *)
-    }
-    { case TODO_sam. (* subset footpr XAddrs *) }
-    { cbv. auto. }
-    { assumption. }
-    (* then, run init_code (using compiler simulation and correctness of init_code) *)
-    pose proof (sim ml init_fun_pos "init"%string
-                    (word.add ml.(code_start) (word.of_Z (4 * Z.of_nat
-                            (List.length (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp)))))
-                    Rdata Rexec) as P.
-    unfold simulation, runsTo in P.
-    rename H0 into Q. unfold layout in Q.
-    unfold sep, map.split in Q.
-    destruct Q as [ cdmem [ smem [ [ ? ? ] [ Q ? ] ] ] ].
-    destruct Q as [ cmem  [ dmem [ [ ? ? ] [ ? ? ] ] ] ].
     subst.
-    specialize P with
-        (s1 := (srcprog, (Syntax.cmd.call nil "init"%string nil), nil,
-                dmem, map.empty, bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
+    match goal with
+    | H: mem_available _ _ _ |- _ =>
+      specialize (init_code_correct _ (bedrock2.MetricLogging.mkMetricLog 0 0 0 0) H)
+    end.
+    (* then, run init_code (using compiler simulation and correctness of init_code) *)
     eapply runsTo_weaken.
-    - eapply P; clear P.
-      + (* prove that the initial state (putProgram preInitial) is related ot the high-level
-           initial state *)
-        unfold related, compose_relation.
-        unfold compiler.FlatToRiscvSimulation.related,
-               compiler.FlattenExprSimulation.related,
-               compiler.RegRename.related.
-        refine (ex_intro _ (_, _, _, _, _, _) _).
-        ssplit; try reflexivity.
-        { eassumption. }
-        { unfold map.undef_on, map.agree_on. intros. reflexivity. }
-        refine (ex_intro _ (_, _, _, _, _, _) _).
-        unfold goodMachine.
-        ssplit.
-        { unfold envs_related.
-          intros f [ [argnames resnames] body1 ] G.
-          unfold rename_functions in E4.
-          eapply map.map_all_values_fw.
-          5: exact G. 4: exact E4.
-          - eapply String.eqb_spec.
-          - typeclasses eauto.
-          - typeclasses eauto.
-        }
-        { reflexivity. }
-        { reflexivity. }
-        { intros. ssplit; reflexivity. }
-        { simpl. do 2 eexists. reflexivity. }
-        { case TODO_sam. (* how to get rid of SSkip? *) }
-        { case TODO_sam. (* divisible by 4 *) }
-        { case TODO_sam. (* divisible by 4 *) }
-        { case TODO_sam. (* get in fun_pus_env *) }
-        { simpl. unfold riscvPhase in *. simpl in *. simp.
-          case TODO_sam.
-          (*
-          edestruct stack_usage_correct as [P _]. 1: eassumption.
-          simpl in P.
-          eapply fits_stack_monotone. 1: exact P.
-          subst num_stackwords.
-          repeat match goal with
-                 | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
-                 end.
-          assumption.
-          *)
-        }
-        { unfold good_e_impl.
-          intros.
-          simpl in H|-*.
-          rename E4 into RenameEq.
-          unfold rename_functions in RenameEq.
-          unshelve epose proof (map.map_all_values_bw _ _ _ _ RenameEq _ _ H).
-          simp. destruct v1 as [ [argnames' retnames'] body' ].
-          unfold flatten_functions in E3.
-          rename E3 into FlattenEq.
-          unshelve epose proof (map.map_all_values_bw _ _ _ _ FlattenEq _ _ H2r) as P.
-          { (* PARAMRECORDS *) unfold FlattenExpr.ExprImp_env. simpl. typeclasses eauto. }
-          { (* PARAMRECORDS *) unfold FlattenExpr.FlatImp_env. simpl. typeclasses eauto. }
-          unfold flatten_function in P.
-          simp.
-          pose proof (funs_valid sat) as V.
-          unfold ExprImp.valid_funs in V.
-          specialize V with (1 := Pr).
-          unfold ExprImp.valid_fun in V.
-          destruct V.
-          ssplit.
-          - eapply rename_fun_valid; try eassumption.
-            unfold ExprImp2FlatImp in *.
-            simp.
-            repeat match goal with
-                   | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
-                   end.
-            assumption.
-          - case TODO_sam. (* remove "In funnames" condition *)
-          - unfold FlatToRiscvDef.function_positions.
-            simpl.
-            case TODO_sam.
-            (*
-            eapply get_build_fun_pos_env.
-            + case TODO_sam. (* remove "In funnames" condition *)
-            + intros f' A C.
-              apply (proj2 (sat.(funnames_matches_dom) f') A).
-              match goal with
-              | |- ?x = None => destr x; [exfalso|reflexivity]
-              end.
-              destruct p0 as [ [args res] body ].
-              pose proof get_flatten_functions as P.
-              specialize P with (1 := E1) (2 := FlattenEq). simp.
-              unshelve epose proof (map.map_all_values_fw _ _ _ _ RenameEq _ _ Pl) as P'.
-              { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
-              { (* PARAMRECORDS *) unfold FlatImp.env, Semantics.funname_env. simpl. typeclasses eauto. }
-              simp.
-              (* PARAMRECORDS *)
-              match type of C with
-              | ?x = None => match type of P'r with
-                             | ?y = Some _ => change x with y in C
-                             end
-              end.
-              congruence.
-            + reflexivity.
-            *)
-        }
-        { simpl. eapply regs_initialized_put in H1. exact H1. }
-        { simpl. solve_word_eq word_ok. }
-
-(*
-        { progress unfold FlatToRiscvDef.stmt_not_too_big.
-          match goal with
-          | H: rename_stmt _ _ _ = Some s |- _ => unfold rename_stmt in H; simp
-          end.
-          match goal with
-          | H: rename _ _ _ = Some (_, s, _) |- _ => apply rename_preserves_stmt_size in H; rename H into B
-          end.
-          (* PARAMRECORDS *)
-          match goal with
-          | |- ?x < _ => replace x with (FlatImp.stmt_size s1)
-          end.
-          unfold ExprImp2FlatImp in *.
-          simp.
-          repeat match goal with
-                 | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
-                 end.
-          assumption.
-        }
-        { unfold rename_stmt in E3. simp. eapply rename_props in E0; cycle 1.
-          { exact String.eqb_spec. }
-          { typeclasses eauto. }
-          { apply map.empty_injective. }
-          { eapply map.not_in_range_empty. }
-          { eapply NoDup_available_registers. }
-          simp.
-          unfold FlatToRiscvDef.valid_FlatImp_vars.
-          eapply FlatImp.ForallVars_stmt_impl; [|eassumption].
-          simpl. intros. simp.
-          match goal with
-          | X: _ |- _ => specialize X with (1 := H); rename X into A
-          end.
-          destruct A as [A | A].
-          + pose proof valid_FlatImp_vars_available_registers as V.
-            eapply (proj1 (Forall_forall _ _) V).
-            replace available_registers with (used ++ l0) by assumption.
-            rewrite ?in_app_iff. auto.
-          + rewrite map.get_empty in A. discriminate A. }
-        { reflexivity. }
-        { unfold FlatToRiscvDef.main_pos. solve_divisibleBy4. }
-        { simpl. eapply regs_initialized_put in H1. exact H1. }
-        { simpl.
-          unfold program_base, FlatToRiscvDef.main_pos,
-                 FlatToRiscvDef.init_sp_insts, FlatToRiscvDef.backjump_insts.
-          rewrite main_size_correct.
-          solve_word_eq word_ok. }
-        *)
-        { simpl. unfold map.extends. intros. rewrite map.get_empty in H. discriminate. }
-        { intros. rewrite map.get_empty in H. discriminate. }
-        { simpl. rewrite map.get_put_same. unfold init_sp.
-          f_equal.
-          rewrite word.of_Z_unsigned.
-          reflexivity. }
-        { simpl. eapply @regs_initialized_put.
-          - typeclasses eauto.
-          - assumption. }
-        { simpl. solve_word_eq word_ok. }
-        { simpl. case TODO_sam. (* subset footpr xaddrs *) }
-        { simpl. case TODO_sam. (* separation logic descrption of initial memory *) }
-        { reflexivity. }
-        { case TODO_sam. (* valid_machine *) }
-      + (* prove correctness of ExprImp init code: *)
-        pose proof sat.(init_code_correct) as P.
-        destruct P as [ init_code [? P] ].
-        (* evar envs? *) case TODO_sam.
-    - simpl. clear P.
+    - pose proof compiler_correct as P. unfold runsTo in P. (* TODO instantiate ml to smaller ml *)
       unfold ll_good.
-      (* eapply init_code_to_loop_body_transition. *) case TODO_sam.
-    Unshelve.
-    all: intros; try exact True.
-    all: try exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
-    all: try exact true.
-    all: repeat apply pair.
-    all: try apply nil.
-    all: try apply FlatImp.SSkip.
+      eapply P; clear P; try eassumption.
+      unfold machine_ok.
+      unfold getRegs, getMachine, getPc, getNextPc, getMem, getLog, withPc, RiscvMachine.withPc, withNextPc,
+             RiscvMachine.withNextPc,
+             withMetrics in *.
+      repeat match goal with
+             | |- exists _, _  => eexists
+             | |- _ /\ _ => split
+             | |- _ => progress cbv beta iota
+             | |- _ => eassumption
+             | |- _ => reflexivity
+             end.
+      + case TODO_sam.
+      + solve_word_eq word_ok.
+      + eapply @regs_initialized_put; try typeclasses eauto. (* PARAMRECORDS? *)
+        eassumption.
+      + rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
+      + case TODO_sam. (* valid_machine preserved *)
+    - cbv beta. unfold ll_good. intros. simp.
+      repeat match goal with
+             | |- exists _, _  => eexists
+             | |- _ /\ _ => split
+             | |- _ => progress cbv beta iota
+             | |- _ => eassumption
+             | |- _ => reflexivity
+             end.
+      (* TODO fix memory layout (one which focuses on init instructions) *)
+      case TODO_sam.
+    Unshelve. all: intros; try exact True.
   Qed.
-*)
 
   Lemma machine_ok_frame_instrs_app_l: forall p_code p_stack_pastend i1 i2 p_call pc mH Rdata Rexec mach,
       machine_ok p_code p_stack_pastend (i1 ++ i2) p_call pc mH Rdata Rexec mach ->
@@ -616,18 +416,7 @@ Section Pipeline1.
       intros.
       unfold ll_good, machine_ok in *.
       simp.
-      (* destruct_RiscvMachine state. TODO remove "simpl in *" from that? *)
-      let r := fresh m "_regs" in
-      let p := fresh m "_pc" in
-      let n := fresh m "_npc" in
-      let me := fresh m "_mem" in
-      let x := fresh m "_xaddrs" in
-      let l := fresh m "_log" in
-      let mc := fresh m "_metrics" in
-      destruct state as [ [r p n me x l] mc ].
-      unfold getRegs, getMachine, getPc, getNextPc, getMem, getLog, withPc, RiscvMachine.withPc, withNextPc,
-             RiscvMachine.withNextPc,
-             withMetrics in *.
+      destr_RiscvMachine state.
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -670,7 +459,7 @@ Section Pipeline1.
       subst.
       match goal with
       | H: _ |- _ => pose proof H; apply compile_prog_to_compile in H;
-                     destruct H as [ before [ finstrs [ positions [ ? ? ] ] ] ]
+                     destruct H as [ before [ finstrs [ ? ? ] ] ]
       end.
       subst.
       eapply runsTo_weaken.
@@ -678,7 +467,7 @@ Section Pipeline1.
         eapply P; clear P; try eassumption.
         eapply machine_ok_frame_instrs_app_l. eassumption.
       + cbv beta.
-        intros. simp. do 2 eexists.
+        intros. simp. do 3 eexists.
         ssplit; try eassumption.
         do 3 eexists.
         split; [eassumption|].
@@ -697,25 +486,12 @@ Section Pipeline1.
     intros. simp. eassumption.
   Qed.
 
-  Lemma pipeline_proofs srcprog (sat: ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec):
-    (forall preInitial initial,
-        putProgram srcprog preInitial = Some initial ->
-        ll_inv initial) /\
+  Lemma compiler_invariant_proofs:
+    (forall initial, initial_conditions initial -> ll_inv initial) /\
     (forall st, ll_inv st -> GoFlatToRiscv.mcomp_sat (run1 iset) st ll_inv) /\
     (forall st, ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
-    split; [|split].
-    - intros.
-      eapply putProgram_establishes_ll_inv.
-      + eassumption.
-      + case TODO_sam.
-      + case TODO_sam.
-      + case TODO_sam.
-      + case TODO_sam.
-      + case TODO_sam.
-    - apply ll_inv_is_invariant.
-    - exact ll_inv_implies_prefix_of_good.
-    Unshelve. all: case TODO_sam.
+    eauto 7 using establish_ll_inv, ll_inv_is_invariant, ll_inv_implies_prefix_of_good.
   Qed.
 
 End Pipeline1.

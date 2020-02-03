@@ -61,6 +61,15 @@ refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
+(* TODO_joonwon move/modify this if needed *)
+Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from: Utility.word)
+           (mem: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) memSizeLg): Prop :=
+  forall b n,
+    nth_error bs n = Some b ->
+    Word.natToWord 8 (Byte.to_nat b)
+    = Semantics.evalConstT (Syntax.ConstVector mem)
+                           (Semantics.evalZeroExtendTrunc memSizeLg (Word.wplus from (Word.natToWord _ n))).
+
 Section Connect.
 
   Context (instrMemSizeLg memSizeLg: Z).
@@ -157,6 +166,7 @@ Section Connect.
     word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
   Hypothesis heap_start_agree: spec.(datamem_start) = ml.(heap_start).
   Hypothesis heap_pastend_agree: spec.(datamem_pastend) = ml.(heap_pastend).
+  Hypothesis code_at_0: ml.(code_start) = word.of_Z 0.
 
   Hypothesis funimplsList_NoDup: NoDup (List.map fst funimplsList).
 
@@ -176,17 +186,17 @@ Section Connect.
   Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
       spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
 
-  (* end to end, but still generic over the program
-     TODO also write instantiations where the program is fixed, to reduce number of hypotheses *)
+  (* end to end, but still generic over the program *)
   Lemma end2end:
-      (forall m, WeakestPrecondition.cmd (p := strname_sem) funspecs
-                                         (cmd.call nil "init"%string nil)
-                                         [] m map.empty bedrock2Inv) ->
-      (forall t m l,
-          bedrock2Inv t m l ->
-          WeakestPrecondition.cmd (p := strname_sem) funspecs
-                                  (cmd.call nil "loop"%string nil) t m l bedrock2Inv) ->
-    (* TODO more hypotheses might be needed *)
+    (* Assumptions on the program logic level: *)
+    (forall m, WeakestPrecondition.cmd funspecs (cmd.call nil "init"%string nil) [] m map.empty bedrock2Inv) ->
+    (forall t m l, bedrock2Inv t m l ->
+                   WeakestPrecondition.cmd funspecs (cmd.call nil "loop"%string nil) t m l bedrock2Inv) ->
+    (* Assumptions on the compiler level: *)
+    forall (instrs: list Instruction) (positions: FlatToRiscvCommon.funname_env Z),
+    compile_prog ml (map.of_list funimplsList) = Some (instrs, positions) ->
+    (* Assumptions on the Kami level: *)
+    kami_mem_contains_bytes (instrencode instrs) ml.(code_start) memInit ->
     forall (t: Kami.Semantics.LabelSeqT) (mFinal: KamiImplMachine),
       (* IF the 4-stage pipelined processor steps to some final state mFinal, producing trace t,*)
       Kami.Semantics.Behavior p4mm mFinal t ->
@@ -197,7 +207,7 @@ Section Connect.
       exists (t': list Event), KamiLabelSeqR t t' /\
                                exists (suffix: list Event), goodTraceE (suffix ++ t').
   Proof.
-    intros *. intros Establish Preserve. intros *. intros B.
+    intros *. intros Establish Preserve. intros *. intros C M. intros *. intros B.
 
     set (traceProp := fun (t: list Event) =>
                         exists (suffix: list Event), goodTraceE (suffix ++ t)).
@@ -214,50 +224,51 @@ Section Connect.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
-    pose proof pipeline_proofs as P2.
-    specialize_first P2 (map.of_list funimplsList).
+    pose proof compiler_invariant_proofs as P2.
     specialize_first P2 spec.
     specialize_first P2 ml.
     specialize_first P2 mlOk.
-    destruct P2 as [ P2establish [P2preserve P2use] ]. {
-      (* 3) bedrock2 semantics to bedrock2 program logic *)
-      constructor.
-      - unfold ExprImp.valid_funs, ExprImp.valid_fun. case TODO_sam.
-      (*
-      - simpl. clear.
-        induction funimplsList; split; intros.
-        + simpl in H. rewrite map.get_empty in H. contradiction.
-        + simpl in H. contradiction.
-        + simpl in *. destruct a as [k v]. simpl in *.
-          rewrite map.get_put_dec in H.
-          destruct_one_match_hyp; [left|right]. 1: assumption.
-          eapply IHl. assumption.
-        + simpl in *. destruct a as [k v]. simpl in *.
-          destruct H.
-          * subst. rewrite map.get_put_same. congruence.
-          * rewrite map.get_put_dec.
-            destruct_one_match. 1: congruence.
-            eapply IHl. assumption.
-      *)
-      - intros.
-        eapply ExprImp.weaken_exec.
-        + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
-            eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
-        + simpl. clear. intros. unfold bedrock2Inv in *. eauto.
-      - intros. unfold bedrock2Inv in *.
-        eapply ExprImp.weaken_exec.
-        + refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
-            eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
-        + simpl. clear. intros. eauto.
-    }
-
-    eapply P1.
+    destruct P2 as [ P2establish [P2preserve P2use] ].
+    eapply P1; clear P1.
     - assumption.
     - (* establish *)
       intros.
       eapply P2establish.
-      set (blocked_on := processor.FetchOk.mem_related).
-      case TODO_sam.
+      unfold initial_conditions.
+      exists (map.of_list funimplsList), instrs, positions.
+      destr_RiscvMachine m0RV. subst.
+      ssplit.
+      + (* 3) bedrock2 semantics to bedrock2 program logic *)
+        constructor.
+        * unfold ExprImp.valid_funs, ExprImp.valid_fun. case TODO_sam.
+        * intros.
+          eapply ExprImp.weaken_exec.
+          -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
+               eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+          -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
+        * intros. unfold bedrock2Inv in *.
+          eapply ExprImp.weaken_exec.
+          -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
+               eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+          -- simpl. clear. intros. eauto.
+      + assumption.
+      + clear -M.
+        case TODO_joonwon. (* basically a correctness thm for riscvMemInit *)
+      + case TODO_joonwon. (* all datamem addresses are defined *)
+      + symmetry. exact code_at_0.
+      + (* TODO add this hypothesis to KamiRiscv.riscv_to_kamiImplProcessor *)
+        case TODO_sam. (* or joonwon, if you're modifying that file anyways *)
+      + unfold FlatToRiscvCommon.regs_initialized. intros.
+        match goal with
+        | |- exists _, ?x = Some _ => destr x; [eauto|exfalso]
+        end.
+        match goal with
+        | H: forall _, _ -> _ <> None |- _ => eapply H; eauto
+        end.
+      + reflexivity.
+      + simpl. split.
+        * case TODO_joonwon. (* prove that riscvMemInit is undefined on the MMIO addresses *)
+        * case TODO_sam. (* or joonwon, add this hypothesis to KamiRiscv.riscv_to_kamiImplProcessor *)
     - (* preserve *)
       intros.
       refine (P2preserve _ _). assumption.
@@ -271,10 +282,6 @@ Section Connect.
       destruct G as [t' R].
       pose proof (split_ll_trace R). simp.
       eauto 10.
-
-      Grab Existential Variables.
-      1: exact m0RV.
-      all: try intros; exact True.
   Qed.
 
 End Connect.

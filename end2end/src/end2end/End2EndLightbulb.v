@@ -124,20 +124,6 @@ Definition p4mm memSizeLg (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTyp
                                                (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
 
-Definition kami_mem_contains_words_from (ws: list word)
-           {memSizeLg} (from: Word.word memSizeLg)
-           (mem: Word.word memSizeLg -> Word.word 8): Prop :=
-  forall w n,
-    nth_error ws n = Some w ->
-    w = SC.combineBytes 4 (Word.wplus from (Word.natToWord _ (4 * n))) mem.
-
-Definition kami_memInit_contains_prog {memSizeLg}
-           (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
-                                (Z.to_nat memSizeLg))
-           (prog: list word): Prop :=
-  kami_mem_contains_words_from
-    prog (Word.wzero _) (Semantics.evalConstT (Syntax.ConstVector memInit)).
-
 From coqutil Require Import Z_keyed_SortedListMap.
 
 Local Existing Instance SortedListString.map.
@@ -170,7 +156,7 @@ Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
 Definition lightbulb_insts_unevaluated: option (list Decode.Instruction * FlatToRiscvCommon.funname_env Z) :=
-  @PipelineWithRename.compile pipeline_params ml prog.
+  CompilerInvariant.compile_prog ml prog.
 
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
@@ -191,6 +177,10 @@ Definition function_positions: FlatToRiscvCommon.funname_env Z.
   | res := Some (_, ?x) |- _ => exact x
   end.
 Defined.
+
+Definition compilation_result:
+  CompilerInvariant.compile_prog ml prog = Some (lightbulb_insts, function_positions).
+Proof. reflexivity. Qed.
 
 Module PrintProgram.
   Import riscv.Utility.InstructionNotations.
@@ -234,6 +224,7 @@ Lemma end2end_lightbulb:
   forall (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                               (Z.to_nat KamiProc.width))
          (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
+    kami_mem_contains_bytes (instrencode lightbulb_insts) (code_start ml) memInit ->
     Semantics.Behavior (p4mm _ memInit) mFinal t ->
     exists t': list KamiRiscv.Event,
       KamiRiscv.KamiLabelSeqR t t' /\
@@ -244,21 +235,22 @@ Lemma end2end_lightbulb:
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
-  specialize_first Q function_impls.
+  specialize_first Q compilation_result.
   specialize_first Q spec.
-  specialize_first Q ml.
   specialize_first Q mlOk.
   specialize_first Q instrMemSizeLg_bounds.
-  intro memInit.
+  intros *. intro KB.
   specialize_first Q memInit.
+  specialize_first Q KB.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
-  eapply Q; clear Q; cycle 3.
+  eapply Q; clear Q; cycle 4.
   - (* preserve invariant *)
     intros.
     unfold hl_inv, goodTrace, isReady in *. specialize (H (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
     (* TODO make Simp.simp work here *)
-    destruct H as [ [ buf [R [Sep L] ] ] [ [ioh [Rel G] ] ? ] ]. subst l.
+    destruct H as [ [ buf [R [Sep L] ] ] [ [ioh [Rel G] ] ? ] ].
+    simpl in H. subst l.
     pose proof link_lightbulb_loop as P.
     cbv [spec_of_lightbulb_loop] in P.
     specialize_first P Sep.
@@ -279,12 +271,12 @@ Proof.
           [unfold traceOfOneInteraction, choice; eauto 10
           | exact G]]).
     *)
+  - reflexivity.
   - cbv. repeat constructor; cbv; intros; intuition congruence.
-  - intros. clear memInit. simp.
+  - intros. clear KB memInit. simp.
     unfold relate_lightbulb_trace_to_bedrock, SPI.mmio_trace_abstraction_relation in *.
     unfold id in *.
     eauto using iohi_to_iolo.
-
   - (* establish invariant *)
     intros.
 
