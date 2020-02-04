@@ -4,7 +4,6 @@ Require Import coqutil.Macros.unique.
 Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
 Require Import riscv.Utility.Monads.
-Require Import coqutil.Map.SortedList.
 Require Import compiler.FlatImp.
 Require Import riscv.Spec.Decode.
 Require Import coqutil.sanity.

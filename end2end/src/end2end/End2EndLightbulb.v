@@ -116,10 +116,6 @@ Ltac destr :=
          | A: _ /\ _ |- _ => destruct A as [? ?]
          end.
 
-(* TODO why do we need to write this? *)
-Instance src2imp : map.map string Decode.Register := SortedListString.map Z.
-Instance src2impOk : map.ok src2imp := SortedListString.ok _.
-
 Definition p4mm memSizeLg (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                                (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
@@ -161,9 +157,6 @@ Definition lightbulb_insts_unevaluated: option (list Decode.Instruction * FlatTo
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)
-(* TODO: These instructions will have to be fed to putProgram to get them into
-   the bedrock2 memory, and we will have to make sure that the Kami processor
-   contains the corresponding instructions too. *)
 Definition lightbulb_insts: list Decode.Instruction.
   let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
   match goal with
@@ -201,8 +194,6 @@ Module PrintProgram.
   Unset Printing Width.
 End PrintProgram.
 
-Axiom TODO_sam_and_joonwon: False.
-
 Lemma iohi_to_iolo: forall ioh (iomid: list RiscvMachine.LogItem),
     Forall2 SPI.mmio_event_abstraction_relation ioh iomid ->
     exists iolo : list KamiRiscv.Event, KamiRiscv.traces_related iolo iomid.
@@ -211,13 +202,28 @@ Proof.
   - simp. exists nil. constructor.
   - destruct iomid; try solve [inversion H].
     simp.
-    specialize IHioh with (1 := H5). simp.
-
-    (* not how it will work, need concatenation
-    eexists. constructor. 2: eassumption.
+    specialize IHioh with (1 := H5). simp. clear H5.
     unfold SPI.mmio_event_abstraction_relation in *.
-     *)
-    case TODO_sam.
+    destruct H3; simp; eexists; constructor; try eassumption; constructor.
+Qed.
+
+Lemma funs_valid: ExprImp.valid_funs (map.of_list funimplsList).
+Proof.
+  unfold ExprImp.valid_funs, ExprImp.valid_fun.
+  intros.
+  set (funnames := (List.map fst funimplsList)). cbv in funnames.
+  destruct (List.In_dec String.string_dec f funnames).
+  - subst funnames. simpl in i.
+    repeat destruct i as [i | i]; try contradiction; subst f; vm_compute in H; simp; split;
+      repeat constructor; intro C; simpl in C; intuition discriminate.
+  - exfalso. apply n; clear n.  change funnames with (List.map fst funimplsList).
+    clear funnames.
+    generalize dependent funimplsList. induction l; intros.
+    + simpl in H. discriminate.
+    + destruct a. unfold map.of_list in H. rewrite map.get_put_dec in H.
+      destruct_one_match_hyp.
+      * simp. subst. simpl. auto.
+      * simpl. right. eapply IHl. exact H.
 Qed.
 
 Lemma end2end_lightbulb:
@@ -255,22 +261,24 @@ Proof.
     cbv [spec_of_lightbulb_loop] in P.
     specialize_first P Sep.
     specialize_first P L.
-    case TODO_sam.
-    (*
-    eapply WeakestPreconditionProperties.Proper_call; [clear P|eapply P].
-    intros ? ? ? ?.
-    destr.
-    subst.
-    eexists. split; [reflexivity|].
-    split.
-    + eauto.
-    + destruct H3 as [ C | [C | [C | [C | C ] ] ] ]; (split; [|reflexivity]);
-        destr; eexists (ioh0 ++ ioh)%list; (split;
-        [ eapply relate_concat; assumption
-        | apply goodHlTrace_addOne;
-          [unfold traceOfOneInteraction, choice; eauto 10
-          | exact G]]).
-    *)
+    repeat ProgramLogic.straightline.
+    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _); cycle 1.
+    + case TODO_andres.
+      (* The compiler now expects a function called "loop" with 0 args and 0 return values
+         as the loop body.
+         "loop" is already defined above and just calls "lightbulb_loop". *)
+    + cbv [Morphisms.Proper Morphisms.pointwise_relation Morphisms.respectful Basics.impl].
+      intros ? ? ? ?.
+      (*
+      destruct H3 as [ C | [C | [C | [C | C ] ] ] ]; (split; [|reflexivity]);
+        destr; eexists (ioh0 ++ ioh)%list;
+          (split;
+           [ eapply relate_concat; assumption
+           | apply goodHlTrace_addOne;
+             [unfold traceOfOneInteraction, choice; eauto 10
+             | exact G]]). *)
+      case TODO_andres.
+  - exact funs_valid.
   - reflexivity.
   - cbv. repeat constructor; cbv; intros; intuition congruence.
   - intros. clear KB memInit. simp.
@@ -279,22 +287,15 @@ Proof.
     eauto using iohi_to_iolo.
   - (* establish invariant *)
     intros.
-
     repeat ProgramLogic.straightline.
     subst args.
-
     eapply WeakestPreconditionProperties.Proper_call.
     2: {
-      pose proof link_lightbulb_init.
-      case TODO_sam.
-    }
-    intros ? ? ? ?.
-    case TODO_sam.
-    (*
-    repeat ProgramLogic.straightline.
-    hnf. split; [|split].
-    + case TODO_sam_and_joonwon. (* how can we relate m to Kami's mem and constrain it? *)
-    + subst a.
+      pose proof link_lightbulb_init as P.
+      cbv [spec_of_lightbulb_init] in P.
+      specialize (P m nil).
+      (*
+      subst a.
       Time rewrite app_nil_r. (* 1.7s*)
       eexists _; split; [eassumption|].
       rename x1 into TRACE.
@@ -302,8 +303,12 @@ Proof.
       assert (traceOfBoot TRACE) by
         (cbv [traceOfBoot]; destruct H3 as [[]|[[]|[]]]; eauto); clear H3.
       revert H; case TODO_andres.
-    + reflexivity.
-    *)
+      *)
+      case TODO_andres. (* bridge between "init" and "init_loop" *)
+    }
+    intros ? ? ? ?.
+    case TODO_andres.
+
     Unshelve.
     all: try intros; exact True.
 Time Qed. (* takes more than 150s *)

@@ -43,8 +43,6 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-
-Axiom TODO_sam: False.
 Axiom TODO_joonwon: False.
 
 Require Import Coq.Classes.Morphisms.
@@ -86,16 +84,14 @@ Section Connect.
   Context {Registers: map.map Register Utility.word}
           {Registers_ok: map.ok Registers}
           {mem: map.map Utility.word Utility.byte}
-          {mem_ok: map.ok mem}
-          {stringname_env : forall T : Type, map.map string T}
-          {stringname_env_ok: forall T, map.ok (stringname_env T)}
-          {src2imp : map.map string Register}
-          {src2impOk : map.ok src2imp}.
+          {mem_ok: map.ok mem}.
 
-  Instance mmio_params: MMIO.parameters := {
-    byte_ok := KamiWord.word8ok;
-    word_ok := @KamiWord.wordWok _ (or_introl eq_refl);
-  }.
+  Instance mmio_params: MMIO.parameters.
+    econstructor; try typeclasses eauto.
+    - exact KamiWord.word8ok.
+    - exact (@KamiWord.wordWok _ (or_introl eq_refl)).
+    - exact SortedListString.ok.
+  Defined.
 
   Goal True.
   epose (_ : PrimitivesParams (MinimalMMIO.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
@@ -115,6 +111,7 @@ Section Connect.
       Pipeline.FlatToRiscv_hyps := _; (*MMIO.FlatToRiscv_hyps*)
       Pipeline.Registers_ok := _;
     |}).
+  - exact SortedListString.ok.
   - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
   - refine (@MMIO.FlatToRiscv_hyps _).
   - pose proof FE310CSemantics.ext_spec_ok.
@@ -195,6 +192,7 @@ Section Connect.
     (* Assumptions on the compiler level: *)
     forall (instrs: list Instruction) (positions: FlatToRiscvCommon.funname_env Z),
     compile_prog ml (map.of_list funimplsList) = Some (instrs, positions) ->
+    ExprImp.valid_funs (map.of_list funimplsList) ->
     (* Assumptions on the Kami level: *)
     kami_mem_contains_bytes (instrencode instrs) ml.(code_start) memInit ->
     forall (t: Kami.Semantics.LabelSeqT) (mFinal: KamiImplMachine),
@@ -207,7 +205,7 @@ Section Connect.
       exists (t': list Event), KamiLabelSeqR t t' /\
                                exists (suffix: list Event), goodTraceE (suffix ++ t').
   Proof.
-    intros *. intros Establish Preserve. intros *. intros C M. intros *. intros B.
+    intros *. intros Establish Preserve. intros *. intros C V M. intros *. intros B.
 
     set (traceProp := fun (t: list Event) =>
                         exists (suffix: list Event), goodTraceE (suffix ++ t)).
@@ -240,7 +238,7 @@ Section Connect.
       ssplit.
       + (* 3) bedrock2 semantics to bedrock2 program logic *)
         constructor.
-        * unfold ExprImp.valid_funs, ExprImp.valid_fun. case TODO_sam.
+        * exact V.
         * intros.
           eapply ExprImp.weaken_exec.
           -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
@@ -257,7 +255,7 @@ Section Connect.
       + case TODO_joonwon. (* all datamem addresses are defined *)
       + symmetry. exact code_at_0.
       + (* TODO add this hypothesis to KamiRiscv.riscv_to_kamiImplProcessor *)
-        case TODO_sam. (* or joonwon, if you're modifying that file anyways *)
+        case TODO_joonwon.
       + unfold FlatToRiscvCommon.regs_initialized. intros.
         match goal with
         | |- exists _, ?x = Some _ => destr x; [eauto|exfalso]
@@ -268,7 +266,7 @@ Section Connect.
       + reflexivity.
       + simpl. split.
         * case TODO_joonwon. (* prove that riscvMemInit is undefined on the MMIO addresses *)
-        * case TODO_sam. (* or joonwon, add this hypothesis to KamiRiscv.riscv_to_kamiImplProcessor *)
+        * case TODO_joonwon. (* add this hypothesis to KamiRiscv.riscv_to_kamiImplProcessor *)
     - (* preserve *)
       intros.
       refine (P2preserve _ _). assumption.

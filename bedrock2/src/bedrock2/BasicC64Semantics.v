@@ -41,11 +41,23 @@ Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
        morphism (Properties.word.ring_morph (word := Semantics.byte)),
        constants [Properties.word_cst]).
 
-Axiom TODO_sam: False.
+Global Instance ext_spec_ok trace m0 act args :
+  Morphisms.Proper
+    (Morphisms.respectful
+       (Morphisms.pointwise_relation Interface.map.rep
+          (Morphisms.pointwise_relation (list Semantics.word) Basics.impl))
+       Basics.impl) (Semantics.ext_spec trace m0 act args).
+Proof.
+  cbn in *.
+  unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation, Basics.impl.
+  intros.
+  assumption.
+Qed.
 
 Instance parameters_ok : parameters_ok parameters.
   constructor; intros; try typeclasses eauto.
   - cbv. right. reflexivity.
   - unfold env, parameters. exact (SortedListString.ok _).
-  - case TODO_sam.
+  - constructor.
+    all: try typeclasses eauto; intros; cbn in *; contradiction.
 Qed.
