@@ -8,11 +8,12 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics coqutil.Datatypes.Option.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
 Require Import bedrock2.Notations bedrock2.Syntax.
+Require Import coqutil.Byte.
 
 Open Scope Z_scope.
 
 Section Memory.
-  Context {byte: word 8} {width: Z} {word: word width} {mem: map.map word byte}.
+  Context {width: Z} {word: word width} {mem: map.map word byte}.
 
   Definition footprint(a: word)(sz: nat): tuple word sz :=
     tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.

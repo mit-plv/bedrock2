@@ -8,6 +8,7 @@ Require Import compiler.ZLemmas.
 Require Import processor.KamiWord.
 
 Open Scope Z_scope.
+Local Axiom TODO_andres: False.
 
 Section KamiRiscvWord.
   Context {log2width: Z}.

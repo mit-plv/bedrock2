@@ -17,9 +17,7 @@ Module parameters.
   Class parameters := {
     word :> Word.Interface.word 32;
     word_ok :> word.ok word; (* for impl of mem below *)
-    byte :> Word.Interface.word 8;
-    byte_ok :> word.ok byte; (* for impl of mem below *)
-    mem :> Interface.map.map word byte;
+    mem :> Interface.map.map word Byte.byte;
     mem_ok :> Interface.map.ok mem; (* for impl of mem below *)
   }.
 End parameters. Notation parameters := parameters.parameters.
@@ -58,7 +56,6 @@ Section WithParameters.
   Global Instance semantics_parameters  : Semantics.parameters :=
     {|
     Semantics.word := parameters.word;
-    Semantics.byte := parameters.byte;
     mem := parameters.mem;
     locals := SortedListString.map _;
     env := SortedListString.map _;
@@ -90,13 +87,9 @@ Section WithParameters.
     { exact (SortedListString.ok _). }
   Qed.
 
-  (* COPY-PASTE these *)
+  (* COPY-PASTE this *)
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.word)),
-         constants [Properties.word_cst]).
-  Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
-        (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.byte)),
          constants [Properties.word_cst]).
 End WithParameters.

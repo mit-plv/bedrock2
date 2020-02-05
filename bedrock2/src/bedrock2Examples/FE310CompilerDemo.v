@@ -22,7 +22,6 @@ Definition uart0_rxdata := Ox"10013004". Definition uart0_txdata  := Ox"10013000
 
 Local Instance parameters : parameters :=
   let word := Naive.word32 in
-  let byte := Naive.word8 in
   {|
   width := 32;
   mem := SortedListWord.map _ _;
@@ -170,7 +169,7 @@ Ltac t :=
 
 (* TODO COQBUG? why does typeclass search not succeed here?
    It used to work with primitive projections on *)
-Local Instance mapok: map.ok mem := SortedListWord.ok Naive.word32 (@rep 8).
+Local Instance mapok: map.ok mem := SortedListWord.ok Naive.word32 _.
 
 Local Instance wordok: word.ok word := Naive.word32_ok.
 

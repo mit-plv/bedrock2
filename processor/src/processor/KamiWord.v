@@ -7,8 +7,7 @@ From coqutil Require Import destr div_mod_to_equations.
 Local Open Scope bool_scope.
 Local Open Scope Z_scope.
 
-Axiom TODO_andres: False.
-Axiom TODO_joonwon: False.
+Local Axiom TODO_andres: False.
 
 Section WithWidth.
   Context {width : Z}.
@@ -100,7 +99,7 @@ Section WithWidth.
     reflexivity.
   Qed.
 
-  Lemma wordToZ_split2 a b w (H:b <> 0%nat) 
+  Lemma wordToZ_split2 a b w (H:b <> 0%nat)
     : wordToZ (@split2 a b w) = Z.div (wordToZ w) (2^Z.of_nat a).
   Proof.
     rewrite 2wordToZ_wordToN.
@@ -178,9 +177,9 @@ Section WithWidth.
       2: case TODO_andres.
       f_equal; f_equal; blia. }
 
-    { rewrite wordToZ_ZToWord_full by blia; 
+    { rewrite wordToZ_ZToWord_full by blia;
       cbv [swrap];  repeat (blia || f_equal). }
-    { rewrite wordToZ_ZToWord_full by blia; 
+    { rewrite wordToZ_ZToWord_full by blia;
       cbv [swrap];  repeat (blia || f_equal). }
     { repeat setoid_rewrite uwordToZ_ZToWord_full; try blia.
       cbv [swrap];  repeat (blia || f_equal). }
@@ -270,7 +269,6 @@ Section MkWords.
   Instance word8ok: word.ok word8 := ok 8 eq_refl.
 
   Instance WordsKami: Utility.Words := {|
-    Utility.byte := word8;
     Utility.word := wordW;
     Utility.width_cases := width_cases;
   |}.

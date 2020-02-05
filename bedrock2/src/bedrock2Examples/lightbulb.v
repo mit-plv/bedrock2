@@ -3,6 +3,7 @@ Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
 Require Import coqutil.Macros.symmetry.
+Require Import coqutil.Byte.
 Require Import bedrock2Examples.SPI.
 Require Import bedrock2Examples.LAN9250.
 From coqutil Require Import Z.div_mod_to_equations.
@@ -22,7 +23,7 @@ Local Ltac seplog_use_array_load1 H i :=
   let iNat := eval cbv in (Z.to_nat i) in
   let H0 := fresh in pose proof H as H0;
   unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H0;
-    [exact iNat|exact (word.of_Z 0)|blia|];
+    [exact iNat|exact Byte.x00|blia|];
   replace ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in * by (rewrite word.unsigned_of_Z; exact eq_refl).
 Local Ltac trans_ltu :=
   match goal with
@@ -43,6 +44,25 @@ Local Ltac split_if :=
         | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
         end
   end.
+
+(* TODO move to coqutil.Byte *)
+Module byte.
+  Lemma unsigned_range: forall b, 0 <= byte.unsigned b < 2 ^ 8.
+  Proof.
+    intros. unfold byte.unsigned. split.
+    - apply N2Z.is_nonneg.
+    - change (2 ^ 8) with (Z.of_N (N.succ 255)).
+      apply N2Z.inj_lt.
+      apply N.lt_succ_r.
+      apply (Byte.to_N_bounded b).
+  Qed.
+  Lemma wrap_unsigned: forall x, byte.wrap (byte.unsigned x) = byte.unsigned x.
+  Proof.
+    intros. unfold byte.wrap, byte.unsigned.
+    apply Z.mod_small.
+    apply unsigned_range.
+  Qed.
+End byte.
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -173,22 +193,22 @@ Section WithParameters.
         exists iol, t' = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
           (word.unsigned err = 0 /\
-            exists recv buf, (bytes p_addr recv * bytes (word.add p_addr bytes_written) buf * R) m' /\ lan9250_recv _ _ recv ioh /\
+            exists recv buf, (bytes p_addr recv * bytes (word.add p_addr bytes_written) buf * R) m' /\ lan9250_recv _ recv ioh /\
             word.unsigned bytes_written + Z.of_nat (length buf) = 1520%Z /\
             Z.of_nat (length recv) = word.unsigned bytes_written)
           (word.unsigned err <> 0 /\ exists buf, (array scalar8 (word.of_Z 1) p_addr buf * R) m' /\ length buf = 1520%nat /\ (
-             word.unsigned err = 1 /\ lan9250_recv_no_packet _ _ ioh \/
-             word.unsigned err = 2 /\ lan9250_recv_packet_too_long _ _ ioh \/
+             word.unsigned err = 1 /\ lan9250_recv_no_packet _ ioh \/
+             word.unsigned err = 2 /\ lan9250_recv_packet_too_long _ ioh \/
              word.unsigned err = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh
             ))
         ).
 
   Definition lightbulb_packet_rep cmd (buf : list byte) :=
-    let idx i buf := word.of_Z (word.unsigned (List.hd (word.of_Z 0) (List.skipn i buf))) in
+    let idx i buf := word.of_Z (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
     42 < Z.of_nat (length buf) /\
     1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
     idx 23%nat buf = word.of_Z (Ox"11") /\
-    cmd = Z.testbit (word.unsigned (List.hd (word.of_Z 0) (List.skipn 42 buf))) 0.
+    cmd = Z.testbit (byte.unsigned (List.hd Byte.x00 (List.skipn 42 buf))) 0.
 
   Instance spec_of_lightbulb : spec_of "lightbulb_handle" := fun functions =>
     forall p_addr (buf:list byte) (len:word) R m t,
@@ -212,10 +232,10 @@ Section WithParameters.
         Z.of_nat (length buf) = 1520) /\
         exists iol, t' = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ (
-          (exists packet cmd, (lan9250_recv _ _ packet +++ gpio_set _ 23 cmd) ioh /\ lightbulb_packet_rep cmd packet /\ word.unsigned v = 0) \/
-          (exists packet, (lan9250_recv _ _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep cmd packet) /\ word.unsigned v = 0) \/
-          (lan9250_recv_no_packet _ _ ioh /\ word.unsigned v = 0) \/
-          (lan9250_recv_packet_too_long _ _ ioh /\ word.unsigned v <> 0) \/
+          (exists packet cmd, (lan9250_recv _ packet +++ gpio_set _ 23 cmd) ioh /\ lightbulb_packet_rep cmd packet /\ word.unsigned v = 0) \/
+          (exists packet, (lan9250_recv _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep cmd packet) /\ word.unsigned v = 0) \/
+          (lan9250_recv_no_packet _ ioh /\ word.unsigned v = 0) \/
+          (lan9250_recv_packet_too_long _ ioh /\ word.unsigned v <> 0) \/
           ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned v <> 0)
         )).
 
@@ -225,8 +245,8 @@ Section WithParameters.
         (fun t' m' rets => exists err, rets = [err] /\ m' = m /\
           exists iol, t' = iol ++ t /\
           exists ioh, mmio_trace_abstraction_relation ioh iol /\ (
-          (lightbulb_boot_success _ _ ioh /\ word.unsigned err = 0) \/
-          (lan9250_boot_timeout  _ _ ioh /\ word.unsigned err <> 0) \/
+          (lightbulb_boot_success _ ioh /\ word.unsigned err = 0) \/
+          (lan9250_boot_timeout _ ioh /\ word.unsigned err <> 0) \/
           ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned err <> 0)
         )).
 
@@ -269,19 +289,21 @@ Section WithParameters.
     repeat match goal with H:absint_eq ?x ?x |- _ => clear H end;
     repeat match goal with H:?A |- _ => clear H; match goal with G:A |- _ => idtac end end.
 
-  Lemma byte_mask_byte (b : Semantics.byte) : word.and (word.of_Z (word.unsigned b)) (word.of_Z 255) = word.of_Z (word.unsigned b) :> Semantics.word.
+  Lemma byte_mask_byte (b : byte) : word.and (word.of_Z (byte.unsigned b)) (word.of_Z 255) = word.of_Z (byte.unsigned b) :> Semantics.word.
   Proof.
     eapply word.unsigned_inj; rewrite word.unsigned_and_nowrap.
     rewrite !word.unsigned_of_Z.
-    pose proof word.unsigned_range b.
+    pose proof byte.unsigned_range b.
     cbv [word.wrap].
     rewrite <-!(Z.land_ones _ width) by (cbv; congruence).
-    rewrite <-word.wrap_unsigned at 2.
+    rewrite <-byte.wrap_unsigned at 2. cbv [byte.wrap].
     change (Z.land 255 (Z.ones width)) with (Z.ones 8).
     change (Z.ones width) with (Z.ones 32).
     rewrite <-Z.land_ones by blia.
     Z.bitwise. Btauto.btauto.
   Qed.
+
+  Local Axiom TODO_andres_mmioaddr: False.
 
   Lemma lightbulb_handle_ok : program_logic_goal_for_function! lightbulb_handle.
   Proof.
@@ -358,7 +380,7 @@ Section WithParameters.
       rewrite !word.unsigned_of_Z.
       cbv [word.wrap]; change width with 32 in *.
       rewrite 2(Z.mod_small _ (2^32)); try exact eq_refl.
-      1: match goal with |- 0 <= word.unsigned ?x < _ => pose proof word.unsigned_range x end; blia.
+      1: match goal with |- 0 <= byte.unsigned ?x < _ => pose proof byte.unsigned_range x end; blia.
       clear; Z.div_mod_to_equations; blia. }
 
     (* parse failures *)
@@ -375,10 +397,6 @@ Section WithParameters.
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.word)),
-         constants [Properties.word_cst]).
-  Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
-        (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.byte)),
          constants [Properties.word_cst]).
 
   Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
@@ -408,7 +426,7 @@ Section WithParameters.
          List.length RECV = List.length scratch /\
          exists iol, T = iol ++ t /\
          exists ioh, mmio_trace_abstraction_relation ioh iol /\
-         (word.unsigned ERR = 0 /\ lan9250_readpacket _ _ RECV ioh \/
+         (word.unsigned ERR = 0 /\ lan9250_readpacket _ RECV ioh \/
           word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh ) )
       )
       _ _ _ _ _ _ _ _);

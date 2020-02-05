@@ -5,12 +5,12 @@ Require Import coqutil.Word.Properties.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.bitblast.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Byte.
 Require Import bedrock2.ptsto_bytes.
 Import HList List.
 
 Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
-  Context {byte : Word.Interface.word 8} {byte_ok : word.ok byte}.
   Context {word16 : Word.Interface.word 16} {word16_ok : word.ok word16}.
   Context {word32 : Word.Interface.word 32} {word32_ok : word.ok word32}.
 
@@ -74,11 +74,11 @@ Section Scalars.
 
   Lemma load_one_of_sep addr value R m
     (Hsep : sep (scalar8 addr value) R m)
-    : Memory.load Syntax.access_size.one m addr = Some (word.of_Z (word.unsigned value)).
+    : Memory.load Syntax.access_size.one m addr = Some (word.of_Z (byte.unsigned value)).
   Proof.
     cbv [load load_Z load_bytes bytes_per footprint tuple.unfoldn map.getmany_of_tuple tuple.option_all tuple.map].
     erewrite get_sep by exact Hsep; repeat f_equal.
-    cbn.
+    cbv [LittleEndian.combine PrimitivePair.pair._1].
     eapply Z.lor_0_r.
   Qed.
 
@@ -108,7 +108,7 @@ Section Scalars.
 
   Lemma store_one_of_sep addr (oldvalue : byte) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar8 addr oldvalue) R m)
-    (Hpost : forall m, sep (scalar8 addr (word.of_Z (word.unsigned value))) R m -> post m)
+    (Hpost : forall m, sep (scalar8 addr (byte.of_Z (word.unsigned value))) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.one m addr value = Some m1 /\ post m1.
   Proof.
     eapply (store_bytes_of_sep _ 1 (PrimitivePair.pair.mk _ tt)); cbn; [ecancel_assumption|].
@@ -131,6 +131,12 @@ Section Scalars.
     cbv [word.wrap];
     Z.bitblast.
 
+  Local Ltac byte_bitblast :=
+    apply byte.unsigned_inj;
+    rewrite !byte.unsigned_of_Z;
+    cbv [byte.wrap word.wrap];
+    Z.bitblast.
+
   Lemma store_two_of_sep addr (oldvalue : word16) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar16 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar16 addr (word.of_Z (word.unsigned value))) R m -> post m)
@@ -142,9 +148,9 @@ Section Scalars.
     intros; eapply Hpost.
     rewrite word.unsigned_of_Z.
     repeat match goal with
-           | [ |- context[@word.of_Z _ ?w ?x] ] =>
+           | [ |- context[@byte.of_Z ?x] ] =>
              let x' := remove_wrap x in
-             replace (@word.of_Z _ w x) with (@word.of_Z _ w x') by word_bitblast
+             replace (@byte.of_Z x) with (@byte.of_Z x') by byte_bitblast
            end.
     ecancel_assumption.
   Qed.
@@ -160,9 +166,9 @@ Section Scalars.
     intros; eapply Hpost.
     rewrite word.unsigned_of_Z.
     repeat match goal with
-           | [ |- context[@word.of_Z _ ?w ?x] ] =>
+           | [ |- context[@byte.of_Z ?x] ] =>
              let x' := remove_wrap x in
-             replace (@word.of_Z _ w x) with (@word.of_Z _ w x') by word_bitblast
+             replace (@byte.of_Z x) with (@byte.of_Z x') by byte_bitblast
            end.
     ecancel_assumption.
   Qed.
@@ -177,7 +183,7 @@ Section Scalars.
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar16 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
-    do 2 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate]. 
+    do 2 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar16 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
     f_equal.
@@ -191,7 +197,7 @@ Section Scalars.
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
-    do 4 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate]. 
+    do 4 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
     f_equal.

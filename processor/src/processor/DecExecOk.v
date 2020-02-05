@@ -19,8 +19,6 @@ Set Implicit Arguments.
 
 Local Open Scope Z_scope.
 
-Axiom TODO_joonwon: False.
-
 Lemma unsigned_wordToZ n z : Z.of_N (wordToN (ZToWord n z)) = z mod 2^(Z.of_nat n).
 Admitted.
 

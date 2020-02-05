@@ -11,6 +11,8 @@ Local Coercion name_of_func (f : function) := fst f.
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
+Local Axiom TODO_andres_mmioaddr : False.
+
 Definition lan9250_readword : function :=
   let addr : String.string := "addr" in
   let ret : String.string := "ret" in
@@ -88,8 +90,8 @@ Definition lan9250_mac_write : function :=
     require !err;
 unpack! err = lan9250_writeword(MAC_CSR_CMD, constr:(Z.shiftl 1 31)|addr);
     require !err;
-	  unpack! data, err = lan9250_readword(BYTE_TEST)
-	  (* while (lan9250_readword(0xA4) >> 31) { } // Wait until BUSY (= MAX_CSR_CMD >> 31) goes low *)
+          unpack! data, err = lan9250_readword(BYTE_TEST)
+          (* while (lan9250_readword(0xA4) >> 31) { } // Wait until BUSY (= MAX_CSR_CMD >> 31) goes low *)
   ))).
 
 Definition HW_CFG : Z := Ox"074".
@@ -102,7 +104,7 @@ Definition lan9250_wait_for_boot : function :=
   err = (constr:(0));
   byteorder = (constr:(0));
   i = (lightbulb_spec.patience); while (i) { i = (i - constr:(1));
-	  unpack! byteorder, err = lan9250_readword(constr:(Ox"64"));
+          unpack! byteorder, err = lan9250_readword(constr:(Ox"64"));
     if err { i = (i^i) }
     else if (byteorder == constr:(Ox"87654321")) { i = (i^i) }
     else { err = (constr:(-1)) }
@@ -113,9 +115,9 @@ Definition lan9250_init : function :=
   let hw_cfg : String.string := "hw_cfg" in
   let err : String.string := "err" in
   ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
-	  unpack! err = lan9250_wait_for_boot();
+          unpack! err = lan9250_wait_for_boot();
     require !err;
-	  unpack! hw_cfg, err = lan9250_readword(HW_CFG);
+          unpack! hw_cfg, err = lan9250_readword(HW_CFG);
     require !err;
     hw_cfg = (hw_cfg | constr:(Z.shiftl 1 20)); (* mustbeone *)
     hw_cfg = (hw_cfg & constr:(Z.lnot (Z.shiftl 1 21))); (* mustbezero *)
@@ -125,7 +127,7 @@ Definition lan9250_init : function :=
     (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)
         unpack! err = lan9250_mac_write(constr:(1), constr:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
     require !err;
-	  unpack! err = lan9250_writeword(constr:(Ox"070"), constr:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
+          unpack! err = lan9250_writeword(constr:(Ox"070"), constr:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
   ))).
 
 Require Import bedrock2.ProgramLogic.
@@ -150,7 +152,7 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_fastread4 _ _ a ret ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_fastread4 _ a ret ioh)).
 
   Global Instance spec_of_lan9250_writeword : ProgramLogic.spec_of "lan9250_writeword" := fun functions =>
     forall t m a v,
@@ -162,13 +164,13 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ _ a v ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ a v ioh)).
 
   Import lightbulb_spec.
   Definition lan9250_mac_write_trace a v ioh := exists x,
-     (lan9250_write4 _ _ (word.of_Z 168) v +++
-     lan9250_write4 _ _ (word.of_Z 164) (word.or (word.of_Z (2^31)) a) +++
-     lan9250_fastread4 _ _ (word.of_Z 100) x) ioh.
+     (lan9250_write4 _ (word.of_Z 168) v +++
+     lan9250_write4 _ (word.of_Z 164) (word.or (word.of_Z (2^31)) a) +++
+     lan9250_fastread4 _ (word.of_Z 100) x) ioh.
 
   Global Instance spec_of_lan9250_mac_write : ProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
     forall t m a v,
@@ -183,21 +185,21 @@ Section WithParameters.
         (word.unsigned err = 0 /\  lan9250_mac_write_trace a v ioh )).
 
   Definition lan9250_boot_attempt :=
-    (fun attempt => exists v, lan9250_fastread4 parameters.byte Semantics.word (word.of_Z (Ox"64")) v attempt /\ word.unsigned v <> Ox"87654321").
+    (fun attempt => exists v, lan9250_fastread4 Semantics.word (word.of_Z (Ox"64")) v attempt /\ word.unsigned v <> Ox"87654321").
   Definition lan9250_boot_timeout :=
     multiple lan9250_boot_attempt (Z.to_nat patience).
   Definition lan9250_wait_for_boot_trace :=
     lan9250_boot_attempt ^* +++
-    lan9250_fastread4 _ _ (word.of_Z (Ox"64")) (word.of_Z (Ox"87654321")).
+    lan9250_fastread4 _ (word.of_Z (Ox"64")) (word.of_Z (Ox"87654321")).
 
   Definition lan9250_init_trace ioh := exists cfg0,
     let cfg' := word.or cfg0 (word.of_Z 1048576) in
     let cfg := word.and cfg' (word.of_Z (-2097153)) in
     (lan9250_wait_for_boot_trace  +++
-    lan9250_fastread4 _ _ (word.of_Z HW_CFG) cfg0 +++
-    lan9250_write4 parameters.byte Semantics.word (word.of_Z HW_CFG) cfg +++
+    lan9250_fastread4 _ (word.of_Z HW_CFG) cfg0 +++
+    lan9250_write4 Semantics.word (word.of_Z HW_CFG) cfg +++
     lan9250_mac_write_trace (word.of_Z 1) (word.of_Z (Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2))))) +++
-    lan9250_write4 _ _  (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
+    lan9250_write4 _ (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
 
   Global Instance spec_of_lan9250_wait_for_boot : ProgramLogic.spec_of "lan9250_wait_for_boot" := fun functions =>
     forall t m,
@@ -497,7 +499,7 @@ Section WithParameters.
     all : trivial.
     all : eauto.
 
-    all : try (rewrite word.unsigned_of_Z; eapply Z.mod_small).
+    all : try (rewrite Byte.byte.unsigned_of_Z; eapply Z.mod_small).
 
     all : change 32 with Semantics.width in *.
     all : pose proof word.unsigned_range a.
@@ -788,8 +790,8 @@ Section WithParameters.
     1,2:
       repeat match goal with
       | _ => rewrite word.of_Z_unsigned
-      | _ => rewrite word.unsigned_of_Z
-      | _ => cbv [word.wrap]; rewrite Z.mod_small
+      | _ => rewrite Byte.byte.unsigned_of_Z
+      | _ => cbv [Byte.byte.wrap]; rewrite Z.mod_small
       | _ => solve [trivial]
       end.
     { rewrite Properties.word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
@@ -817,15 +819,12 @@ Section WithParameters.
     all : cbv [word.wrap].
     all : repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
     all : change Semantics.width with 32.
-    all : change (@parameters.byte p) with (@Semantics.byte (@semantics_parameters p)).
-    all : repeat match goal with |- context[word.unsigned (width:=?w) ?x] => is_var x; replace (word.unsigned (width:=w) x) with (word.wrap (width:=w) (word.unsigned (width:=w) x)) by eapply Properties.word.wrap_unsigned; set (word.unsigned (width:=w) x) as X; clearbody X end.
+    all : repeat match goal with |- context[Byte.byte.unsigned ?x] => is_var x; replace (Byte.byte.unsigned x) with (Byte.byte.wrap (Byte.byte.unsigned x)) by eapply Byte.byte.wrap_unsigned; set (Byte.byte.unsigned x) as X; clearbody X end.
     all : change (8+8) with 16.
     all : change (8+16) with 24.
-    all : cbv [word.wrap].
+    all : cbv [Byte.byte.wrap].
     all : clear.
     all : rewrite ?Z.shiftl_mul_pow2 by Lia.lia.
     all : try (Z.div_mod_to_equations; Lia.lia).
-
-    Unshelve. all: intros; exact True.
   Qed.
 End WithParameters.

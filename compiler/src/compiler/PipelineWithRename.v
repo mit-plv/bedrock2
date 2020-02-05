@@ -224,7 +224,7 @@ Section Pipeline1.
   Context {p: parameters}.
   Context {h: assumptions}.
 
-  Axiom TODO_sam: False.
+  Local Axiom TODO_sam: False.
 
   Instance mk_FlatImp_ext_spec_ok:
     FlatImp.ext_spec.ok  string (FlattenExpr.mk_FlatImp_params FlattenExpr_parameters).
@@ -416,19 +416,10 @@ Section Pipeline1.
       assumption.
   Qed.
 
-  Definition word8_to_byte(w: Utility.byte): Coq.Init.Byte.byte :=
-    match Byte.of_N (Z.to_N (word.unsigned w)) with
-    | Some b => b
-    | None => Byte.x42 (* won't happen *)
-    end.
+  Definition instrencode(p: list Instruction): list byte :=
+    List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
 
-  Definition instrencode(p: list Instruction): list Byte.byte :=
-    let word8s := List.flat_map
-                    (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p in
-    List.map word8_to_byte word8s.
-
-  Definition ptsto_byte(p: word)(b: Byte.byte): mem -> Prop := ptsto p (word.of_Z (Z.of_N (Byte.to_N b))).
-  Definition ptsto_bytes: word -> list Byte.byte -> mem -> Prop := array ptsto_byte (word.of_Z 1).
+  Definition ptsto_bytes: word -> list byte -> mem -> Prop := array ptsto (word.of_Z 1).
 
   Open Scope ilist_scope.
 

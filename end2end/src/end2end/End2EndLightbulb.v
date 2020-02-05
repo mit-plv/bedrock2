@@ -36,26 +36,26 @@ Definition ml: MemoryLayout Semantics.width := {|
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
 Local Instance parameters : FE310CSemantics.parameters := ltac:(esplit; exact _).
-Axiom TODO_andres: False.
+Local Axiom TODO_andres: False.
 
-Definition lightbulb_packet_rep: bool -> list Semantics.byte -> Prop.
+Definition lightbulb_packet_rep: bool -> list Byte.byte -> Prop.
   intros command bytes.
   refine (lightbulb_packet_rep command (_ bytes)).
   all : eapply id.
 Defined.
 
 Definition traceOfBoot (t : list (lightbulb_spec.OP Semantics.word)) : Prop :=
-  lightbulb_boot_success FE310CSemantics.parameters.byte FE310CSemantics.parameters.word t
-  \/  lan9250_boot_timeout FE310CSemantics.parameters.byte FE310CSemantics.parameters.word t
+  lightbulb_boot_success FE310CSemantics.parameters.word t
+  \/  lan9250_boot_timeout FE310CSemantics.parameters.word t
   \/ (any +++ spi_timeout Semantics.word) t.
 
 Definition traceOfOneInteraction: list (lightbulb_spec.OP Semantics.word) -> Prop :=
-  (fun t => exists packet cmd, (lan9250_recv _ _ packet +++ gpio_set _ 23 cmd) t /\
+  (fun t => exists packet cmd, (lan9250_recv _ packet +++ gpio_set _ 23 cmd) t /\
                                lightbulb_packet_rep cmd packet) |||
-  (fun t => exists packet, lan9250_recv _ _ packet t /\
+  (fun t => exists packet, lan9250_recv _ packet t /\
                            ~ (exists cmd : bool, lightbulb_packet_rep cmd packet)) |||
-  (lightbulb_spec.lan9250_recv_no_packet _ _) |||
-  (lightbulb_spec.lan9250_recv_packet_too_long _ _) |||
+  (lightbulb_spec.lan9250_recv_no_packet _) |||
+  (lightbulb_spec.lan9250_recv_packet_too_long _) |||
   (any +++ (lightbulb_spec.spi_timeout _)).
 
 Definition goodHlTrace: list (lightbulb_spec.OP Semantics.word) -> Prop :=

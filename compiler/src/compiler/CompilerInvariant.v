@@ -64,19 +64,7 @@ Local Notation "' x <- a ; f" :=
    end)
   (right associativity, at level 70, x pattern).
 
-(* TODO move *)
-Ltac destr_RiscvMachine state :=
-  let r := fresh state "_regs" in
-  let p := fresh state "_pc" in
-  let n := fresh state "_npc" in
-  let me := fresh state "_mem" in
-  let x := fresh state "_xaddrs" in
-  let l := fresh state "_log" in
-  let mc := fresh state "_metrics" in
-  destruct state as [ [r p n me x l] mc ];
-  unfold getRegs, getMachine, getPc, getNextPc, getMem, getLog, withPc, RiscvMachine.withPc, withNextPc,
-         RiscvMachine.withNextPc,
-         withMetrics in *.
+Local Axiom TODO_sam: False.
 
 Section Pipeline1.
 
@@ -286,7 +274,7 @@ Section Pipeline1.
   Definition mem_contains_bytes(m: mem)(a: Utility.word)(bytes: list Byte.byte): Prop :=
     forall (i: nat) (b: Byte.byte),
       nth_error bytes i = Some b ->
-      map.get m (word.add a (word.of_Z (Z.of_nat i))) = Some (word.of_Z (Z.of_N (Byte.to_N b))).
+      map.get m (word.add a (word.of_Z (Z.of_nat i))) = Some b.
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
     exists (srcprog: source_env) (instrs: list Instruction) (positions: funname_env Z),
@@ -340,9 +328,7 @@ Section Pipeline1.
       unfold ll_good.
       eapply P; clear P; try eassumption.
       unfold machine_ok.
-      unfold getRegs, getMachine, getPc, getNextPc, getMem, getLog, withPc, RiscvMachine.withPc, withNextPc,
-             RiscvMachine.withNextPc,
-             withMetrics in *.
+      unfold_RiscvMachine_get_set.
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split

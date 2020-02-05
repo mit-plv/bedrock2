@@ -1,6 +1,7 @@
 Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
+Require Import coqutil.Byte.
 
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
@@ -85,13 +86,13 @@ Section WithParameters.
     WeakestPrecondition.call functions "spi_write" t m [b] (fun T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_write parameters.byte parameters.word (word.of_Z (word.unsigned b)) ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_write parameters.word (byte.of_Z (word.unsigned b)) ioh)).
 
   Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m,
     WeakestPrecondition.call functions "spi_read" t m [] (fun T M RETS =>
-      M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b:parameters.byte) (err : parameters.word), RETS = [word.of_Z (word.unsigned b); err] /\ Logic.or
+      M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b: byte) (err : parameters.word), RETS = [word.of_Z (byte.unsigned b); err] /\ Logic.or
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_read Semantics.byte parameters.word b ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_read parameters.word b ioh)).
 
   Lemma nonzero_because_high_bit_set x (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
@@ -108,12 +109,8 @@ Section WithParameters.
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.word)),
          constants [Properties.word_cst]).
-  Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
-        (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.byte)),
-         constants [Properties.word_cst]).
 
-  Axiom TODO_andres_mmioaddr : False.
+  Local Axiom TODO_andres_mmioaddr : False.
 
   Import coqutil.Tactics.letexists.
   Import TailRecursion.
@@ -258,9 +255,8 @@ Section WithParameters.
       pose proof Properties.word.unsigned_range x.
       change (Semantics.width) with 32 in *.
       change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-      do 2 (rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small); Lia.lia. }
-    Unshelve.
-    all : intros; exact True.
+      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by Lia.lia.
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; Lia.lia. }
   Qed.
 
   Local Ltac split_if :=
@@ -278,7 +274,7 @@ Section WithParameters.
        v = word.unsigned I /\
        word.unsigned I <> 0 /\
        M = m /\
-       B = word.of_Z (word.unsigned (width:=8) (word.of_Z (word.unsigned B))) /\
+       B = word.of_Z (byte.unsigned (byte.of_Z (word.unsigned B))) /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_read_empty _ ^* th /\
@@ -299,7 +295,7 @@ Section WithParameters.
       subst i. rewrite word.unsigned_of_Z.
       split; [inversion 1|].
       split; trivial.
-      subst b; rewrite word.unsigned_of_Z; cbv [word.wrap];
+      subst b; rewrite byte.unsigned_of_Z; cbv [byte.wrap];
         rewrite Z.mod_small; rewrite word.unsigned_of_Z.
       2: { cbv. split; congruence. }
       split; trivial.
@@ -340,7 +336,7 @@ Section WithParameters.
         eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }
-        eexists (word.of_Z (word.unsigned x)), _; split.
+        eexists (byte.of_Z (word.unsigned x)), _; split.
         { f_equal. eassumption. }
         left; repeat split; eauto using nonzero_because_high_bit_set.
         { refine (kleene_app _ (cons _ nil) _ x3 _); eauto.
@@ -375,11 +371,13 @@ Section WithParameters.
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
           pose proof Properties.word.unsigned_range v0.
-          eapply Properties.word.unsigned_inj;
-            repeat (
-                cbv [word.wrap];
-                rewrite ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
-                change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
+          eapply Properties.word.unsigned_inj.
+          repeat (
+              cbv [byte.wrap word.wrap];
+              rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
+                      ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
+                by Lia.lia;
+              change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
           symmetry; eapply Z.mod_small.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
           change Semantics.width with 32.
@@ -398,21 +396,23 @@ Section WithParameters.
         eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }
-        eexists (word.of_Z (word.unsigned b)), _; split.
+        eexists (byte.of_Z (word.unsigned b)), _; split.
         { subst b; f_equal.
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
           pose proof Properties.word.unsigned_range v0.
-          eapply Properties.word.unsigned_inj;
-            repeat (
-                cbv [word.wrap];
-                rewrite ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
-                change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
+          eapply Properties.word.unsigned_inj.
+          repeat (
+              cbv [byte.wrap word.wrap];
+              rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
+                      ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
+                by Lia.lia;
+              change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
           symmetry; eapply Z.mod_small.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
           change Semantics.width with 32.
           change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-          clear.  Z.div_mod_to_equations. Lia.lia. }
+          clear. Z.div_mod_to_equations. Lia.lia. }
         { right; split.
           { subst busy. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
@@ -426,20 +426,22 @@ Section WithParameters.
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
           pose proof Properties.word.unsigned_range v0.
-          eapply Properties.word.unsigned_inj;
-            repeat (
-                cbv [word.wrap];
-                rewrite ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
-                change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
+          eapply byte.unsigned_inj.
+          repeat (
+              cbv [byte.wrap word.wrap];
+              rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
+                      ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
+                by Lia.lia;
+              change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
           trivial. } } }
   Qed.
 
   Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall t m b_out,
     word.unsigned b_out < 2 ^ 8 ->
     WeakestPrecondition.call functions "spi_xchg" t m [b_out] (fun T M RETS =>
-      M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:Semantics.byte) (err : Semantics.word), RETS = [word.of_Z (word.unsigned b_in); err] /\ Logic.or
+      M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:byte) (err : Semantics.word), RETS = [word.of_Z (byte.unsigned b_in); err] /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg Semantics.byte Semantics.word (word.of_Z (word.unsigned b_out)) b_in ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg Semantics.word (byte.of_Z (word.unsigned b_out)) b_in ioh)).
 
   Lemma spi_xchg_ok : program_logic_goal_for_function! spi_xchg.
   Proof.
@@ -463,14 +465,14 @@ Section WithParameters.
     { eauto. }
     eexists. eexists. split.
     { repeat f_equal.
-      instantiate (1 := (word.of_Z (word.unsigned b_out) : Semantics.byte)).
+      instantiate (1 := byte.of_Z (word.unsigned b_out)).
       (* automatable: multi-word bitwise *)
       change (255) with (Z.ones 8).
       pose proof Properties.word.unsigned_range b_out.
       eapply Properties.word.unsigned_inj;
       repeat (
-      cbv [word.wrap];
-      rewrite ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
+      cbv [word.wrap byte.wrap];
+      rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
       change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
       rewrite Z.mod_small; rewrite Z.mod_small; trivial; Lia.lia. }
       left; split; eauto.

@@ -288,8 +288,6 @@ Section Go.
     intros. rewrite associativity. assumption.
   Qed.
 
-  Axiom TODO_sam: False.
-
   Arguments Z.of_nat: simpl never.
   Arguments Z.mul: simpl never.
   Arguments Z.add: simpl never.

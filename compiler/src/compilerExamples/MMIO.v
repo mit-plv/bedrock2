@@ -95,8 +95,6 @@ Qed.
 
 Module Import MMIO.
   Class parameters := {
-    byte :> Word.Interface.word 8;
-    byte_ok :> word.ok byte;
     word :> Word.Interface.word 32;
     word_ok :> word.ok word;
     word_riscv_ok :> word.riscv_ok word;
@@ -118,7 +116,6 @@ Section MMIO1.
        constants [word_cst]).
 
   Local Instance Words32: Utility.Words := {
-    Utility.byte := byte;
     Utility.word := word;
     Utility.width_cases := or_introl eq_refl;
   }.
@@ -126,8 +123,6 @@ Section MMIO1.
   Instance semantics_params : FE310CSemantics.parameters := {|
     FE310CSemantics.parameters.word := word;
     FE310CSemantics.parameters.word_ok := _;
-    FE310CSemantics.parameters.byte := byte;
-    FE310CSemantics.parameters.byte_ok := _;
     FE310CSemantics.parameters.mem := mem;
     FE310CSemantics.parameters.mem_ok := _ |}.
 
@@ -242,8 +237,6 @@ Section MMIO1.
     | _ => rewrite free.interp_ret
     end.
 
-  Axiom TODO_lia_takes_forever_on_coq_master: False.
-
   Lemma disjoint_MMIO_goal: forall (x y: word),
       isMMIOAddr x ->
       ~ isMMIOAddr y ->
@@ -275,14 +268,8 @@ Section MMIO1.
              | [ H : ?x -> _, H' : ?x -> _ |- _ ] =>
                pose proof (fun u : x => conj (H u) (H' u)); clear H H'
              end.
-      (* COQBUG (performance regression, used to work (slowly) in Coq 8.9.0
-         https://github.com/coq/coq/issues/11242 *)
-    all: case TODO_lia_takes_forever_on_coq_master.
-  Qed.
-(* 8.9.0:
-    all: time blia. (* 62 seconds and a lot of memory *)
-  Time Qed. (* 134.439 seconds *)
-*)
+    all: time blia.
+  Time Qed.
 
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.assumptions.
   Proof.

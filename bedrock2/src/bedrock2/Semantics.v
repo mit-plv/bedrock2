@@ -1,4 +1,4 @@
-Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique.
+Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
@@ -11,8 +11,6 @@ Require Import Coq.Lists.List.
 Class parameters := {
   width : Z;
   word :> Word.Interface.word width;
-  byte :> Word.Interface.word 8%Z;
-
   mem :> map.map word byte;
   locals :> map.map String.string word;
   env :> map.map String.string (list String.string * list String.string * cmd);
@@ -60,7 +58,6 @@ Arguments ext_spec.ok: clear implicits.
 Class parameters_ok{p: parameters}: Prop := {
   width_cases : width = 32 \/ width = 64;
   word_ok :> word.ok word;
-  byte_ok :> word.ok byte;
   mem_ok :> map.ok mem;
   locals_ok :> map.ok locals;
   env_ok :> map.ok env;

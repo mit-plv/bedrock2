@@ -73,8 +73,8 @@ Module SpiEth.
   Definition MMOutput := "MMOutput"%string.
 
   Section WithMem.
-    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
-    Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
+    Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+    Context {word_ok: word.ok word}.
 
     Definition Event: Type := (mem * String.string * list word) * (mem * list word).
 
@@ -137,7 +137,6 @@ Module SpiEth.
     Instance semantics_params: Semantics.parameters := {|
       Semantics.width := 32;
       Semantics.word := word;
-      Semantics.byte := byte;
       Semantics.mem := mem;
       Semantics.ext_spec t mGive action (argvals: list word) (post: (mem -> list word -> Prop)) :=
         match argvals with
@@ -158,7 +157,7 @@ Module SpiEth.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
 
-    Axiom TODO: False.
+    Local Axiom TODO: False.
 
     Instance MMIOMacros: IOMacros.Interface. refine ({|
       IOMacros.semantics_params := semantics_params;
@@ -217,8 +216,8 @@ Module Syscalls.
      so we will have syscalls with 4 word arguments and 3 word return values *)
 
   Section WithMem.
-    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
-    Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
+    Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+    Context {word_ok: word.ok word}.
 
     Definition Event: Type := (mem * SyscallAction * list word) * (mem * list word).
 
@@ -244,7 +243,6 @@ Module Syscalls.
     Instance semantics_params: Semantics.parameters := {|
       Semantics.width := 32;
       Semantics.word := word;
-      Semantics.byte := byte;
       Semantics.mem := mem;
       Semantics.ext_spec t m action (argvals: list word) (post: (mem -> list word -> Prop)) :=
         (* TODO needs to be more precise *)
@@ -260,7 +258,7 @@ Module Syscalls.
     (* TODO make coercions work *)
     (* Set Printing Implicit. Unset Printing Notations. *)
 
-    Axiom TODO: False.
+    Local Axiom TODO: False.
 
     Instance SyscallIOMacros: IOMacros.Interface. refine ({|
       IOMacros.semantics_params := semantics_params;
@@ -311,8 +309,8 @@ End Syscalls.
 
 Module MMIOUsage.
   Section WithParams.
-    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
-    Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
+    Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+    Context {word_ok: word.ok word}.
     Context {locals: map.map String.string word}.
     Context {funname_env: forall T, map.map String.string T}.
 
@@ -324,8 +322,8 @@ End MMIOUsage.
 
 Module SyscallsUsage.
   Section WithParams.
-    Context {byte: word.word 8} {word: word.word 32} {mem: map.map word byte} {mem_ok: map.ok mem}.
-    Context {byte_ok: word.ok byte} {word_ok: word.ok word}.
+    Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+    Context {word_ok: word.ok word}.
     Context {locals: map.map String.string word}.
     Context {funname_env: forall T, map.map String.string T}.
 

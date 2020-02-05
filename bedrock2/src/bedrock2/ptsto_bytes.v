@@ -4,13 +4,13 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Map.Interf
 Require Import coqutil.Z.div_mod_to_equations.
 Import HList List PrimitivePair.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Byte.
 Require Import Coq.ZArith.ZArith.
 
 Open Scope Z_scope.
 
 Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
-  Context {byte : Word.Interface.word 8} {byte_ok : word.ok byte}.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
 

@@ -7,6 +7,7 @@ Require Import bedrock2.Memory.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
+Require Import coqutil.Byte.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Z.Lia.
 Require Import compiler.Simp.
@@ -136,8 +137,6 @@ Class parameters(varname: Type) := {
   varname_eqb: varname -> varname -> bool;
   width : Z;
   word :> Word.Interface.word width;
-  byte :> Word.Interface.word 8%Z;
-
   mem :> map.map word byte;
   locals :> map.map varname word;
   env :> map.map String.string (list varname * list varname * stmt varname);
@@ -186,7 +185,6 @@ Class parameters_ok(varname: Type){p: parameters varname}: Prop := {
   varname_eq_spec :> EqDecider varname_eqb;
   width_cases : width = 32 \/ width = 64;
   word_ok :> word.ok word;
-  byte_ok :> word.ok byte;
   mem_ok :> map.ok mem;
   locals_ok :> map.ok locals;
   env_ok :> map.ok env;

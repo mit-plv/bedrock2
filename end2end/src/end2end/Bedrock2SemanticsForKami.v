@@ -15,10 +15,7 @@ Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 
 Instance word: word.word 32 := KamiWord.word 32.
-Instance byte: word.word 8 := KamiWord.word 8.
-
 Instance word_ok: word.ok word := KamiWord.ok 32 eq_refl.
-Instance byte_ok: word.ok byte := KamiWord.ok 8 eq_refl.
 
 Local Existing Instance SortedListString.ok.
 
@@ -29,9 +26,8 @@ Qed.
 
 Instance FE310CSemanticsParameters : FE310CSemantics.parameters.parameters := {|
   FE310CSemantics.parameters.word := word;
-  FE310CSemantics.parameters.byte := byte;
   FE310CSemantics.parameters.mem := SortedListWord.map _ _;
-  (* FIXME: we shouldn't need the next line *) 
+  (* FIXME: we shouldn't need the next line *)
   FE310CSemantics.parameters.mem_ok := SortedListWord.ok _ _;
 |}.
 
@@ -42,8 +38,4 @@ Abort.
 Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (Properties.word.ring_morph (word := Semantics.word)),
-       constants [Properties.word_cst]).
-Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
-      (preprocess [autorewrite with rew_word_morphism],
-       morphism (Properties.word.ring_morph (word := Semantics.byte)),
        constants [Properties.word_cst]).

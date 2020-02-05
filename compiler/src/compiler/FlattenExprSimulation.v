@@ -32,7 +32,7 @@ Section Sim.
       (* map.extends l2 l1 /\ *)
       map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
 
-  Axiom TODO_sam: False.
+  Local Axiom TODO_sam: False.
 
   Lemma flatten_functions_empty{hyps: FlattenExpr.assumptions p}:
     forall max_size, flatten_functions max_size map.empty = Some map.empty.

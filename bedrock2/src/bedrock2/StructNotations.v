@@ -17,7 +17,7 @@ Definition require_scalar (t : type)
   | t => mk_NotAScalar t
   end.
 
-Axiom TODO_structs_might_require_multiplication: bopname.
+Local Axiom TODO_structs_might_require_multiplication: bopname.
 
 Definition rlookup_scalar
            {T : Type} (ok : access_size -> expr.expr -> T)

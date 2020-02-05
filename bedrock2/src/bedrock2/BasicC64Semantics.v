@@ -6,7 +6,6 @@ Require coqutil.Word.Naive.
 
 Instance parameters : parameters :=
   let word := Naive.word64 in
-  let byte := Naive.word8 in
   {|
   width := 64;
   mem := SortedListWord.map _ _;
@@ -31,14 +30,9 @@ Qed.
 Instance localsok: coqutil.Map.Interface.map.ok locals := SortedListString.ok _.
 Instance mapok: coqutil.Map.Interface.map.ok mem := SortedListWord.ok Naive.word64 _.
 Instance wordok: coqutil.Word.Interface.word.ok Semantics.word := Naive.word64_ok.
-Instance byteok: coqutil.Word.Interface.word.ok Semantics.byte := Naive.word8_ok.
 Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (Properties.word.ring_morph (word := Semantics.word)),
-       constants [Properties.word_cst]).
-Add Ring bring : (Properties.word.ring_theory (word := Semantics.byte))
-      (preprocess [autorewrite with rew_word_morphism],
-       morphism (Properties.word.ring_morph (word := Semantics.byte)),
        constants [Properties.word_cst]).
 
 Global Instance ext_spec_ok trace m0 act args :

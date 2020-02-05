@@ -1,5 +1,6 @@
 From Coq Require Import Strings.String Lists.List ZArith.BinInt.
 From bedrock2 Require Import BasicC32Semantics ProgramLogic.
+Require Import coqutil.Byte.
 Require Import coqutil.Z.Lia.
 
 Require Import bedrock2Examples.ARPResponder.
@@ -45,7 +46,7 @@ Goal program_logic_goal_for_function! arp.
   lazymatch goal with H: _ m |- _ =>
     let iNat := eval cbv in (Z.to_nat i) in
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [instantiate (1 := iNat); bomega|match goal with H : _ |- _ => instantiate (1 := word.of_Z 0) in H end];
+    [instantiate (1 := iNat); bomega|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
     eapply load_one_of_sep;
     change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
     SeparationLogic.ecancel_assumption
@@ -67,7 +68,7 @@ Goal program_logic_goal_for_function! arp.
     let iNat := eval cbv in (Z.to_nat i) in
     pose i;
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [instantiate (1 := iNat); bomega|match goal with H : _ |- _ => instantiate (1 := word.of_Z 0) in H end];
+    [instantiate (1 := iNat); bomega|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
     eapply store_one_of_sep;
     change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
     [SeparationLogic.ecancel_assumption|]

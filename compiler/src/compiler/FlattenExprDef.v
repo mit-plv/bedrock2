@@ -20,7 +20,7 @@ Module Import FlattenExpr.
   Class parameters := {
     W :> Words;
     locals :> map.map String.string Utility.word;
-    mem :> map.map Utility.word Utility.byte;
+    mem :> map.map Utility.word byte;
     ExprImp_env :> map.map string (list string * list string * cmd);
     FlatImp_env :> map.map string (list string * list string * FlatImp.stmt string);
     trace := list (mem * string * list Utility.word * (mem * list Utility.word));
@@ -32,7 +32,6 @@ Module Import FlattenExpr.
 
   Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
     Semantics.word := Utility.word;
-    Semantics.byte := Utility.byte;
     Semantics.env := ExprImp_env;
     Semantics.ext_spec:= ext_spec;
   |}.
@@ -63,7 +62,6 @@ Module Import FlattenExpr.
     Semantics.parameters_ok (mk_Semantics_params p) := {
     Semantics.locals_ok := locals_ok;
     Semantics.word_ok := Utility.word_ok;
-    Semantics.byte_ok := Utility.byte_ok;
     Semantics.mem_ok := mem_ok;
     Semantics.env_ok := ExprImp_env_ok;
     Semantics.width_cases := Utility.width_cases;
@@ -75,7 +73,6 @@ Module Import FlattenExpr.
     FlatImp.varname_eq_spec := String.eqb_spec;
     FlatImp.width_cases := width_cases;
     FlatImp.word_ok := word_ok;
-    FlatImp.byte_ok := byte_ok;
     FlatImp.mem_ok := mem_ok;
     FlatImp.locals_ok := locals_ok;
     FlatImp.env_ok := FlatImp_env_ok;

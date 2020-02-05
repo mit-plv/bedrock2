@@ -21,7 +21,7 @@ Section Params1.
   }.
 
   Definition mem_available(start pastend: Semantics.word)(m: Semantics.mem): Prop :=
-    exists anybytes: list Semantics.byte,
+    exists anybytes: list byte,
       Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
       array ptsto (word.of_Z 1) start anybytes m.
 

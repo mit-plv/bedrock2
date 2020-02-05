@@ -235,7 +235,7 @@ Section WeakestPrecondition.
       exists retvs, map.getmany_of_list st1 rets = Some retvs /\
       post t' m' retvs)).
 
-  Local Hint Constructors Semantics.exec.
+  Local Hint Constructors Semantics.exec : core.
   Lemma sound_cmd' e c t m l mc post
         (H:WeakestPrecondition.cmd (semantics_call e) c t m l post)
     : Semantics.exec e c t m l mc (fun t' m' l' mc' => post t' m' l').

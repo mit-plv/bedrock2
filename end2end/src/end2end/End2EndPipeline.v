@@ -43,7 +43,7 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-Axiom TODO_joonwon: False.
+Local Axiom TODO_joonwon: False.
 
 Require Import Coq.Classes.Morphisms.
 
@@ -83,12 +83,11 @@ Section Connect.
 
   Context {Registers: map.map Register Utility.word}
           {Registers_ok: map.ok Registers}
-          {mem: map.map Utility.word Utility.byte}
+          {mem: map.map Utility.word byte}
           {mem_ok: map.ok mem}.
 
   Instance mmio_params: MMIO.parameters.
     econstructor; try typeclasses eauto.
-    - exact KamiWord.word8ok.
     - exact (@KamiWord.wordWok _ (or_introl eq_refl)).
     - exact SortedListString.ok.
   Defined.
@@ -234,7 +233,13 @@ Section Connect.
       eapply P2establish.
       unfold initial_conditions.
       exists (map.of_list funimplsList), instrs, positions.
-      destr_RiscvMachine m0RV. subst.
+      destr_RiscvMachine m0RV.
+      (* TODO add this to destr_RiscvMachine *)
+      cbv [getMachine getMetrics
+           RiscvMachine.getRegs RiscvMachine.getPc RiscvMachine.getNextPc
+           RiscvMachine.getMem RiscvMachine.getXAddrs RiscvMachine.getLog
+           withMetrics withRegs withPc withNextPc withMem withXAddrs withLog withLogItem withLogItems] in *.
+      subst.
       ssplit.
       + (* 3) bedrock2 semantics to bedrock2 program logic *)
         constructor.

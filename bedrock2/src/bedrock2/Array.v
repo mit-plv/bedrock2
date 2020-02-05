@@ -2,6 +2,7 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 Require Import Coq.Lists.List Coq.ZArith.BinInt. Local Open Scope Z_scope.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Byte.
 
 Section Array.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
@@ -132,7 +133,6 @@ End Array.
 
 Section ByteArray.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
-  Context {byte : Word.Interface.word 8} {byte_ok : word.ok byte}.
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
   Local Notation array := (array (mem:=mem) ptsto (word.of_Z 1)).
   Local Infix "*" := sep.
@@ -142,7 +142,7 @@ Section ByteArray.
     (i := Z.to_nat (word.unsigned (word.sub a start)))
     : iff1 (array start xs)
       (array start (firstn i xs) * (
-        ptsto a (hd (word.of_Z 0) (skipn i xs)) *
+        ptsto a (hd (byte.of_Z 0) (skipn i xs)) *
         array (word.add a (word.of_Z 1)) (skipn (S i) xs) ) ).
   Proof.
     eapply array_address_inbounds;
@@ -154,7 +154,7 @@ Section ByteArray.
     (i := Z.to_nat (word.unsigned iw))
     : iff1 (array start xs)
       (array start (firstn i xs) * (
-        ptsto (word.add start iw) (hd (word.of_Z 0) (skipn i xs)) *
+        ptsto (word.add start iw) (hd (byte.of_Z 0) (skipn i xs)) *
         array (word.add (word.add start iw) (word.of_Z 1)) (skipn (S i) xs) ) ).
   Proof.
     rewrite (bytearray_address_inbounds xs start (word.add start iw));

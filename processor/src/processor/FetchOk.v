@@ -1,6 +1,7 @@
 Require Import String BinInt.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Byte.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import Kami.Syntax Kami.Semantics.
@@ -183,7 +184,7 @@ Section FetchOk.
    * Each step (a single instruction execution) of riscv-coq checks whether the
    * current pc is in the set of executable addresses. Thus, the overflow issue
    * can be resolved by setting executable addresses as same as the range of
-   * Kami pc. See [pc_related_when_valid] and [states_related] in KamiRiscv.v 
+   * Kami pc. See [pc_related_when_valid] and [states_related] in KamiRiscv.v
    * for detailed definitions.
    *)
   Definition pc_related (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
@@ -216,7 +217,7 @@ Section FetchOk.
       apply wordToNat_natToWord_le.
     - etransitivity; [eauto|blia].
   Qed.
-  
+
   (* set of executable addresses in the kami processor *)
   Definition kamiXAddrs: XAddrs :=
     alignedXAddrsRange 0 instrMemSize.
@@ -273,7 +274,7 @@ Section FetchOk.
 
     change (NatLib.Npow2 2) with 4%N in H.
     do 2 rewrite N.mul_comm with (n:= 4%N) in H.
-    
+
     apply f_equal with (f:= fun x => N.modulo x 4%N) in H.
     do 2 rewrite N.mod_add in H by discriminate.
     do 2 rewrite N.mod_small in H by apply wordToN_bound.
@@ -283,7 +284,7 @@ Section FetchOk.
   Definition mem_related (kmem: kword memSizeLg -> kword 8)
              (rmem: mem): Prop :=
     forall addr: kword width,
-      map.get rmem addr = Some (kmem (evalZeroExtendTrunc _ addr)).
+      map.get rmem addr = Some (byte.of_Z (uwordToZ (kmem (evalZeroExtendTrunc _ addr)))).
 
   Definition RiscvXAddrsSafe
              (kmemi: kword instrMemSizeLg -> kword width)
@@ -358,12 +359,16 @@ Section FetchOk.
       reflexivity.
 
     - cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2
-                   word.unsigned byte WordsKami word8 KamiWord.word kunsigned
+                   word.unsigned WordsKami KamiWord.word kunsigned
                    SC.combineBytes].
       rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 24%nat).
       rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 16%nat).
       rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 8%nat).
       rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 0%nat).
+      rewrite !byte.unsigned_of_Z.
+      cbv [byte.wrap].
+      change (@uwordToZ (BinInt.Z.to_nat 8)) with (@word.unsigned 8 _).
+      rewrite !(@Properties.word.wrap_unsigned 8 _ word8ok).
       reflexivity.
   Qed.
 

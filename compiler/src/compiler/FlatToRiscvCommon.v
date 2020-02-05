@@ -595,7 +595,7 @@ Ltac solve_valid_machine wordOk :=
 
 Ltac subst_load_bytes_for_eq :=
   lazymatch goal with
-  | Load: ?LB _ _ _ _ _ ?m _ = _ |- _ =>
+  | Load: ?LB _ _ _ _ ?m _ = _ |- _ =>
     unify LB @Memory.load_bytes;
     let P := fresh "P" in
     epose proof (@subst_load_bytes_for_eq _ _ _ _ _ _ _ _ _ Load) as P;
