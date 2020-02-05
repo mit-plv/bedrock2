@@ -234,11 +234,6 @@ Section Connect.
       unfold initial_conditions.
       exists (map.of_list funimplsList), instrs, positions.
       destr_RiscvMachine m0RV.
-      (* TODO add this to destr_RiscvMachine *)
-      cbv [getMachine getMetrics
-           RiscvMachine.getRegs RiscvMachine.getPc RiscvMachine.getNextPc
-           RiscvMachine.getMem RiscvMachine.getXAddrs RiscvMachine.getLog
-           withMetrics withRegs withPc withNextPc withMem withXAddrs withLog withLogItem withLogItems] in *.
       subst.
       ssplit.
       + (* 3) bedrock2 semantics to bedrock2 program logic *)

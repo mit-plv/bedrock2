@@ -45,25 +45,6 @@ Local Ltac split_if :=
         end
   end.
 
-(* TODO move to coqutil.Byte *)
-Module byte.
-  Lemma unsigned_range: forall b, 0 <= byte.unsigned b < 2 ^ 8.
-  Proof.
-    intros. unfold byte.unsigned. split.
-    - apply N2Z.is_nonneg.
-    - change (2 ^ 8) with (Z.of_N (N.succ 255)).
-      apply N2Z.inj_lt.
-      apply N.lt_succ_r.
-      apply (Byte.to_N_bounded b).
-  Qed.
-  Lemma wrap_unsigned: forall x, byte.wrap (byte.unsigned x) = byte.unsigned x.
-  Proof.
-    intros. unfold byte.wrap, byte.unsigned.
-    apply Z.mod_small.
-    apply unsigned_range.
-  Qed.
-End byte.
-
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
   Import Syntax BinInt String List.ListNotations ZArith.
