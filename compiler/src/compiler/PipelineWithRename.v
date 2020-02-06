@@ -128,50 +128,6 @@ Module List.
 End List.
 
 
-(* TODO express flatten_functions in terms of this, or add map_values, or get_dom to the
-   map interface *)
-Section MapKeys.
-  Context {K V1 V2: Type} {M1: map.map K V1} {M2: map.map K V2}.
-
-  Definition map_values(f: V1 -> V2)(m1: M1): list K -> M2 :=
-    fix rec keys :=
-      match keys with
-      | nil => map.empty
-      | k :: ks =>
-        match map.get m1 k with
-        | Some v1 => map.put (rec ks) k (f v1)
-        | None => map.empty
-        end
-      end.
-
-  Context (keqb: K -> K -> bool) {keqb_spec: EqDecider keqb}
-          {OK1: map.ok M1} {OK2: map.ok M2}.
-
-  Lemma get_map_values: forall (f: V1 -> V2) (keys: list K) (m1: M1) (k: K) (v1: V1),
-      (forall x, In x keys -> map.get m1 x <> None) ->
-      In k keys ->
-      map.get m1 k = Some v1 ->
-      map.get (map_values f m1 keys) k = Some (f v1).
-  Proof.
-    induction keys; intros.
-    - simpl in *. contradiction.
-    - simpl in *.
-      destruct H0.
-      + subst.
-        destr (map.get m1 k).
-        * rewrite map.get_put_same. congruence.
-        * exfalso. eapply H. 2: exact E. auto.
-      + destr (map.get m1 a).
-        * rewrite map.get_put_dec.
-          destr (keqb a k).
-          { subst. congruence. }
-          { eauto. }
-        * exfalso. unfold not in H. eauto.
-  Qed.
-
-End MapKeys.
-
-
 Module Import Pipeline.
 
   Class parameters := {
@@ -274,7 +230,7 @@ Section Pipeline1.
     (* TODO compile_funs should be map.fold so that it doesn't need the funnames arg *)
     let funnames := map.fold (fun acc fname fimpl => cons fname acc) nil prog in
     let positions := FlatToRiscvDef.function_positions prog in
-    let i := FlatToRiscvDef.compile_funs positions prog 0 funnames in
+    let '(i, _, _) := FlatToRiscvDef.compile_funs positions 0 prog in
     let maxSize := word.unsigned ml.(code_pastend) - word.unsigned ml.(code_start) in
     if 4 * Z.of_nat (List.length i) <=? maxSize then Some (i, positions) else None.
 
