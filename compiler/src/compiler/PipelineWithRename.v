@@ -480,7 +480,7 @@ Section Pipeline1.
       refine (ex_intro _ (_, _, _, _, _, _) _).
       ssplit; try reflexivity.
       { eassumption. }
-      { unfold map.undef_on, map.agree_on. intros. reflexivity. }
+      { eexists. split; reflexivity. }
       refine (ex_intro _ (_, _, _, _, _, _) _).
       unfold goodMachine.
       ssplit.

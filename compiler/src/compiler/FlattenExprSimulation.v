@@ -1,3 +1,4 @@
+Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import bedrock2.MetricLogging.
@@ -9,100 +10,57 @@ Require Import compiler.Simp.
 
 
 Section Sim.
-
   Context {p: FlattenExpr.parameters}.
 
-  Definition related_without_functions(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
-    fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
-      e1 = map.empty /\ e2 = map.empty (* TODO allow non-empty function environments *) /\
-      ExprImp2FlatImp0 c1 = c2 /\
-      t1 = t2 /\
-      m1 = m2 /\
-      map.extends l2 l1 /\
-      map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
-
-  Definition related(max_size: BinInt.Z)(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
+  Definition related(max_size: Z)(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
     fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
       flatten_functions max_size e1 = Some e2 /\
-      ExprImp2FlatImp max_size c1 = Some c2 /\
+      (exists funname, c1 = Syntax.cmd.call nil funname nil /\
+                       c2 = (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall nil funname nil))) /\
       t1 = t2 /\
       m1 = m2 /\
-      (* TODO flattenExpr has to unset all vars at the end of the compiled stmt *)
-      l1 = l2 /\
-      (* map.extends l2 l1 /\ *)
-      map.undef_on l1 (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))).
+      l1 = map.empty.
 
-  Local Axiom TODO_sam: False.
-
-  Lemma flatten_functions_empty{hyps: FlattenExpr.assumptions p}:
-    forall max_size, flatten_functions max_size map.empty = Some map.empty.
+  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}(max_size: Z):
+    simulation ExprImp.SimExec (FlatImp.SimExec String.string) (related max_size).
   Proof.
-    intros.
-    unfold flatten_functions, Properties.map.map_all_values.
-    match goal with
-    | |- _ _ _ ?E = _ => remember E as m
-    end.
-    revert Heqm.
-    eapply map.fold_spec. 1: intros; reflexivity.
-    intros. exfalso. eapply (f_equal (fun m => map.get m k)) in Heqm.
-    unshelve erewrite map.get_put_same in Heqm.
-    unshelve erewrite map.get_empty in Heqm.
-    discriminate.
-  Qed.
-
-  Lemma relate_related{hyps: FlattenExpr.assumptions p}(max_size: BinInt.Z): forall done s1 s2,
-      related_without_functions done s1 s2 <-> related max_size done s1 s2.
-  Proof.
-    intros done (((((e1 & c1) & t1) & m1) & l1) & mc1) (((((e2 & c2) & t2) & m2) & l2) & mc2).
-    split; intro H; unfold related_without_functions, related in *.
-    - intuition idtac.
-      + subst. apply flatten_functions_empty.
-      + unfold ExprImp2FlatImp. rewrite H1. case TODO_sam. (* doesn't hold (size check) *)
-      + case TODO_sam. (* clearly doesn't hold, extends does not imply equality *)
-    - simp. case TODO_sam. (* clearly doesn't hold *)
-  Qed.
-
-  Lemma flattenExprSim_without_functions{hyps: FlattenExpr.assumptions p}:
-    simulation ExprImp.SimExec (FlatImp.SimExec String.string) related_without_functions.
-  Proof.
-    unfold simulation, related_without_functions, ExprImp.SimExec, FlatImp.SimExec.
+    unfold simulation, related, ExprImp.SimExec, FlatImp.SimExec.
     intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
     intros.
     simp.
-    unfold ExprImp2FlatImp0.
-    match goal with
-    | |- context [ fst ?x ] => destruct x as [s ngs] eqn: E
-    end.
     simpl.
-    assert (PropSet.disjoint (ExprImp.allVars_cmd c1)
-                             (allFreshVars (freshNameGenState (ExprImp.allVars_cmd_as_list c1))))
-      as D by eapply freshNameGenState_disjoint.
     eapply FlatImp.exec.weaken.
-    - eapply @flattenStmt_correct_aux with (eH := map.empty) (max_size := BinNums.Z0).
+    - eapply @flattenStmt_correct_aux with (eH := e1) (ngs := freshNameGenState nil).
       + typeclasses eauto.
-      + eapply flatten_functions_empty.
       + eassumption.
+      + eapply Semantics.exec.call; try eassumption.
+        (* "eassumption" fails, but "exact" succeeds ?? *)
+        (* works:
+        match goal with
+        | |- ?G => let T := type of H12 in unify T G; eassumption
+        end. *)
+        (* works: apply H12. *)
+        Fail eassumption.
+        match goal with
+        | H: _ |- _ => exact H
+        end.
       + reflexivity.
-      + exact E.
-      + assumption.
-      + assumption.
-      + exact D.
+      + reflexivity.
+      + intros x k A. rewrite map.get_empty in A. discriminate.
+      + unfold map.undef_on, map.agree_on. intros. reflexivity.
+      + cbv. intros. left. tauto.
     - simpl. intros. simp.
-      eexists. split; [|eassumption]. simpl. rewrite E. simpl.
-      repeat (split; [solve [auto]|]).
-      pose proof (ExprImp.modVars_subset_allVars c1).
-      simpl in *. (* PARAMRECORDS *)
-      Solver.map_solver FlattenExpr.locals_ok.
-  Qed.
-
-  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}(max_size: BinInt.Z):
-    simulation ExprImp.SimExec (FlatImp.SimExec String.string) (related max_size).
-  Proof.
-    pose proof flattenExprSim_without_functions as P.
-    unfold simulation in *.
-    pose proof relate_related as Q.
-    intros.
-    case TODO_sam.
+      eexists. split; [|eassumption]. simpl.
+      repeat (split; eauto).
+      + unfold map.only_differ in *.
+        apply map.map_ext.
+        intro x.
+        match goal with
+        | H: _ |- _ => specialize (H x); rename H into B
+        end.
+        destruct B as [B | B].
+        * cbv in B. contradiction.
+        * congruence.
   Qed.
 
 (*
