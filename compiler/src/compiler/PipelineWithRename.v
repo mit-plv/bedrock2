@@ -127,6 +127,24 @@ Module List.
 
 End List.
 
+Module map. Section map.
+  Context {K V1 V2 : Type}{M1 : map.map K V1}{M2 : map.map K V2}(keqb : K -> K -> bool).
+  Context {keqb_spec: EqDecider keqb} {ok1: map.ok M1} {ok2: map.ok M2}.
+  Lemma map_all_values_not_None_fw: forall (f : V1 -> option V2) (m1 : M1) (m2 : M2) (k: K),
+      map.map_all_values f m1 = Some m2 ->
+      map.get m1 k <> None ->
+      map.get m2 k <> None.
+  Proof.
+    intros f m1.
+    unfold map.map_all_values.
+    eapply map.fold_spec.
+    - intros. simp. exfalso. rewrite map.get_empty in H0. congruence.
+    - intros. simp. rewrite map.get_put_dec. rewrite map.get_put_dec in H2.
+      destruct_one_match.
+      + congruence.
+      + eauto.
+  Qed.
+End map. End map.
 
 Module Import Pipeline.
 
@@ -227,8 +245,6 @@ Section Pipeline1.
     bind_opt stack_needed <- stack_usage prog;
     let num_stackwords := word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / bytes_per_word in
     if Z.ltb num_stackwords stack_needed then None (* not enough stack *) else
-    (* TODO compile_funs should be map.fold so that it doesn't need the funnames arg *)
-    let funnames := map.fold (fun acc fname fimpl => cons fname acc) nil prog in
     let positions := FlatToRiscvDef.function_positions prog in
     let '(i, _, _) := FlatToRiscvDef.compile_funs positions 0 prog in
     let maxSize := word.unsigned ml.(code_pastend) - word.unsigned ml.(code_start) in
@@ -372,6 +388,20 @@ Section Pipeline1.
       assumption.
   Qed.
 
+  Lemma get_build_fun_pos_env: forall pos0 e f,
+      map.get e f <> None ->
+      exists pos, map.get (FlatToRiscvDef.build_fun_pos_env pos0 e) f = Some pos.
+  Proof.
+    intros pos0 e.
+    unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
+    eapply map.fold_spec.
+    - intros. rewrite map.get_empty in H. congruence.
+    - intros. destruct r as [ [insts pos1] env]. simpl.
+      rewrite map.get_put_dec in H1.
+      rewrite map.get_put_dec.
+      destruct_one_match; eauto.
+  Qed.
+
   Definition instrencode(p: list Instruction): list byte :=
     List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
 
@@ -419,8 +449,13 @@ Section Pipeline1.
   Proof.
     intros.
     assert (exists f_entry_rel_pos, map.get pos_map f_entry_name = Some f_entry_rel_pos) as GetPos. {
-      simp.
-      case TODO_sam.
+      unfold compile, composePhases, renamePhase, flattenPhase, riscvPhase in *. simp.
+      unfold flatten_functions, rename_functions, FlatToRiscvDef.function_positions in *.
+      apply get_build_fun_pos_env.
+      eapply (map.map_all_values_not_None_fw _ _ _ _ _ E0).
+      eapply (map.map_all_values_not_None_fw _ _ _ _ _ E).
+      simpl in *. (* PARAMRECORDS *)
+      congruence.
     }
     destruct GetPos as [f_entry_rel_pos GetPos].
     eapply runsTo_weaken.
