@@ -12,6 +12,7 @@ module ram #(
   input wire clk,
   input wire [LGSZW+1:0] addr,
   input wire write_enable,
+  input wire [3:0] write_byte_enable,
   input wire [31:0] write,
   input wire rq_en, // always ready
   output reg rs_en = 0, // user must be always ready
@@ -67,10 +68,18 @@ module ram #(
       read_[2] <= byte2[addr_[2]];
       read_[3] <= byte3[addr_[3]];
     end else if (rq_en && write_enable) begin
-      byte0[addr_[0]] <= write_[0];
-      byte1[addr_[1]] <= write_[1];
-      byte2[addr_[2]] <= write_[2];
-      byte3[addr_[3]] <= write_[3];
+      if (write_byte_enable[0]) begin
+        byte0[addr_[0]] <= write_[0];
+      end;
+      if (write_byte_enable[1]) begin
+        byte1[addr_[1]] <= write_[1];
+      end;
+      if (write_byte_enable[2]) begin
+        byte2[addr_[2]] <= write_[2];
+      end;
+      if (write_byte_enable[3]) begin
+        byte3[addr_[3]] <= write_[3];
+      end
     end
   end
 endmodule
@@ -94,15 +103,16 @@ module system(
 
   reg resetn = 1'b0; always @(posedge clk) begin resetn <= 1'b1; end
 
-  parameter integer LGSZW = 12;
+  parameter integer LGSZW = 13;
   wire [31:0] ram_read;
-  wire [64:0] obtain_rq_get;
+  wire [68:0] obtain_rq_get;
   wire rdy_obtain_rq_get;
   wire en_obtain_rq_get = rdy_obtain_rq_get;
   wire rdy_send_rs_put;
   wire [31:0] mem_rq_data = obtain_rq_get[31:0];
-  wire mem_rq_iswrite = obtain_rq_get[32];
-  wire [31:0] mem_rq_addr = obtain_rq_get[64:33];
+  wire [3:0] mem_write_byte_enable = obtain_rq_get[35:32];
+  wire mem_rq_iswrite = obtain_rq_get[36];
+  wire [31:0] mem_rq_addr = obtain_rq_get[68:37];
   wire rq_addr_is_bram = ((mem_rq_addr >> (2+LGSZW)) == 0);
   wire ram_rs_en, instant_rs_en;
   wire [31:0] instant_rs;
@@ -122,10 +132,11 @@ module system(
     .clk(clk),
     .addr(mem_rq_addr[LGSZW-1+2:0]),
     .write_enable(mem_rq_iswrite),
+    .write_byte_enable(mem_write_byte_enable),
+    .write(mem_rq_data),
     .rq_en(en_obtain_rq_get && rdy_obtain_rq_get && rq_addr_is_bram),
     .rs_en(ram_rs_en),
-    .read(ram_read),
-    .write(mem_rq_data)
+    .read(ram_read)
   );
 
   assign instant_rs_en = en_obtain_rq_get && (mem_rq_addr == 32'h10012008 || mem_rq_addr == 32'h1001200c || mem_rq_addr == 32'h10024018 || mem_rq_addr == 32'h10024048 || mem_rq_addr == 32'h1002404c || mem_rq_addr == 32'h10012038);
@@ -177,7 +188,35 @@ module system(
   always #1 clk = !clk;
   initial begin
     $dumpfile("system.vcd");
-    $dumpvars(1, mkTop.proc_m13_lastPc, mkTop.proc_m13_stall, mkTop.WILL_FIRE_RL_proc_m12_execNm, mkTop.WILL_FIRE_RL_proc_m10_modifyPc, mkTop.WILL_FIRE_RL_proc_m12_execBypass, led, spi_clk, spi_csn, spi_mosi, spi_miso, clk, resetn, rdy_obtain_rq_get, en_obtain_rq_get, mem_rq_addr, mem_rq_data, mem_rq_iswrite, ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put, spi_tx_buf, spi_rx_buf, spi_tx_rdy);
+    $dumpvars(1,
+              mkTop.proc_m13_lastPc,
+              mkTop.proc_m13_stall,
+              mkTop.WILL_FIRE_RL_proc_m10_instFetchRq,
+              mkTop.WILL_FIRE_RL_proc_m10_instFetchRs,
+              mkTop.WILL_FIRE_RL_proc_m10_instFetchRsIgnore,
+              mkTop.WILL_FIRE_RL_proc_m10_modifyPc,
+              mkTop.WILL_FIRE_RL_proc_m10_pgmInitRq,
+              mkTop.WILL_FIRE_RL_proc_m10_pgmInitRqEnd,
+              mkTop.WILL_FIRE_RL_proc_m10_pgmInitRs,
+              mkTop.WILL_FIRE_RL_proc_m10_pgmInitRsEnd,
+              mkTop.WILL_FIRE_RL_proc_m11_decodeLd,
+              mkTop.WILL_FIRE_RL_proc_m11_decodeNm,
+              mkTop.WILL_FIRE_RL_proc_m11_decodeSt,
+              mkTop.WILL_FIRE_RL_proc_m12_execBypass,
+              mkTop.WILL_FIRE_RL_proc_m12_execNm,
+              mkTop.WILL_FIRE_RL_proc_m13_repLd,
+              mkTop.WILL_FIRE_RL_proc_m13_repLdZ,
+              mkTop.WILL_FIRE_RL_proc_m13_repSt,
+              mkTop.WILL_FIRE_RL_proc_m13_reqLd,
+              mkTop.WILL_FIRE_RL_proc_m13_reqSt,
+              mkTop.WILL_FIRE_RL_proc_m13_wbNm,
+              mkTop.WILL_FIRE_RL_proc_m13_wbNmZ,
+              mkTop.WILL_FIRE_RL_proc_m13_wrongEpoch,
+              led, spi_clk, spi_csn, spi_mosi, spi_miso, clk, resetn,
+              rdy_obtain_rq_get, en_obtain_rq_get, rq_addr_is_bram, mem_rq_addr, mem_rq_data,
+              mem_write_byte_enable, mem_rq_iswrite,
+              ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put,
+              spi_tx_buf, spi_rx_buf, spi_tx_rdy);
     #90000 $finish();
   end
 `endif
