@@ -96,6 +96,7 @@
 ***** "Hand-automated" version of the capitalize-third example
 * Next meetings
 *** Do we need to handle deallocation?
-    The put operation of structures that store data inline doesn't take ownership of the element that's being written to the structure, since it copies it instead.
+    - The put operation of structures that store data inline doesn't take ownership of the element that's being written to the structure, since it copies it instead.
+    - To compile ~put r path elem~, does the cell corresponding to ~path~ in ~r~ need to be empty (in the sense that its address is among those that have been borrowed)?  If ~r~ stores pointers then we need that if we want to ensure that we don't lose track of memory elements, whereas if ~r~ stores values inline then we don't mind overwriting them.
 *** How do we represent multiple returns?
     See the "swap boxes" example above.  We need structures with pairs of addresses.
