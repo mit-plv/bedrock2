@@ -1,0 +1,101 @@
+* <2020-02-03>
+*** How do we handle early returns?
+    Bedrock two has a single exit point per function
+*** How do we deal with loop termination?
+    Bedrock loops have a measure
+    A general loop combinator would have termination problems
+    We can add a fuel parameter and eliminate it at compile time if it's clear that the loop terminates
+    Should we use high-level combinators like List.map and List.fold, or should these be lowered into a generic loop?
+*** How do we represent loop state?
+*** How does mutating a part of an object work? (How do we handle borrowing from part of a datastructure?)
+    The separation-logic predicate for an object can be broken down and reassembled after modifications are made (for example ~array(addr, data)~ is really ~mapsto(addr + 0, data[0])~, …, ~mapsto(addr + len - 1, data[len - 1])~).
+*** How do we handle bound checks?
+    Do we want dependent types as the input, or a tactic at compile time?
+*** Examples to look at:
+***** Swap addresses
+***** Simple loops
+******* Increment all in an array
+******* Increment elements in a linked list
+******* Increment values in an assoc {list, array}
+******* Find key in an assoc {list, array} (with inline and out-of-line representations of key-value pairs)
+***** Capitalize strings in array
+***** Error handling (special case of early returns)
+      Source: monadic program
+      Target: either a sequence of constructs returning error codes, or subprograms returning possibly-null pointers.
+      Special cases: with and without unwinding
+***** Deep mutations
+      E.g. mutating a deep pointer resulting from a lookup in a tree
+* <2020-02-10>
+*** What format should inputs be in?
+***** Programs are sequences of let-bindings
+***** The head of each expression determines which function is called on the Bedrock side
+***** Examples:
+******* Swap to array elements:
+        #+begin_src coq
+          let t0 := get t 0 in
+          let t1 := get t 1 in
+          let t := put t 0 t1 in
+          let t := put t 1 t0 in
+          t
+        #+end_src
+******* Swap contents of two boxes:
+        #+begin_src coq
+          let t0 := get box0 () in
+          let t1 := get box1 () in
+          let box0 := put box0 t1 in
+          let box1 := put box1 t0 in
+          (box0, box1)
+        #+end_src
+******* Capitalize a string:
+        #+begin_src coq
+        let c0 = get s 0 in
+        let c0 = capitalize_char c0 in
+        let s = put s 0 c0 in
+        s
+        #+end_src
+******* Capitalize 3rd string:
+        #+begin_src coq
+        let s2 = get strs 2 in
+        let s2 = capitalize_string s2 in
+        let strs = put strs 2 s2 in
+        strs
+        #+end_src
+*** What's a generic way to talk about modifications in data structures?
+***** How do we represent states?
+      The problem is how to represent states in which some data has been taken out of a datastructure.
+******* Full-scale example: get two pointers from a tree, copy contents of one to the other
+******* Simpler example: in the "capitalize third string" example, how is the state represented after taking the string out of the array?
+***** Some approaches:
+******* Represent borrows in the datastructure itself (e.g. arrays are modeled as list of options), adjust the predicate accordingly.
+        This requires a separate ~addressof~ function, which associates a path (i.e. an index for an array) to a concrete address, so that values that have been extracted and mutated can be "put back" into the array.  But since ~addressof~ manipulates the memory directly, any change to the memory requires updating all predicates using ~addressof~ the current context to lift them to the new memory state and show that they are unchanged.
+******* Represent borrows in the separation logic predicate
+        This means changing the representation predicate to take a list of borrowed locations and the pointers they correspond to.  That predicate doesn't say anything about borrowed locations. Recording the pointers ensure that writebacks into the datastructure are possible.
+******* Use multiple separation-logic predicates with overlaps
+        In the “capitalize third string” example, the idea would be to keep both the ~p → strs~ and ~p' → strs[2]~ facts (but not joined by a separating conjunction, since both of these overlap.
+***** What operations does a generic datastructure definition provide?
+      #+begin_src coq
+        { repr: Type;
+          path: Type;
+          get: repr → path → option elem;
+          put: repr → path → elem → repr;
+          pred: addr → repr → hprop }
+      #+end_src
+***** An extra challenge: what happens when we want to give a function multiple arguments that may overlap?
+      Bad example: compiling a fold whose initial item is part of the array (not convincing because (1) the array can be sliced up, and (2) the fold would be forced to allocate)
+      Is there a better example?
+*** What is the exact specification of the operation implementing put?
+    - When the addresses line up, ~put~ is just a no-op, since we're just reassembling an existing datastructure
+    - Otherwise, when the datastructure contains pointers, it's just a matter of writing a pointer in the right location
+    - [ ] What happens when the structure contains data directly, rather than through a pointer?  Should put copy its input argument?
+*** How do we capture side-conditions on the input, such as array bound considerations?
+    Don't use dependent types; instead use preconditions on the functions and prove side-conditions during derivations
+*** More examples
+***** Swap array elements
+      Interesting with both inline (flat array) and out-of-line (array of pointers) storage
+***** Mutations in a tree
+***** "Hand-automated" version of the capitalize-third example
+* Next meetings
+*** Do we need to handle deallocation?
+    The put operation of structures that store data inline doesn't take ownership of the element that's being written to the structure, since it copies it instead.
+*** How do we represent multiple returns?
+    See the "swap boxes" example above.  We need structures with pairs of addresses.
