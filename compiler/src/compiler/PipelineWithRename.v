@@ -128,6 +128,38 @@ Module List.
 End List.
 
 Module map. Section map.
+
+  Lemma fold_empty{K V: Type}{M : map.map K V}{ok: map.ok M}{R: Type}:
+    forall (f: R -> K -> V -> R) (r0: R),
+      map.fold f r0 map.empty = r0.
+  Proof.
+    intros. remember map.empty as m. generalize Heqm.
+    eapply map.fold_spec; intros.
+    - reflexivity.
+    - apply (f_equal (fun m => map.get m k)) in Heqm0.
+      rewrite map.get_put_same in Heqm0.
+      rewrite map.get_empty in Heqm0.
+      discriminate.
+  Qed.
+
+  Lemma putmany_of_list_zip_nil_keys{K V: Type}{M : map.map K V}{ok: map.ok M}:
+    forall (vs: list V) (m1 m2: M),
+      map.putmany_of_list_zip nil vs m1 = Some m2 -> vs = nil.
+  Proof.
+    intros.
+    apply map.putmany_of_list_zip_sameLength in H.
+    destruct vs; simpl in *; congruence.
+  Qed.
+
+  Lemma putmany_of_list_zip_nil_values{K V: Type}{M : map.map K V}{ok: map.ok M}:
+    forall (ks: list K) (m1 m2: M),
+      map.putmany_of_list_zip ks nil m1 = Some m2 -> ks = nil.
+  Proof.
+    intros.
+    apply map.putmany_of_list_zip_sameLength in H.
+    destruct ks; simpl in *; congruence.
+  Qed.
+
   Context {K V1 V2 : Type}{M1 : map.map K V1}{M2 : map.map K V2}(keqb : K -> K -> bool).
   Context {keqb_spec: EqDecider keqb} {ok1: map.ok M1} {ok2: map.ok M2}.
   Lemma map_all_values_not_None_fw: forall (f : V1 -> option V2) (m1 : M1) (m2 : M2) (k: K),
@@ -144,6 +176,26 @@ Module map. Section map.
       + congruence.
       + eauto.
   Qed.
+
+  Context {V3: Type} {M3: map.map K V3} {ok3: map.ok M3}.
+  Context (f12: V1 -> option V2) (f23: V2 -> option V3).
+  Definition ocompose(v1: V1): option V3 :=
+    match f12 v1 with
+    | Some v2 => f23 v2
+    | None => None
+    end.
+  Lemma map_all_values_compose: forall m1 m2 m3,
+      map.map_all_values f12 m1 = Some m2 ->
+      map.map_all_values f23 m2 = Some m3 ->
+      map.map_all_values ocompose m1 = Some m3.
+  Proof.
+    intros m1. unfold map.map_all_values.
+    eapply map.fold_spec; simpl; intros.
+    - simp. rewrite fold_empty. rewrite fold_empty in H0.
+      assumption.
+    - simp.
+      specialize H0 with (1 := eq_refl).
+  Abort. (* not sure if needed, not sure if it holds *)
 End map. End map.
 
 Module Import Pipeline.
@@ -501,6 +553,14 @@ Section Pipeline1.
           - clear. unfold bytes_per_word, Memory.bytes_per.
             destruct width_cases as [E | E]; rewrite E; reflexivity.
         }
+        unfold map.of_list_zip in *.
+        match goal with
+        | H: map.putmany_of_list_zip _ _ _ = _ |- _ => pose proof (map.putmany_of_list_zip_nil_values _ _ _ H)
+        end.
+        subst.
+        (* TODO we need to get "rets = []", either by a precondition or by making sure
+           Semantics.exec.exec never goes to empty sets *)
+
         assert (map.get r0 f_entry_name <> None) as GetFlatF. {
           (* TODO we need the actual values, and preserve emptyness of arg/ret lists *)
           eapply (map.map_all_values_not_None_fw _ _ _ _ _ E0).
