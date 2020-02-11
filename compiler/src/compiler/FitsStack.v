@@ -137,7 +137,7 @@ Section FitsStack.
       r = Some z ->
       map.get e_done f = Some (nil, nil, fbody) ->
       map.split e_glob e_done e_rest ->
-      fits_stack z e_glob fbody.
+      fits_stack (z - framelength (nil, nil, fbody)) (map.remove e_glob f) fbody.
 
   Lemma stack_usage_correct_aux: forall e_glob e_done,
       P e_glob e_done (map.fold (update_stack_usage e_glob) (Some 0) e_done).
@@ -175,13 +175,8 @@ Section FitsStack.
         eapply stack_usage_rec_correct in E1.
         destr (String.eqb k f).
         * simp. subst.
-          eapply fits_stack_monotone. {
-            eapply fits_stack_monotone_env. 1: eassumption.
-            unfold map.extends in *.
-            intros.
-            rewrite map.get_remove_dec in H1. simp.
-            assumption.
-          }
+          eapply fits_stack_monotone. 1: eassumption.
+          unfold framelength.
           blia.
         * specialize H0 with (1 := eq_refl).
           eapply fits_stack_monotone.
@@ -196,7 +191,7 @@ Section FitsStack.
   Lemma stack_usage_correct: forall e z f fbody,
       map.get e f = Some (nil, nil, fbody) ->
       stack_usage e = Some z ->
-      fits_stack z e fbody.
+      fits_stack (z - framelength (nil, nil, fbody)) (map.remove e f) fbody.
   Proof.
     intros. unfold stack_usage in *.
     pose proof stack_usage_correct_aux as Q.

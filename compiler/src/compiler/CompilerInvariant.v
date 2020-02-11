@@ -200,8 +200,8 @@ Section Pipeline1.
     exists (prog: source_env) (instrs: list Instruction) (positions: funname_env Z),
       compile_prog prog = Some (instrs, positions) /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
-      exists mH lH mcH,
-        hl_inv spec mach.(getLog) mH lH mcH /\
+      exists mH,
+        isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
         machine_ok ml.(code_start) ml.(stack_pastend) instrs
                    loop_pos (word.add loop_pos (word.of_Z (if done then 4 else 0))) mH Rdata Rexec mach.
 
@@ -296,6 +296,11 @@ Section Pipeline1.
     intros. simp.
     unfold ll_inv, runsToGood_Invariant.
     destruct_RiscvMachine initial.
+    match goal with
+    | H: context[ProgramSatisfiesSpec] |- _ => rename H into sat
+    end.
+    pose proof sat.
+    destruct sat.
     (* first, run init_sp_code: *)
     pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
     cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
@@ -309,11 +314,6 @@ Section Pipeline1.
     { cbv. auto. }
     { assumption. }
     match goal with
-    | H: context[ProgramSatisfiesSpec] |- _ => rename H into sat
-    end.
-    pose proof sat.
-    destruct sat.
-    match goal with
     | H: _ |- _ => pose proof H; apply compile_prog_to_compile in H;
                      destruct H as [ before [ finstrs [ ? ? ] ] ]
     end.
@@ -326,7 +326,7 @@ Section Pipeline1.
     eapply runsTo_weaken.
     - pose proof compiler_correct as P. unfold runsTo in P. (* TODO instantiate ml to smaller ml *)
       unfold ll_good.
-      eapply P; clear P; try eassumption.
+      eapply P; clear P; try (unfold hl_inv in init_code_correct; eapply init_code_correct); try eassumption.
       unfold machine_ok.
       unfold_RiscvMachine_get_set.
       repeat match goal with
@@ -429,13 +429,8 @@ Section Pipeline1.
       match goal with
       | H: ProgramSatisfiesSpec _ _ _ _ |- _ => pose proof H as sat; destruct H
       end.
-      match goal with
-      | H: _ |- _ => specialize loop_body_correct
-                       with (1 := H) (mc := bedrock2.MetricLogging.mkMetricLog 0 0 0 0)
-      end.
-      match goal with
-      | H: hl_inv _ _ _ _ _ |- _ => destruct H as [ ? [? ? ] ]
-      end.
+      unfold hl_inv in loop_body_correct.
+      specialize loop_body_correct with (l := map.empty) (mc := bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
       lazymatch goal with
       | H: context[@word.add ?w ?wo ?x (word.of_Z 0)] |- _ =>
         replace (@word.add w wo x (word.of_Z 0)) with x in H
@@ -452,12 +447,16 @@ Section Pipeline1.
       subst.
       eapply runsTo_weaken.
       + pose proof compiler_correct as P. unfold runsTo in P.
-        eapply P; clear P; try eassumption.
+        eapply P; clear P. 5: {
+          eapply loop_body_correct; eauto.
+        }
+        all: try eassumption.
         eapply machine_ok_frame_instrs_app_l. eassumption.
       + cbv beta.
         intros. simp. do 3 eexists.
         ssplit; try eassumption.
-        do 3 eexists.
+        eexists.
+        split; [eassumption|].
         split; [eassumption|].
         case TODO_sam. (* similar to machine_ok_frame_instrs_app_l *)
     Unshelve. all: case TODO_sam.

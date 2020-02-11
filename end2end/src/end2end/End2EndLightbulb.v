@@ -73,7 +73,7 @@ Definition spec: ProgramSpec := {|
   datamem_pastend := ml.(heap_pastend);
   goodTrace iol := exists ioh, relate_lightbulb_trace_to_bedrock ioh iol /\
                                goodHlTrace ioh;
-  isReady t m l := exists buf R,
+  isReady t m := exists buf R,
     (Separation.sep (Array.array Scalars.scalar8 (word.of_Z 1) (word.of_Z buffer_addr) buf) R) m /\
     Z.of_nat (Datatypes.length buf) = 1520;
 |}.
@@ -250,41 +250,14 @@ Proof.
   specialize_first Q KB.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
-  eapply Q; clear Q; cycle 4.
-  - (* preserve invariant *)
-    intros.
-    unfold hl_inv, goodTrace, isReady in *. specialize (H (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
-    (* TODO make Simp.simp work here *)
-    destruct H as [ [ buf [R [Sep L] ] ] [ [ioh [Rel G] ] ? ] ].
-    simpl in H. subst l.
-    pose proof link_lightbulb_loop as P.
-    cbv [spec_of_lightbulb_loop] in P.
-    specialize_first P Sep.
-    specialize_first P L.
-    repeat ProgramLogic.straightline.
-    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _); cycle 1.
-    + case TODO_andres.
-      (* The compiler now expects a function called "loop" with 0 args and 0 return values
-         as the loop body.
-         "loop" is already defined above and just calls "lightbulb_loop". *)
-    + cbv [Morphisms.Proper Morphisms.pointwise_relation Morphisms.respectful Basics.impl].
-      intros ? ? ? ?.
-      (*
-      destruct H3 as [ C | [C | [C | [C | C ] ] ] ]; (split; [|reflexivity]);
-        destr; eexists (ioh0 ++ ioh)%list;
-          (split;
-           [ eapply relate_concat; assumption
-           | apply goodHlTrace_addOne;
-             [unfold traceOfOneInteraction, choice; eauto 10
-             | exact G]]). *)
-      case TODO_andres.
-  - exact funs_valid.
+  eapply Q; clear Q.
   - reflexivity.
   - cbv. repeat constructor; cbv; intros; intuition congruence.
   - intros. clear KB memInit. simp.
     unfold relate_lightbulb_trace_to_bedrock, SPI.mmio_trace_abstraction_relation in *.
     unfold id in *.
     eauto using iohi_to_iolo.
+  - reflexivity.
   - (* establish invariant *)
     intros.
     repeat ProgramLogic.straightline.
@@ -308,6 +281,32 @@ Proof.
     }
     intros ? ? ? ?.
     case TODO_andres.
+  - reflexivity.
+  - (* preserve invariant *)
+    intros.
+    unfold hl_inv, goodTrace, isReady in *. specialize (H (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
+    (* TODO make Simp.simp work here *)
+    destruct H as [ [ buf [R [Sep L] ] ] H ].
+    destruct H as [ioh [Rel G] ].
+    pose proof link_lightbulb_loop as P.
+    cbv [spec_of_lightbulb_loop] in P.
+    specialize_first P Sep.
+    specialize_first P L.
+    repeat ProgramLogic.straightline.
+    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _); cycle 1.
+    + eapply P.
+    + cbv [Morphisms.Proper Morphisms.pointwise_relation Morphisms.respectful Basics.impl].
+      intros ? ? ? ?.
+      (*
+      destruct H3 as [ C | [C | [C | [C | C ] ] ] ]; (split; [|reflexivity]);
+        destr; eexists (ioh0 ++ ioh)%list;
+          (split;
+           [ eapply relate_concat; assumption
+           | apply goodHlTrace_addOne;
+             [unfold traceOfOneInteraction, choice; eauto 10
+             | exact G]]). *)
+      case TODO_andres.
+  - exact funs_valid.
 
     Unshelve.
     all: try intros; exact True.

@@ -185,9 +185,12 @@ Section Connect.
   (* end to end, but still generic over the program *)
   Lemma end2end:
     (* Assumptions on the program logic level: *)
-    (forall m, WeakestPrecondition.cmd funspecs (cmd.call nil "init"%string nil) [] m map.empty bedrock2Inv) ->
+    forall init_code loop_body,
+    map.get (map.of_list funimplsList) "init"%string = Some ([], [], init_code) ->
+    (forall m, WeakestPrecondition.cmd funspecs init_code [] m map.empty bedrock2Inv) ->
+    map.get (map.of_list funimplsList) "loop"%string = Some ([], [], loop_body) ->
     (forall t m l, bedrock2Inv t m l ->
-                   WeakestPrecondition.cmd funspecs (cmd.call nil "loop"%string nil) t m l bedrock2Inv) ->
+                   WeakestPrecondition.cmd funspecs loop_body t m l bedrock2Inv) ->
     (* Assumptions on the compiler level: *)
     forall (instrs: list Instruction) (positions: FlatToRiscvCommon.funname_env Z),
     compile_prog ml (map.of_list funimplsList) = Some (instrs, positions) ->
@@ -204,7 +207,7 @@ Section Connect.
       exists (t': list Event), KamiLabelSeqR t t' /\
                                exists (suffix: list Event), goodTraceE (suffix ++ t').
   Proof.
-    intros *. intros Establish Preserve. intros *. intros C V M. intros *. intros B.
+    intros *. intros GetInit Establish GetLoop Preserve. intros *. intros C V M. intros *. intros B.
 
     set (traceProp := fun (t: list Event) =>
                         exists (suffix: list Event), goodTraceE (suffix ++ t)).
@@ -237,13 +240,15 @@ Section Connect.
       subst.
       ssplit.
       + (* 3) bedrock2 semantics to bedrock2 program logic *)
-        constructor.
+        econstructor.
         * exact V.
+        * exact GetInit.
         * intros.
           eapply ExprImp.weaken_exec.
           -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
                eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
+        * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
           eapply ExprImp.weaken_exec.
           -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);

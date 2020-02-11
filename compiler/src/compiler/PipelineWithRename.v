@@ -481,22 +481,23 @@ Section Pipeline1.
   Lemma compiler_correct: forall
       (ml: MemoryLayout Semantics.width)
       (mlOk: MemoryLayoutOk ml)
-      (f_entry_name : string)
+      (f_entry_name : string) (fbody: Syntax.cmd.cmd)
       (p_call: word)
       (Rdata Rexec : mem -> Prop)
       (functions: source_env)
       (instrs: list Instruction)
       (pos_map: funname_env Z)
       (mH: mem) (mc: MetricLog)
-      (postH: Semantics.trace -> Semantics.mem -> Semantics.locals -> MetricLog -> Prop)
+      (postH: Semantics.trace -> Semantics.mem -> Prop)
       (initial: MetricRiscvMachine),
       ExprImp.valid_funs functions ->
       compile ml functions = Some (instrs, pos_map) ->
-      Semantics.exec functions (Syntax.cmd.call nil f_entry_name nil) initial.(getLog) mH map.empty mc postH ->
+      map.get functions f_entry_name = Some (nil, nil, fbody) ->
+      Semantics.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
       machine_ok ml.(code_start) ml.(stack_pastend) instrs
                  p_call p_call mH Rdata Rexec initial ->
-      runsTo initial (fun final => exists mH' lH' mcH',
-          postH final.(getLog) mH' lH' mcH' /\
+      runsTo initial (fun final => exists mH',
+          postH final.(getLog) mH' /\
           machine_ok ml.(code_start) ml.(stack_pastend) instrs
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
@@ -515,9 +516,18 @@ Section Pipeline1.
     - pose proof sim as P. unfold simulation, ExprImp.SimState, ExprImp.SimExec in P.
       specialize (P ml f_entry_rel_pos f_entry_name p_call Rdata Rexec
                     (functions, (Syntax.cmd.call [] f_entry_name []), initial.(getLog), mH, map.empty, mc)).
-      specialize P with (post1 := fun '(e', c', t', m', l', mc') => postH t' m' l' mc').
+      specialize P with (post1 := fun '(e', c', t', m', l', mc') => postH t' m').
       simpl in P.
-      eapply P; clear P. 2: eassumption.
+      eapply P; clear P. 2: {
+        econstructor.
+        + eassumption.
+        + reflexivity.
+        + unfold map.of_list_zip, map.putmany_of_list_zip. reflexivity.
+        + eassumption.
+        + intros. exists nil. split; [reflexivity|].
+          exists map.empty. split; [reflexivity|].
+          eassumption.
+      }
       unfold compile, composePhases, renamePhase, flattenPhase in *. simp.
       unfold related, compose_relation.
       unfold FlatToRiscvSimulation.related, FlattenExprSimulation.related, RegRename.related.
@@ -553,38 +563,22 @@ Section Pipeline1.
           - clear. unfold bytes_per_word, Memory.bytes_per.
             destruct width_cases as [E | E]; rewrite E; reflexivity.
         }
-        unfold map.of_list_zip in *.
-        match goal with
-        | H: map.putmany_of_list_zip _ _ _ = _ |- _ => pose proof (map.putmany_of_list_zip_nil_values _ _ _ H)
-        end.
-        subst.
-        (* TODO we need to get "rets = []", either by a precondition or by making sure
-           Semantics.exec.exec never goes to empty sets *)
-
-        assert (map.get r0 f_entry_name <> None) as GetFlatF. {
-          (* TODO we need the actual values, and preserve emptyness of arg/ret lists *)
-          eapply (map.map_all_values_not_None_fw _ _ _ _ _ E0).
-          eapply (map.map_all_values_not_None_fw _ _ _ _ _ E).
-          match goal with
-          | |- ?x <> None => destr x
-          end.
-          1: congruence.
-          exfalso.
-          match goal with
-          | H: map.get functions _ = Some _, H': _ = None |- _ => pose proof (eq_trans (eq_sym H) H')
-          end.
-          discriminate.
-        }
-        match type of GetFlatF with
-        | ?x <> None => destr x; try congruence; clear GetFlatF
-        end.
+        destruct (map.map_all_values_fw _ _ _ _ E _ _ H1) as [ [ [args' rets'] fbody' ] [ F G ] ].
+        unfold flatten_function in F. simp.
+        epose proof (map.map_all_values_fw _ _ _ _ E0 _ _ G) as [ [ [args' rets'] fbody' ] [ F G' ] ].
+        unfold rename_fun in F. simp.
+        apply_in_hyps rename_binds_preserves_length.
+        destruct rets'; [|discriminate].
+        destruct args'; [|discriminate].
         repeat match goal with
                | H: _ |- _ => autoforward with typeclass_instances in H
                end.
-        destruct p0 as [ [? ?] ? ].
-        eapply fits_stack_monotone. 2: eassumption.
         econstructor. 1: eassumption.
-        eapply stack_usage_correct. all: case TODO_sam. }
+        eapply fits_stack_monotone. 2: {
+          apply Z.sub_le_mono_r.
+          eassumption.
+        }
+        eapply stack_usage_correct; eassumption. }
       { unfold good_e_impl.
         intros.
         simpl in *.
@@ -641,7 +635,7 @@ Section Pipeline1.
              end.
       unfold FlatToRiscvSimulation.related, FlattenExprSimulation.related, RegRename.related, goodMachine in *.
       simp.
-      do 3 eexists. split. 1: eassumption.
+      eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
       + case TODO_sam. (* separation logic *)
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
