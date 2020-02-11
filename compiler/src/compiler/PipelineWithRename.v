@@ -416,6 +416,7 @@ Section Pipeline1.
            Jal RegisterNames.ra (word.unsigned (word.sub p_code p_call))]]) *
        Rdata * Rexec * eq mH
       )%sep mach.(getMem) /\
+      word.unsigned (mach.(getPc)) mod 4 = 0 /\
       mach.(getPc) = pc /\
       mach.(getNextPc) = word.add mach.(getPc) (word.of_Z 4) /\
       regs_initialized mach.(getRegs) /\
@@ -488,12 +489,42 @@ Section Pipeline1.
       { reflexivity. }
       { intros. ssplit; reflexivity. }
       { simpl. do 2 eexists. reflexivity. }
-      { case TODO_sam. (* how to get rid of SSkip? *) }
-      { case TODO_sam. (* divisible by 4 *) }
-      { case TODO_sam. (* divisible by 4 *) }
+      { reflexivity. }
+      { unfold machine_ok in *. simp. solve_divisibleBy4. }
+      { destruct mlOk. assumption. }
       { unfold riscvPhase in *. simp. exact GetPos. }
       { simpl. unfold riscvPhase in *. simpl in *. simp.
-        case TODO_sam. (* stack usage *) }
+        move E1 at bottom.
+        eapply fits_stack_seq. 1: eapply fits_stack_skip. {
+          eapply Z.div_pos.
+          - eapply proj1. eapply word.unsigned_range.
+          - clear. unfold bytes_per_word, Memory.bytes_per.
+            destruct width_cases as [E | E]; rewrite E; reflexivity.
+        }
+        assert (map.get r0 f_entry_name <> None) as GetFlatF. {
+          (* TODO we need the actual values, and preserve emptyness of arg/ret lists *)
+          eapply (map.map_all_values_not_None_fw _ _ _ _ _ E0).
+          eapply (map.map_all_values_not_None_fw _ _ _ _ _ E).
+          match goal with
+          | |- ?x <> None => destr x
+          end.
+          1: congruence.
+          exfalso.
+          match goal with
+          | H: map.get functions _ = Some _, H': _ = None |- _ => pose proof (eq_trans (eq_sym H) H')
+          end.
+          discriminate.
+        }
+        match type of GetFlatF with
+        | ?x <> None => destr x; try congruence; clear GetFlatF
+        end.
+        repeat match goal with
+               | H: _ |- _ => autoforward with typeclass_instances in H
+               end.
+        destruct p0 as [ [? ?] ? ].
+        eapply fits_stack_monotone. 2: eassumption.
+        econstructor. 1: eassumption.
+        eapply stack_usage_correct. all: case TODO_sam. }
       { unfold good_e_impl.
         intros.
         simpl in *.
@@ -552,8 +583,12 @@ Section Pipeline1.
       simp.
       do 3 eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
-      case TODO_sam. (* separation logic *)
-    Unshelve. exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
+      + case TODO_sam. (* separation logic *)
+      + destr_RiscvMachine final. subst. solve_divisibleBy4.
+    Unshelve.
+    all: try exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
+    all: try (simpl; typeclasses eauto).
+    all: try exact EmptyString.
   Qed.
 
 End Pipeline1.

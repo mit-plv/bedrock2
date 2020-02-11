@@ -337,6 +337,7 @@ Section Pipeline1.
              | |- _ => reflexivity
              end.
       + case TODO_sam.
+      + destruct mlOk. solve_divisibleBy4.
       + solve_word_eq word_ok.
       + eapply @regs_initialized_put; try typeclasses eauto. (* PARAMRECORDS? *)
         eassumption.
@@ -410,6 +411,7 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
+      + destruct mlOk. subst. simpl in *. subst loop_pos. solve_divisibleBy4.
       + solve_word_eq word_ok.
       + subst. case TODO_sam. (* show that backjump preserves valid_machine *)
     - unfold ll_good, machine_ok.

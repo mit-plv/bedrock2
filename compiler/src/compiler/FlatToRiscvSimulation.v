@@ -58,7 +58,7 @@ Section Sim.
   Definition related(done: bool):
     FlatImp.SimState Z -> MetricRiscvMachine -> Prop :=
     fun '(e, c, t, m, l, mc) st =>
-        c = SCall nil f_entry_name nil /\
+        c = SSeq SSkip (SCall nil f_entry_name nil) /\
         (word.unsigned p_call) mod 4 = 0 /\
         (word.unsigned code_start) mod 4 = 0 /\
         map.get (function_positions e) f_entry_name = Some f_entry_rel_pos /\
@@ -75,6 +75,10 @@ Section Sim.
     intros.
     destruct s1 as (((((e & c) & t) & m) & l) & mc).
     destruct_RiscvMachine s2.
+    simp.
+    match goal with
+    | A: _, H: mid _ _ _ _ |- _ => specialize A with (1 := H)
+    end.
     simp.
     match goal with
     | A: map.get e f_entry_name = Some ?r1, B: map.get e f_entry_name = Some ?r2 |- _ =>
@@ -125,7 +129,7 @@ Section Sim.
              | _ => eassumption
              | _ => reflexivity
              end.
-      + unfold goodMachine in *. simp. eauto using fits_stack_call.
+      + unfold goodMachine in *. simp. eauto using fits_stack_call, fits_stack_skip, fits_stack_seq.
       + (* TODO remove regs_initialized from compile_stmt_correct_new because
            it's already in goodMachine *)
         unfold goodMachine in *. simp. assumption.
