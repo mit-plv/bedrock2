@@ -14,6 +14,10 @@ Definition to_c_parameters : ToCString.parameters := {|
              match op with
              | add => e1++"+"++e2
              | sub => e1++"-"++e2
+             | mul => e1++"*"++e2
+             | mulhuu => "sizeof(intptr_t) == 4 ? ((uint64_t)"++e1++"*"++e2++")>>32 : ((__uint128_t)"++e1++"*"++e2++")>>64 /* TODO this has not been tested */"
+             | divu => e1++"/"++e2
+             | remu => e1++"%"++e2
              | and => e1++"&"++e2
              | or => e1++"|"++e2
              | xor => e1++"^"++e2

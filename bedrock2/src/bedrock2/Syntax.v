@@ -3,7 +3,7 @@ Require Coq.Strings.String.
 Require Import Coq.Numbers.BinNums.
 
 Module Import bopname.
-  Inductive bopname := add | sub | and | or | xor | sru | slu | srs | lts | ltu | eq.
+  Inductive bopname := add | sub | mul | mulhuu | divu | remu | and | or | xor | sru | slu | srs | lts | ltu | eq.
 End bopname.
 Notation bopname := bopname.bopname.
 

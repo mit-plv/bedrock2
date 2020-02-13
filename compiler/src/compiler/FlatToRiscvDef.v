@@ -118,6 +118,10 @@ Section FlatToRiscv1.
     match op with
     | Syntax.bopname.add => [[Add rd rs1 rs2]]
     | Syntax.bopname.sub => [[Sub rd rs1 rs2]]
+    | Syntax.bopname.mul => [[Mul rd rs1 rs2]]
+    | Syntax.bopname.mulhuu => [[Mulhu rd rs1 rs2]]
+    | Syntax.bopname.divu => [[Divu rd rs1 rs2]]
+    | Syntax.bopname.remu => [[Remu rd rs1 rs2]]
     | Syntax.bopname.and => [[And rd rs1 rs2]]
     | Syntax.bopname.or  => [[Or  rd rs1 rs2]]
     | Syntax.bopname.xor => [[Xor rd rs1 rs2]]
