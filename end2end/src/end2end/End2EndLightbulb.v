@@ -38,12 +38,6 @@ Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 Local Instance parameters : FE310CSemantics.parameters := ltac:(esplit; exact _).
 Local Axiom TODO_andres: False.
 
-Definition lightbulb_packet_rep: bool -> list Byte.byte -> Prop.
-  intros command bytes.
-  refine (lightbulb_packet_rep command (_ bytes)).
-  all : eapply id.
-Defined.
-
 Definition traceOfBoot (t : list (lightbulb_spec.OP Semantics.word)) : Prop :=
   lightbulb_boot_success FE310CSemantics.parameters.word t
   \/  lan9250_boot_timeout FE310CSemantics.parameters.word t
@@ -61,17 +55,10 @@ Definition traceOfOneInteraction: list (lightbulb_spec.OP Semantics.word) -> Pro
 Definition goodHlTrace: list (lightbulb_spec.OP Semantics.word) -> Prop :=
   traceOfBoot +++ traceOfOneInteraction ^*.
 
-Definition relate_lightbulb_trace_to_bedrock(ioh: list (lightbulb_spec.OP Semantics.word))
-                                            (iol : Semantics.trace): Prop.
-  refine (SPI.mmio_trace_abstraction_relation (_ ioh) (_ iol)).
-  all: eapply id.
-  (* this should not be needed any more once lightbulb proofs are for generic word *)
-Defined.
-
 Definition spec: ProgramSpec := {|
   datamem_start := ml.(heap_start);
   datamem_pastend := ml.(heap_pastend);
-  goodTrace iol := exists ioh, relate_lightbulb_trace_to_bedrock ioh iol /\
+  goodTrace iol := exists ioh, SPI.mmio_trace_abstraction_relation ioh iol /\
                                goodHlTrace ioh;
   isReady t m := exists buf R,
     (Separation.sep (Array.array Scalars.scalar8 (word.of_Z 1) (word.of_Z buffer_addr) buf) R) m /\
@@ -84,17 +71,17 @@ Proof.
 Qed.
 
 Lemma relate_concat: forall ioh1 ioh2 iol1 iol2,
-    relate_lightbulb_trace_to_bedrock ioh1 iol1 ->
-    relate_lightbulb_trace_to_bedrock ioh2 iol2 ->
-    relate_lightbulb_trace_to_bedrock (ioh2 ++ ioh1) (iol2 ++ iol1)%list.
+    SPI.mmio_trace_abstraction_relation ioh1 iol1 ->
+    SPI.mmio_trace_abstraction_relation ioh2 iol2 ->
+    SPI.mmio_trace_abstraction_relation  (ioh2 ++ ioh1) (iol2 ++ iol1)%list.
 Proof.
-  cbv [relate_lightbulb_trace_to_bedrock SPI.mmio_trace_abstraction_relation id].
+  cbv [SPI.mmio_trace_abstraction_relation SPI.mmio_trace_abstraction_relation id].
   eauto using Forall2_app.
 Qed.
 
-Lemma relate_nil: relate_lightbulb_trace_to_bedrock [] [].
+Lemma relate_nil:  SPI.mmio_trace_abstraction_relation [] [].
 Proof.
-  cbv [relate_lightbulb_trace_to_bedrock SPI.mmio_trace_abstraction_relation id].
+  cbv [SPI.mmio_trace_abstraction_relation id].
   eauto using Forall2_nil.
 Qed.
 
@@ -237,7 +224,7 @@ Lemma end2end_lightbulb:
       (exists (suffix : list KamiRiscv.Event) (bedrockTrace : list RiscvMachine.LogItem),
           KamiRiscv.traces_related (suffix ++ t') bedrockTrace /\
           (exists ioh : list (lightbulb_spec.OP _),
-              relate_lightbulb_trace_to_bedrock ioh bedrockTrace /\ goodHlTrace ioh)).
+              SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace ioh)).
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
@@ -254,7 +241,7 @@ Proof.
   - reflexivity.
   - cbv. repeat constructor; cbv; intros; intuition congruence.
   - intros. clear KB memInit. simp.
-    unfold relate_lightbulb_trace_to_bedrock, SPI.mmio_trace_abstraction_relation in *.
+    unfold SPI.mmio_trace_abstraction_relation in *.
     unfold id in *.
     eauto using iohi_to_iolo.
   - reflexivity.
