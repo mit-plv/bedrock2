@@ -61,6 +61,17 @@ Section ListPred.
       rewrite ?List.app_nil_r, ?List.app_assoc;
       try constructor; eauto.
   Qed.
+
+  Lemma concat_kleene_r_app (P Q:_->Prop) a b :
+    Q b ->
+    (concat P (kleene Q)) a ->
+    (concat P (kleene Q)) (b ++ a).
+  Proof.
+    intros ? (?&?&?&?&?); subst.
+    rewrite app_assoc.
+    eapply concat_app, kleene_app; eauto.
+    rewrite <-app_nil_l; eauto using kleene_step, kleene_empty.
+  Qed.
 End ListPred.
 
 Module TracePredicateNotations.

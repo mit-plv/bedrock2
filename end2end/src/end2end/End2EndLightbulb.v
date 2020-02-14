@@ -203,17 +203,20 @@ Lemma end2end_lightbulb:
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
-  specialize_first Q compilation_result.
   specialize_first Q spec.
   specialize_first Q mlOk.
   specialize_first Q instrMemSizeLg_bounds.
   intros *. intro KB.
   specialize_first Q memInit.
+  specialize_first Q funimplsList.
+  specialize_first Q open_constr:(eq_refl).
+  specialize_first Q open_constr:(eq_refl).
+  specialize_first Q open_constr:(eq_refl).
   specialize_first Q KB.
+  specialize_first Q compilation_result.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
   eapply Q; clear Q.
-  - reflexivity.
   - cbv. repeat constructor; cbv; intros; intuition congruence.
   - intros. clear KB memInit. simp.
     unfold SPI.mmio_trace_abstraction_relation in *.
@@ -224,10 +227,12 @@ Proof.
     repeat ProgramLogic.straightline.
     refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _);
       [|exact (link_lightbulb_init m nil)].
+
     intros ? ? ? ?.
     repeat ProgramLogic.straightline.
     unfold hl_inv, isReady, goodTrace, goodHlTrace, traceOfBoot.
     case TODO_andres.
+
   - reflexivity.
   - (* preserve invariant *)
     intros.
@@ -242,12 +247,22 @@ Proof.
     specialize_first P Hlr.
     refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _);
       [|exact P]; clear P.
+
     intros ? ? ? ?.
     Simp.simp.
     repeat ProgramLogic.straightline.
     split; eauto.
     destruct Hrr0rr; Simp.simp;
       (eexists; split; [eapply Forall2_app; eauto|]).
-    1,2: case TODO_andres.
+    1,2: apply concat_kleene_r_app; eauto; Simp.simp.
+    { left. left. left. left. eauto. }
+    destruct H; Simp.simp.
+    { left. left. left. right. eauto. }
+    destruct H; Simp.simp.
+    { left. left. right. eauto. }
+    destruct H; Simp.simp.
+    { left. right. eauto. }
+    right. eauto.
+
   - exact funs_valid.
 Time Qed. (* takes more than 25s *)
