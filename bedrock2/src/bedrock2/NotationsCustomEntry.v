@@ -92,8 +92,7 @@ Notation "'while' e { c }" := (while e c%bedrock_nontail)
   (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
   format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
 
-(* COQBUG(9517) *)
-Notation "x = ( e )" := (set x e) (in custom bedrock_cmd at level 0, x constr at level 0, e custom bedrock_expr).
+Notation "x = ( e )" := (set x e) (in custom bedrock_cmd at level 0, x custom bedrock_cmd, e custom bedrock_expr).
 (* DRAFT: *)
 Notation "/*skip*/" := skip (in custom bedrock_cmd).
 Notation "store1( a , v )" := (store access_size.one a v)
