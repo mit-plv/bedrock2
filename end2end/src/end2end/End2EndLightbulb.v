@@ -70,39 +70,6 @@ Proof.
   constructor; try reflexivity; try (cbv; discriminate).
 Qed.
 
-Lemma relate_concat: forall ioh1 ioh2 iol1 iol2,
-    SPI.mmio_trace_abstraction_relation ioh1 iol1 ->
-    SPI.mmio_trace_abstraction_relation ioh2 iol2 ->
-    SPI.mmio_trace_abstraction_relation  (ioh2 ++ ioh1) (iol2 ++ iol1)%list.
-Proof.
-  cbv [SPI.mmio_trace_abstraction_relation SPI.mmio_trace_abstraction_relation id].
-  eauto using Forall2_app.
-Qed.
-
-Lemma relate_nil:  SPI.mmio_trace_abstraction_relation [] [].
-Proof.
-  cbv [SPI.mmio_trace_abstraction_relation id].
-  eauto using Forall2_nil.
-Qed.
-
-Lemma goodHlTrace_addOne: forall iohNew ioh,
-    traceOfOneInteraction iohNew ->
-    goodHlTrace ioh ->
-    goodHlTrace (iohNew ++ ioh).
-Proof.
-  cbv [goodHlTrace].
-  intros ? ? ? (?&?&?&?&?); subst.
-  rewrite app_assoc.
-  eapply concat_app, kleene_app; eauto.
-  rewrite <-app_nil_l; eauto using kleene_step, kleene_empty.
-Qed.
-
-Ltac destr :=
-  repeat match goal with
-         | A: exists x, _ |- _ => let x' := fresh x in destruct A as [x' ?]
-         | A: _ /\ _ |- _ => destruct A as [? ?]
-         end.
-
 Definition p4mm memSizeLg (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                                (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
@@ -112,9 +79,12 @@ From coqutil Require Import Z_keyed_SortedListMap.
 Local Existing Instance SortedListString.map.
 Local Existing Instance SortedListString.ok.
 
-Instance pipeline_params: PipelineWithRename.Pipeline.parameters.
-eapply @End2EndPipeline.pipeline_params; try exact _.
-Defined.
+Instance pipeline_params: PipelineWithRename.Pipeline.parameters :=
+  @End2EndPipeline.pipeline_params
+    (Zkeyed_map FE310CSemantics.parameters.word)
+    (Zkeyed_map_ok FE310CSemantics.parameters.word)
+    FE310CSemantics.parameters.mem
+    FE310CSemantics.parameters.mem_ok.
 
 Instance semantics_parameters_ok : Semantics.parameters_ok
   (FlattenExprDef.FlattenExpr.mk_Semantics_params
@@ -124,6 +94,11 @@ Proof.
   eapply @PipelineWithRename.FlattenExpr_hyps.
   eapply @pipeline_assumptions; try exact _.
 Qed.
+
+Local Definition parameters_match :
+  (FlattenExprDef.FlattenExpr.mk_Semantics_params
+    PipelineWithRename.Pipeline.FlattenExpr_parameters)
+  = FE310CSemantics.semantics_parameters := eq_refl.
 
 Open Scope string_scope.
 
@@ -246,55 +221,33 @@ Proof.
     eauto using iohi_to_iolo.
   - reflexivity.
   - (* establish invariant *)
-    intros.
     repeat ProgramLogic.straightline.
-    subst args.
-    eapply WeakestPreconditionProperties.Proper_call.
-    2: {
-      pose proof link_lightbulb_init as P.
-      cbv [spec_of_lightbulb_init] in P.
-      specialize (P m nil).
-      (*
-      subst a.
-      Time rewrite app_nil_r. (* 1.7s*)
-      eexists _; split; [eassumption|].
-      rename x1 into TRACE.
-      cbv [relate_lightbulb_trace_to_bedrock goodHlTrace id].
-      assert (traceOfBoot TRACE) by
-        (cbv [traceOfBoot]; destruct H3 as [[]|[[]|[]]]; eauto); clear H3.
-      revert H; case TODO_andres.
-      *)
-      case TODO_andres. (* bridge between "init" and "init_loop" *)
-    }
+    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _);
+      [|exact (link_lightbulb_init m nil)].
     intros ? ? ? ?.
+    repeat ProgramLogic.straightline.
+    unfold hl_inv, isReady, goodTrace, goodHlTrace, traceOfBoot.
     case TODO_andres.
   - reflexivity.
   - (* preserve invariant *)
     intros.
-    unfold hl_inv, goodTrace, isReady in *. specialize (H (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
-    (* TODO make Simp.simp work here *)
-    destruct H as [ [ buf [R [Sep L] ] ] H ].
-    destruct H as [ioh [Rel G] ].
+    specialize (H ltac:(repeat constructor)).
+    unfold hl_inv, isReady, goodTrace, goodHlTrace, traceOfOneInteraction in *.
+    Simp.simp.
+    repeat ProgramLogic.straightline.
     pose proof link_lightbulb_loop as P.
     cbv [spec_of_lightbulb_loop] in P.
-    specialize_first P Sep.
-    specialize_first P L.
+    specialize_first P Hll.
+    specialize_first P t0.
+    specialize_first P Hlr.
+    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _);
+      [|exact P]; clear P.
+    intros ? ? ? ?.
+    Simp.simp.
     repeat ProgramLogic.straightline.
-    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _); cycle 1.
-    + eapply P.
-    + cbv [Morphisms.Proper Morphisms.pointwise_relation Morphisms.respectful Basics.impl].
-      intros ? ? ? ?.
-      (*
-      destruct H3 as [ C | [C | [C | [C | C ] ] ] ]; (split; [|reflexivity]);
-        destr; eexists (ioh0 ++ ioh)%list;
-          (split;
-           [ eapply relate_concat; assumption
-           | apply goodHlTrace_addOne;
-             [unfold traceOfOneInteraction, choice; eauto 10
-             | exact G]]). *)
-      case TODO_andres.
+    split; eauto.
+    destruct Hrr0rr; Simp.simp;
+      (eexists; split; [eapply Forall2_app; eauto|]).
+    1,2: case TODO_andres.
   - exact funs_valid.
-
-    Unshelve.
-    all: try intros; exact True.
-Time Qed. (* takes more than 150s *)
+Time Qed. (* takes more than 25s *)

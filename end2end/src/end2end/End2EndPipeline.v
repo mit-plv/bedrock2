@@ -187,7 +187,7 @@ Section Connect.
     (* Assumptions on the program logic level: *)
     forall init_code loop_body,
     map.get (map.of_list funimplsList) "init"%string = Some ([], [], init_code) ->
-    (forall m, WeakestPrecondition.cmd funspecs init_code [] m map.empty bedrock2Inv) ->
+    (forall m, mem_available ml.(heap_start) ml.(heap_pastend) m -> WeakestPrecondition.cmd funspecs init_code [] m map.empty bedrock2Inv) ->
     map.get (map.of_list funimplsList) "loop"%string = Some ([], [], loop_body) ->
     (forall t m l, bedrock2Inv t m l ->
                    WeakestPrecondition.cmd funspecs loop_body t m l bedrock2Inv) ->
@@ -245,8 +245,11 @@ Section Connect.
         * exact GetInit.
         * intros.
           eapply ExprImp.weaken_exec.
-          -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
+          -- 
+             rewrite ?heap_start_agree, ?heap_pastend_agree in *.
+             refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
                eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
