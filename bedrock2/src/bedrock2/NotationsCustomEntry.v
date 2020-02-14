@@ -93,7 +93,7 @@ Notation "'while' e { c }" := (while e c%bedrock_nontail)
   format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
 
 (* COQBUG(9517) *)
-Notation "x = ( e )" := (set x e) (in custom bedrock_cmd at level 0, x constr at level 0, e custom bedrock_expr).
+Notation "x = ( e )" := (set x e) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr).
 (* DRAFT: *)
 Notation "/*skip*/" := skip (in custom bedrock_cmd).
 Notation "store1( a , v )" := (store access_size.one a v)
@@ -181,8 +181,10 @@ Module test.
   Local Notation "1" := (expr.literal 1) (in custom bedrock_expr).
 
   Goal True.
-  epose (fun x => bedrock_cmd:( store1(1<<(1+1+1), 1+1) ; if 1 { store1(1,1) } ; constr:(_) = (1) )).
-  epose (fun a => bedrock_cmd:( if 1 { constr:(_) = (1);  constr:(_) = (a) } )).
+  assert (x : String.string) by constructor.
+  epose (fun x => bedrock_cmd:( store1(1<<(1+1+1), 1+1) ; if 1 { store1(1,1) } ; x = (1) )).
+  epose (fun a => bedrock_cmd:( if 1 { x = (1);  x = (a) } )).
+  epose (let y := x in fun a => bedrock_cmd:( if 1 { x = (1);  y = (a) } )).
   epose (fun a => bedrock_cmd:( a (1+1 , 1+1,1, 1 ) )).
   epose (fun a => bedrock_cmd:( a (1+1 , 1+1,1, 1 ,1 ) )).
   epose (fun a => bedrock_cmd:( a (1+1 , 1+1,1, 1,1,1 ) )).
@@ -211,27 +213,27 @@ Module test.
 
   assert_fails (epose bedrock_func_body:(
     if (1) { require (1 ^ 1) else { constr:(_) }; constr:(_)  } ;
-    { constr:(_) = (constr:(_))}
+    { x = (constr:(_))}
   )).
 
   assert_fails (epose bedrock_func_body:(
     if (1) { require !(1 ^ 1) else { constr:(_) }; constr:(_)  }
     else { constr:(_) };
-    constr:(_) = (constr:(_))
+    x = (constr:(_))
   )).
 
   assert_fails (epose bedrock_func_body:(
     if (1) { constr:(_)  } else { require (1 ^ 1) else { constr:(_) }; constr:(_) };
-    { constr:(_) = (constr:(_))}
+    { x = (constr:(_))}
   )).
 
   assert_fails (epose bedrock_func_body:(
     while (1) { require (1 ^ 1) else { constr:(_) }; constr:(_) };
-    { constr:(_) = (constr:(_))}
+    { x = (constr:(_))}
   )).
 
   assert_fails (epose bedrock_func_body:(
-    while (1) { require (1 ^ 1) else { constr:(_) }; constr:(_) = (constr:(_)) }
+    while (1) { require (1 ^ 1) else { constr:(_) }; x = (constr:(_)) }
   )).
 
   let lhs := open_constr:( bedrock_func_body:(
