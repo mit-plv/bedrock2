@@ -36,7 +36,6 @@ Definition ml: MemoryLayout Semantics.width := {|
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
 Local Instance parameters : FE310CSemantics.parameters := ltac:(esplit; exact _).
-Local Axiom TODO_andres: False.
 
 Definition traceOfBoot (t : list (lightbulb_spec.OP Semantics.word)) : Prop :=
   lightbulb_boot_success FE310CSemantics.parameters.word t
@@ -230,8 +229,23 @@ Proof.
 
     intros ? ? ? ?.
     repeat ProgramLogic.straightline.
-    unfold hl_inv, isReady, goodTrace, goodHlTrace, traceOfBoot.
-    case TODO_andres.
+    unfold mem_available, hl_inv, isReady, goodTrace, goodHlTrace, traceOfBoot, buffer_addr, ml, code_start, heap_start, heap_pastend in *; Simp.simp.
+
+    split.
+    1: {
+      change (BinIntDef.Z.of_nat (Datatypes.length anybytes) = 4096) in Hl.
+      rewrite word.of_Z_unsigned.
+      rewrite <-(firstn_skipn 1520 anybytes) in Hr.
+      SeparationLogic.seprewrite_in @Array.bytearray_append Hr.
+      SeparationLogic.seprewrite_in @SeparationLogic.sep_emp_True_r Hr0.
+      eexists _, _; split;
+        [exact Hr1|rewrite List.length_firstn_inbounds; blia]. }
+    subst a; rewrite app_nil_r.
+    eexists; split; eauto.
+    change x1 with (List.app nil x1).
+    eapply concat_app, kleene_empty.
+    destruct H4; Simp.simp; eauto.
+    destruct H; Simp.simp; eauto.
 
   - reflexivity.
   - (* preserve invariant *)
