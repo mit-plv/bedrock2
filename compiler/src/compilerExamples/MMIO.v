@@ -247,7 +247,7 @@ Section MMIO1.
       x <> y.
   Proof.
     intros.
-    unfold isMMIOAddr, FE310_mmio, isOTP,isPRCI, isGPIO0, isUART0 in *.
+    unfold isMMIOAddr, FE310_mmio, isOTP,isPRCI, isGPIO0, isUART0, isSPI1 in *.
     unfold Ox in *. simpl in *.
     ssplit.
     all: intro C.

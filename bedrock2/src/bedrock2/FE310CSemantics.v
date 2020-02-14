@@ -33,7 +33,8 @@ Section WithParameters.
     Ox "00020000" <= word.unsigned addr < Ox "00022000" \/
     Ox "10008000" <= word.unsigned addr < Ox "10010000" \/
     Ox "10012000" <= word.unsigned addr < Ox "10013000" \/
-    Ox "10013000" <= word.unsigned addr < Ox "10014000".
+    Ox "10013000" <= word.unsigned addr < Ox "10014000" \/
+    Ox "10024000" <= word.unsigned addr < Ox"10025000".
   (* FIXME: this is a copypaste from [riscv.Platform.FE310ExtSpec.FE310_mmio] *)
   Definition isMMIOAligned (n : nat) (addr : parameters.word) :=
     n = 4%nat /\ word.unsigned addr mod 4 = 0.

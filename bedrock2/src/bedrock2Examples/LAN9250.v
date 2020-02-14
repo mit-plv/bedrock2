@@ -11,8 +11,6 @@ Local Coercion name_of_func (f : function) := fst f.
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
-Local Axiom TODO_andres_mmioaddr : False.
-
 Definition lan9250_readword : function :=
   let addr : String.string := "addr" in
   let ret : String.string := "ret" in
@@ -359,12 +357,18 @@ Section WithParameters.
   Proof.
     repeat t.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    1:case TODO_andres_mmioaddr.
+    { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
+      rewrite !word.unsigned_of_Z; cbv [word.wrap].
+      split; [|exact eq_refl]; clear.
+      cbv -[Z.le Z.lt]. Lia.lia. }
     repeat straightline; split; trivial.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    1:case TODO_andres_mmioaddr.
+    { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
+      rewrite !word.unsigned_of_Z; cbv [word.wrap].
+      split; [|exact eq_refl]; clear.
+      cbv -[Z.le Z.lt]. Lia.lia. }
     repeat straightline; split; trivial.
     repeat straightline.
 
@@ -447,7 +451,10 @@ Section WithParameters.
     t.
     t.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    1:case TODO_andres_mmioaddr.
+    { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
+      rewrite !word.unsigned_of_Z; cbv [word.wrap].
+      split; [|exact eq_refl]; clear.
+      cbv -[Z.le Z.lt]. Lia.lia. }
     t.
     t.
     t.
@@ -460,7 +467,10 @@ Section WithParameters.
     t.
     t.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    1:case TODO_andres_mmioaddr.
+    { subst addr addr0. cbv [isMMIOAddr SPI_CSMODE_ADDR].
+      rewrite !word.unsigned_of_Z; cbv [word.wrap].
+      split; [|exact eq_refl]; clear.
+      cbv -[Z.le Z.lt]. Lia.lia. }
     repeat t.
 
     do 6 letexists.
@@ -722,8 +732,13 @@ Section WithParameters.
     all: try (eexists _, _; split; trivial).
     all: try (exact eq_refl).
     all: auto.
-    all : try match goal with |- isMMIOAddr _ => case TODO_andres_mmioaddr end.
-    all : try match goal with |- word.unsigned _ mod 4 = 0 => case TODO_andres_mmioaddr end.
+    1,2: subst addr.
+    3,4: subst addr0.
+    16,17:subst addr1.
+    18,19:subst addr3.
+    1,2,3,4,16,17,18,19: cbv [isMMIOAddr SPI_CSMODE_ADDR];
+      rewrite !word.unsigned_of_Z; cbv [word.wrap];
+      trivial; cbv -[Z.le Z.lt]; Lia.lia.
 
     all : try (
       repeat match goal with x := _ ++ _ |- _ => subst x end;

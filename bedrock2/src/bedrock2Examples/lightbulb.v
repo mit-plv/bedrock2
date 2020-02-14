@@ -1,7 +1,7 @@
 Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
-Require Import bedrock2.FE310CSemantics. (* TODO for andres: [literal] shouldn't need this *)
+Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Macros.symmetry.
 Require Import coqutil.Byte.
 Require Import bedrock2Examples.SPI.
@@ -284,8 +284,6 @@ Section WithParameters.
     Z.bitwise. Btauto.btauto.
   Qed.
 
-  Local Axiom TODO_andres_mmioaddr: False.
-
   Lemma lightbulb_handle_ok : program_logic_goal_for_function! lightbulb_handle.
   Proof.
     repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
@@ -307,11 +305,15 @@ Section WithParameters.
     unshelve (repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec)).
 
     1: letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    1: case TODO_andres_mmioaddr.
+    { subst addr r; cbv [isMMIOAddr];
+      rewrite !word.unsigned_of_Z; split; trivial.
+      cbv -[Z.le Z.lt]. Lia.lia. }
     1: repeat straightline; split; trivial.
     1: repeat straightline; eapply interact_nomem; repeat straightline.
     1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    1: case TODO_andres_mmioaddr.
+    { subst addr r; cbv [isMMIOAddr];
+      rewrite !word.unsigned_of_Z; split; trivial.
+      cbv -[Z.le Z.lt]. Lia.lia. }
     1: repeat straightline; split; trivial.
 
     1: repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).

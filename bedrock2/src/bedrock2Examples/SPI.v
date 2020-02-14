@@ -110,8 +110,6 @@ Section WithParameters.
          morphism (Properties.word.ring_morph (word := Semantics.word)),
          constants [Properties.word_cst]).
 
-  Local Axiom TODO_andres_mmioaddr : False.
-
   Import coqutil.Tactics.letexists.
   Import TailRecursion.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
@@ -161,7 +159,7 @@ Section WithParameters.
       cbv [isMMIOAddr addr].
       rewrite ?word.unsigned_of_Z.
       cbv -[Z.lt Z.gt Z.ge Z.le]; clear.
-      case TODO_andres_mmioaddr. }
+      Lia.lia. }
     repeat straightline. split; trivial.
     letexists. split.
     { repeat straightline. exact eq_refl. }
@@ -224,7 +222,10 @@ Section WithParameters.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    { case TODO_andres_mmioaddr. }
+    { subst addr0. cbv [isMMIOAddr].
+      rewrite !word.unsigned_of_Z; cbv [word.wrap].
+      split; [|exact eq_refl]; clear.
+      cbv -[Z.le Z.lt]. Lia.lia. }
     repeat straightline. split; trivial.
     repeat straightline.
     split; trivial. subst t0.
@@ -303,7 +304,10 @@ Section WithParameters.
       eexists nil; split; try split; solve [constructor]. }
     { eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
       letexists; split; [exact eq_refl|]; split; [split; trivial|].
-      { case TODO_andres_mmioaddr. }
+    { subst addr. cbv [isMMIOAddr].
+      rewrite !word.unsigned_of_Z; cbv [word.wrap].
+      split; [|exact eq_refl]; clear.
+      cbv -[Z.le Z.lt]. Lia.lia. }
       repeat ((split; trivial; []) || straightline || split_if).
       {
         letexists. split; split.
