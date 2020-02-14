@@ -16,6 +16,11 @@ Infix  "<<" := (expr.op slu)  (in custom bedrock_expr at level 3, left associati
 Infix  ">>" := (expr.op sru)  (in custom bedrock_expr at level 3, left associativity). (* DRAFT level *)
 Infix ".>>" := (expr.op srs)  (in custom bedrock_expr at level 3, left associativity). (* DRAFT *)
 
+Infix "*"   := (expr.op mul)  (in custom bedrock_expr at level 4, left associativity).
+
+(* Infix "/" := (expr.op div) (in custom bedrock_expr at level 5, left associativity). (* DRAFT level *) *)
+
+
 Infix "+"   := (expr.op add)  (in custom bedrock_expr at level 6, left associativity).
 Infix "-"   := (expr.op sub)  (in custom bedrock_expr at level 6, left associativity).
 

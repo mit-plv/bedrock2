@@ -72,6 +72,11 @@ Notation "e1 << e2" := (expr.op bopname.slu e1%bedrock_expr e2%bedrock_expr)
 Notation "e1 .& e2" := (expr.op bopname.and e1%bedrock_expr e2%bedrock_expr)
   (at level 40, left associativity) : bedrock_expr.
 
+(* same level:   *    *)
+(* FIXME: intermediate level for  %  /  *)
+Notation "e1 * e2" := (expr.op bopname.mul e1%bedrock_expr e2%bedrock_expr)
+  (at level 40, left associativity) : bedrock_expr.
+
 Notation "e1 + e2" := (expr.op bopname.add e1%bedrock_expr e2%bedrock_expr)
   (at level 50, left associativity) : bedrock_expr.
 Notation "e1 - e2" := (expr.op bopname.sub e1%bedrock_expr e2%bedrock_expr)
