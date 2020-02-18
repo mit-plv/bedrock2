@@ -449,7 +449,7 @@ Section Equiv.
 
   Context (Registers_ok : map.ok Registers).
 
-  Local Lemma wordToN_ZToWord_four:
+  Lemma wordToN_ZToWord_four:
     forall sz, (3 <= sz)%nat -> wordToN (ZToWord sz 4) = 4%N.
   Proof.
     intros.
@@ -463,6 +463,14 @@ Section Equiv.
       blia.
   Qed.
 
+  Lemma wordToN_natToWord_four:
+    forall sz, (3 <= sz)%nat -> wordToN (natToWord sz 4) = 4%N.
+  Proof.
+    intros.
+    rewrite <-ZToWord_Z_of_nat.
+    apply wordToN_ZToWord_four; assumption.
+  Qed.
+
   Lemma pc_related_plus4:
     forall instrMem kdataMem xaddrs,
       (* (forall a, isXAddr4 a xaddrs -> isXAddr4 a kamiXAddrs) -> *)
@@ -471,8 +479,9 @@ Section Equiv.
         isXAddr4 rpc xaddrs ->
         pc_related_when_valid xaddrs kpc rpc ->
         pc_related_when_valid
-          xaddrs (kpc ^+ ZToWord (S (S (BinInt.Z.to_nat instrMemSizeLg))) 4)
-          (word.add rpc (word.of_Z 4)).
+          xaddrs
+          (* (kpc ^+ ZToWord (S (S (BinInt.Z.to_nat instrMemSizeLg))) 4) *)
+          (kpc ^+ $4) (word.add rpc (word.of_Z 4)).
   Proof.
     cbv [pc_related_when_valid]; intros.
     destruct H1.
@@ -483,11 +492,12 @@ Section Equiv.
     red in H2; red.
     cbv [word.add word WordsKami wordW KamiWord.word] in H3.
     cbv [word.add word WordsKami wordW KamiWord.word].
+    clear H0.
 
     assert (instrMemSizeLg = width - 2 \/ instrMemSizeLg < width - 2) by blia.
-    destruct H4; [subst; apply wordToN_inj in H2; subst; reflexivity|].
+    destruct H0; [subst; apply wordToN_inj in H2; subst; reflexivity|].
     clear Hinstr2.
-    rename H4 into Hinstr2.
+    rename H0 into Hinstr2.
 
     assert (wordToN rpc + 4 < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
     { rewrite <-wordToN_ZToWord_four with (sz:= Z.to_nat width) by (simpl; blia).
@@ -517,11 +527,11 @@ Section Equiv.
     rewrite wordToN_wplus_distr.
     2: {
       rewrite H2.
-      rewrite wordToN_ZToWord_four
+      rewrite wordToN_natToWord_four
         by (apply Z2Nat.inj_le in Hinstr1; simpl in Hinstr1; blia).
       assumption.
     }
-    rewrite wordToN_ZToWord_four
+    rewrite wordToN_natToWord_four
       by (apply Z2Nat.inj_le in Hinstr1; simpl in Hinstr1; blia).
     cbv [word.of_Z kofZ].
     rewrite wordToN_wplus_distr.
@@ -535,15 +545,95 @@ Section Equiv.
     congruence.
   Qed.
 
+  Lemma pc_related_jump:
+    forall instrMem kdataMem xaddrs,
+      (* (forall a, isXAddr4 a xaddrs -> isXAddr4 a kamiXAddrs) -> *)
+      RiscvXAddrsSafe instrMemSizeLg memSizeLg instrMem kdataMem xaddrs ->
+      forall kpc rpc,
+        pc_related instrMemSizeLg kpc rpc ->
+        forall kofs rofs,
+          isXAddr4 (word.add rpc rofs) xaddrs ->
+          wordToZ kofs = wordToZ rofs ->
+          pc_related instrMemSizeLg (kpc ^+ kofs) (word.add rpc rofs).
+  Proof.
+    intros.
+    apply H in H1; destruct H1 as [? _].
+    red in H0; red.
+    cbv [word.add word WordsKami wordW KamiWord.word] in H1.
+    cbv [word.add word WordsKami wordW KamiWord.word].
+    case TODO_joonwon.
+  Qed.
+
+  Lemma nat_power_of_two_boundary_shrink:
+    forall n z,
+      - BinInt.Z.of_nat (Nat.pow 2 n) <= z < BinInt.Z.of_nat (Nat.pow 2 n) ->
+      forall m,
+        (n < m)%nat ->
+        - BinInt.Z.of_nat (Nat.pow 2 m) <= z < BinInt.Z.of_nat (Nat.pow 2 m).
+  Proof.
+    intros.
+    destruct H; split.
+    - etransitivity; [|eassumption].
+      rewrite <-Z.opp_le_mono.
+      apply inj_le.
+      apply Nat.pow_le_mono_r; blia.
+    - etransitivity; [eassumption|].
+      apply inj_lt.
+      apply Nat.pow_lt_mono_r; blia.
+  Qed.
+
+  Lemma AddrAligned_consistent:
+    forall a,
+      negb (reg_eqb (MachineWidth:= MachineWidth_XLEN)
+                    (remu a (ZToReg 4)) (ZToReg 0)) = false ->
+      AddrAligned a.
+  Proof.
+    intros.
+    apply Bool.negb_false_iff in H.
+    cbv [reg_eqb MachineWidth_XLEN word.eqb word WordsKami wordW KamiWord.word] in H.
+    apply weqb_sound in H.
+    cbv [remu word.modu riscvZmodu kofZ kunsigned] in H.
+    simpl in H; cbn in H.
+    change (Pos.to_nat 32) with 32%nat in H.
+    match type of H with
+    | _ = ?rhs =>
+      change rhs with (wzero 32) in H;
+        rewrite <-ZToWord_zero in H
+    end.
+    apply f_equal with (f:= @wordToZ _) in H.
+
+    rewrite wordToZ_ZToWord in H.
+    2: {
+      apply nat_power_of_two_boundary_shrink with (n:= 3%nat); [simpl|blia].
+      match goal with
+      | |- _ <= ?z mod 4 < _ =>
+        pose proof (Z.mod_bound_or z 4 ltac:(discriminate)); blia
+      end.
+    }
+    rewrite wordToZ_ZToWord in H
+      by (apply nat_power_of_two_boundary_shrink with (n:= 3%nat); simpl; blia).
+
+    cbv [AddrAligned].
+    apply wordToN_inj.
+    apply N2Z.inj_iff.
+    rewrite unsigned_split1_as_bitSlice.
+    match goal with
+    | |- context [@wordToN ?sz _] => change sz with 32%nat
+    end.
+    rewrite bitSlice_alt by blia.
+    cbv [bitSlice']; cbn.
+    rewrite Z.div_1_r.
+    assumption.
+  Qed.
+
   Ltac prove_states_related :=
     econstructor;
     [ solve [trivial]
     | clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
     | clear; intro; discriminate
     | solve [trivial]
-    | cbv [RiscvMachine.getNextPc]; split;
-      [ try (apply AddrAligned_plus4; assumption)
-      | try (intros; eapply pc_related_plus4; try eassumption; red; auto; fail)]
+    | cbv [RiscvMachine.getNextPc];
+      try (eapply pc_related_plus4; try eassumption; red; eauto; fail)
     | solve [trivial]
     | try (eapply regs_related_put;
            [ solve [trivial] | solve [trivial] | | ];
@@ -952,6 +1042,7 @@ Section Equiv.
       42: case TODO_joonwon.
       (* 41: mul/div instructions. Should be able to draw [False] *)
       41: case TODO_joonwon.
+
       (* 40: cases that require additional simplification
        * to draw [False] by [mcomp_step_in]. *)
       40: (subst decodeI decodeM resultI resultM results;
@@ -985,7 +1076,6 @@ Section Equiv.
                 | H:False |- _ => case H
                 | _ => t
                 end.
-
       all : repeat (x || t).
       all : eexists _, _.
       all : prove_KamiLabelR.
@@ -998,41 +1088,21 @@ Section Equiv.
                end;
         try (case (Z.eq_dec rd Register0) as [X|_];
              [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]).
-      all : try subst regs; try subst kupd.
+      all: try subst regs; try subst kupd.
+
+      (** proving simulation; solve trivial goals first *)
 
       all: prove_states_related.
 
-      all :
-        try match goal with
-              |- ?f ?x ?y = ?g ?a ?b =>
-              let X := fresh "arg1" in
-              set (X := x); change a with X; clearbody X
-            end;
-        try match goal with
-              |- ?f ?x ?y = ?g ?a ?b =>
-              let X := fresh "arg1" in
-              set (X := y); change b with X; clearbody X
-            end.
-
-      all : try match goal with
-                  |- regs_related
-                       (fun w : Word.word rv32RfIdx =>
-                          if weq w (natToWord rv32RfIdx 0) then wzero 32 else ?krf w) ?rrf
-                  => revert H13; case TODO_joonwon
-                end.
-
-      all : cbn [AddrAligned getNextPc RiscvMachine.withNextPc RiscvMachine.withRegs evalBinBitBool].
-      all : try subst val.
-      all : try (eapply f_equal2; trivial; []).
-      all : cbv [ZToReg MachineWidth_XLEN].
-
-      all : try match goal with
-                | |- AddrAligned _ => case TODO_joonwon
-                | |- isXAddr4 _ _ -> pc_related _ _ _ => case TODO_joonwon
-                end.
-
+      (* All the remaining [pc_related_when_valid] goals are from branching instructions.
+       * @joonwonc TODO: use [pc_related_jump] and [AddrAligned_consistent] to prove them.
+       *)
+      all: try match goal with
+               | |- pc_related_when_valid _ _ _ => case TODO_joonwon
+               end.
+      
+      all: try subst val; cbv [ZToReg MachineWidth_XLEN]; cbn [evalBinBitBool].
       all : eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
-
       all: rewrite <-?ZToWord_Z_of_N.
       all : change (ZToWord 32) with (@word.of_Z 32 (@word (@WordsKami width width_cases))).
       all : rewrite ?word.unsigned_of_Z.
