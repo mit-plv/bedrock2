@@ -310,6 +310,25 @@ Section Pipeline1.
       destruct_one_match; eauto.
   Qed.
 
+  Lemma get_compile_funs_pos: forall pos0 e,
+      pos0 mod 4 = 0 ->
+      let '(insts, pos1, posmap) := FlatToRiscvDef.compile_funs map.empty pos0 e in
+      pos1 mod 4 = 0 /\
+      forall f impl, map.get e f = Some impl -> exists pos2, map.get posmap f = Some pos2 /\ pos2 mod 4 = 0.
+  Proof.
+    intros pos0 e M0.
+    unfold FlatToRiscvDef.compile_funs.
+    eapply map.fold_spec.
+    - intros. split; [assumption|]. intros. rewrite map.get_empty in H. congruence.
+    - intros. destruct r as [ [insts pos1] env]. destruct H0. simpl.
+      split.
+      + solve_divisibleBy4.
+      + intros.
+        rewrite map.get_put_dec in H2.
+        rewrite map.get_put_dec.
+        destruct_one_match; eauto.
+  Qed.
+
   Definition instrencode(p: list Instruction): list byte :=
     List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
 
@@ -471,7 +490,12 @@ Section Pipeline1.
                  end.
           assumption.
         - eapply map.in_keys. eassumption.
-        - case TODO_sam. (* function_positions contains f *)
+        - unfold FlatToRiscvDef.function_positions, FlatToRiscvDef.build_fun_pos_env.
+          pose proof (get_compile_funs_pos 0 r0 eq_refl) as P.
+          destruct (FlatToRiscvDef.compile_funs map.empty 0 r0) as [ [ insts pos1 ] posmap ] eqn: F.
+          destruct P as [P1 P2].
+          eapply P2.
+          eassumption.
       }
       { unfold machine_ok in *. simp. assumption. }
       { unfold machine_ok in *. simp. solve_word_eq word_ok. }
