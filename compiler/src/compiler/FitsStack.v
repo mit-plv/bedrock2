@@ -9,39 +9,6 @@ Require Import compiler.Simp.
 
 Local Open Scope Z_scope.
 
-Module map.
-  Lemma split_put_l2r{K V: Type}{map: map.map K V}{ok: map.ok map}
-        {keqb: K -> K -> bool}{keqb_spec: EqDecider keqb}:
-    forall m m1 m2 k v,
-      map.get m1 k = None ->
-      map.split m (map.put m1 k v) m2 ->
-      map.split m m1 (map.put m2 k v).
-  Proof.
-    unfold map.split, map.disjoint.
-    intros. simp. split.
-    - apply map.map_ext.
-      intros.
-      rewrite !map.get_putmany_dec.
-      rewrite !map.get_put_dec.
-      destr (keqb k k0).
-      + subst.
-        destr (map.get m2 k0). 2: reflexivity.
-        specialize H0r with (2 := E).
-        rewrite map.get_put_same in H0r.
-        exfalso. eauto.
-      + destr (map.get m2 k0); reflexivity.
-    - intros.
-      rewrite map.get_put_dec in H1.
-      destr (keqb k k0).
-      + subst.
-        simp.
-        congruence.
-      + specialize H0r with (2 := H1).
-        rewrite map.get_put_diff in H0r by congruence.
-        eauto.
-  Qed.
-End map.
-
 Section FitsStack.
   Context {p: FlatToRiscvCommon.parameters}.
 

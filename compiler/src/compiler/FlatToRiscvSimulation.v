@@ -50,7 +50,7 @@ Section Sim.
     program_base := code_start;
     e_pos := FlatToRiscvDef.function_positions prog;
     e_impl := prog;
-    funnames := map.fold (fun acc fname fimpl => cons fname acc) nil prog;
+    funnames := map.keys prog;
     dframe := Rdata;
     xframe := Rexec;
   |}.
@@ -108,18 +108,7 @@ Section Sim.
       + assumption.
       + rewrite word.of_Z_unsigned. ring.
       + rewrite word.of_Z_unsigned. ring.
-      + clear - hyps.
-        eapply proj1 with (B := forall k, In k (map.fold
-          (fun (acc : list string) (fname : string) (_ : list Z * list Z * stmt Z) => fname :: acc)
-          [] e) -> map.get e k <> None).
-        eapply map.fold_spec.
-        * split; [constructor|]. intros. simpl in *. contradiction.
-        (* TODO define map.keys, map.keys_NoDup *)
-        * intros. simp. split.
-          -- constructor. 2: assumption. intro C. specialize (H0r _ C). contradiction.
-          -- intros. rewrite map.get_put_dec.
-             destruct_one_match. 1: congruence.
-             simpl in *. destruct H0. 1: congruence. eauto.
+      + apply map.keys_NoDup.
       + assumption.
     - simpl. intros. simp.
       eexists; split; [|eassumption].
