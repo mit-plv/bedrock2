@@ -173,23 +173,12 @@ Section FetchOk.
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
   Local Notation nmemSizeLg := (Z.to_nat memSizeLg).
   Local Notation nwidth := (Z.to_nat width).
+  Local Notation width_inst_valid := (width_inst_valid HinstrMemBound).
 
   Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
 
-  (* NOTE @joonwonc: The [pc_related] definition below is incorrect when the
-   * Kami pc overflows but the riscv-coq pc does not. This overflow issue is
-   * not handled at [pc_related] but at [states_related] in KamiRiscv.v, by
-   * using the notion of executable addresses.
-   *
-   * Each step (a single instruction execution) of riscv-coq checks whether the
-   * current pc is in the set of executable addresses. Thus, the overflow issue
-   * can be resolved by setting executable addresses as same as the range of
-   * Kami pc. See [pc_related_when_valid] and [states_related] in KamiRiscv.v
-   * for detailed definitions.
-   *)
-  Definition pc_related (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
-             (rpc: kword width): Prop :=
-    wordToN kpc = wordToN rpc.
+  Definition pc_related (kpc rpc: kword width): Prop :=
+    kpc = rpc.
 
   Definition AddrAligned (addr: kword width) :=
     split1 2 (nwidth - 2) addr = WO~0~0.
@@ -249,38 +238,6 @@ Section FetchOk.
     assumption.
   Qed.
 
-  Lemma pc_related_preserves_AddrAligned:
-    forall kpc rpc,
-      pc_related kpc rpc -> AddrAligned rpc ->
-      split1 2 _ kpc = WO~0~0.
-  Proof.
-    unfold pc_related, AddrAligned; intros.
-
-    pose proof (Word.combine_split 2 ninstrMemSizeLg kpc).
-    rewrite <-H1 in H.
-    remember (split1 2 ninstrMemSizeLg kpc) as kpcl; clear Heqkpcl.
-    remember (split2 2 ninstrMemSizeLg kpc) as kpcr; clear Heqkpcr.
-    clear H1 kpc.
-
-    pose proof (Word.combine_split 2 (nwidth - 2) rpc).
-    rewrite <-H1 in H.
-    remember (split1 2 (nwidth - 2) rpc) as rpcl; clear Heqrpcl.
-    remember (split2 2 (nwidth - 2) rpc) as rpcr; clear Heqrpcr.
-    clear H1 rpc; subst rpcl.
-
-    rewrite wordToN_combine in H.
-    change (Z.to_nat width) with (2 + (nwidth - 2))%nat in H.
-    rewrite wordToN_combine in H.
-
-    change (NatLib.Npow2 2) with 4%N in H.
-    do 2 rewrite N.mul_comm with (n:= 4%N) in H.
-
-    apply f_equal with (f:= fun x => N.modulo x 4%N) in H.
-    do 2 rewrite N.mod_add in H by discriminate.
-    do 2 rewrite N.mod_small in H by apply wordToN_bound.
-    apply wordToN_inj; assumption.
-  Qed.
-
   Definition mem_related (kmem: kword memSizeLg -> kword 8)
              (rmem: mem): Prop :=
     forall addr: kword width,
@@ -297,20 +254,36 @@ Section FetchOk.
        forall kpc,
          pc_related kpc rpc ->
          Kami.Ex.SC.combineBytes 4%nat rpc kmemd =
-         kmemi (split2 2 _ kpc)).
+         kmemi (evalExpr (IsaRv32.rv32ToIAddr _ _ width_inst_valid _ kpc))).
 
-  Lemma rv32AlignAddr_consistent:
-    forall rpc kpc,
+  Lemma wordToN_split1 a b w :
+    wordToN (@split1 a b w) = BinNat.N.modulo (wordToN w) (NatLib.Npow2 a).
+  Proof.
+    pose proof wordToNat_split1 a b w as HH.
+    eapply Nnat.Nat2N.inj_iff in HH.
+    rewrite wordToN_nat, HH; f_equal; clear HH.
+    rewrite wordToN_nat, NatLib.pow2_N.
+    generalize (#w); intro.
+    remember (NatLib.pow2 a) as pa eqn:Ha.
+    pose proof NatLib.pow2_zero a.
+    pose proof mod_Zmod n pa ltac:(Lia.lia).
+    pose proof Znat.N2Z.inj_mod (BinNat.N.of_nat n) (BinNat.N.of_nat pa) ltac:(blia).
+    rewrite Znat.nat_N_Z in *.
+    Lia.lia.
+  Qed.
+
+  Lemma rv32ToAddr_rv32ToIAddr_consistent:
+    forall rpc,
+      (wordToN rpc < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N ->
       AddrAligned rpc ->
-      pc_related kpc rpc ->
+      rpc =
       evalExpr
-        (IsaRv32.rv32AlignAddr
-           32%nat (Z.to_nat instrMemSizeLg)
-           (width_inst_valid HinstrMemBound)
-           type (split2 2 (Z.to_nat instrMemSizeLg) kpc)) = rpc.
+        (IsaRv32.rv32ToAddr
+           _ _ width_inst_valid type
+           (evalExpr (IsaRv32.rv32ToIAddr _ _ width_inst_valid type rpc))).
   Proof.
     intros.
-    cbv [IsaRv32.rv32AlignAddr].
+    cbv [IsaRv32.rv32ToAddr IsaRv32.rv32ToIAddr].
     unfold eq_rect_r; rewrite evalExpr_bit_eq_rect.
     cbv [evalExpr evalBinBit evalUniBit].
     cbv [evalConstT].
@@ -320,13 +293,23 @@ Section FetchOk.
     do 2 rewrite wordToN_combine.
     do 2 rewrite wordToN_wzero.
     rewrite N.mul_0_r, N.add_0_r, N.add_0_l.
+    rewrite wordToN_split2.
+    rewrite wordToN_split1.
+    rewrite wordToN_eq_rect.
+    rewrite N.mod_small by assumption.
 
-    rewrite <-H0.
-    rewrite <-(Word.combine_split 2 ninstrMemSizeLg kpc) at 2.
+    red in H0.
+    rewrite <-(Word.combine_split 2 (nwidth - 2) rpc) in *.
+    remember (split1 2 (nwidth - 2) rpc) as rpc1; clear Heqrpc1.
+    remember (split2 2 (nwidth - 2) rpc) as rpc2; clear Heqrpc2.
+    rewrite split1_combine in H0; subst.
+    change (BinInt.Z.to_nat width) with (2 + (BinInt.Z.to_nat width - 2))%nat.
 
-    pose proof (pc_related_preserves_AddrAligned _ _ H0 H).
-    rewrite H1.
     rewrite wordToN_combine.
+    rewrite wordToN_wzero.    
+    rewrite N.add_0_l.
+    rewrite N.mul_comm at 2.
+    rewrite N.div_mul by discriminate.
     reflexivity.
   Qed.
 
@@ -375,7 +358,7 @@ Section FetchOk.
   Lemma fetch_ok:
     forall (kmemi: kword instrMemSizeLg -> kword width)
            (kmemd: kword memSizeLg -> kword 8)
-           (kpc: Word.word (2 + Z.to_nat instrMemSizeLg))
+           (kpc: kword width)
            (xaddrs: XAddrs)
            (Hxs: RiscvXAddrsSafe kmemi kmemd xaddrs)
            (rmemd: mem)
@@ -386,7 +369,9 @@ Section FetchOk.
       mem_related kmemd rmemd ->
       exists (rinst: HList.tuple byte 4),
         Memory.load_bytes 4 rmemd rpc = Some rinst /\
-        combine 4 rinst = kunsigned (kmemi (split2 2 _ kpc)).
+        combine 4 rinst = kunsigned (kmemi (evalExpr (IsaRv32.rv32ToIAddr
+                                                        _ _ width_inst_valid
+                                                        _ kpc))).
   Proof.
     intros.
     specialize (Hxs _ H); destruct Hxs.

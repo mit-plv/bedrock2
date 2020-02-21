@@ -26,10 +26,10 @@ Section Parametrized.
 
   Variables (fetch: AbsFetch addrSize iaddrSize instBytes dataBytes)
             (dec: AbsDec addrSize instBytes dataBytes rfIdx)
-            (exec: AbsExec addrSize iaddrSize instBytes dataBytes rfIdx)
+            (exec: AbsExec addrSize instBytes dataBytes rfIdx)
             (ammio: AbsMMIO addrSize).
 
-  Variable (procInit: ProcInit iaddrSize dataBytes rfIdx)
+  Variable (procInit: ProcInit addrSize dataBytes rfIdx)
            (memInit: MemInit maddrSize).
 
   Definition pprocInl := scmmInl Hdb fetch dec exec ammio procInit memInit.
@@ -39,7 +39,7 @@ Section Parametrized.
    * without knowing much about Kami states.
    *)
   Record pst :=
-    mk { pc: word (2 + iaddrSize);
+    mk { pc: word addrSize;
          rf: word rfIdx -> word (dataBytes * BitsPerByte);
          pinit: bool;
          pgm: word iaddrSize -> word (instBytes * BitsPerByte);
@@ -47,13 +47,13 @@ Section Parametrized.
        }.
 
   Definition pRegsToT (r: Kami.Semantics.RegsT): option pst :=
-    (mlet pcv: (Pc iaddrSize) <- r |> "pc" <| None;
-       mlet rfv: (Vector (Data dataBytes) rfIdx) <- r |> "rf" <| None;
-       mlet pinitv: Bool <- r |> "pinit" <| None;
-       mlet pgmv: (Vector (Data instBytes) iaddrSize) <- r |> "pgm" <| None;
-       mlet memv: (Vector (Bit BitsPerByte) maddrSize) <- r |> "mem" <| None;
-       (Some {| pc := pcv; rf := rfv;
-                pinit := pinitv; pgm := pgmv; mem := memv |}))%mapping.
+    (mlet pcv: (Pc addrSize) <- r |> "pc" <| None;
+    mlet rfv: (Vector (Data dataBytes) rfIdx) <- r |> "rf" <| None;
+    mlet pinitv: Bool <- r |> "pinit" <| None;
+    mlet pgmv: (Vector (Data instBytes) iaddrSize) <- r |> "pgm" <| None;
+    mlet memv: (Vector (Bit BitsPerByte) maddrSize) <- r |> "mem" <| None;
+    (Some {| pc := pcv; rf := rfv;
+             pinit := pinitv; pgm := pgmv; mem := memv |}))%mapping.
 
   (** * Deriving facts from [scmm_inv] *)
 
@@ -73,8 +73,6 @@ Section Parametrized.
   Qed.
 
   (** * Inverting Kami rules for instruction executions *)
-
-  Local Definition iaddrSizeZ: Z := Z.of_nat iaddrSize.
 
   Lemma pRegsToT_init:
     pRegsToT (initRegs (getRegInits pproc)) =
@@ -159,7 +157,7 @@ Section Parametrized.
              (mem: word maddrSize -> word BitsPerByte) :=
     forall iaddr,
       pgm iaddr =
-      evalExpr (alignInst type (combineBytes dataBytes (evalExpr (alignAddr type iaddr)) mem)).
+      evalExpr (alignInst type (combineBytes dataBytes (evalExpr (toAddr type iaddr)) mem)).
 
   Lemma invert_Kami_pgmInitEnd:
     forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl
@@ -248,7 +246,7 @@ Section Parametrized.
       klbl.(annot) = Some (Some "execLd"%string) ->
       pinit kt1 = true /\
       exists curInst ldAddr,
-        curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
+        curInst = (pgm kt1) (evalExpr (toIAddr _ (pc kt1))) /\
         evalExpr (getOptype _ curInst) = opLd /\
         ldAddr = evalExpr
                    (calcLdAddr
@@ -353,7 +351,7 @@ Section Parametrized.
       klbl.(annot) = Some (Some "execLdZ"%string) ->
       pinit kt1 = true /\
       exists curInst ldAddr,
-        curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
+        curInst = (pgm kt1) (evalExpr (toIAddr _ (pc kt1))) /\
         ldAddr = evalExpr
                    (calcLdAddr
                       _ (evalExpr (getLdAddr _ curInst))
@@ -425,7 +423,7 @@ Section Parametrized.
       klbl.(annot) = Some (Some "execSt"%string) ->
       pinit kt1 = true /\
       exists curInst stAddr stByteEn stVal,
-        curInst = (pgm kt1) (split2 _ _ (pc kt1)) /\
+        curInst = (pgm kt1) (evalExpr (toIAddr _ (pc kt1))) /\
         stAddr = evalExpr
                    (calcStAddr
                       _ (evalExpr (getStAddr _ curInst))
@@ -528,20 +526,20 @@ Section PerInstAddr.
     f_equal; blia.
   Qed.
 
-  Local Definition pcInitVal: ConstT (Pc ninstrMemSizeLg) :=
+  Local Definition pcInitVal: ConstT (Pc nwidth) :=
     ConstBit $0.
 
   Local Definition rfInitVal: ConstT (Vector (Data rv32DataBytes) rv32RfIdx) :=
     ConstVector (replicate (ConstBit $0) _).
 
-  Definition procInit: ProcInit ninstrMemSizeLg rv32DataBytes rv32RfIdx :=
+  Definition procInit: ProcInit nwidth rv32DataBytes rv32RfIdx :=
     {| pcInit := pcInitVal; rfInit := rfInitVal |}.
   Variables (memInit: MemInit nmemSizeLg)
             (rv32MMIO: AbsMMIO nwidth).
 
   Definition procInl :=
     pprocInl (existT _ _ eq_refl) (rv32Fetch _ _ width_inst_valid)
-             (rv32Dec _) (rv32Exec _ _)
+             (rv32Dec _) (rv32Exec _)
              rv32MMIO procInit memInit.
   Definition proc: Kami.Syntax.Modules := projT1 procInl.
 
@@ -550,36 +548,25 @@ Section PerInstAddr.
 
   (** Abstract hardware state *)
   Definition st :=
-    @pst nmemSizeLg ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx.
+    @pst nwidth nmemSizeLg ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx.
 
   Definition RegsToT (r: hst): option st :=
-    pRegsToT nmemSizeLg ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx r.
+    pRegsToT nwidth nmemSizeLg ninstrMemSizeLg rv32InstBytes rv32DataBytes rv32RfIdx r.
 
   (** Refinement from [p4mm] to [proc] (as a spec) *)
 
-  Lemma instrMemSizeLg_btb_valid:
-    Z.to_nat instrMemSizeLg = (3 + (Z.to_nat instrMemSizeLg - 3))%nat.
-  Proof.
-    PreOmega.zify; rewrite ?Z2Nat.id in *; blia.
-  Qed.
-
   Definition getBTBIndex ty
-             (pc: fullType ty (SyntaxKind (Bit ninstrMemSizeLg))): (Bit 3) @ ty :=
-    let rpc := eq_rect _ (fun sz => fullType ty (SyntaxKind (Bit sz)))
-                       pc _ instrMemSizeLg_btb_valid in
-    (UniBit (Trunc 3 _) #rpc)%kami_expr.
+             (pc: fullType ty (SyntaxKind (Bit nwidth))): (Bit 3) @ ty :=
+    (UniBit (ConstExtract 2 3 27) #pc)%kami_expr.
 
   Definition getBTBTag ty
-             (pc: fullType ty (SyntaxKind (Bit ninstrMemSizeLg))):
-    (Bit (ninstrMemSizeLg - 3)) @ ty :=
-    let rpc := eq_rect _ (fun sz => fullType ty (SyntaxKind (Bit sz)))
-                       pc _ instrMemSizeLg_btb_valid in
-    (UniBit (TruncLsb 3 _) #rpc)%kami_expr.
+             (pc: fullType ty (SyntaxKind (Bit nwidth))): (Bit (nwidth - 3)) @ ty :=
+    {UniBit (Trunc 2 _) #pc, UniBit (TruncLsb 5 27) #pc}%kami_expr.
 
   Definition p4mm: Kami.Syntax.Modules :=
     p4mm (existT _ _ eq_refl)
          (rv32Fetch _ _ width_inst_valid)
-         (rv32Dec _) (rv32Exec _ _)
+         (rv32Dec _) (rv32Exec _)
          rv32MMIO getBTBIndex getBTBTag
          procInit memInit.
 
