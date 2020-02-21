@@ -80,6 +80,7 @@ Proof.
 Qed.
 
 Local Axiom TODO_joonwon: False.
+Local Axiom TODO_andres: False.
 
 Lemma wordToN_wplus_distr:
   forall sz (w1 w2: Word.word sz),
@@ -451,28 +452,6 @@ Section Equiv.
 
   Context (Registers_ok : map.ok Registers).
 
-  Lemma wordToN_ZToWord_four:
-    forall sz, (3 <= sz)%nat -> wordToN (ZToWord sz 4) = 4%N.
-  Proof.
-    intros.
-    apply N2Z.inj.
-    rewrite unsigned_wordToZ.
-    rewrite Z.mod_small.
-    - reflexivity.
-    - apply inj_le in H; simpl in H.
-      split; [blia|].
-      eapply Z.lt_le_trans; [|eapply Z.pow_le_mono_r with (b:= 3); blia].
-      blia.
-  Qed.
-
-  Lemma wordToN_natToWord_four:
-    forall sz, (3 <= sz)%nat -> wordToN (natToWord sz 4) = 4%N.
-  Proof.
-    intros.
-    rewrite <-ZToWord_Z_of_nat.
-    apply wordToN_ZToWord_four; assumption.
-  Qed.
-
   Lemma pc_related_plus4:
     forall kpc rpc,
       pc_related_and_valid kpc rpc ->
@@ -545,6 +524,22 @@ Section Equiv.
     cbv [bitSlice']; cbn.
     rewrite Z.div_1_r.
     assumption.
+  Qed.
+
+  Lemma kami_evalZeroExtendTrunc_32:
+    forall w, evalZeroExtendTrunc 32 w = w.
+  Proof.
+    intros; cbv [evalZeroExtendTrunc].
+    destruct (lt_dec _ _); [Lia.lia|].
+    apply split1_0.
+  Qed.
+    
+  Lemma kami_evalSignExtendTrunc_32:
+    forall w, evalSignExtendTrunc 32 w = w.
+  Proof.
+    intros; cbv [evalSignExtendTrunc].
+    destruct (lt_dec _ _); [Lia.lia|].
+    apply split1_0.
   Qed.
 
   Ltac prove_states_related :=
@@ -733,38 +728,18 @@ Section Equiv.
     | [H: PHide (vn = _) |- _] => inversion_clear H
     end.
 
-  (* Lemma weq_ite_inv: *)
-  (*   forall {sz} (a b: Word.word sz) {t: Type} (p1 p2 v: t), *)
-  (*     (v = if if weq a b then true else false then p1 else p2) -> *)
-  (*     (a = b /\ v = p1) \/ (a <> b /\ v = p2). *)
-  (* Proof. *)
-  (*   case TODO_joonwon. *)
-  (* Qed. *)
-
-  (* Lemma rv32DoExec_inv: *)
-  (*   forall execVal rs1 rs2 pc inst, *)
-  (*     execVal = evalExpr (rv32DoExec 32 type rs1 rs2 pc inst) -> *)
-  (*     let opcode_k := evalExpr (getOpcodeE (Var _ _ inst)) in *)
-  (*     (Z.of_N (wordToN opcode_k) = opcode_LUI) \/ True. *)
-  (* Proof. *)
-  (*   intros. *)
-  (*   let t := type of H in *)
-  (*   let t' := eval cbv [evalExpr evalUniBool evalBinBool evalBinBit *)
-  (*                 evalConstT getDefaultConst isEq Data BitsPerByte Nat.add Nat.sub *)
-  (*                 (* grep -oP 'Definition \w+' ~/plv/bedrock2/deps/kami/Kami/Ex/{IsaRv32.v,SC.v} | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; printf '\n' *) *)
-  (*                 AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct6E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getHiShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignInst rv32CalcLdAddr rv32CalcLdVal rv32CalcStAddr rv32CalcStByteEn rv32DataBytes rv32DoExec rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32NextPc rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StByteEnCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT] in t in *)
-  (*       assert (Ht: t = t') by reflexivity. *)
-
-  (*   rewrite Ht in H; clear Ht. *)
-
-  (*   apply weq_ite_inv in H; destruct H. *)
-
-  (*   (* pose proof @weq_ite_inv as P. *) *)
-  (*   (* remember weq as w; clear Heqw. *) *)
-  (*   (* apply P in H. *) *)
-
-  (*   all: right; auto. *)
-  (* Qed. *)
+  Ltac kami_cbn_hint H func :=
+    let t := type of H in
+    let tc :=
+      eval cbn [evalExpr evalUniBool evalBinBool evalBinBit
+                evalConstT getDefaultConst isEq Data BitsPerByte Nat.add Nat.sub
+                func
+                (* grep -oP 'Definition \w+' ~/plv/bedrock2/deps/kami/Kami/Ex/{IsaRv32.v,SC.v} | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; printf '\n' *)
+                AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct6E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getHiShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignInst rv32CalcLdAddr rv32CalcLdVal rv32CalcStAddr rv32CalcStByteEn rv32DataBytes rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StByteEnCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT]
+    in t in
+    let Ht := fresh "H" in
+    assert (Ht: t = tc) by reflexivity;
+    rewrite Ht in H; clear Ht.
 
   Lemma kamiStep_sound:
     forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
@@ -840,9 +815,9 @@ Section Equiv.
 
       cbn [evalExpr evalUniBool evalBinBool evalBinBit
            evalConstT getDefaultConst isEq Data BitsPerByte Nat.add Nat.sub
-           (* grep -oP 'Definition \w+' ~/plv/bedrock2/deps/kami/Kami/Ex/{IsaRv32.v,SC.v} | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; printf '\n' *)
            AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct6E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getHiShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignInst rv32CalcLdAddr rv32CalcLdVal rv32CalcStAddr rv32CalcStByteEn rv32DataBytes rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StByteEnCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT] in *.
 
+      (* -- pick the subterm for the Kami instruction *)
       match goal with
       | [H: context [instrMem ?ipc] |- _] => set (kinst:= instrMem ipc)
       end.
@@ -852,40 +827,23 @@ Section Equiv.
         end.
       clearbody kinst.
 
-      (* Select out the execution function for simplification *)
+      (* -- pick the execution function for simplification *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32DoExec ?sz ?ty ?rs1 ?rs2 ?pc ?inst)] |- _] =>
         remember (@evalExpr fk (rv32DoExec sz ty rs1 rs2 pc inst)) as execVal
       end.
-      let et := type of HeqexecVal in
-      let et_red :=
-          eval cbn [evalExpr evalUniBool evalBinBool evalBinBit
-                             evalConstT getDefaultConst isEq Data BitsPerByte Nat.add Nat.sub
-                             (* grep -oP 'Definition \w+' ~/plv/bedrock2/deps/kami/Kami/Ex/{IsaRv32.v,SC.v} | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; printf '\n' *)
-                             AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct6E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getHiShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignInst rv32CalcLdAddr rv32CalcLdVal rv32CalcStAddr rv32CalcStByteEn rv32DataBytes rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StByteEnCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT
-                             rv32DoExec]
-      in et in
-          assert (Het: et = et_red) by reflexivity;
-           rewrite Het in HeqexecVal; clear Het.
-
-      (* Select out the nextPc function *)
+      kami_cbn_hint HeqexecVal rv32DoExec.
+      
+      (* -- pick the nextPc function *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
         remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
       end.
-      let pt := type of Heqnpc in
-      let pt_red :=
-          eval cbn [evalExpr evalUniBool evalBinBool evalBinBit
-                             evalConstT getDefaultConst isEq Data BitsPerByte Nat.add Nat.sub
-                             (* grep -oP 'Definition \w+' ~/plv/bedrock2/deps/kami/Kami/Ex/{IsaRv32.v,SC.v} | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; printf '\n' *)
-                             AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct6E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getHiShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignInst rv32CalcLdAddr rv32CalcLdVal rv32CalcStAddr rv32CalcStByteEn rv32DataBytes rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StByteEnCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT
-                             rv32NextPc]
-      in pt in
-          assert (Hpt: pt = pt_red) by reflexivity;
-           rewrite Hpt in Heqnpc; clear Hpt.
+      kami_cbn_hint Heqnpc rv32NextPc.
 
-      (* Convert [weq] to [Z.eqb] *)
-      (* COQBUG(rewrite pattern matching on if/match is broken due to "hidden branch types") *)
+      (* -- convert [weq] to [Z.eqb] in Kami decoding/execution *)
+      (** Heads-up: COQBUG(rewrite pattern matching on if/match is broken
+       * due to "hidden branch types") *)
       repeat match goal with
       | H : context G [if ?x then ?a else ?b] |- _ =>
           let e := context G [@bool_rect (fun _ => _) a b x] in
@@ -899,6 +857,7 @@ Section Equiv.
       end.
       cbv [bool_rect] in *.
 
+      (* -- some more word-to-Z conversions *)
       progress
         repeat (match goal with
                 | [H: context G [Z.of_N (@wordToN ?n ?x)] |- _] =>
@@ -914,45 +873,52 @@ Section Equiv.
                       let e := context G [xx] in
                       change e in H
                 end).
-
-      (* Separate out cases of Kami execution *)
+ 
+      (* -- separate out cases of Kami execution *)
       idtac "kamiStep_sound: separate out cases of Kami execution".
       Timeout
         300
         (progress
-         repeat match goal with
-                | [H : context G [if Z.eqb ?x ?y then ?a else ?b] |- _] =>
-                  destruct (Z.eqb_spec x y) in *
-                | [H : context G [if (Z.eqb ?x ?y && _ && _)%bool then _ else _] |- _] =>
-                  destruct (Z.eqb_spec x y)
-                | [H : context G [if (_ && Z.eqb ?x ?y && _)%bool then _ else _] |- _] =>
-                  destruct (Z.eqb_spec x y)
-                | [H : context G [if (_ && _ && Z.eqb ?x ?y)%bool then _ else _] |- _] =>
-                  destruct (Z.eqb_spec x y)
-                | [H: ?x = ?a, G: ?x = ?b |- _] =>
-                  let aa := eval cbv (* delta [a] *) in a in
-                  let bb := eval cbv (* delta [b] *) in b in
-                  let t := isZcst aa in constr_eq t true;
-                  let t := isZcst bb in constr_eq t true;
-                  assert_fails (constr_eq aa bb);
-                  exfalso; remember x; clear -H G;
-                  cbv in H; cbv in G; rewrite H in G; inversion G
-                | [H: ?x = ?a, G: ?x <> ?b |- _] =>
-                  let aa := eval cbv (* delta [a] *) in a in
-                  let bb := eval cbv (* delta [b] *) in b in
-                  let t := isZcst aa in constr_eq t true;
-                  let t := isZcst bb in constr_eq t true;
-                  assert_fails (constr_eq aa bb);
-                  clear G
-                end).
+           repeat match goal with
+                  | [H : context G [if Z.eqb ?x ?y then ?a else ?b] |- _] =>
+                    destruct (Z.eqb_spec x y) in *
+                  | [H : context G [if (Z.eqb ?x ?y && _ && _)%bool then _ else _] |- _] =>
+                    destruct (Z.eqb_spec x y)
+                  | [H : context G [if (_ && Z.eqb ?x ?y && _)%bool then _ else _] |- _] =>
+                    destruct (Z.eqb_spec x y)
+                  | [H : context G [if (_ && _ && Z.eqb ?x ?y)%bool then _ else _] |- _] =>
+                    destruct (Z.eqb_spec x y)
+                  | [H: ?x = ?a, G: ?x = ?b |- _] =>
+                    let aa := eval cbv (* delta [a] *) in a in
+                    let bb := eval cbv (* delta [b] *) in b in
+                    let t := isZcst aa in constr_eq t true;
+                    let t := isZcst bb in constr_eq t true;
+                    assert_fails (constr_eq aa bb);
+                    exfalso; remember x; clear -H G;
+                    cbv in H; cbv in G; rewrite H in G; inversion G
+                  | [H: ?x = ?a, G: ?x <> ?b |- _] =>
+                    let aa := eval cbv (* delta [a] *) in a in
+                    let bb := eval cbv (* delta [b] *) in b in
+                    let t := isZcst aa in constr_eq t true;
+                    let t := isZcst bb in constr_eq t true;
+                    assert_fails (constr_eq aa bb);
+                    clear G
+                  end).
 
+      (* -- filter out load/store/branch instructions (not handled by [execNm]) *)
       all: try match goal with
                | [H: negb (kunsigned $0 =? 0) = true |- _] => exfalso; clear -H; discriminate
                | [H: (kunsigned opLd =? _) = true |- _] => exfalso; clear -H; discriminate
                | [H: (kunsigned opSt =? _) = true |- _] => exfalso; clear -H; discriminate
                end.
-      
-      all:
+
+      (* -- further simplification *)
+      all: repeat match goal with
+                  | [H: context [evalUniBit (ZeroExtendTrunc _ _) _] |- _] =>
+                    cbv [evalUniBit] in H; rewrite kami_evalZeroExtendTrunc_32 in H
+                  | [H: context [evalUniBit (SignExtendTrunc _ _) _] |- _] =>
+                    cbv [evalUniBit] in H; rewrite kami_evalSignExtendTrunc_32 in H
+                  end;
         repeat match goal with
                | H: _ |- _ => rewrite !(match TODO_andres with end : forall a b x, evalUniBit (SignExtendTrunc a b) x = ZToWord b (wordToZ x)) in H
                | H: _ |- _ => rewrite !(match TODO_andres with end : forall a b x, evalUniBit (ZeroExtendTrunc a b) x = NToWord b (wordToN x)) in H
@@ -982,6 +948,7 @@ Section Equiv.
                  change (Z.of_N (@wordToN w x)) with (@kunsigned 32 x) in H
                end.
 
+      (* -- unfold [decode] of riscv-coq *)
       all:
         let dec := fresh "dec" in
         let Hdec := fresh "Hdec" in
@@ -1011,30 +978,29 @@ Section Equiv.
            | _ => t
            end).
 
-      all:
-        try subst opcode; try subst funct3; try subst funct6; try subst funct7;
+      all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
       all: try cbn in decodeI.
-      all:
-        cbv [funct12_EBREAK funct12_ECALL funct12_MRET funct12_SRET funct12_URET funct12_WFI funct2_FMADD_S funct3_ADD funct3_ADDI funct3_ADDIW funct3_ADDW funct3_AMOD funct3_AMOW funct3_AND funct3_ANDI funct3_BEQ funct3_BGE funct3_BGEU funct3_BLT funct3_BLTU funct3_BNE funct3_CSRRC funct3_CSRRCI funct3_CSRRS funct3_CSRRSI funct3_CSRRW funct3_CSRRWI funct3_DIV funct3_DIVU funct3_DIVUW funct3_DIVW funct3_FCLASS_S funct3_FENCE funct3_FENCE_I funct3_FEQ_S funct3_FLE_S funct3_FLT_S funct3_FLW funct3_FMAX_S funct3_FMIN_S funct3_FMV_X_W funct3_FSGNJN_S funct3_FSGNJ_S funct3_FSGNJX_S funct3_FSW funct3_LB funct3_LBU funct3_LD funct3_LH funct3_LHU funct3_LW funct3_LWU funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU funct3_MULW funct3_OR funct3_ORI funct3_PRIV funct3_REM funct3_REMU funct3_REMUW funct3_REMW funct3_SB funct3_SD funct3_SH funct3_SLL funct3_SLLI funct3_SLLIW funct3_SLLW funct3_SLT funct3_SLTI funct3_SLTIU funct3_SLTU funct3_SRA funct3_SRAI funct3_SRAIW funct3_SRAW funct3_SRL funct3_SRLI funct3_SRLIW funct3_SRLW funct3_SUB funct3_SUBW funct3_SW funct3_XOR funct3_XORI funct5_AMOADD funct5_AMOAND funct5_AMOMAX funct5_AMOMAXU funct5_AMOMIN funct5_AMOMINU funct5_AMOOR funct5_AMOSWAP funct5_AMOXOR funct5_LR funct5_SC funct6_SLLI funct6_SRAI funct6_SRLI funct7_ADD funct7_ADDW funct7_AND funct7_DIV funct7_DIVU funct7_DIVUW funct7_DIVW funct7_FADD_S funct7_FCLASS_S funct7_FCVT_S_W funct7_FCVT_W_S funct7_FDIV_S funct7_FEQ_S funct7_FMIN_S funct7_FMUL_S funct7_FMV_W_X funct7_FMV_X_W funct7_FSGNJ_S funct7_FSQRT_S funct7_FSUB_S funct7_MUL funct7_MULH funct7_MULHSU funct7_MULHU funct7_MULW funct7_OR funct7_REM funct7_REMU funct7_REMUW funct7_REMW funct7_SFENCE_VMA funct7_SLL funct7_SLLIW funct7_SLLW funct7_SLT funct7_SLTU funct7_SRA funct7_SRAIW funct7_SRAW funct7_SRL funct7_SRLIW funct7_SRLW funct7_SUB funct7_SUBW funct7_XOR isValidA isValidA64 isValidCSR isValidF isValidF64 isValidI isValidI64 isValidM isValidM64 Opcode opcode_AMO opcode_AUIPC opcode_BRANCH opcode_JAL opcode_JALR opcode_LOAD opcode_LOAD_FP opcode_LUI opcode_MADD opcode_MISC_MEM opcode_MSUB opcode_NMADD opcode_NMSUB opcode_OP opcode_OP_32 opcode_OP_FP opcode_OP_IMM opcode_OP_IMM_32 opcode_STORE opcode_STORE_FP opcode_SYSTEM Register RoundMode rs2_FCVT_L_S rs2_FCVT_LU_S rs2_FCVT_W_S rs2_FCVT_WU_S supportsA supportsF supportsM] in *;
+      all: cbv [funct12_EBREAK funct12_ECALL funct12_MRET funct12_SRET funct12_URET funct12_WFI funct2_FMADD_S funct3_ADD funct3_ADDI funct3_ADDIW funct3_ADDW funct3_AMOD funct3_AMOW funct3_AND funct3_ANDI funct3_BEQ funct3_BGE funct3_BGEU funct3_BLT funct3_BLTU funct3_BNE funct3_CSRRC funct3_CSRRCI funct3_CSRRS funct3_CSRRSI funct3_CSRRW funct3_CSRRWI funct3_DIV funct3_DIVU funct3_DIVUW funct3_DIVW funct3_FCLASS_S funct3_FENCE funct3_FENCE_I funct3_FEQ_S funct3_FLE_S funct3_FLT_S funct3_FLW funct3_FMAX_S funct3_FMIN_S funct3_FMV_X_W funct3_FSGNJN_S funct3_FSGNJ_S funct3_FSGNJX_S funct3_FSW funct3_LB funct3_LBU funct3_LD funct3_LH funct3_LHU funct3_LW funct3_LWU funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU funct3_MULW funct3_OR funct3_ORI funct3_PRIV funct3_REM funct3_REMU funct3_REMUW funct3_REMW funct3_SB funct3_SD funct3_SH funct3_SLL funct3_SLLI funct3_SLLIW funct3_SLLW funct3_SLT funct3_SLTI funct3_SLTIU funct3_SLTU funct3_SRA funct3_SRAI funct3_SRAIW funct3_SRAW funct3_SRL funct3_SRLI funct3_SRLIW funct3_SRLW funct3_SUB funct3_SUBW funct3_SW funct3_XOR funct3_XORI funct5_AMOADD funct5_AMOAND funct5_AMOMAX funct5_AMOMAXU funct5_AMOMIN funct5_AMOMINU funct5_AMOOR funct5_AMOSWAP funct5_AMOXOR funct5_LR funct5_SC funct6_SLLI funct6_SRAI funct6_SRLI funct7_ADD funct7_ADDW funct7_AND funct7_DIV funct7_DIVU funct7_DIVUW funct7_DIVW funct7_FADD_S funct7_FCLASS_S funct7_FCVT_S_W funct7_FCVT_W_S funct7_FDIV_S funct7_FEQ_S funct7_FMIN_S funct7_FMUL_S funct7_FMV_W_X funct7_FMV_X_W funct7_FSGNJ_S funct7_FSQRT_S funct7_FSUB_S funct7_MUL funct7_MULH funct7_MULHSU funct7_MULHU funct7_MULW funct7_OR funct7_REM funct7_REMU funct7_REMUW funct7_REMW funct7_SFENCE_VMA funct7_SLL funct7_SLLIW funct7_SLLW funct7_SLT funct7_SLTU funct7_SRA funct7_SRAIW funct7_SRAW funct7_SRL funct7_SRLIW funct7_SRLW funct7_SUB funct7_SUBW funct7_XOR isValidA isValidA64 isValidCSR isValidF isValidF64 isValidI isValidI64 isValidM isValidM64 Opcode opcode_AMO opcode_AUIPC opcode_BRANCH opcode_JAL opcode_JALR opcode_LOAD opcode_LOAD_FP opcode_LUI opcode_MADD opcode_MISC_MEM opcode_MSUB opcode_NMADD opcode_NMSUB opcode_OP opcode_OP_32 opcode_OP_FP opcode_OP_IMM opcode_OP_IMM_32 opcode_STORE opcode_STORE_FP opcode_SYSTEM Register RoundMode rs2_FCVT_L_S rs2_FCVT_LU_S rs2_FCVT_W_S rs2_FCVT_WU_S supportsA supportsF supportsM] in *;
         repeat match goal with
                | [v := context [Z.eqb ?x ?y], H: ?x <> ?y |- _] =>
                  destruct (Z.eqb_spec x y) in *; [exfalso; auto; fail|cbn in v]
                end.
-
       all: try cbn in decodeI.
 
+      (** Start the consistency proof for each instruction *)
+      
       (* 42: fence instructions. Can draw [False] since [rd <> 0] in [execNm]. *)
       42: case TODO_joonwon.
       (* 41: mul/div instructions. Should be able to draw [False] *)
       41: case TODO_joonwon.
 
-      (* 40: cases that require additional simplification
+      (* 40: the case that require additional simplification
        * to draw [False] by [mcomp_step_in]. *)
       40: (subst decodeI decodeM resultI resultM results;
            repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
 
-      (** decoding done *)
+      (* -- evaluate the riscv-coq decoder/executer *)
       all: subst dec; mcomp_step_in H5;
         repeat match goal with
                | H : False |- _ => case H
@@ -1043,7 +1009,7 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      (** known proof automation issues *)
+      (** Heads-up: known proof automation issues *)
       (* TODO: we should not blast cases of riscv-coq when hypotheses tell us
        * which case kami took *)
       Ltac x := match goal with
@@ -1076,27 +1042,43 @@ Section Equiv.
              [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]).
       all: try subst regs; try subst kupd.
 
-      (** proving simulation; solve trivial goals first *)
+      (** Proving simulation; solve trivial goals first *)
 
       all: prove_states_related.
+
+      all: match goal with | H: pc_related ?kpc _ |- _ => red in H; subst kpc end.
+      all: try reflexivity.
       
-      (* All the remaining [pc_related_and_valid] goals are from branching instructions.
-       * @joonwonc TODO: use [pc_related_jump] and [AddrAligned_consistent] to prove them.
-       *)
-      all: try match goal with
-               | |- pc_related_and_valid _ _ => case TODO_joonwon
-               end.
-      all: try (red in H8; subst kpc; clear;
-                cbv [evalZeroExtendTrunc];
-                destruct (lt_dec _ _); [blia|];
-                unfold eq_rec_r, eq_rec; rewrite split1_0;
-                reflexivity).
+      1: { (* [pc_related_and_valid] for `JAL` *)
+        subst newPC jimm20.
+        split; [apply AddrAligned_consistent; assumption|].
+        clear; red.
+        cbv [Utility.add
+               ZToReg MachineWidth_XLEN
+               word.add word WordsKami wordW KamiWord.word
+               word.of_Z kofZ].
+        repeat f_equal.
+        case TODO_joonwon.
+      }
+
+      1: { (* [pc_related_and_valid] for `JALR` *)
+        subst newPC oimm12 v rs1.
+        split; [apply AddrAligned_consistent; assumption|red].
+        cbv [Utility.add
+               ZToReg MachineWidth_XLEN
+               word.add word WordsKami wordW KamiWord.word
+               word.of_Z kofZ].
+        erewrite <-regs_related_get
+          with (krf0:= krf) (w:= split2 15 5 (split1 (15 + 5) 12 kinst));
+          [|auto|assumption|apply unsigned_split2_split1_as_bitSlice].
+        case TODO_joonwon.
+      }
       
       all: try subst val; cbv [ZToReg MachineWidth_XLEN]; cbn [evalBinBitBool].
-      all : eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
+      all: eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
       all: rewrite <-?ZToWord_Z_of_N.
-      all : change (ZToWord 32) with (@word.of_Z 32 (@word (@WordsKami width width_cases))).
-      all : rewrite ?word.unsigned_of_Z.
+      all: change (ZToWord 32) with (@word.of_Z 32 (@word (@WordsKami width width_cases))).
+      all: rewrite ?word.unsigned_of_Z.
 
       1: { (* lui *)
         clear.
@@ -1133,18 +1115,11 @@ Section Equiv.
       }
 
       1: { (* auipc *)
-        red in H8; subst kpc.
         clear.
         subst oimm20.
         unfold Utility.add.
         eapply f_equal.
-        rewrite wplus_comm; eapply f_equal2.
-        2: {
-          cbv [evalZeroExtendTrunc].
-          destruct (lt_dec _ _); [blia|].
-          unfold eq_rec_r, eq_rec; rewrite split1_0; reflexivity.
-        }
-        Local Axiom TODO_andres: False.
+        rewrite wplus_comm; eapply f_equal2; [|reflexivity].
         rewrite (match TODO_andres with end :
                    forall sz word x, @word.of_Z sz word (signExtend sz x) = @word.of_Z sz word x).
         eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
@@ -1168,7 +1143,7 @@ Section Equiv.
         blia.
       }
 
-      all : clear H5.
+      all: clear H5.
 
       2: { (* slti *)
         clear H0 H2 H3 H4.
@@ -1182,6 +1157,7 @@ Section Equiv.
         (* eapply f_equal. *)
         case TODO_kamiStep_instruction.
       }
+
       2: { (* sltiu *)
         clear H0 H2 H3 H4.
         match goal with |- context[wlt_dec ?w _] =>  change w with v end.
