@@ -124,8 +124,9 @@ Section Connect.
   Lemma HinstrMemBound: instrMemSizeLg <= 30.
   Proof. exact (proj2 instrMemSizeLg_bounds). Qed.
 
-  Definition kamiStep := kamiStep instrMemSizeLg.
-  Definition states_related := @states_related Pipeline.Registers mem instrMemSizeLg memSizeLg.
+  Definition states_related :=
+    @states_related Pipeline.Registers mem instrMemSizeLg memSizeLg
+                    (proj1 instrMemSizeLg_bounds) (proj2 instrMemSizeLg_bounds).
 
   Lemma split_ll_trace: forall {t2' t1' t},
       traces_related t (t2' ++ t1') ->
