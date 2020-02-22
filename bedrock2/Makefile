@@ -67,7 +67,7 @@ force:
 clean:: Makefile.coq.noex Makefile.coq.ex
 	$(MAKE) -f Makefile.coq.noex clean
 	$(MAKE) -f Makefile.coq.ex clean
-	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
+	find . -type f \( -name '*~' -o -name '*.aux' -o -name '.lia.cache' -o -name '.nia.cache' \) -delete
 	rm -f Makefile.coq.noex Makefile.coq.noex.conf Makefile.coq.ex Makefile.coq.ex.conf _CoqProject special/BytedumpTest.out
 
 install::

@@ -113,4 +113,8 @@ all: bedrock2_ex compiler_ex processor end2end
 
 clean: clean_bedrock2 clean_compiler clean_processor clean_end2end
 
+clean_deps: clean_coqutil clean_kami clean_riscv-coq
+
+clean_all: clean_deps clean
+
 install: install_bedrock2 install_compiler install_processor install_end2end

@@ -62,7 +62,7 @@ force:
 clean:: Makefile.coq.noex Makefile.coq.ex
 	$(MAKE) -f Makefile.coq.noex clean
 	$(MAKE) -f Makefile.coq.ex clean
-	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
+	find . -type f \( -name '*~' -o -name '*.aux' -o -name '.lia.cache' -o -name '.nia.cache' \) -delete
 	rm -f Makefile.coq.noex Makefile.coq.noex.conf Makefile.coq.ex Makefile.coq.ex.conf _CoqProject src/compiler/examples/swap_bytes_over_uart.elf src/compiler/examples/swap_bytes_over_uart.bin src/compiler/examples/swap_bytes_over_uart.hex
 
 install::

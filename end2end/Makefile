@@ -40,7 +40,7 @@ force:
 
 clean:: Makefile.coq.all
 	$(MAKE) -f Makefile.coq.all clean
-	find . -type f \( -name '*~' -o -name '*.aux' \) -delete
+	find . -type f \( -name '*~' -o -name '*.aux' -o -name '.lia.cache' -o -name '.nia.cache' \) -delete
 	rm -f Makefile.coq.all Makefile.coq.all.conf _CoqProject
 	rm -f admits.txt PrintAdmits.vo admits1perLine.txt
 
