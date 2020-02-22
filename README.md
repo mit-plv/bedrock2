@@ -24,7 +24,7 @@ It is a design decision to *not* support the following features:
 
 ### Build [![Build Status](https://travis-ci.com/mit-plv/bedrock2.svg?branch=master)](https://travis-ci.com/mit-plv/bedrock2)
 
-You'll need [Coq](https://coq.inria.fr/), version 8.10 or master.
+You'll need [Coq](https://coq.inria.fr/), version 8.11 or master.
 
 In case you didn't clone with `--recursive`, use `make clone_all` to clone the git submodules.
 

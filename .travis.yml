@@ -11,7 +11,6 @@ matrix:
   include:
     - env: COQ_VERSION="master" COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-master-daily"
     - env: COQ_VERSION="v8.11"  COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-8.11-daily"
-    - env: COQ_VERSION="v8.10"  COQ_PACKAGE="coq"     PPA="ppa:jgross-h/coq-8.10-daily"
 
 before_install:
   - if [ ! -z "$PPA" ]; then sudo add-apt-repository "$PPA" -y; fi
