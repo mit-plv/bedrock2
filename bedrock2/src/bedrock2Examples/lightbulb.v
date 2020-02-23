@@ -14,6 +14,9 @@ From bedrock2.Map Require Import Separation SeparationLogic.
 Import ZArith.
 Local Open Scope Z_scope.
 
+(* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
+Ltac omega_safe ::= fail.
+
 (* TODO: refactor *)
 Lemma word__unsigned_of_Z_nowrap {width} {word: word.word width} {ok : word.ok word} x : 0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
 Proof.
@@ -710,3 +713,5 @@ Section WithParameters.
   Abort.
   *)
 End WithParameters.
+
+Ltac omega_safe ::= idtac.

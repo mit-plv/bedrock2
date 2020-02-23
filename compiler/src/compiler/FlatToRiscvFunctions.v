@@ -33,6 +33,9 @@ Require Import coqutil.Map.TestLemmas.
 
 Import Utility MetricLogging.
 
+(* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
+Ltac omega_safe ::= fail.
+
 Section Proofs.
   Context {p: FlatToRiscvCommon.parameters}.
   Context {h: FlatToRiscvCommon.assumptions}.
@@ -1916,3 +1919,5 @@ Section Proofs.
   Qed. (* <-- takes a while *)
 
 End Proofs.
+
+Ltac omega_safe ::= idtac.
