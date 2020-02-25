@@ -50,7 +50,6 @@ Section Sim.
     program_base := code_start;
     e_pos := FlatToRiscvDef.function_positions prog;
     e_impl := prog;
-    funnames := map.keys prog;
     dframe := Rdata;
     xframe := Rexec;
   |}.
@@ -63,7 +62,7 @@ Section Sim.
         (word.unsigned code_start) mod 4 = 0 /\
         map.get (function_positions e) f_entry_name = Some f_entry_rel_pos /\
         fits_stack (ghostConsts e).(num_stackwords) e c /\
-        good_e_impl e (ghostConsts e).(funnames) (ghostConsts e).(e_pos) /\
+        good_e_impl e (ghostConsts e).(e_pos) /\
         regs_initialized st.(getRegs) /\
         st.(getPc) = word.add p_call (word.of_Z (if done then 4 else 0)) /\
         goodMachine t m l (ghostConsts e) st.
@@ -93,7 +92,6 @@ Section Sim.
         match goal with
         | H: _ |- _ => exact H
         end.
-      + reflexivity.
       + unfold good_reduced_e_impl.
         split. {
           clear. intros k v ?. eassumption.
@@ -108,7 +106,6 @@ Section Sim.
       + assumption.
       + rewrite word.of_Z_unsigned. ring.
       + rewrite word.of_Z_unsigned. ring.
-      + apply map.keys_NoDup.
       + assumption.
     - simpl. intros. simp.
       eexists; split; [|eassumption].

@@ -33,6 +33,171 @@ Require Import coqutil.Map.TestLemmas.
 
 Import Utility MetricLogging.
 
+
+(* TODO_andres move this to coqutil *)
+Module map.
+  Section WithMap.
+    Context {key value} {map : map.map key value} {ok : map.ok map}.
+    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
+
+    Lemma remove_empty(x: key): map.remove map.empty x = map.empty.
+    Proof.
+      apply map.map_ext. intros.
+      rewrite map.get_remove_dec.
+      destr (key_eqb x k). 1: rewrite map.get_empty. all: congruence.
+    Qed.
+
+    Lemma fold_base_cases{R: Type}(f: R -> key -> value -> R):
+      forall r0 m,
+        (m = map.empty -> map.fold f r0 m = r0) /\
+        (forall k v, m = map.put map.empty k v -> map.fold f r0 m = f r0 k v).
+    Proof.
+      intros r0 m.
+      eapply map.fold_spec; intros; split; intros.
+      - reflexivity.
+      - exfalso.
+        apply (f_equal (fun m => map.get m k)) in H.
+        rewrite map.get_put_same in H.
+        rewrite map.get_empty in H.
+        discriminate.
+      - exfalso.
+        apply (f_equal (fun m => map.get m k)) in H1.
+        rewrite map.get_put_same in H1.
+        rewrite map.get_empty in H1.
+        discriminate.
+      - destruct H0.
+        destr (key_eqb k0 k). 2: {
+          apply (f_equal (fun m => map.get m k)) in H1.
+          rewrite map.get_put_same in H1.
+          rewrite map.get_put_diff in H1 by congruence.
+          rewrite map.get_empty in H1.
+          discriminate.
+        }
+        subst.
+        pose proof H1.
+        apply (f_equal (fun m => map.get m k)) in H1.
+        do 2 rewrite map.get_put_same in H1.
+        apply Option.eq_of_eq_Some in H1.
+        subst v0.
+        rewrite H0. 1: reflexivity.
+        apply map.map_ext.
+        intros.
+        rewrite map.get_empty.
+        destr (key_eqb k k0).
+        + subst. assumption.
+        + apply (f_equal (fun m => map.get m k0)) in H3.
+          rewrite map.get_put_diff in H3 by congruence.
+          rewrite map.get_put_diff in H3 by congruence.
+          rewrite map.get_empty in H3.
+          exact H3.
+    Qed.
+
+    Lemma fold_singleton{R: Type}(f: R -> key -> value -> R):
+      forall r0 k v,
+        map.fold f r0 (map.put map.empty k v) = f r0 k v.
+    Proof.
+      intros.
+      pose proof (fold_base_cases f r0 (map.put map.empty k v)).
+      apply proj2 in H.
+      eauto.
+    Qed.
+
+    Lemma fold_to_list{R: Type}(f: R -> key -> value -> R):
+      forall r0 m,
+      exists l, map.fold f r0 m = List.fold_right (fun '(k, v) r => f r k v) r0 l /\
+                forall k v, List.In (k, v) l <-> map.get m k = Some v.
+    Proof.
+      intros r0 m.
+      eapply map.fold_spec; intros.
+      - exists nil. split; [reflexivity|]. intros. rewrite map.get_empty. simpl. intuition congruence.
+      - destruct H0 as [l [? ?] ]. subst r.
+        exists ((k,v) :: l). split; [reflexivity|].
+        intros. simpl. intuition idtac.
+        + inversion H2. subst k0 v0. rewrite map.get_put_same. reflexivity.
+        + specialize (H1 k0 v0). apply proj1 in H1. specialize (H1 H2).
+          rewrite map.get_put_dec.
+          destr (key_eqb k k0).
+          * subst k0. exfalso. congruence.
+          * assumption.
+        + rewrite map.get_put_dec in H0.
+          destr (key_eqb k k0).
+          * left. congruence.
+          * right. apply H1. assumption.
+    Qed.
+
+    Local Axiom TODO_andres: False.
+
+    Lemma fold_remove{R: Type}(f: R -> key -> value -> R)
+      (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
+      forall r0 m k v,
+        map.get m k = Some v ->
+        map.fold f r0 m = f (map.fold f r0 (map.remove m k)) k v.
+    Proof.
+      intros.
+      pose proof (fold_to_list f r0 m) as P. destruct P as [ l [P1 P2] ].
+      rewrite P1.
+      pose proof (fold_to_list f r0 (map.remove m k)) as Q. destruct Q as [ l' [Q1 Q2] ].
+      rewrite Q1.
+      set (F := (fun '(k0, v0) (r : R) => f r k0 v0)).
+      change (f (fold_right F r0 l') k v) with (F (k, v) (fold_right F r0 l')).
+      case TODO_andres.
+    Qed.
+
+    Lemma fold_preimage{R: Type}(f: R -> key -> value -> R)
+          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
+      forall r0 m k v,
+        map.get m k = None /\ (exists r00, f r00 k v = r0) \/ map.get m k = Some v ->
+        exists r, map.fold f r0 m = f r k v.
+    Proof.
+      intros r0 m.
+      eapply map.fold_spec; intros.
+      - rewrite map.get_empty in H. destruct H.
+        + apply proj2 in H. destruct H. eauto.
+        + discriminate.
+      - rewrite map.get_put_dec in H1.
+        destr (key_eqb k k0).
+        + destruct H1; [destruct H1|]; try discriminate.
+          apply Option.eq_of_eq_Some in H1. subst k0 v0. eexists. reflexivity.
+        + edestruct H0 as [r' IH]. 1: exact H1.
+          subst.
+          rewrite f_comm.
+          eexists.
+          reflexivity.
+    Qed.
+
+    Lemma fold_pull{R: Type}(f: R -> key -> value -> R)
+          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
+      forall r0 m k v,
+        map.fold f (f r0 k v) m = f (map.fold f r0 m) k v.
+    Proof.
+      intros r0 m.
+      eapply map.fold_spec; intros.
+      - rewrite map.fold_empty. reflexivity.
+      - rewrite f_comm.
+        (* not sure if we need that one *)
+    Abort.
+
+    Lemma fold_put{R: Type}(f: R -> key -> value -> R)
+          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
+      forall r0 m k v,
+        map.get m k = None ->
+        map.fold f r0 (map.put m k v) = f (map.fold f r0 m) k v.
+    Proof.
+      intros r0 m.
+      eapply map.fold_spec; intros.
+      - apply fold_singleton.
+      - rewrite map.get_put_dec in H1.
+        destr (key_eqb k k0). 1: discriminate.
+        pose proof (H0 k0 v0) as IHk0. specialize IHk0 with (1 := H1).
+        pose proof (H0 k v) as IHk. specialize IHk with (1 := H).
+        clear H0.
+        epose proof (fold_preimage f f_comm r0 _ _ _) as P.
+        (* not sure if we need that one *)
+    Abort.
+
+  End WithMap.
+End map.
+
 (* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
 Ltac omega_safe ::= fail.
 
@@ -148,26 +313,6 @@ Section Proofs.
 
   Notation fun_pos_env := (@funname_env p Z).
 
-  (* Note: This definition would not be usable in the same way if we wanted to support
-     recursive functions, because separation logic would prevent us from mentioning
-     the snippet of code being run twice (once in [program initialL.(getPc) insts] and
-     a second time inside [functions]).
-     To avoid this double mentioning, we will remove the function being called from the
-     list of functions before entering the body of the function. *)
-  Definition functions(base: word)(rel_positions: fun_pos_env)(impls: env):
-    list String.string -> mem -> Prop :=
-    fix rec funnames :=
-      match funnames with
-      | nil => emp True
-      | fname :: rest =>
-        (match map.get rel_positions fname, map.get impls fname with
-         | Some pos, Some impl =>
-           program (word.add base (word.of_Z pos))
-                   (compile_function rel_positions pos impl)
-         | _, _ => emp False
-         end * (rec rest))%sep
-      end.
-
   Ltac cancel_emps_at_indices i j :=
     lazymatch goal with
     | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
@@ -175,28 +320,38 @@ Section Proofs.
       cbn [firstn skipn app hd tl]
     end.
 
-  Lemma functions_expose: forall base rel_positions impls funnames f pos impl,
+  Definition function(base: word)(rel_positions: fun_pos_env)
+             (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
+    match map.get rel_positions fname with
+    | Some pos => program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
+    | _ => emp False
+    end.
+
+  (* Note: This definition would not be usable in the same way if we wanted to support
+     recursive functions, because separation logic would prevent us from mentioning
+     the snippet of code being run twice (once in [program initialL.(getPc) insts] and
+     a second time inside [functions]).
+     To avoid this double mentioning, we will remove the function being called from the
+     list of functions before entering the body of the function. *)
+  Definition functions(base: word)(rel_positions: fun_pos_env): env -> mem -> Prop :=
+    map.fold (fun P fname fbody => (function base rel_positions fname fbody * P)%sep) (emp True).
+
+  Lemma functions_expose: forall base rel_positions impls f pos impl,
       map.get rel_positions f = Some pos ->
       map.get impls f = Some impl ->
-      List.In f funnames ->
-      List.NoDup funnames ->
-      iff1 (functions base rel_positions impls funnames)
-           (functions base rel_positions impls (List.removeb String.eqb f funnames) *
+      iff1 (functions base rel_positions impls)
+           (functions base rel_positions (map.remove impls f) *
             program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
   Proof.
-    intros base rel_positions impls.
-    induction funnames; intros.
-    - contradiction.
-    - simpl in *. simp. destr (f =? a)%string.
-      + subst a. simpl. rewrite_match. simp.
-        rewrite removeb_not_In by assumption.
-        ecancel.
-      + assert (In f funnames) by intuition congruence.
-        unfold negb. simpl.
-        destruct (map.get rel_positions a) as [pos'|];
-          destruct (map.get impls a) as [impl'|].
-        1: { cancel. eapply IHfunnames; assumption. }
-        all: clear; unfold iff1, sep, emp; intros; split; intros; simp; contradiction.
+    intros. unfold functions.
+    match goal with
+    | |- context[map.fold ?F] => pose proof (map.fold_remove F) as P
+    end.
+    simpl in P.
+    specialize P with (2 := H0).
+    rewrite P.
+    - unfold function at 1. rewrite H. cancel. reflexivity.
+    - intros. apply iff1ToEq. cancel.
   Qed.
 
   Lemma modVars_as_list_valid_FlatImp_var: forall (s: stmt Z),
@@ -225,7 +380,7 @@ Section Proofs.
     | array ptsto_instr _ _ (compile_stmt _ _ ?Code) => Code
     | ptsto_instr _ ?Instr => Instr
     | array ptsto_word _ _ ?Words => Words
-    | functions _ _ _ ?FunNames => FunNames
+    | functions _ _ ?E_Impl => E_Impl
     | _ => fail "no recognizable tag"
     end.
 
@@ -287,13 +442,12 @@ Section Proofs.
     program_base: word;
     e_pos: fun_pos_env;
     e_impl: env;
-    funnames: list String.string;
     dframe: mem -> Prop; (* data frame *)
     xframe: mem -> Prop; (* executable frame *)
   }.
 
   Ltac simpl_g_get :=
-    cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl funnames
+    cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl
          dframe xframe] in *.
 
   Definition goodMachine
@@ -313,7 +467,7 @@ Section Proofs.
     (* memory: *)
     subset (footpr (g.(xframe) *
                     program g.(p_insts) g.(insts) *
-                    functions g.(program_base) g.(e_pos) g.(e_impl) g.(funnames))%sep)
+                    functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
            (of_list lo.(getXAddrs)) /\
     (exists stack_trash,
         Z.of_nat (List.length stack_trash) = g.(num_stackwords) /\
@@ -321,27 +475,25 @@ Section Proofs.
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(num_stackwords))))
                     stack_trash *
          program g.(p_insts) g.(insts) *
-         functions g.(program_base) g.(e_pos) g.(e_impl) g.(funnames))%sep lo.(getMem)) /\
+         functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
     (* trace: *)
     lo.(getLog) = t /\
     (* misc: *)
     valid_machine lo.
 
-  Definition good_e_impl(e_impl: env)(funnames: list String.string)(e_pos: fun_pos_env) :=
+  Definition good_e_impl(e_impl: env)(e_pos: fun_pos_env) :=
     forall f (fun_impl: list Z * list Z * stmt Z),
       map.get e_impl f = Some fun_impl ->
       valid_FlatImp_fun fun_impl /\
-      List.In f funnames /\
       exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0.
 
   (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
      [FlatImp.exec] and [compile_stmt], respectively *)
-  Definition good_reduced_e_impl(e_impl_reduced e_impl: env)
-    (num_stackwords: Z)(funnames: list String.string)(e_pos: fun_pos_env): Prop :=
+  Definition good_reduced_e_impl(e_impl_reduced e_impl: env)(num_stackwords: Z)(e_pos: fun_pos_env): Prop :=
       map.extends e_impl e_impl_reduced /\
-      good_e_impl e_impl_reduced funnames e_pos.
+      good_e_impl e_impl_reduced e_pos.
 
   Declare Scope word_scope.
   Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
@@ -529,10 +681,9 @@ Section Proofs.
   Lemma compile_stmt_correct:
     forall e_impl_full (s: stmt Z) initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
-    forall (g: GhostConsts) (initialL: RiscvMachineL) (pos: Z) (e_impl_reduced: env),
-    g.(e_impl) = e_impl_full ->
-    good_reduced_e_impl e_impl_reduced g.(e_impl) g.(num_stackwords) g.(funnames) g.(e_pos) ->
-    fits_stack g.(num_stackwords) e_impl_reduced s ->
+    forall (g: GhostConsts) (initialL: RiscvMachineL) (pos: Z),
+    good_reduced_e_impl g.(e_impl) e_impl_full g.(num_stackwords) g.(e_pos) ->
+    fits_stack g.(num_stackwords) g.(e_impl) s ->
     @compile_stmt def_params _ g.(e_pos) pos s = g.(insts) ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
@@ -540,7 +691,6 @@ Section Proofs.
     (word.unsigned g.(program_base)) mod 4 = 0 ->
     initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
     g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
-    NoDup g.(funnames) ->
     goodMachine initialTrace initialMH initialRegsH g initialL ->
     runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
          postH finalTrace finalMH finalRegsH finalMetricsH /\
@@ -604,15 +754,15 @@ Section Proofs.
     - idtac "Case compile_stmt_correct/SCall".
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
       lazymatch goal with
-      | H: good_reduced_e_impl _ _ _  _ _ |- _ => destruct H as (? & ?)
+      | H: good_reduced_e_impl _ _ _ _ |- _ => destruct H as (? & ?)
       end.
       unfold good_e_impl, valid_FlatImp_fun in *.
       simpl in *.
       simp.
       lazymatch goal with
       | H1: map.get e_impl_full fname = ?RHS1,
-        H2: map.get e_impl_reduced fname = ?RHS2,
-        H3: map.extends e_impl_full e_impl_reduced |- _ =>
+        H2: map.get e_impl fname = ?RHS2,
+        H3: map.extends e_impl_full e_impl |- _ =>
         let F := fresh in assert (RHS1 = RHS2) as F
             by (clear -H1 H2 H3;
                 unfold map.extends in H3;
@@ -621,7 +771,7 @@ Section Proofs.
         inversion F; subst; clear F
       end.
       match goal with
-      | H: map.get e_impl_reduced fname = Some _, G: _ |- _ =>
+      | H: map.get e_impl fname = Some _, G: _ |- _ =>
           pose proof G as e_impl_reduced_props;
           specialize G with (1 := H);
           simpl in G
@@ -733,11 +883,10 @@ Section Proofs.
 
     pose proof functions_expose as P.
     match goal with
-    | H: map.get e_impl_full _ = Some _ |- _ => specialize P with (2 := H)
+    | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
     end.
     specialize P with (1 := GetPos).
-    specialize (P program_base funnames).
-    auto_specialize.
+    specialize (P program_base).
     match goal with
     | H: (_ * _)%sep _ |- _ => seprewrite_in P H
     end.
@@ -901,28 +1050,20 @@ Section Proofs.
       eapply IHexec with (g := {|
         p_sp := word.sub p_sp !(bytes_per_word * FL);
         e_pos := e_pos;
-        program_base := program_base;
-        funnames := (List.removeb String.eqb fname funnames) |});
+        program_base := program_base; |});
       after_IH;
-      subst FL. (* <-- TODO needed? *)
+      subst FL.
       all: try safe_sidecond.
       all: try safe_sidecond.
       { eapply map_extends_remove; eassumption. }
-      {   move e_impl_reduced_props at bottom.
-          intros *. intro G.
-          assert (map.get e_impl_reduced f = Some fun_impl) as G'. {
-            eapply map_get_Some_remove; eassumption.
-          }
-          specialize e_impl_reduced_props with (1 := G'). simp.
-          repeat split; eauto.
-          destr (String.eqb f fname).
-          + subst f.
-            simpl in *. unfold Register, MachineInt in *.
-            generalize (funname_env_ok (list Z * list Z * stmt Z)). clear -G.
-            intro OK. exfalso. map_solver OK.
-          + eapply remove_In_ne; assumption.
+      { move e_impl_reduced_props at bottom.
+        intros *. intro G.
+        assert (map.get e_impl f = Some fun_impl) as G'. {
+          eapply map_get_Some_remove; eassumption.
+        }
+        specialize e_impl_reduced_props with (1 := G'). simp.
+        repeat split; eauto.
       }
-      { eapply NoDup_removeb; eassumption. }
       { eapply map.putmany_of_list_zip_extends; [eassumption..|].
         clear -h. unfold map.extends. intros. rewrite map.get_empty in H. discriminate H. }
       { match goal with
@@ -1668,11 +1809,10 @@ Section Proofs.
       eapply rearrange_footpr_subset; [ eassumption | ].
       pose proof functions_expose as P.
       match goal with
-      | H: map.get e_impl_full _ = Some _ |- _ => specialize P with (2 := H)
+      | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
       end.
       specialize P with (1 := GetPos).
-      specialize (P program_base funnames).
-      auto_specialize.
+      specialize (P program_base).
       apply iff1ToEq in P.
       rewrite P. clear P.
       simpl.
@@ -1699,11 +1839,10 @@ Section Proofs.
       wseplog_pre.
       pose proof functions_expose as P.
       match goal with
-      | H: map.get e_impl_full _ = Some _ |- _ => specialize P with (2 := H)
+      | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
       end.
       specialize P with (1 := GetPos).
-      specialize (P program_base funnames).
-      auto_specialize.
+      specialize (P program_base).
       apply iff1ToEq in P.
       rewrite P. clear P.
       unfold program, compile_function.
@@ -1719,7 +1858,7 @@ Section Proofs.
                change (@array Wi Wo V M T E SZ A nil) with (emp True)
              end.
       rewrite! length_save_regs. rewrite! length_load_regs. (* <- needs to be before simpl_addrs *)
-      simpl_addrs.
+      simpl_addrs. simpl. (* PARAMRECORDS *)
       wcancel.
     + reflexivity.
     + assumption.

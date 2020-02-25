@@ -54,6 +54,28 @@ Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
+Section WithWordAndMem.
+  Context {width: Z} {word: word.word width} {mem: map.map word byte}.
+
+  (* bedrock2.ptsto_bytes.ptsto_bytes takes an n-tuple of bytes, whereas this one takes a list of bytes *)
+  Definition ptsto_bytes: word -> list byte -> mem -> Prop := array ptsto (word.of_Z 1).
+
+  Definition mem_available(start pastend: word)(m: mem): Prop :=
+    exists anybytes: list byte,
+      Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
+      ptsto_bytes start anybytes m.
+
+  Definition mem_available_to_exists: forall start pastend m P,
+      (mem_available start pastend * P)%sep m ->
+      exists anybytes,
+        Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
+        (ptsto_bytes start anybytes * P)%sep m.
+  Proof.
+    unfold mem_available, sep. simpl.
+    intros. simp. eauto 10.
+  Qed.
+End WithWordAndMem.
+
 Module Import Pipeline.
 
   Class parameters := {
@@ -332,22 +354,39 @@ Section Pipeline1.
   Definition instrencode(p: list Instruction): list byte :=
     List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
 
-  Definition ptsto_bytes: word -> list byte -> mem -> Prop := array ptsto (word.of_Z 1).
+  Lemma instrencode_functions: forall ml e instrs pos_map,
+      riscvPhase ml e = Some (instrs, pos_map) ->
+      iff1 (ptsto_bytes (code_start ml) (instrencode instrs))
+           (FlatToRiscvFunctions.functions (code_start ml) (FlatToRiscvDef.function_positions e) e).
+  Proof.
+    unfold riscvPhase.
+    intros.
+    simp.
+    rename z0 into posFinal.
+    case TODO_sam.
+  Qed.
 
   Open Scope ilist_scope.
 
-  Definition machine_ok(p_code p_stack_pastend: word)(instrs: list Instruction)(p_call pc: word)
-             (mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
+  Definition machine_ok(p_code: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
+             (instrs: list Instruction)
+             (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
       (ptsto_bytes p_code (instrencode instrs) *
        ptsto_bytes p_call (instrencode [[
-           Jal RegisterNames.ra (word.unsigned (word.sub p_code p_call))]]) *
+           Jal RegisterNames.ra (f_entry_rel_pos - word.unsigned (word.sub p_call p_code))]]) *
+       mem_available stack_start stack_pastend *
        Rdata * Rexec * eq mH
       )%sep mach.(getMem) /\
+      subset (footpr (ptsto_bytes p_code (instrencode instrs) *
+                      ptsto_bytes p_call (instrencode [[
+                            Jal RegisterNames.ra (f_entry_rel_pos - word.unsigned (word.sub p_call p_code))]]) *
+                      Rexec)%sep)
+             (of_list (getXAddrs mach)) /\
       word.unsigned (mach.(getPc)) mod 4 = 0 /\
       mach.(getPc) = pc /\
       mach.(getNextPc) = word.add mach.(getPc) (word.of_Z 4) /\
       regs_initialized mach.(getRegs) /\
-      map.get mach.(getRegs) RegisterNames.sp = Some p_stack_pastend /\
+      map.get mach.(getRegs) RegisterNames.sp = Some stack_pastend /\
       (* configured by PrimitivesParams, can contain invariants needed for external calls *)
       valid_machine mach.
 
@@ -356,7 +395,7 @@ Section Pipeline1.
   Lemma compiler_correct: forall
       (ml: MemoryLayout Semantics.width)
       (mlOk: MemoryLayoutOk ml)
-      (f_entry_name : string) (fbody: Syntax.cmd.cmd)
+      (f_entry_name : string) (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
       (p_call: word)
       (Rdata Rexec : mem -> Prop)
       (functions: source_env)
@@ -368,25 +407,19 @@ Section Pipeline1.
       ExprImp.valid_funs functions ->
       compile ml functions = Some (instrs, pos_map) ->
       map.get functions f_entry_name = Some (nil, nil, fbody) ->
+      map.get pos_map f_entry_name = Some f_entry_rel_pos ->
       Semantics.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
-      machine_ok ml.(code_start) ml.(stack_pastend) instrs
+      machine_ok ml.(code_start) f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
                  p_call p_call mH Rdata Rexec initial ->
       runsTo initial (fun final => exists mH',
           postH final.(getLog) mH' /\
-          machine_ok ml.(code_start) ml.(stack_pastend) instrs
+          machine_ok ml.(code_start) f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
     intros.
-    assert (exists f_entry_rel_pos, map.get pos_map f_entry_name = Some f_entry_rel_pos) as GetPos. {
-      unfold compile, composePhases, renamePhase, flattenPhase, riscvPhase in *. simp.
-      unfold flatten_functions, rename_functions, FlatToRiscvDef.function_positions in *.
-      apply get_build_fun_pos_env.
-      eapply (map.map_all_values_not_None_fw _ _ _ _ _ E0).
-      eapply (map.map_all_values_not_None_fw _ _ _ _ _ E).
-      simpl in *. (* PARAMRECORDS *)
-      congruence.
-    }
-    destruct GetPos as [f_entry_rel_pos GetPos].
+    match goal with
+    | H: map.get pos_map _ = Some _ |- _ => rename H into GetPos
+    end.
     eapply runsTo_weaken.
     - pose proof sim as P. unfold simulation, ExprImp.SimState, ExprImp.SimExec in P.
       specialize (P ml f_entry_rel_pos f_entry_name p_call Rdata Rexec
@@ -489,7 +522,6 @@ Section Pipeline1.
                  | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
                  end.
           assumption.
-        - eapply map.in_keys. eassumption.
         - unfold FlatToRiscvDef.function_positions, FlatToRiscvDef.build_fun_pos_env.
           pose proof (get_compile_funs_pos 0 r0 eq_refl) as P.
           destruct (FlatToRiscvDef.compile_funs map.empty 0 r0) as [ [ insts pos1 ] posmap ] eqn: F.
@@ -504,8 +536,49 @@ Section Pipeline1.
       { simpl. unfold machine_ok in *. simp. assumption. }
       { (* TODO remove duplicate regs_initialized *) unfold machine_ok in *. simp. assumption. }
       { unfold machine_ok in *. simp. assumption. }
-      { simpl. case TODO_sam. (* subset footpr xaddrs *) }
-      { simpl. case TODO_sam. (* separation logic descrption of initial memory *) }
+      { unfold machine_ok in *. simp. simpl.
+        eapply rearrange_footpr_subset. 1: eassumption.
+        (* COQBUG https://github.com/coq/coq/issues/11649 *)
+        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+
+        wwcancel.
+
+        case TODO_sam. (* subset footpr xaddrs *) }
+      { simpl.
+        (* COQBUG https://github.com/coq/coq/issues/11649 *)
+        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+        unfold machine_ok in *. simp.
+        edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
+        eexists.
+        split. 2: {
+          use_sep_assumption.
+          pose proof word_ok.
+          wwcancel.
+
+          unfold ptsto_instr. unfold truncated_scalar, littleendian.
+          unfold instrencode.
+          cbn [flat_map encode List.app].
+          cbn [seps].
+          cancel.
+          cancel_seps_at_indices 2%nat 1%nat. 1: reflexivity.
+          cancel_seps_at_indices 1%nat 4%nat. {
+            eapply iff1ToEq.
+            eapply instrencode_functions.
+            eassumption.
+          }
+          cancel_seps_at_indices 0%nat 0%nat. {
+            case TODO_sam. (* word list vs byte list *)
+          }
+          simpl.
+          rewrite sep_emp_True_r.
+          rewrite sep_emp_emp.
+          match goal with
+          | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
+          end.
+          split; intros _; try exact I.
+          case TODO_sam. (* encoding created valid instruction *)
+        }
+        case TODO_sam. (* length of stack_trash *) }
       { reflexivity. }
       { unfold machine_ok in *. simp. assumption. }
     - intros. unfold compile_inv, related, compose_relation in *.
@@ -518,11 +591,13 @@ Section Pipeline1.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
       + case TODO_sam. (* separation logic *)
+      + case TODO_sam.
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
     Unshelve.
     all: try exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
     all: try (simpl; typeclasses eauto).
     all: try exact EmptyString.
+    all: try exact nil.
   Qed.
 
 End Pipeline1.

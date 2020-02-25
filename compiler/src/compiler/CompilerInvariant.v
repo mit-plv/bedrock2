@@ -197,12 +197,13 @@ Section Pipeline1.
   Axiom Rexec: mem -> Prop. (* maybe (emp True) will be fine *)
 
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
-    exists (prog: source_env) (instrs: list Instruction) (positions: funname_env Z),
+    exists (prog: source_env) (instrs: list Instruction) (positions: funname_env Z) (loop_fun_pos: Z),
       compile_prog prog = Some (instrs, positions) /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
+      map.get positions "loop"%string = Some loop_fun_pos /\
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
-        machine_ok ml.(code_start) ml.(stack_pastend) instrs
+        machine_ok ml.(code_start) loop_fun_pos ml.(stack_start) ml.(stack_pastend) instrs
                    loop_pos (word.add loop_pos (word.of_Z (if done then 4 else 0))) mH Rdata Rexec mach.
 
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good.
@@ -327,6 +328,7 @@ Section Pipeline1.
     - pose proof compiler_correct as P. unfold runsTo in P. (* TODO instantiate ml to smaller ml *)
       unfold ll_good.
       eapply P; clear P; try (unfold hl_inv in init_code_correct; eapply init_code_correct); try eassumption.
+      { case TODO_sam. (* get rel pos of init *) }
       unfold machine_ok.
       unfold_RiscvMachine_get_set.
       repeat match goal with
@@ -336,6 +338,7 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
+      + case TODO_sam.
       + case TODO_sam.
       + destruct mlOk. solve_divisibleBy4.
       + solve_word_eq word_ok.
@@ -351,14 +354,16 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      (* TODO fix memory layout (one which focuses on init instructions) *)
-      case TODO_sam.
-    Unshelve. all: intros; try exact True.
+      + case TODO_sam.
+      + (* TODO fix memory layout (one which focuses on init instructions) *)
+        case TODO_sam.
+    Unshelve. all: intros; try exact True; try exact 0.
   Qed.
 
-  Lemma machine_ok_frame_instrs_app_l: forall p_code p_stack_pastend i1 i2 p_call pc mH Rdata Rexec mach,
-      machine_ok p_code p_stack_pastend (i1 ++ i2) p_call pc mH Rdata Rexec mach ->
-      machine_ok p_code p_stack_pastend i2 p_call pc mH Rdata
+  Lemma machine_ok_frame_instrs_app_l: forall p_code f_entry_rel_pos p_stack_start p_stack_pastend i1 i2
+                                              p_call pc mH Rdata Rexec mach,
+      machine_ok p_code f_entry_rel_pos p_stack_start p_stack_pastend (i1 ++ i2) p_call pc mH Rdata Rexec mach ->
+      machine_ok p_code f_entry_rel_pos p_stack_start p_stack_pastend i2 p_call pc mH Rdata
                  (Rexec * ptsto_bytes (word.add p_code (word.of_Z (4 * Z.of_nat (List.length i1))))
                                       (instrencode i2))%sep
                  mach.
@@ -366,7 +371,7 @@ Section Pipeline1.
     unfold machine_ok.
     intros. simp.
     ssplit; eauto.
-    case TODO_sam.
+    all: case TODO_sam.
   Qed.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
@@ -447,7 +452,7 @@ Section Pipeline1.
       subst.
       eapply runsTo_weaken.
       + pose proof compiler_correct as P. unfold runsTo in P.
-        eapply P; clear P. 5: {
+        eapply P; clear P. 6: {
           eapply loop_body_correct; eauto.
         }
         all: try eassumption.

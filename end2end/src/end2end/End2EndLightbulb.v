@@ -236,6 +236,10 @@ Proof.
       change (BinIntDef.Z.of_nat (Datatypes.length anybytes) = 4096) in Hl.
       rewrite word.of_Z_unsigned.
       rewrite <-(firstn_skipn 1520 anybytes) in Hr.
+      unfold ptsto_bytes in Hr.
+      assert (map.ok Semantics.mem). {
+        exact FE310CSemantics.parameters.mem_ok.
+      }
       SeparationLogic.seprewrite_in @Array.bytearray_append Hr.
       SeparationLogic.seprewrite_in @SeparationLogic.sep_emp_True_r Hr0.
       eexists _, _; split;

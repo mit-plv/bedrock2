@@ -3,7 +3,7 @@ Require Coq.Strings.String.
 Require Import coqutil.Map.Interface coqutil.Word.Interface.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.SeparationLogic.
-Require compiler.ExprImp.
+Require Import compiler.PipelineWithRename.
 
 Section Params1.
   Context {p: Semantics.parameters}.
@@ -20,12 +20,8 @@ Section Params1.
     isReady: Semantics.trace -> Semantics.mem -> Prop;
   }.
 
-  Definition mem_available(start pastend: Semantics.word)(m: Semantics.mem): Prop :=
-    exists anybytes: list byte,
-      Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
-      array ptsto (word.of_Z 1) start anybytes m.
-
-  Definition hl_inv(spec: ProgramSpec)(t: Semantics.trace)(m: Semantics.mem)(l: Semantics.locals)(mc: MetricLog)
+  Definition hl_inv(spec: ProgramSpec)(t: Semantics.trace)(m: Semantics.mem)
+             (l: Semantics.locals)(mc: bedrock2.MetricLogging.MetricLog)
     : Prop := (* Restriction: no locals can be shared between loop iterations *)
     spec.(isReady) t m /\ spec.(goodTrace) t.
 
