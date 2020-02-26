@@ -155,7 +155,7 @@ Section Connect.
   Notation strname_sem := (FlattenExpr.mk_Semantics_params
                              (@Pipeline.FlattenExpr_parameters pipeline_params)).
   Context (spec: @ProgramSpec strname_sem)
-          (ml: MemoryLayout 32)
+          (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml)
           (funimplsList: list (string * (list string * list string * cmd))).
 
@@ -246,7 +246,7 @@ Section Connect.
         * exact GetInit.
         * intros.
           eapply ExprImp.weaken_exec.
-          -- 
+          --
              rewrite ?heap_start_agree, ?heap_pastend_agree in *.
              refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
                eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.

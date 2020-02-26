@@ -1,10 +1,12 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface.
+Require Import riscv.Utility.Utility.
+Require Import compiler.SeparationLogic.
 
 Open Scope Z_scope.
 
 Section Params1.
-  Context {width: Z} {word: word.word width}.
+  Context {W: Words}.
 
   Record MemoryLayout: Type := {
     code_start: word;
@@ -18,6 +20,8 @@ Section Params1.
   (* Could also just require disjointness but <= is simpler to state *)
   Record MemoryLayoutOk(ml: MemoryLayout): Prop := {
     code_start_aligned: (word.unsigned ml.(code_start)) mod 4 = 0;
+    stack_start_aligned: (word.unsigned ml.(stack_start)) mod bytes_per_word = 0;
+    stack_pastend_aligned: (word.unsigned ml.(stack_pastend)) mod bytes_per_word = 0;
     code_pastend_ok: word.unsigned ml.(code_start) <= word.unsigned ml.(code_pastend);
     heap_after_code: word.unsigned ml.(code_pastend) <= word.unsigned ml.(heap_start);
     heap_pastend_ok: word.unsigned ml.(heap_start) <= word.unsigned ml.(heap_pastend);
@@ -26,5 +30,3 @@ Section Params1.
   }.
 
 End Params1.
-
-Arguments MemoryLayout _ {_}.

@@ -39,6 +39,11 @@ Section Run.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
+
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
   Context {M: Type -> Type}.

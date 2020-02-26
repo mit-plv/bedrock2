@@ -109,7 +109,10 @@ Ltac simpl_word_exprs OK :=
 
 Ltac solve_word_eq OK :=
   match goal with
-  | |- @eq (@word.rep _ _) _ _ => idtac
+  | |- @eq (@word.rep _ _) ?x ?y =>
+    tryif (assert_succeeds (assert (word.sub x x = word.of_Z 0) by ring))
+    then idtac
+    else fail 10000 "ring is not available, did you forget 'Add Ring'?"
   | _ => fail 1 "wrong shape of goal"
   end;
   subst;

@@ -71,7 +71,7 @@ Section Pipeline1.
   Context {p: Pipeline.parameters}.
   Context {h: Pipeline.assumptions}.
 
-  Context (ml: MemoryLayout Semantics.width)
+  Context (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml).
 
   Let init_sp := word.unsigned ml.(stack_pastend).
@@ -323,12 +323,22 @@ Section Pipeline1.
     | H: mem_available _ _ _ |- _ =>
       specialize (init_code_correct _ (bedrock2.MetricLogging.mkMetricLog 0 0 0 0) H)
     end.
+    assert (exists f_entry_rel_pos, map.get positions "init"%string = Some f_entry_rel_pos) as GetPos. {
+      unfold compile, composePhases, renamePhase, flattenPhase, riscvPhase in *. simp.
+      unfold flatten_functions, rename_functions, FlatToRiscvDef.function_positions in *.
+      apply get_build_fun_pos_env.
+      eapply (map.map_all_values_not_None_fw _ _ _ _ _ E0).
+      unshelve eapply (map.map_all_values_not_None_fw _ _ _ _ _ E).
+      1, 2: simpl; typeclasses eauto.
+      simpl in *. (* PARAMRECORDS *)
+      congruence.
+    }
+    destruct GetPos as [f_entry_rel_pos GetPos].
     (* then, run init_code (using compiler simulation and correctness of init_code) *)
     eapply runsTo_weaken.
     - pose proof compiler_correct as P. unfold runsTo in P. (* TODO instantiate ml to smaller ml *)
       unfold ll_good.
       eapply P; clear P; try (unfold hl_inv in init_code_correct; eapply init_code_correct); try eassumption.
-      { case TODO_sam. (* get rel pos of init *) }
       unfold machine_ok.
       unfold_RiscvMachine_get_set.
       repeat match goal with
@@ -338,6 +348,7 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
+      + case TODO_sam. (* verify Jal *)
       + case TODO_sam.
       + case TODO_sam.
       + destruct mlOk. solve_divisibleBy4.
@@ -442,7 +453,7 @@ Section Pipeline1.
       end.
       2: {
         (* PARAMRECORDS *)
-        symmetry. unshelve eapply SimplWordExpr.add_0_r. unfold Semantics.word. simpl. typeclasses eauto.
+        symmetry. unshelve eapply SimplWordExpr.add_0_r.
       }
       subst.
       match goal with

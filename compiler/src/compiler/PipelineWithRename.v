@@ -128,6 +128,11 @@ Section Pipeline1.
   Context {p: parameters}.
   Context {h: assumptions}.
 
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
+
   Local Axiom TODO_sam: False.
 
   Instance mk_FlatImp_ext_spec_ok:
@@ -170,7 +175,7 @@ Section Pipeline1.
      program, and a lot of infrastructure is already there, will do once/if we want to get
      a total compiler.
      Returns the fun_pos_env so that users know where to jump to call the compiled functions. *)
-  Definition riscvPhase(ml: MemoryLayout Semantics.width)(prog: renamed_env):
+  Definition riscvPhase(ml: MemoryLayout)(prog: renamed_env):
     option (list Instruction * funname_env Z) :=
     bind_opt stack_needed <- stack_usage prog;
     let num_stackwords := word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / bytes_per_word in
@@ -186,14 +191,14 @@ Section Pipeline1.
     | None => None
     end.
 
-  Definition compile(ml: MemoryLayout Semantics.width):
+  Definition compile(ml: MemoryLayout):
     source_env -> option (list Instruction * funname_env Z) :=
     (composePhases flattenPhase
     (composePhases renamePhase
                    (riscvPhase ml))).
 
   Section Sim.
-    Context (ml: MemoryLayout Semantics.width)
+    Context (ml: MemoryLayout)
             (mlOk: MemoryLayoutOk ml)
             (f_entry_rel_pos : Z)
             (f_entry_name : string)
@@ -332,6 +337,25 @@ Section Pipeline1.
       destruct_one_match; eauto.
   Qed.
 
+  Local Axiom TODO_andres: False.
+
+  (* TODO not sure if this is the best definition, if needed, etc *)
+  Definition byte_list_to_word_list(bytes: list byte): list word. case TODO_andres. Defined.
+
+  Lemma byte_list_to_word_list_array: forall p bytes,
+      iff1 (array ptsto (word.of_Z 1) p bytes)
+           (array ptsto_word (word.of_Z bytes_per_word) p (byte_list_to_word_list bytes)).
+  Proof.
+    case TODO_andres.
+  Qed.
+
+  Lemma byte_list_to_word_list_length: forall bytes,
+      Z.of_nat (Datatypes.length (byte_list_to_word_list bytes)) =
+      Z.of_nat (Datatypes.length bytes) / bytes_per_word.
+  Proof.
+    case TODO_andres.
+  Qed.
+
   Lemma get_compile_funs_pos: forall pos0 e,
       pos0 mod 4 = 0 ->
       let '(insts, pos1, posmap) := FlatToRiscvDef.compile_funs map.empty pos0 e in
@@ -349,6 +373,25 @@ Section Pipeline1.
         rewrite map.get_put_dec in H2.
         rewrite map.get_put_dec.
         destruct_one_match; eauto.
+  Qed.
+
+  Lemma mod_2width_mod_bytes_per_word: forall x,
+      (x mod 2 ^ width) mod bytes_per_word = x mod bytes_per_word.
+  Proof.
+    intros.
+    rewrite <- Znumtheory.Zmod_div_mod.
+    - reflexivity.
+    - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; reflexivity.
+    - destruct width_cases as [E | E]; rewrite E; reflexivity.
+    - unfold Z.divide.
+      exists (2 ^ width / bytes_per_word).
+      unfold bytes_per_word.
+      destruct width_cases as [E | E]; rewrite E; simpl.
+      1: change (Z.of_nat (Pos.to_nat 4)) with (2 ^ 2).
+      2: change (Z.of_nat (Pos.to_nat 8)) with (2 ^ 3).
+      all: rewrite <- Z.pow_sub_r by blia;
+           rewrite <- Z.pow_add_r by blia;
+           reflexivity.
   Qed.
 
   Definition instrencode(p: list Instruction): list byte :=
@@ -371,15 +414,16 @@ Section Pipeline1.
   Definition machine_ok(p_code: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
              (instrs: list Instruction)
              (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
+      let CallInst := Jal RegisterNames.ra
+                          (f_entry_rel_pos - word.unsigned (word.sub p_call p_code)) : Instruction in
+      verify CallInst iset /\
       (ptsto_bytes p_code (instrencode instrs) *
-       ptsto_bytes p_call (instrencode [[
-           Jal RegisterNames.ra (f_entry_rel_pos - word.unsigned (word.sub p_call p_code))]]) *
+       ptsto_bytes p_call (instrencode [CallInst]) *
        mem_available stack_start stack_pastend *
        Rdata * Rexec * eq mH
       )%sep mach.(getMem) /\
       subset (footpr (ptsto_bytes p_code (instrencode instrs) *
-                      ptsto_bytes p_call (instrencode [[
-                            Jal RegisterNames.ra (f_entry_rel_pos - word.unsigned (word.sub p_call p_code))]]) *
+                      ptsto_bytes p_call (instrencode [CallInst]) *
                       Rexec)%sep)
              (of_list (getXAddrs mach)) /\
       word.unsigned (mach.(getPc)) mod 4 = 0 /\
@@ -393,7 +437,7 @@ Section Pipeline1.
   (* This lemma translates "sim", which depends on the large definition "related", into something
      more understandable and usable. *)
   Lemma compiler_correct: forall
-      (ml: MemoryLayout Semantics.width)
+      (ml: MemoryLayout)
       (mlOk: MemoryLayoutOk ml)
       (f_entry_name : string) (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
       (p_call: word)
@@ -530,7 +574,9 @@ Section Pipeline1.
           eassumption.
       }
       { unfold machine_ok in *. simp. assumption. }
-      { unfold machine_ok in *. simp. solve_word_eq word_ok. }
+      { unfold machine_ok in *. simp.
+        (* PARAMRECORDS *) simpl.
+        solve_word_eq word_ok. }
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
       { simpl. unfold machine_ok in *. simp. assumption. }
@@ -549,39 +595,66 @@ Section Pipeline1.
         pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
         unfold machine_ok in *. simp.
         edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
-        eexists.
+        exists (byte_list_to_word_list stack_trash).
         split. 2: {
-          use_sep_assumption.
-          pose proof word_ok.
-          wwcancel.
-
-          unfold ptsto_instr. unfold truncated_scalar, littleendian.
-          unfold instrencode.
-          cbn [flat_map encode List.app].
+          unfold word_array.
+          rewrite <- (iff1ToEq (byte_list_to_word_list_array _ _)).
+          match goal with
+          | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
+          end.
+          match goal with
+          | H: riscvPhase _ _ = _ |- _ => pose proof (instrencode_functions _ _ _ _ H) as P
+          end.
+          symmetry in P.
+          simpl in P|-*.
+          seprewrite P. clear P.
+          unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes in *.
+          assert (word.ok FlatImp.word) by exact word_ok.
+          rewrite <- Z_div_exact_2; cycle 1. {
+            unfold bytes_per_word. clear -h.
+            destruct width_cases as [E | E]; rewrite E; reflexivity.
+          }
+          {
+            match goal with
+            | H: ?x = ?y |- _ => rewrite H
+            end.
+            destruct mlOk.
+            rewrite word.unsigned_sub. unfold word.wrap.
+            rewrite mod_2width_mod_bytes_per_word.
+            rewrite Zminus_mod.
+            rewrite stack_start_aligned.
+            rewrite stack_pastend_aligned.
+            rewrite Z.sub_diag.
+            apply Zmod_0_l.
+          }
+          wcancel_assumption.
+          rewrite word.of_Z_unsigned.
+          cancel_seps_at_indices O O. {
+            (* PARAMRECORDS *) simpl.
+            sepclause_eq word_ok.
+          }
           cbn [seps].
-          cancel.
-          cancel_seps_at_indices 2%nat 1%nat. 1: reflexivity.
-          cancel_seps_at_indices 1%nat 4%nat. {
-            eapply iff1ToEq.
-            eapply instrencode_functions.
-            eassumption.
-          }
-          cancel_seps_at_indices 0%nat 0%nat. {
-            case TODO_sam. (* word list vs byte list *)
-          }
           simpl.
-          rewrite sep_emp_True_r.
           rewrite sep_emp_emp.
           match goal with
           | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
           end.
           split; intros _; try exact I.
-          case TODO_sam. (* encoding created valid instruction *)
+          split; [assumption|reflexivity].
         }
-        case TODO_sam. (* length of stack_trash *) }
+        match goal with
+        | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
+        end.
+        apply byte_list_to_word_list_length. }
       { reflexivity. }
       { unfold machine_ok in *. simp. assumption. }
     - intros. unfold compile_inv, related, compose_relation in *.
+      eassert (verify _ _). {
+        match goal with
+        | H: context[machine_ok] |- _ => destruct H
+        end.
+        eassumption.
+      }
       repeat match goal with
              | H: context[machine_ok] |- _ => clear H
              | H: context[Semantics.exec] |- _ => clear H

@@ -24,7 +24,7 @@ Lemma instrMemSizeLg_bounds : 3 <= instrMemSizeLg <= 30. Proof. cbv. intuition d
 Definition dataMemSize: Z := (16-4)*2^10.
 
 (* TODO adjust these numbers *)
-Definition ml: MemoryLayout Semantics.width := {|
+Definition ml: MemoryLayout := {|
   MemoryLayout.code_start    := word.of_Z 0;
   MemoryLayout.code_pastend  := word.of_Z (4*2^10);
   MemoryLayout.heap_start    := word.of_Z (4*2^10);
