@@ -69,8 +69,12 @@ Proof.
   constructor; try reflexivity; try (cbv; discriminate).
 Qed.
 
-Definition p4mm memSizeLg (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
-                                               (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
+Definition memSizeLg: Z := 13.
+Lemma memSizeLg_valid : instrMemSizeLg + 2 < memSizeLg <= 32.
+Proof. cbv. intuition discriminate. Qed.
+
+Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
+                                     (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
 
 From coqutil Require Import Z_keyed_SortedListMap.
@@ -189,10 +193,10 @@ Qed.
 
 Lemma end2end_lightbulb:
   forall (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
-                              (Z.to_nat KamiProc.width))
+                              (Z.to_nat memSizeLg))
          (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
     kami_mem_contains_bytes (instrencode lightbulb_insts) (code_start ml) memInit ->
-    Semantics.Behavior (p4mm _ memInit) mFinal t ->
+    Semantics.Behavior (p4mm memInit) mFinal t ->
     exists t': list KamiRiscv.Event,
       KamiRiscv.KamiLabelSeqR t t' /\
       (exists (suffix : list KamiRiscv.Event) (bedrockTrace : list RiscvMachine.LogItem),
@@ -211,6 +215,7 @@ Proof.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
+  specialize_first Q memSizeLg_valid.
   specialize_first Q KB.
   specialize_first Q compilation_result.
 

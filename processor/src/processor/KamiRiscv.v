@@ -107,7 +107,9 @@ Section Equiv.
 
   Variable (instrMemSizeLg memSizeLg: Z).
   Hypotheses (Hinstr1: 3 <= instrMemSizeLg)
-             (Hinstr2: instrMemSizeLg <= width - 2).
+             (Hinstr2: instrMemSizeLg <= width - 2)
+             (Hkmem1: 2 + instrMemSizeLg < memSizeLg)
+             (Hkmem2: memSizeLg <= width).
   Local Notation Hinstr := (conj Hinstr1 Hinstr2).
 
   Variable (memInit: Vec (ConstT (Bit BitsPerByte)) (Z.to_nat memSizeLg)).
@@ -593,91 +595,6 @@ Section Equiv.
     | solve [trivial]
     ].
 
-  Lemma kamiStep_sound_case_execLd:
-    forall km1 t0 rm1 post kupd cs
-           (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
-      states_related (km1, t0) rm1 ->
-      mcomp_sat_unit (run1 iset) rm1 post ->
-      Step kamiProc km1 kupd
-           {| annot := Some (Some "execLd"%string);
-              defs := FMap.M.empty _;
-              calls := cs |} ->
-      exists rm2 t,
-        KamiLabelR
-          {| annot := Some (Some "execLd"%string);
-             defs := FMap.M.empty _;
-             calls := cs |} t /\
-        states_related (FMap.M.union kupd km1, t ++ t0) rm2 /\ post rm2.
-  Proof.
-    intros.
-    inversion H; subst; clear H.
-    eapply invert_Kami_execLd in H1; eauto.
-    destruct H1 as (? & kinst & ldAddr & ? & ? & ? & ? & ? & ?).
-    change (rv32InstBytes * BitsPerByte)%nat with (Z.to_nat width) in kinst.
-    simpl in H; subst pinit.
-
-    destruct (evalExpr (isMMIO type ldAddr)) eqn:Hmmio.
-    - (** MMIO load case *)
-      repeat match goal with
-             | [H: true = true -> _ |- _] => specialize (H eq_refl)
-             | [H: true = false -> _ |- _] => clear H
-             end.
-      destruct H11 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
-      simpl in H; subst cs.
-
-      (* Invert a riscv-coq step *)
-      (* -- fetch *)
-      repeat t.
-      specialize (H eq_refl).
-      destruct H8.
-      eapply fetch_ok in H; [|eassumption..].
-      destruct H as (rinst & ? & ?).
-      rewrite H in H0.
-      setoid_rewrite <-H1 in H16.
-      repeat t.
-      setoid_rewrite H16 in H0.
-
-      (* -- decode *)
-      assert (bitSlice (kunsigned kinst) 0 7 = opcode_LOAD) as Hkopc.
-      { unfold getOptype, rv32Dec, rv32GetOptype in H2.
-        unfold evalExpr in H2; fold evalExpr in H2.
-        destruct (isEq _ _ _) in H2;
-          [|destruct (isEq _ _ _) in H2; discriminate].
-        revert e; intros e.
-        cbn [evalExpr getOpcodeE evalUniBit] in e.
-        apply (f_equal (fun x => Z.of_N (wordToN x))) in e.
-        rewrite unsigned_split1_as_bitSlice in e.
-        assumption.
-      }
-
-      pose proof (bitSlice_range_ex
-                    (kunsigned kinst) 12 15 ltac:(abstract blia))
-        as Hf3.
-      change (2 ^ (15 - 12)) with 8 in Hf3.
-      assert (let z := bitSlice (kunsigned kinst) 12 15 in
-              z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
-              z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
-      clear Hf3.
-      destruct H17 as [|[|[|[|[|[|[|]]]]]]].
-      (* -- get rid of [InvalidInstruction] cases *)
-      4, 7, 8: eval_decode_in H0; exfalso; auto; fail.
-
-      + (** LB: load-byte *)
-        eval_decode_in H0.
-        repeat t.
-        case TODO_joonwon.
-
-      + (** LH: load-half *) case TODO_joonwon.
-      + (** LW: load-word *) case TODO_joonwon.
-      + (** LHU: load-half-unsigned *) case TODO_joonwon.
-      + (** LBU: load-byte-unsigned *) case TODO_joonwon.
-
-    - case TODO_joonwon.
-
-  Qed.
-
-  Local Axiom TODO_word : False.
-
   Ltac kinvert_pre :=
     repeat
       match goal with
@@ -779,6 +696,106 @@ Section Equiv.
     assert (Ht: t = tc) by reflexivity;
     rewrite Ht in H; clear Ht.
 
+  Lemma kamiStep_sound_case_execLd:
+    forall km1 t0 rm1 post kupd cs
+           (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
+      states_related (km1, t0) rm1 ->
+      mcomp_sat_unit (run1 iset) rm1 post ->
+      Step kamiProc km1 kupd
+           {| annot := Some (Some "execLd"%string);
+              defs := FMap.M.empty _;
+              calls := cs |} ->
+      exists rm2 t,
+        KamiLabelR
+          {| annot := Some (Some "execLd"%string);
+             defs := FMap.M.empty _;
+             calls := cs |} t /\
+        states_related (FMap.M.union kupd km1, t ++ t0) rm2 /\ post rm2.
+  Proof.
+    intros.
+    inversion H; subst; clear H.
+    eapply invert_Kami_execLd in H1; eauto.
+    destruct H1 as (? & kinst & ldAddr & ? & ? & ? & ? & ? & ?).
+    change (rv32InstBytes * BitsPerByte)%nat with (Z.to_nat width) in kinst.
+    simpl in H; subst pinit.
+    rewrite <-H3 in *.
+
+    destruct (evalExpr (isMMIO type ldAddr)) eqn:Hmmio.
+    - (** MMIO load case *)
+      repeat match goal with
+             | [H: true = true -> _ |- _] => specialize (H eq_refl)
+             | [H: true = false -> _ |- _] => clear H
+             end.
+      destruct H11 as (kt2 & mmioLdRq & mmioLdRs & ? & ? & ? & ? & ?).
+      simpl in H; subst cs.
+
+      (** Invert a riscv-coq step *)
+
+      (* -- fetch *)
+      repeat t.
+      specialize (H eq_refl).
+      destruct H8.
+      pose proof H as Hxaddr.
+      eapply fetch_ok in H; try eassumption; [|Lia.lia].
+      destruct H as (rinst & ? & ?).
+      rewrite H in H0.
+      setoid_rewrite <-H1 in H16.
+      repeat t.
+      setoid_rewrite H16 in H0.
+
+      (* -- decode *)
+      assert (bitSlice (kunsigned kinst) 0 7 = opcode_LOAD) as Hkopc.
+      { unfold getOptype, rv32Dec, rv32GetOptype in H2.
+        unfold evalExpr in H2; fold evalExpr in H2.
+        destruct (isEq _ _ _) in H2;
+          [|destruct (isEq _ _ _) in H2; discriminate].
+        revert e; intros e.
+        cbn [evalExpr getOpcodeE evalUniBit] in e.
+        apply (f_equal (fun x => Z.of_N (wordToN x))) in e.
+        rewrite unsigned_split1_as_bitSlice in e.
+        assumption.
+      }
+
+      pose proof (bitSlice_range_ex
+                    (kunsigned kinst) 12 15 ltac:(abstract blia))
+        as Hf3.
+      change (2 ^ (15 - 12)) with 8 in Hf3.
+      assert (let z := bitSlice (kunsigned kinst) 12 15 in
+              z = 0 \/ z = 1 \/ z = 2 \/ z = 3 \/
+              z = 4 \/ z = 5 \/ z = 6 \/ z = 7) by (abstract blia).
+      clear Hf3.
+      destruct H17 as [|[|[|[|[|[|[|]]]]]]].
+      (* -- get rid of [InvalidInstruction] cases *)
+      4, 7, 8: eval_decode_in H0; exfalso; auto; fail.
+
+      { (** LB: load-byte *)
+        eval_decode_in H0.
+        repeat t.
+        case TODO_joonwon.
+      }
+
+      { (** LH: load-half *)
+        case TODO_joonwon.
+      }
+      
+      { (** LW: load-word *)
+        case TODO_joonwon.
+      }
+
+      { (** LHU: load-half-unsigned *)
+        case TODO_joonwon.
+      }
+      
+      { (** LBU: load-byte-unsigned *)
+        case TODO_joonwon.
+      }
+
+    - case TODO_joonwon.
+
+  Qed.
+
+  Local Axiom TODO_word : False.
+
   Lemma kamiStep_sound:
     forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
            (m1': RiscvMachine) (t0: list Event) (post: RiscvMachine -> Prop)
@@ -843,7 +860,7 @@ Section Equiv.
       specialize (H1 eq_refl).
       destruct H11.
       pose proof H1 as Hxaddr.
-      eapply fetch_ok in H1; [|eassumption..].
+      eapply fetch_ok in H1; try eassumption; [|Lia.lia].
       destruct H1 as (rinst & ? & ?).
       rewrite H1 in H5.
       repeat t.
@@ -1275,7 +1292,7 @@ Section Equiv.
       repeat t.
       specialize (H1 eq_refl).
       destruct H11.
-      eapply fetch_ok in H1; [|eassumption..].
+      eapply fetch_ok in H1; try eassumption; [|Lia.lia].
       destruct H1 as (rinst & ? & ?).
       rewrite H1 in H5.
       repeat t.

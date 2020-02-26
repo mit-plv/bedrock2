@@ -74,7 +74,8 @@ Section Connect.
   Context (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                (Z.to_nat memSizeLg)).
 
-  Hypothesis instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30.
+  Hypotheses (instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30)
+             (Hkmem: 2 + instrMemSizeLg < memSizeLg <= 32).
 
   Definition p4mm: Kami.Syntax.Modules :=
     KamiRiscv.p4mm instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds)
@@ -117,12 +118,6 @@ Section Connect.
     cbv [FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec Pipeline.ext_spec pipeline_params].
     abstract (destruct H; split; eauto).
   Defined.
-
-  Lemma HbtbAddr: BinInt.Z.to_nat instrMemSizeLg = (3 + (BinInt.Z.to_nat instrMemSizeLg - 3))%nat.
-  Proof. PreOmega.zify; rewrite ?Z2Nat.id in *; blia. Qed.
-
-  Lemma HinstrMemBound: instrMemSizeLg <= 30.
-  Proof. exact (proj2 instrMemSizeLg_bounds). Qed.
 
   Definition states_related :=
     @states_related Pipeline.Registers mem instrMemSizeLg memSizeLg
@@ -222,6 +217,8 @@ Section Connect.
     specialize_first P1 traceProp.
     specialize_first P1 (ll_inv ml spec).
     specialize_first P1 B.
+    specialize_first P1 (proj1 Hkmem).
+    specialize_first P1 (proj2 Hkmem).
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)

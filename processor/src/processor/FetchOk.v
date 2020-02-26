@@ -223,14 +223,12 @@ Section FetchOk.
     reflexivity.
   Qed.
 
-  Lemma kamiXAddrs_isXAddr4_bound:
+  Lemma kamiXAddrs_isXAddr1_bound:
     forall a,
-      isXAddr4 a kamiXAddrs ->
+      isXAddr1 a kamiXAddrs ->
       (wordToN a < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
   Proof.
-    intros.
-    cbv [isXAddr4 isXAddr1]; intros.
-    destruct H as [? _].
+    cbv [isXAddr1]; intros.
     apply alignedXAddrsRange_bound in H.
     simpl in H.
     unfold instrMemSize in H.
@@ -238,10 +236,23 @@ Section FetchOk.
     assumption.
   Qed.
 
+  Lemma kamiXAddrs_isXAddr4_bound:
+    forall a,
+      isXAddr4 a kamiXAddrs ->
+      (wordToN a < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N.
+  Proof.
+    intros.
+    apply kamiXAddrs_isXAddr1_bound.
+    apply H.
+  Qed.
+
   Definition mem_related (kmem: kword memSizeLg -> kword 8)
-             (rmem: mem): Prop :=
+             (rmem : mem): Prop :=
     forall addr: kword width,
-      map.get rmem addr = Some (byte.of_Z (uwordToZ (kmem (evalZeroExtendTrunc _ addr)))).
+      map.get rmem addr =
+      if Z.ltb (kunsigned addr) (Z.pow 2 memSizeLg)
+      then Some (byte.of_Z (uwordToZ (kmem (evalZeroExtendTrunc _ addr))))
+      else None.
 
   Definition RiscvXAddrsSafe
              (kmemi: kword instrMemSizeLg -> kword width)
@@ -313,31 +324,97 @@ Section FetchOk.
     reflexivity.
   Qed.
 
+  Hypothesis (Hkmem: 2 + instrMemSizeLg < memSizeLg <= width).
+
   Lemma getmany_of_tuple_combineBytes_consistent:
     forall kmem rmem rpc,
       mem_related kmem rmem ->
+      isXAddr4 rpc kamiXAddrs ->
       exists rinst : HList.tuple byte 4,
         map.getmany_of_tuple rmem (Memory.footprint rpc 4) = Some rinst /\
         combine 4 rinst = kunsigned (width:= 32) (SC.combineBytes 4 rpc kmem).
   Proof.
     intros.
+
+    assert (Z.pow 2 (Z.of_nat (2 + ninstrMemSizeLg)) < Z.pow 2 memSizeLg) as Hkmemp
+        by (apply Z.pow_lt_mono_r; Lia.lia).
+
+    assert (Z.ltb (kunsigned rpc) (Z.pow 2 memSizeLg) = true) as Hrpc0.
+    { destruct H0 as [? _].
+      apply kamiXAddrs_isXAddr1_bound in H0.
+      destruct (Z.ltb_spec (kunsigned rpc) (Z.pow 2 memSizeLg)); [reflexivity|].
+      apply N2Z.inj_lt in H0.
+      rewrite NatLib.Z_of_N_Npow2 in H0.
+      cbv [kunsigned] in H1.
+      Lia.lia.
+    }
+
+    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
+    { destruct H0 as [_ [? _]].
+      cbv [word.add word WordsKami wordW KamiWord.word] in H0.
+      cbv [word.of_Z kofZ] in H0.
+      apply kamiXAddrs_isXAddr1_bound in H0.
+      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      apply N2Z.inj_lt in H0.
+      rewrite NatLib.Z_of_N_Npow2 in H0.
+      cbv [kunsigned] in H1.
+      Lia.lia.
+    }
+
+    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1))
+                  (Z.pow 2 memSizeLg) = true) as Hrpc2.
+    { destruct H0 as [_ [_ [? _]]].
+      cbv [word.add word WordsKami wordW KamiWord.word] in H0.
+      cbv [word.of_Z kofZ] in H0.
+      apply kamiXAddrs_isXAddr1_bound in H0.
+      rewrite <-wplus_assoc.
+      change (ZToWord nwidth 1 ^+ ZToWord nwidth 1) with (ZToWord nwidth 2).
+      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 2)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      apply N2Z.inj_lt in H0.
+      rewrite NatLib.Z_of_N_Npow2 in H0.
+      cbv [kunsigned] in H1.
+      Lia.lia.
+    }
+
+    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1))
+                  (Z.pow 2 memSizeLg) = true) as Hrpc3.
+    { destruct H0 as [_ [_ [_ ?]]].
+      cbv [word.add word WordsKami wordW KamiWord.word] in H0.
+      cbv [word.of_Z kofZ] in H0.
+      apply kamiXAddrs_isXAddr1_bound in H0.
+      rewrite <-wplus_assoc.
+      change (ZToWord nwidth 1 ^+ ZToWord nwidth 1) with (ZToWord nwidth 2).
+      rewrite <-wplus_assoc.
+      change (ZToWord nwidth 1 ^+ ZToWord nwidth 2) with (ZToWord nwidth 3).
+      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 3)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      apply N2Z.inj_lt in H0.
+      rewrite NatLib.Z_of_N_Npow2 in H0.
+      cbv [kunsigned] in H1.
+      Lia.lia.
+    }
+    
     cbv [Memory.footprint HList.tuple.unfoldn].
     eexists; split.
-    - instantiate (1:= {| PrimitivePair.pair._1 := _;
+    - pose proof (H rpc); rewrite Hrpc0 in H1.
+      pose proof (H (rpc ^+ ZToWord _ 1)); rewrite Hrpc1 in H2.
+      pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc2 in H3.
+      pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc3 in H4.
+      
+      instantiate (1:= {| PrimitivePair.pair._1 := _;
                           PrimitivePair.pair._2 := _ |}).
-      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H|].
+      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H1|].
       cbv [PrimitivePair.pair._2].
       instantiate (1:= {| PrimitivePair.pair._1 := _;
                           PrimitivePair.pair._2 := _ |}).
-      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H|].
+      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H2|].
       cbv [PrimitivePair.pair._2].
       instantiate (1:= {| PrimitivePair.pair._1 := _;
                           PrimitivePair.pair._2 := _ |}).
-      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H|].
+      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H3|].
       cbv [PrimitivePair.pair._2].
       instantiate (1:= {| PrimitivePair.pair._1 := _;
                           PrimitivePair.pair._2 := _ |}).
-      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H|].
+      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H4|].
       cbv [PrimitivePair.pair._2].
       reflexivity.
 
@@ -377,8 +454,7 @@ Section FetchOk.
     specialize (Hxs _ H); destruct Hxs.
     specialize (H4 H0 _ H1).
     rewrite <-H4.
-    eapply getmany_of_tuple_combineBytes_consistent.
-    assumption.
+    eapply getmany_of_tuple_combineBytes_consistent; assumption.
   Qed.
 
 End FetchOk.
