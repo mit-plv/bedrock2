@@ -1819,11 +1819,28 @@ Section Equiv.
     case TODO_joonwon.
   Defined.
 
-  Definition riscvMemInit:
-    {rmemi: mem & mem_related _ (evalConstT kamiMemInit) rmemi}.
+  Definition riscvMemInit := map.of_list (List.map
+    (fun i : nat =>
+      (word.of_Z (Z.of_nat i),
+       byte.of_Z (uwordToZ (evalConstT kamiMemInit $i))))
+    (seq 0 (2 ^ Z.to_nat memSizeLg))).
+  Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.
   Proof.
-    case TODO_joonwon.
-  Defined.
+    assert (map.ok mem) by case TODO_joonwon.
+    cbv [mem_related riscvMemInit].
+    intros addr.
+    case (kunsigned addr <? 2 ^ memSizeLg) eqn:?H.
+    2: { case TODO_joonwon. }
+    erewrite Properties.map.get_of_list_In_NoDup; trivial.
+    1: eapply NoDup_nth_error; intros i j ?.
+    2: eapply (nth_error_In _ (wordToNat addr)).
+
+    { rewrite map_map; cbn; cbv [kofZ].
+      (* erewrite 2map_nth_error. *)
+      case TODO_andres. }
+    { (* erewrite map_nth_error. *)
+      case TODO_andres. }
+  Qed.
 
   Lemma states_related_init:
     states_related
@@ -1832,7 +1849,7 @@ Section Equiv.
            {| RiscvMachine.getRegs := projT1 riscvRegsInit;
               RiscvMachine.getPc := word.of_Z 0;
               RiscvMachine.getNextPc := word.of_Z 4;
-              RiscvMachine.getMem := projT1 riscvMemInit;
+              RiscvMachine.getMem := riscvMemInit;
               RiscvMachine.getXAddrs := kamiXAddrs;
               RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
          getMetrics := MetricLogging.EmptyMetricLog; |}.
@@ -1843,7 +1860,7 @@ Section Equiv.
     - intros; discriminate.
     - split; reflexivity.
     - apply (projT2 riscvRegsInit).
-    - apply (projT2 riscvMemInit).
+    - apply mem_related_riscvMemInit.
   Qed.
 
   Lemma equivalentLabel_preserves_KamiLabelR:
@@ -1880,7 +1897,7 @@ Section Equiv.
            (RvInv: RiscvMachine -> Prop)
            (establishRvInv:
               forall (m0RV: RiscvMachine),
-                m0RV.(getMem) = projT1 riscvMemInit ->
+                m0RV.(getMem) = riscvMemInit ->
                 m0RV.(getPc) = word.of_Z 0 ->
                 (forall reg, 0 < reg < 32 -> map.get m0RV.(getRegs) reg <> None) ->
                 m0RV.(getLog) = nil ->
