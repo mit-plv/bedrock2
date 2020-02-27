@@ -843,31 +843,33 @@ Section RegAlloc.
         eapply IH2; try eassumption.
   Qed.
 
-  Definition related(e1: srcEnv)(e2: impEnv)(c1: stmt)(c2: stmt')(done: bool):
+  Definition related(done: bool):
     @FlatImp.SimState _ srcSemanticsParams -> @FlatImp.SimState _ impSemanticsParams -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
-      envs_related e1 e2 /\
       t1 = t2 /\
       m1 = m2 /\
-      (done = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2) /\
-      exists av' r', rename map.empty c1 available_impvars = Some (r', c2, av').
+      (done = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2).
       (* TODO could/should also relate l1 and l2 *)
 
-  Lemma renameSim(available_impvars_NoDup: NoDup available_impvars):
-    forall e1 e2 c1 c2,
-    simulation (@FlatImp.SimExec _ srcSemanticsParams e1 c1)
-               (@FlatImp.SimExec _ impSemanticsParams e2 c2) (related e1 e2 c1 c2).
+  Lemma renameSim(available_impvars_NoDup: NoDup available_impvars)
+        (e1: srcEnv)(e2: impEnv)(c1: stmt)(c2: stmt'):
+    forall av' r',
+      envs_related e1 e2 ->
+      rename map.empty c1 available_impvars = Some (r', c2, av') ->
+      simulation (@FlatImp.SimExec _ srcSemanticsParams e1 c1)
+                 (@FlatImp.SimExec _ impSemanticsParams e2 c2) related.
   Proof.
     unfold simulation.
+    intros *. intros ER Ren.
     intros *. intros R Ex1.
     unfold FlatImp.SimExec, related in *.
     destruct s1 as (((t1 & m1) & l1) & mc1).
     destruct s2 as (((t2 & m2) & l2) & mc2).
     simp.
-    pose proof Rrrrr as A.
+    pose proof Ren as A.
     apply @rename_props in A;
       [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
-    specialize (Rrrrl eq_refl).
+    specialize (Rrr eq_refl).
     simp.
     apply_in_hyps @invert_NoDup_app. simp.
     eapply exec.weaken.

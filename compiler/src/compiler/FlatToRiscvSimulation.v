@@ -38,11 +38,12 @@ Section Sim.
           (f_entry_name: string)
           (p_call: word)
           (Rdata Rexec: mem -> Prop)
-          (code_start stack_start stack_pastend: word).
+          (code_start stack_start stack_pastend: word)
+          (prog: env).
 
   Local Open Scope ilist_scope.
 
-  Definition ghostConsts(prog: env): GhostConsts := {|
+  Definition ghostConsts: GhostConsts := {|
     p_sp := stack_pastend;
     num_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
     p_insts := p_call;
@@ -54,22 +55,21 @@ Section Sim.
     xframe := Rexec;
   |}.
 
-  Definition related(e: env)(c: stmt Z)(done: bool):
+  Definition related(done: bool):
     FlatImp.SimState Z -> MetricRiscvMachine -> Prop :=
     fun '(t, m, l, mc) st =>
-        c = SSeq SSkip (SCall nil f_entry_name nil) /\
-        (word.unsigned p_call) mod 4 = 0 /\
-        (word.unsigned code_start) mod 4 = 0 /\
-        map.get (function_positions e) f_entry_name = Some f_entry_rel_pos /\
-        fits_stack (ghostConsts e).(num_stackwords) e c /\
-        good_e_impl e (ghostConsts e).(e_pos) /\
         regs_initialized st.(getRegs) /\
         st.(getPc) = word.add p_call (word.of_Z (if done then 4 else 0)) /\
-        goodMachine t m l (ghostConsts e) st.
+        goodMachine t m l ghostConsts st.
 
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
-    forall e c,
-      simulation (FlatImp.SimExec Z e c) FlatToRiscvCommon.runsTo (related e c).
+    let c := SSeq SSkip (SCall nil f_entry_name nil) in
+    (word.unsigned p_call) mod 4 = 0 ->
+    (word.unsigned code_start) mod 4 = 0 ->
+    map.get (function_positions prog) f_entry_name = Some f_entry_rel_pos ->
+    fits_stack ghostConsts.(num_stackwords) prog c ->
+    good_e_impl prog ghostConsts.(e_pos) ->
+    simulation (FlatImp.SimExec Z prog c) FlatToRiscvCommon.runsTo related.
   Proof.
     unfold simulation, FlatImp.SimExec, related, FlatImp.SimState.
     intros.
@@ -81,12 +81,12 @@ Section Sim.
     end.
     simp.
     match goal with
-    | A: map.get e f_entry_name = Some ?r1, B: map.get e f_entry_name = Some ?r2 |- _ =>
+    | A: map.get prog f_entry_name = Some ?r1, B: map.get prog f_entry_name = Some ?r2 |- _ =>
       pose proof (eq_trans (eq_sym A) B); clear B
     end.
     simp.
     eapply runsTo_weaken.
-    - eapply compile_stmt_correct with (g := ghostConsts e)
+    - eapply compile_stmt_correct with (g := ghostConsts)
                                        (pos := word.unsigned (word.sub p_call code_start)); simpl.
       + eapply exec.call; cycle -1; try eassumption.
         Fail eassumption. (* TODO why?? *)
@@ -116,7 +116,6 @@ Section Sim.
              | _ => eassumption
              | _ => reflexivity
              end.
-      + unfold goodMachine in *. simp. eauto using fits_stack_call, fits_stack_skip, fits_stack_seq.
       + (* TODO remove regs_initialized from compile_stmt_correct_new because
            it's already in goodMachine *)
         unfold goodMachine in *. simp. assumption.

@@ -91,11 +91,6 @@ Section Pipeline1.
     simp. eauto.
   Qed.
 
-  Definition related(g: GhostConsts)(relative_code_pos: Z) :=
-    (compose_relation (FlattenExprSimulation.related (2^10))
-    (compose_relation (RegRename.related eqb Z.eqb eqb eqb available_registers ext_spec)
-                      (FlatToRiscvSimulation.related g relative_code_pos))).
-
   Section Riscv.
     Context (prog: RenamedProgram).
 

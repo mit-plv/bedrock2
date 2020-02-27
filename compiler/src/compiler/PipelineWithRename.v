@@ -283,22 +283,36 @@ Section Pipeline1.
             (f_entry_rel_pos : Z)
             (f_entry_name : string)
             (p_call: word) (* address where the call to the entry function is stored *)
-            (Rdata Rexec : FlatToRiscvCommon.mem -> Prop).
+            (Rdata Rexec : FlatToRiscvCommon.mem -> Prop)
+            (prog: renamed_env)
+            (e1 : FlattenExpr.ExprImp_env)
+            (e2 : FlattenExpr.FlatImp_env)
+            (funname : string)
+            (Hf: flatten_functions (2 ^ 10) e1 = Some e2).
+    Let c2 := (@FlatImp.SSeq String.string FlatImp.SSkip (FlatImp.SCall [] funname [])).
+    Let c3 := (@FlatImp.SSeq Z FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])).
+    Context (av' : list Z) (r' : string_keyed_map Z)
+            (ER: envs_related available_registers e2 prog)
+            (Ren: rename map.empty c2 available_registers = Some (r', c3, av'))
+            (H_p_call: word.unsigned p_call mod 4 = 0)
+            (G: map.get (FlatToRiscvDef.function_positions prog) f_entry_name = Some f_entry_rel_pos)
+            (F: fits_stack (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word) prog
+                           (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])))
+            (GEI: good_e_impl prog (FlatToRiscvDef.function_positions prog)).
 
-    Definition related :=
-      (compose_relation (FlattenExprSimulation.related (2^10))
-      (compose_relation (RegRename.related available_registers ext_spec)
-                        (FlatToRiscvSimulation.related f_entry_rel_pos f_entry_name p_call Rdata Rexec
-                                                       ml.(code_start) ml.(stack_start) ml.(stack_pastend)))).
+    Definition flattenSim: simulation _ _ _ :=
+      FlattenExprSimulation.flattenExprSim (2^10) e1 e2 funname Hf.
+    Definition regAllocSim: simulation _ _ _ :=
+      renameSim available_registers (@ext_spec p) NoDup_available_registers
+                e2 prog c2 c3 av' r' ER Ren.
+    Definition flatToRiscvSim: simulation _ _ _ :=
+      FlatToRiscvSimulation.flatToRiscvSim
+        f_entry_rel_pos f_entry_name p_call Rdata Rexec
+        ml.(code_start) ml.(stack_start) ml.(stack_pastend)
+        prog H_p_call (code_start_aligned _ mlOk) G F GEI.
 
-    Definition flattenSim := FlattenExprSimulation.flattenExprSim (2^10).
-    Definition regAllocSim := renameSim available_registers (@ext_spec p) NoDup_available_registers.
-    Definition flatToRiscvSim := FlatToRiscvSimulation.flatToRiscvSim
-                                   f_entry_rel_pos f_entry_name p_call Rdata Rexec
-                                   ml.(code_start) ml.(stack_start) ml.(stack_pastend).
-
-    Lemma sim: simulation ExprImp.SimExec runsTo related.
-    Proof. exact (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)). Qed.
+    Definition sim: simulation _ _ _ :=
+      (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)).
   End Sim.
 
   Lemma rename_fun_valid: forall argnames retnames body impl',
@@ -570,13 +584,14 @@ Section Pipeline1.
     match goal with
     | H: map.get pos_map _ = Some _ |- _ => rename H into GetPos
     end.
+    unfold compile, composePhases, renamePhase, flattenPhase in *. simp.
     eapply runsTo_weaken.
     - pose proof sim as P. unfold simulation, ExprImp.SimState, ExprImp.SimExec in P.
-      specialize (P ml f_entry_rel_pos f_entry_name p_call Rdata Rexec
-                    (functions, (Syntax.cmd.call [] f_entry_name []), initial.(getLog), mH, map.empty, mc)).
-      specialize P with (post1 := fun '(e', c', t', m', l', mc') => postH t' m').
+      specialize (P ml mlOk f_entry_rel_pos f_entry_name p_call Rdata Rexec).
+      specialize P with (e1 := functions) (s1 := (initial.(getLog), mH, map.empty, mc)).
+      specialize P with (post1 := fun '(t', m', l', mc') => postH t' m').
       simpl in P.
-      eapply P; clear P. 2: {
+      eapply P; clear P; cycle -1. {
         econstructor.
         + eassumption.
         + reflexivity.
@@ -586,16 +601,7 @@ Section Pipeline1.
           exists map.empty. split; [reflexivity|].
           eassumption.
       }
-      unfold compile, composePhases, renamePhase, flattenPhase in *. simp.
-      unfold related, compose_relation.
-      unfold FlatToRiscvSimulation.related, FlattenExprSimulation.related, RegRename.related.
-      refine (ex_intro _ (_, _, _, _, _, _) _).
-      ssplit; try reflexivity.
       { eassumption. }
-      { eexists. split; reflexivity. }
-      refine (ex_intro _ (_, _, _, _, _, _) _).
-      unfold goodMachine.
-      ssplit.
       { unfold envs_related.
         intros f [ [argnames resnames] body1 ] G.
         unfold rename_functions in *.
@@ -606,12 +612,7 @@ Section Pipeline1.
         - typeclasses eauto.
       }
       { reflexivity. }
-      { reflexivity. }
-      { intros. ssplit; reflexivity. }
-      { simpl. do 2 eexists. reflexivity. }
-      { reflexivity. }
       { unfold machine_ok in *. simp. solve_divisibleBy4. }
-      { destruct mlOk. assumption. }
       { unfold riscvPhase in *. simp. exact GetPos. }
       { simpl. unfold riscvPhase in *. simpl in *. simp.
         move E1 at bottom.
@@ -679,10 +680,18 @@ Section Pipeline1.
           eapply P2.
           eassumption.
       }
+      unfold related, compose_relation.
+      unfold FlatToRiscvSimulation.related, FlattenExprSimulation.related, RegRename.related.
+      refine (ex_intro _ (_, _, _, _) _).
+      ssplit; try reflexivity.
+      refine (ex_intro _ (_, _, _, _) _).
+      ssplit; try reflexivity.
+      { intros. ssplit; reflexivity. }
       { unfold machine_ok in *. simp. assumption. }
       { unfold machine_ok in *. simp.
         (* PARAMRECORDS *) simpl.
         solve_word_eq word_ok. }
+      unfold goodMachine. simpl. ssplit.
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
       { simpl. unfold machine_ok in *. simp. assumption. }
@@ -767,14 +776,20 @@ Section Pipeline1.
       { reflexivity. }
       { unfold machine_ok in *. simp. assumption. }
     - intros. unfold compile_inv, related, compose_relation in *.
-      eassert (verify _ _). {
-        match goal with
-        | H: context[machine_ok] |- _ => destruct H
-        end.
-        eassumption.
-      }
+      match goal with
+      | H: context[machine_ok] |- _ =>
+        unfold machine_ok in H;
+        repeat match type of H with
+               | _ /\ _ => let A := fresh "HOK0" in destruct H as [A H];
+                           lazymatch type of A with
+                           | verify _ _ => idtac
+                           | _ = p_call => idtac
+                         (*| _ => clear A*)
+                           end
+               end
+      end.
+      subst.
       repeat match goal with
-             | H: context[machine_ok] |- _ => clear H
              | H: context[Semantics.exec] |- _ => clear H
              end.
       unfold FlatToRiscvSimulation.related, FlattenExprSimulation.related, RegRename.related, goodMachine in *.
@@ -820,7 +835,7 @@ Section Pipeline1.
         simpl.
         assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
         wwcancel.
-        pose proof (instrencode_functions ml r7 instrs) as P.
+        pose proof (instrencode_functions ml r0 instrs) as P.
         cbn [seps].
         rewrite <- P; clear P.
         * wwcancel.
@@ -830,13 +845,31 @@ Section Pipeline1.
           match goal with
           | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
           end.
-          split; intros _; try exact I.
-          split; assumption.
-        * (* TODO relate r7 (the final renamed env) to the initial renamed env,
-             which is not currently done by FlatToRiscvSimulation.related nor by
-             by RegRename.related *)
-          case TODO_sam.
-      + case TODO_sam. (* subset footpr *)
+          split; auto.
+        * eassumption.
+      + unfold machine_ok in *. simp. simpl.
+        eapply rearrange_footpr_subset. 1: eassumption.
+        (* COQBUG https://github.com/coq/coq/issues/11649 *)
+        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+        (* TODO remove duplication *)
+        match goal with
+        | H: riscvPhase _ _ = _ |- _ => pose proof (instrencode_functions _ _ _ _ H) as P
+        end.
+        symmetry in P.
+        rewrite P. clear P.
+        cbn [dframe xframe ghostConsts program_base ghostConsts e_pos e_impl p_insts insts program].
+        simpl.
+        unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
+        simpl.
+        wwcancel.
+        cbn [seps].
+        simpl.
+        rewrite sep_emp_emp.
+        match goal with
+        | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
+        end.
+        split; intros _; try exact I.
+        split; [assumption|reflexivity].
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
     Unshelve.
     all: try exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
