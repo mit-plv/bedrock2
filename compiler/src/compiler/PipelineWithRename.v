@@ -76,6 +76,86 @@ Section WithWordAndMem.
   Qed.
 End WithWordAndMem.
 
+(* TODO move to coqutil *)
+Module map.
+  Section WithMap.
+    Context {key value} {map : map.map key value} {ok : map.ok map}.
+    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
+
+    Lemma map_ind(P: map -> Prop):
+      P map.empty ->
+      (forall m, P m -> forall k v, map.get m k = None -> P (map.put m k v)) ->
+      forall m, P m.
+    Proof.
+      intros Base Step.
+      eapply (map.fold_spec (fun (m: map) (_: unit) => P m) (fun acc _ _ => acc) tt Base).
+      intros.
+      eapply Step; assumption.
+    Qed.
+
+    Lemma fold_put{R: Type}(f: R -> key -> value -> R)
+          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
+      forall r0 m k v,
+        map.get m k = None ->
+        map.fold f r0 (map.put m k v) = f (map.fold f r0 m) k v.
+    Proof.
+      intros r0 m. pattern m.
+      eapply map_ind; intros.
+      - rewrite map.fold_empty. rewrite map.fold_singleton. reflexivity.
+      - rewrite map.get_put_dec in H1.
+        destr (key_eqb k k0). 1: discriminate.
+        rewrite H by assumption.
+    Abort.
+
+    Lemma fold_remove{R: Type}(f: R -> key -> value -> R)
+      (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
+      forall r0 m k v,
+        map.get m k = Some v ->
+        map.fold f r0 m = f (map.fold f r0 (map.remove m k)) k v.
+    Proof.
+      intros r0 m. pattern m.
+      eapply map_ind; intros.
+      - rewrite map.get_empty in H. discriminate.
+      - rewrite map.get_put_dec in H1.
+        destr (key_eqb k k0).
+        + apply Option.eq_of_eq_Some in H1.
+          subst v0 k0.
+    Abort.
+
+    Lemma fold_pull{R: Type}(f: R -> key -> value -> R)
+          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
+      forall r0 m k v,
+        map.fold f (f r0 k v) m = f (map.fold f r0 m) k v.
+    Proof.
+      intros r0 m. pattern m.
+      eapply map_ind; intros.
+      - rewrite !map.fold_empty. reflexivity.
+      -
+    Abort.
+
+    Lemma fold_put{R: Type}(f: R -> key -> value -> R)
+          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
+      forall r0 m k v,
+        map.get m k = None ->
+        map.fold f r0 (map.put m k v) = f (map.fold f r0 m) k v.
+    Proof.
+      intros.
+      erewrite (map.fold_remove f f_comm r0 (map.put m k v) k v).
+      2: apply map.get_put_same.
+      replace (map.remove (map.put m k v) k) with m.
+      1: reflexivity.
+      apply map.map_ext.
+      intros.
+      rewrite map.get_remove_dec.
+      destr (key_eqb k k0).
+      1: congruence.
+      rewrite map.get_put_diff; congruence.
+    Qed.
+
+  End WithMap.
+End map.
+
+
 Module Import Pipeline.
 
   Class parameters := {
@@ -356,6 +436,13 @@ Section Pipeline1.
     case TODO_andres.
   Qed.
 
+  Lemma mem_available_ptsto_word: forall stack_trash ml (mlOk: MemoryLayoutOk ml),
+      iff1 (array ptsto_word (word.of_Z bytes_per_word) (stack_start ml) stack_trash)
+           (mem_available (stack_start ml) (stack_pastend ml)).
+  Proof.
+    intros. case TODO_andres.
+  Qed.
+
   Lemma get_compile_funs_pos: forall pos0 e,
       pos0 mod 4 = 0 ->
       let '(insts, pos1, posmap) := FlatToRiscvDef.compile_funs map.empty pos0 e in
@@ -397,6 +484,13 @@ Section Pipeline1.
   Definition instrencode(p: list Instruction): list byte :=
     List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
 
+  (* This lemma should relate two map.folds which fold two different f over the same env e:
+     1) FlatToRiscvDef.compile_funs, which folds FlatToRiscvDef.add_compiled_function
+     2) functions, which folds sep
+     Note that 1) is not commutative (the iteration order determines in which order code
+     is layed out in memory), while 2) should be commutative because the "function"
+     separation logic predicate it seps onto the separation logic formula is the same
+     if we pass it the same function position map. *)
   Lemma instrencode_functions: forall ml e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
       iff1 (ptsto_bytes (code_start ml) (instrencode instrs))
@@ -406,7 +500,19 @@ Section Pipeline1.
     intros.
     simp.
     rename z0 into posFinal.
-    case TODO_sam.
+    unfold FlatToRiscvDef.compile_funs, FlatToRiscvDef.function_positions in *.
+    revert E1 E2.
+    generalize 0.
+    revert posFinal r.
+    (* PARAMRECORDS *)
+    assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
+    pattern e. eapply map.map_ind with (m := e); intros.
+    - rewrite map.fold_empty in E1. simp.
+      unfold functions. rewrite map.fold_empty.
+      reflexivity.
+    - unfold functions.
+      (* rewrite map.fold_put in E1. NOPE, not commutative! *)
+      case TODO_andres. (* probably map.map_ind was a bad choice *)
   Qed.
 
   Open Scope ilist_scope.
@@ -586,10 +692,22 @@ Section Pipeline1.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
         pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
-
+        (* TODO remove duplication *)
+        match goal with
+        | H: riscvPhase _ _ = _ |- _ => pose proof (instrencode_functions _ _ _ _ H) as P
+        end.
+        symmetry in P.
+        rewrite P. clear P.
+        unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
         wwcancel.
-
-        case TODO_sam. (* subset footpr xaddrs *) }
+        cbn [seps].
+        simpl.
+        rewrite sep_emp_emp.
+        match goal with
+        | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
+        end.
+        split; intros _; try exact I.
+        split; [assumption|reflexivity]. }
       { simpl.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
         pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
@@ -663,14 +781,69 @@ Section Pipeline1.
       simp.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
-      + case TODO_sam. (* separation logic *)
-      + case TODO_sam.
+      + use_sep_assumption.
+        cbn [dframe xframe ghostConsts program_base ghostConsts e_pos e_impl p_insts insts].
+        progress simpl (@FlatToRiscvCommon.mem (@FlatToRiscv_params p)).
+        wwcancel.
+        cancel_seps_at_indices 0%nat 3%nat. {
+          reflexivity.
+        }
+        cancel_seps_at_indices 0%nat 2%nat. {
+          cbn [num_stackwords ghostConsts p_sp].
+          replace (word.sub (stack_pastend ml) (word.of_Z (bytes_per_word *
+                      (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word))))
+            with (stack_start ml). 2: {
+            rewrite <- Z_div_exact_2; cycle 1. {
+              unfold bytes_per_word. clear -h. simpl.
+              destruct width_cases as [E | E]; rewrite E; reflexivity.
+            }
+            {
+              destruct mlOk.
+              rewrite word.unsigned_sub. unfold word.wrap.
+              rewrite mod_2width_mod_bytes_per_word.
+              rewrite Zminus_mod.
+              rewrite stack_start_aligned.
+              rewrite stack_pastend_aligned.
+              rewrite Z.sub_diag.
+              apply Zmod_0_l.
+            }
+            rewrite word.of_Z_unsigned.
+            solve_word_eq word_ok.
+          }
+          apply iff1ToEq.
+          apply mem_available_ptsto_word.
+          assumption.
+        }
+        unfold ptsto_instr.
+        simpl.
+        unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
+        simpl.
+        assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
+        wwcancel.
+        pose proof (instrencode_functions ml r7 instrs) as P.
+        cbn [seps].
+        rewrite <- P; clear P.
+        * wwcancel.
+          cbn [seps].
+          simpl.
+          rewrite sep_emp_emp.
+          match goal with
+          | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
+          end.
+          split; intros _; try exact I.
+          split; assumption.
+        * (* TODO relate r7 (the final renamed env) to the initial renamed env,
+             which is not currently done by FlatToRiscvSimulation.related nor by
+             by RegRename.related *)
+          case TODO_sam.
+      + case TODO_sam. (* subset footpr *)
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
     Unshelve.
     all: try exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
     all: try (simpl; typeclasses eauto).
     all: try exact EmptyString.
     all: try exact nil.
+    all: try exact map.empty.
   Qed.
 
 End Pipeline1.
