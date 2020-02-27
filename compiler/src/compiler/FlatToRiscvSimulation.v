@@ -54,9 +54,9 @@ Section Sim.
     xframe := Rexec;
   |}.
 
-  Definition related(done: bool):
+  Definition related(e: env)(c: stmt Z)(done: bool):
     FlatImp.SimState Z -> MetricRiscvMachine -> Prop :=
-    fun '(e, c, t, m, l, mc) st =>
+    fun '(t, m, l, mc) st =>
         c = SSeq SSkip (SCall nil f_entry_name nil) /\
         (word.unsigned p_call) mod 4 = 0 /\
         (word.unsigned code_start) mod 4 = 0 /\
@@ -68,11 +68,12 @@ Section Sim.
         goodMachine t m l (ghostConsts e) st.
 
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
-      simulation (FlatImp.SimExec Z) FlatToRiscvCommon.runsTo related.
+    forall e c,
+      simulation (FlatImp.SimExec Z e c) FlatToRiscvCommon.runsTo (related e c).
   Proof.
     unfold simulation, FlatImp.SimExec, related, FlatImp.SimState.
     intros.
-    destruct s1 as (((((e & c) & t) & m) & l) & mc).
+    destruct s1 as (((t & m) & l) & mc).
     destruct_RiscvMachine s2.
     simp.
     match goal with

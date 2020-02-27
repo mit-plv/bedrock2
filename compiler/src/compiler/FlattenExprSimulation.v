@@ -12,8 +12,10 @@ Require Import compiler.Simp.
 Section Sim.
   Context {p: FlattenExpr.parameters}.
 
-  Definition related(max_size: Z)(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
-    fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
+  Definition related(e1: FlattenExpr.ExprImp_env)(e2: FlattenExpr.FlatImp_env)
+             (c1: Syntax.cmd)(c2: FlatImp.stmt String.string)
+             (max_size: Z)(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
+    fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
       flatten_functions max_size e1 = Some e2 /\
       (exists funname, c1 = Syntax.cmd.call nil funname nil /\
                        c2 = (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall nil funname nil))) /\
@@ -22,10 +24,12 @@ Section Sim.
       l1 = map.empty.
 
   Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}(max_size: Z):
-    simulation ExprImp.SimExec (FlatImp.SimExec String.string) (related max_size).
+    forall e1 e2 c1 c2,
+    simulation (ExprImp.SimExec e1 c1) (FlatImp.SimExec String.string e2 c2) (related e1 e2 c1 c2 max_size).
   Proof.
     unfold simulation, related, ExprImp.SimExec, FlatImp.SimExec.
-    intros (((((e1 & c1) & done1) & t1) & m1) & l1) (((((e2 & c2) & done2) & t2) & m2) & l2).
+    intros e1 e2 c1 c2.
+    intros (((done1 & t1) & m1) & l1) (((done2 & t2) & m2) & l2).
     intros.
     simp.
     simpl.

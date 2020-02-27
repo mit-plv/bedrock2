@@ -843,9 +843,9 @@ Section RegAlloc.
         eapply IH2; try eassumption.
   Qed.
 
-  Definition related(done: bool): @FlatImp.SimState _ srcSemanticsParams ->
-                                  @FlatImp.SimState _ impSemanticsParams -> Prop :=
-    fun '(e1, c1, t1, m1, l1, mc1) '(e2, c2, t2, m2, l2, mc2) =>
+  Definition related(e1: srcEnv)(e2: impEnv)(c1: stmt)(c2: stmt')(done: bool):
+    @FlatImp.SimState _ srcSemanticsParams -> @FlatImp.SimState _ impSemanticsParams -> Prop :=
+    fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
       envs_related e1 e2 /\
       t1 = t2 /\
       m1 = m2 /\
@@ -854,14 +854,15 @@ Section RegAlloc.
       (* TODO could/should also relate l1 and l2 *)
 
   Lemma renameSim(available_impvars_NoDup: NoDup available_impvars):
-    simulation (@FlatImp.SimExec _ srcSemanticsParams)
-               (@FlatImp.SimExec _ impSemanticsParams) related.
+    forall e1 e2 c1 c2,
+    simulation (@FlatImp.SimExec _ srcSemanticsParams e1 c1)
+               (@FlatImp.SimExec _ impSemanticsParams e2 c2) (related e1 e2 c1 c2).
   Proof.
     unfold simulation.
     intros *. intros R Ex1.
     unfold FlatImp.SimExec, related in *.
-    destruct s1 as (((((e1 & c1) & t1) & m1) & l1) & mc1).
-    destruct s2 as (((((e2 & c2) & t2) & m2) & l2) & mc2).
+    destruct s1 as (((t1 & m1) & l1) & mc1).
+    destruct s2 as (((t2 & m2) & l2) & mc2).
     simp.
     pose proof Rrrrr as A.
     apply @rename_props in A;

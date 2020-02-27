@@ -32,10 +32,10 @@ Section ExprImp1.
   Notation func := String.string (only parsing).
   Notation vars := (var -> Prop).
 
-  Definition SimState: Type := env * cmd * trace * mem * locals * bedrock2.MetricLogging.MetricLog.
-  Definition SimExec: SimState -> (SimState -> Prop) -> Prop :=
-    fun '(e, c, t, m, l, mc) post => exec e c t m l mc
-                                          (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
+  Definition SimState: Type := trace * mem * locals * bedrock2.MetricLogging.MetricLog.
+  Definition SimExec(e: env)(c: cmd): SimState -> (SimState -> Prop) -> Prop :=
+    fun '(t, m, l, mc) post => exec e c t m l mc
+                                    (fun t' m' l' mc' => post (t', m', l', mc')).
 
   (*Hypothesis String.string_empty: String.string = Empty_set.*)
   Local Notation varname := String.string.

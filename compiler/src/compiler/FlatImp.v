@@ -663,10 +663,10 @@ Section FlatImp2.
   Context {pp : unique! parameters varname}.
   Context {ok : parameters_ok varname pp}.
 
-  Definition SimState: Type := env * stmt varname * trace * mem * locals * MetricLog.
-  Definition SimExec: SimState -> (SimState -> Prop) -> Prop :=
-    fun '(e, c, t, m, l, mc) post =>
-      exec e c t m l mc (fun t' m' l' mc' => post (e, c, t', m', l', mc')).
+  Definition SimState: Type := trace * mem * locals * MetricLog.
+  Definition SimExec(e: env)(c: stmt varname): SimState -> (SimState -> Prop) -> Prop :=
+    fun '(t, m, l, mc) post =>
+      exec e c t m l mc (fun t' m' l' mc' => post (t', m', l', mc')).
 
   Lemma increase_fuel_still_Success: forall fuel1 fuel2 e initialSt initialM s final,
     (fuel1 <= fuel2)%nat ->
