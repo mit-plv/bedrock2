@@ -2,6 +2,7 @@ Require Export Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
 Require Export coqutil.Decidable.
+Require Import coqutil.Tactics.rewr.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
@@ -208,34 +209,7 @@ Section Pipeline1.
        morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
-  Definition layout: mem -> Prop :=
-    (mem_available  ml.(code_start)  ml.(code_pastend) *
-     mem_available  ml.(heap_start)  ml.(heap_pastend) *
-     mem_available ml.(stack_start) ml.(stack_pastend))%sep.
-
   (*
-  Lemma get_build_fun_pos_env: forall fnames r f pos0,
-      In f fnames ->
-      (forall f, In f fnames -> map.get r f <> None) ->
-      pos0 mod 4 = 0 ->
-      exists pos1, map.get (FlatToRiscvDef.build_fun_pos_env r pos0 fnames) f = Some pos1 /\ pos1 mod 4 = 0.
-  Proof.
-    induction fnames; intros.
-    - simpl in *. contradiction.
-    - simpl in *.
-      pose proof (H0 a (or_introl eq_refl)) as P.
-      destr (map.get r a). 2: contradiction. clear P.
-      destruct H.
-      + subst f. rewrite map.get_put_same. eauto.
-      + rewrite map.get_put_dec.
-        destruct_one_match.
-        * subst. eauto.
-        * eapply IHfnames.
-          -- eassumption.
-          -- intros. eapply H0. right. assumption.
-          -- solve_divisibleBy4.
-  Qed.
-
   Lemma init_code_to_loop_body_transition: forall ren m,
       compile_inv (related (initCodeGhostConsts ren) (FlatToRiscvDef.main_pos ren) true)
            (@hl_inv (FlattenExpr.mk_Semantics_params _) _ (funimpls srcprog) (init_code srcprog) spec) m ->
@@ -267,17 +241,59 @@ Section Pipeline1.
     reflexivity.
   Qed.
 
-  Definition mem_contains_bytes(m: mem)(a: Utility.word)(bytes: list Byte.byte): Prop :=
-    forall (i: nat) (b: Byte.byte),
-      nth_error bytes i = Some b ->
-      map.get m (word.add a (word.of_Z (Z.of_nat i))) = Some b.
+  Lemma instrencode_cons: forall instr instrs,
+      instrencode (instr :: instrs) =
+      HList.tuple.to_list (LittleEndian.split 4 (encode instr)) ++ instrencode instrs.
+  Proof. intros. reflexivity. Qed.
+
+  Lemma instrencode_app: forall instrs1 instrs2,
+      instrencode (instrs1 ++ instrs2) = instrencode instrs1 ++ instrencode instrs2.
+  Proof.
+    induction instrs1; intros.
+    - reflexivity.
+    - change ((a :: instrs1) ++ instrs2) with (a :: instrs1 ++ instrs2).
+      rewrite !instrencode_cons.
+      rewrite <-!List.app_assoc.
+      f_equal.
+      apply IHinstrs1.
+  Qed.
+
+  Ltac array_app_cons_sep :=
+    rewr (fun t => match t with
+         | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+           constr:(iff1ToEq (array_append' PT SZ xs ys start))
+         | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+           constr:(iff1ToEq (array_cons PT SZ x xs start))
+         | context [ array ?PT ?SZ ?start nil ] =>
+           constr:(iff1ToEq (array_nil PT SZ start))
+         end) in *.
+
+  Definition imem(code_start code_pastend: Semantics.word)(instrs: list Instruction): mem -> Prop :=
+    (ptsto_bytes code_start (instrencode instrs) *
+     mem_available (word.sub code_pastend (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
+                   code_pastend)%sep.
+
+  Local Axiom TODO_andres: False.
+
+  Lemma footpr_imem_range: forall start pastend instrs,
+      subset (footpr (imem start pastend instrs))
+             (fun a => word.unsigned start <= word.unsigned a < word.unsigned pastend).
+  Proof.
+    unfold subset, elem_of, footpr, footprint_underapprox, imem. intros.
+    case TODO_andres.
+  Qed.
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
     exists (srcprog: source_env) (instrs: list Instruction) (positions: funname_env Z),
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
+      spec.(datamem_start) = ml.(heap_start) /\
+      spec.(datamem_pastend) = ml.(heap_pastend) /\
       compile_prog srcprog = Some (instrs, positions) /\
-      mem_contains_bytes initial.(getMem) ml.(code_start) (instrencode instrs) /\
-      mem_available spec.(datamem_start) spec.(datamem_pastend) initial.(getMem) /\
+      (imem ml.(code_start) ml.(code_pastend) instrs *
+       mem_available ml.(heap_start) ml.(heap_pastend) *
+       mem_available ml.(stack_start) ml.(stack_pastend))%sep initial.(getMem) /\
+      (forall a, word.unsigned ml.(code_start) <= word.unsigned a < word.unsigned ml.(code_pastend) ->
+                 List.In a initial.(getXAddrs)) /\
       initial.(getPc) = ml.(code_start) /\
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) /\
       regs_initialized initial.(getRegs) /\
@@ -297,6 +313,20 @@ Section Pipeline1.
     end.
     pose proof sat.
     destruct sat.
+    eassert ((imem ml.(code_start) ml.(code_pastend) instrs * _)%sep initial_mem) as SplitImem. {
+      ecancel_assumption.
+    }
+    destruct SplitImem as [i_mem [non_imem [SplitImem [Imem NonImem] ] ] ].
+    destruct NonImem as [heap_mem [stack_mem [SplitNonImem [HeapMem StackMem] ] ] ].
+    unfold imem in *.
+    unfold compile_prog in *.
+    remember instrs as instrs0.
+    simp.
+    rewrite instrencode_app, instrencode_cons in *.
+    unfold ptsto_bytes in *.
+    assert (map.ok mem) by exact mem_ok.
+    assert (word.ok Semantics.word) by exact word_ok.
+    array_app_cons_sep.
     (* first, run init_sp_code: *)
     pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
     cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
@@ -304,36 +334,86 @@ Section Pipeline1.
     unfold runsTo in P. eapply P; clear P; simpl.
     { assumption. }
     2: {
-      case TODO_sam. (* store program establisheds "program"/instruction memory related *)
+      unfold program.
+      replace (array ptsto_instr (word.of_Z 4) initial_pc (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp))
+        with (array ptsto (word.of_Z 1) (code_start ml)
+                    (instrencode (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp))). 2: {
+        case TODO_sam. (* need general ptsto_instr/program to ptsto instrencode conversion *)
+      }
+      wcancel_assumption.
+      cancel_seps_at_indices 2%nat 0%nat. {
+        reflexivity.
+      }
+      cbn [seps]. reflexivity.
     }
-    { case TODO_sam. (* subset footpr XAddrs *) }
+    {
+      assert (subset
+                (fun a => word.unsigned (code_start ml) <= word.unsigned a < word.unsigned (code_pastend ml))
+                (of_list initial_xaddrs)) as S1. {
+        unfold subset, elem_of. intros a B.
+        match goal with
+        | H: forall _, _ <= _ < _ -> _ |- _ => eapply H
+        end.
+        exact B.
+      }
+      assert (subset_trans: forall (T: Type) (s1 s2 s3: T -> Prop),
+                 subset s1 s2 -> subset s2 s3 -> subset s1 s3). {
+        clear. unfold subset, elem_of in *. intros. eauto.
+      }
+      eapply subset_trans; clear subset_trans.
+      2: exact S1.
+      clear S1.
+      eapply shrink_footpr_subset. {
+        eapply footpr_imem_range with (instrs := instrs).
+      }
+      unfold imem. subst instrs.
+      rewrite ?instrencode_app, ?instrencode_cons.
+      unfold ptsto_bytes.
+      array_app_cons_sep.
+      subst.
+      simpl.
+      wcancel.
+      unfold program.
+      replace (array ptsto_instr (word.of_Z 4) ml.(code_start) (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp))
+        with (array ptsto (word.of_Z 1) (code_start ml)
+                    (instrencode (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp))). 2: {
+        case TODO_sam. (* need general ptsto_instr/program to ptsto instrencode conversion *)
+      }
+      cbn [seps].
+      wcancel.
+      case TODO_sam. (* don't make such a mess *)
+    }
     { cbv. auto. }
     { assumption. }
-    match goal with
-    | H: _ |- _ => pose proof H; apply compile_prog_to_compile in H;
-                     destruct H as [ before [ finstrs [ ? ? ] ] ]
-    end.
-    subst.
-    match goal with
-    | H: mem_available _ _ _ |- _ =>
-      specialize (init_code_correct _ (bedrock2.MetricLogging.mkMetricLog 0 0 0 0) H)
-    end.
+    specialize init_code_correct with (mc0 := (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
     assert (exists f_entry_rel_pos, map.get positions "init"%string = Some f_entry_rel_pos) as GetPos. {
       unfold compile, composePhases, renamePhase, flattenPhase, riscvPhase in *. simp.
       unfold flatten_functions, rename_functions, FlatToRiscvDef.function_positions in *.
       apply get_build_fun_pos_env.
-      eapply (map.map_all_values_not_None_fw _ _ _ _ _ E0).
-      unshelve eapply (map.map_all_values_not_None_fw _ _ _ _ _ E).
+      eapply (map.map_all_values_not_None_fw _ _ _ _ _ E3).
+      unshelve eapply (map.map_all_values_not_None_fw _ _ _ _ _ E2).
       1, 2: simpl; typeclasses eauto.
       simpl in *. (* PARAMRECORDS *)
       congruence.
     }
     destruct GetPos as [f_entry_rel_pos GetPos].
+    subst.
     (* then, run init_code (using compiler simulation and correctness of init_code) *)
     eapply runsTo_weaken.
     - pose proof compiler_correct as P. unfold runsTo in P. (* TODO instantiate ml to smaller ml *)
       unfold ll_good.
-      eapply P; clear P; try (unfold hl_inv in init_code_correct; eapply init_code_correct); try eassumption.
+      eapply P; clear P.
+      6: {
+        unfold hl_inv in init_code_correct.
+        simpl.
+        move init_code_correct at bottom.
+        subst.
+        refine (init_code_correct _ _).
+        replace (datamem_start spec) with (heap_start ml) by congruence.
+        replace (datamem_pastend spec) with (heap_pastend ml) by congruence.
+        exact HeapMem.
+      }
+      all: try eassumption.
       unfold machine_ok.
       unfold_RiscvMachine_get_set.
       repeat match goal with
@@ -363,7 +443,7 @@ Section Pipeline1.
       + case TODO_sam.
       + (* TODO fix memory layout (one which focuses on init instructions) *)
         case TODO_sam.
-    Unshelve. all: intros; try exact True; try exact 0.
+    Unshelve. all: intros; try exact True; try exact 0; try exact mem_ok; try apply @nil.
   Qed.
 
   Lemma machine_ok_frame_instrs_app_l: forall p_code f_entry_rel_pos p_stack_start p_stack_pastend i1 i2

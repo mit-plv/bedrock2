@@ -38,6 +38,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
 Require Import end2end.KamiRiscvWordProperties.
 Require Import bedrock2.WeakestPreconditionProperties.
+Require Import compiler.SeparationLogic.
 Require Import compiler.CompilerInvariant.
 Require Import compiler.ExprImpEventLoopSpec.
 
@@ -255,6 +256,8 @@ Section Connect.
           -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
                eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
           -- simpl. clear. intros. eauto.
+      + assumption.
+      + assumption.
       + assumption.
       + clear -M.
         case TODO_joonwon. (* basically a correctness thm for riscvMemInit *)
