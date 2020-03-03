@@ -39,12 +39,14 @@ Require Import coqutil.Tactics.rdelta.
 Require Import end2end.KamiRiscvWordProperties.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import compiler.SeparationLogic.
+Require Import compiler.ToplevelLoop.
 Require Import compiler.CompilerInvariant.
 Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
 Local Axiom TODO_joonwon: False.
+Local Axiom TODO_andres: False.
 
 Require Import Coq.Classes.Morphisms.
 
@@ -191,6 +193,9 @@ Section Connect.
     (* Assumptions on the compiler level: *)
     forall (instrs: list Instruction) (positions: FlatToRiscvCommon.funname_env Z),
     compile_prog ml (map.of_list funimplsList) = Some (instrs, positions) ->
+    word.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
+      word.unsigned (code_pastend ml) ->
+    Forall (fun i : Instruction => verify i iset) instrs ->
     ExprImp.valid_funs (map.of_list funimplsList) ->
     (* Assumptions on the Kami level: *)
     kami_mem_contains_bytes (instrencode instrs) ml.(code_start) memInit ->
@@ -204,7 +209,7 @@ Section Connect.
       exists (t': list Event), KamiLabelSeqR t t' /\
                                exists (suffix: list Event), goodTraceE (suffix ++ t').
   Proof.
-    intros *. intros GetInit Establish GetLoop Preserve. intros *. intros C V M. intros *. intros B.
+    intros *. intros GetInit Establish GetLoop Preserve. intros *. intros C L F V M. intros *. intros B.
 
     set (traceProp := fun (t: list Event) =>
                         exists (suffix: list Event), goodTraceE (suffix ++ t)).
@@ -259,9 +264,10 @@ Section Connect.
       + assumption.
       + assumption.
       + assumption.
-      + clear -M.
-        case TODO_joonwon. (* basically a correctness thm for riscvMemInit *)
-      + case TODO_joonwon. (* all datamem addresses are defined *)
+      + assumption.
+      + assumption.
+      + clear -M. case TODO_andres. (* go from riscvMemInit to separation logic *)
+      + case TODO_joonwon. (* add this constraint on m0RV to KamiRiscv.riscv_to_kamiImplProcessor *)
       + symmetry. exact code_at_0.
       + (* TODO add this hypothesis to KamiRiscv.riscv_to_kamiImplProcessor *)
         case TODO_joonwon.

@@ -495,9 +495,6 @@ Section Pipeline1.
            reflexivity.
   Qed.
 
-  Definition instrencode(p: list Instruction): list byte :=
-    List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
-
   (* This lemma should relate two map.folds which fold two different f over the same env e:
      1) FlatToRiscvDef.compile_funs, which folds FlatToRiscvDef.add_compiled_function
      2) functions, which folds sep
@@ -505,16 +502,16 @@ Section Pipeline1.
      is layed out in memory), while 2) should be commutative because the "function"
      separation logic predicate it seps onto the separation logic formula is the same
      if we pass it the same function position map. *)
-  Lemma instrencode_functions: forall ml e instrs pos_map,
+  Lemma functions_to_program: forall ml e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
-      iff1 (ptsto_bytes (code_start ml) (instrencode instrs))
+      iff1 (program (code_start ml) instrs)
            (FlatToRiscvFunctions.functions (code_start ml) (FlatToRiscvDef.function_positions e) e).
   Proof.
     unfold riscvPhase.
     intros.
     simp.
     rename z0 into posFinal.
-    unfold FlatToRiscvDef.compile_funs, FlatToRiscvDef.function_positions in *.
+    unfold FlatToRiscvDef.compile_funs, FlatToRiscvDef.function_positions, functions in *.
     revert E1 E2.
     generalize 0.
     revert posFinal r.
@@ -524,8 +521,7 @@ Section Pipeline1.
     - rewrite map.fold_empty in E1. simp.
       unfold functions. rewrite map.fold_empty.
       reflexivity.
-    - unfold functions.
-      (* rewrite map.fold_put in E1. NOPE, not commutative! *)
+    - (* rewrite map.fold_put in E1. NOPE, not commutative! *)
       case TODO_andres. (* probably map.map_ind was a bad choice *)
   Qed.
 
@@ -537,13 +533,13 @@ Section Pipeline1.
       let CallInst := Jal RegisterNames.ra
                           (f_entry_rel_pos - word.unsigned (word.sub p_call p_code)) : Instruction in
       verify CallInst iset /\
-      (ptsto_bytes p_code (instrencode instrs) *
-       ptsto_bytes p_call (instrencode [CallInst]) *
+      (program p_code instrs *
+       program p_call [CallInst] *
        mem_available stack_start stack_pastend *
        Rdata * Rexec * eq mH
       )%sep mach.(getMem) /\
-      subset (footpr (ptsto_bytes p_code (instrencode instrs) *
-                      ptsto_bytes p_call (instrencode [CallInst]) *
+      subset (footpr (program p_code instrs *
+                      program p_call [CallInst] *
                       Rexec)%sep)
              (of_list (getXAddrs mach)) /\
       word.unsigned (mach.(getPc)) mod 4 = 0 /\
@@ -701,22 +697,9 @@ Section Pipeline1.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
         pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
-        (* TODO remove duplication *)
-        match goal with
-        | H: riscvPhase _ _ = _ |- _ => pose proof (instrencode_functions _ _ _ _ H) as P
-        end.
-        symmetry in P.
-        rewrite P. clear P.
-        unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
         wwcancel.
-        cbn [seps].
-        simpl.
-        rewrite sep_emp_emp.
-        match goal with
-        | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
-        end.
-        split; intros _; try exact I.
-        split; [assumption|reflexivity]. }
+        eapply functions_to_program.
+        eassumption. }
       { simpl.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
         pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
@@ -730,12 +713,11 @@ Section Pipeline1.
           | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
           end.
           match goal with
-          | H: riscvPhase _ _ = _ |- _ => pose proof (instrencode_functions _ _ _ _ H) as P
+          | H: riscvPhase _ _ = _ |- _ => pose proof (functions_to_program _ _ _ _ H) as P
           end.
           symmetry in P.
-          simpl in P|-*.
+          simpl in P|-*. unfold program in P.
           seprewrite P. clear P.
-          unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes in *.
           assert (word.ok FlatImp.word) by exact word_ok.
           rewrite <- Z_div_exact_2; cycle 1. {
             unfold bytes_per_word. clear -h.
@@ -760,14 +742,7 @@ Section Pipeline1.
             (* PARAMRECORDS *) simpl.
             sepclause_eq word_ok.
           }
-          cbn [seps].
-          simpl.
-          rewrite sep_emp_emp.
-          match goal with
-          | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
-          end.
-          split; intros _; try exact I.
-          split; [assumption|reflexivity].
+          cbn [seps]. reflexivity.
         }
         match goal with
         | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
@@ -835,17 +810,10 @@ Section Pipeline1.
         simpl.
         assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
         wwcancel.
-        pose proof (instrencode_functions ml r0 instrs) as P.
+        pose proof (functions_to_program ml r0 instrs) as P.
         cbn [seps].
         rewrite <- P; clear P.
         * wwcancel.
-          cbn [seps].
-          simpl.
-          rewrite sep_emp_emp.
-          match goal with
-          | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
-          end.
-          split; auto.
         * eassumption.
       + unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
@@ -853,7 +821,7 @@ Section Pipeline1.
         pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
         (* TODO remove duplication *)
         match goal with
-        | H: riscvPhase _ _ = _ |- _ => pose proof (instrencode_functions _ _ _ _ H) as P
+        | H: riscvPhase _ _ = _ |- _ => pose proof (functions_to_program _ _ _ _ H) as P
         end.
         symmetry in P.
         rewrite P. clear P.
@@ -862,14 +830,6 @@ Section Pipeline1.
         unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
         simpl.
         wwcancel.
-        cbn [seps].
-        simpl.
-        rewrite sep_emp_emp.
-        match goal with
-        | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
-        end.
-        split; intros _; try exact I.
-        split; [assumption|reflexivity].
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
     Unshelve.
     all: try exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
@@ -878,5 +838,8 @@ Section Pipeline1.
     all: try exact nil.
     all: try exact map.empty.
   Qed.
+
+  Definition instrencode(p: list Instruction): list byte :=
+    List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
 
 End Pipeline1.

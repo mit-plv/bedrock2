@@ -117,7 +117,7 @@ Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
 Definition lightbulb_insts_unevaluated: option (list Decode.Instruction * FlatToRiscvCommon.funname_env Z) :=
-  CompilerInvariant.compile_prog ml prog.
+  ToplevelLoop.compile_prog ml prog.
 
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
@@ -137,7 +137,7 @@ Definition function_positions: FlatToRiscvCommon.funname_env Z.
 Defined.
 
 Definition compilation_result:
-  CompilerInvariant.compile_prog ml prog = Some (lightbulb_insts, function_positions).
+  ToplevelLoop.compile_prog ml prog = Some (lightbulb_insts, function_positions).
 Proof. reflexivity. Qed.
 
 Module PrintProgram.
@@ -216,7 +216,8 @@ Proof.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q memSizeLg_valid.
-  specialize_first Q KB.
+  specialize Q with (11 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
+  (* specialize_first Q KB. *)
   specialize_first Q compilation_result.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
@@ -287,5 +288,10 @@ Proof.
     { left. right. eauto. }
     right. eauto.
 
+  - vm_compute. intros. discriminate.
+  - (* Here we prove that all > 700 instructions are valid, using Ltac.
+       If this becomes a bottleneck, we'll have to do this in Gallina in the compile function. *)
+    unfold lightbulb_insts. repeat (apply Forall_cons || apply Forall_nil).
+    all: vm_compute; try intuition discriminate.
   - exact funs_valid.
 Time Qed. (* takes more than 25s *)
