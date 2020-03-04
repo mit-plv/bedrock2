@@ -107,6 +107,20 @@ Module map.
         rewrite H by assumption.
     Abort.
 
+    Lemma fold_last{R: Type}(f: R -> key -> value -> R):
+      forall r0 m,
+        (m = map.empty) \/
+        (exists k v r, map.fold f r0 m = f r k v).
+    Proof.
+      intros r0 m.
+      eapply map.fold_spec; intros.
+      - auto.
+      - right. destruct H0.
+        + subst. eauto.
+        + destruct H0 as [ k1 [v1 [ r1 IH ] ] ].
+          subst. eauto.
+    Qed.
+
     Lemma fold_remove{R: Type}(f: R -> key -> value -> R)
       (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
       forall r0 m k v,
@@ -262,8 +276,7 @@ Section Pipeline1.
     if Z.ltb num_stackwords stack_needed then None (* not enough stack *) else
     let positions := FlatToRiscvDef.function_positions prog in
     let '(i, _, _) := FlatToRiscvDef.compile_funs positions 0 prog in
-    let maxSize := word.unsigned ml.(code_pastend) - word.unsigned ml.(code_start) in
-    if 4 * Z.of_nat (List.length i) <=? maxSize then Some (i, positions) else None.
+    Some (i, positions).
 
   Definition composePhases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
     match phase1 a with
@@ -283,6 +296,7 @@ Section Pipeline1.
             (f_entry_rel_pos : Z)
             (f_entry_name : string)
             (p_call: word) (* address where the call to the entry function is stored *)
+            (p_functions: word) (* address where the compiled functions are stored *)
             (Rdata Rexec : FlatToRiscvCommon.mem -> Prop)
             (prog: renamed_env)
             (e1 : FlattenExpr.ExprImp_env)
@@ -295,6 +309,7 @@ Section Pipeline1.
             (ER: envs_related available_registers e2 prog)
             (Ren: rename map.empty c2 available_registers = Some (r', c3, av'))
             (H_p_call: word.unsigned p_call mod 4 = 0)
+            (H_p_functions: word.unsigned p_functions mod 4 = 0)
             (G: map.get (FlatToRiscvDef.function_positions prog) f_entry_name = Some f_entry_rel_pos)
             (F: fits_stack (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word) prog
                            (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])))
@@ -308,8 +323,8 @@ Section Pipeline1.
     Definition flatToRiscvSim: simulation _ _ _ :=
       FlatToRiscvSimulation.flatToRiscvSim
         f_entry_rel_pos f_entry_name p_call Rdata Rexec
-        ml.(code_start) ml.(stack_start) ml.(stack_pastend)
-        prog H_p_call (code_start_aligned _ mlOk) G F GEI.
+        p_functions ml.(stack_start) ml.(stack_pastend)
+        prog H_p_call H_p_functions G F GEI.
 
     Definition sim: simulation _ _ _ :=
       (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)).
@@ -495,6 +510,46 @@ Section Pipeline1.
            reflexivity.
   Qed.
 
+  Lemma program_mod_4_0: forall a instrs R m,
+      instrs <> [] ->
+      (program a instrs * R)%sep m ->
+      word.unsigned a mod 4 = 0.
+  Proof.
+    intros.
+    destruct instrs as [|instr instrs]. 1: congruence.
+    simpl in *.
+    unfold sep, ptsto_instr, sep, emp in *.
+    simp.
+    assumption.
+  Qed.
+
+  Lemma compile_funs_nonnil: forall z1 e positions positions' z2 f impl instrs,
+      map.get e f = Some impl ->
+      FlatToRiscvDef.compile_funs positions z1 e = (instrs, z2, positions') ->
+      instrs <> [].
+  Proof.
+    intros z1 e positions.
+    unfold FlatToRiscvDef.compile_funs.
+    eapply map.fold_spec; intros.
+    - rewrite map.get_empty in H.
+      discriminate.
+    - rewrite map.get_put_dec in H1.
+      destr (k =? f)%string.
+      + subst.
+        unfold FlatToRiscvDef.add_compiled_function in H2. simp.
+        unfold FlatToRiscvDef.compile_function.
+        destruct impl as [ [args res] body ].
+        intro C. destruct l; discriminate.
+      + specialize H0 with (1 := H1).
+        destruct r as [ [instrs'' pos''] positions'' ].
+        specialize H0 with (1 := eq_refl).
+        intro C. subst instrs.
+        unfold FlatToRiscvDef.add_compiled_function in H2. simp.
+        unfold FlatToRiscvDef.compile_function in *.
+        destruct v as [ [args res] body ].
+        destruct instrs''; discriminate.
+  Qed.
+
   (* This lemma should relate two map.folds which fold two different f over the same env e:
      1) FlatToRiscvDef.compile_funs, which folds FlatToRiscvDef.add_compiled_function
      2) functions, which folds sep
@@ -502,17 +557,17 @@ Section Pipeline1.
      is layed out in memory), while 2) should be commutative because the "function"
      separation logic predicate it seps onto the separation logic formula is the same
      if we pass it the same function position map. *)
-  Lemma functions_to_program: forall ml e instrs pos_map,
+  Lemma functions_to_program: forall ml functions_start e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
-      iff1 (program (code_start ml) instrs)
-           (FlatToRiscvFunctions.functions (code_start ml) (FlatToRiscvDef.function_positions e) e).
+      iff1 (program functions_start instrs)
+           (FlatToRiscvFunctions.functions functions_start (FlatToRiscvDef.function_positions e) e).
   Proof.
     unfold riscvPhase.
     intros.
     simp.
     rename z0 into posFinal.
     unfold FlatToRiscvDef.compile_funs, FlatToRiscvDef.function_positions, functions in *.
-    revert E1 E2.
+    revert E1.
     generalize 0.
     revert posFinal r.
     (* PARAMRECORDS *)
@@ -556,7 +611,7 @@ Section Pipeline1.
       (ml: MemoryLayout)
       (mlOk: MemoryLayoutOk ml)
       (f_entry_name : string) (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
-      (p_call: word)
+      (p_call p_functions: word)
       (Rdata Rexec : mem -> Prop)
       (functions: source_env)
       (instrs: list Instruction)
@@ -569,11 +624,11 @@ Section Pipeline1.
       map.get functions f_entry_name = Some (nil, nil, fbody) ->
       map.get pos_map f_entry_name = Some f_entry_rel_pos ->
       Semantics.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
-      machine_ok ml.(code_start) f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+      machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
                  p_call p_call mH Rdata Rexec initial ->
       runsTo initial (fun final => exists mH',
           postH final.(getLog) mH' /\
-          machine_ok ml.(code_start) f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+          machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
     intros.
@@ -583,7 +638,7 @@ Section Pipeline1.
     unfold compile, composePhases, renamePhase, flattenPhase in *. simp.
     eapply runsTo_weaken.
     - pose proof sim as P. unfold simulation, ExprImp.SimState, ExprImp.SimExec in P.
-      specialize (P ml mlOk f_entry_rel_pos f_entry_name p_call Rdata Rexec).
+      specialize (P ml f_entry_rel_pos f_entry_name p_call p_functions Rdata Rexec).
       specialize P with (e1 := functions) (s1 := (initial.(getLog), mH, map.empty, mc)).
       specialize P with (post1 := fun '(t', m', l', mc') => postH t' m').
       simpl in P.
@@ -609,6 +664,14 @@ Section Pipeline1.
       }
       { reflexivity. }
       { unfold machine_ok in *. simp. solve_divisibleBy4. }
+      { unfold riscvPhase, machine_ok in *. simp.
+        eapply program_mod_4_0. 2: ecancel_assumption.
+        destruct (map.map_all_values_fw _ _ _ _ E _ _ H1) as [ [ [args' rets'] fbody' ] [ F G ] ].
+        unfold flatten_function in F. simp.
+        epose proof (map.map_all_values_fw _ _ _ _ E0 _ _ G) as [ [ [args' rets'] fbody' ] [ F G' ] ].
+        unfold rename_fun in F. simp.
+        eapply compile_funs_nonnil; eassumption.
+      }
       { unfold riscvPhase in *. simp. exact GetPos. }
       { simpl. unfold riscvPhase in *. simpl in *. simp.
         move E1 at bottom.
@@ -712,8 +775,8 @@ Section Pipeline1.
           match goal with
           | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
           end.
-          match goal with
-          | H: riscvPhase _ _ = _ |- _ => pose proof (functions_to_program _ _ _ _ H) as P
+          lazymatch goal with
+          | H: riscvPhase _ _ = _ |- _ => specialize functions_to_program with (1 := H) as P
           end.
           symmetry in P.
           simpl in P|-*. unfold program in P.
@@ -810,18 +873,18 @@ Section Pipeline1.
         simpl.
         assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
         wwcancel.
-        pose proof (functions_to_program ml r0 instrs) as P.
+        epose proof (functions_to_program ml _ r0 instrs) as P.
         cbn [seps].
         rewrite <- P; clear P.
-        * wwcancel.
+        * wwcancel. reflexivity.
         * eassumption.
       + unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
         pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
         (* TODO remove duplication *)
-        match goal with
-        | H: riscvPhase _ _ = _ |- _ => pose proof (functions_to_program _ _ _ _ H) as P
+        lazymatch goal with
+        | H: riscvPhase _ _ = _ |- _ => specialize functions_to_program with (1 := H) as P
         end.
         symmetry in P.
         rewrite P. clear P.
@@ -837,6 +900,7 @@ Section Pipeline1.
     all: try exact EmptyString.
     all: try exact nil.
     all: try exact map.empty.
+    all: try exact mem_ok.
   Qed.
 
   Definition instrencode(p: list Instruction): list byte :=

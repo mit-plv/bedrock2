@@ -38,7 +38,7 @@ Section Sim.
           (f_entry_name: string)
           (p_call: word)
           (Rdata Rexec: mem -> Prop)
-          (code_start stack_start stack_pastend: word)
+          (functions_start stack_start stack_pastend: word)
           (prog: env).
 
   Local Open Scope ilist_scope.
@@ -47,8 +47,8 @@ Section Sim.
     p_sp := stack_pastend;
     num_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
     p_insts := p_call;
-    insts := [[Jal RegisterNames.ra (f_entry_rel_pos - word.unsigned (word.sub p_call code_start))]];
-    program_base := code_start;
+    insts := [[Jal RegisterNames.ra (f_entry_rel_pos - word.unsigned (word.sub p_call functions_start))]];
+    program_base := functions_start;
     e_pos := FlatToRiscvDef.function_positions prog;
     e_impl := prog;
     dframe := Rdata;
@@ -65,7 +65,7 @@ Section Sim.
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
     let c := SSeq SSkip (SCall nil f_entry_name nil) in
     (word.unsigned p_call) mod 4 = 0 ->
-    (word.unsigned code_start) mod 4 = 0 ->
+    (word.unsigned functions_start) mod 4 = 0 ->
     map.get (function_positions prog) f_entry_name = Some f_entry_rel_pos ->
     fits_stack ghostConsts.(num_stackwords) prog c ->
     good_e_impl prog ghostConsts.(e_pos) ->
@@ -87,7 +87,7 @@ Section Sim.
     simp.
     eapply runsTo_weaken.
     - eapply compile_stmt_correct with (g := ghostConsts)
-                                       (pos := word.unsigned (word.sub p_call code_start)); simpl.
+                                       (pos := word.unsigned (word.sub p_call functions_start)); simpl.
       + eapply exec.call; cycle -1; try eassumption.
         Fail eassumption. (* TODO why?? *)
         match goal with

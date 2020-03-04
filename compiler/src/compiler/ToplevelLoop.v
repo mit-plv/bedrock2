@@ -203,7 +203,7 @@ Section Pipeline1.
     subst.
     (* then, run init_code (using compiler simulation and correctness of init_code) *)
     eapply runsTo_weaken.
-    - pose proof compiler_correct as P. unfold runsTo in P. (* TODO instantiate ml to smaller ml *)
+    - pose proof compiler_correct as P. unfold runsTo in P.
       unfold ll_good.
       eapply P; clear P.
       6: {
@@ -227,7 +227,8 @@ Section Pipeline1.
              | |- _ => reflexivity
              end.
       + case TODO_sam. (* verify Jal *)
-      + case TODO_sam.
+      + (* TODO separation logic will instantiate p_functions to something <> ml.(code_start) *)
+        case TODO_sam.
       + case TODO_sam.
       + destruct mlOk. solve_divisibleBy4.
       + solve_word_eq word_ok.
@@ -245,7 +246,8 @@ Section Pipeline1.
              end.
       + (* TODO fix memory layout (one which focuses on init instructions) *)
         case TODO_sam.
-    Unshelve. all: intros; try exact True; try exact 0; try exact mem_ok; try apply @nil.
+    Unshelve.
+    all: intros; try exact True; try exact 0; try exact mem_ok; try apply @nil; try exact (word.of_Z 0).
   Qed.
 
   Lemma machine_ok_frame_instrs_app_l: forall p_code f_entry_rel_pos p_stack_start p_stack_pastend i1 i2
