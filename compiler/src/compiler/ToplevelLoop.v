@@ -181,21 +181,19 @@ Section Pipeline1.
     eapply runsTo_trans with (P := fun mach => valid_machine mach /\ mach = after_init_sp);
       subst after_init_sp.
     {
-    get_run1valid_for_free.
-    (* first, run init_sp_code: *)
-    pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
-    cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
-    specialize P with (x := RegisterNames.sp) (v := init_sp) (Rexec := emp True).
-    unfold runsTo in P. eapply P; clear P; simpl.
-    { assumption. }
-    2: { wcancel_assumption. }
-    {
-      eapply shrink_footpr_subset. 1: eassumption.
-      wwcancel.
-    }
-    { cbv. auto. }
-    { assumption. }
-    { eapply runsToDone. split; [exact I|reflexivity]. }
+      get_run1valid_for_free.
+      (* first, run init_sp_code: *)
+      pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
+      cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
+      specialize P with (x := RegisterNames.sp) (v := init_sp) (Rexec := emp True).
+      unfold runsTo in P. eapply P; clear P; simpl.
+      - assumption.
+      - eapply shrink_footpr_subset. 1: eassumption.
+        wwcancel.
+      - wcancel_assumption.
+      - cbv. auto.
+      - assumption.
+      - eapply runsToDone. split; [exact I|reflexivity].
     }
     specialize init_code_correct with (mc0 := (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
     match goal with
