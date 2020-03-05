@@ -177,6 +177,11 @@ Section Pipeline1.
       ecancel_assumption.
     }
     destruct SplitImem as [heap_mem [other_mem [SplitHmem [HMem OtherMem] ] ] ].
+    evar (after_init_sp: MetricRiscvMachine).
+    eapply runsTo_trans with (P := fun mach => valid_machine mach /\ mach = after_init_sp);
+      subst after_init_sp.
+    {
+    get_run1valid_for_free.
     (* first, run init_sp_code: *)
     pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
     cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
@@ -190,12 +195,15 @@ Section Pipeline1.
     }
     { cbv. auto. }
     { assumption. }
+    { eapply runsToDone. split; [exact I|reflexivity]. }
+    }
     specialize init_code_correct with (mc0 := (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
     match goal with
     | H: map.get positions "init"%string = Some ?pos |- _ =>
       rename H into GetPos, pos into f_entry_rel_pos
     end.
     subst.
+    intros. simp.
     (* then, run init_code (using compiler simulation and correctness of init_code) *)
     eapply runsTo_weaken.
     - pose proof compiler_correct as P. unfold runsTo in P.
@@ -312,7 +320,6 @@ Section Pipeline1.
       + eapply @regs_initialized_put; try typeclasses eauto. (* PARAMRECORDS? *)
         eassumption.
       + rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
-      + case TODO_sam. (* valid_machine preserved *)
     - cbv beta. unfold ll_good. intros. simp.
       repeat match goal with
              | |- exists _, _  => eexists
