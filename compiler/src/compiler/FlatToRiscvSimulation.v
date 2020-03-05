@@ -47,7 +47,7 @@ Section Sim.
     p_sp := stack_pastend;
     num_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
     p_insts := p_call;
-    insts := [[Jal RegisterNames.ra (f_entry_rel_pos - word.unsigned (word.sub p_call functions_start))]];
+    insts := [[Jal RegisterNames.ra (f_entry_rel_pos + word.unsigned functions_start - word.unsigned p_call)]];
     program_base := functions_start;
     e_pos := FlatToRiscvDef.function_positions prog;
     e_impl := prog;
@@ -87,7 +87,7 @@ Section Sim.
     simp.
     eapply runsTo_weaken.
     - eapply compile_stmt_correct with (g := ghostConsts)
-                                       (pos := word.unsigned (word.sub p_call functions_start)); simpl.
+                                       (pos := word.unsigned p_call - word.unsigned functions_start); simpl.
       + eapply exec.call; cycle -1; try eassumption.
         Fail eassumption. (* TODO why?? *)
         match goal with
@@ -100,13 +100,23 @@ Section Sim.
         assumption.
       + eauto using fits_stack_call.
       + simpl. change (4 * BinIntDef.Z.of_nat 0) with 0. rewrite Z.add_0_r.
-        rewrite_match. reflexivity.
+        rewrite_match. f_equal. f_equal. f_equal. blia.
       + unfold stmt_not_too_big. simpl. cbv. reflexivity.
       + simpl. auto using Forall_nil.
       + solve_divisibleBy4.
       + assumption.
-      + rewrite word.of_Z_unsigned. ring.
-      + rewrite word.of_Z_unsigned. ring.
+      + (* TODO why are these manual steps needed? *)
+        rewrite <- (word.of_Z_unsigned (word.of_Z (word.unsigned p_call - word.unsigned functions_start))).
+        rewrite word.unsigned_of_Z.
+        rewrite <- word.unsigned_sub.
+        rewrite word.of_Z_unsigned.
+        solve_word_eq Utility.word_ok.
+      + (* TODO why are these manual steps needed? *)
+        rewrite <- (word.of_Z_unsigned (word.of_Z (word.unsigned p_call - word.unsigned functions_start))).
+        rewrite word.unsigned_of_Z.
+        rewrite <- word.unsigned_sub.
+        rewrite word.of_Z_unsigned.
+        solve_word_eq Utility.word_ok.
       + assumption.
     - simpl. intros. simp.
       eexists; split; [|eassumption].

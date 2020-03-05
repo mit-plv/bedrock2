@@ -141,6 +141,8 @@ Section Pipeline1.
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
       compile_prog srcprog = Some (instrs, positions) /\
+      word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
+        word.unsigned ml.(code_pastend) /\
       subset (footpr (program ml.(code_start) instrs)) (of_list initial.(getXAddrs)) /\
       (program ml.(code_start) instrs * R *
        mem_available ml.(heap_start) ml.(heap_pastend) *
@@ -174,7 +176,7 @@ Section Pipeline1.
     eassert ((mem_available ml.(heap_start) ml.(heap_pastend) * _)%sep initial_mem) as SplitImem. {
       ecancel_assumption.
     }
-    destruct SplitImem as [heap_mem [other_imem [SplitHmem [HMem OtherMem] ] ] ].
+    destruct SplitImem as [heap_mem [other_mem [SplitHmem [HMem OtherMem] ] ] ].
     (* first, run init_sp_code: *)
     pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
     cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
@@ -189,21 +191,15 @@ Section Pipeline1.
     { cbv. auto. }
     { assumption. }
     specialize init_code_correct with (mc0 := (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
-    assert (exists f_entry_rel_pos, map.get positions "init"%string = Some f_entry_rel_pos) as GetPos. {
-      unfold compile, composePhases, renamePhase, flattenPhase, riscvPhase in *. simp.
-      unfold flatten_functions, rename_functions, FlatToRiscvDef.function_positions in *.
-      apply get_build_fun_pos_env.
-      eapply (map.map_all_values_not_None_fw _ _ _ _ _ E3).
-      unshelve eapply (map.map_all_values_not_None_fw _ _ _ _ _ E2).
-      1, 2: simpl; typeclasses eauto.
-      simpl in *. (* PARAMRECORDS *)
-      congruence.
-    }
-    destruct GetPos as [f_entry_rel_pos GetPos].
+    match goal with
+    | H: map.get positions "init"%string = Some ?pos |- _ =>
+      rename H into GetPos, pos into f_entry_rel_pos
+    end.
     subst.
     (* then, run init_code (using compiler simulation and correctness of init_code) *)
     eapply runsTo_weaken.
     - pose proof compiler_correct as P. unfold runsTo in P.
+      specialize P with (p_functions := word.add loop_pos (word.of_Z 8)) (Rdata := R).
       unfold ll_good.
       eapply P; clear P.
       6: {
@@ -226,10 +222,91 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + case TODO_sam. (* verify Jal *)
-      + (* TODO separation logic will instantiate p_functions to something <> ml.(code_start) *)
-        case TODO_sam.
-      + case TODO_sam.
+      2: {
+        eapply rearrange_footpr_subset. 1: eassumption.
+        wseplog_pre.
+        simpl_addrs.
+        subst loop_pos.
+        match goal with
+        | |- iff1 ?LL ?RR =>
+          match LL with
+          | context[ptsto_instr ?A1 (IInstruction (Jal RegisterNames.ra ?J1))] =>
+            match RR with
+            | context[ptsto_instr ?A2 (IInstruction (Jal RegisterNames.ra ?J2))] =>
+              unify A1 A2;
+              replace J2 with J1
+            end
+          end
+        end.
+        2: {
+          match goal with
+          | |- context[word.unsigned ?x] => ring_simplify x
+          end.
+          match goal with
+          | |- _ = _ + word.unsigned (word.add ?A _) - _ => remember A as a
+          end.
+          rewrite word.unsigned_add.
+          rewrite word.unsigned_of_Z.
+          unfold word.wrap.
+          rewrite Zplus_mod_idemp_r.
+          rewrite Z.mod_small. 1: blia.
+          subst a.
+          (* holds by transitivity over ml.(code_pastend) *)
+          case TODO_sam.
+        }
+        wcancel.
+        cancel_seps_at_indices 3%nat 0%nat. {
+          f_equal.
+          solve_word_eq word_ok.
+        }
+        cbn[seps].
+        reflexivity.
+      }
+      {
+        (* need to deal with "eq heap_mem" separately *)
+        exists other_mem, heap_mem. ssplit.
+        3: reflexivity.
+        1: exact (proj1 (map.split_comm _ _ _) SplitHmem).
+        unfold program in *.
+        use_sep_assumption.
+        wseplog_pre.
+        simpl_addrs.
+        subst loop_pos.
+        match goal with
+        | |- iff1 ?LL ?RR =>
+          match LL with
+          | context[ptsto_instr ?A1 (IInstruction (Jal RegisterNames.ra ?J1))] =>
+            match RR with
+            | context[ptsto_instr ?A2 (IInstruction (Jal RegisterNames.ra ?J2))] =>
+              unify A1 A2;
+              replace J2 with J1
+            end
+          end
+        end.
+        2: {
+          match goal with
+          | |- context[word.unsigned ?x] => ring_simplify x
+          end.
+          match goal with
+          | |- _ = _ + word.unsigned (word.add ?A _) - _ => remember A as a
+          end.
+          rewrite word.unsigned_add.
+          rewrite word.unsigned_of_Z.
+          unfold word.wrap.
+          rewrite Zplus_mod_idemp_r.
+          rewrite Z.mod_small. 1: blia.
+          subst a.
+          (* holds by transitivity over ml.(code_pastend) *)
+          case TODO_sam.
+        }
+        wcancel.
+        cancel_seps_at_indices 0%nat 0%nat. {
+          f_equal.
+          solve_word_eq word_ok.
+        }
+        cbn [seps].
+        reflexivity.
+      }
       + destruct mlOk. solve_divisibleBy4.
       + solve_word_eq word_ok.
       + eapply @regs_initialized_put; try typeclasses eauto. (* PARAMRECORDS? *)
