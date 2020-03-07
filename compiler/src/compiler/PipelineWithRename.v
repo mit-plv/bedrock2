@@ -550,15 +550,6 @@ Section Pipeline1.
         destruct instrs''; discriminate.
   Qed.
 
-  Lemma map_fold_fold_comm : forall {key value} {M : map.map key value} {A B} m fa fb sa sb P,
-      (forall (r : A) (k1 : key) (v1 : value) (k2 : key) (v2 : value), fa (fa r k1 v1) k2 v2 = fa (fa r k2 v2) k1 v1) ->
-      let foldab := map.fold (fun '(a,b) k v => (fa a k v, fb b k v)) (sa, sb) m in
-      P (fst foldab) (snd foldab) ->
-      P (@map.fold _ _ M A fa sa m) (@map.fold _ _ M B fb sb m).
-  Proof.
-    case TODO_andres.
-  Qed.
-
   (* This lemma should relate two map.folds which fold two different f over the same env e:
      1) FlatToRiscvDef.compile_funs, which folds FlatToRiscvDef.add_compiled_function
      2) functions, which folds sep
@@ -575,49 +566,18 @@ Section Pipeline1.
     intros.
     simp.
     rename z0 into posFinal.
+    unfold FlatToRiscvDef.compile_funs, FlatToRiscvDef.function_positions, functions in *.
+    revert E1.
+    generalize 0.
+    revert posFinal r.
     (* PARAMRECORDS *)
     assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
-    unfold FlatToRiscvDef.compile_funs, FlatToRiscvDef.function_positions, functions in *.
-
-    revert E1.
-
-    eapply (map_fold_fold_comm e (fun P fname fbody => (function _ _ _ _* P)%sep)).
-
-    { intros.
-      eapply functional_extensionality_dep.
-      intros.
-      eapply PropExtensionality.propositional_extensionality.
-      revert x.
-      change ( iff1
-      (function functions_start (FlatToRiscvDef.build_fun_pos_env 0 e) k2 v2 *
-      (function functions_start (FlatToRiscvDef.build_fun_pos_env 0 e) k1 v1 * r0))%sep
-      (function functions_start (FlatToRiscvDef.build_fun_pos_env 0 e) k1 v1 *
-      (function functions_start (FlatToRiscvDef.build_fun_pos_env 0 e) k2 v2 * r0))%sep
-      ).
-      cancel. }
-
-    revert instrs; revert posFinal; revert r.
-    match goal with
-    | |- context[map.fold ?f ?s0 ?m] =>
-      pattern m, (map.fold f s0 m);
-      match goal with |- ?P _ _ =>
-      simple refine (map.fold_spec P f s0 _ _ m)
-      end
-    end; repeat (cbn [fst snd] in *; intros; simp).
-    - reflexivity.
-    - destruct p0 as ((?&?)&?); specialize (H1 _ _ _ eq_refl).
-      eapply Proper_iff1_iff1.
-      2:eapply Proper_sep_iff1.
-      3: symmetry; eapply H1.
-      all : try reflexivity.
-      clear H1.
-
-      cbv [FlatToRiscvDef.add_compiled_function FlatToRiscvDef.build_fun_pos_env] in *; cbn in *.
-      inversion E1; clear E1; subst.
-      case (FlatToRiscvDef.compile_funs map.empty 0) as ((?&?)&?).
-      cbv [function].
-      cbv [program].
-      case TODO_sam.
+    pattern e. eapply map.map_ind with (m := e); intros.
+    - rewrite map.fold_empty in E1. simp.
+      unfold functions. rewrite map.fold_empty.
+      reflexivity.
+    - (* rewrite map.fold_put in E1. NOPE, not commutative! *)
+      case TODO_andres. (* probably map.map_ind was a bad choice *)
   Qed.
 
   Open Scope ilist_scope.
