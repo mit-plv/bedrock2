@@ -562,22 +562,34 @@ Section Pipeline1.
       iff1 (program functions_start instrs)
            (FlatToRiscvFunctions.functions functions_start (FlatToRiscvDef.function_positions e) e).
   Proof.
+    (* PARAMRECORDS *)
+    assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
+
     unfold riscvPhase.
     intros.
     simp.
     rename z0 into posFinal.
     unfold FlatToRiscvDef.compile_funs, FlatToRiscvDef.function_positions, functions in *.
     revert E1.
-    generalize 0.
-    revert posFinal r.
-    (* PARAMRECORDS *)
-    assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
-    pattern e. eapply map.map_ind with (m := e); intros.
-    - rewrite map.fold_empty in E1. simp.
-      unfold functions. rewrite map.fold_empty.
-      reflexivity.
-    - (* rewrite map.fold_put in E1. NOPE, not commutative! *)
-      case TODO_andres. (* probably map.map_ind was a bad choice *)
+    revert instrs posFinal r.
+    revert dependent z.
+    eapply (map.fold_spec (R:=(list Instruction * _ * _))) with (m:=e); repeat (cbn || simp || intros).
+    { rewrite map.fold_empty; reflexivity. }
+    rewrite map.fold_put; trivial.
+    2: { intros.
+      eapply functional_extensionality_dep; intros x.
+      eapply PropExtensionality.propositional_extensionality; revert x.
+      match goal with |- forall x, ?P x <-> ?Q x => change (iff1 P Q) end.
+      case TODO_sam. (* PARAMRECORDS? then sep_assoc, sep_comm *) }
+    case r as ((instrs'&posFinal')&r').
+    specialize (fun z Hz Hf => H1 z Hz Hf _ _ _ eq_refl).
+    injection E1; clear E1; intros.
+    (* just guessing here: *)
+    unfold function at 1.
+    edestruct get_build_fun_pos_env; cycle 1.
+    1: erewrite H5.
+    2: rewrite map.get_put_same; clear; congruence.
+    case TODO_sam.
   Qed.
 
   Open Scope ilist_scope.
