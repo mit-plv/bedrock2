@@ -242,16 +242,43 @@ Section Equiv.
     case TODO_joonwon.
   Qed.
 
+  Lemma mmio_mem_disjoint:
+    forall addr, isMMIOAddr addr -> kunsigned addr < 2 ^ memSizeLg -> False.
+  Proof.
+    case TODO_joonwon.
+  Qed.
+
   Lemma pgm_init_not_mmio:
     Kami.Ex.SCMMInv.PgmInitNotMMIO rv32Fetch kami_FE310_AbsMMIO.
   Proof.
     red; intros.
-    cbv [isMMIO kami_FE310_AbsMMIO].
-    unfold evalExpr; fold evalExpr.
-    cbv [evalBinBool evalUniBool evalBinBitBool].
-    apply Bool.andb_false_intro2.
-    repeat apply Bool.orb_false_intro.
-    all: case TODO_joonwon.
+    destruct (evalExpr (isMMIO _ _)) eqn:Hmmio; [exfalso|reflexivity].
+    apply is_mmio_consistent in Hmmio.
+    eapply mmio_mem_disjoint; [eassumption|].
+
+    cbv [toAddr rv32Fetch rv32ToAddr eq_rect_r].
+    rewrite evalExpr_bit_eq_rect.
+    cbv [kunsigned].
+    rewrite wordToN_eq_rect.
+
+    cbv [evalExpr evalBinBit evalConstT].
+    rewrite ?wordToN_combine, ?wordToN_0.
+    rewrite N.mul_0_r, N.add_0_l, N.add_0_r.
+    
+    transitivity (2 ^ (2 + instrMemSizeLg)).
+    - replace (2 + instrMemSizeLg) with (Z.of_nat (2 + Z.to_nat instrMemSizeLg)).
+      + rewrite <-NatLib.Z_of_N_Npow2.
+        apply N2Z.inj_lt.
+        change (NatLib.Npow2 2) with 4%N.
+        replace (NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))
+          with (4 * NatLib.Npow2 (Z.to_nat instrMemSizeLg))%N
+          by (simpl; destruct (NatLib.Npow2 _); reflexivity).
+        apply N.mul_lt_mono_pos_l; [Lia.lia|].
+        apply wordToN_bound.
+      + rewrite Nat2Z.inj_add.
+        rewrite Z2Nat.id by Lia.lia.
+        reflexivity.
+    - apply Z.pow_lt_mono_r; Lia.lia.
   Qed.
 
   Lemma kamiStep_sound_case_pgmInit:
@@ -453,9 +480,12 @@ Section Equiv.
 
   Ltac rt := repeat (r || t).
   
-  Ltac prove_KamiLabelR :=
+  Ltac prove_KamiLabelR_silent :=
     split; [|split];
     [eapply KamiSilent; reflexivity| |eassumption].
+  Ltac prove_KamiLabelR_mmio :=
+    split; [|split];
+    [eapply KamiMMIO; reflexivity| |eassumption].
 
   Context (Registers_ok : map.ok Registers).
 
@@ -584,7 +614,7 @@ Section Equiv.
   
   Ltac prove_states_related :=
     econstructor;
-    [solve [trivial]
+    [try (solve [trivial])
     |clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
     |clear; intro; discriminate
     |solve [trivial]
@@ -923,6 +953,14 @@ Section Equiv.
              Notations.fieldAccessor
              Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
              Vector.caseS projT2] in H.
+    Ltac kami_struct_cbv_goal :=
+      cbv [ilist.ilist_to_fun_m
+             Notations.icons'
+             VectorFacts.Vector_nth_map VectorFacts.Vector_nth_map' Fin.t_rect
+             VectorFacts.Vector_find VectorFacts.Vector_find'
+             Notations.fieldAccessor
+             Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
+             Vector.caseS projT2].
     
     - (** MMIO-load *)
       block_subst kupd.
@@ -931,12 +969,10 @@ Section Equiv.
       cleanup_trivial.
       unblock_subst kupd.
 
-      (** Invert a riscv-coq step *)
-
-      (* -- fetch *)
+      (** Evaluate (invert) the two fetchers *)
       rt. eval_kami_fetch. rt.
 
-      (** Begin symbolic evaluation of kami code *)
+      (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_all.
       kami_struct_cbv Heqic.
       kami_struct_cbv H.
@@ -985,7 +1021,67 @@ Section Equiv.
            destruct (Z.eqb_spec x y) in e; discriminate
          end.
 
-      case TODO_joonwon.
+      (* -- separate out cases of Kami execution *)
+      dest_Zeqb.
+      
+      (* -- further simplification *)
+      all: simpl_bit_manip.
+
+      (** Evaluation of riscv-coq decode/execute *)
+      
+      all: eval_decode.
+      all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
+        try subst shamtHi; try subst shamtHiTest.
+      all: eval_decodeI decodeI.
+      
+      (* -- evaluate the execution of riscv-coq *)
+      5: match goal with
+         | [decodeI := if ?x =? ?y then Lw _ _ _ else InvalidI |- _] =>
+           destruct (Z.eqb_spec x y) in *
+         end.
+      all: subst dec; mcomp_step_in H5;
+        repeat match goal with
+               | H : False |- _ => case H
+               | H : Z |- _ => clear H
+               | H : list Instruction |- _ => clear H
+               | H : Instruction |- _ => clear H
+               end.
+
+      (** Consistency proof for each instruction *)
+      all: rt.
+
+      all: unfold evalExpr in Heqic; fold evalExpr in Heqic.
+      all: try match goal with
+               | [H: match Memory.load_bytes ?sz ?m ?a with | Some _ => _ | None => _ end |- _] =>
+                 destruct (Memory.load_bytes sz m a) as [lv|] eqn:Hlv; [exfalso|]
+               end.
+      all: try (subst v oimm12;
+                regs_get_red Hlv;
+                match goal with
+                | [Heqic: true = evalExpr (isMMIO _ _) |- _] =>
+                  apply eq_sym, is_mmio_consistent in Heqic;
+                  eapply mem_related_load_bytes_Some in Hlv; [|eassumption|discriminate];
+                  clear -Heqic Hlv;
+                  eapply mmio_mem_disjoint; eassumption
+                end).
+
+      all: match goal with
+           | [H: nonmem_load _ _ _ _ _ |- _] =>
+             let Hpost := fresh "H" in
+             destruct H as [? [? Hpost]]; specialize (Hpost (split _ (wordToZ ldVal)))
+           end.
+      all: rt.
+      all: eexists _, _.
+      all: prove_KamiLabelR_mmio.
+      all: try subst regs; try subst kupd.
+
+      { (* WIP @joonwonc: testing the "lb" case *)
+        prove_states_related.
+        1: kami_struct_cbv_goal; cbn [evalExpr evalConstT].
+        all: case TODO_joonwon.
+      }
+
+      all: case TODO_joonwon.
 
     - (** load *)
       block_subst kupd.
@@ -994,12 +1090,10 @@ Section Equiv.
       cleanup_trivial.
       unblock_subst kupd.
 
-      (** Invert a riscv-coq step *)
-
-      (* -- fetch *)
+      (** Evaluate (invert) the two fetchers *)
       rt. eval_kami_fetch. rt.
 
-      (** Begin symbolic evaluation of kami code *)
+      (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
       kami_cbn_all.
       kami_struct_cbv Heqic.
@@ -1054,7 +1148,8 @@ Section Equiv.
       (* -- further simplification *)
       all: simpl_bit_manip.
 
-      (* -- evaluate [decode] of riscv-coq *)
+      (** Evaluation of riscv-coq decode/execute *)
+      
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -1073,7 +1168,7 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      (** Start the consistency proof for each instruction *)
+      (** Consistency proof for each instruction *)
       all: rt.
 
       all: unfold evalExpr in Heqic; fold evalExpr in Heqic.
@@ -1092,7 +1187,7 @@ Section Equiv.
 
       all: rt.
       all: eexists _, _.
-      all: prove_KamiLabelR.
+      all: prove_KamiLabelR_silent.
       all: try subst regs; try subst kupd.
 
       all: prove_states_related.
@@ -1167,12 +1262,10 @@ Section Equiv.
       cleanup_trivial.
       unblock_subst kupd.
 
-      (** Invert a riscv-coq step *)
-
-      (* -- fetch *)
+      (** Evaluate (invert) the two fetchers *)
       rt. eval_kami_fetch. rt.
 
-      (** Begin symbolic evaluation of kami code *)
+      (** Symbolic evaluation of Kami decode/execute *)
       kami_cbn_all.
 
       (* -- pick the subterm for the Kami instruction *)
@@ -1213,7 +1306,8 @@ Section Equiv.
       (* -- further simplification *)
       all: simpl_bit_manip.
 
-      (* -- evaluate [decode] of riscv-coq *)
+      (** Evaluation of riscv-coq decode/execute *)
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -1236,10 +1330,10 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      (** Start the consistency proof for each instruction *)
+      (** Consistency proof for each instruction *)
       all: rt.
       all: eexists _, _.
-      all: prove_KamiLabelR.
+      all: prove_KamiLabelR_silent.
 
       all:
         repeat match goal with
@@ -1435,12 +1529,10 @@ Section Equiv.
       cleanup_trivial.
       unblock_subst kupd.
 
-      (** Invert a riscv-coq step *)
-
-      (* -- fetch *)
+      (** Evaluate (invert) the two fetchers *)
       rt. eval_kami_fetch. rt.
 
-      (** Begin symbolic evaluation of kami code *)
+      (** Symbolic evaluation of Kami decode/execute *)
       kami_cbn_all.
 
       (* -- pick the subterm for the Kami instruction *)
@@ -1472,7 +1564,8 @@ Section Equiv.
       (* -- further simplification *)
       all: simpl_bit_manip.
 
-      (* -- evaluate [decode] of riscv-coq *)
+      (** Evaluation of riscv-coq decode/execute *)
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -1489,10 +1582,10 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      (** Start the consistency proof for each instruction *)
+      (** Consistency proof for each instruction *)
       all: rt.
       all: eexists _, _.
-      all: prove_KamiLabelR.
+      all: prove_KamiLabelR_silent.
 
       all:
         repeat match goal with
