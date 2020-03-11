@@ -93,7 +93,8 @@ Section Pipeline1.
     let init_insts := [[Jal RegisterNames.ra (3 * 4 + init_pos)]] in
     let loop_insts := [[Jal RegisterNames.ra (2 * 4 + loop_pos)]] in
     let backjump_insts := [[Jal Register0 (-4*Z.of_nat (List.length loop_insts))]] in
-    Some (init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts ++ fun_insts, positions).
+    let to_prepend := init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts in
+    Some (to_prepend ++ fun_insts, positions).
 
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
@@ -127,12 +128,28 @@ Section Pipeline1.
         instrs = before ++ main.
   Proof.
     intros. unfold compile_prog in *. simp. do 2 eexists.
-    split; [reflexivity|].
-    match goal with
-    | |- ?A ++ ?i1 :: ?i2 :: ?i3 :: ?B = ?R => change (A ++ [i1; i2; i3] ++ B = R)
-    end.
-    rewrite app_assoc.
-    reflexivity.
+    split; reflexivity.
+  Qed.
+
+  Lemma machine_ok_unframe_instrs_app_l: forall p_code f_entry_rel_pos p_stack_start p_stack_pastend i1 i2
+                                                p_call pc mH Rdata Rexec mach,
+      machine_ok (word.add p_code (word.of_Z (4 * Z.of_nat (List.length i1))))
+                 f_entry_rel_pos p_stack_start p_stack_pastend
+                 i2
+                 p_call pc mH Rdata
+                 (Rexec * program p_code i1)%sep
+                 mach ->
+      machine_ok p_code
+                 f_entry_rel_pos p_stack_start p_stack_pastend
+                 (i1 ++ i2)
+                 p_call pc mH Rdata
+                 Rexec
+                 mach.
+  Proof.
+    unfold machine_ok.
+    intros. simp.
+    ssplit; eauto.
+    all: case TODO_sam.
   Qed.
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
@@ -326,12 +343,19 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + (* TODO fix memory layout (one which focuses on init instructions) *)
+      + rename z0 into f_loop_rel_pos.
+        move CP at bottom.
+        eapply machine_ok_unframe_instrs_app_l.
+        lazymatch goal with
+        | H: context[machine_ok] |- ?G => let G' := type of H in replace G with G'; [exact H|]
+        end.
+        (*f_equal.*)
         case TODO_sam.
     Unshelve.
     all: intros; try exact True; try exact 0; try exact mem_ok; try apply @nil; try exact (word.of_Z 0).
   Qed.
 
+  (* incorrect? *)
   Lemma machine_ok_frame_instrs_app_l: forall p_code f_entry_rel_pos p_stack_start p_stack_pastend i1 i2
                                               p_call pc mH Rdata Rexec mach,
       machine_ok p_code f_entry_rel_pos p_stack_start p_stack_pastend (i1 ++ i2) p_call pc mH Rdata Rexec mach ->
