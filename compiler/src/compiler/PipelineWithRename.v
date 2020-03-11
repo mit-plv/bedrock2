@@ -564,6 +564,7 @@ Section Pipeline1.
   Proof.
     (* PARAMRECORDS *)
     assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
+    assert (map.ok mem) as Ok by exact mem_ok.
 
     unfold riscvPhase.
     intros.
@@ -580,7 +581,7 @@ Section Pipeline1.
       eapply functional_extensionality_dep; intros x.
       eapply PropExtensionality.propositional_extensionality; revert x.
       match goal with |- forall x, ?P x <-> ?Q x => change (iff1 P Q) end.
-      case TODO_sam. (* PARAMRECORDS? then sep_assoc, sep_comm *) }
+      cancel. }
     case r as ((instrs'&posFinal')&r').
     specialize (fun z Hz Hf => H1 z Hz Hf _ _ _ eq_refl).
     injection E1; clear E1; intros.
@@ -589,6 +590,14 @@ Section Pipeline1.
     edestruct get_build_fun_pos_env; cycle 1.
     1: erewrite H5.
     2: rewrite map.get_put_same; clear; congruence.
+    subst instrs.
+    wseplog_pre. simpl_addrs.
+    cancel.
+    cancel_seps_at_indices 1%nat 1%nat. {
+      apply iff1ToEq.
+      unfold program in H1.
+      case TODO_sam. (* doesn't hold?? *)
+    }
     case TODO_sam.
   Qed.
 
