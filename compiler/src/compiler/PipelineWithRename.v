@@ -366,8 +366,8 @@ Section Pipeline1.
     bind_opt stack_needed <- stack_usage prog;
     let num_stackwords := word.unsigned (word.sub ml.(stack_pastend) ml.(stack_start)) / bytes_per_word in
     if Z.ltb num_stackwords stack_needed then None (* not enough stack *) else
-    let positions := FlatToRiscvDef.function_positions prog in
-    let '(i, _, _) := FlatToRiscvDef.compile_funs positions 0 prog in
+    let positions := FlatToRiscvDef.build_fun_pos_env prog in
+    let '(i, _) := FlatToRiscvDef.compile_funs positions prog in
     Some (i, positions).
 
   Definition composePhases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
@@ -402,10 +402,10 @@ Section Pipeline1.
             (Ren: rename map.empty c2 available_registers = Some (r', c3, av'))
             (H_p_call: word.unsigned p_call mod 4 = 0)
             (H_p_functions: word.unsigned p_functions mod 4 = 0)
-            (G: map.get (FlatToRiscvDef.function_positions prog) f_entry_name = Some f_entry_rel_pos)
+            (G: map.get (FlatToRiscvDef.build_fun_pos_env prog) f_entry_name = Some f_entry_rel_pos)
             (F: fits_stack (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word) prog
                            (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])))
-            (GEI: good_e_impl prog (FlatToRiscvDef.function_positions prog)).
+            (GEI: good_e_impl prog (FlatToRiscvDef.build_fun_pos_env prog)).
 
     Definition flattenSim: simulation _ _ _ :=
       FlattenExprSimulation.flattenExprSim (2^10) e1 e2 funname Hf.
@@ -524,15 +524,15 @@ Section Pipeline1.
       assumption.
   Qed.
 
-  Lemma get_build_fun_pos_env: forall pos0 e f,
+  Lemma get_build_fun_pos_env: forall e f,
       map.get e f <> None ->
-      exists pos, map.get (FlatToRiscvDef.build_fun_pos_env pos0 e) f = Some pos.
+      exists pos, map.get (FlatToRiscvDef.build_fun_pos_env e) f = Some pos.
   Proof.
     intros pos0 e.
     unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
     eapply map.fold_spec.
     - intros. rewrite map.get_empty in H. congruence.
-    - intros. destruct r as [ [insts pos1] env]. simpl.
+    - intros. destruct r as [ insts env]. simpl.
       rewrite map.get_put_dec in H1.
       rewrite map.get_put_dec.
       destruct_one_match; eauto.
@@ -564,23 +564,21 @@ Section Pipeline1.
     intros. case TODO_andres.
   Qed.
 
-  Lemma get_compile_funs_pos: forall pos0 e,
-      pos0 mod 4 = 0 ->
-      let '(insts, pos1, posmap) := FlatToRiscvDef.compile_funs map.empty pos0 e in
-      pos1 mod 4 = 0 /\
+  Lemma get_compile_funs_pos: forall e,
+      let '(insts, posmap) := FlatToRiscvDef.compile_funs map.empty e in
       forall f impl, map.get e f = Some impl -> exists pos2, map.get posmap f = Some pos2 /\ pos2 mod 4 = 0.
   Proof.
-    intros pos0 e M0.
+    intros e.
     unfold FlatToRiscvDef.compile_funs.
     eapply map.fold_spec.
-    - intros. split; [assumption|]. intros. rewrite map.get_empty in H. congruence.
-    - intros. destruct r as [ [insts pos1] env]. destruct H0. simpl.
-      split.
-      + solve_divisibleBy4.
-      + intros.
-        rewrite map.get_put_dec in H2.
-        rewrite map.get_put_dec.
-        destruct_one_match; eauto.
+    - intros. rewrite map.get_empty in H. congruence.
+    - intros. destruct r as [ insts env]. simpl.
+      intros.
+      rewrite map.get_put_dec in H1.
+      rewrite map.get_put_dec.
+      destruct_one_match; eauto.
+      eexists. split; [reflexivity|].
+      solve_divisibleBy4.
   Qed.
 
   Lemma mod_2width_mod_bytes_per_word: forall x,
@@ -615,12 +613,12 @@ Section Pipeline1.
     assumption.
   Qed.
 
-  Lemma compile_funs_nonnil: forall z1 e positions positions' z2 f impl instrs,
+  Lemma compile_funs_nonnil: forall e positions positions' f impl instrs,
       map.get e f = Some impl ->
-      FlatToRiscvDef.compile_funs positions z1 e = (instrs, z2, positions') ->
+      FlatToRiscvDef.compile_funs positions e = (instrs, positions') ->
       instrs <> [].
   Proof.
-    intros z1 e positions.
+    intros e positions.
     unfold FlatToRiscvDef.compile_funs.
     eapply map.fold_spec; intros.
     - rewrite map.get_empty in H.
@@ -633,7 +631,7 @@ Section Pipeline1.
         destruct impl as [ [args res] body ].
         intro C. destruct l; discriminate.
       + specialize H0 with (1 := H1).
-        destruct r as [ [instrs'' pos''] positions'' ].
+        destruct r as [ instrs'' positions'' ].
         specialize H0 with (1 := eq_refl).
         intro C. subst instrs.
         unfold FlatToRiscvDef.add_compiled_function in H2. simp.
@@ -652,7 +650,7 @@ Section Pipeline1.
   Lemma functions_to_program: forall ml functions_start e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
       iff1 (program functions_start instrs)
-           (FlatToRiscvFunctions.functions functions_start (FlatToRiscvDef.function_positions e) e).
+           (FlatToRiscvFunctions.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
   Proof.
     (* PARAMRECORDS *)
     assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
@@ -661,14 +659,16 @@ Section Pipeline1.
     unfold riscvPhase.
     intros.
     simp.
-    rename z0 into posFinal.
     unfold FlatToRiscvDef.compile_funs, functions in *.
-    remember (FlatToRiscvDef.function_positions e) as positions.
-    assert (Good: string -> (list Z * list Z * FlatImp.stmt Z) -> Prop) by case TODO_sam.
-    assert (forall f impl, map.get e f = Some impl -> Good f impl) as A by case TODO_sam.
+    remember (FlatToRiscvDef.build_fun_pos_env e) as positions.
+    assert (forall f impl, map.get e f = Some impl -> exists pos, map.get positions f = Some pos) as A. {
+      intros. subst.
+      edestruct (get_build_fun_pos_env e f). 1: congruence.
+      eauto.
+    }
     revert A E1.
-    revert instrs posFinal r. clear E E0 z.
-    eapply (map.fold_spec (R:=(list Instruction * _ * _))) with (m:=e); repeat (cbn || simp || intros).
+    revert instrs r. clear E E0 z.
+    eapply (map.fold_spec (R:=(list Instruction * _))) with (m:=e); repeat (cbn || simp || intros).
     { rewrite map.fold_empty; reflexivity. }
     rewrite map.fold_put; trivial.
     2: { intros.
@@ -676,26 +676,30 @@ Section Pipeline1.
       eapply PropExtensionality.propositional_extensionality; revert x.
       match goal with |- forall x, ?P x <-> ?Q x => change (iff1 P Q) end.
       cancel. }
-    case r as ((instrs'&posFinal')&r').
+    case r as (instrs'&r').
     specialize H1 with (2 := eq_refl).
     unfold FlatToRiscvDef.add_compiled_function in E1.
     injection E1; clear E1; intros. subst.
     unfold program in *.
     wseplog_pre.
     rewrite H1. 2: {
-      intros. eapply A. rewrite map.get_put_dec.
-      destr (k =? f)%string; congruence.
+      intros.
+      destr (k =? f)%string.
+      - subst. eapply A. rewrite map.get_put_same. reflexivity.
+      - eapply A. rewrite map.get_put_diff by congruence. eassumption.
     }
     cancel.
-    unfold function, FlatToRiscvDef.function_positions.
-    edestruct get_build_fun_pos_env; cycle 1.
-    - erewrite H2.
-      unfold program.
-      cancel_seps_at_indices 0%nat 0%nat. 2: reflexivity.
-      f_equal.
-      1,2: case TODO_sam. (* need the right invariants and helpers *)
-    - specialize (A k). rewrite map.get_put_same in A. specialize A with (1 := eq_refl).
-      case TODO_sam.
+    unfold function.
+    specialize (A k) as A'.
+    rewrite map.get_put_same in A'.
+    specialize A' with (1 := eq_refl).
+    destruct A' as [pos A'].
+    simpl in *. rewrite A'.
+    cancel.
+    unfold program.
+    cancel_seps_at_indices 0%nat 0%nat. 2: reflexivity.
+    f_equal.
+    1,2: case TODO_sam. (* need the right invariants and helpers *)
   Qed.
 
   Open Scope ilist_scope.
@@ -849,11 +853,10 @@ Section Pipeline1.
                  | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
                  end.
           assumption.
-        - unfold FlatToRiscvDef.function_positions, FlatToRiscvDef.build_fun_pos_env.
-          pose proof (get_compile_funs_pos 0 r0 eq_refl) as P.
-          destruct (FlatToRiscvDef.compile_funs map.empty 0 r0) as [ [ insts pos1 ] posmap ] eqn: F.
-          destruct P as [P1 P2].
-          eapply P2.
+        - unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.build_fun_pos_env.
+          pose proof (get_compile_funs_pos r0) as P.
+          destruct (FlatToRiscvDef.compile_funs map.empty r0) as [ insts posmap ] eqn: F.
+          eapply P.
           eassumption.
       }
       unfold related, compose_relation.

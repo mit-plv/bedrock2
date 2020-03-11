@@ -299,25 +299,22 @@ Section FlatToRiscv1.
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 
-    Definition add_compiled_function(state: list Instruction * Z * fun_pos_env)(fname: String.string)
-               (fimpl: list Z * list Z * stmt Z): list Instruction * Z * fun_pos_env :=
-      let '(old_insts, pos, posmap) := state in
+    Definition add_compiled_function(state: list Instruction * fun_pos_env)(fname: String.string)
+               (fimpl: list Z * list Z * stmt Z): list Instruction * fun_pos_env :=
+      let '(old_insts, posmap) := state in
+      let pos := 4 * Z.of_nat (length (old_insts)) in
       let new_insts := compile_function pos fimpl in
-      let size := 4 * Z.of_nat (length (new_insts)) in
-      (old_insts ++ new_insts, pos + size, map.put posmap fname pos).
+      (old_insts ++ new_insts, map.put posmap fname pos).
 
-    Definition compile_funs(pos: Z): env -> list Instruction * Z * fun_pos_env :=
-      map.fold add_compiled_function (nil, pos, e).
+    Definition compile_funs: env -> list Instruction * fun_pos_env :=
+      map.fold add_compiled_function (nil, e).
   End WithEnv.
 
   (* compiles all functions just to obtain their code size *)
-  Definition build_fun_pos_env(pos: Z)(e_impl: env): fun_pos_env :=
+  Definition build_fun_pos_env(e_impl: env): fun_pos_env :=
     (* since we pass map.empty as the fun_pos_env into compile_funs, the instrs
        returned don't jump to the right positions yet (they all jump to 42),
        but the instructions have the right size, so the posmap we return is correct *)
-    let '(instrs, pos, posmap) := compile_funs map.empty pos e_impl in posmap.
-
-  (* we make this one a Definition because it's useful for debugging and proofs *)
-  Definition function_positions: env -> fun_pos_env := build_fun_pos_env 0.
+    let '(instrs, posmap) := compile_funs map.empty e_impl in posmap.
 
 End FlatToRiscv1.

@@ -49,7 +49,7 @@ Section Sim.
     p_insts := p_call;
     insts := [[Jal RegisterNames.ra (f_entry_rel_pos + word.unsigned functions_start - word.unsigned p_call)]];
     program_base := functions_start;
-    e_pos := FlatToRiscvDef.function_positions prog;
+    e_pos := FlatToRiscvDef.build_fun_pos_env prog;
     e_impl := prog;
     dframe := Rdata;
     xframe := Rexec;
@@ -66,7 +66,7 @@ Section Sim.
     let c := SSeq SSkip (SCall nil f_entry_name nil) in
     (word.unsigned p_call) mod 4 = 0 ->
     (word.unsigned functions_start) mod 4 = 0 ->
-    map.get (function_positions prog) f_entry_name = Some f_entry_rel_pos ->
+    map.get (build_fun_pos_env prog) f_entry_name = Some f_entry_rel_pos ->
     fits_stack ghostConsts.(num_stackwords) prog c ->
     good_e_impl prog ghostConsts.(e_pos) ->
     simulation (FlatImp.SimExec Z prog c) FlatToRiscvCommon.runsTo related.
