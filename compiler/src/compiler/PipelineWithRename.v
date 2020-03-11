@@ -662,10 +662,12 @@ Section Pipeline1.
     intros.
     simp.
     rename z0 into posFinal.
-    unfold FlatToRiscvDef.compile_funs, FlatToRiscvDef.function_positions, functions in *.
-    revert E1.
-    revert instrs posFinal r.
-    revert dependent z.
+    unfold FlatToRiscvDef.compile_funs, functions in *.
+    remember (FlatToRiscvDef.function_positions e) as positions.
+    assert (Good: string -> (list Z * list Z * FlatImp.stmt Z) -> Prop) by case TODO_sam.
+    assert (forall f impl, map.get e f = Some impl -> Good f impl) as A by case TODO_sam.
+    revert A E1.
+    revert instrs posFinal r. clear E E0 z.
     eapply (map.fold_spec (R:=(list Instruction * _ * _))) with (m:=e); repeat (cbn || simp || intros).
     { rewrite map.fold_empty; reflexivity. }
     rewrite map.fold_put; trivial.
@@ -675,22 +677,25 @@ Section Pipeline1.
       match goal with |- forall x, ?P x <-> ?Q x => change (iff1 P Q) end.
       cancel. }
     case r as ((instrs'&posFinal')&r').
-    specialize (fun z Hz Hf => H1 z Hz Hf _ _ _ eq_refl).
-    injection E1; clear E1; intros.
-    (* just guessing here: *)
-    unfold function at 1.
-    edestruct get_build_fun_pos_env; cycle 1.
-    1: erewrite H5.
-    2: rewrite map.get_put_same; clear; congruence.
-    subst instrs.
-    wseplog_pre. simpl_addrs.
-    cancel.
-    cancel_seps_at_indices 1%nat 1%nat. {
-      apply iff1ToEq.
-      unfold program in H1.
-      case TODO_sam. (* doesn't hold?? *)
+    specialize H1 with (2 := eq_refl).
+    unfold FlatToRiscvDef.add_compiled_function in E1.
+    injection E1; clear E1; intros. subst.
+    unfold program in *.
+    wseplog_pre.
+    rewrite H1. 2: {
+      intros. eapply A. rewrite map.get_put_dec.
+      destr (k =? f)%string; congruence.
     }
-    case TODO_sam.
+    cancel.
+    unfold function, FlatToRiscvDef.function_positions.
+    edestruct get_build_fun_pos_env; cycle 1.
+    - erewrite H2.
+      unfold program.
+      cancel_seps_at_indices 0%nat 0%nat. 2: reflexivity.
+      f_equal.
+      1,2: case TODO_sam. (* need the right invariants and helpers *)
+    - specialize (A k). rewrite map.get_put_same in A. specialize A with (1 := eq_refl).
+      case TODO_sam.
   Qed.
 
   Open Scope ilist_scope.
