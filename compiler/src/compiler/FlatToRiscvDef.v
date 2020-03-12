@@ -307,7 +307,7 @@ Section FlatToRiscv1.
       (old_insts ++ new_insts, map.put posmap fname pos).
 
     Definition compile_funs: env -> list Instruction * fun_pos_env :=
-      map.fold add_compiled_function (nil, e).
+      map.fold add_compiled_function (nil, map.empty).
   End WithEnv.
 
   (* compiles all functions just to obtain their code size *)

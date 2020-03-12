@@ -640,8 +640,67 @@ Section Pipeline1.
         destruct instrs''; discriminate.
   Qed.
 
+  Definition get_fun_pos_alt_aux(e: renamed_env)(f: string): (Z * option Z) :=
+    map.fold
+      (fun '(pos, res) k v =>
+         let new_insts := FlatToRiscvDef.compile_function map.empty pos v in
+         (pos + 4 * Z.of_nat (List.length new_insts),
+          match res with
+          | Some v => Some v
+          | None => if String.eqb k f then Some pos else None
+          end))
+      (0, None) e.
+
+  Lemma get_fun_pos_alt_spec_aux: forall e f,
+      let '(insts, posmap) := FlatToRiscvDef.compile_funs map.empty e in
+      get_fun_pos_alt_aux e f = (4 * Z.of_nat (List.length insts), map.get posmap f) /\
+      forall k, map.get posmap k <> None <-> map.get e k <> None.
+  Proof.
+    unfold FlatToRiscvDef.compile_funs, get_fun_pos_alt_aux.
+    intros.
+    eapply map.fold_two_spec with (m := e) (r01 := (0, None)) (r02 := ([], map.empty)).
+    - rewrite map.get_empty. setoid_rewrite map.get_empty. simpl. intuition reflexivity.
+    - intros. destruct r1 as [instrs o]. destruct r2 as [instrs' posmap].
+      unfold FlatToRiscvDef.add_compiled_function in *.
+      destruct H0.
+      injection H0; intros; clear H0. subst.
+      rewrite List.app_length.
+      rewrite map.get_put_dec.
+      split.
+      + f_equal. 1: blia.
+        destr (map.get posmap f). 2: reflexivity.
+        destr (String.eqb k f). 2: reflexivity.
+        subst.
+        exfalso.
+        specialize (H1 f). intuition congruence.
+      + intros.
+        rewrite ?map.get_put_dec.
+        destr (String.eqb k k0).
+        * intuition congruence.
+        * apply H1.
+  Qed.
+
+  (* An alternative way of getting the position of a function, only for proof purposes. *)
+  Definition get_fun_pos_alt(e: renamed_env)(f: string): option Z :=
+    snd (get_fun_pos_alt_aux e f).
+
+  Lemma get_fun_pos_alt_spec: forall e f,
+      get_fun_pos_alt e f = map.get (FlatToRiscvDef.build_fun_pos_env e) f.
+  Proof.
+    unfold get_fun_pos_alt. intros.
+    pose proof (get_fun_pos_alt_spec_aux e f).
+    unfold FlatToRiscvDef.build_fun_pos_env.
+    destr (FlatToRiscvDef.compile_funs map.empty e).
+    destr (get_fun_pos_alt_aux e f).
+    simpl.
+    destruct H.
+    congruence.
+  Qed.
+
   (* This lemma should relate two map.folds which fold two different f over the same env e:
-     1) FlatToRiscvDef.compile_funs, which folds FlatToRiscvDef.add_compiled_function
+     1) FlatToRiscvDef.compile_funs, which folds FlatToRiscvDef.add_compiled_function.
+        Note that this one is called twice: First in build_fun_pos_env, and then in
+        compile_funs, and we rely on the order being the same both times.
      2) functions, which folds sep
      Note that 1) is not commutative (the iteration order determines in which order code
      is layed out in memory), while 2) should be commutative because the "function"
@@ -661,10 +720,8 @@ Section Pipeline1.
     simp.
     unfold FlatToRiscvDef.compile_funs, functions in *.
     remember (FlatToRiscvDef.build_fun_pos_env e) as positions.
-    assert (forall f impl, map.get e f = Some impl -> exists pos, map.get positions f = Some pos) as A. {
-      intros. subst.
-      edestruct (get_build_fun_pos_env e f). 1: congruence.
-      eauto.
+    assert (forall f impl, map.get e f = Some impl -> map.get positions f = get_fun_pos_alt e f) as A. {
+      intros. subst. symmetry. apply get_fun_pos_alt_spec.
     }
     revert A E1.
     revert instrs r. clear E E0 z.
@@ -684,22 +741,22 @@ Section Pipeline1.
     wseplog_pre.
     rewrite H1. 2: {
       intros.
+      (* Doesn't work because get_fun_pos_alt is not suitable for iteration: if you put or remove
+         an element, the iteration order might change! *)
       destr (k =? f)%string.
-      - subst. eapply A. rewrite map.get_put_same. reflexivity.
-      - eapply A. rewrite map.get_put_diff by congruence. eassumption.
+      - subst. assert_succeeds erewrite A. all: case TODO_sam.
+      - case TODO_sam.
     }
     cancel.
     unfold function.
     specialize (A k) as A'.
     rewrite map.get_put_same in A'.
     specialize A' with (1 := eq_refl).
-    destruct A' as [pos A'].
     simpl in *. rewrite A'.
     cancel.
     unfold program.
     cancel_seps_at_indices 0%nat 0%nat. 2: reflexivity.
-    f_equal.
-    1,2: case TODO_sam. (* need the right invariants and helpers *)
+    case TODO_sam.
   Qed.
 
   Open Scope ilist_scope.
