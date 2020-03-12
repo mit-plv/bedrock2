@@ -918,8 +918,221 @@ Section Equiv.
              destruct (Z.eqb_spec x y) in *; [exfalso; auto; fail|cbn in v]
            end;
     try cbn in decodeI.
+
+  (** * Heads-up: this ltac is strongly suspicious of making Qed taking forever .. *)
+  Ltac kami_struct_cbv H :=
+    cbv [ilist.ilist_to_fun_m
+           Notations.icons'
+           VectorFacts.Vector_nth_map VectorFacts.Vector_nth_map' Fin.t_rect
+           VectorFacts.Vector_find VectorFacts.Vector_find'
+           Notations.fieldAccessor
+           Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
+           Vector.caseS projT2] in H.
+  Ltac kami_struct_cbv_goal :=
+    cbv [ilist.ilist_to_fun_m
+           Notations.icons'
+           VectorFacts.Vector_nth_map VectorFacts.Vector_nth_map' Fin.t_rect
+           VectorFacts.Vector_find VectorFacts.Vector_find'
+           Notations.fieldAccessor
+           Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
+           Vector.caseS projT2].
+
+  Lemma kunsigned_combine_shiftl_lor:
+    forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
+      Z.of_N (wordToN (Word.combine a b)) =
+      Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
+  Proof.
+    case TODO_joonwon.
+  Qed.
+
+  Lemma RiscvXAddrsSafe_removeXAddr_ok:
+    forall kmemi kmemd xaddrs,
+      RiscvXAddrsSafe kmemi kmemd xaddrs ->
+      (** TODO @joonwonc: need some more conditions for [rq] *)
+      forall ra rv,
+        RiscvXAddrsSafe
+          kmemi (fun w => if weq w (evalZeroExtendTrunc _ ra) then rv else kmemd w)
+          (removeXAddr ra xaddrs).
+  Proof.
+    case TODO_joonwon.
+  Qed.
   
   Arguments isMMIO: simpl never.
+  Lemma kamiStep_sound_case_execSt:
+    forall km1 t0 rm1 post kupd cs
+           (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
+      states_related (km1, t0) rm1 ->
+      mcomp_sat_unit (run1 iset) rm1 post ->
+      Step kamiProc km1 kupd
+           {| annot := Some (Some "execSt"%string);
+              defs := FMap.M.empty _;
+              calls := cs |} ->
+      exists rm2 t,
+        KamiLabelR
+          {| annot := Some (Some "execSt"%string);
+             defs := FMap.M.empty _;
+             calls := cs |} t /\
+        states_related (FMap.M.union kupd km1, t ++ t0) rm2 /\ post rm2.
+  Proof.
+    intros.
+    match goal with
+    | [H: states_related _ _ |- _] => inversion H; subst; clear H
+    end.
+    kinvert_more.
+    kinv_action_dest_nosimpl.
+    2: (* load (contradiction) *) exfalso; clear -Heqic0; discriminate.
+
+    - (** mmio-store *) case TODO_joonwon.
+
+    - (** store *)
+      block_subst kupd.
+      red_regmap.
+      red_trivial_conds.
+      cleanup_trivial.
+      unblock_subst kupd.
+
+      (** Evaluate (invert) the two fetchers *)
+      rt. eval_kami_fetch. rt.
+
+      (** Symbolic evaluation of Kami decode/execute *)
+      clear Heqic0.
+      kami_cbn_all.
+      kami_struct_cbv Heqic.
+      kami_struct_cbv H.
+
+      (* -- pick the subterm for the Kami instruction *)
+      match goal with
+      | [H: context [instrMem ?ipc] |- _] => set (kinst:= instrMem ipc)
+      end.
+      repeat
+        match goal with
+        | [H: context [instrMem ?ipc] |- _] => change (instrMem ipc) with kinst in H
+        end.
+      clearbody kinst.
+
+      (* -- pick the nextPc function *)
+      match goal with
+      | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
+        remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
+      end.
+      kami_cbn_hint Heqnpc rv32NextPc.
+
+      (* -- eliminate trivially contradictory cases *)
+      weq_to_Zeqb.
+      match type of H14 with
+      | context [Z.eqb ?x ?y] =>
+        destruct (Z.eqb_spec x y) in H14; [discriminate|]
+      end.
+      match type of H14 with
+      | context [Z.eqb ?x ?y] =>
+        destruct (Z.eqb_spec x y) in H14; [clear H14|discriminate]
+      end.
+      match type of e with
+      | context [Z.eqb ?x ?y] =>
+        destruct (Z.eqb_spec x y) in e; [clear e|discriminate]
+      end.
+
+      (* -- separate out cases of Kami execution *)
+      dest_Zeqb.
+      
+      (* -- further simplification *)
+      all: simpl_bit_manip.
+
+      (** Evaluation of riscv-coq decode/execute *)
+      
+      all: eval_decode.
+      all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
+        try subst shamtHi; try subst shamtHiTest.
+      all: eval_decodeI decodeI.
+
+      (* -- evaluate the execution of riscv-coq *)
+      3: match goal with
+         | [decodeI := if ?x =? ?y then Sw _ _ _ else InvalidI |- _] =>
+           destruct (Z.eqb_spec x y) in *
+         end.
+      all: subst dec; mcomp_step_in H5;
+        repeat match goal with
+               | H : False |- _ => case H
+               | H : Z |- _ => clear H
+               | H : list Instruction |- _ => clear H
+               | H : Instruction |- _ => clear H
+               end.
+
+      (** Consistency proof for each instruction *)
+      all: rt.
+
+      all: unfold evalExpr in Heqic; fold evalExpr in Heqic.
+      all: try match goal with
+               | [H: match Memory.store_bytes ?sz ?m ?a ?v with
+                     | Some _ => _ | None => _
+                     end |- _] =>
+                 destruct (Memory.store_bytes sz m a v) as [nmem|] eqn:Hnmem
+               end.
+
+      (** TODOs: 
+       * 1) generalize [kunsigned_combine_shiftl_lor] to extract required word lemmas.
+       * 2) refactor [simpl_bit_manip] and the generalized version of (1). *)
+      all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
+      all: simpl_bit_manip.
+
+      all: repeat match goal with
+                  | [H: nonmem_store _ _ _ _ _ _ |- _] =>
+                    destruct H as [? [? ?]]
+                  | [Hmmio: false = evalExpr (isMMIO _ _), H: isMMIOAddr _ |- _] =>
+                    exfalso; try (subst v simm12; regs_get_red H;
+                                  apply is_mmio_consistent in H;
+                                  setoid_rewrite H in Hmmio;
+                                  discriminate)
+                  end.
+
+      all: rt.
+      all: eexists _, _.
+      all: prove_KamiLabelR_silent.
+      all: try subst regs; try subst kupd.
+
+      1: { (* sb *)
+        rewrite memStoreBytes'_updateBytes.
+        cbv [updateBytes evalExpr evalArray evalConstT
+                         Vector.map natToFin Nat.sub].
+
+        econstructor.
+        { try (solve [trivial]). }
+        { clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl. }
+        { clear; intro; discriminate. }
+        { intros _.
+          subst v simm12.
+          regs_get_red_goal.
+          apply RiscvXAddrsSafe_removeXAddr_ok; assumption.
+        }
+        { cbv [RiscvMachine.getNextPc];
+            try (eapply pc_related_plus4; try eassumption; red; eauto; fail).
+        }
+        { solve [trivial]. }
+        { solve [trivial]. }
+        { subst v simm12 rs1 v0.
+          regs_get_red Hnmem.
+          clear -Hnmem.
+
+          cbv [Utility.add
+                 ZToReg MachineWidth_XLEN
+                 word.add word WordsKami wordW KamiWord.word
+                 word.of_Z kofZ] in Hnmem.
+          match goal with
+          | [H: Memory.store_bytes _ _ ?a _ = Some _ |- _] => set (addr:= a)
+          end.
+          match goal with
+          | [ |- context [(evalZeroExtendTrunc _ ?a)] ] => change a with addr
+          end.
+          clearbody addr.
+
+          case TODO_joonwon.
+        }
+      }
+
+      all: case TODO_joonwon.
+
+  Admitted.
+  
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -944,24 +1157,6 @@ Section Equiv.
     kinv_action_dest_nosimpl.
     3: (* store (contradiction) *) exfalso; clear -Heqic0; discriminate.
 
-    (** * Heads-up: this ltac is strongly suspicious of making Qed taking forever .. *)
-    Ltac kami_struct_cbv H :=
-      cbv [ilist.ilist_to_fun_m
-             Notations.icons'
-             VectorFacts.Vector_nth_map VectorFacts.Vector_nth_map' Fin.t_rect
-             VectorFacts.Vector_find VectorFacts.Vector_find'
-             Notations.fieldAccessor
-             Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
-             Vector.caseS projT2] in H.
-    Ltac kami_struct_cbv_goal :=
-      cbv [ilist.ilist_to_fun_m
-             Notations.icons'
-             VectorFacts.Vector_nth_map VectorFacts.Vector_nth_map' Fin.t_rect
-             VectorFacts.Vector_find VectorFacts.Vector_find'
-             Notations.fieldAccessor
-             Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
-             Vector.caseS projT2].
-    
     - (** MMIO-load *)
       block_subst kupd.
       red_regmap.
@@ -1232,21 +1427,12 @@ Section Equiv.
 
     - kami_step_case_empty.
     - kami_step_case_empty.
-
-    - (* case "pgmInit" *)
-      kinvert_pre.
-      left; eapply kamiStep_sound_case_pgmInit; eauto.
-
-    - (* case "pgmInitEnd" *)
-      kinvert_pre.
-      left; eapply kamiStep_sound_case_pgmInitEnd; eauto.
-
-    - (* case "execLd" *)
-      kinvert_pre.
-      right; eapply kamiStep_sound_case_execLd; eauto.
-
+    - kinvert_pre; left; eapply kamiStep_sound_case_pgmInit; eauto.
+    - kinvert_pre; left; eapply kamiStep_sound_case_pgmInitEnd; eauto.
+    - kinvert_pre; right; eapply kamiStep_sound_case_execLd; eauto.
     - (* case "execLdZ" *) case TODO_joonwon.
-    - (* case "execSt" *) case TODO_joonwon.
+    - kinvert_pre; right; eapply kamiStep_sound_case_execSt; eauto.
+
     - (* case "execNm" *)
       right.
       match goal with
