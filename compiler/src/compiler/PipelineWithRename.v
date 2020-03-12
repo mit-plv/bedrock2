@@ -106,7 +106,13 @@ Module map.
     Definition tuples(m: map): list (key * value) :=
       map.fold (fun l k v => (k, v) :: l) nil m.
 
-    Axiom fold_two_spec:
+    (* Folding over a map preserves relations *)
+    Axiom fold_parametricity: forall {A B : Type} (R : A -> B -> Prop)
+        (fa: A -> key -> value -> A) (fb: B -> key -> value -> B),
+        (forall a b k v, R a b -> R (fa a k v) (fb b k v)) ->
+        forall a0 b0, R a0 b0 -> forall m, R (map.fold fa a0 m) (map.fold fb b0 m).
+
+    Lemma fold_two_spec:
       forall {R1 R2: Type} (P: map -> R1 -> R2 -> Prop)
              (f1: R1 -> key -> value -> R1) (f2: R2 -> key -> value -> R2) r01 r02,
         P map.empty r01 r02 ->
@@ -114,15 +120,34 @@ Module map.
                              P m r1 r2 ->
                              P (map.put m k v) (f1 r1 k v) (f2 r2 k v)) ->
         forall m, P m (map.fold f1 r01 m) (map.fold f2 r02 m).
-
-    Lemma fold_spec:
-      forall {R: Type} (P: map -> R -> Prop) (f: R -> key -> value -> R) r0,
-        P map.empty r0  ->
-        (forall k v m r, map.get m k = None -> P m r -> P (map.put m k v) (f r k v)) ->
-        forall m, P m (map.fold f r0 m).
     Proof.
       intros.
-      eapply fold_two_spec with (f1 := f) (f2 := f) (r01 := r0) (r02 := r0) (m0 := m); eauto.
+      pose proof (@fold_parametricity (R1 * R2) R1
+        (fun '(r11, r21) r12 => r12 = r11)
+        (fun '(r1, r2) k v => (f1 r1 k v, f2 r2 k v)) f1) as Q.
+      specialize Q with (a0 := (r01, r02)) (b0 := r01) (m := m).
+      simpl in Q.
+      destruct (map.fold (fun '(r1, r2) (k : key) (v : value) => (f1 r1 k v, f2 r2 k v)) (r01, r02) m)
+        as [r1 r2] eqn: E.
+      rewrite Q. 3: reflexivity. 2: {
+        intros. destruct a as [r1' r2'].  subst r1'. reflexivity.
+      }
+      clear Q.
+      pose proof (@fold_parametricity (R1 * R2) R2
+        (fun '(r11, r21) r22 => r22 = r21)
+        (fun '(r1, r2) k v => (f1 r1 k v, f2 r2 k v)) f2) as Q.
+      specialize Q with (a0 := (r01, r02)) (b0 := r02) (m := m).
+      simpl in Q.
+      rewrite E in Q.
+      rewrite Q. 3: reflexivity. 2: {
+        intros. destruct a as [r1' r2'].  subst r2'. reflexivity.
+      }
+      clear Q.
+      revert r1 r2 E.
+      eapply map.fold_spec; intros.
+      - congruence.
+      - destruct r as [ri1 ri2]. inversion E. subst r1 r2. clear E.
+        eauto.
     Qed.
 
     Lemma tuples_NoDup: forall m, NoDup (tuples m).
@@ -671,17 +696,18 @@ Section Pipeline1.
       m1 = m2 /\ List.length i1 = List.length i2.
   Proof.
     intros until e.
-    eapply map.fold_two_spec with (f1 := (FlatToRiscvDef.add_compiled_function posmap1))
-                                  (f2 := (FlatToRiscvDef.add_compiled_function posmap2)); intros.
-    - inversion H. inversion H0. subst. split; reflexivity.
-    - destruct r1 as [insts1 map1]. destruct r2 as [insts2 map2].
+    eapply map.fold_parametricity with (fa := (FlatToRiscvDef.add_compiled_function posmap1))
+                                       (fb := (FlatToRiscvDef.add_compiled_function posmap2));
+      intros.
+    - destruct a as [insts1 map1]. destruct b as [insts2 map2].
       unfold FlatToRiscvDef.add_compiled_function in *.
-      inversion H1. inversion H2. subst. clear H1 H2.
-      specialize H0 with (1 := eq_refl) (2 := eq_refl). destruct H0.
-      rewrite ?H1. subst.
+      inversion H0. inversion H1. subst. clear H0 H1.
+      specialize H with (1 := eq_refl) (2 := eq_refl). destruct H.
+      rewrite ?H0. subst.
       split. 1: reflexivity.
       ignore_positions.
       apply compile_function_length_ignores_positions.
+    - inversion H. inversion H0. subst. auto.
   Qed.
 
   Lemma build_fun_pos_env_ignores_posmap: forall posmap1 posmap2 e,
