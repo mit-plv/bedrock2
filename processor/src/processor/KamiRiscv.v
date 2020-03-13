@@ -131,7 +131,13 @@ Section Equiv.
 
   Definition iset: InstructionSet := RV32IM.
 
-  (** * The Observable Behavior: MMIO events *)
+  (* redefine mcomp_sat to simplify for the case where no answer is returned *)
+  Local Notation mcomp_sat_unit m initialL post :=
+    (mcomp_sat m initialL (fun (_: unit) => post)).
+
+  Context (Registers_ok : map.ok Registers).
+  
+  (** * Relations between Kami and riscv-coq *)
 
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
     word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
@@ -185,9 +191,7 @@ Section Equiv.
                                      RiscvMachine.getLog := t'; |};
                     getMetrics := metrics; |}.
 
-  (* redefine mcomp_sat to simplify for the case where no answer is returned *)
-  Local Notation mcomp_sat_unit m initialL post :=
-    (mcomp_sat m initialL (fun (_: unit) => post)).
+  (** * Utility lemmas *)
 
   Lemma events_related_unique: forall e' e1 e2,
       events_related e1 e' ->
@@ -209,6 +213,7 @@ Section Equiv.
       + eapply IHt'; eassumption.
   Qed.
 
+  (** * FIXME @joonwonc: MMOutputEvent to handle [byteEn] *)
   Inductive KamiLabelR: Kami.Semantics.LabelT -> list Event -> Prop :=
   | KamiSilent:
       forall klbl,
@@ -229,12 +234,6 @@ Section Equiv.
 
   Definition kamiStep (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT): Prop :=
     exists kupd, Step kamiProc m1 kupd klbl /\ m2 = FMap.M.union kupd m1.
-
-  Ltac kami_step_case_empty :=
-    left; FMap.mred; fail.
-
-  Inductive PHide: Prop -> Prop :=
-  | PHidden: forall P: Prop, P -> PHide P.
 
   Lemma is_mmio_consistent:
     forall a, isMMIOAddr a <-> evalExpr (isMMIO type a) = true.
@@ -348,6 +347,183 @@ Section Equiv.
     intros _.
     apply kamiPgmInitFull_RiscvXAddrsSafe; auto.
   Qed.
+
+  Lemma pc_related_plus4:
+    forall kpc rpc,
+      pc_related_and_valid kpc rpc ->
+      pc_related_and_valid (kpc ^+ $4) (word.add rpc (word.of_Z 4)).
+  Proof.
+    cbv [pc_related_and_valid]; intros.
+    destruct H; split.
+    - apply AddrAligned_plus4; assumption.
+    - red in H0; subst kpc.
+      reflexivity.
+  Qed.
+
+  Lemma nat_power_of_two_boundary_shrink:
+    forall n z,
+      - BinInt.Z.of_nat (Nat.pow 2 n) <= z < BinInt.Z.of_nat (Nat.pow 2 n) ->
+      forall m,
+        (n < m)%nat ->
+        - BinInt.Z.of_nat (Nat.pow 2 m) <= z < BinInt.Z.of_nat (Nat.pow 2 m).
+  Proof.
+    intros.
+    destruct H; split.
+    - etransitivity; [|eassumption].
+      rewrite <-Z.opp_le_mono.
+      apply inj_le.
+      apply Nat.pow_le_mono_r; blia.
+    - etransitivity; [eassumption|].
+      apply inj_lt.
+      apply Nat.pow_lt_mono_r; blia.
+  Qed.
+
+  Lemma AddrAligned_consistent:
+    forall a,
+      negb (reg_eqb (MachineWidth:= MachineWidth_XLEN)
+                    (remu a (ZToReg 4)) (ZToReg 0)) = false ->
+      AddrAligned a.
+  Proof.
+    intros.
+    apply Bool.negb_false_iff in H.
+    cbv [reg_eqb MachineWidth_XLEN word.eqb word WordsKami wordW KamiWord.word] in H.
+    apply weqb_sound in H.
+    cbv [remu word.modu riscvZmodu kofZ kunsigned] in H.
+    simpl in H; cbn in H.
+    change (Pos.to_nat 32) with 32%nat in H.
+    match type of H with
+    | _ = ?rhs =>
+      change rhs with (wzero 32) in H;
+        rewrite <-ZToWord_zero in H
+    end.
+    apply f_equal with (f:= @wordToZ _) in H.
+
+    rewrite wordToZ_ZToWord in H.
+    2: {
+      apply nat_power_of_two_boundary_shrink with (n:= 3%nat); [simpl|blia].
+      match goal with
+      | |- _ <= ?z mod 4 < _ =>
+        pose proof (Z.mod_bound_or z 4 ltac:(discriminate)); blia
+      end.
+    }
+    rewrite wordToZ_ZToWord in H
+      by (apply nat_power_of_two_boundary_shrink with (n:= 3%nat); simpl; blia).
+
+    cbv [AddrAligned].
+    apply wordToN_inj.
+    apply N2Z.inj_iff.
+    rewrite unsigned_split1_as_bitSlice.
+    match goal with
+    | |- context [@wordToN ?sz _] => change sz with 32%nat
+    end.
+    rewrite bitSlice_alt by blia.
+    cbv [bitSlice']; cbn.
+    rewrite Z.div_1_r.
+    assumption.
+  Qed.
+
+  Lemma kami_evalZeroExtendTrunc_32:
+    forall w, evalZeroExtendTrunc 32 w = w.
+  Proof.
+    intros; cbv [evalZeroExtendTrunc].
+    destruct (lt_dec _ _); [Lia.lia|].
+    apply split1_0.
+  Qed.
+    
+  Lemma kami_evalSignExtendTrunc_32:
+    forall w, evalSignExtendTrunc 32 w = w.
+  Proof.
+    intros; cbv [evalSignExtendTrunc].
+    destruct (lt_dec _ _); [Lia.lia|].
+    apply split1_0.
+  Qed.
+
+  Lemma kami_evalSignExtendTrunc:
+    forall {a} (w: Word.word a) b,
+      (a < b)%nat ->
+      evalSignExtendTrunc b w =
+      ZToWord b (signExtend (Z.of_nat a) (Z.of_N (wordToN w))).
+  Proof.
+    intros.
+    cbv [evalSignExtendTrunc].
+    destruct (lt_dec _ _); [|exfalso; auto].
+    apply wordToZ_inj.
+    rewrite wordToZ_eq_rect.
+    rewrite sext_wordToZ.
+    case TODO_word.
+  Qed.
+
+  Lemma mem_related_load_bytes_Some:
+    forall kmem rmem,
+      mem_related memSizeLg kmem rmem ->
+      forall sz addr bs,
+        sz <> O ->
+        Memory.load_bytes sz rmem addr = Some bs ->
+        kunsigned addr < Z.pow 2 memSizeLg.
+  Proof.
+    intros.
+    destruct sz as [|sz]; [exfalso; auto|].
+    cbn in H1.
+    match goal with
+    | [H: match ?val with | Some _ => _ | None => _ end = Some _ |- _] =>
+      destruct val as [b|] eqn:Hb; [clear H|discriminate]
+    end.
+    specialize (H addr).
+    setoid_rewrite Hb in H.
+    destruct (Z.ltb_spec (kunsigned addr) (Z.pow 2 memSizeLg)); [|discriminate].
+    assumption.
+  Qed.
+
+  Lemma mem_related_load_bytes_None:
+    forall kmem rmem,
+      mem_related memSizeLg kmem rmem ->
+      forall sz addr,
+        Memory.load_bytes sz rmem addr = None ->
+        kunsigned addr + Z.of_nat (pred sz) >= Z.pow 2 memSizeLg.
+  Proof.
+    case TODO_joonwon.
+  Qed.
+
+  Lemma mem_related_put:
+    forall kmem rmem,
+      mem_related memSizeLg kmem rmem ->
+      forall (addr: word) kval rval,
+        rval = byte.of_Z (word.unsigned kval) ->
+        mem_related memSizeLg
+                    (fun w => if weq w (evalZeroExtendTrunc _ addr) then kval
+                              else kmem w)
+                    (map.put rmem addr rval).
+  Proof.
+    case TODO_joonwon.
+  Qed.
+
+  Lemma kunsigned_combine_shiftl_lor:
+    forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
+      Z.of_N (wordToN (Word.combine a b)) =
+      Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
+  Proof.
+    case TODO_joonwon.
+  Qed.
+
+  Lemma RiscvXAddrsSafe_removeXAddr_ok:
+    forall kmemi kmemd xaddrs,
+      RiscvXAddrsSafe kmemi kmemd xaddrs ->
+      (** TODO @joonwonc: might need some more conditions for [ra] *)
+      forall ra rv,
+        RiscvXAddrsSafe
+          kmemi (fun w => if weq w (evalZeroExtendTrunc _ ra) then rv else kmemd w)
+          (removeXAddr ra xaddrs).
+  Proof.
+    case TODO_joonwon.
+  Qed.
+
+  (** * Utility Ltacs *)
+  
+  Ltac kami_step_case_empty :=
+    left; FMap.mred; fail.
+
+  Inductive PHide: Prop -> Prop :=
+  | PHidden: forall P: Prop, P -> PHide P.
 
   Ltac mcomp_step_in HR :=
     progress
@@ -486,113 +662,6 @@ Section Equiv.
   Ltac prove_KamiLabelR_mmio :=
     split; [|split];
     [eapply KamiMMIO; reflexivity| |eassumption].
-
-  Context (Registers_ok : map.ok Registers).
-
-  Lemma pc_related_plus4:
-    forall kpc rpc,
-      pc_related_and_valid kpc rpc ->
-      pc_related_and_valid (kpc ^+ $4) (word.add rpc (word.of_Z 4)).
-  Proof.
-    cbv [pc_related_and_valid]; intros.
-    destruct H; split.
-    - apply AddrAligned_plus4; assumption.
-    - red in H0; subst kpc.
-      reflexivity.
-  Qed.
-
-  Lemma nat_power_of_two_boundary_shrink:
-    forall n z,
-      - BinInt.Z.of_nat (Nat.pow 2 n) <= z < BinInt.Z.of_nat (Nat.pow 2 n) ->
-      forall m,
-        (n < m)%nat ->
-        - BinInt.Z.of_nat (Nat.pow 2 m) <= z < BinInt.Z.of_nat (Nat.pow 2 m).
-  Proof.
-    intros.
-    destruct H; split.
-    - etransitivity; [|eassumption].
-      rewrite <-Z.opp_le_mono.
-      apply inj_le.
-      apply Nat.pow_le_mono_r; blia.
-    - etransitivity; [eassumption|].
-      apply inj_lt.
-      apply Nat.pow_lt_mono_r; blia.
-  Qed.
-
-  Lemma AddrAligned_consistent:
-    forall a,
-      negb (reg_eqb (MachineWidth:= MachineWidth_XLEN)
-                    (remu a (ZToReg 4)) (ZToReg 0)) = false ->
-      AddrAligned a.
-  Proof.
-    intros.
-    apply Bool.negb_false_iff in H.
-    cbv [reg_eqb MachineWidth_XLEN word.eqb word WordsKami wordW KamiWord.word] in H.
-    apply weqb_sound in H.
-    cbv [remu word.modu riscvZmodu kofZ kunsigned] in H.
-    simpl in H; cbn in H.
-    change (Pos.to_nat 32) with 32%nat in H.
-    match type of H with
-    | _ = ?rhs =>
-      change rhs with (wzero 32) in H;
-        rewrite <-ZToWord_zero in H
-    end.
-    apply f_equal with (f:= @wordToZ _) in H.
-
-    rewrite wordToZ_ZToWord in H.
-    2: {
-      apply nat_power_of_two_boundary_shrink with (n:= 3%nat); [simpl|blia].
-      match goal with
-      | |- _ <= ?z mod 4 < _ =>
-        pose proof (Z.mod_bound_or z 4 ltac:(discriminate)); blia
-      end.
-    }
-    rewrite wordToZ_ZToWord in H
-      by (apply nat_power_of_two_boundary_shrink with (n:= 3%nat); simpl; blia).
-
-    cbv [AddrAligned].
-    apply wordToN_inj.
-    apply N2Z.inj_iff.
-    rewrite unsigned_split1_as_bitSlice.
-    match goal with
-    | |- context [@wordToN ?sz _] => change sz with 32%nat
-    end.
-    rewrite bitSlice_alt by blia.
-    cbv [bitSlice']; cbn.
-    rewrite Z.div_1_r.
-    assumption.
-  Qed.
-
-  Lemma kami_evalZeroExtendTrunc_32:
-    forall w, evalZeroExtendTrunc 32 w = w.
-  Proof.
-    intros; cbv [evalZeroExtendTrunc].
-    destruct (lt_dec _ _); [Lia.lia|].
-    apply split1_0.
-  Qed.
-    
-  Lemma kami_evalSignExtendTrunc_32:
-    forall w, evalSignExtendTrunc 32 w = w.
-  Proof.
-    intros; cbv [evalSignExtendTrunc].
-    destruct (lt_dec _ _); [Lia.lia|].
-    apply split1_0.
-  Qed.
-
-  Lemma kami_evalSignExtendTrunc:
-    forall {a} (w: Word.word a) b,
-      (a < b)%nat ->
-      evalSignExtendTrunc b w =
-      ZToWord b (signExtend (Z.of_nat a) (Z.of_N (wordToN w))).
-  Proof.
-    intros.
-    cbv [evalSignExtendTrunc].
-    destruct (lt_dec _ _); [|exfalso; auto].
-    apply wordToZ_inj.
-    rewrite wordToZ_eq_rect.
-    rewrite sext_wordToZ.
-    case TODO_word.
-  Qed.
 
   Ltac regs_get_red_goal :=
     repeat
@@ -742,42 +811,17 @@ Section Equiv.
     assert (Ht: t = tc) by reflexivity;
     rewrite Ht in H; clear Ht.
 
-  Lemma mem_related_load_bytes_Some:
-    forall kmem rmem,
-      mem_related memSizeLg kmem rmem ->
-      forall sz addr bs,
-        sz <> O ->
-        Memory.load_bytes sz rmem addr = Some bs ->
-        kunsigned addr < Z.pow 2 memSizeLg.
-  Proof.
-    intros.
-    destruct sz as [|sz]; [exfalso; auto|].
-    cbn in H1.
-    match goal with
-    | [H: match ?val with | Some _ => _ | None => _ end = Some _ |- _] =>
-      destruct val as [b|] eqn:Hb; [clear H|discriminate]
-    end.
-    specialize (H addr).
-    setoid_rewrite Hb in H.
-    destruct (Z.ltb_spec (kunsigned addr) (Z.pow 2 memSizeLg)); [|discriminate].
-    assumption.
-  Qed.
-
-  Lemma mem_related_load_bytes_None:
-    forall kmem rmem,
-      mem_related memSizeLg kmem rmem ->
-      forall sz addr,
-        Memory.load_bytes sz rmem addr = None ->
-        kunsigned addr + Z.of_nat (pred sz) >= Z.pow 2 memSizeLg.
-  Proof.
-    case TODO_joonwon.
-  Qed.
-
   Ltac weq_to_Zeqb :=
     (* -- convert [weq] to [Z.eqb] in Kami decoding/execution *)
     (** Heads-up: COQBUG(rewrite pattern matching on if/match is broken
      * due to "hidden branch types") *)
     repeat match goal with
+           | |- context G [if ?x then ?a else ?b] =>
+             let e := context G [@bool_rect (fun _ => _) a b x] in
+             change e
+           | |- context G [if ?x then ?a else ?b] =>
+             let e := context G [@sumbool_rect _ _ (fun _ => _) (fun _ => a) (fun _ => b) x] in
+             change e
            | H : context G [if ?x then ?a else ?b] |- _ =>
              let e := context G [@bool_rect (fun _ => _) a b x] in
              change e in H
@@ -789,10 +833,23 @@ Section Equiv.
            | [H: _ |- _] =>
              progress repeat rewrite ?sumbool_rect_bool_weq, <-?unsigned_eqb in H
            end;
+    repeat rewrite ?sumbool_rect_bool_weq, <-?unsigned_eqb;
     cbv [bool_rect] in *;
     (* -- some more word-to-Z conversions *)
     progress
       repeat (match goal with
+              | [ |- context G [Z.of_N (@wordToN ?n ?x)] ] =>
+                let nn := eval cbv in (Z.of_nat n) in
+                let e := context G [@kunsigned nn x] in
+                change e
+              | [ |- context G [kunsigned (@natToWord ?n ?x)] ] =>
+                let xx := eval cbv in (Z.of_nat x) in
+                let e := context G [xx] in
+                change e
+              | [ |- context G [kunsigned (@WS ?b ?n ?t)] ] =>
+                let xx := eval cbv in (kunsigned (width:= Z.of_nat (S n)) (WS b t)) in
+                let e := context G [xx] in
+                change e
               | [H: context G [Z.of_N (@wordToN ?n ?x)] |- _] =>
                 let nn := eval cbv in (Z.of_nat n) in
                 let e := context G [@kunsigned nn x] in
@@ -810,6 +867,8 @@ Section Equiv.
   Ltac dest_Zeqb :=
     progress
       repeat match goal with
+             | [ |- context G [if Z.eqb ?x ?y then ?a else ?b] ] =>
+               destruct (Z.eqb_spec x y) in *
              | [H : context G [if Z.eqb ?x ?y then ?a else ?b] |- _] =>
                destruct (Z.eqb_spec x y) in *
              | [H : context G [if (Z.eqb ?x ?y && _ && _)%bool then _ else _] |- _] =>
@@ -919,7 +978,7 @@ Section Equiv.
            end;
     try cbn in decodeI.
 
-  (** * Heads-up: this ltac is strongly suspicious of making Qed taking forever .. *)
+  (** * FIXME: this ltac is strongly suspicious of making Qed taking forever .. *)
   Ltac kami_struct_cbv H :=
     cbv [ilist.ilist_to_fun_m
            Notations.icons'
@@ -937,25 +996,7 @@ Section Equiv.
            Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
            Vector.caseS projT2].
 
-  Lemma kunsigned_combine_shiftl_lor:
-    forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
-      Z.of_N (wordToN (Word.combine a b)) =
-      Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
-  Proof.
-    case TODO_joonwon.
-  Qed.
-
-  Lemma RiscvXAddrsSafe_removeXAddr_ok:
-    forall kmemi kmemd xaddrs,
-      RiscvXAddrsSafe kmemi kmemd xaddrs ->
-      (** TODO @joonwonc: need some more conditions for [rq] *)
-      forall ra rv,
-        RiscvXAddrsSafe
-          kmemi (fun w => if weq w (evalZeroExtendTrunc _ ra) then rv else kmemd w)
-          (removeXAddr ra xaddrs).
-  Proof.
-    case TODO_joonwon.
-  Qed.
+  (** * Step-consistency lemmas *)
   
   Arguments isMMIO: simpl never.
   Lemma kamiStep_sound_case_execSt:
@@ -982,7 +1023,86 @@ Section Equiv.
     kinv_action_dest_nosimpl.
     2: (* load (contradiction) *) exfalso; clear -Heqic0; discriminate.
 
-    - (** mmio-store *) case TODO_joonwon.
+    - (** MMIO-store *)
+      block_subst kupd.
+      red_regmap.
+      red_trivial_conds.
+      cleanup_trivial.
+      unblock_subst kupd.
+
+      (** Evaluate (invert) the two fetchers *)
+      rt. eval_kami_fetch. rt.
+
+      (** Begin symbolic evaluation of Kami decode/execute *)
+      kami_cbn_all.
+      kami_struct_cbv Heqic.
+      kami_struct_cbv H.
+
+      (* -- pick the subterm for the Kami instruction *)
+      match goal with
+      | [H: context [instrMem ?ipc] |- _] => set (kinst:= instrMem ipc)
+      end.
+      repeat
+        match goal with
+        | [H: context [instrMem ?ipc] |- _] => change (instrMem ipc) with kinst in H
+        | [ |- context [instrMem ?ipc] ] => change (instrMem ipc) with kinst
+        end.
+      clearbody kinst.
+
+      (* -- pick the nextPc function *)
+      match goal with
+      | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
+        remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
+      end.
+      kami_cbn_hint Heqnpc rv32NextPc.
+
+      weq_to_Zeqb.
+
+      (* -- eliminate trivially contradictory cases *)
+      match type of H14 with
+      | context [Z.eqb ?x ?y] =>
+        destruct (Z.eqb_spec x y) in H14; [discriminate|]
+      end.
+      match type of H14 with
+      | context [Z.eqb ?x ?y] =>
+        destruct (Z.eqb_spec x y) in H14; [clear H14|discriminate]
+      end.
+      match type of e with
+      | context [Z.eqb ?x ?y] =>
+        destruct (Z.eqb_spec x y) in e; [clear e|discriminate]
+      end.
+
+      (* -- separate out cases of Kami execution *)
+      dest_Zeqb.
+
+      (* -- further simplification *)
+      all: simpl_bit_manip.
+
+      (** Evaluation of riscv-coq decode/execute *)
+      
+      all: eval_decode.
+      all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
+        try subst shamtHi; try subst shamtHiTest.
+      all: eval_decodeI decodeI.
+      
+      (* -- evaluate the execution of riscv-coq *)
+      3: match goal with
+         | [decodeI := if ?x =? ?y then Sw _ _ _ else InvalidI |- _] =>
+           destruct (Z.eqb_spec x y) in *
+         end.
+      all: subst dec; mcomp_step_in H5;
+        repeat match goal with
+               | H : False |- _ => case H
+               | H : Z |- _ => clear H
+               | H : list Instruction |- _ => clear H
+               | H : Instruction |- _ => clear H
+               end.
+
+      (** Consistency proof for each instruction *)
+      all: rt.
+
+      all: unfold evalExpr in Heqic; fold evalExpr in Heqic.
+      all: case TODO_joonwon.
 
     - (** store *)
       block_subst kupd.
@@ -1090,11 +1210,10 @@ Section Equiv.
       all: prove_KamiLabelR_silent.
       all: try subst regs; try subst kupd.
 
-      1: { (* sb *)
+      2: { (* sh *)
         rewrite memStoreBytes'_updateBytes.
-        cbv [updateBytes evalExpr evalArray evalConstT
-                         Vector.map natToFin Nat.sub].
-
+        cbv [updateBytes evalExpr evalArray evalConstT Vector.map natToFin Nat.sub].
+        
         econstructor.
         { try (solve [trivial]). }
         { clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl. }
@@ -1102,7 +1221,9 @@ Section Equiv.
         { intros _.
           subst v simm12.
           regs_get_red_goal.
-          apply RiscvXAddrsSafe_removeXAddr_ok; assumption.
+          cbv [invalidateWrittenXAddrs].
+          do 2 apply RiscvXAddrsSafe_removeXAddr_ok.
+          assumption.
         }
         { cbv [RiscvMachine.getNextPc];
             try (eapply pc_related_plus4; try eassumption; red; eauto; fail).
@@ -1111,21 +1232,20 @@ Section Equiv.
         { solve [trivial]. }
         { subst v simm12 rs1 v0.
           regs_get_red Hnmem.
-          clear -Hnmem.
-
-          cbv [Utility.add
-                 ZToReg MachineWidth_XLEN
-                 word.add word WordsKami wordW KamiWord.word
-                 word.of_Z kofZ] in Hnmem.
-          match goal with
-          | [H: Memory.store_bytes _ _ ?a _ = Some _ |- _] => set (addr:= a)
+          cbv [Memory.store_bytes] in Hnmem.
+          match type of Hnmem with
+          | match ?olv with | Some _ => _ | None => _ end = _ =>
+            destruct olv eqn:Hlv; [|discriminate]
           end.
-          match goal with
-          | [ |- context [(evalZeroExtendTrunc _ ?a)] ] => change a with addr
-          end.
-          clearbody addr.
-
-          case TODO_joonwon.
+          apply Some_inv in Hnmem; subst nmem.
+          cbv [Memory.unchecked_store_bytes
+                 map.putmany_of_tuple
+                 Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2
+                 HList.tuple.unfoldn].
+          do 2 (apply mem_related_put;
+                [|(* byte.of_Z z = byte.of_Z (least significant 8 bits of z) *)
+                 case TODO_joonwon]).
+          assumption.
         }
       }
 
@@ -2001,6 +2121,8 @@ Section Equiv.
       all: idtac "KamiRiscv: [kamiStep_sound] starting the Qed...".
   (*A lot of*) Time Qed.
 
+  (** * Multistep and Behavior soundness *)
+  
   Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
   | KamiSeqNil: KamiLabelSeqR nil nil
   | KamiSeqCons:
