@@ -497,14 +497,6 @@ Section Equiv.
     case TODO_joonwon.
   Qed.
 
-  Lemma kunsigned_combine_shiftl_lor:
-    forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
-      Z.of_N (wordToN (Word.combine a b)) =
-      Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
-  Proof.
-    case TODO_joonwon.
-  Qed.
-
   Lemma RiscvXAddrsSafe_removeXAddr_ok:
     forall kmemi kmemd xaddrs,
       RiscvXAddrsSafe kmemi kmemd xaddrs ->
@@ -517,6 +509,29 @@ Section Equiv.
     case TODO_joonwon.
   Qed.
 
+  Lemma kunsigned_combine_shiftl_lor:
+    forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
+      Z.of_N (wordToN (Word.combine a b)) =
+      Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma kunsigned_split2_shiftr:
+    forall {sz1 sz2} (w: Word.word (sz1 + sz2)),
+      Z.of_N (wordToN (split2 _ _ w)) = Z.shiftr (Z.of_N (wordToN w)) (Z.of_nat sz1).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma kunsigned_byte_split1:
+    forall {sz} (w: Word.word (8 + sz)),
+      byte.of_Z (Z.of_N (wordToN w)) =
+      byte.of_Z (Z.of_N (wordToN (split1 _ _ w))).
+  Proof.
+    case TODO_word.
+  Qed.
+  
   (** * Utility Ltacs *)
   
   Ltac kami_step_case_empty :=
@@ -686,15 +701,16 @@ Section Equiv.
     [try (solve [trivial])
     |clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl
     |clear; intro; discriminate
-    |solve [trivial]
+    |try (solve [trivial])
     |cbv [RiscvMachine.getNextPc];
      try (eapply pc_related_plus4; try eassumption; red; eauto; fail)
     |solve [trivial]
-    |try (eapply regs_related_put;
+    |try (solve [trivial]);
+     try (eapply regs_related_put;
           [solve [trivial]|solve [trivial]|..];
           erewrite ?regs_related_get, ?unsigned_split2_split1_as_bitSlice by eauto;
           trivial)
-    |solve [trivial]].
+    |try (solve [trivial])].
 
   Ltac kinvert_pre :=
     repeat
@@ -1210,46 +1226,40 @@ Section Equiv.
       all: prove_KamiLabelR_silent.
       all: try subst regs; try subst kupd.
 
-      2: { (* sh *)
-        rewrite memStoreBytes'_updateBytes.
+      (* -- solve trivial goals first *)
+      all: rewrite memStoreBytes'_updateBytes;
         cbv [updateBytes evalExpr evalArray evalConstT Vector.map natToFin Nat.sub].
-        
-        econstructor.
-        { try (solve [trivial]). }
-        { clear; cbv [RegsToT pRegsToT]; kregmap_red; exact eq_refl. }
-        { clear; intro; discriminate. }
-        { intros _.
-          subst v simm12.
-          regs_get_red_goal.
-          cbv [invalidateWrittenXAddrs].
-          do 2 apply RiscvXAddrsSafe_removeXAddr_ok.
-          assumption.
-        }
-        { cbv [RiscvMachine.getNextPc];
-            try (eapply pc_related_plus4; try eassumption; red; eauto; fail).
-        }
-        { solve [trivial]. }
-        { solve [trivial]. }
-        { subst v simm12 rs1 v0.
-          regs_get_red Hnmem.
-          cbv [Memory.store_bytes] in Hnmem.
-          match type of Hnmem with
-          | match ?olv with | Some _ => _ | None => _ end = _ =>
-            destruct olv eqn:Hlv; [|discriminate]
-          end.
-          apply Some_inv in Hnmem; subst nmem.
+      all: prove_states_related.
+
+      (* -- prove [RiscvXAddrsSafe] after store *)
+      all: subst v simm12 rs1 v0.
+      all: regs_get_red_goal; regs_get_red Hnmem.
+      all: try match goal with
+               | |- _ = _ -> RiscvXAddrsSafe _ _ _ =>
+                 intros _; repeat apply RiscvXAddrsSafe_removeXAddr_ok; assumption
+               end.
+
+      (* -- prove preservation of [mem_related] for {sb, sh, sw} *)
+      all: cbv [Memory.store_bytes] in Hnmem;
+        match type of Hnmem with
+        | match ?olv with | Some _ => _ | None => _ end = _ =>
+          destruct olv eqn:Hlv; [|discriminate]
+        end;
+        apply Some_inv in Hnmem; subst nmem;
           cbv [Memory.unchecked_store_bytes
                  map.putmany_of_tuple
                  Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2
                  HList.tuple.unfoldn].
-          do 2 (apply mem_related_put;
-                [|(* byte.of_Z z = byte.of_Z (least significant 8 bits of z) *)
-                 case TODO_joonwon]).
-          assumption.
-        }
-      }
 
-      all: case TODO_joonwon.
+      all: apply mem_related_put; [|cbv [word.unsigned];
+                                    setoid_rewrite <-kunsigned_byte_split1;
+                                    reflexivity].
+      all: repeat (apply mem_related_put;
+                   [|cbv [word.unsigned];
+                     setoid_rewrite <-kunsigned_byte_split1;
+                     rewrite ?kunsigned_split2_shiftr;
+                     reflexivity]).
+      all: assumption.
 
   Admitted.
   
