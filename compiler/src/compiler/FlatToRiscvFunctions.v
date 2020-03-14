@@ -714,30 +714,25 @@ Section Proofs.
     - idtac "Case compile_stmt_correct/SInteract".
       eapply runsTo_weaken.
       + eapply compile_ext_call_correct with
-            (postH := fun t' m' l' mc' => post t' m (* <- not m' because unchanged *) l' mc')
-            (action0 := action) (argvars0 := argvars) (resvars0 := resvars);
+            (postH := post)
+            (action0 := action) (argvars0 := argvars) (resvars0 := resvars) (initialMH := m);
           simpl; reflexivity || eassumption || ecancel_assumption || idtac.
         * eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
         * eapply map.getmany_of_list_extends; try eassumption.
-        * intros resvals HO ?. subst mGive.
+        * intros resvals mReceive ?.
           match goal with
-          | H: forall _, _ |- _ =>
-            specialize H with (1 := HO);
+          | H: forall _ _, _ |- _ =>
+            specialize H with mReceive resvals;
             move H at bottom;
             destruct H as (finalRegsH & ? & finalMH & ? & ?)
-          end.
+          end; [assumption|].
+          exists finalRegsH. eexists. exists finalMH.
+          ssplit; [assumption| | ];
           edestruct (map.putmany_of_list_zip_extends_exists (ok := locals_ok))
-            as (finalRegsL & ? & ?); [eassumption..|].
-          do 2 match goal with
-          | H: map.split _ _ map.empty |- _ => apply map.split_empty_r in H
-          end.
-          replace mKeep with m in * by congruence. clear mKeep.
-          replace finalMH with m in * by congruence. clear finalMH.
-          repeat eexists;
-          repeat split; try eassumption.
+            as (finalRegsL & ? & ?); eassumption.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. simpl in *.
         destruct_products. subst.
-        do 4 eexists. ssplit; try (eassumption || reflexivity).
+        do 4 eexists; ssplit; try (eassumption || reflexivity).
         * match goal with
           | H: map.putmany_of_list_zip _ _ _ = Some _ |- _ => rename H into P; clear -P h
           end.

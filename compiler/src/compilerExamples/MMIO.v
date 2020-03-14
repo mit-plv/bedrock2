@@ -285,6 +285,9 @@ Section MMIO1.
       destruct_RiscvMachine initialL.
       unfold FlatToRiscvDef.compile_ext_call, FlatToRiscvCommon.def_params,
              FlatToRiscv_params, compilation_params, compile_ext_call in *.
+      match goal with
+        | H: forall _ _, outcome _ _ -> _ |- _ => specialize H with (mReceive := map.empty)
+      end.
       destruct (String.eqb _ action) eqn: E;
         cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics] in *.
       + (* MMOutput *)
@@ -319,12 +322,14 @@ Section MMIO1.
         }
         cbn in *|-.
         match goal with
-        | HO: outcome _ _, H: _ |- _ => specialize (H _ HO eq_refl); move H at bottom
+        | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
+        end.
+        match goal with
+        | HO: outcome _ _, H: _ |- _ => specialize (H _ HO); move H at bottom; destruct H as (finalRegsH&finalMetricsH&finalMH&?)
         end.
         simp.
         cbn in *.
         simp.
-        subst insts.
 
         eapply runsToNonDet.runsToStep_cps.
         cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams FlatToRiscvCommon.PRParams].
@@ -387,6 +392,7 @@ Section MMIO1.
         rewrite word.of_Z_unsigned.
         apply eqb_eq in E. subst action.
         cbn -[invalidateWrittenXAddrs] in *.
+        eexists.
         split; eauto.
         split; eauto.
         split; eauto.
@@ -427,6 +433,9 @@ Section MMIO1.
           split; [exact HIn|clear HIn].
           eapply disjoint_MMIO_goal; assumption.
         }
+        match goal with
+        | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
+        end.
         ssplit; eauto.
         unfold invalidateWrittenXAddrs.
         change removeXAddr with (@List.removeb word word.eqb _).
@@ -450,6 +459,9 @@ Section MMIO1.
                | l: list _ |- _ => destruct l;
                                      try (exfalso; (contrad || (cheap_saturate; contrad))); []
                end.
+        match goal with
+        | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
+        end.
         simp.
         destruct argvars; cycle 1. {
           exfalso.
@@ -461,33 +473,6 @@ Section MMIO1.
         cbn in *|-.
         simp.
         cbn in *.
-        destruct resvars. {
-          match goal with
-          | A: forall _, outcome _ [_] |- _ => rename A into OC
-          end.
-          specialize (OC (word.of_Z 0)).
-          match goal with
-          | HO: outcome _ _, H: _ |- _ => specialize (H _ HO eq_refl); move H at bottom
-          end.
-          simp.
-          match goal with
-          | A: map.putmany_of_list_zip _ _ _ = Some _ |- _ => discriminate A
-          end.
-        }
-        destruct resvars; cycle 1. {
-          match goal with
-          | A: forall _, outcome _ [_] |- _ => rename A into OC
-          end.
-          specialize (OC (word.of_Z 0)).
-          match goal with
-          | HO: outcome _ _, H: _ |- _ => specialize (H _ HO eq_refl); move H at bottom
-          end.
-          simp.
-          match goal with
-          | A: map.putmany_of_list_zip _ _ _ = Some _ |- _ => discriminate A
-          end.
-        }
-        subst insts.
         eapply runsToNonDet.runsToStep_cps.
         cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams FlatToRiscvCommon.PRParams].
 
@@ -520,9 +505,6 @@ Section MMIO1.
 
         repeat fwd.
 
-        destruct (Z.eq_dec z0 0). {
-          exfalso. inversion V_resvars. blia.
-        }
         split; try discriminate.
         cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
         unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
@@ -546,13 +528,13 @@ Section MMIO1.
         unfold mmioLoadEvent, signedByteTupleToReg.
         match goal with
         | A: forall _, outcome _ _ -> _, OC: forall _, outcome _ _ |- _ =>
-           epose proof (A (cons _ nil) (OC _) eq_refl) as P; clear A
+           epose proof (A (cons _ nil) (OC _)) as P; clear A
         end.
         cbn in P.
         simp.
         apply eqb_eq in EE. subst action.
         cbn in *.
-        eexists. refine (ex_intro _ [_] _). eexists.
+        eexists. refine (ex_intro _ [_] _). do 2 eexists.
         split. {
           eapply map.put_extends. eassumption.
         }
@@ -560,11 +542,16 @@ Section MMIO1.
         split. {
           rewrite map.get_put_diff; eauto. unfold RegisterNames.sp. blia.
         }
-        split. 1: exact Pr.
+        split. 1: exact Prr.
         split; [subst; eauto|].
         split; [subst; eauto|].
         split; eauto.
-        split; eauto.
+        split. {
+          match goal with
+          | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
+          end.
+          assumption.
+        }
         split. {
           intros.
           rewrite map.get_put_dec in H.
