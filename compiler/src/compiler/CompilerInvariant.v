@@ -50,16 +50,6 @@ Section Pipeline1.
       apply IHinstrs1.
   Qed.
 
-  Ltac array_app_cons_sep :=
-    rewr (fun t => match t with
-         | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-           constr:(iff1ToEq (array_append' PT SZ xs ys start))
-         | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
-           constr:(iff1ToEq (array_cons PT SZ x xs start))
-         | context [ array ?PT ?SZ ?start nil ] =>
-           constr:(iff1ToEq (array_nil PT SZ start))
-         end) in *.
-
   Definition imem(code_start code_pastend: Semantics.word)(instrs: list Instruction): Semantics.mem -> Prop :=
     (ptsto_bytes code_start (instrencode instrs) *
      mem_available (word.sub code_pastend (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))

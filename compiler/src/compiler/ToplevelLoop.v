@@ -67,6 +67,42 @@ Local Notation "' x <- a ; f" :=
 
 Local Axiom TODO_sam: False.
 
+(* TODO move to coqutil *)
+Ltac rewr_hyp_step getEq :=
+  match goal with
+  | H: ?A |- _  => let E := getEq A in
+                   lazymatch type of E with
+                   | ?LHS = _ => progress (pattern LHS in H;
+                                           apply (rew_zoom_fw E) in H)
+                   end
+  end.
+
+Ltac rewr_goal_step getEq :=
+  lazymatch goal with
+  | |- ?A => let E := getEq A in
+             lazymatch type of E with
+             | ?LHS = _ => progress (pattern LHS;
+                                     apply (rew_zoom_bw E))
+             end
+  end.
+
+Tactic Notation "rewr" tactic(getEq) "in" "*|-" := repeat (idtac; rewr_hyp_step ltac:(getEq)).
+Tactic Notation "rewr" tactic(getEq) "in" "|-*" := repeat (idtac; rewr_goal_step ltac:(getEq)).
+Tactic Notation "rewr" tactic(getEq) "in" "*" := rewr getEq in *|-; rewr getEq in |-*.
+
+(* TODO move to compiler.SeparationLogic and dedup *)
+Ltac get_array_rewr_eq t :=
+  lazymatch t with
+  | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+    constr:(iff1ToEq (array_append' PT SZ xs ys start))
+  | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+    constr:(iff1ToEq (array_cons PT SZ x xs start))
+  | context [ array ?PT ?SZ ?start nil ] =>
+    constr:(iff1ToEq (array_nil PT SZ start))
+  end.
+
+Ltac array_app_cons_sep := rewr get_array_rewr_eq in *.
+
 Section Pipeline1.
 
   Context {p: Pipeline.parameters}.
@@ -79,6 +115,7 @@ Section Pipeline1.
 
   Local Notation source_env := (@Pipeline.string_keyed_map p (list string * list string * Syntax.cmd)).
 
+
   (* All riscv machine code, layed out from low to high addresses:
      - init_sp_insts: initializes stack pointer
      - init_insts: calls init function
@@ -88,31 +125,31 @@ Section Pipeline1.
   Definition compile_prog(prog: source_env): option (list Instruction * funname_env Z) :=
     'Some (fun_insts, positions) <- @compile p ml prog;
     let init_sp_insts := FlatToRiscvDef.compile_lit RegisterNames.sp init_sp in
-    'Some init_pos <- map.get positions "init"%string;
-    'Some loop_pos <- map.get positions "loop"%string;
-    let init_insts := [[Jal RegisterNames.ra (3 * 4 + init_pos)]] in
-    let loop_insts := [[Jal RegisterNames.ra (2 * 4 + loop_pos)]] in
+    'Some init_fun_pos <- map.get positions "init"%string;
+    'Some loop_fun_pos <- map.get positions "loop"%string;
+    let init_insts := [[Jal RegisterNames.ra (3 * 4 + init_fun_pos)]] in
+    let loop_insts := [[Jal RegisterNames.ra (2 * 4 + loop_fun_pos)]] in
     let backjump_insts := [[Jal Register0 (-4*Z.of_nat (List.length loop_insts))]] in
     let to_prepend := init_sp_insts ++ init_insts ++ loop_insts ++ backjump_insts in
     Some (to_prepend ++ fun_insts, positions).
 
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
-  Let loop_pos := word.add ml.(code_start)
-         (word.of_Z (4 * (Z.of_nat (List.length (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp))) + 4)).
-
-  Axiom Rdata: mem -> Prop. (* maybe (emp True) will be fine *)
-  Axiom Rexec: mem -> Prop. (* maybe (emp True) will be fine *)
+  Let init_pos := word.add ml.(code_start)
+         (word.of_Z (4 * (Z.of_nat (List.length (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp))))).
+  Let loop_pos := word.add init_pos (word.of_Z 4).
+  Let functions_pos := word.add loop_pos (word.of_Z 8).
 
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
-    exists (prog: source_env) (instrs: list Instruction) (positions: funname_env Z) (loop_fun_pos: Z),
+    exists (prog: source_env) (instrs: list Instruction) (positions: funname_env Z)
+           (loop_fun_pos: Z) (R Rexec: mem -> Prop),
       compile_prog prog = Some (instrs, positions) /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
       map.get positions "loop"%string = Some loop_fun_pos /\
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
-        machine_ok ml.(code_start) loop_fun_pos ml.(stack_start) ml.(stack_pastend) instrs
-                   loop_pos (word.add loop_pos (word.of_Z (if done then 4 else 0))) mH Rdata Rexec mach.
+        machine_ok ml.(code_start) functions_pos loop_fun_pos ml.(stack_start) ml.(stack_pastend) instrs
+                   loop_pos (word.add loop_pos (word.of_Z (if done then 4 else 0))) mH R Rexec mach.
 
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good.
 
@@ -131,25 +168,62 @@ Section Pipeline1.
     split; reflexivity.
   Qed.
 
-  Lemma machine_ok_unframe_instrs_app_l: forall p_code f_entry_rel_pos p_stack_start p_stack_pastend i1 i2
-                                                p_call pc mH Rdata Rexec mach,
+  Lemma machine_ok_frame_instrs_app_l: forall p_code functions_pos f_entry_rel_pos
+                                              p_stack_start p_stack_pastend i1 i2
+                                              p_call pc mH Rdata Rexec mach,
       machine_ok (word.add p_code (word.of_Z (4 * Z.of_nat (List.length i1))))
-                 f_entry_rel_pos p_stack_start p_stack_pastend
+                 functions_pos f_entry_rel_pos p_stack_start p_stack_pastend
                  i2
                  p_call pc mH Rdata
                  (Rexec * program p_code i1)%sep
-                 mach ->
+                 mach <->
       machine_ok p_code
-                 f_entry_rel_pos p_stack_start p_stack_pastend
+                 functions_pos f_entry_rel_pos p_stack_start p_stack_pastend
                  (i1 ++ i2)
                  p_call pc mH Rdata
                  Rexec
                  mach.
   Proof.
-    unfold machine_ok.
-    intros. simp.
-    ssplit; eauto.
-    all: case TODO_sam.
+    (* PARAMRECORDS *)
+    assert (Ok: map.ok Pipeline.mem) by exact mem_ok.
+    unfold machine_ok, program.
+    intros. split; intros; simp; ssplit; eauto.
+    - wcancel_assumption.
+    - eapply shrink_footpr_subset. 1: eassumption.
+      wwcancel.
+    - wcancel_assumption.
+    - eapply shrink_footpr_subset. 1: eassumption.
+      wwcancel.
+  Qed.
+
+  Lemma machine_ok_change_call: forall p_code functions_pos f_entry_rel_pos_1 f_entry_rel_pos_2
+                                       p_stack_start p_stack_pastend instrs
+                                       p_call_1 p_call_2 pc mH Rdata Rexec Rexec1 mach,
+      iff1 Rexec1 (Rexec * ptsto_instr p_call_2 (Jal RegisterNames.ra
+                    (f_entry_rel_pos_2 + word.unsigned functions_pos - word.unsigned p_call_2)))%sep ->
+      machine_ok p_code functions_pos
+                 f_entry_rel_pos_2
+                 p_stack_start p_stack_pastend instrs
+                 p_call_2
+                 pc mH Rdata
+                 (Rexec * ptsto_instr p_call_1 (Jal RegisterNames.ra
+                            (f_entry_rel_pos_1 + word.unsigned functions_pos - word.unsigned p_call_1)))%sep
+                 mach ->
+      machine_ok p_code functions_pos
+                 f_entry_rel_pos_1
+                 p_stack_start p_stack_pastend instrs
+                 p_call_1
+                 pc mH Rdata Rexec1
+                 mach.
+  Proof.
+    (* PARAMRECORDS *)
+    assert (Ok: map.ok Pipeline.mem) by exact mem_ok.
+    unfold machine_ok, program.
+    intros. simp; ssplit; eauto.
+    - seprewrite H. wcancel_assumption.
+    - eapply shrink_footpr_subset. 1: eassumption.
+      rewrite H.
+      wwcancel.
   Qed.
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
@@ -202,10 +276,10 @@ Section Pipeline1.
       (* first, run init_sp_code: *)
       pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
       cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
-      specialize P with (x := RegisterNames.sp) (v := init_sp) (Rexec := emp True).
+      specialize P with (x := RegisterNames.sp) (v := init_sp).
       unfold runsTo in P. eapply P; clear P; simpl.
       - assumption.
-      - eapply shrink_footpr_subset. 1: eassumption.
+      - eapply rearrange_footpr_subset. 1: eassumption.
         wwcancel.
       - wcancel_assumption.
       - cbv. auto.
@@ -249,7 +323,7 @@ Section Pipeline1.
         eapply rearrange_footpr_subset. 1: eassumption.
         wseplog_pre.
         simpl_addrs.
-        subst loop_pos.
+        subst loop_pos init_pos.
         match goal with
         | |- iff1 ?LL ?RR =>
           match LL with
@@ -294,7 +368,7 @@ Section Pipeline1.
         use_sep_assumption.
         wseplog_pre.
         simpl_addrs.
-        subst loop_pos.
+        subst loop_pos init_pos.
         match goal with
         | |- iff1 ?LL ?RR =>
           match LL with
@@ -336,6 +410,7 @@ Section Pipeline1.
         eassumption.
       + rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
     - cbv beta. unfold ll_good. intros. simp.
+      rename z0 into f_loop_rel_pos.
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -343,30 +418,53 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + rename z0 into f_loop_rel_pos.
-        move CP at bottom.
-        eapply machine_ok_unframe_instrs_app_l.
+      + move CP at bottom.
+        (* prove that machine_ok of ll_inv (i.e. all instructions, and just before jumping calling
+           loop body function) is implied by the state proven by the compiler correctness lemma for
+           the init function *)
+        rewrite <- machine_ok_frame_instrs_app_l.
+        eapply machine_ok_change_call with (p_call_2 := init_pos)
+                                           (f_entry_rel_pos_2 := f_entry_rel_pos).
+        1: {
+          subst functions_pos loop_pos init_pos; wwcancel.
+          cancel_seps_at_indices 2%nat 1%nat. {
+            f_equal.
+            - solve_word_eq word_ok.
+            - f_equal. f_equal.
+              repeat match goal with
+              | |- context[word.unsigned ?x] => progress ring_simplify x
+              end.
+              match goal with
+              | |- _ = _ + word.unsigned (word.add ?A _) - _ => remember A as a
+              end.
+              rewrite word.unsigned_add.
+              rewrite word.unsigned_of_Z.
+              unfold word.wrap.
+              rewrite Zplus_mod_idemp_r.
+              rewrite Z.mod_small. 1: blia.
+              subst a.
+              (* holds by transitivity over ml.(code_pastend) *)
+              case TODO_sam.
+          }
+          cbn [seps].
+          reflexivity.
+        }
         lazymatch goal with
-        | H: context[machine_ok] |- ?G => let G' := type of H in replace G with G'; [exact H|]
+        | H: context[machine_ok] |- ?G => let G' := type of H in replace G with G'; [exact H|clear H]
         end.
-        (*f_equal.*)
+        subst functions_pos loop_pos init_pos.
+        simple apply (f_equal2); [|
+          match goal with
+              | |- ?G => assert_fails (has_evar G); reflexivity
+              end].
+        simple apply (f_equal2). 2: {
+          eapply iff1ToEq.
+          cancel.
+          case TODO_sam. (* something's wrong here! *)
+        }
         case TODO_sam.
     Unshelve.
     all: intros; try exact True; try exact 0; try exact mem_ok; try apply @nil; try exact (word.of_Z 0).
-  Qed.
-
-  (* incorrect? *)
-  Lemma machine_ok_frame_instrs_app_l: forall p_code f_entry_rel_pos p_stack_start p_stack_pastend i1 i2
-                                              p_call pc mH Rdata Rexec mach,
-      machine_ok p_code f_entry_rel_pos p_stack_start p_stack_pastend (i1 ++ i2) p_call pc mH Rdata Rexec mach ->
-      machine_ok p_code f_entry_rel_pos p_stack_start p_stack_pastend i2 p_call pc mH Rdata
-                 (Rexec * program (word.add p_code (word.of_Z (4 * Z.of_nat (List.length i1))))i2)%sep
-                 mach.
-  Proof.
-    unfold machine_ok.
-    intros. simp.
-    ssplit; eauto.
-    all: case TODO_sam.
   Qed.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
@@ -411,7 +509,7 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + destruct mlOk. subst. simpl in *. subst loop_pos. solve_divisibleBy4.
+      + destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
       + solve_word_eq word_ok.
       + subst. case TODO_sam. (* show that backjump preserves valid_machine *)
     - unfold ll_good, machine_ok.
@@ -451,9 +549,9 @@ Section Pipeline1.
           eapply loop_body_correct; eauto.
         }
         all: try eassumption.
-        eapply machine_ok_frame_instrs_app_l. eassumption.
+        rewrite -> machine_ok_frame_instrs_app_l. Fail exact Hrrrrr. case TODO_sam.
       + cbv beta.
-        intros. simp. do 3 eexists.
+        intros. simp. do 6 eexists.
         ssplit; try eassumption.
         eexists.
         split; [eassumption|].

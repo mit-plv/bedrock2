@@ -811,11 +811,11 @@ Section Pipeline1.
 
   Open Scope ilist_scope.
 
-  Definition machine_ok(p_code: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
+  Definition machine_ok(p_code p_functions: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
              (instrs: list Instruction)
              (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
       let CallInst := Jal RegisterNames.ra
-                          (f_entry_rel_pos + word.unsigned p_code - word.unsigned p_call) : Instruction in
+                          (f_entry_rel_pos + word.unsigned p_functions - word.unsigned p_call) : Instruction in
       (program p_code instrs *
        program p_call [CallInst] *
        mem_available stack_start stack_pastend *
@@ -852,11 +852,11 @@ Section Pipeline1.
       map.get functions f_entry_name = Some (nil, nil, fbody) ->
       map.get pos_map f_entry_name = Some f_entry_rel_pos ->
       Semantics.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
-      machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+      machine_ok p_functions p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
                  p_call p_call mH Rdata Rexec initial ->
       runsTo initial (fun final => exists mH',
           postH final.(getLog) mH' /\
-          machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+          machine_ok p_functions p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
     intros.
