@@ -438,18 +438,20 @@ Section Equiv.
     apply split1_0.
   Qed.
 
-  Lemma kami_evalSignExtendTrunc:
+  Lemma kami_evalZeroExtendTrunc:
     forall {a} (w: Word.word a) b,
       (a < b)%nat ->
+      evalZeroExtendTrunc b w = ZToWord b (Z.of_N (wordToN w)).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma kami_evalSignExtendTrunc:
+    forall {a} (w: Word.word a) b,
+      (a <= b)%nat ->
       evalSignExtendTrunc b w =
       ZToWord b (signExtend (Z.of_nat a) (Z.of_N (wordToN w))).
   Proof.
-    intros.
-    cbv [evalSignExtendTrunc].
-    destruct (lt_dec _ _); [|exfalso; auto].
-    apply wordToZ_inj.
-    rewrite wordToZ_eq_rect.
-    rewrite sext_wordToZ.
     case TODO_word.
   Qed.
 
@@ -528,6 +530,21 @@ Section Equiv.
     forall {sz} (w: Word.word (8 + sz)),
       byte.of_Z (Z.of_N (wordToN w)) =
       byte.of_Z (Z.of_N (wordToN (split1 _ _ w))).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma byte_wrap_word_8:
+    forall w: Word.word 8,
+      byte.wrap (Z.of_N (wordToN w)) = Z.of_N (wordToN w).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma split1_combine_16:
+    forall (w0 w1 w2 w3: Word.word 8),
+      split1 16 16 (Word.combine w0 (Word.combine w1 (Word.combine w2 w3))) =
+      Word.combine w0 w1.
   Proof.
     case TODO_word.
   Qed.
@@ -1261,6 +1278,7 @@ Section Equiv.
                      reflexivity]).
       all: assumption.
 
+      (** FIXME: [Qed] takes forever.. *)
   Admitted.
   
   Lemma kamiStep_sound_case_execLd:
@@ -1516,19 +1534,110 @@ Section Equiv.
       all: try subst regs; try subst kupd.
 
       all: prove_states_related.
+
       all: regs_get_red_goal.
-      all: clear -Hlv.
-      all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg MachineWidth_XLEN
-                          word.of_Z word WordsKami wordW KamiWord.word kofZ].
+      all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg
+                          MachineWidth_XLEN word.of_Z word WordsKami wordW KamiWord.word kofZ].
+      all: subst v oimm12 rs1.
+      all: regs_get_red Hlv.
+      all: cbv [Utility.add
+                  ZToReg MachineWidth_XLEN
+                  word.add word WordsKami wordW KamiWord.word
+                  word.of_Z kofZ] in Hlv;
+        cbv [Memory.load_bytes] in Hlv;
+        cbv [map.getmany_of_tuple
+               Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2
+               HList.tuple.unfoldn HList.tuple.map HList.tuple.option_all] in Hlv.
+      all: match goal with
+           | [Hmr: mem_related _ _ _ |- _] => clear -Hlv Hmr
+           end.
+      all: match goal with
+           | [Hmr: mem_related _ _ _ |- _] =>
+             repeat (let bv := fresh "bv" in
+                     let Hbv := fresh "Hbv" in
+                     destruct (map.get _ _) as [bv|] eqn:Hbv in Hlv; [|discriminate];
+                     match type of Hbv with
+                     | map.get _ ?addr = Some _ => setoid_rewrite (Hmr addr) in Hbv
+                     end;
+                     destruct (_ <? _); [|discriminate];
+                     apply Some_inv in Hbv; subst bv);
+               apply Some_inv in Hlv; subst lv
+           end.
 
       { (* lb *)
         rewrite split1_combine.
-        repeat f_equal.
-        case TODO_joonwon.
+        cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2].
+        rewrite Z.shiftl_0_l, Z.lor_0_r.
+        rewrite byte.unsigned_of_Z.
+        cbv [uwordToZ].
+        rewrite byte_wrap_word_8.
+        reflexivity.
       }
-      
-      all: case TODO_joonwon.
-      (* all: idtac "kamiStep_sound_case_execLd: starting the Qed...". *)
+
+      { (* lh *)
+        rewrite split1_combine_16.
+        cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2].
+        rewrite Z.shiftl_0_l, Z.lor_0_r.
+        rewrite ?byte.unsigned_of_Z.
+        cbv [uwordToZ]; rewrite ?byte_wrap_word_8.
+        rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
+        rewrite Z.lor_comm.
+        reflexivity.
+      }
+
+      { (* lbu *)
+        rewrite kami_evalZeroExtendTrunc by (cbv; Lia.lia).
+        rewrite split1_combine.
+        cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2].
+        rewrite Z.shiftl_0_l, Z.lor_0_r.
+        rewrite byte.unsigned_of_Z.
+        cbv [uwordToZ].
+        rewrite byte_wrap_word_8.
+        reflexivity.
+      }
+
+      { (* lhu *)
+        rewrite kami_evalZeroExtendTrunc by (cbv; Lia.lia).
+        rewrite split1_combine_16.
+        cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2].
+        rewrite Z.shiftl_0_l, Z.lor_0_r.
+        rewrite ?byte.unsigned_of_Z.
+        cbv [uwordToZ]; rewrite ?byte_wrap_word_8.
+        rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
+        rewrite Z.lor_comm.
+        reflexivity.
+      }
+
+      { (* lw *)
+        cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2].
+        rewrite Z.shiftl_0_l, Z.lor_0_r.
+        rewrite ?byte.unsigned_of_Z.
+        cbv [uwordToZ]; rewrite ?byte_wrap_word_8.
+
+        change 8 with (Z.of_nat 8%nat).
+        setoid_rewrite Z.lor_comm at 3.
+        rewrite <-@kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
+        setoid_rewrite Z.lor_comm at 2.
+        rewrite <-@kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 16%nat).
+        setoid_rewrite Z.lor_comm.
+        rewrite <-@kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 24%nat).
+
+        match goal with
+        | |- ?lw = ZToWord _ (signExtend _ (Z.of_N (wordToN ?rw))) =>
+          set (v:= lw); replace rw with v
+        end.
+        { clearbody v.
+          setoid_rewrite <-kami_evalSignExtendTrunc; [|cbv; Lia.lia].
+          apply eq_sym, kami_evalSignExtendTrunc_32.
+        }
+        { subst v.
+          repeat f_equal.
+          apply wordToZ_inj.
+          apply wordToZ_combine_WO.
+        }
+      }
+
+      (** FIXME: [Qed] takes forever.. *)
   Admitted.
 
   Lemma kamiStep_sound:
