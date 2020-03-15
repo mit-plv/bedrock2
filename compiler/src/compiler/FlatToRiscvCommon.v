@@ -132,7 +132,7 @@ Section WithParameters.
 
     compile_ext_call_correct: forall (initialL: MetricRiscvMachine)
         action postH newPc insts (argvars resvars: list Z) initialMH R Rexec initialRegsH
-        argvals mGive outcome p_sp,
+        argvals mKeep mGive outcome p_sp,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
       map.extends initialL.(getRegs) initialRegsH ->
@@ -148,28 +148,29 @@ Section WithParameters.
       valid_machine initialL ->
       (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
       map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
+      map.split initialMH mKeep mGive ->
       ext_spec initialL.(getLog) mGive action argvals outcome ->
-      (forall (resvals : list word),
-          outcome map.empty resvals ->
-          mGive = map.empty ->
-          exists (finalRegsH: locals) finalMetricsH,
+      (forall (resvals : list word) mReceive,
+          outcome mReceive resvals ->
+          exists (finalRegsH: locals) finalMetricsH finalMH,
+            map.split finalMH mKeep mReceive /\
             map.putmany_of_list_zip resvars resvals initialRegsH = Some finalRegsH /\
-            postH ((map.empty, action, argvals, (map.empty, resvals)) :: initialL.(getLog))
-                  initialMH finalRegsH finalMetricsH) ->
+            postH ((mGive, action, argvals, (mReceive, resvals)) :: initialL.(getLog))
+                  finalMH finalRegsH finalMetricsH) ->
       runsTo initialL
              (fun finalL =>
                 exists (finalRegsH: locals) (rvs: list word)
-                       (finalMetricsH : bedrock2.MetricLogging.MetricLog),
+                       (finalMetricsH : bedrock2.MetricLogging.MetricLog) finalMH,
                   map.extends finalL.(getRegs) finalRegsH /\
                   map.putmany_of_list_zip resvars rvs initialL.(getRegs) = Some finalL.(getRegs) /\
                   map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
                   (* external calls can't modify the memory for now *)
-                  postH finalL.(getLog) initialMH finalRegsH finalMetricsH /\
+                  postH finalL.(getLog) finalMH finalRegsH finalMetricsH /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (word.of_Z 4) /\
                   subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
                          (of_list finalL.(getXAddrs)) /\
-                  (program initialL.(getPc) insts * eq initialMH * R)%sep finalL.(getMem) /\
+                  (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
                   (forall x v, map.get finalRegsH x = Some v -> valid_FlatImp_var x) /\
                   regs_initialized finalL.(getRegs) /\
                   valid_machine finalL);
