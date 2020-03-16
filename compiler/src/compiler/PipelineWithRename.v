@@ -563,25 +563,77 @@ Section Pipeline1.
       destruct_one_match; eauto.
   Qed.
 
-  Local Axiom TODO_andres: False.
+  Lemma HList__tuple__to_list_of_list {A} (xs : list A) :
+    HList.tuple.to_list (HList.tuple.of_list xs) = xs.
+  Proof. induction xs; cbn; congruence. Qed.
 
-  (* TODO not sure if this is the best definition, if needed, etc *)
-  Definition byte_list_to_word_list(bytes: list byte): list word. case TODO_andres. Defined.
+  Lemma HList__tuple__to_list_eq_rect {T} a b xs pf 
+   : HList.tuple.to_list(A:=T) (eq_rect a _ xs b pf) = HList.tuple.to_list xs.
+  Proof. destruct pf. cbn. trivial. Qed.
 
-  Lemma byte_list_to_word_list_array: forall p bytes,
+  Lemma byte_list_to_word_list_array: forall bytes,
+    Z.of_nat (length bytes) mod bytes_per_word = 0 ->
+    exists word_list,
+      Z.of_nat (Datatypes.length word_list) =
+      Z.of_nat (Datatypes.length bytes) / bytes_per_word /\
+    forall p,
       iff1 (array ptsto (word.of_Z 1) p bytes)
-           (array ptsto_word (word.of_Z bytes_per_word) p (byte_list_to_word_list bytes)).
+           (array ptsto_word (word.of_Z bytes_per_word) p word_list).
   Proof.
-    case TODO_andres.
+    assert (AA: 0 < bytes_per_word) by case TODO_sam.
+    assert (BB: @word.ok (@width (@W (@FlatToRiscvDef_params p)))(@word (@W (@FlatToRiscvDef_params p)))) by case TODO_sam.
+    assert (CC: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)) by case TODO_sam.
+    intros.
+    Z.div_mod_to_equations.
+    subst r.
+    specialize (H0 ltac:(Lia.lia)); clear H1.
+    ring_simplify in H0.
+    assert (0 <= q) by Lia.nia.
+    revert dependent bytes.
+    pattern q.
+    refine (natlike_ind _ _ _ q H); clear -AA BB CC; intros.
+    { case bytes in *; cbn in *; ring_simplify in H0; try discriminate.
+      exists nil; split; reflexivity. }
+    rewrite Z.mul_succ_r in *.
+    specialize (H0 (List.skipn (Z.to_nat bytes_per_word) bytes)).
+    rewrite List.length_skipn in H0.
+    specialize (H0 ltac:(Lia.nia)).
+    case H0 as [words' [Hlen Hsep] ].
+    eexists (cons _ words').
+    split; [cbn; blia|].
+    intros p0; specialize (Hsep (word.add p0 (word.of_Z bytes_per_word))).
+    rewrite array_cons.
+    etransitivity.
+    2:eapply Proper_sep_iff1; [reflexivity|].
+    2:eapply Hsep.
+    clear Hsep.
+
+    rewrite <-(List.firstn_skipn (Z.to_nat bytes_per_word) bytes) at 1.
+    unfold ptsto_word.
+    rewrite <-bytearray_index_merge.
+    1: eapply Proper_sep_iff1; [|reflexivity].
+    2: rewrite word.unsigned_of_Z; setoid_rewrite Z.mod_small.
+    3: case TODO_sam.
+    2: rewrite List.length_firstn_inbounds; Lia.nia.
+    cbv [ptsto_bytes.ptsto_bytes].
+    Morphisms.f_equiv.
+    setoid_rewrite word.unsigned_of_Z.
+    setoid_rewrite Z.mod_small.
+    1: unshelve setoid_rewrite LittleEndian.split_combine.
+    1: {
+      eapply eq_rect; [exact (HList.tuple.of_list (List.firstn (Z.to_nat bytes_per_word) bytes))|].
+      abstract (
+      rewrite List.length_firstn_inbounds; try Lia.nia;
+      case TODO_sam). }
+    1:rewrite HList__tuple__to_list_eq_rect.
+    1:rewrite HList__tuple__to_list_of_list; trivial.
+    match goal with |- context[LittleEndian.combine _ ?xs] => generalize xs end.
+    (* forall   t : HList.tuple Init.Byte.byte (Memory.bytes_per Syntax.access_size.word),
+       0 <= LittleEndian.combine (Memory.bytes_per Syntax.access_size.word) t < 2 ^ width *)
+    case TODO_sam.
   Qed.
 
-  Lemma byte_list_to_word_list_length: forall bytes,
-      Z.of_nat (Datatypes.length (byte_list_to_word_list bytes)) =
-      Z.of_nat (Datatypes.length bytes) / bytes_per_word.
-  Proof.
-    case TODO_andres.
-  Qed.
-
+  Axiom TODO_andres : False.
   Lemma mem_available_ptsto_word: forall stack_trash ml (mlOk: MemoryLayoutOk ml),
       iff1 (array ptsto_word (word.of_Z bytes_per_word) (stack_start ml) stack_trash)
            (mem_available (stack_start ml) (stack_pastend ml)).
@@ -995,10 +1047,17 @@ Section Pipeline1.
         pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
         unfold machine_ok in *. simp.
         edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
-        exists (byte_list_to_word_list stack_trash).
+        destruct (byte_list_to_word_list_array stack_trash)
+          as (stack_trash_words&Hlength_stack_trash_words&Hstack_trash_words).
+        { rewrite H4.
+          pose proof stack_pastend_ok _ mlOk as dA.
+          pose proof stack_pastend_aligned _ mlOk as dB.
+          pose proof stack_start_aligned _ mlOk as dC.
+          case TODO_sam. }
+        exists stack_trash_words.
         split. 2: {
           unfold word_array.
-          rewrite <- (iff1ToEq (byte_list_to_word_list_array _ _)).
+          rewrite <- (iff1ToEq (Hstack_trash_words _)).
           match goal with
           | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
           end.
@@ -1037,7 +1096,7 @@ Section Pipeline1.
         match goal with
         | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
         end.
-        apply byte_list_to_word_list_length. }
+        apply Hlength_stack_trash_words. }
       { reflexivity. }
       { unfold machine_ok in *. simp. assumption. }
     - intros. unfold compile_inv, related, compose_relation in *.
