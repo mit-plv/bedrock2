@@ -69,9 +69,11 @@ Section EventLoop.
   Hypothesis goodReadyState_preserved_by_jump_back:
     forall (state: RiscvMachineL) newMetrics,
       goodReadyState true state ->
-      goodReadyState false (withPc pc_start
-                           (withNextPc (word.add pc_start (word.of_Z 4))
-                           (withMetrics newMetrics state))).
+      let state' := (withPc pc_start
+                    (withNextPc (word.add pc_start (word.of_Z 4))
+                    (withMetrics newMetrics state))) in
+      valid_machine state' ->
+      goodReadyState false state'.
 
   Hypothesis goodReadyState_implies_valid_machine: forall pc m,
       goodReadyState pc m -> valid_machine m.
@@ -93,13 +95,17 @@ Section EventLoop.
       runsTo (mcomp_sat (run1 iset)) initial (goodReadyState true).
 
   Definition runsToGood_Invariant(m: RiscvMachineL): Prop :=
-    runsTo (mcomp_sat (run1 iset)) m (goodReadyState false).
+    runsTo (mcomp_sat (run1 iset)) m (goodReadyState false) /\ valid_machine m.
 
   (* "runs to a good state" is an invariant of the transition system
      (note that this does not depend on the definition of runN) *)
   Lemma runsToGood_is_Invariant: forall (st: RiscvMachineL),
       runsToGood_Invariant st -> mcomp_sat (run1 iset) st runsToGood_Invariant.
   Proof.
+    unfold runsToGood_Invariant.
+    intros m [R V].
+    eapply run1_get_sane with (P := (fun m => runsTo (mcomp_sat (run1 iset)) m (goodReadyState false))).
+    1, 3: eauto. revert R.
     eapply runsTo_safe1_inv; cycle 1.
     - intros. eapply body_correct; assumption.
     - intros.
@@ -131,6 +137,11 @@ Section EventLoop.
         end.
         repeat f_equal.
         all: solve_word_eq word_ok.
+      + simpl.
+        match goal with
+        | H: valid_machine ?m1 |- valid_machine ?m2 => replace m2 with m1; [exact H|]
+        end.
+        f_equal. f_equal; solve_word_eq word_ok.
     - intros state [C1 C2].
       apply goodReadyState_checks_PC in C1.
       apply goodReadyState_checks_PC in C2.

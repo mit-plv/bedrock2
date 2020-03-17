@@ -221,7 +221,7 @@ Section Pipeline1.
   Proof.
     unfold initial_conditions.
     intros. simp.
-    unfold ll_inv, runsToGood_Invariant.
+    unfold ll_inv, runsToGood_Invariant. split; [|assumption].
     destruct_RiscvMachine initial.
     match goal with
     | H: context[ProgramSatisfiesSpec] |- _ => rename H into sat
@@ -505,7 +505,6 @@ Section Pipeline1.
              end.
       + destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
       + solve_word_eq word_ok.
-      + subst. case TODO_sam. (* show that backjump preserves valid_machine *)
     - unfold ll_good, machine_ok.
       intros. simp. assumption.
     - cbv. intuition discriminate.
@@ -548,7 +547,7 @@ Section Pipeline1.
       ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog)).
   Proof.
     unfold ll_inv, runsToGood_Invariant. intros. simp.
-    eapply extend_runsTo_to_good_trace. 2: case TODO_sam. 2: eassumption.
+    eapply extend_runsTo_to_good_trace. 2,3: eassumption.
     simpl. unfold ll_good, compile_inv, related, hl_inv,
            compose_relation, FlattenExprSimulation.related,
            RegRename.related, FlatToRiscvSimulation.related, FlatToRiscvFunctions.goodMachine.
