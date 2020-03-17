@@ -64,6 +64,28 @@ Section Sim.
 
   Local Axiom TODO_sam: False.
 
+  (* TODO move to coqutil and teach to solve_word_eq *)
+  Lemma word__of_Z_signed: forall x: word,
+      word.of_Z (word.signed x) = x.
+  Proof.
+    case TODO_sam.
+  Qed.
+
+  (* TODO move *)
+  Lemma divisibleBy4Signed: forall w,
+      (word.unsigned w) mod 4 = 0 ->
+      (word.signed w) mod 4 = 0.
+  Proof.
+    case TODO_sam.
+  Qed.
+
+  Lemma divisibleBy4Opp: forall z,
+      z mod 4 = 0 ->
+      - z mod 4 = 0.
+  Proof.
+    case TODO_sam.
+  Qed.
+
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
     let c := SSeq SSkip (SCall nil f_entry_name nil) in
     (word.unsigned p_call) mod 4 = 0 ->
@@ -89,7 +111,7 @@ Section Sim.
     simp.
     eapply runsTo_weaken.
     - eapply compile_stmt_correct with (g := ghostConsts)
-                                       (pos := word.unsigned p_call - word.unsigned functions_start); simpl.
+                                       (pos := - word.signed (word.sub functions_start p_call)); simpl.
       + eapply exec.call; cycle -1; try eassumption.
         Fail eassumption. (* TODO why?? *)
         match goal with
@@ -102,22 +124,22 @@ Section Sim.
         assumption.
       + eauto using fits_stack_call.
       + simpl. change (4 * BinIntDef.Z.of_nat 0) with 0. rewrite Z.add_0_r.
-        rewrite_match. f_equal. f_equal. f_equal. case TODO_sam.
+        rewrite_match. f_equal. f_equal. f_equal. ring.
       + unfold stmt_not_too_big. simpl. cbv. reflexivity.
       + simpl. auto using Forall_nil.
-      + solve_divisibleBy4.
+      + apply divisibleBy4Opp.
+        apply divisibleBy4Signed.
+        assert (word.ok word) by exact Utility.word_ok.
+        rewrite word.unsigned_sub.
+        solve_divisibleBy4.
       + assumption.
       + (* TODO why are these manual steps needed? *)
-        rewrite <- (word.of_Z_unsigned (word.of_Z (word.unsigned p_call - word.unsigned functions_start))).
-        rewrite word.unsigned_of_Z.
-        rewrite <- word.unsigned_sub.
-        rewrite word.of_Z_unsigned.
+        rewrite word.ring_morph_opp.
+        rewrite word__of_Z_signed.
         solve_word_eq Utility.word_ok.
       + (* TODO why are these manual steps needed? *)
-        rewrite <- (word.of_Z_unsigned (word.of_Z (word.unsigned p_call - word.unsigned functions_start))).
-        rewrite word.unsigned_of_Z.
-        rewrite <- word.unsigned_sub.
-        rewrite word.of_Z_unsigned.
+        rewrite word.ring_morph_opp.
+        rewrite word__of_Z_signed.
         solve_word_eq Utility.word_ok.
       + assumption.
     - simpl. intros. simp.
