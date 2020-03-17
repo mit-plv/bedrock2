@@ -815,7 +815,7 @@ Section Pipeline1.
              (finstrs: list Instruction)
              (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
       let CallInst := Jal RegisterNames.ra
-                          (f_entry_rel_pos + word.unsigned p_functions - word.unsigned p_call) : Instruction in
+                          (f_entry_rel_pos + word.signed (word.sub p_functions p_call)) : Instruction in
       (program p_functions finstrs *
        program p_call [CallInst] *
        mem_available stack_start stack_pastend *

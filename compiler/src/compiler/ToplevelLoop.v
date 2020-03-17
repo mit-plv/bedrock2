@@ -65,8 +65,6 @@ Local Notation "' x <- a ; f" :=
    end)
   (right associativity, at level 70, x pattern).
 
-Local Axiom TODO_sam: False.
-
 (* TODO move to coqutil *)
 Ltac rewr_hyp_step getEq :=
   match goal with
@@ -171,14 +169,14 @@ Section Pipeline1.
                                        p_stack_start p_stack_pastend instrs
                                        p_call_1 p_call_2 pc mH Rdata Rexec Rexec1 mach,
       iff1 Rexec1 (Rexec * ptsto_instr p_call_2 (Jal RegisterNames.ra
-                    (f_entry_rel_pos_2 + word.unsigned functions_pos - word.unsigned p_call_2)))%sep ->
+                    (f_entry_rel_pos_2 + word.signed (word.sub functions_pos p_call_2))))%sep ->
       machine_ok functions_pos
                  f_entry_rel_pos_2
                  p_stack_start p_stack_pastend instrs
                  p_call_2
                  pc mH Rdata
                  (Rexec * ptsto_instr p_call_1 (Jal RegisterNames.ra
-                            (f_entry_rel_pos_1 + word.unsigned functions_pos - word.unsigned p_call_1)))%sep
+                            (f_entry_rel_pos_1 + word.signed (word.sub functions_pos p_call_1))))%sep
                  mach ->
       machine_ok functions_pos
                  f_entry_rel_pos_1
@@ -214,6 +212,22 @@ Section Pipeline1.
       regs_initialized initial.(getRegs) /\
       initial.(getLog) = nil /\
       valid_machine initial.
+
+  Lemma signed_of_Z_small: forall c,
+      - 2 ^ 31 <= c < 2 ^ 31 ->
+      word.signed (word.of_Z c) = c.
+  Proof.
+    clear -h.
+    simpl.
+    intros.
+    rewrite word.signed_of_Z.
+    unfold word.swrap.
+    destruct width_cases as [E | E]; rewrite E; change (32 - 1) with 31; change (64 - 1) with 63;
+      repeat match goal with
+             | |- context[2 ^ ?x] => let x' := eval cbv in (2 ^ x) in change (2 ^ x) with x' in *
+             end;
+      clear E; Z.div_mod_to_equations; blia.
+  Qed.
 
   Lemma establish_ll_inv: forall (initial: MetricRiscvMachine),
       initial_conditions initial ->
@@ -308,19 +322,11 @@ Section Pipeline1.
         end.
         2: {
           match goal with
-          | |- context[word.unsigned ?x] => ring_simplify x
+          | |- context[word.signed ?x] => ring_simplify x
           end.
-          match goal with
-          | |- _ = _ + word.unsigned (word.add ?A _) - _ => remember A as a
-          end.
-          rewrite word.unsigned_add.
-          rewrite word.unsigned_of_Z.
-          unfold word.wrap.
-          rewrite Zplus_mod_idemp_r.
-          rewrite Z.mod_small. 1: blia.
-          subst a.
-          (* holds by transitivity over ml.(code_pastend) *)
-          case TODO_sam.
+          rewrite signed_of_Z_small.
+          - ring.
+          - clear. cbv. intuition discriminate.
         }
         wcancel.
         cancel_seps_at_indices 3%nat 0%nat. {
@@ -356,19 +362,11 @@ Section Pipeline1.
         end.
         2: {
           match goal with
-          | |- context[word.unsigned ?x] => ring_simplify x
+          | |- context[word.signed ?x] => ring_simplify x
           end.
-          match goal with
-          | |- _ = _ + word.unsigned (word.add ?A _) - _ => remember A as a
-          end.
-          rewrite word.unsigned_add.
-          rewrite word.unsigned_of_Z.
-          unfold word.wrap.
-          rewrite Zplus_mod_idemp_r.
-          rewrite Z.mod_small. 1: blia.
-          subst a.
-          (* holds by transitivity over ml.(code_pastend) *)
-          case TODO_sam.
+          rewrite signed_of_Z_small.
+          - ring.
+          - clear. cbv. intuition discriminate.
         }
         wcancel.
         cancel_seps_at_indices 0%nat 0%nat. {
@@ -405,20 +403,12 @@ Section Pipeline1.
           cancel.
           cancel_seps_at_indices 1%nat 1%nat. {
             f_equal. f_equal. f_equal.
-            repeat match goal with
-                   | |- context[word.unsigned ?x] => progress ring_simplify x
-                   end.
-              match goal with
-              | |- _ = _ + word.unsigned (word.add ?A _) - _ => remember A as a
-              end.
-              rewrite word.unsigned_add.
-              rewrite word.unsigned_of_Z.
-              unfold word.wrap.
-              rewrite Zplus_mod_idemp_r.
-              rewrite Z.mod_small. 1: blia.
-              subst a.
-              (* holds by transitivity over ml.(code_pastend) *)
-              case TODO_sam.
+            match goal with
+            | |- context[word.signed ?x] => ring_simplify x
+            end.
+            rewrite signed_of_Z_small.
+            - ring.
+            - clear. cbv. intuition discriminate.
           }
           cbn [seps].
           reflexivity.
@@ -441,19 +431,12 @@ Section Pipeline1.
             - unfold loop_pos, init_pos, init_sp_insts. solve_word_eq word_ok.
             - do 2 f_equal.
               unfold init_insts, functions_pos, backjump_pos, loop_pos, init_pos.
-              repeat match goal with
-                     | |- context[word.unsigned ?x] => progress ring_simplify x
-                     end.
               match goal with
-              | |- _ = _ + word.unsigned (word.add ?A _) - _ => remember A as a
+              | |- context[word.signed ?x] => ring_simplify x
               end.
-              rewrite ?word.unsigned_add.
-              rewrite ?word.unsigned_of_Z.
-              unfold word.wrap.
-              rewrite Zplus_mod_idemp_r.
-              rewrite ?Z.mod_small. 1: blia.
-              (* holds by transitivity over ml.(code_pastend) *)
-              1, 2, 3: case TODO_sam.
+              rewrite signed_of_Z_small.
+              + ring.
+              + clear. cbv. intuition discriminate.
           }
           cbn [seps].
           reflexivity.

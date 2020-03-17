@@ -47,7 +47,7 @@ Section Sim.
     p_sp := stack_pastend;
     num_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
     p_insts := p_call;
-    insts := [[Jal RegisterNames.ra (f_entry_rel_pos + word.unsigned functions_start - word.unsigned p_call)]];
+    insts := [[Jal RegisterNames.ra (f_entry_rel_pos + word.signed (word.sub functions_start p_call))]];
     program_base := functions_start;
     e_pos := FlatToRiscvDef.build_fun_pos_env prog;
     e_impl := prog;
@@ -61,6 +61,8 @@ Section Sim.
         regs_initialized st.(getRegs) /\
         st.(getPc) = word.add p_call (word.of_Z (if done then 4 else 0)) /\
         goodMachine t m l ghostConsts st.
+
+  Local Axiom TODO_sam: False.
 
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
     let c := SSeq SSkip (SCall nil f_entry_name nil) in
@@ -100,7 +102,7 @@ Section Sim.
         assumption.
       + eauto using fits_stack_call.
       + simpl. change (4 * BinIntDef.Z.of_nat 0) with 0. rewrite Z.add_0_r.
-        rewrite_match. f_equal. f_equal. f_equal. blia.
+        rewrite_match. f_equal. f_equal. f_equal. case TODO_sam.
       + unfold stmt_not_too_big. simpl. cbv. reflexivity.
       + simpl. auto using Forall_nil.
       + solve_divisibleBy4.
