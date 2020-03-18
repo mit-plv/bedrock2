@@ -18,8 +18,6 @@ Open Scope Z_scope.
 
 Local Open Scope ilist_scope.
 
-Local Axiom TODO_sam: False.
-
 Section Pipeline1.
 
   Context {p: Pipeline.parameters}.

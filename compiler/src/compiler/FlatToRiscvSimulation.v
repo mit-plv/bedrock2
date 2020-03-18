@@ -62,13 +62,15 @@ Section Sim.
         st.(getPc) = word.add p_call (word.of_Z (if done then 4 else 0)) /\
         goodMachine t m l ghostConsts st.
 
-  Local Axiom TODO_sam: False.
-
   (* TODO move to coqutil and teach to solve_word_eq *)
   Lemma word__of_Z_signed: forall x: word,
       word.of_Z (word.signed x) = x.
   Proof.
-    case TODO_sam.
+    assert (Ok: word.ok word) by exact Utility.word_ok.
+    intros.
+    apply word.signed_inj.
+    rewrite word.signed_of_Z.
+    apply word.swrap_signed.
   Qed.
 
   (* TODO move *)
@@ -76,14 +78,21 @@ Section Sim.
       (word.unsigned w) mod 4 = 0 ->
       (word.signed w) mod 4 = 0.
   Proof.
-    case TODO_sam.
+    assert (Ok: word.ok word) by exact Utility.word_ok.
+    intros.
+    rewrite word.signed_eq_swrap_unsigned.
+    unfold word.swrap.
+    pose proof (word.unsigned_range w).
+    forget (word.unsigned w) as x.
+    destruct Utility.width_cases as [E | E]; simpl in *; rewrite E;
+      Z.div_mod_to_equations; blia.
   Qed.
 
   Lemma divisibleBy4Opp: forall z,
       z mod 4 = 0 ->
       - z mod 4 = 0.
   Proof.
-    case TODO_sam.
+    intros. Z.div_mod_to_equations. blia.
   Qed.
 
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
