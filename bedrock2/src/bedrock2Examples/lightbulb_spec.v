@@ -164,10 +164,12 @@ Section LightbulbSpec.
     lan9250_mac_write_trace (word.of_Z 1) (word.of_Z (Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2))))) +++
     lan9250_write4 (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
 
-  Definition lightbulb_boot_success : list OP -> Prop. Admitted.
+  Definition iocfg : list OP -> Prop :=
+    one (st (word.of_Z (Ox"10012038")) (word.of_Z (Z.shiftl (Ox"f") 2))) +++
+    one (st (word.of_Z (Ox"10012008")) (word.of_Z (Z.shiftl 1 23))).
 
-  Definition traceOfBoot (t : list OP) : Prop :=
-    lightbulb_boot_success t \/  lan9250_boot_timeout t \/ (any+++spi_timeout) t.
+  Definition traceOfBoot : list OP -> Prop :=
+    iocfg +++ (lan9250_init_trace ||| lan9250_boot_timeout ||| (any+++spi_timeout)).
 
   Definition traceOfOneInteraction: list OP -> Prop :=
     (fun t => exists packet cmd, (lan9250_recv packet +++ gpio_set 23 cmd) t /\

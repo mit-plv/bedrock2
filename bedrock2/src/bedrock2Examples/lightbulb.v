@@ -153,7 +153,7 @@ Section WithParameters.
       let err : String.string := "err" in
       let MMIOWRITE : String.string := "MMIOWRITE" in
 
-    ("lightbulb_init", (@nil String.string, (err::nil), bedrock_func_body:(
+    ("lightbulb_init", (@nil String.string, @nil String.string, bedrock_func_body:(
       output! MMIOWRITE(constr:(Ox"10012038"), constr:((Z.shiftl (Ox"f") 2)));
       output! MMIOWRITE(constr:(Ox"10012008"), constr:((Z.shiftl 1 23)));
       unpack! err = lan9250_init()
@@ -219,14 +219,11 @@ Section WithParameters.
   Instance spec_of_lightbulb_init : spec_of "lightbulb_init" := fun functions =>
     forall m t,
       WeakestPrecondition.call functions "lightbulb_init" t m nil
-        (fun t' m' rets => exists err, rets = [err] /\ m' = m /\
+        (fun t' m' rets => rets = [] /\ m' = m /\
           exists iol, t' = iol ++ t /\
-          exists ioh, mmio_trace_abstraction_relation ioh iol /\ (
-          (lightbulb_boot_success _ ioh /\ word.unsigned err = 0) \/
-          (lan9250_boot_timeout _ ioh /\ word.unsigned err <> 0) \/
-          ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned err <> 0)
-        )).
-
+          exists ioh, mmio_trace_abstraction_relation ioh iol /\
+          traceOfBoot _ ioh
+        ).
 
   Require Import bedrock2.AbsintWordToZ.
   Import WeakestPreconditionProperties.
@@ -254,7 +251,6 @@ Section WithParameters.
 
     straightline_call; repeat straightline.
     eexists; split; trivial.
-    split; trivial.
 
     eexists; split.
     1: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
@@ -265,9 +261,13 @@ Section WithParameters.
     |- mmio_event_abstraction_relation _ _ =>
         (left+right); eexists _, _; split; exact eq_refl
     end.
-    (*  still false because lightbulb_spec omits GPIO configuration *)
-  Admitted.
-    
+
+    cbv [traceOfBoot].
+    eapply concat_app.
+    { eapply (concat_app _ _ [_] [_]); exact eq_refl. }
+
+    cbv [choice]; intuition idtac.
+  Qed.
 
   Lemma lightbulb_loop_ok : program_logic_goal_for_function! lightbulb_loop.
   Proof.

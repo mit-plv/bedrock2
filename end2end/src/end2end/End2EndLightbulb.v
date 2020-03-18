@@ -88,9 +88,11 @@ Local Definition parameters_match :
 
 Open Scope string_scope.
 
+(* note: this function is totally redundant now *)
+(* I spent an hour trying to short-circuit it, but failed because loop is not redundant, and loop is not in the enviroenment in which lightbulb_init is proven, and Pipeline wants init proven in the extended environment that includes loop *)
 Definition init :=
   ("init", ([]: list string, []: list string,
-           (cmd.call ["err"] "lightbulb_init" []))).
+           (cmd.call [] "lightbulb_init" []))).
 
 Definition loop :=
   ("loop", ([]: list string, []: list string,
@@ -218,7 +220,7 @@ Proof.
 
     intros ? ? ? ?.
     repeat ProgramLogic.straightline.
-    unfold mem_available, hl_inv, isReady, goodTrace, goodHlTrace, traceOfBoot, buffer_addr, ml, code_start, heap_start, heap_pastend in *; Simp.simp.
+    unfold mem_available, hl_inv, isReady, goodTrace, goodHlTrace, buffer_addr, ml, code_start, heap_start, heap_pastend in *; Simp.simp.
 
     split.
     1: {
@@ -235,10 +237,8 @@ Proof.
         [exact Hr1|rewrite List.length_firstn_inbounds; blia]. }
     subst a; rewrite app_nil_r.
     eexists; split; eauto.
-    change x1 with (List.app nil x1).
-    eapply concat_app, kleene_empty.
-    destruct H4; Simp.simp; eauto.
-    destruct H; Simp.simp; eauto.
+    change x0 with (List.app nil x0).
+    eapply concat_app, kleene_empty; eassumption.
 
   - reflexivity.
   - (* preserve invariant *)
