@@ -37,28 +37,11 @@ Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
 Local Instance parameters : FE310CSemantics.parameters := ltac:(esplit; exact _).
 
-Definition traceOfBoot (t : list (lightbulb_spec.OP Semantics.word)) : Prop :=
-  lightbulb_boot_success FE310CSemantics.parameters.word t
-  \/  lan9250_boot_timeout FE310CSemantics.parameters.word t
-  \/ (any +++ spi_timeout Semantics.word) t.
-
-Definition traceOfOneInteraction: list (lightbulb_spec.OP Semantics.word) -> Prop :=
-  (fun t => exists packet cmd, (lan9250_recv _ packet +++ gpio_set _ 23 cmd) t /\
-                               lightbulb_packet_rep cmd packet) |||
-  (fun t => exists packet, lan9250_recv _ packet t /\
-                           ~ (exists cmd : bool, lightbulb_packet_rep cmd packet)) |||
-  (lightbulb_spec.lan9250_recv_no_packet _) |||
-  (lightbulb_spec.lan9250_recv_packet_too_long _) |||
-  (any +++ (lightbulb_spec.spi_timeout _)).
-
-Definition goodHlTrace: list (lightbulb_spec.OP Semantics.word) -> Prop :=
-  traceOfBoot +++ traceOfOneInteraction ^*.
-
 Definition spec: ProgramSpec := {|
   datamem_start := ml.(heap_start);
   datamem_pastend := ml.(heap_pastend);
   goodTrace iol := exists ioh, SPI.mmio_trace_abstraction_relation ioh iol /\
-                               goodHlTrace ioh;
+                               goodHlTrace _ ioh;
   isReady t m := exists buf R,
     (Separation.sep (Array.array Scalars.scalar8 (word.of_Z 1) (word.of_Z buffer_addr) buf) R) m /\
     Z.of_nat (Datatypes.length buf) = 1520;
@@ -202,7 +185,7 @@ Lemma end2end_lightbulb:
       (exists (suffix : list KamiRiscv.Event) (bedrockTrace : list RiscvMachine.LogItem),
           KamiRiscv.traces_related (suffix ++ t') bedrockTrace /\
           (exists ioh : list (lightbulb_spec.OP _),
-              SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace ioh)).
+              SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace _ ioh)).
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.

@@ -131,22 +131,55 @@ Section LightbulbSpec.
     Z.of_nat (List.length recv) = word.unsigned (lan9250_decode_length status).
 
   (** lightbulb *)
-  Definition packet_turn_on_light (bs : list byte) : Prop. Admitted.
-  Definition packet_turn_off_light (bs : list byte) : Prop. Admitted.
+  Definition lightbulb_packet_rep cmd (buf : list byte) := (
+    let idx i buf := word.of_Z (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
+    42 < Z.of_nat (List.length buf) /\
+    1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
+    idx 23%nat buf = word.of_Z (Ox"11") /\
+    cmd = Z.testbit (byte.unsigned (List.hd Byte.x00 (List.skipn 42 buf))) 0)%Z.
+
+  Definition lan9250_boot_attempt : list OP -> Prop :=
+    (fun attempt => exists v, lan9250_fastread4 (word.of_Z (Ox"64")) v attempt
+    /\ word.unsigned v <> Ox"87654321").
+  Definition lan9250_boot_timeout : list OP -> Prop :=
+    multiple lan9250_boot_attempt (Z.to_nat patience).
+
+  Definition lan9250_wait_for_boot_trace : list OP -> Prop :=
+    lan9250_boot_attempt ^* +++
+    lan9250_fastread4 (word.of_Z (Ox"64")) (word.of_Z (Ox"87654321")).
+
+  Definition lan9250_mac_write_trace a v ioh := exists x,
+     (lan9250_write4 (word.of_Z 168) v +++
+     lan9250_write4 (word.of_Z 164) (word.or (word.of_Z (2^31)) a) +++
+     lan9250_fastread4 (word.of_Z 100) x) ioh.
+
+  Definition HW_CFG : Z := Ox"074".
+
+  Definition lan9250_init_trace ioh := exists cfg0,
+    let cfg' := word.or cfg0 (word.of_Z 1048576) in
+    let cfg := word.and cfg' (word.of_Z (-2097153)) in
+    (lan9250_wait_for_boot_trace  +++
+    lan9250_fastread4 (word.of_Z HW_CFG) cfg0 +++
+    lan9250_write4 (word.of_Z HW_CFG) cfg +++
+    lan9250_mac_write_trace (word.of_Z 1) (word.of_Z (Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2))))) +++
+    lan9250_write4 (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
 
   Definition lightbulb_boot_success : list OP -> Prop. Admitted.
-  Definition lan9250_boot_timeout : list OP -> Prop. Admitted.
 
-  (*
-  Definition lightbulb_step :=
-    existsl (fun p => lan9250_recv p +++ (
-      eq nil
-      ||| (constraint (packet_turn_on_light p) +++ gpio_on 23)
-      ||| (constraint (packet_turn_on_light p) +++ gpio_off 23))).
+  Definition traceOfBoot (t : list OP) : Prop :=
+    lightbulb_boot_success t \/  lan9250_boot_timeout t \/ (any+++spi_timeout) t.
 
-  Definition lightbulb_spec :=
-    lightbulb_init +++ lightbulb_step^*.
-  *)
+  Definition traceOfOneInteraction: list OP -> Prop :=
+    (fun t => exists packet cmd, (lan9250_recv packet +++ gpio_set 23 cmd) t /\
+                lightbulb_packet_rep cmd packet) |||
+    (fun t => exists packet, lan9250_recv packet t /\
+                ~ (exists cmd : bool, lightbulb_packet_rep cmd packet)) |||
+    (lan9250_recv_no_packet) |||
+    (lan9250_recv_packet_too_long) |||
+    (any+++spi_timeout).
+
+  Definition goodHlTrace: list OP -> Prop :=
+    traceOfBoot +++ traceOfOneInteraction ^*.
 End LightbulbSpec.
 
 Lemma align_trace_cons {T} x xs cont t (H : xs = app cont t) : @cons T x xs = app (cons x cont) t.

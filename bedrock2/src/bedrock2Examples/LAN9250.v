@@ -92,8 +92,6 @@ unpack! err = lan9250_writeword(MAC_CSR_CMD, constr:(Z.shiftl 1 31)|addr);
           (* while (lan9250_readword(0xA4) >> 31) { } // Wait until BUSY (= MAX_CSR_CMD >> 31) goes low *)
   ))).
 
-Definition HW_CFG : Z := Ox"074".
-
 Definition lan9250_wait_for_boot : function :=
   let err : String.string := "err" in
   let i : String.string := "i" in
@@ -115,11 +113,11 @@ Definition lan9250_init : function :=
   ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
           unpack! err = lan9250_wait_for_boot();
     require !err;
-          unpack! hw_cfg, err = lan9250_readword(HW_CFG);
+          unpack! hw_cfg, err = lan9250_readword(lightbulb_spec.HW_CFG);
     require !err;
     hw_cfg = (hw_cfg | constr:(Z.shiftl 1 20)); (* mustbeone *)
     hw_cfg = (hw_cfg & constr:(Z.lnot (Z.shiftl 1 21))); (* mustbezero *)
-    unpack! err = lan9250_writeword(HW_CFG, hw_cfg);
+    unpack! err = lan9250_writeword(lightbulb_spec.HW_CFG, hw_cfg);
     require !err;
 
     (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)
@@ -165,10 +163,6 @@ Section WithParameters.
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ a v ioh)).
 
   Import lightbulb_spec.
-  Definition lan9250_mac_write_trace a v ioh := exists x,
-     (lan9250_write4 _ (word.of_Z 168) v +++
-     lan9250_write4 _ (word.of_Z 164) (word.or (word.of_Z (2^31)) a) +++
-     lan9250_fastread4 _ (word.of_Z 100) x) ioh.
 
   Global Instance spec_of_lan9250_mac_write : ProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
     forall t m a v,
@@ -180,24 +174,7 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\  lan9250_mac_write_trace a v ioh )).
-
-  Definition lan9250_boot_attempt :=
-    (fun attempt => exists v, lan9250_fastread4 Semantics.word (word.of_Z (Ox"64")) v attempt /\ word.unsigned v <> Ox"87654321").
-  Definition lan9250_boot_timeout :=
-    multiple lan9250_boot_attempt (Z.to_nat patience).
-  Definition lan9250_wait_for_boot_trace :=
-    lan9250_boot_attempt ^* +++
-    lan9250_fastread4 _ (word.of_Z (Ox"64")) (word.of_Z (Ox"87654321")).
-
-  Definition lan9250_init_trace ioh := exists cfg0,
-    let cfg' := word.or cfg0 (word.of_Z 1048576) in
-    let cfg := word.and cfg' (word.of_Z (-2097153)) in
-    (lan9250_wait_for_boot_trace  +++
-    lan9250_fastread4 _ (word.of_Z HW_CFG) cfg0 +++
-    lan9250_write4 Semantics.word (word.of_Z HW_CFG) cfg +++
-    lan9250_mac_write_trace (word.of_Z 1) (word.of_Z (Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2))))) +++
-    lan9250_write4 _ (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
+        (word.unsigned err = 0 /\  lan9250_mac_write_trace _ a v ioh )).
 
   Global Instance spec_of_lan9250_wait_for_boot : ProgramLogic.spec_of "lan9250_wait_for_boot" := fun functions =>
     forall t m,
@@ -208,8 +185,8 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh \/
-        (word.unsigned err <> 0 /\ lan9250_boot_timeout ioh))
-        (word.unsigned err = 0 /\ lan9250_wait_for_boot_trace ioh)).
+        (word.unsigned err <> 0 /\ lan9250_boot_timeout _ ioh))
+        (word.unsigned err = 0 /\ lan9250_wait_for_boot_trace _ ioh)).
 
   Global Instance spec_of_lan9250_init : ProgramLogic.spec_of "lan9250_init" := fun functions =>
     forall t m,
@@ -220,8 +197,8 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh \/
-        (word.unsigned err <> 0 /\ lan9250_boot_timeout ioh))
-        (word.unsigned err = 0 /\ lan9250_init_trace ioh)).
+        (word.unsigned err <> 0 /\ lan9250_boot_timeout _ ioh))
+        (word.unsigned err = 0 /\ lan9250_init_trace _ ioh)).
 
   From coqutil Require Import letexists.
   Local Ltac split_if :=
@@ -352,6 +329,7 @@ Section WithParameters.
     eexists.
     repeat eapply concat_app; eauto.
   Qed.
+  Print Assumptions lan9250_init_ok.
 
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
@@ -584,7 +562,7 @@ Section WithParameters.
        M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
-       exists n, (multiple lan9250_boot_attempt n) th /\
+       exists n, (multiple (lan9250_boot_attempt _) n) th /\
        Z.of_nat n + word.unsigned I = patience
             ))
             _ _ _ _ _ _ _);

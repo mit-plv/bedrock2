@@ -187,13 +187,6 @@ Section WithParameters.
             ))
         ).
 
-  Definition lightbulb_packet_rep cmd (buf : list byte) :=
-    let idx i buf := word.of_Z (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
-    42 < Z.of_nat (length buf) /\
-    1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
-    idx 23%nat buf = word.of_Z (Ox"11") /\
-    cmd = Z.testbit (byte.unsigned (List.hd Byte.x00 (List.skipn 42 buf))) 0.
-
   Instance spec_of_lightbulb : spec_of "lightbulb_handle" := fun functions =>
     forall p_addr (buf:list byte) (len:word) R m t,
       (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
@@ -202,8 +195,8 @@ Section WithParameters.
         (fun t' m' rets => exists v, rets = [v] /\ m' = m /\
         exists iol, t' = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
-          (exists cmd, lightbulb_packet_rep cmd buf /\ gpio_set _ 23 cmd ioh /\ word.unsigned v = 0)
-          (not (exists cmd, lightbulb_packet_rep cmd buf) /\ ioh = nil /\ word.unsigned v <> 0)
+          (exists cmd, lightbulb_packet_rep _ cmd buf /\ gpio_set _ 23 cmd ioh /\ word.unsigned v = 0)
+          (not (exists cmd, lightbulb_packet_rep _ cmd buf) /\ ioh = nil /\ word.unsigned v <> 0)
         ).
 
   Instance spec_of_lightbulb_loop : spec_of "lightbulb_loop" := fun functions =>
@@ -216,8 +209,8 @@ Section WithParameters.
         Z.of_nat (length buf) = 1520) /\
         exists iol, t' = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ (
-          (exists packet cmd, (lan9250_recv _ packet +++ gpio_set _ 23 cmd) ioh /\ lightbulb_packet_rep cmd packet /\ word.unsigned v = 0) \/
-          (exists packet, (lan9250_recv _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep cmd packet) /\ word.unsigned v = 0) \/
+          (exists packet cmd, (lan9250_recv _ packet +++ gpio_set _ 23 cmd) ioh /\ lightbulb_packet_rep _ cmd packet /\ word.unsigned v = 0) \/
+          (exists packet, (lan9250_recv _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep _ cmd packet) /\ word.unsigned v = 0) \/
           (lan9250_recv_no_packet _ ioh /\ word.unsigned v = 0) \/
           (lan9250_recv_packet_too_long _ ioh /\ word.unsigned v <> 0) \/
           ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned v <> 0)
@@ -237,6 +230,44 @@ Section WithParameters.
 
   Require Import bedrock2.AbsintWordToZ.
   Import WeakestPreconditionProperties.
+
+  Lemma lightbulb_init_ok : program_logic_goal_for_function! lightbulb_init.
+  Proof.
+    repeat straightline.
+    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    (* mmio *)
+    1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    { subst addr val; cbv [isMMIOAddr];
+      rewrite !word.unsigned_of_Z; split; trivial.
+      cbv -[Z.le Z.lt]. Lia.lia. }
+    1: repeat straightline; split; trivial.
+
+    1: repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
+
+    1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    { subst addr0 val0; cbv [isMMIOAddr];
+      rewrite !word.unsigned_of_Z; split; trivial.
+      cbv -[Z.le Z.lt]. Lia.lia. }
+    1: repeat straightline; split; trivial.
+
+    1: repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
+
+    straightline_call; repeat straightline.
+    eexists; split; trivial.
+    split; trivial.
+
+    eexists; split.
+    1: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
+
+    eexists; split; cbv [mmio_trace_abstraction_relation].
+    1:repeat (eapply List.Forall2_cons || eapply List.Forall2_refl || eapply List.Forall2_app; eauto).
+    1,2 : match goal with
+    |- mmio_event_abstraction_relation _ _ =>
+        (left+right); eexists _, _; split; exact eq_refl
+    end.
+    (*  still false because lightbulb_spec omits GPIO configuration *)
+  Admitted.
+    
 
   Lemma lightbulb_loop_ok : program_logic_goal_for_function! lightbulb_loop.
   Proof.
@@ -373,8 +404,8 @@ Section WithParameters.
     all : right; repeat split; eauto.
     2,4: rewrite word.unsigned_of_Z; intro X; inversion X.
     all : intros (?&?&?&?&?).
-    { rewrite H10 in H3. apply H3. exact eq_refl. }
     { rewrite word.unsigned_of_Z in H2; contradiction. }
+    { apply H2. rewrite word.unsigned_of_Z. exact H8. }
 
     Unshelve.
     all : intros; exact True.
@@ -691,7 +722,12 @@ Section WithParameters.
   Qed.
   Lemma link_lightbulb_init : spec_of_lightbulb_init function_impls.
   Proof.
-  Admitted.
+    eapply lightbulb_init_ok; eapply lan9250_init_ok;
+    try (eapply lan9250_wait_for_boot_ok || eapply lan9250_mac_write_ok);
+    (eapply lan9250_readword_ok || eapply lan9250_writeword_ok);
+        eapply spi_xchg_ok;
+        (eapply spi_write_ok || eapply spi_read_ok).
+  Qed.
 
 
   (* Print Assumptions link_lightbulb. *)
