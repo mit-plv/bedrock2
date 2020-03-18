@@ -315,7 +315,7 @@ Module Import Pipeline.
     FlattenExpr.locals := _;
     FlattenExpr.mem := mem;
     FlattenExpr.ext_spec := ext_spec;
-    FlattenExpr.NGstate := string;
+    FlattenExpr.NGstate := N;
   }.
 
   Instance FlatToRiscv_params{p: parameters}: FlatToRiscvCommon.parameters := {|
