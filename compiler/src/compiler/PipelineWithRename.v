@@ -344,8 +344,6 @@ Section Pipeline1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Local Axiom TODO_sam: False.
-
   Instance mk_FlatImp_ext_spec_ok:
     FlatImp.ext_spec.ok  string (FlattenExpr.mk_FlatImp_params FlattenExpr_parameters).
   Proof.
@@ -563,11 +561,33 @@ Section Pipeline1.
       destruct_one_match; eauto.
   Qed.
 
+  (* TODO move *)
+  Require Import coqutil.Z.bitblast.
+  Lemma LittleEndian__combine_bound: forall {n: nat} (t: HList.tuple byte n),
+      0 <= LittleEndian.combine n t < 2 ^ (8 * Z.of_nat n).
+  Proof.
+    induction n; intros.
+    - destruct t. cbv. intuition discriminate.
+    - destruct t as [b t]. unfold LittleEndian.combine. simpl.
+      specialize (IHn t).
+      match goal with
+      | |- context [?F n t] => change (F n t) with (LittleEndian.combine n t)
+      end.
+      pose proof (byte.unsigned_range b).
+      replace (8 * Z.of_nat (S n)) with (8 * Z.of_nat n + 8) by blia.
+      rewrite Z.pow_add_r by blia.
+      rewrite or_to_plus. 1: blia.
+      replace (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * LittleEndian.combine n t)))))))) with
+          (LittleEndian.combine n t * 2 ^ 8) by blia.
+      rewrite <- Z.shiftl_mul_pow2 by blia.
+      riscv.Utility.prove_Zeq_bitwise.prove_Zeq_bitwise.
+  Qed.
+
   Lemma HList__tuple__to_list_of_list {A} (xs : list A) :
     HList.tuple.to_list (HList.tuple.of_list xs) = xs.
   Proof. induction xs; cbn; congruence. Qed.
 
-  Lemma HList__tuple__to_list_eq_rect {T} a b xs pf 
+  Lemma HList__tuple__to_list_eq_rect {T} a b xs pf
    : HList.tuple.to_list(A:=T) (eq_rect a _ xs b pf) = HList.tuple.to_list xs.
   Proof. destruct pf. cbn. trivial. Qed.
 
@@ -580,9 +600,15 @@ Section Pipeline1.
       iff1 (array ptsto (word.of_Z 1) p bytes)
            (array ptsto_word (word.of_Z bytes_per_word) p word_list).
   Proof.
-    assert (AA: 0 < bytes_per_word) by case TODO_sam.
-    assert (BB: @word.ok (@width (@W (@FlatToRiscvDef_params p)))(@word (@W (@FlatToRiscvDef_params p)))) by case TODO_sam.
-    assert (CC: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)) by case TODO_sam.
+    assert (AA: 0 < bytes_per_word). {
+      unfold bytes_per_word.
+      simpl.
+      destruct width_cases as [E | E]; rewrite E; cbv; reflexivity.
+    }
+    assert (BB: @word.ok (@width (@W (@FlatToRiscvDef_params p)))(@word (@W (@FlatToRiscvDef_params p))))
+      by exact word_ok.
+    assert (CC: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p))
+      by exact mem_ok.
     intros.
     Z.div_mod_to_equations.
     subst r.
@@ -613,7 +639,11 @@ Section Pipeline1.
     rewrite <-bytearray_index_merge.
     1: eapply Proper_sep_iff1; [|reflexivity].
     2: rewrite word.unsigned_of_Z; setoid_rewrite Z.mod_small.
-    3: case TODO_sam.
+    3: {
+      unfold bytes_per_word.
+      simpl.
+      destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
+    }
     2: rewrite List.length_firstn_inbounds; Lia.nia.
     cbv [ptsto_bytes.ptsto_bytes].
     Morphisms.f_equiv.
@@ -624,13 +654,18 @@ Section Pipeline1.
       eapply eq_rect; [exact (HList.tuple.of_list (List.firstn (Z.to_nat bytes_per_word) bytes))|].
       abstract (
       rewrite List.length_firstn_inbounds; try Lia.nia;
-      case TODO_sam). }
+      unfold bytes_per_word; apply Nat2Z.id). }
     1:rewrite HList__tuple__to_list_eq_rect.
     1:rewrite HList__tuple__to_list_of_list; trivial.
     match goal with |- context[LittleEndian.combine _ ?xs] => generalize xs end.
-    (* forall   t : HList.tuple Init.Byte.byte (Memory.bytes_per Syntax.access_size.word),
-       0 <= LittleEndian.combine (Memory.bytes_per Syntax.access_size.word) t < 2 ^ width *)
-    case TODO_sam.
+    intros.
+    pose proof (LittleEndian__combine_bound t).
+    split; [blia|].
+    destruct H0.
+    eapply Z.lt_le_trans. 1: eassumption.
+    eapply Z.pow_le_mono_r. 1: reflexivity.
+    simpl.
+    destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
   Qed.
 
   Axiom TODO_andres : False.
@@ -675,6 +710,20 @@ Section Pipeline1.
       all: rewrite <- Z.pow_sub_r by blia;
            rewrite <- Z.pow_add_r by blia;
            reflexivity.
+  Qed.
+
+  Lemma stack_length_divisible: forall (ml: MemoryLayout) {mlOk: MemoryLayoutOk ml},
+    word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) mod bytes_per_word = 0.
+  Proof.
+    intros.
+    destruct mlOk.
+    rewrite word.unsigned_sub. unfold word.wrap.
+    rewrite mod_2width_mod_bytes_per_word.
+    rewrite Zminus_mod.
+    rewrite stack_start_aligned.
+    rewrite stack_pastend_aligned.
+    rewrite Z.sub_diag.
+    apply Zmod_0_l.
   Qed.
 
   Lemma program_mod_4_0: forall a instrs R m,
@@ -1050,10 +1099,8 @@ Section Pipeline1.
         destruct (byte_list_to_word_list_array stack_trash)
           as (stack_trash_words&Hlength_stack_trash_words&Hstack_trash_words).
         { rewrite H4.
-          pose proof stack_pastend_ok _ mlOk as dA.
-          pose proof stack_pastend_aligned _ mlOk as dB.
-          pose proof stack_start_aligned _ mlOk as dC.
-          case TODO_sam. }
+          apply stack_length_divisible.
+          assumption. }
         exists stack_trash_words.
         split. 2: {
           unfold word_array.
@@ -1076,14 +1123,8 @@ Section Pipeline1.
             match goal with
             | H: ?x = ?y |- _ => rewrite H
             end.
-            destruct mlOk.
-            rewrite word.unsigned_sub. unfold word.wrap.
-            rewrite mod_2width_mod_bytes_per_word.
-            rewrite Zminus_mod.
-            rewrite stack_start_aligned.
-            rewrite stack_pastend_aligned.
-            rewrite Z.sub_diag.
-            apply Zmod_0_l.
+            apply stack_length_divisible.
+            assumption.
           }
           wcancel_assumption.
           rewrite word.of_Z_unsigned.
@@ -1137,14 +1178,8 @@ Section Pipeline1.
               destruct width_cases as [E | E]; rewrite E; reflexivity.
             }
             {
-              destruct mlOk.
-              rewrite word.unsigned_sub. unfold word.wrap.
-              rewrite mod_2width_mod_bytes_per_word.
-              rewrite Zminus_mod.
-              rewrite stack_start_aligned.
-              rewrite stack_pastend_aligned.
-              rewrite Z.sub_diag.
-              apply Zmod_0_l.
+              apply stack_length_divisible.
+              assumption.
             }
             rewrite word.of_Z_unsigned.
             solve_word_eq word_ok.
