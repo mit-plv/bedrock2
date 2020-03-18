@@ -2733,11 +2733,71 @@ Section Equiv.
                               kamiMemInit kami_FE310_AbsMMIO.
   Definition p4mm: Modules := p4mm Hinstr kamiMemInit kami_FE310_AbsMMIO.
 
-  Definition riscvRegsInit:
-    {rrfi: Registers & regs_related (evalConstT (rfInit procInit)) rrfi}.
+  Fixpoint setRegsInit (kinits: kword 5 -> kword width) (n: nat): Registers :=
+    match n with
+    | O => map.put map.empty 0 $0
+    | S n' => map.put (setRegsInit kinits n') (Z.of_nat n) (kinits $n)
+    end.
+  
+  Definition riscvRegsInit: Registers :=
+    setRegsInit (evalConstT (rfInit procInit)) 31.
+  Lemma regs_related_riscvRegsInit:
+    regs_related (evalConstT (rfInit procInit)) riscvRegsInit.
   Proof.
-    case TODO_joonwon.
-  Defined.
+    red; intros.
+
+    clear -Registers_ok.
+    pose proof (wordToN_bound w).
+    change (NatLib.Npow2 (BinInt.Z.to_nat 5)) with 32%N in H.
+    assert (wordToN w = 0 \/ wordToN w = 1 \/ wordToN w = 2 \/ wordToN w = 3 \/
+            wordToN w = 4 \/ wordToN w = 5 \/ wordToN w = 6 \/ wordToN w = 7 \/
+            wordToN w = 8 \/ wordToN w = 9 \/ wordToN w = 10 \/ wordToN w = 11 \/
+            wordToN w = 12 \/ wordToN w = 13 \/ wordToN w = 14 \/ wordToN w = 15 \/
+            wordToN w = 16 \/ wordToN w = 17 \/ wordToN w = 18 \/ wordToN w = 19 \/
+            wordToN w = 20 \/ wordToN w = 21 \/ wordToN w = 22 \/ wordToN w = 23 \/
+            wordToN w = 24 \/ wordToN w = 25 \/ wordToN w = 26 \/ wordToN w = 27 \/
+            wordToN w = 28 \/ wordToN w = 29 \/ wordToN w = 30 \/ wordToN w = 31)%N
+      by abstract blia.
+    clear H.
+    repeat match goal with
+           | H: _ \/ _ |- _ => destruct H
+           end.
+
+    all: match goal with
+         | H: wordToN _ = ?n |- _ =>
+           change n with (wordToN (sz:= 5) $(N.to_nat n)) in H;
+             apply wordToN_inj in H; subst; simpl
+         end.
+    all: cbv [riscvRegsInit setRegsInit].
+    all: repeat rewrite map.get_put_diff by discriminate.
+    all: rewrite map.get_put_same.
+    all: reflexivity.
+  Qed.
+
+  Lemma riscvRegsInit_sound:
+    forall reg, 0 < reg < 32 -> map.get riscvRegsInit reg <> None.
+  Proof.
+    intros.
+    assert (reg = 1 \/ reg = 2 \/ reg = 3 \/
+            reg = 4 \/ reg = 5 \/ reg = 6 \/ reg = 7 \/
+            reg = 8 \/ reg = 9 \/ reg = 10 \/ reg = 11 \/
+            reg = 12 \/ reg = 13 \/ reg = 14 \/ reg = 15 \/
+            reg = 16 \/ reg = 17 \/ reg = 18 \/ reg = 19 \/
+            reg = 20 \/ reg = 21 \/ reg = 22 \/ reg = 23 \/
+            reg = 24 \/ reg = 25 \/ reg = 26 \/ reg = 27 \/
+            reg = 28 \/ reg = 29 \/ reg = 30 \/ reg = 31)
+      by abstract blia.
+    clear H.
+    repeat match goal with
+           | H: _ \/ _ |- _ => destruct H
+           end.
+
+    all: subst.
+    all: cbv [riscvRegsInit setRegsInit].
+    all: repeat rewrite map.get_put_diff by discriminate.
+    all: rewrite map.get_put_same.
+    all: discriminate.
+  Qed.
 
   Definition riscvMemInit := map.of_list (List.map
     (fun i : nat =>
@@ -2766,7 +2826,7 @@ Section Equiv.
     states_related
       (initRegs (getRegInits (proc Hinstr kamiMemInit kami_FE310_AbsMMIO)), [])
       {| getMachine :=
-           {| RiscvMachine.getRegs := projT1 riscvRegsInit;
+           {| RiscvMachine.getRegs := riscvRegsInit;
               RiscvMachine.getPc := word.of_Z 0;
               RiscvMachine.getNextPc := word.of_Z 4;
               RiscvMachine.getMem := riscvMemInit;
@@ -2779,7 +2839,7 @@ Section Equiv.
     - econstructor.
     - intros; discriminate.
     - split; reflexivity.
-    - apply (projT2 riscvRegsInit).
+    - apply regs_related_riscvRegsInit.
     - apply mem_related_riscvMemInit.
   Qed.
 
@@ -2855,8 +2915,7 @@ Section Equiv.
     - eapply establishRvInv.
       + reflexivity.
       + reflexivity.
-      + simpl.
-        case TODO_joonwon.
+      + apply riscvRegsInit_sound.
       + reflexivity.
     - specialize (useRvInv _ Inv).
       inversion Rel. subst. clear Rel.
