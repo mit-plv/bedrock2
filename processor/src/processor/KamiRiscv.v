@@ -243,9 +243,6 @@ Section Equiv.
       + eapply IHt'; eassumption.
   Qed.
 
-  (** * FIXME @joonwonc: 
-   * 1) MMInputEvent load value mismatch.
-   * 2) MMOutputEvent not handling [byteEn] *)
   Inductive KamiLabelR: Kami.Semantics.LabelT -> list Event -> Prop :=
   | KamiSilent:
       forall klbl,
@@ -267,10 +264,122 @@ Section Equiv.
   Definition kamiStep (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT): Prop :=
     exists kupd, Step kamiProc m1 kupd klbl /\ m2 = FMap.M.union kupd m1.
 
-  Lemma is_mmio_consistent:
-    forall a, isMMIOAddr a <-> evalExpr (isMMIO type a) = true.
+  Lemma wlt_kunsigned:
+    forall (w1 w2: word),
+      (w1 < w2)%word <-> kunsigned w1 < kunsigned w2.
   Proof.
-    case TODO_joonwon.
+    cbv [kunsigned]; intros.
+    apply N2Z.inj_lt.
+  Qed.
+
+  Lemma wle_kunsigned:
+    forall (w1 w2: word),
+      (w1 <= w2)%word <-> kunsigned w1 <= kunsigned w2.
+  Proof.
+    cbv [kunsigned]; intros; split; intros.
+    - apply N2Z.inj_le.
+      cbv [wlt] in H; Lia.lia.
+    - intro Hx.
+      apply N2Z.inj_le in H.
+      cbv [wlt] in Hx; Lia.lia.
+  Qed.
+
+  Lemma is_mmio_consistent:
+    forall a, (isMMIOAddr a /\ isMMIOAligned 4 a) <-> evalExpr (isMMIO type a) = true.
+  Proof.
+    intros.
+    cbv [isMMIOAddr isMMIOAligned FE310_mmio isMMIO kami_FE310_AbsMMIO].
+    cbn [evalExpr evalBinBool evalBinBitBool evalUniBool evalUniBit evalConstT].
+    cbv [isOTP isPRCI isGPIO0 isUART0 isSPI1].
+    rewrite Bool.andb_true_iff.
+    rewrite ?Bool.orb_true_iff.
+    split; intros.
+
+    - destruct H as [? [_ ?]]; split.
+      + destruct (isEq _ _); [reflexivity|elim n; clear n].
+        cbv [word.unsigned kunsigned word WordsKami wordW KamiWord.word kofZ] in H0.
+        change 4 with (Z.of_N 4%N) in H0.
+        rewrite <-N2Z.inj_mod in H0 by discriminate.
+        rewrite <-N2Z.inj_0 in H0.
+        apply N2Z.inj in H0.
+        apply wordToN_inj.
+        rewrite wordToN_split1.
+        setoid_rewrite H0; reflexivity.
+
+      + repeat match goal with
+               | H: _ /\ _ |- _ => destruct H
+               | H: _ \/ _ |- _ => destruct H
+               end.
+        1: do 4 left.
+        2: do 3 left; right.
+        3: do 2 left; right.
+        4: left; right.
+        5: right.
+
+        all: cbv [Kx] in *.
+        all: repeat
+               match goal with
+               | |- (_ && _ = true)%bool => apply Bool.andb_true_iff; split
+               | |- negb _ = true => apply Bool.negb_true_iff
+               | |- (if wlt_dec _ _ then true else false) = true =>
+                 destruct (wlt_dec _ _); [reflexivity|exfalso]
+               | |- (if wlt_dec _ _ then true else false) = false =>
+                 destruct (wlt_dec _ _); [exfalso|reflexivity]
+               | H: (_ < _)%word |- _ => apply wlt_kunsigned in H
+               | H: (_ <= _)%word |- _ => elim H; clear H
+               | |- (_ < _)%word => apply wlt_kunsigned
+               | H: context [HexNotation.Ox _] |- _ => cbv [HexNotation.Ox] in H; simpl in H
+               | |- context [HexNotation.Ox _] => cbv [HexNotation.Ox]; simpl
+               | H: context [kunsigned] |- _ =>
+                 cbv [kunsigned word WordsKami wordW KamiWord.word kofZ] in H; simpl in H
+               | |- context [kunsigned] =>
+                 cbv [kunsigned word WordsKami wordW KamiWord.word kofZ]; simpl
+               end.
+        all: try Lia.lia.
+
+    - destruct H; repeat split.
+      + clear H.
+        repeat match goal with
+               | H: _ /\ _ |- _ => destruct H
+               | H: _ \/ _ |- _ => destruct H
+               end.
+        1: left.
+        2: right; left.
+        3: do 2 right; left.
+        4: do 3 right; left.
+        5: do 4 right.
+        all: repeat match goal with | |- _ /\ _ => split end.
+
+        all: cbv [Kx] in *.
+        all: repeat
+               match goal with
+               | H: (_ && _ = true)%bool |- _ => apply Bool.andb_true_iff in H; destruct H
+               | H: negb _ = true |- _ => apply Bool.negb_true_iff in H
+               | H: (if wlt_dec _ _ then true else false) = true |- _ =>
+                 destruct (wlt_dec _ _); [|discriminate]
+               | H: (if wlt_dec _ _ then true else false) = false |- _ =>
+                 destruct (wlt_dec _ _); [discriminate|]
+               | H: (_ < _)%word |- _ => apply wlt_kunsigned in H
+               | H: (_ <= _)%word |- _ => apply wle_kunsigned in H
+               | |- (_ < _)%word => apply wlt_kunsigned
+               | H: context [HexNotation.Ox _] |- _ => cbv [HexNotation.Ox] in H; simpl in H
+               | |- context [HexNotation.Ox _] => cbv [HexNotation.Ox]; simpl
+               | H: context [kunsigned] |- _ =>
+                 cbv [kunsigned word WordsKami wordW KamiWord.word kofZ] in H; simpl in H
+               | |- context [kunsigned] =>
+                 cbv [kunsigned word WordsKami wordW KamiWord.word kofZ]; simpl
+               end.
+        all: try Lia.lia.
+
+      + clear -H.
+        destruct (isEq _ _); [clear H|discriminate].
+        cbv [word.unsigned kunsigned word WordsKami wordW KamiWord.word kofZ].
+        change 4 with (Z.of_N 4%N).
+        rewrite <-N2Z.inj_mod by discriminate.
+        rewrite <-N2Z.inj_0.
+        apply f_equal with (f:= @wordToN _) in e.
+        rewrite wordToN_split1 in e.
+        setoid_rewrite e; reflexivity.
   Qed.
 
   Lemma mmio_mem_disjoint:
@@ -284,7 +393,7 @@ Section Equiv.
   Proof.
     red; intros.
     destruct (evalExpr (isMMIO _ _)) eqn:Hmmio; [exfalso|reflexivity].
-    apply is_mmio_consistent in Hmmio.
+    apply is_mmio_consistent in Hmmio; destruct Hmmio as [Hmmio _].
     eapply mmio_mem_disjoint; [eassumption|].
 
     cbv [toAddr rv32Fetch rv32ToAddr eq_rect_r].
@@ -1216,6 +1325,7 @@ Section Equiv.
                 match goal with
                 | [Heqic: true = evalExpr (isMMIO _ _) |- _] =>
                   apply eq_sym, is_mmio_consistent in Heqic;
+                  destruct Heqic as [Heqic _];
                   eapply mem_related_load_bytes_Some in Hlv; [|eassumption|discriminate];
                   clear -Heqic Hlv;
                   eapply mmio_mem_disjoint; eassumption
@@ -1349,14 +1459,19 @@ Section Equiv.
                | [H: match Memory.load_bytes ?sz ?m ?a with | Some _ => _ | None => _ end |- _] =>
                  destruct (Memory.load_bytes sz m a) as [lv|] eqn:Hlv
                end.
-      all: repeat match goal with
-                  | [H: nonmem_load _ _ _ _ _ |- _] => destruct H as [? [? ?]]
-                  | [Hmmio: false = evalExpr (isMMIO _ _), H: isMMIOAddr _ |- _] =>
-                    exfalso; try (subst v oimm12; regs_get_red H;
-                                  apply is_mmio_consistent in H;
-                                  setoid_rewrite H in Hmmio;
-                                  discriminate)
-                  end.
+
+      all: try match goal with
+               | [H: nonmem_load _ _ _ _ _ |- _] =>
+                 destruct H as [? [[? ?] ?]]; discriminate
+               end.
+      6: { exfalso.
+           subst v oimm12.
+           destruct H13 as [? [? ?]].
+           pose proof (conj H13 H15); clear H13 H15.
+           regs_get_red H17.
+           apply is_mmio_consistent in H17.
+           setoid_rewrite H17 in Heqic.
+           discriminate. }
 
       all: rt.
       all: eexists _, _.
@@ -1591,6 +1706,7 @@ Section Equiv.
                 match goal with
                 | [Heqic: true = evalExpr (isMMIO _ _) |- _] =>
                   apply eq_sym, is_mmio_consistent in Heqic;
+                  destruct Heqic as [Heqic _];
                   eapply mem_related_load_bytes_Some in Hlv; [|eassumption|discriminate];
                   clear -Heqic Hlv;
                   eapply mmio_mem_disjoint; eassumption
@@ -1716,20 +1832,24 @@ Section Equiv.
                | [H: match Memory.load_bytes ?sz ?m ?a with | Some _ => _ | None => _ end |- _] =>
                  destruct (Memory.load_bytes sz m a) as [lv|] eqn:Hlv
                end.
-      all: repeat match goal with
-                  | [H: nonmem_load _ _ _ _ _ |- _] => destruct H as [? [? ?]]
-                  | [Hmmio: false = evalExpr (isMMIO _ _), H: isMMIOAddr _ |- _] =>
-                    exfalso; try (subst v oimm12; regs_get_red H;
-                                  apply is_mmio_consistent in H;
-                                  setoid_rewrite H in Hmmio;
-                                  discriminate)
-                  end.
+
+      all: try match goal with
+               | [H: nonmem_load _ _ _ _ _ |- _] =>
+                 destruct H as [? [[? ?] ?]]; discriminate
+               end.
+      4: { exfalso.
+           subst v oimm12.
+           destruct H13 as [? [? ?]].
+           pose proof (conj H13 H15); clear H13 H15.
+           regs_get_red H17.
+           apply is_mmio_consistent in H17.
+           setoid_rewrite H17 in Heqic.
+           discriminate. }
 
       all: rt.
       all: eexists _, _.
       all: prove_KamiLabelR_silent.
       all: try subst regs; try subst kupd.
-
       all: prove_states_related.
 
       (** FIXME: [Qed] takes forever.. *)
@@ -1857,6 +1977,7 @@ Section Equiv.
                 match goal with
                 | [Heqic: true = evalExpr (isMMIO _ _) |- _] =>
                   apply eq_sym, is_mmio_consistent in Heqic;
+                  destruct Heqic as [Heqic _];
                   eapply mem_related_load_bytes_Some in Hlv; [|eassumption|discriminate];
                   clear -Heqic Hlv;
                   eapply mmio_mem_disjoint; eassumption
@@ -1992,15 +2113,18 @@ Section Equiv.
       all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
       all: simpl_bit_manip.
 
-      all: repeat match goal with
-                  | [H: nonmem_store _ _ _ _ _ _ |- _] =>
-                    destruct H as [? [? ?]]
-                  | [Hmmio: false = evalExpr (isMMIO _ _), H: isMMIOAddr _ |- _] =>
-                    exfalso; try (subst v simm12; regs_get_red H;
-                                  apply is_mmio_consistent in H;
-                                  setoid_rewrite H in Hmmio;
-                                  discriminate)
-                  end.
+      all: try match goal with
+               | [H: nonmem_store _ _ _ _ _ _ |- _] =>
+                 destruct H as [? [[? ?] ?]]; discriminate
+               end.
+      4: { exfalso.
+           subst v simm12.
+           destruct H5 as [? [? ?]].
+           pose proof (conj H5 H13); clear H5 H13.
+           regs_get_red H15.
+           apply is_mmio_consistent in H15.
+           setoid_rewrite H15 in Heqic.
+           discriminate. }
 
       all: rt.
       all: eexists _, _.
