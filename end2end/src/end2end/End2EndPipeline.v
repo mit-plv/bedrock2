@@ -235,6 +235,7 @@ Section Connect.
     destruct P2 as [ P2establish [P2preserve P2use] ].
     eapply P1; clear P1.
     - assumption.
+    - assumption.
     - (* establish *)
       intros.
       eapply P2establish.

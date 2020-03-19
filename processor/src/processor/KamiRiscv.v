@@ -135,7 +135,8 @@ Section Equiv.
   Local Notation mcomp_sat_unit m initialL post :=
     (mcomp_sat m initialL (fun (_: unit) => post)).
 
-  Context (Registers_ok : map.ok Registers).
+  Context (Registers_ok: map.ok Registers)
+          (mem_ok: map.ok mem).
   
   (** * Relations between Kami and riscv-coq *)
 
@@ -617,27 +618,54 @@ Section Equiv.
     assumption.
   Qed.
 
-  Lemma mem_related_load_bytes_None:
+  Lemma mem_related_load_bytes_Some_sz:
     forall kmem rmem,
       mem_related memSizeLg kmem rmem ->
-      forall sz addr,
-        Memory.load_bytes sz rmem addr = None ->
-        kunsigned addr + Z.of_nat (pred sz) >= Z.pow 2 memSizeLg.
+      forall sz addr bs,
+        sz <> O ->
+        Memory.load_bytes sz rmem addr = Some bs ->
+        forall ofs,
+          (ofs < sz)%nat ->
+          kunsigned (addr ^+ $ofs) < Z.pow 2 memSizeLg.
   Proof.
-    case TODO_joonwon.
+    induction sz; intros; [exfalso; auto|].
+
+    clear H0.
+    destruct sz as [|sz].
+    - assert (ofs = 0)%nat by Lia.lia; subst.
+      rewrite wplus_wzero_1.
+      eapply mem_related_load_bytes_Some; try eassumption.
+      discriminate.
+
+    - assert (ofs = S sz \/ ofs < S sz)%nat by Lia.lia.
+      clear H2.
+      case TODO_joonwon.
   Qed.
 
   Lemma mem_related_put:
     forall kmem rmem,
       mem_related memSizeLg kmem rmem ->
-      forall (addr: word) kval rval,
+      forall (na: word) kval rval,
+        kunsigned na < 2 ^ memSizeLg ->
         rval = byte.of_Z (word.unsigned kval) ->
         mem_related memSizeLg
-                    (fun w => if weq w (evalZeroExtendTrunc _ addr) then kval
+                    (fun w => if weq w (evalZeroExtendTrunc _ na) then kval
                               else kmem w)
-                    (map.put rmem addr rval).
+                    (map.put rmem na rval).
   Proof.
-    case TODO_joonwon.
+    cbv [mem_related] in *; intros.
+    destruct (weq addr na); [subst|].
+    - rewrite map.get_put_same.
+      destruct_one_match; [|Lia.lia].
+      rewrite (rewrite_weq eq_refl).
+      reflexivity.
+    - rewrite map.get_put_diff by assumption.
+      rewrite H.
+      destruct_one_match; [|reflexivity].
+      destruct_one_match; [|reflexivity].
+      elim n; clear n.
+      clear -e E.
+      case TODO_joonwon.
   Qed.
 
   Lemma RiscvXAddrsSafe_removeXAddr_write_ok:
@@ -2156,15 +2184,46 @@ Section Equiv.
                  Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2
                  HList.tuple.unfoldn].
 
-      all: apply mem_related_put; [|cbv [word.unsigned];
+      all: pose proof Hlv as Hlv';
+        eapply mem_related_load_bytes_Some in Hlv'; [|eassumption|discriminate].
+      all: apply mem_related_put; [|assumption
+                                   |cbv [word.unsigned];
                                     setoid_rewrite <-kunsigned_byte_split1;
                                     reflexivity].
-      all: repeat (apply mem_related_put;
-                   [|cbv [word.unsigned];
-                     setoid_rewrite <-kunsigned_byte_split1;
-                     rewrite ?kunsigned_split2_shiftr;
-                     reflexivity]).
-      all: assumption.
+
+      { (* sb *) assumption. }
+      { (* sh *)
+        apply mem_related_put.
+        { assumption. }
+        { eapply mem_related_load_bytes_Some_sz with (ofs := 1%nat) in Hlv;
+            [assumption|eassumption|discriminate|Lia.lia].
+        }
+        { cbv [word.unsigned].
+          setoid_rewrite <-kunsigned_byte_split1.
+          rewrite ?kunsigned_split2_shiftr.
+          reflexivity.
+        }
+      }
+      { (* sw *)
+        repeat (apply mem_related_put;
+                [| |cbv [word.unsigned];
+                    setoid_rewrite <-kunsigned_byte_split1;
+                    rewrite ?kunsigned_split2_shiftr;
+                    reflexivity]).
+        1: assumption.
+        all: cbv [word.add word WordsKami wordW KamiWord.word word.of_Z kofZ].
+        all: repeat rewrite <-wplus_assoc.
+        
+        { eapply mem_related_load_bytes_Some_sz with (ofs:= 3%nat) in Hlv;
+            [assumption|eassumption|discriminate|Lia.lia].
+        }
+        { eapply mem_related_load_bytes_Some_sz with (ofs:= 2%nat) in Hlv;
+            [assumption|eassumption|discriminate|Lia.lia].
+        }
+        { eapply mem_related_load_bytes_Some_sz with (ofs:= 1%nat) in Hlv;
+            [assumption|eassumption|discriminate|Lia.lia].
+        }
+      }
 
       (** FIXME: [Qed] takes forever.. *)
   Admitted.
@@ -2930,7 +2989,6 @@ Section Equiv.
     (seq 0 (2 ^ Z.to_nat memSizeLg))).
   Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.
   Proof.
-    assert (map.ok mem) by case TODO_joonwon.
     cbv [mem_related riscvMemInit].
     intros addr.
     case (kunsigned addr <? 2 ^ memSizeLg) eqn:?H.
