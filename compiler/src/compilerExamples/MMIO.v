@@ -32,6 +32,7 @@ Require Import compiler.SimplWordExpr.
 Require Import compiler.RiscvWordProperties.
 Require Import riscv.Platform.FE310ExtSpec.
 Require Import coqutil.Z.div_mod_to_equations.
+Require Import coqutil.Datatypes.ListSet.
 Require bedrock2.FE310CSemantics.
 Import ListNotations.
 
@@ -170,9 +171,6 @@ Section MMIO1.
       let c := eval cbv in compiled in pose c.
     Abort.
   End CompilationTest.
-
-  (* TODO: move *)
-  Local Existing Instance MetricMinimalMMIO.IsRiscvMachine.
 
   Lemma load4bytes_in_MMIO_is_None: forall (m: mem) (addr: word),
       map.undef_on m isMMIOAddr ->

@@ -30,6 +30,7 @@ Require Import coqutil.Decidable.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.Simp.
 Require Import riscv.Utility.runsToNonDet.
+Require Import coqutil.Datatypes.ListSet.
 Import Utility.
 
 Section Go.
@@ -978,14 +979,6 @@ Ltac sidecondition :=
              solve [eauto using valid_FlatImp_var_implies_valid_register,
                                 valid_FlatImp_vars_bcond_implies_valid_registers_bcond,
                                 Forall_impl]
-  (* TODO eventually remove this case and dependency on FlatToRiscvDef *)
-  | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
-    assert_fails (is_evar inst);
-    apply V;
-    repeat match goal with
-           | H: _ |- _ => clear H
-           end;
-    eauto 30 using in_cons, in_or_app, in_eq
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
     unfold Memory.load, Memory.load_Z in *;
     simpl_MetricRiscvMachine_mem;

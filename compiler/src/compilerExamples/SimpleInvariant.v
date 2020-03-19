@@ -25,13 +25,6 @@ Require Import riscv.Spec.Machine.
 
 Arguments Jal (_)%Z (_)%Z. (* needed when inside a (_)%sep *)
 
-
-(* TODO move to coqutil *)
-Ltac specialize_hyp H :=
-  repeat match type of H with
-         | ?P -> ?Q => let F := fresh in assert P as F; [clear H|specialize (H F); clear F]
-         end.
-
 Section Proofs.
   Context {p: FlatToRiscvCommon.parameters}.
   Context {h: FlatToRiscvCommon.assumptions}.

@@ -20,7 +20,6 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
 Require Import coqutil.Z.Lia.
-Require Import riscv.Utility.div_mod_to_quot_rem.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Z.BitOps.
@@ -40,7 +39,7 @@ Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
 Require Import coqutil.Z.bitblast.
-Require Import riscv.Utility.prove_Zeq_bitwise.
+Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
@@ -313,7 +312,7 @@ Section FlatToRiscv1.
         Memory.load, Memory.load_Z in *;
         simp; simulate''; simpl; simpl_word_exprs word_ok; destruct initialL;
           try eassumption].
-  Qed.
+ Qed.
 
   Arguments invalidateWrittenXAddrs: simpl never.
 

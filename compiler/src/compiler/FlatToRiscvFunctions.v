@@ -34,170 +34,6 @@ Require Import coqutil.Map.TestLemmas.
 Import Utility MetricLogging.
 
 
-(* TODO_andres move this to coqutil *)
-Module map.
-  Section WithMap.
-    Context {key value} {map : map.map key value} {ok : map.ok map}.
-    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
-
-    Lemma remove_empty(x: key): map.remove map.empty x = map.empty.
-    Proof.
-      apply map.map_ext. intros.
-      rewrite map.get_remove_dec.
-      destr (key_eqb x k). 1: rewrite map.get_empty. all: congruence.
-    Qed.
-
-    Lemma fold_base_cases{R: Type}(f: R -> key -> value -> R):
-      forall r0 m,
-        (m = map.empty -> map.fold f r0 m = r0) /\
-        (forall k v, m = map.put map.empty k v -> map.fold f r0 m = f r0 k v).
-    Proof.
-      intros r0 m.
-      eapply map.fold_spec; intros; split; intros.
-      - reflexivity.
-      - exfalso.
-        apply (f_equal (fun m => map.get m k)) in H.
-        rewrite map.get_put_same in H.
-        rewrite map.get_empty in H.
-        discriminate.
-      - exfalso.
-        apply (f_equal (fun m => map.get m k)) in H1.
-        rewrite map.get_put_same in H1.
-        rewrite map.get_empty in H1.
-        discriminate.
-      - destruct H0.
-        destr (key_eqb k0 k). 2: {
-          apply (f_equal (fun m => map.get m k)) in H1.
-          rewrite map.get_put_same in H1.
-          rewrite map.get_put_diff in H1 by congruence.
-          rewrite map.get_empty in H1.
-          discriminate.
-        }
-        subst.
-        pose proof H1.
-        apply (f_equal (fun m => map.get m k)) in H1.
-        do 2 rewrite map.get_put_same in H1.
-        apply Option.eq_of_eq_Some in H1.
-        subst v0.
-        rewrite H0. 1: reflexivity.
-        apply map.map_ext.
-        intros.
-        rewrite map.get_empty.
-        destr (key_eqb k k0).
-        + subst. assumption.
-        + apply (f_equal (fun m => map.get m k0)) in H3.
-          rewrite map.get_put_diff in H3 by congruence.
-          rewrite map.get_put_diff in H3 by congruence.
-          rewrite map.get_empty in H3.
-          exact H3.
-    Qed.
-
-    Lemma fold_singleton{R: Type}(f: R -> key -> value -> R):
-      forall r0 k v,
-        map.fold f r0 (map.put map.empty k v) = f r0 k v.
-    Proof.
-      intros.
-      pose proof (fold_base_cases f r0 (map.put map.empty k v)).
-      apply proj2 in H.
-      eauto.
-    Qed.
-
-    Lemma fold_to_list{R: Type}(f: R -> key -> value -> R):
-      forall r0 m,
-      exists l, map.fold f r0 m = List.fold_right (fun '(k, v) r => f r k v) r0 l /\
-                forall k v, List.In (k, v) l <-> map.get m k = Some v.
-    Proof.
-      intros r0 m.
-      eapply map.fold_spec; intros.
-      - exists nil. split; [reflexivity|]. intros. rewrite map.get_empty. simpl. intuition congruence.
-      - destruct H0 as [l [? ?] ]. subst r.
-        exists ((k,v) :: l). split; [reflexivity|].
-        intros. simpl. intuition idtac.
-        + inversion H2. subst k0 v0. rewrite map.get_put_same. reflexivity.
-        + specialize (H1 k0 v0). apply proj1 in H1. specialize (H1 H2).
-          rewrite map.get_put_dec.
-          destr (key_eqb k k0).
-          * subst k0. exfalso. congruence.
-          * assumption.
-        + rewrite map.get_put_dec in H0.
-          destr (key_eqb k k0).
-          * left. congruence.
-          * right. apply H1. assumption.
-    Qed.
-
-    Local Axiom TODO_andres: False.
-
-    Lemma fold_remove{R: Type}(f: R -> key -> value -> R)
-      (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
-      forall r0 m k v,
-        map.get m k = Some v ->
-        map.fold f r0 m = f (map.fold f r0 (map.remove m k)) k v.
-    Proof.
-      intros.
-      pose proof (fold_to_list f r0 m) as P. destruct P as [ l [P1 P2] ].
-      rewrite P1.
-      pose proof (fold_to_list f r0 (map.remove m k)) as Q. destruct Q as [ l' [Q1 Q2] ].
-      rewrite Q1.
-      set (F := (fun '(k0, v0) (r : R) => f r k0 v0)).
-      change (f (fold_right F r0 l') k v) with (F (k, v) (fold_right F r0 l')).
-      case TODO_andres.
-    Qed.
-
-    Lemma fold_preimage{R: Type}(f: R -> key -> value -> R)
-          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
-      forall r0 m k v,
-        map.get m k = None /\ (exists r00, f r00 k v = r0) \/ map.get m k = Some v ->
-        exists r, map.fold f r0 m = f r k v.
-    Proof.
-      intros r0 m.
-      eapply map.fold_spec; intros.
-      - rewrite map.get_empty in H. destruct H.
-        + apply proj2 in H. destruct H. eauto.
-        + discriminate.
-      - rewrite map.get_put_dec in H1.
-        destr (key_eqb k k0).
-        + destruct H1; [destruct H1|]; try discriminate.
-          apply Option.eq_of_eq_Some in H1. subst k0 v0. eexists. reflexivity.
-        + edestruct H0 as [r' IH]. 1: exact H1.
-          subst.
-          rewrite f_comm.
-          eexists.
-          reflexivity.
-    Qed.
-
-    Lemma fold_pull{R: Type}(f: R -> key -> value -> R)
-          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
-      forall r0 m k v,
-        map.fold f (f r0 k v) m = f (map.fold f r0 m) k v.
-    Proof.
-      intros r0 m.
-      eapply map.fold_spec; intros.
-      - rewrite map.fold_empty. reflexivity.
-      - rewrite f_comm.
-        (* not sure if we need that one *)
-    Abort.
-
-    Lemma fold_put{R: Type}(f: R -> key -> value -> R)
-          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
-      forall r0 m k v,
-        map.get m k = None ->
-        map.fold f r0 (map.put m k v) = f (map.fold f r0 m) k v.
-    Proof.
-      intros r0 m.
-      eapply map.fold_spec; intros.
-      - apply fold_singleton.
-      - rewrite map.get_put_dec in H1.
-        destr (key_eqb k k0). 1: discriminate.
-        pose proof (H0 k0 v0) as IHk0. specialize IHk0 with (1 := H1).
-        pose proof (H0 k v) as IHk. specialize IHk with (1 := H).
-        clear H0.
-        epose proof (fold_preimage f f_comm r0 _ _ _) as P.
-        (* not sure if we need that one *)
-    Abort.
-
-  End WithMap.
-End map.
-
 (* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
 Ltac omega_safe ::= fail.
 
@@ -654,29 +490,17 @@ Section Proofs.
            | H1: (_ * _)%sep ?m1, H2: (_ * _)%sep ?m2 |- _ => clear H1
            end.
 
+  Ltac getEq_length_load_save_regs t :=
+    match t with
+    | context [ Datatypes.length (save_regs ?vars ?offset) ] =>
+      constr:(length_save_regs vars offset)
+    | context [ Datatypes.length (load_regs ?vars ?offset) ] =>
+      constr:(length_load_regs vars offset)
+    end.
+
   Ltac wseplog_pre ::=
-  repeat (autounfold with unf_to_array);
-  (* Note that "rewr" only works with equalities, not with iff1, so we use
-     iff1ToEq to turn iff1 into eq (requires functional and propositionl extensionality).
-     Alternatively, we could use standard rewrite (which might instantiate too many evars),
-     or we could make a "seprewrite" which works on "seps [...] [...]" by replacing the
-     i-th clause on any side with the rhs of the provided iff1, or we could make a
-     seprewrite which first puts the clause to be replaced as the left-most, and then
-     eapplies a "Proper_sep_iff1: Proper (iff1 ==> iff1 ==> iff1) sep", but that would
-     change the order of the clauses. *)
-  rewr (fun t => match t with
-         | context [ Datatypes.length (save_regs ?vars ?offset) ] =>
-           constr:(length_save_regs vars offset)
-         | context [ Datatypes.length (load_regs ?vars ?offset) ] =>
-           constr:(length_load_regs vars offset)
-         (* TODO how to not duplicate lines below? *)
-         | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-           constr:(iff1ToEq (array_append' PT SZ xs ys start))
-         | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
-           constr:(iff1ToEq (array_cons PT SZ x xs start))
-         | context [ array ?PT ?SZ ?start nil ] =>
-           constr:(iff1ToEq (array_nil PT SZ start))
-         end) in |-*.
+    repeat (autounfold with unf_to_array);
+    repeat ( rewr getEq_length_load_save_regs in |-* || rewr get_array_rewr_eq in |-* ).
 
   Lemma compile_stmt_correct:
     forall e_impl_full (s: stmt Z) initialTrace initialMH initialRegsH initialMetricsH postH,

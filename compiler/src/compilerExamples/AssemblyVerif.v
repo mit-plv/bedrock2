@@ -88,13 +88,6 @@ Section Verif.
       end
     | ].
 
-  Lemma asm_prog_1_encodable: valid_instructions iset asm_prog_1.
-  Proof.
-    unfold valid_instructions. intros. simpl in *.
-    repeat destruct H as [? | H]; subst instr || contradiction.
-    all: destruct iset; cbv; clear; firstorder discriminate.
-  Qed.
-
   Definition gallina_prog_1(v1 v2: word): word :=
     word.srs (word.add v1 v2) (word.of_Z 1).
 
@@ -118,7 +111,6 @@ Section Verif.
     intros.
     assert (valid_register x1). { unfold valid_register, x1. blia. }
     assert (valid_register x2). { unfold valid_register, x2. blia. }
-    pose proof asm_prog_1_encodable.
     destruct_RiscvMachine initial.
     unfold asm_prog_1 in *.
     simpl in *. simp.
@@ -132,13 +124,6 @@ Section Verif.
   Qed.
 
   Opaque asm_prog_1.
-
-  Lemma asm_prog_2_encodable: valid_instructions iset asm_prog_2.
-  Proof.
-    unfold valid_instructions. intros. simpl in *.
-    repeat destruct H as [? | H]; subst instr || contradiction.
-    all: destruct iset; cbv; clear; firstorder discriminate.
-  Qed.
 
   Definition gallina_prog_2(v1 v2: w32): word :=
     gallina_prog_1 (word.of_Z (BitOps.signExtend 32 (LittleEndian.combine 4 v1)))
@@ -175,7 +160,6 @@ Section Verif.
     intros.
     assert (valid_register x1). { unfold valid_register, x1. blia. }
     assert (valid_register x2). { unfold valid_register, x2. blia. }
-    pose proof asm_prog_2_encodable.
     destruct_RiscvMachine initial.
     unfold asm_prog_2 in *.
     simpl in *.
@@ -211,18 +195,6 @@ Ltac sidecondition ::=
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => solve [auto using valid_FlatImp_var_implies_valid_register,
                               valid_FlatImp_vars_bcond_implies_valid_registers_bcond]
-  | |- ?G => assert_fails (has_evar G);
-             solve [eauto using valid_FlatImp_var_implies_valid_register,
-                                valid_FlatImp_vars_bcond_implies_valid_registers_bcond,
-                                Forall_impl]
-  (* TODO eventually remove this case and dependency on FlatToRiscvDef *)
-  | V: FlatToRiscvDef.valid_instructions _ _ |- Encode.verify ?inst ?iset =>
-    assert_fails (is_evar inst);
-    apply V;
-    repeat match goal with
-           | H: _ |- _ => clear H
-           end;
-    eauto 30 using in_cons, in_or_app, in_eq
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
     unfold Memory.load, Memory.load_Z in *;
     simpl_MetricRiscvMachine_mem;

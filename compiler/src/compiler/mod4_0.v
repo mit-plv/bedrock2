@@ -85,6 +85,13 @@ Qed.
 
 Lemma mod4_0_4: 4 mod 4 = 0. Proof. reflexivity. Qed.
 
+Lemma mod4_0_opp: forall z,
+    z mod 4 = 0 ->
+    - z mod 4 = 0.
+Proof.
+  intros. Z.div_mod_to_equations. blia.
+Qed.
+
 Hint Resolve
      mod4_0_mod_pow2
      mod4_0_add
@@ -95,6 +102,7 @@ Hint Resolve
      mod4_0_4
      mod4_mul_l
      mod4_mul_r
+     mod4_0_opp
   : mod4_0_hints.
 
 Ltac solve_mod4_0 := auto 30 with mod4_0_hints.

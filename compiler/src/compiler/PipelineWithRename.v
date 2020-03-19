@@ -76,217 +76,6 @@ Section WithWordAndMem.
   Qed.
 End WithWordAndMem.
 
-Require Import Coq.Sorting.Permutation.
-
-(* TODO move to coqutil *)
-Module List.
-  Section WithA.
-    Context {A: Type} {a_eqb: A -> A -> bool} {a_eqb_spec: EqDecider a_eqb}.
-
-    Lemma fold_right_change_order{R: Type}(f: A -> R -> R)
-          (f_comm: forall a1 a2 r, f a1 (f a2 r) = f a2 (f a1 r)):
-      forall l1 l2: list A,
-        Permutation l1 l2 ->
-        forall r0, fold_right f r0 l1 = fold_right f r0 l2.
-    Proof.
-      induction 1; intros.
-      - reflexivity.
-      - simpl. f_equal. auto.
-      - simpl. apply f_comm.
-      - rewrite IHPermutation1, IHPermutation2. reflexivity.
-    Qed.
-  End WithA.
-End List.
-
-Module map.
-  Section WithMap.
-    Context {key value} {map : map.map key value} {ok : map.ok map}.
-    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
-
-    Definition tuples(m: map): list (key * value) :=
-      map.fold (fun l k v => (k, v) :: l) nil m.
-
-    (* Folding over a map preserves relations *)
-    Axiom fold_parametricity: forall {A B : Type} (R : A -> B -> Prop)
-        (fa: A -> key -> value -> A) (fb: B -> key -> value -> B),
-        (forall a b k v, R a b -> R (fa a k v) (fb b k v)) ->
-        forall a0 b0, R a0 b0 -> forall m, R (map.fold fa a0 m) (map.fold fb b0 m).
-
-    Lemma fold_two_spec:
-      forall {R1 R2: Type} (P: map -> R1 -> R2 -> Prop)
-             (f1: R1 -> key -> value -> R1) (f2: R2 -> key -> value -> R2) r01 r02,
-        P map.empty r01 r02 ->
-        (forall k v m r1 r2, map.get m k = None ->
-                             P m r1 r2 ->
-                             P (map.put m k v) (f1 r1 k v) (f2 r2 k v)) ->
-        forall m, P m (map.fold f1 r01 m) (map.fold f2 r02 m).
-    Proof.
-      intros.
-      pose proof (@fold_parametricity (R1 * R2) R1
-        (fun '(r11, r21) r12 => r12 = r11)
-        (fun '(r1, r2) k v => (f1 r1 k v, f2 r2 k v)) f1) as Q.
-      specialize Q with (a0 := (r01, r02)) (b0 := r01) (m := m).
-      simpl in Q.
-      destruct (map.fold (fun '(r1, r2) (k : key) (v : value) => (f1 r1 k v, f2 r2 k v)) (r01, r02) m)
-        as [r1 r2] eqn: E.
-      rewrite Q. 3: reflexivity. 2: {
-        intros. destruct a as [r1' r2'].  subst r1'. reflexivity.
-      }
-      clear Q.
-      pose proof (@fold_parametricity (R1 * R2) R2
-        (fun '(r11, r21) r22 => r22 = r21)
-        (fun '(r1, r2) k v => (f1 r1 k v, f2 r2 k v)) f2) as Q.
-      specialize Q with (a0 := (r01, r02)) (b0 := r02) (m := m).
-      simpl in Q.
-      rewrite E in Q.
-      rewrite Q. 3: reflexivity. 2: {
-        intros. destruct a as [r1' r2'].  subst r2'. reflexivity.
-      }
-      clear Q.
-      revert r1 r2 E.
-      eapply map.fold_spec; intros.
-      - congruence.
-      - destruct r as [ri1 ri2]. inversion E. subst r1 r2. clear E.
-        eauto.
-    Qed.
-
-    Lemma tuples_NoDup: forall m, NoDup (tuples m).
-    Proof.
-      intros.
-      eapply proj1 with (B := forall k v, List.In (k, v) (tuples m) -> map.get m k = Some v).
-      unfold tuples.
-      eapply map.fold_spec.
-      - simpl. intuition constructor.
-      - intros. destruct H0. intuition (try constructor; try assumption).
-        + intro C. specialize H1 with (1 := C). congruence.
-        + simpl in *. destruct H2.
-          * inversion H2; rewrite map.get_put_same; congruence.
-          * rewrite map.get_put_dec.
-            destr (key_eqb k k0).
-            -- subst k0. specialize H1 with (1 := H2). congruence.
-            -- eauto.
-    Qed.
-
-    Lemma fold_to_tuples_fold : forall {R: Type} (f: R -> key -> value -> R) r0 m,
-        map.fold f r0 m =
-        List.fold_right (fun '(k, v) r => f r k v) r0 (tuples m).
-    Proof.
-      intros. unfold tuples.
-      eapply fold_two_spec with
-          (f1 := f)
-          (f2 := (fun (l : list (key * value)) (k : key) (v : value) => (k, v) :: l)).
-      - reflexivity.
-      - intros. subst. simpl. reflexivity.
-    Qed.
-
-    Lemma tuples_spec: forall (m: map) (k : key) (v : value),
-        In (k, v) (tuples m) <-> map.get m k = Some v.
-    Proof.
-      intro m. unfold tuples.
-      eapply map.fold_spec; intros; split; intros; simpl in *.
-      - contradiction.
-      - rewrite map.get_empty in H. discriminate.
-      - rewrite map.get_put_dec.
-        destr (key_eqb k k0).
-        + subst k0. destruct H1.
-          * inversion H1; subst v0. reflexivity.
-          * specialize (H0 k v0). apply proj1 in H0. specialize (H0 H1).
-            congruence.
-        + destruct H1.
-          * congruence.
-          * eapply H0. assumption.
-      - rewrite map.get_put_dec in H1.
-        destr (key_eqb k k0).
-        + subst k0. inversion H1; subst v0. auto.
-        + right. eapply H0. assumption.
-    Qed.
-
-    Lemma fold_spec_with_order : forall m, exists (l: list (key * value)),
-      (forall k v, List.In (k, v) l <-> map.get m k = Some v) /\
-      forall {R: Type} (f: R -> key -> value -> R) r0,
-        map.fold f r0 m = List.fold_right (fun '(k, v) r => f r k v) r0 l.
-    Proof.
-      intros. eexists. split.
-      - eapply tuples_spec.
-      - intros. eapply fold_to_tuples_fold.
-    Qed.
-
-    Lemma fold_comm{R: Type}(f: R -> key -> value -> R)
-          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
-      forall r0 m k v,
-        map.fold f (f r0 k v) m = f (map.fold f r0 m) k v.
-    Proof.
-      intros.
-      eapply fold_two_spec with (f1 := f) (f2 := f) (r01 := f r0 k v) (r02 := r0).
-      - reflexivity.
-      - intros. subst. apply f_comm.
-    Qed.
-
-    Lemma map_ind(P: map -> Prop):
-      P map.empty ->
-      (forall m, P m -> forall k v, map.get m k = None -> P (map.put m k v)) ->
-      forall m, P m.
-    Proof.
-      intros Base Step.
-      eapply (map.fold_spec (fun (m: map) (_: unit) => P m) (fun acc _ _ => acc) tt Base).
-      intros.
-      eapply Step; assumption.
-    Qed.
-
-    Lemma tuples_put: forall m k v,
-        map.get m k = None ->
-        forall k0 v0, List.In (k0, v0) (tuples (map.put m k v)) <-> List.In (k0, v0) ((k, v) :: tuples m).
-    Proof.
-      intros.
-      rewrite (tuples_spec (map.put m k v)).
-      simpl.
-      rewrite (tuples_spec m).
-      rewrite map.get_put_dec.
-      destr (key_eqb k k0); intuition congruence.
-    Qed.
-
-    Lemma fold_put{R: Type}(f: R -> key -> value -> R)
-          (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
-      forall r0 m k v,
-        map.get m k = None ->
-        map.fold f r0 (map.put m k v) = f (map.fold f r0 m) k v.
-    Proof.
-      intros.
-      do 2 rewrite fold_to_tuples_fold.
-      match goal with
-      | |- ?L = f (fold_right ?F r0 (tuples m)) k v =>
-        change (L = fold_right F r0 ((k, v) :: tuples m))
-      end.
-      apply List.fold_right_change_order.
-      - intros [k1 v1] [k2 v2] r. apply f_comm.
-      - apply NoDup_Permutation.
-        + apply tuples_NoDup.
-        + constructor.
-          * pose proof (tuples_spec m k v). intuition congruence.
-          * apply tuples_NoDup.
-        + intros [k0 v0].
-          rewrite (tuples_put m k v H).
-          reflexivity.
-    Qed.
-
-    Lemma fold_remove{R: Type}(f: R -> key -> value -> R)
-      (f_comm: forall r k1 v1 k2 v2, f (f r k1 v1) k2 v2 = f (f r k2 v2) k1 v1):
-      forall r0 m k v,
-        map.get m k = Some v ->
-        map.fold f r0 m = f (map.fold f r0 (map.remove m k)) k v.
-    Proof.
-      intros.
-      replace m with (map.put (map.remove m k) k v) at 1.
-      - rewrite fold_put; eauto using map.get_remove_same.
-      - apply map.map_ext.
-        intros.
-        rewrite map.get_put_dec.
-        destr (key_eqb k k0); try rewrite map.get_remove_diff; congruence.
-    Qed.
-  End WithMap.
-End map.
-
-
 Module Import Pipeline.
 
   Class parameters := {
@@ -561,36 +350,6 @@ Section Pipeline1.
       destruct_one_match; eauto.
   Qed.
 
-  (* TODO move *)
-  Require Import coqutil.Z.bitblast.
-  Lemma LittleEndian__combine_bound: forall {n: nat} (t: HList.tuple byte n),
-      0 <= LittleEndian.combine n t < 2 ^ (8 * Z.of_nat n).
-  Proof.
-    induction n; intros.
-    - destruct t. cbv. intuition discriminate.
-    - destruct t as [b t]. unfold LittleEndian.combine. simpl.
-      specialize (IHn t).
-      match goal with
-      | |- context [?F n t] => change (F n t) with (LittleEndian.combine n t)
-      end.
-      pose proof (byte.unsigned_range b).
-      replace (8 * Z.of_nat (S n)) with (8 * Z.of_nat n + 8) by blia.
-      rewrite Z.pow_add_r by blia.
-      rewrite or_to_plus. 1: blia.
-      replace (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * LittleEndian.combine n t)))))))) with
-          (LittleEndian.combine n t * 2 ^ 8) by blia.
-      rewrite <- Z.shiftl_mul_pow2 by blia.
-      riscv.Utility.prove_Zeq_bitwise.prove_Zeq_bitwise.
-  Qed.
-
-  Lemma HList__tuple__to_list_of_list {A} (xs : list A) :
-    HList.tuple.to_list (HList.tuple.of_list xs) = xs.
-  Proof. induction xs; cbn; congruence. Qed.
-
-  Lemma HList__tuple__to_list_eq_rect {T} a b xs pf
-   : HList.tuple.to_list(A:=T) (eq_rect a _ xs b pf) = HList.tuple.to_list xs.
-  Proof. destruct pf. cbn. trivial. Qed.
-
   Lemma byte_list_to_word_list_array: forall bytes,
     Z.of_nat (length bytes) mod bytes_per_word = 0 ->
     exists word_list,
@@ -655,11 +414,11 @@ Section Pipeline1.
       abstract (
       rewrite List.length_firstn_inbounds; try Lia.nia;
       unfold bytes_per_word; apply Nat2Z.id). }
-    1:rewrite HList__tuple__to_list_eq_rect.
-    1:rewrite HList__tuple__to_list_of_list; trivial.
+    1:rewrite HList.tuple.to_list_eq_rect.
+    1:rewrite HList.tuple.to_list_of_list; trivial.
     match goal with |- context[LittleEndian.combine _ ?xs] => generalize xs end.
     intros.
-    pose proof (LittleEndian__combine_bound t).
+    pose proof (LittleEndian.combine_bound t).
     split; [blia|].
     destruct H0.
     eapply Z.lt_le_trans. 1: eassumption.
@@ -1074,7 +833,6 @@ Section Pipeline1.
       refine (ex_intro _ (_, _, _, _) _).
       ssplit; try reflexivity.
       { intros. ssplit; reflexivity. }
-      { unfold machine_ok in *. simp. assumption. }
       { unfold machine_ok in *. simp.
         (* PARAMRECORDS *) simpl.
         solve_word_eq word_ok. }
@@ -1082,7 +840,7 @@ Section Pipeline1.
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
       { simpl. unfold machine_ok in *. simp. assumption. }
-      { (* TODO remove duplicate regs_initialized *) unfold machine_ok in *. simp. assumption. }
+      { unfold machine_ok in *. simp. assumption. }
       { unfold machine_ok in *. simp. assumption. }
       { unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.

@@ -17,6 +17,8 @@ Require Export riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Spec.Decode.
 
+Declare Scope sep_scope.
+
 Infix "*" := sep : sep_scope.
 
 Delimit Scope sep_scope with sep.
@@ -230,24 +232,29 @@ Ltac simpl_addrs :=
            progress prewrite LHS E
          end.
 
+(* Note that "rewr" only works with equalities, not with iff1, so we use
+   iff1ToEq to turn iff1 into eq (requires functional and propositionl extensionality).
+   Alternatively, we could use standard rewrite (which might instantiate too many evars),
+   or we could make a "seprewrite" which works on "seps [...] [...]" by replacing the
+   i-th clause on any side with the rhs of the provided iff1, or we could make a
+   seprewrite which first puts the clause to be replaced as the left-most, and then
+   eapplies a "Proper_sep_iff1: Proper (iff1 ==> iff1 ==> iff1) sep", but that would
+   change the order of the clauses. *)
+Ltac get_array_rewr_eq t :=
+  lazymatch t with
+  | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
+    constr:(iff1ToEq (array_append' PT SZ xs ys start))
+  | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
+    constr:(iff1ToEq (array_cons PT SZ x xs start))
+  | context [ array ?PT ?SZ ?start nil ] =>
+    constr:(iff1ToEq (array_nil PT SZ start))
+  end.
+
+Ltac array_app_cons_sep := rewr get_array_rewr_eq in *.
+
 Ltac wseplog_pre :=
   repeat (autounfold with unf_to_array);
-  (* Note that "rewr" only works with equalities, not with iff1, so we use
-     iff1ToEq to turn iff1 into eq (requires functional and propositionl extensionality).
-     Alternatively, we could use standard rewrite (which might instantiate too many evars),
-     or we could make a "seprewrite" which works on "seps [...] [...]" by replacing the
-     i-th clause on any side with the rhs of the provided iff1, or we could make a
-     seprewrite which first puts the clause to be replaced as the left-most, and then
-     eapplies a "Proper_sep_iff1: Proper (iff1 ==> iff1 ==> iff1) sep", but that would
-     change the order of the clauses. *)
-  rewr (fun t => match t with
-         | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-           constr:(iff1ToEq (array_append' PT SZ xs ys start))
-         | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
-           constr:(iff1ToEq (array_cons PT SZ x xs start))
-         | context [ array ?PT ?SZ ?start nil ] =>
-           constr:(iff1ToEq (array_nil PT SZ start))
-         end) in |-*.
+  repeat ( rewr get_array_rewr_eq in |-* ).
 
 Ltac wwcancel :=
   wseplog_pre;

@@ -65,42 +65,6 @@ Local Notation "' x <- a ; f" :=
    end)
   (right associativity, at level 70, x pattern).
 
-(* TODO move to coqutil *)
-Ltac rewr_hyp_step getEq :=
-  match goal with
-  | H: ?A |- _  => let E := getEq A in
-                   lazymatch type of E with
-                   | ?LHS = _ => progress (pattern LHS in H;
-                                           apply (rew_zoom_fw E) in H)
-                   end
-  end.
-
-Ltac rewr_goal_step getEq :=
-  lazymatch goal with
-  | |- ?A => let E := getEq A in
-             lazymatch type of E with
-             | ?LHS = _ => progress (pattern LHS;
-                                     apply (rew_zoom_bw E))
-             end
-  end.
-
-Tactic Notation "rewr" tactic(getEq) "in" "*|-" := repeat (idtac; rewr_hyp_step ltac:(getEq)).
-Tactic Notation "rewr" tactic(getEq) "in" "|-*" := repeat (idtac; rewr_goal_step ltac:(getEq)).
-Tactic Notation "rewr" tactic(getEq) "in" "*" := rewr getEq in *|-; rewr getEq in |-*.
-
-(* TODO move to compiler.SeparationLogic and dedup *)
-Ltac get_array_rewr_eq t :=
-  lazymatch t with
-  | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-    constr:(iff1ToEq (array_append' PT SZ xs ys start))
-  | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
-    constr:(iff1ToEq (array_cons PT SZ x xs start))
-  | context [ array ?PT ?SZ ?start nil ] =>
-    constr:(iff1ToEq (array_nil PT SZ start))
-  end.
-
-Ltac array_app_cons_sep := rewr get_array_rewr_eq in *.
-
 Section Pipeline1.
 
   Context {p: Pipeline.parameters}.

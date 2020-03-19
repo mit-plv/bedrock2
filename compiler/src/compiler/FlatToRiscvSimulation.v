@@ -58,42 +58,8 @@ Section Sim.
   Definition related(done: bool):
     FlatImp.SimState Z -> MetricRiscvMachine -> Prop :=
     fun '(t, m, l, mc) st =>
-        regs_initialized st.(getRegs) /\
         st.(getPc) = word.add p_call (word.of_Z (if done then 4 else 0)) /\
         goodMachine t m l ghostConsts st.
-
-  (* TODO move to coqutil and teach to solve_word_eq *)
-  Lemma word__of_Z_signed: forall x: word,
-      word.of_Z (word.signed x) = x.
-  Proof.
-    assert (Ok: word.ok word) by exact Utility.word_ok.
-    intros.
-    apply word.signed_inj.
-    rewrite word.signed_of_Z.
-    apply word.swrap_signed.
-  Qed.
-
-  (* TODO move *)
-  Lemma divisibleBy4Signed: forall w,
-      (word.unsigned w) mod 4 = 0 ->
-      (word.signed w) mod 4 = 0.
-  Proof.
-    assert (Ok: word.ok word) by exact Utility.word_ok.
-    intros.
-    rewrite word.signed_eq_swrap_unsigned.
-    unfold word.swrap.
-    pose proof (word.unsigned_range w).
-    forget (word.unsigned w) as x.
-    destruct Utility.width_cases as [E | E]; simpl in *; rewrite E;
-      Z.div_mod_to_equations; blia.
-  Qed.
-
-  Lemma divisibleBy4Opp: forall z,
-      z mod 4 = 0 ->
-      - z mod 4 = 0.
-  Proof.
-    intros. Z.div_mod_to_equations. blia.
-  Qed.
 
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
     let c := SSeq SSkip (SCall nil f_entry_name nil) in
@@ -136,19 +102,16 @@ Section Sim.
         rewrite_match. f_equal. f_equal. f_equal. ring.
       + unfold stmt_not_too_big. simpl. cbv. reflexivity.
       + simpl. auto using Forall_nil.
-      + apply divisibleBy4Opp.
-        apply divisibleBy4Signed.
-        assert (word.ok word) by exact Utility.word_ok.
-        rewrite word.unsigned_sub.
+      + assert (word.ok word) by exact Utility.word_ok.
         solve_divisibleBy4.
       + assumption.
       + (* TODO why are these manual steps needed? *)
         rewrite word.ring_morph_opp.
-        rewrite word__of_Z_signed.
+        rewrite word.of_Z_signed.
         solve_word_eq Utility.word_ok.
       + (* TODO why are these manual steps needed? *)
         rewrite word.ring_morph_opp.
-        rewrite word__of_Z_signed.
+        rewrite word.of_Z_signed.
         solve_word_eq Utility.word_ok.
       + assumption.
     - simpl. intros. simp.
@@ -159,9 +122,6 @@ Section Sim.
              | _ => eassumption
              | _ => reflexivity
              end.
-      + (* TODO remove regs_initialized from compile_stmt_correct_new because
-           it's already in goodMachine *)
-        unfold goodMachine in *. simp. assumption.
       + (* TODO make word automation from bsearch work here *)
         match goal with
         | H: getPc _ = _ |- getPc _ = _ => rewrite H

@@ -4,7 +4,7 @@ Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.runsToNonDet.
-Require Import riscv.Utility.prove_Zeq_bitwise.
+Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import compiler.util.Common.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.

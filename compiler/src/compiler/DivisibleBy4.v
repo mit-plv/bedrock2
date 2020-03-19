@@ -6,6 +6,19 @@ Require Import compiler.mod4_0.
 
 Local Open Scope Z_scope.
 
+Lemma divisibleBy4Signed{W: Words}: forall (w: word),
+    (word.unsigned w) mod 4 = 0 ->
+    (word.signed w) mod 4 = 0.
+Proof.
+  intros.
+  rewrite word.signed_eq_swrap_unsigned.
+  unfold word.swrap.
+  pose proof (word.unsigned_range w).
+  remember (word.unsigned w) as x. clear Heqx.
+  destruct Utility.width_cases as [E | E]; simpl in *; rewrite E;
+    Z.div_mod_to_equations; blia.
+Qed.
+
 Definition divisibleBy4{W: Words}(x: word): Prop := (word.unsigned x) mod 4 = 0.
 
 Ltac divisibleBy4_pre :=
@@ -24,6 +37,8 @@ Ltac divisibleBy4_pre :=
   repeat match goal with
          | |- _ mod 4 = 0 -> _ => intro
          end;
+  try apply mod4_0_opp;
+  try apply divisibleBy4Signed;
   repeat (rewrite ?word.unsigned_add,
                   ?word.unsigned_sub,
                   ?word.unsigned_mul,

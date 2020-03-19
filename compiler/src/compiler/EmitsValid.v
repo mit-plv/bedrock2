@@ -14,7 +14,7 @@ Require Import riscv.Utility.Utility.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvDef. Import FlatToRiscvDef.
 Require Import riscv.Platform.Memory.
-Require Import riscv.Utility.prove_Zeq_bitwise.
+Require Import coqutil.Z.prove_Zeq_bitwise.
 
 Local Open Scope Z_scope.
 

@@ -1,6 +1,5 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
-Require Import riscv.Utility.div_mod_to_quot_rem.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Word.Properties.
 Require Import riscv.Utility.MkMachineWidth.
