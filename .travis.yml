@@ -2,9 +2,10 @@ language: generic
 sudo: required
 dist: trusty
 
+# branch "tested" is only commits which were already tested on master, no need to test again
 branches:
-  only:
-  - master
+  except:
+  - tested
 
 matrix:
   fast_finish: true
