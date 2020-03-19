@@ -60,19 +60,36 @@ Section WithWordAndMem.
   (* bedrock2.ptsto_bytes.ptsto_bytes takes an n-tuple of bytes, whereas this one takes a list of bytes *)
   Definition ptsto_bytes: word -> list byte -> mem -> Prop := array ptsto (word.of_Z 1).
 
-  Definition mem_available(start pastend: word)(m: mem): Prop :=
-    exists anybytes: list byte,
-      Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
-      ptsto_bytes start anybytes m.
+  Definition mem_available(start pastend: word) : mem -> Prop :=
+    ex1 (fun anybytes: list byte =>
+      emp (Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start)) *
+      (ptsto_bytes start anybytes))%sep.
 
+  Axiom TODO_sam : False.
   Definition mem_available_to_exists: forall start pastend m P,
       (mem_available start pastend * P)%sep m ->
       exists anybytes,
         Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
         (ptsto_bytes start anybytes * P)%sep m.
   Proof.
-    unfold mem_available, sep. simpl.
-    intros. simp. eauto 10.
+    unfold mem_available. intros * H.
+    eapply sep_ex1_l in H. (* semicolon here fails *) destruct H.
+    eapply sep_assoc in H.
+    eapply sep_emp_l in H. destruct H.
+    eauto.
+    Unshelve.
+    all : case TODO_sam.
+  Qed.
+
+  Definition mem_to_available: forall start pastend m P anybytes,
+     Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) ->
+     (ptsto_bytes start anybytes * P)%sep m ->
+     (mem_available start pastend * P)%sep m.
+  Proof.
+    unfold mem_available. intros * H Hsep.
+    eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
+    Unshelve.
+    all : case TODO_sam.
   Qed.
 End WithWordAndMem.
 
@@ -427,14 +444,6 @@ Section Pipeline1.
     destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
   Qed.
 
-  Axiom TODO_andres : False.
-  Lemma mem_available_ptsto_word: forall stack_trash ml (mlOk: MemoryLayoutOk ml),
-      iff1 (array ptsto_word (word.of_Z bytes_per_word) (stack_start ml) stack_trash)
-           (mem_available (stack_start ml) (stack_pastend ml)).
-  Proof.
-    intros. case TODO_andres.
-  Qed.
-
   Lemma get_compile_funs_pos: forall e,
       let '(insts, posmap) := FlatToRiscvDef.compile_funs map.empty e in
       forall f impl, map.get e f = Some impl -> exists pos2, map.get posmap f = Some pos2 /\ pos2 mod 4 = 0.
@@ -693,6 +702,7 @@ Section Pipeline1.
       (* configured by PrimitivesParams, can contain invariants needed for external calls *)
       valid_machine mach.
 
+  Axiom TODO_andres : False.
   (* This lemma translates "sim", which depends on the large definition "related", into something
      more understandable and usable. *)
   Lemma compiler_correct: forall
@@ -919,7 +929,17 @@ Section Pipeline1.
       simp.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
-      + use_sep_assumption.
+      + assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
+        cbv [num_stackwords ghostConsts] in H2lrrrrrrrrrll.
+        cbv [mem_available].
+        repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
+        exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
+        rewrite !(iff1ToEq (sep_emp_2 _ _ _)).
+        rewrite !(iff1ToEq (sep_assoc _ _ _)).
+        eapply (sep_emp_l _ _); split.
+        { rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
+          1,2: case TODO_andres. }
+        use_sep_assumption.
         cbn [dframe xframe ghostConsts program_base ghostConsts e_pos e_impl p_insts insts].
         progress simpl (@FlatToRiscvCommon.mem (@FlatToRiscv_params p)).
         wwcancel.
@@ -943,8 +963,7 @@ Section Pipeline1.
             solve_word_eq word_ok.
           }
           apply iff1ToEq.
-          apply mem_available_ptsto_word.
-          assumption.
+          case TODO_andres.
         }
         unfold ptsto_instr.
         simpl.
