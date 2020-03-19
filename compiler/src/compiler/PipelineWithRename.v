@@ -50,6 +50,10 @@ Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Import Utility.
 
+  (* TODO: move *)
+  Lemma HList__tuple__length_to_list {A n} xs : length (@HList.tuple.to_list A n xs) = n.
+  Proof. revert xs; induction n; cbn; eauto. Qed.
+
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
@@ -64,33 +68,6 @@ Section WithWordAndMem.
     ex1 (fun anybytes: list byte =>
       emp (Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start)) *
       (ptsto_bytes start anybytes))%sep.
-
-  Axiom TODO_sam : False.
-  Definition mem_available_to_exists: forall start pastend m P,
-      (mem_available start pastend * P)%sep m ->
-      exists anybytes,
-        Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
-        (ptsto_bytes start anybytes * P)%sep m.
-  Proof.
-    unfold mem_available. intros * H.
-    eapply sep_ex1_l in H. (* semicolon here fails *) destruct H.
-    eapply sep_assoc in H.
-    eapply sep_emp_l in H. destruct H.
-    eauto.
-    Unshelve.
-    all : case TODO_sam.
-  Qed.
-
-  Definition mem_to_available: forall start pastend m P anybytes,
-     Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) ->
-     (ptsto_bytes start anybytes * P)%sep m ->
-     (mem_available start pastend * P)%sep m.
-  Proof.
-    unfold mem_available. intros * H Hsep.
-    eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
-    Unshelve.
-    all : case TODO_sam.
-  Qed.
 End WithWordAndMem.
 
 Module Import Pipeline.
@@ -353,6 +330,8 @@ Section Pipeline1.
       assumption.
   Qed.
 
+  Local Instance map_ok': @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p) := mem_ok.
+
   Lemma get_build_fun_pos_env: forall e f,
       map.get e f <> None ->
       exists pos, map.get (FlatToRiscvDef.build_fun_pos_env e) f = Some pos.
@@ -365,6 +344,57 @@ Section Pipeline1.
       rewrite map.get_put_dec in H1.
       rewrite map.get_put_dec.
       destruct_one_match; eauto.
+  Qed.
+
+  Local Definition FlatImp__word_eq : FlatImp.word -> FlatImp.word -> bool := word.eqb.
+  Local Instance  EqDecider_FlatImp__word_eq : EqDecider FlatImp__word_eq.
+  Proof. eapply word.eqb_spec. Unshelve. exact word_ok. Qed.
+
+  Definition mem_available_to_exists: forall start pastend m P,
+      (mem_available start pastend * P)%sep m ->
+      exists anybytes,
+        Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
+        (ptsto_bytes start anybytes * P)%sep m.
+  Proof.
+    unfold mem_available. intros * H.
+    eapply sep_ex1_l in H. (* semicolon here fails *) destruct H.
+    eapply sep_assoc in H.
+    eapply sep_emp_l in H. destruct H.
+    eauto.
+  Qed.
+
+  Definition mem_to_available: forall start pastend m P anybytes,
+     Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) ->
+     (ptsto_bytes start anybytes * P)%sep m ->
+     (mem_available start pastend * P)%sep m.
+  Proof.
+    unfold mem_available. intros * H Hsep.
+    eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
+  Qed.
+
+  Lemma cast_word_array_to_bytes bs addr : iff1
+    (array ptsto_word (word.of_Z bytes_per_word) addr bs)
+    (ptsto_bytes addr (flat_map (fun x =>
+       HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x)))
+          bs)).
+  Proof.
+    revert addr; induction bs; intros; [reflexivity|].
+    cbn [array flat_map].
+    assert (CC: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p))
+      by exact mem_ok.
+    etransitivity. 1:eapply Proper_sep_iff1; [reflexivity|]. 1:eapply IHbs.
+    etransitivity. 2:symmetry; eapply bytearray_append.
+    eapply Proper_sep_iff1.
+    { cbv [ptsto_word ptsto_bytes.ptsto_bytes Memory.bytes_per bytes_per_word].
+      rewrite Z2Nat.id by (destruct width_cases as [E | E]; rewrite E; cbv; discriminate); reflexivity. }
+    assert (0 < bytes_per_word). { (* TODO: deduplicate *)
+      unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
+    }
+    Morphisms.f_equiv.
+    Morphisms.f_equiv.
+    Morphisms.f_equiv.
+    rewrite HList__tuple__length_to_list.
+    rewrite Z2Nat.id; blia.
   Qed.
 
   Lemma byte_list_to_word_list_array: forall bytes,
@@ -702,7 +732,6 @@ Section Pipeline1.
       (* configured by PrimitivesParams, can contain invariants needed for external calls *)
       valid_machine mach.
 
-  Axiom TODO_andres : False.
   (* This lemma translates "sim", which depends on the large definition "related", into something
      more understandable and usable. *)
   Lemma compiler_correct: forall
@@ -937,8 +966,16 @@ Section Pipeline1.
         rewrite !(iff1ToEq (sep_emp_2 _ _ _)).
         rewrite !(iff1ToEq (sep_assoc _ _ _)).
         eapply (sep_emp_l _ _); split.
-        { rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
-          1,2: case TODO_andres. }
+        { assert (0 < bytes_per_word). { (* TODO: deduplicate *)
+            unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
+          }
+          rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
+          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia.
+            rewrite H2lrrrrrrrrrll, <-Z_div_exact_2; try trivial.
+            { eapply Z.lt_gt; assumption. }
+            { eapply stack_length_divisible; trivial. } }
+          intros w.
+          rewrite HList__tuple__length_to_list; trivial. }
         use_sep_assumption.
         cbn [dframe xframe ghostConsts program_base ghostConsts e_pos e_impl p_insts insts].
         progress simpl (@FlatToRiscvCommon.mem (@FlatToRiscv_params p)).
@@ -962,8 +999,7 @@ Section Pipeline1.
             rewrite word.of_Z_unsigned.
             solve_word_eq word_ok.
           }
-          apply iff1ToEq.
-          case TODO_andres.
+          apply iff1ToEq, cast_word_array_to_bytes.
         }
         unfold ptsto_instr.
         simpl.

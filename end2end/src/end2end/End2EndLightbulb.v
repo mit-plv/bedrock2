@@ -220,7 +220,9 @@ Proof.
 
     intros ? ? ? ?.
     repeat ProgramLogic.straightline.
-    unfold mem_available, hl_inv, isReady, goodTrace, goodHlTrace, buffer_addr, ml, code_start, heap_start, heap_pastend in *; Simp.simp.
+    unfold mem_available, hl_inv, isReady, goodTrace, goodHlTrace, buffer_addr, ml, code_start, heap_start, heap_pastend, Lift1Prop.ex1 in *; Simp.simp.
+    eapply SeparationLogic.sep_emp_l in H; Simp.simp.
+    rename a0 into anybytes.
 
     split.
     1: {
