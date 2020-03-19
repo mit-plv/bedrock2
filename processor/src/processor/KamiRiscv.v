@@ -81,6 +81,7 @@ Qed.
 
 Local Axiom TODO_joonwon: False.
 Local Axiom TODO_andres: False.
+Local Axiom TODO_sam: False.
 Local Axiom TODO_word : False.
 
 Lemma wordToN_wplus_distr:
@@ -618,6 +619,22 @@ Section Equiv.
     assumption.
   Qed.
 
+  Lemma memory_load_bytes_S_1:
+    forall sz rmem addr bs,
+      Memory.load_bytes (S sz) rmem addr = Some bs ->
+      exists sbs, Memory.load_bytes sz rmem addr = Some sbs.
+  Proof.
+    case TODO_sam.
+  Qed.
+
+  Lemma memory_load_bytes_S_2:
+    forall sz mem addr bs,
+      Memory.load_bytes (S sz) mem addr = Some bs ->
+      exists sbs, Memory.load_bytes sz mem (addr ^+ $1) = Some sbs.
+  Proof.
+    case TODO_sam.
+  Qed.
+
   Lemma mem_related_load_bytes_Some_sz:
     forall kmem rmem,
       mem_related memSizeLg kmem rmem ->
@@ -629,17 +646,19 @@ Section Equiv.
           kunsigned (addr ^+ $ofs) < Z.pow 2 memSizeLg.
   Proof.
     induction sz; intros; [exfalso; auto|].
-
     clear H0.
     destruct sz as [|sz].
     - assert (ofs = 0)%nat by Lia.lia; subst.
       rewrite wplus_wzero_1.
       eapply mem_related_load_bytes_Some; try eassumption.
       discriminate.
-
     - assert (ofs = S sz \/ ofs < S sz)%nat by Lia.lia.
-      clear H2.
-      case TODO_joonwon.
+      clear H2; destruct H0; subst.
+      + apply memory_load_bytes_S_2 in H1; destruct H1 as [sbs ?].
+        rewrite natToWord_S, wplus_assoc.
+        eapply IHsz; eauto.
+      + apply memory_load_bytes_S_1 in H1; destruct H1 as [sbs ?].
+        eapply IHsz; eauto.
   Qed.
 
   Lemma mem_related_put:
@@ -664,8 +683,22 @@ Section Equiv.
       destruct_one_match; [|reflexivity].
       destruct_one_match; [|reflexivity].
       elim n; clear n.
-      clear -e E.
-      case TODO_joonwon.
+      cbv [evalZeroExtendTrunc] in e.
+      destruct (lt_dec _ _);
+        [apply Z2Nat.inj_le in Hkmem2; [|Lia.lia..]; Lia.lia|].
+
+      apply f_equal with (f:= @wordToN _) in e.
+      rewrite ?wordToN_split1 in e.
+      cbv [eq_rec_r eq_rec] in e.
+      rewrite ?wordToN_eq_rect in e.
+      apply f_equal with (f:= Z.of_N) in e.
+      rewrite ?N2Z.inj_mod in e by apply NatLib.Npow2_not_zero.
+      rewrite ?NatLib.Z_of_N_Npow2 in e.
+      rewrite ?Z2Nat.id in e by Lia.lia.
+      rewrite ?Z.mod_small in e by (split; [apply N2Z.is_nonneg|assumption]).
+      apply N2Z.inj in e.
+      apply wordToN_inj in e.
+      assumption.
   Qed.
 
   Lemma RiscvXAddrsSafe_removeXAddr_write_ok:
