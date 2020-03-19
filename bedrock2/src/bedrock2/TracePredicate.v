@@ -72,6 +72,55 @@ Section ListPred.
     eapply concat_app, kleene_app; eauto.
     rewrite <-app_nil_l; eauto using kleene_step, kleene_empty.
   Qed.
+
+  Import Morphisms.
+  Local Infix "+++" := concat (at level 60).
+
+  Global Instance Proper_concat : Proper (pointwise_relation _ iff ==> pointwise_relation _ iff ==> pointwise_relation _ iff) concat.
+  Proof. cbv [Proper respectful pointwise_relation] in *; firstorder idtac. Qed.
+  Global Instance Proper_multiple : Proper (pointwise_relation _ iff ==> pointwise_relation _ (pointwise_relation _ iff)) multiple.
+  Proof.
+    intros ? ? ? n. induction n; cbn [multiple]; [reflexivity|].
+    eapply Proper_concat; trivial.
+  Qed.
+
+  Lemma concat_nil_r P : pointwise_relation _ iff (P +++ eq []) P.
+  Proof.
+    cbv [pointwise_relation]; firstorder idtac; subst; eauto.
+    exists a, nil; intuition idtac; eauto.
+  Qed.
+  Lemma concat_nil_l P : pointwise_relation _ iff (eq [] +++ P) P.
+  Proof.
+    cbv [pointwise_relation]; firstorder idtac; subst; rewrite ?app_nil_r; eauto.
+    exists nil, a; intuition idtac; rewrite ?app_nil_r; eauto.
+  Qed.
+  Lemma concat_assoc P Q R : pointwise_relation _ iff ((P +++ Q) +++ R) (P +++ (Q+++R)).
+  Proof.
+    cbv [pointwise_relation concat]. firstorder idtac; subst; eexists _, _;
+      split; [ |split; eauto]; eauto using app_assoc.
+  Qed.
+
+  Lemma any_app_more : forall P (x y : list T), (any +++ P) x -> (any +++ P) (x ++ y).
+  Proof.
+    intros.
+    cbv [any] in *.
+    destruct H as (?&?&?&?&?); subst.
+    rewrite <-app_assoc.
+    eapply concat_app; eauto.
+  Qed.
+
+  Lemma multiple_assoc P n :
+    pointwise_relation _ iff (P +++ multiple P n) (multiple P n +++ P).
+  Proof.
+    induction n; cbn [multiple];
+      rewrite ?concat_assoc, ?concat_nil_l, ?concat_nil_r, ?IHn;
+      reflexivity.
+  Qed.
+
+  Lemma  multiple_expand_right : forall P n xs,
+    @multiple P (S n) xs <-> concat (multiple P n) P xs.
+  Proof. cbn; intros; eapply multiple_assoc. Qed.
+
 End ListPred.
 
 Module TracePredicateNotations.

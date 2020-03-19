@@ -210,19 +210,6 @@ Section WithParameters.
           end
     end.
 
-  Lemma  multiple_expand_right : forall T P n xs,
-        @multiple T P (S n) xs <-> concat (multiple P n) P xs.
-  Admitted.
-
-  Lemma TracePredicate__any_app_more : forall {T} P (x y : list T), (any +++ P) x -> (any +++ P) (x ++ y).
-  Proof.
-    intros.
-    cbv [any] in *.
-    destruct H as (?&?&?&?&?); subst.
-    rewrite <-app_assoc.
-    eapply concat_app; eauto.
-  Qed.
-
   Require Import bedrock2.AbsintWordToZ.
   Require Import coqutil.Tactics.rdelta.
   Require Import coqutil.Z.Lia.
@@ -267,7 +254,7 @@ Section WithParameters.
         (left + right); eexists _, _; split; exact eq_refl
     end.
 
-  Local Ltac slv := solve [ trivial | eauto 2 using TracePredicate__any_app_more | assumption | blia | trace_alignment | mmio_trace_abstraction ].
+  Local Ltac slv := solve [ trivial | eauto 2 using TracePredicate.any_app_more | assumption | blia | trace_alignment | mmio_trace_abstraction ].
 
   Ltac t :=
     match goal with
@@ -307,21 +294,21 @@ Section WithParameters.
     { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
     split_if; repeat t.
-    { rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more. }
+    { rewrite ?app_nil_r; intuition eauto using TracePredicate.any_app_more. }
     straightline_call.
     { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
     split_if; repeat t.
-    { rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more. }
+    { rewrite ?app_nil_r; intuition eauto using TracePredicate.any_app_more. }
     straightline_call.
     { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
     split_if; repeat t.
-    { rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more. }
+    { rewrite ?app_nil_r; intuition eauto using TracePredicate.any_app_more. }
           straightline_call.
     { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
-    rewrite ?app_nil_r; intuition eauto using TracePredicate__any_app_more.
+    rewrite ?app_nil_r; intuition eauto using TracePredicate.any_app_more.
 
     right.
     split; trivial.
@@ -600,7 +587,7 @@ Section WithParameters.
         repeat (t; []); split.
         { intro X. exfalso. eapply X. subst i. rewrite word.unsigned_xor.
           rewrite Z.lxor_nilpotent. exact eq_refl. }
-        repeat t; eauto using TracePredicate__any_app_more.
+        repeat t; eauto using TracePredicate.any_app_more.
       }
       repeat straightline.
       split_if; repeat t.
@@ -739,7 +726,7 @@ Section WithParameters.
     all : try (left; split; [eassumption|]).
     all : repeat rewrite <-app_assoc.
 
-    all : eauto using TracePredicate__any_app_more.
+    all : eauto using TracePredicate.any_app_more.
     { rewrite ?word.unsigned_of_Z; exact eq_refl. }
     { rewrite Properties.word.unsigned_sru_nowrap; cycle 1.
       { rewrite word.unsigned_of_Z; exact eq_refl. }

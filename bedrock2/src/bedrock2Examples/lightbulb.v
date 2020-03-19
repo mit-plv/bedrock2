@@ -583,7 +583,7 @@ Section WithParameters.
           { rewrite List.app_assoc; eauto. }
           eexists; split.
           { eapply List.Forall2_app; eauto.  }
-          destruct H29; [left|right]; repeat (straightline || split || eauto using TracePredicate__any_app_more).
+          destruct H29; [left|right]; repeat (straightline || split || eauto using TracePredicate.any_app_more).
           eapply TracePredicate.concat_app; eauto.
           unshelve erewrite (_ : LittleEndian.combine _ _ = word.unsigned x10); rewrite !word.of_Z_unsigned; try solve [intuition idtac].
           1: replace (word.unsigned x10) with (word.unsigned x10 mod 2^(Z.of_nat (bytes_per (width:=32) access_size.four)*8)).
@@ -665,7 +665,7 @@ Section WithParameters.
           replace (word.sub num_bytes (word.of_Z 0)) with num_bytes by ring.
           enough (Z.to_nat (word.unsigned num_bytes) <= length buf)%nat by blia.
           PreOmega.zify. rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range; blia. }
-        right. right. split; eauto using TracePredicate__any_app_more. } }
+        right. right. split; eauto using TracePredicate.any_app_more. } }
 
     all: repeat letexists; split; repeat straightline;
       eexists _, _; split; [ exact eq_refl | ].
@@ -684,11 +684,11 @@ Section WithParameters.
     { left; split; [exact eq_refl|] || right.
       left; split; [exact eq_refl|] || right.
             split; [exact eq_refl|].
-        intuition eauto using TracePredicate__any_app_more. }
+        intuition eauto using TracePredicate.any_app_more. }
     { left; split; [exact eq_refl|] || right.
       left; split; [exact eq_refl|] || right.
             split; [exact eq_refl|].
-        intuition eauto using TracePredicate__any_app_more. }
+        intuition eauto using TracePredicate.any_app_more. }
     { left; split; [exact eq_refl|] || right.
       left; split; [exact eq_refl|].
       eexists _, _; split.
