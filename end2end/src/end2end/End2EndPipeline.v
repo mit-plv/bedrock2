@@ -78,7 +78,9 @@ Section Connect.
                                (Z.to_nat memSizeLg)).
 
   Hypotheses (instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30)
-             (Hkmem: 2 + instrMemSizeLg < memSizeLg <= 32).
+             (Hkmem: 2 + instrMemSizeLg < memSizeLg <= 16).
+
+  Lemma memSizeLg_width_trivial: memSizeLg <= 32. Proof. Lia.lia. Qed.
 
   Definition p4mm: Kami.Syntax.Modules :=
     KamiRiscv.p4mm instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds)
@@ -224,6 +226,7 @@ Section Connect.
     specialize_first P1 (ll_inv ml spec).
     specialize_first P1 B.
     specialize_first P1 (proj1 Hkmem).
+    specialize_first P1 memSizeLg_width_trivial.
     specialize_first P1 (proj2 Hkmem).
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 

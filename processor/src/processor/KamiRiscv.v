@@ -81,7 +81,6 @@ Qed.
 
 Local Axiom TODO_joonwon: False.
 Local Axiom TODO_andres: False.
-Local Axiom TODO_sam: False.
 Local Axiom TODO_word : False.
 
 Lemma wordToN_wplus_distr:
@@ -111,7 +110,11 @@ Section Equiv.
   Hypotheses (Hinstr1: 3 <= instrMemSizeLg)
              (Hinstr2: instrMemSizeLg <= width - 2)
              (Hkmem1: 2 + instrMemSizeLg < memSizeLg)
-             (Hkmem2: memSizeLg <= width).
+             (Hkmem2: memSizeLg <= width)
+             (* 16 used to be disjoint to MMIO addresses.
+              * [Hkmem2] is meaningless assuming this [Hkmemdisj] 
+              * but still having that in context ease some proofs. *)
+             (Hkmemdisj: memSizeLg <= 16).
   Local Notation Hinstr := (conj Hinstr1 Hinstr2).
 
   Variable (memInit: Vec (ConstT (Bit BitsPerByte)) (Z.to_nat memSizeLg)).
@@ -387,7 +390,16 @@ Section Equiv.
   Lemma mmio_mem_disjoint:
     forall addr, isMMIOAddr addr -> kunsigned addr < 2 ^ memSizeLg -> False.
   Proof.
-    case TODO_joonwon.
+    intros.
+    cbv [isMMIOAddr isMMIOAligned FE310_mmio isMMIO kami_FE310_AbsMMIO] in H.
+    cbv [isOTP isPRCI isGPIO0 isUART0 isSPI1] in H.
+    cbv [HexNotation.Ox] in H; simpl in H.
+    assert (kunsigned addr < 2 ^ 16).
+    { eapply Z.lt_le_trans; [eassumption|].
+      apply Z.pow_le_mono_r; [Lia.lia|assumption].
+    }
+    clear H0.
+    destruct H as [|[|[|[|]]]]; destruct H; Lia.lia.
   Qed.
 
   Lemma pgm_init_not_mmio:
@@ -617,48 +629,6 @@ Section Equiv.
     setoid_rewrite Hb in H.
     destruct (Z.ltb_spec (kunsigned addr) (Z.pow 2 memSizeLg)); [|discriminate].
     assumption.
-  Qed.
-
-  Lemma memory_load_bytes_S_1:
-    forall sz rmem addr bs,
-      Memory.load_bytes (S sz) rmem addr = Some bs ->
-      exists sbs, Memory.load_bytes sz rmem addr = Some sbs.
-  Proof.
-    case TODO_sam.
-  Qed.
-
-  Lemma memory_load_bytes_S_2:
-    forall sz mem addr bs,
-      Memory.load_bytes (S sz) mem addr = Some bs ->
-      exists sbs, Memory.load_bytes sz mem (addr ^+ $1) = Some sbs.
-  Proof.
-    case TODO_sam.
-  Qed.
-
-  Lemma mem_related_load_bytes_Some_sz:
-    forall kmem rmem,
-      mem_related memSizeLg kmem rmem ->
-      forall sz addr bs,
-        sz <> O ->
-        Memory.load_bytes sz rmem addr = Some bs ->
-        forall ofs,
-          (ofs < sz)%nat ->
-          kunsigned (addr ^+ $ofs) < Z.pow 2 memSizeLg.
-  Proof.
-    induction sz; intros; [exfalso; auto|].
-    clear H0.
-    destruct sz as [|sz].
-    - assert (ofs = 0)%nat by Lia.lia; subst.
-      rewrite wplus_wzero_1.
-      eapply mem_related_load_bytes_Some; try eassumption.
-      discriminate.
-    - assert (ofs = S sz \/ ofs < S sz)%nat by Lia.lia.
-      clear H2; destruct H0; subst.
-      + apply memory_load_bytes_S_2 in H1; destruct H1 as [sbs ?].
-        rewrite natToWord_S, wplus_assoc.
-        eapply IHsz; eauto.
-      + apply memory_load_bytes_S_1 in H1; destruct H1 as [sbs ?].
-        eapply IHsz; eauto.
   Qed.
 
   Lemma mem_related_put:
@@ -1388,7 +1358,7 @@ Section Equiv.
                   apply eq_sym, is_mmio_consistent in Heqic;
                   destruct Heqic as [Heqic _];
                   eapply mem_related_load_bytes_Some in Hlv; [|eassumption|discriminate];
-                  clear -Heqic Hlv;
+                  clear -Heqic Hlv Hkmemdisj;
                   eapply mmio_mem_disjoint; eassumption
                 end).
 
@@ -1769,7 +1739,7 @@ Section Equiv.
                   apply eq_sym, is_mmio_consistent in Heqic;
                   destruct Heqic as [Heqic _];
                   eapply mem_related_load_bytes_Some in Hlv; [|eassumption|discriminate];
-                  clear -Heqic Hlv;
+                  clear -Heqic Hlv Hkmemdisj;
                   eapply mmio_mem_disjoint; eassumption
                 end).
 
@@ -2040,7 +2010,7 @@ Section Equiv.
                   apply eq_sym, is_mmio_consistent in Heqic;
                   destruct Heqic as [Heqic _];
                   eapply mem_related_load_bytes_Some in Hlv; [|eassumption|discriminate];
-                  clear -Heqic Hlv;
+                  clear -Heqic Hlv Hkmemdisj;
                   eapply mmio_mem_disjoint; eassumption
                 end).
 
@@ -2228,8 +2198,15 @@ Section Equiv.
       { (* sh *)
         apply mem_related_put.
         { assumption. }
-        { eapply mem_related_load_bytes_Some_sz with (ofs := 1%nat) in Hlv;
-            [assumption|eassumption|discriminate|Lia.lia].
+        { clear -Hlv H12. (* mem_related *)
+          cbv [Memory.load_bytes
+                 map.getmany_of_tuple
+                 HList.tuple.option_all HList.tuple.map HList.tuple.unfoldn
+                 Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2] in Hlv.
+          repeat (destruct_one_match_hyp; [|discriminate]).
+          erewrite H12 in E1.
+          destruct_one_match_hyp; [|discriminate].
+          assumption.
         }
         { cbv [word.unsigned].
           setoid_rewrite <-kunsigned_byte_split1.
@@ -2245,16 +2222,22 @@ Section Equiv.
                     reflexivity]).
         1: assumption.
         all: cbv [word.add word WordsKami wordW KamiWord.word word.of_Z kofZ].
-        all: repeat rewrite <-wplus_assoc.
-        
-        { eapply mem_related_load_bytes_Some_sz with (ofs:= 3%nat) in Hlv;
-            [assumption|eassumption|discriminate|Lia.lia].
+        all: match goal with
+             | [Hmr: mem_related _ _ _ |- _] => clear -Hlv Hmr
+             end.
+        all: cbv [Memory.load_bytes
+                    map.getmany_of_tuple
+                    HList.tuple.option_all HList.tuple.map HList.tuple.unfoldn
+                    Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2] in Hlv.
+        all: repeat (destruct_one_match_hyp; [|discriminate]).
+        { erewrite H12 in E5.
+          destruct_one_match_hyp; [assumption|discriminate].
         }
-        { eapply mem_related_load_bytes_Some_sz with (ofs:= 2%nat) in Hlv;
-            [assumption|eassumption|discriminate|Lia.lia].
-        }
-        { eapply mem_related_load_bytes_Some_sz with (ofs:= 1%nat) in Hlv;
-            [assumption|eassumption|discriminate|Lia.lia].
+        { erewrite H12 in E3.
+          destruct_one_match_hyp; [assumption|discriminate].
+        }          
+        { erewrite H12 in E1.
+          destruct_one_match_hyp; [assumption|discriminate].
         }
       }
 

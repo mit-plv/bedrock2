@@ -53,7 +53,7 @@ Proof.
 Qed.
 
 Definition memSizeLg: Z := 13.
-Lemma memSizeLg_valid : instrMemSizeLg + 2 < memSizeLg <= 32.
+Lemma memSizeLg_valid : instrMemSizeLg + 2 < memSizeLg <= 16.
 Proof. cbv. intuition discriminate. Qed.
 
 Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
