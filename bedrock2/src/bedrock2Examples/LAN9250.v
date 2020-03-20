@@ -1,6 +1,13 @@
 Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import bedrock2Examples.SPI.
+
+From coqutil Require Import letexists.
+Require Import bedrock2.AbsintWordToZ.
+Require Import coqutil.Tactics.rdelta.
+Require Import Coq.omega.PreOmega.
+Require Import coqutil.Z.Lia.
 
 Import BinInt String List.ListNotations.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
@@ -10,6 +17,8 @@ Local Coercion name_of_func (f : function) := fst f.
 
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
+
+Local Axiom TODO_andres: False.
 
 Definition lan9250_readword : function :=
   let addr : String.string := "addr" in
@@ -200,7 +209,6 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ lan9250_boot_timeout _ ioh))
         (word.unsigned err = 0 /\ lan9250_init_trace _ ioh)).
 
-  From coqutil Require Import letexists.
   Local Ltac split_if :=
     lazymatch goal with
       |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
@@ -209,10 +217,6 @@ Section WithParameters.
           | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
           end
     end.
-
-  Require Import bedrock2.AbsintWordToZ.
-  Require Import coqutil.Tactics.rdelta.
-  Require Import coqutil.Z.Lia.
 
   Ltac evl := (* COQBUG(has_variable) *)
     repeat match goal with
@@ -281,8 +285,6 @@ Section WithParameters.
     | |- Semantics.ext_spec _ _ _ _ _ => progress cbn [semantics_parameters Semantics.ext_spec]
     end.
 
-  From coqutil Require Import Z.div_mod_to_equations.
-  Require Import bedrock2.AbsintWordToZ.
   Import Word.Properties.
 
   Lemma lan9250_init_ok : program_logic_goal_for_function! lan9250_init.
@@ -485,7 +487,7 @@ Section WithParameters.
     all : rewrite ?Z.shiftr_div_pow2, ?Z.land_ones by blia.
     all : let y := eval cbv in (Ox "400") in change (Ox "400") with y in *.
     3,4,5: clear -H7 H36; Z.div_mod_to_equations; blia.
-    1,2:admit.
+    1,2: case TODO_andres.
 
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
@@ -500,16 +502,18 @@ Section WithParameters.
     rewrite ?Z.shiftl_mul_pow2 by (clear; Lia.lia).
 
     change 255 with (Z.ones 8).
-    rewrite !Z.land_ones by Omega.omega.
-    repeat rewrite Z.mod_mod by (clear; cbv; congruence).
-    rewrite <-!Z.land_ones by Omega.omega.
     rewrite <-!Z.shiftl_mul_pow2 by Omega.omega.
-    change Semantics.width with 32.
-    set (@word.unsigned _ _ v) as X.
+    pose proof (@word.unsigned_range _ _ Semantics.word_ok v).
+    change Semantics.width with 32 in *.
+    set (@word.unsigned _ _ v) as X in *.
+    rewrite ?Byte.byte.unsigned_of_Z.
+    unfold Byte.byte.wrap.
+    rewrite <- ?Z.land_ones by Lia.lia.
+    prove_Zeq_bitwise.
 
-    (* bitwise Z *)
-
-  Admitted.
+    Unshelve.
+    all: try exact Init.Byte.x00; try exact Semantics.word_ok.
+  Qed.
 
   Lemma lan9250_mac_write_ok : program_logic_goal_for_function! lan9250_mac_write.
   Proof.
@@ -659,7 +663,6 @@ Section WithParameters.
         exact eq_refl. } }
   Qed.
 
-  From coqutil Require Import Z.div_mod_to_equations.
   Lemma lan9250_readword_ok : program_logic_goal_for_function! lan9250_readword.
   Proof.
     Time repeat straightline.
