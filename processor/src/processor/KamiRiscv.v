@@ -631,6 +631,32 @@ Section Equiv.
     assumption.
   Qed.
 
+  Lemma evalZeroExtendTrunc_bound_eq:
+    forall (a b: kword width),
+      kunsigned a < 2 ^ memSizeLg ->
+      kunsigned b < 2 ^ memSizeLg ->
+      evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) a =
+      evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) b ->
+      a = b.
+  Proof.
+    cbv [evalZeroExtendTrunc]; intros.
+    destruct (lt_dec _ _);
+      [apply Z2Nat.inj_le in Hkmem2; [|Lia.lia..]; Lia.lia|].
+
+    apply f_equal with (f:= @wordToN _) in H1.
+    rewrite ?wordToN_split1 in H1.
+    cbv [eq_rec_r eq_rec] in H1.
+    rewrite ?wordToN_eq_rect in H1.
+    apply f_equal with (f:= Z.of_N) in H1.
+    rewrite ?N2Z.inj_mod in H1 by apply NatLib.Npow2_not_zero.
+    rewrite ?NatLib.Z_of_N_Npow2 in H1.
+    rewrite ?Z2Nat.id in H1 by Lia.lia.
+    rewrite ?Z.mod_small in H1 by (split; [apply N2Z.is_nonneg|assumption]).
+    apply N2Z.inj in H1.
+    apply wordToN_inj in H1.
+    assumption.
+  Qed.
+
   Lemma mem_related_put:
     forall kmem rmem,
       mem_related memSizeLg kmem rmem ->
@@ -653,34 +679,90 @@ Section Equiv.
       destruct_one_match; [|reflexivity].
       destruct_one_match; [|reflexivity].
       elim n; clear n.
-      cbv [evalZeroExtendTrunc] in e.
-      destruct (lt_dec _ _);
-        [apply Z2Nat.inj_le in Hkmem2; [|Lia.lia..]; Lia.lia|].
+      apply evalZeroExtendTrunc_bound_eq; assumption.
+  Qed.
 
-      apply f_equal with (f:= @wordToN _) in e.
-      rewrite ?wordToN_split1 in e.
-      cbv [eq_rec_r eq_rec] in e.
-      rewrite ?wordToN_eq_rect in e.
-      apply f_equal with (f:= Z.of_N) in e.
-      rewrite ?N2Z.inj_mod in e by apply NatLib.Npow2_not_zero.
-      rewrite ?NatLib.Z_of_N_Npow2 in e.
-      rewrite ?Z2Nat.id in e by Lia.lia.
-      rewrite ?Z.mod_small in e by (split; [apply N2Z.is_nonneg|assumption]).
-      apply N2Z.inj in e.
-      apply wordToN_inj in e.
-      assumption.
+  Lemma combineBytes_word_removeXAddr:
+    forall xaddrs a ra,
+      kunsigned a < 2 ^ memSizeLg ->
+      kunsigned (a ^+ (word.of_Z 1)) < 2 ^ memSizeLg ->
+      kunsigned (a ^+ (word.of_Z 2)) < 2 ^ memSizeLg ->
+      kunsigned (a ^+ (word.of_Z 3)) < 2 ^ memSizeLg ->
+      kunsigned ra < 2 ^ memSizeLg ->
+      isXAddr4 a (removeXAddr ra xaddrs) ->
+      forall kmemd rv,
+        combineBytes
+          4 a (fun w => if weq w (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) ra)
+                        then rv else kmemd w) =
+        combineBytes 4 a kmemd.
+  Proof.
+    intros; cbn.
+    destruct H4 as [? [? [? ?]]].
+    destruct_one_match.
+    1: { exfalso.
+         apply evalZeroExtendTrunc_bound_eq in e; [subst|assumption..].
+         apply filter_In in H4; destruct H4 as [_ ?].
+         apply Bool.negb_true_iff, word.eqb_false in H4; auto.
+    }
+    destruct_one_match.
+    1: { exfalso.
+         apply evalZeroExtendTrunc_bound_eq in e; [subst|assumption..].
+         apply filter_In in H5; destruct H5 as [_ ?].
+         apply Bool.negb_true_iff, word.eqb_false in H5; auto.
+    }
+    destruct_one_match.
+    1: { exfalso.
+         rewrite <-?wplus_assoc in e.
+         apply evalZeroExtendTrunc_bound_eq in e; [subst|assumption..].
+         apply filter_In in H6; destruct H6 as [_ ?].
+         apply Bool.negb_true_iff, word.eqb_false in H6; auto.
+    }
+    destruct_one_match.
+    1: { exfalso.
+         rewrite <-?wplus_assoc in e.
+         apply evalZeroExtendTrunc_bound_eq in e; [subst|assumption..].
+         apply filter_In in H7; destruct H7 as [_ ?].
+         apply Bool.negb_true_iff, word.eqb_false in H7; auto.
+    }
+    reflexivity.
   Qed.
 
   Lemma RiscvXAddrsSafe_removeXAddr_write_ok:
     forall kmemi kmemd xaddrs,
       RiscvXAddrsSafe kmemi kmemd xaddrs ->
-      (** TODO @joonwonc: might need some more conditions for [ra] *)
       forall ra rv,
+        kunsigned ra < 2 ^ memSizeLg ->
         RiscvXAddrsSafe
           kmemi (fun w => if weq w (evalZeroExtendTrunc _ ra) then rv else kmemd w)
           (removeXAddr ra xaddrs).
   Proof.
-    case TODO_joonwon.
+    cbv [RiscvXAddrsSafe]; intros.
+    assert (isXAddr4 rpc xaddrs).
+    { destruct H1 as [? [? [? ?]]].
+      cbv [isXAddr1 removeXAddr] in *.
+      repeat match goal with
+             | [H: In _ (filter _ _) |- _] => apply filter_In in H; destruct H
+             end.
+      red; auto.
+    }
+    specialize (H _ H2); clear H2; destruct H as [? ?].
+    split; [assumption|].
+
+    assert (BinInt.Z.of_N (NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg)) < 2 ^ memSizeLg).
+    { rewrite NatLib.Z_of_N_Npow2.
+      apply Z.pow_lt_mono_r; Lia.lia.
+    }
+
+    intros.
+    specialize (H2 H4 _ H5).
+    rewrite <-H2.
+    destruct H as [? [? [? ?]]].
+    repeat match goal with
+           | H: isXAddr1 _ _ |- _ =>
+             apply kamiXAddrs_isXAddr1_bound in H; apply N2Z.inj_lt in H
+           end.
+    apply combineBytes_word_removeXAddr with (xaddrs:= xaddrs); try assumption.
+    all: etransitivity; eassumption.
   Qed.
 
   Lemma RiscvXAddrsSafe_removeXAddr_sound:
@@ -2170,12 +2252,7 @@ Section Equiv.
       (* -- prove [RiscvXAddrsSafe] after store *)
       all: subst v simm12 rs1 v0.
       all: regs_get_red_goal; regs_get_red Hnmem.
-      all: try match goal with
-               | |- _ = _ -> RiscvXAddrsSafe _ _ _ =>
-                 intros _; repeat apply RiscvXAddrsSafe_removeXAddr_write_ok; assumption
-               end.
 
-      (* -- prove preservation of [mem_related] for {sb, sh, sw} *)
       all: cbv [Memory.store_bytes] in Hnmem;
         match type of Hnmem with
         | match ?olv with | Some _ => _ | None => _ end = _ =>
@@ -2186,9 +2263,39 @@ Section Equiv.
                  map.putmany_of_tuple
                  Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2
                  HList.tuple.unfoldn].
-
       all: pose proof Hlv as Hlv';
         eapply mem_related_load_bytes_Some in Hlv'; [|eassumption|discriminate].
+
+      (* -- prove preservation of [RiscvXAddrsSafe] for {sb, sh, sw} *)
+
+      1: { (* [RiscvXAddrsSafe] for "sb" *)
+        intros _.
+        repeat apply RiscvXAddrsSafe_removeXAddr_write_ok; assumption.
+      }
+      2: { (* [RiscvXAddrsSafe] for "sh" *)
+        intros _.
+        cbv [Memory.load_bytes
+               map.getmany_of_tuple
+               HList.tuple.option_all HList.tuple.map HList.tuple.unfoldn
+               Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2] in Hlv.
+        repeat (destruct_one_match_hyp; [|discriminate]).
+        erewrite H12 in E1.
+        destruct_one_match_hyp; [|discriminate].
+        repeat apply RiscvXAddrsSafe_removeXAddr_write_ok; assumption.
+      }
+      3: { (* [RiscvXAddrsSafe] for "sw" *)
+        intros _.
+        cbv [Memory.load_bytes
+               map.getmany_of_tuple
+               HList.tuple.option_all HList.tuple.map HList.tuple.unfoldn
+               Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2] in Hlv.
+        repeat (destruct_one_match_hyp; [|discriminate]).
+        erewrite H12 in E1, E3, E5.
+        repeat (destruct_one_match_hyp; [|discriminate]).
+        repeat apply RiscvXAddrsSafe_removeXAddr_write_ok; assumption.
+      }
+
+      (* -- prove preservation of [mem_related] for {sb, sh, sw} *)
       all: apply mem_related_put; [|assumption
                                    |cbv [word.unsigned];
                                     setoid_rewrite <-kunsigned_byte_split1;
