@@ -818,18 +818,114 @@ Section Equiv.
     case TODO_word.
   Qed.
 
+  Lemma signExtend_unsigned:
+    forall w z,
+      0 < w -> 0 <= z < 2 ^ w ->
+      signExtend w z = z - if z <? 2 ^ (w - 1) then 0 else 2 ^ w.
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma Zmod_pow_neg:
+    forall w z,
+      - 2 ^ w <= z < 0 -> z mod (2 ^ (w + 1)) = z + 2 ^ (w + 1).
+  Proof.
+    case TODO_word.
+  Qed.
+
   Lemma signExtend_combine_split_signed:
     forall n (w: Word.word (8 * n)),
       signExtend (8 * Z.of_nat n) (combine n (split n (wordToZ w))) = wordToZ w.
   Proof.
-    case TODO_joonwon.
-  Qed.
+    intros.
+    destruct (eq_nat_dec (8 * n) 0).
+    1: { assert (n = 0%nat) by Lia.lia; subst.
+         simpl in w; simpl.
+         rewrite (shatter_word_0 w).
+         reflexivity.
+    }
+    rewrite combine_split.
+    replace (Z.of_nat n * 8) with (8 * Z.of_nat n) by apply Z.mul_comm.
+    replace (8 * Z.of_nat n) with (Z.of_nat (8 * n)) in *
+      by (rewrite Nat2Z.inj_mul; reflexivity).
+    set (8 * n)%nat as m in *; clearbody m; clear n.
+    destruct m as [|m]; [exfalso; auto|clear n0].
 
+    rewrite signExtend_unsigned;
+      [|Lia.lia|apply Z.mod_pos_bound, Z.pow_pos_nonneg; Lia.lia].
+
+    pose proof (wordToZ_size' w).
+    rewrite N_Z_nat_conversions.Nat2Z.inj_pow in H.
+    change (Z.of_nat 2) with 2 in H.
+    assert (- 2 ^ Z.of_nat m <= wordToZ w < 0 \/
+            0 <= wordToZ w < 2 ^ BinInt.Z.of_nat m) by Lia.lia.
+    clear H; destruct H0.
+
+    - replace (Z.of_nat (S m)) with (Z.of_nat m + 1) by Lia.lia.
+      rewrite Zmod_pow_neg by assumption.
+      destruct_one_match.
+      + exfalso.
+        rewrite pow2_times2 in E by Lia.lia.
+        rewrite Z.add_simpl_r in E.
+        Lia.lia.
+      + Lia.lia.
+
+    - rewrite Z.mod_small.
+      2: { rewrite pow2_times2 by Lia.lia.
+           replace (Z.of_nat (S m) - 1) with (Z.of_nat m) by Lia.lia.
+           Lia.lia.
+      }
+      replace (Z.of_nat (S m) - 1) with (Z.of_nat m) by Lia.lia.
+      destruct_one_match; Lia.lia.
+  Qed.
+  
   Lemma signExtend_combine_split_unsigned:
     forall n (w: Word.word (8 * n)),
       signExtend (8 * Z.of_nat n) (combine n (split n (Z.of_N (wordToN w)))) = wordToZ w.
   Proof.
-    case TODO_joonwon.
+    intros.
+    assert (0 <= Z.of_N (wordToN w) < 2 ^ (8 * Z.of_nat n)).
+    { split; [Lia.lia|].
+      replace (8 * Z.of_nat n) with (Z.of_nat (8 * n))
+        by (rewrite Nat2Z.inj_mul; reflexivity).
+      rewrite <-NatLib.Z_of_N_Npow2.
+      rewrite <-N2Z.inj_lt.
+      apply wordToN_bound.
+    }
+
+    destruct (eq_nat_dec (8 * n) 0).
+    1: { assert (n = 0%nat) by Lia.lia; subst.
+         simpl in w; simpl.
+         rewrite (shatter_word_0 w).
+         reflexivity.
+    }
+    rewrite combine_split.
+    replace (Z.of_nat n * 8) with (8 * Z.of_nat n) by apply Z.mul_comm.
+    replace (8 * Z.of_nat n) with (Z.of_nat (8 * n)) in *
+      by (rewrite Nat2Z.inj_mul; reflexivity).
+    set (8 * n)%nat as m in *; clearbody m; clear n.
+    destruct m as [|m]; [exfalso; auto|clear n0].
+
+    rewrite Z.mod_small by assumption.
+    rewrite wordToZ_wordToN.
+    rewrite signExtend_unsigned; [|Lia.lia|assumption].
+    f_equal.
+    destruct (wmsb w false) eqn:Hmsb.
+    - destruct_one_match.
+      + exfalso.
+        replace (Z.of_nat (S m) - 1) with (Z.of_nat m) in E by Lia.lia.
+        rewrite <-NatLib.Z_of_N_Npow2 in E.
+        apply N2Z.inj_lt in E.
+        apply wmsb_true_bound in Hmsb.
+        Lia.lia.
+      + apply eq_sym, NatLib.Z_of_N_Npow2.
+    - destruct_one_match; [reflexivity|].
+      exfalso.
+      replace (Z.of_nat (S m) - 1) with (Z.of_nat m) in E by Lia.lia.
+        rewrite <-NatLib.Z_of_N_Npow2 in E.
+        apply N2Z.inj_le in E.
+        apply wmsb_false_bound in Hmsb.
+        Lia.lia.
   Qed.
 
   (** * Utility Ltacs *)
