@@ -18,8 +18,6 @@ Local Coercion name_of_func (f : function) := fst f.
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
-Local Axiom TODO_andres: False.
-
 Definition lan9250_readword : function :=
   let addr : String.string := "addr" in
   let ret : String.string := "ret" in
@@ -487,7 +485,15 @@ Section WithParameters.
     all : rewrite ?Z.shiftr_div_pow2, ?Z.land_ones by blia.
     all : let y := eval cbv in (Ox "400") in change (Ox "400") with y in *.
     3,4,5: clear -H7 H36; Z.div_mod_to_equations; blia.
-    1,2: case TODO_andres.
+    { subst addr.
+      cbv [SPI_CSMODE_HOLD].
+      erewrite word.unsigned_of_Z.
+      change (word.wrap 2) with 2.
+      erewrite (word.of_Z_inj_mod _ (Z.lnot 2)); trivial. }
+    { instantiate (1:=x1); move H11 at bottom.
+      (* Local Arguments spi_xchg {_} _ _ _. *)
+      erewrite word.unsigned_of_Z in H11.
+      exact H11. }
 
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
