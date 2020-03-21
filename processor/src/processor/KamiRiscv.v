@@ -112,7 +112,7 @@ Section Equiv.
              (Hkmem1: 2 + instrMemSizeLg < memSizeLg)
              (Hkmem2: memSizeLg <= width)
              (* 16 used to be disjoint to MMIO addresses.
-              * [Hkmem2] is meaningless assuming this [Hkmemdisj] 
+              * [Hkmem2] is meaningless assuming this [Hkmemdisj]
               * but still having that in context ease some proofs. *)
              (Hkmemdisj: memSizeLg <= 16).
   Local Notation Hinstr := (conj Hinstr1 Hinstr2).
@@ -141,7 +141,7 @@ Section Equiv.
 
   Context (Registers_ok: map.ok Registers)
           (mem_ok: map.ok mem).
-  
+
   (** * Relations between Kami and riscv-coq *)
 
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
@@ -418,7 +418,7 @@ Section Equiv.
     cbv [evalExpr evalBinBit evalConstT].
     rewrite ?wordToN_combine, ?wordToN_0.
     rewrite N.mul_0_r, N.add_0_l, N.add_0_r.
-    
+
     transitivity (2 ^ (2 + instrMemSizeLg)).
     - replace (2 + instrMemSizeLg) with (Z.of_nat (2 + Z.to_nat instrMemSizeLg)).
       + rewrite <-NatLib.Z_of_N_Npow2.
@@ -584,7 +584,7 @@ Section Equiv.
     destruct (lt_dec _ _); [Lia.lia|].
     apply split1_0.
   Qed.
-    
+
   Lemma kami_evalSignExtendTrunc_32:
     forall w, evalSignExtendTrunc 32 w = w.
   Proof.
@@ -929,7 +929,7 @@ Section Equiv.
   Qed.
 
   (** * Utility Ltacs *)
-  
+
   Ltac kami_step_case_empty :=
     left; FMap.mred; fail.
 
@@ -1066,7 +1066,7 @@ Section Equiv.
     end.
 
   Ltac rt := repeat (r || t).
-  
+
   Ltac prove_KamiLabelR_silent :=
     split; [|split];
     [eapply KamiSilent; reflexivity| |eassumption].
@@ -1091,7 +1091,7 @@ Section Equiv.
        try (erewrite <-regs_related_get
               with (w:= split2 20 5 (split1 (20 + 5) 7 _)) in H;
             [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice; fail])).
-  
+
   Ltac prove_states_related :=
     econstructor;
     [try (solve [trivial])
@@ -1204,12 +1204,12 @@ Section Equiv.
           let rinst := fresh "rinst" in
           destruct H as (rinst & ? & ?)
         end.
-  
+
   Ltac kami_cbn_all :=
     cbn [evalExpr evalUniBool evalBinBool evalBinBit
                   evalConstT getDefaultConst isEq Data BitsPerByte Nat.mul Nat.add Nat.sub
                   AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct6E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getHiShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignInst rv32CalcLdAddr rv32CalcStAddr rv32CalcStByteEn rv32DataBytes rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StByteEnCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT] in *.
-  
+
   Ltac kami_cbn_hint H func :=
     let t := type of H in
     let tc :=
@@ -1467,7 +1467,7 @@ Section Equiv.
         remember (@evalExpr fk (rv32CalcLdVal sz ty la lv lty)) as ldVal
       end.
       kami_cbn_hint HeqldVal rv32CalcLdVal.
-      
+
       (* -- pick the nextPc function *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
@@ -1497,17 +1497,17 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
       all: eval_decodeI decodeI.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       5: match goal with
          | [decodeI := if ?x =? ?y then Lw _ _ _ else InvalidI |- _] =>
@@ -1549,7 +1549,7 @@ Section Equiv.
                | [H: isMMIOAligned _ _ |- _] =>
                  exfalso; clear -H; destruct H as [? ?]; discriminate
                end.
-      
+
       rt.
       eexists _, _.
       prove_KamiLabelR_mmio.
@@ -1607,7 +1607,7 @@ Section Equiv.
         remember (@evalExpr fk (rv32CalcLdVal sz ty la lv lty)) as ldVal
       end.
       kami_cbn_hint HeqldVal rv32CalcLdVal.
-      
+
       (* -- pick the nextPc function *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
@@ -1636,17 +1636,17 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
       all: eval_decodeI decodeI.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       5: match goal with
          | [decodeI := if ?x =? ?y then Lw _ _ _ else InvalidI |- _] =>
@@ -1873,7 +1873,7 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       simpl_bit_manip.
 
@@ -1892,7 +1892,7 @@ Section Equiv.
       repeat match type of Hdec with
              | context [?x =? ?y] => destruct (Z.eqb_spec x y) in Hdec
              end.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       all: subst dec; mcomp_step_in H5;
         repeat match goal with
@@ -1930,7 +1930,7 @@ Section Equiv.
                  exfalso; clear -H; destruct H as [? ?]; discriminate
                end.
       specialize (H14 (split 4 (wordToZ (x9 Fin.F1)))).
-      
+
       rt.
       eexists _, _.
       prove_KamiLabelR_mmio.
@@ -2004,12 +2004,12 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -2023,7 +2023,7 @@ Section Equiv.
       repeat match type of Hdec with
              | context [?x =? ?y] => destruct (Z.eqb_spec x y) in Hdec
              end.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       all: subst dec; mcomp_step_in H5;
         repeat match goal with
@@ -2063,7 +2063,7 @@ Section Equiv.
 
       (** FIXME: [Qed] takes forever.. *)
   Admitted.
-  
+
   Lemma kamiStep_sound_case_execSt:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -2144,12 +2144,12 @@ Section Equiv.
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
       all: eval_decodeI decodeI.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       3: match goal with
          | [decodeI := if ?x =? ?y then Sw _ _ _ else InvalidI |- _] =>
@@ -2173,7 +2173,7 @@ Section Equiv.
                  destruct (Memory.store_bytes sz m a v) eqn:Hst; [exfalso|]
                end.
 
-      (** TODOs: 
+      (** TODOs:
        * 1) generalize [kunsigned_combine_shiftl_lor] to extract required word lemmas.
        * 2) refactor [simpl_bit_manip] and the generalized version of (1). *)
       all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
@@ -2281,12 +2281,12 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -2316,7 +2316,7 @@ Section Equiv.
                  destruct (Memory.store_bytes sz m a v) as [nmem|] eqn:Hnmem
                end.
 
-      (** TODOs: 
+      (** TODOs:
        * 1) generalize [kunsigned_combine_shiftl_lor] to extract required word lemmas.
        * 2) refactor [simpl_bit_manip] and the generalized version of (1). *)
       all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
@@ -2438,7 +2438,7 @@ Section Equiv.
         }
         { erewrite H12 in E3.
           destruct_one_match_hyp; [assumption|discriminate].
-        }          
+        }
         { erewrite H12 in E1.
           destruct_one_match_hyp; [assumption|discriminate].
         }
@@ -2516,7 +2516,7 @@ Section Equiv.
         remember (@evalExpr fk (rv32DoExec sz ty rs1 rs2 pc inst)) as execVal
       end.
       kami_cbn_hint HeqexecVal rv32DoExec.
-      
+
       (* -- pick the nextPc function *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
@@ -2880,13 +2880,13 @@ Section Equiv.
         repeat f_equal.
         case TODO_word.
       }
-      
+
       { (* beq(eq-neq contradiction) *)
         exfalso; subst v v0 rs1 rs2.
         regs_get_red E.
         apply N2Z.inj, wordToN_inj in e1; auto.
       }
-      
+
       { (* beq(eq-neq contradiction) *)
         exfalso; subst v v0 rs1 rs2.
         regs_get_red E; congruence.
@@ -3048,7 +3048,7 @@ Section Equiv.
   (*A lot of*) Time Qed.
 
   (** * Multistep and Behavior soundness *)
-  
+
   Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
   | KamiSeqNil: KamiLabelSeqR nil nil
   | KamiSeqCons:
@@ -3140,7 +3140,7 @@ Section Equiv.
     | O => map.put map.empty 0 $0
     | S n' => map.put (setRegsInit kinits n') (Z.of_nat n) (kinits $n)
     end.
-  
+
   Definition riscvRegsInit: Registers :=
     setRegsInit (evalConstT (rfInit procInit)) 31.
   Lemma regs_related_riscvRegsInit:
