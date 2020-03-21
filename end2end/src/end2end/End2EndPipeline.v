@@ -29,6 +29,7 @@ Require Import compiler.ForeverSafe.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.Simp.
 Require Import processor.KamiWord.
+Require Import processor.KamiRiscvStep.
 Require Import processor.KamiRiscv.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import compiler.PipelineWithRename.

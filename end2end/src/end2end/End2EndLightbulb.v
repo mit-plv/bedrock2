@@ -146,7 +146,7 @@ End PrintProgram.
 
 Lemma iohi_to_iolo: forall ioh (iomid: list RiscvMachine.LogItem),
     Forall2 SPI.mmio_event_abstraction_relation ioh iomid ->
-    exists iolo : list KamiRiscv.Event, KamiRiscv.traces_related iolo iomid.
+    exists iolo : list KamiRiscvStep.Event, KamiRiscvStep.traces_related iolo iomid.
 Proof.
   induction ioh; intros.
   - simp. exists nil. constructor.
@@ -182,10 +182,10 @@ Lemma end2end_lightbulb:
          (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
     kami_mem_contains_bytes (instrencode lightbulb_insts) (code_start ml) memInit ->
     Semantics.Behavior (p4mm memInit) mFinal t ->
-    exists t': list KamiRiscv.Event,
+    exists t': list KamiRiscvStep.Event,
       KamiRiscv.KamiLabelSeqR t t' /\
-      (exists (suffix : list KamiRiscv.Event) (bedrockTrace : list RiscvMachine.LogItem),
-          KamiRiscv.traces_related (suffix ++ t') bedrockTrace /\
+      (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
+          KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
           (exists ioh : list (lightbulb_spec.OP _),
               SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace _ ioh)).
 Proof.
