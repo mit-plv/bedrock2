@@ -830,10 +830,12 @@ Section Equiv.
     change (wordToZ w) with (word.signed w).
     etransitivity. 2: eapply word.swrap_signed.
     unfold word.swrap, signExtend.
+    (* TODO remove once we're on Coq 8.12 *)
+    repeat match goal with
+           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
+           end.
     Z.div_mod_to_equations.
-    (* The below [Lia.lia] may only work with the Coq master, not with Coq 8.11 *)
-    (* Lia.lia. *)
-    case TODO_word.
+    Lia.lia.
   Qed.
 
   Lemma signExtend_combine_split_unsigned:
@@ -846,10 +848,12 @@ Section Equiv.
     change (Z.of_N (wordToN w)) with (word.unsigned w).
     rewrite word.signed_eq_swrap_unsigned.
     unfold word.swrap, signExtend.
+    (* TODO remove once we're on Coq 8.12 *)
+    repeat match goal with
+           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
+           end.
     Z.div_mod_to_equations.
-    (* The below [Lia.lia] may only work with the Coq master, not with Coq 8.11 *)
-    (* Lia.lia. *)
-    case TODO_word.
+    Lia.lia.
   Qed.
 
   (** * Utility Ltacs *)
