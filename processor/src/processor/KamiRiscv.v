@@ -39,6 +39,24 @@ Require Import processor.KamiRiscvStep.
 Local Axiom TODO_joonwon: False.
 Local Axiom TODO_andres: False.
 
+Lemma alignedXAddrsRange_zero_bound_in:
+  forall n a,
+    (wordToN a < N.of_nat n)%N -> In a (alignedXAddrsRange 0 n).
+Proof.
+  induction n; [Lia.lia|].
+  intros.
+  assert (wordToN a = N.of_nat n \/ wordToN a < N.of_nat n)%N by Lia.lia.
+  clear H; destruct H0.
+  - unfold alignedXAddrsRange; fold alignedXAddrsRange.
+    left; apply wordToN_inj.
+    rewrite H.
+    change (0 + n)%nat with n.
+    pose proof (wordToN_bound a); rewrite H in H0.
+    rewrite <-wordToN_NToWord_2 with (sz:= Z.to_nat width) (n:= N.of_nat n) by assumption.
+    rewrite NToWord_nat, Nnat.Nat2N.id; reflexivity.
+  - right; auto.
+Qed.
+
 Section Equiv.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
 
@@ -243,12 +261,21 @@ Section Equiv.
       (word.of_Z (Z.of_nat i),
        byte.of_Z (uwordToZ (evalConstT kamiMemInit $i))))
     (seq 0 (2 ^ Z.to_nat memSizeLg))).
+
+  Lemma riscvMemInit_get_None:
+    forall addr,
+      (kunsigned addr <? 2 ^ memSizeLg) = false ->
+      map.get riscvMemInit addr = None.
+  Proof.
+    case TODO_joonwon.
+  Qed.
+        
   Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.
   Proof.
     cbv [mem_related riscvMemInit].
     intros addr.
     case (kunsigned addr <? 2 ^ memSizeLg) eqn:?H.
-    2: { case TODO_joonwon. }
+    2: { apply riscvMemInit_get_None; assumption. }
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
     1: eapply NoDup_nth_error; intros i j ?.
     2: eapply (nth_error_In _ (wordToNat addr)).
@@ -308,6 +335,34 @@ Section Equiv.
     constructor; auto.
     eapply equivalentLabel_preserves_KamiLabelR; eauto.
   Qed.
+  
+  Lemma riscv_init_memory_undef_on_MMIO:
+    map.undef_on riscvMemInit isMMIOAddr.
+  Proof.
+    cbv [map.undef_on map.agree_on]; intros.
+    cbv [elem_of] in H.
+    pose proof (mmio_mem_disjoint _ Hkmemdisj _ H); clear H.
+    rewrite map.get_empty.
+    apply riscvMemInit_get_None.
+    destruct (Z.ltb_spec (kunsigned k) (2 ^ memSizeLg)); intuition idtac.
+  Qed.
+
+  Lemma mmio_init_xaddrs_disjoint:
+    disjoint (of_list (kamiXAddrs instrMemSizeLg)) isMMIOAddr.
+  Proof.
+    cbv [disjoint of_list elem_of]; intros.
+    pose proof (mmio_mem_disjoint _ Hkmemdisj x).
+    destruct (Z.ltb_spec (kunsigned x) (2 ^ memSizeLg)).
+    - right; intro Hx; auto.
+    - left; intro Hx.
+      apply kamiXAddrs_isXAddr1_bound in Hx.
+      apply N2Z.inj_lt in Hx.
+      rewrite NatLib.Z_of_N_Npow2 in Hx.
+      assert (2 ^ BinInt.Z.of_nat (2 + Z.to_nat instrMemSizeLg) < 2 ^ memSizeLg)
+        by (apply Z.pow_lt_mono_r; Lia.lia).
+      cbv [kunsigned] in *.
+      Lia.lia.
+  Qed.
 
   Lemma riscv_to_kamiImplProcessor:
     forall (traceProp: list Event -> Prop)
@@ -315,8 +370,13 @@ Section Equiv.
            (RvInv: RiscvMachine -> Prop)
            (establishRvInv:
               forall (m0RV: RiscvMachine),
-                m0RV.(getMem) = riscvMemInit ->
-                m0RV.(getPc) = word.of_Z 0 ->
+                m0RV.(RiscvMachine.getMem) = riscvMemInit ->
+                m0RV.(RiscvMachine.getPc) = word.of_Z 0 ->
+                m0RV.(RiscvMachine.getNextPc) = word.of_Z 4 ->
+                (forall a: Utility.word,
+                    0 <= word.unsigned a < 2 ^ (2 + instrMemSizeLg) ->
+                    In a m0RV.(RiscvMachine.getXAddrs)) ->
+                disjoint (of_list m0RV.(RiscvMachine.getXAddrs)) isMMIOAddr ->
                 (forall reg, 0 < reg < 32 -> map.get m0RV.(getRegs) reg <> None) ->
                 m0RV.(getLog) = nil ->
                 RvInv m0RV)
@@ -350,11 +410,17 @@ Section Equiv.
     specialize P with (t0 := nil).
     specialize (P _ states_related_init).
     destruct P as (mF & t'' & R & Rel & Inv).
-    - eapply establishRvInv.
-      + reflexivity.
-      + reflexivity.
-      + apply riscvRegsInit_sound.
-      + reflexivity.
+    - eapply establishRvInv; try reflexivity.
+      all: cbv [getXAddrs getMachine]; intros.
+      + apply alignedXAddrsRange_zero_bound_in.
+        apply N2Z.inj_lt.
+        rewrite nat_N_Z.
+        cbv [instrMemSize].
+        rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
+        rewrite Nat2Z.inj_add, Z2Nat.id by Lia.lia.
+        apply H0.
+      + apply mmio_init_xaddrs_disjoint.
+      + apply riscvRegsInit_sound; assumption.
     - specialize (useRvInv _ Inv).
       inversion Rel. subst. clear Rel.
       simpl in useRvInv.

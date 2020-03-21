@@ -46,7 +46,6 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-Local Axiom TODO_joonwon: False.
 Local Axiom TODO_andres: False.
 
 Require Import Coq.Classes.Morphisms.
@@ -63,7 +62,6 @@ refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
-(* TODO_joonwon move/modify this if needed *)
 Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from: Utility.word)
            (mem: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) memSizeLg): Prop :=
   forall b n,
@@ -161,7 +159,7 @@ Section Connect.
           (funimplsList: list (string * (list string * list string * cmd))).
 
   Hypothesis instrMemSizeLg_agrees_with_ml:
-    word.sub ml.(code_pastend) ml.(code_start) = word.of_Z instrMemSizeLg.
+    word.sub ml.(code_pastend) ml.(code_start) = word.of_Z (2 ^ (2 + instrMemSizeLg)).
   Hypothesis heap_start_agree: spec.(datamem_start) = ml.(heap_start).
   Hypothesis heap_pastend_agree: spec.(datamem_pastend) = ml.(heap_pastend).
   Hypothesis code_at_0: ml.(code_start) = word.of_Z 0.
@@ -272,10 +270,23 @@ Section Connect.
       + assumption.
       + assumption.
       + clear -M. case TODO_andres. (* go from riscvMemInit to separation logic *)
-      + case TODO_joonwon. (* add this constraint on m0RV to KamiRiscv.riscv_to_kamiImplProcessor *)
+      + setoid_rewrite code_at_0.
+        assert (Hend: code_pastend ml = word.of_Z (2 ^ (2 + instrMemSizeLg))).
+        { setoid_rewrite code_at_0 in instrMemSizeLg_agrees_with_ml.
+          cbv [word.sub word.of_Z Utility.word Words32 MMIO.word mmio_params
+                        KamiWord.word kofZ]
+            in instrMemSizeLg_agrees_with_ml.
+          case TODO_andres.
+        }
+        setoid_rewrite Hend.
+        rewrite word.unsigned_of_Z_0.
+        rewrite word.unsigned_of_Z.
+        cbv [word.wrap].
+        rewrite Z.mod_small by (split; [apply Z.pow_nonneg; Lia.lia
+                                       |apply Z.pow_lt_mono_r; cbn; Lia.lia]).
+        assumption.
       + symmetry. exact code_at_0.
-      + (* TODO add this hypothesis to KamiRiscv.riscv_to_kamiImplProcessor *)
-        case TODO_joonwon.
+      + reflexivity.
       + unfold FlatToRiscvCommon.regs_initialized. intros.
         match goal with
         | |- exists _, ?x = Some _ => destr x; [eauto|exfalso]
@@ -285,8 +296,10 @@ Section Connect.
         end.
       + reflexivity.
       + simpl. split.
-        * case TODO_joonwon. (* prove that riscvMemInit is undefined on the MMIO addresses *)
-        * case TODO_joonwon. (* add this hypothesis to KamiRiscv.riscv_to_kamiImplProcessor *)
+        * apply riscv_init_memory_undef_on_MMIO.
+          { apply Hkmem. }
+          { assumption. }
+        * assumption.
     - (* preserve *)
       intros.
       refine (P2preserve _ _). assumption.
