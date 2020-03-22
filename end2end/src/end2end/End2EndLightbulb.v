@@ -201,13 +201,15 @@ Proof.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q memSizeLg_valid.
-  specialize Q with (11 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
+  specialize Q with (12 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
   (* specialize_first Q KB. *)
   specialize_first Q compilation_result.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
   eapply Q; clear Q.
-  - cbv. repeat constructor; cbv; intros; intuition congruence.
+  - exact eq_refl.
+  - clear. cbv.
+    repeat econstructor; intro; repeat match goal with H: In _ _|-_=> destruct H end; discriminate.
   - intros. clear KB memInit. simp.
     unfold SPI.mmio_trace_abstraction_relation in *.
     unfold id in *.

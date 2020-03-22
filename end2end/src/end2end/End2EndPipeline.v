@@ -46,7 +46,7 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-Local Axiom TODO_andres: False.
+Local Axiom TODO_initmem : False.
 
 Require Import Coq.Classes.Morphisms.
 
@@ -269,14 +269,40 @@ Section Connect.
       + assumption.
       + assumption.
       + assumption.
-      + clear -M. case TODO_andres. (* go from riscvMemInit to separation logic *)
+      + move ml at bottom.
+        pose proof (mem_ok : @map.ok (@Semantics.word strname_sem) byte (@Semantics.mem strname_sem)).
+        pose proof word.eqb_spec.
+        cbv [imem mem_available].
+
+        eapply Proper_iff1_iff1; [|reflexivity..|].
+        { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
+        eexists ?[stack].
+        eapply Proper_iff1_iff1; [|reflexivity..|].
+        { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
+        eexists ?[heap].
+        eapply Proper_iff1_iff1; [|reflexivity..|].
+        { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
+        eexists ?[unused_imem].
+        eapply Proper_iff1_iff1; [|reflexivity..|].
+        { progress repeat rewrite ?sep_emp_2, ?sep_emp_l, ?sep_emp_r; reflexivity. }
+        eapply sep_emp_l; split.
+        2: eapply sep_assoc; eapply sep_emp_l; split.
+        3: eapply Proper_iff1_iff1; [|reflexivity..|].
+        3: { progress repeat rewrite ?sep_assoc, ?sep_emp_2, ?sep_emp_l, ?sep_emp_r; reflexivity. }
+        3: eapply sep_emp_l; split.
+
+        all : cycle 3.
+        Unshelve.
+        all : case TODO_initmem .
+
       + setoid_rewrite code_at_0.
         assert (Hend: code_pastend ml = word.of_Z (2 ^ (2 + instrMemSizeLg))).
         { setoid_rewrite code_at_0 in instrMemSizeLg_agrees_with_ml.
           cbv [word.sub word.of_Z Utility.word Words32 MMIO.word mmio_params
                         KamiWord.word kofZ]
             in instrMemSizeLg_agrees_with_ml.
-          case TODO_andres.
+          setoid_rewrite <-instrMemSizeLg_agrees_with_ml.
+          rewrite Word.wminus_def, Word.wplus_comm, Word.wplus_unit; trivial.
         }
         setoid_rewrite Hend.
         rewrite word.unsigned_of_Z_0.
