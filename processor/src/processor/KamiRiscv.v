@@ -36,8 +36,6 @@ Require Export processor.KamiProc.
 Require Import processor.FetchOk processor.DecExecOk.
 Require Import processor.KamiRiscvStep.
 
-Local Axiom TODO_andres: False.
-
 Lemma get_of_list_not_In:
   forall (key: Type) (key_dec: forall k1 k2: key, {k1 = k2} + {k1 <> k2})
          (value: Type) (map: map.map key value),
