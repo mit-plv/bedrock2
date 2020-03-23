@@ -36,8 +36,23 @@ Require Export processor.KamiProc.
 Require Import processor.FetchOk processor.DecExecOk.
 Require Import processor.KamiRiscvStep.
 
-Local Axiom TODO_joonwon: False.
 Local Axiom TODO_andres: False.
+
+Lemma get_of_list_not_In:
+  forall (key: Type) (key_dec: forall k1 k2: key, {k1 = k2} + {k1 <> k2})
+         (value: Type) (map: map.map key value),
+    map.ok map ->
+    forall (l: list (key * value)) k,
+      ~ In k (List.map fst l) ->
+      map.get (map.of_list l) k = None.
+Proof.
+  induction l as [|[k v] l]; simpl; intros;
+    [rewrite map.get_empty; reflexivity|].
+  destruct (key_dec k k0).
+  - intuition idtac.
+  - rewrite map.get_put_diff by auto.
+    apply IHl; intuition idtac.
+Qed.
 
 Lemma alignedXAddrsRange_zero_bound_in:
   forall n a,
@@ -85,8 +100,6 @@ Section Equiv.
   Definition kamiMemInit := ConstVector memInit.
   Local Definition kamiProc :=
     @KamiProc.proc instrMemSizeLg memSizeLg Hinstr kamiMemInit kami_FE310_AbsMMIO.
-
-  Definition iset: InstructionSet := RV32IM.
 
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Local Notation mcomp_sat_unit m initialL post :=
@@ -262,12 +275,40 @@ Section Equiv.
        byte.of_Z (uwordToZ (evalConstT kamiMemInit $i))))
     (seq 0 (2 ^ Z.to_nat memSizeLg))).
 
+  Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
+  Instance kword32_ok: word.ok kword32. eapply KamiWord.ok. reflexivity. Qed.
   Lemma riscvMemInit_get_None:
     forall addr,
       (kunsigned addr <? 2 ^ memSizeLg) = false ->
       map.get riscvMemInit addr = None.
   Proof.
-    case TODO_joonwon.
+    intros.
+    apply get_of_list_not_In; [exact (@weq (Z.to_nat width))|assumption|].
+
+    intro Hx.
+    apply in_map_iff in Hx; destruct Hx as [[addr' v] [? Hx]].
+    simpl in H0; subst.
+    apply in_map_iff in Hx; destruct Hx as [n [? ?]].
+    inversion H0; subst; clear H0.
+    apply in_seq in H1; destruct H1 as [_ ?]; simpl in H0.
+
+    apply Nat2Z.inj_lt in H0.
+    rewrite N_Z_nat_conversions.Nat2Z.inj_pow in H0.
+    rewrite Z2Nat.id in H0 by Lia.lia.
+    simpl in H0.
+
+    match type of H with
+    | (?x <? ?y) = false => destruct (Z.ltb_spec x y); [discriminate|clear H]
+    end.
+    change kunsigned with (word.unsigned (width:= width)) in H1.
+    change kofZ with (word.of_Z (width:= width)) in H1.
+    rewrite word.unsigned_of_Z in H1.
+    cbv [word.wrap] in H1.
+    rewrite Z.mod_small in H1
+      by (split; [Lia.lia|];
+          eapply Z.lt_le_trans; [eassumption|];
+          apply Z.pow_le_mono_r; Lia.lia).
+    Lia.lia.
   Qed.
         
   Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.

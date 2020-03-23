@@ -132,7 +132,7 @@ Section Equiv.
   Local Notation RiscvXAddrsSafe :=
     (RiscvXAddrsSafe instrMemSizeLg memSizeLg (conj Hinstr1 Hinstr2)).
 
-  Definition iset: InstructionSet := RV32IM.
+  Definition iset: InstructionSet := RV32I.
 
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Local Notation mcomp_sat_unit m initialL post :=
@@ -1358,7 +1358,7 @@ Section Equiv.
 
   (** * Step-consistency lemmas *)
   Arguments isMMIO: simpl never.
-
+  
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -2478,20 +2478,18 @@ Section Equiv.
     (* -- evaluate the execution of riscv-coq *)
 
     (* Fence and CSR instructions: contradiction either in decode or execute *)
-    42: (subst rd decodeI decodeM decodeCSR resultI resultM resultCSR results;
+    42: (subst rd decodeI decodeCSR resultI resultCSR results;
          match type of H15 with (* derived from [rd <> 0] in [execNm] *)
          | negb (?x =? ?y) = true => destruct (Z.eqb_spec x y) in *; [discriminate|]
          end;
          repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec;
          dest_Zeqb; cbn in Hdec).
 
-    (* 41: mul/div instructions. Should be able to draw [False] *)
-    41: case TODO_joonwon.
-    
-    (* 40: the case that require additional simplification
-     * to draw [False] by [mcomp_step_in]. *)
-    40: (subst decodeI decodeM resultI resultM results;
-         repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
+    (* Cases that require additional simplification to draw [False] 
+     * by [mcomp_step_in]. *)
+    40,41: (subst decodeI resultI results;
+            repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
+
     all: subst dec; mcomp_step_in H5;
       repeat match goal with
              | H : False |- _ => case H

@@ -47,6 +47,7 @@ Require Import compiler.ExprImpEventLoopSpec.
 Local Open Scope Z_scope.
 
 Local Axiom TODO_initmem : False.
+Local Axiom TODO_iset : False.
 
 Require Import Coq.Classes.Morphisms.
 
@@ -322,12 +323,16 @@ Section Connect.
         end.
       + reflexivity.
       + simpl. split.
-        * apply riscv_init_memory_undef_on_MMIO.
+        * apply riscv_init_memory_undef_on_MMIO with (instrMemSizeLg0:= instrMemSizeLg).
+          { apply instrMemSizeLg_bounds. }
+          { apply Hkmem. }
+          { cbv [KamiProc.width]; Lia.lia. }
           { apply Hkmem. }
           { assumption. }
         * assumption.
     - (* preserve *)
       intros.
+      replace KamiRiscvStep.iset with iset by case TODO_iset.
       refine (P2preserve _ _). assumption.
     - (* use *)
       intros *. intro Inv.
