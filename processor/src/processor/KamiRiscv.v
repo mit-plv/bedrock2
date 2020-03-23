@@ -274,17 +274,56 @@ Section Equiv.
   Proof.
     cbv [mem_related riscvMemInit].
     intros addr.
-    case (kunsigned addr <? 2 ^ memSizeLg) eqn:?H.
+    case (kunsigned addr <? 2 ^ memSizeLg) eqn:H.
     2: { apply riscvMemInit_get_None; assumption. }
+    assert (#addr < 2 ^ Z.to_nat memSizeLg)%nat
+        by (revert H; case KamiRiscvStep.TODO_word).
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
     1: eapply NoDup_nth_error; intros i j ?.
     2: eapply (nth_error_In _ (wordToNat addr)).
 
     { rewrite map_map; cbn; cbv [kofZ].
-      (* erewrite 2map_nth_error. *)
-      case TODO_andres. }
+      clear dependent addr.
+      rewrite !map_length, seq_length in H1.
+      rewrite (@map_nth_error _ _ _ _ _ i).
+      2: etransitivity; [eapply nth_error_nth'|];
+           rewrite ?seq_length, ?seq_nth; trivial.
+      destruct (lt_dec j (2^Z.to_nat memSizeLg)).
+      { rewrite (@map_nth_error _ _ _ _ _ j).
+        2: etransitivity; [eapply nth_error_nth'|];
+            rewrite ?seq_length, ?seq_nth; trivial.
+        intros HX.
+        injection HX; clear HX; intros HX.
+        eapply (f_equal (@wordToZ _)) in HX.
+        pose proof Z.pow_le_mono_r 2 memSizeLg 31 eq_refl ltac:(blia);
+        pose proof N_Z_nat_conversions.Z2Nat.inj_pow 2 memSizeLg ltac:(blia) ltac:(blia);
+        change (Z.to_nat 2) with 2%nat in *.
+        rewrite 2wordToZ_ZToWord'' in HX; try split;
+         change (BinInt.Z.of_nat (Pos.to_nat 32) - 1) with 31;
+         blia. }
+      { rewrite (proj2 (nth_error_None _ _)); try congruence.
+        rewrite map_length, seq_length; blia. } }
     { (* erewrite map_nth_error. *)
-      case TODO_andres. }
+      replace (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) addr)
+         with (natToWord (Z.to_nat memSizeLg) (wordToNat addr))
+           by (revert H; case KamiRiscvStep.TODO_word).
+      rewrite (@map_nth_error _ _ _ _ _ (wordToNat addr)).
+      2: {
+        etransitivity; [eapply nth_error_nth'|].
+        all : rewrite ?seq_length, ?seq_nth; trivial.
+      }
+      f_equal.
+      f_equal.
+      (* word... *)
+      eapply word.unsigned_inj.
+      rewrite word.unsigned_of_Z.
+      cbv [word.wrap]; rewrite <-word.wrap_unsigned; f_equal.
+      generalize addr as w.
+      unfold word.unsigned, word, WordsKami, wordW, KamiWord.word, kword, kunsigned.
+      generalize (BinInt.Z.to_nat width) as sz.
+      case KamiRiscvStep.TODO_word.
+    }
+    Unshelve. all: exact O.
   Qed.
 
   Lemma states_related_init:
