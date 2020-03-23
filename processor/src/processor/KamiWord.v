@@ -83,11 +83,12 @@ Section WithWidth.
     rewrite wordToN_nat, HH; f_equal; clear HH.
     rewrite wordToN_nat, NatLib.pow2_N.
     generalize (#w); intro.
-    generalize (NatLib.pow2 a); intro.
-    pose proof Zdiv.div_Zdiv n n0 (match TODO_andres with end).
+    specialize (NatLib.zero_lt_pow2 a).
+    generalize (NatLib.pow2 a); intros.
+    pose proof Zdiv.div_Zdiv n n0 ltac:(blia).
     pose proof Znat.N2Z.inj_div (BinNat.N.of_nat n) (BinNat.N.of_nat n0).
     rewrite Znat.nat_N_Z in *.
-    Lia.lia.
+    blia.
   Qed.
 
   Lemma wmsb_split2 a b w x y (H:b <> 0%nat)
@@ -99,6 +100,12 @@ Section WithWidth.
     reflexivity.
   Qed.
 
+  Lemma NatLib__to_Z_Npow2 x : Z.of_N (NatLib.Npow2 x) = Z.pow 2 (Z.of_nat x).
+  Proof.
+    rewrite <-Znat.N_nat_Z, NatLib.Npow2_nat, N_Z_nat_conversions.Nat2Z.inj_pow.
+    trivial.
+  Qed.
+
   Lemma wordToZ_split2 a b w (H:b <> 0%nat)
     : wordToZ (@split2 a b w) = Z.div (wordToZ w) (2^Z.of_nat a).
   Proof.
@@ -107,7 +114,7 @@ Section WithWidth.
     erewrite wmsb_split2; [instantiate (1:=false)|trivial].
     case (wmsb w).
     all: rewrite ?Znat.N2Z.inj_div.
-    all: rewrite ?(match TODO_andres with end : forall x, Z.of_N (NatLib.Npow2 x) = Z.pow 2 (Z.of_nat x)).
+    all: rewrite ?NatLib__to_Z_Npow2.
     2: setoid_rewrite Z.add_0_r; trivial.
     rewrite ?Znat.Nat2Z.inj_add, ?Z.pow_add_r by Lia.lia.
     rewrite Z.mul_comm.
@@ -202,7 +209,8 @@ Section WithWidth.
       1: pose proof @wordToZ_size (pred sz).
       1: rewrite PeanoNat.Nat.succ_pred in H0.
       1: specialize (H0 x).
-      all:case TODO_andres. }
+      2:blia.
+      case TODO_andres. }
     19: {
       specialize (weqb_true_iff x y); case (weqb x y); intros [].
       { specialize (H eq_refl); subst; rewrite Z.eqb_refl; trivial. }
@@ -222,7 +230,7 @@ Section WithWidth.
 
     { cbv [wplus wordBin].
       rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_add, NatLib.Z_of_N_Npow2.
-      2: case TODO_andres.
+      2:apply NatLib.Npow2_not_zero.
       f_equal; f_equal; blia. }
 
     { case TODO_andres. }
@@ -290,7 +298,7 @@ Section WithWidth.
     { rewrite wlshift_mul_Zpow2 by (Z.div_mod_to_equations; blia).
       cbv [wmult wordBin].
       rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_mul, NatLib.Z_of_N_Npow2.
-      2: case TODO_andres.
+      2:apply NatLib.Npow2_not_zero.
       repeat setoid_rewrite uwordToZ_ZToWord_full; try blia.
       rewrite Zdiv.Zmult_mod_idemp_r.
       rewrite Z.shiftl_mul_pow2 by blia.
@@ -312,7 +320,12 @@ Section WithWidth.
       2: {
         pose proof uwordToZ_bound x; cbv [uwordToZ] in *.
         replace (Z.of_nat sz) with width in * by blia.
-        revert H0. case TODO_andres. }
+        clear H0. subst z.
+        pose proof Z.pow_pos_nonneg 2 (Z.of_N (wordToN y)) eq_refl cstr1.
+        replace 0 with (0/2 ^ Z.of_N (wordToN y)) by (apply Z.div_0_l; blia).
+        split; eauto using Z.div_le_mono.
+        eapply Z.div_lt_upper_bound; trivial.
+        Lia.nia. }
       f_equal.
       f_equal.
       rewrite Znat.Z2Nat.id; blia. }
