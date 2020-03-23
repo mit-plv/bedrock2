@@ -80,7 +80,6 @@ Proof.
 Qed.
 
 Local Axiom TODO_joonwon: False.
-Local Axiom TODO_andres: False.
 Local Axiom TODO_word : False.
 
 Lemma wordToN_wplus_distr:
@@ -821,6 +820,20 @@ Section Equiv.
   Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
   Instance kword32_ok: word.ok kword32. eapply KamiWord.ok. reflexivity. Qed.
 
+  Lemma signExtend_word_of_Z_nop:
+    forall z, word.of_Z (width:= 32) (signExtend 32 z) = word.of_Z (width:= 32) z.
+  Proof.
+    intros.
+    apply word.of_Z_inj_mod.
+    unfold signExtend.
+    (* TODO remove once we're on Coq 8.12 *)
+    repeat match goal with
+           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
+           end.
+    Z.div_mod_to_equations.
+    Lia.lia.
+  Qed.
+
   Lemma signExtend_combine_split_signed:
     forall (w: Word.word 32),
       signExtend 32 (combine 4 (split 4 (wordToZ w))) = wordToZ w.
@@ -1211,12 +1224,19 @@ Section Equiv.
                destruct (Z.eqb_spec x y) in *
              | [H : context G [if Z.eqb ?x ?y then ?a else ?b] |- _] =>
                destruct (Z.eqb_spec x y) in *
+
+             | [H : context G [if (Z.eqb ?x ?y && _)%bool then _ else _] |- _] =>
+               destruct (Z.eqb_spec x y)
+             | [H : context G [if (_ && Z.eqb ?x ?y)%bool then _ else _] |- _] =>
+               destruct (Z.eqb_spec x y)
+
              | [H : context G [if (Z.eqb ?x ?y && _ && _)%bool then _ else _] |- _] =>
                destruct (Z.eqb_spec x y)
              | [H : context G [if (_ && Z.eqb ?x ?y && _)%bool then _ else _] |- _] =>
                destruct (Z.eqb_spec x y)
              | [H : context G [if (_ && _ && Z.eqb ?x ?y)%bool then _ else _] |- _] =>
                destruct (Z.eqb_spec x y)
+
              | [H: ?x = ?a, G: ?x = ?b |- _] =>
                let aa := eval cbv (* delta [a] *) in a in
                let bb := eval cbv (* delta [b] *) in b in
@@ -2456,10 +2476,18 @@ Section Equiv.
     all: eval_decodeI decodeI.
 
     (* -- evaluate the execution of riscv-coq *)
-    (* 42: fence instructions. Can draw [False] since [rd <> 0] in [execNm]. *)
-    42: case TODO_joonwon.
+
+    (* Fence and CSR instructions: contradiction either in decode or execute *)
+    42: (subst rd decodeI decodeM decodeCSR resultI resultM resultCSR results;
+         match type of H15 with (* derived from [rd <> 0] in [execNm] *)
+         | negb (?x =? ?y) = true => destruct (Z.eqb_spec x y) in *; [discriminate|]
+         end;
+         repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec;
+         dest_Zeqb; cbn in Hdec).
+
     (* 41: mul/div instructions. Should be able to draw [False] *)
     41: case TODO_joonwon.
+    
     (* 40: the case that require additional simplification
      * to draw [False] by [mcomp_step_in]. *)
     40: (subst decodeI decodeM resultI resultM results;
@@ -2558,9 +2586,6 @@ Section Equiv.
       replace (x * 2 ^ 12 + 2 ^ 31 - 2 ^ 31) with (x * 2 ^ 12) by blia.
       rewrite Z.mod_small; try ring.
       pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32.
-      (* TODO remove once we advance to Coq 8.10 *)
-      let t := (fun x => let r := eval cbv in x in change x with r in * ) in
-      t (2 ^ (32 - 12)); t (2 ^ 32); t (2 ^ 12).
       blia.
     }
 
@@ -2570,8 +2595,7 @@ Section Equiv.
       unfold Utility.add.
       eapply f_equal.
       rewrite wplus_comm; eapply f_equal2; [|reflexivity].
-      rewrite (match TODO_andres with end :
-                 forall sz word x, @word.of_Z sz word (signExtend sz x) = @word.of_Z sz word x).
+      rewrite signExtend_word_of_Z_nop.
       eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
       match goal with
       | |- context[@word.unsigned ?a ?b ?x] =>
@@ -2733,7 +2757,8 @@ Section Equiv.
     all: eval_decodeI decodeI.
 
     (* -- evaluate the execution of riscv-coq *)
-    (* -- TODO @joonwonc: what is this case? *)
+    (* -- TODO @joonwonc: still need to decode and look at all arithmetic 
+     * instruction cases even if [rd = 0]. *)
     11: case TODO_joonwon.
     all: subst dec; mcomp_step_in H5;
       repeat match goal with
