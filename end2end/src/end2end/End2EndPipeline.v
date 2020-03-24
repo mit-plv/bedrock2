@@ -47,7 +47,6 @@ Require Import compiler.ExprImpEventLoopSpec.
 Local Open Scope Z_scope.
 
 Local Axiom TODO_initmem : False.
-Local Axiom TODO_iset : False.
 
 Require Import Coq.Classes.Morphisms.
 
@@ -332,7 +331,6 @@ Section Connect.
         * assumption.
     - (* preserve *)
       intros.
-      replace KamiRiscvStep.iset with iset by case TODO_iset.
       refine (P2preserve _ _). assumption.
     - (* use *)
       intros *. intro Inv.
