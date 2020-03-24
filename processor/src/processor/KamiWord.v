@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.BinIntDef Coq.ZArith.BinInt coqutil.Z.Lia.
-Require Import coqutil.sanity coqutil.Word.Interface. Import word.
+Require Import coqutil.sanity coqutil.Tactics.forward coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.Utility.
 From coqutil Require Import destr div_mod_to_equations.
@@ -320,8 +320,10 @@ Section WithWidth.
       2: {
         pose proof uwordToZ_bound x; cbv [uwordToZ] in *.
         replace (Z.of_nat sz) with width in * by blia.
-        clear H0. subst.
-        pose proof Z.pow_pos_nonneg 2 (Z.of_N (wordToN y)) eq_refl cstr1.
+        match goal with
+        | H: _ \/ _ |- _ => clear H; subst
+        end.
+        pose proof Z.pow_pos_nonneg 2 (Z.of_N (wordToN y)) eq_refl. auto_specialize.
         replace 0 with (0/2 ^ Z.of_N (wordToN y)) by (apply Z.div_0_l; blia).
         split; eauto using Z.div_le_mono.
         eapply Z.div_lt_upper_bound; trivial.
