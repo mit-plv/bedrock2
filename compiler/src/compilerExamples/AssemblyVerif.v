@@ -63,7 +63,7 @@ Section Verif.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
-  Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
+  Notation iset := SeparationLogic.iset.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],

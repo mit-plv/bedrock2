@@ -232,6 +232,8 @@ Ltac unify_universes_for_blia :=
 Ltac blia' := unify_universes_for_blia; blia.
 
 Inductive supported_iset: InstructionSet -> Prop :=
+| supported_RV32I: supported_iset RV32I
+| supported_RV64I: supported_iset RV64I
 | supported_RV32IM: supported_iset RV32IM
 | supported_RV64IM: supported_iset RV64IM.
 
@@ -406,15 +408,17 @@ Section EmitsValid.
                         compile_lit_64bit_emits_valid).
   Qed.
 
+  Import Syntax.bopname.
   Lemma compile_op_emits_valid: forall iset x op y z,
       supported_iset iset ->
       valid_register x ->
       valid_register y ->
       valid_register z ->
+      ((op = mul \/ op = mulhuu \/ op = divu \/ op = remu) -> (iset = RV32IM \/ iset = RV64IM)) ->
       valid_instructions iset (compile_op x op y z).
   Proof.
     unfold valid_instructions.
-    intros.
+    intros * H ? ? ? ? ? H3.
     destruct op; simpl in *; (repeat destruct H3; try contradiction);
           inversion H; unfold verify; simpl;
           autounfold with unf_verify unf_encode_consts;
@@ -428,7 +432,7 @@ Section EmitsValid.
           try solve [constructor];
           try blia;
           try (split; [blia|auto]);
-          destruct iset; auto; try discriminate.
+          destruct iset; auto; intuition try congruence.
   Qed.
 
   Lemma compile_bcond_by_inverting_emits_valid: forall iset cond amt,
@@ -449,7 +453,7 @@ Section EmitsValid.
     intuition blia.
   Qed.
 
-  Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
+  Notation iset := SeparationLogic.iset.
 
   Lemma compile_load_emits_valid: forall x y sz offset,
       valid_register x ->

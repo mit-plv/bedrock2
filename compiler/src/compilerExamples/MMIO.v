@@ -279,7 +279,7 @@ Section MMIO1.
     - eapply MetricMinimalMMIOSatisfiesPrimitives; cbn; intuition eauto.
     - (* compile_ext_call_correct *)
       intros *. intros ? ? ? V_argvars V_resvars. intros.
-      pose proof (compile_ext_call_emits_valid EmitsValid.iset _ action _ V_resvars V_argvars).
+      pose proof (compile_ext_call_emits_valid SeparationLogic.iset _ action _ V_resvars V_argvars).
       destruct_RiscvMachine initialL.
       unfold FlatToRiscvDef.compile_ext_call, FlatToRiscvCommon.def_params,
              FlatToRiscv_params, compilation_params, compile_ext_call in *.

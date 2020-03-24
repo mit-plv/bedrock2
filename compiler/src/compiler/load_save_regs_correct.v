@@ -55,7 +55,7 @@ Section Proofs.
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
-      assert (valid_instructions EmitsValid.iset
+      assert (valid_instructions SeparationLogic.iset
                 [(compile_store Syntax.access_size.word RegisterNames.sp a offset)]). {
         eapply compile_store_emits_valid; try eassumption.
         assert (bytes_per_word * Z.of_nat (S (List.length vars)) > 0). {
@@ -135,7 +135,7 @@ Section Proofs.
       assert (valid_register a). {
         unfold valid_register, valid_FlatImp_var in *. blia.
       }
-      assert (valid_instructions EmitsValid.iset
+      assert (valid_instructions SeparationLogic.iset
                 [(compile_load Syntax.access_size.word a RegisterNames.sp offset)]). {
         eapply compile_load_emits_valid; try eassumption.
         assert (bytes_per_word * Z.of_nat (S (List.length vars)) > 0). {

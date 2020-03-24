@@ -81,7 +81,7 @@ Section ptstos.
   Definition word_array: word -> list word -> mem -> Prop :=
     array ptsto_word (word.of_Z bytes_per_word).
 
-  Definition iset := if Utility.width =? 32 then RV32IM else RV64IM.
+  Definition iset := if Utility.width =? 32 then RV32I else RV64I.
 
   (* contains all the conditions needed to successfully execute instr, except
      that addr needs to be in the set of executable addresses, which is dealt with elsewhere *)
