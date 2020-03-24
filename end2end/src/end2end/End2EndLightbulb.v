@@ -19,19 +19,26 @@ Require        bedrock2.Hexdump.
 Open Scope Z_scope.
 Open Scope string_scope.
 
-Definition instrMemSizeLg: Z := 10. (* TODO is this enough? *)
+Definition instrMemSizeLg: Z := 10. (* means 2^12 bytes *) (* TODO is this enough? *)
 Lemma instrMemSizeLg_bounds : 3 <= instrMemSizeLg <= 30. Proof. cbv. intuition discriminate. Qed.
-Definition dataMemSize: Z := (16-4)*2^10.
 
-(* TODO adjust these numbers *)
-Definition ml: MemoryLayout := {|
+Definition memSizeLg: Z := 13.
+Lemma memSizeLg_valid : instrMemSizeLg + 2 < memSizeLg <= 16.
+Proof. cbv. intuition discriminate. Qed.
+
+Definition stack_size_in_bytes: Z := 2 ^ 11.
+
+Definition ml: MemoryLayout := End2EndPipeline.ml instrMemSizeLg memSizeLg stack_size_in_bytes.
+
+Remark this_is_the_value_of_ml: ml = {|
   MemoryLayout.code_start    := word.of_Z 0;
-  MemoryLayout.code_pastend  := word.of_Z (4*2^10);
-  MemoryLayout.heap_start    := word.of_Z (4*2^10);
-  MemoryLayout.heap_pastend  := word.of_Z (8*2^10);
-  MemoryLayout.stack_start   := word.of_Z (8*2^10);
-  MemoryLayout.stack_pastend := word.of_Z (16*2^10);
+  MemoryLayout.code_pastend  := word.of_Z (2 ^ 12);
+  MemoryLayout.heap_start    := word.of_Z (2 ^ 12);
+  MemoryLayout.heap_pastend  := word.of_Z (2 ^ 12 + 2 ^ 11);
+  MemoryLayout.stack_start   := word.of_Z (2 ^ 12 + 2 ^ 11);
+  MemoryLayout.stack_pastend := word.of_Z (2 ^ 13);
 |}.
+Proof. reflexivity. Qed.
 
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
@@ -51,10 +58,6 @@ Lemma mlOk: MemoryLayoutOk ml.
 Proof.
   constructor; try reflexivity; try (cbv; discriminate).
 Qed.
-
-Definition memSizeLg: Z := 13.
-Lemma memSizeLg_valid : instrMemSizeLg + 2 < memSizeLg <= 16.
-Proof. cbv. intuition discriminate. Qed.
 
 Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                      (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
@@ -192,9 +195,9 @@ Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
   specialize_first Q spec.
-  specialize_first Q mlOk.
   specialize_first Q instrMemSizeLg_bounds.
   intros *. intro KB.
+  specialize Q with (stack_size_in_bytes := stack_size_in_bytes).
   specialize_first Q memInit.
   specialize_first Q funimplsList.
   specialize_first Q open_constr:(eq_refl).
@@ -207,7 +210,7 @@ Proof.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
   eapply Q; clear Q.
-  - exact eq_refl.
+  - cbv. intuition discriminate.
   - clear. cbv.
     repeat econstructor; intro; repeat match goal with H: In _ _|-_=> destruct H end; discriminate.
   - intros. clear KB memInit. simp.
@@ -222,13 +225,18 @@ Proof.
 
     intros ? ? ? ?.
     repeat ProgramLogic.straightline.
-    unfold mem_available, hl_inv, isReady, goodTrace, goodHlTrace, buffer_addr, ml, code_start, heap_start, heap_pastend, Lift1Prop.ex1 in *; Simp.simp.
-    eapply SeparationLogic.sep_emp_l in H; Simp.simp.
+    unfold mem_available, hl_inv, isReady, goodTrace, goodHlTrace, buffer_addr, ml, End2EndPipeline.ml, code_start, heap_start, heap_pastend, Lift1Prop.ex1 in *; Simp.simp.
+    eapply SeparationLogic.sep_emp_l in H.
+    (* TODO why does Simp.simp not destruct H if I end the above line by semicolon instead of dot? *)
+    Simp.simp.
     rename a0 into anybytes.
 
     split.
     1: {
-      change (BinIntDef.Z.of_nat (Datatypes.length anybytes) = 4096) in Hl.
+      lazymatch goal with
+      | A: BinIntDef.Z.of_nat (Datatypes.length anybytes) = ?c |- _ =>
+        let c' := eval cbv in c in change (BinIntDef.Z.of_nat (Datatypes.length anybytes) = c') in A
+      end.
       rewrite word.of_Z_unsigned.
       rewrite <-(firstn_skipn 1520 anybytes) in Hr.
       unfold ptsto_bytes in Hr.
@@ -281,4 +289,6 @@ Proof.
     unfold lightbulb_insts. repeat (apply Forall_cons || apply Forall_nil).
     all: vm_compute; try intuition discriminate.
   - exact funs_valid.
+  Unshelve.
+  all: try exact Semantics.mem_ok.
 Time Qed. (* takes more than 25s *)
