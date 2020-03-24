@@ -79,7 +79,6 @@ Proof.
   apply Z.pow_pos_nonneg; blia.
 Qed.
 
-Local Axiom TODO_joonwon: False.
 Local Axiom TODO_word : False.
 
 Lemma wordToN_wplus_distr:
@@ -94,7 +93,6 @@ Qed.
 Section Equiv.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
 
-  (* TODO not sure if we want to use ` or rather a parameter record *)
   Context {Registers: map.map Register word}
           {mem: map.map word byte}.
 
@@ -1238,16 +1236,16 @@ Section Equiv.
                destruct (Z.eqb_spec x y)
 
              | [H: ?x = ?a, G: ?x = ?b |- _] =>
-               let aa := eval cbv (* delta [a] *) in a in
-               let bb := eval cbv (* delta [b] *) in b in
+               let aa := eval cbv in a in
+               let bb := eval cbv in b in
                let t := isZcst aa in constr_eq t true;
                let t := isZcst bb in constr_eq t true;
                assert_fails (constr_eq aa bb);
                exfalso; remember x; clear -H G;
                cbv in H; cbv in G; rewrite H in G; inversion G
              | [H: ?x = ?a, G: ?x <> ?b |- _] =>
-               let aa := eval cbv (* delta [a] *) in a in
-               let bb := eval cbv (* delta [b] *) in b in
+               let aa := eval cbv in a in
+               let bb := eval cbv in b in
                let t := isZcst aa in constr_eq t true;
                let t := isZcst bb in constr_eq t true;
                assert_fails (constr_eq aa bb);
@@ -2121,9 +2119,6 @@ Section Equiv.
                  destruct (Memory.store_bytes sz m a v) eqn:Hst; [exfalso|]
                end.
 
-      (** TODOs: 
-       * 1) generalize [kunsigned_combine_shiftl_lor] to extract required word lemmas.
-       * 2) refactor [simpl_bit_manip] and the generalized version of (1). *)
       all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
       all: simpl_bit_manip.
 
@@ -2264,9 +2259,6 @@ Section Equiv.
                  destruct (Memory.store_bytes sz m a v) as [nmem|] eqn:Hnmem
                end.
 
-      (** TODOs: 
-       * 1) generalize [kunsigned_combine_shiftl_lor] to extract required word lemmas.
-       * 2) refactor [simpl_bit_manip] and the generalized version of (1). *)
       all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
       all: simpl_bit_manip.
 
@@ -2754,10 +2746,42 @@ Section Equiv.
       try subst shamtHi; try subst shamtHiTest.
     all: eval_decodeI decodeI.
 
+    (* -- Kami does not try to further decode the target instruction when the
+     * opcode is [opcode_OP] and the destination register is [r0].
+     * But riscv-coq always requires a complete decode, so we manually do the
+     * case analysis. *)
+    11: (match type of H15 with (* derived from [rd <> 0] in [execNm] *)
+         | (?x =? ?y) = true => destruct (Z.eqb_spec x y) in *; [|discriminate]
+         end;
+         subst rd decodeI decodeCSR resultI resultCSR results;
+         (* It takes too much time to just use [dest_Zeqb] with [Hdec],
+          * thus we manually do case analysis first by destructing `opcode`
+          * and then by the other fields. *)
+         repeat
+           match type of Hdec with
+           | context [Z.eqb (bitSlice _ 0 7) ?c] =>
+             destruct (Z.eqb_spec
+                         (bitSlice
+                            (kunsigned (width:= Zpos (xO (xO (xO (xO (xO xH)))))) kinst)
+                            0 7) c)
+           end;
+         repeat match goal with
+                | [H: ?x = ?a, G: ?x = ?b |- _] =>
+                  let aa := eval cbv in a in
+                  let bb := eval cbv in b in
+                  let t := isZcst aa in constr_eq t true;
+                  let t := isZcst bb in constr_eq t true;
+                  assert_fails (constr_eq aa bb);
+                  exfalso; remember x; clear -H G;
+                  cbv in H; cbv in G; rewrite H in G; inversion G
+                end;
+         repeat rewrite ?Bool.andb_true_l, ?Bool.andb_false_l in Hdec; cbn in Hdec;
+         repeat
+           match type of Hdec with
+           | context [if ?c then _ else _] => destruct c
+           end).
+    
     (* -- evaluate the execution of riscv-coq *)
-    (* -- TODO @joonwonc: still need to decode and look at all arithmetic 
-     * instruction cases even if [rd = 0]. *)
-    11: case TODO_joonwon.
     all: subst dec; mcomp_step_in H5;
       repeat match goal with
              | H : False |- _ => case H
@@ -2785,10 +2809,6 @@ Section Equiv.
 
     all: prove_states_related.
     all: match goal with | H: pc_related ?kpc _ |- _ => red in H; subst kpc end.
-
-    (* -- TODO @joonwonc: instead of below [try assumption] for [regs_related],
-     * FIX [prove_states_related] to cover this trivial case. *)
-    all: try assumption.
 
     (* -- prove [regs_related] to write to r0 *)
     all: try match goal with
