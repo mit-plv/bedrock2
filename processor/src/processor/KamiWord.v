@@ -320,7 +320,7 @@ Section WithWidth.
       2: {
         pose proof uwordToZ_bound x; cbv [uwordToZ] in *.
         replace (Z.of_nat sz) with width in * by blia.
-        clear H0. subst z.
+        clear H0. subst.
         pose proof Z.pow_pos_nonneg 2 (Z.of_N (wordToN y)) eq_refl cstr1.
         replace 0 with (0/2 ^ Z.of_N (wordToN y)) by (apply Z.div_0_l; blia).
         split; eauto using Z.div_le_mono.
