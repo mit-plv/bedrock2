@@ -256,6 +256,64 @@ Section Connect.
   Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
       spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
 
+  Lemma riscvMemInit_to_seplog: forall len from,
+    Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
+    (PipelineWithRename.ptsto_bytes (word.of_Z (Z.of_nat from))
+                                    (riscvMemInit_values memSizeLg memInit from len))
+    (riscvMemInit_range memSizeLg memInit from len).
+  Proof.
+    induction len; intros.
+    - cbv. auto.
+    - unfold PipelineWithRename.ptsto_bytes, riscvMemInit_values, riscvMemInit_range in *.
+      cbn [seq map array map.of_list].
+      match goal with
+      | |- context [map.put ?m ?k ?v] => pose proof map.put_putmany_commute k v m map.empty as P
+      end.
+      rewrite map.putmany_empty_r in P.
+      rewrite P. clear P.
+      eapply sep_comm.
+      unfold sep.
+      do 2 eexists.
+      ssplit; cycle 1.
+      + specialize (IHlen (S from)).
+        replace (Z.of_nat (S from)) with (Z.of_nat from + 1) in IHlen by blia.
+        rewrite word.ring_morph_add in IHlen.
+        apply IHlen. blia.
+      + unfold ptsto. reflexivity.
+      + unfold map.split, map.disjoint. split; [reflexivity|].
+        intros.
+        rewrite map.get_put_dec in H1.
+        destruct_one_match_hyp. 2: {
+          rewrite map.get_empty in H1. discriminate.
+        }
+        subst.
+        rewrite get_of_list_not_In in H0.
+        * discriminate.
+        * simpl. apply Word.weq.
+        * exact mem_ok.
+        * intro C.
+          rewrite map_map in C.
+          unfold fst in C.
+          apply in_map_iff in C.
+          destruct C as [ from' [E C] ].
+          apply (f_equal word.unsigned) in E.
+          do 2 rewrite word.unsigned_of_Z in E.
+          unfold word.wrap in E.
+          change width with 32 in *.
+          rewrite (Z.mod_small (Z.of_nat from)) in E. 2: {
+            split; [blia|].
+            eapply Z.le_lt_trans with (m := 2 ^ memSizeLg). 1: blia.
+            eapply Z.pow_lt_mono_r; blia.
+          }
+          apply in_seq in C.
+          rewrite (Z.mod_small (Z.of_nat from')) in E. 2: {
+            split; [blia|].
+            eapply Z.le_lt_trans with (m := 2 ^ memSizeLg). 1: blia.
+            eapply Z.pow_lt_mono_r; blia.
+          }
+          blia.
+  Qed.
+
   (* end to end, but still generic over the program *)
   Lemma end2end:
     (* Assumptions on the program logic level: *)
@@ -369,7 +427,27 @@ Section Connect.
 
         all : cycle 3.
         Unshelve.
-        all : case TODO_initmem .
+        * pose proof riscvMemInit_to_seplog (2 ^ BinIntDef.Z.to_nat memSizeLg) 0 as P.
+          match type of P with
+          | ?T -> _ => assert T as tmp; [|specialize (P tmp); clear tmp]
+          end.
+          {
+            change (Z.of_nat 0) with 0.
+            rewrite Z.add_0_l.
+            rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
+            change (Z.of_nat 2) with 2.
+            apply Z.pow_le_mono_r; try blia.
+          }
+          match type of P with
+          | _ ?m => change m with (KamiRiscv.riscvMemInit memSizeLg memInit) in P
+          end.
+          (* TODO now in P, split
+             (riscvMemInit_values memSizeLg memInit 0 (2 ^ BinIntDef.Z.to_nat memSizeLg))
+             into sublists, then rewrite array_append, then exact P *)
+          case TODO_initmem.
+        * case TODO_initmem.
+        * case TODO_initmem.
+        * case TODO_initmem.
 
       + change (word.unsigned (code_start ml)) with 0.
         assert (Hend: code_pastend ml = word.of_Z (2 ^ (2 + instrMemSizeLg))) by reflexivity.
