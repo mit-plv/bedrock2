@@ -1148,8 +1148,19 @@ Section Equiv.
     cbn [evalExpr evalUniBool evalBinBool evalBinBit
                   evalConstT getDefaultConst isEq Data BitsPerByte Nat.mul Nat.add Nat.sub
                   AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct6E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getHiShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignInst rv32CalcLdAddr rv32CalcStAddr rv32CalcStByteEn rv32DataBytes rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StByteEnCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT] in *.
+
+  Ltac kami_cbn_hint H :=
+    let t := type of H in
+    let tc :=
+      eval cbn [evalExpr evalUniBool evalBinBool evalBinBit
+                evalConstT getDefaultConst isEq Data BitsPerByte Nat.mul Nat.add Nat.sub
+                AlignInstT DstE DstK DstT ExecT f3Lb f3Lbu f3Lh f3Lhu f3Lw getFunct3E getFunct6E getFunct7E getOffsetIE getOffsetSBE getOffsetSE getOffsetShamtE getHiShamtE getOffsetUE getOffsetUJE getOpcodeE getRdE getRs1E getRs1ValueE getRs2E getRs2ValueE IsMMIOE IsMMIOT LdAddrCalcT LdAddrE LdAddrK LdAddrT LdDstE LdDstK LdDstT LdSrcE LdSrcK LdSrcT LdTypeE LdTypeK LdTypeT LdValCalcT MemInit memInst memOp mm mmioExec nextPc NextPcT OpcodeE OpcodeK OpcodeT opLd opNm opSt OptypeE OptypeK OptypeT Pc pinst procInitDefault procInst RqFromProc RsToProc rv32AlignInst rv32CalcLdAddr rv32CalcStAddr rv32CalcStByteEn rv32DataBytes rv32GetDst rv32GetLdAddr rv32GetLdDst rv32GetLdSrc rv32GetLdType rv32GetOptype rv32GetSrc1 rv32GetSrc2 rv32GetStAddr rv32GetStSrc rv32GetStVSrc rv32InstBytes rv32RfIdx scmm Src1E Src1K Src1T Src2E Src2K Src2T StAddrCalcT StByteEnCalcT StAddrE StAddrK StAddrT StateE StateK StateT StSrcE StSrcK StSrcT StVSrcE StVSrcK StVSrcT]
+    in t in
+    let Ht := fresh "H" in
+    assert (Ht: t = tc) by reflexivity;
+    rewrite Ht in H; clear Ht.
   
-  Ltac kami_cbn_hint H func :=
+  Ltac kami_cbn_hint_func H func :=
     let t := type of H in
     let tc :=
       eval cbn [evalExpr evalUniBool evalBinBool evalBinBit
@@ -1338,13 +1349,20 @@ Section Equiv.
 
   (** * FIXME: this ltac is strongly suspicious of making Qed taking forever .. *)
   Ltac kami_struct_cbv H :=
-    cbv [ilist.ilist_to_fun_m
-           Notations.icons'
-           VectorFacts.Vector_nth_map VectorFacts.Vector_nth_map' Fin.t_rect
-           VectorFacts.Vector_find VectorFacts.Vector_find'
-           Notations.fieldAccessor
-           Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
-           Vector.caseS projT2] in H.
+    let t := type of H in
+    let tc :=
+      eval cbv [ilist.ilist_to_fun_m
+                  Notations.icons'
+                  VectorFacts.Vector_nth_map VectorFacts.Vector_nth_map' Fin.t_rect
+                  VectorFacts.Vector_find VectorFacts.Vector_find'
+                  Notations.fieldAccessor
+                  Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
+                  Vector.caseS projT2]
+    in t in
+    let Ht := fresh "H" in
+    assert (Ht: t = tc) by reflexivity;
+    rewrite Ht in H; clear Ht.
+
   Ltac kami_struct_cbv_goal :=
     cbv [ilist.ilist_to_fun_m
            Notations.icons'
@@ -1392,6 +1410,8 @@ Section Equiv.
       rt. eval_kami_fetch. rt.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
+      kami_cbn_hint Heqic.
+      kami_cbn_hint H.
       kami_cbn_all.
       kami_struct_cbv Heqic.
       kami_struct_cbv H.
@@ -1406,20 +1426,20 @@ Section Equiv.
         | [ |- context [instrMem ?ipc] ] => change (instrMem ipc) with kinst
         end.
       clearbody kinst.
-
+      
       (* -- pick the load value calculator for simplification *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32CalcLdVal ?sz ?ty ?la ?lv ?lty)] |- _] =>
         remember (@evalExpr fk (rv32CalcLdVal sz ty la lv lty)) as ldVal
       end.
-      kami_cbn_hint HeqldVal rv32CalcLdVal.
+      kami_cbn_hint_func HeqldVal rv32CalcLdVal.
       
       (* -- pick the nextPc function *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
         remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
       end.
-      kami_cbn_hint Heqnpc rv32NextPc.
+      kami_cbn_hint_func Heqnpc rv32NextPc.
 
       weq_to_Zeqb.
 
@@ -1443,7 +1463,7 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       all: simpl_bit_manip.
 
@@ -1533,6 +1553,8 @@ Section Equiv.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
+      kami_cbn_hint Heqic.
+      kami_cbn_hint H.
       kami_cbn_all.
       kami_struct_cbv Heqic.
       kami_struct_cbv H.
@@ -1552,14 +1574,14 @@ Section Equiv.
       | [H: context [@evalExpr ?fk (rv32CalcLdVal ?sz ?ty ?la ?lv ?lty)] |- _] =>
         remember (@evalExpr fk (rv32CalcLdVal sz ty la lv lty)) as ldVal
       end.
-      kami_cbn_hint HeqldVal rv32CalcLdVal.
+      kami_cbn_hint_func HeqldVal rv32CalcLdVal.
       
       (* -- pick the nextPc function *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
         remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
       end.
-      kami_cbn_hint Heqnpc rv32NextPc.
+      kami_cbn_hint_func Heqnpc rv32NextPc.
 
       (* -- eliminate trivially contradictory cases *)
       weq_to_Zeqb.
@@ -1737,8 +1759,8 @@ Section Equiv.
         }
       }
 
-      (** FIXME: [Qed] takes forever.. *)
-  Admitted.
+      all: idtac "KamiRiscv: [kamiStep_sound_case_execLd] starting the Qed...".
+  Time Qed.
 
   Lemma kamiStep_sound_case_execLdZ:
     forall km1 t0 rm1 post kupd cs
@@ -1775,9 +1797,9 @@ Section Equiv.
       rt. eval_kami_fetch. rt.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
+      kami_cbn_hint Heqic.
       kami_cbn_all.
       kami_struct_cbv Heqic.
-      kami_struct_cbv H.
 
       (* -- pick the subterm for the Kami instruction *)
       match goal with
@@ -1795,7 +1817,7 @@ Section Equiv.
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
         remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
       end.
-      kami_cbn_hint Heqnpc rv32NextPc.
+      kami_cbn_hint_func Heqnpc rv32NextPc.
 
       weq_to_Zeqb.
 
@@ -1908,9 +1930,9 @@ Section Equiv.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
+      kami_cbn_hint Heqic.
       kami_cbn_all.
       kami_struct_cbv Heqic.
-      kami_struct_cbv H.
 
       (* -- pick the subterm for the Kami instruction *)
       match goal with
@@ -1927,7 +1949,7 @@ Section Equiv.
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
         remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
       end.
-      kami_cbn_hint Heqnpc rv32NextPc.
+      kami_cbn_hint_func Heqnpc rv32NextPc.
 
       (* -- eliminate trivially contradictory cases *)
       weq_to_Zeqb.
@@ -2007,8 +2029,8 @@ Section Equiv.
       all: try subst regs; try subst kupd.
       all: prove_states_related.
 
-      (** FIXME: [Qed] takes forever.. *)
-  Admitted.
+      all: idtac "KamiRiscv: [kamiStep_sound_case_execLdZ] starting the Qed...".
+  Time Qed.
   
   Lemma kamiStep_sound_case_execSt:
     forall km1 t0 rm1 post kupd cs
@@ -2045,9 +2067,9 @@ Section Equiv.
       rt. eval_kami_fetch. rt.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
+      kami_cbn_hint Heqic.
       kami_cbn_all.
       kami_struct_cbv Heqic.
-      kami_struct_cbv H.
 
       (* -- pick the subterm for the Kami instruction *)
       match goal with
@@ -2065,7 +2087,7 @@ Section Equiv.
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
         remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
       end.
-      kami_cbn_hint Heqnpc rv32NextPc.
+      kami_cbn_hint_func Heqnpc rv32NextPc.
 
       weq_to_Zeqb.
 
@@ -2186,6 +2208,8 @@ Section Equiv.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
+      kami_cbn_hint Heqic.
+      kami_cbn_hint H.
       kami_cbn_all.
       kami_struct_cbv Heqic.
       kami_struct_cbv H.
@@ -2205,7 +2229,7 @@ Section Equiv.
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
         remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
       end.
-      kami_cbn_hint Heqnpc rv32NextPc.
+      kami_cbn_hint_func Heqnpc rv32NextPc.
 
       (* -- eliminate trivially contradictory cases *)
       weq_to_Zeqb.
@@ -2384,8 +2408,8 @@ Section Equiv.
         }
       }
 
-      (** FIXME: [Qed] takes forever.. *)
-  Admitted.
+      all: idtac "KamiRiscv: [kamiStep_sound_case_execSt] starting the Qed...".
+  Time Qed.
 
   Lemma kamiStep_sound_case_execNm:
     forall km1 t0 rm1 post kupd cs
@@ -2437,14 +2461,14 @@ Section Equiv.
     | [H: context [@evalExpr ?fk (rv32DoExec ?sz ?ty ?rs1 ?rs2 ?pc ?inst)] |- _] =>
       remember (@evalExpr fk (rv32DoExec sz ty rs1 rs2 pc inst)) as execVal
     end.
-    kami_cbn_hint HeqexecVal rv32DoExec.
+    kami_cbn_hint_func HeqexecVal rv32DoExec.
     
     (* -- pick the nextPc function *)
     match goal with
     | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
       remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
     end.
-    kami_cbn_hint Heqnpc rv32NextPc.
+    kami_cbn_hint_func Heqnpc rv32NextPc.
 
     (* -- separate out cases of Kami execution *)
     weq_to_Zeqb.
@@ -2673,7 +2697,7 @@ Section Equiv.
     }
 
     all: idtac "KamiRiscv: [kamiStep_sound_case_execNm] starting the Qed...".
-  (*A lot of*) Time Qed.
+  Time Qed.
 
   Lemma kamiStep_sound_case_execNmZ:
     forall km1 t0 rm1 post kupd cs
@@ -2725,7 +2749,7 @@ Section Equiv.
     | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
       remember (@evalExpr fk (rv32NextPc sz ty rf pc inst)) as npc
     end.
-    kami_cbn_hint Heqnpc rv32NextPc.
+    kami_cbn_hint_func Heqnpc rv32NextPc.
 
     weq_to_Zeqb.
     dest_Zeqb.
@@ -3018,7 +3042,7 @@ Section Equiv.
 
     all: idtac "KamiRiscv: [kamiStep_sound_case_execNmZ] starting the Qed...".
   Time Qed.
-  
+
   Lemma kamiStep_sound:
     forall (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT)
            (m1': RiscvMachine) (t0: list Event) (post: RiscvMachine -> Prop)
