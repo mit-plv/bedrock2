@@ -48,6 +48,28 @@ Local Open Scope Z_scope.
 
 Local Axiom TODO_initmem : False.
 
+(* TODO move to coqutil *)
+Module List. Section WithA.
+  Context {A : Type}.
+
+  Lemma firstn_map{B: Type}: forall (f: A -> B) (n: nat) (l: list A),
+      firstn n (map f l) = map f (firstn n l).
+  Proof.
+    induction n; intros.
+    - reflexivity.
+    - simpl. destruct l; simpl; congruence.
+  Qed.
+
+  Lemma firstn_seq: forall (n from len: nat),
+      firstn n (seq from len) = seq from (min n len).
+  Proof.
+    induction n; intros.
+    - reflexivity.
+    - simpl. destruct len; simpl; f_equal; auto.
+  Qed.
+
+End WithA. End List.
+
 Require Import Coq.Classes.Morphisms.
 
 Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters :=
@@ -64,36 +86,15 @@ Qed.
 
 (* TODO these definitions should be in KamiRiscv.v: *)
 
+Definition get_kamiMemInit{memSizeLg: Z}
+  (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg))
+  (n: nat): Byte.byte :=
+  byte.of_Z (Kami.Lib.Word.uwordToZ
+               (Kami.Semantics.evalConstT (kamiMemInit _ memInit) (Kami.Lib.Word.natToWord _ n))).
+
 Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from: Utility.word)
-           (mem: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) memSizeLg): Prop :=
-  forall b n,
-    nth_error bs n = Some b ->
-    Word.natToWord 8 (Byte.to_nat b)
-    = Semantics.evalConstT (Syntax.ConstVector mem)
-                           (Semantics.evalZeroExtendTrunc memSizeLg (Word.wplus from (Word.natToWord _ n))).
-
-Section Move.
-  Context {mem: map.map Utility.word byte}.
-  Context (memSizeLg: Z).
-  Context (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
-                               (Z.to_nat memSizeLg)).
-
-  Definition get_kamiMemInit(n: nat): Byte.byte :=
-    byte.of_Z (Kami.Lib.Word.uwordToZ
-                 (Kami.Semantics.evalConstT (kamiMemInit _ memInit) (Kami.Lib.Word.natToWord _ n))).
-
-  Definition riscvMemInit_range(from len: nat): mem := map.of_list (List.map
-    (fun i : nat => (word.of_Z (Z.of_nat i), get_kamiMemInit i))
-    (seq from len)).
-
-  Definition riscvMemInit_values(from len: nat): list byte :=
-    List.map get_kamiMemInit (seq from len).
-
-  Definition riscvMemInit: mem := riscvMemInit_range 0 (2 ^ Z.to_nat memSizeLg).
-End Move.
-
-(* TODO remove once moved to KamiRiscv.v *)
-Goal @riscvMemInit = @KamiRiscv.riscvMemInit. Proof. reflexivity. Qed.
+           (mem: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
+  List.map (get_kamiMemInit mem) (seq 0 (List.length bs)) = bs.
 
 Section Connect.
 
@@ -256,6 +257,21 @@ Section Connect.
   Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
       spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
 
+  Definition riscvMemInit_all_values: list byte :=
+    List.map (get_kamiMemInit memInit) (seq 0 (2 ^ Z.to_nat memSizeLg)).
+
+  Definition riscvMemInit_values(from len: nat): list byte :=
+    List.firstn len (List.skipn from riscvMemInit_all_values).
+
+  Lemma riscvMemInit_to_seplog: forall len from,
+    Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
+    (PipelineWithRename.ptsto_bytes (word.of_Z (Z.of_nat from)) riscvMemInit_all_values)
+    (riscvMemInit memSizeLg memInit).
+  Proof.
+    case TODO_initmem.
+  Qed.
+
+(*
   Lemma riscvMemInit_to_seplog: forall len from,
     Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
     (PipelineWithRename.ptsto_bytes (word.of_Z (Z.of_nat from))
@@ -313,6 +329,7 @@ Section Connect.
           }
           blia.
   Qed.
+*)
 
   (* end to end, but still generic over the program *)
   Lemma end2end:
@@ -407,16 +424,25 @@ Section Connect.
 
         eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
+        eexists ?[stack].
+        (*
         exists (riscvMemInit_values _ memInit (Z.to_nat (2 ^ memSizeLg - stack_size_in_bytes))
                                               (Z.to_nat stack_size_in_bytes)).
+         *)
          eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
+        eexists ?[heap].
+        (*
         exists (riscvMemInit_values _ memInit (Z.to_nat (2 ^ (2 + instrMemSizeLg)))
                        (Z.to_nat (2 ^ memSizeLg - stack_size_in_bytes - 2 ^ (2 + instrMemSizeLg)))).
+         *)
         eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
+        eexists ?[unused_imem].
+        (*
         exists (riscvMemInit_values _ memInit (Datatypes.length (instrencode instrs))
                        (Z.to_nat (2 ^ (2 + instrMemSizeLg)) - (Datatypes.length (instrencode instrs)))).
+         *)
         eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_emp_2, ?sep_emp_l, ?sep_emp_r; reflexivity. }
         eapply sep_emp_l; split.
@@ -438,13 +464,78 @@ Section Connect.
             change (Z.of_nat 2) with 2.
             apply Z.pow_le_mono_r; try blia.
           }
-          match type of P with
-          | _ ?m => change m with (KamiRiscv.riscvMemInit memSizeLg memInit) in P
+          unfold PipelineWithRename.ptsto_bytes in *.
+          remember riscvMemInit_all_values as l. symmetry in Heql. pose proof Heql as E.
+          (* 1) chop off instructions *)
+          rewrite <- (firstn_skipn (Datatypes.length (instrencode instrs)) l) in E. subst l.
+          match type of E with
+          | _ = _ ++ ?L => remember L as l
           end.
-          (* TODO now in P, split
-             (riscvMemInit_values memSizeLg memInit 0 (2 ^ BinIntDef.Z.to_nat memSizeLg))
-             into sublists, then rewrite array_append, then exact P *)
-          case TODO_initmem.
+          (* 2) chop off unused instruction memory *)
+          rewrite <- (firstn_skipn (2 ^ (2 + Z.to_nat instrMemSizeLg) - Datatypes.length (instrencode instrs))
+                                   l) in E. subst l.
+          rewrite List.app_assoc in E.
+          match type of E with
+          | _ = _ ++ ?L => remember L as l
+          end.
+          (* 3 chop off heap *)
+          rewrite <- (firstn_skipn (Z.to_nat (2 ^ memSizeLg - 2 ^ (2 + instrMemSizeLg) - stack_size_in_bytes))
+                                   l) in E. subst l.
+          rewrite List.app_assoc in E.
+          rewrite E in P; clear E.
+          use_sep_assumption.
+          wseplog_pre.
+          simpl_addrs.
+          unfold code_start, code_pastend, heap_start, heap_pastend, stack_start, stack_pastend, ml.
+          replace (firstn (Datatypes.length (instrencode instrs)) riscvMemInit_all_values)
+            with (instrencode instrs). 2: {
+            unfold riscvMemInit_all_values.
+            rewrite List.firstn_map.
+            rewrite List.firstn_seq.
+            rewrite Nat.min_l. 2: {
+              move L at bottom.
+              unfold code_start, code_pastend, ml in L.
+              rewrite ?word.unsigned_of_Z in L.
+              change (word.wrap 0) with 0 in L.
+              unfold word.wrap in L.
+              rewrite (Z.mod_small (2 ^ (2 + instrMemSizeLg))) in L.
+              - eapply Nat.le_trans with (Z.to_nat (2 ^ (2 + instrMemSizeLg))). 1: blia.
+                rewrite N_Z_nat_conversions.Z2Nat.inj_pow; try blia.
+                apply Nat.pow_le_mono_r; try blia.
+              - split.
+                + apply Z.pow_nonneg. blia.
+                + change width with 32. apply Z.pow_lt_mono_r; blia.
+            }
+            symmetry.
+            exact M.
+          }
+          cancel.
+          cancel_seps_at_indices 0%nat 0%nat. {
+            reflexivity.
+          }
+          cancel_seps_at_indices 0%nat 0%nat. {
+            f_equal.
+            repeat match goal with
+                   | |- context [?x] => progress change x with (@width (@Words32 mmio_params))
+                   | |- context [?x] => progress change x with (@Utility.word (@Words32 mmio_params))
+                   | |- context [?x] => progress change x with (@MMIO.word_ok mmio_params)
+                   end.
+            ring.
+          }
+          cancel_seps_at_indices 0%nat 0%nat. {
+            f_equal.
+            repeat match goal with
+                   | |- context [?x] => progress change x with (@width (@Words32 mmio_params))
+                   | |- context [?x] => progress change x with (@Utility.word (@Words32 mmio_params))
+                   | |- context [?x] => progress change x with (@MMIO.word_ok mmio_params)
+                   end.
+            case TODO_initmem.
+          }
+          cancel_seps_at_indices 0%nat 0%nat. {
+            f_equal.
+            case TODO_initmem.
+          }
+          cbn [seps]. reflexivity.
         * case TODO_initmem.
         * case TODO_initmem.
         * case TODO_initmem.

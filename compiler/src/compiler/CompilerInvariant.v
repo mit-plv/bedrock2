@@ -50,7 +50,7 @@ Section Pipeline1.
 
   Definition imem(code_start code_pastend: Semantics.word)(instrs: list Instruction): Semantics.mem -> Prop :=
     (ptsto_bytes code_start (instrencode instrs) *
-     mem_available (word.sub code_pastend (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
+     mem_available (word.add code_start (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
                    code_pastend)%sep.
 
   Lemma ptsto_bytes_to_program: forall instrs p_code,
