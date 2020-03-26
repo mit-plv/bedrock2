@@ -37,57 +37,17 @@ Require Import processor.FetchOk processor.DecExecOk.
 
 Local Open Scope Z_scope.
 
-Lemma Npow2_lt:
-  forall n m,
-    (n < m)%nat -> (NatLib.Npow2 n < NatLib.Npow2 m)%N.
-Proof.
-  induction m; simpl; intros.
-  - blia.
-  - assert (n = m \/ n < m)%nat by blia.
-    destruct H0.
-    + subst.
-      destruct (NatLib.Npow2 m) eqn:Hp.
-      * exfalso; eapply NatLib.Npow2_not_zero; eauto.
-      * blia.
-    + specialize (IHm H0).
-      destruct (NatLib.Npow2 m); blia.
-Qed.
-
-Lemma Npow2_le:
-  forall n m,
-    (n <= m)%nat -> (NatLib.Npow2 n <= NatLib.Npow2 m)%N.
-Proof.
-  induction m; simpl; intros.
-  - assert (n = 0)%nat by blia.
-    subst; simpl; blia.
-  - assert (n = S m \/ n <= m)%nat by blia.
-    destruct H0.
-    + subst; reflexivity.
-    + specialize (IHm H0).
-      destruct (NatLib.Npow2 m); blia.
-Qed.
+Local Axiom TODO_word : False.
 
 Lemma bitSlice_range_ex:
   forall z n m,
-    0 <= n <= m ->
-    0 <= bitSlice z n m < 2 ^ (m - n).
+    0 <= n <= m -> 0 <= bitSlice z n m < 2 ^ (m - n).
 Proof.
   intros.
   rewrite bitSlice_alt by blia.
   unfold bitSlice'.
   apply Z.mod_pos_bound.
   apply Z.pow_pos_nonneg; blia.
-Qed.
-
-Local Axiom TODO_word : False.
-
-Lemma wordToN_wplus_distr:
-  forall sz (w1 w2: Word.word sz),
-    (wordToN w1 + wordToN w2 < NatLib.Npow2 sz)%N ->
-    wordToN (w1 ^+ w2) = (wordToN w1 + wordToN w2)%N.
-Proof.
-  cbv [wplus wordBin]; intros.
-  apply wordToN_NToWord_2; assumption.
 Qed.
 
 Section Equiv.
@@ -162,36 +122,6 @@ Section Equiv.
   | relate_MMOutput: forall addr v,
       events_related (MMOutputEvent addr v) ((map.empty, "MMIOWRITE"%string, [addr; v]), (map.empty, [])).
 
-  Lemma events_related_mmioLoadEvent:
-    forall addr1 v1 addr2 (v2: HList.tuple byte 4),
-      addr1 = addr2 ->
-      signExtend 32 (combine _ v2) = wordToZ v1 ->
-      events_related (MMInputEvent addr1 v1) (MinimalMMIO.mmioLoadEvent addr2 v2).
-  Proof.
-    intros; subst.
-    cbv [MinimalMMIO.mmioLoadEvent].
-    cbv [MinimalMMIO.signedByteTupleToReg].
-    change (8 * Z.of_nat 4) with 32; rewrite H0.
-    cbv [word.of_Z word WordsKami wordW KamiWord.word kofZ].
-    rewrite ZToWord_wordToZ.
-    econstructor.
-  Qed.
-
-  Lemma events_related_mmioStoreEvent:
-    forall addr1 v1 addr2 (v2: HList.tuple byte 4),
-      addr1 = addr2 ->
-      signExtend 32 (combine _ v2) = wordToZ v1 ->
-      events_related (MMOutputEvent addr1 v1) (MinimalMMIO.mmioStoreEvent addr2 v2).
-  Proof.
-    intros; subst.
-    cbv [MinimalMMIO.mmioStoreEvent].
-    cbv [MinimalMMIO.signedByteTupleToReg].
-    change (8 * Z.of_nat 4) with 32; rewrite H0.
-    cbv [word.of_Z word WordsKami wordW KamiWord.word kofZ].
-    rewrite ZToWord_wordToZ.
-    econstructor.
-  Qed.
-
   Inductive traces_related: list Event -> list LogItem -> Prop :=
   | relate_nil:
       traces_related nil nil
@@ -223,28 +153,6 @@ Section Equiv.
                                      RiscvMachine.getLog := t'; |};
                     getMetrics := metrics; |}.
 
-  (** * Utility lemmas *)
-
-  Lemma events_related_unique: forall e' e1 e2,
-      events_related e1 e' ->
-      events_related e2 e' ->
-      e1 = e2.
-  Proof.
-    intros. inversion H; inversion H0; subst; congruence.
-  Qed.
-
-  Lemma traces_related_unique: forall {t' t1 t2},
-      traces_related t1 t' ->
-      traces_related t2 t' ->
-      t1 = t2.
-  Proof.
-    induction t'; intros.
-    - inversion H. inversion H0. reflexivity.
-    - inversion H. inversion H0. subst. f_equal.
-      + eapply events_related_unique; eassumption.
-      + eapply IHt'; eassumption.
-  Qed.
-
   Inductive KamiLabelR: Kami.Semantics.LabelT -> list Event -> Prop :=
   | KamiSilent:
       forall klbl,
@@ -265,6 +173,58 @@ Section Equiv.
 
   Definition kamiStep (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT): Prop :=
     exists kupd, Step kamiProc m1 kupd klbl /\ m2 = FMap.M.union kupd m1.
+
+  (** * Utility lemmas *)
+
+  Lemma events_related_mmioLoadEvent:
+    forall addr1 v1 addr2 (v2: HList.tuple byte 4),
+      addr1 = addr2 ->
+      signExtend 32 (combine _ v2) = wordToZ v1 ->
+      events_related (MMInputEvent addr1 v1) (MinimalMMIO.mmioLoadEvent addr2 v2).
+  Proof.
+    intros; subst.
+    cbv [MinimalMMIO.mmioLoadEvent].
+    cbv [MinimalMMIO.signedByteTupleToReg].
+    change (8 * Z.of_nat 4) with 32; rewrite H0.
+    cbv [word.of_Z word WordsKami wordW KamiWord.word kofZ].
+    rewrite ZToWord_wordToZ.
+    econstructor.
+  Qed.
+
+  Lemma events_related_mmioStoreEvent:
+    forall addr1 v1 addr2 (v2: HList.tuple byte 4),
+      addr1 = addr2 ->
+      signExtend 32 (combine _ v2) = wordToZ v1 ->
+      events_related (MMOutputEvent addr1 v1) (MinimalMMIO.mmioStoreEvent addr2 v2).
+  Proof.
+    intros; subst.
+    cbv [MinimalMMIO.mmioStoreEvent].
+    cbv [MinimalMMIO.signedByteTupleToReg].
+    change (8 * Z.of_nat 4) with 32; rewrite H0.
+    cbv [word.of_Z word WordsKami wordW KamiWord.word kofZ].
+    rewrite ZToWord_wordToZ.
+    econstructor.
+  Qed.
+
+  Lemma events_related_unique: forall e' e1 e2,
+      events_related e1 e' ->
+      events_related e2 e' ->
+      e1 = e2.
+  Proof.
+    intros. inversion H; inversion H0; subst; congruence.
+  Qed.
+
+  Lemma traces_related_unique: forall {t' t1 t2},
+      traces_related t1 t' ->
+      traces_related t2 t' ->
+      t1 = t2.
+  Proof.
+    induction t'; intros.
+    - inversion H. inversion H0. reflexivity.
+    - inversion H. inversion H0. subst. f_equal.
+      + eapply events_related_unique; eassumption.
+      + eapply IHt'; eassumption.
+  Qed.
 
   Lemma wlt_kunsigned:
     forall (w1 w2: word),
@@ -782,7 +742,10 @@ Section Equiv.
       Z.of_N (wordToN (Word.combine a b)) =
       Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
   Proof.
-    case TODO_word.
+    intros.
+    rewrite Z_of_wordToN_combine_alt, Z.lor_comm.
+    rewrite nat_N_Z.
+    reflexivity.
   Qed.
 
   Lemma kunsigned_split2_shiftr:
@@ -865,6 +828,128 @@ Section Equiv.
            end.
     Z.div_mod_to_equations.
     Lia.lia.
+  Qed.
+
+  Lemma Z_lor_comm_four_variant_1:
+    forall a b c d, a <|> b <|> (c <|> d) = a <|> d <|> c <|> b.
+  Proof.
+    intros.
+    rewrite <-?Z.lor_assoc; f_equal.
+    rewrite Z.lor_comm with (a:= c).
+    rewrite ?Z.lor_assoc.
+    rewrite Z.lor_comm with (a:= b).
+    rewrite <-?Z.lor_assoc; f_equal.
+    apply Z.lor_comm.
+  Qed.
+
+  Lemma Z_lor_comm_four_variant_2:
+    forall a b c d, a <|> b <|> (c <|> d) = a <|> c <|> d <|> b.
+  Proof.
+    intros.
+    rewrite <-?Z.lor_assoc; f_equal.
+    rewrite Z.lor_comm with (a:= d).
+    rewrite ?Z.lor_assoc.
+    rewrite Z.lor_comm with (a:= b).
+    reflexivity.
+  Qed.
+
+  Lemma word_and_lnot_1:
+    forall w, and (MachineWidth:= MachineWidth_XLEN)
+                  w (lnot (MW:= MachineWidth_XLEN) (ZToWord _ 1)) = w.
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma bitSlice_lsb_0:
+    forall z n m,
+      0 <= m <= n ->
+      bitSlice z n (n + 1) = 0 ->
+      bitSlice z m n = bitSlice z m (n + 1).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma wlshift_sll:
+    forall w (n: Word.word 5),
+      wlshift w #n = sll (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+  Proof.
+    intros.
+    cbv [sll MachineWidth_XLEN word.slu word WordsKami wordW KamiWord.word].
+    cbv [kunsigned word.of_Z kofZ].
+    rewrite unsigned_wordToZ.
+    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
+    2: { split; [Lia.lia|].
+         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
+         rewrite NatLib.Z_of_N_Npow2.
+         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+    }
+    rewrite Z.mod_small.
+    2: { split; [Lia.lia|].
+         change width with (Z.of_N 32).
+         apply N2Z.inj_lt, wordToN_bound.
+    }
+    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
+    rewrite wordToN_to_nat.
+    reflexivity.
+  Qed.
+    
+  Lemma wrshift_srl:
+    forall w (n: Word.word 5),
+      wrshift w #n = srl (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+  Proof.
+    intros.
+    cbv [srl MachineWidth_XLEN word.sru word WordsKami wordW KamiWord.word].
+    cbv [kunsigned word.of_Z kofZ].
+    rewrite unsigned_wordToZ.
+    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
+    2: { split; [Lia.lia|].
+         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
+         rewrite NatLib.Z_of_N_Npow2.
+         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+    }
+    rewrite Z.mod_small.
+    2: { split; [Lia.lia|].
+         change width with (Z.of_N 32).
+         apply N2Z.inj_lt, wordToN_bound.
+    }
+    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
+    rewrite wordToN_to_nat.
+    reflexivity.
+  Qed.
+
+  Lemma wrshifta_sra:
+    forall w (n: Word.word 5),
+      wrshifta w #n = sra (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+  Proof.
+    intros.
+    cbv [sra MachineWidth_XLEN word.srs word WordsKami wordW KamiWord.word].
+    cbv [kunsigned word.of_Z kofZ].
+    rewrite unsigned_wordToZ.
+    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
+    2: { split; [Lia.lia|].
+         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
+         rewrite NatLib.Z_of_N_Npow2.
+         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+    }
+    rewrite Z.mod_small.
+    2: { split; [Lia.lia|].
+         change width with (Z.of_N 32).
+         apply N2Z.inj_lt, wordToN_bound.
+    }
+    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
+    rewrite wordToN_to_nat.
+    reflexivity.
+  Qed.
+
+  Lemma kunsigned_split1_mod:
+    forall n m w,
+      Z.of_N (wordToN (split1 n m w)) = Z.of_N (wordToN w) mod (2 ^ (Z.of_nat n)).
+  Proof.
+    intros.
+    rewrite wordToN_split1.
+    rewrite N2Z.inj_mod by apply NatLib.Npow2_not_zero.
+    rewrite NatLib.Z_of_N_Npow2.
+    reflexivity.
   Qed.
 
   (** * Utility Ltacs *)
@@ -1005,7 +1090,28 @@ Section Equiv.
     end.
 
   Ltac rt := repeat (r || t).
-  
+
+  Ltac simpl_bit_combine_Z :=
+    repeat 
+      match goal with
+      | |- context [Z.of_N (wordToN (@Word.combine ?sz1 _ ?sz2 _))] =>
+        rewrite @kunsigned_combine_shiftl_lor with (sa:= sz1) (sb:= sz2)
+      end;
+    repeat rewrite ?unsigned_split2_split1_as_bitSlice,
+    ?unsigned_split1_as_bitSlice,
+    ?unsigned_split2_as_bitSlice;
+    repeat match goal with
+           | |- context [Z.of_nat ?n] =>
+             natcstP n;
+             let nn := eval cbv in (Z.of_nat n) in
+             change (Z.of_nat n) with nn
+           | |- context [Z.add ?z1 ?z2] =>
+             zcstP z1; zcstP z2;
+             let zz := eval cbv in (Z.add z1 z2) in
+             change (Z.add z1 z2) with zz
+           | _ => repeat rewrite ?Z.lor_0_r, ?Z.shiftl_lor, ?Z.shiftl_shiftl by Lia.lia
+           end.
+
   Ltac prove_KamiLabelR_silent :=
     split; [|split];
     [eapply KamiSilent; reflexivity| |eassumption].
@@ -2546,9 +2652,9 @@ Section Equiv.
              ZToReg MachineWidth_XLEN
              word.add word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
-
       repeat f_equal.
-      case TODO_word.
+      simpl_bit_combine_Z.
+      apply Z_lor_comm_four_variant_1.
     }
 
     { (* [pc_related_and_valid] for `JALR` *)
@@ -2559,7 +2665,8 @@ Section Equiv.
              word.add word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       regs_get_red_goal.
-      case TODO_word.
+      rewrite word_and_lnot_1.
+      reflexivity.
     }
 
     (* -- proof per an instruction execution *)
@@ -2634,66 +2741,76 @@ Section Equiv.
     { (* slli *)
       subst v shamt6 rs1.
       regs_get_red_goal.
-      clear -e2.
+      clear -e0.
       cbv [machineIntToShamt id].
       match goal with
       | [ |- context [bitSlice ?w ?a ?b] ] =>
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
-          by ((* Provable with [e2] *)
-              rewrite unsigned_split2_split1_as_bitSlice;
-              case TODO_word)
+          by (rewrite unsigned_split2_split1_as_bitSlice;
+              apply bitSlice_lsb_0; [Lia.lia|assumption])
       end.
-      case TODO_word. (* consistency between `wlshift` and `sll` *)
+      rewrite wlshift_sll.
+      reflexivity.
     }
 
     { (* srli *)
       subst v shamt6 rs1.
       regs_get_red_goal.
-      clear -e2.
+      clear -e0.
       cbv [machineIntToShamt id].
       match goal with
       | [ |- context [bitSlice ?w ?a ?b] ] =>
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
-          by case TODO_word
+          by (rewrite unsigned_split2_split1_as_bitSlice;
+              apply bitSlice_lsb_0; [Lia.lia|assumption])
       end.
-      case TODO_word. (* consistency between `wrshift` and `srl` *)
+      rewrite wrshift_srl.
+      reflexivity.
     }
 
     { (* srai *)
       subst v shamt6 rs1.
       regs_get_red_goal.
-      clear -e2.
+      clear -e0.
       cbv [machineIntToShamt id].
       match goal with
       | [ |- context [bitSlice ?w ?a ?b] ] =>
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
-          by case TODO_word
+          by (rewrite unsigned_split2_split1_as_bitSlice;
+              apply bitSlice_lsb_0; [Lia.lia|assumption])
       end.
-      case TODO_word. (* consistency between `wrshifta` and `sra` *)
+      rewrite wrshifta_sra.
+      reflexivity.
     }
 
     { (* sll *)
       subst v v0 rs1 rs2.
       regs_get_red_goal.
       cbv [regToShamt].
-      case TODO_word. (* consistency between `wlshift` and `sll` *)
+      rewrite wlshift_sll.
+      rewrite kunsigned_split1_mod.
+      reflexivity.
     }
 
     { (* srl *)
       subst v v0 rs1 rs2.
       regs_get_red_goal.
       cbv [regToShamt].
-      case TODO_word. (* consistency between `wrshift` and `srl` *)
+      rewrite wrshift_srl.
+      rewrite kunsigned_split1_mod.
+      reflexivity.
     }
 
     { (* sra *)
       subst v v0 rs1 rs2.
       regs_get_red_goal.
       cbv [regToShamt].
-      case TODO_word. (* consistency between `wrshifta` and `sra` *)
+      rewrite wrshifta_sra.
+      rewrite kunsigned_split1_mod.
+      reflexivity.
     }
 
     all: idtac "KamiRiscv: [kamiStep_sound_case_execNm] starting the Qed...".
@@ -2851,7 +2968,8 @@ Section Equiv.
              word.add word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
-      case TODO_word.
+      simpl_bit_combine_Z.
+      apply Z_lor_comm_four_variant_1.
     }
 
     { (* jalr *)
@@ -2862,7 +2980,8 @@ Section Equiv.
              word.add word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       regs_get_red_goal.
-      case TODO_word.
+      rewrite word_and_lnot_1.
+      reflexivity.
     }
 
     { (* beq(eq) *)
@@ -2874,7 +2993,8 @@ Section Equiv.
              word.add word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
-      case TODO_word.
+      simpl_bit_combine_Z.
+      apply Z_lor_comm_four_variant_2.
     }
     
     { (* beq(eq-neq contradiction) *)
@@ -2907,7 +3027,8 @@ Section Equiv.
                word.add word WordsKami wordW KamiWord.word
                word.of_Z kofZ].
         repeat f_equal.
-        case TODO_word.
+        simpl_bit_combine_Z.
+        apply Z_lor_comm_four_variant_2.
       }
     }
 
@@ -2940,7 +3061,8 @@ Section Equiv.
              word.add word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
-      case TODO_word.
+      simpl_bit_combine_Z.
+      apply Z_lor_comm_four_variant_2.
     }
 
     { (* blt(not lt) *)
@@ -2965,12 +3087,13 @@ Section Equiv.
       subst addr sbimm12.
       split; [apply AddrAligned_consistent; assumption|].
       clear; red.
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [negb Utility.add
+                ZToReg MachineWidth_XLEN
+                word.add word WordsKami wordW KamiWord.word
+                word.of_Z kofZ].
       repeat f_equal.
-      case TODO_word.
+      simpl_bit_combine_Z.
+      apply Z_lor_comm_four_variant_2.
     }
 
     { (* bge(not ge) *)
@@ -2999,7 +3122,8 @@ Section Equiv.
              word.add word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
-      case TODO_word.
+      simpl_bit_combine_Z.
+      apply Z_lor_comm_four_variant_2.
     }
 
     { (* bltu(not ltu) *)
@@ -3022,12 +3146,13 @@ Section Equiv.
       subst addr sbimm12.
       split; [apply AddrAligned_consistent; assumption|].
       clear; red.
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [negb Utility.add
+                ZToReg MachineWidth_XLEN
+                word.add word WordsKami wordW KamiWord.word
+                word.of_Z kofZ].
       repeat f_equal.
-      case TODO_word.
+      simpl_bit_combine_Z.
+      apply Z_lor_comm_four_variant_2.
     }
 
     { (* bgeu(not geu) *)
