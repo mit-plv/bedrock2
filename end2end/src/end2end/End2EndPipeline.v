@@ -100,10 +100,12 @@ Section Connect.
 
   Context (instrMemSizeLg memSizeLg stack_size_in_bytes: Z).
 
+  Let instrMemSizeBytes: Z := 2 ^ (2 + instrMemSizeLg).
+
   Definition ml: MemoryLayout := {|
     code_start := word.of_Z 0;
-    code_pastend := word.of_Z (2 ^ (2 + instrMemSizeLg));
-    heap_start := word.of_Z (2 ^ (2 + instrMemSizeLg));
+    code_pastend := word.of_Z instrMemSizeBytes;
+    heap_start := word.of_Z instrMemSizeBytes;
     heap_pastend := word.of_Z (2 ^ memSizeLg - stack_size_in_bytes);
     stack_start := word.of_Z (2 ^ memSizeLg - stack_size_in_bytes);
     stack_pastend := word.of_Z (2 ^ memSizeLg);
@@ -200,7 +202,7 @@ Section Connect.
   Hypothesis heap_start_agree: spec.(datamem_start) = ml.(heap_start).
   Hypothesis heap_pastend_agree: spec.(datamem_pastend) = ml.(heap_pastend).
   Hypothesis stack_size_div: stack_size_in_bytes mod bytes_per_word = 0.
-  Hypothesis stack_size_bounds: 0 <= stack_size_in_bytes <= 2 ^ memSizeLg - 2 ^ (2 + instrMemSizeLg).
+  Hypothesis stack_size_bounds: 0 <= stack_size_in_bytes <= 2 ^ memSizeLg - instrMemSizeBytes.
 
   Lemma mlOk: MemoryLayoutOk ml.
   Proof.
@@ -258,7 +260,7 @@ Section Connect.
       spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
 
   Definition riscvMemInit_all_values: list byte :=
-    List.map (get_kamiMemInit memInit) (seq 0 (2 ^ Z.to_nat memSizeLg)).
+    List.map (get_kamiMemInit memInit) (seq 0 (Z.to_nat (2 ^ memSizeLg))).
 
   Definition riscvMemInit_values(from len: nat): list byte :=
     List.firstn len (List.skipn from riscvMemInit_all_values).
@@ -401,11 +403,9 @@ Section Connect.
         * exact GetInit.
         * intros.
           eapply ExprImp.weaken_exec.
-          --
-             rewrite ?heap_start_agree, ?heap_pastend_agree in *.
+          -- rewrite ?heap_start_agree, ?heap_pastend_agree in *.
              refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
                eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
-
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
@@ -421,28 +421,40 @@ Section Connect.
       + pose proof (mem_ok : @map.ok (@Semantics.word strname_sem) byte (@Semantics.mem strname_sem)).
         pose proof word.eqb_spec.
         cbv [imem mem_available].
-
+        unfold code_start, code_pastend, heap_start, heap_pastend, stack_start, stack_pastend, ml in *.
+        assert (Bounds_instrs: 0 <= Z.of_nat (Datatypes.length (instrencode instrs))) by blia.
+        assert (Bounds_unused_imem: Z.of_nat (Datatypes.length (instrencode instrs)) <= instrMemSizeBytes). {
+          move L at bottom.
+          rewrite ?word.unsigned_of_Z in L.
+          change (word.wrap 0) with 0 in L.
+          unfold word.wrap in L.
+          rewrite (Z.mod_small instrMemSizeBytes) in L. 1: blia.
+          split.
+          - apply Z.pow_nonneg. blia.
+          - change width with 32. apply Z.pow_lt_mono_r; blia.
+        }
+        assert (Bounds_heap: instrMemSizeBytes <= 2 ^ memSizeLg - stack_size_in_bytes) by blia.
+        assert (Bounds_stack: 2 ^ memSizeLg - stack_size_in_bytes <= 2 ^ memSizeLg) by blia.
+        assert (Bounds_unmapped: 2 ^ memSizeLg < 2 ^ width). {
+          change width with 32.
+          apply Z.pow_lt_mono_r; try blia.
+        }
+        assert (Datatypes.length riscvMemInit_all_values = Z.to_nat (2 ^ memSizeLg)). {
+          unfold riscvMemInit_all_values.
+          rewrite map_length. rewrite seq_length.
+          blia.
+        }
+        assert (word.ok Semantics.word) by exact word_ok.
+        clear P2establish P2preserve P2use.
         eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
         eexists ?[stack].
-        (*
-        exists (riscvMemInit_values _ memInit (Z.to_nat (2 ^ memSizeLg - stack_size_in_bytes))
-                                              (Z.to_nat stack_size_in_bytes)).
-         *)
          eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
         eexists ?[heap].
-        (*
-        exists (riscvMemInit_values _ memInit (Z.to_nat (2 ^ (2 + instrMemSizeLg)))
-                       (Z.to_nat (2 ^ memSizeLg - stack_size_in_bytes - 2 ^ (2 + instrMemSizeLg)))).
-         *)
         eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
         eexists ?[unused_imem].
-        (*
-        exists (riscvMemInit_values _ memInit (Datatypes.length (instrencode instrs))
-                       (Z.to_nat (2 ^ (2 + instrMemSizeLg)) - (Datatypes.length (instrencode instrs)))).
-         *)
         eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_emp_2, ?sep_emp_l, ?sep_emp_r; reflexivity. }
         eapply sep_emp_l; split.
@@ -452,18 +464,9 @@ Section Connect.
         3: eapply sep_emp_l; split.
 
         all : cycle 3.
-        Unshelve.
-        * pose proof riscvMemInit_to_seplog (2 ^ BinIntDef.Z.to_nat memSizeLg) 0 as P.
-          match type of P with
-          | ?T -> _ => assert T as tmp; [|specialize (P tmp); clear tmp]
-          end.
-          {
-            change (Z.of_nat 0) with 0.
-            rewrite Z.add_0_l.
-            rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
-            change (Z.of_nat 2) with 2.
-            apply Z.pow_le_mono_r; try blia.
-          }
+        Unshelve. {
+          pose proof riscvMemInit_to_seplog (Z.to_nat (2 ^ memSizeLg)) 0 as P.
+          specialize (P ltac:(blia)).
           unfold PipelineWithRename.ptsto_bytes in *.
           remember riscvMemInit_all_values as l. symmetry in Heql. pose proof Heql as E.
           (* 1) chop off instructions *)
@@ -472,14 +475,14 @@ Section Connect.
           | _ = _ ++ ?L => remember L as l
           end.
           (* 2) chop off unused instruction memory *)
-          rewrite <- (firstn_skipn (2 ^ (2 + Z.to_nat instrMemSizeLg) - Datatypes.length (instrencode instrs))
+          rewrite <- (firstn_skipn (Z.to_nat instrMemSizeBytes - Datatypes.length (instrencode instrs))
                                    l) in E. subst l.
           rewrite List.app_assoc in E.
           match type of E with
           | _ = _ ++ ?L => remember L as l
           end.
           (* 3 chop off heap *)
-          rewrite <- (firstn_skipn (Z.to_nat (2 ^ memSizeLg - 2 ^ (2 + instrMemSizeLg) - stack_size_in_bytes))
+          rewrite <- (firstn_skipn (Z.to_nat (2 ^ memSizeLg - instrMemSizeBytes - stack_size_in_bytes))
                                    l) in E. subst l.
           rewrite List.app_assoc in E.
           rewrite E in P; clear E.
@@ -492,20 +495,7 @@ Section Connect.
             unfold riscvMemInit_all_values.
             rewrite List.firstn_map.
             rewrite List.firstn_seq.
-            rewrite Nat.min_l. 2: {
-              move L at bottom.
-              unfold code_start, code_pastend, ml in L.
-              rewrite ?word.unsigned_of_Z in L.
-              change (word.wrap 0) with 0 in L.
-              unfold word.wrap in L.
-              rewrite (Z.mod_small (2 ^ (2 + instrMemSizeLg))) in L.
-              - eapply Nat.le_trans with (Z.to_nat (2 ^ (2 + instrMemSizeLg))). 1: blia.
-                rewrite N_Z_nat_conversions.Z2Nat.inj_pow; try blia.
-                apply Nat.pow_le_mono_r; try blia.
-              - split.
-                + apply Z.pow_nonneg. blia.
-                + change width with 32. apply Z.pow_lt_mono_r; blia.
-            }
+            rewrite Nat.min_l by blia.
             symmetry.
             exact M.
           }
@@ -529,19 +519,43 @@ Section Connect.
                    | |- context [?x] => progress change x with (@Utility.word (@Words32 mmio_params))
                    | |- context [?x] => progress change x with (@MMIO.word_ok mmio_params)
                    end.
-            case TODO_initmem.
+            rewrite firstn_length.
+            rewrite skipn_length.
+            simpl_word_exprs (@Utility.word_ok (@Words32 mmio_params)).
+            f_equal.
+            blia.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
-            case TODO_initmem.
+            repeat match goal with
+                   | |- context [?x] => progress change x with (@width (@Words32 mmio_params))
+                   | |- context [?x] => progress change x with (@Utility.word (@Words32 mmio_params))
+                   | |- context [?x] => progress change x with (@MMIO.word_ok mmio_params)
+                   end.
+            rewrite ?firstn_length.
+            rewrite ?skipn_length.
+            simpl_word_exprs (@Utility.word_ok (@Words32 mmio_params)).
+            f_equal.
+            blia.
           }
           cbn [seps]. reflexivity.
-        * case TODO_initmem.
-        * case TODO_initmem.
-        * case TODO_initmem.
-
+        }
+        all: repeat rewrite ?word.unsigned_sub, ?word.unsigned_add,
+                            ?firstn_length, ?skipn_length, ?word.unsigned_of_Z;
+             unfold word.wrap;
+             change width with 32 in *;
+             change Semantics.width with 32 in *.
+        all: try (
+          Z.div_mod_to_equations;
+          (* COQBUG (performance) https://github.com/coq/coq/issues/10743#issuecomment-530673037
+             cond_hyp_factor: *)
+          repeat match goal with
+                 | H : ?x -> _, H' : ?x -> _ |- _  =>
+                   pose proof (fun u : x => conj (H u) (H' u)); clear H H'
+                 end;
+          blia).
       + change (word.unsigned (code_start ml)) with 0.
-        assert (Hend: code_pastend ml = word.of_Z (2 ^ (2 + instrMemSizeLg))) by reflexivity.
+        assert (Hend: code_pastend ml = word.of_Z instrMemSizeBytes) by reflexivity.
         setoid_rewrite Hend.
         rewrite word.unsigned_of_Z.
         cbv [word.wrap].
