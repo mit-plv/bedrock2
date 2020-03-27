@@ -7,8 +7,6 @@ From coqutil Require Import destr div_mod_to_equations.
 Local Open Scope bool_scope.
 Local Open Scope Z_scope.
 
-Local Axiom TODO_andres: False.
-
 Section WithWidth.
   Context {width : Z}.
   Context {width_nonneg : Z.lt 0 width}.
@@ -186,6 +184,32 @@ Section WithWidth.
     rewrite ?Znat.Z2N.id in * by Lia.lia; Lia.lia.
   Qed.
 
+  Lemma wordToN_wones_ones:
+    forall sz, wordToN (wones sz) = BinNat.N.ones (BinNat.N.of_nat sz).
+  Proof.
+    intros.
+    rewrite wordToN_nat.
+    rewrite wones_pow2_minus_one.
+    rewrite Nnat.Nat2N.inj_sub, BinNat.N.sub_1_r.
+    rewrite <-NatLib.pow2_N.
+    cbv [BinNat.N.ones]; rewrite BinNat.N.shiftl_1_l.
+    f_equal.
+    apply Znat.N2Z.inj.
+    rewrite NatLib.Z_of_N_Npow2, Znat.N2Z.inj_pow, Znat.nat_N_Z.
+    reflexivity.
+  Qed.
+
+  Lemma uwordToZ_wplus_distr:
+    forall sz (x y: Word.word sz),
+      Z.of_N (wordToN (x ^+ y)) = (Z.of_N (wordToN x) + Z.of_N (wordToN y)) mod 2 ^ (Z.of_nat sz).
+  Proof.
+    intros.
+    cbv [wplus wordBin].
+    rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_add, NatLib.Z_of_N_Npow2.
+    2:apply NatLib.Npow2_not_zero.
+    f_equal; f_equal; blia.
+  Qed.
+
   Instance ok : word.ok word.
   Proof using width_nonneg.
     assert (AA: (0 < sz)%nat). { eapply (Znat.Z2Nat.inj_lt 0); blia. }
@@ -205,12 +229,37 @@ Section WithWidth.
     19: {
       cbv [wrshifta eq_rec_r eq_rec].
       rewrite Z.mod_small, wordToZ_split2, wordToZ_eq_rect, sext_wordToZ, Znat.Z2Nat.id, Z.shiftr_div_pow2; try Lia.lia.
-      1: cbv [swrap]; rewrite Z.mod_small; try Lia.lia.
-      1: pose proof @wordToZ_size (pred sz).
-      1: rewrite PeanoNat.Nat.succ_pred in H0.
-      1: specialize (H0 x).
-      2:blia.
-      case TODO_andres. }
+      cbv [swrap]; rewrite Z.mod_small; try Lia.lia.
+      pose proof @wordToZ_size (pred sz).
+      rewrite PeanoNat.Nat.succ_pred in H0; [|blia].
+      specialize (H0 x).
+      pose proof (wordToZ_size'' AA x); rewrite BB in H1.
+      split.
+      { assert (0 < 2 ^ Z.of_N (wordToN y)) by (apply Z.pow_pos_nonneg; blia).
+        assert (0 < 2 ^ (width - 1)) by (apply Z.pow_pos_nonneg; blia).
+        assert (- 2 ^ (width - 1) <= wordToZ x / 2 ^ Z.of_N (wordToN y)).
+        { apply Z.div_le_lower_bound; [assumption|].
+          etransitivity; [|apply H1].
+          rewrite Z.mul_comm; apply Z.le_mul_diag_l; blia.
+        }
+        blia.
+      }
+      { apply Z.lt_add_lt_sub_r.
+        replace (2 ^ width) with (2 * 2 ^ (width - 1)).
+        2: { change 2 with (2 ^ 1) at 1.
+             rewrite <-Z.pow_add_r by blia.
+             f_equal; blia.
+        }
+        replace (2 * 2 ^ (width - 1) - 2 ^ (width - 1))
+          with (2 ^ (width - 1)) by blia.
+        apply Z.div_lt_upper_bound; [apply Z.pow_pos_nonneg; blia|].
+        eapply Z.lt_le_trans; [apply H1|].
+        rewrite Z.mul_comm; apply Z.le_mul_diag_r.
+        { apply Z.pow_pos_nonneg; blia. }
+        { pose proof (Z.pow_pos_nonneg 2 (Z.of_N (wordToN y))); blia. }
+      }
+    }
+      
     19: {
       specialize (weqb_true_iff x y); case (weqb x y); intros [].
       { specialize (H eq_refl); subst; rewrite Z.eqb_refl; trivial. }
@@ -228,13 +277,44 @@ Section WithWidth.
       case (Z.ltb_spec (wordToZ x) (wordToZ y)) as [G|G];
           trivial; Lia.lia. }
 
-    { cbv [wplus wordBin].
-      rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_add, NatLib.Z_of_N_Npow2.
-      2:apply NatLib.Npow2_not_zero.
-      f_equal; f_equal; blia. }
-
-    { case TODO_andres. }
-    { case TODO_andres. }
+    { rewrite uwordToZ_wplus_distr, BB; reflexivity. }
+    { cbv [wminus]; rewrite uwordToZ_wplus_distr, BB.
+      destruct (BinNat.N.eq_dec (wordToN y) N0).
+      { rewrite e.
+        rewrite <-wordToN_wzero with (sz:= sz) in e.
+        apply wordToN_inj in e; subst.
+        rewrite wzero_wneg, wordToN_wzero; reflexivity.
+      }
+      { rewrite wneg_wordToN by assumption.
+        rewrite Znat.N2Z.inj_sub by (pose proof (wordToN_bound y); blia).
+        rewrite NatLib.Z_of_N_Npow2, BB.
+        replace (Z.of_N (wordToN x) + (2 ^ width - Z.of_N (wordToN y)))
+          with (Z.of_N (wordToN x) - Z.of_N (wordToN y) + 1 * 2 ^ width) by blia.
+        rewrite Zdiv.Z_mod_plus_full.
+        reflexivity.
+      }
+    }
+    
+    { destruct (BinNat.N.eq_dec (wordToN x) N0).
+      { rewrite e.
+        rewrite <-wordToN_wzero with (sz:= sz) in e.
+        apply wordToN_inj in e; subst.
+        rewrite wzero_wneg, wordToN_wzero; reflexivity.
+      }
+      { rewrite wneg_wordToN by assumption.
+        rewrite Znat.N2Z.inj_sub by (pose proof (wordToN_bound x); blia).
+        rewrite NatLib.Z_of_N_Npow2, BB.
+        assert (Hms: Z.of_N (wordToN x) mod 2 ^ (Z.of_nat sz) = Z.of_N (wordToN x)).
+        { apply Z.mod_small.
+          split; [blia|].
+          rewrite <-NatLib.Z_of_N_Npow2.
+          apply Znat.N2Z.inj_lt, wordToN_bound.
+        }
+        rewrite BB in Hms.
+        rewrite Zdiv.Z_mod_nz_opp_full by (rewrite Hms; blia).
+        rewrite Hms; reflexivity.
+      }
+    }
     { setoid_rewrite (uwordToZ_bitwp _ _ Z.lor_spec); f_equal; congruence. }
     { setoid_rewrite (uwordToZ_bitwp _ _ Z.land_spec); f_equal; congruence. }
     { setoid_rewrite (uwordToZ_bitwp _ _ Z.lxor_spec); f_equal; congruence. }
@@ -252,11 +332,14 @@ Section WithWidth.
       enough (Z.testbit (uwordToZ (wones sz)) i = true) by congruence.
       cbv [uwordToZ].
       rewrite ?Z.testbit_of_N' by trivial.
-      case TODO_andres. }
+      rewrite wordToN_wones_ones.
+      apply BinNat.N.ones_spec_low.
+      blia.
+    }
     { setoid_rewrite uwordToZ_ZToWord_full; f_equal; trivial; congruence. }
     { cbv [wmult wordBin].
       rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_mul, NatLib.Z_of_N_Npow2.
-      2: case TODO_andres.
+      2: apply NatLib.Npow2_not_zero.
       f_equal; f_equal; blia. }
 
     { rewrite wordToZ_ZToWord_full by blia;
