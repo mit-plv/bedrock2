@@ -46,8 +46,6 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-Local Axiom TODO_initmem : False.
-
 (* TODO move to coqutil *)
 Module List. Section WithA.
   Context {A : Type}.
@@ -265,24 +263,20 @@ Section Connect.
   Definition riscvMemInit_values(from len: nat): list byte :=
     List.firstn len (List.skipn from riscvMemInit_all_values).
 
-  Lemma riscvMemInit_to_seplog: forall len from,
-    Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
-    (PipelineWithRename.ptsto_bytes (word.of_Z (Z.of_nat from)) riscvMemInit_all_values)
-    (riscvMemInit memSizeLg memInit).
-  Proof.
-    case TODO_initmem.
-  Qed.
-
-(*
-  Lemma riscvMemInit_to_seplog: forall len from,
-    Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
-    (PipelineWithRename.ptsto_bytes (word.of_Z (Z.of_nat from))
-                                    (riscvMemInit_values memSizeLg memInit from len))
-    (riscvMemInit_range memSizeLg memInit from len).
+  Lemma riscvMemInit_to_seplog_aux: forall len from,
+      Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
+      PipelineWithRename.ptsto_bytes
+        (word.of_Z (Z.of_nat from))
+        (map (get_kamiMemInit memInit) (seq from len))
+        (map.of_list (map
+          (fun i => (word.of_Z (BinIntDef.Z.of_nat i),
+                     byte.of_Z (Word.uwordToZ (Semantics.evalConstT (kamiMemInit memSizeLg memInit)
+                         (Word.natToWord (BinIntDef.Z.to_nat memSizeLg) i)))))
+          (seq from len))).
   Proof.
     induction len; intros.
     - cbv. auto.
-    - unfold PipelineWithRename.ptsto_bytes, riscvMemInit_values, riscvMemInit_range in *.
+    - unfold PipelineWithRename.ptsto_bytes, riscvMemInit_values in *.
       cbn [seq map array map.of_list].
       match goal with
       | |- context [map.put ?m ?k ?v] => pose proof map.put_putmany_commute k v m map.empty as P
@@ -331,14 +325,30 @@ Section Connect.
           }
           blia.
   Qed.
-*)
+
+  Lemma riscvMemInit_to_seplog:
+    (PipelineWithRename.ptsto_bytes (word.of_Z 0) riscvMemInit_all_values)
+    (riscvMemInit memSizeLg memInit).
+  Proof.
+    intros.
+    unfold riscvMemInit_all_values, riscvMemInit.
+    pose proof (riscvMemInit_to_seplog_aux (Z.to_nat (2 ^ memSizeLg)) 0) as P.
+    change (Z.of_nat 0) with 0 in *.
+    (* TODO could adapt riscvMemInit definition to make this not needed *)
+    replace (2 ^ BinIntDef.Z.to_nat memSizeLg)%nat with (Z.to_nat (2 ^ memSizeLg)).
+    1: eapply P.
+    - rewrite Z2Nat.id. 1: blia.
+      apply Z.pow_nonneg. blia.
+    - rewrite N_Z_nat_conversions.Z2Nat.inj_pow; try blia. reflexivity.
+  Qed.
 
   (* end to end, but still generic over the program *)
   Lemma end2end:
     (* Assumptions on the program logic level: *)
     forall init_code loop_body,
     map.get (map.of_list funimplsList) "init"%string = Some ([], [], init_code) ->
-    (forall m, mem_available ml.(heap_start) ml.(heap_pastend) m -> WeakestPrecondition.cmd funspecs init_code [] m map.empty bedrock2Inv) ->
+    (forall m, mem_available ml.(heap_start) ml.(heap_pastend) m ->
+               WeakestPrecondition.cmd funspecs init_code [] m map.empty bedrock2Inv) ->
     map.get (map.of_list funimplsList) "loop"%string = Some ([], [], loop_body) ->
     (forall t m l, bedrock2Inv t m l ->
                    WeakestPrecondition.cmd funspecs loop_body t m l bedrock2Inv) ->
@@ -465,8 +475,7 @@ Section Connect.
 
         all : cycle 3.
         Unshelve. {
-          pose proof riscvMemInit_to_seplog (Z.to_nat (2 ^ memSizeLg)) 0 as P.
-          specialize (P ltac:(blia)).
+          pose proof riscvMemInit_to_seplog as P.
           unfold PipelineWithRename.ptsto_bytes in *.
           remember riscvMemInit_all_values as l. symmetry in Heql. pose proof Heql as E.
           (* 1) chop off instructions *)
