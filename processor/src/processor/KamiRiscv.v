@@ -315,8 +315,13 @@ Section Equiv.
     intros addr.
     case (kunsigned addr <? 2 ^ memSizeLg) eqn:H.
     2: { apply riscvMemInit_get_None; assumption. }
-    assert (#addr < 2 ^ Z.to_nat memSizeLg)%nat
-        by (revert H; case KamiRiscvStep.TODO_word).
+    assert (#addr < 2 ^ Z.to_nat memSizeLg)%nat.
+    { rewrite <-wordToN_to_nat.
+      apply Nat2Z.inj_lt.
+      rewrite N_nat_Z, N_Z_nat_conversions.Nat2Z.inj_pow.
+      rewrite Z2Nat.id by Lia.lia.
+      apply Z.ltb_lt; assumption.
+    }
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
     1: eapply NoDup_nth_error; intros i j ?.
     2: eapply (nth_error_In _ (wordToNat addr)).
@@ -342,25 +347,28 @@ Section Equiv.
          blia. }
       { rewrite (proj2 (nth_error_None _ _)); try congruence.
         rewrite map_length, seq_length; blia. } }
-    { (* erewrite map_nth_error. *)
-      replace (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) addr)
-         with (natToWord (Z.to_nat memSizeLg) (wordToNat addr))
-           by (revert H; case KamiRiscvStep.TODO_word).
+    { replace (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) addr)
+        with (natToWord (Z.to_nat memSizeLg) (wordToNat addr)).
+      2: {
+        cbv [evalZeroExtendTrunc].
+        destruct (lt_dec _ _); [exfalso; apply Z2Nat.inj_lt in l; Lia.lia|].
+        apply wordToNat_inj.
+        rewrite wordToNat_natToWord_eqn.
+        rewrite wordToNat_split1.
+        cbv [eq_rec_r eq_rec]; rewrite wordToNat_eq_rect.
+        reflexivity.
+      }
       rewrite (@map_nth_error _ _ _ _ _ (wordToNat addr)).
       2: {
         etransitivity; [eapply nth_error_nth'|].
         all : rewrite ?seq_length, ?seq_nth; trivial.
       }
-      f_equal.
-      f_equal.
-      (* word... *)
+      do 2 f_equal.
       eapply word.unsigned_inj.
       rewrite word.unsigned_of_Z.
       cbv [word.wrap]; rewrite <-word.wrap_unsigned; f_equal.
-      generalize addr as w.
       unfold word.unsigned, word, WordsKami, wordW, KamiWord.word, kword, kunsigned.
-      generalize (BinInt.Z.to_nat width) as sz.
-      case KamiRiscvStep.TODO_word.
+      rewrite wordToN_nat, nat_N_Z; reflexivity.
     }
     Unshelve. all: exact O.
   Qed.

@@ -39,16 +39,332 @@ Local Open Scope Z_scope.
 
 Local Axiom TODO_word : False.
 
-Lemma bitSlice_range_ex:
-  forall z n m,
-    0 <= n <= m -> 0 <= bitSlice z n m < 2 ^ (m - n).
-Proof.
-  intros.
-  rewrite bitSlice_alt by blia.
-  unfold bitSlice'.
-  apply Z.mod_pos_bound.
-  apply Z.pow_pos_nonneg; blia.
-Qed.
+Section WordFacts.
+  Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
+
+  Lemma bitSlice_range_ex:
+    forall z n m,
+      0 <= n <= m -> 0 <= bitSlice z n m < 2 ^ (m - n).
+  Proof.
+    intros.
+    rewrite bitSlice_alt by blia.
+    unfold bitSlice'.
+    apply Z.mod_pos_bound.
+    apply Z.pow_pos_nonneg; blia.
+  Qed.
+
+  Lemma sumbool_rect_weq {T} a b n x y :
+    sumbool_rect (fun _ => T) (fun _ => a) (fun _ => b) (@weq n x y) = if weqb x y then a else b.
+  Proof.
+    cbv [sumbool_rect].
+    destruct (weq _ _), (weqb _ _) eqn:?;
+                                   try match goal with H : _ |- _ => eapply weqb_true_iff in H end;
+      trivial; congruence.
+  Qed.
+
+  Lemma sumbool_rect_bool_weq n x y :
+    sumbool_rect (fun _ => bool) (fun _ => true) (fun _ => false) (@weq n x y) = weqb x y.
+  Proof. rewrite sumbool_rect_weq; destruct (weqb x y); trivial. Qed.
+
+  Lemma unsigned_eqb n x y : Z.eqb (Z.of_N (wordToN x)) (Z.of_N (wordToN y)) = @weqb n x y.
+  Proof.
+    destruct (Z.eqb_spec (Z.of_N (wordToN x)) (Z.of_N (wordToN y))).
+    - apply N2Z.inj, wordToN_inj in e; subst.
+      apply eq_sym, weqb_eq; reflexivity.
+    - apply eq_sym, weqb_ne.
+      intro Hx; subst; auto.
+  Qed.
+
+  Lemma unsigned_split1_as_bitSlice a b x :
+    Z.of_N (wordToN (split1 a b x)) =
+    bitSlice (Z.of_N (wordToN x)) 0 (Z.of_nat a).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma unsigned_split2_as_bitSlice a b x :
+    Z.of_N (wordToN (split2 a b x)) =
+    bitSlice (Z.of_N (wordToN x)) (Z.of_nat a) (Z.of_nat a + Z.of_nat b).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma unsigned_split2_split1_as_bitSlice a b c x :
+    Z.of_N (wordToN (split2 a b (split1 (a+b) c x))) =
+    bitSlice (Z.of_N (wordToN x)) (Z.of_nat a) (Z.of_nat a + Z.of_nat b).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma kami_evalZeroExtendTrunc:
+    forall {a} (w: Word.word a) b,
+      (a < b)%nat ->
+      evalZeroExtendTrunc b w = ZToWord b (Z.of_N (wordToN w)).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma kami_evalSignExtendTrunc:
+    forall {a} (w: Word.word a) b,
+      (a <= b)%nat ->
+      evalSignExtendTrunc b w =
+      ZToWord b (signExtend (Z.of_nat a) (Z.of_N (wordToN w))).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma kunsigned_split2_shiftr:
+    forall {sz1 sz2} (w: Word.word (sz1 + sz2)),
+      Z.of_N (wordToN (split2 _ _ w)) = Z.shiftr (Z.of_N (wordToN w)) (Z.of_nat sz1).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma kunsigned_byte_split1:
+    forall {sz} (w: Word.word (8 + sz)),
+      byte.of_Z (Z.of_N (wordToN w)) =
+      byte.of_Z (Z.of_N (wordToN (split1 _ _ w))).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma byte_wrap_word_8:
+    forall w: Word.word 8,
+      byte.wrap (Z.of_N (wordToN w)) = Z.of_N (wordToN w).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma split1_combine_16:
+    forall (w0 w1 w2 w3: Word.word 8),
+      split1 16 16 (Word.combine w0 (Word.combine w1 (Word.combine w2 w3))) =
+      Word.combine w0 w1.
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma word_and_lnot_1:
+    forall w, and (MachineWidth:= MachineWidth_XLEN)
+                  w (lnot (MW:= MachineWidth_XLEN) (ZToWord _ 1)) = w.
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma bitSlice_lsb_0:
+    forall z n m,
+      0 <= m <= n ->
+      bitSlice z n (n + 1) = 0 ->
+      bitSlice z m n = bitSlice z m (n + 1).
+  Proof.
+    case TODO_word.
+  Qed.
+
+  Lemma wlt_kunsigned:
+    forall (w1 w2: word),
+      (w1 < w2)%word <-> kunsigned w1 < kunsigned w2.
+  Proof.
+    cbv [kunsigned]; intros.
+    apply N2Z.inj_lt.
+  Qed.
+
+  Lemma wle_kunsigned:
+    forall (w1 w2: word),
+      (w1 <= w2)%word <-> kunsigned w1 <= kunsigned w2.
+  Proof.
+    cbv [kunsigned]; intros; split; intros.
+    - apply N2Z.inj_le.
+      cbv [wlt] in H; Lia.lia.
+    - intro Hx.
+      apply N2Z.inj_le in H.
+      cbv [wlt] in Hx; Lia.lia.
+  Qed.
+  
+  Lemma kami_evalZeroExtendTrunc_32:
+    forall w, evalZeroExtendTrunc 32 w = w.
+  Proof.
+    intros; cbv [evalZeroExtendTrunc].
+    destruct (lt_dec _ _); [Lia.lia|].
+    apply split1_0.
+  Qed.
+    
+  Lemma kami_evalSignExtendTrunc_32:
+    forall w, evalSignExtendTrunc 32 w = w.
+  Proof.
+    intros; cbv [evalSignExtendTrunc].
+    destruct (lt_dec _ _); [Lia.lia|].
+    apply split1_0.
+  Qed.
+  
+  Lemma kunsigned_combine_shiftl_lor:
+    forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
+      Z.of_N (wordToN (Word.combine a b)) =
+      Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
+  Proof.
+    intros.
+    rewrite Z_of_wordToN_combine_alt, Z.lor_comm.
+    rewrite nat_N_Z.
+    reflexivity.
+  Qed.
+
+  Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
+  Instance kword32_ok: word.ok kword32. eapply KamiWord.ok. reflexivity. Qed.
+
+  Lemma signExtend_word_of_Z_nop:
+    forall z, word.of_Z (width:= 32) (signExtend 32 z) = word.of_Z (width:= 32) z.
+  Proof.
+    intros.
+    apply word.of_Z_inj_mod.
+    unfold signExtend.
+    (* TODO remove once we're on Coq 8.12 *)
+    repeat match goal with
+           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
+           end.
+    Z.div_mod_to_equations.
+    Lia.lia.
+  Qed.
+
+  Lemma signExtend_combine_split_signed:
+    forall (w: Word.word 32),
+      signExtend 32 (combine 4 (split 4 (wordToZ w))) = wordToZ w.
+  Proof.
+    intros.
+    rewrite combine_split.
+    change (wordToZ w) with (word.signed w).
+    etransitivity. 2: eapply word.swrap_signed.
+    unfold word.swrap, signExtend.
+    (* TODO remove once we're on Coq 8.12 *)
+    repeat match goal with
+           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
+           end.
+    Z.div_mod_to_equations.
+    Lia.lia.
+  Qed.
+
+  Lemma signExtend_combine_split_unsigned:
+    forall (w: Word.word 32),
+      signExtend 32 (combine 4 (split 4 (Z.of_N (wordToN w)))) = wordToZ w.
+  Proof.
+    intros.
+    rewrite combine_split.
+    change (wordToZ w) with (word.signed w).
+    change (Z.of_N (wordToN w)) with (word.unsigned w).
+    rewrite word.signed_eq_swrap_unsigned.
+    unfold word.swrap, signExtend.
+    (* TODO remove once we're on Coq 8.12 *)
+    repeat match goal with
+           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
+           end.
+    Z.div_mod_to_equations.
+    Lia.lia.
+  Qed.
+
+  Lemma Z_lor_comm_four_variant_1:
+    forall a b c d, a <|> b <|> (c <|> d) = a <|> d <|> c <|> b.
+  Proof.
+    intros.
+    rewrite <-?Z.lor_assoc; f_equal.
+    rewrite Z.lor_comm with (a:= c).
+    rewrite ?Z.lor_assoc.
+    rewrite Z.lor_comm with (a:= b).
+    rewrite <-?Z.lor_assoc; f_equal.
+    apply Z.lor_comm.
+  Qed.
+
+  Lemma Z_lor_comm_four_variant_2:
+    forall a b c d, a <|> b <|> (c <|> d) = a <|> c <|> d <|> b.
+  Proof.
+    intros.
+    rewrite <-?Z.lor_assoc; f_equal.
+    rewrite Z.lor_comm with (a:= d).
+    rewrite ?Z.lor_assoc.
+    rewrite Z.lor_comm with (a:= b).
+    reflexivity.
+  Qed.
+
+  Lemma wlshift_sll:
+    forall w (n: Word.word 5),
+      wlshift w #n = sll (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+  Proof.
+    intros.
+    cbv [sll MachineWidth_XLEN word.slu word WordsKami wordW KamiWord.word].
+    cbv [kunsigned word.of_Z kofZ].
+    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; Lia.lia].
+    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
+    2: { split; [Lia.lia|].
+         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
+         rewrite NatLib.Z_of_N_Npow2.
+         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+    }
+    rewrite Z.mod_small.
+    2: { split; [Lia.lia|].
+         change width with (Z.of_N 32).
+         apply N2Z.inj_lt, wordToN_bound.
+    }
+    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
+    rewrite wordToN_to_nat.
+    reflexivity.
+  Qed.
+    
+  Lemma wrshift_srl:
+    forall w (n: Word.word 5),
+      wrshift w #n = srl (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+  Proof.
+    intros.
+    cbv [srl MachineWidth_XLEN word.sru word WordsKami wordW KamiWord.word].
+    cbv [kunsigned word.of_Z kofZ].
+    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; Lia.lia].
+    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
+    2: { split; [Lia.lia|].
+         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
+         rewrite NatLib.Z_of_N_Npow2.
+         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+    }
+    rewrite Z.mod_small.
+    2: { split; [Lia.lia|].
+         change width with (Z.of_N 32).
+         apply N2Z.inj_lt, wordToN_bound.
+    }
+    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
+    rewrite wordToN_to_nat.
+    reflexivity.
+  Qed.
+
+  Lemma wrshifta_sra:
+    forall w (n: Word.word 5),
+      wrshifta w #n = sra (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+  Proof.
+    intros.
+    cbv [sra MachineWidth_XLEN word.srs word WordsKami wordW KamiWord.word].
+    cbv [kunsigned word.of_Z kofZ].
+    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; Lia.lia].
+    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
+    2: { split; [Lia.lia|].
+         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
+         rewrite NatLib.Z_of_N_Npow2.
+         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+    }
+    rewrite Z.mod_small.
+    2: { split; [Lia.lia|].
+         change width with (Z.of_N 32).
+         apply N2Z.inj_lt, wordToN_bound.
+    }
+    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
+    rewrite wordToN_to_nat.
+    reflexivity.
+  Qed.
+
+  Lemma kunsigned_split1_mod:
+    forall n m w,
+      Z.of_N (wordToN (split1 n m w)) = Z.of_N (wordToN w) mod (2 ^ (Z.of_nat n)).
+  Proof.
+    intros.
+    rewrite wordToN_split1.
+    rewrite N2Z.inj_mod by apply NatLib.Npow2_not_zero.
+    rewrite NatLib.Z_of_N_Npow2.
+    reflexivity.
+  Qed.
+
+End WordFacts.
 
 Section Equiv.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
@@ -224,26 +540,6 @@ Section Equiv.
     - inversion H. inversion H0. subst. f_equal.
       + eapply events_related_unique; eassumption.
       + eapply IHt'; eassumption.
-  Qed.
-
-  Lemma wlt_kunsigned:
-    forall (w1 w2: word),
-      (w1 < w2)%word <-> kunsigned w1 < kunsigned w2.
-  Proof.
-    cbv [kunsigned]; intros.
-    apply N2Z.inj_lt.
-  Qed.
-
-  Lemma wle_kunsigned:
-    forall (w1 w2: word),
-      (w1 <= w2)%word <-> kunsigned w1 <= kunsigned w2.
-  Proof.
-    cbv [kunsigned]; intros; split; intros.
-    - apply N2Z.inj_le.
-      cbv [wlt] in H; Lia.lia.
-    - intro Hx.
-      apply N2Z.inj_le in H.
-      cbv [wlt] in Hx; Lia.lia.
   Qed.
 
   Lemma is_mmio_consistent:
@@ -534,39 +830,6 @@ Section Equiv.
     assumption.
   Qed.
 
-  Lemma kami_evalZeroExtendTrunc_32:
-    forall w, evalZeroExtendTrunc 32 w = w.
-  Proof.
-    intros; cbv [evalZeroExtendTrunc].
-    destruct (lt_dec _ _); [Lia.lia|].
-    apply split1_0.
-  Qed.
-    
-  Lemma kami_evalSignExtendTrunc_32:
-    forall w, evalSignExtendTrunc 32 w = w.
-  Proof.
-    intros; cbv [evalSignExtendTrunc].
-    destruct (lt_dec _ _); [Lia.lia|].
-    apply split1_0.
-  Qed.
-
-  Lemma kami_evalZeroExtendTrunc:
-    forall {a} (w: Word.word a) b,
-      (a < b)%nat ->
-      evalZeroExtendTrunc b w = ZToWord b (Z.of_N (wordToN w)).
-  Proof.
-    case TODO_word.
-  Qed.
-
-  Lemma kami_evalSignExtendTrunc:
-    forall {a} (w: Word.word a) b,
-      (a <= b)%nat ->
-      evalSignExtendTrunc b w =
-      ZToWord b (signExtend (Z.of_nat a) (Z.of_N (wordToN w))).
-  Proof.
-    case TODO_word.
-  Qed.
-
   Lemma mem_related_load_bytes_Some:
     forall kmem rmem,
       mem_related memSizeLg kmem rmem ->
@@ -735,221 +998,6 @@ Section Equiv.
            | [H: In _ (filter _ _) |- _] => apply filter_In in H; destruct H
            end.
     red; auto.
-  Qed.
-
-  Lemma kunsigned_combine_shiftl_lor:
-    forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
-      Z.of_N (wordToN (Word.combine a b)) =
-      Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
-  Proof.
-    intros.
-    rewrite Z_of_wordToN_combine_alt, Z.lor_comm.
-    rewrite nat_N_Z.
-    reflexivity.
-  Qed.
-
-  Lemma kunsigned_split2_shiftr:
-    forall {sz1 sz2} (w: Word.word (sz1 + sz2)),
-      Z.of_N (wordToN (split2 _ _ w)) = Z.shiftr (Z.of_N (wordToN w)) (Z.of_nat sz1).
-  Proof.
-    case TODO_word.
-  Qed.
-
-  Lemma kunsigned_byte_split1:
-    forall {sz} (w: Word.word (8 + sz)),
-      byte.of_Z (Z.of_N (wordToN w)) =
-      byte.of_Z (Z.of_N (wordToN (split1 _ _ w))).
-  Proof.
-    case TODO_word.
-  Qed.
-
-  Lemma byte_wrap_word_8:
-    forall w: Word.word 8,
-      byte.wrap (Z.of_N (wordToN w)) = Z.of_N (wordToN w).
-  Proof.
-    case TODO_word.
-  Qed.
-
-  Lemma split1_combine_16:
-    forall (w0 w1 w2 w3: Word.word 8),
-      split1 16 16 (Word.combine w0 (Word.combine w1 (Word.combine w2 w3))) =
-      Word.combine w0 w1.
-  Proof.
-    case TODO_word.
-  Qed.
-
-  Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
-  Instance kword32_ok: word.ok kword32. eapply KamiWord.ok. reflexivity. Qed.
-
-  Lemma signExtend_word_of_Z_nop:
-    forall z, word.of_Z (width:= 32) (signExtend 32 z) = word.of_Z (width:= 32) z.
-  Proof.
-    intros.
-    apply word.of_Z_inj_mod.
-    unfold signExtend.
-    (* TODO remove once we're on Coq 8.12 *)
-    repeat match goal with
-           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
-           end.
-    Z.div_mod_to_equations.
-    Lia.lia.
-  Qed.
-
-  Lemma signExtend_combine_split_signed:
-    forall (w: Word.word 32),
-      signExtend 32 (combine 4 (split 4 (wordToZ w))) = wordToZ w.
-  Proof.
-    intros.
-    rewrite combine_split.
-    change (wordToZ w) with (word.signed w).
-    etransitivity. 2: eapply word.swrap_signed.
-    unfold word.swrap, signExtend.
-    (* TODO remove once we're on Coq 8.12 *)
-    repeat match goal with
-           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
-           end.
-    Z.div_mod_to_equations.
-    Lia.lia.
-  Qed.
-
-  Lemma signExtend_combine_split_unsigned:
-    forall (w: Word.word 32),
-      signExtend 32 (combine 4 (split 4 (Z.of_N (wordToN w)))) = wordToZ w.
-  Proof.
-    intros.
-    rewrite combine_split.
-    change (wordToZ w) with (word.signed w).
-    change (Z.of_N (wordToN w)) with (word.unsigned w).
-    rewrite word.signed_eq_swrap_unsigned.
-    unfold word.swrap, signExtend.
-    (* TODO remove once we're on Coq 8.12 *)
-    repeat match goal with
-           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
-           end.
-    Z.div_mod_to_equations.
-    Lia.lia.
-  Qed.
-
-  Lemma Z_lor_comm_four_variant_1:
-    forall a b c d, a <|> b <|> (c <|> d) = a <|> d <|> c <|> b.
-  Proof.
-    intros.
-    rewrite <-?Z.lor_assoc; f_equal.
-    rewrite Z.lor_comm with (a:= c).
-    rewrite ?Z.lor_assoc.
-    rewrite Z.lor_comm with (a:= b).
-    rewrite <-?Z.lor_assoc; f_equal.
-    apply Z.lor_comm.
-  Qed.
-
-  Lemma Z_lor_comm_four_variant_2:
-    forall a b c d, a <|> b <|> (c <|> d) = a <|> c <|> d <|> b.
-  Proof.
-    intros.
-    rewrite <-?Z.lor_assoc; f_equal.
-    rewrite Z.lor_comm with (a:= d).
-    rewrite ?Z.lor_assoc.
-    rewrite Z.lor_comm with (a:= b).
-    reflexivity.
-  Qed.
-
-  Lemma word_and_lnot_1:
-    forall w, and (MachineWidth:= MachineWidth_XLEN)
-                  w (lnot (MW:= MachineWidth_XLEN) (ZToWord _ 1)) = w.
-  Proof.
-    case TODO_word.
-  Qed.
-
-  Lemma bitSlice_lsb_0:
-    forall z n m,
-      0 <= m <= n ->
-      bitSlice z n (n + 1) = 0 ->
-      bitSlice z m n = bitSlice z m (n + 1).
-  Proof.
-    case TODO_word.
-  Qed.
-
-  Lemma wlshift_sll:
-    forall w (n: Word.word 5),
-      wlshift w #n = sll (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
-  Proof.
-    intros.
-    cbv [sll MachineWidth_XLEN word.slu word WordsKami wordW KamiWord.word].
-    cbv [kunsigned word.of_Z kofZ].
-    rewrite unsigned_wordToZ.
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [Lia.lia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [Lia.lia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
-    reflexivity.
-  Qed.
-    
-  Lemma wrshift_srl:
-    forall w (n: Word.word 5),
-      wrshift w #n = srl (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
-  Proof.
-    intros.
-    cbv [srl MachineWidth_XLEN word.sru word WordsKami wordW KamiWord.word].
-    cbv [kunsigned word.of_Z kofZ].
-    rewrite unsigned_wordToZ.
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [Lia.lia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [Lia.lia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
-    reflexivity.
-  Qed.
-
-  Lemma wrshifta_sra:
-    forall w (n: Word.word 5),
-      wrshifta w #n = sra (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
-  Proof.
-    intros.
-    cbv [sra MachineWidth_XLEN word.srs word WordsKami wordW KamiWord.word].
-    cbv [kunsigned word.of_Z kofZ].
-    rewrite unsigned_wordToZ.
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [Lia.lia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [Lia.lia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
-    reflexivity.
-  Qed.
-
-  Lemma kunsigned_split1_mod:
-    forall n m w,
-      Z.of_N (wordToN (split1 n m w)) = Z.of_N (wordToN w) mod (2 ^ (Z.of_nat n)).
-  Proof.
-    intros.
-    rewrite wordToN_split1.
-    rewrite N2Z.inj_mod by apply NatLib.Npow2_not_zero.
-    rewrite NatLib.Z_of_N_Npow2.
-    reflexivity.
   Qed.
 
   (** * Utility Ltacs *)
