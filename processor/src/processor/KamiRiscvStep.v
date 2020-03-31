@@ -79,21 +79,65 @@ Section WordFacts.
     Z.of_N (wordToN (split1 a b x)) =
     bitSlice (Z.of_N (wordToN x)) 0 (Z.of_nat a).
   Proof.
-    case TODO_word.
+    rewrite bitSlice_alt by Lia.lia.
+    rewrite wordToN_split1.
+    rewrite N2Z.inj_mod by apply NatLib.Npow2_not_zero.
+    cbv [bitSlice'].
+    rewrite NatLib.Z_of_N_Npow2.
+    rewrite Z.pow_0_r, Z.sub_0_r, Z.div_1_r.
+    reflexivity.
   Qed.
 
   Lemma unsigned_split2_as_bitSlice a b x :
     Z.of_N (wordToN (split2 a b x)) =
     bitSlice (Z.of_N (wordToN x)) (Z.of_nat a) (Z.of_nat a + Z.of_nat b).
   Proof.
-    case TODO_word.
+    rewrite bitSlice_alt by Lia.lia.
+    rewrite wordToN_split2.
+    rewrite N2Z.inj_div.
+    cbv [bitSlice'].
+    rewrite NatLib.Z_of_N_Npow2.
+    rewrite Z.mod_small; [reflexivity|].
+    rewrite Z.add_simpl_l.
+    pose proof (wordToN_bound x); apply N2Z.inj_lt in H.
+    rewrite NatLib.Z_of_N_Npow2 in H.
+    split.
+    - apply Z.div_pos; [Lia.lia|].
+      apply Z.pow_pos_nonneg; Lia.lia.
+    - apply Z.div_lt_upper_bound.
+      + apply Z.pow_pos_nonneg; Lia.lia.
+      + rewrite <-Z.pow_add_r by Lia.lia.
+        rewrite <-Nat2Z.inj_add; assumption.
   Qed.
 
   Lemma unsigned_split2_split1_as_bitSlice a b c x :
     Z.of_N (wordToN (split2 a b (split1 (a+b) c x))) =
     bitSlice (Z.of_N (wordToN x)) (Z.of_nat a) (Z.of_nat a + Z.of_nat b).
   Proof.
-    case TODO_word.
+    rewrite unsigned_split2_as_bitSlice.
+    rewrite unsigned_split1_as_bitSlice.
+    rewrite ?bitSlice_alt by Lia.lia.
+    cbv [bitSlice'].
+    simpl; rewrite Z.sub_0_r, Z.div_1_r, Z.add_simpl_l.
+    rewrite Z.mod_small with (b:= 2 ^ Z.of_nat b).
+    - rewrite Nat2Z.inj_add, Z.pow_add_r by Lia.lia.
+      rewrite Z.rem_mul_r;
+        [|apply Z.pow_nonzero; Lia.lia
+         |apply Z.pow_pos_nonneg; Lia.lia].
+      match goal with | |- _ = ?rhs => set (v := rhs); clearbody v end.
+      rewrite Z.mul_comm, Z.div_add by (apply Z.pow_nonzero; Lia.lia).
+      rewrite Z.mod_div by (apply Z.pow_nonzero; Lia.lia).
+      Lia.lia.
+    - split.
+      + apply Z.div_pos; [|apply Z.pow_pos_nonneg; Lia.lia].
+        apply Z.mod_pos_bound.
+        apply Z.pow_pos_nonneg; Lia.lia.
+      + apply Z.div_lt_upper_bound.
+        * apply Z.pow_pos_nonneg; Lia.lia.
+        * rewrite <-Z.pow_add_r by Lia.lia.
+          rewrite <-Nat2Z.inj_add.
+          apply Z.mod_pos_bound.
+          apply Z.pow_pos_nonneg; Lia.lia.
   Qed.
 
   Lemma kami_evalZeroExtendTrunc:
@@ -117,7 +161,23 @@ Section WordFacts.
     forall {sz1 sz2} (w: Word.word (sz1 + sz2)),
       Z.of_N (wordToN (split2 _ _ w)) = Z.shiftr (Z.of_N (wordToN w)) (Z.of_nat sz1).
   Proof.
-    case TODO_word.
+    intros.
+    rewrite unsigned_split2_as_bitSlice.
+    rewrite bitSlice_alt by Lia.lia.
+    cbv [bitSlice'].
+    rewrite Z.mod_small.
+    - apply eq_sym, Z.shiftr_div_pow2; Lia.lia.
+    - split.
+      + apply Z.div_pos; [|apply Z.pow_pos_nonneg; Lia.lia].
+        apply N2Z.is_nonneg.
+      + rewrite Z.add_simpl_l.
+        apply Z.div_lt_upper_bound.
+        * apply Z.pow_pos_nonneg; Lia.lia.
+        * rewrite <-Z.pow_add_r by Lia.lia.
+          rewrite <-Nat2Z.inj_add.
+          pose proof (wordToN_bound w); apply N2Z.inj_lt in H.
+          rewrite NatLib.Z_of_N_Npow2 in H.
+          assumption.
   Qed.
 
   Lemma kunsigned_byte_split1:
@@ -125,14 +185,27 @@ Section WordFacts.
       byte.of_Z (Z.of_N (wordToN w)) =
       byte.of_Z (Z.of_N (wordToN (split1 _ _ w))).
   Proof.
-    case TODO_word.
+    intros.
+    apply byte.unsigned_inj.
+    rewrite ?byte.unsigned_of_Z.
+    rewrite wordToN_split1.
+    rewrite N2Z.inj_mod by apply NatLib.Npow2_not_zero.
+    change (Z.of_N (NatLib.Npow2 8)) with (2 ^ 8).
+    cbv [byte.wrap].
+    apply eq_sym, Z.mod_mod.
+    discriminate.
   Qed.
 
   Lemma byte_wrap_word_8:
     forall w: Word.word 8,
       byte.wrap (Z.of_N (wordToN w)) = Z.of_N (wordToN w).
   Proof.
-    case TODO_word.
+    intros.
+    cbv [byte.wrap].
+    apply Z.mod_small.
+    pose proof (wordToN_bound w); apply N2Z.inj_lt in H.
+    change (Z.of_N (NatLib.Npow2 8)) with (2 ^ 8) in H.
+    Lia.lia.
   Qed.
 
   Lemma split1_combine_16:
@@ -140,7 +213,11 @@ Section WordFacts.
       split1 16 16 (Word.combine w0 (Word.combine w1 (Word.combine w2 w3))) =
       Word.combine w0 w1.
   Proof.
-    case TODO_word.
+    intros.
+    pose proof (combine_assoc w0 w1 (Word.combine w2 w3)).
+    specialize (H eq_refl); cbv iota in H.
+    rewrite <-H.
+    apply split1_combine.
   Qed.
 
   Lemma word_and_lnot_1:
