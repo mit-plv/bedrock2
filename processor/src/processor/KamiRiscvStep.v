@@ -220,13 +220,6 @@ Section WordFacts.
     apply split1_combine.
   Qed.
 
-  Lemma word_and_lnot_1:
-    forall w, and (MachineWidth:= MachineWidth_XLEN)
-                  w (lnot (MW:= MachineWidth_XLEN) (ZToWord _ 1)) = w.
-  Proof.
-    case TODO_word.
-  Qed.
-
   Lemma bitSlice_lsb_0:
     forall z n m,
       0 <= m <= n ->
@@ -2785,12 +2778,11 @@ Section Equiv.
     { (* [pc_related_and_valid] for `JALR` *)
       subst newPC oimm12 v rs1.
       split; [apply AddrAligned_consistent; assumption|red].
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
+      cbv [MachineWidth_XLEN
+             ZToReg Utility.add and 
+             word.add word.and word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       regs_get_red_goal.
-      rewrite word_and_lnot_1.
       reflexivity.
     }
 
@@ -3100,12 +3092,11 @@ Section Equiv.
     { (* jalr *)
       subst newPC oimm12 v rs1.
       split; [apply AddrAligned_consistent; assumption|red].
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
+      cbv [MachineWidth_XLEN
+             ZToReg Utility.add and 
+             word.add word.and word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       regs_get_red_goal.
-      rewrite word_and_lnot_1.
       reflexivity.
     }
 
