@@ -37,8 +37,6 @@ Require Import processor.FetchOk processor.DecExecOk.
 
 Local Open Scope Z_scope.
 
-Local Axiom TODO_word : False.
-
 Section WordFacts.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
 
@@ -145,8 +143,42 @@ Section WordFacts.
       (a < b)%nat ->
       evalZeroExtendTrunc b w = ZToWord b (Z.of_N (wordToN w)).
   Proof.
-    case TODO_word.
+    intros.
+    cbv [evalZeroExtendTrunc].
+    destruct (lt_dec _ _); [clear H|Lia.lia].
+    apply wordToZ_inj.
+    rewrite wordToZ_eq_rect.
+    destruct b as [|b]; [Lia.lia|].
+    rewrite wordToZ_ZToWord.
+    - rewrite zext_wordToNat_equal_Z by Lia.lia.
+      rewrite <-wordToN_to_nat.
+      apply N_nat_Z.
+    - pose proof (wordToN_bound w); apply N2Z.inj_lt in H.
+      rewrite NatLib.Z_of_N_Npow2 in H.
+      split; [Lia.lia|].
+      eapply Z.lt_le_trans; [eassumption|].
+      rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
+      apply Z.pow_le_mono_r; Lia.lia.
   Qed.
+
+  Section KamiWordArb.
+    Variable a: Z.
+    Hypothesis (Ha: 0 < a).
+    Instance kworda: coqutil.Word.Interface.word a := KamiWord.word a.
+    Instance kworda_ok: word.ok kworda. eapply KamiWord.ok. assumption. Qed.
+
+    Lemma signExtend_unsigned_signed:
+      forall (w: kword a),
+        signExtend a (Z.of_N (wordToN w)) = wordToZ w.
+    Proof.
+      intros.
+      change (Z.of_N (wordToN w)) with (word.unsigned w).
+      change (wordToZ w) with (word.signed w).
+      pose proof (word.signed_eq_swrap_unsigned w).
+      auto.
+    Qed.
+
+  End KamiWordArb.
 
   Lemma kami_evalSignExtendTrunc:
     forall {a} (w: Word.word a) b,
@@ -154,7 +186,49 @@ Section WordFacts.
       evalSignExtendTrunc b w =
       ZToWord b (signExtend (Z.of_nat a) (Z.of_N (wordToN w))).
   Proof.
-    case TODO_word.
+    intros.
+    destruct (Nat.eq_0_gt_0_cases a).
+    1: {
+      subst.
+      rewrite (shatter_word_0 w); simpl.
+      cbv [evalSignExtendTrunc].
+      destruct (lt_dec 0 b).
+      - rewrite wzero_eq_rect.
+        apply eq_sym, wzero'_def.
+      - assert (b = 0%nat) by Lia.lia; subst.
+        reflexivity.
+    }
+
+    pose proof (signExtend_unsigned_signed (Z.of_nat a) ltac:(Lia.lia)).
+    cbv [kword] in H1.
+    rewrite Nat2Z.id in H1; rewrite H1; clear H1.
+    
+    cbv [evalSignExtendTrunc].
+    destruct (lt_dec _ _).
+    - apply wordToZ_inj.
+      rewrite wordToZ_eq_rect, sext_wordToZ.
+      destruct b as [|b]; [Lia.lia|].
+      apply eq_sym, wordToZ_ZToWord.
+      cbv [kword] in w.
+      destruct a as [|a]; [Lia.lia|].
+      pose proof (wordToZ_size' w); destruct H1.
+      split.
+      + etransitivity; [|eassumption].
+        rewrite <-Z.opp_le_mono.
+        rewrite ?N_Z_nat_conversions.Nat2Z.inj_pow.
+        apply Z.pow_le_mono_r; Lia.lia.
+      + etransitivity; [eassumption|].
+        rewrite ?N_Z_nat_conversions.Nat2Z.inj_pow.
+        apply Z.pow_lt_mono_r; Lia.lia.
+
+    - assert (a = b) by Lia.lia; subst a.
+      rewrite ZToWord_wordToZ.
+      apply wordToN_inj.
+      rewrite wordToN_split1.
+      cbv [eq_rec_r eq_rec].
+      rewrite wordToN_eq_rect.
+      rewrite N.mod_small; [reflexivity|].
+      apply wordToN_bound.
   Qed.
 
   Lemma kunsigned_split2_shiftr:
@@ -226,7 +300,15 @@ Section WordFacts.
       bitSlice z n (n + 1) = 0 ->
       bitSlice z m n = bitSlice z m (n + 1).
   Proof.
-    case TODO_word.
+    intros.
+    rewrite ?bitSlice_alt by Lia.lia.
+    rewrite bitSlice_alt in H0 by Lia.lia.
+    cbv [bitSlice'] in *.
+    replace (n + 1 - n) with 1 in H0 by Lia.lia.
+    apply Z.testbit_false in H0; [|Lia.lia].
+    bitblast.Z.bitblast; cbn.
+    assert (l = n) by Lia.lia.
+    subst; auto.
   Qed.
 
   Lemma wlt_kunsigned:
@@ -1571,7 +1653,6 @@ Section Equiv.
            end;
     try cbn in decodeI.
 
-  (** * FIXME: this ltac is strongly suspicious of making Qed taking forever .. *)
   Ltac kami_struct_cbv H :=
     let t := type of H in
     let tc :=
