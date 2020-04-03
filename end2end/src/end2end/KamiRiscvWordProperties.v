@@ -8,7 +8,6 @@ Require Import compiler.ZLemmas.
 Require Import processor.KamiWord.
 
 Open Scope Z_scope.
-Local Axiom TODO_andres: False.
 
 Section KamiRiscvWord.
   Context {log2width: Z}.
@@ -20,6 +19,37 @@ Section KamiRiscvWord.
 
   Arguments Z.mul: simpl never.
 
+  Lemma pow_pow_lt: 2 ^ log2width < 2 ^ 2 ^ log2width.
+  Proof.
+    apply Z.log2_lt_pow2; [Lia.lia|].
+    rewrite Z.log2_pow2 by assumption.
+    assert (Hc: log2width = 0 \/ 0 < log2width) by Lia.lia.
+    destruct Hc; [subst; trivial|].
+    apply Z.log2_lt_pow2; [assumption|].
+    apply Z.log2_lt_lin; assumption.
+  Qed.
+
+  Lemma unsigned_of_Z_mod_idemp:
+    forall z, word.unsigned (width:= 2 ^ log2width)
+                            (word.of_Z (word.unsigned z mod 2 ^ log2width)) mod 2 ^ log2width =
+              word.unsigned (width:= 2 ^ log2width) z mod 2 ^ log2width.
+  Proof.
+    intros.
+    rewrite Z.mod_small.
+    - rewrite word.unsigned_of_Z.
+      cbv [word.wrap].
+      rewrite Z.mod_small; [reflexivity|].
+      split; [apply Z.mod_pos_bound; Lia.lia|].
+      etransitivity; [apply Z.mod_pos_bound; Lia.lia|].
+      apply pow_pow_lt.
+    - rewrite word.unsigned_of_Z.
+      cbv [word.wrap].
+      rewrite Z.mod_small; [apply Z.mod_pos_bound; Lia.lia|].
+      split; [apply Z.mod_pos_bound; Lia.lia|].
+      etransitivity; [apply Z.mod_pos_bound; Lia.lia|].
+      apply pow_pow_lt.
+  Qed.
+
   Instance kami_word_riscv_ok: word.riscv_ok (KamiWord.word (2 ^ log2width)).
     constructor;
       intros;
@@ -28,23 +58,23 @@ Section KamiRiscvWord.
     - pose proof (word.unsigned_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
       rewrite Z.log2_pow2 by trivial.
-      f_equal.
-      f_equal.
-      case TODO_andres.
+      do 2 f_equal.
+      change kunsigned with (word.unsigned (width:= 2 ^ log2width)).
+      apply unsigned_of_Z_mod_idemp.
 
     - pose proof (word.unsigned_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
       rewrite Z.log2_pow2 by trivial.
-      f_equal.
-      f_equal.
-      case TODO_andres.
+      do 2 f_equal.
+      change kunsigned with (word.unsigned (width:= 2 ^ log2width)).
+      apply unsigned_of_Z_mod_idemp.
 
     - pose proof (word.signed_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
       rewrite Z.log2_pow2 by trivial.
-      f_equal.
-      f_equal.
-      case TODO_andres.
+      do 2 f_equal.
+      change kunsigned with (word.unsigned (width:= 2 ^ log2width)).
+      apply unsigned_of_Z_mod_idemp.
 
     - change kofZ with (@word.of_Z _ (KamiWord.word (2 ^ log2width))).
       apply word.of_Z_inj_mod.
@@ -62,34 +92,29 @@ Section KamiRiscvWord.
       }
       reflexivity.
 
-      - case TODO_andres.
-      - case TODO_andres.
-  (*
-    - unfold Word.weqb.
+    - destruct (word.eqb _ _) eqn:Heq; [|reflexivity].
+      apply word.eqb_true in Heq; subst z.
+      cbv [riscvZdivu].
       match goal with
-      | |- context [Word. _ =? ?zero ] => replace zero with 0; cycle 1
-      end. {
-        unfold word.of_Z, kunsigned. cbn.
-        rewrite Word.wordToN_wzero'.
-        reflexivity.
-      }
-      unfold riscvZdivu.
-      destr (kunsigned z =? 0); reflexivity.
+      | |- context [?x =? ?y] => destruct (Z.eqb_spec x y)
+      end.
+      + reflexivity.
+      + change kunsigned with (word.unsigned (width:= 2 ^ log2width)) in n.
+        rewrite word.unsigned_of_Z_0 in n.
+        exfalso; auto.
 
-    - unfold word.eqb.
+    - destruct (word.eqb _ _) eqn:Heq; [|reflexivity].
+      apply word.eqb_true in Heq; subst z.
+      cbv [riscvZmodu].
       match goal with
-      | |- context [ _ =? ?zero ] => replace zero with 0; cycle 1
-      end. {
-        unfold word.of_Z, kunsigned. cbn.
-        rewrite Word.wordToN_wzero'.
-        reflexivity.
-      }
-      unfold riscvZmodu.
-      destr (kunsigned z =? 0). 2: reflexivity.
-      rewrite <- (word.of_Z_unsigned y) at 1.
-      reflexivity.
-      *)
-
+      | |- context [?x =? ?y] => destruct (Z.eqb_spec x y)
+      end.
+      + change kunsigned with (word.unsigned (width:= 2 ^ log2width)).
+        change kofZ with (word.of_Z (width:= 2 ^ log2width)).
+        apply eq_sym, word.of_Z_unsigned.
+      + change kunsigned with (word.unsigned (width:= 2 ^ log2width)) in n.
+        rewrite word.unsigned_of_Z_0 in n.
+        exfalso; auto.
   Qed.
 
 End KamiRiscvWord.
