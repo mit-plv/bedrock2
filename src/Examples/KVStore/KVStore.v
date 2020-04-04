@@ -19,6 +19,10 @@ Require Import coqutil.Tactics.destr.
 Local Open Scope string_scope.
 Import ListNotations.
 
+Local Declare Scope sep_scope.
+Local Delimit Scope sep_scope with sep.
+Local Infix "*" := (sep) : sep_scope.
+
 (* TODO: add fiat-crypto's break_match to coqutil? *)
 Ltac break_match :=
   match goal with
@@ -107,7 +111,7 @@ Section KVStore.
              (addr : Semantics.word) (av : annotation * value)
     : Semantics.mem -> Prop :=
     match (fst av) with
-    | Reserved pv => sep (emp (addr = pv)) (Value pv (snd av))
+    | Reserved pv => (emp (addr = pv) * Value pv (snd av))%sep
     | Borrowed pv => emp (addr = pv)
     | Owned => Value addr (snd av)
     end.
@@ -262,23 +266,21 @@ Section KVStore.
           forall p start R tr mem,
             (* { p -> start } *)
             (* space must already be allocated at start *)
-            sep (sep
-                   (truncated_scalar
-                      access_size.word p (word.unsigned start))
-                   (Lift1Prop.ex1
-                      (fun xs =>
-                         sep (emp (length xs = map_size_in_bytes))
-                             (array ptsto (word.of_Z 1) start xs))))
-                R mem ->
+            (truncated_scalar
+               access_size.word p (word.unsigned start)
+             * Lift1Prop.ex1
+                 (fun xs =>
+                    sep (emp (length xs = map_size_in_bytes))
+                        (array ptsto (word.of_Z 1) start xs))
+            * R)%sep mem ->
             WeakestPrecondition.call
               functions map_init tr mem [p]
               (fun tr' mem' rets =>
                  tr = tr'
                  /\ rets = []
-                 /\ sep (sep
-                           (truncated_scalar
-                              access_size.word p (word.unsigned start))
-                           (Map p map.empty)) R mem').
+                 /\ (truncated_scalar
+                       access_size.word p (word.unsigned start)
+                      * Map p map.empty * R)%sep mem').
 
       (* get returns a pair; a boolean (true if there was an error) and a value,
        which is meaningless if there was an error. *)
@@ -300,23 +302,19 @@ Section KVStore.
                       | Reserved pv' =>
                         err = word.of_Z 0
                         /\ pv = pv'
-                        /\ sep
-                             (sep (AnnotatedMap
-                                     pm (map.put m k (Reserved pv, v)))
-                                  (Key pk k))
-                             R mem'
+                        /\ (AnnotatedMap
+                              pm (map.put m k (Reserved pv, v))
+                            * Key pk k * R)%sep mem'
                       | Owned =>
                         err = word.of_Z 0
-                        /\ sep
-                             (sep (AnnotatedMap
-                                     pm (map.put m k (Reserved pv, v)))
-                                  (Key pk k))
-                             R mem'
+                        /\ (AnnotatedMap
+                              pm (map.put m k (Reserved pv, v))
+                            * Key pk k * R)%sep mem'
                       end
                     | None =>
                       (* if k not \in m, err = true and no change *)
                       err = word.of_Z 1
-                      /\ sep (sep (AnnotatedMap pm m) (Key pk k)) R mem'
+                      /\ (AnnotatedMap pm m * Key pk k * R)%sep mem'
                     end).
 
       (* put returns a boolean indicating whether the key was already
@@ -325,7 +323,7 @@ Section KVStore.
       Instance spec_of_map_put : spec_of put :=
         fun functions =>
           forall pm m pk k pv v R tr mem,
-            sep (sep (sep (Map pm m) (Key pk k)) (Value pv v)) R mem ->
+            (Map pm m * Key pk k * Value pv v * R)%sep mem ->
             WeakestPrecondition.call
               functions put tr mem [pm; pk; pv]
               (fun tr' mem' rets =>
@@ -335,13 +333,13 @@ Section KVStore.
                     match map.get m k with
                     | Some old_v =>
                       was_overwrite = word.of_Z 1
-                      /\ sep (sep (sep (Map pm (map.put m k v)) (Key pk k))
-                                  (Value pv old_v)) R mem'
+                      /\ (Map pm (map.put m k v) * Key pk k
+                          * Value pv old_v * R)%sep mem'
                     | None =>
                       (* if there was no previous value, the map consumes both
                          the key and value memory *)
                       was_overwrite = word.of_Z 0
-                      /\ sep (Map pm (map.put m k v)) R mem' 
+                      /\ (Map pm (map.put m k v) * R)%sep mem' 
                     end).
     End with_value.
 
@@ -358,9 +356,6 @@ Section KVStore.
 
       Local Instance map_ok : map.ok map := map_ok_gen _.
       Local Instance annotated_map_ok : map.ok annotated_map := map_ok_gen _.
-
-      Local Delimit Scope sep_scope with sep.
-      Local Infix "*" := (sep) : sep_scope.
 
       Instance spec_of_add : spec_of add :=
         fun functions =>
