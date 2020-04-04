@@ -15,7 +15,7 @@ Require Import bedrock2.NotationsCustomEntry.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Map.SortedList.
-Require Import coqutil.Tactics.letexists.
+Require Import coqutil.Tactics.destr.
 Local Open Scope string_scope.
 Import ListNotations.
 
@@ -46,6 +46,38 @@ Ltac boolean_cleanup :=
          | x := word.of_Z 1 |- _ => subst x
          | _ => congruence
          end.
+
+(* TODO: should move upstream to coqutil *)
+Module map.
+  Section __.
+    Context {key value} {map : map.map key value}
+            {map_ok : map.ok map}
+            {key_eqb}
+            {key_eq_dec :
+               forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)}.
+
+    Lemma put_put_diff_comm k1 k2 v1 v2 m :
+      k1 <> k2 ->
+      map.put (map.put m k1 v1) k2 v2 = map.put (map.put m k2 v2) k1 v1.
+    Proof.
+      intros. apply map.map_ext. intros.
+      rewrite !map.get_put_dec;
+        repeat match goal with |- context [key_eqb ?x ?y] =>
+                               destr (key_eqb x y) end;
+        congruence.
+    Qed.
+
+    Lemma put_noop k v m :
+      map.get m k = Some v -> map.put m k v = m.
+    Proof.
+      intros. apply map.map_ext. intros.
+      rewrite !map.get_put_dec;
+        repeat match goal with |- context [key_eqb ?x ?y] =>
+                               destr (key_eqb x y) end;
+        congruence.
+    Qed.
+  End __.
+End map.
 
 Section KVStore.
   (* TODO: once bedrock2 version is updated, these can be replaced by the
@@ -94,18 +126,18 @@ Section KVStore.
                  (Value : Semantics.word -> value -> Semantics.mem -> Prop),
                  Semantics.word -> map.rep (map:=map_gen value) ->
                  Semantics.mem -> Prop}
-            {Map_put_iff1 :
+            {Map_put_impl1 :
                forall value Value pm
                       (m : map.rep (map:=map_gen value))
                       k v1 v2 R1 R2,
                  (forall pv,
-                     Lift1Prop.iff1
+                     Lift1Prop.impl1
                        (sep (Value pv v1) R1)
                        (sep (Value pv v2) R2)) ->
-                 Lift1Prop.iff1
+                 Lift1Prop.impl1
                    (sep (Map_gen value Value pm (map.put m k v1)) R1)
                    (sep (Map_gen value Value pm (map.put m k v2)) R2)}
-            {Map_gen_iff1 :
+            {Map_fold_iff1 :
                forall value1 value2 Value1 Value2 (f : value1 -> value2),
                  (forall pv v,
                      Lift1Prop.iff1 (Value1 pv v) (Value2 pv (f v))) ->
@@ -116,6 +148,22 @@ Section KVStore.
                               (map.fold
                                  (fun m' k v => map.put m' k (f v))
                                  map.empty m))}.
+
+    Lemma Map_put_iff1
+          value Value pm (m : map.rep (map:=map_gen value))
+          k v1 v2 R1 R2 :
+      (forall pv,
+          Lift1Prop.iff1
+            (sep (Value pv v1) R1)
+            (sep (Value pv v2) R2)) ->
+      Lift1Prop.iff1
+        (sep (Map_gen value Value pm (map.put m k v1)) R1)
+        (sep (Map_gen value Value pm (map.put m k v2)) R2).
+    Proof.
+      intro Hiff; split; intros;
+        eapply Map_put_impl1; intros; eauto;
+          rewrite Hiff; reflexivity.
+    Qed.
 
     Section with_value.
       Context {value : Type}
@@ -170,7 +218,7 @@ Section KVStore.
         Lift1Prop.iff1
           (Map pm m) (AnnotatedMap pm (annotate m)).
       Proof.
-        apply Map_gen_iff1; intros; reflexivity.
+        apply Map_fold_iff1; intros; reflexivity.
       Qed.
 
       Lemma unannotate_iff1 pm m :
@@ -178,7 +226,7 @@ Section KVStore.
           (AnnotatedMap pm (annotate m)) (Map pm m).
       Proof. symmetry; apply annotate_iff1. Qed.
 
-      Lemma borrowed_reserved_iff1 pm m k pv v :
+      Lemma reserved_borrowed_iff1 pm m k pv v :
         Lift1Prop.iff1
           (AnnotatedMap pm (map.put m k (Reserved pv, v)))
           (sep (AnnotatedMap pm (map.put m k (Borrowed pv, v)))
@@ -189,6 +237,24 @@ Section KVStore.
         apply Map_put_iff1. intros.
         rewrite sep_emp_True_r.
         reflexivity.
+      Qed.
+
+      Lemma reserved_owned_impl1 pm m k pv v :
+        Lift1Prop.impl1
+          (AnnotatedMap pm (map.put m k (Reserved pv, v)))
+          (AnnotatedMap pm (map.put m k (Owned, v))).
+      Proof.
+        rewrite <-(sep_emp_True_r (_ (map.put _ _ (Reserved _, _)))).
+        rewrite <-(sep_emp_True_r (_ (map.put _ _ (Owned, _)))).
+        cbv [AnnotatedMap]. repeat intro.
+        eapply Map_put_impl1; intros; [ | eassumption ].
+        cbn [AnnotatedValue_gen fst snd].
+        rewrite !sep_emp_True_r.
+        intro; rewrite sep_emp_l; intros;
+          repeat match goal with
+                 | H : _ /\ _ |- _ => destruct H
+                 end;
+          subst; eauto.
       Qed.
 
       Instance spec_of_map_init : spec_of map_init :=
@@ -224,7 +290,6 @@ Section KVStore.
               functions get tr mem [pm; pk]
               (fun tr' mem' rets =>
                  tr = tr'
-                 /\ mem = mem' (* get doesn't change memory *)
                  /\ length rets = 2%nat
                  /\ let err := hd (word.of_Z 0) rets in
                     let pv := hd (word.of_Z 0) (tl rets) in
@@ -294,21 +359,20 @@ Section KVStore.
       Local Instance map_ok : map.ok map := map_ok_gen _.
       Local Instance annotated_map_ok : map.ok annotated_map := map_ok_gen _.
 
-      Local Infix "*" := (sep).
-      Local Infix "*" := (sep) : type_scope.
+      Local Delimit Scope sep_scope with sep.
+      Local Infix "*" := (sep) : sep_scope.
 
       Instance spec_of_add : spec_of add :=
         fun functions =>
           forall px x py y pout old_out R tr mem,
-            ((Int px x) * (Int py y) * (Int pout old_out) * R) mem ->
+            (Int px x * Int py y * Int pout old_out * R)%sep mem ->
             WeakestPrecondition.call
               functions add tr mem [px; py; pout]
               (fun tr' mem' rets =>
                  tr = tr'
-                 /\ mem = mem'
                  /\ rets = [] 
                  /\ let out := word.wrap (x + y) in
-                    ((Int px x) * (Int py y) * (Int pout out) * R) mem').
+                    (Int px x * Int py y * Int pout out * R)%sep mem').
 
       (* look up k1 and k2, add their values and store in k3 *)
       Definition put_sum_gallina (m : map.rep (map:=map))
@@ -348,7 +412,7 @@ Section KVStore.
             map.get m k2 <> None ->
             k1 <> k2 -> (* TODO: try not requiring this *)
             (Map pm m * Key pk1 k1 * Key pk2 k2 * Key pk3 k3
-             * Int pv v * R) mem ->
+             * Int pv v * R)%sep mem ->
             WeakestPrecondition.call
               functions put_sum tr mem [pm; pk1; pk2; pk3; pv]
               (fun tr' mem' rets =>
@@ -365,12 +429,67 @@ Section KVStore.
                       | Some v3 =>
                         Key pk3 k3 * Int pv v3 * R
                       | None => R
-                      end)) mem').
+                      end))%sep mem').
 
       Instance spec_of_map_get_int : spec_of get :=
         (@spec_of_map_get Z Int).
       Instance spec_of_map_put_int : spec_of put :=
         (@spec_of_map_put Z Int).
+
+
+      Local Ltac unborrow_step :=
+        match goal with
+        | H : sep ?L ?R ?mem |- context [?mem] =>
+          match type of H with
+            context [?P (map.put ?m ?k (Borrowed ?px, ?x))] =>
+            let F1 :=
+                match (eval pattern
+                            (P (map.put m k (Borrowed px, x))) in
+                          (sep L R)) with ?f _ => f end in
+            let F2 :=
+                match (eval pattern (Int px x) in F1) with
+                  ?f _ => f end in
+            let H' := fresh in
+            assert (F2 (P (map.put m k (Reserved px, x))) (emp True) mem)
+              as H' by (seprewrite (reserved_borrowed_iff1 (Value:=Int));
+                        ecancel_assumption);
+            clear H; cbv beta in H'
+          end
+        | H : context [map.put (map.put _ _ (Borrowed ?px, ?x))
+                               _ (Reserved ?py, ?y)] |- _ =>
+          rewrite (map.put_put_diff_comm _ _ (Borrowed px, x)
+                                         (Reserved py, y))
+            in H by congruence
+        end.
+      Local Ltac unborrow := progress (repeat unborrow_step).
+
+      Local Ltac unreserve_step :=
+        match goal with
+        | H : sep ?L ?R ?mem |- context [?mem] =>
+          match type of H with
+            context [?P (map.put ?m ?k (Reserved ?px, ?x))] =>
+            let F1 :=
+                match (eval pattern
+                            (P (map.put m k (Reserved px, x))) in
+                          (sep L R)) with ?f _ => f end in
+            let H' := fresh in
+            (* hacky because seprewrite doesn't do impl1 *)
+            assert (F1 (P (map.put m k (Owned, x))) mem) as H'
+              by (eapply Proper_sep_impl1;
+                  [ repeat
+                      rewrite (sep_assoc (_ (map.put _ _ (Owned, _))));
+                    eapply Proper_sep_impl1;
+                    [ eapply reserved_owned_impl1 | reflexivity ]
+                  | reflexivity | ]; ecancel_assumption);
+              clear H; cbv beta in H'
+          end
+        | H : context [map.put (map.put _ _ (Reserved ?px, ?x))
+                               _ (Owned, ?y)] |- _ =>
+          rewrite (map.put_put_diff_comm _ _ (Reserved px, x)
+                                         (Owned, y))
+            in H by congruence
+        end.
+      Local Ltac unreserve := progress (repeat unreserve_step).
 
       (* Entire chain of separation-logic reasoning for put_sum
          (omitting keys for readability):
@@ -380,13 +499,13 @@ Section KVStore.
          { pm -> annotate m; pv -> v}
          // get k1
          { pm -> map.put (annotate m) k1 (Reserved pv1, v1); pv -> v}
-         // borrowed_reserved_iff1
+         // reserved_borrowed_iff1
          { pm -> map.put (annotate m) k1 (Borrowed pv1, v1);
                  pv1 -> v1; pv -> v}
          // get k2
          { pm -> map.put (map.put (annotate m) k1 (Borrowed pv1, v1))
                          k2 (Reserved pv2, v2); pv1 -> v1; pv -> v}
-         // borrowed_reserved_iff1
+         // reserved_borrowed_iff1
          { pm -> map.put (map.put (annotate m) k1 (Borrowed pv1, v1))
                          k2 (Borrowed pv2, v2);
                  pv2 -> v2; pv1 -> v1; pv -> v}
@@ -394,13 +513,13 @@ Section KVStore.
          { pm -> map.put (map.put (annotate m) k1 (Borrowed pv1, v1))
                          k2 (Borrowed pv2, v2);
                  pv2 -> v2; pv1 -> v1; pv -> (v1 + v2)}
-         // borrowed_reserved_iff1
+         // reserved_borrowed_iff1
          { pm -> map.put (map.put (annotate m) k1 (Borrowed pv1, v1))
                          k2 (Reserved pv2, v2); pv1 -> v1; pv -> (v1 + v2)}
          // commutativity of put (requires k1 <> k2)
          { pm -> map.put (map.put (annotate m) k2 (Reserved pv2, v2))
                          k1 (Borrowed pv1, v1); pv1 -> v1; pv -> (v1 + v2)}
-         // borrowed_reserved_iff1
+         // reserved_borrowed_iff1
          { pm -> map.put (map.put (annotate m) k2 (Reserved pv2, v2))
                          k1 (Reserved pv1, v1); pv -> (v1 + v2)}
          // reserved_impl1
@@ -422,7 +541,6 @@ Section KVStore.
                                          | None => emp True
                                          end }
        *)
-
       Lemma put_sum_ok : program_logic_goal_for_function! put_sum. 
       Proof.
         repeat straightline.
@@ -461,7 +579,7 @@ Section KVStore.
         (* borrow the result of the first get *)
         match goal with
         | H : context [Reserved] |- _ =>
-          seprewrite_in (borrowed_reserved_iff1 (Value:=Int)) H
+          seprewrite_in (reserved_borrowed_iff1 (Value:=Int)) H
         end.
 
         (* second get *)
@@ -492,7 +610,7 @@ Section KVStore.
         (* borrow the result of the second get *)
         match goal with
         | H : context [Reserved] |- _ =>
-          seprewrite_in (borrowed_reserved_iff1 (Value:=Int)) H
+          seprewrite_in (reserved_borrowed_iff1 (Value:=Int)) H
         end.
                 
         (* add *)
@@ -501,10 +619,33 @@ Section KVStore.
         destruct_lists_of_known_length.
         repeat straightline.
 
-        (* Now, need to remove all the annotations for [put] *)
-      Admitted.
+        (* remove all the annotations in preparation for put *)
+        unborrow. unreserve.
+        repeat match goal with
+               | H : context [map.put _ _ (Owned, ?x)] |- _ =>
+                 rewrite (map.put_noop _ (Owned, x)) in H
+                   by (rewrite ?map.get_put_diff by congruence;
+                       eauto using annotate_get_Some)
+               | H : context [annotate _] |- _ =>
+                 seprewrite_in (unannotate_iff1 (Value:=Int)) H
+               end.
 
-      
+        (* put *)
+        straightline_call; [ ecancel_assumption | ].
+        repeat straightline.
+        destruct_lists_of_known_length.
+        repeat straightline.
+
+        (* final proof *)
+        repeat match goal with
+               | _ => progress (subst; cbn [hd tl])
+               | H : _ /\ _ |- _ => destruct H
+               | |- _ /\ _ => split
+               | _ => reflexivity
+               | _ => break_match
+               | _ => ecancel_assumption
+               end.
+      Qed.
     End value_int.
   End with_key.
 End KVStore.
