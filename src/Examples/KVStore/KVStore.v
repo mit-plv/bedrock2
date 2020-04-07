@@ -97,8 +97,6 @@ Section KVStore.
   Local Definition bedrock_func : Type :=
     funname * (list string * list string * cmd).
   Local Coercion name_of_func (f : bedrock_func) := fst f.
-  Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
-  Local Coercion var (x : string) : Syntax.expr := expr.var x.
 
   Inductive annotation : Type :=
   | Reserved : address -> annotation
@@ -364,8 +362,83 @@ Section KVStore.
         subst; eauto.
     Qed.
   End properties.
+End KVStore.
 
-  Section example.
+Ltac unborrow_step Value :=
+  match goal with
+  | H : sep ?L ?R ?mem |- context [?mem] =>
+    match type of H with
+      context [?P (map.put ?m ?k (Borrowed ?px, ?x))] =>
+      let F1 :=
+          match (eval pattern
+                      (P (map.put m k (Borrowed px, x))) in
+                    (sep L R)) with ?f _ => f end in
+      let F2 :=
+          match (eval pattern (Value px x) in F1) with
+            ?f _ => f end in
+      let H' := fresh in
+      assert (F2 (P (map.put m k (Reserved px, x))) (emp True) mem)
+        as H' by (seprewrite reserved_borrowed_iff1;
+                  ecancel_assumption);
+      clear H; cbv beta in H'
+    end
+  | H : context [map.put (map.put _ _ (Borrowed ?px, ?x))
+                         _ (Reserved ?py, ?y)] |- _ =>
+    rewrite (map.put_put_diff_comm _ _ (Borrowed px, x)
+                                   (Reserved py, y))
+      in H by congruence
+  end.
+Ltac unborrow Value := progress (repeat unborrow_step Value).
+
+Ltac unreserve_step :=
+  match goal with
+  | H : sep ?L ?R ?mem |- context [?mem] =>
+    match type of H with
+      context [?P (map.put ?m ?k (Reserved ?px, ?x))] =>
+      let F1 :=
+          match (eval pattern
+                      (P (map.put m k (Reserved px, x))) in
+                    (sep L R)) with ?f _ => f end in
+      let H' := fresh in
+      (* hacky because seprewrite doesn't do impl1 *)
+      assert (F1 (P (map.put m k (Owned, x))) mem) as H'
+          by (eapply Proper_sep_impl1;
+              [ repeat
+                  rewrite (sep_assoc (_ (map.put _ _ (Owned, _))));
+                eapply Proper_sep_impl1;
+                [ eapply reserved_owned_impl1 | reflexivity ]
+              | reflexivity | ]; ecancel_assumption);
+      clear H; cbv beta in H'
+    end
+  | H : context [map.put (map.put _ _ (Reserved ?px, ?x))
+                         _ (Owned, ?y)] |- _ =>
+    rewrite (map.put_put_diff_comm _ _ (Reserved px, x)
+                                   (Owned, y))
+      in H by congruence
+  end.
+Ltac unreserve := progress (repeat unreserve_step).
+
+Section examples.
+  (* TODO: once bedrock2 version is updated, these can be replaced by the
+     commented-out generalized version below. *)
+  Local Existing Instance BasicCSyntax.StringNames_params.
+  Local Existing Instance BasicC64Semantics.parameters.
+  Local Existing Instance BasicC64Semantics.parameters_ok.
+  (*
+  Context {p : Semantics.parameters} {word_size_in_bytes : Z}.
+  Context {p_ok : Semantics.parameters_ok p}.
+   *)
+  (* TODO: uncomment once in different file from KVStore section
+  Local Definition bedrock_func : Type :=
+    funname * (list string * list string * cmd).
+  *)
+  (* TODO: rename name_of_func' to name_of_func once in a different file from
+  KVStore section *)
+  Local Coercion name_of_func' (f : bedrock_func) := fst f.
+  Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
+  Local Coercion var (x : string) : Syntax.expr := expr.var x.
+
+  Section put_sum.
     Context {add : bedrock_func}.
     Definition Int (addr : Semantics.word) (x : Z) : Semantics.mem -> Prop :=
       sep (emp (0 <= x < 2^Semantics.width)%Z)
@@ -446,61 +519,6 @@ Section KVStore.
                       Key pk3 k3 * Int pv v3 * R
                     | None => R
                     end))%sep mem').
-
-
-    Local Ltac unborrow_step :=
-      match goal with
-      | H : sep ?L ?R ?mem |- context [?mem] =>
-        match type of H with
-          context [?P (map.put ?m ?k (Borrowed ?px, ?x))] =>
-          let F1 :=
-              match (eval pattern
-                          (P (map.put m k (Borrowed px, x))) in
-                        (sep L R)) with ?f _ => f end in
-          let F2 :=
-              match (eval pattern (Int px x) in F1) with
-                ?f _ => f end in
-          let H' := fresh in
-          assert (F2 (P (map.put m k (Reserved px, x))) (emp True) mem)
-            as H' by (seprewrite reserved_borrowed_iff1;
-                      ecancel_assumption);
-          clear H; cbv beta in H'
-        end
-      | H : context [map.put (map.put _ _ (Borrowed ?px, ?x))
-                             _ (Reserved ?py, ?y)] |- _ =>
-        rewrite (map.put_put_diff_comm _ _ (Borrowed px, x)
-                                       (Reserved py, y))
-          in H by congruence
-      end.
-    Local Ltac unborrow := progress (repeat unborrow_step).
-
-    Local Ltac unreserve_step :=
-      match goal with
-      | H : sep ?L ?R ?mem |- context [?mem] =>
-        match type of H with
-          context [?P (map.put ?m ?k (Reserved ?px, ?x))] =>
-          let F1 :=
-              match (eval pattern
-                          (P (map.put m k (Reserved px, x))) in
-                        (sep L R)) with ?f _ => f end in
-          let H' := fresh in
-          (* hacky because seprewrite doesn't do impl1 *)
-          assert (F1 (P (map.put m k (Owned, x))) mem) as H'
-              by (eapply Proper_sep_impl1;
-                  [ repeat
-                      rewrite (sep_assoc (_ (map.put _ _ (Owned, _))));
-                    eapply Proper_sep_impl1;
-                    [ eapply reserved_owned_impl1 | reflexivity ]
-                  | reflexivity | ]; ecancel_assumption);
-          clear H; cbv beta in H'
-        end
-      | H : context [map.put (map.put _ _ (Reserved ?px, ?x))
-                             _ (Owned, ?y)] |- _ =>
-        rewrite (map.put_put_diff_comm _ _ (Reserved px, x)
-                                       (Owned, y))
-          in H by congruence
-      end.
-    Local Ltac unreserve := progress (repeat unreserve_step).
 
     (* Entire chain of separation-logic reasoning for put_sum
          (omitting keys for readability):
@@ -632,7 +650,7 @@ Section KVStore.
       repeat straightline.
 
       (* remove all the annotations in preparation for put *)
-      unborrow. unreserve.
+      unborrow Int. unreserve.
       repeat match goal with
              | H : context [map.put _ _ (Owned, ?x)] |- _ =>
                rewrite (map.put_noop _ (Owned, x)) in H
@@ -661,5 +679,5 @@ Section KVStore.
              | _ => ecancel_assumption
              end.
     Qed.
-  End example.
-End KVStore.
+  End put_sum.
+End examples.
