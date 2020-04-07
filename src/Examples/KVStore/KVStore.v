@@ -31,25 +31,6 @@ Ltac break_match :=
     destruct x eqn:H;
     rewrite ?H in *
   end.
-Ltac destruct_lists_of_known_length :=
-  repeat match goal with
-         | H : S _ = S _ |- _ => apply Nat.succ_inj in H
-         | H : length ?x = S _ |- _ =>
-           destruct x; cbn [length] in H; [ congruence | ]
-         | H : length ?x = 0 |- _ =>
-           destruct x; cbn [length] in H; [ clear H | congruence]
-         end;
-  cbn [hd tl] in *.
-Ltac boolean_cleanup :=
-  repeat match goal with
-         | H : _ |- _ =>
-           rewrite word.unsigned_of_Z_0 in H
-         | H : _ |- _ =>
-           rewrite word.unsigned_of_Z_1 in H
-         | x := word.of_Z 0 |- _ => subst x
-         | x := word.of_Z 1 |- _ => subst x
-         | _ => congruence
-         end.
 
 (* TODO: should move upstream to coqutil *)
 Module map.
@@ -417,3 +398,24 @@ Ltac unreserve_step :=
       in H by congruence
   end.
 Ltac unreserve := progress (repeat unreserve_step).
+
+Ltac destruct_lists_of_known_length :=
+  repeat match goal with
+         | H : S _ = S _ |- _ => apply Nat.succ_inj in H
+         | H : length ?x = S _ |- _ =>
+           destruct x; cbn [length] in H; [ congruence | ]
+         | H : length ?x = 0 |- _ =>
+           destruct x; cbn [length] in H; [ clear H | congruence]
+         end;
+  cbn [hd tl] in *.
+
+Ltac boolean_cleanup :=
+  repeat match goal with
+         | H : _ |- _ =>
+           rewrite word.unsigned_of_Z_0 in H
+         | H : _ |- _ =>
+           rewrite word.unsigned_of_Z_1 in H
+         | x := word.of_Z 0 |- _ => subst x
+         | x := word.of_Z 1 |- _ => subst x
+         | _ => congruence
+         end.
