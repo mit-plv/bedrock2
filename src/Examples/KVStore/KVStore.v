@@ -116,66 +116,80 @@ Section KVStore.
     | Owned => Value addr (snd av)
     end.
 
-  Section with_key.
-    Context {key key_eqb}
-            {key_eq_dec :
-               forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)}.
-    Context {map_gen : forall value, map.map key value}
-            {map_ok_gen : forall value, map.ok (map_gen value)}.
-    Context {map_size_in_bytes : nat}. (* for now, no resizing *)
-    Context {Key : Semantics.word -> key -> Semantics.mem -> Prop}
-            {Map_gen :
-               forall
-                 value
-                 (Value : Semantics.word -> value -> Semantics.mem -> Prop),
-                 Semantics.word -> map.rep (map:=map_gen value) ->
-                 Semantics.mem -> Prop}
-            {Map_put_impl1 :
-               forall value Value pm
-                      (m : map.rep (map:=map_gen value))
-                      k v1 v2 R1 R2,
-                 (forall pv,
-                     Lift1Prop.impl1
-                       (sep (Value pv v1) R1)
-                       (sep (Value pv v2) R2)) ->
-                 Lift1Prop.impl1
-                   (sep (Map_gen value Value pm (map.put m k v1)) R1)
-                   (sep (Map_gen value Value pm (map.put m k v2)) R2)}
-            {Map_fold_iff1 :
-               forall value1 value2 Value1 Value2 (f : value1 -> value2),
-                 (forall pv v,
-                     Lift1Prop.iff1 (Value1 pv v) (Value2 pv (f v))) ->
-                 forall pm m,
-                   Lift1Prop.iff1
-                     (Map_gen value1 Value1 pm m)
-                     (Map_gen value2 Value2 pm
-                              (map.fold
-                                 (fun m' k v => map.put m' k (f v))
-                                 map.empty m))}.
+  Class kv_parameters {key value}
+        {Value : Semantics.word -> value -> Semantics.mem -> Prop} :=
+    { map_gen : forall value, map.map key value;
+      map := map_gen value;
+      annotated_map := map_gen (annotation * value);
+      init_map_size_in_bytes : nat;
+      key_eqb : key -> key -> bool;
+      Key : Semantics.word -> key -> Semantics.mem -> Prop;
+      Map_gen :
+        forall value (Value : Semantics.word -> value ->
+                              Semantics.mem -> Prop),
+          Semantics.word -> map.rep (map:=map_gen value) ->
+          Semantics.mem -> Prop;
+      Map : _ -> map -> _ -> _ := Map_gen value Value;
+      AnnotatedMap : _ -> annotated_map -> _ -> _ :=
+        Map_gen (annotation * value)
+                (AnnotatedValue_gen Value);
+    }.
 
-    Lemma Map_put_iff1
-          value Value pm (m : map.rep (map:=map_gen value))
-          k v1 v2 R1 R2 :
-      (forall pv,
-          Lift1Prop.iff1
-            (sep (Value pv v1) R1)
-            (sep (Value pv v2) R2)) ->
-      Lift1Prop.iff1
-        (sep (Map_gen value Value pm (map.put m k v1)) R1)
-        (sep (Map_gen value Value pm (map.put m k v2)) R2).
+  Class kv_parameters_ok {key value Value}
+        {p : @kv_parameters key value Value} :=
+    { map_ok_gen : forall value, map.ok (map_gen value);
+      map_ok : map.ok map := map_ok_gen value;
+      annotated_map_ok : map.ok annotated_map :=
+        map_ok_gen (annotation * value);
+      key_eq_dec :
+        forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y);
+      Map_put_impl1 :
+        forall value Value pm
+               (m : map.rep (map:=map_gen value))
+               k v1 v2 R1 R2,
+          (forall pv,
+              Lift1Prop.impl1
+                (sep (Value pv v1) R1)
+                (sep (Value pv v2) R2)) ->
+          Lift1Prop.impl1
+            (sep (Map_gen value Value pm (map.put m k v1)) R1)
+            (sep (Map_gen value Value pm (map.put m k v2)) R2);
+      Map_fold_iff1 :
+        forall value1 value2 Value1 Value2 (f : value1 -> value2),
+          (forall pv v,
+              Lift1Prop.iff1 (Value1 pv v) (Value2 pv (f v))) ->
+          forall pm m,
+            Lift1Prop.iff1
+              (Map_gen value1 Value1 pm m)
+              (Map_gen value2 Value2 pm
+                       (map.fold
+                          (fun m' k v => map.put m' k (f v))
+                          map.empty m)); }.
+
+  Section with_params.
+    Context {key value : Type} {Value}
+            {kvp : kv_parameters}
+            {ok : @kv_parameters_ok key value Value kvp}.
+    Existing Instance map_ok.
+    Existing Instance annotated_map_ok.
+    Existing Instance key_eq_dec.
+
+    Lemma Map_put_iff1 :
+      forall value Value pm (m : map.rep (map:=map_gen value))
+             k v1 v2 R1 R2,
+        (forall pv,
+            Lift1Prop.iff1
+              (sep (Value pv v1) R1)
+              (sep (Value pv v2) R2)) ->
+        Lift1Prop.iff1
+          (sep (Map_gen value Value pm (map.put m k v1)) R1)
+          (sep (Map_gen value Value pm (map.put m k v2)) R2).
     Proof.
+      intros *.
       intro Hiff; split; intros;
         eapply Map_put_impl1; intros; eauto;
           rewrite Hiff; reflexivity.
     Qed.
-
-    Section with_value.
-      Context {value : Type}
-              {Value : Semantics.word -> value -> Semantics.mem -> Prop}.
-      Let map := map_gen value.
-      Let Map := Map_gen value Value.
-      Let annotated_map := map_gen (annotation * value).
-      Let AnnotatedMap := Map_gen _ (AnnotatedValue_gen Value).
 
       Axiom get put map_init : bedrock_func.
 
@@ -186,7 +200,7 @@ Section KVStore.
         map.get m k = None -> map.get (annotate m) k = None.
       Proof.
         cbv [annotate]; eapply map.fold_spec; intros;
-          eauto using map.get_empty; [ ].
+          try eapply map.get_empty; [ ].
         rewrite map.get_put_dec.
         match goal with H : map.get (map.put _ ?k1 _) ?k2 = None |- _ =>
                         rewrite map.get_put_dec in H;
@@ -270,7 +284,7 @@ Section KVStore.
                access_size.word p (word.unsigned start)
              * Lift1Prop.ex1
                  (fun xs =>
-                    sep (emp (length xs = map_size_in_bytes))
+                    sep (emp (length xs = init_map_size_in_bytes))
                         (array ptsto (word.of_Z 1) start xs))
             * R)%sep mem ->
             WeakestPrecondition.call
@@ -341,21 +355,20 @@ Section KVStore.
                       was_overwrite = word.of_Z 0
                       /\ (Map pm (map.put m k v) * R)%sep mem' 
                     end).
-    End with_value.
+  End with_params.
 
-    Section value_int.
-      Context {add : bedrock_func}.
-      Definition Int (addr : Semantics.word) (x : Z) : Semantics.mem -> Prop :=
-        sep (emp (0 <= x < 2^Semantics.width)%Z)
-            (truncated_scalar access_size.word addr x).
+  Section example.
+    Context {add : bedrock_func}.
+    Definition Int (addr : Semantics.word) (x : Z) : Semantics.mem -> Prop :=
+      sep (emp (0 <= x < 2^Semantics.width)%Z)
+          (truncated_scalar access_size.word addr x).
 
-      Let map := map_gen Z.
-      Let Map := Map_gen _ Int.
-      Let annotated_map := map_gen (annotation * Z).
-      Let AnnotatedMap := Map_gen _ (AnnotatedValue_gen Int).
+    Context {key : Type}
+            {kvp : kv_parameters}
+            {ok : @kv_parameters_ok key Z Int kvp}.
 
-      Local Instance map_ok : map.ok map := map_ok_gen _.
-      Local Instance annotated_map_ok : map.ok annotated_map := map_ok_gen _.
+    Existing Instances map_ok annotated_map_ok key_eq_dec.
+    Existing Instances spec_of_map_get spec_of_map_put.
 
       Instance spec_of_add : spec_of add :=
         fun functions =>
@@ -371,7 +384,7 @@ Section KVStore.
 
       (* look up k1 and k2, add their values and store in k3 *)
       Definition put_sum_gallina (m : map.rep (map:=map))
-                 (k1 k2 k3 : key) : map.rep :=
+                 (k1 k2 k3 : key) : map.rep (map:=map) :=
         match map.get m k1, map.get m k2 with
         | Some v1, Some v2 => map.put m k3 (word.wrap (v1 + v2)%Z)
         | _, _ => m
@@ -425,11 +438,6 @@ Section KVStore.
                         Key pk3 k3 * Int pv v3 * R
                       | None => R
                       end))%sep mem').
-
-      Instance spec_of_map_get_int : spec_of get :=
-        (@spec_of_map_get Z Int).
-      Instance spec_of_map_put_int : spec_of put :=
-        (@spec_of_map_put Z Int).
 
 
       Local Ltac unborrow_step :=
@@ -556,7 +564,8 @@ Section KVStore.
         WeakestPrecondition.unfold1_cmd_goal;
           (cbv beta match delta [WeakestPrecondition.cmd_body]).
         repeat straightline.
-        cbv [put_sum_gallina map].
+        cbv [put_sum_gallina].
+        fold map annotated_map in *.
         match goal with
           H : _ |- _ =>
           rewrite ?map.get_put_diff, annotate_get_full in H
@@ -574,7 +583,7 @@ Section KVStore.
         (* borrow the result of the first get *)
         match goal with
         | H : context [Reserved] |- _ =>
-          seprewrite_in (reserved_borrowed_iff1 (Value:=Int)) H
+          seprewrite_in (reserved_borrowed_iff1) H
         end.
 
         (* second get *)
@@ -632,15 +641,17 @@ Section KVStore.
         repeat straightline.
 
         (* final proof *)
+        fold map annotated_map in *.
         repeat match goal with
                | _ => progress (subst; cbn [hd tl])
                | H : _ /\ _ |- _ => destruct H
+               | H : Some _ = Some _ |- _ => inversion H; clear H
                | |- _ /\ _ => split
                | _ => reflexivity
+               | _ => congruence
                | _ => break_match
                | _ => ecancel_assumption
                end.
       Qed.
-    End value_int.
-  End with_key.
+  End example.
 End KVStore.
