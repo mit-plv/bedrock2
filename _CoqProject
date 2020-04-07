@@ -5,5 +5,7 @@ src/Examples/CapitalizeThird/CapitalizeThird.v
 src/Examples/CapitalizeThird/Properties.v
 src/Examples/Swap/Swap.v
 src/Examples/Swap/Properties.v
-src/Examples/KVStore/KVStore.v
 src/Examples/KVStore/Examples.v
+src/Examples/KVStore/KVStore.v
+src/Examples/KVStore/Properties.v
+src/Examples/KVStore/Tactics.v

@@ -15,6 +15,8 @@ Require Import bedrock2.NotationsCustomEntry.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import Rupicola.Examples.KVStore.KVStore.
+Require Import Rupicola.Examples.KVStore.Properties.
+Require Import Rupicola.Examples.KVStore.Tactics.
 Local Open Scope string_scope.
 Import ListNotations.
 
