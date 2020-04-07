@@ -116,7 +116,13 @@ Section KVStore.
     | Owned => Value addr (snd av)
     end.
 
-  Class kv_parameters {key value}
+  Class kv_ops :=
+    { map_init : bedrock_func;
+      get : bedrock_func;
+      put : bedrock_func; }.
+
+  Class kv_parameters
+        {ops : kv_ops} {key value : Type}
         {Value : Semantics.word -> value -> Semantics.mem -> Prop} :=
     { map_gen : forall value, map.map key value;
       map := map_gen value;
@@ -135,8 +141,9 @@ Section KVStore.
                 (AnnotatedValue_gen Value);
     }.
 
-  Class kv_parameters_ok {key value Value}
-        {p : @kv_parameters key value Value} :=
+  Class kv_parameters_ok
+        {ops : kv_ops} {key value Value}
+        {p : @kv_parameters ops key value Value} :=
     { map_ok_gen : forall value, map.ok (map_gen value);
       map_ok : map.ok map := map_ok_gen value;
       annotated_map_ok : map.ok annotated_map :=
@@ -166,13 +173,97 @@ Section KVStore.
                           (fun m' k v => map.put m' k (f v))
                           map.empty m)); }.
 
-  Section with_params.
-    Context {key value : Type} {Value}
+  Section specs.
+    Context {ops key value Value}
+            {kvp : @kv_parameters ops key value Value}.
+
+    Instance spec_of_map_init : spec_of map_init :=
+      fun functions =>
+        forall p start R tr mem,
+          (* { p -> start } *)
+          (* space must already be allocated at start *)
+          (truncated_scalar
+             access_size.word p (word.unsigned start)
+           * Lift1Prop.ex1
+               (fun xs =>
+                  sep (emp (length xs = init_map_size_in_bytes))
+                      (array ptsto (word.of_Z 1) start xs))
+           * R)%sep mem ->
+          WeakestPrecondition.call
+            functions map_init tr mem [p]
+            (fun tr' mem' rets =>
+               tr = tr'
+               /\ rets = []
+               /\ (truncated_scalar
+                     access_size.word p (word.unsigned start)
+                   * Map p map.empty * R)%sep mem').
+
+    (* get returns a pair; a boolean (true if there was an error) and a value,
+       which is meaningless if there was an error. *)
+    Instance spec_of_map_get : spec_of get :=
+      fun functions =>
+        forall pm m pk k R tr mem,
+          sep (sep (AnnotatedMap pm m) (Key pk k)) R mem ->
+          WeakestPrecondition.call
+            functions get tr mem [pm; pk]
+            (fun tr' mem' rets =>
+               tr = tr'
+               /\ length rets = 2%nat
+               /\ let err := hd (word.of_Z 0) rets in
+                  let pv := hd (word.of_Z 0) (tl rets) in
+                  match map.get m k with
+                  | Some (a, v) =>
+                    match a with
+                    | Borrowed _ => True (* no guarantees *)
+                    | Reserved pv' =>
+                      err = word.of_Z 0
+                      /\ pv = pv'
+                      /\ (AnnotatedMap
+                            pm (map.put m k (Reserved pv, v))
+                          * Key pk k * R)%sep mem'
+                    | Owned =>
+                      err = word.of_Z 0
+                      /\ (AnnotatedMap
+                            pm (map.put m k (Reserved pv, v))
+                          * Key pk k * R)%sep mem'
+                    end
+                  | None =>
+                    (* if k not \in m, err = true and no change *)
+                    err = word.of_Z 1
+                    /\ (AnnotatedMap pm m * Key pk k * R)%sep mem'
+                  end).
+
+    (* put returns a boolean indicating whether the key was already
+       present. If true, the original value pointer now points to the old
+       value. *)
+    Instance spec_of_map_put : spec_of put :=
+      fun functions =>
+        forall pm m pk k pv v R tr mem,
+          (Map pm m * Key pk k * Value pv v * R)%sep mem ->
+          WeakestPrecondition.call
+            functions put tr mem [pm; pk; pv]
+            (fun tr' mem' rets =>
+               tr = tr'
+               /\ length rets = 1%nat
+               /\ let was_overwrite := hd (word.of_Z 0) rets in
+                  match map.get m k with
+                  | Some old_v =>
+                    was_overwrite = word.of_Z 1
+                    /\ (Map pm (map.put m k v) * Key pk k
+                        * Value pv old_v * R)%sep mem'
+                  | None =>
+                    (* if there was no previous value, the map consumes both
+                       the key and value memory *)
+                    was_overwrite = word.of_Z 0
+                    /\ (Map pm (map.put m k v) * R)%sep mem'
+                  end).
+  End specs.
+
+  Section properties.
+    Context {ops key value Value}
             {kvp : kv_parameters}
-            {ok : @kv_parameters_ok key value Value kvp}.
-    Existing Instance map_ok.
-    Existing Instance annotated_map_ok.
-    Existing Instance key_eq_dec.
+            {ok : @kv_parameters_ok ops key value Value kvp}.
+    Existing Instances map_ok annotated_map_ok key_eq_dec.
 
     Lemma Map_put_iff1 :
       forall value Value pm (m : map.rep (map:=map_gen value))
@@ -190,8 +281,6 @@ Section KVStore.
         eapply Map_put_impl1; intros; eauto;
           rewrite Hiff; reflexivity.
     Qed.
-
-    Axiom get put map_init : bedrock_func.
 
     Definition annotate (m : map) : annotated_map :=
       map.fold (fun m' k v => map.put m' k (Owned, v)) map.empty m.
@@ -274,88 +363,7 @@ Section KVStore.
                end;
         subst; eauto.
     Qed.
-
-    Instance spec_of_map_init : spec_of map_init :=
-      fun functions =>
-        forall p start R tr mem,
-          (* { p -> start } *)
-          (* space must already be allocated at start *)
-          (truncated_scalar
-             access_size.word p (word.unsigned start)
-           * Lift1Prop.ex1
-               (fun xs =>
-                  sep (emp (length xs = init_map_size_in_bytes))
-                      (array ptsto (word.of_Z 1) start xs))
-           * R)%sep mem ->
-          WeakestPrecondition.call
-            functions map_init tr mem [p]
-            (fun tr' mem' rets =>
-               tr = tr'
-               /\ rets = []
-               /\ (truncated_scalar
-                     access_size.word p (word.unsigned start)
-                   * Map p map.empty * R)%sep mem').
-
-    (* get returns a pair; a boolean (true if there was an error) and a value,
-       which is meaningless if there was an error. *)
-    Instance spec_of_map_get : spec_of get :=
-      fun functions =>
-        forall pm m pk k R tr mem,
-          sep (sep (AnnotatedMap pm m) (Key pk k)) R mem ->
-          WeakestPrecondition.call
-            functions get tr mem [pm; pk]
-            (fun tr' mem' rets =>
-               tr = tr'
-               /\ length rets = 2%nat
-               /\ let err := hd (word.of_Z 0) rets in
-                  let pv := hd (word.of_Z 0) (tl rets) in
-                  match map.get m k with
-                  | Some (a, v) =>
-                    match a with
-                    | Borrowed _ => True (* no guarantees *)
-                    | Reserved pv' =>
-                      err = word.of_Z 0
-                      /\ pv = pv'
-                      /\ (AnnotatedMap
-                            pm (map.put m k (Reserved pv, v))
-                          * Key pk k * R)%sep mem'
-                    | Owned =>
-                      err = word.of_Z 0
-                      /\ (AnnotatedMap
-                            pm (map.put m k (Reserved pv, v))
-                          * Key pk k * R)%sep mem'
-                    end
-                  | None =>
-                    (* if k not \in m, err = true and no change *)
-                    err = word.of_Z 1
-                    /\ (AnnotatedMap pm m * Key pk k * R)%sep mem'
-                  end).
-
-    (* put returns a boolean indicating whether the key was already
-         present. If true, the original value pointer now points to the old
-         value. *)
-    Instance spec_of_map_put : spec_of put :=
-      fun functions =>
-        forall pm m pk k pv v R tr mem,
-          (Map pm m * Key pk k * Value pv v * R)%sep mem ->
-          WeakestPrecondition.call
-            functions put tr mem [pm; pk; pv]
-            (fun tr' mem' rets =>
-               tr = tr'
-               /\ length rets = 1%nat
-               /\ let was_overwrite := hd (word.of_Z 0) rets in
-                  match map.get m k with
-                  | Some old_v =>
-                    was_overwrite = word.of_Z 1
-                    /\ (Map pm (map.put m k v) * Key pk k
-                        * Value pv old_v * R)%sep mem'
-                  | None =>
-                    (* if there was no previous value, the map consumes both
-                         the key and value memory *)
-                    was_overwrite = word.of_Z 0
-                    /\ (Map pm (map.put m k v) * R)%sep mem' 
-                  end).
-  End with_params.
+  End properties.
 
   Section example.
     Context {add : bedrock_func}.
@@ -363,9 +371,9 @@ Section KVStore.
       sep (emp (0 <= x < 2^Semantics.width)%Z)
           (truncated_scalar access_size.word addr x).
 
-    Context {key : Type}
+    Context {ops} {key : Type}
             {kvp : kv_parameters}
-            {ok : @kv_parameters_ok key Z Int kvp}.
+            {ok : @kv_parameters_ok ops key Z Int kvp}.
 
     Existing Instances map_ok annotated_map_ok key_eq_dec.
     Existing Instances spec_of_map_get spec_of_map_put.
@@ -378,7 +386,7 @@ Section KVStore.
             functions add tr mem [px; py; pout]
             (fun tr' mem' rets =>
                tr = tr'
-               /\ rets = [] 
+               /\ rets = []
                /\ let out := word.wrap (x + y) in
                   (Int px x * Int py y * Int pout out * R)%sep mem').
 
@@ -409,7 +417,7 @@ Section KVStore.
             require !err ;
             unpack! err, v2 = get (m, k2) ;
             require !err ;
-            add (v1, v2, v); 
+            add (v1, v2, v);
             unpack! ret = put (m, k3, v)
       ))).
 
@@ -534,7 +542,7 @@ Section KVStore.
          // reserved_impl1
          { pm -> map.put (map.put (annotate m) k1 (Owned, v1))
                          k2 (Owned, v2); pv -> (v1 + v2)}
-         // puts are noops 
+         // puts are noops
          { pm -> annotate m; pv -> (v1 + v2)}
          // annotate_iff1
          { pm -> m; pv -> (v1 + v2)}
@@ -544,7 +552,7 @@ Section KVStore.
                                          | None => emp True
                                          end }
      *)
-    Lemma put_sum_ok : program_logic_goal_for_function! put_sum. 
+    Lemma put_sum_ok : program_logic_goal_for_function! put_sum.
     Proof.
       repeat straightline.
 
@@ -616,7 +624,7 @@ Section KVStore.
       | H : context [Reserved] |- _ =>
         seprewrite_in reserved_borrowed_iff1 H
       end.
-      
+
       (* add *)
       straightline_call; [ ecancel_assumption | ].
       repeat straightline.
