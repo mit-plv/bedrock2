@@ -218,7 +218,8 @@ Section KVStore.
     Instance spec_of_map_put : spec_of put :=
       fun functions =>
         forall pm m pk k pv v R tr mem,
-          (Map pm m * Key pk k * Value pv v * R)%sep mem ->
+          (AnnotatedMap pm m
+           * Key pk k * Value pv v * R)%sep mem ->
           WeakestPrecondition.call
             functions put tr mem [pm; pk; pv]
             (fun tr' mem' rets =>
@@ -226,15 +227,24 @@ Section KVStore.
                /\ length rets = 1%nat
                /\ let was_overwrite := hd (word.of_Z 0) rets in
                   match map.get m k with
-                  | Some old_v =>
-                    was_overwrite = word.of_Z 1
-                    /\ (Map pm (map.put m k v) * Key pk k
-                        * Value pv old_v * R)%sep mem'
+                  | Some (a, old_v) =>
+                    match a with
+                    | Borrowed _ => True (* no guarantees *)
+                    | Reserved pv =>
+                      was_overwrite = word.of_Z 1
+                      /\ (AnnotatedMap pm (map.put m k (Reserved pv, v))
+                          * Key pk k * Value pv old_v * R)%sep mem'
+                    | Owned =>
+                      was_overwrite = word.of_Z 1
+                      /\ (AnnotatedMap pm (map.put m k (Owned, v))
+                          * Key pk k * Value pv old_v * R)%sep mem'
+                    end
                   | None =>
                     (* if there was no previous value, the map consumes both
                        the key and value memory *)
                     was_overwrite = word.of_Z 0
-                    /\ (Map pm (map.put m k v) * R)%sep mem'
+                    /\ (AnnotatedMap pm (map.put m k (Owned, v))
+                        * R)%sep mem'
                   end).
   End specs.
 End KVStore.

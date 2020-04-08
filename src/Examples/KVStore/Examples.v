@@ -247,15 +247,13 @@ Section examples.
       destruct_lists_of_known_length.
       repeat straightline.
 
-      (* remove all the annotations in preparation for put *)
+      (* done with borrows; put the pointers back before put *)
       unborrow Int. unreserve.
       repeat match goal with
              | H : context [map.put _ _ (Owned, ?x)] |- _ =>
                rewrite (map.put_noop _ (Owned, x)) in H
                  by (rewrite ?map.get_put_diff by congruence;
                      eauto using annotate_get_Some)
-             | H : context [annotate _] |- _ =>
-               seprewrite_in unannotate_iff1 H
              end.
 
       (* put *)
@@ -264,11 +262,27 @@ Section examples.
       destruct_lists_of_known_length.
       repeat straightline.
 
-      (* final proof *)
+      (* break into two cases of put (overwrite or not) *)
       fold map annotated_map in *.
-      repeat match goal with
+      match goal with
+      | H : match map.get (annotate ?m) ?k with _ => _ end |- _ =>
+        rewrite annotate_get_full in H;
+          destruct (map.get m k) eqn:?;
+            repeat match type of H with _ /\ _ =>
+                                        destruct H as [? H] end
+      end; [ | ].
+
+      (* un-annotate map *)
+      all: fold map annotated_map in *.
+      all: repeat match goal with
+                  | H : _ |- _ => rewrite put_owned_annotate in H
+                  | H : context [annotate _] |- _ =>
+                    seprewrite_in unannotate_iff1 H
+                  end.
+
+      (* final proof *)
+      all: repeat match goal with
              | _ => progress (subst; cbn [hd tl])
-             | H : _ /\ _ |- _ => destruct H
              | H : Some _ = Some _ |- _ => inversion H; clear H
              | |- _ /\ _ => split
              | _ => reflexivity

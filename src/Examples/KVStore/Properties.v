@@ -122,4 +122,13 @@ Section properties.
              end;
       subst; eauto.
   Qed.
+
+  Lemma put_owned_annotate m k v :
+    map.put (annotate m) k (Owned, v) = annotate (map.put m k v).
+  Proof.
+    apply map.map_ext; intros.
+    repeat first [ rewrite map.get_put_dec
+                 | rewrite annotate_get_full ].
+    break_match; reflexivity.
+  Qed.
 End properties.
