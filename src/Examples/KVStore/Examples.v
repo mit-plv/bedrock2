@@ -173,52 +173,43 @@ Section examples.
      *)
     Lemma put_sum_ok : program_logic_goal_for_function! put_sum.
     Proof.
-      repeat straightline.
-      cbv [put_sum_gallina].
-
-      (* annotate map *)
+      repeat straightline. cbv [put_sum_gallina].
       add_map_annotations.
 
-      (* first get *)
-      handle_call. autorewrite with push_get in *.
+      (* for the calls to get/add, we're pulling data out of the map; turning
+         owns into reserves and reserves into borrows *)
+      repeat match goal with
+             | _ => straightline
+             | _ => progress destruct_products
+             | _ => progress clear_old_seps
+             | _ => borrow_reserved
+             | _ =>
+               (* clause for (require !err) after get *)
+               destruct_one_match_hyp_of_type (option Z);
+                 destruct_products; clear_old_seps;
+                   split_if; intros; boolean_cleanup; [ ]
+             | |- WeakestPrecondition.call _ ?f _ _ _ _ =>
+               (* this rule only fires if the thing we're calling is *not* put;
+                  we need to unborrow before put *)
+               assert_fails (unify f (fst put));
+                 handle_call; autorewrite with push_get in *
+             end.
 
-      (* require !err *)
-      repeat destruct_one_match_hyp_of_type (option Z);
-        destruct_products; clear_old_seps;
-          split_if; intros; boolean_cleanup; [ ].
-      repeat straightline.
+      (* now, we reverse course; we want to push data back to the map by turning
+         borrows into reserves and reserves into owns *)
+      repeat match goal with
+             | _ => progress unborrow Int
+             | _ => progress unreserve
+             | _ => progress clear_owned
+             | _ =>
+               (* break into two cases; did put overwrite or not? *)
+               destruct_one_match_hyp_of_type (option Z);
+                 destruct_products; clear_old_seps
+             | |- WeakestPrecondition.call _ ?f _ _ _ _ =>
+               handle_call; autorewrite with push_get in *
+             end.
 
-      (* borrow the result of the first get *)
-      borrow_reserved.
-
-      (* second get *)
-      handle_call. autorewrite with push_get in *.
-
-      (* require !err *)
-      repeat destruct_one_match_hyp_of_type (option Z);
-        destruct_products; clear_old_seps;
-        split_if; intros; boolean_cleanup; [ ].
-      repeat straightline.
-
-      (* borrow the result of the second get *)
-      borrow_reserved.
-
-      (* add *)
-      handle_call. clear_old_seps.
-
-      (* done with borrows; put the pointers back before put *)
-      unborrow Int. unreserve. clear_owned.
-
-      (* put *)
-      handle_call. autorewrite with push_get in *.
-      (* break into two cases of put (overwrite or not) *)
-      repeat destruct_one_match_hyp_of_type (option Z);
-        destruct_products; clear_old_seps.
-
-      (* un-annotate map *)
       all: remove_map_annotations.
-
-      (* final proof *)
       all: subst; ssplit; try reflexivity.
       all: ecancel_assumption.
     Qed.
