@@ -15,6 +15,7 @@ Require Import bedrock2.NotationsCustomEntry.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Tactics.destr.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require Import Rupicola.Examples.KVStore.Tactics.
@@ -98,7 +99,7 @@ Section examples.
         forall pm m pk1 k1 pk2 k2 pk3 k3 pv v R tr mem,
           map.get m k1 <> None ->
           map.get m k2 <> None ->
-          k1 <> k2 -> (* TODO: try not requiring this *)
+          k1 <> k2 -> (* required because add needs arguments separate *)
           (Map pm m * Key pk1 k1 * Key pk2 k2 * Key pk3 k3
            * Int pv v * R)%sep mem ->
           WeakestPrecondition.call
@@ -144,7 +145,7 @@ Section examples.
          // reserved_borrowed_iff1
          { pm -> map.put (map.put (annotate m) k1 (Borrowed pv1, v1))
                          k2 (Reserved pv2, v2); pv1 -> v1; pv -> (v1 + v2)}
-         // commutativity of put (requires k1 <> k2)
+         // commutativity of put (when k1 <> k2)
          { pm -> map.put (map.put (annotate m) k2 (Reserved pv2, v2))
                          k1 (Borrowed pv1, v1); pv1 -> v1; pv -> (v1 + v2)}
          // reserved_borrowed_iff1
@@ -153,7 +154,7 @@ Section examples.
          // reserved_impl1
          { pm -> map.put (map.put (annotate m) k2 (Reserved pv2, v2))
                          k1 (Owned, v1); pv -> (v1 + v2)}
-         // commutativity of put (requires k1 <> k2)
+         // commutativity of put (when k1 <> k2)
          { pm -> map.put (map.put (annotate m) k1 (Owned, v1))
                          k2 (Reserved pv2, v2); pv -> (v1 + v2)}
          // reserved_impl1
@@ -172,6 +173,7 @@ Section examples.
     Lemma put_sum_ok : program_logic_goal_for_function! put_sum.
     Proof.
       repeat straightline.
+      cbv [put_sum_gallina].
 
       (* annotate map *)
       match goal with
@@ -186,7 +188,6 @@ Section examples.
       WeakestPrecondition.unfold1_cmd_goal;
         (cbv beta match delta [WeakestPrecondition.cmd_body]).
       repeat straightline.
-      cbv [put_sum_gallina].
       fold map annotated_map in *.
       match goal with
         H : _ |- _ =>
@@ -215,7 +216,6 @@ Section examples.
       WeakestPrecondition.unfold1_cmd_goal;
         (cbv beta match delta [WeakestPrecondition.cmd_body]).
       repeat straightline.
-      cbv [put_sum_gallina map].
       match goal with
         H : _ |- _ =>
         rewrite ?map.get_put_diff, annotate_get_full in H

@@ -192,20 +192,18 @@ Section KVStore.
                   let pv := hd (word.of_Z 0) (tl rets) in
                   match map.get m k with
                   | Some (a, v) =>
-                    match a with
-                    | Borrowed _ => True (* no guarantees *)
-                    | Reserved pv' =>
-                      err = word.of_Z 0
-                      /\ pv = pv'
-                      /\ (AnnotatedMap
-                            pm (map.put m k (Reserved pv, v))
-                          * Key pk k * R)%sep mem'
-                    | Owned =>
-                      err = word.of_Z 0
-                      /\ (AnnotatedMap
-                            pm (map.put m k (Reserved pv, v))
-                          * Key pk k * R)%sep mem'
-                    end
+                    err = word.of_Z 0
+                    /\ (match a with
+                        | Borrowed pv' => pv = pv'
+                        | Reserved pv' => pv = pv'
+                        | Owned => True
+                        end)
+                    /\ (AnnotatedMap
+                          pm (match a with
+                              | Borrowed _ => m
+                              | Reserved _ => map.put m k (Reserved pv, v)
+                              | Owned => map.put m k (Reserved pv, v)
+                              end) * Key pk k * R)%sep mem'
                   | None =>
                     (* if k not \in m, err = true and no change *)
                     err = word.of_Z 1
