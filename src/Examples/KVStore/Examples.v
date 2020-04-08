@@ -180,8 +180,7 @@ Section examples.
       add_map_annotations.
 
       (* first get *)
-      handle_call.
-      autorewrite with push_get in *.
+      handle_call. autorewrite with push_get in *.
 
       (* require !err *)
       repeat destruct_one_match_hyp_of_type (option Z);
@@ -189,14 +188,10 @@ Section examples.
       repeat straightline.
 
       (* borrow the result of the first get *)
-      match goal with
-      | H : context [Reserved] |- _ =>
-        seprewrite_in (reserved_borrowed_iff1) H
-      end.
+      borrow_reserved.
 
       (* second get *)
-      handle_call.
-      autorewrite with push_get in *.
+      handle_call. autorewrite with push_get in *.
 
       (* require !err *)
       repeat destruct_one_match_hyp_of_type (option Z);
@@ -204,10 +199,7 @@ Section examples.
       repeat straightline.
 
       (* borrow the result of the second get *)
-      match goal with
-      | H : context [Reserved] |- _ =>
-        seprewrite_in reserved_borrowed_iff1 H
-      end.
+      borrow_reserved.
 
       (* add *)
       handle_call.
@@ -216,9 +208,8 @@ Section examples.
       unborrow Int. unreserve. clear_owned.
 
       (* put *)
-      handle_call.
+      handle_call. autorewrite with push_get in *.
       (* break into two cases of put (overwrite or not) *)
-      autorewrite with push_get in *.
       repeat destruct_one_match_hyp_of_type (option Z);
         destruct_products.
 

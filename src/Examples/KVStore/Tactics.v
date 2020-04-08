@@ -8,6 +8,12 @@ Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require bedrock2.ProgramLogic.
 
+Ltac borrow_reserved :=
+  match goal with
+  | H : context [Reserved] |- _ =>
+    seprewrite_in reserved_borrowed_iff1 H
+  end.
+
 Ltac unborrow_step Value :=
   match goal with
   | H : sep ?L ?R ?mem |- context [?mem] =>
