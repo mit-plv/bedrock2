@@ -5,6 +5,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
+Require bedrock2.ProgramLogic.
 
 Ltac unborrow_step Value :=
   match goal with
@@ -80,3 +81,23 @@ Ltac boolean_cleanup :=
          | x := word.of_Z 1%Z |- _ => subst x
          | _ => congruence
          end.
+
+Ltac clear_owned :=
+  repeat match goal with
+         | H : _ |- _ => rewrite put_owned_annotate in H
+         | H : _ |- _ =>
+           rewrite map.put_noop in H
+             by (rewrite ?map.get_put_dec;
+                 repeat match goal with
+                          |- context [key_eqb ?a ?b] =>
+                          destr.destr (key_eqb a b) end;
+                 subst; congruence)
+         end.
+
+(* just a wrapper that calls straightline_call + straightline, and also
+   destructs output lists *)
+Ltac handle_call :=
+  ProgramLogic.straightline_call; [ ecancel_assumption | ];
+  repeat ProgramLogic.straightline;
+  destruct_lists_of_known_length;
+  repeat ProgramLogic.straightline.

@@ -14,6 +14,7 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require Import Rupicola.Examples.KVStore.Tactics.
@@ -179,10 +180,7 @@ Section examples.
       end.
 
       (* first get *)
-      straightline_call; [ ecancel_assumption | ].
-      repeat straightline.
-      destruct_lists_of_known_length.
-      repeat straightline.
+      handle_call.
 
       (* require !err *)
       WeakestPrecondition.unfold1_cmd_goal;
@@ -211,10 +209,7 @@ Section examples.
       end.
 
       (* second get *)
-      straightline_call; [ ecancel_assumption | ].
-      repeat straightline.
-      destruct_lists_of_known_length.
-      repeat straightline.
+      handle_call.
 
       (* require !err *)
       WeakestPrecondition.unfold1_cmd_goal;
@@ -242,25 +237,13 @@ Section examples.
       end.
 
       (* add *)
-      straightline_call; [ ecancel_assumption | ].
-      repeat straightline.
-      destruct_lists_of_known_length.
-      repeat straightline.
+      handle_call.
 
       (* done with borrows; put the pointers back before put *)
-      unborrow Int. unreserve.
-      repeat match goal with
-             | H : context [map.put _ _ (Owned, ?x)] |- _ =>
-               rewrite (map.put_noop _ (Owned, x)) in H
-                 by (rewrite ?map.get_put_diff by congruence;
-                     eauto using annotate_get_Some)
-             end.
+      unborrow Int. unreserve. clear_owned.
 
       (* put *)
-      straightline_call; [ ecancel_assumption | ].
-      repeat straightline.
-      destruct_lists_of_known_length.
-      repeat straightline.
+      handle_call.
 
       (* break into two cases of put (overwrite or not) *)
       fold map annotated_map in *.
@@ -274,11 +257,11 @@ Section examples.
 
       (* un-annotate map *)
       all: fold map annotated_map in *.
-      all: repeat match goal with
-                  | H : _ |- _ => rewrite put_owned_annotate in H
-                  | H : context [annotate _] |- _ =>
-                    seprewrite_in unannotate_iff1 H
-                  end.
+      all: clear_owned;
+        repeat match goal with
+               | H : context [annotate _] |- _ =>
+                 seprewrite_in unannotate_iff1 H
+               end.
 
       (* final proof *)
       all: repeat match goal with
