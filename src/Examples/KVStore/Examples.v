@@ -16,6 +16,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.destr.
+Require Import coqutil.Tactics.Tactics.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require Import Rupicola.Examples.KVStore.Tactics.
@@ -120,10 +121,6 @@ Section examples.
                     | None => R
                     end))%sep mem').
 
-    Hint Rewrite @map.get_put_diff @map.get_put_same
-         @annotate_get_Some @annotate_get_None @annotate_get_full
-         using (typeclasses eauto || congruence) : push_get.
-
     (* Entire chain of separation-logic reasoning for put_sum
          (omitting keys for readability):
 
@@ -187,11 +184,8 @@ Section examples.
       autorewrite with push_get in *.
 
       (* require !err *)
-      repeat match goal with
-             | H : _ /\ _ |- _ => destruct H
-             | _ => break_match_hyps
-             end;
-        split_if; intros; boolean_cleanup; [ ].
+      repeat destruct_one_match_hyp_of_type (option Z);
+        destruct_products; split_if; intros; boolean_cleanup; [ ].
       repeat straightline.
 
       (* borrow the result of the first get *)
@@ -205,11 +199,8 @@ Section examples.
       autorewrite with push_get in *.
 
       (* require !err *)
-      repeat match goal with
-             | H : _ /\ _ |- _ => destruct H
-             | _ => break_match_hyps
-             end;
-        split_if; intros; boolean_cleanup; [ ].
+      repeat destruct_one_match_hyp_of_type (option Z);
+        destruct_products; split_if; intros; boolean_cleanup; [ ].
       repeat straightline.
 
       (* borrow the result of the second get *)
@@ -227,27 +218,16 @@ Section examples.
       (* put *)
       handle_call.
       (* break into two cases of put (overwrite or not) *)
-      match goal with
-      | H : match map.get (annotate ?m) ?k with _ => _ end |- _ =>
-        rewrite annotate_get_full in H;
-          destruct (map.get m k) eqn:?;
-            repeat match type of H with _ /\ _ =>
-                                        destruct H as [? H] end
-      end; [ | ].
+      autorewrite with push_get in *.
+      repeat destruct_one_match_hyp_of_type (option Z);
+        destruct_products.
 
       (* un-annotate map *)
       all: remove_map_annotations.
 
       (* final proof *)
-      all: repeat match goal with
-             | _ => progress (subst; cbn [hd tl])
-             | H : Some _ = Some _ |- _ => inversion H; clear H
-             | |- _ /\ _ => split
-             | _ => reflexivity
-             | _ => congruence
-             | _ => break_match
-             | _ => ecancel_assumption
-             end.
+      all: subst; ssplit; try reflexivity.
+      all: ecancel_assumption.
     Qed.
   End put_sum.
 End examples.

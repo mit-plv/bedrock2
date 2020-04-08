@@ -14,6 +14,7 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Tactics.Tactics.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Local Open Scope string_scope.
 Import ListNotations.
@@ -77,7 +78,7 @@ Section properties.
                              | None => None
                              end.
   Proof.
-    break_match; eauto using annotate_get_None, annotate_get_Some.
+    destruct_one_match; eauto using annotate_get_None, annotate_get_Some.
   Qed.
 
   Lemma annotate_iff1 pm m :
@@ -129,6 +130,10 @@ Section properties.
     apply map.map_ext; intros.
     repeat first [ rewrite map.get_put_dec
                  | rewrite annotate_get_full ].
-    break_match; reflexivity.
+    destruct_one_match; reflexivity.
   Qed.
 End properties.
+
+Hint Rewrite @map.get_put_diff @map.get_put_same
+     @annotate_get_Some @annotate_get_None @annotate_get_full
+     using (typeclasses eauto || congruence) : push_get.

@@ -23,22 +23,6 @@ Local Declare Scope sep_scope.
 Local Delimit Scope sep_scope with sep.
 Local Infix "*" := (sep) : sep_scope.
 
-(* TODO: add fiat-crypto's break_match to coqutil? *)
-Ltac break_match :=
-  match goal with
-  | |- context [match ?x with _ => _ end] =>
-    let H := fresh "Heq" in
-    destruct x eqn:H;
-    rewrite ?H in *
-  end.
-Ltac break_match_hyps :=
-  match goal with
-  | H : context [match ?x with _ => _ end] |- _ =>
-    let H' := fresh "Heq" in
-    destruct x eqn:H';
-    rewrite ?H' in *
-  end.
-
 (* TODO: should move upstream to coqutil *)
 Module map.
   Section __.
