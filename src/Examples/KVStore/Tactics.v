@@ -132,6 +132,15 @@ Ltac add_map_annotations :=
 Ltac remove_map_annotations :=
   clear_owned;
   repeat match goal with
-         | H : ?P ?mem |- context [?mem] =>
+         | H : context [annotate] |- _ =>
            seprewrite_in unannotate_iff1 H
          end.
+
+Ltac clear_old_seps :=
+  match goal with
+  | H : sep _ _ ?mem |- context [?mem] =>
+    repeat match goal with
+           | H' : sep _ _ ?m |- _ =>
+             assert_fails (unify m mem); clear H'
+           end
+  end.

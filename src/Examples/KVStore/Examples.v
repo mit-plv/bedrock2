@@ -184,7 +184,8 @@ Section examples.
 
       (* require !err *)
       repeat destruct_one_match_hyp_of_type (option Z);
-        destruct_products; split_if; intros; boolean_cleanup; [ ].
+        destruct_products; clear_old_seps;
+          split_if; intros; boolean_cleanup; [ ].
       repeat straightline.
 
       (* borrow the result of the first get *)
@@ -195,14 +196,15 @@ Section examples.
 
       (* require !err *)
       repeat destruct_one_match_hyp_of_type (option Z);
-        destruct_products; split_if; intros; boolean_cleanup; [ ].
+        destruct_products; clear_old_seps;
+        split_if; intros; boolean_cleanup; [ ].
       repeat straightline.
 
       (* borrow the result of the second get *)
       borrow_reserved.
 
       (* add *)
-      handle_call.
+      handle_call. clear_old_seps.
 
       (* done with borrows; put the pointers back before put *)
       unborrow Int. unreserve. clear_owned.
@@ -211,7 +213,7 @@ Section examples.
       handle_call. autorewrite with push_get in *.
       (* break into two cases of put (overwrite or not) *)
       repeat destruct_one_match_hyp_of_type (option Z);
-        destruct_products.
+        destruct_products; clear_old_seps.
 
       (* un-annotate map *)
       all: remove_map_annotations.
