@@ -120,6 +120,10 @@ Section examples.
                     | None => R
                     end))%sep mem').
 
+    Hint Rewrite @map.get_put_diff @map.get_put_same
+         @annotate_get_Some @annotate_get_None @annotate_get_full
+         using (typeclasses eauto || congruence) : push_get.
+
     (* Entire chain of separation-logic reasoning for put_sum
          (omitting keys for readability):
 
@@ -176,31 +180,18 @@ Section examples.
       cbv [put_sum_gallina].
 
       (* annotate map *)
-      match goal with
-      | H : context [Map _ _] |- _ =>
-        seprewrite_in annotate_iff1 H
-      end.
+      add_map_annotations.
 
       (* first get *)
       handle_call.
+      autorewrite with push_get in *.
 
       (* require !err *)
-      WeakestPrecondition.unfold1_cmd_goal;
-        (cbv beta match delta [WeakestPrecondition.cmd_body]).
-      repeat straightline.
-      fold map annotated_map in *.
-      match goal with
-        H : _ |- _ =>
-        rewrite ?map.get_put_diff, annotate_get_full in H
-          by congruence
-      end.
-      match goal with
-      | |- context [match map.get ?m k1 with _ => _ end] =>
-        destruct (map.get m k1) eqn:?
-      end; repeat straightline; split; intros;
-        boolean_cleanup; [ ].
-      WeakestPrecondition.unfold1_cmd_goal;
-        (cbv beta delta [WeakestPrecondition.cmd_body]).
+      repeat match goal with
+             | H : _ /\ _ |- _ => destruct H
+             | _ => break_match_hyps
+             end;
+        split_if; intros; boolean_cleanup; [ ].
       repeat straightline.
 
       (* borrow the result of the first get *)
@@ -211,23 +202,14 @@ Section examples.
 
       (* second get *)
       handle_call.
+      autorewrite with push_get in *.
 
       (* require !err *)
-      WeakestPrecondition.unfold1_cmd_goal;
-        (cbv beta match delta [WeakestPrecondition.cmd_body]).
-      repeat straightline.
-      match goal with
-        H : _ |- _ =>
-        rewrite ?map.get_put_diff, annotate_get_full in H
-          by congruence
-      end.
-      match goal with
-      | |- context [match map.get ?m k2 with _ => _ end] =>
-        destruct (map.get m k2) eqn:?
-      end; repeat straightline; split; intros;
-        boolean_cleanup; [ ].
-      WeakestPrecondition.unfold1_cmd_goal;
-        (cbv beta delta [WeakestPrecondition.cmd_body]).
+      repeat match goal with
+             | H : _ /\ _ |- _ => destruct H
+             | _ => break_match_hyps
+             end;
+        split_if; intros; boolean_cleanup; [ ].
       repeat straightline.
 
       (* borrow the result of the second get *)
@@ -244,9 +226,7 @@ Section examples.
 
       (* put *)
       handle_call.
-
       (* break into two cases of put (overwrite or not) *)
-      fold map annotated_map in *.
       match goal with
       | H : match map.get (annotate ?m) ?k with _ => _ end |- _ =>
         rewrite annotate_get_full in H;
@@ -256,12 +236,7 @@ Section examples.
       end; [ | ].
 
       (* un-annotate map *)
-      all: fold map annotated_map in *.
-      all: clear_owned;
-        repeat match goal with
-               | H : context [annotate _] |- _ =>
-                 seprewrite_in unannotate_iff1 H
-               end.
+      all: remove_map_annotations.
 
       (* final proof *)
       all: repeat match goal with

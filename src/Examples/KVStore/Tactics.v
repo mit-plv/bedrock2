@@ -3,6 +3,7 @@ Require Import bedrock2.Map.Separation.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Tactics.letexists.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require bedrock2.ProgramLogic.
@@ -77,6 +78,8 @@ Ltac boolean_cleanup :=
            rewrite word.unsigned_of_Z_0 in H
          | H : _ |- _ =>
            rewrite word.unsigned_of_Z_1 in H
+         | H : ?x = word.of_Z 0%Z |- _ => subst x
+         | H : ?x = word.of_Z 1%Z |- _ => subst x
          | x := word.of_Z 0%Z |- _ => subst x
          | x := word.of_Z 1%Z |- _ => subst x
          | _ => congruence
@@ -101,3 +104,28 @@ Ltac handle_call :=
   repeat ProgramLogic.straightline;
   destruct_lists_of_known_length;
   repeat ProgramLogic.straightline.
+
+(* stolen from a bedrock2 example file (LAN9250.v) *)
+Ltac split_if :=
+  lazymatch goal with
+    |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
+    let c := eval hnf in c in
+        lazymatch c with
+        | Syntax.cmd.cond _ _ _ =>
+          letexists; split;
+          [solve[repeat ProgramLogic.straightline]|split]
+        end
+  end.
+
+Ltac add_map_annotations :=
+  match goal with
+  | H : context [Map _ _] |- _ =>
+    seprewrite_in annotate_iff1 H
+  end.
+
+Ltac remove_map_annotations :=
+  clear_owned;
+  repeat match goal with
+         | H : ?P ?mem |- context [?mem] =>
+           seprewrite_in unannotate_iff1 H
+         end.

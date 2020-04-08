@@ -31,6 +31,13 @@ Ltac break_match :=
     destruct x eqn:H;
     rewrite ?H in *
   end.
+Ltac break_match_hyps :=
+  match goal with
+  | H : context [match ?x with _ => _ end] |- _ =>
+    let H' := fresh "Heq" in
+    destruct x eqn:H';
+    rewrite ?H' in *
+  end.
 
 (* TODO: should move upstream to coqutil *)
 Module map.
@@ -201,7 +208,7 @@ Section KVStore.
                     /\ (AnnotatedMap
                           pm (match a with
                               | Borrowed _ => m
-                              | Reserved _ => map.put m k (Reserved pv, v)
+                              | Reserved _ => m
                               | Owned => map.put m k (Reserved pv, v)
                               end) * Key pk k * R)%sep mem'
                   | None =>
