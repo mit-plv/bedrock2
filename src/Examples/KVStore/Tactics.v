@@ -9,7 +9,7 @@ Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require bedrock2.ProgramLogic.
 
-Ltac borrow_reserved_step filter :=
+Ltac borrow_step filter :=
   match goal with
   | H : sep ?L ?R ?mem |- context [?mem] =>
     match type of H with
@@ -22,10 +22,10 @@ Ltac borrow_reserved_step filter :=
     rewrite (map.put_put_diff_comm _ _ (Reserved px, x) y)
       in H by congruence
   end.
-Ltac borrow_all_reserved :=
-  progress (repeat borrow_reserved_step ltac:(fun _ => idtac)).
-Ltac borrow_reserved p :=
-  progress (repeat borrow_reserved_step ltac:(fun p' => unify p p')).
+Ltac borrow_all :=
+  progress (repeat borrow_step ltac:(fun _ => idtac)).
+Ltac borrow p :=
+  progress (repeat borrow_step ltac:(fun p' => unify p p')).
 
 Ltac unborrow_step filter :=
   match goal with
@@ -214,7 +214,7 @@ Ltac kv_hammer :=
            unify f (fst put);
            let pv :=
                (eval hnf in (hd (word.of_Z 0) (tl (tl args)))) in
-           try unborrow_all; try borrow_reserved pv;
+           try unborrow_all; try borrow pv;
            handle_call; autorewrite with mapsimpl in *
          | _ => progress autorewrite with mapsimpl in *
          end.

@@ -185,9 +185,7 @@ Section examples.
                  let in1 := (eval hnf in (hd (word.of_Z 0) (tl args))) in
                  let in2 :=
                      (eval hnf in (hd (word.of_Z 0) (tl (tl args)))) in
-                 try borrow_reserved in0;
-                   try borrow_reserved in1;
-                   try borrow_reserved in2;
+                 try borrow in0; try borrow in1; try borrow in2;
                    handle_call; autorewrite with mapsimpl in *
              end.
 
