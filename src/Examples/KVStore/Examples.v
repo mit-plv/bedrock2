@@ -207,8 +207,7 @@ Section examples.
                (* call get *)
                unify f (name_of_func get);
                  handle_call; autorewrite with mapsimpl in *
-             | H : sep _ _ ?m
-               |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
+             | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
                (* call add -- need to borrow all args first *)
                unify f (name_of_func add);
                  let in0 := (eval hnf in (hd (word.of_Z 0) args)) in
@@ -227,16 +226,7 @@ Section examples.
              | _ => progress autorewrite with mapsimpl in *
              end.
 
-      all:repeat match goal with
-             | _ => progress subst
-             | _ => progress unborrow_all
-             | _ => progress unreserve_all
-             | _ => progress clear_owned
-             | H : _ |- _ =>
-               (* TODO: why doesn't mapsimpl do this? *)
-               erewrite @map.put_put_same in H by typeclasses eauto
-                 end;
-        remove_map_annotations.
+      all: remove_map_annotations.
 
       all: subst; ssplit; try reflexivity.
       all: ecancel_assumption.

@@ -153,11 +153,19 @@ Ltac add_map_annotations :=
   end.
 
 Ltac remove_map_annotations :=
-  clear_owned;
   repeat match goal with
-         | H : context [annotate] |- _ =>
-           seprewrite_in unannotate_iff1 H
-         end.
+         | _ => progress subst
+         | _ => progress unborrow_all
+         | _ => progress unreserve_all
+         | _ => progress clear_owned
+         | H : sep _ _ _ |- _ =>
+           (* TODO: why doesn't mapsimpl do this? *)
+           erewrite @map.put_put_same in H by (typeclasses eauto)
+         end;
+  match goal with
+  | H : context [annotate] |- _ =>
+    seprewrite_in unannotate_iff1 H
+  end.
 
 Ltac clear_old_seps :=
   match goal with
