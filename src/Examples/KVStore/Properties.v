@@ -93,11 +93,11 @@ Section properties.
       (AnnotatedMap pm (annotate m)) (Map pm m).
   Proof. symmetry; apply annotate_iff1. Qed.
 
-  Lemma reserved_borrowed_iff1 pm m k pv v :
+  Lemma reserved_borrowed_iff1 pm m k pv v1 v2 :
     Lift1Prop.iff1
-      (AnnotatedMap pm (map.put m k (Reserved pv, v)))
-      (sep (AnnotatedMap pm (map.put m k (Borrowed pv, v)))
-           (Value pv v)).
+      (AnnotatedMap pm (map.put m k (Reserved pv, v1)))
+      (sep (AnnotatedMap pm (map.put m k (Borrowed pv, v2)))
+           (Value pv v1)).
   Proof.
     cbv [AnnotatedMap].
     rewrite <-sep_emp_True_r.

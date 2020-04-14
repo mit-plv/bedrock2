@@ -232,4 +232,148 @@ Section examples.
       all: ecancel_assumption.
     Qed.
   End put_sum.
+
+  Section swap.
+    Context {ops} {key value : Type} {Value}
+            {kvp : kv_parameters}
+            {ok : @kv_parameters_ok ops key value Value kvp}.
+
+    Existing Instances map_ok annotated_map_ok key_eq_dec.
+    Existing Instances spec_of_map_get spec_of_map_put.
+
+    (* look up k1 and k2, add their values and store in k3 *)
+    Definition swap_gallina (m : map.rep (map:=map))
+               (k1 k2 : key) : map.rep (map:=map) :=
+      match map.get m k1, map.get m k2 with
+      | Some v1, Some v2 =>
+        map.put (map.put m k2 v1) k1 v2
+      | _, _ => m
+      end.
+
+    Definition swap : bedrock_func :=
+      let m := "m" in
+      let k1 := "k1" in
+      let k2 := "k2" in
+      let v1 := "v1" in
+      let v2 := "v2" in
+      let err := "err" in
+      ("swap",
+       ([m; k1; k2], [],
+        bedrock_func_body:(
+          unpack! err, v1 = get (m, k1) ;
+            require !err ;
+            unpack! err, v2 = get (m, k2) ;
+            require !err ;
+            unpack! err = put (m, k2, v1)
+            (* now v2 is stored in v1 -- no need for second put *)
+      ))).
+
+    Instance spec_of_swap : spec_of swap :=
+      fun functions =>
+        forall pm m pk1 k1 pk2 k2 R tr mem,
+          map.get m k1 <> None ->
+          map.get m k2 <> None ->
+          k1 <> k2 -> (* TODO: try removing *)
+          (Map pm m * Key pk1 k1 * Key pk2 k2 * R)%sep mem ->
+          WeakestPrecondition.call
+            functions swap tr mem [pm; pk1; pk2]
+            (fun tr' mem' rets =>
+               tr = tr'
+               /\ rets = []
+               /\ (Map pm (swap_gallina m k1 k2)
+                   * Key pk1 k1 * Key pk2 k2 * R)%sep mem').
+
+    (* Entire chain of separation-logic reasoning for swap:
+
+         { pm -> m; pk1 -> k1; pk2 -> k2 }
+         // annotate
+         { pm -> annotate m; pk1 -> k1; pk2 -> k2 }
+         // get k1
+         { pm -> map.put (annotate m) k1 (Reserved pv1, v1);
+              pk1 -> k1; pk2 -> k2 }
+         // get k2
+         { pm -> map.put (map.put (annotate m) k1 (Reserved pv1, v1))
+                         k2 (Reserved pv2, v2); pk1 -> k1; pk2 -> k2 }
+         // borrow pv1
+         { pm -> map.put (map.put (annotate m) k2 (Reserved pv2, v2))
+                         k1 (Borrowed pv1, v1); pv1 -> v1;
+                         pk1 -> k1; pk2 -> k2 }
+         // put k2
+         { pm -> map.put
+                   (map.put (map.put (annotate m) k2 (Reserved pv2, v2))
+                         k1 (Borrowed pv1, v1)) k2 (Reserved pv2, v1);
+             pv1 -> v2; pk1 -> k1; pk2 -> k2 }
+         // put_put
+         { pm -> map.put (map.put (annotate m) k1 (Borrowed pv1, v1))
+                         k2 (Reserved pv2, v1);
+             pv1 -> v2; pk1 -> k1; pk2 -> k2 }
+        // unborrow pv1
+         { pm -> map.put (map.put (annotate m) k2 (Reserved pv2, v1))
+                         k1 (Reserved pv1, v2);
+             pk1 -> k1; pk2 -> k2 }
+     *)
+    Lemma swap_ok : program_logic_goal_for_function! swap.
+    Proof.
+      repeat straightline. cbv [swap_gallina].
+      add_map_annotations.
+
+      repeat match goal with
+             | _ => progress subst
+             | _ => straightline
+             | _ => progress destruct_products
+             | _ => progress clear_old_seps
+             | H : map.get _ _ = Some _ |- _ => rewrite H in *
+             | H : context [key_eqb ?k1 ?k2] |- _ =>
+               destr (key_eqb k1 k2)
+             | _ =>
+               (* handles (require !err) after get:
+                  destruct map get and only allow one remaining subgoal *)
+               destruct_one_match_hyp_of_type (option value);
+                 destruct_products; try clear_old_seps;
+                   split_if; intros; boolean_cleanup; [ ]
+             | _ =>
+               (* handles case analysis after put:
+                  destruct map get and allow two remaining subgoals *)
+               destruct_one_match_hyp_of_type (option Z);
+                 destruct_products; try clear_old_seps;
+                   (* make sure this doesn't work on require !err *)
+                   (* TODO: why doesn't assert_fails work? *)
+                   tryif split_if then fail else idtac;
+                   boolean_cleanup
+             | H : _ |- _ =>
+               (* TODO: why doesn't mapsimpl do this? *)
+               erewrite @map.put_put_same in H by typeclasses eauto
+             | H : _ |- _ => rewrite map.get_put_dec in H
+             | |- WeakestPrecondition.call _ ?f _ _ _ _ =>
+               (* call get *)
+               unify f (name_of_func get);
+                 handle_call; autorewrite with mapsimpl in *
+             | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
+               (* call add -- need to borrow all args first *)
+               unify f (name_of_func add);
+                 let in0 := (eval hnf in (hd (word.of_Z 0) args)) in
+                 let in1 := (eval hnf in (hd (word.of_Z 0) (tl args))) in
+                 let in2 :=
+                     (eval hnf in (hd (word.of_Z 0) (tl (tl args)))) in
+                 try borrow_reserved in0;
+                   try borrow_reserved in1;
+                   try borrow_reserved in2;
+                   handle_call; autorewrite with mapsimpl in *
+             | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
+               (* call put -- first unborrow everything *)
+               unify f (name_of_func put);
+                 let pv :=
+                     (eval hnf in (hd (word.of_Z 0) (tl (tl args)))) in
+                 try unborrow_all; try borrow_reserved pv;
+                 handle_call; autorewrite with mapsimpl in *
+             | _ => progress autorewrite with mapsimpl in *
+             end.
+
+      all: remove_map_annotations.
+
+      all: rewrite map.put_put_diff_comm by congruence.
+      all: subst; ssplit; try reflexivity.
+      all: ecancel_assumption.
+    Qed.
+  End swap.
 End examples.

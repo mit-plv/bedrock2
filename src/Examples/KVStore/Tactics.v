@@ -14,7 +14,7 @@ Ltac borrow_reserved_step filter :=
     match type of H with
       context [?P ?pm (map.put ?m ?k (Reserved ?px, ?x))] =>
       filter px;
-      seprewrite_in (reserved_borrowed_iff1 pm m k px x) H
+      seprewrite_in (reserved_borrowed_iff1 pm m k px x x) H
     end
   | H : context [map.put (map.put _ _ (Reserved ?px, ?x)) _ ?y] |- _ =>
     filter px;
@@ -30,20 +30,20 @@ Ltac unborrow_step filter :=
   match goal with
   | H : sep ?L ?R ?mem |- context [?mem] =>
     match type of H with
-      context [?P (map.put ?m ?k (Borrowed ?px, ?x))] =>
+      context [?P ?pm (map.put ?m ?k (Borrowed ?px, ?x))] =>
       filter px;
       match type of H with
-        context [?Q ?px ?x] =>
+        context [?Q ?px ?y] =>
         let F1 :=
             match (eval pattern
-                        (P (map.put m k (Borrowed px, x))) in
+                        (P pm (map.put m k (Borrowed px, x))) in
                       (sep L R)) with ?f _ => f end in
         let F2 :=
-            match (eval pattern (Q px x) in F1) with
+            match (eval pattern (Q px y) in F1) with
               ?f _ => f end in
         let H' := fresh in
-        assert (F2 (P (map.put m k (Reserved px, x))) (emp True) mem)
-          as H' by (seprewrite reserved_borrowed_iff1;
+        assert (F2 (P pm (map.put m k (Reserved px, y))) (emp True) mem)
+          as H' by (seprewrite (reserved_borrowed_iff1 pm m k px y x);
                     ecancel_assumption);
         clear H; cbv beta in H'
       end
