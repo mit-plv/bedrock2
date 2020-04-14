@@ -4,6 +4,7 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.letexists.
+Require Import coqutil.Tactics.Tactics.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require bedrock2.ProgramLogic.
@@ -175,3 +176,45 @@ Ltac clear_old_seps :=
              assert_fails (unify m mem); clear H'
            end
   end.
+
+Ltac kv_hammer :=
+  repeat match goal with
+         | _ => progress subst
+         | _ => ProgramLogic.straightline
+         | _ => progress destruct_products
+         | _ => progress clear_old_seps
+         | H : map.get _ _ = Some _ |- _ => rewrite H in *
+         | H : context [key_eqb ?k1 ?k2] |- _ =>
+           destr (key_eqb k1 k2)
+         | kvp : @kv_parameters _ _ ?value _ |- _ =>
+           (* handles (require !err):
+              destruct map get and only allow one remaining subgoal *)
+           destruct_one_match_hyp_of_type (option value);
+           destruct_products; try clear_old_seps;
+           split_if; intros; boolean_cleanup; [ ]
+         | kvp : @kv_parameters _ _ ?value _ |- _ =>
+           (* handles case analysis of map-get other than require !err:
+              destruct map get and allow two remaining subgoals *)
+           destruct_one_match_hyp_of_type (option value);
+           destruct_products; try clear_old_seps;
+           (* make sure this doesn't work on require !err *)
+           (* TODO: why doesn't assert_fails work? *)
+           tryif split_if then fail else idtac;
+           boolean_cleanup
+         | H : _ |- _ =>
+           (* TODO: why doesn't mapsimpl do this? *)
+           erewrite @map.put_put_same in H by typeclasses eauto
+         | H : _ |- _ => rewrite map.get_put_dec in H
+         | |- WeakestPrecondition.call _ ?f _ _ _ _ =>
+           (* call get *)
+           unify f (fst get);
+           handle_call; autorewrite with mapsimpl in *
+         | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
+           (* call put -- unborrow everything except value being placed *)
+           unify f (fst put);
+           let pv :=
+               (eval hnf in (hd (word.of_Z 0) (tl (tl args)))) in
+           try unborrow_all; try borrow_reserved pv;
+           handle_call; autorewrite with mapsimpl in *
+         | _ => progress autorewrite with mapsimpl in *
+         end.

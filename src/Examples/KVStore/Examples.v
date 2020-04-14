@@ -177,36 +177,7 @@ Section examples.
       add_map_annotations.
 
       repeat match goal with
-             | _ => progress subst
-             | _ => straightline
-             | _ => progress destruct_products
-             | _ => progress clear_old_seps
-             | H : map.get _ _ = Some _ |- _ => rewrite H in *
-             | H : context [key_eqb ?k1 ?k2] |- _ =>
-               destr (key_eqb k1 k2)
-             | _ =>
-               (* handles (require !err) after get:
-                  destruct map get and only allow one remaining subgoal *)
-               destruct_one_match_hyp_of_type (option Z);
-                 destruct_products; try clear_old_seps;
-                   split_if; intros; boolean_cleanup; [ ]
-             | _ =>
-               (* handles case analysis after put:
-                  destruct map get and allow two remaining subgoals *)
-               destruct_one_match_hyp_of_type (option Z);
-                 destruct_products; try clear_old_seps;
-                   (* make sure this doesn't work on require !err *)
-                   (* TODO: why doesn't assert_fails work? *)
-                   tryif split_if then fail else idtac;
-                   boolean_cleanup
-             | H : _ |- _ =>
-               (* TODO: why doesn't mapsimpl do this? *)
-               erewrite @map.put_put_same in H by typeclasses eauto
-             | H : _ |- _ => rewrite map.get_put_dec in H
-             | |- WeakestPrecondition.call _ ?f _ _ _ _ =>
-               (* call get *)
-               unify f (name_of_func get);
-                 handle_call; autorewrite with mapsimpl in *
+             | _ => progress kv_hammer
              | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
                (* call add -- need to borrow all args first *)
                unify f (name_of_func add);
@@ -218,12 +189,6 @@ Section examples.
                    try borrow_reserved in1;
                    try borrow_reserved in2;
                    handle_call; autorewrite with mapsimpl in *
-             | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
-               (* call put -- first unborrow everything *)
-               unify f (name_of_func put);
-                 unborrow_all;
-                 handle_call; autorewrite with mapsimpl in *
-             | _ => progress autorewrite with mapsimpl in *
              end.
 
       all: remove_map_annotations.
@@ -317,63 +282,12 @@ Section examples.
       repeat straightline. cbv [swap_gallina].
       add_map_annotations.
 
-      repeat match goal with
-             | _ => progress subst
-             | _ => straightline
-             | _ => progress destruct_products
-             | _ => progress clear_old_seps
-             | H : map.get _ _ = Some _ |- _ => rewrite H in *
-             | H : context [key_eqb ?k1 ?k2] |- _ =>
-               destr (key_eqb k1 k2)
-             | _ =>
-               (* handles (require !err) after get:
-                  destruct map get and only allow one remaining subgoal *)
-               destruct_one_match_hyp_of_type (option value);
-                 destruct_products; try clear_old_seps;
-                   split_if; intros; boolean_cleanup; [ ]
-             | _ =>
-               (* handles case analysis after put:
-                  destruct map get and allow two remaining subgoals *)
-               destruct_one_match_hyp_of_type (option Z);
-                 destruct_products; try clear_old_seps;
-                   (* make sure this doesn't work on require !err *)
-                   (* TODO: why doesn't assert_fails work? *)
-                   tryif split_if then fail else idtac;
-                   boolean_cleanup
-             | H : _ |- _ =>
-               (* TODO: why doesn't mapsimpl do this? *)
-               erewrite @map.put_put_same in H by typeclasses eauto
-             | H : _ |- _ => rewrite map.get_put_dec in H
-             | |- WeakestPrecondition.call _ ?f _ _ _ _ =>
-               (* call get *)
-               unify f (name_of_func get);
-                 handle_call; autorewrite with mapsimpl in *
-             | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
-               (* call add -- need to borrow all args first *)
-               unify f (name_of_func add);
-                 let in0 := (eval hnf in (hd (word.of_Z 0) args)) in
-                 let in1 := (eval hnf in (hd (word.of_Z 0) (tl args))) in
-                 let in2 :=
-                     (eval hnf in (hd (word.of_Z 0) (tl (tl args)))) in
-                 try borrow_reserved in0;
-                   try borrow_reserved in1;
-                   try borrow_reserved in2;
-                   handle_call; autorewrite with mapsimpl in *
-             | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
-               (* call put -- first unborrow everything *)
-               unify f (name_of_func put);
-                 let pv :=
-                     (eval hnf in (hd (word.of_Z 0) (tl (tl args)))) in
-                 try unborrow_all; try borrow_reserved pv;
-                 handle_call; autorewrite with mapsimpl in *
-             | _ => progress autorewrite with mapsimpl in *
-             end.
+      kv_hammer.
 
-      all: remove_map_annotations.
-
-      all: rewrite map.put_put_diff_comm by congruence.
-      all: subst; ssplit; try reflexivity.
-      all: ecancel_assumption.
+      remove_map_annotations.
+      rewrite map.put_put_diff_comm by congruence.
+      subst; ssplit; try reflexivity.
+      ecancel_assumption.
     Qed.
   End swap.
 End examples.
