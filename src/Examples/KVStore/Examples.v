@@ -176,40 +176,68 @@ Section examples.
       repeat straightline. cbv [put_sum_gallina].
       add_map_annotations.
 
-      (* for the calls to get/add, we're pulling data out of the map; turning
-         owns into reserves and reserves into borrows *)
       repeat match goal with
+             | _ => progress subst
              | _ => straightline
              | _ => progress destruct_products
              | _ => progress clear_old_seps
-             | _ => borrow_all_reserved
+             | H : map.get _ _ = Some _ |- _ => rewrite H in *
+             | H : context [key_eqb ?k1 ?k2] |- _ =>
+               destr (key_eqb k1 k2)
              | _ =>
-               (* clause for (require !err) after get *)
+               (* handles (require !err) after get:
+                  destruct map get and only allow one remaining subgoal *)
                destruct_one_match_hyp_of_type (option Z);
-                 destruct_products; clear_old_seps;
+                 destruct_products; try clear_old_seps;
                    split_if; intros; boolean_cleanup; [ ]
+             | _ =>
+               (* handles case analysis after put:
+                  destruct map get and allow two remaining subgoals *)
+               destruct_one_match_hyp_of_type (option Z);
+                 destruct_products; try clear_old_seps;
+                   (* make sure this doesn't work on require !err *)
+                   (* TODO: why doesn't assert_fails work? *)
+                   tryif split_if then fail else idtac;
+                   boolean_cleanup
+             | H : _ |- _ =>
+               (* TODO: why doesn't mapsimpl do this? *)
+               erewrite @map.put_put_same in H by typeclasses eauto
+             | H : _ |- _ => rewrite map.get_put_dec in H
              | |- WeakestPrecondition.call _ ?f _ _ _ _ =>
-               (* this rule only fires if the thing we're calling is *not* put;
-                  we need to unborrow before put *)
-               assert_fails (unify f (fst put));
-                 handle_call; autorewrite with push_get in *
+               (* call get *)
+               unify f (name_of_func get);
+                 handle_call; autorewrite with mapsimpl in *
+             | H : sep _ _ ?m
+               |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
+               (* call add -- need to borrow all args first *)
+               unify f (name_of_func add);
+                 let in0 := (eval hnf in (hd (word.of_Z 0) args)) in
+                 let in1 := (eval hnf in (hd (word.of_Z 0) (tl args))) in
+                 let in2 :=
+                     (eval hnf in (hd (word.of_Z 0) (tl (tl args)))) in
+                 try borrow_reserved in0;
+                   try borrow_reserved in1;
+                   try borrow_reserved in2;
+                   handle_call; autorewrite with mapsimpl in *
+             | |- WeakestPrecondition.call _ ?f _ ?m ?args _ =>
+               (* call put -- first unborrow everything *)
+               unify f (name_of_func put);
+                 unborrow_all;
+                 handle_call; autorewrite with mapsimpl in *
+             | _ => progress autorewrite with mapsimpl in *
              end.
 
-      (* now, we reverse course; we want to push data back to the map by turning
-         borrows into reserves and reserves into owns *)
-      repeat match goal with
+      all:repeat match goal with
+             | _ => progress subst
              | _ => progress unborrow_all
              | _ => progress unreserve_all
              | _ => progress clear_owned
-             | _ =>
-               (* break into two cases; did put overwrite or not? *)
-               destruct_one_match_hyp_of_type (option Z);
-                 destruct_products; clear_old_seps
-             | |- WeakestPrecondition.call _ ?f _ _ _ _ =>
-               handle_call; autorewrite with push_get in *
-             end.
+             | H : _ |- _ =>
+               (* TODO: why doesn't mapsimpl do this? *)
+               erewrite @map.put_put_same in H by typeclasses eauto
+                 end;
+        remove_map_annotations.
 
-      all: remove_map_annotations.
       all: subst; ssplit; try reflexivity.
       all: ecancel_assumption.
     Qed.

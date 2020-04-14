@@ -134,6 +134,6 @@ Section properties.
   Qed.
 End properties.
 
-Hint Rewrite @map.get_put_diff @map.get_put_same
+Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
      @annotate_get_Some @annotate_get_None @annotate_get_full
-     using (typeclasses eauto || congruence) : push_get.
+     using (typeclasses eauto || congruence) : mapsimpl.
