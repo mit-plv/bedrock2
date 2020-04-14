@@ -182,7 +182,7 @@ Section examples.
              | _ => straightline
              | _ => progress destruct_products
              | _ => progress clear_old_seps
-             | _ => borrow_reserved
+             | _ => borrow_all_reserved
              | _ =>
                (* clause for (require !err) after get *)
                destruct_one_match_hyp_of_type (option Z);
@@ -198,8 +198,8 @@ Section examples.
       (* now, we reverse course; we want to push data back to the map by turning
          borrows into reserves and reserves into owns *)
       repeat match goal with
-             | _ => progress unborrow Int
-             | _ => progress unreserve
+             | _ => progress unborrow_all
+             | _ => progress unreserve_all
              | _ => progress clear_owned
              | _ =>
                (* break into two cases; did put overwrite or not? *)

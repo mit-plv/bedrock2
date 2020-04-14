@@ -8,43 +8,63 @@ Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require bedrock2.ProgramLogic.
 
-Ltac borrow_reserved :=
+Ltac borrow_reserved_step filter :=
   match goal with
-  | H : context [Reserved] |- _ =>
-    seprewrite_in reserved_borrowed_iff1 H
+  | H : sep ?L ?R ?mem |- context [?mem] =>
+    match type of H with
+      context [?P ?pm (map.put ?m ?k (Reserved ?px, ?x))] =>
+      filter px;
+      seprewrite_in (reserved_borrowed_iff1 pm m k px x) H
+    end
+  | H : context [map.put (map.put _ _ (Reserved ?px, ?x)) _ ?y] |- _ =>
+    filter px;
+    rewrite (map.put_put_diff_comm _ _ (Reserved px, x) y)
+      in H by congruence
   end.
+Ltac borrow_all_reserved :=
+  progress (repeat borrow_reserved_step ltac:(fun _ => idtac)).
+Ltac borrow_reserved p :=
+  progress (repeat borrow_reserved_step ltac:(fun p' => unify p p')).
 
-Ltac unborrow_step Value :=
+Ltac unborrow_step filter :=
   match goal with
   | H : sep ?L ?R ?mem |- context [?mem] =>
     match type of H with
       context [?P (map.put ?m ?k (Borrowed ?px, ?x))] =>
-      let F1 :=
-          match (eval pattern
-                      (P (map.put m k (Borrowed px, x))) in
-                    (sep L R)) with ?f _ => f end in
-      let F2 :=
-          match (eval pattern (Value px x) in F1) with
-            ?f _ => f end in
-      let H' := fresh in
-      assert (F2 (P (map.put m k (Reserved px, x))) (emp True) mem)
-        as H' by (seprewrite reserved_borrowed_iff1;
-                  ecancel_assumption);
-      clear H; cbv beta in H'
+      filter px;
+      match type of H with
+        context [?Q ?px ?x] =>
+        let F1 :=
+            match (eval pattern
+                        (P (map.put m k (Borrowed px, x))) in
+                      (sep L R)) with ?f _ => f end in
+        let F2 :=
+            match (eval pattern (Q px x) in F1) with
+              ?f _ => f end in
+        let H' := fresh in
+        assert (F2 (P (map.put m k (Reserved px, x))) (emp True) mem)
+          as H' by (seprewrite reserved_borrowed_iff1;
+                    ecancel_assumption);
+        clear H; cbv beta in H'
+      end
     end
   | H : context [map.put (map.put _ _ (Borrowed ?px, ?x))
-                         _ (Reserved ?py, ?y)] |- _ =>
-    rewrite (map.put_put_diff_comm _ _ (Borrowed px, x)
-                                   (Reserved py, y))
+                         _ ?y] |- _ =>
+    filter px;
+    rewrite (map.put_put_diff_comm _ _ (Borrowed px, x) y)
       in H by congruence
   end.
-Ltac unborrow Value := progress (repeat unborrow_step Value).
+Ltac unborrow_all :=
+  progress (repeat unborrow_step ltac:(fun _ => idtac)).
+Ltac unborrow p :=
+  progress (repeat unborrow_step ltac:(fun p' => unify p p')).
 
-Ltac unreserve_step :=
+Ltac unreserve_step filter :=
   match goal with
   | H : sep ?L ?R ?mem |- context [?mem] =>
     match type of H with
       context [?P (map.put ?m ?k (Reserved ?px, ?x))] =>
+      filter px;
       let F1 :=
           match (eval pattern
                       (P (map.put m k (Reserved px, x))) in
@@ -52,7 +72,8 @@ Ltac unreserve_step :=
       let H' := fresh in
       (* hacky because seprewrite doesn't do impl1 *)
       assert (F1 (P (map.put m k (Owned, x))) mem) as H'
-          by (eapply Proper_sep_impl1;
+          by (seprewrite (sep_assoc (P (map.put m k (Owned, x))));
+              eapply Proper_sep_impl1;
               [ repeat
                   rewrite (sep_assoc (_ (map.put _ _ (Owned, _))));
                 eapply Proper_sep_impl1;
@@ -60,13 +81,15 @@ Ltac unreserve_step :=
               | reflexivity | ]; ecancel_assumption);
       clear H; cbv beta in H'
     end
-  | H : context [map.put (map.put _ _ (Reserved ?px, ?x))
-                         _ (Owned, ?y)] |- _ =>
-    rewrite (map.put_put_diff_comm _ _ (Reserved px, x)
-                                   (Owned, y))
+  | H : context [map.put (map.put _ _ (Reserved ?px, ?x)) _ ?y] |- _ =>
+    filter px;
+    rewrite (map.put_put_diff_comm _ _ (Reserved px, x) y)
       in H by congruence
   end.
-Ltac unreserve := progress (repeat unreserve_step).
+Ltac unreserve_all :=
+  progress (repeat unreserve_step ltac:(fun _ => idtac)).
+Ltac unreserve p :=
+  progress (repeat unreserve_step ltac:(fun p' => unify p p')).
 
 Ltac destruct_lists_of_known_length :=
   repeat match goal with
