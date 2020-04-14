@@ -164,9 +164,7 @@ Section KVStore.
             (fun tr' mem' rets =>
                tr = tr'
                /\ rets = []
-               /\ (truncated_scalar
-                     access_size.word p (word.unsigned start)
-                   * Map p map.empty * R)%sep mem').
+               /\ (Map p map.empty * R)%sep mem').
 
     (* get returns a pair; a boolean (true if there was an error) and a value,
        which is meaningless if there was an error. *)
@@ -219,9 +217,9 @@ Section KVStore.
                   | Some (a, old_v) =>
                     match a with
                     | Borrowed _ => True (* no guarantees *)
-                    | Reserved pv =>
+                    | Reserved pv' =>
                       was_overwrite = word.of_Z 1
-                      /\ (AnnotatedMap pm (map.put m k (Reserved pv, v))
+                      /\ (AnnotatedMap pm (map.put m k (Reserved pv', v))
                           * Key pk k * Value pv old_v * R)%sep mem'
                     | Owned =>
                       was_overwrite = word.of_Z 1
