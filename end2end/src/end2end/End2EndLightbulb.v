@@ -179,18 +179,22 @@ Proof.
       * simpl. right. eapply IHl. exact H.
 Qed.
 
-Lemma end2end_lightbulb:
-  forall (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
-                              (Z.to_nat memSizeLg))
-         (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
-    kami_mem_contains_bytes (instrencode lightbulb_insts) (code_start ml) memInit ->
-    Semantics.Behavior (p4mm memInit) mFinal t ->
-    exists t': list KamiRiscvStep.Event,
-      KamiRiscv.KamiLabelSeqR t t' /\
-      (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
-          KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
-          (exists ioh : list (lightbulb_spec.OP _),
-              SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace _ ioh)).
+Definition goodKamiTrace(t: Semantics.LabelSeqT): Prop :=
+  exists t': list KamiRiscvStep.Event,
+    KamiRiscv.KamiLabelSeqR t t' /\
+    (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
+        KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
+        (exists ioh : list (lightbulb_spec.OP _),
+            SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace _ ioh)).
+
+Definition bytes_at(bs: list Init.Byte.byte)(addr: Z)
+           (m: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
+  @kami_mem_contains_bytes bs 13 (word.of_Z addr) m.
+
+Theorem end2end_lightbulb: forall mem0 t state,
+  bytes_at (instrencode lightbulb_insts) 0 mem0 ->
+  Semantics.Behavior (p4mm mem0) state t ->
+  goodKamiTrace t.
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
@@ -198,7 +202,7 @@ Proof.
   specialize_first Q instrMemSizeLg_bounds.
   intros *. intro KB.
   specialize Q with (stack_size_in_bytes := stack_size_in_bytes).
-  specialize_first Q memInit.
+  specialize_first Q mem0.
   specialize_first Q funimplsList.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
@@ -213,7 +217,7 @@ Proof.
   - cbv. intuition discriminate.
   - clear. cbv.
     repeat econstructor; intro; repeat match goal with H: In _ _|-_=> destruct H end; discriminate.
-  - intros. clear KB memInit. simp.
+  - intros. clear KB mem0. simp.
     unfold SPI.mmio_trace_abstraction_relation in *.
     unfold id in *.
     eauto using iohi_to_iolo.
