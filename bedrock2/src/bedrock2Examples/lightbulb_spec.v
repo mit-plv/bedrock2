@@ -9,10 +9,20 @@ Section LightbulbSpec.
   Let width := 32%Z.
   Context (word : word width).
 
+  Declare Scope word_scope.
+  Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
+  Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
+  Infix "+" := word.add : word_scope.
+  Infix "-" := word.sub : word_scope.
+  Infix "*" := word.mul : word_scope.
+  Notation "- x" := (word.opp x) : word_scope.
+  Delimit Scope word_scope with word.
+  Open Scope word_scope.
+
   (** MMIO *)
   Inductive OP :=
-  | ld (addr value:word)
-  | st (addr value:word).
+  | ld (addr value : word)
+  | st (addr value : word).
 
   (** FE310 GPIO *)
   Definition GPIO_DATA_ADDR := word.of_Z (Ox"1001200c").
@@ -165,17 +175,21 @@ Section LightbulbSpec.
     lan9250_write4 (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
 
   Definition iocfg : list OP -> Prop :=
-    one (st (word.of_Z (Ox"10012038")) (word.of_Z (Z.shiftl (Ox"f") 2))) +++
-    one (st (word.of_Z (Ox"10012008")) (word.of_Z (Z.shiftl 1 23))).
+    one (st !(Ox"10012038") !(Z.shiftl (Ox"f") 2)) +++
+    one (st !(Ox"10012008") !(Z.shiftl 1 23)).
 
   Definition traceOfBoot : list OP -> Prop :=
-    iocfg +++ (lan9250_init_trace ||| lan9250_boot_timeout ||| (any+++spi_timeout)).
+    iocfg +++ (lan9250_init_trace
+                 ||| lan9250_boot_timeout
+                 ||| (any+++spi_timeout)).
 
   Definition traceOfOneInteraction: list OP -> Prop :=
-    (fun t => exists packet cmd, (lan9250_recv packet +++ gpio_set 23 cmd) t /\
-                lightbulb_packet_rep cmd packet) |||
-    (fun t => exists packet, lan9250_recv packet t /\
-                ~ (exists cmd : bool, lightbulb_packet_rep cmd packet)) |||
+    (fun t => exists (packet : list byte) (cmd : bool),
+         (lan9250_recv packet +++ gpio_set 23 cmd) t /\
+         lightbulb_packet_rep cmd packet) |||
+    (fun t => exists (packet : list byte),
+         lan9250_recv packet t /\
+         ~ (exists (cmd : bool), lightbulb_packet_rep cmd packet)) |||
     (lan9250_recv_no_packet) |||
     (lan9250_recv_packet_too_long) |||
     (any+++spi_timeout).
