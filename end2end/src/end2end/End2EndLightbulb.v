@@ -179,22 +179,35 @@ Proof.
       * simpl. right. eapply IHl. exact H.
 Qed.
 
-Definition goodKamiTrace(t: Semantics.LabelSeqT): Prop :=
-  exists t': list KamiRiscvStep.Event,
-    KamiRiscv.KamiLabelSeqR t t' /\
-    (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
-        KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
-        (exists ioh : list (lightbulb_spec.OP _),
-            SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace _ ioh)).
+Arguments goodHlTrace {_}.
+
+Lemma kami_and_lightbulb_abstract_bedrockTrace_the_same_way:
+  forall bedrockTrace (kamiTrace lightbulbTrace : list (string * Utility.word * Utility.word)),
+    SPI.mmio_trace_abstraction_relation lightbulbTrace bedrockTrace ->
+    KamiRiscvStep.traces_related kamiTrace bedrockTrace ->
+    kamiTrace = lightbulbTrace.
+Proof.
+  intro l. unfold SPI.mmio_trace_abstraction_relation. induction l; intros.
+  - simp. reflexivity.
+  - simp. f_equal. 2: eauto.
+    inversion H4; inversion H3; simp; reflexivity || discriminate.
+Qed.
 
 Definition bytes_at(bs: list Init.Byte.byte)(addr: Z)
            (m: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
   @kami_mem_contains_bytes bs 13 (word.of_Z addr) m.
 
+(* it's a prefix in the temporal sense -- since traces grow on the left,
+   this definition looks more like a suffix *)
+Definition prefix_of{A: Type}(l: list A)(P: list A -> Prop): Prop :=
+  exists completion, P (completion ++ l)%list.
+
 Theorem end2end_lightbulb: forall mem0 t state,
   bytes_at (instrencode lightbulb_insts) 0 mem0 ->
   Semantics.Behavior (p4mm mem0) state t ->
-  goodKamiTrace t.
+  exists t': list (string * word * word),
+    KamiRiscv.KamiLabelSeqR t t' /\
+    prefix_of t' goodHlTrace.
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
@@ -213,6 +226,24 @@ Proof.
   specialize_first Q compilation_result.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
+  enough (Semantics.Behavior (p4mm mem0) state t ->
+          exists t': list KamiRiscvStep.Event,
+            KamiRiscv.KamiLabelSeqR t t' /\
+            (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
+                KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
+                (exists ioh : list (lightbulb_spec.OP _),
+                    SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace ioh)))
+    as A. {
+    clear -A.
+    intro B. specialize (A B); clear B.
+    clear mem0.
+    change (OP FE310CSemantics.parameters.word) with KamiRiscvStep.Event in *.
+    unfold KamiRiscvStep.Event, prefix_of in *.
+    simp.
+    eexists. split. 1: exact Al.
+    exists suffix.
+    erewrite kami_and_lightbulb_abstract_bedrockTrace_the_same_way; eassumption.
+  }
   eapply Q; clear Q.
   - cbv. intuition discriminate.
   - clear. cbv.
