@@ -440,8 +440,6 @@ Section WithParameters.
 
     do 6 letexists.
     cbv [spi_begin spi_xchg_deaf spi_end one].
-    Local Arguments st {_}.
-    Local Arguments ld {_}.
     Local Arguments spi_xchg {_ _}.
 
     (* aligning regex and mmiotrace, not sure how to do it in a principled way *)

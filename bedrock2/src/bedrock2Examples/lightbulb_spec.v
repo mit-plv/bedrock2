@@ -19,18 +19,21 @@ Section LightbulbSpec.
   Delimit Scope word_scope with word.
   Open Scope word_scope.
 
-  (** MMIO *)
-  Inductive OP :=
-  | ld (addr value : word)
-  | st (addr value : word).
+  Open Scope string_scope.
+
+  (* Common event between bedrock2 and Kami.
+     Has to be of the form ("ld", addr, value) or ("st", addr, value).
+     We don't use Inductives here so that we can share the same type with bedrock2 without
+     depending on a common library. *)
+  Definition OP: Type := (string * word * word).
 
   (** FE310 GPIO *)
   Definition GPIO_DATA_ADDR := word.of_Z (Ox"1001200c").
   (* i < 32, only some GPIOs are connected to external pins *)
   Definition gpio_set (i:Z) value :=
     existsl (fun v =>
-      one (ld GPIO_DATA_ADDR v) +++
-      one (st GPIO_DATA_ADDR (
+      one ("ld", GPIO_DATA_ADDR, v) +++
+      one ("st", GPIO_DATA_ADDR, (
         let cleared := word.and v (word.of_Z (Z.clearbit (2^32-1) i)) in
         word.or cleared (word.slu (word.of_Z (Z.b2z value)) (word.of_Z i))
       ))).
@@ -42,18 +45,18 @@ Section LightbulbSpec.
   Definition SPI_CSMODE_HOLD : word := word.of_Z 2.
 
   Definition spi_read_empty l :=
-    exists v, one (ld SPI_RX_FIFO_ADDR v) l /\ Z.shiftr (word.unsigned v) 31 <> 0%Z.
+    exists v, one ("ld", SPI_RX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 <> 0%Z.
   Definition spi_read_dequeue (b : byte) l :=
-    exists v, one (ld SPI_RX_FIFO_ADDR v) l /\ Z.shiftr (word.unsigned v) 31 = 0%Z /\ b = byte.of_Z (word.unsigned v).
+    exists v, one ("ld", SPI_RX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 = 0%Z /\ b = byte.of_Z (word.unsigned v).
   Definition spi_read b :=
     spi_read_empty^* +++ spi_read_dequeue b.
 
   Definition spi_write_full l :=
-    exists v, one (ld SPI_TX_FIFO_ADDR v) l /\ Z.shiftr (word.unsigned v) 31 <> 0%Z.
+    exists v, one ("ld", SPI_TX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 <> 0%Z.
   Definition spi_write_ready l :=
-    exists v, one (ld SPI_TX_FIFO_ADDR v) l /\ Z.shiftr (word.unsigned v) 31 = 0%Z.
+    exists v, one ("ld", SPI_TX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 = 0%Z.
   Definition spi_write_enqueue (b : byte) :=
-    one (st SPI_TX_FIFO_ADDR (word.of_Z (byte.unsigned b))).
+    one ("st", SPI_TX_FIFO_ADDR, (word.of_Z (byte.unsigned b))).
   Definition spi_write b :=
     spi_write_full^* +++ (spi_write_ready +++ spi_write_enqueue b).
 
@@ -61,7 +64,8 @@ Section LightbulbSpec.
 
   Definition spi_timeout ioh := (spi_write_full ^* ||| spi_read_empty ^* ) ioh /\ Z.of_nat (List.length ioh) = patience.
 
-  Definition spi_begin := existsl (fun v => one (ld SPI_CSMODE_ADDR v) +++ one (st SPI_CSMODE_ADDR (word.or v SPI_CSMODE_HOLD))).
+  Definition spi_begin := existsl (fun v =>
+    one ("ld", SPI_CSMODE_ADDR, v) +++ one ("st", SPI_CSMODE_ADDR, (word.or v SPI_CSMODE_HOLD))).
   Definition spi_xchg tx rx :=
     spi_write tx +++ spi_read rx.
   Definition spi_xchg_deaf tx :=
@@ -70,7 +74,9 @@ Section LightbulbSpec.
     existsl (fun tx => spi_xchg tx rx).
   Definition spi_xchg_dummy :=
     existsl (fun tx => (existsl (fun rx => spi_xchg tx rx))).
-  Definition spi_end := existsl (fun v => one (ld SPI_CSMODE_ADDR v) +++ one (st SPI_CSMODE_ADDR (word.and v (word.of_Z (Z.lnot (word.unsigned SPI_CSMODE_HOLD)))))).
+  Definition spi_end := existsl (fun v =>
+    one ("ld", SPI_CSMODE_ADDR, v) +++
+    one ("st", SPI_CSMODE_ADDR, (word.and v (word.of_Z (Z.lnot (word.unsigned SPI_CSMODE_HOLD)))))).
 
   (** LAN9250 *)
   Definition LAN9250_FASTREAD : byte := Byte.x0b.
@@ -175,8 +181,8 @@ Section LightbulbSpec.
     lan9250_write4 (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
 
   Definition iocfg : list OP -> Prop :=
-    one (st !(Ox"10012038") !(Z.shiftl (Ox"f") 2)) +++
-    one (st !(Ox"10012008") !(Z.shiftl 1 23)).
+    one ("st", !(Ox"10012038"), !(Z.shiftl (Ox"f") 2)) +++
+    one ("st", !(Ox"10012008"), !(Z.shiftl 1 23)).
 
   Definition traceOfBoot : list OP -> Prop :=
     iocfg +++ (lan9250_init_trace

@@ -77,8 +77,8 @@ Section WithParameters.
     (h : lightbulb_spec.OP parameters.word)
     (l : parameters.mem * string * list parameters.word * (parameters.mem * list parameters.word)) :=
     Logic.or
-      (exists a v, h = lightbulb_spec.st _ a v /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
-      (exists a v, h = lightbulb_spec.ld _ a v /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
+      (exists a v, h = ("st", a, v) /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
+      (exists a v, h = ("ld", a, v) /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
   Definition mmio_trace_abstraction_relation := List.Forall2 mmio_event_abstraction_relation.
 
   Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,

@@ -202,7 +202,7 @@ Section WordFacts.
     pose proof (signExtend_unsigned_signed (Z.of_nat a) ltac:(Lia.lia)).
     cbv [kword] in H1.
     rewrite Nat2Z.id in H1; rewrite H1; clear H1.
-    
+
     cbv [evalSignExtendTrunc].
     destruct (lt_dec _ _).
     - apply wordToZ_inj.
@@ -330,7 +330,7 @@ Section WordFacts.
       apply N2Z.inj_le in H.
       cbv [wlt] in Hx; Lia.lia.
   Qed.
-  
+
   Lemma kami_evalZeroExtendTrunc_32:
     forall w, evalZeroExtendTrunc 32 w = w.
   Proof.
@@ -338,7 +338,7 @@ Section WordFacts.
     destruct (lt_dec _ _); [Lia.lia|].
     apply split1_0.
   Qed.
-    
+
   Lemma kami_evalSignExtendTrunc_32:
     forall w, evalSignExtendTrunc 32 w = w.
   Proof.
@@ -346,7 +346,7 @@ Section WordFacts.
     destruct (lt_dec _ _); [Lia.lia|].
     apply split1_0.
   Qed.
-  
+
   Lemma kunsigned_combine_shiftl_lor:
     forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
       Z.of_N (wordToN (Word.combine a b)) =
@@ -456,7 +456,7 @@ Section WordFacts.
     rewrite wordToN_to_nat.
     reflexivity.
   Qed.
-    
+
   Lemma wrshift_srl:
     forall w (n: Word.word 5),
       wrshift w #n = srl (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
@@ -537,7 +537,7 @@ Section Equiv.
              (Hkmem1: 2 + instrMemSizeLg < memSizeLg)
              (Hkmem2: memSizeLg <= width)
              (* 16 used to be disjoint to MMIO addresses.
-              * [Hkmem2] is meaningless assuming this [Hkmemdisj] 
+              * [Hkmem2] is meaningless assuming this [Hkmemdisj]
               * but still having that in context ease some proofs. *)
              (Hkmemdisj: memSizeLg <= 16).
   Local Notation Hinstr := (conj Hinstr1 Hinstr2).
@@ -566,7 +566,7 @@ Section Equiv.
 
   Context (Registers_ok: map.ok Registers)
           (mem_ok: map.ok mem).
-  
+
   (** * Relations between Kami and riscv-coq *)
 
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
@@ -578,17 +578,18 @@ Section Equiv.
   Definition mmioStoreEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
     ((m, "MMIOWRITE"%string, [addr; signedByteTupleToReg v]), (m, [])).
 
-  (* common event between riscv-coq and Kami *)
-  Inductive Event: Type :=
-  | MMInputEvent(addr v: word)
-  | MMOutputEvent(addr v: word).
+  (* Common event between bedrock2 and Kami.
+     Has to be of the form ("ld", addr, value) or ("st", addr, value).
+     We don't use Inductives here so that we can share the same type with bedrock2 without
+     depending on a common library. *)
+  Definition Event: Type := (string * word * word).
 
   (* note: given-away and received memory has to be empty *)
   Inductive events_related: Event -> LogItem -> Prop :=
   | relate_MMInput: forall addr v,
-      events_related (MMInputEvent addr v) ((map.empty, "MMIOREAD"%string, [addr]), (map.empty, [v]))
+      events_related ("ld"%string, addr, v) ((map.empty, "MMIOREAD"%string, [addr]), (map.empty, [v]))
   | relate_MMOutput: forall addr v,
-      events_related (MMOutputEvent addr v) ((map.empty, "MMIOWRITE"%string, [addr; v]), (map.empty, [])).
+      events_related ("st"%string, addr, v) ((map.empty, "MMIOWRITE"%string, [addr; v]), (map.empty, [])).
 
   Inductive traces_related: list Event -> list LogItem -> Prop :=
   | relate_nil:
@@ -635,8 +636,8 @@ Section Equiv.
                            ret := Struct (RsToProc rv32DataBytes) |} (argV, retV))
           (FMap.M.empty _) ->
         e = (if argV (Fin.FS Fin.F1)
-             then MMOutputEvent (argV Fin.F1) (argV (Fin.FS (Fin.FS (Fin.FS Fin.F1))))
-             else MMInputEvent (argV Fin.F1) (retV Fin.F1)) ->
+             then ("st"%string, (argV Fin.F1), (argV (Fin.FS (Fin.FS (Fin.FS Fin.F1)))))
+             else ("ld"%string, (argV Fin.F1), (retV Fin.F1))) ->
         KamiLabelR klbl [e].
 
   Definition kamiStep (m1 m2: KamiMachine) (klbl: Kami.Semantics.LabelT): Prop :=
@@ -648,7 +649,7 @@ Section Equiv.
     forall addr1 v1 addr2 (v2: HList.tuple byte 4),
       addr1 = addr2 ->
       signExtend 32 (combine _ v2) = wordToZ v1 ->
-      events_related (MMInputEvent addr1 v1) (MinimalMMIO.mmioLoadEvent addr2 v2).
+      events_related ("ld"%string, addr1, v1) (MinimalMMIO.mmioLoadEvent addr2 v2).
   Proof.
     intros; subst.
     cbv [MinimalMMIO.mmioLoadEvent].
@@ -663,7 +664,7 @@ Section Equiv.
     forall addr1 v1 addr2 (v2: HList.tuple byte 4),
       addr1 = addr2 ->
       signExtend 32 (combine _ v2) = wordToZ v1 ->
-      events_related (MMOutputEvent addr1 v1) (MinimalMMIO.mmioStoreEvent addr2 v2).
+      events_related ("st"%string, addr1, v1) (MinimalMMIO.mmioStoreEvent addr2 v2).
   Proof.
     intros; subst.
     cbv [MinimalMMIO.mmioStoreEvent].
@@ -823,7 +824,7 @@ Section Equiv.
     cbv [evalExpr evalBinBit evalConstT].
     rewrite ?wordToN_combine, ?wordToN_0.
     rewrite N.mul_0_r, N.add_0_l, N.add_0_r.
-    
+
     transitivity (2 ^ (2 + instrMemSizeLg)).
     - replace (2 + instrMemSizeLg) with (Z.of_nat (2 + Z.to_nat instrMemSizeLg)).
       + rewrite <-NatLib.Z_of_N_Npow2.
@@ -1153,7 +1154,7 @@ Section Equiv.
   Qed.
 
   (** * Utility Ltacs *)
-  
+
   Ltac kami_step_case_empty :=
     left; FMap.mred; fail.
 
@@ -1292,7 +1293,7 @@ Section Equiv.
   Ltac rt := repeat (r || t).
 
   Ltac simpl_bit_combine_Z :=
-    repeat 
+    repeat
       match goal with
       | |- context [Z.of_N (wordToN (@Word.combine ?sz1 _ ?sz2 _))] =>
         rewrite @kunsigned_combine_shiftl_lor with (sa:= sz1) (sb:= sz2)
@@ -1336,7 +1337,7 @@ Section Equiv.
        try (erewrite <-regs_related_get
               with (w:= split2 20 5 (split1 (20 + 5) 7 _)) in H;
             [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice; fail])).
-  
+
   Ltac prove_states_related :=
     econstructor;
     [try (solve [trivial])
@@ -1449,7 +1450,7 @@ Section Equiv.
           let rinst := fresh "rinst" in
           destruct H as (rinst & ? & ?)
         end.
-  
+
   Ltac kami_cbn_all :=
     cbn [evalExpr evalUniBool evalBinBool evalBinBit
                   evalConstT getDefaultConst isEq Data BitsPerByte Nat.mul Nat.add Nat.sub
@@ -1465,7 +1466,7 @@ Section Equiv.
     let Ht := fresh "H" in
     assert (Ht: t = tc) by reflexivity;
     rewrite Ht in H; clear Ht.
-  
+
   Ltac kami_cbn_hint_func H func :=
     let t := type of H in
     let tc :=
@@ -1679,7 +1680,7 @@ Section Equiv.
 
   (** * Step-consistency lemmas *)
   Arguments isMMIO: simpl never.
-  
+
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -1731,14 +1732,14 @@ Section Equiv.
         | [ |- context [instrMem ?ipc] ] => change (instrMem ipc) with kinst
         end.
       clearbody kinst.
-      
+
       (* -- pick the load value calculator for simplification *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32CalcLdVal ?sz ?ty ?la ?lv ?lty)] |- _] =>
         remember (@evalExpr fk (rv32CalcLdVal sz ty la lv lty)) as ldVal
       end.
       kami_cbn_hint_func HeqldVal rv32CalcLdVal.
-      
+
       (* -- pick the nextPc function *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
@@ -1773,12 +1774,12 @@ Section Equiv.
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
       all: eval_decodeI decodeI.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       5: match goal with
          | [decodeI := if ?x =? ?y then Lw _ _ _ else InvalidI |- _] =>
@@ -1820,7 +1821,7 @@ Section Equiv.
                | [H: isMMIOAligned _ _ |- _] =>
                  exfalso; clear -H; destruct H as [? ?]; discriminate
                end.
-      
+
       rt.
       eexists _, _.
       prove_KamiLabelR_mmio.
@@ -1880,7 +1881,7 @@ Section Equiv.
         remember (@evalExpr fk (rv32CalcLdVal sz ty la lv lty)) as ldVal
       end.
       kami_cbn_hint_func HeqldVal rv32CalcLdVal.
-      
+
       (* -- pick the nextPc function *)
       match goal with
       | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
@@ -1909,17 +1910,17 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
       all: eval_decodeI decodeI.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       5: match goal with
          | [decodeI := if ?x =? ?y then Lw _ _ _ else InvalidI |- _] =>
@@ -2146,7 +2147,7 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       simpl_bit_manip.
 
@@ -2165,7 +2166,7 @@ Section Equiv.
       repeat match type of Hdec with
              | context [?x =? ?y] => destruct (Z.eqb_spec x y) in Hdec
              end.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       all: subst dec; mcomp_step_in H5;
         repeat match goal with
@@ -2203,7 +2204,7 @@ Section Equiv.
                  exfalso; clear -H; destruct H as [? ?]; discriminate
                end.
       specialize (H14 (split 4 (wordToZ (x9 Fin.F1)))).
-      
+
       rt.
       eexists _, _.
       prove_KamiLabelR_mmio.
@@ -2277,12 +2278,12 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -2296,7 +2297,7 @@ Section Equiv.
       repeat match type of Hdec with
              | context [?x =? ?y] => destruct (Z.eqb_spec x y) in Hdec
              end.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       all: subst dec; mcomp_step_in H5;
         repeat match goal with
@@ -2336,7 +2337,7 @@ Section Equiv.
 
       all: idtac "KamiRiscv: [kamiStep_sound_case_execLdZ] starting the Qed...".
   Time Qed.
-  
+
   Lemma kamiStep_sound_case_execSt:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -2417,12 +2418,12 @@ Section Equiv.
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
       all: eval_decodeI decodeI.
-      
+
       (* -- evaluate the execution of riscv-coq *)
       3: match goal with
          | [decodeI := if ?x =? ?y then Sw _ _ _ else InvalidI |- _] =>
@@ -2553,12 +2554,12 @@ Section Equiv.
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
-      
+
       (* -- further simplification *)
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -2707,7 +2708,7 @@ Section Equiv.
         }
         { erewrite H12 in E3.
           destruct_one_match_hyp; [assumption|discriminate].
-        }          
+        }
         { erewrite H12 in E1.
           destruct_one_match_hyp; [assumption|discriminate].
         }
@@ -2767,7 +2768,7 @@ Section Equiv.
       remember (@evalExpr fk (rv32DoExec sz ty rs1 rs2 pc inst)) as execVal
     end.
     kami_cbn_hint_func HeqexecVal rv32DoExec.
-    
+
     (* -- pick the nextPc function *)
     match goal with
     | [H: context [@evalExpr ?fk (rv32NextPc ?sz ?ty ?rf ?pc ?inst)] |- _] =>
@@ -2806,7 +2807,7 @@ Section Equiv.
          repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec;
          dest_Zeqb; cbn in Hdec).
 
-    (* Cases that require additional simplification to draw [False] 
+    (* Cases that require additional simplification to draw [False]
      * by [mcomp_step_in]. *)
     40,41: (subst decodeI resultI results;
             repeat rewrite Bool.andb_false_r in Hdec; cbn in Hdec).
@@ -2860,7 +2861,7 @@ Section Equiv.
       subst newPC oimm12 v rs1.
       split; [apply AddrAligned_consistent; assumption|red].
       cbv [MachineWidth_XLEN
-             ZToReg Utility.add and 
+             ZToReg Utility.add and
              word.add word.and word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       regs_get_red_goal.
@@ -3119,7 +3120,7 @@ Section Equiv.
            match type of Hdec with
            | context [if ?c then _ else _] => destruct c
            end).
-    
+
     (* -- evaluate the execution of riscv-coq *)
     all: subst dec; mcomp_step_in H5;
       repeat match goal with
@@ -3174,7 +3175,7 @@ Section Equiv.
       subst newPC oimm12 v rs1.
       split; [apply AddrAligned_consistent; assumption|red].
       cbv [MachineWidth_XLEN
-             ZToReg Utility.add and 
+             ZToReg Utility.add and
              word.add word.and word WordsKami wordW KamiWord.word
              word.of_Z kofZ].
       regs_get_red_goal.
@@ -3193,13 +3194,13 @@ Section Equiv.
       simpl_bit_combine_Z.
       apply Z_lor_comm_four_variant_2.
     }
-    
+
     { (* beq(eq-neq contradiction) *)
       exfalso; subst v v0 rs1 rs2.
       regs_get_red E.
       apply N2Z.inj, wordToN_inj in e1; auto.
     }
-    
+
     { (* beq(eq-neq contradiction) *)
       exfalso; subst v v0 rs1 rs2.
       regs_get_red E; congruence.
