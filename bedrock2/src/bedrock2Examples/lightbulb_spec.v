@@ -82,6 +82,7 @@ Section LightbulbSpec.
     word.unsigned v = LittleEndian.combine 4 ltac:(repeat split; [exact v0|exact v1|exact v2|exact v3]).
 
   Definition LAN9250_WRITE : byte := Byte.x02.
+  Definition HW_CFG : Z := Ox"074".
 
   Definition lan9250_write4 (a v : word) t :=
     exists a0 a1 v0 v1 v2 v3, (
@@ -130,14 +131,6 @@ Section LightbulbSpec.
     Z.land (word.unsigned info) ((2^8-1)*2^16) <> 0%Z /\
     Z.of_nat (List.length recv) = word.unsigned (lan9250_decode_length status).
 
-  (** lightbulb *)
-  Definition lightbulb_packet_rep cmd (buf : list byte) := (
-    let idx i buf := word.of_Z (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
-    42 < Z.of_nat (List.length buf) /\
-    1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
-    idx 23%nat buf = word.of_Z (Ox"11") /\
-    cmd = Z.testbit (byte.unsigned (List.hd Byte.x00 (List.skipn 42 buf))) 0)%Z.
-
   Definition lan9250_boot_attempt : list OP -> Prop :=
     (fun attempt => exists v, lan9250_fastread4 (word.of_Z (Ox"64")) v attempt
     /\ word.unsigned v <> Ox"87654321").
@@ -153,8 +146,6 @@ Section LightbulbSpec.
      lan9250_write4 (word.of_Z 164) (word.or (word.of_Z (2^31)) a) +++
      lan9250_fastread4 (word.of_Z 100) x) ioh.
 
-  Definition HW_CFG : Z := Ox"074".
-
   Definition lan9250_init_trace ioh := exists cfg0,
     let cfg' := word.or cfg0 (word.of_Z 1048576) in
     let cfg := word.and cfg' (word.of_Z (-2097153)) in
@@ -163,6 +154,14 @@ Section LightbulbSpec.
     lan9250_write4 (word.of_Z HW_CFG) cfg +++
     lan9250_mac_write_trace (word.of_Z 1) (word.of_Z (Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2))))) +++
     lan9250_write4 (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
+
+  (** lightbulb *)
+  Definition lightbulb_packet_rep cmd (buf : list byte) := (
+    let idx i buf := word.of_Z (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
+    42 < Z.of_nat (List.length buf) /\
+    1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
+    idx 23%nat buf = word.of_Z (Ox"11") /\
+    cmd = Z.testbit (byte.unsigned (List.hd Byte.x00 (List.skipn 42 buf))) 0)%Z.
 
   Definition iocfg : list OP -> Prop :=
     one (st (word.of_Z (Ox"10012038")) (word.of_Z (Z.shiftl (Ox"f") 2))) +++
