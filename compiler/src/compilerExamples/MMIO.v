@@ -278,6 +278,8 @@ Section MMIO1.
     - typeclasses eauto.
     - eapply MetricMinimalMMIOSatisfiesPrimitives; cbn; intuition eauto.
     - (* compile_ext_call_correct *)
+      intros. eapply FlatToRiscvCommon.compile_ext_call_correct_compatibility.
+      unfold FlatToRiscvCommon.compile_ext_call_correct_alt.
       intros *. intros ? ? ? V_argvars V_resvars. intros.
       pose proof (compile_ext_call_emits_valid SeparationLogic.iset _ action _ V_resvars V_argvars).
       destruct_RiscvMachine initialL.

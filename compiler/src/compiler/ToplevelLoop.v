@@ -497,7 +497,7 @@ Section Pipeline1.
     eapply extend_runsTo_to_good_trace. 2,3: eassumption.
     simpl. unfold ll_good, compile_inv, related, hl_inv,
            compose_relation, FlattenExprSimulation.related,
-           RegRename.related, FlatToRiscvSimulation.related, FlatToRiscvFunctions.goodMachine.
+           RegRename.related, FlatToRiscvSimulation.related, FlatToRiscvCommon.goodMachine.
     intros. simp. eassumption.
   Qed.
 

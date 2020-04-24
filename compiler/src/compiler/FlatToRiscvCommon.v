@@ -69,6 +69,18 @@ Class parameters := {
              mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
 }.
 
+Arguments Z.mul: simpl never.
+Arguments Z.add: simpl never.
+Arguments Z.of_nat: simpl never.
+Arguments Z.modulo : simpl never.
+Arguments Z.pow: simpl never.
+Arguments Z.sub: simpl never.
+
+Arguments run1: simpl never.
+
+Arguments compile_store: simpl never.
+Arguments compile_load: simpl never.
+
 Section WithParameters.
   Context {p: parameters}.
 
@@ -121,6 +133,184 @@ Section WithParameters.
   Definition runsTo: MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
+  Notation fun_pos_env := (@funname_env p Z).
+
+  Definition function(base: word)(rel_positions: fun_pos_env)
+             (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
+    match map.get rel_positions fname with
+    | Some pos => program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
+    | _ => emp False
+    end.
+
+  (* Note: This definition would not be usable in the same way if we wanted to support
+     recursive functions, because separation logic would prevent us from mentioning
+     the snippet of code being run twice (once in [program initialL.(getPc) insts] and
+     a second time inside [functions]).
+     To avoid this double mentioning, we will remove the function being called from the
+     list of functions before entering the body of the function. *)
+  Definition functions(base: word)(rel_positions: fun_pos_env): env -> mem -> Prop :=
+    map.fold (fun P fname fbody => (function base rel_positions fname fbody * P)%sep) (emp True).
+
+  (*
+     high addresses!             ...
+                      p_sp   --> mod_var_0 of previous function call arg0
+                                 argn
+                                 ...
+                                 arg0
+                                 retn
+                                 ...
+                                 ret0
+                                 ra
+                                 mod_var_n
+                                 ...
+                      new_sp --> mod_var_0
+     low addresses               ...
+  *)
+  Definition stackframe(p_sp: word)(argvals retvals: list word)
+             (ra_val: word)(modvarvals: list word): mem -> Prop :=
+    word_array
+      (word.add p_sp
+         (word.of_Z
+           (- (bytes_per_word *
+             Z.of_nat (List.length argvals + List.length retvals + 1 + List.length modvarvals)))))
+      (modvarvals ++ [ra_val] ++ retvals ++ argvals).
+
+  (* measured in words, needs to be multiplied by 4 or 8 *)
+  Definition framelength: list Z * list Z * stmt Z -> Z :=
+    fun '(argvars, resvars, body) =>
+      let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
+      Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
+
+  (* Note:
+     - This predicate cannot be proved for recursive functions
+     - Measured in words, needs to be multiplied by 4 or 8 *)
+  Inductive fits_stack: Z -> env -> stmt Z -> Prop :=
+  | fits_stack_load: forall n e sz x y,
+      0 <= n ->
+      fits_stack n e (SLoad sz x y)
+  | fits_stack_store: forall n e sz x y,
+      0 <= n ->
+      fits_stack n e (SStore sz x y)
+  | fits_stack_lit: forall n e x v,
+      0 <= n ->
+      fits_stack n e (SLit x v)
+  | fits_stack_op: forall n e op x y z,
+      0 <= n ->
+      fits_stack n e (SOp x op y z)
+  | fits_stack_set: forall n e x y,
+      0 <= n ->
+      fits_stack n e (SSet x y)
+  | fits_stack_if: forall n e c s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SIf c s1 s2)
+  | fits_stack_loop: forall n e c s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SLoop s1 c s2)
+  | fits_stack_seq: forall n e s1 s2,
+      fits_stack n e s1 ->
+      fits_stack n e s2 ->
+      fits_stack n e (SSeq s1 s2)
+  | fits_stack_skip: forall n e,
+      0 <= n ->
+      fits_stack n e SSkip
+  | fits_stack_call: forall n e binds fname args argnames retnames body,
+      map.get e fname = Some (argnames, retnames, body) ->
+      fits_stack (n - framelength (argnames, retnames, body)) (map.remove e fname) body ->
+      fits_stack n e (SCall binds fname args)
+  | fits_stack_interact: forall n e binds act args,
+      0 <= n ->
+      fits_stack n e (SInteract binds act args).
+
+  (* Ghost state used to describe low-level state introduced by the compiler.
+     Called "ghost constants" because after executing a piece of code emitted by
+     the compiler, these values should still be the same.
+     Note, though, that when focusing on a sub-statement (i.e. when invoking the IH)
+     the ghost constants will change: instructions are shoveled from insts into the frame,
+     the amount of available stack shrinks, the stack pointer decreases, and if we're
+     in a function call, the function being called is removed from funnames so that
+     it can't be recursively called again. *)
+  Record GhostConsts := {
+    p_sp: word;
+    num_stackwords: Z;
+    p_insts: word;
+    insts: list Decode.Instruction;
+    program_base: word;
+    e_pos: fun_pos_env;
+    e_impl: env;
+    dframe: mem -> Prop; (* data frame *)
+    xframe: mem -> Prop; (* executable frame *)
+  }.
+
+  Definition goodMachine
+      (* high-level state ... *)
+      (t: list LogItem)(m: mem)(l: locals)
+      (* ... plus ghost constants ... *)
+      (g: GhostConsts)
+      (* ... equals low-level state *)
+      (lo: MetricRiscvMachine): Prop :=
+    (* registers: *)
+    map.extends lo.(getRegs) l /\
+    (forall x v, map.get l x = Some v -> valid_FlatImp_var x) /\
+    map.get lo.(getRegs) RegisterNames.sp = Some g.(p_sp) /\
+    regs_initialized lo.(getRegs) /\
+    (* pc: *)
+    lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
+    (* memory: *)
+    subset (footpr (g.(xframe) *
+                    program g.(p_insts) g.(insts) *
+                    functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
+           (of_list lo.(getXAddrs)) /\
+    (exists stack_trash,
+        Z.of_nat (List.length stack_trash) = g.(num_stackwords) /\
+        (g.(dframe) * g.(xframe) * eq m *
+         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(num_stackwords))))
+                    stack_trash *
+         program g.(p_insts) g.(insts) *
+         functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
+    (* trace: *)
+    lo.(getLog) = t /\
+    (* misc: *)
+    valid_machine lo.
+
+  Definition good_e_impl(e_impl: env)(e_pos: fun_pos_env) :=
+    forall f (fun_impl: list Z * list Z * stmt Z),
+      map.get e_impl f = Some fun_impl ->
+      valid_FlatImp_fun fun_impl /\
+      exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0.
+
+  (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
+     we enter a new function body, to make sure functions cannot call themselves, while
+     [e_impl] and [e_pos] remain the same throughout because that's mandated by
+     [FlatImp.exec] and [compile_stmt], respectively *)
+  Definition good_reduced_e_impl(e_impl_reduced e_impl: env)(num_stackwords: Z)(e_pos: fun_pos_env): Prop :=
+      map.extends e_impl e_impl_reduced /\
+      good_e_impl e_impl_reduced e_pos.
+
+  Definition compiled_correctly(s: stmt Z): Prop :=
+    forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
+    exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
+    forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z),
+    good_reduced_e_impl g.(e_impl) e_impl_full g.(num_stackwords) g.(e_pos) ->
+    fits_stack g.(num_stackwords) g.(e_impl) s ->
+    @compile_stmt def_params _ g.(e_pos) pos s = g.(insts) ->
+    stmt_not_too_big s ->
+    valid_FlatImp_vars s ->
+    pos mod 4 = 0 ->
+    (word.unsigned g.(program_base)) mod 4 = 0 ->
+    initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
+    g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
+    goodMachine initialTrace initialMH initialRegsH g initialL ->
+    runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
+         postH finalTrace finalMH finalRegsH finalMetricsH /\
+         finalL.(getPc) = word.add initialL.(getPc)
+                                   (word.of_Z (4 * Z.of_nat (List.length g.(insts)))) /\
+         map.only_differ initialL.(getRegs)
+                 (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
+                 finalL.(getRegs) /\
+         goodMachine finalTrace finalMH finalRegsH g finalL).
+
   Class assumptions: Prop := {
     word_riscv_ok :> word.riscv_ok (@word W);
     locals_ok :> map.ok locals;
@@ -129,8 +319,13 @@ Section WithParameters.
 
     PR :> MetricPrimitives PRParams;
 
-    compile_ext_call_correct: forall (initialL: MetricRiscvMachine)
-        action postH newPc insts (argvars resvars: list Z) initialMH R Rexec initialRegsH
+    compile_ext_call_correct: forall resvars action argvars,
+      compiled_correctly (SInteract resvars action argvars);
+  }.
+
+  (* previously used definition: *)
+  Definition compile_ext_call_correct_alt resvars action argvars := forall (initialL: MetricRiscvMachine)
+        postH newPc insts initialMH R Rexec initialRegsH
         argvals mKeep mGive outcome p_sp,
       insts = compile_ext_call resvars action argvars ->
       newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
@@ -145,7 +340,6 @@ Section WithParameters.
       (forall x v, map.get initialRegsH x = Some v -> valid_FlatImp_var x) ->
       regs_initialized initialL.(getRegs) ->
       valid_machine initialL ->
-      (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
       map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
       map.split initialMH mKeep mGive ->
       ext_spec initialL.(getLog) mGive action argvals outcome ->
@@ -163,7 +357,6 @@ Section WithParameters.
                   map.extends finalL.(getRegs) finalRegsH /\
                   map.putmany_of_list_zip resvars rvs initialL.(getRegs) = Some finalL.(getRegs) /\
                   map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
-                  (* external calls can't modify the memory for now *)
                   postH finalL.(getLog) finalMH finalRegsH finalMetricsH /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (word.of_Z 4) /\
@@ -172,24 +365,65 @@ Section WithParameters.
                   (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
                   (forall x v, map.get finalRegsH x = Some v -> valid_FlatImp_var x) /\
                   regs_initialized finalL.(getRegs) /\
-                  valid_machine finalL);
-  }.
+                  valid_machine finalL).
+
+  Lemma compile_ext_call_correct_compatibility{mem_ok: map.ok mem}{locals_ok: map.ok locals}:
+    forall resvars action argvars,
+      compile_ext_call_correct_alt resvars action argvars ->
+      compiled_correctly (SInteract resvars action argvars).
+  Proof.
+    unfold compile_ext_call_correct_alt, compiled_correctly, goodMachine.
+    intros. destruct_RiscvMachine initialL. destruct g. simpl in *. simp. subst.
+    eapply runsTo_weaken. 1: eapply H. all: clear H; simpl_MetricRiscvMachine_get_set; simpl.
+    - reflexivity.
+    - reflexivity.
+    - eassumption.
+    - eassumption.
+    - eassumption.
+    - eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
+    - ecancel_assumption.
+    - reflexivity.
+    - eassumption.
+    - eassumption.
+    - eassumption.
+    - eassumption.
+    - eapply map.getmany_of_list_extends; try eassumption.
+    - eassumption.
+    - eassumption.
+    - intros resvals mReceive ?.
+      match goal with
+      | H: forall _ _, _ |- _ =>
+        specialize H with mReceive resvals;
+          move H at bottom;
+          destruct H as (finalRegsH & ? & finalMH & ? & ?)
+      end; [assumption|].
+      exists finalRegsH. eexists. exists finalMH.
+      ssplit; [assumption| | ];
+        edestruct (map.putmany_of_list_zip_extends_exists (ok := locals_ok))
+        as (finalRegsL & ? & ?); eassumption.
+    - intros. destruct_RiscvMachine final. simpl in *. simp. subst.
+      do 4 eexists; ssplit; try (eassumption || reflexivity).
+      + match goal with
+        | H: map.putmany_of_list_zip _ _ _ = Some _ |- _ => rename H into P; clear -P mem_ok locals_ok
+        end.
+        apply map.only_differ_putmany in P.
+        unfold map.only_differ in *.
+        intro x. specialize (P x).
+        destruct P; auto.
+        left. unfold PropSet.union, PropSet.elem_of, PropSet.of_list in *.
+        left. apply ListSet.In_list_union_l. assumption.
+      + eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
+      + eexists. split; [reflexivity|].
+        ecancel_assumption.
+  Qed.
 
 End WithParameters.
 
 Existing Instance Semantics_params.
 
-Arguments Z.mul: simpl never.
-Arguments Z.add: simpl never.
-Arguments Z.of_nat: simpl never.
-Arguments Z.modulo : simpl never.
-Arguments Z.pow: simpl never.
-Arguments Z.sub: simpl never.
-
-Arguments run1: simpl never.
-
-Arguments compile_store: simpl never.
-Arguments compile_load: simpl never.
+Ltac simpl_g_get :=
+  cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl
+            dframe xframe] in *.
 
 Ltac solve_stmt_not_too_big :=
   lazymatch goal with

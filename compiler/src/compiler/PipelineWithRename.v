@@ -635,7 +635,7 @@ Section Pipeline1.
   Lemma functions_to_program: forall ml functions_start e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
       iff1 (program functions_start instrs)
-           (FlatToRiscvFunctions.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
+           (FlatToRiscvCommon.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
   Proof.
     (* PARAMRECORDS *)
     assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
