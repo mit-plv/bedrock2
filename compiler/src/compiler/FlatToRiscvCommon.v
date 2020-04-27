@@ -4,6 +4,7 @@ Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
+Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Platform.RiscvMachine.
@@ -58,7 +59,6 @@ Class parameters := {
 
   locals :> map.map Z word;
   mem :> map.map word byte;
-  funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
 
   M: Type -> Type;
   MM :> Monad M;
@@ -133,9 +133,7 @@ Section WithParameters.
   Definition runsTo: MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
-  Notation fun_pos_env := (@funname_env p Z).
-
-  Definition function(base: word)(rel_positions: fun_pos_env)
+  Definition function(base: word)(rel_positions: funname_env Z)
              (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
     match map.get rel_positions fname with
     | Some pos => program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
@@ -148,7 +146,7 @@ Section WithParameters.
      a second time inside [functions]).
      To avoid this double mentioning, we will remove the function being called from the
      list of functions before entering the body of the function. *)
-  Definition functions(base: word)(rel_positions: fun_pos_env): env -> mem -> Prop :=
+  Definition functions(base: word)(rel_positions: funname_env Z): env -> mem -> Prop :=
     map.fold (fun P fname fbody => (function base rel_positions fname fbody * P)%sep) (emp True).
 
   (*
@@ -235,9 +233,9 @@ Section WithParameters.
     p_sp: word;
     num_stackwords: Z;
     p_insts: word;
-    insts: list Decode.Instruction;
+    insts: list Instruction;
     program_base: word;
-    e_pos: fun_pos_env;
+    e_pos: funname_env Z;
     e_impl: env;
     dframe: mem -> Prop; (* data frame *)
     xframe: mem -> Prop; (* executable frame *)
@@ -274,7 +272,7 @@ Section WithParameters.
     (* misc: *)
     valid_machine lo.
 
-  Definition good_e_impl(e_impl: env)(e_pos: fun_pos_env) :=
+  Definition good_e_impl(e_impl: env)(e_pos: funname_env Z) :=
     forall f (fun_impl: list Z * list Z * stmt Z),
       map.get e_impl f = Some fun_impl ->
       valid_FlatImp_fun fun_impl /\
@@ -284,17 +282,21 @@ Section WithParameters.
      we enter a new function body, to make sure functions cannot call themselves, while
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
      [FlatImp.exec] and [compile_stmt], respectively *)
-  Definition good_reduced_e_impl(e_impl_reduced e_impl: env)(num_stackwords: Z)(e_pos: fun_pos_env): Prop :=
+  Definition good_reduced_e_impl(e_impl_reduced e_impl: env)(num_stackwords: Z)(e_pos: funname_env Z): Prop :=
       map.extends e_impl e_impl_reduced /\
       good_e_impl e_impl_reduced e_pos.
 
-  Definition compiled_correctly(s: stmt Z): Prop :=
+  Local Notation stmt := (stmt Z).
+
+  Definition compiles_FlatToRiscv_correctly
+    (f: funname_env Z -> Z -> stmt -> list Instruction)
+    (s: stmt): Prop :=
     forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
     forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z),
     good_reduced_e_impl g.(e_impl) e_impl_full g.(num_stackwords) g.(e_pos) ->
     fits_stack g.(num_stackwords) g.(e_impl) s ->
-    @compile_stmt def_params _ g.(e_pos) pos s = g.(insts) ->
+    f g.(e_pos) pos s = g.(insts) ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
@@ -316,18 +318,14 @@ Section WithParameters.
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     funname_env_ok :> forall T, map.ok (funname_env T);
-
     PR :> MetricPrimitives PRParams;
-
-    compile_ext_call_correct: forall resvars action argvars,
-      compiled_correctly (SInteract resvars action argvars);
   }.
 
   (* previously used definition: *)
   Definition compile_ext_call_correct_alt resvars action argvars := forall (initialL: MetricRiscvMachine)
         postH newPc insts initialMH R Rexec initialRegsH
-        argvals mKeep mGive outcome p_sp,
-      insts = compile_ext_call resvars action argvars ->
+        argvals mKeep mGive outcome p_sp e mypos,
+      insts = compile_ext_call e mypos (SInteract resvars action argvars) ->
       newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
       map.extends initialL.(getRegs) initialRegsH ->
       Forall valid_FlatImp_var argvars ->
@@ -370,9 +368,9 @@ Section WithParameters.
   Lemma compile_ext_call_correct_compatibility{mem_ok: map.ok mem}{locals_ok: map.ok locals}:
     forall resvars action argvars,
       compile_ext_call_correct_alt resvars action argvars ->
-      compiled_correctly (SInteract resvars action argvars).
+      compiles_FlatToRiscv_correctly compile_ext_call (SInteract resvars action argvars).
   Proof.
-    unfold compile_ext_call_correct_alt, compiled_correctly, goodMachine.
+    unfold compile_ext_call_correct_alt, compiles_FlatToRiscv_correctly, goodMachine.
     intros. destruct_RiscvMachine initialL. destruct g. simpl in *. simp. subst.
     eapply runsTo_weaken. 1: eapply H. all: clear H; simpl_MetricRiscvMachine_get_set; simpl.
     - reflexivity.
@@ -380,7 +378,7 @@ Section WithParameters.
     - eassumption.
     - eassumption.
     - eassumption.
-    - eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
+    - eapply rearrange_footpr_subset; [ eassumption | ecancel ].
     - ecancel_assumption.
     - reflexivity.
     - eassumption.

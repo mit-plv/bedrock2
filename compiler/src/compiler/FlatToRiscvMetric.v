@@ -77,7 +77,7 @@ Section Proofs.
     forall (s: stmt Z) t initialMH initialRegsH postH initialMetricsH,
     FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
     forall R Rexec (initialL: RiscvMachineL) insts pos,
-    @compile_stmt def_params _ map.empty pos s = insts ->
+    @compile_stmt def_params map.empty pos s = insts ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->

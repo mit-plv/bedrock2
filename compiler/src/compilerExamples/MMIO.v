@@ -128,16 +128,17 @@ Section MMIO1.
     FE310CSemantics.parameters.mem_ok := _ |}.
 
   Instance compilation_params: FlatToRiscvDef.parameters := {|
-    FlatToRiscvDef.compile_ext_call := compile_ext_call;
-    FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
-    FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
+    FlatToRiscvDef.compile_ext_call _ _ s :=
+      match s with
+      | SInteract resvars action argvars => compile_ext_call resvars action argvars
+      | _ => []
+      end;
   |}.
 
   Instance FlatToRiscv_params: FlatToRiscvCommon.parameters := {
     FlatToRiscvCommon.def_params := compilation_params;
     FlatToRiscvCommon.locals := locals;
     FlatToRiscvCommon.mem := (@mem p);
-    FlatToRiscvCommon.funname_env := funname_env;
     FlatToRiscvCommon.MM := free.Monad_free;
     FlatToRiscvCommon.RVM := MetricMinimalMMIO.IsRiscvMachine;
     FlatToRiscvCommon.PRParams := MetricMinimalMMIOPrimitivesParams;
@@ -277,10 +278,20 @@ Section MMIO1.
     - typeclasses eauto.
     - typeclasses eauto.
     - eapply MetricMinimalMMIOSatisfiesPrimitives; cbn; intuition eauto.
+  Qed.
+
+  Lemma compile_ext_call_correct: forall resvars extcall argvars,
+      FlatToRiscvCommon.compiles_FlatToRiscv_correctly
+        (@FlatToRiscvDef.compile_ext_call compilation_params)
+        (FlatImp.SInteract resvars extcall argvars).
+  Proof.
+    intros.
+    eapply @FlatToRiscvCommon.compile_ext_call_correct_compatibility.
+    - simpl. typeclasses eauto.
+    - simpl. typeclasses eauto.
     - (* compile_ext_call_correct *)
-      intros. eapply FlatToRiscvCommon.compile_ext_call_correct_compatibility.
       unfold FlatToRiscvCommon.compile_ext_call_correct_alt.
-      intros *. intros ? ? ? V_argvars V_resvars. intros.
+      intros *. intros ? ? ? V_argvars V_resvars. intros. rename extcall into action.
       pose proof (compile_ext_call_emits_valid SeparationLogic.iset _ action _ V_resvars V_argvars).
       destruct_RiscvMachine initialL.
       unfold FlatToRiscvDef.compile_ext_call, FlatToRiscvCommon.def_params,

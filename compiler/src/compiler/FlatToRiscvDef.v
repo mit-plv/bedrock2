@@ -39,15 +39,8 @@ Module Import FlatToRiscvDef.
     (* the words implementations are not needed, but we need width,
        and EmitsValid needs width_cases *)
     W :> Utility.Words;
-    compile_ext_call: list Z -> String.string -> list Z -> list Instruction;
-    compile_ext_call_length: forall binds f args,
-        Z.of_nat (length (compile_ext_call binds f args)) <= 7;
-    (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
-       be elsewhere *)
-    compile_ext_call_emits_valid: forall iset binds a args,
-      Forall valid_FlatImp_var binds ->
-      Forall valid_FlatImp_var args ->
-      valid_instructions iset (compile_ext_call binds a args)
+    funname_env :> forall T: Type, map.map String.string T; (* abstract T for better reusability *)
+    compile_ext_call: funname_env Z -> Z -> stmt Z -> list Instruction;
   }.
 
 End FlatToRiscvDef.
@@ -213,11 +206,10 @@ Section FlatToRiscv1.
   (* All positions are relative to the beginning of the progam, so we get completely
      position independent code. *)
 
-  Context {fun_pos_env: map.map String.string Z}.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
 
   Section WithEnv.
-    Variable e: fun_pos_env.
+    Variable e: funname_env Z.
 
     Definition compile_stmt: Z -> stmt Z -> list Instruction :=
       fix compile_stmt(mypos: Z)(s: stmt Z) :=
@@ -257,7 +249,7 @@ Section FlatToRiscv1.
         save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
         [[ Jal ra (fpos - (mypos + 4 * Z.of_nat (length argvars))) ]] ++
         load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
-      | SInteract resvars action argvars => compile_ext_call resvars action argvars
+      | SInteract _ _ _ => compile_ext_call e mypos s
       end.
 
     (*
@@ -299,19 +291,19 @@ Section FlatToRiscv1.
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 
-    Definition add_compiled_function(state: list Instruction * fun_pos_env)(fname: String.string)
-               (fimpl: list Z * list Z * stmt Z): list Instruction * fun_pos_env :=
+    Definition add_compiled_function(state: list Instruction * funname_env Z)(fname: String.string)
+               (fimpl: list Z * list Z * stmt Z): list Instruction * funname_env Z :=
       let '(old_insts, posmap) := state in
       let pos := 4 * Z.of_nat (length (old_insts)) in
       let new_insts := compile_function pos fimpl in
       (old_insts ++ new_insts, map.put posmap fname pos).
 
-    Definition compile_funs: env -> list Instruction * fun_pos_env :=
+    Definition compile_funs: env -> list Instruction * funname_env Z :=
       map.fold add_compiled_function (nil, map.empty).
   End WithEnv.
 
   (* compiles all functions just to obtain their code size *)
-  Definition build_fun_pos_env(e_impl: env): fun_pos_env :=
+  Definition build_fun_pos_env(e_impl: env): funname_env Z :=
     (* since we pass map.empty as the fun_pos_env into compile_funs, the instrs
        returned don't jump to the right positions yet (they all jump to 42),
        but the instructions have the right size, so the posmap we return is correct *)

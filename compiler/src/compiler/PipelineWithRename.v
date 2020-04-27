@@ -73,25 +73,23 @@ End WithWordAndMem.
 Module Import Pipeline.
 
   Class parameters := {
-    FlatToRiscvDef_params :> FlatToRiscvDef.FlatToRiscvDef.parameters;
-
+    W :> Words;
     mem :> map.map word byte;
     Registers :> map.map Z word;
     string_keyed_map :> forall T: Type, map.map string T; (* abstract T for better reusability *)
     trace := list (mem * string * list word * (mem * list word));
     ExtSpec := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
-
-    (* Note: this one is not needed because it's subsumed by funname_env,
-       and if we do add it, type class inference will infer funname_env in one place
-       and src2imp in another and then terms which should be convertible arent'
-    src2imp :> map.map string Z; *)
-
+    compile_ext_call : string_keyed_map Z -> Z -> FlatImp.stmt Z -> list Instruction;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
     PRParams :> PrimitivesParams M MetricRiscvMachine;
   }.
+
+  Instance FlatToRiscvDef_parameters{p: parameters}: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
+    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
+  |}.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
     FlattenExpr.W := _;
@@ -112,6 +110,12 @@ Module Import Pipeline.
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscvCommon.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok (FlattenExpr.mk_Semantics_params FlattenExpr_parameters);
+    compile_ext_call_correct: forall resvars extcall argvars,
+        compiles_FlatToRiscv_correctly
+          compile_ext_call (FlatImp.SInteract resvars extcall argvars);
+    compile_ext_call_length_ignores_positions: forall posmap1 posmap2 c pos1 pos2,
+      List.length (compile_ext_call posmap1 pos1 c) =
+      List.length (compile_ext_call posmap2 pos2 c);
   }.
 
 End Pipeline.
@@ -222,7 +226,7 @@ Section Pipeline1.
       FlatToRiscvSimulation.flatToRiscvSim
         f_entry_rel_pos f_entry_name p_call Rdata Rexec
         p_functions ml.(stack_start) ml.(stack_pastend)
-        prog H_p_call H_p_functions G F GEI.
+        prog compile_ext_call_correct H_p_call H_p_functions G F GEI.
 
     Definition sim: simulation _ _ _ :=
       (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)).
@@ -330,7 +334,7 @@ Section Pipeline1.
       assumption.
   Qed.
 
-  Local Instance map_ok': @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p) := mem_ok.
+  Local Instance map_ok': @map.ok (@word (@W p)) Init.Byte.byte (@mem p) := mem_ok.
 
   Lemma get_build_fun_pos_env: forall e f,
       map.get e f <> None ->
@@ -380,7 +384,7 @@ Section Pipeline1.
   Proof.
     revert addr; induction bs; intros; [reflexivity|].
     cbn [array flat_map].
-    assert (CC: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p))
+    assert (CC: @map.ok (@word (@W p)) Init.Byte.byte (@mem p))
       by exact mem_ok.
     etransitivity. 1:eapply Proper_sep_iff1; [reflexivity|]. 1:eapply IHbs.
     etransitivity. 2:symmetry; eapply bytearray_append.
@@ -411,9 +415,9 @@ Section Pipeline1.
       simpl.
       destruct width_cases as [E | E]; rewrite E; cbv; reflexivity.
     }
-    assert (BB: @word.ok (@width (@W (@FlatToRiscvDef_params p)))(@word (@W (@FlatToRiscvDef_params p))))
+    assert (BB: @word.ok (@width (@W p))(@word (@W p)))
       by exact word_ok.
-    assert (CC: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p))
+    assert (CC: @map.ok (@word (@W p)) Init.Byte.byte (@mem p))
       by exact mem_ok.
     intros.
     Z.div_mod_to_equations.
@@ -579,6 +583,7 @@ Section Pipeline1.
       List.length (FlatToRiscvDef.compile_stmt posmap2 pos2 c).
   Proof.
     induction c; intros; ignore_positions.
+    apply compile_ext_call_length_ignores_positions.
   Qed.
 
   Lemma compile_function_length_ignores_positions: forall posmap1 posmap2 pos1 pos2 impl,
@@ -884,13 +889,13 @@ Section Pipeline1.
       { unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
         wwcancel.
         eapply functions_to_program.
         eassumption. }
       { simpl.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
         unfold machine_ok in *. simp.
         edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
         destruct (byte_list_to_word_list_array stack_trash)
@@ -1015,7 +1020,7 @@ Section Pipeline1.
       + unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
         (* TODO remove duplication *)
         lazymatch goal with
         | H: riscvPhase _ _ = _ |- _ => specialize functions_to_program with (1 := H) as P

@@ -37,13 +37,16 @@ Existing Instance DefaultRiscvState.
 Axiom TODO: forall {T: Type}, T.
 
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call argnames fname retnames :=
-    if string_dec fname "nop" then
-      [[Addi Register0 Register0 0]]
-    else
-      nil;
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_length _ := TODO;
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call_emits_valid _ _ := TODO;
+  funname_env T := TODO;
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ s :=
+    match s with
+    | FlatImp.SInteract _ fname _ =>
+      if string_dec fname "nop" then
+        [[Addi Register0 Register0 0]]
+      else
+        nil
+    | _ => []
+    end;
 }.
 
 Notation RiscvMachine := MetricRiscvMachine.

@@ -23,9 +23,9 @@ Section Pipeline1.
   Context {p: Pipeline.parameters}.
   Context {h: Pipeline.assumptions}.
 
-  Add Ring wring : (word.ring_theory (word := (@Utility.word (@FlatToRiscvDef.FlatToRiscvDef.W (@Pipeline.FlatToRiscvDef_params p)))))
+  Add Ring wring : (word.ring_theory (word := (@Utility.word (@Pipeline.W p))))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := (@Utility.word (@FlatToRiscvDef.FlatToRiscvDef.W (@Pipeline.FlatToRiscvDef_params p))))),
+       morphism (word.ring_morph (word := (@Utility.word (@Pipeline.W p)))),
        constants [word_cst]).
 
   Context (ml: MemoryLayout)
@@ -141,7 +141,7 @@ Section Pipeline1.
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
-    exists (srcprog: Semantics.env) (instrs: list Instruction) (positions: FlatToRiscvCommon.funname_env Z),
+    exists (srcprog: Semantics.env) (instrs: list Instruction) positions,
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\

@@ -111,14 +111,6 @@ Section Proofs.
 
   Set Printing Depth 100000.
 
-  Lemma compile_stmt_length_position_indep: forall e_pos1 e_pos2 s pos1 pos2,
-      List.length (compile_stmt e_pos1 pos1 s) =
-      List.length (compile_stmt e_pos2 pos2 s).
-  Proof.
-    induction s; intros; simpl; try reflexivity;
-      repeat (simpl; rewrite ?List.app_length); erewrite ?IHs1; erewrite ?IHs2; try reflexivity.
-  Qed.
-
   Ltac tag P ::=
     let __ := lazymatch type of P with
               | @map.rep _ _ _ -> Prop => idtac
@@ -345,9 +337,16 @@ Section Proofs.
     repeat (autounfold with unf_to_array);
     repeat ( rewr getEq_length_load_save_regs in |-* || rewr get_array_rewr_eq in |-* ).
 
-  Lemma compile_stmt_correct: forall (s: stmt Z), compiled_correctly s.
+  Lemma compile_stmt_correct:
+    (forall resvars extcall argvars,
+        compiles_FlatToRiscv_correctly
+          compile_ext_call (SInteract resvars extcall argvars)) ->
+    (forall s,
+        compiles_FlatToRiscv_correctly
+          compile_stmt s).
   Proof.
-    unfold compiled_correctly.
+    intros compile_ext_call_correct.
+    unfold compiles_FlatToRiscv_correctly.
     induction 1; intros; unfold goodMachine in *;
       destruct g as [p_sp num_stackwords p_insts insts program_base
                      e_pos e_impl funnames frame].
@@ -360,10 +359,12 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct/SInteract".
       eapply runsTo_weaken.
-      + eapply compile_ext_call_correct with
-            (postH := post) (g := {| program_base := program_base |}) (pos0 := pos)
-            (action0 := action) (argvars0 := argvars) (resvars0 := resvars) (initialMH := m);
-          simpl.
+      + unfold compiles_FlatToRiscv_correctly in *.
+        eapply compile_ext_call_correct with
+            (postH := post) (g := {| program_base := program_base |}) (pos := pos)
+            (extcall := action) (argvars := argvars) (resvars := resvars) (initialMH := m);
+          simpl;
+          clear compile_ext_call_correct.
         * econstructor; try eassumption.
         * eassumption.
         * econstructor. blia.

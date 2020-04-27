@@ -15,6 +15,7 @@ Require Import end2end.End2EndPipeline.
 Require Import end2end.Bedrock2SemanticsForKami. (* TODO why is the ok instance in that file not needed? *)
 Require        riscv.Utility.InstructionNotations.
 Require        bedrock2.Hexdump.
+Require Import coqutil.Map.Z_keyed_SortedListMap.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -28,7 +29,9 @@ Proof. cbv. intuition discriminate. Qed.
 
 Definition stack_size_in_bytes: Z := 2 ^ 11.
 
-Definition ml: MemoryLayout := End2EndPipeline.ml instrMemSizeLg memSizeLg stack_size_in_bytes.
+Definition ml: MemoryLayout :=
+  End2EndPipeline.ml (mem_ok := @SortedListWord.ok 32 word word_ok Init.Byte.byte)
+                     instrMemSizeLg memSizeLg stack_size_in_bytes.
 
 Remark this_is_the_value_of_ml: ml = {|
   MemoryLayout.code_start    := word.of_Z 0;
@@ -41,8 +44,6 @@ Remark this_is_the_value_of_ml: ml = {|
 Proof. reflexivity. Qed.
 
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
-
-Local Instance parameters : FE310CSemantics.parameters := ltac:(esplit; exact _).
 
 Definition spec: ProgramSpec := {|
   datamem_start := ml.(heap_start);
@@ -62,8 +63,6 @@ Qed.
 Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                      (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
-
-From coqutil Require Import Z_keyed_SortedListMap.
 
 Local Existing Instance SortedListString.map.
 Local Existing Instance SortedListString.ok.
@@ -104,7 +103,8 @@ Definition loop :=
 Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
-Definition lightbulb_insts_unevaluated: option (list Decode.Instruction * FlatToRiscvCommon.funname_env Z) :=
+Definition lightbulb_insts_unevaluated:
+  option (list Decode.Instruction * FlatToRiscvDef.FlatToRiscvDef.funname_env Z) :=
   ToplevelLoop.compile_prog ml prog.
 
 (* Before running this command, it might be a good idea to do
@@ -117,7 +117,7 @@ Definition lightbulb_insts: list Decode.Instruction.
   end.
 Defined.
 
-Definition function_positions: FlatToRiscvCommon.funname_env Z.
+Definition function_positions: FlatToRiscvDef.FlatToRiscvDef.funname_env Z.
   let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
   match goal with
   | res := Some (_, ?x) |- _ => exact x
@@ -232,7 +232,8 @@ Proof.
             (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
                 KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
                 (exists ioh : list (lightbulb_spec.OP _),
-                    SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace ioh)))
+                    SPI.mmio_trace_abstraction_relation(p:=FE310CSemanticsParameters) ioh bedrockTrace /\
+                    goodHlTrace ioh)))
     as A. {
     clear -A.
     intro B. specialize (A B); clear B.

@@ -62,6 +62,9 @@ Section Sim.
         goodMachine t m l ghostConsts st.
 
   Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
+    (forall resvars extcall argvars,
+        compiles_FlatToRiscv_correctly
+          compile_ext_call (SInteract resvars extcall argvars)) ->
     let c := SSeq SSkip (SCall nil f_entry_name nil) in
     (word.unsigned p_call) mod 4 = 0 ->
     (word.unsigned functions_start) mod 4 = 0 ->
@@ -87,6 +90,7 @@ Section Sim.
     eapply runsTo_weaken.
     - eapply compile_stmt_correct with (g := ghostConsts)
                                        (pos := - word.signed (word.sub functions_start p_call)); simpl.
+      + assumption.
       + eapply exec.call; cycle -1; try eassumption.
         Fail eassumption. (* TODO why?? *)
         match goal with
