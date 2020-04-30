@@ -44,7 +44,8 @@ Module GallinaIncr.
 
   Definition incr_gallina_spec (c: cell) :=
     let/d v := get c in
-    let/d v := word.add v (word.of_Z 1) in
+    let/d one := word.of_Z 1 in
+    let/d v := word.add v one in
     let/d c := put v c in
     c.
 
@@ -86,7 +87,7 @@ Module GallinaIncr.
         lazymatch goal with
         | [  |- WeakestPrecondition.cmd _ ?b2_body _ ?mem
                                        {| value := ?locals |}
-                                       (fun (t : Semantics.trace) (m _ : rep) =>
+                                       (fun (t : Semantics.trace) m _ =>
                                           _ /\
                                           _ /\
                                           sep (_ ?spec) _ m) ] =>
@@ -230,46 +231,222 @@ Module GallinaIncr.
       pose e.
 
       subst body.
-      match_compile_goal.
 
-      repeat straightline.
-      exists (get c).
-      split.
-      { cbn.
-        red.
-        exists c_ptr.
-        simpl.
-        split; try reflexivity.
-        eexists.
+      Notation "'find' body 'implementing' spec 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
+        (WeakestPrecondition.cmd
+           (WeakestPrecondition.call fns)
+           body tr mem
+           locals
+           (fun (t : Semantics.trace) m _ =>
+              tr = t /\
+              ([]: list (Semantics.word)) = [] /\
+              sep spec R m)) (at level 0).
+      Show.
+
+      Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
+
+      Show.
+
+      (* match_compile_goal. *)
+      (* repeat straightline. *)
+
+      Set Nested Proofs Allowed.
+      Lemma compile_get :
+        forall (locals: Semantics.locals) (mem: Semantics.mem)
+          tr R R' functions out_ptr c c_ptr c_var k k_impl,
+        forall var,
+          sep (cell_value c_ptr c) R' mem ->
+          map.get locals c_var = Some c_ptr ->
+          let v := (get c) in
+          (let head := v in
+           find k_impl
+           implementing (cell_value out_ptr (k head))
+           with-locals (map.put locals var head)
+           and-memory mem and-trace tr and-rest R
+           and-functions functions) ->
+          (let head := v in
+           find (cmd.seq (cmd.set var (expr.load access_size.word (expr.var c_var)))
+                         k_impl)
+           implementing (cell_value out_ptr (dlet head k))
+           with-locals locals and-memory mem and-trace tr and-rest R
+           and-functions functions).
+      Proof.
+        intros.
+        repeat straightline.
+        exists (get c).
         split.
-        { eapply load_word_of_sep.
-          unfold cell_value in *.
+        { cbn.
+          red.
+          exists c_ptr.
+          split.
+          { eassumption. }
+          { eexists; split; [ | reflexivity ].
+            eapply load_word_of_sep.
+            eassumption. } }
+        red; intros.
+        eassumption.
+      Qed.
+
+      Ltac solve_map_get_goal :=
+        lazymatch goal with
+        | [  |- map.get {| value := ?locals; _value_ok := _ |} _ = Some ?val ] =>
+          let var := lookup_variable locals val in
+          instantiate (1 := var);
+            reflexivity
+        end.
+
+      eapply compile_get with (var := "v").
+      { ecancel_assumption.
+        (* lazymatch goal with *)
+        (* | [ H: ?predicates ?mem |- sep (?predicate _ ?value) _ ?mem ] => *)
+        (*   let ptr := lookup_object_in predicates predicate value in *)
+        (*   instantiate (1 := ) *)
+        (* end. *) }
+      { solve_map_get_goal. }
+      { intros;
+          simpl map.put.
+
+        (* Can we get rid of the continuation in every lemma? *)
+
+      Lemma compile_constant :
+        forall (locals: Semantics.locals) (mem: Semantics.mem)
+          tr R functions out_ptr z k k_impl,
+        forall var,
+          let head := word.of_Z z in
+          (find k_impl
+           implementing (cell_value out_ptr (k head))
+           with-locals (map.put locals var head)
+           and-memory mem and-trace tr and-rest R
+           and-functions functions) ->
+          (find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
+           implementing (cell_value out_ptr (dlet head k))
+           with-locals locals and-memory mem and-trace tr and-rest R
+           and-functions functions).
+      Proof.
+        intros.
+        repeat straightline.
+        eassumption.
+      Qed.
+
+      eapply compile_constant with (var := "one").
+      Arguments word.of_Z : simpl never.
+      set (v1 := word.of_Z 1).
+      simpl map.put.
+
+      (* FIXME add let pattern to other lemmas *)
+      Lemma compile_add :
+        forall (locals: Semantics.locals) (mem: Semantics.mem)
+          tr R (* R' *) functions out_ptr x x_var y y_var k k_impl,
+        forall var,
+          (* WeakestPrecondition.dexpr mem locals (expr.var x_var) x -> *)
+          (* WeakestPrecondition.dexpr mem locals (expr.var y_var) y -> *)
+          map.get locals x_var = Some x ->
+          map.get locals y_var = Some y ->
+          let v := word.add x y in
+          (let head := v in
+           find k_impl
+           implementing (cell_value out_ptr (k head))
+           with-locals (map.put locals var head)
+           and-memory mem and-trace tr and-rest R
+           and-functions functions) ->
+          (let head := v in
+           find (cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
+                         k_impl)
+           implementing (cell_value out_ptr (dlet head k))
+           with-locals locals and-memory mem and-trace tr and-rest R
+           and-functions functions).
+      Proof.
+        intros.
+        repeat straightline.
+        eexists; split.
+        { repeat straightline.
+          exists x; split; try eassumption.
+          repeat straightline.
+          exists y; split; try eassumption.
+          reflexivity. }
+        red.
+        eassumption.
+      Qed.
+
+      eapply compile_add with (var := "v1").
+      { solve_map_get_goal. }
+      { solve_map_get_goal. }
+      intros; simpl map.put.
+
+      Ltac lookup_variable locals ptr ::=
+        match locals with
+        | [] => fail
+        | (?k, ?ptr') :: ?tl =>   (* FIXME do we actually want to unify like this? *)
+          let _ := constr:(eq_refl ptr : ptr = ptr') in
+          constr:(k)
+        | _ :: ?tl =>
+          lookup_variable tl ptr
+        end.
+
+      Lemma compile_put :
+        forall (locals: Semantics.locals) (mem: Semantics.mem)
+          tr R R' functions out_ptr c c_ptr c_var x x_var k k_impl,
+          sep (cell_value c_ptr c) R' mem ->
+          map.get locals c_var = Some c_ptr ->
+          map.get locals x_var = Some x ->
+          let v := (put x c) in
+          (let head := v in
+           forall m,
+             sep (cell_value c_ptr head) R' m ->
+             (find k_impl
+              implementing (cell_value out_ptr (k head))
+              with-locals locals
+              and-memory m and-trace tr and-rest R
+              and-functions functions)) ->
+          (let head := v in
+           find (cmd.seq (cmd.store access_size.word (expr.var c_var) (expr.var x_var))
+                         k_impl)
+           implementing (cell_value out_ptr (dlet head k))
+           with-locals locals and-memory mem and-trace tr and-rest R
+           and-functions functions).
+      Proof.
+        intros.
+        unfold cell_value in *.
+        repeat straightline.
+        exists c_ptr.
+        split.
+        { repeat straightline; eauto. }
+        { eexists; split.
+          { repeat straightline; eauto. }
+          repeat straightline.
+          subst v; simpl.
+          match goal with
+          | [ H: context[WeakestPrecondition.cmd] |- _ ] => apply H
+          end.
           eassumption. }
-        { reflexivity. } }
+      Qed.
 
-      red.
-      simpl map.put.
-      set (get c) as v.
-      unfold dlet at 1.
+      eapply compile_put.
 
-      match_compile_goal.
-      repeat straightline.
-      subst v0.
-      subst l.
-      set (v0:=word.add v (word.of_Z 1)).
-      unfold dlet at 1.
-      simpl map.put.
+      { ecancel_assumption. }
+      { solve_map_get_goal. }
+      { solve_map_get_goal. }
+      intros.
 
-      match_compile_goal.
-      unfold cell_value in *.
-      repeat straightline.
-      unfold dlet at 1.
+      Lemma compile_skip :
+        forall (locals: Semantics.locals) (mem: Semantics.mem)
+          tr R functions out_ptr head,
+          sep (cell_value out_ptr head) R mem ->
+          (find cmd.skip
+           implementing (cell_value out_ptr head)
+           with-locals locals and-memory mem and-trace tr and-rest R
+           and-functions functions).
+      Proof.
+        intros.
+        repeat straightline.
+        eauto.
+      Qed.
 
-      match_compile_goal.
-      repeat straightline.
-      cbn [data put].
-      repeat split; try ecancel_assumption. }
+      eapply compile_skip.
+      eassumption. } }
     Qed.
+
+  Print body.
 
   Definition TwoCells a_ptr b_ptr ab : Semantics.mem -> Prop :=
     sep (cell_value a_ptr (fst ab)) (cell_value b_ptr (snd ab)).
