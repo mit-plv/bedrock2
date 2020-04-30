@@ -66,122 +66,341 @@ Module GallinaIncr.
   .
 
   Definition mklit z := expr.literal z.
-      Ltac compile_step b2_body mem locals spec := fail.
 
-      Ltac gen_sym_inc :=
-        lazymatch goal with
-        | H : Counter ?n |- _ =>
-          pose proof (ofNat (S n)); clear H
-        | _ => pose proof (ofNat 0)
-        end.
+  Ltac compile_step b2_body mem locals spec := fail.
 
-      Ltac gen_sym_fetch prefix :=
-        lazymatch goal with
-        | H : Counter ?n |- _ =>
-          let x := constr:((prefix ++ DecimalString.NilEmpty.string_of_uint (Nat.to_uint n))%string) in
-          let x := eval cbv in x in
+  Ltac gen_sym_inc :=
+    lazymatch goal with
+    | H : Counter ?n |- _ =>
+      pose proof (ofNat (S n)); clear H
+    | _ => pose proof (ofNat 0)
+    end.
+
+  Ltac gen_sym_fetch prefix :=
+    lazymatch goal with
+    | H : Counter ?n |- _ =>
+      let x := constr:((prefix ++ DecimalString.NilEmpty.string_of_uint (Nat.to_uint n))%string) in
+      let x := eval cbv in x in
           constr:(x)
-        end.
+    end.
 
-      Ltac match_compile_goal :=
-        lazymatch goal with
-        | [  |- WeakestPrecondition.cmd _ ?b2_body _ ?mem
-                                       {| value := ?locals |}
-                                       (fun (t : Semantics.trace) m _ =>
-                                          _ /\
-                                          _ /\
-                                          sep (_ ?spec) _ m) ] =>
-          compile_step b2_body mem locals spec
-        end.
+  Ltac match_compile_goal :=
+    lazymatch goal with
+    | [  |- WeakestPrecondition.cmd _ ?b2_body _ ?mem
+                                   {| value := ?locals |}
+                                   (fun (t : Semantics.trace) m _ =>
+                                      _ /\
+                                      _ /\
+                                      sep (_ ?spec) _ m) ] =>
+      compile_step b2_body mem locals spec
+    end.
 
-      Ltac lookup_object_in predicates predicate value :=
-        lazymatch predicates with
-        | predicate ?ptr value =>
-          constr:(Some ptr)
-        | sep ?l ?r =>
-          lazymatch lookup_object_in l predicate value with
-          | Some ?ptr => constr:(Some ptr)
-          | None => lookup_object_in r predicate value
-          end
-        | _ => constr:(@None address)
-        end.
+  Ltac lookup_object_in predicates predicate value :=
+    lazymatch predicates with
+    | predicate ?ptr value =>
+      constr:(Some ptr)
+    | sep ?l ?r =>
+      lazymatch lookup_object_in l predicate value with
+      | Some ?ptr => constr:(Some ptr)
+      | None => lookup_object_in r predicate value
+      end
+    | _ => constr:(@None address)
+    end.
 
-      Ltac lookup_object predicate value mem :=
-        lazymatch goal with
-        | [ H: ?predicates mem |- _ ] =>
-          let ptr := lookup_object_in predicates predicate value in
-          lazymatch ptr with
-          | Some ?ptr => ptr
-          | None => fail "failed to look up object" value
-          end
-        | _ => fail "failed to find preconditions for " mem
-        end.
+  Ltac lookup_object predicate value mem :=
+    lazymatch goal with
+    | [ H: ?predicates mem |- _ ] =>
+      let ptr := lookup_object_in predicates predicate value in
+      lazymatch ptr with
+      | Some ?ptr => ptr
+      | None => fail "failed to look up object" value
+      end
+    | _ => fail "failed to find preconditions for " mem
+    end.
 
-      Ltac lookup_variable locals ptr :=
-        lazymatch locals with
-        | [] => fail
-        | (?k, ptr) :: _ => k
-        | (_, _) :: ?tl => lookup_variable tl ptr
-        end.
+  Ltac lookup_variable locals ptr :=
+    lazymatch locals with
+    | [] => fail
+    | (?k, ptr) :: _ => k
+    | (_, _) :: ?tl => lookup_variable tl ptr
+    end.
 
-      Ltac expr_of_constant g :=
-        lazymatch g with
-        | word.of_Z ?z =>
-          constr:(expr.literal z)
-        end.
+  Ltac expr_of_constant g :=
+    lazymatch g with
+    | word.of_Z ?z =>
+      constr:(expr.literal z)
+    end.
 
-      Ltac expr_of_gallina locals g :=
-        match g with            (* FIXME test with is_var *)
-        | _ => let v := lookup_variable locals g in
-              constr:(expr.var v)
-        | _ => expr_of_constant g
-        | ?other => fail "failed to translate to expr " other
-        end.
+  Ltac expr_of_gallina locals g :=
+    match g with            (* FIXME test with is_var *)
+    | _ => let v := lookup_variable locals g in
+          constr:(expr.var v)
+    | _ => expr_of_constant g
+    | ?other => fail "failed to translate to expr " other
+    end.
 
-      Ltac compile_step b2_body mem locals spec ::=
-        lazymatch spec with
-        | (dlet ?value ?continuation) =>
-          lazymatch value with
-          | get ?c =>
-            let ptr := lookup_object cell_value c mem in
-            let var := expr_of_gallina locals ptr in
-            let b2_continuation := fresh "body" in
-            gen_sym_inc;
-            let name := gen_sym_fetch "v" in
-            evar (b2_continuation: cmd);
-            unify b2_body
-                  (cmd.seq (cmd.set name (expr.load access_size.word
-                                                   var))
-                           b2_continuation);
-            subst b2_continuation
-          | word.add ?l ?r =>
-            let ll := expr_of_gallina locals l in
-            let rr := expr_of_gallina locals r in
-            gen_sym_inc;
-            let name := gen_sym_fetch "v" in
-            let b2_continuation := fresh "body" in
-            evar (b2_continuation: cmd);
-            unify b2_body (* FIXME coq renamed v into v0 *)
-                  (cmd.seq (cmd.set name (expr.op
-                                            bopname.add
-                                            ll rr))
-                           b2_continuation);
-            subst b2_continuation
-          | put ?x ?c =>
-            let ptr := lookup_object cell_value c mem in
-            let var := expr_of_gallina locals ptr in
-            let x := expr_of_gallina locals x in
-            let b2_continuation := fresh "body" in
-            evar (b2_continuation: cmd);
-            unify b2_body
-                  (cmd.seq (cmd.store access_size.word var x)
-                           b2_continuation);
-            subst b2_continuation
-          | ?other => fail "Not sure what to do with" other
-          end
-        | _ => unify b2_body (cmd.skip)
-        end.
+  Ltac compile_step b2_body mem locals spec ::=
+    lazymatch spec with
+    | (dlet ?value ?continuation) =>
+      lazymatch value with
+      | get ?c =>
+        let ptr := lookup_object cell_value c mem in
+        let var := expr_of_gallina locals ptr in
+        let b2_continuation := fresh "body" in
+        gen_sym_inc;
+        let name := gen_sym_fetch "v" in
+        evar (b2_continuation: cmd);
+        unify b2_body
+              (cmd.seq (cmd.set name (expr.load access_size.word
+                                                var))
+                       b2_continuation);
+        subst b2_continuation
+      | word.add ?l ?r =>
+        let ll := expr_of_gallina locals l in
+        let rr := expr_of_gallina locals r in
+        gen_sym_inc;
+        let name := gen_sym_fetch "v" in
+        let b2_continuation := fresh "body" in
+        evar (b2_continuation: cmd);
+        unify b2_body (* FIXME coq renamed v into v0 *)
+              (cmd.seq (cmd.set name (expr.op
+                                        bopname.add
+                                        ll rr))
+                       b2_continuation);
+        subst b2_continuation
+      | put ?x ?c =>
+        let ptr := lookup_object cell_value c mem in
+        let var := expr_of_gallina locals ptr in
+        let x := expr_of_gallina locals x in
+        let b2_continuation := fresh "body" in
+        evar (b2_continuation: cmd);
+        unify b2_body
+              (cmd.seq (cmd.store access_size.word var x)
+                       b2_continuation);
+        subst b2_continuation
+      | ?other => fail "Not sure what to do with" other
+      end
+    | _ => unify b2_body (cmd.skip)
+    end.
 
+  Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
+
+  Definition postcondition_for spec R tr :=
+    (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list address) =>
+       tr = tr' /\ rets = nil
+       /\ sep spec R mem').
+
+  Definition postcondition_norets spec R tr :=
+    (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (_ : Semantics.locals) =>
+       postcondition_for spec R tr tr' mem' []).
+
+  Notation "'find' body 'implementing' spec 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
+    (WeakestPrecondition.cmd
+       (WeakestPrecondition.call fns)
+       body tr mem locals
+       (postcondition_norets spec R tr)) (at level 0).
+
+  Lemma compile_get :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R R' functions out_ptr c c_ptr c_var k k_impl,
+    forall var,
+      sep (cell_value c_ptr c) R' mem ->
+      map.get locals c_var = Some c_ptr ->
+      let v := (get c) in
+      (let head := v in
+       find k_impl
+       implementing (cell_value out_ptr (k head))
+       with-locals (map.put locals var head)
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.load access_size.word (expr.var c_var)))
+                     k_impl)
+       implementing (cell_value out_ptr (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    exists (get c).
+    split.
+    { cbn.
+      red.
+      exists c_ptr.
+      split.
+      { eassumption. }
+      { eexists; split; [ | reflexivity ].
+        eapply load_word_of_sep.
+        eassumption. } }
+    red; intros.
+    eassumption.
+  Qed.
+
+  Lemma compile_constant :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R functions out_ptr z k k_impl,
+    forall var,
+      let v := word.of_Z z in
+      (let head := v in
+       find k_impl
+       implementing (cell_value out_ptr (k head))
+       with-locals (map.put locals var head)
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
+       implementing (cell_value out_ptr (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    eassumption.
+  Qed.
+
+  (* FIXME add let pattern to other lemmas *)
+  Lemma compile_add :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R (* R' *) functions out_ptr x x_var y y_var k k_impl,
+    forall var,
+      (* WeakestPrecondition.dexpr mem locals (expr.var x_var) x -> *)
+      (* WeakestPrecondition.dexpr mem locals (expr.var y_var) y -> *)
+      map.get locals x_var = Some x ->
+      map.get locals y_var = Some y ->
+      let v := word.add x y in
+      (let head := v in
+       find k_impl
+       implementing (cell_value out_ptr (k head))
+       with-locals (map.put locals var head)
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
+                     k_impl)
+       implementing (cell_value out_ptr (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    eexists; split.
+    { repeat straightline.
+      exists x; split; try eassumption.
+      repeat straightline.
+      exists y; split; try eassumption.
+      reflexivity. }
+    red.
+    eassumption.
+  Qed.
+
+  Lemma compile_put :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R R' functions out_ptr c c_ptr c_var x x_var k k_impl,
+      sep (cell_value c_ptr c) R' mem ->
+      map.get locals c_var = Some c_ptr ->
+      map.get locals x_var = Some x ->
+      let v := (put x c) in
+      (let head := v in
+       forall m,
+         sep (cell_value c_ptr head) R' m ->
+         (find k_impl
+          implementing (cell_value out_ptr (k head))
+          with-locals locals
+          and-memory m and-trace tr and-rest R
+          and-functions functions)) ->
+      (let head := v in
+       find (cmd.seq (cmd.store access_size.word (expr.var c_var) (expr.var x_var))
+                     k_impl)
+       implementing (cell_value out_ptr (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    unfold cell_value in *.
+    repeat straightline.
+    exists c_ptr.
+    split.
+    { repeat straightline; eauto. }
+    { eexists; split.
+      { repeat straightline; eauto. }
+      repeat straightline.
+      subst v; simpl.
+      match goal with
+      | [ H: context[WeakestPrecondition.cmd] |- _ ] => apply H
+      end.
+      eassumption. }
+  Qed.
+
+  Lemma compile_skip :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R functions out_ptr head,
+      sep (cell_value out_ptr head) R mem ->
+      (find cmd.skip
+       implementing (cell_value out_ptr head)
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    red; red; eauto.
+  Qed.
+
+  Set Nested Proofs Allowed.
+
+  Ltac solve_map_get_goal :=
+    lazymatch goal with
+    | [  |- map.get {| value := ?locals; _value_ok := _ |} _ = Some ?val ] =>
+      let var := lookup_variable locals val in
+      instantiate (1 := var);
+      reflexivity
+    end.
+
+  Ltac t :=
+    lazymatch goal with
+    | [  |- let _ := _ in _ ] => intros
+    | [  |- context[map.put _ _ _] ] => simpl map.put
+    | [  |- WeakestPrecondition.cmd _ _ _ _ _ _ ] =>
+      gen_sym_inc;
+      let name := gen_sym_fetch "v" in
+      first [simple eapply compile_get with (var := name) |
+             simple eapply compile_put |
+             simple eapply compile_constant with (var := name) |
+             simple eapply compile_add with (var := name) |
+             simple eapply compile_skip]
+    | [  |- sep _ _ _ ] => ecancel_assumption
+    | [  |- map.get _ _ = Some _ ] => solve_map_get_goal
+    end.
+
+  Ltac t_setup :=
+    match goal with
+    | _ => progress (cbv zeta; unfold program_logic_goal_for)
+    | [  |- forall _, _ ] => intros
+    | [  |- exists _, _ ] => eexists
+    | [  |- _ /\ _ ] => split
+    | [  |- context[postcondition_for _ _ _] ] =>
+      set (postcondition_for _ _ _)
+    | _ => reflexivity
+    | _ => cbn
+    end.
+
+  Ltac term_head x :=
+    match x with
+    | ?f _ => term_head f
+    | _ => x
+    end.
+
+  Ltac setup :=
+    repeat t_setup;
+    repeat match goal with
+           | [ H := _ |- _ ] => subst H
+           end;
+    match goal with
+    | [  |- context[postcondition_for (?pred ?spec) ?R ?tr] ] =>
+      change (fun x y _ => postcondition_for (pred spec) R tr x y [])
+        with (postcondition_norets (pred spec) R tr);
+      let hd := term_head spec in
+      unfold hd
+    end.
 
   Derive body SuchThat
          (let swap := ("swap", (["c"], [], body)) in
@@ -193,265 +412,26 @@ Module GallinaIncr.
                (swap :: functions)
                "swap"
                tr mem [c_ptr]
-               (fun tr' mem' rets =>
-                  tr = tr' /\ rets = nil
-                  /\ seps [cell_value c_ptr (incr_gallina_spec c); R] mem')))
+               (postcondition_for (cell_value c_ptr (incr_gallina_spec c)) R tr)))
     As body_correct.
   Proof.
-    cbv zeta.
-    red.
-    intros.
-    cbn -[incr_gallina_spec cell_value].
-    eexists; split.
-    { reflexivity. }
-    { unfold incr_gallina_spec.
+    setup.
+    repeat t.
+  Qed.
 
-      (* FIXME capture name of binder with Ltac2 *)
-
-      (* Ltac unify_body term := *)
-      (*   lazymatch goal with *)
-      (*   | [ body := ?evar : cmd |- _ ] => *)
-      (*     unify evar term; subst body *)
-      (*   end. *)
-
-      (* unify_body (cmd.skip). *)
-
-      unfold seps in H.
-
-      let x := lookup_variable [("c", c_ptr)] c_ptr in
-      pose x.
-
-      let e := expr_of_gallina [("c", c_ptr)] c_ptr in
-      pose e.
-
-      let x := expr_of_constant (word.of_Z 1) in
-      pose x.
-
-      let e := expr_of_gallina [("c", c_ptr)] (word.of_Z 1) in
-      pose e.
-
-      subst body.
-
-      Notation "'find' body 'implementing' spec 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
-        (WeakestPrecondition.cmd
-           (WeakestPrecondition.call fns)
-           body tr mem
-           locals
-           (fun (t : Semantics.trace) m _ =>
-              tr = t /\
-              ([]: list (Semantics.word)) = [] /\
-              sep spec R m)) (at level 0).
-      Show.
-
-      Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
-
-      Show.
-
-      (* match_compile_goal. *)
-      (* repeat straightline. *)
-
-      Set Nested Proofs Allowed.
-      Lemma compile_get :
-        forall (locals: Semantics.locals) (mem: Semantics.mem)
-          tr R R' functions out_ptr c c_ptr c_var k k_impl,
-        forall var,
-          sep (cell_value c_ptr c) R' mem ->
-          map.get locals c_var = Some c_ptr ->
-          let v := (get c) in
-          (let head := v in
-           find k_impl
-           implementing (cell_value out_ptr (k head))
-           with-locals (map.put locals var head)
-           and-memory mem and-trace tr and-rest R
-           and-functions functions) ->
-          (let head := v in
-           find (cmd.seq (cmd.set var (expr.load access_size.word (expr.var c_var)))
-                         k_impl)
-           implementing (cell_value out_ptr (dlet head k))
-           with-locals locals and-memory mem and-trace tr and-rest R
-           and-functions functions).
-      Proof.
-        intros.
-        repeat straightline.
-        exists (get c).
-        split.
-        { cbn.
-          red.
-          exists c_ptr.
-          split.
-          { eassumption. }
-          { eexists; split; [ | reflexivity ].
-            eapply load_word_of_sep.
-            eassumption. } }
-        red; intros.
-        eassumption.
-      Qed.
-
-      Ltac solve_map_get_goal :=
-        lazymatch goal with
-        | [  |- map.get {| value := ?locals; _value_ok := _ |} _ = Some ?val ] =>
-          let var := lookup_variable locals val in
-          instantiate (1 := var);
-            reflexivity
-        end.
-
-      eapply compile_get with (var := "v").
-      { ecancel_assumption.
-        (* lazymatch goal with *)
-        (* | [ H: ?predicates ?mem |- sep (?predicate _ ?value) _ ?mem ] => *)
-        (*   let ptr := lookup_object_in predicates predicate value in *)
-        (*   instantiate (1 := ) *)
-        (* end. *) }
-      { solve_map_get_goal. }
-      { intros;
-          simpl map.put.
-
-        (* Can we get rid of the continuation in every lemma? *)
-
-      Lemma compile_constant :
-        forall (locals: Semantics.locals) (mem: Semantics.mem)
-          tr R functions out_ptr z k k_impl,
-        forall var,
-          let head := word.of_Z z in
-          (find k_impl
-           implementing (cell_value out_ptr (k head))
-           with-locals (map.put locals var head)
-           and-memory mem and-trace tr and-rest R
-           and-functions functions) ->
-          (find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
-           implementing (cell_value out_ptr (dlet head k))
-           with-locals locals and-memory mem and-trace tr and-rest R
-           and-functions functions).
-      Proof.
-        intros.
-        repeat straightline.
-        eassumption.
-      Qed.
-
-      eapply compile_constant with (var := "one").
-      Arguments word.of_Z : simpl never.
-      set (v1 := word.of_Z 1).
-      simpl map.put.
-
-      (* FIXME add let pattern to other lemmas *)
-      Lemma compile_add :
-        forall (locals: Semantics.locals) (mem: Semantics.mem)
-          tr R (* R' *) functions out_ptr x x_var y y_var k k_impl,
-        forall var,
-          (* WeakestPrecondition.dexpr mem locals (expr.var x_var) x -> *)
-          (* WeakestPrecondition.dexpr mem locals (expr.var y_var) y -> *)
-          map.get locals x_var = Some x ->
-          map.get locals y_var = Some y ->
-          let v := word.add x y in
-          (let head := v in
-           find k_impl
-           implementing (cell_value out_ptr (k head))
-           with-locals (map.put locals var head)
-           and-memory mem and-trace tr and-rest R
-           and-functions functions) ->
-          (let head := v in
-           find (cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
-                         k_impl)
-           implementing (cell_value out_ptr (dlet head k))
-           with-locals locals and-memory mem and-trace tr and-rest R
-           and-functions functions).
-      Proof.
-        intros.
-        repeat straightline.
-        eexists; split.
-        { repeat straightline.
-          exists x; split; try eassumption.
-          repeat straightline.
-          exists y; split; try eassumption.
-          reflexivity. }
-        red.
-        eassumption.
-      Qed.
-
-      eapply compile_add with (var := "v1").
-      { solve_map_get_goal. }
-      { solve_map_get_goal. }
-      intros; simpl map.put.
-
-      Ltac lookup_variable locals ptr ::=
-        match locals with
-        | [] => fail
-        | (?k, ?ptr') :: ?tl =>   (* FIXME do we actually want to unify like this? *)
-          let _ := constr:(eq_refl ptr : ptr = ptr') in
-          constr:(k)
-        | _ :: ?tl =>
-          lookup_variable tl ptr
-        end.
-
-      Lemma compile_put :
-        forall (locals: Semantics.locals) (mem: Semantics.mem)
-          tr R R' functions out_ptr c c_ptr c_var x x_var k k_impl,
-          sep (cell_value c_ptr c) R' mem ->
-          map.get locals c_var = Some c_ptr ->
-          map.get locals x_var = Some x ->
-          let v := (put x c) in
-          (let head := v in
-           forall m,
-             sep (cell_value c_ptr head) R' m ->
-             (find k_impl
-              implementing (cell_value out_ptr (k head))
-              with-locals locals
-              and-memory m and-trace tr and-rest R
-              and-functions functions)) ->
-          (let head := v in
-           find (cmd.seq (cmd.store access_size.word (expr.var c_var) (expr.var x_var))
-                         k_impl)
-           implementing (cell_value out_ptr (dlet head k))
-           with-locals locals and-memory mem and-trace tr and-rest R
-           and-functions functions).
-      Proof.
-        intros.
-        unfold cell_value in *.
-        repeat straightline.
-        exists c_ptr.
-        split.
-        { repeat straightline; eauto. }
-        { eexists; split.
-          { repeat straightline; eauto. }
-          repeat straightline.
-          subst v; simpl.
-          match goal with
-          | [ H: context[WeakestPrecondition.cmd] |- _ ] => apply H
-          end.
-          eassumption. }
-      Qed.
-
-      eapply compile_put.
-
-      { ecancel_assumption. }
-      { solve_map_get_goal. }
-      { solve_map_get_goal. }
-      intros.
-
-      Lemma compile_skip :
-        forall (locals: Semantics.locals) (mem: Semantics.mem)
-          tr R functions out_ptr head,
-          sep (cell_value out_ptr head) R mem ->
-          (find cmd.skip
-           implementing (cell_value out_ptr head)
-           with-locals locals and-memory mem and-trace tr and-rest R
-           and-functions functions).
-      Proof.
-        intros.
-        repeat straightline.
-        eauto.
-      Qed.
-
-      eapply compile_skip.
-      eassumption. } }
-    Qed.
-
-  Print body.
+  Ltac lookup_variable locals ptr ::=
+    match locals with
+    | [] => fail
+    | (?k, ?ptr') :: ?tl =>   (* FIXME do we actually want to unify like this? *)
+      let _ := constr:(eq_refl ptr : ptr = ptr') in
+      constr:(k)
+    | _ :: ?tl =>
+      lookup_variable tl ptr
+    end.
 
   Definition TwoCells a_ptr b_ptr ab : Semantics.mem -> Prop :=
     sep (cell_value a_ptr (fst ab)) (cell_value b_ptr (snd ab)).
 
-  Print swap_gallina_spec.
   Derive swap_body SuchThat
          (let swap := ("swap", (["a"; "b"], [], swap_body)) in
           program_logic_goal_for swap
