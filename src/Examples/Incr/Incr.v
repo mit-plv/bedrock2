@@ -202,21 +202,21 @@ Module GallinaIncr.
 
   Lemma compile_get :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R R' functions out_ptr c c_ptr c_var k k_impl,
+      tr R R' functions T (pred: T -> _ -> Prop) c c_ptr c_var k k_impl,
     forall var,
       sep (cell_value c_ptr c) R' mem ->
       map.get locals c_var = Some c_ptr ->
       let v := (get c) in
       (let head := v in
        find k_impl
-       implementing (cell_value out_ptr (k head))
+       implementing (pred (k head))
        with-locals (map.put locals var head)
        and-memory mem and-trace tr and-rest R
        and-functions functions) ->
       (let head := v in
        find (cmd.seq (cmd.set var (expr.load access_size.word (expr.var c_var)))
                      k_impl)
-       implementing (cell_value out_ptr (dlet head k))
+       implementing (pred (dlet head k))
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
@@ -238,18 +238,18 @@ Module GallinaIncr.
 
   Lemma compile_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R functions out_ptr z k k_impl,
+      tr R functions T (pred: T -> _ -> Prop) z k k_impl,
     forall var,
       let v := word.of_Z z in
       (let head := v in
        find k_impl
-       implementing (cell_value out_ptr (k head))
+       implementing (pred (k head))
        with-locals (map.put locals var head)
        and-memory mem and-trace tr and-rest R
        and-functions functions) ->
       (let head := v in
        find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
-       implementing (cell_value out_ptr (dlet head k))
+       implementing (pred (dlet head k))
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
@@ -261,7 +261,7 @@ Module GallinaIncr.
   (* FIXME add let pattern to other lemmas *)
   Lemma compile_add :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R (* R' *) functions out_ptr x x_var y y_var k k_impl,
+      tr R (* R' *) functions T (pred: T -> _ -> Prop) x x_var y y_var k k_impl,
     forall var,
       (* WeakestPrecondition.dexpr mem locals (expr.var x_var) x -> *)
       (* WeakestPrecondition.dexpr mem locals (expr.var y_var) y -> *)
@@ -270,14 +270,14 @@ Module GallinaIncr.
       let v := word.add x y in
       (let head := v in
        find k_impl
-       implementing (cell_value out_ptr (k head))
+       implementing (pred (k head))
        with-locals (map.put locals var head)
        and-memory mem and-trace tr and-rest R
        and-functions functions) ->
       (let head := v in
        find (cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
                      k_impl)
-       implementing (cell_value out_ptr (dlet head k))
+       implementing (pred (dlet head k))
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
@@ -295,7 +295,7 @@ Module GallinaIncr.
 
   Lemma compile_put :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R R' functions out_ptr c c_ptr c_var x x_var k k_impl,
+      tr R R' functions T (pred: T -> _ -> Prop) c c_ptr c_var x x_var k k_impl,
       sep (cell_value c_ptr c) R' mem ->
       map.get locals c_var = Some c_ptr ->
       map.get locals x_var = Some x ->
@@ -304,14 +304,14 @@ Module GallinaIncr.
        forall m,
          sep (cell_value c_ptr head) R' m ->
          (find k_impl
-          implementing (cell_value out_ptr (k head))
+          implementing (pred (k head))
           with-locals locals
           and-memory m and-trace tr and-rest R
           and-functions functions)) ->
       (let head := v in
        find (cmd.seq (cmd.store access_size.word (expr.var c_var) (expr.var x_var))
                      k_impl)
-       implementing (cell_value out_ptr (dlet head k))
+       implementing (pred (dlet head k))
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
@@ -333,10 +333,10 @@ Module GallinaIncr.
 
   Lemma compile_skip :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R functions out_ptr head,
-      sep (cell_value out_ptr head) R mem ->
+      tr R functions T (pred: T -> _ -> Prop) head,
+      sep (pred head) R mem ->
       (find cmd.skip
-       implementing (cell_value out_ptr head)
+       implementing (pred head)
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
@@ -355,6 +355,8 @@ Module GallinaIncr.
       reflexivity
     end.
 
+  Create HintDb compiler.
+
   Ltac t :=
     lazymatch goal with
     | [  |- let _ := _ in _ ] => intros
@@ -362,12 +364,16 @@ Module GallinaIncr.
     | [  |- WeakestPrecondition.cmd _ _ _ _ _ _ ] =>
       gen_sym_inc;
       let name := gen_sym_fetch "v" in
+      (* FIXME compile_skip applies in all cases, so guard it *)
       first [simple eapply compile_get with (var := name) |
              simple eapply compile_put |
              simple eapply compile_constant with (var := name) |
              simple eapply compile_add with (var := name) |
              simple eapply compile_skip]
-    | [  |- sep _ _ _ ] => ecancel_assumption
+    | [  |- sep _ _ _ ] =>
+      autounfold with compiler in *;
+      cbn [fst snd] in *;
+      ecancel_assumption
     | [  |- map.get _ _ = Some _ ] => solve_map_get_goal
     end.
 
@@ -432,6 +438,11 @@ Module GallinaIncr.
   Definition TwoCells a_ptr b_ptr ab : Semantics.mem -> Prop :=
     sep (cell_value a_ptr (fst ab)) (cell_value b_ptr (snd ab)).
 
+  Hint Unfold TwoCells : compiler.
+
+  (* FIXME instead of cbn [fst snd], use simpl never hints in the sep case *)
+  Arguments Semantics.word : simpl never.
+
   Derive swap_body SuchThat
          (let swap := ("swap", (["a"; "b"], [], swap_body)) in
           program_logic_goal_for swap
@@ -442,93 +453,10 @@ Module GallinaIncr.
                (swap :: functions)
                "swap"
                tr mem [a_ptr;b_ptr]
-               (fun tr' mem' rets =>
-                  tr = tr' /\ rets = nil
-                  /\ sep (TwoCells a_ptr b_ptr (swap_gallina_spec a b))
-                         R mem')))
+               (postcondition_for (TwoCells a_ptr b_ptr (swap_gallina_spec a b)) R tr)))
     As swap_body_correct.
   Proof.
-    cbv zeta.
-    red.
-    intros.
-    cbn -[swap_gallina_spec TwoCells Semantics.word].
-    eexists; split; [ reflexivity | ].
-    unfold swap_gallina_spec.
-
-    subst swap_body.
-    unfold TwoCells in *|-.
-    cbn [fst snd] in *.
-    match_compile_goal.
-    repeat straightline.
-    exists (get a).
-    split.
-    { cbn.
-      red.
-      exists a_ptr.
-      simpl.
-      split; try reflexivity.
-      eexists.
-      split.
-      { eapply load_word_of_sep.
-        unfold cell_value in *.
-        ecancel_assumption. }
-      { reflexivity. } }
-    red.
-    simpl map.put.
-
-    set (v1:=get a).
-    unfold dlet at 1.
-
-    match_compile_goal.
-    repeat straightline.
-    exists (get b).
-    split.
-    { cbn.
-      red.
-      exists b_ptr.
-      simpl.
-      split; try reflexivity.
-      eexists.
-      split.
-      { eapply load_word_of_sep.
-        unfold cell_value in *.
-        ecancel_assumption. }
-      { reflexivity. } }
-    red.
-    simpl map.put.
-
-    set (v2:=get b).
-    unfold dlet at 1.
-
-    match_compile_goal.
-    repeat straightline.
-    eapply store_word_of_sep.
-    { instantiate (2:=data _).
-      change (scalar ?x (data ?y)) with (cell_value x y).
-      ecancel_assumption. }
-    intros.
-    change (scalar a_ptr v2) with (cell_value a_ptr (put v2 a)) in H0.
-    set (c1:=put v2 a) in *.
-    unfold dlet at 1.
-
-
-    match_compile_goal.
-    repeat straightline.
-    eapply store_word_of_sep.
-    { instantiate (2:=data _).
-      change (scalar ?x (data ?y)) with (cell_value x y).
-      ecancel_assumption. }
-    intros.
-    change (scalar b_ptr v1) with (cell_value b_ptr (put v1 b)) in H2.
-    set (c2:=put v1 b) in *.
-    unfold dlet at 1.
-
-    match_compile_goal.
-    repeat straightline.
-    cbv [TwoCells].
-    simpl.
-    repeat split; ecancel_assumption.
+    setup.
+    repeat t.
   Qed.
-
-
-End Incr.
+End GallinaIncr.
