@@ -74,10 +74,6 @@ Section ptstos.
 
   Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width Syntax.access_size.word).
 
-  Definition ptsto_word(addr w: word): mem -> Prop :=
-    ptsto_bytes (@Memory.bytes_per width Syntax.access_size.word) addr
-                (LittleEndian.split _ (word.unsigned w)).
-
   Definition word_array: word -> list word -> mem -> Prop :=
     array ptsto_word (word.of_Z bytes_per_word).
 

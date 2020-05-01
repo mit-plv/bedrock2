@@ -193,6 +193,7 @@ Section Scalars.
     erewrite LittleEndian.combine_split.
     eapply Z.mod_pos_bound; reflexivity.
   Qed.
+
   Lemma scalar32_of_bytes a l (H : List.length l = 4%nat) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
@@ -207,6 +208,24 @@ Section Scalars.
     erewrite LittleEndian.combine_split.
     eapply Z.mod_pos_bound; reflexivity.
   Qed.
+
+  Lemma scalar_of_bytes a l (H : width = 8 * Z.of_nat (length l)) :
+    Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
+                   (scalar a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
+  Proof.
+    cbv [scalar truncated_scalar littleendian ptsto_bytes]. subst width.
+    replace (bytes_per Syntax.access_size.word) with (length l). 2: {
+      unfold bytes_per. clear.
+      Z.div_mod_to_equations. blia.
+    }
+    rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
+    { erewrite LittleEndian.split_combine.
+      rewrite tuple.to_list_of_list. reflexivity. }
+    apply LittleEndian.combine_bound.
+  Qed.
+
+  Definition ptsto_word(addr w: word): mem -> Prop :=
+    ptsto_bytes (@bytes_per width Syntax.access_size.word) addr (LittleEndian.split _ (word.unsigned w)).
 
 End Scalars.
 
